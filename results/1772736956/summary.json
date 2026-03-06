@@ -1,0 +1,82 @@
+{
+  "Claude Sonnet 4.6": {
+    "failed_tools": 0,
+    "llm_calls": 4,
+    "model": "claude-sonnet-4-6",
+    "submitted": false,
+    "tool_calls": 6,
+    "total_steps": 11,
+    "total_tokens": 15813,
+    "unique_tools": 4
+  },
+  "DeepSeek R1": {
+    "failed_tools": 1,
+    "llm_calls": 1,
+    "model": "deepseek/deepseek-r1",
+    "submitted": true,
+    "tool_calls": 5,
+    "total_steps": 6,
+    "total_tokens": 2585,
+    "unique_tools": 4
+  },
+  "GPT-4.1": {
+    "failed_tools": 2,
+    "llm_calls": 13,
+    "model": "gpt-4.1",
+    "submitted": false,
+    "tool_calls": 15,
+    "total_steps": 32,
+    "total_tokens": 56662,
+    "unique_tools": 5
+  },
+  "Gemini 2.5 Pro": {
+    "failed_tools": 1,
+    "llm_calls": 6,
+    "model": "gemini-2.5-pro",
+    "submitted": true,
+    "tool_calls": 6,
+    "total_steps": 13,
+    "total_tokens": 17075,
+    "unique_tools": 5
+  },
+  "Grok 3": {
+    "failed_tools": 1,
+    "llm_calls": 12,
+    "model": "x-ai/grok-3-beta",
+    "submitted": true,
+    "tool_calls": 12,
+    "total_steps": 27,
+    "total_tokens": 42265,
+    "unique_tools": 6
+  },
+  "Llama 4 Maverick": {
+    "failed_tools": 0,
+    "llm_calls": 6,
+    "model": "meta-llama/llama-4-maverick",
+    "submitted": false,
+    "tool_calls": 5,
+    "total_steps": 12,
+    "total_tokens": 19502,
+    "unique_tools": 3
+  },
+  "Qwen3 235B": {
+    "failed_tools": 0,
+    "llm_calls": 8,
+    "model": "qwen/qwen3-235b-a22b",
+    "submitted": true,
+    "tool_calls": 8,
+    "total_steps": 18,
+    "total_tokens": 31729,
+    "unique_tools": 6
+  },
+  "o4-mini": {
+    "failed_tools": 1,
+    "llm_calls": 12,
+    "model": "o4-mini",
+    "submitted": true,
+    "tool_calls": 12,
+    "total_steps": 27,
+    "total_tokens": 35916,
+    "unique_tools": 6
+  }
+}

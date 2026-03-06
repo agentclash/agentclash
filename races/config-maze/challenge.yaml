@@ -1,0 +1,29 @@
+A three-service deployment (web proxy, application, database) is completely broken.
+Nothing works. The previous DevOps engineer left in a hurry and introduced at least 8 configuration errors across the stack.
+
+Your job: find and fix ALL configuration errors so the full stack would work correctly.
+
+SERVICES:
+- nginx (reverse proxy) -> config in nginx/nginx.conf
+- app (Node.js API server) -> config in app/config.json, app/package.json, app/server.js
+- db (PostgreSQL) -> config in db/pg_hba.conf, db/postgresql.conf
+
+ALSO:
+- docker-compose.yml: orchestration file (has errors)
+- .env: shared environment variables (has errors)
+- deploy.sh: deployment script (has errors)
+
+RULES:
+- The app should listen on port 3000
+- Nginx should proxy to the app on port 3000
+- The app should connect to PostgreSQL on port 5432
+- Database name should be "appdb", user should be "appuser"
+- The deploy script should work with bash
+- All config files must be syntactically valid
+
+To submit:
+1. Fix all configuration files in place
+2. Write a summary of all fixes to FIXES.md
+3. Call submit_solution with how many errors you found and fixed
+
+Your opponents are debugging the same broken stack right now. Speed and thoroughness both matter.

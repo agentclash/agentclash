@@ -1,0 +1,16 @@
+You are given a broken Go HTTP server that handles user authentication.
+The server has bugs that cause it to fail. Your job is to:
+
+1. Explore the workspace to understand the codebase
+2. Identify all bugs
+3. Fix them
+4. Make sure `go build ./...` succeeds
+5. Make sure `go test ./...` passes
+6. Call submit_solution with an explanation of what you fixed
+
+The workspace contains:
+- main.go: the HTTP server entrypoint
+- auth/auth.go: authentication logic (has bugs)
+- auth/auth_test.go: tests that currently fail
+
+Good luck. Your opponents are working on the same problem right now.

@@ -1,0 +1,27 @@
+You are a security incident responder. A company's web application was breached last night.
+
+You have access to the server's log files and configuration. Your job is to investigate the breach and produce a complete incident report.
+
+SPECIFICALLY, you must determine:
+1. What was the attacker's IP address?
+2. What time did the attack begin (UTC)?
+3. What vulnerability did the attacker exploit?
+4. What user accounts were compromised?
+5. What data was exfiltrated?
+6. What backdoor (if any) did the attacker leave behind?
+
+The workspace contains:
+- logs/access.log: Nginx access log
+- logs/auth.log: Application authentication log
+- logs/app.log: Application server log
+- logs/db_audit.log: Database query audit log
+- config/nginx.conf: Current nginx configuration
+- config/app.env: Application environment variables
+- users.json: User database dump (taken after the incident)
+- incident_timeline.txt: Empty file - write your timeline here
+
+To submit:
+1. Write a complete incident timeline to incident_timeline.txt
+2. Call submit_solution with a summary of your findings
+
+Your opponents are investigating the same breach. First responder with accurate findings wins.
