@@ -90,6 +90,7 @@ Output of this step:
 - migrations
 - query layer shape
 - primary foreign keys and indexes
+- first database rulebook in [`docs/database/rule.md`](../database/rule.md)
 
 ## Step 3: Build the Run Workflow Skeleton
 
