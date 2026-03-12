@@ -59,6 +59,26 @@ ALTER TABLE model_aliases
 ADD CONSTRAINT model_aliases_workspace_fk
 FOREIGN KEY (workspace_id, organization_id) REFERENCES workspaces (id, organization_id) ON DELETE CASCADE;
 
+CREATE FUNCTION validate_model_alias_scope()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    IF NEW.provider_account_id IS NOT NULL THEN
+        PERFORM 1
+        FROM provider_accounts
+        WHERE id = NEW.provider_account_id
+          AND organization_id = NEW.organization_id
+          AND (workspace_id IS NULL OR workspace_id = NEW.workspace_id);
+        IF NOT FOUND THEN
+            RAISE EXCEPTION 'provider account % is not visible to model alias workspace %', NEW.provider_account_id, NEW.workspace_id;
+        END IF;
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
 CREATE UNIQUE INDEX model_aliases_org_alias_uq
 ON model_aliases (organization_id, alias_key)
 WHERE workspace_id IS NULL;
@@ -138,6 +158,11 @@ BEFORE UPDATE ON model_aliases
 FOR EACH ROW
 EXECUTE FUNCTION set_updated_at();
 
+CREATE TRIGGER model_aliases_validate_scope
+BEFORE INSERT OR UPDATE ON model_aliases
+FOR EACH ROW
+EXECUTE FUNCTION validate_model_alias_scope();
+
 CREATE TRIGGER routing_policies_set_updated_at
 BEFORE UPDATE ON routing_policies
 FOR EACH ROW
@@ -149,11 +174,14 @@ FOR EACH ROW
 EXECUTE FUNCTION set_updated_at();
 
 -- +goose Down
+DROP TRIGGER IF EXISTS model_aliases_validate_scope ON model_aliases;
 DROP TRIGGER IF EXISTS spend_policies_set_updated_at ON spend_policies;
 DROP TRIGGER IF EXISTS routing_policies_set_updated_at ON routing_policies;
 DROP TRIGGER IF EXISTS model_aliases_set_updated_at ON model_aliases;
 DROP TRIGGER IF EXISTS model_catalog_entries_set_updated_at ON model_catalog_entries;
 DROP TRIGGER IF EXISTS provider_accounts_set_updated_at ON provider_accounts;
+
+DROP FUNCTION IF EXISTS validate_model_alias_scope();
 
 DROP TABLE IF EXISTS spend_policies;
 DROP TABLE IF EXISTS routing_policies;

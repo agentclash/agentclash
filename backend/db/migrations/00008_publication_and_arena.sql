@@ -95,13 +95,31 @@ CREATE TABLE leaderboard_entries (
     rank integer NOT NULL CHECK (rank > 0),
     score numeric(7,4) NOT NULL,
     recorded_at timestamptz NOT NULL DEFAULT now(),
-    UNIQUE (arena_id, ranking_scope, public_run_snapshot_id, challenge_identity_id),
-    UNIQUE (arena_id, challenge_pack_version_id, challenge_identity_id, ranking_scope, rank)
+    CHECK (
+        (ranking_scope = 'pack' AND challenge_identity_id IS NULL) OR
+        (ranking_scope = 'challenge' AND challenge_identity_id IS NOT NULL)
+    )
 );
 
 CREATE INDEX arena_submissions_arena_id_idx ON arena_submissions (arena_id, submission_status);
 CREATE INDEX public_run_snapshots_profile_id_idx ON public_run_snapshots (public_agent_profile_id, published_at DESC);
 CREATE INDEX leaderboard_entries_arena_rank_idx ON leaderboard_entries (arena_id, ranking_scope, rank);
+
+CREATE UNIQUE INDEX leaderboard_entries_pack_snapshot_uq
+ON leaderboard_entries (arena_id, challenge_pack_version_id, public_run_snapshot_id)
+WHERE ranking_scope = 'pack';
+
+CREATE UNIQUE INDEX leaderboard_entries_pack_rank_uq
+ON leaderboard_entries (arena_id, challenge_pack_version_id, rank)
+WHERE ranking_scope = 'pack';
+
+CREATE UNIQUE INDEX leaderboard_entries_challenge_snapshot_uq
+ON leaderboard_entries (arena_id, challenge_pack_version_id, challenge_identity_id, public_run_snapshot_id)
+WHERE ranking_scope = 'challenge';
+
+CREATE UNIQUE INDEX leaderboard_entries_challenge_rank_uq
+ON leaderboard_entries (arena_id, challenge_pack_version_id, challenge_identity_id, rank)
+WHERE ranking_scope = 'challenge';
 
 CREATE TRIGGER arenas_set_updated_at
 BEFORE UPDATE ON arenas

@@ -316,6 +316,68 @@ BEGIN
 END;
 $$;
 
+CREATE FUNCTION validate_agent_build_version_tool_scope()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    build_org_id uuid;
+    build_workspace_id uuid;
+BEGIN
+    SELECT ab.organization_id, ab.workspace_id
+    INTO build_org_id, build_workspace_id
+    FROM agent_build_versions abv
+    JOIN agent_builds ab ON ab.id = abv.agent_build_id
+    WHERE abv.id = NEW.agent_build_version_id;
+
+    IF build_org_id IS NULL THEN
+        RAISE EXCEPTION 'agent build version % not found', NEW.agent_build_version_id;
+    END IF;
+
+    PERFORM 1
+    FROM tools
+    WHERE id = NEW.tool_id
+      AND organization_id = build_org_id
+      AND (workspace_id IS NULL OR workspace_id = build_workspace_id);
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'tool % is not visible to build workspace %', NEW.tool_id, build_workspace_id;
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
+CREATE FUNCTION validate_agent_build_version_knowledge_source_scope()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    build_org_id uuid;
+    build_workspace_id uuid;
+BEGIN
+    SELECT ab.organization_id, ab.workspace_id
+    INTO build_org_id, build_workspace_id
+    FROM agent_build_versions abv
+    JOIN agent_builds ab ON ab.id = abv.agent_build_id
+    WHERE abv.id = NEW.agent_build_version_id;
+
+    IF build_org_id IS NULL THEN
+        RAISE EXCEPTION 'agent build version % not found', NEW.agent_build_version_id;
+    END IF;
+
+    PERFORM 1
+    FROM knowledge_sources
+    WHERE id = NEW.knowledge_source_id
+      AND organization_id = build_org_id
+      AND (workspace_id IS NULL OR workspace_id = build_workspace_id);
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'knowledge source % is not visible to build workspace %', NEW.knowledge_source_id, build_workspace_id;
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
 CREATE FUNCTION validate_agent_deployment_snapshot_scope()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -414,12 +476,24 @@ BEFORE INSERT OR UPDATE ON agent_deployments
 FOR EACH ROW
 EXECUTE FUNCTION validate_agent_deployment_scope();
 
+CREATE TRIGGER agent_build_version_tools_validate_scope
+BEFORE INSERT OR UPDATE ON agent_build_version_tools
+FOR EACH ROW
+EXECUTE FUNCTION validate_agent_build_version_tool_scope();
+
+CREATE TRIGGER agent_build_version_knowledge_sources_validate_scope
+BEFORE INSERT OR UPDATE ON agent_build_version_knowledge_sources
+FOR EACH ROW
+EXECUTE FUNCTION validate_agent_build_version_knowledge_source_scope();
+
 CREATE TRIGGER agent_deployment_snapshots_validate_scope
 BEFORE INSERT OR UPDATE ON agent_deployment_snapshots
 FOR EACH ROW
 EXECUTE FUNCTION validate_agent_deployment_snapshot_scope();
 
 -- +goose Down
+DROP TRIGGER IF EXISTS agent_build_version_knowledge_sources_validate_scope ON agent_build_version_knowledge_sources;
+DROP TRIGGER IF EXISTS agent_build_version_tools_validate_scope ON agent_build_version_tools;
 DROP TRIGGER IF EXISTS agent_deployment_snapshots_validate_scope ON agent_deployment_snapshots;
 DROP TRIGGER IF EXISTS agent_deployments_validate_scope ON agent_deployments;
 DROP TRIGGER IF EXISTS agent_deployments_set_updated_at ON agent_deployments;
@@ -428,6 +502,8 @@ DROP TRIGGER IF EXISTS knowledge_sources_set_updated_at ON knowledge_sources;
 DROP TRIGGER IF EXISTS tools_set_updated_at ON tools;
 DROP TRIGGER IF EXISTS runtime_profiles_set_updated_at ON runtime_profiles;
 
+DROP FUNCTION IF EXISTS validate_agent_build_version_knowledge_source_scope();
+DROP FUNCTION IF EXISTS validate_agent_build_version_tool_scope();
 DROP FUNCTION IF EXISTS validate_agent_deployment_snapshot_scope();
 DROP FUNCTION IF EXISTS validate_agent_deployment_scope();
 

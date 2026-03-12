@@ -130,11 +130,15 @@ CREATE TABLE run_scorecards (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     run_id uuid NOT NULL UNIQUE REFERENCES runs (id) ON DELETE CASCADE,
     evaluation_spec_id uuid NOT NULL REFERENCES evaluation_specs (id) ON DELETE RESTRICT,
-    winning_run_agent_id uuid REFERENCES run_agents (id) ON DELETE SET NULL,
+    winning_run_agent_id uuid,
     scorecard jsonb NOT NULL DEFAULT '{}'::jsonb,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now()
 );
+
+ALTER TABLE run_scorecards
+ADD CONSTRAINT run_scorecards_winner_fk
+FOREIGN KEY (winning_run_agent_id, run_id) REFERENCES run_agents (id, run_id) ON DELETE RESTRICT;
 
 CREATE INDEX run_events_run_id_idx ON run_events (run_id, occurred_at);
 CREATE INDEX run_events_run_agent_id_idx ON run_events (run_agent_id, sequence_number);
