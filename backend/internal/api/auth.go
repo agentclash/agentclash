@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sort"
 
 	"github.com/google/uuid"
 )
@@ -40,6 +41,7 @@ type WorkspaceAuthorizer interface {
 }
 
 type callerContextKey struct{}
+type workspaceIDContextKey struct{}
 
 func CallerFromContext(ctx context.Context) (Caller, error) {
 	caller, ok := ctx.Value(callerContextKey{}).(Caller)
@@ -48,6 +50,28 @@ func CallerFromContext(ctx context.Context) (Caller, error) {
 	}
 
 	return caller, nil
+}
+
+func WorkspaceIDFromContext(ctx context.Context) (uuid.UUID, error) {
+	workspaceID, ok := ctx.Value(workspaceIDContextKey{}).(uuid.UUID)
+	if !ok {
+		return uuid.Nil, ErrWorkspaceIDRequired
+	}
+
+	return workspaceID, nil
+}
+
+func SortedWorkspaceMemberships(memberships map[uuid.UUID]WorkspaceMembership) []WorkspaceMembership {
+	ordered := make([]WorkspaceMembership, 0, len(memberships))
+	for _, membership := range memberships {
+		ordered = append(ordered, membership)
+	}
+
+	sort.Slice(ordered, func(i, j int) bool {
+		return ordered[i].WorkspaceID.String() < ordered[j].WorkspaceID.String()
+	})
+
+	return ordered
 }
 
 func authenticateRequest(logger *slog.Logger, authenticator Authenticator) func(http.Handler) http.Handler {
@@ -106,7 +130,8 @@ func authorizeWorkspaceAccess(
 				return
 			}
 
-			next.ServeHTTP(w, r)
+			ctx := context.WithValue(r.Context(), workspaceIDContextKey{}, workspaceID)
+			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
 }
@@ -129,9 +154,6 @@ func NewCallerWorkspaceAuthorizer() CallerWorkspaceAuthorizer {
 }
 
 func (CallerWorkspaceAuthorizer) AuthorizeWorkspace(_ context.Context, caller Caller, workspaceID uuid.UUID) error {
-	if workspaceID == uuid.Nil {
-		return ErrWorkspaceIDRequired
-	}
 	if _, ok := caller.WorkspaceMemberships[workspaceID]; !ok {
 		return fmt.Errorf("%w: caller %s does not belong to workspace %s", ErrForbidden, caller.UserID, workspaceID)
 	}

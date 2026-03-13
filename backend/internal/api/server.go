@@ -14,8 +14,8 @@ type Server struct {
 	config     Config
 }
 
-func NewServer(cfg Config, logger *slog.Logger) *Server {
-	router := newRouter(logger, NewDevelopmentAuthenticator(), NewCallerWorkspaceAuthorizer())
+func NewServer(cfg Config, logger *slog.Logger, authenticator Authenticator, authorizer WorkspaceAuthorizer) *Server {
+	router := newRouter(logger, authenticator, authorizer)
 
 	return &Server{
 		config: cfg,

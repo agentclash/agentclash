@@ -1,11 +1,11 @@
 package api
 
 import (
+	"log/slog"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
-	"log/slog"
 )
 
 func registerProtectedRoutes(router chi.Router, logger *slog.Logger, authorizer WorkspaceAuthorizer) {
@@ -21,17 +21,12 @@ func sessionHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	memberships := make([]WorkspaceMembership, 0, len(caller.WorkspaceMemberships))
-	for _, membership := range caller.WorkspaceMemberships {
-		memberships = append(memberships, membership)
-	}
-
 	writeJSON(w, http.StatusOK, sessionResponse{
 		UserID:               caller.UserID,
 		WorkOSUserID:         caller.WorkOSUserID,
 		Email:                caller.Email,
 		DisplayName:          caller.DisplayName,
-		WorkspaceMemberships: memberships,
+		WorkspaceMemberships: SortedWorkspaceMemberships(caller.WorkspaceMemberships),
 	})
 }
 
@@ -49,9 +44,9 @@ type sessionResponse struct {
 }
 
 func workspaceAccessCheckHandler(w http.ResponseWriter, r *http.Request) {
-	workspaceID, err := workspaceIDFromURLParam("workspaceID")(r)
+	workspaceID, err := WorkspaceIDFromContext(r.Context())
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_workspace_id", err.Error())
+		writeAuthzError(w, err)
 		return
 	}
 

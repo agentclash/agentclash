@@ -184,6 +184,32 @@ func TestWorkspaceAuthorizationReturnsOKWithMembership(t *testing.T) {
 	}
 }
 
+func TestWorkspaceAuthorizationRejectsMalformedWorkspaceID(t *testing.T) {
+	userID := uuid.New()
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/workspaces/not-a-uuid/auth-check", nil)
+	req.Header.Set(headerUserID, userID.String())
+	recorder := httptest.NewRecorder()
+
+	newRouter(
+		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
+		NewDevelopmentAuthenticator(),
+		NewCallerWorkspaceAuthorizer(),
+	).ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusBadRequest)
+	}
+
+	var response errorEnvelope
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if response.Error.Code != "invalid_workspace_id" {
+		t.Fatalf("error code = %q, want invalid_workspace_id", response.Error.Code)
+	}
+}
+
 func TestLoadConfigFromEnvRejectsExplicitEmptyValues(t *testing.T) {
 	t.Setenv("API_SERVER_BIND_ADDRESS", "")
 	t.Setenv("DATABASE_URL", defaultDatabaseURL)

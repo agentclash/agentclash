@@ -19,7 +19,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	server := api.NewServer(cfg, logger)
+	server := api.NewServer(
+		cfg,
+		logger,
+		api.NewDevelopmentAuthenticator(),
+		api.NewCallerWorkspaceAuthorizer(),
+	)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
