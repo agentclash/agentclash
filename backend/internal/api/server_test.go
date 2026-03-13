@@ -8,13 +8,19 @@ import (
 	"net/http/httptest"
 	"os"
 	"testing"
+
+	"github.com/google/uuid"
 )
 
 func TestHealthzReturnsJSONSuccessPayload(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	recorder := httptest.NewRecorder()
 
-	newRouter(slog.New(slog.NewTextHandler(testWriter{t}, nil))).ServeHTTP(recorder, req)
+	newRouter(
+		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
+		NewDevelopmentAuthenticator(),
+		NewCallerWorkspaceAuthorizer(),
+	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusOK)
@@ -58,6 +64,123 @@ func TestRecovererReturnsJSONErrorEnvelope(t *testing.T) {
 	}
 	if response.Error.Message != "internal server error" {
 		t.Fatalf("error message = %q, want internal server error", response.Error.Message)
+	}
+}
+
+func TestSessionEndpointRequiresAuthentication(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/v1/auth/session", nil)
+	recorder := httptest.NewRecorder()
+
+	newRouter(
+		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
+		NewDevelopmentAuthenticator(),
+		NewCallerWorkspaceAuthorizer(),
+	).ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusUnauthorized)
+	}
+
+	var response errorEnvelope
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if response.Error.Code != "unauthorized" {
+		t.Fatalf("error code = %q, want unauthorized", response.Error.Code)
+	}
+}
+
+func TestSessionEndpointReturnsCallerIdentity(t *testing.T) {
+	userID := uuid.New()
+	workspaceID := uuid.New()
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/auth/session", nil)
+	req.Header.Set(headerUserID, userID.String())
+	req.Header.Set(headerWorkOSUserID, "user_123")
+	req.Header.Set(headerUserEmail, "dev@example.com")
+	req.Header.Set(headerWorkspaceMemberships, workspaceID.String()+":workspace_admin")
+
+	recorder := httptest.NewRecorder()
+	newRouter(
+		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
+		NewDevelopmentAuthenticator(),
+		NewCallerWorkspaceAuthorizer(),
+	).ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusOK)
+	}
+
+	var response sessionResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if response.UserID != userID {
+		t.Fatalf("user_id = %s, want %s", response.UserID, userID)
+	}
+	if len(response.WorkspaceMemberships) != 1 {
+		t.Fatalf("workspace memberships = %d, want 1", len(response.WorkspaceMemberships))
+	}
+	if response.WorkspaceMemberships[0].WorkspaceID != workspaceID {
+		t.Fatalf("workspace_id = %s, want %s", response.WorkspaceMemberships[0].WorkspaceID, workspaceID)
+	}
+}
+
+func TestWorkspaceAuthorizationReturnsForbiddenWithoutMembership(t *testing.T) {
+	userID := uuid.New()
+	workspaceID := uuid.New()
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/workspaces/"+workspaceID.String()+"/auth-check", nil)
+	req.Header.Set(headerUserID, userID.String())
+	recorder := httptest.NewRecorder()
+
+	newRouter(
+		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
+		NewDevelopmentAuthenticator(),
+		NewCallerWorkspaceAuthorizer(),
+	).ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusForbidden)
+	}
+
+	var response errorEnvelope
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if response.Error.Code != "forbidden" {
+		t.Fatalf("error code = %q, want forbidden", response.Error.Code)
+	}
+}
+
+func TestWorkspaceAuthorizationReturnsOKWithMembership(t *testing.T) {
+	userID := uuid.New()
+	workspaceID := uuid.New()
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/workspaces/"+workspaceID.String()+"/auth-check", nil)
+	req.Header.Set(headerUserID, userID.String())
+	req.Header.Set(headerWorkspaceMemberships, workspaceID.String()+":workspace_member")
+	recorder := httptest.NewRecorder()
+
+	newRouter(
+		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
+		NewDevelopmentAuthenticator(),
+		NewCallerWorkspaceAuthorizer(),
+	).ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusOK)
+	}
+
+	var response workspaceAccessCheckResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if !response.OK {
+		t.Fatalf("ok = false, want true")
+	}
+	if response.WorkspaceID != workspaceID {
+		t.Fatalf("workspace_id = %s, want %s", response.WorkspaceID, workspaceID)
 	}
 }
 

@@ -13,6 +13,11 @@ It currently provides:
 - baseline JSON success and error envelopes
 - request logging and panic recovery middleware
 - `GET /healthz`
+- request-scoped caller identity for `/v1/*`
+- workspace authorization boundary for future run handlers
+- development-only header-backed auth endpoints:
+  - `GET /v1/auth/session`
+  - `GET /v1/workspaces/{workspaceID}/auth-check`
 
 It does not yet connect to Postgres or Temporal. This step only establishes the process boundary and shared HTTP plumbing for later `/v1/*` work.
 
@@ -40,6 +45,33 @@ Expected response:
 ```json
 {"ok":true,"service":"api-server"}
 ```
+
+Protected development endpoints currently use a temporary header-backed auth contract so the API-side tenancy boundary can be exercised before full WorkOS integration exists.
+
+Example:
+
+```bash
+WORKSPACE_ID=11111111-1111-1111-1111-111111111111
+USER_ID=22222222-2222-2222-2222-222222222222
+
+curl \
+  -H "X-Agentclash-User-Id: ${USER_ID}" \
+  -H "X-Agentclash-Workspace-Memberships: ${WORKSPACE_ID}:workspace_admin" \
+  http://localhost:8080/v1/auth/session
+```
+
+Current development headers:
+
+- `X-Agentclash-User-Id`: required UUID for authenticated requests
+- `X-Agentclash-WorkOS-User-Id`: optional future-facing external identity reference
+- `X-Agentclash-User-Email`: optional caller email
+- `X-Agentclash-User-Display-Name`: optional caller display name
+- `X-Agentclash-Workspace-Memberships`: optional comma-separated workspace access list in the form `workspace_uuid:role`
+
+Error behavior:
+
+- missing or invalid identity headers return `401`
+- authenticated callers without the requested workspace membership return `403`
 
 ## Config
 
