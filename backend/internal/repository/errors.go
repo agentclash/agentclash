@@ -14,6 +14,7 @@ var (
 	ErrTransitionConflict     = errors.New("status transition conflict")
 	ErrTemporalWorkflowID     = errors.New("temporal workflow id is required")
 	ErrTemporalRunID          = errors.New("temporal run id is required")
+	ErrTemporalIDConflict     = errors.New("run already has different temporal ids")
 	ErrUnexpectedFailureCause = errors.New("failure reason is only valid for failed run-agent transitions")
 )
 
@@ -43,4 +44,34 @@ func (e TransitionConflictError) Error() string {
 
 func (e TransitionConflictError) Is(target error) bool {
 	return target == ErrTransitionConflict
+}
+
+type TemporalIDConflictError struct {
+	RunID                uuid.UUID
+	ExistingWorkflowID   *string
+	ExistingTemporalRun  *string
+	RequestedWorkflowID  string
+	RequestedTemporalRun string
+}
+
+func (e TemporalIDConflictError) Error() string {
+	return fmt.Sprintf(
+		"run %s already has temporal ids workflow=%s run=%s; cannot replace with workflow=%q run=%q",
+		e.RunID,
+		quotedString(e.ExistingWorkflowID),
+		quotedString(e.ExistingTemporalRun),
+		e.RequestedWorkflowID,
+		e.RequestedTemporalRun,
+	)
+}
+
+func (e TemporalIDConflictError) Is(target error) bool {
+	return target == ErrTemporalIDConflict
+}
+
+func quotedString(value *string) string {
+	if value == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("%q", *value)
 }

@@ -47,6 +47,8 @@ UPDATE runs
 SET temporal_workflow_id = @temporal_workflow_id,
     temporal_run_id = @temporal_run_id
 WHERE id = @id
+  AND temporal_workflow_id IS NULL
+  AND temporal_run_id IS NULL
 RETURNING *;
 
 -- name: UpdateRunStatus :one

@@ -112,7 +112,29 @@ func (r *Repository) SetRunTemporalIDs(ctx context.Context, params SetRunTempora
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.Run{}, ErrRunNotFound
+			currentRow, getErr := r.queries.GetRunByID(ctx, repositorysqlc.GetRunByIDParams{ID: params.RunID})
+			if getErr != nil {
+				if errors.Is(getErr, pgx.ErrNoRows) {
+					return domain.Run{}, ErrRunNotFound
+				}
+				return domain.Run{}, fmt.Errorf("load run after temporal id write miss: %w", getErr)
+			}
+
+			if temporalIDsMatch(currentRow, params) {
+				run, mapErr := mapRun(currentRow)
+				if mapErr != nil {
+					return domain.Run{}, fmt.Errorf("map run: %w", mapErr)
+				}
+				return run, nil
+			}
+
+			return domain.Run{}, TemporalIDConflictError{
+				RunID:                params.RunID,
+				ExistingWorkflowID:   currentRow.TemporalWorkflowID,
+				ExistingTemporalRun:  currentRow.TemporalRunID,
+				RequestedWorkflowID:  params.TemporalWorkflowID,
+				RequestedTemporalRun: params.TemporalRunID,
+			}
 		}
 		return domain.Run{}, fmt.Errorf("set run temporal ids: %w", err)
 	}
@@ -557,4 +579,12 @@ func timePtr(value time.Time) *time.Time {
 
 func rollback(ctx context.Context, tx pgx.Tx) {
 	_ = tx.Rollback(ctx)
+}
+
+func temporalIDsMatch(row repositorysqlc.Run, params SetRunTemporalIDsParams) bool {
+	if row.TemporalWorkflowID == nil || row.TemporalRunID == nil {
+		return false
+	}
+	return *row.TemporalWorkflowID == params.TemporalWorkflowID &&
+		*row.TemporalRunID == params.TemporalRunID
 }

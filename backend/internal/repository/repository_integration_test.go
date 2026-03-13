@@ -102,6 +102,74 @@ func TestRepositorySetRunTemporalIDs(t *testing.T) {
 	}
 }
 
+func TestRepositorySetRunTemporalIDsIsIdempotentForSameValues(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	firstRun, err := repo.SetRunTemporalIDs(ctx, repository.SetRunTemporalIDsParams{
+		RunID:              fixture.runID,
+		TemporalWorkflowID: "run-workflow-123",
+		TemporalRunID:      "temporal-run-456",
+	})
+	if err != nil {
+		t.Fatalf("initial SetRunTemporalIDs returned error: %v", err)
+	}
+
+	secondRun, err := repo.SetRunTemporalIDs(ctx, repository.SetRunTemporalIDsParams{
+		RunID:              fixture.runID,
+		TemporalWorkflowID: "run-workflow-123",
+		TemporalRunID:      "temporal-run-456",
+	})
+	if err != nil {
+		t.Fatalf("idempotent SetRunTemporalIDs returned error: %v", err)
+	}
+
+	if firstRun.UpdatedAt != secondRun.UpdatedAt {
+		t.Fatalf("updated_at changed on idempotent temporal id set: first=%s second=%s", firstRun.UpdatedAt, secondRun.UpdatedAt)
+	}
+}
+
+func TestRepositorySetRunTemporalIDsRejectsReassignment(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	_, err := repo.SetRunTemporalIDs(ctx, repository.SetRunTemporalIDsParams{
+		RunID:              fixture.runID,
+		TemporalWorkflowID: "run-workflow-123",
+		TemporalRunID:      "temporal-run-456",
+	})
+	if err != nil {
+		t.Fatalf("initial SetRunTemporalIDs returned error: %v", err)
+	}
+
+	_, err = repo.SetRunTemporalIDs(ctx, repository.SetRunTemporalIDsParams{
+		RunID:              fixture.runID,
+		TemporalWorkflowID: "run-workflow-999",
+		TemporalRunID:      "temporal-run-999",
+	})
+	if err == nil {
+		t.Fatalf("SetRunTemporalIDs returned nil error for temporal id reassignment")
+	}
+	if !errors.Is(err, repository.ErrTemporalIDConflict) {
+		t.Fatalf("SetRunTemporalIDs error = %v, want ErrTemporalIDConflict", err)
+	}
+
+	persisted, err := repo.GetRunByID(ctx, fixture.runID)
+	if err != nil {
+		t.Fatalf("GetRunByID after temporal id conflict returned error: %v", err)
+	}
+	if persisted.TemporalWorkflowID == nil || *persisted.TemporalWorkflowID != "run-workflow-123" {
+		t.Fatalf("persisted temporal workflow id = %v, want %q", persisted.TemporalWorkflowID, "run-workflow-123")
+	}
+	if persisted.TemporalRunID == nil || *persisted.TemporalRunID != "temporal-run-456" {
+		t.Fatalf("persisted temporal run id = %v, want %q", persisted.TemporalRunID, "temporal-run-456")
+	}
+}
+
 func TestRepositoryTransitionRunStatusWritesCurrentStateAndHistory(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)

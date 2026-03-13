@@ -242,6 +242,8 @@ UPDATE runs
 SET temporal_workflow_id = $1,
     temporal_run_id = $2
 WHERE id = $3
+  AND temporal_workflow_id IS NULL
+  AND temporal_run_id IS NULL
 RETURNING id, organization_id, workspace_id, challenge_pack_version_id, challenge_input_set_id, created_by_user_id, name, status, execution_mode, temporal_workflow_id, temporal_run_id, execution_plan, queued_at, started_at, finished_at, cancelled_at, failed_at, created_at, updated_at
 `
 
