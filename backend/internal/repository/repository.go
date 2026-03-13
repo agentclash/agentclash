@@ -719,7 +719,7 @@ func mapRunAgent(row repositorysqlc.RunAgent) (domain.RunAgent, error) {
 	}, nil
 }
 
-func mapRunAgentReplay(row repositorysqlc.GetRunAgentReplayByRunAgentIDRow) (RunAgentReplay, error) {
+func mapRunAgentReplay(row repositorysqlc.RunAgentReplay) (RunAgentReplay, error) {
 	createdAt, err := requiredTime("run_agent_replays.created_at", row.CreatedAt)
 	if err != nil {
 		return RunAgentReplay{}, err
@@ -734,7 +734,7 @@ func mapRunAgentReplay(row repositorysqlc.GetRunAgentReplayByRunAgentIDRow) (Run
 		RunAgentID:           row.RunAgentID,
 		ArtifactID:           cloneUUIDPtr(row.ArtifactID),
 		Summary:              cloneJSON(row.Summary),
-		LatestSequenceNumber: optionalInt64(row.LatestSequenceNumber),
+		LatestSequenceNumber: cloneInt64Ptr(row.LatestSequenceNumber),
 		EventCount:           row.EventCount,
 		CreatedAt:            createdAt,
 		UpdatedAt:            updatedAt,
@@ -755,11 +755,11 @@ func mapRunAgentScorecard(row repositorysqlc.GetRunAgentScorecardByRunAgentIDRow
 		ID:               row.ID,
 		RunAgentID:       row.RunAgentID,
 		EvaluationSpecID: row.EvaluationSpecID,
-		OverallScore:     cloneFloat64Ptr(row.OverallScore),
-		CorrectnessScore: cloneFloat64Ptr(row.CorrectnessScore),
-		ReliabilityScore: cloneFloat64Ptr(row.ReliabilityScore),
-		LatencyScore:     cloneFloat64Ptr(row.LatencyScore),
-		CostScore:        cloneFloat64Ptr(row.CostScore),
+		OverallScore:     float64Ptr(row.OverallScore),
+		CorrectnessScore: float64Ptr(row.CorrectnessScore),
+		ReliabilityScore: float64Ptr(row.ReliabilityScore),
+		LatencyScore:     float64Ptr(row.LatencyScore),
+		CostScore:        float64Ptr(row.CostScore),
 		Scorecard:        cloneJSON(row.Scorecard),
 		CreatedAt:        createdAt,
 		UpdatedAt:        updatedAt,
@@ -867,6 +867,14 @@ func optionalInt64(value pgtype.Int8) *int64 {
 	return &cloned
 }
 
+func cloneInt64Ptr(value *int64) *int64 {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
+}
+
 func cloneJSON(value []byte) json.RawMessage {
 	if value == nil {
 		return nil
@@ -894,6 +902,11 @@ func cloneFloat64Ptr(value *float64) *float64 {
 		return nil
 	}
 	cloned := *value
+	return &cloned
+}
+
+func float64Ptr(value float64) *float64 {
+	cloned := value
 	return &cloned
 }
 

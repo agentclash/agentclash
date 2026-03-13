@@ -9,6 +9,104 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type AgentDeploymentSnapshot struct {
+	ID                        uuid.UUID
+	OrganizationID            uuid.UUID
+	WorkspaceID               uuid.UUID
+	AgentBuildID              uuid.UUID
+	AgentDeploymentID         uuid.UUID
+	SourceAgentBuildVersionID uuid.UUID
+	SourceRuntimeProfileID    uuid.UUID
+	SourceProviderAccountID   *uuid.UUID
+	SourceModelAliasID        *uuid.UUID
+	SourceRoutingPolicyID     *uuid.UUID
+	SourceSpendPolicyID       *uuid.UUID
+	DeploymentType            string
+	EndpointUrl               *string
+	SnapshotHash              string
+	SnapshotConfig            []byte
+	CreatedAt                 pgtype.Timestamptz
+}
+
+type ChallengeInputSet struct {
+	ID                     uuid.UUID
+	ChallengePackVersionID uuid.UUID
+	InputKey               string
+	Name                   string
+	Description            *string
+	InputChecksum          string
+	GeneratedAt            pgtype.Timestamptz
+	CreatedAt              pgtype.Timestamptz
+	UpdatedAt              pgtype.Timestamptz
+	ArchivedAt             pgtype.Timestamptz
+}
+
+type ChallengePack struct {
+	ID              uuid.UUID
+	Slug            string
+	Name            string
+	Family          string
+	Description     *string
+	LifecycleStatus string
+	CreatedAt       pgtype.Timestamptz
+	UpdatedAt       pgtype.Timestamptz
+	ArchivedAt      pgtype.Timestamptz
+}
+
+type ChallengePackVersion struct {
+	ID               uuid.UUID
+	ChallengePackID  uuid.UUID
+	VersionNumber    int32
+	LifecycleStatus  string
+	ManifestChecksum string
+	Manifest         []byte
+	PublishedAt      pgtype.Timestamptz
+	CreatedAt        pgtype.Timestamptz
+	UpdatedAt        pgtype.Timestamptz
+	ArchivedAt       pgtype.Timestamptz
+}
+
+type ModelAlias struct {
+	ID                  uuid.UUID
+	OrganizationID      uuid.UUID
+	WorkspaceID         *uuid.UUID
+	ProviderAccountID   *uuid.UUID
+	ModelCatalogEntryID uuid.UUID
+	AliasKey            string
+	DisplayName         string
+	Status              string
+	CreatedAt           pgtype.Timestamptz
+	UpdatedAt           pgtype.Timestamptz
+	ArchivedAt          pgtype.Timestamptz
+}
+
+type ModelCatalogEntry struct {
+	ID              uuid.UUID
+	ProviderKey     string
+	ProviderModelID string
+	DisplayName     string
+	ModelFamily     string
+	Modality        string
+	LifecycleStatus string
+	Metadata        []byte
+	CreatedAt       pgtype.Timestamptz
+	UpdatedAt       pgtype.Timestamptz
+}
+
+type ProviderAccount struct {
+	ID                  uuid.UUID
+	OrganizationID      uuid.UUID
+	WorkspaceID         *uuid.UUID
+	ProviderKey         string
+	Name                string
+	CredentialReference string
+	Status              string
+	LimitsConfig        []byte
+	CreatedAt           pgtype.Timestamptz
+	UpdatedAt           pgtype.Timestamptz
+	ArchivedAt          pgtype.Timestamptz
+}
+
 type Run struct {
 	ID                     uuid.UUID
 	OrganizationID         uuid.UUID
@@ -49,6 +147,17 @@ type RunAgent struct {
 	UpdatedAt                 pgtype.Timestamptz
 }
 
+type RunAgentReplay struct {
+	ID                   uuid.UUID
+	RunAgentID           uuid.UUID
+	ArtifactID           *uuid.UUID
+	Summary              []byte
+	LatestSequenceNumber *int64
+	EventCount           int64
+	CreatedAt            pgtype.Timestamptz
+	UpdatedAt            pgtype.Timestamptz
+}
+
 type RunAgentStatusHistory struct {
 	ID         uuid.UUID
 	RunAgentID uuid.UUID
@@ -66,4 +175,22 @@ type RunStatusHistory struct {
 	Reason          *string
 	ChangedByUserID *uuid.UUID
 	ChangedAt       pgtype.Timestamptz
+}
+
+type RuntimeProfile struct {
+	ID                 uuid.UUID
+	OrganizationID     uuid.UUID
+	WorkspaceID        *uuid.UUID
+	Name               string
+	Slug               string
+	ExecutionTarget    string
+	TraceMode          string
+	MaxIterations      int32
+	MaxToolCalls       int32
+	StepTimeoutSeconds int32
+	RunTimeoutSeconds  int32
+	ProfileConfig      []byte
+	CreatedAt          pgtype.Timestamptz
+	UpdatedAt          pgtype.Timestamptz
+	ArchivedAt         pgtype.Timestamptz
 }

@@ -68,6 +68,209 @@ func TestRepositoryListRunAgentsByRunID(t *testing.T) {
 	}
 }
 
+func TestRepositoryGetRunAgentExecutionContextByIDNative(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	if _, err := db.Exec(ctx, `
+		UPDATE runtime_profiles
+		SET trace_mode = 'preferred',
+		    max_iterations = 3,
+		    max_tool_calls = 5,
+		    step_timeout_seconds = 90,
+		    run_timeout_seconds = 600,
+		    profile_config = $2
+		WHERE id = $1
+	`, fixture.runtimeProfileID, []byte(`{"sandbox":"fake"}`)); err != nil {
+		t.Fatalf("update runtime profile returned error: %v", err)
+	}
+	if _, err := db.Exec(ctx, `
+		UPDATE agent_deployment_snapshots
+		SET snapshot_config = $2
+		WHERE id = $1
+	`, fixture.agentDeploymentSnapshotID, []byte(`{"entrypoint":"runner"}`)); err != nil {
+		t.Fatalf("update snapshot config returned error: %v", err)
+	}
+
+	executionContext, err := repo.GetRunAgentExecutionContextByID(ctx, fixture.primaryRunAgentID)
+	if err != nil {
+		t.Fatalf("GetRunAgentExecutionContextByID returned error: %v", err)
+	}
+
+	if executionContext.RunAgent.ID != fixture.primaryRunAgentID {
+		t.Fatalf("run agent id = %s, want %s", executionContext.RunAgent.ID, fixture.primaryRunAgentID)
+	}
+	if executionContext.Run.ID != fixture.runID {
+		t.Fatalf("run id = %s, want %s", executionContext.Run.ID, fixture.runID)
+	}
+	if executionContext.ChallengePackVersion.ID != fixture.challengePackVersionID {
+		t.Fatalf("challenge pack version id = %s, want %s", executionContext.ChallengePackVersion.ID, fixture.challengePackVersionID)
+	}
+	if executionContext.ChallengeInputSet == nil || executionContext.ChallengeInputSet.ID != fixture.challengeInputSetID {
+		t.Fatalf("challenge input set = %#v, want id %s", executionContext.ChallengeInputSet, fixture.challengeInputSetID)
+	}
+	if executionContext.Deployment.DeploymentType != "native" {
+		t.Fatalf("deployment type = %q, want native", executionContext.Deployment.DeploymentType)
+	}
+	if executionContext.Deployment.EndpointURL != nil {
+		t.Fatalf("native deployment endpoint_url = %v, want nil", executionContext.Deployment.EndpointURL)
+	}
+	if executionContext.Deployment.RuntimeProfile.ExecutionTarget != "native" {
+		t.Fatalf("runtime execution target = %q, want native", executionContext.Deployment.RuntimeProfile.ExecutionTarget)
+	}
+	if executionContext.Deployment.RuntimeProfile.TraceMode != "preferred" {
+		t.Fatalf("trace mode = %q, want preferred", executionContext.Deployment.RuntimeProfile.TraceMode)
+	}
+	if string(executionContext.Deployment.SnapshotConfig) != `{"entrypoint":"runner"}` {
+		t.Fatalf("snapshot config = %s, want entrypoint runner", executionContext.Deployment.SnapshotConfig)
+	}
+	if executionContext.Deployment.ProviderAccount == nil || executionContext.Deployment.ProviderAccount.ID != fixture.providerAccountID {
+		t.Fatalf("provider account = %#v, want %s", executionContext.Deployment.ProviderAccount, fixture.providerAccountID)
+	}
+	if executionContext.Deployment.ModelAlias == nil || executionContext.Deployment.ModelAlias.ID != fixture.modelAliasID {
+		t.Fatalf("model alias = %#v, want %s", executionContext.Deployment.ModelAlias, fixture.modelAliasID)
+	}
+}
+
+func TestRepositoryGetRunAgentExecutionContextByIDHosted(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+	queries := repositorysqlc.New(db)
+
+	hostedRuntimeProfileID := uuid.New()
+	hostedDeploymentID := uuid.New()
+	hostedSnapshotID := uuid.New()
+
+	if _, err := db.Exec(ctx, `
+		INSERT INTO runtime_profiles (
+			id,
+			organization_id,
+			workspace_id,
+			name,
+			slug,
+			execution_target,
+			trace_mode,
+			max_iterations,
+			max_tool_calls,
+			step_timeout_seconds,
+			run_timeout_seconds,
+			profile_config
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+	`, hostedRuntimeProfileID, fixture.organizationID, fixture.workspaceID, "Hosted Runtime", "hosted-runtime", "hosted_external", "disabled", 1, 0, 30, 120, []byte(`{"transport":"http"}`)); err != nil {
+		t.Fatalf("insert hosted runtime profile returned error: %v", err)
+	}
+	if _, err := db.Exec(ctx, `
+		INSERT INTO agent_deployments (
+			id,
+			organization_id,
+			workspace_id,
+			agent_build_id,
+			current_build_version_id,
+			runtime_profile_id,
+			provider_account_id,
+			model_alias_id,
+			name,
+			slug,
+			deployment_type,
+			endpoint_url,
+			deployment_config
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+	`, hostedDeploymentID, fixture.organizationID, fixture.workspaceID, fixture.agentBuildID, fixture.agentBuildVersionID, hostedRuntimeProfileID, fixture.providerAccountID, fixture.modelAliasID, "Hosted Support Agent", "hosted-support-agent", "hosted_external", "https://example.com/agent", []byte(`{"mode":"black_box"}`)); err != nil {
+		t.Fatalf("insert hosted deployment returned error: %v", err)
+	}
+	if _, err := db.Exec(ctx, `
+		INSERT INTO agent_deployment_snapshots (
+			id,
+			organization_id,
+			workspace_id,
+			agent_build_id,
+			agent_deployment_id,
+			source_agent_build_version_id,
+			source_runtime_profile_id,
+			source_provider_account_id,
+			source_model_alias_id,
+			deployment_type,
+			endpoint_url,
+			snapshot_hash,
+			snapshot_config
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+	`, hostedSnapshotID, fixture.organizationID, fixture.workspaceID, fixture.agentBuildID, hostedDeploymentID, fixture.agentBuildVersionID, hostedRuntimeProfileID, fixture.providerAccountID, fixture.modelAliasID, "hosted_external", "https://example.com/agent", "hosted-snapshot-hash", []byte(`{"mode":"black_box"}`)); err != nil {
+		t.Fatalf("insert hosted deployment snapshot returned error: %v", err)
+	}
+
+	hostedRunAgent, err := queries.CreateRunAgent(ctx, repositorysqlc.CreateRunAgentParams{
+		OrganizationID:            fixture.organizationID,
+		WorkspaceID:               fixture.workspaceID,
+		RunID:                     fixture.runID,
+		AgentDeploymentID:         hostedDeploymentID,
+		AgentDeploymentSnapshotID: hostedSnapshotID,
+		LaneIndex:                 2,
+		Label:                     "hosted-lane",
+		Status:                    string(domain.RunAgentStatusQueued),
+		QueuedAt:                  pgtype.Timestamptz{Time: time.Now().UTC(), Valid: true},
+	})
+	if err != nil {
+		t.Fatalf("CreateRunAgent for hosted lane returned error: %v", err)
+	}
+
+	executionContext, err := repo.GetRunAgentExecutionContextByID(ctx, hostedRunAgent.ID)
+	if err != nil {
+		t.Fatalf("GetRunAgentExecutionContextByID returned error: %v", err)
+	}
+
+	if executionContext.Deployment.DeploymentType != "hosted_external" {
+		t.Fatalf("deployment type = %q, want hosted_external", executionContext.Deployment.DeploymentType)
+	}
+	if executionContext.Deployment.EndpointURL == nil || *executionContext.Deployment.EndpointURL != "https://example.com/agent" {
+		t.Fatalf("endpoint url = %v, want hosted endpoint", executionContext.Deployment.EndpointURL)
+	}
+	if executionContext.Deployment.RuntimeProfile.ExecutionTarget != "hosted_external" {
+		t.Fatalf("runtime execution target = %q, want hosted_external", executionContext.Deployment.RuntimeProfile.ExecutionTarget)
+	}
+	if executionContext.Deployment.ProviderAccount == nil || executionContext.Deployment.ProviderAccount.ID != fixture.providerAccountID {
+		t.Fatalf("provider account = %#v, want %s", executionContext.Deployment.ProviderAccount, fixture.providerAccountID)
+	}
+	if executionContext.Deployment.ProviderAccount.ProviderKey != "openai" {
+		t.Fatalf("provider key = %q, want openai", executionContext.Deployment.ProviderAccount.ProviderKey)
+	}
+	if executionContext.Deployment.ModelAlias == nil || executionContext.Deployment.ModelAlias.ID != fixture.modelAliasID {
+		t.Fatalf("model alias = %#v, want %s", executionContext.Deployment.ModelAlias, fixture.modelAliasID)
+	}
+	if executionContext.Deployment.ModelAlias.ModelCatalogEntry.ProviderModelID != "gpt-4.1" {
+		t.Fatalf("provider model id = %q, want gpt-4.1", executionContext.Deployment.ModelAlias.ModelCatalogEntry.ProviderModelID)
+	}
+}
+
+func TestRepositoryGetRunAgentExecutionContextByIDRejectsInconsistentFrozenRefs(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	if _, err := db.Exec(ctx, `
+		UPDATE runtime_profiles
+		SET execution_target = 'hosted_external'
+		WHERE id = $1
+	`, fixture.runtimeProfileID); err != nil {
+		t.Fatalf("update runtime execution_target returned error: %v", err)
+	}
+
+	_, err := repo.GetRunAgentExecutionContextByID(ctx, fixture.primaryRunAgentID)
+	if err == nil {
+		t.Fatalf("GetRunAgentExecutionContextByID returned nil error for inconsistent frozen refs")
+	}
+	if !errors.Is(err, repository.ErrFrozenExecutionContext) {
+		t.Fatalf("GetRunAgentExecutionContextByID error = %v, want ErrFrozenExecutionContext", err)
+	}
+}
+
 func TestRepositorySetRunTemporalIDs(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)
@@ -563,8 +766,15 @@ type testFixture struct {
 	workspaceID               uuid.UUID
 	userID                    uuid.UUID
 	challengePackVersionID    uuid.UUID
+	challengeInputSetID       uuid.UUID
+	runtimeProfileID          uuid.UUID
+	agentBuildID              uuid.UUID
+	agentBuildVersionID       uuid.UUID
 	agentDeploymentID         uuid.UUID
 	agentDeploymentSnapshotID uuid.UUID
+	providerAccountID         uuid.UUID
+	modelAliasID              uuid.UUID
+	modelCatalogEntryID       uuid.UUID
 	runID                     uuid.UUID
 	runName                   string
 	primaryRunAgentID         uuid.UUID
@@ -615,7 +825,11 @@ func seedFixture(t *testing.T, ctx context.Context, db *pgxpool.Pool) testFixtur
 	userID := uuid.New()
 	challengePackID := uuid.New()
 	challengePackVersionID := uuid.New()
+	challengeInputSetID := uuid.New()
 	runtimeProfileID := uuid.New()
+	providerAccountID := uuid.New()
+	modelCatalogEntryID := uuid.New()
+	modelAliasID := uuid.New()
 	agentBuildID := uuid.New()
 	agentBuildVersionID := uuid.New()
 	agentDeploymentID := uuid.New()
@@ -664,6 +878,19 @@ func seedFixture(t *testing.T, ctx context.Context, db *pgxpool.Pool) testFixtur
 	}
 
 	if _, err := db.Exec(ctx, `
+		INSERT INTO challenge_input_sets (
+			id,
+			challenge_pack_version_id,
+			input_key,
+			name,
+			input_checksum
+		)
+		VALUES ($1, $2, $3, $4, $5)
+	`, challengeInputSetID, challengePackVersionID, "default-inputs", "Default Inputs", "input-checksum"); err != nil {
+		t.Fatalf("insert challenge input set returned error: %v", err)
+	}
+
+	if _, err := db.Exec(ctx, `
 		INSERT INTO runtime_profiles (
 			id,
 			organization_id,
@@ -675,6 +902,50 @@ func seedFixture(t *testing.T, ctx context.Context, db *pgxpool.Pool) testFixtur
 		VALUES ($1, $2, $3, $4, $5, $6)
 	`, runtimeProfileID, organizationID, workspaceID, "Native Runtime", "native-runtime", "native"); err != nil {
 		t.Fatalf("insert runtime profile returned error: %v", err)
+	}
+
+	if _, err := db.Exec(ctx, `
+		INSERT INTO provider_accounts (
+			id,
+			organization_id,
+			workspace_id,
+			provider_key,
+			name,
+			credential_reference,
+			limits_config
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+	`, providerAccountID, organizationID, workspaceID, "openai", "Workspace OpenAI", "secret://openai", []byte(`{"rpm":60}`)); err != nil {
+		t.Fatalf("insert provider account returned error: %v", err)
+	}
+
+	if _, err := db.Exec(ctx, `
+		INSERT INTO model_catalog_entries (
+			id,
+			provider_key,
+			provider_model_id,
+			display_name,
+			model_family,
+			metadata
+		)
+		VALUES ($1, $2, $3, $4, $5, $6)
+	`, modelCatalogEntryID, "openai", "gpt-4.1", "GPT-4.1", "gpt-4.1", []byte(`{"tier":"standard"}`)); err != nil {
+		t.Fatalf("insert model catalog entry returned error: %v", err)
+	}
+
+	if _, err := db.Exec(ctx, `
+		INSERT INTO model_aliases (
+			id,
+			organization_id,
+			workspace_id,
+			provider_account_id,
+			model_catalog_entry_id,
+			alias_key,
+			display_name
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+	`, modelAliasID, organizationID, workspaceID, providerAccountID, modelCatalogEntryID, "primary-model", "Primary Model"); err != nil {
+		t.Fatalf("insert model alias returned error: %v", err)
 	}
 
 	if _, err := db.Exec(ctx, `
@@ -715,13 +986,15 @@ func seedFixture(t *testing.T, ctx context.Context, db *pgxpool.Pool) testFixtur
 			agent_build_id,
 			current_build_version_id,
 			runtime_profile_id,
+			provider_account_id,
+			model_alias_id,
 			name,
 			slug,
 			deployment_type,
 			deployment_config
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-	`, agentDeploymentID, organizationID, workspaceID, agentBuildID, agentBuildVersionID, runtimeProfileID, "Support Agent Deployment", "support-agent-deployment", "native", []byte(`{}`)); err != nil {
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+	`, agentDeploymentID, organizationID, workspaceID, agentBuildID, agentBuildVersionID, runtimeProfileID, providerAccountID, modelAliasID, "Support Agent Deployment", "support-agent-deployment", "native", []byte(`{}`)); err != nil {
 		t.Fatalf("insert agent deployment returned error: %v", err)
 	}
 
@@ -734,12 +1007,14 @@ func seedFixture(t *testing.T, ctx context.Context, db *pgxpool.Pool) testFixtur
 			agent_deployment_id,
 			source_agent_build_version_id,
 			source_runtime_profile_id,
+			source_provider_account_id,
+			source_model_alias_id,
 			deployment_type,
 			snapshot_hash,
 			snapshot_config
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-	`, agentDeploymentSnapshotID, organizationID, workspaceID, agentBuildID, agentDeploymentID, agentBuildVersionID, runtimeProfileID, "native", "snapshot-hash-1", []byte(`{}`)); err != nil {
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+	`, agentDeploymentSnapshotID, organizationID, workspaceID, agentBuildID, agentDeploymentID, agentBuildVersionID, runtimeProfileID, providerAccountID, modelAliasID, "native", "snapshot-hash-1", []byte(`{"temperature":0.1}`)); err != nil {
 		t.Fatalf("insert agent deployment snapshot returned error: %v", err)
 	}
 
@@ -748,6 +1023,7 @@ func seedFixture(t *testing.T, ctx context.Context, db *pgxpool.Pool) testFixtur
 		OrganizationID:         organizationID,
 		WorkspaceID:            workspaceID,
 		ChallengePackVersionID: challengePackVersionID,
+		ChallengeInputSetID:    &challengeInputSetID,
 		CreatedByUserID:        &userID,
 		Name:                   "Regression Fixture Run",
 		Status:                 string(domain.RunStatusDraft),
@@ -794,8 +1070,15 @@ func seedFixture(t *testing.T, ctx context.Context, db *pgxpool.Pool) testFixtur
 		workspaceID:               workspaceID,
 		userID:                    userID,
 		challengePackVersionID:    challengePackVersionID,
+		challengeInputSetID:       challengeInputSetID,
+		runtimeProfileID:          runtimeProfileID,
+		agentBuildID:              agentBuildID,
+		agentBuildVersionID:       agentBuildVersionID,
 		agentDeploymentID:         agentDeploymentID,
 		agentDeploymentSnapshotID: agentDeploymentSnapshotID,
+		providerAccountID:         providerAccountID,
+		modelAliasID:              modelAliasID,
+		modelCatalogEntryID:       modelCatalogEntryID,
 		runID:                     runRow.ID,
 		runName:                   runRow.Name,
 		primaryRunAgentID:         primaryRunAgent.ID,
