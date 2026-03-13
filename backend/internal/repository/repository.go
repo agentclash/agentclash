@@ -719,7 +719,7 @@ func mapRunAgent(row repositorysqlc.RunAgent) (domain.RunAgent, error) {
 	}, nil
 }
 
-func mapRunAgentReplay(row repositorysqlc.GetRunAgentReplayByRunAgentIDRow) (RunAgentReplay, error) {
+func mapRunAgentReplay(row repositorysqlc.RunAgentReplay) (RunAgentReplay, error) {
 	createdAt, err := requiredTime("run_agent_replays.created_at", row.CreatedAt)
 	if err != nil {
 		return RunAgentReplay{}, err
@@ -734,7 +734,7 @@ func mapRunAgentReplay(row repositorysqlc.GetRunAgentReplayByRunAgentIDRow) (Run
 		RunAgentID:           row.RunAgentID,
 		ArtifactID:           cloneUUIDPtr(row.ArtifactID),
 		Summary:              cloneJSON(row.Summary),
-		LatestSequenceNumber: optionalInt64(row.LatestSequenceNumber),
+		LatestSequenceNumber: cloneInt64Ptr(row.LatestSequenceNumber),
 		EventCount:           row.EventCount,
 		CreatedAt:            createdAt,
 		UpdatedAt:            updatedAt,
@@ -864,6 +864,14 @@ func optionalInt64(value pgtype.Int8) *int64 {
 		return nil
 	}
 	cloned := value.Int64
+	return &cloned
+}
+
+func cloneInt64Ptr(value *int64) *int64 {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
 	return &cloned
 }
 

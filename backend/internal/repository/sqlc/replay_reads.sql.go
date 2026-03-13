@@ -31,20 +31,9 @@ type GetRunAgentReplayByRunAgentIDParams struct {
 	RunAgentID uuid.UUID
 }
 
-type GetRunAgentReplayByRunAgentIDRow struct {
-	ID                   uuid.UUID
-	RunAgentID           uuid.UUID
-	ArtifactID           *uuid.UUID
-	Summary              []byte
-	LatestSequenceNumber pgtype.Int8
-	EventCount           int64
-	CreatedAt            pgtype.Timestamptz
-	UpdatedAt            pgtype.Timestamptz
-}
-
-func (q *Queries) GetRunAgentReplayByRunAgentID(ctx context.Context, arg GetRunAgentReplayByRunAgentIDParams) (GetRunAgentReplayByRunAgentIDRow, error) {
+func (q *Queries) GetRunAgentReplayByRunAgentID(ctx context.Context, arg GetRunAgentReplayByRunAgentIDParams) (RunAgentReplay, error) {
 	row := q.db.QueryRow(ctx, getRunAgentReplayByRunAgentID, arg.RunAgentID)
-	var i GetRunAgentReplayByRunAgentIDRow
+	var i RunAgentReplay
 	err := row.Scan(
 		&i.ID,
 		&i.RunAgentID,

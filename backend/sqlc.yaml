@@ -3,8 +3,10 @@ sql:
   - engine: "postgresql"
     schema: "db/migrations"
     queries:
+      - "db/queries/run_creation.sql"
       - "db/queries/runs.sql"
       - "db/queries/run_agents.sql"
+      - "db/queries/worker_execution_context.sql"
       - "db/queries/replay_reads.sql"
     gen:
       go:

@@ -19,6 +19,7 @@ var (
 	ErrTemporalWorkflowID           = errors.New("temporal workflow id is required")
 	ErrTemporalRunID                = errors.New("temporal run id is required")
 	ErrTemporalIDConflict           = errors.New("run already has different temporal ids")
+	ErrFrozenExecutionContext       = errors.New("run agent execution context is invalid")
 	ErrUnexpectedFailureCause       = errors.New("failure reason is only valid for failed run-agent transitions")
 	ErrRunNameRequired              = errors.New("run name is required")
 	ErrRunParticipantsRequired      = errors.New("run must have at least one participant")
@@ -75,6 +76,19 @@ func (e TemporalIDConflictError) Error() string {
 
 func (e TemporalIDConflictError) Is(target error) bool {
 	return target == ErrTemporalIDConflict
+}
+
+type FrozenExecutionContextError struct {
+	RunAgentID uuid.UUID
+	Reason     string
+}
+
+func (e FrozenExecutionContextError) Error() string {
+	return fmt.Sprintf("run agent %s has an invalid frozen execution context: %s", e.RunAgentID, e.Reason)
+}
+
+func (e FrozenExecutionContextError) Is(target error) bool {
+	return target == ErrFrozenExecutionContext
 }
 
 func quotedString(value *string) string {
