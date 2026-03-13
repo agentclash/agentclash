@@ -134,6 +134,33 @@ func TestRepositoryGetRunAgentExecutionContextByIDNative(t *testing.T) {
 	}
 }
 
+func TestRepositoryGetRunAgentExecutionContextByIDWithoutChallengeInputSet(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	if _, err := db.Exec(ctx, `
+		UPDATE runs
+		SET challenge_input_set_id = NULL
+		WHERE id = $1
+	`, fixture.runID); err != nil {
+		t.Fatalf("clear run challenge_input_set_id returned error: %v", err)
+	}
+
+	executionContext, err := repo.GetRunAgentExecutionContextByID(ctx, fixture.primaryRunAgentID)
+	if err != nil {
+		t.Fatalf("GetRunAgentExecutionContextByID returned error: %v", err)
+	}
+
+	if executionContext.Run.ChallengeInputSetID != nil {
+		t.Fatalf("run challenge_input_set_id = %v, want nil", executionContext.Run.ChallengeInputSetID)
+	}
+	if executionContext.ChallengeInputSet != nil {
+		t.Fatalf("challenge input set = %#v, want nil", executionContext.ChallengeInputSet)
+	}
+}
+
 func TestRepositoryGetRunAgentExecutionContextByIDHosted(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)

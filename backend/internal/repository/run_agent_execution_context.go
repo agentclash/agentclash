@@ -102,7 +102,7 @@ func (r *Repository) GetRunAgentExecutionContextByID(ctx context.Context, runAge
 
 			return RunAgentExecutionContext{}, FrozenExecutionContextError{
 				RunAgentID: runAgentID,
-				Reason:     "required frozen references could not be resolved",
+				Reason:     "required execution context references could not be resolved",
 			}
 		}
 
@@ -263,6 +263,7 @@ func mapRunAgentExecutionContext(row repositorysqlc.GetRunAgentExecutionContextB
 	}
 
 	if row.ChallengeInputSetID != nil {
+		// Safe because challenge_input_sets.input_key/name/input_checksum are NOT NULL in the schema.
 		executionContext.ChallengeInputSet = &ChallengeInputSetExecutionContext{
 			ID:                     *row.ChallengeInputSetID,
 			ChallengePackVersionID: *row.ChallengeInputSetChallengePackVersionID,
@@ -274,6 +275,7 @@ func mapRunAgentExecutionContext(row repositorysqlc.GetRunAgentExecutionContextB
 	}
 
 	if row.ProviderAccountID != nil {
+		// Safe because these provider_accounts columns are NOT NULL in the schema.
 		executionContext.Deployment.ProviderAccount = &ProviderAccountExecutionContext{
 			ID:                  *row.ProviderAccountID,
 			WorkspaceID:         cloneUUIDPtr(row.ProviderAccountWorkspaceID),
@@ -285,6 +287,7 @@ func mapRunAgentExecutionContext(row repositorysqlc.GetRunAgentExecutionContextB
 	}
 
 	if row.ModelAliasID != nil {
+		// Safe because these model_aliases/model_catalog_entries columns are NOT NULL in the schema.
 		executionContext.Deployment.ModelAlias = &ModelAliasExecutionContext{
 			ID:                *row.ModelAliasID,
 			WorkspaceID:       cloneUUIDPtr(row.ModelAliasWorkspaceID),

@@ -906,8 +906,7 @@ func cloneFloat64Ptr(value *float64) *float64 {
 }
 
 func float64Ptr(value float64) *float64 {
-	cloned := value
-	return &cloned
+	return &value
 }
 
 func runStatusPtr(status *domain.RunStatus) *string {

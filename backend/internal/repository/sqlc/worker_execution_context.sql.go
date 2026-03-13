@@ -62,7 +62,6 @@ SELECT
     cis.name AS challenge_input_set_name,
     cis.description AS challenge_input_set_description,
     cis.input_checksum AS challenge_input_set_input_checksum,
-    cis.generated_at AS challenge_input_set_generated_at,
 
     ads.id AS snapshot_id,
     ads.agent_deployment_id AS snapshot_agent_deployment_id,
@@ -188,7 +187,6 @@ type GetRunAgentExecutionContextByIDRow struct {
 	ChallengeInputSetName                   *string
 	ChallengeInputSetDescription            *string
 	ChallengeInputSetInputChecksum          *string
-	ChallengeInputSetGeneratedAt            pgtype.Timestamptz
 	SnapshotID                              uuid.UUID
 	SnapshotAgentDeploymentID               uuid.UUID
 	SnapshotAgentBuildID                    uuid.UUID
@@ -280,7 +278,6 @@ func (q *Queries) GetRunAgentExecutionContextByID(ctx context.Context, arg GetRu
 		&i.ChallengeInputSetName,
 		&i.ChallengeInputSetDescription,
 		&i.ChallengeInputSetInputChecksum,
-		&i.ChallengeInputSetGeneratedAt,
 		&i.SnapshotID,
 		&i.SnapshotAgentDeploymentID,
 		&i.SnapshotAgentBuildID,
