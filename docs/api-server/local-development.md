@@ -51,6 +51,159 @@ Expected response:
 {"ok":true,"service":"api-server"}
 ```
 
+## Endpoint Contracts
+
+### `POST /v1/runs`
+
+Request body:
+
+```json
+{
+  "workspace_id": "uuid",
+  "challenge_pack_version_id": "uuid",
+  "challenge_input_set_id": "uuid-or-null",
+  "name": "optional human label",
+  "agent_deployment_ids": ["uuid"]
+}
+```
+
+Success response:
+
+```json
+{
+  "id": "uuid",
+  "workspace_id": "uuid",
+  "challenge_pack_version_id": "uuid",
+  "challenge_input_set_id": "uuid-or-null",
+  "status": "queued",
+  "execution_mode": "single_agent | comparison",
+  "created_at": "timestamp",
+  "queued_at": "timestamp",
+  "links": {
+    "self": "/v1/runs/{id}",
+    "agents": "/v1/runs/{id}/agents"
+  }
+}
+```
+
+Status codes:
+
+- `201` when the queued run was created and the workflow start succeeded
+- `400` for malformed JSON or invalid benchmark/deployment references
+- `401` when auth headers are missing or invalid
+- `403` when the caller lacks workspace access
+- `413` when the JSON body exceeds 1 MiB
+- `415` when `Content-Type` is not `application/json`
+- `502` when the run row was created but Temporal workflow start failed
+
+### `GET /v1/runs/{id}`
+
+Success response fields:
+
+- `id`
+- `workspace_id`
+- `challenge_pack_version_id`
+- `challenge_input_set_id`
+- `name`
+- `status`
+- `execution_mode`
+- `temporal_workflow_id`
+- `temporal_run_id`
+- `queued_at`
+- `started_at`
+- `finished_at`
+- `cancelled_at`
+- `failed_at`
+- `created_at`
+- `updated_at`
+- `links`
+
+Status codes:
+
+- `200` when the run exists and belongs to one of the caller's workspaces
+- `400` when `{id}` is not a UUID
+- `401` when auth headers are missing or invalid
+- `403` when the caller lacks workspace access
+- `404` when the run does not exist
+
+### `GET /v1/runs/{id}/agents`
+
+Success response shape:
+
+```json
+{
+  "items": [
+    {
+      "id": "uuid",
+      "run_id": "uuid",
+      "lane_index": 0,
+      "label": "lane label",
+      "agent_deployment_id": "uuid",
+      "agent_deployment_snapshot_id": "uuid",
+      "status": "queued",
+      "queued_at": "timestamp",
+      "started_at": "timestamp",
+      "finished_at": "timestamp",
+      "failure_reason": "string-or-null",
+      "created_at": "timestamp",
+      "updated_at": "timestamp"
+    }
+  ]
+}
+```
+
+Status codes:
+
+- `200` when the run exists and the caller is authorized
+- `400`, `401`, `403`, and `404` with the same meanings as `GET /v1/runs/{id}`
+
+### `GET /v1/replays/{runAgentId}`
+
+Success response fields:
+
+- `id`
+- `run_agent_id`
+- `run_id`
+- `artifact_id`
+- `summary`
+- `latest_sequence_number`
+- `event_count`
+- `created_at`
+- `updated_at`
+
+Status codes:
+
+- `200` when a replay row exists for the requested run agent
+- `400` when `{runAgentId}` is not a UUID
+- `401` when auth headers are missing or invalid
+- `403` when the caller lacks workspace access
+- `404` when the run agent or replay row does not exist
+
+### `GET /v1/scorecards/{runAgentId}`
+
+Success response fields:
+
+- `id`
+- `run_agent_id`
+- `run_id`
+- `evaluation_spec_id`
+- `overall_score`
+- `correctness_score`
+- `reliability_score`
+- `latency_score`
+- `cost_score`
+- `scorecard`
+- `created_at`
+- `updated_at`
+
+Status codes:
+
+- `200` when a scorecard row exists for the requested run agent
+- `400` when `{runAgentId}` is not a UUID
+- `401` when auth headers are missing or invalid
+- `403` when the caller lacks workspace access
+- `404` when the run agent or scorecard row does not exist
+
 Protected development endpoints currently use a temporary header-backed auth contract so the API-side tenancy boundary can be exercised before full WorkOS integration exists.
 
 Example:
