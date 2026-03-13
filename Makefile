@@ -2,7 +2,7 @@ SHELL := /usr/bin/bash
 
 DATABASE_URL ?= postgres://agentclash:agentclash@localhost:5432/agentclash?sslmode=disable
 
-.PHONY: db-up db-down db-reset db-migrate db-psql
+.PHONY: db-up db-down db-reset db-migrate db-psql api-server
 
 db-up:
 	docker compose up -d postgres
@@ -19,3 +19,6 @@ db-migrate:
 
 db-psql:
 	psql "$(DATABASE_URL)"
+
+api-server:
+	cd backend && go run ./cmd/api-server
