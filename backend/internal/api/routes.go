@@ -8,11 +8,20 @@ import (
 	"github.com/google/uuid"
 )
 
-func registerProtectedRoutes(router chi.Router, logger *slog.Logger, authorizer WorkspaceAuthorizer, runCreationService RunCreationService) {
+func registerProtectedRoutes(
+	router chi.Router,
+	logger *slog.Logger,
+	authorizer WorkspaceAuthorizer,
+	runCreationService RunCreationService,
+	runReadService RunReadService,
+) {
 	router.Get("/auth/session", sessionHandler)
 	// POST /v1/runs resolves workspace access from the JSON body, so authz stays in the run-creation service
-	// instead of the URL-param middleware used by the workspace-scoped read endpoints below.
-	router.Post("/runs", createRunHandler(runCreationService))
+	// instead of URL-param middleware. The run read endpoints below also resolve authz in the service layer
+	// because the workspace boundary is owned by the persisted run row rather than the URL shape.
+	router.Post("/runs", createRunHandler(logger, runCreationService))
+	router.Get("/runs/{runID}", getRunHandler(logger, runReadService))
+	router.Get("/runs/{runID}/agents", listRunAgentsHandler(logger, runReadService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Get("/workspaces/{workspaceID}/auth-check", workspaceAccessCheckHandler)
 }

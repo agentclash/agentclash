@@ -16,6 +16,8 @@ It currently provides:
 - request-scoped caller identity for `/v1/*`
 - workspace authorization boundary for future run handlers
 - `POST /v1/runs` backed by Postgres persistence and Temporal workflow start
+- `GET /v1/runs/{id}` for durable run-detail bootstrap reads
+- `GET /v1/runs/{id}/agents` for participant-lane bootstrap reads
 - development-only header-backed auth endpoints:
   - `GET /v1/auth/session`
   - `GET /v1/workspaces/{workspaceID}/auth-check`
@@ -92,6 +94,22 @@ curl \
     "challenge_pack_version_id": "'"${CHALLENGE_PACK_VERSION_ID}"'",
     "agent_deployment_ids": ["'"${DEPLOYMENT_ID}"'"]
   }'
+```
+
+Once a run exists, the initial run-page bootstrap reads are:
+
+```bash
+RUN_ID=55555555-5555-5555-5555-555555555555
+
+curl \
+  -H "X-Agentclash-User-Id: ${USER_ID}" \
+  -H "X-Agentclash-Workspace-Memberships: ${WORKSPACE_ID}:workspace_admin" \
+  http://localhost:8080/v1/runs/${RUN_ID}
+
+curl \
+  -H "X-Agentclash-User-Id: ${USER_ID}" \
+  -H "X-Agentclash-Workspace-Memberships: ${WORKSPACE_ID}:workspace_admin" \
+  http://localhost:8080/v1/runs/${RUN_ID}/agents
 ```
 
 ## Config

@@ -40,11 +40,13 @@ func main() {
 	defer temporalClient.Close()
 
 	authorizer := api.NewCallerWorkspaceAuthorizer()
+	repo := repository.New(db)
 	runCreationManager := api.NewRunCreationManager(
 		authorizer,
-		repository.New(db),
+		repo,
 		api.NewTemporalRunWorkflowStarter(temporalClient),
 	)
+	runReadManager := api.NewRunReadManager(authorizer, repo)
 
 	server := api.NewServer(
 		cfg,
@@ -52,6 +54,7 @@ func main() {
 		api.NewDevelopmentAuthenticator(),
 		authorizer,
 		runCreationManager,
+		runReadManager,
 	)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

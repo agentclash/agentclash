@@ -19,6 +19,16 @@ func (stubRunCreationService) CreateRun(_ context.Context, _ Caller, _ CreateRun
 	return CreateRunResult{}, errors.New("not implemented")
 }
 
+type stubRunReadService struct{}
+
+func (stubRunReadService) GetRun(_ context.Context, _ Caller, _ uuid.UUID) (GetRunResult, error) {
+	return GetRunResult{}, errors.New("not implemented")
+}
+
+func (stubRunReadService) ListRunAgents(_ context.Context, _ Caller, _ uuid.UUID) (ListRunAgentsResult, error) {
+	return ListRunAgentsResult{}, errors.New("not implemented")
+}
+
 func TestHealthzReturnsJSONSuccessPayload(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	recorder := httptest.NewRecorder()
@@ -28,6 +38,7 @@ func TestHealthzReturnsJSONSuccessPayload(t *testing.T) {
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
 		stubRunCreationService{},
+		stubRunReadService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {
@@ -84,6 +95,7 @@ func TestSessionEndpointRequiresAuthentication(t *testing.T) {
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
 		stubRunCreationService{},
+		stubRunReadService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusUnauthorized {
@@ -115,6 +127,7 @@ func TestSessionEndpointReturnsCallerIdentity(t *testing.T) {
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
 		stubRunCreationService{},
+		stubRunReadService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {
@@ -149,6 +162,7 @@ func TestWorkspaceAuthorizationReturnsForbiddenWithoutMembership(t *testing.T) {
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
 		stubRunCreationService{},
+		stubRunReadService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusForbidden {
@@ -178,6 +192,7 @@ func TestWorkspaceAuthorizationReturnsOKWithMembership(t *testing.T) {
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
 		stubRunCreationService{},
+		stubRunReadService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {
@@ -208,6 +223,7 @@ func TestWorkspaceAuthorizationRejectsMalformedWorkspaceID(t *testing.T) {
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
 		stubRunCreationService{},
+		stubRunReadService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusBadRequest {

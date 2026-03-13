@@ -20,8 +20,9 @@ func NewServer(
 	authenticator Authenticator,
 	authorizer WorkspaceAuthorizer,
 	runCreationService RunCreationService,
+	runReadService RunReadService,
 ) *Server {
-	router := newRouter(logger, authenticator, authorizer, runCreationService)
+	router := newRouter(logger, authenticator, authorizer, runCreationService, runReadService)
 
 	return &Server{
 		config: cfg,
@@ -73,6 +74,7 @@ func newRouter(
 	authenticator Authenticator,
 	authorizer WorkspaceAuthorizer,
 	runCreationService RunCreationService,
+	runReadService RunReadService,
 ) http.Handler {
 	router := chi.NewRouter()
 	router.Use(recoverer(logger))
@@ -80,7 +82,7 @@ func newRouter(
 	router.Get("/healthz", healthzHandler)
 	router.Route("/v1", func(r chi.Router) {
 		r.Use(authenticateRequest(logger, authenticator))
-		registerProtectedRoutes(r, logger, authorizer, runCreationService)
+		registerProtectedRoutes(r, logger, authorizer, runCreationService, runReadService)
 	})
 
 	return router

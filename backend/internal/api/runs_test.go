@@ -47,6 +47,7 @@ func TestCreateRunEndpointReturnsCreated(t *testing.T) {
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
 		service,
+		&fakeRunReadService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusCreated {
@@ -81,6 +82,7 @@ func TestCreateRunEndpointRejectsInvalidPayload(t *testing.T) {
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
 		&fakeRunCreationService{},
+		&fakeRunReadService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusBadRequest {
@@ -118,6 +120,7 @@ func TestCreateRunEndpointReturnsQueuedRunOnWorkflowStartFailure(t *testing.T) {
 				Cause: errors.New("temporal unavailable"),
 			},
 		},
+		&fakeRunReadService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusBadGateway {
@@ -153,6 +156,7 @@ func TestCreateRunEndpointRejectsNonJSONContentType(t *testing.T) {
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
 		&fakeRunCreationService{},
+		&fakeRunReadService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusUnsupportedMediaType {

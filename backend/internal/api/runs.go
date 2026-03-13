@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"mime"
 	"net/http"
 	"strings"
@@ -80,7 +81,7 @@ func (e RunWorkflowStartError) Unwrap() error {
 	return e.Cause
 }
 
-func createRunHandler(service RunCreationService) http.HandlerFunc {
+func createRunHandler(logger *slog.Logger, service RunCreationService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		caller, err := CallerFromContext(r.Context())
 		if err != nil {
@@ -106,6 +107,11 @@ func createRunHandler(service RunCreationService) http.HandlerFunc {
 				writeError(w, http.StatusRequestEntityTooLarge, "request_too_large", "request body must be 1 MiB or smaller")
 				return
 			}
+			logger.Error("failed to decode create run request",
+				"method", r.Method,
+				"path", r.URL.Path,
+				"error", err,
+			)
 			writeError(w, http.StatusInternalServerError, "internal_error", "internal server error")
 			return
 		}
@@ -134,6 +140,11 @@ func createRunHandler(service RunCreationService) http.HandlerFunc {
 					return
 				}
 
+				logger.Error("create run request failed",
+					"method", r.Method,
+					"path", r.URL.Path,
+					"error", err,
+				)
 				writeError(w, http.StatusInternalServerError, "internal_error", "internal server error")
 			}
 			return
@@ -158,10 +169,14 @@ func buildCreateRunResponse(run domain.Run) createRunResponse {
 		ExecutionMode:          run.ExecutionMode,
 		CreatedAt:              run.CreatedAt,
 		QueuedAt:               run.QueuedAt,
-		Links: runLinksResponse{
-			Self:   fmt.Sprintf("/v1/runs/%s", run.ID),
-			Agents: fmt.Sprintf("/v1/runs/%s/agents", run.ID),
-		},
+		Links:                  buildRunLinks(run.ID),
+	}
+}
+
+func buildRunLinks(runID uuid.UUID) runLinksResponse {
+	return runLinksResponse{
+		Self:   fmt.Sprintf("/v1/runs/%s", runID),
+		Agents: fmt.Sprintf("/v1/runs/%s/agents", runID),
 	}
 }
 
