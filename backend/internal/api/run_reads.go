@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -116,7 +117,7 @@ type runAgentResponse struct {
 	UpdatedAt                 time.Time             `json:"updated_at"`
 }
 
-func getRunHandler(service RunReadService) http.HandlerFunc {
+func getRunHandler(logger *slog.Logger, service RunReadService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		caller, err := CallerFromContext(r.Context())
 		if err != nil {
@@ -138,6 +139,12 @@ func getRunHandler(service RunReadService) http.HandlerFunc {
 			case errors.Is(err, ErrForbidden):
 				writeAuthzError(w, err)
 			default:
+				logger.Error("get run request failed",
+					"method", r.Method,
+					"path", r.URL.Path,
+					"run_id", runID,
+					"error", err,
+				)
 				writeError(w, http.StatusInternalServerError, "internal_error", "internal server error")
 			}
 			return
@@ -147,7 +154,7 @@ func getRunHandler(service RunReadService) http.HandlerFunc {
 	}
 }
 
-func listRunAgentsHandler(service RunReadService) http.HandlerFunc {
+func listRunAgentsHandler(logger *slog.Logger, service RunReadService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		caller, err := CallerFromContext(r.Context())
 		if err != nil {
@@ -169,6 +176,12 @@ func listRunAgentsHandler(service RunReadService) http.HandlerFunc {
 			case errors.Is(err, ErrForbidden):
 				writeAuthzError(w, err)
 			default:
+				logger.Error("list run agents request failed",
+					"method", r.Method,
+					"path", r.URL.Path,
+					"run_id", runID,
+					"error", err,
+				)
 				writeError(w, http.StatusInternalServerError, "internal_error", "internal server error")
 			}
 			return

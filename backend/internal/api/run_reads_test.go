@@ -71,6 +71,30 @@ func TestRunReadManagerRejectsForbiddenWorkspaceAccess(t *testing.T) {
 	}
 }
 
+func TestRunReadManagerReturnsRepositoryErrorWhenListingAgents(t *testing.T) {
+	workspaceID := uuid.New()
+	manager := NewRunReadManager(NewCallerWorkspaceAuthorizer(), &fakeRunReadRepository{
+		run: domain.Run{
+			ID:          uuid.New(),
+			WorkspaceID: workspaceID,
+		},
+		listRunAgentsErr: errors.New("database unavailable"),
+	})
+
+	_, err := manager.ListRunAgents(context.Background(), Caller{
+		UserID: uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: "workspace_member"},
+		},
+	}, uuid.New())
+	if err == nil {
+		t.Fatalf("expected repository error")
+	}
+	if err.Error() != "list run agents: database unavailable" {
+		t.Fatalf("error = %q, want wrapped repository error", err.Error())
+	}
+}
+
 func TestGetRunEndpointReturnsRun(t *testing.T) {
 	userID := uuid.New()
 	workspaceID := uuid.New()
@@ -212,10 +236,10 @@ func TestListRunAgentsEndpointReturnsForbidden(t *testing.T) {
 }
 
 type fakeRunReadRepository struct {
-	run         domain.Run
-	runAgents   []domain.RunAgent
-	getRunErr   error
-	listRunsErr error
+	run              domain.Run
+	runAgents        []domain.RunAgent
+	getRunErr        error
+	listRunAgentsErr error
 }
 
 func (f *fakeRunReadRepository) GetRunByID(_ context.Context, _ uuid.UUID) (domain.Run, error) {
@@ -223,7 +247,7 @@ func (f *fakeRunReadRepository) GetRunByID(_ context.Context, _ uuid.UUID) (doma
 }
 
 func (f *fakeRunReadRepository) ListRunAgentsByRunID(_ context.Context, _ uuid.UUID) ([]domain.RunAgent, error) {
-	return f.runAgents, f.listRunsErr
+	return f.runAgents, f.listRunAgentsErr
 }
 
 type fakeRunReadService struct {
