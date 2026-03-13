@@ -755,11 +755,11 @@ func mapRunAgentScorecard(row repositorysqlc.GetRunAgentScorecardByRunAgentIDRow
 		ID:               row.ID,
 		RunAgentID:       row.RunAgentID,
 		EvaluationSpecID: row.EvaluationSpecID,
-		OverallScore:     float64Ptr(row.OverallScore),
-		CorrectnessScore: float64Ptr(row.CorrectnessScore),
-		ReliabilityScore: float64Ptr(row.ReliabilityScore),
-		LatencyScore:     float64Ptr(row.LatencyScore),
-		CostScore:        float64Ptr(row.CostScore),
+		OverallScore:     cloneFloat64Ptr(row.OverallScore),
+		CorrectnessScore: cloneFloat64Ptr(row.CorrectnessScore),
+		ReliabilityScore: cloneFloat64Ptr(row.ReliabilityScore),
+		LatencyScore:     cloneFloat64Ptr(row.LatencyScore),
+		CostScore:        cloneFloat64Ptr(row.CostScore),
 		Scorecard:        cloneJSON(row.Scorecard),
 		CreatedAt:        createdAt,
 		UpdatedAt:        updatedAt,
@@ -903,10 +903,6 @@ func cloneFloat64Ptr(value *float64) *float64 {
 	}
 	cloned := *value
 	return &cloned
-}
-
-func float64Ptr(value float64) *float64 {
-	return &value
 }
 
 func runStatusPtr(status *domain.RunStatus) *string {

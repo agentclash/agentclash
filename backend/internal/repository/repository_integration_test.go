@@ -614,6 +614,53 @@ func TestRepositoryGetRunAgentScorecardByRunAgentID(t *testing.T) {
 	}
 }
 
+func TestRepositoryGetRunAgentScorecardByRunAgentIDPreservesNullScores(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	evaluationSpecID := uuid.New()
+	scorecardID := uuid.New()
+	if _, err := db.Exec(ctx, `
+		INSERT INTO evaluation_specs (
+			id, challenge_pack_version_id, name, version_number, judge_mode, definition
+		) VALUES ($1, $2, $3, $4, $5, $6)
+	`, evaluationSpecID, fixture.challengePackVersionID, "Partial Eval", 1, "deterministic", []byte(`{}`)); err != nil {
+		t.Fatalf("insert evaluation spec returned error: %v", err)
+	}
+	if _, err := db.Exec(ctx, `
+		INSERT INTO run_agent_scorecards (
+			id, run_agent_id, evaluation_spec_id, overall_score, correctness_score, reliability_score, latency_score, cost_score, scorecard
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+	`, scorecardID, fixture.primaryRunAgentID, evaluationSpecID, nil, 0.88, nil, nil, 0.65, []byte(`{"partial":true}`)); err != nil {
+		t.Fatalf("insert run-agent scorecard returned error: %v", err)
+	}
+
+	scorecard, err := repo.GetRunAgentScorecardByRunAgentID(ctx, fixture.primaryRunAgentID)
+	if err != nil {
+		t.Fatalf("GetRunAgentScorecardByRunAgentID returned error: %v", err)
+	}
+	if scorecard.ID != scorecardID {
+		t.Fatalf("scorecard id = %s, want %s", scorecard.ID, scorecardID)
+	}
+	if scorecard.OverallScore != nil {
+		t.Fatalf("overall_score = %v, want nil", scorecard.OverallScore)
+	}
+	if scorecard.CorrectnessScore == nil || *scorecard.CorrectnessScore != 0.88 {
+		t.Fatalf("correctness_score = %v, want 0.88", scorecard.CorrectnessScore)
+	}
+	if scorecard.ReliabilityScore != nil {
+		t.Fatalf("reliability_score = %v, want nil", scorecard.ReliabilityScore)
+	}
+	if scorecard.LatencyScore != nil {
+		t.Fatalf("latency_score = %v, want nil", scorecard.LatencyScore)
+	}
+	if scorecard.CostScore == nil || *scorecard.CostScore != 0.65 {
+		t.Fatalf("cost_score = %v, want 0.65", scorecard.CostScore)
+	}
+}
+
 func TestRepositoryTransitionRunAgentStatusWritesCurrentStateAndHistory(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)

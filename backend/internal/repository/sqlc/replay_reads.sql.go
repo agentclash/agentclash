@@ -73,11 +73,11 @@ type GetRunAgentScorecardByRunAgentIDRow struct {
 	ID               uuid.UUID
 	RunAgentID       uuid.UUID
 	EvaluationSpecID uuid.UUID
-	OverallScore     float64
-	CorrectnessScore float64
-	ReliabilityScore float64
-	LatencyScore     float64
-	CostScore        float64
+	OverallScore     *float64
+	CorrectnessScore *float64
+	ReliabilityScore *float64
+	LatencyScore     *float64
+	CostScore        *float64
 	Scorecard        []byte
 	CreatedAt        pgtype.Timestamptz
 	UpdatedAt        pgtype.Timestamptz
