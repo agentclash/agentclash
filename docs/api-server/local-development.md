@@ -115,6 +115,7 @@ curl \
   http://localhost:8080/v1/runs/${RUN_ID}/agents
 ```
 
+```bash
 RUN_AGENT_ID=66666666-6666-6666-6666-666666666666
 
 curl \
@@ -126,6 +127,7 @@ curl \
   -H "X-Agentclash-User-Id: ${USER_ID}" \
   -H "X-Agentclash-Workspace-Memberships: ${WORKSPACE_ID}:workspace_admin" \
   http://localhost:8080/v1/scorecards/${RUN_AGENT_ID}
+```
 
 ## Config
 

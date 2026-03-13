@@ -137,6 +137,49 @@ func TestGetRunAgentReplayEndpointReturnsNotFoundWhenReplayMissing(t *testing.T)
 	}
 }
 
+func TestGetRunAgentReplayEndpointReturnsForbidden(t *testing.T) {
+	runAgentID := uuid.New()
+	req := httptest.NewRequest(http.MethodGet, "/v1/replays/"+runAgentID.String(), nil)
+	req.Header.Set(headerUserID, uuid.New().String())
+	req.Header.Set(headerWorkspaceMemberships, uuid.New().String()+":workspace_member")
+	recorder := httptest.NewRecorder()
+
+	newRouter(
+		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
+		NewDevelopmentAuthenticator(),
+		NewCallerWorkspaceAuthorizer(),
+		stubRunCreationService{},
+		stubRunReadService{},
+		&fakeReplayReadService{replayErr: ErrForbidden},
+	).ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusForbidden)
+	}
+}
+
+func TestGetRunAgentReplayEndpointReturnsNotFoundWhenRunAgentMissing(t *testing.T) {
+	workspaceID := uuid.New()
+	runAgentID := uuid.New()
+	req := httptest.NewRequest(http.MethodGet, "/v1/replays/"+runAgentID.String(), nil)
+	req.Header.Set(headerUserID, uuid.New().String())
+	req.Header.Set(headerWorkspaceMemberships, workspaceID.String()+":workspace_member")
+	recorder := httptest.NewRecorder()
+
+	newRouter(
+		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
+		NewDevelopmentAuthenticator(),
+		NewCallerWorkspaceAuthorizer(),
+		stubRunCreationService{},
+		stubRunReadService{},
+		&fakeReplayReadService{replayErr: repository.ErrRunAgentNotFound},
+	).ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusNotFound)
+	}
+}
+
 func TestGetRunAgentScorecardEndpointReturnsScorecard(t *testing.T) {
 	workspaceID := uuid.New()
 	runAgentID := uuid.New()
@@ -223,6 +266,28 @@ func TestGetRunAgentScorecardEndpointReturnsNotFoundWhenScorecardMissing(t *test
 		stubRunCreationService{},
 		stubRunReadService{},
 		&fakeReplayReadService{scorecardErr: repository.ErrRunAgentScorecardNotFound},
+	).ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusNotFound)
+	}
+}
+
+func TestGetRunAgentScorecardEndpointReturnsNotFoundWhenRunAgentMissing(t *testing.T) {
+	workspaceID := uuid.New()
+	runAgentID := uuid.New()
+	req := httptest.NewRequest(http.MethodGet, "/v1/scorecards/"+runAgentID.String(), nil)
+	req.Header.Set(headerUserID, uuid.New().String())
+	req.Header.Set(headerWorkspaceMemberships, workspaceID.String()+":workspace_member")
+	recorder := httptest.NewRecorder()
+
+	newRouter(
+		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
+		NewDevelopmentAuthenticator(),
+		NewCallerWorkspaceAuthorizer(),
+		stubRunCreationService{},
+		stubRunReadService{},
+		&fakeReplayReadService{scorecardErr: repository.ErrRunAgentNotFound},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusNotFound {
