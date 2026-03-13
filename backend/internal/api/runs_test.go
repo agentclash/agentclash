@@ -168,6 +168,34 @@ func TestCreateRunEndpointRejectsNonJSONContentType(t *testing.T) {
 	}
 }
 
+func TestCreateRunEndpointRejectsOversizedRequestBody(t *testing.T) {
+	workspaceID := uuid.New()
+	oversizedName := bytes.Repeat([]byte("a"), maxCreateRunRequestBytes+1)
+	req := httptest.NewRequest(http.MethodPost, "/v1/runs", bytes.NewBufferString(`{
+		"workspace_id":"`+workspaceID.String()+`",
+		"challenge_pack_version_id":"`+uuid.New().String()+`",
+		"name":"`+string(oversizedName)+`",
+		"agent_deployment_ids":["`+uuid.New().String()+`"]
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(headerUserID, uuid.New().String())
+	req.Header.Set(headerWorkspaceMemberships, workspaceID.String()+":workspace_member")
+	recorder := httptest.NewRecorder()
+
+	newRouter(
+		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
+		NewDevelopmentAuthenticator(),
+		NewCallerWorkspaceAuthorizer(),
+		&fakeRunCreationService{},
+		&fakeRunReadService{},
+		&fakeReplayReadService{},
+	).ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusRequestEntityTooLarge)
+	}
+}
+
 type fakeRunCreationService struct {
 	caller Caller
 	input  CreateRunInput

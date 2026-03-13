@@ -169,6 +169,27 @@ func TestGetRunEndpointReturnsNotFound(t *testing.T) {
 	}
 }
 
+func TestGetRunEndpointRejectsMalformedRunID(t *testing.T) {
+	workspaceID := uuid.New()
+	req := httptest.NewRequest(http.MethodGet, "/v1/runs/not-a-uuid", nil)
+	req.Header.Set(headerUserID, uuid.New().String())
+	req.Header.Set(headerWorkspaceMemberships, workspaceID.String()+":workspace_member")
+	recorder := httptest.NewRecorder()
+
+	newRouter(
+		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
+		NewDevelopmentAuthenticator(),
+		NewCallerWorkspaceAuthorizer(),
+		stubRunCreationService{},
+		&fakeRunReadService{},
+		&fakeReplayReadService{},
+	).ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusBadRequest)
+	}
+}
+
 func TestListRunAgentsEndpointReturnsOrderedItems(t *testing.T) {
 	workspaceID := uuid.New()
 	runID := uuid.New()

@@ -180,6 +180,27 @@ func TestGetRunAgentReplayEndpointReturnsNotFoundWhenRunAgentMissing(t *testing.
 	}
 }
 
+func TestGetRunAgentReplayEndpointRejectsMalformedRunAgentID(t *testing.T) {
+	workspaceID := uuid.New()
+	req := httptest.NewRequest(http.MethodGet, "/v1/replays/not-a-uuid", nil)
+	req.Header.Set(headerUserID, uuid.New().String())
+	req.Header.Set(headerWorkspaceMemberships, workspaceID.String()+":workspace_member")
+	recorder := httptest.NewRecorder()
+
+	newRouter(
+		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
+		NewDevelopmentAuthenticator(),
+		NewCallerWorkspaceAuthorizer(),
+		stubRunCreationService{},
+		stubRunReadService{},
+		&fakeReplayReadService{},
+	).ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusBadRequest)
+	}
+}
+
 func TestGetRunAgentScorecardEndpointReturnsScorecard(t *testing.T) {
 	workspaceID := uuid.New()
 	runAgentID := uuid.New()

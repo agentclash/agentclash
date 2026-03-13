@@ -185,6 +185,10 @@ func decodeCreateRunRequest(r *http.Request) (CreateRunInput, error) {
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&body); err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			return CreateRunInput{}, err
+		}
 		if errors.Is(err, io.EOF) {
 			return CreateRunInput{}, RunCreationValidationError{
 				Code:    "invalid_request",
