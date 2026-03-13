@@ -15,11 +15,12 @@ It currently provides:
 - `GET /healthz`
 - request-scoped caller identity for `/v1/*`
 - workspace authorization boundary for future run handlers
+- `POST /v1/runs` backed by Postgres persistence and Temporal workflow start
 - development-only header-backed auth endpoints:
   - `GET /v1/auth/session`
   - `GET /v1/workspaces/{workspaceID}/auth-check`
 
-It does not yet connect to Postgres or Temporal. This step only establishes the process boundary and shared HTTP plumbing for later `/v1/*` work.
+This server step now connects to both `Postgres` and `Temporal` so the first control-plane write path can create durable queued runs and then start `RunWorkflow`.
 
 ## Local startup
 
@@ -73,9 +74,29 @@ Error behavior:
 - missing or invalid identity headers return `401`
 - authenticated callers without the requested workspace membership return `403`
 
+To exercise the run-create path locally, start the local database first and point `TEMPORAL_HOST_PORT` at a reachable Temporal dev server or namespace, then call:
+
+```bash
+WORKSPACE_ID=11111111-1111-1111-1111-111111111111
+CHALLENGE_PACK_VERSION_ID=33333333-3333-3333-3333-333333333333
+DEPLOYMENT_ID=44444444-4444-4444-4444-444444444444
+USER_ID=22222222-2222-2222-2222-222222222222
+
+curl \
+  -X POST http://localhost:8080/v1/runs \
+  -H "Content-Type: application/json" \
+  -H "X-Agentclash-User-Id: ${USER_ID}" \
+  -H "X-Agentclash-Workspace-Memberships: ${WORKSPACE_ID}:workspace_admin" \
+  -d '{
+    "workspace_id": "'"${WORKSPACE_ID}"'",
+    "challenge_pack_version_id": "'"${CHALLENGE_PACK_VERSION_ID}"'",
+    "agent_deployment_ids": ["'"${DEPLOYMENT_ID}"'"]
+  }'
+```
+
 ## Config
 
 - `API_SERVER_BIND_ADDRESS`: HTTP bind address. Default `:8080`
-- `DATABASE_URL`: reserved for upcoming Postgres-backed API work. Default local dev connection string
-- `TEMPORAL_HOST_PORT`: reserved for upcoming workflow-start integration. Default `localhost:7233`
-- `TEMPORAL_NAMESPACE`: reserved for upcoming Temporal client setup. Default `default`
+- `DATABASE_URL`: Postgres connection string used by the run-create API path. Default local dev connection string
+- `TEMPORAL_HOST_PORT`: Temporal target used when starting `RunWorkflow`. Default `localhost:7233`
+- `TEMPORAL_NAMESPACE`: Temporal namespace used by the API server. Default `default`

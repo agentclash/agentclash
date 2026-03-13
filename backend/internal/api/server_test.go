@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -12,6 +13,12 @@ import (
 	"github.com/google/uuid"
 )
 
+type stubRunCreationService struct{}
+
+func (stubRunCreationService) CreateRun(_ context.Context, _ Caller, _ CreateRunInput) (CreateRunResult, error) {
+	return CreateRunResult{}, errors.New("not implemented")
+}
+
 func TestHealthzReturnsJSONSuccessPayload(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	recorder := httptest.NewRecorder()
@@ -20,6 +27,7 @@ func TestHealthzReturnsJSONSuccessPayload(t *testing.T) {
 		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
+		stubRunCreationService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {
@@ -75,6 +83,7 @@ func TestSessionEndpointRequiresAuthentication(t *testing.T) {
 		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
+		stubRunCreationService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusUnauthorized {
@@ -105,6 +114,7 @@ func TestSessionEndpointReturnsCallerIdentity(t *testing.T) {
 		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
+		stubRunCreationService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {
@@ -138,6 +148,7 @@ func TestWorkspaceAuthorizationReturnsForbiddenWithoutMembership(t *testing.T) {
 		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
+		stubRunCreationService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusForbidden {
@@ -166,6 +177,7 @@ func TestWorkspaceAuthorizationReturnsOKWithMembership(t *testing.T) {
 		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
+		stubRunCreationService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {
@@ -195,6 +207,7 @@ func TestWorkspaceAuthorizationRejectsMalformedWorkspaceID(t *testing.T) {
 		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
+		stubRunCreationService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusBadRequest {

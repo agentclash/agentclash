@@ -237,6 +237,80 @@ func TestRepositoryTransitionRunStatusWritesCurrentStateAndHistory(t *testing.T)
 	}
 }
 
+func TestRepositoryCreateQueuedRunWritesRunRunAgentsAndInitialHistory(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+	queries := repositorysqlc.New(db)
+
+	result, err := repo.CreateQueuedRun(ctx, repository.CreateQueuedRunParams{
+		OrganizationID:         fixture.organizationID,
+		WorkspaceID:            fixture.workspaceID,
+		ChallengePackVersionID: fixture.challengePackVersionID,
+		CreatedByUserID:        &fixture.userID,
+		Name:                   "Created From API",
+		ExecutionMode:          "single_agent",
+		ExecutionPlan:          []byte(`{"participants":[{"lane_index":0}]}`),
+		RunAgents: []repository.CreateQueuedRunAgentParams{
+			{
+				AgentDeploymentID:         fixture.agentDeploymentID,
+				AgentDeploymentSnapshotID: fixture.agentDeploymentSnapshotID,
+				LaneIndex:                 0,
+				Label:                     "Support Agent Deployment",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateQueuedRun returned error: %v", err)
+	}
+
+	if result.Run.Status != domain.RunStatusQueued {
+		t.Fatalf("run status = %s, want %s", result.Run.Status, domain.RunStatusQueued)
+	}
+	if result.Run.QueuedAt == nil {
+		t.Fatalf("queued_at was not set")
+	}
+	if len(result.RunAgents) != 1 {
+		t.Fatalf("run agent count = %d, want 1", len(result.RunAgents))
+	}
+	if result.RunAgents[0].Status != domain.RunAgentStatusQueued {
+		t.Fatalf("run agent status = %s, want %s", result.RunAgents[0].Status, domain.RunAgentStatusQueued)
+	}
+
+	runHistoryRows, err := queries.ListRunStatusHistoryByRunID(ctx, repositorysqlc.ListRunStatusHistoryByRunIDParams{
+		RunID: result.Run.ID,
+	})
+	if err != nil {
+		t.Fatalf("ListRunStatusHistoryByRunID returned error: %v", err)
+	}
+	if len(runHistoryRows) != 1 {
+		t.Fatalf("run history count = %d, want 1", len(runHistoryRows))
+	}
+	if runHistoryRows[0].FromStatus != nil {
+		t.Fatalf("run history from_status = %v, want nil", runHistoryRows[0].FromStatus)
+	}
+	if runHistoryRows[0].ToStatus != string(domain.RunStatusQueued) {
+		t.Fatalf("run history to_status = %q, want %q", runHistoryRows[0].ToStatus, domain.RunStatusQueued)
+	}
+
+	runAgentHistoryRows, err := queries.ListRunAgentStatusHistoryByRunAgentID(ctx, repositorysqlc.ListRunAgentStatusHistoryByRunAgentIDParams{
+		RunAgentID: result.RunAgents[0].ID,
+	})
+	if err != nil {
+		t.Fatalf("ListRunAgentStatusHistoryByRunAgentID returned error: %v", err)
+	}
+	if len(runAgentHistoryRows) != 1 {
+		t.Fatalf("run-agent history count = %d, want 1", len(runAgentHistoryRows))
+	}
+	if runAgentHistoryRows[0].FromStatus != nil {
+		t.Fatalf("run-agent history from_status = %v, want nil", runAgentHistoryRows[0].FromStatus)
+	}
+	if runAgentHistoryRows[0].ToStatus != string(domain.RunAgentStatusQueued) {
+		t.Fatalf("run-agent history to_status = %q, want %q", runAgentHistoryRows[0].ToStatus, domain.RunAgentStatusQueued)
+	}
+}
+
 func TestRepositoryTransitionRunAgentStatusWritesCurrentStateAndHistory(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)
@@ -412,11 +486,16 @@ func TestRepositoryTransitionRunStatusRollsBackWhenHistoryInsertFails(t *testing
 }
 
 type testFixture struct {
-	userID              uuid.UUID
-	runID               uuid.UUID
-	runName             string
-	primaryRunAgentID   uuid.UUID
-	secondaryRunAgentID uuid.UUID
+	organizationID            uuid.UUID
+	workspaceID               uuid.UUID
+	userID                    uuid.UUID
+	challengePackVersionID    uuid.UUID
+	agentDeploymentID         uuid.UUID
+	agentDeploymentSnapshotID uuid.UUID
+	runID                     uuid.UUID
+	runName                   string
+	primaryRunAgentID         uuid.UUID
+	secondaryRunAgentID       uuid.UUID
 }
 
 func openTestDB(t *testing.T) *pgxpool.Pool {
@@ -638,10 +717,15 @@ func seedFixture(t *testing.T, ctx context.Context, db *pgxpool.Pool) testFixtur
 	}
 
 	return testFixture{
-		userID:              userID,
-		runID:               runRow.ID,
-		runName:             runRow.Name,
-		primaryRunAgentID:   primaryRunAgent.ID,
-		secondaryRunAgentID: secondaryRunAgent.ID,
+		organizationID:            organizationID,
+		workspaceID:               workspaceID,
+		userID:                    userID,
+		challengePackVersionID:    challengePackVersionID,
+		agentDeploymentID:         agentDeploymentID,
+		agentDeploymentSnapshotID: agentDeploymentSnapshotID,
+		runID:                     runRow.ID,
+		runName:                   runRow.Name,
+		primaryRunAgentID:         primaryRunAgent.ID,
+		secondaryRunAgentID:       secondaryRunAgent.ID,
 	}
 }

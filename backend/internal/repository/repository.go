@@ -55,6 +55,48 @@ type InsertRunAgentStatusHistoryParams struct {
 	Reason     *string
 }
 
+type RunnableChallengePackVersion struct {
+	ID              uuid.UUID
+	ChallengePackID uuid.UUID
+}
+
+type ChallengeInputSet struct {
+	ID                     uuid.UUID
+	ChallengePackVersionID uuid.UUID
+}
+
+type RunnableDeployment struct {
+	ID                        uuid.UUID
+	OrganizationID            uuid.UUID
+	WorkspaceID               uuid.UUID
+	Name                      string
+	AgentDeploymentSnapshotID uuid.UUID
+}
+
+type CreateQueuedRunAgentParams struct {
+	AgentDeploymentID         uuid.UUID
+	AgentDeploymentSnapshotID uuid.UUID
+	LaneIndex                 int32
+	Label                     string
+}
+
+type CreateQueuedRunParams struct {
+	OrganizationID         uuid.UUID
+	WorkspaceID            uuid.UUID
+	ChallengePackVersionID uuid.UUID
+	ChallengeInputSetID    *uuid.UUID
+	CreatedByUserID        *uuid.UUID
+	Name                   string
+	ExecutionMode          string
+	ExecutionPlan          json.RawMessage
+	RunAgents              []CreateQueuedRunAgentParams
+}
+
+type CreateQueuedRunResult struct {
+	Run       domain.Run
+	RunAgents []domain.RunAgent
+}
+
 func New(db *pgxpool.Pool) *Repository {
 	return &Repository{
 		db:      db,
@@ -77,6 +119,167 @@ func (r *Repository) GetRunByID(ctx context.Context, id uuid.UUID) (domain.Run, 
 	}
 
 	return run, nil
+}
+
+func (r *Repository) GetRunnableChallengePackVersionByID(ctx context.Context, id uuid.UUID) (RunnableChallengePackVersion, error) {
+	row, err := r.queries.GetRunnableChallengePackVersionByID(ctx, repositorysqlc.GetRunnableChallengePackVersionByIDParams{ID: id})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return RunnableChallengePackVersion{}, ErrChallengePackVersionNotFound
+		}
+		return RunnableChallengePackVersion{}, fmt.Errorf("get runnable challenge pack version by id: %w", err)
+	}
+
+	return RunnableChallengePackVersion{
+		ID:              row.ID,
+		ChallengePackID: row.ChallengePackID,
+	}, nil
+}
+
+func (r *Repository) GetChallengeInputSetByID(ctx context.Context, id uuid.UUID) (ChallengeInputSet, error) {
+	row, err := r.queries.GetChallengeInputSetByID(ctx, repositorysqlc.GetChallengeInputSetByIDParams{ID: id})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ChallengeInputSet{}, ErrChallengeInputSetNotFound
+		}
+		return ChallengeInputSet{}, fmt.Errorf("get challenge input set by id: %w", err)
+	}
+
+	return ChallengeInputSet{
+		ID:                     row.ID,
+		ChallengePackVersionID: row.ChallengePackVersionID,
+	}, nil
+}
+
+func (r *Repository) ListRunnableDeploymentsWithLatestSnapshot(
+	ctx context.Context,
+	workspaceID uuid.UUID,
+	deploymentIDs []uuid.UUID,
+) ([]RunnableDeployment, error) {
+	rows, err := r.queries.ListRunnableDeploymentsWithLatestSnapshot(ctx, repositorysqlc.ListRunnableDeploymentsWithLatestSnapshotParams{
+		WorkspaceID:   workspaceID,
+		DeploymentIds: deploymentIDs,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list runnable deployments with latest snapshot: %w", err)
+	}
+
+	deployments := make([]RunnableDeployment, 0, len(rows))
+	for _, row := range rows {
+		deployments = append(deployments, RunnableDeployment{
+			ID:                        row.ID,
+			OrganizationID:            row.OrganizationID,
+			WorkspaceID:               row.WorkspaceID,
+			Name:                      row.Name,
+			AgentDeploymentSnapshotID: row.AgentDeploymentSnapshotID,
+		})
+	}
+
+	return deployments, nil
+}
+
+func (r *Repository) CreateQueuedRun(ctx context.Context, params CreateQueuedRunParams) (CreateQueuedRunResult, error) {
+	if params.Name == "" {
+		return CreateQueuedRunResult{}, ErrRunNameRequired
+	}
+	if len(params.RunAgents) == 0 {
+		return CreateQueuedRunResult{}, ErrRunParticipantsRequired
+	}
+	if params.ExecutionMode != "single_agent" && params.ExecutionMode != "comparison" {
+		return CreateQueuedRunResult{}, ErrInvalidExecutionMode
+	}
+
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return CreateQueuedRunResult{}, fmt.Errorf("begin queued run creation transaction: %w", err)
+	}
+	defer rollback(ctx, tx)
+
+	queries := r.queries.WithTx(tx)
+	queuedAt := pgtype.Timestamptz{Time: time.Now().UTC(), Valid: true}
+	executionPlan := cloneJSON(params.ExecutionPlan)
+	if len(executionPlan) == 0 {
+		executionPlan = json.RawMessage(`{}`)
+	}
+
+	runRow, err := queries.CreateRun(ctx, repositorysqlc.CreateRunParams{
+		OrganizationID:         params.OrganizationID,
+		WorkspaceID:            params.WorkspaceID,
+		ChallengePackVersionID: params.ChallengePackVersionID,
+		ChallengeInputSetID:    cloneUUIDPtr(params.ChallengeInputSetID),
+		CreatedByUserID:        cloneUUIDPtr(params.CreatedByUserID),
+		Name:                   params.Name,
+		Status:                 string(domain.RunStatusQueued),
+		ExecutionMode:          params.ExecutionMode,
+		ExecutionPlan:          executionPlan,
+		QueuedAt:               queuedAt,
+	})
+	if err != nil {
+		return CreateQueuedRunResult{}, fmt.Errorf("create run: %w", err)
+	}
+
+	_, err = queries.InsertRunStatusHistory(ctx, repositorysqlc.InsertRunStatusHistoryParams{
+		RunID:           runRow.ID,
+		FromStatus:      nil,
+		ToStatus:        string(domain.RunStatusQueued),
+		Reason:          stringPtr("run created by api"),
+		ChangedByUserID: cloneUUIDPtr(params.CreatedByUserID),
+	})
+	if err != nil {
+		return CreateQueuedRunResult{}, fmt.Errorf("insert initial run status history: %w", err)
+	}
+
+	runAgents := make([]domain.RunAgent, 0, len(params.RunAgents))
+	for _, runAgent := range params.RunAgents {
+		if runAgent.Label == "" {
+			return CreateQueuedRunResult{}, ErrRunAgentLabelRequired
+		}
+
+		runAgentRow, createErr := queries.CreateRunAgent(ctx, repositorysqlc.CreateRunAgentParams{
+			OrganizationID:            params.OrganizationID,
+			WorkspaceID:               params.WorkspaceID,
+			RunID:                     runRow.ID,
+			AgentDeploymentID:         runAgent.AgentDeploymentID,
+			AgentDeploymentSnapshotID: runAgent.AgentDeploymentSnapshotID,
+			LaneIndex:                 runAgent.LaneIndex,
+			Label:                     runAgent.Label,
+			Status:                    string(domain.RunAgentStatusQueued),
+			QueuedAt:                  queuedAt,
+		})
+		if createErr != nil {
+			return CreateQueuedRunResult{}, fmt.Errorf("create run agent lane %d: %w", runAgent.LaneIndex, createErr)
+		}
+
+		_, createErr = queries.InsertRunAgentStatusHistory(ctx, repositorysqlc.InsertRunAgentStatusHistoryParams{
+			RunAgentID: runAgentRow.ID,
+			FromStatus: nil,
+			ToStatus:   string(domain.RunAgentStatusQueued),
+			Reason:     stringPtr("run agent created by api"),
+		})
+		if createErr != nil {
+			return CreateQueuedRunResult{}, fmt.Errorf("insert initial run-agent status history lane %d: %w", runAgent.LaneIndex, createErr)
+		}
+
+		mappedRunAgent, mapErr := mapRunAgent(runAgentRow)
+		if mapErr != nil {
+			return CreateQueuedRunResult{}, fmt.Errorf("map run agent lane %d: %w", runAgent.LaneIndex, mapErr)
+		}
+		runAgents = append(runAgents, mappedRunAgent)
+	}
+
+	run, err := mapRun(runRow)
+	if err != nil {
+		return CreateQueuedRunResult{}, fmt.Errorf("map run: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return CreateQueuedRunResult{}, fmt.Errorf("commit queued run creation: %w", err)
+	}
+
+	return CreateQueuedRunResult{
+		Run:       run,
+		RunAgents: runAgents,
+	}, nil
 }
 
 func (r *Repository) ListRunAgentsByRunID(ctx context.Context, runID uuid.UUID) ([]domain.RunAgent, error) {

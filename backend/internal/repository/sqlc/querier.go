@@ -11,10 +11,13 @@ import (
 type Querier interface {
 	CreateRun(ctx context.Context, arg CreateRunParams) (Run, error)
 	CreateRunAgent(ctx context.Context, arg CreateRunAgentParams) (RunAgent, error)
+	GetChallengeInputSetByID(ctx context.Context, arg GetChallengeInputSetByIDParams) (GetChallengeInputSetByIDRow, error)
 	GetRunAgentByID(ctx context.Context, arg GetRunAgentByIDParams) (RunAgent, error)
 	GetRunByID(ctx context.Context, arg GetRunByIDParams) (Run, error)
+	GetRunnableChallengePackVersionByID(ctx context.Context, arg GetRunnableChallengePackVersionByIDParams) (GetRunnableChallengePackVersionByIDRow, error)
 	InsertRunAgentStatusHistory(ctx context.Context, arg InsertRunAgentStatusHistoryParams) (RunAgentStatusHistory, error)
 	InsertRunStatusHistory(ctx context.Context, arg InsertRunStatusHistoryParams) (RunStatusHistory, error)
+	ListRunnableDeploymentsWithLatestSnapshot(ctx context.Context, arg ListRunnableDeploymentsWithLatestSnapshotParams) ([]ListRunnableDeploymentsWithLatestSnapshotRow, error)
 	ListRunAgentStatusHistoryByRunAgentID(ctx context.Context, arg ListRunAgentStatusHistoryByRunAgentIDParams) ([]RunAgentStatusHistory, error)
 	ListRunAgentsByRunID(ctx context.Context, arg ListRunAgentsByRunIDParams) ([]RunAgent, error)
 	ListRunStatusHistoryByRunID(ctx context.Context, arg ListRunStatusHistoryByRunIDParams) ([]RunStatusHistory, error)
