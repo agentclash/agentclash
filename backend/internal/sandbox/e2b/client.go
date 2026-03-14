@@ -16,6 +16,8 @@ import (
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/filesystem/filesystemconnect"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/process/processconnect"
+
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/sandbox"
 )
 
 type apiClient struct {
@@ -41,14 +43,14 @@ func newAPIClient(config Config) *apiClient {
 
 func (c *apiClient) createSandbox(ctx context.Context, request createSandboxRequest) (sandboxRecord, error) {
 	var record sandboxRecord
-	if err := c.doJSON(ctx, http.MethodPost, c.config.apiBaseURL()+"/sandboxes", request, &record, nil); err != nil {
+	if err := c.doJSON(ctx, http.MethodPost, c.config.apiBaseURL()+"/sandboxes", request, &record, nil, nil); err != nil {
 		return sandboxRecord{}, err
 	}
 	return record, nil
 }
 
 func (c *apiClient) destroySandbox(ctx context.Context, sandboxID string) error {
-	return c.doJSON(ctx, http.MethodDelete, c.config.apiBaseURL()+"/sandboxes/"+sandboxID, nil, nil, map[int]struct{}{http.StatusNoContent: {}})
+	return c.doJSON(ctx, http.MethodDelete, c.config.apiBaseURL()+"/sandboxes/"+sandboxID, nil, nil, map[int]struct{}{http.StatusNoContent: {}}, sandbox.ErrSandboxNotFound)
 }
 
 func (c *apiClient) envdBaseURL(record sandboxRecord) string {
@@ -87,7 +89,7 @@ func (c *apiClient) readFile(ctx context.Context, record sandboxRecord, filePath
 		return nil, err
 	}
 	if resp.StatusCode >= 300 {
-		return nil, normalizeHTTPError(resp.StatusCode, string(body))
+		return nil, normalizeHTTPError(resp.StatusCode, string(body), sandbox.ErrFileNotFound)
 	}
 	return body, nil
 }
@@ -127,7 +129,7 @@ func (c *apiClient) writeFile(ctx context.Context, record sandboxRecord, filePat
 		return err
 	}
 	if resp.StatusCode >= 300 {
-		return normalizeHTTPError(resp.StatusCode, string(respBody))
+		return normalizeHTTPError(resp.StatusCode, string(respBody), nil)
 	}
 	return nil
 }
@@ -142,7 +144,7 @@ func (c *apiClient) authHeader() string {
 	return "Basic " + base64.StdEncoding.EncodeToString([]byte(defaultSandboxUser+":"))
 }
 
-func (c *apiClient) doJSON(ctx context.Context, method string, rawURL string, requestBody any, responseBody any, allowedEmptyStatuses map[int]struct{}) error {
+func (c *apiClient) doJSON(ctx context.Context, method string, rawURL string, requestBody any, responseBody any, allowedEmptyStatuses map[int]struct{}, notFoundErr error) error {
 	var body io.Reader
 	if requestBody != nil {
 		payload, err := json.Marshal(requestBody)
@@ -171,7 +173,7 @@ func (c *apiClient) doJSON(ctx context.Context, method string, rawURL string, re
 		return nil
 	}
 	if resp.StatusCode >= 300 {
-		return normalizeHTTPError(resp.StatusCode, string(respBytes))
+		return normalizeHTTPError(resp.StatusCode, string(respBytes), notFoundErr)
 	}
 	if responseBody == nil {
 		return nil
@@ -184,5 +186,5 @@ type createSandboxRequest struct {
 	Timeout             int               `json:"timeout"`
 	Metadata            map[string]string `json:"metadata,omitempty"`
 	Secure              bool              `json:"secure"`
-	AllowInternetAccess bool              `json:"allow_internet_access"`
+	AllowInternetAccess bool              `json:"allowInternetAccess"`
 }

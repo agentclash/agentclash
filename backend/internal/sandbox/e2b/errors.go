@@ -9,10 +9,13 @@ import (
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/sandbox"
 )
 
-func normalizeHTTPError(statusCode int, body string) error {
+func normalizeHTTPError(statusCode int, body string, notFoundErr error) error {
 	switch statusCode {
 	case http.StatusNotFound:
-		return sandbox.ErrFileNotFound
+		if notFoundErr != nil {
+			return notFoundErr
+		}
+		return fmt.Errorf("e2b resource not found: %s", body)
 	case http.StatusUnauthorized, http.StatusForbidden:
 		return fmt.Errorf("e2b authentication failed: %s", body)
 	default:

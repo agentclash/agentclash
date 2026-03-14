@@ -429,6 +429,16 @@ func TestNativeExecutorJoinsDestroyFailureWhenExecutionAlreadyFailed(t *testing.
 	}
 }
 
+func TestSandboxTTLDefaultsWhenRunTimeoutIsUnset(t *testing.T) {
+	executionContext := nativeExecutionContext()
+	executionContext.Deployment.RuntimeProfile.RunTimeoutSeconds = 0
+
+	got := sandboxTTL(executionContext)
+	if got != defaultSandboxTTL {
+		t.Fatalf("sandbox TTL = %s, want %s", got, defaultSandboxTTL)
+	}
+}
+
 type scriptedProviderClient struct {
 	t        *testing.T
 	steps    []providerStep

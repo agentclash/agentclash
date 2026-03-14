@@ -87,6 +87,8 @@ The repo-owned E2B template lives in `backend/e2b-template/`.
 
 It preserves the `/workspace` contract used by the engine and tests. Build and publish it with the E2B CLI, then set the resulting template ID or alias in `E2B_TEMPLATE_ID`.
 
+The template uses E2B's TypeScript SDK, so local template builds require Node.js in addition to the E2B CLI.
+
 ## Smoke Verification
 
 There is an env-gated smoke test for the adapter lifecycle:

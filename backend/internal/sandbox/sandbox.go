@@ -12,6 +12,7 @@ var (
 	ErrProviderNotConfigured = errors.New("sandbox provider is not configured")
 	ErrSessionDestroyed      = errors.New("sandbox session is destroyed")
 	ErrFileNotFound          = errors.New("sandbox file not found")
+	ErrSandboxNotFound       = errors.New("sandbox not found")
 	ErrShellNotAllowed       = errors.New("sandbox shell execution is not allowed")
 )
 

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -17,6 +18,7 @@ const (
 	defaultSandboxWorkingDirectory = "/workspace"
 	defaultRetryAttempts           = 3
 	defaultRetryBackoff            = 250 * time.Millisecond
+	defaultSandboxTTL              = 60 * time.Minute
 	sandboxBootBuffer              = 20 * time.Second
 	sandboxCleanupTimeout          = 15 * time.Second
 
@@ -156,7 +158,9 @@ func (e NativeExecutor) Execute(ctx context.Context, executionContext repository
 			wrapped := NewFailure(StopReasonSandboxError, "destroy native sandbox", destroyErr)
 			if err != nil {
 				err = errors.Join(err, wrapped)
+				return
 			}
+			slog.Default().Warn("sandbox destroy failed after successful native execution", "run_id", executionContext.Run.ID, "run_agent_id", executionContext.RunAgent.ID, "error", destroyErr)
 		}
 	}()
 
@@ -849,7 +853,7 @@ func mergeFilesystem(filesystem *sandbox.FilesystemSpec, workingDirectory string
 func sandboxTTL(executionContext repository.RunAgentExecutionContext) time.Duration {
 	timeout := runTimeout(executionContext)
 	if timeout <= 0 {
-		return 0
+		return defaultSandboxTTL
 	}
 	return timeout + sandboxBootBuffer + sandboxCleanupTimeout
 }

@@ -140,7 +140,7 @@ func (s *session) Destroy(ctx context.Context) error {
 
 	startedAt := time.Now()
 	err := s.client.api.destroySandbox(ctx, s.client.record.SandboxID)
-	if err != nil && !errors.Is(err, sandbox.ErrFileNotFound) {
+	if err != nil && !errors.Is(err, sandbox.ErrSandboxNotFound) {
 		slog.Default().Error("sandbox destroy failed", "sandbox_id", s.client.record.SandboxID, "template_id", s.client.record.TemplateID, "sandbox_url", s.client.api.envdBaseURL(s.client.record), "outcome", "failed_destroy", "duration", time.Since(startedAt), "error", err)
 		return err
 	}
