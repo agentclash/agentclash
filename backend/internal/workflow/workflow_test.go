@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/domain"
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/engine"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/hostedruns"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/provider"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
@@ -146,10 +147,9 @@ func TestRunAgentWorkflowNativePathUsesProviderBoundary(t *testing.T) {
 	repo.setExecutionContext(runAgentID, nativeExecutionContext(runID, runAgentID))
 
 	invoker := &fakeNativeModelInvoker{
-		response: provider.Response{
-			ProviderKey:     "openai",
-			ProviderModelID: "gpt-4.1",
-			OutputText:      "ok",
+		result: engine.Result{
+			FinalOutput: "ok",
+			StopReason:  engine.StopReasonCompleted,
 		},
 	}
 
@@ -174,11 +174,12 @@ func TestRunAgentWorkflowNativePathUsesProviderBoundary(t *testing.T) {
 
 func TestNativeModelActivityOptionsUseRuntimeStepTimeout(t *testing.T) {
 	executionContext := nativeExecutionContext(uuid.New(), uuid.New())
-	executionContext.Deployment.RuntimeProfile.StepTimeoutSeconds = 42
+	executionContext.Deployment.RuntimeProfile.RunTimeoutSeconds = 42
 
 	options := nativeModelActivityOptions(executionContext)
-	if options.StartToCloseTimeout != 42*time.Second {
-		t.Fatalf("start to close timeout = %s, want %s", options.StartToCloseTimeout, 42*time.Second)
+	want := 42*time.Second + nativeActivityCleanupBuffer
+	if options.StartToCloseTimeout != want {
+		t.Fatalf("start to close timeout = %s, want %s", options.StartToCloseTimeout, want)
 	}
 	if options.RetryPolicy == nil || options.RetryPolicy.MaximumAttempts != defaultActivityOptions.RetryPolicy.MaximumAttempts {
 		t.Fatalf("retry policy = %#v, want maximum attempts %d", options.RetryPolicy, defaultActivityOptions.RetryPolicy.MaximumAttempts)
@@ -362,7 +363,12 @@ func TestRunWorkflowCancellationMarksRunCancelled(t *testing.T) {
 		fixtureRunAgent(runID, runAgentID, 0),
 	)
 
-	env := newTestWorkflowEnvironment(repo, FakeWorkHooks{})
+	env := newTestWorkflowEnvironment(repo, FakeWorkHooks{
+		PrepareExecutionLane: func(ctx context.Context, input RunAgentWorkflowInput) error {
+			<-ctx.Done()
+			return ctx.Err()
+		},
+	})
 	env.RegisterDelayedCallback(func() {
 		env.CancelWorkflow()
 	}, fakeStageDelay/2)
@@ -937,19 +943,19 @@ func (f fakeHostedRunStarter) Start(context.Context, HostedRunStartInput) (hoste
 }
 
 type fakeNativeModelInvoker struct {
-	response         provider.Response
+	result           engine.Result
 	err              error
 	callCount        int
 	executionContext repository.RunAgentExecutionContext
 }
 
-func (f *fakeNativeModelInvoker) InvokeNativeModel(_ context.Context, executionContext repository.RunAgentExecutionContext) (provider.Response, error) {
+func (f *fakeNativeModelInvoker) InvokeNativeModel(_ context.Context, executionContext repository.RunAgentExecutionContext) (engine.Result, error) {
 	f.callCount++
 	f.executionContext = executionContext
 	if f.err != nil {
-		return provider.Response{}, f.err
+		return engine.Result{}, f.err
 	}
-	return f.response, nil
+	return f.result, nil
 }
 
 func fixtureRunAgent(runID uuid.UUID, runAgentID uuid.UUID, laneIndex int32) domain.RunAgent {

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/domain"
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/engine"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/provider"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
 	"github.com/google/uuid"
@@ -37,6 +38,7 @@ const (
 	repositoryTemporalIDConflictType     = "repository.ErrTemporalIDConflict"
 	repositoryInvalidTransitionType      = "repository.ErrInvalidTransition"
 	repositoryTransitionConflictType     = "repository.ErrTransitionConflict"
+	engineFailureErrorTypePrefix         = "engine."
 	providerFailureErrorTypePrefix       = "provider."
 )
 
@@ -49,7 +51,7 @@ type FakeWorkHooks struct {
 }
 
 type NativeModelInvoker interface {
-	InvokeNativeModel(ctx context.Context, executionContext repository.RunAgentExecutionContext) (provider.Response, error)
+	InvokeNativeModel(ctx context.Context, executionContext repository.RunAgentExecutionContext) (engine.Result, error)
 }
 
 type Activities struct {
@@ -312,6 +314,9 @@ func wrapActivityError(err error) error {
 	case errors.Is(err, repository.ErrTransitionConflict):
 		return temporal.NewNonRetryableApplicationError(err.Error(), repositoryTransitionConflictType, err)
 	default:
+		if failure, ok := engine.AsFailure(err); ok {
+			return temporal.NewNonRetryableApplicationError(failure.Error(), engineFailureErrorTypePrefix+string(failure.StopReason), err)
+		}
 		if failure, ok := provider.AsFailure(err); ok {
 			errorType := providerFailureErrorTypePrefix + string(failure.Code)
 			if !failure.Retryable {

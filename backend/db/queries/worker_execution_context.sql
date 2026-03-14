@@ -41,6 +41,7 @@ SELECT
     cpv.version_number AS challenge_pack_version_number,
     cpv.manifest_checksum AS challenge_pack_manifest_checksum,
     cpv.manifest AS challenge_pack_manifest,
+    challenge_definitions.challenge_definitions AS challenge_pack_challenges,
 
     cis.id AS challenge_input_set_id,
     cis.challenge_pack_version_id AS challenge_input_set_challenge_pack_version_id,
@@ -48,6 +49,7 @@ SELECT
     cis.name AS challenge_input_set_name,
     cis.description AS challenge_input_set_description,
     cis.input_checksum AS challenge_input_set_input_checksum,
+    challenge_input_items.challenge_input_items AS challenge_input_set_items,
 
     ads.id AS snapshot_id,
     ads.agent_deployment_id AS snapshot_agent_deployment_id,
@@ -60,6 +62,10 @@ SELECT
     ads.endpoint_url AS snapshot_endpoint_url,
     ads.snapshot_hash AS snapshot_hash,
     ads.snapshot_config AS snapshot_config,
+
+    abv.prompt_spec AS agent_build_version_prompt_spec,
+    abv.build_definition AS agent_build_version_build_definition,
+    abv.output_schema AS agent_build_version_output_schema,
 
     rp.id AS runtime_profile_id,
     rp.name AS runtime_profile_name,
@@ -100,14 +106,65 @@ JOIN runs AS r
  AND r.workspace_id = ra.workspace_id
 JOIN challenge_pack_versions AS cpv
   ON cpv.id = r.challenge_pack_version_id
+LEFT JOIN LATERAL (
+  SELECT COALESCE(
+    jsonb_agg(
+      jsonb_build_object(
+        'id', cpvc.id,
+        'challenge_identity_id', cpvc.challenge_identity_id,
+        'challenge_key', ci.challenge_key,
+        'execution_order', cpvc.execution_order,
+        'title', cpvc.title_snapshot,
+        'category', cpvc.category_snapshot,
+        'difficulty', cpvc.difficulty_snapshot,
+        'definition', cpvc.challenge_definition
+      )
+      ORDER BY cpvc.execution_order
+    ),
+    '[]'::jsonb
+  ) AS challenge_definitions
+  FROM challenge_pack_version_challenges AS cpvc
+  JOIN challenge_identities AS ci
+    ON ci.id = cpvc.challenge_identity_id
+   AND ci.challenge_pack_id = cpv.challenge_pack_id
+  WHERE cpvc.challenge_pack_version_id = cpv.id
+) AS challenge_definitions
+  ON TRUE
 LEFT JOIN challenge_input_sets AS cis
   ON cis.id = r.challenge_input_set_id
  AND cis.challenge_pack_version_id = r.challenge_pack_version_id
+LEFT JOIN LATERAL (
+  SELECT COALESCE(
+    jsonb_agg(
+      jsonb_build_object(
+        'id', cii.id,
+        'challenge_identity_id', cii.challenge_identity_id,
+        'challenge_key', ci.challenge_key,
+        'item_key', cii.item_key,
+        'payload', cii.payload
+      )
+      ORDER BY cpvc.execution_order, cii.item_key
+    ),
+    '[]'::jsonb
+  ) AS challenge_input_items
+  FROM challenge_input_items AS cii
+  JOIN challenge_pack_version_challenges AS cpvc
+    ON cpvc.challenge_pack_version_id = cii.challenge_pack_version_id
+   AND cpvc.challenge_identity_id = cii.challenge_identity_id
+  JOIN challenge_identities AS ci
+    ON ci.id = cii.challenge_identity_id
+   AND ci.challenge_pack_id = cpv.challenge_pack_id
+  WHERE cii.challenge_input_set_id = cis.id
+) AS challenge_input_items
+  ON TRUE
 JOIN agent_deployment_snapshots AS ads
   ON ads.id = ra.agent_deployment_snapshot_id
  AND ads.agent_deployment_id = ra.agent_deployment_id
  AND ads.organization_id = ra.organization_id
  AND ads.workspace_id = ra.workspace_id
+JOIN agent_build_versions AS abv
+  ON abv.id = ads.source_agent_build_version_id
+ AND abv.agent_build_id = ads.agent_build_id
 JOIN runtime_profiles AS rp
   ON rp.id = ads.source_runtime_profile_id
  AND rp.organization_id = ads.organization_id

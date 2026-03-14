@@ -108,8 +108,29 @@ func TestRepositoryGetRunAgentExecutionContextByIDNative(t *testing.T) {
 	if executionContext.ChallengePackVersion.ID != fixture.challengePackVersionID {
 		t.Fatalf("challenge pack version id = %s, want %s", executionContext.ChallengePackVersion.ID, fixture.challengePackVersionID)
 	}
+	if len(executionContext.ChallengePackVersion.Challenges) != 2 {
+		t.Fatalf("challenge count = %d, want 2", len(executionContext.ChallengePackVersion.Challenges))
+	}
+	if executionContext.ChallengePackVersion.Challenges[0].ChallengeKey != "first-ticket" {
+		t.Fatalf("first challenge key = %q, want first-ticket", executionContext.ChallengePackVersion.Challenges[0].ChallengeKey)
+	}
+	if executionContext.ChallengePackVersion.Challenges[1].Title != "Ticket Two" {
+		t.Fatalf("second challenge title = %q, want Ticket Two", executionContext.ChallengePackVersion.Challenges[1].Title)
+	}
+	if string(executionContext.ChallengePackVersion.Challenges[0].Definition) != `{"instructions":"Solve the first ticket"}` {
+		t.Fatalf("first challenge definition = %s, want first ticket definition", executionContext.ChallengePackVersion.Challenges[0].Definition)
+	}
 	if executionContext.ChallengeInputSet == nil || executionContext.ChallengeInputSet.ID != fixture.challengeInputSetID {
 		t.Fatalf("challenge input set = %#v, want id %s", executionContext.ChallengeInputSet, fixture.challengeInputSetID)
+	}
+	if len(executionContext.ChallengeInputSet.Items) != 2 {
+		t.Fatalf("challenge input item count = %d, want 2", len(executionContext.ChallengeInputSet.Items))
+	}
+	if executionContext.ChallengeInputSet.Items[0].ChallengeKey != "first-ticket" {
+		t.Fatalf("first challenge input item key = %q, want first-ticket", executionContext.ChallengeInputSet.Items[0].ChallengeKey)
+	}
+	if string(executionContext.ChallengeInputSet.Items[1].Payload) != `{"content":"Customer two needs follow-up"}` {
+		t.Fatalf("second challenge input payload = %s, want second item payload", executionContext.ChallengeInputSet.Items[1].Payload)
 	}
 	if executionContext.Deployment.DeploymentType != "native" {
 		t.Fatalf("deployment type = %q, want native", executionContext.Deployment.DeploymentType)
@@ -125,6 +146,15 @@ func TestRepositoryGetRunAgentExecutionContextByIDNative(t *testing.T) {
 	}
 	if string(executionContext.Deployment.SnapshotConfig) != `{"entrypoint":"runner"}` {
 		t.Fatalf("snapshot config = %s, want entrypoint runner", executionContext.Deployment.SnapshotConfig)
+	}
+	if executionContext.Deployment.AgentBuildVersion.PromptSpec == nil || *executionContext.Deployment.AgentBuildVersion.PromptSpec != "You are a precise support benchmark agent." {
+		t.Fatalf("prompt spec = %v, want benchmark prompt", executionContext.Deployment.AgentBuildVersion.PromptSpec)
+	}
+	if string(executionContext.Deployment.AgentBuildVersion.BuildDefinition) != `{"strategy":"inspect files before responding"}` {
+		t.Fatalf("build definition = %s, want build strategy", executionContext.Deployment.AgentBuildVersion.BuildDefinition)
+	}
+	if string(executionContext.Deployment.AgentBuildVersion.OutputSchema) != `{"type":"object","properties":{"answer":{"type":"string"}}}` {
+		t.Fatalf("output schema = %s, want answer schema", executionContext.Deployment.AgentBuildVersion.OutputSchema)
 	}
 	if executionContext.Deployment.ProviderAccount == nil || executionContext.Deployment.ProviderAccount.ID != fixture.providerAccountID {
 		t.Fatalf("provider account = %#v, want %s", executionContext.Deployment.ProviderAccount, fixture.providerAccountID)
@@ -900,6 +930,12 @@ func seedFixture(t *testing.T, ctx context.Context, db *pgxpool.Pool) testFixtur
 	challengePackID := uuid.New()
 	challengePackVersionID := uuid.New()
 	challengeInputSetID := uuid.New()
+	firstChallengeIdentityID := uuid.New()
+	secondChallengeIdentityID := uuid.New()
+	firstChallengeVersionID := uuid.New()
+	secondChallengeVersionID := uuid.New()
+	firstChallengeInputItemID := uuid.New()
+	secondChallengeInputItemID := uuid.New()
 	runtimeProfileID := uuid.New()
 	providerAccountID := uuid.New()
 	modelCatalogEntryID := uuid.New()
@@ -947,8 +983,44 @@ func seedFixture(t *testing.T, ctx context.Context, db *pgxpool.Pool) testFixtur
 			manifest
 		)
 		VALUES ($1, $2, $3, $4, $5, $6)
-	`, challengePackVersionID, challengePackID, 1, "runnable", "manifest-checksum", []byte(`{}`)); err != nil {
+	`, challengePackVersionID, challengePackID, 1, "runnable", "manifest-checksum", []byte(`{"tool_policy":{"allowed_tool_kinds":["file"]}}`)); err != nil {
 		t.Fatalf("insert challenge pack version returned error: %v", err)
+	}
+
+	if _, err := db.Exec(ctx, `
+		INSERT INTO challenge_identities (
+			id,
+			challenge_pack_id,
+			challenge_key,
+			name,
+			category,
+			difficulty,
+			description
+		)
+		VALUES
+			($1, $2, $3, $4, $5, $6, $7),
+			($8, $2, $9, $10, $11, $12, $13)
+	`, firstChallengeIdentityID, challengePackID, "first-ticket", "First Ticket", "support", "easy", "Handle the first ticket", secondChallengeIdentityID, "second-ticket", "Second Ticket", "support", "medium", "Handle the second ticket"); err != nil {
+		t.Fatalf("insert challenge identities returned error: %v", err)
+	}
+
+	if _, err := db.Exec(ctx, `
+		INSERT INTO challenge_pack_version_challenges (
+			id,
+			challenge_pack_version_id,
+			challenge_pack_id,
+			challenge_identity_id,
+			execution_order,
+			title_snapshot,
+			category_snapshot,
+			difficulty_snapshot,
+			challenge_definition
+		)
+		VALUES
+			($1, $2, $3, $4, $5, $6, $7, $8, $9),
+			($10, $2, $3, $11, $12, $13, $14, $15, $16)
+	`, firstChallengeVersionID, challengePackVersionID, challengePackID, firstChallengeIdentityID, 0, "Ticket One", "support", "easy", []byte(`{"instructions":"Solve the first ticket"}`), secondChallengeVersionID, secondChallengeIdentityID, 1, "Ticket Two", "support", "medium", []byte(`{"instructions":"Solve the second ticket"}`)); err != nil {
+		t.Fatalf("insert challenge pack version challenges returned error: %v", err)
 	}
 
 	if _, err := db.Exec(ctx, `
@@ -962,6 +1034,22 @@ func seedFixture(t *testing.T, ctx context.Context, db *pgxpool.Pool) testFixtur
 		VALUES ($1, $2, $3, $4, $5)
 	`, challengeInputSetID, challengePackVersionID, "default-inputs", "Default Inputs", "input-checksum"); err != nil {
 		t.Fatalf("insert challenge input set returned error: %v", err)
+	}
+
+	if _, err := db.Exec(ctx, `
+		INSERT INTO challenge_input_items (
+			id,
+			challenge_input_set_id,
+			challenge_pack_version_id,
+			challenge_identity_id,
+			item_key,
+			payload
+		)
+		VALUES
+			($1, $2, $3, $4, $5, $6),
+			($7, $2, $3, $8, $9, $10)
+	`, firstChallengeInputItemID, challengeInputSetID, challengePackVersionID, firstChallengeIdentityID, "prompt.txt", []byte(`{"content":"Customer one is blocked"}`), secondChallengeInputItemID, secondChallengeIdentityID, "prompt.txt", []byte(`{"content":"Customer two needs follow-up"}`)); err != nil {
+		t.Fatalf("insert challenge input items returned error: %v", err)
 	}
 
 	if _, err := db.Exec(ctx, `
@@ -1043,12 +1131,13 @@ func seedFixture(t *testing.T, ctx context.Context, db *pgxpool.Pool) testFixtur
 			version_number,
 			version_status,
 			build_definition,
+			prompt_spec,
 			output_schema,
 			trace_contract,
 			created_by_user_id
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-	`, agentBuildVersionID, agentBuildID, 1, "ready", []byte(`{}`), []byte(`{}`), []byte(`{}`), userID); err != nil {
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+	`, agentBuildVersionID, agentBuildID, 1, "ready", []byte(`{"strategy":"inspect files before responding"}`), "You are a precise support benchmark agent.", []byte(`{"type":"object","properties":{"answer":{"type":"string"}}}`), []byte(`{}`), userID); err != nil {
 		t.Fatalf("insert agent build version returned error: %v", err)
 	}
 

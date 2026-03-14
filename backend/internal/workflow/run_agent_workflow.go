@@ -13,6 +13,8 @@ import (
 	sdkworkflow "go.temporal.io/sdk/workflow"
 )
 
+const nativeActivityCleanupBuffer = 5 * time.Second
+
 func RunAgentWorkflow(ctx sdkworkflow.Context, input RunAgentWorkflowInput) error {
 	ctx = sdkworkflow.WithActivityOptions(ctx, defaultActivityOptions)
 
@@ -52,28 +54,16 @@ func runAgentWorkflow(ctx sdkworkflow.Context, input RunAgentWorkflowInput) erro
 		return runHostedRunAgent(ctx, input, executionContext)
 	}
 
-	if err := sdkworkflow.Sleep(ctx, fakeStageDelay); err != nil {
-		return err
-	}
-	if err := transitionRunAgentStatus(ctx, input.RunAgentID, domain.RunAgentStatusExecuting, stringPtr("fake execution started"), nil); err != nil {
+	if err := transitionRunAgentStatus(ctx, input.RunAgentID, domain.RunAgentStatusExecuting, stringPtr("native execution started"), nil); err != nil {
 		return err
 	}
 	if err := executeNativeModelStep(ctx, input, executionContext).Get(ctx, nil); err != nil {
 		return err
 	}
-	if err := sdkworkflow.Sleep(ctx, fakeStageDelay); err != nil {
+	if err := transitionRunAgentStatus(ctx, input.RunAgentID, domain.RunAgentStatusEvaluating, stringPtr("native execution completed; evaluation hook pending"), nil); err != nil {
 		return err
 	}
-	if err := transitionRunAgentStatus(ctx, input.RunAgentID, domain.RunAgentStatusEvaluating, stringPtr("fake evaluation started"), nil); err != nil {
-		return err
-	}
-	if err := sdkworkflow.ExecuteActivity(ctx, simulateEvaluationActivityName, input).Get(ctx, nil); err != nil {
-		return err
-	}
-	if err := sdkworkflow.Sleep(ctx, fakeStageDelay); err != nil {
-		return err
-	}
-	if err := transitionRunAgentStatus(ctx, input.RunAgentID, domain.RunAgentStatusCompleted, stringPtr("fake evaluation completed"), nil); err != nil {
+	if err := transitionRunAgentStatus(ctx, input.RunAgentID, domain.RunAgentStatusCompleted, stringPtr("native run-agent execution completed"), nil); err != nil {
 		return err
 	}
 
@@ -90,8 +80,8 @@ func executeNativeModelStep(ctx sdkworkflow.Context, input RunAgentWorkflowInput
 
 func nativeModelActivityOptions(executionContext repository.RunAgentExecutionContext) sdkworkflow.ActivityOptions {
 	options := defaultActivityOptions
-	if executionContext.Deployment.RuntimeProfile.StepTimeoutSeconds > 0 {
-		options.StartToCloseTimeout = time.Duration(executionContext.Deployment.RuntimeProfile.StepTimeoutSeconds) * time.Second
+	if executionContext.Deployment.RuntimeProfile.RunTimeoutSeconds > 0 {
+		options.StartToCloseTimeout = time.Duration(executionContext.Deployment.RuntimeProfile.RunTimeoutSeconds)*time.Second + nativeActivityCleanupBuffer
 	}
 	return options
 }
