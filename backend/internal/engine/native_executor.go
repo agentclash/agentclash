@@ -860,10 +860,10 @@ func sandboxTTL(executionContext repository.RunAgentExecutionContext) time.Durat
 
 func sandboxLabels(executionContext repository.RunAgentExecutionContext) map[string]string {
 	return map[string]string{
-		"run_id":                 executionContext.Run.ID.String(),
-		"run_agent_id":           executionContext.RunAgent.ID.String(),
-		"challenge_pack_version": executionContext.ChallengePackVersion.ID.String(),
-		"agent_build_version_id": executionContext.Deployment.AgentBuildVersion.ID.String(),
+		"run_id":                    executionContext.Run.ID.String(),
+		"run_agent_id":              executionContext.RunAgent.ID.String(),
+		"challenge_pack_version_id": executionContext.ChallengePackVersion.ID.String(),
+		"agent_build_version_id":    executionContext.Deployment.AgentBuildVersion.ID.String(),
 	}
 }
 

@@ -145,3 +145,17 @@ func TestLoadConfigFromEnvRejectsIncompleteE2BConfig(t *testing.T) {
 		t.Fatalf("error = %v, want ErrInvalidConfig", err)
 	}
 }
+
+func TestLoadConfigFromEnvAllowsEmptyOptionalE2BEnvWhenUnconfigured(t *testing.T) {
+	t.Setenv("SANDBOX_PROVIDER", "unconfigured")
+	t.Setenv("E2B_API_KEY", "")
+	t.Setenv("E2B_TEMPLATE_ID", "")
+
+	cfg, err := LoadConfigFromEnv()
+	if err != nil {
+		t.Fatalf("LoadConfigFromEnv returned error: %v", err)
+	}
+	if cfg.Sandbox.Provider != "unconfigured" {
+		t.Fatalf("Sandbox.Provider = %q, want unconfigured", cfg.Sandbox.Provider)
+	}
+}

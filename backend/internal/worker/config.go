@@ -137,11 +137,8 @@ func envOrDefault(key string, fallback string) (string, error) {
 
 func optionalEnv(key string) (string, error) {
 	value, ok := os.LookupEnv(key)
-	if !ok {
+	if !ok || value == "" {
 		return "", nil
-	}
-	if value == "" {
-		return "", fmt.Errorf("%w: %s cannot be empty", ErrInvalidConfig, key)
 	}
 	return value, nil
 }

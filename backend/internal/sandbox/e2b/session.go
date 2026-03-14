@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -101,6 +102,8 @@ func (s *session) Exec(ctx context.Context, request sandbox.ExecRequest) (sandbo
 	defer stream.Close()
 
 	result := sandbox.ExecResult{Metadata: map[string]string{}}
+	var stdout strings.Builder
+	var stderr strings.Builder
 	for stream.Receive() {
 		event := stream.Msg().GetEvent().GetEvent()
 		switch e := event.(type) {
@@ -108,9 +111,9 @@ func (s *session) Exec(ctx context.Context, request sandbox.ExecRequest) (sandbo
 			data := e.Data.GetOutput()
 			switch out := data.(type) {
 			case *processpb.ProcessEvent_DataEvent_Stdout:
-				result.Stdout += string(out.Stdout)
+				_, _ = stdout.Write(out.Stdout)
 			case *processpb.ProcessEvent_DataEvent_Stderr:
-				result.Stderr += string(out.Stderr)
+				_, _ = stderr.Write(out.Stderr)
 			}
 		case *processpb.ProcessEvent_End:
 			result.ExitCode = int(e.End.GetExitCode())
@@ -122,6 +125,8 @@ func (s *session) Exec(ctx context.Context, request sandbox.ExecRequest) (sandbo
 	if err := stream.Err(); err != nil {
 		return sandbox.ExecResult{}, normalizeRPCError(err)
 	}
+	result.Stdout = stdout.String()
+	result.Stderr = stderr.String()
 	return result, nil
 }
 
