@@ -172,6 +172,54 @@ func TestRunAgentWorkflowNativePathUsesProviderBoundary(t *testing.T) {
 	}
 }
 
+func TestNativeModelActivityOptionsUseRuntimeStepTimeout(t *testing.T) {
+	executionContext := nativeExecutionContext(uuid.New(), uuid.New())
+	executionContext.Deployment.RuntimeProfile.StepTimeoutSeconds = 42
+
+	options := nativeModelActivityOptions(executionContext)
+	if options.StartToCloseTimeout != 42*time.Second {
+		t.Fatalf("start to close timeout = %s, want %s", options.StartToCloseTimeout, 42*time.Second)
+	}
+	if options.RetryPolicy == nil || options.RetryPolicy.MaximumAttempts != defaultActivityOptions.RetryPolicy.MaximumAttempts {
+		t.Fatalf("retry policy = %#v, want maximum attempts %d", options.RetryPolicy, defaultActivityOptions.RetryPolicy.MaximumAttempts)
+	}
+}
+
+func TestExecuteNativeModelStepWrapsNonRetryableProviderFailures(t *testing.T) {
+	runAgentID := uuid.New()
+	executionContext := nativeExecutionContext(uuid.New(), runAgentID)
+	repo := newFakeRunRepository(
+		fixtureRun(executionContext.Run.ID, domain.RunStatusRunning),
+		fixtureRunAgent(executionContext.Run.ID, runAgentID, 0),
+	)
+	repo.setExecutionContext(runAgentID, executionContext)
+
+	activities := NewActivities(repo, FakeWorkHooks{
+		NativeModelInvoker: &fakeNativeModelInvoker{
+			err: provider.NewFailure("openai", provider.FailureCodeAuth, "bad api key", false, nil),
+		},
+	})
+
+	err := activities.ExecuteNativeModelStep(context.Background(), RunAgentWorkflowInput{
+		RunID:      executionContext.Run.ID,
+		RunAgentID: runAgentID,
+	})
+	if err == nil {
+		t.Fatalf("expected error")
+	}
+
+	var appErr *temporal.ApplicationError
+	if !errors.As(err, &appErr) {
+		t.Fatalf("expected temporal application error, got %T", err)
+	}
+	if !appErr.NonRetryable() {
+		t.Fatalf("expected non-retryable application error")
+	}
+	if appErr.Type() != providerFailureErrorTypePrefix+string(provider.FailureCodeAuth) {
+		t.Fatalf("error type = %q, want %q", appErr.Type(), providerFailureErrorTypePrefix+string(provider.FailureCodeAuth))
+	}
+}
+
 func TestRunAgentWorkflowHostedBlackBoxSuccess(t *testing.T) {
 	runID := uuid.New()
 	runAgentID := uuid.New()

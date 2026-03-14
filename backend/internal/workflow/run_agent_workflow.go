@@ -58,7 +58,7 @@ func runAgentWorkflow(ctx sdkworkflow.Context, input RunAgentWorkflowInput) erro
 	if err := transitionRunAgentStatus(ctx, input.RunAgentID, domain.RunAgentStatusExecuting, stringPtr("fake execution started"), nil); err != nil {
 		return err
 	}
-	if err := sdkworkflow.ExecuteActivity(ctx, executeNativeModelStepActivityName, input).Get(ctx, nil); err != nil {
+	if err := executeNativeModelStep(ctx, input, executionContext).Get(ctx, nil); err != nil {
 		return err
 	}
 	if err := sdkworkflow.Sleep(ctx, fakeStageDelay); err != nil {
@@ -78,6 +78,22 @@ func runAgentWorkflow(ctx sdkworkflow.Context, input RunAgentWorkflowInput) erro
 	}
 
 	return nil
+}
+
+func executeNativeModelStep(ctx sdkworkflow.Context, input RunAgentWorkflowInput, executionContext repository.RunAgentExecutionContext) sdkworkflow.Future {
+	return sdkworkflow.ExecuteActivity(
+		sdkworkflow.WithActivityOptions(ctx, nativeModelActivityOptions(executionContext)),
+		executeNativeModelStepActivityName,
+		input,
+	)
+}
+
+func nativeModelActivityOptions(executionContext repository.RunAgentExecutionContext) sdkworkflow.ActivityOptions {
+	options := defaultActivityOptions
+	if executionContext.Deployment.RuntimeProfile.StepTimeoutSeconds > 0 {
+		options.StartToCloseTimeout = time.Duration(executionContext.Deployment.RuntimeProfile.StepTimeoutSeconds) * time.Second
+	}
+	return options
 }
 
 func runHostedRunAgent(ctx sdkworkflow.Context, input RunAgentWorkflowInput, executionContext repository.RunAgentExecutionContext) error {

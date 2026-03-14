@@ -65,7 +65,7 @@ func (i NativeModelInvoker) InvokeNativeModel(ctx context.Context, executionCont
 				Content: string(payload),
 			},
 		},
-		Metadata: cloneJSON(executionContext.Deployment.SnapshotConfig),
+		Metadata: append(json.RawMessage(nil), executionContext.Deployment.SnapshotConfig...),
 	})
 }
 
@@ -74,13 +74,4 @@ func stepTimeout(executionContext repository.RunAgentExecutionContext) time.Dura
 		return 0
 	}
 	return time.Duration(executionContext.Deployment.RuntimeProfile.StepTimeoutSeconds) * time.Second
-}
-
-func cloneJSON(value json.RawMessage) json.RawMessage {
-	if len(value) == 0 {
-		return nil
-	}
-	cloned := make([]byte, len(value))
-	copy(cloned, value)
-	return cloned
 }

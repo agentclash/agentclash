@@ -56,3 +56,29 @@ func TestRouterReturnsUnsupportedProviderFailure(t *testing.T) {
 		t.Fatalf("error does not wrap ErrUnsupportedProvider: %v", err)
 	}
 }
+
+func TestEnvCredentialResolverSupportsSecretReferences(t *testing.T) {
+	t.Setenv("AGENTCLASH_SECRET_OPENAI", "secret-value")
+
+	resolver := EnvCredentialResolver{}
+	value, err := resolver.Resolve(context.Background(), "secret://openai")
+	if err != nil {
+		t.Fatalf("Resolve returned error: %v", err)
+	}
+	if value != "secret-value" {
+		t.Fatalf("value = %q, want secret-value", value)
+	}
+}
+
+func TestEnvCredentialResolverSupportsEnvReferences(t *testing.T) {
+	t.Setenv("OPENAI_API_KEY", "env-value")
+
+	resolver := EnvCredentialResolver{}
+	value, err := resolver.Resolve(context.Background(), "env://OPENAI_API_KEY")
+	if err != nil {
+		t.Fatalf("Resolve returned error: %v", err)
+	}
+	if value != "env-value" {
+		t.Fatalf("value = %q, want env-value", value)
+	}
+}

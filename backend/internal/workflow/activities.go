@@ -37,6 +37,7 @@ const (
 	repositoryTemporalIDConflictType     = "repository.ErrTemporalIDConflict"
 	repositoryInvalidTransitionType      = "repository.ErrInvalidTransition"
 	repositoryTransitionConflictType     = "repository.ErrTransitionConflict"
+	providerFailureErrorTypePrefix       = "provider."
 )
 
 type FakeWorkHooks struct {
@@ -264,7 +265,7 @@ func (a *Activities) ExecuteNativeModelStep(ctx context.Context, input RunAgentW
 	}
 
 	_, err = a.hooks.NativeModelInvoker.InvokeNativeModel(ctx, executionContext)
-	return err
+	return wrapActivityError(err)
 }
 
 func (a *Activities) SimulateExecution(ctx context.Context, input RunAgentWorkflowInput) error {
@@ -311,6 +312,13 @@ func wrapActivityError(err error) error {
 	case errors.Is(err, repository.ErrTransitionConflict):
 		return temporal.NewNonRetryableApplicationError(err.Error(), repositoryTransitionConflictType, err)
 	default:
+		if failure, ok := provider.AsFailure(err); ok {
+			errorType := providerFailureErrorTypePrefix + string(failure.Code)
+			if !failure.Retryable {
+				return temporal.NewNonRetryableApplicationError(failure.Error(), errorType, err)
+			}
+			return temporal.NewApplicationError(failure.Error(), errorType, err)
+		}
 		return err
 	}
 }
