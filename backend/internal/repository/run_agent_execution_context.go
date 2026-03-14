@@ -26,6 +26,18 @@ type ChallengePackVersionExecutionContext struct {
 	VersionNumber    int32
 	ManifestChecksum string
 	Manifest         json.RawMessage
+	Challenges       []ChallengeDefinitionExecutionContext
+}
+
+type ChallengeDefinitionExecutionContext struct {
+	ID                  uuid.UUID       `json:"id"`
+	ChallengeIdentityID uuid.UUID       `json:"challenge_identity_id"`
+	ChallengeKey        string          `json:"challenge_key"`
+	ExecutionOrder      int32           `json:"execution_order"`
+	Title               string          `json:"title"`
+	Category            string          `json:"category"`
+	Difficulty          string          `json:"difficulty"`
+	Definition          json.RawMessage `json:"definition"`
 }
 
 type ChallengeInputSetExecutionContext struct {
@@ -35,6 +47,15 @@ type ChallengeInputSetExecutionContext struct {
 	Name                   string
 	Description            *string
 	InputChecksum          string
+	Items                  []ChallengeInputItemExecutionContext
+}
+
+type ChallengeInputItemExecutionContext struct {
+	ID                  uuid.UUID       `json:"id"`
+	ChallengeIdentityID uuid.UUID       `json:"challenge_identity_id"`
+	ChallengeKey        string          `json:"challenge_key"`
+	ItemKey             string          `json:"item_key"`
+	Payload             json.RawMessage `json:"payload"`
 }
 
 type AgentDeploymentExecutionContext struct {
@@ -46,9 +67,17 @@ type AgentDeploymentExecutionContext struct {
 	EndpointURL               *string
 	SnapshotHash              string
 	SnapshotConfig            json.RawMessage
+	AgentBuildVersion         AgentBuildVersionExecutionContext
 	RuntimeProfile            RuntimeProfileExecutionContext
 	ProviderAccount           *ProviderAccountExecutionContext
 	ModelAlias                *ModelAliasExecutionContext
+}
+
+type AgentBuildVersionExecutionContext struct {
+	ID              uuid.UUID
+	PromptSpec      *string
+	BuildDefinition json.RawMessage
+	OutputSchema    json.RawMessage
 }
 
 type RuntimeProfileExecutionContext struct {
@@ -192,6 +221,26 @@ func mapRunAgentExecutionContext(row repositorysqlc.GetRunAgentExecutionContextB
 		}
 	}
 
+	challengeDefinitionsJSON, err := decodeExecutionContextJSON("challenge_pack_challenges", row.ChallengePackChallenges)
+	if err != nil {
+		return RunAgentExecutionContext{}, err
+	}
+
+	var challengeDefinitions []ChallengeDefinitionExecutionContext
+	if err := json.Unmarshal(challengeDefinitionsJSON, &challengeDefinitions); err != nil {
+		return RunAgentExecutionContext{}, fmt.Errorf("decode challenge pack challenges: %w", err)
+	}
+
+	challengeInputItemsJSON, err := decodeExecutionContextJSON("challenge_input_set_items", row.ChallengeInputSetItems)
+	if err != nil {
+		return RunAgentExecutionContext{}, err
+	}
+
+	var challengeInputItems []ChallengeInputItemExecutionContext
+	if err := json.Unmarshal(challengeInputItemsJSON, &challengeInputItems); err != nil {
+		return RunAgentExecutionContext{}, fmt.Errorf("decode challenge input set items: %w", err)
+	}
+
 	executionContext := RunAgentExecutionContext{
 		Run: domain.Run{
 			ID:                     row.RunID,
@@ -237,6 +286,7 @@ func mapRunAgentExecutionContext(row repositorysqlc.GetRunAgentExecutionContextB
 			VersionNumber:    row.ChallengePackVersionNumber,
 			ManifestChecksum: row.ChallengePackManifestChecksum,
 			Manifest:         cloneJSON(row.ChallengePackManifest),
+			Challenges:       challengeDefinitions,
 		},
 		Deployment: AgentDeploymentExecutionContext{
 			AgentDeploymentID:         row.SnapshotAgentDeploymentID,
@@ -247,6 +297,12 @@ func mapRunAgentExecutionContext(row repositorysqlc.GetRunAgentExecutionContextB
 			EndpointURL:               cloneStringPtr(row.SnapshotEndpointUrl),
 			SnapshotHash:              row.SnapshotHash,
 			SnapshotConfig:            cloneJSON(row.SnapshotConfig),
+			AgentBuildVersion: AgentBuildVersionExecutionContext{
+				ID:              row.SnapshotSourceAgentBuildVersionID,
+				PromptSpec:      cloneStringPtr(row.AgentBuildVersionPromptSpec),
+				BuildDefinition: cloneJSON(row.AgentBuildVersionBuildDefinition),
+				OutputSchema:    cloneJSON(row.AgentBuildVersionOutputSchema),
+			},
 			RuntimeProfile: RuntimeProfileExecutionContext{
 				ID:                 row.RuntimeProfileID,
 				Name:               row.RuntimeProfileName,
@@ -271,6 +327,7 @@ func mapRunAgentExecutionContext(row repositorysqlc.GetRunAgentExecutionContextB
 			Name:                   *row.ChallengeInputSetName,
 			Description:            cloneStringPtr(row.ChallengeInputSetDescription),
 			InputChecksum:          *row.ChallengeInputSetInputChecksum,
+			Items:                  challengeInputItems,
 		}
 	}
 
@@ -307,4 +364,17 @@ func mapRunAgentExecutionContext(row repositorysqlc.GetRunAgentExecutionContextB
 	}
 
 	return executionContext, nil
+}
+
+func decodeExecutionContextJSON(field string, value interface{}) ([]byte, error) {
+	switch typed := value.(type) {
+	case nil:
+		return []byte("null"), nil
+	case []byte:
+		return append([]byte(nil), typed...), nil
+	case string:
+		return []byte(typed), nil
+	default:
+		return nil, fmt.Errorf("unsupported %s type %T", field, value)
+	}
 }

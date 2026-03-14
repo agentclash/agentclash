@@ -2,148 +2,93 @@ package worker
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"reflect"
 	"testing"
+	"time"
 
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/domain"
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/engine"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/provider"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/sandbox"
 	"github.com/google/uuid"
 )
 
-func TestNativeModelInvokerPreparesSandboxAndInvokesProvider(t *testing.T) {
-	session := sandbox.NewFakeSession("sandbox-1")
-	fakeSandboxProvider := &sandbox.FakeProvider{
-		NextSession: session,
-	}
-	fakeProviderClient := &observingProviderClient{
-		t:       t,
-		session: session,
-		response: provider.Response{
-			ProviderKey:     "openai",
-			ProviderModelID: "gpt-4.1",
-			OutputText:      "ok",
-		},
-	}
-
-	invoker := NewNativeModelInvoker(fakeProviderClient, fakeSandboxProvider)
-	executionContext := nativeModelExecutionContext()
-
-	response, err := invoker.InvokeNativeModel(context.Background(), executionContext)
-	if err != nil {
-		t.Fatalf("InvokeNativeModel returned error: %v", err)
-	}
-	if response.OutputText != "ok" {
-		t.Fatalf("response output = %q, want ok", response.OutputText)
-	}
-	if fakeProviderClient.callCount != 1 {
-		t.Fatalf("provider request count = %d, want 1", fakeProviderClient.callCount)
-	}
-	if len(fakeSandboxProvider.CreateRequests) != 1 {
-		t.Fatalf("sandbox create count = %d, want 1", len(fakeSandboxProvider.CreateRequests))
-	}
-
-	createRequest := fakeSandboxProvider.CreateRequests[0]
-	if createRequest.RunAgentID != executionContext.RunAgent.ID {
-		t.Fatalf("run agent id = %s, want %s", createRequest.RunAgentID, executionContext.RunAgent.ID)
-	}
-	if createRequest.ToolPolicy.AllowNetwork {
-		t.Fatalf("allow_network = true, want false")
-	}
-	if createRequest.ToolPolicy.AllowShell {
-		t.Fatalf("allow_shell = true, want false")
-	}
-	if createRequest.ToolPolicy.MaxToolCalls != executionContext.Deployment.RuntimeProfile.MaxToolCalls {
-		t.Fatalf("max_tool_calls = %d, want %d", createRequest.ToolPolicy.MaxToolCalls, executionContext.Deployment.RuntimeProfile.MaxToolCalls)
-	}
-	if !reflect.DeepEqual(createRequest.ToolPolicy.AllowedToolKinds, []string{"file", "search"}) {
-		t.Fatalf("allowed_tool_kinds = %v, want [file search]", createRequest.ToolPolicy.AllowedToolKinds)
-	}
-	if createRequest.Filesystem.WorkingDirectory != "/workspace/native" {
-		t.Fatalf("working_directory = %q, want /workspace/native", createRequest.Filesystem.WorkingDirectory)
-	}
-	if !reflect.DeepEqual(createRequest.Filesystem.ReadableRoots, []string{"/workspace/native", "/tmp"}) {
-		t.Fatalf("readable_roots = %v, want [/workspace/native /tmp]", createRequest.Filesystem.ReadableRoots)
-	}
-	if !reflect.DeepEqual(createRequest.Filesystem.WritableRoots, []string{"/workspace/native"}) {
-		t.Fatalf("writable_roots = %v, want [/workspace/native]", createRequest.Filesystem.WritableRoots)
-	}
-	if createRequest.Filesystem.MaxWorkspaceBytes != 2048 {
-		t.Fatalf("max_workspace_bytes = %d, want 2048", createRequest.Filesystem.MaxWorkspaceBytes)
-	}
-
-	files := session.Files()
-	content, ok := files["/workspace/agentclash/run-context.json"]
-	if !ok {
-		t.Fatalf("run-context.json was not uploaded: %v", files)
-	}
-
-	var payload map[string]any
-	if err := json.Unmarshal(content, &payload); err != nil {
-		t.Fatalf("unmarshal run-context.json returned error: %v", err)
-	}
-	if payload["run_agent_id"] != executionContext.RunAgent.ID.String() {
-		t.Fatalf("run_context run_agent_id = %v, want %s", payload["run_agent_id"], executionContext.RunAgent.ID)
-	}
-	if session.DestroyCalls() != 1 {
-		t.Fatalf("DestroyCalls = %d, want 1", session.DestroyCalls())
-	}
-}
-
-func TestNativeModelInvokerReturnsDestroyErrorAfterProviderCall(t *testing.T) {
-	session := sandbox.NewFakeSession("sandbox-2")
-	session.SetDestroyError(errors.New("sandbox cleanup failed"))
-	fakeSandboxProvider := &sandbox.FakeProvider{
-		NextSession: session,
-	}
-	fakeProviderClient := &provider.FakeClient{
+func TestNativeModelInvokerDelegatesToEngine(t *testing.T) {
+	session := sandbox.NewFakeSession("sandbox-worker")
+	client := &provider.FakeClient{
 		Response: provider.Response{
 			ProviderKey:     "openai",
 			ProviderModelID: "gpt-4.1",
-			OutputText:      "ok",
+			FinishReason:    "tool_calls",
+			ToolCalls: []provider.ToolCall{
+				{
+					ID:        "submit-1",
+					Name:      "submit",
+					Arguments: []byte(`{"answer":"worker result"}`),
+				},
+			},
 		},
 	}
 
-	invoker := NewNativeModelInvoker(fakeProviderClient, fakeSandboxProvider)
-
-	_, err := invoker.InvokeNativeModel(context.Background(), nativeModelExecutionContext())
-	if err == nil {
-		t.Fatalf("expected destroy error")
+	invoker := NewNativeModelInvoker(client, &sandbox.FakeProvider{NextSession: session})
+	result, err := invoker.InvokeNativeModel(context.Background(), nativeModelExecutionContext())
+	if err != nil {
+		t.Fatalf("InvokeNativeModel returned error: %v", err)
 	}
-	if err.Error() != "destroy native sandbox: sandbox cleanup failed" {
-		t.Fatalf("error = %q, want destroy error", err.Error())
+	if result.StopReason != engine.StopReasonCompleted {
+		t.Fatalf("stop reason = %s, want completed", result.StopReason)
 	}
-	if len(fakeProviderClient.Requests) != 1 {
-		t.Fatalf("provider request count = %d, want 1", len(fakeProviderClient.Requests))
+	if result.FinalOutput != "worker result" {
+		t.Fatalf("final output = %q, want worker result", result.FinalOutput)
+	}
+	if len(client.Requests) != 1 {
+		t.Fatalf("provider request count = %d, want 1", len(client.Requests))
+	}
+	if session.DestroyCalls() != 1 {
+		t.Fatalf("destroy calls = %d, want 1", session.DestroyCalls())
 	}
 }
 
 func TestNativeModelInvokerFailsClosedWhenSandboxProviderIsMissing(t *testing.T) {
-	fakeProviderClient := &provider.FakeClient{}
-	invoker := NewNativeModelInvoker(fakeProviderClient, sandbox.UnconfiguredProvider{})
+	invoker := NewNativeModelInvoker(&provider.FakeClient{}, sandbox.UnconfiguredProvider{})
 
 	_, err := invoker.InvokeNativeModel(context.Background(), nativeModelExecutionContext())
+	if err == nil {
+		t.Fatalf("expected sandbox failure")
+	}
+
+	failure, ok := engine.AsFailure(err)
+	if !ok {
+		t.Fatalf("expected engine failure, got %T", err)
+	}
+	if failure.StopReason != engine.StopReasonSandboxError {
+		t.Fatalf("stop reason = %s, want sandbox_error", failure.StopReason)
+	}
 	if !errors.Is(err, sandbox.ErrProviderNotConfigured) {
 		t.Fatalf("error = %v, want ErrProviderNotConfigured", err)
-	}
-	if len(fakeProviderClient.Requests) != 0 {
-		t.Fatalf("provider request count = %d, want 0", len(fakeProviderClient.Requests))
 	}
 }
 
 func nativeModelExecutionContext() repository.RunAgentExecutionContext {
 	runID := uuid.New()
 	runAgentID := uuid.New()
+	promptSpec := "Use tools and submit when finished."
 
 	return repository.RunAgentExecutionContext{
-		Run:      repositoryRun(runID),
-		RunAgent: repositoryRunAgent(runID, runAgentID),
+		Run: domain.Run{
+			ID: runID,
+		},
+		RunAgent: domain.RunAgent{
+			ID:        runAgentID,
+			RunID:     runID,
+			Status:    domain.RunAgentStatusQueued,
+			CreatedAt: time.Now().UTC(),
+			UpdatedAt: time.Now().UTC(),
+		},
 		ChallengePackVersion: repository.ChallengePackVersionExecutionContext{
 			ID:       uuid.New(),
-			Manifest: []byte(`{"challenge":"fixture","tool_policy":{"allowed_tool_kinds":["file","search"]}}`),
+			Manifest: []byte(`{"challenge":"fixture","tool_policy":{"allowed_tool_kinds":["file"]}}`),
 		},
 		ChallengeInputSet: &repository.ChallengeInputSetExecutionContext{
 			ID:            uuid.New(),
@@ -154,11 +99,18 @@ func nativeModelExecutionContext() repository.RunAgentExecutionContext {
 		Deployment: repository.AgentDeploymentExecutionContext{
 			DeploymentType: "native",
 			SnapshotConfig: []byte(`{"entrypoint":"runner"}`),
+			AgentBuildVersion: repository.AgentBuildVersionExecutionContext{
+				ID:         uuid.New(),
+				PromptSpec: &promptSpec,
+			},
 			RuntimeProfile: repository.RuntimeProfileExecutionContext{
-				ExecutionTarget: "native",
-				TraceMode:       "preferred",
-				MaxToolCalls:    7,
-				ProfileConfig:   []byte(`{"sandbox":{"provider":"fake","working_directory":"/workspace/native","readable_roots":["/workspace/native","/tmp"],"writable_roots":["/workspace/native"],"max_workspace_bytes":2048}}`),
+				ExecutionTarget:    "native",
+				TraceMode:          "preferred",
+				MaxIterations:      2,
+				MaxToolCalls:       2,
+				StepTimeoutSeconds: 1,
+				RunTimeoutSeconds:  5,
+				ProfileConfig:      []byte(`{"sandbox":{"working_directory":"/workspace","readable_roots":["/workspace"],"writable_roots":["/workspace"]}}`),
 			},
 			ProviderAccount: &repository.ProviderAccountExecutionContext{
 				ID:                  uuid.New(),
@@ -172,39 +124,4 @@ func nativeModelExecutionContext() repository.RunAgentExecutionContext {
 			},
 		},
 	}
-}
-
-func repositoryRun(runID uuid.UUID) domain.Run {
-	return domain.Run{
-		ID: runID,
-	}
-}
-
-func repositoryRunAgent(runID uuid.UUID, runAgentID uuid.UUID) domain.RunAgent {
-	return domain.RunAgent{
-		ID:    runAgentID,
-		RunID: runID,
-	}
-}
-
-type observingProviderClient struct {
-	t         *testing.T
-	session   *sandbox.FakeSession
-	response  provider.Response
-	callCount int
-}
-
-func (c *observingProviderClient) InvokeModel(_ context.Context, request provider.Request) (provider.Response, error) {
-	c.callCount++
-	if c.session.DestroyCalls() != 0 {
-		c.t.Fatalf("sandbox destroyed before provider invocation")
-	}
-	files := c.session.Files()
-	if _, ok := files["/workspace/agentclash/run-context.json"]; !ok {
-		c.t.Fatalf("sandbox context file missing during provider invocation: %v", files)
-	}
-	if len(request.Messages) < 2 || request.Messages[1].Content == "" {
-		c.t.Fatalf("provider request user payload was empty")
-	}
-	return c.response, nil
 }

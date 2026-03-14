@@ -39,14 +39,9 @@ func (c OpenAICompatibleClient) InvokeModel(ctx context.Context, request Request
 		return Response{}, normalizeCredentialError(request.ProviderKey, err)
 	}
 
-	body := struct {
-		Model    string          `json:"model"`
-		Messages []Message       `json:"messages"`
-		Metadata json.RawMessage `json:"metadata,omitempty"`
-	}{
-		Model:    request.Model,
-		Messages: request.Messages,
-		Metadata: request.Metadata,
+	body, err := buildOpenAIRequestBody(request)
+	if err != nil {
+		return Response{}, err
 	}
 
 	payload, err := json.Marshal(body)
@@ -91,11 +86,22 @@ func (c OpenAICompatibleClient) InvokeModel(ctx context.Context, request Request
 		return Response{}, NewFailure(request.ProviderKey, FailureCodeMalformedResponse, "provider response must contain exactly one choice", false, nil)
 	}
 
+	toolCalls, err := normalizeOpenAIToolCalls(request.ProviderKey, completion.Choices[0].Message.ToolCalls)
+	if err != nil {
+		return Response{}, err
+	}
+
+	outputText := ""
+	if completion.Choices[0].Message.Content != nil {
+		outputText = *completion.Choices[0].Message.Content
+	}
+
 	return Response{
 		ProviderKey:     request.ProviderKey,
 		ProviderModelID: completion.Model,
 		FinishReason:    completion.Choices[0].FinishReason,
-		OutputText:      completion.Choices[0].Message.Content,
+		OutputText:      outputText,
+		ToolCalls:       toolCalls,
 		Usage: Usage{
 			InputTokens:  completion.Usage.PromptTokens,
 			OutputTokens: completion.Usage.CompletionTokens,
@@ -105,13 +111,170 @@ func (c OpenAICompatibleClient) InvokeModel(ctx context.Context, request Request
 	}, nil
 }
 
+func buildOpenAIRequestBody(request Request) (openAICompletionRequest, error) {
+	messages := make([]openAIRequestMessage, 0, len(request.Messages))
+	for _, message := range request.Messages {
+		normalized, err := normalizeOpenAIRequestMessage(request.ProviderKey, message)
+		if err != nil {
+			return openAICompletionRequest{}, err
+		}
+		messages = append(messages, normalized)
+	}
+
+	tools := make([]openAIRequestTool, 0, len(request.Tools))
+	for _, tool := range request.Tools {
+		normalized, err := normalizeOpenAIRequestTool(request.ProviderKey, tool)
+		if err != nil {
+			return openAICompletionRequest{}, err
+		}
+		tools = append(tools, normalized)
+	}
+
+	return openAICompletionRequest{
+		Model:    request.Model,
+		Messages: messages,
+		Tools:    tools,
+		Metadata: request.Metadata,
+	}, nil
+}
+
+func normalizeOpenAIRequestMessage(providerKey string, message Message) (openAIRequestMessage, error) {
+	toolCalls := make([]openAIResponseToolCall, 0, len(message.ToolCalls))
+	for _, toolCall := range message.ToolCalls {
+		normalized, err := normalizeOpenAIResponseToolCall(providerKey, toolCall)
+		if err != nil {
+			return openAIRequestMessage{}, err
+		}
+		toolCalls = append(toolCalls, normalized)
+	}
+
+	return openAIRequestMessage{
+		Role:       message.Role,
+		Content:    normalizeOpenAIContent(message),
+		ToolCalls:  toolCalls,
+		ToolCallID: message.ToolCallID,
+	}, nil
+}
+
+func normalizeOpenAIContent(message Message) *string {
+	if message.Content != "" {
+		content := message.Content
+		return &content
+	}
+	if message.Role == "assistant" && len(message.ToolCalls) > 0 {
+		return nil
+	}
+	content := ""
+	return &content
+}
+
+func normalizeOpenAIRequestTool(providerKey string, tool ToolDefinition) (openAIRequestTool, error) {
+	parameters := tool.Parameters
+	if len(parameters) == 0 {
+		parameters = json.RawMessage(`{"type":"object","properties":{},"additionalProperties":false}`)
+	}
+	if !json.Valid(parameters) {
+		return openAIRequestTool{}, NewFailure(providerKey, FailureCodeInvalidRequest, fmt.Sprintf("tool %q parameters must be valid JSON", tool.Name), false, nil)
+	}
+
+	return openAIRequestTool{
+		Type: "function",
+		Function: openAIFunctionDefinition{
+			Name:        tool.Name,
+			Description: tool.Description,
+			Parameters:  append(json.RawMessage(nil), parameters...),
+		},
+	}, nil
+}
+
+func normalizeOpenAIResponseToolCall(providerKey string, toolCall ToolCall) (openAIResponseToolCall, error) {
+	arguments := toolCall.Arguments
+	if len(arguments) == 0 {
+		arguments = json.RawMessage(`{}`)
+	}
+	if !json.Valid(arguments) {
+		return openAIResponseToolCall{}, NewFailure(providerKey, FailureCodeInvalidRequest, fmt.Sprintf("tool call %q arguments must be valid JSON", toolCall.Name), false, nil)
+	}
+
+	return openAIResponseToolCall{
+		ID:   toolCall.ID,
+		Type: "function",
+		Function: openAIFunctionCall{
+			Name:      toolCall.Name,
+			Arguments: string(arguments),
+		},
+	}, nil
+}
+
+func normalizeOpenAIToolCalls(providerKey string, toolCalls []openAIResponseToolCall) ([]ToolCall, error) {
+	normalized := make([]ToolCall, 0, len(toolCalls))
+	for _, toolCall := range toolCalls {
+		if toolCall.Type != "" && toolCall.Type != "function" {
+			return nil, NewFailure(providerKey, FailureCodeMalformedResponse, fmt.Sprintf("unsupported OpenAI tool call type %q", toolCall.Type), false, nil)
+		}
+
+		arguments := strings.TrimSpace(toolCall.Function.Arguments)
+		if arguments == "" {
+			arguments = `{}`
+		}
+		rawArguments := json.RawMessage(arguments)
+		if !json.Valid(rawArguments) {
+			return nil, NewFailure(providerKey, FailureCodeMalformedResponse, fmt.Sprintf("tool call %q returned invalid JSON arguments", toolCall.Function.Name), false, nil)
+		}
+
+		normalized = append(normalized, ToolCall{
+			ID:        toolCall.ID,
+			Name:      toolCall.Function.Name,
+			Arguments: append(json.RawMessage(nil), rawArguments...),
+		})
+	}
+	return normalized, nil
+}
+
+type openAICompletionRequest struct {
+	Model    string                 `json:"model"`
+	Messages []openAIRequestMessage `json:"messages"`
+	Tools    []openAIRequestTool    `json:"tools,omitempty"`
+	Metadata json.RawMessage        `json:"metadata,omitempty"`
+}
+
+type openAIRequestMessage struct {
+	Role       string                   `json:"role"`
+	Content    *string                  `json:"content"`
+	ToolCalls  []openAIResponseToolCall `json:"tool_calls,omitempty"`
+	ToolCallID string                   `json:"tool_call_id,omitempty"`
+}
+
+type openAIRequestTool struct {
+	Type     string                   `json:"type"`
+	Function openAIFunctionDefinition `json:"function"`
+}
+
+type openAIFunctionDefinition struct {
+	Name        string          `json:"name"`
+	Description string          `json:"description,omitempty"`
+	Parameters  json.RawMessage `json:"parameters"`
+}
+
+type openAIResponseToolCall struct {
+	ID       string             `json:"id"`
+	Type     string             `json:"type"`
+	Function openAIFunctionCall `json:"function"`
+}
+
+type openAIFunctionCall struct {
+	Name      string `json:"name"`
+	Arguments string `json:"arguments"`
+}
+
 type openAICompletionResponse struct {
 	Model   string `json:"model"`
 	Choices []struct {
 		FinishReason string `json:"finish_reason"`
 		Message      struct {
-			Role    string `json:"role"`
-			Content string `json:"content"`
+			Role      string                   `json:"role"`
+			Content   *string                  `json:"content"`
+			ToolCalls []openAIResponseToolCall `json:"tool_calls"`
 		} `json:"message"`
 	} `json:"choices"`
 	Usage struct {
