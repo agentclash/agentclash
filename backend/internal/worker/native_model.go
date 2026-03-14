@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -23,7 +24,7 @@ func NewNativeModelInvoker(client provider.Client, sandboxProvider sandbox.Provi
 	}
 }
 
-func (i NativeModelInvoker) InvokeNativeModel(ctx context.Context, executionContext repository.RunAgentExecutionContext) (provider.Response, error) {
+func (i NativeModelInvoker) InvokeNativeModel(ctx context.Context, executionContext repository.RunAgentExecutionContext) (response provider.Response, err error) {
 	if executionContext.Deployment.ProviderAccount == nil {
 		return provider.Response{}, provider.NewFailure(
 			"",
@@ -43,9 +44,23 @@ func (i NativeModelInvoker) InvokeNativeModel(ctx context.Context, executionCont
 		)
 	}
 
-	if err := i.prepareNativeSandbox(ctx, executionContext); err != nil {
+	session, err := i.prepareNativeSandbox(ctx, executionContext)
+	if err != nil {
 		return provider.Response{}, err
 	}
+	defer func() {
+		if session == nil {
+			return
+		}
+		if destroyErr := session.Destroy(ctx); destroyErr != nil {
+			wrapped := fmt.Errorf("destroy native sandbox: %w", destroyErr)
+			if err != nil {
+				err = errors.Join(err, wrapped)
+				return
+			}
+			err = wrapped
+		}
+	}()
 
 	payload, err := json.Marshal(map[string]any{
 		"run_id":                 executionContext.Run.ID,
@@ -57,7 +72,7 @@ func (i NativeModelInvoker) InvokeNativeModel(ctx context.Context, executionCont
 		return provider.Response{}, fmt.Errorf("marshal native model metadata: %w", err)
 	}
 
-	return i.client.InvokeModel(ctx, provider.Request{
+	response, err = i.client.InvokeModel(ctx, provider.Request{
 		ProviderKey:         executionContext.Deployment.ProviderAccount.ProviderKey,
 		ProviderAccountID:   executionContext.Deployment.ProviderAccount.ID.String(),
 		CredentialReference: executionContext.Deployment.ProviderAccount.CredentialReference,
@@ -76,6 +91,11 @@ func (i NativeModelInvoker) InvokeNativeModel(ctx context.Context, executionCont
 		},
 		Metadata: append(json.RawMessage(nil), executionContext.Deployment.SnapshotConfig...),
 	})
+	if err != nil {
+		return provider.Response{}, err
+	}
+
+	return response, nil
 }
 
 func stepTimeout(executionContext repository.RunAgentExecutionContext) time.Duration {
@@ -85,25 +105,39 @@ func stepTimeout(executionContext repository.RunAgentExecutionContext) time.Dura
 	return time.Duration(executionContext.Deployment.RuntimeProfile.StepTimeoutSeconds) * time.Second
 }
 
-func (i NativeModelInvoker) prepareNativeSandbox(ctx context.Context, executionContext repository.RunAgentExecutionContext) error {
+func (i NativeModelInvoker) prepareNativeSandbox(ctx context.Context, executionContext repository.RunAgentExecutionContext) (sandbox.Session, error) {
 	if i.sandboxProvider == nil {
-		return sandbox.ErrProviderNotConfigured
+		return nil, sandbox.ErrProviderNotConfigured
 	}
 
-	session, err := i.sandboxProvider.Create(ctx, nativeSandboxRequest(executionContext))
+	request, err := nativeSandboxRequest(executionContext)
 	if err != nil {
-		return fmt.Errorf("create native sandbox: %w", err)
+		return nil, fmt.Errorf("build native sandbox request: %w", err)
 	}
-	defer session.Destroy(ctx)
+
+	session, err := i.sandboxProvider.Create(ctx, request)
+	if err != nil {
+		return nil, fmt.Errorf("create native sandbox: %w", err)
+	}
 
 	payload, err := marshalSandboxRunContext(executionContext)
 	if err != nil {
-		return fmt.Errorf("marshal native sandbox context: %w", err)
+		return nil, cleanupSandboxOnError(ctx, session, fmt.Errorf("marshal native sandbox context: %w", err))
 	}
 
 	if err := session.UploadFile(ctx, "/workspace/agentclash/run-context.json", payload); err != nil {
-		return fmt.Errorf("upload native sandbox context: %w", err)
+		return nil, cleanupSandboxOnError(ctx, session, fmt.Errorf("upload native sandbox context: %w", err))
 	}
 
-	return nil
+	return session, nil
+}
+
+func cleanupSandboxOnError(ctx context.Context, session sandbox.Session, originalErr error) error {
+	if session == nil {
+		return originalErr
+	}
+	if destroyErr := session.Destroy(ctx); destroyErr != nil {
+		return errors.Join(originalErr, fmt.Errorf("destroy native sandbox: %w", destroyErr))
+	}
+	return originalErr
 }

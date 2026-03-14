@@ -2,6 +2,7 @@ package worker
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
@@ -10,7 +11,7 @@ import (
 
 const defaultSandboxWorkingDirectory = "/workspace"
 
-func nativeSandboxRequest(executionContext repository.RunAgentExecutionContext) sandbox.CreateRequest {
+func nativeSandboxRequest(executionContext repository.RunAgentExecutionContext) (sandbox.CreateRequest, error) {
 	policy := sandbox.ToolPolicy{
 		AllowedToolKinds: allowedToolKinds(executionContext.ChallengePackVersion.Manifest),
 		AllowShell:       false,
@@ -27,13 +28,18 @@ func nativeSandboxRequest(executionContext repository.RunAgentExecutionContext) 
 	applyChallengeSandboxPolicy(&policy, &filesystem, executionContext.ChallengePackVersion.Manifest)
 	applyRuntimeSandboxPolicy(&policy, &filesystem, executionContext.Deployment.RuntimeProfile.ProfileConfig)
 
+	metadata, err := sandboxMetadata(executionContext)
+	if err != nil {
+		return sandbox.CreateRequest{}, err
+	}
+
 	return sandbox.CreateRequest{
 		RunID:      executionContext.Run.ID,
 		RunAgentID: executionContext.RunAgent.ID,
 		ToolPolicy: policy,
 		Filesystem: filesystem,
-		Metadata:   sandboxMetadata(executionContext),
-	}
+		Metadata:   metadata,
+	}, nil
 }
 
 func allowedToolKinds(manifest json.RawMessage) []string {
@@ -135,7 +141,7 @@ func mergeFilesystem(filesystem *sandbox.FilesystemSpec, workingDirectory string
 	}
 }
 
-func sandboxMetadata(executionContext repository.RunAgentExecutionContext) json.RawMessage {
+func sandboxMetadata(executionContext repository.RunAgentExecutionContext) (json.RawMessage, error) {
 	type metadata struct {
 		ChallengePackVersion json.RawMessage `json:"challenge_pack_version,omitempty"`
 		RuntimeProfileConfig json.RawMessage `json:"runtime_profile_config,omitempty"`
@@ -148,9 +154,9 @@ func sandboxMetadata(executionContext repository.RunAgentExecutionContext) json.
 		DeploymentConfig:     cloneJSON(executionContext.Deployment.SnapshotConfig),
 	})
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("marshal sandbox metadata: %w", err)
 	}
-	return payload
+	return payload, nil
 }
 
 func marshalSandboxRunContext(executionContext repository.RunAgentExecutionContext) ([]byte, error) {

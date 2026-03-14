@@ -48,6 +48,7 @@ type FakeSession struct {
 	execErr       error
 	execFn        func(ExecRequest, map[string][]byte) (ExecResult, error)
 	destroyCalls  int
+	destroyErr    error
 	destroyed     bool
 }
 
@@ -146,7 +147,7 @@ func (s *FakeSession) Destroy(context.Context) error {
 
 	s.destroyCalls++
 	s.destroyed = true
-	return nil
+	return s.destroyErr
 }
 
 func (s *FakeSession) SetExecResult(result ExecResult) {
@@ -165,6 +166,12 @@ func (s *FakeSession) SetExecFunc(execFn func(ExecRequest, map[string][]byte) (E
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.execFn = execFn
+}
+
+func (s *FakeSession) SetDestroyError(err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.destroyErr = err
 }
 
 func (s *FakeSession) ExecCalls() []ExecRequest {

@@ -15,15 +15,18 @@ import (
 )
 
 func TestNativeModelInvokerPreparesSandboxAndInvokesProvider(t *testing.T) {
-	fakeProviderClient := &provider.FakeClient{
-		Response: provider.Response{
+	session := sandbox.NewFakeSession("sandbox-1")
+	fakeSandboxProvider := &sandbox.FakeProvider{
+		NextSession: session,
+	}
+	fakeProviderClient := &observingProviderClient{
+		t:       t,
+		session: session,
+		response: provider.Response{
 			ProviderKey:     "openai",
 			ProviderModelID: "gpt-4.1",
 			OutputText:      "ok",
 		},
-	}
-	fakeSandboxProvider := &sandbox.FakeProvider{
-		NextSession: sandbox.NewFakeSession("sandbox-1"),
 	}
 
 	invoker := NewNativeModelInvoker(fakeProviderClient, fakeSandboxProvider)
@@ -36,8 +39,8 @@ func TestNativeModelInvokerPreparesSandboxAndInvokesProvider(t *testing.T) {
 	if response.OutputText != "ok" {
 		t.Fatalf("response output = %q, want ok", response.OutputText)
 	}
-	if len(fakeProviderClient.Requests) != 1 {
-		t.Fatalf("provider request count = %d, want 1", len(fakeProviderClient.Requests))
+	if fakeProviderClient.callCount != 1 {
+		t.Fatalf("provider request count = %d, want 1", fakeProviderClient.callCount)
 	}
 	if len(fakeSandboxProvider.CreateRequests) != 1 {
 		t.Fatalf("sandbox create count = %d, want 1", len(fakeSandboxProvider.CreateRequests))
@@ -72,7 +75,6 @@ func TestNativeModelInvokerPreparesSandboxAndInvokesProvider(t *testing.T) {
 		t.Fatalf("max_workspace_bytes = %d, want 2048", createRequest.Filesystem.MaxWorkspaceBytes)
 	}
 
-	session := fakeSandboxProvider.Sessions[0]
 	files := session.Files()
 	content, ok := files["/workspace/agentclash/run-context.json"]
 	if !ok {
@@ -88,6 +90,34 @@ func TestNativeModelInvokerPreparesSandboxAndInvokesProvider(t *testing.T) {
 	}
 	if session.DestroyCalls() != 1 {
 		t.Fatalf("DestroyCalls = %d, want 1", session.DestroyCalls())
+	}
+}
+
+func TestNativeModelInvokerReturnsDestroyErrorAfterProviderCall(t *testing.T) {
+	session := sandbox.NewFakeSession("sandbox-2")
+	session.SetDestroyError(errors.New("sandbox cleanup failed"))
+	fakeSandboxProvider := &sandbox.FakeProvider{
+		NextSession: session,
+	}
+	fakeProviderClient := &provider.FakeClient{
+		Response: provider.Response{
+			ProviderKey:     "openai",
+			ProviderModelID: "gpt-4.1",
+			OutputText:      "ok",
+		},
+	}
+
+	invoker := NewNativeModelInvoker(fakeProviderClient, fakeSandboxProvider)
+
+	_, err := invoker.InvokeNativeModel(context.Background(), nativeModelExecutionContext())
+	if err == nil {
+		t.Fatalf("expected destroy error")
+	}
+	if err.Error() != "destroy native sandbox: sandbox cleanup failed" {
+		t.Fatalf("error = %q, want destroy error", err.Error())
+	}
+	if len(fakeProviderClient.Requests) != 1 {
+		t.Fatalf("provider request count = %d, want 1", len(fakeProviderClient.Requests))
 	}
 }
 
@@ -155,4 +185,26 @@ func repositoryRunAgent(runID uuid.UUID, runAgentID uuid.UUID) domain.RunAgent {
 		ID:    runAgentID,
 		RunID: runID,
 	}
+}
+
+type observingProviderClient struct {
+	t         *testing.T
+	session   *sandbox.FakeSession
+	response  provider.Response
+	callCount int
+}
+
+func (c *observingProviderClient) InvokeModel(_ context.Context, request provider.Request) (provider.Response, error) {
+	c.callCount++
+	if c.session.DestroyCalls() != 0 {
+		c.t.Fatalf("sandbox destroyed before provider invocation")
+	}
+	files := c.session.Files()
+	if _, ok := files["/workspace/agentclash/run-context.json"]; !ok {
+		c.t.Fatalf("sandbox context file missing during provider invocation: %v", files)
+	}
+	if len(request.Messages) < 2 || request.Messages[1].Content == "" {
+		c.t.Fatalf("provider request user payload was empty")
+	}
+	return c.response, nil
 }
