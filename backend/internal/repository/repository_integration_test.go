@@ -778,6 +778,20 @@ func TestRepositoryHostedAndNativeEventsCoexistInCanonicalReadModel(t *testing.T
 	fixture := seedFixture(t, ctx, db)
 	repo := repository.New(db)
 
+	hostedSummary, err := json.Marshal(map[string]any{
+		"mode":            "hosted_black_box",
+		"source":          string(runevents.SourceHostedExternal),
+		"schema_version":  runevents.SchemaVersionV1,
+		"last_event_type": string(runevents.EventTypeSystemRunCompleted),
+		"status":          "completed",
+		"external_run_id": "ext-123",
+		"idempotency_key": "hosted:1",
+		"raw_event_type":  "run_finished",
+	})
+	if err != nil {
+		t.Fatalf("marshal hosted summary: %v", err)
+	}
+
 	hostedReplay, err := repo.RecordHostedRunEvent(ctx, repository.RecordHostedRunEventParams{
 		Event: runevents.Envelope{
 			EventID:       "hosted:1",
@@ -795,7 +809,7 @@ func TestRepositoryHostedAndNativeEventsCoexistInCanonicalReadModel(t *testing.T
 				IdempotencyKey: "hosted:1",
 			},
 		},
-		Summary: []byte(`{"mode":"hosted_black_box","source":"hosted_external","schema_version":"2026-03-15","last_event_type":"system.run.completed","status":"completed","external_run_id":"ext-123","idempotency_key":"hosted:1","raw_event_type":"run_finished"}`),
+		Summary: hostedSummary,
 	})
 	if err != nil {
 		t.Fatalf("RecordHostedRunEvent returned error: %v", err)

@@ -102,7 +102,7 @@ func TestNormalizeHostedEventMapsErrorToCanonicalEnvelope(t *testing.T) {
 		ExternalRunID: "ext-error",
 		EventType:     hostedruns.EventTypeError,
 		OccurredAt:    time.Date(2026, 3, 15, 11, 22, 33, 0, time.UTC),
-		ErrorMessage:  cloneString("boom"),
+		ErrorMessage:  stringPtr("boom"),
 	}
 
 	envelope, err := NormalizeHostedEvent(runID, event)
@@ -127,7 +127,7 @@ func TestNormalizeHostedEventMapsFailedRunFinishedToCanonicalEnvelope(t *testing
 		EventType:     hostedruns.EventTypeRunFinished,
 		OccurredAt:    time.Date(2026, 3, 15, 11, 22, 33, 0, time.UTC),
 		FinalStatus:   &finalStatus,
-		ErrorMessage:  cloneString("failed"),
+		ErrorMessage:  stringPtr("failed"),
 	}
 
 	envelope, err := NormalizeHostedEvent(runID, event)
@@ -178,6 +178,6 @@ func TestEnvelopeValidatePendingAllowsEmptyPayload(t *testing.T) {
 	}
 }
 
-func cloneString(value string) *string {
+func stringPtr(value string) *string {
 	return &value
 }
