@@ -58,7 +58,11 @@ func main() {
 			RequestTimeout: cfg.Sandbox.E2B.RequestTimeout,
 		})
 	}
-	nativeModelInvoker := workerapp.NewNativeModelInvoker(providerRouter, sandboxProvider)
+	nativeModelInvoker := workerapp.NewNativeModelInvokerWithObserverFactory(
+		providerRouter,
+		sandboxProvider,
+		workerapp.NewNativeRunEventObserverFactory(repo),
+	)
 	temporalWorker := workerapp.NewTemporalWorker(temporalClient, cfg, repo, workflowpkg.FakeWorkHooks{
 		HostedRunStarter:   hostedRunClient,
 		NativeModelInvoker: nativeModelInvoker,

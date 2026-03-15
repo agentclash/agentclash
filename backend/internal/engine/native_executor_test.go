@@ -105,6 +105,43 @@ func TestNativeExecutorHappyPathWritesFileThenSubmits(t *testing.T) {
 	}
 }
 
+func TestNativeExecutorReturnsObserverErrorWhenObserverWriteFails(t *testing.T) {
+	session := sandbox.NewFakeSession("sandbox-observer-error")
+	client := &scriptedProviderClient{
+		t: t,
+		steps: []providerStep{
+			{
+				response: provider.Response{
+					ProviderKey:     "openai",
+					ProviderModelID: "gpt-4.1",
+					FinishReason:    "tool_calls",
+					ToolCalls: []provider.ToolCall{
+						{
+							ID:        "call-submit",
+							Name:      submitToolName,
+							Arguments: []byte(`{"answer":"done"}`),
+						},
+					},
+				},
+			},
+		},
+	}
+
+	executor := NewNativeExecutor(client, &sandbox.FakeProvider{NextSession: session}, failingObserver{})
+	_, err := executor.Execute(context.Background(), nativeExecutionContext())
+	if err == nil {
+		t.Fatalf("expected observer error")
+	}
+
+	failure, ok := AsFailure(err)
+	if !ok {
+		t.Fatalf("expected engine failure, got %T", err)
+	}
+	if failure.StopReason != StopReasonObserverError {
+		t.Fatalf("stop reason = %s, want %s", failure.StopReason, StopReasonObserverError)
+	}
+}
+
 func TestNativeExecutorRecoversFromToolErrorAndEventuallySubmits(t *testing.T) {
 	session := sandbox.NewFakeSession("sandbox-recover")
 	client := &scriptedProviderClient{
@@ -444,6 +481,20 @@ type scriptedProviderClient struct {
 	steps    []providerStep
 	requests []provider.Request
 }
+
+type failingObserver struct{}
+
+func (failingObserver) OnStepStart(context.Context, int) error {
+	return errors.New("observer unavailable")
+}
+func (failingObserver) OnProviderCall(context.Context, provider.Request) error      { return nil }
+func (failingObserver) OnProviderResponse(context.Context, provider.Response) error { return nil }
+func (failingObserver) OnToolExecution(context.Context, provider.ToolCall, provider.ToolResult) error {
+	return nil
+}
+func (failingObserver) OnStepEnd(context.Context, int) error        { return nil }
+func (failingObserver) OnRunComplete(context.Context, Result) error { return nil }
+func (failingObserver) OnRunFailure(context.Context, error) error   { return nil }
 
 type providerStep struct {
 	validate       func(t *testing.T, request provider.Request)

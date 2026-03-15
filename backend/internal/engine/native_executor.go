@@ -38,6 +38,7 @@ const (
 	StopReasonToolLimit     StopReason = "tool_limit"
 	StopReasonProviderError StopReason = "provider_error"
 	StopReasonSandboxError  StopReason = "sandbox_error"
+	StopReasonObserverError StopReason = "observer_error"
 )
 
 type Result struct {
@@ -82,20 +83,26 @@ func AsFailure(err error) (Failure, bool) {
 }
 
 type Observer interface {
-	OnStepStart(step int)
-	OnProviderCall(request provider.Request)
-	OnProviderResponse(response provider.Response)
-	OnToolExecution(toolCall provider.ToolCall, result provider.ToolResult)
-	OnStepEnd(step int)
+	OnStepStart(ctx context.Context, step int) error
+	OnProviderCall(ctx context.Context, request provider.Request) error
+	OnProviderResponse(ctx context.Context, response provider.Response) error
+	OnToolExecution(ctx context.Context, toolCall provider.ToolCall, result provider.ToolResult) error
+	OnStepEnd(ctx context.Context, step int) error
+	OnRunComplete(ctx context.Context, result Result) error
+	OnRunFailure(ctx context.Context, err error) error
 }
 
 type NoopObserver struct{}
 
-func (NoopObserver) OnStepStart(int)                                        {}
-func (NoopObserver) OnProviderCall(provider.Request)                        {}
-func (NoopObserver) OnProviderResponse(provider.Response)                   {}
-func (NoopObserver) OnToolExecution(provider.ToolCall, provider.ToolResult) {}
-func (NoopObserver) OnStepEnd(int)                                          {}
+func (NoopObserver) OnStepStart(context.Context, int) error                      { return nil }
+func (NoopObserver) OnProviderCall(context.Context, provider.Request) error      { return nil }
+func (NoopObserver) OnProviderResponse(context.Context, provider.Response) error { return nil }
+func (NoopObserver) OnToolExecution(context.Context, provider.ToolCall, provider.ToolResult) error {
+	return nil
+}
+func (NoopObserver) OnStepEnd(context.Context, int) error        { return nil }
+func (NoopObserver) OnRunComplete(context.Context, Result) error { return nil }
+func (NoopObserver) OnRunFailure(context.Context, error) error   { return nil }
 
 type NativeExecutor struct {
 	client              provider.Client
@@ -119,6 +126,19 @@ func NewNativeExecutor(client provider.Client, sandboxProvider sandbox.Provider,
 }
 
 func (e NativeExecutor) Execute(ctx context.Context, executionContext repository.RunAgentExecutionContext) (result Result, err error) {
+	defer func() {
+		if err != nil {
+			if observerErr := e.observer.OnRunFailure(ctx, err); observerErr != nil {
+				err = errors.Join(err, NewFailure(StopReasonObserverError, "record native terminal failure event", observerErr))
+			}
+			return
+		}
+		if observerErr := e.observer.OnRunComplete(ctx, result); observerErr != nil {
+			result = Result{}
+			err = NewFailure(StopReasonObserverError, "record native terminal completion event", observerErr)
+		}
+	}()
+
 	if executionContext.Deployment.ProviderAccount == nil {
 		return Result{}, provider.NewFailure(
 			"",
@@ -211,7 +231,9 @@ func (e NativeExecutor) Execute(ctx context.Context, executionContext repository
 		}
 
 		state.stepCount++
-		e.observer.OnStepStart(state.stepCount)
+		if observerErr := e.observer.OnStepStart(runCtx, state.stepCount); observerErr != nil {
+			return Result{}, NewFailure(StopReasonObserverError, "record native step start event", observerErr)
+		}
 
 		request := provider.Request{
 			ProviderKey:         executionContext.Deployment.ProviderAccount.ProviderKey,
@@ -224,7 +246,9 @@ func (e NativeExecutor) Execute(ctx context.Context, executionContext repository
 			Tools:               cloneToolDefinitions(toolset.definitions),
 			Metadata:            metadata,
 		}
-		e.observer.OnProviderCall(request)
+		if observerErr := e.observer.OnProviderCall(runCtx, request); observerErr != nil {
+			return Result{}, NewFailure(StopReasonObserverError, "record native provider call event", observerErr)
+		}
 
 		response, invokeErr := e.invokeWithRetries(runCtx, request)
 		if invokeErr != nil {
@@ -247,7 +271,9 @@ func (e NativeExecutor) Execute(ctx context.Context, executionContext repository
 		}
 
 		state.usage = addUsage(state.usage, response.Usage)
-		e.observer.OnProviderResponse(response)
+		if observerErr := e.observer.OnProviderResponse(runCtx, response); observerErr != nil {
+			return Result{}, NewFailure(StopReasonObserverError, "record native provider response event", observerErr)
+		}
 
 		assistantMessage := provider.Message{
 			Role:      "assistant",
@@ -266,7 +292,9 @@ func (e NativeExecutor) Execute(ctx context.Context, executionContext repository
 			return Result{}, toolErr
 		}
 		state.messages = append(state.messages, toolMessages...)
-		e.observer.OnStepEnd(state.stepCount)
+		if observerErr := e.observer.OnStepEnd(runCtx, state.stepCount); observerErr != nil {
+			return Result{}, NewFailure(StopReasonObserverError, "record native step completion event", observerErr)
+		}
 
 		if completed {
 			return Result{
@@ -344,13 +372,17 @@ func (e NativeExecutor) executeToolCalls(
 		if toolCall.Name == submitToolName {
 			if len(toolCalls) != 1 {
 				result := errorToolResult(toolCall.ID, "submit must be called by itself")
-				e.observer.OnToolExecution(toolCall, result)
+				if observerErr := e.observer.OnToolExecution(ctx, toolCall, result); observerErr != nil {
+					return nil, "", false, toolCallsUsed, NewFailure(StopReasonObserverError, "record native tool event", observerErr)
+				}
 				toolMessages = append(toolMessages, toolMessage(result))
 				continue
 			}
 
 			answer, ok, result := parseSubmitToolCall(toolCall)
-			e.observer.OnToolExecution(toolCall, result)
+			if observerErr := e.observer.OnToolExecution(ctx, toolCall, result); observerErr != nil {
+				return nil, "", false, toolCallsUsed, NewFailure(StopReasonObserverError, "record native tool event", observerErr)
+			}
 			if !ok {
 				return append(toolMessages, toolMessage(result)), "", false, toolCallsUsed, nil
 			}
@@ -367,7 +399,9 @@ func (e NativeExecutor) executeToolCalls(
 			return nil, "", false, toolCallsUsed, hardErr
 		}
 		toolCallsUsed++
-		e.observer.OnToolExecution(toolCall, result)
+		if observerErr := e.observer.OnToolExecution(ctx, toolCall, result); observerErr != nil {
+			return nil, "", false, toolCallsUsed, NewFailure(StopReasonObserverError, "record native tool event", observerErr)
+		}
 		toolMessages = append(toolMessages, toolMessage(result))
 	}
 
