@@ -11,6 +11,7 @@ import (
 var (
 	ErrUnsupportedProvider   = errors.New("provider is not supported")
 	ErrCredentialUnavailable = errors.New("provider credential is unavailable")
+	ErrStreamingNotSupported = errors.New("provider streaming is not supported")
 )
 
 type Client interface {
@@ -62,6 +63,8 @@ type Response struct {
 	OutputText      string
 	ToolCalls       []ToolCall
 	Usage           Usage
+	Streamed        bool
+	Timing          Timing
 	RawResponse     json.RawMessage
 }
 
@@ -90,6 +93,7 @@ const (
 	FailureCodeMalformedResponse     FailureCode = "malformed_response"
 	FailureCodeCredentialUnavailable FailureCode = "credential_unavailable"
 	FailureCodeUnsupportedProvider   FailureCode = "unsupported_provider"
+	FailureCodeUnsupportedCapability FailureCode = "unsupported_capability"
 	FailureCodeUnknown               FailureCode = "unknown"
 )
 
@@ -151,4 +155,30 @@ func (r Router) InvokeModel(ctx context.Context, request Request) (Response, err
 	}
 
 	return adapter.InvokeModel(ctx, request)
+}
+
+func (r Router) StreamModel(ctx context.Context, request Request, onDelta func(StreamDelta) error) (Response, error) {
+	adapter, ok := r.adapters[request.ProviderKey]
+	if !ok {
+		return Response{}, NewFailure(
+			request.ProviderKey,
+			FailureCodeUnsupportedProvider,
+			fmt.Sprintf("provider %q is not supported", request.ProviderKey),
+			false,
+			ErrUnsupportedProvider,
+		)
+	}
+
+	streamingAdapter, ok := adapter.(StreamingClient)
+	if !ok {
+		return Response{}, NewFailure(
+			request.ProviderKey,
+			FailureCodeUnsupportedCapability,
+			fmt.Sprintf("provider %q does not support streaming", request.ProviderKey),
+			false,
+			ErrStreamingNotSupported,
+		)
+	}
+
+	return streamingAdapter.StreamModel(ctx, request, onDelta)
 }

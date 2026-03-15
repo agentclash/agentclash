@@ -51,6 +51,36 @@ func cloneResponse(response Response) Response {
 	return cloned
 }
 
+type FakeStreamingClient struct {
+	Response Response
+	Deltas   []StreamDelta
+	Err      error
+	Requests []Request
+}
+
+func (f *FakeStreamingClient) InvokeModel(_ context.Context, request Request) (Response, error) {
+	f.Requests = append(f.Requests, cloneRequest(request))
+	if f.Err != nil {
+		return Response{}, f.Err
+	}
+	return cloneResponse(f.Response), nil
+}
+
+func (f *FakeStreamingClient) StreamModel(_ context.Context, request Request, onDelta func(StreamDelta) error) (Response, error) {
+	f.Requests = append(f.Requests, cloneRequest(request))
+	if f.Err != nil {
+		return Response{}, f.Err
+	}
+	for _, delta := range f.Deltas {
+		if onDelta != nil {
+			if err := onDelta(cloneStreamDelta(delta)); err != nil {
+				return Response{}, err
+			}
+		}
+	}
+	return cloneResponse(f.Response), nil
+}
+
 func cloneMessage(message Message) Message {
 	cloned := message
 	cloned.ToolCalls = make([]ToolCall, 0, len(message.ToolCalls))
@@ -70,5 +100,11 @@ func cloneJSON(value json.RawMessage) json.RawMessage {
 	}
 	cloned := make([]byte, len(value))
 	copy(cloned, value)
+	return cloned
+}
+
+func cloneStreamDelta(delta StreamDelta) StreamDelta {
+	cloned := delta
+	cloned.Terminal.RawResponse = cloneJSON(delta.Terminal.RawResponse)
 	return cloned
 }
