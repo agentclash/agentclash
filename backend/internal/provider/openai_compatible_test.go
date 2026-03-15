@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
@@ -89,6 +90,7 @@ func TestOpenAICompatibleClientInvokeModelStreamsTextAndCapturesTiming(t *testin
 func TestOpenAICompatibleClientStreamModelEmitsToolCallDeltas(t *testing.T) {
 	httpClient := &http.Client{
 		Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			assertStreamingRequest(t, r)
 			return sseResponse(http.StatusOK, strings.Join([]string{
 				`data: {"model":"gpt-4.1","choices":[{"delta":{"tool_calls":[{"index":0,"id":"call-1","type":"function","function":{"name":"read_file","arguments":"{\"path\":\""}}]},"finish_reason":null}]}`,
 				``,
@@ -131,8 +133,14 @@ func TestOpenAICompatibleClientStreamModelEmitsToolCallDeltas(t *testing.T) {
 	if response.ToolCalls[0].Name != "read_file" {
 		t.Fatalf("tool call name = %q, want read_file", response.ToolCalls[0].Name)
 	}
-	if string(response.ToolCalls[0].Arguments) != `{"path":"\/workspace\/app.go"}` {
-		t.Fatalf("tool call arguments = %s, want merged payload", response.ToolCalls[0].Arguments)
+	var args struct {
+		Path string `json:"path"`
+	}
+	if err := json.Unmarshal(response.ToolCalls[0].Arguments, &args); err != nil {
+		t.Fatalf("unmarshal tool call arguments: %v", err)
+	}
+	if args.Path != "/workspace/app.go" {
+		t.Fatalf("tool call path = %q, want /workspace/app.go", args.Path)
 	}
 	if len(deltas) != 4 {
 		t.Fatalf("stream deltas = %d, want 4", len(deltas))
@@ -239,6 +247,86 @@ func TestOpenAICompatibleClientRejectsMalformedToolCallArguments(t *testing.T) {
 	}
 }
 
+func TestOpenAICompatibleClientPropagatesMetadataAndRejectsEmptyStream(t *testing.T) {
+	httpClient := &http.Client{
+		Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			assertStreamingRequest(t, r)
+
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				t.Fatalf("read request body: %v", err)
+			}
+
+			var payload struct {
+				Metadata json.RawMessage `json:"metadata"`
+			}
+			if err := json.Unmarshal(body, &payload); err != nil {
+				t.Fatalf("unmarshal request body: %v", err)
+			}
+			if string(payload.Metadata) != `{"run_id":"run-123","agent_id":"agent-456"}` {
+				t.Fatalf("metadata = %s, want request metadata", payload.Metadata)
+			}
+
+			return sseResponse(http.StatusOK, ""), nil
+		}),
+	}
+
+	client := NewOpenAICompatibleClient(httpClient, "https://example.com/v1", staticCredentialResolver{value: "test-key"})
+
+	_, err := client.InvokeModel(context.Background(), Request{
+		ProviderKey:         "openai",
+		CredentialReference: "env://OPENAI_API_KEY",
+		Model:               "gpt-4.1",
+		Metadata:            json.RawMessage(`{"run_id":"run-123","agent_id":"agent-456"}`),
+		Messages:            []Message{{Role: "user", Content: "hello"}},
+	})
+	if err == nil {
+		t.Fatalf("expected error")
+	}
+
+	failure, ok := AsFailure(err)
+	if !ok {
+		t.Fatalf("expected provider failure, got %T", err)
+	}
+	if failure.Code != FailureCodeMalformedResponse {
+		t.Fatalf("failure code = %s, want %s", failure.Code, FailureCodeMalformedResponse)
+	}
+}
+
+func TestOpenAICompatibleClientClassifiesStreamReadTimeout(t *testing.T) {
+	httpClient := &http.Client{
+		Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header: http.Header{
+					"Content-Type": []string{"text/event-stream"},
+				},
+				Body: io.NopCloser(timeoutReader{}),
+			}, nil
+		}),
+	}
+
+	client := NewOpenAICompatibleClient(httpClient, "https://example.com/v1", staticCredentialResolver{value: "test-key"})
+
+	_, err := client.InvokeModel(context.Background(), Request{
+		ProviderKey:         "openai",
+		CredentialReference: "env://OPENAI_API_KEY",
+		Model:               "gpt-4.1",
+		Messages:            []Message{{Role: "user", Content: "hello"}},
+	})
+	if err == nil {
+		t.Fatalf("expected error")
+	}
+
+	failure, ok := AsFailure(err)
+	if !ok {
+		t.Fatalf("expected provider failure, got %T", err)
+	}
+	if failure.Code != FailureCodeTimeout {
+		t.Fatalf("failure code = %s, want %s", failure.Code, FailureCodeTimeout)
+	}
+}
+
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) {
@@ -256,6 +344,7 @@ func assertStreamingRequest(t *testing.T, r *http.Request) {
 	if err != nil {
 		t.Fatalf("read request body: %v", err)
 	}
+	r.Body = io.NopCloser(bytes.NewReader(body))
 
 	var payload struct {
 		Model         string `json:"model"`
@@ -312,3 +401,15 @@ func sseResponse(statusCode int, body string) *http.Response {
 		Body: io.NopCloser(strings.NewReader(body)),
 	}
 }
+
+type timeoutReader struct{}
+
+func (timeoutReader) Read([]byte) (int, error) {
+	return 0, timeoutError{}
+}
+
+type timeoutError struct{}
+
+func (timeoutError) Error() string   { return "i/o timeout" }
+func (timeoutError) Timeout() bool   { return true }
+func (timeoutError) Temporary() bool { return true }

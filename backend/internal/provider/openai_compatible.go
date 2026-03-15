@@ -120,6 +120,7 @@ func buildOpenAIRequestBody(request Request, stream bool) (openAICompletionReque
 		StreamOptions: openAIStreamOptions{
 			IncludeUsage: stream,
 		},
+		Metadata: append(json.RawMessage(nil), request.Metadata...),
 	}, nil
 }
 
@@ -359,6 +360,7 @@ func normalizeOpenAIErrorResponse(providerKey string, statusCode int, raw []byte
 func consumeOpenAIStream(body io.Reader, providerKey string, accumulator *StreamAccumulator, onDelta func(StreamDelta) error) error {
 	reader := bufio.NewReader(body)
 	dataLines := make([]string, 0, 1)
+	eventsProcessed := false
 
 	flush := func() error {
 		if len(dataLines) == 0 {
@@ -366,13 +368,14 @@ func consumeOpenAIStream(body io.Reader, providerKey string, accumulator *Stream
 		}
 		data := strings.Join(dataLines, "\n")
 		dataLines = dataLines[:0]
+		eventsProcessed = true
 		return processOpenAIStreamEvent(providerKey, []byte(data), accumulator, onDelta)
 	}
 
 	for {
 		line, err := reader.ReadString('\n')
 		if err != nil && !errors.Is(err, io.EOF) {
-			return NewFailure(providerKey, FailureCodeUnavailable, "read provider stream", true, err)
+			return classifyTransportError(providerKey, err)
 		}
 
 		trimmed := strings.TrimRight(line, "\r\n")
@@ -393,6 +396,9 @@ func consumeOpenAIStream(body io.Reader, providerKey string, accumulator *Stream
 		if errors.Is(err, io.EOF) {
 			if flushErr := flush(); flushErr != nil {
 				return flushErr
+			}
+			if !eventsProcessed {
+				return NewFailure(providerKey, FailureCodeMalformedResponse, "provider returned empty or non-streaming response", false, nil)
 			}
 			return nil
 		}
@@ -449,11 +455,9 @@ func processOpenAIStreamEvent(providerKey string, raw []byte, accumulator *Strea
 
 		if choice.FinishReason != nil {
 			terminal := StreamTerminal{
+				FinishReason:    *choice.FinishReason,
 				ProviderModelID: chunk.Model,
 				RawResponse:     raw,
-			}
-			if choice.FinishReason != nil {
-				terminal.FinishReason = *choice.FinishReason
 			}
 			if err := emitOpenAIStreamDelta(accumulator, onDelta, StreamDelta{
 				Kind:      StreamDeltaKindTerminal,
