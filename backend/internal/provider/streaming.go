@@ -26,6 +26,8 @@ const (
 	StreamDeltaKindText     StreamDeltaKind = "text"
 	StreamDeltaKindToolCall StreamDeltaKind = "tool_call"
 	StreamDeltaKindTerminal StreamDeltaKind = "terminal"
+
+	maxToolCallIndex = 128
 )
 
 type StreamDelta struct {
@@ -94,6 +96,9 @@ func (a *StreamAccumulator) Consume(delta StreamDelta) error {
 		if fragment.Index < 0 {
 			return errors.New("tool call fragment index must be greater than or equal to zero")
 		}
+		if fragment.Index >= maxToolCallIndex {
+			return fmt.Errorf("tool call fragment index %d exceeds maximum %d", fragment.Index, maxToolCallIndex)
+		}
 		a.markFirstToken(delta.Timestamp, fragment.IDFragment != "" || fragment.NameFragment != "" || fragment.ArgumentsFragment != "")
 		for len(a.toolCalls) <= fragment.Index {
 			a.toolCalls = append(a.toolCalls, toolCallAccumulator{})
@@ -127,6 +132,9 @@ func (a *StreamAccumulator) Consume(delta StreamDelta) error {
 func (a *StreamAccumulator) Finalize(completedAt time.Time) (Response, error) {
 	if completedAt.IsZero() {
 		return Response{}, errors.New("completed_at is required")
+	}
+	if completedAt.Before(a.startedAt) {
+		return Response{}, errors.New("completed_at must not be before started_at")
 	}
 
 	toolCalls := make([]ToolCall, 0, len(a.toolCalls))

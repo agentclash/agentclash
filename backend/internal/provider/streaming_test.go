@@ -144,3 +144,30 @@ func TestStreamAccumulatorAllowsMissingUsage(t *testing.T) {
 		t.Fatalf("TTFT = %s, want 15ms", response.Timing.TTFT)
 	}
 }
+
+func TestStreamAccumulatorRejectsTooLargeToolCallIndex(t *testing.T) {
+	startedAt := mustTime(t, "2026-03-15T10:00:00Z")
+	accumulator := NewStreamAccumulator("openai", startedAt)
+
+	err := accumulator.Consume(StreamDelta{
+		Kind:      StreamDeltaKindToolCall,
+		Timestamp: startedAt.Add(20 * time.Millisecond),
+		ToolCall: ToolCallFragment{
+			Index:        maxToolCallIndex,
+			NameFragment: "read_file",
+		},
+	})
+	if err == nil {
+		t.Fatalf("expected error")
+	}
+}
+
+func TestStreamAccumulatorRejectsCompletedAtBeforeStartedAt(t *testing.T) {
+	startedAt := mustTime(t, "2026-03-15T10:00:00Z")
+	accumulator := NewStreamAccumulator("openai", startedAt)
+
+	_, err := accumulator.Finalize(startedAt.Add(-1 * time.Second))
+	if err == nil {
+		t.Fatalf("expected error")
+	}
+}

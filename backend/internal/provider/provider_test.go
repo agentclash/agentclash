@@ -122,6 +122,38 @@ func TestRouterReturnsUnsupportedCapabilityForNonStreamingAdapter(t *testing.T) 
 	}
 }
 
+func TestRouterStreamModelPropagatesOnDeltaError(t *testing.T) {
+	fake := &FakeStreamingClient{
+		Deltas: []StreamDelta{
+			{
+				Kind:      StreamDeltaKindText,
+				Timestamp: mustTime(t, "2026-03-15T10:00:01Z"),
+				Text:      "ok",
+			},
+		},
+		Response: Response{
+			ProviderKey: "openai",
+			OutputText:  "ok",
+			Streamed:    true,
+		},
+	}
+
+	router := NewRouter(map[string]Client{
+		"openai": fake,
+	})
+
+	expectedErr := errors.New("delta consumer failed")
+	_, err := router.StreamModel(context.Background(), Request{
+		ProviderKey: "openai",
+		Model:       "gpt-4.1",
+	}, func(StreamDelta) error {
+		return expectedErr
+	})
+	if !errors.Is(err, expectedErr) {
+		t.Fatalf("expected error %v, got %v", expectedErr, err)
+	}
+}
+
 func TestEnvCredentialResolverSupportsSecretReferences(t *testing.T) {
 	t.Setenv("AGENTCLASH_SECRET_OPENAI", "secret-value")
 
