@@ -1,14 +1,17 @@
 package provider
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"strings"
+	"time"
 )
 
 const defaultOpenAIBaseURL = "https://api.openai.com/v1"
@@ -34,12 +37,16 @@ func NewOpenAICompatibleClient(httpClient *http.Client, baseURL string, credenti
 }
 
 func (c OpenAICompatibleClient) InvokeModel(ctx context.Context, request Request) (Response, error) {
+	return c.StreamModel(ctx, request, nil)
+}
+
+func (c OpenAICompatibleClient) StreamModel(ctx context.Context, request Request, onDelta func(StreamDelta) error) (Response, error) {
 	apiKey, err := c.credentialResolver.Resolve(ctx, request.CredentialReference)
 	if err != nil {
 		return Response{}, normalizeCredentialError(request.ProviderKey, err)
 	}
 
-	body, err := buildOpenAIRequestBody(request)
+	body, err := buildOpenAIRequestBody(request, true)
 	if err != nil {
 		return Response{}, err
 	}
@@ -63,55 +70,30 @@ func (c OpenAICompatibleClient) InvokeModel(ctx context.Context, request Request
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 	req.Header.Set("Content-Type", "application/json")
 
+	startedAt := time.Now().UTC()
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return Response{}, classifyTransportError(request.ProviderKey, err)
 	}
 	defer resp.Body.Close()
 
-	raw, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return Response{}, NewFailure(request.ProviderKey, FailureCodeUnavailable, "read provider response", true, err)
-	}
-
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		raw, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return Response{}, NewFailure(request.ProviderKey, FailureCodeUnavailable, "read provider response", true, err)
+		}
 		return Response{}, normalizeOpenAIErrorResponse(request.ProviderKey, resp.StatusCode, raw)
 	}
 
-	var completion openAICompletionResponse
-	if err := json.Unmarshal(raw, &completion); err != nil {
-		return Response{}, NewFailure(request.ProviderKey, FailureCodeMalformedResponse, "decode provider response", false, err)
-	}
-	if len(completion.Choices) != 1 {
-		return Response{}, NewFailure(request.ProviderKey, FailureCodeMalformedResponse, "provider response must contain exactly one choice", false, nil)
-	}
-
-	toolCalls, err := normalizeOpenAIToolCalls(request.ProviderKey, completion.Choices[0].Message.ToolCalls)
-	if err != nil {
+	accumulator := NewStreamAccumulator(request.ProviderKey, startedAt)
+	if err := consumeOpenAIStream(resp.Body, request.ProviderKey, accumulator, onDelta); err != nil {
 		return Response{}, err
 	}
 
-	outputText := ""
-	if completion.Choices[0].Message.Content != nil {
-		outputText = *completion.Choices[0].Message.Content
-	}
-
-	return Response{
-		ProviderKey:     request.ProviderKey,
-		ProviderModelID: completion.Model,
-		FinishReason:    completion.Choices[0].FinishReason,
-		OutputText:      outputText,
-		ToolCalls:       toolCalls,
-		Usage: Usage{
-			InputTokens:  completion.Usage.PromptTokens,
-			OutputTokens: completion.Usage.CompletionTokens,
-			TotalTokens:  completion.Usage.TotalTokens,
-		},
-		RawResponse: append([]byte(nil), raw...),
-	}, nil
+	return accumulator.Finalize(time.Now().UTC())
 }
 
-func buildOpenAIRequestBody(request Request) (openAICompletionRequest, error) {
+func buildOpenAIRequestBody(request Request, stream bool) (openAICompletionRequest, error) {
 	messages := make([]openAIRequestMessage, 0, len(request.Messages))
 	for _, message := range request.Messages {
 		normalized, err := normalizeOpenAIRequestMessage(request.ProviderKey, message)
@@ -134,6 +116,11 @@ func buildOpenAIRequestBody(request Request) (openAICompletionRequest, error) {
 		Model:    request.Model,
 		Messages: messages,
 		Tools:    tools,
+		Stream:   stream,
+		StreamOptions: openAIStreamOptions{
+			IncludeUsage: stream,
+		},
+		Metadata: append(json.RawMessage(nil), request.Metadata...),
 	}, nil
 }
 
@@ -231,10 +218,16 @@ func normalizeOpenAIToolCalls(providerKey string, toolCalls []openAIResponseTool
 }
 
 type openAICompletionRequest struct {
-	Model    string                 `json:"model"`
-	Messages []openAIRequestMessage `json:"messages"`
-	Tools    []openAIRequestTool    `json:"tools,omitempty"`
-	Metadata json.RawMessage        `json:"metadata,omitempty"`
+	Model         string                 `json:"model"`
+	Messages      []openAIRequestMessage `json:"messages"`
+	Tools         []openAIRequestTool    `json:"tools,omitempty"`
+	Stream        bool                   `json:"stream,omitempty"`
+	StreamOptions openAIStreamOptions    `json:"stream_options,omitempty"`
+	Metadata      json.RawMessage        `json:"metadata,omitempty"`
+}
+
+type openAIStreamOptions struct {
+	IncludeUsage bool `json:"include_usage,omitempty"`
 }
 
 type openAIRequestMessage struct {
@@ -281,6 +274,30 @@ type openAICompletionResponse struct {
 		CompletionTokens int64 `json:"completion_tokens"`
 		TotalTokens      int64 `json:"total_tokens"`
 	} `json:"usage"`
+}
+
+type openAICompletionChunk struct {
+	Model   string `json:"model"`
+	Choices []struct {
+		FinishReason *string `json:"finish_reason"`
+		Delta        struct {
+			Role      string                     `json:"role"`
+			Content   *string                    `json:"content"`
+			ToolCalls []openAIStreamToolCallPart `json:"tool_calls"`
+		} `json:"delta"`
+	} `json:"choices"`
+	Usage *struct {
+		PromptTokens     int64 `json:"prompt_tokens"`
+		CompletionTokens int64 `json:"completion_tokens"`
+		TotalTokens      int64 `json:"total_tokens"`
+	} `json:"usage,omitempty"`
+}
+
+type openAIStreamToolCallPart struct {
+	Index    int                `json:"index"`
+	ID       string             `json:"id"`
+	Type     string             `json:"type"`
+	Function openAIFunctionCall `json:"function"`
 }
 
 type openAIErrorEnvelope struct {
@@ -338,4 +355,153 @@ func normalizeOpenAIErrorResponse(providerKey string, statusCode int, raw []byte
 	default:
 		return NewFailure(providerKey, FailureCodeUnknown, message, statusCode >= 500, nil)
 	}
+}
+
+func consumeOpenAIStream(body io.Reader, providerKey string, accumulator *StreamAccumulator, onDelta func(StreamDelta) error) error {
+	reader := bufio.NewReader(body)
+	dataLines := make([]string, 0, 1)
+	eventsProcessed := false
+
+	flush := func() error {
+		if len(dataLines) == 0 {
+			return nil
+		}
+		data := strings.Join(dataLines, "\n")
+		dataLines = dataLines[:0]
+		eventsProcessed = true
+		return processOpenAIStreamEvent(providerKey, []byte(data), accumulator, onDelta)
+	}
+
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil && !errors.Is(err, io.EOF) {
+			return classifyTransportError(providerKey, err)
+		}
+
+		trimmed := strings.TrimRight(line, "\r\n")
+		switch {
+		case trimmed == "":
+			if flushErr := flush(); flushErr != nil {
+				return flushErr
+			}
+		case strings.HasPrefix(trimmed, ":"):
+			// Ignore SSE comments/keepalive lines.
+		default:
+			field, value, found := strings.Cut(trimmed, ":")
+			if found && field == "data" {
+				dataLines = append(dataLines, strings.TrimPrefix(value, " "))
+			}
+		}
+
+		if errors.Is(err, io.EOF) {
+			if flushErr := flush(); flushErr != nil {
+				return flushErr
+			}
+			if !eventsProcessed {
+				return NewFailure(providerKey, FailureCodeMalformedResponse, "provider returned empty or non-streaming response", false, nil)
+			}
+			return nil
+		}
+	}
+}
+
+func processOpenAIStreamEvent(providerKey string, raw []byte, accumulator *StreamAccumulator, onDelta func(StreamDelta) error) error {
+	if bytes.Equal(raw, []byte("[DONE]")) {
+		return nil
+	}
+
+	var streamErr openAIErrorEnvelope
+	if err := json.Unmarshal(raw, &streamErr); err == nil && strings.TrimSpace(streamErr.Error.Message) != "" {
+		return NewFailure(providerKey, FailureCodeUnknown, streamErr.Error.Message, false, nil)
+	}
+
+	var chunk openAICompletionChunk
+	if err := json.Unmarshal(raw, &chunk); err != nil {
+		return NewFailure(providerKey, FailureCodeMalformedResponse, "decode provider stream chunk", false, err)
+	}
+	if len(chunk.Choices) > 1 {
+		return NewFailure(providerKey, FailureCodeMalformedResponse, "provider stream chunk must contain at most one choice", false, nil)
+	}
+
+	timestamp := time.Now().UTC()
+	if len(chunk.Choices) == 1 {
+		choice := chunk.Choices[0]
+		if choice.Delta.Content != nil {
+			if err := emitOpenAIStreamDelta(accumulator, onDelta, StreamDelta{
+				Kind:      StreamDeltaKindText,
+				Timestamp: timestamp,
+				Text:      *choice.Delta.Content,
+			}); err != nil {
+				return err
+			}
+		}
+		for _, toolCall := range choice.Delta.ToolCalls {
+			if toolCall.Type != "" && toolCall.Type != "function" {
+				return NewFailure(providerKey, FailureCodeMalformedResponse, fmt.Sprintf("unsupported OpenAI tool call type %q", toolCall.Type), false, nil)
+			}
+			if err := emitOpenAIStreamDelta(accumulator, onDelta, StreamDelta{
+				Kind:      StreamDeltaKindToolCall,
+				Timestamp: timestamp,
+				ToolCall: ToolCallFragment{
+					Index:             toolCall.Index,
+					IDFragment:        toolCall.ID,
+					NameFragment:      toolCall.Function.Name,
+					ArgumentsFragment: toolCall.Function.Arguments,
+				},
+			}); err != nil {
+				return err
+			}
+		}
+
+		if choice.FinishReason != nil {
+			terminal := StreamTerminal{
+				FinishReason:    *choice.FinishReason,
+				ProviderModelID: chunk.Model,
+				RawResponse:     raw,
+			}
+			if err := emitOpenAIStreamDelta(accumulator, onDelta, StreamDelta{
+				Kind:      StreamDeltaKindTerminal,
+				Timestamp: timestamp,
+				Terminal:  terminal,
+			}); err != nil {
+				return err
+			}
+		}
+	}
+
+	if chunk.Usage != nil {
+		if err := emitOpenAIStreamDelta(accumulator, onDelta, StreamDelta{
+			Kind:      StreamDeltaKindTerminal,
+			Timestamp: timestamp,
+			Terminal: StreamTerminal{
+				ProviderModelID: chunk.Model,
+				Usage: &Usage{
+					InputTokens:  chunk.Usage.PromptTokens,
+					OutputTokens: chunk.Usage.CompletionTokens,
+					TotalTokens:  chunk.Usage.TotalTokens,
+				},
+				RawResponse: raw,
+			},
+		}); err != nil {
+			return err
+		}
+	}
+
+	if len(chunk.Choices) == 0 && chunk.Usage == nil {
+		return NewFailure(providerKey, FailureCodeMalformedResponse, "provider stream chunk must contain a choice or usage data", false, nil)
+	}
+
+	return nil
+}
+
+func emitOpenAIStreamDelta(accumulator *StreamAccumulator, onDelta func(StreamDelta) error, delta StreamDelta) error {
+	if err := accumulator.Consume(delta); err != nil {
+		return err
+	}
+	if onDelta != nil {
+		if err := onDelta(cloneStreamDelta(delta)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
