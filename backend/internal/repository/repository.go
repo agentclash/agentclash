@@ -61,6 +61,10 @@ type RecordHostedRunEventParams struct {
 	Summary json.RawMessage
 }
 
+type RecordRunEventParams struct {
+	Event runevents.Envelope
+}
+
 type RunnableChallengePackVersion struct {
 	ID              uuid.UUID
 	ChallengePackID uuid.UUID
@@ -126,6 +130,18 @@ type RunAgentScorecard struct {
 	Scorecard        json.RawMessage
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
+}
+
+type RunEvent struct {
+	ID             int64
+	RunID          uuid.UUID
+	RunAgentID     uuid.UUID
+	SequenceNumber int64
+	EventType      runevents.Type
+	Source         runevents.Source
+	OccurredAt     time.Time
+	ArtifactID     *uuid.UUID
+	Payload        json.RawMessage
 }
 
 func New(db *pgxpool.Pool) *Repository {
@@ -394,7 +410,7 @@ func (r *Repository) RecordHostedRunEvent(ctx context.Context, params RecordHost
 		return RunAgentReplay{}, fmt.Errorf("validate hosted canonical event: %w", err)
 	}
 
-	insertedEvent, err := queries.InsertHostedRunEvent(ctx, repositorysqlc.InsertHostedRunEventParams{
+	insertedEvent, err := queries.InsertRunEvent(ctx, repositorysqlc.InsertRunEventParams{
 		RunID:      params.Event.RunID,
 		RunAgentID: params.Event.RunAgentID,
 		EventType:  string(params.Event.EventType),
@@ -429,6 +445,52 @@ func (r *Repository) RecordHostedRunEvent(ctx context.Context, params RecordHost
 		return RunAgentReplay{}, fmt.Errorf("commit hosted run event: %w", err)
 	}
 	return replay, nil
+}
+
+func (r *Repository) RecordRunEvent(ctx context.Context, params RecordRunEventParams) (RunEvent, error) {
+	if err := params.Event.ValidatePending(); err != nil {
+		return RunEvent{}, fmt.Errorf("validate canonical run event: %w", err)
+	}
+
+	// Sequence assignment is append-only per run-agent via MAX(sequence_number)+1.
+	// Callers must serialize writes for a given run_agent_id; concurrent inserts for
+	// the same run-agent can race and one will fail on the unique sequence constraint.
+	row, err := r.queries.InsertRunEvent(ctx, repositorysqlc.InsertRunEventParams{
+		RunID:      params.Event.RunID,
+		RunAgentID: params.Event.RunAgentID,
+		EventType:  string(params.Event.EventType),
+		ActorType:  string(params.Event.Source),
+		OccurredAt: pgtype.Timestamptz{Time: params.Event.OccurredAt.UTC(), Valid: true},
+		Payload:    cloneJSON(params.Event.Payload),
+	})
+	if err != nil {
+		return RunEvent{}, fmt.Errorf("insert run event: %w", err)
+	}
+
+	event, err := mapRunEvent(row)
+	if err != nil {
+		return RunEvent{}, fmt.Errorf("map run event: %w", err)
+	}
+	return event, nil
+}
+
+func (r *Repository) ListRunEventsByRunAgentID(ctx context.Context, runAgentID uuid.UUID) ([]RunEvent, error) {
+	rows, err := r.queries.ListRunEventsByRunAgentID(ctx, repositorysqlc.ListRunEventsByRunAgentIDParams{
+		RunAgentID: runAgentID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list run events by run-agent id: %w", err)
+	}
+
+	events := make([]RunEvent, 0, len(rows))
+	for _, row := range rows {
+		event, mapErr := mapRunEvent(row)
+		if mapErr != nil {
+			return nil, fmt.Errorf("map run event: %w", mapErr)
+		}
+		events = append(events, event)
+	}
+	return events, nil
 }
 
 func (r *Repository) SetRunTemporalIDs(ctx context.Context, params SetRunTemporalIDsParams) (domain.Run, error) {
@@ -794,6 +856,39 @@ func mapRunAgentReplay(row repositorysqlc.RunAgentReplay) (RunAgentReplay, error
 		CreatedAt:            createdAt,
 		UpdatedAt:            updatedAt,
 	}, nil
+}
+
+func mapRunEvent(row repositorysqlc.RunEvent) (RunEvent, error) {
+	occurredAt, err := requiredTime("run_events.occurred_at", row.OccurredAt)
+	if err != nil {
+		return RunEvent{}, err
+	}
+
+	event := RunEvent{
+		ID:             row.ID,
+		RunID:          row.RunID,
+		RunAgentID:     row.RunAgentID,
+		SequenceNumber: row.SequenceNumber,
+		EventType:      runevents.Type(row.EventType),
+		Source:         runevents.Source(row.ActorType),
+		OccurredAt:     occurredAt,
+		ArtifactID:     cloneUUIDPtr(row.ArtifactID),
+		Payload:        cloneJSON(row.Payload),
+	}
+	if err := (runevents.Envelope{
+		EventID:        fmt.Sprintf("persisted:%s:%d", event.RunAgentID.String(), event.SequenceNumber),
+		SchemaVersion:  runevents.SchemaVersionV1,
+		RunID:          event.RunID,
+		RunAgentID:     event.RunAgentID,
+		SequenceNumber: event.SequenceNumber,
+		EventType:      event.EventType,
+		Source:         event.Source,
+		OccurredAt:     event.OccurredAt,
+		Payload:        cloneJSON(event.Payload),
+	}).ValidatePersisted(); err != nil {
+		return RunEvent{}, fmt.Errorf("validate persisted run event: %w", err)
+	}
+	return event, nil
 }
 
 func mapRunAgentScorecard(row repositorysqlc.RunAgentScorecard) (RunAgentScorecard, error) {

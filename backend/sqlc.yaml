@@ -8,6 +8,7 @@ sql:
       - "db/queries/run_agents.sql"
       - "db/queries/worker_execution_context.sql"
       - "db/queries/hosted_runs.sql"
+      - "db/queries/run_events.sql"
       - "db/queries/replay_reads.sql"
     gen:
       go:

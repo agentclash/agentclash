@@ -10,6 +10,7 @@ import (
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/domain"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
 	repositorysqlc "github.com/Atharva-Kanherkar/agentclash/backend/internal/repository/sqlc"
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/runevents"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -606,6 +607,167 @@ func TestRepositoryGetRunAgentReplayByRunAgentID(t *testing.T) {
 	}
 	if replay.LatestSequenceNumber == nil || *replay.LatestSequenceNumber != 7 {
 		t.Fatalf("latest_sequence_number = %v, want 7", replay.LatestSequenceNumber)
+	}
+}
+
+func TestRepositoryRecordRunEventAssignsSequenceAndSupportsReadAfterWrite(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+	occurredAt := time.Date(2026, 3, 16, 8, 30, 0, 0, time.UTC)
+
+	event, err := repo.RecordRunEvent(ctx, repository.RecordRunEventParams{
+		Event: runevents.Envelope{
+			EventID:       "native:step-start:1",
+			SchemaVersion: runevents.SchemaVersionV1,
+			RunID:         fixture.runID,
+			RunAgentID:    fixture.primaryRunAgentID,
+			EventType:     runevents.EventTypeSystemStepStarted,
+			Source:        runevents.SourceNativeEngine,
+			OccurredAt:    occurredAt,
+			Payload:       []byte(`{"step_index":1}`),
+		},
+	})
+	if err != nil {
+		t.Fatalf("RecordRunEvent returned error: %v", err)
+	}
+
+	if event.SequenceNumber != 1 {
+		t.Fatalf("sequence number = %d, want 1", event.SequenceNumber)
+	}
+	if event.EventType != runevents.EventTypeSystemStepStarted {
+		t.Fatalf("event type = %q, want %q", event.EventType, runevents.EventTypeSystemStepStarted)
+	}
+	if event.Source != runevents.SourceNativeEngine {
+		t.Fatalf("source = %q, want %q", event.Source, runevents.SourceNativeEngine)
+	}
+	if string(event.Payload) != `{"step_index":1}` {
+		t.Fatalf("payload = %s, want step payload", event.Payload)
+	}
+
+	events, err := repo.ListRunEventsByRunAgentID(ctx, fixture.primaryRunAgentID)
+	if err != nil {
+		t.Fatalf("ListRunEventsByRunAgentID returned error: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("event count = %d, want 1", len(events))
+	}
+	if events[0].SequenceNumber != 1 {
+		t.Fatalf("listed sequence number = %d, want 1", events[0].SequenceNumber)
+	}
+	if !events[0].OccurredAt.Equal(occurredAt) {
+		t.Fatalf("occurred_at = %s, want %s", events[0].OccurredAt, occurredAt)
+	}
+}
+
+func TestRepositoryRecordRunEventMaintainsSequencePerRunAgent(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	firstEvent, err := repo.RecordRunEvent(ctx, repository.RecordRunEventParams{
+		Event: runevents.Envelope{
+			EventID:       "native:first",
+			SchemaVersion: runevents.SchemaVersionV1,
+			RunID:         fixture.runID,
+			RunAgentID:    fixture.primaryRunAgentID,
+			EventType:     runevents.EventTypeSystemStepStarted,
+			Source:        runevents.SourceNativeEngine,
+			OccurredAt:    time.Date(2026, 3, 16, 8, 30, 0, 0, time.UTC),
+			Payload:       []byte(`{"step_index":1}`),
+		},
+	})
+	if err != nil {
+		t.Fatalf("RecordRunEvent first returned error: %v", err)
+	}
+
+	secondEvent, err := repo.RecordRunEvent(ctx, repository.RecordRunEventParams{
+		Event: runevents.Envelope{
+			EventID:       "native:second",
+			SchemaVersion: runevents.SchemaVersionV1,
+			RunID:         fixture.runID,
+			RunAgentID:    fixture.primaryRunAgentID,
+			EventType:     runevents.EventTypeModelCallStarted,
+			Source:        runevents.SourceNativeEngine,
+			OccurredAt:    time.Date(2026, 3, 16, 8, 30, 1, 0, time.UTC),
+			Payload:       []byte(`{"provider_key":"openai"}`),
+		},
+	})
+	if err != nil {
+		t.Fatalf("RecordRunEvent second returned error: %v", err)
+	}
+
+	otherRunAgentEvent, err := repo.RecordRunEvent(ctx, repository.RecordRunEventParams{
+		Event: runevents.Envelope{
+			EventID:       "native:other-agent",
+			SchemaVersion: runevents.SchemaVersionV1,
+			RunID:         fixture.runID,
+			RunAgentID:    fixture.secondaryRunAgentID,
+			EventType:     runevents.EventTypeSystemStepStarted,
+			Source:        runevents.SourceNativeEngine,
+			OccurredAt:    time.Date(2026, 3, 16, 8, 31, 0, 0, time.UTC),
+			Payload:       []byte(`{"step_index":1}`),
+		},
+	})
+	if err != nil {
+		t.Fatalf("RecordRunEvent other-agent returned error: %v", err)
+	}
+
+	if firstEvent.SequenceNumber != 1 {
+		t.Fatalf("first sequence number = %d, want 1", firstEvent.SequenceNumber)
+	}
+	if secondEvent.SequenceNumber != 2 {
+		t.Fatalf("second sequence number = %d, want 2", secondEvent.SequenceNumber)
+	}
+	if otherRunAgentEvent.SequenceNumber != 1 {
+		t.Fatalf("other run-agent sequence number = %d, want 1", otherRunAgentEvent.SequenceNumber)
+	}
+
+	events, err := repo.ListRunEventsByRunAgentID(ctx, fixture.primaryRunAgentID)
+	if err != nil {
+		t.Fatalf("ListRunEventsByRunAgentID returned error: %v", err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("primary run-agent event count = %d, want 2", len(events))
+	}
+	if events[0].SequenceNumber != 1 || events[1].SequenceNumber != 2 {
+		t.Fatalf("primary run-agent sequence numbers = [%d %d], want [1 2]", events[0].SequenceNumber, events[1].SequenceNumber)
+	}
+}
+
+func TestRepositoryRecordRunEventDoesNotDeduplicateSameEventID(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	event := runevents.Envelope{
+		EventID:       "native:duplicate",
+		SchemaVersion: runevents.SchemaVersionV1,
+		RunID:         fixture.runID,
+		RunAgentID:    fixture.primaryRunAgentID,
+		EventType:     runevents.EventTypeToolCallCompleted,
+		Source:        runevents.SourceNativeEngine,
+		OccurredAt:    time.Date(2026, 3, 16, 8, 32, 0, 0, time.UTC),
+		Payload:       []byte(`{"tool_name":"submit"}`),
+	}
+
+	first, err := repo.RecordRunEvent(ctx, repository.RecordRunEventParams{Event: event})
+	if err != nil {
+		t.Fatalf("RecordRunEvent first returned error: %v", err)
+	}
+	second, err := repo.RecordRunEvent(ctx, repository.RecordRunEventParams{Event: event})
+	if err != nil {
+		t.Fatalf("RecordRunEvent second returned error: %v", err)
+	}
+
+	if first.SequenceNumber != 1 {
+		t.Fatalf("first sequence number = %d, want 1", first.SequenceNumber)
+	}
+	if second.SequenceNumber != 2 {
+		t.Fatalf("second sequence number = %d, want 2", second.SequenceNumber)
 	}
 }
 

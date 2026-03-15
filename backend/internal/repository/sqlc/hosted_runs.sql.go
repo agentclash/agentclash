@@ -195,66 +195,6 @@ func (q *Queries) GetHostedRunExecutionByRunAgentID(ctx context.Context, arg Get
 	return i, err
 }
 
-const insertHostedRunEvent = `-- name: InsertHostedRunEvent :one
-WITH next_sequence AS (
-    SELECT COALESCE(MAX(sequence_number), 0) + 1 AS sequence_number
-    FROM run_events
-    WHERE run_agent_id = $2
-)
-INSERT INTO run_events (
-    run_id,
-    run_agent_id,
-    sequence_number,
-    event_type,
-    actor_type,
-    occurred_at,
-    payload
-)
-SELECT
-    $1,
-    $2,
-    next_sequence.sequence_number,
-    $3,
-    $4,
-    $5,
-    $6
-FROM next_sequence
-RETURNING id, run_id, run_agent_id, sequence_number, event_type, actor_type, occurred_at, artifact_id, payload
-`
-
-type InsertHostedRunEventParams struct {
-	RunID      uuid.UUID
-	RunAgentID uuid.UUID
-	EventType  string
-	ActorType  string
-	OccurredAt pgtype.Timestamptz
-	Payload    []byte
-}
-
-func (q *Queries) InsertHostedRunEvent(ctx context.Context, arg InsertHostedRunEventParams) (RunEvent, error) {
-	row := q.db.QueryRow(ctx, insertHostedRunEvent,
-		arg.RunID,
-		arg.RunAgentID,
-		arg.EventType,
-		arg.ActorType,
-		arg.OccurredAt,
-		arg.Payload,
-	)
-	var i RunEvent
-	err := row.Scan(
-		&i.ID,
-		&i.RunID,
-		&i.RunAgentID,
-		&i.SequenceNumber,
-		&i.EventType,
-		&i.ActorType,
-		&i.OccurredAt,
-		&i.ArtifactID,
-		&i.Payload,
-	)
-	return i, err
-}
-
 const markHostedRunExecutionAccepted = `-- name: MarkHostedRunExecutionAccepted :one
 UPDATE hosted_run_executions
 SET external_run_id = $1,
