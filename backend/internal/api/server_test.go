@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -258,6 +259,72 @@ func TestWorkspaceAuthorizationRejectsMalformedWorkspaceID(t *testing.T) {
 	}
 	if response.Error.Code != "invalid_workspace_id" {
 		t.Fatalf("error code = %q, want invalid_workspace_id", response.Error.Code)
+	}
+}
+
+func TestReplayViewerEndpointReturnsHTMLShell(t *testing.T) {
+	userID := uuid.New()
+	workspaceID := uuid.New()
+	runAgentID := uuid.New()
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/replays/"+runAgentID.String()+"/viewer?limit=25&cursor=50", nil)
+	req.Header.Set(headerUserID, userID.String())
+	req.Header.Set(headerWorkspaceMemberships, workspaceID.String()+":workspace_member")
+	recorder := httptest.NewRecorder()
+
+	newRouter(
+		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
+		NewDevelopmentAuthenticator(),
+		NewCallerWorkspaceAuthorizer(),
+		stubRunCreationService{},
+		stubRunReadService{},
+		stubReplayReadService{},
+		stubHostedRunIngestionService{},
+	).ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusOK)
+	}
+	if got := recorder.Header().Get("Content-Type"); got != "text/html; charset=utf-8" {
+		t.Fatalf("content type = %q, want text/html; charset=utf-8", got)
+	}
+	body := recorder.Body.String()
+	if !strings.Contains(body, "Minimal RunAgent Replay Viewer") {
+		t.Fatalf("body missing viewer heading: %s", body)
+	}
+	if !strings.Contains(body, "/v1/replays/"+runAgentID.String()) {
+		t.Fatalf("body missing replay API path: %s", body)
+	}
+	if !strings.Contains(body, headerUserID) {
+		t.Fatalf("body missing embedded auth header name: %s", body)
+	}
+}
+
+func TestReplayViewerEndpointRejectsInvalidReplayPagination(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/v1/replays/"+uuid.New().String()+"/viewer?cursor=-1", nil)
+	req.Header.Set(headerUserID, uuid.New().String())
+	recorder := httptest.NewRecorder()
+
+	newRouter(
+		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
+		NewDevelopmentAuthenticator(),
+		NewCallerWorkspaceAuthorizer(),
+		stubRunCreationService{},
+		stubRunReadService{},
+		stubReplayReadService{},
+		stubHostedRunIngestionService{},
+	).ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusBadRequest)
+	}
+
+	var response errorEnvelope
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if response.Error.Code != "invalid_replay_pagination" {
+		t.Fatalf("error code = %q, want invalid_replay_pagination", response.Error.Code)
 	}
 }
 
