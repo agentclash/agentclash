@@ -27,6 +27,7 @@ const (
 	startHostedRunActivityName               = "workflow.start_hosted_run"
 	markHostedRunTimedOutActivityName        = "workflow.mark_hosted_run_timed_out"
 	executeNativeModelStepActivityName       = "workflow.execute_native_model_step"
+	buildRunAgentReplayActivityName          = "workflow.build_run_agent_replay"
 	simulateExecutionActivityName            = "workflow.simulate_execution"
 	simulateEvaluationActivityName           = "workflow.simulate_evaluation"
 )
@@ -107,6 +108,10 @@ type StartHostedRunResult struct {
 type MarkHostedRunTimedOutInput struct {
 	RunAgentID   uuid.UUID `json:"run_agent_id"`
 	ErrorMessage string    `json:"error_message"`
+}
+
+type BuildRunAgentReplayInput struct {
+	RunAgentID uuid.UUID `json:"run_agent_id"`
 }
 
 func NewActivities(repo RunRepository, hooks FakeWorkHooks) *Activities {
@@ -254,6 +259,11 @@ func (a *Activities) MarkHostedRunTimedOut(ctx context.Context, input MarkHosted
 		ErrorMessage: input.ErrorMessage,
 	})
 	return wrapActivityError(err)
+}
+
+func (a *Activities) BuildRunAgentReplay(ctx context.Context, input BuildRunAgentReplayInput) (repository.RunAgentReplay, error) {
+	replay, err := a.repo.BuildRunAgentReplay(ctx, input.RunAgentID)
+	return replay, wrapActivityError(err)
 }
 
 func (a *Activities) ExecuteNativeModelStep(ctx context.Context, input RunAgentWorkflowInput) error {

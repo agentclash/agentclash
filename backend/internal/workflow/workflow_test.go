@@ -135,6 +135,9 @@ func TestRunAgentWorkflowHappyPath(t *testing.T) {
 	if runAgent.Status != domain.RunAgentStatusCompleted {
 		t.Fatalf("run agent status = %s, want %s", runAgent.Status, domain.RunAgentStatusCompleted)
 	}
+	if repo.callCountWithPrefix("BuildRunAgentReplay:") != 1 {
+		t.Fatalf("BuildRunAgentReplay call count = %d, want 1", repo.callCountWithPrefix("BuildRunAgentReplay:"))
+	}
 }
 
 func TestRunAgentWorkflowNativePathUsesProviderBoundary(t *testing.T) {
@@ -426,6 +429,9 @@ func TestRunWorkflowChildFailureMarksRunAndRunAgentFailed(t *testing.T) {
 	if runAgent.FailureReason == nil || !strings.Contains(*runAgent.FailureReason, "simulated execution failure") {
 		t.Fatalf("run agent failure reason = %v, want simulated execution failure", runAgent.FailureReason)
 	}
+	if repo.callCountWithPrefix("BuildRunAgentReplay:") != 1 {
+		t.Fatalf("BuildRunAgentReplay call count = %d, want 1", repo.callCountWithPrefix("BuildRunAgentReplay:"))
+	}
 }
 
 func TestRunWorkflowTemporalIDConflictDoesNotRebindOrAdvanceStatus(t *testing.T) {
@@ -484,10 +490,12 @@ type fakeRunRepository struct {
 	runAgents           map[uuid.UUID]domain.RunAgent
 	executionContexts   map[uuid.UUID]repository.RunAgentExecutionContext
 	hostedExecutions    map[uuid.UUID]repository.HostedRunExecution
+	replays             map[uuid.UUID]repository.RunAgentReplay
 	callLog             []string
 	runStatusCalls      []repository.TransitionRunStatusParams
 	runAgentStatusCalls []repository.TransitionRunAgentStatusParams
 	setTemporalIDsCalls []repository.SetRunTemporalIDsParams
+	buildReplayCalls    []uuid.UUID
 }
 
 func newFakeRunRepository(run domain.Run, runAgents ...domain.RunAgent) *fakeRunRepository {
@@ -501,6 +509,7 @@ func newFakeRunRepository(run domain.Run, runAgents ...domain.RunAgent) *fakeRun
 		runAgents:         runAgentMap,
 		executionContexts: make(map[uuid.UUID]repository.RunAgentExecutionContext),
 		hostedExecutions:  make(map[uuid.UUID]repository.HostedRunExecution),
+		replays:           make(map[uuid.UUID]repository.RunAgentReplay),
 	}
 }
 
@@ -579,6 +588,34 @@ func (r *fakeRunRepository) GetRunAgentExecutionContextByID(_ context.Context, i
 			},
 		},
 	}, nil
+}
+
+func (r *fakeRunRepository) BuildRunAgentReplay(_ context.Context, runAgentID uuid.UUID) (repository.RunAgentReplay, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if _, ok := r.runAgents[runAgentID]; !ok {
+		return repository.RunAgentReplay{}, repository.ErrRunAgentNotFound
+	}
+
+	r.callLog = append(r.callLog, fmt.Sprintf("BuildRunAgentReplay:%s", runAgentID))
+	r.buildReplayCalls = append(r.buildReplayCalls, runAgentID)
+
+	replay, ok := r.replays[runAgentID]
+	if !ok {
+		replay = repository.RunAgentReplay{
+			ID:         uuid.New(),
+			RunAgentID: runAgentID,
+			Summary:    []byte(`{"headline":"ready"}`),
+			CreatedAt:  time.Now().UTC(),
+			UpdatedAt:  time.Now().UTC(),
+		}
+	} else {
+		replay.UpdatedAt = time.Now().UTC()
+	}
+	r.replays[runAgentID] = replay
+
+	return replay, nil
 }
 
 func (r *fakeRunRepository) setExecutionContext(runAgentID uuid.UUID, executionContext repository.RunAgentExecutionContext) {

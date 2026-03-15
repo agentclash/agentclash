@@ -35,6 +35,7 @@ type Querier interface {
 	SetRunTemporalIDs(ctx context.Context, arg SetRunTemporalIDsParams) (Run, error)
 	UpdateRunAgentStatus(ctx context.Context, arg UpdateRunAgentStatusParams) (RunAgent, error)
 	UpdateRunStatus(ctx context.Context, arg UpdateRunStatusParams) (Run, error)
+	UpsertRunAgentReplayIndex(ctx context.Context, arg UpsertRunAgentReplayIndexParams) (RunAgentReplay, error)
 	UpsertRunAgentReplaySummary(ctx context.Context, arg UpsertRunAgentReplaySummaryParams) (RunAgentReplay, error)
 }
 

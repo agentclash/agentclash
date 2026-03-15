@@ -772,6 +772,126 @@ func TestRepositoryRecordRunEventDoesNotDeduplicateSameEventID(t *testing.T) {
 	}
 }
 
+func TestRepositoryBuildRunAgentReplayMaterializesCompletedNativeRun(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	recordRunEvent(t, ctx, repo, fixture.runID, fixture.primaryRunAgentID, "native:run-start", runevents.EventTypeSystemRunStarted, time.Date(2026, 3, 16, 9, 10, 0, 0, time.UTC), `{"deployment_type":"native","execution_target":"native"}`)
+	recordRunEvent(t, ctx, repo, fixture.runID, fixture.primaryRunAgentID, "native:step-start", runevents.EventTypeSystemStepStarted, time.Date(2026, 3, 16, 9, 10, 1, 0, time.UTC), `{"step_index":1}`)
+	recordRunEvent(t, ctx, repo, fixture.runID, fixture.primaryRunAgentID, "native:model-start", runevents.EventTypeModelCallStarted, time.Date(2026, 3, 16, 9, 10, 2, 0, time.UTC), `{"provider_key":"openai","model":"gpt-4.1"}`)
+	recordRunEvent(t, ctx, repo, fixture.runID, fixture.primaryRunAgentID, "native:model-complete", runevents.EventTypeModelCallCompleted, time.Date(2026, 3, 16, 9, 10, 3, 0, time.UTC), `{"provider_key":"openai","provider_model_id":"gpt-4.1","output_text":"hello"}`)
+	recordRunEvent(t, ctx, repo, fixture.runID, fixture.primaryRunAgentID, "native:tool-complete", runevents.EventTypeToolCallCompleted, time.Date(2026, 3, 16, 9, 10, 4, 0, time.UTC), `{"tool_name":"submit","result":{"content":"done","is_error":false}}`)
+	recordRunEvent(t, ctx, repo, fixture.runID, fixture.primaryRunAgentID, "native:step-complete", runevents.EventTypeSystemStepCompleted, time.Date(2026, 3, 16, 9, 10, 5, 0, time.UTC), `{"step_index":1}`)
+	recordRunEvent(t, ctx, repo, fixture.runID, fixture.primaryRunAgentID, "native:run-complete", runevents.EventTypeSystemRunCompleted, time.Date(2026, 3, 16, 9, 10, 6, 0, time.UTC), `{"final_output":"done","step_count":1,"tool_call_count":1,"total_tokens":12}`)
+
+	replay, err := repo.BuildRunAgentReplay(ctx, fixture.primaryRunAgentID)
+	if err != nil {
+		t.Fatalf("BuildRunAgentReplay returned error: %v", err)
+	}
+	if replay.LatestSequenceNumber == nil || *replay.LatestSequenceNumber != 7 {
+		t.Fatalf("latest_sequence_number = %v, want 7", replay.LatestSequenceNumber)
+	}
+	if replay.EventCount != 7 {
+		t.Fatalf("event_count = %d, want 7", replay.EventCount)
+	}
+
+	summary := decodeReplaySummary(t, replay.Summary)
+	if summary["status"] != "completed" {
+		t.Fatalf("summary status = %#v, want completed", summary["status"])
+	}
+
+	counts := summary["counts"].(map[string]any)
+	if counts["events"] != float64(7) {
+		t.Fatalf("counts.events = %#v, want 7", counts["events"])
+	}
+	if counts["model_calls"] != float64(1) {
+		t.Fatalf("counts.model_calls = %#v, want 1", counts["model_calls"])
+	}
+	if counts["tool_calls"] != float64(1) {
+		t.Fatalf("counts.tool_calls = %#v, want 1", counts["tool_calls"])
+	}
+
+	terminalState := summary["terminal_state"].(map[string]any)
+	if terminalState["event_type"] != string(runevents.EventTypeSystemRunCompleted) {
+		t.Fatalf("terminal_state.event_type = %#v, want %q", terminalState["event_type"], runevents.EventTypeSystemRunCompleted)
+	}
+
+	steps := summary["steps"].([]any)
+	if len(steps) != 4 {
+		t.Fatalf("step count = %d, want 4", len(steps))
+	}
+	if steps[0].(map[string]any)["type"] != "run" {
+		t.Fatalf("first step type = %#v, want run", steps[0].(map[string]any)["type"])
+	}
+	if steps[1].(map[string]any)["type"] != "agent_step" {
+		t.Fatalf("second step type = %#v, want agent_step", steps[1].(map[string]any)["type"])
+	}
+	if steps[2].(map[string]any)["type"] != "model_call" {
+		t.Fatalf("third step type = %#v, want model_call", steps[2].(map[string]any)["type"])
+	}
+	if steps[3].(map[string]any)["type"] != "tool_call" {
+		t.Fatalf("fourth step type = %#v, want tool_call", steps[3].(map[string]any)["type"])
+	}
+}
+
+func TestRepositoryBuildRunAgentReplayIsInspectableForFailureAndRerunnable(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	recordRunEvent(t, ctx, repo, fixture.runID, fixture.primaryRunAgentID, "native:run-start", runevents.EventTypeSystemRunStarted, time.Date(2026, 3, 16, 9, 20, 0, 0, time.UTC), `{"deployment_type":"native"}`)
+	recordRunEvent(t, ctx, repo, fixture.runID, fixture.primaryRunAgentID, "native:step-start", runevents.EventTypeSystemStepStarted, time.Date(2026, 3, 16, 9, 20, 1, 0, time.UTC), `{"step_index":2}`)
+
+	firstReplay, err := repo.BuildRunAgentReplay(ctx, fixture.primaryRunAgentID)
+	if err != nil {
+		t.Fatalf("first BuildRunAgentReplay returned error: %v", err)
+	}
+	if firstReplay.EventCount != 2 {
+		t.Fatalf("first event_count = %d, want 2", firstReplay.EventCount)
+	}
+
+	recordRunEvent(t, ctx, repo, fixture.runID, fixture.primaryRunAgentID, "native:run-failed", runevents.EventTypeSystemRunFailed, time.Date(2026, 3, 16, 9, 20, 2, 0, time.UTC), `{"error":"provider timeout","step_index":2,"stop_reason":"provider_error"}`)
+
+	secondReplay, err := repo.BuildRunAgentReplay(ctx, fixture.primaryRunAgentID)
+	if err != nil {
+		t.Fatalf("second BuildRunAgentReplay returned error: %v", err)
+	}
+	if secondReplay.ID != firstReplay.ID {
+		t.Fatalf("replay id = %s, want %s", secondReplay.ID, firstReplay.ID)
+	}
+	if secondReplay.LatestSequenceNumber == nil || *secondReplay.LatestSequenceNumber != 3 {
+		t.Fatalf("latest_sequence_number = %v, want 3", secondReplay.LatestSequenceNumber)
+	}
+	if secondReplay.EventCount != 3 {
+		t.Fatalf("event_count = %d, want 3", secondReplay.EventCount)
+	}
+
+	summary := decodeReplaySummary(t, secondReplay.Summary)
+	if summary["status"] != "failed" {
+		t.Fatalf("summary status = %#v, want failed", summary["status"])
+	}
+
+	terminalState := summary["terminal_state"].(map[string]any)
+	if terminalState["event_type"] != string(runevents.EventTypeSystemRunFailed) {
+		t.Fatalf("terminal_state.event_type = %#v, want %q", terminalState["event_type"], runevents.EventTypeSystemRunFailed)
+	}
+	if terminalState["error_message"] != "provider timeout" {
+		t.Fatalf("terminal_state.error_message = %#v, want provider timeout", terminalState["error_message"])
+	}
+
+	steps := summary["steps"].([]any)
+	if len(steps) != 2 {
+		t.Fatalf("step count = %d, want 2", len(steps))
+	}
+	agentStep := steps[1].(map[string]any)
+	if agentStep["status"] != "running" {
+		t.Fatalf("agent step status = %#v, want running", agentStep["status"])
+	}
+}
+
 func TestRepositoryHostedAndNativeEventsCoexistInCanonicalReadModel(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)
@@ -1505,4 +1625,43 @@ func seedFixture(t *testing.T, ctx context.Context, db *pgxpool.Pool) testFixtur
 		primaryRunAgentID:         primaryRunAgent.ID,
 		secondaryRunAgentID:       secondaryRunAgent.ID,
 	}
+}
+
+func recordRunEvent(
+	t *testing.T,
+	ctx context.Context,
+	repo *repository.Repository,
+	runID uuid.UUID,
+	runAgentID uuid.UUID,
+	eventID string,
+	eventType runevents.Type,
+	occurredAt time.Time,
+	payload string,
+) {
+	t.Helper()
+
+	if _, err := repo.RecordRunEvent(ctx, repository.RecordRunEventParams{
+		Event: runevents.Envelope{
+			EventID:       eventID,
+			SchemaVersion: runevents.SchemaVersionV1,
+			RunID:         runID,
+			RunAgentID:    runAgentID,
+			EventType:     eventType,
+			Source:        runevents.SourceNativeEngine,
+			OccurredAt:    occurredAt,
+			Payload:       []byte(payload),
+		},
+	}); err != nil {
+		t.Fatalf("RecordRunEvent(%s) returned error: %v", eventID, err)
+	}
+}
+
+func decodeReplaySummary(t *testing.T, payload []byte) map[string]any {
+	t.Helper()
+
+	var summary map[string]any
+	if err := json.Unmarshal(payload, &summary); err != nil {
+		t.Fatalf("unmarshal replay summary: %v", err)
+	}
+	return summary
 }

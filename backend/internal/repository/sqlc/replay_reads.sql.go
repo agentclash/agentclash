@@ -86,3 +86,56 @@ func (q *Queries) GetRunAgentScorecardByRunAgentID(ctx context.Context, arg GetR
 	)
 	return i, err
 }
+
+const upsertRunAgentReplayIndex = `-- name: UpsertRunAgentReplayIndex :one
+INSERT INTO run_agent_replays (
+    run_agent_id,
+    artifact_id,
+    summary,
+    latest_sequence_number,
+    event_count
+)
+VALUES (
+    $1,
+    $2,
+    $3,
+    $4,
+    $5
+)
+ON CONFLICT (run_agent_id) DO UPDATE
+SET artifact_id = EXCLUDED.artifact_id,
+    summary = EXCLUDED.summary,
+    latest_sequence_number = EXCLUDED.latest_sequence_number,
+    event_count = EXCLUDED.event_count
+RETURNING id, run_agent_id, artifact_id, summary, latest_sequence_number, event_count, created_at, updated_at
+`
+
+type UpsertRunAgentReplayIndexParams struct {
+	RunAgentID           uuid.UUID
+	ArtifactID           *uuid.UUID
+	Summary              []byte
+	LatestSequenceNumber *int64
+	EventCount           int64
+}
+
+func (q *Queries) UpsertRunAgentReplayIndex(ctx context.Context, arg UpsertRunAgentReplayIndexParams) (RunAgentReplay, error) {
+	row := q.db.QueryRow(ctx, upsertRunAgentReplayIndex,
+		arg.RunAgentID,
+		arg.ArtifactID,
+		arg.Summary,
+		arg.LatestSequenceNumber,
+		arg.EventCount,
+	)
+	var i RunAgentReplay
+	err := row.Scan(
+		&i.ID,
+		&i.RunAgentID,
+		&i.ArtifactID,
+		&i.Summary,
+		&i.LatestSequenceNumber,
+		&i.EventCount,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}

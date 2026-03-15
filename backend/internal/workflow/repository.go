@@ -25,6 +25,7 @@ type RunRepository interface {
 	ListRunAgentsByRunID(ctx context.Context, runID uuid.UUID) ([]domain.RunAgent, error)
 	GetRunAgentByID(ctx context.Context, id uuid.UUID) (domain.RunAgent, error)
 	GetRunAgentExecutionContextByID(ctx context.Context, runAgentID uuid.UUID) (repository.RunAgentExecutionContext, error)
+	BuildRunAgentReplay(ctx context.Context, runAgentID uuid.UUID) (repository.RunAgentReplay, error)
 	SetRunTemporalIDs(ctx context.Context, params repository.SetRunTemporalIDsParams) (domain.Run, error)
 	TransitionRunStatus(ctx context.Context, params repository.TransitionRunStatusParams) (domain.Run, error)
 	TransitionRunAgentStatus(ctx context.Context, params repository.TransitionRunAgentStatusParams) (domain.RunAgent, error)

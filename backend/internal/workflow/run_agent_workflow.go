@@ -69,6 +69,9 @@ func runAgentWorkflow(ctx sdkworkflow.Context, input RunAgentWorkflowInput) erro
 	if err := transitionRunAgentStatus(ctx, input.RunAgentID, domain.RunAgentStatusCompleted, stringPtr("native run-agent execution completed"), nil); err != nil {
 		return err
 	}
+	if err := buildRunAgentReplay(ctx, input.RunAgentID); err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -217,8 +220,18 @@ func markRunAgentFailed(ctx sdkworkflow.Context, runAgentID uuid.UUID, workflowE
 	if activityErr != nil {
 		return fmt.Errorf("run-agent workflow failed: %v; additionally failed to mark run agent failed: %w", workflowErr, activityErr)
 	}
+	if replayErr := buildRunAgentReplay(ctx, runAgentID); replayErr != nil {
+		return fmt.Errorf("run-agent workflow failed: %v; additionally failed to build replay: %w", workflowErr, replayErr)
+	}
 
 	return workflowErr
+}
+
+func buildRunAgentReplay(ctx sdkworkflow.Context, runAgentID uuid.UUID) error {
+	var replay repository.RunAgentReplay
+	return sdkworkflow.ExecuteActivity(ctx, buildRunAgentReplayActivityName, BuildRunAgentReplayInput{
+		RunAgentID: runAgentID,
+	}).Get(ctx, &replay)
 }
 
 func shouldSkipRunAgentFailureTransition(err error) bool {
