@@ -452,6 +452,9 @@ func (r *Repository) RecordRunEvent(ctx context.Context, params RecordRunEventPa
 		return RunEvent{}, fmt.Errorf("validate canonical run event: %w", err)
 	}
 
+	// Sequence assignment is append-only per run-agent via MAX(sequence_number)+1.
+	// Callers must serialize writes for a given run_agent_id; concurrent inserts for
+	// the same run-agent can race and one will fail on the unique sequence constraint.
 	row, err := r.queries.InsertRunEvent(ctx, repositorysqlc.InsertRunEventParams{
 		RunID:      params.Event.RunID,
 		RunAgentID: params.Event.RunAgentID,
