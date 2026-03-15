@@ -9,6 +9,7 @@ import (
 
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/domain"
 	repositorysqlc "github.com/Atharva-Kanherkar/agentclash/backend/internal/repository/sqlc"
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/runevents"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -56,16 +57,8 @@ type InsertRunAgentStatusHistoryParams struct {
 }
 
 type RecordHostedRunEventParams struct {
-	RunID         uuid.UUID
-	RunAgentID    uuid.UUID
-	ExternalRunID string
-	EventType     string
-	OccurredAt    time.Time
-	FinalStatus   *string
-	Output        json.RawMessage
-	ErrorMessage  *string
-	LatencyMS     *int64
-	Metadata      json.RawMessage
+	Event   runevents.Envelope
+	Summary json.RawMessage
 }
 
 type RunnableChallengePackVersion struct {
@@ -397,45 +390,29 @@ func (r *Repository) RecordHostedRunEvent(ctx context.Context, params RecordHost
 	defer rollback(ctx, tx)
 
 	queries := r.queries.WithTx(tx)
-	payload, err := json.Marshal(map[string]any{
-		"external_run_id": params.ExternalRunID,
-		"final_status":    cloneStringPtr(params.FinalStatus),
-		"output":          normalizeJSON(params.Output),
-		"error_message":   cloneStringPtr(params.ErrorMessage),
-		"latency_ms":      cloneInt64Ptr(params.LatencyMS),
-		"metadata":        normalizeJSON(params.Metadata),
-	})
-	if err != nil {
-		return RunAgentReplay{}, fmt.Errorf("marshal hosted run event payload: %w", err)
+	if err := params.Event.ValidatePending(); err != nil {
+		return RunAgentReplay{}, fmt.Errorf("validate hosted canonical event: %w", err)
 	}
 
 	insertedEvent, err := queries.InsertHostedRunEvent(ctx, repositorysqlc.InsertHostedRunEventParams{
-		RunID:      params.RunID,
-		RunAgentID: params.RunAgentID,
-		EventType:  params.EventType,
-		OccurredAt: pgtype.Timestamptz{Time: params.OccurredAt.UTC(), Valid: true},
-		Payload:    payload,
+		RunID:      params.Event.RunID,
+		RunAgentID: params.Event.RunAgentID,
+		EventType:  string(params.Event.EventType),
+		ActorType:  string(params.Event.Source),
+		OccurredAt: pgtype.Timestamptz{Time: params.Event.OccurredAt.UTC(), Valid: true},
+		Payload:    cloneJSON(params.Event.Payload),
 	})
 	if err != nil {
 		return RunAgentReplay{}, fmt.Errorf("insert hosted run event: %w", err)
 	}
 
-	summary, err := json.Marshal(map[string]any{
-		"mode":            "hosted_black_box",
-		"external_run_id": params.ExternalRunID,
-		"last_event_type": params.EventType,
-		"final_status":    cloneStringPtr(params.FinalStatus),
-		"output":          normalizeJSON(params.Output),
-		"error_message":   cloneStringPtr(params.ErrorMessage),
-		"latency_ms":      cloneInt64Ptr(params.LatencyMS),
-		"metadata":        normalizeJSON(params.Metadata),
-	})
-	if err != nil {
-		return RunAgentReplay{}, fmt.Errorf("marshal hosted replay summary: %w", err)
+	summary := cloneJSON(params.Summary)
+	if len(summary) == 0 {
+		summary = json.RawMessage(`{}`)
 	}
 
 	replayRow, err := queries.UpsertRunAgentReplaySummary(ctx, repositorysqlc.UpsertRunAgentReplaySummaryParams{
-		RunAgentID:           params.RunAgentID,
+		RunAgentID:           params.Event.RunAgentID,
 		Summary:              summary,
 		LatestSequenceNumber: int64Ptr(insertedEvent.SequenceNumber),
 		EventCount:           insertedEvent.SequenceNumber,

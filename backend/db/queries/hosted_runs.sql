@@ -116,7 +116,7 @@ SELECT
     @run_agent_id,
     next_sequence.sequence_number,
     @event_type,
-    'hosted_external',
+    @actor_type,
     @occurred_at,
     @payload
 FROM next_sequence

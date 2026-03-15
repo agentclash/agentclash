@@ -9,6 +9,7 @@ import (
 
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/hostedruns"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/runevents"
 	"github.com/google/uuid"
 )
 
@@ -77,6 +78,14 @@ func (m *HostedRunIngestionManager) IngestEvent(ctx context.Context, runID uuid.
 	if err != nil {
 		return err
 	}
+	normalizedEvent, err := runevents.NormalizeHostedEvent(runID, event)
+	if err != nil {
+		return err
+	}
+	replaySummary, err := hostedReplaySummary(normalizedEvent, event)
+	if err != nil {
+		return err
+	}
 	if _, err := m.repo.ApplyHostedRunEvent(ctx, repository.ApplyHostedRunEventParams{
 		RunAgentID:       event.RunAgentID,
 		Status:           status,
@@ -90,16 +99,8 @@ func (m *HostedRunIngestionManager) IngestEvent(ctx context.Context, runID uuid.
 		return err
 	}
 	if _, err := m.repo.RecordHostedRunEvent(ctx, repository.RecordHostedRunEventParams{
-		RunID:         runID,
-		RunAgentID:    event.RunAgentID,
-		ExternalRunID: event.ExternalRunID,
-		EventType:     event.EventType,
-		OccurredAt:    event.OccurredAt,
-		FinalStatus:   cloneStringPtr(event.FinalStatus),
-		Output:        cloneJSON(event.Output),
-		ErrorMessage:  cloneStringPtr(event.ErrorMessage),
-		LatencyMS:     cloneInt64Ptr(event.LatencyMS),
-		Metadata:      cloneJSON(event.Metadata),
+		Event:   normalizedEvent,
+		Summary: replaySummary,
 	}); err != nil {
 		return err
 	}
@@ -217,4 +218,22 @@ func cloneInt64Ptr(value *int64) *int64 {
 	}
 	cloned := *value
 	return &cloned
+}
+
+func hostedReplaySummary(normalizedEvent runevents.Envelope, event hostedruns.Event) (json.RawMessage, error) {
+	summary, err := json.Marshal(map[string]any{
+		"mode":            normalizedEvent.Summary.EvidenceLevel,
+		"source":          normalizedEvent.Source,
+		"schema_version":  normalizedEvent.SchemaVersion,
+		"last_event_type": normalizedEvent.EventType,
+		"status":          normalizedEvent.Summary.Status,
+		"external_run_id": normalizedEvent.Summary.ExternalRunID,
+		"idempotency_key": normalizedEvent.Summary.IdempotencyKey,
+		"payload":         json.RawMessage(normalizedEvent.Payload),
+		"raw_event_type":  event.EventType,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return summary, nil
 }

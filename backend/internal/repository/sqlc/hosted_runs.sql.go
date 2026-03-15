@@ -215,9 +215,9 @@ SELECT
     $2,
     next_sequence.sequence_number,
     $3,
-    'hosted_external',
     $4,
-    $5
+    $5,
+    $6
 FROM next_sequence
 RETURNING id, run_id, run_agent_id, sequence_number, event_type, actor_type, occurred_at, artifact_id, payload
 `
@@ -226,6 +226,7 @@ type InsertHostedRunEventParams struct {
 	RunID      uuid.UUID
 	RunAgentID uuid.UUID
 	EventType  string
+	ActorType  string
 	OccurredAt pgtype.Timestamptz
 	Payload    []byte
 }
@@ -235,6 +236,7 @@ func (q *Queries) InsertHostedRunEvent(ctx context.Context, arg InsertHostedRunE
 		arg.RunID,
 		arg.RunAgentID,
 		arg.EventType,
+		arg.ActorType,
 		arg.OccurredAt,
 		arg.Payload,
 	)

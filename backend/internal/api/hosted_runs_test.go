@@ -12,6 +12,7 @@ import (
 
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/hostedruns"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/runevents"
 	"github.com/google/uuid"
 )
 
@@ -49,6 +50,15 @@ func TestHostedRunIngestionManagerPersistsAndSignalsTerminalEvent(t *testing.T) 
 	}
 	if repo.applyParams == nil || repo.applyParams.Status != "completed" {
 		t.Fatalf("apply params = %#v, want completed status", repo.applyParams)
+	}
+	if repo.recordParams == nil {
+		t.Fatalf("expected record params to be captured")
+	}
+	if repo.recordParams.Event.EventType != runevents.EventTypeSystemRunCompleted {
+		t.Fatalf("recorded event type = %q, want %q", repo.recordParams.Event.EventType, runevents.EventTypeSystemRunCompleted)
+	}
+	if repo.recordParams.Event.Source != runevents.SourceHostedExternal {
+		t.Fatalf("recorded event source = %q, want %q", repo.recordParams.Event.Source, runevents.SourceHostedExternal)
 	}
 	if signaler.signalCount != 1 {
 		t.Fatalf("signal count = %d, want 1", signaler.signalCount)
