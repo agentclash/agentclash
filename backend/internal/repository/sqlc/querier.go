@@ -10,10 +10,13 @@ import (
 
 type Querier interface {
 	ApplyHostedRunEvent(ctx context.Context, arg ApplyHostedRunEventParams) (HostedRunExecution, error)
+	CreateEvaluationSpec(ctx context.Context, arg CreateEvaluationSpecParams) (EvaluationSpec, error)
 	CreateHostedRunExecution(ctx context.Context, arg CreateHostedRunExecutionParams) (HostedRunExecution, error)
 	CreateRun(ctx context.Context, arg CreateRunParams) (Run, error)
 	CreateRunAgent(ctx context.Context, arg CreateRunAgentParams) (RunAgent, error)
 	GetChallengeInputSetByID(ctx context.Context, arg GetChallengeInputSetByIDParams) (ChallengeInputSet, error)
+	GetEvaluationSpecByChallengePackVersionAndVersion(ctx context.Context, arg GetEvaluationSpecByChallengePackVersionAndVersionParams) (EvaluationSpec, error)
+	GetEvaluationSpecByID(ctx context.Context, arg GetEvaluationSpecByIDParams) (EvaluationSpec, error)
 	GetHostedRunExecutionByRunAgentID(ctx context.Context, arg GetHostedRunExecutionByRunAgentIDParams) (HostedRunExecution, error)
 	GetRunAgentByID(ctx context.Context, arg GetRunAgentByIDParams) (RunAgent, error)
 	GetRunAgentExecutionContextByID(ctx context.Context, arg GetRunAgentExecutionContextByIDParams) (GetRunAgentExecutionContextByIDRow, error)

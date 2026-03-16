@@ -132,6 +132,25 @@ type RunAgentScorecard struct {
 	UpdatedAt        time.Time
 }
 
+type EvaluationSpecRecord struct {
+	ID                     uuid.UUID
+	ChallengePackVersionID uuid.UUID
+	Name                   string
+	VersionNumber          int32
+	JudgeMode              string
+	Definition             json.RawMessage
+	CreatedAt              time.Time
+	UpdatedAt              time.Time
+}
+
+type CreateEvaluationSpecParams struct {
+	ChallengePackVersionID uuid.UUID
+	Name                   string
+	VersionNumber          int32
+	JudgeMode              string
+	Definition             json.RawMessage
+}
+
 type RunEvent struct {
 	ID             int64
 	RunID          uuid.UUID
@@ -379,6 +398,69 @@ func (r *Repository) GetRunAgentReplayByRunAgentID(ctx context.Context, runAgent
 	}
 
 	return replay, nil
+}
+
+func (r *Repository) CreateEvaluationSpec(ctx context.Context, params CreateEvaluationSpecParams) (EvaluationSpecRecord, error) {
+	row, err := r.queries.CreateEvaluationSpec(ctx, repositorysqlc.CreateEvaluationSpecParams{
+		ChallengePackVersionID: &params.ChallengePackVersionID,
+		Name:                   params.Name,
+		VersionNumber:          params.VersionNumber,
+		JudgeMode:              params.JudgeMode,
+		Definition:             cloneJSON(params.Definition),
+	})
+	if err != nil {
+		return EvaluationSpecRecord{}, fmt.Errorf("create evaluation spec: %w", err)
+	}
+
+	record, err := mapEvaluationSpecRecord(row)
+	if err != nil {
+		return EvaluationSpecRecord{}, fmt.Errorf("map evaluation spec: %w", err)
+	}
+
+	return record, nil
+}
+
+func (r *Repository) GetEvaluationSpecByID(ctx context.Context, id uuid.UUID) (EvaluationSpecRecord, error) {
+	row, err := r.queries.GetEvaluationSpecByID(ctx, repositorysqlc.GetEvaluationSpecByIDParams{ID: id})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return EvaluationSpecRecord{}, ErrEvaluationSpecNotFound
+		}
+		return EvaluationSpecRecord{}, fmt.Errorf("get evaluation spec by id: %w", err)
+	}
+
+	record, err := mapEvaluationSpecRecord(row)
+	if err != nil {
+		return EvaluationSpecRecord{}, fmt.Errorf("map evaluation spec: %w", err)
+	}
+
+	return record, nil
+}
+
+func (r *Repository) GetEvaluationSpecByChallengePackVersionAndVersion(
+	ctx context.Context,
+	challengePackVersionID uuid.UUID,
+	name string,
+	versionNumber int32,
+) (EvaluationSpecRecord, error) {
+	row, err := r.queries.GetEvaluationSpecByChallengePackVersionAndVersion(ctx, repositorysqlc.GetEvaluationSpecByChallengePackVersionAndVersionParams{
+		ChallengePackVersionID: &challengePackVersionID,
+		Name:                   name,
+		VersionNumber:          versionNumber,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return EvaluationSpecRecord{}, ErrEvaluationSpecNotFound
+		}
+		return EvaluationSpecRecord{}, fmt.Errorf("get evaluation spec by challenge pack version and version: %w", err)
+	}
+
+	record, err := mapEvaluationSpecRecord(row)
+	if err != nil {
+		return EvaluationSpecRecord{}, fmt.Errorf("map evaluation spec: %w", err)
+	}
+
+	return record, nil
 }
 
 func (r *Repository) GetRunAgentScorecardByRunAgentID(ctx context.Context, runAgentID uuid.UUID) (RunAgentScorecard, error) {
@@ -913,6 +995,31 @@ func mapRunAgentScorecard(row repositorysqlc.RunAgentScorecard) (RunAgentScoreca
 		Scorecard:        cloneJSON(row.Scorecard),
 		CreatedAt:        createdAt,
 		UpdatedAt:        updatedAt,
+	}, nil
+}
+
+func mapEvaluationSpecRecord(row repositorysqlc.EvaluationSpec) (EvaluationSpecRecord, error) {
+	createdAt, err := requiredTime("evaluation_specs.created_at", row.CreatedAt)
+	if err != nil {
+		return EvaluationSpecRecord{}, err
+	}
+	updatedAt, err := requiredTime("evaluation_specs.updated_at", row.UpdatedAt)
+	if err != nil {
+		return EvaluationSpecRecord{}, err
+	}
+	if row.ChallengePackVersionID == nil {
+		return EvaluationSpecRecord{}, fmt.Errorf("evaluation_specs.challenge_pack_version_id is required")
+	}
+
+	return EvaluationSpecRecord{
+		ID:                     row.ID,
+		ChallengePackVersionID: *row.ChallengePackVersionID,
+		Name:                   row.Name,
+		VersionNumber:          row.VersionNumber,
+		JudgeMode:              row.JudgeMode,
+		Definition:             cloneJSON(row.Definition),
+		CreatedAt:              createdAt,
+		UpdatedAt:              updatedAt,
 	}, nil
 }
 

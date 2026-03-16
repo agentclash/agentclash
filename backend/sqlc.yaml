@@ -10,6 +10,7 @@ sql:
       - "db/queries/hosted_runs.sql"
       - "db/queries/run_events.sql"
       - "db/queries/replay_reads.sql"
+      - "db/queries/evaluation_specs.sql"
     gen:
       go:
         package: "sqlc"

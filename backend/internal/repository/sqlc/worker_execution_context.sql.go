@@ -55,7 +55,7 @@ SELECT
     cpv.version_number AS challenge_pack_version_number,
     cpv.manifest_checksum AS challenge_pack_manifest_checksum,
     cpv.manifest AS challenge_pack_manifest,
-    challenge_definitions.challenge_definitions AS challenge_pack_challenges,
+    challenge_definitions.challenge_definitions::jsonb AS challenge_pack_challenges,
 
     cis.id AS challenge_input_set_id,
     cis.challenge_pack_version_id AS challenge_input_set_challenge_pack_version_id,
@@ -63,7 +63,7 @@ SELECT
     cis.name AS challenge_input_set_name,
     cis.description AS challenge_input_set_description,
     cis.input_checksum AS challenge_input_set_input_checksum,
-    challenge_input_items.challenge_input_items AS challenge_input_set_items,
+    challenge_input_items.challenge_input_items::jsonb AS challenge_input_set_items,
 
     ads.id AS snapshot_id,
     ads.agent_deployment_id AS snapshot_agent_deployment_id,

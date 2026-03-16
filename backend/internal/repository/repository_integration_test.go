@@ -1104,6 +1104,68 @@ func TestRepositoryGetRunAgentScorecardByRunAgentIDPreservesNullScores(t *testin
 	}
 }
 
+func TestRepositoryCreateEvaluationSpecAndReadItBack(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	created, err := repo.CreateEvaluationSpec(ctx, repository.CreateEvaluationSpecParams{
+		ChallengePackVersionID: fixture.challengePackVersionID,
+		Name:                   "coding-fix-v0",
+		VersionNumber:          1,
+		JudgeMode:              "deterministic",
+		Definition:             []byte(`{"name":"coding-fix-v0","version_number":1}`),
+	})
+	if err != nil {
+		t.Fatalf("CreateEvaluationSpec returned error: %v", err)
+	}
+	if created.Name != "coding-fix-v0" {
+		t.Fatalf("created.Name = %q, want coding-fix-v0", created.Name)
+	}
+	if created.ChallengePackVersionID != fixture.challengePackVersionID {
+		t.Fatalf("created.ChallengePackVersionID = %s, want %s", created.ChallengePackVersionID, fixture.challengePackVersionID)
+	}
+
+	byID, err := repo.GetEvaluationSpecByID(ctx, created.ID)
+	if err != nil {
+		t.Fatalf("GetEvaluationSpecByID returned error: %v", err)
+	}
+	if byID.ID != created.ID {
+		t.Fatalf("byID.ID = %s, want %s", byID.ID, created.ID)
+	}
+
+	byVersion, err := repo.GetEvaluationSpecByChallengePackVersionAndVersion(ctx, fixture.challengePackVersionID, "coding-fix-v0", 1)
+	if err != nil {
+		t.Fatalf("GetEvaluationSpecByChallengePackVersionAndVersion returned error: %v", err)
+	}
+	if byVersion.ID != created.ID {
+		t.Fatalf("byVersion.ID = %s, want %s", byVersion.ID, created.ID)
+	}
+}
+
+func TestRepositoryCreateEvaluationSpecRejectsDuplicateNameAndVersion(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	params := repository.CreateEvaluationSpecParams{
+		ChallengePackVersionID: fixture.challengePackVersionID,
+		Name:                   "duplicate-spec",
+		VersionNumber:          1,
+		JudgeMode:              "deterministic",
+		Definition:             []byte(`{"name":"duplicate-spec","version_number":1}`),
+	}
+
+	if _, err := repo.CreateEvaluationSpec(ctx, params); err != nil {
+		t.Fatalf("first CreateEvaluationSpec returned error: %v", err)
+	}
+	if _, err := repo.CreateEvaluationSpec(ctx, params); err == nil {
+		t.Fatal("second CreateEvaluationSpec returned nil error")
+	}
+}
+
 func TestRepositoryTransitionRunAgentStatusWritesCurrentStateAndHistory(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)

@@ -35,6 +35,17 @@ type ChallengePackVersion struct {
 	ArchivedAt       pgtype.Timestamptz
 }
 
+type EvaluationSpec struct {
+	ID                     uuid.UUID
+	ChallengePackVersionID *uuid.UUID
+	Name                   string
+	VersionNumber          int32
+	JudgeMode              string
+	Definition             []byte
+	CreatedAt              pgtype.Timestamptz
+	UpdatedAt              pgtype.Timestamptz
+}
+
 type HostedRunExecution struct {
 	ID               uuid.UUID
 	RunID            uuid.UUID
