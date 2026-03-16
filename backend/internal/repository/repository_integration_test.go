@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"strings"
 	"testing"
 	"time"
 
@@ -1316,8 +1315,9 @@ func TestRepositoryStoreRunAgentEvaluationResultsUpsertsJudgeAndMetricRows(t *te
 	if scorecard.ReliabilityScore != nil {
 		t.Fatalf("reliability_score = %v, want nil", scorecard.ReliabilityScore)
 	}
-	if !strings.Contains(string(scorecard.Scorecard), `"status":"complete"`) {
-		t.Fatalf("scorecard json = %s, want complete status", string(scorecard.Scorecard))
+	scorecardDocument := decodeReplaySummary(t, scorecard.Scorecard)
+	if scorecardDocument["status"] != "complete" {
+		t.Fatalf("scorecard json status = %v, want complete", scorecardDocument["status"])
 	}
 }
 
