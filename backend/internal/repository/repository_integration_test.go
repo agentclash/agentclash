@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -1661,6 +1662,279 @@ func TestRepositoryTransitionRunStatusRollsBackWhenHistoryInsertFails(t *testing
 	}
 }
 
+func TestRepositoryBuildRunComparisonComparableSingleParticipantRuns(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	baselineRun, baselineRunAgents := createTestRun(t, ctx, repo, fixture, 1, "baseline")
+	candidateRun, candidateRunAgents := createTestRun(t, ctx, repo, fixture, 1, "candidate")
+	evaluationSpecID := insertEvaluationSpecRecord(t, ctx, db, fixture.challengePackVersionID, "compare-spec", 1)
+
+	insertRunAgentScorecardRecord(t, ctx, db, baselineRunAgents[0].ID, evaluationSpecID, scorecardFixture{
+		Correctness: float64Ptr(0.72),
+		Reliability: float64Ptr(0.81),
+		Latency:     float64Ptr(0.44),
+		Cost:        float64Ptr(0.36),
+	})
+	insertRunAgentScorecardRecord(t, ctx, db, candidateRunAgents[0].ID, evaluationSpecID, scorecardFixture{
+		Correctness: float64Ptr(0.84),
+		Reliability: float64Ptr(0.79),
+		Latency:     float64Ptr(0.40),
+		Cost:        float64Ptr(0.31),
+	})
+	insertReplaySummaryRecord(t, ctx, db, baselineRunAgents[0].ID, replaySummaryFixture{
+		Status:            "completed",
+		Headline:          "Baseline completed",
+		Events:            10,
+		ReplaySteps:       4,
+		ModelCalls:        2,
+		ToolCalls:         1,
+		SandboxCommands:   1,
+		Outputs:           1,
+		ScoringEvents:     1,
+		TerminalStatus:    "completed",
+		TerminalEventType: "system.run.completed",
+	})
+	insertReplaySummaryRecord(t, ctx, db, candidateRunAgents[0].ID, replaySummaryFixture{
+		Status:            "completed",
+		Headline:          "Candidate completed",
+		Events:            12,
+		ReplaySteps:       5,
+		ModelCalls:        3,
+		ToolCalls:         1,
+		SandboxCommands:   1,
+		Outputs:           1,
+		ScoringEvents:     1,
+		TerminalStatus:    "completed",
+		TerminalEventType: "system.run.completed",
+	})
+	insertJudgeResultRecord(t, ctx, db, baselineRunAgents[0].ID, evaluationSpecID, fixture.firstChallengeIdentityID, "exact")
+	insertJudgeResultRecord(t, ctx, db, candidateRunAgents[0].ID, evaluationSpecID, fixture.firstChallengeIdentityID, "exact")
+
+	comparison, err := repo.BuildRunComparison(ctx, repository.BuildRunComparisonParams{
+		BaselineRunID:  baselineRun.ID,
+		CandidateRunID: candidateRun.ID,
+	})
+	if err != nil {
+		t.Fatalf("BuildRunComparison returned error: %v", err)
+	}
+
+	if comparison.Status != repository.RunComparisonStatusComparable {
+		t.Fatalf("comparison status = %s, want comparable", comparison.Status)
+	}
+	if comparison.BaselineRunAgentID == nil || *comparison.BaselineRunAgentID != baselineRunAgents[0].ID {
+		t.Fatalf("baseline selected run agent = %v, want %s", comparison.BaselineRunAgentID, baselineRunAgents[0].ID)
+	}
+	if comparison.CandidateRunAgentID == nil || *comparison.CandidateRunAgentID != candidateRunAgents[0].ID {
+		t.Fatalf("candidate selected run agent = %v, want %s", comparison.CandidateRunAgentID, candidateRunAgents[0].ID)
+	}
+	if comparison.ReasonCode != nil {
+		t.Fatalf("reason code = %v, want nil", comparison.ReasonCode)
+	}
+
+	summary := decodeReplaySummary(t, comparison.Summary)
+	if summary["status"] != string(repository.RunComparisonStatusComparable) {
+		t.Fatalf("summary status = %v, want comparable", summary["status"])
+	}
+	dimensionDeltas := summary["dimension_deltas"].(map[string]any)
+	correctness := dimensionDeltas["correctness"].(map[string]any)
+	if correctness["state"] != "available" {
+		t.Fatalf("correctness state = %v, want available", correctness["state"])
+	}
+	if correctness["delta"] != 0.12 {
+		t.Fatalf("correctness delta = %v, want 0.12", correctness["delta"])
+	}
+	replayDivergence := summary["replay_summary_divergence"].(map[string]any)
+	if replayDivergence["state"] != "available" {
+		t.Fatalf("replay summary state = %v, want available", replayDivergence["state"])
+	}
+}
+
+func TestRepositoryBuildRunComparisonParticipantCountMismatch(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	candidateRun, _ := createTestRun(t, ctx, repo, fixture, 1, "candidate")
+
+	comparison, err := repo.BuildRunComparison(ctx, repository.BuildRunComparisonParams{
+		BaselineRunID:  fixture.runID,
+		CandidateRunID: candidateRun.ID,
+	})
+	if err != nil {
+		t.Fatalf("BuildRunComparison returned error: %v", err)
+	}
+
+	if comparison.Status != repository.RunComparisonStatusNotComparable {
+		t.Fatalf("comparison status = %s, want not_comparable", comparison.Status)
+	}
+	if comparison.ReasonCode == nil || *comparison.ReasonCode != "participant_count_mismatch" {
+		t.Fatalf("reason code = %v, want participant_count_mismatch", comparison.ReasonCode)
+	}
+}
+
+func TestRepositoryBuildRunComparisonExplicitParticipantSelectionForMultiAgentRuns(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	candidateRun, candidateRunAgents := createTestRun(t, ctx, repo, fixture, 2, "candidate")
+	evaluationSpecID := insertEvaluationSpecRecord(t, ctx, db, fixture.challengePackVersionID, "compare-explicit", 1)
+
+	insertRunAgentScorecardRecord(t, ctx, db, fixture.primaryRunAgentID, evaluationSpecID, scorecardFixture{
+		Correctness: float64Ptr(0.71),
+		Reliability: float64Ptr(0.88),
+		Latency:     float64Ptr(0.39),
+		Cost:        float64Ptr(0.26),
+	})
+	insertRunAgentScorecardRecord(t, ctx, db, candidateRunAgents[0].ID, evaluationSpecID, scorecardFixture{
+		Correctness: float64Ptr(0.76),
+		Reliability: float64Ptr(0.84),
+		Latency:     float64Ptr(0.33),
+		Cost:        float64Ptr(0.22),
+	})
+	insertReplaySummaryRecord(t, ctx, db, fixture.primaryRunAgentID, replaySummaryFixture{
+		Status:            "completed",
+		Headline:          "Baseline lane 0",
+		Events:            9,
+		ReplaySteps:       4,
+		ModelCalls:        2,
+		ToolCalls:         1,
+		Outputs:           1,
+		ScoringEvents:     1,
+		TerminalStatus:    "completed",
+		TerminalEventType: "system.run.completed",
+	})
+	insertReplaySummaryRecord(t, ctx, db, candidateRunAgents[0].ID, replaySummaryFixture{
+		Status:            "completed",
+		Headline:          "Candidate lane 0",
+		Events:            11,
+		ReplaySteps:       5,
+		ModelCalls:        3,
+		ToolCalls:         1,
+		Outputs:           1,
+		ScoringEvents:     1,
+		TerminalStatus:    "completed",
+		TerminalEventType: "system.run.completed",
+	})
+	insertJudgeResultRecord(t, ctx, db, fixture.primaryRunAgentID, evaluationSpecID, fixture.firstChallengeIdentityID, "exact")
+	insertJudgeResultRecord(t, ctx, db, candidateRunAgents[0].ID, evaluationSpecID, fixture.firstChallengeIdentityID, "exact")
+
+	comparison, err := repo.BuildRunComparison(ctx, repository.BuildRunComparisonParams{
+		BaselineRunID:       fixture.runID,
+		CandidateRunID:      candidateRun.ID,
+		BaselineRunAgentID:  &fixture.primaryRunAgentID,
+		CandidateRunAgentID: &candidateRunAgents[0].ID,
+	})
+	if err != nil {
+		t.Fatalf("BuildRunComparison returned error: %v", err)
+	}
+
+	if comparison.Status != repository.RunComparisonStatusComparable {
+		t.Fatalf("comparison status = %s, want comparable", comparison.Status)
+	}
+}
+
+func TestRepositoryBuildRunComparisonEvaluationSpecMismatch(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	baselineRun, baselineRunAgents := createTestRun(t, ctx, repo, fixture, 1, "baseline")
+	candidateRun, candidateRunAgents := createTestRun(t, ctx, repo, fixture, 1, "candidate")
+	baselineSpecID := insertEvaluationSpecRecord(t, ctx, db, fixture.challengePackVersionID, "baseline-spec", 1)
+	candidateSpecID := insertEvaluationSpecRecord(t, ctx, db, fixture.challengePackVersionID, "candidate-spec", 1)
+
+	insertRunAgentScorecardRecord(t, ctx, db, baselineRunAgents[0].ID, baselineSpecID, scorecardFixture{Correctness: float64Ptr(0.80)})
+	insertRunAgentScorecardRecord(t, ctx, db, candidateRunAgents[0].ID, candidateSpecID, scorecardFixture{Correctness: float64Ptr(0.81)})
+
+	comparison, err := repo.BuildRunComparison(ctx, repository.BuildRunComparisonParams{
+		BaselineRunID:  baselineRun.ID,
+		CandidateRunID: candidateRun.ID,
+	})
+	if err != nil {
+		t.Fatalf("BuildRunComparison returned error: %v", err)
+	}
+
+	if comparison.ReasonCode == nil || *comparison.ReasonCode != "evaluation_spec_mismatch" {
+		t.Fatalf("reason code = %v, want evaluation_spec_mismatch", comparison.ReasonCode)
+	}
+}
+
+func TestRepositoryBuildRunComparisonMissingReplayDoesNotBlock(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	baselineRun, baselineRunAgents := createTestRun(t, ctx, repo, fixture, 1, "baseline")
+	candidateRun, candidateRunAgents := createTestRun(t, ctx, repo, fixture, 1, "candidate")
+	evaluationSpecID := insertEvaluationSpecRecord(t, ctx, db, fixture.challengePackVersionID, "replay-optional", 1)
+
+	insertRunAgentScorecardRecord(t, ctx, db, baselineRunAgents[0].ID, evaluationSpecID, scorecardFixture{Correctness: float64Ptr(0.66)})
+	insertRunAgentScorecardRecord(t, ctx, db, candidateRunAgents[0].ID, evaluationSpecID, scorecardFixture{Correctness: float64Ptr(0.68)})
+	insertJudgeResultRecord(t, ctx, db, baselineRunAgents[0].ID, evaluationSpecID, fixture.firstChallengeIdentityID, "exact")
+	insertJudgeResultRecord(t, ctx, db, candidateRunAgents[0].ID, evaluationSpecID, fixture.firstChallengeIdentityID, "exact")
+	insertReplaySummaryRecord(t, ctx, db, baselineRunAgents[0].ID, replaySummaryFixture{
+		Status:            "completed",
+		Headline:          "Baseline",
+		Events:            6,
+		ReplaySteps:       2,
+		ModelCalls:        1,
+		Outputs:           1,
+		ScoringEvents:     1,
+		TerminalStatus:    "completed",
+		TerminalEventType: "system.run.completed",
+	})
+
+	comparison, err := repo.BuildRunComparison(ctx, repository.BuildRunComparisonParams{
+		BaselineRunID:  baselineRun.ID,
+		CandidateRunID: candidateRun.ID,
+	})
+	if err != nil {
+		t.Fatalf("BuildRunComparison returned error: %v", err)
+	}
+
+	if comparison.Status != repository.RunComparisonStatusComparable {
+		t.Fatalf("comparison status = %s, want comparable", comparison.Status)
+	}
+	summary := decodeReplaySummary(t, comparison.Summary)
+	replayDivergence := summary["replay_summary_divergence"].(map[string]any)
+	if replayDivergence["state"] != "unavailable" {
+		t.Fatalf("replay summary state = %v, want unavailable", replayDivergence["state"])
+	}
+}
+
+func TestRepositoryBuildRunComparisonMissingScorecard(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	baselineRun, baselineRunAgents := createTestRun(t, ctx, repo, fixture, 1, "baseline")
+	candidateRun, _ := createTestRun(t, ctx, repo, fixture, 1, "candidate")
+	evaluationSpecID := insertEvaluationSpecRecord(t, ctx, db, fixture.challengePackVersionID, "missing-scorecard", 1)
+
+	insertRunAgentScorecardRecord(t, ctx, db, baselineRunAgents[0].ID, evaluationSpecID, scorecardFixture{Correctness: float64Ptr(0.91)})
+
+	comparison, err := repo.BuildRunComparison(ctx, repository.BuildRunComparisonParams{
+		BaselineRunID:  baselineRun.ID,
+		CandidateRunID: candidateRun.ID,
+	})
+	if err != nil {
+		t.Fatalf("BuildRunComparison returned error: %v", err)
+	}
+
+	if comparison.ReasonCode == nil || *comparison.ReasonCode != "missing_scorecard" {
+		t.Fatalf("reason code = %v, want missing_scorecard", comparison.ReasonCode)
+	}
+}
+
 type testFixture struct {
 	organizationID            uuid.UUID
 	workspaceID               uuid.UUID
@@ -2124,4 +2398,229 @@ func float64Ptr(value float64) *float64 {
 
 func boolPtr(value bool) *bool {
 	return &value
+}
+
+type scorecardFixture struct {
+	Overall          *float64
+	Correctness      *float64
+	Reliability      *float64
+	Latency          *float64
+	Cost             *float64
+	CorrectnessState string
+	ReliabilityState string
+	LatencyState     string
+	CostState        string
+}
+
+type replaySummaryFixture struct {
+	Status            string
+	Headline          string
+	Events            int64
+	ReplaySteps       int64
+	ModelCalls        int64
+	ToolCalls         int64
+	SandboxCommands   int64
+	Outputs           int64
+	ScoringEvents     int64
+	TerminalStatus    string
+	TerminalEventType string
+}
+
+func createTestRun(
+	t *testing.T,
+	ctx context.Context,
+	repo *repository.Repository,
+	fixture testFixture,
+	participantCount int,
+	name string,
+) (domain.Run, []domain.RunAgent) {
+	t.Helper()
+
+	runAgents := make([]repository.CreateQueuedRunAgentParams, 0, participantCount)
+	for i := 0; i < participantCount; i++ {
+		runAgents = append(runAgents, repository.CreateQueuedRunAgentParams{
+			AgentDeploymentID:         fixture.agentDeploymentID,
+			AgentDeploymentSnapshotID: fixture.agentDeploymentSnapshotID,
+			LaneIndex:                 int32(i),
+			Label:                     fmt.Sprintf("%s-lane-%d", name, i),
+		})
+	}
+
+	executionMode := "comparison"
+	if participantCount == 1 {
+		executionMode = "single_agent"
+	}
+
+	result, err := repo.CreateQueuedRun(ctx, repository.CreateQueuedRunParams{
+		OrganizationID:         fixture.organizationID,
+		WorkspaceID:            fixture.workspaceID,
+		ChallengePackVersionID: fixture.challengePackVersionID,
+		ChallengeInputSetID:    &fixture.challengeInputSetID,
+		CreatedByUserID:        &fixture.userID,
+		Name:                   fmt.Sprintf("%s-%d", name, time.Now().UnixNano()),
+		ExecutionMode:          executionMode,
+		ExecutionPlan:          []byte(`{"participants":[]}`),
+		RunAgents:              runAgents,
+	})
+	if err != nil {
+		t.Fatalf("CreateQueuedRun returned error: %v", err)
+	}
+	return result.Run, result.RunAgents
+}
+
+func insertEvaluationSpecRecord(
+	t *testing.T,
+	ctx context.Context,
+	db *pgxpool.Pool,
+	challengePackVersionID uuid.UUID,
+	name string,
+	version int32,
+) uuid.UUID {
+	t.Helper()
+
+	evaluationSpecID := uuid.New()
+	if _, err := db.Exec(ctx, `
+		INSERT INTO evaluation_specs (
+			id,
+			challenge_pack_version_id,
+			name,
+			version_number,
+			judge_mode,
+			definition
+		)
+		VALUES ($1, $2, $3, $4, $5, $6)
+	`, evaluationSpecID, challengePackVersionID, name, version, "deterministic", []byte(`{"name":"spec","version_number":1,"judge_mode":"deterministic","validators":[{"key":"exact","type":"exact_match","target":"final_output","expected_from":"challenge_input"}],"scorecard":{"dimensions":["correctness","reliability","latency","cost"]}}`)); err != nil {
+		t.Fatalf("insert evaluation spec returned error: %v", err)
+	}
+	return evaluationSpecID
+}
+
+func insertRunAgentScorecardRecord(
+	t *testing.T,
+	ctx context.Context,
+	db *pgxpool.Pool,
+	runAgentID uuid.UUID,
+	evaluationSpecID uuid.UUID,
+	fixture scorecardFixture,
+) {
+	t.Helper()
+
+	scorecardID := uuid.New()
+	scorecardDocument := map[string]any{
+		"run_agent_id":       runAgentID,
+		"evaluation_spec_id": evaluationSpecID,
+		"status":             "complete",
+		"dimensions": map[string]any{
+			"correctness": map[string]any{"state": scorecardState(fixture.CorrectnessState, fixture.Correctness), "score": fixture.Correctness},
+			"reliability": map[string]any{"state": scorecardState(fixture.ReliabilityState, fixture.Reliability), "score": fixture.Reliability},
+			"latency":     map[string]any{"state": scorecardState(fixture.LatencyState, fixture.Latency), "score": fixture.Latency},
+			"cost":        map[string]any{"state": scorecardState(fixture.CostState, fixture.Cost), "score": fixture.Cost},
+		},
+	}
+	scorecardJSON, err := json.Marshal(scorecardDocument)
+	if err != nil {
+		t.Fatalf("marshal scorecard document: %v", err)
+	}
+
+	if _, err := db.Exec(ctx, `
+		INSERT INTO run_agent_scorecards (
+			id,
+			run_agent_id,
+			evaluation_spec_id,
+			overall_score,
+			correctness_score,
+			reliability_score,
+			latency_score,
+			cost_score,
+			scorecard
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+	`, scorecardID, runAgentID, evaluationSpecID, fixture.Overall, fixture.Correctness, fixture.Reliability, fixture.Latency, fixture.Cost, scorecardJSON); err != nil {
+		t.Fatalf("insert run-agent scorecard returned error: %v", err)
+	}
+}
+
+func insertReplaySummaryRecord(
+	t *testing.T,
+	ctx context.Context,
+	db *pgxpool.Pool,
+	runAgentID uuid.UUID,
+	fixture replaySummaryFixture,
+) {
+	t.Helper()
+
+	replayID := uuid.New()
+	summary := map[string]any{
+		"schema_version": "2026-03-16",
+		"status":         fixture.Status,
+		"headline":       fixture.Headline,
+		"counts": map[string]any{
+			"events":           fixture.Events,
+			"replay_steps":     fixture.ReplaySteps,
+			"model_calls":      fixture.ModelCalls,
+			"tool_calls":       fixture.ToolCalls,
+			"sandbox_commands": fixture.SandboxCommands,
+			"outputs":          fixture.Outputs,
+			"scoring_events":   fixture.ScoringEvents,
+		},
+		"terminal_state": map[string]any{
+			"status":     fixture.TerminalStatus,
+			"event_type": fixture.TerminalEventType,
+		},
+	}
+	summaryJSON, err := json.Marshal(summary)
+	if err != nil {
+		t.Fatalf("marshal replay summary: %v", err)
+	}
+
+	if _, err := db.Exec(ctx, `
+		INSERT INTO run_agent_replays (
+			id,
+			run_agent_id,
+			summary,
+			latest_sequence_number,
+			event_count
+		)
+		VALUES ($1, $2, $3, $4, $5)
+	`, replayID, runAgentID, summaryJSON, fixture.Events, fixture.Events); err != nil {
+		t.Fatalf("insert run-agent replay returned error: %v", err)
+	}
+}
+
+func insertJudgeResultRecord(
+	t *testing.T,
+	ctx context.Context,
+	db *pgxpool.Pool,
+	runAgentID uuid.UUID,
+	evaluationSpecID uuid.UUID,
+	challengeIdentityID uuid.UUID,
+	judgeKey string,
+) {
+	t.Helper()
+
+	if _, err := db.Exec(ctx, `
+		INSERT INTO judge_results (
+			id,
+			run_agent_id,
+			evaluation_spec_id,
+			challenge_identity_id,
+			judge_key,
+			verdict,
+			normalized_score,
+			raw_output
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+	`, uuid.New(), runAgentID, evaluationSpecID, challengeIdentityID, judgeKey, "pass", 1.0, []byte(`{"state":"available"}`)); err != nil {
+		t.Fatalf("insert judge result returned error: %v", err)
+	}
+}
+
+func scorecardState(explicit string, score *float64) string {
+	if explicit != "" {
+		return explicit
+	}
+	if score == nil {
+		return "unavailable"
+	}
+	return "available"
 }

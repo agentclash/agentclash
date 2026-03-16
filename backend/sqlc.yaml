@@ -12,6 +12,7 @@ sql:
       - "db/queries/replay_reads.sql"
       - "db/queries/evaluation_specs.sql"
       - "db/queries/scoring_results.sql"
+      - "db/queries/run_comparisons.sql"
     gen:
       go:
         package: "sqlc"

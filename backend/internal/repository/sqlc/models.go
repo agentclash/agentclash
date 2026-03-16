@@ -168,6 +168,20 @@ type RunAgentStatusHistory struct {
 	ChangedAt  pgtype.Timestamptz
 }
 
+type RunComparison struct {
+	ID                  uuid.UUID
+	BaselineRunID       uuid.UUID
+	CandidateRunID      uuid.UUID
+	BaselineRunAgentID  *uuid.UUID
+	CandidateRunAgentID *uuid.UUID
+	Status              string
+	ReasonCode          *string
+	SourceFingerprint   string
+	Summary             []byte
+	CreatedAt           pgtype.Timestamptz
+	UpdatedAt           pgtype.Timestamptz
+}
+
 type RunEvent struct {
 	ID             int64
 	RunID          uuid.UUID
