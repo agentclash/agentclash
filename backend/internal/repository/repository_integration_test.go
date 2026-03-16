@@ -1382,6 +1382,90 @@ func TestRepositoryEvaluateRunAgentUsesCanonicalEventsAndPersistsResults(t *test
 	}
 }
 
+func TestRepositoryEvaluateRunAgentReturnsPartialWhenChallengeInputIsAmbiguous(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	specRecord, err := repo.CreateEvaluationSpec(ctx, repository.CreateEvaluationSpecParams{
+		ChallengePackVersionID: fixture.challengePackVersionID,
+		Name:                   "ambiguous-challenge-input-spec",
+		VersionNumber:          1,
+		JudgeMode:              "deterministic",
+		Definition: []byte(`{
+			"name":"ambiguous-challenge-input-spec",
+			"version_number":1,
+			"judge_mode":"deterministic",
+			"validators":[{"key":"exact","type":"exact_match","target":"final_output","expected_from":"challenge_input"}],
+			"metrics":[{"key":"total_tokens","type":"numeric","collector":"run_total_tokens"}],
+			"scorecard":{"dimensions":["correctness"]}
+		}`),
+	})
+	if err != nil {
+		t.Fatalf("CreateEvaluationSpec returned error: %v", err)
+	}
+
+	startedAt := time.Date(2026, 3, 16, 12, 0, 0, 0, time.UTC)
+	recordRunEvent(t, ctx, repo, fixture.runID, fixture.primaryRunAgentID, "ambiguous-event-1", runevents.EventTypeSystemRunStarted, startedAt, `{}`)
+	recordRunEvent(t, ctx, repo, fixture.runID, fixture.primaryRunAgentID, "ambiguous-event-2", runevents.EventTypeSystemRunCompleted, startedAt.Add(200*time.Millisecond), `{"final_output":"Customer one is blocked","input_tokens":11,"output_tokens":5,"total_tokens":16}`)
+
+	evaluation, err := repo.EvaluateRunAgent(ctx, repository.EvaluateRunAgentParams{
+		RunAgentID:       fixture.primaryRunAgentID,
+		EvaluationSpecID: specRecord.ID,
+	})
+	if err != nil {
+		t.Fatalf("EvaluateRunAgent returned error: %v", err)
+	}
+
+	if evaluation.Status != scoring.EvaluationStatusPartial {
+		t.Fatalf("evaluation status = %s, want %s", evaluation.Status, scoring.EvaluationStatusPartial)
+	}
+	if !containsString(evaluation.Warnings, "challenge input is ambiguous across multiple items") {
+		t.Fatalf("warnings = %v, want ambiguity warning", evaluation.Warnings)
+	}
+	if len(evaluation.ValidatorResults) != 1 {
+		t.Fatalf("validator result count = %d, want 1", len(evaluation.ValidatorResults))
+	}
+	if evaluation.ValidatorResults[0].State != scoring.OutputStateUnavailable {
+		t.Fatalf("validator state = %s, want unavailable", evaluation.ValidatorResults[0].State)
+	}
+	if evaluation.ValidatorResults[0].Reason != "challenge input evidence is unavailable" {
+		t.Fatalf("validator reason = %q, want challenge input evidence is unavailable", evaluation.ValidatorResults[0].Reason)
+	}
+	if len(evaluation.MetricResults) != 1 || evaluation.MetricResults[0].NumericValue == nil || *evaluation.MetricResults[0].NumericValue != 16 {
+		t.Fatalf("metric results = %#v, want numeric value 16", evaluation.MetricResults)
+	}
+
+	judgeResults, err := repo.ListJudgeResultsByRunAgentAndEvaluationSpec(ctx, fixture.primaryRunAgentID, specRecord.ID)
+	if err != nil {
+		t.Fatalf("ListJudgeResultsByRunAgentAndEvaluationSpec returned error: %v", err)
+	}
+	if len(judgeResults) != 1 {
+		t.Fatalf("judge result count = %d, want 1", len(judgeResults))
+	}
+	if judgeResults[0].Verdict != nil {
+		t.Fatalf("persisted judge verdict = %v, want nil", judgeResults[0].Verdict)
+	}
+	if judgeResults[0].ChallengeIdentityID != nil {
+		t.Fatalf("persisted judge challenge identity = %v, want nil", judgeResults[0].ChallengeIdentityID)
+	}
+	if !jsonEqual(judgeResults[0].RawOutput, []byte(`{"state":"unavailable","reason":"challenge input evidence is unavailable"}`)) {
+		t.Fatalf("persisted judge raw output = %s, want unavailable reason payload", judgeResults[0].RawOutput)
+	}
+
+	metricResults, err := repo.ListMetricResultsByRunAgentAndEvaluationSpec(ctx, fixture.primaryRunAgentID, specRecord.ID)
+	if err != nil {
+		t.Fatalf("ListMetricResultsByRunAgentAndEvaluationSpec returned error: %v", err)
+	}
+	if len(metricResults) != 1 {
+		t.Fatalf("metric result count = %d, want 1", len(metricResults))
+	}
+	if metricResults[0].NumericValue == nil || *metricResults[0].NumericValue != 16 {
+		t.Fatalf("persisted metric numeric value = %v, want 16", metricResults[0].NumericValue)
+	}
+}
+
 func TestRepositoryTransitionRunAgentStatusWritesCurrentStateAndHistory(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)
@@ -2002,6 +2086,15 @@ func jsonEqual(left []byte, right []byte) bool {
 	}
 
 	return string(leftCanonical) == string(rightCanonical)
+}
+
+func containsString(items []string, want string) bool {
+	for _, item := range items {
+		if item == want {
+			return true
+		}
+	}
+	return false
 }
 
 func float64Ptr(value float64) *float64 {

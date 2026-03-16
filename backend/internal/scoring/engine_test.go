@@ -252,3 +252,79 @@ func TestEvaluateRunAgentMarksJSONSchemaValidatorAsErrorWithoutPanicking(t *test
 		t.Fatal("expected validator error reason to be populated")
 	}
 }
+
+func TestEvaluateRunAgentWarnsWhenChallengeInputIsAmbiguousAcrossMultipleItems(t *testing.T) {
+	spec := EvaluationSpec{
+		Name:          "fixture",
+		VersionNumber: 1,
+		JudgeMode:     JudgeModeDeterministic,
+		Validators: []ValidatorDeclaration{
+			{
+				Key:          "exact",
+				Type:         ValidatorTypeExactMatch,
+				Target:       "final_output",
+				ExpectedFrom: "challenge_input",
+			},
+		},
+		Metrics: []MetricDeclaration{
+			{Key: "total_tokens", Type: MetricTypeNumeric, Collector: "run_total_tokens"},
+		},
+		Scorecard: ScorecardDeclaration{
+			Dimensions: []ScorecardDimension{ScorecardDimensionCorrectness},
+		},
+	}
+
+	evaluation, err := EvaluateRunAgent(EvaluationInput{
+		RunAgentID:       uuid.New(),
+		EvaluationSpecID: uuid.New(),
+		ChallengeInputs: []EvidenceInput{
+			{
+				ChallengeIdentityID: uuid.New(),
+				ItemKey:             "first.txt",
+				Payload:             []byte(`"done"`),
+			},
+			{
+				ChallengeIdentityID: uuid.New(),
+				ItemKey:             "second.txt",
+				Payload:             []byte(`"other"`),
+			},
+		},
+		Events: []Event{
+			{Type: "system.run.completed", OccurredAt: time.Date(2026, 3, 16, 9, 0, 2, 0, time.UTC), Payload: []byte(`{"final_output":"done","total_tokens":12}`)},
+		},
+	}, spec)
+	if err != nil {
+		t.Fatalf("EvaluateRunAgent returned error: %v", err)
+	}
+
+	if evaluation.Status != EvaluationStatusPartial {
+		t.Fatalf("evaluation status = %s, want partial", evaluation.Status)
+	}
+	if len(evaluation.ValidatorResults) != 1 {
+		t.Fatalf("validator result count = %d, want 1", len(evaluation.ValidatorResults))
+	}
+	if evaluation.ValidatorResults[0].State != OutputStateUnavailable {
+		t.Fatalf("validator state = %s, want unavailable", evaluation.ValidatorResults[0].State)
+	}
+	if evaluation.ValidatorResults[0].Reason != "challenge input evidence is unavailable" {
+		t.Fatalf("validator reason = %q, want challenge input evidence is unavailable", evaluation.ValidatorResults[0].Reason)
+	}
+	if len(evaluation.MetricResults) != 1 || evaluation.MetricResults[0].NumericValue == nil || *evaluation.MetricResults[0].NumericValue != 12 {
+		t.Fatalf("total token metric = %#v, want numeric value 12", evaluation.MetricResults)
+	}
+	if !containsString(evaluation.Warnings, "challenge input is ambiguous across multiple items") {
+		t.Fatalf("warnings = %v, want ambiguity warning", evaluation.Warnings)
+	}
+	if evaluation.DimensionScores[string(ScorecardDimensionCorrectness)] != nil {
+		t.Fatalf("correctness score = %v, want nil", evaluation.DimensionScores[string(ScorecardDimensionCorrectness)])
+	}
+}
+
+func containsString(items []string, want string) bool {
+	for _, item := range items {
+		if item == want {
+			return true
+		}
+	}
+	return false
+}
