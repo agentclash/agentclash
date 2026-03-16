@@ -19,6 +19,7 @@ It currently provides:
 - `GET /v1/runs/{id}` for durable run-detail bootstrap reads
 - `GET /v1/runs/{id}/agents` for participant-lane bootstrap reads
 - `GET /v1/replays/{runAgentId}` for per-lane replay bootstrap reads
+- `GET /v1/replays/{runAgentId}/viewer` for a minimal HTML replay viewer wired to the replay API
 - `GET /v1/scorecards/{runAgentId}` for per-lane scorecard bootstrap reads
 - `POST /v1/integrations/hosted-runs/{runID}/events` for hosted external completion ingestion
 - development-only header-backed auth endpoints:
@@ -185,6 +186,38 @@ Status codes:
 - `401` when auth headers are missing or invalid
 - `403` when the caller lacks workspace access
 - `404` when the run agent does not exist
+
+### `GET /v1/replays/{runAgentId}/viewer`
+
+Purpose:
+
+- render a small HTML replay page for first-user testing
+- fetch replay data through `GET /v1/replays/{runAgentId}`
+- make provider/tool/system boundaries and pending or errored replay states legible
+
+Query params:
+
+- `limit` optional step page size, defaults to `50`, max `200`
+- `cursor` optional zero-based replay-step offset
+
+Status codes:
+
+- `200` when the HTML viewer shell is rendered
+- `400` when `{runAgentId}` or pagination params are malformed
+- `401` when auth headers are missing or invalid
+
+Local example:
+
+```bash
+RUN_AGENT_ID=replace-with-real-run-agent-id
+WORKSPACE_ID=11111111-1111-1111-1111-111111111111
+USER_ID=22222222-2222-2222-2222-222222222222
+
+curl \
+  -H "X-Agentclash-User-Id: ${USER_ID}" \
+  -H "X-Agentclash-Workspace-Memberships: ${WORKSPACE_ID}:workspace_member" \
+  http://localhost:8080/v1/replays/${RUN_AGENT_ID}/viewer
+```
 
 ### `GET /v1/scorecards/{runAgentId}`
 

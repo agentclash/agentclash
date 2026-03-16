@@ -120,7 +120,6 @@ func buildOpenAIRequestBody(request Request, stream bool) (openAICompletionReque
 		StreamOptions: openAIStreamOptions{
 			IncludeUsage: stream,
 		},
-		Metadata: append(json.RawMessage(nil), request.Metadata...),
 	}, nil
 }
 
@@ -223,7 +222,6 @@ type openAICompletionRequest struct {
 	Tools         []openAIRequestTool    `json:"tools,omitempty"`
 	Stream        bool                   `json:"stream,omitempty"`
 	StreamOptions openAIStreamOptions    `json:"stream_options,omitempty"`
-	Metadata      json.RawMessage        `json:"metadata,omitempty"`
 }
 
 type openAIStreamOptions struct {
