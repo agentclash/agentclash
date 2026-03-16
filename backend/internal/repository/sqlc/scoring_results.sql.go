@@ -242,3 +242,74 @@ func (q *Queries) UpsertMetricResult(ctx context.Context, arg UpsertMetricResult
 	)
 	return i, err
 }
+
+const upsertRunAgentScorecard = `-- name: UpsertRunAgentScorecard :one
+INSERT INTO run_agent_scorecards (
+    run_agent_id,
+    evaluation_spec_id,
+    overall_score,
+    correctness_score,
+    reliability_score,
+    latency_score,
+    cost_score,
+    scorecard
+) VALUES (
+    $1,
+    $2,
+    $3,
+    $4,
+    $5,
+    $6,
+    $7,
+    $8
+)
+ON CONFLICT (run_agent_id)
+DO UPDATE SET
+    evaluation_spec_id = EXCLUDED.evaluation_spec_id,
+    overall_score = EXCLUDED.overall_score,
+    correctness_score = EXCLUDED.correctness_score,
+    reliability_score = EXCLUDED.reliability_score,
+    latency_score = EXCLUDED.latency_score,
+    cost_score = EXCLUDED.cost_score,
+    scorecard = EXCLUDED.scorecard
+RETURNING id, run_agent_id, evaluation_spec_id, overall_score, correctness_score, reliability_score, latency_score, cost_score, scorecard, created_at, updated_at
+`
+
+type UpsertRunAgentScorecardParams struct {
+	RunAgentID       uuid.UUID
+	EvaluationSpecID uuid.UUID
+	OverallScore     pgtype.Numeric
+	CorrectnessScore pgtype.Numeric
+	ReliabilityScore pgtype.Numeric
+	LatencyScore     pgtype.Numeric
+	CostScore        pgtype.Numeric
+	Scorecard        []byte
+}
+
+func (q *Queries) UpsertRunAgentScorecard(ctx context.Context, arg UpsertRunAgentScorecardParams) (RunAgentScorecard, error) {
+	row := q.db.QueryRow(ctx, upsertRunAgentScorecard,
+		arg.RunAgentID,
+		arg.EvaluationSpecID,
+		arg.OverallScore,
+		arg.CorrectnessScore,
+		arg.ReliabilityScore,
+		arg.LatencyScore,
+		arg.CostScore,
+		arg.Scorecard,
+	)
+	var i RunAgentScorecard
+	err := row.Scan(
+		&i.ID,
+		&i.RunAgentID,
+		&i.EvaluationSpecID,
+		&i.OverallScore,
+		&i.CorrectnessScore,
+		&i.ReliabilityScore,
+		&i.LatencyScore,
+		&i.CostScore,
+		&i.Scorecard,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}

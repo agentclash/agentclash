@@ -223,6 +223,9 @@ curl \
 
 Success response fields:
 
+- `state`
+- `message`
+- `run_agent_status`
 - `id`
 - `run_agent_id`
 - `run_id`
@@ -239,10 +242,12 @@ Success response fields:
 Status codes:
 
 - `200` when a scorecard row exists for the requested run agent
+- `202` when the run agent is still executing or awaiting scorecard generation
+- `409` when the run agent is terminal but the scorecard is unavailable
 - `400` when `{runAgentId}` is not a UUID
 - `401` when auth headers are missing or invalid
 - `403` when the caller lacks workspace access
-- `404` when the run agent or scorecard row does not exist
+- `404` when the run agent does not exist
 
 Protected development endpoints currently use a temporary header-backed auth contract so the API-side tenancy boundary can be exercised before full WorkOS integration exists.
 

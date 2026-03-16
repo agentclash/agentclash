@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/domain"
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/scoring"
 	"github.com/google/uuid"
 	enumspb "go.temporal.io/api/enums/v1"
 	"go.temporal.io/sdk/temporal"
@@ -14,6 +15,7 @@ import (
 
 const (
 	defaultActivityTimeout = 5 * time.Second
+	scoreRunAgentTimeout   = 30 * time.Second
 	fakeStageDelay         = 1 * time.Second
 )
 
@@ -77,7 +79,15 @@ func runWorkflow(ctx sdkworkflow.Context, input RunWorkflowInput) error {
 	if err := transitionRunStatus(ctx, input.RunID, domain.RunStatusScoring, stringPtr("all run-agent workflows completed")); err != nil {
 		return err
 	}
-	if err := transitionRunStatus(ctx, input.RunID, domain.RunStatusCompleted, stringPtr("fake scoring completed")); err != nil {
+	updatedRunAgents, err := listRunAgents(ctx, input.RunID)
+	if err != nil {
+		return err
+	}
+	scoreSummary, err := scoreEvaluatingRunAgents(ctx, updatedRunAgents)
+	if err != nil {
+		return err
+	}
+	if err := transitionRunStatus(ctx, input.RunID, domain.RunStatusCompleted, stringPtr(scoreSummary)); err != nil {
 		return err
 	}
 
@@ -123,6 +133,99 @@ func executeRunAgents(ctx sdkworkflow.Context, runAgents []domain.RunAgent) erro
 	}
 
 	return firstErr
+}
+
+func scoreEvaluatingRunAgents(ctx sdkworkflow.Context, runAgents []domain.RunAgent) (string, error) {
+	outcomes := make(map[uuid.UUID]string, len(runAgents))
+	completedRunAgents := make([]domain.RunAgent, 0, len(runAgents))
+	for _, runAgent := range runAgents {
+		switch runAgent.Status {
+		case domain.RunAgentStatusEvaluating:
+			completedRunAgents = append(completedRunAgents, runAgent)
+		default:
+			outcomes[runAgent.ID] = "skipped"
+		}
+	}
+
+	if len(completedRunAgents) == 0 {
+		return summarizeScoreOutcomes(outcomes), nil
+	}
+
+	scoreCtx := sdkworkflow.WithActivityOptions(ctx, sdkworkflow.ActivityOptions{
+		StartToCloseTimeout: scoreRunAgentTimeout,
+		RetryPolicy: &temporal.RetryPolicy{
+			MaximumAttempts: 1,
+		},
+	})
+	selector := sdkworkflow.NewSelector(ctx)
+	completedActivities := 0
+
+	for _, runAgent := range completedRunAgents {
+		runAgent := runAgent
+		future := sdkworkflow.ExecuteActivity(scoreCtx, scoreRunAgentActivityName, ScoreRunAgentInput{
+			RunAgentID: runAgent.ID,
+		})
+		selector.AddFuture(future, func(f sdkworkflow.Future) {
+			completedActivities++
+
+			evaluation, err := scoreRunAgentResult(ctx, f)
+			switch {
+			case err != nil:
+				outcomes[runAgent.ID] = "errored"
+			case evaluation.Status == scoring.EvaluationStatusPartial:
+				outcomes[runAgent.ID] = "partial"
+			default:
+				outcomes[runAgent.ID] = "scored"
+			}
+		})
+	}
+
+	for completedActivities < len(completedRunAgents) {
+		selector.Select(ctx)
+	}
+
+	for _, runAgent := range completedRunAgents {
+		reason := scoreOutcomeReason(outcomes[runAgent.ID])
+		if err := transitionRunAgentStatus(ctx, runAgent.ID, domain.RunAgentStatusCompleted, stringPtr(reason), nil); err != nil {
+			sdkworkflow.GetLogger(ctx).Warn("failed to transition scored agent to completed",
+				"run_agent_id", runAgent.ID.String(),
+				"outcome", outcomes[runAgent.ID],
+				"error", err,
+			)
+		}
+	}
+
+	return summarizeScoreOutcomes(outcomes), nil
+}
+
+func scoreRunAgentResult(ctx sdkworkflow.Context, future sdkworkflow.Future) (scoring.RunAgentEvaluation, error) {
+	var evaluation scoring.RunAgentEvaluation
+	err := future.Get(ctx, &evaluation)
+	return evaluation, err
+}
+
+func scoreOutcomeReason(outcome string) string {
+	switch outcome {
+	case "partial":
+		return "run-agent scoring completed with partial evidence"
+	case "errored":
+		return "run-agent scoring errored; see scoring events for details"
+	default:
+		return "run-agent scoring completed"
+	}
+}
+
+func summarizeScoreOutcomes(outcomes map[uuid.UUID]string) string {
+	counts := map[string]int{
+		"scored":  0,
+		"partial": 0,
+		"errored": 0,
+		"skipped": 0,
+	}
+	for _, outcome := range outcomes {
+		counts[outcome]++
+	}
+	return fmt.Sprintf("%d scored, %d partial, %d errored, %d skipped", counts["scored"], counts["partial"], counts["errored"], counts["skipped"])
 }
 
 func loadRun(ctx sdkworkflow.Context, runID uuid.UUID) (domain.Run, error) {

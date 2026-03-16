@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -1296,6 +1297,26 @@ func TestRepositoryStoreRunAgentEvaluationResultsUpsertsJudgeAndMetricRows(t *te
 	}
 	if metricResults[0].MetricType != string(scoring.MetricTypeBoolean) {
 		t.Fatalf("metric type = %q, want boolean", metricResults[0].MetricType)
+	}
+
+	scorecard, err := repo.GetRunAgentScorecardByRunAgentID(ctx, fixture.primaryRunAgentID)
+	if err != nil {
+		t.Fatalf("GetRunAgentScorecardByRunAgentID returned error: %v", err)
+	}
+	if scorecard.EvaluationSpecID != specRecord.ID {
+		t.Fatalf("scorecard evaluation_spec_id = %s, want %s", scorecard.EvaluationSpecID, specRecord.ID)
+	}
+	if scorecard.OverallScore != nil {
+		t.Fatalf("overall_score = %v, want nil", scorecard.OverallScore)
+	}
+	if scorecard.CorrectnessScore != nil {
+		t.Fatalf("correctness_score = %v, want nil", scorecard.CorrectnessScore)
+	}
+	if scorecard.ReliabilityScore != nil {
+		t.Fatalf("reliability_score = %v, want nil", scorecard.ReliabilityScore)
+	}
+	if !strings.Contains(string(scorecard.Scorecard), `"status":"complete"`) {
+		t.Fatalf("scorecard json = %s, want complete status", string(scorecard.Scorecard))
 	}
 }
 

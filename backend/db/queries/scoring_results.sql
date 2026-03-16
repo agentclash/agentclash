@@ -72,3 +72,34 @@ FROM metric_results
 WHERE run_agent_id = @run_agent_id
   AND evaluation_spec_id = @evaluation_spec_id
 ORDER BY metric_key ASC;
+
+-- name: UpsertRunAgentScorecard :one
+INSERT INTO run_agent_scorecards (
+    run_agent_id,
+    evaluation_spec_id,
+    overall_score,
+    correctness_score,
+    reliability_score,
+    latency_score,
+    cost_score,
+    scorecard
+) VALUES (
+    @run_agent_id,
+    @evaluation_spec_id,
+    @overall_score,
+    @correctness_score,
+    @reliability_score,
+    @latency_score,
+    @cost_score,
+    @scorecard
+)
+ON CONFLICT (run_agent_id)
+DO UPDATE SET
+    evaluation_spec_id = EXCLUDED.evaluation_spec_id,
+    overall_score = EXCLUDED.overall_score,
+    correctness_score = EXCLUDED.correctness_score,
+    reliability_score = EXCLUDED.reliability_score,
+    latency_score = EXCLUDED.latency_score,
+    cost_score = EXCLUDED.cost_score,
+    scorecard = EXCLUDED.scorecard
+RETURNING id, run_agent_id, evaluation_spec_id, overall_score, correctness_score, reliability_score, latency_score, cost_score, scorecard, created_at, updated_at;

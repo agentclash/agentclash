@@ -3,6 +3,7 @@ package workflow
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -27,12 +28,7 @@ func executeRunAgentEvaluation(ctx context.Context, repo RunRepository, runAgent
 		return scoring.RunAgentEvaluation{}, fmt.Errorf("load evaluation spec from manifest: %w", err)
 	}
 
-	specRecord, err := repo.GetEvaluationSpecByChallengePackVersionAndVersion(
-		ctx,
-		executionContext.ChallengePackVersion.ID,
-		manifestSpec.Name,
-		manifestSpec.VersionNumber,
-	)
+	specRecord, err := ensurePersistedEvaluationSpec(ctx, repo, executionContext.ChallengePackVersion.ID, manifestSpec)
 	if err != nil {
 		emitErr := recordScoringFailedEvent(ctx, repo, executionContext.Run.ID, runAgentID, fmt.Sprintf("load persisted evaluation spec: %v", err))
 		if emitErr != nil {
@@ -89,6 +85,59 @@ func executeRunAgentEvaluation(ctx context.Context, repo RunRepository, runAgent
 	}
 
 	return evaluation, nil
+}
+
+func ensurePersistedEvaluationSpec(
+	ctx context.Context,
+	repo RunRepository,
+	challengePackVersionID uuid.UUID,
+	manifestSpec scoring.EvaluationSpec,
+) (repository.EvaluationSpecRecord, error) {
+	specRecord, err := repo.GetEvaluationSpecByChallengePackVersionAndVersion(
+		ctx,
+		challengePackVersionID,
+		manifestSpec.Name,
+		manifestSpec.VersionNumber,
+	)
+	if err == nil {
+		return specRecord, nil
+	}
+	if !isEvaluationSpecNotFound(err) {
+		return repository.EvaluationSpecRecord{}, err
+	}
+
+	definition, err := scoring.MarshalDefinition(manifestSpec)
+	if err != nil {
+		return repository.EvaluationSpecRecord{}, fmt.Errorf("marshal manifest evaluation spec: %w", err)
+	}
+
+	created, createErr := repo.CreateEvaluationSpec(ctx, repository.CreateEvaluationSpecParams{
+		ChallengePackVersionID: challengePackVersionID,
+		Name:                   manifestSpec.Name,
+		VersionNumber:          manifestSpec.VersionNumber,
+		JudgeMode:              string(manifestSpec.JudgeMode),
+		Definition:             definition,
+	})
+	if createErr == nil {
+		return created, nil
+	}
+
+	// Another concurrent scoring activity may have inserted the same spec first.
+	refetched, refetchErr := repo.GetEvaluationSpecByChallengePackVersionAndVersion(
+		ctx,
+		challengePackVersionID,
+		manifestSpec.Name,
+		manifestSpec.VersionNumber,
+	)
+	if refetchErr == nil {
+		return refetched, nil
+	}
+
+	return repository.EvaluationSpecRecord{}, createErr
+}
+
+func isEvaluationSpecNotFound(err error) bool {
+	return errors.Is(err, repository.ErrEvaluationSpecNotFound)
 }
 
 func mapChallengeInputs(inputSet *repository.ChallengeInputSetExecutionContext) []scoring.EvidenceInput {

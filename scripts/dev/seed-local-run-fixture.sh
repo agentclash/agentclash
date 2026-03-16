@@ -48,7 +48,7 @@ AGENT_DEPLOYMENT_SNAPSHOT_ID="ffffffff-ffff-ffff-ffff-ffffffffffff"
 echo "==> Seeding local curl fixture into ${DATABASE_URL}"
 
 psql "${DATABASE_URL}" <<SQL
-TRUNCATE TABLE challenge_packs, organizations, users RESTART IDENTITY CASCADE;
+TRUNCATE TABLE challenge_packs, organizations, users, model_catalog_entries RESTART IDENTITY CASCADE;
 
 INSERT INTO organizations (id, name, slug)
 VALUES ('${ORG_ID}', 'Local Smoke Org', 'local-smoke-org');
@@ -76,7 +76,32 @@ VALUES (
   1,
   'runnable',
   'local-smoke-manifest',
-  '{"tool_policy":{"allowed_tool_kinds":["file"]}}'::jsonb
+  '{
+    "tool_policy":{"allowed_tool_kinds":["file"]},
+    "evaluation_spec":{
+      "name":"local-smoke-scorecard",
+      "version_number":1,
+      "judge_mode":"deterministic",
+      "validators":[
+        {
+          "key":"answer-present",
+          "type":"contains",
+          "target":"final_output",
+          "expected_from":"literal:answer"
+        }
+      ],
+      "metrics":[
+        {
+          "key":"completion",
+          "type":"boolean",
+          "collector":"run_completed_successfully"
+        }
+      ],
+      "scorecard":{
+        "dimensions":["correctness","reliability"]
+      }
+    }
+  }'::jsonb
 );
 
 INSERT INTO challenge_identities (

@@ -44,6 +44,7 @@ type Querier interface {
 	UpsertMetricResult(ctx context.Context, arg UpsertMetricResultParams) (MetricResult, error)
 	UpsertRunAgentReplayIndex(ctx context.Context, arg UpsertRunAgentReplayIndexParams) (RunAgentReplay, error)
 	UpsertRunAgentReplaySummary(ctx context.Context, arg UpsertRunAgentReplaySummaryParams) (RunAgentReplay, error)
+	UpsertRunAgentScorecard(ctx context.Context, arg UpsertRunAgentScorecardParams) (RunAgentScorecard, error)
 }
 
 var _ Querier = (*Queries)(nil)

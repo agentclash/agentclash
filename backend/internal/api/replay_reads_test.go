@@ -422,7 +422,8 @@ func TestGetRunAgentScorecardEndpointReturnsScorecard(t *testing.T) {
 					RunID:       uuid.New(),
 					WorkspaceID: workspaceID,
 				},
-				Scorecard: repository.RunAgentScorecard{
+				State: ReplayStateReady,
+				Scorecard: &repository.RunAgentScorecard{
 					ID:               uuid.New(),
 					RunAgentID:       runAgentID,
 					EvaluationSpecID: uuid.New(),
@@ -450,6 +451,9 @@ func TestGetRunAgentScorecardEndpointReturnsScorecard(t *testing.T) {
 	if response.OverallScore == nil || *response.OverallScore != 0.91 {
 		t.Fatalf("overall_score = %v, want 0.91", response.OverallScore)
 	}
+	if response.State != ReplayStateReady {
+		t.Fatalf("state = %q, want %q", response.State, ReplayStateReady)
+	}
 }
 
 func TestGetRunAgentScorecardEndpointReturnsForbidden(t *testing.T) {
@@ -474,7 +478,7 @@ func TestGetRunAgentScorecardEndpointReturnsForbidden(t *testing.T) {
 	}
 }
 
-func TestGetRunAgentScorecardEndpointReturnsNotFoundWhenScorecardMissing(t *testing.T) {
+func TestGetRunAgentScorecardEndpointReturnsPendingWhenScorecardIsPending(t *testing.T) {
 	workspaceID := uuid.New()
 	runAgentID := uuid.New()
 	req := httptest.NewRequest(http.MethodGet, "/v1/scorecards/"+runAgentID.String(), nil)
@@ -488,12 +492,61 @@ func TestGetRunAgentScorecardEndpointReturnsNotFoundWhenScorecardMissing(t *test
 		NewCallerWorkspaceAuthorizer(),
 		stubRunCreationService{},
 		stubRunReadService{},
-		&fakeReplayReadService{scorecardErr: repository.ErrRunAgentScorecardNotFound},
+		&fakeReplayReadService{scorecardResult: GetRunAgentScorecardResult{
+			RunAgent: domain.RunAgent{
+				ID:          runAgentID,
+				RunID:       uuid.New(),
+				WorkspaceID: workspaceID,
+				Status:      domain.RunAgentStatusEvaluating,
+			},
+			State:   ReplayStatePending,
+			Message: "scorecard generation is pending",
+		}},
 		stubHostedRunIngestionService{},
 	).ServeHTTP(recorder, req)
 
-	if recorder.Code != http.StatusNotFound {
-		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusNotFound)
+	if recorder.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusAccepted)
+	}
+
+	var response getRunAgentScorecardResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if response.State != ReplayStatePending {
+		t.Fatalf("state = %q, want %q", response.State, ReplayStatePending)
+	}
+}
+
+func TestGetRunAgentScorecardEndpointReturnsConflictWhenScorecardIsMissingAfterTerminalState(t *testing.T) {
+	workspaceID := uuid.New()
+	runAgentID := uuid.New()
+	req := httptest.NewRequest(http.MethodGet, "/v1/scorecards/"+runAgentID.String(), nil)
+	req.Header.Set(headerUserID, uuid.New().String())
+	req.Header.Set(headerWorkspaceMemberships, workspaceID.String()+":workspace_member")
+	recorder := httptest.NewRecorder()
+
+	newRouter(
+		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
+		NewDevelopmentAuthenticator(),
+		NewCallerWorkspaceAuthorizer(),
+		stubRunCreationService{},
+		stubRunReadService{},
+		&fakeReplayReadService{scorecardResult: GetRunAgentScorecardResult{
+			RunAgent: domain.RunAgent{
+				ID:          runAgentID,
+				RunID:       uuid.New(),
+				WorkspaceID: workspaceID,
+				Status:      domain.RunAgentStatusCompleted,
+			},
+			State:   ReplayStateErrored,
+			Message: "scorecard generation failed or scorecard data is unavailable",
+		}},
+		stubHostedRunIngestionService{},
+	).ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusConflict)
 	}
 }
 

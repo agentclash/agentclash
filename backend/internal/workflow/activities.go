@@ -28,7 +28,7 @@ const (
 	startHostedRunActivityName               = "workflow.start_hosted_run"
 	markHostedRunTimedOutActivityName        = "workflow.mark_hosted_run_timed_out"
 	executeNativeModelStepActivityName       = "workflow.execute_native_model_step"
-	generateRunAgentEvaluationActivityName   = "workflow.generate_run_agent_evaluation"
+	scoreRunAgentActivityName                = "workflow.score_run_agent"
 	buildRunAgentReplayActivityName          = "workflow.build_run_agent_replay"
 	simulateExecutionActivityName            = "workflow.simulate_execution"
 	simulateEvaluationActivityName           = "workflow.simulate_evaluation"
@@ -116,7 +116,7 @@ type BuildRunAgentReplayInput struct {
 	RunAgentID uuid.UUID `json:"run_agent_id"`
 }
 
-type GenerateRunAgentEvaluationInput struct {
+type ScoreRunAgentInput struct {
 	RunAgentID uuid.UUID `json:"run_agent_id"`
 }
 
@@ -272,7 +272,7 @@ func (a *Activities) BuildRunAgentReplay(ctx context.Context, input BuildRunAgen
 	return replay, wrapActivityError(err)
 }
 
-func (a *Activities) GenerateRunAgentEvaluation(ctx context.Context, input GenerateRunAgentEvaluationInput) (scoring.RunAgentEvaluation, error) {
+func (a *Activities) ScoreRunAgent(ctx context.Context, input ScoreRunAgentInput) (scoring.RunAgentEvaluation, error) {
 	evaluation, err := executeRunAgentEvaluation(ctx, a.repo, input.RunAgentID)
 	return evaluation, wrapActivityError(err)
 }

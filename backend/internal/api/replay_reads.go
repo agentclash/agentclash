@@ -64,7 +64,9 @@ type GetRunAgentReplayResult struct {
 
 type GetRunAgentScorecardResult struct {
 	RunAgent  domain.RunAgent
-	Scorecard repository.RunAgentScorecard
+	State     ReplayState
+	Message   string
+	Scorecard *repository.RunAgentScorecard
 }
 
 type ReplayReadManager struct {
@@ -132,12 +134,21 @@ func (m *ReplayReadManager) GetRunAgentScorecard(ctx context.Context, caller Cal
 
 	scorecard, err := m.repo.GetRunAgentScorecardByRunAgentID(ctx, runAgentID)
 	if err != nil {
+		if errors.Is(err, repository.ErrRunAgentScorecardNotFound) {
+			state, message := scorecardUnavailableState(runAgent.Status)
+			return GetRunAgentScorecardResult{
+				RunAgent: runAgent,
+				State:    state,
+				Message:  message,
+			}, nil
+		}
 		return GetRunAgentScorecardResult{}, err
 	}
 
 	return GetRunAgentScorecardResult{
 		RunAgent:  runAgent,
-		Scorecard: scorecard,
+		State:     ReplayStateReady,
+		Scorecard: &scorecard,
 	}, nil
 }
 
@@ -170,18 +181,21 @@ type replayStepPaginationReply struct {
 }
 
 type getRunAgentScorecardResponse struct {
-	ID               uuid.UUID       `json:"id"`
-	RunAgentID       uuid.UUID       `json:"run_agent_id"`
-	RunID            uuid.UUID       `json:"run_id"`
-	EvaluationSpecID uuid.UUID       `json:"evaluation_spec_id"`
-	OverallScore     *float64        `json:"overall_score,omitempty"`
-	CorrectnessScore *float64        `json:"correctness_score,omitempty"`
-	ReliabilityScore *float64        `json:"reliability_score,omitempty"`
-	LatencyScore     *float64        `json:"latency_score,omitempty"`
-	CostScore        *float64        `json:"cost_score,omitempty"`
-	Scorecard        json.RawMessage `json:"scorecard"`
-	CreatedAt        time.Time       `json:"created_at"`
-	UpdatedAt        time.Time       `json:"updated_at"`
+	State            ReplayState           `json:"state"`
+	Message          string                `json:"message,omitempty"`
+	RunAgentStatus   domain.RunAgentStatus `json:"run_agent_status"`
+	ID               uuid.UUID             `json:"id"`
+	RunAgentID       uuid.UUID             `json:"run_agent_id"`
+	RunID            uuid.UUID             `json:"run_id"`
+	EvaluationSpecID uuid.UUID             `json:"evaluation_spec_id"`
+	OverallScore     *float64              `json:"overall_score,omitempty"`
+	CorrectnessScore *float64              `json:"correctness_score,omitempty"`
+	ReliabilityScore *float64              `json:"reliability_score,omitempty"`
+	LatencyScore     *float64              `json:"latency_score,omitempty"`
+	CostScore        *float64              `json:"cost_score,omitempty"`
+	Scorecard        json.RawMessage       `json:"scorecard"`
+	CreatedAt        time.Time             `json:"created_at"`
+	UpdatedAt        time.Time             `json:"updated_at"`
 }
 
 func getRunAgentReplayHandler(logger *slog.Logger, service ReplayReadService) http.HandlerFunc {
@@ -252,8 +266,6 @@ func getRunAgentScorecardHandler(logger *slog.Logger, service ReplayReadService)
 			switch {
 			case errors.Is(err, repository.ErrRunAgentNotFound):
 				writeError(w, http.StatusNotFound, "run_agent_not_found", "run agent not found")
-			case errors.Is(err, repository.ErrRunAgentScorecardNotFound):
-				writeError(w, http.StatusNotFound, "scorecard_not_found", "scorecard not found")
 			case errors.Is(err, ErrForbidden):
 				writeAuthzError(w, err)
 			default:
@@ -268,7 +280,14 @@ func getRunAgentScorecardHandler(logger *slog.Logger, service ReplayReadService)
 			return
 		}
 
-		writeJSON(w, http.StatusOK, buildRunAgentScorecardResponse(result.RunAgent, result.Scorecard))
+		statusCode := http.StatusOK
+		switch result.State {
+		case ReplayStatePending:
+			statusCode = http.StatusAccepted
+		case ReplayStateErrored:
+			statusCode = http.StatusConflict
+		}
+		writeJSON(w, statusCode, buildRunAgentScorecardResponse(result))
 	}
 }
 
@@ -301,21 +320,27 @@ func buildRunAgentReplayResponse(result GetRunAgentReplayResult) getRunAgentRepl
 	return response
 }
 
-func buildRunAgentScorecardResponse(runAgent domain.RunAgent, scorecard repository.RunAgentScorecard) getRunAgentScorecardResponse {
-	return getRunAgentScorecardResponse{
-		ID:               scorecard.ID,
-		RunAgentID:       scorecard.RunAgentID,
-		RunID:            runAgent.RunID,
-		EvaluationSpecID: scorecard.EvaluationSpecID,
-		OverallScore:     scorecard.OverallScore,
-		CorrectnessScore: scorecard.CorrectnessScore,
-		ReliabilityScore: scorecard.ReliabilityScore,
-		LatencyScore:     scorecard.LatencyScore,
-		CostScore:        scorecard.CostScore,
-		Scorecard:        scorecard.Scorecard,
-		CreatedAt:        scorecard.CreatedAt,
-		UpdatedAt:        scorecard.UpdatedAt,
+func buildRunAgentScorecardResponse(result GetRunAgentScorecardResult) getRunAgentScorecardResponse {
+	response := getRunAgentScorecardResponse{
+		State:          result.State,
+		Message:        result.Message,
+		RunAgentStatus: result.RunAgent.Status,
+		RunAgentID:     result.RunAgent.ID,
+		RunID:          result.RunAgent.RunID,
 	}
+	if result.Scorecard != nil {
+		response.ID = result.Scorecard.ID
+		response.EvaluationSpecID = result.Scorecard.EvaluationSpecID
+		response.OverallScore = result.Scorecard.OverallScore
+		response.CorrectnessScore = result.Scorecard.CorrectnessScore
+		response.ReliabilityScore = result.Scorecard.ReliabilityScore
+		response.LatencyScore = result.Scorecard.LatencyScore
+		response.CostScore = result.Scorecard.CostScore
+		response.Scorecard = result.Scorecard.Scorecard
+		response.CreatedAt = result.Scorecard.CreatedAt
+		response.UpdatedAt = result.Scorecard.UpdatedAt
+	}
+	return response
 }
 
 func replayStepPageParamsFromRequest(r *http.Request) (ReplayStepPageParams, error) {
@@ -358,6 +383,22 @@ func replayUnavailableState(status domain.RunAgentStatus) (ReplayState, string) 
 		return ReplayStateErrored, "replay generation failed or replay data is unavailable"
 	default:
 		return ReplayStatePending, "replay generation is pending"
+	}
+}
+
+func scorecardUnavailableState(status domain.RunAgentStatus) (ReplayState, string) {
+	switch status {
+	case domain.RunAgentStatusQueued,
+		domain.RunAgentStatusReady,
+		domain.RunAgentStatusExecuting,
+		domain.RunAgentStatusEvaluating:
+		return ReplayStatePending, "scorecard generation is pending"
+	case domain.RunAgentStatusFailed:
+		return ReplayStateErrored, "scorecard generation was skipped because the run-agent failed"
+	case domain.RunAgentStatusCompleted:
+		return ReplayStateErrored, "scorecard generation failed or scorecard data is unavailable"
+	default:
+		return ReplayStatePending, "scorecard generation is pending"
 	}
 }
 

@@ -574,10 +574,134 @@ func (r *Repository) StoreRunAgentEvaluationResults(ctx context.Context, evaluat
 		}
 	}
 
+	scorecard, err := buildRunAgentScorecardDocument(evaluation)
+	if err != nil {
+		return fmt.Errorf("marshal run-agent scorecard: %w", err)
+	}
+
+	overallScore, err := numericFromFloat(nil)
+	if err != nil {
+		return fmt.Errorf("encode overall score: %w", err)
+	}
+	correctnessScore, err := numericFromFloat(evaluation.DimensionScores[string(scoring.ScorecardDimensionCorrectness)])
+	if err != nil {
+		return fmt.Errorf("encode correctness score: %w", err)
+	}
+	reliabilityScore, err := numericFromFloat(evaluation.DimensionScores[string(scoring.ScorecardDimensionReliability)])
+	if err != nil {
+		return fmt.Errorf("encode reliability score: %w", err)
+	}
+	latencyScore, err := numericFromFloat(evaluation.DimensionScores[string(scoring.ScorecardDimensionLatency)])
+	if err != nil {
+		return fmt.Errorf("encode latency score: %w", err)
+	}
+	costScore, err := numericFromFloat(evaluation.DimensionScores[string(scoring.ScorecardDimensionCost)])
+	if err != nil {
+		return fmt.Errorf("encode cost score: %w", err)
+	}
+
+	if _, err := queries.UpsertRunAgentScorecard(ctx, repositorysqlc.UpsertRunAgentScorecardParams{
+		RunAgentID:       evaluation.RunAgentID,
+		EvaluationSpecID: evaluation.EvaluationSpecID,
+		OverallScore:     overallScore,
+		CorrectnessScore: correctnessScore,
+		ReliabilityScore: reliabilityScore,
+		LatencyScore:     latencyScore,
+		CostScore:        costScore,
+		Scorecard:        scorecard,
+	}); err != nil {
+		return fmt.Errorf("upsert run-agent scorecard: %w", err)
+	}
+
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("commit scoring result transaction: %w", err)
 	}
 	return nil
+}
+
+func buildRunAgentScorecardDocument(evaluation scoring.RunAgentEvaluation) (json.RawMessage, error) {
+	type dimensionSummary struct {
+		State  scoring.OutputState `json:"state"`
+		Score  *float64            `json:"score,omitempty"`
+		Reason string              `json:"reason,omitempty"`
+	}
+
+	type scorecardDocument struct {
+		RunAgentID       uuid.UUID                   `json:"run_agent_id"`
+		EvaluationSpecID uuid.UUID                   `json:"evaluation_spec_id"`
+		Status           scoring.EvaluationStatus    `json:"status"`
+		Warnings         []string                    `json:"warnings,omitempty"`
+		Dimensions       map[string]dimensionSummary `json:"dimensions"`
+		ValidatorSummary map[string]int              `json:"validator_summary"`
+		MetricSummary    map[string]int              `json:"metric_summary"`
+	}
+
+	dimensions := make(map[string]dimensionSummary, len(evaluation.DimensionResults))
+	for _, result := range evaluation.DimensionResults {
+		dimensions[string(result.Dimension)] = dimensionSummary{
+			State:  result.State,
+			Score:  cloneFloat64Ptr(result.Score),
+			Reason: result.Reason,
+		}
+	}
+
+	validatorSummary := map[string]int{
+		"total":       len(evaluation.ValidatorResults),
+		"available":   0,
+		"unavailable": 0,
+		"error":       0,
+		"pass":        0,
+		"fail":        0,
+	}
+	for _, result := range evaluation.ValidatorResults {
+		switch result.State {
+		case scoring.OutputStateAvailable:
+			validatorSummary["available"]++
+		case scoring.OutputStateUnavailable:
+			validatorSummary["unavailable"]++
+		case scoring.OutputStateError:
+			validatorSummary["error"]++
+		}
+		switch result.Verdict {
+		case "pass":
+			validatorSummary["pass"]++
+		case "fail":
+			validatorSummary["fail"]++
+		}
+	}
+
+	metricSummary := map[string]int{
+		"total":       len(evaluation.MetricResults),
+		"available":   0,
+		"unavailable": 0,
+		"error":       0,
+	}
+	for _, result := range evaluation.MetricResults {
+		switch result.State {
+		case scoring.OutputStateAvailable:
+			metricSummary["available"]++
+		case scoring.OutputStateUnavailable:
+			metricSummary["unavailable"]++
+		case scoring.OutputStateError:
+			metricSummary["error"]++
+		}
+	}
+
+	document := scorecardDocument{
+		RunAgentID:       evaluation.RunAgentID,
+		EvaluationSpecID: evaluation.EvaluationSpecID,
+		Status:           evaluation.Status,
+		Warnings:         append([]string(nil), evaluation.Warnings...),
+		Dimensions:       dimensions,
+		ValidatorSummary: validatorSummary,
+		MetricSummary:    metricSummary,
+	}
+
+	encoded, err := json.Marshal(document)
+	if err != nil {
+		return nil, err
+	}
+	return encoded, nil
 }
 
 func (r *Repository) ListJudgeResultsByRunAgentAndEvaluationSpec(ctx context.Context, runAgentID uuid.UUID, evaluationSpecID uuid.UUID) ([]JudgeResultRecord, error) {
