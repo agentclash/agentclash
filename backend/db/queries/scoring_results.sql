@@ -103,3 +103,27 @@ DO UPDATE SET
     cost_score = EXCLUDED.cost_score,
     scorecard = EXCLUDED.scorecard
 RETURNING id, run_agent_id, evaluation_spec_id, overall_score, correctness_score, reliability_score, latency_score, cost_score, scorecard, created_at, updated_at;
+
+-- name: GetRunScorecardByRunID :one
+SELECT id, run_id, evaluation_spec_id, winning_run_agent_id, scorecard, created_at, updated_at
+FROM run_scorecards
+WHERE run_id = @run_id;
+
+-- name: UpsertRunScorecard :one
+INSERT INTO run_scorecards (
+    run_id,
+    evaluation_spec_id,
+    winning_run_agent_id,
+    scorecard
+) VALUES (
+    @run_id,
+    @evaluation_spec_id,
+    @winning_run_agent_id,
+    @scorecard
+)
+ON CONFLICT (run_id)
+DO UPDATE SET
+    evaluation_spec_id = EXCLUDED.evaluation_spec_id,
+    winning_run_agent_id = EXCLUDED.winning_run_agent_id,
+    scorecard = EXCLUDED.scorecard
+RETURNING id, run_id, evaluation_spec_id, winning_run_agent_id, scorecard, created_at, updated_at;

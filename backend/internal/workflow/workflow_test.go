@@ -85,6 +85,9 @@ func TestRunWorkflowHappyPath(t *testing.T) {
 	if !repo.hasCallPrefix("TransitionRunAgentStatus") {
 		t.Fatalf("expected repository TransitionRunAgentStatus to be used")
 	}
+	if repo.callCountWithPrefix("BuildRunScorecard:") != 1 {
+		t.Fatalf("BuildRunScorecard call count = %d, want 1", repo.callCountWithPrefix("BuildRunScorecard:"))
+	}
 }
 
 func TestRunWorkflowStartsOneChildPerRunAgent(t *testing.T) {
@@ -712,6 +715,7 @@ type fakeRunRepository struct {
 	replays             map[uuid.UUID]repository.RunAgentReplay
 	runEvents           map[uuid.UUID][]repository.RunEvent
 	evaluations         map[uuid.UUID]scoring.RunAgentEvaluation
+	runScorecards       map[uuid.UUID]repository.RunScorecard
 	runAgentStatusErrs  map[string]error
 	buildReplayErr      error
 	recordRunEventErr   error
@@ -729,14 +733,15 @@ func newFakeRunRepository(run domain.Run, runAgents ...domain.RunAgent) *fakeRun
 	}
 
 	return &fakeRunRepository{
-		run:               cloneRun(run),
-		runAgents:         runAgentMap,
-		executionContexts: make(map[uuid.UUID]repository.RunAgentExecutionContext),
-		evaluationSpecs:   make(map[string]repository.EvaluationSpecRecord),
-		hostedExecutions:  make(map[uuid.UUID]repository.HostedRunExecution),
-		replays:           make(map[uuid.UUID]repository.RunAgentReplay),
-		runEvents:         make(map[uuid.UUID][]repository.RunEvent),
-		evaluations:       make(map[uuid.UUID]scoring.RunAgentEvaluation),
+		run:                cloneRun(run),
+		runAgents:          runAgentMap,
+		executionContexts:  make(map[uuid.UUID]repository.RunAgentExecutionContext),
+		evaluationSpecs:    make(map[string]repository.EvaluationSpecRecord),
+		hostedExecutions:   make(map[uuid.UUID]repository.HostedRunExecution),
+		replays:            make(map[uuid.UUID]repository.RunAgentReplay),
+		runEvents:          make(map[uuid.UUID][]repository.RunEvent),
+		evaluations:        make(map[uuid.UUID]scoring.RunAgentEvaluation),
+		runScorecards:      make(map[uuid.UUID]repository.RunScorecard),
 		runAgentStatusErrs: make(map[string]error),
 	}
 }
@@ -930,6 +935,22 @@ func (r *fakeRunRepository) StoreRunAgentEvaluationResults(_ context.Context, ev
 	r.evaluations[evaluation.RunAgentID] = evaluation
 	r.callLog = append(r.callLog, fmt.Sprintf("StoreRunAgentEvaluationResults:%s", evaluation.RunAgentID))
 	return nil
+}
+
+func (r *fakeRunRepository) BuildRunScorecard(_ context.Context, runID uuid.UUID) (repository.RunScorecard, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	scorecard := repository.RunScorecard{
+		ID:               uuid.New(),
+		RunID:            runID,
+		EvaluationSpecID: uuid.New(),
+		CreatedAt:        time.Now().UTC(),
+		UpdatedAt:        time.Now().UTC(),
+	}
+	r.runScorecards[runID] = scorecard
+	r.callLog = append(r.callLog, fmt.Sprintf("BuildRunScorecard:%s", runID))
+	return scorecard, nil
 }
 
 func (r *fakeRunRepository) setExecutionContext(runAgentID uuid.UUID, executionContext repository.RunAgentExecutionContext) {

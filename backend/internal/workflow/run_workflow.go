@@ -195,6 +195,12 @@ func scoreEvaluatingRunAgents(ctx sdkworkflow.Context, runAgents []domain.RunAge
 		}
 	}
 
+	if len(runAgents) > 0 {
+		if err := buildRunScorecard(ctx, runAgents[0].RunID); err != nil {
+			return "", err
+		}
+	}
+
 	return summarizeScoreOutcomes(outcomes), nil
 }
 
@@ -238,6 +244,13 @@ func listRunAgents(ctx sdkworkflow.Context, runID uuid.UUID) ([]domain.RunAgent,
 	var runAgents []domain.RunAgent
 	err := sdkworkflow.ExecuteActivity(ctx, listRunAgentsActivityName, ListRunAgentsInput{RunID: runID}).Get(ctx, &runAgents)
 	return runAgents, err
+}
+
+func buildRunScorecard(ctx sdkworkflow.Context, runID uuid.UUID) error {
+	var scorecard struct{}
+	return sdkworkflow.ExecuteActivity(ctx, buildRunScorecardActivityName, BuildRunScorecardInput{
+		RunID: runID,
+	}).Get(ctx, &scorecard)
 }
 
 func attachRunTemporalIDs(ctx sdkworkflow.Context, runID uuid.UUID, workflowID string, temporalRunID string) error {

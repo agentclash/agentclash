@@ -194,6 +194,16 @@ type RunEvent struct {
 	Payload        []byte
 }
 
+type RunScorecard struct {
+	ID                uuid.UUID
+	RunID             uuid.UUID
+	EvaluationSpecID  uuid.UUID
+	WinningRunAgentID *uuid.UUID
+	Scorecard         []byte
+	CreatedAt         pgtype.Timestamptz
+	UpdatedAt         pgtype.Timestamptz
+}
+
 type RunStatusHistory struct {
 	ID              uuid.UUID
 	RunID           uuid.UUID

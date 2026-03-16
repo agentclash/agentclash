@@ -29,6 +29,7 @@ const (
 	markHostedRunTimedOutActivityName        = "workflow.mark_hosted_run_timed_out"
 	executeNativeModelStepActivityName       = "workflow.execute_native_model_step"
 	scoreRunAgentActivityName                = "workflow.score_run_agent"
+	buildRunScorecardActivityName            = "workflow.build_run_scorecard"
 	buildRunAgentReplayActivityName          = "workflow.build_run_agent_replay"
 	simulateExecutionActivityName            = "workflow.simulate_execution"
 	simulateEvaluationActivityName           = "workflow.simulate_evaluation"
@@ -118,6 +119,10 @@ type BuildRunAgentReplayInput struct {
 
 type ScoreRunAgentInput struct {
 	RunAgentID uuid.UUID `json:"run_agent_id"`
+}
+
+type BuildRunScorecardInput struct {
+	RunID uuid.UUID `json:"run_id"`
 }
 
 func NewActivities(repo RunRepository, hooks FakeWorkHooks) *Activities {
@@ -275,6 +280,11 @@ func (a *Activities) BuildRunAgentReplay(ctx context.Context, input BuildRunAgen
 func (a *Activities) ScoreRunAgent(ctx context.Context, input ScoreRunAgentInput) (scoring.RunAgentEvaluation, error) {
 	evaluation, err := executeRunAgentEvaluation(ctx, a.repo, input.RunAgentID)
 	return evaluation, wrapActivityError(err)
+}
+
+func (a *Activities) BuildRunScorecard(ctx context.Context, input BuildRunScorecardInput) (repository.RunScorecard, error) {
+	scorecard, err := a.repo.BuildRunScorecard(ctx, input.RunID)
+	return scorecard, wrapActivityError(err)
 }
 
 func (a *Activities) ExecuteNativeModelStep(ctx context.Context, input RunAgentWorkflowInput) error {

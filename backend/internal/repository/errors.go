@@ -12,6 +12,7 @@ var (
 	ErrRunAgentNotFound             = errors.New("run agent not found")
 	ErrRunAgentReplayNotFound       = errors.New("run agent replay not found")
 	ErrRunAgentScorecardNotFound    = errors.New("run agent scorecard not found")
+	ErrRunScorecardNotFound         = errors.New("run scorecard not found")
 	ErrRunComparisonNotFound        = errors.New("run comparison not found")
 	ErrEvaluationSpecNotFound       = errors.New("evaluation spec not found")
 	ErrChallengePackVersionNotFound = errors.New("challenge pack version not found")

@@ -12,6 +12,31 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const getRunScorecardByRunID = `-- name: GetRunScorecardByRunID :one
+SELECT id, run_id, evaluation_spec_id, winning_run_agent_id, scorecard, created_at, updated_at
+FROM run_scorecards
+WHERE run_id = $1
+`
+
+type GetRunScorecardByRunIDParams struct {
+	RunID uuid.UUID
+}
+
+func (q *Queries) GetRunScorecardByRunID(ctx context.Context, arg GetRunScorecardByRunIDParams) (RunScorecard, error) {
+	row := q.db.QueryRow(ctx, getRunScorecardByRunID, arg.RunID)
+	var i RunScorecard
+	err := row.Scan(
+		&i.ID,
+		&i.RunID,
+		&i.EvaluationSpecID,
+		&i.WinningRunAgentID,
+		&i.Scorecard,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const listJudgeResultsByRunAgentAndEvaluationSpec = `-- name: ListJudgeResultsByRunAgentAndEvaluationSpec :many
 SELECT id, run_agent_id, evaluation_spec_id, challenge_identity_id, judge_key, verdict, normalized_score, raw_output, created_at
 FROM judge_results
@@ -307,6 +332,53 @@ func (q *Queries) UpsertRunAgentScorecard(ctx context.Context, arg UpsertRunAgen
 		&i.ReliabilityScore,
 		&i.LatencyScore,
 		&i.CostScore,
+		&i.Scorecard,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const upsertRunScorecard = `-- name: UpsertRunScorecard :one
+INSERT INTO run_scorecards (
+    run_id,
+    evaluation_spec_id,
+    winning_run_agent_id,
+    scorecard
+) VALUES (
+    $1,
+    $2,
+    $3,
+    $4
+)
+ON CONFLICT (run_id)
+DO UPDATE SET
+    evaluation_spec_id = EXCLUDED.evaluation_spec_id,
+    winning_run_agent_id = EXCLUDED.winning_run_agent_id,
+    scorecard = EXCLUDED.scorecard
+RETURNING id, run_id, evaluation_spec_id, winning_run_agent_id, scorecard, created_at, updated_at
+`
+
+type UpsertRunScorecardParams struct {
+	RunID             uuid.UUID
+	EvaluationSpecID  uuid.UUID
+	WinningRunAgentID *uuid.UUID
+	Scorecard         []byte
+}
+
+func (q *Queries) UpsertRunScorecard(ctx context.Context, arg UpsertRunScorecardParams) (RunScorecard, error) {
+	row := q.db.QueryRow(ctx, upsertRunScorecard,
+		arg.RunID,
+		arg.EvaluationSpecID,
+		arg.WinningRunAgentID,
+		arg.Scorecard,
+	)
+	var i RunScorecard
+	err := row.Scan(
+		&i.ID,
+		&i.RunID,
+		&i.EvaluationSpecID,
+		&i.WinningRunAgentID,
 		&i.Scorecard,
 		&i.CreatedAt,
 		&i.UpdatedAt,

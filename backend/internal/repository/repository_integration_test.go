@@ -1107,6 +1107,65 @@ func TestRepositoryGetRunAgentScorecardByRunAgentIDPreservesNullScores(t *testin
 	}
 }
 
+func TestRepositoryBuildRunScorecardPersistsWinnerAndSummary(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	evaluationSpecID := insertEvaluationSpecRecord(t, ctx, db, fixture.challengePackVersionID, "run-scorecard", 1)
+	insertRunAgentScorecardRecord(t, ctx, db, fixture.primaryRunAgentID, evaluationSpecID, scorecardFixture{
+		Correctness: float64Ptr(0.84),
+		Reliability: float64Ptr(0.72),
+	})
+	insertRunAgentScorecardRecord(t, ctx, db, fixture.secondaryRunAgentID, evaluationSpecID, scorecardFixture{
+		Correctness: float64Ptr(0.84),
+		Reliability: float64Ptr(0.91),
+	})
+
+	scorecard, err := repo.BuildRunScorecard(ctx, fixture.runID)
+	if err != nil {
+		t.Fatalf("BuildRunScorecard returned error: %v", err)
+	}
+	if scorecard.RunID != fixture.runID {
+		t.Fatalf("run id = %s, want %s", scorecard.RunID, fixture.runID)
+	}
+	if scorecard.WinningRunAgentID == nil || *scorecard.WinningRunAgentID != fixture.secondaryRunAgentID {
+		t.Fatalf("winning run agent id = %v, want %s", scorecard.WinningRunAgentID, fixture.secondaryRunAgentID)
+	}
+
+	stored, err := repo.GetRunScorecardByRunID(ctx, fixture.runID)
+	if err != nil {
+		t.Fatalf("GetRunScorecardByRunID returned error: %v", err)
+	}
+	if stored.ID != scorecard.ID {
+		t.Fatalf("stored id = %s, want %s", stored.ID, scorecard.ID)
+	}
+
+	document := decodeReplaySummary(t, stored.Scorecard)
+	if document["winning_run_agent_id"] != fixture.secondaryRunAgentID.String() {
+		t.Fatalf("winning_run_agent_id = %v, want %s", document["winning_run_agent_id"], fixture.secondaryRunAgentID)
+	}
+	winnerDetermination, ok := document["winner_determination"].(map[string]any)
+	if !ok {
+		t.Fatalf("winner_determination = %T, want map", document["winner_determination"])
+	}
+	if winnerDetermination["reason_code"] != "reliability_tiebreaker" {
+		t.Fatalf("winner reason_code = %v, want reliability_tiebreaker", winnerDetermination["reason_code"])
+	}
+	dimensionDeltas, ok := document["dimension_deltas"].(map[string]any)
+	if !ok {
+		t.Fatalf("dimension_deltas = %T, want map", document["dimension_deltas"])
+	}
+	reliabilityDelta, ok := dimensionDeltas["reliability"].(map[string]any)
+	if !ok {
+		t.Fatalf("reliability delta = %T, want map", dimensionDeltas["reliability"])
+	}
+	if delta, ok := reliabilityDelta["delta"].(float64); !ok || math.Abs(delta-0.19) > 1e-9 {
+		t.Fatalf("reliability delta = %v, want 0.19", reliabilityDelta["delta"])
+	}
+}
+
 func TestRepositoryCreateEvaluationSpecAndReadItBack(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)

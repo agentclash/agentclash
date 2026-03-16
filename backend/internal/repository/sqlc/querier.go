@@ -24,6 +24,7 @@ type Querier interface {
 	GetRunAgentScorecardByRunAgentID(ctx context.Context, arg GetRunAgentScorecardByRunAgentIDParams) (RunAgentScorecard, error)
 	GetRunByID(ctx context.Context, arg GetRunByIDParams) (Run, error)
 	GetRunComparisonByRunIDs(ctx context.Context, arg GetRunComparisonByRunIDsParams) (RunComparison, error)
+	GetRunScorecardByRunID(ctx context.Context, arg GetRunScorecardByRunIDParams) (RunScorecard, error)
 	GetRunnableChallengePackVersionByID(ctx context.Context, arg GetRunnableChallengePackVersionByIDParams) (ChallengePackVersion, error)
 	InsertRunAgentStatusHistory(ctx context.Context, arg InsertRunAgentStatusHistoryParams) (RunAgentStatusHistory, error)
 	InsertRunEvent(ctx context.Context, arg InsertRunEventParams) (RunEvent, error)
@@ -47,6 +48,7 @@ type Querier interface {
 	UpsertRunAgentReplaySummary(ctx context.Context, arg UpsertRunAgentReplaySummaryParams) (RunAgentReplay, error)
 	UpsertRunAgentScorecard(ctx context.Context, arg UpsertRunAgentScorecardParams) (RunAgentScorecard, error)
 	UpsertRunComparison(ctx context.Context, arg UpsertRunComparisonParams) (RunComparison, error)
+	UpsertRunScorecard(ctx context.Context, arg UpsertRunScorecardParams) (RunScorecard, error)
 }
 
 var _ Querier = (*Queries)(nil)
