@@ -23,6 +23,7 @@ func registerProtectedRoutes(
 	router.Post("/runs", createRunHandler(logger, runCreationService))
 	router.Get("/runs/{runID}", getRunHandler(logger, runReadService))
 	router.Get("/runs/{runID}/agents", listRunAgentsHandler(logger, runReadService))
+	router.Get("/replays/{runAgentID}/viewer", getRunAgentReplayViewerHandler(logger))
 	router.Get("/replays/{runAgentID}", getRunAgentReplayHandler(logger, replayReadService))
 	router.Get("/scorecards/{runAgentID}", getRunAgentScorecardHandler(logger, replayReadService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).

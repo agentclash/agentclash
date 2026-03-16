@@ -247,7 +247,7 @@ func TestOpenAICompatibleClientRejectsMalformedToolCallArguments(t *testing.T) {
 	}
 }
 
-func TestOpenAICompatibleClientPropagatesMetadataAndRejectsEmptyStream(t *testing.T) {
+func TestOpenAICompatibleClientOmitsMetadataForChatCompletionsAndRejectsEmptyStream(t *testing.T) {
 	httpClient := &http.Client{
 		Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
 			assertStreamingRequest(t, r)
@@ -257,14 +257,12 @@ func TestOpenAICompatibleClientPropagatesMetadataAndRejectsEmptyStream(t *testin
 				t.Fatalf("read request body: %v", err)
 			}
 
-			var payload struct {
-				Metadata json.RawMessage `json:"metadata"`
-			}
+			var payload map[string]json.RawMessage
 			if err := json.Unmarshal(body, &payload); err != nil {
 				t.Fatalf("unmarshal request body: %v", err)
 			}
-			if string(payload.Metadata) != `{"run_id":"run-123","agent_id":"agent-456"}` {
-				t.Fatalf("metadata = %s, want request metadata", payload.Metadata)
+			if _, ok := payload["metadata"]; ok {
+				t.Fatalf("metadata should be omitted for chat completions payload: %s", body)
 			}
 
 			return sseResponse(http.StatusOK, ""), nil
