@@ -283,6 +283,49 @@ func TestRunWorkflowScoringCreatesPersistedEvaluationSpecWhenMissing(t *testing.
 	}
 }
 
+func TestRunWorkflowScoringTransitionFailureDoesNotFailRun(t *testing.T) {
+	runID := uuid.New()
+	firstRunAgentID := uuid.New()
+	secondRunAgentID := uuid.New()
+	repo := newFakeRunRepository(
+		fixtureRun(runID, domain.RunStatusQueued),
+		fixtureRunAgent(runID, firstRunAgentID, 0),
+		fixtureRunAgent(runID, secondRunAgentID, 1),
+	)
+	repo.setExecutionContext(firstRunAgentID, nativeExecutionContext(runID, firstRunAgentID))
+	repo.setExecutionContext(secondRunAgentID, nativeExecutionContext(runID, secondRunAgentID))
+	repo.runAgentStatusErrs[runAgentTransitionKey(firstRunAgentID, domain.RunAgentStatusCompleted)] = errors.New("db timeout")
+
+	env := newTestWorkflowEnvironment(repo, FakeWorkHooks{
+		NativeModelInvoker: &fakeNativeModelInvoker{
+			result: engine.Result{
+				FinalOutput: "ok",
+				StopReason:  engine.StopReasonCompleted,
+			},
+		},
+	})
+	env.ExecuteWorkflow(RunWorkflow, RunWorkflowInput{RunID: runID})
+
+	if err := env.GetWorkflowError(); err != nil {
+		t.Fatalf("RunWorkflow returned error: %v", err)
+	}
+	if got := repo.currentRun().Status; got != domain.RunStatusCompleted {
+		t.Fatalf("run status = %s, want %s", got, domain.RunStatusCompleted)
+	}
+	if _, ok := repo.evaluations[firstRunAgentID]; !ok {
+		t.Fatalf("expected first evaluation results to be persisted")
+	}
+	if _, ok := repo.evaluations[secondRunAgentID]; !ok {
+		t.Fatalf("expected second evaluation results to be persisted")
+	}
+	if got := repo.currentRunAgent(firstRunAgentID).Status; got != domain.RunAgentStatusEvaluating {
+		t.Fatalf("first run agent status = %s, want %s", got, domain.RunAgentStatusEvaluating)
+	}
+	if got := repo.currentRunAgent(secondRunAgentID).Status; got != domain.RunAgentStatusCompleted {
+		t.Fatalf("second run agent status = %s, want %s", got, domain.RunAgentStatusCompleted)
+	}
+}
+
 func TestRunWorkflowScoringFailureDoesNotFailRun(t *testing.T) {
 	runID := uuid.New()
 	runAgentID := uuid.New()
@@ -669,6 +712,7 @@ type fakeRunRepository struct {
 	replays             map[uuid.UUID]repository.RunAgentReplay
 	runEvents           map[uuid.UUID][]repository.RunEvent
 	evaluations         map[uuid.UUID]scoring.RunAgentEvaluation
+	runAgentStatusErrs  map[string]error
 	buildReplayErr      error
 	recordRunEventErr   error
 	callLog             []string
@@ -693,6 +737,7 @@ func newFakeRunRepository(run domain.Run, runAgents ...domain.RunAgent) *fakeRun
 		replays:           make(map[uuid.UUID]repository.RunAgentReplay),
 		runEvents:         make(map[uuid.UUID][]repository.RunEvent),
 		evaluations:       make(map[uuid.UUID]scoring.RunAgentEvaluation),
+		runAgentStatusErrs: make(map[string]error),
 	}
 }
 
@@ -897,6 +942,10 @@ func evaluationSpecKey(challengePackVersionID uuid.UUID, name string, versionNum
 	return fmt.Sprintf("%s/%s/%d", challengePackVersionID, name, versionNumber)
 }
 
+func runAgentTransitionKey(runAgentID uuid.UUID, toStatus domain.RunAgentStatus) string {
+	return fmt.Sprintf("%s/%s", runAgentID, toStatus)
+}
+
 func (r *fakeRunRepository) SetRunTemporalIDs(_ context.Context, params repository.SetRunTemporalIDsParams) (domain.Run, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -985,6 +1034,9 @@ func (r *fakeRunRepository) TransitionRunAgentStatus(_ context.Context, params r
 	runAgent, ok := r.runAgents[params.RunAgentID]
 	if !ok {
 		return domain.RunAgent{}, repository.ErrRunAgentNotFound
+	}
+	if err, ok := r.runAgentStatusErrs[runAgentTransitionKey(params.RunAgentID, params.ToStatus)]; ok {
+		return domain.RunAgent{}, err
 	}
 	if !runAgent.Status.CanTransitionTo(params.ToStatus) {
 		return domain.RunAgent{}, repository.InvalidTransitionError{

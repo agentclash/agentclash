@@ -187,7 +187,11 @@ func scoreEvaluatingRunAgents(ctx sdkworkflow.Context, runAgents []domain.RunAge
 	for _, runAgent := range completedRunAgents {
 		reason := scoreOutcomeReason(outcomes[runAgent.ID])
 		if err := transitionRunAgentStatus(ctx, runAgent.ID, domain.RunAgentStatusCompleted, stringPtr(reason), nil); err != nil {
-			return "", err
+			sdkworkflow.GetLogger(ctx).Warn("failed to transition scored agent to completed",
+				"run_agent_id", runAgent.ID.String(),
+				"outcome", outcomes[runAgent.ID],
+				"error", err,
+			)
 		}
 	}
 
