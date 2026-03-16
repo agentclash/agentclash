@@ -38,7 +38,7 @@ const (
 
 type EvaluationSpec struct {
 	Name          string                 `json:"name"`
-	VersionNumber int                    `json:"version_number"`
+	VersionNumber int32                  `json:"version_number"`
 	JudgeMode     JudgeMode              `json:"judge_mode"`
 	Validators    []ValidatorDeclaration `json:"validators"`
 	Metrics       []MetricDeclaration    `json:"metrics"`

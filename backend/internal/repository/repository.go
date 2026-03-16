@@ -10,6 +10,7 @@ import (
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/domain"
 	repositorysqlc "github.com/Atharva-Kanherkar/agentclash/backend/internal/repository/sqlc"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/runevents"
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/scoring"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -401,12 +402,17 @@ func (r *Repository) GetRunAgentReplayByRunAgentID(ctx context.Context, runAgent
 }
 
 func (r *Repository) CreateEvaluationSpec(ctx context.Context, params CreateEvaluationSpecParams) (EvaluationSpecRecord, error) {
+	normalizedDefinition, err := normalizeEvaluationSpecDefinition(params.Definition)
+	if err != nil {
+		return EvaluationSpecRecord{}, fmt.Errorf("create evaluation spec: %w", err)
+	}
+
 	row, err := r.queries.CreateEvaluationSpec(ctx, repositorysqlc.CreateEvaluationSpecParams{
 		ChallengePackVersionID: &params.ChallengePackVersionID,
 		Name:                   params.Name,
 		VersionNumber:          params.VersionNumber,
 		JudgeMode:              params.JudgeMode,
-		Definition:             cloneJSON(params.Definition),
+		Definition:             normalizedDefinition,
 	})
 	if err != nil {
 		return EvaluationSpecRecord{}, fmt.Errorf("create evaluation spec: %w", err)
@@ -1021,6 +1027,20 @@ func mapEvaluationSpecRecord(row repositorysqlc.EvaluationSpec) (EvaluationSpecR
 		CreatedAt:              createdAt,
 		UpdatedAt:              updatedAt,
 	}, nil
+}
+
+func normalizeEvaluationSpecDefinition(definition json.RawMessage) (json.RawMessage, error) {
+	var spec scoring.EvaluationSpec
+	if err := json.Unmarshal(definition, &spec); err != nil {
+		return nil, fmt.Errorf("decode evaluation spec definition: %w", err)
+	}
+
+	normalized, err := scoring.MarshalDefinition(spec)
+	if err != nil {
+		return nil, fmt.Errorf("validate evaluation spec definition: %w", err)
+	}
+
+	return normalized, nil
 }
 
 func mapRunStatusHistory(row repositorysqlc.RunStatusHistory) (domain.RunStatusHistory, error) {

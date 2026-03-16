@@ -1166,6 +1166,24 @@ func TestRepositoryCreateEvaluationSpecRejectsDuplicateNameAndVersion(t *testing
 	}
 }
 
+func TestRepositoryCreateEvaluationSpecRejectsInvalidDefinition(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	_, err := repo.CreateEvaluationSpec(ctx, repository.CreateEvaluationSpecParams{
+		ChallengePackVersionID: fixture.challengePackVersionID,
+		Name:                   "invalid-spec",
+		VersionNumber:          1,
+		JudgeMode:              "deterministic",
+		Definition:             []byte(`{"name":"","version_number":1,"judge_mode":"deterministic","validators":[{"key":"v1","type":"exact_match","target":"final_output","expected_from":"challenge_input"}],"scorecard":{"dimensions":["correctness"]}}`),
+	})
+	if err == nil {
+		t.Fatal("CreateEvaluationSpec returned nil error")
+	}
+}
+
 func TestRepositoryTransitionRunAgentStatusWritesCurrentStateAndHistory(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)
