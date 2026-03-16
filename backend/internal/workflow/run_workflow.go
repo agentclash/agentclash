@@ -96,43 +96,39 @@ func runWorkflow(ctx sdkworkflow.Context, input RunWorkflowInput) error {
 
 func executeRunAgents(ctx sdkworkflow.Context, runAgents []domain.RunAgent) error {
 	selector := sdkworkflow.NewSelector(ctx)
-	childCancels := make([]sdkworkflow.CancelFunc, 0, len(runAgents))
-	var firstErr error
 	completedChildren := 0
+	childErrors := make(map[uuid.UUID]error, len(runAgents))
 
 	for _, runAgent := range runAgents {
-		childCtx, cancel := sdkworkflow.WithCancel(ctx)
-		childCtx = sdkworkflow.WithChildOptions(childCtx, sdkworkflow.ChildWorkflowOptions{
+		childCtx := sdkworkflow.WithChildOptions(ctx, sdkworkflow.ChildWorkflowOptions{
 			WorkflowID:        fmt.Sprintf("%s/%s/%s", RunAgentWorkflowName, runAgent.RunID, runAgent.ID),
 			ParentClosePolicy: enumspb.PARENT_CLOSE_POLICY_REQUEST_CANCEL,
 		})
-		childCancels = append(childCancels, cancel)
 
+		runAgent := runAgent
 		future := sdkworkflow.ExecuteChildWorkflow(childCtx, RunAgentWorkflowName, RunAgentWorkflowInput{
 			RunID:      runAgent.RunID,
 			RunAgentID: runAgent.ID,
 		})
 		selector.AddFuture(future, func(f sdkworkflow.Future) {
 			completedChildren++
-
-			if firstErr != nil {
-				return
-			}
-
 			if err := f.Get(ctx, nil); err != nil {
-				firstErr = err
-				for _, childCancel := range childCancels {
-					childCancel()
-				}
+				childErrors[runAgent.ID] = err
 			}
 		})
 	}
 
-	for completedChildren < len(runAgents) && firstErr == nil {
+	for completedChildren < len(runAgents) {
 		selector.Select(ctx)
 	}
 
-	return firstErr
+	if len(childErrors) == len(runAgents) {
+		for _, err := range childErrors {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func scoreEvaluatingRunAgents(ctx sdkworkflow.Context, runAgents []domain.RunAgent) (string, error) {

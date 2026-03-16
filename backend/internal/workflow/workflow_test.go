@@ -585,6 +585,50 @@ func TestRunWorkflowCancellationMarksRunCancelled(t *testing.T) {
 	}
 }
 
+func TestRunWorkflowPartialChildFailureDoesNotCancelOtherAgents(t *testing.T) {
+	runID := uuid.New()
+	successAgentID := uuid.New()
+	failAgentID := uuid.New()
+	repo := newFakeRunRepository(
+		fixtureRun(runID, domain.RunStatusQueued),
+		fixtureRunAgent(runID, successAgentID, 0),
+		fixtureRunAgent(runID, failAgentID, 1),
+	)
+	repo.setExecutionContext(successAgentID, nativeExecutionContext(runID, successAgentID))
+	repo.setExecutionContext(failAgentID, nativeExecutionContext(runID, failAgentID))
+
+	env := newTestWorkflowEnvironment(repo, FakeWorkHooks{
+		NativeModelInvoker: &perAgentNativeModelInvoker{
+			results: map[uuid.UUID]engine.Result{
+				successAgentID: {FinalOutput: "ok", StopReason: engine.StopReasonCompleted},
+			},
+			errs: map[uuid.UUID]error{
+				failAgentID: errors.New("simulated execution failure"),
+			},
+		},
+	})
+	env.ExecuteWorkflow(RunWorkflow, RunWorkflowInput{RunID: runID})
+
+	if err := env.GetWorkflowError(); err != nil {
+		t.Fatalf("RunWorkflow returned error: %v", err)
+	}
+	if repo.currentRun().Status != domain.RunStatusCompleted {
+		t.Fatalf("run status = %s, want completed", repo.currentRun().Status)
+	}
+	if repo.currentRunAgent(successAgentID).Status != domain.RunAgentStatusCompleted {
+		t.Fatalf("success agent status = %s, want completed", repo.currentRunAgent(successAgentID).Status)
+	}
+	if repo.currentRunAgent(failAgentID).Status != domain.RunAgentStatusFailed {
+		t.Fatalf("fail agent status = %s, want failed", repo.currentRunAgent(failAgentID).Status)
+	}
+	if _, ok := repo.evaluations[successAgentID]; !ok {
+		t.Fatalf("expected success agent to have evaluation results")
+	}
+	if _, ok := repo.evaluations[failAgentID]; ok {
+		t.Fatalf("did not expect fail agent to have evaluation results")
+	}
+}
+
 func TestRunWorkflowChildFailureMarksRunAndRunAgentFailed(t *testing.T) {
 	runID := uuid.New()
 	runAgentID := uuid.New()
@@ -1367,6 +1411,22 @@ func (f *fakeNativeModelInvoker) InvokeNativeModel(_ context.Context, executionC
 		return engine.Result{}, f.err
 	}
 	return f.result, nil
+}
+
+type perAgentNativeModelInvoker struct {
+	results map[uuid.UUID]engine.Result
+	errs    map[uuid.UUID]error
+}
+
+func (f *perAgentNativeModelInvoker) InvokeNativeModel(_ context.Context, executionContext repository.RunAgentExecutionContext) (engine.Result, error) {
+	agentID := executionContext.RunAgent.ID
+	if err, ok := f.errs[agentID]; ok {
+		return engine.Result{}, err
+	}
+	if result, ok := f.results[agentID]; ok {
+		return result, nil
+	}
+	return engine.Result{FinalOutput: "default", StopReason: engine.StopReasonCompleted}, nil
 }
 
 func fixtureRunAgent(runID uuid.UUID, runAgentID uuid.UUID, laneIndex int32) domain.RunAgent {
