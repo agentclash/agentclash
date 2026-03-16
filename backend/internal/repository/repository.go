@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/domain"
@@ -142,6 +143,33 @@ type EvaluationSpecRecord struct {
 	Definition             json.RawMessage
 	CreatedAt              time.Time
 	UpdatedAt              time.Time
+}
+
+type JudgeResultRecord struct {
+	ID                  uuid.UUID
+	RunAgentID          uuid.UUID
+	EvaluationSpecID    uuid.UUID
+	ChallengeIdentityID *uuid.UUID
+	JudgeKey            string
+	Verdict             *string
+	NormalizedScore     *float64
+	RawOutput           json.RawMessage
+	CreatedAt           time.Time
+}
+
+type MetricResultRecord struct {
+	ID                  uuid.UUID
+	RunAgentID          uuid.UUID
+	EvaluationSpecID    uuid.UUID
+	ChallengeIdentityID *uuid.UUID
+	MetricKey           string
+	MetricType          string
+	NumericValue        *float64
+	TextValue           *string
+	BooleanValue        *bool
+	Unit                *string
+	Metadata            json.RawMessage
+	CreatedAt           time.Time
 }
 
 type CreateEvaluationSpecParams struct {
@@ -484,6 +512,111 @@ func (r *Repository) GetRunAgentScorecardByRunAgentID(ctx context.Context, runAg
 	}
 
 	return scorecard, nil
+}
+
+func (r *Repository) StoreRunAgentEvaluationResults(ctx context.Context, evaluation scoring.RunAgentEvaluation) error {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin scoring result transaction: %w", err)
+	}
+	defer rollback(ctx, tx)
+
+	queries := r.queries.WithTx(tx)
+	for _, result := range evaluation.ValidatorResults {
+		numericScore, err := numericFromFloat(result.NormalizedScore)
+		if err != nil {
+			return fmt.Errorf("encode validator normalized score for %s: %w", result.Key, err)
+		}
+
+		rawOutput := cloneJSON(result.RawOutput)
+		if len(rawOutput) == 0 {
+			rawOutput = json.RawMessage(`{}`)
+		}
+
+		if _, err := queries.UpsertJudgeResult(ctx, repositorysqlc.UpsertJudgeResultParams{
+			RunAgentID:          evaluation.RunAgentID,
+			EvaluationSpecID:    evaluation.EvaluationSpecID,
+			ChallengeIdentityID: cloneUUIDPtr(result.ChallengeIdentityID),
+			JudgeKey:            result.Key,
+			Verdict:             cloneStringPtr(optionalString(result.Verdict)),
+			NormalizedScore:     numericScore,
+			RawOutput:           rawOutput,
+		}); err != nil {
+			return fmt.Errorf("upsert judge result %s: %w", result.Key, err)
+		}
+	}
+
+	for _, result := range evaluation.MetricResults {
+		numericValue, err := numericFromFloat(result.NumericValue)
+		if err != nil {
+			return fmt.Errorf("encode metric numeric value for %s: %w", result.Key, err)
+		}
+
+		metadata := cloneJSON(result.Metadata)
+		if len(metadata) == 0 {
+			metadata = json.RawMessage(`{}`)
+		}
+
+		if _, err := queries.UpsertMetricResult(ctx, repositorysqlc.UpsertMetricResultParams{
+			RunAgentID:          evaluation.RunAgentID,
+			EvaluationSpecID:    evaluation.EvaluationSpecID,
+			ChallengeIdentityID: cloneUUIDPtr(result.ChallengeIdentityID),
+			MetricKey:           result.Key,
+			MetricType:          string(result.Type),
+			NumericValue:        numericValue,
+			TextValue:           cloneStringPtr(result.TextValue),
+			BooleanValue:        cloneBoolPtr(result.BooleanValue),
+			Unit:                cloneStringPtr(optionalString(result.Unit)),
+			Metadata:            metadata,
+		}); err != nil {
+			return fmt.Errorf("upsert metric result %s: %w", result.Key, err)
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit scoring result transaction: %w", err)
+	}
+	return nil
+}
+
+func (r *Repository) ListJudgeResultsByRunAgentAndEvaluationSpec(ctx context.Context, runAgentID uuid.UUID, evaluationSpecID uuid.UUID) ([]JudgeResultRecord, error) {
+	rows, err := r.queries.ListJudgeResultsByRunAgentAndEvaluationSpec(ctx, repositorysqlc.ListJudgeResultsByRunAgentAndEvaluationSpecParams{
+		RunAgentID:       runAgentID,
+		EvaluationSpecID: evaluationSpecID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list judge results by run-agent and evaluation spec: %w", err)
+	}
+
+	results := make([]JudgeResultRecord, 0, len(rows))
+	for _, row := range rows {
+		result, mapErr := mapJudgeResultRecord(row)
+		if mapErr != nil {
+			return nil, fmt.Errorf("map judge result: %w", mapErr)
+		}
+		results = append(results, result)
+	}
+	return results, nil
+}
+
+func (r *Repository) ListMetricResultsByRunAgentAndEvaluationSpec(ctx context.Context, runAgentID uuid.UUID, evaluationSpecID uuid.UUID) ([]MetricResultRecord, error) {
+	rows, err := r.queries.ListMetricResultsByRunAgentAndEvaluationSpec(ctx, repositorysqlc.ListMetricResultsByRunAgentAndEvaluationSpecParams{
+		RunAgentID:       runAgentID,
+		EvaluationSpecID: evaluationSpecID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list metric results by run-agent and evaluation spec: %w", err)
+	}
+
+	results := make([]MetricResultRecord, 0, len(rows))
+	for _, row := range rows {
+		result, mapErr := mapMetricResultRecord(row)
+		if mapErr != nil {
+			return nil, fmt.Errorf("map metric result: %w", mapErr)
+		}
+		results = append(results, result)
+	}
+	return results, nil
 }
 
 func (r *Repository) RecordHostedRunEvent(ctx context.Context, params RecordHostedRunEventParams) (RunAgentReplay, error) {
@@ -1029,6 +1162,47 @@ func mapEvaluationSpecRecord(row repositorysqlc.EvaluationSpec) (EvaluationSpecR
 	}, nil
 }
 
+func mapJudgeResultRecord(row repositorysqlc.JudgeResult) (JudgeResultRecord, error) {
+	createdAt, err := requiredTime("judge_results.created_at", row.CreatedAt)
+	if err != nil {
+		return JudgeResultRecord{}, err
+	}
+
+	return JudgeResultRecord{
+		ID:                  row.ID,
+		RunAgentID:          row.RunAgentID,
+		EvaluationSpecID:    row.EvaluationSpecID,
+		ChallengeIdentityID: cloneUUIDPtr(row.ChallengeIdentityID),
+		JudgeKey:            row.JudgeKey,
+		Verdict:             cloneStringPtr(row.Verdict),
+		NormalizedScore:     numericPtr(row.NormalizedScore),
+		RawOutput:           cloneJSON(row.RawOutput),
+		CreatedAt:           createdAt,
+	}, nil
+}
+
+func mapMetricResultRecord(row repositorysqlc.MetricResult) (MetricResultRecord, error) {
+	createdAt, err := requiredTime("metric_results.created_at", row.CreatedAt)
+	if err != nil {
+		return MetricResultRecord{}, err
+	}
+
+	return MetricResultRecord{
+		ID:                  row.ID,
+		RunAgentID:          row.RunAgentID,
+		EvaluationSpecID:    row.EvaluationSpecID,
+		ChallengeIdentityID: cloneUUIDPtr(row.ChallengeIdentityID),
+		MetricKey:           row.MetricKey,
+		MetricType:          row.MetricType,
+		NumericValue:        numericPtr(row.NumericValue),
+		TextValue:           cloneStringPtr(row.TextValue),
+		BooleanValue:        cloneBoolPtr(row.BooleanValue),
+		Unit:                cloneStringPtr(row.Unit),
+		Metadata:            cloneJSON(row.Metadata),
+		CreatedAt:           createdAt,
+	}, nil
+}
+
 func normalizeEvaluationSpecDefinition(definition json.RawMessage) (json.RawMessage, error) {
 	var spec scoring.EvaluationSpec
 	if err := json.Unmarshal(definition, &spec); err != nil {
@@ -1200,6 +1374,33 @@ func numericPtr(value pgtype.Numeric) *float64 {
 	}
 
 	return cloneFloat64Ptr(&float8.Float64)
+}
+
+func numericFromFloat(value *float64) (pgtype.Numeric, error) {
+	if value == nil {
+		return pgtype.Numeric{}, nil
+	}
+
+	var numeric pgtype.Numeric
+	if err := numeric.Scan(*value); err != nil {
+		return pgtype.Numeric{}, err
+	}
+	return numeric, nil
+}
+
+func cloneBoolPtr(value *bool) *bool {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
+}
+
+func optionalString(value string) *string {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	return &value
 }
 
 func runStatusPtr(status *domain.RunStatus) *string {

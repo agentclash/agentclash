@@ -15,6 +15,7 @@ import (
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/hostedruns"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/provider"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/scoring"
 	"github.com/google/uuid"
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/temporal"
@@ -557,6 +558,8 @@ type fakeRunRepository struct {
 	executionContexts   map[uuid.UUID]repository.RunAgentExecutionContext
 	hostedExecutions    map[uuid.UUID]repository.HostedRunExecution
 	replays             map[uuid.UUID]repository.RunAgentReplay
+	runEvents           map[uuid.UUID][]repository.RunEvent
+	evaluations         map[uuid.UUID]scoring.RunAgentEvaluation
 	buildReplayErr      error
 	callLog             []string
 	runStatusCalls      []repository.TransitionRunStatusParams
@@ -577,6 +580,8 @@ func newFakeRunRepository(run domain.Run, runAgents ...domain.RunAgent) *fakeRun
 		executionContexts: make(map[uuid.UUID]repository.RunAgentExecutionContext),
 		hostedExecutions:  make(map[uuid.UUID]repository.HostedRunExecution),
 		replays:           make(map[uuid.UUID]repository.RunAgentReplay),
+		runEvents:         make(map[uuid.UUID][]repository.RunEvent),
+		evaluations:       make(map[uuid.UUID]scoring.RunAgentEvaluation),
 	}
 }
 
@@ -637,12 +642,12 @@ func (r *fakeRunRepository) GetRunAgentExecutionContextByID(_ context.Context, i
 		return executionContext, nil
 	}
 
-	return repository.RunAgentExecutionContext{
+	executionContext := repository.RunAgentExecutionContext{
 		Run:      cloneRun(r.run),
 		RunAgent: cloneRunAgent(runAgent),
 		ChallengePackVersion: repository.ChallengePackVersionExecutionContext{
 			ID:       uuid.New(),
-			Manifest: []byte(`{"challenge":"fixture"}`),
+			Manifest: fixtureEvaluationManifest(),
 		},
 		Deployment: repository.AgentDeploymentExecutionContext{
 			AgentDeploymentID:         runAgent.AgentDeploymentID,
@@ -654,7 +659,9 @@ func (r *fakeRunRepository) GetRunAgentExecutionContextByID(_ context.Context, i
 				RunTimeoutSeconds: 5,
 			},
 		},
-	}, nil
+	}
+	r.executionContexts[id] = executionContext
+	return executionContext, nil
 }
 
 func (r *fakeRunRepository) BuildRunAgentReplay(_ context.Context, runAgentID uuid.UUID) (repository.RunAgentReplay, error) {
@@ -686,6 +693,81 @@ func (r *fakeRunRepository) BuildRunAgentReplay(_ context.Context, runAgentID uu
 	r.replays[runAgentID] = replay
 
 	return replay, nil
+}
+
+func (r *fakeRunRepository) GetEvaluationSpecByChallengePackVersionAndVersion(_ context.Context, challengePackVersionID uuid.UUID, name string, versionNumber int32) (repository.EvaluationSpecRecord, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	for _, executionContext := range r.executionContexts {
+		if executionContext.ChallengePackVersion.ID != challengePackVersionID {
+			continue
+		}
+		spec, err := scoring.LoadEvaluationSpec(executionContext.ChallengePackVersion.Manifest)
+		if err != nil {
+			return repository.EvaluationSpecRecord{}, err
+		}
+		if spec.Name != name || spec.VersionNumber != versionNumber {
+			continue
+		}
+		definition, err := scoring.MarshalDefinition(spec)
+		if err != nil {
+			return repository.EvaluationSpecRecord{}, err
+		}
+		return repository.EvaluationSpecRecord{
+			ID:                     uuid.New(),
+			ChallengePackVersionID: challengePackVersionID,
+			Name:                   spec.Name,
+			VersionNumber:          spec.VersionNumber,
+			JudgeMode:              string(spec.JudgeMode),
+			Definition:             definition,
+			CreatedAt:              time.Now().UTC(),
+			UpdatedAt:              time.Now().UTC(),
+		}, nil
+	}
+
+	return repository.EvaluationSpecRecord{}, repository.ErrEvaluationSpecNotFound
+}
+
+func (r *fakeRunRepository) ListRunEventsByRunAgentID(_ context.Context, runAgentID uuid.UUID) ([]repository.RunEvent, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	events := r.runEvents[runAgentID]
+	cloned := make([]repository.RunEvent, 0, len(events))
+	for _, event := range events {
+		cloned = append(cloned, event)
+	}
+	return cloned, nil
+}
+
+func (r *fakeRunRepository) RecordRunEvent(_ context.Context, params repository.RecordRunEventParams) (repository.RunEvent, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	sequenceNumber := int64(len(r.runEvents[params.Event.RunAgentID]) + 1)
+	event := repository.RunEvent{
+		ID:             sequenceNumber,
+		RunID:          params.Event.RunID,
+		RunAgentID:     params.Event.RunAgentID,
+		SequenceNumber: sequenceNumber,
+		EventType:      params.Event.EventType,
+		Source:         params.Event.Source,
+		OccurredAt:     params.Event.OccurredAt.UTC(),
+		Payload:        append([]byte(nil), params.Event.Payload...),
+	}
+	r.runEvents[params.Event.RunAgentID] = append(r.runEvents[params.Event.RunAgentID], event)
+	r.callLog = append(r.callLog, fmt.Sprintf("RecordRunEvent:%s", params.Event.EventType))
+	return event, nil
+}
+
+func (r *fakeRunRepository) StoreRunAgentEvaluationResults(_ context.Context, evaluation scoring.RunAgentEvaluation) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.evaluations[evaluation.RunAgentID] = evaluation
+	r.callLog = append(r.callLog, fmt.Sprintf("StoreRunAgentEvaluationResults:%s", evaluation.RunAgentID))
+	return nil
 }
 
 func (r *fakeRunRepository) setExecutionContext(runAgentID uuid.UUID, executionContext repository.RunAgentExecutionContext) {
@@ -974,7 +1056,7 @@ func hostedExecutionContext(runID uuid.UUID, runAgentID uuid.UUID) repository.Ru
 		},
 		ChallengePackVersion: repository.ChallengePackVersionExecutionContext{
 			ID:       uuid.New(),
-			Manifest: []byte(`{"challenge":"fixture"}`),
+			Manifest: fixtureEvaluationManifest(),
 		},
 		Deployment: repository.AgentDeploymentExecutionContext{
 			AgentDeploymentID:         uuid.New(),
@@ -1004,7 +1086,7 @@ func nativeExecutionContext(runID uuid.UUID, runAgentID uuid.UUID) repository.Ru
 		},
 		ChallengePackVersion: repository.ChallengePackVersionExecutionContext{
 			ID:       uuid.New(),
-			Manifest: []byte(`{"challenge":"fixture"}`),
+			Manifest: fixtureEvaluationManifest(),
 		},
 		Deployment: repository.AgentDeploymentExecutionContext{
 			AgentDeploymentID:         uuid.New(),
@@ -1047,6 +1129,34 @@ func (f fakeHostedRunStarter) Start(context.Context, HostedRunStartInput) (hoste
 		return hostedruns.StartResponse{}, f.err
 	}
 	return f.response, nil
+}
+
+func fixtureEvaluationManifest() []byte {
+	return []byte(`{
+		"evaluation_spec": {
+			"name": "fixture-eval",
+			"version_number": 1,
+			"judge_mode": "deterministic",
+			"validators": [
+				{
+					"key": "final-output-match",
+					"type": "exact_match",
+					"target": "final_output",
+					"expected_from": "challenge_input"
+				}
+			],
+			"metrics": [
+				{
+					"key": "completion",
+					"type": "boolean",
+					"collector": "run_completed_successfully"
+				}
+			],
+			"scorecard": {
+				"dimensions": ["correctness", "reliability"]
+			}
+		}
+	}`)
 }
 
 type fakeNativeModelInvoker struct {

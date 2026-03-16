@@ -12,6 +12,7 @@ import (
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
 	repositorysqlc "github.com/Atharva-Kanherkar/agentclash/backend/internal/repository/sqlc"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/runevents"
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/scoring"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -1184,6 +1185,203 @@ func TestRepositoryCreateEvaluationSpecRejectsInvalidDefinition(t *testing.T) {
 	}
 }
 
+func TestRepositoryStoreRunAgentEvaluationResultsUpsertsJudgeAndMetricRows(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	specRecord, err := repo.CreateEvaluationSpec(ctx, repository.CreateEvaluationSpecParams{
+		ChallengePackVersionID: fixture.challengePackVersionID,
+		Name:                   "store-results-spec",
+		VersionNumber:          1,
+		JudgeMode:              "deterministic",
+		Definition: []byte(`{
+			"name":"store-results-spec",
+			"version_number":1,
+			"judge_mode":"deterministic",
+			"validators":[{"key":"exact","type":"exact_match","target":"final_output","expected_from":"challenge_input"}],
+			"metrics":[{"key":"completion","type":"boolean","collector":"run_completed_successfully"}],
+			"scorecard":{"dimensions":["correctness","reliability"]}
+		}`),
+	})
+	if err != nil {
+		t.Fatalf("CreateEvaluationSpec returned error: %v", err)
+	}
+
+	initialEvaluation := scoring.RunAgentEvaluation{
+		RunAgentID:       fixture.primaryRunAgentID,
+		EvaluationSpecID: specRecord.ID,
+		Status:           scoring.EvaluationStatusPartial,
+		ValidatorResults: []scoring.ValidatorResult{
+			{
+				Key:                 "exact",
+				Type:                scoring.ValidatorTypeExactMatch,
+				State:               scoring.OutputStateUnavailable,
+				Reason:              "final output evidence is unavailable",
+				RawOutput:           []byte(`{"state":"unavailable"}`),
+				ChallengeIdentityID: &fixture.firstChallengeIdentityID,
+			},
+		},
+		MetricResults: []scoring.MetricResult{
+			{
+				Key:                 "completion",
+				Type:                scoring.MetricTypeBoolean,
+				State:               scoring.OutputStateUnavailable,
+				Collector:           "run_completed_successfully",
+				Reason:              "terminal success evidence is unavailable",
+				Metadata:            []byte(`{"state":"unavailable"}`),
+				ChallengeIdentityID: &fixture.firstChallengeIdentityID,
+			},
+		},
+	}
+	if err := repo.StoreRunAgentEvaluationResults(ctx, initialEvaluation); err != nil {
+		t.Fatalf("StoreRunAgentEvaluationResults returned error: %v", err)
+	}
+
+	updatedEvaluation := scoring.RunAgentEvaluation{
+		RunAgentID:       fixture.primaryRunAgentID,
+		EvaluationSpecID: specRecord.ID,
+		Status:           scoring.EvaluationStatusComplete,
+		ValidatorResults: []scoring.ValidatorResult{
+			{
+				Key:                 "exact",
+				Type:                scoring.ValidatorTypeExactMatch,
+				State:               scoring.OutputStateAvailable,
+				Verdict:             "pass",
+				NormalizedScore:     float64Ptr(1),
+				RawOutput:           []byte(`{"state":"available","verdict":"pass"}`),
+				ChallengeIdentityID: &fixture.firstChallengeIdentityID,
+			},
+		},
+		MetricResults: []scoring.MetricResult{
+			{
+				Key:                 "completion",
+				Type:                scoring.MetricTypeBoolean,
+				State:               scoring.OutputStateAvailable,
+				Collector:           "run_completed_successfully",
+				BooleanValue:        boolPtr(true),
+				Metadata:            []byte(`{"state":"available"}`),
+				ChallengeIdentityID: &fixture.firstChallengeIdentityID,
+			},
+		},
+	}
+	if err := repo.StoreRunAgentEvaluationResults(ctx, updatedEvaluation); err != nil {
+		t.Fatalf("second StoreRunAgentEvaluationResults returned error: %v", err)
+	}
+
+	judgeResults, err := repo.ListJudgeResultsByRunAgentAndEvaluationSpec(ctx, fixture.primaryRunAgentID, specRecord.ID)
+	if err != nil {
+		t.Fatalf("ListJudgeResultsByRunAgentAndEvaluationSpec returned error: %v", err)
+	}
+	if len(judgeResults) != 1 {
+		t.Fatalf("judge result count = %d, want 1", len(judgeResults))
+	}
+	if judgeResults[0].Verdict == nil || *judgeResults[0].Verdict != "pass" {
+		t.Fatalf("judge verdict = %v, want pass", judgeResults[0].Verdict)
+	}
+	if judgeResults[0].NormalizedScore == nil || *judgeResults[0].NormalizedScore != 1 {
+		t.Fatalf("judge normalized score = %v, want 1", judgeResults[0].NormalizedScore)
+	}
+
+	metricResults, err := repo.ListMetricResultsByRunAgentAndEvaluationSpec(ctx, fixture.primaryRunAgentID, specRecord.ID)
+	if err != nil {
+		t.Fatalf("ListMetricResultsByRunAgentAndEvaluationSpec returned error: %v", err)
+	}
+	if len(metricResults) != 1 {
+		t.Fatalf("metric result count = %d, want 1", len(metricResults))
+	}
+	if metricResults[0].BooleanValue == nil || !*metricResults[0].BooleanValue {
+		t.Fatalf("metric boolean value = %v, want true", metricResults[0].BooleanValue)
+	}
+	if metricResults[0].MetricType != string(scoring.MetricTypeBoolean) {
+		t.Fatalf("metric type = %q, want boolean", metricResults[0].MetricType)
+	}
+}
+
+func TestRepositoryEvaluateRunAgentUsesCanonicalEventsAndPersistsResults(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	if _, err := db.Exec(ctx, `
+		DELETE FROM challenge_input_items
+		WHERE challenge_input_set_id = $1
+		  AND challenge_identity_id <> $2
+	`, fixture.challengeInputSetID, fixture.firstChallengeIdentityID); err != nil {
+		t.Fatalf("delete extra challenge input items returned error: %v", err)
+	}
+
+	specRecord, err := repo.CreateEvaluationSpec(ctx, repository.CreateEvaluationSpecParams{
+		ChallengePackVersionID: fixture.challengePackVersionID,
+		Name:                   "evaluate-run-agent-spec",
+		VersionNumber:          1,
+		JudgeMode:              "deterministic",
+		Definition: []byte(`{
+			"name":"evaluate-run-agent-spec",
+			"version_number":1,
+			"judge_mode":"deterministic",
+			"validators":[{"key":"exact","type":"exact_match","target":"final_output","expected_from":"challenge_input"}],
+			"metrics":[{"key":"total_tokens","type":"numeric","collector":"run_total_tokens"}],
+			"scorecard":{"dimensions":["correctness"]}
+		}`),
+	})
+	if err != nil {
+		t.Fatalf("CreateEvaluationSpec returned error: %v", err)
+	}
+
+	startedAt := time.Date(2026, 3, 16, 12, 0, 0, 0, time.UTC)
+	recordRunEvent(t, ctx, repo, fixture.runID, fixture.primaryRunAgentID, "event-1", runevents.EventTypeSystemRunStarted, startedAt, `{}`)
+	recordRunEvent(t, ctx, repo, fixture.runID, fixture.primaryRunAgentID, "event-2", runevents.EventTypeSystemRunCompleted, startedAt.Add(200*time.Millisecond), `{"final_output":"Customer one is blocked","input_tokens":11,"output_tokens":5,"total_tokens":16}`)
+
+	evaluation, err := repo.EvaluateRunAgent(ctx, repository.EvaluateRunAgentParams{
+		RunAgentID:       fixture.primaryRunAgentID,
+		EvaluationSpecID: specRecord.ID,
+	})
+	if err != nil {
+		t.Fatalf("EvaluateRunAgent returned error: %v", err)
+	}
+
+	if evaluation.Status != scoring.EvaluationStatusComplete {
+		t.Fatalf("evaluation status = %s, want %s", evaluation.Status, scoring.EvaluationStatusComplete)
+	}
+	if len(evaluation.ValidatorResults) != 1 {
+		t.Fatalf("validator result count = %d, want 1", len(evaluation.ValidatorResults))
+	}
+	if evaluation.ValidatorResults[0].Verdict != "pass" {
+		t.Fatalf("validator verdict = %q, want pass", evaluation.ValidatorResults[0].Verdict)
+	}
+	if len(evaluation.MetricResults) != 1 {
+		t.Fatalf("metric result count = %d, want 1", len(evaluation.MetricResults))
+	}
+	if evaluation.MetricResults[0].NumericValue == nil || *evaluation.MetricResults[0].NumericValue != 16 {
+		t.Fatalf("metric numeric value = %v, want 16", evaluation.MetricResults[0].NumericValue)
+	}
+
+	judgeResults, err := repo.ListJudgeResultsByRunAgentAndEvaluationSpec(ctx, fixture.primaryRunAgentID, specRecord.ID)
+	if err != nil {
+		t.Fatalf("ListJudgeResultsByRunAgentAndEvaluationSpec returned error: %v", err)
+	}
+	if len(judgeResults) != 1 {
+		t.Fatalf("judge result count = %d, want 1", len(judgeResults))
+	}
+	if judgeResults[0].Verdict == nil || *judgeResults[0].Verdict != "pass" {
+		t.Fatalf("persisted judge verdict = %v, want pass", judgeResults[0].Verdict)
+	}
+
+	metricResults, err := repo.ListMetricResultsByRunAgentAndEvaluationSpec(ctx, fixture.primaryRunAgentID, specRecord.ID)
+	if err != nil {
+		t.Fatalf("ListMetricResultsByRunAgentAndEvaluationSpec returned error: %v", err)
+	}
+	if len(metricResults) != 1 {
+		t.Fatalf("metric result count = %d, want 1", len(metricResults))
+	}
+	if metricResults[0].NumericValue == nil || *metricResults[0].NumericValue != 16 {
+		t.Fatalf("persisted metric numeric value = %v, want 16", metricResults[0].NumericValue)
+	}
+}
+
 func TestRepositoryTransitionRunAgentStatusWritesCurrentStateAndHistory(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)
@@ -1369,6 +1567,7 @@ type testFixture struct {
 	agentBuildVersionID       uuid.UUID
 	agentDeploymentID         uuid.UUID
 	agentDeploymentSnapshotID uuid.UUID
+	firstChallengeIdentityID  uuid.UUID
 	providerAccountID         uuid.UUID
 	modelAliasID              uuid.UUID
 	modelCatalogEntryID       uuid.UUID
@@ -1732,6 +1931,7 @@ func seedFixture(t *testing.T, ctx context.Context, db *pgxpool.Pool) testFixtur
 		agentBuildVersionID:       agentBuildVersionID,
 		agentDeploymentID:         agentDeploymentID,
 		agentDeploymentSnapshotID: agentDeploymentSnapshotID,
+		firstChallengeIdentityID:  firstChallengeIdentityID,
 		providerAccountID:         providerAccountID,
 		modelAliasID:              modelAliasID,
 		modelCatalogEntryID:       modelCatalogEntryID,
@@ -1779,4 +1979,12 @@ func decodeReplaySummary(t *testing.T, payload []byte) map[string]any {
 		t.Fatalf("unmarshal replay summary: %v", err)
 	}
 	return summary
+}
+
+func float64Ptr(value float64) *float64 {
+	return &value
+}
+
+func boolPtr(value bool) *bool {
+	return &value
 }

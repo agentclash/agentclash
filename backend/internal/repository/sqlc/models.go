@@ -67,6 +67,33 @@ type HostedRunExecution struct {
 	UpdatedAt        pgtype.Timestamptz
 }
 
+type JudgeResult struct {
+	ID                  uuid.UUID
+	RunAgentID          uuid.UUID
+	EvaluationSpecID    uuid.UUID
+	ChallengeIdentityID *uuid.UUID
+	JudgeKey            string
+	Verdict             *string
+	NormalizedScore     pgtype.Numeric
+	RawOutput           []byte
+	CreatedAt           pgtype.Timestamptz
+}
+
+type MetricResult struct {
+	ID                  uuid.UUID
+	RunAgentID          uuid.UUID
+	EvaluationSpecID    uuid.UUID
+	ChallengeIdentityID *uuid.UUID
+	MetricKey           string
+	MetricType          string
+	NumericValue        pgtype.Numeric
+	TextValue           *string
+	BooleanValue        *bool
+	Unit                *string
+	Metadata            []byte
+	CreatedAt           pgtype.Timestamptz
+}
+
 type Run struct {
 	ID                     uuid.UUID
 	OrganizationID         uuid.UUID

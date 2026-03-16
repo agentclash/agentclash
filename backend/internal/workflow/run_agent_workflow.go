@@ -8,6 +8,7 @@ import (
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/domain"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/hostedruns"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/scoring"
 	"github.com/google/uuid"
 	"go.temporal.io/sdk/temporal"
 	sdkworkflow "go.temporal.io/sdk/workflow"
@@ -66,6 +67,9 @@ func runAgentWorkflow(ctx sdkworkflow.Context, input RunAgentWorkflowInput) erro
 	if err := transitionRunAgentStatus(ctx, input.RunAgentID, domain.RunAgentStatusEvaluating, stringPtr("native execution completed; evaluation hook pending"), nil); err != nil {
 		return err
 	}
+	if err := generateRunAgentEvaluation(ctx, input.RunAgentID); err != nil {
+		return err
+	}
 	if err := transitionRunAgentStatus(ctx, input.RunAgentID, domain.RunAgentStatusCompleted, stringPtr("native run-agent execution completed"), nil); err != nil {
 		return err
 	}
@@ -111,6 +115,9 @@ func runHostedRunAgent(ctx sdkworkflow.Context, input RunAgentWorkflowInput, exe
 	}
 
 	if err := transitionRunAgentStatus(ctx, input.RunAgentID, domain.RunAgentStatusEvaluating, stringPtr("hosted black-box result received"), nil); err != nil {
+		return err
+	}
+	if err := generateRunAgentEvaluation(ctx, input.RunAgentID); err != nil {
 		return err
 	}
 	if err := transitionRunAgentStatus(ctx, input.RunAgentID, domain.RunAgentStatusCompleted, stringPtr("hosted black-box completion recorded"), nil); err != nil {
@@ -232,6 +239,13 @@ func buildRunAgentReplay(ctx sdkworkflow.Context, runAgentID uuid.UUID) error {
 	return sdkworkflow.ExecuteActivity(ctx, buildRunAgentReplayActivityName, BuildRunAgentReplayInput{
 		RunAgentID: runAgentID,
 	}).Get(ctx, &replay)
+}
+
+func generateRunAgentEvaluation(ctx sdkworkflow.Context, runAgentID uuid.UUID) error {
+	var evaluation scoring.RunAgentEvaluation
+	return sdkworkflow.ExecuteActivity(ctx, generateRunAgentEvaluationActivityName, GenerateRunAgentEvaluationInput{
+		RunAgentID: runAgentID,
+	}).Get(ctx, &evaluation)
 }
 
 func shouldSkipRunAgentFailureTransition(err error) bool {

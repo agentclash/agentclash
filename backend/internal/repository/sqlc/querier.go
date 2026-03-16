@@ -27,6 +27,8 @@ type Querier interface {
 	InsertRunAgentStatusHistory(ctx context.Context, arg InsertRunAgentStatusHistoryParams) (RunAgentStatusHistory, error)
 	InsertRunEvent(ctx context.Context, arg InsertRunEventParams) (RunEvent, error)
 	InsertRunStatusHistory(ctx context.Context, arg InsertRunStatusHistoryParams) (RunStatusHistory, error)
+	ListJudgeResultsByRunAgentAndEvaluationSpec(ctx context.Context, arg ListJudgeResultsByRunAgentAndEvaluationSpecParams) ([]JudgeResult, error)
+	ListMetricResultsByRunAgentAndEvaluationSpec(ctx context.Context, arg ListMetricResultsByRunAgentAndEvaluationSpecParams) ([]MetricResult, error)
 	ListRunAgentStatusHistoryByRunAgentID(ctx context.Context, arg ListRunAgentStatusHistoryByRunAgentIDParams) ([]RunAgentStatusHistory, error)
 	ListRunAgentsByRunID(ctx context.Context, arg ListRunAgentsByRunIDParams) ([]RunAgent, error)
 	ListRunEventsByRunAgentID(ctx context.Context, arg ListRunEventsByRunAgentIDParams) ([]RunEvent, error)
@@ -38,6 +40,8 @@ type Querier interface {
 	SetRunTemporalIDs(ctx context.Context, arg SetRunTemporalIDsParams) (Run, error)
 	UpdateRunAgentStatus(ctx context.Context, arg UpdateRunAgentStatusParams) (RunAgent, error)
 	UpdateRunStatus(ctx context.Context, arg UpdateRunStatusParams) (Run, error)
+	UpsertJudgeResult(ctx context.Context, arg UpsertJudgeResultParams) (JudgeResult, error)
+	UpsertMetricResult(ctx context.Context, arg UpsertMetricResultParams) (MetricResult, error)
 	UpsertRunAgentReplayIndex(ctx context.Context, arg UpsertRunAgentReplayIndexParams) (RunAgentReplay, error)
 	UpsertRunAgentReplaySummary(ctx context.Context, arg UpsertRunAgentReplaySummaryParams) (RunAgentReplay, error)
 }

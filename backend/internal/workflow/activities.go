@@ -11,6 +11,7 @@ import (
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/engine"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/provider"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/scoring"
 	"github.com/google/uuid"
 	"go.temporal.io/sdk/temporal"
 )
@@ -27,6 +28,7 @@ const (
 	startHostedRunActivityName               = "workflow.start_hosted_run"
 	markHostedRunTimedOutActivityName        = "workflow.mark_hosted_run_timed_out"
 	executeNativeModelStepActivityName       = "workflow.execute_native_model_step"
+	generateRunAgentEvaluationActivityName   = "workflow.generate_run_agent_evaluation"
 	buildRunAgentReplayActivityName          = "workflow.build_run_agent_replay"
 	simulateExecutionActivityName            = "workflow.simulate_execution"
 	simulateEvaluationActivityName           = "workflow.simulate_evaluation"
@@ -111,6 +113,10 @@ type MarkHostedRunTimedOutInput struct {
 }
 
 type BuildRunAgentReplayInput struct {
+	RunAgentID uuid.UUID `json:"run_agent_id"`
+}
+
+type GenerateRunAgentEvaluationInput struct {
 	RunAgentID uuid.UUID `json:"run_agent_id"`
 }
 
@@ -264,6 +270,11 @@ func (a *Activities) MarkHostedRunTimedOut(ctx context.Context, input MarkHosted
 func (a *Activities) BuildRunAgentReplay(ctx context.Context, input BuildRunAgentReplayInput) (repository.RunAgentReplay, error) {
 	replay, err := a.repo.BuildRunAgentReplay(ctx, input.RunAgentID)
 	return replay, wrapActivityError(err)
+}
+
+func (a *Activities) GenerateRunAgentEvaluation(ctx context.Context, input GenerateRunAgentEvaluationInput) (scoring.RunAgentEvaluation, error) {
+	evaluation, err := executeRunAgentEvaluation(ctx, a.repo, input.RunAgentID)
+	return evaluation, wrapActivityError(err)
 }
 
 func (a *Activities) ExecuteNativeModelStep(ctx context.Context, input RunAgentWorkflowInput) error {
