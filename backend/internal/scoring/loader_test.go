@@ -89,6 +89,11 @@ func TestLoadEvaluationSpec(t *testing.T) {
 			needle:   "evaluation_spec.validators[0].type is not a supported validator type",
 		},
 		{
+			name:     "unimplemented deterministic validator type",
+			manifest: `{"evaluation_spec":{"name":"spec","version_number":1,"judge_mode":"deterministic","validators":[{"key":"v1","type":"json_schema","target":"final_output","expected_from":"challenge_input"}],"scorecard":{"dimensions":["correctness"]}}}`,
+			needle:   "evaluation_spec.validators[0].type is not implemented for deterministic scoring yet",
+		},
+		{
 			name:     "unknown metric type",
 			manifest: `{"evaluation_spec":{"name":"spec","version_number":1,"judge_mode":"deterministic","validators":[{"key":"v1","type":"exact_match","target":"final_output","expected_from":"challenge_input"}],"metrics":[{"key":"latency","type":"duration","collector":"run_total_latency_ms"}],"scorecard":{"dimensions":["correctness"]}}}`,
 			needle:   "evaluation_spec.metrics[0].type is not a supported metric type",

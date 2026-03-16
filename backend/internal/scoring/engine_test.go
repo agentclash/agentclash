@@ -210,7 +210,7 @@ func TestEvaluateRunAgentComputesValidatorPassRateAfterValidators(t *testing.T) 
 	}
 }
 
-func TestEvaluateRunAgentMarksJSONSchemaValidatorAsErrorWithoutPanicking(t *testing.T) {
+func TestEvaluateRunAgentRejectsUnimplementedValidatorTypes(t *testing.T) {
 	spec := EvaluationSpec{
 		Name:          "fixture",
 		VersionNumber: 1,
@@ -228,7 +228,7 @@ func TestEvaluateRunAgentMarksJSONSchemaValidatorAsErrorWithoutPanicking(t *test
 		},
 	}
 
-	evaluation, err := EvaluateRunAgent(EvaluationInput{
+	_, err := EvaluateRunAgent(EvaluationInput{
 		RunAgentID:       uuid.New(),
 		EvaluationSpecID: uuid.New(),
 		ChallengeInputs: []EvidenceInput{
@@ -241,15 +241,11 @@ func TestEvaluateRunAgentMarksJSONSchemaValidatorAsErrorWithoutPanicking(t *test
 			{Type: "system.run.completed", OccurredAt: time.Date(2026, 3, 16, 9, 0, 2, 0, time.UTC), Payload: []byte(`{"final_output":"{\"answer\":\"done\"}"}`)},
 		},
 	}, spec)
-	if err != nil {
-		t.Fatalf("EvaluateRunAgent returned error: %v", err)
+	if err == nil {
+		t.Fatal("EvaluateRunAgent returned nil error")
 	}
-
-	if evaluation.ValidatorResults[0].State != OutputStateError {
-		t.Fatalf("validator state = %s, want error", evaluation.ValidatorResults[0].State)
-	}
-	if evaluation.ValidatorResults[0].Reason == "" {
-		t.Fatal("expected validator error reason to be populated")
+	if err.Error() != "evaluation_spec.validators[0].type is not implemented for deterministic scoring yet" {
+		t.Fatalf("error = %q, want unimplemented validator validation error", err.Error())
 	}
 }
 
@@ -317,6 +313,81 @@ func TestEvaluateRunAgentWarnsWhenChallengeInputIsAmbiguousAcrossMultipleItems(t
 	}
 	if evaluation.DimensionScores[string(ScorecardDimensionCorrectness)] != nil {
 		t.Fatalf("correctness score = %v, want nil", evaluation.DimensionScores[string(ScorecardDimensionCorrectness)])
+	}
+}
+
+func TestEvaluateRunAgentSurfacesStubDimensionReasonsAsWarnings(t *testing.T) {
+	spec := EvaluationSpec{
+		Name:          "fixture",
+		VersionNumber: 1,
+		JudgeMode:     JudgeModeDeterministic,
+		Validators: []ValidatorDeclaration{
+			{
+				Key:          "exact",
+				Type:         ValidatorTypeExactMatch,
+				Target:       "final_output",
+				ExpectedFrom: "challenge_input",
+			},
+		},
+		Metrics: []MetricDeclaration{
+			{Key: "completed", Type: MetricTypeBoolean, Collector: "run_completed_successfully"},
+			{Key: "failures", Type: MetricTypeNumeric, Collector: "run_failure_count"},
+		},
+		Scorecard: ScorecardDeclaration{
+			Dimensions: []ScorecardDimension{ScorecardDimensionCorrectness, ScorecardDimensionLatency, ScorecardDimensionCost},
+		},
+	}
+
+	evaluation, err := EvaluateRunAgent(EvaluationInput{
+		RunAgentID:       uuid.New(),
+		EvaluationSpecID: uuid.New(),
+		ChallengeInputs: []EvidenceInput{
+			{
+				ChallengeIdentityID: uuid.New(),
+				ItemKey:             "expected.txt",
+				Payload:             []byte(`"done"`),
+			},
+		},
+		Events: []Event{
+			{Type: "system.run.completed", OccurredAt: time.Date(2026, 3, 16, 9, 0, 2, 0, time.UTC), Payload: []byte(`{"final_output":"done"}`)},
+		},
+	}, spec)
+	if err != nil {
+		t.Fatalf("EvaluateRunAgent returned error: %v", err)
+	}
+
+	if !containsString(evaluation.Warnings, "latency dimension normalization is not defined yet") {
+		t.Fatalf("warnings = %v, want latency stub warning", evaluation.Warnings)
+	}
+	if !containsString(evaluation.Warnings, "cost dimension normalization is not defined yet") {
+		t.Fatalf("warnings = %v, want cost stub warning", evaluation.Warnings)
+	}
+}
+
+func TestExtractLooseStringPrefersValueThenContentThenTextThenAnswer(t *testing.T) {
+	value, ok := extractLooseString(map[string]any{
+		"answer":  "answer-value",
+		"text":    "text-value",
+		"content": "content-value",
+		"value":   "value-choice",
+	})
+	if !ok {
+		t.Fatal("extractLooseString returned not ok")
+	}
+	if value != "value-choice" {
+		t.Fatalf("value = %q, want value-choice", value)
+	}
+
+	value, ok = extractLooseString(map[string]any{
+		"answer":  "answer-value",
+		"text":    "text-value",
+		"content": "content-choice",
+	})
+	if !ok {
+		t.Fatal("extractLooseString returned not ok for content-choice")
+	}
+	if value != "content-choice" {
+		t.Fatalf("value = %q, want content-choice", value)
 	}
 }
 

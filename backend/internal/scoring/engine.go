@@ -136,6 +136,7 @@ func EvaluateRunAgent(input EvaluationInput, spec EvaluationSpec) (RunAgentEvalu
 	warnings = append(warnings, metricWarnings...)
 
 	dimensionResults := evaluateDimensions(spec.Scorecard.Dimensions, validatorResults, metricResults)
+	warnings = append(warnings, dimensionWarnings(dimensionResults)...)
 	dimensionScores := make(map[string]*float64, len(dimensionResults))
 	for _, result := range dimensionResults {
 		score := result.Score
@@ -576,6 +577,19 @@ func evaluateDimensions(dimensions []ScorecardDimension, validators []ValidatorR
 		results = append(results, result)
 	}
 	return results
+}
+
+func dimensionWarnings(results []DimensionResult) []string {
+	warnings := make([]string, 0, len(results))
+	for _, result := range results {
+		switch result.Dimension {
+		case ScorecardDimensionLatency, ScorecardDimensionCost:
+			if result.State == OutputStateUnavailable && result.Reason != "" {
+				warnings = append(warnings, result.Reason)
+			}
+		}
+	}
+	return warnings
 }
 
 func correctnessScore(validators []ValidatorResult) (*float64, string, OutputState) {

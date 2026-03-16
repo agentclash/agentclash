@@ -66,6 +66,8 @@ func ValidateEvaluationSpec(spec EvaluationSpec) error {
 		}
 		if !validator.Type.IsValid() {
 			errs = append(errs, ValidationError{Field: path + ".type", Message: "is not a supported validator type"})
+		} else if !validatorTypeImplementedForDeterministic(validator.Type) {
+			errs = append(errs, ValidationError{Field: path + ".type", Message: "is not implemented for deterministic scoring yet"})
 		}
 		if strings.TrimSpace(validator.Target) == "" {
 			errs = append(errs, ValidationError{Field: path + ".target", Message: "is required"})
@@ -113,6 +115,15 @@ func ValidateEvaluationSpec(spec EvaluationSpec) error {
 		return errs
 	}
 	return nil
+}
+
+func validatorTypeImplementedForDeterministic(validatorType ValidatorType) bool {
+	switch validatorType {
+	case ValidatorTypeJSONSchema, ValidatorTypeJSONPathMatch:
+		return false
+	default:
+		return true
+	}
 }
 
 func normalizeEvaluationSpec(spec *EvaluationSpec) {
