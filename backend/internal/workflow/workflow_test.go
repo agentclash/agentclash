@@ -210,6 +210,43 @@ func TestRunAgentWorkflowReplayBuildFailureAfterSuccessDoesNotFailWorkflow(t *te
 	}
 }
 
+func TestRunAgentWorkflowScoringEventFailureAfterPersistenceDoesNotFailWorkflow(t *testing.T) {
+	runID := uuid.New()
+	runAgentID := uuid.New()
+	repo := newFakeRunRepository(
+		fixtureRun(runID, domain.RunStatusRunning),
+		fixtureRunAgent(runID, runAgentID, 0),
+	)
+	repo.setExecutionContext(runAgentID, nativeExecutionContext(runID, runAgentID))
+	repo.recordRunEventErr = errors.New("scoring event write unavailable")
+
+	env := newTestWorkflowEnvironment(repo, FakeWorkHooks{
+		NativeModelInvoker: &fakeNativeModelInvoker{
+			result: engine.Result{
+				FinalOutput: "ok",
+				StopReason:  engine.StopReasonCompleted,
+			},
+		},
+	})
+	env.ExecuteWorkflow(RunAgentWorkflow, RunAgentWorkflowInput{
+		RunID:      runID,
+		RunAgentID: runAgentID,
+	})
+
+	if err := env.GetWorkflowError(); err != nil {
+		t.Fatalf("RunAgentWorkflow returned error: %v", err)
+	}
+	if got := repo.currentRunAgent(runAgentID).Status; got != domain.RunAgentStatusCompleted {
+		t.Fatalf("run agent status = %s, want %s", got, domain.RunAgentStatusCompleted)
+	}
+	if _, ok := repo.evaluations[runAgentID]; !ok {
+		t.Fatalf("expected evaluation results to be persisted")
+	}
+	if repo.callCountWithPrefix("BuildRunAgentReplay:") != 1 {
+		t.Fatalf("BuildRunAgentReplay call count = %d, want 1", repo.callCountWithPrefix("BuildRunAgentReplay:"))
+	}
+}
+
 func TestNativeModelActivityOptionsUseRuntimeStepTimeout(t *testing.T) {
 	executionContext := nativeExecutionContext(uuid.New(), uuid.New())
 	executionContext.Deployment.RuntimeProfile.RunTimeoutSeconds = 42
@@ -561,6 +598,7 @@ type fakeRunRepository struct {
 	runEvents           map[uuid.UUID][]repository.RunEvent
 	evaluations         map[uuid.UUID]scoring.RunAgentEvaluation
 	buildReplayErr      error
+	recordRunEventErr   error
 	callLog             []string
 	runStatusCalls      []repository.TransitionRunStatusParams
 	runAgentStatusCalls []repository.TransitionRunAgentStatusParams
@@ -744,6 +782,10 @@ func (r *fakeRunRepository) ListRunEventsByRunAgentID(_ context.Context, runAgen
 func (r *fakeRunRepository) RecordRunEvent(_ context.Context, params repository.RecordRunEventParams) (repository.RunEvent, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+
+	if r.recordRunEventErr != nil {
+		return repository.RunEvent{}, r.recordRunEventErr
+	}
 
 	sequenceNumber := int64(len(r.runEvents[params.Event.RunAgentID]) + 1)
 	event := repository.RunEvent{

@@ -120,7 +120,7 @@ func TestRepositoryGetRunAgentExecutionContextByIDNative(t *testing.T) {
 	if executionContext.ChallengePackVersion.Challenges[1].Title != "Ticket Two" {
 		t.Fatalf("second challenge title = %q, want Ticket Two", executionContext.ChallengePackVersion.Challenges[1].Title)
 	}
-	if string(executionContext.ChallengePackVersion.Challenges[0].Definition) != `{"instructions":"Solve the first ticket"}` {
+	if !jsonEqual(executionContext.ChallengePackVersion.Challenges[0].Definition, []byte(`{"instructions":"Solve the first ticket"}`)) {
 		t.Fatalf("first challenge definition = %s, want first ticket definition", executionContext.ChallengePackVersion.Challenges[0].Definition)
 	}
 	if executionContext.ChallengeInputSet == nil || executionContext.ChallengeInputSet.ID != fixture.challengeInputSetID {
@@ -132,7 +132,7 @@ func TestRepositoryGetRunAgentExecutionContextByIDNative(t *testing.T) {
 	if executionContext.ChallengeInputSet.Items[0].ChallengeKey != "first-ticket" {
 		t.Fatalf("first challenge input item key = %q, want first-ticket", executionContext.ChallengeInputSet.Items[0].ChallengeKey)
 	}
-	if string(executionContext.ChallengeInputSet.Items[1].Payload) != `{"content":"Customer two needs follow-up"}` {
+	if !jsonEqual(executionContext.ChallengeInputSet.Items[1].Payload, []byte(`{"content":"Customer two needs follow-up"}`)) {
 		t.Fatalf("second challenge input payload = %s, want second item payload", executionContext.ChallengeInputSet.Items[1].Payload)
 	}
 	if executionContext.Deployment.DeploymentType != "native" {
@@ -147,16 +147,16 @@ func TestRepositoryGetRunAgentExecutionContextByIDNative(t *testing.T) {
 	if executionContext.Deployment.RuntimeProfile.TraceMode != "preferred" {
 		t.Fatalf("trace mode = %q, want preferred", executionContext.Deployment.RuntimeProfile.TraceMode)
 	}
-	if string(executionContext.Deployment.SnapshotConfig) != `{"entrypoint":"runner"}` {
+	if !jsonEqual(executionContext.Deployment.SnapshotConfig, []byte(`{"entrypoint":"runner"}`)) {
 		t.Fatalf("snapshot config = %s, want entrypoint runner", executionContext.Deployment.SnapshotConfig)
 	}
 	if executionContext.Deployment.AgentBuildVersion.PromptSpec == nil || *executionContext.Deployment.AgentBuildVersion.PromptSpec != "You are a precise support benchmark agent." {
 		t.Fatalf("prompt spec = %v, want benchmark prompt", executionContext.Deployment.AgentBuildVersion.PromptSpec)
 	}
-	if string(executionContext.Deployment.AgentBuildVersion.BuildDefinition) != `{"strategy":"inspect files before responding"}` {
+	if !jsonEqual(executionContext.Deployment.AgentBuildVersion.BuildDefinition, []byte(`{"strategy":"inspect files before responding"}`)) {
 		t.Fatalf("build definition = %s, want build strategy", executionContext.Deployment.AgentBuildVersion.BuildDefinition)
 	}
-	if string(executionContext.Deployment.AgentBuildVersion.OutputSchema) != `{"type":"object","properties":{"answer":{"type":"string"}}}` {
+	if !jsonEqual(executionContext.Deployment.AgentBuildVersion.OutputSchema, []byte(`{"type":"object","properties":{"answer":{"type":"string"}}}`)) {
 		t.Fatalf("output schema = %s, want answer schema", executionContext.Deployment.AgentBuildVersion.OutputSchema)
 	}
 	if executionContext.Deployment.ProviderAccount == nil || executionContext.Deployment.ProviderAccount.ID != fixture.providerAccountID {
@@ -644,7 +644,7 @@ func TestRepositoryRecordRunEventAssignsSequenceAndSupportsReadAfterWrite(t *tes
 	if event.Source != runevents.SourceNativeEngine {
 		t.Fatalf("source = %q, want %q", event.Source, runevents.SourceNativeEngine)
 	}
-	if string(event.Payload) != `{"step_index":1}` {
+	if !jsonEqual(event.Payload, []byte(`{"step_index":1}`)) {
 		t.Fatalf("payload = %s, want step payload", event.Payload)
 	}
 
@@ -1116,7 +1116,7 @@ func TestRepositoryCreateEvaluationSpecAndReadItBack(t *testing.T) {
 		Name:                   "coding-fix-v0",
 		VersionNumber:          1,
 		JudgeMode:              "deterministic",
-		Definition:             []byte(`{"name":"coding-fix-v0","version_number":1}`),
+		Definition:             []byte(`{"name":"coding-fix-v0","version_number":1,"judge_mode":"deterministic","validators":[{"key":"exact","type":"exact_match","target":"final_output","expected_from":"challenge_input"}],"scorecard":{"dimensions":["correctness"]}}`),
 	})
 	if err != nil {
 		t.Fatalf("CreateEvaluationSpec returned error: %v", err)
@@ -1156,7 +1156,7 @@ func TestRepositoryCreateEvaluationSpecRejectsDuplicateNameAndVersion(t *testing
 		Name:                   "duplicate-spec",
 		VersionNumber:          1,
 		JudgeMode:              "deterministic",
-		Definition:             []byte(`{"name":"duplicate-spec","version_number":1}`),
+		Definition:             []byte(`{"name":"duplicate-spec","version_number":1,"judge_mode":"deterministic","validators":[{"key":"exact","type":"exact_match","target":"final_output","expected_from":"challenge_input"}],"scorecard":{"dimensions":["correctness"]}}`),
 	}
 
 	if _, err := repo.CreateEvaluationSpec(ctx, params); err != nil {
@@ -1612,7 +1612,7 @@ func openTestDB(t *testing.T) *pgxpool.Pool {
 func seedFixture(t *testing.T, ctx context.Context, db *pgxpool.Pool) testFixture {
 	t.Helper()
 
-	if _, err := db.Exec(ctx, "TRUNCATE TABLE challenge_packs, organizations, users RESTART IDENTITY CASCADE"); err != nil {
+	if _, err := db.Exec(ctx, "TRUNCATE TABLE challenge_packs, model_catalog_entries, organizations, users RESTART IDENTITY CASCADE"); err != nil {
 		t.Fatalf("reset fixture data returned error: %v", err)
 	}
 
@@ -1979,6 +1979,29 @@ func decodeReplaySummary(t *testing.T, payload []byte) map[string]any {
 		t.Fatalf("unmarshal replay summary: %v", err)
 	}
 	return summary
+}
+
+func jsonEqual(left []byte, right []byte) bool {
+	var leftValue any
+	if err := json.Unmarshal(left, &leftValue); err != nil {
+		return false
+	}
+
+	var rightValue any
+	if err := json.Unmarshal(right, &rightValue); err != nil {
+		return false
+	}
+
+	leftCanonical, err := json.Marshal(leftValue)
+	if err != nil {
+		return false
+	}
+	rightCanonical, err := json.Marshal(rightValue)
+	if err != nil {
+		return false
+	}
+
+	return string(leftCanonical) == string(rightCanonical)
 }
 
 func float64Ptr(value float64) *float64 {

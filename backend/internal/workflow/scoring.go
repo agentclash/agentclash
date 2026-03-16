@@ -82,7 +82,10 @@ func executeRunAgentEvaluation(ctx context.Context, repo RunRepository, runAgent
 	}
 
 	if err := recordScoringEvents(ctx, repo, executionContext.Run.ID, evaluation); err != nil {
-		return scoring.RunAgentEvaluation{}, fmt.Errorf("record scoring events: %w", err)
+		// Persisted judge/metric rows are the source of truth. A failure to emit
+		// derived replay events should not flip an otherwise successful run-agent
+		// into failed after evaluation results are already durable.
+		evaluation.Warnings = append(evaluation.Warnings, fmt.Sprintf("record scoring events: %v", err))
 	}
 
 	return evaluation, nil

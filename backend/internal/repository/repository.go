@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -1382,7 +1383,7 @@ func numericFromFloat(value *float64) (pgtype.Numeric, error) {
 	}
 
 	var numeric pgtype.Numeric
-	if err := numeric.Scan(*value); err != nil {
+	if err := numeric.Scan(strconv.FormatFloat(*value, 'f', -1, 64)); err != nil {
 		return pgtype.Numeric{}, err
 	}
 	return numeric, nil
