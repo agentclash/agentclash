@@ -22,9 +22,10 @@ func NewServer(
 	runCreationService RunCreationService,
 	runReadService RunReadService,
 	replayReadService ReplayReadService,
+	compareReadService CompareReadService,
 	hostedRunIngestionService HostedRunIngestionService,
 ) *Server {
-	router := newRouter(logger, authenticator, authorizer, runCreationService, runReadService, replayReadService, hostedRunIngestionService)
+	router := newRouter(logger, authenticator, authorizer, runCreationService, runReadService, replayReadService, hostedRunIngestionService, compareReadService)
 
 	return &Server{
 		config: cfg,
@@ -79,9 +80,15 @@ func newRouter(
 	runReadService RunReadService,
 	replayReadService ReplayReadService,
 	hostedRunIngestionService HostedRunIngestionService,
+	compareReadServices ...CompareReadService,
 ) http.Handler {
 	if hostedRunIngestionService == nil {
 		hostedRunIngestionService = noopHostedRunIngestionService{}
+	}
+
+	compareReadService := CompareReadService(noopCompareReadService{})
+	if len(compareReadServices) > 0 && compareReadServices[0] != nil {
+		compareReadService = compareReadServices[0]
 	}
 
 	router := chi.NewRouter()
@@ -91,8 +98,14 @@ func newRouter(
 	registerHostedIntegrationRoutes(router, logger, hostedRunIngestionService)
 	router.Route("/v1", func(r chi.Router) {
 		r.Use(authenticateRequest(logger, authenticator))
-		registerProtectedRoutes(r, logger, authorizer, runCreationService, runReadService, replayReadService)
+		registerProtectedRoutes(r, logger, authorizer, runCreationService, runReadService, replayReadService, compareReadService)
 	})
 
 	return router
+}
+
+type noopCompareReadService struct{}
+
+func (noopCompareReadService) GetRunComparison(_ context.Context, _ Caller, _ GetRunComparisonInput) (GetRunComparisonResult, error) {
+	return GetRunComparisonResult{}, errors.New("compare read service is not configured")
 }
