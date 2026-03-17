@@ -227,6 +227,28 @@ func TestRepositoryGetRunAgentExecutionContextByIDUsesFrozenSourceAgentSpec(t *t
 	}
 }
 
+func TestRepositoryAgentSpecSchemaRejectsNonObjectJSON(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+
+	if _, err := db.Exec(ctx, `
+		UPDATE agent_build_versions
+		SET policy_spec = '[]'::jsonb
+		WHERE id = $1
+	`, fixture.agentBuildVersionID); err == nil {
+		t.Fatalf("expected policy_spec object constraint violation")
+	}
+
+	if _, err := db.Exec(ctx, `
+		UPDATE agent_deployment_snapshots
+		SET source_agent_spec = '42'::jsonb
+		WHERE id = $1
+	`, fixture.agentDeploymentSnapshotID); err == nil {
+		t.Fatalf("expected source_agent_spec object constraint violation")
+	}
+}
+
 func TestRepositoryGetRunAgentExecutionContextByIDHosted(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)
