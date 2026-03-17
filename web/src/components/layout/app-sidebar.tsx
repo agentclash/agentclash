@@ -25,6 +25,7 @@ import {
   Play,
   GitCompareArrows,
   LayoutDashboard,
+  Blocks,
   LogOut,
   ChevronUp,
   User,
@@ -32,6 +33,7 @@ import {
 
 const navItems = [
   { title: "Runs", href: "/", icon: LayoutDashboard },
+  { title: "Builds", href: "/builds", icon: Blocks },
   { title: "Compare", href: "/compare", icon: GitCompareArrows },
   { title: "New Run", href: "/runs/new", icon: Play },
 ];

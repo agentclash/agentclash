@@ -71,6 +71,7 @@ func TestHealthzReturnsJSONSuccessPayload(t *testing.T) {
 		nil,
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},
+		stubAgentBuildService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {
@@ -133,6 +134,7 @@ func TestSessionEndpointRequiresAuthentication(t *testing.T) {
 		nil,
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},
+		stubAgentBuildService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusUnauthorized {
@@ -170,6 +172,7 @@ func TestSessionEndpointReturnsCallerIdentity(t *testing.T) {
 		nil,
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},
+		stubAgentBuildService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {
@@ -210,6 +213,7 @@ func TestWorkspaceAuthorizationReturnsForbiddenWithoutMembership(t *testing.T) {
 		nil,
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},
+		stubAgentBuildService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusForbidden {
@@ -245,6 +249,7 @@ func TestWorkspaceAuthorizationReturnsOKWithMembership(t *testing.T) {
 		nil,
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},
+		stubAgentBuildService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {
@@ -281,6 +286,7 @@ func TestWorkspaceAuthorizationRejectsMalformedWorkspaceID(t *testing.T) {
 		nil,
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},
+		stubAgentBuildService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusBadRequest {
@@ -317,6 +323,7 @@ func TestReplayViewerEndpointReturnsHTMLShell(t *testing.T) {
 		nil,
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},
+		stubAgentBuildService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {
@@ -353,6 +360,7 @@ func TestReplayViewerEndpointRejectsInvalidReplayPagination(t *testing.T) {
 		nil,
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},
+		stubAgentBuildService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusBadRequest {

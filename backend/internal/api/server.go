@@ -26,8 +26,9 @@ func NewServer(
 	hostedRunIngestionService HostedRunIngestionService,
 	agentDeploymentReadService AgentDeploymentReadService,
 	challengePackReadService ChallengePackReadService,
+	agentBuildService AgentBuildService,
 ) *Server {
-	router := newRouter(logger, authenticator, authorizer, runCreationService, runReadService, replayReadService, hostedRunIngestionService, compareReadService, agentDeploymentReadService, challengePackReadService)
+	router := newRouter(logger, authenticator, authorizer, runCreationService, runReadService, replayReadService, hostedRunIngestionService, compareReadService, agentDeploymentReadService, challengePackReadService, agentBuildService)
 
 	return &Server{
 		config: cfg,
@@ -85,6 +86,7 @@ func newRouter(
 	compareReadService CompareReadService,
 	agentDeploymentReadService AgentDeploymentReadService,
 	challengePackReadService ChallengePackReadService,
+	agentBuildService AgentBuildService,
 ) http.Handler {
 	if hostedRunIngestionService == nil {
 		hostedRunIngestionService = noopHostedRunIngestionService{}
@@ -102,7 +104,7 @@ func newRouter(
 	registerHostedIntegrationRoutes(router, logger, hostedRunIngestionService)
 	router.Route("/v1", func(r chi.Router) {
 		r.Use(authenticateRequest(logger, authenticator))
-		registerProtectedRoutes(r, logger, authorizer, runCreationService, runReadService, replayReadService, compareReadService, agentDeploymentReadService, challengePackReadService)
+		registerProtectedRoutes(r, logger, authorizer, runCreationService, runReadService, replayReadService, compareReadService, agentDeploymentReadService, challengePackReadService, agentBuildService)
 	})
 
 	return router

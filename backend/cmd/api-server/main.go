@@ -56,6 +56,7 @@ func main() {
 	)
 	agentDeploymentReadManager := api.NewAgentDeploymentReadManager(repo)
 	challengePackReadManager := api.NewChallengePackReadManager(repo)
+	agentBuildManager := api.NewAgentBuildManager(repo)
 
 	server := api.NewServer(
 		cfg,
@@ -69,6 +70,7 @@ func main() {
 		hostedRunIngestionManager,
 		agentDeploymentReadManager,
 		challengePackReadManager,
+		agentBuildManager,
 	)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

@@ -15,6 +15,7 @@ sql:
       - "db/queries/run_comparisons.sql"
       - "db/queries/agent_deployments.sql"
       - "db/queries/challenge_packs.sql"
+      - "db/queries/agent_builds.sql"
     gen:
       go:
         package: "sqlc"

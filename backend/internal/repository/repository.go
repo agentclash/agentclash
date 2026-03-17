@@ -15,6 +15,7 @@ import (
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/scoring"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -1712,6 +1713,583 @@ func (r *Repository) ListRunnableChallengePVersionsByPackID(ctx context.Context,
 	}
 
 	return versions, nil
+}
+
+var (
+	ErrAgentBuildNotFound        = errors.New("agent build not found")
+	ErrAgentBuildVersionNotFound = errors.New("agent build version not found")
+	ErrWorkspaceNotFound         = errors.New("workspace not found")
+)
+
+func (r *Repository) GetOrganizationIDByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) (uuid.UUID, error) {
+	var orgID uuid.UUID
+	err := r.db.QueryRow(ctx, `SELECT organization_id FROM workspaces WHERE id = $1`, workspaceID).Scan(&orgID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return uuid.Nil, ErrWorkspaceNotFound
+		}
+		return uuid.Nil, fmt.Errorf("get organization id by workspace id: %w", err)
+	}
+	return orgID, nil
+}
+
+type AgentBuild struct {
+	ID              uuid.UUID
+	OrganizationID  uuid.UUID
+	WorkspaceID     uuid.UUID
+	Name            string
+	Slug            string
+	Description     string
+	LifecycleStatus string
+	CreatedByUserID *uuid.UUID
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+}
+
+type AgentBuildVersion struct {
+	ID               uuid.UUID
+	AgentBuildID     uuid.UUID
+	VersionNumber    int32
+	VersionStatus    string
+	AgentKind        string
+	InterfaceSpec    json.RawMessage
+	PolicySpec       json.RawMessage
+	ReasoningSpec    json.RawMessage
+	MemorySpec       json.RawMessage
+	WorkflowSpec     json.RawMessage
+	GuardrailSpec    json.RawMessage
+	ModelSpec        json.RawMessage
+	OutputSchema     json.RawMessage
+	TraceContract    json.RawMessage
+	PublicationSpec  json.RawMessage
+	Tools            []AgentBuildVersionToolBinding
+	KnowledgeSources []AgentBuildVersionKnowledgeSourceBinding
+	CreatedByUserID  *uuid.UUID
+	CreatedAt        time.Time
+}
+
+type AgentBuildVersionToolBinding struct {
+	ToolID        uuid.UUID
+	BindingRole   string
+	BindingConfig json.RawMessage
+}
+
+type AgentBuildVersionKnowledgeSourceBinding struct {
+	KnowledgeSourceID uuid.UUID
+	BindingRole       string
+	BindingConfig     json.RawMessage
+}
+
+type AgentDeploymentRow struct {
+	ID                    uuid.UUID
+	OrganizationID        uuid.UUID
+	WorkspaceID           uuid.UUID
+	AgentBuildID          uuid.UUID
+	CurrentBuildVersionID uuid.UUID
+	Name                  string
+	Slug                  string
+	DeploymentType        string
+	Status                string
+	CreatedAt             time.Time
+	UpdatedAt             time.Time
+}
+
+type CreateAgentBuildParams struct {
+	OrganizationID  uuid.UUID
+	WorkspaceID     uuid.UUID
+	Name            string
+	Slug            string
+	Description     string
+	CreatedByUserID *uuid.UUID
+}
+
+type CreateAgentBuildVersionParams struct {
+	AgentBuildID     uuid.UUID
+	VersionNumber    int32
+	AgentKind        string
+	InterfaceSpec    json.RawMessage
+	PolicySpec       json.RawMessage
+	ReasoningSpec    json.RawMessage
+	MemorySpec       json.RawMessage
+	WorkflowSpec     json.RawMessage
+	GuardrailSpec    json.RawMessage
+	ModelSpec        json.RawMessage
+	OutputSchema     json.RawMessage
+	TraceContract    json.RawMessage
+	PublicationSpec  json.RawMessage
+	Tools            []AgentBuildVersionToolBinding
+	KnowledgeSources []AgentBuildVersionKnowledgeSourceBinding
+	CreatedByUserID  *uuid.UUID
+}
+
+type UpdateAgentBuildVersionDraftParams struct {
+	ID               uuid.UUID
+	AgentKind        string
+	InterfaceSpec    json.RawMessage
+	PolicySpec       json.RawMessage
+	ReasoningSpec    json.RawMessage
+	MemorySpec       json.RawMessage
+	WorkflowSpec     json.RawMessage
+	GuardrailSpec    json.RawMessage
+	ModelSpec        json.RawMessage
+	OutputSchema     json.RawMessage
+	TraceContract    json.RawMessage
+	PublicationSpec  json.RawMessage
+	Tools            []AgentBuildVersionToolBinding
+	KnowledgeSources []AgentBuildVersionKnowledgeSourceBinding
+}
+
+type CreateAgentDeploymentParams struct {
+	OrganizationID        uuid.UUID
+	WorkspaceID           uuid.UUID
+	AgentBuildID          uuid.UUID
+	CurrentBuildVersionID uuid.UUID
+	RuntimeProfileID      uuid.UUID
+	ProviderAccountID     *uuid.UUID
+	ModelAliasID          *uuid.UUID
+	Name                  string
+	Slug                  string
+	DeploymentConfig      json.RawMessage
+}
+
+func (r *Repository) CreateAgentBuild(ctx context.Context, params CreateAgentBuildParams) (AgentBuild, error) {
+	row := r.db.QueryRow(ctx, `
+		INSERT INTO agent_builds (organization_id, workspace_id, name, slug, description, created_by_user_id)
+		VALUES ($1, $2, $3, $4, $5, $6)
+		RETURNING id, organization_id, workspace_id, name, slug, description, lifecycle_status, created_by_user_id, created_at, updated_at
+	`, params.OrganizationID, params.WorkspaceID, params.Name, params.Slug, params.Description, params.CreatedByUserID)
+
+	var build AgentBuild
+	var createdAt, updatedAt pgtype.Timestamptz
+	err := row.Scan(
+		&build.ID, &build.OrganizationID, &build.WorkspaceID,
+		&build.Name, &build.Slug, &build.Description, &build.LifecycleStatus,
+		&build.CreatedByUserID, &createdAt, &updatedAt,
+	)
+	if err != nil {
+		return AgentBuild{}, fmt.Errorf("create agent build: %w", err)
+	}
+
+	build.CreatedAt = createdAt.Time
+	build.UpdatedAt = updatedAt.Time
+	return build, nil
+}
+
+func (r *Repository) GetAgentBuildByID(ctx context.Context, id uuid.UUID) (AgentBuild, error) {
+	row := r.db.QueryRow(ctx, `
+		SELECT id, organization_id, workspace_id, name, slug, description, lifecycle_status, created_by_user_id, created_at, updated_at
+		FROM agent_builds WHERE id = $1 AND archived_at IS NULL
+	`, id)
+
+	var build AgentBuild
+	var createdAt, updatedAt pgtype.Timestamptz
+	err := row.Scan(
+		&build.ID, &build.OrganizationID, &build.WorkspaceID,
+		&build.Name, &build.Slug, &build.Description, &build.LifecycleStatus,
+		&build.CreatedByUserID, &createdAt, &updatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return AgentBuild{}, ErrAgentBuildNotFound
+		}
+		return AgentBuild{}, fmt.Errorf("get agent build by id: %w", err)
+	}
+
+	build.CreatedAt = createdAt.Time
+	build.UpdatedAt = updatedAt.Time
+	return build, nil
+}
+
+func (r *Repository) ListAgentBuildsByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) ([]AgentBuild, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT id, organization_id, workspace_id, name, slug, description, lifecycle_status, created_by_user_id, created_at, updated_at
+		FROM agent_builds
+		WHERE workspace_id = $1 AND lifecycle_status = 'active' AND archived_at IS NULL
+		ORDER BY updated_at DESC
+	`, workspaceID)
+	if err != nil {
+		return nil, fmt.Errorf("list agent builds by workspace id: %w", err)
+	}
+	defer rows.Close()
+
+	var builds []AgentBuild
+	for rows.Next() {
+		var build AgentBuild
+		var createdAt, updatedAt pgtype.Timestamptz
+		if err := rows.Scan(
+			&build.ID, &build.OrganizationID, &build.WorkspaceID,
+			&build.Name, &build.Slug, &build.Description, &build.LifecycleStatus,
+			&build.CreatedByUserID, &createdAt, &updatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan agent build: %w", err)
+		}
+		build.CreatedAt = createdAt.Time
+		build.UpdatedAt = updatedAt.Time
+		builds = append(builds, build)
+	}
+
+	if builds == nil {
+		builds = []AgentBuild{}
+	}
+	return builds, nil
+}
+
+func (r *Repository) CreateAgentBuildVersion(ctx context.Context, params CreateAgentBuildVersionParams) (AgentBuildVersion, error) {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return AgentBuildVersion{}, fmt.Errorf("begin create agent build version tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	row := tx.QueryRow(ctx, `
+		INSERT INTO agent_build_versions (
+			agent_build_id, version_number, version_status,
+			agent_kind, interface_spec, policy_spec, reasoning_spec,
+			memory_spec, workflow_spec, guardrail_spec, model_spec,
+			output_schema, trace_contract, publication_spec, created_by_user_id
+		) VALUES (
+			$1, $2, 'draft',
+			$3, $4, $5, $6,
+			$7, $8, $9, $10,
+			$11, $12, $13, $14
+		) RETURNING id, agent_build_id, version_number, version_status,
+			agent_kind, interface_spec, policy_spec, reasoning_spec,
+			memory_spec, workflow_spec, guardrail_spec, model_spec,
+			output_schema, trace_contract, publication_spec, created_by_user_id, created_at
+	`, params.AgentBuildID, params.VersionNumber,
+		params.AgentKind, params.InterfaceSpec, params.PolicySpec, params.ReasoningSpec,
+		params.MemorySpec, params.WorkflowSpec, params.GuardrailSpec, params.ModelSpec,
+		params.OutputSchema, params.TraceContract, params.PublicationSpec, params.CreatedByUserID,
+	)
+
+	version, err := scanAgentBuildVersion(row)
+	if err != nil {
+		return AgentBuildVersion{}, err
+	}
+
+	if err := replaceAgentBuildVersionBindings(ctx, tx, version.ID, params.Tools, params.KnowledgeSources); err != nil {
+		return AgentBuildVersion{}, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return AgentBuildVersion{}, fmt.Errorf("commit create agent build version tx: %w", err)
+	}
+
+	version.Tools = normalizeToolBindings(params.Tools)
+	version.KnowledgeSources = normalizeKnowledgeSourceBindings(params.KnowledgeSources)
+	return version, nil
+}
+
+func (r *Repository) GetAgentBuildVersionByID(ctx context.Context, id uuid.UUID) (AgentBuildVersion, error) {
+	row := r.db.QueryRow(ctx, `
+		SELECT id, agent_build_id, version_number, version_status,
+			agent_kind, interface_spec, policy_spec, reasoning_spec,
+			memory_spec, workflow_spec, guardrail_spec, model_spec,
+			output_schema, trace_contract, publication_spec, created_by_user_id, created_at
+		FROM agent_build_versions WHERE id = $1
+	`, id)
+
+	version, err := scanAgentBuildVersion(row)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return AgentBuildVersion{}, ErrAgentBuildVersionNotFound
+		}
+		return AgentBuildVersion{}, err
+	}
+	if err := r.loadAgentBuildVersionBindings(ctx, &version); err != nil {
+		return AgentBuildVersion{}, err
+	}
+	return version, nil
+}
+
+func (r *Repository) GetLatestVersionNumberForBuild(ctx context.Context, agentBuildID uuid.UUID) (int32, error) {
+	var maxVersion int32
+	err := r.db.QueryRow(ctx, `
+		SELECT COALESCE(MAX(version_number), 0)::integer
+		FROM agent_build_versions WHERE agent_build_id = $1
+	`, agentBuildID).Scan(&maxVersion)
+	if err != nil {
+		return 0, fmt.Errorf("get latest version number for build: %w", err)
+	}
+	return maxVersion, nil
+}
+
+func (r *Repository) ListAgentBuildVersionsByBuildID(ctx context.Context, agentBuildID uuid.UUID) ([]AgentBuildVersion, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT id, agent_build_id, version_number, version_status,
+			agent_kind, interface_spec, policy_spec, reasoning_spec,
+			memory_spec, workflow_spec, guardrail_spec, model_spec,
+			output_schema, trace_contract, publication_spec, created_by_user_id, created_at
+		FROM agent_build_versions
+		WHERE agent_build_id = $1
+		ORDER BY version_number DESC
+	`, agentBuildID)
+	if err != nil {
+		return nil, fmt.Errorf("list agent build versions by build id: %w", err)
+	}
+	defer rows.Close()
+
+	var versions []AgentBuildVersion
+	for rows.Next() {
+		var v AgentBuildVersion
+		var createdAt pgtype.Timestamptz
+		if err := rows.Scan(
+			&v.ID, &v.AgentBuildID, &v.VersionNumber, &v.VersionStatus,
+			&v.AgentKind, &v.InterfaceSpec, &v.PolicySpec, &v.ReasoningSpec,
+			&v.MemorySpec, &v.WorkflowSpec, &v.GuardrailSpec, &v.ModelSpec,
+			&v.OutputSchema, &v.TraceContract, &v.PublicationSpec, &v.CreatedByUserID, &createdAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan agent build version: %w", err)
+		}
+		v.CreatedAt = createdAt.Time
+		if err := r.loadAgentBuildVersionBindings(ctx, &v); err != nil {
+			return nil, err
+		}
+		versions = append(versions, v)
+	}
+
+	if versions == nil {
+		versions = []AgentBuildVersion{}
+	}
+	return versions, nil
+}
+
+func (r *Repository) UpdateAgentBuildVersionDraft(ctx context.Context, params UpdateAgentBuildVersionDraftParams) error {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin update agent build version tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	tag, err := tx.Exec(ctx, `
+		UPDATE agent_build_versions SET
+			agent_kind = $2,
+			interface_spec = $3,
+			policy_spec = $4,
+			reasoning_spec = $5,
+			memory_spec = $6,
+			workflow_spec = $7,
+			guardrail_spec = $8,
+			model_spec = $9,
+			output_schema = $10,
+			trace_contract = $11,
+			publication_spec = $12
+		WHERE id = $1 AND version_status = 'draft'
+	`, params.ID,
+		params.AgentKind, params.InterfaceSpec, params.PolicySpec, params.ReasoningSpec,
+		params.MemorySpec, params.WorkflowSpec, params.GuardrailSpec, params.ModelSpec,
+		params.OutputSchema, params.TraceContract, params.PublicationSpec,
+	)
+	if err != nil {
+		return fmt.Errorf("update agent build version draft: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrAgentBuildVersionNotFound
+	}
+	if err := replaceAgentBuildVersionBindings(ctx, tx, params.ID, params.Tools, params.KnowledgeSources); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit update agent build version tx: %w", err)
+	}
+	return nil
+}
+
+func (r *Repository) MarkAgentBuildVersionReady(ctx context.Context, id uuid.UUID) error {
+	tag, err := r.db.Exec(ctx, `
+		UPDATE agent_build_versions SET version_status = 'ready'
+		WHERE id = $1 AND version_status = 'draft'
+	`, id)
+	if err != nil {
+		return fmt.Errorf("mark agent build version ready: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrAgentBuildVersionNotFound
+	}
+	return nil
+}
+
+func (r *Repository) CreateAgentDeployment(ctx context.Context, params CreateAgentDeploymentParams) (AgentDeploymentRow, error) {
+	row := r.db.QueryRow(ctx, `
+		INSERT INTO agent_deployments (
+			organization_id, workspace_id, agent_build_id, current_build_version_id,
+			runtime_profile_id, provider_account_id, model_alias_id,
+			name, slug, deployment_type, deployment_config
+		) VALUES (
+			$1, $2, $3, $4,
+			$5, $6, $7,
+			$8, $9, 'native', $10
+		) RETURNING id, organization_id, workspace_id, agent_build_id, current_build_version_id,
+			name, slug, deployment_type, status, created_at, updated_at
+	`, params.OrganizationID, params.WorkspaceID, params.AgentBuildID, params.CurrentBuildVersionID,
+		params.RuntimeProfileID, params.ProviderAccountID, params.ModelAliasID,
+		params.Name, params.Slug, params.DeploymentConfig,
+	)
+
+	var dep AgentDeploymentRow
+	var createdAt, updatedAt pgtype.Timestamptz
+	err := row.Scan(
+		&dep.ID, &dep.OrganizationID, &dep.WorkspaceID, &dep.AgentBuildID, &dep.CurrentBuildVersionID,
+		&dep.Name, &dep.Slug, &dep.DeploymentType, &dep.Status, &createdAt, &updatedAt,
+	)
+	if err != nil {
+		return AgentDeploymentRow{}, fmt.Errorf("create agent deployment: %w", err)
+	}
+
+	dep.CreatedAt = createdAt.Time
+	dep.UpdatedAt = updatedAt.Time
+	return dep, nil
+}
+
+func scanAgentBuildVersion(row pgx.Row) (AgentBuildVersion, error) {
+	var v AgentBuildVersion
+	var createdAt pgtype.Timestamptz
+	err := row.Scan(
+		&v.ID, &v.AgentBuildID, &v.VersionNumber, &v.VersionStatus,
+		&v.AgentKind, &v.InterfaceSpec, &v.PolicySpec, &v.ReasoningSpec,
+		&v.MemorySpec, &v.WorkflowSpec, &v.GuardrailSpec, &v.ModelSpec,
+		&v.OutputSchema, &v.TraceContract, &v.PublicationSpec, &v.CreatedByUserID, &createdAt,
+	)
+	if err != nil {
+		return AgentBuildVersion{}, fmt.Errorf("scan agent build version: %w", err)
+	}
+	v.CreatedAt = createdAt.Time
+	return v, nil
+}
+
+type agentBuildVersionBindingQuerier interface {
+	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+}
+
+func replaceAgentBuildVersionBindings(
+	ctx context.Context,
+	q agentBuildVersionBindingQuerier,
+	versionID uuid.UUID,
+	tools []AgentBuildVersionToolBinding,
+	knowledgeSources []AgentBuildVersionKnowledgeSourceBinding,
+) error {
+	if _, err := q.Exec(ctx, `DELETE FROM agent_build_version_tools WHERE agent_build_version_id = $1`, versionID); err != nil {
+		return fmt.Errorf("delete agent build version tools: %w", err)
+	}
+	for _, binding := range normalizeToolBindings(tools) {
+		if _, err := q.Exec(ctx, `
+			INSERT INTO agent_build_version_tools (agent_build_version_id, tool_id, binding_role, binding_config)
+			VALUES ($1, $2, $3, $4)
+		`, versionID, binding.ToolID, binding.BindingRole, binding.BindingConfig); err != nil {
+			return fmt.Errorf("insert agent build version tool binding: %w", err)
+		}
+	}
+
+	if _, err := q.Exec(ctx, `DELETE FROM agent_build_version_knowledge_sources WHERE agent_build_version_id = $1`, versionID); err != nil {
+		return fmt.Errorf("delete agent build version knowledge sources: %w", err)
+	}
+	for _, binding := range normalizeKnowledgeSourceBindings(knowledgeSources) {
+		if _, err := q.Exec(ctx, `
+			INSERT INTO agent_build_version_knowledge_sources (agent_build_version_id, knowledge_source_id, binding_role, binding_config)
+			VALUES ($1, $2, $3, $4)
+		`, versionID, binding.KnowledgeSourceID, binding.BindingRole, binding.BindingConfig); err != nil {
+			return fmt.Errorf("insert agent build version knowledge source binding: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func (r *Repository) loadAgentBuildVersionBindings(ctx context.Context, version *AgentBuildVersion) error {
+	toolRows, err := r.db.Query(ctx, `
+		SELECT tool_id, binding_role, binding_config
+		FROM agent_build_version_tools
+		WHERE agent_build_version_id = $1
+		ORDER BY tool_id
+	`, version.ID)
+	if err != nil {
+		return fmt.Errorf("list agent build version tools: %w", err)
+	}
+	defer toolRows.Close()
+
+	var tools []AgentBuildVersionToolBinding
+	for toolRows.Next() {
+		var binding AgentBuildVersionToolBinding
+		if err := toolRows.Scan(&binding.ToolID, &binding.BindingRole, &binding.BindingConfig); err != nil {
+			return fmt.Errorf("scan agent build version tool binding: %w", err)
+		}
+		tools = append(tools, binding)
+	}
+	if err := toolRows.Err(); err != nil {
+		return fmt.Errorf("iterate agent build version tools: %w", err)
+	}
+
+	knowledgeRows, err := r.db.Query(ctx, `
+		SELECT knowledge_source_id, binding_role, binding_config
+		FROM agent_build_version_knowledge_sources
+		WHERE agent_build_version_id = $1
+		ORDER BY knowledge_source_id
+	`, version.ID)
+	if err != nil {
+		return fmt.Errorf("list agent build version knowledge sources: %w", err)
+	}
+	defer knowledgeRows.Close()
+
+	var knowledgeSources []AgentBuildVersionKnowledgeSourceBinding
+	for knowledgeRows.Next() {
+		var binding AgentBuildVersionKnowledgeSourceBinding
+		if err := knowledgeRows.Scan(&binding.KnowledgeSourceID, &binding.BindingRole, &binding.BindingConfig); err != nil {
+			return fmt.Errorf("scan agent build version knowledge source binding: %w", err)
+		}
+		knowledgeSources = append(knowledgeSources, binding)
+	}
+	if err := knowledgeRows.Err(); err != nil {
+		return fmt.Errorf("iterate agent build version knowledge sources: %w", err)
+	}
+
+	version.Tools = normalizeToolBindings(tools)
+	version.KnowledgeSources = normalizeKnowledgeSourceBindings(knowledgeSources)
+	return nil
+}
+
+func normalizeToolBindings(bindings []AgentBuildVersionToolBinding) []AgentBuildVersionToolBinding {
+	if bindings == nil {
+		return []AgentBuildVersionToolBinding{}
+	}
+	out := make([]AgentBuildVersionToolBinding, 0, len(bindings))
+	for _, binding := range bindings {
+		out = append(out, AgentBuildVersionToolBinding{
+			ToolID:        binding.ToolID,
+			BindingRole:   defaultStringOrFallback(binding.BindingRole, "default"),
+			BindingConfig: defaultJSONObject(binding.BindingConfig),
+		})
+	}
+	return out
+}
+
+func normalizeKnowledgeSourceBindings(bindings []AgentBuildVersionKnowledgeSourceBinding) []AgentBuildVersionKnowledgeSourceBinding {
+	if bindings == nil {
+		return []AgentBuildVersionKnowledgeSourceBinding{}
+	}
+	out := make([]AgentBuildVersionKnowledgeSourceBinding, 0, len(bindings))
+	for _, binding := range bindings {
+		out = append(out, AgentBuildVersionKnowledgeSourceBinding{
+			KnowledgeSourceID: binding.KnowledgeSourceID,
+			BindingRole:       defaultStringOrFallback(binding.BindingRole, "default"),
+			BindingConfig:     defaultJSONObject(binding.BindingConfig),
+		})
+	}
+	return out
+}
+
+func defaultStringOrFallback(value, fallback string) string {
+	if strings.TrimSpace(value) == "" {
+		return fallback
+	}
+	return value
+}
+
+func defaultJSONObject(raw json.RawMessage) json.RawMessage {
+	if len(raw) == 0 {
+		return json.RawMessage(`{}`)
+	}
+	return raw
 }
 
 func temporalIDsMatch(row repositorysqlc.Run, params SetRunTemporalIDsParams) bool {

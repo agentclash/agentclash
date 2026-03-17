@@ -19,7 +19,7 @@ type AuthState = {
 
 export const useAuthStore = create<AuthState>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       isAuthenticated: false,
       devAuth: null,
       activeWorkspaceId: null,
@@ -32,7 +32,7 @@ export const useAuthStore = create<AuthState>()(
         set({
           isAuthenticated: true,
           devAuth: auth,
-          activeWorkspaceId: get().activeWorkspaceId || firstWorkspace,
+          activeWorkspaceId: firstWorkspace,
         });
       },
 

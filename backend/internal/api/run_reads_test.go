@@ -132,6 +132,7 @@ func TestGetRunEndpointReturnsRun(t *testing.T) {
 		nil,
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},
+		stubAgentBuildService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {
@@ -170,6 +171,7 @@ func TestGetRunEndpointReturnsNotFound(t *testing.T) {
 		nil,
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},
+		stubAgentBuildService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusNotFound {
@@ -195,6 +197,7 @@ func TestGetRunEndpointRejectsMalformedRunID(t *testing.T) {
 		nil,
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},
+		stubAgentBuildService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusBadRequest {
@@ -235,6 +238,7 @@ func TestListRunAgentsEndpointReturnsOrderedItems(t *testing.T) {
 		nil,
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},
+		stubAgentBuildService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {
@@ -273,6 +277,7 @@ func TestListRunAgentsEndpointReturnsForbidden(t *testing.T) {
 		nil,
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},
+		stubAgentBuildService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusForbidden {

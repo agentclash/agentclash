@@ -80,3 +80,16 @@ export const devAuthSchema = z.object({
 });
 
 export type DevAuthForm = z.infer<typeof devAuthSchema>;
+
+// ─── Agent Build Schemas ───
+
+export const agentKindSchema = z.enum([
+  "llm_agent", "workflow_agent", "programmatic_agent", "multi_agent_system", "hosted_external",
+]);
+
+export const createAgentBuildSchema = z.object({
+  name: z.string().min(1, "Name is required").max(100, "Name too long"),
+  description: z.string().max(500, "Description too long").optional().or(z.literal("")),
+});
+
+export type CreateAgentBuildForm = z.infer<typeof createAgentBuildSchema>;

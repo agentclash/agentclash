@@ -136,6 +136,54 @@ export const api = {
   // Challenge Packs
   listChallengePacks: (workspaceId: string) =>
     apiFetch<ListChallengePacksResponse>(`/workspaces/${workspaceId}/challenge-packs`),
+
+  // Agent Builds
+  listAgentBuilds: (workspaceId: string) =>
+    apiFetch<ListAgentBuildsResponse>(`/workspaces/${workspaceId}/agent-builds`),
+
+  createAgentBuild: (workspaceId: string, input: CreateAgentBuildInput) =>
+    apiFetch<AgentBuildResponse>(`/workspaces/${workspaceId}/agent-builds`, {
+      method: "POST",
+      body: input,
+    }),
+
+  getAgentBuild: (agentBuildId: string) =>
+    apiFetch<AgentBuildResponse & { versions: AgentBuildVersionResponse[] }>(
+      `/agent-builds/${agentBuildId}`,
+    ),
+
+  createAgentBuildVersion: (agentBuildId: string, input: CreateAgentBuildVersionInput) =>
+    apiFetch<AgentBuildVersionResponse>(
+      `/agent-builds/${agentBuildId}/versions`,
+      { method: "POST", body: input },
+    ),
+
+  getAgentBuildVersion: (versionId: string) =>
+    apiFetch<AgentBuildVersionResponse>(`/agent-build-versions/${versionId}`),
+
+  updateAgentBuildVersion: (versionId: string, input: UpdateAgentBuildVersionInput) =>
+    apiFetch<AgentBuildVersionResponse>(`/agent-build-versions/${versionId}`, {
+      method: "PATCH",
+      body: input,
+    }),
+
+  validateAgentBuildVersion: (versionId: string) =>
+    apiFetch<ValidateBuildVersionResponse>(
+      `/agent-build-versions/${versionId}/validate`,
+      { method: "POST" },
+    ),
+
+  markAgentBuildVersionReady: (versionId: string) =>
+    apiFetch<AgentBuildVersionResponse>(
+      `/agent-build-versions/${versionId}/ready`,
+      { method: "POST" },
+    ),
+
+  createAgentDeployment: (workspaceId: string, input: CreateAgentDeploymentInput) =>
+    apiFetch<AgentDeployment>(`/workspaces/${workspaceId}/agent-deployments`, {
+      method: "POST",
+      body: input,
+    }),
 };
 
 // Response types
@@ -325,4 +373,94 @@ export type ChallengePack = {
 
 export type ListChallengePacksResponse = {
   items: ChallengePack[];
+};
+
+export type AgentBuildResponse = {
+  id: string;
+  workspace_id: string;
+  name: string;
+  description?: string;
+  lifecycle_status: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ListAgentBuildsResponse = {
+  items: AgentBuildResponse[];
+};
+
+export type AgentBuildVersionResponse = {
+  id: string;
+  agent_build_id: string;
+  version_number: number;
+  version_status: string;
+  agent_kind: string;
+  interface_spec: Record<string, unknown>;
+  policy_spec: Record<string, unknown>;
+  reasoning_spec: Record<string, unknown>;
+  memory_spec: Record<string, unknown>;
+  workflow_spec: Record<string, unknown>;
+  guardrail_spec: Record<string, unknown>;
+  model_spec: Record<string, unknown>;
+  output_schema: Record<string, unknown>;
+  trace_contract: Record<string, unknown>;
+  publication_spec: Record<string, unknown>;
+  tools: AgentBuildToolBinding[];
+  knowledge_sources: AgentBuildKnowledgeSourceBinding[];
+  created_at: string;
+};
+
+export type AgentBuildToolBinding = {
+  tool_id: string;
+  binding_role: string;
+  binding_config: Record<string, unknown>;
+};
+
+export type AgentBuildKnowledgeSourceBinding = {
+  knowledge_source_id: string;
+  binding_role: string;
+  binding_config: Record<string, unknown>;
+};
+
+export type ValidationError = {
+  field: string;
+  message: string;
+};
+
+export type ValidateBuildVersionResponse = {
+  valid: boolean;
+  errors: ValidationError[];
+};
+
+export type CreateAgentBuildInput = {
+  name: string;
+  description?: string;
+};
+
+export type CreateAgentBuildVersionInput = {
+  agent_kind: string;
+  interface_spec?: Record<string, unknown>;
+  policy_spec?: Record<string, unknown>;
+  reasoning_spec?: Record<string, unknown>;
+  memory_spec?: Record<string, unknown>;
+  workflow_spec?: Record<string, unknown>;
+  guardrail_spec?: Record<string, unknown>;
+  model_spec?: Record<string, unknown>;
+  output_schema?: Record<string, unknown>;
+  trace_contract?: Record<string, unknown>;
+  publication_spec?: Record<string, unknown>;
+  tools?: AgentBuildToolBinding[];
+  knowledge_sources?: AgentBuildKnowledgeSourceBinding[];
+};
+
+export type UpdateAgentBuildVersionInput = Partial<CreateAgentBuildVersionInput>;
+
+export type CreateAgentDeploymentInput = {
+  name: string;
+  agent_build_id: string;
+  build_version_id: string;
+  runtime_profile_id: string;
+  provider_account_id?: string;
+  model_alias_id?: string;
+  deployment_config?: Record<string, unknown>;
 };
