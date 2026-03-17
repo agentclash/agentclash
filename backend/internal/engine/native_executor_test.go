@@ -638,7 +638,6 @@ func (c *scriptedProviderClient) InvokeModel(ctx context.Context, request provid
 func nativeExecutionContext() repository.RunAgentExecutionContext {
 	runID := uuid.New()
 	runAgentID := uuid.New()
-	promptSpec := "You are a precise coding agent."
 
 	return repository.RunAgentExecutionContext{
 		Run: domain.Run{
@@ -696,10 +695,11 @@ func nativeExecutionContext() repository.RunAgentExecutionContext {
 			SnapshotHash:              "snapshot",
 			SnapshotConfig:            []byte(`{"entrypoint":"runner"}`),
 			AgentBuildVersion: repository.AgentBuildVersionExecutionContext{
-				ID:              uuid.New(),
-				PromptSpec:      &promptSpec,
-				BuildDefinition: []byte(`{"style":"deterministic"}`),
-				OutputSchema:    []byte(`{"type":"object","properties":{"answer":{"type":"string"}}}`),
+				ID:           uuid.New(),
+				AgentKind:    "llm_agent",
+				AgentSpec:    []byte(`{"agent_kind":"llm_agent","policy_spec":{"instructions":"Use tools and submit when finished."},"output_schema":{"type":"object","properties":{"answer":{"type":"string"}}}}`),
+				PolicySpec:   []byte(`{"instructions":"Use tools and submit when finished."}`),
+				OutputSchema: []byte(`{"type":"object","properties":{"answer":{"type":"string"}}}`),
 			},
 			RuntimeProfile: repository.RuntimeProfileExecutionContext{
 				ID:                 uuid.New(),

@@ -76,10 +76,7 @@ SELECT
     ads.endpoint_url AS snapshot_endpoint_url,
     ads.snapshot_hash AS snapshot_hash,
     ads.snapshot_config AS snapshot_config,
-
-    abv.prompt_spec AS agent_build_version_prompt_spec,
-    abv.build_definition AS agent_build_version_build_definition,
-    abv.output_schema AS agent_build_version_output_schema,
+    ads.source_agent_spec AS snapshot_source_agent_spec,
 
     rp.id AS runtime_profile_id,
     rp.name AS runtime_profile_name,
@@ -176,9 +173,6 @@ JOIN agent_deployment_snapshots AS ads
  AND ads.agent_deployment_id = ra.agent_deployment_id
  AND ads.organization_id = ra.organization_id
  AND ads.workspace_id = ra.workspace_id
-JOIN agent_build_versions AS abv
-  ON abv.id = ads.source_agent_build_version_id
- AND abv.agent_build_id = ads.agent_build_id
 JOIN runtime_profiles AS rp
   ON rp.id = ads.source_runtime_profile_id
  AND rp.organization_id = ads.organization_id
@@ -257,9 +251,7 @@ type GetRunAgentExecutionContextByIDRow struct {
 	SnapshotEndpointUrl                     *string
 	SnapshotHash                            string
 	SnapshotConfig                          []byte
-	AgentBuildVersionPromptSpec             *string
-	AgentBuildVersionBuildDefinition        []byte
-	AgentBuildVersionOutputSchema           []byte
+	SnapshotSourceAgentSpec                 []byte
 	RuntimeProfileID                        uuid.UUID
 	RuntimeProfileName                      string
 	RuntimeProfileSlug                      string
@@ -353,9 +345,7 @@ func (q *Queries) GetRunAgentExecutionContextByID(ctx context.Context, arg GetRu
 		&i.SnapshotEndpointUrl,
 		&i.SnapshotHash,
 		&i.SnapshotConfig,
-		&i.AgentBuildVersionPromptSpec,
-		&i.AgentBuildVersionBuildDefinition,
-		&i.AgentBuildVersionOutputSchema,
+		&i.SnapshotSourceAgentSpec,
 		&i.RuntimeProfileID,
 		&i.RuntimeProfileName,
 		&i.RuntimeProfileSlug,

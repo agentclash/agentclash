@@ -152,14 +152,17 @@ func TestRepositoryGetRunAgentExecutionContextByIDNative(t *testing.T) {
 	if !jsonEqual(executionContext.Deployment.SnapshotConfig, []byte(`{"entrypoint":"runner"}`)) {
 		t.Fatalf("snapshot config = %s, want entrypoint runner", executionContext.Deployment.SnapshotConfig)
 	}
-	if executionContext.Deployment.AgentBuildVersion.PromptSpec == nil || *executionContext.Deployment.AgentBuildVersion.PromptSpec != "You are a precise support benchmark agent." {
-		t.Fatalf("prompt spec = %v, want benchmark prompt", executionContext.Deployment.AgentBuildVersion.PromptSpec)
+	if executionContext.Deployment.AgentBuildVersion.AgentKind != "llm_agent" {
+		t.Fatalf("agent kind = %q, want llm_agent", executionContext.Deployment.AgentBuildVersion.AgentKind)
 	}
-	if !jsonEqual(executionContext.Deployment.AgentBuildVersion.BuildDefinition, []byte(`{"strategy":"inspect files before responding"}`)) {
-		t.Fatalf("build definition = %s, want build strategy", executionContext.Deployment.AgentBuildVersion.BuildDefinition)
+	if !jsonEqual(executionContext.Deployment.AgentBuildVersion.PolicySpec, []byte(`{"instructions":"You are a precise support benchmark agent."}`)) {
+		t.Fatalf("policy spec = %s, want benchmark instructions", executionContext.Deployment.AgentBuildVersion.PolicySpec)
 	}
 	if !jsonEqual(executionContext.Deployment.AgentBuildVersion.OutputSchema, []byte(`{"type":"object","properties":{"answer":{"type":"string"}}}`)) {
 		t.Fatalf("output schema = %s, want answer schema", executionContext.Deployment.AgentBuildVersion.OutputSchema)
+	}
+	if !jsonEqual(executionContext.Deployment.AgentBuildVersion.AgentSpec, []byte(`{"agent_kind":"llm_agent","guardrail_spec":{},"interface_spec":{},"knowledge_sources":[],"memory_spec":{},"model_spec":{},"output_schema":{"type":"object","properties":{"answer":{"type":"string"}}},"policy_spec":{"instructions":"You are a precise support benchmark agent."},"publication_spec":{},"reasoning_spec":{},"tools":[],"trace_contract":{},"workflow_spec":{}}`)) {
+		t.Fatalf("agent spec = %s, want frozen canonical spec", executionContext.Deployment.AgentBuildVersion.AgentSpec)
 	}
 	if executionContext.Deployment.ProviderAccount == nil || executionContext.Deployment.ProviderAccount.ID != fixture.providerAccountID {
 		t.Fatalf("provider account = %#v, want %s", executionContext.Deployment.ProviderAccount, fixture.providerAccountID)
@@ -193,6 +196,34 @@ func TestRepositoryGetRunAgentExecutionContextByIDWithoutChallengeInputSet(t *te
 	}
 	if executionContext.ChallengeInputSet != nil {
 		t.Fatalf("challenge input set = %#v, want nil", executionContext.ChallengeInputSet)
+	}
+}
+
+func TestRepositoryGetRunAgentExecutionContextByIDUsesFrozenSourceAgentSpec(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	if _, err := db.Exec(ctx, `
+		UPDATE agent_build_versions
+		SET policy_spec = $2,
+		    output_schema = $3
+		WHERE id = $1
+	`, fixture.agentBuildVersionID, []byte(`{"instructions":"mutated after snapshot"}`), []byte(`{"type":"object","properties":{"changed":{"type":"boolean"}}}`)); err != nil {
+		t.Fatalf("update agent build version returned error: %v", err)
+	}
+
+	executionContext, err := repo.GetRunAgentExecutionContextByID(ctx, fixture.primaryRunAgentID)
+	if err != nil {
+		t.Fatalf("GetRunAgentExecutionContextByID returned error: %v", err)
+	}
+
+	if !jsonEqual(executionContext.Deployment.AgentBuildVersion.PolicySpec, []byte(`{"instructions":"You are a precise support benchmark agent."}`)) {
+		t.Fatalf("policy spec = %s, want frozen snapshot instructions", executionContext.Deployment.AgentBuildVersion.PolicySpec)
+	}
+	if !jsonEqual(executionContext.Deployment.AgentBuildVersion.OutputSchema, []byte(`{"type":"object","properties":{"answer":{"type":"string"}}}`)) {
+		t.Fatalf("output schema = %s, want frozen snapshot schema", executionContext.Deployment.AgentBuildVersion.OutputSchema)
 	}
 }
 

@@ -75,9 +75,18 @@ type AgentDeploymentExecutionContext struct {
 
 type AgentBuildVersionExecutionContext struct {
 	ID              uuid.UUID
-	PromptSpec      *string
-	BuildDefinition json.RawMessage
+	AgentKind       string
+	AgentSpec       json.RawMessage
+	InterfaceSpec   json.RawMessage
+	PolicySpec      json.RawMessage
+	ReasoningSpec   json.RawMessage
+	MemorySpec      json.RawMessage
+	WorkflowSpec    json.RawMessage
+	GuardrailSpec   json.RawMessage
+	ModelSpec       json.RawMessage
 	OutputSchema    json.RawMessage
+	TraceContract   json.RawMessage
+	PublicationSpec json.RawMessage
 }
 
 type RuntimeProfileExecutionContext struct {
@@ -241,6 +250,14 @@ func mapRunAgentExecutionContext(row repositorysqlc.GetRunAgentExecutionContextB
 		return RunAgentExecutionContext{}, fmt.Errorf("decode challenge input set items: %w", err)
 	}
 
+	agentBuildVersion, err := decodeAgentBuildVersionExecutionContext(
+		row.SnapshotSourceAgentBuildVersionID,
+		row.SnapshotSourceAgentSpec,
+	)
+	if err != nil {
+		return RunAgentExecutionContext{}, err
+	}
+
 	executionContext := RunAgentExecutionContext{
 		Run: domain.Run{
 			ID:                     row.RunID,
@@ -297,12 +314,7 @@ func mapRunAgentExecutionContext(row repositorysqlc.GetRunAgentExecutionContextB
 			EndpointURL:               cloneStringPtr(row.SnapshotEndpointUrl),
 			SnapshotHash:              row.SnapshotHash,
 			SnapshotConfig:            cloneJSON(row.SnapshotConfig),
-			AgentBuildVersion: AgentBuildVersionExecutionContext{
-				ID:              row.SnapshotSourceAgentBuildVersionID,
-				PromptSpec:      cloneStringPtr(row.AgentBuildVersionPromptSpec),
-				BuildDefinition: cloneJSON(row.AgentBuildVersionBuildDefinition),
-				OutputSchema:    cloneJSON(row.AgentBuildVersionOutputSchema),
-			},
+			AgentBuildVersion:         agentBuildVersion,
 			RuntimeProfile: RuntimeProfileExecutionContext{
 				ID:                 row.RuntimeProfileID,
 				Name:               row.RuntimeProfileName,
@@ -364,6 +376,54 @@ func mapRunAgentExecutionContext(row repositorysqlc.GetRunAgentExecutionContextB
 	}
 
 	return executionContext, nil
+}
+
+func decodeAgentBuildVersionExecutionContext(buildVersionID uuid.UUID, payload []byte) (AgentBuildVersionExecutionContext, error) {
+	agentSpecJSON, err := decodeExecutionContextJSON("snapshot_source_agent_spec", payload)
+	if err != nil {
+		return AgentBuildVersionExecutionContext{}, err
+	}
+
+	var decoded struct {
+		AgentKind       string          `json:"agent_kind"`
+		InterfaceSpec   json.RawMessage `json:"interface_spec"`
+		PolicySpec      json.RawMessage `json:"policy_spec"`
+		ReasoningSpec   json.RawMessage `json:"reasoning_spec"`
+		MemorySpec      json.RawMessage `json:"memory_spec"`
+		WorkflowSpec    json.RawMessage `json:"workflow_spec"`
+		GuardrailSpec   json.RawMessage `json:"guardrail_spec"`
+		ModelSpec       json.RawMessage `json:"model_spec"`
+		OutputSchema    json.RawMessage `json:"output_schema"`
+		TraceContract   json.RawMessage `json:"trace_contract"`
+		PublicationSpec json.RawMessage `json:"publication_spec"`
+	}
+
+	if err := json.Unmarshal(agentSpecJSON, &decoded); err != nil {
+		return AgentBuildVersionExecutionContext{}, fmt.Errorf("decode snapshot source agent spec: %w", err)
+	}
+
+	return AgentBuildVersionExecutionContext{
+		ID:              buildVersionID,
+		AgentKind:       decoded.AgentKind,
+		AgentSpec:       cloneJSON(agentSpecJSON),
+		InterfaceSpec:   defaultExecutionContextJSON(decoded.InterfaceSpec),
+		PolicySpec:      defaultExecutionContextJSON(decoded.PolicySpec),
+		ReasoningSpec:   defaultExecutionContextJSON(decoded.ReasoningSpec),
+		MemorySpec:      defaultExecutionContextJSON(decoded.MemorySpec),
+		WorkflowSpec:    defaultExecutionContextJSON(decoded.WorkflowSpec),
+		GuardrailSpec:   defaultExecutionContextJSON(decoded.GuardrailSpec),
+		ModelSpec:       defaultExecutionContextJSON(decoded.ModelSpec),
+		OutputSchema:    defaultExecutionContextJSON(decoded.OutputSchema),
+		TraceContract:   defaultExecutionContextJSON(decoded.TraceContract),
+		PublicationSpec: defaultExecutionContextJSON(decoded.PublicationSpec),
+	}, nil
+}
+
+func defaultExecutionContextJSON(value json.RawMessage) json.RawMessage {
+	if len(value) == 0 {
+		return json.RawMessage(`{}`)
+	}
+	return cloneJSON(value)
 }
 
 func decodeExecutionContextJSON(field string, value interface{}) ([]byte, error) {

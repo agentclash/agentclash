@@ -73,7 +73,6 @@ func TestNativeModelInvokerFailsClosedWhenSandboxProviderIsMissing(t *testing.T)
 func nativeModelExecutionContext() repository.RunAgentExecutionContext {
 	runID := uuid.New()
 	runAgentID := uuid.New()
-	promptSpec := "Use tools and submit when finished."
 
 	return repository.RunAgentExecutionContext{
 		Run: domain.Run{
@@ -101,7 +100,9 @@ func nativeModelExecutionContext() repository.RunAgentExecutionContext {
 			SnapshotConfig: []byte(`{"entrypoint":"runner"}`),
 			AgentBuildVersion: repository.AgentBuildVersionExecutionContext{
 				ID:         uuid.New(),
-				PromptSpec: &promptSpec,
+				AgentKind:  "llm_agent",
+				AgentSpec:  []byte(`{"agent_kind":"llm_agent","policy_spec":{"instructions":"Use tools and submit when finished."}}`),
+				PolicySpec: []byte(`{"instructions":"Use tools and submit when finished."}`),
 			},
 			RuntimeProfile: repository.RuntimeProfileExecutionContext{
 				ExecutionTarget:    "native",

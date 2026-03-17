@@ -662,8 +662,8 @@ func buildInitialMessages(executionContext repository.RunAgentExecutionContext) 
 func buildSystemPrompt(executionContext repository.RunAgentExecutionContext) string {
 	sections := make([]string, 0, 4)
 
-	if promptSpec := cloneStringPtr(executionContext.Deployment.AgentBuildVersion.PromptSpec); promptSpec != nil && strings.TrimSpace(*promptSpec) != "" {
-		sections = append(sections, strings.TrimSpace(*promptSpec))
+	if policyInstructions := strings.TrimSpace(extractPolicyInstructions(executionContext.Deployment.AgentBuildVersion.PolicySpec)); policyInstructions != "" {
+		sections = append(sections, policyInstructions)
 	}
 
 	sections = append(sections,
@@ -687,7 +687,7 @@ func buildTaskPromptPayload(executionContext repository.RunAgentExecutionContext
 		ChallengePackVersion json.RawMessage                                  `json:"challenge_pack_version"`
 		Challenges           []repository.ChallengeDefinitionExecutionContext `json:"challenges,omitempty"`
 		ChallengeInputSet    *repository.ChallengeInputSetExecutionContext    `json:"challenge_input_set,omitempty"`
-		BuildDefinition      json.RawMessage                                  `json:"build_definition,omitempty"`
+		AgentSpec            json.RawMessage                                  `json:"agent_spec,omitempty"`
 		DeploymentConfig     json.RawMessage                                  `json:"deployment_config,omitempty"`
 		RuntimeProfile       json.RawMessage                                  `json:"runtime_profile,omitempty"`
 	}
@@ -699,7 +699,7 @@ func buildTaskPromptPayload(executionContext repository.RunAgentExecutionContext
 		ChallengePackVersion: cloneJSON(executionContext.ChallengePackVersion.Manifest),
 		Challenges:           cloneChallengeDefinitions(executionContext.ChallengePackVersion.Challenges),
 		ChallengeInputSet:    cloneChallengeInputSet(executionContext.ChallengeInputSet),
-		BuildDefinition:      cloneJSON(executionContext.Deployment.AgentBuildVersion.BuildDefinition),
+		AgentSpec:            cloneJSON(executionContext.Deployment.AgentBuildVersion.AgentSpec),
 		DeploymentConfig:     cloneJSON(executionContext.Deployment.SnapshotConfig),
 		RuntimeProfile:       cloneJSON(executionContext.Deployment.RuntimeProfile.ProfileConfig),
 	}, "", "  ")
@@ -905,12 +905,38 @@ func marshalSandboxRunContext(executionContext repository.RunAgentExecutionConte
 	return json.Marshal(map[string]any{
 		"run_id":                 executionContext.Run.ID.String(),
 		"run_agent_id":           executionContext.RunAgent.ID.String(),
-		"build_definition":       cloneJSON(executionContext.Deployment.AgentBuildVersion.BuildDefinition),
+		"agent_spec":             cloneJSON(executionContext.Deployment.AgentBuildVersion.AgentSpec),
 		"challenge_pack_version": cloneJSON(executionContext.ChallengePackVersion.Manifest),
 		"challenge_input_set":    cloneChallengeInputSet(executionContext.ChallengeInputSet),
 		"deployment_config":      cloneJSON(executionContext.Deployment.SnapshotConfig),
 		"runtime_profile_config": cloneJSON(executionContext.Deployment.RuntimeProfile.ProfileConfig),
 	})
+}
+
+func extractPolicyInstructions(policySpec json.RawMessage) string {
+	var decoded struct {
+		Instructions      string `json:"instructions"`
+		Role              string `json:"role"`
+		SystemPrompt      string `json:"system_prompt"`
+		SuccessConditions string `json:"success_conditions"`
+	}
+	if err := json.Unmarshal(policySpec, &decoded); err != nil {
+		return ""
+	}
+
+	sections := make([]string, 0, 4)
+	for _, value := range []string{
+		decoded.Role,
+		decoded.SystemPrompt,
+		decoded.Instructions,
+		decoded.SuccessConditions,
+	} {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			sections = append(sections, trimmed)
+		}
+	}
+
+	return strings.Join(sections, "\n\n")
 }
 
 func stageSandboxInputs(ctx context.Context, session sandbox.Session, executionContext repository.RunAgentExecutionContext) error {
