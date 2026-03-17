@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -29,7 +30,7 @@ func TestRunStartsAndStopsWorker(t *testing.T) {
 	}()
 
 	waitForCondition(t, time.Second, func() bool {
-		return fakeWorker.startCalls == 1
+		return fakeWorker.startCalls.Load() == 1
 	})
 
 	cancel()
@@ -38,8 +39,8 @@ func TestRunStartsAndStopsWorker(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run returned error: %v", err)
 	}
-	if fakeWorker.stopCalls != 1 {
-		t.Fatalf("stop calls = %d, want 1", fakeWorker.stopCalls)
+	if fakeWorker.stopCalls.Load() != 1 {
+		t.Fatalf("stop calls = %d, want 1", fakeWorker.stopCalls.Load())
 	}
 }
 
@@ -85,7 +86,7 @@ func TestRunReturnsShutdownTimeout(t *testing.T) {
 	}()
 
 	waitForCondition(t, time.Second, func() bool {
-		return fakeWorker.startCalls == 1
+		return fakeWorker.startCalls.Load() == 1
 	})
 
 	cancel()
@@ -104,17 +105,17 @@ type fakeTemporalWorker struct {
 	startErr   error
 	stopCh     chan struct{}
 	blockStop  bool
-	startCalls int
-	stopCalls  int
+	startCalls atomic.Int32
+	stopCalls  atomic.Int32
 }
 
 func (f *fakeTemporalWorker) Start() error {
-	f.startCalls++
+	f.startCalls.Add(1)
 	return f.startErr
 }
 
 func (f *fakeTemporalWorker) Stop() {
-	f.stopCalls++
+	f.stopCalls.Add(1)
 	if f.blockStop {
 		<-f.stopCh
 		return

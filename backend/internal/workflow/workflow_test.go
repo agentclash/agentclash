@@ -1398,6 +1398,7 @@ func fixtureEvaluationManifest() []byte {
 }
 
 type fakeNativeModelInvoker struct {
+	mu               sync.Mutex
 	result           engine.Result
 	err              error
 	callCount        int
@@ -1405,6 +1406,8 @@ type fakeNativeModelInvoker struct {
 }
 
 func (f *fakeNativeModelInvoker) InvokeNativeModel(_ context.Context, executionContext repository.RunAgentExecutionContext) (engine.Result, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.callCount++
 	f.executionContext = executionContext
 	if f.err != nil {
