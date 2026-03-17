@@ -201,6 +201,9 @@ func TestGetRunAgentReplayEndpointReturnsPaginatedReplay(t *testing.T) {
 			},
 		},
 		stubHostedRunIngestionService{},
+		nil,
+		stubAgentDeploymentReadService{},
+		stubChallengePackReadService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {
@@ -257,6 +260,9 @@ func TestGetRunAgentReplayEndpointReturnsPendingState(t *testing.T) {
 			},
 		},
 		stubHostedRunIngestionService{},
+		nil,
+		stubAgentDeploymentReadService{},
+		stubChallengePackReadService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusAccepted {
@@ -304,6 +310,9 @@ func TestGetRunAgentReplayEndpointReturnsErroredState(t *testing.T) {
 			},
 		},
 		stubHostedRunIngestionService{},
+		nil,
+		stubAgentDeploymentReadService{},
+		stubChallengePackReadService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusConflict {
@@ -327,6 +336,9 @@ func TestGetRunAgentReplayEndpointReturnsNotFoundWhenRunAgentMissing(t *testing.
 		stubRunReadService{},
 		&fakeReplayReadService{replayErr: repository.ErrRunAgentNotFound},
 		stubHostedRunIngestionService{},
+		nil,
+		stubAgentDeploymentReadService{},
+		stubChallengePackReadService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusNotFound {
@@ -349,6 +361,9 @@ func TestGetRunAgentReplayEndpointReturnsForbidden(t *testing.T) {
 		stubRunReadService{},
 		&fakeReplayReadService{replayErr: ErrForbidden},
 		stubHostedRunIngestionService{},
+		nil,
+		stubAgentDeploymentReadService{},
+		stubChallengePackReadService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusForbidden {
@@ -371,6 +386,9 @@ func TestGetRunAgentReplayEndpointRejectsMalformedRunAgentID(t *testing.T) {
 		stubRunReadService{},
 		&fakeReplayReadService{},
 		stubHostedRunIngestionService{},
+		nil,
+		stubAgentDeploymentReadService{},
+		stubChallengePackReadService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusBadRequest {
@@ -394,6 +412,9 @@ func TestGetRunAgentReplayEndpointRejectsMalformedPagination(t *testing.T) {
 		stubRunReadService{},
 		&fakeReplayReadService{},
 		stubHostedRunIngestionService{},
+		nil,
+		stubAgentDeploymentReadService{},
+		stubChallengePackReadService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusBadRequest {
@@ -435,6 +456,9 @@ func TestGetRunAgentScorecardEndpointReturnsScorecard(t *testing.T) {
 			},
 		},
 		stubHostedRunIngestionService{},
+		nil,
+		stubAgentDeploymentReadService{},
+		stubChallengePackReadService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {
@@ -471,6 +495,9 @@ func TestGetRunAgentScorecardEndpointReturnsForbidden(t *testing.T) {
 		stubRunReadService{},
 		&fakeReplayReadService{scorecardErr: ErrForbidden},
 		stubHostedRunIngestionService{},
+		nil,
+		stubAgentDeploymentReadService{},
+		stubChallengePackReadService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusForbidden {
@@ -503,6 +530,9 @@ func TestGetRunAgentScorecardEndpointReturnsPendingWhenScorecardIsPending(t *tes
 			Message: "scorecard generation is pending",
 		}},
 		stubHostedRunIngestionService{},
+		nil,
+		stubAgentDeploymentReadService{},
+		stubChallengePackReadService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusAccepted {
@@ -543,6 +573,9 @@ func TestGetRunAgentScorecardEndpointReturnsConflictWhenScorecardIsMissingAfterT
 			Message: "scorecard generation failed or scorecard data is unavailable",
 		}},
 		stubHostedRunIngestionService{},
+		nil,
+		stubAgentDeploymentReadService{},
+		stubChallengePackReadService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusConflict {
@@ -566,6 +599,9 @@ func TestGetRunAgentScorecardEndpointReturnsNotFoundWhenRunAgentMissing(t *testi
 		stubRunReadService{},
 		&fakeReplayReadService{scorecardErr: repository.ErrRunAgentNotFound},
 		stubHostedRunIngestionService{},
+		nil,
+		stubAgentDeploymentReadService{},
+		stubChallengePackReadService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusNotFound {

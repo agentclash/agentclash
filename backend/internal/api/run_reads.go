@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/domain"
@@ -17,11 +18,25 @@ import (
 type RunReadRepository interface {
 	GetRunByID(ctx context.Context, id uuid.UUID) (domain.Run, error)
 	ListRunAgentsByRunID(ctx context.Context, runID uuid.UUID) ([]domain.RunAgent, error)
+	ListRunsByWorkspaceID(ctx context.Context, workspaceID uuid.UUID, limit int32, offset int32) ([]domain.Run, error)
+	CountRunsByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) (int64, error)
 }
 
 type RunReadService interface {
 	GetRun(ctx context.Context, caller Caller, runID uuid.UUID) (GetRunResult, error)
 	ListRunAgents(ctx context.Context, caller Caller, runID uuid.UUID) (ListRunAgentsResult, error)
+	ListRuns(ctx context.Context, caller Caller, input ListRunsInput) (ListRunsResult, error)
+}
+
+type ListRunsInput struct {
+	WorkspaceID uuid.UUID
+	Limit       int32
+	Offset      int32
+}
+
+type ListRunsResult struct {
+	Runs  []domain.Run
+	Total int64
 }
 
 type GetRunResult struct {
@@ -55,6 +70,27 @@ func (m *RunReadManager) GetRun(ctx context.Context, caller Caller, runID uuid.U
 	}
 
 	return GetRunResult{Run: run}, nil
+}
+
+func (m *RunReadManager) ListRuns(ctx context.Context, caller Caller, input ListRunsInput) (ListRunsResult, error) {
+	if err := m.authorizer.AuthorizeWorkspace(ctx, caller, input.WorkspaceID); err != nil {
+		return ListRunsResult{}, err
+	}
+
+	runs, err := m.repo.ListRunsByWorkspaceID(ctx, input.WorkspaceID, input.Limit, input.Offset)
+	if err != nil {
+		return ListRunsResult{}, fmt.Errorf("list runs: %w", err)
+	}
+
+	total, err := m.repo.CountRunsByWorkspaceID(ctx, input.WorkspaceID)
+	if err != nil {
+		return ListRunsResult{}, fmt.Errorf("count runs: %w", err)
+	}
+
+	return ListRunsResult{
+		Runs:  runs,
+		Total: total,
+	}, nil
 }
 
 func (m *RunReadManager) ListRunAgents(ctx context.Context, caller Caller, runID uuid.UUID) (ListRunAgentsResult, error) {
@@ -193,6 +229,81 @@ func listRunAgentsHandler(logger *slog.Logger, service RunReadService) http.Hand
 		}
 
 		writeJSON(w, http.StatusOK, listRunAgentsResponse{Items: responseItems})
+	}
+}
+
+type listRunsResponse struct {
+	Items  []getRunResponse `json:"items"`
+	Total  int64            `json:"total"`
+	Limit  int32            `json:"limit"`
+	Offset int32            `json:"offset"`
+}
+
+func listRunsHandler(logger *slog.Logger, service RunReadService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		workspaceID, err := WorkspaceIDFromContext(r.Context())
+		if err != nil {
+			writeAuthzError(w, err)
+			return
+		}
+
+		caller, err := CallerFromContext(r.Context())
+		if err != nil {
+			writeAuthzError(w, err)
+			return
+		}
+
+		limit := int32(20)
+		if raw := r.URL.Query().Get("limit"); raw != "" {
+			parsed, parseErr := strconv.Atoi(raw)
+			if parseErr == nil && parsed > 0 {
+				limit = int32(parsed)
+			}
+		}
+		if limit > 100 {
+			limit = 100
+		}
+
+		offset := int32(0)
+		if raw := r.URL.Query().Get("offset"); raw != "" {
+			parsed, parseErr := strconv.Atoi(raw)
+			if parseErr == nil && parsed >= 0 {
+				offset = int32(parsed)
+			}
+		}
+
+		result, err := service.ListRuns(r.Context(), caller, ListRunsInput{
+			WorkspaceID: workspaceID,
+			Limit:       limit,
+			Offset:      offset,
+		})
+		if err != nil {
+			switch {
+			case errors.Is(err, ErrForbidden):
+				writeAuthzError(w, err)
+			default:
+				logger.Error("list runs request failed",
+					"method", r.Method,
+					"path", r.URL.Path,
+					"workspace_id", workspaceID,
+					"error", err,
+				)
+				writeError(w, http.StatusInternalServerError, "internal_error", "internal server error")
+			}
+			return
+		}
+
+		responseItems := make([]getRunResponse, 0, len(result.Runs))
+		for _, run := range result.Runs {
+			responseItems = append(responseItems, buildGetRunResponse(run))
+		}
+
+		writeJSON(w, http.StatusOK, listRunsResponse{
+			Items:  responseItems,
+			Total:  result.Total,
+			Limit:  limit,
+			Offset: offset,
+		})
 	}
 }
 

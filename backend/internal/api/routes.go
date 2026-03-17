@@ -16,6 +16,8 @@ func registerProtectedRoutes(
 	runReadService RunReadService,
 	replayReadService ReplayReadService,
 	compareReadService CompareReadService,
+	agentDeploymentReadService AgentDeploymentReadService,
+	challengePackReadService ChallengePackReadService,
 ) {
 	router.Get("/auth/session", sessionHandler)
 	// POST /v1/runs resolves workspace access from the JSON body, so authz stays in the run-creation service
@@ -31,6 +33,12 @@ func registerProtectedRoutes(
 	router.Get("/scorecards/{runAgentID}", getRunAgentScorecardHandler(logger, replayReadService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Get("/workspaces/{workspaceID}/auth-check", workspaceAccessCheckHandler)
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Get("/workspaces/{workspaceID}/runs", listRunsHandler(logger, runReadService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Get("/workspaces/{workspaceID}/agent-deployments", listAgentDeploymentsHandler(logger, agentDeploymentReadService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Get("/workspaces/{workspaceID}/challenge-packs", listChallengePacksHandler(logger, challengePackReadService))
 }
 
 func registerHostedIntegrationRoutes(router chi.Router, logger *slog.Logger, service HostedRunIngestionService) {

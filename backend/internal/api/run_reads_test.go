@@ -129,6 +129,9 @@ func TestGetRunEndpointReturnsRun(t *testing.T) {
 		},
 		&fakeReplayReadService{},
 		stubHostedRunIngestionService{},
+		nil,
+		stubAgentDeploymentReadService{},
+		stubChallengePackReadService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {
@@ -164,6 +167,9 @@ func TestGetRunEndpointReturnsNotFound(t *testing.T) {
 		&fakeRunReadService{getRunErr: repository.ErrRunNotFound},
 		&fakeReplayReadService{},
 		stubHostedRunIngestionService{},
+		nil,
+		stubAgentDeploymentReadService{},
+		stubChallengePackReadService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusNotFound {
@@ -186,6 +192,9 @@ func TestGetRunEndpointRejectsMalformedRunID(t *testing.T) {
 		&fakeRunReadService{},
 		&fakeReplayReadService{},
 		stubHostedRunIngestionService{},
+		nil,
+		stubAgentDeploymentReadService{},
+		stubChallengePackReadService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusBadRequest {
@@ -223,6 +232,9 @@ func TestListRunAgentsEndpointReturnsOrderedItems(t *testing.T) {
 		},
 		&fakeReplayReadService{},
 		stubHostedRunIngestionService{},
+		nil,
+		stubAgentDeploymentReadService{},
+		stubChallengePackReadService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {
@@ -258,6 +270,9 @@ func TestListRunAgentsEndpointReturnsForbidden(t *testing.T) {
 		&fakeRunReadService{listRunAgentsErr: ErrForbidden},
 		&fakeReplayReadService{},
 		stubHostedRunIngestionService{},
+		nil,
+		stubAgentDeploymentReadService{},
+		stubChallengePackReadService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusForbidden {
@@ -280,6 +295,14 @@ func (f *fakeRunReadRepository) ListRunAgentsByRunID(_ context.Context, _ uuid.U
 	return f.runAgents, f.listRunAgentsErr
 }
 
+func (f *fakeRunReadRepository) ListRunsByWorkspaceID(_ context.Context, _ uuid.UUID, _ int32, _ int32) ([]domain.Run, error) {
+	return nil, nil
+}
+
+func (f *fakeRunReadRepository) CountRunsByWorkspaceID(_ context.Context, _ uuid.UUID) (int64, error) {
+	return 0, nil
+}
+
 type fakeRunReadService struct {
 	getRunResult        GetRunResult
 	getRunErr           error
@@ -293,4 +316,8 @@ func (f *fakeRunReadService) GetRun(_ context.Context, _ Caller, _ uuid.UUID) (G
 
 func (f *fakeRunReadService) ListRunAgents(_ context.Context, _ Caller, _ uuid.UUID) (ListRunAgentsResult, error) {
 	return f.listRunAgentsResult, f.listRunAgentsErr
+}
+
+func (f *fakeRunReadService) ListRuns(_ context.Context, _ Caller, _ ListRunsInput) (ListRunsResult, error) {
+	return ListRunsResult{}, nil
 }

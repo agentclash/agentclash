@@ -233,6 +233,9 @@ func TestIngestHostedRunEventHandlerReturnsInternalErrorForRepositoryFailure(t *
 			"secret",
 			&fakeHostedRunWorkflowSignaler{},
 		),
+		nil,
+		stubAgentDeploymentReadService{},
+		stubChallengePackReadService{},
 	)
 	router.ServeHTTP(recorder, req)
 

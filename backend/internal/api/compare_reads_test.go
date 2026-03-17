@@ -104,6 +104,8 @@ func TestGetRunComparisonEndpointReturnsJSONPayload(t *testing.T) {
 				RegressionReasons: []string{"candidate improved on correctness"},
 			},
 		},
+		stubAgentDeploymentReadService{},
+		stubChallengePackReadService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {
@@ -140,6 +142,9 @@ func TestCompareViewerEndpointReturnsHTMLShell(t *testing.T) {
 		stubRunReadService{},
 		stubReplayReadService{},
 		stubHostedRunIngestionService{},
+		nil,
+		stubAgentDeploymentReadService{},
+		stubChallengePackReadService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {

@@ -2,7 +2,7 @@ SHELL := /usr/bin/bash
 
 DATABASE_URL ?= postgres://agentclash:agentclash@localhost:5432/agentclash?sslmode=disable
 
-.PHONY: db-up db-down db-reset db-migrate db-psql api-server worker
+.PHONY: db-up db-down db-reset db-migrate db-seed db-psql api-server worker
 
 db-up:
 	docker compose up -d postgres
@@ -16,6 +16,9 @@ db-reset:
 
 db-migrate:
 	./scripts/db/apply-goose-migrations.sh "$(DATABASE_URL)"
+
+db-seed:
+	psql "$(DATABASE_URL)" -f scripts/db/seed-dev.sql
 
 db-psql:
 	psql "$(DATABASE_URL)"

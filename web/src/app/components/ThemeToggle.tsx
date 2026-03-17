@@ -6,7 +6,9 @@ export default function ThemeToggle() {
   const [dark, setDark] = useState(true);
 
   useEffect(() => {
-    document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+    const theme = dark ? "dark" : "light";
+    document.documentElement.setAttribute("data-theme", theme);
+    document.documentElement.classList.toggle("dark", dark);
   }, [dark]);
 
   return (

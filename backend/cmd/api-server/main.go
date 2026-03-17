@@ -54,6 +54,8 @@ func main() {
 		cfg.HostedRunCallbackSecret,
 		api.NewTemporalHostedRunWorkflowSignaler(temporalClient),
 	)
+	agentDeploymentReadManager := api.NewAgentDeploymentReadManager(repo)
+	challengePackReadManager := api.NewChallengePackReadManager(repo)
 
 	server := api.NewServer(
 		cfg,
@@ -65,6 +67,8 @@ func main() {
 		replayReadManager,
 		compareReadManager,
 		hostedRunIngestionManager,
+		agentDeploymentReadManager,
+		challengePackReadManager,
 	)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

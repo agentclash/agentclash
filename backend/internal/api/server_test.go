@@ -30,6 +30,22 @@ func (stubRunReadService) ListRunAgents(_ context.Context, _ Caller, _ uuid.UUID
 	return ListRunAgentsResult{}, errors.New("not implemented")
 }
 
+func (stubRunReadService) ListRuns(_ context.Context, _ Caller, _ ListRunsInput) (ListRunsResult, error) {
+	return ListRunsResult{}, errors.New("not implemented")
+}
+
+type stubAgentDeploymentReadService struct{}
+
+func (stubAgentDeploymentReadService) ListAgentDeployments(_ context.Context, _ uuid.UUID) (ListAgentDeploymentsResult, error) {
+	return ListAgentDeploymentsResult{}, errors.New("not implemented")
+}
+
+type stubChallengePackReadService struct{}
+
+func (stubChallengePackReadService) ListChallengePacks(_ context.Context) (ListChallengePacksResult, error) {
+	return ListChallengePacksResult{}, errors.New("not implemented")
+}
+
 type stubReplayReadService struct{}
 
 func (stubReplayReadService) GetRunAgentReplay(_ context.Context, _ Caller, _ uuid.UUID, _ ReplayStepPageParams) (GetRunAgentReplayResult, error) {
@@ -52,6 +68,9 @@ func TestHealthzReturnsJSONSuccessPayload(t *testing.T) {
 		stubRunReadService{},
 		stubReplayReadService{},
 		stubHostedRunIngestionService{},
+		nil,
+		stubAgentDeploymentReadService{},
+		stubChallengePackReadService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {
@@ -111,6 +130,9 @@ func TestSessionEndpointRequiresAuthentication(t *testing.T) {
 		stubRunReadService{},
 		stubReplayReadService{},
 		stubHostedRunIngestionService{},
+		nil,
+		stubAgentDeploymentReadService{},
+		stubChallengePackReadService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusUnauthorized {
@@ -145,6 +167,9 @@ func TestSessionEndpointReturnsCallerIdentity(t *testing.T) {
 		stubRunReadService{},
 		stubReplayReadService{},
 		stubHostedRunIngestionService{},
+		nil,
+		stubAgentDeploymentReadService{},
+		stubChallengePackReadService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {
@@ -182,6 +207,9 @@ func TestWorkspaceAuthorizationReturnsForbiddenWithoutMembership(t *testing.T) {
 		stubRunReadService{},
 		stubReplayReadService{},
 		stubHostedRunIngestionService{},
+		nil,
+		stubAgentDeploymentReadService{},
+		stubChallengePackReadService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusForbidden {
@@ -214,6 +242,9 @@ func TestWorkspaceAuthorizationReturnsOKWithMembership(t *testing.T) {
 		stubRunReadService{},
 		stubReplayReadService{},
 		stubHostedRunIngestionService{},
+		nil,
+		stubAgentDeploymentReadService{},
+		stubChallengePackReadService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {
@@ -247,6 +278,9 @@ func TestWorkspaceAuthorizationRejectsMalformedWorkspaceID(t *testing.T) {
 		stubRunReadService{},
 		stubReplayReadService{},
 		stubHostedRunIngestionService{},
+		nil,
+		stubAgentDeploymentReadService{},
+		stubChallengePackReadService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusBadRequest {
@@ -280,6 +314,9 @@ func TestReplayViewerEndpointReturnsHTMLShell(t *testing.T) {
 		stubRunReadService{},
 		stubReplayReadService{},
 		stubHostedRunIngestionService{},
+		nil,
+		stubAgentDeploymentReadService{},
+		stubChallengePackReadService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {
@@ -313,6 +350,9 @@ func TestReplayViewerEndpointRejectsInvalidReplayPagination(t *testing.T) {
 		stubRunReadService{},
 		stubReplayReadService{},
 		stubHostedRunIngestionService{},
+		nil,
+		stubAgentDeploymentReadService{},
+		stubChallengePackReadService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusBadRequest {

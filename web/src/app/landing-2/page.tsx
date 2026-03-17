@@ -63,7 +63,7 @@ export default function Landing2() {
           <div style={{ display: "flex", alignItems: "center", gap: "32px", fontSize: "14px", color: "var(--text-3)" }}>
             <a href="#">Docs</a>
             <a href="#">Pricing</a>
-            <a href="#" style={{
+            <a href="/login" style={{
               padding: "7px 20px",
               borderRadius: "6px",
               background: "var(--text-1)",
@@ -100,7 +100,7 @@ export default function Landing2() {
           </p>
 
           <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "16px" }}>
-            <button style={{
+            <a href="/login" style={{
               padding: "12px 28px",
               borderRadius: "6px",
               background: "var(--text-1)",
@@ -109,9 +109,11 @@ export default function Landing2() {
               fontWeight: 500,
               border: "none",
               cursor: "pointer",
+              textDecoration: "none",
+              display: "inline-block",
             }}>
               Start for free
-            </button>
+            </a>
             <span style={{ fontSize: "13px", color: "var(--text-3)" }}>No credit card</span>
           </div>
         </section>

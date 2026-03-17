@@ -99,3 +99,15 @@ SELECT *
 FROM run_status_history
 WHERE run_id = @run_id
 ORDER BY changed_at ASC, id ASC;
+
+-- name: ListRunsByWorkspaceID :many
+SELECT *
+FROM runs
+WHERE workspace_id = @workspace_id
+ORDER BY created_at DESC
+LIMIT @result_limit OFFSET @result_offset;
+
+-- name: CountRunsByWorkspaceID :one
+SELECT count(*)
+FROM runs
+WHERE workspace_id = @workspace_id;

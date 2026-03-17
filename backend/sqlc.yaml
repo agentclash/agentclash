@@ -13,6 +13,8 @@ sql:
       - "db/queries/evaluation_specs.sql"
       - "db/queries/scoring_results.sql"
       - "db/queries/run_comparisons.sql"
+      - "db/queries/agent_deployments.sql"
+      - "db/queries/challenge_packs.sql"
     gen:
       go:
         package: "sqlc"

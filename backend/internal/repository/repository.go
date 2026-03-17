@@ -1558,6 +1558,162 @@ func rollback(ctx context.Context, tx pgx.Tx) {
 	_ = tx.Rollback(ctx)
 }
 
+func (r *Repository) ListRunsByWorkspaceID(ctx context.Context, workspaceID uuid.UUID, limit int32, offset int32) ([]domain.Run, error) {
+	rows, err := r.queries.ListRunsByWorkspaceID(ctx, repositorysqlc.ListRunsByWorkspaceIDParams{
+		WorkspaceID:  workspaceID,
+		ResultLimit:  limit,
+		ResultOffset: offset,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list runs by workspace id: %w", err)
+	}
+
+	runs := make([]domain.Run, 0, len(rows))
+	for _, row := range rows {
+		run, mapErr := mapRun(row)
+		if mapErr != nil {
+			return nil, fmt.Errorf("map run %s: %w", row.ID, mapErr)
+		}
+		runs = append(runs, run)
+	}
+
+	return runs, nil
+}
+
+func (r *Repository) CountRunsByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) (int64, error) {
+	count, err := r.queries.CountRunsByWorkspaceID(ctx, repositorysqlc.CountRunsByWorkspaceIDParams{
+		WorkspaceID: workspaceID,
+	})
+	if err != nil {
+		return 0, fmt.Errorf("count runs by workspace id: %w", err)
+	}
+
+	return count, nil
+}
+
+type AgentDeploymentSummary struct {
+	ID               uuid.UUID
+	OrganizationID   uuid.UUID
+	WorkspaceID      uuid.UUID
+	Name             string
+	Status           string
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+	LatestSnapshotID *uuid.UUID
+}
+
+func (r *Repository) ListActiveAgentDeploymentsByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) ([]AgentDeploymentSummary, error) {
+	rows, err := r.queries.ListActiveAgentDeploymentsByWorkspaceID(ctx, repositorysqlc.ListActiveAgentDeploymentsByWorkspaceIDParams{
+		WorkspaceID: workspaceID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list active agent deployments by workspace id: %w", err)
+	}
+
+	deployments := make([]AgentDeploymentSummary, 0, len(rows))
+	for _, row := range rows {
+		createdAt, err := requiredTime("agent_deployments.created_at", row.CreatedAt)
+		if err != nil {
+			return nil, err
+		}
+		updatedAt, err := requiredTime("agent_deployments.updated_at", row.UpdatedAt)
+		if err != nil {
+			return nil, err
+		}
+
+		deployments = append(deployments, AgentDeploymentSummary{
+			ID:               row.ID,
+			OrganizationID:   row.OrganizationID,
+			WorkspaceID:      row.WorkspaceID,
+			Name:             row.Name,
+			Status:           row.Status,
+			CreatedAt:        createdAt,
+			UpdatedAt:        updatedAt,
+			LatestSnapshotID: cloneUUIDPtr(row.LatestSnapshotID),
+		})
+	}
+
+	return deployments, nil
+}
+
+type ChallengePackSummary struct {
+	ID          uuid.UUID
+	Name        string
+	Description *string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+type ChallengePackVersionSummary struct {
+	ID              uuid.UUID
+	ChallengePackID uuid.UUID
+	VersionNumber   int32
+	LifecycleStatus string
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+}
+
+func (r *Repository) ListChallengePacks(ctx context.Context) ([]ChallengePackSummary, error) {
+	rows, err := r.queries.ListChallengePacks(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list challenge packs: %w", err)
+	}
+
+	packs := make([]ChallengePackSummary, 0, len(rows))
+	for _, row := range rows {
+		createdAt, err := requiredTime("challenge_packs.created_at", row.CreatedAt)
+		if err != nil {
+			return nil, err
+		}
+		updatedAt, err := requiredTime("challenge_packs.updated_at", row.UpdatedAt)
+		if err != nil {
+			return nil, err
+		}
+
+		packs = append(packs, ChallengePackSummary{
+			ID:          row.ID,
+			Name:        row.Name,
+			Description: cloneStringPtr(row.Description),
+			CreatedAt:   createdAt,
+			UpdatedAt:   updatedAt,
+		})
+	}
+
+	return packs, nil
+}
+
+func (r *Repository) ListRunnableChallengePVersionsByPackID(ctx context.Context, challengePackID uuid.UUID) ([]ChallengePackVersionSummary, error) {
+	rows, err := r.queries.ListRunnableChallengePVersionsByPackID(ctx, repositorysqlc.ListRunnableChallengePVersionsByPackIDParams{
+		ChallengePackID: challengePackID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list runnable challenge pack versions by pack id: %w", err)
+	}
+
+	versions := make([]ChallengePackVersionSummary, 0, len(rows))
+	for _, row := range rows {
+		createdAt, err := requiredTime("challenge_pack_versions.created_at", row.CreatedAt)
+		if err != nil {
+			return nil, err
+		}
+		updatedAt, err := requiredTime("challenge_pack_versions.updated_at", row.UpdatedAt)
+		if err != nil {
+			return nil, err
+		}
+
+		versions = append(versions, ChallengePackVersionSummary{
+			ID:              row.ID,
+			ChallengePackID: row.ChallengePackID,
+			VersionNumber:   row.VersionNumber,
+			LifecycleStatus: row.LifecycleStatus,
+			CreatedAt:       createdAt,
+			UpdatedAt:       updatedAt,
+		})
+	}
+
+	return versions, nil
+}
+
 func temporalIDsMatch(row repositorysqlc.Run, params SetRunTemporalIDsParams) bool {
 	if row.TemporalWorkflowID == nil || row.TemporalRunID == nil {
 		return false

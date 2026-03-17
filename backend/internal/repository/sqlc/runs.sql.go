@@ -280,6 +280,77 @@ func (q *Queries) SetRunTemporalIDs(ctx context.Context, arg SetRunTemporalIDsPa
 	return i, err
 }
 
+const countRunsByWorkspaceID = `-- name: CountRunsByWorkspaceID :one
+SELECT count(*)
+FROM runs
+WHERE workspace_id = $1
+`
+
+type CountRunsByWorkspaceIDParams struct {
+	WorkspaceID uuid.UUID
+}
+
+func (q *Queries) CountRunsByWorkspaceID(ctx context.Context, arg CountRunsByWorkspaceIDParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countRunsByWorkspaceID, arg.WorkspaceID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const listRunsByWorkspaceID = `-- name: ListRunsByWorkspaceID :many
+SELECT id, organization_id, workspace_id, challenge_pack_version_id, challenge_input_set_id, created_by_user_id, name, status, execution_mode, temporal_workflow_id, temporal_run_id, execution_plan, queued_at, started_at, finished_at, cancelled_at, failed_at, created_at, updated_at
+FROM runs
+WHERE workspace_id = $1
+ORDER BY created_at DESC
+LIMIT $2 OFFSET $3
+`
+
+type ListRunsByWorkspaceIDParams struct {
+	WorkspaceID  uuid.UUID
+	ResultLimit  int32
+	ResultOffset int32
+}
+
+func (q *Queries) ListRunsByWorkspaceID(ctx context.Context, arg ListRunsByWorkspaceIDParams) ([]Run, error) {
+	rows, err := q.db.Query(ctx, listRunsByWorkspaceID, arg.WorkspaceID, arg.ResultLimit, arg.ResultOffset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Run
+	for rows.Next() {
+		var i Run
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrganizationID,
+			&i.WorkspaceID,
+			&i.ChallengePackVersionID,
+			&i.ChallengeInputSetID,
+			&i.CreatedByUserID,
+			&i.Name,
+			&i.Status,
+			&i.ExecutionMode,
+			&i.TemporalWorkflowID,
+			&i.TemporalRunID,
+			&i.ExecutionPlan,
+			&i.QueuedAt,
+			&i.StartedAt,
+			&i.FinishedAt,
+			&i.CancelledAt,
+			&i.FailedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updateRunStatus = `-- name: UpdateRunStatus :one
 UPDATE runs
 SET status = $1,
