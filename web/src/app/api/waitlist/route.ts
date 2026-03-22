@@ -8,7 +8,10 @@ type WaitlistRecord = {
 };
 
 const BLOB_PATH = "waitlist.json";
-const resend = new Resend(process.env.RESEND_API_KEY);
+
+function getResend() {
+  return new Resend(process.env.RESEND_API_KEY);
+}
 
 function isValidEmail(email: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
@@ -88,7 +91,7 @@ function buildWelcomeEmail(position: number) {
 
 async function sendWelcomeEmail(email: string, position: number) {
   try {
-    await resend.emails.send({
+    await getResend().emails.send({
       from: "AgentClash <team@agentclash.dev>",
       to: email,
       subject: `You're #${position} on the AgentClash waitlist`,
