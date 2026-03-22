@@ -26,6 +26,7 @@ async function readWaitlistRecords(): Promise<WaitlistRecord[]> {
 
 async function writeWaitlistRecords(records: WaitlistRecord[]) {
   await put(BLOB_PATH, JSON.stringify(records, null, 2), {
+    access: "private",
     addRandomSuffix: false,
     contentType: "application/json",
   });
