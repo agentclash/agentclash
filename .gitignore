@@ -1,3 +1,4 @@
 backend/.env
 backend/e2b-template/node_modules/
 backend/e2b-template/*.old
+web/.data/

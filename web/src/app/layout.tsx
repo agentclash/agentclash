@@ -1,27 +1,28 @@
 import type { Metadata } from "next";
-import { Instrument_Serif, DM_Sans, JetBrains_Mono } from "next/font/google";
+import { IBM_Plex_Mono, Manrope, Syne } from "next/font/google";
 import "./globals.css";
 
-const instrumentSerif = Instrument_Serif({
-  weight: "400",
+const syne = Syne({
   subsets: ["latin"],
-  variable: "--font-instrument-serif",
+  variable: "--font-syne",
+  weight: ["400", "500", "600", "700"],
 });
 
-const dmSans = DM_Sans({
+const manrope = Manrope({
   subsets: ["latin"],
-  variable: "--font-dm-sans",
+  variable: "--font-manrope",
 });
 
-const jetbrainsMono = JetBrains_Mono({
+const ibmPlexMono = IBM_Plex_Mono({
   subsets: ["latin"],
-  variable: "--font-jetbrains-mono",
+  variable: "--font-ibm-plex-mono",
   weight: ["400", "500", "600"],
 });
 
 export const metadata: Metadata = {
   title: "AgentClash",
-  description: "The platform for comparing real agent systems on real tasks",
+  description:
+    "Prelaunch waitlist for AgentClash, a competitive evaluation platform for AI agents.",
 };
 
 export default function RootLayout({
@@ -30,9 +31,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" data-theme="dark" className="dark">
+    <html lang="en">
       <body
-        className={`${instrumentSerif.variable} ${dmSans.variable} ${jetbrainsMono.variable} antialiased`}
+        className={`${syne.variable} ${manrope.variable} ${ibmPlexMono.variable}`}
       >
         {children}
       </body>
