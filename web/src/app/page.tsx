@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import { ArrowRight, Check, Github, Loader2 } from "lucide-react";
+import { ArrowRight, Check, Loader2, Star } from "lucide-react";
 
 type WaitlistStatus = "idle" | "loading" | "success" | "duplicate" | "error";
 
@@ -133,6 +133,19 @@ export default function HomePage() {
 
   return (
     <main>
+      {/* ── Top bar ── */}
+      <nav className="fixed top-0 right-0 z-50 p-4">
+        <a
+          href="https://github.com/Atharva-Kanherkar/agentclash"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 rounded-md border border-white/[0.08] bg-white/[0.03] px-3 py-1.5 text-xs font-medium text-white/50 hover:text-white/80 hover:border-white/15 transition-colors"
+        >
+          <Star className="size-3.5" />
+          Star on GitHub
+        </a>
+      </nav>
+
       {/* ── Hero ── */}
       <section className="min-h-screen flex flex-col items-center justify-center px-6 py-16">
         <ClashLogo clashKey={cycle.key} />
@@ -250,17 +263,8 @@ export default function HomePage() {
       </section>
 
       {/* ── Footer ── */}
-      <footer className="flex items-center justify-between px-6 py-6 text-[11px] font-[family-name:var(--font-mono)] text-white/35">
+      <footer className="flex items-center justify-center px-6 py-6 text-[11px] font-[family-name:var(--font-mono)] text-white/35">
         <span className="font-medium">AgentClash</span>
-        <a
-          href="https://github.com/Atharva-Kanherkar/agentclash"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1.5 hover:text-white/55 transition-colors"
-        >
-          <Github className="size-3.5" />
-          GitHub
-        </a>
       </footer>
     </main>
   );
