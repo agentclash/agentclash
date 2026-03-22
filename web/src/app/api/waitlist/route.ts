@@ -28,6 +28,7 @@ async function writeWaitlistRecords(records: WaitlistRecord[]) {
   await put(BLOB_PATH, JSON.stringify(records, null, 2), {
     access: "private",
     addRandomSuffix: false,
+    allowOverwrite: true,
     contentType: "application/json",
   });
 }
