@@ -18,6 +18,7 @@ export default function TeamPage() {
       <h1 className="font-[family-name:var(--font-display)] text-3xl sm:text-4xl text-center tracking-[-0.02em] leading-[1.15]">
         The team behind AgentClash
       </h1>
+      <p className="mt-3 text-sm text-white/25 italic">A bunch of engineers who took benchmarks personally.</p>
 
       <div className="mt-10 flex flex-col gap-4">
         {TEAM.map((member) => (
