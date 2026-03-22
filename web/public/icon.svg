@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" fill="#060606"/>
+  <!-- Two angular shapes colliding at center -->
+  <polygon points="80,180 240,256 80,332" fill="#ffffff" opacity="0.9"/>
+  <polygon points="432,180 272,256 432,332" fill="#ffffff" opacity="0.5"/>
+  <!-- Impact lines radiating from center -->
+  <line x1="256" y1="120" x2="256" y2="170" stroke="#ffffff" stroke-width="8" stroke-linecap="round" opacity="0.6"/>
+  <line x1="256" y1="342" x2="256" y2="392" stroke="#ffffff" stroke-width="8" stroke-linecap="round" opacity="0.6"/>
+  <line x1="200" y1="148" x2="220" y2="190" stroke="#ffffff" stroke-width="6" stroke-linecap="round" opacity="0.4"/>
+  <line x1="312" y1="148" x2="292" y2="190" stroke="#ffffff" stroke-width="6" stroke-linecap="round" opacity="0.4"/>
+  <line x1="200" y1="364" x2="220" y2="322" stroke="#ffffff" stroke-width="6" stroke-linecap="round" opacity="0.4"/>
+  <line x1="312" y1="364" x2="292" y2="322" stroke="#ffffff" stroke-width="6" stroke-linecap="round" opacity="0.4"/>
+</svg>

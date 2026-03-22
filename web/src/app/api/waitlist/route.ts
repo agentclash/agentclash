@@ -1,6 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
-
+import { head, put } from "@vercel/blob";
 import { NextResponse } from "next/server";
 
 type WaitlistRecord = {
@@ -8,8 +6,7 @@ type WaitlistRecord = {
   createdAt: string;
 };
 
-const waitlistDirectory = join(process.cwd(), ".data");
-const waitlistFilePath = join(waitlistDirectory, "waitlist.json");
+const BLOB_PATH = "waitlist.json";
 
 function isValidEmail(email: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
@@ -17,21 +14,21 @@ function isValidEmail(email: string) {
 
 async function readWaitlistRecords(): Promise<WaitlistRecord[]> {
   try {
-    const raw = await readFile(waitlistFilePath, "utf8");
-    const parsed = JSON.parse(raw) as unknown;
+    const meta = await head(BLOB_PATH);
+    const res = await fetch(meta.url);
+    const parsed = (await res.json()) as unknown;
     return Array.isArray(parsed) ? (parsed as WaitlistRecord[]) : [];
-  } catch (error) {
-    if (
-      error &&
-      typeof error === "object" &&
-      "code" in error &&
-      error.code === "ENOENT"
-    ) {
-      return [];
-    }
-
-    throw error;
+  } catch {
+    return [];
   }
+}
+
+async function writeWaitlistRecords(records: WaitlistRecord[]) {
+  await put(BLOB_PATH, JSON.stringify(records, null, 2), {
+    access: "public",
+    addRandomSuffix: false,
+    contentType: "application/json",
+  });
 }
 
 export async function POST(request: Request) {
@@ -45,7 +42,9 @@ export async function POST(request: Request) {
   }
 
   const email =
-    typeof payload.email === "string" ? payload.email.trim().toLowerCase() : "";
+    typeof payload.email === "string"
+      ? payload.email.trim().toLowerCase()
+      : "";
 
   if (!isValidEmail(email)) {
     return NextResponse.json(
@@ -65,12 +64,7 @@ export async function POST(request: Request) {
     createdAt: new Date().toISOString(),
   };
 
-  await mkdir(waitlistDirectory, { recursive: true });
-  await writeFile(
-    waitlistFilePath,
-    JSON.stringify([...records, nextRecord], null, 2),
-    "utf8",
-  );
+  await writeWaitlistRecords([...records, nextRecord]);
 
   return NextResponse.json({ ok: true, duplicate: false });
 }

@@ -1,9 +1,53 @@
 "use client";
 
-import { FormEvent, useState } from "react";
-import { ArrowRight, Check, Loader2 } from "lucide-react";
+import { FormEvent, useEffect, useState } from "react";
+import { ArrowRight, Check, Github, Loader2 } from "lucide-react";
 
 type WaitlistStatus = "idle" | "loading" | "success" | "duplicate" | "error";
+
+const CYCLE_WORDS = ["fastest", "smartest", "cheapest", "right"];
+
+function CyclingHeadline() {
+  const [index, setIndex] = useState(0);
+  const [key, setKey] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setIndex((i) => {
+        if (i === CYCLE_WORDS.length - 1) return i;
+        setKey((k) => k + 1);
+        return i + 1;
+      });
+    }, 1100);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Restart cycle after landing on "right"
+  useEffect(() => {
+    if (index !== CYCLE_WORDS.length - 1) return;
+    const timer = setTimeout(() => {
+      setIndex(0);
+      setKey((k) => k + 1);
+    }, 3500);
+    return () => clearTimeout(timer);
+  }, [index]);
+
+  const word = CYCLE_WORDS[index];
+  const isLast = index === CYCLE_WORDS.length - 1;
+
+  return (
+    <h1 className="font-[family-name:var(--font-display)] text-4xl sm:text-5xl lg:text-6xl font-normal text-center tracking-[-0.025em] leading-[1.1]">
+      Ship the{" "}
+      <span
+        key={key}
+        className={`inline-block animate-word-in ${isLast ? "text-white" : "text-white/50"}`}
+      >
+        {word}
+      </span>{" "}
+      agent.
+    </h1>
+  );
+}
 
 export default function HomePage() {
   const [email, setEmail] = useState("");
@@ -12,129 +56,168 @@ export default function HomePage() {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-
     if (!email.trim()) {
       setStatus("error");
-      setMessage("Enter an email to join the waitlist.");
+      setMessage("Enter an email to join.");
       return;
     }
-
     setStatus("loading");
     setMessage("");
-
     try {
-      const response = await fetch("/api/waitlist", {
+      const res = await fetch("/api/waitlist", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),
       });
-
-      const payload = (await response.json()) as {
+      const data = (await res.json()) as {
         duplicate?: boolean;
         error?: string;
       };
-
-      if (!response.ok) {
+      if (!res.ok) {
         setStatus("error");
-        setMessage(payload.error || "Something went wrong. Try again.");
+        setMessage(data.error || "Something went wrong.");
         return;
       }
-
-      setStatus(payload.duplicate ? "duplicate" : "success");
+      setStatus(data.duplicate ? "duplicate" : "success");
       setMessage(
-        payload.duplicate
-          ? "You are already on the waitlist."
-          : "You are in. We will reach out when the beta opens."
+        data.duplicate
+          ? "You're already on the list."
+          : "You're in. We'll be in touch.",
       );
-
-      if (!payload.duplicate) {
-        setEmail("");
-      }
+      if (!data.duplicate) setEmail("");
     } catch {
       setStatus("error");
-      setMessage("Could not save your signup. Try again.");
+      setMessage("Could not save. Try again.");
     }
   }
 
   return (
-    <main className="min-h-screen bg-[#050505] text-white">
-      <section className="relative flex min-h-screen items-center overflow-hidden px-6 py-16 sm:px-8">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.08),_transparent_35%),linear-gradient(180deg,rgba(255,255,255,0.02),transparent_55%)]" />
+    <main>
+      {/* ── Hero ── */}
+      <section className="min-h-screen flex flex-col items-center justify-center px-6 py-16">
+        <a
+          href="https://github.com/Atharva-Kanherkar/agentclash"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 mb-12 font-[family-name:var(--font-mono)] text-[11px] font-medium tracking-[0.2em] uppercase text-white/40 hover:text-white/60 transition-colors"
+        >
+          <Github className="size-3.5" />
+          Open source
+        </a>
 
-        <div className="relative mx-auto flex w-full max-w-5xl flex-col items-center text-center">
-          <div className="inline-flex items-center rounded-full border border-white/10 bg-white/[0.03] px-4 py-2 text-[10px] font-medium uppercase tracking-[0.28em] text-white/58">
-            AgentClash prelaunch waitlist
-          </div>
+        <CyclingHeadline />
 
-          <h1 className="mt-8 max-w-4xl text-balance font-[family-name:var(--font-display)] text-5xl font-semibold tracking-[-0.06em] sm:text-6xl lg:text-7xl">
-            Know the better agent before it ships.
-          </h1>
+        <p className="mt-7 text-center max-w-[28rem] text-[15px] sm:text-base leading-relaxed text-white/35">
+          Pit your models against each other on real tasks.
+          Same tools, same constraints, scored live&nbsp;&mdash;
+          not benchmarks, not vibes.
+        </p>
 
-          <p className="mt-6 max-w-2xl text-pretty text-sm leading-7 text-white/62 sm:text-base">
-            Compare agent systems on the same task, read the verdict, and gate
-            releases with evidence instead of taste.
+        <form
+          onSubmit={handleSubmit}
+          className="mt-10 flex w-full max-w-md flex-col gap-3 sm:flex-row"
+        >
+          <label className="sr-only" htmlFor="waitlist-email">
+            Email address
+          </label>
+          <input
+            id="waitlist-email"
+            type="email"
+            autoComplete="email"
+            placeholder="your awesome email"
+            value={email}
+            onChange={(e) => {
+              setEmail(e.target.value);
+              if (status !== "idle") {
+                setStatus("idle");
+                setMessage("");
+              }
+            }}
+            disabled={status === "loading"}
+            className="h-11 w-full rounded-md border border-white/[0.08] bg-white/[0.03] px-4 text-sm text-white outline-none transition-colors focus:border-white/20 placeholder:text-white/18 disabled:opacity-50 disabled:cursor-not-allowed"
+          />
+          <button
+            type="submit"
+            disabled={status === "loading"}
+            className="h-11 shrink-0 cursor-pointer rounded-md bg-white/90 px-5 text-sm font-medium text-[#060606] transition-colors hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
+          >
+            {status === "loading" ? (
+              <>
+                <Loader2 className="size-4 animate-spin" />
+                Joining
+              </>
+            ) : status === "success" || status === "duplicate" ? (
+              <>
+                <Check className="size-4" />
+                Done
+              </>
+            ) : (
+              <>
+                Join waitlist
+                <ArrowRight className="size-4" />
+              </>
+            )}
+          </button>
+        </form>
+
+        {message && (
+          <p
+            className={`mt-3 text-xs ${status === "error" ? "text-red-400" : "text-white/30"}`}
+          >
+            {message}
+          </p>
+        )}
+      </section>
+
+      {/* ── Why ── */}
+      <section className="px-6 pb-32 pt-8">
+        <div className="mx-auto max-w-lg text-center">
+          <h2 className="font-[family-name:var(--font-display)] text-3xl sm:text-4xl tracking-[-0.02em] leading-[1.15] text-white/70">
+            Benchmarks are gamed.
+            <br />
+            You&apos;re still guessing.
+          </h2>
+
+          <p className="mt-7 text-[15px] sm:text-base leading-relaxed text-white/30 max-w-md mx-auto">
+            Static test sets leak. Crowd-voted rankings reward hype,
+            not capability. You test agents in isolation, one at a time,
+            and ship based on someone else&apos;s score&nbsp;&mdash; not yours.
           </p>
 
-          <form
-            onSubmit={handleSubmit}
-            className="mt-10 flex w-full max-w-2xl flex-col gap-3 sm:flex-row"
-          >
-            <label className="sr-only" htmlFor="waitlist-email">
-              Email address
-            </label>
-            <input
-              id="waitlist-email"
-              type="email"
-              autoComplete="email"
-              placeholder="Email address"
-              value={email}
-              onChange={(event) => {
-                setEmail(event.target.value);
-                if (status !== "idle") {
-                  setStatus("idle");
-                  setMessage("");
-                }
-              }}
-              disabled={status === "loading"}
-              className="h-12 w-full rounded-full border border-white/10 bg-white/5 px-5 text-sm text-white outline-none transition focus:border-white/30 focus:ring-2 focus:ring-white/10 placeholder:text-white/38 disabled:cursor-not-allowed disabled:opacity-60"
-            />
-            <button
-              type="submit"
-              disabled={status === "loading"}
-              className="inline-flex h-12 shrink-0 items-center justify-center gap-2 rounded-full bg-white px-5 text-sm font-medium text-black transition hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-70"
-            >
-              {status === "loading" ? (
-                <>
-                  <Loader2 className="size-4 animate-spin" />
-                  Joining
-                </>
-              ) : status === "success" || status === "duplicate" ? (
-                <>
-                  <Check className="size-4" />
-                  Joined
-                </>
-              ) : (
-                <>
-                  Join waitlist
-                  <ArrowRight className="size-4" />
-                </>
-              )}
-            </button>
-          </form>
+          <p className="mt-5 text-[15px] sm:text-base leading-relaxed text-white/30 max-w-md mx-auto">
+            AgentClash puts your models on the same real task, at the same
+            time. Scored live on completion, speed, token efficiency, and
+            tool strategy. Step-by-step replays show exactly why one agent
+            won and another didn&apos;t.
+          </p>
 
-          {message ? (
-            <p
-              className={`mt-3 text-xs ${
-                status === "error" ? "text-rose-400" : "text-white/58"
-              }`}
-            >
-              {message}
-            </p>
-          ) : null}
+          <p className="mt-9 font-[family-name:var(--font-display)] text-xl sm:text-2xl text-white/45 leading-snug">
+            Head-to-head races. Composite scoring.
+            <br />
+            Full replays. Public leaderboards.
+            <br />
+            Open source.
+          </p>
+
+          <p className="mt-9 text-sm text-white/30 max-w-xs mx-auto leading-relaxed">
+            Ship with evidence, not instinct.
+          </p>
         </div>
       </section>
+
+      {/* ── Footer ── */}
+      <footer className="flex items-center justify-between px-6 py-6 text-[11px] font-[family-name:var(--font-mono)] text-white/35">
+        <span className="font-medium">AgentClash</span>
+        <a
+          href="https://github.com/Atharva-Kanherkar/agentclash"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 hover:text-white/55 transition-colors"
+        >
+          <Github className="size-3.5" />
+          GitHub
+        </a>
+      </footer>
     </main>
   );
 }
