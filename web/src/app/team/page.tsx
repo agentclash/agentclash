@@ -5,8 +5,8 @@ export const metadata: Metadata = {
 };
 
 const TEAM = [
-  { handle: "attharrva15", name: "Atharva", avatar: "https://unavatar.io/x/attharrva15" },
-  { handle: "PariharCodes", name: "Ayush", avatar: "https://unavatar.io/x/PariharCodes" },
+  { handle: "attharrva15", name: "Atharva", avatar: "https://unavatar.io/x/attharrva15", tagline: "The caffeine addict programmer" },
+  { handle: "PariharCodes", name: "Ayush", avatar: "https://unavatar.io/x/PariharCodes", tagline: "Deadpan commits, chaotic energy" },
 ];
 
 export default function TeamPage() {
@@ -35,6 +35,7 @@ export default function TeamPage() {
                 {member.name}
               </p>
               <p className="text-xs text-white/35">@{member.handle}</p>
+              <p className="text-[11px] text-white/20 italic mt-0.5">{member.tagline}</p>
             </div>
             <span className="shrink-0 rounded-md bg-white/90 px-3 py-1.5 text-xs font-semibold text-[#060606]">
               Follow
