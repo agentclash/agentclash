@@ -19,9 +19,10 @@ function isValidEmail(email: string) {
 
 async function readWaitlistRecords(): Promise<WaitlistRecord[]> {
   try {
-    const blob = await get(BLOB_PATH, { access: "private" });
-    if (!blob) return [];
-    const parsed = await blob.json();
+    const result = await get(BLOB_PATH, { access: "private" });
+    if (!result || result.statusCode !== 200) return [];
+    const text = await new Response(result.stream).text();
+    const parsed = JSON.parse(text) as unknown;
     return Array.isArray(parsed) ? (parsed as WaitlistRecord[]) : [];
   } catch {
     return [];
