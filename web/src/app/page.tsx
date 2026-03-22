@@ -7,7 +7,7 @@ type WaitlistStatus = "idle" | "loading" | "success" | "duplicate" | "error";
 
 const CYCLE_WORDS = ["fastest", "smartest", "cheapest", "right"];
 
-function CyclingHeadline() {
+function useCycleWords() {
   const [index, setIndex] = useState(0);
   const [key, setKey] = useState(0);
 
@@ -18,11 +18,10 @@ function CyclingHeadline() {
         setKey((k) => k + 1);
         return i + 1;
       });
-    }, 1100);
+    }, 1800);
     return () => clearInterval(interval);
   }, []);
 
-  // Restart cycle after landing on "right"
   useEffect(() => {
     if (index !== CYCLE_WORDS.length - 1) return;
     const timer = setTimeout(() => {
@@ -32,14 +31,41 @@ function CyclingHeadline() {
     return () => clearTimeout(timer);
   }, [index]);
 
-  const word = CYCLE_WORDS[index];
-  const isLast = index === CYCLE_WORDS.length - 1;
+  return { word: CYCLE_WORDS[index], isLast: index === CYCLE_WORDS.length - 1, key };
+}
 
+function ClashLogo({ clashKey }: { clashKey: number }) {
+  return (
+    <svg
+      viewBox="0 0 512 512"
+      className="size-14 mb-10"
+      aria-label="AgentClash"
+    >
+      <rect width="512" height="512" fill="#060606" />
+      <g key={`l-${clashKey}`} className="animate-clash-left">
+        <polygon points="80,180 240,256 80,332" fill="#ffffff" opacity="0.9" />
+      </g>
+      <g key={`r-${clashKey}`} className="animate-clash-right">
+        <polygon points="432,180 272,256 432,332" fill="#ffffff" opacity="0.5" />
+      </g>
+      <g key={`s-${clashKey}`} className="animate-clash-sparks">
+        <line x1="256" y1="100" x2="256" y2="160" stroke="#ffffff" strokeWidth="10" strokeLinecap="round" />
+        <line x1="256" y1="352" x2="256" y2="412" stroke="#ffffff" strokeWidth="10" strokeLinecap="round" />
+        <line x1="192" y1="138" x2="214" y2="184" stroke="#ffffff" strokeWidth="8" strokeLinecap="round" opacity="0.8" />
+        <line x1="320" y1="138" x2="298" y2="184" stroke="#ffffff" strokeWidth="8" strokeLinecap="round" opacity="0.8" />
+        <line x1="192" y1="374" x2="214" y2="328" stroke="#ffffff" strokeWidth="8" strokeLinecap="round" opacity="0.8" />
+        <line x1="320" y1="374" x2="298" y2="328" stroke="#ffffff" strokeWidth="8" strokeLinecap="round" opacity="0.8" />
+      </g>
+    </svg>
+  );
+}
+
+function CyclingHeadline({ word, isLast, cycleKey }: { word: string; isLast: boolean; cycleKey: number }) {
   return (
     <h1 className="font-[family-name:var(--font-display)] text-4xl sm:text-5xl lg:text-6xl font-normal text-center tracking-[-0.025em] leading-[1.1]">
       Ship the{" "}
       <span
-        key={key}
+        key={cycleKey}
         className={`inline-block animate-word-in ${isLast ? "text-white" : "text-white/50"}`}
       >
         {word}
@@ -50,6 +76,7 @@ function CyclingHeadline() {
 }
 
 export default function HomePage() {
+  const cycle = useCycleWords();
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<WaitlistStatus>("idle");
   const [message, setMessage] = useState("");
@@ -95,22 +122,13 @@ export default function HomePage() {
     <main>
       {/* ── Hero ── */}
       <section className="min-h-screen flex flex-col items-center justify-center px-6 py-16">
-        <a
-          href="https://github.com/Atharva-Kanherkar/agentclash"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1.5 mb-12 font-[family-name:var(--font-mono)] text-[11px] font-medium tracking-[0.2em] uppercase text-white/40 hover:text-white/60 transition-colors"
-        >
-          <Github className="size-3.5" />
-          Open source
-        </a>
-
-        <CyclingHeadline />
+        <ClashLogo clashKey={cycle.key} />
+        <CyclingHeadline word={cycle.word} isLast={cycle.isLast} cycleKey={cycle.key} />
 
         <p className="mt-7 text-center max-w-[28rem] text-[15px] sm:text-base leading-relaxed text-white/35">
-          Pit your models against each other on real tasks.
-          Same tools, same constraints, scored live&nbsp;&mdash;
-          not benchmarks, not vibes.
+          Opensource race engine. Pit your models against each other
+          on real tasks. Same tools, same constraints, scored
+          live&nbsp;&mdash; not benchmarks, not vibes.
         </p>
 
         <form
@@ -191,10 +209,17 @@ export default function HomePage() {
             won and another didn&apos;t.
           </p>
 
+          <p className="mt-5 text-[15px] sm:text-base leading-relaxed text-white/30 max-w-md mx-auto">
+            Every failure gets captured, classified, and turned into a
+            regression test&nbsp;&mdash; automatically. The more you run,
+            the smarter your eval suite gets. A data flywheel that no
+            static benchmark can match.
+          </p>
+
           <p className="mt-9 font-[family-name:var(--font-display)] text-xl sm:text-2xl text-white/45 leading-snug">
             Head-to-head races. Composite scoring.
             <br />
-            Full replays. Public leaderboards.
+            Full replays. Failure-to-eval flywheel.
             <br />
             Open source.
           </p>

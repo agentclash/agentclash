@@ -61,5 +61,42 @@ input {
 }
 
 .animate-word-in {
-  animation: fade-in 0.35s ease-out both;
+  animation: fade-in 0.5s ease-out both;
+}
+
+/* logo clash animation */
+@keyframes clash-left {
+  0% { transform: translateX(-18px); }
+  20% { transform: translateX(0); }
+  26% { transform: translateX(3px); }
+  34% { transform: translateX(0); }
+  100% { transform: translateX(0); }
+}
+
+@keyframes clash-right {
+  0% { transform: translateX(18px); }
+  20% { transform: translateX(0); }
+  26% { transform: translateX(-3px); }
+  34% { transform: translateX(0); }
+  100% { transform: translateX(0); }
+}
+
+@keyframes clash-sparks {
+  0%, 18% { opacity: 0; }
+  22% { opacity: 1; }
+  36% { opacity: 0.5; }
+  44% { opacity: 0; }
+  100% { opacity: 0; }
+}
+
+.animate-clash-left {
+  animation: clash-left 0.9s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-clash-right {
+  animation: clash-right 0.9s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-clash-sparks {
+  animation: clash-sparks 0.9s ease-out both;
 }
