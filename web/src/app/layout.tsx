@@ -24,10 +24,7 @@ const siteUrl = "https://agentclash.dev";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
-  title: {
-    default: "AgentClash — Ship the right agent",
-    template: "%s | AgentClash",
-  },
+  title: "AgentClash",
   description:
     "Pit AI models against each other on real tasks. Same challenge, same tools, scored live on completion, speed, token efficiency, and tool strategy.",
   keywords: [
