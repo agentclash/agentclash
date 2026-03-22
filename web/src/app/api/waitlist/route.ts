@@ -1,4 +1,4 @@
-import { head, put } from "@vercel/blob";
+import { list, put } from "@vercel/blob";
 import { NextResponse } from "next/server";
 
 type WaitlistRecord = {
@@ -14,8 +14,9 @@ function isValidEmail(email: string) {
 
 async function readWaitlistRecords(): Promise<WaitlistRecord[]> {
   try {
-    const meta = await head(BLOB_PATH);
-    const res = await fetch(meta.url);
+    const { blobs } = await list({ prefix: BLOB_PATH });
+    if (blobs.length === 0) return [];
+    const res = await fetch(blobs[0].downloadUrl);
     const parsed = (await res.json()) as unknown;
     return Array.isArray(parsed) ? (parsed as WaitlistRecord[]) : [];
   } catch {
@@ -25,7 +26,6 @@ async function readWaitlistRecords(): Promise<WaitlistRecord[]> {
 
 async function writeWaitlistRecords(records: WaitlistRecord[]) {
   await put(BLOB_PATH, JSON.stringify(records, null, 2), {
-    access: "public",
     addRandomSuffix: false,
     contentType: "application/json",
   });
