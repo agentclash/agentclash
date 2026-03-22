@@ -1,4 +1,4 @@
-import { list, put } from "@vercel/blob";
+import { get, put } from "@vercel/blob";
 import { Resend } from "resend";
 import { NextResponse } from "next/server";
 
@@ -19,10 +19,9 @@ function isValidEmail(email: string) {
 
 async function readWaitlistRecords(): Promise<WaitlistRecord[]> {
   try {
-    const { blobs } = await list({ prefix: BLOB_PATH });
-    if (blobs.length === 0) return [];
-    const res = await fetch(blobs[0].downloadUrl);
-    const parsed = (await res.json()) as unknown;
+    const blob = await get(BLOB_PATH, { access: "private" });
+    if (!blob) return [];
+    const parsed = await blob.json();
     return Array.isArray(parsed) ? (parsed as WaitlistRecord[]) : [];
   } catch {
     return [];
