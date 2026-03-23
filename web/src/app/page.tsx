@@ -150,9 +150,10 @@ export default function HomePage() {
         <CyclingHeadline word={cycle.word} isLast={cycle.isLast} cycleKey={cycle.key} />
 
         <p className="mt-7 text-center max-w-[28rem] text-[15px] sm:text-base leading-relaxed text-white/35">
-          Opensource head-to-head agent evals. Pit your models against each other
-          on real tasks. Same tools, same constraints, scored
-          live&nbsp;&mdash; not benchmarks, not vibes.
+          Your benchmarks are lying to you.
+          <br />
+          Race your models head-to-head on real tasks.
+          Same tools, same constraints, scored live.
         </p>
 
         <form
@@ -219,43 +220,21 @@ export default function HomePage() {
 
       {/* ── Why ── */}
       <section className="px-6 pb-32 pt-8">
-        <div className="mx-auto max-w-lg text-center">
-          <h2 className="font-[family-name:var(--font-display)] text-3xl sm:text-4xl tracking-[-0.02em] leading-[1.15] text-white/70">
-            Benchmarks are gamed.
+        <div className="mx-auto max-w-md text-center">
+          <p className="font-[family-name:var(--font-display)] text-xl sm:text-2xl text-white/45 leading-snug">
+            Static benchmarks leak. Leaderboards reward hype.
             <br />
-            You&apos;re still guessing.
-          </h2>
-
-          <p className="mt-7 text-[15px] sm:text-base leading-relaxed text-white/30 max-w-md mx-auto">
-            Static test sets leak. Crowd-voted rankings reward hype,
-            not capability. You test agents in isolation, one at a time,
-            and ship based on someone else&apos;s score&nbsp;&mdash; not yours.
+            You ship based on someone else&apos;s score.
           </p>
 
-          <p className="mt-5 text-[15px] sm:text-base leading-relaxed text-white/30 max-w-md mx-auto">
-            AgentClash puts your models on the same real task, at the same
-            time. Scored live on completion, speed, token efficiency, and
-            tool strategy. Step-by-step replays show exactly why one agent
-            won and another didn&apos;t.
+          <p className="mt-8 text-[15px] sm:text-base leading-relaxed text-white/30">
+            AgentClash runs your models on the same task, at the same time.
+            Failures auto-convert into regression tests.
+            The more you run, the smarter your evals get.
           </p>
 
-          <p className="mt-5 text-[15px] sm:text-base leading-relaxed text-white/30 max-w-md mx-auto">
-            Every failure gets captured, classified, and turned into a
-            regression test&nbsp;&mdash; automatically. The more you run,
-            the smarter your eval suite gets. A data flywheel that no
-            static benchmark can match.
-          </p>
-
-          <p className="mt-9 font-[family-name:var(--font-display)] text-xl sm:text-2xl text-white/45 leading-snug">
-            Head-to-head races. Composite scoring.
-            <br />
-            Full replays. Failure-to-eval flywheel.
-            <br />
-            Open source.
-          </p>
-
-          <p className="mt-9 text-sm text-white/30 max-w-xs mx-auto leading-relaxed">
-            Ship with evidence, not instinct.
+          <p className="mt-8 font-[family-name:var(--font-mono)] text-xs text-white/20 tracking-wide uppercase">
+            Head-to-head races &middot; Composite scoring &middot; Full replays &middot; Open source
           </p>
         </div>
       </section>
