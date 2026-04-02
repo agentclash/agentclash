@@ -20,6 +20,7 @@ export API_BASE_URL="${API_BASE_URL:-http://localhost:8080}"
 export WORKSPACE_ID="${WORKSPACE_ID:-22222222-2222-2222-2222-222222222222}"
 export USER_ID="${USER_ID:-33333333-3333-3333-3333-333333333333}"
 export CHALLENGE_PACK_VERSION_ID="${CHALLENGE_PACK_VERSION_ID:-55555555-5555-5555-5555-555555555555}"
+export CHALLENGE_INPUT_SET_ID="${CHALLENGE_INPUT_SET_ID:-abababab-abab-abab-abab-abababababab}"
 export AGENT_DEPLOYMENT_ID="${AGENT_DEPLOYMENT_ID:-eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee}"
 export SCORECARD_TIMEOUT_SECONDS="${SCORECARD_TIMEOUT_SECONDS:-240}"
 export POLL_INTERVAL_SECONDS="${POLL_INTERVAL_SECONDS:-2}"
@@ -49,6 +50,7 @@ create_response="$(curl -fsS \
   -d '{
     "workspace_id": "'"${WORKSPACE_ID}"'",
     "challenge_pack_version_id": "'"${CHALLENGE_PACK_VERSION_ID}"'",
+    "challenge_input_set_id": "'"${CHALLENGE_INPUT_SET_ID}"'",
     "agent_deployment_ids": ["'"${AGENT_DEPLOYMENT_ID}"'"]
   }')"
 
@@ -93,10 +95,24 @@ while (( SECONDS < deadline )); do
       state="$(jq -r '.state' /tmp/agentclash-scorecard-smoke.json)"
       correctness_score="$(jq -r '.correctness_score // "null"' /tmp/agentclash-scorecard-smoke.json)"
       reliability_score="$(jq -r '.reliability_score // "null"' /tmp/agentclash-scorecard-smoke.json)"
+      latency_score="$(jq -r '.latency_score // "null"' /tmp/agentclash-scorecard-smoke.json)"
+      cost_score="$(jq -r '.cost_score // "null"' /tmp/agentclash-scorecard-smoke.json)"
       echo "==> Scorecard ready"
       echo "    state: ${state}"
       echo "    correctness_score: ${correctness_score}"
       echo "    reliability_score: ${reliability_score}"
+      echo "    latency_score: ${latency_score}"
+      echo "    cost_score: ${cost_score}"
+      if [[ "${latency_score}" == "null" ]]; then
+        echo "latency_score was null; expected a real value" >&2
+        cat /tmp/agentclash-scorecard-smoke.json >&2
+        exit 1
+      fi
+      if [[ "${cost_score}" == "null" ]]; then
+        echo "cost_score was null; expected a real value" >&2
+        cat /tmp/agentclash-scorecard-smoke.json >&2
+        exit 1
+      fi
       exit 0
       ;;
     202)

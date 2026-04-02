@@ -36,6 +36,8 @@ CHALLENGE_PACK_ID="44444444-4444-4444-4444-444444444444"
 CHALLENGE_PACK_VERSION_ID="55555555-5555-5555-5555-555555555555"
 CHALLENGE_IDENTITY_ID="66666666-6666-6666-6666-666666666666"
 CHALLENGE_VERSION_ID="77777777-7777-7777-7777-777777777777"
+CHALLENGE_INPUT_SET_ID="abababab-abab-abab-abab-abababababab"
+CHALLENGE_INPUT_ITEM_ID="cdcdcdcd-cdcd-cdcd-cdcd-cdcdcdcdcdcd"
 RUNTIME_PROFILE_ID="88888888-8888-8888-8888-888888888888"
 PROVIDER_ACCOUNT_ID="99999999-9999-9999-9999-999999999999"
 MODEL_CATALOG_ENTRY_ID="aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
@@ -79,15 +81,33 @@ VALUES (
   '{
     "tool_policy":{"allowed_tool_kinds":["file"]},
     "evaluation_spec":{
-      "name":"local-smoke-scorecard",
+      "name":"local-phase1-scorecard",
       "version_number":1,
       "judge_mode":"deterministic",
       "validators":[
         {
-          "key":"answer-present",
-          "type":"contains",
+          "key":"output-shape",
+          "type":"json_schema",
           "target":"final_output",
-          "expected_from":"literal:answer"
+          "expected_from":"literal:{\"type\":\"object\",\"required\":[\"code\",\"risk_level\",\"summary\"],\"properties\":{\"code\":{\"type\":\"string\"},\"risk_level\":{\"type\":\"string\"},\"summary\":{\"type\":\"string\"}}}"
+        },
+        {
+          "key":"ticket-code",
+          "type":"json_path_match",
+          "target":"final_output",
+          "expected_from":"literal:{\"path\":\"$.code\",\"comparator\":\"equals\",\"value\":\"KAPPA-4821\"}"
+        },
+        {
+          "key":"risk-level",
+          "type":"json_path_match",
+          "target":"final_output",
+          "expected_from":"literal:{\"path\":\"$.risk_level\",\"comparator\":\"equals\",\"value\":\"high\"}"
+        },
+        {
+          "key":"summary-mentions-cache",
+          "type":"json_path_match",
+          "target":"final_output",
+          "expected_from":"literal:{\"path\":\"$.summary\",\"comparator\":\"contains\",\"value\":\"cache invalidation\"}"
         }
       ],
       "metrics":[
@@ -95,10 +115,56 @@ VALUES (
           "key":"completion",
           "type":"boolean",
           "collector":"run_completed_successfully"
+        },
+        {
+          "key":"failures",
+          "type":"numeric",
+          "collector":"run_failure_count"
+        },
+        {
+          "key":"total-latency-ms",
+          "type":"numeric",
+          "collector":"run_total_latency_ms",
+          "unit":"ms"
+        },
+        {
+          "key":"ttft-ms",
+          "type":"numeric",
+          "collector":"run_ttft_ms",
+          "unit":"ms"
+        },
+        {
+          "key":"model-cost-usd",
+          "type":"numeric",
+          "collector":"run_model_cost_usd",
+          "unit":"usd"
+        },
+        {
+          "key":"validator-pass-rate",
+          "type":"numeric",
+          "collector":"validator_pass_rate"
         }
       ],
+      "runtime_limits":{
+        "max_cost_usd":0.2,
+        "max_duration_ms":90000
+      },
+      "pricing":{
+        "models":[
+          {
+            "provider_key":"openai",
+            "provider_model_id":"gpt-4.1-mini",
+            "input_cost_per_million_tokens":0.4,
+            "output_cost_per_million_tokens":1.6
+          }
+        ]
+      },
       "scorecard":{
-        "dimensions":["correctness","reliability"]
+        "dimensions":["correctness","reliability","latency","cost"],
+        "normalization":{
+          "latency":{"target_ms":2500,"max_ms":20000},
+          "cost":{"target_usd":0.002,"max_usd":0.05}
+        }
       }
     }
   }'::jsonb
@@ -143,7 +209,39 @@ VALUES (
   'Local Smoke Challenge',
   'support',
   'easy',
-  '{"instructions":"Reply with a short answer."}'::jsonb
+  '{"instructions":"Return strict JSON with keys code, risk_level, and summary. Use code KAPPA-4821, risk_level high, and mention cache invalidation in the summary."}'::jsonb
+);
+
+INSERT INTO challenge_input_sets (
+  id,
+  challenge_pack_version_id,
+  input_key,
+  name,
+  input_checksum
+)
+VALUES (
+  '${CHALLENGE_INPUT_SET_ID}',
+  '${CHALLENGE_PACK_VERSION_ID}',
+  'local-phase1-inputs',
+  'Local Phase 1 Inputs',
+  'local-phase1-input-checksum'
+);
+
+INSERT INTO challenge_input_items (
+  id,
+  challenge_input_set_id,
+  challenge_pack_version_id,
+  challenge_identity_id,
+  item_key,
+  payload
+)
+VALUES (
+  '${CHALLENGE_INPUT_ITEM_ID}',
+  '${CHALLENGE_INPUT_SET_ID}',
+  '${CHALLENGE_PACK_VERSION_ID}',
+  '${CHALLENGE_IDENTITY_ID}',
+  'prompt.json',
+  '{"content":"Investigate incident KAPPA-4821. The incident points to cache invalidation issues causing stale payload replay. Output strict JSON with code, risk_level, and summary."}'::jsonb
 );
 
 INSERT INTO runtime_profiles (
@@ -325,6 +423,7 @@ Use these values for curl:
   WORKSPACE_ID=${WORKSPACE_ID}
   USER_ID=${USER_ID}
   CHALLENGE_PACK_VERSION_ID=${CHALLENGE_PACK_VERSION_ID}
+  CHALLENGE_INPUT_SET_ID=${CHALLENGE_INPUT_SET_ID}
   AGENT_DEPLOYMENT_ID=${AGENT_DEPLOYMENT_ID}
 
 EOF
