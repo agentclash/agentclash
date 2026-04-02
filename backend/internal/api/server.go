@@ -23,12 +23,13 @@ func NewServer(
 	runReadService RunReadService,
 	replayReadService ReplayReadService,
 	compareReadService CompareReadService,
+	releaseGateService ReleaseGateService,
 	hostedRunIngestionService HostedRunIngestionService,
 	agentDeploymentReadService AgentDeploymentReadService,
 	challengePackReadService ChallengePackReadService,
 	agentBuildService AgentBuildService,
 ) *Server {
-	router := newRouter(logger, authenticator, authorizer, runCreationService, runReadService, replayReadService, hostedRunIngestionService, compareReadService, agentDeploymentReadService, challengePackReadService, agentBuildService)
+	router := newRouter(logger, authenticator, authorizer, runCreationService, runReadService, replayReadService, hostedRunIngestionService, compareReadService, agentDeploymentReadService, challengePackReadService, agentBuildService, releaseGateService)
 
 	return &Server{
 		config: cfg,
@@ -87,6 +88,7 @@ func newRouter(
 	agentDeploymentReadService AgentDeploymentReadService,
 	challengePackReadService ChallengePackReadService,
 	agentBuildService AgentBuildService,
+	releaseGateServices ...ReleaseGateService,
 ) http.Handler {
 	if hostedRunIngestionService == nil {
 		hostedRunIngestionService = noopHostedRunIngestionService{}
@@ -94,6 +96,13 @@ func newRouter(
 
 	if compareReadService == nil {
 		compareReadService = noopCompareReadService{}
+	}
+	var releaseGateService ReleaseGateService
+	if len(releaseGateServices) > 0 {
+		releaseGateService = releaseGateServices[0]
+	}
+	if releaseGateService == nil {
+		releaseGateService = noopReleaseGateService{}
 	}
 
 	router := chi.NewRouter()
@@ -104,7 +113,7 @@ func newRouter(
 	registerHostedIntegrationRoutes(router, logger, hostedRunIngestionService)
 	router.Route("/v1", func(r chi.Router) {
 		r.Use(authenticateRequest(logger, authenticator))
-		registerProtectedRoutes(r, logger, authorizer, runCreationService, runReadService, replayReadService, compareReadService, agentDeploymentReadService, challengePackReadService, agentBuildService)
+		registerProtectedRoutes(r, logger, authorizer, runCreationService, runReadService, replayReadService, compareReadService, releaseGateService, agentDeploymentReadService, challengePackReadService, agentBuildService)
 	})
 
 	return router
@@ -114,4 +123,14 @@ type noopCompareReadService struct{}
 
 func (noopCompareReadService) GetRunComparison(_ context.Context, _ Caller, _ GetRunComparisonInput) (GetRunComparisonResult, error) {
 	return GetRunComparisonResult{}, errors.New("compare read service is not configured")
+}
+
+type noopReleaseGateService struct{}
+
+func (noopReleaseGateService) EvaluateReleaseGate(_ context.Context, _ Caller, _ EvaluateReleaseGateInput) (EvaluateReleaseGateResult, error) {
+	return EvaluateReleaseGateResult{}, errors.New("release gate service is not configured")
+}
+
+func (noopReleaseGateService) ListReleaseGates(_ context.Context, _ Caller, _ ListReleaseGatesInput) (ListReleaseGatesResult, error) {
+	return ListReleaseGatesResult{}, errors.New("release gate service is not configured")
 }

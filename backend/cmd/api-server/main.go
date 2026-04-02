@@ -49,6 +49,7 @@ func main() {
 	runReadManager := api.NewRunReadManager(authorizer, repo)
 	replayReadManager := api.NewReplayReadManager(authorizer, repo)
 	compareReadManager := api.NewCompareReadManager(authorizer, repo)
+	releaseGateManager := api.NewReleaseGateManager(authorizer, repo)
 	hostedRunIngestionManager := api.NewHostedRunIngestionManager(
 		repo,
 		cfg.HostedRunCallbackSecret,
@@ -67,6 +68,7 @@ func main() {
 		runReadManager,
 		replayReadManager,
 		compareReadManager,
+		releaseGateManager,
 		hostedRunIngestionManager,
 		agentDeploymentReadManager,
 		challengePackReadManager,

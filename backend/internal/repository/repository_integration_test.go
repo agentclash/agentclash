@@ -2160,6 +2160,184 @@ func TestRepositoryBuildRunComparisonMissingScorecard(t *testing.T) {
 	}
 }
 
+func TestRepositoryUpsertRunComparisonReleaseGateUpdatesExistingPolicyIdentity(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	comparison := createComparableRunComparison(t, ctx, db, repo, fixture)
+
+	first, err := repo.UpsertRunComparisonReleaseGate(ctx, repository.UpsertRunComparisonReleaseGateParams{
+		RunComparisonID:   comparison.ID,
+		PolicyKey:         "default",
+		PolicyVersion:     1,
+		PolicyFingerprint: "policy-a",
+		PolicySnapshot:    json.RawMessage(`{"policy_key":"default","policy_version":1}`),
+		Verdict:           "pass",
+		ReasonCode:        "within_thresholds",
+		Summary:           "passed",
+		EvidenceStatus:    "sufficient",
+		EvaluationDetails: json.RawMessage(`{"triggered_conditions":[]}`),
+		SourceFingerprint: "source-a",
+	})
+	if err != nil {
+		t.Fatalf("first UpsertRunComparisonReleaseGate returned error: %v", err)
+	}
+
+	second, err := repo.UpsertRunComparisonReleaseGate(ctx, repository.UpsertRunComparisonReleaseGateParams{
+		RunComparisonID:   comparison.ID,
+		PolicyKey:         "default",
+		PolicyVersion:     1,
+		PolicyFingerprint: "policy-a",
+		PolicySnapshot:    json.RawMessage(`{"policy_key":"default","policy_version":1}`),
+		Verdict:           "warn",
+		ReasonCode:        "threshold_warn_latency",
+		Summary:           "warned",
+		EvidenceStatus:    "sufficient",
+		EvaluationDetails: json.RawMessage(`{"triggered_conditions":["threshold_warn_latency"]}`),
+		SourceFingerprint: "source-b",
+	})
+	if err != nil {
+		t.Fatalf("second UpsertRunComparisonReleaseGate returned error: %v", err)
+	}
+	if first.ID != second.ID {
+		t.Fatalf("release gate id changed on upsert: %s != %s", first.ID, second.ID)
+	}
+
+	gates, err := repo.ListRunComparisonReleaseGates(ctx, comparison.ID)
+	if err != nil {
+		t.Fatalf("ListRunComparisonReleaseGates returned error: %v", err)
+	}
+	if len(gates) != 1 {
+		t.Fatalf("release gate count = %d, want 1", len(gates))
+	}
+	if gates[0].Verdict != "warn" {
+		t.Fatalf("verdict = %q, want warn", gates[0].Verdict)
+	}
+	if gates[0].ReasonCode != "threshold_warn_latency" {
+		t.Fatalf("reason code = %q, want threshold_warn_latency", gates[0].ReasonCode)
+	}
+}
+
+func TestRepositoryUpsertRunComparisonReleaseGateSupportsMultiplePolicies(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	comparison := createComparableRunComparison(t, ctx, db, repo, fixture)
+
+	_, err := repo.UpsertRunComparisonReleaseGate(ctx, repository.UpsertRunComparisonReleaseGateParams{
+		RunComparisonID:   comparison.ID,
+		PolicyKey:         "default",
+		PolicyVersion:     1,
+		PolicyFingerprint: "policy-a",
+		PolicySnapshot:    json.RawMessage(`{"policy_key":"default","policy_version":1}`),
+		Verdict:           "pass",
+		ReasonCode:        "within_thresholds",
+		Summary:           "passed",
+		EvidenceStatus:    "sufficient",
+		EvaluationDetails: json.RawMessage(`{"triggered_conditions":[]}`),
+		SourceFingerprint: "source-a",
+	})
+	if err != nil {
+		t.Fatalf("first UpsertRunComparisonReleaseGate returned error: %v", err)
+	}
+
+	_, err = repo.UpsertRunComparisonReleaseGate(ctx, repository.UpsertRunComparisonReleaseGateParams{
+		RunComparisonID:   comparison.ID,
+		PolicyKey:         "strict",
+		PolicyVersion:     1,
+		PolicyFingerprint: "policy-b",
+		PolicySnapshot:    json.RawMessage(`{"policy_key":"strict","policy_version":1}`),
+		Verdict:           "insufficient_evidence",
+		ReasonCode:        "comparison_evidence_missing",
+		Summary:           "insufficient",
+		EvidenceStatus:    "insufficient",
+		EvaluationDetails: json.RawMessage(`{"missing_fields":["replay_summary_divergence"]}`),
+		SourceFingerprint: "source-b",
+	})
+	if err != nil {
+		t.Fatalf("second UpsertRunComparisonReleaseGate returned error: %v", err)
+	}
+
+	gates, err := repo.ListRunComparisonReleaseGates(ctx, comparison.ID)
+	if err != nil {
+		t.Fatalf("ListRunComparisonReleaseGates returned error: %v", err)
+	}
+	if len(gates) != 2 {
+		t.Fatalf("release gate count = %d, want 2", len(gates))
+	}
+}
+
+func createComparableRunComparison(
+	t *testing.T,
+	ctx context.Context,
+	db *pgxpool.Pool,
+	repo *repository.Repository,
+	fixture testFixture,
+) repository.RunComparison {
+	t.Helper()
+
+	baselineRun, baselineRunAgents := createTestRun(t, ctx, repo, fixture, 1, "baseline")
+	candidateRun, candidateRunAgents := createTestRun(t, ctx, repo, fixture, 1, "candidate")
+	evaluationSpecID := insertEvaluationSpecRecord(t, ctx, db, fixture.challengePackVersionID, "release-gate-spec", 1)
+
+	insertRunAgentScorecardRecord(t, ctx, db, baselineRunAgents[0].ID, evaluationSpecID, scorecardFixture{
+		Correctness: float64Ptr(0.72),
+		Reliability: float64Ptr(0.81),
+		Latency:     float64Ptr(0.44),
+		Cost:        float64Ptr(0.36),
+	})
+	insertRunAgentScorecardRecord(t, ctx, db, candidateRunAgents[0].ID, evaluationSpecID, scorecardFixture{
+		Correctness: float64Ptr(0.74),
+		Reliability: float64Ptr(0.80),
+		Latency:     float64Ptr(0.45),
+		Cost:        float64Ptr(0.37),
+	})
+	insertReplaySummaryRecord(t, ctx, db, baselineRunAgents[0].ID, replaySummaryFixture{
+		Status:            "completed",
+		Headline:          "Baseline completed",
+		Events:            10,
+		ReplaySteps:       4,
+		ModelCalls:        2,
+		ToolCalls:         1,
+		SandboxCommands:   1,
+		Outputs:           1,
+		ScoringEvents:     1,
+		TerminalStatus:    "completed",
+		TerminalEventType: "system.run.completed",
+	})
+	insertReplaySummaryRecord(t, ctx, db, candidateRunAgents[0].ID, replaySummaryFixture{
+		Status:            "completed",
+		Headline:          "Candidate completed",
+		Events:            11,
+		ReplaySteps:       4,
+		ModelCalls:        2,
+		ToolCalls:         1,
+		SandboxCommands:   1,
+		Outputs:           1,
+		ScoringEvents:     1,
+		TerminalStatus:    "completed",
+		TerminalEventType: "system.run.completed",
+	})
+	insertJudgeResultRecord(t, ctx, db, baselineRunAgents[0].ID, evaluationSpecID, fixture.firstChallengeIdentityID, "exact")
+	insertJudgeResultRecord(t, ctx, db, candidateRunAgents[0].ID, evaluationSpecID, fixture.firstChallengeIdentityID, "exact")
+
+	comparison, err := repo.BuildRunComparison(ctx, repository.BuildRunComparisonParams{
+		BaselineRunID:  baselineRun.ID,
+		CandidateRunID: candidateRun.ID,
+	})
+	if err != nil {
+		t.Fatalf("BuildRunComparison returned error: %v", err)
+	}
+	if comparison.Status != repository.RunComparisonStatusComparable {
+		t.Fatalf("comparison status = %s, want comparable", comparison.Status)
+	}
+	return comparison
+}
+
 type testFixture struct {
 	organizationID            uuid.UUID
 	workspaceID               uuid.UUID

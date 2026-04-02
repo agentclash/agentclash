@@ -16,6 +16,7 @@ func registerProtectedRoutes(
 	runReadService RunReadService,
 	replayReadService ReplayReadService,
 	compareReadService CompareReadService,
+	releaseGateService ReleaseGateService,
 	agentDeploymentReadService AgentDeploymentReadService,
 	challengePackReadService ChallengePackReadService,
 	agentBuildService AgentBuildService,
@@ -29,6 +30,8 @@ func registerProtectedRoutes(
 	router.Get("/runs/{runID}/agents", listRunAgentsHandler(logger, runReadService))
 	router.Get("/compare", getRunComparisonHandler(logger, compareReadService))
 	router.Get("/compare/viewer", getRunComparisonViewerHandler(logger))
+	router.Get("/release-gates", listReleaseGatesHandler(logger, releaseGateService))
+	router.Post("/release-gates/evaluate", evaluateReleaseGateHandler(logger, releaseGateService))
 	router.Get("/replays/{runAgentID}/viewer", getRunAgentReplayViewerHandler(logger))
 	router.Get("/replays/{runAgentID}", getRunAgentReplayHandler(logger, replayReadService))
 	router.Get("/scorecards/{runAgentID}", getRunAgentScorecardHandler(logger, replayReadService))
