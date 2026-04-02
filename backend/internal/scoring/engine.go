@@ -310,6 +310,9 @@ func buildEvidence(challengeInputs []EvidenceInput, events []Event) extractedEvi
 		case "model.call.completed":
 			providerKey, _ := stringValue(payload, "provider_key")
 			providerModelID, _ := stringValue(payload, "provider_model_id")
+			if providerModelID == "" {
+				providerModelID, _ = stringValue(payload, "model")
+			}
 			if providerKey != "" || providerModelID != "" {
 				seenModels[providerKey+"\x00"+providerModelID] = modelRef{
 					ProviderKey:     providerKey,
@@ -919,12 +922,36 @@ func computeModelCostUSD(evidence extractedEvidence, spec EvaluationSpec) (*floa
 }
 
 func lookupPricing(models []ModelPricing, providerKey string, providerModelID string) (ModelPricing, bool) {
+	normalizedModelID := normalizePricedModelID(providerModelID)
 	for _, model := range models {
 		if model.ProviderKey == providerKey && model.ProviderModelID == providerModelID {
 			return model, true
 		}
 	}
+	if normalizedModelID != providerModelID {
+		for _, model := range models {
+			if model.ProviderKey == providerKey && model.ProviderModelID == normalizedModelID {
+				return model, true
+			}
+		}
+	}
 	return ModelPricing{}, false
+}
+
+func normalizePricedModelID(modelID string) string {
+	trimmed := strings.TrimSpace(modelID)
+	parts := strings.Split(trimmed, "-")
+	if len(parts) < 4 {
+		return trimmed
+	}
+	last := parts[len(parts)-1]
+	secondLast := parts[len(parts)-2]
+	thirdLast := parts[len(parts)-3]
+	if len(thirdLast) == 4 && len(secondLast) == 2 && len(last) == 2 &&
+		isDigits(thirdLast) && isDigits(secondLast) && isDigits(last) {
+		return strings.Join(parts[:len(parts)-3], "-")
+	}
+	return trimmed
 }
 
 func singleObservedModel(evidence extractedEvidence) (modelRef, bool) {
@@ -1084,6 +1111,18 @@ func anyNumber(value any) (float64, bool) {
 		return parsed, err == nil
 	}
 	return 0, false
+}
+
+func isDigits(value string) bool {
+	if value == "" {
+		return false
+	}
+	for _, r := range value {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func strconvBool(value string) (bool, error) {

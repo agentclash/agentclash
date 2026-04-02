@@ -786,6 +786,23 @@ func TestEvaluateRunAgentLeavesCostUnavailableWhenPricingIsMissing(t *testing.T)
 	}
 }
 
+func TestLookupPricingMatchesVersionedModelIDs(t *testing.T) {
+	pricing, ok := lookupPricing([]ModelPricing{
+		{
+			ProviderKey:                "openai",
+			ProviderModelID:            "gpt-4.1-mini",
+			InputCostPerMillionTokens:  0.4,
+			OutputCostPerMillionTokens: 1.6,
+		},
+	}, "openai", "gpt-4.1-mini-2025-04-14")
+	if !ok {
+		t.Fatal("lookupPricing returned not ok")
+	}
+	if pricing.ProviderModelID != "gpt-4.1-mini" {
+		t.Fatalf("provider_model_id = %q, want gpt-4.1-mini", pricing.ProviderModelID)
+	}
+}
+
 func TestExtractLooseStringPrefersValueThenContentThenTextThenAnswer(t *testing.T) {
 	value, ok := extractLooseString(map[string]any{
 		"answer":  "answer-value",
