@@ -17,6 +17,7 @@ import (
 
 type RunReadRepository interface {
 	GetRunByID(ctx context.Context, id uuid.UUID) (domain.Run, error)
+	GetRunScorecardByRunID(ctx context.Context, runID uuid.UUID) (repository.RunScorecard, error)
 	ListRunAgentsByRunID(ctx context.Context, runID uuid.UUID) ([]domain.RunAgent, error)
 	ListRunsByWorkspaceID(ctx context.Context, workspaceID uuid.UUID, limit int32, offset int32) ([]domain.Run, error)
 	CountRunsByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) (int64, error)
@@ -24,6 +25,7 @@ type RunReadRepository interface {
 
 type RunReadService interface {
 	GetRun(ctx context.Context, caller Caller, runID uuid.UUID) (GetRunResult, error)
+	GetRunRanking(ctx context.Context, caller Caller, runID uuid.UUID, input GetRunRankingInput) (GetRunRankingResult, error)
 	ListRunAgents(ctx context.Context, caller Caller, runID uuid.UUID) (ListRunAgentsResult, error)
 	ListRuns(ctx context.Context, caller Caller, input ListRunsInput) (ListRunsResult, error)
 }

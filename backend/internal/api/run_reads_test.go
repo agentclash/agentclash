@@ -291,14 +291,20 @@ func TestListRunAgentsEndpointReturnsForbidden(t *testing.T) {
 }
 
 type fakeRunReadRepository struct {
-	run              domain.Run
-	runAgents        []domain.RunAgent
-	getRunErr        error
-	listRunAgentsErr error
+	run                domain.Run
+	runScorecard       repository.RunScorecard
+	runAgents          []domain.RunAgent
+	getRunErr          error
+	getRunScorecardErr error
+	listRunAgentsErr   error
 }
 
 func (f *fakeRunReadRepository) GetRunByID(_ context.Context, _ uuid.UUID) (domain.Run, error) {
 	return f.run, f.getRunErr
+}
+
+func (f *fakeRunReadRepository) GetRunScorecardByRunID(_ context.Context, _ uuid.UUID) (repository.RunScorecard, error) {
+	return f.runScorecard, f.getRunScorecardErr
 }
 
 func (f *fakeRunReadRepository) ListRunAgentsByRunID(_ context.Context, _ uuid.UUID) ([]domain.RunAgent, error) {
@@ -316,12 +322,18 @@ func (f *fakeRunReadRepository) CountRunsByWorkspaceID(_ context.Context, _ uuid
 type fakeRunReadService struct {
 	getRunResult        GetRunResult
 	getRunErr           error
+	getRunRankingResult GetRunRankingResult
+	getRunRankingErr    error
 	listRunAgentsResult ListRunAgentsResult
 	listRunAgentsErr    error
 }
 
 func (f *fakeRunReadService) GetRun(_ context.Context, _ Caller, _ uuid.UUID) (GetRunResult, error) {
 	return f.getRunResult, f.getRunErr
+}
+
+func (f *fakeRunReadService) GetRunRanking(_ context.Context, _ Caller, _ uuid.UUID, _ GetRunRankingInput) (GetRunRankingResult, error) {
+	return f.getRunRankingResult, f.getRunRankingErr
 }
 
 func (f *fakeRunReadService) ListRunAgents(_ context.Context, _ Caller, _ uuid.UUID) (ListRunAgentsResult, error) {

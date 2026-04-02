@@ -27,6 +27,7 @@ func registerProtectedRoutes(
 	// because the workspace boundary is owned by the persisted run row rather than the URL shape.
 	router.Post("/runs", createRunHandler(logger, runCreationService))
 	router.Get("/runs/{runID}", getRunHandler(logger, runReadService))
+	router.Get("/runs/{runID}/ranking", getRunRankingHandler(logger, runReadService))
 	router.Get("/runs/{runID}/agents", listRunAgentsHandler(logger, runReadService))
 	router.Get("/compare", getRunComparisonHandler(logger, compareReadService))
 	router.Get("/compare/viewer", getRunComparisonViewerHandler(logger))
