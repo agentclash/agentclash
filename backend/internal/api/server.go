@@ -88,7 +88,7 @@ func newRouter(
 	agentDeploymentReadService AgentDeploymentReadService,
 	challengePackReadService ChallengePackReadService,
 	agentBuildService AgentBuildService,
-	releaseGateServices ...ReleaseGateService,
+	releaseGateService ReleaseGateService,
 ) http.Handler {
 	if hostedRunIngestionService == nil {
 		hostedRunIngestionService = noopHostedRunIngestionService{}
@@ -96,10 +96,6 @@ func newRouter(
 
 	if compareReadService == nil {
 		compareReadService = noopCompareReadService{}
-	}
-	var releaseGateService ReleaseGateService
-	if len(releaseGateServices) > 0 {
-		releaseGateService = releaseGateServices[0]
 	}
 	if releaseGateService == nil {
 		releaseGateService = noopReleaseGateService{}

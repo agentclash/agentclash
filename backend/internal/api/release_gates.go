@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/domain"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/releasegate"
@@ -57,6 +58,8 @@ type ReleaseGateManager struct {
 	authorizer WorkspaceAuthorizer
 	repo       ReleaseGateRepository
 }
+
+var ErrReleaseGateWorkspaceMismatch = errors.New("baseline and candidate runs must belong to the same workspace")
 
 func NewReleaseGateManager(authorizer WorkspaceAuthorizer, repo ReleaseGateRepository) *ReleaseGateManager {
 	return &ReleaseGateManager{authorizer: authorizer, repo: repo}
@@ -159,6 +162,9 @@ func (m *ReleaseGateManager) loadAuthorizedComparison(
 	if err := m.authorizer.AuthorizeWorkspace(ctx, caller, candidateRun.WorkspaceID); err != nil {
 		return domain.Run{}, domain.Run{}, repository.RunComparison{}, err
 	}
+	if baselineRun.WorkspaceID != candidateRun.WorkspaceID {
+		return domain.Run{}, domain.Run{}, repository.RunComparison{}, ErrReleaseGateWorkspaceMismatch
+	}
 
 	comparison, err := m.repo.BuildRunComparison(ctx, repository.BuildRunComparisonParams{
 		BaselineRunID:       baselineRunID,
@@ -193,8 +199,8 @@ type releaseGateResponse struct {
 	Summary           string          `json:"summary"`
 	EvidenceStatus    string          `json:"evidence_status"`
 	EvaluationDetails json.RawMessage `json:"evaluation_details"`
-	GeneratedAt       string          `json:"generated_at"`
-	UpdatedAt         string          `json:"updated_at"`
+	GeneratedAt       time.Time       `json:"generated_at"`
+	UpdatedAt         time.Time       `json:"updated_at"`
 }
 
 type evaluateReleaseGateResponse struct {
@@ -296,8 +302,8 @@ func buildReleaseGateResponse(record repository.RunComparisonReleaseGate) releas
 		Summary:           record.Summary,
 		EvidenceStatus:    record.EvidenceStatus,
 		EvaluationDetails: record.EvaluationDetails,
-		GeneratedAt:       record.CreatedAt.UTC().Format(http.TimeFormat),
-		UpdatedAt:         record.UpdatedAt.UTC().Format(http.TimeFormat),
+		GeneratedAt:       record.CreatedAt.UTC(),
+		UpdatedAt:         record.UpdatedAt.UTC(),
 	}
 }
 
@@ -322,6 +328,8 @@ func writeReleaseGateError(logger *slog.Logger, w http.ResponseWriter, r *http.R
 	switch {
 	case errors.Is(err, repository.ErrRunNotFound):
 		writeError(w, http.StatusNotFound, "run_not_found", "run not found")
+	case errors.Is(err, ErrReleaseGateWorkspaceMismatch):
+		writeError(w, http.StatusBadRequest, "workspace_mismatch", "baseline and candidate runs must belong to the same workspace")
 	case errors.Is(err, ErrForbidden):
 		writeAuthzError(w, err)
 	default:

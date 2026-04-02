@@ -281,6 +281,8 @@ func Evaluate(summary ComparisonSummary, policy Policy) (Evaluation, error) {
 		if worsening != nil {
 			result.WorseningDelta = worsening
 			switch {
+			// Thresholds are inclusive: a worsening delta exactly equal to the policy
+			// threshold is considered a boundary breach and triggers the verdict.
 			case threshold.FailDelta != nil && *worsening >= *threshold.FailDelta:
 				result.Outcome = string(VerdictFail)
 				failReasons = append(failReasons, "threshold_fail_"+dimension)

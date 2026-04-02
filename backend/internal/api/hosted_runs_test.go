@@ -237,6 +237,7 @@ func TestIngestHostedRunEventHandlerReturnsInternalErrorForRepositoryFailure(t *
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
+		noopReleaseGateService{},
 	)
 	router.ServeHTTP(recorder, req)
 

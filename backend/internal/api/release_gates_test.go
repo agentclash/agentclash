@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -73,6 +74,35 @@ func TestReleaseGateManagerEvaluatePersistsVerdict(t *testing.T) {
 	}
 }
 
+func TestReleaseGateManagerRejectsCrossWorkspaceComparisons(t *testing.T) {
+	baselineWorkspaceID := uuid.New()
+	candidateWorkspaceID := uuid.New()
+	baselineRunID := uuid.New()
+	candidateRunID := uuid.New()
+
+	manager := NewReleaseGateManager(NewCallerWorkspaceAuthorizer(), &fakeReleaseGateRepository{
+		runs: map[uuid.UUID]domain.Run{
+			baselineRunID:  {ID: baselineRunID, WorkspaceID: baselineWorkspaceID},
+			candidateRunID: {ID: candidateRunID, WorkspaceID: candidateWorkspaceID},
+		},
+	})
+
+	_, err := manager.EvaluateReleaseGate(context.Background(), Caller{
+		UserID: uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			baselineWorkspaceID:  {WorkspaceID: baselineWorkspaceID, Role: "workspace_member"},
+			candidateWorkspaceID: {WorkspaceID: candidateWorkspaceID, Role: "workspace_member"},
+		},
+	}, EvaluateReleaseGateInput{
+		BaselineRunID:  baselineRunID,
+		CandidateRunID: candidateRunID,
+		Policy:         releasegate.DefaultPolicy(),
+	})
+	if !errors.Is(err, ErrReleaseGateWorkspaceMismatch) {
+		t.Fatalf("error = %v, want %v", err, ErrReleaseGateWorkspaceMismatch)
+	}
+}
+
 func TestEvaluateReleaseGateEndpointReturnsJSONPayload(t *testing.T) {
 	workspaceID := uuid.New()
 	baselineRunID := uuid.New()
@@ -139,6 +169,9 @@ func TestEvaluateReleaseGateEndpointReturnsJSONPayload(t *testing.T) {
 	}
 	if response.ReleaseGate.PolicyKey != "default" {
 		t.Fatalf("policy key = %q, want default", response.ReleaseGate.PolicyKey)
+	}
+	if got := response.ReleaseGate.GeneratedAt.Format(time.RFC3339); got != "2026-04-03T11:00:00Z" {
+		t.Fatalf("generated_at = %q, want 2026-04-03T11:00:00Z", got)
 	}
 }
 

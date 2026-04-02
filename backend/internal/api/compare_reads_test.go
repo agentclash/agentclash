@@ -107,6 +107,7 @@ func TestGetRunComparisonEndpointReturnsJSONPayload(t *testing.T) {
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
+		noopReleaseGateService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {
@@ -147,6 +148,7 @@ func TestCompareViewerEndpointReturnsHTMLShell(t *testing.T) {
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
+		noopReleaseGateService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {

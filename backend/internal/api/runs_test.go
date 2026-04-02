@@ -54,6 +54,7 @@ func TestCreateRunEndpointReturnsCreated(t *testing.T) {
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
+		noopReleaseGateService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusCreated {
@@ -95,6 +96,7 @@ func TestCreateRunEndpointRejectsInvalidPayload(t *testing.T) {
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
+		noopReleaseGateService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusBadRequest {
@@ -139,6 +141,7 @@ func TestCreateRunEndpointReturnsQueuedRunOnWorkflowStartFailure(t *testing.T) {
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
+		noopReleaseGateService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusBadGateway {
@@ -181,6 +184,7 @@ func TestCreateRunEndpointRejectsNonJSONContentType(t *testing.T) {
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
+		noopReleaseGateService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusUnsupportedMediaType {
@@ -214,6 +218,7 @@ func TestCreateRunEndpointRejectsOversizedRequestBody(t *testing.T) {
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
+		noopReleaseGateService{},
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusRequestEntityTooLarge {
