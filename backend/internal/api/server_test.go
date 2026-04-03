@@ -68,6 +68,8 @@ func TestHealthzReturnsJSONSuccessPayload(t *testing.T) {
 		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
+		nil,
+		0,
 		stubRunCreationService{},
 		stubRunReadService{},
 		stubReplayReadService{},
@@ -132,6 +134,8 @@ func TestSessionEndpointRequiresAuthentication(t *testing.T) {
 		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
+		nil,
+		0,
 		stubRunCreationService{},
 		stubRunReadService{},
 		stubReplayReadService{},
@@ -171,6 +175,8 @@ func TestSessionEndpointReturnsCallerIdentity(t *testing.T) {
 		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
+		nil,
+		0,
 		stubRunCreationService{},
 		stubRunReadService{},
 		stubReplayReadService{},
@@ -213,6 +219,8 @@ func TestWorkspaceAuthorizationReturnsForbiddenWithoutMembership(t *testing.T) {
 		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
+		nil,
+		0,
 		stubRunCreationService{},
 		stubRunReadService{},
 		stubReplayReadService{},
@@ -250,6 +258,8 @@ func TestWorkspaceAuthorizationReturnsOKWithMembership(t *testing.T) {
 		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
+		nil,
+		0,
 		stubRunCreationService{},
 		stubRunReadService{},
 		stubReplayReadService{},
@@ -288,6 +298,8 @@ func TestWorkspaceAuthorizationRejectsMalformedWorkspaceID(t *testing.T) {
 		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
+		nil,
+		0,
 		stubRunCreationService{},
 		stubRunReadService{},
 		stubReplayReadService{},
@@ -326,6 +338,8 @@ func TestReplayViewerEndpointReturnsHTMLShell(t *testing.T) {
 		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
+		nil,
+		0,
 		stubRunCreationService{},
 		stubRunReadService{},
 		stubReplayReadService{},
@@ -364,6 +378,8 @@ func TestReplayViewerEndpointRejectsInvalidReplayPagination(t *testing.T) {
 		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
+		nil,
+		0,
 		stubRunCreationService{},
 		stubRunReadService{},
 		stubReplayReadService{},
@@ -393,6 +409,13 @@ func TestLoadConfigFromEnvRejectsExplicitEmptyValues(t *testing.T) {
 	t.Setenv("DATABASE_URL", defaultDatabaseURL)
 	t.Setenv("TEMPORAL_HOST_PORT", defaultTemporalTarget)
 	t.Setenv("TEMPORAL_NAMESPACE", defaultNamespace)
+	t.Setenv("HOSTED_RUN_CALLBACK_SECRET", defaultHostedRunCallbackSecret)
+	t.Setenv("ARTIFACT_STORAGE_BACKEND", defaultArtifactStorageBackend)
+	t.Setenv("ARTIFACT_STORAGE_BUCKET", defaultArtifactStorageBucket)
+	t.Setenv("ARTIFACT_STORAGE_FILESYSTEM_ROOT", os.TempDir())
+	t.Setenv("ARTIFACT_SIGNING_SECRET", defaultHostedRunCallbackSecret)
+	t.Setenv("ARTIFACT_SIGNED_URL_TTL_SECONDS", "300")
+	t.Setenv("ARTIFACT_MAX_UPLOAD_BYTES", "1048576")
 
 	_, err := LoadConfigFromEnv()
 	if err == nil {
@@ -408,6 +431,18 @@ func TestLoadConfigFromEnvUsesDefaultsWhenUnset(t *testing.T) {
 	unsetEnv(t, "DATABASE_URL")
 	unsetEnv(t, "TEMPORAL_HOST_PORT")
 	unsetEnv(t, "TEMPORAL_NAMESPACE")
+	unsetEnv(t, "HOSTED_RUN_CALLBACK_SECRET")
+	unsetEnv(t, "ARTIFACT_STORAGE_BACKEND")
+	unsetEnv(t, "ARTIFACT_STORAGE_BUCKET")
+	unsetEnv(t, "ARTIFACT_STORAGE_FILESYSTEM_ROOT")
+	unsetEnv(t, "ARTIFACT_STORAGE_S3_REGION")
+	unsetEnv(t, "ARTIFACT_STORAGE_S3_ENDPOINT")
+	unsetEnv(t, "ARTIFACT_STORAGE_S3_ACCESS_KEY_ID")
+	unsetEnv(t, "ARTIFACT_STORAGE_S3_SECRET_ACCESS_KEY")
+	unsetEnv(t, "ARTIFACT_STORAGE_S3_FORCE_PATH_STYLE")
+	unsetEnv(t, "ARTIFACT_SIGNING_SECRET")
+	unsetEnv(t, "ARTIFACT_SIGNED_URL_TTL_SECONDS")
+	unsetEnv(t, "ARTIFACT_MAX_UPLOAD_BYTES")
 
 	cfg, err := LoadConfigFromEnv()
 	if err != nil {
@@ -424,6 +459,21 @@ func TestLoadConfigFromEnvUsesDefaultsWhenUnset(t *testing.T) {
 	}
 	if cfg.TemporalNamespace != defaultNamespace {
 		t.Fatalf("TemporalNamespace = %q, want %q", cfg.TemporalNamespace, defaultNamespace)
+	}
+	if cfg.ArtifactStorageBackend != defaultArtifactStorageBackend {
+		t.Fatalf("ArtifactStorageBackend = %q, want %q", cfg.ArtifactStorageBackend, defaultArtifactStorageBackend)
+	}
+	if cfg.ArtifactStorageBucket != defaultArtifactStorageBucket {
+		t.Fatalf("ArtifactStorageBucket = %q, want %q", cfg.ArtifactStorageBucket, defaultArtifactStorageBucket)
+	}
+	if cfg.ArtifactSignedURLTTL != defaultArtifactSignedURLTTL {
+		t.Fatalf("ArtifactSignedURLTTL = %s, want %s", cfg.ArtifactSignedURLTTL, defaultArtifactSignedURLTTL)
+	}
+	if cfg.ArtifactMaxUploadBytes != defaultArtifactMaxUploadBytes {
+		t.Fatalf("ArtifactMaxUploadBytes = %d, want %d", cfg.ArtifactMaxUploadBytes, defaultArtifactMaxUploadBytes)
+	}
+	if cfg.ArtifactFilesystemRoot == "" {
+		t.Fatalf("ArtifactFilesystemRoot should not be empty")
 	}
 }
 

@@ -217,6 +217,8 @@ func TestIngestHostedRunEventHandlerReturnsInternalErrorForRepositoryFailure(t *
 		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
+		nil,
+		0,
 		stubRunCreationService{},
 		stubRunReadService{},
 		stubReplayReadService{},

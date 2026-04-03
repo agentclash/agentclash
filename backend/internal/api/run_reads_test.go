@@ -111,6 +111,8 @@ func TestGetRunEndpointReturnsRun(t *testing.T) {
 		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
+		nil,
+		0,
 		stubRunCreationService{},
 		&fakeRunReadService{
 			getRunResult: GetRunResult{
@@ -165,6 +167,8 @@ func TestGetRunEndpointReturnsNotFound(t *testing.T) {
 		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
+		nil,
+		0,
 		stubRunCreationService{},
 		&fakeRunReadService{getRunErr: repository.ErrRunNotFound},
 		&fakeReplayReadService{},
@@ -192,6 +196,8 @@ func TestGetRunEndpointRejectsMalformedRunID(t *testing.T) {
 		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
+		nil,
+		0,
 		stubRunCreationService{},
 		&fakeRunReadService{},
 		&fakeReplayReadService{},
@@ -223,6 +229,8 @@ func TestListRunAgentsEndpointReturnsOrderedItems(t *testing.T) {
 		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
+		nil,
+		0,
 		stubRunCreationService{},
 		&fakeRunReadService{
 			listRunAgentsResult: ListRunAgentsResult{
@@ -274,6 +282,8 @@ func TestListRunAgentsEndpointReturnsForbidden(t *testing.T) {
 		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
+		nil,
+		0,
 		stubRunCreationService{},
 		&fakeRunReadService{listRunAgentsErr: ErrForbidden},
 		&fakeReplayReadService{},

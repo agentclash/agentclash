@@ -444,6 +444,8 @@ func TestGetRunRankingEndpointReturnsSortedPayload(t *testing.T) {
 		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
+		nil,
+		0,
 		stubRunCreationService{},
 		&fakeRunReadService{
 			getRunRankingResult: GetRunRankingResult{
@@ -504,6 +506,8 @@ func TestGetRunRankingEndpointRejectsInvalidSortField(t *testing.T) {
 		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
+		nil,
+		0,
 		stubRunCreationService{},
 		&fakeRunReadService{getRunRankingErr: ErrInvalidRunRankingSort},
 		&fakeReplayReadService{},
@@ -534,6 +538,8 @@ func TestGetRunRankingEndpointReturnsCompositeSortPayload(t *testing.T) {
 		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
+		nil,
+		0,
 		stubRunCreationService{},
 		&fakeRunReadService{
 			getRunRankingResult: GetRunRankingResult{
@@ -593,6 +599,8 @@ func TestGetRunRankingEndpointReturnsAcceptedWhenPending(t *testing.T) {
 		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
+		nil,
+		0,
 		stubRunCreationService{},
 		&fakeRunReadService{
 			getRunRankingResult: GetRunRankingResult{
@@ -627,6 +635,8 @@ func TestGetRunRankingEndpointReturnsConflictWhenErrored(t *testing.T) {
 		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
+		nil,
+		0,
 		stubRunCreationService{},
 		&fakeRunReadService{
 			getRunRankingResult: GetRunRankingResult{

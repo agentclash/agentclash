@@ -5,8 +5,10 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 )
 
 type Server struct {
@@ -19,6 +21,7 @@ func NewServer(
 	logger *slog.Logger,
 	authenticator Authenticator,
 	authorizer WorkspaceAuthorizer,
+	artifactService ArtifactService,
 	runCreationService RunCreationService,
 	runReadService RunReadService,
 	replayReadService ReplayReadService,
@@ -29,7 +32,7 @@ func NewServer(
 	challengePackReadService ChallengePackReadService,
 	agentBuildService AgentBuildService,
 ) *Server {
-	router := newRouter(logger, authenticator, authorizer, runCreationService, runReadService, replayReadService, hostedRunIngestionService, compareReadService, agentDeploymentReadService, challengePackReadService, agentBuildService, releaseGateService)
+	router := newRouter(logger, authenticator, authorizer, artifactService, cfg.ArtifactMaxUploadBytes, runCreationService, runReadService, replayReadService, hostedRunIngestionService, compareReadService, agentDeploymentReadService, challengePackReadService, agentBuildService, releaseGateService)
 
 	return &Server{
 		config: cfg,
@@ -80,6 +83,8 @@ func newRouter(
 	logger *slog.Logger,
 	authenticator Authenticator,
 	authorizer WorkspaceAuthorizer,
+	artifactService ArtifactService,
+	artifactMaxUploadBytes int64,
 	runCreationService RunCreationService,
 	runReadService RunReadService,
 	replayReadService ReplayReadService,
@@ -100,16 +105,20 @@ func newRouter(
 	if releaseGateService == nil {
 		releaseGateService = noopReleaseGateService{}
 	}
+	if artifactService == nil {
+		artifactService = noopArtifactService{}
+	}
 
 	router := chi.NewRouter()
 	router.Use(recoverer(logger))
 	router.Use(requestLogger(logger))
 	router.Use(corsMiddleware)
 	router.Get("/healthz", healthzHandler)
+	registerPublicRoutes(router, logger, artifactService)
 	registerHostedIntegrationRoutes(router, logger, hostedRunIngestionService)
 	router.Route("/v1", func(r chi.Router) {
 		r.Use(authenticateRequest(logger, authenticator))
-		registerProtectedRoutes(r, logger, authorizer, runCreationService, runReadService, replayReadService, compareReadService, releaseGateService, agentDeploymentReadService, challengePackReadService, agentBuildService)
+		registerProtectedRoutes(r, logger, authorizer, artifactService, artifactMaxUploadBytes, runCreationService, runReadService, replayReadService, compareReadService, releaseGateService, agentDeploymentReadService, challengePackReadService, agentBuildService)
 	})
 
 	return router
@@ -129,4 +138,18 @@ func (noopReleaseGateService) EvaluateReleaseGate(_ context.Context, _ Caller, _
 
 func (noopReleaseGateService) ListReleaseGates(_ context.Context, _ Caller, _ ListReleaseGatesInput) (ListReleaseGatesResult, error) {
 	return ListReleaseGatesResult{}, errors.New("release gate service is not configured")
+}
+
+type noopArtifactService struct{}
+
+func (noopArtifactService) UploadArtifact(_ context.Context, _ Caller, _ UploadArtifactInput) (UploadArtifactResult, error) {
+	return UploadArtifactResult{}, errors.New("artifact service is not configured")
+}
+
+func (noopArtifactService) GetArtifactDownload(_ context.Context, _ Caller, _ uuid.UUID, _ string) (GetArtifactDownloadResult, error) {
+	return GetArtifactDownloadResult{}, errors.New("artifact service is not configured")
+}
+
+func (noopArtifactService) GetArtifactContent(_ context.Context, _ uuid.UUID, _ time.Time, _ string) (GetArtifactContentResult, error) {
+	return GetArtifactContentResult{}, errors.New("artifact service is not configured")
 }
