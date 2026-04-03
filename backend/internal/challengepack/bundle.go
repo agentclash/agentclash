@@ -11,10 +11,10 @@ import (
 )
 
 type Bundle struct {
-	Pack       PackMetadata           `yaml:"pack" json:"pack"`
-	Version    VersionMetadata        `yaml:"version" json:"version"`
-	Challenges []ChallengeDefinition  `yaml:"challenges" json:"challenges"`
-	InputSets  []InputSetDefinition   `yaml:"input_sets" json:"input_sets"`
+	Pack       PackMetadata          `yaml:"pack" json:"pack"`
+	Version    VersionMetadata       `yaml:"version" json:"version"`
+	Challenges []ChallengeDefinition `yaml:"challenges" json:"challenges"`
+	InputSets  []InputSetDefinition  `yaml:"input_sets" json:"input_sets"`
 }
 
 type PackMetadata struct {
@@ -25,21 +25,21 @@ type PackMetadata struct {
 }
 
 type VersionMetadata struct {
-	Number         int32                   `yaml:"number" json:"number"`
-	ToolPolicy     map[string]any          `yaml:"tool_policy,omitempty" json:"tool_policy,omitempty"`
-	Filesystem     map[string]any          `yaml:"filesystem,omitempty" json:"filesystem,omitempty"`
-	EvaluationSpec scoring.EvaluationSpec  `yaml:"evaluation_spec" json:"evaluation_spec"`
-	Assets         []AssetReference        `yaml:"assets,omitempty" json:"assets,omitempty"`
+	Number         int32                  `yaml:"number" json:"number"`
+	ToolPolicy     map[string]any         `yaml:"tool_policy,omitempty" json:"tool_policy,omitempty"`
+	Filesystem     map[string]any         `yaml:"filesystem,omitempty" json:"filesystem,omitempty"`
+	EvaluationSpec scoring.EvaluationSpec `yaml:"evaluation_spec" json:"evaluation_spec"`
+	Assets         []AssetReference       `yaml:"assets,omitempty" json:"assets,omitempty"`
 }
 
 type ChallengeDefinition struct {
-	Key         string           `yaml:"key" json:"key"`
-	Title       string           `yaml:"title" json:"title"`
-	Category    string           `yaml:"category" json:"category"`
-	Difficulty  string           `yaml:"difficulty" json:"difficulty"`
-	Instructions string          `yaml:"instructions,omitempty" json:"instructions,omitempty"`
-	Definition  map[string]any   `yaml:"definition,omitempty" json:"definition,omitempty"`
-	Assets      []AssetReference `yaml:"assets,omitempty" json:"assets,omitempty"`
+	Key          string           `yaml:"key" json:"key"`
+	Title        string           `yaml:"title" json:"title"`
+	Category     string           `yaml:"category" json:"category"`
+	Difficulty   string           `yaml:"difficulty" json:"difficulty"`
+	Instructions string           `yaml:"instructions,omitempty" json:"instructions,omitempty"`
+	Definition   map[string]any   `yaml:"definition,omitempty" json:"definition,omitempty"`
+	Assets       []AssetReference `yaml:"assets,omitempty" json:"assets,omitempty"`
 }
 
 type InputSetDefinition struct {
@@ -119,26 +119,21 @@ func ParseYAML(data []byte) (Bundle, error) {
 }
 
 func ManifestJSON(bundle Bundle) (json.RawMessage, error) {
-	type manifestEnvelope struct {
-		SchemaVersion  int                 `json:"schema_version"`
-		ToolPolicy     map[string]any      `json:"tool_policy,omitempty"`
-		Filesystem     map[string]any      `json:"filesystem,omitempty"`
-		EvaluationSpec scoring.EvaluationSpec `json:"evaluation_spec"`
-		Assets         []AssetReference    `json:"assets,omitempty"`
-	}
-
 	normalized := bundle
 	normalizeBundle(&normalized)
 	if err := ValidateBundle(normalized); err != nil {
 		return nil, err
 	}
 
-	encoded, err := json.Marshal(manifestEnvelope{
-		SchemaVersion:  1,
-		ToolPolicy:     normalized.Version.ToolPolicy,
-		Filesystem:     normalized.Version.Filesystem,
-		EvaluationSpec: normalized.Version.EvaluationSpec,
-		Assets:         normalized.Version.Assets,
+	encoded, err := json.Marshal(map[string]any{
+		"schema_version":  1,
+		"pack":            normalized.Pack,
+		"version":         map[string]any{"number": normalized.Version.Number, "assets": normalized.Version.Assets},
+		"tool_policy":     normalized.Version.ToolPolicy,
+		"filesystem":      normalized.Version.Filesystem,
+		"evaluation_spec": normalized.Version.EvaluationSpec,
+		"challenges":      normalized.Challenges,
+		"input_sets":      normalized.InputSets,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("marshal challenge-pack manifest: %w", err)

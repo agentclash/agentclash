@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/challengepack"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/domain"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
 	repositorysqlc "github.com/Atharva-Kanherkar/agentclash/backend/internal/repository/sqlc"
@@ -45,6 +46,144 @@ func TestRepositoryGetRunByID(t *testing.T) {
 	}
 }
 
+func TestRepositoryPublishChallengePackBundle(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	published, err := repo.PublishChallengePackBundle(ctx, repository.PublishChallengePackBundleParams{
+		WorkspaceID: fixture.workspaceID,
+		Bundle: challengepack.Bundle{
+			Pack: challengepack.PackMetadata{
+				Slug:        "customer-support-pack",
+				Name:        "Customer Support Pack",
+				Family:      "support",
+				Description: stringPtr("Workspace-scoped support benchmark"),
+			},
+			Version: challengepack.VersionMetadata{
+				Number: 1,
+				ToolPolicy: map[string]any{
+					"allowed_tool_kinds": []string{"file"},
+				},
+				EvaluationSpec: scoring.EvaluationSpec{
+					Name:          "support-pack-v1",
+					VersionNumber: 1,
+					JudgeMode:     scoring.JudgeModeDeterministic,
+					Validators: []scoring.ValidatorDeclaration{
+						{Key: "exact", Type: scoring.ValidatorTypeExactMatch, Target: "final_output", ExpectedFrom: "challenge_input"},
+					},
+					Scorecard: scoring.ScorecardDeclaration{
+						Dimensions: []scoring.ScorecardDimension{scoring.ScorecardDimensionCorrectness},
+					},
+				},
+				Assets: []challengepack.AssetReference{
+					{Key: "workspace-archive", Path: "assets/workspace.zip"},
+				},
+			},
+			Challenges: []challengepack.ChallengeDefinition{
+				{
+					Key:          "ticket-1",
+					Title:        "Ticket One",
+					Category:     "support",
+					Difficulty:   "easy",
+					Instructions: "Handle the customer issue",
+				},
+			},
+			InputSets: []challengepack.InputSetDefinition{
+				{
+					Key:  "default",
+					Name: "Default",
+					Items: []challengepack.InputItemDefinition{
+						{
+							ChallengeKey: "ticket-1",
+							ItemKey:      "prompt.txt",
+							Payload: map[string]any{
+								"content": "Customer needs help",
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("PublishChallengePackBundle returned error: %v", err)
+	}
+
+	var workspaceID *uuid.UUID
+	var manifest json.RawMessage
+	if err := db.QueryRow(ctx, `
+		SELECT cp.workspace_id, cpv.manifest
+		FROM challenge_packs cp
+		JOIN challenge_pack_versions cpv ON cpv.challenge_pack_id = cp.id
+		WHERE cp.id = $1 AND cpv.id = $2
+	`, published.ChallengePackID, published.ChallengePackVersionID).Scan(&workspaceID, &manifest); err != nil {
+		t.Fatalf("load published challenge pack returned error: %v", err)
+	}
+	if workspaceID == nil || *workspaceID != fixture.workspaceID {
+		t.Fatalf("workspace_id = %v, want %s", workspaceID, fixture.workspaceID)
+	}
+
+	var manifestDoc map[string]any
+	if err := json.Unmarshal(manifest, &manifestDoc); err != nil {
+		t.Fatalf("unmarshal manifest: %v", err)
+	}
+	if manifestDoc["schema_version"] != float64(1) {
+		t.Fatalf("schema_version = %#v, want 1", manifestDoc["schema_version"])
+	}
+
+	runnableVersion, err := repo.GetRunnableChallengePackVersionByID(ctx, published.ChallengePackVersionID)
+	if err != nil {
+		t.Fatalf("GetRunnableChallengePackVersionByID returned error: %v", err)
+	}
+	if runnableVersion.WorkspaceID == nil || *runnableVersion.WorkspaceID != fixture.workspaceID {
+		t.Fatalf("runnable workspace_id = %v, want %s", runnableVersion.WorkspaceID, fixture.workspaceID)
+	}
+}
+
+func TestRepositoryPublishChallengePackBundleRejectsDuplicateVersion(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	params := repository.PublishChallengePackBundleParams{
+		WorkspaceID: fixture.workspaceID,
+		Bundle: challengepack.Bundle{
+			Pack: challengepack.PackMetadata{
+				Slug:   "customer-support-pack",
+				Name:   "Customer Support Pack",
+				Family: "support",
+			},
+			Version: challengepack.VersionMetadata{
+				Number: 1,
+				EvaluationSpec: scoring.EvaluationSpec{
+					Name:          "support-pack-v1",
+					VersionNumber: 1,
+					JudgeMode:     scoring.JudgeModeDeterministic,
+					Validators: []scoring.ValidatorDeclaration{
+						{Key: "exact", Type: scoring.ValidatorTypeExactMatch, Target: "final_output", ExpectedFrom: "challenge_input"},
+					},
+					Scorecard: scoring.ScorecardDeclaration{
+						Dimensions: []scoring.ScorecardDimension{scoring.ScorecardDimensionCorrectness},
+					},
+				},
+			},
+			Challenges: []challengepack.ChallengeDefinition{
+				{Key: "ticket-1", Title: "Ticket One", Category: "support", Difficulty: "easy"},
+			},
+		},
+	}
+
+	if _, err := repo.PublishChallengePackBundle(ctx, params); err != nil {
+		t.Fatalf("first PublishChallengePackBundle returned error: %v", err)
+	}
+	if _, err := repo.PublishChallengePackBundle(ctx, params); !errors.Is(err, repository.ErrChallengePackVersionExists) {
+		t.Fatalf("second PublishChallengePackBundle error = %v, want ErrChallengePackVersionExists", err)
+	}
+}
+
 func TestRepositoryListRunAgentsByRunID(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)
@@ -71,6 +210,10 @@ func TestRepositoryListRunAgentsByRunID(t *testing.T) {
 	if runAgents[1].LaneIndex != 1 {
 		t.Fatalf("second lane index = %d, want 1", runAgents[1].LaneIndex)
 	}
+}
+
+func stringPtr(value string) *string {
+	return &value
 }
 
 func TestRepositoryGetRunAgentExecutionContextByIDNative(t *testing.T) {

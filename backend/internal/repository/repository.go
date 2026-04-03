@@ -72,6 +72,7 @@ type RecordRunEventParams struct {
 type RunnableChallengePackVersion struct {
 	ID              uuid.UUID
 	ChallengePackID uuid.UUID
+	WorkspaceID     *uuid.UUID
 }
 
 type ChallengeInputSet struct {
@@ -219,18 +220,26 @@ func (r *Repository) GetRunByID(ctx context.Context, id uuid.UUID) (domain.Run, 
 }
 
 func (r *Repository) GetRunnableChallengePackVersionByID(ctx context.Context, id uuid.UUID) (RunnableChallengePackVersion, error) {
-	row, err := r.queries.GetRunnableChallengePackVersionByID(ctx, repositorysqlc.GetRunnableChallengePackVersionByIDParams{ID: id})
-	if err != nil {
+	row := r.db.QueryRow(ctx, `
+		SELECT cpv.id, cpv.challenge_pack_id, cp.workspace_id
+		FROM challenge_pack_versions cpv
+		JOIN challenge_packs cp ON cp.id = cpv.challenge_pack_id
+		WHERE cpv.id = $1
+		  AND cpv.lifecycle_status = 'runnable'
+		  AND cpv.archived_at IS NULL
+		  AND cp.archived_at IS NULL
+		LIMIT 1
+	`, id)
+
+	var version RunnableChallengePackVersion
+	if err := row.Scan(&version.ID, &version.ChallengePackID, &version.WorkspaceID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return RunnableChallengePackVersion{}, ErrChallengePackVersionNotFound
 		}
 		return RunnableChallengePackVersion{}, fmt.Errorf("get runnable challenge pack version by id: %w", err)
 	}
 
-	return RunnableChallengePackVersion{
-		ID:              row.ID,
-		ChallengePackID: row.ChallengePackID,
-	}, nil
+	return version, nil
 }
 
 func (r *Repository) GetChallengeInputSetByID(ctx context.Context, id uuid.UUID) (ChallengeInputSet, error) {

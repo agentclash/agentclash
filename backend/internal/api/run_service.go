@@ -64,7 +64,8 @@ func (m *RunCreationManager) CreateRun(ctx context.Context, caller Caller, input
 		seenDeploymentIDs[deploymentID] = struct{}{}
 	}
 
-	if _, err := m.repo.GetRunnableChallengePackVersionByID(ctx, input.ChallengePackVersionID); err != nil {
+	challengePackVersion, err := m.repo.GetRunnableChallengePackVersionByID(ctx, input.ChallengePackVersionID)
+	if err != nil {
 		if err == repository.ErrChallengePackVersionNotFound {
 			return CreateRunResult{}, RunCreationValidationError{
 				Code:    "invalid_challenge_pack_version_id",
@@ -72,6 +73,12 @@ func (m *RunCreationManager) CreateRun(ctx context.Context, caller Caller, input
 			}
 		}
 		return CreateRunResult{}, fmt.Errorf("load runnable challenge pack version: %w", err)
+	}
+	if challengePackVersion.WorkspaceID != nil && *challengePackVersion.WorkspaceID != input.WorkspaceID {
+		return CreateRunResult{}, RunCreationValidationError{
+			Code:    "invalid_challenge_pack_version_id",
+			Message: "challenge_pack_version_id must be visible to the selected workspace",
+		}
 	}
 
 	if input.ChallengeInputSetID != nil {
