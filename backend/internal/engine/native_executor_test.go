@@ -545,6 +545,42 @@ func TestNativeExecutorJoinsDestroyFailureWhenExecutionAlreadyFailed(t *testing.
 	}
 }
 
+func TestNativeExecutorFallsBackWhenClientDoesNotSupportStreaming(t *testing.T) {
+	session := sandbox.NewFakeSession("sandbox-non-streaming")
+	client := &scriptedProviderClient{
+		t: t,
+		steps: []providerStep{
+			{
+				response: provider.Response{
+					ProviderKey:     "openai",
+					ProviderModelID: "gpt-4.1",
+					FinishReason:    "tool_calls",
+					ToolCalls: []provider.ToolCall{
+						{
+							ID:        "call-submit",
+							Name:      submitToolName,
+							Arguments: []byte(`{"answer":"done"}`),
+						},
+					},
+				},
+			},
+		},
+	}
+	observer := &countingObserver{}
+
+	executor := NewNativeExecutor(client, &sandbox.FakeProvider{NextSession: session}, observer)
+	result, err := executor.Execute(context.Background(), nativeExecutionContext())
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if result.StopReason != StopReasonCompleted {
+		t.Fatalf("stop reason = %s, want completed", result.StopReason)
+	}
+	if observer.providerOutputCount != 0 {
+		t.Fatalf("provider output calls = %d, want 0 for non-streaming client", observer.providerOutputCount)
+	}
+}
+
 func TestSandboxTTLDefaultsWhenRunTimeoutIsUnset(t *testing.T) {
 	executionContext := nativeExecutionContext()
 	executionContext.Deployment.RuntimeProfile.RunTimeoutSeconds = 0
@@ -615,6 +651,26 @@ func (runFailureFailingObserver) OnRunComplete(context.Context, Result) error { 
 func (runFailureFailingObserver) OnRunFailure(context.Context, error) error {
 	return errors.New("observer failure write failed")
 }
+
+type countingObserver struct {
+	providerOutputCount int
+}
+
+func (o *countingObserver) OnStepStart(context.Context, int) error                 { return nil }
+func (o *countingObserver) OnProviderCall(context.Context, provider.Request) error { return nil }
+func (o *countingObserver) OnProviderOutput(context.Context, provider.Request, provider.StreamDelta) error {
+	o.providerOutputCount++
+	return nil
+}
+func (o *countingObserver) OnProviderResponse(context.Context, provider.Response) error {
+	return nil
+}
+func (o *countingObserver) OnToolExecution(context.Context, provider.ToolCall, provider.ToolResult) error {
+	return nil
+}
+func (o *countingObserver) OnStepEnd(context.Context, int) error        { return nil }
+func (o *countingObserver) OnRunComplete(context.Context, Result) error { return nil }
+func (o *countingObserver) OnRunFailure(context.Context, error) error   { return nil }
 
 type providerStep struct {
 	validate       func(t *testing.T, request provider.Request)

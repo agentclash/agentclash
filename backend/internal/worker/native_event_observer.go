@@ -85,21 +85,17 @@ func (o *NativeRunEventObserver) OnProviderCall(ctx context.Context, request pro
 }
 
 func (o *NativeRunEventObserver) OnProviderOutput(ctx context.Context, request provider.Request, delta provider.StreamDelta) error {
-	if err := o.ensureRunStarted(ctx); err != nil {
-		return err
-	}
 	if !isMeaningfulProviderDelta(delta) {
 		return nil
 	}
 
-	o.mu.Lock()
-	if o.outputRecorded {
-		o.mu.Unlock()
+	stepIndex, shouldRecord := o.claimProviderOutput()
+	if !shouldRecord {
 		return nil
 	}
-	o.outputRecorded = true
-	stepIndex := o.stepIndex
-	o.mu.Unlock()
+	if err := o.ensureRunStarted(ctx); err != nil {
+		return err
+	}
 
 	payload := map[string]any{
 		"provider_key":      request.ProviderKey,
@@ -285,9 +281,22 @@ func isMeaningfulProviderDelta(delta provider.StreamDelta) bool {
 		return delta.ToolCall.IDFragment != "" ||
 			delta.ToolCall.NameFragment != "" ||
 			delta.ToolCall.ArgumentsFragment != ""
+	case provider.StreamDeltaKindTerminal:
+		return false
 	default:
 		return false
 	}
+}
+
+func (o *NativeRunEventObserver) claimProviderOutput() (int, bool) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+
+	if o.outputRecorded {
+		return 0, false
+	}
+	o.outputRecorded = true
+	return o.stepIndex, true
 }
 
 func (o *NativeRunEventObserver) nextEventID(eventType runevents.Type) string {
