@@ -30,9 +30,10 @@ func NewServer(
 	hostedRunIngestionService HostedRunIngestionService,
 	agentDeploymentReadService AgentDeploymentReadService,
 	challengePackReadService ChallengePackReadService,
+	challengePackAuthoringService ChallengePackAuthoringService,
 	agentBuildService AgentBuildService,
 ) *Server {
-	router := newRouter(logger, authenticator, authorizer, artifactService, cfg.ArtifactMaxUploadBytes, runCreationService, runReadService, replayReadService, hostedRunIngestionService, compareReadService, agentDeploymentReadService, challengePackReadService, agentBuildService, releaseGateService)
+	router := newRouter(logger, authenticator, authorizer, artifactService, cfg.ArtifactMaxUploadBytes, runCreationService, runReadService, replayReadService, hostedRunIngestionService, compareReadService, agentDeploymentReadService, challengePackReadService, agentBuildService, releaseGateService, challengePackAuthoringService)
 
 	return &Server{
 		config: cfg,
@@ -94,7 +95,13 @@ func newRouter(
 	challengePackReadService ChallengePackReadService,
 	agentBuildService AgentBuildService,
 	releaseGateService ReleaseGateService,
+	extra ...ChallengePackAuthoringService,
 ) http.Handler {
+	var challengePackAuthoringService ChallengePackAuthoringService
+	if len(extra) > 0 {
+		challengePackAuthoringService = extra[0]
+	}
+
 	if hostedRunIngestionService == nil {
 		hostedRunIngestionService = noopHostedRunIngestionService{}
 	}
@@ -108,6 +115,9 @@ func newRouter(
 	if artifactService == nil {
 		artifactService = noopArtifactService{}
 	}
+	if challengePackAuthoringService == nil {
+		challengePackAuthoringService = noopChallengePackAuthoringService{}
+	}
 
 	router := chi.NewRouter()
 	router.Use(recoverer(logger))
@@ -118,7 +128,7 @@ func newRouter(
 	registerHostedIntegrationRoutes(router, logger, hostedRunIngestionService)
 	router.Route("/v1", func(r chi.Router) {
 		r.Use(authenticateRequest(logger, authenticator))
-		registerProtectedRoutes(r, logger, authorizer, artifactService, artifactMaxUploadBytes, runCreationService, runReadService, replayReadService, compareReadService, releaseGateService, agentDeploymentReadService, challengePackReadService, agentBuildService)
+		registerProtectedRoutes(r, logger, authorizer, artifactService, artifactMaxUploadBytes, runCreationService, runReadService, replayReadService, compareReadService, releaseGateService, agentDeploymentReadService, challengePackReadService, challengePackAuthoringService, agentBuildService)
 	})
 
 	return router
@@ -152,4 +162,14 @@ func (noopArtifactService) GetArtifactDownload(_ context.Context, _ Caller, _ uu
 
 func (noopArtifactService) GetArtifactContent(_ context.Context, _ uuid.UUID, _ time.Time, _ string) (GetArtifactContentResult, error) {
 	return GetArtifactContentResult{}, errors.New("artifact service is not configured")
+}
+
+type noopChallengePackAuthoringService struct{}
+
+func (noopChallengePackAuthoringService) ValidateBundle(_ context.Context, _ []byte) (ValidateChallengePackResponse, error) {
+	return ValidateChallengePackResponse{}, errors.New("challenge pack authoring service is not configured")
+}
+
+func (noopChallengePackAuthoringService) PublishBundle(_ context.Context, _ uuid.UUID, _ []byte) (PublishChallengePackResponse, error) {
+	return PublishChallengePackResponse{}, errors.New("challenge pack authoring service is not configured")
 }

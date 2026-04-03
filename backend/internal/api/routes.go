@@ -21,6 +21,7 @@ func registerProtectedRoutes(
 	releaseGateService ReleaseGateService,
 	agentDeploymentReadService AgentDeploymentReadService,
 	challengePackReadService ChallengePackReadService,
+	challengePackAuthoringService ChallengePackAuthoringService,
 	agentBuildService AgentBuildService,
 ) {
 	router.Get("/auth/session", sessionHandler)
@@ -47,6 +48,10 @@ func registerProtectedRoutes(
 		Get("/workspaces/{workspaceID}/agent-deployments", listAgentDeploymentsHandler(logger, agentDeploymentReadService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Get("/workspaces/{workspaceID}/challenge-packs", listChallengePacksHandler(logger, challengePackReadService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Post("/workspaces/{workspaceID}/challenge-packs", publishChallengePackHandler(logger, challengePackAuthoringService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Post("/workspaces/{workspaceID}/challenge-packs/validate", validateChallengePackHandler(logger, challengePackAuthoringService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Post("/workspaces/{workspaceID}/artifacts", uploadArtifactHandler(logger, artifactService, artifactMaxUploadBytes))
 

@@ -17,6 +17,16 @@ func (stubHostedRunIngestionService) IngestEvent(_ context.Context, _ uuid.UUID,
 
 type stubAgentBuildService struct{}
 
+type stubChallengePackAuthoringService struct{}
+
+func (stubChallengePackAuthoringService) ValidateBundle(_ context.Context, _ []byte) (ValidateChallengePackResponse, error) {
+	return ValidateChallengePackResponse{}, errors.New("not implemented")
+}
+
+func (stubChallengePackAuthoringService) PublishBundle(_ context.Context, _ uuid.UUID, _ []byte) (PublishChallengePackResponse, error) {
+	return PublishChallengePackResponse{}, errors.New("not implemented")
+}
+
 func (stubAgentBuildService) CreateBuild(_ context.Context, _ Caller, _ uuid.UUID, _ CreateAgentBuildInput) (repository.AgentBuild, error) {
 	return repository.AgentBuild{}, errors.New("not implemented")
 }
