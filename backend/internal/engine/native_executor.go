@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/challengepack"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/provider"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/sandbox"
@@ -984,7 +985,7 @@ func stageSandboxInputs(ctx context.Context, session sandbox.Session, executionC
 		if err := session.UploadFile(ctx, "/workspace/agentclash/challenge-input-set.json", inputSetPayload); err != nil {
 			return NewFailure(StopReasonSandboxError, "upload challenge input set", err)
 		}
-		if err := stageWorkspaceFixtureFiles(ctx, session, executionContext.ChallengeInputSet.Items); err != nil {
+		if err := stageWorkspaceFixtureFiles(ctx, session, executionContext.ChallengeInputSet.Cases); err != nil {
 			return err
 		}
 	}
@@ -996,9 +997,9 @@ type workspaceFixtureFile struct {
 	Content string `json:"content"`
 }
 
-func stageWorkspaceFixtureFiles(ctx context.Context, session sandbox.Session, items []repository.ChallengeInputItemExecutionContext) error {
-	for _, item := range items {
-		files, err := extractWorkspaceFixtureFiles(item.Payload)
+func stageWorkspaceFixtureFiles(ctx context.Context, session sandbox.Session, cases []repository.ChallengeCaseExecutionContext) error {
+	for _, item := range cases {
+		files, err := extractWorkspaceFixtureFiles(item)
 		if err != nil {
 			return NewFailure(StopReasonSandboxError, "decode workspace fixture files", err)
 		}
@@ -1014,17 +1015,36 @@ func stageWorkspaceFixtureFiles(ctx context.Context, session sandbox.Session, it
 	return nil
 }
 
-func extractWorkspaceFixtureFiles(payload json.RawMessage) ([]workspaceFixtureFile, error) {
-	if len(bytes.TrimSpace(payload)) == 0 {
-		return nil, nil
+func extractWorkspaceFixtureFiles(item repository.ChallengeCaseExecutionContext) ([]workspaceFixtureFile, error) {
+	files := make([]workspaceFixtureFile, 0)
+	if len(bytes.TrimSpace(item.Payload)) > 0 {
+		var decoded struct {
+			WorkspaceFiles []workspaceFixtureFile `json:"workspace_files"`
+		}
+		if err := json.Unmarshal(item.Payload, &decoded); err != nil {
+			return nil, err
+		}
+		files = append(files, decoded.WorkspaceFiles...)
 	}
-	var decoded struct {
-		WorkspaceFiles []workspaceFixtureFile `json:"workspace_files"`
+	for _, input := range item.Inputs {
+		if input.Kind != "workspace" {
+			continue
+		}
+		value, ok := input.Value.([]any)
+		if !ok {
+			continue
+		}
+		for _, rawFile := range value {
+			fileMap, ok := rawFile.(map[string]any)
+			if !ok {
+				continue
+			}
+			path, _ := fileMap["path"].(string)
+			content, _ := fileMap["content"].(string)
+			files = append(files, workspaceFixtureFile{Path: path, Content: content})
+		}
 	}
-	if err := json.Unmarshal(payload, &decoded); err != nil {
-		return nil, err
-	}
-	return decoded.WorkspaceFiles, nil
+	return files, nil
 }
 
 func destroySandbox(session sandbox.Session) error {
@@ -1135,7 +1155,22 @@ func cloneChallengeInputSet(inputSet *repository.ChallengeInputSetExecutionConte
 		Name:                   inputSet.Name,
 		Description:            cloneStringPtr(inputSet.Description),
 		InputChecksum:          inputSet.InputChecksum,
+		Cases:                  make([]repository.ChallengeCaseExecutionContext, 0, len(inputSet.Cases)),
 		Items:                  make([]repository.ChallengeInputItemExecutionContext, 0, len(inputSet.Items)),
+	}
+	for _, item := range inputSet.Cases {
+		cloned.Cases = append(cloned.Cases, repository.ChallengeCaseExecutionContext{
+			ID:                  item.ID,
+			ChallengeIdentityID: item.ChallengeIdentityID,
+			ChallengeKey:        item.ChallengeKey,
+			CaseKey:             item.CaseKey,
+			ItemKey:             item.ItemKey,
+			Payload:             cloneJSON(item.Payload),
+			Inputs:              append([]challengepack.CaseInput(nil), item.Inputs...),
+			Expectations:        append([]challengepack.CaseExpectation(nil), item.Expectations...),
+			Artifacts:           append([]challengepack.ArtifactRef(nil), item.Artifacts...),
+			Assets:              append([]challengepack.AssetReference(nil), item.Assets...),
+		})
 	}
 	for _, item := range inputSet.Items {
 		cloned.Items = append(cloned.Items, repository.ChallengeInputItemExecutionContext{

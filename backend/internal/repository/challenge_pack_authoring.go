@@ -150,7 +150,7 @@ func (r *Repository) PublishChallengePackBundle(ctx context.Context, params Publ
 
 	inputSetIDs := make([]uuid.UUID, 0, len(params.Bundle.InputSets))
 	for _, inputSet := range params.Bundle.InputSets {
-		itemsJSON, err := json.Marshal(inputSet.Items)
+		itemsJSON, err := json.Marshal(inputSet.Cases)
 		if err != nil {
 			return PublishedChallengePack{}, fmt.Errorf("marshal input set %s checksum payload: %w", inputSet.Key, err)
 		}
@@ -171,10 +171,10 @@ func (r *Repository) PublishChallengePackBundle(ctx context.Context, params Publ
 		}
 		inputSetIDs = append(inputSetIDs, inputSetID)
 
-		for _, item := range inputSet.Items {
-			payloadJSON, err := json.Marshal(item.Payload)
+		for _, item := range inputSet.Cases {
+			payloadJSON, err := item.StoredPayload()
 			if err != nil {
-				return PublishedChallengePack{}, fmt.Errorf("marshal input item %s/%s: %w", item.ChallengeKey, item.ItemKey, err)
+				return PublishedChallengePack{}, fmt.Errorf("marshal input item %s/%s: %w", item.ChallengeKey, item.EffectiveKey(), err)
 			}
 
 			challengeIdentityID, ok := challengeIdentityByKey[item.ChallengeKey]
@@ -192,8 +192,8 @@ func (r *Repository) PublishChallengePackBundle(ctx context.Context, params Publ
 					payload
 				)
 				VALUES ($1, $2, $3, $4, $5, $6)
-			`, uuid.New(), inputSetID, versionID, challengeIdentityID, item.ItemKey, payloadJSON); err != nil {
-				return PublishedChallengePack{}, fmt.Errorf("insert challenge input item %s/%s: %w", item.ChallengeKey, item.ItemKey, err)
+			`, uuid.New(), inputSetID, versionID, challengeIdentityID, item.EffectiveKey(), payloadJSON); err != nil {
+				return PublishedChallengePack{}, fmt.Errorf("insert challenge input item %s/%s: %w", item.ChallengeKey, item.EffectiveKey(), err)
 			}
 		}
 	}

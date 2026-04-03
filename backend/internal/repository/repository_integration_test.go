@@ -94,12 +94,15 @@ func TestRepositoryPublishChallengePackBundle(t *testing.T) {
 				{
 					Key:  "default",
 					Name: "Default",
-					Items: []challengepack.InputItemDefinition{
+					Cases: []challengepack.CaseDefinition{
 						{
 							ChallengeKey: "ticket-1",
-							ItemKey:      "prompt.txt",
-							Payload: map[string]any{
-								"content": "Customer needs help",
+							CaseKey:      "prompt.txt",
+							Inputs: []challengepack.CaseInput{
+								{Key: "prompt", Kind: "text", Value: "Customer needs help"},
+							},
+							Expectations: []challengepack.CaseExpectation{
+								{Key: "answer", Kind: "text", Source: "input:prompt"},
 							},
 						},
 					},
@@ -131,6 +134,18 @@ func TestRepositoryPublishChallengePackBundle(t *testing.T) {
 	}
 	if manifestDoc["schema_version"] != float64(1) {
 		t.Fatalf("schema_version = %#v, want 1", manifestDoc["schema_version"])
+	}
+	inputSets, ok := manifestDoc["input_sets"].([]any)
+	if !ok || len(inputSets) != 1 {
+		t.Fatalf("input_sets = %#v, want one input set", manifestDoc["input_sets"])
+	}
+	firstInputSet, ok := inputSets[0].(map[string]any)
+	if !ok {
+		t.Fatalf("first input set type = %T, want object", inputSets[0])
+	}
+	cases, ok := firstInputSet["cases"].([]any)
+	if !ok || len(cases) != 1 {
+		t.Fatalf("cases = %#v, want one case", firstInputSet["cases"])
 	}
 
 	runnableVersion, err := repo.GetRunnableChallengePackVersionByID(ctx, published.ChallengePackVersionID)
@@ -274,11 +289,20 @@ func TestRepositoryGetRunAgentExecutionContextByIDNative(t *testing.T) {
 	if len(executionContext.ChallengeInputSet.Items) != 2 {
 		t.Fatalf("challenge input item count = %d, want 2", len(executionContext.ChallengeInputSet.Items))
 	}
+	if len(executionContext.ChallengeInputSet.Cases) != 2 {
+		t.Fatalf("challenge case count = %d, want 2", len(executionContext.ChallengeInputSet.Cases))
+	}
 	if executionContext.ChallengeInputSet.Items[0].ChallengeKey != "first-ticket" {
 		t.Fatalf("first challenge input item key = %q, want first-ticket", executionContext.ChallengeInputSet.Items[0].ChallengeKey)
 	}
+	if executionContext.ChallengeInputSet.Cases[0].CaseKey != executionContext.ChallengeInputSet.Items[0].ItemKey {
+		t.Fatalf("first challenge case key = %q, want %q", executionContext.ChallengeInputSet.Cases[0].CaseKey, executionContext.ChallengeInputSet.Items[0].ItemKey)
+	}
 	if !jsonEqual(executionContext.ChallengeInputSet.Items[1].Payload, []byte(`{"content":"Customer two needs follow-up"}`)) {
 		t.Fatalf("second challenge input payload = %s, want second item payload", executionContext.ChallengeInputSet.Items[1].Payload)
+	}
+	if !jsonEqual(executionContext.ChallengeInputSet.Cases[1].Payload, []byte(`{"content":"Customer two needs follow-up"}`)) {
+		t.Fatalf("second challenge case payload = %s, want second case payload", executionContext.ChallengeInputSet.Cases[1].Payload)
 	}
 	if executionContext.Deployment.DeploymentType != "native" {
 		t.Fatalf("deployment type = %q, want native", executionContext.Deployment.DeploymentType)

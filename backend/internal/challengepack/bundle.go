@@ -48,7 +48,7 @@ type InputSetDefinition struct {
 	Name        string                 `yaml:"name" json:"name"`
 	Description *string                `yaml:"description,omitempty" json:"description,omitempty"`
 	Cases       []CaseDefinition       `yaml:"cases,omitempty" json:"cases,omitempty"`
-	Items       []legacyItemDefinition `yaml:"items,omitempty" json:"-"`
+	Items       []LegacyItemDefinition `yaml:"items,omitempty" json:"-"`
 }
 
 type CaseDefinition struct {
@@ -89,12 +89,24 @@ type CaseExpectation struct {
 	Source      string `yaml:"source,omitempty" json:"source,omitempty"`
 }
 
-type legacyItemDefinition struct {
+type StoredCaseDocument struct {
+	SchemaVersion int32             `json:"schema_version,omitempty"`
+	CaseKey       string            `json:"case_key,omitempty"`
+	Payload       map[string]any    `json:"payload,omitempty"`
+	Inputs        []CaseInput       `json:"inputs,omitempty"`
+	Expectations  []CaseExpectation `json:"expectations,omitempty"`
+	Artifacts     []ArtifactRef     `json:"artifacts,omitempty"`
+	Assets        []AssetReference  `json:"assets,omitempty"`
+}
+
+type LegacyItemDefinition struct {
 	ChallengeKey string           `yaml:"challenge_key"`
 	ItemKey      string           `yaml:"item_key"`
 	Payload      map[string]any   `yaml:"payload,omitempty"`
 	Assets       []AssetReference `yaml:"assets,omitempty"`
 }
+
+type InputItemDefinition = LegacyItemDefinition
 
 func ParseYAML(data []byte) (Bundle, error) {
 	if len(bytes.TrimSpace(data)) == 0 {
@@ -292,4 +304,34 @@ func cloneObject(value map[string]any) map[string]any {
 		cloned[key] = item
 	}
 	return cloned
+}
+
+func (c CaseDefinition) EffectiveKey() string {
+	if strings.TrimSpace(c.CaseKey) != "" {
+		return strings.TrimSpace(c.CaseKey)
+	}
+	return strings.TrimSpace(c.ItemKey)
+}
+
+func (c CaseDefinition) IsLegacyPayloadOnly() bool {
+	return len(c.Inputs) == 0 && len(c.Expectations) == 0 && len(c.Artifacts) == 0 && len(c.Assets) == 0
+}
+
+func (c CaseDefinition) StoredPayload() (json.RawMessage, error) {
+	if c.IsLegacyPayloadOnly() {
+		if c.Payload == nil {
+			return json.RawMessage(`{}`), nil
+		}
+		return json.Marshal(c.Payload)
+	}
+
+	return json.Marshal(StoredCaseDocument{
+		SchemaVersion: 1,
+		CaseKey:       c.EffectiveKey(),
+		Payload:       cloneObject(c.Payload),
+		Inputs:        append([]CaseInput(nil), c.Inputs...),
+		Expectations:  append([]CaseExpectation(nil), c.Expectations...),
+		Artifacts:     append([]ArtifactRef(nil), c.Artifacts...),
+		Assets:        normalizeAssets(c.Assets),
+	})
 }

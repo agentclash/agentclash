@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/challengepack"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/domain"
 	repositorysqlc "github.com/Atharva-Kanherkar/agentclash/backend/internal/repository/sqlc"
 	"github.com/google/uuid"
@@ -47,7 +49,21 @@ type ChallengeInputSetExecutionContext struct {
 	Name                   string
 	Description            *string
 	InputChecksum          string
+	Cases                  []ChallengeCaseExecutionContext
 	Items                  []ChallengeInputItemExecutionContext
+}
+
+type ChallengeCaseExecutionContext struct {
+	ID                  uuid.UUID                       `json:"id"`
+	ChallengeIdentityID uuid.UUID                       `json:"challenge_identity_id"`
+	ChallengeKey        string                          `json:"challenge_key"`
+	CaseKey             string                          `json:"case_key"`
+	ItemKey             string                          `json:"item_key"`
+	Payload             json.RawMessage                 `json:"payload,omitempty"`
+	Inputs              []challengepack.CaseInput       `json:"inputs,omitempty"`
+	Expectations        []challengepack.CaseExpectation `json:"expectations,omitempty"`
+	Artifacts           []challengepack.ArtifactRef     `json:"artifacts,omitempty"`
+	Assets              []challengepack.AssetReference  `json:"assets,omitempty"`
 }
 
 type ChallengeInputItemExecutionContext struct {
@@ -249,6 +265,10 @@ func mapRunAgentExecutionContext(row repositorysqlc.GetRunAgentExecutionContextB
 	if err := json.Unmarshal(challengeInputItemsJSON, &challengeInputItems); err != nil {
 		return RunAgentExecutionContext{}, fmt.Errorf("decode challenge input set items: %w", err)
 	}
+	challengeCases, err := decodeChallengeCases(challengeInputItems)
+	if err != nil {
+		return RunAgentExecutionContext{}, fmt.Errorf("decode challenge input set cases: %w", err)
+	}
 
 	agentBuildVersion, err := decodeAgentBuildVersionExecutionContext(
 		row.SnapshotSourceAgentBuildVersionID,
@@ -339,6 +359,7 @@ func mapRunAgentExecutionContext(row repositorysqlc.GetRunAgentExecutionContextB
 			Name:                   *row.ChallengeInputSetName,
 			Description:            cloneStringPtr(row.ChallengeInputSetDescription),
 			InputChecksum:          *row.ChallengeInputSetInputChecksum,
+			Cases:                  challengeCases,
 			Items:                  challengeInputItems,
 		}
 	}
@@ -376,6 +397,70 @@ func mapRunAgentExecutionContext(row repositorysqlc.GetRunAgentExecutionContextB
 	}
 
 	return executionContext, nil
+}
+
+func decodeChallengeCases(items []ChallengeInputItemExecutionContext) ([]ChallengeCaseExecutionContext, error) {
+	cases := make([]ChallengeCaseExecutionContext, 0, len(items))
+	for _, item := range items {
+		caseDoc, err := decodeStoredCaseDocument(item.Payload)
+		if err != nil {
+			return nil, fmt.Errorf("decode case document for %s/%s: %w", item.ChallengeKey, item.ItemKey, err)
+		}
+		caseKey := strings.TrimSpace(caseDoc.CaseKey)
+		if caseKey == "" {
+			caseKey = item.ItemKey
+		}
+		payload := cloneJSON(item.Payload)
+		if caseDoc.SchemaVersion != 0 {
+			payload = mustMarshalJSON(caseDoc.Payload)
+		}
+		cases = append(cases, ChallengeCaseExecutionContext{
+			ID:                  item.ID,
+			ChallengeIdentityID: item.ChallengeIdentityID,
+			ChallengeKey:        item.ChallengeKey,
+			CaseKey:             caseKey,
+			ItemKey:             item.ItemKey,
+			Payload:             payload,
+			Inputs:              append([]challengepack.CaseInput(nil), caseDoc.Inputs...),
+			Expectations:        append([]challengepack.CaseExpectation(nil), caseDoc.Expectations...),
+			Artifacts:           append([]challengepack.ArtifactRef(nil), caseDoc.Artifacts...),
+			Assets:              append([]challengepack.AssetReference(nil), caseDoc.Assets...),
+		})
+	}
+	return cases, nil
+}
+
+func decodeStoredCaseDocument(payload json.RawMessage) (challengepack.StoredCaseDocument, error) {
+	trimmed := bytesTrimSpace(payload)
+	if len(trimmed) == 0 {
+		return challengepack.StoredCaseDocument{}, nil
+	}
+
+	var envelope challengepack.StoredCaseDocument
+	if err := json.Unmarshal(trimmed, &envelope); err == nil && envelope.SchemaVersion != 0 {
+		if envelope.Payload == nil {
+			envelope.Payload = map[string]any{}
+		}
+		return envelope, nil
+	}
+
+	var legacyPayload map[string]any
+	if err := json.Unmarshal(trimmed, &legacyPayload); err != nil {
+		return challengepack.StoredCaseDocument{}, err
+	}
+	return challengepack.StoredCaseDocument{Payload: legacyPayload}, nil
+}
+
+func bytesTrimSpace(payload json.RawMessage) []byte {
+	return []byte(strings.TrimSpace(string(payload)))
+}
+
+func mustMarshalJSON(value any) json.RawMessage {
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return json.RawMessage(`{}`)
+	}
+	return encoded
 }
 
 func decodeAgentBuildVersionExecutionContext(buildVersionID uuid.UUID, payload []byte) (AgentBuildVersionExecutionContext, error) {

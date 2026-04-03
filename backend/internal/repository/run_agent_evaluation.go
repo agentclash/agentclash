@@ -66,11 +66,11 @@ func mapEvaluationInput(evaluationSpecID uuid.UUID, executionContext RunAgentExe
 
 	challengeInputs := make([]scoring.EvidenceInput, 0)
 	if executionContext.ChallengeInputSet != nil {
-		for _, item := range executionContext.ChallengeInputSet.Items {
+		for _, item := range executionContext.ChallengeInputSet.Cases {
 			challengeInputs = append(challengeInputs, scoring.EvidenceInput{
 				ChallengeIdentityID: item.ChallengeIdentityID,
 				ChallengeKey:        item.ChallengeKey,
-				ItemKey:             item.ItemKey,
+				ItemKey:             item.CaseKey,
 				Payload:             cloneJSON(item.Payload),
 			})
 		}

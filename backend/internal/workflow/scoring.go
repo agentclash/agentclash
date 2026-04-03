@@ -145,12 +145,12 @@ func mapChallengeInputs(inputSet *repository.ChallengeInputSetExecutionContext) 
 		return nil
 	}
 
-	inputs := make([]scoring.EvidenceInput, 0, len(inputSet.Items))
-	for _, item := range inputSet.Items {
+	inputs := make([]scoring.EvidenceInput, 0, len(inputSet.Cases))
+	for _, item := range inputSet.Cases {
 		inputs = append(inputs, scoring.EvidenceInput{
 			ChallengeIdentityID: item.ChallengeIdentityID,
 			ChallengeKey:        item.ChallengeKey,
-			ItemKey:             item.ItemKey,
+			ItemKey:             item.CaseKey,
 			Payload:             cloneJSON(item.Payload),
 		})
 	}

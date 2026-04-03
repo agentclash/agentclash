@@ -744,6 +744,16 @@ func nativeExecutionContext() repository.RunAgentExecutionContext {
 			InputKey:               "default",
 			Name:                   "Default Inputs",
 			InputChecksum:          "checksum",
+			Cases: []repository.ChallengeCaseExecutionContext{
+				{
+					ID:                  uuid.New(),
+					ChallengeIdentityID: uuid.New(),
+					ChallengeKey:        "coding-fix",
+					CaseKey:             "task",
+					ItemKey:             "task",
+					Payload:             []byte(`{"instruction":"fix the workspace","workspace_files":[{"path":"/workspace/project/app.py","content":"def add(a, b):\n    return a - b\n"}]}`),
+				},
+			},
 			Items: []repository.ChallengeInputItemExecutionContext{
 				{
 					ID:                  uuid.New(),
