@@ -191,8 +191,14 @@ func durationSecondsEnvOrDefault(key string, fallback time.Duration) (time.Durat
 }
 
 func validateArtifactConfig(cfg Config) error {
-	if !isDevelopmentEnvironment(cfg.AppEnvironment) && cfg.ArtifactSigningSecret == defaultHostedRunCallbackSecret {
-		return fmt.Errorf("%w: ARTIFACT_SIGNING_SECRET must be set to a non-default secret when not using local filesystem defaults", ErrInvalidConfig)
+	if cfg.ArtifactSigningSecret != defaultHostedRunCallbackSecret {
+		return nil
+	}
+	if !isDevelopmentEnvironment(cfg.AppEnvironment) {
+		return fmt.Errorf("%w: ARTIFACT_SIGNING_SECRET must be set to a non-default secret outside development", ErrInvalidConfig)
+	}
+	if cfg.ArtifactStorageBackend != defaultArtifactStorageBackend {
+		return fmt.Errorf("%w: ARTIFACT_SIGNING_SECRET must be set to a non-default secret when using non-filesystem artifact storage", ErrInvalidConfig)
 	}
 	return nil
 }
