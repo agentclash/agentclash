@@ -46,6 +46,12 @@ func ValidateBundle(bundle Bundle) error {
 	}
 
 	challengeKeys := map[string]struct{}{}
+	versionAssetKeys := map[string]struct{}{}
+	for _, asset := range bundle.Version.Assets {
+		if asset.Key != "" {
+			versionAssetKeys[asset.Key] = struct{}{}
+		}
+	}
 	for i, challenge := range bundle.Challenges {
 		path := fmt.Sprintf("challenges[%d]", i)
 		if challenge.Key == "" {
@@ -68,6 +74,7 @@ func ValidateBundle(bundle Bundle) error {
 			errs = append(errs, ValidationError{Field: path + ".difficulty", Message: "must be one of easy, medium, hard, expert"})
 		}
 		errs = append(errs, validateAssets(path+".assets", challenge.Assets)...)
+		errs = append(errs, validateArtifactRefs(path+".artifact_refs", challenge.ArtifactRefs, versionAssetKeys)...)
 	}
 
 	inputSetKeys := map[string]struct{}{}
@@ -84,13 +91,13 @@ func ValidateBundle(bundle Bundle) error {
 		if inputSet.Name == "" {
 			errs = append(errs, ValidationError{Field: path + ".name", Message: "is required"})
 		}
-		if len(inputSet.Items) == 0 {
-			errs = append(errs, ValidationError{Field: path + ".items", Message: "must contain at least one item"})
+		if len(inputSet.Cases) == 0 {
+			errs = append(errs, ValidationError{Field: path + ".cases", Message: "must contain at least one case"})
 		}
 
-		itemKeys := map[string]struct{}{}
-		for itemIndex, item := range inputSet.Items {
-			itemPath := fmt.Sprintf("%s.items[%d]", path, itemIndex)
+		caseKeys := map[string]struct{}{}
+		for caseIndex, item := range inputSet.Cases {
+			itemPath := fmt.Sprintf("%s.cases[%d]", path, caseIndex)
 			if item.ChallengeKey == "" {
 				errs = append(errs, ValidationError{Field: itemPath + ".challenge_key", Message: "is required"})
 			} else {
@@ -98,16 +105,23 @@ func ValidateBundle(bundle Bundle) error {
 					errs = append(errs, ValidationError{Field: itemPath + ".challenge_key", Message: "must reference a declared challenge"})
 				}
 			}
-			if item.ItemKey == "" {
-				errs = append(errs, ValidationError{Field: itemPath + ".item_key", Message: "is required"})
+			caseKey := item.CaseKey
+			if caseKey == "" {
+				caseKey = item.ItemKey
+			}
+			if caseKey == "" {
+				errs = append(errs, ValidationError{Field: itemPath + ".case_key", Message: "is required"})
 			} else {
-				composite := item.ChallengeKey + "\x00" + item.ItemKey
-				if _, exists := itemKeys[composite]; exists {
-					errs = append(errs, ValidationError{Field: itemPath + ".item_key", Message: "must be unique per challenge in the input set"})
+				composite := item.ChallengeKey + "\x00" + caseKey
+				if _, exists := caseKeys[composite]; exists {
+					errs = append(errs, ValidationError{Field: itemPath + ".case_key", Message: "must be unique per challenge in the input set"})
 				}
-				itemKeys[composite] = struct{}{}
+				caseKeys[composite] = struct{}{}
 			}
 			errs = append(errs, validateAssets(itemPath+".assets", item.Assets)...)
+			errs = append(errs, validateArtifactRefs(itemPath+".artifacts", item.Artifacts, versionAssetKeys)...)
+			errs = append(errs, validateCaseInputs(itemPath+".inputs", item.Inputs, versionAssetKeys)...)
+			errs = append(errs, validateCaseExpectations(itemPath+".expectations", item.Expectations, item.Inputs, versionAssetKeys)...)
 		}
 	}
 
@@ -145,5 +159,102 @@ func validateAssets(path string, assets []AssetReference) ValidationErrors {
 			errs = append(errs, ValidationError{Field: assetPath + ".path", Message: "is required"})
 		}
 	}
+	return errs
+}
+
+func validateArtifactRefs(path string, refs []ArtifactRef, validKeys map[string]struct{}) ValidationErrors {
+	var errs ValidationErrors
+	seen := map[string]struct{}{}
+	for i, ref := range refs {
+		refPath := fmt.Sprintf("%s[%d]", path, i)
+		if ref.Key == "" {
+			errs = append(errs, ValidationError{Field: refPath + ".key", Message: "is required"})
+			continue
+		}
+		if _, exists := seen[ref.Key]; exists {
+			errs = append(errs, ValidationError{Field: refPath + ".key", Message: "must be unique"})
+		}
+		seen[ref.Key] = struct{}{}
+		if _, exists := validKeys[ref.Key]; !exists {
+			errs = append(errs, ValidationError{Field: refPath + ".key", Message: "must reference a declared version asset"})
+		}
+	}
+	return errs
+}
+
+func validateCaseInputs(path string, inputs []CaseInput, validAssets map[string]struct{}) ValidationErrors {
+	var errs ValidationErrors
+	seen := map[string]struct{}{}
+	for i, input := range inputs {
+		inputPath := fmt.Sprintf("%s[%d]", path, i)
+		if input.Key == "" {
+			errs = append(errs, ValidationError{Field: inputPath + ".key", Message: "is required"})
+		} else {
+			if _, exists := seen[input.Key]; exists {
+				errs = append(errs, ValidationError{Field: inputPath + ".key", Message: "must be unique"})
+			}
+			seen[input.Key] = struct{}{}
+		}
+		if input.Kind == "" {
+			errs = append(errs, ValidationError{Field: inputPath + ".kind", Message: "is required"})
+		}
+		if input.ArtifactKey != "" {
+			if _, exists := validAssets[input.ArtifactKey]; !exists {
+				errs = append(errs, ValidationError{Field: inputPath + ".artifact_key", Message: "must reference a declared version asset"})
+			}
+		}
+	}
+	return errs
+}
+
+func validateCaseExpectations(path string, expectations []CaseExpectation, inputs []CaseInput, validAssets map[string]struct{}) ValidationErrors {
+	var errs ValidationErrors
+	seen := map[string]struct{}{}
+	validInputs := make(map[string]struct{}, len(inputs))
+	for _, input := range inputs {
+		if input.Key != "" {
+			validInputs[input.Key] = struct{}{}
+		}
+	}
+
+	for i, expectation := range expectations {
+		expectationPath := fmt.Sprintf("%s[%d]", path, i)
+		if expectation.Key == "" {
+			errs = append(errs, ValidationError{Field: expectationPath + ".key", Message: "is required"})
+		} else {
+			if _, exists := seen[expectation.Key]; exists {
+				errs = append(errs, ValidationError{Field: expectationPath + ".key", Message: "must be unique"})
+			}
+			seen[expectation.Key] = struct{}{}
+		}
+		if expectation.Kind == "" {
+			errs = append(errs, ValidationError{Field: expectationPath + ".kind", Message: "is required"})
+		}
+		if expectation.ArtifactKey != "" {
+			if _, exists := validAssets[expectation.ArtifactKey]; !exists {
+				errs = append(errs, ValidationError{Field: expectationPath + ".artifact_key", Message: "must reference a declared version asset"})
+			}
+		}
+		switch {
+		case expectation.Source == "":
+		case strings.HasPrefix(expectation.Source, "input:"):
+			inputKey := strings.TrimSpace(strings.TrimPrefix(expectation.Source, "input:"))
+			if inputKey == "" {
+				errs = append(errs, ValidationError{Field: expectationPath + ".source", Message: "must reference a non-empty input key"})
+			} else if _, exists := validInputs[inputKey]; !exists {
+				errs = append(errs, ValidationError{Field: expectationPath + ".source", Message: "must reference a declared case input"})
+			}
+		case strings.HasPrefix(expectation.Source, "artifact:"):
+			artifactKey := strings.TrimSpace(strings.TrimPrefix(expectation.Source, "artifact:"))
+			if artifactKey == "" {
+				errs = append(errs, ValidationError{Field: expectationPath + ".source", Message: "must reference a non-empty artifact key"})
+			} else if _, exists := validAssets[artifactKey]; !exists {
+				errs = append(errs, ValidationError{Field: expectationPath + ".source", Message: "must reference a declared version asset"})
+			}
+		default:
+			errs = append(errs, ValidationError{Field: expectationPath + ".source", Message: "must start with input: or artifact:"})
+		}
+	}
+
 	return errs
 }

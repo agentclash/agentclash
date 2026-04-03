@@ -40,26 +40,60 @@ type ChallengeDefinition struct {
 	Instructions string           `yaml:"instructions,omitempty" json:"instructions,omitempty"`
 	Definition   map[string]any   `yaml:"definition,omitempty" json:"definition,omitempty"`
 	Assets       []AssetReference `yaml:"assets,omitempty" json:"assets,omitempty"`
+	ArtifactRefs []ArtifactRef    `yaml:"artifact_refs,omitempty" json:"artifact_refs,omitempty"`
 }
 
 type InputSetDefinition struct {
-	Key         string                `yaml:"key" json:"key"`
-	Name        string                `yaml:"name" json:"name"`
-	Description *string               `yaml:"description,omitempty" json:"description,omitempty"`
-	Items       []InputItemDefinition `yaml:"items" json:"items"`
+	Key         string                 `yaml:"key" json:"key"`
+	Name        string                 `yaml:"name" json:"name"`
+	Description *string                `yaml:"description,omitempty" json:"description,omitempty"`
+	Cases       []CaseDefinition       `yaml:"cases,omitempty" json:"cases,omitempty"`
+	Items       []legacyItemDefinition `yaml:"items,omitempty" json:"-"`
 }
 
-type InputItemDefinition struct {
-	ChallengeKey string           `yaml:"challenge_key" json:"challenge_key"`
-	ItemKey      string           `yaml:"item_key" json:"item_key"`
-	Payload      map[string]any   `yaml:"payload,omitempty" json:"payload,omitempty"`
-	Assets       []AssetReference `yaml:"assets,omitempty" json:"assets,omitempty"`
+type CaseDefinition struct {
+	ChallengeKey string            `yaml:"challenge_key" json:"challenge_key"`
+	CaseKey      string            `yaml:"case_key,omitempty" json:"case_key,omitempty"`
+	ItemKey      string            `yaml:"item_key,omitempty" json:"item_key,omitempty"`
+	Payload      map[string]any    `yaml:"payload,omitempty" json:"payload,omitempty"`
+	Inputs       []CaseInput       `yaml:"inputs,omitempty" json:"inputs,omitempty"`
+	Expectations []CaseExpectation `yaml:"expectations,omitempty" json:"expectations,omitempty"`
+	Artifacts    []ArtifactRef     `yaml:"artifacts,omitempty" json:"artifacts,omitempty"`
+	Assets       []AssetReference  `yaml:"assets,omitempty" json:"assets,omitempty"`
 }
 
 type AssetReference struct {
 	Key       string `yaml:"key" json:"key"`
+	Kind      string `yaml:"kind,omitempty" json:"kind,omitempty"`
 	Path      string `yaml:"path" json:"path"`
 	MediaType string `yaml:"media_type,omitempty" json:"media_type,omitempty"`
+}
+
+type ArtifactRef struct {
+	Key string `yaml:"key" json:"key"`
+}
+
+type CaseInput struct {
+	Key         string `yaml:"key" json:"key"`
+	Kind        string `yaml:"kind" json:"kind"`
+	Value       any    `yaml:"value,omitempty" json:"value,omitempty"`
+	ArtifactKey string `yaml:"artifact_key,omitempty" json:"artifact_key,omitempty"`
+	Path        string `yaml:"path,omitempty" json:"path,omitempty"`
+}
+
+type CaseExpectation struct {
+	Key         string `yaml:"key" json:"key"`
+	Kind        string `yaml:"kind" json:"kind"`
+	Value       any    `yaml:"value,omitempty" json:"value,omitempty"`
+	ArtifactKey string `yaml:"artifact_key,omitempty" json:"artifact_key,omitempty"`
+	Source      string `yaml:"source,omitempty" json:"source,omitempty"`
+}
+
+type legacyItemDefinition struct {
+	ChallengeKey string           `yaml:"challenge_key"`
+	ItemKey      string           `yaml:"item_key"`
+	Payload      map[string]any   `yaml:"payload,omitempty"`
+	Assets       []AssetReference `yaml:"assets,omitempty"`
 }
 
 func ParseYAML(data []byte) (Bundle, error) {
@@ -157,6 +191,7 @@ func normalizeBundle(bundle *Bundle) {
 		bundle.Challenges[i].Difficulty = strings.TrimSpace(bundle.Challenges[i].Difficulty)
 		bundle.Challenges[i].Instructions = strings.TrimSpace(bundle.Challenges[i].Instructions)
 		bundle.Challenges[i].Assets = normalizeAssets(bundle.Challenges[i].Assets)
+		bundle.Challenges[i].ArtifactRefs = normalizeArtifactRefs(bundle.Challenges[i].ArtifactRefs)
 		if bundle.Challenges[i].Definition == nil {
 			bundle.Challenges[i].Definition = map[string]any{}
 		}
@@ -170,13 +205,36 @@ func normalizeBundle(bundle *Bundle) {
 	for i := range bundle.InputSets {
 		bundle.InputSets[i].Key = strings.TrimSpace(bundle.InputSets[i].Key)
 		bundle.InputSets[i].Name = strings.TrimSpace(bundle.InputSets[i].Name)
-		bundle.InputSets[i].Items = append([]InputItemDefinition(nil), bundle.InputSets[i].Items...)
-		for itemIndex := range bundle.InputSets[i].Items {
-			bundle.InputSets[i].Items[itemIndex].ChallengeKey = strings.TrimSpace(bundle.InputSets[i].Items[itemIndex].ChallengeKey)
-			bundle.InputSets[i].Items[itemIndex].ItemKey = strings.TrimSpace(bundle.InputSets[i].Items[itemIndex].ItemKey)
-			bundle.InputSets[i].Items[itemIndex].Assets = normalizeAssets(bundle.InputSets[i].Items[itemIndex].Assets)
-			if bundle.InputSets[i].Items[itemIndex].Payload == nil {
-				bundle.InputSets[i].Items[itemIndex].Payload = map[string]any{}
+		if len(bundle.InputSets[i].Cases) == 0 && len(bundle.InputSets[i].Items) > 0 {
+			bundle.InputSets[i].Cases = make([]CaseDefinition, 0, len(bundle.InputSets[i].Items))
+			for _, item := range bundle.InputSets[i].Items {
+				bundle.InputSets[i].Cases = append(bundle.InputSets[i].Cases, CaseDefinition{
+					ChallengeKey: item.ChallengeKey,
+					CaseKey:      item.ItemKey,
+					ItemKey:      item.ItemKey,
+					Payload:      cloneObject(item.Payload),
+					Assets:       normalizeAssets(item.Assets),
+				})
+			}
+		}
+		bundle.InputSets[i].Cases = append([]CaseDefinition(nil), bundle.InputSets[i].Cases...)
+		bundle.InputSets[i].Items = nil
+		for caseIndex := range bundle.InputSets[i].Cases {
+			bundle.InputSets[i].Cases[caseIndex].ChallengeKey = strings.TrimSpace(bundle.InputSets[i].Cases[caseIndex].ChallengeKey)
+			bundle.InputSets[i].Cases[caseIndex].CaseKey = strings.TrimSpace(bundle.InputSets[i].Cases[caseIndex].CaseKey)
+			bundle.InputSets[i].Cases[caseIndex].ItemKey = strings.TrimSpace(bundle.InputSets[i].Cases[caseIndex].ItemKey)
+			if bundle.InputSets[i].Cases[caseIndex].CaseKey == "" {
+				bundle.InputSets[i].Cases[caseIndex].CaseKey = bundle.InputSets[i].Cases[caseIndex].ItemKey
+			}
+			if bundle.InputSets[i].Cases[caseIndex].ItemKey == "" {
+				bundle.InputSets[i].Cases[caseIndex].ItemKey = bundle.InputSets[i].Cases[caseIndex].CaseKey
+			}
+			bundle.InputSets[i].Cases[caseIndex].Assets = normalizeAssets(bundle.InputSets[i].Cases[caseIndex].Assets)
+			bundle.InputSets[i].Cases[caseIndex].Artifacts = normalizeArtifactRefs(bundle.InputSets[i].Cases[caseIndex].Artifacts)
+			bundle.InputSets[i].Cases[caseIndex].Inputs = normalizeCaseInputs(bundle.InputSets[i].Cases[caseIndex].Inputs)
+			bundle.InputSets[i].Cases[caseIndex].Expectations = normalizeCaseExpectations(bundle.InputSets[i].Cases[caseIndex].Expectations)
+			if bundle.InputSets[i].Cases[caseIndex].Payload == nil {
+				bundle.InputSets[i].Cases[caseIndex].Payload = map[string]any{}
 			}
 		}
 	}
@@ -188,8 +246,50 @@ func normalizeAssets(assets []AssetReference) []AssetReference {
 	normalized := append([]AssetReference(nil), assets...)
 	for i := range normalized {
 		normalized[i].Key = strings.TrimSpace(normalized[i].Key)
+		normalized[i].Kind = strings.TrimSpace(normalized[i].Kind)
 		normalized[i].Path = strings.TrimSpace(normalized[i].Path)
 		normalized[i].MediaType = strings.TrimSpace(normalized[i].MediaType)
 	}
 	return normalized
+}
+
+func normalizeArtifactRefs(refs []ArtifactRef) []ArtifactRef {
+	normalized := append([]ArtifactRef(nil), refs...)
+	for i := range normalized {
+		normalized[i].Key = strings.TrimSpace(normalized[i].Key)
+	}
+	return normalized
+}
+
+func normalizeCaseInputs(inputs []CaseInput) []CaseInput {
+	normalized := append([]CaseInput(nil), inputs...)
+	for i := range normalized {
+		normalized[i].Key = strings.TrimSpace(normalized[i].Key)
+		normalized[i].Kind = strings.TrimSpace(normalized[i].Kind)
+		normalized[i].ArtifactKey = strings.TrimSpace(normalized[i].ArtifactKey)
+		normalized[i].Path = strings.TrimSpace(normalized[i].Path)
+	}
+	return normalized
+}
+
+func normalizeCaseExpectations(expectations []CaseExpectation) []CaseExpectation {
+	normalized := append([]CaseExpectation(nil), expectations...)
+	for i := range normalized {
+		normalized[i].Key = strings.TrimSpace(normalized[i].Key)
+		normalized[i].Kind = strings.TrimSpace(normalized[i].Kind)
+		normalized[i].ArtifactKey = strings.TrimSpace(normalized[i].ArtifactKey)
+		normalized[i].Source = strings.TrimSpace(normalized[i].Source)
+	}
+	return normalized
+}
+
+func cloneObject(value map[string]any) map[string]any {
+	if value == nil {
+		return nil
+	}
+	cloned := make(map[string]any, len(value))
+	for key, item := range value {
+		cloned[key] = item
+	}
+	return cloned
 }

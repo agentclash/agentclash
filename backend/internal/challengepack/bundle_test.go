@@ -47,11 +47,17 @@ challenges:
 input_sets:
   - key: default
     name: Default Inputs
-    items:
+    cases:
       - challenge_key: ticket-1
-        item_key: sample-1
-        payload:
-          content: hello
+        case_key: sample-1
+        inputs:
+          - key: prompt
+            kind: text
+            value: hello
+        expectations:
+          - key: answer
+            kind: text
+            source: input:prompt
 `))
 	if err != nil {
 		t.Fatalf("ParseYAML returned error: %v", err)
@@ -62,6 +68,12 @@ input_sets:
 	}
 	if bundle.Challenges[0].Definition["instructions"] != "Solve the ticket" {
 		t.Fatalf("definition.instructions = %#v, want Solve the ticket", bundle.Challenges[0].Definition["instructions"])
+	}
+	if len(bundle.InputSets[0].Cases) != 1 {
+		t.Fatalf("case count = %d, want 1", len(bundle.InputSets[0].Cases))
+	}
+	if bundle.InputSets[0].Cases[0].CaseKey != "sample-1" {
+		t.Fatalf("case key = %q, want sample-1", bundle.InputSets[0].Cases[0].CaseKey)
 	}
 
 	manifest, err := ManifestJSON(bundle)
@@ -104,9 +116,13 @@ challenges:
 input_sets:
   - key: default
     name: Default Inputs
-    items:
+    cases:
       - challenge_key: ticket-2
-        item_key: sample-1
+        case_key: sample-1
+        expectations:
+          - key: answer
+            kind: text
+            source: input:missing
 `))
 	if err == nil {
 		t.Fatal("ParseYAML returned nil error")
@@ -120,7 +136,8 @@ input_sets:
 	expectedFields := []string{
 		"pack.slug",
 		"challenges[0].difficulty",
-		"input_sets[0].items[0].challenge_key",
+		"input_sets[0].cases[0].challenge_key",
+		"input_sets[0].cases[0].expectations[0].source",
 	}
 	for _, field := range expectedFields {
 		if !containsField(validationErrs, field) {
@@ -147,6 +164,15 @@ func TestValidateBundleRejectsDuplicateAssetKeys(t *testing.T) {
 		Challenges: []ChallengeDefinition{
 			{Key: "ticket-1", Title: "Ticket One", Category: "support", Difficulty: "easy"},
 		},
+		InputSets: []InputSetDefinition{
+			{
+				Key:  "default",
+				Name: "Default",
+				Cases: []CaseDefinition{
+					{ChallengeKey: "ticket-1", CaseKey: "case-1"},
+				},
+			},
+		},
 	})
 	if err == nil {
 		t.Fatal("ValidateBundle returned nil error")
@@ -158,6 +184,151 @@ func TestValidateBundleRejectsDuplicateAssetKeys(t *testing.T) {
 	}
 	if !containsField(validationErrs, "version.assets[1].key") {
 		t.Fatalf("expected duplicate version asset key error, got %v", validationErrs)
+	}
+}
+
+func TestParseYAMLLegacyItemsNormalizeIntoCases(t *testing.T) {
+	bundle, err := ParseYAML([]byte(`
+pack:
+  slug: support-eval
+  name: Support Eval
+  family: support
+version:
+  number: 1
+  evaluation_spec:
+    name: support-v1
+    version_number: 1
+    judge_mode: deterministic
+    validators:
+      - key: exact
+        type: exact_match
+        target: final_output
+        expected_from: challenge_input
+    scorecard:
+      dimensions: [correctness]
+challenges:
+  - key: ticket-1
+    title: Ticket One
+    category: support
+    difficulty: easy
+input_sets:
+  - key: default
+    name: Default Inputs
+    items:
+      - challenge_key: ticket-1
+        item_key: sample-1
+        payload:
+          content: hello
+`))
+	if err != nil {
+		t.Fatalf("ParseYAML returned error: %v", err)
+	}
+
+	if len(bundle.InputSets[0].Cases) != 1 {
+		t.Fatalf("case count = %d, want 1", len(bundle.InputSets[0].Cases))
+	}
+	if bundle.InputSets[0].Cases[0].CaseKey != "sample-1" {
+		t.Fatalf("case key = %q, want sample-1", bundle.InputSets[0].Cases[0].CaseKey)
+	}
+	if bundle.InputSets[0].Cases[0].Payload["content"] != "hello" {
+		t.Fatalf("payload.content = %#v, want hello", bundle.InputSets[0].Cases[0].Payload["content"])
+	}
+}
+
+func TestValidateBundleRejectsUnknownCaseArtifactRef(t *testing.T) {
+	err := ValidateBundle(Bundle{
+		Pack: PackMetadata{
+			Slug:   "support-eval",
+			Name:   "Support Eval",
+			Family: "support",
+		},
+		Version: VersionMetadata{
+			Number:         1,
+			EvaluationSpec: minimalSpec(),
+			Assets: []AssetReference{
+				{Key: "workspace", Kind: "workspace", Path: "assets/workspace.zip"},
+			},
+		},
+		Challenges: []ChallengeDefinition{
+			{Key: "ticket-1", Title: "Ticket One", Category: "support", Difficulty: "easy"},
+		},
+		InputSets: []InputSetDefinition{
+			{
+				Key:  "default",
+				Name: "Default",
+				Cases: []CaseDefinition{
+					{
+						ChallengeKey: "ticket-1",
+						CaseKey:      "case-1",
+						Artifacts:    []ArtifactRef{{Key: "missing"}},
+					},
+				},
+			},
+		},
+	})
+	if err == nil {
+		t.Fatal("ValidateBundle returned nil error")
+	}
+
+	validationErrs, ok := err.(ValidationErrors)
+	if !ok {
+		t.Fatalf("error type = %T, want ValidationErrors", err)
+	}
+	if !containsField(validationErrs, "input_sets[0].cases[0].artifacts[0].key") {
+		t.Fatalf("expected unknown artifact ref error, got %v", validationErrs)
+	}
+}
+
+func TestValidateBundleRejectsExpectationReferenceMisses(t *testing.T) {
+	err := ValidateBundle(Bundle{
+		Pack: PackMetadata{
+			Slug:   "support-eval",
+			Name:   "Support Eval",
+			Family: "support",
+		},
+		Version: VersionMetadata{
+			Number:         1,
+			EvaluationSpec: minimalSpec(),
+			Assets: []AssetReference{
+				{Key: "answer-file", Kind: "file", Path: "assets/answer.json"},
+			},
+		},
+		Challenges: []ChallengeDefinition{
+			{Key: "ticket-1", Title: "Ticket One", Category: "support", Difficulty: "easy"},
+		},
+		InputSets: []InputSetDefinition{
+			{
+				Key:  "default",
+				Name: "Default",
+				Cases: []CaseDefinition{
+					{
+						ChallengeKey: "ticket-1",
+						CaseKey:      "case-1",
+						Inputs: []CaseInput{
+							{Key: "prompt", Kind: "text", Value: "hello"},
+						},
+						Expectations: []CaseExpectation{
+							{Key: "answer", Kind: "text", Source: "input:missing"},
+							{Key: "json", Kind: "json", Source: "artifact:missing-file"},
+						},
+					},
+				},
+			},
+		},
+	})
+	if err == nil {
+		t.Fatal("ValidateBundle returned nil error")
+	}
+
+	validationErrs, ok := err.(ValidationErrors)
+	if !ok {
+		t.Fatalf("error type = %T, want ValidationErrors", err)
+	}
+	if !containsField(validationErrs, "input_sets[0].cases[0].expectations[0].source") {
+		t.Fatalf("expected unknown input source error, got %v", validationErrs)
+	}
+	if !containsField(validationErrs, "input_sets[0].cases[0].expectations[1].source") {
+		t.Fatalf("expected unknown artifact source error, got %v", validationErrs)
 	}
 }
 
