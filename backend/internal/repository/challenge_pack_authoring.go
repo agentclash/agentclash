@@ -91,7 +91,7 @@ func (r *Repository) PublishChallengePackBundle(ctx context.Context, params Publ
 		)
 		VALUES ($1, $2, $3, 'runnable', $4, $5, $6)
 	`, versionID, packID, params.Bundle.Version.Number, checksum(manifest), manifest, now); err != nil {
-		if isUniqueViolation(err) {
+		if isDuplicateVersionError(err) {
 			return PublishedChallengePack{}, ErrChallengePackVersionExists
 		}
 		return PublishedChallengePack{}, fmt.Errorf("insert challenge pack version: %w", err)
@@ -211,26 +211,11 @@ func (r *Repository) PublishChallengePackBundle(ctx context.Context, params Publ
 }
 
 func resolveOrCreateChallengePack(ctx context.Context, tx pgx.Tx, workspaceID uuid.UUID, bundle challengepack.Bundle) (uuid.UUID, error) {
-	var existingID uuid.UUID
-	var existingName string
-	var existingFamily string
-	if err := tx.QueryRow(ctx, `
-		SELECT id, name, family
-		FROM challenge_packs
-		WHERE workspace_id = $1
-		  AND slug = $2
-		  AND archived_at IS NULL
-		LIMIT 1
-	`, workspaceID, bundle.Pack.Slug).Scan(&existingID, &existingName, &existingFamily); err == nil {
-		if existingName != bundle.Pack.Name || existingFamily != bundle.Pack.Family {
-			return uuid.Nil, ErrChallengePackMetadataConflict
-		}
-		return existingID, nil
-	} else if !errors.Is(err, pgx.ErrNoRows) {
-		return uuid.Nil, fmt.Errorf("resolve existing challenge pack: %w", err)
-	}
-
-	var packID uuid.UUID
+	var (
+		packID         uuid.UUID
+		existingName   string
+		existingFamily string
+	)
 	if err := tx.QueryRow(ctx, `
 		INSERT INTO challenge_packs (
 			workspace_id,
@@ -241,15 +226,23 @@ func resolveOrCreateChallengePack(ctx context.Context, tx pgx.Tx, workspaceID uu
 			lifecycle_status
 		)
 		VALUES ($1, $2, $3, $4, $5, 'active')
-		RETURNING id
-	`, workspaceID, bundle.Pack.Slug, bundle.Pack.Name, bundle.Pack.Family, bundle.Pack.Description).Scan(&packID); err != nil {
-		if isUniqueViolation(err) {
-			return uuid.Nil, ErrChallengePackMetadataConflict
-		}
+		ON CONFLICT (workspace_id, slug) WHERE workspace_id IS NOT NULL
+		DO UPDATE SET slug = EXCLUDED.slug
+		RETURNING id, name, family
+	`, workspaceID, bundle.Pack.Slug, bundle.Pack.Name, bundle.Pack.Family, bundle.Pack.Description).Scan(&packID, &existingName, &existingFamily); err != nil {
 		return uuid.Nil, fmt.Errorf("insert challenge pack: %w", err)
 	}
 
+	if existingName != bundle.Pack.Name || existingFamily != bundle.Pack.Family {
+		return uuid.Nil, ErrChallengePackMetadataConflict
+	}
+
 	return packID, nil
+}
+
+func isDuplicateVersionError(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }
 
 func resolveOrCreateChallengeIdentity(ctx context.Context, tx pgx.Tx, challengePackID uuid.UUID, challenge challengepack.ChallengeDefinition) (uuid.UUID, error) {
@@ -291,9 +284,4 @@ func resolveOrCreateChallengeIdentity(ctx context.Context, tx pgx.Tx, challengeP
 func checksum(data []byte) string {
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:])
-}
-
-func isUniqueViolation(err error) bool {
-	var pgErr *pgconn.PgError
-	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }
