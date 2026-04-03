@@ -58,6 +58,13 @@ func TestE2BSmokeLifecycle(t *testing.T) {
 	if err := session.UploadFile(ctx, "/workspace/smoke.txt", []byte("hello")); err != nil {
 		t.Fatalf("UploadFile returned error: %v", err)
 	}
+	files, err := session.ListFiles(ctx, "/workspace")
+	if err != nil {
+		t.Fatalf("ListFiles returned error: %v", err)
+	}
+	if len(files) == 0 {
+		t.Fatalf("ListFiles returned no files, want smoke.txt")
+	}
 	result, err := session.Exec(ctx, sandbox.ExecRequest{
 		Command:          []string{"/bin/bash", "-lc", "cat /workspace/smoke.txt"},
 		WorkingDirectory: "/workspace",

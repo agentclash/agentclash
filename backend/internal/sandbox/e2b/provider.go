@@ -43,6 +43,7 @@ func (p *Provider) Create(ctx context.Context, request sandbox.CreateRequest) (s
 			processClient: p.client.processClient(record),
 			filesClient:   p.client.filesystemClient(record),
 		},
+		allowShell: request.ToolPolicy.AllowShell,
 	}, nil
 }
 

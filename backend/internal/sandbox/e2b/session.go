@@ -3,7 +3,9 @@ package e2b
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -16,9 +18,10 @@ import (
 )
 
 type session struct {
-	mu     sync.Mutex
-	client clientSession
-	closed bool
+	mu         sync.Mutex
+	client     clientSession
+	closed     bool
+	allowShell bool
 }
 
 func (s *session) ID() string {
@@ -47,6 +50,21 @@ func (s *session) ListFiles(ctx context.Context, prefix string) ([]sandbox.FileI
 	if err := s.ensureActive(); err != nil {
 		return nil, err
 	}
+	items, err := s.listFilesRPC(ctx, prefix)
+	if err == nil {
+		return items, nil
+	}
+	if !s.allowShell {
+		return nil, err
+	}
+	fallbackItems, fallbackErr := s.listFilesByFind(ctx, prefix)
+	if fallbackErr != nil {
+		return nil, errors.Join(err, fmt.Errorf("fallback list_files failed: %w", fallbackErr))
+	}
+	return fallbackItems, nil
+}
+
+func (s *session) listFilesRPC(ctx context.Context, prefix string) ([]sandbox.FileInfo, error) {
 	req := connect.NewRequest(&filesystempb.ListDirRequest{
 		Path:  prefix,
 		Depth: 32,
@@ -65,6 +83,47 @@ func (s *session) ListFiles(ctx context.Context, prefix string) ([]sandbox.FileI
 		items = append(items, sandbox.FileInfo{
 			Path: entry.GetPath(),
 			Size: entry.GetSize(),
+		})
+	}
+	return items, nil
+}
+
+func (s *session) listFilesByFind(ctx context.Context, prefix string) ([]sandbox.FileInfo, error) {
+	path := strings.TrimSpace(prefix)
+	if path == "" {
+		path = "/workspace"
+	}
+
+	result, err := s.Exec(ctx, sandbox.ExecRequest{
+		Command: []string{"find", path, "-type", "f", "-printf", "%p\t%s\n"},
+	})
+	if err != nil {
+		return nil, err
+	}
+	if result.ExitCode != 0 {
+		if strings.Contains(result.Stderr, "No such file or directory") {
+			return nil, sandbox.ErrFileNotFound
+		}
+		return nil, fmt.Errorf("find exited with code %d: %s", result.ExitCode, strings.TrimSpace(result.Stderr))
+	}
+	if strings.TrimSpace(result.Stdout) == "" {
+		return []sandbox.FileInfo{}, nil
+	}
+
+	lines := strings.Split(strings.TrimSpace(result.Stdout), "\n")
+	items := make([]sandbox.FileInfo, 0, len(lines))
+	for _, line := range lines {
+		parts := strings.SplitN(line, "\t", 2)
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("unexpected find output line %q", line)
+		}
+		size, err := strconv.ParseInt(strings.TrimSpace(parts[1]), 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("parse listed file size for %q: %w", parts[0], err)
+		}
+		items = append(items, sandbox.FileInfo{
+			Path: strings.TrimSpace(parts[0]),
+			Size: size,
 		})
 	}
 	return items, nil

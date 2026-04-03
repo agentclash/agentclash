@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -965,8 +966,47 @@ func stageSandboxInputs(ctx context.Context, session sandbox.Session, executionC
 		if err := session.UploadFile(ctx, "/workspace/agentclash/challenge-input-set.json", inputSetPayload); err != nil {
 			return NewFailure(StopReasonSandboxError, "upload challenge input set", err)
 		}
+		if err := stageWorkspaceFixtureFiles(ctx, session, executionContext.ChallengeInputSet.Items); err != nil {
+			return err
+		}
 	}
 	return nil
+}
+
+type workspaceFixtureFile struct {
+	Path    string `json:"path"`
+	Content string `json:"content"`
+}
+
+func stageWorkspaceFixtureFiles(ctx context.Context, session sandbox.Session, items []repository.ChallengeInputItemExecutionContext) error {
+	for _, item := range items {
+		files, err := extractWorkspaceFixtureFiles(item.Payload)
+		if err != nil {
+			return NewFailure(StopReasonSandboxError, "decode workspace fixture files", err)
+		}
+		for _, file := range files {
+			if strings.TrimSpace(file.Path) == "" {
+				continue
+			}
+			if err := session.UploadFile(ctx, file.Path, []byte(file.Content)); err != nil {
+				return NewFailure(StopReasonSandboxError, "upload workspace fixture file", err)
+			}
+		}
+	}
+	return nil
+}
+
+func extractWorkspaceFixtureFiles(payload json.RawMessage) ([]workspaceFixtureFile, error) {
+	if len(bytes.TrimSpace(payload)) == 0 {
+		return nil, nil
+	}
+	var decoded struct {
+		WorkspaceFiles []workspaceFixtureFile `json:"workspace_files"`
+	}
+	if err := json.Unmarshal(payload, &decoded); err != nil {
+		return nil, err
+	}
+	return decoded.WorkspaceFiles, nil
 }
 
 func destroySandbox(session sandbox.Session) error {

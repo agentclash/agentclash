@@ -103,6 +103,9 @@ func TestNativeExecutorHappyPathWritesFileThenSubmits(t *testing.T) {
 	if _, ok := files["/workspace/agentclash/challenge-input-set.json"]; !ok {
 		t.Fatalf("expected challenge-input-set.json to be staged")
 	}
+	if string(files["/workspace/project/app.py"]) != "def add(a, b):\n    return a - b\n" {
+		t.Fatalf("workspace fixture file = %q, want staged buggy source", string(files["/workspace/project/app.py"]))
+	}
 }
 
 func TestNativeExecutorReturnsObserverErrorWhenObserverWriteFails(t *testing.T) {
@@ -682,7 +685,7 @@ func nativeExecutionContext() repository.RunAgentExecutionContext {
 					ChallengeIdentityID: uuid.New(),
 					ChallengeKey:        "coding-fix",
 					ItemKey:             "task",
-					Payload:             []byte(`{"instruction":"fix the workspace"}`),
+					Payload:             []byte(`{"instruction":"fix the workspace","workspace_files":[{"path":"/workspace/project/app.py","content":"def add(a, b):\n    return a - b\n"}]}`),
 				},
 			},
 		},
