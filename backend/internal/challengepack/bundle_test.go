@@ -137,7 +137,7 @@ func TestValidateBundleRejectsDuplicateAssetKeys(t *testing.T) {
 			Family: "support",
 		},
 		Version: VersionMetadata{
-			Number: 1,
+			Number:         1,
 			EvaluationSpec: minimalSpec(),
 			Assets: []AssetReference{
 				{Key: "workspace", Path: "assets/workspace.zip"},
