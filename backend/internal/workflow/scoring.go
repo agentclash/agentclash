@@ -150,7 +150,7 @@ func mapChallengeInputs(inputSet *repository.ChallengeInputSetExecutionContext) 
 		inputs = append(inputs, scoring.EvidenceInput{
 			ChallengeIdentityID: item.ChallengeIdentityID,
 			ChallengeKey:        item.ChallengeKey,
-			ItemKey:             item.CaseKey,
+			ItemKey:             item.ItemKey,
 			Payload:             cloneJSON(item.Payload),
 		})
 	}

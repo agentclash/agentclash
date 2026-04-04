@@ -89,6 +89,83 @@ input_sets:
 	}
 }
 
+func TestManifestJSONPreservesGeneralizedContract(t *testing.T) {
+	bundle := Bundle{
+		Pack: PackMetadata{
+			Slug:   "support-eval",
+			Name:   "Support Eval",
+			Family: "support",
+		},
+		Version: VersionMetadata{
+			Number:         1,
+			EvaluationSpec: minimalSpec(),
+			Assets: []AssetReference{
+				{Key: "workspace", Kind: "workspace", Path: "assets/workspace.zip"},
+			},
+		},
+		Challenges: []ChallengeDefinition{
+			{
+				Key:          "ticket-1",
+				Title:        "Ticket One",
+				Category:     "support",
+				Difficulty:   "easy",
+				ArtifactRefs: []ArtifactRef{{Key: "workspace"}},
+			},
+		},
+		InputSets: []InputSetDefinition{
+			{
+				Key:  "default",
+				Name: "Default",
+				Cases: []CaseDefinition{
+					{
+						ChallengeKey: "ticket-1",
+						CaseKey:      "case-1",
+						Inputs: []CaseInput{
+							{Key: "prompt", Kind: "text", Value: "hello"},
+							{Key: "fixture", Kind: "workspace", ArtifactKey: "workspace"},
+						},
+						Expectations: []CaseExpectation{
+							{Key: "answer", Kind: "text", Source: "input:prompt"},
+						},
+						Artifacts: []ArtifactRef{{Key: "workspace"}},
+					},
+				},
+			},
+		},
+	}
+
+	manifest, err := ManifestJSON(bundle)
+	if err != nil {
+		t.Fatalf("ManifestJSON returned error: %v", err)
+	}
+
+	var decoded struct {
+		InputSets []struct {
+			Cases []struct {
+				CaseKey      string            `json:"case_key"`
+				Inputs       []CaseInput       `json:"inputs"`
+				Expectations []CaseExpectation `json:"expectations"`
+				Artifacts    []ArtifactRef     `json:"artifacts"`
+			} `json:"cases"`
+		} `json:"input_sets"`
+	}
+	if err := json.Unmarshal(manifest, &decoded); err != nil {
+		t.Fatalf("unmarshal generalized manifest: %v", err)
+	}
+	if len(decoded.InputSets) != 1 || len(decoded.InputSets[0].Cases) != 1 {
+		t.Fatalf("manifest input_sets/cases = %#v, want one generalized case", decoded.InputSets)
+	}
+	if decoded.InputSets[0].Cases[0].CaseKey != "case-1" {
+		t.Fatalf("case_key = %q, want case-1", decoded.InputSets[0].Cases[0].CaseKey)
+	}
+	if len(decoded.InputSets[0].Cases[0].Inputs) != 2 {
+		t.Fatalf("inputs count = %d, want 2", len(decoded.InputSets[0].Cases[0].Inputs))
+	}
+	if len(decoded.InputSets[0].Cases[0].Expectations) != 1 {
+		t.Fatalf("expectations count = %d, want 1", len(decoded.InputSets[0].Cases[0].Expectations))
+	}
+}
+
 func TestParseYAMLRejectsInvalidBundle(t *testing.T) {
 	_, err := ParseYAML([]byte(`
 pack:
@@ -184,6 +261,59 @@ func TestValidateBundleRejectsDuplicateAssetKeys(t *testing.T) {
 	}
 	if !containsField(validationErrs, "version.assets[1].key") {
 		t.Fatalf("expected duplicate version asset key error, got %v", validationErrs)
+	}
+}
+
+func TestValidateBundleRejectsCaseShapeViolations(t *testing.T) {
+	err := ValidateBundle(Bundle{
+		Pack: PackMetadata{
+			Slug:   "support-eval",
+			Name:   "Support Eval",
+			Family: "support",
+		},
+		Version: VersionMetadata{
+			Number:         1,
+			EvaluationSpec: minimalSpec(),
+		},
+		Challenges: []ChallengeDefinition{
+			{Key: "ticket-1", Title: "Ticket One", Category: "support", Difficulty: "easy"},
+		},
+		InputSets: []InputSetDefinition{
+			{
+				Key:  "default",
+				Name: "Default",
+				Cases: []CaseDefinition{
+					{
+						ChallengeKey: "ticket-1",
+						Inputs: []CaseInput{
+							{Kind: "text", Value: "hello"},
+						},
+						Expectations: []CaseExpectation{
+							{Key: "answer", Source: "bad-prefix"},
+						},
+					},
+				},
+			},
+		},
+	})
+	if err == nil {
+		t.Fatal("ValidateBundle returned nil error")
+	}
+
+	validationErrs, ok := err.(ValidationErrors)
+	if !ok {
+		t.Fatalf("error type = %T, want ValidationErrors", err)
+	}
+	expectedFields := []string{
+		"input_sets[0].cases[0].case_key",
+		"input_sets[0].cases[0].inputs[0].key",
+		"input_sets[0].cases[0].expectations[0].kind",
+		"input_sets[0].cases[0].expectations[0].source",
+	}
+	for _, field := range expectedFields {
+		if !containsField(validationErrs, field) {
+			t.Fatalf("expected field %q in validation errors: %v", field, validationErrs)
+		}
 	}
 }
 

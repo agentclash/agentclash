@@ -1030,20 +1030,59 @@ func extractWorkspaceFixtureFiles(item repository.ChallengeCaseExecutionContext)
 		if input.Kind != "workspace" {
 			continue
 		}
-		value, ok := input.Value.([]any)
-		if !ok {
-			continue
+		inputFiles, err := decodeWorkspaceInputFiles(item, input)
+		if err != nil {
+			return nil, err
 		}
-		for _, rawFile := range value {
-			fileMap, ok := rawFile.(map[string]any)
-			if !ok {
-				continue
-			}
-			path, _ := fileMap["path"].(string)
-			content, _ := fileMap["content"].(string)
-			files = append(files, workspaceFixtureFile{Path: path, Content: content})
-		}
+		files = append(files, inputFiles...)
 	}
+	return files, nil
+}
+
+func decodeWorkspaceInputFiles(item repository.ChallengeCaseExecutionContext, input challengepack.CaseInput) ([]workspaceFixtureFile, error) {
+	value, ok := input.Value.([]any)
+	if !ok {
+		return nil, fmt.Errorf(
+			"workspace input %q for case %q must be an array of file objects",
+			input.Key,
+			item.CaseKey,
+		)
+	}
+
+	files := make([]workspaceFixtureFile, 0, len(value))
+	for index, rawFile := range value {
+		fileMap, ok := rawFile.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf(
+				"workspace input %q for case %q file[%d] must be an object",
+				input.Key,
+				item.CaseKey,
+				index,
+			)
+		}
+
+		path, ok := fileMap["path"].(string)
+		if !ok {
+			return nil, fmt.Errorf(
+				"workspace input %q for case %q file[%d].path must be a string",
+				input.Key,
+				item.CaseKey,
+				index,
+			)
+		}
+		content, ok := fileMap["content"].(string)
+		if !ok {
+			return nil, fmt.Errorf(
+				"workspace input %q for case %q file[%d].content must be a string",
+				input.Key,
+				item.CaseKey,
+				index,
+			)
+		}
+
+		files = append(files, workspaceFixtureFile{Path: path, Content: content})
+	}
+
 	return files, nil
 }
 

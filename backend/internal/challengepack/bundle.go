@@ -301,9 +301,28 @@ func cloneObject(value map[string]any) map[string]any {
 	}
 	cloned := make(map[string]any, len(value))
 	for key, item := range value {
-		cloned[key] = item
+		cloned[key] = deepCloneValue(item)
 	}
 	return cloned
+}
+
+func deepCloneValue(value any) any {
+	switch typed := value.(type) {
+	case map[string]any:
+		cloned := make(map[string]any, len(typed))
+		for key, item := range typed {
+			cloned[key] = deepCloneValue(item)
+		}
+		return cloned
+	case []any:
+		cloned := make([]any, 0, len(typed))
+		for _, item := range typed {
+			cloned = append(cloned, deepCloneValue(item))
+		}
+		return cloned
+	default:
+		return typed
+	}
 }
 
 func (c CaseDefinition) EffectiveKey() string {
@@ -314,6 +333,9 @@ func (c CaseDefinition) EffectiveKey() string {
 }
 
 func (c CaseDefinition) IsLegacyPayloadOnly() bool {
+	// Legacy packs only used raw payload blobs keyed by item_key. We keep that
+	// storage shape for backward compatibility when no generalized case fields
+	// are present.
 	return len(c.Inputs) == 0 && len(c.Expectations) == 0 && len(c.Artifacts) == 0 && len(c.Assets) == 0
 }
 

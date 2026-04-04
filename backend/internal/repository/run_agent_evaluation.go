@@ -70,7 +70,7 @@ func mapEvaluationInput(evaluationSpecID uuid.UUID, executionContext RunAgentExe
 			challengeInputs = append(challengeInputs, scoring.EvidenceInput{
 				ChallengeIdentityID: item.ChallengeIdentityID,
 				ChallengeKey:        item.ChallengeKey,
-				ItemKey:             item.CaseKey,
+				ItemKey:             item.ItemKey,
 				Payload:             cloneJSON(item.Payload),
 			})
 		}

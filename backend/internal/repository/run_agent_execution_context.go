@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -412,7 +413,10 @@ func decodeChallengeCases(items []ChallengeInputItemExecutionContext) ([]Challen
 		}
 		payload := cloneJSON(item.Payload)
 		if caseDoc.SchemaVersion != 0 {
-			payload = mustMarshalJSON(caseDoc.Payload)
+			payload, err = marshalCasePayload(caseDoc.Payload)
+			if err != nil {
+				return nil, fmt.Errorf("marshal canonical case payload for %s/%s: %w", item.ChallengeKey, item.ItemKey, err)
+			}
 		}
 		cases = append(cases, ChallengeCaseExecutionContext{
 			ID:                  item.ID,
@@ -452,15 +456,15 @@ func decodeStoredCaseDocument(payload json.RawMessage) (challengepack.StoredCase
 }
 
 func bytesTrimSpace(payload json.RawMessage) []byte {
-	return []byte(strings.TrimSpace(string(payload)))
+	return bytes.TrimSpace(payload)
 }
 
-func mustMarshalJSON(value any) json.RawMessage {
+func marshalCasePayload(value any) (json.RawMessage, error) {
 	encoded, err := json.Marshal(value)
 	if err != nil {
-		return json.RawMessage(`{}`)
+		return nil, err
 	}
-	return encoded
+	return encoded, nil
 }
 
 func decodeAgentBuildVersionExecutionContext(buildVersionID uuid.UUID, payload []byte) (AgentBuildVersionExecutionContext, error) {
