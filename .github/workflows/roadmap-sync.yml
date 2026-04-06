@@ -1,0 +1,73 @@
+name: Roadmap Issue Sync
+
+on:
+  issues:
+    types: [closed, reopened]
+
+jobs:
+  sync-roadmap:
+    name: Update Roadmap on Issue Close/Reopen
+    runs-on: ubuntu-latest
+    # Only run if the closed/reopened issue is NOT the roadmap itself
+    if: github.event.issue.number != 157
+    permissions:
+      issues: write
+    steps:
+      - name: Update roadmap issue
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const ROADMAP_ISSUE = 157;
+            const issueNumber = context.payload.issue.number;
+            const action = context.payload.action; // 'closed' or 'reopened'
+
+            // Fetch roadmap issue body
+            const { data: roadmap } = await github.rest.issues.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: ROADMAP_ISSUE,
+            });
+
+            let body = roadmap.body;
+            if (!body) return;
+
+            // Check if this issue is referenced in the roadmap
+            const issuePattern = `#${issueNumber}`;
+            if (!body.includes(issuePattern)) {
+              console.log(`Issue ${issuePattern} not found in roadmap. Skipping.`);
+              return;
+            }
+
+            // Match table rows containing this issue's link
+            const linkPattern = new RegExp(
+              `\\[#${issueNumber}\\]\\(https://github\\.com/${context.repo.owner}/${context.repo.repo}/issues/${issueNumber}\\)`,
+              'g'
+            );
+
+            if (action === 'closed') {
+              // Add strikethrough and checkmark to the issue link
+              const closedLink = `~~[#${issueNumber}](https://github.com/${context.repo.owner}/${context.repo.repo}/issues/${issueNumber})~~ ✅`;
+              // Only replace if not already marked
+              if (!body.includes(`~~[#${issueNumber}]`)) {
+                body = body.replace(linkPattern, closedLink);
+              }
+            } else if (action === 'reopened') {
+              // Remove strikethrough and checkmark
+              const closedPattern = new RegExp(
+                `~~\\[#${issueNumber}\\]\\(https://github\\.com/${context.repo.owner}/${context.repo.repo}/issues/${issueNumber}\\)~~ ✅`,
+                'g'
+              );
+              const openLink = `[#${issueNumber}](https://github.com/${context.repo.owner}/${context.repo.repo}/issues/${issueNumber})`;
+              body = body.replace(closedPattern, openLink);
+            }
+
+            // Update the roadmap issue
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: ROADMAP_ISSUE,
+              body: body,
+            });
+
+            console.log(`Roadmap #${ROADMAP_ISSUE} updated: issue #${issueNumber} ${action}`);
