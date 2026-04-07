@@ -5,10 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/challengepack"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/runevents"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/scoring"
@@ -57,10 +55,19 @@ func executeRunAgentEvaluation(ctx context.Context, repo RunRepository, runAgent
 		return scoring.RunAgentEvaluation{}, fmt.Errorf("list run events: %w", err)
 	}
 
+	challengeInputs, err := mapChallengeInputs(executionContext.ChallengePackVersion.Manifest, executionContext.ChallengeInputSet)
+	if err != nil {
+		emitErr := recordScoringFailedEvent(ctx, repo, executionContext.Run.ID, runAgentID, fmt.Sprintf("map challenge inputs: %v", err))
+		if emitErr != nil {
+			return scoring.RunAgentEvaluation{}, fmt.Errorf("map challenge inputs: %w; additionally failed to record scoring failure: %v", err, emitErr)
+		}
+		return scoring.RunAgentEvaluation{}, fmt.Errorf("map challenge inputs: %w", err)
+	}
+
 	evaluation, err := scoring.EvaluateRunAgent(scoring.EvaluationInput{
 		RunAgentID:       runAgentID,
 		EvaluationSpecID: specRecord.ID,
-		ChallengeInputs:  mapChallengeInputs(executionContext.ChallengePackVersion.Manifest, executionContext.ChallengeInputSet),
+		ChallengeInputs:  challengeInputs,
 		Events:           mapRunEvents(events),
 	}, persistedSpec)
 	if err != nil {
@@ -142,137 +149,8 @@ func isEvaluationSpecNotFound(err error) bool {
 	return errors.Is(err, repository.ErrEvaluationSpecNotFound)
 }
 
-func mapChallengeInputs(manifest json.RawMessage, inputSet *repository.ChallengeInputSetExecutionContext) []scoring.EvidenceInput {
-	if inputSet == nil {
-		return nil
-	}
-
-	versionAssets := manifestEvidenceAssets(manifest)
-	inputs := make([]scoring.EvidenceInput, 0, len(inputSet.Cases))
-	for _, item := range inputSet.Cases {
-		artifacts := caseEvidenceArtifacts(item, versionAssets)
-		inputs = append(inputs, scoring.EvidenceInput{
-			ChallengeIdentityID: item.ChallengeIdentityID,
-			ChallengeKey:        item.ChallengeKey,
-			CaseKey:             item.CaseKey,
-			ItemKey:             item.ItemKey,
-			Payload:             cloneJSON(item.Payload),
-			Inputs:              caseEvidenceValues(item.Inputs),
-			Expectations:        caseExpectationValues(item.Expectations),
-			Artifacts:           artifacts,
-		})
-	}
-	return inputs
-}
-
-func manifestEvidenceAssets(manifest json.RawMessage) map[string]scoring.EvidenceArtifact {
-	var decoded struct {
-		Version struct {
-			Assets []challengepack.AssetReference `json:"assets"`
-		} `json:"version"`
-	}
-	if err := json.Unmarshal(manifest, &decoded); err != nil {
-		return map[string]scoring.EvidenceArtifact{}
-	}
-
-	assets := make(map[string]scoring.EvidenceArtifact, len(decoded.Version.Assets))
-	for _, asset := range decoded.Version.Assets {
-		if asset.Key == "" {
-			continue
-		}
-		assets[asset.Key] = scoring.EvidenceArtifact{
-			Key:       asset.Key,
-			Kind:      asset.Kind,
-			Path:      asset.Path,
-			MediaType: asset.MediaType,
-		}
-	}
-	return assets
-}
-
-func caseEvidenceArtifacts(item repository.ChallengeCaseExecutionContext, manifestAssets map[string]scoring.EvidenceArtifact) map[string]scoring.EvidenceArtifact {
-	artifacts := make(map[string]scoring.EvidenceArtifact)
-	for _, asset := range item.Assets {
-		if asset.Key == "" {
-			continue
-		}
-		artifacts[asset.Key] = scoring.EvidenceArtifact{
-			Key:       asset.Key,
-			Kind:      asset.Kind,
-			Path:      asset.Path,
-			MediaType: asset.MediaType,
-		}
-	}
-	for _, ref := range item.Artifacts {
-		if artifact, ok := manifestAssets[ref.Key]; ok {
-			artifacts[ref.Key] = artifact
-		}
-	}
-	for _, input := range item.Inputs {
-		if artifact, ok := manifestAssets[input.ArtifactKey]; ok {
-			artifacts[input.ArtifactKey] = artifact
-		}
-	}
-	for _, expectation := range item.Expectations {
-		if artifact, ok := manifestAssets[expectation.ArtifactKey]; ok {
-			artifacts[expectation.ArtifactKey] = artifact
-		}
-		if artifactKey, ok := evidenceArtifactKeyFromSource(expectation.Source); ok {
-			if artifact, exists := manifestAssets[artifactKey]; exists {
-				artifacts[artifactKey] = artifact
-			}
-		}
-	}
-	return artifacts
-}
-
-func caseEvidenceValues(inputs []challengepack.CaseInput) map[string]scoring.EvidenceValue {
-	values := make(map[string]scoring.EvidenceValue, len(inputs))
-	for _, input := range inputs {
-		values[input.Key] = scoring.EvidenceValue{
-			Kind:        input.Kind,
-			Value:       marshalEvidenceValue(input.Value),
-			ArtifactKey: input.ArtifactKey,
-			Path:        input.Path,
-		}
-	}
-	return values
-}
-
-func caseExpectationValues(expectations []challengepack.CaseExpectation) map[string]scoring.EvidenceValue {
-	values := make(map[string]scoring.EvidenceValue, len(expectations))
-	for _, expectation := range expectations {
-		values[expectation.Key] = scoring.EvidenceValue{
-			Kind:        expectation.Kind,
-			Value:       marshalEvidenceValue(expectation.Value),
-			ArtifactKey: expectation.ArtifactKey,
-			Source:      expectation.Source,
-		}
-	}
-	return values
-}
-
-func marshalEvidenceValue(value any) json.RawMessage {
-	if value == nil {
-		return nil
-	}
-	encoded, err := json.Marshal(value)
-	if err != nil {
-		return nil
-	}
-	return encoded
-}
-
-func evidenceArtifactKeyFromSource(source string) (string, bool) {
-	trimmed := strings.TrimSpace(source)
-	if !strings.HasPrefix(trimmed, "artifact:") {
-		return "", false
-	}
-	key := strings.TrimSpace(strings.TrimPrefix(trimmed, "artifact:"))
-	if key == "" {
-		return "", false
-	}
-	return key, true
+func mapChallengeInputs(manifest []byte, inputSet *repository.ChallengeInputSetExecutionContext) ([]scoring.EvidenceInput, error) {
+	return repository.BuildScoringEvidenceInputs(manifest, inputSet)
 }
 
 func mapRunEvents(events []repository.RunEvent) []scoring.Event {

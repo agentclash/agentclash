@@ -1051,6 +1051,8 @@ func resolveCaseInput(inputs []EvidenceInput) (*EvidenceInput, string) {
 	if len(inputs) == 0 {
 		return nil, "case evidence is unavailable"
 	}
+	// Case-oriented evidence currently resolves only when one canonical case is
+	// in scope. Multi-case packs will need per-case scoring expansion later.
 	if len(inputs) > 1 {
 		return nil, "case evidence is ambiguous across multiple cases"
 	}
@@ -1104,6 +1106,13 @@ func resolveArtifactEvidence(source string, input EvidenceInput) (*string, *uuid
 }
 
 func resolveEvidenceField(value EvidenceValue, input EvidenceInput, extra []string) (*string, *uuid.UUID, string, error) {
+	return resolveEvidenceFieldWithDepth(value, input, extra, 0)
+}
+
+func resolveEvidenceFieldWithDepth(value EvidenceValue, input EvidenceInput, extra []string, depth int) (*string, *uuid.UUID, string, error) {
+	if depth > 8 {
+		return nil, uuidPtrOrNil(input.ChallengeIdentityID), "", fmt.Errorf("evidence reference chain exceeds maximum depth")
+	}
 	switch {
 	case len(bytes.TrimSpace(value.Value)) > 0:
 		return resolveJSONEvidence(value.Value, extra, uuidPtrOrNil(input.ChallengeIdentityID))
@@ -1118,7 +1127,7 @@ func resolveEvidenceField(value EvidenceValue, input EvidenceInput, extra []stri
 			if !ok {
 				return nil, uuidPtrOrNil(input.ChallengeIdentityID), fmt.Sprintf("case input %q is unavailable", inputKey), nil
 			}
-			return resolveEvidenceField(referenced, input, extra)
+			return resolveEvidenceFieldWithDepth(referenced, input, extra, depth+1)
 		case strings.HasPrefix(value.Source, "artifact:"):
 			artifactKey := strings.TrimSpace(strings.TrimPrefix(value.Source, "artifact:"))
 			if artifactKey == "" {

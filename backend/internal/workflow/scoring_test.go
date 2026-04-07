@@ -40,7 +40,10 @@ func TestMapChallengeInputs_PreservesCanonicalCaseContext(t *testing.T) {
 		},
 	}
 
-	mapped := mapChallengeInputs(manifest, inputSet)
+	mapped, err := mapChallengeInputs(manifest, inputSet)
+	if err != nil {
+		t.Fatalf("mapChallengeInputs returned error: %v", err)
+	}
 	if len(mapped) != 1 {
 		t.Fatalf("mapped count = %d, want 1", len(mapped))
 	}
