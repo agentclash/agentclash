@@ -166,7 +166,7 @@ func (noopArtifactService) GetArtifactContent(_ context.Context, _ uuid.UUID, _ 
 
 type noopChallengePackAuthoringService struct{}
 
-func (noopChallengePackAuthoringService) ValidateBundle(_ context.Context, _ []byte) (ValidateChallengePackResponse, error) {
+func (noopChallengePackAuthoringService) ValidateBundle(_ context.Context, _ uuid.UUID, _ []byte) (ValidateChallengePackResponse, error) {
 	return ValidateChallengePackResponse{}, errors.New("challenge pack authoring service is not configured")
 }
 

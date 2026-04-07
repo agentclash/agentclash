@@ -73,7 +73,7 @@ func main() {
 	)
 	agentDeploymentReadManager := api.NewAgentDeploymentReadManager(repo)
 	challengePackReadManager := api.NewChallengePackReadManager(repo)
-	challengePackAuthoringManager := api.NewChallengePackAuthoringManager(repo)
+	challengePackAuthoringManager := api.NewChallengePackAuthoringManager(repo, artifactStore)
 	agentBuildManager := api.NewAgentBuildManager(repo)
 
 	server := api.NewServer(

@@ -19,7 +19,7 @@ type stubAgentBuildService struct{}
 
 type stubChallengePackAuthoringService struct{}
 
-func (stubChallengePackAuthoringService) ValidateBundle(_ context.Context, _ []byte) (ValidateChallengePackResponse, error) {
+func (stubChallengePackAuthoringService) ValidateBundle(_ context.Context, _ uuid.UUID, _ []byte) (ValidateChallengePackResponse, error) {
 	return ValidateChallengePackResponse{}, errors.New("not implemented")
 }
 

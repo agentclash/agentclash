@@ -4,12 +4,15 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/storage"
 	"github.com/google/uuid"
 	"log/slog"
 )
@@ -47,6 +50,17 @@ type fakeChallengePackAuthoringRepository struct {
 	published repository.PublishedChallengePack
 }
 
+func (f *fakeChallengePackAuthoringRepository) GetArtifactByID(_ context.Context, artifactID uuid.UUID) (repository.Artifact, error) {
+	return repository.Artifact{
+		ID:          artifactID,
+		WorkspaceID: uuid.MustParse("11111111-1111-1111-1111-111111111111"),
+	}, nil
+}
+
+func (f *fakeChallengePackAuthoringRepository) GetOrganizationIDByWorkspaceID(_ context.Context, _ uuid.UUID) (uuid.UUID, error) {
+	return uuid.MustParse("22222222-2222-2222-2222-222222222222"), nil
+}
+
 func (f *fakeChallengePackAuthoringRepository) PublishChallengePackBundle(_ context.Context, _ repository.PublishChallengePackBundleParams) (repository.PublishedChallengePack, error) {
 	if f.published.ChallengePackID == uuid.Nil {
 		f.published = repository.PublishedChallengePack{
@@ -58,6 +72,25 @@ func (f *fakeChallengePackAuthoringRepository) PublishChallengePackBundle(_ cont
 	}
 	return f.published, nil
 }
+
+type fakeChallengePackStore struct{}
+
+func (fakeChallengePackStore) Bucket() string { return "test-bucket" }
+
+func (fakeChallengePackStore) PutObject(_ context.Context, input storage.PutObjectInput) (storage.ObjectMetadata, error) {
+	return storage.ObjectMetadata{
+		Bucket:      "test-bucket",
+		Key:         input.Key,
+		SizeBytes:   input.SizeBytes,
+		ContentType: input.ContentType,
+	}, nil
+}
+
+func (fakeChallengePackStore) OpenObject(_ context.Context, _ string) (io.ReadCloser, storage.ObjectMetadata, error) {
+	return nil, storage.ObjectMetadata{}, errors.New("not implemented")
+}
+
+func (fakeChallengePackStore) DeleteObject(_ context.Context, _ string) error { return nil }
 
 func TestChallengePackReadManagerUsesWorkspaceFromContext(t *testing.T) {
 	workspaceID := uuid.New()
@@ -79,9 +112,9 @@ func TestChallengePackReadManagerUsesWorkspaceFromContext(t *testing.T) {
 }
 
 func TestChallengePackAuthoringManagerValidateBundleReturnsFieldErrors(t *testing.T) {
-	manager := NewChallengePackAuthoringManager(&fakeChallengePackAuthoringRepository{})
+	manager := NewChallengePackAuthoringManager(&fakeChallengePackAuthoringRepository{}, nil)
 
-	result, err := manager.ValidateBundle(context.Background(), []byte("pack:\n  slug: \"\"\n"))
+	result, err := manager.ValidateBundle(context.Background(), uuid.New(), []byte("pack:\n  slug: \"\"\n"))
 	if err != nil {
 		t.Fatalf("ValidateBundle returned error: %v", err)
 	}
@@ -95,7 +128,7 @@ func TestChallengePackAuthoringManagerValidateBundleReturnsFieldErrors(t *testin
 
 func TestPublishChallengePackHandlerReturnsCreatedResponse(t *testing.T) {
 	logger := challengePackTestLogger(t)
-	service := NewChallengePackAuthoringManager(&fakeChallengePackAuthoringRepository{})
+	service := NewChallengePackAuthoringManager(&fakeChallengePackAuthoringRepository{}, fakeChallengePackStore{})
 	workspaceID := uuid.New()
 	userID := uuid.New()
 
@@ -157,6 +190,50 @@ challenges:
 	}
 	if response.ChallengePackID == uuid.Nil {
 		t.Fatal("challenge_pack_id is nil")
+	}
+}
+
+func TestChallengePackAuthoringManagerValidateBundleRejectsAssetFromOtherWorkspace(t *testing.T) {
+	repo := &fakeChallengePackAuthoringRepository{}
+	manager := NewChallengePackAuthoringManager(repo, nil)
+	workspaceID := uuid.New()
+
+	result, err := manager.ValidateBundle(context.Background(), workspaceID, []byte(`
+pack:
+  slug: support-eval
+  name: Support Eval
+  family: support
+version:
+  number: 1
+  assets:
+    - key: workspace
+      path: assets/workspace.zip
+      artifact_id: aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa
+  evaluation_spec:
+    name: support-v1
+    version_number: 1
+    judge_mode: deterministic
+    validators:
+      - key: exact
+        type: exact_match
+        target: final_output
+        expected_from: challenge_input
+    scorecard:
+      dimensions: [correctness]
+challenges:
+  - key: ticket-1
+    title: Ticket One
+    category: support
+    difficulty: easy
+`))
+	if err != nil {
+		t.Fatalf("ValidateBundle returned error: %v", err)
+	}
+	if result.Valid {
+		t.Fatal("Valid = true, want false")
+	}
+	if len(result.Errors) != 1 || result.Errors[0].Field != "version.assets[0].artifact_id" {
+		t.Fatalf("errors = %#v, want version asset artifact_id error", result.Errors)
 	}
 }
 

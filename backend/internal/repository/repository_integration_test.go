@@ -53,7 +53,8 @@ func TestRepositoryPublishChallengePackBundle(t *testing.T) {
 	repo := repository.New(db)
 
 	published, err := repo.PublishChallengePackBundle(ctx, repository.PublishChallengePackBundleParams{
-		WorkspaceID: fixture.workspaceID,
+		OrganizationID: fixture.organizationID,
+		WorkspaceID:    fixture.workspaceID,
 		Bundle: challengepack.Bundle{
 			Pack: challengepack.PackMetadata{
 				Slug:        "customer-support-pack",
@@ -109,9 +110,23 @@ func TestRepositoryPublishChallengePackBundle(t *testing.T) {
 				},
 			},
 		},
+		BundleArtifact: &repository.CreateArtifactParams{
+			ArtifactType:    "challenge_pack_bundle",
+			StorageBucket:   "bundle-bucket",
+			StorageKey:      "challenge-pack-bundles/customer-support-pack/v1.yaml",
+			ContentType:     stringPtr("application/yaml"),
+			SizeBytes:       int64Ptr(128),
+			ChecksumSHA256:  stringPtr("bundle-checksum"),
+			Visibility:      "private",
+			RetentionStatus: "active",
+			Metadata:        []byte(`{"filename":"customer-support-pack-v1.yaml","artifact_role":"challenge_pack_bundle"}`),
+		},
 	})
 	if err != nil {
 		t.Fatalf("PublishChallengePackBundle returned error: %v", err)
+	}
+	if published.BundleArtifactID == nil {
+		t.Fatal("bundle artifact id is nil")
 	}
 
 	var workspaceID *uuid.UUID
@@ -155,6 +170,24 @@ func TestRepositoryPublishChallengePackBundle(t *testing.T) {
 	if runnableVersion.WorkspaceID == nil || *runnableVersion.WorkspaceID != fixture.workspaceID {
 		t.Fatalf("runnable workspace_id = %v, want %s", runnableVersion.WorkspaceID, fixture.workspaceID)
 	}
+
+	bundleArtifact, err := repo.GetArtifactByID(ctx, *published.BundleArtifactID)
+	if err != nil {
+		t.Fatalf("GetArtifactByID returned error: %v", err)
+	}
+	if bundleArtifact.ArtifactType != "challenge_pack_bundle" {
+		t.Fatalf("artifact_type = %q, want challenge_pack_bundle", bundleArtifact.ArtifactType)
+	}
+	var metadata map[string]any
+	if err := json.Unmarshal(bundleArtifact.Metadata, &metadata); err != nil {
+		t.Fatalf("unmarshal bundle artifact metadata: %v", err)
+	}
+	if metadata["challenge_pack_version_id"] != published.ChallengePackVersionID.String() {
+		t.Fatalf("metadata challenge_pack_version_id = %#v, want %s", metadata["challenge_pack_version_id"], published.ChallengePackVersionID)
+	}
+	if metadata["challenge_pack_slug"] != "customer-support-pack" {
+		t.Fatalf("metadata challenge_pack_slug = %#v, want customer-support-pack", metadata["challenge_pack_slug"])
+	}
 }
 
 func TestRepositoryPublishChallengePackBundleRejectsDuplicateVersion(t *testing.T) {
@@ -164,7 +197,8 @@ func TestRepositoryPublishChallengePackBundleRejectsDuplicateVersion(t *testing.
 	repo := repository.New(db)
 
 	params := repository.PublishChallengePackBundleParams{
-		WorkspaceID: fixture.workspaceID,
+		OrganizationID: fixture.organizationID,
+		WorkspaceID:    fixture.workspaceID,
 		Bundle: challengepack.Bundle{
 			Pack: challengepack.PackMetadata{
 				Slug:   "customer-support-pack",
@@ -228,6 +262,10 @@ func TestRepositoryListRunAgentsByRunID(t *testing.T) {
 }
 
 func stringPtr(value string) *string {
+	return &value
+}
+
+func int64Ptr(value int64) *int64 {
 	return &value
 }
 

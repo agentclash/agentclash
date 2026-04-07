@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/scoring"
+	"github.com/google/uuid"
 	"gopkg.in/yaml.v3"
 )
 
@@ -63,10 +64,11 @@ type CaseDefinition struct {
 }
 
 type AssetReference struct {
-	Key       string `yaml:"key" json:"key"`
-	Kind      string `yaml:"kind,omitempty" json:"kind,omitempty"`
-	Path      string `yaml:"path" json:"path"`
-	MediaType string `yaml:"media_type,omitempty" json:"media_type,omitempty"`
+	Key        string     `yaml:"key" json:"key"`
+	Kind       string     `yaml:"kind,omitempty" json:"kind,omitempty"`
+	Path       string     `yaml:"path" json:"path"`
+	MediaType  string     `yaml:"media_type,omitempty" json:"media_type,omitempty"`
+	ArtifactID *uuid.UUID `yaml:"artifact_id,omitempty" json:"artifact_id,omitempty"`
 }
 
 type ArtifactRef struct {

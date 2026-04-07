@@ -16,8 +16,10 @@ import (
 )
 
 type PublishChallengePackBundleParams struct {
-	WorkspaceID uuid.UUID
-	Bundle      challengepack.Bundle
+	OrganizationID uuid.UUID
+	WorkspaceID    uuid.UUID
+	Bundle         challengepack.Bundle
+	BundleArtifact *CreateArtifactParams
 }
 
 type PublishedChallengePack struct {
@@ -25,6 +27,7 @@ type PublishedChallengePack struct {
 	ChallengePackVersionID uuid.UUID
 	EvaluationSpecID       uuid.UUID
 	InputSetIDs            []uuid.UUID
+	BundleArtifactID       *uuid.UUID
 }
 
 func (r *Repository) ListVisibleChallengePacks(ctx context.Context, workspaceID uuid.UUID) ([]ChallengePackSummary, error) {
@@ -198,16 +201,54 @@ func (r *Repository) PublishChallengePackBundle(ctx context.Context, params Publ
 		}
 	}
 
-	if err := tx.Commit(ctx); err != nil {
-		return PublishedChallengePack{}, fmt.Errorf("commit challenge pack publish: %w", err)
-	}
-
-	return PublishedChallengePack{
+	published := PublishedChallengePack{
 		ChallengePackID:        packID,
 		ChallengePackVersionID: versionID,
 		EvaluationSpecID:       evaluationSpecID,
 		InputSetIDs:            inputSetIDs,
-	}, nil
+	}
+
+	if params.BundleArtifact != nil {
+		artifactParams := *params.BundleArtifact
+		artifactParams.OrganizationID = params.OrganizationID
+		artifactParams.WorkspaceID = params.WorkspaceID
+
+		metadata := map[string]any{
+			"challenge_pack_id":         packID.String(),
+			"challenge_pack_version_id": versionID.String(),
+			"challenge_pack_slug":       params.Bundle.Pack.Slug,
+			"challenge_pack_name":       params.Bundle.Pack.Name,
+			"version_number":            params.Bundle.Version.Number,
+		}
+
+		if len(artifactParams.Metadata) > 0 {
+			var existing map[string]any
+			if err := json.Unmarshal(artifactParams.Metadata, &existing); err != nil {
+				return PublishedChallengePack{}, fmt.Errorf("decode challenge pack bundle artifact metadata: %w", err)
+			}
+			for key, value := range existing {
+				metadata[key] = value
+			}
+		}
+
+		metadataJSON, err := json.Marshal(metadata)
+		if err != nil {
+			return PublishedChallengePack{}, fmt.Errorf("marshal challenge pack bundle artifact metadata: %w", err)
+		}
+		artifactParams.Metadata = metadataJSON
+
+		artifact, err := createArtifactTx(ctx, tx, artifactParams)
+		if err != nil {
+			return PublishedChallengePack{}, fmt.Errorf("create challenge pack bundle artifact: %w", err)
+		}
+		published.BundleArtifactID = &artifact.ID
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return PublishedChallengePack{}, fmt.Errorf("commit challenge pack publish: %w", err)
+	}
+
+	return published, nil
 }
 
 func resolveOrCreateChallengePack(ctx context.Context, tx pgx.Tx, workspaceID uuid.UUID, bundle challengepack.Bundle) (uuid.UUID, error) {
@@ -243,6 +284,64 @@ func resolveOrCreateChallengePack(ctx context.Context, tx pgx.Tx, workspaceID uu
 func isDuplicateVersionError(err error) bool {
 	var pgErr *pgconn.PgError
 	return errors.As(err, &pgErr) && pgErr.Code == "23505"
+}
+
+func createArtifactTx(ctx context.Context, tx pgx.Tx, params CreateArtifactParams) (Artifact, error) {
+	row := tx.QueryRow(ctx, `
+		INSERT INTO artifacts (
+			organization_id,
+			workspace_id,
+			run_id,
+			run_agent_id,
+			artifact_type,
+			storage_bucket,
+			storage_key,
+			content_type,
+			size_bytes,
+			checksum_sha256,
+			visibility,
+			retention_status,
+			metadata
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+		RETURNING
+			id,
+			organization_id,
+			workspace_id,
+			run_id,
+			run_agent_id,
+			artifact_type,
+			storage_bucket,
+			storage_key,
+			content_type,
+			size_bytes,
+			checksum_sha256,
+			visibility,
+			retention_status,
+			metadata,
+			created_at,
+			updated_at
+	`,
+		params.OrganizationID,
+		params.WorkspaceID,
+		params.RunID,
+		params.RunAgentID,
+		params.ArtifactType,
+		params.StorageBucket,
+		params.StorageKey,
+		params.ContentType,
+		params.SizeBytes,
+		params.ChecksumSHA256,
+		params.Visibility,
+		params.RetentionStatus,
+		defaultArtifactMetadata(params.Metadata),
+	)
+
+	artifact, err := scanArtifact(row)
+	if err != nil {
+		return Artifact{}, err
+	}
+
+	return artifact, nil
 }
 
 func resolveOrCreateChallengeIdentity(ctx context.Context, tx pgx.Tx, challengePackID uuid.UUID, challenge challengepack.ChallengeDefinition) (uuid.UUID, error) {
