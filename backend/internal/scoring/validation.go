@@ -263,16 +263,30 @@ func isSupportedEvidenceReference(value string) bool {
 	case value == "final_output", value == "run.final_output", value == "challenge_input", value == "case.payload":
 		return true
 	case strings.HasPrefix(value, "case.payload."):
-		return strings.TrimSpace(strings.TrimPrefix(value, "case.payload.")) != ""
+		return hasValidDottedPathAfterPrefix(value, "case.payload.")
 	case strings.HasPrefix(value, "case.inputs."):
-		return strings.TrimSpace(strings.TrimPrefix(value, "case.inputs.")) != ""
+		return hasValidDottedPathAfterPrefix(value, "case.inputs.")
 	case strings.HasPrefix(value, "case.expectations."):
-		return strings.TrimSpace(strings.TrimPrefix(value, "case.expectations.")) != ""
+		return hasValidDottedPathAfterPrefix(value, "case.expectations.")
 	case strings.HasPrefix(value, "artifact."):
-		return strings.TrimSpace(strings.TrimPrefix(value, "artifact.")) != ""
+		return hasValidDottedPathAfterPrefix(value, "artifact.")
 	case strings.HasPrefix(value, "literal:"):
 		return true
 	default:
 		return false
 	}
+}
+
+func hasValidDottedPathAfterPrefix(value string, prefix string) bool {
+	remainder := strings.TrimSpace(strings.TrimPrefix(value, prefix))
+	if remainder == "" {
+		return false
+	}
+	parts := strings.Split(remainder, ".")
+	for _, part := range parts {
+		if strings.TrimSpace(part) == "" {
+			return false
+		}
+	}
+	return true
 }

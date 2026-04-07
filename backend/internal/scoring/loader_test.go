@@ -143,6 +143,11 @@ func TestLoadEvaluationSpec(t *testing.T) {
 			manifest: `{"evaluation_spec":{"name":"spec","version_number":1,"judge_mode":"deterministic","validators":[{"key":"v1","type":"exact_match","target":"artifact","expected_from":"unknown.root"}],"scorecard":{"dimensions":["correctness"]}}}`,
 			needle:   "evaluation_spec.validators[0].target must be a supported evidence reference",
 		},
+		{
+			name:     "artifact reference rejects empty dotted segment",
+			manifest: `{"evaluation_spec":{"name":"spec","version_number":1,"judge_mode":"deterministic","validators":[{"key":"v1","type":"exact_match","target":"artifact..key","expected_from":"literal:value"}],"scorecard":{"dimensions":["correctness"]}}}`,
+			needle:   "evaluation_spec.validators[0].target must be a supported evidence reference",
+		},
 	}
 
 	for _, tc := range testCases {
