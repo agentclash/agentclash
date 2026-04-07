@@ -64,13 +64,15 @@
 - `TestValidateSandboxConfig_InvalidEnvVarKey` — `{"123BAD": "x"}` returns error
 
 ### Native Executor Sandbox Policy (`backend/internal/engine/`)
-- `TestApplyChallengeSandboxPolicy_WithSandboxBlock` — manifest with sandbox block populates EnvVars, NetworkAllowlist, AdditionalPackages on CreateRequest
-- `TestApplyChallengeSandboxPolicy_WithoutSandboxBlock` — manifest without sandbox block leaves new fields empty (backward compat)
+- `TestApplySandboxConfig_WithSandboxBlock` — manifest with sandbox block populates EnvVars, NetworkAllowlist, AdditionalPackages on CreateRequest
+- `TestApplySandboxConfig_WithoutSandboxBlock` — manifest without sandbox block leaves new fields empty (backward compat)
+- `TestApplySandboxConfig_TemplateIDFromSandboxOnly` — sandbox-level template ID applied when no version-level pin
+- `TestApplySandboxConfig_InvalidJSON` — gracefully handles malformed manifest
 
 ### E2B Client (`backend/internal/sandbox/e2b/`)
-- `TestCreateSandboxRequest_EnvVars` — envVars field serializes correctly in JSON
-- `TestCreateSandboxRequest_Network` — network.allowOut field serializes correctly
-- `TestCreateSandboxRequest_NoOptionalFields` — omitempty works, no null fields in JSON
+- `TestCreateSandboxRequestEnvVars` — envVars field serializes correctly in JSON
+- `TestCreateSandboxRequestNetwork` — network.allowOut field serializes correctly
+- `TestCreateSandboxRequestNoOptionalFields` — omitempty works, no null fields in JSON
 
 ## Integration / Functional Tests
 N/A — E2B sandbox integration requires live API key. Covered by smoke tests.
