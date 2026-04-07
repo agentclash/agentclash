@@ -10,7 +10,7 @@ const (
 	defaultRequestTimeout = 30 * time.Second
 	defaultDomain         = "e2b.app"
 	defaultEnvdPort       = 49983
-	defaultSandboxUser    = "user"
+	defaultSandboxUser    = "root"
 )
 
 type Config struct {

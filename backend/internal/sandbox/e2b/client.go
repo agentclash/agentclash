@@ -187,4 +187,10 @@ type createSandboxRequest struct {
 	Metadata            map[string]string `json:"metadata,omitempty"`
 	Secure              bool              `json:"secure"`
 	AllowInternetAccess bool              `json:"allowInternetAccess"`
+	EnvVars             map[string]string `json:"envVars,omitempty"`
+	Network             *networkConfig    `json:"network,omitempty"`
+}
+
+type networkConfig struct {
+	AllowOut []string `json:"allowOut,omitempty"`
 }
