@@ -2,9 +2,16 @@ package challengepack
 
 import (
 	"fmt"
+	"net"
+	"regexp"
 	"strings"
 
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/scoring"
+)
+
+var (
+	envVarKeyPattern    = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+	aptPackagePattern   = regexp.MustCompile(`^[a-z0-9][a-z0-9.+\-]+$`)
 )
 
 type ValidationError struct {
@@ -125,6 +132,10 @@ func ValidateBundle(bundle Bundle) error {
 		}
 	}
 
+	if bundle.Version.Sandbox != nil {
+		errs = append(errs, validateSandboxConfig("version.sandbox", bundle.Version.Sandbox)...)
+	}
+
 	if err := scoring.ValidateEvaluationSpec(bundle.Version.EvaluationSpec); err != nil {
 		if scoringErrs, ok := err.(scoring.ValidationErrors); ok {
 			for _, item := range scoringErrs {
@@ -140,6 +151,36 @@ func ValidateBundle(bundle Bundle) error {
 		return errs
 	}
 	return nil
+}
+
+func validateSandboxConfig(path string, config *SandboxConfig) ValidationErrors {
+	var errs ValidationErrors
+
+	for i, cidr := range config.NetworkAllowlist {
+		cidrPath := fmt.Sprintf("%s.network_allowlist[%d]", path, i)
+		_, _, err := net.ParseCIDR(cidr)
+		if err != nil {
+			errs = append(errs, ValidationError{Field: cidrPath, Message: "must be a valid CIDR (e.g. 10.0.0.0/8)"})
+		}
+	}
+
+	for key := range config.EnvVars {
+		if !envVarKeyPattern.MatchString(key) {
+			errs = append(errs, ValidationError{
+				Field:   fmt.Sprintf("%s.env_vars[%s]", path, key),
+				Message: "key must match [A-Za-z_][A-Za-z0-9_]*",
+			})
+		}
+	}
+
+	for i, pkg := range config.AdditionalPackages {
+		pkgPath := fmt.Sprintf("%s.additional_packages[%d]", path, i)
+		if !aptPackagePattern.MatchString(pkg) {
+			errs = append(errs, ValidationError{Field: pkgPath, Message: "must be a valid apt package name"})
+		}
+	}
+
+	return errs
 }
 
 func validateAssets(path string, assets []AssetReference) ValidationErrors {

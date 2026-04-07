@@ -29,8 +29,17 @@ type VersionMetadata struct {
 	Number         int32                  `yaml:"number" json:"number"`
 	ToolPolicy     map[string]any         `yaml:"tool_policy,omitempty" json:"tool_policy,omitempty"`
 	Filesystem     map[string]any         `yaml:"filesystem,omitempty" json:"filesystem,omitempty"`
+	Sandbox        *SandboxConfig         `yaml:"sandbox,omitempty" json:"sandbox,omitempty"`
 	EvaluationSpec scoring.EvaluationSpec `yaml:"evaluation_spec" json:"evaluation_spec"`
 	Assets         []AssetReference       `yaml:"assets,omitempty" json:"assets,omitempty"`
+}
+
+type SandboxConfig struct {
+	NetworkAccess      bool              `yaml:"network_access" json:"network_access"`
+	NetworkAllowlist   []string          `yaml:"network_allowlist,omitempty" json:"network_allowlist,omitempty"`
+	EnvVars            map[string]string `yaml:"env_vars,omitempty" json:"env_vars,omitempty"`
+	AdditionalPackages []string          `yaml:"additional_packages,omitempty" json:"additional_packages,omitempty"`
+	SandboxTemplateID  string            `yaml:"sandbox_template_id,omitempty" json:"sandbox_template_id,omitempty"`
 }
 
 type ChallengeDefinition struct {
@@ -119,6 +128,7 @@ func ParseYAML(data []byte) (Bundle, error) {
 		Number         int32            `yaml:"number"`
 		ToolPolicy     map[string]any   `yaml:"tool_policy,omitempty"`
 		Filesystem     map[string]any   `yaml:"filesystem,omitempty"`
+		Sandbox        *SandboxConfig   `yaml:"sandbox,omitempty"`
 		EvaluationSpec map[string]any   `yaml:"evaluation_spec"`
 		Assets         []AssetReference `yaml:"assets,omitempty"`
 	}
@@ -151,6 +161,7 @@ func ParseYAML(data []byte) (Bundle, error) {
 			Number:         raw.Version.Number,
 			ToolPolicy:     raw.Version.ToolPolicy,
 			Filesystem:     raw.Version.Filesystem,
+			Sandbox:        raw.Version.Sandbox,
 			EvaluationSpec: evaluationSpec,
 			Assets:         raw.Version.Assets,
 		},
@@ -173,16 +184,26 @@ func ManifestJSON(bundle Bundle) (json.RawMessage, error) {
 		return nil, err
 	}
 
-	encoded, err := json.Marshal(map[string]any{
+	versionMap := map[string]any{"number": normalized.Version.Number, "assets": normalized.Version.Assets}
+	if normalized.Version.Sandbox != nil {
+		versionMap["sandbox_template_id"] = normalized.Version.Sandbox.SandboxTemplateID
+	}
+
+	manifest := map[string]any{
 		"schema_version":  1,
 		"pack":            normalized.Pack,
-		"version":         map[string]any{"number": normalized.Version.Number, "assets": normalized.Version.Assets},
+		"version":         versionMap,
 		"tool_policy":     normalized.Version.ToolPolicy,
 		"filesystem":      normalized.Version.Filesystem,
 		"evaluation_spec": normalized.Version.EvaluationSpec,
 		"challenges":      normalized.Challenges,
 		"input_sets":      normalized.InputSets,
-	})
+	}
+	if normalized.Version.Sandbox != nil {
+		manifest["sandbox"] = normalized.Version.Sandbox
+	}
+
+	encoded, err := json.Marshal(manifest)
 	if err != nil {
 		return nil, fmt.Errorf("marshal challenge-pack manifest: %w", err)
 	}
