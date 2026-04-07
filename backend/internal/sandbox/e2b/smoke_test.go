@@ -103,4 +103,81 @@ func TestE2BSmokeLifecycle(t *testing.T) {
 	if string(downloaded) != "updated" {
 		t.Fatalf("DownloadFile content = %q, want updated", downloaded)
 	}
+
+	// Verify pre-installed runtimes (v2 template).
+	runtimeChecks := []struct {
+		name    string
+		command []string
+		expect  string
+	}{
+		{"python3", []string{"python3", "--version"}, "Python 3"},
+		{"node", []string{"node", "--version"}, "v"},
+		{"go", []string{"go", "version"}, "go1."},
+		{"jq", []string{"jq", "--version"}, "jq-"},
+		{"sqlite3", []string{"sqlite3", "--version"}, ""},
+		{"rg", []string{"rg", "--version"}, "ripgrep"},
+	}
+	for _, check := range runtimeChecks {
+		runtimeResult, runtimeErr := session.Exec(ctx, sandbox.ExecRequest{
+			Command: check.command,
+			Timeout: 10 * time.Second,
+		})
+		if runtimeErr != nil {
+			t.Errorf("runtime check %s: Exec error: %v", check.name, runtimeErr)
+			continue
+		}
+		if runtimeResult.ExitCode != 0 {
+			t.Errorf("runtime check %s: exit code %d, stderr=%q", check.name, runtimeResult.ExitCode, runtimeResult.Stderr)
+			continue
+		}
+		combined := runtimeResult.Stdout + runtimeResult.Stderr
+		if check.expect != "" && !contains(combined, check.expect) {
+			t.Errorf("runtime check %s: output %q does not contain %q", check.name, combined, check.expect)
+		}
+	}
+
+	// Verify helper scripts exist and respond to --help.
+	helperScripts := []string{
+		"/tools/pdf_extract.py",
+		"/tools/csv_to_json.py",
+		"/tools/json_query.py",
+	}
+	for _, script := range helperScripts {
+		helpResult, helpErr := session.Exec(ctx, sandbox.ExecRequest{
+			Command: []string{"python3", script, "--help"},
+			Timeout: 10 * time.Second,
+		})
+		if helpErr != nil {
+			t.Errorf("helper script %s: Exec error: %v", script, helpErr)
+			continue
+		}
+		if helpResult.ExitCode != 0 {
+			t.Errorf("helper script %s --help: exit code %d, stderr=%q", script, helpResult.ExitCode, helpResult.Stderr)
+		}
+	}
+
+	// Verify running as root.
+	whoamiResult, whoamiErr := session.Exec(ctx, sandbox.ExecRequest{
+		Command: []string{"whoami"},
+		Timeout: 5 * time.Second,
+	})
+	if whoamiErr != nil {
+		t.Fatalf("whoami: Exec error: %v", whoamiErr)
+	}
+	if !contains(whoamiResult.Stdout, "root") {
+		t.Errorf("expected sandbox user root, got %q", whoamiResult.Stdout)
+	}
+}
+
+func contains(haystack, needle string) bool {
+	return len(needle) == 0 || len(haystack) >= len(needle) && containsSubstring(haystack, needle)
+}
+
+func containsSubstring(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
 }
