@@ -462,7 +462,7 @@ func (e NativeExecutor) executeToolCalls(
 		toolMessages = append(toolMessages, toolMessage(result))
 		if executionResult.Completed {
 			if executionResult.IsError {
-				return append(toolMessages, toolMessage(result)), "", false, toolCallsUsed, nil
+				return toolMessages, "", false, toolCallsUsed, nil
 			}
 			return toolMessages[:len(toolMessages)-1], executionResult.FinalOutput, true, toolCallsUsed, nil
 		}

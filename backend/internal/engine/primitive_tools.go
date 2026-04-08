@@ -7,13 +7,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/provider"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/sandbox"
 )
-
-type toolset struct {
-	definitions []provider.ToolDefinition
-}
 
 func nativePrimitiveTools(toolPolicy sandbox.ToolPolicy) map[string]Tool {
 	tools := map[string]Tool{
@@ -56,14 +51,6 @@ func nativePrimitiveTools(toolPolicy sandbox.ToolPolicy) map[string]Tool {
 	}
 
 	return tools
-}
-
-func buildToolset(toolPolicy sandbox.ToolPolicy) toolset {
-	registry, err := buildToolRegistry(toolPolicy, nil, nil)
-	if err != nil {
-		return toolset{}
-	}
-	return toolset{definitions: registry.ToolDefinitions()}
 }
 
 type primitiveTool struct {
@@ -234,45 +221,4 @@ func executeExecTool(ctx context.Context, request ToolExecutionRequest) (ToolExe
 	}
 
 	return ToolExecutionResult{Content: string(payload)}, nil
-}
-
-func executeSandboxTool(ctx context.Context, session sandbox.Session, toolPolicy sandbox.ToolPolicy, toolCall provider.ToolCall) (provider.ToolResult, error) {
-	tool, ok := nativePrimitiveTools(toolPolicy)[toolCall.Name]
-	if !ok {
-		return errorToolResult(toolCall.ID, fmt.Sprintf("tool %q is not available in this runtime", toolCall.Name)), nil
-	}
-
-	result, err := tool.Execute(ctx, ToolExecutionRequest{
-		Args:       toolCall.Arguments,
-		Session:    session,
-		ToolPolicy: toolPolicy,
-	})
-	if err != nil {
-		return provider.ToolResult{}, err
-	}
-
-	return provider.ToolResult{
-		ToolCallID: toolCall.ID,
-		Content:    result.Content,
-		IsError:    result.IsError,
-	}, nil
-}
-
-func parseSubmitToolCall(toolCall provider.ToolCall) (string, bool, provider.ToolResult) {
-	tool := nativePrimitiveTools(sandbox.ToolPolicy{})[submitToolName]
-	result, err := tool.Execute(context.Background(), ToolExecutionRequest{Args: toolCall.Arguments})
-	if err != nil {
-		return "", false, provider.ToolResult{}
-	}
-	if result.IsError || !result.Completed {
-		return "", false, provider.ToolResult{
-			ToolCallID: toolCall.ID,
-			Content:    result.Content,
-			IsError:    result.IsError,
-		}
-	}
-	return result.FinalOutput, true, provider.ToolResult{
-		ToolCallID: toolCall.ID,
-		Content:    result.Content,
-	}
 }

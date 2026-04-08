@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/provider"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/sandbox"
 )
 
@@ -89,6 +90,47 @@ func TestRegistryToolDefinitions_OnlyReturnsVisibleTools(t *testing.T) {
 	}
 }
 
+func TestRegistryResolve_ReturnsStructuredUnknownToolErrorPath(t *testing.T) {
+	executor := NewNativeExecutor(&provider.FakeClient{}, nil, NoopObserver{})
+
+	messages, finalOutput, completed, toolCallsUsed, err := executor.executeToolCalls(
+		t.Context(),
+		nil,
+		&Registry{visible: map[string]Tool{}},
+		sandbox.ToolPolicy{},
+		0,
+		[]provider.ToolCall{{
+			ID:   "call-unknown",
+			Name: "does_not_exist",
+		}},
+	)
+	if err != nil {
+		t.Fatalf("executeToolCalls returned error: %v", err)
+	}
+	if completed {
+		t.Fatalf("completed = true, want false")
+	}
+	if finalOutput != "" {
+		t.Fatalf("finalOutput = %q, want empty", finalOutput)
+	}
+	if toolCallsUsed != 0 {
+		t.Fatalf("toolCallsUsed = %d, want 0", toolCallsUsed)
+	}
+	if len(messages) != 1 {
+		t.Fatalf("tool message count = %d, want 1", len(messages))
+	}
+	if !messages[0].IsError {
+		t.Fatalf("expected unknown-tool message to be marked as error")
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(messages[0].Content), &payload); err != nil {
+		t.Fatalf("decode tool error payload: %v", err)
+	}
+	if payload["error"] != `tool "does_not_exist" is not available in this runtime` {
+		t.Fatalf("error payload = %#v, want structured unknown-tool error", payload)
+	}
+}
+
 func TestDecodeManifestToolsConfig(t *testing.T) {
 	config := decodeManifestToolsConfig([]byte(`{
 		"tools":{
@@ -145,6 +187,71 @@ func TestManifestBackedToolDefaultsToStructuredError(t *testing.T) {
 	}
 	if !result.IsError {
 		t.Fatalf("expected stub custom tool to return structured error")
+	}
+}
+
+func TestPrimitiveToolImplementations_PreserveCurrentBehavior(t *testing.T) {
+	session := sandbox.NewFakeSession("primitive-tools")
+	session.SetExecResult(sandbox.ExecResult{
+		ExitCode: 0,
+		Stdout:   "/workspace\n",
+	})
+	provider := &sandbox.FakeProvider{NextSession: session}
+	if _, err := provider.Create(t.Context(), sandbox.CreateRequest{
+		ToolPolicy: sandbox.ToolPolicy{AllowShell: true},
+	}); err != nil {
+		t.Fatalf("attach create request: %v", err)
+	}
+	if err := session.WriteFile(t.Context(), "/workspace/input.txt", []byte("hello")); err != nil {
+		t.Fatalf("seed input file: %v", err)
+	}
+
+	tools := nativePrimitiveTools(sandbox.ToolPolicy{
+		AllowedToolKinds: []string{"file"},
+		AllowShell:       true,
+	})
+
+	readResult, err := tools[readFileToolName].Execute(t.Context(), ToolExecutionRequest{
+		Args:       json.RawMessage(`{"path":"/workspace/input.txt"}`),
+		Session:    session,
+		ToolPolicy: sandbox.ToolPolicy{AllowedToolKinds: []string{"file"}},
+	})
+	if err != nil || readResult.IsError {
+		t.Fatalf("read_file failed: result=%#v err=%v", readResult, err)
+	}
+
+	writeResult, err := tools[writeFileToolName].Execute(t.Context(), ToolExecutionRequest{
+		Args:       json.RawMessage(`{"path":"/workspace/output.txt","content":"done"}`),
+		Session:    session,
+		ToolPolicy: sandbox.ToolPolicy{AllowedToolKinds: []string{"file"}},
+	})
+	if err != nil || writeResult.IsError {
+		t.Fatalf("write_file failed: result=%#v err=%v", writeResult, err)
+	}
+
+	listResult, err := tools[listFilesToolName].Execute(t.Context(), ToolExecutionRequest{
+		Args:       json.RawMessage(`{"prefix":"/workspace"}`),
+		Session:    session,
+		ToolPolicy: sandbox.ToolPolicy{AllowedToolKinds: []string{"file"}},
+	})
+	if err != nil || listResult.IsError {
+		t.Fatalf("list_files failed: result=%#v err=%v", listResult, err)
+	}
+
+	execResult, err := tools[execToolName].Execute(t.Context(), ToolExecutionRequest{
+		Args:       json.RawMessage(`{"command":["pwd"]}`),
+		Session:    session,
+		ToolPolicy: sandbox.ToolPolicy{AllowShell: true},
+	})
+	if err != nil || execResult.IsError {
+		t.Fatalf("exec failed: result=%#v err=%v", execResult, err)
+	}
+
+	submitResult, err := tools[submitToolName].Execute(t.Context(), ToolExecutionRequest{
+		Args: json.RawMessage(`{"answer":"final answer"}`),
+	})
+	if err != nil || submitResult.IsError || !submitResult.Completed || submitResult.FinalOutput != "final answer" {
+		t.Fatalf("submit failed: result=%#v err=%v", submitResult, err)
 	}
 }
 

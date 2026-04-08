@@ -178,15 +178,7 @@ func (o *NativeRunEventObserver) OnToolExecution(ctx context.Context, record eng
 		payload["resolved_tool_category"] = record.ResolvedToolCategory
 	}
 
-	return o.recordEvent(ctx, eventType, map[string]any{
-		"tool_call_id":           payload["tool_call_id"],
-		"tool_name":              payload["tool_name"],
-		"tool_category":          payload["tool_category"],
-		"arguments":              payload["arguments"],
-		"result":                 payload["result"],
-		"resolved_tool_name":     payload["resolved_tool_name"],
-		"resolved_tool_category": payload["resolved_tool_category"],
-	}, runevents.SummaryMetadata{
+	return o.recordEvent(ctx, eventType, payload, runevents.SummaryMetadata{
 		Status:        status,
 		StepIndex:     o.currentStep(),
 		ToolName:      record.ToolCall.Name,

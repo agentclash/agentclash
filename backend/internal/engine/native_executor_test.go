@@ -468,6 +468,42 @@ func TestNativeExecutorAppliesSnapshotToolOverrideDenial(t *testing.T) {
 	}
 }
 
+func TestNativeExecutorDoesNotDuplicateCompletedErrorToolMessages(t *testing.T) {
+	executor := NewNativeExecutor(&provider.FakeClient{}, nil, NoopObserver{})
+	registry := &Registry{
+		visible: map[string]Tool{
+			"fail_complete": completedErrorTool{},
+		},
+	}
+
+	messages, finalOutput, completed, toolCallsUsed, err := executor.executeToolCalls(
+		t.Context(),
+		nil,
+		registry,
+		sandbox.ToolPolicy{},
+		0,
+		[]provider.ToolCall{{
+			ID:   "call-completed-error",
+			Name: "fail_complete",
+		}},
+	)
+	if err != nil {
+		t.Fatalf("executeToolCalls returned error: %v", err)
+	}
+	if completed {
+		t.Fatalf("completed = true, want false")
+	}
+	if finalOutput != "" {
+		t.Fatalf("finalOutput = %q, want empty", finalOutput)
+	}
+	if toolCallsUsed != 1 {
+		t.Fatalf("toolCallsUsed = %d, want 1", toolCallsUsed)
+	}
+	if len(messages) != 1 {
+		t.Fatalf("tool message count = %d, want 1", len(messages))
+	}
+}
+
 func TestNativeExecutorFailsOnRuntimeTimeout(t *testing.T) {
 	session := sandbox.NewFakeSession("sandbox-timeout")
 	executionContext := nativeExecutionContext()
@@ -729,6 +765,22 @@ type scriptedProviderClient struct {
 	t        *testing.T
 	steps    []providerStep
 	requests []provider.Request
+}
+
+type completedErrorTool struct{}
+
+func (completedErrorTool) Name() string        { return "fail_complete" }
+func (completedErrorTool) Description() string { return "Fails while marking itself completed." }
+func (completedErrorTool) Parameters() json.RawMessage {
+	return json.RawMessage(`{"type":"object","additionalProperties":false}`)
+}
+func (completedErrorTool) Category() ToolCategory { return ToolCategoryComposed }
+func (completedErrorTool) Execute(context.Context, ToolExecutionRequest) (ToolExecutionResult, error) {
+	return ToolExecutionResult{
+		Content:   encodeToolErrorMessage("failed after completion"),
+		IsError:   true,
+		Completed: true,
+	}, nil
 }
 
 type failingObserver struct{}
