@@ -138,10 +138,12 @@ func buildToolRegistry(toolPolicy sandbox.ToolPolicy, manifest json.RawMessage, 
 				delete(visible, name)
 			}
 		}
+		ensureToolVisible(visible, primitives, submitToolName)
 	}
 	for _, denied := range manifestTools.Denied {
 		delete(visible, strings.TrimSpace(denied))
 	}
+	ensureToolVisible(visible, primitives, submitToolName)
 
 	composed := map[string]Tool{}
 	mocks := map[string]Tool{}
@@ -172,6 +174,7 @@ func buildToolRegistry(toolPolicy sandbox.ToolPolicy, manifest json.RawMessage, 
 	for _, denied := range decodeSnapshotToolOverrides(snapshotConfig).Denied {
 		delete(visible, strings.TrimSpace(denied))
 	}
+	ensureToolVisible(visible, primitives, submitToolName)
 
 	return &Registry{
 		primitives: primitives,
@@ -179,6 +182,14 @@ func buildToolRegistry(toolPolicy sandbox.ToolPolicy, manifest json.RawMessage, 
 		mocks:      mocks,
 		visible:    visible,
 	}, nil
+}
+
+func ensureToolVisible(visible map[string]Tool, primitives map[string]Tool, name string) {
+	tool, ok := primitives[name]
+	if !ok {
+		return
+	}
+	visible[name] = tool
 }
 
 func decodeManifestToolsConfig(manifest json.RawMessage) manifestToolsConfig {

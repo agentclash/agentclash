@@ -43,9 +43,32 @@ func TestBuildToolRegistry_AppliesAllowedDeniedAndSnapshotOverridesInOrder(t *te
 		t.Fatalf("buildToolRegistry returned error: %v", err)
 	}
 
-	assertRegistryVisibleTools(t, registry, readFileToolName)
+	assertRegistryVisibleTools(t, registry, submitToolName, readFileToolName)
 	if _, ok := registry.resolveAny(execToolName); !ok {
 		t.Fatalf("exec should still be loaded as an internal primitive")
+	}
+}
+
+func TestBuildToolRegistry_AlwaysKeepsSubmitVisible(t *testing.T) {
+	registry, err := buildToolRegistry(
+		sandbox.ToolPolicy{AllowedToolKinds: []string{"file"}, AllowShell: true},
+		[]byte(`{
+			"tools":{
+				"allowed":["read_file"],
+				"denied":["submit"]
+			}
+		}`),
+		[]byte(`{"tool_overrides":{"denied":["submit","read_file"]}}`),
+	)
+	if err != nil {
+		t.Fatalf("buildToolRegistry returned error: %v", err)
+	}
+
+	if _, ok := registry.Resolve(submitToolName); !ok {
+		t.Fatalf("submit should always remain visible")
+	}
+	if _, ok := registry.Resolve(readFileToolName); ok {
+		t.Fatalf("read_file should still be denied by snapshot override")
 	}
 }
 
@@ -82,11 +105,14 @@ func TestRegistryToolDefinitions_OnlyReturnsVisibleTools(t *testing.T) {
 	}
 
 	definitions := registry.ToolDefinitions()
-	if len(definitions) != 1 {
-		t.Fatalf("tool definition count = %d, want 1", len(definitions))
+	if len(definitions) != 2 {
+		t.Fatalf("tool definition count = %d, want 2", len(definitions))
 	}
 	if definitions[0].Name != readFileToolName {
-		t.Fatalf("tool definition = %q, want %q", definitions[0].Name, readFileToolName)
+		t.Fatalf("first tool definition = %q, want %q", definitions[0].Name, readFileToolName)
+	}
+	if definitions[1].Name != submitToolName {
+		t.Fatalf("second tool definition = %q, want %q", definitions[1].Name, submitToolName)
 	}
 }
 
