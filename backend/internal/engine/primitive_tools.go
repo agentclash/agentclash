@@ -53,6 +53,15 @@ func nativePrimitiveTools(toolPolicy sandbox.ToolPolicy) map[string]Tool {
 		}
 	}
 
+	if allowsDataTools(toolPolicy) {
+		tools[queryJSONToolName] = primitiveTool{
+			name:        queryJSONToolName,
+			description: "Query JSON from a file or inline JSON string using jq.",
+			parameters:  json.RawMessage(`{"type":"object","properties":{"query":{"type":"string"},"file_path":{"type":"string"},"json":{"type":"string"},"output_path":{"type":"string"}},"required":["query"],"additionalProperties":false}`),
+			execute:     executeQueryJSONTool,
+		}
+	}
+
 	if toolPolicy.AllowShell {
 		tools[execToolName] = primitiveTool{
 			name:        execToolName,
@@ -372,6 +381,105 @@ func parseRipgrepMatches(stdout string) ([]ripgrepMatch, error) {
 		})
 	}
 	return matches, nil
+}
+
+func executeQueryJSONTool(ctx context.Context, request ToolExecutionRequest) (ToolExecutionResult, error) {
+	if !allowsDataTools(request.ToolPolicy) {
+		return ToolExecutionResult{Content: encodeToolErrorMessage("tool is not allowed in this runtime"), IsError: true}, nil
+	}
+
+	var args struct {
+		Query      string `json:"query"`
+		FilePath   string `json:"file_path"`
+		JSON       string `json:"json"`
+		OutputPath string `json:"output_path"`
+	}
+	if err := decodeToolArguments(queryJSONToolName, request.Args, &args); err != nil {
+		return ToolExecutionResult{Content: encodeToolErrorMessage(err.Error()), IsError: true}, nil
+	}
+	query := strings.TrimSpace(args.Query)
+	if query == "" {
+		return ToolExecutionResult{Content: encodeToolErrorMessage("query is required"), IsError: true}, nil
+	}
+	filePath := strings.TrimSpace(args.FilePath)
+	inlineJSON := strings.TrimSpace(args.JSON)
+	if (filePath == "" && inlineJSON == "") || (filePath != "" && inlineJSON != "") {
+		return ToolExecutionResult{Content: encodeToolErrorMessage("provide exactly one of file_path or json"), IsError: true}, nil
+	}
+
+	var execRequest sandbox.ExecRequest
+	if filePath != "" {
+		execRequest = sandbox.ExecRequest{
+			Command: []string{"jq", "-c", query, filePath},
+		}
+	} else {
+		execRequest = sandbox.ExecRequest{
+			Command: []string{"sh", "-lc", "printf '%s' \"$1\" | jq -c \"$2\"", "sh", inlineJSON, query},
+		}
+	}
+
+	commandResult, err := executeInternalCommand(ctx, request, queryJSONToolName, execRequest, commandBehavior{})
+	if err != nil {
+		return ToolExecutionResult{}, err
+	}
+	if commandResult.IsError {
+		message := strings.TrimSpace(commandResult.ExecResult.Stderr)
+		if message == "" {
+			message = "jq query failed"
+		}
+		return ToolExecutionResult{Content: encodeToolErrorMessage(message), IsError: true}, nil
+	}
+
+	outputPath := strings.TrimSpace(args.OutputPath)
+	if outputPath != "" {
+		if err := request.Session.WriteFile(ctx, outputPath, []byte(commandResult.ExecResult.Stdout)); err != nil {
+			return ToolExecutionResult{}, NewFailure(StopReasonSandboxError, "write query_json output file", err)
+		}
+		content, err := toolJSONOutput(ctx, request, queryJSONToolName, map[string]any{
+			"query":       query,
+			"output_path": outputPath,
+			"written":     true,
+			"total_bytes": len(commandResult.ExecResult.Stdout),
+		})
+		if err != nil {
+			return ToolExecutionResult{}, err
+		}
+		return ToolExecutionResult{Content: content}, nil
+	}
+
+	resultValue := parseJQOutput(commandResult.ExecResult.Stdout)
+	content, err := toolJSONOutput(ctx, request, queryJSONToolName, map[string]any{
+		"query":  query,
+		"result": resultValue,
+	})
+	if err != nil {
+		return ToolExecutionResult{}, err
+	}
+	return ToolExecutionResult{Content: content}, nil
+}
+
+func parseJQOutput(stdout string) any {
+	lines := strings.Split(strings.TrimSpace(stdout), "\n")
+	values := make([]any, 0, len(lines))
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		var decoded any
+		if err := json.Unmarshal([]byte(trimmed), &decoded); err != nil {
+			values = append(values, trimmed)
+			continue
+		}
+		values = append(values, decoded)
+	}
+	if len(values) == 0 {
+		return nil
+	}
+	if len(values) == 1 {
+		return values[0]
+	}
+	return values
 }
 
 func executeExecTool(ctx context.Context, request ToolExecutionRequest) (ToolExecutionResult, error) {

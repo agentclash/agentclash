@@ -30,6 +30,7 @@ const (
 	listFilesToolName = "list_files"
 	searchFilesToolName = "search_files"
 	searchTextToolName  = "search_text"
+	queryJSONToolName   = "query_json"
 	execToolName      = "exec"
 )
 
