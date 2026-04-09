@@ -242,13 +242,11 @@ func newManifestCustomTool(config manifestCustomToolConfig) (Tool, error) {
 	}
 
 	if strings.EqualFold(strings.TrimSpace(implementation.Type), string(ToolCategoryMock)) {
-		return &manifestBackedTool{
-			name:        name,
-			description: strings.TrimSpace(config.Description),
-			parameters:  cloneJSON(config.Parameters),
-			category:    ToolCategoryMock,
-			message:     fmt.Sprintf("mock tool %q is not implemented yet", name),
-		}, nil
+		var mockConfig mockToolConfig
+		if err := json.Unmarshal(config.Implementation, &mockConfig); err != nil {
+			return nil, fmt.Errorf("decode mock tool %q implementation: %w", name, err)
+		}
+		return newMockTool(name, strings.TrimSpace(config.Description), cloneJSON(config.Parameters), mockConfig)
 	}
 
 	if strings.TrimSpace(implementation.Primitive) == "" {
