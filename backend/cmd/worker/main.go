@@ -47,7 +47,11 @@ func main() {
 	repo := repository.New(db)
 	hostedRunClient := workerapp.NewHostedRunClient(&http.Client{}, cfg.HostedCallbackBaseURL, cfg.HostedCallbackSecret)
 	providerRouter := provider.NewRouter(map[string]provider.Client{
-		"openai": provider.NewOpenAICompatibleClient(&http.Client{}, "", provider.EnvCredentialResolver{}),
+		"openai":     provider.NewOpenAICompatibleClient(&http.Client{}, "", provider.EnvCredentialResolver{}),
+		"anthropic":  provider.NewAnthropicClient(&http.Client{}, "", "", provider.EnvCredentialResolver{}),
+		"gemini":     provider.NewGeminiClient(&http.Client{}, "", provider.EnvCredentialResolver{}),
+		"openrouter": provider.NewOpenAICompatibleClient(&http.Client{}, "https://openrouter.ai/api/v1", provider.EnvCredentialResolver{}),
+		"mistral":    provider.NewOpenAICompatibleClient(&http.Client{}, "https://api.mistral.ai/v1", provider.EnvCredentialResolver{}),
 	})
 	sandboxProvider := sandbox.Provider(sandbox.UnconfiguredProvider{})
 	if cfg.Sandbox.Provider == "e2b" {
