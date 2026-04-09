@@ -1184,6 +1184,18 @@ func (r *fakeRunRepository) MarkHostedRunExecutionTimedOut(_ context.Context, pa
 	return execution, nil
 }
 
+func (r *fakeRunRepository) CreateReasoningRunExecution(_ context.Context, _ repository.CreateReasoningRunExecutionParams) error {
+	return nil
+}
+
+func (r *fakeRunRepository) GetReasoningRunExecutionByRunAgentID(_ context.Context, _ uuid.UUID) (repository.ReasoningRunExecution, error) {
+	return repository.ReasoningRunExecution{}, nil
+}
+
+func (r *fakeRunRepository) MarkReasoningRunExecutionTimedOut(_ context.Context, _ repository.MarkReasoningRunExecutionTimedOutParams) error {
+	return nil
+}
+
 func (r *fakeRunRepository) currentRun() domain.Run {
 	r.mu.Lock()
 	defer r.mu.Unlock()

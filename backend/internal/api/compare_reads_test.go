@@ -144,6 +144,7 @@ func TestCompareViewerEndpointReturnsHTMLShell(t *testing.T) {
 		stubRunReadService{},
 		stubReplayReadService{},
 		stubHostedRunIngestionService{},
+		nil, // reasoningRunIngestionService
 		nil,
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},
