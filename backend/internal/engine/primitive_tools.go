@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/sandbox"
 	"github.com/google/uuid"
@@ -70,6 +71,21 @@ func nativePrimitiveTools(toolPolicy sandbox.ToolPolicy) map[string]Tool {
 			description: "Make an HTTP request from inside the sandbox with structured response output.",
 			parameters:  json.RawMessage(`{"type":"object","properties":{"method":{"type":"string"},"url":{"type":"string"},"headers":{"type":"object","additionalProperties":{"type":"string"}},"body":{"type":"string"},"timeout_seconds":{"type":"integer","minimum":1},"output_path":{"type":"string"}},"required":["method","url"],"additionalProperties":false}`),
 			execute:     executeHTTPRequestTool,
+		}
+	}
+
+	if allowsBuildTools(toolPolicy) {
+		tools[runTestsToolName] = primitiveTool{
+			name:        runTestsToolName,
+			description: "Run project tests in the sandbox workspace using an explicit or auto-detected command.",
+			parameters:  json.RawMessage(`{"type":"object","properties":{"command":{"oneOf":[{"type":"string"},{"type":"array","items":{"type":"string"},"minItems":1}]},"working_directory":{"type":"string"},"environment":{"type":"object","additionalProperties":{"type":"string"}},"timeout_seconds":{"type":"integer","minimum":1}},"additionalProperties":false}`),
+			execute:     executeRunTestsTool,
+		}
+		tools[buildToolName] = primitiveTool{
+			name:        buildToolName,
+			description: "Build the project in the sandbox workspace using an explicit or auto-detected command.",
+			parameters:  json.RawMessage(`{"type":"object","properties":{"command":{"oneOf":[{"type":"string"},{"type":"array","items":{"type":"string"},"minItems":1}]},"working_directory":{"type":"string"},"environment":{"type":"object","additionalProperties":{"type":"string"}},"timeout_seconds":{"type":"integer","minimum":1}},"additionalProperties":false}`),
+			execute:     executeBuildTool,
 		}
 	}
 
@@ -359,6 +375,12 @@ type ripgrepMatch struct {
 	LineText   string `json:"line_text"`
 }
 
+type detectedCommand struct {
+	Framework string
+	Command   []string
+	Label     string
+}
+
 func parseRipgrepMatches(stdout string) ([]ripgrepMatch, error) {
 	lines := strings.Split(strings.TrimSpace(stdout), "\n")
 	matches := make([]ripgrepMatch, 0, len(lines))
@@ -574,6 +596,207 @@ func executeHTTPRequestTool(ctx context.Context, request ToolExecutionRequest) (
 		return ToolExecutionResult{}, err
 	}
 	return ToolExecutionResult{Content: content}, nil
+}
+
+func executeRunTestsTool(ctx context.Context, request ToolExecutionRequest) (ToolExecutionResult, error) {
+	return executeBuildLikeTool(ctx, request, runTestsToolName, "test")
+}
+
+func executeBuildTool(ctx context.Context, request ToolExecutionRequest) (ToolExecutionResult, error) {
+	return executeBuildLikeTool(ctx, request, buildToolName, "build")
+}
+
+func executeBuildLikeTool(ctx context.Context, request ToolExecutionRequest, toolName string, mode string) (ToolExecutionResult, error) {
+	if !allowsBuildTools(request.ToolPolicy) {
+		return ToolExecutionResult{Content: encodeToolErrorMessage("tool is not allowed in this runtime"), IsError: true}, nil
+	}
+
+	var args struct {
+		Command          json.RawMessage   `json:"command"`
+		WorkingDirectory string            `json:"working_directory"`
+		Environment      map[string]string `json:"environment"`
+		TimeoutSeconds   int               `json:"timeout_seconds"`
+	}
+	if err := decodeToolArguments(toolName, request.Args, &args); err != nil {
+		return ToolExecutionResult{Content: encodeToolErrorMessage(err.Error()), IsError: true}, nil
+	}
+
+	command, commandLabel, framework, err := resolveBuildLikeCommand(ctx, request, mode, args.Command)
+	if err != nil {
+		return ToolExecutionResult{Content: encodeToolErrorMessage(err.Error()), IsError: true}, nil
+	}
+
+	workingDirectory := strings.TrimSpace(args.WorkingDirectory)
+	if workingDirectory == "" {
+		workingDirectory = defaultSandboxWorkingDirectory
+	}
+	timeoutSeconds := args.TimeoutSeconds
+	if timeoutSeconds <= 0 {
+		timeoutSeconds = httpRequestTimeoutSecondsDefault
+	}
+	if timeoutSeconds > httpRequestTimeoutSecondsMax {
+		timeoutSeconds = httpRequestTimeoutSecondsMax
+	}
+
+	commandResult, err := executeInternalCommand(ctx, request, toolName, sandbox.ExecRequest{
+		Command:          command,
+		WorkingDirectory: workingDirectory,
+		Environment:      cloneStringMap(args.Environment),
+		Timeout:          time.Duration(timeoutSeconds) * time.Second,
+	}, commandBehavior{})
+	if err != nil {
+		return ToolExecutionResult{}, err
+	}
+
+	content, marshalErr := toolJSONOutput(ctx, request, toolName, map[string]any{
+		"framework":         framework,
+		"mode":              mode,
+		"command":           commandLabel,
+		"working_directory": workingDirectory,
+		"exit_code":         commandResult.ExecResult.ExitCode,
+		"stdout":            commandResult.ExecResult.Stdout,
+		"stderr":            commandResult.ExecResult.Stderr,
+		"summary": map[string]any{
+			"status": map[bool]string{true: "failed", false: "completed"}[commandResult.IsError],
+		},
+	})
+	if marshalErr != nil {
+		return ToolExecutionResult{}, marshalErr
+	}
+	return ToolExecutionResult{Content: content, IsError: commandResult.IsError}, nil
+}
+
+func resolveBuildLikeCommand(ctx context.Context, request ToolExecutionRequest, mode string, raw json.RawMessage) ([]string, string, string, error) {
+	if command, label, ok, err := parseCommandOverride(raw); err != nil {
+		return nil, "", "", err
+	} else if ok {
+		return command, label, "custom", nil
+	}
+
+	detectors := []func(context.Context, ToolExecutionRequest, string) (detectedCommand, bool, error){
+		detectPackageJSONCommand,
+		detectGoCommand,
+		detectCargoCommand,
+		detectPyProjectCommand,
+		detectMakeCommand,
+	}
+	for _, detector := range detectors {
+		detected, ok, err := detector(ctx, request, mode)
+		if err != nil {
+			return nil, "", "", err
+		}
+		if ok {
+			return detected.Command, detected.Label, detected.Framework, nil
+		}
+	}
+
+	return nil, "", "", fmt.Errorf("could not auto-detect a %s command; provide an explicit command", mode)
+}
+
+func parseCommandOverride(raw json.RawMessage) ([]string, string, bool, error) {
+	if len(raw) == 0 {
+		return nil, "", false, nil
+	}
+	var asString string
+	if err := json.Unmarshal(raw, &asString); err == nil {
+		trimmed := strings.TrimSpace(asString)
+		if trimmed == "" {
+			return nil, "", false, nil
+		}
+		return []string{"sh", "-lc", trimmed}, trimmed, true, nil
+	}
+
+	var asArray []string
+	if err := json.Unmarshal(raw, &asArray); err == nil {
+		normalized := normalizeStrings(asArray)
+		if len(normalized) == 0 {
+			return nil, "", false, nil
+		}
+		return normalized, strings.Join(normalized, " "), true, nil
+	}
+	return nil, "", false, fmt.Errorf("command override must be a string or string array")
+}
+
+func detectPackageJSONCommand(_ context.Context, request ToolExecutionRequest, mode string) (detectedCommand, bool, error) {
+	content, err := request.Session.ReadFile(context.Background(), path.Join(defaultSandboxWorkingDirectory, "package.json"))
+	if err != nil {
+		if errors.Is(err, sandbox.ErrFileNotFound) {
+			return detectedCommand{}, false, nil
+		}
+		return detectedCommand{}, false, err
+	}
+	var pkg struct {
+		Scripts map[string]string `json:"scripts"`
+	}
+	if err := json.Unmarshal(content, &pkg); err != nil {
+		return detectedCommand{}, false, nil
+	}
+	script, ok := pkg.Scripts[mode]
+	if !ok || strings.TrimSpace(script) == "" {
+		return detectedCommand{}, false, nil
+	}
+	return detectedCommand{
+		Framework: "npm",
+		Command:   []string{"npm", "run", mode},
+		Label:     "npm run " + mode,
+	}, true, nil
+}
+
+func detectGoCommand(_ context.Context, request ToolExecutionRequest, mode string) (detectedCommand, bool, error) {
+	_, err := request.Session.ReadFile(context.Background(), path.Join(defaultSandboxWorkingDirectory, "go.mod"))
+	if err != nil {
+		if errors.Is(err, sandbox.ErrFileNotFound) {
+			return detectedCommand{}, false, nil
+		}
+		return detectedCommand{}, false, err
+	}
+	if mode == "test" {
+		return detectedCommand{Framework: "go", Command: []string{"go", "test", "./..."}, Label: "go test ./..."}, true, nil
+	}
+	return detectedCommand{Framework: "go", Command: []string{"go", "build", "./..."}, Label: "go build ./..."}, true, nil
+}
+
+func detectCargoCommand(_ context.Context, request ToolExecutionRequest, mode string) (detectedCommand, bool, error) {
+	_, err := request.Session.ReadFile(context.Background(), path.Join(defaultSandboxWorkingDirectory, "Cargo.toml"))
+	if err != nil {
+		if errors.Is(err, sandbox.ErrFileNotFound) {
+			return detectedCommand{}, false, nil
+		}
+		return detectedCommand{}, false, err
+	}
+	if mode == "test" {
+		return detectedCommand{Framework: "cargo", Command: []string{"cargo", "test"}, Label: "cargo test"}, true, nil
+	}
+	return detectedCommand{Framework: "cargo", Command: []string{"cargo", "build"}, Label: "cargo build"}, true, nil
+}
+
+func detectPyProjectCommand(_ context.Context, request ToolExecutionRequest, mode string) (detectedCommand, bool, error) {
+	_, err := request.Session.ReadFile(context.Background(), path.Join(defaultSandboxWorkingDirectory, "pyproject.toml"))
+	if err != nil {
+		if errors.Is(err, sandbox.ErrFileNotFound) {
+			return detectedCommand{}, false, nil
+		}
+		return detectedCommand{}, false, err
+	}
+	if mode == "test" {
+		return detectedCommand{Framework: "python", Command: []string{"python3", "-m", "unittest", "discover"}, Label: "python3 -m unittest discover"}, true, nil
+	}
+	return detectedCommand{Framework: "python", Command: []string{"python3", "-m", "compileall", "."}, Label: "python3 -m compileall ."}, true, nil
+}
+
+func detectMakeCommand(_ context.Context, request ToolExecutionRequest, mode string) (detectedCommand, bool, error) {
+	_, err := request.Session.ReadFile(context.Background(), path.Join(defaultSandboxWorkingDirectory, "Makefile"))
+	if err != nil {
+		if errors.Is(err, sandbox.ErrFileNotFound) {
+			return detectedCommand{}, false, nil
+		}
+		return detectedCommand{}, false, err
+	}
+	return detectedCommand{
+		Framework: "make",
+		Command:   []string{"make", mode},
+		Label:     "make " + mode,
+	}, true, nil
 }
 
 func executeExecTool(ctx context.Context, request ToolExecutionRequest) (ToolExecutionResult, error) {
