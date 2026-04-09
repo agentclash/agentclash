@@ -1,0 +1,138 @@
+[
+  {
+    "event_id": "reasoning:run-agent-1:system.run.started:1",
+    "schema_version": "2026-03-15",
+    "run_id": "00000000-0000-0000-0000-000000000001",
+    "run_agent_id": "00000000-0000-0000-0000-000000000002",
+    "event_type": "system.run.started",
+    "source": "reasoning_engine",
+    "occurred_at": "2026-04-09T10:00:00Z",
+    "payload": {
+      "deployment_type": "native",
+      "execution_target": "native"
+    },
+    "summary": {
+      "status": "started",
+      "provider_key": "openai",
+      "provider_model_id": "gpt-4o",
+      "evidence_level": "native_structured"
+    }
+  },
+  {
+    "event_id": "reasoning:run-agent-1:system.step.started:2",
+    "schema_version": "2026-03-15",
+    "run_id": "00000000-0000-0000-0000-000000000001",
+    "run_agent_id": "00000000-0000-0000-0000-000000000002",
+    "event_type": "system.step.started",
+    "source": "reasoning_engine",
+    "occurred_at": "2026-04-09T10:00:01Z",
+    "payload": {
+      "step_index": 0
+    },
+    "summary": {
+      "step_index": 0,
+      "evidence_level": "native_structured"
+    }
+  },
+  {
+    "event_id": "reasoning:run-agent-1:model.call.started:3",
+    "schema_version": "2026-03-15",
+    "run_id": "00000000-0000-0000-0000-000000000001",
+    "run_agent_id": "00000000-0000-0000-0000-000000000002",
+    "event_type": "model.call.started",
+    "source": "reasoning_engine",
+    "occurred_at": "2026-04-09T10:00:01Z",
+    "payload": {
+      "provider_key": "openai",
+      "provider_model_id": "gpt-4o",
+      "step_index": 0
+    },
+    "summary": {
+      "provider_key": "openai",
+      "provider_model_id": "gpt-4o",
+      "step_index": 0,
+      "evidence_level": "native_structured"
+    }
+  },
+  {
+    "event_id": "reasoning:run-agent-1:model.call.completed:4",
+    "schema_version": "2026-03-15",
+    "run_id": "00000000-0000-0000-0000-000000000001",
+    "run_agent_id": "00000000-0000-0000-0000-000000000002",
+    "event_type": "model.call.completed",
+    "source": "reasoning_engine",
+    "occurred_at": "2026-04-09T10:00:03Z",
+    "payload": {
+      "provider_key": "openai",
+      "provider_model_id": "gpt-4o",
+      "finish_reason": "stop",
+      "output_text": "The capital of France is Paris.",
+      "tool_calls": [],
+      "usage": {
+        "input_tokens": 25,
+        "output_tokens": 8,
+        "total_tokens": 33
+      },
+      "raw_response": {}
+    },
+    "summary": {
+      "provider_key": "openai",
+      "provider_model_id": "gpt-4o",
+      "step_index": 0,
+      "evidence_level": "native_structured"
+    }
+  },
+  {
+    "event_id": "reasoning:run-agent-1:system.step.completed:5",
+    "schema_version": "2026-03-15",
+    "run_id": "00000000-0000-0000-0000-000000000001",
+    "run_agent_id": "00000000-0000-0000-0000-000000000002",
+    "event_type": "system.step.completed",
+    "source": "reasoning_engine",
+    "occurred_at": "2026-04-09T10:00:03Z",
+    "payload": {
+      "step_index": 0
+    },
+    "summary": {
+      "step_index": 0,
+      "evidence_level": "native_structured"
+    }
+  },
+  {
+    "event_id": "reasoning:run-agent-1:system.output.finalized:6",
+    "schema_version": "2026-03-15",
+    "run_id": "00000000-0000-0000-0000-000000000001",
+    "run_agent_id": "00000000-0000-0000-0000-000000000002",
+    "event_type": "system.output.finalized",
+    "source": "reasoning_engine",
+    "occurred_at": "2026-04-09T10:00:03Z",
+    "payload": {
+      "final_output": "The capital of France is Paris."
+    },
+    "summary": {
+      "evidence_level": "native_structured"
+    }
+  },
+  {
+    "event_id": "reasoning:run-agent-1:system.run.completed:7",
+    "schema_version": "2026-03-15",
+    "run_id": "00000000-0000-0000-0000-000000000001",
+    "run_agent_id": "00000000-0000-0000-0000-000000000002",
+    "event_type": "system.run.completed",
+    "source": "reasoning_engine",
+    "occurred_at": "2026-04-09T10:00:04Z",
+    "payload": {
+      "final_output": "The capital of France is Paris.",
+      "stop_reason": "stop",
+      "step_count": 1,
+      "tool_call_count": 0,
+      "input_tokens": 25,
+      "output_tokens": 8,
+      "total_tokens": 33
+    },
+    "summary": {
+      "status": "completed",
+      "evidence_level": "native_structured"
+    }
+  }
+]

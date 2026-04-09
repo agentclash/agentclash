@@ -433,6 +433,10 @@ func replayStepHeadline(eventType runevents.Type, payload map[string]any) string
 			return fmt.Sprintf("Metric recorded: %s", metricKey)
 		}
 		return "Metric recorded"
+	case runevents.EventTypeModelToolCallsProposed:
+		return "Tool calls proposed"
+	case runevents.EventTypeModelOutputDelta:
+		return "Model output chunk"
 	default:
 		return string(eventType)
 	}
