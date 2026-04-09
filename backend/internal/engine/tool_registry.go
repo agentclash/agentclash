@@ -28,10 +28,11 @@ type Tool interface {
 }
 
 type ToolExecutionRequest struct {
-	Args       json.RawMessage
-	Session    sandbox.Session
-	ToolPolicy sandbox.ToolPolicy
-	Registry   *Registry
+	Args             json.RawMessage
+	Session          sandbox.Session
+	ToolPolicy       sandbox.ToolPolicy
+	NetworkAllowlist []string
+	Registry         *Registry
 }
 
 type ToolExecutionResult struct {

@@ -96,7 +96,7 @@ func TestFakeProviderSupportsLifecycleOperations(t *testing.T) {
 	}
 }
 
-func TestFakeSessionRejectsShellExecWhenDisabled(t *testing.T) {
+func TestFakeSessionExecMatchesSessionContractWithoutShellPolicyGate(t *testing.T) {
 	provider := &FakeProvider{
 		NextSession: NewFakeSession("sandbox-2"),
 	}
@@ -109,9 +109,15 @@ func TestFakeSessionRejectsShellExecWhenDisabled(t *testing.T) {
 		t.Fatalf("Create returned error: %v", err)
 	}
 
-	_, err = sessionAny.Exec(context.Background(), ExecRequest{Command: []string{"sh", "-lc", "echo hi"}})
-	if !errors.Is(err, ErrShellNotAllowed) {
-		t.Fatalf("Exec error = %v, want ErrShellNotAllowed", err)
+	session := sessionAny.(*FakeSession)
+	session.SetExecResult(ExecResult{ExitCode: 0, Stdout: "ok"})
+
+	result, err := sessionAny.Exec(context.Background(), ExecRequest{Command: []string{"sh", "-lc", "echo hi"}})
+	if err != nil {
+		t.Fatalf("Exec returned error: %v", err)
+	}
+	if result.Stdout != "ok" {
+		t.Fatalf("Exec stdout = %q, want ok", result.Stdout)
 	}
 }
 

@@ -17,7 +17,7 @@ func TestBuildToolRegistry_DefaultPrimitivesVisible(t *testing.T) {
 		t.Fatalf("buildToolRegistry returned error: %v", err)
 	}
 
-	assertRegistryVisibleTools(t, registry, submitToolName, readFileToolName, writeFileToolName, listFilesToolName, execToolName)
+	assertRegistryVisibleTools(t, registry, submitToolName, readFileToolName, writeFileToolName, listFilesToolName, searchFilesToolName, searchTextToolName, execToolName)
 }
 
 func TestBuildToolRegistry_AppliesAllowedDeniedAndSnapshotOverridesInOrder(t *testing.T) {
@@ -124,6 +124,7 @@ func TestRegistryResolve_ReturnsStructuredUnknownToolErrorPath(t *testing.T) {
 		nil,
 		&Registry{visible: map[string]Tool{}},
 		sandbox.ToolPolicy{},
+		nil,
 		0,
 		[]provider.ToolCall{{
 			ID:   "call-unknown",

@@ -122,9 +122,6 @@ func (s *FakeSession) Exec(_ context.Context, request ExecRequest) (ExecResult, 
 	if err := s.ensureActive(); err != nil {
 		return ExecResult{}, err
 	}
-	if !s.createRequest.ToolPolicy.AllowShell {
-		return ExecResult{}, ErrShellNotAllowed
-	}
 
 	s.execCalls = append(s.execCalls, cloneExecRequest(request))
 
