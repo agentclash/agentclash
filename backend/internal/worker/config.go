@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/workflow"
@@ -14,22 +15,26 @@ const (
 	defaultTemporalTarget        = "localhost:7233"
 	defaultNamespace             = "default"
 	defaultShutdownTime          = 10 * time.Second
-	defaultHostedCallbackBaseURL = "http://localhost:8080"
-	defaultHostedCallbackSecret  = "agentclash-dev-hosted-callback-secret"
+	defaultHostedCallbackBaseURL    = "http://localhost:8080"
+	defaultHostedCallbackSecret    = "agentclash-dev-hosted-callback-secret"
+	defaultReasoningCallbackSecret = "agentclash-dev-reasoning-callback-secret"
 )
 
 var ErrInvalidConfig = errors.New("invalid worker config")
 
 type Config struct {
-	DatabaseURL           string
-	TemporalAddress       string
-	TemporalNamespace     string
-	Identity              string
-	TaskQueue             string
-	HostedCallbackBaseURL string
-	HostedCallbackSecret  string
-	ShutdownTimeout       time.Duration
-	Sandbox               SandboxConfig
+	DatabaseURL             string
+	TemporalAddress         string
+	TemporalNamespace       string
+	Identity                string
+	TaskQueue               string
+	HostedCallbackBaseURL   string
+	HostedCallbackSecret    string
+	ReasoningServiceEnabled bool
+	ReasoningServiceURL     string
+	ReasoningCallbackSecret string
+	ShutdownTimeout         time.Duration
+	Sandbox                 SandboxConfig
 }
 
 type SandboxConfig struct {
@@ -90,6 +95,13 @@ func LoadConfigFromEnv() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	reasoningServiceEnabled := strings.EqualFold(os.Getenv("REASONING_SERVICE_ENABLED"), "true")
+	reasoningServiceURL := os.Getenv("REASONING_SERVICE_URL")
+	reasoningCallbackSecret, err := envOrDefault("REASONING_CALLBACK_SECRET", defaultReasoningCallbackSecret)
+	if err != nil {
+		return Config{}, err
+	}
+
 	if sandboxProvider != "unconfigured" && sandboxProvider != "e2b" {
 		return Config{}, fmt.Errorf("%w: SANDBOX_PROVIDER must be one of unconfigured or e2b", ErrInvalidConfig)
 	}
@@ -103,14 +115,17 @@ func LoadConfigFromEnv() (Config, error) {
 	}
 
 	return Config{
-		DatabaseURL:           databaseURL,
-		TemporalAddress:       temporalAddress,
-		TemporalNamespace:     temporalNamespace,
-		Identity:              identity,
-		TaskQueue:             workflow.RunWorkflowName,
-		HostedCallbackBaseURL: hostedCallbackBaseURL,
-		HostedCallbackSecret:  hostedCallbackSecret,
-		ShutdownTimeout:       shutdownTimeout,
+		DatabaseURL:             databaseURL,
+		TemporalAddress:         temporalAddress,
+		TemporalNamespace:       temporalNamespace,
+		Identity:                identity,
+		TaskQueue:               workflow.RunWorkflowName,
+		HostedCallbackBaseURL:   hostedCallbackBaseURL,
+		HostedCallbackSecret:    hostedCallbackSecret,
+		ReasoningServiceEnabled: reasoningServiceEnabled,
+		ReasoningServiceURL:     reasoningServiceURL,
+		ReasoningCallbackSecret: reasoningCallbackSecret,
+		ShutdownTimeout:         shutdownTimeout,
 		Sandbox: SandboxConfig{
 			Provider: sandboxProvider,
 			E2B: E2BConfig{

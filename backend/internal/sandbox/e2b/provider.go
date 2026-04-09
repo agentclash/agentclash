@@ -2,6 +2,8 @@ package e2b
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -36,6 +38,25 @@ func (p *Provider) Create(ctx context.Context, request sandbox.CreateRequest) (s
 		return nil, err
 	}
 	slog.Default().Info("sandbox created", "sandbox_id", record.SandboxID, "run_id", request.RunID, "run_agent_id", request.RunAgentID, "template_id", record.TemplateID, "sandbox_url", p.client.envdBaseURL(record), "outcome", "created", "duration", time.Since(startedAt))
+	return &session{
+		client: clientSession{
+			api:           p.client,
+			record:        record,
+			processClient: p.client.processClient(record),
+			filesClient:   p.client.filesystemClient(record),
+		},
+	}, nil
+}
+
+func (p *Provider) Reconnect(_ context.Context, metadata json.RawMessage) (sandbox.Session, error) {
+	var record sandboxRecord
+	if err := json.Unmarshal(metadata, &record); err != nil {
+		return nil, fmt.Errorf("unmarshal sandbox metadata: %w", err)
+	}
+	if record.SandboxID == "" {
+		return nil, fmt.Errorf("sandbox metadata missing sandboxID")
+	}
+	slog.Default().Info("sandbox reconnected", "sandbox_id", record.SandboxID, "template_id", record.TemplateID, "sandbox_url", p.client.envdBaseURL(record))
 	return &session{
 		client: clientSession{
 			api:           p.client,

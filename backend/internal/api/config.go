@@ -13,18 +13,20 @@ const (
 	defaultTemporalTarget          = "localhost:7233"
 	defaultNamespace               = "default"
 	defaultShutdownTime            = 10 * time.Second
-	defaultHostedRunCallbackSecret = "agentclash-dev-hosted-callback-secret"
+	defaultHostedRunCallbackSecret      = "agentclash-dev-hosted-callback-secret"
+	defaultReasoningRunCallbackSecret = "agentclash-dev-reasoning-callback-secret"
 )
 
 var ErrInvalidConfig = errors.New("invalid api server config")
 
 type Config struct {
-	BindAddress             string
-	DatabaseURL             string
-	TemporalAddress         string
-	TemporalNamespace       string
-	HostedRunCallbackSecret string
-	ShutdownTimeout         time.Duration
+	BindAddress                string
+	DatabaseURL                string
+	TemporalAddress            string
+	TemporalNamespace          string
+	HostedRunCallbackSecret    string
+	ReasoningRunCallbackSecret string
+	ShutdownTimeout            time.Duration
 }
 
 func LoadConfigFromEnv() (Config, error) {
@@ -48,14 +50,19 @@ func LoadConfigFromEnv() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	reasoningRunCallbackSecret, err := envOrDefault("REASONING_CALLBACK_SECRET", defaultReasoningRunCallbackSecret)
+	if err != nil {
+		return Config{}, err
+	}
 
 	cfg := Config{
-		BindAddress:             bindAddress,
-		DatabaseURL:             databaseURL,
-		TemporalAddress:         temporalAddress,
-		TemporalNamespace:       temporalNamespace,
-		HostedRunCallbackSecret: hostedRunCallbackSecret,
-		ShutdownTimeout:         defaultShutdownTime,
+		BindAddress:                bindAddress,
+		DatabaseURL:                databaseURL,
+		TemporalAddress:            temporalAddress,
+		TemporalNamespace:          temporalNamespace,
+		HostedRunCallbackSecret:    hostedRunCallbackSecret,
+		ReasoningRunCallbackSecret: reasoningRunCallbackSecret,
+		ShutdownTimeout:            defaultShutdownTime,
 	}
 
 	return cfg, nil

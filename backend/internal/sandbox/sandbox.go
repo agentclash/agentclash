@@ -2,6 +2,7 @@ package sandbox
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -18,10 +19,12 @@ var (
 
 type Provider interface {
 	Create(ctx context.Context, request CreateRequest) (Session, error)
+	Reconnect(ctx context.Context, metadata json.RawMessage) (Session, error)
 }
 
 type Session interface {
 	ID() string
+	Metadata() json.RawMessage
 	UploadFile(ctx context.Context, path string, content []byte) error
 	ReadFile(ctx context.Context, path string) ([]byte, error)
 	WriteFile(ctx context.Context, path string, content []byte) error
@@ -76,5 +79,9 @@ type FileInfo struct {
 type UnconfiguredProvider struct{}
 
 func (UnconfiguredProvider) Create(context.Context, CreateRequest) (Session, error) {
+	return nil, ErrProviderNotConfigured
+}
+
+func (UnconfiguredProvider) Reconnect(context.Context, json.RawMessage) (Session, error) {
 	return nil, ErrProviderNotConfigured
 }

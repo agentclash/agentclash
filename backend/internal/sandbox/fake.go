@@ -2,6 +2,7 @@ package sandbox
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"path"
 	"sort"
@@ -38,6 +39,26 @@ func (p *FakeProvider) Create(_ context.Context, request CreateRequest) (Session
 	return session, nil
 }
 
+func (p *FakeProvider) Reconnect(_ context.Context, metadata json.RawMessage) (Session, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	var record struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(metadata, &record); err != nil {
+		return nil, err
+	}
+
+	if p.NextSession != nil {
+		s := p.NextSession
+		p.NextSession = nil
+		p.Sessions = append(p.Sessions, s)
+		return s, nil
+	}
+	return nil, ErrSandboxNotFound
+}
+
 type FakeSession struct {
 	mu            sync.Mutex
 	id            string
@@ -64,6 +85,11 @@ func NewFakeSession(id string) *FakeSession {
 
 func (s *FakeSession) ID() string {
 	return s.id
+}
+
+func (s *FakeSession) Metadata() json.RawMessage {
+	data, _ := json.Marshal(map[string]string{"id": s.id})
+	return data
 }
 
 func (s *FakeSession) UploadFile(_ context.Context, name string, content []byte) error {
