@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path"
 	"strings"
 
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/sandbox"
+	"github.com/google/uuid"
 )
 
 func nativePrimitiveTools(toolPolicy sandbox.ToolPolicy) map[string]Tool {
@@ -59,6 +61,15 @@ func nativePrimitiveTools(toolPolicy sandbox.ToolPolicy) map[string]Tool {
 			description: "Query JSON from a file or inline JSON string using jq.",
 			parameters:  json.RawMessage(`{"type":"object","properties":{"query":{"type":"string"},"file_path":{"type":"string"},"json":{"type":"string"},"output_path":{"type":"string"}},"required":["query"],"additionalProperties":false}`),
 			execute:     executeQueryJSONTool,
+		}
+	}
+
+	if allowsNetworkTools(toolPolicy) {
+		tools[httpRequestToolName] = primitiveTool{
+			name:        httpRequestToolName,
+			description: "Make an HTTP request from inside the sandbox with structured response output.",
+			parameters:  json.RawMessage(`{"type":"object","properties":{"method":{"type":"string"},"url":{"type":"string"},"headers":{"type":"object","additionalProperties":{"type":"string"}},"body":{"type":"string"},"timeout_seconds":{"type":"integer","minimum":1},"output_path":{"type":"string"}},"required":["method","url"],"additionalProperties":false}`),
+			execute:     executeHTTPRequestTool,
 		}
 	}
 
@@ -363,7 +374,7 @@ func parseRipgrepMatches(stdout string) ([]ripgrepMatch, error) {
 					Text string `json:"text"`
 				} `json:"path"`
 				LineNumber int64 `json:"line_number"`
-				Lines struct {
+				Lines      struct {
 					Text string `json:"text"`
 				} `json:"lines"`
 			} `json:"data"`
@@ -480,6 +491,89 @@ func parseJQOutput(stdout string) any {
 		return values[0]
 	}
 	return values
+}
+
+func executeHTTPRequestTool(ctx context.Context, request ToolExecutionRequest) (ToolExecutionResult, error) {
+	if !allowsNetworkTools(request.ToolPolicy) || !request.ToolPolicy.AllowNetwork {
+		return ToolExecutionResult{Content: encodeToolErrorMessage("tool is not allowed in this runtime"), IsError: true}, nil
+	}
+
+	var args struct {
+		Method         string            `json:"method"`
+		URL            string            `json:"url"`
+		Headers        map[string]string `json:"headers"`
+		Body           string            `json:"body"`
+		TimeoutSeconds int               `json:"timeout_seconds"`
+		OutputPath     string            `json:"output_path"`
+	}
+	if err := decodeToolArguments(httpRequestToolName, request.Args, &args); err != nil {
+		return ToolExecutionResult{Content: encodeToolErrorMessage(err.Error()), IsError: true}, nil
+	}
+	method := strings.ToUpper(strings.TrimSpace(args.Method))
+	if method == "" {
+		return ToolExecutionResult{Content: encodeToolErrorMessage("method is required"), IsError: true}, nil
+	}
+	url := strings.TrimSpace(args.URL)
+	if url == "" {
+		return ToolExecutionResult{Content: encodeToolErrorMessage("url is required"), IsError: true}, nil
+	}
+	if len(args.Body) > httpRequestBodyLimitBytes {
+		return ToolExecutionResult{Content: encodeToolErrorMessage("request body exceeds size limit"), IsError: true}, nil
+	}
+	timeoutSeconds := args.TimeoutSeconds
+	if timeoutSeconds <= 0 {
+		timeoutSeconds = httpRequestTimeoutSecondsDefault
+	}
+	if timeoutSeconds > httpRequestTimeoutSecondsMax {
+		timeoutSeconds = httpRequestTimeoutSecondsMax
+	}
+
+	if err := ensureToolDirectory(ctx, request, toolInputDirectory); err != nil {
+		return ToolExecutionResult{}, err
+	}
+
+	requestPath := path.Join(toolInputDirectory, fmt.Sprintf("%s_%s.json", httpRequestToolName, uuid.NewString()))
+	inputPayload, err := json.Marshal(map[string]any{
+		"method":                  method,
+		"url":                     url,
+		"headers":                 cloneStringMap(args.Headers),
+		"body":                    args.Body,
+		"timeout_seconds":         timeoutSeconds,
+		"output_path":             strings.TrimSpace(args.OutputPath),
+		"network_allowlist":       append([]string(nil), request.NetworkAllowlist...),
+		"max_request_body_bytes":  httpRequestBodyLimitBytes,
+		"max_response_body_bytes": httpResponseLimitBytes,
+	})
+	if err != nil {
+		return ToolExecutionResult{}, NewFailure(StopReasonSandboxError, "marshal http_request input", err)
+	}
+	if err := request.Session.WriteFile(ctx, requestPath, inputPayload); err != nil {
+		return ToolExecutionResult{}, NewFailure(StopReasonSandboxError, "write http_request input", err)
+	}
+
+	commandResult, err := executeInternalCommand(ctx, request, httpRequestToolName, sandbox.ExecRequest{
+		Command: []string{"python3", "/tools/http_request.py", requestPath},
+	}, commandBehavior{})
+	if err != nil {
+		return ToolExecutionResult{}, err
+	}
+	if commandResult.IsError {
+		message := strings.TrimSpace(commandResult.ExecResult.Stderr)
+		if message == "" {
+			message = "http request failed"
+		}
+		return ToolExecutionResult{Content: encodeToolErrorMessage(message), IsError: true}, nil
+	}
+
+	var responsePayload any
+	if err := json.Unmarshal([]byte(strings.TrimSpace(commandResult.ExecResult.Stdout)), &responsePayload); err != nil {
+		return ToolExecutionResult{}, NewFailure(StopReasonSandboxError, "decode http_request output", err)
+	}
+	content, err := toolJSONOutput(ctx, request, httpRequestToolName, responsePayload)
+	if err != nil {
+		return ToolExecutionResult{}, err
+	}
+	return ToolExecutionResult{Content: content}, nil
 }
 
 func executeExecTool(ctx context.Context, request ToolExecutionRequest) (ToolExecutionResult, error) {

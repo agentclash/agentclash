@@ -24,14 +24,15 @@ const (
 	sandboxBootBuffer              = 20 * time.Second
 	sandboxCleanupTimeout          = 15 * time.Second
 
-	submitToolName    = "submit"
-	readFileToolName  = "read_file"
-	writeFileToolName = "write_file"
-	listFilesToolName = "list_files"
+	submitToolName      = "submit"
+	readFileToolName    = "read_file"
+	writeFileToolName   = "write_file"
+	listFilesToolName   = "list_files"
 	searchFilesToolName = "search_files"
 	searchTextToolName  = "search_text"
 	queryJSONToolName   = "query_json"
-	execToolName      = "exec"
+	httpRequestToolName = "http_request"
+	execToolName        = "exec"
 )
 
 type StopReason string
@@ -304,7 +305,7 @@ func (e NativeExecutor) Execute(ctx context.Context, executionContext repository
 			return Result{}, NewFailure(StopReasonProviderError, "assistant response did not contain a tool call or submit action", nil)
 		}
 
-		toolMessages, finalOutput, completed, toolCallCount, toolErr := e.executeToolCalls(runCtx, session, registry, sandboxRequest.ToolPolicy, state.toolCallCount, response.ToolCalls)
+		toolMessages, finalOutput, completed, toolCallCount, toolErr := e.executeToolCalls(runCtx, session, registry, sandboxRequest.ToolPolicy, sandboxRequest.NetworkAllowlist, state.toolCallCount, response.ToolCalls)
 		state.toolCallCount += toolCallCount
 		if toolErr != nil {
 			return Result{}, toolErr
@@ -395,6 +396,7 @@ func (e NativeExecutor) executeToolCalls(
 	session sandbox.Session,
 	registry *Registry,
 	toolPolicy sandbox.ToolPolicy,
+	networkAllowlist []string,
 	toolCallsUsedSoFar int,
 	toolCalls []provider.ToolCall,
 ) ([]provider.Message, string, bool, int, error) {
@@ -434,10 +436,11 @@ func (e NativeExecutor) executeToolCalls(
 		}
 
 		executionResult, hardErr := tool.Execute(ctx, ToolExecutionRequest{
-			Args:       toolCall.Arguments,
-			Session:    session,
-			ToolPolicy: toolPolicy,
-			Registry:   registry,
+			Args:             toolCall.Arguments,
+			Session:          session,
+			ToolPolicy:       toolPolicy,
+			NetworkAllowlist: append([]string(nil), networkAllowlist...),
+			Registry:         registry,
 		})
 		if hardErr != nil {
 			return nil, "", false, toolCallsUsed, hardErr

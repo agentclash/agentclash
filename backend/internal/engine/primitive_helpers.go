@@ -17,9 +17,14 @@ const (
 	toolKindNetwork = "network"
 	toolKindBuild   = "build"
 
-	toolOutputInlineLimitBytes = 32 * 1024
-	toolOutputPreviewLineCount = 50
-	toolSpillDirectory         = "/workspace/.agentclash/spill"
+	toolOutputInlineLimitBytes       = 32 * 1024
+	toolOutputPreviewLineCount       = 50
+	toolSpillDirectory               = "/workspace/.agentclash/spill"
+	toolInputDirectory               = "/workspace/.agentclash/tool-inputs"
+	httpRequestTimeoutSecondsDefault = 30
+	httpRequestTimeoutSecondsMax     = 60
+	httpRequestBodyLimitBytes        = 1 * 1024 * 1024
+	httpResponseLimitBytes           = 5 * 1024 * 1024
 )
 
 type commandBehavior struct {
@@ -28,9 +33,9 @@ type commandBehavior struct {
 }
 
 type commandExecutionResult struct {
-	ExecResult   sandbox.ExecResult
-	IsError      bool
-	IsEmpty      bool
+	ExecResult     sandbox.ExecResult
+	IsError        bool
+	IsEmpty        bool
 	Classification string
 }
 
@@ -55,8 +60,8 @@ func executeInternalCommand(ctx context.Context, request ToolExecutionRequest, t
 	}
 
 	return commandExecutionResult{
-		ExecResult:    result,
-		IsError:       true,
+		ExecResult:     result,
+		IsError:        true,
 		Classification: fmt.Sprintf("%s_exit_%d", strings.TrimSpace(toolName), result.ExitCode),
 	}, nil
 }
@@ -124,11 +129,15 @@ func toolJSONOutput(ctx context.Context, request ToolExecutionRequest, toolName 
 }
 
 func ensureToolSpillDirectory(ctx context.Context, request ToolExecutionRequest) error {
+	return ensureToolDirectory(ctx, request, toolSpillDirectory)
+}
+
+func ensureToolDirectory(ctx context.Context, request ToolExecutionRequest, directory string) error {
 	_, err := request.Session.Exec(ctx, sandbox.ExecRequest{
-		Command: []string{"mkdir", "-p", toolSpillDirectory},
+		Command: []string{"mkdir", "-p", directory},
 	})
 	if err != nil {
-		return NewFailure(StopReasonSandboxError, "create spill directory", err)
+		return NewFailure(StopReasonSandboxError, "create tool directory", err)
 	}
 	return nil
 }
