@@ -311,6 +311,133 @@ func TestGeminiClientAPIKeyInURL(t *testing.T) {
 	}
 }
 
+func TestGeminiClientStripsAdditionalPropertiesFromToolSchemas(t *testing.T) {
+	var capturedBody []byte
+	httpClient := &http.Client{
+		Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			var err error
+			capturedBody, err = io.ReadAll(r.Body)
+			if err != nil {
+				t.Fatalf("read request body: %v", err)
+			}
+			return sseResponse(http.StatusOK, strings.Join([]string{
+				`data: {"candidates":[{"content":{"parts":[{"text":"ok"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":1,"candidatesTokenCount":1,"totalTokenCount":2}}`,
+				``,
+			}, "\n")), nil
+		}),
+	}
+
+	client := NewGeminiClient(httpClient, "https://example.com", staticCredentialResolver{value: "test-key"})
+
+	_, err := client.InvokeModel(context.Background(), Request{
+		ProviderKey:         "gemini",
+		CredentialReference: "env://GEMINI_API_KEY",
+		Model:               "gemini-2.0-flash",
+		Messages:            []Message{{Role: "user", Content: "hello"}},
+		Tools: []ToolDefinition{
+			{
+				Name: "submit",
+				Parameters: json.RawMessage(`{
+					"type": "object",
+					"properties": {
+						"answer": {
+							"type": "string",
+							"additionalProperties": false
+						}
+					},
+					"required": ["answer"],
+					"additionalProperties": false
+				}`),
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("InvokeModel returned error: %v", err)
+	}
+
+	// Verify additionalProperties was stripped from the request body.
+	bodyStr := string(capturedBody)
+	if strings.Contains(bodyStr, "additionalProperties") {
+		t.Fatalf("request body still contains additionalProperties: %s", bodyStr)
+	}
+	// Verify required fields are preserved.
+	if !strings.Contains(bodyStr, "required") {
+		t.Fatalf("request body is missing required field: %s", bodyStr)
+	}
+	if !strings.Contains(bodyStr, `"type"`) {
+		t.Fatalf("request body is missing type field: %s", bodyStr)
+	}
+}
+
+func TestGeminiStripUnsupportedSchemaFieldsRecursive(t *testing.T) {
+	input := json.RawMessage(`{
+		"type": "object",
+		"properties": {
+			"name": {
+				"type": "string",
+				"additionalProperties": false,
+				"$comment": "test"
+			},
+			"tags": {
+				"type": "array",
+				"items": {
+					"type": "string",
+					"readOnly": true
+				}
+			}
+		},
+		"required": ["name"],
+		"additionalProperties": false,
+		"$schema": "http://json-schema.org/draft-07/schema#"
+	}`)
+
+	result := stripUnsupportedGeminiSchemaFields(input)
+
+	var parsed map[string]any
+	if err := json.Unmarshal(result, &parsed); err != nil {
+		t.Fatalf("unmarshal result: %v", err)
+	}
+
+	// Top-level unsupported fields stripped.
+	if _, ok := parsed["additionalProperties"]; ok {
+		t.Error("additionalProperties should be stripped at top level")
+	}
+	if _, ok := parsed["$schema"]; ok {
+		t.Error("$schema should be stripped at top level")
+	}
+
+	// Supported fields preserved.
+	if _, ok := parsed["type"]; !ok {
+		t.Error("type should be preserved")
+	}
+	if _, ok := parsed["required"]; !ok {
+		t.Error("required should be preserved")
+	}
+
+	// Nested property fields stripped.
+	props := parsed["properties"].(map[string]any)
+	nameProp := props["name"].(map[string]any)
+	if _, ok := nameProp["additionalProperties"]; ok {
+		t.Error("additionalProperties should be stripped from nested property")
+	}
+	if _, ok := nameProp["$comment"]; ok {
+		t.Error("$comment should be stripped from nested property")
+	}
+	if _, ok := nameProp["type"]; !ok {
+		t.Error("type should be preserved in nested property")
+	}
+
+	// Items schema stripped.
+	tagsProp := props["tags"].(map[string]any)
+	items := tagsProp["items"].(map[string]any)
+	if _, ok := items["readOnly"]; ok {
+		t.Error("readOnly should be stripped from items schema")
+	}
+	if _, ok := items["type"]; !ok {
+		t.Error("type should be preserved in items schema")
+	}
+}
+
 func assertGeminiStreamingRequest(t *testing.T, r *http.Request, model string) {
 	t.Helper()
 

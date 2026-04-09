@@ -196,11 +196,103 @@ func normalizeGeminiRequestTool(providerKey string, tool ToolDefinition) (gemini
 		return geminiFunctionDeclaration{}, NewFailure(providerKey, FailureCodeInvalidRequest, fmt.Sprintf("tool %q parameters must be valid JSON", tool.Name), false, nil)
 	}
 
+	// Gemini uses a protobuf-defined subset of OpenAPI schema and rejects
+	// unknown fields like additionalProperties, $schema, $ref, oneOf, etc.
+	parameters = stripUnsupportedGeminiSchemaFields(parameters)
+
 	return geminiFunctionDeclaration{
 		Name:        tool.Name,
 		Description: tool.Description,
 		Parameters:  append(json.RawMessage(nil), parameters...),
 	}, nil
+}
+
+// geminiUnsupportedSchemaFields lists JSON Schema keywords that the Gemini API
+// does not recognise. The API accepts only the fields defined in its protobuf
+// Schema message: type, format, title, description, nullable, enum, items,
+// maxItems, minItems, properties, required, minProperties, maxProperties,
+// minimum, maximum, minLength, maxLength, pattern, example, anyOf,
+// propertyOrdering, default. Everything else must be stripped.
+var geminiUnsupportedSchemaFields = map[string]bool{
+	"additionalProperties":  true,
+	"$schema":               true,
+	"$ref":                  true,
+	"$defs":                 true,
+	"$id":                   true,
+	"$comment":              true,
+	"$anchor":               true,
+	"definitions":           true,
+	"oneOf":                 true,
+	"allOf":                 true,
+	"not":                   true,
+	"if":                    true,
+	"then":                  true,
+	"else":                  true,
+	"const":                 true,
+	"patternProperties":     true,
+	"propertyNames":         true,
+	"dependentRequired":     true,
+	"dependentSchemas":      true,
+	"unevaluatedProperties": true,
+	"unevaluatedItems":      true,
+	"prefixItems":           true,
+	"contains":              true,
+	"uniqueItems":           true,
+	"multipleOf":            true,
+	"exclusiveMinimum":      true,
+	"exclusiveMaximum":      true,
+	"examples":              true,
+	"readOnly":              true,
+	"writeOnly":             true,
+	"deprecated":            true,
+	"contentMediaType":      true,
+	"contentEncoding":       true,
+}
+
+func stripUnsupportedGeminiSchemaFields(schema json.RawMessage) json.RawMessage {
+	var parsed map[string]any
+	if err := json.Unmarshal(schema, &parsed); err != nil {
+		return schema
+	}
+
+	stripped := stripGeminiFieldsRecursive(parsed)
+
+	cleaned, err := json.Marshal(stripped)
+	if err != nil {
+		return schema
+	}
+	return cleaned
+}
+
+func stripGeminiFieldsRecursive(obj map[string]any) map[string]any {
+	for key := range geminiUnsupportedSchemaFields {
+		delete(obj, key)
+	}
+
+	// Recurse into properties (each value is a sub-schema).
+	if props, ok := obj["properties"].(map[string]any); ok {
+		for propKey, propVal := range props {
+			if propSchema, ok := propVal.(map[string]any); ok {
+				props[propKey] = stripGeminiFieldsRecursive(propSchema)
+			}
+		}
+	}
+
+	// Recurse into items (array element schema).
+	if items, ok := obj["items"].(map[string]any); ok {
+		obj["items"] = stripGeminiFieldsRecursive(items)
+	}
+
+	// Recurse into anyOf (the only composition keyword Gemini supports).
+	if anyOf, ok := obj["anyOf"].([]any); ok {
+		for i, branch := range anyOf {
+			if branchSchema, ok := branch.(map[string]any); ok {
+				anyOf[i] = stripGeminiFieldsRecursive(branchSchema)
+			}
+		}
+	}
+
+	return obj
 }
 
 // --- Gemini request/response types ---
