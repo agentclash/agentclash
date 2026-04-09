@@ -17,5 +17,22 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
 
+  reasoning:
+    build:
+      context: ./reasoning
+      dockerfile: Dockerfile
+    container_name: agentclash-reasoning
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      REASONING_HOST: "0.0.0.0"
+      REASONING_PORT: "8000"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
 volumes:
   postgres-data:
