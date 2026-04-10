@@ -205,20 +205,27 @@ func buildToolRegistry(toolPolicy sandbox.ToolPolicy, manifest json.RawMessage, 
 		visible[name] = tool
 	}
 
-	for name, tool := range composed {
-		ct, ok := tool.(*composedTool)
-		if !ok {
-			return nil, fmt.Errorf("tool %q is marked composed but has unexpected type %T", name, tool)
-		}
-		if _, exists := primitives[ct.primitive]; !exists {
-			if _, exists := composed[ct.primitive]; !exists {
-				if _, exists := mocks[ct.primitive]; !exists {
-					slog.Default().Warn("disabling composed tool with missing delegate", "tool_name", name, "delegate", ct.primitive)
-					delete(composed, name)
-					delete(visible, name)
-					continue
+	for {
+		removed := 0
+		for name, tool := range composed {
+			ct, ok := tool.(*composedTool)
+			if !ok {
+				return nil, fmt.Errorf("tool %q is marked composed but has unexpected type %T", name, tool)
+			}
+			if _, exists := primitives[ct.primitive]; !exists {
+				if _, exists := composed[ct.primitive]; !exists {
+					if _, exists := mocks[ct.primitive]; !exists {
+						slog.Default().Warn("disabling composed tool with missing delegate", "tool_name", name, "delegate", ct.primitive)
+						delete(composed, name)
+						delete(visible, name)
+						removed++
+						continue
+					}
 				}
 			}
+		}
+		if removed == 0 {
+			break
 		}
 	}
 

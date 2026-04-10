@@ -781,3 +781,23 @@ func TestBuildToolRegistry_RejectsStaticCycle(t *testing.T) {
 		t.Fatalf("error = %v, want delegation cycle error", err)
 	}
 }
+
+func TestBuildToolRegistry_CascadesRemovalWhenDelegateChainBreaks(t *testing.T) {
+	registry, err := buildToolRegistry(
+		sandbox.ToolPolicy{},
+		[]byte(`{"tools":{"custom":[
+			{"name":"smart_exec","description":"S","parameters":{"type":"object"},"implementation":{"primitive":"safe_exec","args":{}}},
+			{"name":"safe_exec","description":"S","parameters":{"type":"object"},"implementation":{"primitive":"exec","args":{"command":["echo","hi"]}}}
+		]}}`),
+		nil, nil,
+	)
+	if err != nil {
+		t.Fatalf("buildToolRegistry returned error: %v", err)
+	}
+	if _, ok := registry.Resolve("smart_exec"); ok {
+		t.Fatal("smart_exec should be removed when its delegate chain is broken")
+	}
+	if _, ok := registry.Resolve("safe_exec"); ok {
+		t.Fatal("safe_exec should be removed when its delegate is missing")
+	}
+}
