@@ -362,6 +362,18 @@ func newManifestCustomTool(config manifestCustomToolConfig, secrets map[string]s
 	if err := validateTemplateReferences(argsTemplate, "args", declaredParams); err != nil {
 		return nil, "", fmt.Errorf("custom tool %q has invalid args template: %w", name, err)
 	}
+	// Reject secret references in primitives that cannot safely handle
+	// plaintext secrets. The resolved value would otherwise land in an
+	// observable sandbox surface (exec argv, query_sql command line,
+	// etc.) and be exfiltrated by the evaluated agent. See issue #186.
+	// In v1 only http_request is hardened for secret-bearing args.
+	if templateReferencesSecrets(argsTemplate) && !primitiveAcceptsSecrets(primitiveName) {
+		return nil, "", fmt.Errorf(
+			"custom tool %q delegates to primitive %q which does not accept ${secrets.*} references; "+
+				"only %q supports secret-bearing args in v1 (see issue #186)",
+			name, primitiveName, httpRequestToolName,
+		)
+	}
 	resolvedTemplate, err := resolveTemplateMap(argsTemplate, templateResolutionOptions{
 		secrets:              cloneStringMap(secrets),
 		errorOnMissingSecret: true,
