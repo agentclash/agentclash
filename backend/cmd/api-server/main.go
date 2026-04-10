@@ -80,6 +80,7 @@ func main() {
 	wsMembershipManager := api.NewWorkspaceMembershipManager(repo)
 	onboardingManager := api.NewOnboardingManager(repo)
 	infraManager := api.NewInfrastructureManager(repo)
+	workspaceSecretsManager := api.NewWorkspaceSecretsManager(repo)
 
 	var authenticator api.Authenticator
 	switch cfg.AuthMode {
@@ -121,6 +122,7 @@ func main() {
 		wsMembershipManager,
 		onboardingManager,
 		infraManager,
+		workspaceSecretsManager,
 	)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
