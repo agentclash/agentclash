@@ -6,7 +6,9 @@ import (
 	"time"
 
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/domain"
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/engine"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/hostedruns"
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/provider"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
 	"github.com/google/uuid"
 	"go.temporal.io/sdk/temporal"
@@ -79,11 +81,35 @@ func executeNativeModelStep(ctx sdkworkflow.Context, input RunAgentWorkflowInput
 }
 
 func nativeModelActivityOptions(executionContext repository.RunAgentExecutionContext) sdkworkflow.ActivityOptions {
-	options := defaultActivityOptions
+	timeout := defaultActivityOptions.StartToCloseTimeout
 	if executionContext.Deployment.RuntimeProfile.RunTimeoutSeconds > 0 {
-		options.StartToCloseTimeout = time.Duration(executionContext.Deployment.RuntimeProfile.RunTimeoutSeconds)*time.Second + nativeActivityBootBuffer + nativeActivityCleanupBuffer
+		timeout = time.Duration(executionContext.Deployment.RuntimeProfile.RunTimeoutSeconds)*time.Second + nativeActivityBootBuffer + nativeActivityCleanupBuffer
 	}
-	return options
+	return sdkworkflow.ActivityOptions{
+		StartToCloseTimeout: timeout,
+		RetryPolicy: &temporal.RetryPolicy{
+			MaximumAttempts:    3,
+			InitialInterval:    10 * time.Second,
+			BackoffCoefficient: 2.0,
+			MaximumInterval:    2 * time.Minute,
+			NonRetryableErrorTypes: []string{
+				repositoryRunNotFoundErrorType,
+				repositoryRunAgentNotFoundErrorType,
+				repositoryFrozenExecutionContextType,
+				repositoryInvalidTransitionType,
+				repositoryTransitionConflictType,
+				engineFailureErrorTypePrefix + string(engine.StopReasonStepLimit),
+				engineFailureErrorTypePrefix + string(engine.StopReasonToolLimit),
+				engineFailureErrorTypePrefix + string(engine.StopReasonTimeout),
+				engineFailureErrorTypePrefix + string(engine.StopReasonProviderError),
+				engineFailureErrorTypePrefix + string(engine.StopReasonObserverError),
+				providerFailureErrorTypePrefix + string(provider.FailureCodeAuth),
+				providerFailureErrorTypePrefix + string(provider.FailureCodeInvalidRequest),
+				providerFailureErrorTypePrefix + string(provider.FailureCodeUnsupportedProvider),
+				providerFailureErrorTypePrefix + string(provider.FailureCodeCredentialUnavailable),
+			},
+		},
+	}
 }
 
 func runHostedRunAgent(ctx sdkworkflow.Context, input RunAgentWorkflowInput, executionContext repository.RunAgentExecutionContext) error {

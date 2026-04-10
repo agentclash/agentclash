@@ -373,8 +373,20 @@ func TestNativeModelActivityOptionsUseRuntimeStepTimeout(t *testing.T) {
 	if options.StartToCloseTimeout != want {
 		t.Fatalf("start to close timeout = %s, want %s", options.StartToCloseTimeout, want)
 	}
-	if options.RetryPolicy == nil || options.RetryPolicy.MaximumAttempts != defaultActivityOptions.RetryPolicy.MaximumAttempts {
-		t.Fatalf("retry policy = %#v, want maximum attempts %d", options.RetryPolicy, defaultActivityOptions.RetryPolicy.MaximumAttempts)
+	if options.RetryPolicy == nil || options.RetryPolicy.MaximumAttempts != 3 {
+		t.Fatalf("retry policy maximum attempts = %d, want 3", options.RetryPolicy.MaximumAttempts)
+	}
+	if options.RetryPolicy.InitialInterval != 10*time.Second {
+		t.Fatalf("retry policy initial interval = %s, want 10s", options.RetryPolicy.InitialInterval)
+	}
+	if options.RetryPolicy.BackoffCoefficient != 2.0 {
+		t.Fatalf("retry policy backoff coefficient = %f, want 2.0", options.RetryPolicy.BackoffCoefficient)
+	}
+	if options.RetryPolicy.MaximumInterval != 2*time.Minute {
+		t.Fatalf("retry policy maximum interval = %s, want 2m", options.RetryPolicy.MaximumInterval)
+	}
+	if len(options.RetryPolicy.NonRetryableErrorTypes) == 0 {
+		t.Fatalf("retry policy should have non-retryable error types")
 	}
 }
 
