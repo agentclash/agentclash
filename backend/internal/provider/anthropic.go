@@ -91,7 +91,7 @@ func (c AnthropicClient) StreamModel(ctx context.Context, request Request, onDel
 		if err != nil {
 			return Response{}, NewFailure(request.ProviderKey, FailureCodeUnavailable, "read provider response", true, err)
 		}
-		return Response{}, normalizeAnthropicErrorResponse(request.ProviderKey, resp.StatusCode, raw)
+		return Response{}, normalizeAnthropicErrorResponse(request.ProviderKey, resp.StatusCode, resp.Header, raw)
 	}
 
 	accumulator := NewStreamAccumulator(request.ProviderKey, startedAt)
@@ -508,7 +508,7 @@ func emitAnthropicDelta(accumulator *StreamAccumulator, onDelta func(StreamDelta
 	return nil
 }
 
-func normalizeAnthropicErrorResponse(providerKey string, statusCode int, raw []byte) error {
+func normalizeAnthropicErrorResponse(providerKey string, statusCode int, header http.Header, raw []byte) error {
 	var envelope anthropicErrorEnvelope
 	if err := json.Unmarshal(raw, &envelope); err != nil {
 		return NewFailure(
@@ -529,9 +529,11 @@ func normalizeAnthropicErrorResponse(providerKey string, statusCode int, raw []b
 	case http.StatusUnauthorized, http.StatusForbidden:
 		return NewFailure(providerKey, FailureCodeAuth, message, false, nil)
 	case http.StatusTooManyRequests:
-		return NewFailure(providerKey, FailureCodeRateLimit, message, true, nil)
+		f := Failure{ProviderKey: providerKey, Code: FailureCodeRateLimit, Message: message, Retryable: true, RetryAfter: parseRetryAfter(header)}
+		return f
 	case 529: // Anthropic overloaded
-		return NewFailure(providerKey, FailureCodeRateLimit, message, true, nil)
+		f := Failure{ProviderKey: providerKey, Code: FailureCodeRateLimit, Message: message, Retryable: true, RetryAfter: parseRetryAfter(header)}
+		return f
 	case http.StatusBadRequest, http.StatusUnprocessableEntity:
 		return NewFailure(providerKey, FailureCodeInvalidRequest, message, false, nil)
 	case http.StatusGatewayTimeout, http.StatusBadGateway, http.StatusServiceUnavailable:

@@ -79,6 +79,7 @@ type Failure struct {
 	Code        FailureCode
 	Message     string
 	Retryable   bool
+	RetryAfter  time.Duration
 	Cause       error
 }
 
