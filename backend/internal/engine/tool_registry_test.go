@@ -292,6 +292,44 @@ func TestBuildToolRegistry_SoftDisablesComposedToolWithMissingSecret(t *testing.
 	}
 }
 
+func TestBuildToolRegistry_ComposedToolResolvesSecretsAtBuildTime(t *testing.T) {
+	registry, err := buildToolRegistry(
+		sandbox.ToolPolicy{},
+		[]byte(`{
+			"tools":{
+				"custom":[
+					{
+						"name":"send_token",
+						"description":"Send token",
+						"parameters":{"type":"object"},
+						"implementation":{"primitive":"submit","args":{"answer":"Bearer ${secrets.API_KEY}"}}
+					}
+				]
+			}
+		}`),
+		nil,
+		map[string]string{"API_KEY": "top-secret"},
+	)
+	if err != nil {
+		t.Fatalf("buildToolRegistry returned error: %v", err)
+	}
+
+	tool, ok := registry.Resolve("send_token")
+	if !ok {
+		t.Fatal("send_token should be visible when the secret is provided")
+	}
+	result, err := tool.Execute(t.Context(), ToolExecutionRequest{Registry: registry})
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("expected success, got error: %s", result.Content)
+	}
+	if result.FinalOutput != "Bearer top-secret" {
+		t.Fatalf("final output = %q, want resolved secret output", result.FinalOutput)
+	}
+}
+
 func TestComposedTool_ReportsFailureOriginByFailureType(t *testing.T) {
 	registry, err := buildToolRegistry(sandbox.ToolPolicy{}, []byte(`{"tools":{"custom":[]}}`), nil, nil)
 	if err != nil {
