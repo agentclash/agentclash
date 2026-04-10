@@ -455,6 +455,7 @@ func TestBuildToolRegistry_MockToolsVisibleAndExecutable(t *testing.T) {
 			}
 		}`),
 		nil,
+		nil,
 	)
 	if err != nil {
 		t.Fatalf("buildToolRegistry returned error: %v", err)
@@ -535,6 +536,7 @@ func TestBuildToolRegistry_RejectsInvalidMockConfig(t *testing.T) {
 				]
 			}
 		}`),
+		nil,
 		nil,
 	)
 	if err == nil {

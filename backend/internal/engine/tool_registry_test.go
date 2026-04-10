@@ -12,7 +12,7 @@ func TestBuildToolRegistry_DefaultPrimitivesVisible(t *testing.T) {
 	registry, err := buildToolRegistry(sandbox.ToolPolicy{
 		AllowedToolKinds: []string{"file"},
 		AllowShell:       true,
-	}, []byte(`{"challenge":"fixture"}`), []byte(`{}`))
+	}, []byte(`{"challenge":"fixture"}`), []byte(`{}`), nil)
 	if err != nil {
 		t.Fatalf("buildToolRegistry returned error: %v", err)
 	}
@@ -38,6 +38,7 @@ func TestBuildToolRegistry_AppliesAllowedDeniedAndSnapshotOverridesInOrder(t *te
 			}
 		}`),
 		[]byte(`{"tool_overrides":{"denied":["exec","inventory_lookup"]}}`),
+		nil,
 	)
 	if err != nil {
 		t.Fatalf("buildToolRegistry returned error: %v", err)
@@ -59,6 +60,7 @@ func TestBuildToolRegistry_AlwaysKeepsSubmitVisible(t *testing.T) {
 			}
 		}`),
 		[]byte(`{"tool_overrides":{"denied":["submit","read_file"]}}`),
+		nil,
 	)
 	if err != nil {
 		t.Fatalf("buildToolRegistry returned error: %v", err)
@@ -88,6 +90,7 @@ func TestBuildToolRegistry_RejectsCustomToolNameCollision(t *testing.T) {
 			}
 		}`),
 		nil,
+		nil,
 	)
 	if err == nil {
 		t.Fatal("expected name collision error")
@@ -98,6 +101,7 @@ func TestRegistryToolDefinitions_OnlyReturnsVisibleTools(t *testing.T) {
 	registry, err := buildToolRegistry(
 		sandbox.ToolPolicy{AllowedToolKinds: []string{"file"}, AllowShell: true},
 		[]byte(`{"tools":{"allowed":["read_file"]}}`),
+		nil,
 		nil,
 	)
 	if err != nil {
@@ -197,23 +201,94 @@ func TestDecodeSnapshotToolOverrides_DenyOnly(t *testing.T) {
 	}
 }
 
-func TestManifestBackedToolDefaultsToStructuredError(t *testing.T) {
-	tool, err := newManifestCustomTool(manifestCustomToolConfig{
+func TestNewManifestCustomTool_ComposedToolDelegatesToPrimitive(t *testing.T) {
+	tool, disabledReason, err := newManifestCustomTool(manifestCustomToolConfig{
 		Name:           "inventory_lookup",
 		Description:    "Lookup inventory",
-		Parameters:     json.RawMessage(`{"type":"object"}`),
-		Implementation: json.RawMessage(`{"primitive":"exec","args":{"command":["echo","hi"]}}`),
-	})
+		Parameters:     json.RawMessage(`{"type":"object","properties":{"answer":{"type":"string"}}}`),
+		Implementation: json.RawMessage(`{"primitive":"submit","args":{"answer":"${answer}"}}`),
+	}, nil)
 	if err != nil {
 		t.Fatalf("newManifestCustomTool returned error: %v", err)
 	}
+	if disabledReason != "" {
+		t.Fatalf("disabledReason = %q, want empty", disabledReason)
+	}
 
-	result, execErr := tool.Execute(t.Context(), ToolExecutionRequest{})
+	registry, err := buildToolRegistry(sandbox.ToolPolicy{}, []byte(`{"tools":{"custom":[]}}`), nil, nil)
+	if err != nil {
+		t.Fatalf("buildToolRegistry returned error: %v", err)
+	}
+	result, execErr := tool.Execute(t.Context(), ToolExecutionRequest{
+		Args:     json.RawMessage(`{"answer":"done"}`),
+		Registry: registry,
+	})
 	if execErr != nil {
 		t.Fatalf("Execute returned error: %v", execErr)
 	}
-	if !result.IsError {
-		t.Fatalf("expected stub custom tool to return structured error")
+	if result.IsError {
+		t.Fatalf("expected composed tool success, got error: %s", result.Content)
+	}
+	if !result.Completed {
+		t.Fatalf("completed = false, want true")
+	}
+	if result.FinalOutput != "done" {
+		t.Fatalf("final output = %q, want done", result.FinalOutput)
+	}
+	if result.ResolvedToolName != submitToolName {
+		t.Fatalf("resolved tool = %q, want submit", result.ResolvedToolName)
+	}
+}
+
+func TestBuildToolRegistry_SoftDisablesComposedToolWithMissingPrimitive(t *testing.T) {
+	registry, err := buildToolRegistry(
+		sandbox.ToolPolicy{},
+		[]byte(`{
+			"tools":{
+				"custom":[
+					{
+						"name":"inventory_lookup",
+						"description":"Lookup inventory",
+						"parameters":{"type":"object","properties":{"sku":{"type":"string"}}},
+						"implementation":{"primitive":"query_graph_db","args":{"sku":"${sku}"}}
+					}
+				]
+			}
+		}`),
+		nil,
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("buildToolRegistry returned error: %v", err)
+	}
+	if _, ok := registry.Resolve("inventory_lookup"); ok {
+		t.Fatal("inventory_lookup should be hidden when primitive is missing")
+	}
+}
+
+func TestBuildToolRegistry_SoftDisablesComposedToolWithMissingSecret(t *testing.T) {
+	registry, err := buildToolRegistry(
+		sandbox.ToolPolicy{},
+		[]byte(`{
+			"tools":{
+				"custom":[
+					{
+						"name":"inventory_lookup",
+						"description":"Lookup inventory",
+						"parameters":{"type":"object","properties":{"sku":{"type":"string"}}},
+						"implementation":{"primitive":"submit","args":{"answer":"Bearer ${secrets.API_KEY}"}}
+					}
+				]
+			}
+		}`),
+		nil,
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("buildToolRegistry returned error: %v", err)
+	}
+	if _, ok := registry.Resolve("inventory_lookup"); ok {
+		t.Fatal("inventory_lookup should be hidden when required secret is missing")
 	}
 }
 

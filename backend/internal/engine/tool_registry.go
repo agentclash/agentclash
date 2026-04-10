@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"slices"
 	"strings"
 
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/provider"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/sandbox"
+	"github.com/google/jsonschema-go/jsonschema"
 )
 
 type ToolCategory string
@@ -84,6 +86,14 @@ func (r *Registry) resolveAny(name string) (Tool, bool) {
 	return nil, false
 }
 
+func (r *Registry) resolvePrimitive(name string) (Tool, bool) {
+	if r == nil {
+		return nil, false
+	}
+	tool, ok := r.primitives[strings.TrimSpace(name)]
+	return tool, ok
+}
+
 func (r *Registry) ToolDefinitions() []provider.ToolDefinition {
 	if r == nil || len(r.visible) == 0 {
 		return nil
@@ -124,7 +134,7 @@ type snapshotToolOverrides struct {
 	Denied []string `json:"denied"`
 }
 
-func buildToolRegistry(toolPolicy sandbox.ToolPolicy, manifest json.RawMessage, snapshotConfig json.RawMessage) (*Registry, error) {
+func buildToolRegistry(toolPolicy sandbox.ToolPolicy, manifest json.RawMessage, snapshotConfig json.RawMessage, secrets map[string]string) (*Registry, error) {
 	primitives := nativePrimitiveTools(toolPolicy)
 	visible := make(map[string]Tool, len(primitives))
 	for name, tool := range primitives {
@@ -149,9 +159,13 @@ func buildToolRegistry(toolPolicy sandbox.ToolPolicy, manifest json.RawMessage, 
 	composed := map[string]Tool{}
 	mocks := map[string]Tool{}
 	for _, custom := range manifestTools.Custom {
-		tool, err := newManifestCustomTool(custom)
+		tool, disabledReason, err := newManifestCustomTool(custom, secrets)
 		if err != nil {
 			return nil, err
+		}
+		if strings.TrimSpace(disabledReason) != "" {
+			slog.Default().Warn("disabling custom tool from registry build", "tool_name", strings.TrimSpace(custom.Name), "reason", disabledReason)
+			continue
 		}
 		name := tool.Name()
 		if _, exists := primitives[name]; exists {
@@ -166,8 +180,18 @@ func buildToolRegistry(toolPolicy sandbox.ToolPolicy, manifest json.RawMessage, 
 		switch tool.Category() {
 		case ToolCategoryMock:
 			mocks[name] = tool
-		default:
+		case ToolCategoryComposed:
+			composedTool, ok := tool.(*composedTool)
+			if !ok {
+				return nil, fmt.Errorf("tool %q is marked composed but has unexpected type %T", name, tool)
+			}
+			if _, exists := primitives[composedTool.primitive]; !exists {
+				slog.Default().Warn("disabling composed tool with missing primitive", "tool_name", name, "primitive", composedTool.primitive)
+				continue
+			}
 			composed[name] = tool
+		default:
+			return nil, fmt.Errorf("tool %q has unsupported category %q", name, tool.Category())
 		}
 		visible[name] = tool
 	}
@@ -223,10 +247,10 @@ func decodeSnapshotToolOverrides(snapshotConfig json.RawMessage) snapshotToolOve
 	return snapshotToolOverrides{Denied: normalizeStrings(decoded.ToolOverrides.Denied)}
 }
 
-func newManifestCustomTool(config manifestCustomToolConfig) (Tool, error) {
+func newManifestCustomTool(config manifestCustomToolConfig, secrets map[string]string) (Tool, string, error) {
 	name := strings.TrimSpace(config.Name)
 	if name == "" {
-		return nil, fmt.Errorf("custom tool name is required")
+		return nil, "", fmt.Errorf("custom tool name is required")
 	}
 
 	if len(config.Parameters) == 0 {
@@ -234,69 +258,182 @@ func newManifestCustomTool(config manifestCustomToolConfig) (Tool, error) {
 	}
 
 	var implementation struct {
-		Type      string `json:"type"`
-		Primitive string `json:"primitive"`
+		Type      string          `json:"type"`
+		Primitive string          `json:"primitive"`
+		Args      json.RawMessage `json:"args"`
 	}
 	if err := json.Unmarshal(config.Implementation, &implementation); err != nil {
-		return nil, fmt.Errorf("decode custom tool %q implementation: %w", name, err)
+		return nil, "", fmt.Errorf("decode custom tool %q implementation: %w", name, err)
 	}
 
 	if strings.EqualFold(strings.TrimSpace(implementation.Type), string(ToolCategoryMock)) {
 		var mockConfig mockToolConfig
 		if err := json.Unmarshal(config.Implementation, &mockConfig); err != nil {
-			return nil, fmt.Errorf("decode mock tool %q implementation: %w", name, err)
+			return nil, "", fmt.Errorf("decode mock tool %q implementation: %w", name, err)
 		}
-		return newMockTool(name, strings.TrimSpace(config.Description), cloneJSON(config.Parameters), mockConfig)
+		tool, err := newMockTool(name, strings.TrimSpace(config.Description), cloneJSON(config.Parameters), mockConfig)
+		return tool, "", err
 	}
 
-	if strings.TrimSpace(implementation.Primitive) == "" {
-		return nil, fmt.Errorf("custom tool %q must declare an implementation primitive or type", name)
+	primitiveName := strings.TrimSpace(implementation.Primitive)
+	if primitiveName == "" {
+		return nil, "", fmt.Errorf("custom tool %q must declare an implementation primitive or type", name)
+	}
+	if primitiveName == name {
+		return nil, "", fmt.Errorf("custom tool %q cannot delegate to itself", name)
+	}
+	if err := validateToolParameterSchema(name, config.Parameters); err != nil {
+		return nil, "", err
+	}
+	declaredParams, err := declaredToolParameters(config.Parameters)
+	if err != nil {
+		return nil, "", fmt.Errorf("decode custom tool %q parameters: %w", name, err)
+	}
+	if len(implementation.Args) == 0 {
+		return nil, "", fmt.Errorf("custom tool %q must declare implementation args", name)
 	}
 
-	return &manifestBackedTool{
-		name:                 name,
-		description:          strings.TrimSpace(config.Description),
-		parameters:           cloneJSON(config.Parameters),
-		category:             ToolCategoryComposed,
-		resolvedToolName:     strings.TrimSpace(implementation.Primitive),
-		resolvedToolCategory: ToolCategoryPrimitive,
-		message:              fmt.Sprintf("composed tool %q is not implemented yet", name),
-	}, nil
+	var argsTemplate map[string]any
+	if err := json.Unmarshal(implementation.Args, &argsTemplate); err != nil {
+		return nil, "", fmt.Errorf("decode custom tool %q args: %w", name, err)
+	}
+	if err := validateTemplatePlaceholders(argsTemplate, "args"); err != nil {
+		return nil, "", fmt.Errorf("custom tool %q has invalid args template: %w", name, err)
+	}
+	if err := validateTemplateReferences(argsTemplate, "args", declaredParams); err != nil {
+		return nil, "", fmt.Errorf("custom tool %q has invalid args template: %w", name, err)
+	}
+	resolvedTemplate, err := resolveTemplateMap(argsTemplate, templateResolutionOptions{
+		secrets:              cloneStringMap(secrets),
+		errorOnMissingSecret: true,
+	})
+	if err != nil {
+		return nil, fmt.Sprintf("secret resolution failed: %v", err), nil
+	}
+
+	return &composedTool{
+		name:         name,
+		description:  strings.TrimSpace(config.Description),
+		parameters:   cloneJSON(config.Parameters),
+		primitive:    primitiveName,
+		argsTemplate: resolvedTemplate,
+		declaredArgs: declaredParams,
+	}, "", nil
 }
 
-type manifestBackedTool struct {
-	name                 string
-	description          string
-	parameters           json.RawMessage
-	category             ToolCategory
-	resolvedToolName     string
-	resolvedToolCategory ToolCategory
-	message              string
+type composedTool struct {
+	name         string
+	description  string
+	parameters   json.RawMessage
+	primitive    string
+	argsTemplate map[string]any
+	declaredArgs map[string]struct{}
 }
 
-func (t *manifestBackedTool) Name() string {
+func (t *composedTool) Name() string {
 	return t.name
 }
 
-func (t *manifestBackedTool) Description() string {
+func (t *composedTool) Description() string {
 	return t.description
 }
 
-func (t *manifestBackedTool) Parameters() json.RawMessage {
+func (t *composedTool) Parameters() json.RawMessage {
 	return cloneJSON(t.parameters)
 }
 
-func (t *manifestBackedTool) Category() ToolCategory {
-	return t.category
+func (t *composedTool) Category() ToolCategory {
+	return ToolCategoryComposed
 }
 
-func (t *manifestBackedTool) Execute(_ context.Context, _ ToolExecutionRequest) (ToolExecutionResult, error) {
+func (t *composedTool) Execute(ctx context.Context, request ToolExecutionRequest) (ToolExecutionResult, error) {
+	resolvedPrimitive, ok := request.Registry.resolvePrimitive(t.primitive)
+	if !ok {
+		return t.errorResult("tool is not available in this runtime", t.primitive, ToolCategoryPrimitive), nil
+	}
+
+	args := map[string]any{}
+	if len(request.Args) > 0 {
+		if err := json.Unmarshal(request.Args, &args); err != nil {
+			return t.errorResult("arguments must be valid JSON", resolvedPrimitive.Name(), resolvedPrimitive.Category()), nil
+		}
+	}
+
+	resolvedArgs, err := resolveTemplateMap(t.argsTemplate, templateResolutionOptions{
+		parameters:           args,
+		declaredParams:       t.declaredArgs,
+		errorOnMissingParams: true,
+	})
+	if err != nil {
+		return t.errorResult(err.Error(), resolvedPrimitive.Name(), resolvedPrimitive.Category()), nil
+	}
+
+	encodedArgs, err := json.Marshal(resolvedArgs)
+	if err != nil {
+		return t.errorResult("failed to encode delegated tool arguments", resolvedPrimitive.Name(), resolvedPrimitive.Category()), nil
+	}
+
+	result, execErr := resolvedPrimitive.Execute(ctx, ToolExecutionRequest{
+		Args:             encodedArgs,
+		Session:          request.Session,
+		ToolPolicy:       request.ToolPolicy,
+		NetworkAllowlist: append([]string(nil), request.NetworkAllowlist...),
+		Registry:         request.Registry,
+	})
+	if execErr != nil {
+		return t.errorResult(execErr.Error(), resolvedPrimitive.Name(), resolvedPrimitive.Category()), nil
+	}
+
+	result.ResolvedToolName = resolvedPrimitive.Name()
+	result.ResolvedToolCategory = resolvedPrimitive.Category()
+	if result.IsError {
+		result.Content = encodeToolErrorMessage(fmt.Sprintf("%s failed: %s", t.name, decodeToolErrorMessage(result.Content)))
+	}
+	return result, nil
+}
+
+func (t *composedTool) errorResult(message string, resolvedToolName string, resolvedToolCategory ToolCategory) ToolExecutionResult {
 	return ToolExecutionResult{
-		Content:              encodeToolErrorMessage(t.message),
+		Content:              encodeToolErrorMessage(fmt.Sprintf("%s failed: %s", t.name, message)),
 		IsError:              true,
-		ResolvedToolName:     t.resolvedToolName,
-		ResolvedToolCategory: t.resolvedToolCategory,
-	}, nil
+		ResolvedToolName:     resolvedToolName,
+		ResolvedToolCategory: resolvedToolCategory,
+	}
+}
+
+func validateToolParameterSchema(name string, parameters json.RawMessage) error {
+	var schema jsonschema.Schema
+	if err := json.Unmarshal(parameters, &schema); err != nil {
+		return fmt.Errorf("decode custom tool %q parameters: %w", name, err)
+	}
+	if _, err := schema.Resolve(nil); err != nil {
+		return fmt.Errorf("resolve custom tool %q parameter schema: %w", name, err)
+	}
+	return nil
+}
+
+func declaredToolParameters(parameters json.RawMessage) (map[string]struct{}, error) {
+	var schema struct {
+		Properties map[string]json.RawMessage `json:"properties"`
+	}
+	if err := json.Unmarshal(parameters, &schema); err != nil {
+		return nil, err
+	}
+	declared := make(map[string]struct{}, len(schema.Properties))
+	for key := range schema.Properties {
+		declared[strings.TrimSpace(key)] = struct{}{}
+	}
+	return declared, nil
+}
+
+func decodeToolErrorMessage(content string) string {
+	var payload struct {
+		Error string `json:"error"`
+	}
+	if err := json.Unmarshal([]byte(content), &payload); err == nil && strings.TrimSpace(payload.Error) != "" {
+		return payload.Error
+	}
+	return strings.TrimSpace(content)
 }
 
 func sliceToSet(values []string) map[string]bool {

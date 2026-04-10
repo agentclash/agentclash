@@ -226,7 +226,7 @@ func (e NativeExecutor) Execute(ctx context.Context, executionContext repository
 		)
 	}
 
-	registry, err := buildToolRegistry(sandboxRequest.ToolPolicy, executionContext.ChallengePackVersion.Manifest, executionContext.Deployment.SnapshotConfig)
+	registry, err := buildToolRegistry(sandboxRequest.ToolPolicy, executionContext.ChallengePackVersion.Manifest, executionContext.Deployment.SnapshotConfig, nil)
 	if err != nil {
 		return Result{}, provider.NewFailure(
 			executionContext.Deployment.ProviderAccount.ProviderKey,
