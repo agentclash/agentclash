@@ -803,6 +803,24 @@ func TestBuildToolRegistry_TwoPassAllowsOutOfOrderComposedTools(t *testing.T) {
 	if _, ok := registry.Resolve("inner"); !ok {
 		t.Fatal("inner should be visible")
 	}
+
+	outer, ok := registry.Resolve("outer")
+	if !ok {
+		t.Fatal("outer should resolve for execution")
+	}
+	result, execErr := outer.Execute(t.Context(), ToolExecutionRequest{Registry: registry})
+	if execErr != nil {
+		t.Fatalf("Execute returned error: %v", execErr)
+	}
+	if result.IsError {
+		t.Fatalf("expected out-of-order chain to execute successfully, got error: %s", result.Content)
+	}
+	if !result.Completed {
+		t.Fatal("expected chain to reach submit and complete")
+	}
+	if result.FinalOutput != "done" {
+		t.Fatalf("FinalOutput = %q, want done", result.FinalOutput)
+	}
 }
 
 func TestBuildToolRegistry_RejectsStaticCycle(t *testing.T) {
