@@ -1,17 +1,19 @@
 package challengepack
 
 import (
+	"encoding/json"
 	"fmt"
 	"net"
 	"regexp"
 	"strings"
 
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/scoring"
+	"github.com/google/jsonschema-go/jsonschema"
 )
 
 var (
-	envVarKeyPattern    = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
-	aptPackagePattern   = regexp.MustCompile(`^[a-z0-9][a-z0-9.+\-]+$`)
+	envVarKeyPattern  = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+	aptPackagePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9.+\-]+$`)
 )
 
 type ValidationError struct {
@@ -132,6 +134,8 @@ func ValidateBundle(bundle Bundle) error {
 		}
 	}
 
+	errs = append(errs, validateToolsConfig("tools", bundle.Tools)...)
+
 	if bundle.Version.Sandbox != nil {
 		errs = append(errs, validateSandboxConfig("version.sandbox", bundle.Version.Sandbox)...)
 	}
@@ -151,6 +155,214 @@ func ValidateBundle(bundle Bundle) error {
 		return errs
 	}
 	return nil
+}
+
+func validateToolsConfig(path string, tools map[string]any) ValidationErrors {
+	if len(tools) == 0 {
+		return nil
+	}
+
+	encoded, err := json.Marshal(tools)
+	if err != nil {
+		return ValidationErrors{{
+			Field:   path,
+			Message: fmt.Sprintf("must be JSON-serializable: %v", err),
+		}}
+	}
+
+	var decoded struct {
+		Custom []struct {
+			Name           string          `json:"name"`
+			Parameters     json.RawMessage `json:"parameters"`
+			Implementation json.RawMessage `json:"implementation"`
+		} `json:"custom"`
+	}
+	if err := json.Unmarshal(encoded, &decoded); err != nil {
+		return ValidationErrors{{
+			Field:   path,
+			Message: fmt.Sprintf("must be a valid tools object: %v", err),
+		}}
+	}
+
+	var errs ValidationErrors
+	for i, custom := range decoded.Custom {
+		toolPath := fmt.Sprintf("%s.custom[%d]", path, i)
+		errs = append(errs, validateComposedToolConfig(toolPath, custom.Name, custom.Parameters, custom.Implementation)...)
+	}
+	return errs
+}
+
+func validateComposedToolConfig(path string, name string, parameters json.RawMessage, implementationRaw json.RawMessage) ValidationErrors {
+	var errs ValidationErrors
+
+	var implementation struct {
+		Type      string          `json:"type"`
+		Primitive string          `json:"primitive"`
+		Args      json.RawMessage `json:"args"`
+	}
+	if err := json.Unmarshal(implementationRaw, &implementation); err != nil {
+		return ValidationErrors{{
+			Field:   path + ".implementation",
+			Message: fmt.Sprintf("must be valid JSON: %v", err),
+		}}
+	}
+
+	if strings.EqualFold(strings.TrimSpace(implementation.Type), "mock") {
+		return nil
+	}
+
+	name = strings.TrimSpace(name)
+	primitive := strings.TrimSpace(implementation.Primitive)
+	if primitive == "" {
+		errs = append(errs, ValidationError{Field: path + ".implementation.primitive", Message: "is required"})
+	}
+	if name != "" && primitive == name {
+		errs = append(errs, ValidationError{Field: path + ".implementation.primitive", Message: "cannot reference the tool's own name"})
+	}
+
+	if len(parameters) == 0 {
+		parameters = json.RawMessage(`{"type":"object","additionalProperties":false}`)
+	}
+	if err := validateToolParameterSchema(parameters); err != nil {
+		errs = append(errs, ValidationError{Field: path + ".parameters", Message: err.Error()})
+	}
+	declaredParams, err := declaredToolParameters(parameters)
+	if err != nil {
+		errs = append(errs, ValidationError{Field: path + ".parameters", Message: fmt.Sprintf("must be valid JSON: %v", err)})
+	}
+
+	if len(implementation.Args) == 0 {
+		errs = append(errs, ValidationError{Field: path + ".implementation.args", Message: "is required"})
+		return errs
+	}
+
+	var args map[string]any
+	if err := json.Unmarshal(implementation.Args, &args); err != nil {
+		errs = append(errs, ValidationError{Field: path + ".implementation.args", Message: fmt.Sprintf("must be a JSON object: %v", err)})
+		return errs
+	}
+
+	errs = append(errs, validateTemplateSyntax(path+".implementation.args", args)...)
+	errs = append(errs, validateTemplateReferences(path+".implementation.args", args, declaredParams)...)
+	return errs
+}
+
+func validateToolParameterSchema(parameters json.RawMessage) error {
+	var schema jsonschema.Schema
+	if err := json.Unmarshal(parameters, &schema); err != nil {
+		return fmt.Errorf("must be a valid JSON Schema: %w", err)
+	}
+	if _, err := schema.Resolve(nil); err != nil {
+		return fmt.Errorf("must resolve as a valid JSON Schema: %w", err)
+	}
+	return nil
+}
+
+func declaredToolParameters(parameters json.RawMessage) (map[string]struct{}, error) {
+	var schema struct {
+		Properties map[string]json.RawMessage `json:"properties"`
+	}
+	if err := json.Unmarshal(parameters, &schema); err != nil {
+		return nil, err
+	}
+	declared := make(map[string]struct{}, len(schema.Properties))
+	for key := range schema.Properties {
+		declared[strings.TrimSpace(key)] = struct{}{}
+	}
+	return declared, nil
+}
+
+func validateTemplateSyntax(path string, value any) ValidationErrors {
+	switch v := value.(type) {
+	case string:
+		if err := validatePlaceholderSyntax(path, v); err != nil {
+			return ValidationErrors{{Field: path, Message: err.Error()}}
+		}
+	case map[string]any:
+		var errs ValidationErrors
+		for key, child := range v {
+			errs = append(errs, validateTemplateSyntax(path+"."+key, child)...)
+		}
+		return errs
+	case []any:
+		var errs ValidationErrors
+		for i, child := range v {
+			errs = append(errs, validateTemplateSyntax(fmt.Sprintf("%s[%d]", path, i), child)...)
+		}
+		return errs
+	}
+	return nil
+}
+
+func validateTemplateReferences(path string, value any, declaredParams map[string]struct{}) ValidationErrors {
+	switch v := value.(type) {
+	case string:
+		return validateTemplateStringReferences(path, v, declaredParams)
+	case map[string]any:
+		var errs ValidationErrors
+		for key, child := range v {
+			errs = append(errs, validateTemplateReferences(path+"."+key, child, declaredParams)...)
+		}
+		return errs
+	case []any:
+		var errs ValidationErrors
+		for i, child := range v {
+			errs = append(errs, validateTemplateReferences(fmt.Sprintf("%s[%d]", path, i), child, declaredParams)...)
+		}
+		return errs
+	}
+	return nil
+}
+
+func validateTemplateStringReferences(path string, value string, declaredParams map[string]struct{}) ValidationErrors {
+	if err := validatePlaceholderSyntax(path, value); err != nil {
+		return ValidationErrors{{Field: path, Message: err.Error()}}
+	}
+
+	rest := value
+	for {
+		idx := strings.Index(rest, "${")
+		if idx == -1 {
+			return nil
+		}
+		after := rest[idx+2:]
+		closeIdx := strings.Index(after, "}")
+		expr := after[:closeIdx]
+
+		switch {
+		case expr == "parameters":
+		case strings.HasPrefix(expr, "secrets.") && strings.TrimSpace(strings.TrimPrefix(expr, "secrets.")) != "":
+		default:
+			root := strings.Split(expr, ".")[0]
+			if _, ok := declaredParams[root]; !ok {
+				return ValidationErrors{{
+					Field:   path,
+					Message: fmt.Sprintf("contains unknown placeholder %q", "${"+expr+"}"),
+				}}
+			}
+		}
+
+		rest = after[closeIdx+1:]
+	}
+}
+
+func validatePlaceholderSyntax(path string, value string) error {
+	rest := value
+	for {
+		idx := strings.Index(rest, "${")
+		if idx == -1 {
+			return nil
+		}
+		after := rest[idx+2:]
+		closeIdx := strings.Index(after, "}")
+		if closeIdx == -1 {
+			return fmt.Errorf("contains an unclosed placeholder")
+		}
+		if strings.TrimSpace(after[:closeIdx]) == "" {
+			return fmt.Errorf("contains an empty placeholder")
+		}
+		rest = after[closeIdx+1:]
+	}
 }
 
 func validateSandboxConfig(path string, config *SandboxConfig) ValidationErrors {
