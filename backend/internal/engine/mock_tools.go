@@ -38,7 +38,7 @@ type mockTool struct {
 	templateMap    map[string]any             // echo
 }
 
-func (t *mockTool) Name() string               { return t.name }
+func (t *mockTool) Name() string                { return t.name }
 func (t *mockTool) Description() string         { return t.description }
 func (t *mockTool) Parameters() json.RawMessage { return cloneJSON(t.parameters) }
 func (t *mockTool) Category() ToolCategory      { return ToolCategoryMock }
@@ -115,55 +115,6 @@ func (t *mockTool) executeEcho(args json.RawMessage) (ToolExecutionResult, error
 	return ToolExecutionResult{Content: string(encoded)}, nil
 }
 
-func substituteTemplate(template map[string]any, args map[string]any) map[string]any {
-	result := make(map[string]any, len(template))
-	for key, value := range template {
-		result[key] = substituteValue(value, args)
-	}
-	return result
-}
-
-func substituteValue(value any, args map[string]any) any {
-	switch v := value.(type) {
-	case string:
-		return substituteString(v, args)
-	case map[string]any:
-		return substituteTemplate(v, args)
-	case []any:
-		out := make([]any, len(v))
-		for i, elem := range v {
-			out[i] = substituteValue(elem, args)
-		}
-		return out
-	default:
-		return value
-	}
-}
-
-func substituteString(s string, args map[string]any) string {
-	result := s
-	for paramName, paramValue := range args {
-		placeholder := "${" + paramName + "}"
-		if !strings.Contains(result, placeholder) {
-			continue
-		}
-		var replacement string
-		switch v := paramValue.(type) {
-		case string:
-			replacement = v
-		default:
-			encoded, err := json.Marshal(v)
-			if err != nil {
-				replacement = fmt.Sprintf("%v", v)
-			} else {
-				replacement = string(encoded)
-			}
-		}
-		result = strings.ReplaceAll(result, placeholder, replacement)
-	}
-	return result
-}
-
 func resolveKeyPath(obj map[string]any, keyPath string) string {
 	segments := strings.Split(keyPath, ".")
 	var current any = obj
@@ -186,48 +137,6 @@ func resolveKeyPath(obj map[string]any, keyPath string) string {
 			return fmt.Sprintf("%v", v)
 		}
 		return strings.TrimSpace(string(encoded))
-	}
-}
-
-func validateTemplatePlaceholders(value any, path string) error {
-	switch v := value.(type) {
-	case string:
-		return validatePlaceholderSyntax(v, path)
-	case map[string]any:
-		for key, child := range v {
-			childPath := path + "." + key
-			if err := validateTemplatePlaceholders(child, childPath); err != nil {
-				return err
-			}
-		}
-	case []any:
-		for i, child := range v {
-			childPath := fmt.Sprintf("%s[%d]", path, i)
-			if err := validateTemplatePlaceholders(child, childPath); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
-func validatePlaceholderSyntax(s string, path string) error {
-	rest := s
-	for {
-		idx := strings.Index(rest, "${")
-		if idx == -1 {
-			return nil
-		}
-		after := rest[idx+2:]
-		closeIdx := strings.Index(after, "}")
-		if closeIdx == -1 {
-			return fmt.Errorf("unclosed placeholder at %s: %q", path, rest[idx:])
-		}
-		varName := after[:closeIdx]
-		if strings.TrimSpace(varName) == "" {
-			return fmt.Errorf("empty placeholder at %s: %q", path, rest[idx:idx+2+closeIdx+1])
-		}
-		rest = after[closeIdx+1:]
 	}
 }
 
