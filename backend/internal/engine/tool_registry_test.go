@@ -636,6 +636,46 @@ func TestComposedTool_ChainsComposedToComposed(t *testing.T) {
 	}
 }
 
+func TestComposedTool_ReportsTerminalMockResolution(t *testing.T) {
+	tool, _, err := newManifestCustomTool(manifestCustomToolConfig{
+		Name:           "outer",
+		Description:    "outer tool",
+		Parameters:     json.RawMessage(`{"type":"object"}`),
+		Implementation: json.RawMessage(`{"primitive":"mock_lookup","args":{}}`),
+	}, nil)
+	if err != nil {
+		t.Fatalf("create outer: %v", err)
+	}
+	mock, _, err := newManifestCustomTool(manifestCustomToolConfig{
+		Name:           "mock_lookup",
+		Description:    "mock lookup",
+		Parameters:     json.RawMessage(`{"type":"object"}`),
+		Implementation: json.RawMessage(`{"type":"mock","strategy":"static","response":{"ok":true}}`),
+	}, nil)
+	if err != nil {
+		t.Fatalf("create mock: %v", err)
+	}
+
+	registry := &Registry{
+		primitives: map[string]Tool{},
+		composed:   map[string]Tool{},
+		mocks:      map[string]Tool{"mock_lookup": mock},
+	}
+	result, execErr := tool.Execute(t.Context(), ToolExecutionRequest{Registry: registry})
+	if execErr != nil {
+		t.Fatalf("Execute returned error: %v", execErr)
+	}
+	if result.IsError {
+		t.Fatalf("expected success, got error: %s", result.Content)
+	}
+	if result.ResolvedToolName != "mock_lookup" {
+		t.Fatalf("ResolvedToolName = %q, want mock_lookup", result.ResolvedToolName)
+	}
+	if result.ResolvedToolCategory != ToolCategoryMock {
+		t.Fatalf("ResolvedToolCategory = %q, want mock", result.ResolvedToolCategory)
+	}
+}
+
 func TestComposedTool_DetectsCycleAtRuntime(t *testing.T) {
 	toolA, _, err := newManifestCustomTool(manifestCustomToolConfig{
 		Name:           "toolA",

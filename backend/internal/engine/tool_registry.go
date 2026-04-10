@@ -482,7 +482,7 @@ func (t *composedTool) Execute(ctx context.Context, request ToolExecutionRequest
 	if result.ResolutionChain == nil {
 		result.ResolutionChain = append(chain, resolved.Name())
 	}
-	if resolved.Category() == ToolCategoryPrimitive {
+	if resolved.Category() != ToolCategoryComposed {
 		result.ResolvedToolName = resolved.Name()
 		result.ResolvedToolCategory = resolved.Category()
 	}
