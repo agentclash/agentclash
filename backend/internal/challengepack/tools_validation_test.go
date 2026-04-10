@@ -242,3 +242,68 @@ tools:
 		t.Fatalf("error = %v, want parameter schema validation", err)
 	}
 }
+
+func TestParseYAML_RejectsCyclicComposedToolDelegation(t *testing.T) {
+	_, err := ParseYAML([]byte(`
+pack:
+  slug: support-eval
+  name: Support Eval
+  family: support
+version:
+  number: 1
+  evaluation_spec:
+    name: support-v1
+    version_number: 1
+    judge_mode: deterministic
+    validators:
+      - key: exact
+        type: exact_match
+        target: final_output
+        expected_from: challenge_input
+    scorecard:
+      dimensions: [correctness]
+challenges:
+  - key: ticket-1
+    title: Ticket One
+    category: support
+    difficulty: medium
+input_sets:
+  - key: default
+    name: Default Inputs
+    cases:
+      - challenge_key: ticket-1
+        case_key: sample-1
+        inputs:
+          - key: prompt
+            kind: text
+            value: hello
+        expectations:
+          - key: answer
+            kind: text
+            source: input:prompt
+tools:
+  custom:
+    - name: toolA
+      description: A
+      parameters:
+        type: object
+      implementation:
+        primitive: toolB
+        args:
+          dummy: value
+    - name: toolB
+      description: B
+      parameters:
+        type: object
+      implementation:
+        primitive: toolA
+        args:
+          dummy: value
+`))
+	if err == nil {
+		t.Fatal("expected ParseYAML to reject cyclic delegation")
+	}
+	if !strings.Contains(err.Error(), "delegation cycle") {
+		t.Fatalf("error = %v, want delegation cycle error", err)
+	}
+}

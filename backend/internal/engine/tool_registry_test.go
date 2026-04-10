@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/provider"
@@ -564,5 +566,218 @@ func assertRegistryVisibleTools(t *testing.T, registry *Registry, want ...string
 		if _, ok := registry.Resolve(name); !ok {
 			t.Fatalf("tool %q was not visible", name)
 		}
+	}
+}
+
+type passthroughPrimitive struct{ name string }
+
+func (p passthroughPrimitive) Name() string {
+	return p.name
+}
+
+func (p passthroughPrimitive) Description() string {
+	return "passthrough"
+}
+
+func (p passthroughPrimitive) Parameters() json.RawMessage {
+	return json.RawMessage(`{"type":"object"}`)
+}
+
+func (p passthroughPrimitive) Category() ToolCategory {
+	return ToolCategoryPrimitive
+}
+
+func (p passthroughPrimitive) Execute(_ context.Context, req ToolExecutionRequest) (ToolExecutionResult, error) {
+	return ToolExecutionResult{Content: string(req.Args)}, nil
+}
+
+func TestComposedTool_ChainsComposedToComposed(t *testing.T) {
+	inner, _, err := newManifestCustomTool(manifestCustomToolConfig{
+		Name:           "inner",
+		Description:    "inner tool",
+		Parameters:     json.RawMessage(`{"type":"object","properties":{"val":{"type":"string"}}}`),
+		Implementation: json.RawMessage(`{"primitive":"passthrough","args":{"val":"${val}"}}`),
+	}, nil)
+	if err != nil {
+		t.Fatalf("create inner: %v", err)
+	}
+	outer, _, err := newManifestCustomTool(manifestCustomToolConfig{
+		Name:           "outer",
+		Description:    "outer tool",
+		Parameters:     json.RawMessage(`{"type":"object","properties":{"val":{"type":"string"}}}`),
+		Implementation: json.RawMessage(`{"primitive":"inner","args":{"val":"${val}"}}`),
+	}, nil)
+	if err != nil {
+		t.Fatalf("create outer: %v", err)
+	}
+
+	registry := &Registry{
+		primitives: map[string]Tool{"passthrough": passthroughPrimitive{name: "passthrough"}},
+		composed:   map[string]Tool{"inner": inner},
+	}
+	result, execErr := outer.Execute(t.Context(), ToolExecutionRequest{
+		Args:     json.RawMessage(`{"val":"hello"}`),
+		Registry: registry,
+	})
+	if execErr != nil {
+		t.Fatalf("Execute returned error: %v", execErr)
+	}
+	if result.IsError {
+		t.Fatalf("expected success, got error: %s", result.Content)
+	}
+	if result.ResolvedToolName != "passthrough" {
+		t.Fatalf("ResolvedToolName = %q, want passthrough", result.ResolvedToolName)
+	}
+	if len(result.ResolutionChain) != 3 {
+		t.Fatalf("ResolutionChain length = %d, want 3", len(result.ResolutionChain))
+	}
+	if result.ResolutionChain[0] != "outer" || result.ResolutionChain[1] != "inner" || result.ResolutionChain[2] != "passthrough" {
+		t.Fatalf("ResolutionChain = %v, want [outer inner passthrough]", result.ResolutionChain)
+	}
+}
+
+func TestComposedTool_DetectsCycleAtRuntime(t *testing.T) {
+	toolA, _, err := newManifestCustomTool(manifestCustomToolConfig{
+		Name:           "toolA",
+		Description:    "A",
+		Parameters:     json.RawMessage(`{"type":"object"}`),
+		Implementation: json.RawMessage(`{"primitive":"toolB","args":{}}`),
+	}, nil)
+	if err != nil {
+		t.Fatalf("create toolA: %v", err)
+	}
+	toolB, _, err := newManifestCustomTool(manifestCustomToolConfig{
+		Name:           "toolB",
+		Description:    "B",
+		Parameters:     json.RawMessage(`{"type":"object"}`),
+		Implementation: json.RawMessage(`{"primitive":"toolA","args":{}}`),
+	}, nil)
+	if err != nil {
+		t.Fatalf("create toolB: %v", err)
+	}
+
+	registry := &Registry{
+		primitives: map[string]Tool{},
+		composed:   map[string]Tool{"toolA": toolA, "toolB": toolB},
+	}
+	result, execErr := toolA.Execute(t.Context(), ToolExecutionRequest{Registry: registry})
+	if execErr != nil {
+		t.Fatalf("Execute returned error: %v", execErr)
+	}
+	if !result.IsError {
+		t.Fatal("expected cycle error")
+	}
+	if result.FailureOrigin != ToolFailureOriginCycle {
+		t.Fatalf("FailureOrigin = %q, want cycle", result.FailureOrigin)
+	}
+}
+
+func TestComposedTool_EnforcesDepthCap(t *testing.T) {
+	tools := map[string]Tool{}
+	for i := MaxDelegationDepth + 1; i >= 1; i-- {
+		name := fmt.Sprintf("tool_%d", i)
+		delegate := "terminal"
+		if i > 1 {
+			delegate = fmt.Sprintf("tool_%d", i-1)
+		}
+		tool, _, err := newManifestCustomTool(manifestCustomToolConfig{
+			Name:           name,
+			Description:    name,
+			Parameters:     json.RawMessage(`{"type":"object"}`),
+			Implementation: json.RawMessage(fmt.Sprintf(`{"primitive":"%s","args":{}}`, delegate)),
+		}, nil)
+		if err != nil {
+			t.Fatalf("create %s: %v", name, err)
+		}
+		tools[name] = tool
+	}
+
+	registry := &Registry{
+		primitives: map[string]Tool{"terminal": passthroughPrimitive{name: "terminal"}},
+		composed:   tools,
+	}
+	entry := fmt.Sprintf("tool_%d", MaxDelegationDepth+1)
+	result, execErr := tools[entry].Execute(t.Context(), ToolExecutionRequest{Registry: registry})
+	if execErr != nil {
+		t.Fatalf("Execute returned error: %v", execErr)
+	}
+	if !result.IsError {
+		t.Fatal("expected depth cap error")
+	}
+	if result.FailureOrigin != ToolFailureOriginDepth {
+		t.Fatalf("FailureOrigin = %q, want depth", result.FailureOrigin)
+	}
+}
+
+func TestComposedTool_ReportsFailureDepthInChain(t *testing.T) {
+	middle, _, err := newManifestCustomTool(manifestCustomToolConfig{
+		Name:           "middle",
+		Description:    "middle",
+		Parameters:     json.RawMessage(`{"type":"object","properties":{"required_param":{"type":"string"}}}`),
+		Implementation: json.RawMessage(`{"primitive":"submit","args":{"answer":"${required_param}"}}`),
+	}, nil)
+	if err != nil {
+		t.Fatalf("create middle: %v", err)
+	}
+	outer, _, err := newManifestCustomTool(manifestCustomToolConfig{
+		Name:           "outer",
+		Description:    "outer",
+		Parameters:     json.RawMessage(`{"type":"object"}`),
+		Implementation: json.RawMessage(`{"primitive":"middle","args":{}}`),
+	}, nil)
+	if err != nil {
+		t.Fatalf("create outer: %v", err)
+	}
+
+	registry := &Registry{
+		primitives: map[string]Tool{"submit": nativePrimitiveTools(sandbox.ToolPolicy{})["submit"]},
+		composed:   map[string]Tool{"middle": middle},
+	}
+	result, execErr := outer.Execute(t.Context(), ToolExecutionRequest{Registry: registry})
+	if execErr != nil {
+		t.Fatalf("Execute returned error: %v", execErr)
+	}
+	if !result.IsError {
+		t.Fatal("expected resolution error at middle level")
+	}
+	if result.FailureDepth != 1 {
+		t.Fatalf("FailureDepth = %d, want 1", result.FailureDepth)
+	}
+}
+
+func TestBuildToolRegistry_TwoPassAllowsOutOfOrderComposedTools(t *testing.T) {
+	registry, err := buildToolRegistry(
+		sandbox.ToolPolicy{},
+		[]byte(`{"tools":{"custom":[
+			{"name":"outer","description":"outer","parameters":{"type":"object"},"implementation":{"primitive":"inner","args":{}}},
+			{"name":"inner","description":"inner","parameters":{"type":"object"},"implementation":{"primitive":"submit","args":{"answer":"done"}}}
+		]}}`),
+		nil, nil,
+	)
+	if err != nil {
+		t.Fatalf("buildToolRegistry returned error: %v", err)
+	}
+	if _, ok := registry.Resolve("outer"); !ok {
+		t.Fatal("outer should be visible")
+	}
+	if _, ok := registry.Resolve("inner"); !ok {
+		t.Fatal("inner should be visible")
+	}
+}
+
+func TestBuildToolRegistry_RejectsStaticCycle(t *testing.T) {
+	_, err := buildToolRegistry(
+		sandbox.ToolPolicy{},
+		[]byte(`{"tools":{"custom":[
+			{"name":"toolA","description":"A","parameters":{"type":"object"},"implementation":{"primitive":"toolB","args":{}}},
+			{"name":"toolB","description":"B","parameters":{"type":"object"},"implementation":{"primitive":"toolA","args":{}}}
+		]}}`),
+		nil, nil,
+	)
+	if err == nil {
+		t.Fatal("expected cycle error from buildToolRegistry")
+	}
+	if !strings.Contains(err.Error(), "delegation cycle") {
+		t.Fatalf("error = %v, want delegation cycle error", err)
 	}
 }
