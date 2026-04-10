@@ -346,7 +346,11 @@ func wrapActivityError(err error) error {
 		return temporal.NewNonRetryableApplicationError(err.Error(), repositoryTransitionConflictType, err)
 	default:
 		if failure, ok := engine.AsFailure(err); ok {
-			return temporal.NewNonRetryableApplicationError(failure.Error(), engineFailureErrorTypePrefix+string(failure.StopReason), err)
+			errorType := engineFailureErrorTypePrefix + string(failure.StopReason)
+			if failure.StopReason == engine.StopReasonSandboxError {
+				return temporal.NewApplicationError(failure.Error(), errorType, err)
+			}
+			return temporal.NewNonRetryableApplicationError(failure.Error(), errorType, err)
 		}
 		if failure, ok := provider.AsFailure(err); ok {
 			errorType := providerFailureErrorTypePrefix + string(failure.Code)
