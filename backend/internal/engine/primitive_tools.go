@@ -601,7 +601,13 @@ func executeHTTPRequestTool(ctx context.Context, request ToolExecutionRequest) (
 		return ToolExecutionResult{}, err
 	}
 	if commandResult.IsError {
-		message := strings.TrimSpace(commandResult.ExecResult.Stderr)
+		// Defense-in-depth: even though http_request.py #186 step 5
+		// wraps its httpx call in try/except with type-only error
+		// formatting, a pack pinned to an older sandbox template may
+		// still ship the pre-#186 script and emit a raw traceback
+		// that includes resolved request headers. Scrub any
+		// auth-shaped stderr fragment before it becomes a tool error.
+		message := strings.TrimSpace(scrubStderrSecrets(commandResult.ExecResult.Stderr))
 		if message == "" {
 			message = "http request failed"
 		}

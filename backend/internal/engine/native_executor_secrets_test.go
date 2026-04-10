@@ -28,6 +28,141 @@ func (s *stubSecretsLookup) LoadWorkspaceSecrets(_ context.Context, workspaceID 
 	return s.secrets, nil
 }
 
+// capturingObserver records every OnToolExecution call so a test
+// can walk the full record surface and assert no secret material
+// flows through to what run_events will persist.
+type capturingObserver struct {
+	NoopObserver
+	records []ToolExecutionRecord
+}
+
+func (c *capturingObserver) OnToolExecution(_ context.Context, record ToolExecutionRecord) error {
+	c.records = append(c.records, record)
+	return nil
+}
+
+// TestComposedHttpRequest_SecretIsolation_ThroughNativeExecutor runs a
+// composed tool that uses ${secrets.X} through the full
+// NativeExecutor.Execute loop (not just tool.Execute directly) so the
+// observer path — which feeds run_events persistence — is exercised.
+// Any secret material landing in a ToolExecutionRecord would get
+// persisted to the database in production.
+func TestComposedHttpRequest_SecretIsolation_ThroughNativeExecutor(t *testing.T) {
+	const secretValue = "nativeexec-secret-value-99"
+	workspaceID := uuid.New()
+
+	ec := nativeExecutionContext()
+	ec.Run.WorkspaceID = workspaceID
+	ec.ChallengePackVersion.Manifest = []byte(`{
+		"tool_policy": {"allowed_tool_kinds": ["network"], "allow_network": true},
+		"tools": {"custom": [{
+			"name": "call_api",
+			"description": "authenticated API call",
+			"parameters": {"type":"object","additionalProperties":false},
+			"implementation": {
+				"type": "primitive",
+				"primitive": "http_request",
+				"args": {
+					"method": "GET",
+					"url": "https://api.example.com",
+					"headers": {"Authorization": "Bearer ${secrets.API_KEY}"}
+				}
+			}
+		}]}
+	}`)
+
+	secretsStore := &stubSecretsLookup{secrets: map[string]string{"API_KEY": secretValue}}
+
+	session := sandbox.NewFakeSession("native-secrets-end-to-end")
+	session.SetExecFunc(func(req sandbox.ExecRequest, _ map[string][]byte) (sandbox.ExecResult, error) {
+		switch req.Command[0] {
+		case "mkdir":
+			return sandbox.ExecResult{ExitCode: 0}, nil
+		case "python3":
+			// Simulate an echoing server (same adversarial shape as
+			// TestComposedHttpRequest_SecretIsolation_FullStack).
+			return sandbox.ExecResult{
+				ExitCode: 0,
+				Stdout: `{"status_code":200,"headers":{` +
+					`"Content-Type":"application/json",` +
+					`"Authorization":"Bearer ` + secretValue + `",` +
+					`"Set-Cookie":"sid=` + secretValue + `"` +
+					`},"url":"https://api.example.com","body":"ok","body_bytes":2}`,
+			}, nil
+		default:
+			return sandbox.ExecResult{}, nil
+		}
+	})
+
+	client := &scriptedProviderClient{
+		t: t,
+		steps: []providerStep{
+			{
+				response: provider.Response{
+					ProviderKey:     "openai",
+					ProviderModelID: "gpt-4.1",
+					FinishReason:    "tool_calls",
+					ToolCalls: []provider.ToolCall{
+						{
+							ID:        "call-api-1",
+							Name:      "call_api",
+							Arguments: []byte(`{}`),
+						},
+					},
+				},
+			},
+			{
+				response: provider.Response{
+					ProviderKey:     "openai",
+					ProviderModelID: "gpt-4.1",
+					FinishReason:    "tool_calls",
+					ToolCalls: []provider.ToolCall{
+						{
+							ID:        "call-submit",
+							Name:      submitToolName,
+							Arguments: []byte(`{"answer":"done"}`),
+						},
+					},
+				},
+			},
+		},
+	}
+
+	observer := &capturingObserver{}
+	executor := NewNativeExecutor(client, &sandbox.FakeProvider{NextSession: session}, observer).WithSecretsLookup(secretsStore)
+	result, err := executor.Execute(context.Background(), ec)
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if result.StopReason != StopReasonCompleted {
+		t.Fatalf("stop reason = %s, want completed", result.StopReason)
+	}
+
+	// Walk every observer record — the persisted run_events surface
+	// — and assert the plaintext secret is nowhere in it. This is the
+	// test that would catch a regression where the composed tool
+	// resolver or the observer layer logged encodedArgs.
+	if len(observer.records) == 0 {
+		t.Fatalf("observer recorded zero tool executions; scripted provider should have produced at least one")
+	}
+	for i, record := range observer.records {
+		if strings.Contains(string(record.ToolCall.Arguments), secretValue) {
+			t.Fatalf("record[%d] ToolCall.Arguments leaked secret: %s", i, string(record.ToolCall.Arguments))
+		}
+		if strings.Contains(record.Result.Content, secretValue) {
+			t.Fatalf("record[%d] Result.Content leaked secret (would land in run_events): %s", i, record.Result.Content)
+		}
+	}
+
+	// Also re-verify the filesystem post-return invariant holds on
+	// the full executor path.
+	for path, content := range session.Files() {
+		if bytes.Contains(content, []byte(secretValue)) {
+			t.Fatalf("session file %q leaks secret after Execute returned: %q", path, string(content))
+		}
+	}
+}
+
 // TestComposedHttpRequest_SecretIsolation_FullStack ties every #186
 // defense into one flow: a composed tool authenticates against a
 // remote API using a workspace secret, the remote "server" echoes

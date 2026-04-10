@@ -96,6 +96,122 @@ func TestHTTPRequestTool_ReturnsToolErrorOnScriptFailure(t *testing.T) {
 	}
 }
 
+func TestScrubSensitiveResponseHeaders_CaseInsensitive(t *testing.T) {
+	// HTTP header names are case-insensitive (RFC 7230). Vendors
+	// capitalize all over the place — AUTHORIZATION, authorization,
+	// Authorization, X-API-KEY, x-api-key, X-Api-Key. The scrubber
+	// must catch every casing.
+	payload := map[string]any{
+		"headers": map[string]any{
+			"AUTHORIZATION":   "Bearer leaked1",
+			"Proxy-Authorization": "Bearer leaked2",
+			"SET-COOKIE":      "sid=leaked3",
+			"X-Api-Key":       "leaked4",
+			"x-access-token":  "leaked5",
+			"X-CSRF-Token":    "leaked6",
+			"X-Request-Id":    "safe-id",
+		},
+	}
+	scrubSensitiveResponseHeaders(payload)
+
+	headers := payload["headers"].(map[string]any)
+	for _, key := range []string{"AUTHORIZATION", "Proxy-Authorization", "SET-COOKIE", "X-Api-Key", "x-access-token", "X-CSRF-Token"} {
+		if got := headers[key]; got != redactedHeaderMarker {
+			t.Errorf("header %q = %v, want %q", key, got, redactedHeaderMarker)
+		}
+	}
+	if got := headers["X-Request-Id"]; got != "safe-id" {
+		t.Errorf("non-sensitive X-Request-Id was scrubbed: %v", got)
+	}
+}
+
+func TestScrubStderrSecrets_RemovesAuthPatterns(t *testing.T) {
+	cases := []struct {
+		name   string
+		input  string
+		reject string // substring that must not survive
+	}{
+		{"authorization header in traceback", "httpx error at line 42: Authorization: Bearer super-secret-token", "super-secret-token"},
+		{"cookie header", "Traceback: sent Cookie: session=abc123", "session=abc123"},
+		{"bearer token in prose", "failed with token Bearer abc123def456", "abc123def456"},
+		{"basic auth", "server rejected Basic YWRtaW46cGFzc3dvcmQ=", "YWRtaW46cGFzc3dvcmQ="},
+		{"x-api-key with value", "x-api-key: leaked-value-here", "leaked-value-here"},
+		{"proxy-authorization", "proxy-authorization: Digest leaked", "Digest leaked"},
+		{"mixed case header", "AUTHORIZATION: Bearer shouty-secret", "shouty-secret"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			scrubbed := scrubStderrSecrets(tc.input)
+			if strings.Contains(scrubbed, tc.reject) {
+				t.Fatalf("scrub left %q in output: %q", tc.reject, scrubbed)
+			}
+			if !strings.Contains(scrubbed, redactedHeaderMarker) {
+				t.Fatalf("expected redaction marker in output: %q", scrubbed)
+			}
+		})
+	}
+}
+
+func TestScrubStderrSecrets_PreservesNonSensitiveText(t *testing.T) {
+	// A scrubber that over-matches is nearly as bad as no scrubber —
+	// pack authors lose debuggability. Assert that normal error text
+	// survives.
+	cases := []string{
+		"dns resolution failed: Name or service not known",
+		"request timed out",
+		"target host is blocked by network policy",
+		"http error: TimeoutException",
+		"connection refused by 203.0.113.42",
+	}
+	for _, input := range cases {
+		t.Run(input, func(t *testing.T) {
+			if got := scrubStderrSecrets(input); got != input {
+				t.Fatalf("legitimate error text was scrubbed: input=%q output=%q", input, got)
+			}
+		})
+	}
+}
+
+func TestHTTPRequestTool_ScrubsStderrLeaksDefenseInDepth(t *testing.T) {
+	// Simulate an older http_request.py version that did NOT wrap its
+	// httpx call in try/except and instead printed a raw traceback
+	// with the full Authorization header to stderr. The Go-side
+	// scrubber must catch this even if the python sanitization is
+	// absent.
+	session := sandbox.NewFakeSession("http-legacy-stderr")
+	session.SetExecFunc(func(request sandbox.ExecRequest, _ map[string][]byte) (sandbox.ExecResult, error) {
+		switch request.Command[0] {
+		case "mkdir":
+			return sandbox.ExecResult{ExitCode: 0}, nil
+		case "python3":
+			return sandbox.ExecResult{
+				ExitCode: 1,
+				Stderr: "Traceback (most recent call last):\n" +
+					"  File \"/tools/http_request.py\", line 90, in main\n" +
+					"    response = client.request(request[\"method\"], request[\"url\"], headers={'Authorization': 'Bearer LEAKED_LEGACY'})\n" +
+					"httpx.ConnectError: connection refused\n",
+			}, nil
+		default:
+			return sandbox.ExecResult{}, nil
+		}
+	})
+
+	result, err := executeHTTPRequestTool(t.Context(), ToolExecutionRequest{
+		Args:       json.RawMessage(`{"method":"GET","url":"https://api.example.com","headers":{"Authorization":"Bearer LEAKED_LEGACY"}}`),
+		Session:    session,
+		ToolPolicy: sandbox.ToolPolicy{AllowedToolKinds: []string{toolKindNetwork}, AllowNetwork: true},
+	})
+	if err != nil {
+		t.Fatalf("executeHTTPRequestTool returned error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatalf("expected tool error result")
+	}
+	if strings.Contains(result.Content, "LEAKED_LEGACY") {
+		t.Fatalf("stderr leak survived Go-side scrubber: %s", result.Content)
+	}
+}
+
 func TestHTTPRequestTool_DecodeErrorDoesNotLeakStdoutBytes(t *testing.T) {
 	// If python emits a malformed response, the json.Unmarshal error
 	// used to include a slice of the unparsable bytes — which could

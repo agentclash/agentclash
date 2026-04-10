@@ -73,27 +73,31 @@ def main() -> None:
     if len(sys.argv) != 2:
         fail("usage: http_request.py <request.json>")
 
-    request = load_request(sys.argv[1])
-    allowlist = request.get("network_allowlist") or []
-    validate_target(request["url"], allowlist)
-
-    body = request.get("body") or ""
-    max_request_body_bytes = int(request.get("max_request_body_bytes") or 0)
-    if max_request_body_bytes > 0 and len(body.encode("utf-8")) > max_request_body_bytes:
-        fail("request body exceeds size limit")
-
-    timeout_seconds = int(request.get("timeout_seconds") or 30)
-    output_path = (request.get("output_path") or "").strip()
-    max_response_body_bytes = int(request.get("max_response_body_bytes") or 0)
-
-    # The request dict carries resolved Authorization headers when a
-    # composed tool substituted ${secrets.*} before reaching this
-    # process. We MUST NOT let any exception handler dump those back
-    # to stderr: stderr flows through to the agent via the tool
-    # result error message path, which would leak the secret. Every
-    # error is reformatted to a type-only sanitized string before
-    # calling fail(). See issue #186.
+    # The request dict carries resolved ${secrets.*} values (typically
+    # in Authorization headers) when a composed tool substituted them
+    # at registry-build time. We MUST NOT let any exception handler
+    # dump those back to stderr: stderr flows through to the tool
+    # result error message path, which would leak the secret to the
+    # agent. Every uncaught failure is reformatted to a type-only
+    # sanitized string before calling fail(). The wrapper covers the
+    # FULL main-body (including URL validation and body size checks),
+    # not just the HTTP exchange — an exception in urlparse or
+    # socket.getaddrinfo could otherwise stringify the URL with
+    # userinfo attached and leak. See issue #186.
     try:
+        request = load_request(sys.argv[1])
+        allowlist = request.get("network_allowlist") or []
+        validate_target(request["url"], allowlist)
+
+        body = request.get("body") or ""
+        max_request_body_bytes = int(request.get("max_request_body_bytes") or 0)
+        if max_request_body_bytes > 0 and len(body.encode("utf-8")) > max_request_body_bytes:
+            fail("request body exceeds size limit")
+
+        timeout_seconds = int(request.get("timeout_seconds") or 30)
+        output_path = (request.get("output_path") or "").strip()
+        max_response_body_bytes = int(request.get("max_response_body_bytes") or 0)
+
         with httpx.Client(timeout=timeout_seconds, follow_redirects=True) as client:
             response = client.request(
                 request["method"],
@@ -119,6 +123,10 @@ def main() -> None:
                 content = bounded_content(response, max_response_body_bytes)
                 payload["body"] = content.decode(response.encoding or "utf-8", errors="replace")
                 payload["body_bytes"] = len(content)
+    except SystemExit:
+        # fail() raises SystemExit with a sanitized message already
+        # printed — re-raise so the exit code propagates.
+        raise
     except httpx.TimeoutException:
         fail("http request timed out")
     except httpx.ConnectError:
