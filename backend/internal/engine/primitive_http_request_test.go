@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"bytes"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -92,5 +93,61 @@ func TestHTTPRequestTool_ReturnsToolErrorOnScriptFailure(t *testing.T) {
 	}
 	if !result.IsError {
 		t.Fatalf("expected tool error, got %#v", result)
+	}
+}
+
+func TestHTTPRequestTool_ScrubsRequestFileAfterExec(t *testing.T) {
+	session := sandbox.NewFakeSession("http-scrub")
+	var requestSnapshot []byte
+	session.SetExecFunc(func(request sandbox.ExecRequest, files map[string][]byte) (sandbox.ExecResult, error) {
+		switch request.Command[0] {
+		case "mkdir":
+			return sandbox.ExecResult{ExitCode: 0}, nil
+		case "python3":
+			// Capture what the tool-inputs file looked like at exec time —
+			// the assertions below prove the scrub runs AFTER this.
+			requestSnapshot = append([]byte(nil), files[request.Command[2]]...)
+			return sandbox.ExecResult{
+				ExitCode: 0,
+				Stdout:   `{"status_code":200,"headers":{},"url":"https://api.example.com","body":"ok","body_bytes":2}`,
+			}, nil
+		default:
+			t.Fatalf("unexpected command: %#v", request.Command)
+			return sandbox.ExecResult{}, nil
+		}
+	})
+
+	const secretValue = "Bearer super-secret-token"
+	argsBytes, _ := json.Marshal(map[string]any{
+		"method":  "GET",
+		"url":     "https://api.example.com",
+		"headers": map[string]string{"Authorization": secretValue},
+	})
+
+	result, err := executeHTTPRequestTool(t.Context(), ToolExecutionRequest{
+		Args:       argsBytes,
+		Session:    session,
+		ToolPolicy: sandbox.ToolPolicy{AllowedToolKinds: []string{toolKindNetwork}, AllowNetwork: true},
+	})
+	if err != nil {
+		t.Fatalf("executeHTTPRequestTool returned error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("expected success, got %#v", result)
+	}
+
+	// Sanity check: the secret WAS present in the request file at
+	// exec time. Without this, the assertion below would be vacuous.
+	if !bytes.Contains(requestSnapshot, []byte(secretValue)) {
+		t.Fatalf("expected request snapshot to contain secret before scrub, got %q", string(requestSnapshot))
+	}
+
+	// After http_request returns, no file in the sandbox session may
+	// still carry the plaintext secret. The agent's read_file primitive
+	// walks the same backing store as session.Files().
+	for path, content := range session.Files() {
+		if bytes.Contains(content, []byte(secretValue)) {
+			t.Fatalf("file %q still contains the secret after http_request returned: %q", path, string(content))
+		}
 	}
 }

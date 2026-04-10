@@ -578,6 +578,21 @@ func executeHTTPRequestTool(ctx context.Context, request ToolExecutionRequest) (
 	if err := request.Session.WriteFile(ctx, requestPath, inputPayload); err != nil {
 		return ToolExecutionResult{}, NewFailure(StopReasonSandboxError, "write http_request input", err)
 	}
+	// Scrub the request file as soon as the python helper has consumed
+	// it. The file carries resolved ${secrets.*} headers and lives
+	// under /workspace, which the agent's read_file primitive can
+	// reach. The engine loop is strictly serial (a single tool call
+	// completes before the agent sees the result and can issue the
+	// next call), so overwriting after executeInternalCommand returns
+	// closes the window before the agent ever has a chance to look.
+	// A detached context keeps the cleanup running even when the
+	// request context was cancelled — the session is still alive
+	// until prepareSandbox tears it down. See issue #186.
+	defer func() {
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = request.Session.WriteFile(cleanupCtx, requestPath, nil)
+	}()
 
 	commandResult, err := executeInternalCommand(ctx, request, httpRequestToolName, sandbox.ExecRequest{
 		Command: []string{"python3", "/tools/http_request.py", requestPath},
