@@ -13,6 +13,7 @@ import (
 	repositorysqlc "github.com/Atharva-Kanherkar/agentclash/backend/internal/repository/sqlc"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/runevents"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/scoring"
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/secrets"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -23,6 +24,7 @@ import (
 type Repository struct {
 	db      *pgxpool.Pool
 	queries *repositorysqlc.Queries
+	cipher  *secrets.AESGCMCipher
 }
 
 type SetRunTemporalIDsParams struct {
@@ -200,6 +202,14 @@ func New(db *pgxpool.Pool) *Repository {
 		db:      db,
 		queries: repositorysqlc.New(db),
 	}
+}
+
+// WithCipher attaches a secrets cipher to the repository. Call sites that
+// read or write workspace secrets require a cipher; all other methods work
+// without one. Returns the receiver to allow fluent construction.
+func (r *Repository) WithCipher(cipher *secrets.AESGCMCipher) *Repository {
+	r.cipher = cipher
+	return r
 }
 
 func (r *Repository) GetRunByID(ctx context.Context, id uuid.UUID) (domain.Run, error) {
