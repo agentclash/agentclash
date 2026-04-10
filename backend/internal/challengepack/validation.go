@@ -190,6 +190,56 @@ func validateToolsConfig(path string, tools map[string]any) ValidationErrors {
 		toolPath := fmt.Sprintf("%s.custom[%d]", path, i)
 		errs = append(errs, validateComposedToolConfig(toolPath, custom.Name, custom.Parameters, custom.Implementation)...)
 	}
+
+	delegateMap := map[string]string{}
+	for _, custom := range decoded.Custom {
+		if len(custom.Implementation) == 0 {
+			continue
+		}
+		var impl struct {
+			Type      string `json:"type"`
+			Primitive string `json:"primitive"`
+		}
+		if err := json.Unmarshal(custom.Implementation, &impl); err != nil {
+			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(impl.Type), "mock") {
+			continue
+		}
+		name := strings.TrimSpace(custom.Name)
+		primitive := strings.TrimSpace(impl.Primitive)
+		if name != "" && primitive != "" {
+			delegateMap[name] = primitive
+		}
+	}
+	for name := range delegateMap {
+		visited := map[string]bool{name: true}
+		current := delegateMap[name]
+		depth := 1
+		for {
+			if depth > 8 {
+				errs = append(errs, ValidationError{
+					Field:   path,
+					Message: fmt.Sprintf("tool %q exceeds maximum delegation depth of 8", name),
+				})
+				break
+			}
+			if visited[current] {
+				errs = append(errs, ValidationError{
+					Field:   path,
+					Message: fmt.Sprintf("tool %q has a delegation cycle through %q", name, current),
+				})
+				break
+			}
+			next, exists := delegateMap[current]
+			if !exists {
+				break
+			}
+			visited[current] = true
+			current = next
+			depth++
+		}
+	}
 	return errs
 }
 

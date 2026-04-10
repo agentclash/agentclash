@@ -179,6 +179,49 @@ func TestNativeRunEventObserverRecordsFailureOriginForToolFailures(t *testing.T)
 	}
 }
 
+func TestNativeRunEventObserverOmitsFailureDepthForSuccessfulChains(t *testing.T) {
+	recorder := &fakeRunEventRecorder{}
+	observer := &NativeRunEventObserver{
+		recorder:         recorder,
+		executionContext: nativeModelExecutionContext(),
+	}
+
+	err := observer.OnToolExecution(context.Background(), engine.ToolExecutionRecord{
+		ToolCall: provider.ToolCall{
+			ID:        "call-2",
+			Name:      "outer",
+			Arguments: []byte(`{"val":"hello"}`),
+		},
+		Result: provider.ToolResult{
+			ToolCallID: "call-2",
+			Content:    `{"val":"hello"}`,
+			IsError:    false,
+		},
+		ToolCategory:         engine.ToolCategoryComposed,
+		ResolvedToolName:     "passthrough",
+		ResolvedToolCategory: engine.ToolCategoryPrimitive,
+		ResolutionChain:      []string{"outer", "inner", "passthrough"},
+		FailureDepth:         0,
+	})
+	if err != nil {
+		t.Fatalf("OnToolExecution returned error: %v", err)
+	}
+	if len(recorder.events) != 2 {
+		t.Fatalf("event count = %d, want 2 including run start", len(recorder.events))
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(recorder.events[1].Payload, &payload); err != nil {
+		t.Fatalf("decode tool payload: %v", err)
+	}
+	if _, ok := payload["failure_depth"]; ok {
+		t.Fatalf("failure_depth should be omitted for successful chained executions: %#v", payload)
+	}
+	if got, ok := payload["resolution_chain"].([]any); !ok || len(got) != 3 {
+		t.Fatalf("resolution_chain = %#v, want 3-item chain", payload["resolution_chain"])
+	}
+}
+
 type fakeRunEventRecorder struct {
 	events []repository.RunEvent
 }

@@ -24,7 +24,11 @@ const (
 	ToolFailureOriginResolution ToolFailureOrigin = "resolution"
 	ToolFailureOriginPrimitive  ToolFailureOrigin = "primitive"
 	ToolFailureOriginDelegation ToolFailureOrigin = "delegation"
+	ToolFailureOriginCycle      ToolFailureOrigin = "cycle"
+	ToolFailureOriginDepth      ToolFailureOrigin = "depth"
 )
+
+const MaxDelegationDepth = 8
 
 type Tool interface {
 	Name() string
@@ -40,6 +44,7 @@ type ToolExecutionRequest struct {
 	ToolPolicy       sandbox.ToolPolicy
 	NetworkAllowlist []string
 	Registry         *Registry
+	DelegationChain  []string
 }
 
 type ToolExecutionResult struct {
@@ -50,6 +55,8 @@ type ToolExecutionResult struct {
 	ResolvedToolName     string
 	ResolvedToolCategory ToolCategory
 	FailureOrigin        ToolFailureOrigin
+	ResolutionChain      []string
+	FailureDepth         int
 }
 
 type ToolExecutionRecord struct {
@@ -59,6 +66,8 @@ type ToolExecutionRecord struct {
 	ResolvedToolName     string
 	ResolvedToolCategory ToolCategory
 	FailureOrigin        ToolFailureOrigin
+	ResolutionChain      []string
+	FailureDepth         int
 }
 
 type Registry struct {
@@ -165,6 +174,7 @@ func buildToolRegistry(toolPolicy sandbox.ToolPolicy, manifest json.RawMessage, 
 
 	composed := map[string]Tool{}
 	mocks := map[string]Tool{}
+
 	for _, custom := range manifestTools.Custom {
 		tool, disabledReason, err := newManifestCustomTool(custom, secrets)
 		if err != nil {
@@ -188,19 +198,61 @@ func buildToolRegistry(toolPolicy sandbox.ToolPolicy, manifest json.RawMessage, 
 		case ToolCategoryMock:
 			mocks[name] = tool
 		case ToolCategoryComposed:
-			composedTool, ok := tool.(*composedTool)
-			if !ok {
-				return nil, fmt.Errorf("tool %q is marked composed but has unexpected type %T", name, tool)
-			}
-			if _, exists := primitives[composedTool.primitive]; !exists {
-				slog.Default().Warn("disabling composed tool with missing primitive", "tool_name", name, "primitive", composedTool.primitive)
-				continue
-			}
 			composed[name] = tool
 		default:
 			return nil, fmt.Errorf("tool %q has unsupported category %q", name, tool.Category())
 		}
 		visible[name] = tool
+	}
+
+	for {
+		removed := 0
+		for name, tool := range composed {
+			ct, ok := tool.(*composedTool)
+			if !ok {
+				return nil, fmt.Errorf("tool %q is marked composed but has unexpected type %T", name, tool)
+			}
+			if _, exists := primitives[ct.primitive]; !exists {
+				if _, exists := composed[ct.primitive]; !exists {
+					if _, exists := mocks[ct.primitive]; !exists {
+						slog.Default().Warn("disabling composed tool with missing delegate", "tool_name", name, "delegate", ct.primitive)
+						delete(composed, name)
+						delete(visible, name)
+						removed++
+						continue
+					}
+				}
+			}
+		}
+		if removed == 0 {
+			break
+		}
+	}
+
+	for name, tool := range composed {
+		ct := tool.(*composedTool)
+		visited := map[string]bool{name: true}
+		current := ct.primitive
+		depth := 1
+		for {
+			if depth > MaxDelegationDepth {
+				return nil, fmt.Errorf("tool %q exceeds maximum delegation depth of %d", name, MaxDelegationDepth)
+			}
+			if visited[current] {
+				return nil, fmt.Errorf("tool %q has a delegation cycle through %q", name, current)
+			}
+			nextTool, exists := composed[current]
+			if !exists {
+				break
+			}
+			nextCT, ok := nextTool.(*composedTool)
+			if !ok {
+				break
+			}
+			visited[current] = true
+			current = nextCT.primitive
+			depth++
+		}
 	}
 
 	for _, denied := range decodeSnapshotToolOverrides(snapshotConfig).Denied {
@@ -354,15 +406,41 @@ func (t *composedTool) Category() ToolCategory {
 }
 
 func (t *composedTool) Execute(ctx context.Context, request ToolExecutionRequest) (ToolExecutionResult, error) {
-	resolvedPrimitive, ok := request.Registry.resolvePrimitive(t.primitive)
+	chain := make([]string, len(request.DelegationChain)+1)
+	copy(chain, request.DelegationChain)
+	chain[len(chain)-1] = t.name
+
+	if len(chain) > MaxDelegationDepth {
+		return t.chainError(
+			fmt.Sprintf("delegation chain exceeded maximum depth of %d", MaxDelegationDepth),
+			"", "", ToolFailureOriginDepth, chain, len(chain)-1,
+		), nil
+	}
+
+	for _, visited := range chain {
+		if visited == t.primitive {
+			return t.chainError(
+				fmt.Sprintf("delegation cycle detected: %s already appears in chain", t.primitive),
+				t.primitive, "", ToolFailureOriginCycle, chain, len(chain)-1,
+			), nil
+		}
+	}
+
+	resolved, ok := request.Registry.resolveAny(t.primitive)
 	if !ok {
-		return t.errorResult("tool is not available in this runtime", t.primitive, ToolCategoryPrimitive, ToolFailureOriginDelegation), nil
+		return t.chainError(
+			"tool is not available in this runtime",
+			t.primitive, "", ToolFailureOriginDelegation, chain, len(chain)-1,
+		), nil
 	}
 
 	args := map[string]any{}
 	if len(request.Args) > 0 {
 		if err := json.Unmarshal(request.Args, &args); err != nil {
-			return t.errorResult("arguments must be valid JSON", resolvedPrimitive.Name(), resolvedPrimitive.Category(), ToolFailureOriginResolution), nil
+			return t.chainError(
+				"arguments must be valid JSON",
+				resolved.Name(), resolved.Category(), ToolFailureOriginResolution, chain, len(chain)-1,
+			), nil
 		}
 	}
 	if args == nil {
@@ -375,41 +453,58 @@ func (t *composedTool) Execute(ctx context.Context, request ToolExecutionRequest
 		errorOnMissingParams: true,
 	})
 	if err != nil {
-		return t.errorResult(err.Error(), resolvedPrimitive.Name(), resolvedPrimitive.Category(), ToolFailureOriginResolution), nil
+		return t.chainError(
+			err.Error(),
+			resolved.Name(), resolved.Category(), ToolFailureOriginResolution, chain, len(chain)-1,
+		), nil
 	}
 
 	encodedArgs, err := json.Marshal(resolvedArgs)
 	if err != nil {
-		return t.errorResult("failed to encode delegated tool arguments", resolvedPrimitive.Name(), resolvedPrimitive.Category(), ToolFailureOriginResolution), nil
+		return t.chainError(
+			"failed to encode delegated tool arguments",
+			resolved.Name(), resolved.Category(), ToolFailureOriginResolution, chain, len(chain)-1,
+		), nil
 	}
 
-	result, execErr := resolvedPrimitive.Execute(ctx, ToolExecutionRequest{
+	result, execErr := resolved.Execute(ctx, ToolExecutionRequest{
 		Args:             encodedArgs,
 		Session:          request.Session,
 		ToolPolicy:       request.ToolPolicy,
 		NetworkAllowlist: append([]string(nil), request.NetworkAllowlist...),
 		Registry:         request.Registry,
+		DelegationChain:  chain,
 	})
 	if execErr != nil {
 		return ToolExecutionResult{}, execErr
 	}
 
-	result.ResolvedToolName = resolvedPrimitive.Name()
-	result.ResolvedToolCategory = resolvedPrimitive.Category()
+	if result.ResolutionChain == nil {
+		result.ResolutionChain = append(chain, resolved.Name())
+	}
+	if resolved.Category() != ToolCategoryComposed {
+		result.ResolvedToolName = resolved.Name()
+		result.ResolvedToolCategory = resolved.Category()
+	}
+
 	if result.IsError {
-		result.FailureOrigin = ToolFailureOriginPrimitive
+		if result.FailureOrigin == "" {
+			result.FailureOrigin = ToolFailureOriginPrimitive
+		}
 		result.Content = encodeToolErrorMessage(fmt.Sprintf("%s failed: %s", t.name, decodeToolErrorMessage(result.Content)))
 	}
 	return result, nil
 }
 
-func (t *composedTool) errorResult(message string, resolvedToolName string, resolvedToolCategory ToolCategory, failureOrigin ToolFailureOrigin) ToolExecutionResult {
+func (t *composedTool) chainError(message string, resolvedName string, resolvedCategory ToolCategory, origin ToolFailureOrigin, chain []string, depth int) ToolExecutionResult {
 	return ToolExecutionResult{
 		Content:              encodeToolErrorMessage(fmt.Sprintf("%s failed: %s", t.name, message)),
 		IsError:              true,
-		ResolvedToolName:     resolvedToolName,
-		ResolvedToolCategory: resolvedToolCategory,
-		FailureOrigin:        failureOrigin,
+		ResolvedToolName:     resolvedName,
+		ResolvedToolCategory: resolvedCategory,
+		FailureOrigin:        origin,
+		ResolutionChain:      chain,
+		FailureDepth:         depth,
 	}
 }
 
