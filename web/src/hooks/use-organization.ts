@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
 import { createApiClient } from "@/lib/api/client";
@@ -51,19 +51,20 @@ export function useOrganization(): UseOrganizationReturn {
     fetchUserMe();
   }, [fetchUserMe]);
 
-  const organization = useMemo(() => {
-    if (!userMe || !params?.orgSlug) return null;
+  const orgSlug = params?.orgSlug;
+  let organization: OrganizationContext | null = null;
 
-    const org = userMe.organizations.find((o) => o.slug === params.orgSlug);
-    if (!org) return null;
-
-    return {
-      organizationId: org.id,
-      orgSlug: org.slug,
-      orgName: org.name,
-      role: org.role,
-    };
-  }, [userMe, params?.orgSlug]);
+  if (userMe && orgSlug) {
+    const org = userMe.organizations.find((o) => o.slug === orgSlug);
+    if (org) {
+      organization = {
+        organizationId: org.id,
+        orgSlug: org.slug,
+        orgName: org.name,
+        role: org.role,
+      };
+    }
+  }
 
   return { organization, loading, error };
 }
