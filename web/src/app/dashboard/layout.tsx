@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getSession, destroySession, refreshWorkOSSession } from "@/lib/auth/session";
+import { getSession, destroySession, createWorkOSSession } from "@/lib/auth/session";
 import { getUserMe, ApiError } from "@/lib/api/client";
 import { AuthProvider } from "@/lib/auth/context";
 import type { UserMeResponse } from "@/lib/api/types";
@@ -36,7 +36,7 @@ export default async function DashboardLayout({
             clientId,
             refreshToken: session.refreshToken,
           });
-        await refreshWorkOSSession(
+        await createWorkOSSession(
           refreshed.accessToken,
           refreshed.refreshToken,
           3600,

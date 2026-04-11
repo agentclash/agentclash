@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getWorkOSClient } from "@/lib/auth/workos";
 import { getWorkOSConfig } from "@/lib/auth/config";
-import { createWorkOSSession } from "@/lib/auth/session";
+import { setSessionCookie } from "@/lib/auth/session";
 
 /**
  * GET /auth/callback
@@ -27,17 +27,19 @@ export async function GET(request: NextRequest) {
       code,
     });
 
-    // WorkOS returns accessToken, refreshToken, and user info.
-    // We store tokens in the session; user info is fetched from our
-    // backend via GET /v1/users/me (the backend is the source of truth).
+    // Build the redirect response, then set the session cookie on it.
+    // We cannot use cookies() from next/headers in Route Handlers that
+    // return NextResponse.redirect() — must set cookies on the response.
+    const response = NextResponse.redirect(new URL("/dashboard", request.url));
     const expiresIn = 3600; // 1 hour (WorkOS default access token lifetime)
-    await createWorkOSSession(
-      authResponse.accessToken,
-      authResponse.refreshToken,
-      expiresIn,
-    );
+    await setSessionCookie(response.cookies, {
+      mode: "workos",
+      accessToken: authResponse.accessToken,
+      refreshToken: authResponse.refreshToken,
+      expiresAt: Math.floor(Date.now() / 1000) + expiresIn,
+    });
 
-    return NextResponse.redirect(new URL("/dashboard", request.url));
+    return response;
   } catch {
     return NextResponse.redirect(
       new URL("/auth/login?error=callback_failed", request.url),

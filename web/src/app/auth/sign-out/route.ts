@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { destroySession } from "@/lib/auth/session";
+import { deleteSessionCookie } from "@/lib/auth/session";
 
 /**
  * GET /auth/sign-out
@@ -7,6 +7,7 @@ import { destroySession } from "@/lib/auth/session";
  * Destroys the session cookie and redirects to the landing page.
  */
 export async function GET(request: NextRequest) {
-  await destroySession();
-  return NextResponse.redirect(new URL("/", request.url));
+  const response = NextResponse.redirect(new URL("/", request.url));
+  deleteSessionCookie(response.cookies);
+  return response;
 }
