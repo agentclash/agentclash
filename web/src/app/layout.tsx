@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Instrument_Serif, DM_Sans, IBM_Plex_Mono } from "next/font/google";
 import { Analytics } from "@vercel/analytics/react";
+import { AuthKitProvider } from "@workos-inc/authkit-nextjs/components";
 import "./globals.css";
 
 const instrumentSerif = Instrument_Serif({
@@ -93,7 +94,7 @@ export default function RootLayout({
       <body
         className={`${instrumentSerif.variable} ${dmSans.variable} ${ibmPlexMono.variable}`}
       >
-        {children}
+        <AuthKitProvider>{children}</AuthKitProvider>
         <Analytics />
       </body>
     </html>
