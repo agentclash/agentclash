@@ -14,25 +14,11 @@ export default async function DashboardPage() {
   const { user } = await withAuth();
   if (!user) redirect("/auth/login");
 
+  let session: SessionResponse | null = null;
+
   try {
     const api = await getServerApiClient();
-    const session = await api.get<SessionResponse>("/v1/auth/session");
-
-    const isOnboarded = session.organization_memberships.some(
-      (m) => m.role === "org_admin",
-    );
-
-    if (!isOnboarded) {
-      redirect("/onboard");
-    }
-
-    const firstWorkspace = session.workspace_memberships[0];
-    if (firstWorkspace) {
-      redirect(`/workspaces/${firstWorkspace.workspace_id}`);
-    }
-
-    // Has org but no workspace — send to onboard as fallback
-    redirect("/onboard");
+    session = await api.get<SessionResponse>("/v1/auth/session");
   } catch {
     // If session fetch fails (backend down, etc.), show a minimal fallback
     // rather than an infinite redirect loop.
@@ -55,4 +41,20 @@ export default async function DashboardPage() {
       </div>
     );
   }
+
+  // Redirects must be outside try/catch — Next.js redirect() throws internally.
+  const isOnboarded = session.organization_memberships.some(
+    (m) => m.role === "org_admin",
+  );
+
+  if (!isOnboarded) {
+    redirect("/onboard");
+  }
+
+  const firstWorkspace = session.workspace_memberships[0];
+  if (firstWorkspace) {
+    redirect(`/workspaces/${firstWorkspace.workspace_id}`);
+  }
+
+  redirect("/onboard");
 }

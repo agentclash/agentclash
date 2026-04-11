@@ -8,10 +8,18 @@ export default async function OnboardPage() {
   const { user } = await withAuth();
   if (!user) redirect("/auth/login");
 
-  // If user already has org memberships, they're onboarded — skip.
+  // Check if already onboarded — fetch outside redirect logic.
+  let session: SessionResponse | null = null;
   try {
     const api = await getServerApiClient();
-    const session = await api.get<SessionResponse>("/v1/auth/session");
+    session = await api.get<SessionResponse>("/v1/auth/session");
+  } catch {
+    // If session fetch fails, let them proceed with onboarding —
+    // the POST will return 409 if they're already onboarded.
+  }
+
+  // Redirects must be outside try/catch — Next.js redirect() throws internally.
+  if (session) {
     const hasOrg = session.organization_memberships.some(
       (m) => m.role === "org_admin",
     );
@@ -22,9 +30,6 @@ export default async function OnboardPage() {
       }
       redirect("/dashboard");
     }
-  } catch {
-    // If session fetch fails, let them proceed with onboarding —
-    // the POST will return 409 if they're already onboarded.
   }
 
   return <OnboardingWizard />;
