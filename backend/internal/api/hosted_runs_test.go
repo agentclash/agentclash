@@ -240,6 +240,12 @@ func TestIngestHostedRunEventHandlerReturnsInternalErrorForRepositoryFailure(t *
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
 	)
 	router.ServeHTTP(recorder, req)
 

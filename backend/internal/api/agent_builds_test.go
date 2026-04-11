@@ -101,6 +101,12 @@ func TestGetAgentBuildRequiresWorkspaceMembership(t *testing.T) {
 			versions: map[uuid.UUID]repository.AgentBuildVersion{},
 		},
 		noopReleaseGateService{},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
 	)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/agent-builds/"+buildID.String(), nil)
@@ -149,6 +155,12 @@ func TestGetAgentBuildVersionRequiresWorkspaceMembership(t *testing.T) {
 			},
 		},
 		noopReleaseGateService{},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
 	)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/agent-build-versions/"+versionID.String(), nil)
@@ -217,6 +229,12 @@ func TestGetAgentBuildVersionReturnsToolAndKnowledgeBindings(t *testing.T) {
 			},
 		},
 		noopReleaseGateService{},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
 	)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/agent-build-versions/"+versionID.String(), nil)

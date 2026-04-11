@@ -23,8 +23,37 @@ func registerProtectedRoutes(
 	challengePackReadService ChallengePackReadService,
 	challengePackAuthoringService ChallengePackAuthoringService,
 	agentBuildService AgentBuildService,
+	userService UserService,
+	orgService OrganizationService,
+	wsService WorkspaceService,
+	orgMembershipService OrgMembershipService,
+	wsMembershipService WorkspaceMembershipService,
+	onboardingService OnboardingService,
 ) {
 	router.Get("/auth/session", sessionHandler)
+	router.Get("/users/me", getUserMeHandler(logger, userService))
+	router.Post("/onboarding", onboardHandler(logger, onboardingService))
+
+	router.Route("/organizations", func(r chi.Router) {
+		r.Get("/", listOrganizationsHandler(logger, orgService))
+		r.Post("/", createOrganizationHandler(logger, orgService))
+		r.Route("/{organizationID}", func(r chi.Router) {
+			r.Get("/", getOrganizationHandler(logger, orgService))
+			r.Patch("/", updateOrganizationHandler(logger, orgService))
+			r.Get("/workspaces", listWorkspacesHandler(logger, wsService))
+			r.Post("/workspaces", createWorkspaceHandler(logger, wsService))
+			r.Get("/memberships", listOrgMembershipsHandler(logger, orgMembershipService))
+			r.Post("/memberships", inviteOrgMemberHandler(logger, orgMembershipService))
+		})
+	})
+	router.Patch("/organization-memberships/{membershipID}", updateOrgMembershipHandler(logger, orgMembershipService))
+
+	// Standalone workspace endpoints (by workspace ID).
+	router.Get("/workspaces/{workspaceID}/details", getWorkspaceHandler(logger, wsService))
+	router.Patch("/workspaces/{workspaceID}/details", updateWorkspaceHandler(logger, wsService))
+	router.Get("/workspaces/{workspaceID}/memberships", listWorkspaceMembershipsHandler(logger, wsMembershipService))
+	router.Post("/workspaces/{workspaceID}/memberships", inviteWorkspaceMemberHandler(logger, wsMembershipService))
+	router.Patch("/workspace-memberships/{membershipID}", updateWorkspaceMembershipHandler(logger, wsMembershipService))
 	router.Get("/artifacts/{artifactID}/download", getArtifactDownloadHandler(logger, artifactService))
 	// POST /v1/runs resolves workspace access from the JSON body, so authz stays in the run-creation service
 	// instead of URL-param middleware. The run read endpoints below also resolve authz in the service layer
@@ -90,11 +119,12 @@ func sessionHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, sessionResponse{
-		UserID:               caller.UserID,
-		WorkOSUserID:         caller.WorkOSUserID,
-		Email:                caller.Email,
-		DisplayName:          caller.DisplayName,
-		WorkspaceMemberships: SortedWorkspaceMemberships(caller.WorkspaceMemberships),
+		UserID:                  caller.UserID,
+		WorkOSUserID:            caller.WorkOSUserID,
+		Email:                   caller.Email,
+		DisplayName:             caller.DisplayName,
+		OrganizationMemberships: SortedOrganizationMemberships(caller.OrganizationMemberships),
+		WorkspaceMemberships:    SortedWorkspaceMemberships(caller.WorkspaceMemberships),
 	})
 }
 
@@ -104,11 +134,12 @@ type workspaceAccessCheckResponse struct {
 }
 
 type sessionResponse struct {
-	UserID               uuid.UUID             `json:"user_id"`
-	WorkOSUserID         string                `json:"workos_user_id,omitempty"`
-	Email                string                `json:"email,omitempty"`
-	DisplayName          string                `json:"display_name,omitempty"`
-	WorkspaceMemberships []WorkspaceMembership `json:"workspace_memberships"`
+	UserID                  uuid.UUID                `json:"user_id"`
+	WorkOSUserID            string                   `json:"workos_user_id,omitempty"`
+	Email                   string                   `json:"email,omitempty"`
+	DisplayName             string                   `json:"display_name,omitempty"`
+	OrganizationMemberships []OrganizationMembership `json:"organization_memberships"`
+	WorkspaceMemberships    []WorkspaceMembership    `json:"workspace_memberships"`
 }
 
 func workspaceAccessCheckHandler(w http.ResponseWriter, r *http.Request) {

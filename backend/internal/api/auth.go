@@ -20,11 +20,17 @@ var (
 )
 
 type Caller struct {
-	UserID               uuid.UUID
-	WorkOSUserID         string
-	Email                string
-	DisplayName          string
-	WorkspaceMemberships map[uuid.UUID]WorkspaceMembership
+	UserID                  uuid.UUID
+	WorkOSUserID            string
+	Email                   string
+	DisplayName             string
+	OrganizationMemberships map[uuid.UUID]OrganizationMembership
+	WorkspaceMemberships    map[uuid.UUID]WorkspaceMembership
+}
+
+type OrganizationMembership struct {
+	OrganizationID uuid.UUID `json:"organization_id"`
+	Role           string    `json:"role"`
 }
 
 type WorkspaceMembership struct {
@@ -38,6 +44,11 @@ type Authenticator interface {
 
 type WorkspaceAuthorizer interface {
 	AuthorizeWorkspace(ctx context.Context, caller Caller, workspaceID uuid.UUID) error
+}
+
+type OrganizationAuthorizer interface {
+	AuthorizeOrganization(ctx context.Context, caller Caller, orgID uuid.UUID) error
+	AuthorizeOrganizationAdmin(ctx context.Context, caller Caller, orgID uuid.UUID) error
 }
 
 type callerContextKey struct{}
@@ -59,6 +70,19 @@ func WorkspaceIDFromContext(ctx context.Context) (uuid.UUID, error) {
 	}
 
 	return workspaceID, nil
+}
+
+func SortedOrganizationMemberships(memberships map[uuid.UUID]OrganizationMembership) []OrganizationMembership {
+	ordered := make([]OrganizationMembership, 0, len(memberships))
+	for _, membership := range memberships {
+		ordered = append(ordered, membership)
+	}
+
+	sort.Slice(ordered, func(i, j int) bool {
+		return ordered[i].OrganizationID.String() < ordered[j].OrganizationID.String()
+	})
+
+	return ordered
 }
 
 func SortedWorkspaceMemberships(memberships map[uuid.UUID]WorkspaceMembership) []WorkspaceMembership {
@@ -147,16 +171,66 @@ func writeAuthzError(w http.ResponseWriter, err error) {
 	}
 }
 
-type CallerWorkspaceAuthorizer struct{}
-
-func NewCallerWorkspaceAuthorizer() CallerWorkspaceAuthorizer {
-	return CallerWorkspaceAuthorizer{}
+// WorkspaceOrgLookup resolves the parent organization of a workspace.
+// Used by the workspace authorizer to check org_admin implicit access.
+type WorkspaceOrgLookup interface {
+	GetOrganizationIDByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) (uuid.UUID, error)
 }
 
-func (CallerWorkspaceAuthorizer) AuthorizeWorkspace(_ context.Context, caller Caller, workspaceID uuid.UUID) error {
-	if _, ok := caller.WorkspaceMemberships[workspaceID]; !ok {
-		return fmt.Errorf("%w: caller %s does not belong to workspace %s", ErrForbidden, caller.UserID, workspaceID)
+type CallerWorkspaceAuthorizer struct {
+	orgLookup WorkspaceOrgLookup
+}
+
+// NewCallerWorkspaceAuthorizer creates a workspace authorizer.
+// Pass a WorkspaceOrgLookup to enable org_admin implicit access to all
+// workspaces in their org. If nil, only explicit workspace membership is checked.
+func NewCallerWorkspaceAuthorizer(orgLookup ...WorkspaceOrgLookup) CallerWorkspaceAuthorizer {
+	var lookup WorkspaceOrgLookup
+	if len(orgLookup) > 0 {
+		lookup = orgLookup[0]
+	}
+	return CallerWorkspaceAuthorizer{orgLookup: lookup}
+}
+
+func (a CallerWorkspaceAuthorizer) AuthorizeWorkspace(ctx context.Context, caller Caller, workspaceID uuid.UUID) error {
+	// Check 1: explicit workspace membership.
+	if _, ok := caller.WorkspaceMemberships[workspaceID]; ok {
+		return nil
 	}
 
+	// Check 2: org_admin of the workspace's parent org (implicit access).
+	if a.orgLookup != nil {
+		orgID, err := a.orgLookup.GetOrganizationIDByWorkspaceID(ctx, workspaceID)
+		if err == nil {
+			if m, ok := caller.OrganizationMemberships[orgID]; ok && m.Role == "org_admin" {
+				return nil
+			}
+		}
+	}
+
+	return fmt.Errorf("%w: caller %s does not belong to workspace %s", ErrForbidden, caller.UserID, workspaceID)
+}
+
+type CallerOrganizationAuthorizer struct{}
+
+func NewCallerOrganizationAuthorizer() CallerOrganizationAuthorizer {
+	return CallerOrganizationAuthorizer{}
+}
+
+func (CallerOrganizationAuthorizer) AuthorizeOrganization(_ context.Context, caller Caller, orgID uuid.UUID) error {
+	if _, ok := caller.OrganizationMemberships[orgID]; !ok {
+		return fmt.Errorf("%w: caller %s is not a member of organization %s", ErrForbidden, caller.UserID, orgID)
+	}
+	return nil
+}
+
+func (CallerOrganizationAuthorizer) AuthorizeOrganizationAdmin(_ context.Context, caller Caller, orgID uuid.UUID) error {
+	m, ok := caller.OrganizationMemberships[orgID]
+	if !ok {
+		return fmt.Errorf("%w: caller %s is not a member of organization %s", ErrForbidden, caller.UserID, orgID)
+	}
+	if m.Role != "org_admin" {
+		return fmt.Errorf("%w: caller %s is not an admin of organization %s", ErrForbidden, caller.UserID, orgID)
+	}
 	return nil
 }

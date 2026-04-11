@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -25,7 +26,11 @@ const (
 // UserRepository is the subset of repository.Repository needed for auth.
 type UserRepository interface {
 	GetUserByWorkOSID(ctx context.Context, workosUserID string) (repository.User, error)
+	GetUserByEmail(ctx context.Context, email string) (repository.User, error)
 	GetActiveWorkspaceMembershipsByUserID(ctx context.Context, userID uuid.UUID) ([]repository.WorkspaceMembershipRow, error)
+	GetActiveOrganizationMembershipsByUserID(ctx context.Context, userID uuid.UUID) ([]repository.OrgMembershipRow, error)
+	CreateUser(ctx context.Context, input repository.CreateUserInput) (repository.User, error)
+	LinkWorkOSUser(ctx context.Context, userID uuid.UUID, workosUserID string) (repository.User, error)
 }
 
 // WorkOSAuthenticator validates WorkOS AuthKit JWTs using the public JWKS
@@ -106,9 +111,27 @@ func (a *WorkOSAuthenticator) Authenticate(r *http.Request) (Caller, error) {
 		return Caller{}, fmt.Errorf("%w: token missing sub claim", ErrUnauthenticated)
 	}
 
-	user, err := a.repo.GetUserByWorkOSID(r.Context(), workosUserID)
+	// Extract email from JWT claims if available (WorkOS includes email in
+	// the token for AuthKit). Fall back to empty string if absent.
+	email, _ := tok.Get("email")
+	emailStr, _ := email.(string)
+
+	user, err := a.resolveUser(r.Context(), workosUserID, emailStr)
 	if err != nil {
-		return Caller{}, fmt.Errorf("%w: %v", ErrUnauthenticated, err)
+		return Caller{}, err
+	}
+
+	orgMemberships, err := a.repo.GetActiveOrganizationMembershipsByUserID(r.Context(), user.ID)
+	if err != nil {
+		return Caller{}, fmt.Errorf("%w: failed to load organization memberships: %v", ErrUnauthenticated, err)
+	}
+
+	orgMembershipMap := make(map[uuid.UUID]OrganizationMembership, len(orgMemberships))
+	for _, m := range orgMemberships {
+		orgMembershipMap[m.OrganizationID] = OrganizationMembership{
+			OrganizationID: m.OrganizationID,
+			Role:           m.Role,
+		}
 	}
 
 	memberships, err := a.repo.GetActiveWorkspaceMembershipsByUserID(r.Context(), user.ID)
@@ -125,12 +148,53 @@ func (a *WorkOSAuthenticator) Authenticate(r *http.Request) (Caller, error) {
 	}
 
 	return Caller{
-		UserID:               user.ID,
-		WorkOSUserID:         user.WorkOSUserID,
-		Email:                user.Email,
-		DisplayName:          user.DisplayName,
-		WorkspaceMemberships: membershipMap,
+		UserID:                  user.ID,
+		WorkOSUserID:            user.WorkOSUserID,
+		Email:                   user.Email,
+		DisplayName:             user.DisplayName,
+		OrganizationMemberships: orgMembershipMap,
+		WorkspaceMemberships:    membershipMap,
 	}, nil
+}
+
+// resolveUser finds or creates the internal user for a WorkOS login.
+// It handles three cases:
+//  1. User already exists with this WorkOS ID → return it.
+//  2. A stub user exists from an invite (matched by email, has a placeholder
+//     workos_user_id) → link the real WorkOS ID and return it.
+//  3. Completely new user → create and return.
+func (a *WorkOSAuthenticator) resolveUser(ctx context.Context, workosUserID, email string) (repository.User, error) {
+	user, err := a.repo.GetUserByWorkOSID(ctx, workosUserID)
+	if err == nil {
+		return user, nil
+	}
+	if !errors.Is(err, repository.ErrUserNotFound) {
+		return repository.User{}, fmt.Errorf("%w: %v", ErrUnauthenticated, err)
+	}
+
+	// No user with this WorkOS ID. Check if a stub user was created via invite.
+	// Only link to stub users (workos_user_id starts with "pending:") — never
+	// overwrite a real user's identity, which would be an account takeover.
+	if email != "" {
+		stubUser, emailErr := a.repo.GetUserByEmail(ctx, email)
+		if emailErr == nil && strings.HasPrefix(stubUser.WorkOSUserID, "pending:") {
+			linked, linkErr := a.repo.LinkWorkOSUser(ctx, stubUser.ID, workosUserID)
+			if linkErr != nil {
+				return repository.User{}, fmt.Errorf("link workos user to invited stub: %w", linkErr)
+			}
+			return linked, nil
+		}
+	}
+
+	// Truly new user — auto-create.
+	user, err = a.repo.CreateUser(ctx, repository.CreateUserInput{
+		WorkOSUserID: workosUserID,
+		Email:        email,
+	})
+	if err != nil {
+		return repository.User{}, fmt.Errorf("auto-create user: %w", err)
+	}
+	return user, nil
 }
 
 // bearerToken extracts a Bearer token from the Authorization header.

@@ -208,6 +208,12 @@ func TestGetRunAgentReplayEndpointReturnsPaginatedReplay(t *testing.T) {
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {
@@ -271,6 +277,12 @@ func TestGetRunAgentReplayEndpointReturnsPendingState(t *testing.T) {
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusAccepted {
@@ -325,6 +337,12 @@ func TestGetRunAgentReplayEndpointReturnsErroredState(t *testing.T) {
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusConflict {
@@ -355,6 +373,12 @@ func TestGetRunAgentReplayEndpointReturnsNotFoundWhenRunAgentMissing(t *testing.
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusNotFound {
@@ -384,6 +408,12 @@ func TestGetRunAgentReplayEndpointReturnsForbidden(t *testing.T) {
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusForbidden {
@@ -413,6 +443,12 @@ func TestGetRunAgentReplayEndpointRejectsMalformedRunAgentID(t *testing.T) {
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusBadRequest {
@@ -443,6 +479,12 @@ func TestGetRunAgentReplayEndpointRejectsMalformedPagination(t *testing.T) {
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusBadRequest {
@@ -491,6 +533,12 @@ func TestGetRunAgentScorecardEndpointReturnsScorecard(t *testing.T) {
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {
@@ -534,6 +582,12 @@ func TestGetRunAgentScorecardEndpointReturnsForbidden(t *testing.T) {
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusForbidden {
@@ -573,6 +627,12 @@ func TestGetRunAgentScorecardEndpointReturnsPendingWhenScorecardIsPending(t *tes
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusAccepted {
@@ -620,6 +680,12 @@ func TestGetRunAgentScorecardEndpointReturnsConflictWhenScorecardIsMissingAfterT
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusConflict {
@@ -650,6 +716,12 @@ func TestGetRunAgentScorecardEndpointReturnsNotFoundWhenRunAgentMissing(t *testi
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusNotFound {

@@ -178,6 +178,11 @@ challenges:
 		stubAgentBuildService{},
 		noopReleaseGateService{},
 		service,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusCreated {

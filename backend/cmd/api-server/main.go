@@ -40,8 +40,8 @@ func main() {
 	}
 	defer temporalClient.Close()
 
-	authorizer := api.NewCallerWorkspaceAuthorizer()
 	repo := repository.New(db)
+	authorizer := api.NewCallerWorkspaceAuthorizer(repo)
 	artifactStore, err := storage.NewStore(context.Background(), storage.Config{
 		Backend:          cfg.ArtifactStorageBackend,
 		Bucket:           cfg.ArtifactStorageBucket,
@@ -75,6 +75,13 @@ func main() {
 	challengePackReadManager := api.NewChallengePackReadManager(repo)
 	challengePackAuthoringManager := api.NewChallengePackAuthoringManager(repo, artifactStore)
 	agentBuildManager := api.NewAgentBuildManager(repo)
+	userManager := api.NewUserManager(repo)
+	orgAuthz := api.NewCallerOrganizationAuthorizer()
+	orgManager := api.NewOrganizationManager(orgAuthz, repo)
+	wsManager := api.NewWorkspaceManager(orgAuthz, repo)
+	orgMembershipManager := api.NewOrgMembershipManager(orgAuthz, repo)
+	wsMembershipManager := api.NewWorkspaceMembershipManager(repo)
+	onboardingManager := api.NewOnboardingManager(repo)
 
 	var authenticator api.Authenticator
 	switch cfg.AuthMode {
@@ -109,6 +116,12 @@ func main() {
 		challengePackReadManager,
 		challengePackAuthoringManager,
 		agentBuildManager,
+		userManager,
+		orgManager,
+		wsManager,
+		orgMembershipManager,
+		wsMembershipManager,
+		onboardingManager,
 	)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

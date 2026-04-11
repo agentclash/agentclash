@@ -57,6 +57,12 @@ func TestCreateRunEndpointReturnsCreated(t *testing.T) {
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusCreated {
@@ -101,6 +107,12 @@ func TestCreateRunEndpointRejectsInvalidPayload(t *testing.T) {
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusBadRequest {
@@ -148,6 +160,12 @@ func TestCreateRunEndpointReturnsQueuedRunOnWorkflowStartFailure(t *testing.T) {
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusBadGateway {
@@ -193,6 +211,12 @@ func TestCreateRunEndpointRejectsNonJSONContentType(t *testing.T) {
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusUnsupportedMediaType {
@@ -229,6 +253,12 @@ func TestCreateRunEndpointRejectsOversizedRequestBody(t *testing.T) {
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusRequestEntityTooLarge {

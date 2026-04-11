@@ -83,10 +83,14 @@ func signTestJWT(t *testing.T, privKey *rsa.PrivateKey, claims map[string]interf
 // --- stub UserRepository for tests ---
 
 type stubUserRepo struct {
-	user           repository.User
-	memberships    []repository.WorkspaceMembershipRow
-	err            error
-	membershipErr  error
+	user              repository.User
+	memberships       []repository.WorkspaceMembershipRow
+	orgMemberships    []repository.OrgMembershipRow
+	createdUser       repository.User
+	err               error
+	membershipErr     error
+	orgMembershipErr  error
+	createUserErr     error
 }
 
 func (s stubUserRepo) GetUserByWorkOSID(_ context.Context, _ string) (repository.User, error) {
@@ -101,6 +105,36 @@ func (s stubUserRepo) GetActiveWorkspaceMembershipsByUserID(_ context.Context, _
 		return nil, s.membershipErr
 	}
 	return s.memberships, nil
+}
+
+func (s stubUserRepo) GetActiveOrganizationMembershipsByUserID(_ context.Context, _ uuid.UUID) ([]repository.OrgMembershipRow, error) {
+	if s.orgMembershipErr != nil {
+		return nil, s.orgMembershipErr
+	}
+	return s.orgMemberships, nil
+}
+
+func (s stubUserRepo) CreateUser(_ context.Context, input repository.CreateUserInput) (repository.User, error) {
+	if s.createUserErr != nil {
+		return repository.User{}, s.createUserErr
+	}
+	if s.createdUser.ID != uuid.Nil {
+		return s.createdUser, nil
+	}
+	return repository.User{
+		ID:           uuid.New(),
+		WorkOSUserID: input.WorkOSUserID,
+		Email:        input.Email,
+		DisplayName:  input.DisplayName,
+	}, nil
+}
+
+func (s stubUserRepo) GetUserByEmail(_ context.Context, _ string) (repository.User, error) {
+	return repository.User{}, repository.ErrUserNotFound
+}
+
+func (s stubUserRepo) LinkWorkOSUser(_ context.Context, _ uuid.UUID, _ string) (repository.User, error) {
+	return repository.User{}, errors.New("not implemented in stub")
 }
 
 // --- tests ---
@@ -250,10 +284,18 @@ func TestWorkOSAuthenticator_InvalidSignature(t *testing.T) {
 	}
 }
 
-func TestWorkOSAuthenticator_UserNotFound(t *testing.T) {
+func TestWorkOSAuthenticator_FirstLoginCreatesUser(t *testing.T) {
 	privKey, jwksServer := testJWKS(t)
 
-	repo := stubUserRepo{err: repository.ErrUserNotFound}
+	createdUserID := uuid.New()
+	repo := stubUserRepo{
+		err: repository.ErrUserNotFound,
+		createdUser: repository.User{
+			ID:           createdUserID,
+			WorkOSUserID: "user_01NEW",
+			Email:        "new@example.com",
+		},
+	}
 
 	auth, err := newWorkOSAuthenticator(jwksServer.URL, "test-client", "https://api.workos.com", repo)
 	if err != nil {
@@ -261,7 +303,46 @@ func TestWorkOSAuthenticator_UserNotFound(t *testing.T) {
 	}
 
 	token := signTestJWT(t, privKey, map[string]interface{}{
-		"sub": "user_01DOESNOTEXIST",
+		"sub":   "user_01NEW",
+		"iss":   "https://api.workos.com",
+		"email": "new@example.com",
+		"iat":   time.Now().Unix(),
+		"exp":   time.Now().Add(5 * time.Minute).Unix(),
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/auth/session", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	caller, err := auth.Authenticate(req)
+	if err != nil {
+		t.Fatalf("expected auto-create to succeed, got: %v", err)
+	}
+	if caller.UserID != createdUserID {
+		t.Errorf("UserID = %v, want %v", caller.UserID, createdUserID)
+	}
+	if len(caller.OrganizationMemberships) != 0 {
+		t.Errorf("OrganizationMemberships len = %d, want 0", len(caller.OrganizationMemberships))
+	}
+	if len(caller.WorkspaceMemberships) != 0 {
+		t.Errorf("WorkspaceMemberships len = %d, want 0", len(caller.WorkspaceMemberships))
+	}
+}
+
+func TestWorkOSAuthenticator_FirstLoginCreateUserFails(t *testing.T) {
+	privKey, jwksServer := testJWKS(t)
+
+	repo := stubUserRepo{
+		err:           repository.ErrUserNotFound,
+		createUserErr: errors.New("db connection lost"),
+	}
+
+	auth, err := newWorkOSAuthenticator(jwksServer.URL, "test-client", "https://api.workos.com", repo)
+	if err != nil {
+		t.Fatalf("create authenticator: %v", err)
+	}
+
+	token := signTestJWT(t, privKey, map[string]interface{}{
+		"sub": "user_01NEW",
 		"iss": "https://api.workos.com",
 		"iat": time.Now().Unix(),
 		"exp": time.Now().Add(5 * time.Minute).Unix(),
@@ -272,7 +353,7 @@ func TestWorkOSAuthenticator_UserNotFound(t *testing.T) {
 
 	_, err = auth.Authenticate(req)
 	if err == nil {
-		t.Fatal("expected error for unknown user")
+		t.Fatal("expected error when CreateUser fails")
 	}
 }
 

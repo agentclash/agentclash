@@ -1727,8 +1727,19 @@ func (r *Repository) ListRunnableChallengePVersionsByPackID(ctx context.Context,
 var (
 	ErrAgentBuildNotFound        = errors.New("agent build not found")
 	ErrAgentBuildVersionNotFound = errors.New("agent build version not found")
-	ErrWorkspaceNotFound         = errors.New("workspace not found")
-	ErrUserNotFound              = errors.New("user not found")
+	ErrWorkspaceNotFound           = errors.New("workspace not found")
+	ErrUserNotFound                = errors.New("user not found")
+	ErrUserAlreadyExists           = errors.New("user already exists")
+	ErrOrganizationNotFound        = errors.New("organization not found")
+	ErrOrganizationLimitReached    = errors.New("organization limit reached")
+	ErrSlugTaken                   = errors.New("slug taken")
+	ErrMembershipNotFound          = errors.New("membership not found")
+	ErrAlreadyMember               = errors.New("already a member")
+	ErrLastOrgAdmin                = errors.New("cannot remove or demote the last org admin")
+	ErrLastWorkspaceAdmin          = errors.New("cannot remove or demote the last workspace admin")
+	ErrOrgMembershipRequired       = errors.New("user must be a member of the organization first")
+	ErrInviteExpired               = errors.New("invite expired")
+	ErrAlreadyOnboarded            = errors.New("already onboarded")
 )
 
 type User struct {
@@ -1741,6 +1752,135 @@ type User struct {
 type WorkspaceMembershipRow struct {
 	WorkspaceID uuid.UUID
 	Role        string
+}
+
+type OrgMembershipRow struct {
+	OrganizationID uuid.UUID
+	Role           string
+}
+
+type CreateUserInput struct {
+	WorkOSUserID string
+	Email        string
+	DisplayName  string
+}
+
+type UserMeOrgRow struct {
+	ID   uuid.UUID
+	Name string
+	Slug string
+	Role string
+}
+
+type UserMeWorkspaceRow struct {
+	ID             uuid.UUID
+	OrganizationID uuid.UUID
+	Name           string
+	Slug           string
+	Role           string
+}
+
+type OrganizationRow struct {
+	ID        uuid.UUID
+	Name      string
+	Slug      string
+	Status    string
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+type CreateOrgWithAdminInput struct {
+	Name   string
+	Slug   string
+	UserID uuid.UUID
+}
+
+type UpdateOrgInput struct {
+	Name   *string
+	Status *string
+}
+
+type WorkspaceRow struct {
+	ID             uuid.UUID
+	OrganizationID uuid.UUID
+	Name           string
+	Slug           string
+	Status         string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+}
+
+type CreateWorkspaceWithAdminInput struct {
+	OrganizationID uuid.UUID
+	Name           string
+	Slug           string
+	UserID         uuid.UUID
+}
+
+type UpdateWorkspaceInput struct {
+	Name   *string
+	Status *string
+}
+
+type OrgMembershipFullRow struct {
+	ID               uuid.UUID
+	OrganizationID   uuid.UUID
+	UserID           uuid.UUID
+	Email            string
+	DisplayName      string
+	Role             string
+	MembershipStatus string
+	CreatedAt        time.Time
+	UpdatedAt        time.Time // set by DB trigger on every UPDATE
+}
+
+type CreateOrgMembershipInput struct {
+	OrganizationID uuid.UUID
+	UserID         uuid.UUID
+	Role           string
+}
+
+type UpdateOrgMembershipInput struct {
+	Role   *string
+	Status *string
+}
+
+type WorkspaceMembershipFullRow struct {
+	ID               uuid.UUID
+	WorkspaceID      uuid.UUID
+	OrganizationID   uuid.UUID
+	UserID           uuid.UUID
+	Email            string
+	DisplayName      string
+	Role             string
+	MembershipStatus string
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+}
+
+type CreateWorkspaceMembershipInput struct {
+	OrganizationID uuid.UUID
+	WorkspaceID    uuid.UUID
+	UserID         uuid.UUID
+	Role           string
+}
+
+type UpdateWorkspaceMembershipInput struct {
+	Role   *string
+	Status *string
+}
+
+type OnboardInput struct {
+	UserID            uuid.UUID
+	OrganizationName  string
+	OrganizationSlug  string
+	WorkspaceName     string
+	WorkspaceSlug     string
+}
+
+type OnboardResult struct {
+	Organization OrganizationRow
+	Workspace    WorkspaceRow
 }
 
 func (r *Repository) GetUserByWorkOSID(ctx context.Context, workosUserID string) (User, error) {
@@ -1788,6 +1928,1057 @@ func (r *Repository) GetActiveWorkspaceMembershipsByUserID(ctx context.Context, 
 		memberships = []WorkspaceMembershipRow{}
 	}
 	return memberships, nil
+}
+
+func (r *Repository) GetActiveOrganizationMembershipsByUserID(ctx context.Context, userID uuid.UUID) ([]OrgMembershipRow, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT om.organization_id, om.role
+		FROM organization_memberships om
+		WHERE om.user_id = $1 AND om.membership_status = 'active'
+		ORDER BY om.organization_id
+	`, userID)
+	if err != nil {
+		return nil, fmt.Errorf("get active organization memberships by user id: %w", err)
+	}
+	defer rows.Close()
+
+	var memberships []OrgMembershipRow
+	for rows.Next() {
+		var m OrgMembershipRow
+		if err := rows.Scan(&m.OrganizationID, &m.Role); err != nil {
+			return nil, fmt.Errorf("scan organization membership: %w", err)
+		}
+		memberships = append(memberships, m)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate organization memberships: %w", err)
+	}
+	if memberships == nil {
+		memberships = []OrgMembershipRow{}
+	}
+	return memberships, nil
+}
+
+func (r *Repository) CreateUser(ctx context.Context, input CreateUserInput) (User, error) {
+	var user User
+	err := r.db.QueryRow(ctx, `
+		INSERT INTO users (id, workos_user_id, email, display_name)
+		VALUES (gen_random_uuid(), $1, $2, $3)
+		RETURNING id, workos_user_id, email, COALESCE(display_name, '')
+	`, input.WorkOSUserID, input.Email, input.DisplayName).Scan(
+		&user.ID, &user.WorkOSUserID, &user.Email, &user.DisplayName,
+	)
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return User{}, fmt.Errorf("%w: user already exists", ErrUserAlreadyExists)
+		}
+		return User{}, fmt.Errorf("create user: %w", err)
+	}
+	return user, nil
+}
+
+func (r *Repository) LinkWorkOSUser(ctx context.Context, userID uuid.UUID, workosUserID string) (User, error) {
+	var user User
+	err := r.db.QueryRow(ctx, `
+		UPDATE users SET workos_user_id = $2
+		WHERE id = $1 AND workos_user_id LIKE 'pending:%'
+		RETURNING id, workos_user_id, email, COALESCE(display_name, '')
+	`, userID, workosUserID).Scan(&user.ID, &user.WorkOSUserID, &user.Email, &user.DisplayName)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return User{}, ErrUserNotFound
+		}
+		return User{}, fmt.Errorf("link workos user: %w", err)
+	}
+	return user, nil
+}
+
+func (r *Repository) GetOrganizationsForUser(ctx context.Context, userID uuid.UUID) ([]UserMeOrgRow, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT o.id, o.name, o.slug, om.role
+		FROM organizations o
+		JOIN organization_memberships om ON om.organization_id = o.id
+		WHERE om.user_id = $1 AND om.membership_status = 'active'
+		  AND o.status = 'active'
+		ORDER BY o.name
+	`, userID)
+	if err != nil {
+		return nil, fmt.Errorf("get organizations for user: %w", err)
+	}
+	defer rows.Close()
+
+	var orgs []UserMeOrgRow
+	for rows.Next() {
+		var o UserMeOrgRow
+		if err := rows.Scan(&o.ID, &o.Name, &o.Slug, &o.Role); err != nil {
+			return nil, fmt.Errorf("scan organization: %w", err)
+		}
+		orgs = append(orgs, o)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate organizations: %w", err)
+	}
+	if orgs == nil {
+		orgs = []UserMeOrgRow{}
+	}
+	return orgs, nil
+}
+
+func (r *Repository) GetWorkspacesForUser(ctx context.Context, userID uuid.UUID) ([]UserMeWorkspaceRow, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT w.id, w.organization_id, w.name, w.slug, wm.role
+		FROM workspaces w
+		JOIN workspace_memberships wm ON wm.workspace_id = w.id
+		WHERE wm.user_id = $1 AND wm.membership_status = 'active'
+		  AND w.status = 'active'
+		ORDER BY w.name
+	`, userID)
+	if err != nil {
+		return nil, fmt.Errorf("get workspaces for user: %w", err)
+	}
+	defer rows.Close()
+
+	var workspaces []UserMeWorkspaceRow
+	for rows.Next() {
+		var w UserMeWorkspaceRow
+		if err := rows.Scan(&w.ID, &w.OrganizationID, &w.Name, &w.Slug, &w.Role); err != nil {
+			return nil, fmt.Errorf("scan workspace: %w", err)
+		}
+		workspaces = append(workspaces, w)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate workspaces: %w", err)
+	}
+	if workspaces == nil {
+		workspaces = []UserMeWorkspaceRow{}
+	}
+	return workspaces, nil
+}
+
+func (r *Repository) GetAllWorkspacesForOrgs(ctx context.Context, orgIDs []uuid.UUID) ([]UserMeWorkspaceRow, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT w.id, w.organization_id, w.name, w.slug, '' AS role
+		FROM workspaces w
+		WHERE w.organization_id = ANY($1)
+		  AND w.status = 'active'
+		ORDER BY w.name
+	`, orgIDs)
+	if err != nil {
+		return nil, fmt.Errorf("get all workspaces for orgs: %w", err)
+	}
+	defer rows.Close()
+
+	var workspaces []UserMeWorkspaceRow
+	for rows.Next() {
+		var w UserMeWorkspaceRow
+		if err := rows.Scan(&w.ID, &w.OrganizationID, &w.Name, &w.Slug, &w.Role); err != nil {
+			return nil, fmt.Errorf("scan workspace: %w", err)
+		}
+		workspaces = append(workspaces, w)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate workspaces: %w", err)
+	}
+	if workspaces == nil {
+		workspaces = []UserMeWorkspaceRow{}
+	}
+	return workspaces, nil
+}
+
+// --- Onboarding ---
+
+func (r *Repository) Onboard(ctx context.Context, input OnboardInput) (OnboardResult, error) {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return OnboardResult{}, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	// 1. Insert organization.
+	var org OrganizationRow
+	err = tx.QueryRow(ctx, `
+		INSERT INTO organizations (id, name, slug, status)
+		VALUES (gen_random_uuid(), $1, $2, 'active')
+		RETURNING id, name, slug, status, created_at, updated_at
+	`, input.OrganizationName, input.OrganizationSlug).Scan(
+		&org.ID, &org.Name, &org.Slug, &org.Status, &org.CreatedAt, &org.UpdatedAt,
+	)
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" && strings.Contains(pgErr.ConstraintName, "slug") {
+			return OnboardResult{}, ErrSlugTaken
+		}
+		return OnboardResult{}, fmt.Errorf("insert organization: %w", err)
+	}
+
+	// 2. Insert workspace.
+	var ws WorkspaceRow
+	err = tx.QueryRow(ctx, `
+		INSERT INTO workspaces (id, organization_id, name, slug, status)
+		VALUES (gen_random_uuid(), $1, $2, $3, 'active')
+		RETURNING id, organization_id, name, slug, status, created_at, updated_at
+	`, org.ID, input.WorkspaceName, input.WorkspaceSlug).Scan(
+		&ws.ID, &ws.OrganizationID, &ws.Name, &ws.Slug, &ws.Status, &ws.CreatedAt, &ws.UpdatedAt,
+	)
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" && strings.Contains(pgErr.ConstraintName, "slug") {
+			return OnboardResult{}, ErrSlugTaken
+		}
+		return OnboardResult{}, fmt.Errorf("insert workspace: %w", err)
+	}
+
+	// 3. Insert org_admin membership.
+	_, err = tx.Exec(ctx, `
+		INSERT INTO organization_memberships (id, organization_id, user_id, role, membership_status)
+		VALUES (gen_random_uuid(), $1, $2, 'org_admin', 'active')
+	`, org.ID, input.UserID)
+	if err != nil {
+		return OnboardResult{}, fmt.Errorf("insert org admin membership: %w", err)
+	}
+
+	// 4. Insert workspace_admin membership.
+	_, err = tx.Exec(ctx, `
+		INSERT INTO workspace_memberships (id, organization_id, workspace_id, user_id, role, membership_status)
+		VALUES (gen_random_uuid(), $1, $2, $3, 'workspace_admin', 'active')
+	`, org.ID, ws.ID, input.UserID)
+	if err != nil {
+		return OnboardResult{}, fmt.Errorf("insert workspace admin membership: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return OnboardResult{}, fmt.Errorf("commit tx: %w", err)
+	}
+
+	return OnboardResult{
+		Organization: org,
+		Workspace:    ws,
+	}, nil
+}
+
+// --- Workspace Membership CRUD ---
+
+func (r *Repository) ListWorkspaceMemberships(ctx context.Context, workspaceID uuid.UUID, limit, offset int32) ([]WorkspaceMembershipFullRow, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT wm.id, wm.workspace_id, wm.organization_id, wm.user_id,
+		       u.email, COALESCE(u.display_name, ''),
+		       wm.role, wm.membership_status, wm.created_at, wm.updated_at
+		FROM workspace_memberships wm
+		JOIN users u ON u.id = wm.user_id
+		WHERE wm.workspace_id = $1 AND wm.membership_status IN ('active', 'invited')
+		ORDER BY wm.created_at
+		LIMIT $2 OFFSET $3
+	`, workspaceID, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("list workspace memberships: %w", err)
+	}
+	defer rows.Close()
+
+	var memberships []WorkspaceMembershipFullRow
+	for rows.Next() {
+		var m WorkspaceMembershipFullRow
+		if err := rows.Scan(&m.ID, &m.WorkspaceID, &m.OrganizationID, &m.UserID,
+			&m.Email, &m.DisplayName, &m.Role, &m.MembershipStatus, &m.CreatedAt, &m.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("scan workspace membership: %w", err)
+		}
+		memberships = append(memberships, m)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate workspace memberships: %w", err)
+	}
+	if memberships == nil {
+		memberships = []WorkspaceMembershipFullRow{}
+	}
+	return memberships, nil
+}
+
+func (r *Repository) CountWorkspaceMemberships(ctx context.Context, workspaceID uuid.UUID) (int64, error) {
+	var count int64
+	err := r.db.QueryRow(ctx, `
+		SELECT COUNT(*) FROM workspace_memberships
+		WHERE workspace_id = $1 AND membership_status IN ('active', 'invited')
+	`, workspaceID).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("count workspace memberships: %w", err)
+	}
+	return count, nil
+}
+
+func (r *Repository) GetWorkspaceMembershipByWorkspaceAndUser(ctx context.Context, workspaceID, userID uuid.UUID) (WorkspaceMembershipFullRow, error) {
+	var m WorkspaceMembershipFullRow
+	err := r.db.QueryRow(ctx, `
+		SELECT wm.id, wm.workspace_id, wm.organization_id, wm.user_id,
+		       u.email, COALESCE(u.display_name, ''),
+		       wm.role, wm.membership_status, wm.created_at, wm.updated_at
+		FROM workspace_memberships wm
+		JOIN users u ON u.id = wm.user_id
+		WHERE wm.workspace_id = $1 AND wm.user_id = $2
+	`, workspaceID, userID).Scan(&m.ID, &m.WorkspaceID, &m.OrganizationID, &m.UserID,
+		&m.Email, &m.DisplayName, &m.Role, &m.MembershipStatus, &m.CreatedAt, &m.UpdatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return WorkspaceMembershipFullRow{}, ErrMembershipNotFound
+		}
+		return WorkspaceMembershipFullRow{}, fmt.Errorf("get workspace membership by workspace and user: %w", err)
+	}
+	return m, nil
+}
+
+func (r *Repository) CreateWorkspaceMembership(ctx context.Context, input CreateWorkspaceMembershipInput) (WorkspaceMembershipFullRow, error) {
+	var m WorkspaceMembershipFullRow
+	err := r.db.QueryRow(ctx, `
+		INSERT INTO workspace_memberships (id, organization_id, workspace_id, user_id, role, membership_status)
+		VALUES (gen_random_uuid(), $1, $2, $3, $4, 'invited')
+		RETURNING id, organization_id, workspace_id, user_id, role, membership_status, created_at, updated_at
+	`, input.OrganizationID, input.WorkspaceID, input.UserID, input.Role).Scan(
+		&m.ID, &m.OrganizationID, &m.WorkspaceID, &m.UserID, &m.Role, &m.MembershipStatus, &m.CreatedAt, &m.UpdatedAt,
+	)
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return WorkspaceMembershipFullRow{}, ErrAlreadyMember
+		}
+		return WorkspaceMembershipFullRow{}, fmt.Errorf("create workspace membership: %w", err)
+	}
+
+	var user User
+	if err = r.db.QueryRow(ctx, `SELECT email, COALESCE(display_name, '') FROM users WHERE id = $1`, input.UserID).Scan(&user.Email, &user.DisplayName); err != nil {
+		return m, nil // membership created; user details are non-critical
+	}
+	m.Email = user.Email
+	m.DisplayName = user.DisplayName
+
+	return m, nil
+}
+
+func (r *Repository) GetWorkspaceMembershipByID(ctx context.Context, membershipID uuid.UUID) (WorkspaceMembershipFullRow, error) {
+	var m WorkspaceMembershipFullRow
+	err := r.db.QueryRow(ctx, `
+		SELECT wm.id, wm.workspace_id, wm.organization_id, wm.user_id,
+		       u.email, COALESCE(u.display_name, ''),
+		       wm.role, wm.membership_status, wm.created_at, wm.updated_at
+		FROM workspace_memberships wm
+		JOIN users u ON u.id = wm.user_id
+		WHERE wm.id = $1
+	`, membershipID).Scan(&m.ID, &m.WorkspaceID, &m.OrganizationID, &m.UserID,
+		&m.Email, &m.DisplayName, &m.Role, &m.MembershipStatus, &m.CreatedAt, &m.UpdatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return WorkspaceMembershipFullRow{}, ErrMembershipNotFound
+		}
+		return WorkspaceMembershipFullRow{}, fmt.Errorf("get workspace membership by id: %w", err)
+	}
+	return m, nil
+}
+
+func (r *Repository) UpdateWorkspaceMembership(ctx context.Context, membershipID uuid.UUID, input UpdateWorkspaceMembershipInput) (WorkspaceMembershipFullRow, error) {
+	setClauses := []string{}
+	args := []interface{}{}
+	argIdx := 1
+
+	if input.Role != nil {
+		setClauses = append(setClauses, fmt.Sprintf("role = $%d", argIdx))
+		args = append(args, *input.Role)
+		argIdx++
+	}
+	if input.Status != nil {
+		setClauses = append(setClauses, fmt.Sprintf("membership_status = $%d", argIdx))
+		args = append(args, *input.Status)
+		argIdx++
+		if *input.Status == "archived" {
+			setClauses = append(setClauses, fmt.Sprintf("archived_at = $%d", argIdx))
+			args = append(args, time.Now())
+			argIdx++
+		} else {
+			setClauses = append(setClauses, "archived_at = NULL")
+		}
+	}
+
+	if len(setClauses) == 0 {
+		return r.GetWorkspaceMembershipByID(ctx, membershipID)
+	}
+
+	query := fmt.Sprintf(`
+		UPDATE workspace_memberships SET %s
+		WHERE id = $%d
+		RETURNING id, organization_id, workspace_id, user_id, role, membership_status, created_at, updated_at
+	`, strings.Join(setClauses, ", "), argIdx)
+	args = append(args, membershipID)
+
+	var m WorkspaceMembershipFullRow
+	err := r.db.QueryRow(ctx, query, args...).Scan(
+		&m.ID, &m.OrganizationID, &m.WorkspaceID, &m.UserID, &m.Role, &m.MembershipStatus, &m.CreatedAt, &m.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return WorkspaceMembershipFullRow{}, ErrMembershipNotFound
+		}
+		return WorkspaceMembershipFullRow{}, fmt.Errorf("update workspace membership: %w", err)
+	}
+
+	var user User
+	if err = r.db.QueryRow(ctx, `SELECT email, COALESCE(display_name, '') FROM users WHERE id = $1`, m.UserID).Scan(&user.Email, &user.DisplayName); err != nil {
+		return m, nil // membership updated; user details are non-critical
+	}
+	m.Email = user.Email
+	m.DisplayName = user.DisplayName
+
+	return m, nil
+}
+
+func (r *Repository) CountActiveWorkspaceAdmins(ctx context.Context, workspaceID uuid.UUID) (int64, error) {
+	var count int64
+	err := r.db.QueryRow(ctx, `
+		SELECT COUNT(*) FROM workspace_memberships
+		WHERE workspace_id = $1 AND role = 'workspace_admin' AND membership_status = 'active'
+	`, workspaceID).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("count active workspace admins: %w", err)
+	}
+	return count, nil
+}
+
+// --- Organization Membership CRUD ---
+
+func (r *Repository) GetUserByEmail(ctx context.Context, email string) (User, error) {
+	var user User
+	err := r.db.QueryRow(ctx, `
+		SELECT id, workos_user_id, email, COALESCE(display_name, '')
+		FROM users WHERE email = $1 AND archived_at IS NULL
+	`, email).Scan(&user.ID, &user.WorkOSUserID, &user.Email, &user.DisplayName)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return User{}, ErrUserNotFound
+		}
+		return User{}, fmt.Errorf("get user by email: %w", err)
+	}
+	return user, nil
+}
+
+func (r *Repository) ListOrgMemberships(ctx context.Context, orgID uuid.UUID, limit, offset int32) ([]OrgMembershipFullRow, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT om.id, om.organization_id, om.user_id, u.email, COALESCE(u.display_name, ''),
+		       om.role, om.membership_status, om.created_at, om.updated_at
+		FROM organization_memberships om
+		JOIN users u ON u.id = om.user_id
+		WHERE om.organization_id = $1 AND om.membership_status IN ('active', 'invited')
+		ORDER BY om.created_at
+		LIMIT $2 OFFSET $3
+	`, orgID, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("list org memberships: %w", err)
+	}
+	defer rows.Close()
+
+	var memberships []OrgMembershipFullRow
+	for rows.Next() {
+		var m OrgMembershipFullRow
+		if err := rows.Scan(&m.ID, &m.OrganizationID, &m.UserID, &m.Email, &m.DisplayName,
+			&m.Role, &m.MembershipStatus, &m.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan org membership: %w", err)
+		}
+		memberships = append(memberships, m)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate org memberships: %w", err)
+	}
+	if memberships == nil {
+		memberships = []OrgMembershipFullRow{}
+	}
+	return memberships, nil
+}
+
+func (r *Repository) CountOrgMemberships(ctx context.Context, orgID uuid.UUID) (int64, error) {
+	var count int64
+	err := r.db.QueryRow(ctx, `
+		SELECT COUNT(*) FROM organization_memberships
+		WHERE organization_id = $1 AND membership_status IN ('active', 'invited')
+	`, orgID).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("count org memberships: %w", err)
+	}
+	return count, nil
+}
+
+func (r *Repository) GetOrgMembershipByOrgAndUser(ctx context.Context, orgID, userID uuid.UUID) (OrgMembershipFullRow, error) {
+	var m OrgMembershipFullRow
+	err := r.db.QueryRow(ctx, `
+		SELECT om.id, om.organization_id, om.user_id, u.email, COALESCE(u.display_name, ''),
+		       om.role, om.membership_status, om.created_at, om.updated_at
+		FROM organization_memberships om
+		JOIN users u ON u.id = om.user_id
+		WHERE om.organization_id = $1 AND om.user_id = $2
+	`, orgID, userID).Scan(&m.ID, &m.OrganizationID, &m.UserID, &m.Email, &m.DisplayName,
+		&m.Role, &m.MembershipStatus, &m.CreatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return OrgMembershipFullRow{}, ErrMembershipNotFound
+		}
+		return OrgMembershipFullRow{}, fmt.Errorf("get org membership by org and user: %w", err)
+	}
+	return m, nil
+}
+
+func (r *Repository) CreateOrgMembership(ctx context.Context, input CreateOrgMembershipInput) (OrgMembershipFullRow, error) {
+	var m OrgMembershipFullRow
+	err := r.db.QueryRow(ctx, `
+		INSERT INTO organization_memberships (id, organization_id, user_id, role, membership_status)
+		VALUES (gen_random_uuid(), $1, $2, $3, 'invited')
+		RETURNING id, organization_id, user_id, role, membership_status, created_at, updated_at
+	`, input.OrganizationID, input.UserID, input.Role).Scan(
+		&m.ID, &m.OrganizationID, &m.UserID, &m.Role, &m.MembershipStatus, &m.CreatedAt, &m.UpdatedAt,
+	)
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return OrgMembershipFullRow{}, ErrAlreadyMember
+		}
+		return OrgMembershipFullRow{}, fmt.Errorf("create org membership: %w", err)
+	}
+
+	// Fetch user details to fill the response.
+	var user User
+	if err = r.db.QueryRow(ctx, `SELECT email, COALESCE(display_name, '') FROM users WHERE id = $1`, input.UserID).Scan(&user.Email, &user.DisplayName); err != nil {
+		return m, nil // membership created; user details are non-critical
+	}
+	m.Email = user.Email
+	m.DisplayName = user.DisplayName
+
+	return m, nil
+}
+
+func (r *Repository) GetOrgMembershipByID(ctx context.Context, membershipID uuid.UUID) (OrgMembershipFullRow, error) {
+	var m OrgMembershipFullRow
+	err := r.db.QueryRow(ctx, `
+		SELECT om.id, om.organization_id, om.user_id, u.email, COALESCE(u.display_name, ''),
+		       om.role, om.membership_status, om.created_at, om.updated_at
+		FROM organization_memberships om
+		JOIN users u ON u.id = om.user_id
+		WHERE om.id = $1
+	`, membershipID).Scan(&m.ID, &m.OrganizationID, &m.UserID, &m.Email, &m.DisplayName,
+		&m.Role, &m.MembershipStatus, &m.CreatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return OrgMembershipFullRow{}, ErrMembershipNotFound
+		}
+		return OrgMembershipFullRow{}, fmt.Errorf("get org membership by id: %w", err)
+	}
+	return m, nil
+}
+
+func (r *Repository) UpdateOrgMembership(ctx context.Context, membershipID uuid.UUID, input UpdateOrgMembershipInput) (OrgMembershipFullRow, error) {
+	setClauses := []string{}
+	args := []interface{}{}
+	argIdx := 1
+
+	if input.Role != nil {
+		setClauses = append(setClauses, fmt.Sprintf("role = $%d", argIdx))
+		args = append(args, *input.Role)
+		argIdx++
+	}
+	if input.Status != nil {
+		setClauses = append(setClauses, fmt.Sprintf("membership_status = $%d", argIdx))
+		args = append(args, *input.Status)
+		argIdx++
+		if *input.Status == "archived" {
+			setClauses = append(setClauses, fmt.Sprintf("archived_at = $%d", argIdx))
+			args = append(args, time.Now())
+			argIdx++
+		} else {
+			setClauses = append(setClauses, "archived_at = NULL")
+		}
+	}
+
+	if len(setClauses) == 0 {
+		return r.GetOrgMembershipByID(ctx, membershipID)
+	}
+
+	query := fmt.Sprintf(`
+		UPDATE organization_memberships SET %s
+		WHERE id = $%d
+		RETURNING id, organization_id, user_id, role, membership_status, created_at, updated_at
+	`, strings.Join(setClauses, ", "), argIdx)
+	args = append(args, membershipID)
+
+	var m OrgMembershipFullRow
+	err := r.db.QueryRow(ctx, query, args...).Scan(
+		&m.ID, &m.OrganizationID, &m.UserID, &m.Role, &m.MembershipStatus, &m.CreatedAt, &m.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return OrgMembershipFullRow{}, ErrMembershipNotFound
+		}
+		return OrgMembershipFullRow{}, fmt.Errorf("update org membership: %w", err)
+	}
+
+	// Fetch user details.
+	var user User
+	if err = r.db.QueryRow(ctx, `SELECT email, COALESCE(display_name, '') FROM users WHERE id = $1`, m.UserID).Scan(&user.Email, &user.DisplayName); err != nil {
+		return m, nil // membership updated; user details are non-critical
+	}
+	m.Email = user.Email
+	m.DisplayName = user.DisplayName
+
+	return m, nil
+}
+
+func (r *Repository) CascadeOrgMembershipStatusToWorkspaces(ctx context.Context, orgID, userID uuid.UUID, status string) error {
+	now := time.Now()
+	_, err := r.db.Exec(ctx, `
+		UPDATE workspace_memberships
+		SET membership_status = $3, archived_at = CASE WHEN $3 = 'archived' THEN $4 ELSE archived_at END
+		WHERE organization_id = $1 AND user_id = $2 AND membership_status NOT IN ('archived')
+	`, orgID, userID, status, now)
+	if err != nil {
+		return fmt.Errorf("cascade org membership status to workspaces: %w", err)
+	}
+	return nil
+}
+
+func (r *Repository) CountActiveOrgAdmins(ctx context.Context, orgID uuid.UUID) (int64, error) {
+	var count int64
+	err := r.db.QueryRow(ctx, `
+		SELECT COUNT(*) FROM organization_memberships
+		WHERE organization_id = $1 AND role = 'org_admin' AND membership_status = 'active'
+	`, orgID).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("count active org admins: %w", err)
+	}
+	return count, nil
+}
+
+// --- Workspace CRUD ---
+
+func (r *Repository) CreateWorkspaceWithAdmin(ctx context.Context, input CreateWorkspaceWithAdminInput) (WorkspaceRow, error) {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return WorkspaceRow{}, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	var ws WorkspaceRow
+	err = tx.QueryRow(ctx, `
+		INSERT INTO workspaces (id, organization_id, name, slug, status)
+		VALUES (gen_random_uuid(), $1, $2, $3, 'active')
+		RETURNING id, organization_id, name, slug, status, created_at, updated_at
+	`, input.OrganizationID, input.Name, input.Slug).Scan(
+		&ws.ID, &ws.OrganizationID, &ws.Name, &ws.Slug, &ws.Status, &ws.CreatedAt, &ws.UpdatedAt,
+	)
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" && strings.Contains(pgErr.ConstraintName, "slug") {
+			return WorkspaceRow{}, ErrSlugTaken
+		}
+		return WorkspaceRow{}, fmt.Errorf("insert workspace: %w", err)
+	}
+
+	_, err = tx.Exec(ctx, `
+		INSERT INTO workspace_memberships (id, organization_id, workspace_id, user_id, role, membership_status)
+		VALUES (gen_random_uuid(), $1, $2, $3, 'workspace_admin', 'active')
+	`, input.OrganizationID, ws.ID, input.UserID)
+	if err != nil {
+		return WorkspaceRow{}, fmt.Errorf("insert workspace admin membership: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return WorkspaceRow{}, fmt.Errorf("commit tx: %w", err)
+	}
+	return ws, nil
+}
+
+func (r *Repository) GetWorkspaceByID(ctx context.Context, workspaceID uuid.UUID) (WorkspaceRow, error) {
+	var ws WorkspaceRow
+	err := r.db.QueryRow(ctx, `
+		SELECT id, organization_id, name, slug, status, created_at, updated_at
+		FROM workspaces WHERE id = $1
+	`, workspaceID).Scan(&ws.ID, &ws.OrganizationID, &ws.Name, &ws.Slug, &ws.Status, &ws.CreatedAt, &ws.UpdatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return WorkspaceRow{}, ErrWorkspaceNotFound
+		}
+		return WorkspaceRow{}, fmt.Errorf("get workspace by id: %w", err)
+	}
+	return ws, nil
+}
+
+func (r *Repository) ListWorkspacesByOrgID(ctx context.Context, orgID uuid.UUID, limit, offset int32) ([]WorkspaceRow, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT id, organization_id, name, slug, status, created_at, updated_at
+		FROM workspaces
+		WHERE organization_id = $1 AND status = 'active'
+		ORDER BY name
+		LIMIT $2 OFFSET $3
+	`, orgID, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("list workspaces by org id: %w", err)
+	}
+	defer rows.Close()
+
+	return scanWorkspaceRows(rows)
+}
+
+func (r *Repository) CountWorkspacesByOrgID(ctx context.Context, orgID uuid.UUID) (int64, error) {
+	var count int64
+	err := r.db.QueryRow(ctx, `
+		SELECT COUNT(*) FROM workspaces WHERE organization_id = $1 AND status = 'active'
+	`, orgID).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("count workspaces by org id: %w", err)
+	}
+	return count, nil
+}
+
+func (r *Repository) ListWorkspacesByOrgIDForMember(ctx context.Context, orgID, userID uuid.UUID, limit, offset int32) ([]WorkspaceRow, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT w.id, w.organization_id, w.name, w.slug, w.status, w.created_at, w.updated_at
+		FROM workspaces w
+		JOIN workspace_memberships wm ON wm.workspace_id = w.id
+		WHERE w.organization_id = $1 AND wm.user_id = $2 AND wm.membership_status = 'active'
+		  AND w.status = 'active'
+		ORDER BY w.name
+		LIMIT $3 OFFSET $4
+	`, orgID, userID, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("list workspaces by org id for member: %w", err)
+	}
+	defer rows.Close()
+
+	return scanWorkspaceRows(rows)
+}
+
+func (r *Repository) CountWorkspacesByOrgIDForMember(ctx context.Context, orgID, userID uuid.UUID) (int64, error) {
+	var count int64
+	err := r.db.QueryRow(ctx, `
+		SELECT COUNT(*)
+		FROM workspaces w
+		JOIN workspace_memberships wm ON wm.workspace_id = w.id
+		WHERE w.organization_id = $1 AND wm.user_id = $2 AND wm.membership_status = 'active'
+		  AND w.status = 'active'
+	`, orgID, userID).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("count workspaces for member: %w", err)
+	}
+	return count, nil
+}
+
+func (r *Repository) UpdateWorkspace(ctx context.Context, workspaceID uuid.UUID, input UpdateWorkspaceInput) (WorkspaceRow, error) {
+	setClauses := []string{}
+	args := []interface{}{}
+	argIdx := 1
+
+	if input.Name != nil {
+		setClauses = append(setClauses, fmt.Sprintf("name = $%d", argIdx))
+		args = append(args, *input.Name)
+		argIdx++
+	}
+	if input.Status != nil {
+		setClauses = append(setClauses, fmt.Sprintf("status = $%d", argIdx))
+		args = append(args, *input.Status)
+		argIdx++
+		if *input.Status == "archived" {
+			setClauses = append(setClauses, fmt.Sprintf("archived_at = $%d", argIdx))
+			args = append(args, time.Now())
+			argIdx++
+		} else if *input.Status == "active" {
+			setClauses = append(setClauses, "archived_at = NULL")
+		}
+	}
+
+	if len(setClauses) == 0 {
+		return r.GetWorkspaceByID(ctx, workspaceID)
+	}
+
+	query := fmt.Sprintf(`
+		UPDATE workspaces SET %s
+		WHERE id = $%d
+		RETURNING id, organization_id, name, slug, status, created_at, updated_at
+	`, strings.Join(setClauses, ", "), argIdx)
+	args = append(args, workspaceID)
+
+	var ws WorkspaceRow
+	err := r.db.QueryRow(ctx, query, args...).Scan(
+		&ws.ID, &ws.OrganizationID, &ws.Name, &ws.Slug, &ws.Status, &ws.CreatedAt, &ws.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return WorkspaceRow{}, ErrWorkspaceNotFound
+		}
+		return WorkspaceRow{}, fmt.Errorf("update workspace: %w", err)
+	}
+	return ws, nil
+}
+
+func (r *Repository) ArchiveWorkspaceCascade(ctx context.Context, workspaceID uuid.UUID) (WorkspaceRow, error) {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return WorkspaceRow{}, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	now := time.Now()
+
+	_, err = tx.Exec(ctx, `
+		UPDATE workspace_memberships
+		SET membership_status = 'archived', archived_at = $2
+		WHERE workspace_id = $1 AND membership_status != 'archived'
+	`, workspaceID, now)
+	if err != nil {
+		return WorkspaceRow{}, fmt.Errorf("archive workspace memberships: %w", err)
+	}
+
+	var ws WorkspaceRow
+	err = tx.QueryRow(ctx, `
+		UPDATE workspaces
+		SET status = 'archived', archived_at = $2
+		WHERE id = $1
+		RETURNING id, organization_id, name, slug, status, created_at, updated_at
+	`, workspaceID, now).Scan(
+		&ws.ID, &ws.OrganizationID, &ws.Name, &ws.Slug, &ws.Status, &ws.CreatedAt, &ws.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return WorkspaceRow{}, ErrWorkspaceNotFound
+		}
+		return WorkspaceRow{}, fmt.Errorf("archive workspace: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return WorkspaceRow{}, fmt.Errorf("commit tx: %w", err)
+	}
+	return ws, nil
+}
+
+func scanWorkspaceRows(rows pgx.Rows) ([]WorkspaceRow, error) {
+	var workspaces []WorkspaceRow
+	for rows.Next() {
+		var ws WorkspaceRow
+		if err := rows.Scan(&ws.ID, &ws.OrganizationID, &ws.Name, &ws.Slug, &ws.Status, &ws.CreatedAt, &ws.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("scan workspace: %w", err)
+		}
+		workspaces = append(workspaces, ws)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate workspaces: %w", err)
+	}
+	if workspaces == nil {
+		workspaces = []WorkspaceRow{}
+	}
+	return workspaces, nil
+}
+
+// --- Organization CRUD ---
+
+func (r *Repository) CountActiveOrgAdminMemberships(ctx context.Context, userID uuid.UUID) (int64, error) {
+	var count int64
+	err := r.db.QueryRow(ctx, `
+		SELECT COUNT(*) FROM organization_memberships
+		WHERE user_id = $1 AND role = 'org_admin' AND membership_status = 'active'
+	`, userID).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("count active org admin memberships: %w", err)
+	}
+	return count, nil
+}
+
+func (r *Repository) CreateOrganizationWithAdmin(ctx context.Context, input CreateOrgWithAdminInput) (OrganizationRow, error) {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return OrganizationRow{}, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	var org OrganizationRow
+	err = tx.QueryRow(ctx, `
+		INSERT INTO organizations (id, name, slug, status)
+		VALUES (gen_random_uuid(), $1, $2, 'active')
+		RETURNING id, name, slug, status, created_at, updated_at
+	`, input.Name, input.Slug).Scan(&org.ID, &org.Name, &org.Slug, &org.Status, &org.CreatedAt, &org.UpdatedAt)
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" && strings.Contains(pgErr.ConstraintName, "slug") {
+			return OrganizationRow{}, ErrSlugTaken
+		}
+		return OrganizationRow{}, fmt.Errorf("insert organization: %w", err)
+	}
+
+	_, err = tx.Exec(ctx, `
+		INSERT INTO organization_memberships (id, organization_id, user_id, role, membership_status)
+		VALUES (gen_random_uuid(), $1, $2, 'org_admin', 'active')
+	`, org.ID, input.UserID)
+	if err != nil {
+		return OrganizationRow{}, fmt.Errorf("insert org admin membership: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return OrganizationRow{}, fmt.Errorf("commit tx: %w", err)
+	}
+	return org, nil
+}
+
+func (r *Repository) GetOrganizationByID(ctx context.Context, orgID uuid.UUID) (OrganizationRow, error) {
+	var org OrganizationRow
+	err := r.db.QueryRow(ctx, `
+		SELECT id, name, slug, status, created_at, updated_at
+		FROM organizations WHERE id = $1
+	`, orgID).Scan(&org.ID, &org.Name, &org.Slug, &org.Status, &org.CreatedAt, &org.UpdatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return OrganizationRow{}, ErrOrganizationNotFound
+		}
+		return OrganizationRow{}, fmt.Errorf("get organization by id: %w", err)
+	}
+	return org, nil
+}
+
+func (r *Repository) ListOrganizationsByUserID(ctx context.Context, userID uuid.UUID, limit, offset int32) ([]OrganizationRow, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT o.id, o.name, o.slug, o.status, o.created_at, o.updated_at
+		FROM organizations o
+		JOIN organization_memberships om ON om.organization_id = o.id
+		WHERE om.user_id = $1 AND om.membership_status = 'active'
+		ORDER BY o.name
+		LIMIT $2 OFFSET $3
+	`, userID, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("list organizations by user id: %w", err)
+	}
+	defer rows.Close()
+
+	var orgs []OrganizationRow
+	for rows.Next() {
+		var o OrganizationRow
+		if err := rows.Scan(&o.ID, &o.Name, &o.Slug, &o.Status, &o.CreatedAt, &o.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("scan organization: %w", err)
+		}
+		orgs = append(orgs, o)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate organizations: %w", err)
+	}
+	if orgs == nil {
+		orgs = []OrganizationRow{}
+	}
+	return orgs, nil
+}
+
+func (r *Repository) CountOrganizationsByUserID(ctx context.Context, userID uuid.UUID) (int64, error) {
+	var count int64
+	err := r.db.QueryRow(ctx, `
+		SELECT COUNT(*)
+		FROM organizations o
+		JOIN organization_memberships om ON om.organization_id = o.id
+		WHERE om.user_id = $1 AND om.membership_status = 'active'
+	`, userID).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("count organizations by user id: %w", err)
+	}
+	return count, nil
+}
+
+func (r *Repository) UpdateOrganization(ctx context.Context, orgID uuid.UUID, input UpdateOrgInput) (OrganizationRow, error) {
+	setClauses := []string{}
+	args := []interface{}{}
+	argIdx := 1
+
+	if input.Name != nil {
+		setClauses = append(setClauses, fmt.Sprintf("name = $%d", argIdx))
+		args = append(args, *input.Name)
+		argIdx++
+	}
+	if input.Status != nil {
+		setClauses = append(setClauses, fmt.Sprintf("status = $%d", argIdx))
+		args = append(args, *input.Status)
+		argIdx++
+		if *input.Status == "archived" {
+			setClauses = append(setClauses, fmt.Sprintf("archived_at = $%d", argIdx))
+			args = append(args, time.Now())
+			argIdx++
+		} else if *input.Status == "active" {
+			setClauses = append(setClauses, "archived_at = NULL")
+		}
+	}
+
+	if len(setClauses) == 0 {
+		return r.GetOrganizationByID(ctx, orgID)
+	}
+
+	query := fmt.Sprintf(`
+		UPDATE organizations SET %s
+		WHERE id = $%d
+		RETURNING id, name, slug, status, created_at, updated_at
+	`, strings.Join(setClauses, ", "), argIdx)
+	args = append(args, orgID)
+
+	var org OrganizationRow
+	err := r.db.QueryRow(ctx, query, args...).Scan(&org.ID, &org.Name, &org.Slug, &org.Status, &org.CreatedAt, &org.UpdatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return OrganizationRow{}, ErrOrganizationNotFound
+		}
+		return OrganizationRow{}, fmt.Errorf("update organization: %w", err)
+	}
+	return org, nil
+}
+
+func (r *Repository) ArchiveOrganizationCascade(ctx context.Context, orgID uuid.UUID) (OrganizationRow, error) {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return OrganizationRow{}, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	now := time.Now()
+
+	// Archive all workspace memberships in this org.
+	_, err = tx.Exec(ctx, `
+		UPDATE workspace_memberships
+		SET membership_status = 'archived', archived_at = $2
+		WHERE organization_id = $1 AND membership_status != 'archived'
+	`, orgID, now)
+	if err != nil {
+		return OrganizationRow{}, fmt.Errorf("archive workspace memberships: %w", err)
+	}
+
+	// Archive all workspaces in this org.
+	_, err = tx.Exec(ctx, `
+		UPDATE workspaces
+		SET status = 'archived', archived_at = $2
+		WHERE organization_id = $1 AND status != 'archived'
+	`, orgID, now)
+	if err != nil {
+		return OrganizationRow{}, fmt.Errorf("archive workspaces: %w", err)
+	}
+
+	// Archive all org memberships.
+	_, err = tx.Exec(ctx, `
+		UPDATE organization_memberships
+		SET membership_status = 'archived', archived_at = $2
+		WHERE organization_id = $1 AND membership_status != 'archived'
+	`, orgID, now)
+	if err != nil {
+		return OrganizationRow{}, fmt.Errorf("archive org memberships: %w", err)
+	}
+
+	// Archive the org itself.
+	var org OrganizationRow
+	err = tx.QueryRow(ctx, `
+		UPDATE organizations
+		SET status = 'archived', archived_at = $2
+		WHERE id = $1
+		RETURNING id, name, slug, status, created_at, updated_at
+	`, orgID, now).Scan(&org.ID, &org.Name, &org.Slug, &org.Status, &org.CreatedAt, &org.UpdatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return OrganizationRow{}, ErrOrganizationNotFound
+		}
+		return OrganizationRow{}, fmt.Errorf("archive organization: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return OrganizationRow{}, fmt.Errorf("commit tx: %w", err)
+	}
+	return org, nil
 }
 
 func (r *Repository) GetOrganizationIDByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) (uuid.UUID, error) {

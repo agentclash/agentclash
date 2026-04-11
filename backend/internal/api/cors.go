@@ -9,7 +9,7 @@ import "net/http"
 func corsAllowedHeaders(authMode string) string {
 	const base = "Content-Type, Authorization"
 	if authMode == "dev" {
-		return base + ", X-Agentclash-User-Id, X-Agentclash-WorkOS-User-Id, X-Agentclash-User-Email, X-Agentclash-User-Display-Name, X-Agentclash-Workspace-Memberships"
+		return base + ", X-Agentclash-User-Id, X-Agentclash-WorkOS-User-Id, X-Agentclash-User-Email, X-Agentclash-User-Display-Name, X-Agentclash-Org-Memberships, X-Agentclash-Workspace-Memberships"
 	}
 	return base
 }
