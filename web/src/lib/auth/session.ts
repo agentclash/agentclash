@@ -1,6 +1,5 @@
-import { getIronSession, sealData, unsealData, type SessionOptions } from "iron-session";
+import { getIronSession, type SessionOptions } from "iron-session";
 import { cookies } from "next/headers";
-import type { ResponseCookies } from "next/dist/compiled/@edge-runtime/cookies";
 import { getSessionSecret } from "./config";
 
 /**
@@ -58,32 +57,10 @@ export async function getSession(): Promise<SessionData | null> {
 }
 
 /**
- * Create a dev session from the login form.
- * Works in Server Actions where `cookies()` has write access.
- */
-export async function createDevSession(input: {
-  userId: string;
-  email: string;
-  displayName: string;
-  orgMemberships: string;
-  workspaceMemberships: string;
-}): Promise<void> {
-  const cookieStore = await cookies();
-  const session = await getIronSession<{ data?: SessionData }>(
-    cookieStore,
-    getSessionOptions(),
-  );
-  session.data = {
-    mode: "dev",
-    ...input,
-  };
-  await session.save();
-}
-
-/**
  * Create a WorkOS session via the cookies() API.
  * Works in Server Components and Server Actions where cookies() has
- * write access. For Route Handlers, use setSessionCookie() instead.
+ * write access. For Route Handlers that redirect, use getIronSession
+ * with response.cookies directly instead.
  */
 export async function createWorkOSSession(
   accessToken: string,
@@ -105,38 +82,32 @@ export async function createWorkOSSession(
 }
 
 /**
- * Seal session data into an encrypted string and set it as a cookie
- * on a NextResponse. Use this in Route Handlers where `cookies()`
- * from next/headers does not have write access (e.g. redirect responses).
+ * Create a dev session from the login form.
+ * Works in Server Actions where cookies() has write access.
  */
-export async function setSessionCookie(
-  responseCookies: ResponseCookies,
-  data: SessionData,
-): Promise<void> {
-  const password = getSessionSecret();
-  const sealed = await sealData({ data }, { password, ttl: SESSION_TTL });
-  responseCookies.set(COOKIE_NAME, sealed, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: SESSION_TTL,
-  });
-}
-
-/**
- * Delete the session cookie on a NextResponse.
- * Use this in Route Handlers (e.g. sign-out).
- */
-export function deleteSessionCookie(
-  responseCookies: ResponseCookies,
-): void {
-  responseCookies.delete(COOKIE_NAME);
+export async function createDevSession(input: {
+  userId: string;
+  email: string;
+  displayName: string;
+  orgMemberships: string;
+  workspaceMemberships: string;
+}): Promise<void> {
+  const cookieStore = await cookies();
+  const session = await getIronSession<{ data?: SessionData }>(
+    cookieStore,
+    getSessionOptions(),
+  );
+  session.data = {
+    mode: "dev",
+    ...input,
+  };
+  await session.save();
 }
 
 /**
  * Destroy the current session via the cookies() API.
- * Works in Server Actions and server component contexts.
+ * Works in Server Actions. For Route Handlers, use getIronSession
+ * with response.cookies directly instead.
  */
 export async function destroySession(): Promise<void> {
   const cookieStore = await cookies();
@@ -145,21 +116,6 @@ export async function destroySession(): Promise<void> {
     getSessionOptions(),
   );
   session.destroy();
-}
-
-/**
- * Unseal a raw cookie value back to session data.
- * Used when reading session outside of iron-session's getIronSession
- * (e.g. after setting it via sealData in the same request cycle).
- */
-export async function unsealSessionData(sealed: string): Promise<SessionData | null> {
-  try {
-    const password = getSessionSecret();
-    const result = await unsealData<{ data?: SessionData }>(sealed, { password });
-    return result.data ?? null;
-  } catch {
-    return null;
-  }
 }
 
 /**
