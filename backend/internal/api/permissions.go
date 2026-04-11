@@ -75,6 +75,9 @@ var permissionMatrix = map[string]map[Action]bool{
 //  1. Explicit workspace membership with a role that permits the action.
 //  2. org_admin of the workspace's parent org (implicit workspace_admin access).
 //
+// An org_admin who also holds an explicit workspace role (e.g. workspace_viewer)
+// is still treated as workspace_admin — the org_admin override always wins.
+//
 // The orgLookup is optional — pass nil if org_admin implicit access should not
 // be checked (e.g., in tests without a database).
 func RequireWorkspaceRole(
@@ -89,15 +92,16 @@ func RequireWorkspaceRole(
 		if roleAllows(m.Role, action) {
 			return nil
 		}
-		return fmt.Errorf("%w: role %s cannot perform %s in workspace %s", ErrForbidden, m.Role, action, workspaceID)
+		// Explicit role is insufficient — don't return yet, the caller may
+		// also be org_admin which overrides the workspace-level role.
 	}
 
 	// Check 2: org_admin of parent org gets implicit workspace_admin access.
+	// This applies even when an explicit workspace membership exists.
 	if orgLookup != nil {
 		orgID, err := orgLookup.GetOrganizationIDByWorkspaceID(ctx, workspaceID)
 		if err == nil {
 			if m, ok := caller.OrganizationMemberships[orgID]; ok && m.Role == RoleOrgAdmin {
-				// org_admin is treated as workspace_admin for permission purposes.
 				if roleAllows(RoleWorkspaceAdmin, action) {
 					return nil
 				}
@@ -105,15 +109,24 @@ func RequireWorkspaceRole(
 		}
 	}
 
+	// Produce the most specific error message.
+	if m, ok := caller.WorkspaceMemberships[workspaceID]; ok {
+		return fmt.Errorf("%w: role %s cannot perform %s in workspace %s", ErrForbidden, m.Role, action, workspaceID)
+	}
 	return fmt.Errorf("%w: caller %s does not have access to workspace %s", ErrForbidden, caller.UserID, workspaceID)
+}
+
+// orgLookupProvider is an optional interface that a WorkspaceAuthorizer can
+// implement to expose its org lookup. This lets AuthorizeWorkspaceAction check
+// org_admin override even when the caller also has an explicit workspace role.
+type orgLookupProvider interface {
+	OrgLookup() WorkspaceOrgLookup
 }
 
 // AuthorizeWorkspaceAction verifies workspace access via the authorizer (which
 // handles org_admin implicit access) and then checks the caller's role permits
-// the action. Use this in handlers that are NOT behind authorizeWorkspaceAccess
-// middleware. For handlers behind middleware, the workspace access is already
-// checked and this still works correctly (the AuthorizeWorkspace call is
-// idempotent).
+// the action. An org_admin who also holds an explicit workspace role (e.g.
+// workspace_viewer) is still treated as workspace_admin.
 func AuthorizeWorkspaceAction(
 	ctx context.Context,
 	authorizer WorkspaceAuthorizer,
@@ -127,18 +140,38 @@ func AuthorizeWorkspaceAction(
 	}
 
 	// Step 2: check role for the specific action.
-	// If they have explicit membership, check that role.
 	if m, ok := caller.WorkspaceMemberships[workspaceID]; ok {
 		if roleAllows(m.Role, action) {
 			return nil
 		}
-		return fmt.Errorf("%w: role %s cannot perform %s in workspace %s", ErrForbidden, m.Role, action, workspaceID)
+		// Explicit role is insufficient — don't return yet, the caller may
+		// also be org_admin which overrides the workspace-level role.
 	}
 
-	// No explicit membership but AuthorizeWorkspace passed → caller is org_admin.
-	// org_admin is treated as workspace_admin.
-	if roleAllows(RoleWorkspaceAdmin, action) {
-		return nil
+	// Step 3: check org_admin override. Extract orgLookup from the authorizer
+	// if available, and verify whether the caller is org_admin.
+	if provider, ok := authorizer.(orgLookupProvider); ok {
+		if orgLookup := provider.OrgLookup(); orgLookup != nil {
+			orgID, err := orgLookup.GetOrganizationIDByWorkspaceID(ctx, workspaceID)
+			if err == nil {
+				if m, ok := caller.OrganizationMemberships[orgID]; ok && m.Role == RoleOrgAdmin {
+					if roleAllows(RoleWorkspaceAdmin, action) {
+						return nil
+					}
+				}
+			}
+		}
+	} else if _, hasExplicit := caller.WorkspaceMemberships[workspaceID]; !hasExplicit {
+		// No explicit membership and no orgLookupProvider, but AuthorizeWorkspace
+		// passed — the caller must be org_admin (the authorizer checked internally).
+		if roleAllows(RoleWorkspaceAdmin, action) {
+			return nil
+		}
+	}
+
+	// Produce the most specific error message.
+	if m, ok := caller.WorkspaceMemberships[workspaceID]; ok {
+		return fmt.Errorf("%w: role %s cannot perform %s in workspace %s", ErrForbidden, m.Role, action, workspaceID)
 	}
 	return fmt.Errorf("%w: insufficient privileges for %s in workspace %s", ErrForbidden, action, workspaceID)
 }

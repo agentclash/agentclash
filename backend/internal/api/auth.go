@@ -192,6 +192,12 @@ func NewCallerWorkspaceAuthorizer(orgLookup ...WorkspaceOrgLookup) CallerWorkspa
 	return CallerWorkspaceAuthorizer{orgLookup: lookup}
 }
 
+// OrgLookup returns the workspace-to-org resolver, or nil if not configured.
+// Satisfies the orgLookupProvider interface used by AuthorizeWorkspaceAction.
+func (a CallerWorkspaceAuthorizer) OrgLookup() WorkspaceOrgLookup {
+	return a.orgLookup
+}
+
 func (a CallerWorkspaceAuthorizer) AuthorizeWorkspace(ctx context.Context, caller Caller, workspaceID uuid.UUID) error {
 	// Check 1: explicit workspace membership.
 	if _, ok := caller.WorkspaceMemberships[workspaceID]; ok {

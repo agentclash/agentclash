@@ -282,6 +282,65 @@ func TestAuthorizeWorkspaceAction_OrgAdminImplicitWrite(t *testing.T) {
 	}
 }
 
+func TestRequireWorkspaceRole_OrgAdminOverridesExplicitViewerRole(t *testing.T) {
+	workspaceID := uuid.New()
+	orgID := uuid.New()
+	caller := Caller{
+		UserID: uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: RoleWorkspaceViewer},
+		},
+		OrganizationMemberships: map[uuid.UUID]OrganizationMembership{
+			orgID: {OrganizationID: orgID, Role: RoleOrgAdmin},
+		},
+	}
+
+	lookup := fakeOrgLookup{orgID: orgID}
+
+	// org_admin with explicit workspace_viewer should still be allowed to write.
+	writeActions := []Action{
+		ActionCreateRun,
+		ActionCreateAgentBuild,
+		ActionUploadArtifact,
+		ActionManageInfrastructure,
+	}
+	for _, action := range writeActions {
+		if err := RequireWorkspaceRole(context.Background(), caller, workspaceID, action, lookup); err != nil {
+			t.Errorf("org_admin+viewer should be allowed for %s, got: %v", action, err)
+		}
+	}
+}
+
+func TestAuthorizeWorkspaceAction_OrgAdminOverridesExplicitViewerRole(t *testing.T) {
+	workspaceID := uuid.New()
+	orgID := uuid.New()
+	caller := Caller{
+		UserID: uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: RoleWorkspaceViewer},
+		},
+		OrganizationMemberships: map[uuid.UUID]OrganizationMembership{
+			orgID: {OrganizationID: orgID, Role: RoleOrgAdmin},
+		},
+	}
+
+	lookup := fakeOrgLookup{orgID: orgID}
+	authorizer := NewCallerWorkspaceAuthorizer(lookup)
+
+	// org_admin with explicit workspace_viewer should still be allowed to write.
+	writeActions := []Action{
+		ActionCreateRun,
+		ActionCreateAgentBuild,
+		ActionUploadArtifact,
+		ActionManageInfrastructure,
+	}
+	for _, action := range writeActions {
+		if err := AuthorizeWorkspaceAction(context.Background(), authorizer, caller, workspaceID, action); err != nil {
+			t.Errorf("org_admin+viewer should be allowed for %s via AuthorizeWorkspaceAction, got: %v", action, err)
+		}
+	}
+}
+
 func TestRunCreation_ViewerDenied(t *testing.T) {
 	workspaceID := uuid.New()
 	caller := Caller{
