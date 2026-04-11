@@ -309,7 +309,11 @@ func (a *Activities) ExecuteNativeModelStep(ctx context.Context, input RunAgentW
 
 func (a *Activities) ExecutePromptEvalStep(ctx context.Context, input RunAgentWorkflowInput) error {
 	if a.hooks.PromptEvalInvoker == nil {
-		return nil
+		return temporal.NewNonRetryableApplicationError(
+			"prompt_eval invoker not configured",
+			"workflow.prompt_eval_invoker_missing",
+			nil,
+		)
 	}
 
 	executionContext, err := a.repo.GetRunAgentExecutionContextByID(ctx, input.RunAgentID)

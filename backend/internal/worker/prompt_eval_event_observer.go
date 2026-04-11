@@ -24,8 +24,10 @@ type PromptEvalRunEventObserver struct {
 
 	mu              sync.Mutex
 	eventIDSequence int64
-	runStarted      bool
 	outputRecorded  bool
+
+	started    sync.Once
+	startedErr error
 }
 
 func NewPromptEvalRunEventObserverFactory(recorder RunEventRecorder) PromptEvalObserverFactory {
@@ -176,30 +178,19 @@ func (o *PromptEvalRunEventObserver) OnRunFailure(ctx context.Context, err error
 }
 
 func (o *PromptEvalRunEventObserver) ensureRunStarted(ctx context.Context) error {
-	o.mu.Lock()
-	if o.runStarted {
-		o.mu.Unlock()
-		return nil
-	}
-	o.mu.Unlock()
-
-	if err := o.recordEvent(ctx, runevents.EventTypeSystemRunStarted, map[string]any{
-		"deployment_type":  o.executionContext.Deployment.DeploymentType,
-		"execution_mode":   "prompt_eval",
-		"execution_target": o.executionContext.Deployment.RuntimeProfile.ExecutionTarget,
-		"trace_mode":       o.executionContext.Deployment.RuntimeProfile.TraceMode,
-		"started_at":       time.Now().UTC(),
-	}, runevents.SummaryMetadata{
-		Status:        "running",
-		EvidenceLevel: runevents.EvidenceLevelNativeStructured,
-	}); err != nil {
-		return err
-	}
-
-	o.mu.Lock()
-	o.runStarted = true
-	o.mu.Unlock()
-	return nil
+	o.started.Do(func() {
+		o.startedErr = o.recordEvent(ctx, runevents.EventTypeSystemRunStarted, map[string]any{
+			"deployment_type":  o.executionContext.Deployment.DeploymentType,
+			"execution_mode":   "prompt_eval",
+			"execution_target": o.executionContext.Deployment.RuntimeProfile.ExecutionTarget,
+			"trace_mode":       o.executionContext.Deployment.RuntimeProfile.TraceMode,
+			"started_at":       time.Now().UTC(),
+		}, runevents.SummaryMetadata{
+			Status:        "running",
+			EvidenceLevel: runevents.EvidenceLevelNativeStructured,
+		})
+	})
+	return o.startedErr
 }
 
 func (o *PromptEvalRunEventObserver) nextEventID(eventType runevents.Type) string {

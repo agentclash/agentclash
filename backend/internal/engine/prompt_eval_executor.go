@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"regexp"
 	"strings"
 
@@ -168,6 +169,13 @@ func buildPromptEvalMessages(executionContext repository.RunAgentExecutionContex
 
 	vars := promptEvalVariables(executionContext)
 	rendered := renderPromptTemplate(instructions, vars)
+	if leftovers := promptEvalTemplatePattern.FindAllString(rendered, -1); len(leftovers) > 0 {
+		slog.Default().Warn(
+			"prompt_eval executor rendered prompt with unresolved template tokens",
+			"run_agent_id", executionContext.RunAgent.ID.String(),
+			"unresolved_tokens", leftovers,
+		)
+	}
 
 	messages := make([]provider.Message, 0, 2)
 	if system := strings.TrimSpace(extractPolicyInstructions(executionContext.Deployment.AgentBuildVersion.PolicySpec)); system != "" {
@@ -211,6 +219,13 @@ func promptEvalVariables(executionContext repository.RunAgentExecutionContext) m
 	if executionContext.ChallengeInputSet == nil || len(executionContext.ChallengeInputSet.Cases) == 0 {
 		return vars
 	}
+	if n := len(executionContext.ChallengeInputSet.Cases); n > 1 {
+		slog.Default().Warn(
+			"prompt_eval executor using first case only; additional cases ignored",
+			"run_agent_id", executionContext.RunAgent.ID.String(),
+			"case_count", n,
+		)
+	}
 	first := executionContext.ChallengeInputSet.Cases[0]
 	for _, input := range first.Inputs {
 		if input.Key == "" {
@@ -237,12 +252,6 @@ func promptEvalRenderInputValue(input challengepack.CaseInput) (string, bool) {
 		return "false", true
 	case int:
 		return fmt.Sprintf("%d", typed), true
-	case int32:
-		return fmt.Sprintf("%d", typed), true
-	case int64:
-		return fmt.Sprintf("%d", typed), true
-	case float32:
-		return strings.TrimRight(strings.TrimRight(fmt.Sprintf("%f", typed), "0"), "."), true
 	case float64:
 		return strings.TrimRight(strings.TrimRight(fmt.Sprintf("%f", typed), "0"), "."), true
 	default:

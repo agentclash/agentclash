@@ -106,6 +106,58 @@ func TestPromptEvalExecutorProviderFailurePropagates(t *testing.T) {
 	}
 }
 
+func TestPromptEvalExecutorUsesFirstCaseWhenInputSetHasMany(t *testing.T) {
+	ctx := promptEvalExecutionContext()
+	// Add two extra cases to confirm the executor ignores them without erroring.
+	extra := repository.ChallengeCaseExecutionContext{
+		ID:           uuid.New(),
+		ChallengeKey: "translate-greeting",
+		CaseKey:      "german-hello",
+		Inputs: []challengepack.CaseInput{
+			{Key: "text", Kind: "text", Value: "ignored text"},
+			{Key: "language", Kind: "text", Value: "German"},
+		},
+	}
+	ctx.ChallengeInputSet.Cases = append(ctx.ChallengeInputSet.Cases, extra, extra)
+
+	client := &provider.FakeClient{Response: provider.Response{OutputText: "Bonjour"}}
+	if _, err := NewPromptEvalExecutor(client, &recordingObserver{}).Execute(context.Background(), ctx); err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+
+	if len(client.Requests) != 1 {
+		t.Fatalf("provider call count = %d, want 1", len(client.Requests))
+	}
+	userMessage := client.Requests[0].Messages[len(client.Requests[0].Messages)-1].Content
+	if !strings.Contains(userMessage, "French") {
+		t.Fatalf("rendered prompt %q should reference first case language 'French'", userMessage)
+	}
+	if strings.Contains(userMessage, "German") {
+		t.Fatalf("rendered prompt %q must not leak second case language 'German'", userMessage)
+	}
+}
+
+func TestPromptEvalExecutorPassesThroughUnresolvedTokens(t *testing.T) {
+	ctx := promptEvalExecutionContext()
+	ctx.ChallengePackVersion.Challenges[0].Definition = []byte(`{"instructions":"Use {{text}} and respect {{missing_var}}."}`)
+
+	client := &provider.FakeClient{Response: provider.Response{OutputText: "ok"}}
+	if _, err := NewPromptEvalExecutor(client, &recordingObserver{}).Execute(context.Background(), ctx); err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+
+	if len(client.Requests) != 1 {
+		t.Fatalf("provider call count = %d, want 1", len(client.Requests))
+	}
+	userMessage := client.Requests[0].Messages[len(client.Requests[0].Messages)-1].Content
+	if !strings.Contains(userMessage, "hello world") {
+		t.Fatalf("rendered prompt %q should substitute resolved var", userMessage)
+	}
+	if !strings.Contains(userMessage, "{{missing_var}}") {
+		t.Fatalf("rendered prompt %q should pass unresolved token through verbatim", userMessage)
+	}
+}
+
 func TestPromptEvalExecutorRejectsMissingInstructions(t *testing.T) {
 	ctx := promptEvalExecutionContext()
 	ctx.ChallengePackVersion.Challenges[0].Definition = []byte(`{}`)
