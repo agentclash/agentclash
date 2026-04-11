@@ -1781,6 +1781,9 @@ func (r *Repository) GetActiveWorkspaceMembershipsByUserID(ctx context.Context, 
 		}
 		memberships = append(memberships, m)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate workspace memberships: %w", err)
+	}
 	if memberships == nil {
 		memberships = []WorkspaceMembershipRow{}
 	}

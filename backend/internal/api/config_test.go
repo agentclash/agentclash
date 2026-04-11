@@ -1,15 +1,13 @@
 package api
 
 import (
-	"os"
 	"strings"
 	"testing"
 )
 
 func TestLoadConfigFromEnv_DefaultAuthModeDev(t *testing.T) {
-	// Unset auth-related vars to test defaults
-	os.Unsetenv("AUTH_MODE")
-	os.Unsetenv("WORKOS_CLIENT_ID")
+	unsetEnv(t, "AUTH_MODE")
+	unsetEnv(t, "WORKOS_CLIENT_ID")
 
 	cfg, err := LoadConfigFromEnv()
 	if err != nil {
@@ -22,7 +20,7 @@ func TestLoadConfigFromEnv_DefaultAuthModeDev(t *testing.T) {
 
 func TestLoadConfigFromEnv_WorkOSModeRequiresClientID(t *testing.T) {
 	t.Setenv("AUTH_MODE", "workos")
-	os.Unsetenv("WORKOS_CLIENT_ID")
+	unsetEnv(t, "WORKOS_CLIENT_ID")
 
 	_, err := LoadConfigFromEnv()
 	if err == nil {
@@ -36,7 +34,6 @@ func TestLoadConfigFromEnv_WorkOSModeRequiresClientID(t *testing.T) {
 func TestLoadConfigFromEnv_WorkOSModeWithClientID(t *testing.T) {
 	t.Setenv("AUTH_MODE", "workos")
 	t.Setenv("WORKOS_CLIENT_ID", "client_01TEST")
-	// Also need a valid artifact signing secret for non-dev environments
 	t.Setenv("APP_ENV", "production")
 	t.Setenv("ARTIFACT_SIGNING_SECRET", strings.Repeat("a", 64))
 

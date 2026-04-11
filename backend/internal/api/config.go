@@ -34,6 +34,7 @@ type Config struct {
 	AppEnvironment           string
 	AuthMode                 string // "dev" or "workos"
 	WorkOSClientID           string // required when AuthMode is "workos"
+	WorkOSIssuer             string // optional; defaults to "https://api.workos.com"
 	BindAddress              string
 	DatabaseURL              string
 	TemporalAddress          string
@@ -69,6 +70,7 @@ func LoadConfigFromEnv() (Config, error) {
 	if authMode == "workos" && workosClientID == "" {
 		return Config{}, fmt.Errorf("%w: WORKOS_CLIENT_ID is required when AUTH_MODE=workos", ErrInvalidConfig)
 	}
+	workosIssuer := os.Getenv("WORKOS_ISSUER") // optional; defaults handled by authenticator
 	bindAddress, err := envOrDefault("API_SERVER_BIND_ADDRESS", defaultBindAddress)
 	if err != nil {
 		return Config{}, err
@@ -136,6 +138,7 @@ func LoadConfigFromEnv() (Config, error) {
 		AppEnvironment:           appEnvironment,
 		AuthMode:                 authMode,
 		WorkOSClientID:           workosClientID,
+		WorkOSIssuer:             workosIssuer,
 		BindAddress:              bindAddress,
 		DatabaseURL:              databaseURL,
 		TemporalAddress:          temporalAddress,
