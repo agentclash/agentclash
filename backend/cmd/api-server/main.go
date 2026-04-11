@@ -76,10 +76,24 @@ func main() {
 	challengePackAuthoringManager := api.NewChallengePackAuthoringManager(repo, artifactStore)
 	agentBuildManager := api.NewAgentBuildManager(repo)
 
+	var authenticator api.Authenticator
+	switch cfg.AuthMode {
+	case "workos":
+		authenticator, err = api.NewWorkOSAuthenticator(cfg.WorkOSClientID, repo)
+		if err != nil {
+			logger.Error("failed to initialize workos authenticator", "error", err)
+			os.Exit(1)
+		}
+		logger.Info("authentication mode: workos")
+	default:
+		authenticator = api.NewDevelopmentAuthenticator()
+		logger.Info("authentication mode: dev (development headers)")
+	}
+
 	server := api.NewServer(
 		cfg,
 		logger,
-		api.NewDevelopmentAuthenticator(),
+		authenticator,
 		authorizer,
 		artifactManager,
 		runCreationManager,

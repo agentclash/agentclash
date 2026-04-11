@@ -18,6 +18,7 @@ const (
 	defaultTemporalTarget          = "localhost:7233"
 	defaultNamespace               = "default"
 	defaultAppEnvironment          = "development"
+	defaultAuthMode                = "dev"
 	defaultShutdownTime            = 10 * time.Second
 	defaultHostedRunCallbackSecret = "agentclash-dev-hosted-callback-secret"
 	minArtifactSigningSecretLength = 32
@@ -31,6 +32,8 @@ var ErrInvalidConfig = errors.New("invalid api server config")
 
 type Config struct {
 	AppEnvironment           string
+	AuthMode                 string // "dev" or "workos"
+	WorkOSClientID           string // required when AuthMode is "workos"
 	BindAddress              string
 	DatabaseURL              string
 	TemporalAddress          string
@@ -54,6 +57,17 @@ func LoadConfigFromEnv() (Config, error) {
 	appEnvironment, err := envOrDefault("APP_ENV", defaultAppEnvironment)
 	if err != nil {
 		return Config{}, err
+	}
+	authMode, err := envOrDefault("AUTH_MODE", defaultAuthMode)
+	if err != nil {
+		return Config{}, err
+	}
+	if authMode != "dev" && authMode != "workos" {
+		return Config{}, fmt.Errorf("%w: AUTH_MODE must be \"dev\" or \"workos\", got %q", ErrInvalidConfig, authMode)
+	}
+	workosClientID := os.Getenv("WORKOS_CLIENT_ID")
+	if authMode == "workos" && workosClientID == "" {
+		return Config{}, fmt.Errorf("%w: WORKOS_CLIENT_ID is required when AUTH_MODE=workos", ErrInvalidConfig)
 	}
 	bindAddress, err := envOrDefault("API_SERVER_BIND_ADDRESS", defaultBindAddress)
 	if err != nil {
@@ -120,6 +134,8 @@ func LoadConfigFromEnv() (Config, error) {
 
 	cfg := Config{
 		AppEnvironment:           appEnvironment,
+		AuthMode:                 authMode,
+		WorkOSClientID:           workosClientID,
 		BindAddress:              bindAddress,
 		DatabaseURL:              databaseURL,
 		TemporalAddress:          temporalAddress,

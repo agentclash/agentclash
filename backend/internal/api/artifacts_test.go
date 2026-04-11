@@ -90,7 +90,7 @@ func TestArtifactManagerUploadAndSignedDownloadFlow(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, download.URL, nil)
 	recorder := httptest.NewRecorder()
-	newRouter(
+	newRouter("dev",
 		artifactTestLogger(t),
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),

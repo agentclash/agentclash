@@ -33,7 +33,7 @@ func NewServer(
 	challengePackAuthoringService ChallengePackAuthoringService,
 	agentBuildService AgentBuildService,
 ) *Server {
-	router := newRouter(logger, authenticator, authorizer, artifactService, cfg.ArtifactMaxUploadBytes, runCreationService, runReadService, replayReadService, hostedRunIngestionService, compareReadService, agentDeploymentReadService, challengePackReadService, agentBuildService, releaseGateService, challengePackAuthoringService)
+	router := newRouter(cfg.AuthMode, logger, authenticator, authorizer, artifactService, cfg.ArtifactMaxUploadBytes, runCreationService, runReadService, replayReadService, hostedRunIngestionService, compareReadService, agentDeploymentReadService, challengePackReadService, agentBuildService, releaseGateService, challengePackAuthoringService)
 
 	return &Server{
 		config: cfg,
@@ -81,6 +81,7 @@ func Run(ctx context.Context, server *Server, logger *slog.Logger) error {
 }
 
 func newRouter(
+	authMode string,
 	logger *slog.Logger,
 	authenticator Authenticator,
 	authorizer WorkspaceAuthorizer,
@@ -122,7 +123,7 @@ func newRouter(
 	router := chi.NewRouter()
 	router.Use(recoverer(logger))
 	router.Use(requestLogger(logger))
-	router.Use(corsMiddleware)
+	router.Use(newCORSMiddleware(authMode))
 	router.Get("/healthz", healthzHandler)
 	registerPublicRoutes(router, logger, artifactService)
 	registerHostedIntegrationRoutes(router, logger, hostedRunIngestionService)

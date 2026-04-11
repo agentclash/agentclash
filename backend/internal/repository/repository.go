@@ -1728,7 +1728,64 @@ var (
 	ErrAgentBuildNotFound        = errors.New("agent build not found")
 	ErrAgentBuildVersionNotFound = errors.New("agent build version not found")
 	ErrWorkspaceNotFound         = errors.New("workspace not found")
+	ErrUserNotFound              = errors.New("user not found")
 )
+
+type User struct {
+	ID           uuid.UUID
+	WorkOSUserID string
+	Email        string
+	DisplayName  string
+}
+
+type WorkspaceMembershipRow struct {
+	WorkspaceID uuid.UUID
+	Role        string
+}
+
+func (r *Repository) GetUserByWorkOSID(ctx context.Context, workosUserID string) (User, error) {
+	row := r.db.QueryRow(ctx, `
+		SELECT id, workos_user_id, email, COALESCE(display_name, '')
+		FROM users
+		WHERE workos_user_id = $1 AND archived_at IS NULL
+	`, workosUserID)
+
+	var user User
+	err := row.Scan(&user.ID, &user.WorkOSUserID, &user.Email, &user.DisplayName)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return User{}, ErrUserNotFound
+		}
+		return User{}, fmt.Errorf("get user by workos id: %w", err)
+	}
+	return user, nil
+}
+
+func (r *Repository) GetActiveWorkspaceMembershipsByUserID(ctx context.Context, userID uuid.UUID) ([]WorkspaceMembershipRow, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT wm.workspace_id, wm.role
+		FROM workspace_memberships wm
+		WHERE wm.user_id = $1 AND wm.membership_status = 'active'
+		ORDER BY wm.workspace_id
+	`, userID)
+	if err != nil {
+		return nil, fmt.Errorf("get active workspace memberships by user id: %w", err)
+	}
+	defer rows.Close()
+
+	var memberships []WorkspaceMembershipRow
+	for rows.Next() {
+		var m WorkspaceMembershipRow
+		if err := rows.Scan(&m.WorkspaceID, &m.Role); err != nil {
+			return nil, fmt.Errorf("scan workspace membership: %w", err)
+		}
+		memberships = append(memberships, m)
+	}
+	if memberships == nil {
+		memberships = []WorkspaceMembershipRow{}
+	}
+	return memberships, nil
+}
 
 func (r *Repository) GetOrganizationIDByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) (uuid.UUID, error) {
 	var orgID uuid.UUID
