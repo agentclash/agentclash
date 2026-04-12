@@ -293,6 +293,25 @@ func (r *Repository) GetModelCatalogEntryByID(ctx context.Context, id uuid.UUID)
 	return row, nil
 }
 
+func (r *Repository) GetModelCatalogEntryByProviderModel(ctx context.Context, providerKey, providerModelID string) (ModelCatalogEntryRow, error) {
+	var row ModelCatalogEntryRow
+	var createdAt, updatedAt pgtype.Timestamptz
+	err := r.db.QueryRow(ctx, `
+		SELECT id, provider_key, provider_model_id, display_name, model_family, modality, lifecycle_status, metadata, created_at, updated_at
+		FROM model_catalog_entries WHERE provider_key = $1 AND provider_model_id = $2
+	`, providerKey, providerModelID).Scan(&row.ID, &row.ProviderKey, &row.ProviderModelID, &row.DisplayName, &row.ModelFamily,
+		&row.Modality, &row.LifecycleStatus, &row.Metadata, &createdAt, &updatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ModelCatalogEntryRow{}, ErrModelCatalogNotFound
+		}
+		return ModelCatalogEntryRow{}, fmt.Errorf("get model catalog entry by provider model: %w", err)
+	}
+	row.CreatedAt = createdAt.Time
+	row.UpdatedAt = updatedAt.Time
+	return row, nil
+}
+
 func (r *Repository) ListModelCatalogEntries(ctx context.Context) ([]ModelCatalogEntryRow, error) {
 	rows, err := r.db.Query(ctx, `
 		SELECT id, provider_key, provider_model_id, display_name, model_family, modality, lifecycle_status, metadata, created_at, updated_at
