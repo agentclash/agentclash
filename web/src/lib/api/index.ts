@@ -25,5 +25,13 @@ export type {
   CreateAgentDeploymentRequest,
   AgentDeploymentCreateResponse,
   WorkspaceSecret,
+  ReplayState,
+  ReplayStepType,
+  ReplayStepStatus,
+  ReplayStep,
+  ReplaySummaryCounts,
+  ReplaySummary,
+  ReplayPagination,
+  ReplayResponse,
 } from "./types";
 export { AGENT_KINDS } from "./types";

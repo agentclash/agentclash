@@ -21,6 +21,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import Link from "next/link";
 import {
   ExternalLink,
   Trophy,
@@ -113,12 +114,14 @@ interface RunDetailClientProps {
   initialRun: Run;
   initialAgents: RunAgent[];
   apiBaseUrl: string;
+  workspaceId: string;
 }
 
 export function RunDetailClient({
   initialRun,
   initialAgents,
   apiBaseUrl,
+  workspaceId,
 }: RunDetailClientProps) {
   const { getAccessToken } = useAccessToken();
   const [run, setRun] = useState<Run>(initialRun);
@@ -325,16 +328,13 @@ export function RunDetailClient({
 
                 {/* Action links */}
                 <div className="flex gap-2 mt-1">
-                  <a
-                    href={`${apiBaseUrl}/v1/replays/${agent.id}/viewer`}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  <Link
+                    href={`/workspaces/${workspaceId}/runs/${run.id}/agents/${agent.id}/replay`}
                     className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
                   >
                     <Play className="size-3" />
                     Replay
-                    <ExternalLink className="size-2.5" />
-                  </a>
+                  </Link>
                   <a
                     href={`${apiBaseUrl}/v1/scorecards/${agent.id}`}
                     target="_blank"

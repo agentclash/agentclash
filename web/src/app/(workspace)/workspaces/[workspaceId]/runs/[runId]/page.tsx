@@ -53,6 +53,7 @@ export default async function RunDetailPage({
         initialRun={run}
         initialAgents={agents}
         apiBaseUrl={apiBaseUrl}
+        workspaceId={workspaceId}
       />
     </div>
   );
