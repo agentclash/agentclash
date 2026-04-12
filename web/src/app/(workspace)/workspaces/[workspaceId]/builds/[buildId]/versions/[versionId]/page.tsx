@@ -45,11 +45,7 @@ export default async function VersionEditorPage({
         <span className="text-foreground">v{version.version_number}</span>
       </div>
 
-      <VersionEditor
-        version={version}
-        workspaceId={workspaceId}
-        buildId={buildId}
-      />
+      <VersionEditor version={version} />
     </div>
   );
 }

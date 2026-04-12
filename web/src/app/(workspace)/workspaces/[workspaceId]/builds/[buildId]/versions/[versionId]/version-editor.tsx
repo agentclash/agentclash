@@ -8,7 +8,6 @@ import { ApiError } from "@/lib/api/errors";
 import type {
   AgentBuildVersion,
   ValidationResult,
-  ValidationError,
 } from "@/lib/api/types";
 import { AGENT_KINDS } from "@/lib/api/types";
 import { Button } from "@/components/ui/button";
@@ -19,8 +18,6 @@ import { Loader2, Save, ShieldCheck, CheckCircle } from "lucide-react";
 
 interface VersionEditorProps {
   version: AgentBuildVersion;
-  workspaceId: string;
-  buildId: string;
 }
 
 function jsonStr(val: unknown): string {
@@ -46,8 +43,6 @@ type SpecKey = (typeof specFields)[number]["key"];
 
 export function VersionEditor({
   version,
-  workspaceId,
-  buildId,
 }: VersionEditorProps) {
   const router = useRouter();
   const { getAccessToken } = useAccessToken();
