@@ -29,6 +29,7 @@ func registerProtectedRoutes(
 	orgMembershipService OrgMembershipService,
 	wsMembershipService WorkspaceMembershipService,
 	onboardingService OnboardingService,
+	infraService InfrastructureService,
 ) {
 	router.Get("/auth/session", sessionHandler)
 	router.Get("/users/me", getUserMeHandler(logger, userService))
@@ -99,6 +100,52 @@ func registerProtectedRoutes(
 
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Post("/workspaces/{workspaceID}/agent-deployments", createAgentDeploymentHandler(logger, agentBuildService, authorizer))
+
+	// Infrastructure CRUD — workspace-scoped create/list (skip if no service provided)
+	if infraService == nil {
+		return
+	}
+	wsMiddleware := func(next http.HandlerFunc) http.Handler {
+		return authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))(next)
+	}
+
+	// Runtime Profiles
+	router.Method("POST", "/workspaces/{workspaceID}/runtime-profiles", wsMiddleware(infraCreateHandler(logger, infraService.CreateRuntimeProfile, mapRuntimeProfile)))
+	router.Method("GET", "/workspaces/{workspaceID}/runtime-profiles", wsMiddleware(infraListHandler(logger, infraService.ListRuntimeProfiles, mapRuntimeProfile)))
+	router.Get("/runtime-profiles/{profileID}", infraGetHandler(logger, "profileID", infraService.GetRuntimeProfile, mapRuntimeProfile, "runtime profile"))
+	router.Post("/runtime-profiles/{profileID}/archive", archiveRuntimeProfileHandler(logger, infraService))
+
+	// Provider Accounts
+	router.Method("POST", "/workspaces/{workspaceID}/provider-accounts", wsMiddleware(infraCreateHandler(logger, infraService.CreateProviderAccount, mapProviderAccount)))
+	router.Method("GET", "/workspaces/{workspaceID}/provider-accounts", wsMiddleware(infraListHandler(logger, infraService.ListProviderAccounts, mapProviderAccount)))
+	router.Get("/provider-accounts/{accountID}", infraGetHandler(logger, "accountID", infraService.GetProviderAccount, mapProviderAccount, "provider account"))
+
+	// Model Catalog (global, no workspace scope)
+	router.Get("/model-catalog", listModelCatalogHandler(logger, infraService))
+	router.Get("/model-catalog/{entryID}", getModelCatalogEntryHandler(logger, infraService))
+
+	// Model Aliases
+	router.Method("POST", "/workspaces/{workspaceID}/model-aliases", wsMiddleware(infraCreateHandler(logger, infraService.CreateModelAlias, mapModelAlias)))
+	router.Method("GET", "/workspaces/{workspaceID}/model-aliases", wsMiddleware(infraListHandler(logger, infraService.ListModelAliases, mapModelAlias)))
+	router.Get("/model-aliases/{aliasID}", infraGetHandler(logger, "aliasID", infraService.GetModelAlias, mapModelAlias, "model alias"))
+
+	// Tools
+	router.Method("POST", "/workspaces/{workspaceID}/tools", wsMiddleware(infraCreateHandler(logger, infraService.CreateTool, mapTool)))
+	router.Method("GET", "/workspaces/{workspaceID}/tools", wsMiddleware(infraListHandler(logger, infraService.ListTools, mapTool)))
+	router.Get("/tools/{toolID}", infraGetHandler(logger, "toolID", infraService.GetTool, mapTool, "tool"))
+
+	// Knowledge Sources
+	router.Method("POST", "/workspaces/{workspaceID}/knowledge-sources", wsMiddleware(infraCreateHandler(logger, infraService.CreateKnowledgeSource, mapKnowledgeSource)))
+	router.Method("GET", "/workspaces/{workspaceID}/knowledge-sources", wsMiddleware(infraListHandler(logger, infraService.ListKnowledgeSources, mapKnowledgeSource)))
+	router.Get("/knowledge-sources/{sourceID}", infraGetHandler(logger, "sourceID", infraService.GetKnowledgeSource, mapKnowledgeSource, "knowledge source"))
+
+	// Routing Policies
+	router.Method("POST", "/workspaces/{workspaceID}/routing-policies", wsMiddleware(infraCreateHandler(logger, infraService.CreateRoutingPolicy, mapRoutingPolicy)))
+	router.Method("GET", "/workspaces/{workspaceID}/routing-policies", wsMiddleware(infraListHandler(logger, infraService.ListRoutingPolicies, mapRoutingPolicy)))
+
+	// Spend Policies
+	router.Method("POST", "/workspaces/{workspaceID}/spend-policies", wsMiddleware(infraCreateHandler(logger, infraService.CreateSpendPolicy, mapSpendPolicy)))
+	router.Method("GET", "/workspaces/{workspaceID}/spend-policies", wsMiddleware(infraListHandler(logger, infraService.ListSpendPolicies, mapSpendPolicy)))
 }
 
 func registerPublicRoutes(router chi.Router, logger *slog.Logger, artifactService ArtifactService) {

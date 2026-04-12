@@ -38,8 +38,9 @@ func NewServer(
 	orgMembershipService OrgMembershipService,
 	wsMembershipService WorkspaceMembershipService,
 	onboardingService OnboardingService,
+	infraService InfrastructureService,
 ) *Server {
-	router := newRouter(cfg.AuthMode, logger, authenticator, authorizer, artifactService, cfg.ArtifactMaxUploadBytes, runCreationService, runReadService, replayReadService, hostedRunIngestionService, compareReadService, agentDeploymentReadService, challengePackReadService, agentBuildService, releaseGateService, challengePackAuthoringService, userService, orgService, wsService, orgMembershipService, wsMembershipService, onboardingService)
+	router := newRouter(cfg.AuthMode, logger, authenticator, authorizer, artifactService, cfg.ArtifactMaxUploadBytes, runCreationService, runReadService, replayReadService, hostedRunIngestionService, compareReadService, agentDeploymentReadService, challengePackReadService, agentBuildService, releaseGateService, challengePackAuthoringService, userService, orgService, wsService, orgMembershipService, wsMembershipService, onboardingService, infraService)
 
 	return &Server{
 		config: cfg,
@@ -108,7 +109,8 @@ func newRouter(
 	wsServiceArg WorkspaceService,
 	orgMembershipServiceArg OrgMembershipService,
 	wsMembershipServiceArg WorkspaceMembershipService,
-	extra ...OnboardingService,
+	onboardingServiceArg OnboardingService,
+	infraServiceArg InfrastructureService,
 ) http.Handler {
 	challengePackAuthoringService := challengePackAuthoringServiceArg
 	userService := userServiceArg
@@ -116,10 +118,8 @@ func newRouter(
 	wsService := wsServiceArg
 	orgMembershipService := orgMembershipServiceArg
 	wsMembershipService := wsMembershipServiceArg
-	var onboardingService OnboardingService
-	if len(extra) > 0 {
-		onboardingService = extra[0]
-	}
+	onboardingService := onboardingServiceArg
+	infraService := infraServiceArg
 
 	if hostedRunIngestionService == nil {
 		hostedRunIngestionService = noopHostedRunIngestionService{}
@@ -147,7 +147,7 @@ func newRouter(
 	registerHostedIntegrationRoutes(router, logger, hostedRunIngestionService)
 	router.Route("/v1", func(r chi.Router) {
 		r.Use(authenticateRequest(logger, authenticator))
-		registerProtectedRoutes(r, logger, authorizer, artifactService, artifactMaxUploadBytes, runCreationService, runReadService, replayReadService, compareReadService, releaseGateService, agentDeploymentReadService, challengePackReadService, challengePackAuthoringService, agentBuildService, userService, orgService, wsService, orgMembershipService, wsMembershipService, onboardingService)
+		registerProtectedRoutes(r, logger, authorizer, artifactService, artifactMaxUploadBytes, runCreationService, runReadService, replayReadService, compareReadService, releaseGateService, agentDeploymentReadService, challengePackReadService, challengePackAuthoringService, agentBuildService, userService, orgService, wsService, orgMembershipService, wsMembershipService, onboardingService, infraService)
 	})
 
 	return router
