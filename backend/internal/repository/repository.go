@@ -2,6 +2,8 @@ package repository
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -3380,7 +3382,13 @@ func (r *Repository) MarkAgentBuildVersionReady(ctx context.Context, id uuid.UUI
 }
 
 func (r *Repository) CreateAgentDeployment(ctx context.Context, params CreateAgentDeploymentParams) (AgentDeploymentRow, error) {
-	row := r.db.QueryRow(ctx, `
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return AgentDeploymentRow{}, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	row := tx.QueryRow(ctx, `
 		INSERT INTO agent_deployments (
 			organization_id, workspace_id, agent_build_id, current_build_version_id,
 			runtime_profile_id, provider_account_id, model_alias_id,
@@ -3398,7 +3406,7 @@ func (r *Repository) CreateAgentDeployment(ctx context.Context, params CreateAge
 
 	var dep AgentDeploymentRow
 	var createdAt, updatedAt pgtype.Timestamptz
-	err := row.Scan(
+	err = row.Scan(
 		&dep.ID, &dep.OrganizationID, &dep.WorkspaceID, &dep.AgentBuildID, &dep.CurrentBuildVersionID,
 		&dep.Name, &dep.Slug, &dep.DeploymentType, &dep.Status, &createdAt, &updatedAt,
 	)
@@ -3408,7 +3416,49 @@ func (r *Repository) CreateAgentDeployment(ctx context.Context, params CreateAge
 
 	dep.CreatedAt = createdAt.Time
 	dep.UpdatedAt = updatedAt.Time
+
+	// Create the initial deployment snapshot so the deployment is immediately
+	// runnable. The snapshot_hash is derived from the source IDs to enable
+	// deduplication if the same configuration is snapshotted again later.
+	snapshotHash := deploymentSnapshotHash(params.CurrentBuildVersionID, params.RuntimeProfileID, params.ProviderAccountID, params.ModelAliasID)
+	_, err = tx.Exec(ctx, `
+		INSERT INTO agent_deployment_snapshots (
+			organization_id, workspace_id, agent_build_id,
+			agent_deployment_id, source_agent_build_version_id,
+			source_runtime_profile_id, source_provider_account_id,
+			source_model_alias_id, deployment_type,
+			snapshot_hash, snapshot_config
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'native', $9, $10)
+	`, params.OrganizationID, params.WorkspaceID, params.AgentBuildID,
+		dep.ID, params.CurrentBuildVersionID,
+		params.RuntimeProfileID, params.ProviderAccountID,
+		params.ModelAliasID, snapshotHash, params.DeploymentConfig,
+	)
+	if err != nil {
+		return AgentDeploymentRow{}, fmt.Errorf("create initial deployment snapshot: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return AgentDeploymentRow{}, fmt.Errorf("commit deployment: %w", err)
+	}
+
 	return dep, nil
+}
+
+// deploymentSnapshotHash builds a deterministic hash from the source IDs that
+// define a deployment's configuration. Used by the unique constraint on
+// (agent_deployment_id, snapshot_hash) to prevent duplicate snapshots.
+func deploymentSnapshotHash(buildVersionID, runtimeProfileID uuid.UUID, providerAccountID, modelAliasID *uuid.UUID) string {
+	h := sha256.New()
+	h.Write([]byte(buildVersionID.String()))
+	h.Write([]byte(runtimeProfileID.String()))
+	if providerAccountID != nil {
+		h.Write([]byte(providerAccountID.String()))
+	}
+	if modelAliasID != nil {
+		h.Write([]byte(modelAliasID.String()))
+	}
+	return hex.EncodeToString(h.Sum(nil))[:16]
 }
 
 func scanAgentBuildVersion(row pgx.Row) (AgentBuildVersion, error) {
