@@ -32,9 +32,6 @@ export default async function RunDetailPage({
     `/v1/runs/${runId}/agents`,
   );
 
-  const apiBaseUrl =
-    process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
-
   return (
     <div>
       {/* Breadcrumb */}
@@ -52,7 +49,6 @@ export default async function RunDetailPage({
       <RunDetailClient
         initialRun={run}
         initialAgents={agents}
-        apiBaseUrl={apiBaseUrl}
         workspaceId={workspaceId}
       />
     </div>

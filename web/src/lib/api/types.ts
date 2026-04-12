@@ -528,6 +528,43 @@ export interface ReplayResponse {
   pagination: ReplayPagination;
 }
 
+// --- Scorecards ---
+
+/** GET /v1/scorecards/{runAgentID} — mirrors getRunAgentScorecardResponse in Go. */
+export interface ScorecardResponse {
+  state: ReplayState; // "ready" | "pending" | "errored"
+  message?: string;
+  run_agent_status: RunAgentStatus;
+  id: string;
+  run_agent_id: string;
+  run_id: string;
+  evaluation_spec_id: string;
+  overall_score?: number;
+  correctness_score?: number;
+  reliability_score?: number;
+  latency_score?: number;
+  cost_score?: number;
+  scorecard: ScorecardDocument;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ScorecardDocument {
+  run_agent_id: string;
+  evaluation_spec_id: string;
+  status: "complete" | "partial" | "failed";
+  warnings?: string[];
+  dimensions: Record<string, ScorecardDimension>;
+  validator_summary: Record<string, number>;
+  metric_summary: Record<string, number>;
+}
+
+export interface ScorecardDimension {
+  state: "available" | "unavailable" | "error";
+  score?: number;
+  reason?: string;
+}
+
 // --- Errors ---
 
 /** Standard error envelope returned by all backend error responses. */
