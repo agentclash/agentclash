@@ -216,6 +216,42 @@ export interface AgentDeploymentCreateResponse {
   updated_at: string;
 }
 
+// --- Infrastructure Resources ---
+
+/** GET /v1/workspaces/{id}/runtime-profiles list item */
+export interface RuntimeProfile {
+  id: string;
+  workspace_id?: string;
+  name: string;
+  slug: string;
+  execution_target: string;
+  trace_mode: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/** GET /v1/workspaces/{id}/provider-accounts list item */
+export interface ProviderAccount {
+  id: string;
+  workspace_id?: string;
+  provider_key: string;
+  name: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/** GET /v1/workspaces/{id}/model-aliases list item */
+export interface ModelAlias {
+  id: string;
+  workspace_id?: string;
+  alias_key: string;
+  display_name: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
 // --- Errors ---
 
 /** Standard error envelope returned by all backend error responses. */

@@ -5,6 +5,11 @@ import {
   Play,
   GitCompare,
   ShieldCheck,
+  Settings2,
+  Key,
+  Tag,
+  Wrench,
+  Database,
   type LucideIcon,
 } from "lucide-react";
 
@@ -62,6 +67,36 @@ export const navSections: NavSection[] = [
         label: "Release Gates",
         href: (id) => `/workspaces/${id}/release-gates`,
         icon: ShieldCheck,
+      },
+    ],
+  },
+  {
+    title: "Infrastructure",
+    items: [
+      {
+        label: "Runtime Profiles",
+        href: (id) => `/workspaces/${id}/runtime-profiles`,
+        icon: Settings2,
+      },
+      {
+        label: "Provider Accounts",
+        href: (id) => `/workspaces/${id}/provider-accounts`,
+        icon: Key,
+      },
+      {
+        label: "Model Aliases",
+        href: (id) => `/workspaces/${id}/model-aliases`,
+        icon: Tag,
+      },
+      {
+        label: "Tools",
+        href: (id) => `/workspaces/${id}/tools`,
+        icon: Wrench,
+      },
+      {
+        label: "Knowledge Sources",
+        href: (id) => `/workspaces/${id}/knowledge-sources`,
+        icon: Database,
       },
     ],
   },

@@ -10,6 +10,9 @@ import type {
   AgentBuildDetail,
   AgentBuildVersion,
   AgentDeploymentCreateResponse,
+  RuntimeProfile,
+  ProviderAccount,
+  ModelAlias,
 } from "@/lib/api/types";
 import { Button } from "@/components/ui/button";
 import {
@@ -39,74 +42,79 @@ export function CreateDeploymentDialog({
   const [name, setName] = useState("");
   const [selectedBuildId, setSelectedBuildId] = useState("");
   const [selectedVersionId, setSelectedVersionId] = useState("");
-  const [runtimeProfileId, setRuntimeProfileId] = useState("");
-  const [providerAccountId, setProviderAccountId] = useState("");
-  const [modelAliasId, setModelAliasId] = useState("");
+  const [selectedProfileId, setSelectedProfileId] = useState("");
+  const [selectedAccountId, setSelectedAccountId] = useState("");
+  const [selectedAliasId, setSelectedAliasId] = useState("");
   const [deploymentConfig, setDeploymentConfig] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  // Loaded data
   const [builds, setBuilds] = useState<AgentBuild[]>([]);
   const [readyVersions, setReadyVersions] = useState<AgentBuildVersion[]>([]);
-  const [loadingBuilds, setLoadingBuilds] = useState(false);
+  const [profiles, setProfiles] = useState<RuntimeProfile[]>([]);
+  const [accounts, setAccounts] = useState<ProviderAccount[]>([]);
+  const [aliases, setAliases] = useState<ModelAlias[]>([]);
+  const [loading, setLoading] = useState(false);
   const [loadingVersions, setLoadingVersions] = useState(false);
 
-  // Load builds when dialog opens
-  const loadBuilds = useCallback(async () => {
-    setLoadingBuilds(true);
+  const loadData = useCallback(async () => {
+    setLoading(true);
     try {
       const token = await getAccessToken();
       const api = createApiClient(token);
-      const res = await api.get<{ items: AgentBuild[] }>(
-        `/v1/workspaces/${workspaceId}/agent-builds`,
-      );
-      setBuilds(res.items);
+      const [buildsRes, profilesRes, accountsRes, aliasesRes] =
+        await Promise.all([
+          api.get<{ items: AgentBuild[] }>(`/v1/workspaces/${workspaceId}/agent-builds`),
+          api.get<{ items: RuntimeProfile[] }>(`/v1/workspaces/${workspaceId}/runtime-profiles`),
+          api.get<{ items: ProviderAccount[] }>(`/v1/workspaces/${workspaceId}/provider-accounts`),
+          api.get<{ items: ModelAlias[] }>(`/v1/workspaces/${workspaceId}/model-aliases`),
+        ]);
+      setBuilds(buildsRes.items);
+      setProfiles(profilesRes.items);
+      setAccounts(accountsRes.items);
+      setAliases(aliasesRes.items);
     } catch {
-      toast.error("Failed to load builds");
+      toast.error("Failed to load data");
     } finally {
-      setLoadingBuilds(false);
+      setLoading(false);
     }
   }, [getAccessToken, workspaceId]);
 
   useEffect(() => {
-    if (open) loadBuilds();
-  }, [open, loadBuilds]);
+    if (open) loadData();
+  }, [open, loadData]);
 
-  // Load versions when build is selected
-  const loadVersions = useCallback(async (buildId: string) => {
-    setLoadingVersions(true);
-    setReadyVersions([]);
-    setSelectedVersionId("");
-    try {
-      const token = await getAccessToken();
-      const api = createApiClient(token);
-      const build = await api.get<AgentBuildDetail>(
-        `/v1/agent-builds/${buildId}`,
-      );
-      const ready = build.versions.filter(
-        (v) => v.version_status === "ready",
-      );
-      setReadyVersions(ready);
-      if (ready.length === 1) setSelectedVersionId(ready[0].id);
-    } catch {
-      toast.error("Failed to load versions");
-    } finally {
-      setLoadingVersions(false);
-    }
-  }, [getAccessToken]);
+  const loadVersions = useCallback(
+    async (buildId: string) => {
+      setLoadingVersions(true);
+      setReadyVersions([]);
+      setSelectedVersionId("");
+      try {
+        const token = await getAccessToken();
+        const api = createApiClient(token);
+        const build = await api.get<AgentBuildDetail>(`/v1/agent-builds/${buildId}`);
+        const ready = build.versions.filter((v) => v.version_status === "ready");
+        setReadyVersions(ready);
+        if (ready.length === 1) setSelectedVersionId(ready[0].id);
+      } catch {
+        toast.error("Failed to load versions");
+      } finally {
+        setLoadingVersions(false);
+      }
+    },
+    [getAccessToken],
+  );
 
   function handleBuildChange(buildId: string) {
     setSelectedBuildId(buildId);
-    if (buildId) {
-      loadVersions(buildId);
-    } else {
+    if (buildId) loadVersions(buildId);
+    else {
       setReadyVersions([]);
       setSelectedVersionId("");
     }
   }
 
   async function handleCreate() {
-    if (!name.trim() || !selectedBuildId || !selectedVersionId || !runtimeProfileId.trim()) return;
+    if (!name.trim() || !selectedBuildId || !selectedVersionId || !selectedProfileId) return;
 
     let configJson: unknown = undefined;
     if (deploymentConfig.trim()) {
@@ -128,9 +136,9 @@ export function CreateDeploymentDialog({
           name: name.trim(),
           agent_build_id: selectedBuildId,
           build_version_id: selectedVersionId,
-          runtime_profile_id: runtimeProfileId.trim(),
-          provider_account_id: providerAccountId.trim() || undefined,
-          model_alias_id: modelAliasId.trim() || undefined,
+          runtime_profile_id: selectedProfileId,
+          provider_account_id: selectedAccountId || undefined,
+          model_alias_id: selectedAliasId || undefined,
           deployment_config: configJson,
         },
       );
@@ -149,14 +157,16 @@ export function CreateDeploymentDialog({
     setName("");
     setSelectedBuildId("");
     setSelectedVersionId("");
-    setRuntimeProfileId("");
-    setProviderAccountId("");
-    setModelAliasId("");
+    setSelectedProfileId("");
+    setSelectedAccountId("");
+    setSelectedAliasId("");
     setDeploymentConfig("");
     setReadyVersions([]);
   }
 
-  const canSubmit = name.trim() && selectedBuildId && selectedVersionId && runtimeProfileId.trim();
+  const selectClass =
+    "block w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/50 disabled:opacity-50";
+  const canSubmit = name.trim() && selectedBuildId && selectedVersionId && selectedProfileId;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -173,7 +183,6 @@ export function CreateDeploymentDialog({
         </DialogHeader>
 
         <div className="space-y-4 py-2 max-h-[60vh] overflow-y-auto">
-          {/* Name */}
           <div>
             <label className="mb-1.5 block text-sm font-medium">Name</label>
             <input
@@ -186,105 +195,64 @@ export function CreateDeploymentDialog({
             />
           </div>
 
-          {/* Build selector */}
           <div>
-            <label className="mb-1.5 block text-sm font-medium">
-              Agent Build
-            </label>
-            <select
-              value={selectedBuildId}
-              onChange={(e) => handleBuildChange(e.target.value)}
-              disabled={loadingBuilds}
-              className="block w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/50 disabled:opacity-50"
-            >
-              <option value="">
-                {loadingBuilds ? "Loading..." : "Select a build"}
-              </option>
+            <label className="mb-1.5 block text-sm font-medium">Agent Build</label>
+            <select value={selectedBuildId} onChange={(e) => handleBuildChange(e.target.value)} disabled={loading} className={selectClass}>
+              <option value="">{loading ? "Loading..." : "Select a build"}</option>
               {builds.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.name}
-                </option>
+                <option key={b.id} value={b.id}>{b.name}</option>
               ))}
             </select>
           </div>
 
-          {/* Version selector */}
           <div>
             <label className="mb-1.5 block text-sm font-medium">
-              Build Version{" "}
-              <span className="text-muted-foreground font-normal">
-                (only ready versions)
-              </span>
+              Build Version <span className="text-muted-foreground font-normal">(only ready)</span>
             </label>
-            <select
-              value={selectedVersionId}
-              onChange={(e) => setSelectedVersionId(e.target.value)}
-              disabled={!selectedBuildId || loadingVersions}
-              className="block w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/50 disabled:opacity-50"
-            >
+            <select value={selectedVersionId} onChange={(e) => setSelectedVersionId(e.target.value)} disabled={!selectedBuildId || loadingVersions} className={selectClass}>
               <option value="">
-                {loadingVersions
-                  ? "Loading..."
-                  : readyVersions.length === 0 && selectedBuildId
-                    ? "No ready versions"
-                    : "Select a version"}
+                {loadingVersions ? "Loading..." : readyVersions.length === 0 && selectedBuildId ? "No ready versions" : "Select a version"}
               </option>
               {readyVersions.map((v) => (
-                <option key={v.id} value={v.id}>
-                  v{v.version_number} — {v.agent_kind}
-                </option>
+                <option key={v.id} value={v.id}>v{v.version_number} — {v.agent_kind}</option>
               ))}
             </select>
           </div>
 
-          {/* Runtime profile ID */}
           <div>
-            <label className="mb-1.5 block text-sm font-medium">
-              Runtime Profile ID
-            </label>
-            <input
-              type="text"
-              value={runtimeProfileId}
-              onChange={(e) => setRuntimeProfileId(e.target.value)}
-              placeholder="UUID of the runtime profile"
-              className="block w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm font-[family-name:var(--font-mono)] placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/50"
-            />
-            <p className="mt-1 text-xs text-muted-foreground">
-              Runtime profile CRUD is not yet available — enter a UUID directly.
-            </p>
+            <label className="mb-1.5 block text-sm font-medium">Runtime Profile</label>
+            <select value={selectedProfileId} onChange={(e) => setSelectedProfileId(e.target.value)} disabled={loading} className={selectClass}>
+              <option value="">{loading ? "Loading..." : profiles.length === 0 ? "No profiles — create one first" : "Select a profile"}</option>
+              {profiles.map((p) => (
+                <option key={p.id} value={p.id}>{p.name} ({p.execution_target})</option>
+              ))}
+            </select>
           </div>
 
-          {/* Provider account ID (optional) */}
           <div>
             <label className="mb-1.5 block text-sm font-medium">
-              Provider Account ID{" "}
-              <span className="text-muted-foreground font-normal">(optional)</span>
+              Provider Account <span className="text-muted-foreground font-normal">(optional)</span>
             </label>
-            <input
-              type="text"
-              value={providerAccountId}
-              onChange={(e) => setProviderAccountId(e.target.value)}
-              placeholder="UUID"
-              className="block w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm font-[family-name:var(--font-mono)] placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/50"
-            />
+            <select value={selectedAccountId} onChange={(e) => setSelectedAccountId(e.target.value)} disabled={loading} className={selectClass}>
+              <option value="">None</option>
+              {accounts.map((a) => (
+                <option key={a.id} value={a.id}>{a.name} ({a.provider_key})</option>
+              ))}
+            </select>
           </div>
 
-          {/* Model alias ID (optional) */}
           <div>
             <label className="mb-1.5 block text-sm font-medium">
-              Model Alias ID{" "}
-              <span className="text-muted-foreground font-normal">(optional)</span>
+              Model Alias <span className="text-muted-foreground font-normal">(optional)</span>
             </label>
-            <input
-              type="text"
-              value={modelAliasId}
-              onChange={(e) => setModelAliasId(e.target.value)}
-              placeholder="UUID"
-              className="block w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm font-[family-name:var(--font-mono)] placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/50"
-            />
+            <select value={selectedAliasId} onChange={(e) => setSelectedAliasId(e.target.value)} disabled={loading} className={selectClass}>
+              <option value="">None</option>
+              {aliases.map((a) => (
+                <option key={a.id} value={a.id}>{a.display_name} ({a.alias_key})</option>
+              ))}
+            </select>
           </div>
 
-          {/* Deployment config (optional) */}
           <JsonField
             label="Deployment Config (optional)"
             value={deploymentConfig}
@@ -295,19 +263,11 @@ export function CreateDeploymentDialog({
         </div>
 
         <DialogFooter>
-          <Button
-            variant="outline"
-            onClick={() => setOpen(false)}
-            disabled={submitting}
-          >
+          <Button variant="outline" onClick={() => setOpen(false)} disabled={submitting}>
             Cancel
           </Button>
           <Button disabled={!canSubmit || submitting} onClick={handleCreate}>
-            {submitting ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              "Deploy"
-            )}
+            {submitting ? <Loader2 className="size-4 animate-spin" /> : "Deploy"}
           </Button>
         </DialogFooter>
       </DialogContent>
