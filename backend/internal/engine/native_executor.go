@@ -204,7 +204,7 @@ func (e NativeExecutor) Execute(ctx context.Context, executionContext repository
 	// build path below consumes the workspace secret map.
 	workspaceSecrets, err := e.loadWorkspaceSecrets(ctx, executionContext.Run.WorkspaceID)
 	if err != nil {
-		return Result{}, NewFailure(StopReasonSandboxError, "load workspace secrets", err)
+		return Result{}, NewFailure(StopReasonSandboxError, fmt.Sprintf("load workspace secrets: %v", err), err)
 	}
 
 	session, err := e.prepareSandbox(ctx, executionContext, sandboxRequest)
