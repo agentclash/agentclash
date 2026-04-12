@@ -1,10 +1,13 @@
 package workflow
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/challengepack"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/domain"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/engine"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/hostedruns"
@@ -59,6 +62,10 @@ func runAgentWorkflow(ctx sdkworkflow.Context, input RunAgentWorkflowInput) erro
 		return runHostedRunAgent(ctx, input, executionContext)
 	}
 
+	if executionModeFromManifest(executionContext.ChallengePackVersion.Manifest) == challengepack.ExecutionModePromptEval {
+		return runPromptEvalRunAgent(ctx, input, executionContext)
+	}
+
 	if err := transitionRunAgentStatus(ctx, input.RunAgentID, domain.RunAgentStatusExecuting, stringPtr("native execution started"), nil); err != nil {
 		return err
 	}
@@ -70,6 +77,43 @@ func runAgentWorkflow(ctx sdkworkflow.Context, input RunAgentWorkflowInput) erro
 	}
 	warnOnReplayBuildFailure(ctx, input.RunAgentID, "successful execution")
 	return nil
+}
+
+func runPromptEvalRunAgent(ctx sdkworkflow.Context, input RunAgentWorkflowInput, executionContext repository.RunAgentExecutionContext) error {
+	if err := transitionRunAgentStatus(ctx, input.RunAgentID, domain.RunAgentStatusExecuting, stringPtr("prompt_eval execution started"), nil); err != nil {
+		return err
+	}
+	if err := executePromptEvalStep(ctx, input, executionContext).Get(ctx, nil); err != nil {
+		return err
+	}
+	if err := transitionRunAgentStatus(ctx, input.RunAgentID, domain.RunAgentStatusEvaluating, stringPtr("prompt_eval execution completed; parent scoring pending"), nil); err != nil {
+		return err
+	}
+	warnOnReplayBuildFailure(ctx, input.RunAgentID, "successful prompt_eval execution")
+	return nil
+}
+
+func executePromptEvalStep(ctx sdkworkflow.Context, input RunAgentWorkflowInput, executionContext repository.RunAgentExecutionContext) sdkworkflow.Future {
+	return sdkworkflow.ExecuteActivity(
+		sdkworkflow.WithActivityOptions(ctx, nativeModelActivityOptions(executionContext)),
+		executePromptEvalStepActivityName,
+		input,
+	)
+}
+
+func executionModeFromManifest(manifest json.RawMessage) string {
+	if len(manifest) == 0 {
+		return ""
+	}
+	var decoded struct {
+		Version struct {
+			ExecutionMode string `json:"execution_mode"`
+		} `json:"version"`
+	}
+	if err := json.Unmarshal(manifest, &decoded); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(decoded.Version.ExecutionMode)
 }
 
 func executeNativeModelStep(ctx sdkworkflow.Context, input RunAgentWorkflowInput, executionContext repository.RunAgentExecutionContext) sdkworkflow.Future {

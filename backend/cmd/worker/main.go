@@ -64,9 +64,14 @@ func main() {
 		sandboxProvider,
 		workerapp.NewNativeRunEventObserverFactory(repo),
 	)
+	promptEvalInvoker := workerapp.NewPromptEvalInvokerWithObserverFactory(
+		providerRouter,
+		workerapp.NewPromptEvalRunEventObserverFactory(repo),
+	)
 	temporalWorker := workerapp.NewTemporalWorker(temporalClient, cfg, repo, workflowpkg.FakeWorkHooks{
 		HostedRunStarter:   hostedRunClient,
 		NativeModelInvoker: nativeModelInvoker,
+		PromptEvalInvoker:  promptEvalInvoker,
 	})
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

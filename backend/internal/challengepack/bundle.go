@@ -28,12 +28,18 @@ type PackMetadata struct {
 
 type VersionMetadata struct {
 	Number         int32                  `yaml:"number" json:"number"`
+	ExecutionMode  string                 `yaml:"execution_mode,omitempty" json:"execution_mode,omitempty"`
 	ToolPolicy     map[string]any         `yaml:"tool_policy,omitempty" json:"tool_policy,omitempty"`
 	Filesystem     map[string]any         `yaml:"filesystem,omitempty" json:"filesystem,omitempty"`
 	Sandbox        *SandboxConfig         `yaml:"sandbox,omitempty" json:"sandbox,omitempty"`
 	EvaluationSpec scoring.EvaluationSpec `yaml:"evaluation_spec" json:"evaluation_spec"`
 	Assets         []AssetReference       `yaml:"assets,omitempty" json:"assets,omitempty"`
 }
+
+const (
+	ExecutionModeNative     = "native"
+	ExecutionModePromptEval = "prompt_eval"
+)
 
 type SandboxConfig struct {
 	NetworkAccess      bool              `yaml:"network_access" json:"network_access"`
@@ -127,6 +133,7 @@ func ParseYAML(data []byte) (Bundle, error) {
 
 	type rawVersionMetadata struct {
 		Number         int32            `yaml:"number"`
+		ExecutionMode  string           `yaml:"execution_mode,omitempty"`
 		ToolPolicy     map[string]any   `yaml:"tool_policy,omitempty"`
 		Filesystem     map[string]any   `yaml:"filesystem,omitempty"`
 		Sandbox        *SandboxConfig   `yaml:"sandbox,omitempty"`
@@ -161,6 +168,7 @@ func ParseYAML(data []byte) (Bundle, error) {
 		Pack: raw.Pack,
 		Version: VersionMetadata{
 			Number:         raw.Version.Number,
+			ExecutionMode:  raw.Version.ExecutionMode,
 			ToolPolicy:     raw.Version.ToolPolicy,
 			Filesystem:     raw.Version.Filesystem,
 			Sandbox:        raw.Version.Sandbox,
@@ -188,6 +196,9 @@ func ManifestJSON(bundle Bundle) (json.RawMessage, error) {
 	}
 
 	versionMap := map[string]any{"number": normalized.Version.Number, "assets": normalized.Version.Assets}
+	if normalized.Version.ExecutionMode != "" {
+		versionMap["execution_mode"] = normalized.Version.ExecutionMode
+	}
 	if normalized.Version.Sandbox != nil {
 		versionMap["sandbox_template_id"] = normalized.Version.Sandbox.SandboxTemplateID
 	}
@@ -221,6 +232,7 @@ func normalizeBundle(bundle *Bundle) {
 	bundle.Pack.Slug = strings.TrimSpace(bundle.Pack.Slug)
 	bundle.Pack.Name = strings.TrimSpace(bundle.Pack.Name)
 	bundle.Pack.Family = strings.TrimSpace(bundle.Pack.Family)
+	bundle.Version.ExecutionMode = strings.TrimSpace(bundle.Version.ExecutionMode)
 	bundle.Challenges = append([]ChallengeDefinition(nil), bundle.Challenges...)
 	bundle.InputSets = append([]InputSetDefinition(nil), bundle.InputSets...)
 	bundle.Version.Assets = append([]AssetReference(nil), bundle.Version.Assets...)

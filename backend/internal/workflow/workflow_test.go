@@ -390,6 +390,36 @@ func TestNativeModelActivityOptionsUseRuntimeStepTimeout(t *testing.T) {
 	}
 }
 
+func TestExecutePromptEvalStepFailsWhenInvokerNotConfigured(t *testing.T) {
+	runID := uuid.New()
+	runAgentID := uuid.New()
+	repo := newFakeRunRepository(
+		fixtureRun(runID, domain.RunStatusRunning),
+		fixtureRunAgent(runID, runAgentID, 0),
+	)
+
+	activities := NewActivities(repo, FakeWorkHooks{})
+
+	err := activities.ExecutePromptEvalStep(context.Background(), RunAgentWorkflowInput{
+		RunID:      runID,
+		RunAgentID: runAgentID,
+	})
+	if err == nil {
+		t.Fatalf("expected error")
+	}
+
+	var appErr *temporal.ApplicationError
+	if !errors.As(err, &appErr) {
+		t.Fatalf("expected temporal application error, got %T", err)
+	}
+	if !appErr.NonRetryable() {
+		t.Fatalf("application error should be non-retryable, got %v", appErr)
+	}
+	if appErr.Type() != "workflow.prompt_eval_invoker_missing" {
+		t.Fatalf("application error type = %q, want workflow.prompt_eval_invoker_missing", appErr.Type())
+	}
+}
+
 func TestExecuteNativeModelStepWrapsNonRetryableProviderFailures(t *testing.T) {
 	runAgentID := uuid.New()
 	executionContext := nativeExecutionContext(uuid.New(), runAgentID)

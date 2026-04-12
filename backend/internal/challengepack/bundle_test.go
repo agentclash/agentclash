@@ -468,6 +468,133 @@ func TestValidateBundleRejectsExpectationReferenceMisses(t *testing.T) {
 	}
 }
 
+func TestParseYAMLPromptEvalBundle(t *testing.T) {
+	bundle, err := ParseYAML([]byte(`
+pack:
+  slug: translation-eval
+  name: Translation Eval
+  family: nlp
+version:
+  number: 1
+  execution_mode: prompt_eval
+  evaluation_spec:
+    name: translation-v1
+    version_number: 1
+    judge_mode: deterministic
+    validators:
+      - key: check-output
+        type: contains
+        target: final_output
+        expected_from: challenge_input
+    scorecard:
+      dimensions: [correctness]
+challenges:
+  - key: translate-greeting
+    title: Translate a greeting
+    category: translation
+    difficulty: easy
+    instructions: "Translate {{text}} to {{language}}"
+input_sets:
+  - key: default
+    name: Default
+    cases:
+      - challenge_key: translate-greeting
+        case_key: french-hello
+        inputs:
+          - key: text
+            kind: text
+            value: hello world
+          - key: language
+            kind: text
+            value: French
+        expectations:
+          - key: answer
+            kind: text
+            source: input:text
+`))
+	if err != nil {
+		t.Fatalf("ParseYAML returned error: %v", err)
+	}
+	if bundle.Version.ExecutionMode != ExecutionModePromptEval {
+		t.Fatalf("execution mode = %q, want prompt_eval", bundle.Version.ExecutionMode)
+	}
+
+	manifest, err := ManifestJSON(bundle)
+	if err != nil {
+		t.Fatalf("ManifestJSON returned error: %v", err)
+	}
+	var decoded struct {
+		Version struct {
+			ExecutionMode string `json:"execution_mode"`
+		} `json:"version"`
+	}
+	if err := json.Unmarshal(manifest, &decoded); err != nil {
+		t.Fatalf("unmarshal manifest: %v", err)
+	}
+	if decoded.Version.ExecutionMode != ExecutionModePromptEval {
+		t.Fatalf("manifest version.execution_mode = %q, want prompt_eval", decoded.Version.ExecutionMode)
+	}
+}
+
+func TestValidateBundleRejectsPromptEvalWithTools(t *testing.T) {
+	err := ValidateBundle(Bundle{
+		Pack: PackMetadata{Slug: "t", Name: "T", Family: "f"},
+		Version: VersionMetadata{
+			Number:         1,
+			ExecutionMode:  ExecutionModePromptEval,
+			EvaluationSpec: minimalSpec(),
+			Sandbox:        &SandboxConfig{NetworkAccess: true},
+		},
+		Tools: map[string]any{"custom": []any{}},
+		Challenges: []ChallengeDefinition{
+			{Key: "c1", Title: "C1", Category: "cat", Difficulty: "easy"},
+		},
+		InputSets: []InputSetDefinition{
+			{Key: "default", Name: "Default", Cases: []CaseDefinition{{ChallengeKey: "c1", CaseKey: "k"}}},
+		},
+	})
+	if err == nil {
+		t.Fatalf("expected validation error for prompt_eval pack with tools/sandbox")
+	}
+	errs, ok := err.(ValidationErrors)
+	if !ok {
+		t.Fatalf("expected ValidationErrors, got %T", err)
+	}
+	if !containsField(errs, "tools") {
+		t.Fatalf("expected tools validation error; got %v", errs)
+	}
+	if !containsField(errs, "version.sandbox") {
+		t.Fatalf("expected version.sandbox validation error; got %v", errs)
+	}
+}
+
+func TestValidateBundleRejectsUnknownExecutionMode(t *testing.T) {
+	err := ValidateBundle(Bundle{
+		Pack: PackMetadata{Slug: "t", Name: "T", Family: "f"},
+		Version: VersionMetadata{
+			Number:         1,
+			ExecutionMode:  "exotic",
+			EvaluationSpec: minimalSpec(),
+		},
+		Challenges: []ChallengeDefinition{
+			{Key: "c1", Title: "C1", Category: "cat", Difficulty: "easy"},
+		},
+		InputSets: []InputSetDefinition{
+			{Key: "default", Name: "Default", Cases: []CaseDefinition{{ChallengeKey: "c1", CaseKey: "k"}}},
+		},
+	})
+	if err == nil {
+		t.Fatalf("expected validation error for unknown execution_mode")
+	}
+	errs, ok := err.(ValidationErrors)
+	if !ok {
+		t.Fatalf("expected ValidationErrors, got %T", err)
+	}
+	if !containsField(errs, "version.execution_mode") {
+		t.Fatalf("expected version.execution_mode error; got %v", errs)
+	}
+}
+
 func minimalSpec() scoring.EvaluationSpec {
 	return scoring.EvaluationSpec{
 		Name:          "support-v1",

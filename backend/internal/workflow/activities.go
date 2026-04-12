@@ -28,6 +28,7 @@ const (
 	startHostedRunActivityName               = "workflow.start_hosted_run"
 	markHostedRunTimedOutActivityName        = "workflow.mark_hosted_run_timed_out"
 	executeNativeModelStepActivityName       = "workflow.execute_native_model_step"
+	executePromptEvalStepActivityName        = "workflow.execute_prompt_eval_step"
 	scoreRunAgentActivityName                = "workflow.score_run_agent"
 	buildRunScorecardActivityName            = "workflow.build_run_scorecard"
 	buildRunAgentReplayActivityName          = "workflow.build_run_agent_replay"
@@ -52,10 +53,15 @@ type FakeWorkHooks struct {
 	SimulateEvaluation   func(ctx context.Context, input RunAgentWorkflowInput) error
 	HostedRunStarter     HostedRunStarter
 	NativeModelInvoker   NativeModelInvoker
+	PromptEvalInvoker    PromptEvalInvoker
 }
 
 type NativeModelInvoker interface {
 	InvokeNativeModel(ctx context.Context, executionContext repository.RunAgentExecutionContext) (engine.Result, error)
+}
+
+type PromptEvalInvoker interface {
+	InvokePromptEval(ctx context.Context, executionContext repository.RunAgentExecutionContext) (engine.Result, error)
 }
 
 type Activities struct {
@@ -298,6 +304,24 @@ func (a *Activities) ExecuteNativeModelStep(ctx context.Context, input RunAgentW
 	}
 
 	_, err = a.hooks.NativeModelInvoker.InvokeNativeModel(ctx, executionContext)
+	return wrapActivityError(err)
+}
+
+func (a *Activities) ExecutePromptEvalStep(ctx context.Context, input RunAgentWorkflowInput) error {
+	if a.hooks.PromptEvalInvoker == nil {
+		return temporal.NewNonRetryableApplicationError(
+			"prompt_eval invoker not configured",
+			"workflow.prompt_eval_invoker_missing",
+			nil,
+		)
+	}
+
+	executionContext, err := a.repo.GetRunAgentExecutionContextByID(ctx, input.RunAgentID)
+	if err != nil {
+		return wrapActivityError(err)
+	}
+
+	_, err = a.hooks.PromptEvalInvoker.InvokePromptEval(ctx, executionContext)
 	return wrapActivityError(err)
 }
 
