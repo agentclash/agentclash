@@ -84,6 +84,8 @@ const SORT_OPTIONS = [
   { key: "cost", label: "Cost" },
 ] as const;
 
+import { scorePercent } from "@/lib/scores";
+
 // --- Helpers ---
 
 function formatDuration(start: string, end?: string): string {
@@ -96,11 +98,6 @@ function formatDuration(start: string, end?: string): string {
   const mins = Math.floor(secs / 60);
   const remSecs = secs % 60;
   return `${mins}m ${remSecs}s`;
-}
-
-function scorePercent(score?: number): string {
-  if (score == null) return "\u2014";
-  return `${(score * 100).toFixed(1)}%`;
 }
 
 function deltaLabel(delta?: number): string {
@@ -128,7 +125,7 @@ export function RunDetailClient({
   const [ranking, setRanking] = useState<RunRankingResponse | null>(null);
   const [sortBy, setSortBy] = useState("composite");
   const [scorecards, setScorecards] = useState<
-    Record<string, ScorecardResponse>
+    Record<string, ScorecardResponse | null>
   >({});
 
   const isActive =
@@ -184,31 +181,35 @@ export function RunDetailClient({
     };
   }, [isTerminal, sortBy, getAccessToken, run.id]);
 
-  // Fetch scorecards for completed/failed agents
+  // Fetch scorecards for completed/failed agents.
+  // Derive a stable key from agent IDs + statuses to avoid re-firing on every poll.
+  const completedAgentKey = agents
+    .filter((a) => a.status === "completed" || a.status === "failed")
+    .map((a) => a.id)
+    .sort()
+    .join(",");
+
   useEffect(() => {
-    const completedAgents = agents.filter(
-      (a) => a.status === "completed" || a.status === "failed",
-    );
-    if (completedAgents.length === 0) return;
+    if (!completedAgentKey) return;
+    const ids = completedAgentKey.split(",");
     let cancelled = false;
     (async () => {
       try {
         const token = await getAccessToken();
         const api = createApiClient(token);
         const results = await Promise.all(
-          completedAgents.map((a) =>
+          ids.map((id) =>
             api
-              .get<ScorecardResponse>(`/v1/scorecards/${a.id}`, {
+              .get<ScorecardResponse>(`/v1/scorecards/${id}`, {
                 allowedStatuses: [202, 409],
               })
               .catch(() => null),
           ),
         );
         if (cancelled) return;
-        const map: Record<string, ScorecardResponse> = {};
-        completedAgents.forEach((a, i) => {
-          const res = results[i];
-          if (res) map[a.id] = res;
+        const map: Record<string, ScorecardResponse | null> = {};
+        ids.forEach((id, i) => {
+          map[id] = results[i];
         });
         setScorecards(map);
       } catch {
@@ -218,7 +219,7 @@ export function RunDetailClient({
     return () => {
       cancelled = true;
     };
-  }, [agents, getAccessToken]);
+  }, [completedAgentKey, getAccessToken]);
 
   function handleSortChange(sort: string) {
     setSortBy(sort);
@@ -369,7 +370,7 @@ export function RunDetailClient({
                   agent.status === "failed") && (
                   <ScorecardSummaryCard
                     scorecard={scorecards[agent.id] ?? null}
-                    loading={!scorecards[agent.id]}
+                    loading={!(agent.id in scorecards)}
                   />
                 )}
 

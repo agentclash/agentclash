@@ -2,6 +2,7 @@
 
 import type { ScorecardResponse } from "@/lib/api/types";
 import { Loader2, AlertTriangle, Target, Shield, Zap, DollarSign } from "lucide-react";
+import { scorePercent, scoreColor } from "@/lib/scores";
 
 const DIMS = [
   { key: "correctness_score" as const, label: "COR", icon: Target },
@@ -9,18 +10,6 @@ const DIMS = [
   { key: "latency_score" as const, label: "LAT", icon: Zap },
   { key: "cost_score" as const, label: "CST", icon: DollarSign },
 ];
-
-function scorePercent(score?: number): string {
-  if (score == null) return "\u2014";
-  return `${(score * 100).toFixed(0)}%`;
-}
-
-function scoreColor(score?: number): string {
-  if (score == null) return "text-muted-foreground";
-  if (score >= 0.8) return "text-emerald-400";
-  if (score >= 0.5) return "text-amber-400";
-  return "text-red-400";
-}
 
 interface ScorecardSummaryCardProps {
   scorecard: ScorecardResponse | null;
@@ -31,7 +20,7 @@ export function ScorecardSummaryCard({
   scorecard,
   loading,
 }: ScorecardSummaryCardProps) {
-  if (loading || !scorecard || scorecard.state === "pending") {
+  if (loading) {
     return (
       <div className="flex items-center gap-2 text-xs text-muted-foreground mt-2">
         <Loader2 className="size-3 animate-spin" />
@@ -40,11 +29,20 @@ export function ScorecardSummaryCard({
     );
   }
 
-  if (scorecard.state === "errored") {
+  if (!scorecard || scorecard.state === "errored") {
     return (
       <div className="flex items-center gap-2 text-xs text-destructive/70 mt-2">
         <AlertTriangle className="size-3" />
         <span>Score unavailable</span>
+      </div>
+    );
+  }
+
+  if (scorecard.state === "pending") {
+    return (
+      <div className="flex items-center gap-2 text-xs text-muted-foreground mt-2">
+        <Loader2 className="size-3 animate-spin" />
+        <span>Scoring...</span>
       </div>
     );
   }

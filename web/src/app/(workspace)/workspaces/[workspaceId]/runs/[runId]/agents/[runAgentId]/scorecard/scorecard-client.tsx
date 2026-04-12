@@ -6,7 +6,6 @@ import { createApiClient } from "@/lib/api/client";
 import type {
   Run,
   RunAgent,
-  RunAgentStatus,
   ScorecardResponse,
 } from "@/lib/api/types";
 import { Badge } from "@/components/ui/badge";
@@ -22,15 +21,10 @@ import {
   DollarSign,
   BarChart3,
 } from "lucide-react";
+import { scorePercent, scoreColor, barWidth, barColor } from "@/lib/scores";
 
 // --- Constants ---
 
-const ACTIVE_AGENT_STATUSES: RunAgentStatus[] = [
-  "queued",
-  "ready",
-  "executing",
-  "evaluating",
-];
 const POLL_MS = 5000;
 
 const DIMENSIONS = [
@@ -40,32 +34,6 @@ const DIMENSIONS = [
   { key: "cost", label: "Cost", icon: DollarSign },
 ] as const;
 
-// --- Helpers ---
-
-function scorePercent(score?: number): string {
-  if (score == null) return "\u2014";
-  return `${(score * 100).toFixed(1)}%`;
-}
-
-function scoreColor(score?: number): string {
-  if (score == null) return "text-muted-foreground";
-  if (score >= 0.8) return "text-emerald-400";
-  if (score >= 0.5) return "text-amber-400";
-  return "text-red-400";
-}
-
-function barWidth(score?: number): string {
-  if (score == null) return "0%";
-  return `${(score * 100).toFixed(1)}%`;
-}
-
-function barColor(score?: number): string {
-  if (score == null) return "bg-muted";
-  if (score >= 0.8) return "bg-emerald-500";
-  if (score >= 0.5) return "bg-amber-500";
-  return "bg-red-500";
-}
-
 // --- Radar chart (pure SVG) ---
 
 interface RadarChartProps {
@@ -73,6 +41,8 @@ interface RadarChartProps {
 }
 
 function RadarChart({ scores }: RadarChartProps) {
+  if (scores.length === 0) return null;
+
   const cx = 100;
   const cy = 100;
   const r = 70;
@@ -198,8 +168,6 @@ export function ScorecardClient({
   const isPending = scorecard.state === "pending";
   const isErrored = scorecard.state === "errored";
   const isReady = scorecard.state === "ready";
-  const shouldPoll =
-    isPending || ACTIVE_AGENT_STATUSES.includes(agent.status);
 
   const fetchScorecard = useCallback(async () => {
     try {
@@ -216,10 +184,10 @@ export function ScorecardClient({
   }, [getAccessToken, agent.id]);
 
   useEffect(() => {
-    if (!shouldPoll) return;
+    if (!isPending) return;
     const interval = setInterval(fetchScorecard, POLL_MS);
     return () => clearInterval(interval);
-  }, [shouldPoll, fetchScorecard]);
+  }, [isPending, fetchScorecard]);
 
   const overallScore = scorecard.overall_score;
 
