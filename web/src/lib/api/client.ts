@@ -17,6 +17,8 @@ interface RequestOptions {
   headers?: Record<string, string>;
   /** AbortSignal for cancellation. */
   signal?: AbortSignal;
+  /** Non-2xx status codes that should be parsed as JSON instead of throwing. */
+  allowedStatuses?: number[];
 }
 
 function resolveBaseUrl(): string {
@@ -99,7 +101,7 @@ async function request<T>(
     );
   }
 
-  if (!res.ok) {
+  if (!res.ok && !opts.allowedStatuses?.includes(res.status)) {
     throw await parseErrorResponse(res);
   }
 

@@ -431,6 +431,103 @@ export interface WorkspaceSecret {
   updated_by?: string;
 }
 
+// --- Replay ---
+
+export type ReplayState = "ready" | "pending" | "errored";
+
+export type ReplayStepType =
+  | "run"
+  | "agent_step"
+  | "model_call"
+  | "tool_call"
+  | "sandbox_command"
+  | "sandbox_file"
+  | "output"
+  | "scoring"
+  | "scoring_metric"
+  | "event";
+
+export type ReplayStepStatus = "completed" | "running" | "failed";
+
+/** Single step in a replay timeline — mirrors runAgentReplayStepDocument in Go. */
+export interface ReplayStep {
+  type: ReplayStepType;
+  status: ReplayStepStatus;
+  headline: string;
+  source: string;
+  started_sequence: number;
+  completed_sequence?: number;
+  occurred_at: string;
+  completed_at?: string;
+  event_count: number;
+  event_types: string[];
+  artifact_ids?: string[];
+  step_index?: number;
+  provider_key?: string;
+  provider_model_id?: string;
+  tool_name?: string;
+  sandbox_action?: string;
+  metric_key?: string;
+  final_output?: string;
+  error_message?: string;
+}
+
+export interface ReplaySummaryCounts {
+  events: number;
+  replay_steps: number;
+  agent_steps: number;
+  model_calls: number;
+  tool_calls: number;
+  sandbox_commands: number;
+  sandbox_file_events: number;
+  outputs: number;
+  scoring_events: number;
+}
+
+export interface ReplaySummary {
+  schema_version: string;
+  status: string;
+  headline: string;
+  counts: ReplaySummaryCounts;
+  artifact_ids?: string[];
+  terminal_state?: {
+    status: string;
+    event_type: string;
+    source: string;
+    sequence_number: number;
+    occurred_at: string;
+    headline: string;
+    error_message?: string;
+  };
+}
+
+export interface ReplayPagination {
+  next_cursor?: string;
+  limit: number;
+  total_steps: number;
+  has_more: boolean;
+}
+
+/** GET /v1/replays/{runAgentID} — mirrors getRunAgentReplayResponse in Go. */
+export interface ReplayResponse {
+  state: ReplayState;
+  message?: string;
+  run_agent_id: string;
+  run_id: string;
+  run_agent_status: string;
+  replay?: {
+    id: string;
+    artifact_id?: string;
+    summary: ReplaySummary;
+    latest_sequence_number?: number;
+    event_count: number;
+    created_at: string;
+    updated_at: string;
+  };
+  steps: ReplayStep[];
+  pagination: ReplayPagination;
+}
+
 // --- Errors ---
 
 /** Standard error envelope returned by all backend error responses. */
