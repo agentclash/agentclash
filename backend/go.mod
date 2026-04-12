@@ -17,6 +17,7 @@ require (
 	github.com/lestrrat-go/jwx/v2 v2.1.6
 	go.temporal.io/api v1.62.2
 	go.temporal.io/sdk v1.41.0
+	golang.org/x/text v0.33.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
@@ -62,7 +63,6 @@ require (
 	golang.org/x/net v0.49.0 // indirect
 	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/sys v0.41.0 // indirect
-	golang.org/x/text v0.33.0 // indirect
 	golang.org/x/time v0.14.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20251213004720-97cd9d5aeac2 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260128011058-8636f8732409 // indirect
