@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"path"
 	"strings"
 	"time"
@@ -591,7 +592,12 @@ func executeHTTPRequestTool(ctx context.Context, request ToolExecutionRequest) (
 	defer func() {
 		cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		_ = request.Session.WriteFile(cleanupCtx, requestPath, nil)
+		if scrubErr := request.Session.WriteFile(cleanupCtx, requestPath, nil); scrubErr != nil {
+			slog.Default().Warn("failed to scrub http_request input file after exec; plaintext secret may persist in sandbox",
+				"path", requestPath,
+				"error", scrubErr,
+			)
+		}
 	}()
 
 	commandResult, err := executeInternalCommand(ctx, request, httpRequestToolName, sandbox.ExecRequest{
