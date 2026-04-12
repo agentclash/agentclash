@@ -386,6 +386,32 @@ func TestBuildToolRegistry_RejectsSecretsInNonSecretSafePrimitives(t *testing.T)
 	}
 }
 
+func TestBuildToolRegistry_RejectsSecretsWithOutputPath(t *testing.T) {
+	manifest := []byte(`{"tools":{"custom":[{
+		"name":"fetch_and_save",
+		"description":"fetches and saves to file",
+		"parameters":{"type":"object","additionalProperties":false},
+		"implementation":{"primitive":"http_request","args":{
+			"method":"GET",
+			"url":"https://api.example.com",
+			"headers":{"Authorization":"Bearer ${secrets.API_KEY}"},
+			"output_path":"/workspace/data.json"
+		}}
+	}]}}`)
+	_, err := buildToolRegistry(
+		sandbox.ToolPolicy{AllowNetwork: true},
+		manifest,
+		nil,
+		map[string]string{"API_KEY": "real-key"},
+	)
+	if err == nil {
+		t.Fatalf("expected error for secrets + output_path combination")
+	}
+	if !strings.Contains(err.Error(), "output_path") {
+		t.Fatalf("error should mention output_path: %v", err)
+	}
+}
+
 func TestComposedTool_ReportsFailureOriginByFailureType(t *testing.T) {
 	registry, err := buildToolRegistry(sandbox.ToolPolicy{}, []byte(`{"tools":{"custom":[]}}`), nil, nil)
 	if err != nil {

@@ -71,6 +71,20 @@ func templateReferencesSecrets(value any) bool {
 	return false
 }
 
+// argsTemplateHasOutputPath checks whether an http_request argsTemplate
+// declares a non-empty output_path. Composed tools that carry ${secrets.*}
+// must not also specify output_path because the response body (which could
+// echo credentials from the request) would persist as a file the agent can
+// read_file on, bypassing the response header scrubber.
+func argsTemplateHasOutputPath(args map[string]any) bool {
+	v, ok := args["output_path"]
+	if !ok {
+		return false
+	}
+	s, ok := v.(string)
+	return ok && strings.TrimSpace(s) != ""
+}
+
 func stringReferencesSecrets(s string) bool {
 	remaining := s
 	for {
@@ -183,7 +197,7 @@ var stderrSecretPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)set-cookie\s*:\s*[^\r\n]*`),
 	regexp.MustCompile(`(?i)x-(?:api|auth|access|secret|session|csrf|xsrf)[-_](?:key|token|id)\s*:\s*[^\r\n]*`),
 	regexp.MustCompile(`(?i)api[-_]?key\s*:\s*[^\r\n]*`),
-	regexp.MustCompile(`(?i)bearer\s+[A-Za-z0-9._\-+=/]+`),
+	regexp.MustCompile(`(?i)bearer\s+[^\s\r\n]+`),
 	regexp.MustCompile(`(?i)basic\s+[A-Za-z0-9+/=]{8,}`),
 }
 

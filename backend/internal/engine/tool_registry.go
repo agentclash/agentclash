@@ -374,6 +374,14 @@ func newManifestCustomTool(config manifestCustomToolConfig, secrets map[string]s
 			name, primitiveName, httpRequestToolName,
 		)
 	}
+	if templateReferencesSecrets(argsTemplate) && argsTemplateHasOutputPath(argsTemplate) {
+		return nil, "", fmt.Errorf(
+			"custom tool %q uses ${secrets.*} and also sets output_path; "+
+				"this combination is rejected because the response body (which may echo "+
+				"credentials) would persist as a readable file in the sandbox (see issue #186)",
+			name,
+		)
+	}
 	resolvedTemplate, err := resolveTemplateMap(argsTemplate, templateResolutionOptions{
 		secrets:              cloneStringMap(secrets),
 		errorOnMissingSecret: true,
