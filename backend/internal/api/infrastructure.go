@@ -224,6 +224,7 @@ type spendPolicyResponse struct {
 
 func infraCreateHandler[Input any, Row any, Resp any](
 	logger *slog.Logger,
+	authorizer WorkspaceAuthorizer,
 	create func(ctx context.Context, caller Caller, wsID uuid.UUID, input Input) (Row, error),
 	toResponse func(Row) Resp,
 ) http.HandlerFunc {
@@ -236,6 +237,10 @@ func infraCreateHandler[Input any, Row any, Resp any](
 		wsID, err := WorkspaceIDFromContext(r.Context())
 		if err != nil {
 			writeError(w, http.StatusBadRequest, "invalid_request", "workspace ID required")
+			return
+		}
+		if err := AuthorizeWorkspaceAction(r.Context(), authorizer, caller, wsID, ActionManageInfrastructure); err != nil {
+			writeAuthzError(w, err)
 			return
 		}
 		if err := requireJSONContentType(r); err != nil {
@@ -282,14 +287,26 @@ func infraListHandler[Row any, Resp any](
 	}
 }
 
-func infraGetHandler[Row any, Resp any](
+// WorkspaceOwned is implemented by row types that carry a workspace ID for authorization.
+type WorkspaceOwned interface {
+	GetWorkspaceID() *uuid.UUID
+}
+
+func infraGetHandler[Row WorkspaceOwned, Resp any](
 	logger *slog.Logger,
+	authorizer WorkspaceAuthorizer,
 	paramName string,
 	get func(ctx context.Context, id uuid.UUID) (Row, error),
 	toResponse func(Row) Resp,
 	notFoundCode string,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		caller, err := CallerFromContext(r.Context())
+		if err != nil {
+			writeError(w, http.StatusUnauthorized, "unauthorized", "authentication required")
+			return
+		}
+
 		raw := chi.URLParam(r, paramName)
 		id, err := uuid.Parse(raw)
 		if err != nil {
@@ -298,7 +315,7 @@ func infraGetHandler[Row any, Resp any](
 		}
 		row, err := get(r.Context(), id)
 		if err != nil {
-			if err.Error() == notFoundCode+" not found" || isNotFoundErr(err) {
+			if isNotFoundErr(err) {
 				writeError(w, http.StatusNotFound, "not_found", notFoundCode+" not found")
 				return
 			}
@@ -306,6 +323,15 @@ func infraGetHandler[Row any, Resp any](
 			writeError(w, http.StatusInternalServerError, "internal_error", "failed to get resource")
 			return
 		}
+
+		// Authorize: caller must have access to the resource's workspace
+		if wsID := row.GetWorkspaceID(); wsID != nil {
+			if err := AuthorizeWorkspaceAction(r.Context(), authorizer, caller, *wsID, ActionReadWorkspace); err != nil {
+				writeAuthzError(w, err)
+				return
+			}
+		}
+
 		writeJSON(w, http.StatusOK, toResponse(row))
 	}
 }
@@ -433,14 +459,34 @@ func getModelCatalogEntryHandler(logger *slog.Logger, svc InfrastructureService)
 // Archive handler for runtime profiles
 // --------------------------------------------------------------------------
 
-func archiveRuntimeProfileHandler(logger *slog.Logger, svc InfrastructureService) http.HandlerFunc {
+func archiveRuntimeProfileHandler(logger *slog.Logger, svc InfrastructureService, authorizer WorkspaceAuthorizer) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		caller, err := CallerFromContext(r.Context())
+		if err != nil {
+			writeError(w, http.StatusUnauthorized, "unauthorized", "authentication required")
+			return
+		}
+
 		raw := chi.URLParam(r, "profileID")
 		id, err := uuid.Parse(raw)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, "invalid_request", "invalid ID")
 			return
 		}
+
+		// Fetch first to get workspace ID for authorization
+		profile, err := svc.GetRuntimeProfile(r.Context(), id)
+		if err != nil {
+			writeError(w, http.StatusNotFound, "not_found", "runtime profile not found")
+			return
+		}
+		if profile.WorkspaceID != nil {
+			if err := AuthorizeWorkspaceAction(r.Context(), authorizer, caller, *profile.WorkspaceID, ActionManageInfrastructure); err != nil {
+				writeAuthzError(w, err)
+				return
+			}
+		}
+
 		if err := svc.ArchiveRuntimeProfile(r.Context(), id); err != nil {
 			writeError(w, http.StatusNotFound, "not_found", "runtime profile not found")
 			return

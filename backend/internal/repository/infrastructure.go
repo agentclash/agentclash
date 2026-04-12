@@ -787,6 +787,13 @@ func isDuplicateSlug(err error) bool {
 	return false
 }
 
+// GetWorkspaceID methods implement WorkspaceOwned for authorization checks.
+func (r RuntimeProfileRow) GetWorkspaceID() *uuid.UUID  { return r.WorkspaceID }
+func (r ProviderAccountRow) GetWorkspaceID() *uuid.UUID  { return r.WorkspaceID }
+func (r ModelAliasRow) GetWorkspaceID() *uuid.UUID       { return r.WorkspaceID }
+func (r ToolRow) GetWorkspaceID() *uuid.UUID             { return r.WorkspaceID }
+func (r KnowledgeSourceRow) GetWorkspaceID() *uuid.UUID  { return r.WorkspaceID }
+
 func defaultStr(v, fallback string) string {
 	if v == "" {
 		return fallback
