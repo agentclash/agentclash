@@ -37,11 +37,11 @@ const statusVariant: Record<string, "default" | "secondary" | "outline" | "destr
 };
 
 function formatTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
+  const d = new Date(iso);
+  const h = d.getUTCHours().toString().padStart(2, "0");
+  const m = d.getUTCMinutes().toString().padStart(2, "0");
+  const s = d.getUTCSeconds().toString().padStart(2, "0");
+  return `${h}:${m}:${s}`;
 }
 
 function formatDuration(start: string, end?: string): string | null {
