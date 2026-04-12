@@ -38,6 +38,7 @@ func TestRequireWorkspaceRole_AdminAllowedForAllActions(t *testing.T) {
 		ActionPublishChallengePack,
 		ActionUploadArtifact,
 		ActionManageInfrastructure,
+		ActionManageSecrets,
 	}
 
 	for _, action := range actions {
@@ -86,6 +87,7 @@ func TestRequireWorkspaceRole_MemberDeniedAdminActions(t *testing.T) {
 
 	denied := []Action{
 		ActionManageInfrastructure,
+		ActionManageSecrets,
 	}
 
 	for _, action := range denied {
@@ -132,6 +134,7 @@ func TestRequireWorkspaceRole_ViewerDeniedWrites(t *testing.T) {
 		ActionPublishChallengePack,
 		ActionUploadArtifact,
 		ActionManageInfrastructure,
+		ActionManageSecrets,
 	}
 
 	for _, action := range denied {

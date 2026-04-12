@@ -101,8 +101,23 @@ type upsertWorkspaceSecretRequest struct {
 	Value *string `json:"value"`
 }
 
-func listWorkspaceSecretsHandler(logger *slog.Logger, service WorkspaceSecretsService) http.HandlerFunc {
+func listWorkspaceSecretsHandler(logger *slog.Logger, service WorkspaceSecretsService, authorizer WorkspaceAuthorizer) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		caller, err := CallerFromContext(r.Context())
+		if err != nil {
+			writeAuthzError(w, err)
+			return
+		}
+		wsID, err := WorkspaceIDFromContext(r.Context())
+		if err != nil {
+			writeAuthzError(w, err)
+			return
+		}
+		if err := AuthorizeWorkspaceAction(r.Context(), authorizer, caller, wsID, ActionManageSecrets); err != nil {
+			writeAuthzError(w, err)
+			return
+		}
+
 		secrets, err := service.ListSecrets(r.Context())
 		if err != nil {
 			logger.Error("list workspace secrets request failed",
@@ -117,8 +132,23 @@ func listWorkspaceSecretsHandler(logger *slog.Logger, service WorkspaceSecretsSe
 	}
 }
 
-func upsertWorkspaceSecretHandler(logger *slog.Logger, service WorkspaceSecretsService) http.HandlerFunc {
+func upsertWorkspaceSecretHandler(logger *slog.Logger, service WorkspaceSecretsService, authorizer WorkspaceAuthorizer) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		caller, err := CallerFromContext(r.Context())
+		if err != nil {
+			writeAuthzError(w, err)
+			return
+		}
+		wsID, err := WorkspaceIDFromContext(r.Context())
+		if err != nil {
+			writeAuthzError(w, err)
+			return
+		}
+		if err := AuthorizeWorkspaceAction(r.Context(), authorizer, caller, wsID, ActionManageSecrets); err != nil {
+			writeAuthzError(w, err)
+			return
+		}
+
 		key := chi.URLParam(r, "secretKey")
 		if !repository.IsValidSecretKey(key) {
 			writeError(w, http.StatusBadRequest, "invalid_secret_key", "secret key must match [A-Za-z_][A-Za-z0-9_]* and be 1..128 characters")
@@ -169,8 +199,23 @@ func upsertWorkspaceSecretHandler(logger *slog.Logger, service WorkspaceSecretsS
 	}
 }
 
-func deleteWorkspaceSecretHandler(logger *slog.Logger, service WorkspaceSecretsService) http.HandlerFunc {
+func deleteWorkspaceSecretHandler(logger *slog.Logger, service WorkspaceSecretsService, authorizer WorkspaceAuthorizer) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		caller, err := CallerFromContext(r.Context())
+		if err != nil {
+			writeAuthzError(w, err)
+			return
+		}
+		wsID, err := WorkspaceIDFromContext(r.Context())
+		if err != nil {
+			writeAuthzError(w, err)
+			return
+		}
+		if err := AuthorizeWorkspaceAction(r.Context(), authorizer, caller, wsID, ActionManageSecrets); err != nil {
+			writeAuthzError(w, err)
+			return
+		}
+
 		key := chi.URLParam(r, "secretKey")
 		if !repository.IsValidSecretKey(key) {
 			writeError(w, http.StatusBadRequest, "invalid_secret_key", "secret key must match [A-Za-z_][A-Za-z0-9_]* and be 1..128 characters")

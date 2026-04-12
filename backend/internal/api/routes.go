@@ -102,13 +102,13 @@ func registerProtectedRoutes(
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Post("/workspaces/{workspaceID}/agent-deployments", createAgentDeploymentHandler(logger, agentBuildService, authorizer))
 
-	// Workspace Secrets
+	// Workspace Secrets (admin-only via ActionManageSecrets)
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
-		Get("/workspaces/{workspaceID}/secrets", listWorkspaceSecretsHandler(logger, workspaceSecretsService))
+		Get("/workspaces/{workspaceID}/secrets", listWorkspaceSecretsHandler(logger, workspaceSecretsService, authorizer))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
-		Put("/workspaces/{workspaceID}/secrets/{secretKey}", upsertWorkspaceSecretHandler(logger, workspaceSecretsService))
+		Put("/workspaces/{workspaceID}/secrets/{secretKey}", upsertWorkspaceSecretHandler(logger, workspaceSecretsService, authorizer))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
-		Delete("/workspaces/{workspaceID}/secrets/{secretKey}", deleteWorkspaceSecretHandler(logger, workspaceSecretsService))
+		Delete("/workspaces/{workspaceID}/secrets/{secretKey}", deleteWorkspaceSecretHandler(logger, workspaceSecretsService, authorizer))
 
 	// Infrastructure CRUD — workspace-scoped create/list (skip if no service provided)
 	if infraService == nil {
