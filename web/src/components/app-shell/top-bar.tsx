@@ -10,7 +10,6 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
-import { Separator } from "@/components/ui/separator";
 import { MobileSidebar } from "./sidebar";
 import { WorkspaceSwitcher } from "./workspace-switcher";
 import { UserMenu } from "./user-menu";
@@ -25,7 +24,6 @@ interface TopBarProps {
   orgName?: string;
 }
 
-/** Map URL segments to human-readable labels */
 const segmentLabels: Record<string, string> = {
   builds: "Builds",
   deployments: "Deployments",
@@ -45,7 +43,6 @@ export function TopBar({
 }: TopBarProps) {
   const pathname = usePathname();
 
-  // Build breadcrumbs from path segments after /workspaces/{id}/
   const workspacePrefix = `/workspaces/${workspaceId}`;
   const afterWorkspace = pathname.startsWith(workspacePrefix)
     ? pathname.slice(workspacePrefix.length).replace(/^\//, "")
@@ -53,7 +50,7 @@ export function TopBar({
   const segments = afterWorkspace ? afterWorkspace.split("/") : [];
 
   return (
-    <header className="flex h-14 items-center gap-3 border-b border-border px-4">
+    <header className="flex h-14 items-center gap-3 border-b border-white/[0.06] bg-[#0a0a0a] px-4">
       <MobileSidebar workspaceId={workspaceId} />
 
       <WorkspaceSwitcher
@@ -63,7 +60,7 @@ export function TopBar({
 
       {segments.length > 0 && (
         <>
-          <Separator orientation="vertical" className="h-5" />
+          <span className="h-4 w-px bg-white/[0.08]" />
           <Breadcrumb>
             <BreadcrumbList>
               {segments.map((seg, i) => {

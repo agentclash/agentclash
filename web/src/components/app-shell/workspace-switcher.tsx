@@ -23,7 +23,6 @@ export function WorkspaceSwitcher({
   const router = useRouter();
   const pathname = usePathname();
 
-  // Flatten all workspaces across orgs
   const allWorkspaces: (UserMeWorkspace & { orgName: string })[] = [];
   for (const org of organizations) {
     for (const ws of org.workspaces) {
@@ -34,7 +33,6 @@ export function WorkspaceSwitcher({
   const current = allWorkspaces.find((ws) => ws.id === currentWorkspaceId);
 
   function switchWorkspace(workspaceId: string) {
-    // Replace the workspace ID in the current path
     const newPath = pathname.replace(
       /\/workspaces\/[^/]+/,
       `/workspaces/${workspaceId}`,
@@ -45,28 +43,34 @@ export function WorkspaceSwitcher({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
-        render={<Button variant="outline" size="sm" className="gap-1.5 max-w-48" />}
+        render={
+          <Button
+            variant="ghost"
+            size="sm"
+            className="gap-1.5 max-w-52 text-foreground/80 hover:text-foreground"
+          />
+        }
       >
-        <span className="truncate">
+        <span className="truncate text-[0.8125rem]">
           {current?.name ?? "Select workspace"}
         </span>
-        <ChevronsUpDown className="size-3.5 opacity-50" />
+        <ChevronsUpDown className="size-3 opacity-40" />
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-56">
+      <DropdownMenuContent align="start" className="w-60">
         {allWorkspaces.map((ws) => (
           <DropdownMenuItem
             key={ws.id}
             onClick={() => switchWorkspace(ws.id)}
-            className="flex items-center justify-between"
+            className="flex items-center justify-between py-2"
           >
-            <div className="flex flex-col">
+            <div className="flex flex-col gap-0.5">
               <span className="text-sm">{ws.name}</span>
-              <span className="text-xs text-muted-foreground">
+              <span className="text-[0.6875rem] text-muted-foreground/60">
                 {ws.orgName}
               </span>
             </div>
             {ws.id === currentWorkspaceId && (
-              <Check className="size-3.5 text-foreground" />
+              <Check className="size-3.5 text-foreground/60" />
             )}
           </DropdownMenuItem>
         ))}
