@@ -14,8 +14,8 @@ import (
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/sandbox/e2b"
 	workerapp "github.com/Atharva-Kanherkar/agentclash/backend/internal/worker"
 	workflowpkg "github.com/Atharva-Kanherkar/agentclash/backend/internal/workflow"
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/temporalutil"
 	"github.com/jackc/pgx/v5/pgxpool"
-	temporalsdk "go.temporal.io/sdk/client"
 )
 
 func main() {
@@ -34,10 +34,7 @@ func main() {
 	}
 	defer db.Close()
 
-	temporalClient, err := temporalsdk.Dial(temporalsdk.Options{
-		HostPort:  cfg.TemporalAddress,
-		Namespace: cfg.TemporalNamespace,
-	})
+	temporalClient, err := temporalutil.NewClient(cfg.TemporalAddress, cfg.TemporalNamespace)
 	if err != nil {
 		logger.Error("failed to connect to temporal", "error", err)
 		os.Exit(1)
