@@ -10,10 +10,12 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from typing import Any
 from uuid import UUID
 
 from reasoning.client.model_client import ModelClient, ModelClientError, ModelResponse
+from reasoning.client.pricing import estimate_cost
 from reasoning.emitter.callback import CallbackDeliveryError, CallbackEmitter
 from reasoning.models.bridge import StartRequest, ToolResult, ToolResultsBatch
 from reasoning.models.events import Envelope, SummaryMetadata, make_event_id
@@ -32,12 +34,14 @@ class ReactEngine:
         request: StartRequest,
         model_client: ModelClient,
         emitter: CallbackEmitter,
+        tool_result_timeout: float = 300,
     ):
         self.request = request
         self.run_id = request.run_id
         self.run_agent_id = request.run_agent_id
         self._model_client = model_client
         self._emitter = emitter
+        self._tool_result_timeout = tool_result_timeout
         self._sequence = 0
         self._cancelled = False
         self._tool_results_event: asyncio.Event = asyncio.Event()
@@ -46,6 +50,8 @@ class ReactEngine:
         self._total_output_tokens = 0
         self._total_model_calls = 0
         self._total_tool_calls = 0
+        self._total_latency_ms = 0.0
+        self._total_estimated_cost_usd = 0.0
         self._step_count = 0
 
     def cancel(self) -> None:
@@ -108,6 +114,7 @@ class ReactEngine:
                 await self._emit_step_started(step)
                 await self._emit_model_call_started(provider_key, model_id, step)
 
+                call_start = time.monotonic()
                 try:
                     response = await self._model_client.chat_completions(
                         model=model_id,
@@ -120,11 +127,16 @@ class ReactEngine:
                     await self._emit_run_failed("provider_error", str(exc))
                     return
 
+                call_latency_ms = round((time.monotonic() - call_start) * 1000, 1)
+                call_cost = estimate_cost(model_id, response.usage.input_tokens, response.usage.output_tokens)
                 self._total_input_tokens += response.usage.input_tokens
                 self._total_output_tokens += response.usage.output_tokens
                 self._total_model_calls += 1
+                self._total_latency_ms += call_latency_ms
+                if call_cost is not None:
+                    self._total_estimated_cost_usd += call_cost
 
-                await self._emit_model_call_completed(provider_key, model_id, step, response)
+                await self._emit_model_call_completed(provider_key, model_id, step, response, call_latency_ms, call_cost)
 
                 # Branch: tool calls
                 if response.tool_calls and response.finish_reason in ("tool_calls", "stop"):
@@ -134,7 +146,7 @@ class ReactEngine:
                     # Wait for Go to execute tools and return results.
                     self._tool_results_event.clear()
                     try:
-                        await asyncio.wait_for(self._tool_results_event.wait(), timeout=300)
+                        await asyncio.wait_for(self._tool_results_event.wait(), timeout=self._tool_result_timeout)
                     except asyncio.TimeoutError:
                         await self._emit_step_completed(step)
                         await self._emit_run_failed("tool_timeout", "timed out waiting for tool results")
@@ -254,7 +266,7 @@ class ReactEngine:
             "step_index": step,
         }, SummaryMetadata(provider_key=provider_key, provider_model_id=model_id, step_index=step)))
 
-    async def _emit_model_call_completed(self, provider_key: str, model_id: str, step: int, response: ModelResponse) -> None:
+    async def _emit_model_call_completed(self, provider_key: str, model_id: str, step: int, response: ModelResponse, latency_ms: float = 0, estimated_cost_usd: float | None = None) -> None:
         tool_calls_payload = [
             {"id": tc.id, "name": tc.name, "arguments": tc.arguments}
             for tc in response.tool_calls
@@ -270,6 +282,8 @@ class ReactEngine:
                 "output_tokens": response.usage.output_tokens,
                 "total_tokens": response.usage.total_tokens,
             },
+            "latency_ms": latency_ms,
+            "estimated_cost_usd": estimated_cost_usd,
             "raw_response": response.raw_response,
         }, SummaryMetadata(provider_key=provider_key, provider_model_id=model_id, step_index=step)))
 
@@ -314,6 +328,8 @@ class ReactEngine:
             "input_tokens": self._total_input_tokens,
             "output_tokens": self._total_output_tokens,
             "total_tokens": self._total_input_tokens + self._total_output_tokens,
+            "total_latency_ms": round(self._total_latency_ms, 1),
+            "total_estimated_cost_usd": round(self._total_estimated_cost_usd, 6) if self._total_estimated_cost_usd else None,
         }, SummaryMetadata(status="completed")))
 
     async def _emit_run_failed(self, stop_reason: str, error_message: str) -> None:
@@ -325,6 +341,8 @@ class ReactEngine:
             "input_tokens": self._total_input_tokens,
             "output_tokens": self._total_output_tokens,
             "total_tokens": self._total_input_tokens + self._total_output_tokens,
+            "total_latency_ms": round(self._total_latency_ms, 1),
+            "total_estimated_cost_usd": round(self._total_estimated_cost_usd, 6) if self._total_estimated_cost_usd else None,
         }, SummaryMetadata(status="failed")))
 
     def _extract_challenge_input(self) -> str:

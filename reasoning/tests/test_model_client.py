@@ -1,9 +1,9 @@
-"""Tests for the OpenAI-compatible model client."""
+"""Tests for the model-agnostic LLM client."""
 
 import pytest
 import httpx
 
-from reasoning.client.model_client import ModelClient, ModelClientError
+from reasoning.client.model_client import ModelClient, ModelClientError, normalize_finish_reason
 
 
 MOCK_COMPLETION = {
@@ -157,3 +157,95 @@ async def test_exhausted_retries(client_with_transport):
 
     assert exc_info.value.retryable
     assert len(transport.requests) == 3
+
+
+# --- Finish reason normalization ---
+
+
+def test_normalize_finish_reason_openai():
+    assert normalize_finish_reason("stop") == "stop"
+    assert normalize_finish_reason("tool_calls") == "tool_calls"
+    assert normalize_finish_reason("length") == "length"
+    assert normalize_finish_reason("content_filter") == "content_filter"
+
+
+def test_normalize_finish_reason_anthropic():
+    assert normalize_finish_reason("end_turn") == "stop"
+    assert normalize_finish_reason("tool_use") == "tool_calls"
+    assert normalize_finish_reason("max_tokens") == "length"
+
+
+def test_normalize_finish_reason_gemini():
+    assert normalize_finish_reason("STOP") == "stop"
+    assert normalize_finish_reason("MAX_TOKENS") == "length"
+    assert normalize_finish_reason("SAFETY") == "content_filter"
+
+
+def test_normalize_finish_reason_unknown_passthrough():
+    assert normalize_finish_reason("some_new_reason") == "some_new_reason"
+
+
+# --- Anthropic response parsing ---
+
+MOCK_ANTHROPIC_COMPLETION = {
+    "id": "msg_test",
+    "type": "message",
+    "role": "assistant",
+    "content": [
+        {"type": "text", "text": "The capital of France is Paris."}
+    ],
+    "stop_reason": "end_turn",
+    "usage": {"input_tokens": 20, "output_tokens": 8},
+}
+
+MOCK_ANTHROPIC_TOOL_USE = {
+    "id": "msg_test_tool",
+    "type": "message",
+    "role": "assistant",
+    "content": [
+        {"type": "text", "text": "I'll read that file for you."},
+        {"type": "tool_use", "id": "toolu_abc", "name": "read_file", "input": {"path": "/data.txt"}},
+    ],
+    "stop_reason": "tool_use",
+    "usage": {"input_tokens": 30, "output_tokens": 15},
+}
+
+
+def test_parse_anthropic_response():
+    client = ModelClient(api_key="test", provider_key="anthropic")
+    response = client._parse_anthropic_response(MOCK_ANTHROPIC_COMPLETION)
+    assert response.finish_reason == "stop"  # end_turn -> stop
+    assert response.output_text == "The capital of France is Paris."
+    assert len(response.tool_calls) == 0
+    assert response.usage.input_tokens == 20
+    assert response.usage.output_tokens == 8
+
+
+def test_parse_anthropic_tool_use():
+    client = ModelClient(api_key="test", provider_key="anthropic")
+    response = client._parse_anthropic_response(MOCK_ANTHROPIC_TOOL_USE)
+    assert response.finish_reason == "tool_calls"  # tool_use -> tool_calls
+    assert response.output_text == "I'll read that file for you."
+    assert len(response.tool_calls) == 1
+    assert response.tool_calls[0].name == "read_file"
+    assert response.tool_calls[0].id == "toolu_abc"
+    assert '"path"' in response.tool_calls[0].arguments
+
+
+@pytest.mark.asyncio
+async def test_anthropic_request_uses_messages_endpoint():
+    """Verify Anthropic requests go to /v1/messages, not /chat/completions."""
+    client = ModelClient(api_key="test-key", base_url="https://api.anthropic.com", provider_key="anthropic")
+    endpoint, body = client._build_request(
+        model="claude-sonnet-4-20250514",
+        messages=[{"role": "system", "content": "You are helpful."}, {"role": "user", "content": "Hi"}],
+        tools=[{"name": "read_file", "description": "Read file", "parameters": {"type": "object"}}],
+        temperature=0.0,
+        max_tokens=4096,
+    )
+    assert endpoint == "/v1/messages"
+    assert body["system"] == "You are helpful."
+    assert len(body["messages"]) == 1  # system extracted
+    assert body["messages"][0]["role"] == "user"
+    assert body["tools"][0]["input_schema"] == {"type": "object"}
+    await client.close()

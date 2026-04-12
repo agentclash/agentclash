@@ -70,7 +70,10 @@ async def start_run(request: StartRequest) -> StartResponse:
         response = StartResponse(accepted=False, reasoning_run_id="", error="no provider credential in execution context")
         return response
 
-    model_client = ModelClient(api_key=credential, base_url=base_url)
+    # Map provider keys to the model client's provider abstraction.
+    # OpenAI-compatible providers (together, groq, fireworks) use "openai".
+    client_provider = provider_key if provider_key in ("openai", "anthropic", "gemini") else "openai"
+    model_client = ModelClient(api_key=credential, base_url=base_url, provider_key=client_provider)
     emitter = CallbackEmitter(callback_url=request.callback_url, callback_token=request.callback_token)
 
     engine = ReactEngine(request=request, model_client=model_client, emitter=emitter)
