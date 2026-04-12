@@ -9,7 +9,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { LogOut, Settings } from "lucide-react";
+import { LogOut } from "lucide-react";
 
 interface UserMenuProps {
   displayName?: string;
@@ -35,31 +35,28 @@ export function UserMenu({
   return (
     <div className="flex items-center gap-3">
       {orgName && (
-        <span className="hidden text-xs text-muted-foreground sm:block">
+        <span className="hidden text-[0.6875rem] font-medium text-muted-foreground/50 tracking-wide sm:block">
           {orgName}
         </span>
       )}
       <DropdownMenu>
-        <DropdownMenuTrigger className="outline-none">
-          <Avatar className="size-7 cursor-pointer">
+        <DropdownMenuTrigger className="outline-none rounded-full ring-offset-background focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-offset-2">
+          <Avatar className="size-7">
             {avatarUrl && <AvatarImage src={avatarUrl} alt="" />}
-            <AvatarFallback className="text-[0.625rem]">
+            <AvatarFallback className="bg-white/[0.08] text-[0.5625rem] font-medium text-foreground/70">
               {initials}
             </AvatarFallback>
           </Avatar>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-48">
-          <div className="px-2 py-1.5">
+        <DropdownMenuContent align="end" className="w-52">
+          <div className="px-2 py-2">
             <p className="text-sm font-medium">{displayName || "User"}</p>
             {email && (
-              <p className="text-xs text-muted-foreground truncate">{email}</p>
+              <p className="text-xs text-muted-foreground/70 truncate mt-0.5">
+                {email}
+              </p>
             )}
           </div>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem disabled>
-            <Settings className="size-4" />
-            Settings
-          </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => signOut()}>
             <LogOut className="size-4" />

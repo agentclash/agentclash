@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { navSections } from "./nav-items";
-import { PanelLeft } from "lucide-react";
+import { PanelLeftClose, PanelLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -12,72 +12,179 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useState } from "react";
 
 interface SidebarProps {
   workspaceId: string;
 }
 
-function SidebarContent({ workspaceId }: SidebarProps) {
+function LogoMark({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      className={className}
+      aria-hidden="true"
+    >
+      <path
+        d="M7 4L12 12L7 20"
+        stroke="currentColor"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M17 4L12 12L17 20"
+        stroke="currentColor"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        opacity="0.4"
+      />
+    </svg>
+  );
+}
+
+function SidebarNav({
+  workspaceId,
+  collapsed,
+}: SidebarProps & { collapsed: boolean }) {
   const pathname = usePathname();
 
   return (
-    <div className="flex h-full flex-col">
-      {/* Logo */}
-      <div className="flex h-14 items-center px-4 border-b border-border">
-        <Link
-          href={`/workspaces/${workspaceId}`}
-          className="font-[family-name:var(--font-display)] text-lg text-foreground/90"
-        >
-          AgentClash
-        </Link>
-      </div>
-
-      {/* Nav sections */}
-      <nav className="flex-1 overflow-y-auto px-3 py-4">
-        {navSections.map((section) => (
-          <div key={section.title} className="mb-6">
-            <p className="mb-1.5 px-2 text-[0.6875rem] font-medium uppercase tracking-wider text-muted-foreground/60">
+    <nav className={cn("flex-1 overflow-y-auto py-3", collapsed ? "px-1.5" : "px-2.5")}>
+      {navSections.map((section) => (
+        <div key={section.title} className="mb-5">
+          {!collapsed && (
+            <p className="mb-1 px-2 text-[0.625rem] font-semibold uppercase tracking-[0.08em] text-muted-foreground/50">
               {section.title}
             </p>
+          )}
+          <div className="space-y-0.5">
             {section.items.map((item) => {
               const href = item.href(workspaceId);
               const isActive = pathname.startsWith(href);
               const Icon = item.icon;
 
-              return (
+              const link = (
                 <Link
                   key={item.label}
                   href={href}
                   className={cn(
-                    "flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-colors",
+                    "group relative flex items-center rounded-md text-[0.8125rem] transition-colors",
+                    collapsed
+                      ? "justify-center p-2"
+                      : "gap-2.5 px-2 py-1.5",
                     isActive
-                      ? "bg-accent text-accent-foreground font-medium"
-                      : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+                      ? "bg-white/[0.08] text-foreground"
+                      : "text-muted-foreground hover:bg-white/[0.04] hover:text-foreground/80",
                   )}
                 >
-                  <Icon className="size-4 shrink-0" />
-                  {item.label}
+                  {isActive && (
+                    <span className="absolute left-0 top-1/2 h-4 w-[2px] -translate-y-1/2 rounded-full bg-foreground" />
+                  )}
+                  <Icon className={cn("shrink-0", collapsed ? "size-[18px]" : "size-4")} />
+                  {!collapsed && <span>{item.label}</span>}
                 </Link>
               );
+
+              if (collapsed) {
+                return (
+                  <Tooltip key={item.label}>
+                    <TooltipTrigger render={<span />}>
+                      {link}
+                    </TooltipTrigger>
+                    <TooltipContent side="right" sideOffset={8}>
+                      {item.label}
+                    </TooltipContent>
+                  </Tooltip>
+                );
+              }
+
+              return link;
             })}
           </div>
-        ))}
-      </nav>
-    </div>
+        </div>
+      ))}
+    </nav>
   );
 }
 
-/** Desktop sidebar — always visible */
+/** Desktop sidebar — collapsible */
 export function Sidebar({ workspaceId }: SidebarProps) {
+  const [collapsed, setCollapsed] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem("sidebar-collapsed") === "true";
+  });
+
+  function toggle() {
+    setCollapsed((prev) => {
+      localStorage.setItem("sidebar-collapsed", String(!prev));
+      return !prev;
+    });
+  }
+
   return (
-    <aside className="hidden md:flex md:w-56 md:flex-col md:border-r md:border-border">
-      <SidebarContent workspaceId={workspaceId} />
-    </aside>
+    <TooltipProvider>
+      <aside
+        className={cn(
+          "hidden md:flex md:flex-col md:border-r md:border-white/[0.06] bg-[#0a0a0a] transition-[width] duration-200",
+          collapsed ? "md:w-14" : "md:w-56",
+        )}
+      >
+        {/* Header */}
+        <div
+          className={cn(
+            "flex h-14 items-center border-b border-white/[0.06]",
+            collapsed ? "justify-center px-1.5" : "justify-between px-3",
+          )}
+        >
+          <Link
+            href={`/workspaces/${workspaceId}`}
+            className="flex items-center gap-2 text-foreground/90"
+          >
+            <LogoMark className="size-6 text-foreground" />
+            {!collapsed && (
+              <span className="font-[family-name:var(--font-display)] text-[0.9375rem] tracking-tight">
+                AgentClash
+              </span>
+            )}
+          </Link>
+          {!collapsed && (
+            <button
+              onClick={toggle}
+              className="rounded-md p-1 text-muted-foreground/40 hover:text-muted-foreground transition-colors"
+            >
+              <PanelLeftClose className="size-4" />
+            </button>
+          )}
+        </div>
+
+        {/* Expand button when collapsed */}
+        {collapsed && (
+          <div className="flex justify-center py-2">
+            <button
+              onClick={toggle}
+              className="rounded-md p-1.5 text-muted-foreground/40 hover:text-muted-foreground transition-colors"
+            >
+              <PanelLeft className="size-4" />
+            </button>
+          </div>
+        )}
+
+        <SidebarNav workspaceId={workspaceId} collapsed={collapsed} />
+      </aside>
+    </TooltipProvider>
   );
 }
 
-/** Mobile sidebar — sheet triggered by hamburger button */
+/** Mobile sidebar — sheet */
 export function MobileSidebar({ workspaceId }: SidebarProps) {
   const [open, setOpen] = useState(false);
 
@@ -88,10 +195,17 @@ export function MobileSidebar({ workspaceId }: SidebarProps) {
       >
         <PanelLeft className="size-5" />
       </SheetTrigger>
-      <SheetContent side="left" className="w-56 p-0">
+      <SheetContent side="left" className="w-56 p-0 bg-[#0a0a0a]">
         <SheetTitle className="sr-only">Navigation</SheetTitle>
         <div onClick={() => setOpen(false)}>
-          <SidebarContent workspaceId={workspaceId} />
+          {/* Logo */}
+          <div className="flex h-14 items-center gap-2 px-3 border-b border-white/[0.06]">
+            <LogoMark className="size-6 text-foreground" />
+            <span className="font-[family-name:var(--font-display)] text-[0.9375rem] tracking-tight text-foreground/90">
+              AgentClash
+            </span>
+          </div>
+          <SidebarNav workspaceId={workspaceId} collapsed={false} />
         </div>
       </SheetContent>
     </Sheet>
