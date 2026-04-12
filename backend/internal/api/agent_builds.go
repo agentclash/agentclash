@@ -36,6 +36,7 @@ type AgentBuildRepository interface {
 	GetProviderAccountByID(ctx context.Context, id uuid.UUID) (repository.ProviderAccountRow, error)
 	UpsertModelCatalogEntry(ctx context.Context, providerKey, providerModelID string) (repository.ModelCatalogEntryRow, error)
 	CreateModelAlias(ctx context.Context, p repository.CreateModelAliasParams) (repository.ModelAliasRow, error)
+	ListModelAliasesByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) ([]repository.ModelAliasRow, error)
 }
 
 type AgentBuildService interface {
@@ -307,7 +308,7 @@ func (m *AgentBuildManager) CreateDeployment(ctx context.Context, caller Caller,
 }
 
 // resolveOrCreateModelAlias looks up the provider account to get its provider_key,
-// upserts a model catalog entry, and creates a model alias automatically.
+// upserts a model catalog entry, and finds or creates a model alias.
 func (m *AgentBuildManager) resolveOrCreateModelAlias(ctx context.Context, orgID, workspaceID, providerAccountID uuid.UUID, model string) (repository.ModelAliasRow, error) {
 	account, err := m.repo.GetProviderAccountByID(ctx, providerAccountID)
 	if err != nil {
@@ -319,12 +320,24 @@ func (m *AgentBuildManager) resolveOrCreateModelAlias(ctx context.Context, orgID
 		return repository.ModelAliasRow{}, fmt.Errorf("upsert model catalog entry: %w", err)
 	}
 
+	// Reuse an existing alias for this provider+model if one exists.
+	aliasKey := fmt.Sprintf("auto-%s-%s", account.ProviderKey, model)
+	existing, err := m.repo.ListModelAliasesByWorkspaceID(ctx, workspaceID)
+	if err != nil {
+		return repository.ModelAliasRow{}, fmt.Errorf("list model aliases: %w", err)
+	}
+	for _, a := range existing {
+		if a.AliasKey == aliasKey {
+			return a, nil
+		}
+	}
+
 	alias, err := m.repo.CreateModelAlias(ctx, repository.CreateModelAliasParams{
 		OrganizationID:      orgID,
 		WorkspaceID:         workspaceID,
 		ProviderAccountID:   &providerAccountID,
 		ModelCatalogEntryID: catalogEntry.ID,
-		AliasKey:            fmt.Sprintf("auto-%s-%s", account.ProviderKey, model),
+		AliasKey:            aliasKey,
 		DisplayName:         model,
 	})
 	if err != nil {
