@@ -194,14 +194,17 @@ func (e NativeExecutor) Execute(ctx context.Context, executionContext repository
 		return Result{}, NewFailure(StopReasonSandboxError, sandbox.ErrProviderNotConfigured.Error(), sandbox.ErrProviderNotConfigured)
 	}
 
+	sandboxRequest, err := nativeSandboxRequest(executionContext)
+	if err != nil {
+		return Result{}, NewFailure(StopReasonSandboxError, "build native sandbox request", err)
+	}
+
+	// Secrets are loaded AFTER sandbox request construction because
+	// env_vars are literals-only (#186) — only the composed-tool
+	// build path below consumes the workspace secret map.
 	workspaceSecrets, err := e.loadWorkspaceSecrets(ctx, executionContext.Run.WorkspaceID)
 	if err != nil {
 		return Result{}, NewFailure(StopReasonSandboxError, "load workspace secrets", err)
-	}
-
-	sandboxRequest, err := nativeSandboxRequest(executionContext, workspaceSecrets)
-	if err != nil {
-		return Result{}, NewFailure(StopReasonSandboxError, "build native sandbox request", err)
 	}
 
 	session, err := e.prepareSandbox(ctx, executionContext, sandboxRequest)
@@ -685,7 +688,7 @@ func cleanupSandboxOnError(session sandbox.Session, originalErr error) error {
 	return originalErr
 }
 
-func nativeSandboxRequest(executionContext repository.RunAgentExecutionContext, workspaceSecrets map[string]string) (sandbox.CreateRequest, error) {
+func nativeSandboxRequest(executionContext repository.RunAgentExecutionContext) (sandbox.CreateRequest, error) {
 	policy := sandbox.ToolPolicy{
 		AllowedToolKinds: allowedToolKinds(executionContext.ChallengePackVersion.Manifest),
 		AllowShell:       false,
@@ -711,7 +714,7 @@ func nativeSandboxRequest(executionContext repository.RunAgentExecutionContext, 
 		Labels:     sandboxLabels(executionContext),
 	}
 
-	if err := applySandboxConfig(&request, executionContext.ChallengePackVersion.Manifest, workspaceSecrets); err != nil {
+	if err := applySandboxConfig(&request, executionContext.ChallengePackVersion.Manifest); err != nil {
 		return sandbox.CreateRequest{}, err
 	}
 
@@ -802,7 +805,7 @@ func applyRuntimeSandboxPolicy(policy *sandbox.ToolPolicy, filesystem *sandbox.F
 	)
 }
 
-func applySandboxConfig(request *sandbox.CreateRequest, manifest json.RawMessage, workspaceSecrets map[string]string) error {
+func applySandboxConfig(request *sandbox.CreateRequest, manifest json.RawMessage) error {
 	type sandboxBlock struct {
 		NetworkAccess      bool              `json:"network_access"`
 		NetworkAllowlist   []string          `json:"network_allowlist"`
@@ -834,11 +837,10 @@ func applySandboxConfig(request *sandbox.CreateRequest, manifest json.RawMessage
 			request.NetworkAllowlist = decoded.Sandbox.NetworkAllowlist
 		}
 		if len(decoded.Sandbox.EnvVars) > 0 {
-			resolved, err := resolveEnvVarTemplates(decoded.Sandbox.EnvVars, workspaceSecrets)
-			if err != nil {
+			if err := validateEnvVarLiterals(decoded.Sandbox.EnvVars); err != nil {
 				return err
 			}
-			request.EnvVars = resolved
+			request.EnvVars = decoded.Sandbox.EnvVars
 		}
 		if len(decoded.Sandbox.AdditionalPackages) > 0 {
 			request.AdditionalPackages = decoded.Sandbox.AdditionalPackages
@@ -856,54 +858,38 @@ func applySandboxConfig(request *sandbox.CreateRequest, manifest json.RawMessage
 	return nil
 }
 
-// resolveEnvVarTemplates substitutes ${secrets.X} placeholders in env_var
-// values. env_vars intentionally only accept the secrets namespace: they're
-// injected into a shell environment, not a tool call, so parameter refs
-// and other template expressions would be meaningless and confusing.
-// Missing secrets are a hard error — silently leaking a literal
-// "${secrets.X}" into the sandbox environment would be a security hazard.
-func resolveEnvVarTemplates(envVars map[string]string, workspaceSecrets map[string]string) (map[string]string, error) {
-	out := make(map[string]string, len(envVars))
+// validateEnvVarLiterals rejects any env_var value that contains a
+// ${...} placeholder. Sandbox env_vars are intentionally literals
+// only:
+//
+//  1. Per-call exec in E2B does not inherit sandbox-level env (see
+//     e2b/session.go:176-184), so secrets injected here would be
+//     invisible to agent-spawned processes anyway.
+//  2. Any process that DOES see them (boot-time shell) runs as root
+//     in the sandbox and shares a uid with the agent, so /proc
+//     inspection could leak them.
+//
+// Pack authors who need to authenticate a remote API should use the
+// http_request primitive with ${secrets.*} in headers — that's the
+// one hardened path. See issue #186.
+func validateEnvVarLiterals(envVars map[string]string) error {
 	for key, value := range envVars {
-		resolved, err := resolveEnvVarTemplate(value, workspaceSecrets)
-		if err != nil {
-			return nil, fmt.Errorf("env_vars[%q]: %w", key, err)
+		if idx := strings.Index(value, "${"); idx >= 0 {
+			after := value[idx+2:]
+			end := strings.Index(after, "}")
+			var placeholder string
+			if end >= 0 {
+				placeholder = "${" + after[:end] + "}"
+			} else {
+				placeholder = "${" + after + "..."
+			}
+			if strings.HasPrefix(after, "secrets.") {
+				return fmt.Errorf("env_vars[%q] references %s; sandbox env_vars cannot carry secrets — use http_request headers instead (issue #186)", key, placeholder)
+			}
+			return fmt.Errorf("env_vars[%q] contains placeholder %s; sandbox env_vars must be literal strings", key, placeholder)
 		}
-		out[key] = resolved
 	}
-	return out, nil
-}
-
-func resolveEnvVarTemplate(value string, workspaceSecrets map[string]string) (string, error) {
-	var builder strings.Builder
-	remaining := value
-	for {
-		idx := strings.Index(remaining, "${")
-		if idx == -1 {
-			builder.WriteString(remaining)
-			return builder.String(), nil
-		}
-		builder.WriteString(remaining[:idx])
-		after := remaining[idx+2:]
-		closeIdx := strings.Index(after, "}")
-		if closeIdx == -1 {
-			return "", fmt.Errorf("unclosed placeholder near %q", remaining[idx:])
-		}
-		expr := after[:closeIdx]
-		if !strings.HasPrefix(expr, "secrets.") {
-			return "", fmt.Errorf("only ${secrets.X} placeholders are allowed, got ${%s}", expr)
-		}
-		secretKey := strings.TrimPrefix(expr, "secrets.")
-		if secretKey == "" {
-			return "", fmt.Errorf("empty secret reference ${%s}", expr)
-		}
-		secretValue, ok := workspaceSecrets[secretKey]
-		if !ok {
-			return "", fmt.Errorf("missing workspace secret %q", secretKey)
-		}
-		builder.WriteString(secretValue)
-		remaining = after[closeIdx+1:]
-	}
+	return nil
 }
 
 func (e NativeExecutor) loadWorkspaceSecrets(ctx context.Context, workspaceID uuid.UUID) (map[string]string, error) {

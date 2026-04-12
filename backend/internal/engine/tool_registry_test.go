@@ -272,7 +272,7 @@ func TestBuildToolRegistry_SoftDisablesComposedToolWithMissingPrimitive(t *testi
 
 func TestBuildToolRegistry_SoftDisablesComposedToolWithMissingSecret(t *testing.T) {
 	registry, err := buildToolRegistry(
-		sandbox.ToolPolicy{},
+		sandbox.ToolPolicy{AllowNetwork: true},
 		[]byte(`{
 			"tools":{
 				"custom":[
@@ -280,7 +280,7 @@ func TestBuildToolRegistry_SoftDisablesComposedToolWithMissingSecret(t *testing.
 						"name":"inventory_lookup",
 						"description":"Lookup inventory",
 						"parameters":{"type":"object","properties":{"sku":{"type":"string"}}},
-						"implementation":{"primitive":"submit","args":{"answer":"Bearer ${secrets.API_KEY}"}}
+						"implementation":{"primitive":"http_request","args":{"method":"GET","url":"https://api.example.com","headers":{"Authorization":"Bearer ${secrets.API_KEY}"}}}
 					}
 				]
 			}
@@ -298,7 +298,7 @@ func TestBuildToolRegistry_SoftDisablesComposedToolWithMissingSecret(t *testing.
 
 func TestBuildToolRegistry_ComposedToolResolvesSecretsAtBuildTime(t *testing.T) {
 	registry, err := buildToolRegistry(
-		sandbox.ToolPolicy{},
+		sandbox.ToolPolicy{AllowNetwork: true},
 		[]byte(`{
 			"tools":{
 				"custom":[
@@ -306,7 +306,7 @@ func TestBuildToolRegistry_ComposedToolResolvesSecretsAtBuildTime(t *testing.T) 
 						"name":"send_token",
 						"description":"Send token",
 						"parameters":{"type":"object"},
-						"implementation":{"primitive":"submit","args":{"answer":"Bearer ${secrets.API_KEY}"}}
+						"implementation":{"primitive":"http_request","args":{"method":"GET","url":"https://api.example.com","headers":{"Authorization":"Bearer ${secrets.API_KEY}"}}}
 					}
 				]
 			}
@@ -322,15 +322,93 @@ func TestBuildToolRegistry_ComposedToolResolvesSecretsAtBuildTime(t *testing.T) 
 	if !ok {
 		t.Fatal("send_token should be visible when the secret is provided")
 	}
-	result, err := tool.Execute(t.Context(), ToolExecutionRequest{Registry: registry})
-	if err != nil {
-		t.Fatalf("Execute returned error: %v", err)
+	composed, ok := tool.(*composedTool)
+	if !ok {
+		t.Fatalf("send_token has unexpected type %T", tool)
 	}
-	if result.IsError {
-		t.Fatalf("expected success, got error: %s", result.Content)
+	// The resolved secret value should be baked into argsTemplate at
+	// build time so runtime never has to see the placeholder.
+	headers, ok := composed.argsTemplate["headers"].(map[string]any)
+	if !ok {
+		t.Fatalf("argsTemplate.headers has unexpected shape: %#v", composed.argsTemplate["headers"])
 	}
-	if result.FinalOutput != "Bearer top-secret" {
-		t.Fatalf("final output = %q, want resolved secret output", result.FinalOutput)
+	if got := headers["Authorization"]; got != "Bearer top-secret" {
+		t.Fatalf("argsTemplate.headers.Authorization = %v, want Bearer top-secret", got)
+	}
+}
+
+func TestBuildToolRegistry_RejectsSecretsInNonSecretSafePrimitives(t *testing.T) {
+	cases := []struct {
+		name      string
+		primitive string
+		args      string
+	}{
+		{
+			name:      "exec with secret in argv",
+			primitive: "exec",
+			args:      `{"command":["curl","-H","Authorization: Bearer ${secrets.API_KEY}","https://example.com"]}`,
+		},
+		{
+			name:      "submit with secret in answer",
+			primitive: "submit",
+			args:      `{"answer":"Bearer ${secrets.API_KEY}"}`,
+		},
+		{
+			name:      "query_sql with secret in query text",
+			primitive: "query_sql",
+			args:      `{"engine":"sqlite","query":"SELECT * FROM t WHERE k='${secrets.API_KEY}'","database_path":"/workspace/db.sqlite"}`,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			manifest := []byte(`{"tools":{"custom":[{
+				"name":"bad_tool",
+				"description":"x",
+				"parameters":{"type":"object","additionalProperties":false},
+				"implementation":{"primitive":"` + tc.primitive + `","args":` + tc.args + `}
+			}]}}`)
+			_, err := buildToolRegistry(
+				sandbox.ToolPolicy{AllowNetwork: true, AllowShell: true},
+				manifest,
+				nil,
+				map[string]string{"API_KEY": "real-key"},
+			)
+			if err == nil {
+				t.Fatalf("expected buildToolRegistry to reject secrets in %s, got nil", tc.primitive)
+			}
+			if !strings.Contains(err.Error(), "does not accept ${secrets.*}") {
+				t.Fatalf("error should explain the secret-safe constraint: %v", err)
+			}
+			if !strings.Contains(err.Error(), httpRequestToolName) {
+				t.Fatalf("error should point at the sanctioned primitive: %v", err)
+			}
+		})
+	}
+}
+
+func TestBuildToolRegistry_RejectsSecretsWithOutputPath(t *testing.T) {
+	manifest := []byte(`{"tools":{"custom":[{
+		"name":"fetch_and_save",
+		"description":"fetches and saves to file",
+		"parameters":{"type":"object","additionalProperties":false},
+		"implementation":{"primitive":"http_request","args":{
+			"method":"GET",
+			"url":"https://api.example.com",
+			"headers":{"Authorization":"Bearer ${secrets.API_KEY}"},
+			"output_path":"/workspace/data.json"
+		}}
+	}]}}`)
+	_, err := buildToolRegistry(
+		sandbox.ToolPolicy{AllowNetwork: true},
+		manifest,
+		nil,
+		map[string]string{"API_KEY": "real-key"},
+	)
+	if err == nil {
+		t.Fatalf("expected error for secrets + output_path combination")
+	}
+	if !strings.Contains(err.Error(), "output_path") {
+		t.Fatalf("error should mention output_path: %v", err)
 	}
 }
 

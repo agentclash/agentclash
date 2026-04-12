@@ -24,7 +24,7 @@ func TestApplySandboxConfig_WithSandboxBlock(t *testing.T) {
 	}`)
 
 	request := &sandbox.CreateRequest{}
-	if err := applySandboxConfig(request, manifest, nil); err != nil {
+	if err := applySandboxConfig(request, manifest); err != nil {
 		t.Fatalf("applySandboxConfig returned error: %v", err)
 	}
 
@@ -55,7 +55,7 @@ func TestApplySandboxConfig_WithoutSandboxBlock(t *testing.T) {
 	request := &sandbox.CreateRequest{
 		ToolPolicy: sandbox.ToolPolicy{AllowNetwork: false},
 	}
-	if err := applySandboxConfig(request, manifest, nil); err != nil {
+	if err := applySandboxConfig(request, manifest); err != nil {
 		t.Fatalf("applySandboxConfig returned error: %v", err)
 	}
 
@@ -85,7 +85,7 @@ func TestApplySandboxConfig_TemplateIDFromSandboxOnly(t *testing.T) {
 	}`)
 
 	request := &sandbox.CreateRequest{}
-	if err := applySandboxConfig(request, manifest, nil); err != nil {
+	if err := applySandboxConfig(request, manifest); err != nil {
 		t.Fatalf("applySandboxConfig returned error: %v", err)
 	}
 
@@ -96,7 +96,7 @@ func TestApplySandboxConfig_TemplateIDFromSandboxOnly(t *testing.T) {
 
 func TestApplySandboxConfig_InvalidJSON(t *testing.T) {
 	request := &sandbox.CreateRequest{}
-	if err := applySandboxConfig(request, json.RawMessage(`{invalid`), nil); err != nil {
+	if err := applySandboxConfig(request, json.RawMessage(`{invalid`)); err != nil {
 		t.Fatalf("applySandboxConfig on invalid JSON returned error: %v", err)
 	}
 
@@ -106,37 +106,7 @@ func TestApplySandboxConfig_InvalidJSON(t *testing.T) {
 	}
 }
 
-func TestApplySandboxConfig_ResolvesSecretsInEnvVars(t *testing.T) {
-	manifest := json.RawMessage(`{
-		"sandbox": {
-			"env_vars": {
-				"DB_URL": "${secrets.DB_URL}",
-				"COMBINED": "prefix-${secrets.TOKEN}-suffix",
-				"LITERAL": "plain-value"
-			}
-		}
-	}`)
-	secrets := map[string]string{
-		"DB_URL": "postgres://user:pass@host/db",
-		"TOKEN":  "abc123",
-	}
-
-	request := &sandbox.CreateRequest{}
-	if err := applySandboxConfig(request, manifest, secrets); err != nil {
-		t.Fatalf("applySandboxConfig returned error: %v", err)
-	}
-	if got, want := request.EnvVars["DB_URL"], "postgres://user:pass@host/db"; got != want {
-		t.Errorf("DB_URL = %q, want %q", got, want)
-	}
-	if got, want := request.EnvVars["COMBINED"], "prefix-abc123-suffix"; got != want {
-		t.Errorf("COMBINED = %q, want %q", got, want)
-	}
-	if got, want := request.EnvVars["LITERAL"], "plain-value"; got != want {
-		t.Errorf("LITERAL = %q, want %q", got, want)
-	}
-}
-
-func TestApplySandboxConfig_MissingSecretIsError(t *testing.T) {
+func TestApplySandboxConfig_RejectsSecretsInEnvVars(t *testing.T) {
 	manifest := json.RawMessage(`{
 		"sandbox": {
 			"env_vars": {"DB_URL": "${secrets.DB_URL}"}
@@ -144,45 +114,66 @@ func TestApplySandboxConfig_MissingSecretIsError(t *testing.T) {
 	}`)
 
 	request := &sandbox.CreateRequest{}
-	err := applySandboxConfig(request, manifest, map[string]string{})
+	err := applySandboxConfig(request, manifest)
 	if err == nil {
-		t.Fatalf("expected error for missing secret, got nil")
+		t.Fatalf("expected error for secrets in env_vars, got nil")
 	}
 	if !strings.Contains(err.Error(), "DB_URL") {
-		t.Fatalf("error should name the missing secret: %v", err)
+		t.Fatalf("error should name the offending env var: %v", err)
+	}
+	if !strings.Contains(err.Error(), "http_request") {
+		t.Fatalf("error should point at the sanctioned path: %v", err)
+	}
+	if !strings.Contains(err.Error(), "#186") {
+		t.Fatalf("error should reference the issue: %v", err)
 	}
 }
 
-func TestApplySandboxConfig_RejectsNonSecretsNamespaceInEnvVars(t *testing.T) {
-	manifest := json.RawMessage(`{
-		"sandbox": {
-			"env_vars": {"BAD": "${parameters.url}"}
-		}
-	}`)
-
-	request := &sandbox.CreateRequest{}
-	err := applySandboxConfig(request, manifest, nil)
-	if err == nil {
-		t.Fatalf("expected error for parameters namespace, got nil")
+func TestApplySandboxConfig_RejectsAllPlaceholdersInEnvVars(t *testing.T) {
+	cases := []struct {
+		name  string
+		value string
+	}{
+		{"parameters namespace", "${parameters.url}"},
+		{"unknown namespace", "${something.foo}"},
+		{"unclosed placeholder", "${secrets.DB_URL"},
+		{"embedded in longer string", "prefix-${secrets.TOKEN}-suffix"},
 	}
-	if !strings.Contains(err.Error(), "only ${secrets.X}") {
-		t.Fatalf("error should reject non-secrets namespace: %v", err)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			manifest := json.RawMessage(`{
+				"sandbox": {"env_vars": {"BAD": "` + tc.value + `"}}
+			}`)
+			request := &sandbox.CreateRequest{}
+			if err := applySandboxConfig(request, manifest); err == nil {
+				t.Fatalf("expected error for placeholder %q, got nil", tc.value)
+			}
+		})
 	}
 }
 
-func TestApplySandboxConfig_RejectsUnclosedPlaceholder(t *testing.T) {
+func TestApplySandboxConfig_AcceptsLiteralEnvVars(t *testing.T) {
 	manifest := json.RawMessage(`{
 		"sandbox": {
-			"env_vars": {"BAD": "${secrets.DB_URL"}
+			"env_vars": {
+				"DB_URL": "postgres://localhost:5432/app",
+				"SERVICE_URL": "https://api.example.com",
+				"FEATURE_FLAGS": "a=1,b=2",
+				"EMPTY": ""
+			}
 		}
 	}`)
-
 	request := &sandbox.CreateRequest{}
-	err := applySandboxConfig(request, manifest, map[string]string{"DB_URL": "x"})
-	if err == nil {
-		t.Fatalf("expected error for unclosed placeholder, got nil")
+	if err := applySandboxConfig(request, manifest); err != nil {
+		t.Fatalf("applySandboxConfig returned error: %v", err)
 	}
-	if !strings.Contains(err.Error(), "unclosed placeholder") {
-		t.Fatalf("error should mention unclosed placeholder: %v", err)
+	if got, want := request.EnvVars["DB_URL"], "postgres://localhost:5432/app"; got != want {
+		t.Errorf("DB_URL = %q, want %q", got, want)
+	}
+	if got, want := request.EnvVars["SERVICE_URL"], "https://api.example.com"; got != want {
+		t.Errorf("SERVICE_URL = %q, want %q", got, want)
+	}
+	if got, want := request.EnvVars["FEATURE_FLAGS"], "a=1,b=2"; got != want {
+		t.Errorf("FEATURE_FLAGS = %q, want %q", got, want)
 	}
 }

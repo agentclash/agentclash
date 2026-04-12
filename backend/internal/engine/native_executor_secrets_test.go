@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"strings"
@@ -27,29 +28,89 @@ func (s *stubSecretsLookup) LoadWorkspaceSecrets(_ context.Context, workspaceID 
 	return s.secrets, nil
 }
 
-func TestNativeExecutor_EnvVarSecretResolution_EndToEnd(t *testing.T) {
+// capturingObserver records every OnToolExecution call so a test
+// can walk the full record surface and assert no secret material
+// flows through to what run_events will persist.
+type capturingObserver struct {
+	NoopObserver
+	records []ToolExecutionRecord
+}
+
+func (c *capturingObserver) OnToolExecution(_ context.Context, record ToolExecutionRecord) error {
+	c.records = append(c.records, record)
+	return nil
+}
+
+// TestComposedHttpRequest_SecretIsolation_ThroughNativeExecutor runs a
+// composed tool that uses ${secrets.X} through the full
+// NativeExecutor.Execute loop (not just tool.Execute directly) so the
+// observer path — which feeds run_events persistence — is exercised.
+// Any secret material landing in a ToolExecutionRecord would get
+// persisted to the database in production.
+func TestComposedHttpRequest_SecretIsolation_ThroughNativeExecutor(t *testing.T) {
+	const secretValue = "nativeexec-secret-value-99"
 	workspaceID := uuid.New()
+
 	ec := nativeExecutionContext()
 	ec.Run.WorkspaceID = workspaceID
 	ec.ChallengePackVersion.Manifest = []byte(`{
-		"tool_policy": {"allowed_tool_kinds": ["file"]},
-		"sandbox": {
-			"env_vars": {
-				"DB_URL": "${secrets.DB_URL}",
-				"LITERAL": "plain"
+		"tool_policy": {"allowed_tool_kinds": ["network"], "allow_network": true},
+		"tools": {"custom": [{
+			"name": "call_api",
+			"description": "authenticated API call",
+			"parameters": {"type":"object","additionalProperties":false},
+			"implementation": {
+				"type": "primitive",
+				"primitive": "http_request",
+				"args": {
+					"method": "GET",
+					"url": "https://api.example.com",
+					"headers": {"Authorization": "Bearer ${secrets.API_KEY}"}
+				}
 			}
-		}
+		}]}
 	}`)
 
-	secretsStore := &stubSecretsLookup{
-		secrets: map[string]string{"DB_URL": "postgres://user:pass@host/db"},
-	}
+	secretsStore := &stubSecretsLookup{secrets: map[string]string{"API_KEY": secretValue}}
 
-	session := sandbox.NewFakeSession("sandbox-secrets")
-	sandboxProvider := &sandbox.FakeProvider{NextSession: session}
+	session := sandbox.NewFakeSession("native-secrets-end-to-end")
+	session.SetExecFunc(func(req sandbox.ExecRequest, _ map[string][]byte) (sandbox.ExecResult, error) {
+		switch req.Command[0] {
+		case "mkdir":
+			return sandbox.ExecResult{ExitCode: 0}, nil
+		case "python3":
+			// Simulate an echoing server (same adversarial shape as
+			// TestComposedHttpRequest_SecretIsolation_FullStack).
+			return sandbox.ExecResult{
+				ExitCode: 0,
+				Stdout: `{"status_code":200,"headers":{` +
+					`"Content-Type":"application/json",` +
+					`"Authorization":"Bearer ` + secretValue + `",` +
+					`"Set-Cookie":"sid=` + secretValue + `"` +
+					`},"url":"https://api.example.com","body":"ok","body_bytes":2}`,
+			}, nil
+		default:
+			return sandbox.ExecResult{}, nil
+		}
+	})
+
 	client := &scriptedProviderClient{
 		t: t,
 		steps: []providerStep{
+			{
+				response: provider.Response{
+					ProviderKey:     "openai",
+					ProviderModelID: "gpt-4.1",
+					FinishReason:    "tool_calls",
+					ToolCalls: []provider.ToolCall{
+						{
+							ID:        "call-api-1",
+							Name:      "call_api",
+							Arguments: []byte(`{}`),
+						},
+					},
+				},
+			},
 			{
 				response: provider.Response{
 					ProviderKey:     "openai",
@@ -67,7 +128,8 @@ func TestNativeExecutor_EnvVarSecretResolution_EndToEnd(t *testing.T) {
 		},
 	}
 
-	executor := NewNativeExecutor(client, sandboxProvider, NoopObserver{}).WithSecretsLookup(secretsStore)
+	observer := &capturingObserver{}
+	executor := NewNativeExecutor(client, &sandbox.FakeProvider{NextSession: session}, observer).WithSecretsLookup(secretsStore)
 	result, err := executor.Execute(context.Background(), ec)
 	if err != nil {
 		t.Fatalf("Execute returned error: %v", err)
@@ -76,26 +138,160 @@ func TestNativeExecutor_EnvVarSecretResolution_EndToEnd(t *testing.T) {
 		t.Fatalf("stop reason = %s, want completed", result.StopReason)
 	}
 
-	if secretsStore.calls != 1 {
-		t.Fatalf("secrets lookup called %d times, want 1", secretsStore.calls)
+	// Walk every observer record — the persisted run_events surface
+	// — and assert the plaintext secret is nowhere in it. This is the
+	// test that would catch a regression where the composed tool
+	// resolver or the observer layer logged encodedArgs.
+	if len(observer.records) == 0 {
+		t.Fatalf("observer recorded zero tool executions; scripted provider should have produced at least one")
 	}
-	if secretsStore.lastID != workspaceID {
-		t.Fatalf("secrets lookup workspace = %s, want %s", secretsStore.lastID, workspaceID)
+	for i, record := range observer.records {
+		if strings.Contains(string(record.ToolCall.Arguments), secretValue) {
+			t.Fatalf("record[%d] ToolCall.Arguments leaked secret: %s", i, string(record.ToolCall.Arguments))
+		}
+		if strings.Contains(record.Result.Content, secretValue) {
+			t.Fatalf("record[%d] Result.Content leaked secret (would land in run_events): %s", i, record.Result.Content)
+		}
 	}
 
-	if len(sandboxProvider.CreateRequests) != 1 {
-		t.Fatalf("sandbox create calls = %d, want 1", len(sandboxProvider.CreateRequests))
-	}
-	request := sandboxProvider.CreateRequests[0]
-	if got, want := request.EnvVars["DB_URL"], "postgres://user:pass@host/db"; got != want {
-		t.Fatalf("sandbox env DB_URL = %q, want %q", got, want)
-	}
-	if got, want := request.EnvVars["LITERAL"], "plain"; got != want {
-		t.Fatalf("sandbox env LITERAL = %q, want %q", got, want)
+	// Also re-verify the filesystem post-return invariant holds on
+	// the full executor path.
+	for path, content := range session.Files() {
+		if bytes.Contains(content, []byte(secretValue)) {
+			t.Fatalf("session file %q leaks secret after Execute returned: %q", path, string(content))
+		}
 	}
 }
 
-func TestNativeExecutor_MissingSecretFailsRunBeforeSandbox(t *testing.T) {
+// TestComposedHttpRequest_SecretIsolation_FullStack ties every #186
+// defense into one flow: a composed tool authenticates against a
+// remote API using a workspace secret, the remote "server" echoes
+// every request header back (the adversarial case), and we walk
+// every surface an agent could look at to confirm the plaintext
+// secret is nowhere observable after the tool returns.
+//
+// Covers:
+//   - step 1: primitive secret-exposure gate — http_request must
+//     remain the sanctioned primitive and accept the secret.
+//   - step 3: post-exec request-file scrub — fake session's Files()
+//     must not contain the plaintext after return.
+//   - step 4: response header stripping — the simulated echo of
+//     Authorization must be redacted in result.Content.
+func TestComposedHttpRequest_SecretIsolation_FullStack(t *testing.T) {
+	const secretValue = "super-secret-token-42"
+	manifest := []byte(`{
+		"tools": {
+			"custom": [
+				{
+					"name": "call_api",
+					"description": "authenticated API call",
+					"parameters": {"type": "object", "additionalProperties": false},
+					"implementation": {
+						"type": "primitive",
+						"primitive": "http_request",
+						"args": {
+							"method": "GET",
+							"url": "https://api.example.com/data",
+							"headers": {"Authorization": "Bearer ${secrets.API_KEY}"}
+						}
+					}
+				}
+			]
+		}
+	}`)
+
+	registry, err := buildToolRegistry(
+		sandbox.ToolPolicy{AllowNetwork: true, AllowedToolKinds: []string{toolKindNetwork}},
+		manifest,
+		nil,
+		map[string]string{"API_KEY": secretValue},
+	)
+	if err != nil {
+		t.Fatalf("buildToolRegistry returned error: %v", err)
+	}
+
+	var fileAtExecTime []byte
+	session := sandbox.NewFakeSession("integration-secrets")
+	session.SetExecFunc(func(req sandbox.ExecRequest, files map[string][]byte) (sandbox.ExecResult, error) {
+		switch req.Command[0] {
+		case "mkdir":
+			return sandbox.ExecResult{ExitCode: 0}, nil
+		case "python3":
+			fileAtExecTime = append([]byte(nil), files[req.Command[2]]...)
+			// Server echoes every request header back — the exact
+			// adversarial shape step 4 was designed to defend against.
+			return sandbox.ExecResult{
+				ExitCode: 0,
+				Stdout: `{"status_code":200,"headers":{` +
+					`"Content-Type":"application/json",` +
+					`"Authorization":"Bearer ` + secretValue + `",` +
+					`"Set-Cookie":"sid=` + secretValue + `",` +
+					`"X-Request-Id":"opaque"` +
+					`},"url":"https://api.example.com/data","body":"{\"ok\":true}","body_bytes":11}`,
+			}, nil
+		default:
+			t.Fatalf("unexpected command: %#v", req.Command)
+			return sandbox.ExecResult{}, nil
+		}
+	})
+
+	tool, ok := registry.Resolve("call_api")
+	if !ok {
+		t.Fatalf("composed tool call_api should be registered")
+	}
+
+	result, err := tool.Execute(t.Context(), ToolExecutionRequest{
+		Registry:         registry,
+		Session:          session,
+		ToolPolicy:       sandbox.ToolPolicy{AllowNetwork: true, AllowedToolKinds: []string{toolKindNetwork}},
+		NetworkAllowlist: []string{"203.0.113.0/24"},
+	})
+	if err != nil {
+		t.Fatalf("composed tool Execute returned error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("composed tool returned error result: %s", result.Content)
+	}
+
+	// Sanity: the secret DID reach the request file during exec —
+	// otherwise the subsequent "gone after return" check is vacuous.
+	if !bytes.Contains(fileAtExecTime, []byte(secretValue)) {
+		t.Fatalf("expected secret in request file at exec time, got %q", string(fileAtExecTime))
+	}
+
+	// Defense #3 (file scrub): no file in the sandbox session carries
+	// the plaintext secret after composed-tool Execute returns. This
+	// is what blocks an adversarial read_file("...tool-inputs/...").
+	for path, content := range session.Files() {
+		if bytes.Contains(content, []byte(secretValue)) {
+			t.Fatalf("file %q leaks plaintext secret after Execute returned: %q", path, string(content))
+		}
+	}
+
+	// Defense #4 (response header scrub): the server-echoed
+	// Authorization header is stripped from result.Content, so the
+	// LLM context and run_events never see the plaintext.
+	if strings.Contains(result.Content, secretValue) {
+		t.Fatalf("result content leaked secret: %s", result.Content)
+	}
+	if !strings.Contains(result.Content, redactedHeaderMarker) {
+		t.Fatalf("result content missing redaction marker: %s", result.Content)
+	}
+	// Non-sensitive fields survive.
+	if !strings.Contains(result.Content, "X-Request-Id") || !strings.Contains(result.Content, "opaque") {
+		t.Fatalf("non-sensitive fields dropped: %s", result.Content)
+	}
+	if !strings.Contains(result.Content, `"status_code":200`) {
+		t.Fatalf("status code dropped: %s", result.Content)
+	}
+}
+
+func TestNativeExecutor_RejectsSecretReferencesInEnvVars(t *testing.T) {
+	// Regardless of whether the workspace actually has the secret,
+	// sandbox env_vars cannot carry ${secrets.*} references — they
+	// have no working use case (per-call exec does not inherit
+	// sandbox env) and opening that path would leak secrets to any
+	// boot-time process the sandbox spawns. See issue #186.
 	workspaceID := uuid.New()
 	ec := nativeExecutionContext()
 	ec.Run.WorkspaceID = workspaceID
@@ -103,14 +299,15 @@ func TestNativeExecutor_MissingSecretFailsRunBeforeSandbox(t *testing.T) {
 		"sandbox": {"env_vars": {"DB_URL": "${secrets.DB_URL}"}}
 	}`)
 
-	// Workspace has no secrets stored.
-	secretsStore := &stubSecretsLookup{secrets: map[string]string{}}
+	// Intentionally provide the secret — the rejection must fire
+	// regardless.
+	secretsStore := &stubSecretsLookup{secrets: map[string]string{"DB_URL": "postgres://x"}}
 	sandboxProvider := &sandbox.FakeProvider{NextSession: sandbox.NewFakeSession("unused")}
 	executor := NewNativeExecutor(&provider.FakeClient{}, sandboxProvider, NoopObserver{}).WithSecretsLookup(secretsStore)
 
 	_, err := executor.Execute(context.Background(), ec)
 	if err == nil {
-		t.Fatalf("expected Execute to fail on missing secret")
+		t.Fatalf("expected Execute to reject secret reference in env_var")
 	}
 	failure, ok := AsFailure(err)
 	if !ok {
@@ -119,12 +316,11 @@ func TestNativeExecutor_MissingSecretFailsRunBeforeSandbox(t *testing.T) {
 	if failure.StopReason != StopReasonSandboxError {
 		t.Fatalf("stop reason = %s, want %s", failure.StopReason, StopReasonSandboxError)
 	}
-	if failure.Cause == nil || !strings.Contains(failure.Cause.Error(), "DB_URL") {
-		t.Fatalf("wrapped cause should name the missing secret: %v", failure.Cause)
+	if failure.Cause == nil || !strings.Contains(failure.Cause.Error(), "http_request") {
+		t.Fatalf("cause should point at http_request as the sanctioned path: %v", failure.Cause)
 	}
-	// Sandbox must NOT have been provisioned if env_var resolution failed.
 	if len(sandboxProvider.CreateRequests) != 0 {
-		t.Fatalf("sandbox was provisioned despite secret failure: %d calls", len(sandboxProvider.CreateRequests))
+		t.Fatalf("sandbox was provisioned despite rejection: %d calls", len(sandboxProvider.CreateRequests))
 	}
 }
 
