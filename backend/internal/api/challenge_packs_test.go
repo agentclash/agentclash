@@ -162,7 +162,7 @@ challenges:
 	req.Header.Set(headerWorkspaceMemberships, workspaceID.String()+":workspace_admin")
 	recorder := httptest.NewRecorder()
 
-	newRouter(
+	newRouter("dev",
 		logger,
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
@@ -178,6 +178,11 @@ challenges:
 		stubAgentBuildService{},
 		noopReleaseGateService{},
 		service,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusCreated {

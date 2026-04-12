@@ -76,7 +76,7 @@ func TestGetRunComparisonEndpointReturnsJSONPayload(t *testing.T) {
 	req.Header.Set(headerWorkspaceMemberships, workspaceID.String()+":workspace_member")
 	recorder := httptest.NewRecorder()
 
-	newRouter(
+	newRouter("dev",
 		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
@@ -110,6 +110,12 @@ func TestGetRunComparisonEndpointReturnsJSONPayload(t *testing.T) {
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {
@@ -138,7 +144,7 @@ func TestCompareViewerEndpointReturnsHTMLShell(t *testing.T) {
 	req.Header.Set(headerWorkspaceMemberships, workspaceID.String()+":workspace_member")
 	recorder := httptest.NewRecorder()
 
-	newRouter(
+	newRouter("dev",
 		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
@@ -153,6 +159,12 @@ func TestCompareViewerEndpointReturnsHTMLShell(t *testing.T) {
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {

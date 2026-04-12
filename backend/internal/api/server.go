@@ -32,8 +32,14 @@ func NewServer(
 	challengePackReadService ChallengePackReadService,
 	challengePackAuthoringService ChallengePackAuthoringService,
 	agentBuildService AgentBuildService,
+	userService UserService,
+	orgService OrganizationService,
+	wsService WorkspaceService,
+	orgMembershipService OrgMembershipService,
+	wsMembershipService WorkspaceMembershipService,
+	onboardingService OnboardingService,
 ) *Server {
-	router := newRouter(logger, authenticator, authorizer, artifactService, cfg.ArtifactMaxUploadBytes, runCreationService, runReadService, replayReadService, hostedRunIngestionService, compareReadService, agentDeploymentReadService, challengePackReadService, agentBuildService, releaseGateService, challengePackAuthoringService)
+	router := newRouter(cfg.AuthMode, logger, authenticator, authorizer, artifactService, cfg.ArtifactMaxUploadBytes, runCreationService, runReadService, replayReadService, hostedRunIngestionService, compareReadService, agentDeploymentReadService, challengePackReadService, agentBuildService, releaseGateService, challengePackAuthoringService, userService, orgService, wsService, orgMembershipService, wsMembershipService, onboardingService)
 
 	return &Server{
 		config: cfg,
@@ -81,6 +87,7 @@ func Run(ctx context.Context, server *Server, logger *slog.Logger) error {
 }
 
 func newRouter(
+	authMode string,
 	logger *slog.Logger,
 	authenticator Authenticator,
 	authorizer WorkspaceAuthorizer,
@@ -95,11 +102,23 @@ func newRouter(
 	challengePackReadService ChallengePackReadService,
 	agentBuildService AgentBuildService,
 	releaseGateService ReleaseGateService,
-	extra ...ChallengePackAuthoringService,
+	challengePackAuthoringServiceArg ChallengePackAuthoringService,
+	userServiceArg UserService,
+	orgServiceArg OrganizationService,
+	wsServiceArg WorkspaceService,
+	orgMembershipServiceArg OrgMembershipService,
+	wsMembershipServiceArg WorkspaceMembershipService,
+	extra ...OnboardingService,
 ) http.Handler {
-	var challengePackAuthoringService ChallengePackAuthoringService
+	challengePackAuthoringService := challengePackAuthoringServiceArg
+	userService := userServiceArg
+	orgService := orgServiceArg
+	wsService := wsServiceArg
+	orgMembershipService := orgMembershipServiceArg
+	wsMembershipService := wsMembershipServiceArg
+	var onboardingService OnboardingService
 	if len(extra) > 0 {
-		challengePackAuthoringService = extra[0]
+		onboardingService = extra[0]
 	}
 
 	if hostedRunIngestionService == nil {
@@ -122,13 +141,13 @@ func newRouter(
 	router := chi.NewRouter()
 	router.Use(recoverer(logger))
 	router.Use(requestLogger(logger))
-	router.Use(corsMiddleware)
+	router.Use(newCORSMiddleware(authMode))
 	router.Get("/healthz", healthzHandler)
 	registerPublicRoutes(router, logger, artifactService)
 	registerHostedIntegrationRoutes(router, logger, hostedRunIngestionService)
 	router.Route("/v1", func(r chi.Router) {
 		r.Use(authenticateRequest(logger, authenticator))
-		registerProtectedRoutes(r, logger, authorizer, artifactService, artifactMaxUploadBytes, runCreationService, runReadService, replayReadService, compareReadService, releaseGateService, agentDeploymentReadService, challengePackReadService, challengePackAuthoringService, agentBuildService)
+		registerProtectedRoutes(r, logger, authorizer, artifactService, artifactMaxUploadBytes, runCreationService, runReadService, replayReadService, compareReadService, releaseGateService, agentDeploymentReadService, challengePackReadService, challengePackAuthoringService, agentBuildService, userService, orgService, wsService, orgMembershipService, wsMembershipService, onboardingService)
 	})
 
 	return router

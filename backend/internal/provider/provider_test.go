@@ -180,6 +180,24 @@ func TestEnvCredentialResolverSupportsEnvReferences(t *testing.T) {
 	}
 }
 
+func TestFailureRetryAfterField(t *testing.T) {
+	f := Failure{
+		ProviderKey: "openai",
+		Code:        FailureCodeRateLimit,
+		Message:     "rate limited",
+		Retryable:   true,
+		RetryAfter:  20 * time.Second,
+	}
+
+	recovered, ok := AsFailure(f)
+	if !ok {
+		t.Fatalf("AsFailure failed to recover failure")
+	}
+	if recovered.RetryAfter != 20*time.Second {
+		t.Fatalf("RetryAfter = %s, want 20s", recovered.RetryAfter)
+	}
+}
+
 func mustTime(t *testing.T, raw string) time.Time {
 	t.Helper()
 

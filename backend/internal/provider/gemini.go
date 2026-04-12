@@ -81,7 +81,7 @@ func (c GeminiClient) StreamModel(ctx context.Context, request Request, onDelta 
 		if err != nil {
 			return Response{}, NewFailure(request.ProviderKey, FailureCodeUnavailable, "read provider response", true, err)
 		}
-		return Response{}, normalizeGeminiErrorResponse(request.ProviderKey, resp.StatusCode, raw)
+		return Response{}, normalizeGeminiErrorResponse(request.ProviderKey, resp.StatusCode, resp.Header, raw)
 	}
 
 	accumulator := NewStreamAccumulator(request.ProviderKey, startedAt)
@@ -522,7 +522,7 @@ func emitGeminiDelta(accumulator *StreamAccumulator, onDelta func(StreamDelta) e
 	return nil
 }
 
-func normalizeGeminiErrorResponse(providerKey string, statusCode int, raw []byte) error {
+func normalizeGeminiErrorResponse(providerKey string, statusCode int, header http.Header, raw []byte) error {
 	var envelope geminiErrorEnvelope
 	if err := json.Unmarshal(raw, &envelope); err != nil {
 		return NewFailure(
@@ -543,7 +543,8 @@ func normalizeGeminiErrorResponse(providerKey string, statusCode int, raw []byte
 	case http.StatusUnauthorized, http.StatusForbidden:
 		return NewFailure(providerKey, FailureCodeAuth, message, false, nil)
 	case http.StatusTooManyRequests:
-		return NewFailure(providerKey, FailureCodeRateLimit, message, true, nil)
+		f := Failure{ProviderKey: providerKey, Code: FailureCodeRateLimit, Message: message, Retryable: true, RetryAfter: parseRetryAfter(header)}
+		return f
 	case http.StatusBadRequest, http.StatusUnprocessableEntity:
 		return NewFailure(providerKey, FailureCodeInvalidRequest, message, false, nil)
 	case http.StatusGatewayTimeout, http.StatusBadGateway, http.StatusServiceUnavailable:

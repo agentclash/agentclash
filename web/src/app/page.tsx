@@ -1,8 +1,9 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import { ArrowRight, Check, Loader2, Star } from "lucide-react";
+import { ArrowRight, Check, Loader2, Star, LogIn } from "lucide-react";
 import Link from "next/link";
+import { useAuth } from "@workos-inc/authkit-nextjs/components";
 
 type WaitlistStatus = "idle" | "loading" | "success" | "duplicate" | "error";
 
@@ -82,6 +83,7 @@ export default function HomePage() {
   const [status, setStatus] = useState<WaitlistStatus>("idle");
   const [message, setMessage] = useState("");
   const [waitlistCount, setWaitlistCount] = useState<number | null>(null);
+  const { user, loading: authLoading } = useAuth();
 
   useEffect(() => {
     fetch("/api/waitlist")
@@ -133,16 +135,36 @@ export default function HomePage() {
   return (
     <main>
       {/* ── Top bar ── */}
-      <nav className="fixed top-0 right-0 z-50 p-4">
-        <a
-          href="https://github.com/Atharva-Kanherkar/agentclash"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1.5 rounded-md border border-white/[0.08] bg-white/[0.03] px-3 py-1.5 text-xs font-medium text-white/50 hover:text-white/80 hover:border-white/15 transition-colors"
-        >
-          <Star className="size-3.5" />
-          Star on GitHub
-        </a>
+      <nav className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between p-4">
+        <div />
+        <div className="flex items-center gap-2">
+          {!authLoading && user ? (
+            <Link
+              href="/dashboard"
+              className="inline-flex items-center gap-1.5 rounded-md border border-white/[0.08] bg-white/90 px-3 py-1.5 text-xs font-medium text-[#060606] hover:bg-white transition-colors"
+            >
+              Go to Dashboard
+              <ArrowRight className="size-3" />
+            </Link>
+          ) : !authLoading && !user ? (
+            <Link
+              href="/auth/login"
+              className="inline-flex items-center gap-1.5 rounded-md border border-white/[0.08] bg-white/[0.03] px-3 py-1.5 text-xs font-medium text-white/50 hover:text-white/80 hover:border-white/15 transition-colors"
+            >
+              <LogIn className="size-3.5" />
+              Sign in
+            </Link>
+          ) : null}
+          <a
+            href="https://github.com/Atharva-Kanherkar/agentclash"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 rounded-md border border-white/[0.08] bg-white/[0.03] px-3 py-1.5 text-xs font-medium text-white/50 hover:text-white/80 hover:border-white/15 transition-colors"
+          >
+            <Star className="size-3.5" />
+            Star on GitHub
+          </a>
+        </div>
       </nav>
 
       {/* ── Hero ── */}

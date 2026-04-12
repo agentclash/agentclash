@@ -1,12 +1,17 @@
 package workflow
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/challengepack"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/domain"
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/engine"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/hostedruns"
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/provider"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
 	"github.com/google/uuid"
 	"go.temporal.io/sdk/temporal"
@@ -57,6 +62,10 @@ func runAgentWorkflow(ctx sdkworkflow.Context, input RunAgentWorkflowInput) erro
 		return runHostedRunAgent(ctx, input, executionContext)
 	}
 
+	if executionModeFromManifest(executionContext.ChallengePackVersion.Manifest) == challengepack.ExecutionModePromptEval {
+		return runPromptEvalRunAgent(ctx, input, executionContext)
+	}
+
 	if err := transitionRunAgentStatus(ctx, input.RunAgentID, domain.RunAgentStatusExecuting, stringPtr("native execution started"), nil); err != nil {
 		return err
 	}
@@ -70,6 +79,43 @@ func runAgentWorkflow(ctx sdkworkflow.Context, input RunAgentWorkflowInput) erro
 	return nil
 }
 
+func runPromptEvalRunAgent(ctx sdkworkflow.Context, input RunAgentWorkflowInput, executionContext repository.RunAgentExecutionContext) error {
+	if err := transitionRunAgentStatus(ctx, input.RunAgentID, domain.RunAgentStatusExecuting, stringPtr("prompt_eval execution started"), nil); err != nil {
+		return err
+	}
+	if err := executePromptEvalStep(ctx, input, executionContext).Get(ctx, nil); err != nil {
+		return err
+	}
+	if err := transitionRunAgentStatus(ctx, input.RunAgentID, domain.RunAgentStatusEvaluating, stringPtr("prompt_eval execution completed; parent scoring pending"), nil); err != nil {
+		return err
+	}
+	warnOnReplayBuildFailure(ctx, input.RunAgentID, "successful prompt_eval execution")
+	return nil
+}
+
+func executePromptEvalStep(ctx sdkworkflow.Context, input RunAgentWorkflowInput, executionContext repository.RunAgentExecutionContext) sdkworkflow.Future {
+	return sdkworkflow.ExecuteActivity(
+		sdkworkflow.WithActivityOptions(ctx, nativeModelActivityOptions(executionContext)),
+		executePromptEvalStepActivityName,
+		input,
+	)
+}
+
+func executionModeFromManifest(manifest json.RawMessage) string {
+	if len(manifest) == 0 {
+		return ""
+	}
+	var decoded struct {
+		Version struct {
+			ExecutionMode string `json:"execution_mode"`
+		} `json:"version"`
+	}
+	if err := json.Unmarshal(manifest, &decoded); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(decoded.Version.ExecutionMode)
+}
+
 func executeNativeModelStep(ctx sdkworkflow.Context, input RunAgentWorkflowInput, executionContext repository.RunAgentExecutionContext) sdkworkflow.Future {
 	return sdkworkflow.ExecuteActivity(
 		sdkworkflow.WithActivityOptions(ctx, nativeModelActivityOptions(executionContext)),
@@ -79,11 +125,35 @@ func executeNativeModelStep(ctx sdkworkflow.Context, input RunAgentWorkflowInput
 }
 
 func nativeModelActivityOptions(executionContext repository.RunAgentExecutionContext) sdkworkflow.ActivityOptions {
-	options := defaultActivityOptions
+	timeout := defaultActivityOptions.StartToCloseTimeout
 	if executionContext.Deployment.RuntimeProfile.RunTimeoutSeconds > 0 {
-		options.StartToCloseTimeout = time.Duration(executionContext.Deployment.RuntimeProfile.RunTimeoutSeconds)*time.Second + nativeActivityBootBuffer + nativeActivityCleanupBuffer
+		timeout = time.Duration(executionContext.Deployment.RuntimeProfile.RunTimeoutSeconds)*time.Second + nativeActivityBootBuffer + nativeActivityCleanupBuffer
 	}
-	return options
+	return sdkworkflow.ActivityOptions{
+		StartToCloseTimeout: timeout,
+		RetryPolicy: &temporal.RetryPolicy{
+			MaximumAttempts:    3,
+			InitialInterval:    10 * time.Second,
+			BackoffCoefficient: 2.0,
+			MaximumInterval:    2 * time.Minute,
+			NonRetryableErrorTypes: []string{
+				repositoryRunNotFoundErrorType,
+				repositoryRunAgentNotFoundErrorType,
+				repositoryFrozenExecutionContextType,
+				repositoryInvalidTransitionType,
+				repositoryTransitionConflictType,
+				engineFailureErrorTypePrefix + string(engine.StopReasonStepLimit),
+				engineFailureErrorTypePrefix + string(engine.StopReasonToolLimit),
+				engineFailureErrorTypePrefix + string(engine.StopReasonTimeout),
+				engineFailureErrorTypePrefix + string(engine.StopReasonProviderError),
+				engineFailureErrorTypePrefix + string(engine.StopReasonObserverError),
+				providerFailureErrorTypePrefix + string(provider.FailureCodeAuth),
+				providerFailureErrorTypePrefix + string(provider.FailureCodeInvalidRequest),
+				providerFailureErrorTypePrefix + string(provider.FailureCodeUnsupportedProvider),
+				providerFailureErrorTypePrefix + string(provider.FailureCodeCredentialUnavailable),
+			},
+		},
+	}
 }
 
 func runHostedRunAgent(ctx sdkworkflow.Context, input RunAgentWorkflowInput, executionContext repository.RunAgentExecutionContext) error {

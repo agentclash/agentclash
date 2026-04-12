@@ -20,6 +20,7 @@ const (
 	defaultSandboxWorkingDirectory = "/workspace"
 	defaultRetryAttempts           = 3
 	defaultRetryBackoff            = 250 * time.Millisecond
+	rateLimitMinBackoff            = 2 * time.Second
 	defaultSandboxTTL              = 60 * time.Minute
 	sandboxBootBuffer              = 20 * time.Second
 	sandboxCleanupTimeout          = 15 * time.Second
@@ -366,7 +367,8 @@ func (e NativeExecutor) invokeWithRetries(ctx context.Context, request provider.
 		}
 
 		lastErr = err
-		timer := time.NewTimer(backoff)
+		wait := retryBackoff(failure, backoff)
+		timer := time.NewTimer(wait)
 		select {
 		case <-ctx.Done():
 			timer.Stop()
@@ -397,6 +399,16 @@ func isTransientProviderCode(code provider.FailureCode) bool {
 	return code == provider.FailureCodeRateLimit ||
 		code == provider.FailureCodeTimeout ||
 		code == provider.FailureCodeUnavailable
+}
+
+func retryBackoff(failure provider.Failure, baseBackoff time.Duration) time.Duration {
+	if failure.RetryAfter > 0 {
+		return failure.RetryAfter + 1*time.Second
+	}
+	if failure.Code == provider.FailureCodeRateLimit && baseBackoff < rateLimitMinBackoff {
+		return rateLimitMinBackoff
+	}
+	return baseBackoff
 }
 
 func (e NativeExecutor) executeToolCalls(

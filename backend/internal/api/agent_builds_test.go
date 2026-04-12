@@ -78,7 +78,7 @@ func TestGetAgentBuildRequiresWorkspaceMembership(t *testing.T) {
 	buildWorkspaceID := uuid.New()
 	buildID := uuid.New()
 
-	router := newRouter(
+	router := newRouter("dev",
 		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
@@ -101,6 +101,12 @@ func TestGetAgentBuildRequiresWorkspaceMembership(t *testing.T) {
 			versions: map[uuid.UUID]repository.AgentBuildVersion{},
 		},
 		noopReleaseGateService{},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
 	)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/agent-builds/"+buildID.String(), nil)
@@ -121,7 +127,7 @@ func TestGetAgentBuildVersionRequiresWorkspaceMembership(t *testing.T) {
 	buildID := uuid.New()
 	versionID := uuid.New()
 
-	router := newRouter(
+	router := newRouter("dev",
 		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
@@ -149,6 +155,12 @@ func TestGetAgentBuildVersionRequiresWorkspaceMembership(t *testing.T) {
 			},
 		},
 		noopReleaseGateService{},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
 	)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/agent-build-versions/"+versionID.String(), nil)
@@ -171,7 +183,7 @@ func TestGetAgentBuildVersionReturnsToolAndKnowledgeBindings(t *testing.T) {
 	toolID := uuid.New()
 	knowledgeSourceID := uuid.New()
 
-	router := newRouter(
+	router := newRouter("dev",
 		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
@@ -217,6 +229,12 @@ func TestGetAgentBuildVersionReturnsToolAndKnowledgeBindings(t *testing.T) {
 			},
 		},
 		noopReleaseGateService{},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
 	)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/agent-build-versions/"+versionID.String(), nil)

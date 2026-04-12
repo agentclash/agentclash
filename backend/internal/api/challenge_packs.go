@@ -307,10 +307,21 @@ func validateChallengePackHandler(logger *slog.Logger, service ChallengePackAuth
 	}
 }
 
-func publishChallengePackHandler(logger *slog.Logger, service ChallengePackAuthoringService) http.HandlerFunc {
+func publishChallengePackHandler(logger *slog.Logger, service ChallengePackAuthoringService, authorizer WorkspaceAuthorizer) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		caller, err := CallerFromContext(r.Context())
+		if err != nil {
+			writeAuthzError(w, err)
+			return
+		}
+
 		workspaceID, err := WorkspaceIDFromContext(r.Context())
 		if err != nil {
+			writeAuthzError(w, err)
+			return
+		}
+
+		if err := AuthorizeWorkspaceAction(r.Context(), authorizer, caller, workspaceID, ActionPublishChallengePack); err != nil {
 			writeAuthzError(w, err)
 			return
 		}

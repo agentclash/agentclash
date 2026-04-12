@@ -1,7 +1,12 @@
 import type { Metadata } from "next";
-import { Instrument_Serif, DM_Sans, IBM_Plex_Mono } from "next/font/google";
+import { Instrument_Serif, DM_Sans, IBM_Plex_Mono, Geist } from "next/font/google";
 import { Analytics } from "@vercel/analytics/react";
+import { AuthKitProvider } from "@workos-inc/authkit-nextjs/components";
+import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
+import { cn } from "@/lib/utils";
+
+const geist = Geist({subsets:['latin'],variable:'--font-sans'});
 
 const instrumentSerif = Instrument_Serif({
   subsets: ["latin"],
@@ -89,11 +94,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" className={cn("dark font-sans", geist.variable)}>
       <body
         className={`${instrumentSerif.variable} ${dmSans.variable} ${ibmPlexMono.variable}`}
       >
-        {children}
+        <AuthKitProvider>{children}</AuthKitProvider>
+        <Toaster position="bottom-right" />
         <Analytics />
       </body>
     </html>

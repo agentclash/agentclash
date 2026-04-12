@@ -24,6 +24,7 @@ func Register(registrar Registrar, activities *Activities) {
 	registrar.RegisterActivityWithOptions(activities.StartHostedRun, sdkactivity.RegisterOptions{Name: startHostedRunActivityName})
 	registrar.RegisterActivityWithOptions(activities.MarkHostedRunTimedOut, sdkactivity.RegisterOptions{Name: markHostedRunTimedOutActivityName})
 	registrar.RegisterActivityWithOptions(activities.ExecuteNativeModelStep, sdkactivity.RegisterOptions{Name: executeNativeModelStepActivityName})
+	registrar.RegisterActivityWithOptions(activities.ExecutePromptEvalStep, sdkactivity.RegisterOptions{Name: executePromptEvalStepActivityName})
 	registrar.RegisterActivityWithOptions(activities.ScoreRunAgent, sdkactivity.RegisterOptions{Name: scoreRunAgentActivityName})
 	registrar.RegisterActivityWithOptions(activities.BuildRunScorecard, sdkactivity.RegisterOptions{Name: buildRunScorecardActivityName})
 	registrar.RegisterActivityWithOptions(activities.BuildRunAgentReplay, sdkactivity.RegisterOptions{Name: buildRunAgentReplayActivityName})

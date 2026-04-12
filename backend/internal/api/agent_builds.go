@@ -416,7 +416,7 @@ func (e AgentBuildValidationError) Error() string {
 
 // --- Handlers ---
 
-func createAgentBuildHandler(logger *slog.Logger, service AgentBuildService) http.HandlerFunc {
+func createAgentBuildHandler(logger *slog.Logger, service AgentBuildService, authorizer WorkspaceAuthorizer) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		caller, err := CallerFromContext(r.Context())
 		if err != nil {
@@ -426,6 +426,11 @@ func createAgentBuildHandler(logger *slog.Logger, service AgentBuildService) htt
 
 		workspaceID, err := WorkspaceIDFromContext(r.Context())
 		if err != nil {
+			writeAuthzError(w, err)
+			return
+		}
+
+		if err := AuthorizeWorkspaceAction(r.Context(), authorizer, caller, workspaceID, ActionCreateAgentBuild); err != nil {
 			writeAuthzError(w, err)
 			return
 		}
@@ -485,7 +490,7 @@ func listAgentBuildsHandler(logger *slog.Logger, service AgentBuildService) http
 	}
 }
 
-func getAgentBuildHandler(logger *slog.Logger, service AgentBuildService) http.HandlerFunc {
+func getAgentBuildHandler(logger *slog.Logger, service AgentBuildService, authorizer WorkspaceAuthorizer) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		caller, err := CallerFromContext(r.Context())
 		if err != nil {
@@ -513,7 +518,7 @@ func getAgentBuildHandler(logger *slog.Logger, service AgentBuildService) http.H
 			writeError(w, http.StatusInternalServerError, "internal_error", "internal server error")
 			return
 		}
-		if err := ensureCallerCanAccessWorkspace(caller, build.WorkspaceID); err != nil {
+		if err := AuthorizeWorkspaceAction(r.Context(), authorizer, caller, build.WorkspaceID, ActionReadWorkspace); err != nil {
 			writeAuthzError(w, err)
 			return
 		}
@@ -541,7 +546,7 @@ func getAgentBuildHandler(logger *slog.Logger, service AgentBuildService) http.H
 	}
 }
 
-func createAgentBuildVersionHandler(logger *slog.Logger, service AgentBuildService) http.HandlerFunc {
+func createAgentBuildVersionHandler(logger *slog.Logger, service AgentBuildService, authorizer WorkspaceAuthorizer) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		caller, err := CallerFromContext(r.Context())
 		if err != nil {
@@ -563,7 +568,7 @@ func createAgentBuildVersionHandler(logger *slog.Logger, service AgentBuildServi
 			handleServiceError(w, logger, r, err)
 			return
 		}
-		if err := ensureCallerCanAccessWorkspace(caller, build.WorkspaceID); err != nil {
+		if err := AuthorizeWorkspaceAction(r.Context(), authorizer, caller, build.WorkspaceID, ActionCreateAgentBuildVersion); err != nil {
 			writeAuthzError(w, err)
 			return
 		}
@@ -600,7 +605,7 @@ func createAgentBuildVersionHandler(logger *slog.Logger, service AgentBuildServi
 	}
 }
 
-func getAgentBuildVersionHandler(logger *slog.Logger, service AgentBuildService) http.HandlerFunc {
+func getAgentBuildVersionHandler(logger *slog.Logger, service AgentBuildService, authorizer WorkspaceAuthorizer) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		caller, err := CallerFromContext(r.Context())
 		if err != nil {
@@ -628,7 +633,7 @@ func getAgentBuildVersionHandler(logger *slog.Logger, service AgentBuildService)
 			writeError(w, http.StatusInternalServerError, "internal_error", "internal server error")
 			return
 		}
-		if err := ensureCallerCanAccessVersionWorkspace(r.Context(), caller, service, version); err != nil {
+		if err := authorizeVersionWorkspace(r.Context(), authorizer, caller, service, version, ActionReadWorkspace); err != nil {
 			writeAuthzError(w, err)
 			return
 		}
@@ -637,7 +642,7 @@ func getAgentBuildVersionHandler(logger *slog.Logger, service AgentBuildService)
 	}
 }
 
-func updateAgentBuildVersionHandler(logger *slog.Logger, service AgentBuildService) http.HandlerFunc {
+func updateAgentBuildVersionHandler(logger *slog.Logger, service AgentBuildService, authorizer WorkspaceAuthorizer) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		caller, err := CallerFromContext(r.Context())
 		if err != nil {
@@ -659,7 +664,7 @@ func updateAgentBuildVersionHandler(logger *slog.Logger, service AgentBuildServi
 			handleServiceError(w, logger, r, err)
 			return
 		}
-		if err := ensureCallerCanAccessVersionWorkspace(r.Context(), caller, service, currentVersion); err != nil {
+		if err := authorizeVersionWorkspace(r.Context(), authorizer, caller, service, currentVersion, ActionUpdateAgentBuildVersion); err != nil {
 			writeAuthzError(w, err)
 			return
 		}
@@ -696,7 +701,7 @@ func updateAgentBuildVersionHandler(logger *slog.Logger, service AgentBuildServi
 	}
 }
 
-func validateAgentBuildVersionHandler(logger *slog.Logger, service AgentBuildService) http.HandlerFunc {
+func validateAgentBuildVersionHandler(logger *slog.Logger, service AgentBuildService, authorizer WorkspaceAuthorizer) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		caller, err := CallerFromContext(r.Context())
 		if err != nil {
@@ -718,7 +723,7 @@ func validateAgentBuildVersionHandler(logger *slog.Logger, service AgentBuildSer
 			handleServiceError(w, logger, r, err)
 			return
 		}
-		if err := ensureCallerCanAccessVersionWorkspace(r.Context(), caller, service, version); err != nil {
+		if err := authorizeVersionWorkspace(r.Context(), authorizer, caller, service, version, ActionReadWorkspace); err != nil {
 			writeAuthzError(w, err)
 			return
 		}
@@ -750,7 +755,7 @@ func validateAgentBuildVersionHandler(logger *slog.Logger, service AgentBuildSer
 	}
 }
 
-func markAgentBuildVersionReadyHandler(logger *slog.Logger, service AgentBuildService) http.HandlerFunc {
+func markAgentBuildVersionReadyHandler(logger *slog.Logger, service AgentBuildService, authorizer WorkspaceAuthorizer) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		caller, err := CallerFromContext(r.Context())
 		if err != nil {
@@ -772,7 +777,7 @@ func markAgentBuildVersionReadyHandler(logger *slog.Logger, service AgentBuildSe
 			handleServiceError(w, logger, r, err)
 			return
 		}
-		if err := ensureCallerCanAccessVersionWorkspace(r.Context(), caller, service, version); err != nil {
+		if err := authorizeVersionWorkspace(r.Context(), authorizer, caller, service, version, ActionMarkAgentBuildReady); err != nil {
 			writeAuthzError(w, err)
 			return
 		}
@@ -801,7 +806,7 @@ func markAgentBuildVersionReadyHandler(logger *slog.Logger, service AgentBuildSe
 	}
 }
 
-func createAgentDeploymentHandler(logger *slog.Logger, service AgentBuildService) http.HandlerFunc {
+func createAgentDeploymentHandler(logger *slog.Logger, service AgentBuildService, authorizer WorkspaceAuthorizer) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		caller, err := CallerFromContext(r.Context())
 		if err != nil {
@@ -811,6 +816,11 @@ func createAgentDeploymentHandler(logger *slog.Logger, service AgentBuildService
 
 		workspaceID, err := WorkspaceIDFromContext(r.Context())
 		if err != nil {
+			writeAuthzError(w, err)
+			return
+		}
+
+		if err := AuthorizeWorkspaceAction(r.Context(), authorizer, caller, workspaceID, ActionCreateAgentDeployment); err != nil {
 			writeAuthzError(w, err)
 			return
 		}
@@ -1088,19 +1098,14 @@ func buildKnowledgeSourceBindingResponses(bindings []repository.AgentBuildVersio
 	return items
 }
 
-func ensureCallerCanAccessWorkspace(caller Caller, workspaceID uuid.UUID) error {
-	if _, ok := caller.WorkspaceMemberships[workspaceID]; !ok {
-		return fmt.Errorf("%w: caller %s does not belong to workspace %s", ErrForbidden, caller.UserID, workspaceID)
-	}
-	return nil
-}
-
-func ensureCallerCanAccessVersionWorkspace(ctx context.Context, caller Caller, service AgentBuildService, version repository.AgentBuildVersion) error {
+// authorizeVersionWorkspace resolves the workspace from a build version's parent
+// build and checks the caller's role against the required action.
+func authorizeVersionWorkspace(ctx context.Context, authorizer WorkspaceAuthorizer, caller Caller, service AgentBuildService, version repository.AgentBuildVersion, action Action) error {
 	build, err := service.GetBuild(ctx, version.AgentBuildID)
 	if err != nil {
 		return err
 	}
-	return ensureCallerCanAccessWorkspace(caller, build.WorkspaceID)
+	return AuthorizeWorkspaceAction(ctx, authorizer, caller, build.WorkspaceID, action)
 }
 
 func handleDecodeError(w http.ResponseWriter, logger *slog.Logger, r *http.Request, err error) {

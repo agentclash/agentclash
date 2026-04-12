@@ -468,3 +468,34 @@ func assertGeminiStreamingRequest(t *testing.T, r *http.Request, model string) {
 		t.Fatalf("expected contents in request body")
 	}
 }
+
+func TestGeminiRateLimitParsesRetryAfterHeader(t *testing.T) {
+	httpClient := &http.Client{
+		Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusTooManyRequests,
+				Header: http.Header{
+					"Content-Type": []string{"application/json"},
+					"Retry-After":  []string{"30"},
+				},
+				Body: io.NopCloser(strings.NewReader(`{"error":{"message":"rate limited","status":"RESOURCE_EXHAUSTED","code":429}}`)),
+			}, nil
+		}),
+	}
+
+	client := NewGeminiClient(httpClient, "https://example.com", staticCredentialResolver{value: "test-key"})
+	_, err := client.InvokeModel(context.Background(), Request{
+		ProviderKey:         "gemini",
+		CredentialReference: "env://GEMINI_API_KEY",
+		Model:               "gemini-2.5-pro",
+		Messages:            []Message{{Role: "user", Content: "hello"}},
+	})
+
+	failure, ok := AsFailure(err)
+	if !ok {
+		t.Fatalf("expected provider failure")
+	}
+	if failure.RetryAfter != 30*time.Second {
+		t.Fatalf("RetryAfter = %s, want 30s", failure.RetryAfter)
+	}
+}

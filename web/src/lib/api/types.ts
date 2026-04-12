@@ -1,0 +1,188 @@
+/**
+ * Backend API response types.
+ * These mirror the Go structs defined in backend/internal/api/.
+ */
+
+// --- Auth & Session ---
+
+/** GET /v1/auth/session — mirrors sessionResponse in routes.go */
+export interface SessionResponse {
+  user_id: string;
+  workos_user_id?: string;
+  email?: string;
+  display_name?: string;
+  organization_memberships: OrganizationMembership[];
+  workspace_memberships: WorkspaceMembership[];
+}
+
+export interface OrganizationMembership {
+  organization_id: string;
+  role: string; // "org_admin" | "org_member"
+}
+
+export interface WorkspaceMembership {
+  workspace_id: string;
+  role: string; // "workspace_admin" | "workspace_member" | "workspace_viewer"
+}
+
+// --- Users ---
+
+/** GET /v1/users/me — mirrors GetUserMeResult in users.go */
+export interface UserMeResponse {
+  user_id: string;
+  workos_user_id?: string;
+  email?: string;
+  display_name?: string;
+  organizations: UserMeOrganization[];
+}
+
+export interface UserMeOrganization {
+  id: string;
+  name: string;
+  slug: string;
+  role: string;
+  workspaces: UserMeWorkspace[];
+}
+
+export interface UserMeWorkspace {
+  id: string;
+  name: string;
+  slug: string;
+  role: string;
+}
+
+// --- Onboarding ---
+
+/** POST /v1/onboarding — mirrors OnboardResult in onboarding.go */
+export interface OnboardResult {
+  organization: OrganizationResult;
+  workspace: WorkspaceResult;
+}
+
+export interface OrganizationResult {
+  id: string;
+  name: string;
+  slug: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WorkspaceResult {
+  id: string;
+  organization_id: string;
+  name: string;
+  slug: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// --- Agent Builds ---
+
+/** GET /v1/workspaces/{id}/agent-builds item, POST response */
+export interface AgentBuild {
+  id: string;
+  workspace_id: string;
+  name: string;
+  slug: string;
+  description?: string;
+  lifecycle_status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/** GET /v1/agent-builds/{id} — build with versions */
+export interface AgentBuildDetail extends AgentBuild {
+  versions: AgentBuildVersion[];
+}
+
+/** POST /v1/workspaces/{id}/agent-builds request */
+export interface CreateAgentBuildRequest {
+  name: string;
+  description?: string;
+}
+
+// --- Agent Build Versions ---
+
+export interface AgentBuildVersion {
+  id: string;
+  agent_build_id: string;
+  version_number: number;
+  version_status: string;
+  agent_kind: string;
+  interface_spec: unknown;
+  policy_spec: unknown;
+  reasoning_spec: unknown;
+  memory_spec: unknown;
+  workflow_spec: unknown;
+  guardrail_spec: unknown;
+  model_spec: unknown;
+  output_schema: unknown;
+  trace_contract: unknown;
+  publication_spec: unknown;
+  tools: ToolBinding[];
+  knowledge_sources: KnowledgeSourceBinding[];
+  created_at: string;
+}
+
+export interface ToolBinding {
+  tool_id: string;
+  binding_role: string;
+  binding_config?: unknown;
+}
+
+export interface KnowledgeSourceBinding {
+  knowledge_source_id: string;
+  binding_role: string;
+  binding_config?: unknown;
+}
+
+/** POST/PATCH agent build version request body */
+export interface AgentBuildVersionInput {
+  agent_kind: string;
+  interface_spec: unknown;
+  policy_spec: unknown;
+  reasoning_spec?: unknown;
+  memory_spec?: unknown;
+  workflow_spec?: unknown;
+  guardrail_spec?: unknown;
+  model_spec?: unknown;
+  output_schema?: unknown;
+  trace_contract?: unknown;
+  publication_spec?: unknown;
+  tools?: ToolBinding[];
+  knowledge_sources?: KnowledgeSourceBinding[];
+}
+
+/** POST /v1/agent-build-versions/{id}/validate response */
+export interface ValidationResult {
+  valid: boolean;
+  errors: ValidationError[];
+}
+
+export interface ValidationError {
+  field: string;
+  message: string;
+}
+
+/** Agent kind enum values */
+export const AGENT_KINDS = [
+  "llm_agent",
+  "workflow_agent",
+  "programmatic_agent",
+  "multi_agent_system",
+  "hosted_external",
+] as const;
+
+export type AgentKind = (typeof AGENT_KINDS)[number];
+
+// --- Errors ---
+
+/** Standard error envelope returned by all backend error responses. */
+export interface ApiErrorResponse {
+  error: {
+    code: string;
+    message: string;
+  };
+}

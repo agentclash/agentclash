@@ -416,3 +416,34 @@ func assertAnthropicStreamingRequest(t *testing.T, r *http.Request) {
 		t.Fatalf("expected max_tokens to be set")
 	}
 }
+
+func TestAnthropicRateLimitParsesRetryAfterHeader(t *testing.T) {
+	httpClient := &http.Client{
+		Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusTooManyRequests,
+				Header: http.Header{
+					"Content-Type": []string{"application/json"},
+					"Retry-After":  []string{"15.5"},
+				},
+				Body: io.NopCloser(strings.NewReader(`{"type":"error","error":{"type":"rate_limit_error","message":"rate limited"}}`)),
+			}, nil
+		}),
+	}
+
+	client := NewAnthropicClient(httpClient, "https://example.com", "", staticCredentialResolver{value: "test-key"})
+	_, err := client.InvokeModel(context.Background(), Request{
+		ProviderKey:         "anthropic",
+		CredentialReference: "env://ANTHROPIC_API_KEY",
+		Model:               "claude-sonnet-4-20250514",
+		Messages:            []Message{{Role: "user", Content: "hello"}},
+	})
+
+	failure, ok := AsFailure(err)
+	if !ok {
+		t.Fatalf("expected provider failure")
+	}
+	if failure.RetryAfter != 15500*time.Millisecond {
+		t.Fatalf("RetryAfter = %s, want 15.5s", failure.RetryAfter)
+	}
+}

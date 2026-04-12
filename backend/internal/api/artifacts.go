@@ -118,7 +118,7 @@ func NewArtifactManager(authorizer WorkspaceAuthorizer, repo ArtifactRepository,
 }
 
 func (m *ArtifactManager) UploadArtifact(ctx context.Context, caller Caller, input UploadArtifactInput) (UploadArtifactResult, error) {
-	if err := m.authorizer.AuthorizeWorkspace(ctx, caller, input.WorkspaceID); err != nil {
+	if err := AuthorizeWorkspaceAction(ctx, m.authorizer, caller, input.WorkspaceID, ActionUploadArtifact); err != nil {
 		return UploadArtifactResult{}, err
 	}
 	if !artifactTypePattern.MatchString(input.ArtifactType) {

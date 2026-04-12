@@ -380,6 +380,103 @@ func assertStreamingRequest(t *testing.T, r *http.Request) {
 	}
 }
 
+func TestOpenAIRateLimitParsesRetryAfterHeader(t *testing.T) {
+	httpClient := &http.Client{
+		Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusTooManyRequests,
+				Header: http.Header{
+					"Content-Type": []string{"application/json"},
+					"Retry-After":  []string{"20"},
+				},
+				Body: io.NopCloser(strings.NewReader(`{"error":{"message":"rate limited","type":"rate_limit_error"}}`)),
+			}, nil
+		}),
+	}
+
+	client := NewOpenAICompatibleClient(httpClient, "https://example.com/v1", staticCredentialResolver{value: "test-key"})
+	_, err := client.InvokeModel(context.Background(), Request{
+		ProviderKey:         "openai",
+		CredentialReference: "env://OPENAI_API_KEY",
+		Model:               "gpt-4.1",
+		Messages:            []Message{{Role: "user", Content: "hello"}},
+	})
+	if err == nil {
+		t.Fatalf("expected error")
+	}
+
+	failure, ok := AsFailure(err)
+	if !ok {
+		t.Fatalf("expected provider failure, got %T", err)
+	}
+	if failure.Code != FailureCodeRateLimit {
+		t.Fatalf("failure code = %s, want rate_limit", failure.Code)
+	}
+	if failure.RetryAfter != 20*time.Second {
+		t.Fatalf("RetryAfter = %s, want 20s", failure.RetryAfter)
+	}
+}
+
+func TestOpenAIRateLimitMissingRetryAfterHeader(t *testing.T) {
+	httpClient := &http.Client{
+		Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusTooManyRequests,
+				Header: http.Header{
+					"Content-Type": []string{"application/json"},
+				},
+				Body: io.NopCloser(strings.NewReader(`{"error":{"message":"rate limited","type":"rate_limit_error"}}`)),
+			}, nil
+		}),
+	}
+
+	client := NewOpenAICompatibleClient(httpClient, "https://example.com/v1", staticCredentialResolver{value: "test-key"})
+	_, err := client.InvokeModel(context.Background(), Request{
+		ProviderKey:         "openai",
+		CredentialReference: "env://OPENAI_API_KEY",
+		Model:               "gpt-4.1",
+		Messages:            []Message{{Role: "user", Content: "hello"}},
+	})
+
+	failure, ok := AsFailure(err)
+	if !ok {
+		t.Fatalf("expected provider failure")
+	}
+	if failure.RetryAfter != 0 {
+		t.Fatalf("RetryAfter = %s, want 0", failure.RetryAfter)
+	}
+}
+
+func TestOpenAINon429DoesNotSetRetryAfter(t *testing.T) {
+	httpClient := &http.Client{
+		Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusUnauthorized,
+				Header: http.Header{
+					"Content-Type": []string{"application/json"},
+				},
+				Body: io.NopCloser(strings.NewReader(`{"error":{"message":"bad key","type":"auth_error"}}`)),
+			}, nil
+		}),
+	}
+
+	client := NewOpenAICompatibleClient(httpClient, "https://example.com/v1", staticCredentialResolver{value: "test-key"})
+	_, err := client.InvokeModel(context.Background(), Request{
+		ProviderKey:         "openai",
+		CredentialReference: "env://OPENAI_API_KEY",
+		Model:               "gpt-4.1",
+		Messages:            []Message{{Role: "user", Content: "hello"}},
+	})
+
+	failure, ok := AsFailure(err)
+	if !ok {
+		t.Fatalf("expected provider failure")
+	}
+	if failure.RetryAfter != 0 {
+		t.Fatalf("RetryAfter = %s, want 0 for auth error", failure.RetryAfter)
+	}
+}
+
 func jsonResponse(statusCode int, body string) *http.Response {
 	return &http.Response{
 		StatusCode: statusCode,

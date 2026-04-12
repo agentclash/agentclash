@@ -213,7 +213,7 @@ func TestIngestHostedRunEventHandlerReturnsInternalErrorForRepositoryFailure(t *
 	req.Header.Set("Content-Type", "application/json")
 
 	recorder := httptest.NewRecorder()
-	router := newRouter(
+	router := newRouter("dev",
 		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
@@ -240,6 +240,12 @@ func TestIngestHostedRunEventHandlerReturnsInternalErrorForRepositoryFailure(t *
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
 	)
 	router.ServeHTTP(recorder, req)
 

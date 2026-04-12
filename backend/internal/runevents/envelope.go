@@ -46,10 +46,11 @@ const (
 type Source string
 
 const (
-	SourceNativeEngine   Source = "native_engine"
-	SourceHostedExternal Source = "hosted_external"
-	SourceHostedCallback Source = "hosted_callback"
-	SourceWorkerScoring  Source = "worker_scoring"
+	SourceNativeEngine     Source = "native_engine"
+	SourcePromptEvalEngine Source = "prompt_eval_engine"
+	SourceHostedExternal   Source = "hosted_external"
+	SourceHostedCallback   Source = "hosted_callback"
+	SourceWorkerScoring    Source = "worker_scoring"
 )
 
 type EvidenceLevel string
@@ -170,7 +171,7 @@ func isValidType(eventType Type) bool {
 
 func isValidSource(source Source) bool {
 	switch source {
-	case SourceNativeEngine, SourceHostedExternal, SourceHostedCallback, SourceWorkerScoring:
+	case SourceNativeEngine, SourcePromptEvalEngine, SourceHostedExternal, SourceHostedCallback, SourceWorkerScoring:
 		return true
 	default:
 		return false

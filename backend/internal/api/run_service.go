@@ -42,7 +42,7 @@ func NewRunCreationManager(
 }
 
 func (m *RunCreationManager) CreateRun(ctx context.Context, caller Caller, input CreateRunInput) (CreateRunResult, error) {
-	if err := m.authorizer.AuthorizeWorkspace(ctx, caller, input.WorkspaceID); err != nil {
+	if err := AuthorizeWorkspaceAction(ctx, m.authorizer, caller, input.WorkspaceID, ActionCreateRun); err != nil {
 		return CreateRunResult{}, err
 	}
 

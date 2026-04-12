@@ -150,7 +150,8 @@ func scoreEvaluatingRunAgents(ctx sdkworkflow.Context, runAgents []domain.RunAge
 	scoreCtx := sdkworkflow.WithActivityOptions(ctx, sdkworkflow.ActivityOptions{
 		StartToCloseTimeout: scoreRunAgentTimeout,
 		RetryPolicy: &temporal.RetryPolicy{
-			MaximumAttempts: 1,
+			MaximumAttempts: 2,
+			InitialInterval: 5 * time.Second,
 		},
 	})
 	selector := sdkworkflow.NewSelector(ctx)

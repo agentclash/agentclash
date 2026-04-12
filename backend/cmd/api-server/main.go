@@ -10,8 +10,8 @@ import (
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/api"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/storage"
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/temporalutil"
 	"github.com/jackc/pgx/v5/pgxpool"
-	temporalsdk "go.temporal.io/sdk/client"
 )
 
 func main() {
@@ -30,18 +30,15 @@ func main() {
 	}
 	defer db.Close()
 
-	temporalClient, err := temporalsdk.Dial(temporalsdk.Options{
-		HostPort:  cfg.TemporalAddress,
-		Namespace: cfg.TemporalNamespace,
-	})
+	temporalClient, err := temporalutil.NewClient(cfg.TemporalAddress, cfg.TemporalNamespace)
 	if err != nil {
 		logger.Error("failed to connect to temporal", "error", err)
 		os.Exit(1)
 	}
 	defer temporalClient.Close()
 
-	authorizer := api.NewCallerWorkspaceAuthorizer()
 	repo := repository.New(db)
+	authorizer := api.NewCallerWorkspaceAuthorizer(repo)
 	artifactStore, err := storage.NewStore(context.Background(), storage.Config{
 		Backend:          cfg.ArtifactStorageBackend,
 		Bucket:           cfg.ArtifactStorageBucket,
@@ -75,11 +72,35 @@ func main() {
 	challengePackReadManager := api.NewChallengePackReadManager(repo)
 	challengePackAuthoringManager := api.NewChallengePackAuthoringManager(repo, artifactStore)
 	agentBuildManager := api.NewAgentBuildManager(repo)
+	userManager := api.NewUserManager(repo)
+	orgAuthz := api.NewCallerOrganizationAuthorizer()
+	orgManager := api.NewOrganizationManager(orgAuthz, repo)
+	wsManager := api.NewWorkspaceManager(orgAuthz, repo)
+	orgMembershipManager := api.NewOrgMembershipManager(orgAuthz, repo)
+	wsMembershipManager := api.NewWorkspaceMembershipManager(repo)
+	onboardingManager := api.NewOnboardingManager(repo)
+
+	var authenticator api.Authenticator
+	switch cfg.AuthMode {
+	case "workos":
+		authenticator, err = api.NewWorkOSAuthenticator(api.WorkOSAuthenticatorConfig{
+			ClientID: cfg.WorkOSClientID,
+			Issuer:   cfg.WorkOSIssuer,
+		}, repo)
+		if err != nil {
+			logger.Error("failed to initialize workos authenticator", "error", err)
+			os.Exit(1)
+		}
+		logger.Info("authentication mode: workos")
+	default:
+		authenticator = api.NewDevelopmentAuthenticator()
+		logger.Info("authentication mode: dev (development headers)")
+	}
 
 	server := api.NewServer(
 		cfg,
 		logger,
-		api.NewDevelopmentAuthenticator(),
+		authenticator,
 		authorizer,
 		artifactManager,
 		runCreationManager,
@@ -92,6 +113,12 @@ func main() {
 		challengePackReadManager,
 		challengePackAuthoringManager,
 		agentBuildManager,
+		userManager,
+		orgManager,
+		wsManager,
+		orgMembershipManager,
+		wsMembershipManager,
+		onboardingManager,
 	)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
