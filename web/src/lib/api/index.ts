@@ -11,4 +11,15 @@ export type {
   OrganizationResult,
   WorkspaceResult,
   ApiErrorResponse,
+  AgentBuild,
+  AgentBuildDetail,
+  CreateAgentBuildRequest,
+  AgentBuildVersion,
+  AgentBuildVersionInput,
+  ToolBinding,
+  KnowledgeSourceBinding,
+  ValidationResult,
+  ValidationError,
+  AgentKind,
 } from "./types";
+export { AGENT_KINDS } from "./types";
