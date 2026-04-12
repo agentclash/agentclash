@@ -3,8 +3,11 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
@@ -71,6 +74,10 @@ type CreateRuntimeProfileInput struct {
 	ProfileConfig      json.RawMessage `json:"profile_config,omitempty"`
 }
 
+func (i *CreateRuntimeProfileInput) Validate() error {
+	return requireFields(map[string]string{"name": i.Name, "execution_target": i.ExecutionTarget})
+}
+
 type CreateProviderAccountInput struct {
 	ProviderKey         string          `json:"provider_key"`
 	Name                string          `json:"name"`
@@ -78,11 +85,19 @@ type CreateProviderAccountInput struct {
 	LimitsConfig        json.RawMessage `json:"limits_config,omitempty"`
 }
 
+func (i *CreateProviderAccountInput) Validate() error {
+	return requireFields(map[string]string{"provider_key": i.ProviderKey, "name": i.Name, "credential_reference": i.CredentialReference})
+}
+
 type CreateModelAliasInput struct {
-	AliasKey            string     `json:"alias_key"`
-	DisplayName         string     `json:"display_name"`
-	ModelCatalogEntryID string     `json:"model_catalog_entry_id"`
-	ProviderAccountID   *string    `json:"provider_account_id,omitempty"`
+	AliasKey            string  `json:"alias_key"`
+	DisplayName         string  `json:"display_name"`
+	ModelCatalogEntryID string  `json:"model_catalog_entry_id"`
+	ProviderAccountID   *string `json:"provider_account_id,omitempty"`
+}
+
+func (i *CreateModelAliasInput) Validate() error {
+	return requireFields(map[string]string{"alias_key": i.AliasKey, "display_name": i.DisplayName, "model_catalog_entry_id": i.ModelCatalogEntryID})
 }
 
 type CreateToolInput struct {
@@ -92,16 +107,28 @@ type CreateToolInput struct {
 	Definition    json.RawMessage `json:"definition,omitempty"`
 }
 
+func (i *CreateToolInput) Validate() error {
+	return requireFields(map[string]string{"name": i.Name, "tool_kind": i.ToolKind, "capability_key": i.CapabilityKey})
+}
+
 type CreateKnowledgeSourceInput struct {
 	Name             string          `json:"name"`
 	SourceKind       string          `json:"source_kind"`
 	ConnectionConfig json.RawMessage `json:"connection_config,omitempty"`
 }
 
+func (i *CreateKnowledgeSourceInput) Validate() error {
+	return requireFields(map[string]string{"name": i.Name, "source_kind": i.SourceKind})
+}
+
 type CreateRoutingPolicyInput struct {
 	Name       string          `json:"name"`
 	PolicyKind string          `json:"policy_kind"`
 	Config     json.RawMessage `json:"config,omitempty"`
+}
+
+func (i *CreateRoutingPolicyInput) Validate() error {
+	return requireFields(map[string]string{"name": i.Name, "policy_kind": i.PolicyKind})
 }
 
 type CreateSpendPolicyInput struct {
@@ -111,6 +138,19 @@ type CreateSpendPolicyInput struct {
 	SoftLimit    *float64        `json:"soft_limit,omitempty"`
 	HardLimit    *float64        `json:"hard_limit,omitempty"`
 	Config       json.RawMessage `json:"config,omitempty"`
+}
+
+func (i *CreateSpendPolicyInput) Validate() error {
+	return requireFields(map[string]string{"name": i.Name, "window_kind": i.WindowKind})
+}
+
+func requireFields(fields map[string]string) error {
+	for name, value := range fields {
+		if strings.TrimSpace(value) == "" {
+			return fmt.Errorf("%s is required", name)
+		}
+	}
+	return nil
 }
 
 // --------------------------------------------------------------------------
@@ -222,6 +262,11 @@ type spendPolicyResponse struct {
 // Generic Handlers (DRY pattern for workspace-scoped create/list)
 // --------------------------------------------------------------------------
 
+// Validatable can be implemented by input types to provide field validation.
+type Validatable interface {
+	Validate() error
+}
+
 func infraCreateHandler[Input any, Row any, Resp any](
 	logger *slog.Logger,
 	authorizer WorkspaceAuthorizer,
@@ -252,8 +297,18 @@ func infraCreateHandler[Input any, Row any, Resp any](
 			writeError(w, http.StatusBadRequest, "invalid_request", "invalid JSON body")
 			return
 		}
+		if v, ok := any(&input).(Validatable); ok {
+			if err := v.Validate(); err != nil {
+				writeError(w, http.StatusBadRequest, "validation_error", err.Error())
+				return
+			}
+		}
 		row, err := create(r.Context(), caller, wsID, input)
 		if err != nil {
+			if errors.Is(err, repository.ErrSlugTaken) {
+				writeError(w, http.StatusConflict, "slug_taken", "a resource with that name already exists")
+				return
+			}
 			logger.Error("create failed", "error", err)
 			writeError(w, http.StatusInternalServerError, "internal_error", "failed to create resource")
 			return
@@ -315,7 +370,7 @@ func infraGetHandler[Row WorkspaceOwned, Resp any](
 		}
 		row, err := get(r.Context(), id)
 		if err != nil {
-			if isNotFoundErr(err) {
+			if isInfraNotFoundErr(err) {
 				writeError(w, http.StatusNotFound, "not_found", notFoundCode+" not found")
 				return
 			}
@@ -336,16 +391,15 @@ func infraGetHandler[Row WorkspaceOwned, Resp any](
 	}
 }
 
-func isNotFoundErr(err error) bool {
-	msg := err.Error()
-	return msg == repository.ErrRuntimeProfileNotFound.Error() ||
-		msg == repository.ErrProviderAccountNotFound.Error() ||
-		msg == repository.ErrModelAliasNotFound.Error() ||
-		msg == repository.ErrModelCatalogNotFound.Error() ||
-		msg == repository.ErrToolNotFound.Error() ||
-		msg == repository.ErrKnowledgeSourceNotFound.Error() ||
-		msg == repository.ErrRoutingPolicyNotFound.Error() ||
-		msg == repository.ErrSpendPolicyNotFound.Error()
+func isInfraNotFoundErr(err error) bool {
+	return errors.Is(err, repository.ErrRuntimeProfileNotFound) ||
+		errors.Is(err, repository.ErrProviderAccountNotFound) ||
+		errors.Is(err, repository.ErrModelAliasNotFound) ||
+		errors.Is(err, repository.ErrModelCatalogNotFound) ||
+		errors.Is(err, repository.ErrToolNotFound) ||
+		errors.Is(err, repository.ErrKnowledgeSourceNotFound) ||
+		errors.Is(err, repository.ErrRoutingPolicyNotFound) ||
+		errors.Is(err, repository.ErrSpendPolicyNotFound)
 }
 
 // --------------------------------------------------------------------------
