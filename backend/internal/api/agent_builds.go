@@ -251,19 +251,6 @@ func (m *AgentBuildManager) MarkVersionReady(ctx context.Context, id uuid.UUID) 
 }
 
 func (m *AgentBuildManager) CreateDeployment(ctx context.Context, caller Caller, workspaceID uuid.UUID, input CreateAgentDeploymentInput) (repository.AgentDeploymentRow, error) {
-	if input.ProviderAccountID == nil {
-		return repository.AgentDeploymentRow{}, AgentBuildValidationError{
-			Code:    "missing_provider_account",
-			Message: "provider_account_id is required for native deployments",
-		}
-	}
-	if input.ModelAliasID == nil {
-		return repository.AgentDeploymentRow{}, AgentBuildValidationError{
-			Code:    "missing_model_alias",
-			Message: "model_alias_id is required for native deployments",
-		}
-	}
-
 	version, err := m.repo.GetAgentBuildVersionByID(ctx, input.BuildVersionID)
 	if err != nil {
 		return repository.AgentDeploymentRow{}, err
