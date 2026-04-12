@@ -108,7 +108,7 @@ func authenticateRequest(logger *slog.Logger, authenticator Authenticator) func(
 					"path", r.URL.Path,
 					"error", err,
 				)
-				writeError(w, http.StatusUnauthorized, "unauthorized", "authentication required")
+				writeError(w, http.StatusUnauthorized, "unauthorized", err.Error())
 				return
 			}
 
