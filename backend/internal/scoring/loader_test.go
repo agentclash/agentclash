@@ -139,6 +139,31 @@ func TestLoadEvaluationSpec(t *testing.T) {
 			needle:   "evaluation_spec.pricing.models[1] must be unique by provider_key and provider_model_id",
 		},
 		{
+			name:     "fuzzy_match_threshold_out_of_range",
+			manifest: `{"evaluation_spec":{"name":"spec","version_number":1,"judge_mode":"deterministic","validators":[{"key":"v1","type":"fuzzy_match","target":"final_output","expected_from":"literal:hello","config":{"threshold":1.5}}],"scorecard":{"dimensions":["correctness"]}}}`,
+			needle:   "evaluation_spec.validators[0].config.threshold must be between 0 and 1",
+		},
+		{
+			name:     "numeric_match_negative_tolerance",
+			manifest: `{"evaluation_spec":{"name":"spec","version_number":1,"judge_mode":"deterministic","validators":[{"key":"v1","type":"numeric_match","target":"final_output","expected_from":"literal:42","config":{"absolute_tolerance":-1}}],"scorecard":{"dimensions":["correctness"]}}}`,
+			needle:   "evaluation_spec.validators[0].config.absolute_tolerance must be greater than or equal to 0",
+		},
+		{
+			name:     "numeric_match_invalid_significant_digits",
+			manifest: `{"evaluation_spec":{"name":"spec","version_number":1,"judge_mode":"deterministic","validators":[{"key":"v1","type":"numeric_match","target":"final_output","expected_from":"literal:42","config":{"significant_digits":0}}],"scorecard":{"dimensions":["correctness"]}}}`,
+			needle:   "evaluation_spec.validators[0].config.significant_digits must be greater than 0",
+		},
+		{
+			name:     "normalized_match_unknown_pipeline_step",
+			manifest: `{"evaluation_spec":{"name":"spec","version_number":1,"judge_mode":"deterministic","validators":[{"key":"v1","type":"normalized_match","target":"final_output","expected_from":"literal:hello","config":{"pipeline":["trim","bogus_step"]}}],"scorecard":{"dimensions":["correctness"]}}}`,
+			needle:   "\"bogus_step\" is not a supported normalization step",
+		},
+		{
+			name:     "fuzzy_match_invalid_config_json",
+			manifest: `{"evaluation_spec":{"name":"spec","version_number":1,"judge_mode":"deterministic","validators":[{"key":"v1","type":"fuzzy_match","target":"final_output","expected_from":"literal:hello","config":{"threshold":"not a number"}}],"scorecard":{"dimensions":["correctness"]}}}`,
+			needle:   "evaluation_spec.validators[0].config invalid JSON",
+		},
+		{
 			name:     "unsupported evidence reference",
 			manifest: `{"evaluation_spec":{"name":"spec","version_number":1,"judge_mode":"deterministic","validators":[{"key":"v1","type":"exact_match","target":"artifact","expected_from":"unknown.root"}],"scorecard":{"dimensions":["correctness"]}}}`,
 			needle:   "evaluation_spec.validators[0].target must be a supported evidence reference",
@@ -170,6 +195,61 @@ func TestMarshalDefinitionRejectsInvalidSpec(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "evaluation_spec.name is required") {
 		t.Fatalf("error = %q, want validation error", err.Error())
+	}
+}
+
+func TestLoadEvaluationSpecAcceptsStringMatchValidators(t *testing.T) {
+	spec, err := LoadEvaluationSpec(json.RawMessage(`{
+		"evaluation_spec": {
+			"name": "string-validators",
+			"version_number": 1,
+			"judge_mode": "deterministic",
+			"validators": [
+				{
+					"key": "fuzzy",
+					"type": "fuzzy_match",
+					"target": "final_output",
+					"expected_from": "literal:hello world",
+					"config": {"threshold": 0.9, "case_insensitive": true}
+				},
+				{
+					"key": "numeric",
+					"type": "numeric_match",
+					"target": "final_output",
+					"expected_from": "literal:42",
+					"config": {"absolute_tolerance": 0.5, "extract_number": true}
+				},
+				{
+					"key": "normalized",
+					"type": "normalized_match",
+					"target": "final_output",
+					"expected_from": "literal:hello world",
+					"config": {"pipeline": ["trim", "lowercase", "collapse_whitespace"]}
+				}
+			],
+			"scorecard": {
+				"dimensions": ["correctness"]
+			}
+		}
+	}`))
+	if err != nil {
+		t.Fatalf("LoadEvaluationSpec returned error: %v", err)
+	}
+
+	if len(spec.Validators) != 3 {
+		t.Fatalf("validator count = %d, want 3", len(spec.Validators))
+	}
+	if spec.Validators[0].Type != ValidatorTypeFuzzyMatch {
+		t.Fatalf("validator[0].type = %s, want %s", spec.Validators[0].Type, ValidatorTypeFuzzyMatch)
+	}
+	if spec.Validators[1].Type != ValidatorTypeNumericMatch {
+		t.Fatalf("validator[1].type = %s, want %s", spec.Validators[1].Type, ValidatorTypeNumericMatch)
+	}
+	if spec.Validators[2].Type != ValidatorTypeNormalizedMatch {
+		t.Fatalf("validator[2].type = %s, want %s", spec.Validators[2].Type, ValidatorTypeNormalizedMatch)
+	}
+	if len(spec.Validators[0].Config) == 0 {
+		t.Fatal("validator[0].config is empty, want threshold config")
 	}
 }
 
