@@ -34,6 +34,11 @@ func (e ValidationErrors) HasField(field string) bool {
 }
 
 func ValidateEvaluationSpec(spec EvaluationSpec) error {
+	// Normalize a local copy so callers that pass an unnormalized spec
+	// (e.g. challengepack.ValidateBundle) still get backward-compat
+	// expansion of legacy string-format dimensions before validation.
+	normalizeEvaluationSpec(&spec)
+
 	var errs ValidationErrors
 
 	if strings.TrimSpace(spec.Name) == "" {
@@ -136,28 +141,82 @@ func ValidateEvaluationSpec(spec EvaluationSpec) error {
 		}
 	}
 
-	dimensions := map[ScorecardDimension]struct{}{}
-	for i, dimension := range spec.Scorecard.Dimensions {
+	dimensionKeys := map[string]struct{}{}
+	for i, dim := range spec.Scorecard.Dimensions {
 		path := fmt.Sprintf("evaluation_spec.scorecard.dimensions[%d]", i)
-		if !dimension.IsValid() {
-			errs = append(errs, ValidationError{Field: path, Message: "is not a supported scorecard dimension"})
+		key := strings.TrimSpace(dim.Key)
+		if key == "" {
+			errs = append(errs, ValidationError{Field: path + ".key", Message: "is required"})
 			continue
 		}
-		if _, exists := dimensions[dimension]; exists {
+		if _, exists := dimensionKeys[key]; exists {
 			errs = append(errs, ValidationError{Field: path, Message: "must be unique"})
 			continue
 		}
-		dimensions[dimension] = struct{}{}
-	}
+		dimensionKeys[key] = struct{}{}
 
-	if _, ok := dimensions[ScorecardDimensionLatency]; ok {
-		if err := validateLatencyNormalization(spec); err != nil {
-			errs = append(errs, err...)
+		if !dim.Source.IsValid() {
+			errs = append(errs, ValidationError{Field: path + ".source", Message: "must be one of validators, metric, reliability, latency, cost"})
+			continue
 		}
-	}
-	if _, ok := dimensions[ScorecardDimensionCost]; ok {
-		if err := validateCostNormalization(spec); err != nil {
-			errs = append(errs, err...)
+
+		switch dim.Source {
+		case DimensionSourceValidators:
+			for j, vKey := range dim.Validators {
+				if _, exists := validatorKeys[vKey]; !exists {
+					errs = append(errs, ValidationError{
+						Field:   fmt.Sprintf("%s.validators[%d]", path, j),
+						Message: fmt.Sprintf("references unknown validator key %q", vKey),
+					})
+				}
+			}
+		case DimensionSourceMetric:
+			if strings.TrimSpace(dim.Metric) == "" {
+				errs = append(errs, ValidationError{Field: path + ".metric", Message: "is required when source is metric"})
+			} else if _, exists := metricKeys[dim.Metric]; !exists {
+				errs = append(errs, ValidationError{
+					Field:   path + ".metric",
+					Message: fmt.Sprintf("references unknown metric key %q", dim.Metric),
+				})
+			}
+			if dim.Normalization == nil {
+				errs = append(errs, ValidationError{Field: path + ".normalization", Message: "is required when source is metric"})
+			}
+		case DimensionSourceLatency:
+			if dim.Normalization == nil {
+				errs = append(errs, ValidationError{Field: path + ".normalization", Message: "is required when source is latency"})
+			}
+		case DimensionSourceCost:
+			if dim.Normalization == nil {
+				errs = append(errs, ValidationError{Field: path + ".normalization", Message: "is required when source is cost"})
+			}
+		}
+
+		if dim.Source == DimensionSourceMetric || dim.Source == DimensionSourceLatency || dim.Source == DimensionSourceCost {
+			dir := dim.BetterDirection
+			if dir != "higher" && dir != "lower" {
+				errs = append(errs, ValidationError{Field: path + ".better_direction", Message: "must be higher or lower"})
+			}
+			if dim.Normalization != nil {
+				if dim.Normalization.Target == nil {
+					errs = append(errs, ValidationError{Field: path + ".normalization.target", Message: "is required"})
+				}
+				if dim.Normalization.Max == nil {
+					errs = append(errs, ValidationError{Field: path + ".normalization.max", Message: "is required"})
+				}
+				if dim.Normalization.Target != nil && dim.Normalization.Max != nil {
+					if dir == "lower" && *dim.Normalization.Max <= *dim.Normalization.Target {
+						errs = append(errs, ValidationError{Field: path + ".normalization.max", Message: "must be greater than target when better_direction is lower"})
+					}
+					if dir == "higher" && *dim.Normalization.Max >= *dim.Normalization.Target {
+						errs = append(errs, ValidationError{Field: path + ".normalization.max", Message: "must be less than target when better_direction is higher"})
+					}
+				}
+			}
+		}
+
+		if dim.Weight != nil && *dim.Weight < 0 {
+			errs = append(errs, ValidationError{Field: path + ".weight", Message: "must be greater than or equal to 0"})
 		}
 	}
 
@@ -176,7 +235,7 @@ func normalizeEvaluationSpec(spec *EvaluationSpec) {
 	spec.Validators = append([]ValidatorDeclaration(nil), spec.Validators...)
 	spec.Metrics = append([]MetricDeclaration(nil), spec.Metrics...)
 	spec.Pricing.Models = append([]ModelPricing(nil), spec.Pricing.Models...)
-	spec.Scorecard.Dimensions = append([]ScorecardDimension(nil), spec.Scorecard.Dimensions...)
+	spec.Scorecard.Dimensions = append([]DimensionDeclaration(nil), spec.Scorecard.Dimensions...)
 
 	for i := range spec.Validators {
 		spec.Validators[i].Key = strings.TrimSpace(spec.Validators[i].Key)
@@ -192,70 +251,59 @@ func normalizeEvaluationSpec(spec *EvaluationSpec) {
 		spec.Pricing.Models[i].ProviderKey = strings.TrimSpace(spec.Pricing.Models[i].ProviderKey)
 		spec.Pricing.Models[i].ProviderModelID = strings.TrimSpace(spec.Pricing.Models[i].ProviderModelID)
 	}
+
+	for i := range spec.Scorecard.Dimensions {
+		dim := &spec.Scorecard.Dimensions[i]
+		dim.Key = strings.TrimSpace(dim.Key)
+		dim.Metric = strings.TrimSpace(dim.Metric)
+
+		if dim.Source != "" {
+			continue
+		}
+		expandBuiltinDimension(dim, spec)
+	}
 }
 
-func validateLatencyNormalization(spec EvaluationSpec) ValidationErrors {
-	var errs ValidationErrors
-	path := "evaluation_spec.scorecard.normalization.latency"
-	if spec.Scorecard.Normalization.Latency == nil {
-		errs = append(errs, ValidationError{Field: path, Message: "is required when the latency dimension is enabled"})
-		return errs
+// expandBuiltinDimension fills in Source, BetterDirection, and Normalization
+// for a dimension that was declared using the legacy string format. It reads
+// normalization config from the old ScorecardNormalization block.
+func expandBuiltinDimension(dim *DimensionDeclaration, spec *EvaluationSpec) {
+	switch dim.Key {
+	case ScorecardDimensionCorrectness:
+		dim.Source = DimensionSourceValidators
+		dim.BetterDirection = "higher"
+	case ScorecardDimensionReliability:
+		dim.Source = DimensionSourceReliability
+		dim.BetterDirection = "higher"
+	case ScorecardDimensionLatency:
+		dim.Source = DimensionSourceLatency
+		dim.BetterDirection = "lower"
+		if dim.Normalization == nil && spec.Scorecard.Normalization.Latency != nil {
+			norm := &DimensionNormalization{
+				Target: spec.Scorecard.Normalization.Latency.TargetMS,
+				Max:    spec.Scorecard.Normalization.Latency.MaxMS,
+			}
+			if norm.Max == nil && spec.RuntimeLimits.MaxDurationMS != nil {
+				fallback := float64(*spec.RuntimeLimits.MaxDurationMS)
+				norm.Max = &fallback
+			}
+			dim.Normalization = norm
+		}
+	case ScorecardDimensionCost:
+		dim.Source = DimensionSourceCost
+		dim.BetterDirection = "lower"
+		if dim.Normalization == nil && spec.Scorecard.Normalization.Cost != nil {
+			norm := &DimensionNormalization{
+				Target: spec.Scorecard.Normalization.Cost.TargetUSD,
+				Max:    spec.Scorecard.Normalization.Cost.MaxUSD,
+			}
+			if norm.Max == nil && spec.RuntimeLimits.MaxCostUSD != nil {
+				fallback := *spec.RuntimeLimits.MaxCostUSD
+				norm.Max = &fallback
+			}
+			dim.Normalization = norm
+		}
 	}
-	if spec.Scorecard.Normalization.Latency.TargetMS == nil {
-		errs = append(errs, ValidationError{Field: path + ".target_ms", Message: "is required"})
-	}
-	if spec.Scorecard.Normalization.Latency.TargetMS != nil && *spec.Scorecard.Normalization.Latency.TargetMS < 0 {
-		errs = append(errs, ValidationError{Field: path + ".target_ms", Message: "must be greater than or equal to 0"})
-	}
-
-	maxMS := spec.Scorecard.Normalization.Latency.MaxMS
-	if maxMS == nil && spec.RuntimeLimits.MaxDurationMS != nil {
-		fallback := float64(*spec.RuntimeLimits.MaxDurationMS)
-		maxMS = &fallback
-	}
-	if maxMS == nil {
-		errs = append(errs, ValidationError{Field: path + ".max_ms", Message: "is required when runtime_limits.max_duration_ms is not set"})
-		return errs
-	}
-	if *maxMS <= 0 {
-		errs = append(errs, ValidationError{Field: path + ".max_ms", Message: "must be greater than 0"})
-	}
-	if spec.Scorecard.Normalization.Latency.TargetMS != nil && *maxMS <= *spec.Scorecard.Normalization.Latency.TargetMS {
-		errs = append(errs, ValidationError{Field: path + ".max_ms", Message: "must be greater than target_ms"})
-	}
-	return errs
-}
-
-func validateCostNormalization(spec EvaluationSpec) ValidationErrors {
-	var errs ValidationErrors
-	path := "evaluation_spec.scorecard.normalization.cost"
-	if spec.Scorecard.Normalization.Cost == nil {
-		errs = append(errs, ValidationError{Field: path, Message: "is required when the cost dimension is enabled"})
-		return errs
-	}
-	if spec.Scorecard.Normalization.Cost.TargetUSD == nil {
-		errs = append(errs, ValidationError{Field: path + ".target_usd", Message: "is required"})
-	}
-	if spec.Scorecard.Normalization.Cost.TargetUSD != nil && *spec.Scorecard.Normalization.Cost.TargetUSD < 0 {
-		errs = append(errs, ValidationError{Field: path + ".target_usd", Message: "must be greater than or equal to 0"})
-	}
-
-	maxUSD := spec.Scorecard.Normalization.Cost.MaxUSD
-	if maxUSD == nil && spec.RuntimeLimits.MaxCostUSD != nil {
-		fallback := *spec.RuntimeLimits.MaxCostUSD
-		maxUSD = &fallback
-	}
-	if maxUSD == nil {
-		errs = append(errs, ValidationError{Field: path + ".max_usd", Message: "is required when runtime_limits.max_cost_usd is not set"})
-		return errs
-	}
-	if *maxUSD <= 0 {
-		errs = append(errs, ValidationError{Field: path + ".max_usd", Message: "must be greater than 0"})
-	}
-	if spec.Scorecard.Normalization.Cost.TargetUSD != nil && *maxUSD <= *spec.Scorecard.Normalization.Cost.TargetUSD {
-		errs = append(errs, ValidationError{Field: path + ".max_usd", Message: "must be greater than target_usd"})
-	}
-	return errs
 }
 
 func isSupportedEvidenceReference(value string) bool {

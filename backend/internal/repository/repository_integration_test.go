@@ -75,7 +75,7 @@ func TestRepositoryPublishChallengePackBundle(t *testing.T) {
 						{Key: "exact", Type: scoring.ValidatorTypeExactMatch, Target: "final_output", ExpectedFrom: "challenge_input"},
 					},
 					Scorecard: scoring.ScorecardDeclaration{
-						Dimensions: []scoring.ScorecardDimension{scoring.ScorecardDimensionCorrectness},
+						Dimensions: []scoring.DimensionDeclaration{{Key: "correctness"}},
 					},
 				},
 				Assets: []challengepack.AssetReference{
@@ -215,7 +215,7 @@ func TestRepositoryPublishChallengePackBundleRejectsDuplicateVersion(t *testing.
 						{Key: "exact", Type: scoring.ValidatorTypeExactMatch, Target: "final_output", ExpectedFrom: "challenge_input"},
 					},
 					Scorecard: scoring.ScorecardDeclaration{
-						Dimensions: []scoring.ScorecardDimension{scoring.ScorecardDimensionCorrectness},
+						Dimensions: []scoring.DimensionDeclaration{{Key: "correctness"}},
 					},
 				},
 			},

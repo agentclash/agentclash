@@ -28,7 +28,7 @@ func TestEvaluateRunAgentCompletesWithDeterministicEvidence(t *testing.T) {
 			{Key: "tokens", Type: MetricTypeNumeric, Collector: "run_total_tokens"},
 		},
 		Scorecard: ScorecardDeclaration{
-			Dimensions: []ScorecardDimension{ScorecardDimensionCorrectness, ScorecardDimensionReliability},
+			Dimensions: []DimensionDeclaration{{Key: "correctness"}, {Key: "reliability"}},
 		},
 	}
 
@@ -64,11 +64,11 @@ func TestEvaluateRunAgentCompletesWithDeterministicEvidence(t *testing.T) {
 	if evaluation.MetricResults[2].NumericValue == nil || *evaluation.MetricResults[2].NumericValue != 12 {
 		t.Fatalf("total token metric = %v, want 12", evaluation.MetricResults[2].NumericValue)
 	}
-	if evaluation.DimensionScores[string(ScorecardDimensionCorrectness)] == nil || *evaluation.DimensionScores[string(ScorecardDimensionCorrectness)] != 1 {
-		t.Fatalf("correctness score = %v, want 1", evaluation.DimensionScores[string(ScorecardDimensionCorrectness)])
+	if evaluation.DimensionScores[ScorecardDimensionCorrectness] == nil || *evaluation.DimensionScores[ScorecardDimensionCorrectness] != 1 {
+		t.Fatalf("correctness score = %v, want 1", evaluation.DimensionScores[ScorecardDimensionCorrectness])
 	}
-	if evaluation.DimensionScores[string(ScorecardDimensionReliability)] == nil || *evaluation.DimensionScores[string(ScorecardDimensionReliability)] != 1 {
-		t.Fatalf("reliability score = %v, want 1", evaluation.DimensionScores[string(ScorecardDimensionReliability)])
+	if evaluation.DimensionScores[ScorecardDimensionReliability] == nil || *evaluation.DimensionScores[ScorecardDimensionReliability] != 1 {
+		t.Fatalf("reliability score = %v, want 1", evaluation.DimensionScores[ScorecardDimensionReliability])
 	}
 }
 
@@ -92,7 +92,7 @@ func TestEvaluateRunAgentReturnsPartialWhenEvidenceIsMissing(t *testing.T) {
 			MaxDurationMS: int64Ptr(5000),
 		},
 		Scorecard: ScorecardDeclaration{
-			Dimensions: []ScorecardDimension{ScorecardDimensionCorrectness, ScorecardDimensionLatency},
+			Dimensions: []DimensionDeclaration{{Key: "correctness"}, {Key: "latency"}},
 			Normalization: ScorecardNormalization{
 				Latency: &LatencyNormalization{TargetMS: floatPtr(1000)},
 			},
@@ -119,11 +119,11 @@ func TestEvaluateRunAgentReturnsPartialWhenEvidenceIsMissing(t *testing.T) {
 	if evaluation.MetricResults[0].State != OutputStateUnavailable {
 		t.Fatalf("metric state = %s, want unavailable", evaluation.MetricResults[0].State)
 	}
-	if evaluation.DimensionScores[string(ScorecardDimensionCorrectness)] != nil {
-		t.Fatalf("correctness score = %v, want nil", evaluation.DimensionScores[string(ScorecardDimensionCorrectness)])
+	if evaluation.DimensionScores[ScorecardDimensionCorrectness] != nil {
+		t.Fatalf("correctness score = %v, want nil", evaluation.DimensionScores[ScorecardDimensionCorrectness])
 	}
-	if evaluation.DimensionScores[string(ScorecardDimensionLatency)] != nil {
-		t.Fatalf("latency score = %v, want nil", evaluation.DimensionScores[string(ScorecardDimensionLatency)])
+	if evaluation.DimensionScores[ScorecardDimensionLatency] != nil {
+		t.Fatalf("latency score = %v, want nil", evaluation.DimensionScores[ScorecardDimensionLatency])
 	}
 }
 
@@ -144,7 +144,7 @@ func TestEvaluateRunAgentComputesTTFTFromModelOutputDelta(t *testing.T) {
 			{Key: "ttft", Type: MetricTypeNumeric, Collector: "run_ttft_ms", Unit: "ms"},
 		},
 		Scorecard: ScorecardDeclaration{
-			Dimensions: []ScorecardDimension{ScorecardDimensionLatency},
+			Dimensions: []DimensionDeclaration{{Key: "latency"}},
 			Normalization: ScorecardNormalization{
 				Latency: &LatencyNormalization{
 					TargetMS: floatPtr(1000),
@@ -196,7 +196,7 @@ func TestEvaluateRunAgentMarksInvalidRegexAsValidatorError(t *testing.T) {
 			},
 		},
 		Scorecard: ScorecardDeclaration{
-			Dimensions: []ScorecardDimension{ScorecardDimensionCorrectness},
+			Dimensions: []DimensionDeclaration{{Key: "correctness"}},
 		},
 	}
 
@@ -217,8 +217,8 @@ func TestEvaluateRunAgentMarksInvalidRegexAsValidatorError(t *testing.T) {
 	if evaluation.ValidatorResults[0].Verdict != "error" {
 		t.Fatalf("validator verdict = %q, want error", evaluation.ValidatorResults[0].Verdict)
 	}
-	if evaluation.DimensionScores[string(ScorecardDimensionCorrectness)] != nil {
-		t.Fatalf("correctness score = %v, want nil", evaluation.DimensionScores[string(ScorecardDimensionCorrectness)])
+	if evaluation.DimensionScores[ScorecardDimensionCorrectness] != nil {
+		t.Fatalf("correctness score = %v, want nil", evaluation.DimensionScores[ScorecardDimensionCorrectness])
 	}
 }
 
@@ -239,7 +239,7 @@ func TestEvaluateRunAgentComputesValidatorPassRateAfterValidators(t *testing.T) 
 			{Key: "validator_pass_rate", Type: MetricTypeNumeric, Collector: "validator_pass_rate"},
 		},
 		Scorecard: ScorecardDeclaration{
-			Dimensions: []ScorecardDimension{ScorecardDimensionCorrectness},
+			Dimensions: []DimensionDeclaration{{Key: "correctness"}},
 		},
 	}
 
@@ -292,7 +292,7 @@ func TestEvaluateRunAgent_ResolvesRunAndCaseEvidencePaths(t *testing.T) {
 			},
 		},
 		Scorecard: ScorecardDeclaration{
-			Dimensions: []ScorecardDimension{ScorecardDimensionCorrectness},
+			Dimensions: []DimensionDeclaration{{Key: "correctness"}},
 		},
 	}
 
@@ -348,7 +348,7 @@ func TestEvaluateRunAgent_ResolvesArtifactBackedEvidencePaths(t *testing.T) {
 			},
 		},
 		Scorecard: ScorecardDeclaration{
-			Dimensions: []ScorecardDimension{ScorecardDimensionCorrectness},
+			Dimensions: []DimensionDeclaration{{Key: "correctness"}},
 		},
 	}
 
@@ -404,7 +404,7 @@ func TestEvaluateRunAgent_KeepsLegacyChallengeInputEvidence(t *testing.T) {
 			},
 		},
 		Scorecard: ScorecardDeclaration{
-			Dimensions: []ScorecardDimension{ScorecardDimensionCorrectness},
+			Dimensions: []DimensionDeclaration{{Key: "correctness"}},
 		},
 	}
 
@@ -444,7 +444,7 @@ func TestEvaluateRunAgentValidatesJSONSchema(t *testing.T) {
 			},
 		},
 		Scorecard: ScorecardDeclaration{
-			Dimensions: []ScorecardDimension{ScorecardDimensionCorrectness},
+			Dimensions: []DimensionDeclaration{{Key: "correctness"}},
 		},
 	}
 
@@ -484,7 +484,7 @@ func TestEvaluateRunAgentReturnsFailureForJSONSchemaMismatch(t *testing.T) {
 			},
 		},
 		Scorecard: ScorecardDeclaration{
-			Dimensions: []ScorecardDimension{ScorecardDimensionCorrectness},
+			Dimensions: []DimensionDeclaration{{Key: "correctness"}},
 		},
 	}
 
@@ -524,7 +524,7 @@ func TestEvaluateRunAgentReturnsErrorForMalformedJSONValidatorInput(t *testing.T
 			},
 		},
 		Scorecard: ScorecardDeclaration{
-			Dimensions: []ScorecardDimension{ScorecardDimensionCorrectness},
+			Dimensions: []DimensionDeclaration{{Key: "correctness"}},
 		},
 	}
 
@@ -581,7 +581,7 @@ func TestEvaluateRunAgentMatchesJSONPathComparators(t *testing.T) {
 			},
 		},
 		Scorecard: ScorecardDeclaration{
-			Dimensions: []ScorecardDimension{ScorecardDimensionCorrectness},
+			Dimensions: []DimensionDeclaration{{Key: "correctness"}},
 		},
 	}
 
@@ -621,7 +621,7 @@ func TestEvaluateRunAgentTreatsEquivalentJSONNumbersAsEqual(t *testing.T) {
 			},
 		},
 		Scorecard: ScorecardDeclaration{
-			Dimensions: []ScorecardDimension{ScorecardDimensionCorrectness},
+			Dimensions: []DimensionDeclaration{{Key: "correctness"}},
 		},
 	}
 
@@ -654,7 +654,7 @@ func TestEvaluateRunAgentReturnsFailureForJSONPathMismatch(t *testing.T) {
 			},
 		},
 		Scorecard: ScorecardDeclaration{
-			Dimensions: []ScorecardDimension{ScorecardDimensionCorrectness},
+			Dimensions: []DimensionDeclaration{{Key: "correctness"}},
 		},
 	}
 
@@ -690,7 +690,7 @@ func TestEvaluateRunAgentReturnsErrorForMalformedJSONPathExpectation(t *testing.
 			},
 		},
 		Scorecard: ScorecardDeclaration{
-			Dimensions: []ScorecardDimension{ScorecardDimensionCorrectness},
+			Dimensions: []DimensionDeclaration{{Key: "correctness"}},
 		},
 	}
 
@@ -739,7 +739,7 @@ func TestEvaluateRunAgentWarnsWhenChallengeInputIsAmbiguousAcrossMultipleItems(t
 			{Key: "total_tokens", Type: MetricTypeNumeric, Collector: "run_total_tokens"},
 		},
 		Scorecard: ScorecardDeclaration{
-			Dimensions: []ScorecardDimension{ScorecardDimensionCorrectness},
+			Dimensions: []DimensionDeclaration{{Key: "correctness"}},
 		},
 	}
 
@@ -784,8 +784,8 @@ func TestEvaluateRunAgentWarnsWhenChallengeInputIsAmbiguousAcrossMultipleItems(t
 	if !containsString(evaluation.Warnings, "challenge input is ambiguous across multiple items") {
 		t.Fatalf("warnings = %v, want ambiguity warning", evaluation.Warnings)
 	}
-	if evaluation.DimensionScores[string(ScorecardDimensionCorrectness)] != nil {
-		t.Fatalf("correctness score = %v, want nil", evaluation.DimensionScores[string(ScorecardDimensionCorrectness)])
+	if evaluation.DimensionScores[ScorecardDimensionCorrectness] != nil {
+		t.Fatalf("correctness score = %v, want nil", evaluation.DimensionScores[ScorecardDimensionCorrectness])
 	}
 }
 
@@ -821,7 +821,7 @@ func TestEvaluateRunAgentSurfacesStubDimensionReasonsAsWarnings(t *testing.T) {
 			},
 		},
 		Scorecard: ScorecardDeclaration{
-			Dimensions: []ScorecardDimension{ScorecardDimensionCorrectness, ScorecardDimensionLatency, ScorecardDimensionCost},
+			Dimensions: []DimensionDeclaration{{Key: "correctness"}, {Key: "latency"}, {Key: "cost"}},
 			Normalization: ScorecardNormalization{
 				Latency: &LatencyNormalization{TargetMS: floatPtr(1000)},
 				Cost:    &CostNormalization{TargetUSD: floatPtr(0.01)},
@@ -856,10 +856,10 @@ func TestEvaluateRunAgentSurfacesStubDimensionReasonsAsWarnings(t *testing.T) {
 	if containsString(evaluation.Warnings, "cost dimension normalization is not defined yet") {
 		t.Fatalf("warnings = %v, did not expect cost stub warning", evaluation.Warnings)
 	}
-	if evaluation.DimensionScores[string(ScorecardDimensionLatency)] == nil {
+	if evaluation.DimensionScores[ScorecardDimensionLatency] == nil {
 		t.Fatalf("latency score = nil, want available")
 	}
-	if evaluation.DimensionScores[string(ScorecardDimensionCost)] == nil {
+	if evaluation.DimensionScores[ScorecardDimensionCost] == nil {
 		t.Fatalf("cost score = nil, want available")
 	}
 }
@@ -896,7 +896,7 @@ func TestEvaluateRunAgentComputesCostMetricAndDimensionFromModelUsage(t *testing
 			},
 		},
 		Scorecard: ScorecardDeclaration{
-			Dimensions: []ScorecardDimension{ScorecardDimensionLatency, ScorecardDimensionCost},
+			Dimensions: []DimensionDeclaration{{Key: "latency"}, {Key: "cost"}},
 			Normalization: ScorecardNormalization{
 				Latency: &LatencyNormalization{TargetMS: floatPtr(500)},
 				Cost:    &CostNormalization{TargetUSD: floatPtr(0.001)},
@@ -939,11 +939,11 @@ func TestEvaluateRunAgentComputesCostMetricAndDimensionFromModelUsage(t *testing
 	if _, ok := latencyMetadata["first_output_at"]; !ok {
 		t.Fatalf("ttft metadata = %#v, want first_output_at", latencyMetadata)
 	}
-	if evaluation.DimensionScores[string(ScorecardDimensionLatency)] == nil || *evaluation.DimensionScores[string(ScorecardDimensionLatency)] != 0.6666666666666667 {
-		t.Fatalf("latency score = %v, want 0.6666666666666667", evaluation.DimensionScores[string(ScorecardDimensionLatency)])
+	if evaluation.DimensionScores[ScorecardDimensionLatency] == nil || *evaluation.DimensionScores[ScorecardDimensionLatency] != 0.6666666666666667 {
+		t.Fatalf("latency score = %v, want 0.6666666666666667", evaluation.DimensionScores[ScorecardDimensionLatency])
 	}
-	if evaluation.DimensionScores[string(ScorecardDimensionCost)] == nil || *evaluation.DimensionScores[string(ScorecardDimensionCost)] != 0.9984984984984985 {
-		t.Fatalf("cost score = %v, want 0.9984984984984985", evaluation.DimensionScores[string(ScorecardDimensionCost)])
+	if evaluation.DimensionScores[ScorecardDimensionCost] == nil || *evaluation.DimensionScores[ScorecardDimensionCost] != 0.9984984984984985 {
+		t.Fatalf("cost score = %v, want 0.9984984984984985", evaluation.DimensionScores[ScorecardDimensionCost])
 	}
 }
 
@@ -964,7 +964,7 @@ func TestEvaluateRunAgentLeavesCostUnavailableWhenPricingIsMissing(t *testing.T)
 			MaxCostUSD: floatPtr(10),
 		},
 		Scorecard: ScorecardDeclaration{
-			Dimensions: []ScorecardDimension{ScorecardDimensionCost},
+			Dimensions: []DimensionDeclaration{{Key: "cost"}},
 			Normalization: ScorecardNormalization{
 				Cost: &CostNormalization{TargetUSD: floatPtr(1)},
 			},
@@ -991,8 +991,8 @@ func TestEvaluateRunAgentLeavesCostUnavailableWhenPricingIsMissing(t *testing.T)
 		t.Fatalf("EvaluateRunAgent returned error: %v", err)
 	}
 
-	if evaluation.DimensionScores[string(ScorecardDimensionCost)] != nil {
-		t.Fatalf("cost score = %v, want nil", evaluation.DimensionScores[string(ScorecardDimensionCost)])
+	if evaluation.DimensionScores[ScorecardDimensionCost] != nil {
+		t.Fatalf("cost score = %v, want nil", evaluation.DimensionScores[ScorecardDimensionCost])
 	}
 	if !containsString(evaluation.Warnings, "model pricing is unavailable") {
 		t.Fatalf("warnings = %v, want missing pricing warning", evaluation.Warnings)
@@ -1050,6 +1050,241 @@ func containsString(items []string, want string) bool {
 		}
 	}
 	return false
+}
+
+func TestEvaluateRunAgentCustomValidatorScopedDimension(t *testing.T) {
+	spec := EvaluationSpec{
+		Name:          "custom-dim",
+		VersionNumber: 1,
+		JudgeMode:     JudgeModeDeterministic,
+		Validators: []ValidatorDeclaration{
+			{Key: "exact", Type: ValidatorTypeExactMatch, Target: "final_output", ExpectedFrom: "challenge_input"},
+			{Key: "contains_done", Type: ValidatorTypeContains, Target: "final_output", ExpectedFrom: "literal:done"},
+		},
+		Metrics: []MetricDeclaration{
+			{Key: "completed", Type: MetricTypeBoolean, Collector: "run_completed_successfully"},
+			{Key: "failures", Type: MetricTypeNumeric, Collector: "run_failure_count"},
+		},
+		Scorecard: ScorecardDeclaration{
+			Dimensions: []DimensionDeclaration{
+				{Key: "accuracy", Source: DimensionSourceValidators, Validators: []string{"exact"}, BetterDirection: "higher"},
+				{Key: "completeness", Source: DimensionSourceValidators, Validators: []string{"contains_done"}, BetterDirection: "higher"},
+				{Key: "reliability", Source: DimensionSourceReliability, BetterDirection: "higher"},
+			},
+		},
+	}
+
+	evaluation, err := EvaluateRunAgent(EvaluationInput{
+		RunAgentID:       uuid.New(),
+		EvaluationSpecID: uuid.New(),
+		ChallengeInputs: []EvidenceInput{
+			{ChallengeIdentityID: uuid.New(), ItemKey: "expected.txt", Payload: []byte(`"done"`)},
+		},
+		Events: []Event{
+			{Type: "system.run.started", OccurredAt: time.Date(2026, 3, 16, 9, 0, 0, 0, time.UTC), Payload: []byte(`{}`)},
+			{Type: "system.output.finalized", OccurredAt: time.Date(2026, 3, 16, 9, 0, 1, 0, time.UTC), Payload: []byte(`{"output":"done"}`)},
+			{Type: "system.run.completed", OccurredAt: time.Date(2026, 3, 16, 9, 0, 2, 0, time.UTC), Payload: []byte(`{"final_output":"done","total_tokens":5}`)},
+		},
+	}, spec)
+	if err != nil {
+		t.Fatalf("EvaluateRunAgent returned error: %v", err)
+	}
+
+	if evaluation.DimensionScores["accuracy"] == nil || *evaluation.DimensionScores["accuracy"] != 1 {
+		t.Fatalf("accuracy score = %v, want 1", evaluation.DimensionScores["accuracy"])
+	}
+	if evaluation.DimensionScores["completeness"] == nil || *evaluation.DimensionScores["completeness"] != 1 {
+		t.Fatalf("completeness score = %v, want 1", evaluation.DimensionScores["completeness"])
+	}
+	if evaluation.DimensionScores["reliability"] == nil || *evaluation.DimensionScores["reliability"] != 1 {
+		t.Fatalf("reliability score = %v, want 1", evaluation.DimensionScores["reliability"])
+	}
+}
+
+func TestEvaluateRunAgentCustomMetricDimension(t *testing.T) {
+	target := 100.0
+	maxVal := 1000.0
+	spec := EvaluationSpec{
+		Name:          "metric-dim",
+		VersionNumber: 1,
+		JudgeMode:     JudgeModeDeterministic,
+		Validators: []ValidatorDeclaration{
+			{Key: "exact", Type: ValidatorTypeExactMatch, Target: "final_output", ExpectedFrom: "challenge_input"},
+		},
+		Metrics: []MetricDeclaration{
+			{Key: "tokens", Type: MetricTypeNumeric, Collector: "run_total_tokens"},
+		},
+		Scorecard: ScorecardDeclaration{
+			Dimensions: []DimensionDeclaration{
+				{Key: "correctness", Source: DimensionSourceValidators, BetterDirection: "higher"},
+				{
+					Key:             "token_efficiency",
+					Source:          DimensionSourceMetric,
+					Metric:          "tokens",
+					BetterDirection: "lower",
+					Normalization:   &DimensionNormalization{Target: &target, Max: &maxVal},
+				},
+			},
+		},
+	}
+
+	evaluation, err := EvaluateRunAgent(EvaluationInput{
+		RunAgentID:       uuid.New(),
+		EvaluationSpecID: uuid.New(),
+		ChallengeInputs: []EvidenceInput{
+			{ChallengeIdentityID: uuid.New(), ItemKey: "expected.txt", Payload: []byte(`"done"`)},
+		},
+		Events: []Event{
+			{Type: "system.run.started", OccurredAt: time.Date(2026, 3, 16, 9, 0, 0, 0, time.UTC), Payload: []byte(`{}`)},
+			{Type: "system.output.finalized", OccurredAt: time.Date(2026, 3, 16, 9, 0, 1, 0, time.UTC), Payload: []byte(`{"output":"done"}`)},
+			{Type: "system.run.completed", OccurredAt: time.Date(2026, 3, 16, 9, 0, 2, 0, time.UTC), Payload: []byte(`{"final_output":"done","total_tokens":550}`)},
+		},
+	}, spec)
+	if err != nil {
+		t.Fatalf("EvaluateRunAgent returned error: %v", err)
+	}
+
+	if evaluation.DimensionScores["correctness"] == nil || *evaluation.DimensionScores["correctness"] != 1 {
+		t.Fatalf("correctness score = %v, want 1", evaluation.DimensionScores["correctness"])
+	}
+	// 550 tokens, target=100, max=1000 → normalizeLowerIsBetter(550, 100, 1000) = 1 - (550-100)/(1000-100) = 0.5
+	if evaluation.DimensionScores["token_efficiency"] == nil || *evaluation.DimensionScores["token_efficiency"] != 0.5 {
+		t.Fatalf("token_efficiency score = %v, want 0.5", evaluation.DimensionScores["token_efficiency"])
+	}
+}
+
+func TestEvaluateRunAgentHigherIsBetterMetricDimension(t *testing.T) {
+	target := 100.0
+	floor := 0.0
+	spec := EvaluationSpec{
+		Name:          "higher-metric",
+		VersionNumber: 1,
+		JudgeMode:     JudgeModeDeterministic,
+		Validators: []ValidatorDeclaration{
+			{Key: "exact", Type: ValidatorTypeExactMatch, Target: "final_output", ExpectedFrom: "challenge_input"},
+		},
+		Metrics: []MetricDeclaration{
+			{Key: "tokens", Type: MetricTypeNumeric, Collector: "run_total_tokens"},
+		},
+		Scorecard: ScorecardDeclaration{
+			Dimensions: []DimensionDeclaration{
+				{Key: "correctness", Source: DimensionSourceValidators, BetterDirection: "higher"},
+				{
+					Key:             "throughput",
+					Source:          DimensionSourceMetric,
+					Metric:          "tokens",
+					BetterDirection: "higher",
+					Normalization:   &DimensionNormalization{Target: &target, Max: &floor},
+				},
+			},
+		},
+	}
+
+	evaluation, err := EvaluateRunAgent(EvaluationInput{
+		RunAgentID:       uuid.New(),
+		EvaluationSpecID: uuid.New(),
+		ChallengeInputs: []EvidenceInput{
+			{ChallengeIdentityID: uuid.New(), ItemKey: "expected.txt", Payload: []byte(`"done"`)},
+		},
+		Events: []Event{
+			{Type: "system.run.started", OccurredAt: time.Date(2026, 3, 16, 9, 0, 0, 0, time.UTC), Payload: []byte(`{}`)},
+			{Type: "system.output.finalized", OccurredAt: time.Date(2026, 3, 16, 9, 0, 1, 0, time.UTC), Payload: []byte(`{"output":"done"}`)},
+			{Type: "system.run.completed", OccurredAt: time.Date(2026, 3, 16, 9, 0, 2, 0, time.UTC), Payload: []byte(`{"final_output":"done","total_tokens":75}`)},
+		},
+	}, spec)
+	if err != nil {
+		t.Fatalf("EvaluateRunAgent returned error: %v", err)
+	}
+
+	// 75 tokens, target=100, floor=0 → normalizeHigherIsBetter(75, 100, 0) = (75-0)/(100-0) = 0.75
+	if evaluation.DimensionScores["throughput"] == nil || *evaluation.DimensionScores["throughput"] != 0.75 {
+		t.Fatalf("throughput score = %v, want 0.75", evaluation.DimensionScores["throughput"])
+	}
+}
+
+func TestEvaluateRunAgentScopedValidatorsExcludeNonMatching(t *testing.T) {
+	spec := EvaluationSpec{
+		Name:          "scoped",
+		VersionNumber: 1,
+		JudgeMode:     JudgeModeDeterministic,
+		Validators: []ValidatorDeclaration{
+			{Key: "v_pass", Type: ValidatorTypeExactMatch, Target: "final_output", ExpectedFrom: "challenge_input"},
+			{Key: "v_fail", Type: ValidatorTypeContains, Target: "final_output", ExpectedFrom: "literal:NOTFOUND"},
+		},
+		Scorecard: ScorecardDeclaration{
+			Dimensions: []DimensionDeclaration{
+				{Key: "dim_pass_only", Source: DimensionSourceValidators, Validators: []string{"v_pass"}, BetterDirection: "higher"},
+				{Key: "dim_fail_only", Source: DimensionSourceValidators, Validators: []string{"v_fail"}, BetterDirection: "higher"},
+				{Key: "dim_all", Source: DimensionSourceValidators, BetterDirection: "higher"},
+			},
+		},
+	}
+
+	evaluation, err := EvaluateRunAgent(EvaluationInput{
+		RunAgentID:       uuid.New(),
+		EvaluationSpecID: uuid.New(),
+		ChallengeInputs: []EvidenceInput{
+			{ChallengeIdentityID: uuid.New(), ItemKey: "expected.txt", Payload: []byte(`"done"`)},
+		},
+		Events: []Event{
+			{Type: "system.run.started", OccurredAt: time.Date(2026, 3, 16, 9, 0, 0, 0, time.UTC), Payload: []byte(`{}`)},
+			{Type: "system.output.finalized", OccurredAt: time.Date(2026, 3, 16, 9, 0, 1, 0, time.UTC), Payload: []byte(`{"output":"done"}`)},
+			{Type: "system.run.completed", OccurredAt: time.Date(2026, 3, 16, 9, 0, 2, 0, time.UTC), Payload: []byte(`{"final_output":"done"}`)},
+		},
+	}, spec)
+	if err != nil {
+		t.Fatalf("EvaluateRunAgent returned error: %v", err)
+	}
+
+	if evaluation.DimensionScores["dim_pass_only"] == nil || *evaluation.DimensionScores["dim_pass_only"] != 1 {
+		t.Fatalf("dim_pass_only score = %v, want 1", evaluation.DimensionScores["dim_pass_only"])
+	}
+	if evaluation.DimensionScores["dim_fail_only"] == nil || *evaluation.DimensionScores["dim_fail_only"] != 0 {
+		t.Fatalf("dim_fail_only score = %v, want 0", evaluation.DimensionScores["dim_fail_only"])
+	}
+	// dim_all averages both: (1.0 + 0.0) / 2 = 0.5
+	if evaluation.DimensionScores["dim_all"] == nil || *evaluation.DimensionScores["dim_all"] != 0.5 {
+		t.Fatalf("dim_all score = %v, want 0.5", evaluation.DimensionScores["dim_all"])
+	}
+}
+
+func TestAverageScopedValidatorsReturnsUnavailableForEmptyResults(t *testing.T) {
+	score, reason, state := averageScopedValidators(nil, nil)
+	if score != nil {
+		t.Fatalf("score = %v, want nil", score)
+	}
+	if state != OutputStateUnavailable {
+		t.Fatalf("state = %s, want unavailable", state)
+	}
+	if reason != "no validators in scope" {
+		t.Fatalf("reason = %q, want 'no validators in scope'", reason)
+	}
+}
+
+func TestNormalizeHigherIsBetter(t *testing.T) {
+	tests := []struct {
+		name   string
+		value  float64
+		target float64
+		floor  float64
+		want   float64
+	}{
+		{"at target", 100, 100, 0, 1},
+		{"above target", 150, 100, 0, 1},
+		{"at floor", 0, 100, 0, 0},
+		{"below floor", -10, 100, 0, 0},
+		{"midpoint", 50, 100, 0, 0.5},
+		{"target equals floor above", 50, 10, 10, 1},
+		{"target equals floor below", 5, 10, 10, 0},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := normalizeHigherIsBetter(tc.value, tc.target, tc.floor)
+			if got != tc.want {
+				t.Fatalf("normalizeHigherIsBetter(%v, %v, %v) = %v, want %v", tc.value, tc.target, tc.floor, got, tc.want)
+			}
+		})
+	}
 }
 
 func int64Ptr(value int64) *int64 {

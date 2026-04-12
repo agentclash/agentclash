@@ -1,5 +1,7 @@
 package scoring
 
+import "encoding/json"
+
 type JudgeMode string
 
 const (
@@ -27,7 +29,9 @@ const (
 	MetricTypeBoolean MetricType = "boolean"
 )
 
-type ScorecardDimension string
+// ScorecardDimension is a string alias kept for backward compatibility with
+// code that references the four built-in dimension key constants.
+type ScorecardDimension = string
 
 const (
 	ScorecardDimensionCorrectness ScorecardDimension = "correctness"
@@ -35,6 +39,55 @@ const (
 	ScorecardDimensionLatency     ScorecardDimension = "latency"
 	ScorecardDimensionCost        ScorecardDimension = "cost"
 )
+
+type DimensionSource string
+
+const (
+	DimensionSourceValidators  DimensionSource = "validators"
+	DimensionSourceMetric      DimensionSource = "metric"
+	DimensionSourceReliability DimensionSource = "reliability"
+	DimensionSourceLatency     DimensionSource = "latency"
+	DimensionSourceCost        DimensionSource = "cost"
+)
+
+// DimensionDeclaration describes a single scoring dimension. It supports both
+// the old string format ("correctness") and the new object format with explicit
+// source routing. When unmarshalled from a plain string, only Key is populated;
+// normalizeEvaluationSpec expands the rest for known built-in keys.
+type DimensionDeclaration struct {
+	Key             string                  `json:"key"`
+	Source          DimensionSource         `json:"source"`
+	Validators      []string                `json:"validators,omitempty"`
+	Metric          string                  `json:"metric,omitempty"`
+	BetterDirection string                  `json:"better_direction,omitempty"`
+	Normalization   *DimensionNormalization `json:"normalization,omitempty"`
+	Weight          *float64                `json:"weight,omitempty"`
+}
+
+// UnmarshalJSON handles both the legacy string format ("correctness") and
+// the new object format ({ "key": "correctness", "source": "validators", ... }).
+func (d *DimensionDeclaration) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err == nil {
+		d.Key = s
+		return nil
+	}
+
+	type Alias DimensionDeclaration
+	var alias Alias
+	if err := json.Unmarshal(data, &alias); err != nil {
+		return err
+	}
+	*d = DimensionDeclaration(alias)
+	return nil
+}
+
+// DimensionNormalization configures linear normalization for a dimension.
+// Target is the ideal value (score=1.0), Max is the worst-case boundary (score=0.0).
+type DimensionNormalization struct {
+	Target *float64 `json:"target,omitempty"`
+	Max    *float64 `json:"max,omitempty"`
+}
 
 type EvaluationSpec struct {
 	Name          string                 `json:"name"`
@@ -62,7 +115,7 @@ type MetricDeclaration struct {
 }
 
 type ScorecardDeclaration struct {
-	Dimensions    []ScorecardDimension   `json:"dimensions"`
+	Dimensions    []DimensionDeclaration `json:"dimensions"`
 	Normalization ScorecardNormalization `json:"normalization,omitempty"`
 }
 
@@ -83,6 +136,9 @@ type ModelPricing struct {
 	OutputCostPerMillionTokens float64 `json:"output_cost_per_million_tokens"`
 }
 
+// ScorecardNormalization is the legacy normalization block. Kept for backward
+// compatibility with specs that declare normalization at the scorecard level.
+// normalizeEvaluationSpec copies these into per-dimension normalization.
 type ScorecardNormalization struct {
 	Latency *LatencyNormalization `json:"latency,omitempty"`
 	Cost    *CostNormalization    `json:"cost,omitempty"`
@@ -125,8 +181,19 @@ func (t MetricType) IsValid() bool {
 	}
 }
 
-func (d ScorecardDimension) IsValid() bool {
-	switch d {
+func (s DimensionSource) IsValid() bool {
+	switch s {
+	case DimensionSourceValidators, DimensionSourceMetric, DimensionSourceReliability, DimensionSourceLatency, DimensionSourceCost:
+		return true
+	default:
+		return false
+	}
+}
+
+// isBuiltinDimensionKey returns true for the four legacy dimension names that
+// have built-in scoring logic. Used during auto-expansion of old-format specs.
+func isBuiltinDimensionKey(key string) bool {
+	switch key {
 	case ScorecardDimensionCorrectness, ScorecardDimensionReliability, ScorecardDimensionLatency, ScorecardDimensionCost:
 		return true
 	default:
