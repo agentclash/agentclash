@@ -252,6 +252,17 @@ export interface ModelAlias {
   updated_at: string;
 }
 
+// --- Workspace Secrets ---
+
+/** GET /v1/workspaces/{id}/secrets list item — metadata only, never the value */
+export interface WorkspaceSecret {
+  key: string;
+  created_at: string;
+  updated_at: string;
+  created_by?: string;
+  updated_by?: string;
+}
+
 // --- Errors ---
 
 /** Standard error envelope returned by all backend error responses. */
