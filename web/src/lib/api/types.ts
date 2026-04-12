@@ -252,6 +252,42 @@ export interface ModelAlias {
   updated_at: string;
 }
 
+// --- Challenge Packs ---
+
+/** GET /v1/workspaces/{id}/challenge-packs list item */
+export interface ChallengePack {
+  id: string;
+  name: string;
+  description?: string;
+  versions: ChallengePackVersion[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ChallengePackVersion {
+  id: string;
+  challenge_pack_id: string;
+  version_number: number;
+  lifecycle_status: string; // "draft" | "runnable" | "deprecated" | "archived"
+  created_at: string;
+  updated_at: string;
+}
+
+/** POST /v1/workspaces/{id}/challenge-packs/validate response */
+export interface ValidateChallengePackResponse {
+  valid: boolean;
+  errors: ValidationError[];
+}
+
+/** POST /v1/workspaces/{id}/challenge-packs response (201) */
+export interface PublishChallengePackResponse {
+  challenge_pack_id: string;
+  challenge_pack_version_id: string;
+  evaluation_spec_id: string;
+  input_set_ids: string[];
+  bundle_artifact_id?: string;
+}
+
 // --- Workspace Secrets ---
 
 /** GET /v1/workspaces/{id}/secrets list item — metadata only, never the value */

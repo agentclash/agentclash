@@ -76,7 +76,7 @@ async function request<T>(
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  if (body !== undefined) {
+  if (body !== undefined && !headers["Content-Type"]) {
     headers["Content-Type"] = "application/json";
   }
 
@@ -85,7 +85,12 @@ async function request<T>(
     res = await fetch(url, {
       method,
       headers,
-      body: body !== undefined ? JSON.stringify(body) : undefined,
+      body:
+        body !== undefined
+          ? typeof body === "string"
+            ? body
+            : JSON.stringify(body)
+          : undefined,
       signal: opts.signal,
     });
   } catch (err) {
@@ -127,6 +132,19 @@ export function createApiClient(token?: string) {
 
     post<T>(path: string, body?: unknown, opts?: RequestOptions): Promise<T> {
       return request<T>("POST", path, token, body, opts);
+    },
+
+    /** POST with a raw string body and explicit content type. */
+    postRaw<T>(
+      path: string,
+      body: string,
+      contentType: string,
+      opts?: RequestOptions,
+    ): Promise<T> {
+      return request<T>("POST", path, token, body, {
+        ...opts,
+        headers: { ...opts?.headers, "Content-Type": contentType },
+      });
     },
 
     put<T>(path: string, body?: unknown, opts?: RequestOptions): Promise<T> {
