@@ -288,6 +288,67 @@ export interface PublishChallengePackResponse {
   bundle_artifact_id?: string;
 }
 
+// --- Runs ---
+
+/** GET /v1/workspaces/{id}/runs list item, GET /v1/runs/{id} detail */
+export interface Run {
+  id: string;
+  workspace_id: string;
+  challenge_pack_version_id: string;
+  challenge_input_set_id?: string;
+  name: string;
+  status: RunStatus;
+  execution_mode: string; // "single_agent" | "comparison"
+  temporal_workflow_id?: string;
+  temporal_run_id?: string;
+  queued_at?: string;
+  started_at?: string;
+  finished_at?: string;
+  cancelled_at?: string;
+  failed_at?: string;
+  created_at: string;
+  updated_at: string;
+  links: {
+    self: string;
+    agents: string;
+  };
+}
+
+export type RunStatus =
+  | "draft"
+  | "queued"
+  | "provisioning"
+  | "running"
+  | "scoring"
+  | "completed"
+  | "failed"
+  | "cancelled";
+
+/** POST /v1/runs request */
+export interface CreateRunRequest {
+  workspace_id: string;
+  challenge_pack_version_id: string;
+  challenge_input_set_id?: string;
+  name?: string;
+  agent_deployment_ids: string[];
+}
+
+/** POST /v1/runs response (201) */
+export interface CreateRunResponse {
+  id: string;
+  workspace_id: string;
+  challenge_pack_version_id: string;
+  challenge_input_set_id?: string;
+  status: RunStatus;
+  execution_mode: string;
+  created_at: string;
+  queued_at?: string;
+  links: {
+    self: string;
+    agents: string;
+  };
+}
+
 // --- Workspace Secrets ---
 
 /** GET /v1/workspaces/{id}/secrets list item — metadata only, never the value */
