@@ -14,6 +14,7 @@ import (
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/provider"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/sandbox"
+	"github.com/google/uuid"
 )
 
 const (
@@ -118,10 +119,18 @@ func (NoopObserver) OnStepEnd(context.Context, int) error        { return nil }
 func (NoopObserver) OnRunComplete(context.Context, Result) error { return nil }
 func (NoopObserver) OnRunFailure(context.Context, error) error   { return nil }
 
+// SecretsLookup resolves ${secrets.X} references at run-start by returning
+// the plaintext secret map for a workspace. *repository.Repository satisfies
+// this interface; tests can substitute an in-memory fake.
+type SecretsLookup interface {
+	LoadWorkspaceSecrets(ctx context.Context, workspaceID uuid.UUID) (map[string]string, error)
+}
+
 type NativeExecutor struct {
 	client              provider.Client
 	sandboxProvider     sandbox.Provider
 	observer            Observer
+	secretsLookup       SecretsLookup
 	maxRetryAttempts    int
 	initialRetryBackoff time.Duration
 }
@@ -137,6 +146,16 @@ func NewNativeExecutor(client provider.Client, sandboxProvider sandbox.Provider,
 		maxRetryAttempts:    defaultRetryAttempts,
 		initialRetryBackoff: defaultRetryBackoff,
 	}
+}
+
+// WithSecretsLookup attaches a secrets source used to resolve ${secrets.X}
+// placeholders in sandbox env_vars and composed-tool args at run-start.
+// Executors without a lookup behave as if the workspace has no secrets,
+// which is the correct behavior for unit tests that don't exercise the
+// secrets path.
+func (e NativeExecutor) WithSecretsLookup(lookup SecretsLookup) NativeExecutor {
+	e.secretsLookup = lookup
+	return e
 }
 
 func (e NativeExecutor) Execute(ctx context.Context, executionContext repository.RunAgentExecutionContext) (result Result, err error) {
@@ -175,7 +194,12 @@ func (e NativeExecutor) Execute(ctx context.Context, executionContext repository
 		return Result{}, NewFailure(StopReasonSandboxError, sandbox.ErrProviderNotConfigured.Error(), sandbox.ErrProviderNotConfigured)
 	}
 
-	sandboxRequest, err := nativeSandboxRequest(executionContext)
+	workspaceSecrets, err := e.loadWorkspaceSecrets(ctx, executionContext.Run.WorkspaceID)
+	if err != nil {
+		return Result{}, NewFailure(StopReasonSandboxError, "load workspace secrets", err)
+	}
+
+	sandboxRequest, err := nativeSandboxRequest(executionContext, workspaceSecrets)
 	if err != nil {
 		return Result{}, NewFailure(StopReasonSandboxError, "build native sandbox request", err)
 	}
@@ -231,7 +255,7 @@ func (e NativeExecutor) Execute(ctx context.Context, executionContext repository
 		sandboxRequest.ToolPolicy,
 		executionContext.ChallengePackVersion.Manifest,
 		executionContext.Deployment.SnapshotConfig,
-		toolSecretsForExecution(executionContext),
+		workspaceSecrets,
 	)
 	if err != nil {
 		return Result{}, provider.NewFailure(
@@ -661,7 +685,7 @@ func cleanupSandboxOnError(session sandbox.Session, originalErr error) error {
 	return originalErr
 }
 
-func nativeSandboxRequest(executionContext repository.RunAgentExecutionContext) (sandbox.CreateRequest, error) {
+func nativeSandboxRequest(executionContext repository.RunAgentExecutionContext, workspaceSecrets map[string]string) (sandbox.CreateRequest, error) {
 	policy := sandbox.ToolPolicy{
 		AllowedToolKinds: allowedToolKinds(executionContext.ChallengePackVersion.Manifest),
 		AllowShell:       false,
@@ -687,7 +711,9 @@ func nativeSandboxRequest(executionContext repository.RunAgentExecutionContext) 
 		Labels:     sandboxLabels(executionContext),
 	}
 
-	applySandboxConfig(&request, executionContext.ChallengePackVersion.Manifest)
+	if err := applySandboxConfig(&request, executionContext.ChallengePackVersion.Manifest, workspaceSecrets); err != nil {
+		return sandbox.CreateRequest{}, err
+	}
 
 	return request, nil
 }
@@ -776,7 +802,7 @@ func applyRuntimeSandboxPolicy(policy *sandbox.ToolPolicy, filesystem *sandbox.F
 	)
 }
 
-func applySandboxConfig(request *sandbox.CreateRequest, manifest json.RawMessage) {
+func applySandboxConfig(request *sandbox.CreateRequest, manifest json.RawMessage, workspaceSecrets map[string]string) error {
 	type sandboxBlock struct {
 		NetworkAccess      bool              `json:"network_access"`
 		NetworkAllowlist   []string          `json:"network_allowlist"`
@@ -794,7 +820,10 @@ func applySandboxConfig(request *sandbox.CreateRequest, manifest json.RawMessage
 
 	var decoded manifestShape
 	if err := json.Unmarshal(manifest, &decoded); err != nil {
-		return
+		// Preserve historical behavior: a malformed manifest is a no-op
+		// here, not a hard error. Validation catches broken manifests at
+		// publish time.
+		return nil
 	}
 
 	if decoded.Sandbox != nil {
@@ -805,7 +834,11 @@ func applySandboxConfig(request *sandbox.CreateRequest, manifest json.RawMessage
 			request.NetworkAllowlist = decoded.Sandbox.NetworkAllowlist
 		}
 		if len(decoded.Sandbox.EnvVars) > 0 {
-			request.EnvVars = decoded.Sandbox.EnvVars
+			resolved, err := resolveEnvVarTemplates(decoded.Sandbox.EnvVars, workspaceSecrets)
+			if err != nil {
+				return err
+			}
+			request.EnvVars = resolved
 		}
 		if len(decoded.Sandbox.AdditionalPackages) > 0 {
 			request.AdditionalPackages = decoded.Sandbox.AdditionalPackages
@@ -819,6 +852,72 @@ func applySandboxConfig(request *sandbox.CreateRequest, manifest json.RawMessage
 	if decoded.Version != nil && decoded.Version.SandboxTemplateID != "" {
 		request.TemplateID = decoded.Version.SandboxTemplateID
 	}
+
+	return nil
+}
+
+// resolveEnvVarTemplates substitutes ${secrets.X} placeholders in env_var
+// values. env_vars intentionally only accept the secrets namespace: they're
+// injected into a shell environment, not a tool call, so parameter refs
+// and other template expressions would be meaningless and confusing.
+// Missing secrets are a hard error — silently leaking a literal
+// "${secrets.X}" into the sandbox environment would be a security hazard.
+func resolveEnvVarTemplates(envVars map[string]string, workspaceSecrets map[string]string) (map[string]string, error) {
+	out := make(map[string]string, len(envVars))
+	for key, value := range envVars {
+		resolved, err := resolveEnvVarTemplate(value, workspaceSecrets)
+		if err != nil {
+			return nil, fmt.Errorf("env_vars[%q]: %w", key, err)
+		}
+		out[key] = resolved
+	}
+	return out, nil
+}
+
+func resolveEnvVarTemplate(value string, workspaceSecrets map[string]string) (string, error) {
+	var builder strings.Builder
+	remaining := value
+	for {
+		idx := strings.Index(remaining, "${")
+		if idx == -1 {
+			builder.WriteString(remaining)
+			return builder.String(), nil
+		}
+		builder.WriteString(remaining[:idx])
+		after := remaining[idx+2:]
+		closeIdx := strings.Index(after, "}")
+		if closeIdx == -1 {
+			return "", fmt.Errorf("unclosed placeholder near %q", remaining[idx:])
+		}
+		expr := after[:closeIdx]
+		if !strings.HasPrefix(expr, "secrets.") {
+			return "", fmt.Errorf("only ${secrets.X} placeholders are allowed, got ${%s}", expr)
+		}
+		secretKey := strings.TrimPrefix(expr, "secrets.")
+		if secretKey == "" {
+			return "", fmt.Errorf("empty secret reference ${%s}", expr)
+		}
+		secretValue, ok := workspaceSecrets[secretKey]
+		if !ok {
+			return "", fmt.Errorf("missing workspace secret %q", secretKey)
+		}
+		builder.WriteString(secretValue)
+		remaining = after[closeIdx+1:]
+	}
+}
+
+func (e NativeExecutor) loadWorkspaceSecrets(ctx context.Context, workspaceID uuid.UUID) (map[string]string, error) {
+	if e.secretsLookup == nil {
+		return map[string]string{}, nil
+	}
+	loaded, err := e.secretsLookup.LoadWorkspaceSecrets(ctx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	if loaded == nil {
+		return map[string]string{}, nil
+	}
+	return loaded, nil
 }
 
 func mergeFilesystem(filesystem *sandbox.FilesystemSpec, workingDirectory string, readableRoots []string, writableRoots []string, maxWorkspaceBytes int64) {
@@ -834,13 +933,6 @@ func mergeFilesystem(filesystem *sandbox.FilesystemSpec, workingDirectory string
 	if maxWorkspaceBytes > 0 {
 		filesystem.MaxWorkspaceBytes = maxWorkspaceBytes
 	}
-}
-
-func toolSecretsForExecution(executionContext repository.RunAgentExecutionContext) map[string]string {
-	_ = executionContext
-	// Issue #178 will supply the execution-context secret source. Until then, composed
-	// tools are built with an empty secret map and secret-bearing tools stay disabled.
-	return map[string]string{}
 }
 
 func sandboxTTL(executionContext repository.RunAgentExecutionContext) time.Duration {

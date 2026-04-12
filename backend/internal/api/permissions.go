@@ -28,6 +28,7 @@ const (
 	// Infrastructure CRUD endpoints don't exist yet, but the matrix
 	// entry is defined so new endpoints can use it immediately.
 	ActionManageInfrastructure Action = "manage_infrastructure"
+	ActionManageSecrets       Action = "manage_secrets"
 )
 
 // Workspace roles.
@@ -53,6 +54,7 @@ var permissionMatrix = map[string]map[Action]bool{
 		ActionPublishChallengePack:    true,
 		ActionUploadArtifact:          true,
 		ActionManageInfrastructure:    true,
+		ActionManageSecrets:          true,
 	},
 	RoleWorkspaceMember: {
 		ActionReadWorkspace:           true,

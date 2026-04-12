@@ -164,6 +164,7 @@ func TestEvaluateReleaseGateEndpointReturnsJSONPayload(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		nil,
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {
@@ -233,6 +234,7 @@ func TestListReleaseGatesEndpointReturnsJSONPayload(t *testing.T) {
 				},
 			},
 		},
+		nil,
 		nil,
 		nil,
 		nil,

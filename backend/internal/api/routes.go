@@ -30,6 +30,7 @@ func registerProtectedRoutes(
 	wsMembershipService WorkspaceMembershipService,
 	onboardingService OnboardingService,
 	infraService InfrastructureService,
+	workspaceSecretsService WorkspaceSecretsService,
 ) {
 	router.Get("/auth/session", sessionHandler)
 	router.Get("/users/me", getUserMeHandler(logger, userService))
@@ -100,6 +101,14 @@ func registerProtectedRoutes(
 
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Post("/workspaces/{workspaceID}/agent-deployments", createAgentDeploymentHandler(logger, agentBuildService, authorizer))
+
+	// Workspace Secrets (admin-only via ActionManageSecrets)
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Get("/workspaces/{workspaceID}/secrets", listWorkspaceSecretsHandler(logger, workspaceSecretsService, authorizer))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Put("/workspaces/{workspaceID}/secrets/{secretKey}", upsertWorkspaceSecretHandler(logger, workspaceSecretsService, authorizer))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Delete("/workspaces/{workspaceID}/secrets/{secretKey}", deleteWorkspaceSecretHandler(logger, workspaceSecretsService, authorizer))
 
 	// Infrastructure CRUD — workspace-scoped create/list (skip if no service provided)
 	if infraService == nil {

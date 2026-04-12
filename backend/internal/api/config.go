@@ -2,6 +2,7 @@ package api
 
 import (
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -10,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/secrets"
 )
 
 const (
@@ -52,6 +55,7 @@ type Config struct {
 	ArtifactSigningSecret    string
 	ArtifactSignedURLTTL     time.Duration
 	ArtifactMaxUploadBytes   int64
+	SecretsCipher            *secrets.AESGCMCipher
 }
 
 func LoadConfigFromEnv() (Config, error) {
@@ -162,6 +166,12 @@ func LoadConfigFromEnv() (Config, error) {
 		return Config{}, err
 	}
 
+	secretsCipher, err := loadSecretsCipher(appEnvironment)
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.SecretsCipher = secretsCipher
+
 	return cfg, nil
 }
 
@@ -244,4 +254,39 @@ func newDevelopmentArtifactSigningSecret() (string, error) {
 		return "", fmt.Errorf("%w: generate development artifact signing secret: %v", ErrInvalidConfig, err)
 	}
 	return hex.EncodeToString(bytes), nil
+}
+
+// loadSecretsCipher reads AGENTCLASH_SECRETS_MASTER_KEY and returns a
+// usable AES-GCM cipher. Production boots fail if the key is missing.
+// Development environments fall back to an ephemeral random key — secrets
+// written during that process lifetime become unreadable after restart,
+// which is the right failure mode for local dev (no stale ciphertext).
+func loadSecretsCipher(appEnvironment string) (*secrets.AESGCMCipher, error) {
+	masterKey, ok := os.LookupEnv("AGENTCLASH_SECRETS_MASTER_KEY")
+	if ok && masterKey == "" {
+		return nil, fmt.Errorf("%w: AGENTCLASH_SECRETS_MASTER_KEY cannot be empty", ErrInvalidConfig)
+	}
+	if !ok {
+		if !isDevelopmentEnvironment(appEnvironment) {
+			return nil, fmt.Errorf("%w: AGENTCLASH_SECRETS_MASTER_KEY must be set", ErrInvalidConfig)
+		}
+		generated, err := newDevelopmentSecretsMasterKey()
+		if err != nil {
+			return nil, err
+		}
+		masterKey = generated
+	}
+	cipher, err := secrets.NewAESGCMCipher(masterKey)
+	if err != nil {
+		return nil, fmt.Errorf("%w: AGENTCLASH_SECRETS_MASTER_KEY is invalid: %v", ErrInvalidConfig, err)
+	}
+	return cipher, nil
+}
+
+func newDevelopmentSecretsMasterKey() (string, error) {
+	key := make([]byte, secrets.MasterKeySize)
+	if _, err := rand.Read(key); err != nil {
+		return "", fmt.Errorf("%w: generate development secrets master key: %v", ErrInvalidConfig, err)
+	}
+	return base64.StdEncoding.EncodeToString(key), nil
 }

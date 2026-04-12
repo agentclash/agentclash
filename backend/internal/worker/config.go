@@ -1,11 +1,15 @@
 package worker
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/secrets"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/workflow"
 )
 
@@ -13,6 +17,7 @@ const (
 	defaultDatabaseURL           = "postgres://agentclash:agentclash@localhost:5432/agentclash?sslmode=disable"
 	defaultTemporalTarget        = "localhost:7233"
 	defaultNamespace             = "default"
+	defaultAppEnvironment        = "development"
 	defaultShutdownTime          = 10 * time.Second
 	defaultHostedCallbackBaseURL = "http://localhost:8080"
 	defaultHostedCallbackSecret  = "agentclash-dev-hosted-callback-secret"
@@ -21,6 +26,7 @@ const (
 var ErrInvalidConfig = errors.New("invalid worker config")
 
 type Config struct {
+	AppEnvironment        string
 	DatabaseURL           string
 	TemporalAddress       string
 	TemporalNamespace     string
@@ -30,6 +36,7 @@ type Config struct {
 	HostedCallbackSecret  string
 	ShutdownTimeout       time.Duration
 	Sandbox               SandboxConfig
+	SecretsCipher         *secrets.AESGCMCipher
 }
 
 type SandboxConfig struct {
@@ -45,6 +52,10 @@ type E2BConfig struct {
 }
 
 func LoadConfigFromEnv() (Config, error) {
+	appEnvironment, err := envOrDefault("APP_ENV", defaultAppEnvironment)
+	if err != nil {
+		return Config{}, err
+	}
 	databaseURL, err := envOrDefault("DATABASE_URL", defaultDatabaseURL)
 	if err != nil {
 		return Config{}, err
@@ -102,7 +113,13 @@ func LoadConfigFromEnv() (Config, error) {
 		}
 	}
 
+	secretsCipher, err := loadSecretsCipher(appEnvironment)
+	if err != nil {
+		return Config{}, err
+	}
+
 	return Config{
+		AppEnvironment:        appEnvironment,
 		DatabaseURL:           databaseURL,
 		TemporalAddress:       temporalAddress,
 		TemporalNamespace:     temporalNamespace,
@@ -120,7 +137,42 @@ func LoadConfigFromEnv() (Config, error) {
 				RequestTimeout: e2bRequestTimeout,
 			},
 		},
+		SecretsCipher: secretsCipher,
 	}, nil
+}
+
+// loadSecretsCipher mirrors the api-server behavior: AGENTCLASH_SECRETS_MASTER_KEY
+// is required in production and generated ephemerally in development so local
+// `make worker` runs don't require a key.
+func loadSecretsCipher(appEnvironment string) (*secrets.AESGCMCipher, error) {
+	masterKey, ok := os.LookupEnv("AGENTCLASH_SECRETS_MASTER_KEY")
+	if ok && masterKey == "" {
+		return nil, fmt.Errorf("%w: AGENTCLASH_SECRETS_MASTER_KEY cannot be empty", ErrInvalidConfig)
+	}
+	if !ok {
+		if !isDevelopmentEnvironment(appEnvironment) {
+			return nil, fmt.Errorf("%w: AGENTCLASH_SECRETS_MASTER_KEY must be set", ErrInvalidConfig)
+		}
+		key := make([]byte, secrets.MasterKeySize)
+		if _, err := rand.Read(key); err != nil {
+			return nil, fmt.Errorf("%w: generate development secrets master key: %v", ErrInvalidConfig, err)
+		}
+		masterKey = base64.StdEncoding.EncodeToString(key)
+	}
+	cipher, err := secrets.NewAESGCMCipher(masterKey)
+	if err != nil {
+		return nil, fmt.Errorf("%w: AGENTCLASH_SECRETS_MASTER_KEY is invalid: %v", ErrInvalidConfig, err)
+	}
+	return cipher, nil
+}
+
+func isDevelopmentEnvironment(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "development", "dev", "local", "test":
+		return true
+	default:
+		return false
+	}
 }
 
 func envOrDefault(key string, fallback string) (string, error) {

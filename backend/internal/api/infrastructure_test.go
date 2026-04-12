@@ -111,6 +111,7 @@ func TestGetRuntimeProfileAuthorizesWorkspace(t *testing.T) {
 		stubAgentBuildService{}, noopReleaseGateService{},
 		nil, nil, nil, nil, nil, nil, nil,
 		svc,
+		nil,
 	)
 
 	// User without workspace membership should be denied
@@ -148,6 +149,7 @@ func TestGetRuntimeProfileAllowsWorkspaceMember(t *testing.T) {
 		stubAgentBuildService{}, noopReleaseGateService{},
 		nil, nil, nil, nil, nil, nil, nil,
 		svc,
+		nil,
 	)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/runtime-profiles/"+profileID.String(), nil)
@@ -178,6 +180,7 @@ func TestCreateRuntimeProfileRequiresAdminRole(t *testing.T) {
 		stubAgentBuildService{}, noopReleaseGateService{},
 		nil, nil, nil, nil, nil, nil, nil,
 		svc,
+		nil,
 	)
 
 	body := `{"name":"test","execution_target":"native"}`
@@ -211,6 +214,7 @@ func TestCreateRuntimeProfileValidatesInput(t *testing.T) {
 		stubAgentBuildService{}, noopReleaseGateService{},
 		nil, nil, nil, nil, nil, nil, nil,
 		svc,
+		nil,
 	)
 
 	// Missing execution_target

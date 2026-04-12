@@ -32,6 +32,9 @@ var (
 	ErrRunParticipantsRequired       = errors.New("run must have at least one participant")
 	ErrInvalidExecutionMode          = errors.New("invalid execution mode")
 	ErrRunAgentLabelRequired         = errors.New("run agent label is required")
+	ErrWorkspaceSecretNotFound       = errors.New("workspace secret not found")
+	ErrSecretsCipherUnset            = errors.New("secrets cipher is not configured")
+	ErrInvalidSecretKey              = errors.New("secret key must match [A-Za-z_][A-Za-z0-9_]* and be 1..128 characters")
 )
 
 type InvalidTransitionError struct {

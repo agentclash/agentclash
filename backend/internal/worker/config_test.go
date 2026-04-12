@@ -10,6 +10,7 @@ import (
 )
 
 func TestLoadConfigFromEnvUsesDefaultsWhenUnset(t *testing.T) {
+	unsetEnv(t, "APP_ENV")
 	unsetEnv(t, "DATABASE_URL")
 	unsetEnv(t, "TEMPORAL_HOST_PORT")
 	unsetEnv(t, "TEMPORAL_NAMESPACE")
@@ -20,6 +21,7 @@ func TestLoadConfigFromEnvUsesDefaultsWhenUnset(t *testing.T) {
 	unsetEnv(t, "E2B_TEMPLATE_ID")
 	unsetEnv(t, "E2B_API_BASE_URL")
 	unsetEnv(t, "E2B_REQUEST_TIMEOUT")
+	unsetEnv(t, "AGENTCLASH_SECRETS_MASTER_KEY")
 
 	cfg, err := LoadConfigFromEnv()
 	if err != nil {
@@ -140,6 +142,64 @@ func TestLoadConfigFromEnvRejectsIncompleteE2BConfig(t *testing.T) {
 	_, err := LoadConfigFromEnv()
 	if err == nil {
 		t.Fatalf("LoadConfigFromEnv returned nil error")
+	}
+	if !errors.Is(err, ErrInvalidConfig) {
+		t.Fatalf("error = %v, want ErrInvalidConfig", err)
+	}
+}
+
+func TestLoadConfigFromEnvGeneratesEphemeralSecretsKeyInDevelopment(t *testing.T) {
+	unsetEnv(t, "APP_ENV")
+	unsetEnv(t, "AGENTCLASH_SECRETS_MASTER_KEY")
+
+	cfg, err := LoadConfigFromEnv()
+	if err != nil {
+		t.Fatalf("LoadConfigFromEnv returned error: %v", err)
+	}
+	if cfg.SecretsCipher == nil {
+		t.Fatalf("SecretsCipher was nil in development fallback")
+	}
+	encrypted, err := cfg.SecretsCipher.Encrypt([]byte("smoke"))
+	if err != nil {
+		t.Fatalf("dev cipher encrypt: %v", err)
+	}
+	if _, err := cfg.SecretsCipher.Decrypt(encrypted); err != nil {
+		t.Fatalf("dev cipher decrypt: %v", err)
+	}
+}
+
+func TestLoadConfigFromEnvRequiresSecretsKeyInProduction(t *testing.T) {
+	t.Setenv("APP_ENV", "production")
+	unsetEnv(t, "AGENTCLASH_SECRETS_MASTER_KEY")
+
+	_, err := LoadConfigFromEnv()
+	if err == nil {
+		t.Fatalf("expected error when AGENTCLASH_SECRETS_MASTER_KEY is unset in production")
+	}
+	if !errors.Is(err, ErrInvalidConfig) {
+		t.Fatalf("error = %v, want ErrInvalidConfig", err)
+	}
+}
+
+func TestLoadConfigFromEnvRejectsEmptySecretsKey(t *testing.T) {
+	t.Setenv("AGENTCLASH_SECRETS_MASTER_KEY", "")
+
+	_, err := LoadConfigFromEnv()
+	if err == nil {
+		t.Fatalf("expected error for empty AGENTCLASH_SECRETS_MASTER_KEY")
+	}
+	if !errors.Is(err, ErrInvalidConfig) {
+		t.Fatalf("error = %v, want ErrInvalidConfig", err)
+	}
+}
+
+func TestLoadConfigFromEnvRejectsInvalidSecretsKey(t *testing.T) {
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("AGENTCLASH_SECRETS_MASTER_KEY", "not-base64!")
+
+	_, err := LoadConfigFromEnv()
+	if err == nil {
+		t.Fatalf("expected error for malformed AGENTCLASH_SECRETS_MASTER_KEY")
 	}
 	if !errors.Is(err, ErrInvalidConfig) {
 		t.Fatalf("error = %v, want ErrInvalidConfig", err)

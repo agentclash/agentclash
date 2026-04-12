@@ -13,6 +13,7 @@ type NativeModelInvoker struct {
 	client          provider.Client
 	sandboxProvider sandbox.Provider
 	observerFactory NativeObserverFactory
+	secretsLookup   engine.SecretsLookup
 }
 
 func NewNativeModelInvoker(client provider.Client, sandboxProvider sandbox.Provider) NativeModelInvoker {
@@ -33,6 +34,15 @@ func NewNativeModelInvokerWithObserverFactory(client provider.Client, sandboxPro
 	}
 }
 
+// WithSecretsLookup returns an invoker that propagates the given secrets
+// source to every NativeExecutor it constructs. Without one, executors
+// see an empty workspace-secrets map, which is the correct behavior for
+// unit tests that don't exercise the secrets path.
+func (i NativeModelInvoker) WithSecretsLookup(lookup engine.SecretsLookup) NativeModelInvoker {
+	i.secretsLookup = lookup
+	return i
+}
+
 func (i NativeModelInvoker) InvokeNativeModel(ctx context.Context, executionContext repository.RunAgentExecutionContext) (engine.Result, error) {
 	observer := engine.Observer(engine.NoopObserver{})
 	if i.observerFactory != nil {
@@ -46,5 +56,8 @@ func (i NativeModelInvoker) InvokeNativeModel(ctx context.Context, executionCont
 	}
 
 	executor := engine.NewNativeExecutor(i.client, i.sandboxProvider, observer)
+	if i.secretsLookup != nil {
+		executor = executor.WithSecretsLookup(i.secretsLookup)
+	}
 	return executor.Execute(ctx, executionContext)
 }

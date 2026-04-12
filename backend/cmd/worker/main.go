@@ -41,7 +41,7 @@ func main() {
 	}
 	defer temporalClient.Close()
 
-	repo := repository.New(db)
+	repo := repository.New(db).WithCipher(cfg.SecretsCipher)
 	hostedRunClient := workerapp.NewHostedRunClient(&http.Client{}, cfg.HostedCallbackBaseURL, cfg.HostedCallbackSecret)
 	providerRouter := provider.NewRouter(map[string]provider.Client{
 		"openai":     provider.NewOpenAICompatibleClient(&http.Client{}, "", provider.EnvCredentialResolver{}),
@@ -63,7 +63,7 @@ func main() {
 		providerRouter,
 		sandboxProvider,
 		workerapp.NewNativeRunEventObserverFactory(repo),
-	)
+	).WithSecretsLookup(repo)
 	promptEvalInvoker := workerapp.NewPromptEvalInvokerWithObserverFactory(
 		providerRouter,
 		workerapp.NewPromptEvalRunEventObserverFactory(repo),

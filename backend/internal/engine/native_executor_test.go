@@ -762,13 +762,6 @@ func TestSandboxTTLDefaultsWhenRunTimeoutIsUnset(t *testing.T) {
 	}
 }
 
-func TestToolSecretsForExecution_DefaultsEmptyUntilSecretSourceExists(t *testing.T) {
-	secrets := toolSecretsForExecution(nativeExecutionContext())
-	if len(secrets) != 0 {
-		t.Fatalf("tool secrets = %#v, want empty map", secrets)
-	}
-}
-
 type scriptedProviderClient struct {
 	t        *testing.T
 	steps    []providerStep
