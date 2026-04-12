@@ -129,6 +129,10 @@ export function createApiClient(token?: string) {
       return request<T>("POST", path, token, body, opts);
     },
 
+    put<T>(path: string, body?: unknown, opts?: RequestOptions): Promise<T> {
+      return request<T>("PUT", path, token, body, opts);
+    },
+
     patch<T>(path: string, body?: unknown, opts?: RequestOptions): Promise<T> {
       return request<T>("PATCH", path, token, body, opts);
     },

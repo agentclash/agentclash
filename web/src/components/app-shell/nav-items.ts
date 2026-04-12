@@ -10,6 +10,7 @@ import {
   Tag,
   Wrench,
   Database,
+  Lock,
   type LucideIcon,
 } from "lucide-react";
 
@@ -97,6 +98,11 @@ export const navSections: NavSection[] = [
         label: "Knowledge Sources",
         href: (id) => `/workspaces/${id}/knowledge-sources`,
         icon: Database,
+      },
+      {
+        label: "Secrets",
+        href: (id) => `/workspaces/${id}/secrets`,
+        icon: Lock,
       },
     ],
   },

@@ -24,5 +24,6 @@ export type {
   AgentDeployment,
   CreateAgentDeploymentRequest,
   AgentDeploymentCreateResponse,
+  WorkspaceSecret,
 } from "./types";
 export { AGENT_KINDS } from "./types";
