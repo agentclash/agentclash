@@ -44,6 +44,7 @@ export function CreateDeploymentDialog({
   const [selectedVersionId, setSelectedVersionId] = useState("");
   const [selectedProfileId, setSelectedProfileId] = useState("");
   const [selectedAccountId, setSelectedAccountId] = useState("");
+  const [model, setModel] = useState("");
   const [selectedAliasId, setSelectedAliasId] = useState("");
   const [deploymentConfig, setDeploymentConfig] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -114,7 +115,8 @@ export function CreateDeploymentDialog({
   }
 
   async function handleCreate() {
-    if (!name.trim() || !selectedBuildId || !selectedVersionId || !selectedProfileId) return;
+    if (!name.trim() || !selectedBuildId || !selectedVersionId || !selectedProfileId || !selectedAccountId) return;
+    if (!model.trim() && !selectedAliasId) return;
 
     let configJson: unknown = undefined;
     if (deploymentConfig.trim()) {
@@ -137,8 +139,9 @@ export function CreateDeploymentDialog({
           agent_build_id: selectedBuildId,
           build_version_id: selectedVersionId,
           runtime_profile_id: selectedProfileId,
-          provider_account_id: selectedAccountId || undefined,
+          provider_account_id: selectedAccountId,
           model_alias_id: selectedAliasId || undefined,
+          model: model.trim() || undefined,
           deployment_config: configJson,
         },
       );
@@ -159,6 +162,7 @@ export function CreateDeploymentDialog({
     setSelectedVersionId("");
     setSelectedProfileId("");
     setSelectedAccountId("");
+    setModel("");
     setSelectedAliasId("");
     setDeploymentConfig("");
     setReadyVersions([]);
@@ -166,7 +170,8 @@ export function CreateDeploymentDialog({
 
   const selectClass =
     "block w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/50 disabled:opacity-50";
-  const canSubmit = name.trim() && selectedBuildId && selectedVersionId && selectedProfileId && selectedAccountId && selectedAliasId;
+  const hasModel = model.trim() || selectedAliasId;
+  const canSubmit = name.trim() && selectedBuildId && selectedVersionId && selectedProfileId && selectedAccountId && hasModel;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -240,9 +245,31 @@ export function CreateDeploymentDialog({
           </div>
 
           <div>
-            <label className="mb-1.5 block text-sm font-medium">Model Alias</label>
-            <select value={selectedAliasId} onChange={(e) => setSelectedAliasId(e.target.value)} disabled={loading} className={selectClass}>
-              <option value="">{loading ? "Loading..." : aliases.length === 0 ? "No aliases — create one first" : "Select a model alias"}</option>
+            <label className="mb-1.5 block text-sm font-medium">Model</label>
+            <input
+              type="text"
+              value={model}
+              onChange={(e) => { setModel(e.target.value); if (e.target.value.trim()) setSelectedAliasId(""); }}
+              placeholder="e.g. gpt-4.1, claude-sonnet-4-6"
+              disabled={!!selectedAliasId}
+              className="block w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/50 disabled:opacity-50"
+            />
+            <p className="mt-1 text-xs text-muted-foreground">
+              The provider model ID. Or pick an existing model alias below.
+            </p>
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-sm font-medium">
+              Model Alias <span className="text-muted-foreground font-normal">(advanced)</span>
+            </label>
+            <select
+              value={selectedAliasId}
+              onChange={(e) => { setSelectedAliasId(e.target.value); if (e.target.value) setModel(""); }}
+              disabled={loading}
+              className={selectClass}
+            >
+              <option value="">None — use model name above</option>
               {aliases.map((a) => (
                 <option key={a.id} value={a.id}>{a.display_name} ({a.alias_key})</option>
               ))}

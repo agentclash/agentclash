@@ -33,6 +33,9 @@ type AgentBuildRepository interface {
 	UpdateAgentBuildVersionDraft(ctx context.Context, params repository.UpdateAgentBuildVersionDraftParams) error
 	MarkAgentBuildVersionReady(ctx context.Context, id uuid.UUID) error
 	CreateAgentDeployment(ctx context.Context, params repository.CreateAgentDeploymentParams) (repository.AgentDeploymentRow, error)
+	GetProviderAccountByID(ctx context.Context, id uuid.UUID) (repository.ProviderAccountRow, error)
+	GetModelCatalogEntryByProviderModel(ctx context.Context, providerKey, providerModelID string) (repository.ModelCatalogEntryRow, error)
+	CreateModelAlias(ctx context.Context, p repository.CreateModelAliasParams) (repository.ModelAliasRow, error)
 }
 
 type AgentBuildService interface {
@@ -78,6 +81,7 @@ type CreateAgentDeploymentInput struct {
 	RuntimeProfileID  uuid.UUID
 	ProviderAccountID *uuid.UUID
 	ModelAliasID      *uuid.UUID
+	Model             string
 	DeploymentConfig  json.RawMessage
 }
 
@@ -277,6 +281,28 @@ func (m *AgentBuildManager) CreateDeployment(ctx context.Context, caller Caller,
 		return repository.AgentDeploymentRow{}, err
 	}
 
+	// Auto-create model alias when user provides provider_account + model but no alias.
+	if input.ModelAliasID == nil && input.ProviderAccountID != nil && input.Model != "" {
+		alias, resolveErr := m.resolveOrCreateModelAlias(ctx, build.OrganizationID, workspaceID, *input.ProviderAccountID, input.Model)
+		if resolveErr != nil {
+			return repository.AgentDeploymentRow{}, resolveErr
+		}
+		input.ModelAliasID = &alias.ID
+	}
+
+	if input.ProviderAccountID == nil {
+		return repository.AgentDeploymentRow{}, AgentBuildValidationError{
+			Code:    "missing_provider_account",
+			Message: "provider_account_id is required",
+		}
+	}
+	if input.ModelAliasID == nil {
+		return repository.AgentDeploymentRow{}, AgentBuildValidationError{
+			Code:    "missing_model",
+			Message: "either model_alias_id or model (e.g. \"gpt-4.1\") is required",
+		}
+	}
+
 	slug := generateSlug(input.Name)
 
 	return m.repo.CreateAgentDeployment(ctx, repository.CreateAgentDeploymentParams{
@@ -291,6 +317,37 @@ func (m *AgentBuildManager) CreateDeployment(ctx context.Context, caller Caller,
 		Slug:                  slug,
 		DeploymentConfig:      defaultJSON(input.DeploymentConfig),
 	})
+}
+
+// resolveOrCreateModelAlias looks up the provider account to get its provider_key,
+// finds the matching model catalog entry, and creates a model alias automatically.
+func (m *AgentBuildManager) resolveOrCreateModelAlias(ctx context.Context, orgID, workspaceID, providerAccountID uuid.UUID, model string) (repository.ModelAliasRow, error) {
+	account, err := m.repo.GetProviderAccountByID(ctx, providerAccountID)
+	if err != nil {
+		return repository.ModelAliasRow{}, fmt.Errorf("look up provider account: %w", err)
+	}
+
+	catalogEntry, err := m.repo.GetModelCatalogEntryByProviderModel(ctx, account.ProviderKey, model)
+	if err != nil {
+		return repository.ModelAliasRow{}, AgentBuildValidationError{
+			Code:    "unknown_model",
+			Message: fmt.Sprintf("model %q not found in catalog for provider %q", model, account.ProviderKey),
+		}
+	}
+
+	alias, err := m.repo.CreateModelAlias(ctx, repository.CreateModelAliasParams{
+		OrganizationID:      orgID,
+		WorkspaceID:         workspaceID,
+		ProviderAccountID:   &providerAccountID,
+		ModelCatalogEntryID: catalogEntry.ID,
+		AliasKey:            fmt.Sprintf("auto-%s-%s", account.ProviderKey, model),
+		DisplayName:         fmt.Sprintf("%s (auto)", catalogEntry.DisplayName),
+	})
+	if err != nil {
+		return repository.ModelAliasRow{}, fmt.Errorf("auto-create model alias: %w", err)
+	}
+
+	return alias, nil
 }
 
 // --- Request types ---
@@ -323,6 +380,7 @@ type createAgentDeploymentRequest struct {
 	RuntimeProfileID  string          `json:"runtime_profile_id"`
 	ProviderAccountID *string         `json:"provider_account_id,omitempty"`
 	ModelAliasID      *string         `json:"model_alias_id,omitempty"`
+	Model             string          `json:"model,omitempty"`
 	DeploymentConfig  json.RawMessage `json:"deployment_config,omitempty"`
 }
 
@@ -1006,6 +1064,7 @@ func decodeCreateAgentDeploymentInput(body createAgentDeploymentRequest) (Create
 		RuntimeProfileID:  runtimeProfileID,
 		ProviderAccountID: providerAccountID,
 		ModelAliasID:      modelAliasID,
+		Model:             strings.TrimSpace(body.Model),
 		DeploymentConfig:  body.DeploymentConfig,
 	}, nil
 }
