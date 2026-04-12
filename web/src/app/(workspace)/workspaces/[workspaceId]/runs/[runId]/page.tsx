@@ -3,9 +3,8 @@ import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import { createApiClient } from "@/lib/api/client";
 import { ApiError } from "@/lib/api/errors";
-import type { Run } from "@/lib/api/types";
-import { Badge } from "@/components/ui/badge";
-import { runStatusVariant } from "../status-variant";
+import type { Run, RunAgent } from "@/lib/api/types";
+import { RunDetailClient } from "./run-detail-client";
 
 export default async function RunDetailPage({
   params,
@@ -29,62 +28,32 @@ export default async function RunDetailPage({
     throw err;
   }
 
+  const { items: agents } = await api.get<{ items: RunAgent[] }>(
+    `/v1/runs/${runId}/agents`,
+  );
+
+  const apiBaseUrl =
+    process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
+
   return (
     <div>
-      {/* Header */}
-      <div className="mb-6">
-        <div className="flex items-center gap-3 mb-1">
-          <Link
-            href={`/workspaces/${workspaceId}/runs`}
-            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-          >
-            Runs
-          </Link>
-          <span className="text-muted-foreground/40">/</span>
-          <h1 className="text-lg font-semibold tracking-tight">{run.name}</h1>
-          <Badge variant={runStatusVariant[run.status] ?? "outline"}>
-            {run.status}
-          </Badge>
-        </div>
-        <div className="mt-2 flex flex-wrap gap-4 text-xs text-muted-foreground/60">
-          <span>
-            ID:{" "}
-            <code className="font-[family-name:var(--font-mono)]">
-              {run.id}
-            </code>
-          </span>
-          <span>
-            Mode:{" "}
-            {run.execution_mode === "comparison"
-              ? "Comparison"
-              : "Single Agent"}
-          </span>
-          <span>
-            Created: {new Date(run.created_at).toLocaleDateString()}
-          </span>
-          {run.started_at && (
-            <span>
-              Started: {new Date(run.started_at).toLocaleString()}
-            </span>
-          )}
-          {run.finished_at && (
-            <span>
-              Finished: {new Date(run.finished_at).toLocaleString()}
-            </span>
-          )}
-          {run.failed_at && (
-            <span>
-              Failed: {new Date(run.failed_at).toLocaleString()}
-            </span>
-          )}
-        </div>
+      {/* Breadcrumb */}
+      <div className="flex items-center gap-3 mb-4">
+        <Link
+          href={`/workspaces/${workspaceId}/runs`}
+          className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+        >
+          Runs
+        </Link>
+        <span className="text-muted-foreground/40">/</span>
+        <span className="text-sm text-foreground">{run.name}</span>
       </div>
 
-      {/* Placeholder for future agent details, scoring, replay, etc. */}
-      <div className="rounded-lg border border-border bg-card p-6 text-sm text-muted-foreground">
-        Run agent details, scoring, and replay will be displayed here in a
-        future update.
-      </div>
+      <RunDetailClient
+        initialRun={run}
+        initialAgents={agents}
+        apiBaseUrl={apiBaseUrl}
+      />
     </div>
   );
 }

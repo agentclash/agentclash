@@ -349,6 +349,77 @@ export interface CreateRunResponse {
   };
 }
 
+// --- Run Agents ---
+
+export type RunAgentStatus =
+  | "queued"
+  | "ready"
+  | "executing"
+  | "evaluating"
+  | "completed"
+  | "failed";
+
+/** GET /v1/runs/{id}/agents list item */
+export interface RunAgent {
+  id: string;
+  run_id: string;
+  lane_index: number;
+  label: string;
+  agent_deployment_id: string;
+  agent_deployment_snapshot_id: string;
+  status: RunAgentStatus;
+  queued_at?: string;
+  started_at?: string;
+  finished_at?: string;
+  failure_reason?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// --- Run Ranking ---
+
+export interface RunRankingResponse {
+  state: "ready" | "pending" | "errored";
+  message?: string;
+  ranking?: RunRanking;
+}
+
+export interface RunRanking {
+  run_id: string;
+  evaluation_spec_id: string;
+  sort: {
+    field: string;
+    direction: string;
+    default_order: boolean;
+  };
+  winner: {
+    run_agent_id?: string;
+    strategy: string;
+    status: string;
+    reason_code: string;
+  };
+  items: RankingItem[];
+}
+
+export interface RankingItem {
+  rank: number;
+  run_agent_id: string;
+  lane_index: number;
+  label: string;
+  status: string;
+  has_scorecard: boolean;
+  sort_value?: number;
+  delta_from_top?: number;
+  sort_state: string;
+  composite_score?: number;
+  overall_score?: number;
+  correctness_score?: number;
+  reliability_score?: number;
+  latency_score?: number;
+  cost_score?: number;
+  dimensions?: Record<string, { state: string; score?: number }>;
+}
+
 // --- Workspace Secrets ---
 
 /** GET /v1/workspaces/{id}/secrets list item — metadata only, never the value */

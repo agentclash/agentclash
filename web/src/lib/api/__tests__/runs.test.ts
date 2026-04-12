@@ -263,4 +263,129 @@ describe("Runs API", () => {
       expect.objectContaining({ method: "GET" }),
     );
   });
+
+  it("lists agents for a run", async () => {
+    const agentsResponse = {
+      items: [
+        {
+          id: "agent-1",
+          run_id: "run-1",
+          lane_index: 0,
+          label: "GPT-4o Agent",
+          agent_deployment_id: "dep-1",
+          agent_deployment_snapshot_id: "snap-1",
+          status: "completed",
+          started_at: "2026-04-12T00:01:00Z",
+          finished_at: "2026-04-12T00:03:00Z",
+          created_at: "2026-04-12T00:00:00Z",
+          updated_at: "2026-04-12T00:03:00Z",
+        },
+        {
+          id: "agent-2",
+          run_id: "run-1",
+          lane_index: 1,
+          label: "Claude Agent",
+          agent_deployment_id: "dep-2",
+          agent_deployment_snapshot_id: "snap-2",
+          status: "failed",
+          started_at: "2026-04-12T00:01:00Z",
+          finished_at: "2026-04-12T00:02:00Z",
+          failure_reason: "sandbox timeout after 60s",
+          created_at: "2026-04-12T00:00:00Z",
+          updated_at: "2026-04-12T00:02:00Z",
+        },
+      ],
+    };
+    mockFetch.mockResolvedValueOnce(jsonResponse(agentsResponse));
+
+    const api = createApiClient("token");
+    const result = await api.get("/v1/runs/run-1/agents");
+
+    expect(result).toEqual(agentsResponse);
+    const items = (result as typeof agentsResponse).items;
+    expect(items).toHaveLength(2);
+    expect(items[0].status).toBe("completed");
+    expect(items[1].failure_reason).toBe("sandbox timeout after 60s");
+  });
+
+  it("fetches ranking for a completed run", async () => {
+    const rankingResponse = {
+      state: "ready",
+      ranking: {
+        run_id: "run-1",
+        evaluation_spec_id: "eval-1",
+        sort: { field: "composite", direction: "desc", default_order: true },
+        winner: {
+          run_agent_id: "agent-1",
+          strategy: "highest_score",
+          status: "determined",
+          reason_code: "clear_winner",
+        },
+        items: [
+          {
+            rank: 1,
+            run_agent_id: "agent-1",
+            lane_index: 0,
+            label: "GPT-4o Agent",
+            status: "completed",
+            has_scorecard: true,
+            sort_value: 0.92,
+            delta_from_top: 0,
+            sort_state: "available",
+            composite_score: 0.92,
+            correctness_score: 0.95,
+            reliability_score: 0.88,
+            latency_score: 0.9,
+            cost_score: 0.85,
+          },
+          {
+            rank: 2,
+            run_agent_id: "agent-2",
+            lane_index: 1,
+            label: "Claude Agent",
+            status: "completed",
+            has_scorecard: true,
+            sort_value: 0.78,
+            delta_from_top: -0.14,
+            sort_state: "available",
+            composite_score: 0.78,
+            correctness_score: 0.82,
+            reliability_score: 0.75,
+            latency_score: 0.8,
+            cost_score: 0.72,
+          },
+        ],
+      },
+    };
+    mockFetch.mockResolvedValueOnce(jsonResponse(rankingResponse));
+
+    const api = createApiClient("token");
+    const result = await api.get("/v1/runs/run-1/ranking", {
+      params: { sort_by: "composite" },
+    });
+
+    expect(result).toEqual(rankingResponse);
+    expect(mockFetch).toHaveBeenCalledWith(
+      "http://localhost:8080/v1/runs/run-1/ranking?sort_by=composite",
+      expect.objectContaining({ method: "GET" }),
+    );
+
+    const items = (result as typeof rankingResponse).ranking.items;
+    expect(items[0].rank).toBe(1);
+    expect(items[0].composite_score).toBe(0.92);
+    expect(items[1].delta_from_top).toBe(-0.14);
+  });
+
+  it("handles pending ranking (202)", async () => {
+    const pendingResponse = {
+      state: "pending",
+      message: "Scoring in progress",
+    };
+    mockFetch.mockResolvedValueOnce(jsonResponse(pendingResponse));
+
+    const api = createApiClient("token");
+    const result = await api.get("/v1/runs/run-1/ranking");
+
+    expect((result as typeof pendingResponse).state).toBe("pending");
+  });
 });
