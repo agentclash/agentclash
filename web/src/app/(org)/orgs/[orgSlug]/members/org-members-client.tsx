@@ -22,7 +22,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { MoreHorizontal, ChevronLeft, ChevronRight } from "lucide-react";
+import { PaginationControls } from "@/components/ui/pagination-controls";
+import { MoreHorizontal } from "lucide-react";
 import { toast } from "sonner";
 import { InviteMemberDialog } from "./invite-member-dialog";
 
@@ -51,7 +52,6 @@ function statusLabel(status: string): string {
   return status.charAt(0).toUpperCase() + status.slice(1);
 }
 
-// P2 fix: use updated_at (re-invite refresh) with fallback to created_at
 function isInviteExpired(member: OrgMember): boolean {
   if (member.membership_status !== "invited") return false;
   const timestamp = member.updated_at ?? member.created_at;
@@ -59,6 +59,54 @@ function isInviteExpired(member: OrgMember): boolean {
   const sevenDays = 7 * 24 * 60 * 60 * 1000;
   return Date.now() - ts > sevenDays;
 }
+
+// --- Extracted action logic ---
+
+interface MemberAction {
+  label: string;
+  onClick: () => void;
+  variant?: "destructive";
+  separator?: boolean;
+}
+
+function getMemberActions(
+  member: OrgMember,
+  isLastAdmin: boolean,
+  onChangeRole: (role: OrgRole) => void,
+  onChangeStatus: (status: OrgMembershipStatus) => void,
+): MemberAction[] {
+  const actions: MemberAction[] = [];
+  const isArchived = member.membership_status === "archived";
+
+  // Role changes
+  if (!isArchived) {
+    if (member.role === "org_member") {
+      actions.push({ label: "Make Admin", onClick: () => onChangeRole("org_admin") });
+    }
+    if (member.role === "org_admin" && !isLastAdmin) {
+      actions.push({ label: "Make Member", onClick: () => onChangeRole("org_member") });
+    }
+  }
+
+  // Status changes
+  if (member.membership_status === "active") {
+    actions.push({ label: "Suspend", onClick: () => onChangeStatus("suspended"), separator: true });
+  }
+  if (member.membership_status === "suspended") {
+    actions.push({ label: "Reactivate", onClick: () => onChangeStatus("active"), separator: true });
+  }
+  if (!isArchived) {
+    actions.push({
+      label: "Archive",
+      onClick: () => onChangeStatus("archived"),
+      variant: "destructive",
+    });
+  }
+
+  return actions;
+}
+
+// --- Component ---
 
 interface OrgMembersClientProps {
   orgId: string;
@@ -80,8 +128,6 @@ export function OrgMembersClient({
   const [total, setTotal] = useState(initialTotal);
   const [offset, setOffset] = useState(0);
 
-  // Only count active admins for last-admin protection — invited admins
-  // haven't accepted yet, so they shouldn't prevent demoting the last active one
   const activeAdminCount = members.filter(
     (m) => m.role === "org_admin" && m.membership_status === "active",
   ).length;
@@ -112,7 +158,6 @@ export function OrgMembersClient({
   }
 
   async function handleChangeRole(member: OrgMember, newRole: OrgRole) {
-    // P1 fix: optimistic update so the member stays visible
     setMembers((prev) =>
       prev.map((m) => (m.id === member.id ? { ...m, role: newRole } : m)),
     );
@@ -131,7 +176,7 @@ export function OrgMembersClient({
       toast.error(
         err instanceof ApiError ? err.message : "Failed to change role",
       );
-      refreshMembers(); // revert optimistic update
+      refreshMembers();
     }
   }
 
@@ -139,13 +184,9 @@ export function OrgMembersClient({
     member: OrgMember,
     newStatus: OrgMembershipStatus,
   ) {
-    // P1 fix: optimistic update keeps suspended/archived members visible
-    // in the current page so the Reactivate action stays accessible
     setMembers((prev) =>
       prev.map((m) =>
-        m.id === member.id
-          ? { ...m, membership_status: newStatus }
-          : m,
+        m.id === member.id ? { ...m, membership_status: newStatus } : m,
       ),
     );
     try {
@@ -158,14 +199,12 @@ export function OrgMembersClient({
       toast.success(
         `${statusLabel(newStatus)} ${member.display_name || member.email}`,
       );
-      // Re-fetch to get server state, but optimistic update keeps row visible
-      // even if backend filters it out
       refreshMembers();
     } catch (err) {
       toast.error(
         err instanceof ApiError ? err.message : "Failed to update member",
       );
-      refreshMembers(); // revert optimistic update
+      refreshMembers();
     }
   }
 
@@ -182,27 +221,13 @@ export function OrgMembersClient({
     return true;
   }
 
-  // Pagination
-  const page = Math.floor(offset / PAGE_SIZE) + 1;
-  const totalPages = Math.ceil(total / PAGE_SIZE);
-
-  function handlePrev() {
-    const newOffset = Math.max(0, offset - PAGE_SIZE);
+  function handlePageChange(newOffset: number) {
     setOffset(newOffset);
     fetchMembers(newOffset);
   }
 
-  function handleNext() {
-    const newOffset = offset + PAGE_SIZE;
-    if (newOffset < total) {
-      setOffset(newOffset);
-      fetchMembers(newOffset);
-    }
-  }
-
   return (
     <div className="space-y-4">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
           {total} member{total !== 1 ? "s" : ""}
@@ -212,7 +237,6 @@ export function OrgMembersClient({
         )}
       </div>
 
-      {/* Table */}
       {members.length === 0 ? (
         <div className="rounded-lg border border-border bg-card p-8 text-center text-sm text-muted-foreground">
           No members found.
@@ -238,6 +262,14 @@ export function OrgMembersClient({
                 const isInactive =
                   member.membership_status === "suspended" ||
                   member.membership_status === "archived";
+                const actions = manageable
+                  ? getMemberActions(
+                      member,
+                      isLastAdmin,
+                      (role) => handleChangeRole(member, role),
+                      (status) => handleChangeStatus(member, status),
+                    )
+                  : [];
 
                 return (
                   <TableRow
@@ -290,7 +322,7 @@ export function OrgMembersClient({
                     </TableCell>
                     {isAdmin && (
                       <TableCell>
-                        {manageable && (
+                        {actions.length > 0 && (
                           <DropdownMenu>
                             <DropdownMenuTrigger
                               render={
@@ -300,60 +332,23 @@ export function OrgMembersClient({
                               <MoreHorizontal className="size-4" />
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              {/* Role change */}
-                              {member.role === "org_member" &&
-                                member.membership_status !== "archived" && (
+                              {actions.map((action, i) => (
+                                <span key={action.label}>
+                                  {action.separator && i > 0 && (
+                                    <DropdownMenuSeparator />
+                                  )}
                                   <DropdownMenuItem
-                                    onClick={() =>
-                                      handleChangeRole(member, "org_admin")
+                                    className={
+                                      action.variant === "destructive"
+                                        ? "text-destructive"
+                                        : undefined
                                     }
+                                    onClick={action.onClick}
                                   >
-                                    Make Admin
+                                    {action.label}
                                   </DropdownMenuItem>
-                                )}
-                              {member.role === "org_admin" &&
-                                !isLastAdmin &&
-                                member.membership_status !== "archived" && (
-                                  <DropdownMenuItem
-                                    onClick={() =>
-                                      handleChangeRole(member, "org_member")
-                                    }
-                                  >
-                                    Make Member
-                                  </DropdownMenuItem>
-                                )}
-                              {member.membership_status !== "archived" && (
-                                <DropdownMenuSeparator />
-                              )}
-                              {/* Status change */}
-                              {member.membership_status === "active" && (
-                                <DropdownMenuItem
-                                  onClick={() =>
-                                    handleChangeStatus(member, "suspended")
-                                  }
-                                >
-                                  Suspend
-                                </DropdownMenuItem>
-                              )}
-                              {member.membership_status === "suspended" && (
-                                <DropdownMenuItem
-                                  onClick={() =>
-                                    handleChangeStatus(member, "active")
-                                  }
-                                >
-                                  Reactivate
-                                </DropdownMenuItem>
-                              )}
-                              {member.membership_status !== "archived" && (
-                                <DropdownMenuItem
-                                  className="text-destructive"
-                                  onClick={() =>
-                                    handleChangeStatus(member, "archived")
-                                  }
-                                >
-                                  Archive
-                                </DropdownMenuItem>
-                              )}
+                                </span>
+                              ))}
                             </DropdownMenuContent>
                           </DropdownMenu>
                         )}
@@ -367,32 +362,16 @@ export function OrgMembersClient({
         </div>
       )}
 
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-muted-foreground">
-            Page {page} of {totalPages}
-          </p>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="icon-sm"
-              disabled={offset === 0}
-              onClick={handlePrev}
-            >
-              <ChevronLeft className="size-4" />
-            </Button>
-            <Button
-              variant="outline"
-              size="icon-sm"
-              disabled={offset + PAGE_SIZE >= total}
-              onClick={handleNext}
-            >
-              <ChevronRight className="size-4" />
-            </Button>
-          </div>
-        </div>
-      )}
+      <PaginationControls
+        offset={offset}
+        total={total}
+        pageSize={PAGE_SIZE}
+        onPrev={() => handlePageChange(Math.max(0, offset - PAGE_SIZE))}
+        onNext={() => {
+          const next = offset + PAGE_SIZE;
+          if (next < total) handlePageChange(next);
+        }}
+      />
     </div>
   );
 }

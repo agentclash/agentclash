@@ -7,6 +7,7 @@ import { createApiClient } from "@/lib/api/client";
 import { ApiError } from "@/lib/api/errors";
 import type { Organization } from "@/lib/api/types";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
@@ -79,12 +80,12 @@ export function OrgGeneralSettings({ org, orgSlug, onOrgUpdated }: OrgGeneralSet
           Organization Name
         </label>
         <div className="flex gap-3">
-          <input
+          <Input
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
             disabled={saving}
-            className="flex-1 rounded-lg border border-input bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/50 disabled:opacity-50"
+            className="flex-1"
           />
           <Button
             onClick={handleSaveName}
@@ -140,13 +141,12 @@ export function OrgGeneralSettings({ org, orgSlug, onOrgUpdated }: OrgGeneralSet
               <label className="block text-sm font-medium mb-1.5">
                 Type <strong>{org.name}</strong> to confirm
               </label>
-              <input
+              <Input
                 type="text"
                 value={archiveConfirm}
                 onChange={(e) => setArchiveConfirm(e.target.value)}
                 disabled={archiving}
                 placeholder={org.name}
-                className="block w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/50 disabled:opacity-50"
               />
             </div>
             <DialogFooter>

@@ -6,6 +6,8 @@ import { createApiClient } from "@/lib/api/client";
 import { ApiError } from "@/lib/api/errors";
 import type { OrgRole } from "@/lib/api/types";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { ToggleGroup } from "@/components/ui/toggle-group";
 import {
   Dialog,
   DialogContent,
@@ -85,44 +87,26 @@ export function InviteMemberDialog({
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium mb-1.5">Email</label>
-            <input
+            <Input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               disabled={sending}
               placeholder="colleague@company.com"
-              className="block w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/50 disabled:opacity-50"
             />
           </div>
 
           <div>
             <label className="block text-sm font-medium mb-1.5">Role</label>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setRole("org_member")}
-                disabled={sending}
-                className={`flex-1 rounded-lg border px-3 py-2 text-sm transition-colors ${
-                  role === "org_member"
-                    ? "border-primary bg-primary/10 text-foreground"
-                    : "border-input text-muted-foreground hover:text-foreground"
-                } disabled:opacity-50`}
-              >
-                Member
-              </button>
-              <button
-                type="button"
-                onClick={() => setRole("org_admin")}
-                disabled={sending}
-                className={`flex-1 rounded-lg border px-3 py-2 text-sm transition-colors ${
-                  role === "org_admin"
-                    ? "border-primary bg-primary/10 text-foreground"
-                    : "border-input text-muted-foreground hover:text-foreground"
-                } disabled:opacity-50`}
-              >
-                Admin
-              </button>
-            </div>
+            <ToggleGroup
+              options={[
+                { value: "org_member" as const, label: "Member" },
+                { value: "org_admin" as const, label: "Admin" },
+              ]}
+              value={role}
+              onChange={setRole}
+              disabled={sending}
+            />
             <p className="mt-1 text-xs text-muted-foreground">
               {role === "org_admin"
                 ? "Admins can manage members, workspaces, and settings."

@@ -24,7 +24,9 @@ import {
   DialogFooter,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Plus, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { PaginationControls } from "@/components/ui/pagination-controls";
+import { Plus, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
 
@@ -129,13 +131,12 @@ export function OrgWorkspacesClient({
                 <label className="block text-sm font-medium mb-1.5">
                   Workspace Name
                 </label>
-                <input
+                <Input
                   type="text"
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
                   disabled={creating}
                   placeholder="My Workspace"
-                  className="block w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/50 disabled:opacity-50"
                 />
                 {createError && (
                   <p className="mt-1.5 text-xs text-destructive">
@@ -212,43 +213,23 @@ export function OrgWorkspacesClient({
         </div>
       )}
 
-      {/* Pagination */}
-      {Math.ceil(total / PAGE_SIZE) > 1 && (
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-muted-foreground">
-            Page {Math.floor(offset / PAGE_SIZE) + 1} of{" "}
-            {Math.ceil(total / PAGE_SIZE)}
-          </p>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="icon-sm"
-              disabled={offset === 0}
-              onClick={() => {
-                const newOffset = Math.max(0, offset - PAGE_SIZE);
-                setOffset(newOffset);
-                fetchWorkspaces(newOffset);
-              }}
-            >
-              <ChevronLeft className="size-4" />
-            </Button>
-            <Button
-              variant="outline"
-              size="icon-sm"
-              disabled={offset + PAGE_SIZE >= total}
-              onClick={() => {
-                const newOffset = offset + PAGE_SIZE;
-                if (newOffset < total) {
-                  setOffset(newOffset);
-                  fetchWorkspaces(newOffset);
-                }
-              }}
-            >
-              <ChevronRight className="size-4" />
-            </Button>
-          </div>
-        </div>
-      )}
+      <PaginationControls
+        offset={offset}
+        total={total}
+        pageSize={PAGE_SIZE}
+        onPrev={() => {
+          const newOffset = Math.max(0, offset - PAGE_SIZE);
+          setOffset(newOffset);
+          fetchWorkspaces(newOffset);
+        }}
+        onNext={() => {
+          const newOffset = offset + PAGE_SIZE;
+          if (newOffset < total) {
+            setOffset(newOffset);
+            fetchWorkspaces(newOffset);
+          }
+        }}
+      />
     </div>
   );
 }
