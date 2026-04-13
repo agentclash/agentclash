@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
 import { createApiClient } from "@/lib/api/client";
 import type { Run, RunStatus } from "@/lib/api/types";
@@ -16,7 +17,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { Play, ChevronLeft, ChevronRight } from "lucide-react";
+import { Play, ChevronLeft, ChevronRight, GitCompare } from "lucide-react";
 import { runStatusVariant } from "./status-variant";
 
 const ACTIVE_STATUSES: RunStatus[] = [
@@ -40,9 +41,11 @@ export function RunList({
   initialTotal,
 }: RunListProps) {
   const { getAccessToken } = useAccessToken();
+  const router = useRouter();
   const [runs, setRuns] = useState<Run[]>(initialRuns);
   const [total, setTotal] = useState(initialTotal);
   const [offset, setOffset] = useState(0);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const hasActiveRuns = runs.some((r) =>
     ACTIVE_STATUSES.includes(r.status),
@@ -91,6 +94,31 @@ export function RunList({
     }
   }
 
+  function toggleSelection(runId: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(runId)) {
+        next.delete(runId);
+      } else if (next.size < 2) {
+        next.add(runId);
+      } else {
+        // Already have 2 selected — replace the oldest
+        const [first] = next;
+        next.delete(first);
+        next.add(runId);
+      }
+      return next;
+    });
+  }
+
+  function handleCompare() {
+    if (selected.size !== 2) return;
+    const [baseline, candidate] = Array.from(selected);
+    router.push(
+      `/workspaces/${workspaceId}/compare?baseline=${baseline}&candidate=${candidate}`,
+    );
+  }
+
   if (runs.length === 0 && offset === 0) {
     return (
       <EmptyState
@@ -106,10 +134,35 @@ export function RunList({
 
   return (
     <>
+      {/* Compare action bar */}
+      {selected.size > 0 && (
+        <div className="flex items-center gap-3 mb-3">
+          <span className="text-sm text-muted-foreground">
+            {selected.size} run{selected.size !== 1 ? "s" : ""} selected
+          </span>
+          <Button
+            size="sm"
+            disabled={selected.size !== 2}
+            onClick={handleCompare}
+          >
+            <GitCompare className="size-4 mr-1.5" />
+            Compare
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setSelected(new Set())}
+          >
+            Clear
+          </Button>
+        </div>
+      )}
+
       <div className="rounded-lg border border-border">
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-10" />
               <TableHead>Name</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Mode</TableHead>
@@ -118,7 +171,18 @@ export function RunList({
           </TableHeader>
           <TableBody>
             {runs.map((run) => (
-              <TableRow key={run.id}>
+              <TableRow
+                key={run.id}
+                className={selected.has(run.id) ? "bg-muted/50" : undefined}
+              >
+                <TableCell className="w-10">
+                  <input
+                    type="checkbox"
+                    checked={selected.has(run.id)}
+                    onChange={() => toggleSelection(run.id)}
+                    className="size-4 rounded border-border accent-primary cursor-pointer"
+                  />
+                </TableCell>
                 <TableCell>
                   <Link
                     href={`/workspaces/${workspaceId}/runs/${run.id}`}
