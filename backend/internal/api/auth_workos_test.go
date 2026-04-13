@@ -144,8 +144,12 @@ func (s stubUserRepo) RelinkWorkOSUser(_ context.Context, _ uuid.UUID, _ string)
 	return repository.User{}, errors.New("not implemented in stub")
 }
 
-func (s stubUserRepo) UnarchiveAndRelinkUser(_ context.Context, _ string, _ string) (repository.User, error) {
-	return repository.User{}, errors.New("not implemented in stub")
+func (s stubUserRepo) IsUserArchivedByWorkOSID(_ context.Context, _ string) (bool, error) {
+	return false, nil
+}
+
+func (s stubUserRepo) IsUserArchivedByEmail(_ context.Context, _ string) (bool, error) {
+	return false, nil
 }
 
 // --- tests ---
@@ -336,6 +340,47 @@ func TestWorkOSAuthenticator_FirstLoginCreatesUser(t *testing.T) {
 	}
 	if len(caller.WorkspaceMemberships) != 0 {
 		t.Errorf("WorkspaceMemberships len = %d, want 0", len(caller.WorkspaceMemberships))
+	}
+}
+
+func TestWorkOSAuthenticator_FirstLoginNoEmail(t *testing.T) {
+	privKey, jwksServer := testJWKS(t)
+
+	createdUserID := uuid.New()
+	repo := stubUserRepo{
+		err: repository.ErrUserNotFound,
+		createdUser: repository.User{
+			ID:           createdUserID,
+			WorkOSUserID: "user_01NOEMAIL",
+			Email:        "",
+		},
+	}
+
+	auth, err := newWorkOSAuthenticator(jwksServer.URL, "test-client", "https://api.workos.com", repo, authTestLogger)
+	if err != nil {
+		t.Fatalf("create authenticator: %v", err)
+	}
+
+	// JWT without email claim — simulates WorkOS AuthKit without JWT Templates.
+	token := signTestJWT(t, privKey, map[string]interface{}{
+		"sub": "user_01NOEMAIL",
+		"iss": "https://api.workos.com",
+		"iat": time.Now().Unix(),
+		"exp": time.Now().Add(5 * time.Minute).Unix(),
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/auth/session", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	caller, err := auth.Authenticate(req)
+	if err != nil {
+		t.Fatalf("expected auto-create to succeed without email, got: %v", err)
+	}
+	if caller.UserID != createdUserID {
+		t.Errorf("UserID = %v, want %v", caller.UserID, createdUserID)
+	}
+	if caller.Email != "" {
+		t.Errorf("Email = %q, want empty string", caller.Email)
 	}
 }
 

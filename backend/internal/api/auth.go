@@ -13,6 +13,7 @@ import (
 
 var (
 	ErrUnauthenticated      = errors.New("unauthenticated")
+	ErrAccountDeactivated   = errors.New("account deactivated")
 	ErrForbidden            = errors.New("forbidden")
 	ErrCallerMissing        = errors.New("caller missing from request context")
 	ErrWorkspaceIDRequired  = errors.New("workspace id is required")
@@ -103,6 +104,15 @@ func authenticateRequest(logger *slog.Logger, authenticator Authenticator) func(
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			caller, err := authenticator.Authenticate(r)
 			if err != nil {
+				if errors.Is(err, ErrAccountDeactivated) {
+					logger.Warn("request from deactivated account",
+						"method", r.Method,
+						"path", r.URL.Path,
+						"error", err,
+					)
+					writeError(w, http.StatusForbidden, "account_deactivated", "your account has been deactivated")
+					return
+				}
 				logger.Warn("request authentication failed",
 					"method", r.Method,
 					"path", r.URL.Path,
