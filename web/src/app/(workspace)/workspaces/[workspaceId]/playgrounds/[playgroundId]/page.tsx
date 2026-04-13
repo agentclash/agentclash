@@ -56,29 +56,24 @@ export default async function PlaygroundDetailPage({
     );
   }
 
-  let selectedResults: PlaygroundExperimentResult[] | null = null;
-  if (experiment) {
-    try {
-      const res = await api.get<{ items: PlaygroundExperimentResult[] }>(
-        `/v1/playground-experiments/${experiment}/results`,
-      );
-      selectedResults = res.items;
-    } catch {
-      selectedResults = null;
-    }
-  }
-
-  let comparison: PlaygroundExperimentComparison | null = null;
-  if (baseline && candidate) {
-    try {
-      comparison = await api.get<PlaygroundExperimentComparison>(
-        "/v1/playground-experiments/compare",
-        { params: { baseline, candidate } },
-      );
-    } catch {
-      comparison = null;
-    }
-  }
+  const [selectedResults, comparison] = await Promise.all([
+    experiment
+      ? api
+          .get<{ items: PlaygroundExperimentResult[] }>(
+            `/v1/playground-experiments/${experiment}/results`,
+          )
+          .then((res) => res.items)
+          .catch(() => null)
+      : Promise.resolve(null),
+    baseline && candidate
+      ? api
+          .get<PlaygroundExperimentComparison>(
+            "/v1/playground-experiments/compare",
+            { params: { baseline, candidate } },
+          )
+          .catch(() => null)
+      : Promise.resolve(null),
+  ]);
 
   return (
     <div>
