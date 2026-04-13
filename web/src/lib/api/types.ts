@@ -565,6 +565,73 @@ export interface ScorecardDimension {
   reason?: string;
 }
 
+// --- Comparisons ---
+
+export type ComparisonReadState =
+  | "comparable"
+  | "partial_evidence"
+  | "not_comparable";
+
+/** GET /v1/compare — mirrors getRunComparisonResponse in compare_reads.go */
+export interface ComparisonResponse {
+  state: ComparisonReadState;
+  status: string; // "comparable" | "not_comparable"
+  reason_code?: string;
+  baseline_run_id: string;
+  candidate_run_id: string;
+  baseline_run_agent_id?: string;
+  candidate_run_agent_id?: string;
+  generated_at: string;
+  key_deltas: DeltaHighlight[];
+  regression_reasons: string[];
+  evidence_quality: EvidenceQuality;
+  summary: ComparisonSummary;
+  links: { viewer: string };
+}
+
+export interface DeltaHighlight {
+  metric: string;
+  baseline_value?: number;
+  candidate_value?: number;
+  delta?: number;
+  better_direction: string; // "higher" | "lower"
+  outcome: string; // "better" | "worse" | "same" | "unknown"
+  state: string; // "available" | "unavailable"
+}
+
+export interface EvidenceQuality {
+  missing_fields?: string[];
+  warnings?: string[];
+}
+
+export interface ComparisonSummary {
+  schema_version: string;
+  status: string;
+  reason_code?: string;
+  baseline_refs: { run_id: string; run_agent_id?: string };
+  candidate_refs: { run_id: string; run_agent_id?: string };
+  dimension_deltas?: Record<
+    string,
+    {
+      baseline_value?: number;
+      candidate_value?: number;
+      delta?: number;
+      better_direction: string;
+      state: string;
+    }
+  >;
+  failure_divergence: {
+    baseline_run_agent_status: string;
+    candidate_run_agent_status: string;
+    baseline_failure_reason?: string;
+    candidate_failure_reason?: string;
+    candidate_failed_baseline_succeeded: boolean;
+    candidate_succeeded_baseline_failed: boolean;
+    both_failed_differently: boolean;
+  };
+  evidence_quality: EvidenceQuality;
+}
+
 // --- Errors ---
 
 /** Standard error envelope returned by all backend error responses. */
