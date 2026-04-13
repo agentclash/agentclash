@@ -162,7 +162,7 @@ challenges:
 	req.Header.Set(headerWorkspaceMemberships, workspaceID.String()+":workspace_admin")
 	recorder := httptest.NewRecorder()
 
-	newRouter("dev",
+	newRouter("dev", nil,
 		logger,
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),

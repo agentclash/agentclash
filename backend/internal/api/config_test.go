@@ -40,6 +40,20 @@ func TestLoadConfigFromEnv_WorkOSRequiresClientID(t *testing.T) {
 	}
 }
 
+func TestLoadConfigFromEnv_WorkOSRequiresCORSAllowedOrigins(t *testing.T) {
+	t.Setenv("AUTH_MODE", "workos")
+	t.Setenv("WORKOS_CLIENT_ID", "client_test")
+	unsetEnv(t, "CORS_ALLOWED_ORIGINS")
+
+	_, err := LoadConfigFromEnv()
+	if err == nil {
+		t.Fatal("expected error for workos mode without CORS_ALLOWED_ORIGINS")
+	}
+	if !strings.Contains(err.Error(), "CORS_ALLOWED_ORIGINS") {
+		t.Errorf("error = %v, want mention of CORS_ALLOWED_ORIGINS", err)
+	}
+}
+
 func TestLoadConfigFromEnv_InvalidAuthMode(t *testing.T) {
 	t.Setenv("AUTH_MODE", "oauth")
 

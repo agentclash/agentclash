@@ -78,7 +78,7 @@ func TestGetAgentBuildRequiresWorkspaceMembership(t *testing.T) {
 	buildWorkspaceID := uuid.New()
 	buildID := uuid.New()
 
-	router := newRouter("dev",
+	router := newRouter("dev", nil,
 		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
@@ -130,7 +130,7 @@ func TestGetAgentBuildVersionRequiresWorkspaceMembership(t *testing.T) {
 	buildID := uuid.New()
 	versionID := uuid.New()
 
-	router := newRouter("dev",
+	router := newRouter("dev", nil,
 		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
@@ -189,7 +189,7 @@ func TestGetAgentBuildVersionReturnsToolAndKnowledgeBindings(t *testing.T) {
 	toolID := uuid.New()
 	knowledgeSourceID := uuid.New()
 
-	router := newRouter("dev",
+	router := newRouter("dev", nil,
 		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),

@@ -440,7 +440,7 @@ func TestGetRunRankingEndpointReturnsSortedPayload(t *testing.T) {
 	req.Header.Set(headerWorkspaceMemberships, workspaceID.String()+":workspace_member")
 	recorder := httptest.NewRecorder()
 
-	newRouter("dev",
+	newRouter("dev", nil,
 		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
@@ -511,7 +511,7 @@ func TestGetRunRankingEndpointRejectsInvalidSortField(t *testing.T) {
 	req.Header.Set(headerWorkspaceMemberships, workspaceID.String()+":workspace_member")
 	recorder := httptest.NewRecorder()
 
-	newRouter("dev",
+	newRouter("dev", nil,
 		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
@@ -552,7 +552,7 @@ func TestGetRunRankingEndpointReturnsCompositeSortPayload(t *testing.T) {
 	req.Header.Set(headerWorkspaceMemberships, workspaceID.String()+":workspace_member")
 	recorder := httptest.NewRecorder()
 
-	newRouter("dev",
+	newRouter("dev", nil,
 		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
@@ -622,7 +622,7 @@ func TestGetRunRankingEndpointReturnsAcceptedWhenPending(t *testing.T) {
 	req.Header.Set(headerWorkspaceMemberships, workspaceID.String()+":workspace_member")
 	recorder := httptest.NewRecorder()
 
-	newRouter("dev",
+	newRouter("dev", nil,
 		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
@@ -667,7 +667,7 @@ func TestGetRunRankingEndpointReturnsConflictWhenErrored(t *testing.T) {
 	req.Header.Set(headerWorkspaceMemberships, workspaceID.String()+":workspace_member")
 	recorder := httptest.NewRecorder()
 
-	newRouter("dev",
+	newRouter("dev", nil,
 		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),

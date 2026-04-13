@@ -730,7 +730,11 @@ func allowedToolKinds(manifest json.RawMessage) []string {
 	}
 
 	var decoded challengeManifest
-	if err := json.Unmarshal(manifest, &decoded); err != nil || decoded.ToolPolicy == nil {
+	if err := json.Unmarshal(manifest, &decoded); err != nil {
+		slog.Warn("allowedToolKinds: failed to parse challenge manifest", "error", err)
+		return nil
+	}
+	if decoded.ToolPolicy == nil {
 		return nil
 	}
 	return normalizeStrings(decoded.ToolPolicy.AllowedToolKinds)
@@ -754,6 +758,7 @@ func applyChallengeSandboxPolicy(policy *sandbox.ToolPolicy, filesystem *sandbox
 
 	var decoded challengeManifest
 	if err := json.Unmarshal(manifest, &decoded); err != nil {
+		slog.Warn("applyChallengeSandboxPolicy: failed to parse challenge manifest", "error", err)
 		return
 	}
 
@@ -785,7 +790,11 @@ func applyRuntimeSandboxPolicy(policy *sandbox.ToolPolicy, filesystem *sandbox.F
 	}
 
 	var decoded runtimeProfileConfig
-	if err := json.Unmarshal(profileConfig, &decoded); err != nil || decoded.Sandbox == nil {
+	if err := json.Unmarshal(profileConfig, &decoded); err != nil {
+		slog.Warn("applyRuntimeSandboxPolicy: failed to parse runtime profile config", "error", err)
+		return
+	}
+	if decoded.Sandbox == nil {
 		return
 	}
 
@@ -825,7 +834,8 @@ func applySandboxConfig(request *sandbox.CreateRequest, manifest json.RawMessage
 	if err := json.Unmarshal(manifest, &decoded); err != nil {
 		// Preserve historical behavior: a malformed manifest is a no-op
 		// here, not a hard error. Validation catches broken manifests at
-		// publish time.
+		// publish time. Log the failure so operators can see it.
+		slog.Warn("applySandboxConfig: failed to parse manifest", "error", err)
 		return nil
 	}
 

@@ -118,7 +118,7 @@ func TestEvaluateReleaseGateEndpointReturnsJSONPayload(t *testing.T) {
 	req.Header.Set(headerWorkspaceMemberships, workspaceID.String()+":workspace_member")
 	recorder := httptest.NewRecorder()
 
-	newRouter("dev",
+	newRouter("dev", nil,
 		testLogger(t),
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
@@ -195,7 +195,7 @@ func TestListReleaseGatesEndpointReturnsJSONPayload(t *testing.T) {
 	req.Header.Set(headerWorkspaceMemberships, workspaceID.String()+":workspace_member")
 	recorder := httptest.NewRecorder()
 
-	newRouter("dev",
+	newRouter("dev", nil,
 		testLogger(t),
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),

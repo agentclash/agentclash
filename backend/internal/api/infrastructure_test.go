@@ -100,7 +100,7 @@ func TestGetRuntimeProfileAuthorizesWorkspace(t *testing.T) {
 		},
 	}
 
-	router := newRouter("dev",
+	router := newRouter("dev", nil,
 		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
@@ -138,7 +138,7 @@ func TestGetRuntimeProfileAllowsWorkspaceMember(t *testing.T) {
 		},
 	}
 
-	router := newRouter("dev",
+	router := newRouter("dev", nil,
 		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
@@ -169,7 +169,7 @@ func TestCreateRuntimeProfileRequiresAdminRole(t *testing.T) {
 
 	svc := stubInfraService{}
 
-	router := newRouter("dev",
+	router := newRouter("dev", nil,
 		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),
@@ -203,7 +203,7 @@ func TestCreateRuntimeProfileValidatesInput(t *testing.T) {
 
 	svc := stubInfraService{}
 
-	router := newRouter("dev",
+	router := newRouter("dev", nil,
 		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),

@@ -96,7 +96,7 @@ func workspaceSecretsTestLogger(t *testing.T) *slog.Logger {
 func runWorkspaceSecretsRequest(t *testing.T, service WorkspaceSecretsService, req *http.Request) *httptest.ResponseRecorder {
 	t.Helper()
 	recorder := httptest.NewRecorder()
-	newRouter("dev",
+	newRouter("dev", nil,
 		workspaceSecretsTestLogger(t),
 		NewDevelopmentAuthenticator(),
 		NewCallerWorkspaceAuthorizer(),

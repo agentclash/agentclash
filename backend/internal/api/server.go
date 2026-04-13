@@ -41,7 +41,7 @@ func NewServer(
 	infraService InfrastructureService,
 	workspaceSecretsService WorkspaceSecretsService,
 ) *Server {
-	router := newRouter(cfg.AuthMode, logger, authenticator, authorizer, artifactService, cfg.ArtifactMaxUploadBytes, runCreationService, runReadService, replayReadService, hostedRunIngestionService, compareReadService, agentDeploymentReadService, challengePackReadService, agentBuildService, releaseGateService, challengePackAuthoringService, userService, orgService, wsService, orgMembershipService, wsMembershipService, onboardingService, infraService, workspaceSecretsService)
+	router := newRouter(cfg.AuthMode, cfg.CORSAllowedOrigins, logger, authenticator, authorizer, artifactService, cfg.ArtifactMaxUploadBytes, runCreationService, runReadService, replayReadService, hostedRunIngestionService, compareReadService, agentDeploymentReadService, challengePackReadService, agentBuildService, releaseGateService, challengePackAuthoringService, userService, orgService, wsService, orgMembershipService, wsMembershipService, onboardingService, infraService, workspaceSecretsService)
 
 	return &Server{
 		config: cfg,
@@ -91,6 +91,7 @@ func Run(ctx context.Context, server *Server, logger *slog.Logger) error {
 
 func newRouter(
 	authMode string,
+	corsAllowedOrigins map[string]struct{},
 	logger *slog.Logger,
 	authenticator Authenticator,
 	authorizer WorkspaceAuthorizer,
@@ -148,7 +149,7 @@ func newRouter(
 	router := chi.NewRouter()
 	router.Use(recoverer(logger))
 	router.Use(requestLogger(logger))
-	router.Use(newCORSMiddleware(authMode))
+	router.Use(newCORSMiddleware(authMode, corsAllowedOrigins))
 	router.Get("/healthz", healthzHandler)
 	registerPublicRoutes(router, logger, artifactService)
 	registerHostedIntegrationRoutes(router, logger, hostedRunIngestionService)
