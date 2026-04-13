@@ -1983,7 +1983,7 @@ func (r *Repository) CreateUser(ctx context.Context, input CreateUserInput) (Use
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			return User{}, fmt.Errorf("%w: user already exists", ErrUserAlreadyExists)
+			return User{}, fmt.Errorf("%w: constraint=%s detail=%s", ErrUserAlreadyExists, pgErr.ConstraintName, pgErr.Detail)
 		}
 		return User{}, fmt.Errorf("create user: %w", err)
 	}

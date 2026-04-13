@@ -89,7 +89,7 @@ func main() {
 		authenticator, err = api.NewWorkOSAuthenticator(api.WorkOSAuthenticatorConfig{
 			ClientID: cfg.WorkOSClientID,
 			Issuer:   cfg.WorkOSIssuer,
-		}, repo)
+		}, repo, logger)
 		if err != nil {
 			logger.Error("failed to initialize workos authenticator", "error", err)
 			os.Exit(1)

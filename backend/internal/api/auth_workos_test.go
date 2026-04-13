@@ -6,6 +6,7 @@ import (
 	"crypto/rsa"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -17,6 +18,8 @@ import (
 	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/lestrrat-go/jwx/v2/jwt"
 )
+
+var authTestLogger = slog.Default()
 
 // --- test helpers ---
 
@@ -157,7 +160,7 @@ func TestWorkOSAuthenticator_ValidToken(t *testing.T) {
 		},
 	}
 
-	auth, err := newWorkOSAuthenticator(jwksServer.URL, "test-client", "https://api.workos.com", repo)
+	auth, err := newWorkOSAuthenticator(jwksServer.URL, "test-client", "https://api.workos.com", repo, authTestLogger)
 	if err != nil {
 		t.Fatalf("create authenticator: %v", err)
 	}
@@ -202,7 +205,7 @@ func TestWorkOSAuthenticator_MissingAuthorizationHeader(t *testing.T) {
 	privKey, jwksServer := testJWKS(t)
 	_ = privKey
 
-	auth, err := newWorkOSAuthenticator(jwksServer.URL, "test-client", "https://api.workos.com", stubUserRepo{})
+	auth, err := newWorkOSAuthenticator(jwksServer.URL, "test-client", "https://api.workos.com", stubUserRepo{}, authTestLogger)
 	if err != nil {
 		t.Fatalf("create authenticator: %v", err)
 	}
@@ -217,7 +220,7 @@ func TestWorkOSAuthenticator_MissingAuthorizationHeader(t *testing.T) {
 func TestWorkOSAuthenticator_MalformedBearerToken(t *testing.T) {
 	_, jwksServer := testJWKS(t)
 
-	auth, err := newWorkOSAuthenticator(jwksServer.URL, "test-client", "https://api.workos.com", stubUserRepo{})
+	auth, err := newWorkOSAuthenticator(jwksServer.URL, "test-client", "https://api.workos.com", stubUserRepo{}, authTestLogger)
 	if err != nil {
 		t.Fatalf("create authenticator: %v", err)
 	}
@@ -233,7 +236,7 @@ func TestWorkOSAuthenticator_MalformedBearerToken(t *testing.T) {
 func TestWorkOSAuthenticator_ExpiredToken(t *testing.T) {
 	privKey, jwksServer := testJWKS(t)
 
-	auth, err := newWorkOSAuthenticator(jwksServer.URL, "test-client", "https://api.workos.com", stubUserRepo{})
+	auth, err := newWorkOSAuthenticator(jwksServer.URL, "test-client", "https://api.workos.com", stubUserRepo{}, authTestLogger)
 	if err != nil {
 		t.Fatalf("create authenticator: %v", err)
 	}
@@ -263,7 +266,7 @@ func TestWorkOSAuthenticator_InvalidSignature(t *testing.T) {
 		t.Fatalf("generate other key: %v", err)
 	}
 
-	auth, err := newWorkOSAuthenticator(jwksServer.URL, "test-client", "https://api.workos.com", stubUserRepo{})
+	auth, err := newWorkOSAuthenticator(jwksServer.URL, "test-client", "https://api.workos.com", stubUserRepo{}, authTestLogger)
 	if err != nil {
 		t.Fatalf("create authenticator: %v", err)
 	}
@@ -297,7 +300,7 @@ func TestWorkOSAuthenticator_FirstLoginCreatesUser(t *testing.T) {
 		},
 	}
 
-	auth, err := newWorkOSAuthenticator(jwksServer.URL, "test-client", "https://api.workos.com", repo)
+	auth, err := newWorkOSAuthenticator(jwksServer.URL, "test-client", "https://api.workos.com", repo, authTestLogger)
 	if err != nil {
 		t.Fatalf("create authenticator: %v", err)
 	}
@@ -336,7 +339,7 @@ func TestWorkOSAuthenticator_FirstLoginCreateUserFails(t *testing.T) {
 		createUserErr: errors.New("db connection lost"),
 	}
 
-	auth, err := newWorkOSAuthenticator(jwksServer.URL, "test-client", "https://api.workos.com", repo)
+	auth, err := newWorkOSAuthenticator(jwksServer.URL, "test-client", "https://api.workos.com", repo, authTestLogger)
 	if err != nil {
 		t.Fatalf("create authenticator: %v", err)
 	}
@@ -360,7 +363,7 @@ func TestWorkOSAuthenticator_FirstLoginCreateUserFails(t *testing.T) {
 func TestWorkOSAuthenticator_EmptySubClaim(t *testing.T) {
 	privKey, jwksServer := testJWKS(t)
 
-	auth, err := newWorkOSAuthenticator(jwksServer.URL, "test-client", "https://api.workos.com", stubUserRepo{})
+	auth, err := newWorkOSAuthenticator(jwksServer.URL, "test-client", "https://api.workos.com", stubUserRepo{}, authTestLogger)
 	if err != nil {
 		t.Fatalf("create authenticator: %v", err)
 	}
@@ -384,7 +387,7 @@ func TestWorkOSAuthenticator_EmptySubClaim(t *testing.T) {
 func TestWorkOSAuthenticator_GarbageToken(t *testing.T) {
 	_, jwksServer := testJWKS(t)
 
-	auth, err := newWorkOSAuthenticator(jwksServer.URL, "test-client", "https://api.workos.com", stubUserRepo{})
+	auth, err := newWorkOSAuthenticator(jwksServer.URL, "test-client", "https://api.workos.com", stubUserRepo{}, authTestLogger)
 	if err != nil {
 		t.Fatalf("create authenticator: %v", err)
 	}
@@ -410,7 +413,7 @@ func TestWorkOSAuthenticator_MembershipLoadError(t *testing.T) {
 		membershipErr: errors.New("db connection lost"),
 	}
 
-	auth, err := newWorkOSAuthenticator(jwksServer.URL, "test-client", "https://api.workos.com", repo)
+	auth, err := newWorkOSAuthenticator(jwksServer.URL, "test-client", "https://api.workos.com", repo, authTestLogger)
 	if err != nil {
 		t.Fatalf("create authenticator: %v", err)
 	}
@@ -435,7 +438,7 @@ func TestWorkOSAuthenticator_WrongIssuer(t *testing.T) {
 	privKey, jwksServer := testJWKS(t)
 
 	// Authenticator expects "https://api.workos.com" but token has a different issuer
-	auth, err := newWorkOSAuthenticator(jwksServer.URL, "test-client", "https://api.workos.com", stubUserRepo{})
+	auth, err := newWorkOSAuthenticator(jwksServer.URL, "test-client", "https://api.workos.com", stubUserRepo{}, authTestLogger)
 	if err != nil {
 		t.Fatalf("create authenticator: %v", err)
 	}
@@ -469,7 +472,7 @@ func TestWorkOSAuthenticator_CustomIssuer(t *testing.T) {
 		memberships: []repository.WorkspaceMembershipRow{},
 	}
 
-	auth, err := newWorkOSAuthenticator(jwksServer.URL, "test-client", "https://auth.mycompany.com", repo)
+	auth, err := newWorkOSAuthenticator(jwksServer.URL, "test-client", "https://auth.mycompany.com", repo, authTestLogger)
 	if err != nil {
 		t.Fatalf("create authenticator: %v", err)
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -38,6 +39,7 @@ type UserRepository interface {
 type WorkOSAuthenticator struct {
 	cachedSet jwk.Set
 	repo      UserRepository
+	logger    *slog.Logger
 	issuer    string
 	clientID  string
 }
@@ -53,18 +55,18 @@ type WorkOSAuthenticatorConfig struct {
 }
 
 // NewWorkOSAuthenticator creates an authenticator that validates WorkOS JWTs.
-func NewWorkOSAuthenticator(cfg WorkOSAuthenticatorConfig, repo UserRepository) (*WorkOSAuthenticator, error) {
+func NewWorkOSAuthenticator(cfg WorkOSAuthenticatorConfig, repo UserRepository, logger *slog.Logger) (*WorkOSAuthenticator, error) {
 	jwksURL := "https://api.workos.com/sso/jwks/" + cfg.ClientID
 	issuer := cfg.Issuer
 	if issuer == "" {
 		issuer = defaultWorkOSIssuer + "/user_management/" + cfg.ClientID
 	}
-	return newWorkOSAuthenticator(jwksURL, cfg.ClientID, issuer, repo)
+	return newWorkOSAuthenticator(jwksURL, cfg.ClientID, issuer, repo, logger)
 }
 
 // newWorkOSAuthenticator is the internal constructor that accepts a full JWKS URL.
 // Tests use this directly to point at a local JWKS server.
-func newWorkOSAuthenticator(jwksURL, clientID, issuer string, repo UserRepository) (*WorkOSAuthenticator, error) {
+func newWorkOSAuthenticator(jwksURL, clientID, issuer string, repo UserRepository, logger *slog.Logger) (*WorkOSAuthenticator, error) {
 	cacheCtx := context.Background()
 	cache := jwk.NewCache(cacheCtx)
 	if err := cache.Register(jwksURL, jwk.WithMinRefreshInterval(15*time.Minute)); err != nil {
@@ -82,6 +84,7 @@ func newWorkOSAuthenticator(jwksURL, clientID, issuer string, repo UserRepositor
 	return &WorkOSAuthenticator{
 		cachedSet: jwk.NewCachedSet(cache, jwksURL),
 		repo:      repo,
+		logger:    logger,
 		issuer:    issuer,
 		clientID:  clientID,
 	}, nil
@@ -165,50 +168,77 @@ func (a *WorkOSAuthenticator) Authenticate(r *http.Request) (Caller, error) {
 //     workos_user_id) → link the real WorkOS ID and return it.
 //  3. Completely new user → create and return.
 func (a *WorkOSAuthenticator) resolveUser(ctx context.Context, workosUserID, email string) (repository.User, error) {
+	log := a.logger.With("workos_user_id", workosUserID, "email", email)
+
+	// Case 1: user already linked to this WorkOS ID.
 	user, err := a.repo.GetUserByWorkOSID(ctx, workosUserID)
 	if err == nil {
+		log.DebugContext(ctx, "resolve_user: found by workos_id", "user_id", user.ID)
 		return user, nil
 	}
 	if !errors.Is(err, repository.ErrUserNotFound) {
+		log.ErrorContext(ctx, "resolve_user: unexpected error looking up by workos_id", "error", err)
 		return repository.User{}, fmt.Errorf("%w: %v", ErrUnauthenticated, err)
 	}
+	log.InfoContext(ctx, "resolve_user: no user with this workos_id, checking email")
 
-	// No user with this WorkOS ID. Check if a stub user was created via invite.
-	// Only link to stub users (workos_user_id starts with "pending:") — never
-	// overwrite a real user's identity, which would be an account takeover.
+	// Case 2: stub user from invite (workos_user_id starts with "pending:").
 	if email != "" {
 		stubUser, emailErr := a.repo.GetUserByEmail(ctx, email)
 		if emailErr == nil && strings.HasPrefix(stubUser.WorkOSUserID, "pending:") {
+			log.InfoContext(ctx, "resolve_user: found invited stub, linking workos_id",
+				"stub_user_id", stubUser.ID, "stub_workos_id", stubUser.WorkOSUserID)
 			linked, linkErr := a.repo.LinkWorkOSUser(ctx, stubUser.ID, workosUserID)
 			if linkErr != nil {
+				log.ErrorContext(ctx, "resolve_user: failed to link workos_id to stub",
+					"stub_user_id", stubUser.ID, "error", linkErr)
 				return repository.User{}, fmt.Errorf("link workos user to invited stub: %w", linkErr)
 			}
+			log.InfoContext(ctx, "resolve_user: linked workos_id to stub", "user_id", linked.ID)
 			return linked, nil
+		}
+		if emailErr != nil && !errors.Is(emailErr, repository.ErrUserNotFound) {
+			log.ErrorContext(ctx, "resolve_user: unexpected error looking up by email", "error", emailErr)
+		}
+		if emailErr == nil && !strings.HasPrefix(stubUser.WorkOSUserID, "pending:") {
+			log.WarnContext(ctx, "resolve_user: email match exists but is not a stub — skipping link to avoid account takeover",
+				"existing_user_id", stubUser.ID, "existing_workos_id", stubUser.WorkOSUserID)
 		}
 	}
 
-	// Truly new user — auto-create.
+	// Case 3: truly new user — auto-create.
+	log.InfoContext(ctx, "resolve_user: creating new user")
 	user, err = a.repo.CreateUser(ctx, repository.CreateUserInput{
 		WorkOSUserID: workosUserID,
 		Email:        email,
 	})
 	if err != nil {
-		// If creation failed because the email already exists, the user's WorkOS
-		// identity likely changed (re-provisioned account, different auth method).
-		// Link the new WorkOS ID to the existing account.
 		if errors.Is(err, repository.ErrUserAlreadyExists) && email != "" {
+			// The email already exists — the user's WorkOS identity likely changed
+			// (re-provisioned account, different auth method, or race condition).
+			log.WarnContext(ctx, "resolve_user: create hit unique constraint, attempting to link existing account",
+				"create_error", err)
 			existing, lookupErr := a.repo.GetUserByEmail(ctx, email)
 			if lookupErr != nil {
-				return repository.User{}, fmt.Errorf("auto-create user: %w", err)
+				log.ErrorContext(ctx, "resolve_user: failed to look up existing user by email after create conflict",
+					"lookup_error", lookupErr, "original_create_error", err)
+				return repository.User{}, fmt.Errorf("auto-create user: lookup after conflict failed: %w", lookupErr)
 			}
+			log.InfoContext(ctx, "resolve_user: found existing user after conflict, linking workos_id",
+				"existing_user_id", existing.ID, "existing_workos_id", existing.WorkOSUserID)
 			linked, linkErr := a.repo.LinkWorkOSUser(ctx, existing.ID, workosUserID)
 			if linkErr != nil {
+				log.ErrorContext(ctx, "resolve_user: failed to link workos_id to existing user after conflict",
+					"existing_user_id", existing.ID, "existing_workos_id", existing.WorkOSUserID, "error", linkErr)
 				return repository.User{}, fmt.Errorf("link workos user after conflict: %w", linkErr)
 			}
+			log.InfoContext(ctx, "resolve_user: linked workos_id to existing user after conflict", "user_id", linked.ID)
 			return linked, nil
 		}
+		log.ErrorContext(ctx, "resolve_user: failed to create user", "error", err)
 		return repository.User{}, fmt.Errorf("auto-create user: %w", err)
 	}
+	log.InfoContext(ctx, "resolve_user: created new user", "user_id", user.ID)
 	return user, nil
 }
 
