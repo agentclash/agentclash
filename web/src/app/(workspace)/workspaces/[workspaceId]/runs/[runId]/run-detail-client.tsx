@@ -33,6 +33,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { ScorecardSummaryCard } from "./scorecard-summary-card";
+import { CompareRunPicker } from "./compare-run-picker";
 
 // --- Status variant maps ---
 
@@ -249,6 +250,10 @@ export function RunDetailClient({
               ? "Comparison"
               : "Single Agent"}
           </Badge>
+          <CompareRunPicker
+            currentRunId={run.id}
+            workspaceId={workspaceId}
+          />
         </div>
 
         {/* KPI strip */}
