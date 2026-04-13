@@ -62,11 +62,11 @@ func main() {
 	nativeModelInvoker := workerapp.NewNativeModelInvokerWithObserverFactory(
 		providerRouter,
 		sandboxProvider,
-		workerapp.NewNativeRunEventObserverFactory(repo),
+		workerapp.NewBufferedNativeObserverFactory(repo),
 	).WithSecretsLookup(repo)
 	promptEvalInvoker := workerapp.NewPromptEvalInvokerWithObserverFactory(
 		providerRouter,
-		workerapp.NewPromptEvalRunEventObserverFactory(repo),
+		workerapp.NewBufferedPromptEvalObserverFactory(repo),
 	)
 	temporalWorker := workerapp.NewTemporalWorker(temporalClient, cfg, repo, providerRouter, workflowpkg.FakeWorkHooks{
 		HostedRunStarter:   hostedRunClient,
