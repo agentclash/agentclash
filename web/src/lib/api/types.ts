@@ -134,6 +134,38 @@ export interface OrgWorkspace {
   updated_at: string;
 }
 
+// --- Workspace Management ---
+
+export type WorkspaceRole =
+  | "workspace_admin"
+  | "workspace_member"
+  | "workspace_viewer";
+
+/** GET /v1/workspaces/{id}/details response */
+export interface WorkspaceDetail {
+  id: string;
+  organization_id: string;
+  name: string;
+  slug: string;
+  status: string; // "active" | "archived"
+  created_at: string;
+  updated_at: string;
+}
+
+/** GET /v1/workspaces/{id}/memberships list item */
+export interface WorkspaceMember {
+  id: string;
+  workspace_id: string;
+  organization_id: string;
+  user_id: string;
+  email: string;
+  display_name: string;
+  role: WorkspaceRole;
+  membership_status: OrgMembershipStatus; // same enum: invited/active/suspended/archived
+  created_at: string;
+  updated_at?: string;
+}
+
 // --- Agent Builds ---
 
 /** GET /v1/workspaces/{id}/agent-builds item, POST response */
