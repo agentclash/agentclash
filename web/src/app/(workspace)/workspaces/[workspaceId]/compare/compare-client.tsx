@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { scorePercent } from "@/lib/scores";
+import { ReleaseGatesSection } from "./release-gates-section";
 
 // --- State badge ---
 
@@ -259,6 +260,12 @@ export function CompareClient({
             </div>
           </div>
         )}
+
+      {/* Release Gates */}
+      <ReleaseGatesSection
+        baselineRunId={comparison.baseline_run_id}
+        candidateRunId={comparison.candidate_run_id}
+      />
     </div>
   );
 }

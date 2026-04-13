@@ -632,6 +632,93 @@ export interface ComparisonSummary {
   evidence_quality: EvidenceQuality;
 }
 
+// --- Release Gates ---
+
+export type ReleaseGateVerdict =
+  | "pass"
+  | "warn"
+  | "fail"
+  | "insufficient_evidence";
+
+export type ReleaseGateEvidenceStatus = "sufficient" | "insufficient";
+
+/** Individual release gate — mirrors releaseGateResponse in release_gates.go */
+export interface ReleaseGate {
+  id: string;
+  run_comparison_id: string;
+  policy_key: string;
+  policy_version: number;
+  policy_fingerprint: string;
+  policy_snapshot: ReleaseGatePolicy;
+  verdict: ReleaseGateVerdict;
+  reason_code: string;
+  summary: string;
+  evidence_status: ReleaseGateEvidenceStatus;
+  evaluation_details: ReleaseGateEvaluationDetails;
+  generated_at: string;
+  updated_at: string;
+}
+
+/** GET /v1/release-gates response */
+export interface ListReleaseGatesResponse {
+  baseline_run_id: string;
+  candidate_run_id: string;
+  release_gates: ReleaseGate[];
+}
+
+/** POST /v1/release-gates/evaluate request */
+export interface EvaluateReleaseGateRequest {
+  baseline_run_id: string;
+  candidate_run_id: string;
+  baseline_run_agent_id?: string;
+  candidate_run_agent_id?: string;
+  policy: ReleaseGatePolicy;
+}
+
+/** POST /v1/release-gates/evaluate response */
+export interface EvaluateReleaseGateResponse {
+  baseline_run_id: string;
+  candidate_run_id: string;
+  release_gate: ReleaseGate;
+}
+
+export interface ReleaseGatePolicy {
+  policy_key: string;
+  policy_version: number;
+  require_comparable?: boolean;
+  require_evidence_quality?: boolean;
+  fail_on_candidate_failure?: boolean;
+  fail_on_both_failed_differently?: boolean;
+  required_dimensions?: string[];
+  dimensions?: Record<string, DimensionThreshold>;
+}
+
+export interface DimensionThreshold {
+  warn_delta?: number;
+  fail_delta?: number;
+}
+
+export interface ReleaseGateEvaluationDetails {
+  policy_key: string;
+  policy_version: number;
+  comparison_status: string;
+  missing_fields?: string[];
+  warnings?: string[];
+  triggered_conditions?: string[];
+  required_dimensions?: string[];
+  dimension_results?: Record<string, DimensionEvaluation>;
+}
+
+export interface DimensionEvaluation {
+  state: string;
+  better_direction?: string;
+  observed_delta?: number;
+  worsening_delta?: number;
+  warn_threshold?: number;
+  fail_threshold?: number;
+  outcome: string;
+}
+
 // --- Errors ---
 
 /** Standard error envelope returned by all backend error responses. */
