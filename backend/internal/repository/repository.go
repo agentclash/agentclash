@@ -589,7 +589,7 @@ func (r *Repository) StoreRunAgentEvaluationResults(ctx context.Context, evaluat
 		return fmt.Errorf("marshal run-agent scorecard: %w", err)
 	}
 
-	overallScore, err := numericFromFloat(nil)
+	overallScore, err := numericFromFloat(evaluation.OverallScore)
 	if err != nil {
 		return fmt.Errorf("encode overall score: %w", err)
 	}
@@ -640,6 +640,10 @@ func buildRunAgentScorecardDocument(evaluation scoring.RunAgentEvaluation) (json
 		RunAgentID       uuid.UUID                   `json:"run_agent_id"`
 		EvaluationSpecID uuid.UUID                   `json:"evaluation_spec_id"`
 		Status           scoring.EvaluationStatus    `json:"status"`
+		Strategy         scoring.ScoringStrategy     `json:"strategy,omitempty"`
+		OverallScore     *float64                    `json:"overall_score,omitempty"`
+		Passed           *bool                       `json:"passed,omitempty"`
+		OverallReason    string                      `json:"overall_reason,omitempty"`
 		Warnings         []string                    `json:"warnings,omitempty"`
 		Dimensions       map[string]dimensionSummary `json:"dimensions"`
 		ValidatorSummary map[string]int              `json:"validator_summary"`
@@ -697,10 +701,19 @@ func buildRunAgentScorecardDocument(evaluation scoring.RunAgentEvaluation) (json
 		}
 	}
 
+	var passedCopy *bool
+	if evaluation.Passed != nil {
+		v := *evaluation.Passed
+		passedCopy = &v
+	}
 	document := scorecardDocument{
 		RunAgentID:       evaluation.RunAgentID,
 		EvaluationSpecID: evaluation.EvaluationSpecID,
 		Status:           evaluation.Status,
+		Strategy:         evaluation.Strategy,
+		OverallScore:     cloneFloat64Ptr(evaluation.OverallScore),
+		Passed:           passedCopy,
+		OverallReason:    evaluation.OverallReason,
 		Warnings:         append([]string(nil), evaluation.Warnings...),
 		Dimensions:       dimensions,
 		ValidatorSummary: validatorSummary,

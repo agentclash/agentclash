@@ -181,3 +181,63 @@ func scorecardState(score *float64) string {
 func float64Ptr(value float64) *float64 {
 	return &value
 }
+
+func TestBuildRunScorecardDocumentSelectsWinnerByOverallScore(t *testing.T) {
+	runID := uuid.New()
+	evaluationSpecID := uuid.New()
+	lowID := uuid.New()
+	highID := uuid.New()
+
+	_, winningRunAgentID, err := buildRunScorecardDocument(runID, evaluationSpecID, []runScorecardParticipant{
+		scorecardParticipantFixture(0, "low", domain.RunAgentStatusCompleted, runAgentScorecardFixture{
+			RunAgentID:       lowID,
+			EvaluationSpecID: evaluationSpecID,
+			OverallScore:     float64Ptr(0.6),
+			CorrectnessScore: float64Ptr(0.9),
+			ReliabilityScore: float64Ptr(1.0),
+		}),
+		scorecardParticipantFixture(1, "high", domain.RunAgentStatusCompleted, runAgentScorecardFixture{
+			RunAgentID:       highID,
+			EvaluationSpecID: evaluationSpecID,
+			OverallScore:     float64Ptr(0.8),
+			CorrectnessScore: float64Ptr(0.7),
+			ReliabilityScore: float64Ptr(0.5),
+		}),
+	}, nil)
+	if err != nil {
+		t.Fatalf("buildRunScorecardDocument returned error: %v", err)
+	}
+	if winningRunAgentID == nil || *winningRunAgentID != highID {
+		t.Fatalf("winning run agent id = %v, want %s", winningRunAgentID, highID)
+	}
+}
+
+func TestBuildRunScorecardDocumentFallsBackToLegacyWhenOverallScoreMissing(t *testing.T) {
+	runID := uuid.New()
+	evaluationSpecID := uuid.New()
+	betterID := uuid.New()
+	worseID := uuid.New()
+
+	// Legacy-only scorecards (no overall_score) should still rank by the
+	// correctness/reliability tiebreak chain.
+	_, winningRunAgentID, err := buildRunScorecardDocument(runID, evaluationSpecID, []runScorecardParticipant{
+		scorecardParticipantFixture(0, "worse", domain.RunAgentStatusCompleted, runAgentScorecardFixture{
+			RunAgentID:       worseID,
+			EvaluationSpecID: evaluationSpecID,
+			CorrectnessScore: float64Ptr(0.5),
+			ReliabilityScore: float64Ptr(1.0),
+		}),
+		scorecardParticipantFixture(1, "better", domain.RunAgentStatusCompleted, runAgentScorecardFixture{
+			RunAgentID:       betterID,
+			EvaluationSpecID: evaluationSpecID,
+			CorrectnessScore: float64Ptr(0.9),
+			ReliabilityScore: float64Ptr(0.1),
+		}),
+	}, nil)
+	if err != nil {
+		t.Fatalf("buildRunScorecardDocument returned error: %v", err)
+	}
+	if winningRunAgentID == nil || *winningRunAgentID != betterID {
+		t.Fatalf("winning run agent id = %v, want %s (legacy correctness winner)", winningRunAgentID, betterID)
+	}
+}

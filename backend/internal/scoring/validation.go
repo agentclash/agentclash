@@ -56,6 +56,9 @@ func ValidateEvaluationSpec(spec EvaluationSpec) error {
 	if len(spec.Scorecard.Dimensions) == 0 {
 		errs = append(errs, ValidationError{Field: "evaluation_spec.scorecard.dimensions", Message: "must contain at least one dimension"})
 	}
+	if !spec.Scorecard.Strategy.IsValid() {
+		errs = append(errs, ValidationError{Field: "evaluation_spec.scorecard.strategy", Message: "must be one of weighted, binary, hybrid"})
+	}
 	if spec.RuntimeLimits.MaxTotalTokens != nil && *spec.RuntimeLimits.MaxTotalTokens <= 0 {
 		errs = append(errs, ValidationError{Field: "evaluation_spec.runtime_limits.max_total_tokens", Message: "must be greater than 0"})
 	}
@@ -218,6 +221,34 @@ func ValidateEvaluationSpec(spec EvaluationSpec) error {
 		if dim.Weight != nil && *dim.Weight < 0 {
 			errs = append(errs, ValidationError{Field: path + ".weight", Message: "must be greater than or equal to 0"})
 		}
+
+		// A gate (explicit in weighted/hybrid, implicit in binary) requires a
+		// pass_threshold in [0, 1].
+		requiresThreshold := dim.Gate || spec.Scorecard.Strategy == ScoringStrategyBinary
+		if requiresThreshold {
+			if dim.PassThreshold == nil {
+				errs = append(errs, ValidationError{Field: path + ".pass_threshold", Message: "is required when the dimension is gated or strategy is binary"})
+			} else if *dim.PassThreshold < 0 || *dim.PassThreshold > 1 {
+				errs = append(errs, ValidationError{Field: path + ".pass_threshold", Message: "must be between 0 and 1"})
+			}
+		} else if dim.PassThreshold != nil {
+			if *dim.PassThreshold < 0 || *dim.PassThreshold > 1 {
+				errs = append(errs, ValidationError{Field: path + ".pass_threshold", Message: "must be between 0 and 1"})
+			}
+		}
+	}
+
+	if spec.Scorecard.Strategy == ScoringStrategyHybrid {
+		hasGate := false
+		for _, dim := range spec.Scorecard.Dimensions {
+			if dim.Gate {
+				hasGate = true
+				break
+			}
+		}
+		if !hasGate {
+			errs = append(errs, ValidationError{Field: "evaluation_spec.scorecard.strategy", Message: "hybrid strategy requires at least one gated dimension"})
+		}
 	}
 
 	if len(errs) > 0 {
@@ -236,6 +267,10 @@ func normalizeEvaluationSpec(spec *EvaluationSpec) {
 	spec.Metrics = append([]MetricDeclaration(nil), spec.Metrics...)
 	spec.Pricing.Models = append([]ModelPricing(nil), spec.Pricing.Models...)
 	spec.Scorecard.Dimensions = append([]DimensionDeclaration(nil), spec.Scorecard.Dimensions...)
+
+	if spec.Scorecard.Strategy == "" {
+		spec.Scorecard.Strategy = ScoringStrategyWeighted
+	}
 
 	for i := range spec.Validators {
 		spec.Validators[i].Key = strings.TrimSpace(spec.Validators[i].Key)

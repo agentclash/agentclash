@@ -87,6 +87,7 @@ type runScorecardEvidenceQuality struct {
 type scoredRunAgent struct {
 	runAgent         domain.RunAgent
 	scorecard        RunAgentScorecard
+	overallScore     *float64
 	correctnessScore *float64
 	reliabilityScore *float64
 }
@@ -204,6 +205,7 @@ func buildRunScorecardDocument(
 			scoredAgents = append(scoredAgents, scoredRunAgent{
 				runAgent:         participant.runAgent,
 				scorecard:        *participant.scorecard,
+				overallScore:     cloneFloat64Ptr(participant.scorecard.OverallScore),
 				correctnessScore: availableDimensionScore(participant.scorecard.CorrectnessScore, participant.document.Dimensions["correctness"]),
 				reliabilityScore: availableDimensionScore(participant.scorecard.ReliabilityScore, participant.document.Dimensions["reliability"]),
 			})
@@ -246,20 +248,75 @@ func buildRunScorecardDocument(
 }
 
 func determineRunWinner(participants []runScorecardParticipant, scoredAgents []scoredRunAgent) (*uuid.UUID, runScorecardWinnerSummary) {
-	summary := runScorecardWinnerSummary{
-		Strategy: "correctness_then_reliability",
-	}
-
 	if len(participants) == 1 {
 		winner := participants[0].runAgent.ID
-		summary.Status = "winner"
-		summary.ReasonCode = "single_agent_trivial_winner"
-		return &winner, summary
+		return &winner, runScorecardWinnerSummary{
+			Strategy:   "overall_score",
+			Status:     "winner",
+			ReasonCode: "single_agent_trivial_winner",
+		}
 	}
 	if len(scoredAgents) == 0 {
-		summary.Status = "inconclusive"
-		summary.ReasonCode = "no_scored_agents"
-		return nil, summary
+		return nil, runScorecardWinnerSummary{
+			Strategy:   "overall_score",
+			Status:     "inconclusive",
+			ReasonCode: "no_scored_agents",
+		}
+	}
+
+	// Prefer the strategy-aware overall score when any participant carries one.
+	// Mixed runs (some overall, some legacy) fall back to legacy so agents are
+	// compared on a single consistent axis.
+	hasOverall := false
+	allHaveOverall := true
+	for _, agent := range scoredAgents {
+		if agent.overallScore != nil {
+			hasOverall = true
+		} else {
+			allHaveOverall = false
+		}
+	}
+	if hasOverall && allHaveOverall {
+		if winner, summary, decided := winnerByOverallScore(scoredAgents); decided {
+			return winner, summary
+		}
+	}
+
+	return winnerByLegacyCorrectnessReliability(scoredAgents)
+}
+
+// winnerByOverallScore picks the agent with the highest overall_score. When
+// two or more tie exactly, falls through so legacy tiebreakers can decide.
+// Returns decided=false when the overall-score path cannot conclude.
+func winnerByOverallScore(scoredAgents []scoredRunAgent) (*uuid.UUID, runScorecardWinnerSummary, bool) {
+	summary := runScorecardWinnerSummary{Strategy: "overall_score"}
+
+	best := highestAgentsByScore(scoredAgents, func(agent scoredRunAgent) *float64 { return agent.overallScore })
+	if len(best) == 0 {
+		return nil, summary, false
+	}
+	if len(best) == 1 {
+		winner := best[0].runAgent.ID
+		summary.Status = "winner"
+		summary.ReasonCode = "best_overall_score"
+		return &winner, summary, true
+	}
+	// Tied on overall_score — try legacy tiebreakers over the tied subset.
+	tiebreak := highestAgentsByScore(best, func(agent scoredRunAgent) *float64 { return agent.reliabilityScore })
+	if len(tiebreak) == 1 {
+		winner := tiebreak[0].runAgent.ID
+		summary.Status = "winner"
+		summary.ReasonCode = "overall_score_reliability_tiebreaker"
+		return &winner, summary, true
+	}
+	summary.Status = "tie"
+	summary.ReasonCode = "overall_score_tie"
+	return nil, summary, true
+}
+
+func winnerByLegacyCorrectnessReliability(scoredAgents []scoredRunAgent) (*uuid.UUID, runScorecardWinnerSummary) {
+	summary := runScorecardWinnerSummary{
+		Strategy: "correctness_then_reliability",
 	}
 
 	bestCorrectness := highestAgentsByScore(scoredAgents, func(agent scoredRunAgent) *float64 { return agent.correctnessScore })

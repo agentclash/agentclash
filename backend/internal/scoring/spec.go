@@ -50,6 +50,32 @@ const (
 	DimensionSourceCost        DimensionSource = "cost"
 )
 
+// ScoringStrategy controls how per-dimension scores combine into a single
+// overall score and pass/fail verdict.
+//
+//   - weighted: weighted average of available dimension scores; passed is true
+//     iff every gated dimension (if any) clears its pass_threshold.
+//   - binary:   every dimension is an implicit gate; overall score is 1.0 iff
+//     all dims clear their pass_threshold, else 0.0.
+//   - hybrid:   weighted average like weighted, but any gate failure forces
+//     overall score to 0 and passed to false.
+type ScoringStrategy string
+
+const (
+	ScoringStrategyWeighted ScoringStrategy = "weighted"
+	ScoringStrategyBinary   ScoringStrategy = "binary"
+	ScoringStrategyHybrid   ScoringStrategy = "hybrid"
+)
+
+func (s ScoringStrategy) IsValid() bool {
+	switch s {
+	case ScoringStrategyWeighted, ScoringStrategyBinary, ScoringStrategyHybrid:
+		return true
+	default:
+		return false
+	}
+}
+
 // DimensionDeclaration describes a single scoring dimension. It supports both
 // the old string format ("correctness") and the new object format with explicit
 // source routing. When unmarshalled from a plain string, only Key is populated;
@@ -62,6 +88,13 @@ type DimensionDeclaration struct {
 	BetterDirection string                  `json:"better_direction,omitempty"`
 	Normalization   *DimensionNormalization `json:"normalization,omitempty"`
 	Weight          *float64                `json:"weight,omitempty"`
+	// Gate marks a dimension as a hard pass/fail requirement. In the hybrid
+	// strategy a gate failure forces overall=0 and passed=false. In the binary
+	// strategy every dimension is implicitly gated regardless of this flag.
+	Gate bool `json:"gate,omitempty"`
+	// PassThreshold is the score (0..1) a dimension must meet to pass its gate.
+	// Required when Gate is true or when strategy is binary.
+	PassThreshold *float64 `json:"pass_threshold,omitempty"`
 }
 
 // UnmarshalJSON handles both the legacy string format ("correctness") and
@@ -117,6 +150,7 @@ type MetricDeclaration struct {
 type ScorecardDeclaration struct {
 	Dimensions    []DimensionDeclaration `json:"dimensions"`
 	Normalization ScorecardNormalization `json:"normalization,omitempty"`
+	Strategy      ScoringStrategy        `json:"strategy,omitempty"`
 }
 
 type RuntimeLimits struct {
