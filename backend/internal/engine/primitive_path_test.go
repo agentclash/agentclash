@@ -94,7 +94,9 @@ func TestListFiles_RejectsPathTraversal(t *testing.T) {
 
 func TestReadFile_AllowsValidAbsolutePath(t *testing.T) {
 	session := sandbox.NewFakeSession("path-test")
-	session.WriteFile(t.Context(), "/workspace/main.go", []byte("package main"))
+	if err := session.WriteFile(t.Context(), "/workspace/main.go", []byte("package main")); err != nil {
+		t.Fatalf("setup: WriteFile failed: %v", err)
+	}
 	result, err := executeReadFileTool(t.Context(), ToolExecutionRequest{
 		Args:       json.RawMessage(`{"path":"/workspace/main.go"}`),
 		Session:    session,
@@ -110,7 +112,9 @@ func TestReadFile_AllowsValidAbsolutePath(t *testing.T) {
 
 func TestReadFile_AllowsRelativePath(t *testing.T) {
 	session := sandbox.NewFakeSession("path-test")
-	session.WriteFile(t.Context(), "/workspace/main.go", []byte("package main"))
+	if err := session.WriteFile(t.Context(), "/workspace/main.go", []byte("package main")); err != nil {
+		t.Fatalf("setup: WriteFile failed: %v", err)
+	}
 	result, err := executeReadFileTool(t.Context(), ToolExecutionRequest{
 		Args:       json.RawMessage(`{"path":"main.go"}`),
 		Session:    session,

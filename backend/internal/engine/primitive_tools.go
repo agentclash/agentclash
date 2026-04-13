@@ -286,6 +286,11 @@ func executeSearchFilesTool(ctx context.Context, request ToolExecutionRequest) (
 	if searchPath == "" {
 		searchPath = defaultSandboxWorkingDirectory
 	}
+	if safePath, err := validateSandboxPath(searchPath); err != nil {
+		return ToolExecutionResult{Content: encodeToolErrorMessage(err.Error()), IsError: true}, nil
+	} else {
+		searchPath = safePath
+	}
 	maxResults := args.MaxResults
 	if maxResults <= 0 {
 		maxResults = 100
@@ -349,6 +354,11 @@ func executeSearchTextTool(ctx context.Context, request ToolExecutionRequest) (T
 	if searchPath == "" {
 		searchPath = defaultSandboxWorkingDirectory
 	}
+	safePath, err := validateSandboxPath(searchPath)
+	if err != nil {
+		return ToolExecutionResult{Content: encodeToolErrorMessage(err.Error()), IsError: true}, nil
+	}
+	searchPath = safePath
 	maxResults := args.MaxResults
 	if maxResults <= 0 {
 		maxResults = 200

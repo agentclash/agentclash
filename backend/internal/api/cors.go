@@ -36,7 +36,7 @@ func newCORSMiddleware(authMode string, allowedOrigins map[string]struct{}) func
 			} else if origin != "" {
 				if _, ok := allowedOrigins[origin]; ok {
 					w.Header().Set("Access-Control-Allow-Origin", origin)
-					w.Header().Set("Vary", "Origin")
+					w.Header().Add("Vary", "Origin")
 				}
 			}
 
