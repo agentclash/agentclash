@@ -55,10 +55,8 @@ interface MetricDeclaration {
   unit?: string;
 }
 
-interface ScorecardDimension {
-  name: ScorecardDimensionName;
-  weight?: number;
-}
+// Backend ScorecardDimension is a plain string, not an object.
+type ScorecardDimension = ScorecardDimensionName;
 
 interface LatencyNormalization {
   target_ms?: number;
@@ -76,7 +74,7 @@ interface ScorecardNormalization {
 }
 
 interface ScorecardDeclaration {
-  dimensions: ScorecardDimension[];
+  dimensions: ScorecardDimensionName[];
   normalization?: ScorecardNormalization;
 }
 
@@ -174,11 +172,7 @@ function makeBasicPreset(): Omit<EvaluationSpec, "name" | "version_number" | "ju
       { key: "run_model_cost_usd", type: "numeric", collector: "run_model_cost_usd", unit: "USD" },
     ],
     scorecard: {
-      dimensions: [
-        { name: "correctness" },
-        { name: "latency" },
-        { name: "cost" },
-      ],
+      dimensions: ["correctness", "latency", "cost"],
     },
   };
 }
@@ -200,7 +194,7 @@ function makeStrictPreset(): Omit<EvaluationSpec, "name" | "version_number" | "j
       unit: c.unit,
     })),
     scorecard: {
-      dimensions: ALL_DIMENSIONS.map((name) => ({ name })),
+      dimensions: [...ALL_DIMENSIONS],
     },
   };
 }
@@ -249,8 +243,9 @@ function parseIncoming(value: unknown): FormState {
   const dims = new Set<ScorecardDimensionName>();
   if (spec.scorecard?.dimensions) {
     for (const d of spec.scorecard.dimensions) {
-      if (ALL_DIMENSIONS.includes(d.name)) {
-        dims.add(d.name);
+      const name = (typeof d === "string" ? d : (d as { name: string }).name) as ScorecardDimensionName;
+      if (ALL_DIMENSIONS.includes(name)) {
+        dims.add(name);
       }
     }
   }
@@ -271,9 +266,9 @@ function parseIncoming(value: unknown): FormState {
 }
 
 function formToSpec(state: FormState): EvaluationSpec {
-  const dimensions: ScorecardDimension[] = ALL_DIMENSIONS.filter((d) =>
+  const dimensions: ScorecardDimensionName[] = ALL_DIMENSIONS.filter((d) =>
     state.enabledDimensions.has(d)
-  ).map((name) => ({ name }));
+  );
 
   const normalization: ScorecardNormalization = {};
 
@@ -349,7 +344,7 @@ export function EvalSpecBuilder({ value, onChange }: EvalSpecBuilderProps) {
       ...form,
       validators: template.validators,
       metrics: template.metrics,
-      enabledDimensions: new Set(template.scorecard.dimensions.map((d) => d.name)),
+      enabledDimensions: new Set(template.scorecard.dimensions),
       latencyTargetMs: "",
       latencyMaxMs: "",
       costTargetUsd: "",
@@ -527,6 +522,14 @@ export function EvalSpecBuilder({ value, onChange }: EvalSpecBuilderProps) {
           </p>
         )}
 
+        {form.validators.length > 0 && (
+          <div className="hidden sm:flex items-center gap-3 px-3 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+            <span className="shrink-0 w-20">Key</span>
+            <span className="w-40">Type</span>
+            <span className="w-40">Checks</span>
+            <span className="flex-1">Compare Against (test case expectation field)</span>
+          </div>
+        )}
         <div className="space-y-3">
           {form.validators.map((v, i) => (
             <div
@@ -581,9 +584,12 @@ export function EvalSpecBuilder({ value, onChange }: EvalSpecBuilderProps) {
                   <Input
                     value={v.expected_from}
                     onChange={(e) => updateValidator(i, { expected_from: e.target.value })}
-                    placeholder="e.g. case.expectations.expected_output"
+                    placeholder="case.expectations.expected_output"
                     className="text-xs"
                   />
+                  <p className="mt-1 text-[10px] text-muted-foreground">
+                    Path to expected value in your test case, e.g. <code className="font-mono">case.expectations.your_field</code>
+                  </p>
                 </div>
               </div>
 
