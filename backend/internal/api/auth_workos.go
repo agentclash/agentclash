@@ -193,6 +193,20 @@ func (a *WorkOSAuthenticator) resolveUser(ctx context.Context, workosUserID, ema
 		Email:        email,
 	})
 	if err != nil {
+		// If creation failed because the email already exists, the user's WorkOS
+		// identity likely changed (re-provisioned account, different auth method).
+		// Link the new WorkOS ID to the existing account.
+		if errors.Is(err, repository.ErrUserAlreadyExists) && email != "" {
+			existing, lookupErr := a.repo.GetUserByEmail(ctx, email)
+			if lookupErr != nil {
+				return repository.User{}, fmt.Errorf("auto-create user: %w", err)
+			}
+			linked, linkErr := a.repo.LinkWorkOSUser(ctx, existing.ID, workosUserID)
+			if linkErr != nil {
+				return repository.User{}, fmt.Errorf("link workos user after conflict: %w", linkErr)
+			}
+			return linked, nil
+		}
 		return repository.User{}, fmt.Errorf("auto-create user: %w", err)
 	}
 	return user, nil
