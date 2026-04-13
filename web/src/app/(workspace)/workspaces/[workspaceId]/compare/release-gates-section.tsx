@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
 import { createApiClient } from "@/lib/api/client";
 import type {
@@ -9,7 +9,6 @@ import type {
   ListReleaseGatesResponse,
 } from "@/lib/api/types";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import {
   ShieldCheck,
   ShieldAlert,
@@ -173,36 +172,38 @@ export function ReleaseGatesSection({
   const { getAccessToken } = useAccessToken();
   const [gates, setGates] = useState<ReleaseGate[]>([]);
   const [loading, setLoading] = useState(true);
-  const [fetchKey, setFetchKey] = useState(0);
-
-  const fetchGates = useCallback(async () => {
-    setLoading(true);
-    try {
-      const token = await getAccessToken();
-      const api = createApiClient(token);
-      const res = await api.get<ListReleaseGatesResponse>(
-        "/v1/release-gates",
-        {
-          params: {
-            baseline_run_id: baselineRunId,
-            candidate_run_id: candidateRunId,
-          },
-        },
-      );
-      setGates(res.release_gates ?? []);
-    } catch {
-      // Gates are supplementary — silently fail
-    } finally {
-      setLoading(false);
-    }
-  }, [getAccessToken, baselineRunId, candidateRunId, fetchKey]);
+  const [refreshCounter, setRefreshCounter] = useState(0);
 
   useEffect(() => {
-    fetchGates();
-  }, [fetchGates]);
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      try {
+        const token = await getAccessToken();
+        const api = createApiClient(token);
+        const res = await api.get<ListReleaseGatesResponse>(
+          "/v1/release-gates",
+          {
+            params: {
+              baseline_run_id: baselineRunId,
+              candidate_run_id: candidateRunId,
+            },
+          },
+        );
+        if (!cancelled) setGates(res.release_gates ?? []);
+      } catch {
+        // Gates are supplementary — silently fail
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [getAccessToken, baselineRunId, candidateRunId, refreshCounter]);
 
   function handleEvaluated() {
-    setFetchKey((k) => k + 1);
+    setRefreshCounter((c) => c + 1);
   }
 
   return (
