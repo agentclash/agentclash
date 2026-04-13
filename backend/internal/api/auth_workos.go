@@ -281,6 +281,15 @@ func (a *WorkOSAuthenticator) resolveUser(ctx context.Context, workosUserID, ema
 			}
 		}
 
+		// Email-based recovery didn't work (or email was empty). The conflict
+		// is likely on workos_user_id from a race condition: another request
+		// created the user between our Step 1 lookup and this INSERT.
+		retried, retryErr := a.repo.GetUserByWorkOSID(ctx, workosUserID)
+		if retryErr == nil {
+			log.InfoContext(ctx, "resolve_user: found user on retry after conflict", "user_id", retried.ID)
+			return retried, nil
+		}
+
 		log.ErrorContext(ctx, "resolve_user: constraint conflict, recovery failed",
 			"original_create_error", err)
 		return repository.User{}, fmt.Errorf("auto-create user: %w", err)

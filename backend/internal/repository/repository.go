@@ -1972,12 +1972,13 @@ func (r *Repository) GetActiveOrganizationMembershipsByUserID(ctx context.Contex
 }
 
 func (r *Repository) CreateUser(ctx context.Context, input CreateUserInput) (User, error) {
+	email := strings.TrimSpace(input.Email)
 	var user User
 	err := r.db.QueryRow(ctx, `
 		INSERT INTO users (id, workos_user_id, email, display_name)
 		VALUES (gen_random_uuid(), $1, $2, $3)
 		RETURNING id, workos_user_id, email, COALESCE(display_name, '')
-	`, input.WorkOSUserID, input.Email, input.DisplayName).Scan(
+	`, input.WorkOSUserID, email, input.DisplayName).Scan(
 		&user.ID, &user.WorkOSUserID, &user.Email, &user.DisplayName,
 	)
 	if err != nil {
