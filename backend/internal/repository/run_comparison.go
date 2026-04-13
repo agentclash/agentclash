@@ -417,12 +417,13 @@ func buildComparableRunComparisonSummary(
 	}
 
 	missingFields := make([]string, 0)
-	dimensionDeltas := map[string]runComparisonDelta{
-		"correctness": buildDimensionDelta("higher", baseline.scorecard.CorrectnessScore, candidate.scorecard.CorrectnessScore, baselineScorecardDoc.Dimensions["correctness"], candidateScorecardDoc.Dimensions["correctness"], &missingFields, "dimension_deltas.correctness"),
-		"latency":     buildDimensionDelta("lower", baseline.scorecard.LatencyScore, candidate.scorecard.LatencyScore, baselineScorecardDoc.Dimensions["latency"], candidateScorecardDoc.Dimensions["latency"], &missingFields, "dimension_deltas.latency"),
-		"cost":        buildDimensionDelta("lower", baseline.scorecard.CostScore, candidate.scorecard.CostScore, baselineScorecardDoc.Dimensions["cost"], candidateScorecardDoc.Dimensions["cost"], &missingFields, "dimension_deltas.cost"),
-		"reliability": buildDimensionDelta("higher", baseline.scorecard.ReliabilityScore, candidate.scorecard.ReliabilityScore, baselineScorecardDoc.Dimensions["reliability"], candidateScorecardDoc.Dimensions["reliability"], &missingFields, "dimension_deltas.reliability"),
-	}
+	dimensionDeltas := buildRunComparisonDimensionDeltas(
+		&baseline.scorecard,
+		&candidate.scorecard,
+		baselineScorecardDoc.Dimensions,
+		candidateScorecardDoc.Dimensions,
+		&missingFields,
+	)
 
 	replayDivergence, replayWarnings, replayMissing, err := buildReplaySummaryDivergence(baseline.replay, candidate.replay)
 	if err != nil {
@@ -475,12 +476,108 @@ func buildComparableRunComparisonSummary(
 	return encoded, fingerprint, nil
 }
 
+// buildRunComparisonDimensionDeltas walks the union of dimension keys that
+// appear in either participant's scorecard JSONB and emits one delta per key.
+// Built-in dims fall back to their typed scorecard columns so legacy
+// comparisons keep working even if the JSONB lacks a score. Direction is
+// sourced from the JSONB first, with legacyDimensionDirection as a backstop
+// for pre-Phase-3 rows.
+func buildRunComparisonDimensionDeltas(
+	baselineScorecard *RunAgentScorecard,
+	candidateScorecard *RunAgentScorecard,
+	baselineDimensions map[string]comparisonScorecardDimensionInfo,
+	candidateDimensions map[string]comparisonScorecardDimensionInfo,
+	missingFields *[]string,
+) map[string]runComparisonDelta {
+	keys := make([]string, 0, len(baselineDimensions)+len(candidateDimensions))
+	seen := make(map[string]struct{}, len(baselineDimensions)+len(candidateDimensions))
+	for key := range baselineDimensions {
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		keys = append(keys, key)
+	}
+	for key := range candidateDimensions {
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	deltas := make(map[string]runComparisonDelta, len(keys))
+	for _, key := range keys {
+		baselineInfo, baselinePresent := baselineDimensions[key]
+		candidateInfo, candidatePresent := candidateDimensions[key]
+		direction := baselineInfo.BetterDirection
+		if direction == "" {
+			direction = candidateInfo.BetterDirection
+		}
+		if direction == "" {
+			direction = legacyDimensionDirection(key)
+		}
+		baselineValue := comparisonDimensionScore(key, baselineInfo, baselinePresent, baselineScorecard)
+		candidateValue := comparisonDimensionScore(key, candidateInfo, candidatePresent, candidateScorecard)
+		deltas[key] = buildDimensionDelta(
+			direction,
+			baselineValue,
+			candidateValue,
+			baselineInfo,
+			candidateInfo,
+			baselinePresent,
+			candidatePresent,
+			missingFields,
+			"dimension_deltas."+key,
+		)
+	}
+	return deltas
+}
+
+// comparisonDimensionScore prefers the typed scorecard column for built-in
+// dimensions (so legacy rows without per-dim JSONB score still compare
+// correctly) and falls through to the JSONB score for everything else.
+func comparisonDimensionScore(
+	key string,
+	info comparisonScorecardDimensionInfo,
+	present bool,
+	scorecard *RunAgentScorecard,
+) *float64 {
+	if scorecard != nil {
+		switch key {
+		case "correctness":
+			if scorecard.CorrectnessScore != nil {
+				return scorecard.CorrectnessScore
+			}
+		case "reliability":
+			if scorecard.ReliabilityScore != nil {
+				return scorecard.ReliabilityScore
+			}
+		case "latency":
+			if scorecard.LatencyScore != nil {
+				return scorecard.LatencyScore
+			}
+		case "cost":
+			if scorecard.CostScore != nil {
+				return scorecard.CostScore
+			}
+		}
+	}
+	if present {
+		return info.Score
+	}
+	return nil
+}
+
 func buildDimensionDelta(
 	betterDirection string,
 	baselineValue *float64,
 	candidateValue *float64,
 	baselineDimension comparisonScorecardDimensionInfo,
 	candidateDimension comparisonScorecardDimensionInfo,
+	baselinePresent bool,
+	candidatePresent bool,
 	missingFields *[]string,
 	field string,
 ) runComparisonDelta {
@@ -488,6 +585,12 @@ func buildDimensionDelta(
 	switch {
 	case baselineDimension.State == "error" || candidateDimension.State == "error":
 		state = "error"
+	case !baselinePresent && !candidatePresent:
+		state = "unavailable"
+	case !baselinePresent:
+		state = "missing_baseline"
+	case !candidatePresent:
+		state = "missing_candidate"
 	case baselineDimension.State == "" || candidateDimension.State == "" ||
 		baselineDimension.State == "unavailable" || candidateDimension.State == "unavailable" ||
 		baselineValue == nil || candidateValue == nil:

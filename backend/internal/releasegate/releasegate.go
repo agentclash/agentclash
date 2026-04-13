@@ -239,22 +239,30 @@ func Evaluate(summary ComparisonSummary, policy Policy) (Evaluation, error) {
 		}, nil
 	}
 
+	missingRequired := make([]string, 0, len(normalized.RequiredDimensions))
 	for _, dimension := range normalized.RequiredDimensions {
 		delta, ok := summary.DimensionDeltas[dimension]
 		if !ok || delta.State != "available" || delta.Delta == nil {
-			details.TriggeredConditions = []string{"required_dimension_unavailable"}
+			missingRequired = append(missingRequired, dimension)
 			details.DimensionResults[dimension] = DimensionEvaluation{
 				State:   delta.State,
 				Outcome: string(VerdictInsufficientEvidence),
 			}
-			return Evaluation{
-				Verdict:        VerdictInsufficientEvidence,
-				ReasonCode:     "required_dimension_unavailable",
-				Summary:        fmt.Sprintf("required comparison dimension %s is unavailable", dimension),
-				EvidenceStatus: EvidenceStatusInsufficient,
-				Details:        details,
-			}, nil
 		}
+	}
+	if len(missingRequired) > 0 {
+		triggers := make([]string, 0, len(missingRequired))
+		for _, dimension := range missingRequired {
+			triggers = append(triggers, "required_dimension_unavailable:"+dimension)
+		}
+		details.TriggeredConditions = triggers
+		return Evaluation{
+			Verdict:        VerdictInsufficientEvidence,
+			ReasonCode:     "required_dimension_unavailable",
+			Summary:        fmt.Sprintf("required comparison dimensions unavailable: %s", strings.Join(missingRequired, ", ")),
+			EvidenceStatus: EvidenceStatusInsufficient,
+			Details:        details,
+		}, nil
 	}
 
 	failReasons := make([]string, 0, 4)
