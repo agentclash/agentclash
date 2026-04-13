@@ -121,6 +121,17 @@ func (b *BufferedObserver) OnStepEnd(ctx context.Context, step int) error {
 	return nil
 }
 
+func (b *BufferedObserver) OnPostExecutionVerification(ctx context.Context, results []engine.PostExecutionVerificationResult) error {
+	if err := b.checkBgError(); err != nil {
+		return err
+	}
+	bgCtx := context.WithoutCancel(ctx)
+	b.enqueue(func() error {
+		return b.inner.OnPostExecutionVerification(bgCtx, results)
+	})
+	return nil
+}
+
 // --- Terminal methods: flush then delegate synchronously ---
 
 func (b *BufferedObserver) OnRunComplete(ctx context.Context, result engine.Result) error {

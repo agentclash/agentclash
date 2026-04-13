@@ -59,6 +59,10 @@ func (o *recordingObserver) OnStepEnd(_ context.Context, _ int) error {
 	o.record("OnStepEnd")
 	return nil
 }
+func (o *recordingObserver) OnPostExecutionVerification(_ context.Context, _ []engine.PostExecutionVerificationResult) error {
+	o.record("OnPostExecutionVerification")
+	return nil
+}
 func (o *recordingObserver) OnRunComplete(_ context.Context, _ engine.Result) error {
 	o.record("OnRunComplete")
 	return nil

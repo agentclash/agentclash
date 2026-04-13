@@ -209,6 +209,36 @@ func (o *NativeRunEventObserver) OnStepEnd(ctx context.Context, step int) error 
 	})
 }
 
+func (o *NativeRunEventObserver) OnPostExecutionVerification(ctx context.Context, results []engine.PostExecutionVerificationResult) error {
+	if err := o.ensureRunStarted(ctx); err != nil {
+		return err
+	}
+	for _, result := range results {
+		var eventType runevents.Type
+		switch result.Type {
+		case "file_capture":
+			eventType = runevents.EventTypeGraderVerificationFileCaptured
+		case "directory_listing":
+			eventType = runevents.EventTypeGraderVerificationDirectoryListed
+		default:
+			continue
+		}
+
+		payload := make(map[string]any)
+		if len(result.Payload) > 0 {
+			_ = json.Unmarshal(result.Payload, &payload)
+		}
+		if err := o.recordEvent(ctx, eventType, payload, runevents.SummaryMetadata{
+			Status:        "captured",
+			StepIndex:     o.currentStep(),
+			EvidenceLevel: runevents.EvidenceLevelNativeStructured,
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (o *NativeRunEventObserver) OnRunComplete(ctx context.Context, result engine.Result) error {
 	if err := o.ensureRunStarted(ctx); err != nil {
 		return err

@@ -1,6 +1,7 @@
 package scoring
 
 import (
+	"encoding/json"
 	"sort"
 	"time"
 
@@ -25,6 +26,8 @@ type extractedEvidence struct {
 	modelUsage                []pricedUsage
 	observedModels            []modelRef
 	stepDurations             []stepDurationEvidence
+	capturedFiles             map[string]FileCaptureResult
+	capturedDirListings       map[string]DirectoryListingResult
 	warnings                  []string
 }
 
@@ -146,6 +149,22 @@ func buildEvidence(challengeInputs []EvidenceInput, events []Event) extractedEvi
 				totalFromCalls += value
 				usageFromCalls = true
 				addModelUsage(usageByModel, providerKey, providerModelID, "total_tokens", value)
+			}
+		case "grader.verification.file_captured":
+			var capture FileCaptureResult
+			if err := json.Unmarshal(event.Payload, &capture); err == nil && capture.Key != "" {
+				if evidence.capturedFiles == nil {
+					evidence.capturedFiles = make(map[string]FileCaptureResult)
+				}
+				evidence.capturedFiles[capture.Key] = capture
+			}
+		case "grader.verification.directory_listed":
+			var listing DirectoryListingResult
+			if err := json.Unmarshal(event.Payload, &listing); err == nil && listing.Key != "" {
+				if evidence.capturedDirListings == nil {
+					evidence.capturedDirListings = make(map[string]DirectoryListingResult)
+				}
+				evidence.capturedDirListings[listing.Key] = listing
 			}
 		case "model.call.started":
 			providerKey, _ := stringValue(payload, "provider_key")

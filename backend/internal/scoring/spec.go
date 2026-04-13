@@ -23,6 +23,11 @@ const (
 	ValidatorTypeFuzzyMatch      ValidatorType = "fuzzy_match"
 	ValidatorTypeNumericMatch    ValidatorType = "numeric_match"
 	ValidatorTypeNormalizedMatch ValidatorType = "normalized_match"
+
+	ValidatorTypeFileContentMatch   ValidatorType = "file_content_match"
+	ValidatorTypeFileExists         ValidatorType = "file_exists"
+	ValidatorTypeFileJSONSchema     ValidatorType = "file_json_schema"
+	ValidatorTypeDirectoryStructure ValidatorType = "directory_structure"
 )
 
 type MetricType string
@@ -127,21 +132,22 @@ type DimensionNormalization struct {
 }
 
 type EvaluationSpec struct {
-	Name          string                 `json:"name"`
-	VersionNumber int32                  `json:"version_number"`
-	JudgeMode     JudgeMode              `json:"judge_mode"`
-	Validators    []ValidatorDeclaration `json:"validators"`
-	Metrics       []MetricDeclaration    `json:"metrics"`
-	RuntimeLimits RuntimeLimits          `json:"runtime_limits,omitempty"`
-	Pricing       PricingConfig          `json:"pricing,omitempty"`
-	Scorecard     ScorecardDeclaration   `json:"scorecard"`
+	Name                string                 `json:"name"`
+	VersionNumber       int32                  `json:"version_number"`
+	JudgeMode           JudgeMode              `json:"judge_mode"`
+	Validators          []ValidatorDeclaration `json:"validators"`
+	Metrics             []MetricDeclaration    `json:"metrics"`
+	PostExecutionChecks []PostExecutionCheck   `json:"post_execution_checks,omitempty"`
+	RuntimeLimits       RuntimeLimits          `json:"runtime_limits,omitempty"`
+	Pricing             PricingConfig          `json:"pricing,omitempty"`
+	Scorecard           ScorecardDeclaration   `json:"scorecard"`
 }
 
 type ValidatorDeclaration struct {
 	Key          string          `json:"key"`
 	Type         ValidatorType   `json:"type"`
 	Target       string          `json:"target"`
-	ExpectedFrom string          `json:"expected_from"`
+	ExpectedFrom string          `json:"expected_from,omitempty"`
 	Config       json.RawMessage `json:"config,omitempty"`
 }
 
@@ -204,11 +210,38 @@ func (m JudgeMode) IsValid() bool {
 
 func (t ValidatorType) IsValid() bool {
 	switch t {
-	case ValidatorTypeExactMatch, ValidatorTypeContains, ValidatorTypeRegexMatch, ValidatorTypeJSONSchema, ValidatorTypeJSONPathMatch, ValidatorTypeBooleanAssert,
-		ValidatorTypeFuzzyMatch, ValidatorTypeNumericMatch, ValidatorTypeNormalizedMatch:
+	case ValidatorTypeExactMatch, ValidatorTypeContains, ValidatorTypeRegexMatch,
+		ValidatorTypeJSONSchema, ValidatorTypeJSONPathMatch, ValidatorTypeBooleanAssert,
+		ValidatorTypeFuzzyMatch, ValidatorTypeNumericMatch, ValidatorTypeNormalizedMatch,
+		ValidatorTypeFileContentMatch, ValidatorTypeFileExists,
+		ValidatorTypeFileJSONSchema, ValidatorTypeDirectoryStructure:
 		return true
 	default:
 		return false
+	}
+}
+
+// IsFileValidator returns true for validator types that operate on captured
+// sandbox file/directory evidence rather than the agent's final output.
+func (t ValidatorType) IsFileValidator() bool {
+	switch t {
+	case ValidatorTypeFileContentMatch, ValidatorTypeFileExists,
+		ValidatorTypeFileJSONSchema, ValidatorTypeDirectoryStructure:
+		return true
+	default:
+		return false
+	}
+}
+
+// RequiresExpectedFrom returns true for validator types that need a non-empty
+// expected_from field. File validators that use config-only expectations
+// (file_exists, file_json_schema, directory_structure) return false.
+func (t ValidatorType) RequiresExpectedFrom() bool {
+	switch t {
+	case ValidatorTypeFileExists, ValidatorTypeFileJSONSchema, ValidatorTypeDirectoryStructure:
+		return false
+	default:
+		return true
 	}
 }
 

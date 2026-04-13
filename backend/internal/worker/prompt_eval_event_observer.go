@@ -126,6 +126,10 @@ func (o *PromptEvalRunEventObserver) OnStepEnd(context.Context, int) error {
 	return nil
 }
 
+func (o *PromptEvalRunEventObserver) OnPostExecutionVerification(context.Context, []engine.PostExecutionVerificationResult) error {
+	return nil
+}
+
 func (o *PromptEvalRunEventObserver) OnRunComplete(ctx context.Context, result engine.Result) error {
 	if err := o.ensureRunStarted(ctx); err != nil {
 		return err

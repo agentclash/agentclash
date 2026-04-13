@@ -37,6 +37,9 @@ func resolveEvidenceValue(source string, evidence extractedEvidence) (*string, *
 			return nil, evidence.challengeInputChallengeID, firstNonEmpty(evidence.caseInputReason, "case evidence is unavailable"), nil
 		}
 		return resolveArtifactEvidence(source, *evidence.caseInput)
+	case strings.HasPrefix(source, "file:"):
+		checkKey := strings.TrimPrefix(source, "file:")
+		return resolveFileCaptureEvidence(checkKey, evidence)
 	case strings.HasPrefix(source, "literal:"):
 		value := strings.TrimPrefix(source, "literal:")
 		return &value, nil, "", nil
@@ -250,4 +253,24 @@ func walkEvidenceValue(value any, segments []string) (any, bool) {
 		}
 	}
 	return current, true
+}
+
+// resolveFileCaptureEvidence looks up a captured file or directory listing by
+// its check key and returns the content as a string suitable for validators.
+func resolveFileCaptureEvidence(checkKey string, evidence extractedEvidence) (*string, *uuid.UUID, string, error) {
+	if capture, ok := evidence.capturedFiles[checkKey]; ok {
+		if !capture.Exists {
+			return nil, nil, fmt.Sprintf("captured file %q does not exist at path %q", checkKey, capture.Path), nil
+		}
+		return &capture.Content, nil, "", nil
+	}
+	if listing, ok := evidence.capturedDirListings[checkKey]; ok {
+		encoded, err := json.Marshal(listing)
+		if err != nil {
+			return nil, nil, "", fmt.Errorf("marshal directory listing evidence: %w", err)
+		}
+		value := string(encoded)
+		return &value, nil, "", nil
+	}
+	return nil, nil, fmt.Sprintf("file capture key %q is unavailable", checkKey), nil
 }
