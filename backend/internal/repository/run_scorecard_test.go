@@ -212,6 +212,102 @@ func TestBuildRunScorecardDocumentSelectsWinnerByOverallScore(t *testing.T) {
 	}
 }
 
+// Phase 3: custom user-declared dims must surface in dimension_deltas using
+// the direction persisted on the per-agent scorecard, not a hardcoded map of
+// legacy keys. A "safety" dim with better_direction=higher should rank the
+// agent with the higher score as the delta winner.
+func TestBuildRunScorecardDocumentEmitsCustomDimensionDelta(t *testing.T) {
+	runID := uuid.New()
+	evaluationSpecID := uuid.New()
+	winnerID := uuid.New()
+	loserID := uuid.New()
+
+	document, _, err := buildRunScorecardDocument(runID, evaluationSpecID, []runScorecardParticipant{
+		customDimScorecardParticipantFixture(0, "loser", loserID, evaluationSpecID, map[string]customDimFixture{
+			"safety": {score: 0.40, direction: "higher"},
+		}),
+		customDimScorecardParticipantFixture(1, "winner", winnerID, evaluationSpecID, map[string]customDimFixture{
+			"safety": {score: 0.90, direction: "higher"},
+		}),
+	}, nil)
+	if err != nil {
+		t.Fatalf("buildRunScorecardDocument returned error: %v", err)
+	}
+
+	var decoded runScorecardDocument
+	if err := json.Unmarshal(document, &decoded); err != nil {
+		t.Fatalf("unmarshal run scorecard document: %v", err)
+	}
+	delta, ok := decoded.DimensionDeltas["safety"]
+	if !ok {
+		t.Fatalf("dimension_deltas missing safety key; got keys = %v", decoded.DimensionDeltas)
+	}
+	if delta.BetterDirection != "higher" {
+		t.Fatalf("safety better_direction = %q, want higher", delta.BetterDirection)
+	}
+	if delta.WinnerValue == nil || math.Abs(*delta.WinnerValue-0.90) > 1e-9 {
+		t.Fatalf("safety winner_value = %v, want 0.90", delta.WinnerValue)
+	}
+	if delta.Delta == nil || math.Abs(*delta.Delta-0.50) > 1e-9 {
+		t.Fatalf("safety delta = %v, want 0.50", delta.Delta)
+	}
+}
+
+type customDimFixture struct {
+	score     float64
+	direction string
+}
+
+func customDimScorecardParticipantFixture(
+	laneIndex int32,
+	label string,
+	runAgentID uuid.UUID,
+	evaluationSpecID uuid.UUID,
+	dims map[string]customDimFixture,
+) runScorecardParticipant {
+	runAgent := domain.RunAgent{
+		ID:        runAgentID,
+		RunID:     uuid.New(),
+		LaneIndex: laneIndex,
+		Label:     label,
+		Status:    domain.RunAgentStatusCompleted,
+		CreatedAt: time.Now().UTC(),
+		UpdatedAt: time.Now().UTC(),
+	}
+	dimensionMap := make(map[string]any, len(dims))
+	for key, fixture := range dims {
+		dimensionMap[key] = map[string]any{
+			"state":            "available",
+			"score":            fixture.score,
+			"better_direction": fixture.direction,
+		}
+	}
+	payload, err := json.Marshal(map[string]any{
+		"status":     "complete",
+		"dimensions": dimensionMap,
+	})
+	if err != nil {
+		panic(err)
+	}
+	scorecard := RunAgentScorecard{
+		ID:               uuid.New(),
+		RunAgentID:       runAgentID,
+		EvaluationSpecID: evaluationSpecID,
+		Scorecard:        payload,
+		CreatedAt:        time.Now().UTC(),
+		UpdatedAt:        time.Now().UTC(),
+	}
+	doc, err := decodeComparisonScorecard(scorecard.Scorecard)
+	if err != nil {
+		panic(err)
+	}
+	return runScorecardParticipant{
+		runAgent:  runAgent,
+		scorecard: &scorecard,
+		document:  &doc,
+	}
+}
+
 func TestBuildRunScorecardDocumentFallsBackToLegacyWhenOverallScoreMissing(t *testing.T) {
 	runID := uuid.New()
 	evaluationSpecID := uuid.New()

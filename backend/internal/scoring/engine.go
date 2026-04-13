@@ -115,10 +115,11 @@ type MetricResult struct {
 }
 
 type DimensionResult struct {
-	Dimension string      `json:"dimension"`
-	Score     *float64    `json:"score,omitempty"`
-	State     OutputState `json:"state"`
-	Reason    string      `json:"reason,omitempty"`
+	Dimension       string      `json:"dimension"`
+	Score           *float64    `json:"score,omitempty"`
+	State           OutputState `json:"state"`
+	Reason          string      `json:"reason,omitempty"`
+	BetterDirection string      `json:"better_direction,omitempty"`
 }
 
 var errJudgeModeUnsupported = errors.New("only deterministic evaluation specs are supported")
@@ -795,7 +796,7 @@ func evaluateDimensions(spec EvaluationSpec, evidence extractedEvidence, validat
 	dimensions := spec.Scorecard.Dimensions
 	results := make([]DimensionResult, 0, len(dimensions))
 	for _, dim := range dimensions {
-		result := DimensionResult{Dimension: dim.Key}
+		result := DimensionResult{Dimension: dim.Key, BetterDirection: dim.BetterDirection}
 		var score *float64
 		var reason string
 		var state OutputState

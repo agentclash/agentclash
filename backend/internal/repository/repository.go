@@ -631,9 +631,10 @@ func (r *Repository) StoreRunAgentEvaluationResults(ctx context.Context, evaluat
 
 func buildRunAgentScorecardDocument(evaluation scoring.RunAgentEvaluation) (json.RawMessage, error) {
 	type dimensionSummary struct {
-		State  scoring.OutputState `json:"state"`
-		Score  *float64            `json:"score,omitempty"`
-		Reason string              `json:"reason,omitempty"`
+		State           scoring.OutputState `json:"state"`
+		Score           *float64            `json:"score,omitempty"`
+		Reason          string              `json:"reason,omitempty"`
+		BetterDirection string              `json:"better_direction,omitempty"`
 	}
 
 	type scorecardDocument struct {
@@ -653,9 +654,10 @@ func buildRunAgentScorecardDocument(evaluation scoring.RunAgentEvaluation) (json
 	dimensions := make(map[string]dimensionSummary, len(evaluation.DimensionResults))
 	for _, result := range evaluation.DimensionResults {
 		dimensions[string(result.Dimension)] = dimensionSummary{
-			State:  result.State,
-			Score:  cloneFloat64Ptr(result.Score),
-			Reason: result.Reason,
+			State:           result.State,
+			Score:           cloneFloat64Ptr(result.Score),
+			Reason:          result.Reason,
+			BetterDirection: result.BetterDirection,
 		}
 	}
 

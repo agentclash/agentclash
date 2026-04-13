@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -664,4 +665,224 @@ func float64PtrRunRankingTest(value float64) *float64 {
 
 func intPtrRunRankingTest(value int) *int {
 	return &value
+}
+
+func boolPtrRunRankingTest(value bool) *bool {
+	return &value
+}
+
+// Phase 3: custom sort key lookup. A user-declared dimension "safety" must be
+// accepted as sort_by and drive ordering via the JSONB score.
+func TestRunReadManagerGetRunRankingAcceptsCustomDimensionSortKey(t *testing.T) {
+	workspaceID := uuid.New()
+	runID := uuid.New()
+	winnerID := uuid.New()
+	loserID := uuid.New()
+
+	scorecardDocument, err := json.Marshal(runScorecardRankingDocument{
+		RunID:            runID,
+		EvaluationSpecID: uuid.New(),
+		Agents: []runRankingAgentDocument{
+			{
+				RunAgentID:       loserID,
+				LaneIndex:        0,
+				Label:            "Loser",
+				Status:           domain.RunAgentStatusCompleted,
+				HasScorecard:     true,
+				EvaluationStatus: "complete",
+				Dimensions: map[string]runRankingDimensionScorePayload{
+					"safety": {State: "available", Score: float64PtrRunRankingTest(0.40), BetterDirection: "higher"},
+				},
+			},
+			{
+				RunAgentID:       winnerID,
+				LaneIndex:        1,
+				Label:            "Winner",
+				Status:           domain.RunAgentStatusCompleted,
+				HasScorecard:     true,
+				EvaluationStatus: "complete",
+				Dimensions: map[string]runRankingDimensionScorePayload{
+					"safety": {State: "available", Score: float64PtrRunRankingTest(0.90), BetterDirection: "higher"},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal scorecard document: %v", err)
+	}
+
+	manager := NewRunReadManager(NewCallerWorkspaceAuthorizer(), &fakeRunReadRepository{
+		run: domain.Run{
+			ID:          runID,
+			WorkspaceID: workspaceID,
+			Status:      domain.RunStatusCompleted,
+		},
+		runScorecard: repository.RunScorecard{
+			ID:               uuid.New(),
+			RunID:            runID,
+			EvaluationSpecID: uuid.New(),
+			Scorecard:        scorecardDocument,
+			CreatedAt:        time.Now().UTC(),
+			UpdatedAt:        time.Now().UTC(),
+		},
+	})
+
+	result, err := manager.GetRunRanking(context.Background(), Caller{
+		UserID: uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: "workspace_member"},
+		},
+	}, runID, GetRunRankingInput{SortBy: RunRankingSortField("safety")})
+	if err != nil {
+		t.Fatalf("GetRunRanking returned error: %v", err)
+	}
+	if result.Ranking == nil {
+		t.Fatalf("ranking = nil, want payload")
+	}
+	if result.Ranking.Sort.Field != "safety" {
+		t.Fatalf("sort field = %q, want safety", result.Ranking.Sort.Field)
+	}
+	if result.Ranking.Items[0].RunAgentID != winnerID {
+		t.Fatalf("first run_agent_id = %s, want %s", result.Ranking.Items[0].RunAgentID, winnerID)
+	}
+	if result.Ranking.Items[0].SortValue == nil || math.Abs(*result.Ranking.Items[0].SortValue-0.90) > 1e-9 {
+		t.Fatalf("first sort_value = %v, want 0.90", result.Ranking.Items[0].SortValue)
+	}
+	if result.Ranking.Items[0].Dimensions["safety"].BetterDirection != "higher" {
+		t.Fatalf("better_direction = %q, want higher", result.Ranking.Items[0].Dimensions["safety"].BetterDirection)
+	}
+}
+
+// Phase 3: unknown sort key rejection. A sort_by that neither matches a legacy
+// built-in nor appears in any agent's Dimensions must surface as a 400 via
+// ErrInvalidRunRankingSort.
+func TestRunReadManagerGetRunRankingRejectsUnknownCustomSortKey(t *testing.T) {
+	workspaceID := uuid.New()
+	runID := uuid.New()
+
+	scorecardDocument, err := json.Marshal(runScorecardRankingDocument{
+		RunID:            runID,
+		EvaluationSpecID: uuid.New(),
+		Agents: []runRankingAgentDocument{
+			{
+				RunAgentID:       uuid.New(),
+				LaneIndex:        0,
+				Label:            "Only",
+				Status:           domain.RunAgentStatusCompleted,
+				HasScorecard:     true,
+				EvaluationStatus: "complete",
+				Dimensions: map[string]runRankingDimensionScorePayload{
+					"correctness": {State: "available", Score: float64PtrRunRankingTest(0.5)},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal scorecard document: %v", err)
+	}
+
+	manager := NewRunReadManager(NewCallerWorkspaceAuthorizer(), &fakeRunReadRepository{
+		run: domain.Run{
+			ID:          runID,
+			WorkspaceID: workspaceID,
+			Status:      domain.RunStatusCompleted,
+		},
+		runScorecard: repository.RunScorecard{
+			ID:               uuid.New(),
+			RunID:            runID,
+			EvaluationSpecID: uuid.New(),
+			Scorecard:        scorecardDocument,
+			CreatedAt:        time.Now().UTC(),
+			UpdatedAt:        time.Now().UTC(),
+		},
+	})
+
+	_, err = manager.GetRunRanking(context.Background(), Caller{
+		UserID: uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: "workspace_member"},
+		},
+	}, runID, GetRunRankingInput{SortBy: RunRankingSortField("mystery_dim")})
+	if err == nil {
+		t.Fatalf("GetRunRanking error = nil, want ErrInvalidRunRankingSort")
+	}
+	if !errors.Is(err, ErrInvalidRunRankingSort) {
+		t.Fatalf("GetRunRanking error = %v, want ErrInvalidRunRankingSort", err)
+	}
+}
+
+// Phase 3: Strategy, Passed, and OverallReason on agent documents must surface
+// into the ranking item response alongside legacy score columns.
+func TestRunReadManagerGetRunRankingSurfacesStrategyPassedAndReason(t *testing.T) {
+	workspaceID := uuid.New()
+	runID := uuid.New()
+	runAgentID := uuid.New()
+
+	scorecardDocument, err := json.Marshal(runScorecardRankingDocument{
+		RunID:            runID,
+		EvaluationSpecID: uuid.New(),
+		Agents: []runRankingAgentDocument{
+			{
+				RunAgentID:       runAgentID,
+				LaneIndex:        0,
+				Label:            "Solo",
+				Status:           domain.RunAgentStatusCompleted,
+				HasScorecard:     true,
+				EvaluationStatus: "complete",
+				Strategy:         "binary",
+				OverallScore:     float64PtrRunRankingTest(1.0),
+				Passed:           boolPtrRunRankingTest(true),
+				OverallReason:    "all validators passed",
+				CorrectnessScore: float64PtrRunRankingTest(0.9),
+				Dimensions: map[string]runRankingDimensionScorePayload{
+					"correctness": {State: "available", Score: float64PtrRunRankingTest(0.9)},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal scorecard document: %v", err)
+	}
+
+	manager := NewRunReadManager(NewCallerWorkspaceAuthorizer(), &fakeRunReadRepository{
+		run: domain.Run{
+			ID:          runID,
+			WorkspaceID: workspaceID,
+			Status:      domain.RunStatusCompleted,
+		},
+		runScorecard: repository.RunScorecard{
+			ID:               uuid.New(),
+			RunID:            runID,
+			EvaluationSpecID: uuid.New(),
+			Scorecard:        scorecardDocument,
+			CreatedAt:        time.Now().UTC(),
+			UpdatedAt:        time.Now().UTC(),
+		},
+	})
+
+	result, err := manager.GetRunRanking(context.Background(), Caller{
+		UserID: uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: "workspace_member"},
+		},
+	}, runID, GetRunRankingInput{})
+	if err != nil {
+		t.Fatalf("GetRunRanking returned error: %v", err)
+	}
+	if result.Ranking == nil || len(result.Ranking.Items) != 1 {
+		t.Fatalf("ranking items = %v, want 1", result.Ranking)
+	}
+	item := result.Ranking.Items[0]
+	if item.Strategy != "binary" {
+		t.Fatalf("strategy = %q, want binary", item.Strategy)
+	}
+	if item.Passed == nil || !*item.Passed {
+		t.Fatalf("passed = %v, want true", item.Passed)
+	}
+	if item.OverallReason != "all validators passed" {
+		t.Fatalf("overall_reason = %q, want all validators passed", item.OverallReason)
+	}
+	if item.OverallScore == nil || math.Abs(*item.OverallScore-1.0) > 1e-9 {
+		t.Fatalf("overall_score = %v, want 1.0", item.OverallScore)
+	}
 }

@@ -116,13 +116,18 @@ type runComparisonEvidenceQuality struct {
 }
 
 type comparisonScorecardDocument struct {
-	Status     string                                      `json:"status"`
-	Dimensions map[string]comparisonScorecardDimensionInfo `json:"dimensions"`
+	Status        string                                      `json:"status"`
+	Strategy      string                                      `json:"strategy,omitempty"`
+	OverallScore  *float64                                    `json:"overall_score,omitempty"`
+	Passed        *bool                                       `json:"passed,omitempty"`
+	OverallReason string                                      `json:"overall_reason,omitempty"`
+	Dimensions    map[string]comparisonScorecardDimensionInfo `json:"dimensions"`
 }
 
 type comparisonScorecardDimensionInfo struct {
-	State string   `json:"state"`
-	Score *float64 `json:"score,omitempty"`
+	State           string   `json:"state"`
+	Score           *float64 `json:"score,omitempty"`
+	BetterDirection string   `json:"better_direction,omitempty"`
 }
 
 type comparisonReplaySummaryDocument struct {

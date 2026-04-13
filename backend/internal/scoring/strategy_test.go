@@ -338,3 +338,77 @@ func TestValidateEvaluationSpec_DefaultsStrategyToWeighted(t *testing.T) {
 		t.Fatalf("unexpected validation error: %v", err)
 	}
 }
+
+// Phase 3: custom validators-source and reliability-source dims declared
+// without better_direction should default to "higher" during normalization so
+// callers don't need to repeat boilerplate and downstream sort/delta paths can
+// rely on the field being populated.
+func TestNormalizeEvaluationSpec_DefaultsBetterDirectionForValidatorsAndReliability(t *testing.T) {
+	spec := EvaluationSpec{
+		Name:          "fixture",
+		VersionNumber: 1,
+		JudgeMode:     JudgeModeDeterministic,
+		Validators: []ValidatorDeclaration{
+			{Key: "v", Type: ValidatorTypeExactMatch, Target: "final_output", ExpectedFrom: "challenge_input"},
+		},
+		Scorecard: ScorecardDeclaration{
+			Strategy: ScoringStrategyWeighted,
+			Dimensions: []DimensionDeclaration{
+				{Key: "safety", Source: DimensionSourceValidators, Validators: []string{"v"}},
+				{Key: "uptime", Source: DimensionSourceReliability},
+			},
+		},
+	}
+
+	normalizeEvaluationSpec(&spec)
+
+	for _, dim := range spec.Scorecard.Dimensions {
+		if dim.BetterDirection != "higher" {
+			t.Fatalf("dim %q better_direction = %q, want higher", dim.Key, dim.BetterDirection)
+		}
+	}
+
+	// And the spec must still validate end-to-end with no errors now that the
+	// direction has been filled in implicitly.
+	if err := ValidateEvaluationSpec(spec); err != nil {
+		t.Fatalf("unexpected validation error: %v", err)
+	}
+}
+
+// Phase 3: metric/latency/cost dims have ambiguous directionality and must
+// still require an explicit better_direction — normalization must not silently
+// paper over missing config.
+func TestValidateEvaluationSpec_MetricDimStillRequiresBetterDirection(t *testing.T) {
+	spec := EvaluationSpec{
+		Name:          "fixture",
+		VersionNumber: 1,
+		JudgeMode:     JudgeModeDeterministic,
+		Validators: []ValidatorDeclaration{
+			{Key: "v", Type: ValidatorTypeExactMatch, Target: "final_output", ExpectedFrom: "challenge_input"},
+		},
+		Metrics: []MetricDeclaration{
+			{Key: "hit_rate", Type: "counter", Collector: "events"},
+		},
+		Scorecard: ScorecardDeclaration{
+			Strategy: ScoringStrategyWeighted,
+			Dimensions: []DimensionDeclaration{
+				{
+					Key:    "hit_rate_score",
+					Source: DimensionSourceMetric,
+					Metric: "hit_rate",
+					Normalization: &DimensionNormalization{
+						Target: floatPtr(1.0),
+						Max:    floatPtr(0.0),
+					},
+				},
+			},
+		},
+	}
+	err := ValidateEvaluationSpec(spec)
+	if err == nil {
+		t.Fatalf("expected validation error, got nil")
+	}
+	if !strings.Contains(err.Error(), "better_direction") {
+		t.Fatalf("error = %q, want it to mention better_direction", err.Error())
+	}
+}

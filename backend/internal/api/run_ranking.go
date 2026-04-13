@@ -47,12 +47,18 @@ type GetRunRankingResult struct {
 }
 
 type runScorecardRankingDocument struct {
-	RunID               uuid.UUID                 `json:"run_id"`
-	EvaluationSpecID    uuid.UUID                 `json:"evaluation_spec_id"`
-	WinningRunAgentID   *uuid.UUID                `json:"winning_run_agent_id,omitempty"`
-	WinnerDetermination runRankingWinnerSummary   `json:"winner_determination"`
-	Agents              []runRankingAgentDocument `json:"agents"`
-	EvidenceQuality     runRankingEvidenceQuality `json:"evidence_quality"`
+	RunID               uuid.UUID                    `json:"run_id"`
+	EvaluationSpecID    uuid.UUID                    `json:"evaluation_spec_id"`
+	WinningRunAgentID   *uuid.UUID                   `json:"winning_run_agent_id,omitempty"`
+	WinnerDetermination runRankingWinnerSummary      `json:"winner_determination"`
+	Agents              []runRankingAgentDocument    `json:"agents"`
+	DimensionDeltas     map[string]runRankingDelta   `json:"dimension_deltas,omitempty"`
+	EvidenceQuality     runRankingEvidenceQuality    `json:"evidence_quality"`
+}
+
+type runRankingDelta struct {
+	BetterDirection string `json:"better_direction"`
+	State           string `json:"state"`
 }
 
 type runRankingWinnerSummary struct {
@@ -68,7 +74,10 @@ type runRankingAgentDocument struct {
 	Status           domain.RunAgentStatus                      `json:"status"`
 	HasScorecard     bool                                       `json:"has_scorecard"`
 	EvaluationStatus string                                     `json:"evaluation_status,omitempty"`
+	Strategy         string                                     `json:"strategy,omitempty"`
 	OverallScore     *float64                                   `json:"overall_score,omitempty"`
+	Passed           *bool                                      `json:"passed,omitempty"`
+	OverallReason    string                                     `json:"overall_reason,omitempty"`
 	CorrectnessScore *float64                                   `json:"correctness_score,omitempty"`
 	ReliabilityScore *float64                                   `json:"reliability_score,omitempty"`
 	LatencyScore     *float64                                   `json:"latency_score,omitempty"`
@@ -77,8 +86,9 @@ type runRankingAgentDocument struct {
 }
 
 type runRankingDimensionScorePayload struct {
-	State string   `json:"state"`
-	Score *float64 `json:"score,omitempty"`
+	State           string   `json:"state"`
+	Score           *float64 `json:"score,omitempty"`
+	BetterDirection string   `json:"better_direction,omitempty"`
 }
 
 type runRankingEvidenceQuality struct {
@@ -119,6 +129,9 @@ type runRankingItemResponse struct {
 	SortValue        *float64                                   `json:"sort_value,omitempty"`
 	DeltaFromTop     *float64                                   `json:"delta_from_top,omitempty"`
 	SortState        string                                     `json:"sort_state"`
+	Strategy         string                                     `json:"strategy,omitempty"`
+	Passed           *bool                                      `json:"passed,omitempty"`
+	OverallReason    string                                     `json:"overall_reason,omitempty"`
 	CompositeScore   *float64                                   `json:"composite_score,omitempty"`
 	OverallScore     *float64                                   `json:"overall_score,omitempty"`
 	CorrectnessScore *float64                                   `json:"correctness_score,omitempty"`
@@ -143,10 +156,7 @@ func (m *RunReadManager) GetRunRanking(ctx context.Context, caller Caller, runID
 		return GetRunRankingResult{}, err
 	}
 
-	sortBy, err := normalizeRunRankingSortField(input.SortBy)
-	if err != nil {
-		return GetRunRankingResult{}, err
-	}
+	sortBy := parseRunRankingSortField(input.SortBy)
 
 	scorecard, err := m.repo.GetRunScorecardByRunID(ctx, runID)
 	if err != nil {
@@ -164,6 +174,10 @@ func (m *RunReadManager) GetRunRanking(ctx context.Context, caller Caller, runID
 	document, err := decodeRunScorecardRankingDocument(scorecard.Scorecard)
 	if err != nil {
 		return GetRunRankingResult{}, fmt.Errorf("decode run scorecard: %w", err)
+	}
+
+	if err := validateRunRankingSortField(document, sortBy); err != nil {
+		return GetRunRankingResult{}, err
 	}
 
 	payload := buildRunRankingPayload(document, sortBy)
@@ -223,25 +237,33 @@ func getRunRankingHandler(logger *slog.Logger, service RunReadService) http.Hand
 	}
 }
 
-var ErrInvalidRunRankingSort = errors.New("sort_by must be one of composite, correctness, reliability, latency, cost")
+var ErrInvalidRunRankingSort = errors.New("sort_by is not a recognized dimension")
 
-func normalizeRunRankingSortField(field RunRankingSortField) (RunRankingSortField, error) {
-	switch RunRankingSortField(strings.TrimSpace(string(field))) {
-	case RunRankingSortFieldDefault:
-		return RunRankingSortFieldDefault, nil
-	case RunRankingSortFieldComposite:
-		return RunRankingSortFieldComposite, nil
-	case RunRankingSortFieldCorrectness:
-		return RunRankingSortFieldCorrectness, nil
-	case RunRankingSortFieldReliability:
-		return RunRankingSortFieldReliability, nil
-	case RunRankingSortFieldLatency:
-		return RunRankingSortFieldLatency, nil
-	case RunRankingSortFieldCost:
-		return RunRankingSortFieldCost, nil
-	default:
-		return "", ErrInvalidRunRankingSort
+func parseRunRankingSortField(field RunRankingSortField) RunRankingSortField {
+	return RunRankingSortField(strings.TrimSpace(string(field)))
+}
+
+// validateRunRankingSortField checks that sortBy is either empty (default
+// ordering), one of the legacy built-in fields, or a custom dimension key
+// declared by at least one agent in the scorecard. Unknown keys return
+// ErrInvalidRunRankingSort so the handler can respond with 400.
+func validateRunRankingSortField(document runScorecardRankingDocument, sortBy RunRankingSortField) error {
+	switch sortBy {
+	case RunRankingSortFieldDefault,
+		RunRankingSortFieldComposite,
+		RunRankingSortFieldCorrectness,
+		RunRankingSortFieldReliability,
+		RunRankingSortFieldLatency,
+		RunRankingSortFieldCost:
+		return nil
 	}
+	key := string(sortBy)
+	for _, agent := range document.Agents {
+		if _, ok := agent.Dimensions[key]; ok {
+			return nil
+		}
+	}
+	return fmt.Errorf("%w: %q", ErrInvalidRunRankingSort, key)
 }
 
 func rankingUnavailableState(status domain.RunStatus) (RankingReadState, string) {
@@ -281,6 +303,9 @@ func buildRunRankingPayload(document runScorecardRankingDocument, sortBy RunRank
 			EvaluationStatus: agent.EvaluationStatus,
 			SortValue:        cloneFloat64Ptr(sortValue),
 			SortState:        sortState,
+			Strategy:         agent.Strategy,
+			Passed:           cloneBoolPtrAPI(agent.Passed),
+			OverallReason:    agent.OverallReason,
 			CompositeScore:   cloneFloat64Ptr(compositeScore),
 			OverallScore:     chooseRunRankingOverallScore(agent.OverallScore, compositeScore),
 			CorrectnessScore: cloneFloat64Ptr(agent.CorrectnessScore),
@@ -370,6 +395,13 @@ func rankingSortValue(agent runRankingAgentDocument, sortBy RunRankingSortField)
 		score = availableRankingDimensionScore(agent.LatencyScore, agent.Dimensions["latency"])
 	case RunRankingSortFieldCost:
 		score = availableRankingDimensionScore(agent.CostScore, agent.Dimensions["cost"])
+	default:
+		// Custom user-declared dimension: look up by key and use the JSONB score.
+		dim, ok := agent.Dimensions[string(sortBy)]
+		if !ok {
+			return nil, "unavailable"
+		}
+		score = availableRankingDimensionScore(dim.Score, dim)
 	}
 	if score == nil {
 		return nil, "unavailable"
@@ -466,11 +498,20 @@ func cloneRunRankingDimensions(input map[string]runRankingDimensionScorePayload)
 	cloned := make(map[string]runRankingDimensionScorePayload, len(input))
 	for key, value := range input {
 		cloned[key] = runRankingDimensionScorePayload{
-			State: value.State,
-			Score: cloneFloat64Ptr(value.Score),
+			State:           value.State,
+			Score:           cloneFloat64Ptr(value.Score),
+			BetterDirection: value.BetterDirection,
 		}
 	}
 	return cloned
+}
+
+func cloneBoolPtrAPI(value *bool) *bool {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
 }
 
 func buildGetRunRankingResponse(result GetRunRankingResult) getRunRankingResponse {

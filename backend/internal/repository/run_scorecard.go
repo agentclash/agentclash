@@ -14,7 +14,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-const runScorecardSummarySchemaVersion = "2026-03-17"
+const runScorecardSummarySchemaVersion = "2026-04-14"
 
 type RunScorecard struct {
 	ID                uuid.UUID
@@ -56,7 +56,10 @@ type runScorecardAgentSummary struct {
 	Status           domain.RunAgentStatus                       `json:"status"`
 	HasScorecard     bool                                        `json:"has_scorecard"`
 	EvaluationStatus string                                      `json:"evaluation_status,omitempty"`
+	Strategy         string                                      `json:"strategy,omitempty"`
 	OverallScore     *float64                                    `json:"overall_score,omitempty"`
+	Passed           *bool                                       `json:"passed,omitempty"`
+	OverallReason    string                                      `json:"overall_reason,omitempty"`
 	CorrectnessScore *float64                                    `json:"correctness_score,omitempty"`
 	ReliabilityScore *float64                                    `json:"reliability_score,omitempty"`
 	LatencyScore     *float64                                    `json:"latency_score,omitempty"`
@@ -196,7 +199,10 @@ func buildRunScorecardDocument(
 
 		if participant.scorecard != nil && participant.document != nil {
 			summary.EvaluationStatus = participant.document.Status
+			summary.Strategy = participant.document.Strategy
 			summary.OverallScore = cloneFloat64Ptr(participant.scorecard.OverallScore)
+			summary.Passed = cloneBoolPtr(participant.document.Passed)
+			summary.OverallReason = participant.document.OverallReason
 			summary.CorrectnessScore = cloneFloat64Ptr(participant.scorecard.CorrectnessScore)
 			summary.ReliabilityScore = cloneFloat64Ptr(participant.scorecard.ReliabilityScore)
 			summary.LatencyScore = cloneFloat64Ptr(participant.scorecard.LatencyScore)
@@ -218,12 +224,7 @@ func buildRunScorecardDocument(
 		return agents[i].LaneIndex < agents[j].LaneIndex
 	})
 
-	dimensionDeltas := map[string]runScorecardDelta{
-		"correctness": buildRunScorecardDelta(participants, "correctness", "higher", &missingFields),
-		"reliability": buildRunScorecardDelta(participants, "reliability", "higher", &missingFields),
-		"latency":     buildRunScorecardDelta(participants, "latency", "lower", &missingFields),
-		"cost":        buildRunScorecardDelta(participants, "cost", "lower", &missingFields),
-	}
+	dimensionDeltas := buildRunScorecardDeltas(participants, &missingFields)
 
 	winningRunAgentID, winnerSummary := determineRunWinner(participants, scoredAgents)
 	document := runScorecardDocument{
@@ -370,6 +371,61 @@ func highestAgentsByScore[T any](agents []T, scoreFn func(T) *float64) []T {
 	return selected
 }
 
+// buildRunScorecardDeltas emits one delta per declared dimension key in the
+// union of all participants' scorecards. Dimension keys and their direction
+// come from the per-agent scorecard JSONB (populated by
+// buildRunAgentScorecardDocument), so this path requires no extra spec load.
+// Legacy dims retain their traditional direction ("higher" for correctness/
+// reliability, "lower" for latency/cost) via normalizeEvaluationSpec. Custom
+// dims with no declared direction default to "higher" to match the scoring
+// engine's default.
+func buildRunScorecardDeltas(
+	participants []runScorecardParticipant,
+	missingFields *[]string,
+) map[string]runScorecardDelta {
+	dimensionKeys := make([]string, 0, 4)
+	dimensionDirection := make(map[string]string)
+	for _, participant := range participants {
+		if participant.document == nil {
+			continue
+		}
+		for key, info := range participant.document.Dimensions {
+			if _, exists := dimensionDirection[key]; !exists {
+				dimensionKeys = append(dimensionKeys, key)
+				dimensionDirection[key] = info.BetterDirection
+				continue
+			}
+			if dimensionDirection[key] == "" && info.BetterDirection != "" {
+				dimensionDirection[key] = info.BetterDirection
+			}
+		}
+	}
+
+	sort.Strings(dimensionKeys)
+	deltas := make(map[string]runScorecardDelta, len(dimensionKeys))
+	for _, key := range dimensionKeys {
+		direction := dimensionDirection[key]
+		if direction == "" {
+			direction = legacyDimensionDirection(key)
+		}
+		deltas[key] = buildRunScorecardDelta(participants, key, direction, missingFields)
+	}
+	return deltas
+}
+
+// legacyDimensionDirection returns the historical direction for the original
+// built-in dimensions when the scorecard did not persist one. Newer dims that
+// go through normalizeEvaluationSpec always carry their direction, so this
+// only matters for pre-Phase-3 scorecard rows that have not been rewritten.
+func legacyDimensionDirection(dimension string) string {
+	switch dimension {
+	case "latency", "cost":
+		return "lower"
+	default:
+		return "higher"
+	}
+}
+
 func buildRunScorecardDelta(
 	participants []runScorecardParticipant,
 	dimension string,
@@ -385,10 +441,18 @@ func buildRunScorecardDelta(
 			State:      "unavailable",
 		}
 		if participant.scorecard != nil && participant.document != nil {
-			info := participant.document.Dimensions[dimension]
-			score := scoreByDimension(*participant.scorecard, dimension)
-			value.State = info.State
-			value.Value = availableDimensionScore(score, info)
+			info, present := participant.document.Dimensions[dimension]
+			if present {
+				value.State = info.State
+				// Legacy dims still have dedicated numeric columns; prefer
+				// those when available so cross-version reads stay aligned.
+				// Custom dims fall through to the JSONB score.
+				score := scoreByDimension(*participant.scorecard, dimension)
+				if score == nil {
+					score = info.Score
+				}
+				value.Value = availableDimensionScore(score, info)
+			}
 			if value.Value != nil {
 				value.State = "available"
 				available = append(available, value)
@@ -470,8 +534,9 @@ func cloneRunScorecardDimensions(input map[string]comparisonScorecardDimensionIn
 	cloned := make(map[string]comparisonScorecardDimensionInfo, len(input))
 	for key, value := range input {
 		cloned[key] = comparisonScorecardDimensionInfo{
-			State: value.State,
-			Score: cloneFloat64Ptr(value.Score),
+			State:           value.State,
+			Score:           cloneFloat64Ptr(value.Score),
+			BetterDirection: value.BetterDirection,
 		}
 	}
 	return cloned

@@ -292,10 +292,21 @@ func normalizeEvaluationSpec(spec *EvaluationSpec) {
 		dim.Key = strings.TrimSpace(dim.Key)
 		dim.Metric = strings.TrimSpace(dim.Metric)
 
-		if dim.Source != "" {
-			continue
+		if dim.Source == "" {
+			expandBuiltinDimension(dim, spec)
 		}
-		expandBuiltinDimension(dim, spec)
+
+		// Validators and reliability dims produce 0–1 quality scores where
+		// higher is always better. Default the direction so callers that omit
+		// it (common for custom object-form validator dims) don't need to
+		// repeat boilerplate. Metric/latency/cost dims are left alone because
+		// their direction is genuinely ambiguous and is validated explicitly.
+		if dim.BetterDirection == "" {
+			switch dim.Source {
+			case DimensionSourceValidators, DimensionSourceReliability:
+				dim.BetterDirection = "higher"
+			}
+		}
 	}
 }
 
