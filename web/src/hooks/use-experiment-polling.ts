@@ -25,6 +25,7 @@ interface UseExperimentPollingResult {
   experiments: PlaygroundExperiment[];
   resultsByExperimentId: Record<string, PlaygroundExperimentResult[]>;
   isPolling: boolean;
+  fetchResultsForExperiment: (experimentId: string) => Promise<void>;
 }
 
 export function useExperimentPolling({
@@ -40,11 +41,28 @@ export function useExperimentPolling({
   >({});
   const [isPolling, setIsPolling] = useState(false);
   const cancelledRef = useRef(false);
+  const hasFetchedInitialRef = useRef(false);
 
   // Sync initial data when server-side props change
   useEffect(() => {
     setExperiments(initialExperiments);
   }, [initialExperiments]);
+
+  const fetchResultsForExperiment = useCallback(
+    async (experimentId: string) => {
+      try {
+        const token = await getAccessToken();
+        const api = createApiClient(token);
+        const { items } = await api.get<{
+          items: PlaygroundExperimentResult[];
+        }>(`/v1/playground-experiments/${experimentId}/results`);
+        setResultsByExperimentId((prev) => ({ ...prev, [experimentId]: items }));
+      } catch {
+        // Silently fail — user can retry by collapsing/expanding
+      }
+    },
+    [getAccessToken],
+  );
 
   const fetchAll = useCallback(async () => {
     if (cancelledRef.current) return;
@@ -59,7 +77,7 @@ export function useExperimentPolling({
       if (cancelledRef.current) return;
       setExperiments(updatedExperiments);
 
-      // Fetch results for experiments that are running or completed
+      // Fetch results for all non-queued experiments
       const experimentsToFetch = updatedExperiments.filter(
         (e) => e.status === "running" || e.status === "completed" || e.status === "failed",
       );
@@ -90,6 +108,14 @@ export function useExperimentPolling({
     }
   }, [getAccessToken, playgroundId]);
 
+  // Initial fetch when enabled — loads results for already-completed experiments
+  useEffect(() => {
+    if (!enabled || hasFetchedInitialRef.current) return;
+    hasFetchedInitialRef.current = true;
+    fetchAll();
+  }, [enabled, fetchAll]);
+
+  // Polling for active experiments
   useEffect(() => {
     const shouldPoll = enabled && hasActiveExperiments(experiments);
     setIsPolling(shouldPoll);
@@ -97,6 +123,8 @@ export function useExperimentPolling({
     if (!shouldPoll) return;
 
     cancelledRef.current = false;
+    // Immediate tick + interval
+    fetchAll();
     const interval = setInterval(fetchAll, POLL_INTERVAL_MS);
 
     return () => {
@@ -105,5 +133,5 @@ export function useExperimentPolling({
     };
   }, [enabled, experiments, fetchAll]);
 
-  return { experiments, resultsByExperimentId, isPolling };
+  return { experiments, resultsByExperimentId, isPolling, fetchResultsForExperiment };
 }

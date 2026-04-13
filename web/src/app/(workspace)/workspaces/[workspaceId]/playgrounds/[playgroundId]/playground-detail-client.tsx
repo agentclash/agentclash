@@ -85,7 +85,7 @@ function PlaygroundDetailInner({
   const [error, setError] = useState<string | null>(null);
   const [evalSpec, setEvalSpec] = useState<unknown>(playground.evaluation_spec);
 
-  const { experiments, resultsByExperimentId, isPolling } =
+  const { experiments, resultsByExperimentId, isPolling, fetchResultsForExperiment } =
     useExperimentPolling({
       playgroundId: playground.id,
       initialExperiments,
@@ -345,6 +345,7 @@ function PlaygroundDetailInner({
               experiments={experiments}
               resultsByExperimentId={resultsByExperimentId}
               isPolling={isPolling}
+              onFetchResults={fetchResultsForExperiment}
             />
           </div>
         </TabsContent>

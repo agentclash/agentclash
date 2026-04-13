@@ -46,14 +46,25 @@ interface ExperimentListProps {
   experiments: PlaygroundExperiment[];
   resultsByExperimentId: Record<string, PlaygroundExperimentResult[]>;
   isPolling: boolean;
+  onFetchResults?: (experimentId: string) => Promise<void>;
 }
 
 export function ExperimentList({
   experiments,
   resultsByExperimentId,
   isPolling,
+  onFetchResults,
 }: ExperimentListProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  function handleToggle(expId: string) {
+    const willExpand = expandedId !== expId;
+    setExpandedId(willExpand ? expId : null);
+    // Fetch results on-demand when expanding if not already loaded
+    if (willExpand && !resultsByExperimentId[expId] && onFetchResults) {
+      onFetchResults(expId);
+    }
+  }
 
   if (experiments.length === 0) {
     return (
@@ -87,7 +98,7 @@ export function ExperimentList({
           >
             <button
               type="button"
-              onClick={() => setExpandedId(isExpanded ? null : exp.id)}
+              onClick={() => handleToggle(exp.id)}
               className="flex w-full items-center gap-3 p-4 text-left hover:bg-muted/30 transition-colors"
             >
               {isExpanded ? (
