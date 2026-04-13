@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -184,36 +184,41 @@ function ExperimentSummaryStrip({
 }: {
   results: PlaygroundExperimentResult[];
 }) {
-  if (results.length === 0) return null;
+  const stats = useMemo(() => {
+    if (results.length === 0) return null;
 
-  const avgLatency =
-    results.reduce((s, r) => s + r.latency_ms, 0) / results.length;
-  const totalTokens = results.reduce((s, r) => s + r.total_tokens, 0);
-  const totalCost = results.reduce((s, r) => s + (r.cost_usd ?? 0), 0);
+    const avgLatency =
+      results.reduce((s, r) => s + r.latency_ms, 0) / results.length;
+    const totalTokens = results.reduce((s, r) => s + r.total_tokens, 0);
+    const totalCost = results.reduce((s, r) => s + (r.cost_usd ?? 0), 0);
 
-  // Aggregate dimension scores across results
-  const dimAccum: Record<string, { total: number; count: number }> = {};
-  for (const r of results) {
-    if (!r.dimension_scores) continue;
-    for (const [dim, score] of Object.entries(r.dimension_scores)) {
-      if (score == null) continue;
-      const acc = dimAccum[dim] ?? { total: 0, count: 0 };
-      acc.total += score;
-      acc.count++;
-      dimAccum[dim] = acc;
+    const dimAccum: Record<string, { total: number; count: number }> = {};
+    for (const r of results) {
+      if (!r.dimension_scores) continue;
+      for (const [dim, score] of Object.entries(r.dimension_scores)) {
+        if (score == null) continue;
+        const acc = dimAccum[dim] ?? { total: 0, count: 0 };
+        acc.total += score;
+        acc.count++;
+        dimAccum[dim] = acc;
+      }
     }
-  }
-  const avgDimensions: Record<string, number | null> = {};
-  for (const [dim, acc] of Object.entries(dimAccum)) {
-    avgDimensions[dim] = acc.count > 0 ? acc.total / acc.count : null;
-  }
+    const avgDimensions: Record<string, number | null> = {};
+    for (const [dim, acc] of Object.entries(dimAccum)) {
+      avgDimensions[dim] = acc.count > 0 ? acc.total / acc.count : null;
+    }
+
+    return { avgLatency, totalTokens, totalCost, avgDimensions };
+  }, [results]);
+
+  if (!stats) return null;
 
   return (
     <KpiStrip
-      latencyMs={Math.round(avgLatency)}
-      totalTokens={totalTokens}
-      costUsd={totalCost}
-      dimensions={avgDimensions}
+      latencyMs={Math.round(stats.avgLatency)}
+      totalTokens={stats.totalTokens}
+      costUsd={stats.totalCost}
+      dimensions={stats.avgDimensions}
     />
   );
 }

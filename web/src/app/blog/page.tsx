@@ -26,7 +26,7 @@ export default function BlogPage() {
             href={`/blog/${post.slug}`}
             className="group flex flex-col gap-1 rounded-lg border border-white/[0.08] bg-white/[0.03] px-5 py-4 hover:border-white/15 transition-colors"
           >
-            <span className="font-[family-name:var(--font-mono)] text-[11px] text-white/20">
+            <span className="font-[family-name:var(--font-mono)] text-[11px] text-white/40">
               {post.date} &middot; {post.author}
             </span>
             <span className="text-sm font-medium text-white group-hover:text-white/90">

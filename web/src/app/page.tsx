@@ -138,7 +138,11 @@ export default function HomePage() {
       <nav className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between p-4">
         <div />
         <div className="flex items-center gap-2">
-          {!authLoading && user ? (
+          {authLoading ? (
+            <span className="inline-flex items-center gap-1.5 rounded-md border border-white/[0.08] bg-white/[0.06] px-3 py-1.5">
+              <span className="h-3.5 w-14 rounded bg-white/[0.08] animate-pulse" />
+            </span>
+          ) : user ? (
             <Link
               href="/dashboard"
               className="inline-flex items-center gap-1.5 rounded-md border border-white/[0.08] bg-white/90 px-3 py-1.5 text-xs font-medium text-[#060606] hover:bg-white transition-colors"
@@ -146,15 +150,15 @@ export default function HomePage() {
               Go to Dashboard
               <ArrowRight className="size-3" />
             </Link>
-          ) : !authLoading && !user ? (
+          ) : (
             <Link
               href="/auth/login"
-              className="inline-flex items-center gap-1.5 rounded-md border border-white/[0.08] bg-white/[0.03] px-3 py-1.5 text-xs font-medium text-white/50 hover:text-white/80 hover:border-white/15 transition-colors"
+              className="inline-flex items-center gap-1.5 rounded-md border border-white/15 bg-white/[0.06] px-3 py-1.5 text-xs font-medium text-white/70 hover:text-white/90 hover:bg-white/10 hover:border-white/25 transition-colors"
             >
               <LogIn className="size-3.5" />
               Sign in
             </Link>
-          ) : null}
+          )}
           <a
             href="https://github.com/Atharva-Kanherkar/agentclash"
             target="_blank"

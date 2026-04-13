@@ -14,7 +14,7 @@ interface LoadingSpinnerProps {
 
 export function LoadingSpinner({ size = "md", className }: LoadingSpinnerProps) {
   return (
-    <div className={cn("flex items-center justify-center", className)}>
+    <div role="status" aria-label="Loading" className={cn("flex items-center justify-center", className)}>
       <Loader2 className={cn("animate-spin text-muted-foreground", sizeMap[size])} />
     </div>
   );
