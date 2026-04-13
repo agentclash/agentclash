@@ -49,9 +49,7 @@ CREATE TABLE playground_experiments (
     UNIQUE (id, organization_id, workspace_id),
     UNIQUE (temporal_workflow_id),
     FOREIGN KEY (workspace_id, organization_id) REFERENCES workspaces (id, organization_id) ON DELETE CASCADE,
-    FOREIGN KEY (playground_id, organization_id, workspace_id) REFERENCES playgrounds (id, organization_id, workspace_id) ON DELETE CASCADE,
-    FOREIGN KEY (provider_account_id, organization_id, workspace_id) REFERENCES provider_accounts (id, organization_id, workspace_id) ON DELETE RESTRICT,
-    FOREIGN KEY (model_alias_id, organization_id, workspace_id) REFERENCES model_aliases (id, organization_id, workspace_id) ON DELETE RESTRICT
+    FOREIGN KEY (playground_id, organization_id, workspace_id) REFERENCES playgrounds (id, organization_id, workspace_id) ON DELETE CASCADE
 );
 
 CREATE TABLE playground_experiment_results (

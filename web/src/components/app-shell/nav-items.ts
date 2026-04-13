@@ -3,6 +3,7 @@ import {
   Rocket,
   PackageOpen,
   Play,
+  FlaskConical,
   GitCompare,
   ShieldCheck,
   Settings2,
@@ -58,7 +59,7 @@ export const navSections: NavSection[] = [
       {
         label: "Playgrounds",
         href: (id) => `/workspaces/${id}/playgrounds`,
-        icon: Play,
+        icon: FlaskConical,
       },
     ],
   },

@@ -249,6 +249,7 @@ func TestIngestHostedRunEventHandlerReturnsInternalErrorForRepositoryFailure(t *
 		nil,
 		nil,
 		nil,
+		nil,
 	)
 	router.ServeHTTP(recorder, req)
 

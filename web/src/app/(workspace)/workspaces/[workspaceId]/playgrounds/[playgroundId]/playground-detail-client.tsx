@@ -17,6 +17,7 @@ import type {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 function prettyJSON(value: unknown) {
   return JSON.stringify(value ?? {}, null, 2);
@@ -321,31 +322,33 @@ export function PlaygroundDetailClient({
           </div>
           <div className="space-y-2">
             <label className="text-sm font-medium">Provider Account</label>
-            <select
-              value={providerAccountId}
-              onChange={(e) => setProviderAccountId(e.target.value)}
-              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-            >
-              {providerAccounts.map((account) => (
-                <option key={account.id} value={account.id}>
-                  {account.name}
-                </option>
-              ))}
-            </select>
+            <Select value={providerAccountId} onValueChange={(v) => v && setProviderAccountId(v)}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select provider account" />
+              </SelectTrigger>
+              <SelectContent>
+                {providerAccounts.map((account) => (
+                  <SelectItem key={account.id} value={account.id}>
+                    {account.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="space-y-2">
             <label className="text-sm font-medium">Model Alias</label>
-            <select
-              value={modelAliasId}
-              onChange={(e) => setModelAliasId(e.target.value)}
-              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-            >
-              {modelAliases.map((alias) => (
-                <option key={alias.id} value={alias.id}>
-                  {alias.display_name}
-                </option>
-              ))}
-            </select>
+            <Select value={modelAliasId} onValueChange={(v) => v && setModelAliasId(v)}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select model alias" />
+              </SelectTrigger>
+              <SelectContent>
+                {modelAliases.map((alias) => (
+                  <SelectItem key={alias.id} value={alias.id}>
+                    {alias.display_name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="md:col-span-4 flex justify-end">
             <Button type="submit" disabled={pendingAction === "launch-experiment"}>
@@ -382,28 +385,30 @@ export function PlaygroundDetailClient({
           <div className="rounded-md border border-border p-4 space-y-3">
             <h3 className="font-medium">Compare Experiments</h3>
             <div className="grid gap-4 md:grid-cols-2">
-              <select
-                value={baselineId}
-                onChange={(e) => setBaselineId(e.target.value)}
-                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-              >
-                {experiments.map((experiment) => (
-                  <option key={experiment.id} value={experiment.id}>
-                    Baseline: {experiment.name}
-                  </option>
-                ))}
-              </select>
-              <select
-                value={candidateId}
-                onChange={(e) => setCandidateId(e.target.value)}
-                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-              >
-                {experiments.map((experiment) => (
-                  <option key={experiment.id} value={experiment.id}>
-                    Candidate: {experiment.name}
-                  </option>
-                ))}
-              </select>
+              <Select value={baselineId} onValueChange={(v) => v && setBaselineId(v)}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select baseline" />
+                </SelectTrigger>
+                <SelectContent>
+                  {experiments.map((experiment) => (
+                    <SelectItem key={experiment.id} value={experiment.id}>
+                      Baseline: {experiment.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={candidateId} onValueChange={(v) => v && setCandidateId(v)}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select candidate" />
+                </SelectTrigger>
+                <SelectContent>
+                  {experiments.map((experiment) => (
+                    <SelectItem key={experiment.id} value={experiment.id}>
+                      Candidate: {experiment.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="flex justify-end">
               <Button onClick={openComparison}>Compare</Button>

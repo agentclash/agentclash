@@ -420,6 +420,13 @@ type playgroundExperimentRequest struct {
 	RequestConfig     json.RawMessage `json:"request_config"`
 }
 
+type parsedPlaygroundExperimentRequest struct {
+	Name              string
+	ProviderAccountID uuid.UUID
+	ModelAliasID      uuid.UUID
+	RequestConfig     json.RawMessage
+}
+
 type playgroundResponse struct {
 	ID             uuid.UUID       `json:"id"`
 	WorkspaceID    uuid.UUID       `json:"workspace_id"`
@@ -556,7 +563,7 @@ func getPlaygroundHandler(logger *slog.Logger, service PlaygroundService) http.H
 			writeAuthzError(w, err)
 			return
 		}
-		playgroundID, err := parsePathUUID("id", chi.URLParam(r, "id"))
+		playgroundID, err := parseUUID("id", chi.URLParam(r, "id"))
 		if err != nil {
 			writeError(w, http.StatusBadRequest, "invalid_playground_id", err.Error())
 			return
@@ -581,7 +588,7 @@ func updatePlaygroundHandler(logger *slog.Logger, service PlaygroundService) htt
 			writeError(w, http.StatusUnsupportedMediaType, "unsupported_media_type", err.Error())
 			return
 		}
-		playgroundID, err := parsePathUUID("id", chi.URLParam(r, "id"))
+		playgroundID, err := parseUUID("id", chi.URLParam(r, "id"))
 		if err != nil {
 			writeError(w, http.StatusBadRequest, "invalid_playground_id", err.Error())
 			return
@@ -613,7 +620,7 @@ func deletePlaygroundHandler(logger *slog.Logger, service PlaygroundService) htt
 			writeAuthzError(w, err)
 			return
 		}
-		playgroundID, err := parsePathUUID("id", chi.URLParam(r, "id"))
+		playgroundID, err := parseUUID("id", chi.URLParam(r, "id"))
 		if err != nil {
 			writeError(w, http.StatusBadRequest, "invalid_playground_id", err.Error())
 			return
@@ -637,7 +644,7 @@ func createPlaygroundTestCaseHandler(logger *slog.Logger, service PlaygroundServ
 			writeError(w, http.StatusUnsupportedMediaType, "unsupported_media_type", err.Error())
 			return
 		}
-		playgroundID, err := parsePathUUID("id", chi.URLParam(r, "id"))
+		playgroundID, err := parseUUID("id", chi.URLParam(r, "id"))
 		if err != nil {
 			writeError(w, http.StatusBadRequest, "invalid_playground_id", err.Error())
 			return
@@ -668,7 +675,7 @@ func listPlaygroundTestCasesHandler(logger *slog.Logger, service PlaygroundServi
 			writeAuthzError(w, err)
 			return
 		}
-		playgroundID, err := parsePathUUID("id", chi.URLParam(r, "id"))
+		playgroundID, err := parseUUID("id", chi.URLParam(r, "id"))
 		if err != nil {
 			writeError(w, http.StatusBadRequest, "invalid_playground_id", err.Error())
 			return
@@ -697,7 +704,7 @@ func updatePlaygroundTestCaseHandler(logger *slog.Logger, service PlaygroundServ
 			writeError(w, http.StatusUnsupportedMediaType, "unsupported_media_type", err.Error())
 			return
 		}
-		testCaseID, err := parsePathUUID("id", chi.URLParam(r, "id"))
+		testCaseID, err := parseUUID("id", chi.URLParam(r, "id"))
 		if err != nil {
 			writeError(w, http.StatusBadRequest, "invalid_playground_test_case_id", err.Error())
 			return
@@ -728,7 +735,7 @@ func deletePlaygroundTestCaseHandler(logger *slog.Logger, service PlaygroundServ
 			writeAuthzError(w, err)
 			return
 		}
-		testCaseID, err := parsePathUUID("id", chi.URLParam(r, "id"))
+		testCaseID, err := parseUUID("id", chi.URLParam(r, "id"))
 		if err != nil {
 			writeError(w, http.StatusBadRequest, "invalid_playground_test_case_id", err.Error())
 			return
@@ -752,7 +759,7 @@ func createPlaygroundExperimentHandler(logger *slog.Logger, service PlaygroundSe
 			writeError(w, http.StatusUnsupportedMediaType, "unsupported_media_type", err.Error())
 			return
 		}
-		playgroundID, err := parsePathUUID("id", chi.URLParam(r, "id"))
+		playgroundID, err := parseUUID("id", chi.URLParam(r, "id"))
 		if err != nil {
 			writeError(w, http.StatusBadRequest, "invalid_playground_id", err.Error())
 			return
@@ -784,7 +791,7 @@ func listPlaygroundExperimentsHandler(logger *slog.Logger, service PlaygroundSer
 			writeAuthzError(w, err)
 			return
 		}
-		playgroundID, err := parsePathUUID("id", chi.URLParam(r, "id"))
+		playgroundID, err := parseUUID("id", chi.URLParam(r, "id"))
 		if err != nil {
 			writeError(w, http.StatusBadRequest, "invalid_playground_id", err.Error())
 			return
@@ -809,7 +816,7 @@ func getPlaygroundExperimentHandler(logger *slog.Logger, service PlaygroundServi
 			writeAuthzError(w, err)
 			return
 		}
-		experimentID, err := parsePathUUID("id", chi.URLParam(r, "id"))
+		experimentID, err := parseUUID("id", chi.URLParam(r, "id"))
 		if err != nil {
 			writeError(w, http.StatusBadRequest, "invalid_playground_experiment_id", err.Error())
 			return
@@ -830,7 +837,7 @@ func listPlaygroundExperimentResultsHandler(logger *slog.Logger, service Playgro
 			writeAuthzError(w, err)
 			return
 		}
-		experimentID, err := parsePathUUID("id", chi.URLParam(r, "id"))
+		experimentID, err := parseUUID("id", chi.URLParam(r, "id"))
 		if err != nil {
 			writeError(w, http.StatusBadRequest, "invalid_playground_experiment_id", err.Error())
 			return
@@ -855,12 +862,12 @@ func comparePlaygroundExperimentsHandler(logger *slog.Logger, service Playground
 			writeAuthzError(w, err)
 			return
 		}
-		baselineID, err := parsePathUUID("baseline", r.URL.Query().Get("baseline"))
+		baselineID, err := parseUUID("baseline", r.URL.Query().Get("baseline"))
 		if err != nil {
 			writeError(w, http.StatusBadRequest, "invalid_baseline_id", err.Error())
 			return
 		}
-		candidateID, err := parsePathUUID("candidate", r.URL.Query().Get("candidate"))
+		candidateID, err := parseUUID("candidate", r.URL.Query().Get("candidate"))
 		if err != nil {
 			writeError(w, http.StatusBadRequest, "invalid_candidate_id", err.Error())
 			return
@@ -890,45 +897,20 @@ func decodePlaygroundTestCaseRequest(w http.ResponseWriter, r *http.Request) (pl
 	return body, nil
 }
 
-func decodePlaygroundExperimentRequest(w http.ResponseWriter, r *http.Request) (struct {
-	Name              string
-	ProviderAccountID uuid.UUID
-	ModelAliasID      uuid.UUID
-	RequestConfig     json.RawMessage
-}, error) {
+func decodePlaygroundExperimentRequest(w http.ResponseWriter, r *http.Request) (parsedPlaygroundExperimentRequest, error) {
 	var body playgroundExperimentRequest
 	if err := decodePlaygroundBody(w, r, &body); err != nil {
-		return struct {
-			Name              string
-			ProviderAccountID uuid.UUID
-			ModelAliasID      uuid.UUID
-			RequestConfig     json.RawMessage
-		}{}, err
+		return parsedPlaygroundExperimentRequest{}, err
 	}
 	providerAccountID, err := parsePlaygroundUUID(body.ProviderAccountID, "provider_account_id", "invalid_provider_account_id")
 	if err != nil {
-		return struct {
-			Name              string
-			ProviderAccountID uuid.UUID
-			ModelAliasID      uuid.UUID
-			RequestConfig     json.RawMessage
-		}{}, err
+		return parsedPlaygroundExperimentRequest{}, err
 	}
 	modelAliasID, err := parsePlaygroundUUID(body.ModelAliasID, "model_alias_id", "invalid_model_alias_id")
 	if err != nil {
-		return struct {
-			Name              string
-			ProviderAccountID uuid.UUID
-			ModelAliasID      uuid.UUID
-			RequestConfig     json.RawMessage
-		}{}, err
+		return parsedPlaygroundExperimentRequest{}, err
 	}
-	return struct {
-		Name              string
-		ProviderAccountID uuid.UUID
-		ModelAliasID      uuid.UUID
-		RequestConfig     json.RawMessage
-	}{
+	return parsedPlaygroundExperimentRequest{
 		Name:              body.Name,
 		ProviderAccountID: providerAccountID,
 		ModelAliasID:      modelAliasID,
@@ -1007,7 +989,7 @@ func normalizeObjectJSON(raw json.RawMessage) json.RawMessage {
 	return append(json.RawMessage(nil), raw...)
 }
 
-func parsePathUUID(field string, raw string) (uuid.UUID, error) {
+func parseUUID(field string, raw string) (uuid.UUID, error) {
 	if strings.TrimSpace(raw) == "" {
 		return uuid.Nil, fmt.Errorf("%s is required", field)
 	}

@@ -88,6 +88,7 @@ func TestHealthzReturnsJSONSuccessPayload(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		nil,
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {
@@ -163,6 +164,7 @@ func TestSessionEndpointRequiresAuthentication(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		nil,
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusUnauthorized {
@@ -205,6 +207,7 @@ func TestSessionEndpointReturnsCallerIdentity(t *testing.T) {
 		stubAgentBuildService{},
 		noopReleaseGateService{},
 		stubChallengePackAuthoringService{},
+		nil,
 		nil,
 		nil,
 		nil,
@@ -266,6 +269,7 @@ func TestWorkspaceAuthorizationReturnsForbiddenWithoutMembership(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		nil,
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusForbidden {
@@ -305,6 +309,7 @@ func TestWorkspaceAuthorizationReturnsOKWithMembership(t *testing.T) {
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
+		nil,
 		nil,
 		nil,
 		nil,
@@ -363,6 +368,7 @@ func TestWorkspaceAuthorizationRejectsMalformedWorkspaceID(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		nil,
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusBadRequest {
@@ -412,6 +418,7 @@ func TestReplayViewerEndpointReturnsHTMLShell(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		nil,
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {
@@ -452,6 +459,7 @@ func TestReplayViewerEndpointRejectsInvalidReplayPagination(t *testing.T) {
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
+		nil,
 		nil,
 		nil,
 		nil,

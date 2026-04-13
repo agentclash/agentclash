@@ -481,6 +481,7 @@ func TestGetRunRankingEndpointReturnsSortedPayload(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		nil,
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {
@@ -526,6 +527,7 @@ func TestGetRunRankingEndpointRejectsInvalidSortField(t *testing.T) {
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
+		nil,
 		nil,
 		nil,
 		nil,
@@ -583,6 +585,7 @@ func TestGetRunRankingEndpointReturnsCompositeSortPayload(t *testing.T) {
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
+		nil,
 		nil,
 		nil,
 		nil,
@@ -651,6 +654,7 @@ func TestGetRunRankingEndpointReturnsAcceptedWhenPending(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		nil,
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusAccepted {
@@ -687,6 +691,7 @@ func TestGetRunRankingEndpointReturnsConflictWhenErrored(t *testing.T) {
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
+		nil,
 		nil,
 		nil,
 		nil,

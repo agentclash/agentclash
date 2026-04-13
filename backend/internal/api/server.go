@@ -116,7 +116,7 @@ func newRouter(
 	onboardingServiceArg OnboardingService,
 	infraServiceArg InfrastructureService,
 	workspaceSecretsServiceArg WorkspaceSecretsService,
-	playgroundServices ...PlaygroundService,
+	playgroundServiceArg PlaygroundService,
 ) http.Handler {
 	challengePackAuthoringService := challengePackAuthoringServiceArg
 	userService := userServiceArg
@@ -127,7 +127,7 @@ func newRouter(
 	onboardingService := onboardingServiceArg
 	infraService := infraServiceArg
 	workspaceSecretsService := workspaceSecretsServiceArg
-	var playgroundService PlaygroundService
+	playgroundService := playgroundServiceArg
 
 	if hostedRunIngestionService == nil {
 		hostedRunIngestionService = noopHostedRunIngestionService{}
@@ -135,9 +135,6 @@ func newRouter(
 
 	if compareReadService == nil {
 		compareReadService = noopCompareReadService{}
-	}
-	if len(playgroundServices) > 0 {
-		playgroundService = playgroundServices[0]
 	}
 	if playgroundService == nil {
 		playgroundService = noopPlaygroundService{}

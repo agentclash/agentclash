@@ -46,7 +46,7 @@ func (s TemporalPlaygroundWorkflowStarter) StartPlaygroundExperimentWorkflow(ctx
 	workflowID := fmt.Sprintf("%s/%s", workflow.PlaygroundExperimentWorkflowName, experimentID)
 	_, err := s.client.ExecuteWorkflow(ctx, temporalsdk.StartWorkflowOptions{
 		ID:        workflowID,
-		TaskQueue: workflow.PlaygroundExperimentWorkflowName,
+		TaskQueue: workflow.RunWorkflowName,
 	}, workflow.PlaygroundExperimentWorkflowName, workflow.PlaygroundExperimentWorkflowInput{
 		ExperimentID: experimentID,
 	})

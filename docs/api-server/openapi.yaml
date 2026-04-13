@@ -41,6 +41,8 @@ tags:
     description: Agent deployment management
   - name: HostedRuns
     description: External hosted agent event ingestion
+  - name: Playgrounds
+    description: Prompt playground experimentation and comparison
 
 paths:
   # ---------------------------------------------------------------------------
@@ -1139,6 +1141,336 @@ paths:
         "415":
           $ref: "#/components/responses/UnsupportedMediaType"
 
+  # ---------------------------------------------------------------------------
+  # Playgrounds
+  # ---------------------------------------------------------------------------
+  /v1/workspaces/{workspaceID}/playgrounds:
+    post:
+      operationId: createPlayground
+      summary: Create a playground
+      tags: [Playgrounds]
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePlaygroundRequest"
+      responses:
+        "201":
+          description: Playground created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlaygroundResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+    get:
+      operationId: listPlaygrounds
+      summary: List playgrounds in a workspace
+      tags: [Playgrounds]
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+      responses:
+        "200":
+          description: List of playgrounds
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListPlaygroundsResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+
+  /v1/playgrounds/{id}:
+    get:
+      operationId: getPlayground
+      summary: Get a playground by ID
+      tags: [Playgrounds]
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/ResourceID"
+      responses:
+        "200":
+          description: Playground detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlaygroundResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+    patch:
+      operationId: updatePlayground
+      summary: Update a playground
+      tags: [Playgrounds]
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/ResourceID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePlaygroundRequest"
+      responses:
+        "200":
+          description: Playground updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlaygroundResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+    delete:
+      operationId: deletePlayground
+      summary: Delete a playground
+      tags: [Playgrounds]
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/ResourceID"
+      responses:
+        "204":
+          description: Playground deleted
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /v1/playgrounds/{id}/test-cases:
+    post:
+      operationId: createPlaygroundTestCase
+      summary: Create a test case for a playground
+      tags: [Playgrounds]
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/ResourceID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePlaygroundTestCaseRequest"
+      responses:
+        "201":
+          description: Test case created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlaygroundTestCaseResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+    get:
+      operationId: listPlaygroundTestCases
+      summary: List test cases for a playground
+      tags: [Playgrounds]
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/ResourceID"
+      responses:
+        "200":
+          description: List of test cases
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListPlaygroundTestCasesResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /v1/playground-test-cases/{id}:
+    patch:
+      operationId: updatePlaygroundTestCase
+      summary: Update a playground test case
+      tags: [Playgrounds]
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/ResourceID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePlaygroundTestCaseRequest"
+      responses:
+        "200":
+          description: Test case updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlaygroundTestCaseResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+    delete:
+      operationId: deletePlaygroundTestCase
+      summary: Delete a playground test case
+      tags: [Playgrounds]
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/ResourceID"
+      responses:
+        "204":
+          description: Test case deleted
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /v1/playgrounds/{id}/experiments:
+    post:
+      operationId: createPlaygroundExperiment
+      summary: Launch a playground experiment
+      tags: [Playgrounds]
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/ResourceID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePlaygroundExperimentRequest"
+      responses:
+        "201":
+          description: Experiment created and queued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlaygroundExperimentResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+    get:
+      operationId: listPlaygroundExperiments
+      summary: List experiments for a playground
+      tags: [Playgrounds]
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/ResourceID"
+      responses:
+        "200":
+          description: List of experiments
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListPlaygroundExperimentsResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /v1/playground-experiments/{id}:
+    get:
+      operationId: getPlaygroundExperiment
+      summary: Get a playground experiment by ID
+      tags: [Playgrounds]
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/ResourceID"
+      responses:
+        "200":
+          description: Experiment detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlaygroundExperimentResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /v1/playground-experiments/{id}/results:
+    get:
+      operationId: listPlaygroundExperimentResults
+      summary: List results for a playground experiment
+      tags: [Playgrounds]
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/ResourceID"
+      responses:
+        "200":
+          description: List of per-case results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListPlaygroundExperimentResultsResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /v1/playground-experiments/compare:
+    get:
+      operationId: comparePlaygroundExperiments
+      summary: Compare two playground experiments
+      tags: [Playgrounds]
+      security:
+        - bearerJWT: []
+      parameters:
+        - name: baseline
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: candidate
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Experiment comparison
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlaygroundExperimentComparison"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
 # =============================================================================
 # Components
 # =============================================================================
@@ -1211,6 +1543,13 @@ components:
         format: uuid
     VersionID:
       name: versionID
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    ResourceID:
+      name: id
       in: path
       required: true
       schema:
@@ -2509,3 +2848,322 @@ components:
         metadata:
           type: object
           additionalProperties: true
+
+    # --- Playgrounds ---
+
+    CreatePlaygroundRequest:
+      type: object
+      required: [name, prompt_template, evaluation_spec]
+      properties:
+        name:
+          type: string
+        prompt_template:
+          type: string
+        system_prompt:
+          type: string
+        evaluation_spec:
+          type: object
+          additionalProperties: true
+
+    PlaygroundResponse:
+      type: object
+      required: [id, workspace_id, name, prompt_template, system_prompt, evaluation_spec, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        prompt_template:
+          type: string
+        system_prompt:
+          type: string
+        evaluation_spec:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ListPlaygroundsResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlaygroundResponse"
+
+    CreatePlaygroundTestCaseRequest:
+      type: object
+      required: [case_key]
+      properties:
+        case_key:
+          type: string
+        variables:
+          type: object
+          additionalProperties: true
+        expectations:
+          type: object
+          additionalProperties: true
+
+    PlaygroundTestCaseResponse:
+      type: object
+      required: [id, playground_id, case_key, variables, expectations, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        playground_id:
+          type: string
+          format: uuid
+        case_key:
+          type: string
+        variables:
+          type: object
+          additionalProperties: true
+        expectations:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ListPlaygroundTestCasesResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlaygroundTestCaseResponse"
+
+    CreatePlaygroundExperimentRequest:
+      type: object
+      required: [provider_account_id, model_alias_id]
+      properties:
+        name:
+          type: string
+        provider_account_id:
+          type: string
+          format: uuid
+        model_alias_id:
+          type: string
+          format: uuid
+        request_config:
+          type: object
+          additionalProperties: true
+
+    PlaygroundExperimentResponse:
+      type: object
+      required: [id, workspace_id, playground_id, provider_account_id, model_alias_id, name, status, request_config, summary, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+          format: uuid
+        playground_id:
+          type: string
+          format: uuid
+        provider_account_id:
+          type: string
+          format: uuid
+        model_alias_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        status:
+          type: string
+          enum: [queued, running, completed, failed]
+        request_config:
+          type: object
+          additionalProperties: true
+        summary:
+          type: object
+          additionalProperties: true
+        temporal_workflow_id:
+          type: string
+        temporal_run_id:
+          type: string
+        queued_at:
+          type: string
+          format: date-time
+        started_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          format: date-time
+        failed_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ListPlaygroundExperimentsResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlaygroundExperimentResponse"
+
+    PlaygroundExperimentResultResponse:
+      type: object
+      required: [id, playground_experiment_id, playground_test_case_id, case_key, status, variables, expectations, rendered_prompt, actual_output, provider_key, provider_model_id, input_tokens, output_tokens, total_tokens, latency_ms, validator_results, llm_judge_results, dimension_results, dimension_scores, warnings, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        playground_experiment_id:
+          type: string
+          format: uuid
+        playground_test_case_id:
+          type: string
+          format: uuid
+        case_key:
+          type: string
+        status:
+          type: string
+          enum: [completed, failed]
+        variables:
+          type: object
+          additionalProperties: true
+        expectations:
+          type: object
+          additionalProperties: true
+        rendered_prompt:
+          type: string
+        actual_output:
+          type: string
+        provider_key:
+          type: string
+        provider_model_id:
+          type: string
+        input_tokens:
+          type: integer
+          format: int64
+        output_tokens:
+          type: integer
+          format: int64
+        total_tokens:
+          type: integer
+          format: int64
+        latency_ms:
+          type: integer
+          format: int64
+        cost_usd:
+          type: number
+          format: double
+        validator_results:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        llm_judge_results:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        dimension_results:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        dimension_scores:
+          type: object
+          additionalProperties:
+            type: ["number", "null"]
+        warnings:
+          type: array
+          items:
+            type: string
+        error_message:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ListPlaygroundExperimentResultsResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlaygroundExperimentResultResponse"
+
+    PlaygroundDimensionDelta:
+      type: object
+      required: [state]
+      properties:
+        baseline_value:
+          type: ["number", "null"]
+        candidate_value:
+          type: ["number", "null"]
+        delta:
+          type: ["number", "null"]
+        state:
+          type: string
+
+    PlaygroundCaseComparison:
+      type: object
+      required: [case_key, baseline_status, candidate_status, baseline_output, candidate_output, dimension_deltas]
+      properties:
+        case_key:
+          type: string
+        baseline_status:
+          type: string
+          enum: [completed, failed]
+        candidate_status:
+          type: string
+          enum: [completed, failed]
+        baseline_output:
+          type: string
+        candidate_output:
+          type: string
+        baseline_error_message:
+          type: string
+        candidate_error_message:
+          type: string
+        dimension_deltas:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/PlaygroundDimensionDelta"
+
+    PlaygroundExperimentComparison:
+      type: object
+      required: [baseline_experiment, candidate_experiment, aggregated_dimension_deltas, per_case]
+      properties:
+        baseline_experiment:
+          $ref: "#/components/schemas/PlaygroundExperimentResponse"
+        candidate_experiment:
+          $ref: "#/components/schemas/PlaygroundExperimentResponse"
+        aggregated_dimension_deltas:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/PlaygroundDimensionDelta"
+        per_case:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlaygroundCaseComparison"
