@@ -30,6 +30,7 @@ type InfrastructureService interface {
 	CreateProviderAccount(ctx context.Context, caller Caller, workspaceID uuid.UUID, input CreateProviderAccountInput) (repository.ProviderAccountRow, error)
 	ListProviderAccounts(ctx context.Context, workspaceID uuid.UUID) ([]repository.ProviderAccountRow, error)
 	GetProviderAccount(ctx context.Context, id uuid.UUID) (repository.ProviderAccountRow, error)
+	DeleteProviderAccount(ctx context.Context, id uuid.UUID) error
 
 	// Model Catalog (global, read-only)
 	ListModelCatalog(ctx context.Context) ([]repository.ModelCatalogEntryRow, error)
@@ -39,6 +40,7 @@ type InfrastructureService interface {
 	CreateModelAlias(ctx context.Context, caller Caller, workspaceID uuid.UUID, input CreateModelAliasInput) (repository.ModelAliasRow, error)
 	ListModelAliases(ctx context.Context, workspaceID uuid.UUID) ([]repository.ModelAliasRow, error)
 	GetModelAlias(ctx context.Context, id uuid.UUID) (repository.ModelAliasRow, error)
+	DeleteModelAlias(ctx context.Context, id uuid.UUID) error
 
 	// Tools
 	CreateTool(ctx context.Context, caller Caller, workspaceID uuid.UUID, input CreateToolInput) (repository.ToolRow, error)
@@ -395,6 +397,60 @@ func infraGetHandler[Row WorkspaceOwned, Resp any](
 		}
 
 		writeJSON(w, http.StatusOK, toResponse(row))
+	}
+}
+
+func infraDeleteHandler[Row WorkspaceOwned](
+	logger *slog.Logger,
+	authorizer WorkspaceAuthorizer,
+	paramName string,
+	get func(ctx context.Context, id uuid.UUID) (Row, error),
+	del func(ctx context.Context, id uuid.UUID) error,
+	resourceName string,
+) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		caller, err := CallerFromContext(r.Context())
+		if err != nil {
+			writeError(w, http.StatusUnauthorized, "unauthorized", "authentication required")
+			return
+		}
+
+		raw := chi.URLParam(r, paramName)
+		id, err := uuid.Parse(raw)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_request", "invalid ID")
+			return
+		}
+
+		// Fetch first to get workspace ID for authorization.
+		row, err := get(r.Context(), id)
+		if err != nil {
+			if isInfraNotFoundErr(err) {
+				writeError(w, http.StatusNotFound, "not_found", resourceName+" not found")
+				return
+			}
+			logger.Error("get for delete failed", "error", err)
+			writeError(w, http.StatusInternalServerError, "internal_error", "failed to get resource")
+			return
+		}
+
+		if wsID := row.GetWorkspaceID(); wsID != nil {
+			if err := AuthorizeWorkspaceAction(r.Context(), authorizer, caller, *wsID, ActionManageInfrastructure); err != nil {
+				writeAuthzError(w, err)
+				return
+			}
+		}
+
+		if err := del(r.Context(), id); err != nil {
+			if isInfraNotFoundErr(err) {
+				writeError(w, http.StatusNotFound, "not_found", resourceName+" not found")
+				return
+			}
+			logger.Error("delete failed", "error", err)
+			writeError(w, http.StatusInternalServerError, "internal_error", "failed to delete resource")
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
 	}
 }
 

@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { CreateResourceDialog } from "@/components/infra/create-resource-dialog";
+import { DeleteResourceButton } from "@/components/infra/delete-resource-button";
 import { Tag } from "lucide-react";
 
 export default async function ModelAliasesPage({
@@ -51,6 +52,7 @@ export default async function ModelAliasesPage({
                 <TableHead>Alias Key</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Created</TableHead>
+                <TableHead className="w-10" />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -60,6 +62,12 @@ export default async function ModelAliasesPage({
                   <TableCell><code className="text-xs font-[family-name:var(--font-mono)] text-muted-foreground">{a.alias_key}</code></TableCell>
                   <TableCell><Badge variant={a.status === "active" ? "default" : "secondary"}>{a.status}</Badge></TableCell>
                   <TableCell className="text-muted-foreground">{new Date(a.created_at).toLocaleDateString()}</TableCell>
+                  <TableCell>
+                    <DeleteResourceButton
+                      endpoint={`/v1/model-aliases/${a.id}`}
+                      resourceName="model alias"
+                    />
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>

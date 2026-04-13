@@ -257,6 +257,17 @@ func (r *Repository) ListProviderAccountsByWorkspaceID(ctx context.Context, work
 	return result, nil
 }
 
+func (r *Repository) ArchiveProviderAccount(ctx context.Context, id uuid.UUID) error {
+	tag, err := r.db.Exec(ctx, `UPDATE provider_accounts SET status = 'archived', archived_at = now(), updated_at = now() WHERE id = $1 AND archived_at IS NULL`, id)
+	if err != nil {
+		return fmt.Errorf("archive provider account: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrProviderAccountNotFound
+	}
+	return nil
+}
+
 // --------------------------------------------------------------------------
 // Model Catalog Entries (global, read-only)
 // --------------------------------------------------------------------------
@@ -457,6 +468,17 @@ func (r *Repository) ListModelAliasesByWorkspaceID(ctx context.Context, workspac
 		result = []ModelAliasRow{}
 	}
 	return result, nil
+}
+
+func (r *Repository) ArchiveModelAlias(ctx context.Context, id uuid.UUID) error {
+	tag, err := r.db.Exec(ctx, `UPDATE model_aliases SET status = 'archived', archived_at = now(), updated_at = now() WHERE id = $1 AND archived_at IS NULL`, id)
+	if err != nil {
+		return fmt.Errorf("archive model alias: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrModelAliasNotFound
+	}
+	return nil
 }
 
 // --------------------------------------------------------------------------

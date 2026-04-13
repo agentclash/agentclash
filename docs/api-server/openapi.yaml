@@ -1040,6 +1040,26 @@ paths:
           $ref: "#/components/responses/ForbiddenError"
         "404":
           $ref: "#/components/responses/NotFoundError"
+    delete:
+      operationId: deleteProviderAccount
+      tags: [ProviderAccounts]
+      summary: Delete (archive) a provider account
+      description: Soft-deletes the provider account by setting its status to archived.
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/AccountID"
+      responses:
+        "204":
+          description: Provider account deleted
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
 
   # ---------------------------------------------------------------------------
   # Model Catalog
@@ -1156,6 +1176,26 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ModelAliasResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+    delete:
+      operationId: deleteModelAlias
+      tags: [ModelAliases]
+      summary: Delete (archive) a model alias
+      description: Soft-deletes the model alias by setting its status to archived.
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/AliasID"
+      responses:
+        "204":
+          description: Model alias deleted
         "400":
           $ref: "#/components/responses/ValidationError"
         "401":

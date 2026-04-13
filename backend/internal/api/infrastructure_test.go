@@ -43,6 +43,7 @@ func (s stubInfraService) ListProviderAccounts(_ context.Context, _ uuid.UUID) (
 func (s stubInfraService) GetProviderAccount(_ context.Context, _ uuid.UUID) (repository.ProviderAccountRow, error) {
 	return repository.ProviderAccountRow{}, repository.ErrProviderAccountNotFound
 }
+func (s stubInfraService) DeleteProviderAccount(_ context.Context, _ uuid.UUID) error { return nil }
 func (s stubInfraService) ListModelCatalog(_ context.Context) ([]repository.ModelCatalogEntryRow, error) {
 	return nil, nil
 }
@@ -58,6 +59,7 @@ func (s stubInfraService) ListModelAliases(_ context.Context, _ uuid.UUID) ([]re
 func (s stubInfraService) GetModelAlias(_ context.Context, _ uuid.UUID) (repository.ModelAliasRow, error) {
 	return repository.ModelAliasRow{}, repository.ErrModelAliasNotFound
 }
+func (s stubInfraService) DeleteModelAlias(_ context.Context, _ uuid.UUID) error { return nil }
 func (s stubInfraService) CreateTool(_ context.Context, _ Caller, _ uuid.UUID, _ CreateToolInput) (repository.ToolRow, error) {
 	return repository.ToolRow{}, nil
 }

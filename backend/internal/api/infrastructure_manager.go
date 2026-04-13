@@ -20,6 +20,7 @@ type InfrastructureRepository interface {
 	CreateProviderAccount(ctx context.Context, p repository.CreateProviderAccountParams) (repository.ProviderAccountRow, error)
 	GetProviderAccountByID(ctx context.Context, id uuid.UUID) (repository.ProviderAccountRow, error)
 	ListProviderAccountsByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) ([]repository.ProviderAccountRow, error)
+	ArchiveProviderAccount(ctx context.Context, id uuid.UUID) error
 
 	// Workspace Secrets
 	UpsertWorkspaceSecret(ctx context.Context, params repository.UpsertWorkspaceSecretParams) error
@@ -32,6 +33,7 @@ type InfrastructureRepository interface {
 	CreateModelAlias(ctx context.Context, p repository.CreateModelAliasParams) (repository.ModelAliasRow, error)
 	GetModelAliasByID(ctx context.Context, id uuid.UUID) (repository.ModelAliasRow, error)
 	ListModelAliasesByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) ([]repository.ModelAliasRow, error)
+	ArchiveModelAlias(ctx context.Context, id uuid.UUID) error
 
 	// Tools
 	CreateTool(ctx context.Context, p repository.CreateToolParams) (repository.ToolRow, error)
@@ -149,6 +151,10 @@ func (m *InfrastructureManager) GetProviderAccount(ctx context.Context, id uuid.
 	return m.repo.GetProviderAccountByID(ctx, id)
 }
 
+func (m *InfrastructureManager) DeleteProviderAccount(ctx context.Context, id uuid.UUID) error {
+	return m.repo.ArchiveProviderAccount(ctx, id)
+}
+
 // --------------------------------------------------------------------------
 // Model Catalog
 // --------------------------------------------------------------------------
@@ -198,6 +204,10 @@ func (m *InfrastructureManager) ListModelAliases(ctx context.Context, workspaceI
 
 func (m *InfrastructureManager) GetModelAlias(ctx context.Context, id uuid.UUID) (repository.ModelAliasRow, error) {
 	return m.repo.GetModelAliasByID(ctx, id)
+}
+
+func (m *InfrastructureManager) DeleteModelAlias(ctx context.Context, id uuid.UUID) error {
+	return m.repo.ArchiveModelAlias(ctx, id)
 }
 
 // --------------------------------------------------------------------------

@@ -146,6 +146,7 @@ func registerProtectedRoutes(
 	router.Method("POST", "/workspaces/{workspaceID}/provider-accounts", wsMiddleware(infraCreateHandler(logger, authorizer, infraService.CreateProviderAccount, mapProviderAccount)))
 	router.Method("GET", "/workspaces/{workspaceID}/provider-accounts", wsMiddleware(infraListHandler(logger, infraService.ListProviderAccounts, mapProviderAccount)))
 	router.Get("/provider-accounts/{accountID}", infraGetHandler(logger, authorizer, "accountID", infraService.GetProviderAccount, mapProviderAccount, "provider account"))
+	router.Delete("/provider-accounts/{accountID}", infraDeleteHandler(logger, authorizer, "accountID", infraService.GetProviderAccount, infraService.DeleteProviderAccount, "provider account"))
 
 	// Model Catalog (global, no workspace scope)
 	router.Get("/model-catalog", listModelCatalogHandler(logger, infraService))
@@ -155,6 +156,7 @@ func registerProtectedRoutes(
 	router.Method("POST", "/workspaces/{workspaceID}/model-aliases", wsMiddleware(infraCreateHandler(logger, authorizer, infraService.CreateModelAlias, mapModelAlias)))
 	router.Method("GET", "/workspaces/{workspaceID}/model-aliases", wsMiddleware(infraListHandler(logger, infraService.ListModelAliases, mapModelAlias)))
 	router.Get("/model-aliases/{aliasID}", infraGetHandler(logger, authorizer, "aliasID", infraService.GetModelAlias, mapModelAlias, "model alias"))
+	router.Delete("/model-aliases/{aliasID}", infraDeleteHandler(logger, authorizer, "aliasID", infraService.GetModelAlias, infraService.DeleteModelAlias, "model alias"))
 
 	// Tools
 	router.Method("POST", "/workspaces/{workspaceID}/tools", wsMiddleware(infraCreateHandler(logger, authorizer, infraService.CreateTool, mapTool)))

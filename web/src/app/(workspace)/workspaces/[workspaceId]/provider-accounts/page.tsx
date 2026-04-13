@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { CreateResourceDialog } from "@/components/infra/create-resource-dialog";
+import { DeleteResourceButton } from "@/components/infra/delete-resource-button";
 import { Key } from "lucide-react";
 
 const statusVariant: Record<string, "default" | "secondary" | "outline"> = {
@@ -70,6 +71,7 @@ export default async function ProviderAccountsPage({
                 <TableHead>Provider</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Created</TableHead>
+                <TableHead className="w-10" />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -79,6 +81,12 @@ export default async function ProviderAccountsPage({
                   <TableCell><code className="text-xs font-[family-name:var(--font-mono)] text-muted-foreground">{a.provider_key}</code></TableCell>
                   <TableCell><Badge variant={statusVariant[a.status] ?? "outline"}>{a.status}</Badge></TableCell>
                   <TableCell className="text-muted-foreground">{new Date(a.created_at).toLocaleDateString()}</TableCell>
+                  <TableCell>
+                    <DeleteResourceButton
+                      endpoint={`/v1/provider-accounts/${a.id}`}
+                      resourceName="provider account"
+                    />
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
