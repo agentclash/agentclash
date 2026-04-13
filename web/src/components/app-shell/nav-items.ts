@@ -55,6 +55,11 @@ export const navSections: NavSection[] = [
         href: (id) => `/workspaces/${id}/runs`,
         icon: Play,
       },
+      {
+        label: "Playgrounds",
+        href: (id) => `/workspaces/${id}/playgrounds`,
+        icon: Play,
+      },
     ],
   },
   {

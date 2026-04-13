@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/provider"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
 	workflowpkg "github.com/Atharva-Kanherkar/agentclash/backend/internal/workflow"
 	temporalsdk "go.temporal.io/sdk/client"
@@ -23,6 +24,7 @@ func NewTemporalWorker(
 	client temporalsdk.Client,
 	cfg Config,
 	repo *repository.Repository,
+	playgroundClient provider.Client,
 	executionHooks workflowpkg.FakeWorkHooks,
 ) sdkworker.Worker {
 	temporalWorker := sdkworker.New(client, cfg.TaskQueue, sdkworker.Options{
@@ -31,6 +33,7 @@ func NewTemporalWorker(
 
 	activities := workflowpkg.NewActivities(repo, executionHooks)
 	workflowpkg.Register(temporalWorker, activities)
+	workflowpkg.RegisterPlayground(temporalWorker, workflowpkg.NewPlaygroundActivities(repo, playgroundClient))
 
 	return temporalWorker
 }

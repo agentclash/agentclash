@@ -837,6 +837,101 @@ export interface ArtifactDownloadResponse {
   expires_at: string;
 }
 
+// --- Playgrounds ---
+
+export interface Playground {
+  id: string;
+  workspace_id: string;
+  name: string;
+  prompt_template: string;
+  system_prompt: string;
+  evaluation_spec: unknown;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PlaygroundTestCase {
+  id: string;
+  playground_id: string;
+  case_key: string;
+  variables: Record<string, unknown>;
+  expectations: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PlaygroundExperiment {
+  id: string;
+  workspace_id: string;
+  playground_id: string;
+  provider_account_id: string;
+  model_alias_id: string;
+  name: string;
+  status: "queued" | "running" | "completed" | "failed";
+  request_config: Record<string, unknown>;
+  summary: Record<string, unknown>;
+  temporal_workflow_id?: string;
+  temporal_run_id?: string;
+  queued_at?: string;
+  started_at?: string;
+  finished_at?: string;
+  failed_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PlaygroundExperimentResult {
+  id: string;
+  playground_experiment_id: string;
+  playground_test_case_id: string;
+  case_key: string;
+  status: "completed" | "failed";
+  variables: Record<string, unknown>;
+  expectations: Record<string, unknown>;
+  rendered_prompt: string;
+  actual_output: string;
+  provider_key: string;
+  provider_model_id: string;
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  latency_ms: number;
+  cost_usd?: number;
+  validator_results: unknown[];
+  llm_judge_results: unknown[];
+  dimension_results: unknown[];
+  dimension_scores: Record<string, number | null>;
+  warnings: string[];
+  error_message?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PlaygroundDimensionDelta {
+  baseline_value?: number | null;
+  candidate_value?: number | null;
+  delta?: number | null;
+  state: string;
+}
+
+export interface PlaygroundCaseComparison {
+  case_key: string;
+  baseline_status: "completed" | "failed";
+  candidate_status: "completed" | "failed";
+  baseline_output: string;
+  candidate_output: string;
+  baseline_error_message?: string;
+  candidate_error_message?: string;
+  dimension_deltas: Record<string, PlaygroundDimensionDelta>;
+}
+
+export interface PlaygroundExperimentComparison {
+  baseline_experiment: PlaygroundExperiment;
+  candidate_experiment: PlaygroundExperiment;
+  aggregated_dimension_deltas: Record<string, PlaygroundDimensionDelta>;
+  per_case: PlaygroundCaseComparison[];
+}
+
 // --- Errors ---
 
 /** Standard error envelope returned by all backend error responses. */

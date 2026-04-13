@@ -12,9 +12,9 @@ import (
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/sandbox"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/sandbox/e2b"
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/temporalutil"
 	workerapp "github.com/Atharva-Kanherkar/agentclash/backend/internal/worker"
 	workflowpkg "github.com/Atharva-Kanherkar/agentclash/backend/internal/workflow"
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/temporalutil"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -68,7 +68,7 @@ func main() {
 		providerRouter,
 		workerapp.NewPromptEvalRunEventObserverFactory(repo),
 	)
-	temporalWorker := workerapp.NewTemporalWorker(temporalClient, cfg, repo, workflowpkg.FakeWorkHooks{
+	temporalWorker := workerapp.NewTemporalWorker(temporalClient, cfg, repo, providerRouter, workflowpkg.FakeWorkHooks{
 		HostedRunStarter:   hostedRunClient,
 		NativeModelInvoker: nativeModelInvoker,
 		PromptEvalInvoker:  promptEvalInvoker,

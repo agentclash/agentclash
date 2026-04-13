@@ -31,11 +31,11 @@ const (
 )
 
 type EvidenceInput struct {
-	ChallengeIdentityID uuid.UUID       `json:"challenge_identity_id"`
-	ChallengeKey        string          `json:"challenge_key"`
-	CaseKey             string          `json:"case_key,omitempty"`
-	ItemKey             string          `json:"item_key"`
-	Payload             json.RawMessage `json:"payload"`
+	ChallengeIdentityID uuid.UUID                   `json:"challenge_identity_id"`
+	ChallengeKey        string                      `json:"challenge_key"`
+	CaseKey             string                      `json:"case_key,omitempty"`
+	ItemKey             string                      `json:"item_key"`
+	Payload             json.RawMessage             `json:"payload"`
 	Inputs              map[string]EvidenceValue    `json:"inputs,omitempty"`
 	Expectations        map[string]EvidenceValue    `json:"expectations,omitempty"`
 	Artifacts           map[string]EvidenceArtifact `json:"artifacts,omitempty"`
@@ -217,6 +217,8 @@ type extractedEvidence struct {
 	stepDurations             []stepDurationEvidence
 	warnings                  []string
 }
+
+type ExtractedEvidence = extractedEvidence
 
 type modelRef struct {
 	ProviderKey     string
@@ -498,6 +500,10 @@ func evaluateValidators(validators []ValidatorDeclaration, evidence extractedEvi
 	return results, warnings
 }
 
+func EvaluateValidatorsFromEvidence(validators []ValidatorDeclaration, evidence ExtractedEvidence) ([]ValidatorResult, []string) {
+	return evaluateValidators(validators, evidence)
+}
+
 func applyValidator(validator ValidatorDeclaration, actual string, expected string) validatorOutcome {
 	pass := false
 	reason := ""
@@ -561,6 +567,10 @@ func evaluateMetrics(metrics []MetricDeclaration, evidence extractedEvidence, va
 		results = append(results, result)
 	}
 	return results, warnings
+}
+
+func EvaluateMetricsFromEvidence(metrics []MetricDeclaration, evidence ExtractedEvidence, validators []ValidatorResult, spec EvaluationSpec) ([]MetricResult, []string) {
+	return evaluateMetrics(metrics, evidence, validators, spec)
 }
 
 func collectMetric(metric MetricDeclaration, evidence extractedEvidence, validators []ValidatorResult, spec EvaluationSpec) (OutputState, *float64, *string, *bool, string, json.RawMessage) {
@@ -703,6 +713,10 @@ func evaluateDimensions(spec EvaluationSpec, evidence extractedEvidence, validat
 		results = append(results, result)
 	}
 	return results
+}
+
+func EvaluateDimensionsFromEvidence(spec EvaluationSpec, evidence ExtractedEvidence, validators []ValidatorResult, metrics []MetricResult) []DimensionResult {
+	return evaluateDimensions(spec, evidence, validators, metrics)
 }
 
 func dimensionWarnings(results []DimensionResult) []string {

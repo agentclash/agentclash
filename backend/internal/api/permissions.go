@@ -21,6 +21,7 @@ const (
 	ActionMarkAgentBuildReady     Action = "mark_agent_build_ready"
 	ActionCreateAgentDeployment   Action = "create_agent_deployment"
 	ActionCreateRun               Action = "create_run"
+	ActionManagePlaygrounds       Action = "manage_playgrounds"
 	ActionPublishChallengePack    Action = "publish_challenge_pack"
 	ActionUploadArtifact          Action = "upload_artifact"
 
@@ -28,7 +29,7 @@ const (
 	// Infrastructure CRUD endpoints don't exist yet, but the matrix
 	// entry is defined so new endpoints can use it immediately.
 	ActionManageInfrastructure Action = "manage_infrastructure"
-	ActionManageSecrets       Action = "manage_secrets"
+	ActionManageSecrets        Action = "manage_secrets"
 )
 
 // Workspace roles.
@@ -51,10 +52,11 @@ var permissionMatrix = map[string]map[Action]bool{
 		ActionMarkAgentBuildReady:     true,
 		ActionCreateAgentDeployment:   true,
 		ActionCreateRun:               true,
+		ActionManagePlaygrounds:       true,
 		ActionPublishChallengePack:    true,
 		ActionUploadArtifact:          true,
 		ActionManageInfrastructure:    true,
-		ActionManageSecrets:          true,
+		ActionManageSecrets:           true,
 	},
 	RoleWorkspaceMember: {
 		ActionReadWorkspace:           true,
@@ -64,6 +66,7 @@ var permissionMatrix = map[string]map[Action]bool{
 		ActionMarkAgentBuildReady:     true,
 		ActionCreateAgentDeployment:   true,
 		ActionCreateRun:               true,
+		ActionManagePlaygrounds:       true,
 		ActionPublishChallengePack:    true,
 		ActionUploadArtifact:          true,
 	},

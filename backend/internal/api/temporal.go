@@ -34,6 +34,25 @@ func (s TemporalRunWorkflowStarter) StartRunWorkflow(ctx context.Context, runID 
 	return err
 }
 
+type TemporalPlaygroundWorkflowStarter struct {
+	client TemporalClient
+}
+
+func NewTemporalPlaygroundWorkflowStarter(client TemporalClient) TemporalPlaygroundWorkflowStarter {
+	return TemporalPlaygroundWorkflowStarter{client: client}
+}
+
+func (s TemporalPlaygroundWorkflowStarter) StartPlaygroundExperimentWorkflow(ctx context.Context, experimentID uuid.UUID) error {
+	workflowID := fmt.Sprintf("%s/%s", workflow.PlaygroundExperimentWorkflowName, experimentID)
+	_, err := s.client.ExecuteWorkflow(ctx, temporalsdk.StartWorkflowOptions{
+		ID:        workflowID,
+		TaskQueue: workflow.PlaygroundExperimentWorkflowName,
+	}, workflow.PlaygroundExperimentWorkflowName, workflow.PlaygroundExperimentWorkflowInput{
+		ExperimentID: experimentID,
+	})
+	return err
+}
+
 type TemporalHostedRunWorkflowSignaler struct {
 	client TemporalClient
 }

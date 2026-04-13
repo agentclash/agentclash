@@ -9,6 +9,66 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type AgentBuild struct {
+	ID              uuid.UUID
+	OrganizationID  uuid.UUID
+	WorkspaceID     uuid.UUID
+	Name            string
+	Slug            string
+	Description     *string
+	BuildKind       string
+	LifecycleStatus string
+	CreatedByUserID *uuid.UUID
+	CreatedAt       pgtype.Timestamptz
+	UpdatedAt       pgtype.Timestamptz
+	ArchivedAt      pgtype.Timestamptz
+}
+
+type AgentBuildVersion struct {
+	ID              uuid.UUID
+	AgentBuildID    uuid.UUID
+	VersionNumber   int32
+	VersionStatus   string
+	BuildDefinition []byte
+	PromptSpec      *string
+	OutputSchema    []byte
+	TraceContract   []byte
+	CreatedByUserID *uuid.UUID
+	CreatedAt       pgtype.Timestamptz
+	AgentKind       string
+	InterfaceSpec   []byte
+	PolicySpec      []byte
+	ReasoningSpec   []byte
+	MemorySpec      []byte
+	WorkflowSpec    []byte
+	GuardrailSpec   []byte
+	ModelSpec       []byte
+	PublicationSpec []byte
+}
+
+type AgentDeployment struct {
+	ID                    uuid.UUID
+	OrganizationID        uuid.UUID
+	WorkspaceID           uuid.UUID
+	AgentBuildID          uuid.UUID
+	CurrentBuildVersionID uuid.UUID
+	RuntimeProfileID      uuid.UUID
+	ProviderAccountID     *uuid.UUID
+	ModelAliasID          *uuid.UUID
+	RoutingPolicyID       *uuid.UUID
+	SpendPolicyID         *uuid.UUID
+	Name                  string
+	Slug                  string
+	DeploymentType        string
+	EndpointUrl           *string
+	HealthcheckUrl        *string
+	Status                string
+	DeploymentConfig      []byte
+	CreatedAt             pgtype.Timestamptz
+	UpdatedAt             pgtype.Timestamptz
+	ArchivedAt            pgtype.Timestamptz
+}
+
 type ChallengeInputSet struct {
 	ID                     uuid.UUID
 	ChallengePackVersionID uuid.UUID
@@ -92,6 +152,79 @@ type MetricResult struct {
 	Unit                *string
 	Metadata            []byte
 	CreatedAt           pgtype.Timestamptz
+}
+
+type Playground struct {
+	ID              uuid.UUID
+	OrganizationID  uuid.UUID
+	WorkspaceID     uuid.UUID
+	Name            string
+	PromptTemplate  string
+	SystemPrompt    string
+	EvaluationSpec  []byte
+	CreatedByUserID *uuid.UUID
+	UpdatedByUserID *uuid.UUID
+	CreatedAt       pgtype.Timestamptz
+	UpdatedAt       pgtype.Timestamptz
+}
+
+type PlaygroundExperiment struct {
+	ID                 uuid.UUID
+	OrganizationID     uuid.UUID
+	WorkspaceID        uuid.UUID
+	PlaygroundID       uuid.UUID
+	ProviderAccountID  uuid.UUID
+	ModelAliasID       uuid.UUID
+	Name               string
+	Status             string
+	RequestConfig      []byte
+	Summary            []byte
+	TemporalWorkflowID *string
+	TemporalRunID      *string
+	QueuedAt           pgtype.Timestamptz
+	StartedAt          pgtype.Timestamptz
+	FinishedAt         pgtype.Timestamptz
+	FailedAt           pgtype.Timestamptz
+	CreatedByUserID    *uuid.UUID
+	CreatedAt          pgtype.Timestamptz
+	UpdatedAt          pgtype.Timestamptz
+}
+
+type PlaygroundExperimentResult struct {
+	ID                     uuid.UUID
+	PlaygroundExperimentID uuid.UUID
+	PlaygroundTestCaseID   uuid.UUID
+	CaseKey                string
+	Status                 string
+	Variables              []byte
+	Expectations           []byte
+	RenderedPrompt         string
+	ActualOutput           string
+	ProviderKey            string
+	ProviderModelID        string
+	InputTokens            int64
+	OutputTokens           int64
+	TotalTokens            int64
+	LatencyMs              int64
+	CostUsd                pgtype.Numeric
+	ValidatorResults       []byte
+	LlmJudgeResults        []byte
+	DimensionResults       []byte
+	DimensionScores        []byte
+	Warnings               []byte
+	ErrorMessage           *string
+	CreatedAt              pgtype.Timestamptz
+	UpdatedAt              pgtype.Timestamptz
+}
+
+type PlaygroundTestCase struct {
+	ID           uuid.UUID
+	PlaygroundID uuid.UUID
+	CaseKey      string
+	Variables    []byte
+	Expectations []byte
+	CreatedAt    pgtype.Timestamptz
+	UpdatedAt    pgtype.Timestamptz
 }
 
 type Run struct {

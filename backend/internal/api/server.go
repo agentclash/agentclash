@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
@@ -21,6 +22,7 @@ func NewServer(
 	logger *slog.Logger,
 	authenticator Authenticator,
 	authorizer WorkspaceAuthorizer,
+	playgroundService PlaygroundService,
 	artifactService ArtifactService,
 	runCreationService RunCreationService,
 	runReadService RunReadService,
@@ -41,7 +43,7 @@ func NewServer(
 	infraService InfrastructureService,
 	workspaceSecretsService WorkspaceSecretsService,
 ) *Server {
-	router := newRouter(cfg.AuthMode, cfg.CORSAllowedOrigins, logger, authenticator, authorizer, artifactService, cfg.ArtifactMaxUploadBytes, runCreationService, runReadService, replayReadService, hostedRunIngestionService, compareReadService, agentDeploymentReadService, challengePackReadService, agentBuildService, releaseGateService, challengePackAuthoringService, userService, orgService, wsService, orgMembershipService, wsMembershipService, onboardingService, infraService, workspaceSecretsService)
+	router := newRouter(cfg.AuthMode, cfg.CORSAllowedOrigins, logger, authenticator, authorizer, artifactService, cfg.ArtifactMaxUploadBytes, runCreationService, runReadService, replayReadService, hostedRunIngestionService, compareReadService, agentDeploymentReadService, challengePackReadService, agentBuildService, releaseGateService, challengePackAuthoringService, userService, orgService, wsService, orgMembershipService, wsMembershipService, onboardingService, infraService, workspaceSecretsService, playgroundService)
 
 	return &Server{
 		config: cfg,
@@ -88,7 +90,6 @@ func Run(ctx context.Context, server *Server, logger *slog.Logger) error {
 	}
 }
 
-
 func newRouter(
 	authMode string,
 	corsAllowedOrigins map[string]struct{},
@@ -115,6 +116,7 @@ func newRouter(
 	onboardingServiceArg OnboardingService,
 	infraServiceArg InfrastructureService,
 	workspaceSecretsServiceArg WorkspaceSecretsService,
+	playgroundServices ...PlaygroundService,
 ) http.Handler {
 	challengePackAuthoringService := challengePackAuthoringServiceArg
 	userService := userServiceArg
@@ -125,6 +127,7 @@ func newRouter(
 	onboardingService := onboardingServiceArg
 	infraService := infraServiceArg
 	workspaceSecretsService := workspaceSecretsServiceArg
+	var playgroundService PlaygroundService
 
 	if hostedRunIngestionService == nil {
 		hostedRunIngestionService = noopHostedRunIngestionService{}
@@ -132,6 +135,12 @@ func newRouter(
 
 	if compareReadService == nil {
 		compareReadService = noopCompareReadService{}
+	}
+	if len(playgroundServices) > 0 {
+		playgroundService = playgroundServices[0]
+	}
+	if playgroundService == nil {
+		playgroundService = noopPlaygroundService{}
 	}
 	if releaseGateService == nil {
 		releaseGateService = noopReleaseGateService{}
@@ -155,7 +164,7 @@ func newRouter(
 	registerHostedIntegrationRoutes(router, logger, hostedRunIngestionService)
 	router.Route("/v1", func(r chi.Router) {
 		r.Use(authenticateRequest(logger, authenticator))
-		registerProtectedRoutes(r, logger, authorizer, artifactService, artifactMaxUploadBytes, runCreationService, runReadService, replayReadService, compareReadService, releaseGateService, agentDeploymentReadService, challengePackReadService, challengePackAuthoringService, agentBuildService, userService, orgService, wsService, orgMembershipService, wsMembershipService, onboardingService, infraService, workspaceSecretsService)
+		registerProtectedRoutes(r, logger, authorizer, playgroundService, artifactService, artifactMaxUploadBytes, runCreationService, runReadService, replayReadService, compareReadService, releaseGateService, agentDeploymentReadService, challengePackReadService, challengePackAuthoringService, agentBuildService, userService, orgService, wsService, orgMembershipService, wsMembershipService, onboardingService, infraService, workspaceSecretsService)
 	})
 
 	return router
@@ -165,6 +174,51 @@ type noopCompareReadService struct{}
 
 func (noopCompareReadService) GetRunComparison(_ context.Context, _ Caller, _ GetRunComparisonInput) (GetRunComparisonResult, error) {
 	return GetRunComparisonResult{}, errors.New("compare read service is not configured")
+}
+
+type noopPlaygroundService struct{}
+
+func (noopPlaygroundService) CreatePlayground(_ context.Context, _ Caller, _ CreatePlaygroundInput) (repository.Playground, error) {
+	return repository.Playground{}, errors.New("playground service is not configured")
+}
+func (noopPlaygroundService) ListPlaygrounds(_ context.Context, _ Caller, _ uuid.UUID) ([]repository.Playground, error) {
+	return nil, errors.New("playground service is not configured")
+}
+func (noopPlaygroundService) GetPlayground(_ context.Context, _ Caller, _ uuid.UUID) (repository.Playground, error) {
+	return repository.Playground{}, errors.New("playground service is not configured")
+}
+func (noopPlaygroundService) UpdatePlayground(_ context.Context, _ Caller, _ UpdatePlaygroundInput) (repository.Playground, error) {
+	return repository.Playground{}, errors.New("playground service is not configured")
+}
+func (noopPlaygroundService) DeletePlayground(_ context.Context, _ Caller, _ uuid.UUID) error {
+	return errors.New("playground service is not configured")
+}
+func (noopPlaygroundService) CreatePlaygroundTestCase(_ context.Context, _ Caller, _ CreatePlaygroundTestCaseInput) (repository.PlaygroundTestCase, error) {
+	return repository.PlaygroundTestCase{}, errors.New("playground service is not configured")
+}
+func (noopPlaygroundService) ListPlaygroundTestCases(_ context.Context, _ Caller, _ uuid.UUID) ([]repository.PlaygroundTestCase, error) {
+	return nil, errors.New("playground service is not configured")
+}
+func (noopPlaygroundService) UpdatePlaygroundTestCase(_ context.Context, _ Caller, _ UpdatePlaygroundTestCaseInput) (repository.PlaygroundTestCase, error) {
+	return repository.PlaygroundTestCase{}, errors.New("playground service is not configured")
+}
+func (noopPlaygroundService) DeletePlaygroundTestCase(_ context.Context, _ Caller, _ uuid.UUID) error {
+	return errors.New("playground service is not configured")
+}
+func (noopPlaygroundService) CreatePlaygroundExperiment(_ context.Context, _ Caller, _ CreatePlaygroundExperimentInput) (repository.PlaygroundExperiment, error) {
+	return repository.PlaygroundExperiment{}, errors.New("playground service is not configured")
+}
+func (noopPlaygroundService) ListPlaygroundExperiments(_ context.Context, _ Caller, _ uuid.UUID) ([]repository.PlaygroundExperiment, error) {
+	return nil, errors.New("playground service is not configured")
+}
+func (noopPlaygroundService) GetPlaygroundExperiment(_ context.Context, _ Caller, _ uuid.UUID) (repository.PlaygroundExperiment, error) {
+	return repository.PlaygroundExperiment{}, errors.New("playground service is not configured")
+}
+func (noopPlaygroundService) ListPlaygroundExperimentResults(_ context.Context, _ Caller, _ uuid.UUID) ([]repository.PlaygroundExperimentResult, error) {
+	return nil, errors.New("playground service is not configured")
+}
+func (noopPlaygroundService) ComparePlaygroundExperiments(_ context.Context, _ Caller, _ uuid.UUID, _ uuid.UUID) (repository.PlaygroundExperimentComparison, error) {
+	return repository.PlaygroundExperimentComparison{}, errors.New("playground service is not configured")
 }
 
 type noopReleaseGateService struct{}

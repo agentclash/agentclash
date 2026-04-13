@@ -277,3 +277,7 @@ func renderPromptTemplate(template string, vars map[string]string) string {
 		return match
 	})
 }
+
+func RenderPromptTemplate(template string, vars map[string]string) string {
+	return renderPromptTemplate(template, vars)
+}
