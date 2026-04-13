@@ -7,6 +7,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { KpiStrip } from "./kpi-strip";
 import { ExperimentResults } from "./experiment-results";
 import {
+  AlertCircle,
   ChevronDown,
   ChevronRight,
   FlaskConical,
@@ -37,6 +38,7 @@ function parseSummary(summary: Record<string, unknown>) {
     totalCases: (summary.total_cases as number) ?? 0,
     completedCases: (summary.completed_cases as number) ?? 0,
     failedCases: (summary.failed_cases as number) ?? 0,
+    error: (summary.error as string) ?? null,
   };
 }
 
@@ -113,6 +115,13 @@ export function ExperimentList({
                   )}
                 </div>
 
+                {exp.status === "failed" && summary.error && (
+                  <div className="flex items-start gap-1.5 text-xs text-destructive">
+                    <AlertCircle className="mt-0.5 size-3 shrink-0" />
+                    <span className="line-clamp-2">{summary.error}</span>
+                  </div>
+                )}
+
                 {exp.status === "completed" || results.length > 0 ? (
                   <ExperimentSummaryStrip results={results} />
                 ) : isActive ? (
@@ -129,6 +138,15 @@ export function ExperimentList({
 
             {isExpanded && (
               <div className="border-t border-border bg-muted/10 p-4">
+                {exp.status === "failed" && summary.error && (
+                  <div className="mb-4 flex items-start gap-2 rounded-md border border-destructive/20 bg-destructive/5 p-3">
+                    <AlertCircle className="mt-0.5 size-4 shrink-0 text-destructive" />
+                    <div className="text-sm">
+                      <p className="font-medium text-destructive">Experiment failed</p>
+                      <p className="mt-1 text-destructive/80">{summary.error}</p>
+                    </div>
+                  </div>
+                )}
                 {results.length > 0 ? (
                   <ExperimentResults results={results} />
                 ) : isActive ? (
@@ -136,11 +154,11 @@ export function ExperimentList({
                     <Skeleton className="h-24 w-full" />
                     <Skeleton className="h-24 w-full" />
                   </div>
-                ) : (
+                ) : !summary.error ? (
                   <p className="py-4 text-center text-sm text-muted-foreground">
                     No results available.
                   </p>
-                )}
+                ) : null}
               </div>
             )}
           </div>
