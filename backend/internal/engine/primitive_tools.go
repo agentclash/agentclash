@@ -152,6 +152,22 @@ func executeSubmitTool(_ context.Context, request ToolExecutionRequest) (ToolExe
 	}, nil
 }
 
+// validateSandboxPath ensures the given path resolves to a location within the
+// sandbox workspace root. Relative paths are resolved against the root. Returns
+// the cleaned absolute path or an error if the path escapes the workspace.
+func validateSandboxPath(rawPath string) (string, error) {
+	cleaned := rawPath
+	if !path.IsAbs(cleaned) {
+		cleaned = path.Join(defaultSandboxWorkingDirectory, cleaned)
+	}
+	cleaned = path.Clean(cleaned)
+	// The cleaned path must be exactly the root or start with root + "/".
+	if cleaned != defaultSandboxWorkingDirectory && !strings.HasPrefix(cleaned, defaultSandboxWorkingDirectory+"/") {
+		return "", fmt.Errorf("path %q is outside the sandbox workspace", rawPath)
+	}
+	return cleaned, nil
+}
+
 func executeReadFileTool(ctx context.Context, request ToolExecutionRequest) (ToolExecutionResult, error) {
 	if !allowsFileTools(request.ToolPolicy) {
 		return ToolExecutionResult{Content: encodeToolErrorMessage("tool is not allowed in this runtime"), IsError: true}, nil
@@ -163,8 +179,12 @@ func executeReadFileTool(ctx context.Context, request ToolExecutionRequest) (Too
 	if err := decodeToolArguments(readFileToolName, request.Args, &args); err != nil {
 		return ToolExecutionResult{Content: encodeToolErrorMessage(err.Error()), IsError: true}, nil
 	}
+	safePath, err := validateSandboxPath(args.Path)
+	if err != nil {
+		return ToolExecutionResult{Content: encodeToolErrorMessage(err.Error()), IsError: true}, nil
+	}
 
-	content, err := request.Session.ReadFile(ctx, args.Path)
+	content, err := request.Session.ReadFile(ctx, safePath)
 	if err != nil {
 		if errors.Is(err, sandbox.ErrFileNotFound) {
 			return ToolExecutionResult{Content: encodeToolErrorMessage(fmt.Sprintf("file %q was not found", strings.TrimSpace(args.Path))), IsError: true}, nil
@@ -195,7 +215,11 @@ func executeWriteFileTool(ctx context.Context, request ToolExecutionRequest) (To
 	if err := decodeToolArguments(writeFileToolName, request.Args, &args); err != nil {
 		return ToolExecutionResult{Content: encodeToolErrorMessage(err.Error()), IsError: true}, nil
 	}
-	if err := request.Session.WriteFile(ctx, args.Path, []byte(args.Content)); err != nil {
+	safePath, err := validateSandboxPath(args.Path)
+	if err != nil {
+		return ToolExecutionResult{Content: encodeToolErrorMessage(err.Error()), IsError: true}, nil
+	}
+	if err := request.Session.WriteFile(ctx, safePath, []byte(args.Content)); err != nil {
 		return ToolExecutionResult{}, NewFailure(StopReasonSandboxError, "write sandbox file", err)
 	}
 
@@ -222,7 +246,11 @@ func executeListFilesTool(ctx context.Context, request ToolExecutionRequest) (To
 	if err := decodeToolArguments(listFilesToolName, request.Args, &args); err != nil {
 		return ToolExecutionResult{Content: encodeToolErrorMessage(err.Error()), IsError: true}, nil
 	}
-	files, err := request.Session.ListFiles(ctx, args.Prefix)
+	safePrefix, err := validateSandboxPath(args.Prefix)
+	if err != nil {
+		return ToolExecutionResult{Content: encodeToolErrorMessage(err.Error()), IsError: true}, nil
+	}
+	files, err := request.Session.ListFiles(ctx, safePrefix)
 	if err != nil {
 		return ToolExecutionResult{}, NewFailure(StopReasonSandboxError, "list sandbox files", err)
 	}
