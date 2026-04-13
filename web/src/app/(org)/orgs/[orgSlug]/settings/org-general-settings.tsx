@@ -22,9 +22,10 @@ import { toast } from "sonner";
 interface OrgGeneralSettingsProps {
   org: Organization;
   orgSlug: string;
+  onOrgUpdated?: (org: Organization) => void;
 }
 
-export function OrgGeneralSettings({ org, orgSlug }: OrgGeneralSettingsProps) {
+export function OrgGeneralSettings({ org, orgSlug, onOrgUpdated }: OrgGeneralSettingsProps) {
   const { getAccessToken } = useAccessToken();
   const router = useRouter();
   const [name, setName] = useState(org.name);
@@ -40,9 +41,9 @@ export function OrgGeneralSettings({ org, orgSlug }: OrgGeneralSettingsProps) {
       const token = await getAccessToken();
       if (!token) return;
       const api = createApiClient(token);
-      await api.patch(`/v1/organizations/${org.id}`, { name: name.trim() });
+      const updated = await api.patch<Organization>(`/v1/organizations/${org.id}`, { name: name.trim() });
       toast.success("Organization name updated");
-      router.refresh();
+      onOrgUpdated?.(updated);
     } catch (err) {
       toast.error(
         err instanceof ApiError ? err.message : "Failed to update name",

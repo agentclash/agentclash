@@ -1,5 +1,5 @@
 import { withAuth } from "@workos-inc/authkit-nextjs";
-import { redirect } from "next/navigation";
+import { redirect, notFound } from "next/navigation";
 import { createApiClient } from "@/lib/api/client";
 import type { UserMeResponse, SessionResponse } from "@/lib/api/types";
 import { OrgSettingsSidebar } from "./org-settings-sidebar";
@@ -30,24 +30,7 @@ export default async function OrgLayout({
   }
 
   const org = userMe.organizations.find((o) => o.slug === orgSlug);
-  if (!org) {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-4xl font-semibold mb-2">404</h1>
-          <p className="text-sm text-muted-foreground mb-4">
-            Organization not found.
-          </p>
-          <a
-            href="/dashboard"
-            className="text-sm text-foreground underline underline-offset-4"
-          >
-            Go to dashboard
-          </a>
-        </div>
-      </div>
-    );
-  }
+  if (!org) notFound();
 
   const isAdmin = org.role === "org_admin";
 

@@ -7,13 +7,14 @@ import { createApiClient } from "@/lib/api/client";
 import type { Organization } from "@/lib/api/types";
 import { useOrgContext } from "../org-context";
 import { OrgGeneralSettings } from "./org-general-settings";
-import { Loader2 } from "lucide-react";
+import { Loader2, AlertTriangle } from "lucide-react";
 
 export function OrgSettingsGate({ orgSlug }: { orgSlug: string }) {
   const { orgId, isAdmin } = useOrgContext();
   const { getAccessToken } = useAccessToken();
   const router = useRouter();
   const [org, setOrg] = useState<Organization | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isAdmin) {
@@ -31,7 +32,7 @@ export function OrgSettingsGate({ orgSlug }: { orgSlug: string }) {
         );
         if (!cancelled) setOrg(data);
       } catch {
-        // Silently fail
+        if (!cancelled) setError("Failed to load organization settings.");
       }
     })();
     return () => {
@@ -40,6 +41,15 @@ export function OrgSettingsGate({ orgSlug }: { orgSlug: string }) {
   }, [orgId, isAdmin, orgSlug, router, getAccessToken]);
 
   if (!isAdmin) return null;
+
+  if (error) {
+    return (
+      <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-6 text-center text-sm text-destructive flex items-center justify-center gap-2">
+        <AlertTriangle className="size-4" />
+        {error}
+      </div>
+    );
+  }
 
   if (!org) {
     return (
@@ -54,7 +64,7 @@ export function OrgSettingsGate({ orgSlug }: { orgSlug: string }) {
       <h1 className="text-lg font-semibold tracking-tight mb-6">
         General Settings
       </h1>
-      <OrgGeneralSettings org={org} orgSlug={orgSlug} />
+      <OrgGeneralSettings org={org} onOrgUpdated={setOrg} orgSlug={orgSlug} />
     </div>
   );
 }

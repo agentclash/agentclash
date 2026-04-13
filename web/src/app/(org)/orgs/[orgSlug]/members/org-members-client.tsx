@@ -80,10 +80,10 @@ export function OrgMembersClient({
   const [total, setTotal] = useState(initialTotal);
   const [offset, setOffset] = useState(0);
 
-  const adminCount = members.filter(
-    (m) =>
-      m.role === "org_admin" &&
-      (m.membership_status === "active" || m.membership_status === "invited"),
+  // Only count active admins for last-admin protection — invited admins
+  // haven't accepted yet, so they shouldn't prevent demoting the last active one
+  const activeAdminCount = members.filter(
+    (m) => m.role === "org_admin" && m.membership_status === "active",
   ).length;
 
   const fetchMembers = useCallback(
@@ -174,7 +174,7 @@ export function OrgMembersClient({
     if (member.user_id === currentUserId) return false;
     if (
       member.role === "org_admin" &&
-      adminCount <= 1 &&
+      activeAdminCount <= 1 &&
       member.membership_status !== "suspended" &&
       member.membership_status !== "archived"
     )
@@ -234,7 +234,7 @@ export function OrgMembersClient({
                 const expired = isInviteExpired(member);
                 const manageable = canManageMember(member);
                 const isLastAdmin =
-                  member.role === "org_admin" && adminCount <= 1;
+                  member.role === "org_admin" && activeAdminCount <= 1;
                 const isInactive =
                   member.membership_status === "suspended" ||
                   member.membership_status === "archived";
