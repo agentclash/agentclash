@@ -108,6 +108,7 @@ export interface OrgMember {
   role: OrgRole;
   membership_status: OrgMembershipStatus;
   created_at: string;
+  updated_at?: string;
 }
 
 /** POST /v1/organizations/{id}/memberships request */

@@ -22,9 +22,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { MoreHorizontal } from "lucide-react";
+import { MoreHorizontal, ChevronLeft, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { InviteMemberDialog } from "./invite-member-dialog";
+
+const PAGE_SIZE = 50;
 
 const roleBadgeVariant: Record<string, "default" | "secondary" | "outline"> = {
   org_admin: "default",
@@ -49,11 +51,13 @@ function statusLabel(status: string): string {
   return status.charAt(0).toUpperCase() + status.slice(1);
 }
 
+// P2 fix: use updated_at (re-invite refresh) with fallback to created_at
 function isInviteExpired(member: OrgMember): boolean {
   if (member.membership_status !== "invited") return false;
-  const createdAt = new Date(member.created_at).getTime();
+  const timestamp = member.updated_at ?? member.created_at;
+  const ts = new Date(timestamp).getTime();
   const sevenDays = 7 * 24 * 60 * 60 * 1000;
-  return Date.now() - createdAt > sevenDays;
+  return Date.now() - ts > sevenDays;
 }
 
 interface OrgMembersClientProps {
@@ -74,6 +78,7 @@ export function OrgMembersClient({
   const { getAccessToken } = useAccessToken();
   const [members, setMembers] = useState<OrgMember[]>(initialMembers);
   const [total, setTotal] = useState(initialTotal);
+  const [offset, setOffset] = useState(0);
 
   const adminCount = members.filter(
     (m) =>
@@ -81,25 +86,36 @@ export function OrgMembersClient({
       (m.membership_status === "active" || m.membership_status === "invited"),
   ).length;
 
-  const refreshMembers = useCallback(async () => {
-    try {
-      const token = await getAccessToken();
-      if (!token) return;
-      const api = createApiClient(token);
-      const res = await api.get<{
-        items: OrgMember[];
-        total: number;
-      }>(`/v1/organizations/${orgId}/memberships`, {
-        params: { limit: 50, offset: 0 },
-      });
-      setMembers(res.items);
-      setTotal(res.total);
-    } catch {
-      // Silently fail
-    }
-  }, [getAccessToken, orgId]);
+  const fetchMembers = useCallback(
+    async (currentOffset: number) => {
+      try {
+        const token = await getAccessToken();
+        if (!token) return;
+        const api = createApiClient(token);
+        const res = await api.get<{
+          items: OrgMember[];
+          total: number;
+        }>(`/v1/organizations/${orgId}/memberships`, {
+          params: { limit: PAGE_SIZE, offset: currentOffset },
+        });
+        setMembers(res.items);
+        setTotal(res.total);
+      } catch {
+        // Silently fail
+      }
+    },
+    [getAccessToken, orgId],
+  );
+
+  function refreshMembers() {
+    fetchMembers(offset);
+  }
 
   async function handleChangeRole(member: OrgMember, newRole: OrgRole) {
+    // P1 fix: optimistic update so the member stays visible
+    setMembers((prev) =>
+      prev.map((m) => (m.id === member.id ? { ...m, role: newRole } : m)),
+    );
     try {
       const token = await getAccessToken();
       if (!token) return;
@@ -107,12 +123,15 @@ export function OrgMembersClient({
       await api.patch(`/v1/organization-memberships/${member.id}`, {
         role: newRole,
       });
-      toast.success(`Changed ${member.display_name || member.email} to ${roleLabel(newRole)}`);
+      toast.success(
+        `Changed ${member.display_name || member.email} to ${roleLabel(newRole)}`,
+      );
       refreshMembers();
     } catch (err) {
       toast.error(
         err instanceof ApiError ? err.message : "Failed to change role",
       );
+      refreshMembers(); // revert optimistic update
     }
   }
 
@@ -120,6 +139,15 @@ export function OrgMembersClient({
     member: OrgMember,
     newStatus: OrgMembershipStatus,
   ) {
+    // P1 fix: optimistic update keeps suspended/archived members visible
+    // in the current page so the Reactivate action stays accessible
+    setMembers((prev) =>
+      prev.map((m) =>
+        m.id === member.id
+          ? { ...m, membership_status: newStatus }
+          : m,
+      ),
+    );
     try {
       const token = await getAccessToken();
       if (!token) return;
@@ -130,19 +158,46 @@ export function OrgMembersClient({
       toast.success(
         `${statusLabel(newStatus)} ${member.display_name || member.email}`,
       );
+      // Re-fetch to get server state, but optimistic update keeps row visible
+      // even if backend filters it out
       refreshMembers();
     } catch (err) {
       toast.error(
         err instanceof ApiError ? err.message : "Failed to update member",
       );
+      refreshMembers(); // revert optimistic update
     }
   }
 
   function canManageMember(member: OrgMember): boolean {
     if (!isAdmin) return false;
     if (member.user_id === currentUserId) return false;
-    if (member.role === "org_admin" && adminCount <= 1) return false;
+    if (
+      member.role === "org_admin" &&
+      adminCount <= 1 &&
+      member.membership_status !== "suspended" &&
+      member.membership_status !== "archived"
+    )
+      return false;
     return true;
+  }
+
+  // Pagination
+  const page = Math.floor(offset / PAGE_SIZE) + 1;
+  const totalPages = Math.ceil(total / PAGE_SIZE);
+
+  function handlePrev() {
+    const newOffset = Math.max(0, offset - PAGE_SIZE);
+    setOffset(newOffset);
+    fetchMembers(newOffset);
+  }
+
+  function handleNext() {
+    const newOffset = offset + PAGE_SIZE;
+    if (newOffset < total) {
+      setOffset(newOffset);
+      fetchMembers(newOffset);
+    }
   }
 
   return (
@@ -163,140 +218,180 @@ export function OrgMembersClient({
           No members found.
         </div>
       ) : (
-      <div className="rounded-lg border border-border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Member</TableHead>
-              <TableHead>Role</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Joined</TableHead>
-              {isAdmin && <TableHead className="w-12" />}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {members.map((member) => {
-              const expired = isInviteExpired(member);
-              const manageable = canManageMember(member);
-              const isLastAdmin =
-                member.role === "org_admin" && adminCount <= 1;
+        <div className="rounded-lg border border-border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Member</TableHead>
+                <TableHead>Role</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Joined</TableHead>
+                {isAdmin && <TableHead className="w-12" />}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {members.map((member) => {
+                const expired = isInviteExpired(member);
+                const manageable = canManageMember(member);
+                const isLastAdmin =
+                  member.role === "org_admin" && adminCount <= 1;
+                const isInactive =
+                  member.membership_status === "suspended" ||
+                  member.membership_status === "archived";
 
-              return (
-                <TableRow key={member.id}>
-                  <TableCell>
-                    <div>
-                      <span className="font-medium text-sm">
-                        {member.display_name || member.email}
-                      </span>
-                      {member.display_name && (
-                        <p className="text-xs text-muted-foreground">
-                          {member.email}
-                        </p>
-                      )}
-                      {member.user_id === currentUserId && (
-                        <span className="text-xs text-muted-foreground ml-1">
-                          (you)
-                        </span>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={roleBadgeVariant[member.role] ?? "outline"}>
-                      {roleLabel(member.role)}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-1.5">
-                      <Badge
-                        variant={
-                          statusBadgeVariant[member.membership_status] ??
-                          "outline"
-                        }
-                      >
-                        {statusLabel(member.membership_status)}
-                      </Badge>
-                      {expired && (
-                        <span className="text-xs text-destructive">
-                          Expired
-                        </span>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {new Date(member.created_at).toLocaleDateString()}
-                  </TableCell>
-                  {isAdmin && (
+                return (
+                  <TableRow
+                    key={member.id}
+                    className={isInactive ? "opacity-60" : undefined}
+                  >
                     <TableCell>
-                      {manageable && (
-                        <DropdownMenu>
-                          <DropdownMenuTrigger
-                            render={
-                              <Button variant="ghost" size="icon-xs" />
-                            }
-                          >
-                            <MoreHorizontal className="size-4" />
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            {/* Role change */}
-                            {member.role === "org_member" && (
-                              <DropdownMenuItem
-                                onClick={() =>
-                                  handleChangeRole(member, "org_admin")
-                                }
-                              >
-                                Make Admin
-                              </DropdownMenuItem>
-                            )}
-                            {member.role === "org_admin" && !isLastAdmin && (
-                              <DropdownMenuItem
-                                onClick={() =>
-                                  handleChangeRole(member, "org_member")
-                                }
-                              >
-                                Make Member
-                              </DropdownMenuItem>
-                            )}
-                            <DropdownMenuSeparator />
-                            {/* Status change */}
-                            {member.membership_status === "active" && (
-                              <DropdownMenuItem
-                                onClick={() =>
-                                  handleChangeStatus(member, "suspended")
-                                }
-                              >
-                                Suspend
-                              </DropdownMenuItem>
-                            )}
-                            {member.membership_status === "suspended" && (
-                              <DropdownMenuItem
-                                onClick={() =>
-                                  handleChangeStatus(member, "active")
-                                }
-                              >
-                                Reactivate
-                              </DropdownMenuItem>
-                            )}
-                            {member.membership_status !== "archived" && (
-                              <DropdownMenuItem
-                                className="text-destructive"
-                                onClick={() =>
-                                  handleChangeStatus(member, "archived")
-                                }
-                              >
-                                Archive
-                              </DropdownMenuItem>
-                            )}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      )}
+                      <div>
+                        <span className="font-medium text-sm">
+                          {member.display_name || member.email}
+                        </span>
+                        {member.display_name && (
+                          <p className="text-xs text-muted-foreground">
+                            {member.email}
+                          </p>
+                        )}
+                        {member.user_id === currentUserId && (
+                          <span className="text-xs text-muted-foreground ml-1">
+                            (you)
+                          </span>
+                        )}
+                      </div>
                     </TableCell>
-                  )}
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
-      </div>
+                    <TableCell>
+                      <Badge
+                        variant={roleBadgeVariant[member.role] ?? "outline"}
+                      >
+                        {roleLabel(member.role)}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1.5">
+                        <Badge
+                          variant={
+                            statusBadgeVariant[member.membership_status] ??
+                            "outline"
+                          }
+                        >
+                          {statusLabel(member.membership_status)}
+                        </Badge>
+                        {expired && (
+                          <span className="text-xs text-destructive">
+                            Expired
+                          </span>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {new Date(member.created_at).toLocaleDateString()}
+                    </TableCell>
+                    {isAdmin && (
+                      <TableCell>
+                        {manageable && (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger
+                              render={
+                                <Button variant="ghost" size="icon-xs" />
+                              }
+                            >
+                              <MoreHorizontal className="size-4" />
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              {/* Role change */}
+                              {member.role === "org_member" &&
+                                member.membership_status !== "archived" && (
+                                  <DropdownMenuItem
+                                    onClick={() =>
+                                      handleChangeRole(member, "org_admin")
+                                    }
+                                  >
+                                    Make Admin
+                                  </DropdownMenuItem>
+                                )}
+                              {member.role === "org_admin" &&
+                                !isLastAdmin &&
+                                member.membership_status !== "archived" && (
+                                  <DropdownMenuItem
+                                    onClick={() =>
+                                      handleChangeRole(member, "org_member")
+                                    }
+                                  >
+                                    Make Member
+                                  </DropdownMenuItem>
+                                )}
+                              {member.membership_status !== "archived" && (
+                                <DropdownMenuSeparator />
+                              )}
+                              {/* Status change */}
+                              {member.membership_status === "active" && (
+                                <DropdownMenuItem
+                                  onClick={() =>
+                                    handleChangeStatus(member, "suspended")
+                                  }
+                                >
+                                  Suspend
+                                </DropdownMenuItem>
+                              )}
+                              {member.membership_status === "suspended" && (
+                                <DropdownMenuItem
+                                  onClick={() =>
+                                    handleChangeStatus(member, "active")
+                                  }
+                                >
+                                  Reactivate
+                                </DropdownMenuItem>
+                              )}
+                              {member.membership_status !== "archived" && (
+                                <DropdownMenuItem
+                                  className="text-destructive"
+                                  onClick={() =>
+                                    handleChangeStatus(member, "archived")
+                                  }
+                                >
+                                  Archive
+                                </DropdownMenuItem>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        )}
+                      </TableCell>
+                    )}
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-muted-foreground">
+            Page {page} of {totalPages}
+          </p>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="icon-sm"
+              disabled={offset === 0}
+              onClick={handlePrev}
+            >
+              <ChevronLeft className="size-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon-sm"
+              disabled={offset + PAGE_SIZE >= total}
+              onClick={handleNext}
+            >
+              <ChevronRight className="size-4" />
+            </Button>
+          </div>
+        </div>
       )}
     </div>
   );

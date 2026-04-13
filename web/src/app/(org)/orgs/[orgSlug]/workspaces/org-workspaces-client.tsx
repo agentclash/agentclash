@@ -24,9 +24,11 @@ import {
   DialogFooter,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Plus, Loader2 } from "lucide-react";
+import { Plus, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
+
+const PAGE_SIZE = 50;
 
 interface OrgWorkspacesClientProps {
   orgId: string;
@@ -45,25 +47,30 @@ export function OrgWorkspacesClient({
   const [workspaces, setWorkspaces] =
     useState<OrgWorkspace[]>(initialWorkspaces);
   const [total, setTotal] = useState(initialTotal);
+  const [offset, setOffset] = useState(0);
   const [createOpen, setCreateOpen] = useState(false);
   const [newName, setNewName] = useState("");
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string>();
 
-  async function refreshWorkspaces() {
+  async function fetchWorkspaces(currentOffset: number) {
     try {
       const token = await getAccessToken();
       if (!token) return;
       const api = createApiClient(token);
       const res = await api.get<{ items: OrgWorkspace[]; total: number }>(
         `/v1/organizations/${orgId}/workspaces`,
-        { params: { limit: 50, offset: 0 } },
+        { params: { limit: PAGE_SIZE, offset: currentOffset } },
       );
       setWorkspaces(res.items);
       setTotal(res.total);
     } catch {
       // Silently fail
     }
+  }
+
+  function refreshWorkspaces() {
+    fetchWorkspaces(offset);
   }
 
   async function handleCreate() {
@@ -202,6 +209,44 @@ export function OrgWorkspacesClient({
               ))}
             </TableBody>
           </Table>
+        </div>
+      )}
+
+      {/* Pagination */}
+      {Math.ceil(total / PAGE_SIZE) > 1 && (
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-muted-foreground">
+            Page {Math.floor(offset / PAGE_SIZE) + 1} of{" "}
+            {Math.ceil(total / PAGE_SIZE)}
+          </p>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="icon-sm"
+              disabled={offset === 0}
+              onClick={() => {
+                const newOffset = Math.max(0, offset - PAGE_SIZE);
+                setOffset(newOffset);
+                fetchWorkspaces(newOffset);
+              }}
+            >
+              <ChevronLeft className="size-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon-sm"
+              disabled={offset + PAGE_SIZE >= total}
+              onClick={() => {
+                const newOffset = offset + PAGE_SIZE;
+                if (newOffset < total) {
+                  setOffset(newOffset);
+                  fetchWorkspaces(newOffset);
+                }
+              }}
+            >
+              <ChevronRight className="size-4" />
+            </Button>
+          </div>
         </div>
       )}
     </div>
