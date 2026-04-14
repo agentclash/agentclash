@@ -127,7 +127,7 @@ func DecodeDefinition(definition json.RawMessage) (EvaluationSpec, error) {
 	}
 
 	var spec EvaluationSpec
-	if err := json.Unmarshal(definition, &spec); err != nil {
+	if err := strictUnmarshal(definition, &spec); err != nil {
 		return EvaluationSpec{}, fmt.Errorf("decode evaluation spec definition: %w", err)
 	}
 

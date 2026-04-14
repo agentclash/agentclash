@@ -198,6 +198,18 @@ func ValidateEvaluationSpec(spec EvaluationSpec) error {
 			}
 		}
 
+		// Validators and reliability dims are implicitly "higher is better"
+		// — their scores are already 0..1 quality signals. normalizeSpec
+		// defaults the direction to "higher" for both sources, so reaching
+		// validation with a different value means the spec author wrote a
+		// nonsense override. Reject it loudly rather than silently ignoring.
+		if (dim.Source == DimensionSourceValidators || dim.Source == DimensionSourceReliability) && dim.BetterDirection != "higher" {
+			errs = append(errs, ValidationError{
+				Field:   path + ".better_direction",
+				Message: fmt.Sprintf("must be \"higher\" for %s source (got %q)", dim.Source, dim.BetterDirection),
+			})
+		}
+
 		if dim.Source == DimensionSourceMetric || dim.Source == DimensionSourceLatency || dim.Source == DimensionSourceCost {
 			dir := dim.BetterDirection
 			if dir != "higher" && dir != "lower" {

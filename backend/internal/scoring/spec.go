@@ -1,6 +1,9 @@
 package scoring
 
-import "encoding/json"
+import (
+	"bytes"
+	"encoding/json"
+)
 
 type JudgeMode string
 
@@ -125,16 +128,26 @@ type DimensionDeclaration struct {
 
 // UnmarshalJSON handles both the legacy string format ("correctness") and
 // the new object format ({ "key": "correctness", "source": "validators", ... }).
+//
+// The object path uses DisallowUnknownFields because a custom Unmarshaler
+// opts out of the outer decoder's strict walk — without this, a spec like
+// `{"key":"correctness","wieght":0.5}` would silently discard the typo and
+// run with weight=nil. strictUnmarshal surfaces the misspelling at
+// spec-load time instead.
 func (d *DimensionDeclaration) UnmarshalJSON(data []byte) error {
-	var s string
-	if err := json.Unmarshal(data, &s); err == nil {
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) > 0 && trimmed[0] == '"' {
+		var s string
+		if err := json.Unmarshal(data, &s); err != nil {
+			return err
+		}
 		d.Key = s
 		return nil
 	}
 
 	type Alias DimensionDeclaration
 	var alias Alias
-	if err := json.Unmarshal(data, &alias); err != nil {
+	if err := strictUnmarshal(data, &alias); err != nil {
 		return err
 	}
 	*d = DimensionDeclaration(alias)
