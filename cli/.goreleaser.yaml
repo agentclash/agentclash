@@ -43,6 +43,8 @@ brews:
   - repository:
       owner: agentclash
       name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    skip_upload: auto
     homepage: "https://github.com/agentclash/agentclash"
     description: "CLI for the AgentClash AI agent evaluation platform"
     license: "MIT"
