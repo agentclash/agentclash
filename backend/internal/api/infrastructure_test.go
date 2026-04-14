@@ -116,7 +116,6 @@ func TestGetRuntimeProfileAuthorizesWorkspace(t *testing.T) {
 		nil,
 		nil,
 		nil,
-		nil,
 	)
 
 	// User without workspace membership should be denied
@@ -157,7 +156,6 @@ func TestGetRuntimeProfileAllowsWorkspaceMember(t *testing.T) {
 		nil,
 		nil,
 		nil,
-		nil,
 	)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/runtime-profiles/"+profileID.String(), nil)
@@ -188,7 +186,6 @@ func TestCreateRuntimeProfileRequiresAdminRole(t *testing.T) {
 		stubAgentBuildService{}, noopReleaseGateService{},
 		nil, nil, nil, nil, nil, nil, nil,
 		svc,
-		nil,
 		nil,
 		nil,
 		nil,
@@ -225,7 +222,6 @@ func TestCreateRuntimeProfileValidatesInput(t *testing.T) {
 		stubAgentBuildService{}, noopReleaseGateService{},
 		nil, nil, nil, nil, nil, nil, nil,
 		svc,
-		nil,
 		nil,
 		nil,
 		nil,
