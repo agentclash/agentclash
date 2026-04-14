@@ -295,6 +295,13 @@ func (r *fakeArtifactRepository) GetRunAgentByID(_ context.Context, runAgentID u
 	return domain.RunAgent{}, repository.ErrRunAgentNotFound
 }
 
+func (r *fakeArtifactRepository) ListArtifactsByWorkspaceID(_ context.Context, _ uuid.UUID) ([]repository.Artifact, error) {
+	if r.artifact.ID != uuid.Nil {
+		return []repository.Artifact{r.artifact}, nil
+	}
+	return []repository.Artifact{}, nil
+}
+
 func (r *fakeArtifactRepository) GetOrganizationIDByWorkspaceID(_ context.Context, workspaceID uuid.UUID) (uuid.UUID, error) {
 	return r.organizationID, nil
 }

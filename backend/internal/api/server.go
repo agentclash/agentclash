@@ -276,6 +276,10 @@ func (noopArtifactService) UploadArtifact(_ context.Context, _ Caller, _ UploadA
 	return UploadArtifactResult{}, errors.New("artifact service is not configured")
 }
 
+func (noopArtifactService) ListWorkspaceArtifacts(_ context.Context, _ Caller, _ uuid.UUID) ([]repository.Artifact, error) {
+	return nil, errors.New("artifact service is not configured")
+}
+
 func (noopArtifactService) GetArtifactDownload(_ context.Context, _ Caller, _ uuid.UUID, _ string) (GetArtifactDownloadResult, error) {
 	return GetArtifactDownloadResult{}, errors.New("artifact service is not configured")
 }

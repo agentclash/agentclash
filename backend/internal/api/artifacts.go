@@ -58,6 +58,7 @@ var disallowedArtifactMediaTypes = map[string]struct{}{
 type ArtifactRepository interface {
 	CreateArtifact(ctx context.Context, params repository.CreateArtifactParams) (repository.Artifact, error)
 	GetArtifactByID(ctx context.Context, artifactID uuid.UUID) (repository.Artifact, error)
+	ListArtifactsByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) ([]repository.Artifact, error)
 	GetRunByID(ctx context.Context, runID uuid.UUID) (domain.Run, error)
 	GetRunAgentByID(ctx context.Context, runAgentID uuid.UUID) (domain.RunAgent, error)
 	GetOrganizationIDByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) (uuid.UUID, error)
@@ -65,6 +66,7 @@ type ArtifactRepository interface {
 
 type ArtifactService interface {
 	UploadArtifact(ctx context.Context, caller Caller, input UploadArtifactInput) (UploadArtifactResult, error)
+	ListWorkspaceArtifacts(ctx context.Context, caller Caller, workspaceID uuid.UUID) ([]repository.Artifact, error)
 	GetArtifactDownload(ctx context.Context, caller Caller, artifactID uuid.UUID, baseURL string) (GetArtifactDownloadResult, error)
 	GetArtifactContent(ctx context.Context, artifactID uuid.UUID, expiresAt time.Time, signature string) (GetArtifactContentResult, error)
 }
@@ -179,6 +181,20 @@ func (m *ArtifactManager) UploadArtifact(ctx context.Context, caller Caller, inp
 	}
 
 	return UploadArtifactResult{Artifact: artifact}, nil
+}
+
+func (m *ArtifactManager) ListWorkspaceArtifacts(ctx context.Context, caller Caller, workspaceID uuid.UUID) ([]repository.Artifact, error) {
+	if err := m.authorizer.AuthorizeWorkspace(ctx, caller, workspaceID); err != nil {
+		return nil, err
+	}
+	artifacts, err := m.repo.ListArtifactsByWorkspaceID(ctx, workspaceID)
+	if err != nil {
+		return nil, fmt.Errorf("list workspace artifacts: %w", err)
+	}
+	if artifacts == nil {
+		artifacts = []repository.Artifact{}
+	}
+	return artifacts, nil
 }
 
 func (m *ArtifactManager) GetArtifactDownload(ctx context.Context, caller Caller, artifactID uuid.UUID, baseURL string) (GetArtifactDownloadResult, error) {
@@ -527,6 +543,44 @@ func uploadArtifactHandler(logger *slog.Logger, service ArtifactService, maxUplo
 		}
 
 		writeJSON(w, http.StatusCreated, buildUploadArtifactResponse(result.Artifact, nil))
+	}
+}
+
+func listWorkspaceArtifactsHandler(logger *slog.Logger, service ArtifactService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		caller, err := CallerFromContext(r.Context())
+		if err != nil {
+			writeAuthzError(w, err)
+			return
+		}
+
+		workspaceID, err := WorkspaceIDFromContext(r.Context())
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_workspace_id", err.Error())
+			return
+		}
+
+		artifacts, err := service.ListWorkspaceArtifacts(r.Context(), caller, workspaceID)
+		if err != nil {
+			if errors.Is(err, ErrForbidden) {
+				writeAuthzError(w, err)
+				return
+			}
+			logger.Error("list workspace artifacts failed",
+				"method", r.Method,
+				"path", r.URL.Path,
+				"workspace_id", workspaceID,
+				"error", err,
+			)
+			writeError(w, http.StatusInternalServerError, "internal_error", "internal server error")
+			return
+		}
+
+		items := make([]uploadArtifactResponse, len(artifacts))
+		for i, a := range artifacts {
+			items[i] = buildUploadArtifactResponse(a, nil)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"items": items})
 	}
 }
 

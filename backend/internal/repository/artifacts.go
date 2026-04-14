@@ -104,6 +104,49 @@ func (r *Repository) CreateArtifact(ctx context.Context, params CreateArtifactPa
 	return artifact, nil
 }
 
+func (r *Repository) ListArtifactsByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) ([]Artifact, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT
+			id,
+			organization_id,
+			workspace_id,
+			run_id,
+			run_agent_id,
+			artifact_type,
+			storage_bucket,
+			storage_key,
+			content_type,
+			size_bytes,
+			checksum_sha256,
+			visibility,
+			retention_status,
+			metadata,
+			created_at,
+			updated_at
+		FROM artifacts
+		WHERE workspace_id = $1
+		  AND retention_status = 'active'
+		ORDER BY created_at DESC
+	`, workspaceID)
+	if err != nil {
+		return nil, fmt.Errorf("list artifacts by workspace: %w", err)
+	}
+	defer rows.Close()
+
+	var artifacts []Artifact
+	for rows.Next() {
+		artifact, err := scanArtifact(rows)
+		if err != nil {
+			return nil, fmt.Errorf("list artifacts by workspace: scan: %w", err)
+		}
+		artifacts = append(artifacts, artifact)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list artifacts by workspace: rows: %w", err)
+	}
+	return artifacts, nil
+}
+
 func (r *Repository) GetArtifactByID(ctx context.Context, artifactID uuid.UUID) (Artifact, error) {
 	row := r.db.QueryRow(ctx, `
 		SELECT
