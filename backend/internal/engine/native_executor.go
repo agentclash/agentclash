@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -73,6 +74,14 @@ func AsFailure(err error) (Failure, bool) {
 	return failure, true
 }
 
+// PostExecutionVerificationResult holds captured file or directory state from
+// the sandbox, emitted as a grader.verification.* event before sandbox teardown.
+type PostExecutionVerificationResult struct {
+	Key     string          `json:"key"`
+	Type    string          `json:"type"` // "file_capture" or "directory_listing"
+	Payload json.RawMessage `json:"payload"`
+}
+
 type Observer interface {
 	OnStepStart(ctx context.Context, step int) error
 	OnProviderCall(ctx context.Context, request provider.Request) error
@@ -80,6 +89,7 @@ type Observer interface {
 	OnProviderResponse(ctx context.Context, response provider.Response) error
 	OnToolExecution(ctx context.Context, record ToolExecutionRecord) error
 	OnStepEnd(ctx context.Context, step int) error
+	OnPostExecutionVerification(ctx context.Context, results []PostExecutionVerificationResult) error
 	OnRunComplete(ctx context.Context, result Result) error
 	OnRunFailure(ctx context.Context, err error) error
 }
@@ -96,6 +106,9 @@ func (NoopObserver) OnToolExecution(context.Context, ToolExecutionRecord) error 
 	return nil
 }
 func (NoopObserver) OnStepEnd(context.Context, int) error        { return nil }
+func (NoopObserver) OnPostExecutionVerification(context.Context, []PostExecutionVerificationResult) error {
+	return nil
+}
 func (NoopObserver) OnRunComplete(context.Context, Result) error { return nil }
 func (NoopObserver) OnRunFailure(context.Context, error) error   { return nil }
 
@@ -332,6 +345,17 @@ func (e NativeExecutor) Execute(ctx context.Context, executionContext repository
 		}
 
 		if completed {
+			// Post-execution verification: capture files while sandbox is still alive.
+			if checks := extractPostExecutionChecks(executionContext); len(checks) > 0 {
+				verificationResults := executePostExecutionChecks(runCtx, session, checks)
+				if observerErr := e.observer.OnPostExecutionVerification(runCtx, verificationResults); observerErr != nil {
+					slog.Default().Warn("post-execution verification observer error",
+						"run_id", executionContext.Run.ID,
+						"run_agent_id", executionContext.RunAgent.ID,
+						"error", observerErr,
+					)
+				}
+			}
 			return Result{
 				FinalOutput:   finalOutput,
 				StopReason:    StopReasonCompleted,

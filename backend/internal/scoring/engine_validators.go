@@ -1,9 +1,12 @@
 package scoring
 
 import (
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/google/uuid"
 )
 
 func evaluateValidators(validators []ValidatorDeclaration, evidence extractedEvidence) ([]ValidatorResult, []string) {
@@ -17,9 +20,8 @@ func evaluateValidators(validators []ValidatorDeclaration, evidence extractedEvi
 			ExpectedFrom: validator.ExpectedFrom,
 		}
 
+		// Resolve the target (actual) evidence.
 		actualValue, actualChallengeID, actualReason, actualErr := resolveEvidenceValue(validator.Target, evidence)
-		expectedValue, expectedChallengeID, expectedReason, expectedErr := resolveEvidenceValue(validator.ExpectedFrom, evidence)
-
 		if actualErr != nil {
 			result.State = OutputStateError
 			result.Reason = actualErr.Error()
@@ -30,17 +32,49 @@ func evaluateValidators(validators []ValidatorDeclaration, evidence extractedEvi
 			results = append(results, result)
 			continue
 		}
-		if expectedErr != nil {
-			result.State = OutputStateError
-			result.Reason = expectedErr.Error()
+
+		// For file_exists validators, unavailable evidence means the file
+		// doesn't exist — that's a valid signal, not an error. Handle this
+		// case specially so the validator can distinguish exists vs not-exists.
+		if validator.Type == ValidatorTypeFileExists && actualValue == nil {
+			result.ChallengeIdentityID = actualChallengeID
+			outcome := validateFileExistsUnavailable(validator.Config)
+			result.State = OutputStateAvailable
+			result.Verdict = outcome.verdict
+			result.NormalizedScore = outcome.normalizedScore
+			result.Reason = outcome.reason
 			result.RawOutput = mustMarshalJSON(map[string]any{
-				"state":  result.State,
-				"reason": result.Reason,
+				"state":            result.State,
+				"verdict":          result.Verdict,
+				"normalized_score": result.NormalizedScore,
+				"reason":           result.Reason,
+				"target":           validator.Target,
 			})
 			results = append(results, result)
 			continue
 		}
-		if actualValue == nil || expectedValue == nil {
+
+		// Resolve the expected evidence. For config-only validators (file_exists,
+		// file_json_schema, directory_structure) expected_from is empty — skip.
+		var expectedValue *string
+		var expectedChallengeID *uuid.UUID
+		var expectedReason string
+		if validator.Type.RequiresExpectedFrom() {
+			var expectedErr error
+			expectedValue, expectedChallengeID, expectedReason, expectedErr = resolveEvidenceValue(validator.ExpectedFrom, evidence)
+			if expectedErr != nil {
+				result.State = OutputStateError
+				result.Reason = expectedErr.Error()
+				result.RawOutput = mustMarshalJSON(map[string]any{
+					"state":  result.State,
+					"reason": result.Reason,
+				})
+				results = append(results, result)
+				continue
+			}
+		}
+
+		if actualValue == nil || (validator.Type.RequiresExpectedFrom() && expectedValue == nil) {
 			result.State = OutputStateUnavailable
 			result.Reason = firstNonEmpty(actualReason, expectedReason, "evidence is unavailable")
 			if actualChallengeID != nil {
@@ -57,14 +91,20 @@ func evaluateValidators(validators []ValidatorDeclaration, evidence extractedEvi
 		}
 
 		result.ActualValue = stringPtr(*actualValue)
-		result.ExpectedValue = stringPtr(*expectedValue)
+		if expectedValue != nil {
+			result.ExpectedValue = stringPtr(*expectedValue)
+		}
 		if actualChallengeID != nil {
 			result.ChallengeIdentityID = actualChallengeID
 		} else {
 			result.ChallengeIdentityID = expectedChallengeID
 		}
 
-		outcome := applyValidator(validator, *actualValue, *expectedValue)
+		expectedStr := ""
+		if expectedValue != nil {
+			expectedStr = *expectedValue
+		}
+		outcome := applyValidator(validator, *actualValue, expectedStr)
 		result.Verdict = outcome.verdict
 		result.NormalizedScore = outcome.normalizedScore
 		result.Reason = outcome.reason
@@ -86,6 +126,20 @@ func evaluateValidators(validators []ValidatorDeclaration, evidence extractedEvi
 		results = append(results, result)
 	}
 	return results, warnings
+}
+
+// validateFileExistsUnavailable handles file_exists when the target file was
+// not captured (evidence unavailable). This means the file does not exist.
+func validateFileExistsUnavailable(config json.RawMessage) validatorOutcome {
+	var cfg fileExistsConfig
+	cfg.MustExist = true
+	if len(config) > 0 {
+		_ = json.Unmarshal(config, &cfg)
+	}
+	if cfg.MustExist {
+		return validatorOutcome{verdict: "fail", normalizedScore: floatPtr(0), reason: "file does not exist"}
+	}
+	return validatorOutcome{verdict: "pass", normalizedScore: floatPtr(1), reason: "file correctly does not exist"}
 }
 
 func applyValidator(validator ValidatorDeclaration, actual string, expected string) validatorOutcome {
@@ -123,6 +177,14 @@ func applyValidator(validator ValidatorDeclaration, actual string, expected stri
 		return validateNumericMatch(actual, expected, validator.Config)
 	case ValidatorTypeNormalizedMatch:
 		return validateNormalizedMatch(actual, expected, validator.Config)
+	case ValidatorTypeFileExists:
+		return validateFileExists(actual, validator.Config)
+	case ValidatorTypeFileContentMatch:
+		return validateFileContentMatch(actual, expected, validator.Config)
+	case ValidatorTypeFileJSONSchema:
+		return validateFileJSONSchema(actual, validator.Config)
+	case ValidatorTypeDirectoryStructure:
+		return validateDirectoryStructure(actual, validator.Config)
 	default:
 		return validatorOutcome{verdict: "error", reason: fmt.Sprintf("unsupported validator type %q", validator.Type)}
 	}

@@ -784,80 +784,36 @@ func (completedErrorTool) Execute(context.Context, ToolExecutionRequest) (ToolEx
 	}, nil
 }
 
-type failingObserver struct{}
+// Test observers embed NoopObserver so that future Observer interface additions
+// only require a single change to the noop implementation.
+
+type failingObserver struct{ NoopObserver }
 
 func (failingObserver) OnStepStart(context.Context, int) error {
 	return errors.New("observer unavailable")
 }
-func (failingObserver) OnProviderCall(context.Context, provider.Request) error { return nil }
-func (failingObserver) OnProviderOutput(context.Context, provider.Request, provider.StreamDelta) error {
-	return nil
-}
-func (failingObserver) OnProviderResponse(context.Context, provider.Response) error { return nil }
-func (failingObserver) OnToolExecution(context.Context, ToolExecutionRecord) error {
-	return nil
-}
-func (failingObserver) OnStepEnd(context.Context, int) error        { return nil }
-func (failingObserver) OnRunComplete(context.Context, Result) error { return nil }
-func (failingObserver) OnRunFailure(context.Context, error) error   { return nil }
 
-type runCompleteFailingObserver struct{}
+type runCompleteFailingObserver struct{ NoopObserver }
 
-func (runCompleteFailingObserver) OnStepStart(context.Context, int) error                 { return nil }
-func (runCompleteFailingObserver) OnProviderCall(context.Context, provider.Request) error { return nil }
-func (runCompleteFailingObserver) OnProviderOutput(context.Context, provider.Request, provider.StreamDelta) error {
-	return nil
-}
-func (runCompleteFailingObserver) OnProviderResponse(context.Context, provider.Response) error {
-	return nil
-}
-func (runCompleteFailingObserver) OnToolExecution(context.Context, ToolExecutionRecord) error {
-	return nil
-}
-func (runCompleteFailingObserver) OnStepEnd(context.Context, int) error { return nil }
 func (runCompleteFailingObserver) OnRunComplete(context.Context, Result) error {
 	return errors.New("observer completion write failed")
 }
-func (runCompleteFailingObserver) OnRunFailure(context.Context, error) error { return nil }
 
-type runFailureFailingObserver struct{}
+type runFailureFailingObserver struct{ NoopObserver }
 
-func (runFailureFailingObserver) OnStepStart(context.Context, int) error                 { return nil }
-func (runFailureFailingObserver) OnProviderCall(context.Context, provider.Request) error { return nil }
-func (runFailureFailingObserver) OnProviderOutput(context.Context, provider.Request, provider.StreamDelta) error {
-	return nil
-}
-func (runFailureFailingObserver) OnProviderResponse(context.Context, provider.Response) error {
-	return nil
-}
-func (runFailureFailingObserver) OnToolExecution(context.Context, ToolExecutionRecord) error {
-	return nil
-}
-func (runFailureFailingObserver) OnStepEnd(context.Context, int) error        { return nil }
-func (runFailureFailingObserver) OnRunComplete(context.Context, Result) error { return nil }
 func (runFailureFailingObserver) OnRunFailure(context.Context, error) error {
 	return errors.New("observer failure write failed")
 }
 
 type countingObserver struct {
+	NoopObserver
 	providerOutputCount int
 }
 
-func (o *countingObserver) OnStepStart(context.Context, int) error                 { return nil }
-func (o *countingObserver) OnProviderCall(context.Context, provider.Request) error { return nil }
 func (o *countingObserver) OnProviderOutput(context.Context, provider.Request, provider.StreamDelta) error {
 	o.providerOutputCount++
 	return nil
 }
-func (o *countingObserver) OnProviderResponse(context.Context, provider.Response) error {
-	return nil
-}
-func (o *countingObserver) OnToolExecution(context.Context, ToolExecutionRecord) error {
-	return nil
-}
-func (o *countingObserver) OnStepEnd(context.Context, int) error        { return nil }
-func (o *countingObserver) OnRunComplete(context.Context, Result) error { return nil }
-func (o *countingObserver) OnRunFailure(context.Context, error) error   { return nil }
 
 type providerStep struct {
 	validate       func(t *testing.T, request provider.Request)

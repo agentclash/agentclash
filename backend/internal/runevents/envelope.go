@@ -37,6 +37,9 @@ const (
 	EventTypeSandboxFileWritten      Type = "sandbox.file.written"
 	EventTypeSandboxFileListed       Type = "sandbox.file.listed"
 
+	EventTypeGraderVerificationFileCaptured    Type = "grader.verification.file_captured"
+	EventTypeGraderVerificationDirectoryListed Type = "grader.verification.directory_listed"
+
 	EventTypeScoringStarted        Type = "scoring.started"
 	EventTypeScoringMetricRecorded Type = "scoring.metric.recorded"
 	EventTypeScoringCompleted      Type = "scoring.completed"
@@ -50,7 +53,8 @@ const (
 	SourcePromptEvalEngine Source = "prompt_eval_engine"
 	SourceHostedExternal   Source = "hosted_external"
 	SourceHostedCallback   Source = "hosted_callback"
-	SourceWorkerScoring    Source = "worker_scoring"
+	SourceWorkerScoring      Source = "worker_scoring"
+	SourceGraderVerification Source = "grader_verification"
 )
 
 type EvidenceLevel string
@@ -159,6 +163,8 @@ func isValidType(eventType Type) bool {
 		EventTypeSandboxFileRead,
 		EventTypeSandboxFileWritten,
 		EventTypeSandboxFileListed,
+		EventTypeGraderVerificationFileCaptured,
+		EventTypeGraderVerificationDirectoryListed,
 		EventTypeScoringStarted,
 		EventTypeScoringMetricRecorded,
 		EventTypeScoringCompleted,
@@ -171,7 +177,7 @@ func isValidType(eventType Type) bool {
 
 func isValidSource(source Source) bool {
 	switch source {
-	case SourceNativeEngine, SourcePromptEvalEngine, SourceHostedExternal, SourceHostedCallback, SourceWorkerScoring:
+	case SourceNativeEngine, SourcePromptEvalEngine, SourceHostedExternal, SourceHostedCallback, SourceWorkerScoring, SourceGraderVerification:
 		return true
 	default:
 		return false

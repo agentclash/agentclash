@@ -94,10 +94,52 @@ func ValidateEvaluationSpec(spec EvaluationSpec) error {
 		} else if !isSupportedEvidenceReference(validator.Target) {
 			errs = append(errs, ValidationError{Field: path + ".target", Message: "must be a supported evidence reference"})
 		}
-		if strings.TrimSpace(validator.ExpectedFrom) == "" {
-			errs = append(errs, ValidationError{Field: path + ".expected_from", Message: "is required"})
-		} else if !isSupportedEvidenceReference(validator.ExpectedFrom) {
-			errs = append(errs, ValidationError{Field: path + ".expected_from", Message: "must be a supported evidence reference"})
+		if validator.Type.RequiresExpectedFrom() {
+			if strings.TrimSpace(validator.ExpectedFrom) == "" {
+				errs = append(errs, ValidationError{Field: path + ".expected_from", Message: "is required"})
+			} else if !isSupportedEvidenceReference(validator.ExpectedFrom) {
+				errs = append(errs, ValidationError{Field: path + ".expected_from", Message: "must be a supported evidence reference"})
+			}
+		}
+		if validator.Type.IsFileValidator() {
+			if strings.TrimSpace(validator.Target) != "" && !strings.HasPrefix(validator.Target, "file:") {
+				errs = append(errs, ValidationError{Field: path + ".target", Message: "must use file: prefix for file validators"})
+			}
+		}
+	}
+
+	checkKeys := map[string]struct{}{}
+	for i, check := range spec.PostExecutionChecks {
+		path := fmt.Sprintf("evaluation_spec.post_execution_checks[%d]", i)
+		key := strings.TrimSpace(check.Key)
+		if key == "" {
+			errs = append(errs, ValidationError{Field: path + ".key", Message: "is required"})
+		} else {
+			if _, exists := checkKeys[key]; exists {
+				errs = append(errs, ValidationError{Field: path + ".key", Message: "must be unique"})
+			}
+			checkKeys[key] = struct{}{}
+		}
+		if check.Type != PostExecutionCheckTypeFileCapture && check.Type != PostExecutionCheckTypeDirectoryListing {
+			errs = append(errs, ValidationError{Field: path + ".type", Message: "must be file_capture or directory_listing"})
+		}
+		if strings.TrimSpace(check.Path) == "" {
+			errs = append(errs, ValidationError{Field: path + ".path", Message: "is required"})
+		}
+		if check.MaxSizeBytes < 0 {
+			errs = append(errs, ValidationError{Field: path + ".max_size_bytes", Message: "must be greater than or equal to 0"})
+		}
+	}
+
+	// Cross-reference: file: targets in validators must reference a declared
+	// post_execution_checks key to catch typos at validation time.
+	for i, validator := range spec.Validators {
+		if strings.HasPrefix(validator.Target, "file:") {
+			refKey := strings.TrimPrefix(validator.Target, "file:")
+			if _, exists := checkKeys[refKey]; !exists && len(checkKeys) > 0 {
+				path := fmt.Sprintf("evaluation_spec.validators[%d]", i)
+				errs = append(errs, ValidationError{Field: path + ".target", Message: fmt.Sprintf("references unknown post_execution_check key %q", refKey)})
+			}
 		}
 	}
 
@@ -268,6 +310,7 @@ func normalizeEvaluationSpec(spec *EvaluationSpec) {
 	spec.Name = strings.TrimSpace(spec.Name)
 	spec.Validators = append([]ValidatorDeclaration(nil), spec.Validators...)
 	spec.Metrics = append([]MetricDeclaration(nil), spec.Metrics...)
+	spec.PostExecutionChecks = append([]PostExecutionCheck(nil), spec.PostExecutionChecks...)
 	spec.Pricing.Models = append([]ModelPricing(nil), spec.Pricing.Models...)
 	spec.Scorecard.Dimensions = append([]DimensionDeclaration(nil), spec.Scorecard.Dimensions...)
 
@@ -279,6 +322,10 @@ func normalizeEvaluationSpec(spec *EvaluationSpec) {
 		spec.Validators[i].Key = strings.TrimSpace(spec.Validators[i].Key)
 		spec.Validators[i].Target = strings.TrimSpace(spec.Validators[i].Target)
 		spec.Validators[i].ExpectedFrom = strings.TrimSpace(spec.Validators[i].ExpectedFrom)
+	}
+	for i := range spec.PostExecutionChecks {
+		spec.PostExecutionChecks[i].Key = strings.TrimSpace(spec.PostExecutionChecks[i].Key)
+		spec.PostExecutionChecks[i].Path = strings.TrimSpace(spec.PostExecutionChecks[i].Path)
 	}
 	for i := range spec.Metrics {
 		spec.Metrics[i].Key = strings.TrimSpace(spec.Metrics[i].Key)
@@ -367,6 +414,9 @@ func isSupportedEvidenceReference(value string) bool {
 		return hasValidDottedPathAfterPrefix(value, "case.expectations.")
 	case strings.HasPrefix(value, "artifact."):
 		return hasValidDottedPathAfterPrefix(value, "artifact.")
+	case strings.HasPrefix(value, "file:"):
+		remainder := strings.TrimPrefix(value, "file:")
+		return strings.TrimSpace(remainder) != ""
 	case strings.HasPrefix(value, "literal:"):
 		return true
 	default:
