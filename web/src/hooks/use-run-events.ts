@@ -36,7 +36,9 @@ export function useRunEvents({
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const onEventRef = useRef(onEvent);
-  onEventRef.current = onEvent;
+  useEffect(() => {
+    onEventRef.current = onEvent;
+  }, [onEvent]);
 
   useEffect(() => {
     if (!enabled || !token) return;
