@@ -12,8 +12,13 @@ import (
 	"strings"
 	"unicode"
 
+	"golang.org/x/text/cases"
 	"golang.org/x/text/unicode/norm"
 )
+
+// unicodeFold performs full Unicode case folding, handling edge cases that
+// strings.ToLower misses (e.g. German eszett ß↔ss, Turkic İ/ı).
+var unicodeFold = cases.Fold()
 
 const maxFuzzyMatchRunes = 100_000
 
@@ -51,8 +56,8 @@ func validateFuzzyMatch(actual string, expected string, rawConfig json.RawMessag
 		b = collapseWhitespace(strings.TrimSpace(b))
 	}
 	if config.CaseInsensitive {
-		a = strings.ToLower(a)
-		b = strings.ToLower(b)
+		a = unicodeFold.String(a)
+		b = unicodeFold.String(b)
 	}
 
 	lenA, ok := runeCountWithinLimit(a, maxFuzzyMatchRunes)
@@ -67,23 +72,22 @@ func validateFuzzyMatch(actual string, expected string, rawConfig json.RawMessag
 	runesA := []rune(a)
 	runesB := []rune(b)
 	distance := levenshteinDistance(runesA, runesB)
-	maxLen := lenA
-	if lenB > maxLen {
-		maxLen = lenB
-	}
+	sumLen := lenA + lenB
 
+	// Standard similarity ratio matching python-Levenshtein / rapidfuzz / thefuzz:
+	//   ratio = (len(a) + len(b) - distance) / (len(a) + len(b))
 	var similarity float64
-	if maxLen == 0 {
+	if sumLen == 0 {
 		similarity = 1.0
 	} else {
-		similarity = 1.0 - float64(distance)/float64(maxLen)
+		similarity = float64(sumLen-distance) / float64(sumLen)
 	}
 
 	evidence := map[string]any{
 		"similarity":       similarity,
 		"threshold":        threshold,
 		"distance":         distance,
-		"max_length":       maxLen,
+		"sum_length":       sumLen,
 		"case_insensitive": config.CaseInsensitive,
 		"normalize":        config.Normalize,
 	}
@@ -230,12 +234,6 @@ func validateNumericMatch(actual string, expected string, rawConfig json.RawMess
 	}
 }
 
-var numberCleanerReplacer = strings.NewReplacer(
-	"$", "", "€", "", "£", "", "¥", "", "₹", "",
-	"EUR", "", "GBP", "", "USD", "", "JPY", "", "INR", "",
-	",", "", "%", "",
-)
-
 var numberExtractRegex = regexp.MustCompile(`[+-]?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?`)
 
 // extractNumber strips currency symbols, commas, and percent signs, then returns
@@ -250,7 +248,10 @@ func extractNumber(s string) (float64, error) {
 }
 
 func extractNumberToken(s string) (string, error) {
-	cleaned := numberCleanerReplacer.Replace(s)
+	// Reuse the shared currencySymbols replacer, then strip commas and percent.
+	cleaned := currencySymbols.Replace(s)
+	cleaned = strings.ReplaceAll(cleaned, ",", "")
+	cleaned = strings.ReplaceAll(cleaned, "%", "")
 	cleaned = strings.TrimSpace(cleaned)
 
 	match := numberExtractRegex.FindString(cleaned)
@@ -286,6 +287,7 @@ var knownPipelineSteps = map[string]bool{
 	"strip_currency":      true,
 	"strip_formatting":    true,
 	"normalize_unicode":   true,
+	"remove_articles":     true,
 	"sort_words":          true,
 	"sort_lines":          true,
 }
@@ -335,7 +337,7 @@ func applyNormalizationPipeline(s string, pipeline []string) (string, error) {
 		case "trim":
 			s = strings.TrimSpace(s)
 		case "lowercase":
-			s = strings.ToLower(s)
+			s = unicodeFold.String(s)
 		case "collapse_whitespace":
 			s = collapseWhitespace(s)
 		case "strip_punctuation":
@@ -345,7 +347,9 @@ func applyNormalizationPipeline(s string, pipeline []string) (string, error) {
 		case "strip_formatting":
 			s = stripFormatting(s)
 		case "normalize_unicode":
-			s = norm.NFC.String(s)
+			s = norm.NFKC.String(s)
+		case "remove_articles":
+			s = removeArticles(s)
 		case "sort_words":
 			words := strings.Fields(s)
 			sort.Strings(words)
@@ -362,6 +366,14 @@ func applyNormalizationPipeline(s string, pipeline []string) (string, error) {
 }
 
 // --- shared helpers ---
+
+// articlesRegex matches English articles (a, an, the) at word boundaries,
+// following the SQuAD / HELM / lm-evaluation-harness normalization convention.
+var articlesRegex = regexp.MustCompile(`\b(a|an|the)\b`)
+
+func removeArticles(s string) string {
+	return articlesRegex.ReplaceAllString(s, " ")
+}
 
 var whitespaceRegex = regexp.MustCompile(`\s+`)
 

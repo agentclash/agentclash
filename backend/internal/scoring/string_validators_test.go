@@ -80,13 +80,15 @@ func TestValidateFuzzyMatch(t *testing.T) {
 			wantBelow:   0.8,
 		},
 		{
+			// With the standard sum-based ratio, completely different strings of
+			// equal length get similarity 0.5: (3+3-3)/(3+3) = 0.5.
 			name:        "custom_low_threshold_passes",
 			actual:      "abc",
 			expected:    "xyz",
 			config:      `{"threshold": 0.0}`,
 			wantVerdict: "pass",
 			wantAbove:   0.0,
-			wantBelow:   0.1,
+			wantBelow:   0.5,
 		},
 		{
 			name:        "case_insensitive_match",
@@ -457,6 +459,13 @@ func TestValidateNormalizedMatch(t *testing.T) {
 			wantVerdict: "pass",
 		},
 		{
+			name:        "remove_articles",
+			actual:      "the quick brown fox",
+			expected:    "quick brown fox",
+			config:      `{"pipeline": ["remove_articles", "collapse_whitespace", "trim"]}`,
+			wantVerdict: "pass",
+		},
+		{
 			name:        "full_pipeline",
 			actual:      "  Hello,  World!  ",
 			expected:    "hello world",
@@ -558,5 +567,35 @@ func TestStripFormatting(t *testing.T) {
 	want := "1000 net note"
 	if got != want {
 		t.Fatalf("stripFormatting = %q, want %q", got, want)
+	}
+}
+
+func TestRemoveArticles(t *testing.T) {
+	tests := []struct {
+		input, want string
+	}{
+		// "the" → " ", preserving the space after → double space (collapse_whitespace cleans this).
+		{"the quick brown fox", "  quick brown fox"},
+		{"a cat and an owl", "  cat and   owl"},
+		{"there is nothing", "there is nothing"},
+		{"atheist", "atheist"},
+	}
+	for _, tt := range tests {
+		got := removeArticles(tt.input)
+		if got != tt.want {
+			t.Fatalf("removeArticles(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}
+
+func TestNormalizeUnicodeUsesNFKC(t *testing.T) {
+	// NFKC collapses compatibility variants that NFC does not.
+	// Fullwidth A (U+FF21) should become standard A.
+	result, err := applyNormalizationPipeline("\uff21\uff22\uff23", []string{"normalize_unicode"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result != "ABC" {
+		t.Fatalf("normalize_unicode NFKC result = %q, want %q", result, "ABC")
 	}
 }

@@ -17,8 +17,9 @@ const (
 	ValidatorTypeContains      ValidatorType = "contains"
 	ValidatorTypeRegexMatch    ValidatorType = "regex_match"
 	ValidatorTypeJSONSchema    ValidatorType = "json_schema"
-	ValidatorTypeJSONPathMatch   ValidatorType = "json_path_match"
-	ValidatorTypeBooleanAssert   ValidatorType = "boolean_assert"
+	ValidatorTypeJSONPathMatch ValidatorType = "json_path_match"
+	ValidatorTypeBooleanAssert ValidatorType = "boolean_assert"
+
 	ValidatorTypeFuzzyMatch      ValidatorType = "fuzzy_match"
 	ValidatorTypeNumericMatch    ValidatorType = "numeric_match"
 	ValidatorTypeNormalizedMatch ValidatorType = "normalized_match"
