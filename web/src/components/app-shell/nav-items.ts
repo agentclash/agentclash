@@ -11,6 +11,7 @@ import {
   Tag,
   Wrench,
   Database,
+  FileArchive,
   Lock,
   Cog,
   type LucideIcon,
@@ -105,6 +106,11 @@ export const navSections: NavSection[] = [
         label: "Knowledge Sources",
         href: (id) => `/workspaces/${id}/knowledge-sources`,
         icon: Database,
+      },
+      {
+        label: "Artifacts",
+        href: (id) => `/workspaces/${id}/artifacts`,
+        icon: FileArchive,
       },
       {
         label: "Secrets",
