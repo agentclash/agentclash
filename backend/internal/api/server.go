@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"time"
 
+	"strings"
+
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/ratelimit"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
 	"github.com/go-chi/chi/v5"
@@ -167,7 +169,21 @@ func newRouter(
 		RunCreationBurst:   defaultRateLimitRunCreationBurst,
 	})
 	extractWorkspaceID := func(r *http.Request) (uuid.UUID, bool) {
-		wsID, err := WorkspaceIDFromContext(r.Context())
+		// Try context first (set by authorizeWorkspaceAccess middleware).
+		if wsID, err := WorkspaceIDFromContext(r.Context()); err == nil {
+			return wsID, true
+		}
+		// Fall back to parsing from URL path (/v1/workspaces/{workspaceID}/...).
+		const prefix = "/workspaces/"
+		idx := strings.Index(r.URL.Path, prefix)
+		if idx < 0 {
+			return uuid.Nil, false
+		}
+		rest := r.URL.Path[idx+len(prefix):]
+		if slashIdx := strings.IndexByte(rest, '/'); slashIdx > 0 {
+			rest = rest[:slashIdx]
+		}
+		wsID, err := uuid.Parse(rest)
 		if err != nil {
 			return uuid.Nil, false
 		}
