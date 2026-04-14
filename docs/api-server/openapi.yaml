@@ -1709,6 +1709,48 @@ paths:
         "404":
           $ref: "#/components/responses/NotFoundError"
 
+  /v1/runs/{runID}/events/stream:
+    get:
+      operationId: streamRunEvents
+      tags: [Runs]
+      summary: Stream live run events via SSE
+      description: >
+        Server-Sent Events endpoint for live run event streaming. Authentication
+        is via the `token` query parameter (EventSource API cannot set custom
+        headers). Returns a stream of run events as they are recorded.
+        When Redis is not configured, returns 503 Service Unavailable.
+        Clients should fall back to polling in that case.
+      parameters:
+        - $ref: "#/components/parameters/RunID"
+        - name: token
+          in: query
+          required: true
+          description: Bearer access token (required because EventSource cannot set Authorization header)
+          schema:
+            type: string
+      responses:
+        "200":
+          description: SSE event stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: >
+                  Stream of SSE frames. Each event has `event: run_event`,
+                  `id: <sequence_number>`, and `data: <JSON Envelope>`.
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "503":
+          description: Real-time streaming not configured (Redis unavailable)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /v1/workspaces/{workspaceID}/runs:
     get:
       operationId: listRuns

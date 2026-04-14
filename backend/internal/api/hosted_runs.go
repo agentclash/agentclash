@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/hostedruns"
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/pubsub"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/runevents"
 	"github.com/google/uuid"
@@ -28,18 +29,25 @@ type HostedRunExecutionRepository interface {
 }
 
 type HostedRunIngestionManager struct {
-	repo     HostedRunExecutionRepository
-	signer   hostedruns.CallbackTokenSigner
-	signaler HostedRunWorkflowSignaler
+	repo      HostedRunExecutionRepository
+	signer    hostedruns.CallbackTokenSigner
+	signaler  HostedRunWorkflowSignaler
+	publisher pubsub.EventPublisher
+	logger    *slog.Logger
 }
 
 type noopHostedRunIngestionService struct{}
 
-func NewHostedRunIngestionManager(repo HostedRunExecutionRepository, secret string, signaler HostedRunWorkflowSignaler) *HostedRunIngestionManager {
+func NewHostedRunIngestionManager(repo HostedRunExecutionRepository, secret string, signaler HostedRunWorkflowSignaler, publisher pubsub.EventPublisher, logger *slog.Logger) *HostedRunIngestionManager {
+	if publisher == nil {
+		publisher = pubsub.NoopPublisher{}
+	}
 	return &HostedRunIngestionManager{
-		repo:     repo,
-		signer:   hostedruns.NewCallbackTokenSigner(secret),
-		signaler: signaler,
+		repo:      repo,
+		signer:    hostedruns.NewCallbackTokenSigner(secret),
+		signaler:  signaler,
+		publisher: publisher,
+		logger:    logger,
 	}
 }
 
@@ -98,11 +106,26 @@ func (m *HostedRunIngestionManager) IngestEvent(ctx context.Context, runID uuid.
 	}); err != nil {
 		return err
 	}
-	if _, err := m.repo.RecordHostedRunEvent(ctx, repository.RecordHostedRunEventParams{
+	replayRecord, err := m.repo.RecordHostedRunEvent(ctx, repository.RecordHostedRunEventParams{
 		Event:   normalizedEvent,
 		Summary: replaySummary,
-	}); err != nil {
+	})
+	if err != nil {
 		return err
+	}
+
+	// Publish the persisted event to Redis for live streaming.
+	var seqNum int64
+	if replayRecord.LatestSequenceNumber != nil {
+		seqNum = *replayRecord.LatestSequenceNumber
+	}
+	publishEnvelope := normalizedEvent.WithSequenceNumber(seqNum)
+	if pubErr := m.publisher.PublishRunEvent(ctx, runID, publishEnvelope); pubErr != nil {
+		m.logger.Warn("failed to publish hosted run event to redis",
+			"run_id", runID,
+			"run_agent_id", event.RunAgentID,
+			"error", pubErr,
+		)
 	}
 
 	if isHostedRunTerminalEvent(event) {

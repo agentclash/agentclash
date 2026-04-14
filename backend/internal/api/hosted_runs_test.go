@@ -44,7 +44,7 @@ func TestHostedRunIngestionManagerPersistsAndSignalsTerminalEvent(t *testing.T) 
 		},
 	}
 	signaler := &fakeHostedRunWorkflowSignaler{}
-	manager := NewHostedRunIngestionManager(repo, "secret", signaler)
+	manager := NewHostedRunIngestionManager(repo, "secret", signaler, nil, slog.Default())
 
 	if err := manager.IngestEvent(context.Background(), runID, token, event); err != nil {
 		t.Fatalf("IngestEvent returned error: %v", err)
@@ -133,7 +133,7 @@ func TestHostedRunIngestionManagerNormalizesErrorEventIntoCanonicalVocabulary(t 
 			Status:        "accepted",
 		},
 	}
-	manager := NewHostedRunIngestionManager(repo, "secret", &fakeHostedRunWorkflowSignaler{})
+	manager := NewHostedRunIngestionManager(repo, "secret", &fakeHostedRunWorkflowSignaler{}, nil, slog.Default())
 
 	if err := manager.IngestEvent(context.Background(), runID, token, event); err != nil {
 		t.Fatalf("IngestEvent returned error: %v", err)
@@ -150,7 +150,7 @@ func TestHostedRunIngestionManagerNormalizesErrorEventIntoCanonicalVocabulary(t 
 }
 
 func TestHostedRunIngestionManagerRejectsInvalidToken(t *testing.T) {
-	manager := NewHostedRunIngestionManager(&fakeHostedRunExecutionRepository{}, "secret", &fakeHostedRunWorkflowSignaler{})
+	manager := NewHostedRunIngestionManager(&fakeHostedRunExecutionRepository{}, "secret", &fakeHostedRunWorkflowSignaler{}, nil, slog.Default())
 
 	err := manager.IngestEvent(context.Background(), uuid.New(), "bad-token", hostedruns.Event{
 		RunAgentID:    uuid.New(),
@@ -186,6 +186,8 @@ func TestIngestHostedRunEventHandlerRejectsMalformedEvent(t *testing.T) {
 		&fakeHostedRunExecutionRepository{},
 		"secret",
 		&fakeHostedRunWorkflowSignaler{},
+		nil,
+		slog.Default(),
 	)).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusBadRequest {
@@ -234,12 +236,15 @@ func TestIngestHostedRunEventHandlerReturnsInternalErrorForRepositoryFailure(t *
 			},
 			"secret",
 			&fakeHostedRunWorkflowSignaler{},
+			nil,
+			slog.Default(),
 		),
 		nil,
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
+		nil,
 		nil,
 		nil,
 		nil,

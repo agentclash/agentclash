@@ -75,9 +75,12 @@ wait_for_http() {
   return 1
 }
 
-echo "==> Starting Postgres"
+echo "==> Starting Postgres and Redis"
 cd "${ROOT_DIR}"
 make db-up
+docker compose up -d redis
+
+export REDIS_URL="${REDIS_URL:-redis://localhost:6379}"
 
 echo "==> Applying migrations"
 make db-migrate

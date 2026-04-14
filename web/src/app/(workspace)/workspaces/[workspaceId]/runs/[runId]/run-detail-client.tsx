@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
 import { createApiClient } from "@/lib/api/client";
+import { useRunEvents } from "@/hooks/use-run-events";
 import type {
   Run,
   RunStatus,
@@ -171,12 +172,43 @@ export function RunDetailClient({
     }
   }, [getAccessToken, run.id]);
 
-  // Auto-refresh
+  // SSE token for live event streaming.
+  const [sseToken, setSseToken] = useState<string>();
   useEffect(() => {
     if (!isActive) return;
-    const interval = setInterval(fetchAll, POLL_MS);
+    let cancelled = false;
+    getAccessToken().then((t) => {
+      if (!cancelled) setSseToken(t);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isActive, getAccessToken]);
+
+  // Debounced refetch: collapse rapid SSE events into a single fetch.
+  const fetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const debouncedFetchAll = useCallback(() => {
+    if (fetchTimerRef.current) clearTimeout(fetchTimerRef.current);
+    fetchTimerRef.current = setTimeout(fetchAll, 300);
+  }, [fetchAll]);
+
+  // Live event streaming via SSE (graceful degradation: falls back to polling).
+  const { connected: sseConnected } = useRunEvents({
+    runId: run.id,
+    token: sseToken,
+    enabled: isActive,
+    onEvent: debouncedFetchAll,
+  });
+
+  // Auto-refresh: 30s safety-net when SSE is connected, 5s polling otherwise.
+  useEffect(() => {
+    if (!isActive) return;
+    const interval = setInterval(
+      fetchAll,
+      sseConnected ? 30_000 : POLL_MS,
+    );
     return () => clearInterval(interval);
-  }, [isActive, fetchAll]);
+  }, [isActive, fetchAll, sseConnected]);
 
   // Fetch ranking when run reaches a terminal state or on mount if already terminal
   const isTerminal =

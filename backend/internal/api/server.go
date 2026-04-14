@@ -9,6 +9,7 @@ import (
 
 	"strings"
 
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/pubsub"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/ratelimit"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
 	"github.com/go-chi/chi/v5"
@@ -45,8 +46,9 @@ func NewServer(
 	onboardingService OnboardingService,
 	infraService InfrastructureService,
 	workspaceSecretsService WorkspaceSecretsService,
+	eventSubscriber pubsub.EventSubscriber,
 ) *Server {
-	router := newRouter(cfg.AuthMode, cfg.CORSAllowedOrigins, logger, authenticator, authorizer, artifactService, cfg.ArtifactMaxUploadBytes, runCreationService, runReadService, replayReadService, hostedRunIngestionService, compareReadService, agentDeploymentReadService, challengePackReadService, agentBuildService, releaseGateService, challengePackAuthoringService, userService, orgService, wsService, orgMembershipService, wsMembershipService, onboardingService, infraService, workspaceSecretsService, playgroundService)
+	router := newRouter(cfg.AuthMode, cfg.CORSAllowedOrigins, logger, authenticator, authorizer, artifactService, cfg.ArtifactMaxUploadBytes, runCreationService, runReadService, replayReadService, hostedRunIngestionService, compareReadService, agentDeploymentReadService, challengePackReadService, agentBuildService, releaseGateService, challengePackAuthoringService, userService, orgService, wsService, orgMembershipService, wsMembershipService, onboardingService, infraService, workspaceSecretsService, playgroundService, eventSubscriber)
 
 	return &Server{
 		config: cfg,
@@ -120,6 +122,7 @@ func newRouter(
 	infraServiceArg InfrastructureService,
 	workspaceSecretsServiceArg WorkspaceSecretsService,
 	playgroundServiceArg PlaygroundService,
+	eventSubscriber pubsub.EventSubscriber,
 ) http.Handler {
 	challengePackAuthoringService := challengePackAuthoringServiceArg
 	userService := userServiceArg
@@ -132,6 +135,9 @@ func newRouter(
 	workspaceSecretsService := workspaceSecretsServiceArg
 	playgroundService := playgroundServiceArg
 
+	if eventSubscriber == nil {
+		eventSubscriber = pubsub.NoopSubscriber{}
+	}
 	if hostedRunIngestionService == nil {
 		hostedRunIngestionService = noopHostedRunIngestionService{}
 	}
@@ -162,6 +168,7 @@ func newRouter(
 	router.Get("/healthz", healthzHandler)
 	registerPublicRoutes(router, logger, artifactService)
 	registerHostedIntegrationRoutes(router, logger, hostedRunIngestionService)
+	registerEventStreamRoute(router, logger, authenticator, runReadService, eventSubscriber)
 	rateLimiter := ratelimit.NewLimiter(ratelimit.Config{
 		DefaultRPS:         defaultRateLimitRPS,
 		DefaultBurst:       defaultRateLimitBurst,

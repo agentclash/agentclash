@@ -9,6 +9,7 @@ import (
 	"syscall"
 
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/provider"
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/pubsub"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/sandbox"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/sandbox/e2b"
@@ -42,6 +43,27 @@ func main() {
 	defer temporalClient.Close()
 
 	repo := repository.New(db).WithCipher(cfg.SecretsCipher)
+
+	// Redis event publishing (optional).
+	var eventPublisher pubsub.EventPublisher = pubsub.NoopPublisher{}
+	if redisCfg, ok := pubsub.LoadRedisConfigFromEnv(); ok {
+		redisClient, redisErr := pubsub.NewRedisClient(redisCfg)
+		if redisErr != nil {
+			logger.Error("failed to connect to redis", "error", redisErr)
+			os.Exit(1)
+		}
+		defer redisClient.Close()
+		eventPublisher = pubsub.NewRedisPublisher(redisClient)
+		logger.Info("redis event publisher: enabled")
+	} else {
+		logger.Info("redis event publisher: disabled (REDIS_URL not set)")
+	}
+
+	var eventRecorder workerapp.RunEventRecorder = repo
+	if _, isNoop := eventPublisher.(pubsub.NoopPublisher); !isNoop {
+		eventRecorder = pubsub.NewPublishingRecorder(repo, eventPublisher, logger)
+	}
+
 	hostedRunClient := workerapp.NewHostedRunClient(&http.Client{}, cfg.HostedCallbackBaseURL, cfg.HostedCallbackSecret)
 	providerRouter := provider.NewRouter(map[string]provider.Client{
 		"openai":     provider.NewOpenAICompatibleClient(&http.Client{}, "", provider.EnvCredentialResolver{}),
@@ -62,11 +84,11 @@ func main() {
 	nativeModelInvoker := workerapp.NewNativeModelInvokerWithObserverFactory(
 		providerRouter,
 		sandboxProvider,
-		workerapp.NewBufferedNativeObserverFactory(repo),
+		workerapp.NewBufferedNativeObserverFactory(eventRecorder),
 	).WithSecretsLookup(repo)
 	promptEvalInvoker := workerapp.NewPromptEvalInvokerWithObserverFactory(
 		providerRouter,
-		workerapp.NewBufferedPromptEvalObserverFactory(repo),
+		workerapp.NewBufferedPromptEvalObserverFactory(eventRecorder),
 	)
 	temporalWorker := workerapp.NewTemporalWorker(temporalClient, cfg, repo, providerRouter, workflowpkg.FakeWorkHooks{
 		HostedRunStarter:   hostedRunClient,
