@@ -1,0 +1,281 @@
+###############################################################################
+# Challenge Pack: Deep Research Analyst
+#
+# A complex agentic challenge that tests heavy tool calling, composite tools,
+# file operations, data analysis via shell, internet access, and multi-step
+# reasoning. NOT a coding or SRE task — the agent plays a research analyst.
+#
+# The agent must: create a workspace, fetch data from the web, analyze it
+# using shell tools, cross-reference findings, compute statistics, and
+# produce a comprehensive structured intelligence report.
+#
+# Tests: primitive tools (shell, file), composite tools (wrapped commands),
+# internet access (curl), multi-step workflows, data synthesis.
+###############################################################################
+
+pack:
+  slug: deep-research-analyst
+  name: Deep Research Analyst
+  family: research
+
+version:
+  number: 1
+  execution_mode: native
+  sandbox:
+    network_access: true
+
+  tool_policy:
+    allowed_tool_kinds:
+      - file
+      - shell
+
+  tools:
+    custom:
+      # Composite tool 1: fetch a URL and save to file
+      - name: fetch_and_save
+        description: Fetch a URL with curl and save the response to a file in the workspace
+        parameters:
+          type: object
+          properties:
+            url:
+              type: string
+              description: The URL to fetch
+            output_file:
+              type: string
+              description: File path to save the response
+          required:
+            - url
+            - output_file
+        implementation:
+          primitive: shell_exec
+          args:
+            command: "curl -sL '${url}' -o '${output_file}' && echo 'Saved to ${output_file}' && wc -c < '${output_file}'"
+
+      # Composite tool 2: search across all research files
+      - name: search_research
+        description: Search all files in the research directory for a keyword or pattern
+        parameters:
+          type: object
+          properties:
+            pattern:
+              type: string
+              description: The grep pattern to search for
+          required:
+            - pattern
+        implementation:
+          primitive: shell_exec
+          args:
+            command: "grep -rni '${pattern}' /workspace/research/ 2>/dev/null || echo 'No matches found for: ${pattern}'"
+
+      # Composite tool 3: compute word frequency analysis
+      - name: word_frequency
+        description: Compute the top N most frequent words in a file
+        parameters:
+          type: object
+          properties:
+            file_path:
+              type: string
+              description: Path to the file to analyze
+            top_n:
+              type: string
+              description: Number of top words to return
+          required:
+            - file_path
+            - top_n
+        implementation:
+          primitive: shell_exec
+          args:
+            command: "cat '${file_path}' | tr '[:upper:]' '[:lower:]' | tr -cs '[:alpha:]' '\\n' | sort | uniq -c | sort -rn | head -${top_n}"
+
+      # Composite tool 4: summarize a directory structure
+      - name: workspace_overview
+        description: Show the full workspace directory tree with file sizes
+        parameters:
+          type: object
+          additionalProperties: false
+        implementation:
+          primitive: shell_exec
+          args:
+            command: "find /workspace -type f -exec ls -lh {} \\; 2>/dev/null | awk '{print $5, $9}' | sort -k2"
+
+  evaluation_spec:
+    name: deep-research-v1
+    version_number: 1
+    judge_mode: deterministic
+
+    validators:
+      # --- Structure validation ---
+      - key: valid_report_structure
+        type: json_schema
+        target: final_output
+        expected_from: "literal:{\"type\":\"object\",\"required\":[\"title\",\"executive_summary\",\"methodology\",\"findings\",\"risk_assessment\",\"recommendations\"],\"properties\":{\"title\":{\"type\":\"string\",\"minLength\":10},\"executive_summary\":{\"type\":\"string\",\"minLength\":100},\"methodology\":{\"type\":\"object\",\"required\":[\"sources_consulted\",\"tools_used\",\"analysis_steps\"],\"properties\":{\"sources_consulted\":{\"type\":\"integer\",\"minimum\":1},\"tools_used\":{\"type\":\"array\",\"minItems\":2,\"items\":{\"type\":\"string\"}},\"analysis_steps\":{\"type\":\"array\",\"minItems\":3,\"items\":{\"type\":\"string\"}}}},\"findings\":{\"type\":\"array\",\"minItems\":3,\"items\":{\"type\":\"object\",\"required\":[\"category\",\"detail\",\"confidence\"],\"properties\":{\"category\":{\"type\":\"string\"},\"detail\":{\"type\":\"string\",\"minLength\":20},\"confidence\":{\"type\":\"string\",\"enum\":[\"high\",\"medium\",\"low\"]}}}},\"risk_assessment\":{\"type\":\"object\",\"required\":[\"overall_risk_level\",\"risk_score\",\"key_risks\"],\"properties\":{\"overall_risk_level\":{\"type\":\"string\",\"enum\":[\"critical\",\"high\",\"medium\",\"low\"]},\"risk_score\":{\"type\":\"number\",\"minimum\":0,\"maximum\":100},\"key_risks\":{\"type\":\"array\",\"minItems\":1,\"items\":{\"type\":\"string\"}}}},\"recommendations\":{\"type\":\"array\",\"minItems\":2,\"items\":{\"type\":\"string\",\"minLength\":20}}}}"
+
+      # --- Field-level checks ---
+      - key: risk_level_valid
+        type: json_path_match
+        target: final_output
+        expected_from: "literal:{\"path\":\"$.risk_assessment.overall_risk_level\",\"comparator\":\"exists\"}"
+
+      - key: has_findings
+        type: json_path_match
+        target: final_output
+        expected_from: "literal:{\"path\":\"$.findings[0].category\",\"comparator\":\"exists\"}"
+
+      - key: methodology_has_tools
+        type: json_path_match
+        target: final_output
+        expected_from: "literal:{\"path\":\"$.methodology.tools_used[0]\",\"comparator\":\"exists\"}"
+
+      # --- Content quality checks ---
+      - key: mentions_research
+        type: contains
+        target: final_output
+        expected_from: literal:research
+
+      - key: mentions_analysis
+        type: contains
+        target: final_output
+        expected_from: literal:analysis
+
+      - key: mentions_data
+        type: contains
+        target: final_output
+        expected_from: literal:data
+
+      - key: has_recommendation_text
+        type: regex_match
+        target: final_output
+        expected_from: literal:recommendations
+
+      # --- Quantitative checks ---
+      - key: risk_score_reasonable
+        type: numeric_match
+        target: final_output
+        expected_from: literal:50
+        config:
+          extract_number: true
+          absolute_tolerance: 50
+
+      # --- Summary quality ---
+      - key: executive_summary_quality
+        type: fuzzy_match
+        target: final_output
+        expected_from: literal:This report presents a comprehensive analysis of the research subject based on multiple data sources and analytical methods. The findings indicate several key areas of concern and opportunity that require attention from decision makers.
+        config:
+          threshold: 0.2
+          case_insensitive: true
+          normalize: true
+
+      # --- Normalized content check ---
+      - key: has_confidence_levels
+        type: normalized_match
+        target: final_output
+        expected_from: literal:confidence
+        config:
+          pipeline:
+            - trim
+            - lowercase
+
+    metrics:
+      - key: completed
+        type: boolean
+        collector: run_completed_successfully
+      - key: total_latency_ms
+        type: numeric
+        collector: run_total_latency_ms
+        unit: ms
+      - key: total_tokens
+        type: numeric
+        collector: run_total_tokens
+      - key: tool_calls
+        type: numeric
+        collector: run_tool_call_count
+
+    runtime_limits:
+      max_duration_ms: 300000
+      max_total_tokens: 32000
+
+    scorecard:
+      dimensions:
+        - correctness
+        - reliability
+
+challenges:
+  - key: novacure-due-diligence
+    title: NovaCure Labs Due Diligence Investigation
+    category: research
+    difficulty: hard
+    instructions: |
+      You are a senior research analyst conducting a due diligence investigation
+      on a fictional pharmaceutical company called "NovaCure Labs" that has applied
+      for a regulatory license.
+
+      YOUR TASK: Compile a comprehensive intelligence report by following these steps.
+      You MUST use the tools available to you — do not skip steps.
+
+      STEP 1: SET UP WORKSPACE
+      - Create directory: /workspace/research/
+      - Create directory: /workspace/analysis/
+
+      STEP 2: GATHER INTELLIGENCE
+      - Use fetch_and_save to download at least 2 real web pages for reference
+        (e.g., WHO pharmaceutical guidelines, FDA approval process info).
+        Suggested URLs:
+        * https://www.who.int/health-topics/pharmaceuticals
+        * https://en.wikipedia.org/wiki/Pharmaceutical_industry
+      - Write your own research notes about NovaCure Labs to files in /workspace/research/
+        Include notes on: company background, product pipeline, regulatory history,
+        market position, and risk factors.
+
+      STEP 3: ANALYZE DATA
+      - Use search_research to find patterns across your notes
+      - Use word_frequency to analyze the key themes in your research
+      - Use workspace_overview to verify your workspace is organized
+
+      STEP 4: SYNTHESIZE REPORT
+      Submit your final output as a single JSON object with this EXACT structure:
+
+      {
+        "title": "<descriptive report title, at least 10 chars>",
+        "executive_summary": "<comprehensive summary, at least 100 chars>",
+        "methodology": {
+          "sources_consulted": <number of sources, at least 1>,
+          "tools_used": ["<tool1>", "<tool2>", ...at least 2 tools],
+          "analysis_steps": ["<step1>", "<step2>", "<step3>", ...at least 3 steps]
+        },
+        "findings": [
+          {
+            "category": "<e.g. regulatory, financial, operational>",
+            "detail": "<finding detail, at least 20 chars>",
+            "confidence": "<high|medium|low>"
+          },
+          ...at least 3 findings
+        ],
+        "risk_assessment": {
+          "overall_risk_level": "<critical|high|medium|low>",
+          "risk_score": <0-100>,
+          "key_risks": ["<risk1>", "<risk2>", ...at least 1]
+        },
+        "recommendations": [
+          "<recommendation text, at least 20 chars>",
+          ...at least 2 recommendations
+        ]
+      }
+
+      IMPORTANT:
+      - Use REAL tool calls. Do not fabricate tool outputs.
+      - The executive_summary must be thoughtful and at least 100 characters.
+      - Each finding must have a confidence level (high, medium, or low).
+      - The risk_score must be between 0 and 100.
+      - Include at least 3 distinct findings across different categories.
+      - Include at least 2 actionable recommendations.
+
+input_sets:
+  - key: default
+    name: Default Input Set
+    cases:
+      - challenge_key: novacure-due-diligence
+        case_key: novacure
+        payload:
+          company_name: NovaCure Labs
+          investigation_type: due_diligence
