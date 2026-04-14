@@ -39,16 +39,17 @@ changelog:
       - "^ci:"
       - "^chore:"
 
-brews:
-  - repository:
-      owner: agentclash
-      name: homebrew-tap
-      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
-    skip_upload: auto
-    homepage: "https://github.com/agentclash/agentclash"
-    description: "CLI for the AgentClash AI agent evaluation platform"
-    license: "MIT"
-    install: |
-      bin.install "agentclash"
-    test: |
-      system "#{bin}/agentclash", "version"
+# Homebrew tap: uncomment once HOMEBREW_TAP_TOKEN secret is configured
+# with a PAT that has repo scope on agentclash/homebrew-tap.
+# brews:
+#   - repository:
+#       owner: agentclash
+#       name: homebrew-tap
+#       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+#     homepage: "https://github.com/agentclash/agentclash"
+#     description: "CLI for the AgentClash AI agent evaluation platform"
+#     license: "MIT"
+#     install: |
+#       bin.install "agentclash"
+#     test: |
+#       system "#{bin}/agentclash", "version"
