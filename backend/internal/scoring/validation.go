@@ -78,6 +78,9 @@ func ValidateEvaluationSpec(spec EvaluationSpec) error {
 		} else if !validatorTypeImplementedForDeterministic(validator.Type) {
 			errs = append(errs, ValidationError{Field: path + ".type", Message: "is not implemented for deterministic scoring yet"})
 		}
+		if configErrs := validateValidatorConfig(validator, path); len(configErrs) > 0 {
+			errs = append(errs, configErrs...)
+		}
 		if strings.TrimSpace(validator.Target) == "" {
 			errs = append(errs, ValidationError{Field: path + ".target", Message: "is required"})
 		} else if !isSupportedEvidenceReference(validator.Target) {
@@ -275,6 +278,76 @@ func isSupportedEvidenceReference(value string) bool {
 	default:
 		return false
 	}
+}
+
+func validateValidatorConfig(validator ValidatorDeclaration, path string) ValidationErrors {
+	if len(validator.Config) == 0 {
+		return nil
+	}
+
+	var errs ValidationErrors
+	configPath := path + ".config"
+
+	switch validator.Type {
+	case ValidatorTypeFuzzyMatch:
+		cfg, err := parseFuzzyMatchConfig(validator.Config)
+		if err != nil {
+			errs = append(errs, ValidationError{Field: configPath, Message: configParseErrorMessage(err)})
+			return errs
+		}
+		if cfg.Threshold != nil && (*cfg.Threshold < 0 || *cfg.Threshold > 1) {
+			errs = append(errs, ValidationError{Field: configPath + ".threshold", Message: "must be between 0 and 1"})
+		}
+
+	case ValidatorTypeNumericMatch:
+		cfg, err := parseNumericMatchConfig(validator.Config)
+		if err != nil {
+			errs = append(errs, ValidationError{Field: configPath, Message: configParseErrorMessage(err)})
+			return errs
+		}
+		if cfg.AbsoluteTolerance != nil && *cfg.AbsoluteTolerance < 0 {
+			errs = append(errs, ValidationError{Field: configPath + ".absolute_tolerance", Message: "must be greater than or equal to 0"})
+		}
+		if cfg.RelativeTolerance != nil && *cfg.RelativeTolerance < 0 {
+			errs = append(errs, ValidationError{Field: configPath + ".relative_tolerance", Message: "must be greater than or equal to 0"})
+		}
+		if cfg.SignificantDigits != nil && *cfg.SignificantDigits <= 0 {
+			errs = append(errs, ValidationError{Field: configPath + ".significant_digits", Message: "must be greater than 0"})
+		}
+
+	case ValidatorTypeNormalizedMatch:
+		cfg, err := parseNormalizedMatchConfig(validator.Config)
+		if err != nil {
+			errs = append(errs, ValidationError{Field: configPath, Message: configParseErrorMessage(err)})
+			return errs
+		}
+		pipeline, err := cfg.pipeline()
+		if err != nil {
+			errs = append(errs, ValidationError{Field: configPath, Message: err.Error()})
+			return errs
+		}
+		for j, step := range pipeline {
+			if !knownPipelineSteps[step] {
+				errs = append(errs, ValidationError{
+					Field:   fmt.Sprintf("%s.pipeline[%d]", configPath, j),
+					Message: fmt.Sprintf("%q is not a supported normalization step", step),
+				})
+			}
+		}
+	}
+
+	return errs
+}
+
+func configParseErrorMessage(err error) string {
+	if err == nil {
+		return ""
+	}
+	message := err.Error()
+	if strings.HasPrefix(message, "json:") || strings.Contains(message, "cannot unmarshal") || strings.Contains(message, "invalid character") {
+		return fmt.Sprintf("invalid JSON: %v", err)
+	}
+	return message
 }
 
 func hasValidDottedPathAfterPrefix(value string, prefix string) bool {

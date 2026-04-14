@@ -1052,6 +1052,431 @@ func containsString(items []string, want string) bool {
 	return false
 }
 
+func TestEvaluateRunAgent_FuzzyMatchPassesWithHighSimilarity(t *testing.T) {
+	spec := EvaluationSpec{
+		Name:          "fuzzy-pass",
+		VersionNumber: 1,
+		JudgeMode:     JudgeModeDeterministic,
+		Validators: []ValidatorDeclaration{
+			{
+				Key:          "fuzzy",
+				Type:         ValidatorTypeFuzzyMatch,
+				Target:       "final_output",
+				ExpectedFrom: "literal:hello world",
+				Config:       json.RawMessage(`{"threshold": 0.8}`),
+			},
+		},
+		Scorecard: ScorecardDeclaration{
+			Dimensions: []ScorecardDimension{ScorecardDimensionCorrectness},
+		},
+	}
+
+	evaluation, err := EvaluateRunAgent(EvaluationInput{
+		RunAgentID:       uuid.New(),
+		EvaluationSpecID: uuid.New(),
+		Events: []Event{
+			{Type: "system.run.completed", OccurredAt: time.Date(2026, 3, 16, 9, 0, 2, 0, time.UTC), Payload: []byte(`{"final_output":"hello worle"}`)},
+		},
+	}, spec)
+	if err != nil {
+		t.Fatalf("EvaluateRunAgent returned error: %v", err)
+	}
+
+	if evaluation.ValidatorResults[0].Verdict != "pass" {
+		t.Fatalf("validator verdict = %q, want pass", evaluation.ValidatorResults[0].Verdict)
+	}
+	// Correctness should use graduated score, not binary 1.0.
+	score := evaluation.DimensionScores[string(ScorecardDimensionCorrectness)]
+	if score == nil {
+		t.Fatal("correctness score is nil")
+	}
+	if *score < 0.8 || *score > 1.0 {
+		t.Fatalf("correctness score = %f, want [0.8, 1.0]", *score)
+	}
+}
+
+func TestEvaluateRunAgent_FuzzyMatchFailsBelowThreshold(t *testing.T) {
+	spec := EvaluationSpec{
+		Name:          "fuzzy-fail",
+		VersionNumber: 1,
+		JudgeMode:     JudgeModeDeterministic,
+		Validators: []ValidatorDeclaration{
+			{
+				Key:          "fuzzy",
+				Type:         ValidatorTypeFuzzyMatch,
+				Target:       "final_output",
+				ExpectedFrom: "literal:hello",
+				Config:       json.RawMessage(`{"threshold": 0.9}`),
+			},
+		},
+		Scorecard: ScorecardDeclaration{
+			Dimensions: []ScorecardDimension{ScorecardDimensionCorrectness},
+		},
+	}
+
+	evaluation, err := EvaluateRunAgent(EvaluationInput{
+		RunAgentID:       uuid.New(),
+		EvaluationSpecID: uuid.New(),
+		Events: []Event{
+			{Type: "system.run.completed", OccurredAt: time.Date(2026, 3, 16, 9, 0, 2, 0, time.UTC), Payload: []byte(`{"final_output":"goodbye world"}`)},
+		},
+	}, spec)
+	if err != nil {
+		t.Fatalf("EvaluateRunAgent returned error: %v", err)
+	}
+
+	if evaluation.ValidatorResults[0].Verdict != "fail" {
+		t.Fatalf("validator verdict = %q, want fail", evaluation.ValidatorResults[0].Verdict)
+	}
+}
+
+func TestEvaluateRunAgent_FuzzyMatchCaseInsensitive(t *testing.T) {
+	spec := EvaluationSpec{
+		Name:          "fuzzy-ci",
+		VersionNumber: 1,
+		JudgeMode:     JudgeModeDeterministic,
+		Validators: []ValidatorDeclaration{
+			{
+				Key:          "fuzzy",
+				Type:         ValidatorTypeFuzzyMatch,
+				Target:       "final_output",
+				ExpectedFrom: "literal:Hello World",
+				Config:       json.RawMessage(`{"case_insensitive": true}`),
+			},
+		},
+		Scorecard: ScorecardDeclaration{
+			Dimensions: []ScorecardDimension{ScorecardDimensionCorrectness},
+		},
+	}
+
+	evaluation, err := EvaluateRunAgent(EvaluationInput{
+		RunAgentID:       uuid.New(),
+		EvaluationSpecID: uuid.New(),
+		Events: []Event{
+			{Type: "system.run.completed", OccurredAt: time.Date(2026, 3, 16, 9, 0, 2, 0, time.UTC), Payload: []byte(`{"final_output":"hello world"}`)},
+		},
+	}, spec)
+	if err != nil {
+		t.Fatalf("EvaluateRunAgent returned error: %v", err)
+	}
+
+	if evaluation.ValidatorResults[0].Verdict != "pass" {
+		t.Fatalf("validator verdict = %q, want pass", evaluation.ValidatorResults[0].Verdict)
+	}
+	if *evaluation.ValidatorResults[0].NormalizedScore != 1.0 {
+		t.Fatalf("normalizedScore = %f, want 1.0", *evaluation.ValidatorResults[0].NormalizedScore)
+	}
+}
+
+func TestEvaluateRunAgent_NumericMatchWithTolerance(t *testing.T) {
+	spec := EvaluationSpec{
+		Name:          "numeric-tol",
+		VersionNumber: 1,
+		JudgeMode:     JudgeModeDeterministic,
+		Validators: []ValidatorDeclaration{
+			{
+				Key:          "numeric",
+				Type:         ValidatorTypeNumericMatch,
+				Target:       "final_output",
+				ExpectedFrom: "literal:100.0",
+				Config:       json.RawMessage(`{"absolute_tolerance": 0.5}`),
+			},
+		},
+		Scorecard: ScorecardDeclaration{
+			Dimensions: []ScorecardDimension{ScorecardDimensionCorrectness},
+		},
+	}
+
+	evaluation, err := EvaluateRunAgent(EvaluationInput{
+		RunAgentID:       uuid.New(),
+		EvaluationSpecID: uuid.New(),
+		Events: []Event{
+			{Type: "system.run.completed", OccurredAt: time.Date(2026, 3, 16, 9, 0, 2, 0, time.UTC), Payload: []byte(`{"final_output":"100.3"}`)},
+		},
+	}, spec)
+	if err != nil {
+		t.Fatalf("EvaluateRunAgent returned error: %v", err)
+	}
+
+	if evaluation.ValidatorResults[0].Verdict != "pass" {
+		t.Fatalf("validator verdict = %q, want pass", evaluation.ValidatorResults[0].Verdict)
+	}
+	if evaluation.DimensionScores[string(ScorecardDimensionCorrectness)] == nil || *evaluation.DimensionScores[string(ScorecardDimensionCorrectness)] != 1 {
+		t.Fatalf("correctness score = %v, want 1", evaluation.DimensionScores[string(ScorecardDimensionCorrectness)])
+	}
+}
+
+func TestEvaluateRunAgent_NumericMatchExtractFromText(t *testing.T) {
+	spec := EvaluationSpec{
+		Name:          "numeric-extract",
+		VersionNumber: 1,
+		JudgeMode:     JudgeModeDeterministic,
+		Validators: []ValidatorDeclaration{
+			{
+				Key:          "numeric",
+				Type:         ValidatorTypeNumericMatch,
+				Target:       "final_output",
+				ExpectedFrom: "literal:42",
+				Config:       json.RawMessage(`{"extract_number": true}`),
+			},
+		},
+		Scorecard: ScorecardDeclaration{
+			Dimensions: []ScorecardDimension{ScorecardDimensionCorrectness},
+		},
+	}
+
+	evaluation, err := EvaluateRunAgent(EvaluationInput{
+		RunAgentID:       uuid.New(),
+		EvaluationSpecID: uuid.New(),
+		Events: []Event{
+			{Type: "system.run.completed", OccurredAt: time.Date(2026, 3, 16, 9, 0, 2, 0, time.UTC), Payload: []byte(`{"final_output":"The answer is 42 units"}`)},
+		},
+	}, spec)
+	if err != nil {
+		t.Fatalf("EvaluateRunAgent returned error: %v", err)
+	}
+
+	if evaluation.ValidatorResults[0].Verdict != "pass" {
+		t.Fatalf("validator verdict = %q, want pass", evaluation.ValidatorResults[0].Verdict)
+	}
+}
+
+func TestEvaluateRunAgent_NumericMatchExtractsExpectedFromText(t *testing.T) {
+	spec := EvaluationSpec{
+		Name:          "numeric-extract-expected",
+		VersionNumber: 1,
+		JudgeMode:     JudgeModeDeterministic,
+		Validators: []ValidatorDeclaration{
+			{
+				Key:          "numeric",
+				Type:         ValidatorTypeNumericMatch,
+				Target:       "final_output",
+				ExpectedFrom: "literal:The answer is $42.00",
+				Config:       json.RawMessage(`{"extract_number": true}`),
+			},
+		},
+		Scorecard: ScorecardDeclaration{
+			Dimensions: []ScorecardDimension{ScorecardDimensionCorrectness},
+		},
+	}
+
+	evaluation, err := EvaluateRunAgent(EvaluationInput{
+		RunAgentID:       uuid.New(),
+		EvaluationSpecID: uuid.New(),
+		Events: []Event{
+			{Type: "system.run.completed", OccurredAt: time.Date(2026, 3, 16, 9, 0, 2, 0, time.UTC), Payload: []byte(`{"final_output":"+42"}`)},
+		},
+	}, spec)
+	if err != nil {
+		t.Fatalf("EvaluateRunAgent returned error: %v", err)
+	}
+
+	if evaluation.ValidatorResults[0].Verdict != "pass" {
+		t.Fatalf("validator verdict = %q, want pass", evaluation.ValidatorResults[0].Verdict)
+	}
+	raw := mustUnmarshalObject(t, evaluation.ValidatorResults[0].RawOutput)
+	if got := raw["expected_parsed"]; got != "42.00" {
+		t.Fatalf("expected_parsed = %#v, want %q", got, "42.00")
+	}
+}
+
+func TestEvaluateRunAgent_NumericMatchFails(t *testing.T) {
+	spec := EvaluationSpec{
+		Name:          "numeric-fail",
+		VersionNumber: 1,
+		JudgeMode:     JudgeModeDeterministic,
+		Validators: []ValidatorDeclaration{
+			{
+				Key:          "numeric",
+				Type:         ValidatorTypeNumericMatch,
+				Target:       "final_output",
+				ExpectedFrom: "literal:100",
+			},
+		},
+		Scorecard: ScorecardDeclaration{
+			Dimensions: []ScorecardDimension{ScorecardDimensionCorrectness},
+		},
+	}
+
+	evaluation, err := EvaluateRunAgent(EvaluationInput{
+		RunAgentID:       uuid.New(),
+		EvaluationSpecID: uuid.New(),
+		Events: []Event{
+			{Type: "system.run.completed", OccurredAt: time.Date(2026, 3, 16, 9, 0, 2, 0, time.UTC), Payload: []byte(`{"final_output":"200"}`)},
+		},
+	}, spec)
+	if err != nil {
+		t.Fatalf("EvaluateRunAgent returned error: %v", err)
+	}
+
+	if evaluation.ValidatorResults[0].Verdict != "fail" {
+		t.Fatalf("validator verdict = %q, want fail", evaluation.ValidatorResults[0].Verdict)
+	}
+	if evaluation.DimensionScores[string(ScorecardDimensionCorrectness)] == nil || *evaluation.DimensionScores[string(ScorecardDimensionCorrectness)] != 0 {
+		t.Fatalf("correctness score = %v, want 0", evaluation.DimensionScores[string(ScorecardDimensionCorrectness)])
+	}
+}
+
+func TestEvaluateRunAgent_NormalizedMatchPassesWithPipeline(t *testing.T) {
+	spec := EvaluationSpec{
+		Name:          "normalized-pass",
+		VersionNumber: 1,
+		JudgeMode:     JudgeModeDeterministic,
+		Validators: []ValidatorDeclaration{
+			{
+				Key:          "normalized",
+				Type:         ValidatorTypeNormalizedMatch,
+				Target:       "final_output",
+				ExpectedFrom: "literal:hello world",
+				Config:       json.RawMessage(`{"pipeline": ["trim", "lowercase", "collapse_whitespace"]}`),
+			},
+		},
+		Scorecard: ScorecardDeclaration{
+			Dimensions: []ScorecardDimension{ScorecardDimensionCorrectness},
+		},
+	}
+
+	evaluation, err := EvaluateRunAgent(EvaluationInput{
+		RunAgentID:       uuid.New(),
+		EvaluationSpecID: uuid.New(),
+		Events: []Event{
+			{Type: "system.run.completed", OccurredAt: time.Date(2026, 3, 16, 9, 0, 2, 0, time.UTC), Payload: []byte(`{"final_output":"  Hello   World  "}`)},
+		},
+	}, spec)
+	if err != nil {
+		t.Fatalf("EvaluateRunAgent returned error: %v", err)
+	}
+
+	if evaluation.ValidatorResults[0].Verdict != "pass" {
+		t.Fatalf("validator verdict = %q, want pass", evaluation.ValidatorResults[0].Verdict)
+	}
+	if evaluation.DimensionScores[string(ScorecardDimensionCorrectness)] == nil || *evaluation.DimensionScores[string(ScorecardDimensionCorrectness)] != 1 {
+		t.Fatalf("correctness score = %v, want 1", evaluation.DimensionScores[string(ScorecardDimensionCorrectness)])
+	}
+}
+
+func TestEvaluateRunAgent_NormalizedMatchDefaultPipeline(t *testing.T) {
+	spec := EvaluationSpec{
+		Name:          "normalized-default",
+		VersionNumber: 1,
+		JudgeMode:     JudgeModeDeterministic,
+		Validators: []ValidatorDeclaration{
+			{
+				Key:          "normalized",
+				Type:         ValidatorTypeNormalizedMatch,
+				Target:       "final_output",
+				ExpectedFrom: "literal:hello world",
+			},
+		},
+		Scorecard: ScorecardDeclaration{
+			Dimensions: []ScorecardDimension{ScorecardDimensionCorrectness},
+		},
+	}
+
+	evaluation, err := EvaluateRunAgent(EvaluationInput{
+		RunAgentID:       uuid.New(),
+		EvaluationSpecID: uuid.New(),
+		Events: []Event{
+			{Type: "system.run.completed", OccurredAt: time.Date(2026, 3, 16, 9, 0, 2, 0, time.UTC), Payload: []byte(`{"final_output":"  HELLO   WORLD  "}`)},
+		},
+	}, spec)
+	if err != nil {
+		t.Fatalf("EvaluateRunAgent returned error: %v", err)
+	}
+
+	if evaluation.ValidatorResults[0].Verdict != "pass" {
+		t.Fatalf("validator verdict = %q, want pass (default pipeline should trim+lowercase+collapse)", evaluation.ValidatorResults[0].Verdict)
+	}
+}
+
+func TestEvaluateRunAgent_NormalizedMatchFails(t *testing.T) {
+	spec := EvaluationSpec{
+		Name:          "normalized-fail",
+		VersionNumber: 1,
+		JudgeMode:     JudgeModeDeterministic,
+		Validators: []ValidatorDeclaration{
+			{
+				Key:          "normalized",
+				Type:         ValidatorTypeNormalizedMatch,
+				Target:       "final_output",
+				ExpectedFrom: "literal:hello",
+			},
+		},
+		Scorecard: ScorecardDeclaration{
+			Dimensions: []ScorecardDimension{ScorecardDimensionCorrectness},
+		},
+	}
+
+	evaluation, err := EvaluateRunAgent(EvaluationInput{
+		RunAgentID:       uuid.New(),
+		EvaluationSpecID: uuid.New(),
+		Events: []Event{
+			{Type: "system.run.completed", OccurredAt: time.Date(2026, 3, 16, 9, 0, 2, 0, time.UTC), Payload: []byte(`{"final_output":"goodbye"}`)},
+		},
+	}, spec)
+	if err != nil {
+		t.Fatalf("EvaluateRunAgent returned error: %v", err)
+	}
+
+	if evaluation.ValidatorResults[0].Verdict != "fail" {
+		t.Fatalf("validator verdict = %q, want fail", evaluation.ValidatorResults[0].Verdict)
+	}
+}
+
+func TestEvaluateRunAgent_MixedValidatorsWithGraduatedScoring(t *testing.T) {
+	spec := EvaluationSpec{
+		Name:          "mixed-validators",
+		VersionNumber: 1,
+		JudgeMode:     JudgeModeDeterministic,
+		Validators: []ValidatorDeclaration{
+			{
+				Key:          "exact",
+				Type:         ValidatorTypeExactMatch,
+				Target:       "final_output",
+				ExpectedFrom: "literal:hello world",
+			},
+			{
+				Key:          "fuzzy",
+				Type:         ValidatorTypeFuzzyMatch,
+				Target:       "final_output",
+				ExpectedFrom: "literal:hello world",
+				Config:       json.RawMessage(`{"threshold": 0.5}`),
+			},
+		},
+		Scorecard: ScorecardDeclaration{
+			Dimensions: []ScorecardDimension{ScorecardDimensionCorrectness},
+		},
+	}
+
+	evaluation, err := EvaluateRunAgent(EvaluationInput{
+		RunAgentID:       uuid.New(),
+		EvaluationSpecID: uuid.New(),
+		Events: []Event{
+			{Type: "system.run.completed", OccurredAt: time.Date(2026, 3, 16, 9, 0, 2, 0, time.UTC), Payload: []byte(`{"final_output":"hello worle"}`)},
+		},
+	}, spec)
+	if err != nil {
+		t.Fatalf("EvaluateRunAgent returned error: %v", err)
+	}
+
+	// Exact match should fail.
+	if evaluation.ValidatorResults[0].Verdict != "fail" {
+		t.Fatalf("exact validator verdict = %q, want fail", evaluation.ValidatorResults[0].Verdict)
+	}
+	// Fuzzy match should pass with graduated score.
+	if evaluation.ValidatorResults[1].Verdict != "pass" {
+		t.Fatalf("fuzzy validator verdict = %q, want pass", evaluation.ValidatorResults[1].Verdict)
+	}
+	// Correctness = average of (0.0, ~0.91) = ~0.45.
+	score := evaluation.DimensionScores[string(ScorecardDimensionCorrectness)]
+	if score == nil {
+		t.Fatal("correctness score is nil")
+	}
+	if *score < 0.3 || *score > 0.6 {
+		t.Fatalf("correctness score = %f, want around 0.45 (average of exact=0 and fuzzy~=0.91)", *score)
+	}
+}
+
 func int64Ptr(value int64) *int64 {
 	return &value
 }

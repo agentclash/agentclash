@@ -117,6 +117,12 @@ func applyValidator(validator ValidatorDeclaration, actual string, expected stri
 		return validateJSONSchema(actual, expected)
 	case ValidatorTypeJSONPathMatch:
 		return validateJSONPathMatch(actual, expected)
+	case ValidatorTypeFuzzyMatch:
+		return validateFuzzyMatch(actual, expected, validator.Config)
+	case ValidatorTypeNumericMatch:
+		return validateNumericMatch(actual, expected, validator.Config)
+	case ValidatorTypeNormalizedMatch:
+		return validateNormalizedMatch(actual, expected, validator.Config)
 	default:
 		return validatorOutcome{verdict: "error", reason: fmt.Sprintf("unsupported validator type %q", validator.Type)}
 	}
