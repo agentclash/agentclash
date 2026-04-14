@@ -116,6 +116,7 @@ func TestArtifactManagerUploadAndSignedDownloadFlow(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		nil,
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {

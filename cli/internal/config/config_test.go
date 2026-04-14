@@ -91,14 +91,15 @@ func TestLoadReturnsEmptyConfigWhenFileMissing(t *testing.T) {
 
 func TestKeysReturnsAllValidKeys(t *testing.T) {
 	keys := Keys()
-	if len(keys) != 4 {
-		t.Fatalf("len(Keys()) = %d, want 4", len(keys))
+	if len(keys) != 5 {
+		t.Fatalf("len(Keys()) = %d, want 5", len(keys))
 	}
 
 	expected := map[string]bool{
 		"default_workspace": true,
 		"default_org":       true,
 		"api_url":           true,
+		"web_url":           true,
 		"output":            true,
 	}
 	for _, k := range keys {

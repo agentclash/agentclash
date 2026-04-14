@@ -32,6 +32,7 @@ func registerProtectedRoutes(
 	onboardingService OnboardingService,
 	infraService InfrastructureService,
 	workspaceSecretsService WorkspaceSecretsService,
+	cliAuthService CLIAuthService,
 ) {
 	router.Get("/auth/session", sessionHandler)
 	router.Get("/users/me", getUserMeHandler(logger, userService))
@@ -127,6 +128,14 @@ func registerProtectedRoutes(
 		Put("/workspaces/{workspaceID}/secrets/{secretKey}", upsertWorkspaceSecretHandler(logger, workspaceSecretsService, authorizer))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Delete("/workspaces/{workspaceID}/secrets/{secretKey}", deleteWorkspaceSecretHandler(logger, workspaceSecretsService, authorizer))
+
+	// CLI auth — token management (authenticated)
+	if cliAuthService != nil {
+		router.Post("/auth/cli-tokens", createCLITokenHandler(logger, cliAuthService))
+		router.Get("/auth/cli-tokens", listCLITokensHandler(logger, cliAuthService))
+		router.Delete("/auth/cli-tokens/{id}", revokeCLITokenHandler(logger, cliAuthService))
+		router.Post("/auth/device/approve", approveDeviceCodeHandler(logger, cliAuthService))
+	}
 
 	// Infrastructure CRUD — workspace-scoped create/list (skip if no service provided)
 	if infraService == nil {

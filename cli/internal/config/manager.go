@@ -4,6 +4,7 @@ import "os"
 
 const (
 	defaultAPIURL = "http://localhost:8080"
+	defaultWebURL = "http://localhost:3000"
 	defaultOutput = "table"
 )
 
@@ -104,6 +105,17 @@ func (m *Manager) DevOrgMemberships() string {
 // DevWorkspaceMemberships returns dev mode workspace memberships from env var.
 func (m *Manager) DevWorkspaceMemberships() string {
 	return os.Getenv("AGENTCLASH_DEV_WORKSPACE_MEMBERSHIPS")
+}
+
+// WebURL returns the resolved web app URL.
+func (m *Manager) WebURL() string {
+	if v := os.Getenv("AGENTCLASH_WEB_URL"); v != "" {
+		return v
+	}
+	if m.user.WebURL != "" {
+		return m.user.WebURL
+	}
+	return defaultWebURL
 }
 
 // UserConfig returns the loaded user config (for read/write operations).

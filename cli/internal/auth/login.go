@@ -1,45 +1,67 @@
 package auth
 
 import (
-	"bufio"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/Atharva-Kanherkar/agentclash/cli/internal/api"
+	"github.com/Atharva-Kanherkar/agentclash/cli/internal/output"
 )
 
-// LoginResult holds the result of a login attempt.
+// LoginResult holds the result of a successful login.
 type LoginResult struct {
 	UserID  string
 	Email   string
 	Display string
 }
 
-// InteractiveLogin prompts the user for a token and validates it.
-func InteractiveLogin(ctx context.Context, client *api.Client) (*LoginResult, string, error) {
-	fmt.Fprintln(os.Stderr, "Paste your API token (from the dashboard):")
-	fmt.Fprint(os.Stderr, "> ")
+// WebLogin performs browser-based login:
+// 1. Start a localhost callback server
+// 2. Open browser to the web app's /auth/cli page
+// 3. Wait for the callback with the token
+// 4. Validate the token
+func WebLogin(ctx context.Context, client *api.Client, webURL string) (*LoginResult, string, error) {
+	// Generate cryptographic state for CSRF protection.
+	stateBytes := make([]byte, 32)
+	if _, err := rand.Read(stateBytes); err != nil {
+		return nil, "", fmt.Errorf("generating state: %w", err)
+	}
+	state := hex.EncodeToString(stateBytes)
 
-	reader := bufio.NewReader(os.Stdin)
-	token, err := reader.ReadString('\n')
+	// Start local callback server.
+	resultCh, port, err := StartCallbackServer(ctx, state)
 	if err != nil {
-		return nil, "", fmt.Errorf("reading token: %w", err)
-	}
-	token = strings.TrimSpace(token)
-	if token == "" {
-		return nil, "", fmt.Errorf("token cannot be empty")
+		return nil, "", fmt.Errorf("starting callback server: %w", err)
 	}
 
-	// Validate the token by calling the session endpoint.
-	authedClient := api.NewClient(client.BaseURL(), token)
-	result, err := ValidateToken(ctx, authedClient)
+	// Build the auth URL.
+	authURL := fmt.Sprintf("%s/auth/cli?port=%d&state=%s", webURL, port, state)
+
+	fmt.Fprintf(os.Stderr, "%s Opening browser to authenticate...\n", output.Cyan("▸"))
+
+	if err := OpenBrowser(authURL); err != nil {
+		fmt.Fprintf(os.Stderr, "%s Could not open browser. Visit this URL manually:\n", output.Yellow("!"))
+		fmt.Fprintf(os.Stderr, "  %s\n\n", authURL)
+	}
+
+	// Wait for callback.
+	result := <-resultCh
+
+	if result.Error != "" {
+		return nil, "", fmt.Errorf("login failed: %s", result.Error)
+	}
+
+	// Validate the token by calling /v1/auth/session.
+	authedClient := api.NewClient(client.BaseURL(), result.Token)
+	loginResult, err := ValidateToken(ctx, authedClient)
 	if err != nil {
 		return nil, "", err
 	}
 
-	return result, token, nil
+	return loginResult, result.Token, nil
 }
 
 // ValidateToken checks the token against the session endpoint.

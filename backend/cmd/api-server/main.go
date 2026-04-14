@@ -107,10 +107,12 @@ func main() {
 	infraManager := api.NewInfrastructureManager(repo)
 	workspaceSecretsManager := api.NewWorkspaceSecretsManager(repo)
 
+	cliTokenAuth := api.NewCLITokenAuthenticator(repo, logger)
+
 	var authenticator api.Authenticator
 	switch cfg.AuthMode {
 	case "workos":
-		authenticator, err = api.NewWorkOSAuthenticator(api.WorkOSAuthenticatorConfig{
+		workosAuth, err := api.NewWorkOSAuthenticator(api.WorkOSAuthenticatorConfig{
 			ClientID: cfg.WorkOSClientID,
 			Issuer:   cfg.WorkOSIssuer,
 		}, repo, logger)
@@ -118,11 +120,14 @@ func main() {
 			logger.Error("failed to initialize workos authenticator", "error", err)
 			os.Exit(1)
 		}
-		logger.Info("authentication mode: workos")
+		authenticator = api.NewCompositeAuthenticator(workosAuth, cliTokenAuth)
+		logger.Info("authentication mode: workos (with CLI token support)")
 	default:
-		authenticator = api.NewDevelopmentAuthenticator()
-		logger.Info("authentication mode: dev (development headers)")
+		authenticator = api.NewCompositeAuthenticator(api.NewDevelopmentAuthenticator(), cliTokenAuth)
+		logger.Info("authentication mode: dev (development headers + CLI tokens)")
 	}
+
+	cliAuthManager := api.NewCLIAuthManager(repo, logger)
 
 	server := api.NewServer(
 		cfg,
@@ -150,6 +155,7 @@ func main() {
 		infraManager,
 		workspaceSecretsManager,
 		eventSubscriber,
+		cliAuthManager,
 	)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

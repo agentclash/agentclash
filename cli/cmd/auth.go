@@ -8,11 +8,18 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var flagDevice bool
+
 func init() {
 	rootCmd.AddCommand(authCmd)
 	authCmd.AddCommand(authLoginCmd)
 	authCmd.AddCommand(authLogoutCmd)
 	authCmd.AddCommand(authStatusCmd)
+	authCmd.AddCommand(authTokensCmd)
+	authTokensCmd.AddCommand(authTokensListCmd)
+	authTokensCmd.AddCommand(authTokensRevokeCmd)
+
+	authLoginCmd.Flags().BoolVar(&flagDevice, "device", false, "Use device code flow (for SSH/containers)")
 }
 
 var authCmd = &cobra.Command{
@@ -23,31 +30,64 @@ var authCmd = &cobra.Command{
 var authLoginCmd = &cobra.Command{
 	Use:   "login",
 	Short: "Log in to AgentClash",
-	Long: `Log in to your AgentClash account.
+	Long: `Log in to your AgentClash account via browser.
 
-You will be prompted to paste an API token from the dashboard.
+Opens your default browser for secure authentication via WorkOS.
+Falls back to device code flow when a browser is unavailable.
+
+Flags:
+  --device    Force device code flow (useful for SSH/remote sessions)
+
 For CI/CD, set the AGENTCLASH_TOKEN environment variable instead.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		rc := GetRunContext(cmd)
-		sp := output.NewSpinner("Logging in...", flagQuiet)
+		webURL := rc.Config.WebURL()
 
-		result, token, err := auth.InteractiveLogin(cmd.Context(), rc.Client)
-		if err != nil {
-			sp.StopWithError("Login failed")
-			return err
+		var result *auth.LoginResult
+		var token string
+		var err error
+
+		if flagDevice || !auth.CanOpenBrowser() {
+			// Device code flow.
+			deviceResult, deviceErr := auth.DeviceLogin(cmd.Context(), rc.Client, webURL)
+			if deviceErr != nil {
+				return deviceErr
+			}
+			result = &auth.LoginResult{
+				UserID: deviceResult.UserID,
+				Email:  deviceResult.Email,
+			}
+			token = deviceResult.Token
+		} else {
+			// Browser-based flow.
+			result, token, err = auth.WebLogin(cmd.Context(), rc.Client, webURL)
+			if err != nil {
+				return err
+			}
 		}
 
+		// Save credentials.
 		creds := auth.Credentials{
 			Token:  token,
 			UserID: result.UserID,
 			Email:  result.Email,
 		}
 		if err := auth.SaveCredentials(creds); err != nil {
-			sp.StopWithError("Failed to save credentials")
 			return fmt.Errorf("saving credentials: %w", err)
 		}
 
-		sp.StopWithSuccess(fmt.Sprintf("Logged in as %s (%s)", result.Display, result.Email))
+		if rc.Output.IsJSON() {
+			return rc.Output.PrintJSON(map[string]string{
+				"user_id": result.UserID,
+				"email":   result.Email,
+			})
+		}
+
+		name := result.Display
+		if name == "" {
+			name = result.Email
+		}
+		rc.Output.PrintSuccess(fmt.Sprintf("Logged in as %s", name))
 		return nil
 	},
 }
@@ -89,7 +129,7 @@ var authStatusCmd = &cobra.Command{
 			return rc.Output.PrintJSON(session)
 		}
 
-		rc.Output.PrintDetail("User ID", fmt.Sprint(session["user_id"]))
+		rc.Output.PrintDetail("User ID", str(session["user_id"]))
 		if email, ok := session["email"].(string); ok && email != "" {
 			rc.Output.PrintDetail("Email", email)
 		}
@@ -102,6 +142,77 @@ var authStatusCmd = &cobra.Command{
 		if wss, ok := session["workspace_memberships"].([]any); ok {
 			rc.Output.PrintDetail("Workspaces", fmt.Sprintf("%d membership(s)", len(wss)))
 		}
+		return nil
+	},
+}
+
+// --- Token Management ---
+
+var authTokensCmd = &cobra.Command{
+	Use:   "tokens",
+	Short: "Manage CLI access tokens",
+}
+
+var authTokensListCmd = &cobra.Command{
+	Use:   "list",
+	Short: "List your CLI tokens",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		rc := GetRunContext(cmd)
+
+		resp, err := rc.Client.Get(cmd.Context(), "/v1/auth/cli-tokens", nil)
+		if err != nil {
+			return err
+		}
+		if apiErr := resp.ParseError(); apiErr != nil {
+			return apiErr
+		}
+
+		var result struct {
+			Items []map[string]any `json:"items"`
+		}
+		if err := resp.DecodeJSON(&result); err != nil {
+			return err
+		}
+
+		if rc.Output.IsJSON() {
+			return rc.Output.PrintJSON(result)
+		}
+
+		cols := []output.Column{{Header: "ID"}, {Header: "Name"}, {Header: "Last Used"}, {Header: "Created"}}
+		rows := make([][]string, len(result.Items))
+		for i, item := range result.Items {
+			lastUsed := str(item["last_used_at"])
+			if lastUsed == "" || lastUsed == "<nil>" {
+				lastUsed = "never"
+			}
+			rows[i] = []string{
+				str(item["id"]),
+				str(item["name"]),
+				lastUsed,
+				str(item["created_at"]),
+			}
+		}
+		rc.Output.PrintTable(cols, rows)
+		return nil
+	},
+}
+
+var authTokensRevokeCmd = &cobra.Command{
+	Use:   "revoke <token-id>",
+	Short: "Revoke a CLI token",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		rc := GetRunContext(cmd)
+
+		resp, err := rc.Client.Delete(cmd.Context(), "/v1/auth/cli-tokens/"+args[0])
+		if err != nil {
+			return err
+		}
+		if apiErr := resp.ParseError(); apiErr != nil {
+			return apiErr
+		}
+
+		rc.Output.PrintSuccess(fmt.Sprintf("Token %s revoked", args[0]))
 		return nil
 	},
 }

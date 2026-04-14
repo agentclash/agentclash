@@ -12,6 +12,7 @@ type UserConfig struct {
 	DefaultWorkspace string `yaml:"default_workspace,omitempty"`
 	DefaultOrg       string `yaml:"default_org,omitempty"`
 	APIURL           string `yaml:"api_url,omitempty"`
+	WebURL           string `yaml:"web_url,omitempty"`
 	Output           string `yaml:"output,omitempty"`
 }
 
@@ -65,6 +66,8 @@ func (c UserConfig) Get(key string) string {
 		return c.DefaultOrg
 	case "api_url":
 		return c.APIURL
+	case "web_url":
+		return c.WebURL
 	case "output":
 		return c.Output
 	default:
@@ -81,6 +84,8 @@ func (c *UserConfig) Set(key, value string) bool {
 		c.DefaultOrg = value
 	case "api_url":
 		c.APIURL = value
+	case "web_url":
+		c.WebURL = value
 	case "output":
 		c.Output = value
 	default:
@@ -91,5 +96,5 @@ func (c *UserConfig) Set(key, value string) bool {
 
 // Keys returns all valid config key names.
 func Keys() []string {
-	return []string{"default_workspace", "default_org", "api_url", "output"}
+	return []string{"default_workspace", "default_org", "api_url", "web_url", "output"}
 }

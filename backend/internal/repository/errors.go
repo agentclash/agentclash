@@ -35,6 +35,8 @@ var (
 	ErrWorkspaceSecretNotFound       = errors.New("workspace secret not found")
 	ErrSecretsCipherUnset            = errors.New("secrets cipher is not configured")
 	ErrInvalidSecretKey              = errors.New("secret key must match [A-Za-z_][A-Za-z0-9_]* and be 1..128 characters")
+	ErrCLITokenNotFound              = errors.New("cli token not found")
+	ErrDeviceCodeNotFound            = errors.New("device auth code not found")
 )
 
 type InvalidTransitionError struct {

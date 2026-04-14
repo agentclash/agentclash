@@ -47,6 +47,8 @@ tags:
     description: Current user profile with org/workspace hierarchy
   - name: Onboarding
     description: First-time organization and workspace setup
+  - name: CLIAuth
+    description: CLI token management and device code flow
   - name: Organizations
     description: Organization CRUD and management
   - name: OrgMemberships
@@ -2809,6 +2811,158 @@ paths:
         "404":
           $ref: "#/components/responses/NotFoundError"
 
+  # ---------------------------------------------------------------------------
+  # CLI Auth — Device Code Flow + Token Management
+  # ---------------------------------------------------------------------------
+
+  /v1/auth/device:
+    post:
+      summary: Create device authorization code
+      description: >
+        Initiates the device code flow (RFC 8628). Returns a device_code (secret)
+        and user_code (displayed to user). The CLI polls /v1/auth/device/token
+        with the device_code until the user approves.
+      tags: [CLIAuth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "201":
+          description: Device code created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceCodeResponse"
+
+  /v1/auth/device/token:
+    post:
+      summary: Poll for device token
+      description: >
+        CLI polls this endpoint with the device_code until the user approves,
+        denies, or the code expires. Returns authorization_pending, access_denied,
+        expired_token, or the CLI token on approval.
+      tags: [CLIAuth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [device_code]
+              properties:
+                device_code:
+                  type: string
+      responses:
+        "200":
+          description: Device approved, token returned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PollDeviceTokenResponse"
+        "400":
+          description: Pending, denied, or expired
+
+  /v1/auth/device/approve:
+    post:
+      summary: Approve a device code
+      description: >
+        Called by the web app after user authenticates and enters the user_code.
+        Creates a CLI token for the authenticated user and links it to the device code.
+      tags: [CLIAuth]
+      security:
+        - bearerJWT: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [user_code]
+              properties:
+                user_code:
+                  type: string
+                  example: "RRGQ-BJVS"
+      responses:
+        "200":
+          description: Device approved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+        "400":
+          description: Invalid or expired code
+
+  /v1/auth/cli-tokens:
+    post:
+      summary: Create a CLI token
+      description: >
+        Creates a new CLI token for the authenticated user. The raw token is
+        returned exactly once in the response and never stored server-side.
+      tags: [CLIAuth]
+      security:
+        - bearerJWT: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  example: "MacBook CLI"
+      responses:
+        "201":
+          description: Token created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateCLITokenResponse"
+    get:
+      summary: List CLI tokens
+      description: Returns metadata for all active (non-revoked) CLI tokens owned by the caller.
+      tags: [CLIAuth]
+      security:
+        - bearerJWT: []
+      responses:
+        "200":
+          description: Token list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/CLITokenSummary"
+
+  /v1/auth/cli-tokens/{id}:
+    delete:
+      summary: Revoke a CLI token
+      description: Sets revoked_at on the token. Only the owning user can revoke.
+      tags: [CLIAuth]
+      security:
+        - bearerJWT: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Token revoked
+        "404":
+          description: Token not found
+
 # =============================================================================
 # Components
 # =============================================================================
@@ -3016,6 +3170,72 @@ components:
   # Schemas
   # ---------------------------------------------------------------------------
   schemas:
+    # --- CLI Auth ---
+
+    DeviceCodeResponse:
+      type: object
+      required: [device_code, user_code, verification_uri, expires_in, interval]
+      properties:
+        device_code:
+          type: string
+        user_code:
+          type: string
+          example: "RRGQ-BJVS"
+        verification_uri:
+          type: string
+        expires_in:
+          type: integer
+        interval:
+          type: integer
+
+    PollDeviceTokenResponse:
+      type: object
+      properties:
+        token:
+          type: string
+        user_id:
+          type: string
+        email:
+          type: string
+
+    CreateCLITokenResponse:
+      type: object
+      required: [id, token, name, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        token:
+          type: string
+          description: Raw token, shown once
+        name:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+
+    CLITokenSummary:
+      type: object
+      required: [id, name, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        last_used_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+
     # --- Shared ---
 
     ErrorEnvelope:
