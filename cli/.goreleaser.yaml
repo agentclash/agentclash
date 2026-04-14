@@ -2,6 +2,9 @@ version: 2
 
 project_name: agentclash
 
+monorepo:
+  tag_prefix: cli/
+
 builds:
   - main: .
     binary: agentclash
