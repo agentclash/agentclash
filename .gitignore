@@ -3,3 +3,5 @@ backend/e2b-template/node_modules/
 backend/e2b-template/*.old
 web/.data/
 web/.env.local
+cli/agentclash
+cli/dist/

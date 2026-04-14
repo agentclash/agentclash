@@ -28,6 +28,7 @@ AgentClash is a monorepo with three main components:
 |-----------|------|----------|
 | **API Server** | Go / chi | `backend/cmd/api-server` |
 | **Worker** | Go / Temporal SDK | `backend/cmd/worker` |
+| **CLI** | Go / Cobra | `cli/` |
 | **Web** | Next.js 16 / React 19 | `web/` |
 
 Infrastructure dependencies:
@@ -39,6 +40,53 @@ Infrastructure dependencies:
 | **Redis** (optional) | WebSocket fanout, rate limiting |
 | **E2B** (optional) | Sandboxed code execution for native agent runs |
 | **S3-compatible storage** (optional) | Artifact storage (filesystem fallback for dev) |
+
+## CLI
+
+The `agentclash` CLI lets you manage everything from your terminal — runs, builds, deployments, comparisons, and infrastructure.
+
+### Install
+
+```bash
+# Homebrew
+brew install agentclash/tap/agentclash
+
+# Go
+go install github.com/Atharva-Kanherkar/agentclash/cli@latest
+
+# Shell script
+curl -sSL https://raw.githubusercontent.com/agentclash/agentclash/main/scripts/install/install.sh | sh
+
+# From source
+cd cli && make build
+```
+
+### Quick start
+
+```bash
+agentclash auth login                  # Authenticate
+agentclash workspace use <id>          # Set default workspace
+agentclash run create \                # Start an evaluation
+  --challenge-pack-version <id> \
+  --deployments <id1>,<id2> \
+  --follow
+agentclash run ranking <run-id>        # View results
+agentclash compare gate \              # CI/CD quality gate
+  --baseline <run1> --candidate <run2>
+```
+
+### CI/CD
+
+All commands work non-interactively with environment variables:
+
+```bash
+export AGENTCLASH_TOKEN="your-token"
+export AGENTCLASH_WORKSPACE="your-workspace-id"
+agentclash run list --json
+agentclash compare gate --baseline $BASE --candidate $CAND  # exit 1 = regression
+```
+
+Run `agentclash --help` for the full command reference.
 
 ## Local development
 
