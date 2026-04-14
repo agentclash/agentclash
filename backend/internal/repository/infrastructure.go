@@ -273,26 +273,30 @@ func (r *Repository) ArchiveProviderAccount(ctx context.Context, id uuid.UUID) e
 // --------------------------------------------------------------------------
 
 type ModelCatalogEntryRow struct {
-	ID              uuid.UUID
-	ProviderKey     string
-	ProviderModelID string
-	DisplayName     string
-	ModelFamily     string
-	Modality        string
-	LifecycleStatus string
-	Metadata        json.RawMessage
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	ID                          uuid.UUID
+	ProviderKey                 string
+	ProviderModelID             string
+	DisplayName                 string
+	ModelFamily                 string
+	Modality                    string
+	LifecycleStatus             string
+	Metadata                    json.RawMessage
+	InputCostPerMillionTokens   float64
+	OutputCostPerMillionTokens  float64
+	CreatedAt                   time.Time
+	UpdatedAt                   time.Time
 }
 
 func (r *Repository) GetModelCatalogEntryByID(ctx context.Context, id uuid.UUID) (ModelCatalogEntryRow, error) {
 	var row ModelCatalogEntryRow
 	var createdAt, updatedAt pgtype.Timestamptz
 	err := r.db.QueryRow(ctx, `
-		SELECT id, provider_key, provider_model_id, display_name, model_family, modality, lifecycle_status, metadata, created_at, updated_at
+		SELECT id, provider_key, provider_model_id, display_name, model_family, modality, lifecycle_status, metadata,
+			input_cost_per_million_tokens, output_cost_per_million_tokens, created_at, updated_at
 		FROM model_catalog_entries WHERE id = $1
 	`, id).Scan(&row.ID, &row.ProviderKey, &row.ProviderModelID, &row.DisplayName, &row.ModelFamily,
-		&row.Modality, &row.LifecycleStatus, &row.Metadata, &createdAt, &updatedAt)
+		&row.Modality, &row.LifecycleStatus, &row.Metadata,
+		&row.InputCostPerMillionTokens, &row.OutputCostPerMillionTokens, &createdAt, &updatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ModelCatalogEntryRow{}, ErrModelCatalogNotFound
@@ -343,7 +347,8 @@ func (r *Repository) GetModelCatalogEntryByProviderModel(ctx context.Context, pr
 
 func (r *Repository) ListModelCatalogEntries(ctx context.Context) ([]ModelCatalogEntryRow, error) {
 	rows, err := r.db.Query(ctx, `
-		SELECT id, provider_key, provider_model_id, display_name, model_family, modality, lifecycle_status, metadata, created_at, updated_at
+		SELECT id, provider_key, provider_model_id, display_name, model_family, modality, lifecycle_status, metadata,
+			input_cost_per_million_tokens, output_cost_per_million_tokens, created_at, updated_at
 		FROM model_catalog_entries
 		WHERE lifecycle_status != 'archived'
 		ORDER BY provider_key, display_name
@@ -358,7 +363,8 @@ func (r *Repository) ListModelCatalogEntries(ctx context.Context) ([]ModelCatalo
 		var row ModelCatalogEntryRow
 		var createdAt, updatedAt pgtype.Timestamptz
 		if err := rows.Scan(&row.ID, &row.ProviderKey, &row.ProviderModelID, &row.DisplayName, &row.ModelFamily,
-			&row.Modality, &row.LifecycleStatus, &row.Metadata, &createdAt, &updatedAt); err != nil {
+			&row.Modality, &row.LifecycleStatus, &row.Metadata,
+			&row.InputCostPerMillionTokens, &row.OutputCostPerMillionTokens, &createdAt, &updatedAt); err != nil {
 			return nil, fmt.Errorf("scan model catalog entry: %w", err)
 		}
 		row.CreatedAt = createdAt.Time
@@ -776,6 +782,24 @@ func (r *Repository) ListRoutingPoliciesByWorkspaceID(ctx context.Context, works
 	return result, nil
 }
 
+func (r *Repository) GetRoutingPolicyByID(ctx context.Context, id uuid.UUID) (RoutingPolicyRow, error) {
+	var row RoutingPolicyRow
+	var createdAt, updatedAt pgtype.Timestamptz
+	err := r.db.QueryRow(ctx, `
+		SELECT id, organization_id, workspace_id, name, policy_kind, config, created_at, updated_at
+		FROM routing_policies WHERE id = $1 AND archived_at IS NULL
+	`, id).Scan(&row.ID, &row.OrganizationID, &row.WorkspaceID, &row.Name, &row.PolicyKind, &row.Config, &createdAt, &updatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return RoutingPolicyRow{}, ErrRoutingPolicyNotFound
+		}
+		return RoutingPolicyRow{}, fmt.Errorf("get routing policy: %w", err)
+	}
+	row.CreatedAt = createdAt.Time
+	row.UpdatedAt = updatedAt.Time
+	return row, nil
+}
+
 // --------------------------------------------------------------------------
 // Spend Policies
 // --------------------------------------------------------------------------
@@ -855,6 +879,25 @@ func (r *Repository) ListSpendPoliciesByWorkspaceID(ctx context.Context, workspa
 		result = []SpendPolicyRow{}
 	}
 	return result, nil
+}
+
+func (r *Repository) GetSpendPolicyByID(ctx context.Context, id uuid.UUID) (SpendPolicyRow, error) {
+	var row SpendPolicyRow
+	var createdAt, updatedAt pgtype.Timestamptz
+	err := r.db.QueryRow(ctx, `
+		SELECT id, organization_id, workspace_id, name, currency_code, window_kind, soft_limit, hard_limit, config, created_at, updated_at
+		FROM spend_policies WHERE id = $1 AND archived_at IS NULL
+	`, id).Scan(&row.ID, &row.OrganizationID, &row.WorkspaceID, &row.Name, &row.CurrencyCode, &row.WindowKind,
+		&row.SoftLimit, &row.HardLimit, &row.Config, &createdAt, &updatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return SpendPolicyRow{}, ErrSpendPolicyNotFound
+		}
+		return SpendPolicyRow{}, fmt.Errorf("get spend policy: %w", err)
+	}
+	row.CreatedAt = createdAt.Time
+	row.UpdatedAt = updatedAt.Time
+	return row, nil
 }
 
 // --------------------------------------------------------------------------

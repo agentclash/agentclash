@@ -95,7 +95,9 @@ SELECT
     mce.display_name AS model_catalog_display_name,
     mce.model_family AS model_catalog_model_family,
     mce.modality AS model_catalog_modality,
-    mce.metadata AS model_catalog_metadata
+    mce.metadata AS model_catalog_metadata,
+    mce.input_cost_per_million_tokens AS model_catalog_input_cost_per_million_tokens,
+    mce.output_cost_per_million_tokens AS model_catalog_output_cost_per_million_tokens
 FROM run_agents AS ra
 JOIN runs AS r
   ON r.id = ra.run_id

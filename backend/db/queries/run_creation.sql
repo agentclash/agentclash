@@ -19,7 +19,9 @@ SELECT DISTINCT ON (agent_deployments.id)
     agent_deployments.organization_id,
     agent_deployments.workspace_id,
     agent_deployments.name,
-    agent_deployment_snapshots.id AS agent_deployment_snapshot_id
+    agent_deployment_snapshots.id AS agent_deployment_snapshot_id,
+    agent_deployments.spend_policy_id,
+    agent_deployments.routing_policy_id
 FROM agent_deployments
 JOIN agent_deployment_snapshots
   ON agent_deployment_snapshots.agent_deployment_id = agent_deployments.id

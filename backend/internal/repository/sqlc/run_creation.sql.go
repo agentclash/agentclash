@@ -78,7 +78,9 @@ SELECT DISTINCT ON (agent_deployments.id)
     agent_deployments.organization_id,
     agent_deployments.workspace_id,
     agent_deployments.name,
-    agent_deployment_snapshots.id AS agent_deployment_snapshot_id
+    agent_deployment_snapshots.id AS agent_deployment_snapshot_id,
+    agent_deployments.spend_policy_id,
+    agent_deployments.routing_policy_id
 FROM agent_deployments
 JOIN agent_deployment_snapshots
   ON agent_deployment_snapshots.agent_deployment_id = agent_deployments.id
@@ -102,6 +104,8 @@ type ListRunnableDeploymentsWithLatestSnapshotRow struct {
 	WorkspaceID               uuid.UUID
 	Name                      string
 	AgentDeploymentSnapshotID uuid.UUID
+	SpendPolicyID             *uuid.UUID
+	RoutingPolicyID           *uuid.UUID
 }
 
 func (q *Queries) ListRunnableDeploymentsWithLatestSnapshot(ctx context.Context, arg ListRunnableDeploymentsWithLatestSnapshotParams) ([]ListRunnableDeploymentsWithLatestSnapshotRow, error) {
@@ -119,6 +123,8 @@ func (q *Queries) ListRunnableDeploymentsWithLatestSnapshot(ctx context.Context,
 			&i.WorkspaceID,
 			&i.Name,
 			&i.AgentDeploymentSnapshotID,
+			&i.SpendPolicyID,
+			&i.RoutingPolicyID,
 		); err != nil {
 			return nil, err
 		}

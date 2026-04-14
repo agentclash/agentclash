@@ -353,7 +353,7 @@ func TestRunCreation_ViewerDenied(t *testing.T) {
 		},
 	}
 
-	manager := NewRunCreationManager(NewCallerWorkspaceAuthorizer(), &fakeRunCreationRepository{}, &fakeRunWorkflowStarter{})
+	manager := NewRunCreationManager(NewCallerWorkspaceAuthorizer(), &fakeRunCreationRepository{}, &fakeRunWorkflowStarter{}, nil)
 
 	_, err := manager.CreateRun(context.Background(), caller, CreateRunInput{
 		WorkspaceID:        workspaceID,

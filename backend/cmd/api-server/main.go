@@ -8,6 +8,7 @@ import (
 	"syscall"
 
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/api"
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/budget"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/storage"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/temporalutil"
@@ -55,10 +56,12 @@ func main() {
 	}
 	artifactManager := api.NewArtifactManager(authorizer, repo, artifactStore, cfg.ArtifactSigningSecret, cfg.ArtifactSignedURLTTL, cfg.ArtifactMaxUploadBytes)
 	playgroundManager := api.NewPlaygroundManager(authorizer, repo, api.NewTemporalPlaygroundWorkflowStarter(temporalClient))
+	budgetChecker := budget.NewChecker(repository.NewBudgetRepositoryAdapter(repo))
 	runCreationManager := api.NewRunCreationManager(
 		authorizer,
 		repo,
 		api.NewTemporalRunWorkflowStarter(temporalClient),
+		budgetChecker,
 	)
 	runReadManager := api.NewRunReadManager(authorizer, repo)
 	replayReadManager := api.NewReplayReadManager(authorizer, repo)

@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"time"
 
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/budget"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
 	"github.com/google/uuid"
 )
@@ -25,6 +27,7 @@ type RunCreationManager struct {
 	authorizer      WorkspaceAuthorizer
 	repo            RunCreationRepository
 	workflowStarter RunWorkflowStarter
+	budgetChecker   budget.BudgetChecker
 	now             func() time.Time
 }
 
@@ -32,11 +35,16 @@ func NewRunCreationManager(
 	authorizer WorkspaceAuthorizer,
 	repo RunCreationRepository,
 	workflowStarter RunWorkflowStarter,
+	budgetChecker budget.BudgetChecker,
 ) *RunCreationManager {
+	if budgetChecker == nil {
+		budgetChecker = budget.NoopChecker{}
+	}
 	return &RunCreationManager{
 		authorizer:      authorizer,
 		repo:            repo,
 		workflowStarter: workflowStarter,
+		budgetChecker:   budgetChecker,
 		now:             time.Now,
 	}
 }
@@ -119,6 +127,36 @@ func (m *RunCreationManager) CreateRun(ctx context.Context, caller Caller, input
 	for _, deployment := range deployments[1:] {
 		if deployment.OrganizationID != organizationID {
 			return CreateRunResult{}, fmt.Errorf("deployments in workspace %s resolved to multiple organizations", input.WorkspaceID)
+		}
+	}
+
+	// Pre-run spend policy check: reject if any deployment's spend policy budget is exceeded.
+	checkedPolicies := make(map[uuid.UUID]struct{})
+	for _, deployment := range deployments {
+		if deployment.SpendPolicyID == nil {
+			continue
+		}
+		if _, already := checkedPolicies[*deployment.SpendPolicyID]; already {
+			continue
+		}
+		checkedPolicies[*deployment.SpendPolicyID] = struct{}{}
+
+		result, err := m.budgetChecker.CheckPreRunBudget(ctx, input.WorkspaceID, *deployment.SpendPolicyID)
+		if err != nil {
+			return CreateRunResult{}, fmt.Errorf("check spend policy budget: %w", err)
+		}
+		if !result.Allowed {
+			return CreateRunResult{}, RunCreationValidationError{
+				Code:    "budget_exceeded",
+				Message: fmt.Sprintf("workspace spend limit exceeded (current: $%.2f, limit: $%.2f)", result.CurrentSpend, *result.HardLimit),
+			}
+		}
+		if result.SoftLimitHit {
+			slog.Default().Warn("spend policy soft limit reached",
+				"workspace_id", input.WorkspaceID,
+				"spend_policy_id", *deployment.SpendPolicyID,
+				"current_spend", result.CurrentSpend,
+			)
 		}
 	}
 

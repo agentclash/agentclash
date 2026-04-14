@@ -138,13 +138,15 @@ type ModelAliasExecutionContext struct {
 }
 
 type ModelCatalogEntryExecutionContext struct {
-	ID              uuid.UUID
-	ProviderKey     string
-	ProviderModelID string
-	DisplayName     string
-	ModelFamily     string
-	Modality        string
-	Metadata        json.RawMessage
+	ID                         uuid.UUID
+	ProviderKey                string
+	ProviderModelID            string
+	DisplayName                string
+	ModelFamily                string
+	Modality                   string
+	Metadata                   json.RawMessage
+	InputCostPerMillionTokens  float64
+	OutputCostPerMillionTokens float64
 }
 
 func (r *Repository) GetRunAgentExecutionContextByID(ctx context.Context, runAgentID uuid.UUID) (RunAgentExecutionContext, error) {
@@ -386,13 +388,15 @@ func mapRunAgentExecutionContext(row repositorysqlc.GetRunAgentExecutionContextB
 			AliasKey:          *row.ModelAliasAliasKey,
 			DisplayName:       *row.ModelAliasDisplayName,
 			ModelCatalogEntry: ModelCatalogEntryExecutionContext{
-				ID:              *row.ModelCatalogEntryID,
-				ProviderKey:     *row.ModelCatalogProviderKey,
-				ProviderModelID: *row.ModelCatalogProviderModelID,
-				DisplayName:     *row.ModelCatalogDisplayName,
-				ModelFamily:     *row.ModelCatalogModelFamily,
-				Modality:        *row.ModelCatalogModality,
-				Metadata:        cloneJSON(row.ModelCatalogMetadata),
+				ID:                         *row.ModelCatalogEntryID,
+				ProviderKey:                *row.ModelCatalogProviderKey,
+				ProviderModelID:            *row.ModelCatalogProviderModelID,
+				DisplayName:                *row.ModelCatalogDisplayName,
+				ModelFamily:                *row.ModelCatalogModelFamily,
+				Modality:                   *row.ModelCatalogModality,
+				Metadata:                   cloneJSON(row.ModelCatalogMetadata),
+				InputCostPerMillionTokens:  derefFloat64(row.ModelCatalogInputCostPerMillionTokens),
+				OutputCostPerMillionTokens: derefFloat64(row.ModelCatalogOutputCostPerMillionTokens),
 			},
 		}
 	}

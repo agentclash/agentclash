@@ -29,6 +29,10 @@ const (
 	defaultArtifactStorageBucket   = "agentclash-dev-artifacts"
 	defaultArtifactSignedURLTTL    = 5 * time.Minute
 	defaultArtifactMaxUploadBytes  = 100 << 20
+	defaultRateLimitRPS            = 10.0
+	defaultRateLimitBurst          = 20
+	defaultRateLimitRunCreationRPM = 30.0
+	defaultRateLimitRunCreationBurst = 10
 )
 
 var ErrInvalidConfig = errors.New("invalid api server config")
@@ -57,6 +61,10 @@ type Config struct {
 	ArtifactSignedURLTTL     time.Duration
 	ArtifactMaxUploadBytes   int64
 	SecretsCipher            *secrets.AESGCMCipher
+	RateLimitRPS             float64
+	RateLimitBurst           int
+	RateLimitRunCreationRPM  float64
+	RateLimitRunCreationBurst int
 }
 
 func LoadConfigFromEnv() (Config, error) {
@@ -165,7 +173,11 @@ func LoadConfigFromEnv() (Config, error) {
 		ArtifactS3ForcePathStyle: artifactS3ForcePathStyle,
 		ArtifactSigningSecret:    artifactSigningSecret,
 		ArtifactSignedURLTTL:     artifactSignedURLTTL,
-		ArtifactMaxUploadBytes:   artifactMaxUploadBytes,
+		ArtifactMaxUploadBytes:    artifactMaxUploadBytes,
+		RateLimitRPS:              defaultRateLimitRPS,
+		RateLimitBurst:            defaultRateLimitBurst,
+		RateLimitRunCreationRPM:   defaultRateLimitRunCreationRPM,
+		RateLimitRunCreationBurst: defaultRateLimitRunCreationBurst,
 	}
 
 	if err := validateArtifactConfig(cfg); err != nil {

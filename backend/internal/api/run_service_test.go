@@ -47,7 +47,7 @@ func TestRunCreationManagerCreatesQueuedRunAndStartsWorkflow(t *testing.T) {
 		},
 	}
 	starter := &fakeRunWorkflowStarter{}
-	manager := NewRunCreationManager(NewCallerWorkspaceAuthorizer(), repo, starter)
+	manager := NewRunCreationManager(NewCallerWorkspaceAuthorizer(), repo, starter, nil)
 	manager.now = func() time.Time {
 		return time.Date(2026, 3, 13, 12, 0, 0, 0, time.UTC)
 	}
@@ -119,7 +119,7 @@ func TestRunCreationManagerReturnsQueuedRunOnWorkflowStartFailure(t *testing.T) 
 		},
 	}
 	starter := &fakeRunWorkflowStarter{err: errors.New("temporal unavailable")}
-	manager := NewRunCreationManager(NewCallerWorkspaceAuthorizer(), repo, starter)
+	manager := NewRunCreationManager(NewCallerWorkspaceAuthorizer(), repo, starter, nil)
 
 	_, err := manager.CreateRun(context.Background(), caller, CreateRunInput{
 		WorkspaceID:            workspaceID,
@@ -150,7 +150,7 @@ func TestRunCreationManagerRejectsDuplicateDeployments(t *testing.T) {
 		},
 	}
 
-	manager := NewRunCreationManager(NewCallerWorkspaceAuthorizer(), &fakeRunCreationRepository{}, &fakeRunWorkflowStarter{})
+	manager := NewRunCreationManager(NewCallerWorkspaceAuthorizer(), &fakeRunCreationRepository{}, &fakeRunWorkflowStarter{}, nil)
 
 	_, err := manager.CreateRun(context.Background(), caller, CreateRunInput{
 		WorkspaceID:            workspaceID,
@@ -172,7 +172,7 @@ func TestRunCreationManagerRejectsDuplicateDeployments(t *testing.T) {
 
 func TestRunCreationManagerRejectsEmptyDeployments(t *testing.T) {
 	workspaceID := uuid.New()
-	manager := NewRunCreationManager(NewCallerWorkspaceAuthorizer(), &fakeRunCreationRepository{}, &fakeRunWorkflowStarter{})
+	manager := NewRunCreationManager(NewCallerWorkspaceAuthorizer(), &fakeRunCreationRepository{}, &fakeRunWorkflowStarter{}, nil)
 
 	_, err := manager.CreateRun(context.Background(), Caller{
 		UserID: uuid.New(),
@@ -202,7 +202,7 @@ func TestRunCreationManagerRejectsChallengePackVersionNotFound(t *testing.T) {
 	deploymentID := uuid.New()
 	manager := NewRunCreationManager(NewCallerWorkspaceAuthorizer(), &fakeRunCreationRepository{
 		challengePackVersionErr: repository.ErrChallengePackVersionNotFound,
-	}, &fakeRunWorkflowStarter{})
+	}, &fakeRunWorkflowStarter{}, nil)
 
 	_, err := manager.CreateRun(context.Background(), Caller{
 		UserID: uuid.New(),
@@ -254,7 +254,7 @@ func TestRunCreationManagerRejectsChallengeInputSetFromAnotherPackVersion(t *tes
 				AgentDeploymentSnapshotID: uuid.New(),
 			},
 		},
-	}, &fakeRunWorkflowStarter{})
+	}, &fakeRunWorkflowStarter{}, nil)
 
 	_, err := manager.CreateRun(context.Background(), caller, CreateRunInput{
 		WorkspaceID:            workspaceID,
@@ -292,7 +292,7 @@ func TestRunCreationManagerRejectsMissingChallengeInputSet(t *testing.T) {
 				AgentDeploymentSnapshotID: uuid.New(),
 			},
 		},
-	}, &fakeRunWorkflowStarter{})
+	}, &fakeRunWorkflowStarter{}, nil)
 
 	_, err := manager.CreateRun(context.Background(), Caller{
 		UserID: uuid.New(),
@@ -325,7 +325,7 @@ func TestRunCreationManagerRejectsDeploymentOutsideWorkspace(t *testing.T) {
 	manager := NewRunCreationManager(NewCallerWorkspaceAuthorizer(), &fakeRunCreationRepository{
 		challengePackVersion: repository.RunnableChallengePackVersion{ID: challengePackVersionID},
 		deployments:          nil,
-	}, &fakeRunWorkflowStarter{})
+	}, &fakeRunWorkflowStarter{}, nil)
 
 	_, err := manager.CreateRun(context.Background(), Caller{
 		UserID: uuid.New(),
@@ -352,7 +352,7 @@ func TestRunCreationManagerRejectsDeploymentOutsideWorkspace(t *testing.T) {
 
 func TestRunCreationManagerRejectsForbiddenWorkspaceAccess(t *testing.T) {
 	workspaceID := uuid.New()
-	manager := NewRunCreationManager(NewCallerWorkspaceAuthorizer(), &fakeRunCreationRepository{}, &fakeRunWorkflowStarter{})
+	manager := NewRunCreationManager(NewCallerWorkspaceAuthorizer(), &fakeRunCreationRepository{}, &fakeRunWorkflowStarter{}, nil)
 
 	_, err := manager.CreateRun(context.Background(), Caller{
 		UserID:               uuid.New(),
