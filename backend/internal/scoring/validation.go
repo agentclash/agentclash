@@ -147,6 +147,13 @@ func ValidateEvaluationSpec(spec EvaluationSpec) error {
 		}
 	}
 
+	// Judges are validated before dimensions so the dimension loop can
+	// look up referenced judge keys + their modes for llm_judge-sourced
+	// dims. Errors from both loops accumulate independently so authors
+	// see every problem in a single validation pass.
+	judgeKeys, judgeErrs := validateLLMJudges(spec, validatorKeys, metricKeys)
+	errs = append(errs, judgeErrs...)
+
 	dimensionKeys := map[string]struct{}{}
 	for i, dim := range spec.Scorecard.Dimensions {
 		path := fmt.Sprintf("evaluation_spec.scorecard.dimensions[%d]", i)
@@ -162,7 +169,7 @@ func ValidateEvaluationSpec(spec EvaluationSpec) error {
 		dimensionKeys[key] = struct{}{}
 
 		if !dim.Source.IsValid() {
-			errs = append(errs, ValidationError{Field: path + ".source", Message: "must be one of validators, metric, reliability, latency, cost"})
+			errs = append(errs, ValidationError{Field: path + ".source", Message: "must be one of validators, metric, reliability, latency, cost, llm_judge"})
 			continue
 		}
 
@@ -196,6 +203,48 @@ func ValidateEvaluationSpec(spec EvaluationSpec) error {
 			if dim.Normalization == nil {
 				errs = append(errs, ValidationError{Field: path + ".normalization", Message: "is required when source is cost"})
 			}
+		case DimensionSourceLLMJudge:
+			judgeKey := strings.TrimSpace(dim.JudgeKey)
+			if judgeKey == "" {
+				errs = append(errs, ValidationError{
+					Field:   path + ".judge_key",
+					Message: "is required when source is llm_judge",
+				})
+			} else if mode, ok := judgeKeys[judgeKey]; !ok {
+				errs = append(errs, ValidationError{
+					Field:   path + ".judge_key",
+					Message: fmt.Sprintf("references unknown judge key %q", judgeKey),
+				})
+			} else if !mode.IsNumeric() {
+				// Belt-and-braces: every current JudgeMethodMode is
+				// IsNumeric, but leave the guard in place so future
+				// non-numeric modes fail closed at load time instead
+				// of silently producing NaN at runtime.
+				errs = append(errs, ValidationError{
+					Field:   path + ".judge_key",
+					Message: fmt.Sprintf("judge %q mode %q does not produce a numeric score usable as a dimension", judgeKey, mode),
+				})
+			}
+		}
+
+		// llm_judge dims are quality scores on [0, 1] (higher = better),
+		// just like validators/reliability. Reject nonsense direction
+		// overrides symmetrically with the existing guard below so
+		// custom rubric dims can't silently flip polarity.
+		if dim.Source == DimensionSourceLLMJudge && dim.BetterDirection != "" && dim.BetterDirection != "higher" {
+			errs = append(errs, ValidationError{
+				Field:   path + ".better_direction",
+				Message: fmt.Sprintf("must be \"higher\" for llm_judge source (got %q)", dim.BetterDirection),
+			})
+		}
+
+		// A dim that is NOT llm_judge must not carry a JudgeKey — catches
+		// copy-paste mistakes like "source: validators, judge_key: foo".
+		if dim.Source != DimensionSourceLLMJudge && strings.TrimSpace(dim.JudgeKey) != "" {
+			errs = append(errs, ValidationError{
+				Field:   path + ".judge_key",
+				Message: "must be empty unless source is llm_judge",
+			})
 		}
 
 		// Validators and reliability dims are implicitly "higher is better"
@@ -276,6 +325,42 @@ func ValidateEvaluationSpec(spec EvaluationSpec) error {
 		}
 	}
 
+	// judge_mode × llm_judges coherence rules. These enforce that the
+	// declared runtime mode matches what the spec actually has to
+	// evaluate. A deterministic-mode pack that ships llm_judges is a
+	// silent dead code path; an llm_judge-mode pack with no judges has
+	// nothing to do.
+	switch spec.JudgeMode {
+	case JudgeModeDeterministic:
+		if len(spec.LLMJudges) > 0 {
+			errs = append(errs, ValidationError{
+				Field:   "evaluation_spec.llm_judges",
+				Message: "must be empty when judge_mode is deterministic",
+			})
+		}
+	case JudgeModeLLMJudge:
+		if len(spec.LLMJudges) == 0 {
+			errs = append(errs, ValidationError{
+				Field:   "evaluation_spec.llm_judges",
+				Message: "must contain at least one judge when judge_mode is llm_judge",
+			})
+		}
+	case JudgeModeHybrid:
+		// Hybrid requires BOTH sides: deterministic validators AND at
+		// least one judge. A hybrid pack with no judges is really a
+		// deterministic pack, and vice versa.
+		if len(spec.Validators) == 0 {
+			// Already covered by the top-level validators check, but
+			// we don't re-add the error here.
+		}
+		if len(spec.LLMJudges) == 0 {
+			errs = append(errs, ValidationError{
+				Field:   "evaluation_spec.llm_judges",
+				Message: "must contain at least one judge when judge_mode is hybrid",
+			})
+		}
+	}
+
 	if len(errs) > 0 {
 		return errs
 	}
@@ -290,6 +375,7 @@ func normalizeEvaluationSpec(spec *EvaluationSpec) {
 	spec.Name = strings.TrimSpace(spec.Name)
 	spec.Validators = append([]ValidatorDeclaration(nil), spec.Validators...)
 	spec.Metrics = append([]MetricDeclaration(nil), spec.Metrics...)
+	spec.LLMJudges = append([]LLMJudgeDeclaration(nil), spec.LLMJudges...)
 	spec.Pricing.Models = append([]ModelPricing(nil), spec.Pricing.Models...)
 	spec.Scorecard.Dimensions = append([]DimensionDeclaration(nil), spec.Scorecard.Dimensions...)
 
@@ -316,21 +402,41 @@ func normalizeEvaluationSpec(spec *EvaluationSpec) {
 		dim := &spec.Scorecard.Dimensions[i]
 		dim.Key = strings.TrimSpace(dim.Key)
 		dim.Metric = strings.TrimSpace(dim.Metric)
+		dim.JudgeKey = strings.TrimSpace(dim.JudgeKey)
 
 		if dim.Source == "" {
 			expandBuiltinDimension(dim, spec)
 		}
 
-		// Validators and reliability dims produce 0–1 quality scores where
-		// higher is always better. Default the direction so callers that omit
-		// it (common for custom object-form validator dims) don't need to
-		// repeat boilerplate. Metric/latency/cost dims are left alone because
-		// their direction is genuinely ambiguous and is validated explicitly.
+		// Validators, reliability, and llm_judge dims produce 0–1 quality
+		// scores where higher is always better. Default the direction so
+		// callers that omit it (common for custom object-form dims) don't
+		// need to repeat boilerplate. Metric/latency/cost dims are left
+		// alone because their direction is genuinely ambiguous and is
+		// validated explicitly.
 		if dim.BetterDirection == "" {
 			switch dim.Source {
-			case DimensionSourceValidators, DimensionSourceReliability:
+			case DimensionSourceValidators, DimensionSourceReliability, DimensionSourceLLMJudge:
 				dim.BetterDirection = "higher"
 			}
+		}
+	}
+
+	// Normalize LLMJudges in-place: trim identifiers, default Samples,
+	// dedupe/clone the Models slice so downstream code can mutate safely.
+	for i := range spec.LLMJudges {
+		judge := &spec.LLMJudges[i]
+		judge.Key = strings.TrimSpace(judge.Key)
+		judge.Model = strings.TrimSpace(judge.Model)
+		judge.ReferenceFrom = strings.TrimSpace(judge.ReferenceFrom)
+		judge.Models = append([]string(nil), judge.Models...)
+		for j := range judge.Models {
+			judge.Models[j] = strings.TrimSpace(judge.Models[j])
+		}
+		judge.ContextFrom = append([]string(nil), judge.ContextFrom...)
+		judge.AntiGamingClauses = append([]string(nil), judge.AntiGamingClauses...)
+		if judge.Samples == 0 {
+			judge.Samples = JudgeDefaultSamples
 		}
 	}
 }
