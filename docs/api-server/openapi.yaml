@@ -1505,6 +1505,28 @@ paths:
           $ref: "#/components/responses/NotFoundError"
 
   /v1/workspaces/{workspaceID}/artifacts:
+    get:
+      operationId: listWorkspaceArtifacts
+      tags: [Artifacts]
+      summary: List workspace artifacts
+      description: >
+        Returns all active artifacts belonging to the workspace, ordered by
+        creation date descending.
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+      responses:
+        "200":
+          description: List of artifacts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListArtifactsResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
     post:
       operationId: uploadArtifact
       tags: [Artifacts]
@@ -4594,6 +4616,15 @@ components:
           format: date-time
 
     # --- Artifacts ---
+
+    ListArtifactsResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ArtifactUploadResponse"
 
     ArtifactUploadResponse:
       type: object
