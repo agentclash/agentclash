@@ -22,13 +22,12 @@ case "$OS" in
     *)            echo "Error: unsupported OS: $OS"; exit 1 ;;
 esac
 
-# Get latest CLI release tag.
+# Get latest release tag.
 if [ -z "$VERSION" ]; then
-    VERSION=$(curl -sSL "https://api.github.com/repos/${REPO}/releases" \
+    VERSION=$(curl -sSL "https://api.github.com/repos/${REPO}/releases/latest" \
         | grep '"tag_name"' \
-        | grep 'cli/v' \
         | head -1 \
-        | sed 's/.*"cli\/\(v[^"]*\)".*/\1/')
+        | sed 's/.*"\(v[^"]*\)".*/\1/')
 
     if [ -z "$VERSION" ]; then
         echo "Error: could not determine latest version"
@@ -37,7 +36,7 @@ if [ -z "$VERSION" ]; then
 fi
 
 FILENAME="${BINARY}_${OS}_${ARCH}.tar.gz"
-URL="https://github.com/${REPO}/releases/download/cli/${VERSION}/${FILENAME}"
+URL="https://github.com/${REPO}/releases/download/${VERSION}/${FILENAME}"
 
 echo "Installing ${BINARY} ${VERSION} (${OS}/${ARCH})..."
 
