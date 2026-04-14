@@ -220,6 +220,8 @@ func (o *NativeRunEventObserver) OnPostExecutionVerification(ctx context.Context
 			eventType = runevents.EventTypeGraderVerificationFileCaptured
 		case "directory_listing":
 			eventType = runevents.EventTypeGraderVerificationDirectoryListed
+		case "code_execution":
+			eventType = runevents.EventTypeGraderVerificationCodeExecuted
 		default:
 			continue
 		}

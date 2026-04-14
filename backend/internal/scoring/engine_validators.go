@@ -19,6 +19,10 @@ func evaluateValidators(validators []ValidatorDeclaration, evidence extractedEvi
 			Target:       validator.Target,
 			ExpectedFrom: validator.ExpectedFrom,
 		}
+		if validator.Type == ValidatorTypeCodeExecution {
+			results = append(results, evaluateCodeExecutionValidator(result, validator, evidence))
+			continue
+		}
 
 		// Resolve the target (actual) evidence.
 		actualValue, actualChallengeID, actualReason, actualErr := resolveEvidenceValue(validator.Target, evidence)
@@ -126,6 +130,69 @@ func evaluateValidators(validators []ValidatorDeclaration, evidence extractedEvi
 		results = append(results, result)
 	}
 	return results, warnings
+}
+
+func evaluateCodeExecutionValidator(result ValidatorResult, validator ValidatorDeclaration, evidence extractedEvidence) ValidatorResult {
+	execResult, ok := evidence.codeExecutionResults[validator.Key]
+	if !ok {
+		result.State = OutputStateUnavailable
+		result.Reason = fmt.Sprintf("code execution result for validator %q is unavailable", validator.Key)
+		result.RawOutput = mustMarshalJSON(map[string]any{
+			"state":  result.State,
+			"reason": result.Reason,
+		})
+		return result
+	}
+
+	cfg, err := ParseCodeExecutionConfig(validator.Config)
+	if err != nil {
+		result.State = OutputStateError
+		result.Reason = fmt.Sprintf("parse code_execution config: %v", err)
+		result.RawOutput = mustMarshalJSON(map[string]any{
+			"state":  result.State,
+			"reason": result.Reason,
+		})
+		return result
+	}
+
+	score, reason, state := ComputeCodeExecutionScore(execResult, cfg)
+	result.State = state
+	result.Reason = reason
+	if score != nil {
+		result.NormalizedScore = floatPtr(*score)
+		if *score >= cfg.EffectivePassThreshold() {
+			result.Verdict = "pass"
+		} else {
+			result.Verdict = "fail"
+		}
+	} else if state == OutputStateError {
+		result.Verdict = "error"
+	}
+
+	result.RawOutput = mustMarshalJSON(map[string]any{
+		"state":            result.State,
+		"verdict":          result.Verdict,
+		"normalized_score": result.NormalizedScore,
+		"reason":           result.Reason,
+		"validator_key":    execResult.ValidatorKey,
+		"target":           execResult.Target,
+		"target_path":      execResult.TargetPath,
+		"test_command":     execResult.TestCommand,
+		"timeout_ms":       execResult.TimeoutMS,
+		"exit_code":        execResult.ExitCode,
+		"stdout":           execResult.Stdout,
+		"stderr":           execResult.Stderr,
+		"timed_out":        execResult.TimedOut,
+		"execution_error":  execResult.ExecutionError,
+		"passed_tests":     execResult.PassedTests,
+		"failed_tests":     execResult.FailedTests,
+		"error_tests":      execResult.ErrorTests,
+		"total_tests":      execResult.TotalTests,
+		"pass_threshold":   cfg.EffectivePassThreshold(),
+		"scoring":          cfg.Scoring,
+	})
+
+	return result
 }
 
 // validateFileExistsUnavailable handles file_exists when the target file was

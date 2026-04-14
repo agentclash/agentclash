@@ -3,7 +3,10 @@ package engine
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
+	"path"
+	"strings"
 
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/sandbox"
@@ -22,6 +25,67 @@ func extractPostExecutionChecks(executionContext repository.RunAgentExecutionCon
 		return nil
 	}
 	return spec.PostExecutionChecks
+}
+
+type codeExecutionCheck struct {
+	ValidatorKey string
+	Target       string
+	TargetPath   string
+	Config       scoring.CodeExecutionConfig
+}
+
+func collectPostExecutionVerification(
+	ctx context.Context,
+	session sandbox.Session,
+	executionContext repository.RunAgentExecutionContext,
+) []PostExecutionVerificationResult {
+	results := []PostExecutionVerificationResult{}
+	if checks := extractCodeExecutionChecks(executionContext); len(checks) > 0 {
+		results = append(results, executeCodeExecutionChecks(ctx, session, checks)...)
+	}
+	if checks := extractPostExecutionChecks(executionContext); len(checks) > 0 {
+		results = append(results, executePostExecutionChecks(ctx, session, checks)...)
+	}
+	return results
+}
+
+func extractCodeExecutionChecks(executionContext repository.RunAgentExecutionContext) []codeExecutionCheck {
+	if len(executionContext.ChallengePackVersion.Manifest) == 0 {
+		return nil
+	}
+	spec, err := scoring.LoadEvaluationSpec(executionContext.ChallengePackVersion.Manifest)
+	if err != nil {
+		return nil
+	}
+
+	postChecks := make(map[string]scoring.PostExecutionCheck, len(spec.PostExecutionChecks))
+	for _, check := range spec.PostExecutionChecks {
+		postChecks[check.Key] = check
+	}
+
+	results := make([]codeExecutionCheck, 0)
+	for _, validator := range spec.Validators {
+		if validator.Type != scoring.ValidatorTypeCodeExecution {
+			continue
+		}
+		cfg, err := scoring.ParseCodeExecutionConfig(validator.Config)
+		if err != nil {
+			continue
+		}
+		targetKey := strings.TrimSpace(strings.TrimPrefix(validator.Target, "file:"))
+		check, ok := postChecks[targetKey]
+		if !ok || check.Type != scoring.PostExecutionCheckTypeFileCapture {
+			continue
+		}
+		results = append(results, codeExecutionCheck{
+			ValidatorKey: validator.Key,
+			Target:       validator.Target,
+			TargetPath:   check.Path,
+			Config:       cfg,
+		})
+	}
+
+	return results
 }
 
 // executePostExecutionChecks reads the specified files and directories from the
@@ -64,6 +128,27 @@ func executePostExecutionChecks(
 				Payload: payload,
 			})
 		}
+	}
+	return results
+}
+
+func executeCodeExecutionChecks(
+	ctx context.Context,
+	session sandbox.Session,
+	checks []codeExecutionCheck,
+) []PostExecutionVerificationResult {
+	results := make([]PostExecutionVerificationResult, 0, len(checks))
+	for _, check := range checks {
+		payload, err := json.Marshal(executeCodeExecutionCheck(ctx, session, check))
+		if err != nil {
+			slog.Default().Warn("marshal code execution result", "validator_key", check.ValidatorKey, "error", err)
+			continue
+		}
+		results = append(results, PostExecutionVerificationResult{
+			Key:     check.ValidatorKey,
+			Type:    string(scoring.ValidatorTypeCodeExecution),
+			Payload: payload,
+		})
 	}
 	return results
 }
@@ -140,4 +225,63 @@ func executeDirectoryListingCheck(
 	}
 	result.Entries = entries
 	return result
+}
+
+func executeCodeExecutionCheck(
+	ctx context.Context,
+	session sandbox.Session,
+	check codeExecutionCheck,
+) scoring.CodeExecutionResult {
+	result := scoring.CodeExecutionResult{
+		ValidatorKey:  check.ValidatorKey,
+		Target:        check.Target,
+		TargetPath:    check.TargetPath,
+		TestCommand:   check.Config.TestCommand,
+		TimeoutMS:     check.Config.EffectiveTimeoutMS(),
+		Scoring:       string(check.Config.Scoring),
+		PassThreshold: check.Config.PassThreshold,
+	}
+
+	execResult, err := session.Exec(ctx, sandbox.ExecRequest{
+		Command:          []string{"sh", "-lc", check.Config.TestCommand},
+		WorkingDirectory: defaultCodeExecutionWorkingDirectory(check.TargetPath),
+		Timeout:          check.Config.EffectiveTimeout(),
+	})
+	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			result.TimedOut = true
+			return result
+		}
+		result.ExecutionError = err.Error()
+		return result
+	}
+
+	result.ExitCode = intPtr(execResult.ExitCode)
+	result.Stdout = execResult.Stdout
+	result.Stderr = execResult.Stderr
+
+	passed, failed, errored, total, ok := scoring.ParseCodeExecutionCounts(execResult.Stdout, execResult.Stderr)
+	if ok {
+		result.PassedTests = intPtr(passed)
+		result.FailedTests = intPtr(failed)
+		result.ErrorTests = intPtr(errored)
+		result.TotalTests = intPtr(total)
+	}
+
+	return result
+}
+
+func defaultCodeExecutionWorkingDirectory(targetPath string) string {
+	dir := path.Dir(strings.TrimSpace(targetPath))
+	if dir == "." || dir == "/" || dir == "" {
+		return "/workspace"
+	}
+	if strings.HasPrefix(dir, "/workspace") {
+		return "/workspace"
+	}
+	return dir
+}
+
+func intPtr(value int) *int {
+	return &value
 }

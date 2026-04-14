@@ -31,6 +31,7 @@ const (
 	ValidatorTypeFileExists         ValidatorType = "file_exists"
 	ValidatorTypeFileJSONSchema     ValidatorType = "file_json_schema"
 	ValidatorTypeDirectoryStructure ValidatorType = "directory_structure"
+	ValidatorTypeCodeExecution      ValidatorType = "code_execution"
 )
 
 type MetricType string
@@ -264,19 +265,21 @@ func (t ValidatorType) IsValid() bool {
 		ValidatorTypeJSONSchema, ValidatorTypeJSONPathMatch, ValidatorTypeBooleanAssert,
 		ValidatorTypeFuzzyMatch, ValidatorTypeNumericMatch, ValidatorTypeNormalizedMatch,
 		ValidatorTypeFileContentMatch, ValidatorTypeFileExists,
-		ValidatorTypeFileJSONSchema, ValidatorTypeDirectoryStructure:
+		ValidatorTypeFileJSONSchema, ValidatorTypeDirectoryStructure,
+		ValidatorTypeCodeExecution:
 		return true
 	default:
 		return false
 	}
 }
 
-// IsFileValidator returns true for validator types that operate on captured
-// sandbox file/directory evidence rather than the agent's final output.
+// IsFileValidator returns true for validator types that rely on sandbox file
+// targets rather than only the agent's final output.
 func (t ValidatorType) IsFileValidator() bool {
 	switch t {
 	case ValidatorTypeFileContentMatch, ValidatorTypeFileExists,
-		ValidatorTypeFileJSONSchema, ValidatorTypeDirectoryStructure:
+		ValidatorTypeFileJSONSchema, ValidatorTypeDirectoryStructure,
+		ValidatorTypeCodeExecution:
 		return true
 	default:
 		return false
@@ -288,7 +291,7 @@ func (t ValidatorType) IsFileValidator() bool {
 // (file_exists, file_json_schema, directory_structure) return false.
 func (t ValidatorType) RequiresExpectedFrom() bool {
 	switch t {
-	case ValidatorTypeFileExists, ValidatorTypeFileJSONSchema, ValidatorTypeDirectoryStructure:
+	case ValidatorTypeFileExists, ValidatorTypeFileJSONSchema, ValidatorTypeDirectoryStructure, ValidatorTypeCodeExecution:
 		return false
 	default:
 		return true

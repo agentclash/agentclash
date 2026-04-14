@@ -491,3 +491,72 @@ func TestLoadEvaluationSpecAcceptsStructuredJSONValidators(t *testing.T) {
 		t.Fatalf("validator[1].type = %s, want %s", spec.Validators[1].Type, ValidatorTypeJSONPathMatch)
 	}
 }
+
+func TestLoadEvaluationSpecAcceptsCodeExecutionValidator(t *testing.T) {
+	spec, err := LoadEvaluationSpec(json.RawMessage(`{
+		"evaluation_spec": {
+			"name": "code-execution",
+			"version_number": 1,
+			"judge_mode": "deterministic",
+			"validators": [
+				{
+					"key": "tests_pass",
+					"type": "code_execution",
+					"target": "file:generated_code",
+					"config": {
+						"test_command": "python -m pytest tests/ -q",
+						"timeout_ms": 30000,
+						"scoring": "fraction_passed",
+						"pass_threshold": 0.5
+					}
+				}
+			],
+			"post_execution_checks": [
+				{"key": "generated_code", "type": "file_capture", "path": "/workspace/app.py"}
+			],
+			"scorecard": {
+				"dimensions": ["correctness"]
+			}
+		}
+	}`))
+	if err != nil {
+		t.Fatalf("LoadEvaluationSpec returned error: %v", err)
+	}
+
+	if spec.Validators[0].Type != ValidatorTypeCodeExecution {
+		t.Fatalf("validator type = %s, want %s", spec.Validators[0].Type, ValidatorTypeCodeExecution)
+	}
+}
+
+func TestLoadEvaluationSpecRejectsPassAtKCodeExecution(t *testing.T) {
+	_, err := LoadEvaluationSpec(json.RawMessage(`{
+		"evaluation_spec": {
+			"name": "code-execution",
+			"version_number": 1,
+			"judge_mode": "deterministic",
+			"validators": [
+				{
+					"key": "tests_pass",
+					"type": "code_execution",
+					"target": "file:generated_code",
+					"config": {
+						"test_command": "python -m pytest tests/ -q",
+						"scoring": "pass_at_k"
+					}
+				}
+			],
+			"post_execution_checks": [
+				{"key": "generated_code", "type": "file_capture", "path": "/workspace/app.py"}
+			],
+			"scorecard": {
+				"dimensions": ["correctness"]
+			}
+		}
+	}`))
+	if err == nil {
+		t.Fatal("expected validation error for pass_at_k")
+	}
+	if !strings.Contains(err.Error(), "pass_at_k requires multi-sample execution") {
+		t.Fatalf("error = %q, want pass_at_k validation message", err.Error())
+	}
+}

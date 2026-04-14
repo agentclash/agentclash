@@ -222,6 +222,40 @@ func TestNativeRunEventObserverOmitsFailureDepthForSuccessfulChains(t *testing.T
 	}
 }
 
+func TestNativeRunEventObserverRecordsCodeExecutionVerification(t *testing.T) {
+	recorder := &fakeRunEventRecorder{}
+	observer := &NativeRunEventObserver{
+		recorder:         recorder,
+		executionContext: nativeModelExecutionContext(),
+	}
+
+	err := observer.OnPostExecutionVerification(context.Background(), []engine.PostExecutionVerificationResult{
+		{
+			Key:  "tests_pass",
+			Type: "code_execution",
+			Payload: []byte(`{
+				"validator_key":"tests_pass",
+				"target":"file:generated_code",
+				"test_command":"python -m pytest tests/ -q",
+				"timeout_ms":30000,
+				"exit_code":0,
+				"passed_tests":1,
+				"total_tests":1
+			}`),
+		},
+	})
+	if err != nil {
+		t.Fatalf("OnPostExecutionVerification returned error: %v", err)
+	}
+
+	if len(recorder.events) != 2 {
+		t.Fatalf("event count = %d, want 2 including run start", len(recorder.events))
+	}
+	if recorder.events[1].EventType != runevents.EventTypeGraderVerificationCodeExecuted {
+		t.Fatalf("event type = %q, want %q", recorder.events[1].EventType, runevents.EventTypeGraderVerificationCodeExecuted)
+	}
+}
+
 type fakeRunEventRecorder struct {
 	events []repository.RunEvent
 }

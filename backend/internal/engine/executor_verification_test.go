@@ -6,13 +6,16 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/sandbox"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/scoring"
 )
 
 type fakeSandboxSession struct {
-	files map[string][]byte
-	dirs  map[string][]sandbox.FileInfo
+	files      map[string][]byte
+	dirs       map[string][]sandbox.FileInfo
+	execResult sandbox.ExecResult
+	execErr    error
 }
 
 func (s *fakeSandboxSession) ID() string { return "fake-session" }
@@ -35,7 +38,7 @@ func (s *fakeSandboxSession) ListFiles(ctx context.Context, prefix string) ([]sa
 	return nil, fmt.Errorf("directory not found: %s", prefix)
 }
 func (s *fakeSandboxSession) Exec(ctx context.Context, request sandbox.ExecRequest) (sandbox.ExecResult, error) {
-	return sandbox.ExecResult{}, nil
+	return s.execResult, s.execErr
 }
 func (s *fakeSandboxSession) DownloadFile(ctx context.Context, path string) ([]byte, error) {
 	return s.ReadFile(ctx, path)
@@ -222,5 +225,105 @@ func TestExecutePostExecutionChecks_MixedTypes(t *testing.T) {
 	}
 	if capture.Content != "code" {
 		t.Fatalf("capture content = %q, want code", capture.Content)
+	}
+}
+
+func TestExecuteCodeExecutionCheck_ParsesPytestCounts(t *testing.T) {
+	session := &fakeSandboxSession{
+		execResult: sandbox.ExecResult{
+			ExitCode: 1,
+			Stdout:   "=================== 2 passed, 1 failed in 0.12s ===================",
+		},
+	}
+
+	result := executeCodeExecutionCheck(context.Background(), session, codeExecutionCheck{
+		ValidatorKey: "tests_pass",
+		Target:       "file:generated_code",
+		TargetPath:   "/workspace/app.py",
+		Config: scoring.CodeExecutionConfig{
+			TestCommand: "python -m pytest tests/ -q",
+			Scoring:     scoring.CodeExecutionScoringFractionPassed,
+		},
+	})
+
+	if result.ExitCode == nil || *result.ExitCode != 1 {
+		t.Fatalf("exit code = %v, want 1", result.ExitCode)
+	}
+	if result.TotalTests == nil || *result.TotalTests != 3 {
+		t.Fatalf("total_tests = %v, want 3", result.TotalTests)
+	}
+	if result.PassedTests == nil || *result.PassedTests != 2 {
+		t.Fatalf("passed_tests = %v, want 2", result.PassedTests)
+	}
+	if result.FailedTests == nil || *result.FailedTests != 1 {
+		t.Fatalf("failed_tests = %v, want 1", result.FailedTests)
+	}
+}
+
+func TestExecuteCodeExecutionCheck_Timeout(t *testing.T) {
+	session := &fakeSandboxSession{execErr: context.DeadlineExceeded}
+
+	result := executeCodeExecutionCheck(context.Background(), session, codeExecutionCheck{
+		ValidatorKey: "tests_pass",
+		Target:       "file:generated_code",
+		TargetPath:   "/workspace/app.py",
+		Config: scoring.CodeExecutionConfig{
+			TestCommand: "python -m pytest tests/ -q",
+			Scoring:     scoring.CodeExecutionScoringAllOrNothing,
+		},
+	})
+
+	if !result.TimedOut {
+		t.Fatal("expected timeout result")
+	}
+	if result.ExecutionError != "" {
+		t.Fatalf("execution_error = %q, want empty for timeout", result.ExecutionError)
+	}
+}
+
+func TestCollectPostExecutionVerification_IncludesCodeExecution(t *testing.T) {
+	session := &fakeSandboxSession{
+		files: map[string][]byte{
+			"/workspace/app.py": []byte("print('hello')"),
+		},
+		execResult: sandbox.ExecResult{
+			ExitCode: 0,
+			Stdout:   "1 passed in 0.01s",
+		},
+	}
+
+	executionContext := repository.RunAgentExecutionContext{
+		ChallengePackVersion: repository.ChallengePackVersionExecutionContext{
+			Manifest: []byte(`{
+				"evaluation_spec": {
+					"name": "code-exec",
+					"version_number": 1,
+					"judge_mode": "deterministic",
+					"validators": [
+						{
+							"key": "tests_pass",
+							"type": "code_execution",
+							"target": "file:generated_code",
+							"config": {"test_command": "python -m pytest tests/ -q", "scoring": "all_or_nothing"}
+						}
+					],
+					"post_execution_checks": [
+						{"key": "generated_code", "type": "file_capture", "path": "/workspace/app.py"}
+					],
+					"scorecard": {"dimensions": ["correctness"]}
+				}
+			}`),
+		},
+	}
+
+	results := collectPostExecutionVerification(context.Background(), session, executionContext)
+	if len(results) != 2 {
+		t.Fatalf("results = %d, want 2", len(results))
+	}
+	if results[0].Type != string(scoring.ValidatorTypeCodeExecution) {
+		t.Fatalf("first result type = %q, want code_execution", results[0].Type)
+	}
+	if results[1].Type != scoring.PostExecutionCheckTypeFileCapture {
+		t.Fatalf("second result type = %q, want file_capture", results[1].Type)
 	}
 }

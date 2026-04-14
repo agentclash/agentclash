@@ -39,6 +39,7 @@ const (
 
 	EventTypeGraderVerificationFileCaptured    Type = "grader.verification.file_captured"
 	EventTypeGraderVerificationDirectoryListed Type = "grader.verification.directory_listed"
+	EventTypeGraderVerificationCodeExecuted    Type = "grader.verification.code_executed"
 
 	EventTypeScoringStarted        Type = "scoring.started"
 	EventTypeScoringMetricRecorded Type = "scoring.metric.recorded"
@@ -49,10 +50,10 @@ const (
 type Source string
 
 const (
-	SourceNativeEngine     Source = "native_engine"
-	SourcePromptEvalEngine Source = "prompt_eval_engine"
-	SourceHostedExternal   Source = "hosted_external"
-	SourceHostedCallback   Source = "hosted_callback"
+	SourceNativeEngine       Source = "native_engine"
+	SourcePromptEvalEngine   Source = "prompt_eval_engine"
+	SourceHostedExternal     Source = "hosted_external"
+	SourceHostedCallback     Source = "hosted_callback"
 	SourceWorkerScoring      Source = "worker_scoring"
 	SourceGraderVerification Source = "grader_verification"
 )
@@ -165,6 +166,7 @@ func isValidType(eventType Type) bool {
 		EventTypeSandboxFileListed,
 		EventTypeGraderVerificationFileCaptured,
 		EventTypeGraderVerificationDirectoryListed,
+		EventTypeGraderVerificationCodeExecuted,
 		EventTypeScoringStarted,
 		EventTypeScoringMetricRecorded,
 		EventTypeScoringCompleted,

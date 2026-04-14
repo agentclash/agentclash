@@ -106,6 +106,16 @@ func ValidateEvaluationSpec(spec EvaluationSpec) error {
 				errs = append(errs, ValidationError{Field: path + ".target", Message: "must use file: prefix for file validators"})
 			}
 		}
+		if validator.Type == ValidatorTypeCodeExecution {
+			refKey := strings.TrimPrefix(validator.Target, "file:")
+			check, exists := findPostExecutionCheck(spec.PostExecutionChecks, refKey)
+			switch {
+			case !exists:
+				errs = append(errs, ValidationError{Field: path + ".target", Message: fmt.Sprintf("references unknown post_execution_check key %q", refKey)})
+			case check.Type != PostExecutionCheckTypeFileCapture:
+				errs = append(errs, ValidationError{Field: path + ".target", Message: fmt.Sprintf("must reference a %s post_execution_check", PostExecutionCheckTypeFileCapture)})
+			}
+		}
 	}
 
 	checkKeys := map[string]struct{}{}
@@ -500,6 +510,28 @@ func validateValidatorConfig(validator ValidatorDeclaration, path string) Valida
 				})
 			}
 		}
+
+	case ValidatorTypeCodeExecution:
+		cfg, err := ParseCodeExecutionConfig(validator.Config)
+		if err != nil {
+			errs = append(errs, ValidationError{Field: configPath, Message: configParseErrorMessage(err)})
+			return errs
+		}
+		if cfg.TestCommand == "" {
+			errs = append(errs, ValidationError{Field: configPath + ".test_command", Message: "is required"})
+		}
+		if cfg.TimeoutMS != nil && *cfg.TimeoutMS <= 0 {
+			errs = append(errs, ValidationError{Field: configPath + ".timeout_ms", Message: "must be greater than 0"})
+		}
+		if !cfg.Scoring.IsValid() {
+			errs = append(errs, ValidationError{Field: configPath + ".scoring", Message: "must be one of fraction_passed, all_or_nothing, pass_at_k"})
+		}
+		if cfg.Scoring == CodeExecutionScoringPassAtK {
+			errs = append(errs, ValidationError{Field: configPath + ".scoring", Message: "pass_at_k requires multi-sample execution and is not supported yet"})
+		}
+		if cfg.PassThreshold != nil && (*cfg.PassThreshold < 0 || *cfg.PassThreshold > 1) {
+			errs = append(errs, ValidationError{Field: configPath + ".pass_threshold", Message: "must be between 0 and 1"})
+		}
 	}
 
 	return errs
@@ -528,4 +560,13 @@ func hasValidDottedPathAfterPrefix(value string, prefix string) bool {
 		}
 	}
 	return true
+}
+
+func findPostExecutionCheck(checks []PostExecutionCheck, key string) (PostExecutionCheck, bool) {
+	for _, check := range checks {
+		if check.Key == key {
+			return check, true
+		}
+	}
+	return PostExecutionCheck{}, false
 }

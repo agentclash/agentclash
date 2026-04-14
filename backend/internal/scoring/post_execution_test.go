@@ -334,3 +334,111 @@ func TestPostExecutionCheck_EffectiveMaxSizeBytes(t *testing.T) {
 		t.Fatalf("custom max size = %d, want 500", got)
 	}
 }
+
+func TestEvaluateRunAgent_CodeExecutionFractionPassed(t *testing.T) {
+	execPayload, _ := json.Marshal(CodeExecutionResult{
+		ValidatorKey: "tests_pass",
+		Target:       "file:generated_code",
+		TargetPath:   "/workspace/app.py",
+		TestCommand:  "python -m pytest tests/ -q",
+		TimeoutMS:    30000,
+		ExitCode:     intPtr(1),
+		PassedTests:  intPtr(2),
+		FailedTests:  intPtr(1),
+		TotalTests:   intPtr(3),
+	})
+
+	spec := EvaluationSpec{
+		Name:          "code-exec-fraction",
+		VersionNumber: 1,
+		JudgeMode:     JudgeModeDeterministic,
+		Validators: []ValidatorDeclaration{
+			{
+				Key:    "tests_pass",
+				Type:   ValidatorTypeCodeExecution,
+				Target: "file:generated_code",
+				Config: json.RawMessage(`{"test_command":"python -m pytest tests/ -q","scoring":"fraction_passed","pass_threshold":0.5}`),
+			},
+		},
+		PostExecutionChecks: []PostExecutionCheck{
+			{Key: "generated_code", Type: PostExecutionCheckTypeFileCapture, Path: "/workspace/app.py"},
+		},
+		Scorecard: ScorecardDeclaration{
+			Dimensions: []DimensionDeclaration{{Key: ScorecardDimensionCorrectness}},
+		},
+	}
+
+	evaluation, err := EvaluateRunAgent(EvaluationInput{
+		RunAgentID:       uuid.New(),
+		EvaluationSpecID: uuid.New(),
+		Events: []Event{
+			{Type: "grader.verification.code_executed", OccurredAt: time.Date(2026, 4, 1, 0, 0, 1, 0, time.UTC), Payload: execPayload},
+			{Type: "system.run.completed", OccurredAt: time.Date(2026, 4, 1, 0, 0, 2, 0, time.UTC), Payload: []byte(`{"final_output":"done"}`)},
+		},
+	}, spec)
+	if err != nil {
+		t.Fatalf("EvaluateRunAgent returned error: %v", err)
+	}
+
+	result := evaluation.ValidatorResults[0]
+	if result.NormalizedScore == nil || *result.NormalizedScore != (2.0/3.0) {
+		t.Fatalf("normalized_score = %v, want %v", result.NormalizedScore, 2.0/3.0)
+	}
+	if result.Verdict != "pass" {
+		t.Fatalf("verdict = %q, want pass", result.Verdict)
+	}
+}
+
+func TestEvaluateRunAgent_CodeExecutionAllOrNothing(t *testing.T) {
+	execPayload, _ := json.Marshal(CodeExecutionResult{
+		ValidatorKey: "tests_pass",
+		Target:       "file:generated_code",
+		TargetPath:   "/workspace/app.py",
+		TestCommand:  "python -m pytest tests/ -q",
+		TimeoutMS:    30000,
+		ExitCode:     intPtr(1),
+		PassedTests:  intPtr(3),
+		FailedTests:  intPtr(1),
+		TotalTests:   intPtr(4),
+	})
+
+	spec := EvaluationSpec{
+		Name:          "code-exec-binary",
+		VersionNumber: 1,
+		JudgeMode:     JudgeModeDeterministic,
+		Validators: []ValidatorDeclaration{
+			{
+				Key:    "tests_pass",
+				Type:   ValidatorTypeCodeExecution,
+				Target: "file:generated_code",
+				Config: json.RawMessage(`{"test_command":"python -m pytest tests/ -q","scoring":"all_or_nothing"}`),
+			},
+		},
+		PostExecutionChecks: []PostExecutionCheck{
+			{Key: "generated_code", Type: PostExecutionCheckTypeFileCapture, Path: "/workspace/app.py"},
+		},
+		Scorecard: ScorecardDeclaration{
+			Dimensions: []DimensionDeclaration{{Key: ScorecardDimensionCorrectness}},
+		},
+	}
+
+	evaluation, err := EvaluateRunAgent(EvaluationInput{
+		RunAgentID:       uuid.New(),
+		EvaluationSpecID: uuid.New(),
+		Events: []Event{
+			{Type: "grader.verification.code_executed", OccurredAt: time.Date(2026, 4, 1, 0, 0, 1, 0, time.UTC), Payload: execPayload},
+			{Type: "system.run.completed", OccurredAt: time.Date(2026, 4, 1, 0, 0, 2, 0, time.UTC), Payload: []byte(`{"final_output":"done"}`)},
+		},
+	}, spec)
+	if err != nil {
+		t.Fatalf("EvaluateRunAgent returned error: %v", err)
+	}
+
+	result := evaluation.ValidatorResults[0]
+	if result.NormalizedScore == nil || *result.NormalizedScore != 0 {
+		t.Fatalf("normalized_score = %v, want 0", result.NormalizedScore)
+	}
+	if result.Verdict != "fail" {
+		t.Fatalf("verdict = %q, want fail", result.Verdict)
+	}
+}

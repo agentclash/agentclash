@@ -28,6 +28,7 @@ type extractedEvidence struct {
 	stepDurations             []stepDurationEvidence
 	capturedFiles             map[string]FileCaptureResult
 	capturedDirListings       map[string]DirectoryListingResult
+	codeExecutionResults      map[string]CodeExecutionResult
 	warnings                  []string
 }
 
@@ -165,6 +166,14 @@ func buildEvidence(challengeInputs []EvidenceInput, events []Event) extractedEvi
 					evidence.capturedDirListings = make(map[string]DirectoryListingResult)
 				}
 				evidence.capturedDirListings[listing.Key] = listing
+			}
+		case "grader.verification.code_executed":
+			var result CodeExecutionResult
+			if err := json.Unmarshal(event.Payload, &result); err == nil && result.ValidatorKey != "" {
+				if evidence.codeExecutionResults == nil {
+					evidence.codeExecutionResults = make(map[string]CodeExecutionResult)
+				}
+				evidence.codeExecutionResults[result.ValidatorKey] = result
 			}
 		case "model.call.started":
 			providerKey, _ := stringValue(payload, "provider_key")

@@ -78,7 +78,7 @@ func AsFailure(err error) (Failure, bool) {
 // the sandbox, emitted as a grader.verification.* event before sandbox teardown.
 type PostExecutionVerificationResult struct {
 	Key     string          `json:"key"`
-	Type    string          `json:"type"` // "file_capture" or "directory_listing"
+	Type    string          `json:"type"` // "file_capture", "directory_listing", or "code_execution"
 	Payload json.RawMessage `json:"payload"`
 }
 
@@ -105,7 +105,7 @@ func (NoopObserver) OnProviderResponse(context.Context, provider.Response) error
 func (NoopObserver) OnToolExecution(context.Context, ToolExecutionRecord) error {
 	return nil
 }
-func (NoopObserver) OnStepEnd(context.Context, int) error        { return nil }
+func (NoopObserver) OnStepEnd(context.Context, int) error { return nil }
 func (NoopObserver) OnPostExecutionVerification(context.Context, []PostExecutionVerificationResult) error {
 	return nil
 }
@@ -345,9 +345,9 @@ func (e NativeExecutor) Execute(ctx context.Context, executionContext repository
 		}
 
 		if completed {
-			// Post-execution verification: capture files while sandbox is still alive.
-			if checks := extractPostExecutionChecks(executionContext); len(checks) > 0 {
-				verificationResults := executePostExecutionChecks(runCtx, session, checks)
+			// Post-execution verification must finish before sandbox teardown so
+			// validators and file captures see the live workspace state.
+			if verificationResults := collectPostExecutionVerification(runCtx, session, executionContext); len(verificationResults) > 0 {
 				if observerErr := e.observer.OnPostExecutionVerification(runCtx, verificationResults); observerErr != nil {
 					slog.Default().Warn("post-execution verification observer error",
 						"run_id", executionContext.Run.ID,
@@ -374,4 +374,3 @@ type loopState struct {
 	startedAt     time.Time
 	usage         provider.Usage
 }
-
