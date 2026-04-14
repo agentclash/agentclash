@@ -212,6 +212,44 @@ func TestBuildRunScorecardDocumentSelectsWinnerByOverallScore(t *testing.T) {
 	}
 }
 
+func TestBuildRunScorecardDocumentOverallScoreTieFallsBackToCorrectnessThenReliability(t *testing.T) {
+	runID := uuid.New()
+	evaluationSpecID := uuid.New()
+	correctnessWinnerID := uuid.New()
+	reliabilityOnlyID := uuid.New()
+
+	document, winningRunAgentID, err := buildRunScorecardDocument(runID, evaluationSpecID, []runScorecardParticipant{
+		scorecardParticipantFixture(0, "correctness-winner", domain.RunAgentStatusCompleted, runAgentScorecardFixture{
+			RunAgentID:       correctnessWinnerID,
+			EvaluationSpecID: evaluationSpecID,
+			OverallScore:     float64Ptr(0.8),
+			CorrectnessScore: float64Ptr(0.9),
+			ReliabilityScore: float64Ptr(0.2),
+		}),
+		scorecardParticipantFixture(1, "reliability-only", domain.RunAgentStatusCompleted, runAgentScorecardFixture{
+			RunAgentID:       reliabilityOnlyID,
+			EvaluationSpecID: evaluationSpecID,
+			OverallScore:     float64Ptr(0.8),
+			CorrectnessScore: float64Ptr(0.7),
+			ReliabilityScore: float64Ptr(0.95),
+		}),
+	}, nil)
+	if err != nil {
+		t.Fatalf("buildRunScorecardDocument returned error: %v", err)
+	}
+	if winningRunAgentID == nil || *winningRunAgentID != correctnessWinnerID {
+		t.Fatalf("winning run agent id = %v, want %s", winningRunAgentID, correctnessWinnerID)
+	}
+
+	var decoded runScorecardDocument
+	if err := json.Unmarshal(document, &decoded); err != nil {
+		t.Fatalf("unmarshal run scorecard document: %v", err)
+	}
+	if decoded.WinnerDetermination.ReasonCode != "overall_score_correctness_tiebreaker" {
+		t.Fatalf("winner reason code = %q, want overall_score_correctness_tiebreaker", decoded.WinnerDetermination.ReasonCode)
+	}
+}
+
 // Phase 3: custom user-declared dims must surface in dimension_deltas using
 // the direction persisted on the per-agent scorecard, not a hardcoded map of
 // legacy keys. A "safety" dim with better_direction=higher should rank the

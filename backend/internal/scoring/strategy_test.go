@@ -155,6 +155,33 @@ func TestComputeOverallScore_BinaryBelowThresholdFails(t *testing.T) {
 	}
 }
 
+func TestComputeOverallScore_BinaryUnavailableDimensionFails(t *testing.T) {
+	spec := EvaluationSpec{
+		Scorecard: ScorecardDeclaration{
+			Strategy: ScoringStrategyBinary,
+			Dimensions: []DimensionDeclaration{
+				{Key: "a", PassThreshold: floatPtr(0.5)},
+				{Key: "b", PassThreshold: floatPtr(0.5)},
+			},
+		},
+	}
+	results := []DimensionResult{
+		{Dimension: "a", Score: floatPtr(0.8), State: OutputStateAvailable},
+		{Dimension: "b", State: OutputStateUnavailable, Reason: "missing evidence"},
+	}
+
+	overall, passed, reason := computeOverallScore(spec, results)
+	if overall == nil || *overall != 0.0 {
+		t.Fatalf("overall = %v, want 0", overall)
+	}
+	if passed == nil || *passed {
+		t.Fatalf("passed = %v, want false", passed)
+	}
+	if !strings.Contains(reason, `"b"`) || !strings.Contains(reason, "unavailable") {
+		t.Fatalf("reason = %q, want unavailable dimension b", reason)
+	}
+}
+
 func TestComputeOverallScore_HybridGatePassUsesWeightedAverage(t *testing.T) {
 	spec := EvaluationSpec{
 		Scorecard: ScorecardDeclaration{
@@ -209,6 +236,33 @@ func TestComputeOverallScore_HybridGateFailForcesZero(t *testing.T) {
 	}
 }
 
+func TestComputeOverallScore_HybridUnavailableGatedDimensionFails(t *testing.T) {
+	spec := EvaluationSpec{
+		Scorecard: ScorecardDeclaration{
+			Strategy: ScoringStrategyHybrid,
+			Dimensions: []DimensionDeclaration{
+				{Key: "gated", Gate: true, PassThreshold: floatPtr(0.9)},
+				{Key: "other"},
+			},
+		},
+	}
+	results := []DimensionResult{
+		{Dimension: "gated", State: OutputStateUnavailable, Reason: "missing evidence"},
+		{Dimension: "other", Score: floatPtr(1.0), State: OutputStateAvailable},
+	}
+
+	overall, passed, reason := computeOverallScore(spec, results)
+	if overall == nil || *overall != 0.0 {
+		t.Fatalf("overall = %v, want 0", overall)
+	}
+	if passed == nil || *passed {
+		t.Fatalf("passed = %v, want false", passed)
+	}
+	if !strings.Contains(reason, `"gated"`) || !strings.Contains(reason, "unavailable") {
+		t.Fatalf("reason = %q, want unavailable gated dimension", reason)
+	}
+}
+
 func TestComputeOverallScore_HybridNonGatedDimBelowThresholdPasses(t *testing.T) {
 	// Non-gated dims never fail hybrid even if their score is low — that's the
 	// whole point of "hybrid": hard gates + soft weights.
@@ -245,6 +299,33 @@ func TestComputeOverallScore_DefaultsStrategyToWeighted(t *testing.T) {
 	overall, _, _ := computeOverallScore(spec, results)
 	if overall == nil || *overall != 0.42 {
 		t.Fatalf("overall = %v, want 0.42", overall)
+	}
+}
+
+func TestComputeOverallScore_WeightedUnavailableGatedDimensionFails(t *testing.T) {
+	spec := EvaluationSpec{
+		Scorecard: ScorecardDeclaration{
+			Strategy: ScoringStrategyWeighted,
+			Dimensions: []DimensionDeclaration{
+				{Key: "gated", Gate: true, PassThreshold: floatPtr(0.9)},
+				{Key: "other"},
+			},
+		},
+	}
+	results := []DimensionResult{
+		{Dimension: "gated", State: OutputStateUnavailable, Reason: "missing evidence"},
+		{Dimension: "other", Score: floatPtr(0.42), State: OutputStateAvailable},
+	}
+
+	overall, passed, reason := computeOverallScore(spec, results)
+	if overall == nil || *overall != 0.42 {
+		t.Fatalf("overall = %v, want 0.42", overall)
+	}
+	if passed == nil || *passed {
+		t.Fatalf("passed = %v, want false", passed)
+	}
+	if !strings.Contains(reason, `"gated"`) || !strings.Contains(reason, "unavailable") {
+		t.Fatalf("reason = %q, want unavailable gated dimension", reason)
 	}
 }
 

@@ -302,10 +302,19 @@ func winnerByOverallScore(scoredAgents []scoredRunAgent) (*uuid.UUID, runScoreca
 		summary.ReasonCode = "best_overall_score"
 		return &winner, summary, true
 	}
-	// Tied on overall_score — try legacy tiebreakers over the tied subset.
-	tiebreak := highestAgentsByScore(best, func(agent scoredRunAgent) *float64 { return agent.reliabilityScore })
-	if len(tiebreak) == 1 {
-		winner := tiebreak[0].runAgent.ID
+	// Tied on overall_score — use the full legacy correctness/reliability
+	// chain over the tied subset so the new path preserves historical winner
+	// semantics when overall scores are equal.
+	bestCorrectness := highestAgentsByScore(best, func(agent scoredRunAgent) *float64 { return agent.correctnessScore })
+	if len(bestCorrectness) == 1 {
+		winner := bestCorrectness[0].runAgent.ID
+		summary.Status = "winner"
+		summary.ReasonCode = "overall_score_correctness_tiebreaker"
+		return &winner, summary, true
+	}
+	bestReliability := highestAgentsByScore(bestCorrectness, func(agent scoredRunAgent) *float64 { return agent.reliabilityScore })
+	if len(bestReliability) == 1 {
+		winner := bestReliability[0].runAgent.ID
 		summary.Status = "winner"
 		summary.ReasonCode = "overall_score_reliability_tiebreaker"
 		return &winner, summary, true

@@ -31,11 +31,11 @@ const (
 )
 
 type EvidenceInput struct {
-	ChallengeIdentityID uuid.UUID       `json:"challenge_identity_id"`
-	ChallengeKey        string          `json:"challenge_key"`
-	CaseKey             string          `json:"case_key,omitempty"`
-	ItemKey             string          `json:"item_key"`
-	Payload             json.RawMessage `json:"payload"`
+	ChallengeIdentityID uuid.UUID                   `json:"challenge_identity_id"`
+	ChallengeKey        string                      `json:"challenge_key"`
+	CaseKey             string                      `json:"case_key,omitempty"`
+	ItemKey             string                      `json:"item_key"`
+	Payload             json.RawMessage             `json:"payload"`
 	Inputs              map[string]EvidenceValue    `json:"inputs,omitempty"`
 	Expectations        map[string]EvidenceValue    `json:"expectations,omitempty"`
 	Artifacts           map[string]EvidenceArtifact `json:"artifacts,omitempty"`
@@ -231,8 +231,10 @@ func computeOverallScore(spec EvaluationSpec, results []DimensionResult) (*float
 		declByKey[d.Key] = d
 	}
 
+	resultByKey := make(map[string]DimensionResult, len(results))
 	available := make([]scoredDimension, 0, len(results))
 	for _, r := range results {
+		resultByKey[r.Dimension] = r
 		if r.State != OutputStateAvailable || r.Score == nil {
 			continue
 		}
@@ -243,6 +245,24 @@ func computeOverallScore(spec EvaluationSpec, results []DimensionResult) (*float
 		available = append(available, scoredDimension{decl: decl, value: *r.Score})
 	}
 	if len(available) == 0 {
+		switch strategy {
+		case ScoringStrategyBinary:
+			score := 0.0
+			passedVal := false
+			key, found := firstUnavailableRequiredDimension(spec.Scorecard.Dimensions, resultByKey, strategy)
+			return &score, &passedVal, unavailableGateReason(strategy, key, found)
+		case ScoringStrategyHybrid:
+			if key, ok := firstUnavailableRequiredDimension(spec.Scorecard.Dimensions, resultByKey, strategy); ok {
+				score := 0.0
+				passedVal := false
+				return &score, &passedVal, unavailableGateReason(strategy, key, true)
+			}
+		case ScoringStrategyWeighted:
+			if key, ok := firstUnavailableRequiredDimension(spec.Scorecard.Dimensions, resultByKey, strategy); ok {
+				passedVal := false
+				return nil, &passedVal, unavailableGateReason(strategy, key, true)
+			}
+		}
 		return nil, nil, "no dimensions produced an available score"
 	}
 
@@ -261,20 +281,29 @@ func computeOverallScore(spec EvaluationSpec, results []DimensionResult) (*float
 		}
 	}
 
+	firstUnavailableGate, hasUnavailableGate := firstUnavailableRequiredDimension(spec.Scorecard.Dimensions, resultByKey, strategy)
+
 	switch strategy {
 	case ScoringStrategyBinary:
-		passedVal := !anyGateFailed
+		passedVal := !anyGateFailed && !hasUnavailableGate
 		score := 0.0
 		if passedVal {
 			score = 1.0
 		}
 		reason := ""
-		if !passedVal {
+		if hasUnavailableGate {
+			reason = unavailableGateReason(strategy, firstUnavailableGate, true)
+		} else if !passedVal {
 			reason = fmt.Sprintf("binary: dimension %q below pass_threshold", firstFailedGate)
 		}
 		return &score, &passedVal, reason
 
 	case ScoringStrategyHybrid:
+		if hasUnavailableGate {
+			score := 0.0
+			passedVal := false
+			return &score, &passedVal, unavailableGateReason(strategy, firstUnavailableGate, true)
+		}
 		if anyGateFailed {
 			score := 0.0
 			passedVal := false
@@ -286,12 +315,46 @@ func computeOverallScore(spec EvaluationSpec, results []DimensionResult) (*float
 
 	default:
 		score := weightedAverage(available)
-		passedVal := !anyGateFailed
+		passedVal := !anyGateFailed && !hasUnavailableGate
 		reason := ""
-		if !passedVal {
+		if hasUnavailableGate {
+			reason = unavailableGateReason(strategy, firstUnavailableGate, true)
+		} else if !passedVal {
 			reason = fmt.Sprintf("weighted: gated dimension %q below pass_threshold", firstFailedGate)
 		}
 		return &score, &passedVal, reason
+	}
+}
+
+func firstUnavailableRequiredDimension(
+	decls []DimensionDeclaration,
+	results map[string]DimensionResult,
+	strategy ScoringStrategy,
+) (string, bool) {
+	for _, decl := range decls {
+		required := decl.Gate || strategy == ScoringStrategyBinary
+		if !required {
+			continue
+		}
+		result, ok := results[decl.Key]
+		if !ok || result.State != OutputStateAvailable || result.Score == nil {
+			return decl.Key, true
+		}
+	}
+	return "", false
+}
+
+func unavailableGateReason(strategy ScoringStrategy, dimension string, found bool) string {
+	if !found {
+		return "required dimension is unavailable"
+	}
+	switch strategy {
+	case ScoringStrategyBinary:
+		return fmt.Sprintf("binary: dimension %q is unavailable", dimension)
+	case ScoringStrategyHybrid:
+		return fmt.Sprintf("hybrid: gated dimension %q is unavailable", dimension)
+	default:
+		return fmt.Sprintf("weighted: gated dimension %q is unavailable", dimension)
 	}
 }
 
