@@ -139,6 +139,22 @@ type JudgeResult struct {
 	CreatedAt           pgtype.Timestamptz
 }
 
+type LLMJudgeResult struct {
+	ID               uuid.UUID
+	RunAgentID       uuid.UUID
+	EvaluationSpecID uuid.UUID
+	JudgeKey         string
+	Mode             string
+	NormalizedScore  pgtype.Numeric
+	Payload          []byte
+	Confidence       *string
+	Variance         pgtype.Numeric
+	SampleCount      int32
+	ModelCount       int32
+	CreatedAt        pgtype.Timestamptz
+	UpdatedAt        pgtype.Timestamptz
+}
+
 type MetricResult struct {
 	ID                  uuid.UUID
 	RunAgentID          uuid.UUID

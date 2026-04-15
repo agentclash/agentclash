@@ -22,6 +22,15 @@ func evaluateDimensions(spec EvaluationSpec, evidence extractedEvidence, validat
 			score, reason, state = costDimensionScore(dim, evidence, spec)
 		case DimensionSourceMetric:
 			score, reason, state = metricDimensionScore(dim, metrics)
+		case DimensionSourceLLMJudge:
+			// Phase 1 stub. Phase 3 wires the judge evaluator service
+			// and Phase 4 plumbs judge_results through a Temporal
+			// activity chain so dimension dispatch can read them. Until
+			// then, llm_judge dims surface as unavailable so
+			// computeOverallScore downgrades the scorecard to partial
+			// instead of scoring them at zero.
+			state = OutputStateUnavailable
+			reason = "llm_judge dimensions require the judge evaluator (#148 phase 3+)"
 		default:
 			state = OutputStateError
 			reason = fmt.Sprintf("unsupported dimension source %q", dim.Source)

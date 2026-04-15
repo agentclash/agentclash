@@ -55,15 +55,19 @@ const (
 )
 
 // DimensionSource names the evidence pipeline that produces a dimension's
-// score. Two names are intentionally absent from this list:
+// score. One name is intentionally absent from this list:
 //
-//   - "llm_judge": reserved for the judge runtime tracked in issue #148. Do
-//     not add it here; route judge scores through the dedicated judge module
-//     once that lands so they share a single normalization pass.
 //   - "composite": considered and rejected. A dimension that reads other
 //     dimensions would require topological ordering and make scoring
 //     non-deterministic under partial failures. If you need an aggregate,
 //     compute it in computeOverallScore via strategy/weights instead.
+//
+// DimensionSourceLLMJudge routes to the judge runtime (#148). In Phase 1 the
+// engine dispatch returns an unavailable stub until the judge evaluator
+// service lands in Phase 3; Phase 4 wires the end-to-end activity chain.
+// Packs can declare llm_judge-sourced dims today so their schemas round-trip
+// through validation, but runs with judge_mode=llm_judge or hybrid still
+// fail at EvaluateRunAgent until the gate is removed in Phase 4.
 type DimensionSource string
 
 const (
@@ -72,6 +76,7 @@ const (
 	DimensionSourceReliability DimensionSource = "reliability"
 	DimensionSourceLatency     DimensionSource = "latency"
 	DimensionSourceCost        DimensionSource = "cost"
+	DimensionSourceLLMJudge    DimensionSource = "llm_judge"
 )
 
 // ScoringStrategy controls how per-dimension scores combine into a single
@@ -124,6 +129,13 @@ type DimensionDeclaration struct {
 	BetterDirection string                  `json:"better_direction,omitempty"`
 	Normalization   *DimensionNormalization `json:"normalization,omitempty"`
 	Weight          *float64                `json:"weight,omitempty"`
+	// JudgeKey references a single LLMJudgeDeclaration whose aggregated score
+	// feeds this dimension. Required when Source is llm_judge; must be empty
+	// otherwise. The 1:1 mapping is deliberate — packs that want multiple
+	// judge-backed dims declare one judge per dim instead of sharing judges
+	// across dims, which keeps normalization and multi-sample variance
+	// attached to a single scoring axis.
+	JudgeKey string `json:"judge_key,omitempty"`
 	// Gate marks a dimension as a hard pass/fail requirement. In the hybrid
 	// strategy a gate failure forces overall=0 and passed=false. In the binary
 	// strategy every dimension is implicitly gated regardless of this flag.
@@ -174,6 +186,10 @@ type EvaluationSpec struct {
 	JudgeMode           JudgeMode              `json:"judge_mode"`
 	Validators          []ValidatorDeclaration `json:"validators"`
 	Metrics             []MetricDeclaration    `json:"metrics"`
+	// LLMJudges declares LLM-as-judge graders that run after deterministic
+	// scoring. Phase 1 only validates and round-trips these; the judge
+	// evaluator that actually calls LLMs lands in Phase 3.
+	LLMJudges           []LLMJudgeDeclaration  `json:"llm_judges,omitempty"`
 	PostExecutionChecks []PostExecutionCheck   `json:"post_execution_checks,omitempty"`
 	RuntimeLimits       RuntimeLimits          `json:"runtime_limits,omitempty"`
 	Pricing             PricingConfig          `json:"pricing,omitempty"`
@@ -214,6 +230,33 @@ type ScorecardDeclaration struct {
 	// Comparisons are inclusive — an overall score exactly equal to the
 	// threshold passes, matching the release-gate convention.
 	PassThreshold *float64 `json:"pass_threshold,omitempty"`
+	// JudgeLimits bounds per-run cost and sample count for LLM-as-judge
+	// evaluation. Ignored when the spec declares no LLMJudges. See
+	// JudgeLimits doc comment for enforcement semantics.
+	JudgeLimits *JudgeLimits `json:"judge_limits,omitempty"`
+}
+
+// JudgeLimits caps the blast radius of LLM-as-judge evaluation for a single
+// run. The evaluator enforces these cumulatively across every judge × sample
+// × model in the spec; when a cap trips, remaining samples are marked
+// unable_to_judge and the dimension falls through to OutputStateUnavailable.
+//
+// These are user-facing spec knobs. Hard Go-code ceilings (see
+// JudgeMaxSamplesCeiling) still apply on top — packs cannot raise the
+// ceilings by rewriting their spec.
+type JudgeLimits struct {
+	// MaxSamplesPerJudge overrides the per-judge Samples cap. Clamped to
+	// [0, JudgeMaxSamplesCeiling] at validation time; 0 means "use the
+	// per-judge default".
+	MaxSamplesPerJudge int `json:"max_samples_per_judge,omitempty"`
+	// MaxCallsUSD is the cumulative per-run budget for judge LLM calls.
+	// 0 means unbounded (subject to RuntimeLimits.MaxCostUSD, which covers
+	// agent spend; judge cost is accounted separately on purpose — see
+	// Q7 in the #148 analysis).
+	MaxCallsUSD float64 `json:"max_calls_usd,omitempty"`
+	// MaxTokens is the cumulative per-run token budget for judge LLM
+	// calls. 0 means unbounded.
+	MaxTokens int64 `json:"max_tokens,omitempty"`
 }
 
 type RuntimeLimits struct {
@@ -311,7 +354,7 @@ func (t MetricType) IsValid() bool {
 
 func (s DimensionSource) IsValid() bool {
 	switch s {
-	case DimensionSourceValidators, DimensionSourceMetric, DimensionSourceReliability, DimensionSourceLatency, DimensionSourceCost:
+	case DimensionSourceValidators, DimensionSourceMetric, DimensionSourceReliability, DimensionSourceLatency, DimensionSourceCost, DimensionSourceLLMJudge:
 		return true
 	default:
 		return false
@@ -327,4 +370,200 @@ func isBuiltinDimensionKey(key string) bool {
 	default:
 		return false
 	}
+}
+
+// --- LLM-as-judge types (#148 phase 1) ---
+//
+// The type surface here deliberately covers all 5 grader methods from the
+// issue under a single LLMJudgeDeclaration struct. Mode selects the
+// dispatch; Model/Models and Samples are orthogonal fan-out controls that
+// compose with every mode. See backend/.claude/analysis/issue-148-deep-
+// analysis.md Part 3 for the architectural rationale.
+//
+// Phase 1 validates and round-trips these types. Phase 3 implements the
+// evaluator service that actually calls LLMs. Phase 4 wires the Temporal
+// activity chain and removes the errJudgeModeUnsupported gate.
+
+// JudgeMaxSamplesCeiling is the hard upper bound on LLMJudgeDeclaration.Samples.
+// Enforced in Go code, not config — a malicious or broken pack cannot request
+// more than this many samples regardless of what it writes in its spec. Every
+// judge × every sample × every consensus model is one LLM call, so the
+// ceiling is a load-bearing cost-attack guard.
+const JudgeMaxSamplesCeiling = 10
+
+// JudgeDefaultSamples is the Samples value used when a judge omits it.
+// Matches the default in Anthropic's eval strategy ("run each judge ~3 times
+// and take the median") and gives enough signal for variance tracking
+// without burning budget on low-value calls.
+const JudgeDefaultSamples = 3
+
+// JudgeMethodMode selects which grader method a judge implements.
+//
+//   - rubric     — numeric score against a structured rubric (Anthropic's
+//                  "rubric-based scoring")
+//   - assertion  — yes/no answer to a natural-language claim about the
+//                  output (Anthropic's "natural language assertions")
+//   - n_wise     — rank all N agents in a run simultaneously with optional
+//                  position debiasing (generalized pairwise comparison)
+//   - reference  — rubric scored relative to a gold-standard reference
+//                  answer resolved from the challenge input
+type JudgeMethodMode string
+
+const (
+	JudgeMethodRubric    JudgeMethodMode = "rubric"
+	JudgeMethodAssertion JudgeMethodMode = "assertion"
+	JudgeMethodNWise     JudgeMethodMode = "n_wise"
+	JudgeMethodReference JudgeMethodMode = "reference"
+)
+
+// IsValid reports whether mode is a recognised grader method.
+func (m JudgeMethodMode) IsValid() bool {
+	switch m {
+	case JudgeMethodRubric, JudgeMethodAssertion, JudgeMethodNWise, JudgeMethodReference:
+		return true
+	default:
+		return false
+	}
+}
+
+// IsNumeric reports whether mode produces a per-agent numeric score that
+// can feed a DimensionSourceLLMJudge-sourced dimension. All four modes
+// currently qualify — assertion normalizes its pass/fail majority to
+// 0.0 or 1.0; n_wise normalizes its Borda count to [0, 1].
+func (m JudgeMethodMode) IsNumeric() bool {
+	switch m {
+	case JudgeMethodRubric, JudgeMethodReference, JudgeMethodNWise, JudgeMethodAssertion:
+		return true
+	default:
+		return false
+	}
+}
+
+// IsBooleanScope reports whether mode naturally produces a boolean-per-sample
+// verdict. Only assertion qualifies today. Consensus aggregations
+// majority_vote and unanimous are restricted to boolean-scope modes at
+// validation time so packs can't accidentally mean-average a yes/no.
+func (m JudgeMethodMode) IsBooleanScope() bool {
+	return m == JudgeMethodAssertion
+}
+
+// ConsensusAggregation controls how per-model scores combine when a judge
+// declares multiple Models. Orthogonal to the per-model multi-sample
+// aggregation, which is always median for numeric modes and majority for
+// assertion mode.
+type ConsensusAggregation string
+
+const (
+	ConsensusAggMedian       ConsensusAggregation = "median"
+	ConsensusAggMean         ConsensusAggregation = "mean"
+	ConsensusAggMajorityVote ConsensusAggregation = "majority_vote"
+	ConsensusAggUnanimous    ConsensusAggregation = "unanimous"
+)
+
+// IsValid reports whether c is a recognised aggregation strategy.
+func (c ConsensusAggregation) IsValid() bool {
+	switch c {
+	case ConsensusAggMedian, ConsensusAggMean, ConsensusAggMajorityVote, ConsensusAggUnanimous:
+		return true
+	default:
+		return false
+	}
+}
+
+// ScoreScale describes the numeric range a rubric or reference judge is
+// instructed to score on. The evaluator normalizes the raw score into [0, 1]
+// before it feeds the dimension:
+//
+//	normalized := (raw - Min) / (Max - Min)
+//
+// Min must be strictly less than Max. Defaults to 1..5 at normalization
+// time when omitted, matching Anthropic's example rubrics.
+type ScoreScale struct {
+	Min float64 `json:"min"`
+	Max float64 `json:"max"`
+}
+
+// ConsensusConfig parameterises cross-model aggregation when an
+// LLMJudgeDeclaration supplies multiple Models. Required whenever
+// len(Models) > 1.
+type ConsensusConfig struct {
+	Aggregation ConsensusAggregation `json:"aggregation"`
+	// MinAgreementThreshold is the max allowed spread between per-model
+	// scores before the judge result is flagged low-confidence. Only
+	// meaningful for numeric aggregations. Range [0, 1].
+	MinAgreementThreshold float64 `json:"min_agreement_threshold,omitempty"`
+	// FlagOnDisagreement emits a warning on the judge result whenever the
+	// observed spread exceeds MinAgreementThreshold, even when the
+	// aggregation itself succeeds.
+	FlagOnDisagreement bool `json:"flag_on_disagreement,omitempty"`
+}
+
+// LLMJudgeDeclaration is the unified shape for every grader method. A
+// single struct with a Mode discriminator matches the issue's wire-format
+// intent (one JSON array of judge entries) and keeps spec authoring
+// symmetric with Validators and Metrics.
+//
+// Mode-specific fields (Rubric, Assertion, Prompt, ReferenceFrom) are all
+// optional at the type level and validated for presence by
+// validateLLMJudges per mode.
+type LLMJudgeDeclaration struct {
+	Mode JudgeMethodMode `json:"mode"`
+	Key  string          `json:"key"`
+
+	// Fan-out (orthogonal to mode)
+	//
+	// Exactly one of Model or Models must be set (enforced in validation).
+	// Samples controls how many times each model judges; 0 normalizes to
+	// JudgeDefaultSamples.
+	Model   string   `json:"model,omitempty"`
+	Models  []string `json:"models,omitempty"`
+	Samples int      `json:"samples,omitempty"`
+
+	// ContextFrom lists evidence references that the evaluator substitutes
+	// into the prompt envelope. Every entry must pass
+	// isSupportedEvidenceReference.
+	ContextFrom []string `json:"context_from,omitempty"`
+
+	// OutputSchema is an optional JSON Schema (draft-07 or 2020-12) used
+	// to validate parsed judge responses. When nil, the evaluator uses a
+	// default schema per mode.
+	OutputSchema json.RawMessage `json:"output_schema,omitempty"`
+
+	// ScoreScale, when provided on rubric/reference modes, overrides the
+	// default 1..5 normalization range.
+	ScoreScale *ScoreScale `json:"score_scale,omitempty"`
+
+	// Rubric text for rubric and reference modes. Required for both.
+	Rubric string `json:"rubric,omitempty"`
+
+	// Assertion text for assertion mode. Required when Mode=assertion.
+	Assertion string `json:"assertion,omitempty"`
+	// Expect flips the "pass" polarity of an assertion. Nil means
+	// "expect true". Only meaningful when Mode=assertion.
+	Expect *bool `json:"expect,omitempty"`
+
+	// Prompt is the cross-agent ranking prompt for n_wise mode.
+	Prompt string `json:"prompt,omitempty"`
+	// PositionDebiasing enables cyclic-shift ordering across samples so no
+	// agent is consistently shown in the same position.
+	PositionDebiasing bool `json:"position_debiasing,omitempty"`
+
+	// ReferenceFrom names an evidence reference that resolves to the
+	// gold-standard answer for reference mode. Must pass
+	// isSupportedEvidenceReference.
+	ReferenceFrom string `json:"reference_from,omitempty"`
+
+	// Consensus parameterises multi-model aggregation. Required when
+	// len(Models) > 1.
+	Consensus *ConsensusConfig `json:"consensus,omitempty"`
+
+	// AntiGamingClauses is additional pack-authored safety language
+	// appended to the prompt envelope. The evaluator ALWAYS injects its
+	// own default anti-gaming clauses regardless of what packs declare
+	// here — this field is additive, not replacement.
+	AntiGamingClauses []string `json:"anti_gaming_clauses,omitempty"`
+
+	// TimeoutMS is the per-judge kill switch. 0 means "use evaluator
+	// default." Never exceeds the enclosing activity timeout.
+	TimeoutMS *int64 `json:"timeout_ms,omitempty"`
 }

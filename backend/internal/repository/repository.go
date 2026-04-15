@@ -178,6 +178,50 @@ type JudgeResultRecord struct {
 	CreatedAt           time.Time
 }
 
+// LLMJudgeResultRecord is the domain representation of an llm_judge_results
+// row. Unlike JudgeResultRecord (which is the legacy validator-results shim
+// persisted to the judge_results table), this type carries the multi-sample
+// and multi-model metadata that the LLM-as-judge evaluator produces:
+// aggregated normalized score, mode-specific payload jsonb, confidence
+// signal, variance, and sample/model fan-out counts.
+//
+// NormalizedScore, Confidence, and Variance are nullable because a judge
+// can abstain (all samples return unable_to_judge), in which case the row
+// still exists — with SampleCount set — but the score fields stay nil so
+// downstream dimension dispatch can surface the result as unavailable.
+type LLMJudgeResultRecord struct {
+	ID               uuid.UUID
+	RunAgentID       uuid.UUID
+	EvaluationSpecID uuid.UUID
+	JudgeKey         string
+	Mode             string
+	NormalizedScore  *float64
+	Payload          json.RawMessage
+	Confidence       *string
+	Variance         *float64
+	SampleCount      int32
+	ModelCount       int32
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+}
+
+// UpsertLLMJudgeResultParams is the caller-facing input shape for
+// Repository.UpsertLLMJudgeResult. It uses Go-native pointer types for
+// nullable columns; the repository wrapper converts to pgtype.Numeric
+// internally so the caller never handles pgx types directly.
+type UpsertLLMJudgeResultParams struct {
+	RunAgentID       uuid.UUID
+	EvaluationSpecID uuid.UUID
+	JudgeKey         string
+	Mode             string
+	NormalizedScore  *float64
+	Payload          json.RawMessage
+	Confidence       *string
+	Variance         *float64
+	SampleCount      int32
+	ModelCount       int32
+}
+
 type MetricResultRecord struct {
 	ID                  uuid.UUID
 	RunAgentID          uuid.UUID
@@ -846,6 +890,78 @@ func (r *Repository) ListJudgeResultsByRunAgentAndEvaluationSpec(ctx context.Con
 	return results, nil
 }
 
+// UpsertLLMJudgeResult writes one aggregated LLM-as-judge result row for a
+// run-agent and returns the persisted record. The caller supplies Go-native
+// pointer types for nullable columns; the wrapper converts to pgtype.Numeric
+// before delegating to the generated sqlc method.
+//
+// Phase 2 of issue #148 ships this as the persistence surface the judge
+// evaluator service (Phase 3) will call. There is no StoreRunAgentEvaluation
+// Results integration yet — Phase 3 wires the evaluator into the Temporal
+// activity chain and this method becomes the single write path.
+func (r *Repository) UpsertLLMJudgeResult(ctx context.Context, params UpsertLLMJudgeResultParams) (LLMJudgeResultRecord, error) {
+	normalizedScore, err := numericFromFloat(params.NormalizedScore)
+	if err != nil {
+		return LLMJudgeResultRecord{}, fmt.Errorf("encode llm judge normalized score: %w", err)
+	}
+	variance, err := numericFromFloat(params.Variance)
+	if err != nil {
+		return LLMJudgeResultRecord{}, fmt.Errorf("encode llm judge variance: %w", err)
+	}
+
+	payload := cloneJSON(params.Payload)
+	if len(payload) == 0 {
+		payload = json.RawMessage(`{}`)
+	}
+
+	row, err := r.queries.UpsertLLMJudgeResult(ctx, repositorysqlc.UpsertLLMJudgeResultParams{
+		RunAgentID:       params.RunAgentID,
+		EvaluationSpecID: params.EvaluationSpecID,
+		JudgeKey:         params.JudgeKey,
+		Mode:             params.Mode,
+		NormalizedScore:  normalizedScore,
+		Payload:          payload,
+		Confidence:       cloneStringPtr(params.Confidence),
+		Variance:         variance,
+		SampleCount:      params.SampleCount,
+		ModelCount:       params.ModelCount,
+	})
+	if err != nil {
+		return LLMJudgeResultRecord{}, fmt.Errorf("upsert llm judge result: %w", err)
+	}
+
+	record, err := mapLLMJudgeResultRecord(row)
+	if err != nil {
+		return LLMJudgeResultRecord{}, fmt.Errorf("map llm judge result: %w", err)
+	}
+	return record, nil
+}
+
+// ListLLMJudgeResultsByRunAgentAndEvaluationSpec returns every LLM-as-judge
+// result persisted for a (run_agent_id, evaluation_spec_id) pair. The rows
+// come back sorted by judge_key ASC for deterministic iteration. Phase 4
+// dimension dispatch calls this to resolve llm_judge-sourced dims during
+// EvaluateWithJudges.
+func (r *Repository) ListLLMJudgeResultsByRunAgentAndEvaluationSpec(ctx context.Context, runAgentID uuid.UUID, evaluationSpecID uuid.UUID) ([]LLMJudgeResultRecord, error) {
+	rows, err := r.queries.ListLLMJudgeResultsByRunAgentAndEvaluationSpec(ctx, repositorysqlc.ListLLMJudgeResultsByRunAgentAndEvaluationSpecParams{
+		RunAgentID:       runAgentID,
+		EvaluationSpecID: evaluationSpecID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list llm judge results by run-agent and evaluation spec: %w", err)
+	}
+
+	results := make([]LLMJudgeResultRecord, 0, len(rows))
+	for _, row := range rows {
+		result, mapErr := mapLLMJudgeResultRecord(row)
+		if mapErr != nil {
+			return nil, fmt.Errorf("map llm judge result: %w", mapErr)
+		}
+		results = append(results, result)
+	}
+	return results, nil
+}
+
 func (r *Repository) ListMetricResultsByRunAgentAndEvaluationSpec(ctx context.Context, runAgentID uuid.UUID, evaluationSpecID uuid.UUID) ([]MetricResultRecord, error) {
 	rows, err := r.queries.ListMetricResultsByRunAgentAndEvaluationSpec(ctx, repositorysqlc.ListMetricResultsByRunAgentAndEvaluationSpecParams{
 		RunAgentID:       runAgentID,
@@ -1426,6 +1542,33 @@ func mapJudgeResultRecord(row repositorysqlc.JudgeResult) (JudgeResultRecord, er
 		NormalizedScore:     numericPtr(row.NormalizedScore),
 		RawOutput:           cloneJSON(row.RawOutput),
 		CreatedAt:           createdAt,
+	}, nil
+}
+
+func mapLLMJudgeResultRecord(row repositorysqlc.LLMJudgeResult) (LLMJudgeResultRecord, error) {
+	createdAt, err := requiredTime("llm_judge_results.created_at", row.CreatedAt)
+	if err != nil {
+		return LLMJudgeResultRecord{}, err
+	}
+	updatedAt, err := requiredTime("llm_judge_results.updated_at", row.UpdatedAt)
+	if err != nil {
+		return LLMJudgeResultRecord{}, err
+	}
+
+	return LLMJudgeResultRecord{
+		ID:               row.ID,
+		RunAgentID:       row.RunAgentID,
+		EvaluationSpecID: row.EvaluationSpecID,
+		JudgeKey:         row.JudgeKey,
+		Mode:             row.Mode,
+		NormalizedScore:  numericPtr(row.NormalizedScore),
+		Payload:          cloneJSON(row.Payload),
+		Confidence:       cloneStringPtr(row.Confidence),
+		Variance:         numericPtr(row.Variance),
+		SampleCount:      row.SampleCount,
+		ModelCount:       row.ModelCount,
+		CreatedAt:        createdAt,
+		UpdatedAt:        updatedAt,
 	}, nil
 }
 
