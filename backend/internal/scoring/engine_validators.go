@@ -244,6 +244,8 @@ func applyValidator(validator ValidatorDeclaration, actual string, expected stri
 		return validateNumericMatch(actual, expected, validator.Config)
 	case ValidatorTypeNormalizedMatch:
 		return validateNormalizedMatch(actual, expected, validator.Config)
+	case ValidatorTypeMathEquivalence:
+		return validateMathEquivalence(actual, expected, validator.Config)
 	case ValidatorTypeFileExists:
 		return validateFileExists(actual, validator.Config)
 	case ValidatorTypeFileContentMatch:

@@ -511,6 +511,19 @@ func validateValidatorConfig(validator ValidatorDeclaration, path string) Valida
 			}
 		}
 
+	case ValidatorTypeMathEquivalence:
+		cfg, err := parseMathEquivalenceConfig(validator.Config)
+		if err != nil {
+			errs = append(errs, ValidationError{Field: configPath, Message: configParseErrorMessage(err)})
+			return errs
+		}
+		if cfg.ComparisonMode != mathComparisonModeSymbolic && cfg.ComparisonMode != mathComparisonModeNumeric {
+			errs = append(errs, ValidationError{Field: configPath + ".comparison_mode", Message: `must be "symbolic" or "numeric"`})
+		}
+		if cfg.Tolerance != nil && *cfg.Tolerance < 0 {
+			errs = append(errs, ValidationError{Field: configPath + ".tolerance", Message: "must be greater than or equal to 0"})
+		}
+
 	case ValidatorTypeCodeExecution:
 		cfg, err := ParseCodeExecutionConfig(validator.Config)
 		if err != nil {
