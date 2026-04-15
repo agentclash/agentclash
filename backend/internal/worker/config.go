@@ -21,22 +21,30 @@ const (
 	defaultShutdownTime          = 10 * time.Second
 	defaultHostedCallbackBaseURL = "http://localhost:8080"
 	defaultHostedCallbackSecret  = "agentclash-dev-hosted-callback-secret"
+	// defaultJudgeCredentialReference points the LLM-as-judge evaluator at
+	// the same env var the anthropic provider client already uses for
+	// agent runs. Dev loops that already export ANTHROPIC_API_KEY for
+	// agent execution immediately get working judges with no extra config.
+	// Phase 7 of issue #148 will move this to a per-pack
+	// ScorecardDeclaration.JudgeProviderRef field.
+	defaultJudgeCredentialReference = "env://ANTHROPIC_API_KEY"
 )
 
 var ErrInvalidConfig = errors.New("invalid worker config")
 
 type Config struct {
-	AppEnvironment        string
-	DatabaseURL           string
-	TemporalAddress       string
-	TemporalNamespace     string
-	Identity              string
-	TaskQueue             string
-	HostedCallbackBaseURL string
-	HostedCallbackSecret  string
-	ShutdownTimeout       time.Duration
-	Sandbox               SandboxConfig
-	SecretsCipher         *secrets.AESGCMCipher
+	AppEnvironment           string
+	DatabaseURL              string
+	TemporalAddress          string
+	TemporalNamespace        string
+	Identity                 string
+	TaskQueue                string
+	HostedCallbackBaseURL    string
+	HostedCallbackSecret     string
+	ShutdownTimeout          time.Duration
+	Sandbox                  SandboxConfig
+	SecretsCipher            *secrets.AESGCMCipher
+	JudgeCredentialReference string
 }
 
 type SandboxConfig struct {
@@ -118,6 +126,11 @@ func LoadConfigFromEnv() (Config, error) {
 		return Config{}, err
 	}
 
+	judgeCredentialReference, err := envOrDefault("JUDGE_CREDENTIAL_REFERENCE", defaultJudgeCredentialReference)
+	if err != nil {
+		return Config{}, err
+	}
+
 	return Config{
 		AppEnvironment:        appEnvironment,
 		DatabaseURL:           databaseURL,
@@ -137,7 +150,8 @@ func LoadConfigFromEnv() (Config, error) {
 				RequestTimeout: e2bRequestTimeout,
 			},
 		},
-		SecretsCipher: secretsCipher,
+		SecretsCipher:            secretsCipher,
+		JudgeCredentialReference: judgeCredentialReference,
 	}, nil
 }
 

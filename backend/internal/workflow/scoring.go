@@ -10,6 +10,7 @@ import (
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/runevents"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/scoring"
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/scoring/judge"
 	"github.com/google/uuid"
 )
 
@@ -298,4 +299,167 @@ func mustMarshalJSON(value any) json.RawMessage {
 		return json.RawMessage(`{}`)
 	}
 	return payload
+}
+
+// executeJudgeRunAgent runs the LLM-as-judge evaluator for a single
+// run-agent and persists the finalized scorecard. Called by the
+// JudgeRunAgent activity after ScoreRunAgent has produced the
+// deterministic evaluation.
+//
+// Fast-path returns leave the deterministic evaluation unchanged
+// (and skip all DB writes) when:
+//
+//   - judgeEvaluator is nil — workers / tests not wired for judges
+//   - the persisted spec declares no LLMJudges — deterministic-only packs
+//   - the spec fails to load — error propagates so Temporal retries
+//
+// When judges are present and the evaluator is wired, the helper:
+//
+//  1. Loads the persisted spec via the same path ScoreRunAgent uses
+//  2. Reads the run-agent's events and extracts final_output
+//  3. Calls judge.Evaluator.Evaluate (bounded fan-out across
+//     models × samples, anti-gaming envelope, multi-model consensus)
+//  4. Calls scoring.FinalizeRunAgentEvaluation to merge the judge
+//     results into the deterministic dimension dispatch and recompute
+//     the overall score / passed verdict
+//  5. Persists the finalized scorecard + judge result rows in one
+//     transaction via repo.StoreFinalizedScoringResults
+//  6. Emits scoring.judge.recorded events (one per judge) for replay
+//     observability
+//
+// Per-judge errors NEVER abort the activity. The judge evaluator
+// captures them as JudgeResults with state=error and a Reason; the
+// finalize merge leaves the corresponding dim as unavailable; the
+// scorecard ships with state=partial. Operators see the failures via
+// the events and the persisted error-state rows.
+func executeJudgeRunAgent(
+	ctx context.Context,
+	repo RunRepository,
+	judgeEvaluator *judge.Evaluator,
+	runAgentID uuid.UUID,
+	deterministicEvaluation scoring.RunAgentEvaluation,
+) (scoring.RunAgentEvaluation, error) {
+	// Fast-path 1: no evaluator wired (test fixtures, dev workers
+	// without provider credentials). Return the deterministic
+	// evaluation unchanged and skip all DB / event work.
+	if judgeEvaluator == nil {
+		return deterministicEvaluation, nil
+	}
+
+	executionContext, err := repo.GetRunAgentExecutionContextByID(ctx, runAgentID)
+	if err != nil {
+		return deterministicEvaluation, fmt.Errorf("load run-agent execution context for judges: %w", err)
+	}
+
+	manifestSpec, err := scoring.LoadEvaluationSpec(executionContext.ChallengePackVersion.Manifest)
+	if err != nil {
+		return deterministicEvaluation, fmt.Errorf("load evaluation spec for judges: %w", err)
+	}
+
+	// Fast-path 2: spec declares no judges. The deterministic
+	// evaluation is already the final answer.
+	if len(manifestSpec.LLMJudges) == 0 {
+		return deterministicEvaluation, nil
+	}
+
+	specRecord, err := ensurePersistedEvaluationSpec(ctx, repo, executionContext.ChallengePackVersion.ID, manifestSpec)
+	if err != nil {
+		return deterministicEvaluation, fmt.Errorf("load persisted evaluation spec for judges: %w", err)
+	}
+	persistedSpec, err := scoring.DecodeDefinition(specRecord.Definition)
+	if err != nil {
+		return deterministicEvaluation, fmt.Errorf("decode persisted evaluation spec for judges: %w", err)
+	}
+
+	events, err := repo.ListRunEventsByRunAgentID(ctx, runAgentID)
+	if err != nil {
+		return deterministicEvaluation, fmt.Errorf("list run events for judges: %w", err)
+	}
+	scoringEvents := mapRunEvents(events)
+	finalOutput := scoring.ExtractFinalOutputFromEvents(scoringEvents)
+
+	judgeResult, judgeErr := judgeEvaluator.Evaluate(ctx, judge.Input{
+		RunAgentID:       runAgentID,
+		EvaluationSpecID: specRecord.ID,
+		Judges:           persistedSpec.LLMJudges,
+		FinalOutput:      finalOutput,
+	})
+	if judgeErr != nil {
+		// Top-level evaluator errors are rare (the per-judge error
+		// path captures provider failures cleanly). Surface as a
+		// warning and continue with whatever results we got.
+		deterministicEvaluation.Warnings = append(deterministicEvaluation.Warnings,
+			fmt.Sprintf("judge evaluator returned error: %v", judgeErr))
+	}
+	if len(judgeResult.Warnings) > 0 {
+		deterministicEvaluation.Warnings = append(deterministicEvaluation.Warnings, judgeResult.Warnings...)
+	}
+
+	finalized := scoring.FinalizeRunAgentEvaluation(deterministicEvaluation, persistedSpec, judgeResult.JudgeResults)
+
+	if err := repo.StoreFinalizedScoringResults(ctx, finalized, judgeResult.JudgeResults); err != nil {
+		return deterministicEvaluation, fmt.Errorf("persist finalized scoring results: %w", err)
+	}
+
+	if err := recordJudgeEvents(ctx, repo, executionContext.Run.ID, finalized.RunAgentID, finalized.EvaluationSpecID, judgeResult.JudgeResults); err != nil {
+		// Persisted judge rows are the source of truth. Failure to
+		// emit derived events should not flip an otherwise successful
+		// finalize into a fatal error after writes are durable.
+		finalized.Warnings = append(finalized.Warnings, fmt.Sprintf("record judge events: %v", err))
+	}
+
+	return finalized, nil
+}
+
+// recordJudgeEvents emits one scoring.judge.recorded event per judge
+// result so the replay timeline shows judge progress alongside
+// deterministic scoring events. Mirrors the per-metric event loop in
+// recordScoringEvents but with judge-specific payload fields.
+func recordJudgeEvents(
+	ctx context.Context,
+	repo RunRepository,
+	runID uuid.UUID,
+	runAgentID uuid.UUID,
+	evaluationSpecID uuid.UUID,
+	judgeResults []scoring.JudgeResult,
+) error {
+	for _, jr := range judgeResults {
+		payload := map[string]any{
+			"evaluation_spec_id": evaluationSpecID,
+			"judge_key":          jr.Key,
+			"mode":               jr.Mode,
+			"state":              jr.State,
+			"sample_count":       jr.SampleCount,
+			"model_count":        jr.ModelCount,
+		}
+		if jr.NormalizedScore != nil {
+			payload["normalized_score"] = *jr.NormalizedScore
+		}
+		if jr.Confidence != "" {
+			payload["confidence"] = jr.Confidence
+		}
+		if jr.Reason != "" {
+			payload["reason"] = jr.Reason
+		}
+
+		if _, err := repo.RecordRunEvent(ctx, repository.RecordRunEventParams{
+			Event: runevents.Envelope{
+				EventID:       fmt.Sprintf("scoring:%s:%s:judge:%s", runAgentID, evaluationSpecID, jr.Key),
+				SchemaVersion: runevents.SchemaVersionV1,
+				RunID:         runID,
+				RunAgentID:    runAgentID,
+				EventType:     runevents.EventTypeScoringJudgeRecorded,
+				Source:        runevents.SourceWorkerScoring,
+				OccurredAt:    time.Now().UTC(),
+				Payload:       mustMarshalJSON(payload),
+				Summary: runevents.SummaryMetadata{
+					Status:        string(jr.State),
+					EvidenceLevel: runevents.EvidenceLevelDerivedSummary,
+				},
+			},
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
 }

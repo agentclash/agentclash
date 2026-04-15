@@ -12,6 +12,7 @@ import (
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/provider"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/scoring"
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/scoring/judge"
 	"github.com/google/uuid"
 	"go.temporal.io/sdk/temporal"
 )
@@ -30,6 +31,7 @@ const (
 	executeNativeModelStepActivityName       = "workflow.execute_native_model_step"
 	executePromptEvalStepActivityName        = "workflow.execute_prompt_eval_step"
 	scoreRunAgentActivityName                = "workflow.score_run_agent"
+	judgeRunAgentActivityName                = "workflow.judge_run_agent"
 	buildRunScorecardActivityName            = "workflow.build_run_scorecard"
 	buildRunAgentReplayActivityName          = "workflow.build_run_agent_replay"
 	simulateExecutionActivityName            = "workflow.simulate_execution"
@@ -65,8 +67,9 @@ type PromptEvalInvoker interface {
 }
 
 type Activities struct {
-	repo  RunRepository
-	hooks FakeWorkHooks
+	repo           RunRepository
+	hooks          FakeWorkHooks
+	judgeEvaluator *judge.Evaluator
 }
 
 type LoadRunInput struct {
@@ -127,6 +130,17 @@ type ScoreRunAgentInput struct {
 	RunAgentID uuid.UUID `json:"run_agent_id"`
 }
 
+// JudgeRunAgentInput is the input for the JudgeRunAgent activity. The
+// run-workflow captures the deterministic evaluation returned by
+// ScoreRunAgent and threads it here so the activity can call
+// scoring.FinalizeRunAgentEvaluation without re-running the
+// deterministic pipeline. RunAgentID lets the activity load the spec
+// + events independently for the judge prompt envelope.
+type JudgeRunAgentInput struct {
+	RunAgentID              uuid.UUID                  `json:"run_agent_id"`
+	DeterministicEvaluation scoring.RunAgentEvaluation `json:"deterministic_evaluation"`
+}
+
 type BuildRunScorecardInput struct {
 	RunID uuid.UUID `json:"run_id"`
 }
@@ -136,6 +150,22 @@ func NewActivities(repo RunRepository, hooks FakeWorkHooks) *Activities {
 		repo:  repo,
 		hooks: hooks,
 	}
+}
+
+// WithJudgeEvaluator returns a copy of Activities with the LLM-as-judge
+// evaluator attached. Use the functional-option pattern so existing
+// tests that don't need judges (the vast majority of workflow tests)
+// keep constructing Activities via NewActivities and rely on the
+// nil-safe fallback in JudgeRunAgent. The Phase 4 worker bootstrap
+// chains this on top of NewActivities to enable judge mode.
+//
+// Returns a fresh *Activities; the receiver is unchanged so the
+// original (nil-evaluator) reference is still usable for tests that
+// share an activities fixture between cases.
+func (a *Activities) WithJudgeEvaluator(evaluator *judge.Evaluator) *Activities {
+	cloned := *a
+	cloned.judgeEvaluator = evaluator
+	return &cloned
 }
 
 func (a *Activities) LoadRun(ctx context.Context, input LoadRunInput) (domain.Run, error) {
@@ -286,6 +316,36 @@ func (a *Activities) BuildRunAgentReplay(ctx context.Context, input BuildRunAgen
 func (a *Activities) ScoreRunAgent(ctx context.Context, input ScoreRunAgentInput) (scoring.RunAgentEvaluation, error) {
 	evaluation, err := executeRunAgentEvaluation(ctx, a.repo, input.RunAgentID)
 	return evaluation, wrapActivityError(err)
+}
+
+// JudgeRunAgent runs the LLM-as-judge evaluator for a single run-agent
+// after deterministic scoring has completed. The deterministic
+// evaluation comes through input.DeterministicEvaluation (returned by
+// ScoreRunAgent and threaded by the workflow), which means this
+// activity does not re-run the deterministic pipeline.
+//
+// Phase 4 of issue #148 satisfies the "judge evaluation runs as a
+// separate Temporal activity" acceptance criterion via this single
+// new activity. Per-judge fan-out (multi-sample, multi-model) lives
+// inside judge.Evaluator and is bounded by Config.MaxParallel.
+//
+// Three fast-path returns leave the deterministic evaluation
+// unchanged:
+//
+//  1. judgeEvaluator is nil — test fixtures and dev workers without
+//     judge wiring fall through here.
+//  2. The persisted spec declares no LLMJudges — deterministic-only
+//     packs incur zero judge overhead.
+//  3. No final_output is available in the event stream — judges have
+//     nothing to evaluate; the deterministic result is the final
+//     verdict.
+//
+// In all three cases the activity returns the input evaluation
+// unchanged with no DB writes. The workflow uses the returned
+// evaluation as the authoritative final scorecard.
+func (a *Activities) JudgeRunAgent(ctx context.Context, input JudgeRunAgentInput) (scoring.RunAgentEvaluation, error) {
+	finalized, err := executeJudgeRunAgent(ctx, a.repo, a.judgeEvaluator, input.RunAgentID, input.DeterministicEvaluation)
+	return finalized, wrapActivityError(err)
 }
 
 func (a *Activities) BuildRunScorecard(ctx context.Context, input BuildRunScorecardInput) (repository.RunScorecard, error) {

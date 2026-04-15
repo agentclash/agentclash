@@ -8,6 +8,7 @@ import (
 
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/provider"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/scoring/judge"
 	workflowpkg "github.com/Atharva-Kanherkar/agentclash/backend/internal/workflow"
 	temporalsdk "go.temporal.io/sdk/client"
 	sdkworker "go.temporal.io/sdk/worker"
@@ -20,20 +21,39 @@ type TemporalWorker interface {
 
 // executionHooks is the temporary extension seam for later hosted and native
 // execution work without reshaping worker bootstrap.
+//
+// providerRouter is passed by value (provider.Router is a struct, not an
+// interface). The playground activities take a provider.Client; Router
+// satisfies Client so the same value is reused there. The judge
+// evaluator wants the Router directly because Phase 7 may want
+// per-judge routing decisions that go beyond the single InvokeModel
+// surface — keeping the type narrow now would force a refactor later.
 func NewTemporalWorker(
 	client temporalsdk.Client,
 	cfg Config,
 	repo *repository.Repository,
-	playgroundClient provider.Client,
+	providerRouter provider.Router,
 	executionHooks workflowpkg.FakeWorkHooks,
 ) sdkworker.Worker {
 	temporalWorker := sdkworker.New(client, cfg.TaskQueue, sdkworker.Options{
 		Identity: cfg.Identity,
 	})
 
-	activities := workflowpkg.NewActivities(repo, executionHooks)
+	// Wire the LLM-as-judge evaluator (#148 phase 4) onto the
+	// scoring activities. JudgeCredentialReference comes from worker
+	// config (env var with default env://ANTHROPIC_API_KEY) and
+	// applies to every judge call until Phase 7 introduces per-pack
+	// credential overrides via ScorecardDeclaration.JudgeProviderRef.
+	judgeEvaluator := judge.NewEvaluator(providerRouter, judge.Config{
+		MaxParallel:           4,
+		DefaultAssertionModel: "claude-haiku-4-5-20251001",
+		CredentialReference:   cfg.JudgeCredentialReference,
+		DefaultTimeout:        60 * time.Second,
+	})
+
+	activities := workflowpkg.NewActivities(repo, executionHooks).WithJudgeEvaluator(judgeEvaluator)
 	workflowpkg.Register(temporalWorker, activities)
-	workflowpkg.RegisterPlayground(temporalWorker, workflowpkg.NewPlaygroundActivities(repo, playgroundClient, repo))
+	workflowpkg.RegisterPlayground(temporalWorker, workflowpkg.NewPlaygroundActivities(repo, providerRouter, repo))
 
 	return temporalWorker
 }

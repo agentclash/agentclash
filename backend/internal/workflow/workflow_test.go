@@ -1023,6 +1023,19 @@ func (r *fakeRunRepository) StoreRunAgentEvaluationResults(_ context.Context, ev
 	return nil
 }
 
+func (r *fakeRunRepository) StoreFinalizedScoringResults(_ context.Context, evaluation scoring.RunAgentEvaluation, judgeResults []scoring.JudgeResult) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	// The Phase 4 finalize path overwrites the deterministic
+	// evaluation persisted by StoreRunAgentEvaluationResults so the
+	// fake mirrors the real semantics: the latest write wins for
+	// the same run-agent.
+	r.evaluations[evaluation.RunAgentID] = evaluation
+	r.callLog = append(r.callLog, fmt.Sprintf("StoreFinalizedScoringResults:%s:%d", evaluation.RunAgentID, len(judgeResults)))
+	return nil
+}
+
 func (r *fakeRunRepository) BuildRunScorecard(_ context.Context, runID uuid.UUID) (repository.RunScorecard, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

@@ -39,6 +39,7 @@ const (
 
 	EventTypeScoringStarted        Type = "scoring.started"
 	EventTypeScoringMetricRecorded Type = "scoring.metric.recorded"
+	EventTypeScoringJudgeRecorded  Type = "scoring.judge.recorded"
 	EventTypeScoringCompleted      Type = "scoring.completed"
 	EventTypeScoringFailed         Type = "scoring.failed"
 )
@@ -161,6 +162,7 @@ func isValidType(eventType Type) bool {
 		EventTypeSandboxFileListed,
 		EventTypeScoringStarted,
 		EventTypeScoringMetricRecorded,
+		EventTypeScoringJudgeRecorded,
 		EventTypeScoringCompleted,
 		EventTypeScoringFailed:
 		return true

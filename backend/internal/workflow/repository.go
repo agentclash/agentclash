@@ -31,6 +31,7 @@ type RunRepository interface {
 	ListRunEventsByRunAgentID(ctx context.Context, runAgentID uuid.UUID) ([]repository.RunEvent, error)
 	RecordRunEvent(ctx context.Context, params repository.RecordRunEventParams) (repository.RunEvent, error)
 	StoreRunAgentEvaluationResults(ctx context.Context, evaluation scoring.RunAgentEvaluation) error
+	StoreFinalizedScoringResults(ctx context.Context, evaluation scoring.RunAgentEvaluation, judgeResults []scoring.JudgeResult) error
 	BuildRunScorecard(ctx context.Context, runID uuid.UUID) (repository.RunScorecard, error)
 	BuildRunAgentReplay(ctx context.Context, runAgentID uuid.UUID) (repository.RunAgentReplay, error)
 	SetRunTemporalIDs(ctx context.Context, params repository.SetRunTemporalIDsParams) (domain.Run, error)

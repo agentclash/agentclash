@@ -16,7 +16,13 @@ import (
 const (
 	defaultActivityTimeout = 5 * time.Second
 	scoreRunAgentTimeout   = 30 * time.Second
-	fakeStageDelay         = 1 * time.Second
+	// judgeRunAgentTimeout caps the LLM-as-judge fan-out per agent.
+	// Multi-sample × multi-model judges can run several minutes when
+	// providers are slow; 5 minutes is the safety ceiling. Phase 4 of
+	// issue #148 introduces this activity; Phase 6 will revisit when
+	// run-level n_wise needs an even longer ceiling.
+	judgeRunAgentTimeout = 5 * time.Minute
+	fakeStageDelay       = 1 * time.Second
 )
 
 var defaultActivityOptions = sdkworkflow.ActivityOptions{
@@ -154,22 +160,86 @@ func scoreEvaluatingRunAgents(ctx sdkworkflow.Context, runAgents []domain.RunAge
 			InitialInterval: 5 * time.Second,
 		},
 	})
-	selector := sdkworkflow.NewSelector(ctx)
-	completedActivities := 0
+	// First pass: ScoreRunAgent in parallel. We capture the
+	// deterministic evaluations so the judge phase can finalize
+	// them without re-running the deterministic pipeline.
+	deterministicEvaluations := make(map[uuid.UUID]scoring.RunAgentEvaluation, len(completedRunAgents))
+	scoreSelector := sdkworkflow.NewSelector(ctx)
+	completedScoreActivities := 0
 
 	for _, runAgent := range completedRunAgents {
 		runAgent := runAgent
 		future := sdkworkflow.ExecuteActivity(scoreCtx, scoreRunAgentActivityName, ScoreRunAgentInput{
 			RunAgentID: runAgent.ID,
 		})
-		selector.AddFuture(future, func(f sdkworkflow.Future) {
-			completedActivities++
+		scoreSelector.AddFuture(future, func(f sdkworkflow.Future) {
+			completedScoreActivities++
 
 			evaluation, err := scoreRunAgentResult(ctx, f)
 			switch {
 			case err != nil:
 				outcomes[runAgent.ID] = "errored"
-			case evaluation.Status == scoring.EvaluationStatusPartial:
+			default:
+				deterministicEvaluations[runAgent.ID] = evaluation
+				if evaluation.Status == scoring.EvaluationStatusPartial {
+					outcomes[runAgent.ID] = "partial"
+				} else {
+					outcomes[runAgent.ID] = "scored"
+				}
+			}
+		})
+	}
+
+	for completedScoreActivities < len(completedRunAgents) {
+		scoreSelector.Select(ctx)
+	}
+
+	// Second pass: JudgeRunAgent (#148 phase 4). Runs only for
+	// agents that completed deterministic scoring successfully.
+	// The activity is nil-safe at the worker layer — it is a
+	// fast no-op when the spec has no LLM judges or when the
+	// worker isn't wired with an evaluator (test fixtures, dev
+	// loops without provider creds). The outcome is overwritten
+	// based on the FINALIZED evaluation, which may upgrade a
+	// partial result back to scored once judge dims become
+	// available.
+	judgeCtx := sdkworkflow.WithActivityOptions(ctx, sdkworkflow.ActivityOptions{
+		StartToCloseTimeout: judgeRunAgentTimeout,
+		RetryPolicy: &temporal.RetryPolicy{
+			MaximumAttempts:    3,
+			InitialInterval:    10 * time.Second,
+			BackoffCoefficient: 2.0,
+		},
+	})
+	judgeSelector := sdkworkflow.NewSelector(ctx)
+	judgeAgentCount := 0
+	completedJudgeActivities := 0
+	for _, runAgent := range completedRunAgents {
+		detEval, ok := deterministicEvaluations[runAgent.ID]
+		if !ok {
+			// ScoreRunAgent errored — nothing for the judge to merge.
+			continue
+		}
+		judgeAgentCount++
+		runAgent := runAgent
+		future := sdkworkflow.ExecuteActivity(judgeCtx, judgeRunAgentActivityName, JudgeRunAgentInput{
+			RunAgentID:              runAgent.ID,
+			DeterministicEvaluation: detEval,
+		})
+		judgeSelector.AddFuture(future, func(f sdkworkflow.Future) {
+			completedJudgeActivities++
+			finalized, err := scoreRunAgentResult(ctx, f)
+			switch {
+			case err != nil:
+				// Judge activity itself failed — leave the outcome
+				// from the deterministic pass in place, log for
+				// observability. The scorecard is already persisted
+				// from the deterministic write.
+				sdkworkflow.GetLogger(ctx).Warn("judge run-agent activity failed",
+					"run_agent_id", runAgent.ID.String(),
+					"error", err,
+				)
+			case finalized.Status == scoring.EvaluationStatusPartial:
 				outcomes[runAgent.ID] = "partial"
 			default:
 				outcomes[runAgent.ID] = "scored"
@@ -177,8 +247,8 @@ func scoreEvaluatingRunAgents(ctx sdkworkflow.Context, runAgents []domain.RunAge
 		})
 	}
 
-	for completedActivities < len(completedRunAgents) {
-		selector.Select(ctx)
+	for completedJudgeActivities < judgeAgentCount {
+		judgeSelector.Select(ctx)
 	}
 
 	for _, runAgent := range completedRunAgents {

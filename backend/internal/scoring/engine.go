@@ -3,7 +3,6 @@ package scoring
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"sort"
 	"time"
@@ -151,8 +150,6 @@ type JudgeResult struct {
 	Payload         json.RawMessage `json:"payload,omitempty"`
 }
 
-var errJudgeModeUnsupported = errors.New("only deterministic evaluation specs are supported")
-
 func DecodeDefinition(definition json.RawMessage) (EvaluationSpec, error) {
 	if len(bytes.TrimSpace(definition)) == 0 {
 		return EvaluationSpec{}, ValidationErrors{{Field: "evaluation_spec.definition", Message: "is required"}}
@@ -170,13 +167,23 @@ func DecodeDefinition(definition json.RawMessage) (EvaluationSpec, error) {
 	return spec, nil
 }
 
+// EvaluateRunAgent runs the deterministic scoring pipeline (validators,
+// metrics, dimension dispatch, overall score) over a single run-agent's
+// evidence. Phase 4 of issue #148 removed the previous JudgeMode gate:
+// llm_judge and hybrid mode specs now run through this function and
+// produce a partial evaluation whose llm_judge-sourced dimensions come
+// back as OutputStateUnavailable. The workflow layer then calls
+// FinalizeRunAgentEvaluation with real judge results to merge those
+// dims and recompute the overall score.
+//
+// Callers that only need the deterministic result (no judge evaluator
+// wired) pass judgeResults=nil to FinalizeRunAgentEvaluation and get
+// a no-op merge — the returned evaluation stays as the partial shape
+// produced here.
 func EvaluateRunAgent(input EvaluationInput, spec EvaluationSpec) (RunAgentEvaluation, error) {
 	normalizeEvaluationSpec(&spec)
 	if err := ValidateEvaluationSpec(spec); err != nil {
 		return RunAgentEvaluation{}, err
-	}
-	if spec.JudgeMode != JudgeModeDeterministic {
-		return RunAgentEvaluation{}, errJudgeModeUnsupported
 	}
 
 	events := append([]Event(nil), input.Events...)
@@ -235,6 +242,154 @@ func EvaluateRunAgent(input EvaluationInput, spec EvaluationSpec) (RunAgentEvalu
 		Strategy:         spec.Scorecard.Strategy,
 		Warnings:         uniqueStrings(warnings),
 	}, nil
+}
+
+// FinalizeRunAgentEvaluation merges LLM-as-judge results into an
+// existing deterministic evaluation and recomputes the overall score
+// and passed verdict. Phase 4 of issue #148 introduces this function
+// as the pure-function counterpart to the Temporal JudgeRunAgent
+// activity: the activity runs the judge evaluator, then calls this
+// helper to produce the finalized RunAgentEvaluation that gets
+// persisted back to run_agent_scorecards.
+//
+// For each dimension with Source=llm_judge, the matching JudgeResult
+// (looked up by JudgeKey) replaces the placeholder unavailable entry
+// that EvaluateRunAgent emitted. The DimensionScores map is rebuilt
+// from the updated results, Status is recomputed from the new states,
+// and computeOverallScore is re-run so OverallScore / Passed /
+// OverallReason reflect the merged picture.
+//
+// Deterministic-only runs (no judges declared) pass judgeResults=nil
+// and get a no-op — the input evaluation is returned unchanged. This
+// keeps the workflow code path identical regardless of whether a
+// spec declares judges.
+//
+// Pure function: no DB access, no context, no side effects. Safe to
+// call from tests and from anywhere in the activity pipeline.
+func FinalizeRunAgentEvaluation(
+	evaluation RunAgentEvaluation,
+	spec EvaluationSpec,
+	judgeResults []JudgeResult,
+) RunAgentEvaluation {
+	if len(judgeResults) == 0 {
+		return evaluation
+	}
+
+	// Build a lookup of judge results by key so the dimension walk
+	// below is O(dims) rather than O(dims × judges).
+	judgeByKey := make(map[string]JudgeResult, len(judgeResults))
+	for _, jr := range judgeResults {
+		judgeByKey[jr.Key] = jr
+	}
+
+	// Index the dimensions in the spec by key so we can look up the
+	// source + judge_key binding without a linear scan per dim.
+	dimByKey := make(map[string]DimensionDeclaration, len(spec.Scorecard.Dimensions))
+	for _, d := range spec.Scorecard.Dimensions {
+		dimByKey[d.Key] = d
+	}
+
+	// Walk the existing dimension results and merge llm_judge-sourced
+	// entries in place. Copy the slice first so we don't mutate the
+	// caller's data.
+	updatedDimensionResults := make([]DimensionResult, len(evaluation.DimensionResults))
+	copy(updatedDimensionResults, evaluation.DimensionResults)
+	for i := range updatedDimensionResults {
+		result := &updatedDimensionResults[i]
+		decl, ok := dimByKey[result.Dimension]
+		if !ok || decl.Source != DimensionSourceLLMJudge {
+			continue
+		}
+		jr, found := judgeByKey[decl.JudgeKey]
+		if !found {
+			// Judge didn't execute — leave the unavailable stub in
+			// place. The release gate already handles missing
+			// required dimensions via #147 phase 4 wiring.
+			continue
+		}
+		result.State = jr.State
+		result.Score = cloneFloatPtr(jr.NormalizedScore)
+		result.Reason = jr.Reason
+	}
+
+	// Rebuild DimensionScores from the updated results so downstream
+	// readers (repository, API) see the merged picture.
+	updatedDimensionScores := make(map[string]*float64, len(updatedDimensionResults))
+	for _, result := range updatedDimensionResults {
+		updatedDimensionScores[result.Dimension] = cloneFloatPtr(result.Score)
+	}
+
+	// Recompute status based on the new dim state distribution.
+	status := EvaluationStatusComplete
+	if len(updatedDimensionResults) == 0 {
+		status = EvaluationStatusPartial
+	}
+	hasDimensionScore := false
+	for _, dimension := range updatedDimensionResults {
+		if dimension.State != OutputStateAvailable {
+			status = EvaluationStatusPartial
+		}
+		if dimension.Score != nil {
+			hasDimensionScore = true
+		}
+	}
+	if !hasDimensionScore {
+		status = EvaluationStatusPartial
+	}
+
+	overallScore, passed, overallReason := computeOverallScore(spec, updatedDimensionResults)
+
+	// Return a fresh RunAgentEvaluation to avoid mutating the input.
+	// Validator/metric results are shared by reference — they're
+	// immutable downstream and copying would waste allocations.
+	finalized := evaluation
+	finalized.Status = status
+	finalized.DimensionResults = updatedDimensionResults
+	finalized.DimensionScores = updatedDimensionScores
+	finalized.OverallScore = overallScore
+	finalized.Passed = passed
+	finalized.OverallReason = overallReason
+	return finalized
+}
+
+// cloneFloatPtr returns a deep copy of a nullable float pointer so
+// the finalized evaluation doesn't alias the caller's data.
+func cloneFloatPtr(value *float64) *float64 {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
+}
+
+// ExtractFinalOutputFromEvents walks a run-agent's event stream and
+// returns the final_output recorded by system.output.finalized or
+// system.run.completed. Empty string if no such event carries the
+// field. Mirrors the subset of buildEvidence logic that the Phase 4
+// JudgeRunAgent activity needs to compose a judge.Input without
+// re-running the full deterministic evaluation.
+//
+// The walk is order-stable: events are iterated in the order
+// supplied. Callers that need chronological ordering must sort the
+// slice before calling (EvaluateRunAgent already sorts internally;
+// the Phase 4 activity re-uses that sorted slice via the same
+// ListRunEventsByRunAgentID repository helper).
+func ExtractFinalOutputFromEvents(events []Event) string {
+	for _, event := range events {
+		if event.Type != "system.output.finalized" && event.Type != "system.run.completed" {
+			continue
+		}
+		payload := decodePayload(event.Payload)
+		if output, ok := stringValue(payload, "final_output"); ok {
+			return output
+		}
+		if event.Type == "system.output.finalized" {
+			if output, ok := extractLooseString(payload["output"]); ok {
+				return output
+			}
+		}
+	}
+	return ""
 }
 
 type scoredDimension struct {

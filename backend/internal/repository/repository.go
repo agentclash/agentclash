@@ -691,6 +691,156 @@ func (r *Repository) StoreRunAgentEvaluationResults(ctx context.Context, evaluat
 	return nil
 }
 
+// StoreFinalizedScoringResults rewrites the run-agent scorecard and
+// writes llm_judge_results rows after the Phase 4 JudgeRunAgent
+// activity has merged judge verdicts into the deterministic
+// evaluation via scoring.FinalizeRunAgentEvaluation.
+//
+// Split from StoreRunAgentEvaluationResults intentionally:
+//
+//   - ScoreRunAgent runs first and writes validators + metrics +
+//     provisional scorecard via StoreRunAgentEvaluationResults. That
+//     scorecard carries llm_judge dims as unavailable.
+//   - JudgeRunAgent runs second, merges the judge results into the
+//     evaluation, and calls this method to refresh the scorecard row
+//     with the finalized overall_score / scorecard_passed plus the
+//     judge_results rows.
+//
+// Every write is an idempotent upsert, so a retry of either activity
+// converges on the same persisted state. The scorecard row and the
+// llm_judge_results rows go in one transaction so a partial write
+// can't leave a new scorecard row pointing at stale judge data.
+//
+// Error-state judge results are persisted with nil NormalizedScore
+// and mode-matching payload so operators can see "judge X failed
+// three times" in the llm_judge_results table instead of losing
+// that signal to ephemeral warnings. See #148 phase 4 Q3 decision.
+func (r *Repository) StoreFinalizedScoringResults(
+	ctx context.Context,
+	evaluation scoring.RunAgentEvaluation,
+	judgeResults []scoring.JudgeResult,
+) error {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin finalized scoring result transaction: %w", err)
+	}
+	defer rollback(ctx, tx)
+
+	queries := r.queries.WithTx(tx)
+
+	scorecard, err := buildRunAgentScorecardDocument(evaluation)
+	if err != nil {
+		return fmt.Errorf("marshal finalized run-agent scorecard: %w", err)
+	}
+
+	overallScore, err := numericFromFloat(evaluation.OverallScore)
+	if err != nil {
+		return fmt.Errorf("encode overall score: %w", err)
+	}
+	correctnessScore, err := numericFromFloat(evaluation.DimensionScores[string(scoring.ScorecardDimensionCorrectness)])
+	if err != nil {
+		return fmt.Errorf("encode correctness score: %w", err)
+	}
+	reliabilityScore, err := numericFromFloat(evaluation.DimensionScores[string(scoring.ScorecardDimensionReliability)])
+	if err != nil {
+		return fmt.Errorf("encode reliability score: %w", err)
+	}
+	latencyScore, err := numericFromFloat(evaluation.DimensionScores[string(scoring.ScorecardDimensionLatency)])
+	if err != nil {
+		return fmt.Errorf("encode latency score: %w", err)
+	}
+	costScore, err := numericFromFloat(evaluation.DimensionScores[string(scoring.ScorecardDimensionCost)])
+	if err != nil {
+		return fmt.Errorf("encode cost score: %w", err)
+	}
+
+	if _, err := queries.UpsertRunAgentScorecard(ctx, repositorysqlc.UpsertRunAgentScorecardParams{
+		RunAgentID:       evaluation.RunAgentID,
+		EvaluationSpecID: evaluation.EvaluationSpecID,
+		OverallScore:     overallScore,
+		CorrectnessScore: correctnessScore,
+		ReliabilityScore: reliabilityScore,
+		LatencyScore:     latencyScore,
+		CostScore:        costScore,
+		ScorecardPassed:  cloneBoolPtr(evaluation.Passed),
+		Scorecard:        scorecard,
+	}); err != nil {
+		return fmt.Errorf("upsert finalized run-agent scorecard: %w", err)
+	}
+
+	for _, jr := range judgeResults {
+		params, paramErr := upsertLLMJudgeParamsFromResult(evaluation.RunAgentID, evaluation.EvaluationSpecID, jr)
+		if paramErr != nil {
+			return fmt.Errorf("encode llm judge result %s: %w", jr.Key, paramErr)
+		}
+		if _, err := queries.UpsertLLMJudgeResult(ctx, params); err != nil {
+			return fmt.Errorf("upsert llm judge result %s: %w", jr.Key, err)
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit finalized scoring result transaction: %w", err)
+	}
+	return nil
+}
+
+// upsertLLMJudgeParamsFromResult converts a scoring.JudgeResult into
+// the sqlc params shape for llm_judge_results. Handles the nullable
+// score/confidence/variance fields and normalizes the payload to a
+// non-nil jsonb so the NOT NULL column constraint is always satisfied.
+//
+// Error-state judges (State=OutputStateError) are persisted with
+// nil NormalizedScore and the error reason folded into the payload
+// so downstream readers can filter `normalized_score IS NOT NULL`
+// for runnable results while retaining the failure signal.
+func upsertLLMJudgeParamsFromResult(runAgentID uuid.UUID, evaluationSpecID uuid.UUID, jr scoring.JudgeResult) (repositorysqlc.UpsertLLMJudgeResultParams, error) {
+	normalizedScore, err := numericFromFloat(jr.NormalizedScore)
+	if err != nil {
+		return repositorysqlc.UpsertLLMJudgeResultParams{}, fmt.Errorf("encode normalized score: %w", err)
+	}
+	variance, err := numericFromFloat(varianceNullable(jr.Variance))
+	if err != nil {
+		return repositorysqlc.UpsertLLMJudgeResultParams{}, fmt.Errorf("encode variance: %w", err)
+	}
+
+	payload := cloneJSON(jr.Payload)
+	if len(payload) == 0 {
+		payload = json.RawMessage(`{}`)
+	}
+
+	var confidence *string
+	if jr.Confidence != "" {
+		c := jr.Confidence
+		confidence = &c
+	}
+
+	return repositorysqlc.UpsertLLMJudgeResultParams{
+		RunAgentID:       runAgentID,
+		EvaluationSpecID: evaluationSpecID,
+		JudgeKey:         jr.Key,
+		Mode:             string(jr.Mode),
+		NormalizedScore:  normalizedScore,
+		Payload:          payload,
+		Confidence:       confidence,
+		Variance:         variance,
+		SampleCount:      int32(jr.SampleCount),
+		ModelCount:       int32(jr.ModelCount),
+	}, nil
+}
+
+// varianceNullable returns a pointer to the variance only when it is
+// non-zero. Zero variance means either "no variance signal" (e.g.,
+// assertion mode which doesn't compute variance) or "every sample
+// identical" — in both cases NULL is a better DB representation than
+// 0.0 so downstream queries can distinguish "never measured" from
+// "measured and identical."
+func varianceNullable(variance float64) *float64 {
+	if variance == 0 {
+		return nil
+	}
+	return &variance
+}
+
 func buildRunAgentScorecardDocument(evaluation scoring.RunAgentEvaluation) (json.RawMessage, error) {
 	type dimensionSummary struct {
 		State           scoring.OutputState `json:"state"`

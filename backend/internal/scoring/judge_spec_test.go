@@ -553,9 +553,10 @@ func TestNormalizeEvaluationSpec_JudgeDefaults(t *testing.T) {
 
 // Phase 1 dispatch: an llm_judge-sourced dim must reach the engine via the
 // switch and return OutputStateUnavailable with a reason that mentions the
-// phase gating. This test bypasses EvaluateRunAgent (which is still blocked
-// by errJudgeModeUnsupported for non-deterministic judge_mode) and calls
-// evaluateDimensions directly — legal because both live in the same package.
+// phase gating. Phase 4 kept the stub dispatch (the judge evaluator is
+// called OUTSIDE the engine, and FinalizeRunAgentEvaluation merges the
+// results afterwards) so this assertion still holds when EvaluateRunAgent
+// runs without a judge merge step.
 func TestEvaluateDimensions_LLMJudgeStubIsUnavailable(t *testing.T) {
 	spec := EvaluationSpec{
 		Scorecard: ScorecardDeclaration{
@@ -580,13 +581,22 @@ func TestEvaluateDimensions_LLMJudgeStubIsUnavailable(t *testing.T) {
 	}
 }
 
-// The runtime gate at engine.go:147 still rejects llm_judge/hybrid specs
-// end-to-end in Phase 1. This test pins that contract so Phase 4 deliberately
-// has to flip it. When the gate comes out, this test should be replaced
-// with an end-to-end assertion instead of deleted silently.
-func TestEvaluateRunAgent_RuntimeGateStillRejectsNonDeterministic(t *testing.T) {
+// Phase 4 removed the errJudgeModeUnsupported runtime gate from
+// EvaluateRunAgent. llm_judge and hybrid judge_mode specs now run
+// through the deterministic pipeline and produce a partial
+// RunAgentEvaluation whose llm_judge-sourced dimensions come back
+// as OutputStateUnavailable. The workflow layer then calls
+// FinalizeRunAgentEvaluation with real judge results from the
+// JudgeRunAgent activity to merge those dims and recompute overall.
+//
+// This test pins the post-gate-removal contract: the engine accepts
+// the spec, returns a non-error evaluation, and the llm_judge dim
+// surfaces as unavailable with the phase-3+ stub reason. If Phase 5
+// or later wires the evaluator directly into EvaluateRunAgent, this
+// test is what catches the behavioural change.
+func TestEvaluateRunAgent_LLMJudgeModeRunsWithoutGate(t *testing.T) {
 	spec := EvaluationSpec{
-		Name:          "gated",
+		Name:          "ungated",
 		VersionNumber: 1,
 		JudgeMode:     JudgeModeLLMJudge,
 		Validators: []ValidatorDeclaration{
@@ -594,23 +604,30 @@ func TestEvaluateRunAgent_RuntimeGateStillRejectsNonDeterministic(t *testing.T) 
 		},
 		LLMJudges: []LLMJudgeDeclaration{
 			{
-				Mode:   JudgeMethodRubric,
-				Key:    "persuasiveness",
-				Rubric: "Rate the output 1-5 on clarity, correctness, and completeness of the reasoning.",
-				Model:  "claude-sonnet-4-6",
+				Mode:      JudgeMethodAssertion,
+				Key:       "professional_tone",
+				Assertion: "The response maintains a professional tone.",
+				Model:     "claude-haiku-4-5-20251001",
 			},
 		},
 		Scorecard: ScorecardDeclaration{
 			Dimensions: []DimensionDeclaration{
-				{Key: "q", Source: DimensionSourceLLMJudge, JudgeKey: "persuasiveness"},
+				{Key: "q", Source: DimensionSourceLLMJudge, JudgeKey: "professional_tone"},
 			},
 		},
 	}
-	_, err := EvaluateRunAgent(EvaluationInput{}, spec)
-	if err == nil {
-		t.Fatal("EvaluateRunAgent accepted llm_judge spec — gate should still reject in Phase 1")
+	evaluation, err := EvaluateRunAgent(EvaluationInput{}, spec)
+	if err != nil {
+		t.Fatalf("EvaluateRunAgent rejected llm_judge spec: %v", err)
 	}
-	if !strings.Contains(err.Error(), "only deterministic") {
-		t.Fatalf("error = %q, want the errJudgeModeUnsupported message", err.Error())
+	if len(evaluation.DimensionResults) != 1 {
+		t.Fatalf("dimension results = %d, want 1", len(evaluation.DimensionResults))
+	}
+	dim := evaluation.DimensionResults[0]
+	if dim.State != OutputStateUnavailable {
+		t.Fatalf("dim state = %q, want unavailable (pre-finalize stub)", dim.State)
+	}
+	if !strings.Contains(dim.Reason, "judge evaluator") {
+		t.Fatalf("dim reason = %q, want to mention judge evaluator stub", dim.Reason)
 	}
 }
