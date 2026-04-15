@@ -286,10 +286,9 @@ func TestExtractFinalOutputFromEvents_FromRunCompletedEvent(t *testing.T) {
 	}
 }
 
-func TestExtractFinalOutputFromEvents_PrefersFinalizedEventFirst(t *testing.T) {
-	// When both events carry a final_output, the first one in the
-	// event stream wins. ExtractFinalOutputFromEvents is order-
-	// stable by design — callers that need chronology sort upstream.
+func TestExtractFinalOutputFromEvents_PrefersTerminalFinalOutput(t *testing.T) {
+	// When both events carry a final_output, the terminal event
+	// should win so helper callers match buildEvidence.
 	events := []Event{
 		{
 			Type:       "system.output.finalized",
@@ -303,8 +302,8 @@ func TestExtractFinalOutputFromEvents_PrefersFinalizedEventFirst(t *testing.T) {
 		},
 	}
 	got := ExtractFinalOutputFromEvents(events)
-	if got != "early" {
-		t.Errorf("got %q, want early", got)
+	if got != "late" {
+		t.Errorf("got %q, want late", got)
 	}
 }
 

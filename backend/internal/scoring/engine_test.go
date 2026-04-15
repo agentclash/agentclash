@@ -222,6 +222,17 @@ func TestEvaluateRunAgentMarksInvalidRegexAsValidatorError(t *testing.T) {
 	}
 }
 
+func TestExtractFinalOutputFromEventsPrefersTerminalFinalOutput(t *testing.T) {
+	events := []Event{
+		{Type: "system.output.finalized", Payload: []byte(`{"output":"draft answer"}`)},
+		{Type: "system.run.completed", Payload: []byte(`{"final_output":"final answer"}`)},
+	}
+
+	if got := ExtractFinalOutputFromEvents(events); got != "final answer" {
+		t.Fatalf("final output = %q, want %q", got, "final answer")
+	}
+}
+
 func TestEvaluateRunAgentComputesValidatorPassRateAfterValidators(t *testing.T) {
 	spec := EvaluationSpec{
 		Name:          "fixture",

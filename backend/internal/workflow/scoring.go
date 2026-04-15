@@ -399,6 +399,9 @@ func executeJudgeRunAgent(
 	}
 	scoringEvents := mapRunEvents(events)
 	finalOutput := scoring.ExtractFinalOutputFromEvents(scoringEvents)
+	if finalOutput == "" {
+		return deterministicEvaluation, nil
+	}
 
 	judgeResult, judgeErr := judgeEvaluator.Evaluate(ctx, judge.Input{
 		RunAgentID:       runAgentID,

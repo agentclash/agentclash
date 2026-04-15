@@ -375,21 +375,23 @@ func cloneFloatPtr(value *float64) *float64 {
 // the Phase 4 activity re-uses that sorted slice via the same
 // ListRunEventsByRunAgentID repository helper).
 func ExtractFinalOutputFromEvents(events []Event) string {
+	var finalOutput string
 	for _, event := range events {
 		if event.Type != "system.output.finalized" && event.Type != "system.run.completed" {
 			continue
 		}
 		payload := decodePayload(event.Payload)
 		if output, ok := stringValue(payload, "final_output"); ok {
-			return output
+			finalOutput = output
+			continue
 		}
 		if event.Type == "system.output.finalized" {
 			if output, ok := extractLooseString(payload["output"]); ok {
-				return output
+				finalOutput = output
 			}
 		}
 	}
-	return ""
+	return finalOutput
 }
 
 type scoredDimension struct {

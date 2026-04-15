@@ -16,6 +16,7 @@ import (
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/provider"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/scoring"
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/scoring/judge"
 	"github.com/google/uuid"
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/temporal"
@@ -1331,6 +1332,89 @@ func fixtureRun(runID uuid.UUID, status domain.RunStatus) domain.Run {
 		ExecutionPlan: []byte(`{}`),
 		CreatedAt:     createdAt,
 		UpdatedAt:     createdAt,
+	}
+}
+
+func TestExecuteJudgeRunAgentSkipsJudgesWhenFinalOutputMissing(t *testing.T) {
+	runID := uuid.New()
+	runAgentID := uuid.New()
+	repo := newFakeRunRepository(
+		fixtureRun(runID, domain.RunStatusRunning),
+		fixtureRunAgent(runID, runAgentID, 0),
+	)
+	repo.setExecutionContext(runAgentID, repository.RunAgentExecutionContext{
+		Run:      fixtureRun(runID, domain.RunStatusRunning),
+		RunAgent: fixtureRunAgent(runID, runAgentID, 0),
+		ChallengePackVersion: repository.ChallengePackVersionExecutionContext{
+			ID: uuid.New(),
+			Manifest: []byte(`{
+				"evaluation_spec": {
+					"name": "fixture-eval",
+					"version_number": 1,
+					"judge_mode": "llm_judge",
+					"validators": [
+						{
+							"key": "final-output-match",
+							"type": "exact_match",
+							"target": "final_output",
+							"expected_from": "challenge_input"
+						}
+					],
+					"scorecard": {
+						"dimensions": ["correctness"]
+					},
+					"llm_judges": [
+						{
+							"key": "rubric-judge",
+							"mode": "rubric",
+							"model": "test-model",
+							"rubric": "score the answer"
+						}
+					]
+				}
+			}`),
+		},
+	})
+	repo.runEvents[runAgentID] = []repository.RunEvent{
+		{
+			RunID:      runID,
+			RunAgentID: runAgentID,
+			EventType:  "system.run.started",
+			OccurredAt: time.Now().UTC(),
+			Payload:    []byte(`{}`),
+		},
+	}
+
+	deterministicEvaluation := scoring.RunAgentEvaluation{
+		RunAgentID:       runAgentID,
+		EvaluationSpecID: uuid.New(),
+		Status:           scoring.EvaluationStatusPartial,
+		Warnings:         []string{"deterministic warning"},
+	}
+
+	finalized, err := executeJudgeRunAgent(
+		context.Background(),
+		repo,
+		judge.NewEvaluator(provider.NewRouter(nil), judge.Config{}),
+		runAgentID,
+		deterministicEvaluation,
+	)
+	if err != nil {
+		t.Fatalf("executeJudgeRunAgent returned error: %v", err)
+	}
+	if finalized.Status != deterministicEvaluation.Status {
+		t.Fatalf("evaluation status = %s, want %s", finalized.Status, deterministicEvaluation.Status)
+	}
+	if len(finalized.Warnings) != 1 || finalized.Warnings[0] != "deterministic warning" {
+		t.Fatalf("warnings = %v, want %v", finalized.Warnings, deterministicEvaluation.Warnings)
+	}
+	for _, call := range repo.callLog {
+		if strings.HasPrefix(call, "StoreFinalizedScoringResults:") {
+			t.Fatalf("unexpected finalized scoring write: %s", call)
+		}
+		if call == "RecordRunEvent:scoring.judge.recorded" {
+			t.Fatalf("unexpected judge event write")
+		}
 	}
 }
 
