@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
 
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/email"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -51,6 +53,7 @@ type ListWorkspaceMembershipsResult struct {
 
 type WorkspaceMembershipRepository interface {
 	GetOrganizationIDByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) (uuid.UUID, error)
+	GetWorkspaceByID(ctx context.Context, workspaceID uuid.UUID) (repository.WorkspaceRow, error)
 	ListWorkspaceMemberships(ctx context.Context, workspaceID uuid.UUID, limit, offset int32) ([]repository.WorkspaceMembershipFullRow, error)
 	CountWorkspaceMemberships(ctx context.Context, workspaceID uuid.UUID) (int64, error)
 	GetUserByEmail(ctx context.Context, email string) (repository.User, error)
@@ -64,11 +67,13 @@ type WorkspaceMembershipRepository interface {
 }
 
 type WorkspaceMembershipManager struct {
-	repo WorkspaceMembershipRepository
+	repo        WorkspaceMembershipRepository
+	emailSender email.Sender
+	frontendURL string
 }
 
-func NewWorkspaceMembershipManager(repo WorkspaceMembershipRepository) *WorkspaceMembershipManager {
-	return &WorkspaceMembershipManager{repo: repo}
+func NewWorkspaceMembershipManager(repo WorkspaceMembershipRepository, emailSender email.Sender, frontendURL string) *WorkspaceMembershipManager {
+	return &WorkspaceMembershipManager{repo: repo, emailSender: emailSender, frontendURL: frontendURL}
 }
 
 func (m *WorkspaceMembershipManager) ListWorkspaceMemberships(ctx context.Context, caller Caller, workspaceID uuid.UUID, limit, offset int32) (ListWorkspaceMembershipsResult, error) {
@@ -152,6 +157,7 @@ func (m *WorkspaceMembershipManager) InviteWorkspaceMember(ctx context.Context, 
 		if err != nil {
 			return WorkspaceMembershipResult{}, err
 		}
+		m.sendInviteEmail(ctx, caller, workspaceID, input.Email, input.Role)
 		return wsMembershipRowToResult(result), nil
 	}
 	if !errors.Is(err, repository.ErrMembershipNotFound) {
@@ -168,6 +174,7 @@ func (m *WorkspaceMembershipManager) InviteWorkspaceMember(ctx context.Context, 
 		return WorkspaceMembershipResult{}, err
 	}
 
+	m.sendInviteEmail(ctx, caller, workspaceID, input.Email, input.Role)
 	return wsMembershipRowToResult(result), nil
 }
 
@@ -239,6 +246,31 @@ func (m *WorkspaceMembershipManager) UpdateWorkspaceMembership(ctx context.Conte
 	}
 
 	return wsMembershipRowToResult(result), nil
+}
+
+func (m *WorkspaceMembershipManager) sendInviteEmail(ctx context.Context, caller Caller, workspaceID uuid.UUID, inviteeEmail, role string) {
+	workspace, err := m.repo.GetWorkspaceByID(ctx, workspaceID)
+	if err != nil {
+		slog.Default().Warn("failed to load workspace for invite email", "workspace_id", workspaceID, "error", err)
+		return
+	}
+
+	inviterEmail := caller.Email
+	if inviterEmail == "" {
+		inviterEmail = "a team member"
+	}
+
+	acceptURL := fmt.Sprintf("%s/dashboard", m.frontendURL)
+
+	if err := m.emailSender.SendInvite(ctx, email.InviteEmail{
+		To:            inviteeEmail,
+		WorkspaceName: workspace.Name,
+		InviterEmail:  inviterEmail,
+		Role:          role,
+		AcceptURL:     acceptURL,
+	}); err != nil {
+		slog.Default().Warn("failed to send invite email", "to", inviteeEmail, "workspace_id", workspaceID, "error", err)
+	}
 }
 
 func (m *WorkspaceMembershipManager) authorizeAccess(ctx context.Context, caller Caller, workspaceID uuid.UUID) error {

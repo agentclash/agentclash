@@ -61,10 +61,13 @@ type Config struct {
 	ArtifactSignedURLTTL     time.Duration
 	ArtifactMaxUploadBytes   int64
 	SecretsCipher            *secrets.AESGCMCipher
-	RateLimitRPS             float64
-	RateLimitBurst           int
-	RateLimitRunCreationRPM  float64
+	RateLimitRPS              float64
+	RateLimitBurst            int
+	RateLimitRunCreationRPM   float64
 	RateLimitRunCreationBurst int
+	ResendAPIKey              string
+	ResendFromEmail           string
+	FrontendURL               string
 }
 
 func LoadConfigFromEnv() (Config, error) {
@@ -151,6 +154,13 @@ func LoadConfigFromEnv() (Config, error) {
 		return Config{}, err
 	}
 
+	resendAPIKey := os.Getenv("RESEND_API_KEY")
+	resendFromEmail := os.Getenv("RESEND_FROM_EMAIL")
+	frontendURL := os.Getenv("FRONTEND_URL")
+	if frontendURL == "" {
+		frontendURL = "http://localhost:3000"
+	}
+
 	cfg := Config{
 		AppEnvironment:           appEnvironment,
 		AuthMode:                 authMode,
@@ -178,6 +188,9 @@ func LoadConfigFromEnv() (Config, error) {
 		RateLimitBurst:            defaultRateLimitBurst,
 		RateLimitRunCreationRPM:   defaultRateLimitRunCreationRPM,
 		RateLimitRunCreationBurst: defaultRateLimitRunCreationBurst,
+		ResendAPIKey:              resendAPIKey,
+		ResendFromEmail:           resendFromEmail,
+		FrontendURL:               frontendURL,
 	}
 
 	if err := validateArtifactConfig(cfg); err != nil {

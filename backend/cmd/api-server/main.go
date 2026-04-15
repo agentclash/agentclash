@@ -9,6 +9,7 @@ import (
 
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/api"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/budget"
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/email"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/pubsub"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/storage"
@@ -102,7 +103,16 @@ func main() {
 	orgManager := api.NewOrganizationManager(orgAuthz, repo)
 	wsManager := api.NewWorkspaceManager(orgAuthz, repo)
 	orgMembershipManager := api.NewOrgMembershipManager(orgAuthz, repo)
-	wsMembershipManager := api.NewWorkspaceMembershipManager(repo)
+
+	var emailSender email.Sender
+	if cfg.ResendAPIKey != "" {
+		emailSender = email.NewResendSender(cfg.ResendAPIKey, cfg.ResendFromEmail)
+		logger.Info("email sender: resend")
+	} else {
+		emailSender = email.NoopSender{}
+		logger.Info("email sender: noop (RESEND_API_KEY not set)")
+	}
+	wsMembershipManager := api.NewWorkspaceMembershipManager(repo, emailSender, cfg.FrontendURL)
 	onboardingManager := api.NewOnboardingManager(repo)
 	infraManager := api.NewInfrastructureManager(repo)
 	workspaceSecretsManager := api.NewWorkspaceSecretsManager(repo)
