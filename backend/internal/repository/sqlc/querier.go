@@ -26,6 +26,7 @@ type Querier interface {
 	GetAgentBuildByID(ctx context.Context, arg GetAgentBuildByIDParams) (AgentBuild, error)
 	GetAgentBuildVersionByID(ctx context.Context, arg GetAgentBuildVersionByIDParams) (AgentBuildVersion, error)
 	GetChallengeInputSetByID(ctx context.Context, arg GetChallengeInputSetByIDParams) (ChallengeInputSet, error)
+	ListChallengeInputSetsByVersionID(ctx context.Context, arg ListChallengeInputSetsByVersionIDParams) ([]ListChallengeInputSetsByVersionIDRow, error)
 	GetEvaluationSpecByChallengePackVersionAndVersion(ctx context.Context, arg GetEvaluationSpecByChallengePackVersionAndVersionParams) (EvaluationSpec, error)
 	GetEvaluationSpecByID(ctx context.Context, arg GetEvaluationSpecByIDParams) (EvaluationSpec, error)
 	GetHostedRunExecutionByRunAgentID(ctx context.Context, arg GetHostedRunExecutionByRunAgentIDParams) (HostedRunExecution, error)
