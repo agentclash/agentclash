@@ -31,6 +31,7 @@ const (
 	executeNativeModelStepActivityName       = "workflow.execute_native_model_step"
 	executePromptEvalStepActivityName        = "workflow.execute_prompt_eval_step"
 	scoreRunAgentActivityName                = "workflow.score_run_agent"
+	judgeRunActivityName                     = "workflow.judge_run"
 	judgeRunAgentActivityName                = "workflow.judge_run_agent"
 	buildRunScorecardActivityName            = "workflow.build_run_scorecard"
 	buildRunAgentReplayActivityName          = "workflow.build_run_agent_replay"
@@ -136,9 +137,50 @@ type ScoreRunAgentInput struct {
 // scoring.FinalizeRunAgentEvaluation without re-running the
 // deterministic pipeline. RunAgentID lets the activity load the spec
 // + events independently for the judge prompt envelope.
+//
+// NWiseJudgeResults carries the per-agent slice of n_wise judge
+// results produced by the run-level JudgeRun activity (#148 phase 6).
+// Empty when the spec declares no n_wise judges or when JudgeRun was
+// skipped (test fixtures, no evaluator wired). JudgeRunAgent merges
+// these with the per-agent judges before calling
+// scoring.FinalizeRunAgentEvaluation and persists them in the same
+// StoreFinalizedScoringResults transaction as the per-agent rows, so
+// a retry of JudgeRunAgent produces the same final state.
 type JudgeRunAgentInput struct {
 	RunAgentID              uuid.UUID                  `json:"run_agent_id"`
 	DeterministicEvaluation scoring.RunAgentEvaluation `json:"deterministic_evaluation"`
+	NWiseJudgeResults       []scoring.JudgeResult      `json:"nwise_judge_results,omitempty"`
+}
+
+// JudgeRunInput is the input for the JudgeRun activity. It runs ONCE
+// per run-workflow (not per agent) because n_wise judges compare
+// multiple agents in a single LLM call and need cross-agent context.
+// The workflow passes the list of run-agent IDs that completed
+// deterministic scoring; the activity loads each agent's final
+// output, runs every n_wise judge, and returns the per-agent results
+// for the per-agent JudgeRunAgent activity to merge into the final
+// scorecard.
+//
+// Phase 6 of issue #148 introduces this activity.
+type JudgeRunInput struct {
+	RunID       uuid.UUID   `json:"run_id"`
+	RunAgentIDs []uuid.UUID `json:"run_agent_ids"`
+}
+
+// JudgeRunOutput is the output of the JudgeRun activity. PerAgent
+// maps run_agent_id to the n_wise judge results for that agent
+// (one entry per n_wise judge in the spec). The workflow splits
+// this map and threads each agent's slice into JudgeRunAgentInput.
+// Warnings is appended to each agent's deterministic evaluation via
+// JudgeRunAgent. The map is empty when:
+//
+//   - The spec declares no n_wise judges.
+//   - The evaluator is not wired (test fixtures, dev workers).
+//   - Every agent has an empty final output (no ranking is possible).
+//   - Fewer than 2 agents produced output (n_wise requires N >= 2).
+type JudgeRunOutput struct {
+	PerAgent map[uuid.UUID][]scoring.JudgeResult `json:"per_agent"`
+	Warnings []string                            `json:"warnings,omitempty"`
 }
 
 type BuildRunScorecardInput struct {
@@ -344,8 +386,37 @@ func (a *Activities) ScoreRunAgent(ctx context.Context, input ScoreRunAgentInput
 // unchanged with no DB writes. The workflow uses the returned
 // evaluation as the authoritative final scorecard.
 func (a *Activities) JudgeRunAgent(ctx context.Context, input JudgeRunAgentInput) (scoring.RunAgentEvaluation, error) {
-	finalized, err := executeJudgeRunAgent(ctx, a.repo, a.judgeEvaluator, input.RunAgentID, input.DeterministicEvaluation)
+	finalized, err := executeJudgeRunAgent(ctx, a.repo, a.judgeEvaluator, input.RunAgentID, input.DeterministicEvaluation, input.NWiseJudgeResults)
 	return finalized, wrapActivityError(err)
+}
+
+// JudgeRun runs the run-level LLM-as-judge pass (n_wise mode) across
+// every agent that completed deterministic scoring. It is scheduled
+// ONCE per run-workflow, between ScoreRunAgent and JudgeRunAgent,
+// because n_wise judges compare multiple agents in a single LLM call
+// and need cross-agent context that a per-agent activity cannot
+// assemble.
+//
+// Phase 6 of issue #148 introduces this activity.
+//
+// Fast-path returns leave the output empty (zero-value map/warnings)
+// when any of the following hold, and JudgeRunAgent treats an empty
+// slice as a no-op so the deterministic path still completes:
+//
+//  1. judgeEvaluator is nil — tests / dev workers without judges.
+//  2. The persisted spec declares no n_wise judges.
+//  3. Fewer than 2 agents produced a non-empty final_output.
+//
+// The activity does NOT write to the database directly. The per-agent
+// n_wise results flow into JudgeRunAgentInput and are persisted in
+// the same StoreFinalizedScoringResults transaction as the per-agent
+// judge results, keeping the write path idempotent: a retry of
+// JudgeRunAgent rewrites its own n_wise rows from scratch, and a
+// retry of JudgeRun re-runs the LLM calls and produces a fresh slice
+// that the next JudgeRunAgent invocation overwrites.
+func (a *Activities) JudgeRun(ctx context.Context, input JudgeRunInput) (JudgeRunOutput, error) {
+	output, err := executeJudgeRun(ctx, a.repo, a.judgeEvaluator, input.RunID, input.RunAgentIDs)
+	return output, wrapActivityError(err)
 }
 
 func (a *Activities) BuildRunScorecard(ctx context.Context, input BuildRunScorecardInput) (repository.RunScorecard, error) {

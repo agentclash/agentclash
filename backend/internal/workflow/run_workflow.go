@@ -19,10 +19,16 @@ const (
 	// judgeRunAgentTimeout caps the LLM-as-judge fan-out per agent.
 	// Multi-sample × multi-model judges can run several minutes when
 	// providers are slow; 5 minutes is the safety ceiling. Phase 4 of
-	// issue #148 introduces this activity; Phase 6 will revisit when
-	// run-level n_wise needs an even longer ceiling.
+	// issue #148 introduces this activity.
 	judgeRunAgentTimeout = 5 * time.Minute
-	fakeStageDelay       = 1 * time.Second
+	// judgeRunTimeout caps the run-level n_wise pass. Phase 6 of
+	// issue #148 allows a longer ceiling than per-agent because a
+	// single n_wise judge covers ALL agents in one LLM call, and a
+	// pack with multiple n_wise judges × multiple samples × long
+	// final_outputs can easily exceed 5 minutes. 10 minutes gives
+	// headroom without blocking the workflow forever.
+	judgeRunTimeout = 10 * time.Minute
+	fakeStageDelay  = 1 * time.Second
 )
 
 var defaultActivityOptions = sdkworkflow.ActivityOptions{
@@ -194,7 +200,48 @@ func scoreEvaluatingRunAgents(ctx sdkworkflow.Context, runAgents []domain.RunAge
 		scoreSelector.Select(ctx)
 	}
 
-	// Second pass: JudgeRunAgent (#148 phase 4). Runs only for
+	// Second pass: JudgeRun (#148 phase 6). Runs at the run level
+	// (NOT per-agent) because n_wise judges need cross-agent context.
+	// The activity is a fast no-op when the spec declares no n_wise
+	// judges or when fewer than 2 agents scored successfully. The
+	// per-agent slice returned here is threaded into each
+	// JudgeRunAgent call below so n_wise and per-agent results land
+	// in the same StoreFinalizedScoringResults transaction.
+	runLevelJudgeCtx := sdkworkflow.WithActivityOptions(ctx, sdkworkflow.ActivityOptions{
+		StartToCloseTimeout: judgeRunTimeout,
+		RetryPolicy: &temporal.RetryPolicy{
+			MaximumAttempts:    3,
+			InitialInterval:    10 * time.Second,
+			BackoffCoefficient: 2.0,
+		},
+	})
+	scoredAgentIDs := make([]uuid.UUID, 0, len(deterministicEvaluations))
+	for _, runAgent := range completedRunAgents {
+		if _, ok := deterministicEvaluations[runAgent.ID]; ok {
+			scoredAgentIDs = append(scoredAgentIDs, runAgent.ID)
+		}
+	}
+	nwiseByAgent := map[uuid.UUID][]scoring.JudgeResult{}
+	if len(scoredAgentIDs) > 0 {
+		var runLevelOutput JudgeRunOutput
+		if err := sdkworkflow.ExecuteActivity(runLevelJudgeCtx, judgeRunActivityName, JudgeRunInput{
+			RunID:       runAgents[0].RunID,
+			RunAgentIDs: scoredAgentIDs,
+		}).Get(ctx, &runLevelOutput); err != nil {
+			// n_wise activity failures are non-fatal for the run — the
+			// per-agent path still runs with an empty n_wise slice and
+			// the scorecard ships as partial when the spec required
+			// n_wise dims.
+			sdkworkflow.GetLogger(ctx).Warn("judge run activity failed",
+				"run_id", runAgents[0].RunID.String(),
+				"error", err,
+			)
+		} else if runLevelOutput.PerAgent != nil {
+			nwiseByAgent = runLevelOutput.PerAgent
+		}
+	}
+
+	// Third pass: JudgeRunAgent (#148 phase 4). Runs only for
 	// agents that completed deterministic scoring successfully.
 	// The activity is nil-safe at the worker layer — it is a
 	// fast no-op when the spec has no LLM judges or when the
@@ -225,6 +272,7 @@ func scoreEvaluatingRunAgents(ctx sdkworkflow.Context, runAgents []domain.RunAge
 		future := sdkworkflow.ExecuteActivity(judgeCtx, judgeRunAgentActivityName, JudgeRunAgentInput{
 			RunAgentID:              runAgent.ID,
 			DeterministicEvaluation: detEval,
+			NWiseJudgeResults:       nwiseByAgent[runAgent.ID],
 		})
 		judgeSelector.AddFuture(future, func(f sdkworkflow.Future) {
 			completedJudgeActivities++

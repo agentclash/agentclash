@@ -69,6 +69,20 @@ type Config struct {
 	// with. Pack authors can still override per-judge.
 	DefaultRubricModel string
 
+	// DefaultNWiseModel is the provider model used when an n_wise
+	// judge omits both Model and Models. Defaults to claude-sonnet-4-6
+	// for the same reason as rubric: n_wise ranking needs structured
+	// output and cross-agent reasoning. Pack authors can override.
+	DefaultNWiseModel string
+
+	// NWiseMaxOutputChars caps the per-agent final_output character
+	// count rendered inside an n_wise prompt. Defaults to 4000.
+	// Outputs longer than this are truncated with a [... truncated ...]
+	// marker and the evaluator pushes a warning listing the affected
+	// agents. Matches the analysis doc Part 10 guidance for preventing
+	// context-window blowups when a run has several verbose agents.
+	NWiseMaxOutputChars int
+
 	// Providers maps model identifier → provider.Router key. Explicit
 	// entries take precedence over the well-known prefix fallback in
 	// resolveProviderKey. Use this when a pack wants to pin a specific
@@ -170,6 +184,12 @@ func NewEvaluator(router provider.Router, cfg Config) *Evaluator {
 	if cfg.DefaultRubricModel == "" {
 		cfg.DefaultRubricModel = "claude-sonnet-4-6"
 	}
+	if cfg.DefaultNWiseModel == "" {
+		cfg.DefaultNWiseModel = "claude-sonnet-4-6"
+	}
+	if cfg.NWiseMaxOutputChars <= 0 {
+		cfg.NWiseMaxOutputChars = 4000
+	}
 	if cfg.DefaultTimeout <= 0 {
 		cfg.DefaultTimeout = 60 * time.Second
 	}
@@ -179,22 +199,38 @@ func NewEvaluator(router provider.Router, cfg Config) *Evaluator {
 	return &Evaluator{router: router, cfg: cfg}
 }
 
-// Evaluate runs every declared judge for the given agent and returns
+// Evaluate runs every PER-AGENT judge for the given agent and returns
 // one scoring.JudgeResult per judge_key in the same order as
 // in.Judges. Per-judge failures are captured as error-state results,
 // NOT returned as errors, so the caller receives one Result per
 // Evaluate call and every judge gets its own JudgeResult row in the
 // Phase 4 persistence path.
 //
+// n_wise judges are SKIPPED here — they run at the run level via
+// Evaluator.EvaluateNWise (Phase 6) because the per-agent Input has
+// no cross-agent access. The workflow-side activity splits the
+// spec's judges by mode and dispatches each set to the right entry
+// point. Silently skipping (rather than emitting an unavailable
+// stub) keeps the per-agent result list clean for persistence — the
+// n_wise results come from a separate UpsertLLMJudgeResult loop in
+// the JudgeRun activity.
+//
 // The error return is reserved for Evaluate-wide failures (ctx
 // cancellation before any judge runs, internal invariants). In
-// Phase 3 practice it is always nil; Phase 4+ may introduce Evaluate-
-// wide errors tied to the activity contract.
+// practice it is always nil; Phase 4+ may introduce Evaluate-wide
+// errors tied to the activity contract.
 func (e *Evaluator) Evaluate(ctx context.Context, in Input) (Result, error) {
 	results := make([]scoring.JudgeResult, 0, len(in.Judges))
 	warnings := make([]string, 0)
 
 	for _, judge := range in.Judges {
+		// Skip n_wise judges — they run at the run level via
+		// EvaluateNWise. Leaving them out of per-agent results keeps
+		// the persistence path idempotent (the n_wise rows come from
+		// the JudgeRun activity, not the per-agent JudgeRunAgent).
+		if judge.Mode == scoring.JudgeMethodNWise {
+			continue
+		}
 		if ctx.Err() != nil {
 			// Remaining judges are marked cancelled so the caller sees
 			// a clear record of what ran vs. what was skipped. The
@@ -225,8 +261,13 @@ func (e *Evaluator) Evaluate(ctx context.Context, in Input) (Result, error) {
 
 // evaluateOne dispatches to the mode-specific handler. Phase 3
 // shipped assertion; Phase 5 wires rubric + reference through the
-// shared evaluateRubric path; n_wise remains a phase-gated
-// placeholder until Phase 6 adds the run-level activity.
+// shared evaluateRubric path; n_wise is NOT dispatched here because
+// it operates at run-level (not per-agent) and needs a different
+// entry point — the Phase 6 JudgeRun activity calls
+// Evaluator.EvaluateNWise directly with all agents' final outputs.
+// Per-agent Evaluate.Input has no cross-agent access, so n_wise
+// judges passed through Evaluate skip over to an unavailable stub
+// with a phase-gated reason pointing at the run-level path.
 func (e *Evaluator) evaluateOne(ctx context.Context, judge scoring.LLMJudgeDeclaration, in Input) scoring.JudgeResult {
 	switch judge.Mode {
 	case scoring.JudgeMethodAssertion:
@@ -234,11 +275,15 @@ func (e *Evaluator) evaluateOne(ctx context.Context, judge scoring.LLMJudgeDecla
 	case scoring.JudgeMethodRubric, scoring.JudgeMethodReference:
 		return e.evaluateRubric(ctx, judge, in)
 	case scoring.JudgeMethodNWise:
+		// n_wise is run-level. Evaluate (per-agent) filters these
+		// out before reaching dispatch; this stub defends against
+		// callers that pass an n_wise judge through the per-agent
+		// path anyway (e.g., programmatic test fixtures).
 		return scoring.JudgeResult{
 			Key:    judge.Key,
 			Mode:   judge.Mode,
-			State:  scoring.OutputStateUnavailable,
-			Reason: "n_wise mode arrives in #148 phase 6",
+			State:  scoring.OutputStateError,
+			Reason: "n_wise judges run via Evaluator.EvaluateNWise at the run level, not per-agent Evaluate",
 		}
 	default:
 		return scoring.JudgeResult{

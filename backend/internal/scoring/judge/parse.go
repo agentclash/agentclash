@@ -76,22 +76,30 @@ func init() {
 	defaultRubricSchema = &schema
 }
 
-// resolveRubricSchema returns the schema the evaluator should use when
-// validating a rubric/reference response. Priority:
+// resolveJudgeSchema returns the schema the evaluator should use when
+// validating a judge response. Priority:
 //
-//  1. judge.OutputSchema when non-empty — parsed via the existing
-//     scoring.parseJSONSchema helper (not reachable from here — we
-//     re-implement a tiny equivalent because judge is its own package).
-//  2. defaultRubricSchema otherwise.
+//  1. judge.OutputSchema when non-empty — parsed into a fresh
+//     jsonschema.Schema with the $schema URI cleared so draft-07
+//     schemas route through the 2020-12 validator's overlapping
+//     keyword subset.
+//  2. defaultSchema otherwise — the caller-supplied default for the
+//     mode (rubric uses defaultRubricSchema, n_wise uses
+//     defaultNWiseSchema in Phase 6).
 //
 // Schema parse failures at runtime are unlikely — validation already
 // rejects malformed output_schema values at spec load time (Phase 1
 // rule 8 in validation_judges.go). Defensive parse-retry here just in
 // case a schema slips through.
-func resolveRubricSchema(judge scoring.LLMJudgeDeclaration) (*jsonschema.Schema, error) {
+//
+// Phase 6 renamed this from resolveRubricSchema and added the
+// defaultSchema parameter so rubric/reference (which continue to pass
+// defaultRubricSchema) and n_wise (which passes defaultNWiseSchema)
+// share one codepath. Previously only the rubric default was reachable.
+func resolveJudgeSchema(judge scoring.LLMJudgeDeclaration, defaultSchema *jsonschema.Schema) (*jsonschema.Schema, error) {
 	raw := bytes.TrimSpace(judge.OutputSchema)
 	if len(raw) == 0 {
-		return defaultRubricSchema, nil
+		return defaultSchema, nil
 	}
 	var schema jsonschema.Schema
 	if err := json.Unmarshal(raw, &schema); err != nil {

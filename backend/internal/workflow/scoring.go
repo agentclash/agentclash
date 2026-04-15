@@ -360,11 +360,19 @@ func executeJudgeRunAgent(
 	judgeEvaluator *judge.Evaluator,
 	runAgentID uuid.UUID,
 	deterministicEvaluation scoring.RunAgentEvaluation,
+	nwiseJudgeResults []scoring.JudgeResult,
 ) (scoring.RunAgentEvaluation, error) {
 	// Fast-path 1: no evaluator wired (test fixtures, dev workers
 	// without provider credentials). Return the deterministic
 	// evaluation unchanged and skip all DB / event work.
-	if judgeEvaluator == nil {
+	//
+	// Exception: if the workflow provided n_wise results (which come
+	// from a separately-wired JudgeRun activity), we still need to
+	// finalize and persist them even though the per-agent evaluator
+	// is nil. In practice the two evaluators share a single bootstrap
+	// path, so this branch is a defensive fallthrough rather than a
+	// real execution mode.
+	if judgeEvaluator == nil && len(nwiseJudgeResults) == 0 {
 		return deterministicEvaluation, nil
 	}
 
@@ -378,9 +386,9 @@ func executeJudgeRunAgent(
 		return deterministicEvaluation, fmt.Errorf("load evaluation spec for judges: %w", err)
 	}
 
-	// Fast-path 2: spec declares no judges. The deterministic
-	// evaluation is already the final answer.
-	if len(manifestSpec.LLMJudges) == 0 {
+	// Fast-path 2: spec declares no judges and JudgeRun produced no
+	// n_wise results. The deterministic evaluation is already final.
+	if len(manifestSpec.LLMJudges) == 0 && len(nwiseJudgeResults) == 0 {
 		return deterministicEvaluation, nil
 	}
 
@@ -419,32 +427,50 @@ func executeJudgeRunAgent(
 	resolvedRefs := collectAndResolveJudgeRefs(persistedSpec.LLMJudges, challengeInputs, scoringEvents)
 	challengeInput := resolvedRefs["challenge_input"]
 
-	judgeResult, judgeErr := judgeEvaluator.Evaluate(ctx, judge.Input{
-		RunAgentID:         runAgentID,
-		EvaluationSpecID:   specRecord.ID,
-		Judges:             persistedSpec.LLMJudges,
-		FinalOutput:        finalOutput,
-		ChallengeInput:     challengeInput,
-		ResolvedReferences: resolvedRefs,
-	})
-	if judgeErr != nil {
-		// Top-level evaluator errors are rare (the per-judge error
-		// path captures provider failures cleanly). Surface as a
-		// warning and continue with whatever results we got.
-		deterministicEvaluation.Warnings = append(deterministicEvaluation.Warnings,
-			fmt.Sprintf("judge evaluator returned error: %v", judgeErr))
-	}
-	if len(judgeResult.Warnings) > 0 {
-		deterministicEvaluation.Warnings = append(deterministicEvaluation.Warnings, judgeResult.Warnings...)
+	// Phase 6 (#148): per-agent Evaluate filters out n_wise judges
+	// internally, so we always pass the full LLMJudges slice here
+	// and later concatenate the pre-computed n_wise results from
+	// the JudgeRun activity. When the evaluator is nil (defensive
+	// branch for the n_wise-only fast path), skip per-agent Evaluate
+	// entirely and finalize with just the n_wise results.
+	var perAgentResults []scoring.JudgeResult
+	if judgeEvaluator != nil {
+		judgeResult, judgeErr := judgeEvaluator.Evaluate(ctx, judge.Input{
+			RunAgentID:         runAgentID,
+			EvaluationSpecID:   specRecord.ID,
+			Judges:             persistedSpec.LLMJudges,
+			FinalOutput:        finalOutput,
+			ChallengeInput:     challengeInput,
+			ResolvedReferences: resolvedRefs,
+		})
+		if judgeErr != nil {
+			// Top-level evaluator errors are rare (the per-judge error
+			// path captures provider failures cleanly). Surface as a
+			// warning and continue with whatever results we got.
+			deterministicEvaluation.Warnings = append(deterministicEvaluation.Warnings,
+				fmt.Sprintf("judge evaluator returned error: %v", judgeErr))
+		}
+		if len(judgeResult.Warnings) > 0 {
+			deterministicEvaluation.Warnings = append(deterministicEvaluation.Warnings, judgeResult.Warnings...)
+		}
+		perAgentResults = judgeResult.JudgeResults
 	}
 
-	finalized := scoring.FinalizeRunAgentEvaluation(deterministicEvaluation, persistedSpec, judgeResult.JudgeResults)
+	// Merge per-agent + n_wise results. FinalizeRunAgentEvaluation
+	// expects every LLMJudgeDeclaration in the spec to be represented
+	// exactly once, so the combined slice becomes the authoritative
+	// input for both the dim-dispatch merge and the persistence path.
+	mergedResults := make([]scoring.JudgeResult, 0, len(perAgentResults)+len(nwiseJudgeResults))
+	mergedResults = append(mergedResults, perAgentResults...)
+	mergedResults = append(mergedResults, nwiseJudgeResults...)
 
-	if err := repo.StoreFinalizedScoringResults(ctx, finalized, judgeResult.JudgeResults); err != nil {
+	finalized := scoring.FinalizeRunAgentEvaluation(deterministicEvaluation, persistedSpec, mergedResults)
+
+	if err := repo.StoreFinalizedScoringResults(ctx, finalized, mergedResults); err != nil {
 		return deterministicEvaluation, fmt.Errorf("persist finalized scoring results: %w", err)
 	}
 
-	if err := recordJudgeEvents(ctx, repo, executionContext.Run.ID, finalized.RunAgentID, finalized.EvaluationSpecID, judgeResult.JudgeResults); err != nil {
+	if err := recordJudgeEvents(ctx, repo, executionContext.Run.ID, finalized.RunAgentID, finalized.EvaluationSpecID, mergedResults); err != nil {
 		// Persisted judge rows are the source of truth. Failure to
 		// emit derived events should not flip an otherwise successful
 		// finalize into a fatal error after writes are durable.
@@ -452,6 +478,157 @@ func executeJudgeRunAgent(
 	}
 
 	return finalized, nil
+}
+
+// executeJudgeRun runs the run-level n_wise judge pass for all agents
+// in runAgentIDs. Called by the JudgeRun Temporal activity once per
+// run-workflow, between ScoreRunAgent and JudgeRunAgent. Returns a
+// map of per-agent n_wise results that the workflow threads into each
+// JudgeRunAgentInput.NWiseJudgeResults.
+//
+// Fast-path returns leave the output empty and return (_, nil) when:
+//
+//  1. judgeEvaluator is nil — tests / dev workers without creds.
+//  2. len(runAgentIDs) < 2 — n_wise needs at least 2 agents.
+//  3. The persisted spec has no n_wise judges.
+//  4. Every agent's final_output is empty.
+//
+// The activity does NOT write to the database; persistence happens
+// inside JudgeRunAgent via StoreFinalizedScoringResults to keep every
+// row in the same transaction as the run-agent's scorecard.
+//
+// Error handling: loading a single agent's events or execution
+// context failing is treated as a missing agent — we warn, skip that
+// agent, and proceed with the others. A failure to load the spec
+// itself propagates up so Temporal retries the activity.
+func executeJudgeRun(
+	ctx context.Context,
+	repo RunRepository,
+	judgeEvaluator *judge.Evaluator,
+	runID uuid.UUID,
+	runAgentIDs []uuid.UUID,
+) (JudgeRunOutput, error) {
+	empty := JudgeRunOutput{PerAgent: map[uuid.UUID][]scoring.JudgeResult{}}
+
+	if judgeEvaluator == nil {
+		return empty, nil
+	}
+	if len(runAgentIDs) < 2 {
+		return empty, nil
+	}
+
+	// Load the spec once from the first agent's execution context.
+	// Every agent in a run shares the same challenge pack version, so
+	// the persisted evaluation spec is identical across agents.
+	firstContext, err := repo.GetRunAgentExecutionContextByID(ctx, runAgentIDs[0])
+	if err != nil {
+		return empty, fmt.Errorf("load first run-agent execution context for n_wise judges: %w", err)
+	}
+	manifestSpec, err := scoring.LoadEvaluationSpec(firstContext.ChallengePackVersion.Manifest)
+	if err != nil {
+		return empty, fmt.Errorf("load evaluation spec for n_wise judges: %w", err)
+	}
+
+	nwiseJudges := filterNWiseJudges(manifestSpec.LLMJudges)
+	if len(nwiseJudges) == 0 {
+		return empty, nil
+	}
+
+	specRecord, err := ensurePersistedEvaluationSpec(ctx, repo, firstContext.ChallengePackVersion.ID, manifestSpec)
+	if err != nil {
+		return empty, fmt.Errorf("load persisted evaluation spec for n_wise judges: %w", err)
+	}
+	persistedSpec, err := scoring.DecodeDefinition(specRecord.Definition)
+	if err != nil {
+		return empty, fmt.Errorf("decode persisted evaluation spec for n_wise judges: %w", err)
+	}
+	persistedNWise := filterNWiseJudges(persistedSpec.LLMJudges)
+	if len(persistedNWise) == 0 {
+		return empty, nil
+	}
+
+	// Collect each agent's final output. Agents with load errors or
+	// empty outputs are skipped; a warning records the exclusion so
+	// operators can distinguish "agent crashed early" from "judge
+	// chose to ignore this agent".
+	var warnings []string
+	agents := make([]judge.NWiseAgent, 0, len(runAgentIDs))
+	var firstEventsForRefs []scoring.Event
+	for _, runAgentID := range runAgentIDs {
+		events, err := repo.ListRunEventsByRunAgentID(ctx, runAgentID)
+		if err != nil {
+			warnings = append(warnings, fmt.Sprintf("n_wise: failed to list events for %s: %v", runAgentID, err))
+			continue
+		}
+		scoringEvents := mapRunEvents(events)
+		finalOutput := scoring.ExtractFinalOutputFromEvents(scoringEvents)
+		if finalOutput == "" {
+			warnings = append(warnings, fmt.Sprintf("n_wise: skipping %s (empty final output)", runAgentID))
+			continue
+		}
+		if firstEventsForRefs == nil {
+			firstEventsForRefs = scoringEvents
+		}
+		agents = append(agents, judge.NWiseAgent{
+			RunAgentID:  runAgentID,
+			FinalOutput: finalOutput,
+		})
+	}
+
+	if len(agents) < 2 {
+		warnings = append(warnings, fmt.Sprintf("n_wise: only %d agent(s) with non-empty output; need >= 2", len(agents)))
+		return JudgeRunOutput{
+			PerAgent: map[uuid.UUID][]scoring.JudgeResult{},
+			Warnings: warnings,
+		}, nil
+	}
+
+	// Resolve shared references (challenge_input, case.*). N_wise
+	// judges rank across agents, so the reference context is
+	// necessarily run-scoped — pick the first successfully-loaded
+	// run-agent's evidence set.
+	challengeInputs, mapErr := mapChallengeInputs(firstContext.ChallengePackVersion.Manifest, firstContext.ChallengeInputSet)
+	if mapErr != nil {
+		warnings = append(warnings, fmt.Sprintf("n_wise: map challenge inputs: %v", mapErr))
+		challengeInputs = nil
+	}
+	resolvedRefs := collectAndResolveJudgeRefs(persistedNWise, challengeInputs, firstEventsForRefs)
+
+	result, err := judgeEvaluator.EvaluateNWise(ctx, judge.NWiseInput{
+		RunID:              runID,
+		EvaluationSpecID:   specRecord.ID,
+		Judges:             persistedNWise,
+		Agents:             agents,
+		ResolvedReferences: resolvedRefs,
+	})
+	if err != nil {
+		return empty, fmt.Errorf("evaluate n_wise judges: %w", err)
+	}
+	if len(result.Warnings) > 0 {
+		warnings = append(warnings, result.Warnings...)
+	}
+	if result.PerAgent == nil {
+		result.PerAgent = map[uuid.UUID][]scoring.JudgeResult{}
+	}
+	return JudgeRunOutput{
+		PerAgent: result.PerAgent,
+		Warnings: warnings,
+	}, nil
+}
+
+// filterNWiseJudges returns the subset of judges whose Mode is
+// n_wise. Used by executeJudgeRun to pass only n_wise judges into the
+// evaluator and to short-circuit the fast path when the spec declares
+// none. Per-agent Evaluate does the equivalent filter internally for
+// the non-nwise modes.
+func filterNWiseJudges(judges []scoring.LLMJudgeDeclaration) []scoring.LLMJudgeDeclaration {
+	out := make([]scoring.LLMJudgeDeclaration, 0, len(judges))
+	for _, j := range judges {
+		if j.Mode == scoring.JudgeMethodNWise {
+			out = append(out, j)
+		}
+	}
+	return out
 }
 
 // collectAndResolveJudgeRefs gathers the union of every judge's

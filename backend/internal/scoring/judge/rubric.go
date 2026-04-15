@@ -85,7 +85,7 @@ func (e *Evaluator) evaluateRubric(ctx context.Context, judge scoring.LLMJudgeDe
 		}
 	}
 
-	schema, schemaErr := resolveRubricSchema(judge)
+	schema, schemaErr := resolveJudgeSchema(judge, defaultRubricSchema)
 	if schemaErr != nil {
 		result.State = scoring.OutputStateError
 		result.Reason = fmt.Sprintf("parse judge output schema: %v", schemaErr)

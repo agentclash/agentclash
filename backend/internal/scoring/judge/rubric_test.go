@@ -155,9 +155,9 @@ func TestParseRubricResponse_CustomSchemaValidates(t *testing.T) {
 		Model:        "claude-sonnet-4-6",
 		OutputSchema: json.RawMessage(customSchemaJSON),
 	}
-	schema, err := resolveRubricSchema(judge)
+	schema, err := resolveJudgeSchema(judge, defaultRubricSchema)
 	if err != nil {
-		t.Fatalf("resolveRubricSchema: %v", err)
+		t.Fatalf("resolveJudgeSchema: %v", err)
 	}
 
 	// Valid integer

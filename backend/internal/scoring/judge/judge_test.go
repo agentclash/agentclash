@@ -639,19 +639,22 @@ func TestEvaluator_RubricModeDispatchedNotPlaceholder(t *testing.T) {
 	}
 }
 
-func TestEvaluator_NWiseModeReturnsPhase6Placeholder(t *testing.T) {
+// TestEvaluator_NWiseModeSkippedFromPerAgentEvaluate pins the Phase 6
+// transition: n_wise judges are no longer a placeholder — they're
+// actively filtered out of the per-agent Evaluate path and routed to
+// EvaluateNWise at the run level. A single n_wise judge passed
+// through Evaluate produces a zero-length result slice (not an
+// unavailable stub), because the workflow splits judges by mode
+// before calling either entry point.
+func TestEvaluator_NWiseModeSkippedFromPerAgentEvaluate(t *testing.T) {
 	e := newEvaluatorWithFake(t, &sequencedFakeClient{})
 	result, _ := e.Evaluate(context.Background(), Input{
 		Judges: []scoring.LLMJudgeDeclaration{
 			{Mode: scoring.JudgeMethodNWise, Key: "k", Prompt: "rank", Model: "claude-sonnet-4-6"},
 		},
 	})
-	jr := result.JudgeResults[0]
-	if jr.State != scoring.OutputStateUnavailable {
-		t.Fatalf("n_wise should be unavailable in Phase 3, got %q", jr.State)
-	}
-	if !strings.Contains(jr.Reason, "phase 6") {
-		t.Fatalf("reason should mention phase 6, got %q", jr.Reason)
+	if len(result.JudgeResults) != 0 {
+		t.Fatalf("per-agent Evaluate should skip n_wise judges, got %d results: %+v", len(result.JudgeResults), result.JudgeResults)
 	}
 }
 
