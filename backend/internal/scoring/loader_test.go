@@ -200,6 +200,13 @@ func TestLoadEvaluationSpecAcceptsStringMatchValidators(t *testing.T) {
 					"target": "final_output",
 					"expected_from": "literal:hello world",
 					"config": {"pipeline": ["trim", "lowercase", "collapse_whitespace"]}
+				},
+				{
+					"key": "math",
+					"type": "math_equivalence",
+					"target": "final_output",
+					"expected_from": "literal:\\frac{1}{2}",
+					"config": {"extract_answer": true, "answer_delimiter": "####", "comparison_mode": "symbolic", "numeric_fallback": true, "tolerance": 0.000001}
 				}
 			],
 			"scorecard": {
@@ -211,8 +218,8 @@ func TestLoadEvaluationSpecAcceptsStringMatchValidators(t *testing.T) {
 		t.Fatalf("LoadEvaluationSpec returned error: %v", err)
 	}
 
-	if len(spec.Validators) != 3 {
-		t.Fatalf("validator count = %d, want 3", len(spec.Validators))
+	if len(spec.Validators) != 4 {
+		t.Fatalf("validator count = %d, want 4", len(spec.Validators))
 	}
 	if spec.Validators[0].Type != ValidatorTypeFuzzyMatch {
 		t.Fatalf("validator[0].type = %s, want %s", spec.Validators[0].Type, ValidatorTypeFuzzyMatch)
@@ -223,8 +230,42 @@ func TestLoadEvaluationSpecAcceptsStringMatchValidators(t *testing.T) {
 	if spec.Validators[2].Type != ValidatorTypeNormalizedMatch {
 		t.Fatalf("validator[2].type = %s, want %s", spec.Validators[2].Type, ValidatorTypeNormalizedMatch)
 	}
+	if spec.Validators[3].Type != ValidatorTypeMathEquivalence {
+		t.Fatalf("validator[3].type = %s, want %s", spec.Validators[3].Type, ValidatorTypeMathEquivalence)
+	}
 	if len(spec.Validators[0].Config) == 0 {
 		t.Fatal("validator[0].config is empty, want threshold config")
+	}
+}
+
+func TestLoadEvaluationSpecRejectsInvalidMathEquivalenceConfig(t *testing.T) {
+	_, err := LoadEvaluationSpec(json.RawMessage(`{
+		"evaluation_spec": {
+			"name": "math-equivalence-invalid",
+			"version_number": 1,
+			"judge_mode": "deterministic",
+			"validators": [
+				{
+					"key": "math",
+					"type": "math_equivalence",
+					"target": "final_output",
+					"expected_from": "literal:1/2",
+					"config": {"comparison_mode": "approximate", "tolerance": -1}
+				}
+			],
+			"scorecard": {
+				"dimensions": ["correctness"]
+			}
+		}
+	}`))
+	if err == nil {
+		t.Fatal("LoadEvaluationSpec returned nil error")
+	}
+	if !strings.Contains(err.Error(), `evaluation_spec.validators[0].config.comparison_mode must be "symbolic" or "numeric"`) {
+		t.Fatalf("error = %q, want comparison_mode validation", err.Error())
+	}
+	if !strings.Contains(err.Error(), "evaluation_spec.validators[0].config.tolerance must be greater than or equal to 0") {
+		t.Fatalf("error = %q, want tolerance validation", err.Error())
 	}
 }
 

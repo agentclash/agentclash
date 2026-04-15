@@ -1550,6 +1550,149 @@ func TestEvaluateRunAgent_NormalizedMatchPassesWithPipeline(t *testing.T) {
 	}
 }
 
+func TestEvaluateRunAgent_MathEquivalencePassesForFractions(t *testing.T) {
+	spec := EvaluationSpec{
+		Name:          "math-fraction",
+		VersionNumber: 1,
+		JudgeMode:     JudgeModeDeterministic,
+		Validators: []ValidatorDeclaration{
+			{
+				Key:          "math",
+				Type:         ValidatorTypeMathEquivalence,
+				Target:       "final_output",
+				ExpectedFrom: "literal:1/2",
+			},
+		},
+		Scorecard: ScorecardDeclaration{
+			Dimensions: []DimensionDeclaration{{Key: ScorecardDimensionCorrectness}},
+		},
+	}
+
+	evaluation, err := EvaluateRunAgent(EvaluationInput{
+		RunAgentID:       uuid.New(),
+		EvaluationSpecID: uuid.New(),
+		Events: []Event{
+			{Type: "system.run.completed", OccurredAt: time.Date(2026, 3, 16, 9, 0, 2, 0, time.UTC), Payload: []byte(`{"final_output":"0.5"}`)},
+		},
+	}, spec)
+	if err != nil {
+		t.Fatalf("EvaluateRunAgent returned error: %v", err)
+	}
+
+	if evaluation.ValidatorResults[0].Verdict != "pass" {
+		t.Fatalf("validator verdict = %q, want pass", evaluation.ValidatorResults[0].Verdict)
+	}
+	if got := mustUnmarshalObject(t, evaluation.ValidatorResults[0].RawOutput)["mode_used"]; got != "symbolic" {
+		t.Fatalf("mode_used = %#v, want symbolic", got)
+	}
+}
+
+func TestEvaluateRunAgent_MathEquivalenceExtractsDelimitedAnswer(t *testing.T) {
+	spec := EvaluationSpec{
+		Name:          "math-extract",
+		VersionNumber: 1,
+		JudgeMode:     JudgeModeDeterministic,
+		Validators: []ValidatorDeclaration{
+			{
+				Key:          "math",
+				Type:         ValidatorTypeMathEquivalence,
+				Target:       "final_output",
+				ExpectedFrom: "literal:42",
+				Config:       json.RawMessage(`{"extract_answer": true, "answer_delimiter": "####"}`),
+			},
+		},
+		Scorecard: ScorecardDeclaration{
+			Dimensions: []DimensionDeclaration{{Key: ScorecardDimensionCorrectness}},
+		},
+	}
+
+	evaluation, err := EvaluateRunAgent(EvaluationInput{
+		RunAgentID:       uuid.New(),
+		EvaluationSpecID: uuid.New(),
+		Events: []Event{
+			{Type: "system.run.completed", OccurredAt: time.Date(2026, 3, 16, 9, 0, 2, 0, time.UTC), Payload: []byte(`{"final_output":"Reasoning here #### 42"}`)},
+		},
+	}, spec)
+	if err != nil {
+		t.Fatalf("EvaluateRunAgent returned error: %v", err)
+	}
+
+	if evaluation.ValidatorResults[0].Verdict != "pass" {
+		t.Fatalf("validator verdict = %q, want pass", evaluation.ValidatorResults[0].Verdict)
+	}
+}
+
+func TestEvaluateRunAgent_MathEquivalenceHandlesLatexWrapper(t *testing.T) {
+	spec := EvaluationSpec{
+		Name:          "math-latex",
+		VersionNumber: 1,
+		JudgeMode:     JudgeModeDeterministic,
+		Validators: []ValidatorDeclaration{
+			{
+				Key:          "math",
+				Type:         ValidatorTypeMathEquivalence,
+				Target:       "final_output",
+				ExpectedFrom: "literal:2^(1/2)",
+			},
+		},
+		Scorecard: ScorecardDeclaration{
+			Dimensions: []DimensionDeclaration{{Key: ScorecardDimensionCorrectness}},
+		},
+	}
+
+	evaluation, err := EvaluateRunAgent(EvaluationInput{
+		RunAgentID:       uuid.New(),
+		EvaluationSpecID: uuid.New(),
+		Events: []Event{
+			{Type: "system.run.completed", OccurredAt: time.Date(2026, 3, 16, 9, 0, 2, 0, time.UTC), Payload: []byte(`{"final_output":"$\\boxed{\\sqrt{2}}$"}`)},
+		},
+	}, spec)
+	if err != nil {
+		t.Fatalf("EvaluateRunAgent returned error: %v", err)
+	}
+
+	if evaluation.ValidatorResults[0].Verdict != "pass" {
+		t.Fatalf("validator verdict = %q, want pass", evaluation.ValidatorResults[0].Verdict)
+	}
+}
+
+func TestEvaluateRunAgent_MathEquivalenceFailsForDifferentAnswers(t *testing.T) {
+	spec := EvaluationSpec{
+		Name:          "math-fail",
+		VersionNumber: 1,
+		JudgeMode:     JudgeModeDeterministic,
+		Validators: []ValidatorDeclaration{
+			{
+				Key:          "math",
+				Type:         ValidatorTypeMathEquivalence,
+				Target:       "final_output",
+				ExpectedFrom: "literal:42",
+			},
+		},
+		Scorecard: ScorecardDeclaration{
+			Dimensions: []DimensionDeclaration{{Key: ScorecardDimensionCorrectness}},
+		},
+	}
+
+	evaluation, err := EvaluateRunAgent(EvaluationInput{
+		RunAgentID:       uuid.New(),
+		EvaluationSpecID: uuid.New(),
+		Events: []Event{
+			{Type: "system.run.completed", OccurredAt: time.Date(2026, 3, 16, 9, 0, 2, 0, time.UTC), Payload: []byte(`{"final_output":"41"}`)},
+		},
+	}, spec)
+	if err != nil {
+		t.Fatalf("EvaluateRunAgent returned error: %v", err)
+	}
+
+	if evaluation.ValidatorResults[0].Verdict != "fail" {
+		t.Fatalf("validator verdict = %q, want fail", evaluation.ValidatorResults[0].Verdict)
+	}
+	if evaluation.DimensionScores[string(ScorecardDimensionCorrectness)] == nil || *evaluation.DimensionScores[string(ScorecardDimensionCorrectness)] != 0 {
+		t.Fatalf("correctness score = %v, want 0", evaluation.DimensionScores[string(ScorecardDimensionCorrectness)])
+	}
+}
+
 func TestEvaluateRunAgent_NormalizedMatchDefaultPipeline(t *testing.T) {
 	spec := EvaluationSpec{
 		Name:          "normalized-default",
