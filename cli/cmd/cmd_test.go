@@ -335,3 +335,39 @@ func TestAuthHeaderSentToAPI(t *testing.T) {
 		t.Fatalf("auth header = %q, want %q", gotAuth, "Bearer my-secret-token")
 	}
 }
+
+func TestAuthTokensListCallsCorrectEndpoint(t *testing.T) {
+	var called bool
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"GET /v1/cli-auth/tokens": captureHandler(t, &called, 200, map[string]any{
+			"items": []map[string]any{
+				{"id": "tok-1", "name": "Laptop", "created_at": "2026-04-15T00:00:00Z"},
+			},
+		}),
+	})
+	defer srv.Close()
+
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+	if err := executeCommand(t, []string{"auth", "tokens", "list"}, srv.URL); err != nil {
+		t.Fatalf("auth tokens list error: %v", err)
+	}
+	if !called {
+		t.Fatal("GET /v1/cli-auth/tokens was not called")
+	}
+}
+
+func TestAuthTokensRevokeCallsCorrectEndpoint(t *testing.T) {
+	var called bool
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"DELETE /v1/cli-auth/tokens/tok-1": captureHandler(t, &called, 204, map[string]any{}),
+	})
+	defer srv.Close()
+
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+	if err := executeCommand(t, []string{"auth", "tokens", "revoke", "tok-1"}, srv.URL); err != nil {
+		t.Fatalf("auth tokens revoke error: %v", err)
+	}
+	if !called {
+		t.Fatal("DELETE /v1/cli-auth/tokens/tok-1 was not called")
+	}
+}

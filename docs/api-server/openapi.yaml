@@ -212,6 +212,171 @@ paths:
           $ref: "#/components/responses/UnauthorizedError"
 
   # ---------------------------------------------------------------------------
+  # CLI Auth
+  # ---------------------------------------------------------------------------
+  /v1/cli-auth/device:
+    post:
+      operationId: createCliDeviceCode
+      tags: [CLIAuth]
+      summary: Start a CLI verification login
+      description: >
+        Creates a short-lived device verification code for `agentclash auth login`.
+        The response includes a browser-safe verification URL and the user-facing code.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmptyObject"
+      responses:
+        "201":
+          description: Device verification created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateDeviceCodeResponse"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/cli-auth/device/token:
+    post:
+      operationId: pollCliDeviceToken
+      tags: [CLIAuth]
+      summary: Poll a pending CLI verification login
+      description: >
+        Polls the device verification flow until the browser approval has issued a CLI token.
+        Returns `authorization_pending`, `access_denied`, or `expired_token` errors while polling.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PollDeviceTokenRequest"
+      responses:
+        "200":
+          description: CLI token issued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PollDeviceTokenResponse"
+        "400":
+          description: Polling state or invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/cli-auth/device/approve:
+    post:
+      operationId: approveCliDeviceCode
+      tags: [CLIAuth]
+      summary: Approve a pending CLI verification login
+      description: >
+        Approves a pending CLI login from the authenticated web session and issues
+        the corresponding CLI token for the waiting terminal.
+      security:
+        - bearerJWT: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApproveDeviceCodeRequest"
+      responses:
+        "200":
+          description: Device verification approved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceApprovalResponse"
+        "400":
+          description: Invalid or expired verification code
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+
+  /v1/cli-auth/tokens:
+    get:
+      operationId: listCliTokens
+      tags: [CLIAuth]
+      summary: List CLI tokens
+      description: Lists active CLI tokens owned by the authenticated user.
+      security:
+        - bearerJWT: []
+      responses:
+        "200":
+          description: Active CLI tokens
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListCLITokensResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    post:
+      operationId: createCliToken
+      tags: [CLIAuth]
+      summary: Create a CLI token
+      description: Creates a long-lived CLI token and returns the raw token exactly once.
+      security:
+        - bearerJWT: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCLITokenRequest"
+      responses:
+        "201":
+          description: CLI token created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateCLITokenResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/cli-auth/tokens/{id}:
+    delete:
+      operationId: revokeCliToken
+      tags: [CLIAuth]
+      summary: Revoke a CLI token
+      security:
+        - bearerJWT: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: CLI token revoked
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  # ---------------------------------------------------------------------------
   # Workspace
   # ---------------------------------------------------------------------------
   /v1/workspaces/{workspaceID}/auth-check:
@@ -2844,7 +3009,9 @@ components:
       scheme: bearer
       bearerFormat: JWT
       description: >
-        JWT Bearer token. In development mode, use custom headers instead:
+        Bearer token for authenticated API requests. Web sessions use a WorkOS JWT
+        and CLI sessions use an AgentClash token prefixed with `clitok_`.
+        In development mode, use custom headers instead:
         X-Agentclash-User-Id, X-Agentclash-WorkOS-User-Id,
         X-Agentclash-User-Email, X-Agentclash-User-Display-Name,
         X-Agentclash-Workspace-Memberships.
@@ -3053,6 +3220,10 @@ components:
             message:
               type: string
 
+    EmptyObject:
+      type: object
+      additionalProperties: false
+
     ValidationResult:
       type: object
       required: [valid, errors]
@@ -3172,6 +3343,117 @@ components:
         workspace_id:
           type: string
           format: uuid
+
+    # --- CLI Auth ---
+
+    CreateDeviceCodeResponse:
+      type: object
+      required:
+        [
+          device_code,
+          user_code,
+          verification_uri,
+          verification_uri_complete,
+          expires_in,
+          interval,
+        ]
+      properties:
+        device_code:
+          type: string
+        user_code:
+          type: string
+        verification_uri:
+          type: string
+          example: /auth/device
+        verification_uri_complete:
+          type: string
+          format: uri
+        expires_in:
+          type: integer
+          format: int32
+        interval:
+          type: integer
+          format: int32
+
+    PollDeviceTokenRequest:
+      type: object
+      required: [device_code]
+      properties:
+        device_code:
+          type: string
+
+    PollDeviceTokenResponse:
+      type: object
+      required: [token]
+      properties:
+        token:
+          type: string
+
+    ApproveDeviceCodeRequest:
+      type: object
+      required: [user_code]
+      properties:
+        user_code:
+          type: string
+
+    DeviceApprovalResponse:
+      type: object
+      required: [ok]
+      properties:
+        ok:
+          type: boolean
+
+    CreateCLITokenRequest:
+      type: object
+      properties:
+        name:
+          type: string
+
+    CreateCLITokenResponse:
+      type: object
+      required: [id, token, name, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        token:
+          type: string
+        name:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+
+    CLITokenSummary:
+      type: object
+      required: [id, name, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        last_used_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+
+    ListCLITokensResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/CLITokenSummary"
 
     # --- User Profile ---
 

@@ -1,10 +1,17 @@
 import { withAuth } from "@workos-inc/authkit-nextjs";
 import { redirect } from "next/navigation";
+import { sanitizeReturnTo } from "@/lib/auth/return-to";
 import { SignInButton } from "./sign-in-button";
 
-export default async function LoginPage() {
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ returnTo?: string }>;
+}) {
+  const { returnTo: rawReturnTo } = await searchParams;
+  const returnTo = sanitizeReturnTo(rawReturnTo);
   const { user } = await withAuth();
-  if (user) redirect("/dashboard");
+  if (user) redirect(returnTo);
 
   return (
     <div
@@ -48,7 +55,7 @@ export default async function LoginPage() {
             padding: "2rem",
           }}
         >
-          <SignInButton />
+          <SignInButton returnTo={returnTo} />
         </div>
       </div>
     </div>

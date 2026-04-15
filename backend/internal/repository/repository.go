@@ -1998,6 +1998,24 @@ func (r *Repository) GetUserByWorkOSID(ctx context.Context, workosUserID string)
 	return user, nil
 }
 
+func (r *Repository) GetUserByID(ctx context.Context, userID uuid.UUID) (User, error) {
+	row := r.db.QueryRow(ctx, `
+		SELECT id, workos_user_id, email, COALESCE(display_name, '')
+		FROM users
+		WHERE id = $1 AND archived_at IS NULL
+	`, userID)
+
+	var user User
+	err := row.Scan(&user.ID, &user.WorkOSUserID, &user.Email, &user.DisplayName)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return User{}, ErrUserNotFound
+		}
+		return User{}, fmt.Errorf("get user by id: %w", err)
+	}
+	return user, nil
+}
+
 func (r *Repository) GetActiveWorkspaceMembershipsByUserID(ctx context.Context, userID uuid.UUID) ([]WorkspaceMembershipRow, error) {
 	rows, err := r.db.Query(ctx, `
 		SELECT wm.workspace_id, wm.role

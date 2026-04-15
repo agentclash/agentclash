@@ -2,9 +2,18 @@
 
 import { signInAction } from "./actions";
 
-export function SignInButton() {
+interface SignInButtonProps {
+  label?: string;
+  returnTo?: string;
+}
+
+export function SignInButton({
+  label = "Sign in with WorkOS",
+  returnTo = "/dashboard",
+}: SignInButtonProps) {
   return (
     <form action={signInAction}>
+      <input type="hidden" name="returnTo" value={returnTo} />
       <button
         type="submit"
         style={{
@@ -21,7 +30,7 @@ export function SignInButton() {
           cursor: "pointer",
         }}
       >
-        Sign in with WorkOS
+        {label}
       </button>
     </form>
   );
