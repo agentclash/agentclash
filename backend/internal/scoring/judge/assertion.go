@@ -185,11 +185,12 @@ func (e *Evaluator) runAssertionCall(ctx context.Context, call providerCall) sam
 	}
 }
 
-// assertionVerdictPattern matches YES/NO/UNKNOWN at the start of a line
-// (after optional whitespace). Case-insensitive. \b ensures "YESSIR"
-// doesn't match but "YES." or "YES " does. Applied per-line by
-// parseYesNo after splitting the response on \n.
-var assertionVerdictPattern = regexp.MustCompile(`(?i)^\s*(YES|NO|UNKNOWN)\b`)
+// assertionVerdictPattern matches YES/NO/UNKNOWN at the start of a
+// line, optionally preceded by a short textual prefix (e.g. "Answer:",
+// "Final verdict -"). Case-insensitive. \b ensures "YESSIR" doesn't
+// match but "YES." or "YES " does. The prefix is capped at ~40 chars
+// of non-verdict text to avoid matching a verdict buried deep in prose.
+var assertionVerdictPattern = regexp.MustCompile(`(?i)^\s*(?:[A-Za-z ]{0,40}[:\-—]\s*)?(YES|NO|UNKNOWN)\b`)
 
 // parseYesNo extracts the verdict from a judge response. It walks the
 // lines of the response and returns the first line that begins with
@@ -220,12 +221,11 @@ func parseYesNo(text string) (verdict *bool, reason string, ok bool) {
 		// case of the input.
 		word := strings.ToUpper(match[1])
 
-		// Build the trailer by stripping leading whitespace from the
-		// line (so it starts with the verdict word), then slicing off
-		// the verdict word itself. Case-preserving because we slice
-		// the original text, not the upper-cased word.
-		trimmed := strings.TrimLeft(line, " \t")
-		trailer := strings.TrimSpace(trimmed[len(match[1]):])
+		// Build the trailer from everything after the full regex
+		// match (which may include a prefix like "Answer: ").
+		// match[0] is the entire matched substring.
+		matchEnd := strings.Index(line, match[0]) + len(match[0])
+		trailer := strings.TrimSpace(line[matchEnd:])
 		trailer = strings.TrimPrefix(trailer, ":")
 		trailer = strings.TrimPrefix(trailer, "-")
 		trailer = strings.TrimPrefix(trailer, "—")
