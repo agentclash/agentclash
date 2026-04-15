@@ -614,20 +614,28 @@ func TestEvaluator_PerJudgeErrorDoesntAbortOthers(t *testing.T) {
 	}
 }
 
-func TestEvaluator_RubricModeReturnsPhase5Placeholder(t *testing.T) {
+// TestEvaluator_RubricModeDispatchedNotPlaceholder pins the Phase 5
+// transition: rubric mode is no longer a phase-gated placeholder. It
+// now routes to evaluateRubric and runs the full pipeline with the
+// fake client. A zero-response fake produces "no samples executed"
+// unavailable, NOT a phase-5 placeholder — that's the Phase 5 proof.
+func TestEvaluator_RubricModeDispatchedNotPlaceholder(t *testing.T) {
 	e := newEvaluatorWithFake(t, &sequencedFakeClient{})
 	result, _ := e.Evaluate(context.Background(), Input{
 		Judges: []scoring.LLMJudgeDeclaration{
-			{Mode: scoring.JudgeMethodRubric, Key: "k", Rubric: "rate", Model: "claude-sonnet-4-6"},
+			{Mode: scoring.JudgeMethodRubric, Key: "k", Rubric: "Rate the agent output from 1 to 5 on overall quality, paying attention to clarity, correctness, and completeness.", Model: "claude-sonnet-4-6"},
 		},
 		FinalOutput: "out",
 	})
 	jr := result.JudgeResults[0]
-	if jr.State != scoring.OutputStateUnavailable {
-		t.Fatalf("rubric mode should be unavailable in Phase 3, got %q", jr.State)
+	if strings.Contains(jr.Reason, "phase 5") {
+		t.Fatalf("rubric mode should no longer be phase-gated, got reason: %q", jr.Reason)
 	}
-	if !strings.Contains(jr.Reason, "phase 5") {
-		t.Fatalf("reason should mention phase 5, got %q", jr.Reason)
+	// With a fake client returning no canned responses, every sample
+	// errors out and the judge surfaces as unavailable. This confirms
+	// the dispatch reached evaluateRubric rather than stubbing out.
+	if jr.State != scoring.OutputStateUnavailable {
+		t.Fatalf("state = %q, want unavailable (all fake samples erred)", jr.State)
 	}
 }
 

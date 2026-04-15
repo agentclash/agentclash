@@ -62,6 +62,13 @@ type Config struct {
 	// Callers can override per-judge via LLMJudgeDeclaration.Model.
 	DefaultAssertionModel string
 
+	// DefaultRubricModel is the provider model used when a rubric or
+	// reference judge omits both Model and Models. Defaults to
+	// claude-sonnet-4-6: rubric/reference require structured JSON
+	// output and calibrated numeric reasoning, which Haiku struggles
+	// with. Pack authors can still override per-judge.
+	DefaultRubricModel string
+
 	// Providers maps model identifier → provider.Router key. Explicit
 	// entries take precedence over the well-known prefix fallback in
 	// resolveProviderKey. Use this when a pack wants to pin a specific
@@ -104,6 +111,15 @@ type Input struct {
 	// judge to see the original challenge (e.g., to check whether
 	// the agent answered the actual question) supply it here.
 	ChallengeInput string
+	// ResolvedReferences holds the union of every judge's
+	// ContextFrom + ReferenceFrom values, already resolved against
+	// the run-agent's evidence via scoring.ResolveContextReferences.
+	// Keyed by the evidence reference string (e.g.,
+	// "challenge_input", "case.payload.foo"). Populated by the
+	// Phase 4+ JudgeRunAgent activity; nil for deterministic-only
+	// callers. Phase 5 rubric/reference dispatch reads from this
+	// map to build CONTEXT and REFERENCE ANSWER prompt blocks.
+	ResolvedReferences map[string]string
 }
 
 // Result is the aggregated output of evaluating every judge for one
@@ -136,6 +152,7 @@ type Evaluator struct {
 //
 //   - MaxParallel → 4
 //   - DefaultAssertionModel → claude-haiku-4-5-20251001
+//   - DefaultRubricModel → claude-sonnet-4-6
 //   - DefaultTimeout → 60 seconds
 //   - Logger → slog.Default()
 //
@@ -149,6 +166,9 @@ func NewEvaluator(router provider.Router, cfg Config) *Evaluator {
 	}
 	if cfg.DefaultAssertionModel == "" {
 		cfg.DefaultAssertionModel = "claude-haiku-4-5-20251001"
+	}
+	if cfg.DefaultRubricModel == "" {
+		cfg.DefaultRubricModel = "claude-sonnet-4-6"
 	}
 	if cfg.DefaultTimeout <= 0 {
 		cfg.DefaultTimeout = 60 * time.Second
@@ -203,27 +223,16 @@ func (e *Evaluator) Evaluate(ctx context.Context, in Input) (Result, error) {
 	}, nil
 }
 
-// evaluateOne dispatches to the mode-specific handler. Phase 3 only
-// implements assertion; rubric/reference/n_wise return a placeholder
-// unavailable result that identifies the phase gate for observability.
+// evaluateOne dispatches to the mode-specific handler. Phase 3
+// shipped assertion; Phase 5 wires rubric + reference through the
+// shared evaluateRubric path; n_wise remains a phase-gated
+// placeholder until Phase 6 adds the run-level activity.
 func (e *Evaluator) evaluateOne(ctx context.Context, judge scoring.LLMJudgeDeclaration, in Input) scoring.JudgeResult {
 	switch judge.Mode {
 	case scoring.JudgeMethodAssertion:
 		return e.evaluateAssertion(ctx, judge, in)
-	case scoring.JudgeMethodRubric:
-		return scoring.JudgeResult{
-			Key:    judge.Key,
-			Mode:   judge.Mode,
-			State:  scoring.OutputStateUnavailable,
-			Reason: "rubric mode arrives in #148 phase 5",
-		}
-	case scoring.JudgeMethodReference:
-		return scoring.JudgeResult{
-			Key:    judge.Key,
-			Mode:   judge.Mode,
-			State:  scoring.OutputStateUnavailable,
-			Reason: "reference mode arrives in #148 phase 5",
-		}
+	case scoring.JudgeMethodRubric, scoring.JudgeMethodReference:
+		return e.evaluateRubric(ctx, judge, in)
 	case scoring.JudgeMethodNWise:
 		return scoring.JudgeResult{
 			Key:    judge.Key,

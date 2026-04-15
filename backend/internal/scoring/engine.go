@@ -392,6 +392,55 @@ func ExtractFinalOutputFromEvents(events []Event) string {
 	return ""
 }
 
+// ResolveContextReferences resolves a set of evidence reference strings
+// into their concrete string values for use by the Phase 5 LLM-as-judge
+// prompt builders. It wraps the existing (unexported) buildEvidence +
+// resolveEvidenceValue helpers so the judge package can stay decoupled
+// from the scoring engine's internal extractedEvidence type.
+//
+// The returned map is keyed by the reference string itself (e.g.,
+// "challenge_input", "final_output", "case.payload.foo") and contains
+// ONLY the references that resolved cleanly. References that fail to
+// resolve (unknown path, missing case, extraction error) are silently
+// dropped from the map — prompt builders treat a missing entry the
+// same as an empty value so packs with broken refs produce degraded
+// but non-crashing prompts. Phase 5 evaluateRubric surfaces this as
+// an abstain signal when a required reference (e.g., ReferenceFrom
+// for reference mode) is missing.
+//
+// Runs once per agent in the Phase 4 JudgeRunAgent activity with the
+// union of all judges' ContextFrom + ReferenceFrom references. The
+// same resolved map is shared across every judge for the agent, so
+// the O(references × evidence_walk) cost happens at most once per
+// run-agent regardless of how many judges the spec declares.
+func ResolveContextReferences(
+	challengeInputs []EvidenceInput,
+	events []Event,
+	references []string,
+) map[string]string {
+	if len(references) == 0 {
+		return nil
+	}
+	sortedEvents := append([]Event(nil), events...)
+	sort.SliceStable(sortedEvents, func(i, j int) bool {
+		return sortedEvents[i].OccurredAt.Before(sortedEvents[j].OccurredAt)
+	})
+	evidence := buildEvidence(challengeInputs, sortedEvents)
+
+	resolved := make(map[string]string, len(references))
+	for _, ref := range references {
+		if ref == "" {
+			continue
+		}
+		value, _, _, err := resolveEvidenceValue(ref, evidence)
+		if err != nil || value == nil || *value == "" {
+			continue
+		}
+		resolved[ref] = *value
+	}
+	return resolved
+}
+
 type scoredDimension struct {
 	decl  DimensionDeclaration
 	value float64

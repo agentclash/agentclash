@@ -378,11 +378,32 @@ func executeJudgeRunAgent(
 	scoringEvents := mapRunEvents(events)
 	finalOutput := scoring.ExtractFinalOutputFromEvents(scoringEvents)
 
+	// Phase 5 (#148): resolve the union of every judge's ContextFrom
+	// and ReferenceFrom values so the rubric/reference prompt
+	// builders can populate CONTEXT and REFERENCE ANSWER blocks
+	// without the judge package touching evidence internals. The
+	// rubric/reference dispatch in internal/scoring/judge/rubric.go
+	// looks these up by reference string.
+	challengeInputs, mapErr := mapChallengeInputs(executionContext.ChallengePackVersion.Manifest, executionContext.ChallengeInputSet)
+	if mapErr != nil {
+		// Challenge-input mapping failures are non-fatal for judges —
+		// we can still run judges that don't need evidence refs (e.g.,
+		// rubric judges with only final_output context). Log the error
+		// as a warning and proceed with an empty challenge inputs set.
+		deterministicEvaluation.Warnings = append(deterministicEvaluation.Warnings,
+			fmt.Sprintf("map challenge inputs for judges: %v", mapErr))
+		challengeInputs = nil
+	}
+	resolvedRefs := collectAndResolveJudgeRefs(persistedSpec.LLMJudges, challengeInputs, scoringEvents)
+	challengeInput := resolvedRefs["challenge_input"]
+
 	judgeResult, judgeErr := judgeEvaluator.Evaluate(ctx, judge.Input{
-		RunAgentID:       runAgentID,
-		EvaluationSpecID: specRecord.ID,
-		Judges:           persistedSpec.LLMJudges,
-		FinalOutput:      finalOutput,
+		RunAgentID:         runAgentID,
+		EvaluationSpecID:   specRecord.ID,
+		Judges:             persistedSpec.LLMJudges,
+		FinalOutput:        finalOutput,
+		ChallengeInput:     challengeInput,
+		ResolvedReferences: resolvedRefs,
 	})
 	if judgeErr != nil {
 		// Top-level evaluator errors are rare (the per-judge error
@@ -409,6 +430,45 @@ func executeJudgeRunAgent(
 	}
 
 	return finalized, nil
+}
+
+// collectAndResolveJudgeRefs gathers the union of every judge's
+// ContextFrom and ReferenceFrom references, then calls
+// scoring.ResolveContextReferences to map them to concrete string
+// values. Used by executeJudgeRunAgent (#148 phase 5) to populate
+// judge.Input.ResolvedReferences before the evaluator runs.
+//
+// Deduplication matters: a pack with 5 judges all referencing
+// "challenge_input" should only resolve it once. The returned map
+// is the same one the judge evaluator reads — the prompt builders
+// look up each judge's needed refs by string key.
+//
+// Returns nil when there are no references to resolve, matching the
+// ResolveContextReferences contract.
+func collectAndResolveJudgeRefs(
+	judges []scoring.LLMJudgeDeclaration,
+	challengeInputs []scoring.EvidenceInput,
+	events []scoring.Event,
+) map[string]string {
+	refSet := make(map[string]struct{})
+	for _, j := range judges {
+		for _, ref := range j.ContextFrom {
+			if ref != "" {
+				refSet[ref] = struct{}{}
+			}
+		}
+		if j.ReferenceFrom != "" {
+			refSet[j.ReferenceFrom] = struct{}{}
+		}
+	}
+	if len(refSet) == 0 {
+		return nil
+	}
+	refs := make([]string, 0, len(refSet))
+	for ref := range refSet {
+		refs = append(refs, ref)
+	}
+	return scoring.ResolveContextReferences(challengeInputs, events, refs)
 }
 
 // recordJudgeEvents emits one scoring.judge.recorded event per judge
