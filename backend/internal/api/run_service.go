@@ -15,6 +15,7 @@ import (
 type RunCreationRepository interface {
 	GetRunnableChallengePackVersionByID(ctx context.Context, id uuid.UUID) (repository.RunnableChallengePackVersion, error)
 	GetChallengeInputSetByID(ctx context.Context, id uuid.UUID) (repository.ChallengeInputSet, error)
+	ListChallengeInputSetsByVersionID(ctx context.Context, challengePackVersionID uuid.UUID) ([]repository.ChallengeInputSetSummary, error)
 	ListRunnableDeploymentsWithLatestSnapshot(ctx context.Context, workspaceID uuid.UUID, deploymentIDs []uuid.UUID) ([]repository.RunnableDeployment, error)
 	CreateQueuedRun(ctx context.Context, params repository.CreateQueuedRunParams) (repository.CreateQueuedRunResult, error)
 }
@@ -104,6 +105,22 @@ func (m *RunCreationManager) CreateRun(ctx context.Context, caller Caller, input
 			return CreateRunResult{}, RunCreationValidationError{
 				Code:    "invalid_challenge_input_set_id",
 				Message: "challenge_input_set_id must belong to the selected challenge pack version",
+			}
+		}
+	} else {
+		inputSets, err := m.repo.ListChallengeInputSetsByVersionID(ctx, input.ChallengePackVersionID)
+		if err != nil {
+			return CreateRunResult{}, fmt.Errorf("list challenge input sets: %w", err)
+		}
+		switch len(inputSets) {
+		case 0:
+			// Pack has no input sets — proceed without one.
+		case 1:
+			input.ChallengeInputSetID = &inputSets[0].ID
+		default:
+			return CreateRunResult{}, RunCreationValidationError{
+				Code:    "missing_challenge_input_set_id",
+				Message: "challenge pack has multiple input sets; challenge_input_set_id is required",
 			}
 		}
 	}

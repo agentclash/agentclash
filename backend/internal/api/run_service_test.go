@@ -370,11 +370,175 @@ func TestRunCreationManagerRejectsForbiddenWorkspaceAccess(t *testing.T) {
 	}
 }
 
+func TestRunCreationManagerAutoSelectsSingleInputSet(t *testing.T) {
+	workspaceID := uuid.New()
+	challengePackVersionID := uuid.New()
+	inputSetID := uuid.New()
+	deploymentID := uuid.New()
+	snapshotID := uuid.New()
+	runID := uuid.New()
+	caller := Caller{
+		UserID: uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: "workspace_member"},
+		},
+	}
+
+	repo := &fakeRunCreationRepository{
+		challengePackVersion: repository.RunnableChallengePackVersion{ID: challengePackVersionID},
+		challengeInputSets: []repository.ChallengeInputSetSummary{
+			{ID: inputSetID, ChallengePackVersionID: challengePackVersionID, InputKey: "default", Name: "Default"},
+		},
+		deployments: []repository.RunnableDeployment{
+			{
+				ID:                        deploymentID,
+				OrganizationID:            uuid.New(),
+				WorkspaceID:               workspaceID,
+				Name:                      "Agent",
+				AgentDeploymentSnapshotID: snapshotID,
+			},
+		},
+		createResult: repository.CreateQueuedRunResult{
+			Run: domain.Run{
+				ID:                     runID,
+				WorkspaceID:            workspaceID,
+				ChallengePackVersionID: challengePackVersionID,
+				ChallengeInputSetID:    &inputSetID,
+				Status:                 domain.RunStatusQueued,
+				ExecutionMode:          "single_agent",
+			},
+		},
+	}
+	starter := &fakeRunWorkflowStarter{}
+	manager := NewRunCreationManager(NewCallerWorkspaceAuthorizer(), repo, starter, nil)
+
+	// Create a run WITHOUT specifying challenge_input_set_id.
+	_, err := manager.CreateRun(context.Background(), caller, CreateRunInput{
+		WorkspaceID:            workspaceID,
+		ChallengePackVersionID: challengePackVersionID,
+		AgentDeploymentIDs:     []uuid.UUID{deploymentID},
+	})
+	if err != nil {
+		t.Fatalf("CreateRun returned error: %v", err)
+	}
+
+	if repo.createParams == nil {
+		t.Fatal("expected CreateQueuedRun to be called")
+	}
+	if repo.createParams.ChallengeInputSetID == nil {
+		t.Fatal("expected auto-selected challenge_input_set_id, got nil")
+	}
+	if *repo.createParams.ChallengeInputSetID != inputSetID {
+		t.Fatalf("auto-selected input set = %s, want %s", *repo.createParams.ChallengeInputSetID, inputSetID)
+	}
+}
+
+func TestRunCreationManagerRejectsAmbiguousInputSets(t *testing.T) {
+	workspaceID := uuid.New()
+	challengePackVersionID := uuid.New()
+	deploymentID := uuid.New()
+	caller := Caller{
+		UserID: uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: "workspace_member"},
+		},
+	}
+
+	repo := &fakeRunCreationRepository{
+		challengePackVersion: repository.RunnableChallengePackVersion{ID: challengePackVersionID},
+		challengeInputSets: []repository.ChallengeInputSetSummary{
+			{ID: uuid.New(), ChallengePackVersionID: challengePackVersionID, InputKey: "default", Name: "Default"},
+			{ID: uuid.New(), ChallengePackVersionID: challengePackVersionID, InputKey: "extended", Name: "Extended"},
+		},
+		deployments: []repository.RunnableDeployment{
+			{
+				ID:                        deploymentID,
+				OrganizationID:            uuid.New(),
+				WorkspaceID:               workspaceID,
+				Name:                      "Agent",
+				AgentDeploymentSnapshotID: uuid.New(),
+			},
+		},
+	}
+	manager := NewRunCreationManager(NewCallerWorkspaceAuthorizer(), repo, &fakeRunWorkflowStarter{}, nil)
+
+	_, err := manager.CreateRun(context.Background(), caller, CreateRunInput{
+		WorkspaceID:            workspaceID,
+		ChallengePackVersionID: challengePackVersionID,
+		AgentDeploymentIDs:     []uuid.UUID{deploymentID},
+	})
+	if err == nil {
+		t.Fatal("expected validation error for ambiguous input sets")
+	}
+
+	var validationErr RunCreationValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("error = %v, want RunCreationValidationError", err)
+	}
+	if validationErr.Code != "missing_challenge_input_set_id" {
+		t.Fatalf("validation code = %q, want missing_challenge_input_set_id", validationErr.Code)
+	}
+}
+
+func TestRunCreationManagerProceedsWithoutInputSetsWhenNoneExist(t *testing.T) {
+	workspaceID := uuid.New()
+	challengePackVersionID := uuid.New()
+	deploymentID := uuid.New()
+	runID := uuid.New()
+	caller := Caller{
+		UserID: uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: "workspace_member"},
+		},
+	}
+
+	repo := &fakeRunCreationRepository{
+		challengePackVersion: repository.RunnableChallengePackVersion{ID: challengePackVersionID},
+		challengeInputSets:   nil, // no input sets
+		deployments: []repository.RunnableDeployment{
+			{
+				ID:                        deploymentID,
+				OrganizationID:            uuid.New(),
+				WorkspaceID:               workspaceID,
+				Name:                      "Agent",
+				AgentDeploymentSnapshotID: uuid.New(),
+			},
+		},
+		createResult: repository.CreateQueuedRunResult{
+			Run: domain.Run{
+				ID:                     runID,
+				WorkspaceID:            workspaceID,
+				ChallengePackVersionID: challengePackVersionID,
+				Status:                 domain.RunStatusQueued,
+				ExecutionMode:          "single_agent",
+			},
+		},
+	}
+	manager := NewRunCreationManager(NewCallerWorkspaceAuthorizer(), repo, &fakeRunWorkflowStarter{}, nil)
+
+	_, err := manager.CreateRun(context.Background(), caller, CreateRunInput{
+		WorkspaceID:            workspaceID,
+		ChallengePackVersionID: challengePackVersionID,
+		AgentDeploymentIDs:     []uuid.UUID{deploymentID},
+	})
+	if err != nil {
+		t.Fatalf("CreateRun returned error: %v", err)
+	}
+
+	if repo.createParams == nil {
+		t.Fatal("expected CreateQueuedRun to be called")
+	}
+	if repo.createParams.ChallengeInputSetID != nil {
+		t.Fatalf("expected nil challenge_input_set_id, got %s", *repo.createParams.ChallengeInputSetID)
+	}
+}
+
 type fakeRunCreationRepository struct {
 	challengePackVersion    repository.RunnableChallengePackVersion
 	challengePackVersionErr error
 	challengeInputSet       repository.ChallengeInputSet
 	challengeInputSetErr    error
+	challengeInputSets      []repository.ChallengeInputSetSummary
 	deployments             []repository.RunnableDeployment
 	createResult            repository.CreateQueuedRunResult
 	createParams            *repository.CreateQueuedRunParams
@@ -386,6 +550,10 @@ func (f *fakeRunCreationRepository) GetRunnableChallengePackVersionByID(_ contex
 
 func (f *fakeRunCreationRepository) GetChallengeInputSetByID(_ context.Context, _ uuid.UUID) (repository.ChallengeInputSet, error) {
 	return f.challengeInputSet, f.challengeInputSetErr
+}
+
+func (f *fakeRunCreationRepository) ListChallengeInputSetsByVersionID(_ context.Context, _ uuid.UUID) ([]repository.ChallengeInputSetSummary, error) {
+	return f.challengeInputSets, nil
 }
 
 func (f *fakeRunCreationRepository) ListRunnableDeploymentsWithLatestSnapshot(_ context.Context, _ uuid.UUID, _ []uuid.UUID) ([]repository.RunnableDeployment, error) {

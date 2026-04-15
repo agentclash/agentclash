@@ -84,6 +84,13 @@ type ChallengeInputSet struct {
 	ChallengePackVersionID uuid.UUID
 }
 
+type ChallengeInputSetSummary struct {
+	ID                     uuid.UUID
+	ChallengePackVersionID uuid.UUID
+	InputKey               string
+	Name                   string
+}
+
 type RunnableDeployment struct {
 	ID                        uuid.UUID
 	OrganizationID            uuid.UUID
@@ -274,6 +281,26 @@ func (r *Repository) GetChallengeInputSetByID(ctx context.Context, id uuid.UUID)
 		ID:                     row.ID,
 		ChallengePackVersionID: row.ChallengePackVersionID,
 	}, nil
+}
+
+func (r *Repository) ListChallengeInputSetsByVersionID(ctx context.Context, challengePackVersionID uuid.UUID) ([]ChallengeInputSetSummary, error) {
+	rows, err := r.queries.ListChallengeInputSetsByVersionID(ctx, repositorysqlc.ListChallengeInputSetsByVersionIDParams{
+		ChallengePackVersionID: challengePackVersionID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list challenge input sets by version id: %w", err)
+	}
+
+	results := make([]ChallengeInputSetSummary, 0, len(rows))
+	for _, row := range rows {
+		results = append(results, ChallengeInputSetSummary{
+			ID:                     row.ID,
+			ChallengePackVersionID: row.ChallengePackVersionID,
+			InputKey:               row.InputKey,
+			Name:                   row.Name,
+		})
+	}
+	return results, nil
 }
 
 func (r *Repository) ListRunnableDeploymentsWithLatestSnapshot(

@@ -13,6 +13,13 @@ WHERE id = @id
   AND archived_at IS NULL
 LIMIT 1;
 
+-- name: ListChallengeInputSetsByVersionID :many
+SELECT id, challenge_pack_version_id, input_key, name
+FROM challenge_input_sets
+WHERE challenge_pack_version_id = @challenge_pack_version_id
+  AND archived_at IS NULL
+ORDER BY created_at ASC;
+
 -- name: ListRunnableDeploymentsWithLatestSnapshot :many
 SELECT DISTINCT ON (agent_deployments.id)
     agent_deployments.id,

@@ -4001,6 +4001,11 @@ components:
         challenge_input_set_id:
           type: string
           format: uuid
+          description: >
+            Optional. If omitted and the challenge pack has exactly one input
+            set, it is auto-selected. If omitted and the pack has multiple
+            input sets, the request is rejected with code
+            missing_challenge_input_set_id.
         name:
           type: string
         agent_deployment_ids:
