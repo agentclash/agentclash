@@ -82,8 +82,10 @@ func (a *CLITokenAuthenticator) Authenticate(r *http.Request) (Caller, error) {
 		}
 	}
 
-	if err := a.repo.TouchCLITokenLastUsed(r.Context(), token.ID); err != nil {
-		a.logger.Warn("failed to update CLI token last_used_at", "token_id", token.ID, "error", err)
+	if token.LastUsedAt == nil || time.Since(*token.LastUsedAt) > time.Hour {
+		if err := a.repo.TouchCLITokenLastUsed(r.Context(), token.ID); err != nil {
+			a.logger.Warn("failed to update CLI token last_used_at", "token_id", token.ID, "error", err)
+		}
 	}
 
 	return Caller{

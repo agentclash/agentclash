@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useFormStatus } from "react-dom";
+import { normalizeDeviceUserCode, buildDeviceReturnTo } from "@/lib/auth/return-to";
 import { SignInButton } from "../login/sign-in-button";
 
 interface DeviceCodeFormProps {
@@ -9,32 +10,6 @@ interface DeviceCodeFormProps {
   initialUserCode: string;
   isAuthenticated: boolean;
   approveAction: (formData: FormData) => void | Promise<void>;
-}
-
-function normalizeUserCodeInput(value: string): string {
-  const cleaned = value
-    .toUpperCase()
-    .replace(/[^A-Z0-9]/g, "")
-    .slice(0, 8);
-
-  if (!cleaned) {
-    return "";
-  }
-
-  if (cleaned.length <= 4) {
-    return cleaned;
-  }
-
-  return `${cleaned.slice(0, 4)}-${cleaned.slice(4)}`;
-}
-
-function buildDeviceReturnTo(userCode: string): string {
-  if (!userCode) {
-    return "/auth/device";
-  }
-
-  const params = new URLSearchParams({ user_code: userCode });
-  return `/auth/device?${params.toString()}`;
 }
 
 function hasCompleteCode(userCode: string): boolean {
@@ -77,7 +52,7 @@ export function DeviceCodeForm({
   approveAction,
 }: DeviceCodeFormProps) {
   const [userCode, setUserCode] = useState(initialUserCode);
-  const normalizedCode = normalizeUserCodeInput(userCode);
+  const normalizedCode = normalizeDeviceUserCode(userCode);
   const isComplete = hasCompleteCode(normalizedCode);
 
   return (
@@ -105,7 +80,7 @@ export function DeviceCodeForm({
         spellCheck={false}
         value={userCode}
         onChange={(event) =>
-          setUserCode(normalizeUserCodeInput(event.target.value))
+          setUserCode(normalizeDeviceUserCode(event.target.value))
         }
         placeholder="ABCD-EFGH"
         maxLength={9}

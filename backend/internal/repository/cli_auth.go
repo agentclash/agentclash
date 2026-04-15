@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"time"
@@ -157,28 +158,17 @@ func (r *Repository) ApproveDeviceAuthCodeWithToken(ctx context.Context, userCod
 	defer rollback(ctx, tx)
 
 	var codeID uuid.UUID
-	var codeExpiresAt time.Time
 	err = tx.QueryRow(ctx, `
-		SELECT id, expires_at
+		SELECT id
 		FROM device_auth_codes
 		WHERE user_code = $1 AND status = 'pending'
 		FOR UPDATE
-	`, userCode).Scan(&codeID, &codeExpiresAt)
+	`, userCode).Scan(&codeID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return CLIToken{}, ErrDeviceCodeNotFound
 		}
 		return CLIToken{}, fmt.Errorf("lookup device auth code for approval: %w", err)
-	}
-	if codeExpiresAt.Before(time.Now()) {
-		if _, err := tx.Exec(ctx, `
-			UPDATE device_auth_codes
-			SET status = 'expired'
-			WHERE id = $1 AND status = 'pending'
-		`, codeID); err != nil {
-			return CLIToken{}, fmt.Errorf("expire stale device auth code: %w", err)
-		}
-		return CLIToken{}, ErrDeviceCodeExpired
 	}
 
 	var token CLIToken
@@ -194,15 +184,29 @@ func (r *Repository) ApproveDeviceAuthCodeWithToken(ctx context.Context, userCod
 		return CLIToken{}, fmt.Errorf("create cli token during device approval: %w", err)
 	}
 
+	storedToken := rawToken
+	if r.cipher != nil {
+		ciphertext, encErr := r.cipher.Encrypt([]byte(rawToken))
+		if encErr != nil {
+			return CLIToken{}, fmt.Errorf("encrypt device raw token: %w", encErr)
+		}
+		storedToken = base64.StdEncoding.EncodeToString(ciphertext)
+	}
+
 	tag, err := tx.Exec(ctx, `
 		UPDATE device_auth_codes
 		SET status = 'approved', user_id = $2, cli_token_id = $3, raw_token = $4
 		WHERE id = $1 AND status = 'pending' AND expires_at > now()
-	`, codeID, userID, token.ID, rawToken)
+	`, codeID, userID, token.ID, storedToken)
 	if err != nil {
 		return CLIToken{}, fmt.Errorf("approve device auth code: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
+		var expired bool
+		_ = tx.QueryRow(ctx, `SELECT expires_at <= now() FROM device_auth_codes WHERE id = $1`, codeID).Scan(&expired)
+		if expired {
+			return CLIToken{}, ErrDeviceCodeExpired
+		}
 		return CLIToken{}, ErrDeviceCodeNotFound
 	}
 
@@ -229,6 +233,17 @@ func (r *Repository) ConsumeDeviceRawToken(ctx context.Context, id uuid.UUID) (s
 	}
 	if rawToken == nil {
 		return "", nil
+	}
+	if r.cipher != nil {
+		ciphertext, err := base64.StdEncoding.DecodeString(*rawToken)
+		if err != nil {
+			return "", fmt.Errorf("decode device raw token: %w", err)
+		}
+		plaintext, err := r.cipher.Decrypt(ciphertext)
+		if err != nil {
+			return "", fmt.Errorf("decrypt device raw token: %w", err)
+		}
+		return string(plaintext), nil
 	}
 	return *rawToken, nil
 }

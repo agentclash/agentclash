@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math/big"
+	mrand "math/rand/v2"
 	"net/http"
 	"net/url"
 	"strings"
@@ -19,6 +20,13 @@ import (
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+)
+
+// Sentinel errors for device-code polling responses.
+var (
+	errAuthorizationPending = errors.New("authorization_pending")
+	errAccessDenied         = errors.New("access_denied")
+	errExpiredToken         = errors.New("expired_token")
 )
 
 type CLIAuthService interface {
@@ -123,32 +131,32 @@ func (m *CLIAuthManager) PollDeviceToken(ctx context.Context, deviceCode string)
 	code, err := m.repo.GetDeviceAuthCodeByDeviceCode(ctx, deviceCode)
 	if err != nil {
 		if errors.Is(err, repository.ErrDeviceCodeNotFound) {
-			return PollDeviceTokenResult{}, fmt.Errorf("expired_token")
+			return PollDeviceTokenResult{}, errExpiredToken
 		}
 		return PollDeviceTokenResult{}, fmt.Errorf("lookup failed: %w", err)
 	}
 
 	if code.ExpiresAt.Before(time.Now()) {
 		_ = m.repo.ExpireDeviceAuthCode(ctx, code.ID)
-		return PollDeviceTokenResult{}, fmt.Errorf("expired_token")
+		return PollDeviceTokenResult{}, errExpiredToken
 	}
 
 	switch code.Status {
 	case "pending":
-		return PollDeviceTokenResult{}, fmt.Errorf("authorization_pending")
+		return PollDeviceTokenResult{}, errAuthorizationPending
 	case "denied":
-		return PollDeviceTokenResult{}, fmt.Errorf("access_denied")
+		return PollDeviceTokenResult{}, errAccessDenied
 	case "approved":
 		rawToken, err := m.repo.ConsumeDeviceRawToken(ctx, code.ID)
 		if err != nil {
 			return PollDeviceTokenResult{}, fmt.Errorf("consuming token: %w", err)
 		}
 		if rawToken == "" {
-			return PollDeviceTokenResult{}, fmt.Errorf("expired_token")
+			return PollDeviceTokenResult{}, errExpiredToken
 		}
 		return PollDeviceTokenResult{Token: rawToken}, nil
 	default:
-		return PollDeviceTokenResult{}, fmt.Errorf("expired_token")
+		return PollDeviceTokenResult{}, errExpiredToken
 	}
 }
 
@@ -226,6 +234,9 @@ func (m *CLIAuthManager) RevokeCLIToken(ctx context.Context, caller Caller, toke
 }
 
 func (m *CLIAuthManager) cleanupExpiredCodes(ctx context.Context) {
+	if mrand.IntN(20) != 0 {
+		return
+	}
 	if err := m.repo.ExpireStaleDeviceAuthCodes(ctx); err != nil {
 		m.logger.Warn("failed to cleanup stale CLI auth device codes", "error", err)
 	}
@@ -281,12 +292,12 @@ func pollDeviceTokenHandler(logger *slog.Logger, service CLIAuthService) http.Ha
 
 		result, err := service.PollDeviceToken(r.Context(), input.DeviceCode)
 		if err != nil {
-			switch err.Error() {
-			case "authorization_pending":
+			switch {
+			case errors.Is(err, errAuthorizationPending):
 				writeError(w, http.StatusBadRequest, "authorization_pending", "waiting for user authorization")
-			case "access_denied":
+			case errors.Is(err, errAccessDenied):
 				writeError(w, http.StatusBadRequest, "access_denied", "user denied authorization")
-			case "expired_token":
+			case errors.Is(err, errExpiredToken):
 				writeError(w, http.StatusBadRequest, "expired_token", "device code has expired")
 			default:
 				logger.Error("poll device token failed", "error", err)
@@ -378,7 +389,7 @@ func listCLITokensHandler(logger *slog.Logger, service CLIAuthService) http.Hand
 	}
 }
 
-func revokeCLITokenHandler(_ *slog.Logger, service CLIAuthService) http.HandlerFunc {
+func revokeCLITokenHandler(logger *slog.Logger, service CLIAuthService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		caller, err := CallerFromContext(r.Context())
 		if err != nil {
@@ -393,7 +404,13 @@ func revokeCLITokenHandler(_ *slog.Logger, service CLIAuthService) http.HandlerF
 		}
 
 		if err := service.RevokeCLIToken(r.Context(), caller, tokenID); err != nil {
-			writeError(w, http.StatusNotFound, "not_found", "token not found")
+			switch {
+			case errors.Is(err, repository.ErrCLITokenNotFound):
+				writeError(w, http.StatusNotFound, "not_found", "token not found")
+			default:
+				logger.Error("revoke CLI token failed", "token_id", tokenID, "error", err)
+				writeError(w, http.StatusInternalServerError, "internal_error", "failed to revoke token")
+			}
 			return
 		}
 
