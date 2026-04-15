@@ -119,6 +119,38 @@ type DimensionResult struct {
 	BetterDirection string      `json:"better_direction,omitempty"`
 }
 
+// JudgeResult is the aggregated per-judge output of the LLM-as-judge
+// evaluator (internal/scoring/judge/). One JudgeResult per judge_key:
+// the judge evaluator produces it, computeOverallScore reads
+// NormalizedScore to compute llm_judge-sourced dimension scores
+// (Phase 4), and the repository layer maps it to LLMJudgeResultRecord
+// for persistence.
+//
+// NormalizedScore is nil when the judge abstained (every sample
+// returned UNKNOWN or failed to parse) so dimension dispatch can
+// distinguish "never ran" from "ran but couldn't decide." SampleCount
+// and ModelCount stay populated in that case so downstream readers
+// have evidence the judge was actually attempted.
+//
+// Confidence is one of "high", "medium", "low", or empty string. The
+// judge evaluator derives it from the abstain/error rate across
+// samples (assertion mode) or from cross-sample variance (rubric mode
+// in Phase 5). Payload is the mode-specific jsonb blob that mirrors
+// the llm_judge_results.payload column — sample_scores, model_scores,
+// reasoning, raw_outputs, etc.
+type JudgeResult struct {
+	Key             string          `json:"key"`
+	Mode            JudgeMethodMode `json:"mode"`
+	State           OutputState     `json:"state"`
+	NormalizedScore *float64        `json:"normalized_score,omitempty"`
+	Reason          string          `json:"reason,omitempty"`
+	Confidence      string          `json:"confidence,omitempty"`
+	Variance        float64         `json:"variance"`
+	SampleCount     int             `json:"sample_count"`
+	ModelCount      int             `json:"model_count"`
+	Payload         json.RawMessage `json:"payload,omitempty"`
+}
+
 var errJudgeModeUnsupported = errors.New("only deterministic evaluation specs are supported")
 
 func DecodeDefinition(definition json.RawMessage) (EvaluationSpec, error) {
