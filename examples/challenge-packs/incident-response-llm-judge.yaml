@@ -169,13 +169,17 @@ input_sets:
             - "database p95 latency increased from 40ms to 480ms"
             - "fraud service timeout rate is 22%"
         expectations:
-          escalation_policy: |
-            Escalate immediately for potentially high-severity, multi-signal
-            incidents with uncertain root cause. Do not approve destructive
-            remediation until the evidence checklist is complete.
-          reference_response: |
-            Escalate to the payments platform and database on-call rotations
-            immediately, note that the root cause is still uncertain, call out
-            both the cache rollout and downstream dependency failures as active
-            hypotheses, require evidence collection before rollback, and avoid
-            irreversible remediation until blast radius is understood.
+          - key: escalation_policy
+            kind: text
+            value: |
+              Escalate immediately for potentially high-severity, multi-signal
+              incidents with uncertain root cause. Do not approve destructive
+              remediation until the evidence checklist is complete.
+          - key: reference_response
+            kind: text
+            value: |
+              Escalate to the payments platform and database on-call rotations
+              immediately, note that the root cause is still uncertain, call out
+              both the cache rollout and downstream dependency failures as active
+              hypotheses, require evidence collection before rollback, and avoid
+              irreversible remediation until blast radius is understood.
