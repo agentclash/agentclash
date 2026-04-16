@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -65,8 +66,9 @@ type InsertRunAgentStatusHistoryParams struct {
 }
 
 type RecordHostedRunEventParams struct {
-	Event   runevents.Envelope
-	Summary json.RawMessage
+	Event            runevents.Envelope
+	AdditionalEvents []runevents.Envelope
+	Summary          json.RawMessage
 }
 
 type RecordRunEventParams struct {
@@ -793,20 +795,20 @@ func buildRunAgentScorecardDocument(evaluation scoring.RunAgentEvaluation) (json
 	}
 
 	type scorecardDocument struct {
-		RunAgentID        uuid.UUID                   `json:"run_agent_id"`
-		EvaluationSpecID  uuid.UUID                   `json:"evaluation_spec_id"`
-		Status            scoring.EvaluationStatus    `json:"status"`
-		Strategy          scoring.ScoringStrategy     `json:"strategy,omitempty"`
-		OverallScore      *float64                    `json:"overall_score,omitempty"`
-		Passed            *bool                       `json:"passed,omitempty"`
-		OverallReason     string                      `json:"overall_reason,omitempty"`
-		Warnings          []string                    `json:"warnings,omitempty"`
-		Dimensions        map[string]dimensionSummary `json:"dimensions"`
-		ValidatorSummary  map[string]int              `json:"validator_summary"`
-		ValidatorDetails  []validatorDetail            `json:"validator_details,omitempty"`
-		MetricSummary     map[string]int              `json:"metric_summary"`
-		MetricDetails     []metricDetail               `json:"metric_details,omitempty"`
-		LLMJudgeDetails   []llmJudgeDetail             `json:"llm_judge_details,omitempty"`
+		RunAgentID       uuid.UUID                   `json:"run_agent_id"`
+		EvaluationSpecID uuid.UUID                   `json:"evaluation_spec_id"`
+		Status           scoring.EvaluationStatus    `json:"status"`
+		Strategy         scoring.ScoringStrategy     `json:"strategy,omitempty"`
+		OverallScore     *float64                    `json:"overall_score,omitempty"`
+		Passed           *bool                       `json:"passed,omitempty"`
+		OverallReason    string                      `json:"overall_reason,omitempty"`
+		Warnings         []string                    `json:"warnings,omitempty"`
+		Dimensions       map[string]dimensionSummary `json:"dimensions"`
+		ValidatorSummary map[string]int              `json:"validator_summary"`
+		ValidatorDetails []validatorDetail           `json:"validator_details,omitempty"`
+		MetricSummary    map[string]int              `json:"metric_summary"`
+		MetricDetails    []metricDetail              `json:"metric_details,omitempty"`
+		LLMJudgeDetails  []llmJudgeDetail            `json:"llm_judge_details,omitempty"`
 	}
 
 	dimensions := make(map[string]dimensionSummary, len(evaluation.DimensionResults))
@@ -1049,32 +1051,54 @@ func (r *Repository) RecordHostedRunEvent(ctx context.Context, params RecordHost
 	defer rollback(ctx, tx)
 
 	queries := r.queries.WithTx(tx)
-	if err := params.Event.ValidatePending(); err != nil {
-		return RunAgentReplay{}, fmt.Errorf("validate hosted canonical event: %w", err)
+	eventsToInsert := append([]runevents.Envelope{params.Event}, params.AdditionalEvents...)
+	sort.SliceStable(eventsToInsert, func(i, j int) bool {
+		if eventsToInsert[i].OccurredAt.Equal(eventsToInsert[j].OccurredAt) {
+			return eventsToInsert[i].EventID < eventsToInsert[j].EventID
+		}
+		return eventsToInsert[i].OccurredAt.Before(eventsToInsert[j].OccurredAt)
+	})
+	for idx, event := range eventsToInsert {
+		if _, insertErr := insertCanonicalRunEventTx(ctx, queries, event); insertErr != nil {
+			if idx == 0 {
+				return RunAgentReplay{}, fmt.Errorf("insert hosted run event: %w", insertErr)
+			}
+			return RunAgentReplay{}, fmt.Errorf("insert hosted structured trace event: %w", insertErr)
+		}
 	}
 
-	insertedEvent, err := queries.InsertRunEvent(ctx, repositorysqlc.InsertRunEventParams{
-		RunID:      params.Event.RunID,
+	eventRows, err := queries.ListRunEventsByRunAgentID(ctx, repositorysqlc.ListRunEventsByRunAgentIDParams{
 		RunAgentID: params.Event.RunAgentID,
-		EventType:  string(params.Event.EventType),
-		ActorType:  string(params.Event.Source),
-		OccurredAt: pgtype.Timestamptz{Time: params.Event.OccurredAt.UTC(), Valid: true},
-		Payload:    cloneJSON(params.Event.Payload),
 	})
 	if err != nil {
-		return RunAgentReplay{}, fmt.Errorf("insert hosted run event: %w", err)
+		return RunAgentReplay{}, fmt.Errorf("list hosted run events for replay rebuild: %w", err)
+	}
+	events := make([]RunEvent, 0, len(eventRows))
+	for _, row := range eventRows {
+		event, mapErr := mapRunEvent(row)
+		if mapErr != nil {
+			return RunAgentReplay{}, fmt.Errorf("map hosted run event during replay rebuild: %w", mapErr)
+		}
+		events = append(events, event)
+	}
+	summaryDoc, _, latestSequenceNumber, err := buildRunAgentReplaySummary(events)
+	if err != nil {
+		return RunAgentReplay{}, fmt.Errorf("build hosted run replay summary: %w", err)
+	}
+	summaryJSON, err := json.Marshal(summaryDoc)
+	if err != nil {
+		return RunAgentReplay{}, fmt.Errorf("marshal hosted run replay summary: %w", err)
 	}
 
-	summary := cloneJSON(params.Summary)
-	if len(summary) == 0 {
-		summary = json.RawMessage(`{}`)
+	eventCount := int64(len(events))
+	if latestSequenceNumber != nil && *latestSequenceNumber > eventCount {
+		eventCount = *latestSequenceNumber
 	}
-
 	replayRow, err := queries.UpsertRunAgentReplaySummary(ctx, repositorysqlc.UpsertRunAgentReplaySummaryParams{
 		RunAgentID:           params.Event.RunAgentID,
-		Summary:              summary,
-		LatestSequenceNumber: int64Ptr(insertedEvent.SequenceNumber),
-		EventCount:           insertedEvent.SequenceNumber,
+		Summary:              summaryJSON,
+		LatestSequenceNumber: cloneInt64Ptr(latestSequenceNumber),
+		EventCount:           eventCount,
 	})
 	if err != nil {
 		return RunAgentReplay{}, fmt.Errorf("upsert run-agent replay summary: %w", err)
@@ -1115,6 +1139,24 @@ func (r *Repository) RecordRunEvent(ctx context.Context, params RecordRunEventPa
 		return RunEvent{}, fmt.Errorf("map run event: %w", err)
 	}
 	return event, nil
+}
+
+func insertCanonicalRunEventTx(ctx context.Context, queries *repositorysqlc.Queries, event runevents.Envelope) (RunEvent, error) {
+	if err := event.ValidatePending(); err != nil {
+		return RunEvent{}, fmt.Errorf("validate canonical run event: %w", err)
+	}
+	row, err := queries.InsertRunEvent(ctx, repositorysqlc.InsertRunEventParams{
+		RunID:      event.RunID,
+		RunAgentID: event.RunAgentID,
+		EventType:  string(event.EventType),
+		ActorType:  string(event.Source),
+		OccurredAt: pgtype.Timestamptz{Time: event.OccurredAt.UTC(), Valid: true},
+		Payload:    cloneJSON(event.Payload),
+	})
+	if err != nil {
+		return RunEvent{}, err
+	}
+	return mapRunEvent(row)
 }
 
 func (r *Repository) ListRunEventsByRunAgentID(ctx context.Context, runAgentID uuid.UUID) ([]RunEvent, error) {
@@ -2053,19 +2095,19 @@ func (r *Repository) ListRunnableChallengePVersionsByPackID(ctx context.Context,
 var (
 	ErrAgentBuildNotFound        = errors.New("agent build not found")
 	ErrAgentBuildVersionNotFound = errors.New("agent build version not found")
-	ErrWorkspaceNotFound           = errors.New("workspace not found")
-	ErrUserNotFound                = errors.New("user not found")
-	ErrUserAlreadyExists           = errors.New("user already exists")
-	ErrOrganizationNotFound        = errors.New("organization not found")
-	ErrOrganizationLimitReached    = errors.New("organization limit reached")
-	ErrSlugTaken                   = errors.New("slug taken")
-	ErrMembershipNotFound          = errors.New("membership not found")
-	ErrAlreadyMember               = errors.New("already a member")
-	ErrLastOrgAdmin                = errors.New("cannot remove or demote the last org admin")
-	ErrLastWorkspaceAdmin          = errors.New("cannot remove or demote the last workspace admin")
-	ErrOrgMembershipRequired       = errors.New("user must be a member of the organization first")
-	ErrInviteExpired               = errors.New("invite expired")
-	ErrAlreadyOnboarded            = errors.New("already onboarded")
+	ErrWorkspaceNotFound         = errors.New("workspace not found")
+	ErrUserNotFound              = errors.New("user not found")
+	ErrUserAlreadyExists         = errors.New("user already exists")
+	ErrOrganizationNotFound      = errors.New("organization not found")
+	ErrOrganizationLimitReached  = errors.New("organization limit reached")
+	ErrSlugTaken                 = errors.New("slug taken")
+	ErrMembershipNotFound        = errors.New("membership not found")
+	ErrAlreadyMember             = errors.New("already a member")
+	ErrLastOrgAdmin              = errors.New("cannot remove or demote the last org admin")
+	ErrLastWorkspaceAdmin        = errors.New("cannot remove or demote the last workspace admin")
+	ErrOrgMembershipRequired     = errors.New("user must be a member of the organization first")
+	ErrInviteExpired             = errors.New("invite expired")
+	ErrAlreadyOnboarded          = errors.New("already onboarded")
 )
 
 type User struct {
@@ -2197,11 +2239,11 @@ type UpdateWorkspaceMembershipInput struct {
 }
 
 type OnboardInput struct {
-	UserID            uuid.UUID
-	OrganizationName  string
-	OrganizationSlug  string
-	WorkspaceName     string
-	WorkspaceSlug     string
+	UserID           uuid.UUID
+	OrganizationName string
+	OrganizationSlug string
+	WorkspaceName    string
+	WorkspaceSlug    string
 }
 
 type OnboardResult struct {

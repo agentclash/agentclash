@@ -1195,14 +1195,7 @@ func TestRepositoryHostedAndNativeEventsCoexistInCanonicalReadModel(t *testing.T
 	repo := repository.New(db)
 
 	hostedSummary, err := json.Marshal(map[string]any{
-		"mode":            "hosted_black_box",
-		"source":          string(runevents.SourceHostedExternal),
-		"schema_version":  runevents.SchemaVersionV1,
-		"last_event_type": string(runevents.EventTypeSystemRunCompleted),
-		"status":          "completed",
-		"external_run_id": "ext-123",
-		"idempotency_key": "hosted:1",
-		"raw_event_type":  "run_finished",
+		"status": "completed",
 	})
 	if err != nil {
 		t.Fatalf("marshal hosted summary: %v", err)
@@ -1275,11 +1268,18 @@ func TestRepositoryHostedAndNativeEventsCoexistInCanonicalReadModel(t *testing.T
 	if err := json.Unmarshal(hostedReplayRead.Summary, &summary); err != nil {
 		t.Fatalf("unmarshal hosted replay summary: %v", err)
 	}
-	if summary["last_event_type"] != string(runevents.EventTypeSystemRunCompleted) {
-		t.Fatalf("summary last_event_type = %#v, want %q", summary["last_event_type"], runevents.EventTypeSystemRunCompleted)
-	}
 	if summary["status"] != "completed" {
 		t.Fatalf("summary status = %#v, want completed", summary["status"])
+	}
+	if summary["headline"] != "Run completed" {
+		t.Fatalf("summary headline = %#v, want Run completed", summary["headline"])
+	}
+	steps := summary["steps"].([]any)
+	if len(steps) != 1 {
+		t.Fatalf("hosted replay step count = %d, want 1", len(steps))
+	}
+	if steps[0].(map[string]any)["type"] != "run" {
+		t.Fatalf("hosted replay step type = %#v, want run", steps[0].(map[string]any)["type"])
 	}
 }
 

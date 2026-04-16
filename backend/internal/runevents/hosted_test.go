@@ -142,6 +142,53 @@ func TestNormalizeHostedEventMapsFailedRunFinishedToCanonicalEnvelope(t *testing
 	}
 }
 
+func TestNormalizeHostedTraceEventsExtractsStructuredTraceFragments(t *testing.T) {
+	runID := uuid.New()
+	runAgentID := uuid.New()
+	occurredAt := time.Date(2026, 3, 15, 11, 22, 33, 0, time.UTC)
+	event := hostedruns.Event{
+		RunAgentID:    runAgentID,
+		ExternalRunID: "ext-trace",
+		EventType:     hostedruns.EventTypeFinalAnswer,
+		OccurredAt:    occurredAt,
+		Metadata: json.RawMessage(`{
+			"trace_events": [
+				{
+					"event_type": "system.step.started",
+					"occurred_at": "2026-03-15T11:22:30Z",
+					"payload": {"step_index": 1, "subagent_key": "triage", "subagent_label": "Triage"},
+					"summary": {"status": "running", "step_index": 1}
+				},
+				{
+					"event_type": "model.call.completed",
+					"payload": {"provider_model_id": "gpt-4.1", "subagent_label": "Triage"},
+					"summary": {"status": "completed", "provider_model_id": "gpt-4.1"}
+				}
+			]
+		}`),
+	}
+
+	envelopes, err := NormalizeHostedTraceEvents(runID, event)
+	if err != nil {
+		t.Fatalf("NormalizeHostedTraceEvents returned error: %v", err)
+	}
+	if len(envelopes) != 2 {
+		t.Fatalf("trace envelope count = %d, want 2", len(envelopes))
+	}
+	if envelopes[0].EventType != EventTypeSystemStepStarted {
+		t.Fatalf("first trace event type = %q, want %q", envelopes[0].EventType, EventTypeSystemStepStarted)
+	}
+	if envelopes[0].Summary.EvidenceLevel != EvidenceLevelHostedStructured {
+		t.Fatalf("first evidence level = %q, want %q", envelopes[0].Summary.EvidenceLevel, EvidenceLevelHostedStructured)
+	}
+	if envelopes[1].EventType != EventTypeModelCallCompleted {
+		t.Fatalf("second trace event type = %q, want %q", envelopes[1].EventType, EventTypeModelCallCompleted)
+	}
+	if envelopes[1].Summary.ProviderModelID != "gpt-4.1" {
+		t.Fatalf("second provider model id = %q, want gpt-4.1", envelopes[1].Summary.ProviderModelID)
+	}
+}
+
 func TestEnvelopeValidatePersistedRequiresPositiveSequenceNumber(t *testing.T) {
 	envelope := Envelope{
 		EventID:       "evt-1",

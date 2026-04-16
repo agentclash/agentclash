@@ -17,13 +17,20 @@ import (
 const defaultJudgeTimeout = 60 * time.Second
 
 type judgeCallRecord struct {
-	Model        string  `json:"model"`
-	ProviderKey  string  `json:"provider_key"`
-	SampleIndex  int     `json:"sample_index"`
+	Model        string   `json:"model"`
+	ProviderKey  string   `json:"provider_key"`
+	SampleIndex  int      `json:"sample_index"`
 	Score        *float64 `json:"score,omitempty"`
-	Confidence   string  `json:"confidence,omitempty"`
-	Error        string  `json:"error,omitempty"`
-	ResponseText string  `json:"response_text,omitempty"`
+	Confidence   string   `json:"confidence,omitempty"`
+	Error        string   `json:"error,omitempty"`
+	ResponseText string   `json:"response_text,omitempty"`
+}
+
+type nwiseCandidate struct {
+	RunAgentID     string   `json:"run_agent_id"`
+	Label          string   `json:"label"`
+	LaneIndex      int32    `json:"lane_index"`
+	ContextEntries []string `json:"context_entries"`
 }
 
 func evaluateLLMJudges(
@@ -61,9 +68,9 @@ func evaluateSingleLLMJudge(
 	judge scoring.LLMJudgeDeclaration,
 ) (scoring.LLMJudgeResult, []string) {
 	result := scoring.LLMJudgeResult{
-		JudgeKey:    judge.Key,
-		Mode:        string(judge.Mode),
-		ModelCount:  int32(len(judgeModels(judge))),
+		JudgeKey:   judge.Key,
+		Mode:       string(judge.Mode),
+		ModelCount: int32(len(judgeModels(judge))),
 	}
 
 	if client == nil {
@@ -75,12 +82,7 @@ func evaluateSingleLLMJudge(
 		return result, []string{fmt.Sprintf("llm judge %q skipped: %s", judge.Key, result.Reason)}
 	}
 	if judge.Mode == scoring.JudgeMethodNWise {
-		result.Reason = "n_wise judges are not supported in per-run-agent scoring"
-		result.Payload = mustMarshalJSON(map[string]any{
-			"mode":   judge.Mode,
-			"reason": result.Reason,
-		})
-		return result, []string{fmt.Sprintf("llm judge %q unavailable: %s", judge.Key, result.Reason)}
+		return evaluateSingleNWiseJudge(ctx, client, repo, executionContext, judge)
 	}
 
 	contextValues, reason, err := resolveJudgeContextValues(input, judge)
@@ -201,11 +203,11 @@ func evaluateSingleLLMJudge(
 		reason = "all judge invocations failed or returned unparsable output"
 		result.Reason = reason
 		result.Payload = mustMarshalJSON(map[string]any{
-			"mode":               judge.Mode,
-			"reason":             reason,
-			"calls":              callRecords,
+			"mode":                  judge.Mode,
+			"reason":                reason,
+			"calls":                 callRecords,
 			"unable_to_judge_count": len(callRecords),
-			"warnings":           warnings,
+			"warnings":              warnings,
 		})
 		return result, warnings
 	}
@@ -226,6 +228,328 @@ func evaluateSingleLLMJudge(
 		"warnings":         warnings,
 	})
 	return result, warnings
+}
+
+func evaluateSingleNWiseJudge(
+	ctx context.Context,
+	client provider.Client,
+	repo RunRepository,
+	executionContext repository.RunAgentExecutionContext,
+	judge scoring.LLMJudgeDeclaration,
+) (scoring.LLMJudgeResult, []string) {
+	result := scoring.LLMJudgeResult{
+		JudgeKey:   judge.Key,
+		Mode:       string(judge.Mode),
+		ModelCount: int32(len(judgeModels(judge))),
+	}
+
+	candidates, reason, err := buildNWiseCandidates(ctx, repo, executionContext, judge)
+	if err != nil {
+		result.Reason = err.Error()
+		result.Payload = mustMarshalJSON(map[string]any{
+			"mode":   judge.Mode,
+			"reason": result.Reason,
+		})
+		return result, []string{fmt.Sprintf("llm judge %q errored: %v", judge.Key, err)}
+	}
+	if reason != "" {
+		result.Reason = reason
+		result.Payload = mustMarshalJSON(map[string]any{
+			"mode":   judge.Mode,
+			"reason": result.Reason,
+		})
+		return result, []string{fmt.Sprintf("llm judge %q unavailable: %s", judge.Key, reason)}
+	}
+	if len(candidates) < 2 {
+		result.Reason = "n_wise judges require at least two run agents in the run"
+		result.Payload = mustMarshalJSON(map[string]any{
+			"mode":   judge.Mode,
+			"reason": result.Reason,
+		})
+		return result, []string{fmt.Sprintf("llm judge %q unavailable: %s", judge.Key, result.Reason)}
+	}
+
+	currentRunAgentID := executionContext.RunAgent.ID.String()
+	models := judgeModels(judge)
+	result.SampleCount = int32(judge.Samples * len(models))
+	callRecords := make([]judgeCallRecord, 0, len(models)*judge.Samples)
+	modelScores := make(map[string]float64, len(models))
+	successfulScores := make([]float64, 0, len(models)*judge.Samples)
+	warnings := make([]string, 0)
+
+	for _, model := range models {
+		providerKey, providerAccountID, credentialReference, err := resolveJudgeTarget(model, executionContext)
+		if err != nil {
+			warnings = append(warnings, fmt.Sprintf("llm judge %q model %q: %v", judge.Key, model, err))
+			for sampleIdx := 0; sampleIdx < judge.Samples; sampleIdx++ {
+				callRecords = append(callRecords, judgeCallRecord{
+					Model:       model,
+					ProviderKey: providerKey,
+					SampleIndex: sampleIdx + 1,
+					Error:       err.Error(),
+				})
+			}
+			continue
+		}
+
+		runCtx := ctx
+		if strings.HasPrefix(credentialReference, "workspace-secret://") {
+			secrets, loadErr := repo.LoadWorkspaceSecrets(ctx, executionContext.Run.WorkspaceID)
+			if loadErr != nil {
+				err = fmt.Errorf("load workspace secrets: %w", loadErr)
+				warnings = append(warnings, fmt.Sprintf("llm judge %q model %q: %v", judge.Key, model, err))
+				for sampleIdx := 0; sampleIdx < judge.Samples; sampleIdx++ {
+					callRecords = append(callRecords, judgeCallRecord{
+						Model:       model,
+						ProviderKey: providerKey,
+						SampleIndex: sampleIdx + 1,
+						Error:       err.Error(),
+					})
+				}
+				continue
+			}
+			runCtx = provider.WithWorkspaceSecrets(runCtx, secrets)
+		}
+
+		perModelScores := make([]float64, 0, judge.Samples)
+		for sampleIdx := 0; sampleIdx < judge.Samples; sampleIdx++ {
+			orderedCandidates := rotateNWiseCandidates(candidates, sampleIdx, judge.PositionDebiasing)
+			request := provider.Request{
+				ProviderKey:         providerKey,
+				ProviderAccountID:   providerAccountID,
+				CredentialReference: credentialReference,
+				Model:               model,
+				StepTimeout:         judgeTimeout(judge),
+				Messages:            buildNWiseJudgeMessages(judge, orderedCandidates),
+				Metadata: mustMarshalJSON(map[string]any{
+					"run_id":             executionContext.Run.ID,
+					"run_agent_id":       executionContext.RunAgent.ID,
+					"evaluation_spec_id": executionContext.ChallengePackVersion.ID,
+					"judge_key":          judge.Key,
+					"judge_mode":         judge.Mode,
+					"judge_model":        model,
+					"judge_sample_index": sampleIdx + 1,
+					"candidate_count":    len(orderedCandidates),
+				}),
+			}
+
+			response, invokeErr := client.InvokeModel(runCtx, request)
+			record := judgeCallRecord{
+				Model:        model,
+				ProviderKey:  providerKey,
+				SampleIndex:  sampleIdx + 1,
+				ResponseText: response.OutputText,
+			}
+			if invokeErr != nil {
+				record.Error = invokeErr.Error()
+				callRecords = append(callRecords, record)
+				warnings = append(warnings, fmt.Sprintf("llm judge %q model %q sample %d: %v", judge.Key, model, sampleIdx+1, invokeErr))
+				continue
+			}
+
+			score, confidence, parseErr := parseNWiseScore(currentRunAgentID, orderedCandidates, response.OutputText)
+			if parseErr != nil {
+				record.Error = parseErr.Error()
+				callRecords = append(callRecords, record)
+				warnings = append(warnings, fmt.Sprintf("llm judge %q model %q sample %d: %v", judge.Key, model, sampleIdx+1, parseErr))
+				continue
+			}
+
+			record.Score = &score
+			record.Confidence = confidence
+			callRecords = append(callRecords, record)
+			perModelScores = append(perModelScores, score)
+			successfulScores = append(successfulScores, score)
+		}
+
+		if aggregated, ok := aggregateSamplesForMode(judge.Mode, perModelScores); ok {
+			modelScores[model] = aggregated
+		}
+	}
+
+	if len(modelScores) == 0 {
+		result.Reason = "all judge invocations failed or returned unparsable output"
+		result.Payload = mustMarshalJSON(map[string]any{
+			"mode":                  judge.Mode,
+			"reason":                result.Reason,
+			"calls":                 callRecords,
+			"unable_to_judge_count": len(callRecords),
+			"candidates":            candidates,
+			"warnings":              warnings,
+		})
+		return result, warnings
+	}
+
+	aggregatedScore := aggregateModelScores(judge, modelScores)
+	result.NormalizedScore = &aggregatedScore
+	if variance, ok := sampleVariance(successfulScores); ok {
+		result.Variance = &variance
+	}
+	if confidence := deriveJudgeConfidence(judge, modelScores, successfulScores, len(warnings) > 0); confidence != "" {
+		result.Confidence = &confidence
+	}
+	result.Payload = mustMarshalJSON(map[string]any{
+		"mode":             judge.Mode,
+		"calls":            callRecords,
+		"model_scores":     modelScores,
+		"aggregated_score": aggregatedScore,
+		"candidates":       candidates,
+		"warnings":         warnings,
+	})
+	return result, warnings
+}
+
+func buildNWiseCandidates(
+	ctx context.Context,
+	repo RunRepository,
+	executionContext repository.RunAgentExecutionContext,
+	judge scoring.LLMJudgeDeclaration,
+) ([]nwiseCandidate, string, error) {
+	runAgents, err := repo.ListRunAgentsByRunID(ctx, executionContext.Run.ID)
+	if err != nil {
+		return nil, "", fmt.Errorf("list run agents for n_wise judge: %w", err)
+	}
+	sort.SliceStable(runAgents, func(i, j int) bool {
+		if runAgents[i].LaneIndex == runAgents[j].LaneIndex {
+			return runAgents[i].ID.String() < runAgents[j].ID.String()
+		}
+		return runAgents[i].LaneIndex < runAgents[j].LaneIndex
+	})
+
+	candidates := make([]nwiseCandidate, 0, len(runAgents))
+	for _, runAgent := range runAgents {
+		agentExecutionContext, err := repo.GetRunAgentExecutionContextByID(ctx, runAgent.ID)
+		if err != nil {
+			return nil, "", fmt.Errorf("load n_wise run-agent execution context %s: %w", runAgent.ID, err)
+		}
+		events, err := repo.ListRunEventsByRunAgentID(ctx, runAgent.ID)
+		if err != nil {
+			return nil, "", fmt.Errorf("list n_wise run-agent events %s: %w", runAgent.ID, err)
+		}
+		challengeInputs, err := mapChallengeInputs(agentExecutionContext.ChallengePackVersion.Manifest, agentExecutionContext.ChallengeInputSet)
+		if err != nil {
+			return nil, "", fmt.Errorf("map n_wise challenge inputs for %s: %w", runAgent.ID, err)
+		}
+		contextValues, reason, err := resolveJudgeContextValues(scoring.EvaluationInput{
+			RunAgentID:       runAgent.ID,
+			EvaluationSpecID: executionContext.ChallengePackVersion.ID,
+			ChallengeInputs:  challengeInputs,
+			Events:           mapRunEvents(events),
+		}, judge)
+		if err != nil {
+			return nil, "", fmt.Errorf("resolve n_wise context for %s: %w", runAgent.ID, err)
+		}
+		if reason != "" {
+			return nil, fmt.Sprintf("judge context unavailable for run agent %s: %s", runAgent.ID, reason), nil
+		}
+		candidates = append(candidates, nwiseCandidate{
+			RunAgentID:     runAgent.ID.String(),
+			Label:          firstNonEmpty(strings.TrimSpace(runAgent.Label), fmt.Sprintf("lane-%d", runAgent.LaneIndex)),
+			LaneIndex:      runAgent.LaneIndex,
+			ContextEntries: contextValues,
+		})
+	}
+	return candidates, "", nil
+}
+
+func rotateNWiseCandidates(candidates []nwiseCandidate, sampleIdx int, enabled bool) []nwiseCandidate {
+	rotated := append([]nwiseCandidate(nil), candidates...)
+	if !enabled || len(rotated) == 0 {
+		return rotated
+	}
+	shift := sampleIdx % len(rotated)
+	if shift == 0 {
+		return rotated
+	}
+	return append(rotated[shift:], rotated[:shift]...)
+}
+
+func buildNWiseJudgeMessages(judge scoring.LLMJudgeDeclaration, candidates []nwiseCandidate) []provider.Message {
+	body := []string{
+		"You are an evaluation judge for autonomous-agent runs.",
+		"Return only valid JSON. Do not wrap the response in markdown fences.",
+		`Response schema: {"ranking": ["<run_agent_id>", "..."], "confidence": "low|medium|high", "reasoning": "<brief rationale>"}`,
+		"Task:",
+		judge.Prompt,
+		"Rank every candidate from best to worst. Include every candidate exactly once using run_agent_id values only.",
+		"Candidates:",
+	}
+	for idx, candidate := range candidates {
+		body = append(body,
+			fmt.Sprintf("Candidate %d", idx+1),
+			fmt.Sprintf("run_agent_id: %s", candidate.RunAgentID),
+			fmt.Sprintf("label: %s", candidate.Label),
+			fmt.Sprintf("lane_index: %d", candidate.LaneIndex),
+			strings.Join(candidate.ContextEntries, "\n\n"),
+		)
+	}
+	if len(judge.AntiGamingClauses) > 0 {
+		body = append(body, "Additional anti-gaming clauses:")
+		body = append(body, judge.AntiGamingClauses...)
+	}
+	return []provider.Message{{
+		Role:    "user",
+		Content: strings.Join(body, "\n\n"),
+	}}
+}
+
+func parseNWiseScore(currentRunAgentID string, candidates []nwiseCandidate, raw string) (float64, string, error) {
+	normalized := sanitizeJudgeJSON(raw)
+	var parsed struct {
+		Ranking    []string `json:"ranking"`
+		RankedIDs  []string `json:"ranked_ids"`
+		Confidence string   `json:"confidence"`
+	}
+	if err := json.Unmarshal([]byte(normalized), &parsed); err != nil {
+		return 0, "", fmt.Errorf("parse n_wise judge response: %w", err)
+	}
+	ranking := parsed.Ranking
+	if len(ranking) == 0 {
+		ranking = parsed.RankedIDs
+	}
+	if len(ranking) == 0 {
+		return 0, "", fmt.Errorf("n_wise judge response did not include a ranking array")
+	}
+
+	validIDs := make(map[string]struct{}, len(candidates))
+	for _, candidate := range candidates {
+		validIDs[candidate.RunAgentID] = struct{}{}
+	}
+	seen := make(map[string]struct{}, len(ranking))
+	filtered := make([]string, 0, len(ranking))
+	for _, candidateID := range ranking {
+		candidateID = strings.TrimSpace(candidateID)
+		if candidateID == "" {
+			continue
+		}
+		if _, ok := validIDs[candidateID]; !ok {
+			return 0, "", fmt.Errorf("n_wise judge returned unknown candidate id %q", candidateID)
+		}
+		if _, ok := seen[candidateID]; ok {
+			return 0, "", fmt.Errorf("n_wise judge returned duplicate candidate id %q", candidateID)
+		}
+		seen[candidateID] = struct{}{}
+		filtered = append(filtered, candidateID)
+	}
+	if len(filtered) != len(candidates) {
+		return 0, "", fmt.Errorf("n_wise judge ranked %d candidates, want %d", len(filtered), len(candidates))
+	}
+
+	position := -1
+	for idx, candidateID := range filtered {
+		if candidateID == currentRunAgentID {
+			position = idx
+			break
+		}
+	}
+	if position < 0 {
+		return 0, "", fmt.Errorf("n_wise judge omitted current run agent %s", currentRunAgentID)
+	}
+	if len(filtered) == 1 {
+		return 1, normalizeJudgeConfidence(parsed.Confidence), nil
+	}
+	borda := float64(len(filtered)-1-position) / float64(len(filtered)-1)
+	return borda, normalizeJudgeConfidence(parsed.Confidence), nil
 }
 
 func resolveJudgeContextValues(input scoring.EvaluationInput, judge scoring.LLMJudgeDeclaration) ([]string, string, error) {

@@ -149,6 +149,55 @@ func TestHostedRunIngestionManagerNormalizesErrorEventIntoCanonicalVocabulary(t 
 	}
 }
 
+func TestHostedRunIngestionManagerPersistsStructuredTraceFragments(t *testing.T) {
+	runID := uuid.New()
+	runAgentID := uuid.New()
+	externalRunID := "ext-trace"
+	event := hostedruns.Event{
+		RunAgentID:    runAgentID,
+		ExternalRunID: externalRunID,
+		EventType:     hostedruns.EventTypeFinalAnswer,
+		OccurredAt:    time.Now().UTC(),
+		Output:        []byte(`{"answer":"done"}`),
+		Metadata: []byte(`{
+			"trace_events": [
+				{
+					"event_type": "system.step.started",
+					"payload": {"step_index": 1, "subagent_key": "triage", "subagent_label": "Triage"},
+					"summary": {"status": "running", "step_index": 1}
+				}
+			]
+		}`),
+	}
+	token, err := hostedruns.NewCallbackTokenSigner("secret").Sign(runID, runAgentID)
+	if err != nil {
+		t.Fatalf("sign token: %v", err)
+	}
+
+	repo := &fakeHostedRunExecutionRepository{
+		execution: repository.HostedRunExecution{
+			RunID:         runID,
+			RunAgentID:    runAgentID,
+			ExternalRunID: &externalRunID,
+			Status:        "accepted",
+		},
+	}
+	manager := NewHostedRunIngestionManager(repo, "secret", &fakeHostedRunWorkflowSignaler{}, nil, slog.Default())
+
+	if err := manager.IngestEvent(context.Background(), runID, token, event); err != nil {
+		t.Fatalf("IngestEvent returned error: %v", err)
+	}
+	if repo.recordParams == nil {
+		t.Fatalf("expected record params to be captured")
+	}
+	if len(repo.recordParams.AdditionalEvents) != 1 {
+		t.Fatalf("additional event count = %d, want 1", len(repo.recordParams.AdditionalEvents))
+	}
+	if repo.recordParams.AdditionalEvents[0].EventType != runevents.EventTypeSystemStepStarted {
+		t.Fatalf("structured trace event type = %q, want %q", repo.recordParams.AdditionalEvents[0].EventType, runevents.EventTypeSystemStepStarted)
+	}
+}
+
 func TestHostedRunIngestionManagerRejectsInvalidToken(t *testing.T) {
 	manager := NewHostedRunIngestionManager(&fakeHostedRunExecutionRepository{}, "secret", &fakeHostedRunWorkflowSignaler{}, nil, slog.Default())
 

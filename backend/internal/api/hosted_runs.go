@@ -90,6 +90,10 @@ func (m *HostedRunIngestionManager) IngestEvent(ctx context.Context, runID uuid.
 	if err != nil {
 		return err
 	}
+	traceEvents, err := runevents.NormalizeHostedTraceEvents(runID, event)
+	if err != nil {
+		return err
+	}
 	replaySummary, err := hostedReplaySummary(normalizedEvent, event)
 	if err != nil {
 		return err
@@ -107,8 +111,9 @@ func (m *HostedRunIngestionManager) IngestEvent(ctx context.Context, runID uuid.
 		return err
 	}
 	replayRecord, err := m.repo.RecordHostedRunEvent(ctx, repository.RecordHostedRunEventParams{
-		Event:   normalizedEvent,
-		Summary: replaySummary,
+		Event:            normalizedEvent,
+		AdditionalEvents: traceEvents,
+		Summary:          replaySummary,
 	})
 	if err != nil {
 		return err

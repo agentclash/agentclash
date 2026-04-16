@@ -5432,6 +5432,11 @@ components:
         metadata:
           type: object
           additionalProperties: true
+          description: >
+            Optional hosted trace metadata. When `metadata.trace_events` (or
+            `metadata.events`) is present, AgentClash ingests each entry as an
+            additional canonical replay event so hosted runs can surface
+            structured internal subagent/model/tool steps in replay and UI.
 
     # --- Playgrounds ---
 

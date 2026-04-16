@@ -61,6 +61,8 @@ type runAgentReplayStepDocument struct {
 	ProviderKey       string           `json:"provider_key,omitempty"`
 	ProviderModelID   string           `json:"provider_model_id,omitempty"`
 	ToolName          string           `json:"tool_name,omitempty"`
+	SubagentKey       string           `json:"subagent_key,omitempty"`
+	SubagentLabel     string           `json:"subagent_label,omitempty"`
 	SandboxAction     string           `json:"sandbox_action,omitempty"`
 	MetricKey         string           `json:"metric_key,omitempty"`
 	FinalOutput       string           `json:"final_output,omitempty"`
@@ -243,6 +245,12 @@ func enrichReplayStep(step *runAgentReplayStepDocument, payload map[string]any) 
 	if toolName := replayString(payload, "tool_name"); toolName != "" {
 		step.ToolName = toolName
 	}
+	if subagentKey := replayString(payload, "subagent_key"); subagentKey != "" {
+		step.SubagentKey = subagentKey
+	}
+	if subagentLabel := replayString(payload, "subagent_label"); subagentLabel != "" {
+		step.SubagentLabel = subagentLabel
+	}
 	if sandboxAction := replaySandboxAction(payload); sandboxAction != "" {
 		step.SandboxAction = sandboxAction
 	}
@@ -396,8 +404,15 @@ func replayStepHeadline(eventType runevents.Type, payload map[string]any) string
 	case runevents.EventTypeSystemOutputFinalized:
 		return "Final output finalized"
 	case runevents.EventTypeSystemStepStarted, runevents.EventTypeSystemStepCompleted:
+		subagentLabel := replayString(payload, "subagent_label")
 		if stepIndex, ok := replayInt(payload, "step_index"); ok {
+			if subagentLabel != "" {
+				return fmt.Sprintf("%s step %d", subagentLabel, stepIndex)
+			}
 			return fmt.Sprintf("Agent step %d", stepIndex)
+		}
+		if subagentLabel != "" {
+			return fmt.Sprintf("%s step", subagentLabel)
 		}
 		return "Agent step"
 	case runevents.EventTypeModelCallStarted, runevents.EventTypeModelCallCompleted:
@@ -405,13 +420,27 @@ func replayStepHeadline(eventType runevents.Type, payload map[string]any) string
 		if model == "" {
 			model = replayString(payload, "model")
 		}
+		subagentLabel := replayString(payload, "subagent_label")
 		if model != "" {
+			if subagentLabel != "" {
+				return fmt.Sprintf("%s model call to %s", subagentLabel, model)
+			}
 			return fmt.Sprintf("Model call to %s", model)
+		}
+		if subagentLabel != "" {
+			return fmt.Sprintf("%s model call", subagentLabel)
 		}
 		return "Model call"
 	case runevents.EventTypeToolCallStarted, runevents.EventTypeToolCallCompleted, runevents.EventTypeToolCallFailed:
+		subagentLabel := replayString(payload, "subagent_label")
 		if toolName := replayString(payload, "tool_name"); toolName != "" {
+			if subagentLabel != "" {
+				return fmt.Sprintf("%s tool call: %s", subagentLabel, toolName)
+			}
 			return fmt.Sprintf("Tool call: %s", toolName)
+		}
+		if subagentLabel != "" {
+			return fmt.Sprintf("%s tool call", subagentLabel)
 		}
 		return "Tool call"
 	case runevents.EventTypeSandboxCommandStarted, runevents.EventTypeSandboxCommandCompleted, runevents.EventTypeSandboxCommandFailed:

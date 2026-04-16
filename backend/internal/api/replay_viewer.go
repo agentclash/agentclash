@@ -494,6 +494,8 @@ var replayViewerPageTemplate = template.Must(template.New("replay-viewer").Parse
             detail("Provider", step.provider_key),
             detail("Model", step.provider_model_id),
             detail("Tool", step.tool_name),
+            detail("Subagent key", step.subagent_key),
+            detail("Subagent label", step.subagent_label),
             detail("Sandbox action", step.sandbox_action),
             detail("Metric", step.metric_key),
             detail("Started sequence", step.started_sequence),
