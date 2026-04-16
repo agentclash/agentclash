@@ -72,6 +72,7 @@ type RunAgentEvaluation struct {
 	EvaluationSpecID uuid.UUID           `json:"evaluation_spec_id"`
 	Status           EvaluationStatus    `json:"status"`
 	ValidatorResults []ValidatorResult   `json:"validator_results"`
+	LLMJudgeResults  []LLMJudgeResult    `json:"llm_judge_results,omitempty"`
 	MetricResults    []MetricResult      `json:"metric_results"`
 	DimensionResults []DimensionResult   `json:"dimension_results"`
 	DimensionScores  map[string]*float64 `json:"dimension_scores"`
@@ -119,6 +120,18 @@ type DimensionResult struct {
 	BetterDirection string      `json:"better_direction,omitempty"`
 }
 
+type LLMJudgeResult struct {
+	JudgeKey        string          `json:"judge_key"`
+	Mode            string          `json:"mode"`
+	NormalizedScore *float64        `json:"normalized_score,omitempty"`
+	Payload         json.RawMessage `json:"payload"`
+	Confidence      *string         `json:"confidence,omitempty"`
+	Variance        *float64        `json:"variance,omitempty"`
+	SampleCount     int32           `json:"sample_count"`
+	ModelCount      int32           `json:"model_count"`
+	Reason          string          `json:"reason,omitempty"`
+}
+
 var errJudgeModeUnsupported = errors.New("only deterministic evaluation specs are supported")
 
 func DecodeDefinition(definition json.RawMessage) (EvaluationSpec, error) {
@@ -139,11 +152,24 @@ func DecodeDefinition(definition json.RawMessage) (EvaluationSpec, error) {
 }
 
 func EvaluateRunAgent(input EvaluationInput, spec EvaluationSpec) (RunAgentEvaluation, error) {
+	return evaluateRunAgentWithResolvedJudges(input, spec, nil, false)
+}
+
+func EvaluateRunAgentWithLLMJudgeResults(input EvaluationInput, spec EvaluationSpec, llmJudgeResults []LLMJudgeResult) (RunAgentEvaluation, error) {
+	return evaluateRunAgentWithResolvedJudges(input, spec, llmJudgeResults, true)
+}
+
+func evaluateRunAgentWithResolvedJudges(
+	input EvaluationInput,
+	spec EvaluationSpec,
+	llmJudgeResults []LLMJudgeResult,
+	allowNonDeterministic bool,
+) (RunAgentEvaluation, error) {
 	normalizeEvaluationSpec(&spec)
 	if err := ValidateEvaluationSpec(spec); err != nil {
 		return RunAgentEvaluation{}, err
 	}
-	if spec.JudgeMode != JudgeModeDeterministic {
+	if spec.JudgeMode != JudgeModeDeterministic && !allowNonDeterministic {
 		return RunAgentEvaluation{}, errJudgeModeUnsupported
 	}
 
@@ -157,7 +183,7 @@ func EvaluateRunAgent(input EvaluationInput, spec EvaluationSpec) (RunAgentEvalu
 	metricResults, metricWarnings := evaluateMetrics(spec.Metrics, evidence, validatorResults, spec)
 	warnings = append(warnings, metricWarnings...)
 
-	dimensionResults := evaluateDimensions(spec, evidence, validatorResults, metricResults)
+	dimensionResults := evaluateDimensions(spec, evidence, validatorResults, metricResults, llmJudgeResults)
 	warnings = append(warnings, dimensionWarnings(dimensionResults, spec.Scorecard.Dimensions)...)
 	dimensionScores := make(map[string]*float64, len(dimensionResults))
 	for _, result := range dimensionResults {
@@ -194,6 +220,7 @@ func EvaluateRunAgent(input EvaluationInput, spec EvaluationSpec) (RunAgentEvalu
 		EvaluationSpecID: input.EvaluationSpecID,
 		Status:           status,
 		ValidatorResults: validatorResults,
+		LLMJudgeResults:  cloneLLMJudgeResults(llmJudgeResults),
 		MetricResults:    metricResults,
 		DimensionResults: dimensionResults,
 		DimensionScores:  dimensionScores,
@@ -203,6 +230,27 @@ func EvaluateRunAgent(input EvaluationInput, spec EvaluationSpec) (RunAgentEvalu
 		Strategy:         spec.Scorecard.Strategy,
 		Warnings:         uniqueStrings(warnings),
 	}, nil
+}
+
+func cloneLLMJudgeResults(results []LLMJudgeResult) []LLMJudgeResult {
+	if len(results) == 0 {
+		return nil
+	}
+	cloned := make([]LLMJudgeResult, 0, len(results))
+	for _, result := range results {
+		cloned = append(cloned, LLMJudgeResult{
+			JudgeKey:        result.JudgeKey,
+			Mode:            result.Mode,
+			NormalizedScore: cloneFloat64Ptr(result.NormalizedScore),
+			Payload:         cloneJSON(result.Payload),
+			Confidence:      cloneStringPtr(result.Confidence),
+			Variance:        cloneFloat64Ptr(result.Variance),
+			SampleCount:     result.SampleCount,
+			ModelCount:      result.ModelCount,
+			Reason:          result.Reason,
+		})
+	}
+	return cloned
 }
 
 type scoredDimension struct {

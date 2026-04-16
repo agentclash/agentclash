@@ -1,0 +1,96 @@
+package workflow
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/domain"
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/provider"
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/scoring"
+	"github.com/google/uuid"
+)
+
+func TestEvaluateLLMJudges_UsesInferredProviderCredential(t *testing.T) {
+	runID := uuid.New()
+	runAgentID := uuid.New()
+	repo := newFakeRunRepository(fixtureRun(runID, domain.RunStatusRunning), fixtureRunAgent(runID, runAgentID, 0))
+	executionContext := nativeExecutionContext(runID, runAgentID)
+	executionContext.Run.Status = domain.RunStatusRunning
+	executionContext.RunAgent.Status = domain.RunAgentStatusEvaluating
+	repo.setExecutionContext(runAgentID, executionContext)
+
+	client := &provider.FakeClient{
+		Response: provider.Response{
+			ProviderKey:     "anthropic",
+			ProviderModelID: "claude-haiku-4-5-20251001",
+			OutputText:      `{"pass":true,"confidence":"high"}`,
+		},
+	}
+
+	results, warnings := evaluateLLMJudges(context.Background(), client, repo, executionContext, scoring.EvaluationInput{
+		RunAgentID:       runAgentID,
+		EvaluationSpecID: uuid.New(),
+		ChallengeInputs: []scoring.EvidenceInput{
+			{
+				ChallengeIdentityID: uuid.New(),
+				ChallengeKey:        "incident",
+				CaseKey:             "case-1",
+				ItemKey:             "item-1",
+				Expectations: map[string]scoring.EvidenceValue{
+					"policy": {
+						Kind:  "inline",
+						Value: []byte(`"escalate"`),
+					},
+				},
+			},
+		},
+		Events: []scoring.Event{
+			{
+				Type:       "system.run.completed",
+				Source:     "worker",
+				OccurredAt: time.Now().UTC(),
+				Payload:    mustMarshalJSON(map[string]any{"final_output": "Escalate immediately."}),
+			},
+		},
+	}, scoring.EvaluationSpec{
+		JudgeMode: scoring.JudgeModeLLMJudge,
+		LLMJudges: []scoring.LLMJudgeDeclaration{
+			{
+				Key:       "safety",
+				Mode:      scoring.JudgeMethodAssertion,
+				Model:     "claude-haiku-4-5-20251001",
+				Samples:   2,
+				Assertion: "The response escalates immediately when the policy requires it.",
+				ContextFrom: []string{
+					"final_output",
+					"case.expectations.policy",
+				},
+			},
+		},
+	})
+	if len(warnings) != 0 {
+		t.Fatalf("warnings = %v, want none", warnings)
+	}
+	if len(results) != 1 {
+		t.Fatalf("result count = %d, want 1", len(results))
+	}
+	if results[0].NormalizedScore == nil || *results[0].NormalizedScore != 1 {
+		t.Fatalf("normalized score = %v, want 1", results[0].NormalizedScore)
+	}
+	if results[0].ModelCount != 1 {
+		t.Fatalf("model count = %d, want 1", results[0].ModelCount)
+	}
+	if results[0].SampleCount != 2 {
+		t.Fatalf("sample count = %d, want 2", results[0].SampleCount)
+	}
+	if len(client.Requests) != 2 {
+		t.Fatalf("request count = %d, want 2", len(client.Requests))
+	}
+	if client.Requests[0].ProviderKey != "anthropic" {
+		t.Fatalf("provider key = %q, want anthropic", client.Requests[0].ProviderKey)
+	}
+	if client.Requests[0].CredentialReference != "env://ANTHROPIC_API_KEY" {
+		t.Fatalf("credential reference = %q, want env://ANTHROPIC_API_KEY", client.Requests[0].CredentialReference)
+	}
+}

@@ -10,6 +10,12 @@ import (
 	"github.com/google/uuid"
 )
 
+func ResolveEvidenceValueForJudge(source string, input EvaluationInput) (*string, string, error) {
+	evidence := buildEvidence(input.ChallengeInputs, input.Events)
+	value, _, reason, err := resolveEvidenceValue(source, evidence)
+	return value, reason, err
+}
+
 func resolveEvidenceValue(source string, evidence extractedEvidence) (*string, *uuid.UUID, string, error) {
 	switch {
 	case source == "final_output":

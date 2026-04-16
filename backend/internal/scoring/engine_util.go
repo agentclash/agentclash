@@ -184,12 +184,37 @@ func floatPtr(value float64) *float64 {
 	return &value
 }
 
+func cloneFloat64Ptr(value *float64) *float64 {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
+}
+
 func stringPtr(value string) *string {
 	return &value
 }
 
+func cloneStringPtr(value *string) *string {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
+}
+
 func timePtr(value time.Time) *time.Time {
 	return &value
+}
+
+func cloneJSON(value json.RawMessage) json.RawMessage {
+	if len(value) == 0 {
+		return nil
+	}
+	cloned := make([]byte, len(value))
+	copy(cloned, value)
+	return cloned
 }
 
 func uuidPtrOrNil(value uuid.UUID) *uuid.UUID {

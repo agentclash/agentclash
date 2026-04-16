@@ -1584,6 +1584,17 @@ func TestRepositoryStoreRunAgentEvaluationResultsUpsertsJudgeAndMetricRows(t *te
 				ChallengeIdentityID: &fixture.firstChallengeIdentityID,
 			},
 		},
+		LLMJudgeResults: []scoring.LLMJudgeResult{
+			{
+				JudgeKey:        "safety",
+				Mode:            "assertion",
+				NormalizedScore: float64Ptr(1),
+				Payload:         []byte(`{"pass":true}`),
+				Confidence:      stringPtr("high"),
+				SampleCount:     3,
+				ModelCount:      1,
+			},
+		},
 	}
 	if err := repo.StoreRunAgentEvaluationResults(ctx, updatedEvaluation); err != nil {
 		t.Fatalf("second StoreRunAgentEvaluationResults returned error: %v", err)
@@ -1609,6 +1620,16 @@ func TestRepositoryStoreRunAgentEvaluationResultsUpsertsJudgeAndMetricRows(t *te
 	}
 	if len(metricResults) != 1 {
 		t.Fatalf("metric result count = %d, want 1", len(metricResults))
+	}
+	llmJudgeResults, err := repo.ListLLMJudgeResultsByRunAgentAndEvaluationSpec(ctx, fixture.primaryRunAgentID, specRecord.ID)
+	if err != nil {
+		t.Fatalf("ListLLMJudgeResultsByRunAgentAndEvaluationSpec returned error: %v", err)
+	}
+	if len(llmJudgeResults) != 1 {
+		t.Fatalf("llm judge result count = %d, want 1", len(llmJudgeResults))
+	}
+	if llmJudgeResults[0].JudgeKey != "safety" {
+		t.Fatalf("llm judge key = %q, want safety", llmJudgeResults[0].JudgeKey)
 	}
 	if metricResults[0].BooleanValue == nil || !*metricResults[0].BooleanValue {
 		t.Fatalf("metric boolean value = %v, want true", metricResults[0].BooleanValue)

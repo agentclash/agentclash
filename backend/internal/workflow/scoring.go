@@ -14,24 +14,24 @@ import (
 	"github.com/google/uuid"
 )
 
-func executeRunAgentEvaluation(ctx context.Context, repo RunRepository, runAgentID uuid.UUID) (scoring.RunAgentEvaluation, error) {
-	executionContext, err := repo.GetRunAgentExecutionContextByID(ctx, runAgentID)
+func (a *Activities) executeRunAgentEvaluation(ctx context.Context, runAgentID uuid.UUID) (scoring.RunAgentEvaluation, error) {
+	executionContext, err := a.repo.GetRunAgentExecutionContextByID(ctx, runAgentID)
 	if err != nil {
 		return scoring.RunAgentEvaluation{}, err
 	}
 
 	manifestSpec, err := scoring.LoadEvaluationSpec(executionContext.ChallengePackVersion.Manifest)
 	if err != nil {
-		emitErr := recordScoringFailedEvent(ctx, repo, executionContext.Run.ID, runAgentID, fmt.Sprintf("load evaluation spec from manifest: %v", err))
+		emitErr := recordScoringFailedEvent(ctx, a.repo, executionContext.Run.ID, runAgentID, fmt.Sprintf("load evaluation spec from manifest: %v", err))
 		if emitErr != nil {
 			return scoring.RunAgentEvaluation{}, fmt.Errorf("load evaluation spec from manifest: %w; additionally failed to record scoring failure: %v", err, emitErr)
 		}
 		return scoring.RunAgentEvaluation{}, fmt.Errorf("load evaluation spec from manifest: %w", err)
 	}
 
-	specRecord, err := ensurePersistedEvaluationSpec(ctx, repo, executionContext.ChallengePackVersion.ID, manifestSpec)
+	specRecord, err := ensurePersistedEvaluationSpec(ctx, a.repo, executionContext.ChallengePackVersion.ID, manifestSpec)
 	if err != nil {
-		emitErr := recordScoringFailedEvent(ctx, repo, executionContext.Run.ID, runAgentID, fmt.Sprintf("load persisted evaluation spec: %v", err))
+		emitErr := recordScoringFailedEvent(ctx, a.repo, executionContext.Run.ID, runAgentID, fmt.Sprintf("load persisted evaluation spec: %v", err))
 		if emitErr != nil {
 			return scoring.RunAgentEvaluation{}, fmt.Errorf("load persisted evaluation spec: %w; additionally failed to record scoring failure: %v", err, emitErr)
 		}
@@ -40,16 +40,16 @@ func executeRunAgentEvaluation(ctx context.Context, repo RunRepository, runAgent
 
 	persistedSpec, err := scoring.DecodeDefinition(specRecord.Definition)
 	if err != nil {
-		emitErr := recordScoringFailedEvent(ctx, repo, executionContext.Run.ID, runAgentID, fmt.Sprintf("decode persisted evaluation spec: %v", err))
+		emitErr := recordScoringFailedEvent(ctx, a.repo, executionContext.Run.ID, runAgentID, fmt.Sprintf("decode persisted evaluation spec: %v", err))
 		if emitErr != nil {
 			return scoring.RunAgentEvaluation{}, fmt.Errorf("decode persisted evaluation spec: %w; additionally failed to record scoring failure: %v", err, emitErr)
 		}
 		return scoring.RunAgentEvaluation{}, fmt.Errorf("decode persisted evaluation spec: %w", err)
 	}
 
-	events, err := repo.ListRunEventsByRunAgentID(ctx, runAgentID)
+	events, err := a.repo.ListRunEventsByRunAgentID(ctx, runAgentID)
 	if err != nil {
-		emitErr := recordScoringFailedEvent(ctx, repo, executionContext.Run.ID, runAgentID, fmt.Sprintf("list run events: %v", err))
+		emitErr := recordScoringFailedEvent(ctx, a.repo, executionContext.Run.ID, runAgentID, fmt.Sprintf("list run events: %v", err))
 		if emitErr != nil {
 			return scoring.RunAgentEvaluation{}, fmt.Errorf("list run events: %w; additionally failed to record scoring failure: %v", err, emitErr)
 		}
@@ -58,21 +58,33 @@ func executeRunAgentEvaluation(ctx context.Context, repo RunRepository, runAgent
 
 	challengeInputs, err := mapChallengeInputs(executionContext.ChallengePackVersion.Manifest, executionContext.ChallengeInputSet)
 	if err != nil {
-		emitErr := recordScoringFailedEvent(ctx, repo, executionContext.Run.ID, runAgentID, fmt.Sprintf("map challenge inputs: %v", err))
+		emitErr := recordScoringFailedEvent(ctx, a.repo, executionContext.Run.ID, runAgentID, fmt.Sprintf("map challenge inputs: %v", err))
 		if emitErr != nil {
 			return scoring.RunAgentEvaluation{}, fmt.Errorf("map challenge inputs: %w; additionally failed to record scoring failure: %v", err, emitErr)
 		}
 		return scoring.RunAgentEvaluation{}, fmt.Errorf("map challenge inputs: %w", err)
 	}
 
-	evaluation, err := scoring.EvaluateRunAgent(scoring.EvaluationInput{
+	evaluationInput := scoring.EvaluationInput{
 		RunAgentID:       runAgentID,
 		EvaluationSpecID: specRecord.ID,
 		ChallengeInputs:  challengeInputs,
 		Events:           mapRunEvents(events),
-	}, persistedSpec)
+	}
+
+	var evaluation scoring.RunAgentEvaluation
+	switch persistedSpec.JudgeMode {
+	case scoring.JudgeModeDeterministic:
+		evaluation, err = scoring.EvaluateRunAgent(evaluationInput, persistedSpec)
+	default:
+		judgeResults, judgeWarnings := evaluateLLMJudges(ctx, a.judgeClient, a.repo, executionContext, evaluationInput, persistedSpec)
+		evaluation, err = scoring.EvaluateRunAgentWithLLMJudgeResults(evaluationInput, persistedSpec, judgeResults)
+		if err == nil && len(judgeWarnings) > 0 {
+			evaluation.Warnings = append(evaluation.Warnings, judgeWarnings...)
+		}
+	}
 	if err != nil {
-		emitErr := recordScoringFailedEvent(ctx, repo, executionContext.Run.ID, runAgentID, fmt.Sprintf("evaluate run agent: %v", err))
+		emitErr := recordScoringFailedEvent(ctx, a.repo, executionContext.Run.ID, runAgentID, fmt.Sprintf("evaluate run agent: %v", err))
 		if emitErr != nil {
 			return scoring.RunAgentEvaluation{}, fmt.Errorf("evaluate run agent: %w; additionally failed to record scoring failure: %v", err, emitErr)
 		}
@@ -100,15 +112,15 @@ func executeRunAgentEvaluation(ctx context.Context, repo RunRepository, runAgent
 		}
 	}
 
-	if err := repo.StoreRunAgentEvaluationResults(ctx, evaluation); err != nil {
-		emitErr := recordScoringFailedEvent(ctx, repo, executionContext.Run.ID, runAgentID, fmt.Sprintf("persist evaluation results: %v", err))
+	if err := a.repo.StoreRunAgentEvaluationResults(ctx, evaluation); err != nil {
+		emitErr := recordScoringFailedEvent(ctx, a.repo, executionContext.Run.ID, runAgentID, fmt.Sprintf("persist evaluation results: %v", err))
 		if emitErr != nil {
 			return scoring.RunAgentEvaluation{}, fmt.Errorf("persist evaluation results: %w; additionally failed to record scoring failure: %v", err, emitErr)
 		}
 		return scoring.RunAgentEvaluation{}, fmt.Errorf("persist evaluation results: %w", err)
 	}
 
-	if err := recordScoringEvents(ctx, repo, executionContext.Run.ID, evaluation); err != nil {
+	if err := recordScoringEvents(ctx, a.repo, executionContext.Run.ID, evaluation); err != nil {
 		// Persisted judge/metric rows are the source of truth. A failure to emit
 		// derived replay events should not flip an otherwise successful run-agent
 		// into failed after evaluation results are already durable.
@@ -299,10 +311,32 @@ func scoringCompletedPayload(evaluation scoring.RunAgentEvaluation) map[string]a
 		dimensionScores[key] = *value
 	}
 
+	llmJudgeResults := make([]map[string]any, 0, len(evaluation.LLMJudgeResults))
+	for _, result := range evaluation.LLMJudgeResults {
+		payload := map[string]any{
+			"judge_key":     result.JudgeKey,
+			"mode":          result.Mode,
+			"sample_count":  result.SampleCount,
+			"model_count":   result.ModelCount,
+			"reason":        result.Reason,
+		}
+		if result.NormalizedScore != nil {
+			payload["normalized_score"] = *result.NormalizedScore
+		}
+		if result.Confidence != nil {
+			payload["confidence"] = *result.Confidence
+		}
+		if result.Variance != nil {
+			payload["variance"] = *result.Variance
+		}
+		llmJudgeResults = append(llmJudgeResults, payload)
+	}
+
 	return map[string]any{
 		"evaluation_spec_id": evaluation.EvaluationSpecID,
 		"status":             evaluation.Status,
 		"dimension_scores":   dimensionScores,
+		"llm_judge_results":  llmJudgeResults,
 		"warnings":           append([]string(nil), evaluation.Warnings...),
 	}
 }

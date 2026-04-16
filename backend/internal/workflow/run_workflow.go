@@ -15,7 +15,7 @@ import (
 
 const (
 	defaultActivityTimeout = 5 * time.Second
-	scoreRunAgentTimeout   = 30 * time.Second
+	scoreRunAgentTimeout   = 2 * time.Minute
 	fakeStageDelay         = 1 * time.Second
 )
 

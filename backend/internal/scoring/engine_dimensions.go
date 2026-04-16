@@ -2,7 +2,7 @@ package scoring
 
 import "fmt"
 
-func evaluateDimensions(spec EvaluationSpec, evidence extractedEvidence, validators []ValidatorResult, metrics []MetricResult) []DimensionResult {
+func evaluateDimensions(spec EvaluationSpec, evidence extractedEvidence, validators []ValidatorResult, metrics []MetricResult, llmJudges []LLMJudgeResult) []DimensionResult {
 	dimensions := spec.Scorecard.Dimensions
 	results := make([]DimensionResult, 0, len(dimensions))
 	for _, dim := range dimensions {
@@ -23,14 +23,7 @@ func evaluateDimensions(spec EvaluationSpec, evidence extractedEvidence, validat
 		case DimensionSourceMetric:
 			score, reason, state = metricDimensionScore(dim, metrics)
 		case DimensionSourceLLMJudge:
-			// Phase 1 stub. Phase 3 wires the judge evaluator service
-			// and Phase 4 plumbs judge_results through a Temporal
-			// activity chain so dimension dispatch can read them. Until
-			// then, llm_judge dims surface as unavailable so
-			// computeOverallScore downgrades the scorecard to partial
-			// instead of scoring them at zero.
-			state = OutputStateUnavailable
-			reason = "llm_judge dimensions require the judge evaluator (#148 phase 3+)"
+			score, reason, state = llmJudgeDimensionScore(dim, llmJudges)
 		default:
 			state = OutputStateError
 			reason = fmt.Sprintf("unsupported dimension source %q", dim.Source)
@@ -52,7 +45,7 @@ func dimensionWarnings(results []DimensionResult, dims []DimensionDeclaration) [
 	warnings := make([]string, 0, len(results))
 	for _, result := range results {
 		src := sourceByKey[result.Dimension]
-		if src == DimensionSourceLatency || src == DimensionSourceCost || src == DimensionSourceMetric {
+		if src == DimensionSourceLatency || src == DimensionSourceCost || src == DimensionSourceMetric || src == DimensionSourceLLMJudge {
 			if result.State == OutputStateUnavailable && result.Reason != "" {
 				warnings = append(warnings, result.Reason)
 			}
@@ -154,6 +147,23 @@ func metricDimensionScore(dim DimensionDeclaration, metrics []MetricResult) (*fl
 		return nil, fmt.Sprintf("unsupported better_direction %q", dim.BetterDirection), OutputStateError
 	}
 	return &score, "", OutputStateAvailable
+}
+
+func llmJudgeDimensionScore(dim DimensionDeclaration, results []LLMJudgeResult) (*float64, string, OutputState) {
+	if dim.JudgeKey == "" {
+		return nil, "dimension judge_key is not set", OutputStateError
+	}
+	for _, result := range results {
+		if result.JudgeKey != dim.JudgeKey {
+			continue
+		}
+		if result.NormalizedScore == nil {
+			return nil, firstNonEmpty(result.Reason, fmt.Sprintf("llm judge %q is unavailable", dim.JudgeKey)), OutputStateUnavailable
+		}
+		score := *result.NormalizedScore
+		return &score, "", OutputStateAvailable
+	}
+	return nil, fmt.Sprintf("llm judge %q is unavailable", dim.JudgeKey), OutputStateUnavailable
 }
 
 func findMetricByKey(metrics []MetricResult, key string) *MetricResult {

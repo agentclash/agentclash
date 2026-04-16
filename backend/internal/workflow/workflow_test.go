@@ -911,6 +911,10 @@ func (r *fakeRunRepository) GetRunAgentExecutionContextByID(_ context.Context, i
 	return executionContext, nil
 }
 
+func (r *fakeRunRepository) LoadWorkspaceSecrets(_ context.Context, _ uuid.UUID) (map[string]string, error) {
+	return map[string]string{}, nil
+}
+
 func (r *fakeRunRepository) BuildRunAgentReplay(_ context.Context, runAgentID uuid.UUID) (repository.RunAgentReplay, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

@@ -65,8 +65,9 @@ type PromptEvalInvoker interface {
 }
 
 type Activities struct {
-	repo  RunRepository
-	hooks FakeWorkHooks
+	repo        RunRepository
+	hooks       FakeWorkHooks
+	judgeClient provider.Client
 }
 
 type LoadRunInput struct {
@@ -131,10 +132,15 @@ type BuildRunScorecardInput struct {
 	RunID uuid.UUID `json:"run_id"`
 }
 
-func NewActivities(repo RunRepository, hooks FakeWorkHooks) *Activities {
+func NewActivities(repo RunRepository, hooks FakeWorkHooks, judgeClients ...provider.Client) *Activities {
+	var judgeClient provider.Client
+	if len(judgeClients) > 0 {
+		judgeClient = judgeClients[0]
+	}
 	return &Activities{
-		repo:  repo,
-		hooks: hooks,
+		repo:        repo,
+		hooks:       hooks,
+		judgeClient: judgeClient,
 	}
 }
 
@@ -284,7 +290,7 @@ func (a *Activities) BuildRunAgentReplay(ctx context.Context, input BuildRunAgen
 }
 
 func (a *Activities) ScoreRunAgent(ctx context.Context, input ScoreRunAgentInput) (scoring.RunAgentEvaluation, error) {
-	evaluation, err := executeRunAgentEvaluation(ctx, a.repo, input.RunAgentID)
+	evaluation, err := a.executeRunAgentEvaluation(ctx, input.RunAgentID)
 	return evaluation, wrapActivityError(err)
 }
 

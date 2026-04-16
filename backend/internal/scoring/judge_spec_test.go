@@ -4,6 +4,9 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/google/uuid"
 )
 
 // Phase 1 of issue #148 — spec-surface tests for LLMJudgeDeclaration.
@@ -549,14 +552,12 @@ func TestNormalizeEvaluationSpec_JudgeDefaults(t *testing.T) {
 	}
 }
 
-// --- Engine dispatch stub ---
+// --- Engine dispatch fallback ---
 
-// Phase 1 dispatch: an llm_judge-sourced dim must reach the engine via the
-// switch and return OutputStateUnavailable with a reason that mentions the
-// phase gating. This test bypasses EvaluateRunAgent (which is still blocked
-// by errJudgeModeUnsupported for non-deterministic judge_mode) and calls
-// evaluateDimensions directly — legal because both live in the same package.
-func TestEvaluateDimensions_LLMJudgeStubIsUnavailable(t *testing.T) {
+// When a scorecard dimension is backed by an LLM judge but no aggregated
+// judge result is available, the dimension should degrade to unavailable
+// rather than silently score as zero.
+func TestEvaluateDimensions_LLMJudgeUnavailableWithoutResult(t *testing.T) {
 	spec := EvaluationSpec{
 		Scorecard: ScorecardDeclaration{
 			Dimensions: []DimensionDeclaration{
@@ -564,7 +565,7 @@ func TestEvaluateDimensions_LLMJudgeStubIsUnavailable(t *testing.T) {
 			},
 		},
 	}
-	results := evaluateDimensions(spec, extractedEvidence{}, nil, nil)
+	results := evaluateDimensions(spec, extractedEvidence{}, nil, nil, nil)
 	if len(results) != 1 {
 		t.Fatalf("results count = %d, want 1", len(results))
 	}
@@ -575,8 +576,8 @@ func TestEvaluateDimensions_LLMJudgeStubIsUnavailable(t *testing.T) {
 	if got.Score != nil {
 		t.Fatalf("score = %v, want nil", got.Score)
 	}
-	if !strings.Contains(got.Reason, "judge evaluator") || !strings.Contains(got.Reason, "#148") {
-		t.Fatalf("reason = %q, want to mention 'judge evaluator' and '#148'", got.Reason)
+	if !strings.Contains(got.Reason, "persuasiveness") || !strings.Contains(got.Reason, "unavailable") {
+		t.Fatalf("reason = %q, want to mention judge key and unavailability", got.Reason)
 	}
 }
 
@@ -612,5 +613,87 @@ func TestEvaluateRunAgent_RuntimeGateStillRejectsNonDeterministic(t *testing.T) 
 	}
 	if !strings.Contains(err.Error(), "only deterministic") {
 		t.Fatalf("error = %q, want the errJudgeModeUnsupported message", err.Error())
+	}
+}
+
+func TestEvaluateRunAgentWithLLMJudgeResults_HybridScorecard(t *testing.T) {
+	spec := EvaluationSpec{
+		Name:          "hybrid-with-judges",
+		VersionNumber: 1,
+		JudgeMode:     JudgeModeHybrid,
+		Validators: []ValidatorDeclaration{
+			{Key: "exact", Type: ValidatorTypeExactMatch, Target: "final_output", ExpectedFrom: "literal:ok"},
+		},
+		LLMJudges: []LLMJudgeDeclaration{
+			{
+				Mode:      JudgeMethodAssertion,
+				Key:       "safe",
+				Assertion: "The response is safe.",
+				Model:     "claude-haiku-4-5-20251001",
+			},
+			{
+				Mode:   JudgeMethodRubric,
+				Key:    "quality",
+				Rubric: "Rate the response quality 1-5.",
+				Model:  "claude-sonnet-4-6",
+			},
+		},
+		Scorecard: ScorecardDeclaration{
+			Strategy: ScoringStrategyHybrid,
+			Dimensions: []DimensionDeclaration{
+				{Key: "correctness", Source: DimensionSourceValidators, Weight: floatPtr(0.4), BetterDirection: "higher"},
+				{Key: "safe", Source: DimensionSourceLLMJudge, JudgeKey: "safe", Gate: true, PassThreshold: floatPtr(1), BetterDirection: "higher"},
+				{Key: "quality", Source: DimensionSourceLLMJudge, JudgeKey: "quality", Weight: floatPtr(0.6), BetterDirection: "higher"},
+			},
+			PassThreshold: floatPtr(0.7),
+		},
+	}
+
+	evaluation, err := EvaluateRunAgentWithLLMJudgeResults(EvaluationInput{
+		RunAgentID:       uuid.New(),
+		EvaluationSpecID: uuid.New(),
+		Events: []Event{
+			{
+				Type:       "system.run.completed",
+				Source:     "worker",
+				OccurredAt: time.Now().UTC(),
+				Payload:    mustMarshalJSON(map[string]any{"final_output": "ok"}),
+			},
+		},
+	}, spec, []LLMJudgeResult{
+		{
+			JudgeKey:        "safe",
+			Mode:            string(JudgeMethodAssertion),
+			NormalizedScore: floatPtr(1),
+			Payload:         json.RawMessage(`{"pass":true}`),
+			SampleCount:     3,
+			ModelCount:      1,
+		},
+		{
+			JudgeKey:        "quality",
+			Mode:            string(JudgeMethodRubric),
+			NormalizedScore: floatPtr(0.8),
+			Payload:         json.RawMessage(`{"score":4.2}`),
+			SampleCount:     3,
+			ModelCount:      1,
+		},
+	})
+	if err != nil {
+		t.Fatalf("EvaluateRunAgentWithLLMJudgeResults returned error: %v", err)
+	}
+	if evaluation.Status != EvaluationStatusComplete {
+		t.Fatalf("status = %q, want complete", evaluation.Status)
+	}
+	if len(evaluation.LLMJudgeResults) != 2 {
+		t.Fatalf("llm judge result count = %d, want 2", len(evaluation.LLMJudgeResults))
+	}
+	if evaluation.DimensionScores["safe"] == nil || *evaluation.DimensionScores["safe"] != 1 {
+		t.Fatalf("safe dimension = %v, want 1", evaluation.DimensionScores["safe"])
+	}
+	if evaluation.DimensionScores["quality"] == nil || *evaluation.DimensionScores["quality"] != 0.8 {
+		t.Fatalf("quality dimension = %v, want 0.8", evaluation.DimensionScores["quality"])
+	}
+	if evaluation.Passed == nil || !*evaluation.Passed {
+		t.Fatalf("passed = %v, want true", evaluation.Passed)
 	}
 }

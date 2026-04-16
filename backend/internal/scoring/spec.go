@@ -62,12 +62,10 @@ const (
 //     non-deterministic under partial failures. If you need an aggregate,
 //     compute it in computeOverallScore via strategy/weights instead.
 //
-// DimensionSourceLLMJudge routes to the judge runtime (#148). In Phase 1 the
-// engine dispatch returns an unavailable stub until the judge evaluator
-// service lands in Phase 3; Phase 4 wires the end-to-end activity chain.
-// Packs can declare llm_judge-sourced dims today so their schemas round-trip
-// through validation, but runs with judge_mode=llm_judge or hybrid still
-// fail at EvaluateRunAgent until the gate is removed in Phase 4.
+// DimensionSourceLLMJudge routes to aggregated LLM-as-judge results produced
+// by the workflow scoring path. The legacy EvaluateRunAgent entrypoint remains
+// deterministic-only for older callers; the workflow now uses
+// EvaluateRunAgentWithLLMJudgeResults after executing the declared judges.
 type DimensionSource string
 
 const (
@@ -187,8 +185,7 @@ type EvaluationSpec struct {
 	Validators          []ValidatorDeclaration `json:"validators"`
 	Metrics             []MetricDeclaration    `json:"metrics"`
 	// LLMJudges declares LLM-as-judge graders that run after deterministic
-	// scoring. Phase 1 only validates and round-trips these; the judge
-	// evaluator that actually calls LLMs lands in Phase 3.
+	// validator/metric evaluation and feed llm_judge-backed scorecard dims.
 	LLMJudges           []LLMJudgeDeclaration  `json:"llm_judges,omitempty"`
 	PostExecutionChecks []PostExecutionCheck   `json:"post_execution_checks,omitempty"`
 	RuntimeLimits       RuntimeLimits          `json:"runtime_limits,omitempty"`
@@ -372,7 +369,7 @@ func isBuiltinDimensionKey(key string) bool {
 	}
 }
 
-// --- LLM-as-judge types (#148 phase 1) ---
+// --- LLM-as-judge types ---
 //
 // The type surface here deliberately covers all 5 grader methods from the
 // issue under a single LLMJudgeDeclaration struct. Mode selects the
@@ -380,9 +377,8 @@ func isBuiltinDimensionKey(key string) bool {
 // compose with every mode. See backend/.claude/analysis/issue-148-deep-
 // analysis.md Part 3 for the architectural rationale.
 //
-// Phase 1 validates and round-trips these types. Phase 3 implements the
-// evaluator service that actually calls LLMs. Phase 4 wires the Temporal
-// activity chain and removes the errJudgeModeUnsupported gate.
+// These declarations validate, round-trip, and drive the workflow-side judge
+// evaluator that persists aggregated llm_judge_results for scorecard use.
 
 // JudgeMaxSamplesCeiling is the hard upper bound on LLMJudgeDeclaration.Samples.
 // Enforced in Go code, not config — a malicious or broken pack cannot request

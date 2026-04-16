@@ -649,6 +649,37 @@ func (r *Repository) StoreRunAgentEvaluationResults(ctx context.Context, evaluat
 		}
 	}
 
+	for _, result := range evaluation.LLMJudgeResults {
+		normalizedScore, err := numericFromFloat(result.NormalizedScore)
+		if err != nil {
+			return fmt.Errorf("encode llm judge normalized score for %s: %w", result.JudgeKey, err)
+		}
+		variance, err := numericFromFloat(result.Variance)
+		if err != nil {
+			return fmt.Errorf("encode llm judge variance for %s: %w", result.JudgeKey, err)
+		}
+
+		payload := cloneJSON(result.Payload)
+		if len(payload) == 0 {
+			payload = json.RawMessage(`{}`)
+		}
+
+		if _, err := queries.UpsertLLMJudgeResult(ctx, repositorysqlc.UpsertLLMJudgeResultParams{
+			RunAgentID:       evaluation.RunAgentID,
+			EvaluationSpecID: evaluation.EvaluationSpecID,
+			JudgeKey:         result.JudgeKey,
+			Mode:             result.Mode,
+			NormalizedScore:  normalizedScore,
+			Payload:          payload,
+			Confidence:       cloneStringPtr(result.Confidence),
+			Variance:         variance,
+			SampleCount:      result.SampleCount,
+			ModelCount:       result.ModelCount,
+		}); err != nil {
+			return fmt.Errorf("upsert llm judge result %s: %w", result.JudgeKey, err)
+		}
+	}
+
 	for _, result := range evaluation.MetricResults {
 		numericValue, err := numericFromFloat(result.NumericValue)
 		if err != nil {
@@ -749,6 +780,18 @@ func buildRunAgentScorecardDocument(evaluation scoring.RunAgentEvaluation) (json
 		BooleanValue *bool    `json:"boolean_value,omitempty"`
 	}
 
+	type llmJudgeDetail struct {
+		JudgeKey        string          `json:"judge_key"`
+		Mode            string          `json:"mode"`
+		NormalizedScore *float64        `json:"normalized_score,omitempty"`
+		Confidence      *string         `json:"confidence,omitempty"`
+		Variance        *float64        `json:"variance,omitempty"`
+		SampleCount     int32           `json:"sample_count"`
+		ModelCount      int32           `json:"model_count"`
+		Reason          string          `json:"reason,omitempty"`
+		Payload         json.RawMessage `json:"payload,omitempty"`
+	}
+
 	type scorecardDocument struct {
 		RunAgentID        uuid.UUID                   `json:"run_agent_id"`
 		EvaluationSpecID  uuid.UUID                   `json:"evaluation_spec_id"`
@@ -763,6 +806,7 @@ func buildRunAgentScorecardDocument(evaluation scoring.RunAgentEvaluation) (json
 		ValidatorDetails  []validatorDetail            `json:"validator_details,omitempty"`
 		MetricSummary     map[string]int              `json:"metric_summary"`
 		MetricDetails     []metricDetail               `json:"metric_details,omitempty"`
+		LLMJudgeDetails   []llmJudgeDetail             `json:"llm_judge_details,omitempty"`
 	}
 
 	dimensions := make(map[string]dimensionSummary, len(evaluation.DimensionResults))
@@ -842,6 +886,21 @@ func buildRunAgentScorecardDocument(evaluation scoring.RunAgentEvaluation) (json
 		})
 	}
 
+	llmJudgeDetails := make([]llmJudgeDetail, 0, len(evaluation.LLMJudgeResults))
+	for _, judge := range evaluation.LLMJudgeResults {
+		llmJudgeDetails = append(llmJudgeDetails, llmJudgeDetail{
+			JudgeKey:        judge.JudgeKey,
+			Mode:            judge.Mode,
+			NormalizedScore: cloneFloat64Ptr(judge.NormalizedScore),
+			Confidence:      cloneStringPtr(judge.Confidence),
+			Variance:        cloneFloat64Ptr(judge.Variance),
+			SampleCount:     judge.SampleCount,
+			ModelCount:      judge.ModelCount,
+			Reason:          judge.Reason,
+			Payload:         cloneJSON(judge.Payload),
+		})
+	}
+
 	var passedCopy *bool
 	if evaluation.Passed != nil {
 		v := *evaluation.Passed
@@ -861,6 +920,7 @@ func buildRunAgentScorecardDocument(evaluation scoring.RunAgentEvaluation) (json
 		ValidatorDetails: validatorDetails,
 		MetricSummary:    metricSummary,
 		MetricDetails:    metricDetails,
+		LLMJudgeDetails:  llmJudgeDetails,
 	}
 
 	encoded, err := json.Marshal(document)
@@ -895,10 +955,9 @@ func (r *Repository) ListJudgeResultsByRunAgentAndEvaluationSpec(ctx context.Con
 // pointer types for nullable columns; the wrapper converts to pgtype.Numeric
 // before delegating to the generated sqlc method.
 //
-// Phase 2 of issue #148 ships this as the persistence surface the judge
-// evaluator service (Phase 3) will call. There is no StoreRunAgentEvaluation
-// Results integration yet — Phase 3 wires the evaluator into the Temporal
-// activity chain and this method becomes the single write path.
+// This remains the low-level persistence surface for aggregated judge rows.
+// StoreRunAgentEvaluationResults now uses the same write shape during normal
+// run-agent scoring so API/UI readers always see the same table-backed data.
 func (r *Repository) UpsertLLMJudgeResult(ctx context.Context, params UpsertLLMJudgeResultParams) (LLMJudgeResultRecord, error) {
 	normalizedScore, err := numericFromFloat(params.NormalizedScore)
 	if err != nil {
