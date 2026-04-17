@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/Atharva-Kanherkar/agentclash/cli/internal/auth"
 	"github.com/Atharva-Kanherkar/agentclash/cli/internal/output"
@@ -9,6 +10,7 @@ import (
 )
 
 var flagDevice bool
+var flagForceLogin bool
 
 func init() {
 	rootCmd.AddCommand(authCmd)
@@ -20,6 +22,7 @@ func init() {
 	authTokensCmd.AddCommand(authTokensRevokeCmd)
 
 	authLoginCmd.Flags().BoolVar(&flagDevice, "device", false, "Print the verification URL instead of opening the browser automatically")
+	authLoginCmd.Flags().BoolVar(&flagForceLogin, "force", false, "Start a new browser login even if existing credentials are valid")
 }
 
 var authCmd = &cobra.Command{
@@ -36,9 +39,41 @@ The CLI prints a verification link, opens it in your default browser when possib
 and waits for you to approve the login in your AgentClash instance.
 
 For headless or remote shells, pass --device to print the link without auto-opening.
+Pass --force to create a fresh CLI token even when you are already logged in.
 For CI/CD, set the AGENTCLASH_TOKEN environment variable instead.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		rc := GetRunContext(cmd)
+
+		envTokenSet := os.Getenv("AGENTCLASH_TOKEN") != ""
+		if !flagForceLogin && rc.Client.Token() != "" {
+			result, err := auth.ValidateToken(cmd.Context(), rc.Client)
+			if err == nil {
+				if rc.Output.IsJSON() {
+					return rc.Output.PrintJSON(map[string]string{
+						"status":  "already_authenticated",
+						"source":  authSource(envTokenSet),
+						"user_id": result.UserID,
+						"email":   result.Email,
+					})
+				}
+
+				name := result.Display
+				if name == "" {
+					name = result.Email
+				}
+				if envTokenSet {
+					rc.Output.PrintSuccess(fmt.Sprintf("Already logged in as %s using AGENTCLASH_TOKEN", name))
+				} else {
+					rc.Output.PrintSuccess(fmt.Sprintf("Already logged in as %s", name))
+				}
+				return nil
+			}
+			if envTokenSet {
+				return fmt.Errorf("AGENTCLASH_TOKEN is set but could not be validated: %w", err)
+			}
+			rc.Output.PrintWarning("Stored credentials are invalid; starting a new browser login.")
+		}
+
 		autoOpen := !flagDevice && auth.CanOpenBrowser()
 		result, token, err := auth.VerificationLogin(cmd.Context(), rc.Client, autoOpen)
 		if err != nil {
@@ -52,6 +87,9 @@ For CI/CD, set the AGENTCLASH_TOKEN environment variable instead.`,
 		}
 		if err := auth.SaveCredentials(creds); err != nil {
 			return fmt.Errorf("saving credentials: %w", err)
+		}
+		if envTokenSet {
+			rc.Output.PrintWarning("Saved new credentials, but AGENTCLASH_TOKEN is still set and will take precedence.")
 		}
 
 		if rc.Output.IsJSON() {
@@ -68,6 +106,13 @@ For CI/CD, set the AGENTCLASH_TOKEN environment variable instead.`,
 		rc.Output.PrintSuccess(fmt.Sprintf("Logged in as %s", name))
 		return nil
 	},
+}
+
+func authSource(envTokenSet bool) string {
+	if envTokenSet {
+		return "env"
+	}
+	return "credentials"
 }
 
 var authLogoutCmd = &cobra.Command{
