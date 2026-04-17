@@ -303,6 +303,7 @@ type RunAgentScorecard struct {
 	ReliabilityScore pgtype.Numeric
 	LatencyScore     pgtype.Numeric
 	CostScore        pgtype.Numeric
+	BehavioralScore  pgtype.Numeric
 	ScorecardPassed  *bool
 	Scorecard        []byte
 	CreatedAt        pgtype.Timestamptz

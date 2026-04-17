@@ -147,6 +147,7 @@ type RunAgentScorecard struct {
 	ReliabilityScore *float64
 	LatencyScore     *float64
 	CostScore        *float64
+	BehavioralScore  *float64
 	// Passed mirrors the scorecard-level pass verdict persisted as a typed
 	// column so downstream consumers (release gate, leaderboards) can filter
 	// without decoding the JSONB. Nil when the row predates Phase 5 or the
@@ -734,6 +735,10 @@ func (r *Repository) StoreRunAgentEvaluationResults(ctx context.Context, evaluat
 	if err != nil {
 		return fmt.Errorf("encode cost score: %w", err)
 	}
+	behavioralScore, err := numericFromFloat(evaluation.DimensionScores[string(scoring.ScorecardDimensionBehavioral)])
+	if err != nil {
+		return fmt.Errorf("encode behavioral score: %w", err)
+	}
 
 	if _, err := queries.UpsertRunAgentScorecard(ctx, repositorysqlc.UpsertRunAgentScorecardParams{
 		RunAgentID:       evaluation.RunAgentID,
@@ -743,6 +748,7 @@ func (r *Repository) StoreRunAgentEvaluationResults(ctx context.Context, evaluat
 		ReliabilityScore: reliabilityScore,
 		LatencyScore:     latencyScore,
 		CostScore:        costScore,
+		BehavioralScore:  behavioralScore,
 		ScorecardPassed:  cloneBoolPtr(evaluation.Passed),
 		Scorecard:        scorecard,
 	}); err != nil {
@@ -1595,6 +1601,7 @@ func mapRunAgentScorecard(row repositorysqlc.RunAgentScorecard) (RunAgentScoreca
 		ReliabilityScore: numericPtr(row.ReliabilityScore),
 		LatencyScore:     numericPtr(row.LatencyScore),
 		CostScore:        numericPtr(row.CostScore),
+		BehavioralScore:  numericPtr(row.BehavioralScore),
 		Passed:           cloneBoolPtr(row.ScorecardPassed),
 		Scorecard:        cloneJSON(row.Scorecard),
 		CreatedAt:        createdAt,

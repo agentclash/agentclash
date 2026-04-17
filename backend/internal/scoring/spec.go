@@ -191,19 +191,19 @@ type DimensionNormalization struct {
 }
 
 type EvaluationSpec struct {
-	Name                string                 `json:"name"`
-	VersionNumber       int32                  `json:"version_number"`
-	JudgeMode           JudgeMode              `json:"judge_mode"`
-	Validators          []ValidatorDeclaration `json:"validators"`
-	Metrics             []MetricDeclaration    `json:"metrics"`
-	Behavioral          *BehavioralConfig      `json:"behavioral,omitempty"`
+	Name          string                 `json:"name"`
+	VersionNumber int32                  `json:"version_number"`
+	JudgeMode     JudgeMode              `json:"judge_mode"`
+	Validators    []ValidatorDeclaration `json:"validators"`
+	Metrics       []MetricDeclaration    `json:"metrics"`
+	Behavioral    *BehavioralConfig      `json:"behavioral,omitempty"`
 	// LLMJudges declares LLM-as-judge graders that run after deterministic
 	// validator/metric evaluation and feed llm_judge-backed scorecard dims.
-	LLMJudges           []LLMJudgeDeclaration  `json:"llm_judges,omitempty"`
-	PostExecutionChecks []PostExecutionCheck   `json:"post_execution_checks,omitempty"`
-	RuntimeLimits       RuntimeLimits          `json:"runtime_limits,omitempty"`
-	Pricing             PricingConfig          `json:"pricing,omitempty"`
-	Scorecard           ScorecardDeclaration   `json:"scorecard"`
+	LLMJudges           []LLMJudgeDeclaration `json:"llm_judges,omitempty"`
+	PostExecutionChecks []PostExecutionCheck  `json:"post_execution_checks,omitempty"`
+	RuntimeLimits       RuntimeLimits         `json:"runtime_limits,omitempty"`
+	Pricing             PricingConfig         `json:"pricing,omitempty"`
+	Scorecard           ScorecardDeclaration  `json:"scorecard"`
 }
 
 type ValidatorDeclaration struct {
@@ -433,13 +433,13 @@ const JudgeDefaultSamples = 3
 // JudgeMethodMode selects which grader method a judge implements.
 //
 //   - rubric     — numeric score against a structured rubric (Anthropic's
-//                  "rubric-based scoring")
+//     "rubric-based scoring")
 //   - assertion  — yes/no answer to a natural-language claim about the
-//                  output (Anthropic's "natural language assertions")
+//     output (Anthropic's "natural language assertions")
 //   - n_wise     — rank all N agents in a run simultaneously with optional
-//                  position debiasing (generalized pairwise comparison)
+//     position debiasing (generalized pairwise comparison)
 //   - reference  — rubric scored relative to a gold-standard reference
-//                  answer resolved from the challenge input
+//     answer resolved from the challenge input
 type JudgeMethodMode string
 
 const (

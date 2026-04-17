@@ -82,6 +82,7 @@ INSERT INTO run_agent_scorecards (
     reliability_score,
     latency_score,
     cost_score,
+    behavioral_score,
     scorecard_passed,
     scorecard
 ) VALUES (
@@ -92,6 +93,7 @@ INSERT INTO run_agent_scorecards (
     @reliability_score,
     @latency_score,
     @cost_score,
+    @behavioral_score,
     @scorecard_passed,
     @scorecard
 )
@@ -103,9 +105,10 @@ DO UPDATE SET
     reliability_score = EXCLUDED.reliability_score,
     latency_score = EXCLUDED.latency_score,
     cost_score = EXCLUDED.cost_score,
+    behavioral_score = EXCLUDED.behavioral_score,
     scorecard_passed = EXCLUDED.scorecard_passed,
     scorecard = EXCLUDED.scorecard
-RETURNING id, run_agent_id, evaluation_spec_id, overall_score, correctness_score, reliability_score, latency_score, cost_score, scorecard_passed, scorecard, created_at, updated_at;
+RETURNING id, run_agent_id, evaluation_spec_id, overall_score, correctness_score, reliability_score, latency_score, cost_score, behavioral_score, scorecard_passed, scorecard, created_at, updated_at;
 
 -- name: GetRunScorecardByRunID :one
 SELECT id, run_id, evaluation_spec_id, winning_run_agent_id, scorecard, created_at, updated_at

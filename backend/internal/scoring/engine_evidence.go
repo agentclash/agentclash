@@ -29,7 +29,7 @@ type extractedEvidence struct {
 	capturedFiles             map[string]FileCaptureResult
 	capturedDirListings       map[string]DirectoryListingResult
 	codeExecutionResults      map[string]CodeExecutionResult
-	toolCallTrace            []toolCallTraceEntry
+	toolCallTrace             []toolCallTraceEntry
 	warnings                  []string
 }
 

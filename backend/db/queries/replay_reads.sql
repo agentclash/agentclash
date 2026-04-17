@@ -44,6 +44,7 @@ SELECT
     reliability_score,
     latency_score,
     cost_score,
+    behavioral_score,
     scorecard_passed,
     scorecard,
     created_at,

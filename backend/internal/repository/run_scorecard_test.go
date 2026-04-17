@@ -130,6 +130,7 @@ func scorecardParticipantFixture(
 		ReliabilityScore: fixture.ReliabilityScore,
 		LatencyScore:     fixture.LatencyScore,
 		CostScore:        fixture.CostScore,
+		BehavioralScore:  fixture.BehavioralScore,
 		Scorecard:        fixture.document(),
 		CreatedAt:        time.Now().UTC(),
 		UpdatedAt:        time.Now().UTC(),
@@ -153,17 +154,22 @@ type runAgentScorecardFixture struct {
 	ReliabilityScore *float64
 	LatencyScore     *float64
 	CostScore        *float64
+	BehavioralScore  *float64
 }
 
 func (f runAgentScorecardFixture) document() []byte {
+	dimensions := map[string]any{
+		"correctness": map[string]any{"state": scorecardState(f.CorrectnessScore), "score": f.CorrectnessScore},
+		"reliability": map[string]any{"state": scorecardState(f.ReliabilityScore), "score": f.ReliabilityScore},
+		"latency":     map[string]any{"state": scorecardState(f.LatencyScore), "score": f.LatencyScore},
+		"cost":        map[string]any{"state": scorecardState(f.CostScore), "score": f.CostScore},
+	}
+	if f.BehavioralScore != nil {
+		dimensions["behavioral"] = map[string]any{"state": scorecardState(f.BehavioralScore), "score": f.BehavioralScore}
+	}
 	payload, err := json.Marshal(map[string]any{
-		"status": "complete",
-		"dimensions": map[string]any{
-			"correctness": map[string]any{"state": scorecardState(f.CorrectnessScore), "score": f.CorrectnessScore},
-			"reliability": map[string]any{"state": scorecardState(f.ReliabilityScore), "score": f.ReliabilityScore},
-			"latency":     map[string]any{"state": scorecardState(f.LatencyScore), "score": f.LatencyScore},
-			"cost":        map[string]any{"state": scorecardState(f.CostScore), "score": f.CostScore},
-		},
+		"status":     "complete",
+		"dimensions": dimensions,
 	})
 	if err != nil {
 		panic(err)
@@ -209,6 +215,40 @@ func TestBuildRunScorecardDocumentSelectsWinnerByOverallScore(t *testing.T) {
 	}
 	if winningRunAgentID == nil || *winningRunAgentID != highID {
 		t.Fatalf("winning run agent id = %v, want %s", winningRunAgentID, highID)
+	}
+}
+
+func TestBuildRunScorecardDocumentSurfacesBehavioralScore(t *testing.T) {
+	runID := uuid.New()
+	evaluationSpecID := uuid.New()
+	firstAgentID := uuid.New()
+	secondAgentID := uuid.New()
+
+	document, _, err := buildRunScorecardDocument(runID, evaluationSpecID, []runScorecardParticipant{
+		scorecardParticipantFixture(0, "baseline", domain.RunAgentStatusCompleted, runAgentScorecardFixture{
+			RunAgentID:       firstAgentID,
+			EvaluationSpecID: evaluationSpecID,
+			BehavioralScore:  float64Ptr(0.4),
+		}),
+		scorecardParticipantFixture(1, "candidate", domain.RunAgentStatusCompleted, runAgentScorecardFixture{
+			RunAgentID:       secondAgentID,
+			EvaluationSpecID: evaluationSpecID,
+			BehavioralScore:  float64Ptr(0.8),
+		}),
+	}, nil)
+	if err != nil {
+		t.Fatalf("buildRunScorecardDocument returned error: %v", err)
+	}
+
+	var decoded runScorecardDocument
+	if err := json.Unmarshal(document, &decoded); err != nil {
+		t.Fatalf("unmarshal run scorecard document: %v", err)
+	}
+	if decoded.Agents[1].BehavioralScore == nil || *decoded.Agents[1].BehavioralScore != 0.8 {
+		t.Fatalf("agent behavioral score = %v, want 0.8", decoded.Agents[1].BehavioralScore)
+	}
+	if decoded.DimensionDeltas["behavioral"].Delta == nil || *decoded.DimensionDeltas["behavioral"].Delta != 0.4 {
+		t.Fatalf("behavioral delta = %v, want 0.4", decoded.DimensionDeltas["behavioral"].Delta)
 	}
 }
 

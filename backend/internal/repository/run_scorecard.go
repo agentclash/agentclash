@@ -64,6 +64,7 @@ type runScorecardAgentSummary struct {
 	ReliabilityScore *float64                                    `json:"reliability_score,omitempty"`
 	LatencyScore     *float64                                    `json:"latency_score,omitempty"`
 	CostScore        *float64                                    `json:"cost_score,omitempty"`
+	BehavioralScore  *float64                                    `json:"behavioral_score,omitempty"`
 	Dimensions       map[string]comparisonScorecardDimensionInfo `json:"dimensions,omitempty"`
 }
 
@@ -93,6 +94,7 @@ type scoredRunAgent struct {
 	overallScore     *float64
 	correctnessScore *float64
 	reliabilityScore *float64
+	behavioralScore  *float64
 }
 
 func (r *Repository) GetRunScorecardByRunID(ctx context.Context, runID uuid.UUID) (RunScorecard, error) {
@@ -207,6 +209,7 @@ func buildRunScorecardDocument(
 			summary.ReliabilityScore = cloneFloat64Ptr(participant.scorecard.ReliabilityScore)
 			summary.LatencyScore = cloneFloat64Ptr(participant.scorecard.LatencyScore)
 			summary.CostScore = cloneFloat64Ptr(participant.scorecard.CostScore)
+			summary.BehavioralScore = cloneFloat64Ptr(participant.scorecard.BehavioralScore)
 			summary.Dimensions = cloneRunScorecardDimensions(participant.document.Dimensions)
 			scoredAgents = append(scoredAgents, scoredRunAgent{
 				runAgent:         participant.runAgent,
@@ -214,6 +217,7 @@ func buildRunScorecardDocument(
 				overallScore:     cloneFloat64Ptr(participant.scorecard.OverallScore),
 				correctnessScore: availableDimensionScore(participant.scorecard.CorrectnessScore, participant.document.Dimensions["correctness"]),
 				reliabilityScore: availableDimensionScore(participant.scorecard.ReliabilityScore, participant.document.Dimensions["reliability"]),
+				behavioralScore:  availableDimensionScore(participant.scorecard.BehavioralScore, participant.document.Dimensions["behavioral"]),
 			})
 		}
 
@@ -531,6 +535,8 @@ func scoreByDimension(scorecard RunAgentScorecard, dimension string) *float64 {
 		return scorecard.LatencyScore
 	case "cost":
 		return scorecard.CostScore
+	case "behavioral":
+		return scorecard.BehavioralScore
 	default:
 		return nil
 	}

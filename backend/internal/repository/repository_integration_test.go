@@ -1300,9 +1300,9 @@ func TestRepositoryGetRunAgentScorecardByRunAgentID(t *testing.T) {
 	}
 	if _, err := db.Exec(ctx, `
 		INSERT INTO run_agent_scorecards (
-			id, run_agent_id, evaluation_spec_id, overall_score, correctness_score, reliability_score, latency_score, cost_score, scorecard
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-	`, scorecardID, fixture.primaryRunAgentID, evaluationSpecID, 0.91, 0.88, 0.93, 0.74, 0.65, []byte(`{"winner":true}`)); err != nil {
+			id, run_agent_id, evaluation_spec_id, overall_score, correctness_score, reliability_score, latency_score, cost_score, behavioral_score, scorecard
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+	`, scorecardID, fixture.primaryRunAgentID, evaluationSpecID, 0.91, 0.88, 0.93, 0.74, 0.65, 0.82, []byte(`{"winner":true}`)); err != nil {
 		t.Fatalf("insert run-agent scorecard returned error: %v", err)
 	}
 
@@ -1315,6 +1315,9 @@ func TestRepositoryGetRunAgentScorecardByRunAgentID(t *testing.T) {
 	}
 	if scorecard.OverallScore == nil || *scorecard.OverallScore != 0.91 {
 		t.Fatalf("overall_score = %v, want 0.91", scorecard.OverallScore)
+	}
+	if scorecard.BehavioralScore == nil || *scorecard.BehavioralScore != 0.82 {
+		t.Fatalf("behavioral_score = %v, want 0.82", scorecard.BehavioralScore)
 	}
 }
 
@@ -1335,9 +1338,9 @@ func TestRepositoryGetRunAgentScorecardByRunAgentIDPreservesNullScores(t *testin
 	}
 	if _, err := db.Exec(ctx, `
 		INSERT INTO run_agent_scorecards (
-			id, run_agent_id, evaluation_spec_id, overall_score, correctness_score, reliability_score, latency_score, cost_score, scorecard
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-	`, scorecardID, fixture.primaryRunAgentID, evaluationSpecID, nil, 0.88, nil, nil, 0.65, []byte(`{"partial":true}`)); err != nil {
+			id, run_agent_id, evaluation_spec_id, overall_score, correctness_score, reliability_score, latency_score, cost_score, behavioral_score, scorecard
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+	`, scorecardID, fixture.primaryRunAgentID, evaluationSpecID, nil, 0.88, nil, nil, 0.65, nil, []byte(`{"partial":true}`)); err != nil {
 		t.Fatalf("insert run-agent scorecard returned error: %v", err)
 	}
 
@@ -1362,6 +1365,9 @@ func TestRepositoryGetRunAgentScorecardByRunAgentIDPreservesNullScores(t *testin
 	}
 	if scorecard.CostScore == nil || *scorecard.CostScore != 0.65 {
 		t.Fatalf("cost_score = %v, want 0.65", scorecard.CostScore)
+	}
+	if scorecard.BehavioralScore != nil {
+		t.Fatalf("behavioral_score = %v, want nil", scorecard.BehavioralScore)
 	}
 }
 
@@ -1562,6 +1568,9 @@ func TestRepositoryStoreRunAgentEvaluationResultsUpsertsJudgeAndMetricRows(t *te
 		RunAgentID:       fixture.primaryRunAgentID,
 		EvaluationSpecID: specRecord.ID,
 		Status:           scoring.EvaluationStatusComplete,
+		DimensionScores: map[string]*float64{
+			string(scoring.ScorecardDimensionBehavioral): float64Ptr(0.75),
+		},
 		ValidatorResults: []scoring.ValidatorResult{
 			{
 				Key:                 "exact",
@@ -1653,6 +1662,9 @@ func TestRepositoryStoreRunAgentEvaluationResultsUpsertsJudgeAndMetricRows(t *te
 	}
 	if scorecard.ReliabilityScore != nil {
 		t.Fatalf("reliability_score = %v, want nil", scorecard.ReliabilityScore)
+	}
+	if scorecard.BehavioralScore == nil || *scorecard.BehavioralScore != 0.75 {
+		t.Fatalf("behavioral_score = %v, want 0.75", scorecard.BehavioralScore)
 	}
 	scorecardDocument := decodeReplaySummary(t, scorecard.Scorecard)
 	if scorecardDocument["status"] != "complete" {
@@ -3045,10 +3057,12 @@ type scorecardFixture struct {
 	Reliability      *float64
 	Latency          *float64
 	Cost             *float64
+	Behavioral       *float64
 	CorrectnessState string
 	ReliabilityState string
 	LatencyState     string
 	CostState        string
+	BehavioralState  string
 }
 
 type replaySummaryFixture struct {
@@ -3156,6 +3170,12 @@ func insertRunAgentScorecardRecord(
 			"cost":        map[string]any{"state": scorecardState(fixture.CostState, fixture.Cost), "score": fixture.Cost},
 		},
 	}
+	if fixture.Behavioral != nil || fixture.BehavioralState != "" {
+		scorecardDocument["dimensions"].(map[string]any)["behavioral"] = map[string]any{
+			"state": scorecardState(fixture.BehavioralState, fixture.Behavioral),
+			"score": fixture.Behavioral,
+		}
+	}
 	scorecardJSON, err := json.Marshal(scorecardDocument)
 	if err != nil {
 		t.Fatalf("marshal scorecard document: %v", err)
@@ -3171,10 +3191,11 @@ func insertRunAgentScorecardRecord(
 			reliability_score,
 			latency_score,
 			cost_score,
+			behavioral_score,
 			scorecard
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-	`, scorecardID, runAgentID, evaluationSpecID, fixture.Overall, fixture.Correctness, fixture.Reliability, fixture.Latency, fixture.Cost, scorecardJSON); err != nil {
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+	`, scorecardID, runAgentID, evaluationSpecID, fixture.Overall, fixture.Correctness, fixture.Reliability, fixture.Latency, fixture.Cost, fixture.Behavioral, scorecardJSON); err != nil {
 		t.Fatalf("insert run-agent scorecard returned error: %v", err)
 	}
 }
