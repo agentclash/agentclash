@@ -542,6 +542,16 @@ func TestValidateTokenF1(t *testing.T) {
 			wantRecall:    2.0 / 3.0,
 		},
 		{
+			name:          "duplicate_tokens_use_bag_overlap_not_set_overlap",
+			actual:        "paris paris paris",
+			expected:      "paris tower",
+			config:        `{"threshold": 0.5}`,
+			wantVerdict:   "fail",
+			wantScore:     0.4,
+			wantPrecision: 1.0 / 3.0,
+			wantRecall:    0.5,
+		},
+		{
 			name:          "no_overlap_scores_zero",
 			actual:        "louvre museum",
 			expected:      "eiffel tower",

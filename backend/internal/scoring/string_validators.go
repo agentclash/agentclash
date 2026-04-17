@@ -349,11 +349,11 @@ func validateTokenF1(actual string, expected string, rawConfig json.RawMessage) 
 	}
 
 	pipeline := config.pipeline()
-	normalizedActual, err := applyTokenF1Normalization(actual, pipeline)
+	normalizedActual, err := applyNormalizationPipeline(actual, pipeline)
 	if err != nil {
 		return validatorError("normalize token_f1 actual value", err, nil)
 	}
-	normalizedExpected, err := applyTokenF1Normalization(expected, pipeline)
+	normalizedExpected, err := applyNormalizationPipeline(expected, pipeline)
 	if err != nil {
 		return validatorError("normalize token_f1 expected value", err, nil)
 	}
@@ -374,13 +374,6 @@ func validateTokenF1(actual string, expected string, rawConfig json.RawMessage) 
 		"precision":              precision,
 		"recall":                 recall,
 	})
-}
-
-func applyTokenF1Normalization(value string, pipeline []string) (string, error) {
-	if len(pipeline) == 0 {
-		return value, nil
-	}
-	return applyNormalizationPipeline(value, pipeline)
 }
 
 func (c tokenF1Config) pipeline() []string {
