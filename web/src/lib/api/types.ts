@@ -699,6 +699,11 @@ export interface ScorecardDimension {
   score?: number;
   reason?: string;
   better_direction?: string;
+  weight?: number;
+  contribution?: number;
+  pass_threshold?: number;
+  gate?: boolean;
+  gate_passed?: boolean;
 }
 
 // --- Comparisons ---

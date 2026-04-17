@@ -4740,14 +4740,56 @@ components:
                 type: string
                 format: date-time
         scorecard:
-          type: object
-          additionalProperties: true
+          $ref: "#/components/schemas/ScorecardDocument"
         created_at:
           type: string
           format: date-time
         updated_at:
           type: string
           format: date-time
+
+    ScorecardDocument:
+      type: object
+      properties:
+        dimensions:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/ScorecardDimension"
+      additionalProperties: true
+
+    ScorecardDimension:
+      type: object
+      properties:
+        state:
+          type: string
+          description: Availability state for this dimension in the stored scorecard.
+        score:
+          type: number
+          format: double
+          description: Raw normalized dimension score when the dimension is available.
+        reason:
+          type: string
+        better_direction:
+          type: string
+        weight:
+          type: number
+          format: double
+          description: Effective dimension weight from the evaluation spec. Defaults to 1.0 when omitted in the spec so clients can render the active scoring behavior explicitly.
+        contribution:
+          type: number
+          format: double
+          description: Normalized relative contribution signal derived from the scoring strategy's weighting semantics. For weighted and hybrid strategies it reflects the dimension's share of the weighted score calculation; for binary or failed-gate cases it may not sum to the final overall score and should be treated as relative impact, not a strict score decomposition.
+        pass_threshold:
+          type: number
+          format: double
+          description: Dimension pass threshold from the evaluation spec when configured.
+        gate:
+          type: boolean
+          description: Whether this dimension acts as a required gate for the active strategy.
+        gate_passed:
+          type: boolean
+          description: Whether the dimension cleared its required gate threshold. Omitted when the dimension is not a required gate.
+      additionalProperties: true
 
     # --- Compare ---
 

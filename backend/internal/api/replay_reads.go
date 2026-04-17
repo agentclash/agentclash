@@ -12,6 +12,7 @@ import (
 
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/domain"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/scoring"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
@@ -25,6 +26,7 @@ type ReplayReadRepository interface {
 	GetRunAgentByID(ctx context.Context, id uuid.UUID) (domain.RunAgent, error)
 	GetRunAgentReplayByRunAgentID(ctx context.Context, runAgentID uuid.UUID) (repository.RunAgentReplay, error)
 	GetRunAgentScorecardByRunAgentID(ctx context.Context, runAgentID uuid.UUID) (repository.RunAgentScorecard, error)
+	GetEvaluationSpecByID(ctx context.Context, id uuid.UUID) (repository.EvaluationSpecRecord, error)
 	ListLLMJudgeResultsByRunAgentAndEvaluationSpec(ctx context.Context, runAgentID uuid.UUID, evaluationSpecID uuid.UUID) ([]repository.LLMJudgeResultRecord, error)
 }
 
@@ -145,6 +147,18 @@ func (m *ReplayReadManager) GetRunAgentScorecard(ctx context.Context, caller Cal
 			}, nil
 		}
 		return GetRunAgentScorecardResult{}, err
+	}
+	evaluationSpec, err := m.repo.GetEvaluationSpecByID(ctx, scorecard.EvaluationSpecID)
+	if err != nil {
+		if !errors.Is(err, repository.ErrEvaluationSpecNotFound) {
+			return GetRunAgentScorecardResult{}, err
+		}
+	} else {
+		enrichedScorecard, err := enrichScorecardDocument(scorecard.Scorecard, evaluationSpec.Definition)
+		if err != nil {
+			return GetRunAgentScorecardResult{}, fmt.Errorf("enrich run-agent scorecard document: %w", err)
+		}
+		scorecard.Scorecard = enrichedScorecard
 	}
 	judgeResults, err := m.repo.ListLLMJudgeResultsByRunAgentAndEvaluationSpec(ctx, runAgentID, scorecard.EvaluationSpecID)
 	if err != nil {
@@ -389,6 +403,161 @@ func buildRunAgentLLMJudgePayloads(records []repository.LLMJudgeResultRecord) []
 		})
 	}
 	return results
+}
+
+func enrichScorecardDocument(scorecardJSON json.RawMessage, definition json.RawMessage) (json.RawMessage, error) {
+	if len(scorecardJSON) == 0 || len(definition) == 0 {
+		return cloneJSON(scorecardJSON), nil
+	}
+
+	spec, err := scoring.DecodeDefinition(definition)
+	if err != nil {
+		return nil, fmt.Errorf("decode evaluation spec: %w", err)
+	}
+
+	var document map[string]any
+	if err := json.Unmarshal(scorecardJSON, &document); err != nil {
+		return nil, fmt.Errorf("decode scorecard document: %w", err)
+	}
+
+	rawDimensions, ok := document["dimensions"].(map[string]any)
+	if !ok || len(rawDimensions) == 0 {
+		return cloneJSON(scorecardJSON), nil
+	}
+
+	strategy := spec.Scorecard.Strategy
+	if strategy == "" {
+		strategy = scoring.ScoringStrategyWeighted
+	}
+
+	declByKey := make(map[string]scoring.DimensionDeclaration, len(spec.Scorecard.Dimensions))
+	for _, decl := range spec.Scorecard.Dimensions {
+		declByKey[decl.Key] = decl
+	}
+
+	contributions := computeDimensionContributions(rawDimensions, declByKey, strategy)
+
+	for key, rawDimension := range rawDimensions {
+		dimension, ok := rawDimension.(map[string]any)
+		if !ok {
+			continue
+		}
+		decl, ok := declByKey[key]
+		if !ok {
+			continue
+		}
+
+		dimension["weight"] = effectiveDimensionWeight(decl)
+		gate := dimensionActsAsGate(decl, strategy)
+		dimension["gate"] = gate
+		if decl.PassThreshold != nil {
+			dimension["pass_threshold"] = *decl.PassThreshold
+		}
+		if contribution, ok := contributions[key]; ok {
+			dimension["contribution"] = contribution
+		}
+		if gate && decl.PassThreshold != nil {
+			dimension["gate_passed"] = dimensionGatePassed(dimension, *decl.PassThreshold)
+		}
+	}
+
+	enriched, err := json.Marshal(document)
+	if err != nil {
+		return nil, fmt.Errorf("encode scorecard document: %w", err)
+	}
+	return enriched, nil
+}
+
+func computeDimensionContributions(
+	rawDimensions map[string]any,
+	declByKey map[string]scoring.DimensionDeclaration,
+	strategy scoring.ScoringStrategy,
+) map[string]float64 {
+	type contributionInput struct {
+		key    string
+		score  float64
+		weight float64
+	}
+
+	contributing := make([]contributionInput, 0, len(rawDimensions))
+	contributions := make(map[string]float64, len(rawDimensions))
+
+	for key, rawDimension := range rawDimensions {
+		dimension, ok := rawDimension.(map[string]any)
+		if !ok {
+			continue
+		}
+		decl, ok := declByKey[key]
+		if !ok {
+			continue
+		}
+		score, ok := dimensionScore(dimension)
+		if !ok {
+			continue
+		}
+		if strategy == scoring.ScoringStrategyHybrid && decl.Gate {
+			contributions[key] = 0
+			continue
+		}
+		contributing = append(contributing, contributionInput{
+			key:    key,
+			score:  score,
+			weight: effectiveDimensionWeight(decl),
+		})
+	}
+
+	if len(contributing) == 0 {
+		return contributions
+	}
+
+	totalWeight := 0.0
+	for _, item := range contributing {
+		totalWeight += item.weight
+	}
+
+	if totalWeight == 0 {
+		share := 1.0 / float64(len(contributing))
+		for _, item := range contributing {
+			contributions[item.key] = item.score * share
+		}
+		return contributions
+	}
+
+	for _, item := range contributing {
+		contributions[item.key] = item.score * (item.weight / totalWeight)
+	}
+	return contributions
+}
+
+func effectiveDimensionWeight(decl scoring.DimensionDeclaration) float64 {
+	if decl.Weight == nil {
+		return 1
+	}
+	return *decl.Weight
+}
+
+func dimensionActsAsGate(decl scoring.DimensionDeclaration, strategy scoring.ScoringStrategy) bool {
+	return decl.Gate || strategy == scoring.ScoringStrategyBinary
+}
+
+func dimensionGatePassed(dimension map[string]any, threshold float64) bool {
+	score, ok := dimensionScore(dimension)
+	if !ok {
+		return false
+	}
+	return score >= threshold
+}
+
+func dimensionScore(dimension map[string]any) (float64, bool) {
+	state, _ := dimension["state"].(string)
+	if state != string(scoring.OutputStateAvailable) {
+		return 0, false
+	}
+	score, ok := dimension["score"].(float64)
+	if !ok {
+		return 0, false
+	}
+	return score, true
 }
 
 func replayStepPageParamsFromRequest(r *http.Request) (ReplayStepPageParams, error) {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -174,7 +175,11 @@ func TestReplayReadManagerReturnsLLMJudgeResultsWithScorecard(t *testing.T) {
 			ID:               uuid.New(),
 			RunAgentID:       runAgentID,
 			EvaluationSpecID: evaluationSpecID,
-			Scorecard:        []byte(`{"passed":true}`),
+			Scorecard:        []byte(`{"passed":true,"dimensions":{"correctness":{"state":"available","score":0.84}}}`),
+		},
+		evaluationSpec: repository.EvaluationSpecRecord{
+			ID:         evaluationSpecID,
+			Definition: []byte(`{"name":"scorecard","version_number":1,"judge_mode":"deterministic","validators":[{"key":"exact","type":"exact_match","target":"final_output","expected_from":"challenge_input"}],"scorecard":{"dimensions":[{"key":"correctness","weight":0.5,"pass_threshold":0.7,"gate":true}]}}`),
 		},
 		llmJudgeResults: []repository.LLMJudgeResultRecord{
 			{
@@ -210,6 +215,165 @@ func TestReplayReadManagerReturnsLLMJudgeResultsWithScorecard(t *testing.T) {
 	}
 	if result.LLMJudgeResults[0].JudgeKey != "handoff_quality" {
 		t.Fatalf("judge_key = %q, want handoff_quality", result.LLMJudgeResults[0].JudgeKey)
+	}
+
+	document := decodeReplayPayload(t, result.Scorecard.Scorecard)
+	dimensions, ok := document["dimensions"].(map[string]any)
+	if !ok {
+		t.Fatalf("dimensions = %T, want object", document["dimensions"])
+	}
+	correctness, ok := dimensions["correctness"].(map[string]any)
+	if !ok {
+		t.Fatalf("correctness = %T, want object", dimensions["correctness"])
+	}
+	if got := correctness["weight"]; got != 0.5 {
+		t.Fatalf("weight = %v, want 0.5", got)
+	}
+	if got := correctness["contribution"]; got != 0.84 {
+		t.Fatalf("contribution = %v, want 0.84", got)
+	}
+	if got := correctness["gate"]; got != true {
+		t.Fatalf("gate = %v, want true", got)
+	}
+	if got := correctness["gate_passed"]; got != true {
+		t.Fatalf("gate_passed = %v, want true", got)
+	}
+}
+
+func TestReplayReadManagerFallsBackToStoredScorecardWhenEvaluationSpecMissing(t *testing.T) {
+	workspaceID := uuid.New()
+	runAgentID := uuid.New()
+	evaluationSpecID := uuid.New()
+	originalScorecard := []byte(`{"passed":true,"dimensions":{"correctness":{"state":"available","score":0.84}}}`)
+
+	manager := NewReplayReadManager(NewCallerWorkspaceAuthorizer(), &fakeReplayReadRepository{
+		runAgent: domain.RunAgent{
+			ID:          runAgentID,
+			RunID:       uuid.New(),
+			WorkspaceID: workspaceID,
+			Status:      domain.RunAgentStatusCompleted,
+		},
+		scorecard: repository.RunAgentScorecard{
+			ID:               uuid.New(),
+			RunAgentID:       runAgentID,
+			EvaluationSpecID: evaluationSpecID,
+			Scorecard:        originalScorecard,
+		},
+		evaluationSpecErr: repository.ErrEvaluationSpecNotFound,
+	})
+
+	result, err := manager.GetRunAgentScorecard(context.Background(), Caller{
+		UserID: uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: "workspace_member"},
+		},
+	}, runAgentID)
+	if err != nil {
+		t.Fatalf("GetRunAgentScorecard returned error: %v", err)
+	}
+	if string(result.Scorecard.Scorecard) != string(originalScorecard) {
+		t.Fatalf("scorecard = %s, want original payload %s", result.Scorecard.Scorecard, originalScorecard)
+	}
+}
+
+func TestEnrichScorecardDocumentAddsWeightContributionAndGateMetadata(t *testing.T) {
+	document, err := enrichScorecardDocument(
+		[]byte(`{"strategy":"weighted","dimensions":{"correctness":{"state":"available","score":0.9},"quality":{"state":"available","score":0.4},"coverage":{"state":"unavailable","reason":"pending"}}}`),
+		[]byte(`{"name":"weighted","version_number":1,"judge_mode":"deterministic","validators":[{"key":"exact","type":"exact_match","target":"final_output","expected_from":"challenge_input"}],"scorecard":{"strategy":"weighted","dimensions":[{"key":"correctness","weight":3,"gate":true,"pass_threshold":0.7},{"key":"quality","source":"validators","weight":1},{"key":"coverage","source":"validators"}]}}`),
+	)
+	if err != nil {
+		t.Fatalf("enrichScorecardDocument returned error: %v", err)
+	}
+
+	decoded := decodeReplayPayload(t, document)
+	dimensions := decoded["dimensions"].(map[string]any)
+	correctness := dimensions["correctness"].(map[string]any)
+	quality := dimensions["quality"].(map[string]any)
+	coverage := dimensions["coverage"].(map[string]any)
+
+	if got := correctness["weight"]; got != 3.0 {
+		t.Fatalf("correctness weight = %v, want 3", got)
+	}
+	if got := correctness["pass_threshold"]; got != 0.7 {
+		t.Fatalf("correctness pass_threshold = %v, want 0.7", got)
+	}
+	if got := correctness["gate"]; got != true {
+		t.Fatalf("correctness gate = %v, want true", got)
+	}
+	if got := correctness["gate_passed"]; got != true {
+		t.Fatalf("correctness gate_passed = %v, want true", got)
+	}
+	if got := correctness["contribution"].(float64); math.Abs(got-0.675) > 1e-9 {
+		t.Fatalf("correctness contribution = %v, want 0.675", got)
+	}
+	if got := quality["contribution"].(float64); math.Abs(got-0.1) > 1e-9 {
+		t.Fatalf("quality contribution = %v, want 0.1", got)
+	}
+	if got := coverage["weight"]; got != 1.0 {
+		t.Fatalf("coverage weight = %v, want 1", got)
+	}
+	if _, ok := coverage["contribution"]; ok {
+		t.Fatalf("coverage contribution should be omitted for unavailable dimension")
+	}
+}
+
+func TestEnrichScorecardDocumentMarksHybridGateContributionAsZero(t *testing.T) {
+	document, err := enrichScorecardDocument(
+		[]byte(`{"strategy":"hybrid","dimensions":{"correctness":{"state":"available","score":0.8},"quality":{"state":"available","score":0.6},"coverage":{"state":"available","score":0.2}}}`),
+		[]byte(`{"name":"hybrid","version_number":1,"judge_mode":"deterministic","validators":[{"key":"exact","type":"exact_match","target":"final_output","expected_from":"challenge_input"}],"scorecard":{"strategy":"hybrid","dimensions":[{"key":"correctness","gate":true,"pass_threshold":0.7,"weight":10},{"key":"quality","source":"validators","weight":2},{"key":"coverage","source":"validators","weight":1}]}}`),
+	)
+	if err != nil {
+		t.Fatalf("enrichScorecardDocument returned error: %v", err)
+	}
+
+	decoded := decodeReplayPayload(t, document)
+	dimensions := decoded["dimensions"].(map[string]any)
+	correctness := dimensions["correctness"].(map[string]any)
+	quality := dimensions["quality"].(map[string]any)
+	coverage := dimensions["coverage"].(map[string]any)
+
+	if got := correctness["contribution"]; got != 0.0 {
+		t.Fatalf("correctness contribution = %v, want 0", got)
+	}
+	if got := quality["contribution"].(float64); math.Abs(got-0.4) > 1e-9 {
+		t.Fatalf("quality contribution = %v, want 0.4", got)
+	}
+	if got := coverage["contribution"].(float64); math.Abs(got-0.06666666666666667) > 1e-9 {
+		t.Fatalf("coverage contribution = %v, want 0.066666...", got)
+	}
+}
+
+func TestEnrichScorecardDocumentHandlesUnavailableRequiredGate(t *testing.T) {
+	document, err := enrichScorecardDocument(
+		[]byte(`{"strategy":"binary","dimensions":{"correctness":{"state":"unavailable","reason":"missing evidence"},"quality":{"state":"available","score":0.9}}}`),
+		[]byte(`{"name":"binary","version_number":1,"judge_mode":"deterministic","validators":[{"key":"exact","type":"exact_match","target":"final_output","expected_from":"challenge_input"}],"scorecard":{"strategy":"binary","dimensions":[{"key":"correctness","pass_threshold":0.8},{"key":"quality","source":"validators","pass_threshold":0.5}]}}`),
+	)
+	if err != nil {
+		t.Fatalf("enrichScorecardDocument returned error: %v", err)
+	}
+
+	decoded := decodeReplayPayload(t, document)
+	dimensions := decoded["dimensions"].(map[string]any)
+	correctness := dimensions["correctness"].(map[string]any)
+	quality := dimensions["quality"].(map[string]any)
+
+	if got := correctness["gate"]; got != true {
+		t.Fatalf("correctness gate = %v, want true", got)
+	}
+	if got := correctness["gate_passed"]; got != false {
+		t.Fatalf("correctness gate_passed = %v, want false", got)
+	}
+	if _, ok := correctness["contribution"]; ok {
+		t.Fatalf("correctness contribution should be omitted when score is unavailable")
+	}
+	if got := quality["gate"]; got != true {
+		t.Fatalf("quality gate = %v, want true", got)
+	}
+	if got := quality["gate_passed"]; got != true {
+		t.Fatalf("quality gate_passed = %v, want true", got)
+	}
+	if got := quality["contribution"]; got != 0.9 {
+		t.Fatalf("quality contribution = %v, want 0.9", got)
 	}
 }
 
@@ -875,6 +1039,8 @@ type fakeReplayReadRepository struct {
 	replayErr          error
 	scorecard          repository.RunAgentScorecard
 	scorecardErr       error
+	evaluationSpec     repository.EvaluationSpecRecord
+	evaluationSpecErr  error
 	llmJudgeResults    []repository.LLMJudgeResultRecord
 	llmJudgeResultsErr error
 }
@@ -889,6 +1055,10 @@ func (f *fakeReplayReadRepository) GetRunAgentReplayByRunAgentID(_ context.Conte
 
 func (f *fakeReplayReadRepository) GetRunAgentScorecardByRunAgentID(_ context.Context, _ uuid.UUID) (repository.RunAgentScorecard, error) {
 	return f.scorecard, f.scorecardErr
+}
+
+func (f *fakeReplayReadRepository) GetEvaluationSpecByID(_ context.Context, _ uuid.UUID) (repository.EvaluationSpecRecord, error) {
+	return f.evaluationSpec, f.evaluationSpecErr
 }
 
 func (f *fakeReplayReadRepository) ListLLMJudgeResultsByRunAgentAndEvaluationSpec(_ context.Context, _ uuid.UUID, _ uuid.UUID) ([]repository.LLMJudgeResultRecord, error) {
