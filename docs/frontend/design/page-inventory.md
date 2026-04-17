@@ -6,8 +6,9 @@ Every page the frontend needs, mapped to the backend APIs that power it.
 
 | Page | Route | Backend API | Status |
 |---|---|---|---|
-| Login | `/auth/login` | WorkOS AuthKit redirect | Not built |
-| Auth callback | `/auth/callback` | WorkOS code exchange | Not built |
+| Login | `/auth/login` | WorkOS AuthKit redirect | Built |
+| Auth callback | `/auth/callback` | WorkOS code exchange | Built |
+| CLI device verification | `/auth/device` | `POST /v1/cli-auth/device/approve`, `POST /v1/cli-auth/device/deny` | Built |
 | Logout | `/auth/logout` | WorkOS session destroy | Not built |
 
 ## Dashboard

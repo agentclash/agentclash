@@ -306,6 +306,40 @@ paths:
         "415":
           $ref: "#/components/responses/UnsupportedMediaType"
 
+  /v1/cli-auth/device/deny:
+    post:
+      operationId: denyCliDeviceCode
+      tags: [CLIAuth]
+      summary: Deny a pending CLI verification login
+      description: >
+        Denies a pending CLI login from the authenticated web session. The
+        waiting terminal receives an `access_denied` polling response.
+      security:
+        - bearerJWT: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DenyDeviceCodeRequest"
+      responses:
+        "200":
+          description: Device verification denied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeviceApprovalResponse"
+        "400":
+          description: Invalid or expired verification code
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+
   /v1/cli-auth/tokens:
     get:
       operationId: listCliTokens
@@ -3364,10 +3398,12 @@ components:
           type: string
         verification_uri:
           type: string
-          example: /auth/device
+          format: uri
+          example: https://app.agentclash.dev/auth/device
         verification_uri_complete:
           type: string
           format: uri
+          example: https://app.agentclash.dev/auth/device?user_code=ABCD-EFGH
         expires_in:
           type: integer
           format: int32
@@ -3390,6 +3426,13 @@ components:
           type: string
 
     ApproveDeviceCodeRequest:
+      type: object
+      required: [user_code]
+      properties:
+        user_code:
+          type: string
+
+    DenyDeviceCodeRequest:
       type: object
       required: [user_code]
       properties:

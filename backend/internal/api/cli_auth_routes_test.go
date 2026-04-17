@@ -20,7 +20,7 @@ func (stubCLIAuthService) CreateDeviceCode(_ context.Context) (CreateDeviceCodeR
 	return CreateDeviceCodeResult{
 		DeviceCode:              "dc_test",
 		UserCode:                "ABCD-EFGH",
-		VerificationURI:         "/auth/device",
+		VerificationURI:         "http://localhost:3000/auth/device",
 		VerificationURIComplete: "http://localhost:3000/auth/device?user_code=ABCD-EFGH",
 		ExpiresIn:               600,
 		Interval:                5,
@@ -32,6 +32,10 @@ func (stubCLIAuthService) PollDeviceToken(_ context.Context, _ string) (PollDevi
 }
 
 func (stubCLIAuthService) ApproveDeviceCode(_ context.Context, _ Caller, _ string) error {
+	return nil
+}
+
+func (stubCLIAuthService) DenyDeviceCode(_ context.Context, _ Caller, _ string) error {
 	return nil
 }
 
@@ -140,6 +144,9 @@ func TestCLIAuthPublicDeviceRouteIsReachable(t *testing.T) {
 	if body.VerificationURIComplete == "" {
 		t.Fatal("verification_uri_complete should not be empty")
 	}
+	if body.VerificationURI != "http://localhost:3000/auth/device" {
+		t.Fatalf("verification_uri = %q, want absolute frontend URL", body.VerificationURI)
+	}
 }
 
 func TestCLIAuthProtectedTokensRouteIsReachable(t *testing.T) {
@@ -193,6 +200,46 @@ func TestCLIAuthProtectedTokensRouteIsReachable(t *testing.T) {
 
 func TestCLIAuthProtectedApproveRouteIsReachable(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/v1/cli-auth/device/approve", bytes.NewBufferString(`{"user_code":"ABCD-EFGH"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(headerUserID, "11111111-1111-1111-1111-111111111111")
+	recorder := httptest.NewRecorder()
+
+	newRouter("dev", nil,
+		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
+		NewDevelopmentAuthenticator(),
+		NewCallerWorkspaceAuthorizer(),
+		nil,
+		0,
+		stubRunCreationService{},
+		stubRunReadService{},
+		stubReplayReadService{},
+		stubHostedRunIngestionService{},
+		nil,
+		stubAgentDeploymentReadService{},
+		stubChallengePackReadService{},
+		stubAgentBuildService{},
+		noopReleaseGateService{},
+		stubChallengePackAuthoringService{},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		stubCLIAuthService{},
+	).ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+}
+
+func TestCLIAuthProtectedDenyRouteIsReachable(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "/v1/cli-auth/device/deny", bytes.NewBufferString(`{"user_code":"ABCD-EFGH"}`))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set(headerUserID, "11111111-1111-1111-1111-111111111111")
 	recorder := httptest.NewRecorder()

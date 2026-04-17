@@ -1,6 +1,6 @@
 import { withAuth } from "@workos-inc/authkit-nextjs";
 import { buildDeviceReturnTo, normalizeDeviceUserCode } from "@/lib/auth/return-to";
-import { approveDeviceCodeAction } from "./actions";
+import { approveDeviceCodeAction, denyDeviceCodeAction } from "./actions";
 import { DeviceCodeForm } from "./device-code-form";
 
 function getErrorMessage(errorCode: string | undefined): string | null {
@@ -24,10 +24,11 @@ function StatusMessage({
   tone,
   message,
 }: {
-  tone: "error" | "success";
+  tone: "error" | "success" | "warning";
   message: string;
 }) {
   const isError = tone === "error";
+  const isWarning = tone === "warning";
 
   return (
     <div
@@ -35,13 +36,19 @@ function StatusMessage({
         borderRadius: "10px",
         border: isError
           ? "1px solid rgba(255, 107, 107, 0.28)"
-          : "1px solid rgba(90, 181, 117, 0.28)",
+          : isWarning
+            ? "1px solid rgba(255, 186, 73, 0.28)"
+            : "1px solid rgba(90, 181, 117, 0.28)",
         background: isError
           ? "rgba(255, 107, 107, 0.1)"
-          : "rgba(90, 181, 117, 0.12)",
+          : isWarning
+            ? "rgba(255, 186, 73, 0.1)"
+            : "rgba(90, 181, 117, 0.12)",
         color: isError
           ? "rgba(255, 214, 214, 0.96)"
-          : "rgba(211, 255, 223, 0.95)",
+          : isWarning
+            ? "rgba(255, 233, 191, 0.95)"
+            : "rgba(211, 255, 223, 0.95)",
         padding: "0.9rem 1rem",
         fontSize: "0.95rem",
         marginBottom: "1rem",
@@ -66,8 +73,12 @@ export default async function DevicePage({
   const returnTo = buildDeviceReturnTo(userCode);
   const errorMessage = getErrorMessage(params.error);
   const approved = params.status === "approved";
+  const denied = params.status === "denied";
   const successMessage = approved
     ? "CLI login approved. Return to the terminal to finish signing in."
+    : null;
+  const deniedMessage = denied
+    ? "CLI login cancelled. Return to the terminal to finish."
     : null;
   const signedInAs = user?.email ?? user?.firstName ?? "your AgentClash account";
 
@@ -132,6 +143,9 @@ export default async function DevicePage({
           {successMessage ? (
             <StatusMessage tone="success" message={successMessage} />
           ) : null}
+          {deniedMessage ? (
+            <StatusMessage tone="warning" message={deniedMessage} />
+          ) : null}
 
           <div
             style={{
@@ -167,12 +181,14 @@ export default async function DevicePage({
 
           <DeviceCodeForm
             approved={approved}
+            denied={denied}
             initialUserCode={userCode}
             isAuthenticated={Boolean(user)}
             approveAction={approveDeviceCodeAction}
+            denyAction={denyDeviceCodeAction}
           />
 
-          {!approved ? (
+          {!approved && !denied ? (
             <p
               style={{
                 color: "rgba(255, 255, 255, 0.38)",

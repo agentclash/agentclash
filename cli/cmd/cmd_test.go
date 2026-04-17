@@ -4,9 +4,12 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/Atharva-Kanherkar/agentclash/cli/internal/auth"
 )
 
 // executeCommand runs a cobra command with args against a fake API server.
@@ -28,6 +31,8 @@ func executeCommand(t *testing.T, args []string, apiURL string) error {
 	flagWorkspace = ""
 	flagAPIURL = apiURL
 	flagYes = false
+	flagDevice = false
+	flagForceLogin = false
 
 	rootCmd.SetArgs(args)
 	return rootCmd.Execute()
@@ -333,6 +338,193 @@ func TestAuthHeaderSentToAPI(t *testing.T) {
 
 	if gotAuth != "Bearer my-secret-token" {
 		t.Fatalf("auth header = %q, want %q", gotAuth, "Bearer my-secret-token")
+	}
+}
+
+func TestAuthLoginSkipsDeviceFlowWhenStoredTokenValid(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
+	t.Setenv("AGENTCLASH_TOKEN", "")
+	if err := auth.SaveCredentials(auth.Credentials{Token: "stored-token"}); err != nil {
+		t.Fatalf("SaveCredentials() error = %v", err)
+	}
+
+	var sessionCalls int
+	var deviceCalled bool
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"GET /v1/auth/session": func(w http.ResponseWriter, r *http.Request) {
+			sessionCalls++
+			if got := r.Header.Get("Authorization"); got != "Bearer stored-token" {
+				t.Fatalf("Authorization header = %q, want Bearer stored-token", got)
+			}
+			jsonHandler(200, map[string]any{
+				"user_id":      "user-1",
+				"email":        "dev@example.com",
+				"display_name": "Dev User",
+			})(w, r)
+		},
+		"POST /v1/cli-auth/device": func(w http.ResponseWriter, r *http.Request) {
+			deviceCalled = true
+			jsonHandler(201, map[string]any{})(w, r)
+		},
+	})
+	defer srv.Close()
+
+	if err := executeCommand(t, []string{"auth", "login", "--device"}, srv.URL); err != nil {
+		t.Fatalf("auth login error: %v", err)
+	}
+	if sessionCalls != 1 {
+		t.Fatalf("session calls = %d, want 1", sessionCalls)
+	}
+	if deviceCalled {
+		t.Fatal("device flow should not start when stored token is valid")
+	}
+}
+
+func TestAuthLoginSkipsDeviceFlowWhenEnvTokenValid(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
+	t.Setenv("AGENTCLASH_TOKEN", "env-token")
+
+	var deviceCalled bool
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"GET /v1/auth/session": func(w http.ResponseWriter, r *http.Request) {
+			if got := r.Header.Get("Authorization"); got != "Bearer env-token" {
+				t.Fatalf("Authorization header = %q, want Bearer env-token", got)
+			}
+			jsonHandler(200, map[string]any{
+				"user_id": "user-1",
+				"email":   "dev@example.com",
+			})(w, r)
+		},
+		"POST /v1/cli-auth/device": func(w http.ResponseWriter, r *http.Request) {
+			deviceCalled = true
+			jsonHandler(201, map[string]any{})(w, r)
+		},
+	})
+	defer srv.Close()
+
+	if err := executeCommand(t, []string{"auth", "login", "--device"}, srv.URL); err != nil {
+		t.Fatalf("auth login error: %v", err)
+	}
+	if deviceCalled {
+		t.Fatal("device flow should not start when AGENTCLASH_TOKEN is valid")
+	}
+	if _, err := os.Stat(auth.CredentialsPath()); !os.IsNotExist(err) {
+		t.Fatalf("credentials file should not be written, stat error = %v", err)
+	}
+}
+
+func TestAuthLoginInvalidStoredTokenStartsDeviceFlow(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
+	t.Setenv("AGENTCLASH_TOKEN", "")
+	if err := auth.SaveCredentials(auth.Credentials{Token: "stale-token"}); err != nil {
+		t.Fatalf("SaveCredentials() error = %v", err)
+	}
+
+	var deviceCalls int
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"GET /v1/auth/session": func(w http.ResponseWriter, r *http.Request) {
+			switch r.Header.Get("Authorization") {
+			case "Bearer stale-token":
+				jsonHandler(401, map[string]any{
+					"error": map[string]any{"code": "unauthorized", "message": "invalid token"},
+				})(w, r)
+			case "Bearer clitok_new":
+				jsonHandler(200, map[string]any{
+					"user_id":      "user-1",
+					"email":        "dev@example.com",
+					"display_name": "Dev User",
+				})(w, r)
+			default:
+				t.Fatalf("unexpected Authorization header %q", r.Header.Get("Authorization"))
+			}
+		},
+		"POST /v1/cli-auth/device": func(w http.ResponseWriter, r *http.Request) {
+			deviceCalls++
+			jsonHandler(201, map[string]any{
+				"device_code":               "dc_test",
+				"user_code":                 "ABCD-EFGH",
+				"verification_uri":          "https://agentclash.dev/auth/device",
+				"verification_uri_complete": "https://agentclash.dev/auth/device?user_code=ABCD-EFGH",
+				"expires_in":                60,
+				"interval":                  1,
+			})(w, r)
+		},
+		"POST /v1/cli-auth/device/token": jsonHandler(200, map[string]any{
+			"token": "clitok_new",
+		}),
+	})
+	defer srv.Close()
+
+	if err := executeCommand(t, []string{"auth", "login", "--device"}, srv.URL); err != nil {
+		t.Fatalf("auth login error: %v", err)
+	}
+	if deviceCalls != 1 {
+		t.Fatalf("device calls = %d, want 1", deviceCalls)
+	}
+	creds, err := auth.LoadCredentials()
+	if err != nil {
+		t.Fatalf("LoadCredentials() error = %v", err)
+	}
+	if creds.Token != "clitok_new" {
+		t.Fatalf("saved token = %q, want clitok_new", creds.Token)
+	}
+}
+
+func TestAuthLoginForceStartsDeviceFlowWhenStoredTokenValid(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
+	t.Setenv("AGENTCLASH_TOKEN", "")
+	if err := auth.SaveCredentials(auth.Credentials{Token: "stored-token"}); err != nil {
+		t.Fatalf("SaveCredentials() error = %v", err)
+	}
+
+	var preflightCalls int
+	var deviceCalls int
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"GET /v1/auth/session": func(w http.ResponseWriter, r *http.Request) {
+			if r.Header.Get("Authorization") == "Bearer stored-token" {
+				preflightCalls++
+			}
+			jsonHandler(200, map[string]any{
+				"user_id": "user-1",
+				"email":   "dev@example.com",
+			})(w, r)
+		},
+		"POST /v1/cli-auth/device": func(w http.ResponseWriter, r *http.Request) {
+			deviceCalls++
+			jsonHandler(201, map[string]any{
+				"device_code":               "dc_test",
+				"user_code":                 "ABCD-EFGH",
+				"verification_uri":          "https://agentclash.dev/auth/device",
+				"verification_uri_complete": "https://agentclash.dev/auth/device?user_code=ABCD-EFGH",
+				"expires_in":                60,
+				"interval":                  1,
+			})(w, r)
+		},
+		"POST /v1/cli-auth/device/token": jsonHandler(200, map[string]any{
+			"token": "clitok_forced",
+		}),
+	})
+	defer srv.Close()
+
+	if err := executeCommand(t, []string{"auth", "login", "--device", "--force"}, srv.URL); err != nil {
+		t.Fatalf("auth login error: %v", err)
+	}
+	if preflightCalls != 0 {
+		t.Fatalf("preflight calls = %d, want 0", preflightCalls)
+	}
+	if deviceCalls != 1 {
+		t.Fatalf("device calls = %d, want 1", deviceCalls)
+	}
+	creds, err := auth.LoadCredentials()
+	if err != nil {
+		t.Fatalf("LoadCredentials() error = %v", err)
+	}
+	if creds.Token != "clitok_forced" {
+		t.Fatalf("saved token = %q, want clitok_forced", creds.Token)
 	}
 }
 
