@@ -4854,6 +4854,8 @@ components:
           $ref: "#/components/schemas/ValidatorEvidence"
 
     ValidatorEvidence:
+      discriminator:
+        propertyName: kind
       oneOf:
         - $ref: "#/components/schemas/ValidatorTextCompareEvidence"
         - $ref: "#/components/schemas/ValidatorRegexEvidence"

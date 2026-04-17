@@ -69,7 +69,7 @@ function RegexEvidence({ evidence }: { evidence: ValidatorRegexEvidence }) {
         <div className="text-[11px] uppercase tracking-[0.18em] text-white/35">
           Actual
         </div>
-        <pre className="rounded-2xl border border-white/[0.08] bg-white/[0.03] p-4 text-[12px] text-white/82 whitespace-pre-wrap font-[family-name:var(--font-mono)]">
+        <pre className="max-h-[60vh] overflow-auto rounded-2xl border border-white/[0.08] bg-white/[0.03] p-4 text-[12px] text-white/82 whitespace-pre-wrap font-[family-name:var(--font-mono)]">
           {segments?.map((segment, index) =>
             segment.matched ? (
               <mark
@@ -243,7 +243,7 @@ function EvidenceBlock({
       <div className="text-[11px] uppercase tracking-[0.18em] text-white/35">
         {label}
       </div>
-      <pre className="rounded-2xl border border-white/[0.08] bg-white/[0.03] p-4 text-[12px] text-white/82 whitespace-pre-wrap break-words font-[family-name:var(--font-mono)]">
+      <pre className="max-h-[60vh] overflow-auto rounded-2xl border border-white/[0.08] bg-white/[0.03] p-4 text-[12px] text-white/82 whitespace-pre-wrap break-words font-[family-name:var(--font-mono)]">
         {children}
       </pre>
     </div>

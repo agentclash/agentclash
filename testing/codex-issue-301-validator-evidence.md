@@ -15,6 +15,7 @@
 11. The scorecard inspector must render evidence instead of the placeholder hint when evidence is present.
 12. For string-style evidence, the inspector must show expected and actual values side by side.
 13. For regex evidence, the inspector must show the pattern, actual value, and whether a match was found; matched text should be visually distinguishable when a match can be computed.
+    Regex highlighting is best-effort for JavaScript `RegExp` patterns and may fall back to plain text when patterns are not directly highlightable in the client.
 14. For JSON schema evidence, the inspector must show the schema reference/draft, actual value, and validation errors as a structured list when present.
 15. For fallback/custom evidence, the inspector must show a readable raw JSON payload and keep the prose reason visible.
 16. Existing scorecard behavior for validators without evidence must remain non-breaking.
