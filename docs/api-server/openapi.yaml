@@ -4878,8 +4878,6 @@ components:
           type: string
         boolean_value:
           type: boolean
-        source:
-          $ref: "#/components/schemas/ScorecardSource"
 
     ScorecardSource:
       type: object

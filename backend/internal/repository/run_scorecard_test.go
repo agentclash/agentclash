@@ -650,6 +650,6 @@ func TestBuildRunAgentScorecardDocumentIncludesSourcePointer(t *testing.T) {
 
 	metrics := decoded["metric_details"].([]any)
 	if _, present := metrics[0].(map[string]any)["source"]; present {
-		t.Fatalf("metric_details[0].source should be omitted for aggregate metrics, got %#v", metrics[0])
+		t.Fatalf("metric_details[0] should not carry a source field (none is populated by any collector today), got %#v", metrics[0])
 	}
 }

@@ -120,7 +120,13 @@ func buildEvidence(challengeInputs []EvidenceInput, events []Event) extractedEvi
 			evidence.completedSuccessfully = &completed
 			if output, ok := stringValue(payload, "final_output"); ok {
 				evidence.finalOutput = &output
-				evidence.finalOutputSource = eventRefFrom(event)
+				// Prefer the dedicated system.output.finalized event as the
+				// source when it has already been seen — system.run.completed
+				// is the wrapper and covers many sub-events, so a deep link
+				// should land on the narrower finalized event when possible.
+				if evidence.finalOutputSource == nil {
+					evidence.finalOutputSource = eventRefFrom(event)
+				}
 			}
 			if value, ok := numericValue(payload, "input_tokens"); ok {
 				evidence.inputTokens = floatPtr(value)

@@ -30,13 +30,33 @@ describe("findHighlightIndex", () => {
     expect(findHighlightIndex(steps, 7)).toBe(1);
   });
 
-  it("falls back to the nearest earlier step when no range contains the target", () => {
-    const steps = [step(1), step(4), step(7)];
+  it("prefers the innermost wrapper when nested steps overlap", () => {
+    // Replay builder stacks wrappers: a wide `run` wraps a narrower
+    // `agent_step`, which wraps a `tool_call`. The target sits inside all
+    // three; we want the innermost tool_call, not the outer run wrapper.
+    const steps = [
+      step(1, 20), // run
+      step(3, 15), // agent_step
+      step(7, 9), // tool_call
+    ];
+    expect(findHighlightIndex(steps, 8)).toBe(2);
+  });
+
+  it("falls back to the nearest earlier step when no range contains the target but it is within the loaded window", () => {
+    const steps = [step(1), step(4), step(7, 8)];
     expect(findHighlightIndex(steps, 6)).toBe(1);
   });
 
   it("returns -1 when the target precedes every step", () => {
     expect(findHighlightIndex([step(10), step(20)], 5)).toBe(-1);
+  });
+
+  it("returns -1 when the target is beyond the loaded window", () => {
+    // Replay pagination loads a 50-step window at a time. A deep link to
+    // sequence 300 against a window ending at 50 should NOT highlight the
+    // last loaded step — that would be a misleading fallback.
+    const steps = [step(1, 10), step(11, 25), step(26, 50)];
+    expect(findHighlightIndex(steps, 300)).toBe(-1);
   });
 
   it("returns -1 when target is not finite", () => {

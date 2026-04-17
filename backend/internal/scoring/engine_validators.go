@@ -159,11 +159,16 @@ func evaluateCodeExecutionValidator(result ValidatorResult, validator ValidatorD
 	}
 
 	if ref, ok := evidence.codeExecutionSources[validator.Key]; ok {
+		// Field path mirrors the validator.Target (e.g. "file:generated_code"),
+		// which is what the spec author actually referenced. validator.Key is
+		// the validator identifier ("code_test") and is distinct from the
+		// evidence target — using it as a path would point at a nonexistent
+		// field.
 		result.Source = &Source{
 			Kind:      SourceKindToolCall,
 			Sequence:  int64Ptr(ref.Sequence),
 			EventType: ref.EventType,
-			FieldPath: "file:" + validator.Key,
+			FieldPath: validator.Target,
 		}
 	}
 

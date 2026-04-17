@@ -732,7 +732,6 @@ export interface MetricDetail {
   numeric_value?: number;
   text_value?: string;
   boolean_value?: boolean;
-  source?: ScorecardSource;
 }
 
 export interface LLMJudgeResult {

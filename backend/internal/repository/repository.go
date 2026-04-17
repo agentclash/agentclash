@@ -781,14 +781,13 @@ func buildRunAgentScorecardDocument(evaluation scoring.RunAgentEvaluation) (json
 	}
 
 	type metricDetail struct {
-		Key          string          `json:"key"`
-		Collector    string          `json:"collector"`
-		State        string          `json:"state"`
-		Reason       string          `json:"reason,omitempty"`
-		NumericValue *float64        `json:"numeric_value,omitempty"`
-		TextValue    *string         `json:"text_value,omitempty"`
-		BooleanValue *bool           `json:"boolean_value,omitempty"`
-		Source       *scoring.Source `json:"source,omitempty"`
+		Key          string   `json:"key"`
+		Collector    string   `json:"collector"`
+		State        string   `json:"state"`
+		Reason       string   `json:"reason,omitempty"`
+		NumericValue *float64 `json:"numeric_value,omitempty"`
+		TextValue    *string  `json:"text_value,omitempty"`
+		BooleanValue *bool    `json:"boolean_value,omitempty"`
 	}
 
 	type llmJudgeDetail struct {
@@ -896,7 +895,6 @@ func buildRunAgentScorecardDocument(evaluation scoring.RunAgentEvaluation) (json
 			NumericValue: cloneFloat64Ptr(mr.NumericValue),
 			TextValue:    cloneStringPtr(mr.TextValue),
 			BooleanValue: cloneBoolPtr(mr.BooleanValue),
-			Source:       cloneScoringSource(mr.Source),
 		})
 	}
 

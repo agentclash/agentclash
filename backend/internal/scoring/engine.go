@@ -111,7 +111,6 @@ type MetricResult struct {
 	BooleanValue        *bool           `json:"boolean_value,omitempty"`
 	ChallengeIdentityID *uuid.UUID      `json:"challenge_identity_id,omitempty"`
 	Reason              string          `json:"reason,omitempty"`
-	Source              *Source         `json:"source,omitempty"`
 	Metadata            json.RawMessage `json:"metadata"`
 }
 

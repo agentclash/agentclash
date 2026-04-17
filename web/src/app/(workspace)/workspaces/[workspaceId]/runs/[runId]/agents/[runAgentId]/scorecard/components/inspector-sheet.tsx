@@ -61,12 +61,7 @@ export function InspectorSheet({
             replayBasePath={replayBasePath}
           />
         )}
-        {target?.kind === "metric" && (
-          <MetricInspector
-            detail={target.detail}
-            replayBasePath={replayBasePath}
-          />
-        )}
+        {target?.kind === "metric" && <MetricInspector detail={target.detail} />}
         {target?.kind === "judge" && <JudgeInspector detail={target.detail} />}
       </SheetContent>
     </Sheet>
@@ -177,13 +172,7 @@ function ValidatorInspector({
 
 /* ------------------------------------------------------------------ Metric */
 
-function MetricInspector({
-  detail,
-  replayBasePath,
-}: {
-  detail: MetricDetail;
-  replayBasePath?: string;
-}) {
+function MetricInspector({ detail }: { detail: MetricDetail }) {
   const stateKind: "available" | "unavailable" | "error" =
     detail.state === "error"
       ? "error"
@@ -225,10 +214,6 @@ function MetricInspector({
             </p>
           </Section>
         )}
-        <ReplaySourceLink
-          source={detail.source}
-          replayBasePath={replayBasePath}
-        />
       </div>
     </div>
   );
