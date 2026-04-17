@@ -52,6 +52,7 @@ const (
 	ScorecardDimensionReliability ScorecardDimension = "reliability"
 	ScorecardDimensionLatency     ScorecardDimension = "latency"
 	ScorecardDimensionCost        ScorecardDimension = "cost"
+	ScorecardDimensionBehavioral  ScorecardDimension = "behavioral"
 )
 
 // DimensionSource names the evidence pipeline that produces a dimension's
@@ -74,7 +75,18 @@ const (
 	DimensionSourceReliability DimensionSource = "reliability"
 	DimensionSourceLatency     DimensionSource = "latency"
 	DimensionSourceCost        DimensionSource = "cost"
+	DimensionSourceBehavioral  DimensionSource = "behavioral"
 	DimensionSourceLLMJudge    DimensionSource = "llm_judge"
+)
+
+type BehavioralSignalKey string
+
+const (
+	BehavioralSignalRecoveryBehavior      BehavioralSignalKey = "recovery_behavior"
+	BehavioralSignalExplorationEfficiency BehavioralSignalKey = "exploration_efficiency"
+	BehavioralSignalErrorCascade          BehavioralSignalKey = "error_cascade"
+	BehavioralSignalScopeAdherence        BehavioralSignalKey = "scope_adherence"
+	BehavioralSignalConfidenceCalibration BehavioralSignalKey = "confidence_calibration"
 )
 
 // ScoringStrategy controls how per-dimension scores combine into a single
@@ -184,6 +196,7 @@ type EvaluationSpec struct {
 	JudgeMode           JudgeMode              `json:"judge_mode"`
 	Validators          []ValidatorDeclaration `json:"validators"`
 	Metrics             []MetricDeclaration    `json:"metrics"`
+	Behavioral          *BehavioralConfig      `json:"behavioral,omitempty"`
 	// LLMJudges declares LLM-as-judge graders that run after deterministic
 	// validator/metric evaluation and feed llm_judge-backed scorecard dims.
 	LLMJudges           []LLMJudgeDeclaration  `json:"llm_judges,omitempty"`
@@ -206,6 +219,17 @@ type MetricDeclaration struct {
 	Type      MetricType `json:"type"`
 	Collector string     `json:"collector"`
 	Unit      string     `json:"unit,omitempty"`
+}
+
+type BehavioralConfig struct {
+	Signals []BehavioralSignalDeclaration `json:"signals"`
+}
+
+type BehavioralSignalDeclaration struct {
+	Key           BehavioralSignalKey `json:"key"`
+	Weight        float64             `json:"weight"`
+	Gate          bool                `json:"gate,omitempty"`
+	PassThreshold *float64            `json:"pass_threshold,omitempty"`
 }
 
 type ScorecardDeclaration struct {
@@ -351,7 +375,20 @@ func (t MetricType) IsValid() bool {
 
 func (s DimensionSource) IsValid() bool {
 	switch s {
-	case DimensionSourceValidators, DimensionSourceMetric, DimensionSourceReliability, DimensionSourceLatency, DimensionSourceCost, DimensionSourceLLMJudge:
+	case DimensionSourceValidators, DimensionSourceMetric, DimensionSourceReliability, DimensionSourceLatency, DimensionSourceCost, DimensionSourceBehavioral, DimensionSourceLLMJudge:
+		return true
+	default:
+		return false
+	}
+}
+
+func (k BehavioralSignalKey) IsValid() bool {
+	switch k {
+	case BehavioralSignalRecoveryBehavior,
+		BehavioralSignalExplorationEfficiency,
+		BehavioralSignalErrorCascade,
+		BehavioralSignalScopeAdherence,
+		BehavioralSignalConfidenceCalibration:
 		return true
 	default:
 		return false
@@ -362,7 +399,7 @@ func (s DimensionSource) IsValid() bool {
 // have built-in scoring logic. Used during auto-expansion of old-format specs.
 func isBuiltinDimensionKey(key string) bool {
 	switch key {
-	case ScorecardDimensionCorrectness, ScorecardDimensionReliability, ScorecardDimensionLatency, ScorecardDimensionCost:
+	case ScorecardDimensionCorrectness, ScorecardDimensionReliability, ScorecardDimensionLatency, ScorecardDimensionCost, ScorecardDimensionBehavioral:
 		return true
 	default:
 		return false

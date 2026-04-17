@@ -173,6 +173,36 @@ func ValidateEvaluationSpec(spec EvaluationSpec) error {
 		}
 	}
 
+	behavioralSignalKeys := map[BehavioralSignalKey]struct{}{}
+	if spec.Behavioral != nil {
+		if len(spec.Behavioral.Signals) == 0 {
+			errs = append(errs, ValidationError{Field: "evaluation_spec.behavioral.signals", Message: "must contain at least one signal"})
+		}
+		for i, signal := range spec.Behavioral.Signals {
+			path := fmt.Sprintf("evaluation_spec.behavioral.signals[%d]", i)
+			if !signal.Key.IsValid() {
+				errs = append(errs, ValidationError{Field: path + ".key", Message: "must be one of recovery_behavior, exploration_efficiency, error_cascade, scope_adherence, confidence_calibration"})
+			} else {
+				if _, exists := behavioralSignalKeys[signal.Key]; exists {
+					errs = append(errs, ValidationError{Field: path + ".key", Message: "must be unique"})
+				}
+				behavioralSignalKeys[signal.Key] = struct{}{}
+			}
+			if signal.Weight <= 0 {
+				errs = append(errs, ValidationError{Field: path + ".weight", Message: "must be greater than 0"})
+			}
+			if signal.Gate {
+				if signal.PassThreshold == nil {
+					errs = append(errs, ValidationError{Field: path + ".pass_threshold", Message: "is required when the signal is gated"})
+				} else if *signal.PassThreshold < 0 || *signal.PassThreshold > 1 {
+					errs = append(errs, ValidationError{Field: path + ".pass_threshold", Message: "must be between 0 and 1"})
+				}
+			} else if signal.PassThreshold != nil && (*signal.PassThreshold < 0 || *signal.PassThreshold > 1) {
+				errs = append(errs, ValidationError{Field: path + ".pass_threshold", Message: "must be between 0 and 1"})
+			}
+		}
+	}
+
 	pricingKeys := map[string]struct{}{}
 	for i, model := range spec.Pricing.Models {
 		path := fmt.Sprintf("evaluation_spec.pricing.models[%d]", i)
@@ -221,7 +251,7 @@ func ValidateEvaluationSpec(spec EvaluationSpec) error {
 		dimensionKeys[key] = struct{}{}
 
 		if !dim.Source.IsValid() {
-			errs = append(errs, ValidationError{Field: path + ".source", Message: "must be one of validators, metric, reliability, latency, cost, llm_judge"})
+			errs = append(errs, ValidationError{Field: path + ".source", Message: "must be one of validators, metric, reliability, latency, cost, behavioral, llm_judge"})
 			continue
 		}
 
@@ -255,6 +285,10 @@ func ValidateEvaluationSpec(spec EvaluationSpec) error {
 			if dim.Normalization == nil {
 				errs = append(errs, ValidationError{Field: path + ".normalization", Message: "is required when source is cost"})
 			}
+		case DimensionSourceBehavioral:
+			if spec.Behavioral == nil || len(spec.Behavioral.Signals) == 0 {
+				errs = append(errs, ValidationError{Field: "evaluation_spec.behavioral", Message: "is required when a scorecard dimension uses source behavioral"})
+			}
 		case DimensionSourceLLMJudge:
 			judgeKey := strings.TrimSpace(dim.JudgeKey)
 			if judgeKey == "" {
@@ -287,6 +321,13 @@ func ValidateEvaluationSpec(spec EvaluationSpec) error {
 			errs = append(errs, ValidationError{
 				Field:   path + ".better_direction",
 				Message: fmt.Sprintf("must be \"higher\" for llm_judge source (got %q)", dim.BetterDirection),
+			})
+		}
+
+		if dim.Source == DimensionSourceBehavioral && dim.BetterDirection != "" && dim.BetterDirection != "higher" {
+			errs = append(errs, ValidationError{
+				Field:   path + ".better_direction",
+				Message: fmt.Sprintf("must be \"higher\" for behavioral source (got %q)", dim.BetterDirection),
 			})
 		}
 
@@ -431,6 +472,12 @@ func normalizeEvaluationSpec(spec *EvaluationSpec) {
 	spec.PostExecutionChecks = append([]PostExecutionCheck(nil), spec.PostExecutionChecks...)
 	spec.Pricing.Models = append([]ModelPricing(nil), spec.Pricing.Models...)
 	spec.Scorecard.Dimensions = append([]DimensionDeclaration(nil), spec.Scorecard.Dimensions...)
+	if spec.Behavioral != nil {
+		cloned := &BehavioralConfig{
+			Signals: append([]BehavioralSignalDeclaration(nil), spec.Behavioral.Signals...),
+		}
+		spec.Behavioral = cloned
+	}
 
 	if spec.Scorecard.Strategy == "" {
 		spec.Scorecard.Strategy = ScoringStrategyWeighted
@@ -473,9 +520,15 @@ func normalizeEvaluationSpec(spec *EvaluationSpec) {
 		// validated explicitly.
 		if dim.BetterDirection == "" {
 			switch dim.Source {
-			case DimensionSourceValidators, DimensionSourceReliability, DimensionSourceLLMJudge:
+			case DimensionSourceValidators, DimensionSourceReliability, DimensionSourceBehavioral, DimensionSourceLLMJudge:
 				dim.BetterDirection = "higher"
 			}
+		}
+	}
+
+	if spec.Behavioral != nil {
+		for i := range spec.Behavioral.Signals {
+			spec.Behavioral.Signals[i].Key = BehavioralSignalKey(strings.TrimSpace(string(spec.Behavioral.Signals[i].Key)))
 		}
 	}
 
@@ -537,6 +590,9 @@ func expandBuiltinDimension(dim *DimensionDeclaration, spec *EvaluationSpec) {
 			}
 			dim.Normalization = norm
 		}
+	case ScorecardDimensionBehavioral:
+		dim.Source = DimensionSourceBehavioral
+		dim.BetterDirection = "higher"
 	}
 }
 
