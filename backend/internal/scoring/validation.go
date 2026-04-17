@@ -691,6 +691,54 @@ func validateValidatorConfig(validator ValidatorDeclaration, path string) Valida
 			errs = append(errs, ValidationError{Field: configPath + ".tolerance", Message: "must be greater than or equal to 0"})
 		}
 
+	case ValidatorTypeBLEUScore:
+		cfg, err := parseBLEUScoreConfig(validator.Config)
+		if err != nil {
+			errs = append(errs, ValidationError{Field: configPath, Message: configParseErrorMessage(err)})
+			return errs
+		}
+		if cfg.Threshold != nil && (*cfg.Threshold < 0 || *cfg.Threshold > 1) {
+			errs = append(errs, ValidationError{Field: configPath + ".threshold", Message: "must be between 0 and 1"})
+		}
+		if cfg.MaxNGram != nil && *cfg.MaxNGram <= 0 {
+			errs = append(errs, ValidationError{Field: configPath + ".max_ngram", Message: "must be greater than 0"})
+		}
+		if cfg.Smoothing != bleuSmoothingNone && cfg.Smoothing != bleuSmoothingMethod1 {
+			errs = append(errs, ValidationError{Field: configPath + ".smoothing", Message: `must be "none" or "method1"`})
+		}
+
+	case ValidatorTypeROUGEScore:
+		cfg, err := parseROUGEScoreConfig(validator.Config)
+		if err != nil {
+			errs = append(errs, ValidationError{Field: configPath, Message: configParseErrorMessage(err)})
+			return errs
+		}
+		if cfg.Threshold != nil && (*cfg.Threshold < 0 || *cfg.Threshold > 1) {
+			errs = append(errs, ValidationError{Field: configPath + ".threshold", Message: "must be between 0 and 1"})
+		}
+		if cfg.Variant != rougeVariant1 && cfg.Variant != rougeVariant2 && cfg.Variant != rougeVariantL {
+			errs = append(errs, ValidationError{Field: configPath + ".variant", Message: `must be "rouge-1", "rouge-2", or "rouge-l"`})
+		}
+		if cfg.Beta != nil && *cfg.Beta <= 0 {
+			errs = append(errs, ValidationError{Field: configPath + ".beta", Message: "must be greater than 0"})
+		}
+
+	case ValidatorTypeChrFScore:
+		cfg, err := parseChrFScoreConfig(validator.Config)
+		if err != nil {
+			errs = append(errs, ValidationError{Field: configPath, Message: configParseErrorMessage(err)})
+			return errs
+		}
+		if cfg.Threshold != nil && (*cfg.Threshold < 0 || *cfg.Threshold > 1) {
+			errs = append(errs, ValidationError{Field: configPath + ".threshold", Message: "must be between 0 and 1"})
+		}
+		if cfg.CharOrder != nil && *cfg.CharOrder <= 0 {
+			errs = append(errs, ValidationError{Field: configPath + ".char_order", Message: "must be greater than 0"})
+		}
+		if cfg.Beta != nil && *cfg.Beta <= 0 {
+			errs = append(errs, ValidationError{Field: configPath + ".beta", Message: "must be greater than 0"})
+		}
+
 	case ValidatorTypeCodeExecution:
 		cfg, err := ParseCodeExecutionConfig(validator.Config)
 		if err != nil {

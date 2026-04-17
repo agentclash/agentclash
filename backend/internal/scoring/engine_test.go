@@ -1290,6 +1290,114 @@ func TestEvaluateRunAgent_FuzzyMatchPassesWithHighSimilarity(t *testing.T) {
 	}
 }
 
+func TestEvaluateRunAgent_BLEUScoreSupportsMultiReference(t *testing.T) {
+	spec := EvaluationSpec{
+		Name:          "bleu-pass",
+		VersionNumber: 1,
+		JudgeMode:     JudgeModeDeterministic,
+		Validators: []ValidatorDeclaration{
+			{
+				Key:          "bleu",
+				Type:         ValidatorTypeBLEUScore,
+				Target:       "final_output",
+				ExpectedFrom: "literal:[\"there is a cat on the mat\",\"the cat is on the mat\"]",
+				Config:       json.RawMessage(`{"threshold": 0.5, "smoothing": "method1"}`),
+			},
+		},
+		Scorecard: ScorecardDeclaration{
+			Dimensions: []DimensionDeclaration{{Key: ScorecardDimensionCorrectness}},
+		},
+	}
+
+	evaluation, err := EvaluateRunAgent(EvaluationInput{
+		RunAgentID:       uuid.New(),
+		EvaluationSpecID: uuid.New(),
+		Events: []Event{
+			{Type: "system.run.completed", OccurredAt: time.Date(2026, 3, 16, 9, 0, 2, 0, time.UTC), Payload: []byte(`{"final_output":"the cat is on the mat"}`)},
+		},
+	}, spec)
+	if err != nil {
+		t.Fatalf("EvaluateRunAgent returned error: %v", err)
+	}
+
+	if evaluation.ValidatorResults[0].Verdict != "pass" {
+		t.Fatalf("validator verdict = %q, want pass", evaluation.ValidatorResults[0].Verdict)
+	}
+	if got := *evaluation.ValidatorResults[0].NormalizedScore; got < 0.99 {
+		t.Fatalf("normalizedScore = %f, want close to 1", got)
+	}
+}
+
+func TestEvaluateRunAgent_ROUGEScoreSupportsRougeL(t *testing.T) {
+	spec := EvaluationSpec{
+		Name:          "rouge-pass",
+		VersionNumber: 1,
+		JudgeMode:     JudgeModeDeterministic,
+		Validators: []ValidatorDeclaration{
+			{
+				Key:          "rouge",
+				Type:         ValidatorTypeROUGEScore,
+				Target:       "final_output",
+				ExpectedFrom: "literal:the cat sat on the mat",
+				Config:       json.RawMessage(`{"variant": "rouge-l", "threshold": 0.5}`),
+			},
+		},
+		Scorecard: ScorecardDeclaration{
+			Dimensions: []DimensionDeclaration{{Key: ScorecardDimensionCorrectness}},
+		},
+	}
+
+	evaluation, err := EvaluateRunAgent(EvaluationInput{
+		RunAgentID:       uuid.New(),
+		EvaluationSpecID: uuid.New(),
+		Events: []Event{
+			{Type: "system.run.completed", OccurredAt: time.Date(2026, 3, 16, 9, 0, 2, 0, time.UTC), Payload: []byte(`{"final_output":"the cat slept on the mat"}`)},
+		},
+	}, spec)
+	if err != nil {
+		t.Fatalf("EvaluateRunAgent returned error: %v", err)
+	}
+
+	if evaluation.ValidatorResults[0].Verdict != "pass" {
+		t.Fatalf("validator verdict = %q, want pass", evaluation.ValidatorResults[0].Verdict)
+	}
+}
+
+func TestEvaluateRunAgent_ChrFScoreSupportsUnicode(t *testing.T) {
+	spec := EvaluationSpec{
+		Name:          "chrf-pass",
+		VersionNumber: 1,
+		JudgeMode:     JudgeModeDeterministic,
+		Validators: []ValidatorDeclaration{
+			{
+				Key:          "chrf",
+				Type:         ValidatorTypeChrFScore,
+				Target:       "final_output",
+				ExpectedFrom: "literal:こんにちは世界",
+				Config:       json.RawMessage(`{"threshold": 0.9}`),
+			},
+		},
+		Scorecard: ScorecardDeclaration{
+			Dimensions: []DimensionDeclaration{{Key: ScorecardDimensionCorrectness}},
+		},
+	}
+
+	evaluation, err := EvaluateRunAgent(EvaluationInput{
+		RunAgentID:       uuid.New(),
+		EvaluationSpecID: uuid.New(),
+		Events: []Event{
+			{Type: "system.run.completed", OccurredAt: time.Date(2026, 3, 16, 9, 0, 2, 0, time.UTC), Payload: []byte(`{"final_output":"こんにちは世界"}`)},
+		},
+	}, spec)
+	if err != nil {
+		t.Fatalf("EvaluateRunAgent returned error: %v", err)
+	}
+
+	if evaluation.ValidatorResults[0].Verdict != "pass" {
+		t.Fatalf("validator verdict = %q, want pass", evaluation.ValidatorResults[0].Verdict)
+	}
+}
+
 func TestEvaluateRunAgent_FuzzyMatchFailsBelowThreshold(t *testing.T) {
 	spec := EvaluationSpec{
 		Name:          "fuzzy-fail",

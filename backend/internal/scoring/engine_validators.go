@@ -246,6 +246,12 @@ func applyValidator(validator ValidatorDeclaration, actual string, expected stri
 		return validateNormalizedMatch(actual, expected, validator.Config)
 	case ValidatorTypeMathEquivalence:
 		return validateMathEquivalence(actual, expected, validator.Config)
+	case ValidatorTypeBLEUScore:
+		return validateBLEUScore(actual, expected, validator.Config)
+	case ValidatorTypeROUGEScore:
+		return validateROUGEScore(actual, expected, validator.Config)
+	case ValidatorTypeChrFScore:
+		return validateChrFScore(actual, expected, validator.Config)
 	case ValidatorTypeFileExists:
 		return validateFileExists(actual, validator.Config)
 	case ValidatorTypeFileContentMatch:

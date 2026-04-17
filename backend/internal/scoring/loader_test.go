@@ -238,6 +238,109 @@ func TestLoadEvaluationSpecAcceptsStringMatchValidators(t *testing.T) {
 	}
 }
 
+func TestLoadEvaluationSpecAcceptsGenerationMetricValidators(t *testing.T) {
+	spec, err := LoadEvaluationSpec(json.RawMessage(`{
+		"evaluation_spec": {
+			"name": "generation-metrics",
+			"version_number": 1,
+			"judge_mode": "deterministic",
+			"validators": [
+				{
+					"key": "bleu",
+					"type": "bleu_score",
+					"target": "final_output",
+					"expected_from": "literal:[\"the cat is on the mat\",\"there is a cat on the mat\"]",
+					"config": {"max_ngram": 4, "smoothing": "method1", "threshold": 0.2}
+				},
+				{
+					"key": "rouge",
+					"type": "rouge_score",
+					"target": "final_output",
+					"expected_from": "literal:the cat is on the mat",
+					"config": {"variant": "rouge-l", "threshold": 0.3}
+				},
+				{
+					"key": "chrf",
+					"type": "chrf_score",
+					"target": "final_output",
+					"expected_from": "literal:こんにちは世界",
+					"config": {"char_order": 4, "threshold": 0.4}
+				}
+			],
+			"scorecard": {
+				"dimensions": ["correctness"]
+			}
+		}
+	}`))
+	if err != nil {
+		t.Fatalf("LoadEvaluationSpec returned error: %v", err)
+	}
+
+	if len(spec.Validators) != 3 {
+		t.Fatalf("validator count = %d, want 3", len(spec.Validators))
+	}
+	if spec.Validators[0].Type != ValidatorTypeBLEUScore {
+		t.Fatalf("validator[0].type = %s, want %s", spec.Validators[0].Type, ValidatorTypeBLEUScore)
+	}
+	if spec.Validators[1].Type != ValidatorTypeROUGEScore {
+		t.Fatalf("validator[1].type = %s, want %s", spec.Validators[1].Type, ValidatorTypeROUGEScore)
+	}
+	if spec.Validators[2].Type != ValidatorTypeChrFScore {
+		t.Fatalf("validator[2].type = %s, want %s", spec.Validators[2].Type, ValidatorTypeChrFScore)
+	}
+}
+
+func TestLoadEvaluationSpecRejectsInvalidGenerationMetricConfig(t *testing.T) {
+	_, err := LoadEvaluationSpec(json.RawMessage(`{
+		"evaluation_spec": {
+			"name": "generation-metrics-invalid",
+			"version_number": 1,
+			"judge_mode": "deterministic",
+			"validators": [
+				{
+					"key": "bleu",
+					"type": "bleu_score",
+					"target": "final_output",
+					"expected_from": "literal:hello",
+					"config": {"max_ngram": 0, "smoothing": "bogus"}
+				},
+				{
+					"key": "rouge",
+					"type": "rouge_score",
+					"target": "final_output",
+					"expected_from": "literal:hello",
+					"config": {"variant": "rouge-x", "beta": 0}
+				},
+				{
+					"key": "chrf",
+					"type": "chrf_score",
+					"target": "final_output",
+					"expected_from": "literal:hello",
+					"config": {"char_order": 0, "beta": -1}
+				}
+			],
+			"scorecard": {
+				"dimensions": ["correctness"]
+			}
+		}
+	}`))
+	if err == nil {
+		t.Fatal("LoadEvaluationSpec returned nil error")
+	}
+	for _, needle := range []string{
+		"evaluation_spec.validators[0].config.max_ngram must be greater than 0",
+		`evaluation_spec.validators[0].config.smoothing must be "none" or "method1"`,
+		`evaluation_spec.validators[1].config.variant must be "rouge-1", "rouge-2", or "rouge-l"`,
+		"evaluation_spec.validators[1].config.beta must be greater than 0",
+		"evaluation_spec.validators[2].config.char_order must be greater than 0",
+		"evaluation_spec.validators[2].config.beta must be greater than 0",
+	} {
+		if !strings.Contains(err.Error(), needle) {
+			t.Fatalf("error = %q, want substring %q", err.Error(), needle)
+		}
+	}
+}
+
 func TestLoadEvaluationSpecRejectsInvalidMathEquivalenceConfig(t *testing.T) {
 	_, err := LoadEvaluationSpec(json.RawMessage(`{
 		"evaluation_spec": {

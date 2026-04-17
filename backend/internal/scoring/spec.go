@@ -27,6 +27,9 @@ const (
 	ValidatorTypeNumericMatch    ValidatorType = "numeric_match"
 	ValidatorTypeNormalizedMatch ValidatorType = "normalized_match"
 	ValidatorTypeMathEquivalence ValidatorType = "math_equivalence"
+	ValidatorTypeBLEUScore       ValidatorType = "bleu_score"
+	ValidatorTypeROUGEScore      ValidatorType = "rouge_score"
+	ValidatorTypeChrFScore       ValidatorType = "chrf_score"
 
 	ValidatorTypeFileContentMatch   ValidatorType = "file_content_match"
 	ValidatorTypeFileExists         ValidatorType = "file_exists"
@@ -329,7 +332,7 @@ func (t ValidatorType) IsValid() bool {
 	case ValidatorTypeExactMatch, ValidatorTypeContains, ValidatorTypeRegexMatch,
 		ValidatorTypeJSONSchema, ValidatorTypeJSONPathMatch, ValidatorTypeBooleanAssert,
 		ValidatorTypeFuzzyMatch, ValidatorTypeNumericMatch, ValidatorTypeNormalizedMatch,
-		ValidatorTypeMathEquivalence,
+		ValidatorTypeMathEquivalence, ValidatorTypeBLEUScore, ValidatorTypeROUGEScore, ValidatorTypeChrFScore,
 		ValidatorTypeFileContentMatch, ValidatorTypeFileExists,
 		ValidatorTypeFileJSONSchema, ValidatorTypeDirectoryStructure,
 		ValidatorTypeCodeExecution:
