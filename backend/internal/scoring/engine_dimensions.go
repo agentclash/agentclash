@@ -20,6 +20,8 @@ func evaluateDimensions(spec EvaluationSpec, evidence extractedEvidence, validat
 			score, reason, state = latencyDimensionScore(dim, evidence)
 		case DimensionSourceCost:
 			score, reason, state = costDimensionScore(dim, evidence, spec)
+		case DimensionSourceBehavioral:
+			score, reason, state = behavioralDimensionScore(spec, evidence, validators)
 		case DimensionSourceMetric:
 			score, reason, state = metricDimensionScore(dim, metrics)
 		case DimensionSourceLLMJudge:
@@ -45,7 +47,7 @@ func dimensionWarnings(results []DimensionResult, dims []DimensionDeclaration) [
 	warnings := make([]string, 0, len(results))
 	for _, result := range results {
 		src := sourceByKey[result.Dimension]
-		if src == DimensionSourceLatency || src == DimensionSourceCost || src == DimensionSourceMetric || src == DimensionSourceLLMJudge {
+		if src == DimensionSourceLatency || src == DimensionSourceCost || src == DimensionSourceBehavioral || src == DimensionSourceMetric || src == DimensionSourceLLMJudge {
 			if result.State == OutputStateUnavailable && result.Reason != "" {
 				warnings = append(warnings, result.Reason)
 			}

@@ -29,6 +29,7 @@ type extractedEvidence struct {
 	capturedFiles             map[string]FileCaptureResult
 	capturedDirListings       map[string]DirectoryListingResult
 	codeExecutionResults      map[string]CodeExecutionResult
+	toolCallTrace            []toolCallTraceEntry
 	warnings                  []string
 }
 
@@ -122,7 +123,14 @@ func buildEvidence(challengeInputs []EvidenceInput, events []Event) extractedEvi
 			completed := false
 			evidence.completedSuccessfully = &completed
 			evidence.failureCount++
-		case "tool.call.failed", "sandbox.command.failed":
+		case "tool.call.completed", "tool.call.failed":
+			if event.Type == "tool.call.failed" {
+				evidence.failureCount++
+			}
+			if entry, ok := buildToolCallTraceEntry(payload, event.Type); ok {
+				evidence.toolCallTrace = append(evidence.toolCallTrace, entry)
+			}
+		case "sandbox.command.failed":
 			evidence.failureCount++
 		case "model.call.completed":
 			providerKey, _ := stringValue(payload, "provider_key")

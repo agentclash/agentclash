@@ -111,6 +111,16 @@ func collectMetric(metric MetricDeclaration, evidence extractedEvidence, validat
 			"state":     OutputStateAvailable,
 			"collector": metric.Collector,
 		})
+	case "behavioral_recovery_score":
+		return behavioralMetricResult(metric, BehavioralSignalRecoveryBehavior, evidence, validators)
+	case "behavioral_exploration_efficiency_score":
+		return behavioralMetricResult(metric, BehavioralSignalExplorationEfficiency, evidence, validators)
+	case "behavioral_error_cascade_score":
+		return behavioralMetricResult(metric, BehavioralSignalErrorCascade, evidence, validators)
+	case "behavioral_scope_adherence_score":
+		return behavioralMetricResult(metric, BehavioralSignalScopeAdherence, evidence, validators)
+	case "behavioral_confidence_calibration_score":
+		return behavioralMetricResult(metric, BehavioralSignalConfidenceCalibration, evidence, validators)
 	case "validator_pass_rate":
 		if len(validators) == 0 {
 			return unavailableMetric("validator pass rate requires validator results", metric)
@@ -130,6 +140,19 @@ func collectMetric(metric MetricDeclaration, evidence extractedEvidence, validat
 	default:
 		return errorMetric(fmt.Sprintf("collector %q is not supported", metric.Collector), metric)
 	}
+}
+
+func behavioralMetricResult(metric MetricDeclaration, key BehavioralSignalKey, evidence extractedEvidence, validators []ValidatorResult) (OutputState, *float64, *string, *bool, string, json.RawMessage) {
+	score, reason, state := behavioralSignalScore(key, evidence.toolCallTrace, validators)
+	if state != OutputStateAvailable || score == nil {
+		return unavailableMetric(firstNonEmpty(reason, fmt.Sprintf("behavioral signal %q is unavailable", key)), metric)
+	}
+	return OutputStateAvailable, score, nil, nil, "", mustMarshalJSON(map[string]any{
+		"state":      OutputStateAvailable,
+		"collector":  metric.Collector,
+		"signal_key": key,
+		"trace_len":  len(evidence.toolCallTrace),
+	})
 }
 
 func unavailableMetric(reason string, metric MetricDeclaration) (OutputState, *float64, *string, *bool, string, json.RawMessage) {
