@@ -62,10 +62,11 @@ func mapEvaluationInput(evaluationSpecID uuid.UUID, executionContext RunAgentExe
 	convertedEvents := make([]scoring.Event, 0, len(events))
 	for _, event := range events {
 		convertedEvents = append(convertedEvents, scoring.Event{
-			Type:       string(event.EventType),
-			Source:     string(event.Source),
-			OccurredAt: event.OccurredAt,
-			Payload:    cloneJSON(event.Payload),
+			Type:           string(event.EventType),
+			Source:         string(event.Source),
+			SequenceNumber: event.SequenceNumber,
+			OccurredAt:     event.OccurredAt,
+			Payload:        cloneJSON(event.Payload),
 		})
 	}
 

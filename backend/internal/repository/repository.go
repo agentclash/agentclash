@@ -770,13 +770,14 @@ func buildRunAgentScorecardDocument(evaluation scoring.RunAgentEvaluation) (json
 	}
 
 	type validatorDetail struct {
-		Key             string   `json:"key"`
-		Type            string   `json:"type"`
-		Verdict         string   `json:"verdict"`
-		State           string   `json:"state"`
-		Reason          string   `json:"reason,omitempty"`
-		NormalizedScore *float64 `json:"normalized_score,omitempty"`
-		Evidence        any      `json:"evidence,omitempty"`
+		Key             string          `json:"key"`
+		Type            string          `json:"type"`
+		Verdict         string          `json:"verdict"`
+		State           string          `json:"state"`
+		Reason          string          `json:"reason,omitempty"`
+		NormalizedScore *float64        `json:"normalized_score,omitempty"`
+		Evidence        any             `json:"evidence,omitempty"`
+		Source          *scoring.Source `json:"source,omitempty"`
 	}
 
 	type metricDetail struct {
@@ -880,6 +881,7 @@ func buildRunAgentScorecardDocument(evaluation scoring.RunAgentEvaluation) (json
 			Reason:          vr.Reason,
 			NormalizedScore: cloneFloat64Ptr(vr.NormalizedScore),
 			Evidence:        buildValidatorDetailEvidence(vr),
+			Source:          cloneScoringSource(vr.Source),
 		})
 	}
 
@@ -2060,6 +2062,18 @@ func cloneBoolPtr(value *bool) *bool {
 		return nil
 	}
 	cloned := *value
+	return &cloned
+}
+
+func cloneScoringSource(source *scoring.Source) *scoring.Source {
+	if source == nil {
+		return nil
+	}
+	cloned := *source
+	if source.Sequence != nil {
+		seq := *source.Sequence
+		cloned.Sequence = &seq
+	}
 	return &cloned
 }
 

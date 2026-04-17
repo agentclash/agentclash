@@ -2079,6 +2079,222 @@ func TestNormalizeHigherIsBetter(t *testing.T) {
 	}
 }
 
-func int64Ptr(value int64) *int64 {
-	return &value
+func TestEvaluateRunAgent_ThreadsSourcePointerForFinalOutputValidator(t *testing.T) {
+	spec := EvaluationSpec{
+		Name:          "final-output-source",
+		VersionNumber: 1,
+		JudgeMode:     JudgeModeDeterministic,
+		Validators: []ValidatorDeclaration{
+			{
+				Key:          "exact",
+				Type:         ValidatorTypeExactMatch,
+				Target:       "final_output",
+				ExpectedFrom: "literal:done",
+			},
+		},
+		Scorecard: ScorecardDeclaration{Dimensions: []DimensionDeclaration{{Key: "correctness"}}},
+	}
+
+	evaluation, err := EvaluateRunAgent(EvaluationInput{
+		RunAgentID:       uuid.New(),
+		EvaluationSpecID: uuid.New(),
+		Events: []Event{
+			{Type: "system.run.started", SequenceNumber: 1, OccurredAt: time.Date(2026, 4, 18, 9, 0, 0, 0, time.UTC), Payload: []byte(`{}`)},
+			{Type: "system.run.completed", SequenceNumber: 42, OccurredAt: time.Date(2026, 4, 18, 9, 0, 5, 0, time.UTC), Payload: []byte(`{"final_output":"done"}`)},
+		},
+	}, spec)
+	if err != nil {
+		t.Fatalf("EvaluateRunAgent returned error: %v", err)
+	}
+
+	got := evaluation.ValidatorResults[0].Source
+	if got == nil {
+		t.Fatalf("expected source pointer, got nil")
+	}
+	if got.Kind != SourceKindFinalOutput {
+		t.Fatalf("source.kind = %q, want %q", got.Kind, SourceKindFinalOutput)
+	}
+	if got.Sequence == nil || *got.Sequence != 42 {
+		t.Fatalf("source.sequence = %v, want 42", got.Sequence)
+	}
+	if got.EventType != "system.run.completed" {
+		t.Fatalf("source.event_type = %q, want system.run.completed", got.EventType)
+	}
+	if got.FieldPath != "final_output" {
+		t.Fatalf("source.field_path = %q, want final_output", got.FieldPath)
+	}
+}
+
+func TestEvaluateRunAgent_ThreadsSourcePointerForFileValidator(t *testing.T) {
+	spec := EvaluationSpec{
+		Name:          "file-capture-source",
+		VersionNumber: 1,
+		JudgeMode:     JudgeModeDeterministic,
+		Validators: []ValidatorDeclaration{
+			{
+				Key:          "file_contents",
+				Type:         ValidatorTypeContains,
+				Target:       "file:generated_code",
+				ExpectedFrom: "literal:hello",
+			},
+		},
+		Scorecard: ScorecardDeclaration{Dimensions: []DimensionDeclaration{{Key: "correctness"}}},
+	}
+
+	capturePayload, err := json.Marshal(FileCaptureResult{Key: "generated_code", Path: "/workspace/app.py", Exists: true, Content: "print('hello')"})
+	if err != nil {
+		t.Fatalf("marshal capture payload: %v", err)
+	}
+
+	evaluation, err := EvaluateRunAgent(EvaluationInput{
+		RunAgentID:       uuid.New(),
+		EvaluationSpecID: uuid.New(),
+		Events: []Event{
+			{Type: "grader.verification.file_captured", SequenceNumber: 17, OccurredAt: time.Date(2026, 4, 18, 9, 1, 0, 0, time.UTC), Payload: capturePayload},
+		},
+	}, spec)
+	if err != nil {
+		t.Fatalf("EvaluateRunAgent returned error: %v", err)
+	}
+
+	got := evaluation.ValidatorResults[0].Source
+	if got == nil {
+		t.Fatalf("expected source pointer, got nil")
+	}
+	if got.Kind != SourceKindToolCall {
+		t.Fatalf("source.kind = %q, want %q", got.Kind, SourceKindToolCall)
+	}
+	if got.Sequence == nil || *got.Sequence != 17 {
+		t.Fatalf("source.sequence = %v, want 17", got.Sequence)
+	}
+	if got.FieldPath != "file:generated_code" {
+		t.Fatalf("source.field_path = %q, want file:generated_code", got.FieldPath)
+	}
+}
+
+func TestEvaluateRunAgent_LeavesSourceNilForChallengeInputValidator(t *testing.T) {
+	spec := EvaluationSpec{
+		Name:          "challenge-input-no-source",
+		VersionNumber: 1,
+		JudgeMode:     JudgeModeDeterministic,
+		Validators: []ValidatorDeclaration{
+			{
+				Key:          "echo",
+				Type:         ValidatorTypeExactMatch,
+				Target:       "challenge_input",
+				ExpectedFrom: "literal:go",
+			},
+		},
+		Scorecard: ScorecardDeclaration{Dimensions: []DimensionDeclaration{{Key: "correctness"}}},
+	}
+
+	evaluation, err := EvaluateRunAgent(EvaluationInput{
+		RunAgentID:       uuid.New(),
+		EvaluationSpecID: uuid.New(),
+		ChallengeInputs:  []EvidenceInput{{ChallengeIdentityID: uuid.New(), ChallengeKey: "c", ItemKey: "i", Payload: []byte(`"go"`)}},
+	}, spec)
+	if err != nil {
+		t.Fatalf("EvaluateRunAgent returned error: %v", err)
+	}
+
+	if evaluation.ValidatorResults[0].Source != nil {
+		t.Fatalf("source = %#v, want nil for challenge_input validator", evaluation.ValidatorResults[0].Source)
+	}
+}
+
+// Regression: system.run.completed is a wrapper that covers every event inside
+// the run, so it's a poor deep-link target. When system.output.finalized is
+// emitted separately (the normal native-engine path), the source must point at
+// it, not at the later run.completed event that also carries final_output.
+func TestEvaluateRunAgent_PrefersFinalizedEventOverRunCompletedWrapper(t *testing.T) {
+	spec := EvaluationSpec{
+		Name:          "finalized-wins",
+		VersionNumber: 1,
+		JudgeMode:     JudgeModeDeterministic,
+		Validators: []ValidatorDeclaration{
+			{Key: "exact", Type: ValidatorTypeExactMatch, Target: "final_output", ExpectedFrom: "literal:done"},
+		},
+		Scorecard: ScorecardDeclaration{Dimensions: []DimensionDeclaration{{Key: "correctness"}}},
+	}
+
+	evaluation, err := EvaluateRunAgent(EvaluationInput{
+		RunAgentID:       uuid.New(),
+		EvaluationSpecID: uuid.New(),
+		Events: []Event{
+			{Type: "system.output.finalized", SequenceNumber: 11, OccurredAt: time.Date(2026, 4, 18, 9, 0, 4, 0, time.UTC), Payload: []byte(`{"final_output":"done"}`)},
+			{Type: "system.run.completed", SequenceNumber: 42, OccurredAt: time.Date(2026, 4, 18, 9, 0, 5, 0, time.UTC), Payload: []byte(`{"final_output":"done"}`)},
+		},
+	}, spec)
+	if err != nil {
+		t.Fatalf("EvaluateRunAgent returned error: %v", err)
+	}
+
+	got := evaluation.ValidatorResults[0].Source
+	if got == nil || got.Sequence == nil {
+		t.Fatalf("expected source pointing at the finalized event, got %#v", got)
+	}
+	if *got.Sequence != 11 {
+		t.Fatalf("source.sequence = %d, want 11 (the system.output.finalized event, not the run.completed wrapper)", *got.Sequence)
+	}
+	if got.EventType != "system.output.finalized" {
+		t.Fatalf("source.event_type = %q, want system.output.finalized", got.EventType)
+	}
+}
+
+// Regression: code_execution validators previously wrote field_path as
+// "file:" + validator.Key, but the spec author references evidence by the
+// validator.Target value. Using the key pointed at a nonexistent field.
+func TestEvaluateRunAgent_CodeExecutionSourceUsesValidatorTargetAsFieldPath(t *testing.T) {
+	spec := EvaluationSpec{
+		Name:          "code-exec-field-path",
+		VersionNumber: 1,
+		JudgeMode:     JudgeModeDeterministic,
+		Validators: []ValidatorDeclaration{
+			{
+				Key:    "unit_tests",
+				Type:   ValidatorTypeCodeExecution,
+				Target: "file:generated_code",
+				Config: json.RawMessage(`{"test_command":"pytest","scoring":"all_or_nothing"}`),
+			},
+		},
+		PostExecutionChecks: []PostExecutionCheck{
+			{Key: "generated_code", Type: PostExecutionCheckTypeFileCapture, Path: "/workspace/app.py"},
+		},
+		Scorecard: ScorecardDeclaration{Dimensions: []DimensionDeclaration{{Key: ScorecardDimensionCorrectness}}},
+	}
+
+	codePayload, err := json.Marshal(CodeExecutionResult{
+		ValidatorKey: "unit_tests",
+		Target:       "file:generated_code",
+		TargetPath:   "/workspace/app.py",
+		TestCommand:  "pytest",
+		ExitCode:     intPtr(0),
+		PassedTests:  intPtr(3),
+		TotalTests:   intPtr(3),
+	})
+	if err != nil {
+		t.Fatalf("marshal code execution result: %v", err)
+	}
+
+	evaluation, err := EvaluateRunAgent(EvaluationInput{
+		RunAgentID:       uuid.New(),
+		EvaluationSpecID: uuid.New(),
+		Events: []Event{
+			{Type: "grader.verification.code_executed", SequenceNumber: 55, OccurredAt: time.Date(2026, 4, 18, 9, 1, 0, 0, time.UTC), Payload: codePayload},
+		},
+	}, spec)
+	if err != nil {
+		t.Fatalf("EvaluateRunAgent returned error: %v", err)
+	}
+
+	got := evaluation.ValidatorResults[0].Source
+	if got == nil {
+		t.Fatalf("expected source pointer on code_execution validator, got nil")
+	}
+	if got.FieldPath != "file:generated_code" {
+		t.Fatalf("source.field_path = %q, want %q (validator.Target, not file:<key>)", got.FieldPath, "file:generated_code")
+	}
+	if got.Sequence == nil || *got.Sequence != 55 {
+		t.Fatalf("source.sequence = %v, want 55", got.Sequence)
+	}
 }

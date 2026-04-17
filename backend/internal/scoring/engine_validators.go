@@ -24,6 +24,7 @@ func evaluateValidators(validators []ValidatorDeclaration, evidence extractedEvi
 			continue
 		}
 
+
 		// Resolve the target (actual) evidence.
 		actualValue, actualChallengeID, actualReason, actualErr := resolveEvidenceValue(validator.Target, evidence)
 		if actualErr != nil {
@@ -42,6 +43,7 @@ func evaluateValidators(validators []ValidatorDeclaration, evidence extractedEvi
 		// case specially so the validator can distinguish exists vs not-exists.
 		if validator.Type == ValidatorTypeFileExists && actualValue == nil {
 			result.ChallengeIdentityID = actualChallengeID
+			result.Source = resolveEvidenceSource(validator.Target, evidence)
 			outcome := validateFileExistsUnavailable(validator.Config)
 			result.State = OutputStateAvailable
 			result.Verdict = outcome.verdict
@@ -103,6 +105,7 @@ func evaluateValidators(validators []ValidatorDeclaration, evidence extractedEvi
 		} else {
 			result.ChallengeIdentityID = expectedChallengeID
 		}
+		result.Source = resolveEvidenceSource(validator.Target, evidence)
 
 		expectedStr := ""
 		if expectedValue != nil {
@@ -153,6 +156,20 @@ func evaluateCodeExecutionValidator(result ValidatorResult, validator ValidatorD
 			"reason": result.Reason,
 		})
 		return result
+	}
+
+	if ref, ok := evidence.codeExecutionSources[validator.Key]; ok {
+		// Field path mirrors the validator.Target (e.g. "file:generated_code"),
+		// which is what the spec author actually referenced. validator.Key is
+		// the validator identifier ("code_test") and is distinct from the
+		// evidence target — using it as a path would point at a nonexistent
+		// field.
+		result.Source = &Source{
+			Kind:      SourceKindToolCall,
+			Sequence:  int64Ptr(ref.Sequence),
+			EventType: ref.EventType,
+			FieldPath: validator.Target,
+		}
 	}
 
 	score, reason, state := ComputeCodeExecutionScore(execResult, cfg)

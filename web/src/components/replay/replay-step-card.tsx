@@ -58,10 +58,15 @@ function formatDuration(start: string, end?: string): string | null {
 interface ReplayStepCardProps {
   step: ReplayStep;
   index: number;
+  highlighted?: boolean;
 }
 
-export function ReplayStepCard({ step, index }: ReplayStepCardProps) {
-  const [expanded, setExpanded] = useState(false);
+export function ReplayStepCard({
+  step,
+  index,
+  highlighted = false,
+}: ReplayStepCardProps) {
+  const [expanded, setExpanded] = useState(highlighted);
   const Icon = stepIcon[step.type] ?? Activity;
   const duration = formatDuration(step.occurred_at, step.completed_at);
 
@@ -78,7 +83,12 @@ export function ReplayStepCard({ step, index }: ReplayStepCardProps) {
     hasArtifacts;
 
   return (
-    <div className="group">
+    <div
+      className={cn(
+        "group transition-colors",
+        highlighted && "bg-amber-400/5 ring-1 ring-amber-400/30",
+      )}
+    >
       <button
         onClick={() => hasDetail && setExpanded(!expanded)}
         className={cn(
