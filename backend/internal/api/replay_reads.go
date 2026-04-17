@@ -150,13 +150,16 @@ func (m *ReplayReadManager) GetRunAgentScorecard(ctx context.Context, caller Cal
 	}
 	evaluationSpec, err := m.repo.GetEvaluationSpecByID(ctx, scorecard.EvaluationSpecID)
 	if err != nil {
-		return GetRunAgentScorecardResult{}, err
+		if !errors.Is(err, repository.ErrEvaluationSpecNotFound) {
+			return GetRunAgentScorecardResult{}, err
+		}
+	} else {
+		enrichedScorecard, err := enrichScorecardDocument(scorecard.Scorecard, evaluationSpec.Definition)
+		if err != nil {
+			return GetRunAgentScorecardResult{}, fmt.Errorf("enrich run-agent scorecard document: %w", err)
+		}
+		scorecard.Scorecard = enrichedScorecard
 	}
-	enrichedScorecard, err := enrichScorecardDocument(scorecard.Scorecard, evaluationSpec.Definition)
-	if err != nil {
-		return GetRunAgentScorecardResult{}, fmt.Errorf("enrich run-agent scorecard document: %w", err)
-	}
-	scorecard.Scorecard = enrichedScorecard
 	judgeResults, err := m.repo.ListLLMJudgeResultsByRunAgentAndEvaluationSpec(ctx, runAgentID, scorecard.EvaluationSpecID)
 	if err != nil {
 		return GetRunAgentScorecardResult{}, err

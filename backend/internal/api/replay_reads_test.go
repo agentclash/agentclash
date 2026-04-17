@@ -240,6 +240,42 @@ func TestReplayReadManagerReturnsLLMJudgeResultsWithScorecard(t *testing.T) {
 	}
 }
 
+func TestReplayReadManagerFallsBackToStoredScorecardWhenEvaluationSpecMissing(t *testing.T) {
+	workspaceID := uuid.New()
+	runAgentID := uuid.New()
+	evaluationSpecID := uuid.New()
+	originalScorecard := []byte(`{"passed":true,"dimensions":{"correctness":{"state":"available","score":0.84}}}`)
+
+	manager := NewReplayReadManager(NewCallerWorkspaceAuthorizer(), &fakeReplayReadRepository{
+		runAgent: domain.RunAgent{
+			ID:          runAgentID,
+			RunID:       uuid.New(),
+			WorkspaceID: workspaceID,
+			Status:      domain.RunAgentStatusCompleted,
+		},
+		scorecard: repository.RunAgentScorecard{
+			ID:               uuid.New(),
+			RunAgentID:       runAgentID,
+			EvaluationSpecID: evaluationSpecID,
+			Scorecard:        originalScorecard,
+		},
+		evaluationSpecErr: repository.ErrEvaluationSpecNotFound,
+	})
+
+	result, err := manager.GetRunAgentScorecard(context.Background(), Caller{
+		UserID: uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: "workspace_member"},
+		},
+	}, runAgentID)
+	if err != nil {
+		t.Fatalf("GetRunAgentScorecard returned error: %v", err)
+	}
+	if string(result.Scorecard.Scorecard) != string(originalScorecard) {
+		t.Fatalf("scorecard = %s, want original payload %s", result.Scorecard.Scorecard, originalScorecard)
+	}
+}
+
 func TestEnrichScorecardDocumentAddsWeightContributionAndGateMetadata(t *testing.T) {
 	document, err := enrichScorecardDocument(
 		[]byte(`{"strategy":"weighted","dimensions":{"correctness":{"state":"available","score":0.9},"quality":{"state":"available","score":0.4},"coverage":{"state":"unavailable","reason":"pending"}}}`),
