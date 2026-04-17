@@ -669,6 +669,14 @@ export interface ValidatorDetail {
   reason?: string;
   normalized_score?: number;
   evidence?: ValidatorEvidence;
+  source?: ScorecardSource;
+}
+
+export interface ScorecardSource {
+  kind: "run_event" | "tool_call" | "final_output";
+  sequence?: number;
+  event_type?: string;
+  field_path?: string;
 }
 
 export type ValidatorEvidence =
@@ -724,6 +732,7 @@ export interface MetricDetail {
   numeric_value?: number;
   text_value?: string;
   boolean_value?: boolean;
+  source?: ScorecardSource;
 }
 
 export interface LLMJudgeResult {

@@ -196,6 +196,10 @@ func stringPtr(value string) *string {
 	return &value
 }
 
+func int64Ptr(value int64) *int64 {
+	return &value
+}
+
 func cloneStringPtr(value *string) *string {
 	if value == nil {
 		return nil

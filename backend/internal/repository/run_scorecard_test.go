@@ -588,3 +588,68 @@ func TestBuildRunScorecardDocumentFallsBackToLegacyWhenOverallScoreMissing(t *te
 		t.Fatalf("winning run agent id = %v, want %s (legacy correctness winner)", winningRunAgentID, betterID)
 	}
 }
+
+func TestBuildRunAgentScorecardDocumentIncludesSourcePointer(t *testing.T) {
+	seq := int64(42)
+	evaluation := scoring.RunAgentEvaluation{
+		RunAgentID:       uuid.New(),
+		EvaluationSpecID: uuid.New(),
+		Status:           scoring.EvaluationStatusComplete,
+		DimensionResults: []scoring.DimensionResult{
+			{Dimension: "correctness", State: scoring.OutputStateAvailable, Score: float64Ptr(1)},
+		},
+		ValidatorResults: []scoring.ValidatorResult{
+			{
+				Key:             "exact",
+				Type:            scoring.ValidatorTypeExactMatch,
+				State:           scoring.OutputStateAvailable,
+				Verdict:         "pass",
+				NormalizedScore: float64Ptr(1),
+				Target:          "final_output",
+				ActualValue:     stringPtr("done"),
+				ExpectedValue:   stringPtr("done"),
+				Source: &scoring.Source{
+					Kind:      scoring.SourceKindFinalOutput,
+					Sequence:  &seq,
+					EventType: "system.run.completed",
+					FieldPath: "final_output",
+				},
+				RawOutput: []byte(`{"state":"available","verdict":"pass","actual_value":"done","expected_value":"done"}`),
+			},
+		},
+		MetricResults: []scoring.MetricResult{
+			{
+				Key:          "token_usage",
+				State:        scoring.OutputStateAvailable,
+				Collector:    "usage_aggregator",
+				NumericValue: float64Ptr(1234),
+			},
+		},
+	}
+
+	document, err := buildRunAgentScorecardDocument(evaluation)
+	if err != nil {
+		t.Fatalf("buildRunAgentScorecardDocument returned error: %v", err)
+	}
+
+	decoded := decodeRunScorecardJSON(t, document)
+	validators := decoded["validator_details"].([]any)
+	source, ok := validators[0].(map[string]any)["source"].(map[string]any)
+	if !ok {
+		t.Fatalf("validator_details[0].source missing or wrong type: %#v", validators[0])
+	}
+	if source["kind"] != "final_output" {
+		t.Fatalf("source.kind = %#v, want final_output", source["kind"])
+	}
+	if source["sequence"].(float64) != 42 {
+		t.Fatalf("source.sequence = %#v, want 42", source["sequence"])
+	}
+	if source["event_type"] != "system.run.completed" {
+		t.Fatalf("source.event_type = %#v, want system.run.completed", source["event_type"])
+	}
+
+	metrics := decoded["metric_details"].([]any)
+	if _, present := metrics[0].(map[string]any)["source"]; present {
+		t.Fatalf("metric_details[0].source should be omitted for aggregate metrics, got %#v", metrics[0])
+	}
+}

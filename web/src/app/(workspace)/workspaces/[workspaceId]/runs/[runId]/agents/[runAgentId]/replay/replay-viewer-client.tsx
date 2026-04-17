@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { createApiClient } from "@/lib/api/client";
 import type {
@@ -56,6 +57,16 @@ export function ReplayViewerClient({
   const [replayData, setReplayData] = useState<ReplayResponse>(initialReplay);
   const [steps, setSteps] = useState<ReplayStep[]>(initialReplay.steps);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+
+  // When the inspector sheet deep-links in with ?step=<sequence>, the timeline
+  // highlights + auto-scrolls to that step. NaN is filtered by the consumer.
+  const searchParams = useSearchParams();
+  const highlightSequence = useMemo(() => {
+    const raw = searchParams?.get("step");
+    if (!raw) return undefined;
+    const parsed = Number.parseInt(raw, 10);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }, [searchParams]);
 
   const isPending = replayData.state === "pending";
   const isErrored = replayData.state === "errored";
@@ -216,6 +227,7 @@ export function ReplayViewerClient({
           hasMore={replayData.pagination.has_more}
           isLoadingMore={isLoadingMore}
           onLoadMore={handleLoadMore}
+          highlightSequence={highlightSequence}
         />
       )}
     </div>

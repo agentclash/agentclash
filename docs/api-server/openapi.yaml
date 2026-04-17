@@ -4831,6 +4831,10 @@ components:
           type: object
           additionalProperties:
             type: integer
+        metric_details:
+          type: array
+          items:
+            $ref: "#/components/schemas/MetricDetail"
       additionalProperties: true
 
     ValidatorDetail:
@@ -4852,6 +4856,64 @@ components:
           format: double
         evidence:
           $ref: "#/components/schemas/ValidatorEvidence"
+        source:
+          $ref: "#/components/schemas/ScorecardSource"
+
+    MetricDetail:
+      type: object
+      required: [key, collector, state]
+      properties:
+        key:
+          type: string
+        collector:
+          type: string
+        state:
+          type: string
+        reason:
+          type: string
+        numeric_value:
+          type: number
+          format: double
+        text_value:
+          type: string
+        boolean_value:
+          type: boolean
+        source:
+          $ref: "#/components/schemas/ScorecardSource"
+
+    ScorecardSource:
+      type: object
+      description: |
+        Optional pointer from a validator or metric result to the run event
+        that produced the evaluated value. Omitted when the evidence is
+        aggregated across multiple events or sourced from challenge inputs
+        that do not live in the trace. Use `sequence` to deep-link into the
+        replay timeline — run events are uniquely addressed by
+        (run_agent_id, sequence_number).
+      required: [kind]
+      properties:
+        kind:
+          type: string
+          enum: [run_event, tool_call, final_output]
+          description: |
+            Coarse categorization for how the inspector should label the link.
+            `run_event` is a generic pointer, `tool_call` identifies a
+            grader/tool verification event, and `final_output` identifies the
+            synthesized final output event.
+        sequence:
+          type: integer
+          format: int64
+          description: |
+            Monotonic per-run-agent sequence number of the originating event.
+            Matches `run_events.sequence_number`.
+        event_type:
+          type: string
+          description: Denormalized run event type (e.g. `system.run.completed`).
+        field_path:
+          type: string
+          description: |
+            Validator target / JSON path within the event payload the evidence
+            was drawn from (e.g. `final_output`, `file:generated_code`).
 
     ValidatorEvidence:
       discriminator:

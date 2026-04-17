@@ -8,6 +8,7 @@ import {
 import type {
   LLMJudgeResult,
   MetricDetail,
+  ScorecardSource,
   ValidatorDetail,
 } from "@/lib/api/types";
 import type { InspectorTarget } from "./evidence-panels";
@@ -15,9 +16,10 @@ import { scoreColor } from "@/lib/scores";
 import { cn } from "@/lib/utils";
 import { humanizeKey, parseJudgePayload, type JudgeCall } from "./utils";
 import { StateDot, normalizeState } from "./state-dot";
-import { AlertTriangle, XCircle } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, XCircle } from "lucide-react";
 import { JudgeSampleCard } from "./judge-sample-card";
 import { ValidatorEvidenceView } from "./validator-evidence";
+import Link from "next/link";
 
 /**
  * Single right-drawer that renders the deep detail of whatever the user clicked
@@ -31,9 +33,11 @@ import { ValidatorEvidenceView } from "./validator-evidence";
 export function InspectorSheet({
   target,
   onClose,
+  replayBasePath,
 }: {
   target: InspectorTarget | null;
   onClose: () => void;
+  replayBasePath?: string;
 }) {
   const open = target != null;
 
@@ -52,9 +56,17 @@ export function InspectorSheet({
           {target ? `Inspect ${target.kind}` : "Inspector"}
         </SheetTitle>
         {target?.kind === "validator" && (
-          <ValidatorInspector detail={target.detail} />
+          <ValidatorInspector
+            detail={target.detail}
+            replayBasePath={replayBasePath}
+          />
         )}
-        {target?.kind === "metric" && <MetricInspector detail={target.detail} />}
+        {target?.kind === "metric" && (
+          <MetricInspector
+            detail={target.detail}
+            replayBasePath={replayBasePath}
+          />
+        )}
         {target?.kind === "judge" && <JudgeInspector detail={target.detail} />}
       </SheetContent>
     </Sheet>
@@ -63,7 +75,13 @@ export function InspectorSheet({
 
 /* ---------------------------------------------------------------- Validator */
 
-function ValidatorInspector({ detail }: { detail: ValidatorDetail }) {
+function ValidatorInspector({
+  detail,
+  replayBasePath,
+}: {
+  detail: ValidatorDetail;
+  replayBasePath?: string;
+}) {
   const stateKind = normalizeState(detail.verdict, detail.state);
   const hasScore = detail.normalized_score != null;
 
@@ -148,6 +166,10 @@ function ValidatorInspector({ detail }: { detail: ValidatorDetail }) {
           </Section>
         )}
         {detail.evidence && <ValidatorEvidenceView evidence={detail.evidence} />}
+        <ReplaySourceLink
+          source={detail.source}
+          replayBasePath={replayBasePath}
+        />
       </div>
     </div>
   );
@@ -155,7 +177,13 @@ function ValidatorInspector({ detail }: { detail: ValidatorDetail }) {
 
 /* ------------------------------------------------------------------ Metric */
 
-function MetricInspector({ detail }: { detail: MetricDetail }) {
+function MetricInspector({
+  detail,
+  replayBasePath,
+}: {
+  detail: MetricDetail;
+  replayBasePath?: string;
+}) {
   const stateKind: "available" | "unavailable" | "error" =
     detail.state === "error"
       ? "error"
@@ -197,6 +225,10 @@ function MetricInspector({ detail }: { detail: MetricDetail }) {
             </p>
           </Section>
         )}
+        <ReplaySourceLink
+          source={detail.source}
+          replayBasePath={replayBasePath}
+        />
       </div>
     </div>
   );
@@ -589,6 +621,65 @@ function Stat({ label, value }: { label: string; value: string }) {
       <span className="font-[family-name:var(--font-mono)] text-sm text-white/90 tabular-nums">
         {value}
       </span>
+    </div>
+  );
+}
+
+const sourceKindLabel: Record<ScorecardSource["kind"], string> = {
+  run_event: "Run event",
+  tool_call: "Tool call",
+  final_output: "Final output",
+};
+
+function ReplaySourceLink({
+  source,
+  replayBasePath,
+}: {
+  source?: ScorecardSource;
+  replayBasePath?: string;
+}) {
+  if (!source || source.sequence == null) return null;
+
+  const label = sourceKindLabel[source.kind] ?? "Run event";
+  const href = replayBasePath
+    ? `${replayBasePath}?step=${source.sequence}`
+    : undefined;
+  const meta = source.event_type || source.field_path;
+
+  const body = (
+    <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-col gap-0.5 min-w-0">
+        <span className="text-[10px] uppercase tracking-[0.18em] text-white/45">
+          {label}
+        </span>
+        <span className="font-[family-name:var(--font-mono)] text-[12px] text-white/85 truncate">
+          #{source.sequence}
+          {meta ? ` · ${meta}` : ""}
+        </span>
+      </div>
+      {href && (
+        <span className="flex items-center gap-1 text-[11px] uppercase tracking-[0.18em] text-white/65 group-hover:text-white">
+          View in replay
+          <ArrowUpRight className="size-3.5" />
+        </span>
+      )}
+    </div>
+  );
+
+  if (href) {
+    return (
+      <Link
+        href={href}
+        className="group block rounded-2xl border border-white/[0.08] bg-white/[0.02] px-4 py-3 hover:border-white/[0.18] hover:bg-white/[0.04] transition-colors"
+      >
+        {body}
+      </Link>
+    );
+  }
+
+  return (
+    <div className="rounded-2xl border border-white/[0.06] bg-white/[0.015] px-4 py-3">
+      {body}
     </div>
   );
 }

@@ -191,10 +191,11 @@ func mapRunEvents(events []repository.RunEvent) []scoring.Event {
 	mapped := make([]scoring.Event, 0, len(events))
 	for _, event := range events {
 		mapped = append(mapped, scoring.Event{
-			Type:       string(event.EventType),
-			Source:     string(event.Source),
-			OccurredAt: event.OccurredAt.UTC(),
-			Payload:    cloneJSON(event.Payload),
+			Type:           string(event.EventType),
+			Source:         string(event.Source),
+			SequenceNumber: event.SequenceNumber,
+			OccurredAt:     event.OccurredAt.UTC(),
+			Payload:        cloneJSON(event.Payload),
 		})
 	}
 	return mapped

@@ -135,6 +135,7 @@ export function ScorecardClient({
         <InspectorSheet
           target={inspected}
           onClose={() => setInspected(null)}
+          replayBasePath={`/workspaces/${workspaceId}/runs/${run.id}/agents/${agent.id}/replay`}
         />
       </div>
     </TooltipProvider>

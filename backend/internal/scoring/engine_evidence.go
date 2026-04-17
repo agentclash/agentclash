@@ -8,9 +8,19 @@ import (
 	"github.com/google/uuid"
 )
 
+// eventRef is a compact reference to a run event used to build validator/metric
+// source pointers. Sequence is the addressable key (run_events are uniquely
+// identified by (run_agent_id, sequence_number)); EventType is kept denormalized
+// so the scorecard UI can label the link without re-fetching the event.
+type eventRef struct {
+	Sequence  int64
+	EventType string
+}
+
 type extractedEvidence struct {
 	finalOutput               *string
 	finalOutputChallengeID    *uuid.UUID
+	finalOutputSource         *eventRef
 	challengeInputValue       *string
 	challengeInputChallengeID *uuid.UUID
 	caseInput                 *EvidenceInput
@@ -27,10 +37,23 @@ type extractedEvidence struct {
 	observedModels            []modelRef
 	stepDurations             []stepDurationEvidence
 	capturedFiles             map[string]FileCaptureResult
+	capturedFileSources       map[string]eventRef
 	capturedDirListings       map[string]DirectoryListingResult
+	capturedDirListingSources map[string]eventRef
 	codeExecutionResults      map[string]CodeExecutionResult
+	codeExecutionSources      map[string]eventRef
 	toolCallTrace             []toolCallTraceEntry
 	warnings                  []string
+}
+
+// eventRefFrom returns a reference to the given event, or nil when the event
+// has no persisted sequence number (happens during unit tests that don't route
+// through the repository, but never in production).
+func eventRefFrom(event Event) *eventRef {
+	if event.SequenceNumber <= 0 {
+		return nil
+	}
+	return &eventRef{Sequence: event.SequenceNumber, EventType: event.Type}
 }
 
 func buildEvidence(challengeInputs []EvidenceInput, events []Event) extractedEvidence {
@@ -84,8 +107,10 @@ func buildEvidence(challengeInputs []EvidenceInput, events []Event) extractedEvi
 			if event.Type == "system.output.finalized" && evidence.finalOutput == nil {
 				if output, ok := stringValue(payload, "final_output"); ok {
 					evidence.finalOutput = &output
+					evidence.finalOutputSource = eventRefFrom(event)
 				} else if output, ok := extractLooseString(payload["output"]); ok {
 					evidence.finalOutput = &output
+					evidence.finalOutputSource = eventRefFrom(event)
 				}
 			}
 		case "system.run.completed":
@@ -95,6 +120,7 @@ func buildEvidence(challengeInputs []EvidenceInput, events []Event) extractedEvi
 			evidence.completedSuccessfully = &completed
 			if output, ok := stringValue(payload, "final_output"); ok {
 				evidence.finalOutput = &output
+				evidence.finalOutputSource = eventRefFrom(event)
 			}
 			if value, ok := numericValue(payload, "input_tokens"); ok {
 				evidence.inputTokens = floatPtr(value)
@@ -168,6 +194,12 @@ func buildEvidence(challengeInputs []EvidenceInput, events []Event) extractedEvi
 					evidence.capturedFiles = make(map[string]FileCaptureResult)
 				}
 				evidence.capturedFiles[capture.Key] = capture
+				if ref := eventRefFrom(event); ref != nil {
+					if evidence.capturedFileSources == nil {
+						evidence.capturedFileSources = make(map[string]eventRef)
+					}
+					evidence.capturedFileSources[capture.Key] = *ref
+				}
 			}
 		case "grader.verification.directory_listed":
 			var listing DirectoryListingResult
@@ -176,6 +208,12 @@ func buildEvidence(challengeInputs []EvidenceInput, events []Event) extractedEvi
 					evidence.capturedDirListings = make(map[string]DirectoryListingResult)
 				}
 				evidence.capturedDirListings[listing.Key] = listing
+				if ref := eventRefFrom(event); ref != nil {
+					if evidence.capturedDirListingSources == nil {
+						evidence.capturedDirListingSources = make(map[string]eventRef)
+					}
+					evidence.capturedDirListingSources[listing.Key] = *ref
+				}
 			}
 		case "grader.verification.code_executed":
 			var result CodeExecutionResult
@@ -184,6 +222,12 @@ func buildEvidence(challengeInputs []EvidenceInput, events []Event) extractedEvi
 					evidence.codeExecutionResults = make(map[string]CodeExecutionResult)
 				}
 				evidence.codeExecutionResults[result.ValidatorKey] = result
+				if ref := eventRefFrom(event); ref != nil {
+					if evidence.codeExecutionSources == nil {
+						evidence.codeExecutionSources = make(map[string]eventRef)
+					}
+					evidence.codeExecutionSources[result.ValidatorKey] = *ref
+				}
 			}
 		case "model.call.started":
 			providerKey, _ := stringValue(payload, "provider_key")

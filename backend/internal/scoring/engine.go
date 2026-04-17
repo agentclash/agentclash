@@ -54,10 +54,11 @@ type EvidenceArtifact struct {
 }
 
 type Event struct {
-	Type       string          `json:"type"`
-	Source     string          `json:"source"`
-	OccurredAt time.Time       `json:"occurred_at"`
-	Payload    json.RawMessage `json:"payload"`
+	Type           string          `json:"type"`
+	Source         string          `json:"source"`
+	SequenceNumber int64           `json:"sequence_number,omitempty"`
+	OccurredAt     time.Time       `json:"occurred_at"`
+	Payload        json.RawMessage `json:"payload"`
 }
 
 type EvaluationInput struct {
@@ -95,6 +96,7 @@ type ValidatorResult struct {
 	ExpectedValue       *string         `json:"expected_value,omitempty"`
 	ChallengeIdentityID *uuid.UUID      `json:"challenge_identity_id,omitempty"`
 	Reason              string          `json:"reason,omitempty"`
+	Source              *Source         `json:"source,omitempty"`
 	RawOutput           json.RawMessage `json:"raw_output"`
 }
 
@@ -109,6 +111,7 @@ type MetricResult struct {
 	BooleanValue        *bool           `json:"boolean_value,omitempty"`
 	ChallengeIdentityID *uuid.UUID      `json:"challenge_identity_id,omitempty"`
 	Reason              string          `json:"reason,omitempty"`
+	Source              *Source         `json:"source,omitempty"`
 	Metadata            json.RawMessage `json:"metadata"`
 }
 
