@@ -33,6 +33,7 @@ type CLIAuthService interface {
 	CreateDeviceCode(ctx context.Context) (CreateDeviceCodeResult, error)
 	PollDeviceToken(ctx context.Context, deviceCode string) (PollDeviceTokenResult, error)
 	ApproveDeviceCode(ctx context.Context, caller Caller, userCode string) error
+	DenyDeviceCode(ctx context.Context, caller Caller, userCode string) error
 	CreateCLIToken(ctx context.Context, caller Caller, name string) (CreateCLITokenResult, error)
 	ListCLITokens(ctx context.Context, caller Caller) ([]CLITokenSummary, error)
 	RevokeCLIToken(ctx context.Context, caller Caller, tokenID uuid.UUID) error
@@ -74,6 +75,7 @@ type CLIAuthRepository interface {
 	CreateDeviceAuthCode(ctx context.Context, deviceCode, userCode string, expiresAt time.Time) (repository.DeviceAuthCode, error)
 	GetDeviceAuthCodeByDeviceCode(ctx context.Context, deviceCode string) (repository.DeviceAuthCode, error)
 	ApproveDeviceAuthCodeWithToken(ctx context.Context, userCode string, userID uuid.UUID, tokenHash, tokenName, rawToken string, expiresAt *time.Time) (repository.CLIToken, error)
+	DenyDeviceAuthCode(ctx context.Context, userCode string) error
 	ConsumeDeviceRawToken(ctx context.Context, id uuid.UUID) (string, error)
 	ExpireDeviceAuthCode(ctx context.Context, id uuid.UUID) error
 	ExpireStaleDeviceAuthCodes(ctx context.Context) error
@@ -112,8 +114,8 @@ func (m *CLIAuthManager) CreateDeviceCode(ctx context.Context) (CreateDeviceCode
 		return CreateDeviceCodeResult{}, fmt.Errorf("storing device code: %w", err)
 	}
 
-	verificationURI := "/auth/device"
-	verificationURIComplete := m.frontendURL + verificationURI + "?user_code=" + url.QueryEscape(userCode)
+	verificationURI := m.frontendURL + "/auth/device"
+	verificationURIComplete := verificationURI + "?user_code=" + url.QueryEscape(userCode)
 
 	return CreateDeviceCodeResult{
 		DeviceCode:              deviceCode,
@@ -184,6 +186,23 @@ func (m *CLIAuthManager) ApproveDeviceCode(ctx context.Context, caller Caller, u
 			return fmt.Errorf("device code not found or expired")
 		default:
 			return fmt.Errorf("approving device code: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func (m *CLIAuthManager) DenyDeviceCode(ctx context.Context, _ Caller, userCode string) error {
+	m.cleanupExpiredCodes(ctx)
+
+	if err := m.repo.DenyDeviceAuthCode(ctx, normalizeUserCode(userCode)); err != nil {
+		switch {
+		case errors.Is(err, repository.ErrDeviceCodeExpired):
+			return fmt.Errorf("device code expired")
+		case errors.Is(err, repository.ErrDeviceCodeNotFound):
+			return fmt.Errorf("device code not found or expired")
+		default:
+			return fmt.Errorf("denying device code: %w", err)
 		}
 	}
 
@@ -331,6 +350,35 @@ func approveDeviceCodeHandler(logger *slog.Logger, service CLIAuthService) http.
 		}
 
 		if err := service.ApproveDeviceCode(r.Context(), caller, input.UserCode); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	}
+}
+
+func denyDeviceCodeHandler(logger *slog.Logger, service CLIAuthService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		caller, err := CallerFromContext(r.Context())
+		if err != nil {
+			writeError(w, http.StatusUnauthorized, "unauthorized", "authentication required")
+			return
+		}
+		if err := requireJSONContentType(r); err != nil {
+			writeError(w, http.StatusUnsupportedMediaType, "unsupported_media_type", err.Error())
+			return
+		}
+
+		var input struct {
+			UserCode string `json:"user_code"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&input); err != nil || input.UserCode == "" {
+			writeError(w, http.StatusBadRequest, "invalid_request", "user_code is required")
+			return
+		}
+
+		if err := service.DenyDeviceCode(r.Context(), caller, input.UserCode); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
 			return
 		}

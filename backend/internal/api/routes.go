@@ -136,6 +136,7 @@ func registerProtectedRoutes(
 		router.Get("/cli-auth/tokens", listCLITokensHandler(logger, cliAuthService))
 		router.Delete("/cli-auth/tokens/{id}", revokeCLITokenHandler(logger, cliAuthService))
 		router.Post("/cli-auth/device/approve", approveDeviceCodeHandler(logger, cliAuthService))
+		router.Post("/cli-auth/device/deny", denyDeviceCodeHandler(logger, cliAuthService))
 	}
 
 	// Infrastructure CRUD — workspace-scoped create/list (skip if no service provided)

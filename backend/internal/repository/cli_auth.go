@@ -216,6 +216,34 @@ func (r *Repository) ApproveDeviceAuthCodeWithToken(ctx context.Context, userCod
 	return token, nil
 }
 
+func (r *Repository) DenyDeviceAuthCode(ctx context.Context, userCode string) error {
+	tag, err := r.db.Exec(ctx, `
+		UPDATE device_auth_codes
+		SET status = 'denied', raw_token = NULL
+		WHERE user_code = $1 AND status = 'pending' AND expires_at > now()
+	`, userCode)
+	if err != nil {
+		return fmt.Errorf("deny device auth code: %w", err)
+	}
+	if tag.RowsAffected() > 0 {
+		return nil
+	}
+
+	var expired bool
+	err = r.db.QueryRow(ctx, `
+		SELECT expires_at <= now()
+		FROM device_auth_codes
+		WHERE user_code = $1 AND status = 'pending'
+	`, userCode).Scan(&expired)
+	if err == nil && expired {
+		return ErrDeviceCodeExpired
+	}
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return fmt.Errorf("check denied device auth code expiry: %w", err)
+	}
+	return ErrDeviceCodeNotFound
+}
+
 func (r *Repository) ConsumeDeviceRawToken(ctx context.Context, id uuid.UUID) (string, error) {
 	var rawToken *string
 	err := r.db.QueryRow(ctx, `
