@@ -35,6 +35,12 @@ func conformanceAdapters() []conformanceAdapter {
 				return NewGeminiClient(&http.Client{Transport: transport}, "https://example.com", staticCredentialResolver{value: "test-key"})
 			},
 		},
+		{
+			name: "xai",
+			client: func(transport http.RoundTripper) Client {
+				return NewOpenAICompatibleClient(&http.Client{Transport: transport}, "https://example.com/v1", staticCredentialResolver{value: "test-key"})
+			},
+		},
 	}
 }
 
@@ -72,6 +78,14 @@ func TestConformanceSimpleTextResponse(t *testing.T) {
 		}, "\n"),
 		"gemini": strings.Join([]string{
 			`data: {"candidates":[{"content":{"parts":[{"text":"Hello world"}]},"finishReason":"STOP"}],"modelVersion":"gemini-1.5-pro-001","usageMetadata":{"promptTokenCount":5,"candidatesTokenCount":2,"totalTokenCount":7}}`,
+			``,
+		}, "\n"),
+		"xai": strings.Join([]string{
+			`data: {"model":"grok-4.20-reasoning","choices":[{"delta":{"role":"assistant","content":"Hello world"},"finish_reason":"stop"}]}`,
+			``,
+			`data: {"model":"grok-4.20-reasoning","choices":[],"usage":{"prompt_tokens":5,"completion_tokens":2,"total_tokens":7}}`,
+			``,
+			`data: [DONE]`,
 			``,
 		}, "\n"),
 	}
@@ -152,6 +166,14 @@ func TestConformanceSingleToolCall(t *testing.T) {
 			`data: {"candidates":[{"content":{"parts":[{"functionCall":{"name":"read_file","args":{"path":"/app.go"}}}]},"finishReason":"STOP"}],"modelVersion":"gemini-1.5-pro-001","usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":5,"totalTokenCount":15}}`,
 			``,
 		}, "\n"),
+		"xai": strings.Join([]string{
+			`data: {"model":"grok-4.20-reasoning","choices":[{"delta":{"tool_calls":[{"index":0,"id":"call-1","type":"function","function":{"name":"read_file","arguments":"{\"path\":\"/app.go\"}"}}]},"finish_reason":"tool_calls"}]}`,
+			``,
+			`data: {"model":"grok-4.20-reasoning","choices":[],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}`,
+			``,
+			`data: [DONE]`,
+			``,
+		}, "\n"),
 	}
 
 	for _, adapter := range conformanceAdapters() {
@@ -215,6 +237,10 @@ func TestConformanceRateLimitError(t *testing.T) {
 			statusCode: http.StatusTooManyRequests,
 			body:       `{"error":{"code":429,"message":"rate limited","status":"RESOURCE_EXHAUSTED"}}`,
 		},
+		"xai": {
+			statusCode: http.StatusTooManyRequests,
+			body:       `{"error":{"message":"rate limited","type":"rate_limit_error"}}`,
+		},
 	}
 
 	for _, adapter := range conformanceAdapters() {
@@ -267,6 +293,10 @@ func TestConformanceAuthError(t *testing.T) {
 		"gemini": {
 			statusCode: http.StatusUnauthorized,
 			body:       `{"error":{"code":401,"message":"invalid key","status":"UNAUTHENTICATED"}}`,
+		},
+		"xai": {
+			statusCode: http.StatusUnauthorized,
+			body:       `{"error":{"message":"invalid key","type":"authentication_error"}}`,
 		},
 	}
 
@@ -390,6 +420,8 @@ func TestConformanceCredentialError(t *testing.T) {
 				client = NewAnthropicClient(httpClient, "https://example.com", "", staticCredentialResolver{err: credErr})
 			case "gemini":
 				client = NewGeminiClient(httpClient, "https://example.com", staticCredentialResolver{err: credErr})
+			case "xai":
+				client = NewOpenAICompatibleClient(httpClient, "https://example.com/v1", staticCredentialResolver{err: credErr})
 			}
 
 			_, err := client.InvokeModel(context.Background(), Request{

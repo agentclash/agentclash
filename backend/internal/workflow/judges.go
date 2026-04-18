@@ -625,6 +625,8 @@ func inferJudgeProviderKey(model string) string {
 		return "openai"
 	case strings.HasPrefix(trimmed, "gemini-"):
 		return "gemini"
+	case strings.HasPrefix(trimmed, "grok-"):
+		return "xai"
 	default:
 		return ""
 	}
@@ -638,6 +640,8 @@ func defaultJudgeCredentialReference(providerKey string) (string, bool) {
 		return "env://OPENAI_API_KEY", true
 	case "gemini":
 		return "env://GEMINI_API_KEY", true
+	case "xai":
+		return "env://XAI_API_KEY", true
 	default:
 		return "", false
 	}

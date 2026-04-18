@@ -69,6 +69,7 @@ func main() {
 		"openai":     provider.NewOpenAICompatibleClient(&http.Client{}, "", provider.EnvCredentialResolver{}),
 		"anthropic":  provider.NewAnthropicClient(&http.Client{}, "", "", provider.EnvCredentialResolver{}),
 		"gemini":     provider.NewGeminiClient(&http.Client{}, "", provider.EnvCredentialResolver{}),
+		"xai":        provider.NewOpenAICompatibleClient(&http.Client{}, provider.DefaultXAIBaseURL(), provider.EnvCredentialResolver{}),
 		"openrouter": provider.NewOpenAICompatibleClient(&http.Client{}, "https://openrouter.ai/api/v1", provider.EnvCredentialResolver{}),
 		"mistral":    provider.NewOpenAICompatibleClient(&http.Client{}, "https://api.mistral.ai/v1", provider.EnvCredentialResolver{}),
 	})

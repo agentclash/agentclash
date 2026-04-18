@@ -49,6 +49,7 @@ export default async function ProviderAccountsPage({
                 { value: "openai", label: "OpenAI" },
                 { value: "anthropic", label: "Anthropic" },
                 { value: "gemini", label: "Gemini" },
+                { value: "xai", label: "xAI" },
                 { value: "openrouter", label: "OpenRouter" },
                 { value: "mistral", label: "Mistral" },
               ],

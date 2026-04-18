@@ -198,6 +198,7 @@ Provider API keys (set whichever you need):
 | `OPENAI_API_KEY` | OpenAI |
 | `ANTHROPIC_API_KEY` | Anthropic |
 | `GEMINI_API_KEY` | Google Gemini |
+| `XAI_API_KEY` | xAI |
 | `OPENROUTER_API_KEY` | OpenRouter |
 | `MISTRAL_API_KEY` | Mistral |
 

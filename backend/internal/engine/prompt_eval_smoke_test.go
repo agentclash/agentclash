@@ -73,6 +73,22 @@ func TestPromptEvalSmokeAnthropic(t *testing.T) {
 	}
 }
 
+func TestPromptEvalSmokeXAI(t *testing.T) {
+	apiKey := os.Getenv("XAI_API_KEY")
+	if apiKey == "" {
+		t.Skip("XAI_API_KEY is not set")
+	}
+	t.Setenv("XAI_API_KEY", apiKey)
+
+	client := provider.NewOpenAICompatibleClient(nil, provider.DefaultXAIBaseURL(), provider.EnvCredentialResolver{})
+
+	for _, tc := range smokePrompts {
+		t.Run(tc.name, func(t *testing.T) {
+			runSmokeTest(t, client, "xai", "env://XAI_API_KEY", "grok-4-1-fast-reasoning", tc)
+		})
+	}
+}
+
 func runSmokeTest(t *testing.T, client provider.Client, providerKey, credRef, model string, tc smokeTestCase) {
 	t.Helper()
 
