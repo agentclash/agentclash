@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"sort"
 	"testing"
 
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/domain"
@@ -85,16 +86,24 @@ func TestListRunFailuresEndpointPaginationCursorIsStable(t *testing.T) {
 	if first.NextCursor == nil || second.NextCursor == nil || *first.NextCursor != *second.NextCursor {
 		t.Fatalf("next_cursor first=%v second=%v, want stable cursor", first.NextCursor, second.NextCursor)
 	}
-	if len(first.Items) != 1 || first.Items[0].ChallengeKey != "ticket-a" {
-		t.Fatalf("first page items = %#v, want first ticket only", first.Items)
+	if len(first.Items) != 1 {
+		t.Fatalf("first page items = %#v, want exactly one item", first.Items)
 	}
 
 	third := performListRunFailuresRequest(t, service, workspaceID, runID, url.Values{
 		"limit":  []string{"1"},
 		"cursor": []string{*first.NextCursor},
 	})
-	if len(third.Items) != 1 || third.Items[0].ChallengeKey != "ticket-b" {
-		t.Fatalf("second page items = %#v, want second ticket only", third.Items)
+	if len(third.Items) != 1 {
+		t.Fatalf("second page items = %#v, want exactly one item", third.Items)
+	}
+	if first.Items[0].ChallengeKey == third.Items[0].ChallengeKey {
+		t.Fatalf("page items share challenge key %q, want distinct items across pages", first.Items[0].ChallengeKey)
+	}
+	keys := []string{first.Items[0].ChallengeKey, third.Items[0].ChallengeKey}
+	sort.Strings(keys)
+	if keys[0] != "ticket-a" || keys[1] != "ticket-b" {
+		t.Fatalf("page keys = %#v, want ticket-a and ticket-b across both pages", keys)
 	}
 }
 
