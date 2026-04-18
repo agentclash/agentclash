@@ -12,39 +12,6 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const archiveRegressionSuite = `-- name: ArchiveRegressionSuite :one
-UPDATE workspace_regression_suites
-SET status = 'archived',
-    updated_at = now()
-WHERE id = $1
-  AND status = $2
-RETURNING id, workspace_id, source_challenge_pack_id, name, description, status, source_mode, default_gate_severity, created_by_user_id, created_at, updated_at
-`
-
-type ArchiveRegressionSuiteParams struct {
-	ID         uuid.UUID
-	FromStatus string
-}
-
-func (q *Queries) ArchiveRegressionSuite(ctx context.Context, arg ArchiveRegressionSuiteParams) (WorkspaceRegressionSuite, error) {
-	row := q.db.QueryRow(ctx, archiveRegressionSuite, arg.ID, arg.FromStatus)
-	var i WorkspaceRegressionSuite
-	err := row.Scan(
-		&i.ID,
-		&i.WorkspaceID,
-		&i.SourceChallengePackID,
-		&i.Name,
-		&i.Description,
-		&i.Status,
-		&i.SourceMode,
-		&i.DefaultGateSeverity,
-		&i.CreatedByUserID,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
-}
-
 const countRegressionSuitesByWorkspaceID = `-- name: CountRegressionSuitesByWorkspaceID :one
 SELECT count(*)
 FROM workspace_regression_suites
@@ -265,7 +232,18 @@ INSERT INTO workspace_regression_suites (
     $7,
     $8
 )
-RETURNING id, workspace_id, source_challenge_pack_id, name, description, status, source_mode, default_gate_severity, created_by_user_id, created_at, updated_at
+RETURNING
+    id,
+    workspace_id,
+    source_challenge_pack_id,
+    name,
+    description,
+    status,
+    source_mode,
+    default_gate_severity,
+    created_by_user_id,
+    created_at,
+    updated_at
 `
 
 type CreateRegressionSuiteParams struct {
@@ -596,11 +574,11 @@ const patchRegressionCase = `-- name: PatchRegressionCase :one
 UPDATE workspace_regression_cases
 SET title = COALESCE($1, title),
     description = COALESCE($2, description),
-    status = COALESCE($3, status),
+    status = COALESCE($3::text, status),
     severity = COALESCE($4, severity),
     updated_at = now()
 WHERE id = $5
-  AND ($6 IS NULL OR status = $6)
+  AND ($6::text IS NULL OR status = $6::text)
 RETURNING id, suite_id, title, description, status, severity, promotion_mode, source_run_id, source_run_agent_id, source_replay_id, source_challenge_pack_version_id, source_challenge_input_set_id, source_challenge_identity_id, source_case_key, source_item_key, evidence_tier, failure_class, failure_summary, payload_snapshot, expected_contract, validator_overrides, metadata, created_at, updated_at
 `
 
@@ -610,7 +588,7 @@ type PatchRegressionCaseParams struct {
 	ToStatus    *string
 	Severity    *string
 	ID          uuid.UUID
-	FromStatus  interface{}
+	FromStatus  *string
 }
 
 func (q *Queries) PatchRegressionCase(ctx context.Context, arg PatchRegressionCaseParams) (WorkspaceRegressionCase, error) {
@@ -656,11 +634,11 @@ const patchRegressionSuite = `-- name: PatchRegressionSuite :one
 UPDATE workspace_regression_suites
 SET name = COALESCE($1, name),
     description = COALESCE($2, description),
-    status = COALESCE($3, status),
+    status = COALESCE($3::text, status),
     default_gate_severity = COALESCE($4, default_gate_severity),
     updated_at = now()
 WHERE id = $5
-  AND ($6 IS NULL OR status = $6)
+  AND ($6::text IS NULL OR status = $6::text)
 RETURNING id, workspace_id, source_challenge_pack_id, name, description, status, source_mode, default_gate_severity, created_by_user_id, created_at, updated_at
 `
 
@@ -670,7 +648,7 @@ type PatchRegressionSuiteParams struct {
 	ToStatus            *string
 	DefaultGateSeverity *string
 	ID                  uuid.UUID
-	FromStatus          interface{}
+	FromStatus          *string
 }
 
 func (q *Queries) PatchRegressionSuite(ctx context.Context, arg PatchRegressionSuiteParams) (WorkspaceRegressionSuite, error) {

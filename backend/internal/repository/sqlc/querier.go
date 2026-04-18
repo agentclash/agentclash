@@ -10,7 +10,6 @@ import (
 
 type Querier interface {
 	ApplyHostedRunEvent(ctx context.Context, arg ApplyHostedRunEventParams) (HostedRunExecution, error)
-	ArchiveRegressionSuite(ctx context.Context, arg ArchiveRegressionSuiteParams) (WorkspaceRegressionSuite, error)
 	CountRegressionSuitesByWorkspaceID(ctx context.Context, arg CountRegressionSuitesByWorkspaceIDParams) (int64, error)
 	CountRunsByWorkspaceID(ctx context.Context, arg CountRunsByWorkspaceIDParams) (int64, error)
 	CreateAgentBuild(ctx context.Context, arg CreateAgentBuildParams) (AgentBuild, error)

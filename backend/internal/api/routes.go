@@ -71,6 +71,9 @@ func registerProtectedRoutes(
 	router.Get("/compare/viewer", getRunComparisonViewerHandler(logger))
 	router.Get("/release-gates", listReleaseGatesHandler(logger, releaseGateService))
 	router.Post("/release-gates/evaluate", evaluateReleaseGateHandler(logger, releaseGateService))
+	// Regression routes resolve workspace access in the manager because create
+	// validates workspace-visible packs from the request body and suite/case
+	// reads derive the definitive workspace boundary from persisted rows.
 	router.Post("/workspaces/{workspaceID}/regression-suites", createRegressionSuiteHandler(logger, regressionService))
 	router.Get("/workspaces/{workspaceID}/regression-suites", listRegressionSuitesHandler(logger, regressionService))
 	router.Get("/workspaces/{workspaceID}/regression-suites/{suiteID}", getRegressionSuiteHandler(logger, regressionService))

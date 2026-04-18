@@ -2041,6 +2041,8 @@ paths:
           $ref: "#/components/responses/UnauthorizedError"
         "403":
           $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
         "409":
           $ref: "#/components/responses/ConflictError"
         "415":
@@ -2058,7 +2060,7 @@ paths:
           schema:
             type: integer
             format: int32
-            default: 20
+            default: 50
             minimum: 1
             maximum: 100
         - name: offset
@@ -2075,6 +2077,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ListRegressionSuitesResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/UnauthorizedError"
         "403":
@@ -2197,6 +2201,8 @@ paths:
           $ref: "#/components/responses/ForbiddenError"
         "404":
           $ref: "#/components/responses/NotFoundError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
         "415":
           $ref: "#/components/responses/UnsupportedMediaType"
 
@@ -4853,8 +4859,10 @@ components:
           type: object
           additionalProperties: true
         validator_overrides:
-          type: object
-          additionalProperties: true
+          anyOf:
+            - type: object
+              additionalProperties: true
+            - type: "null"
         metadata:
           type: object
           additionalProperties: true
@@ -4923,6 +4931,7 @@ components:
 
     PatchRegressionSuiteInput:
       type: object
+      minProperties: 1
       properties:
         name:
           type: string
@@ -4935,6 +4944,7 @@ components:
 
     PatchRegressionCaseInput:
       type: object
+      minProperties: 1
       properties:
         title:
           type: string

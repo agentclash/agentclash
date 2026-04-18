@@ -71,6 +71,28 @@ func TestRegressionManagerRejectsCrossWorkspaceCasePatch(t *testing.T) {
 	}
 }
 
+func TestRegressionManagerRejectsInvisibleChallengePackOnCreate(t *testing.T) {
+	workspaceID := uuid.New()
+	manager := NewRegressionManager(NewCallerWorkspaceAuthorizer(), &fakeRegressionRepository{
+		challengePacks: []repository.ChallengePackSummary{{ID: uuid.New()}},
+	})
+
+	_, err := manager.CreateRegressionSuite(context.Background(), Caller{
+		UserID: uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: RoleWorkspaceMember},
+		},
+	}, CreateRegressionSuiteInput{
+		WorkspaceID:           workspaceID,
+		SourceChallengePackID: uuid.New(),
+		Name:                  "Critical regressions",
+		DefaultGateSeverity:   domain.RegressionSeverityWarning,
+	})
+	if !errors.Is(err, ErrChallengePackNotFound) {
+		t.Fatalf("CreateRegressionSuite error = %v, want ErrChallengePackNotFound", err)
+	}
+}
+
 func TestRegressionSuiteEndpointsRoundTrip(t *testing.T) {
 	workspaceID := uuid.New()
 	userID := uuid.New()
@@ -117,37 +139,22 @@ func TestRegressionSuiteEndpointsRoundTrip(t *testing.T) {
 		},
 	}
 
-	router := newRouterWithRegressionService(
-		"dev",
-		nil,
-		testLogger(t),
-		NewDevelopmentAuthenticator(),
-		NewCallerWorkspaceAuthorizer(),
-		nil,
-		0,
-		stubRunCreationService{},
-		stubRunReadService{},
-		stubReplayReadService{},
-		stubHostedRunIngestionService{},
-		stubCompareReadService{},
-		stubAgentDeploymentReadService{},
-		stubChallengePackReadService{},
-		stubAgentBuildService{},
-		noopReleaseGateService{},
-		service,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-	)
+	router := buildRouter(routerOptions{
+		authMode:                   "dev",
+		logger:                     testLogger(t),
+		authenticator:              NewDevelopmentAuthenticator(),
+		authorizer:                 NewCallerWorkspaceAuthorizer(),
+		runCreationService:         stubRunCreationService{},
+		runReadService:             stubRunReadService{},
+		replayReadService:          stubReplayReadService{},
+		hostedRunIngestionService:  stubHostedRunIngestionService{},
+		compareReadService:         stubCompareReadService{},
+		agentDeploymentReadService: stubAgentDeploymentReadService{},
+		challengePackReadService:   stubChallengePackReadService{},
+		agentBuildService:          stubAgentBuildService{},
+		releaseGateService:         noopReleaseGateService{},
+		regressionService:          service,
+	})
 
 	postReq := httptest.NewRequest(http.MethodPost, "/v1/workspaces/"+workspaceID.String()+"/regression-suites", bytes.NewBufferString(`{
 		"source_challenge_pack_id":"`+sourceChallengePackID.String()+`",
@@ -239,7 +246,77 @@ func TestRegressionSuiteEndpointsRoundTrip(t *testing.T) {
 	}
 }
 
+func TestRegressionSuiteEndpointsRejectMalformedPagination(t *testing.T) {
+	workspaceID := uuid.New()
+	userID := uuid.New()
+	router := buildRouter(routerOptions{
+		authMode:                   "dev",
+		logger:                     testLogger(t),
+		authenticator:              NewDevelopmentAuthenticator(),
+		authorizer:                 NewCallerWorkspaceAuthorizer(),
+		runCreationService:         stubRunCreationService{},
+		runReadService:             stubRunReadService{},
+		replayReadService:          stubReplayReadService{},
+		hostedRunIngestionService:  stubHostedRunIngestionService{},
+		compareReadService:         stubCompareReadService{},
+		agentDeploymentReadService: stubAgentDeploymentReadService{},
+		challengePackReadService:   stubChallengePackReadService{},
+		agentBuildService:          stubAgentBuildService{},
+		releaseGateService:         noopReleaseGateService{},
+		regressionService:          &fakeRegressionService{},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/workspaces/"+workspaceID.String()+"/regression-suites?limit=abc&offset=-1", nil)
+	req.Header.Set(headerUserID, userID.String())
+	req.Header.Set(headerWorkspaceMemberships, workspaceID.String()+":workspace_member")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("malformed pagination status = %d, want 400", rec.Code)
+	}
+}
+
+func TestRegressionSuitePatchReturnsConflictOnTransitionConflict(t *testing.T) {
+	workspaceID := uuid.New()
+	userID := uuid.New()
+	suiteID := uuid.New()
+	router := buildRouter(routerOptions{
+		authMode:                   "dev",
+		logger:                     testLogger(t),
+		authenticator:              NewDevelopmentAuthenticator(),
+		authorizer:                 NewCallerWorkspaceAuthorizer(),
+		runCreationService:         stubRunCreationService{},
+		runReadService:             stubRunReadService{},
+		replayReadService:          stubReplayReadService{},
+		hostedRunIngestionService:  stubHostedRunIngestionService{},
+		compareReadService:         stubCompareReadService{},
+		agentDeploymentReadService: stubAgentDeploymentReadService{},
+		challengePackReadService:   stubChallengePackReadService{},
+		agentBuildService:          stubAgentBuildService{},
+		releaseGateService:         noopReleaseGateService{},
+		regressionService: &fakeRegressionService{
+			patchSuiteErr: repository.TransitionConflictError{
+				Entity:   "regression_suite",
+				ID:       suiteID,
+				Expected: "active",
+			},
+		},
+	})
+
+	req := httptest.NewRequest(http.MethodPatch, "/v1/workspaces/"+workspaceID.String()+"/regression-suites/"+suiteID.String(), bytes.NewBufferString(`{"status":"archived"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(headerUserID, userID.String())
+	req.Header.Set(headerWorkspaceMemberships, workspaceID.String()+":workspace_member")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("transition conflict status = %d, want 409", rec.Code)
+	}
+}
+
 type fakeRegressionRepository struct {
+	challengePacks     []repository.ChallengePackSummary
+	challengePacksErr  error
 	suite             repository.RegressionSuite
 	suiteErr          error
 	regressionCase    repository.RegressionCase
@@ -254,6 +331,10 @@ type fakeRegressionRepository struct {
 	patchSuiteErr     error
 	patchCaseResult   repository.RegressionCase
 	patchCaseErr      error
+}
+
+func (f *fakeRegressionRepository) ListVisibleChallengePacks(_ context.Context, _ uuid.UUID) ([]repository.ChallengePackSummary, error) {
+	return f.challengePacks, f.challengePacksErr
 }
 
 func (f *fakeRegressionRepository) CreateRegressionSuite(_ context.Context, params repository.CreateRegressionSuiteParams) (repository.RegressionSuite, error) {

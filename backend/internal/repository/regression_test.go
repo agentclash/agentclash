@@ -203,6 +203,53 @@ func TestRepositoryPatchRegressionSuiteRejectsInvalidTransition(t *testing.T) {
 	}
 }
 
+func TestRepositoryRegressionSuiteNameCanBeReusedAfterArchive(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	sourceChallengePackID := lookupChallengePackID(t, ctx, db, fixture.challengePackVersionID)
+	original, err := repo.CreateRegressionSuite(ctx, repository.CreateRegressionSuiteParams{
+		WorkspaceID:           fixture.workspaceID,
+		SourceChallengePackID: sourceChallengePackID,
+		Name:                  "Critical regressions",
+		Description:           "Original suite",
+		Status:                domain.RegressionSuiteStatusActive,
+		SourceMode:            "derived_only",
+		DefaultGateSeverity:   domain.RegressionSeverityWarning,
+		CreatedByUserID:       fixture.userID,
+	})
+	if err != nil {
+		t.Fatalf("CreateRegressionSuite returned error: %v", err)
+	}
+
+	archived := domain.RegressionSuiteStatusArchived
+	if _, err := repo.PatchRegressionSuite(ctx, repository.PatchRegressionSuiteParams{
+		ID:     original.ID,
+		Status: &archived,
+	}); err != nil {
+		t.Fatalf("PatchRegressionSuite archived transition returned error: %v", err)
+	}
+
+	recreated, err := repo.CreateRegressionSuite(ctx, repository.CreateRegressionSuiteParams{
+		WorkspaceID:           fixture.workspaceID,
+		SourceChallengePackID: sourceChallengePackID,
+		Name:                  "Critical regressions",
+		Description:           "Replacement active suite",
+		Status:                domain.RegressionSuiteStatusActive,
+		SourceMode:            "derived_only",
+		DefaultGateSeverity:   domain.RegressionSeverityWarning,
+		CreatedByUserID:       fixture.userID,
+	})
+	if err != nil {
+		t.Fatalf("CreateRegressionSuite reuse-after-archive returned error: %v", err)
+	}
+	if recreated.ID == original.ID {
+		t.Fatal("expected a new suite record when reusing the archived name")
+	}
+}
+
 func TestRepositoryPatchRegressionCaseRejectsInvalidTransition(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)

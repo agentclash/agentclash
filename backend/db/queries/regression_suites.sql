@@ -18,7 +18,18 @@ INSERT INTO workspace_regression_suites (
     @default_gate_severity,
     @created_by_user_id
 )
-RETURNING *;
+RETURNING
+    id,
+    workspace_id,
+    source_challenge_pack_id,
+    name,
+    description,
+    status,
+    source_mode,
+    default_gate_severity,
+    created_by_user_id,
+    created_at,
+    updated_at;
 
 -- name: GetRegressionSuiteByID :one
 SELECT *
@@ -42,19 +53,11 @@ WHERE workspace_id = @workspace_id;
 UPDATE workspace_regression_suites
 SET name = COALESCE(sqlc.narg('name'), name),
     description = COALESCE(sqlc.narg('description'), description),
-    status = COALESCE(sqlc.narg('to_status'), status),
+    status = COALESCE(sqlc.narg('to_status')::text, status),
     default_gate_severity = COALESCE(sqlc.narg('default_gate_severity'), default_gate_severity),
     updated_at = now()
 WHERE id = @id
-  AND (sqlc.narg('from_status') IS NULL OR status = sqlc.narg('from_status'))
-RETURNING *;
-
--- name: ArchiveRegressionSuite :one
-UPDATE workspace_regression_suites
-SET status = 'archived',
-    updated_at = now()
-WHERE id = @id
-  AND status = @from_status
+  AND (sqlc.narg('from_status')::text IS NULL OR status = sqlc.narg('from_status')::text)
 RETURNING *;
 
 -- name: CreateRegressionCase :one
@@ -173,11 +176,11 @@ ORDER BY c.created_at DESC, c.id DESC;
 UPDATE workspace_regression_cases
 SET title = COALESCE(sqlc.narg('title'), title),
     description = COALESCE(sqlc.narg('description'), description),
-    status = COALESCE(sqlc.narg('to_status'), status),
+    status = COALESCE(sqlc.narg('to_status')::text, status),
     severity = COALESCE(sqlc.narg('severity'), severity),
     updated_at = now()
 WHERE id = @id
-  AND (sqlc.narg('from_status') IS NULL OR status = sqlc.narg('from_status'))
+  AND (sqlc.narg('from_status')::text IS NULL OR status = sqlc.narg('from_status')::text)
 RETURNING *;
 
 -- name: CreateRegressionPromotion :one

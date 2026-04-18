@@ -21,6 +21,38 @@ type Server struct {
 	config     Config
 }
 
+type routerOptions struct {
+	authMode                   string
+	corsAllowedOrigins         map[string]struct{}
+	logger                     *slog.Logger
+	authenticator              Authenticator
+	authorizer                 WorkspaceAuthorizer
+	playgroundService          PlaygroundService
+	artifactService            ArtifactService
+	artifactMaxUploadBytes     int64
+	runCreationService         RunCreationService
+	runReadService             RunReadService
+	replayReadService          ReplayReadService
+	compareReadService         CompareReadService
+	releaseGateService         ReleaseGateService
+	regressionService          RegressionService
+	hostedRunIngestionService  HostedRunIngestionService
+	agentDeploymentReadService AgentDeploymentReadService
+	challengePackReadService   ChallengePackReadService
+	challengePackAuthoringSvc  ChallengePackAuthoringService
+	agentBuildService          AgentBuildService
+	userService                UserService
+	orgService                 OrganizationService
+	workspaceService           WorkspaceService
+	orgMembershipService       OrgMembershipService
+	workspaceMembershipService WorkspaceMembershipService
+	onboardingService          OnboardingService
+	infraService               InfrastructureService
+	workspaceSecretsService    WorkspaceSecretsService
+	eventSubscriber            pubsub.EventSubscriber
+	cliAuthServices            []CLIAuthService
+}
+
 func NewServer(
 	cfg Config,
 	logger *slog.Logger,
@@ -50,7 +82,37 @@ func NewServer(
 	eventSubscriber pubsub.EventSubscriber,
 	cliAuthServices ...CLIAuthService,
 ) *Server {
-	router := newRouterWithRegressionService(cfg.AuthMode, cfg.CORSAllowedOrigins, logger, authenticator, authorizer, artifactService, cfg.ArtifactMaxUploadBytes, runCreationService, runReadService, replayReadService, hostedRunIngestionService, compareReadService, agentDeploymentReadService, challengePackReadService, agentBuildService, releaseGateService, regressionService, challengePackAuthoringService, userService, orgService, wsService, orgMembershipService, wsMembershipService, onboardingService, infraService, workspaceSecretsService, playgroundService, eventSubscriber, cliAuthServices...)
+	router := buildRouter(routerOptions{
+		authMode:                   cfg.AuthMode,
+		corsAllowedOrigins:         cfg.CORSAllowedOrigins,
+		logger:                     logger,
+		authenticator:              authenticator,
+		authorizer:                 authorizer,
+		playgroundService:          playgroundService,
+		artifactService:            artifactService,
+		artifactMaxUploadBytes:     cfg.ArtifactMaxUploadBytes,
+		runCreationService:         runCreationService,
+		runReadService:             runReadService,
+		replayReadService:          replayReadService,
+		compareReadService:         compareReadService,
+		releaseGateService:         releaseGateService,
+		regressionService:          regressionService,
+		hostedRunIngestionService:  hostedRunIngestionService,
+		agentDeploymentReadService: agentDeploymentReadService,
+		challengePackReadService:   challengePackReadService,
+		challengePackAuthoringSvc:  challengePackAuthoringService,
+		agentBuildService:          agentBuildService,
+		userService:                userService,
+		orgService:                 orgService,
+		workspaceService:           wsService,
+		orgMembershipService:       orgMembershipService,
+		workspaceMembershipService: wsMembershipService,
+		onboardingService:          onboardingService,
+		infraService:               infraService,
+		workspaceSecretsService:    workspaceSecretsService,
+		eventSubscriber:            eventSubscriber,
+		cliAuthServices:            cliAuthServices,
+	})
 
 	return &Server{
 		config: cfg,
@@ -127,84 +189,70 @@ func newRouter(
 	eventSubscriber pubsub.EventSubscriber,
 	cliAuthServices ...CLIAuthService,
 ) http.Handler {
-	return newRouterWithRegressionService(
-		authMode,
-		corsAllowedOrigins,
-		logger,
-		authenticator,
-		authorizer,
-		artifactService,
-		artifactMaxUploadBytes,
-		runCreationService,
-		runReadService,
-		replayReadService,
-		hostedRunIngestionService,
-		compareReadService,
-		agentDeploymentReadService,
-		challengePackReadService,
-		agentBuildService,
-		releaseGateService,
-		nil,
-		challengePackAuthoringServiceArg,
-		userServiceArg,
-		orgServiceArg,
-		wsServiceArg,
-		orgMembershipServiceArg,
-		wsMembershipServiceArg,
-		onboardingServiceArg,
-		infraServiceArg,
-		workspaceSecretsServiceArg,
-		playgroundServiceArg,
-		eventSubscriber,
-		cliAuthServices...,
-	)
+	return buildRouter(routerOptions{
+		authMode:                   authMode,
+		corsAllowedOrigins:         corsAllowedOrigins,
+		logger:                     logger,
+		authenticator:              authenticator,
+		authorizer:                 authorizer,
+		playgroundService:          playgroundServiceArg,
+		artifactService:            artifactService,
+		artifactMaxUploadBytes:     artifactMaxUploadBytes,
+		runCreationService:         runCreationService,
+		runReadService:             runReadService,
+		replayReadService:          replayReadService,
+		compareReadService:         compareReadService,
+		releaseGateService:         releaseGateService,
+		hostedRunIngestionService:  hostedRunIngestionService,
+		agentDeploymentReadService: agentDeploymentReadService,
+		challengePackReadService:   challengePackReadService,
+		challengePackAuthoringSvc:  challengePackAuthoringServiceArg,
+		agentBuildService:          agentBuildService,
+		userService:                userServiceArg,
+		orgService:                 orgServiceArg,
+		workspaceService:           wsServiceArg,
+		orgMembershipService:       orgMembershipServiceArg,
+		workspaceMembershipService: wsMembershipServiceArg,
+		onboardingService:          onboardingServiceArg,
+		infraService:               infraServiceArg,
+		workspaceSecretsService:    workspaceSecretsServiceArg,
+		eventSubscriber:            eventSubscriber,
+		cliAuthServices:            cliAuthServices,
+	})
 }
 
-func newRouterWithRegressionService(
-	authMode string,
-	corsAllowedOrigins map[string]struct{},
-	logger *slog.Logger,
-	authenticator Authenticator,
-	authorizer WorkspaceAuthorizer,
-	artifactService ArtifactService,
-	artifactMaxUploadBytes int64,
-	runCreationService RunCreationService,
-	runReadService RunReadService,
-	replayReadService ReplayReadService,
-	hostedRunIngestionService HostedRunIngestionService,
-	compareReadService CompareReadService,
-	agentDeploymentReadService AgentDeploymentReadService,
-	challengePackReadService ChallengePackReadService,
-	agentBuildService AgentBuildService,
-	releaseGateService ReleaseGateService,
-	regressionServiceArg RegressionService,
-	challengePackAuthoringServiceArg ChallengePackAuthoringService,
-	userServiceArg UserService,
-	orgServiceArg OrganizationService,
-	wsServiceArg WorkspaceService,
-	orgMembershipServiceArg OrgMembershipService,
-	wsMembershipServiceArg WorkspaceMembershipService,
-	onboardingServiceArg OnboardingService,
-	infraServiceArg InfrastructureService,
-	workspaceSecretsServiceArg WorkspaceSecretsService,
-	playgroundServiceArg PlaygroundService,
-	eventSubscriber pubsub.EventSubscriber,
-	cliAuthServices ...CLIAuthService,
-) http.Handler {
-	challengePackAuthoringService := challengePackAuthoringServiceArg
-	userService := userServiceArg
-	orgService := orgServiceArg
-	wsService := wsServiceArg
-	orgMembershipService := orgMembershipServiceArg
-	wsMembershipService := wsMembershipServiceArg
-	onboardingService := onboardingServiceArg
-	infraService := infraServiceArg
-	workspaceSecretsService := workspaceSecretsServiceArg
-	playgroundService := playgroundServiceArg
-	regressionService := regressionServiceArg
+func buildRouter(opts routerOptions) http.Handler {
+	authMode := opts.authMode
+	corsAllowedOrigins := opts.corsAllowedOrigins
+	logger := opts.logger
+	authenticator := opts.authenticator
+	authorizer := opts.authorizer
+	playgroundService := opts.playgroundService
+	artifactService := opts.artifactService
+	artifactMaxUploadBytes := opts.artifactMaxUploadBytes
+	runCreationService := opts.runCreationService
+	runReadService := opts.runReadService
+	replayReadService := opts.replayReadService
+	hostedRunIngestionService := opts.hostedRunIngestionService
+	compareReadService := opts.compareReadService
+	agentDeploymentReadService := opts.agentDeploymentReadService
+	challengePackReadService := opts.challengePackReadService
+	agentBuildService := opts.agentBuildService
+	releaseGateService := opts.releaseGateService
+	regressionService := opts.regressionService
+	challengePackAuthoringService := opts.challengePackAuthoringSvc
+	userService := opts.userService
+	orgService := opts.orgService
+	wsService := opts.workspaceService
+	orgMembershipService := opts.orgMembershipService
+	wsMembershipService := opts.workspaceMembershipService
+	onboardingService := opts.onboardingService
+	infraService := opts.infraService
+	workspaceSecretsService := opts.workspaceSecretsService
+	eventSubscriber := opts.eventSubscriber
 	var cliAuthService CLIAuthService
-	if len(cliAuthServices) > 0 {
-		cliAuthService = cliAuthServices[0]
+	if len(opts.cliAuthServices) > 0 {
+		cliAuthService = opts.cliAuthServices[0]
 	}
 
 	if eventSubscriber == nil {

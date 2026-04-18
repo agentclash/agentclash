@@ -23,6 +23,8 @@ var regressionSuiteTransitions = map[RegressionSuiteStatus]map[RegressionSuiteSt
 	RegressionSuiteStatusActive: {
 		RegressionSuiteStatusArchived: {},
 	},
+	// Reactivation is allowed; repository uniqueness checks still guard
+	// workspace/name collisions if another active suite has claimed the name.
 	RegressionSuiteStatusArchived: {
 		RegressionSuiteStatusActive: {},
 	},
@@ -100,6 +102,12 @@ const (
 	RegressionSeverityBlocking RegressionSeverity = "blocking"
 )
 
+var regressionSeverities = map[RegressionSeverity]struct{}{
+	RegressionSeverityInfo:     {},
+	RegressionSeverityWarning:  {},
+	RegressionSeverityBlocking: {},
+}
+
 func ParseRegressionSeverity(raw string) (RegressionSeverity, error) {
 	severity := RegressionSeverity(raw)
 	if !severity.Valid() {
@@ -109,12 +117,8 @@ func ParseRegressionSeverity(raw string) (RegressionSeverity, error) {
 }
 
 func (s RegressionSeverity) Valid() bool {
-	switch s {
-	case RegressionSeverityInfo, RegressionSeverityWarning, RegressionSeverityBlocking:
-		return true
-	default:
-		return false
-	}
+	_, ok := regressionSeverities[s]
+	return ok
 }
 
 type RegressionPromotionMode string
@@ -125,6 +129,12 @@ const (
 	RegressionPromotionModeManual         RegressionPromotionMode = "manual"
 )
 
+var regressionPromotionModes = map[RegressionPromotionMode]struct{}{
+	RegressionPromotionModeFullExecutable: {},
+	RegressionPromotionModeOutputOnly:     {},
+	RegressionPromotionModeManual:         {},
+}
+
 func ParseRegressionPromotionMode(raw string) (RegressionPromotionMode, error) {
 	mode := RegressionPromotionMode(raw)
 	if !mode.Valid() {
@@ -134,10 +144,6 @@ func ParseRegressionPromotionMode(raw string) (RegressionPromotionMode, error) {
 }
 
 func (m RegressionPromotionMode) Valid() bool {
-	switch m {
-	case RegressionPromotionModeFullExecutable, RegressionPromotionModeOutputOnly, RegressionPromotionModeManual:
-		return true
-	default:
-		return false
-	}
+	_, ok := regressionPromotionModes[m]
+	return ok
 }

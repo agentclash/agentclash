@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -19,6 +20,7 @@ import (
 type RegressionRepository interface {
 	CreateRegressionSuite(ctx context.Context, params repository.CreateRegressionSuiteParams) (repository.RegressionSuite, error)
 	GetRegressionSuiteByID(ctx context.Context, id uuid.UUID) (repository.RegressionSuite, error)
+	ListVisibleChallengePacks(ctx context.Context, workspaceID uuid.UUID) ([]repository.ChallengePackSummary, error)
 	ListRegressionSuitesByWorkspaceID(ctx context.Context, workspaceID uuid.UUID, limit, offset int32) ([]repository.RegressionSuite, error)
 	CountRegressionSuitesByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) (int64, error)
 	PatchRegressionSuite(ctx context.Context, params repository.PatchRegressionSuiteParams) (repository.RegressionSuite, error)
@@ -90,6 +92,8 @@ type RegressionManager struct {
 	repo       RegressionRepository
 }
 
+var ErrChallengePackNotFound = errors.New("challenge pack not found")
+
 func NewRegressionManager(authorizer WorkspaceAuthorizer, repo RegressionRepository) *RegressionManager {
 	return &RegressionManager{authorizer: authorizer, repo: repo}
 }
@@ -97,6 +101,20 @@ func NewRegressionManager(authorizer WorkspaceAuthorizer, repo RegressionReposit
 func (m *RegressionManager) CreateRegressionSuite(ctx context.Context, caller Caller, input CreateRegressionSuiteInput) (repository.RegressionSuite, error) {
 	if err := AuthorizeWorkspaceAction(ctx, m.authorizer, caller, input.WorkspaceID, ActionManageRegressions); err != nil {
 		return repository.RegressionSuite{}, err
+	}
+	packs, err := m.repo.ListVisibleChallengePacks(ctx, input.WorkspaceID)
+	if err != nil {
+		return repository.RegressionSuite{}, fmt.Errorf("list visible challenge packs: %w", err)
+	}
+	foundPack := false
+	for _, pack := range packs {
+		if pack.ID == input.SourceChallengePackID {
+			foundPack = true
+			break
+		}
+	}
+	if !foundPack {
+		return repository.RegressionSuite{}, ErrChallengePackNotFound
 	}
 
 	return m.repo.CreateRegressionSuite(ctx, repository.CreateRegressionSuiteParams{
@@ -249,18 +267,6 @@ type regressionCaseResponse struct {
 	UpdatedAt                    time.Time                      `json:"updated_at"`
 }
 
-type regressionPromotionResponse struct {
-	ID                        uuid.UUID       `json:"id"`
-	WorkspaceRegressionCaseID uuid.UUID       `json:"workspace_regression_case_id"`
-	SourceRunID               uuid.UUID       `json:"source_run_id"`
-	SourceRunAgentID          uuid.UUID       `json:"source_run_agent_id"`
-	SourceEventRefs           json.RawMessage `json:"source_event_refs"`
-	PromotedByUserID          uuid.UUID       `json:"promoted_by_user_id"`
-	PromotionReason           string          `json:"promotion_reason"`
-	PromotionSnapshot         json.RawMessage `json:"promotion_snapshot"`
-	CreatedAt                 time.Time       `json:"created_at"`
-}
-
 type listRegressionSuitesResponse struct {
 	Items  []regressionSuiteResponse `json:"items"`
 	Total  int64                     `json:"total"`
@@ -347,20 +353,26 @@ func listRegressionSuitesHandler(logger *slog.Logger, service RegressionService)
 			return
 		}
 
-		limit := int32(20)
+		limit := int32(50)
 		if raw := r.URL.Query().Get("limit"); raw != "" {
-			if parsed, parseErr := strconv.Atoi(raw); parseErr == nil && parsed > 0 {
-				limit = int32(parsed)
+			parsed, parseErr := strconv.Atoi(raw)
+			if parseErr != nil || parsed <= 0 {
+				writeError(w, http.StatusBadRequest, "validation_error", "limit must be a positive integer")
+				return
 			}
+			limit = int32(parsed)
 		}
 		if limit > 100 {
 			limit = 100
 		}
 		offset := int32(0)
 		if raw := r.URL.Query().Get("offset"); raw != "" {
-			if parsed, parseErr := strconv.Atoi(raw); parseErr == nil && parsed >= 0 {
-				offset = int32(parsed)
+			parsed, parseErr := strconv.Atoi(raw)
+			if parseErr != nil || parsed < 0 {
+				writeError(w, http.StatusBadRequest, "validation_error", "offset must be a non-negative integer")
+				return
 			}
+			offset = int32(parsed)
 		}
 
 		result, err := service.ListRegressionSuites(r.Context(), caller, ListRegressionSuitesInput{
@@ -643,20 +655,6 @@ func buildRegressionCaseResponse(regressionCase repository.RegressionCase) regre
 	}
 }
 
-func buildRegressionPromotionResponse(promotion repository.RegressionPromotion) regressionPromotionResponse {
-	return regressionPromotionResponse{
-		ID:                        promotion.ID,
-		WorkspaceRegressionCaseID: promotion.WorkspaceRegressionCaseID,
-		SourceRunID:               promotion.SourceRunID,
-		SourceRunAgentID:          promotion.SourceRunAgentID,
-		SourceEventRefs:           promotion.SourceEventRefs,
-		PromotedByUserID:          promotion.PromotedByUserID,
-		PromotionReason:           promotion.PromotionReason,
-		PromotionSnapshot:         promotion.PromotionSnapshot,
-		CreatedAt:                 promotion.CreatedAt,
-	}
-}
-
 func regressionSuiteIDFromURLParam(name string) func(*http.Request) (uuid.UUID, error) {
 	return func(r *http.Request) (uuid.UUID, error) {
 		raw := chi.URLParam(r, name)
@@ -693,10 +691,14 @@ func handleRegressionError(w http.ResponseWriter, logger *slog.Logger, err error
 		writeError(w, http.StatusNotFound, "regression_suite_not_found", "regression suite not found")
 	case errors.Is(err, repository.ErrRegressionCaseNotFound):
 		writeError(w, http.StatusNotFound, "regression_case_not_found", "regression case not found")
+	case errors.Is(err, ErrChallengePackNotFound):
+		writeError(w, http.StatusNotFound, "challenge_pack_not_found", "challenge pack not found")
 	case errors.Is(err, repository.ErrRegressionSuiteNameConflict):
 		writeError(w, http.StatusConflict, "regression_suite_name_conflict", "an active regression suite with this name already exists in the workspace")
 	case errors.Is(err, repository.ErrInvalidTransition):
 		writeError(w, http.StatusBadRequest, "invalid_transition", "invalid regression status transition")
+	case errors.Is(err, repository.ErrTransitionConflict):
+		writeError(w, http.StatusConflict, "transition_conflict", "regression status changed before the update could be applied")
 	default:
 		logger.Error("regression operation failed", "error", err)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal server error")

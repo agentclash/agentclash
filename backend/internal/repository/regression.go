@@ -70,6 +70,8 @@ type RegressionPromotion struct {
 	CreatedAt                 time.Time
 }
 
+const regressionSuiteActiveNameIndex = "workspace_regression_suites_workspace_name_active_idx"
+
 type CreateRegressionSuiteParams struct {
 	WorkspaceID           uuid.UUID
 	SourceChallengePackID uuid.UUID
@@ -212,7 +214,7 @@ func (r *Repository) CountRegressionSuitesByWorkspaceID(ctx context.Context, wor
 
 func (r *Repository) PatchRegressionSuite(ctx context.Context, params PatchRegressionSuiteParams) (RegressionSuite, error) {
 	var (
-		fromStatus any
+		fromStatus *string
 		toStatus   *string
 	)
 
@@ -232,7 +234,7 @@ func (r *Repository) PatchRegressionSuite(ctx context.Context, params PatchRegre
 				To:     string(*params.Status),
 			}
 		}
-		fromStatus = string(current.Status)
+		fromStatus = stringPtr(string(current.Status))
 		toStatus = stringPtr(string(*params.Status))
 	}
 
@@ -267,41 +269,6 @@ func (r *Repository) PatchRegressionSuite(ctx context.Context, params PatchRegre
 			return RegressionSuite{}, ErrRegressionSuiteNameConflict
 		}
 		return RegressionSuite{}, fmt.Errorf("patch regression suite: %w", err)
-	}
-
-	suite, err := mapRegressionSuite(row)
-	if err != nil {
-		return RegressionSuite{}, fmt.Errorf("map regression suite: %w", err)
-	}
-	return suite, nil
-}
-
-func (r *Repository) ArchiveRegressionSuite(ctx context.Context, id uuid.UUID) (RegressionSuite, error) {
-	current, err := r.GetRegressionSuiteByID(ctx, id)
-	if err != nil {
-		return RegressionSuite{}, err
-	}
-	if !current.Status.CanTransitionTo(domain.RegressionSuiteStatusArchived) {
-		return RegressionSuite{}, InvalidTransitionError{
-			Entity: "regression_suite",
-			From:   string(current.Status),
-			To:     string(domain.RegressionSuiteStatusArchived),
-		}
-	}
-
-	row, err := r.queries.ArchiveRegressionSuite(ctx, repositorysqlc.ArchiveRegressionSuiteParams{
-		ID:         id,
-		FromStatus: string(current.Status),
-	})
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return RegressionSuite{}, TransitionConflictError{
-				Entity:   "regression_suite",
-				ID:       id,
-				Expected: string(current.Status),
-			}
-		}
-		return RegressionSuite{}, fmt.Errorf("archive regression suite: %w", err)
 	}
 
 	suite, err := mapRegressionSuite(row)
@@ -349,10 +316,12 @@ func (r *Repository) CreateRegressionCase(ctx context.Context, params CreateRegr
 		return RegressionCase{}, fmt.Errorf("create regression case: %w", err)
 	}
 
-	created, err := mapRegressionCaseFromTableRow(row)
+	created, err := mapRegressionCaseFromTableRowPartial(row)
 	if err != nil {
 		return RegressionCase{}, fmt.Errorf("map regression case: %w", err)
 	}
+	// The insert row does not include workspace_id; re-read through the joined
+	// query so callers always receive a fully populated case record.
 	return r.GetRegressionCaseByID(ctx, created.ID)
 }
 
@@ -393,7 +362,7 @@ func (r *Repository) ListRegressionCasesBySuiteID(ctx context.Context, suiteID u
 
 func (r *Repository) PatchRegressionCase(ctx context.Context, params PatchRegressionCaseParams) (RegressionCase, error) {
 	var (
-		fromStatus any
+		fromStatus *string
 		toStatus   *string
 	)
 
@@ -413,7 +382,7 @@ func (r *Repository) PatchRegressionCase(ctx context.Context, params PatchRegres
 				To:     string(*params.Status),
 			}
 		}
-		fromStatus = string(current.Status)
+		fromStatus = stringPtr(string(current.Status))
 		toStatus = stringPtr(string(*params.Status))
 	}
 
@@ -447,10 +416,12 @@ func (r *Repository) PatchRegressionCase(ctx context.Context, params PatchRegres
 		return RegressionCase{}, fmt.Errorf("patch regression case: %w", err)
 	}
 
-	updated, err := mapRegressionCaseFromTableRow(row)
+	updated, err := mapRegressionCaseFromTableRowPartial(row)
 	if err != nil {
 		return RegressionCase{}, fmt.Errorf("map regression case: %w", err)
 	}
+	// Patch returns the base table row shape, so fetch the joined record to
+	// preserve workspace_id for downstream authz-sensitive callers.
 	return r.GetRegressionCaseByID(ctx, updated.ID)
 }
 
@@ -559,7 +530,7 @@ func mapRegressionCase(row regressionCaseFields) (RegressionCase, error) {
 	}, nil
 }
 
-func mapRegressionCaseFromTableRow(row repositorysqlc.WorkspaceRegressionCase) (RegressionCase, error) {
+func mapRegressionCaseFromTableRowPartial(row repositorysqlc.WorkspaceRegressionCase) (RegressionCase, error) {
 	return mapRegressionCase(regressionCaseFields{
 		id:                           row.ID,
 		suiteID:                      row.SuiteID,
@@ -697,5 +668,5 @@ type regressionCaseFields struct {
 
 func isRegressionSuiteNameConflict(err error) bool {
 	var pgErr *pgconn.PgError
-	return errors.As(err, &pgErr) && pgErr.Code == "23505" && strings.Contains(pgErr.ConstraintName, "workspace_regression_suites_workspace_name_active_idx")
+	return errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == regressionSuiteActiveNameIndex
 }

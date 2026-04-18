@@ -53,13 +53,25 @@ func TestRegressionParsersRejectInvalidValues(t *testing.T) {
 	if _, err := ParseRegressionSuiteStatus("pending"); err == nil {
 		t.Fatal("expected invalid regression suite status error")
 	}
+	if _, err := ParseRegressionSuiteStatus(""); err == nil {
+		t.Fatal("expected empty regression suite status error")
+	}
 	if _, err := ParseRegressionCaseStatus("pending"); err == nil {
 		t.Fatal("expected invalid regression case status error")
+	}
+	if _, err := ParseRegressionCaseStatus(""); err == nil {
+		t.Fatal("expected empty regression case status error")
 	}
 	if _, err := ParseRegressionSeverity("critical"); err == nil {
 		t.Fatal("expected invalid regression severity error")
 	}
+	if _, err := ParseRegressionSeverity(""); err == nil {
+		t.Fatal("expected empty regression severity error")
+	}
 	if _, err := ParseRegressionPromotionMode("partial"); err == nil {
 		t.Fatal("expected invalid promotion mode error")
+	}
+	if _, err := ParseRegressionPromotionMode(""); err == nil {
+		t.Fatal("expected empty promotion mode error")
 	}
 }
