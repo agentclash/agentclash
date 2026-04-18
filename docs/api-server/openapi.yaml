@@ -222,6 +222,7 @@ paths:
       description: >
         Creates a short-lived device verification code for `agentclash auth login`.
         The response includes a browser-safe verification URL and the user-facing code.
+      security: []
       requestBody:
         required: false
         content:
@@ -248,6 +249,7 @@ paths:
       description: >
         Polls the device verification flow until the browser approval has issued a CLI token.
         Returns `authorization_pending`, `access_denied`, or `expired_token` errors while polling.
+      security: []
       requestBody:
         required: true
         content:
@@ -1930,6 +1932,80 @@ paths:
         "404":
           $ref: "#/components/responses/NotFoundError"
 
+  /v1/workspaces/{workspaceID}/runs/{runID}/failures:
+    get:
+      operationId: listRunFailures
+      tags: [Runs]
+      summary: List failure review items for a run
+      description: >
+        Returns a normalized, cursor-paginated stream of per-case failure review
+        items for the selected run.
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/RunID"
+        - name: agent_id
+          in: query
+          description: Limit results to a single run agent.
+          schema:
+            type: string
+            format: uuid
+        - name: severity
+          in: query
+          description: Filter by derived failure severity.
+          schema:
+            type: string
+            enum: [info, warning, blocking]
+        - name: failure_class
+          in: query
+          description: Filter by the inferred failure classification.
+          schema:
+            $ref: "#/components/schemas/FailureReviewFailureClass"
+        - name: evidence_tier
+          in: query
+          description: Filter by available evidence fidelity.
+          schema:
+            $ref: "#/components/schemas/FailureReviewEvidenceTier"
+        - name: challenge_key
+          in: query
+          description: Limit results to a single challenge key.
+          schema:
+            type: string
+        - name: case_key
+          in: query
+          description: Limit results to a single case key.
+          schema:
+            type: string
+        - name: cursor
+          in: query
+          description: Opaque base64url-encoded pagination cursor returned by a previous response.
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: Page size. Defaults to 50 and is capped at 200.
+          schema:
+            type: integer
+            default: 50
+            minimum: 1
+            maximum: 200
+      responses:
+        "200":
+          description: Paginated list of failure review items
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListRunFailuresResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
   /v1/runs/{runID}/events/stream:
     get:
       operationId: streamRunEvents
@@ -1941,6 +2017,7 @@ paths:
         headers). Returns a stream of run events as they are recorded.
         When Redis is not configured, returns 503 Service Unavailable.
         Clients should fall back to polling in that case.
+      security: []
       parameters:
         - $ref: "#/components/parameters/RunID"
         - name: token
@@ -1970,7 +2047,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/ErrorEnvelope"
 
   /v1/workspaces/{workspaceID}/runs:
     get:
@@ -4486,6 +4563,200 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/RunAgent"
+
+    FailureReviewFailureState:
+      type: string
+      enum: [failed, warning, flaky, incomplete_evidence]
+
+    FailureReviewFailureClass:
+      type: string
+      enum:
+        - incorrect_final_output
+        - tool_selection_error
+        - tool_argument_error
+        - retrieval_grounding_failure
+        - policy_violation
+        - timeout_or_budget_exhaustion
+        - sandbox_failure
+        - malformed_output
+        - flaky_non_deterministic
+        - insufficient_evidence
+        - other
+
+    FailureReviewEvidenceTier:
+      type: string
+      enum: [none, native_structured, hosted_structured, hosted_black_box, derived_summary]
+
+    FailureReviewPromotionMode:
+      type: string
+      enum: [full_executable, output_only]
+
+    FailureReviewReplayStepRef:
+      type: object
+      required: [sequence_number, event_type, kind]
+      properties:
+        sequence_number:
+          type: integer
+          format: int64
+        event_type:
+          type: string
+        kind:
+          type: string
+
+    FailureReviewArtifactRef:
+      type: object
+      required: [key]
+      properties:
+        key:
+          type: string
+        kind:
+          type: string
+        path:
+          type: string
+        media_type:
+          type: string
+
+    FailureReviewJudgeRef:
+      type: object
+      required: [key, kind]
+      properties:
+        key:
+          type: string
+        kind:
+          type: string
+        verdict:
+          type: string
+        state:
+          type: string
+        normalized_score:
+          type: number
+          format: double
+        reason:
+          type: string
+        sequence_number:
+          type: integer
+          format: int64
+        event_type:
+          type: string
+
+    FailureReviewMetricRef:
+      type: object
+      required: [key, metric_type]
+      properties:
+        key:
+          type: string
+        metric_type:
+          type: string
+        state:
+          type: string
+        reason:
+          type: string
+        numeric_value:
+          type: number
+          format: double
+        text_value:
+          type: string
+        boolean_value:
+          type: boolean
+        unit:
+          type: string
+
+    FailureReviewItem:
+      type: object
+      required:
+        - run_id
+        - run_agent_id
+        - challenge_key
+        - case_key
+        - item_key
+        - failure_state
+        - failed_dimensions
+        - failed_checks
+        - failure_class
+        - headline
+        - detail
+        - recommended_action
+        - promotable
+        - promotion_mode_available
+        - replay_step_refs
+        - artifact_refs
+        - judge_refs
+        - metric_refs
+        - evidence_tier
+        - severity
+      properties:
+        run_id:
+          type: string
+          format: uuid
+        run_agent_id:
+          type: string
+          format: uuid
+        challenge_identity_id:
+          type: string
+          format: uuid
+        challenge_key:
+          type: string
+        case_key:
+          type: string
+        item_key:
+          type: string
+        failure_state:
+          $ref: "#/components/schemas/FailureReviewFailureState"
+        failed_dimensions:
+          type: array
+          items:
+            type: string
+        failed_checks:
+          type: array
+          items:
+            type: string
+        failure_class:
+          $ref: "#/components/schemas/FailureReviewFailureClass"
+        headline:
+          type: string
+        detail:
+          type: string
+        recommended_action:
+          type: string
+        promotable:
+          type: boolean
+        promotion_mode_available:
+          type: array
+          items:
+            $ref: "#/components/schemas/FailureReviewPromotionMode"
+        replay_step_refs:
+          type: array
+          items:
+            $ref: "#/components/schemas/FailureReviewReplayStepRef"
+        artifact_refs:
+          type: array
+          items:
+            $ref: "#/components/schemas/FailureReviewArtifactRef"
+        judge_refs:
+          type: array
+          items:
+            $ref: "#/components/schemas/FailureReviewJudgeRef"
+        metric_refs:
+          type: array
+          items:
+            $ref: "#/components/schemas/FailureReviewMetricRef"
+        evidence_tier:
+          $ref: "#/components/schemas/FailureReviewEvidenceTier"
+        severity:
+          type: string
+          enum: [info, warning, blocking]
+
+    ListRunFailuresResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/FailureReviewItem"
+        next_cursor:
+          type: string
+          description: Opaque base64url-encoded pagination cursor.
 
     ListRunsResponse:
       type: object

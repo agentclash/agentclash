@@ -66,6 +66,9 @@ func registerProtectedRoutes(
 	router.Get("/runs/{runID}", getRunHandler(logger, runReadService))
 	router.Get("/runs/{runID}/ranking", getRunRankingHandler(logger, runReadService))
 	router.Get("/runs/{runID}/agents", listRunAgentsHandler(logger, runReadService))
+	// This workspace-scoped URL also resolves authz in the manager after loading the run
+	// so cross-workspace requests return 404 instead of leaking run existence via middleware.
+	router.Get("/workspaces/{workspaceID}/runs/{runID}/failures", listRunFailuresHandler(logger, runReadService))
 	router.Get("/compare", getRunComparisonHandler(logger, compareReadService))
 	router.Get("/compare/viewer", getRunComparisonViewerHandler(logger))
 	router.Get("/release-gates", listReleaseGatesHandler(logger, releaseGateService))

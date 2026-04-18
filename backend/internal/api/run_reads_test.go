@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/domain"
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/failurereview"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
 	"github.com/google/uuid"
 )
@@ -359,9 +360,11 @@ type fakeRunReadRepository struct {
 	run                domain.Run
 	runScorecard       repository.RunScorecard
 	runAgents          []domain.RunAgent
+	failureItems       []failurereview.Item
 	getRunErr          error
 	getRunScorecardErr error
 	listRunAgentsErr   error
+	listRunFailuresErr error
 }
 
 func (f *fakeRunReadRepository) GetRunByID(_ context.Context, _ uuid.UUID) (domain.Run, error) {
@@ -374,6 +377,10 @@ func (f *fakeRunReadRepository) GetRunScorecardByRunID(_ context.Context, _ uuid
 
 func (f *fakeRunReadRepository) ListRunAgentsByRunID(_ context.Context, _ uuid.UUID) ([]domain.RunAgent, error) {
 	return f.runAgents, f.listRunAgentsErr
+}
+
+func (f *fakeRunReadRepository) ListRunFailureReviewItems(_ context.Context, _ uuid.UUID, _ *uuid.UUID) ([]failurereview.Item, error) {
+	return f.failureItems, f.listRunFailuresErr
 }
 
 func (f *fakeRunReadRepository) ListRunsByWorkspaceID(_ context.Context, _ uuid.UUID, _ int32, _ int32) ([]domain.Run, error) {
@@ -391,6 +398,8 @@ type fakeRunReadService struct {
 	getRunRankingErr    error
 	listRunAgentsResult ListRunAgentsResult
 	listRunAgentsErr    error
+	listRunFailuresResult ListRunFailuresResult
+	listRunFailuresErr    error
 }
 
 func (f *fakeRunReadService) GetRun(_ context.Context, _ Caller, _ uuid.UUID) (GetRunResult, error) {
@@ -403,6 +412,10 @@ func (f *fakeRunReadService) GetRunRanking(_ context.Context, _ Caller, _ uuid.U
 
 func (f *fakeRunReadService) ListRunAgents(_ context.Context, _ Caller, _ uuid.UUID) (ListRunAgentsResult, error) {
 	return f.listRunAgentsResult, f.listRunAgentsErr
+}
+
+func (f *fakeRunReadService) ListRunFailures(_ context.Context, _ Caller, _ ListRunFailuresInput) (ListRunFailuresResult, error) {
+	return f.listRunFailuresResult, f.listRunFailuresErr
 }
 
 func (f *fakeRunReadService) ListRuns(_ context.Context, _ Caller, _ ListRunsInput) (ListRunsResult, error) {

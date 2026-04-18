@@ -34,6 +34,10 @@ func (stubRunReadService) ListRunAgents(_ context.Context, _ Caller, _ uuid.UUID
 	return ListRunAgentsResult{}, errors.New("not implemented")
 }
 
+func (stubRunReadService) ListRunFailures(_ context.Context, _ Caller, _ ListRunFailuresInput) (ListRunFailuresResult, error) {
+	return ListRunFailuresResult{}, errors.New("not implemented")
+}
+
 func (stubRunReadService) ListRuns(_ context.Context, _ Caller, _ ListRunsInput) (ListRunsResult, error) {
 	return ListRunsResult{}, errors.New("not implemented")
 }
