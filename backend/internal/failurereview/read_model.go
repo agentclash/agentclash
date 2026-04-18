@@ -65,7 +65,7 @@ type Item struct {
 	MetricRefs             []MetricRef      `json:"metric_refs"`
 	EvidenceTier           EvidenceTier     `json:"evidence_tier"`
 	Severity               Severity         `json:"-"`
-	sortKey                itemSortKey      `json:"-"`
+	sortKey                CursorKey        `json:"-"`
 }
 
 type ReplayStepRef struct {
@@ -167,12 +167,12 @@ type Event struct {
 	Payload        json.RawMessage
 }
 
-type itemSortKey struct {
-	RunAgentID  string
-	ChallengeID string
+type CursorKey struct {
+	RunAgentID   string
+	ChallengeID  string
 	ChallengeKey string
-	CaseKey     string
-	ItemKey     string
+	CaseKey      string
+	ItemKey      string
 }
 
 func BuildRunAgentItems(input RunAgentInput) ([]Item, error) {
@@ -269,34 +269,39 @@ func FilterItems(items []Item, agentID *uuid.UUID, severity *Severity, failureCl
 	return filtered
 }
 
-func PaginateItems(items []Item, after *itemSortKey, limit int) ([]Item, *itemSortKey) {
+func PaginateItems(items []Item, after *CursorKey, limit int) ([]Item, *CursorKey) {
+	ordered := append([]Item(nil), items...)
+	sort.SliceStable(ordered, func(i, j int) bool {
+		return compareSortKeys(ordered[i].sortKey, ordered[j].sortKey) < 0
+	})
+
 	start := 0
 	if after != nil {
-		for i := range items {
-			if compareSortKeys(items[i].sortKey, *after) > 0 {
+		for i := range ordered {
+			if compareSortKeys(ordered[i].sortKey, *after) > 0 {
 				start = i
 				break
 			}
-			start = len(items)
+			start = len(ordered)
 		}
 	}
-	if start >= len(items) {
+	if start >= len(ordered) {
 		return []Item{}, nil
 	}
 
 	end := start + limit
-	if end > len(items) {
-		end = len(items)
+	if end > len(ordered) {
+		end = len(ordered)
 	}
-	page := append([]Item(nil), items[start:end]...)
-	if end >= len(items) {
+	page := append([]Item(nil), ordered[start:end]...)
+	if end >= len(ordered) {
 		return page, nil
 	}
-	next := items[end-1].sortKey
+	next := ordered[end-1].sortKey
 	return page, &next
 }
 
-func EncodeCursor(key itemSortKey) (string, error) {
+func EncodeCursor(key CursorKey) (string, error) {
 	encoded, err := json.Marshal(key)
 	if err != nil {
 		return "", err
@@ -304,10 +309,10 @@ func EncodeCursor(key itemSortKey) (string, error) {
 	return string(encoded), nil
 }
 
-func DecodeCursor(raw string) (itemSortKey, error) {
-	var key itemSortKey
+func DecodeCursor(raw string) (CursorKey, error) {
+	var key CursorKey
 	if err := json.Unmarshal([]byte(raw), &key); err != nil {
-		return itemSortKey{}, fmt.Errorf("decode cursor: %w", err)
+		return CursorKey{}, fmt.Errorf("decode cursor: %w", err)
 	}
 	return key, nil
 }
@@ -465,21 +470,21 @@ func finalizeGroup(group *itemGroup, input RunAgentInput, scorecard scorecardDoc
 		CaseKey:                group.Case.CaseKey,
 		ItemKey:                group.Case.ItemKey,
 		FailureState:           failureState,
-		FailedDimensions:       failedDimensions,
-		FailedChecks:           append([]string(nil), group.FailedChecks...),
+		FailedDimensions:       append([]string{}, failedDimensions...),
+		FailedChecks:           append([]string{}, group.FailedChecks...),
 		FailureClass:           failureClass,
 		Headline:               headline,
 		Detail:                 detail,
 		RecommendedAction:      recommendedAction,
 		Promotable:             promotable,
-		PromotionModeAvailable: promotionModes,
-		ReplayStepRefs:         append([]ReplayStepRef(nil), group.ReplayStepRefs...),
+		PromotionModeAvailable: append([]PromotionMode{}, promotionModes...),
+		ReplayStepRefs:         append([]ReplayStepRef{}, group.ReplayStepRefs...),
 		ArtifactRefs:           buildArtifactRefs(group.Case.Artifacts),
-		JudgeRefs:              judgeRefs,
-		MetricRefs:             append([]MetricRef(nil), group.MetricRefs...),
+		JudgeRefs:              append([]JudgeRef{}, judgeRefs...),
+		MetricRefs:             append([]MetricRef{}, group.MetricRefs...),
 		EvidenceTier:           evidenceTier,
 		Severity:               severityFor(failureClass, failureState),
-		sortKey: itemSortKey{
+		sortKey: CursorKey{
 			RunAgentID:   input.RunAgentID.String(),
 			ChallengeID:  uuidString(group.ChallengeID),
 			ChallengeKey: group.Case.ChallengeKey,
@@ -719,7 +724,7 @@ func finalOutputReplayRef(events []Event) *ReplayStepRef {
 
 func buildArtifactRefs(artifacts []ArtifactContext) []ArtifactRef {
 	if len(artifacts) == 0 {
-		return nil
+		return []ArtifactRef{}
 	}
 	refs := make([]ArtifactRef, 0, len(artifacts))
 	for _, artifact := range artifacts {
@@ -773,7 +778,7 @@ func dedupReplayRefs(values *[]ReplayStepRef) {
 	*values = filtered
 }
 
-func compareSortKeys(left, right itemSortKey) int {
+func compareSortKeys(left, right CursorKey) int {
 	switch {
 	case left.RunAgentID != right.RunAgentID:
 		return strings.Compare(left.RunAgentID, right.RunAgentID)
@@ -790,6 +795,10 @@ func compareSortKeys(left, right itemSortKey) int {
 
 func lowerPayload(payload json.RawMessage) string {
 	return strings.ToLower(strings.TrimSpace(string(payload)))
+}
+
+func CursorForItem(item Item) CursorKey {
+	return item.sortKey
 }
 
 func firstNonEmpty(values ...string) string {

@@ -176,6 +176,79 @@ func TestBuildRunAgentItemsHandlesHostedBlackBoxEligibility(t *testing.T) {
 	}
 }
 
+func TestAssembleFailureReviewItemBuildsRefsAndFailedChecks(t *testing.T) {
+	t.Parallel()
+
+	runID := uuid.New()
+	runAgentID := uuid.New()
+	challengeID := uuid.New()
+	verdict := "fail"
+
+	items, err := BuildRunAgentItems(RunAgentInput{
+		RunID:               runID,
+		RunStatus:           "completed",
+		RunAgentID:          runAgentID,
+		DeploymentType:      "native",
+		ChallengePackStatus: "runnable",
+		Cases: []CaseContext{
+			{
+				ChallengeIdentityID: challengeID,
+				ChallengeKey:        "ticket-3",
+				CaseKey:             "case-c",
+				ItemKey:             "prompt.txt",
+			},
+		},
+		Scorecard: mustJSON(t, map[string]any{
+			"dimensions": map[string]any{
+				"correctness": map[string]any{"state": "available", "score": 0.2},
+			},
+			"validator_details": []any{
+				map[string]any{
+					"key":     "tool_argument.schema",
+					"type":    "json_schema",
+					"verdict": "fail",
+					"state":   "available",
+					"source": map[string]any{
+						"kind":       "final_output",
+						"sequence":   7,
+						"event_type": "system.output.finalized",
+					},
+				},
+			},
+		}),
+		JudgeResults: []JudgeResult{
+			{
+				ChallengeIdentityID: &challengeID,
+				Key:                 "tool_argument.schema",
+				Verdict:             &verdict,
+			},
+		},
+		Events: []Event{
+			{SequenceNumber: 7, EventType: "system.output.finalized", Payload: mustJSON(t, map[string]any{"final_output": "oops"})},
+		},
+	})
+	if err != nil {
+		t.Fatalf("BuildRunAgentItems returned error: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("item count = %d, want 1", len(items))
+	}
+
+	item := items[0]
+	if len(item.FailedChecks) != 1 || item.FailedChecks[0] != "tool_argument.schema" {
+		t.Fatalf("failed checks = %#v, want tool_argument.schema", item.FailedChecks)
+	}
+	if len(item.ReplayStepRefs) != 1 || item.ReplayStepRefs[0].SequenceNumber != 7 {
+		t.Fatalf("replay refs = %#v, want finalized-output ref", item.ReplayStepRefs)
+	}
+	if item.ArtifactRefs == nil {
+		t.Fatal("artifact refs = nil, want empty slice for stable JSON arrays")
+	}
+	if item.MetricRefs == nil {
+		t.Fatal("metric refs = nil, want empty slice for stable JSON arrays")
+	}
+}
+
 func mustJSON(t *testing.T, value any) json.RawMessage {
 	t.Helper()
 	encoded, err := json.Marshal(value)

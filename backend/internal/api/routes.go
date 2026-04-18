@@ -66,6 +66,7 @@ func registerProtectedRoutes(
 	router.Get("/runs/{runID}", getRunHandler(logger, runReadService))
 	router.Get("/runs/{runID}/ranking", getRunRankingHandler(logger, runReadService))
 	router.Get("/runs/{runID}/agents", listRunAgentsHandler(logger, runReadService))
+	router.Get("/workspaces/{workspaceID}/runs/{runID}/failures", listRunFailuresHandler(logger, runReadService))
 	router.Get("/compare", getRunComparisonHandler(logger, compareReadService))
 	router.Get("/compare/viewer", getRunComparisonViewerHandler(logger))
 	router.Get("/release-gates", listReleaseGatesHandler(logger, releaseGateService))

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/domain"
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/failurereview"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -19,6 +20,7 @@ type RunReadRepository interface {
 	GetRunByID(ctx context.Context, id uuid.UUID) (domain.Run, error)
 	GetRunScorecardByRunID(ctx context.Context, runID uuid.UUID) (repository.RunScorecard, error)
 	ListRunAgentsByRunID(ctx context.Context, runID uuid.UUID) ([]domain.RunAgent, error)
+	ListRunFailureReviewItems(ctx context.Context, runID uuid.UUID, agentID *uuid.UUID) ([]failurereview.Item, error)
 	ListRunsByWorkspaceID(ctx context.Context, workspaceID uuid.UUID, limit int32, offset int32) ([]domain.Run, error)
 	CountRunsByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) (int64, error)
 }
@@ -27,6 +29,7 @@ type RunReadService interface {
 	GetRun(ctx context.Context, caller Caller, runID uuid.UUID) (GetRunResult, error)
 	GetRunRanking(ctx context.Context, caller Caller, runID uuid.UUID, input GetRunRankingInput) (GetRunRankingResult, error)
 	ListRunAgents(ctx context.Context, caller Caller, runID uuid.UUID) (ListRunAgentsResult, error)
+	ListRunFailures(ctx context.Context, caller Caller, input ListRunFailuresInput) (ListRunFailuresResult, error)
 	ListRuns(ctx context.Context, caller Caller, input ListRunsInput) (ListRunsResult, error)
 }
 
