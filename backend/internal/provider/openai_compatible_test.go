@@ -333,6 +333,11 @@ func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) {
 
 func assertStreamingRequest(t *testing.T, r *http.Request) {
 	t.Helper()
+	assertStreamingRequestWithModel(t, r, "gpt-4.1")
+}
+
+func assertStreamingRequestWithModel(t *testing.T, r *http.Request, expectedModel string) {
+	t.Helper()
 
 	if got := r.Header.Get("Authorization"); got != "Bearer test-key" {
 		t.Fatalf("authorization header = %q, want bearer token", got)
@@ -366,8 +371,8 @@ func assertStreamingRequest(t *testing.T, r *http.Request) {
 	if err := json.Unmarshal(body, &payload); err != nil {
 		t.Fatalf("unmarshal request body: %v", err)
 	}
-	if payload.Model != "gpt-4.1" {
-		t.Fatalf("model = %q, want gpt-4.1", payload.Model)
+	if payload.Model != expectedModel {
+		t.Fatalf("model = %q, want %s", payload.Model, expectedModel)
 	}
 	if !payload.Stream {
 		t.Fatalf("expected stream=true request")
