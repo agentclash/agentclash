@@ -170,9 +170,10 @@ func TestReleaseGateManagerEvaluatePersistsRegressionViolations(t *testing.T) {
 		},
 		regressionCases: map[uuid.UUID]repository.RegressionCase{
 			regressionCaseID: {
-				ID:       regressionCaseID,
-				SuiteID:  suiteID,
-				Severity: domain.RegressionSeverityBlocking,
+				ID:          regressionCaseID,
+				WorkspaceID: workspaceID,
+				SuiteID:     suiteID,
+				Severity:    domain.RegressionSeverityBlocking,
 				LatestPromotion: &repository.RegressionPromotion{
 					SourceEventRefs: mustJSON(t, []map[string]any{{
 						"sequence_number": 99,
@@ -333,9 +334,10 @@ func TestReleaseGateManagerEvaluateWarnsWhenBaselineRegressionEvidenceMissing(t 
 		},
 		regressionCases: map[uuid.UUID]repository.RegressionCase{
 			regressionCaseID: {
-				ID:       regressionCaseID,
-				SuiteID:  suiteID,
-				Severity: domain.RegressionSeverityBlocking,
+				ID:          regressionCaseID,
+				WorkspaceID: workspaceID,
+				SuiteID:     suiteID,
+				Severity:    domain.RegressionSeverityBlocking,
 			},
 		},
 		upsertedRecord: repository.RunComparisonReleaseGate{
@@ -375,6 +377,211 @@ func TestReleaseGateManagerEvaluateWarnsWhenBaselineRegressionEvidenceMissing(t 
 	}
 	if len(details.Warnings) == 0 {
 		t.Fatal("expected warning when baseline regression evidence is unavailable")
+	}
+	if got := len(details.Warnings); got != 1 {
+		t.Fatalf("warning count = %d, want 1", got)
+	}
+	if got := len(details.RegressionViolations); got != 0 {
+		t.Fatalf("regression violation count = %d, want 0", got)
+	}
+}
+
+func TestReleaseGateManagerEvaluateReturnsInsufficientEvidenceWhenCandidateRegressionEvidenceMissing(t *testing.T) {
+	workspaceID := uuid.New()
+	baselineRunID := uuid.New()
+	candidateRunID := uuid.New()
+	baselineRunAgentID := uuid.New()
+	candidateRunAgentID := uuid.New()
+	evaluationSpecID := uuid.New()
+
+	manager := NewReleaseGateManager(NewCallerWorkspaceAuthorizer(), &fakeReleaseGateRepository{
+		runs: map[uuid.UUID]domain.Run{
+			baselineRunID:  {ID: baselineRunID, WorkspaceID: workspaceID},
+			candidateRunID: {ID: candidateRunID, WorkspaceID: workspaceID},
+		},
+		comparison: repository.RunComparison{
+			ID:             uuid.New(),
+			BaselineRunID:  baselineRunID,
+			CandidateRunID: candidateRunID,
+			Summary: mustJSON(t, map[string]any{
+				"status": "comparable",
+				"baseline_refs": map[string]any{
+					"run_id":             baselineRunID.String(),
+					"run_agent_id":       baselineRunAgentID.String(),
+					"evaluation_spec_id": evaluationSpecID.String(),
+				},
+				"candidate_refs": map[string]any{
+					"run_id":             candidateRunID.String(),
+					"run_agent_id":       candidateRunAgentID.String(),
+					"evaluation_spec_id": evaluationSpecID.String(),
+				},
+				"dimension_deltas": map[string]any{
+					"correctness": map[string]any{"delta": 0.0, "better_direction": "higher", "state": "available"},
+				},
+				"failure_divergence":        map[string]any{"candidate_failed_baseline_succeeded": false, "both_failed_differently": false},
+				"replay_summary_divergence": map[string]any{"state": "available"},
+				"evidence_quality":          map[string]any{},
+			}),
+		},
+		scorecards: map[uuid.UUID]repository.RunAgentScorecard{
+			baselineRunAgentID: {
+				RunAgentID: baselineRunAgentID, EvaluationSpecID: evaluationSpecID, Scorecard: mustJSON(t, map[string]any{
+					"validator_details": []any{},
+					"metric_details":    []any{},
+				}),
+			},
+		},
+		upsertedRecord: repository.RunComparisonReleaseGate{
+			ID:        uuid.New(),
+			CreatedAt: time.Date(2026, 4, 3, 10, 0, 0, 0, time.UTC),
+			UpdatedAt: time.Date(2026, 4, 3, 10, 0, 0, 0, time.UTC),
+		},
+	})
+
+	result, err := manager.EvaluateReleaseGate(context.Background(), authorizedCaller(workspaceID), EvaluateReleaseGateInput{
+		BaselineRunID:  baselineRunID,
+		CandidateRunID: candidateRunID,
+		Policy: releasegate.Policy{
+			PolicyKey:              "default",
+			PolicyVersion:          1,
+			RequireComparable:      true,
+			RequireEvidenceQuality: true,
+			RequiredDimensions:     []string{"correctness"},
+			Dimensions: map[string]releasegate.DimensionThreshold{
+				"correctness": {WarnDelta: floatPtr(0.02), FailDelta: floatPtr(0.05)},
+			},
+			RegressionGateRules: &releasegate.RegressionGateRules{
+				NoBlockingRegressionFailure: true,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("EvaluateReleaseGate returned error: %v", err)
+	}
+	if result.ReleaseGate.Verdict != string(releasegate.VerdictInsufficientEvidence) {
+		t.Fatalf("verdict = %q, want %q", result.ReleaseGate.Verdict, releasegate.VerdictInsufficientEvidence)
+	}
+	if result.ReleaseGate.ReasonCode != "regression_candidate_evidence_missing" {
+		t.Fatalf("reason code = %q, want regression_candidate_evidence_missing", result.ReleaseGate.ReasonCode)
+	}
+
+	var details releasegate.EvaluationDetails
+	if err := json.Unmarshal(result.ReleaseGate.EvaluationDetails, &details); err != nil {
+		t.Fatalf("json.Unmarshal evaluation details returned error: %v", err)
+	}
+	if got := len(details.TriggeredConditions); got != 1 {
+		t.Fatalf("triggered condition count = %d, want 1", got)
+	}
+	if details.TriggeredConditions[0] != "regression_candidate_evidence_missing" {
+		t.Fatalf("triggered condition = %q, want regression_candidate_evidence_missing", details.TriggeredConditions[0])
+	}
+}
+
+func TestReleaseGateManagerEvaluateRejectsCrossWorkspaceRegressionCaseEvidence(t *testing.T) {
+	workspaceID := uuid.New()
+	foreignWorkspaceID := uuid.New()
+	baselineRunID := uuid.New()
+	candidateRunID := uuid.New()
+	baselineRunAgentID := uuid.New()
+	candidateRunAgentID := uuid.New()
+	evaluationSpecID := uuid.New()
+	regressionCaseID := uuid.New()
+
+	manager := NewReleaseGateManager(NewCallerWorkspaceAuthorizer(), &fakeReleaseGateRepository{
+		runs: map[uuid.UUID]domain.Run{
+			baselineRunID:  {ID: baselineRunID, WorkspaceID: workspaceID},
+			candidateRunID: {ID: candidateRunID, WorkspaceID: workspaceID},
+		},
+		comparison: repository.RunComparison{
+			ID:             uuid.New(),
+			BaselineRunID:  baselineRunID,
+			CandidateRunID: candidateRunID,
+			Summary: mustJSON(t, map[string]any{
+				"status": "comparable",
+				"baseline_refs": map[string]any{
+					"run_id":             baselineRunID.String(),
+					"run_agent_id":       baselineRunAgentID.String(),
+					"evaluation_spec_id": evaluationSpecID.String(),
+				},
+				"candidate_refs": map[string]any{
+					"run_id":             candidateRunID.String(),
+					"run_agent_id":       candidateRunAgentID.String(),
+					"evaluation_spec_id": evaluationSpecID.String(),
+				},
+				"dimension_deltas": map[string]any{
+					"correctness": map[string]any{"delta": 0.0, "better_direction": "higher", "state": "available"},
+				},
+				"failure_divergence":        map[string]any{"candidate_failed_baseline_succeeded": false, "both_failed_differently": false},
+				"replay_summary_divergence": map[string]any{"state": "available"},
+				"evidence_quality":          map[string]any{},
+			}),
+		},
+		scorecards: map[uuid.UUID]repository.RunAgentScorecard{
+			candidateRunAgentID: {RunAgentID: candidateRunAgentID, EvaluationSpecID: evaluationSpecID, Scorecard: mustJSON(t, map[string]any{
+				"validator_details": []any{
+					map[string]any{"key": "foreign_check", "state": "available", "regression_case_id": regressionCaseID.String()},
+				},
+				"metric_details": []any{},
+			})},
+			baselineRunAgentID: {RunAgentID: baselineRunAgentID, EvaluationSpecID: evaluationSpecID, Scorecard: mustJSON(t, map[string]any{
+				"validator_details": []any{},
+				"metric_details":    []any{},
+			})},
+		},
+		judgeResults: map[string][]repository.JudgeResultRecord{
+			fakeReleaseGateResultsKey(candidateRunAgentID, evaluationSpecID): {
+				{
+					ID:               uuid.New(),
+					RunAgentID:       candidateRunAgentID,
+					EvaluationSpecID: evaluationSpecID,
+					RegressionCaseID: &regressionCaseID,
+					JudgeKey:         "foreign_check",
+					Verdict:          rgStringPtr("fail"),
+				},
+			},
+		},
+		regressionCases: map[uuid.UUID]repository.RegressionCase{
+			regressionCaseID: {
+				ID:          regressionCaseID,
+				WorkspaceID: foreignWorkspaceID,
+				SuiteID:     uuid.New(),
+				Severity:    domain.RegressionSeverityBlocking,
+			},
+		},
+		upsertedRecord: repository.RunComparisonReleaseGate{
+			ID:        uuid.New(),
+			CreatedAt: time.Date(2026, 4, 3, 10, 0, 0, 0, time.UTC),
+			UpdatedAt: time.Date(2026, 4, 3, 10, 0, 0, 0, time.UTC),
+		},
+	})
+
+	result, err := manager.EvaluateReleaseGate(context.Background(), authorizedCaller(workspaceID), EvaluateReleaseGateInput{
+		BaselineRunID:  baselineRunID,
+		CandidateRunID: candidateRunID,
+		Policy: releasegate.Policy{
+			PolicyKey:              "default",
+			PolicyVersion:          1,
+			RequireComparable:      true,
+			RequireEvidenceQuality: true,
+			RequiredDimensions:     []string{"correctness"},
+			Dimensions: map[string]releasegate.DimensionThreshold{
+				"correctness": {WarnDelta: floatPtr(0.02), FailDelta: floatPtr(0.05)},
+			},
+			RegressionGateRules: &releasegate.RegressionGateRules{
+				NoBlockingRegressionFailure: true,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("EvaluateReleaseGate returned error: %v", err)
+	}
+	if result.ReleaseGate.Verdict != string(releasegate.VerdictInsufficientEvidence) {
+		t.Fatalf("verdict = %q, want %q", result.ReleaseGate.Verdict, releasegate.VerdictInsufficientEvidence)
+	}
+
+	var details releasegate.EvaluationDetails
+	if err := json.Unmarshal(result.ReleaseGate.EvaluationDetails, &details); err != nil {
+		t.Fatalf("json.Unmarshal evaluation details returned error: %v", err)
 	}
 	if got := len(details.RegressionViolations); got != 0 {
 		t.Fatalf("regression violation count = %d, want 0", got)
@@ -456,8 +663,8 @@ func TestReleaseGateManagerEvaluateScopesRegressionRulesToSelectedSuites(t *test
 			},
 		},
 		regressionCases: map[uuid.UUID]repository.RegressionCase{
-			allowedCaseID: {ID: allowedCaseID, SuiteID: allowedSuiteID, Severity: domain.RegressionSeverityBlocking},
-			blockedCaseID: {ID: blockedCaseID, SuiteID: blockedSuiteID, Severity: domain.RegressionSeverityBlocking},
+			allowedCaseID: {ID: allowedCaseID, WorkspaceID: workspaceID, SuiteID: allowedSuiteID, Severity: domain.RegressionSeverityBlocking},
+			blockedCaseID: {ID: blockedCaseID, WorkspaceID: workspaceID, SuiteID: blockedSuiteID, Severity: domain.RegressionSeverityBlocking},
 		},
 		upsertedRecord: repository.RunComparisonReleaseGate{
 			ID:        uuid.New(),

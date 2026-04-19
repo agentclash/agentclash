@@ -42,82 +42,101 @@ type regressionDetailKey struct {
 	Key    string
 }
 
+const (
+	regressionCandidateEvidenceMissingCondition = "regression_candidate_evidence_missing"
+	regressionCandidateEvidenceMissingReason    = "regression_candidate_evidence_missing"
+)
+
+var errRegressionCaseWorkspaceMismatch = errors.New("regression case workspace mismatch")
+
 func (m *ReleaseGateManager) evaluateRegressionRules(
 	ctx context.Context,
 	summary releasegate.ComparisonSummary,
+	workspaceID uuid.UUID,
 	rules *releasegate.RegressionGateRules,
 ) (releasegate.RegressionGateOutcome, error) {
 	if rules == nil {
 		return releasegate.RegressionGateOutcome{Verdict: releasegate.VerdictPass}, nil
 	}
 
-	candidateCases, candidateWarning, err := m.loadRegressionCaseEvaluations(
+	candidateCases, candidateEvidenceMissing, candidateMessage, err := m.loadRegressionCaseEvaluations(
 		ctx,
+		workspaceID,
 		summary.CandidateRefs.RunAgentID,
 		summary.CandidateRefs.EvaluationSpecID,
 	)
 	if err != nil {
 		return releasegate.RegressionGateOutcome{}, err
 	}
-	if candidateWarning != "" {
+	if candidateEvidenceMissing {
 		return releasegate.RegressionGateOutcome{
-			Verdict:  releasegate.VerdictPass,
-			Warnings: []string{candidateWarning},
+			Verdict:             releasegate.VerdictInsufficientEvidence,
+			ReasonCode:          regressionCandidateEvidenceMissingReason,
+			Summary:             "release gate regression evidence is incomplete for the candidate run",
+			Warnings:            []string{candidateMessage},
+			TriggeredConditions: []string{regressionCandidateEvidenceMissingCondition},
 		}, nil
 	}
 
 	baselineCases := []releasegate.RegressionCaseEvaluation(nil)
 	baselineWarnings := make([]string, 0, 1)
-	if rules.NoNewBlockingFailureVsBaseline {
-		var baselineWarning string
-		baselineCases, baselineWarning, err = m.loadRegressionCaseEvaluations(
+	effectiveRules := cloneRegressionGateRules(rules)
+	if effectiveRules.NoNewBlockingFailureVsBaseline {
+		var baselineEvidenceMissing bool
+		var baselineMessage string
+		baselineCases, baselineEvidenceMissing, baselineMessage, err = m.loadRegressionCaseEvaluations(
 			ctx,
+			workspaceID,
 			summary.BaselineRefs.RunAgentID,
 			summary.BaselineRefs.EvaluationSpecID,
 		)
 		if err != nil {
 			return releasegate.RegressionGateOutcome{}, err
 		}
-		if baselineWarning != "" {
-			baselineWarnings = append(baselineWarnings, baselineWarning)
+		if baselineEvidenceMissing {
+			effectiveRules.NoNewBlockingFailureVsBaseline = false
+			baselineWarnings = append(baselineWarnings, baselineMessage)
 		}
 	}
 
-	outcome := releasegate.EvaluateRegressionGateRules(candidateCases, baselineCases, rules)
+	outcome := releasegate.EvaluateRegressionGateRules(candidateCases, baselineCases, effectiveRules)
 	outcome.Warnings = append(outcome.Warnings, baselineWarnings...)
 	return outcome, nil
 }
 
 func (m *ReleaseGateManager) loadRegressionCaseEvaluations(
 	ctx context.Context,
+	workspaceID uuid.UUID,
 	runAgentID *uuid.UUID,
 	evaluationSpecID *uuid.UUID,
-) ([]releasegate.RegressionCaseEvaluation, string, error) {
+) ([]releasegate.RegressionCaseEvaluation, bool, string, error) {
 	if runAgentID == nil || evaluationSpecID == nil {
-		return nil, "regression scoring evidence unavailable for the selected comparison participant; skipped regression gate rules", nil
+		return nil, true, "regression scoring evidence unavailable for the selected comparison participant; skipped regression gate rules", nil
 	}
 
 	scorecard, err := m.repo.GetRunAgentScorecardByRunAgentID(ctx, *runAgentID)
 	if err != nil {
 		if errors.Is(err, repository.ErrRunAgentScorecardNotFound) {
-			return nil, "regression scoring evidence unavailable for the selected comparison participant; skipped regression gate rules", nil
+			return nil, true, "regression scoring evidence unavailable for the selected comparison participant; skipped regression gate rules", nil
 		}
-		return nil, "", fmt.Errorf("load run-agent scorecard %s: %w", *runAgentID, err)
+		return nil, false, "", fmt.Errorf("load run-agent scorecard %s: %w", *runAgentID, err)
 	}
 
 	document, err := decodeRegressionScorecardDocument(scorecard.Scorecard)
 	if err != nil {
-		return nil, "", fmt.Errorf("decode run-agent scorecard %s: %w", *runAgentID, err)
+		return nil, false, "", fmt.Errorf("decode run-agent scorecard %s: %w", *runAgentID, err)
 	}
 
 	judgeResults, err := m.repo.ListJudgeResultsByRunAgentAndEvaluationSpec(ctx, *runAgentID, *evaluationSpecID)
 	if err != nil {
-		return nil, "", fmt.Errorf("list judge results %s: %w", *runAgentID, err)
+		return nil, false, "", fmt.Errorf("list judge results %s: %w", *runAgentID, err)
 	}
 	metricResults, err := m.repo.ListMetricResultsByRunAgentAndEvaluationSpec(ctx, *runAgentID, *evaluationSpecID)
 	if err != nil {
-		return nil, "", fmt.Errorf("list metric results %s: %w", *runAgentID, err)
+		return nil, false, "", fmt.Errorf("list metric results %s: %w", *runAgentID, err)
 	}
+	sortJudgeResults(judgeResults)
+	sortMetricResults(metricResults)
 
 	validatorDetails := make(map[regressionDetailKey]regressionValidatorDetail, len(document.ValidatorDetails))
 	for _, detail := range document.ValidatorDetails {
@@ -150,6 +169,9 @@ func (m *ReleaseGateManager) loadRegressionCaseEvaluations(
 			if loadErr != nil {
 				return nil, fmt.Errorf("load regression case %s: %w", caseID, loadErr)
 			}
+			if regressionCase.WorkspaceID != workspaceID {
+				return nil, fmt.Errorf("%w: regression case %s belongs to workspace %s, want %s", errRegressionCaseWorkspaceMismatch, caseID, regressionCase.WorkspaceID, workspaceID)
+			}
 			caseCache[caseID] = regressionCase
 			fallbackRefs[caseID] = promotionReplayRefs(regressionCase)
 		}
@@ -168,7 +190,10 @@ func (m *ReleaseGateManager) loadRegressionCaseEvaluations(
 		}
 		evaluation, err := ensureCase(*result.RegressionCaseID)
 		if err != nil {
-			return nil, "", err
+			if errors.Is(err, errRegressionCaseWorkspaceMismatch) {
+				return nil, true, "regression scoring evidence referenced a regression case outside the authorized workspace; skipped regression gate rules", nil
+			}
+			return nil, false, "", err
 		}
 		detail := validatorDetails[regressionDetailKey{CaseID: *result.RegressionCaseID, Key: result.JudgeKey}]
 		if !judgeResultFailed(result, detail) {
@@ -191,7 +216,10 @@ func (m *ReleaseGateManager) loadRegressionCaseEvaluations(
 		}
 		evaluation, err := ensureCase(*result.RegressionCaseID)
 		if err != nil {
-			return nil, "", err
+			if errors.Is(err, errRegressionCaseWorkspaceMismatch) {
+				return nil, true, "regression scoring evidence referenced a regression case outside the authorized workspace; skipped regression gate rules", nil
+			}
+			return nil, false, "", err
 		}
 		detail := metricDetails[regressionDetailKey{CaseID: *result.RegressionCaseID, Key: result.MetricKey}]
 		if !metricResultFailed(result, detail) {
@@ -205,18 +233,19 @@ func (m *ReleaseGateManager) loadRegressionCaseEvaluations(
 		setRegressionFailure(evaluation, evidence)
 	}
 
-	orderedCaseIDs := make([]string, 0, len(evaluations))
+	orderedCaseIDs := make([]uuid.UUID, 0, len(evaluations))
 	for caseID := range evaluations {
-		orderedCaseIDs = append(orderedCaseIDs, caseID.String())
+		orderedCaseIDs = append(orderedCaseIDs, caseID)
 	}
-	sort.Strings(orderedCaseIDs)
+	sort.Slice(orderedCaseIDs, func(i, j int) bool {
+		return orderedCaseIDs[i].String() < orderedCaseIDs[j].String()
+	})
 
 	ordered := make([]releasegate.RegressionCaseEvaluation, 0, len(orderedCaseIDs))
-	for _, rawID := range orderedCaseIDs {
-		caseID := uuid.MustParse(rawID)
+	for _, caseID := range orderedCaseIDs {
 		ordered = append(ordered, *evaluations[caseID])
 	}
-	return ordered, "", nil
+	return ordered, false, "", nil
 }
 
 func decodeRegressionScorecardDocument(payload json.RawMessage) (regressionScorecardDocument, error) {
@@ -245,6 +274,10 @@ func judgeResultFailed(result repository.JudgeResultRecord, detail regressionVal
 }
 
 func metricResultFailed(result repository.MetricResultRecord, detail regressionMetricDetail) bool {
+	// The scorecard detail state is the authoritative failure signal for
+	// thresholded numeric collectors because the scoring pipeline already folds
+	// collector-specific thresholds into this state. Raw values here are only a
+	// fallback for boolean metrics that don't emit an explicit fail state.
 	state := strings.TrimSpace(strings.ToLower(detail.State))
 	if state == "error" || state == "unavailable" || state == "fail" {
 		return true
@@ -284,4 +317,31 @@ func setRegressionFailure(target *releasegate.RegressionCaseEvaluation, evidence
 		}
 		target.Evidence = &copied
 	}
+}
+
+func cloneRegressionGateRules(rules *releasegate.RegressionGateRules) *releasegate.RegressionGateRules {
+	if rules == nil {
+		return nil
+	}
+	cloned := *rules
+	if len(rules.SuiteIDs) > 0 {
+		cloned.SuiteIDs = append([]string(nil), rules.SuiteIDs...)
+	}
+	if rules.MaxWarningRegressionFailures != nil {
+		value := *rules.MaxWarningRegressionFailures
+		cloned.MaxWarningRegressionFailures = &value
+	}
+	return &cloned
+}
+
+func sortJudgeResults(items []repository.JudgeResultRecord) {
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].ID.String() < items[j].ID.String()
+	})
+}
+
+func sortMetricResults(items []repository.MetricResultRecord) {
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].ID.String() < items[j].ID.String()
+	})
 }

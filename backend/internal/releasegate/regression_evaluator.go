@@ -3,6 +3,7 @@ package releasegate
 import (
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/google/uuid"
 )
@@ -170,14 +171,27 @@ func EvaluateRegressionGateRules(candidate, baseline []RegressionCaseEvaluation,
 
 func MergeEvaluation(base Evaluation, regression RegressionGateOutcome) Evaluation {
 	merged := base
-	merged.Details.Warnings = append(merged.Details.Warnings, regression.Warnings...)
-	merged.Details.TriggeredConditions = append(merged.Details.TriggeredConditions, regression.TriggeredConditions...)
-	merged.Details.RegressionViolations = append([]RegressionGateViolation(nil), regression.Violations...)
+	merged.Details.Warnings = dedupeStringsPreserveOrder(append(merged.Details.Warnings, regression.Warnings...))
+	merged.Details.TriggeredConditions = uniqueSortedStrings(append(merged.Details.TriggeredConditions, regression.TriggeredConditions...))
+	merged.Details.RegressionViolations = append(append([]RegressionGateViolation(nil), merged.Details.RegressionViolations...), regression.Violations...)
 
 	if base.Verdict == VerdictInsufficientEvidence {
 		return merged
 	}
+	if regression.Verdict == VerdictInsufficientEvidence {
+		if base.Verdict == VerdictFail {
+			return merged
+		}
+		merged.Verdict = VerdictInsufficientEvidence
+		merged.ReasonCode = regression.ReasonCode
+		merged.Summary = regression.Summary
+		merged.EvidenceStatus = EvidenceStatusInsufficient
+		return merged
+	}
 	if regression.Verdict == VerdictFail {
+		if base.Verdict == VerdictFail {
+			return merged
+		}
 		merged.Verdict = VerdictFail
 		merged.ReasonCode = regression.ReasonCode
 		merged.Summary = regression.Summary
@@ -189,6 +203,26 @@ func MergeEvaluation(base Evaluation, regression RegressionGateOutcome) Evaluati
 		merged.Summary = regression.Summary
 	}
 	return merged
+}
+
+func dedupeStringsPreserveOrder(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(values))
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		result = append(result, trimmed)
+	}
+	return result
 }
 
 func filterRegressionCases(items []RegressionCaseEvaluation, suiteIDs []string) []RegressionCaseEvaluation {

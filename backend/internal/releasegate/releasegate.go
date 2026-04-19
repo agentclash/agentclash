@@ -261,10 +261,17 @@ func regressionGateRulesUnset(rules *RegressionGateRules) bool {
 	if rules == nil {
 		return true
 	}
+	hasSuiteID := false
+	for _, suiteID := range rules.SuiteIDs {
+		if strings.TrimSpace(suiteID) != "" {
+			hasSuiteID = true
+			break
+		}
+	}
 	return !rules.NoBlockingRegressionFailure &&
 		!rules.NoNewBlockingFailureVsBaseline &&
 		rules.MaxWarningRegressionFailures == nil &&
-		len(uniqueSortedStrings(rules.SuiteIDs)) == 0
+		!hasSuiteID
 }
 
 func PolicySnapshot(policy Policy) (json.RawMessage, string, error) {

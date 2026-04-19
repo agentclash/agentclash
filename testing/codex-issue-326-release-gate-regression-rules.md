@@ -8,8 +8,10 @@
 - `regression_gate_rules.max_warning_regression_failures=N` warns or fails the gate when candidate warning-severity regression failures exceed `N`, and the violation payload includes the observed count.
 - `regression_gate_rules.suite_ids` limits rule evaluation to active regression cases in the referenced suites; omitted `suite_ids` evaluates all regression suites represented on the candidate run.
 - Runs with no regression-case scoring results pass the regression rules trivially.
+- Missing candidate regression evidence for rules that depend on candidate scoring results produces `insufficient_evidence` instead of silently passing the release gate.
 - Missing baseline evidence for `no_new_blocking_failure_vs_baseline` does not fail the gate; it records a warning that the rule was not evaluable.
 - Regression violations include enough evidence to deep-link the offending case: `regression_case_id`, fired rule, candidate scoring-result id, and replay step refs from the promoted regression case evidence when available.
+- Regression evidence must stay inside the authorized workspace; cross-workspace regression case ids are rejected as invalid evidence and must not leak foreign suite ids or case ids into `evaluation_details`.
 - Release-gate evaluate/list responses surface regression violations as typed data in `evaluation_details`, and persisted release-gate rows retain the same typed payload.
 
 ## Unit Tests
@@ -21,11 +23,14 @@
 - `TestEvaluateRegressionRulesSuiteScope` — only cases inside selected suites are considered.
 - `TestEvaluateRegressionRulesMissingBaselineWarns` — rule #2 adds a warning and does not fail when baseline evidence is unavailable.
 - `TestEvaluateMergesStandardAndRegressionResults` — regression rule failures/warnings compose correctly with existing threshold-based release-gate verdicts.
+- `TestMergeEvaluationPreservesPrimaryThresholdFailure` — an existing threshold failure remains the primary reason when regression rules also fail.
 
 ## Integration / Functional Tests
 - `TestReleaseGateManagerEvaluatePersistsRegressionViolations` — manager loads regression evidence, stores typed violations in `evaluation_details`, and updates the persisted release gate verdict/reason.
 - `TestReleaseGateManagerEvaluateScopesRegressionRulesToSelectedSuites` — repository-backed evaluation ignores out-of-scope suites.
 - `TestReleaseGateManagerEvaluateWarnsWhenBaselineRegressionEvidenceMissing` — manager preserves warning-only outcome when the baseline rule is not evaluable.
+- `TestReleaseGateManagerEvaluateReturnsInsufficientEvidenceWhenCandidateRegressionEvidenceMissing` — candidate-side scorecard/evaluation metadata gaps block the regression gate with insufficient evidence.
+- `TestReleaseGateManagerEvaluateRejectsCrossWorkspaceRegressionCaseEvidence` — foreign-workspace regression cases are not loaded into typed violations.
 
 ## Smoke Tests
 - `go test ./backend/internal/releasegate ./backend/internal/api ./backend/internal/repository`

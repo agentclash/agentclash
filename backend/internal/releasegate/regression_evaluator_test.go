@@ -237,6 +237,39 @@ func TestEvaluateMergesStandardAndRegressionResults(t *testing.T) {
 	}
 }
 
+func TestMergeEvaluationPreservesPrimaryThresholdFailure(t *testing.T) {
+	base := Evaluation{
+		Verdict:        VerdictFail,
+		ReasonCode:     "threshold_fail_correctness",
+		Summary:        "release gate failed because fail conditions were triggered",
+		EvidenceStatus: EvidenceStatusSufficient,
+		Details: EvaluationDetails{
+			PolicyKey:           "default",
+			PolicyVersion:       1,
+			ComparisonStatus:    "comparable",
+			TriggeredConditions: []string{"threshold_fail_correctness"},
+		},
+	}
+	regression := RegressionGateOutcome{
+		Verdict:             VerdictFail,
+		ReasonCode:          "regression_blocking_failure",
+		Summary:             "release gate failed because regression cases violated policy",
+		TriggeredConditions: []string{"no_blocking_regression_failure:123"},
+		Warnings:            []string{"baseline warning"},
+	}
+
+	merged := MergeEvaluation(base, regression)
+	if merged.ReasonCode != "threshold_fail_correctness" {
+		t.Fatalf("reason code = %q, want threshold_fail_correctness", merged.ReasonCode)
+	}
+	if merged.Summary != "release gate failed because fail conditions were triggered" {
+		t.Fatalf("summary = %q, want threshold fail summary", merged.Summary)
+	}
+	if got := len(merged.Details.TriggeredConditions); got != 2 {
+		t.Fatalf("triggered condition count = %d, want 2", got)
+	}
+}
+
 func intPtr(value int) *int {
 	return &value
 }

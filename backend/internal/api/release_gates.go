@@ -88,7 +88,7 @@ func (m *ReleaseGateManager) EvaluateReleaseGate(ctx context.Context, caller Cal
 	if err != nil {
 		return EvaluateReleaseGateResult{}, err
 	}
-	regressionOutcome, err := m.evaluateRegressionRules(ctx, summary, input.Policy.RegressionGateRules)
+	regressionOutcome, err := m.evaluateRegressionRules(ctx, summary, candidateRun.WorkspaceID, input.Policy.RegressionGateRules)
 	if err != nil {
 		return EvaluateReleaseGateResult{}, err
 	}
