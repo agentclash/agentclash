@@ -33,5 +33,17 @@ export type {
   ReplaySummary,
   ReplayPagination,
   ReplayResponse,
+  FailureReviewItem,
+  FailureReviewFailureState,
+  FailureReviewFailureClass,
+  FailureReviewEvidenceTier,
+  FailureReviewPromotionMode,
+  FailureReviewSeverity,
+  FailureReviewReplayStepRef,
+  FailureReviewArtifactRef,
+  FailureReviewJudgeRef,
+  FailureReviewMetricRef,
+  ListRunFailuresResponse,
 } from "./types";
 export { AGENT_KINDS } from "./types";
+export { listRunFailures, type ListRunFailuresParams } from "./failure-reviews";
