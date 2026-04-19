@@ -235,6 +235,10 @@ func (c *Client) setAuth(req *http.Request) {
 }
 
 func (c *Client) executeWithRetry(req *http.Request) (*Response, error) {
+	if req.Method != http.MethodGet {
+		return c.execute(req)
+	}
+
 	var resp *Response
 	var err error
 

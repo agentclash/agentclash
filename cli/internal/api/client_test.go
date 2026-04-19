@@ -187,6 +187,62 @@ func TestClientRetriesOn5xx(t *testing.T) {
 	}
 }
 
+func TestClientDoesNotRetryWritesOn5xx(t *testing.T) {
+	tests := []struct {
+		name string
+		do   func(context.Context, *Client) (*Response, error)
+	}{
+		{
+			name: "POST",
+			do: func(ctx context.Context, client *Client) (*Response, error) {
+				return client.Post(ctx, "/items", map[string]string{"name": "test"})
+			},
+		},
+		{
+			name: "PATCH",
+			do: func(ctx context.Context, client *Client) (*Response, error) {
+				return client.Patch(ctx, "/items/123", map[string]string{"name": "test"})
+			},
+		},
+		{
+			name: "PUT",
+			do: func(ctx context.Context, client *Client) (*Response, error) {
+				return client.Put(ctx, "/items/123", map[string]string{"name": "test"})
+			},
+		},
+		{
+			name: "DELETE",
+			do: func(ctx context.Context, client *Client) (*Response, error) {
+				return client.Delete(ctx, "/items/123")
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var attempts atomic.Int32
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				attempts.Add(1)
+				w.WriteHeader(http.StatusBadGateway)
+				w.Write([]byte(`{"error":{"code":"bad_gateway","message":"do not retry writes"}}`))
+			}))
+			defer srv.Close()
+
+			client := NewClient(srv.URL, "tok")
+			resp, err := tc.do(context.Background(), client)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if resp.StatusCode != http.StatusBadGateway {
+				t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusBadGateway)
+			}
+			if attempts.Load() != 1 {
+				t.Fatalf("attempts = %d, want 1", attempts.Load())
+			}
+		})
+	}
+}
+
 func TestClientDoesNotRetryOn4xx(t *testing.T) {
 	var attempts atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
