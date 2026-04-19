@@ -72,6 +72,37 @@ func (q *Queries) GetRunnableChallengePackVersionByID(ctx context.Context, arg G
 	return i, err
 }
 
+const listChallengeIdentityIDsByPackVersionID = `-- name: ListChallengeIdentityIDsByPackVersionID :many
+SELECT challenge_identity_id
+FROM challenge_pack_version_challenges
+WHERE challenge_pack_version_id = $1
+ORDER BY execution_order ASC, id ASC
+`
+
+type ListChallengeIdentityIDsByPackVersionIDParams struct {
+	ChallengePackVersionID uuid.UUID
+}
+
+func (q *Queries) ListChallengeIdentityIDsByPackVersionID(ctx context.Context, arg ListChallengeIdentityIDsByPackVersionIDParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, listChallengeIdentityIDsByPackVersionID, arg.ChallengePackVersionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var challenge_identity_id uuid.UUID
+		if err := rows.Scan(&challenge_identity_id); err != nil {
+			return nil, err
+		}
+		items = append(items, challenge_identity_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listChallengeInputSetsByVersionID = `-- name: ListChallengeInputSetsByVersionID :many
 SELECT id, challenge_pack_version_id, input_key, name
 FROM challenge_input_sets

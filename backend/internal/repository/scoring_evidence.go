@@ -42,6 +42,7 @@ func buildScoringEvidenceInput(item ChallengeCaseExecutionContext, manifestAsset
 
 	return scoring.EvidenceInput{
 		ChallengeIdentityID: item.ChallengeIdentityID,
+		RegressionCaseID:    cloneUUIDPtr(item.RegressionCaseID),
 		ChallengeKey:        item.ChallengeKey,
 		CaseKey:             item.CaseKey,
 		ItemKey:             item.ItemKey,

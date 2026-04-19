@@ -46,6 +46,317 @@ func TestRepositoryGetRunByID(t *testing.T) {
 	}
 }
 
+func TestRepositoryListRunRegressionCoverageCasesByRunID(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+	queries := repositorysqlc.New(db)
+
+	var secondChallengeIdentityID uuid.UUID
+	if err := db.QueryRow(ctx, `
+		SELECT id
+		FROM challenge_identities
+		WHERE challenge_key = 'second-ticket'
+		LIMIT 1
+	`).Scan(&secondChallengeIdentityID); err != nil {
+		t.Fatalf("query second challenge identity returned error: %v", err)
+	}
+
+	firstSuiteID := uuid.New()
+	secondSuiteID := uuid.New()
+	firstCaseID := uuid.New()
+	secondCaseID := uuid.New()
+
+	if _, err := db.Exec(ctx, `
+		INSERT INTO workspace_regression_suites (
+			id,
+			workspace_id,
+			source_challenge_pack_id,
+			name,
+			description,
+			status,
+			source_mode,
+			default_gate_severity,
+			created_by_user_id
+		)
+		SELECT
+			$1,
+			$2,
+			cp.id,
+			'Critical Regressions',
+			'',
+			'active',
+			'derived_only',
+			'warning',
+			$3
+		FROM challenge_pack_versions cpv
+		JOIN challenge_packs cp ON cp.id = cpv.challenge_pack_id
+		WHERE cpv.id = $4
+	`, firstSuiteID, fixture.workspaceID, fixture.userID, fixture.challengePackVersionID); err != nil {
+		t.Fatalf("insert first regression suite returned error: %v", err)
+	}
+	if _, err := db.Exec(ctx, `
+		INSERT INTO workspace_regression_suites (
+			id,
+			workspace_id,
+			source_challenge_pack_id,
+			name,
+			description,
+			status,
+			source_mode,
+			default_gate_severity,
+			created_by_user_id
+		)
+		SELECT
+			$1,
+			$2,
+			cp.id,
+			'Edge Cases',
+			'',
+			'active',
+			'derived_only',
+			'warning',
+			$3
+		FROM challenge_pack_versions cpv
+		JOIN challenge_packs cp ON cp.id = cpv.challenge_pack_id
+		WHERE cpv.id = $4
+	`, secondSuiteID, fixture.workspaceID, fixture.userID, fixture.challengePackVersionID); err != nil {
+		t.Fatalf("insert second regression suite returned error: %v", err)
+	}
+
+	if _, err := db.Exec(ctx, `
+		INSERT INTO workspace_regression_cases (
+			id,
+			suite_id,
+			title,
+			description,
+			status,
+			severity,
+			promotion_mode,
+			source_run_id,
+			source_run_agent_id,
+			source_challenge_pack_version_id,
+			source_challenge_input_set_id,
+			source_challenge_identity_id,
+			source_case_key,
+			source_item_key,
+			evidence_tier,
+			failure_class,
+			failure_summary,
+			payload_snapshot,
+			expected_contract,
+			metadata
+		)
+		VALUES
+			($1, $2, 'Regression A', '', 'active', 'warning', 'full_executable', $3, $4, $5, $6, $7, 'case-a', 'prompt.txt', 'native_structured', 'incorrect_final_output', '', '{}'::jsonb, '{}'::jsonb, '{}'::jsonb),
+			($8, $9, 'Regression B', '', 'active', 'warning', 'full_executable', $3, $4, $5, $6, $10, 'case-b', 'prompt.txt', 'native_structured', 'incorrect_final_output', '', '{}'::jsonb, '{}'::jsonb, '{}'::jsonb)
+	`, firstCaseID, firstSuiteID, fixture.runID, fixture.primaryRunAgentID, fixture.challengePackVersionID, fixture.challengeInputSetID, fixture.firstChallengeIdentityID, secondCaseID, secondSuiteID, secondChallengeIdentityID); err != nil {
+		t.Fatalf("insert regression cases returned error: %v", err)
+	}
+
+	if _, err := db.Exec(ctx, `
+		INSERT INTO run_case_selections (
+			id,
+			run_id,
+			challenge_identity_id,
+			selection_origin,
+			regression_case_id,
+			selection_rank
+		)
+		VALUES
+			($1, $2, $3, 'regression_case', $4, 1),
+			($5, $2, $6, 'regression_case', $7, 2)
+	`, uuid.New(), fixture.runID, fixture.firstChallengeIdentityID, firstCaseID, uuid.New(), secondChallengeIdentityID, secondCaseID); err != nil {
+		t.Fatalf("insert run case selections returned error: %v", err)
+	}
+
+	specRecord, err := repo.CreateEvaluationSpec(ctx, repository.CreateEvaluationSpecParams{
+		ChallengePackVersionID: fixture.challengePackVersionID,
+		Name:                   "regression-coverage-spec",
+		VersionNumber:          1,
+		JudgeMode:              "deterministic",
+		Definition: []byte(`{
+			"name":"regression-coverage-spec",
+			"version_number":1,
+			"judge_mode":"deterministic",
+			"validators":[{"key":"exact","type":"exact_match","target":"final_output","expected_from":"challenge_input"}],
+			"scorecard":{"dimensions":["correctness"]}
+		}`),
+	})
+	if err != nil {
+		t.Fatalf("CreateEvaluationSpec returned error: %v", err)
+	}
+
+	if _, err := queries.UpsertRunScorecard(ctx, repositorysqlc.UpsertRunScorecardParams{
+		RunID:             fixture.runID,
+		EvaluationSpecID:  specRecord.ID,
+		WinningRunAgentID: &fixture.primaryRunAgentID,
+		Scorecard:         []byte(`{"status":"complete","winning_run_agent_id":"` + fixture.primaryRunAgentID.String() + `"}`),
+	}); err != nil {
+		t.Fatalf("UpsertRunScorecard returned error: %v", err)
+	}
+
+	if _, err := db.Exec(ctx, `
+		INSERT INTO judge_results (
+			id,
+			run_agent_id,
+			evaluation_spec_id,
+			challenge_identity_id,
+			regression_case_id,
+			judge_key,
+			verdict,
+			normalized_score,
+			raw_output
+		)
+		VALUES
+			($1, $2, $3, $4, $5, 'exact', 'pass', 1.0, '{}'::jsonb),
+			($6, $2, $3, $7, $8, 'exact', 'fail', 0.0, '{}'::jsonb),
+			($9, $10, $3, $4, $5, 'exact', 'fail', 0.0, '{}'::jsonb)
+	`, uuid.New(), fixture.primaryRunAgentID, specRecord.ID, fixture.firstChallengeIdentityID, firstCaseID, uuid.New(), secondChallengeIdentityID, secondCaseID, uuid.New(), fixture.secondaryRunAgentID); err != nil {
+		t.Fatalf("insert judge results returned error: %v", err)
+	}
+
+	coverageCases, err := repo.ListRunRegressionCoverageCasesByRunID(ctx, fixture.runID)
+	if err != nil {
+		t.Fatalf("ListRunRegressionCoverageCasesByRunID returned error: %v", err)
+	}
+	if len(coverageCases) != 2 {
+		t.Fatalf("coverage case count = %d, want 2", len(coverageCases))
+	}
+
+	outcomeByCaseID := make(map[uuid.UUID]repository.RunRegressionCoverageCase, len(coverageCases))
+	for _, coverageCase := range coverageCases {
+		outcomeByCaseID[coverageCase.RegressionCaseID] = coverageCase
+	}
+
+	if outcomeByCaseID[firstCaseID].Outcome != repository.RunRegressionCoverageOutcomePass {
+		t.Fatalf("first case outcome = %q, want pass", outcomeByCaseID[firstCaseID].Outcome)
+	}
+	if outcomeByCaseID[firstCaseID].SuiteName == nil || *outcomeByCaseID[firstCaseID].SuiteName != "Critical Regressions" {
+		t.Fatalf("first case suite name = %v, want Critical Regressions", outcomeByCaseID[firstCaseID].SuiteName)
+	}
+	if outcomeByCaseID[secondCaseID].Outcome != repository.RunRegressionCoverageOutcomeFail {
+		t.Fatalf("second case outcome = %q, want fail", outcomeByCaseID[secondCaseID].Outcome)
+	}
+	if outcomeByCaseID[secondCaseID].SuiteName == nil || *outcomeByCaseID[secondCaseID].SuiteName != "Edge Cases" {
+		t.Fatalf("second case suite name = %v, want Edge Cases", outcomeByCaseID[secondCaseID].SuiteName)
+	}
+}
+
+func TestRepositoryListRunRegressionCoverageCasesByRunIDReturnsPendingWithoutScorecard(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	suiteID := uuid.New()
+	regressionCaseID := uuid.New()
+
+	if _, err := db.Exec(ctx, `
+		INSERT INTO workspace_regression_suites (
+			id,
+			workspace_id,
+			source_challenge_pack_id,
+			name,
+			description,
+			status,
+			source_mode,
+			default_gate_severity,
+			created_by_user_id
+		)
+		SELECT
+			$1,
+			$2,
+			cp.id,
+			'Pending Coverage Suite',
+			'',
+			'active',
+			'derived_only',
+			'warning',
+			$3
+		FROM challenge_pack_versions cpv
+		JOIN challenge_packs cp ON cp.id = cpv.challenge_pack_id
+		WHERE cpv.id = $4
+	`, suiteID, fixture.workspaceID, fixture.userID, fixture.challengePackVersionID); err != nil {
+		t.Fatalf("insert regression suite returned error: %v", err)
+	}
+
+	if _, err := db.Exec(ctx, `
+		INSERT INTO workspace_regression_cases (
+			id,
+			suite_id,
+			title,
+			description,
+			status,
+			severity,
+			promotion_mode,
+			source_run_id,
+			source_run_agent_id,
+			source_challenge_pack_version_id,
+			source_challenge_input_set_id,
+			source_challenge_identity_id,
+			source_case_key,
+			source_item_key,
+			evidence_tier,
+			failure_class,
+			failure_summary,
+			payload_snapshot,
+			expected_contract,
+			metadata
+		)
+		VALUES (
+			$1,
+			$2,
+			'Pending Regression',
+			'',
+			'active',
+			'warning',
+			'full_executable',
+			$3,
+			$4,
+			$5,
+			$6,
+			$7,
+			'pending-case',
+			'prompt.txt',
+			'native_structured',
+			'incorrect_final_output',
+			'',
+			'{}'::jsonb,
+			'{}'::jsonb,
+			'{}'::jsonb
+		)
+	`, regressionCaseID, suiteID, fixture.runID, fixture.primaryRunAgentID, fixture.challengePackVersionID, fixture.challengeInputSetID, fixture.firstChallengeIdentityID); err != nil {
+		t.Fatalf("insert regression case returned error: %v", err)
+	}
+
+	if _, err := db.Exec(ctx, `
+		INSERT INTO run_case_selections (
+			id,
+			run_id,
+			challenge_identity_id,
+			selection_origin,
+			regression_case_id,
+			selection_rank
+		)
+		VALUES ($1, $2, $3, 'regression_case', $4, 1)
+	`, uuid.New(), fixture.runID, fixture.firstChallengeIdentityID, regressionCaseID); err != nil {
+		t.Fatalf("insert run case selection returned error: %v", err)
+	}
+
+	coverageCases, err := repo.ListRunRegressionCoverageCasesByRunID(ctx, fixture.runID)
+	if err != nil {
+		t.Fatalf("ListRunRegressionCoverageCasesByRunID returned error: %v", err)
+	}
+	if len(coverageCases) != 1 {
+		t.Fatalf("coverage case count = %d, want 1", len(coverageCases))
+	}
+	if coverageCases[0].Outcome != repository.RunRegressionCoverageOutcomePending {
+		t.Fatalf("coverage outcome = %q, want pending", coverageCases[0].Outcome)
+	}
+}
+
 func TestRepositoryListOrgMembershipsScansTimestamps(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)

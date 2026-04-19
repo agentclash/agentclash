@@ -3,6 +3,7 @@ INSERT INTO judge_results (
     run_agent_id,
     evaluation_spec_id,
     challenge_identity_id,
+    regression_case_id,
     judge_key,
     verdict,
     normalized_score,
@@ -11,6 +12,7 @@ INSERT INTO judge_results (
     @run_agent_id,
     @evaluation_spec_id,
     @challenge_identity_id,
+    sqlc.narg('regression_case_id'),
     @judge_key,
     @verdict,
     @normalized_score,
@@ -19,13 +21,14 @@ INSERT INTO judge_results (
 ON CONFLICT (run_agent_id, evaluation_spec_id, judge_key)
 DO UPDATE SET
     challenge_identity_id = EXCLUDED.challenge_identity_id,
+    regression_case_id = EXCLUDED.regression_case_id,
     verdict = EXCLUDED.verdict,
     normalized_score = EXCLUDED.normalized_score,
     raw_output = EXCLUDED.raw_output
-RETURNING id, run_agent_id, evaluation_spec_id, challenge_identity_id, judge_key, verdict, normalized_score, raw_output, created_at;
+RETURNING id, run_agent_id, evaluation_spec_id, challenge_identity_id, regression_case_id, judge_key, verdict, normalized_score, raw_output, created_at;
 
 -- name: ListJudgeResultsByRunAgentAndEvaluationSpec :many
-SELECT id, run_agent_id, evaluation_spec_id, challenge_identity_id, judge_key, verdict, normalized_score, raw_output, created_at
+SELECT id, run_agent_id, evaluation_spec_id, challenge_identity_id, regression_case_id, judge_key, verdict, normalized_score, raw_output, created_at
 FROM judge_results
 WHERE run_agent_id = @run_agent_id
   AND evaluation_spec_id = @evaluation_spec_id
@@ -36,6 +39,7 @@ INSERT INTO metric_results (
     run_agent_id,
     evaluation_spec_id,
     challenge_identity_id,
+    regression_case_id,
     metric_key,
     metric_type,
     numeric_value,
@@ -47,6 +51,7 @@ INSERT INTO metric_results (
     @run_agent_id,
     @evaluation_spec_id,
     @challenge_identity_id,
+    sqlc.narg('regression_case_id'),
     @metric_key,
     @metric_type,
     @numeric_value,
@@ -58,16 +63,17 @@ INSERT INTO metric_results (
 ON CONFLICT (run_agent_id, evaluation_spec_id, metric_key)
 DO UPDATE SET
     challenge_identity_id = EXCLUDED.challenge_identity_id,
+    regression_case_id = EXCLUDED.regression_case_id,
     metric_type = EXCLUDED.metric_type,
     numeric_value = EXCLUDED.numeric_value,
     text_value = EXCLUDED.text_value,
     boolean_value = EXCLUDED.boolean_value,
     unit = EXCLUDED.unit,
     metadata = EXCLUDED.metadata
-RETURNING id, run_agent_id, evaluation_spec_id, challenge_identity_id, metric_key, metric_type, numeric_value, text_value, boolean_value, unit, metadata, created_at;
+RETURNING id, run_agent_id, evaluation_spec_id, challenge_identity_id, regression_case_id, metric_key, metric_type, numeric_value, text_value, boolean_value, unit, metadata, created_at;
 
 -- name: ListMetricResultsByRunAgentAndEvaluationSpec :many
-SELECT id, run_agent_id, evaluation_spec_id, challenge_identity_id, metric_key, metric_type, numeric_value, text_value, boolean_value, unit, metadata, created_at
+SELECT id, run_agent_id, evaluation_spec_id, challenge_identity_id, regression_case_id, metric_key, metric_type, numeric_value, text_value, boolean_value, unit, metadata, created_at
 FROM metric_results
 WHERE run_agent_id = @run_agent_id
   AND evaluation_spec_id = @evaluation_spec_id

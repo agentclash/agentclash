@@ -229,6 +229,14 @@ func uuidPtrOrNil(value uuid.UUID) *uuid.UUID {
 	return &cloned
 }
 
+func cloneUUIDPtr(value *uuid.UUID) *uuid.UUID {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
+}
+
 func firstNonEmpty(values ...string) string {
 	for _, value := range values {
 		if strings.TrimSpace(value) != "" {

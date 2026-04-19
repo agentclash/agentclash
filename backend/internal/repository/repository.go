@@ -93,6 +93,45 @@ type ChallengeInputSetSummary struct {
 	Name                   string
 }
 
+type RunCaseSelectionOrigin string
+
+const (
+	RunCaseSelectionOriginOfficial        RunCaseSelectionOrigin = "official"
+	RunCaseSelectionOriginRegressionSuite RunCaseSelectionOrigin = "regression_suite"
+	RunCaseSelectionOriginRegressionCase  RunCaseSelectionOrigin = "regression_case"
+)
+
+type CreateQueuedRunCaseSelectionParams struct {
+	ChallengeIdentityID uuid.UUID
+	SelectionOrigin     RunCaseSelectionOrigin
+	RegressionCaseID    *uuid.UUID
+	SelectionRank       int32
+}
+
+type RunCaseSelection struct {
+	RunID               uuid.UUID
+	ChallengeIdentityID uuid.UUID
+	SelectionOrigin     RunCaseSelectionOrigin
+	RegressionCaseID    *uuid.UUID
+	SelectionRank       int32
+}
+
+type RunRegressionCoverageOutcome string
+
+const (
+	RunRegressionCoverageOutcomePending RunRegressionCoverageOutcome = "pending"
+	RunRegressionCoverageOutcomePass    RunRegressionCoverageOutcome = "pass"
+	RunRegressionCoverageOutcomeFail    RunRegressionCoverageOutcome = "fail"
+)
+
+type RunRegressionCoverageCase struct {
+	RegressionCaseID    uuid.UUID
+	RegressionCaseTitle *string
+	SuiteID             *uuid.UUID
+	SuiteName           *string
+	Outcome             RunRegressionCoverageOutcome
+}
+
 type RunnableDeployment struct {
 	ID                        uuid.UUID
 	OrganizationID            uuid.UUID
@@ -115,11 +154,13 @@ type CreateQueuedRunParams struct {
 	WorkspaceID            uuid.UUID
 	ChallengePackVersionID uuid.UUID
 	ChallengeInputSetID    *uuid.UUID
+	OfficialPackMode       domain.OfficialPackMode
 	CreatedByUserID        *uuid.UUID
 	Name                   string
 	ExecutionMode          string
 	ExecutionPlan          json.RawMessage
 	RunAgents              []CreateQueuedRunAgentParams
+	CaseSelections         []CreateQueuedRunCaseSelectionParams
 }
 
 type CreateQueuedRunResult struct {
@@ -174,6 +215,7 @@ type JudgeResultRecord struct {
 	RunAgentID          uuid.UUID
 	EvaluationSpecID    uuid.UUID
 	ChallengeIdentityID *uuid.UUID
+	RegressionCaseID    *uuid.UUID
 	JudgeKey            string
 	Verdict             *string
 	NormalizedScore     *float64
@@ -230,6 +272,7 @@ type MetricResultRecord struct {
 	RunAgentID          uuid.UUID
 	EvaluationSpecID    uuid.UUID
 	ChallengeIdentityID *uuid.UUID
+	RegressionCaseID    *uuid.UUID
 	MetricKey           string
 	MetricType          string
 	NumericValue        *float64
@@ -350,6 +393,21 @@ func (r *Repository) ListChallengeInputSetsByVersionID(ctx context.Context, chal
 	return results, nil
 }
 
+func (r *Repository) ListChallengeIdentityIDsByPackVersionID(ctx context.Context, challengePackVersionID uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := r.queries.ListChallengeIdentityIDsByPackVersionID(ctx, repositorysqlc.ListChallengeIdentityIDsByPackVersionIDParams{
+		ChallengePackVersionID: challengePackVersionID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list challenge identities by pack version id: %w", err)
+	}
+
+	ids := make([]uuid.UUID, 0, len(rows))
+	for _, row := range rows {
+		ids = append(ids, row)
+	}
+	return ids, nil
+}
+
 func (r *Repository) ListRunnableDeploymentsWithLatestSnapshot(
 	ctx context.Context,
 	workspaceID uuid.UUID,
@@ -383,6 +441,9 @@ func (r *Repository) CreateQueuedRun(ctx context.Context, params CreateQueuedRun
 	if params.Name == "" {
 		return CreateQueuedRunResult{}, ErrRunNameRequired
 	}
+	if params.OfficialPackMode == "" {
+		params.OfficialPackMode = domain.OfficialPackModeFull
+	}
 	if len(params.RunAgents) == 0 {
 		return CreateQueuedRunResult{}, ErrRunParticipantsRequired
 	}
@@ -408,6 +469,7 @@ func (r *Repository) CreateQueuedRun(ctx context.Context, params CreateQueuedRun
 		WorkspaceID:            params.WorkspaceID,
 		ChallengePackVersionID: params.ChallengePackVersionID,
 		ChallengeInputSetID:    cloneUUIDPtr(params.ChallengeInputSetID),
+		OfficialPackMode:       string(params.OfficialPackMode),
 		CreatedByUserID:        cloneUUIDPtr(params.CreatedByUserID),
 		Name:                   params.Name,
 		Status:                 string(domain.RunStatusQueued),
@@ -428,6 +490,18 @@ func (r *Repository) CreateQueuedRun(ctx context.Context, params CreateQueuedRun
 	})
 	if err != nil {
 		return CreateQueuedRunResult{}, fmt.Errorf("insert initial run status history: %w", err)
+	}
+
+	for _, selection := range params.CaseSelections {
+		if _, err := queries.CreateRunCaseSelection(ctx, repositorysqlc.CreateRunCaseSelectionParams{
+			RunID:               runRow.ID,
+			ChallengeIdentityID: selection.ChallengeIdentityID,
+			SelectionOrigin:     string(selection.SelectionOrigin),
+			RegressionCaseID:    cloneUUIDPtr(selection.RegressionCaseID),
+			SelectionRank:       selection.SelectionRank,
+		}); err != nil {
+			return CreateQueuedRunResult{}, fmt.Errorf("create run case selection rank %d: %w", selection.SelectionRank, err)
+		}
 	}
 
 	runAgents := make([]domain.RunAgent, 0, len(params.RunAgents))
@@ -643,6 +717,7 @@ func (r *Repository) StoreRunAgentEvaluationResults(ctx context.Context, evaluat
 			RunAgentID:          evaluation.RunAgentID,
 			EvaluationSpecID:    evaluation.EvaluationSpecID,
 			ChallengeIdentityID: cloneUUIDPtr(result.ChallengeIdentityID),
+			RegressionCaseID:    cloneUUIDPtr(result.RegressionCaseID),
 			JudgeKey:            result.Key,
 			Verdict:             cloneStringPtr(optionalString(result.Verdict)),
 			NormalizedScore:     numericScore,
@@ -698,6 +773,7 @@ func (r *Repository) StoreRunAgentEvaluationResults(ctx context.Context, evaluat
 			RunAgentID:          evaluation.RunAgentID,
 			EvaluationSpecID:    evaluation.EvaluationSpecID,
 			ChallengeIdentityID: cloneUUIDPtr(result.ChallengeIdentityID),
+			RegressionCaseID:    cloneUUIDPtr(result.RegressionCaseID),
 			MetricKey:           result.Key,
 			MetricType:          string(result.Type),
 			NumericValue:        numericValue,
@@ -770,24 +846,26 @@ func buildRunAgentScorecardDocument(evaluation scoring.RunAgentEvaluation) (json
 	}
 
 	type validatorDetail struct {
-		Key             string          `json:"key"`
-		Type            string          `json:"type"`
-		Verdict         string          `json:"verdict"`
-		State           string          `json:"state"`
-		Reason          string          `json:"reason,omitempty"`
-		NormalizedScore *float64        `json:"normalized_score,omitempty"`
-		Evidence        any             `json:"evidence,omitempty"`
-		Source          *scoring.Source `json:"source,omitempty"`
+		Key              string          `json:"key"`
+		Type             string          `json:"type"`
+		Verdict          string          `json:"verdict"`
+		State            string          `json:"state"`
+		Reason           string          `json:"reason,omitempty"`
+		NormalizedScore  *float64        `json:"normalized_score,omitempty"`
+		RegressionCaseID *uuid.UUID      `json:"regression_case_id,omitempty"`
+		Evidence         any             `json:"evidence,omitempty"`
+		Source           *scoring.Source `json:"source,omitempty"`
 	}
 
 	type metricDetail struct {
-		Key          string   `json:"key"`
-		Collector    string   `json:"collector"`
-		State        string   `json:"state"`
-		Reason       string   `json:"reason,omitempty"`
-		NumericValue *float64 `json:"numeric_value,omitempty"`
-		TextValue    *string  `json:"text_value,omitempty"`
-		BooleanValue *bool    `json:"boolean_value,omitempty"`
+		Key              string     `json:"key"`
+		Collector        string     `json:"collector"`
+		State            string     `json:"state"`
+		Reason           string     `json:"reason,omitempty"`
+		RegressionCaseID *uuid.UUID `json:"regression_case_id,omitempty"`
+		NumericValue     *float64   `json:"numeric_value,omitempty"`
+		TextValue        *string    `json:"text_value,omitempty"`
+		BooleanValue     *bool      `json:"boolean_value,omitempty"`
 	}
 
 	type llmJudgeDetail struct {
@@ -874,27 +952,29 @@ func buildRunAgentScorecardDocument(evaluation scoring.RunAgentEvaluation) (json
 	validatorDetails := make([]validatorDetail, 0, len(evaluation.ValidatorResults))
 	for _, vr := range evaluation.ValidatorResults {
 		validatorDetails = append(validatorDetails, validatorDetail{
-			Key:             vr.Key,
-			Type:            string(vr.Type),
-			Verdict:         vr.Verdict,
-			State:           string(vr.State),
-			Reason:          vr.Reason,
-			NormalizedScore: cloneFloat64Ptr(vr.NormalizedScore),
-			Evidence:        buildValidatorDetailEvidence(vr),
-			Source:          cloneScoringSource(vr.Source),
+			Key:              vr.Key,
+			Type:             string(vr.Type),
+			Verdict:          vr.Verdict,
+			State:            string(vr.State),
+			Reason:           vr.Reason,
+			NormalizedScore:  cloneFloat64Ptr(vr.NormalizedScore),
+			RegressionCaseID: cloneUUIDPtr(vr.RegressionCaseID),
+			Evidence:         buildValidatorDetailEvidence(vr),
+			Source:           cloneScoringSource(vr.Source),
 		})
 	}
 
 	metricDetails := make([]metricDetail, 0, len(evaluation.MetricResults))
 	for _, mr := range evaluation.MetricResults {
 		metricDetails = append(metricDetails, metricDetail{
-			Key:          mr.Key,
-			Collector:    mr.Collector,
-			State:        string(mr.State),
-			Reason:       mr.Reason,
-			NumericValue: cloneFloat64Ptr(mr.NumericValue),
-			TextValue:    cloneStringPtr(mr.TextValue),
-			BooleanValue: cloneBoolPtr(mr.BooleanValue),
+			Key:              mr.Key,
+			Collector:        mr.Collector,
+			State:            string(mr.State),
+			Reason:           mr.Reason,
+			RegressionCaseID: cloneUUIDPtr(mr.RegressionCaseID),
+			NumericValue:     cloneFloat64Ptr(mr.NumericValue),
+			TextValue:        cloneStringPtr(mr.TextValue),
+			BooleanValue:     cloneBoolPtr(mr.BooleanValue),
 		})
 	}
 
@@ -1619,6 +1699,10 @@ func mapRun(row repositorysqlc.Run) (domain.Run, error) {
 	if err != nil {
 		return domain.Run{}, err
 	}
+	officialPackMode, err := domain.ParseOfficialPackMode(row.OfficialPackMode)
+	if err != nil {
+		return domain.Run{}, err
+	}
 
 	createdAt, err := requiredTime("runs.created_at", row.CreatedAt)
 	if err != nil {
@@ -1635,6 +1719,7 @@ func mapRun(row repositorysqlc.Run) (domain.Run, error) {
 		WorkspaceID:            row.WorkspaceID,
 		ChallengePackVersionID: row.ChallengePackVersionID,
 		ChallengeInputSetID:    cloneUUIDPtr(row.ChallengeInputSetID),
+		OfficialPackMode:       officialPackMode,
 		CreatedByUserID:        cloneUUIDPtr(row.CreatedByUserID),
 		Name:                   row.Name,
 		Status:                 status,
@@ -1650,6 +1735,47 @@ func mapRun(row repositorysqlc.Run) (domain.Run, error) {
 		CreatedAt:              createdAt,
 		UpdatedAt:              updatedAt,
 	}, nil
+}
+
+func (r *Repository) ListRunCaseSelectionsByRunID(ctx context.Context, runID uuid.UUID) ([]RunCaseSelection, error) {
+	rows, err := r.queries.ListRunCaseSelectionsByRunID(ctx, repositorysqlc.ListRunCaseSelectionsByRunIDParams{RunID: runID})
+	if err != nil {
+		return nil, fmt.Errorf("list run case selections by run id: %w", err)
+	}
+
+	selections := make([]RunCaseSelection, 0, len(rows))
+	for _, row := range rows {
+		selections = append(selections, RunCaseSelection{
+			RunID:               row.RunID,
+			ChallengeIdentityID: row.ChallengeIdentityID,
+			SelectionOrigin:     RunCaseSelectionOrigin(row.SelectionOrigin),
+			RegressionCaseID:    cloneUUIDPtr(row.RegressionCaseID),
+			SelectionRank:       row.SelectionRank,
+		})
+	}
+	return selections, nil
+}
+
+func (r *Repository) ListRunRegressionCoverageCasesByRunID(ctx context.Context, runID uuid.UUID) ([]RunRegressionCoverageCase, error) {
+	rows, err := r.queries.ListRunRegressionCoverageCasesByRunID(ctx, repositorysqlc.ListRunRegressionCoverageCasesByRunIDParams{RunID: runID})
+	if err != nil {
+		return nil, fmt.Errorf("list run regression coverage cases by run id: %w", err)
+	}
+
+	cases := make([]RunRegressionCoverageCase, 0, len(rows))
+	for _, row := range rows {
+		if row.RegressionCaseID == nil {
+			continue
+		}
+		cases = append(cases, RunRegressionCoverageCase{
+			RegressionCaseID:    *row.RegressionCaseID,
+			RegressionCaseTitle: cloneStringPtr(row.RegressionCaseTitle),
+			SuiteID:             cloneUUIDPtr(row.SuiteID),
+			SuiteName:           cloneStringPtr(row.SuiteName),
+			Outcome:             RunRegressionCoverageOutcome(row.Outcome),
+		})
+	}
+	return cases, nil
 }
 
 func mapRunAgent(row repositorysqlc.RunAgent) (domain.RunAgent, error) {
@@ -1793,7 +1919,7 @@ func mapEvaluationSpecRecord(row repositorysqlc.EvaluationSpec) (EvaluationSpecR
 	}, nil
 }
 
-func mapJudgeResultRecord(row repositorysqlc.JudgeResult) (JudgeResultRecord, error) {
+func mapJudgeResultRecord(row repositorysqlc.ListJudgeResultsByRunAgentAndEvaluationSpecRow) (JudgeResultRecord, error) {
 	createdAt, err := requiredTime("judge_results.created_at", row.CreatedAt)
 	if err != nil {
 		return JudgeResultRecord{}, err
@@ -1804,6 +1930,7 @@ func mapJudgeResultRecord(row repositorysqlc.JudgeResult) (JudgeResultRecord, er
 		RunAgentID:          row.RunAgentID,
 		EvaluationSpecID:    row.EvaluationSpecID,
 		ChallengeIdentityID: cloneUUIDPtr(row.ChallengeIdentityID),
+		RegressionCaseID:    cloneUUIDPtr(row.RegressionCaseID),
 		JudgeKey:            row.JudgeKey,
 		Verdict:             cloneStringPtr(row.Verdict),
 		NormalizedScore:     numericPtr(row.NormalizedScore),
@@ -1839,7 +1966,7 @@ func mapLLMJudgeResultRecord(row repositorysqlc.LlmJudgeResult) (LLMJudgeResultR
 	}, nil
 }
 
-func mapMetricResultRecord(row repositorysqlc.MetricResult) (MetricResultRecord, error) {
+func mapMetricResultRecord(row repositorysqlc.ListMetricResultsByRunAgentAndEvaluationSpecRow) (MetricResultRecord, error) {
 	createdAt, err := requiredTime("metric_results.created_at", row.CreatedAt)
 	if err != nil {
 		return MetricResultRecord{}, err
@@ -1850,6 +1977,7 @@ func mapMetricResultRecord(row repositorysqlc.MetricResult) (MetricResultRecord,
 		RunAgentID:          row.RunAgentID,
 		EvaluationSpecID:    row.EvaluationSpecID,
 		ChallengeIdentityID: cloneUUIDPtr(row.ChallengeIdentityID),
+		RegressionCaseID:    cloneUUIDPtr(row.RegressionCaseID),
 		MetricKey:           row.MetricKey,
 		MetricType:          row.MetricType,
 		NumericValue:        numericPtr(row.NumericValue),

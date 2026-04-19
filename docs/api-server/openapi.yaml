@@ -4669,10 +4669,27 @@ components:
           items:
             type: string
             format: uuid
+        regression_suite_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        regression_case_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        official_pack_mode:
+          type: string
+          enum: [full, suite_only]
+          description: >
+            Optional. Defaults to `full`. Use `suite_only` to execute only the
+            resolved regression selection instead of unioning it with the full
+            official pack case set.
 
     CreateRunResponse:
       type: object
-      required: [id, workspace_id, challenge_pack_version_id, status, execution_mode, created_at, links]
+      required: [id, workspace_id, challenge_pack_version_id, official_pack_mode, status, execution_mode, created_at, links]
       properties:
         id:
           type: string
@@ -4686,6 +4703,9 @@ components:
         challenge_input_set_id:
           type: string
           format: uuid
+        official_pack_mode:
+          type: string
+          enum: [full, suite_only]
         status:
           $ref: "#/components/schemas/RunStatus"
         execution_mode:
@@ -4719,7 +4739,7 @@ components:
 
     RunDetail:
       type: object
-      required: [id, workspace_id, challenge_pack_version_id, name, status, execution_mode, created_at, updated_at, links]
+      required: [id, workspace_id, challenge_pack_version_id, official_pack_mode, name, status, execution_mode, created_at, updated_at, links]
       properties:
         id:
           type: string
@@ -4733,6 +4753,9 @@ components:
         challenge_input_set_id:
           type: string
           format: uuid
+        official_pack_mode:
+          type: string
+          enum: [full, suite_only]
         name:
           type: string
         status:
@@ -4764,8 +4787,52 @@ components:
         updated_at:
           type: string
           format: date-time
+        regression_coverage:
+          $ref: "#/components/schemas/RegressionCoverage"
         links:
           $ref: "#/components/schemas/RunLinks"
+
+    RegressionCoverage:
+      type: object
+      required: [suites, unmatched_cases]
+      properties:
+        suites:
+          type: array
+          items:
+            $ref: "#/components/schemas/RegressionCoverageSuite"
+        unmatched_cases:
+          type: array
+          items:
+            $ref: "#/components/schemas/RegressionCoverageCase"
+
+    RegressionCoverageSuite:
+      type: object
+      required: [id, name, case_count, pass_count, fail_count]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        case_count:
+          type: integer
+        pass_count:
+          type: integer
+        fail_count:
+          type: integer
+
+    RegressionCoverageCase:
+      type: object
+      required: [id, title, outcome]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        outcome:
+          type: string
+          enum: [pending, pass, fail]
 
     RunAgent:
       type: object
@@ -5670,6 +5737,9 @@ components:
         normalized_score:
           type: number
           format: double
+        regression_case_id:
+          type: string
+          format: uuid
         evidence:
           $ref: "#/components/schemas/ValidatorEvidence"
         source:
@@ -5687,6 +5757,9 @@ components:
           type: string
         reason:
           type: string
+        regression_case_id:
+          type: string
+          format: uuid
         numeric_value:
           type: number
           format: double

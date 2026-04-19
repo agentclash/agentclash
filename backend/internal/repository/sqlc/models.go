@@ -127,18 +127,6 @@ type HostedRunExecution struct {
 	UpdatedAt        pgtype.Timestamptz
 }
 
-type JudgeResult struct {
-	ID                  uuid.UUID
-	RunAgentID          uuid.UUID
-	EvaluationSpecID    uuid.UUID
-	ChallengeIdentityID *uuid.UUID
-	JudgeKey            string
-	Verdict             *string
-	NormalizedScore     pgtype.Numeric
-	RawOutput           []byte
-	CreatedAt           pgtype.Timestamptz
-}
-
 type LlmJudgeResult struct {
 	ID               uuid.UUID
 	RunAgentID       uuid.UUID
@@ -153,21 +141,6 @@ type LlmJudgeResult struct {
 	ModelCount       int32
 	CreatedAt        pgtype.Timestamptz
 	UpdatedAt        pgtype.Timestamptz
-}
-
-type MetricResult struct {
-	ID                  uuid.UUID
-	RunAgentID          uuid.UUID
-	EvaluationSpecID    uuid.UUID
-	ChallengeIdentityID *uuid.UUID
-	MetricKey           string
-	MetricType          string
-	NumericValue        pgtype.Numeric
-	TextValue           *string
-	BooleanValue        *bool
-	Unit                *string
-	Metadata            []byte
-	CreatedAt           pgtype.Timestamptz
 }
 
 type Playground struct {
@@ -263,6 +236,7 @@ type Run struct {
 	FailedAt               pgtype.Timestamptz
 	CreatedAt              pgtype.Timestamptz
 	UpdatedAt              pgtype.Timestamptz
+	OfficialPackMode       string
 }
 
 type RunAgent struct {
@@ -301,6 +275,16 @@ type RunAgentStatusHistory struct {
 	ToStatus   string
 	Reason     *string
 	ChangedAt  pgtype.Timestamptz
+}
+
+type RunCaseSelection struct {
+	ID                  uuid.UUID
+	RunID               uuid.UUID
+	ChallengeIdentityID uuid.UUID
+	SelectionOrigin     string
+	RegressionCaseID    *uuid.UUID
+	SelectionRank       int32
+	CreatedAt           pgtype.Timestamptz
 }
 
 type RunComparison struct {

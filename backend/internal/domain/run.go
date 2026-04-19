@@ -10,8 +10,9 @@ import (
 )
 
 var (
-	ErrInvalidRunStatus      = errors.New("invalid run status")
-	ErrInvalidRunAgentStatus = errors.New("invalid run agent status")
+	ErrInvalidRunStatus        = errors.New("invalid run status")
+	ErrInvalidRunAgentStatus   = errors.New("invalid run agent status")
+	ErrInvalidOfficialPackMode = errors.New("invalid official pack mode")
 )
 
 type RunStatus string
@@ -78,6 +79,30 @@ func (s RunStatus) CanTransitionTo(next RunStatus) bool {
 	return ok
 }
 
+type OfficialPackMode string
+
+const (
+	OfficialPackModeFull      OfficialPackMode = "full"
+	OfficialPackModeSuiteOnly OfficialPackMode = "suite_only"
+)
+
+func ParseOfficialPackMode(raw string) (OfficialPackMode, error) {
+	mode := OfficialPackMode(raw)
+	if !mode.Valid() {
+		return "", fmt.Errorf("%w: %q", ErrInvalidOfficialPackMode, raw)
+	}
+	return mode, nil
+}
+
+func (m OfficialPackMode) Valid() bool {
+	switch m {
+	case OfficialPackModeFull, OfficialPackModeSuiteOnly:
+		return true
+	default:
+		return false
+	}
+}
+
 type RunAgentStatus string
 
 const (
@@ -138,6 +163,7 @@ type Run struct {
 	WorkspaceID            uuid.UUID
 	ChallengePackVersionID uuid.UUID
 	ChallengeInputSetID    *uuid.UUID
+	OfficialPackMode       OfficialPackMode
 	CreatedByUserID        *uuid.UUID
 	Name                   string
 	Status                 RunStatus

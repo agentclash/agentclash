@@ -53,6 +53,60 @@ func TestBuildRunScorecardDocumentSelectsWinnerByCorrectnessThenReliability(t *t
 	}
 }
 
+func TestBuildRunAgentScorecardDocumentIncludesRegressionCaseIDs(t *testing.T) {
+	runAgentID := uuid.New()
+	evaluationSpecID := uuid.New()
+	regressionCaseID := uuid.New()
+
+	document, err := buildRunAgentScorecardDocument(scoring.RunAgentEvaluation{
+		RunAgentID:       runAgentID,
+		EvaluationSpecID: evaluationSpecID,
+		Status:           scoring.EvaluationStatusComplete,
+		ValidatorResults: []scoring.ValidatorResult{
+			{
+				Key:              "exact",
+				Type:             scoring.ValidatorTypeExactMatch,
+				Verdict:          "pass",
+				State:            scoring.OutputStateAvailable,
+				RegressionCaseID: &regressionCaseID,
+			},
+		},
+		MetricResults: []scoring.MetricResult{
+			{
+				Key:              "total_tokens",
+				Collector:        "run_total_tokens",
+				State:            scoring.OutputStateAvailable,
+				RegressionCaseID: &regressionCaseID,
+			},
+		},
+		DimensionResults: []scoring.DimensionResult{
+			{
+				Dimension: "correctness",
+				State:     scoring.OutputStateAvailable,
+				Score:     float64Ptr(1),
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("buildRunAgentScorecardDocument returned error: %v", err)
+	}
+
+	var decoded map[string]any
+	if err := json.Unmarshal(document, &decoded); err != nil {
+		t.Fatalf("unmarshal scorecard document: %v", err)
+	}
+
+	validatorDetails := decoded["validator_details"].([]any)
+	if validatorDetails[0].(map[string]any)["regression_case_id"] != regressionCaseID.String() {
+		t.Fatalf("validator regression_case_id = %#v, want %s", validatorDetails[0], regressionCaseID)
+	}
+
+	metricDetails := decoded["metric_details"].([]any)
+	if metricDetails[0].(map[string]any)["regression_case_id"] != regressionCaseID.String() {
+		t.Fatalf("metric regression_case_id = %#v, want %s", metricDetails[0], regressionCaseID)
+	}
+}
+
 func TestBuildRunScorecardDocumentMarksSingleAgentAsTrivialWinner(t *testing.T) {
 	runID := uuid.New()
 	evaluationSpecID := uuid.New()

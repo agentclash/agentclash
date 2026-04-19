@@ -29,8 +29,25 @@ func TestRunReadManagerReturnsRunForAuthorizedCaller(t *testing.T) {
 
 	manager := NewRunReadManager(NewCallerWorkspaceAuthorizer(), &fakeRunReadRepository{
 		run: domain.Run{
-			ID:          runID,
-			WorkspaceID: workspaceID,
+			ID:               runID,
+			WorkspaceID:      workspaceID,
+			OfficialPackMode: domain.OfficialPackModeSuiteOnly,
+		},
+		regressionCoverageCases: []repository.RunRegressionCoverageCase{
+			{
+				RegressionCaseID:    uuid.New(),
+				RegressionCaseTitle: stringPtr("Replay drift"),
+				SuiteID:             uuidPtr(uuid.New()),
+				SuiteName:           stringPtr("Critical Regressions"),
+				Outcome:             repository.RunRegressionCoverageOutcomePass,
+			},
+			{
+				RegressionCaseID:    uuid.New(),
+				RegressionCaseTitle: stringPtr("Missing tool output"),
+				SuiteID:             uuidPtr(uuid.New()),
+				SuiteName:           stringPtr("Edge Cases"),
+				Outcome:             repository.RunRegressionCoverageOutcomeFail,
+			},
 		},
 	})
 
@@ -40,6 +57,18 @@ func TestRunReadManagerReturnsRunForAuthorizedCaller(t *testing.T) {
 	}
 	if result.Run.ID != runID {
 		t.Fatalf("run id = %s, want %s", result.Run.ID, runID)
+	}
+	if result.RegressionCoverage == nil {
+		t.Fatal("regression coverage = nil, want value")
+	}
+	if len(result.RegressionCoverage.Suites) != 2 {
+		t.Fatalf("suite coverage count = %d, want 2", len(result.RegressionCoverage.Suites))
+	}
+	if result.RegressionCoverage.Suites[0].PassCount != 1 {
+		t.Fatalf("first suite pass_count = %d, want 1", result.RegressionCoverage.Suites[0].PassCount)
+	}
+	if result.RegressionCoverage.Suites[1].FailCount != 1 {
+		t.Fatalf("second suite fail_count = %d, want 1", result.RegressionCoverage.Suites[1].FailCount)
 	}
 }
 
@@ -122,11 +151,23 @@ func TestGetRunEndpointReturnsRun(t *testing.T) {
 					WorkspaceID:        workspaceID,
 					Name:               "Run 2026-03-13T12:00:00Z",
 					Status:             domain.RunStatusQueued,
+					OfficialPackMode:   domain.OfficialPackModeSuiteOnly,
 					ExecutionMode:      "comparison",
 					TemporalWorkflowID: &workflowID,
 					TemporalRunID:      &temporalRunID,
 					CreatedAt:          time.Date(2026, 3, 13, 12, 0, 0, 0, time.UTC),
 					UpdatedAt:          time.Date(2026, 3, 13, 12, 1, 0, 0, time.UTC),
+				},
+				RegressionCoverage: &RunRegressionCoverage{
+					Suites: []RunRegressionCoverageSuite{
+						{
+							ID:        uuid.New(),
+							Name:      "Critical Regressions",
+							CaseCount: 2,
+							PassCount: 1,
+							FailCount: 1,
+						},
+					},
 				},
 			},
 		},
@@ -161,8 +202,17 @@ func TestGetRunEndpointReturnsRun(t *testing.T) {
 	if response.ID != runID {
 		t.Fatalf("run id = %s, want %s", response.ID, runID)
 	}
+	if response.OfficialPackMode != string(domain.OfficialPackModeSuiteOnly) {
+		t.Fatalf("official_pack_mode = %q, want %q", response.OfficialPackMode, domain.OfficialPackModeSuiteOnly)
+	}
 	if response.TemporalWorkflowID == nil || *response.TemporalWorkflowID != workflowID {
 		t.Fatalf("temporal workflow id = %v, want %q", response.TemporalWorkflowID, workflowID)
+	}
+	if response.RegressionCoverage == nil || len(response.RegressionCoverage.Suites) != 1 {
+		t.Fatalf("regression_coverage = %#v, want one suite", response.RegressionCoverage)
+	}
+	if response.RegressionCoverage.Suites[0].FailCount != 1 {
+		t.Fatalf("suite fail_count = %d, want 1", response.RegressionCoverage.Suites[0].FailCount)
 	}
 }
 
@@ -357,14 +407,15 @@ func TestListRunAgentsEndpointReturnsForbidden(t *testing.T) {
 }
 
 type fakeRunReadRepository struct {
-	run                domain.Run
-	runScorecard       repository.RunScorecard
-	runAgents          []domain.RunAgent
-	failureItems       []failurereview.Item
-	getRunErr          error
-	getRunScorecardErr error
-	listRunAgentsErr   error
-	listRunFailuresErr error
+	run                     domain.Run
+	runScorecard            repository.RunScorecard
+	regressionCoverageCases []repository.RunRegressionCoverageCase
+	runAgents               []domain.RunAgent
+	failureItems            []failurereview.Item
+	getRunErr               error
+	getRunScorecardErr      error
+	listRunAgentsErr        error
+	listRunFailuresErr      error
 }
 
 func (f *fakeRunReadRepository) GetRunByID(_ context.Context, _ uuid.UUID) (domain.Run, error) {
@@ -373,6 +424,10 @@ func (f *fakeRunReadRepository) GetRunByID(_ context.Context, _ uuid.UUID) (doma
 
 func (f *fakeRunReadRepository) GetRunScorecardByRunID(_ context.Context, _ uuid.UUID) (repository.RunScorecard, error) {
 	return f.runScorecard, f.getRunScorecardErr
+}
+
+func (f *fakeRunReadRepository) ListRunRegressionCoverageCasesByRunID(_ context.Context, _ uuid.UUID) ([]repository.RunRegressionCoverageCase, error) {
+	return f.regressionCoverageCases, nil
 }
 
 func (f *fakeRunReadRepository) ListRunAgentsByRunID(_ context.Context, _ uuid.UUID) ([]domain.RunAgent, error) {
@@ -392,12 +447,12 @@ func (f *fakeRunReadRepository) CountRunsByWorkspaceID(_ context.Context, _ uuid
 }
 
 type fakeRunReadService struct {
-	getRunResult        GetRunResult
-	getRunErr           error
-	getRunRankingResult GetRunRankingResult
-	getRunRankingErr    error
-	listRunAgentsResult ListRunAgentsResult
-	listRunAgentsErr    error
+	getRunResult          GetRunResult
+	getRunErr             error
+	getRunRankingResult   GetRunRankingResult
+	getRunRankingErr      error
+	listRunAgentsResult   ListRunAgentsResult
+	listRunAgentsErr      error
 	listRunFailuresResult ListRunFailuresResult
 	listRunFailuresErr    error
 }
@@ -420,4 +475,8 @@ func (f *fakeRunReadService) ListRunFailures(_ context.Context, _ Caller, _ List
 
 func (f *fakeRunReadService) ListRuns(_ context.Context, _ Caller, _ ListRunsInput) (ListRunsResult, error) {
 	return ListRunsResult{}, nil
+}
+
+func uuidPtr(value uuid.UUID) *uuid.UUID {
+	return &value
 }

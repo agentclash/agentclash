@@ -35,6 +35,7 @@ INSERT INTO runs (
     workspace_id,
     challenge_pack_version_id,
     challenge_input_set_id,
+    official_pack_mode,
     created_by_user_id,
     name,
     status,
@@ -63,9 +64,10 @@ INSERT INTO runs (
     $13,
     $14,
     $15,
-    $16
+    $16,
+    $17
 )
-RETURNING id, organization_id, workspace_id, challenge_pack_version_id, challenge_input_set_id, created_by_user_id, name, status, execution_mode, temporal_workflow_id, temporal_run_id, execution_plan, queued_at, started_at, finished_at, cancelled_at, failed_at, created_at, updated_at
+RETURNING id, organization_id, workspace_id, challenge_pack_version_id, challenge_input_set_id, created_by_user_id, name, status, execution_mode, temporal_workflow_id, temporal_run_id, execution_plan, queued_at, started_at, finished_at, cancelled_at, failed_at, created_at, updated_at, official_pack_mode
 `
 
 type CreateRunParams struct {
@@ -73,6 +75,7 @@ type CreateRunParams struct {
 	WorkspaceID            uuid.UUID
 	ChallengePackVersionID uuid.UUID
 	ChallengeInputSetID    *uuid.UUID
+	OfficialPackMode       string
 	CreatedByUserID        *uuid.UUID
 	Name                   string
 	Status                 string
@@ -93,6 +96,7 @@ func (q *Queries) CreateRun(ctx context.Context, arg CreateRunParams) (Run, erro
 		arg.WorkspaceID,
 		arg.ChallengePackVersionID,
 		arg.ChallengeInputSetID,
+		arg.OfficialPackMode,
 		arg.CreatedByUserID,
 		arg.Name,
 		arg.Status,
@@ -127,12 +131,59 @@ func (q *Queries) CreateRun(ctx context.Context, arg CreateRunParams) (Run, erro
 		&i.FailedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.OfficialPackMode,
+	)
+	return i, err
+}
+
+const createRunCaseSelection = `-- name: CreateRunCaseSelection :one
+INSERT INTO run_case_selections (
+    run_id,
+    challenge_identity_id,
+    selection_origin,
+    regression_case_id,
+    selection_rank
+) VALUES (
+    $1,
+    $2,
+    $3,
+    $4,
+    $5
+)
+RETURNING id, run_id, challenge_identity_id, selection_origin, regression_case_id, selection_rank, created_at
+`
+
+type CreateRunCaseSelectionParams struct {
+	RunID               uuid.UUID
+	ChallengeIdentityID uuid.UUID
+	SelectionOrigin     string
+	RegressionCaseID    *uuid.UUID
+	SelectionRank       int32
+}
+
+func (q *Queries) CreateRunCaseSelection(ctx context.Context, arg CreateRunCaseSelectionParams) (RunCaseSelection, error) {
+	row := q.db.QueryRow(ctx, createRunCaseSelection,
+		arg.RunID,
+		arg.ChallengeIdentityID,
+		arg.SelectionOrigin,
+		arg.RegressionCaseID,
+		arg.SelectionRank,
+	)
+	var i RunCaseSelection
+	err := row.Scan(
+		&i.ID,
+		&i.RunID,
+		&i.ChallengeIdentityID,
+		&i.SelectionOrigin,
+		&i.RegressionCaseID,
+		&i.SelectionRank,
+		&i.CreatedAt,
 	)
 	return i, err
 }
 
 const getRunByID = `-- name: GetRunByID :one
-SELECT id, organization_id, workspace_id, challenge_pack_version_id, challenge_input_set_id, created_by_user_id, name, status, execution_mode, temporal_workflow_id, temporal_run_id, execution_plan, queued_at, started_at, finished_at, cancelled_at, failed_at, created_at, updated_at
+SELECT id, organization_id, workspace_id, challenge_pack_version_id, challenge_input_set_id, created_by_user_id, name, status, execution_mode, temporal_workflow_id, temporal_run_id, execution_plan, queued_at, started_at, finished_at, cancelled_at, failed_at, created_at, updated_at, official_pack_mode
 FROM runs
 WHERE id = $1
 LIMIT 1
@@ -165,6 +216,7 @@ func (q *Queries) GetRunByID(ctx context.Context, arg GetRunByIDParams) (Run, er
 		&i.FailedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.OfficialPackMode,
 	)
 	return i, err
 }
@@ -215,6 +267,132 @@ func (q *Queries) InsertRunStatusHistory(ctx context.Context, arg InsertRunStatu
 	return i, err
 }
 
+const listRunCaseSelectionsByRunID = `-- name: ListRunCaseSelectionsByRunID :many
+SELECT id, run_id, challenge_identity_id, selection_origin, regression_case_id, selection_rank, created_at
+FROM run_case_selections
+WHERE run_id = $1
+ORDER BY selection_rank ASC, created_at ASC, challenge_identity_id ASC
+`
+
+type ListRunCaseSelectionsByRunIDParams struct {
+	RunID uuid.UUID
+}
+
+func (q *Queries) ListRunCaseSelectionsByRunID(ctx context.Context, arg ListRunCaseSelectionsByRunIDParams) ([]RunCaseSelection, error) {
+	rows, err := q.db.Query(ctx, listRunCaseSelectionsByRunID, arg.RunID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []RunCaseSelection
+	for rows.Next() {
+		var i RunCaseSelection
+		if err := rows.Scan(
+			&i.ID,
+			&i.RunID,
+			&i.ChallengeIdentityID,
+			&i.SelectionOrigin,
+			&i.RegressionCaseID,
+			&i.SelectionRank,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRunRegressionCoverageCasesByRunID = `-- name: ListRunRegressionCoverageCasesByRunID :many
+WITH winning_run_agent AS (
+    SELECT winning_run_agent_id
+    FROM run_scorecards
+    WHERE run_scorecards.run_id = $1
+    ORDER BY created_at DESC
+    LIMIT 1
+),
+selected_regression_cases AS (
+    SELECT DISTINCT ON (rcs.regression_case_id)
+        rcs.regression_case_id,
+        c.title AS regression_case_title,
+        s.id AS suite_id,
+        s.name AS suite_name
+    FROM run_case_selections AS rcs
+    LEFT JOIN workspace_regression_cases AS c
+      ON c.id = rcs.regression_case_id
+    LEFT JOIN workspace_regression_suites AS s
+      ON s.id = c.suite_id
+    WHERE rcs.run_id = $1
+      AND rcs.regression_case_id IS NOT NULL
+    ORDER BY rcs.regression_case_id, rcs.selection_rank ASC, rcs.created_at ASC
+),
+winning_case_outcomes AS (
+    SELECT
+        jr.regression_case_id,
+        CASE
+            WHEN bool_or(jr.verdict = 'fail') THEN 'fail'
+            WHEN bool_or(jr.verdict = 'pass') THEN 'pass'
+            ELSE 'pending'
+        END AS outcome
+    FROM judge_results AS jr
+    JOIN winning_run_agent AS wra
+      ON jr.run_agent_id = wra.winning_run_agent_id
+    WHERE jr.regression_case_id IS NOT NULL
+    GROUP BY jr.regression_case_id
+)
+SELECT
+    src.regression_case_id,
+    src.regression_case_title,
+    src.suite_id,
+    src.suite_name,
+    COALESCE(wco.outcome, 'pending') AS outcome
+FROM selected_regression_cases AS src
+LEFT JOIN winning_case_outcomes AS wco
+  ON wco.regression_case_id = src.regression_case_id
+ORDER BY src.suite_name ASC NULLS LAST, src.regression_case_title ASC, src.regression_case_id ASC
+`
+
+type ListRunRegressionCoverageCasesByRunIDParams struct {
+	RunID uuid.UUID
+}
+
+type ListRunRegressionCoverageCasesByRunIDRow struct {
+	RegressionCaseID    *uuid.UUID
+	RegressionCaseTitle *string
+	SuiteID             *uuid.UUID
+	SuiteName           *string
+	Outcome             string
+}
+
+func (q *Queries) ListRunRegressionCoverageCasesByRunID(ctx context.Context, arg ListRunRegressionCoverageCasesByRunIDParams) ([]ListRunRegressionCoverageCasesByRunIDRow, error) {
+	rows, err := q.db.Query(ctx, listRunRegressionCoverageCasesByRunID, arg.RunID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListRunRegressionCoverageCasesByRunIDRow
+	for rows.Next() {
+		var i ListRunRegressionCoverageCasesByRunIDRow
+		if err := rows.Scan(
+			&i.RegressionCaseID,
+			&i.RegressionCaseTitle,
+			&i.SuiteID,
+			&i.SuiteName,
+			&i.Outcome,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listRunStatusHistoryByRunID = `-- name: ListRunStatusHistoryByRunID :many
 SELECT id, run_id, from_status, to_status, reason, changed_by_user_id, changed_at
 FROM run_status_history
@@ -255,7 +433,7 @@ func (q *Queries) ListRunStatusHistoryByRunID(ctx context.Context, arg ListRunSt
 }
 
 const listRunsByWorkspaceID = `-- name: ListRunsByWorkspaceID :many
-SELECT id, organization_id, workspace_id, challenge_pack_version_id, challenge_input_set_id, created_by_user_id, name, status, execution_mode, temporal_workflow_id, temporal_run_id, execution_plan, queued_at, started_at, finished_at, cancelled_at, failed_at, created_at, updated_at
+SELECT id, organization_id, workspace_id, challenge_pack_version_id, challenge_input_set_id, created_by_user_id, name, status, execution_mode, temporal_workflow_id, temporal_run_id, execution_plan, queued_at, started_at, finished_at, cancelled_at, failed_at, created_at, updated_at, official_pack_mode
 FROM runs
 WHERE workspace_id = $1
 ORDER BY created_at DESC
@@ -297,6 +475,7 @@ func (q *Queries) ListRunsByWorkspaceID(ctx context.Context, arg ListRunsByWorks
 			&i.FailedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.OfficialPackMode,
 		); err != nil {
 			return nil, err
 		}
@@ -315,7 +494,7 @@ SET temporal_workflow_id = $1,
 WHERE id = $3
   AND temporal_workflow_id IS NULL
   AND temporal_run_id IS NULL
-RETURNING id, organization_id, workspace_id, challenge_pack_version_id, challenge_input_set_id, created_by_user_id, name, status, execution_mode, temporal_workflow_id, temporal_run_id, execution_plan, queued_at, started_at, finished_at, cancelled_at, failed_at, created_at, updated_at
+RETURNING id, organization_id, workspace_id, challenge_pack_version_id, challenge_input_set_id, created_by_user_id, name, status, execution_mode, temporal_workflow_id, temporal_run_id, execution_plan, queued_at, started_at, finished_at, cancelled_at, failed_at, created_at, updated_at, official_pack_mode
 `
 
 type SetRunTemporalIDsParams struct {
@@ -347,6 +526,7 @@ func (q *Queries) SetRunTemporalIDs(ctx context.Context, arg SetRunTemporalIDsPa
 		&i.FailedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.OfficialPackMode,
 	)
 	return i, err
 }
@@ -376,7 +556,7 @@ SET status = $1,
     END
 WHERE id = $2
   AND status = $3
-RETURNING id, organization_id, workspace_id, challenge_pack_version_id, challenge_input_set_id, created_by_user_id, name, status, execution_mode, temporal_workflow_id, temporal_run_id, execution_plan, queued_at, started_at, finished_at, cancelled_at, failed_at, created_at, updated_at
+RETURNING id, organization_id, workspace_id, challenge_pack_version_id, challenge_input_set_id, created_by_user_id, name, status, execution_mode, temporal_workflow_id, temporal_run_id, execution_plan, queued_at, started_at, finished_at, cancelled_at, failed_at, created_at, updated_at, official_pack_mode
 `
 
 type UpdateRunStatusParams struct {
@@ -408,6 +588,7 @@ func (q *Queries) UpdateRunStatus(ctx context.Context, arg UpdateRunStatusParams
 		&i.FailedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.OfficialPackMode,
 	)
 	return i, err
 }

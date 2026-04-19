@@ -54,32 +54,32 @@ func resolveEvidenceValue(source string, evidence extractedEvidence) (*string, *
 	}
 }
 
-func resolveChallengeInputValue(inputs []EvidenceInput) (*string, *uuid.UUID, []string) {
+func resolveChallengeInputValue(inputs []EvidenceInput) (*string, *uuid.UUID, *uuid.UUID, []string) {
 	if len(inputs) == 0 {
-		return nil, nil, []string{"challenge input set is unavailable"}
+		return nil, nil, nil, []string{"challenge input set is unavailable"}
 	}
 	if len(inputs) > 1 {
-		return nil, nil, []string{"challenge input is ambiguous across multiple items"}
+		return nil, nil, nil, []string{"challenge input is ambiguous across multiple items"}
 	}
 
 	var decoded any
 	if err := json.Unmarshal(inputs[0].Payload, &decoded); err == nil {
 		if value, ok := extractLooseString(decoded); ok {
-			return &value, uuidPtrOrNil(inputs[0].ChallengeIdentityID), nil
+			return &value, uuidPtrOrNil(inputs[0].ChallengeIdentityID), cloneUUIDPtr(inputs[0].RegressionCaseID), nil
 		}
 	}
 
 	payload := decodePayload(inputs[0].Payload)
 	if value, ok := extractLooseString(payload); ok {
-		return &value, uuidPtrOrNil(inputs[0].ChallengeIdentityID), nil
+		return &value, uuidPtrOrNil(inputs[0].ChallengeIdentityID), cloneUUIDPtr(inputs[0].RegressionCaseID), nil
 	}
 
 	normalized := bytes.TrimSpace(inputs[0].Payload)
 	if len(normalized) == 0 {
-		return nil, uuidPtrOrNil(inputs[0].ChallengeIdentityID), []string{"challenge input payload is empty"}
+		return nil, uuidPtrOrNil(inputs[0].ChallengeIdentityID), cloneUUIDPtr(inputs[0].RegressionCaseID), []string{"challenge input payload is empty"}
 	}
 	value := string(normalized)
-	return &value, uuidPtrOrNil(inputs[0].ChallengeIdentityID), nil
+	return &value, uuidPtrOrNil(inputs[0].ChallengeIdentityID), cloneUUIDPtr(inputs[0].RegressionCaseID), nil
 }
 
 func resolveCaseInput(inputs []EvidenceInput) (*EvidenceInput, string) {

@@ -28,14 +28,20 @@ type createRunRequest struct {
 	ChallengeInputSetID    *string  `json:"challenge_input_set_id,omitempty"`
 	Name                   string   `json:"name,omitempty"`
 	AgentDeploymentIDs     []string `json:"agent_deployment_ids"`
+	RegressionSuiteIDs     []string `json:"regression_suite_ids,omitempty"`
+	RegressionCaseIDs      []string `json:"regression_case_ids,omitempty"`
+	OfficialPackMode       string   `json:"official_pack_mode,omitempty"`
 }
 
 type CreateRunInput struct {
 	WorkspaceID            uuid.UUID
 	ChallengePackVersionID uuid.UUID
 	ChallengeInputSetID    *uuid.UUID
+	OfficialPackMode       domain.OfficialPackMode
 	Name                   string
 	AgentDeploymentIDs     []uuid.UUID
+	RegressionSuiteIDs     []uuid.UUID
+	RegressionCaseIDs      []uuid.UUID
 }
 
 type CreateRunResult struct {
@@ -47,6 +53,7 @@ type createRunResponse struct {
 	WorkspaceID            uuid.UUID        `json:"workspace_id"`
 	ChallengePackVersionID uuid.UUID        `json:"challenge_pack_version_id"`
 	ChallengeInputSetID    *uuid.UUID       `json:"challenge_input_set_id,omitempty"`
+	OfficialPackMode       string           `json:"official_pack_mode"`
 	Status                 domain.RunStatus `json:"status"`
 	ExecutionMode          string           `json:"execution_mode"`
 	CreatedAt              time.Time        `json:"created_at"`
@@ -165,6 +172,7 @@ func buildCreateRunResponse(run domain.Run) createRunResponse {
 		WorkspaceID:            run.WorkspaceID,
 		ChallengePackVersionID: run.ChallengePackVersionID,
 		ChallengeInputSetID:    run.ChallengeInputSetID,
+		OfficialPackMode:       string(run.OfficialPackMode),
 		Status:                 run.Status,
 		ExecutionMode:          run.ExecutionMode,
 		CreatedAt:              run.CreatedAt,
@@ -225,6 +233,18 @@ func decodeCreateRunRequest(r *http.Request) (CreateRunInput, error) {
 		challengeInputSetID = &parsedID
 	}
 
+	officialPackMode := domain.OfficialPackModeFull
+	if trimmed := strings.TrimSpace(body.OfficialPackMode); trimmed != "" {
+		parsedMode, parseErr := domain.ParseOfficialPackMode(trimmed)
+		if parseErr != nil {
+			return CreateRunInput{}, RunCreationValidationError{
+				Code:    "invalid_official_pack_mode",
+				Message: "official_pack_mode must be either full or suite_only",
+			}
+		}
+		officialPackMode = parsedMode
+	}
+
 	deploymentIDs := make([]uuid.UUID, 0, len(body.AgentDeploymentIDs))
 	for _, rawID := range body.AgentDeploymentIDs {
 		deploymentID, parseErr := parseRequiredUUID(rawID, "agent_deployment_ids", "invalid_agent_deployment_ids")
@@ -234,12 +254,33 @@ func decodeCreateRunRequest(r *http.Request) (CreateRunInput, error) {
 		deploymentIDs = append(deploymentIDs, deploymentID)
 	}
 
+	regressionSuiteIDs := make([]uuid.UUID, 0, len(body.RegressionSuiteIDs))
+	for _, rawID := range body.RegressionSuiteIDs {
+		suiteID, parseErr := parseRequiredUUID(rawID, "regression_suite_ids", "invalid_regression_suite_ids")
+		if parseErr != nil {
+			return CreateRunInput{}, parseErr
+		}
+		regressionSuiteIDs = append(regressionSuiteIDs, suiteID)
+	}
+
+	regressionCaseIDs := make([]uuid.UUID, 0, len(body.RegressionCaseIDs))
+	for _, rawID := range body.RegressionCaseIDs {
+		caseID, parseErr := parseRequiredUUID(rawID, "regression_case_ids", "invalid_regression_case_ids")
+		if parseErr != nil {
+			return CreateRunInput{}, parseErr
+		}
+		regressionCaseIDs = append(regressionCaseIDs, caseID)
+	}
+
 	return CreateRunInput{
 		WorkspaceID:            workspaceID,
 		ChallengePackVersionID: challengePackVersionID,
 		ChallengeInputSetID:    challengeInputSetID,
+		OfficialPackMode:       officialPackMode,
 		Name:                   strings.TrimSpace(body.Name),
 		AgentDeploymentIDs:     deploymentIDs,
+		RegressionSuiteIDs:     regressionSuiteIDs,
+		RegressionCaseIDs:      regressionCaseIDs,
 	}, nil
 }
 

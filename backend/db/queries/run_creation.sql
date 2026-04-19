@@ -20,6 +20,12 @@ WHERE challenge_pack_version_id = @challenge_pack_version_id
   AND archived_at IS NULL
 ORDER BY created_at ASC;
 
+-- name: ListChallengeIdentityIDsByPackVersionID :many
+SELECT challenge_identity_id
+FROM challenge_pack_version_challenges
+WHERE challenge_pack_version_id = @challenge_pack_version_id
+ORDER BY execution_order ASC, id ASC;
+
 -- name: ListRunnableDeploymentsWithLatestSnapshot :many
 SELECT DISTINCT ON (agent_deployments.id)
     agent_deployments.id,

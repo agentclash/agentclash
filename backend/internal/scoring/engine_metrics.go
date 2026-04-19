@@ -46,6 +46,7 @@ func evaluateMetrics(metrics []MetricDeclaration, evidence extractedEvidence, va
 		result.Metadata = metadata
 		if evidence.challengeInputChallengeID != nil {
 			result.ChallengeIdentityID = evidence.challengeInputChallengeID
+			result.RegressionCaseID = regressionCaseIDForChallenge(evidence, evidence.challengeInputChallengeID)
 		}
 		results = append(results, result)
 	}
