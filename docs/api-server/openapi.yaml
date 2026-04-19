@@ -2010,6 +2010,50 @@ paths:
         "404":
           $ref: "#/components/responses/NotFoundError"
 
+  /v1/workspaces/{workspaceID}/runs/{runID}/failures/{challengeIdentityID}/promote:
+    post:
+      operationId: promoteFailureReviewItem
+      tags: [Runs, Regression Suites]
+      summary: Promote a failure review item into a regression case
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/RunID"
+        - name: challengeIdentityID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PromoteFailureInput"
+      responses:
+        "200":
+          description: Existing regression case returned for an idempotent re-promotion
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegressionCase"
+        "201":
+          description: Failure promoted into a new regression case
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegressionCase"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
   /v1/runs/{runID}/events/stream:
     get:
       operationId: streamRunEvents
@@ -5225,6 +5269,33 @@ components:
           $ref: "#/components/schemas/RegressionCaseStatus"
         severity:
           $ref: "#/components/schemas/RegressionSeverity"
+
+    PromoteFailureInput:
+      type: object
+      required: [suite_id, promotion_mode, title]
+      properties:
+        suite_id:
+          type: string
+          format: uuid
+        promotion_mode:
+          type: string
+          enum: [full_executable, output_only]
+        title:
+          type: string
+        failure_summary:
+          type: string
+        severity:
+          $ref: "#/components/schemas/RegressionSeverity"
+        validator_overrides:
+          anyOf:
+            - type: object
+              additionalProperties: true
+            - type: "null"
+        metadata:
+          anyOf:
+            - type: object
+              additionalProperties: true
+            - type: "null"
 
     ListRegressionSuitesResponse:
       type: object

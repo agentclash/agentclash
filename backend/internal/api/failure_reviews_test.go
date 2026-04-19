@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/domain"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/failurereview"
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
 	"github.com/google/uuid"
 )
 
@@ -207,6 +209,125 @@ func TestListRunFailuresEndpointRejectsMalformedQueryParams(t *testing.T) {
 				t.Fatalf("status = %d, want %d, body=%s", recorder.Code, http.StatusBadRequest, recorder.Body.String())
 			}
 		})
+	}
+}
+
+func TestPromoteFailureEndpointReturnsCreatedAndIdempotentOK(t *testing.T) {
+	workspaceID := uuid.New()
+	runID := uuid.New()
+	challengeIdentityID := uuid.New()
+	suiteID := uuid.New()
+	caseID := uuid.New()
+
+	makeService := func(created bool) *fakeRegressionService {
+		return &fakeRegressionService{
+			promoteResult: PromoteFailureResult{
+				Created: created,
+				Case: repository.RegressionCase{
+					ID:                           caseID,
+					SuiteID:                      suiteID,
+					WorkspaceID:                  workspaceID,
+					Title:                        "Promoted failure",
+					Description:                  "",
+					Status:                       domain.RegressionCaseStatusActive,
+					Severity:                     domain.RegressionSeverityWarning,
+					PromotionMode:                domain.RegressionPromotionModeFullExecutable,
+					SourceChallengePackVersionID: uuid.New(),
+					SourceChallengeIdentityID:    challengeIdentityID,
+					SourceCaseKey:                "case-a",
+					EvidenceTier:                 "native_structured",
+					FailureClass:                 "policy_violation",
+					FailureSummary:               "Policy guard tripped",
+					PayloadSnapshot:              json.RawMessage(`{"payload":"snapshot"}`),
+					ExpectedContract:             json.RawMessage(`{"scorecard":{}}`),
+					Metadata:                     json.RawMessage(`{"source":"test"}`),
+				},
+			},
+		}
+	}
+
+	testCases := []struct {
+		name       string
+		created    bool
+		wantStatus int
+	}{
+		{name: "created", created: true, wantStatus: http.StatusCreated},
+		{name: "idempotent", created: false, wantStatus: http.StatusOK},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			router := buildRouter(routerOptions{
+				authMode:                   "dev",
+				logger:                     testLogger(t),
+				authenticator:              NewDevelopmentAuthenticator(),
+				authorizer:                 NewCallerWorkspaceAuthorizer(),
+				runCreationService:         stubRunCreationService{},
+				runReadService:             stubRunReadService{},
+				replayReadService:          stubReplayReadService{},
+				hostedRunIngestionService:  stubHostedRunIngestionService{},
+				compareReadService:         stubCompareReadService{},
+				agentDeploymentReadService: stubAgentDeploymentReadService{},
+				challengePackReadService:   stubChallengePackReadService{},
+				agentBuildService:          stubAgentBuildService{},
+				releaseGateService:         noopReleaseGateService{},
+				regressionService:          makeService(tc.created),
+			})
+
+			req := httptest.NewRequest(http.MethodPost, "/v1/workspaces/"+workspaceID.String()+"/runs/"+runID.String()+"/failures/"+challengeIdentityID.String()+"/promote", bytes.NewBufferString(`{
+				"suite_id":"`+suiteID.String()+`",
+				"promotion_mode":"full_executable",
+				"title":"Promoted failure"
+			}`))
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set(headerUserID, uuid.New().String())
+			req.Header.Set(headerWorkspaceMemberships, workspaceID.String()+":workspace_member")
+			rec := httptest.NewRecorder()
+
+			router.ServeHTTP(rec, req)
+			if rec.Code != tc.wantStatus {
+				t.Fatalf("status = %d, want %d, body=%s", rec.Code, tc.wantStatus, rec.Body.String())
+			}
+		})
+	}
+}
+
+func TestPromoteFailureEndpointRejectsUnknownOverrideKeys(t *testing.T) {
+	workspaceID := uuid.New()
+	runID := uuid.New()
+	challengeIdentityID := uuid.New()
+
+	router := buildRouter(routerOptions{
+		authMode:                   "dev",
+		logger:                     testLogger(t),
+		authenticator:              NewDevelopmentAuthenticator(),
+		authorizer:                 NewCallerWorkspaceAuthorizer(),
+		runCreationService:         stubRunCreationService{},
+		runReadService:             stubRunReadService{},
+		replayReadService:          stubReplayReadService{},
+		hostedRunIngestionService:  stubHostedRunIngestionService{},
+		compareReadService:         stubCompareReadService{},
+		agentDeploymentReadService: stubAgentDeploymentReadService{},
+		challengePackReadService:   stubChallengePackReadService{},
+		agentBuildService:          stubAgentBuildService{},
+		releaseGateService:         noopReleaseGateService{},
+		regressionService:          &fakeRegressionService{},
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/workspaces/"+workspaceID.String()+"/runs/"+runID.String()+"/failures/"+challengeIdentityID.String()+"/promote", bytes.NewBufferString(`{
+		"suite_id":"`+uuid.New().String()+`",
+		"promotion_mode":"full_executable",
+		"title":"Promoted failure",
+		"validator_overrides":{"unexpected":true}
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(headerUserID, uuid.New().String())
+	req.Header.Set(headerWorkspaceMemberships, workspaceID.String()+":workspace_member")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusBadRequest, rec.Body.String())
 	}
 }
 

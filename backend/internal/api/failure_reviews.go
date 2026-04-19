@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/domain"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/failurereview"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
+	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
 
@@ -195,4 +197,139 @@ func parseFailureSeverity(raw string) (failurereview.Severity, error) {
 	default:
 		return "", errors.New("severity must be one of info, warning, blocking")
 	}
+}
+
+func promoteFailureHandler(logger *slog.Logger, service RegressionService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		caller, err := CallerFromContext(r.Context())
+		if err != nil {
+			writeAuthzError(w, err)
+			return
+		}
+		if err := requireJSONContentType(r); err != nil {
+			writeError(w, http.StatusUnsupportedMediaType, "unsupported_media_type", err.Error())
+			return
+		}
+
+		input, err := promoteFailureInputFromRequest(r)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "validation_error", err.Error())
+			return
+		}
+
+		result, err := service.PromoteFailure(r.Context(), caller, input)
+		if err != nil {
+			handleRegressionError(w, logger, err)
+			return
+		}
+
+		status := http.StatusCreated
+		if !result.Created {
+			status = http.StatusOK
+		}
+		writeJSON(w, status, buildRegressionCaseResponse(result.Case))
+	}
+}
+
+func promoteFailureInputFromRequest(r *http.Request) (PromoteFailureInput, error) {
+	workspaceID, err := workspaceIDFromURLParam("workspaceID")(r)
+	if err != nil {
+		return PromoteFailureInput{}, err
+	}
+	runID, err := runIDFromURLParam("runID")(r)
+	if err != nil {
+		return PromoteFailureInput{}, err
+	}
+	challengeIdentityID, err := challengeIdentityIDFromURLParam("challengeIdentityID")(r)
+	if err != nil {
+		return PromoteFailureInput{}, err
+	}
+
+	var req struct {
+		SuiteID            uuid.UUID       `json:"suite_id"`
+		PromotionMode      string          `json:"promotion_mode"`
+		Title              string          `json:"title"`
+		FailureSummary     string          `json:"failure_summary,omitempty"`
+		Severity           *string         `json:"severity,omitempty"`
+		ValidatorOverrides json.RawMessage `json:"validator_overrides,omitempty"`
+		Metadata           json.RawMessage `json:"metadata,omitempty"`
+	}
+	if err := decodeJSON(r, &req); err != nil {
+		return PromoteFailureInput{}, errors.New("request body must be valid JSON")
+	}
+	if req.SuiteID == uuid.Nil {
+		return PromoteFailureInput{}, errors.New("suite_id is required")
+	}
+	if strings.TrimSpace(req.Title) == "" {
+		return PromoteFailureInput{}, errors.New("title is required")
+	}
+
+	promotionMode, err := domain.ParseRegressionPromotionMode(req.PromotionMode)
+	if err != nil {
+		return PromoteFailureInput{}, errors.New("promotion_mode must be full_executable or output_only")
+	}
+
+	var severity *domain.RegressionSeverity
+	if req.Severity != nil {
+		parsed, parseErr := domain.ParseRegressionSeverity(strings.TrimSpace(*req.Severity))
+		if parseErr != nil {
+			return PromoteFailureInput{}, errors.New("severity must be info, warning, or blocking")
+		}
+		severity = &parsed
+	}
+
+	validatorOverrides, err := domain.ValidatePromotionOverrides(req.ValidatorOverrides)
+	if err != nil {
+		return PromoteFailureInput{}, err
+	}
+	metadata, err := normalizeOptionalJSONObject(req.Metadata, "metadata")
+	if err != nil {
+		return PromoteFailureInput{}, err
+	}
+
+	return PromoteFailureInput{
+		WorkspaceID:         workspaceID,
+		RunID:               runID,
+		ChallengeIdentityID: challengeIdentityID,
+		Request: domain.PromotionRequest{
+			SuiteID:            req.SuiteID,
+			PromotionMode:      promotionMode,
+			Title:              strings.TrimSpace(req.Title),
+			FailureSummary:     strings.TrimSpace(req.FailureSummary),
+			Severity:           severity,
+			ValidatorOverrides: validatorOverrides,
+			Metadata:           metadata,
+		},
+	}, nil
+}
+
+func challengeIdentityIDFromURLParam(name string) func(*http.Request) (uuid.UUID, error) {
+	return func(r *http.Request) (uuid.UUID, error) {
+		raw := chi.URLParam(r, name)
+		if raw == "" {
+			return uuid.Nil, errors.New("challenge identity id is required")
+		}
+		parsed, err := uuid.Parse(raw)
+		if err != nil {
+			return uuid.Nil, errors.New("challenge identity id is malformed")
+		}
+		return parsed, nil
+	}
+}
+
+func normalizeOptionalJSONObject(raw json.RawMessage, fieldName string) (json.RawMessage, error) {
+	trimmed := strings.TrimSpace(string(raw))
+	if trimmed == "" || trimmed == "null" {
+		return nil, nil
+	}
+
+	var decoded map[string]any
+	if err := json.Unmarshal([]byte(trimmed), &decoded); err != nil {
+		return nil, errors.New(fieldName + " must be a JSON object or null")
+	}
+	normalized, err := json.Marshal(decoded)
+	if err != nil {
+		return nil, err
+	}
+	return normalized, nil
 }

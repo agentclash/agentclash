@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/domain"
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/failurereview"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
 	"github.com/google/uuid"
 )
@@ -90,6 +91,127 @@ func TestRegressionManagerRejectsInvisibleChallengePackOnCreate(t *testing.T) {
 	})
 	if !errors.Is(err, ErrChallengePackNotFound) {
 		t.Fatalf("CreateRegressionSuite error = %v, want ErrChallengePackNotFound", err)
+	}
+}
+
+func TestRegressionManagerPromoteFailureDefaultsSeverity(t *testing.T) {
+	workspaceID := uuid.New()
+	runID := uuid.New()
+	suiteID := uuid.New()
+	challengeIdentityID := uuid.New()
+	challengePackID := uuid.New()
+	item := failurereview.Item{
+		RunID:                  runID,
+		RunAgentID:             uuid.New(),
+		ChallengeIdentityID:    &challengeIdentityID,
+		ChallengeKey:           "ticket-a",
+		CaseKey:                "case-a",
+		ItemKey:                "prompt.txt",
+		FailureClass:           failurereview.FailureClassPolicyViolation,
+		Promotable:             true,
+		PromotionModeAvailable: []failurereview.PromotionMode{failurereview.PromotionModeFullExecutable},
+		EvidenceTier:           failurereview.EvidenceTierNativeStructured,
+	}
+
+	manager := NewRegressionManager(NewCallerWorkspaceAuthorizer(), &fakeRegressionRepository{
+		run: domain.Run{ID: runID, WorkspaceID: workspaceID},
+		suite: repository.RegressionSuite{
+			ID:                    suiteID,
+			WorkspaceID:           workspaceID,
+			SourceChallengePackID: challengePackID,
+			Status:                domain.RegressionSuiteStatusActive,
+		},
+		failureItems: []failurereview.Item{item},
+		executionContext: repository.RunAgentExecutionContext{
+			ChallengePackVersion: repository.ChallengePackVersionExecutionContext{
+				ChallengePackID: challengePackID,
+			},
+		},
+		promoteResult: repository.PromoteFailureResult{
+			Case: repository.RegressionCase{ID: uuid.New(), WorkspaceID: workspaceID},
+		},
+	})
+
+	result, err := manager.PromoteFailure(context.Background(), Caller{
+		UserID: uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: RoleWorkspaceMember},
+		},
+	}, PromoteFailureInput{
+		WorkspaceID:         workspaceID,
+		RunID:               runID,
+		ChallengeIdentityID: challengeIdentityID,
+		Request: domain.PromotionRequest{
+			SuiteID:       suiteID,
+			PromotionMode: domain.RegressionPromotionModeFullExecutable,
+			Title:         "Promoted failure",
+		},
+	})
+	if err != nil {
+		t.Fatalf("PromoteFailure returned error: %v", err)
+	}
+	if manager.repo.(*fakeRegressionRepository).promoteInput == nil {
+		t.Fatal("expected promote input to be captured")
+	}
+	if got := manager.repo.(*fakeRegressionRepository).promoteInput.Severity; got != domain.RegressionSeverityBlocking {
+		t.Fatalf("default severity = %s, want blocking", got)
+	}
+	if result.Case.ID == uuid.Nil {
+		t.Fatal("expected promoted case to be returned")
+	}
+}
+
+func TestRegressionManagerPromoteFailureRejectsPackMismatch(t *testing.T) {
+	workspaceID := uuid.New()
+	runID := uuid.New()
+	suiteID := uuid.New()
+	challengeIdentityID := uuid.New()
+	item := failurereview.Item{
+		RunID:                  runID,
+		RunAgentID:             uuid.New(),
+		ChallengeIdentityID:    &challengeIdentityID,
+		ChallengeKey:           "ticket-a",
+		CaseKey:                "case-a",
+		ItemKey:                "prompt.txt",
+		FailureClass:           failurereview.FailureClassOther,
+		Promotable:             true,
+		PromotionModeAvailable: []failurereview.PromotionMode{failurereview.PromotionModeFullExecutable},
+		EvidenceTier:           failurereview.EvidenceTierNativeStructured,
+	}
+
+	manager := NewRegressionManager(NewCallerWorkspaceAuthorizer(), &fakeRegressionRepository{
+		run: domain.Run{ID: runID, WorkspaceID: workspaceID},
+		suite: repository.RegressionSuite{
+			ID:                    suiteID,
+			WorkspaceID:           workspaceID,
+			SourceChallengePackID: uuid.New(),
+			Status:                domain.RegressionSuiteStatusActive,
+		},
+		failureItems: []failurereview.Item{item},
+		executionContext: repository.RunAgentExecutionContext{
+			ChallengePackVersion: repository.ChallengePackVersionExecutionContext{
+				ChallengePackID: uuid.New(),
+			},
+		},
+	})
+
+	_, err := manager.PromoteFailure(context.Background(), Caller{
+		UserID: uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: RoleWorkspaceMember},
+		},
+	}, PromoteFailureInput{
+		WorkspaceID:         workspaceID,
+		RunID:               runID,
+		ChallengeIdentityID: challengeIdentityID,
+		Request: domain.PromotionRequest{
+			SuiteID:       suiteID,
+			PromotionMode: domain.RegressionPromotionModeFullExecutable,
+			Title:         "Promoted failure",
+		},
+	})
+	if !errors.Is(err, ErrRegressionSuitePackMismatch) {
+		t.Fatalf("PromoteFailure error = %v, want ErrRegressionSuitePackMismatch", err)
 	}
 }
 
@@ -315,22 +437,31 @@ func TestRegressionSuitePatchReturnsConflictOnTransitionConflict(t *testing.T) {
 }
 
 type fakeRegressionRepository struct {
-	challengePacks     []repository.ChallengePackSummary
-	challengePacksErr  error
-	suite             repository.RegressionSuite
-	suiteErr          error
-	regressionCase    repository.RegressionCase
-	regressionCaseErr error
-	listSuites        []repository.RegressionSuite
-	listSuitesErr     error
-	listCases         []repository.RegressionCase
-	listCasesErr      error
-	countSuites       int64
-	countSuitesErr    error
-	patchSuiteResult  repository.RegressionSuite
-	patchSuiteErr     error
-	patchCaseResult   repository.RegressionCase
-	patchCaseErr      error
+	challengePacks      []repository.ChallengePackSummary
+	challengePacksErr   error
+	suite               repository.RegressionSuite
+	suiteErr            error
+	regressionCase      repository.RegressionCase
+	regressionCaseErr   error
+	listSuites          []repository.RegressionSuite
+	listSuitesErr       error
+	listCases           []repository.RegressionCase
+	listCasesErr        error
+	countSuites         int64
+	countSuitesErr      error
+	patchSuiteResult    repository.RegressionSuite
+	patchSuiteErr       error
+	patchCaseResult     repository.RegressionCase
+	patchCaseErr        error
+	run                 domain.Run
+	runErr              error
+	failureItems        []failurereview.Item
+	failureItemsErr     error
+	executionContext    repository.RunAgentExecutionContext
+	executionContextErr error
+	promoteResult       repository.PromoteFailureResult
+	promoteErr          error
+	promoteInput        *repository.PromoteFailureParams
 }
 
 func (f *fakeRegressionRepository) ListVisibleChallengePacks(_ context.Context, _ uuid.UUID) ([]repository.ChallengePackSummary, error) {
@@ -387,17 +518,46 @@ func (f *fakeRegressionRepository) PatchRegressionCase(_ context.Context, _ repo
 	return f.patchCaseResult, f.patchCaseErr
 }
 
+func (f *fakeRegressionRepository) GetRunByID(_ context.Context, _ uuid.UUID) (domain.Run, error) {
+	if f.runErr != nil {
+		return domain.Run{}, f.runErr
+	}
+	return f.run, nil
+}
+
+func (f *fakeRegressionRepository) ListRunFailureReviewItems(_ context.Context, _ uuid.UUID, _ *uuid.UUID) ([]failurereview.Item, error) {
+	return f.failureItems, f.failureItemsErr
+}
+
+func (f *fakeRegressionRepository) GetRunAgentExecutionContextByID(_ context.Context, _ uuid.UUID) (repository.RunAgentExecutionContext, error) {
+	if f.executionContextErr != nil {
+		return repository.RunAgentExecutionContext{}, f.executionContextErr
+	}
+	return f.executionContext, nil
+}
+
+func (f *fakeRegressionRepository) PromoteFailure(_ context.Context, params repository.PromoteFailureParams) (repository.PromoteFailureResult, error) {
+	if f.promoteErr != nil {
+		return repository.PromoteFailureResult{}, f.promoteErr
+	}
+	f.promoteInput = &params
+	return f.promoteResult, nil
+}
+
 type fakeRegressionService struct {
 	suite           repository.RegressionSuite
 	regressionCase  repository.RegressionCase
+	promoteResult   PromoteFailureResult
 	createSuiteErr  error
 	listSuitesErr   error
 	getSuiteErr     error
 	patchSuiteErr   error
 	listCasesErr    error
 	patchCaseErr    error
+	promoteErr      error
 	patchSuiteInput *PatchRegressionSuiteInput
 	patchCaseInput  *PatchRegressionCaseInput
+	promoteInput    *PromoteFailureInput
 }
 
 func (f *fakeRegressionService) CreateRegressionSuite(_ context.Context, _ Caller, input CreateRegressionSuiteInput) (repository.RegressionSuite, error) {
@@ -470,4 +630,15 @@ func (f *fakeRegressionService) PatchRegressionCase(_ context.Context, _ Caller,
 		f.regressionCase.Severity = *input.Severity
 	}
 	return f.regressionCase, nil
+}
+
+func (f *fakeRegressionService) PromoteFailure(_ context.Context, _ Caller, input PromoteFailureInput) (PromoteFailureResult, error) {
+	if f.promoteErr != nil {
+		return PromoteFailureResult{}, f.promoteErr
+	}
+	f.promoteInput = &input
+	if f.promoteResult.Case.ID == uuid.Nil {
+		f.promoteResult.Case = f.regressionCase
+	}
+	return f.promoteResult, nil
 }

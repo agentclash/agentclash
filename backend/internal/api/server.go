@@ -426,6 +426,10 @@ func (noopRegressionService) PatchRegressionCase(_ context.Context, _ Caller, _ 
 	return repository.RegressionCase{}, errors.New("regression service is not configured")
 }
 
+func (noopRegressionService) PromoteFailure(_ context.Context, _ Caller, _ PromoteFailureInput) (PromoteFailureResult, error) {
+	return PromoteFailureResult{}, errors.New("regression service is not configured")
+}
+
 type noopArtifactService struct{}
 
 func (noopArtifactService) UploadArtifact(_ context.Context, _ Caller, _ UploadArtifactInput) (UploadArtifactResult, error) {

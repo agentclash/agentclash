@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/google/uuid"
 )
 
 var (
@@ -152,7 +154,7 @@ func (m RegressionPromotionMode) Valid() bool {
 }
 
 type PromotionRequest struct {
-	SuiteID             string
+	SuiteID             uuid.UUID
 	PromotionMode       RegressionPromotionMode
 	Title               string
 	FailureSummary      string
