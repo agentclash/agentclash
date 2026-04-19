@@ -44,6 +44,7 @@ const DEFAULT_POLICY = JSON.stringify(
 );
 
 interface EvaluateReleaseGateDialogProps {
+  workspaceId: string;
   baselineRunId: string;
   candidateRunId: string;
   onEvaluated: () => void;

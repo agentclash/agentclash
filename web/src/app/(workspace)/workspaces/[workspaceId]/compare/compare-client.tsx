@@ -1,10 +1,16 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
+
 import type {
   ComparisonResponse,
   DeltaHighlight,
+  ReleaseGate,
   Run,
 } from "@/lib/api/types";
+import { createApiClient } from "@/lib/api/client";
+import { listReleaseGates } from "@/lib/api/release-gates";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -24,6 +30,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { scorePercent } from "@/lib/scores";
+import { RegressionAlertBanner } from "./regression-alert-banner";
 import { RegressionCoverageSection } from "./regression-coverage-section";
 import { ReleaseGatesSection } from "./release-gates-section";
 
@@ -121,8 +128,46 @@ export function CompareClient({
   const isNotComparable = comparison.state === "not_comparable";
   const isPartial = comparison.state === "partial_evidence";
 
+  const { getAccessToken } = useAccessToken();
+  const [gates, setGates] = useState<ReleaseGate[]>([]);
+  const [gatesLoading, setGatesLoading] = useState(true);
+  const [refreshCounter, setRefreshCounter] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setGatesLoading(true);
+      try {
+        const token = await getAccessToken();
+        const api = createApiClient(token);
+        const res = await listReleaseGates(
+          api,
+          comparison.baseline_run_id,
+          comparison.candidate_run_id,
+        );
+        if (!cancelled) setGates(res.release_gates ?? []);
+      } catch {
+        // Gates are supplementary — silently fail
+        if (!cancelled) setGates([]);
+      } finally {
+        if (!cancelled) setGatesLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    getAccessToken,
+    comparison.baseline_run_id,
+    comparison.candidate_run_id,
+    refreshCounter,
+  ]);
+
   return (
     <div className="space-y-6">
+      {/* "New blocking regression" banner */}
+      <RegressionAlertBanner workspaceId={workspaceId} gates={gates} />
+
       {/* Header: Baseline vs Candidate */}
       <div>
         <div className="flex items-center gap-3 mb-2">
@@ -271,8 +316,12 @@ export function CompareClient({
 
       {/* Release Gates */}
       <ReleaseGatesSection
+        workspaceId={workspaceId}
         baselineRunId={comparison.baseline_run_id}
         candidateRunId={comparison.candidate_run_id}
+        gates={gates}
+        loading={gatesLoading}
+        onEvaluated={() => setRefreshCounter((c) => c + 1)}
       />
     </div>
   );
