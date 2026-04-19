@@ -33,6 +33,10 @@ func executeCommand(t *testing.T, args []string, apiURL string) error {
 	flagYes = false
 	flagDevice = false
 	flagForceLogin = false
+	if valueFlag := secretSetCmd.Flags().Lookup("value"); valueFlag != nil {
+		valueFlag.Value.Set("")
+		valueFlag.Changed = false
+	}
 
 	rootCmd.SetArgs(args)
 	return rootCmd.Execute()

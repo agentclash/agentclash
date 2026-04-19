@@ -1,13 +1,13 @@
 package cmd
 
 import (
-	"bufio"
 	"fmt"
+	"io"
 	"os"
-	"strings"
 
 	"github.com/Atharva-Kanherkar/agentclash/cli/internal/output"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
 func init() {
@@ -18,6 +18,8 @@ func init() {
 
 	secretSetCmd.Flags().String("value", "", "Secret value (reads from stdin if omitted)")
 }
+
+var readSecretPassword = term.ReadPassword
 
 var secretCmd = &cobra.Command{
 	Use:   "secret",
@@ -70,23 +72,10 @@ var secretSetCmd = &cobra.Command{
 		wsID := RequireWorkspace(cmd)
 
 		value, _ := cmd.Flags().GetString("value")
-		if value == "" {
-			// Read from stdin.
-			stat, _ := os.Stdin.Stat()
-			if (stat.Mode() & os.ModeCharDevice) == 0 {
-				scanner := bufio.NewScanner(os.Stdin)
-				if scanner.Scan() {
-					value = scanner.Text()
-				}
-			} else {
-				fmt.Fprint(os.Stderr, "Enter secret value: ")
-				scanner := bufio.NewScanner(os.Stdin)
-				if scanner.Scan() {
-					value = scanner.Text()
-				}
-			}
+		value, err := readSecretSetValue(value, cmd.Flags().Changed("value"), os.Stdin, os.Stderr)
+		if err != nil {
+			return err
 		}
-		value = strings.TrimSpace(value)
 		if value == "" {
 			return fmt.Errorf("secret value cannot be empty")
 		}
@@ -103,6 +92,36 @@ var secretSetCmd = &cobra.Command{
 		rc.Output.PrintSuccess(fmt.Sprintf("Secret %s set", args[0]))
 		return nil
 	},
+}
+
+func readSecretSetValue(flagValue string, flagProvided bool, stdin *os.File, stderr io.Writer) (string, error) {
+	if flagProvided {
+		return flagValue, nil
+	}
+
+	stat, err := stdin.Stat()
+	if err != nil {
+		return "", fmt.Errorf("reading stdin: %w", err)
+	}
+	return readSecretSetValueFromInput(stdin, int(stdin.Fd()), (stat.Mode()&os.ModeCharDevice) != 0, stderr)
+}
+
+func readSecretSetValueFromInput(stdin io.Reader, stdinFD int, isTerminal bool, stderr io.Writer) (string, error) {
+	if !isTerminal {
+		data, err := io.ReadAll(stdin)
+		if err != nil {
+			return "", fmt.Errorf("reading secret value from stdin: %w", err)
+		}
+		return string(data), nil
+	}
+
+	fmt.Fprint(stderr, "Enter secret value: ")
+	data, err := readSecretPassword(stdinFD)
+	fmt.Fprintln(stderr)
+	if err != nil {
+		return "", fmt.Errorf("reading secret value: %w", err)
+	}
+	return string(data), nil
 }
 
 var secretDeleteCmd = &cobra.Command{
