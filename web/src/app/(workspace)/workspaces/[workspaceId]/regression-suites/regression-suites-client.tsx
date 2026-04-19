@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
 import { toast } from "sonner";
 import { MoreHorizontal, ShieldAlert } from "lucide-react";
@@ -55,6 +55,8 @@ interface RegressionSuitesClientProps {
   total: number;
   offset: number;
   packs: ChallengePack[];
+  initialCreateOpen?: boolean;
+  initialCreatePackId?: string;
 }
 
 export function RegressionSuitesClient(props: RegressionSuitesClientProps) {
@@ -71,6 +73,8 @@ function RegressionSuitesInner({
   total,
   offset,
   packs,
+  initialCreateOpen,
+  initialCreatePackId,
 }: RegressionSuitesClientProps) {
   const router = useRouter();
   const { getAccessToken } = useAccessToken();
@@ -80,6 +84,14 @@ function RegressionSuitesInner({
 
   const packsById = new Map(packs.map((p) => [p.id, p]));
   const hasAnyPack = packs.length > 0;
+
+  useEffect(() => {
+    if (!initialCreateOpen) return;
+    const url = new URL(window.location.href);
+    url.searchParams.delete("create");
+    url.searchParams.delete("sourcePackId");
+    router.replace(`${url.pathname}${url.search}`, { scroll: false });
+  }, [initialCreateOpen, router]);
 
   const visible = suites.filter((s) =>
     statusFilter === "all" ? true : s.status === statusFilter,
@@ -142,7 +154,12 @@ function RegressionSuitesInner({
         breadcrumbs={[{ label: "Regression Suites" }]}
         actions={
           hasAnyPack ? (
-            <CreateSuiteDialog workspaceId={workspaceId} packs={packs} />
+            <CreateSuiteDialog
+              workspaceId={workspaceId}
+              packs={packs}
+              initialOpen={initialCreateOpen}
+              initialPackId={initialCreatePackId}
+            />
           ) : null
         }
       />

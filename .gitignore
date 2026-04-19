@@ -5,3 +5,4 @@ web/.data/
 web/.env.local
 cli/agentclash
 cli/dist/
+testing/codex-issue-324-promote-failure-dialog.md

@@ -55,9 +55,6 @@ interface MetricDeclaration {
   unit?: string;
 }
 
-// Backend ScorecardDimension is a plain string, not an object.
-type ScorecardDimension = ScorecardDimensionName;
-
 interface LatencyNormalization {
   target_ms?: number;
   max_ms?: number;

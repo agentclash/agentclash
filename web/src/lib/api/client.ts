@@ -9,6 +9,12 @@ export interface PaginatedResponse<T> {
   offset: number;
 }
 
+export interface ApiResponse<T> {
+  data: T;
+  status: number;
+  headers: Headers;
+}
+
 /** Options shared by every request method. */
 interface RequestOptions {
   /** Query parameters appended to the URL. */
@@ -60,13 +66,13 @@ async function parseErrorResponse(res: Response): Promise<ApiError> {
   }
 }
 
-async function request<T>(
+async function requestWithMeta<T>(
   method: string,
   path: string,
   token: string | undefined,
   body: unknown | undefined,
   opts: RequestOptions = {},
-): Promise<T> {
+): Promise<ApiResponse<T>> {
   const url = buildUrl(path, opts.params);
 
   const headers: Record<string, string> = {
@@ -107,10 +113,29 @@ async function request<T>(
 
   // 204 No Content — return undefined as T
   if (res.status === 204) {
-    return undefined as T;
+    return {
+      data: undefined as T,
+      status: res.status,
+      headers: res.headers,
+    };
   }
 
-  return res.json() as Promise<T>;
+  return {
+    data: (await res.json()) as T,
+    status: res.status,
+    headers: res.headers,
+  };
+}
+
+async function request<T>(
+  method: string,
+  path: string,
+  token: string | undefined,
+  body: unknown | undefined,
+  opts: RequestOptions = {},
+): Promise<T> {
+  const response = await requestWithMeta<T>(method, path, token, body, opts);
+  return response.data;
 }
 
 /**
@@ -134,6 +159,14 @@ export function createApiClient(token?: string) {
 
     post<T>(path: string, body?: unknown, opts?: RequestOptions): Promise<T> {
       return request<T>("POST", path, token, body, opts);
+    },
+
+    postWithMeta<T>(
+      path: string,
+      body?: unknown,
+      opts?: RequestOptions,
+    ): Promise<ApiResponse<T>> {
+      return requestWithMeta<T>("POST", path, token, body, opts);
     },
 
     /** POST with a raw string body and explicit content type. */

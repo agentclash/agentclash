@@ -38,6 +38,8 @@ const SEVERITY_OPTIONS: RegressionSeverity[] = ["info", "warning", "blocking"];
 interface CreateSuiteDialogProps {
   workspaceId: string;
   packs: ChallengePack[];
+  initialOpen?: boolean;
+  initialPackId?: string;
 }
 
 function hasRunnableVersion(pack: ChallengePack): boolean {
@@ -47,17 +49,23 @@ function hasRunnableVersion(pack: ChallengePack): boolean {
 export function CreateSuiteDialog({
   workspaceId,
   packs,
+  initialOpen = false,
+  initialPackId,
 }: CreateSuiteDialogProps) {
   const router = useRouter();
   const { getAccessToken } = useAccessToken();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(initialOpen);
 
   const eligiblePacks = packs.filter(hasRunnableVersion);
   const noEligible = eligiblePacks.length === 0;
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [packId, setPackId] = useState("");
+  const [packId, setPackId] = useState(
+    eligiblePacks.some((pack) => pack.id === initialPackId)
+      ? initialPackId ?? ""
+      : "",
+  );
   const [severity, setSeverity] = useState<RegressionSeverity>("warning");
   const [submitting, setSubmitting] = useState(false);
 

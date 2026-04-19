@@ -37,6 +37,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { FailureDetailDrawer } from "./failure-detail-drawer";
+import { PromoteFailureDialog } from "./promote-failure-dialog";
 
 // --- Filter enums + labels ---
 
@@ -140,6 +141,8 @@ interface FailuresClientProps {
   agents: RunAgent[];
   initialPage: ListRunFailuresResponse;
   initialLimit: number;
+  sourceChallengePackId?: string;
+  sourceChallengePackName?: string | null;
 }
 
 export function FailuresClient(props: FailuresClientProps) {
@@ -156,6 +159,8 @@ function FailuresClientInner({
   agents,
   initialPage,
   initialLimit,
+  sourceChallengePackId,
+  sourceChallengePackName,
 }: FailuresClientProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -175,6 +180,7 @@ function FailuresClientInner({
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<FailureReviewItem | null>(null);
+  const [promoting, setPromoting] = useState<FailureReviewItem | null>(null);
   const [, startTransition] = useTransition();
 
   // Track the filter set currently reflected in `items` so we don't refetch
@@ -333,6 +339,8 @@ function FailuresClientInner({
               workspaceId={workspaceId}
               runId={runId}
               onSelect={setSelected}
+              onPromote={setPromoting}
+              sourceChallengePackId={sourceChallengePackId}
             />
           ))}
 
@@ -355,6 +363,14 @@ function FailuresClientInner({
         item={selected}
         onClose={() => setSelected(null)}
         workspaceId={workspaceId}
+      />
+      <PromoteFailureDialog
+        workspaceId={workspaceId}
+        runId={runId}
+        item={promoting}
+        sourceChallengePackId={sourceChallengePackId}
+        sourceChallengePackName={sourceChallengePackName}
+        onClose={() => setPromoting(null)}
       />
     </div>
   );
@@ -491,6 +507,8 @@ interface ChallengeGroupProps {
   workspaceId: string;
   runId: string;
   onSelect: (item: FailureReviewItem) => void;
+  onPromote: (item: FailureReviewItem) => void;
+  sourceChallengePackId?: string;
 }
 
 function ChallengeGroup({
@@ -501,6 +519,8 @@ function ChallengeGroup({
   workspaceId,
   runId,
   onSelect,
+  onPromote,
+  sourceChallengePackId,
 }: ChallengeGroupProps) {
   const [open, setOpen] = useState(defaultOpen);
   const blockingCount = items.filter((i) => i.severity === "blocking").length;
@@ -538,6 +558,8 @@ function ChallengeGroup({
               workspaceId={workspaceId}
               runId={runId}
               onSelect={onSelect}
+              onPromote={onPromote}
+              sourceChallengePackId={sourceChallengePackId}
             />
           ))}
         </ul>
@@ -552,63 +574,83 @@ function FailureRow({
   workspaceId,
   runId,
   onSelect,
+  onPromote,
+  sourceChallengePackId,
 }: {
   item: FailureReviewItem;
   agentLabel: string;
   workspaceId: string;
   runId: string;
   onSelect: (item: FailureReviewItem) => void;
+  onPromote: (item: FailureReviewItem) => void;
+  sourceChallengePackId?: string;
 }) {
   const firstReplayStep = item.replay_step_refs[0]?.sequence_number;
   const replayHref = firstReplayStep
     ? `/workspaces/${workspaceId}/runs/${runId}/agents/${item.run_agent_id}/replay?step=${firstReplayStep}`
     : undefined;
+  const canPromote = item.promotable && Boolean(item.challenge_identity_id);
+  const promoteDisabled = !sourceChallengePackId || !item.challenge_identity_id;
 
   return (
-    <li>
-      <button
-        type="button"
-        onClick={() => onSelect(item)}
-        className="w-full text-left px-4 py-3 hover:bg-muted/30 transition-colors flex flex-col gap-2"
-      >
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="font-medium text-sm truncate">{item.case_key}</span>
-          <span className="text-xs text-muted-foreground">· {agentLabel}</span>
-          <Badge variant={failureStateVariant[item.failure_state]}>
-            {humanize(item.failure_state)}
-          </Badge>
-          <Badge variant="outline">{humanize(item.failure_class)}</Badge>
-          <Badge variant={severityVariant[item.severity]}>{item.severity}</Badge>
-          <Badge variant="secondary">{humanize(item.evidence_tier)}</Badge>
-        </div>
+    <li className="px-4 py-3 hover:bg-muted/30 transition-colors">
+      <div className="flex items-start gap-3">
+        <button
+          type="button"
+          onClick={() => onSelect(item)}
+          className="min-w-0 flex-1 text-left"
+        >
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-medium text-sm truncate">{item.case_key}</span>
+            <span className="text-xs text-muted-foreground">· {agentLabel}</span>
+            <Badge variant={failureStateVariant[item.failure_state]}>
+              {humanize(item.failure_state)}
+            </Badge>
+            <Badge variant="outline">{humanize(item.failure_class)}</Badge>
+            <Badge variant={severityVariant[item.severity]}>
+              {item.severity}
+            </Badge>
+            <Badge variant="secondary">{humanize(item.evidence_tier)}</Badge>
+          </div>
 
-        {item.headline && (
-          <p className="text-sm text-foreground/90 line-clamp-2">
-            {item.headline}
-          </p>
+          {item.headline && (
+            <p className="mt-2 text-sm text-foreground/90 line-clamp-2">
+              {item.headline}
+            </p>
+          )}
+        </button>
+
+        {canPromote && (
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={promoteDisabled}
+            onClick={() => onPromote(item)}
+          >
+            Promote
+          </Button>
         )}
+      </div>
 
-        <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
-          {item.failed_dimensions.length > 0 && (
-            <span>
-              Failed:{" "}
-              <span className="text-foreground/80 font-[family-name:var(--font-mono)]">
-                {item.failed_dimensions.join(", ")}
-              </span>
+      <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
+        {item.failed_dimensions.length > 0 && (
+          <span>
+            Failed:{" "}
+            <span className="text-foreground/80 font-[family-name:var(--font-mono)]">
+              {item.failed_dimensions.join(", ")}
             </span>
-          )}
-          {replayHref && (
-            <Link
-              href={replayHref}
-              onClick={(e) => e.stopPropagation()}
-              className="flex items-center gap-1 hover:text-foreground transition-colors"
-            >
-              <Play className="size-3" />
-              Replay step #{firstReplayStep}
-            </Link>
-          )}
-        </div>
-      </button>
+          </span>
+        )}
+        {replayHref && (
+          <Link
+            href={replayHref}
+            className="flex items-center gap-1 hover:text-foreground transition-colors"
+          >
+            <Play className="size-3" />
+            Replay step #{firstReplayStep}
+          </Link>
+        )}
+      </div>
     </li>
   );
 }

@@ -1,4 +1,9 @@
-export { createApiClient, type ApiClient, type PaginatedResponse } from "./client";
+export {
+  createApiClient,
+  type ApiClient,
+  type ApiResponse,
+  type PaginatedResponse,
+} from "./client";
 export { ApiError, NetworkError } from "./errors";
 export type {
   SessionResponse,
@@ -44,6 +49,19 @@ export type {
   FailureReviewJudgeRef,
   FailureReviewMetricRef,
   ListRunFailuresResponse,
+  RegressionCase,
+  RegressionSeverity,
+  RegressionSuite,
 } from "./types";
 export { AGENT_KINDS } from "./types";
 export { listRunFailures, type ListRunFailuresParams } from "./failure-reviews";
+export {
+  buildPromotionOverrides,
+  defaultPromotionSeverityForFailure,
+  listRegressionSuites,
+  promoteFailure,
+  type ListRegressionSuitesParams,
+  type PromoteFailureInput,
+  type PromoteFailureResult,
+  type PromotionOverridesInput,
+} from "./regression";
