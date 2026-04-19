@@ -550,6 +550,7 @@ func TestRegressionSuiteEndpointsRoundTrip(t *testing.T) {
 	caseID := uuid.New()
 	createdAt := time.Date(2026, 4, 19, 10, 0, 0, 0, time.UTC)
 	updatedAt := createdAt.Add(5 * time.Minute)
+	promotionCreatedAt := updatedAt.Add(2 * time.Minute)
 
 	service := &fakeRegressionService{
 		suite: repository.RegressionSuite{
@@ -561,6 +562,7 @@ func TestRegressionSuiteEndpointsRoundTrip(t *testing.T) {
 			Status:                domain.RegressionSuiteStatusActive,
 			SourceMode:            "derived_only",
 			DefaultGateSeverity:   domain.RegressionSeverityWarning,
+			CaseCount:             1,
 			CreatedByUserID:       userID,
 			CreatedAt:             createdAt,
 			UpdatedAt:             updatedAt,
@@ -583,8 +585,19 @@ func TestRegressionSuiteEndpointsRoundTrip(t *testing.T) {
 			PayloadSnapshot:              json.RawMessage(`{"payload":"snapshot"}`),
 			ExpectedContract:             json.RawMessage(`{"contract":"expected"}`),
 			Metadata:                     json.RawMessage(`{"origin":"test"}`),
-			CreatedAt:                    createdAt,
-			UpdatedAt:                    updatedAt,
+			LatestPromotion: &repository.RegressionPromotion{
+				ID:                        uuid.New(),
+				WorkspaceRegressionCaseID: caseID,
+				SourceRunID:               uuid.New(),
+				SourceRunAgentID:          uuid.New(),
+				SourceEventRefs:           json.RawMessage(`[{"sequence_number":7}]`),
+				PromotedByUserID:          userID,
+				PromotionReason:           "Captured from failure review",
+				PromotionSnapshot:         json.RawMessage(`{"request":{"title":"Case one"}}`),
+				CreatedAt:                 promotionCreatedAt,
+			},
+			CreatedAt: createdAt,
+			UpdatedAt: updatedAt,
 		},
 	}
 
@@ -659,6 +672,9 @@ func TestRegressionSuiteEndpointsRoundTrip(t *testing.T) {
 	if len(listResponse.Items) != 1 || listResponse.Items[0].Status != domain.RegressionSuiteStatusArchived {
 		t.Fatalf("list suites = %+v, want archived item", listResponse.Items)
 	}
+	if listResponse.Items[0].CaseCount != 1 {
+		t.Fatalf("suite case_count = %d, want 1", listResponse.Items[0].CaseCount)
+	}
 
 	casesRec := httptest.NewRecorder()
 	casesReq := httptest.NewRequest(http.MethodGet, "/v1/workspaces/"+workspaceID.String()+"/regression-suites/"+suiteID.String()+"/cases", nil)
@@ -689,6 +705,12 @@ func TestRegressionSuiteEndpointsRoundTrip(t *testing.T) {
 	}
 	if patchedCase.Status != domain.RegressionCaseStatusMuted {
 		t.Fatalf("patched case status = %s, want muted", patchedCase.Status)
+	}
+	if patchedCase.LatestPromotion == nil {
+		t.Fatal("patched case latest_promotion = nil, want populated promotion metadata")
+	}
+	if patchedCase.LatestPromotion.PromotionReason != "Captured from failure review" {
+		t.Fatalf("latest promotion reason = %q, want captured promotion reason", patchedCase.LatestPromotion.PromotionReason)
 	}
 	if service.patchSuiteInput == nil || service.patchCaseInput == nil {
 		t.Fatalf("expected patch inputs to be captured")

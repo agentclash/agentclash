@@ -48,11 +48,12 @@ func TestBuildRunAgentItemsComputesPromotionEligibilityAndRefs(t *testing.T) {
 	})
 
 	items, err := BuildRunAgentItems(RunAgentInput{
-		RunID:               runID,
-		RunStatus:           domain.RunStatusCompleted,
-		RunAgentID:          runAgentID,
-		DeploymentType:      "native",
-		ChallengePackStatus: "runnable",
+		RunID:                runID,
+		RunStatus:            domain.RunStatusCompleted,
+		RunAgentID:           runAgentID,
+		DeploymentType:       "native",
+		ChallengePackStatus:  "runnable",
+		HasChallengeInputSet: true,
 		Cases: []CaseContext{
 			{
 				ChallengeIdentityID: challengeID,
@@ -136,11 +137,12 @@ func TestBuildRunAgentItemsHandlesHostedBlackBoxEligibility(t *testing.T) {
 	verdict := "fail"
 
 	items, err := BuildRunAgentItems(RunAgentInput{
-		RunID:               runID,
-		RunStatus:           domain.RunStatusCompleted,
-		RunAgentID:          runAgentID,
-		DeploymentType:      "hosted_external",
-		ChallengePackStatus: "archived",
+		RunID:                runID,
+		RunStatus:            domain.RunStatusCompleted,
+		RunAgentID:           runAgentID,
+		DeploymentType:       "hosted_external",
+		ChallengePackStatus:  "archived",
+		HasChallengeInputSet: true,
 		Cases: []CaseContext{
 			{
 				ChallengeIdentityID: challengeID,
@@ -181,6 +183,51 @@ func TestBuildRunAgentItemsHandlesHostedBlackBoxEligibility(t *testing.T) {
 	}
 	if item.Severity != SeverityWarning {
 		t.Fatalf("severity = %s, want %s for hosted black-box evidence", item.Severity, SeverityWarning)
+	}
+}
+
+func TestBuildRunAgentItemsSkipsOutputOnlyPromotionWithoutChallengeInputSet(t *testing.T) {
+	t.Parallel()
+
+	runID := uuid.New()
+	runAgentID := uuid.New()
+	challengeID := uuid.New()
+	verdict := "fail"
+
+	items, err := BuildRunAgentItems(RunAgentInput{
+		RunID:                runID,
+		RunStatus:            domain.RunStatusCompleted,
+		RunAgentID:           runAgentID,
+		DeploymentType:       "native",
+		ChallengePackStatus:  "runnable",
+		HasChallengeInputSet: false,
+		Cases: []CaseContext{
+			{
+				ChallengeIdentityID: challengeID,
+				ChallengeKey:        "ticket-no-input-set",
+				CaseKey:             "case-z",
+				ItemKey:             "prompt.txt",
+			},
+		},
+		JudgeResults: []JudgeResult{
+			{
+				ChallengeIdentityID: &challengeID,
+				Key:                 "policy.filesystem",
+				Verdict:             &verdict,
+			},
+		},
+		Events: []Event{
+			{SequenceNumber: 4, EventType: "system.output.finalized", Payload: mustJSON(t, map[string]any{"final_output": "oops"})},
+		},
+	})
+	if err != nil {
+		t.Fatalf("BuildRunAgentItems returned error: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("item count = %d, want 1", len(items))
+	}
+	if len(items[0].PromotionModeAvailable) != 0 {
+		t.Fatalf("promotion modes = %#v, want none when challenge input set is unavailable", items[0].PromotionModeAvailable)
 	}
 }
 

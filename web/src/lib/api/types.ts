@@ -384,6 +384,7 @@ export interface Run {
   workspace_id: string;
   challenge_pack_version_id: string;
   challenge_input_set_id?: string;
+  official_pack_mode: OfficialPackMode;
   name: string;
   status: RunStatus;
   execution_mode: string; // "single_agent" | "comparison"
@@ -412,6 +413,8 @@ export type RunStatus =
   | "failed"
   | "cancelled";
 
+export type OfficialPackMode = "full" | "suite_only";
+
 /** POST /v1/runs request */
 export interface CreateRunRequest {
   workspace_id: string;
@@ -419,6 +422,9 @@ export interface CreateRunRequest {
   challenge_input_set_id?: string;
   name?: string;
   agent_deployment_ids: string[];
+  regression_suite_ids?: string[];
+  regression_case_ids?: string[];
+  official_pack_mode?: OfficialPackMode;
 }
 
 /** POST /v1/runs response (201) */
@@ -427,6 +433,7 @@ export interface CreateRunResponse {
   workspace_id: string;
   challenge_pack_version_id: string;
   challenge_input_set_id?: string;
+  official_pack_mode: OfficialPackMode;
   status: RunStatus;
   execution_mode: string;
   created_at: string;
@@ -1150,6 +1157,18 @@ export type RegressionPromotionMode =
   | "manual";
 export type RegressionSourceMode = "derived_only" | "mixed_manual";
 
+export interface RegressionPromotion {
+  id: string;
+  workspace_regression_case_id: string;
+  source_run_id: string;
+  source_run_agent_id: string;
+  source_event_refs: unknown[];
+  promoted_by_user_id: string;
+  promotion_reason: string;
+  promotion_snapshot: Record<string, unknown>;
+  created_at: string;
+}
+
 /** GET /v1/workspaces/{ws}/regression-suites list item, POST response, PATCH response */
 export interface RegressionSuite {
   id: string;
@@ -1160,6 +1179,7 @@ export interface RegressionSuite {
   status: RegressionSuiteStatus;
   source_mode: RegressionSourceMode;
   default_gate_severity: RegressionSeverity;
+  case_count: number;
   created_by_user_id: string;
   created_at: string;
   updated_at: string;
@@ -1190,6 +1210,7 @@ export interface RegressionCase {
   expected_contract: Record<string, unknown>;
   validator_overrides?: Record<string, unknown> | null;
   metadata: Record<string, unknown>;
+  latest_promotion?: RegressionPromotion;
   created_at: string;
   updated_at: string;
 }

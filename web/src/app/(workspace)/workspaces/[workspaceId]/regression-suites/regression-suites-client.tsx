@@ -210,6 +210,7 @@ function RegressionSuitesInner({
                 <TableRow>
                   <TableHead>Name</TableHead>
                   <TableHead>Source Pack</TableHead>
+                  <TableHead>Cases</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Default Severity</TableHead>
                   <TableHead>Updated</TableHead>
@@ -220,7 +221,7 @@ function RegressionSuitesInner({
                 {visible.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={6}
+                      colSpan={7}
                       className="py-8 text-center text-sm text-muted-foreground"
                     >
                       No suites match the current filter.
@@ -259,6 +260,9 @@ function RegressionSuitesInner({
                               {"\u2014"}
                             </span>
                           )}
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {suite.case_count}
                         </TableCell>
                         <TableCell>
                           <SuiteStatusBadge status={suite.status} />

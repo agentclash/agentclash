@@ -305,6 +305,7 @@ describe("PromoteFailureDialog", () => {
           status: "active",
           source_mode: "derived_only",
           default_gate_severity: "warning",
+          case_count: 3,
           created_by_user_id: "user-1",
           created_at: "2026-04-19T00:00:00Z",
           updated_at: "2026-04-19T00:00:00Z",

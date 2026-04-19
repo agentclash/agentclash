@@ -357,6 +357,159 @@ func TestRepositoryListRunRegressionCoverageCasesByRunIDReturnsPendingWithoutSco
 	}
 }
 
+func TestRepositoryListRunRegressionCoverageCasesByRunIDFansOutOutcomeToOverlappingSelections(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+	queries := repositorysqlc.New(db)
+
+	firstSuiteID := uuid.New()
+	secondSuiteID := uuid.New()
+	firstCaseID := uuid.New()
+	secondCaseID := uuid.New()
+
+	for _, suiteSeed := range []struct {
+		id   uuid.UUID
+		name string
+	}{
+		{id: firstSuiteID, name: "Primary Coverage"},
+		{id: secondSuiteID, name: "Secondary Coverage"},
+	} {
+		if _, err := db.Exec(ctx, `
+			INSERT INTO workspace_regression_suites (
+				id,
+				workspace_id,
+				source_challenge_pack_id,
+				name,
+				description,
+				status,
+				source_mode,
+				default_gate_severity,
+				created_by_user_id
+			)
+			SELECT
+				$1,
+				$2,
+				cp.id,
+				$3,
+				'',
+				'active',
+				'derived_only',
+				'warning',
+				$4
+			FROM challenge_pack_versions cpv
+			JOIN challenge_packs cp ON cp.id = cpv.challenge_pack_id
+			WHERE cpv.id = $5
+		`, suiteSeed.id, fixture.workspaceID, suiteSeed.name, fixture.userID, fixture.challengePackVersionID); err != nil {
+			t.Fatalf("insert regression suite %s returned error: %v", suiteSeed.name, err)
+		}
+	}
+
+	if _, err := db.Exec(ctx, `
+		INSERT INTO workspace_regression_cases (
+			id,
+			suite_id,
+			title,
+			description,
+			status,
+			severity,
+			promotion_mode,
+			source_run_id,
+			source_run_agent_id,
+			source_challenge_pack_version_id,
+			source_challenge_input_set_id,
+			source_challenge_identity_id,
+			source_case_key,
+			source_item_key,
+			evidence_tier,
+			failure_class,
+			failure_summary,
+			payload_snapshot,
+			expected_contract,
+			metadata
+		)
+		VALUES
+			($1, $2, 'Regression A', '', 'active', 'warning', 'full_executable', $3, $4, $5, $6, $7, 'case-a', 'prompt.txt', 'native_structured', 'incorrect_final_output', '', '{}'::jsonb, '{}'::jsonb, '{}'::jsonb),
+			($8, $9, 'Regression B', '', 'active', 'warning', 'full_executable', $3, $4, $5, $6, $7, 'case-a', 'prompt.txt', 'native_structured', 'incorrect_final_output', '', '{}'::jsonb, '{}'::jsonb, '{}'::jsonb)
+	`, firstCaseID, firstSuiteID, fixture.runID, fixture.primaryRunAgentID, fixture.challengePackVersionID, fixture.challengeInputSetID, fixture.firstChallengeIdentityID, secondCaseID, secondSuiteID); err != nil {
+		t.Fatalf("insert overlapping regression cases returned error: %v", err)
+	}
+
+	if _, err := db.Exec(ctx, `
+		INSERT INTO run_case_selections (
+			id,
+			run_id,
+			challenge_identity_id,
+			selection_origin,
+			regression_case_id,
+			selection_rank
+		)
+		VALUES
+			($1, $2, $3, 'regression_case', $4, 1),
+			($5, $2, $3, 'regression_case', $6, 2)
+	`, uuid.New(), fixture.runID, fixture.firstChallengeIdentityID, firstCaseID, uuid.New(), secondCaseID); err != nil {
+		t.Fatalf("insert overlapping selections returned error: %v", err)
+	}
+
+	specRecord, err := repo.CreateEvaluationSpec(ctx, repository.CreateEvaluationSpecParams{
+		ChallengePackVersionID: fixture.challengePackVersionID,
+		Name:                   "overlapping-regression-coverage-spec",
+		VersionNumber:          1,
+		JudgeMode:              "deterministic",
+		Definition: []byte(`{
+			"name":"overlapping-regression-coverage-spec",
+			"version_number":1,
+			"judge_mode":"deterministic",
+			"validators":[{"key":"exact","type":"exact_match","target":"final_output","expected_from":"challenge_input"}],
+			"scorecard":{"dimensions":["correctness"]}
+		}`),
+	})
+	if err != nil {
+		t.Fatalf("CreateEvaluationSpec returned error: %v", err)
+	}
+
+	if _, err := queries.UpsertRunScorecard(ctx, repositorysqlc.UpsertRunScorecardParams{
+		RunID:             fixture.runID,
+		EvaluationSpecID:  specRecord.ID,
+		WinningRunAgentID: &fixture.primaryRunAgentID,
+		Scorecard:         []byte(`{"status":"complete","winning_run_agent_id":"` + fixture.primaryRunAgentID.String() + `"}`),
+	}); err != nil {
+		t.Fatalf("UpsertRunScorecard returned error: %v", err)
+	}
+
+	if _, err := db.Exec(ctx, `
+		INSERT INTO judge_results (
+			id,
+			run_agent_id,
+			evaluation_spec_id,
+			challenge_identity_id,
+			regression_case_id,
+			judge_key,
+			verdict,
+			normalized_score,
+			raw_output
+		)
+		VALUES ($1, $2, $3, $4, $5, 'exact', 'fail', 0.0, '{}'::jsonb)
+	`, uuid.New(), fixture.primaryRunAgentID, specRecord.ID, fixture.firstChallengeIdentityID, firstCaseID); err != nil {
+		t.Fatalf("insert judge result returned error: %v", err)
+	}
+
+	coverageCases, err := repo.ListRunRegressionCoverageCasesByRunID(ctx, fixture.runID)
+	if err != nil {
+		t.Fatalf("ListRunRegressionCoverageCasesByRunID returned error: %v", err)
+	}
+	if len(coverageCases) != 2 {
+		t.Fatalf("coverage case count = %d, want 2", len(coverageCases))
+	}
+
+	for _, coverageCase := range coverageCases {
+		if coverageCase.Outcome != repository.RunRegressionCoverageOutcomeFail {
+			t.Fatalf("coverage case %s outcome = %q, want fail for all overlapping selections", coverageCase.RegressionCaseID, coverageCase.Outcome)
+		}
+	}
+}
+
 func TestRepositoryListOrgMembershipsScansTimestamps(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)

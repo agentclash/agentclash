@@ -46,28 +46,28 @@ const (
 )
 
 type Item struct {
-	RunID                  uuid.UUID        `json:"run_id"`
-	RunAgentID             uuid.UUID        `json:"run_agent_id"`
-	ChallengeIdentityID    *uuid.UUID       `json:"challenge_identity_id,omitempty"`
-	ChallengeKey           string           `json:"challenge_key"`
-	CaseKey                string           `json:"case_key"`
-	ItemKey                string           `json:"item_key"`
-	FailureState           FailureState     `json:"failure_state"`
-	FailedDimensions       []string         `json:"failed_dimensions"`
-	FailedChecks           []string         `json:"failed_checks"`
-	FailureClass           FailureClass     `json:"failure_class"`
-	Headline               string           `json:"headline"`
-	Detail                 string           `json:"detail"`
-	RecommendedAction      string           `json:"recommended_action"`
-	Promotable             bool             `json:"promotable"`
-	PromotionModeAvailable []PromotionMode  `json:"promotion_mode_available"`
-	ReplayStepRefs         []ReplayStepRef  `json:"replay_step_refs"`
-	ArtifactRefs           []ArtifactRef    `json:"artifact_refs"`
-	JudgeRefs              []JudgeRef       `json:"judge_refs"`
-	MetricRefs             []MetricRef      `json:"metric_refs"`
-	EvidenceTier           EvidenceTier     `json:"evidence_tier"`
-	Severity               Severity         `json:"severity"`
-	sortKey                CursorKey        `json:"-"`
+	RunID                  uuid.UUID       `json:"run_id"`
+	RunAgentID             uuid.UUID       `json:"run_agent_id"`
+	ChallengeIdentityID    *uuid.UUID      `json:"challenge_identity_id,omitempty"`
+	ChallengeKey           string          `json:"challenge_key"`
+	CaseKey                string          `json:"case_key"`
+	ItemKey                string          `json:"item_key"`
+	FailureState           FailureState    `json:"failure_state"`
+	FailedDimensions       []string        `json:"failed_dimensions"`
+	FailedChecks           []string        `json:"failed_checks"`
+	FailureClass           FailureClass    `json:"failure_class"`
+	Headline               string          `json:"headline"`
+	Detail                 string          `json:"detail"`
+	RecommendedAction      string          `json:"recommended_action"`
+	Promotable             bool            `json:"promotable"`
+	PromotionModeAvailable []PromotionMode `json:"promotion_mode_available"`
+	ReplayStepRefs         []ReplayStepRef `json:"replay_step_refs"`
+	ArtifactRefs           []ArtifactRef   `json:"artifact_refs"`
+	JudgeRefs              []JudgeRef      `json:"judge_refs"`
+	MetricRefs             []MetricRef     `json:"metric_refs"`
+	EvidenceTier           EvidenceTier    `json:"evidence_tier"`
+	Severity               Severity        `json:"severity"`
+	sortKey                CursorKey       `json:"-"`
 }
 
 type ReplayStepRef struct {
@@ -112,6 +112,7 @@ type RunAgentInput struct {
 	RunAgentLabel        string
 	DeploymentType       string
 	ChallengePackStatus  string
+	HasChallengeInputSet bool
 	ToolPolicy           json.RawMessage
 	Cases                []CaseContext
 	Scorecard            json.RawMessage
@@ -327,15 +328,15 @@ func DecodeCursor(raw string) (CursorKey, error) {
 }
 
 type itemGroup struct {
-	RunID           uuid.UUID
-	RunAgentID      uuid.UUID
-	Case            CaseContext
-	ChallengeID     *uuid.UUID
-	JudgeRefs       []JudgeRef
-	MetricRefs      []MetricRef
-	FailedChecks    []string
-	ReplayStepRefs  []ReplayStepRef
-	OnlyLLMJudges   bool
+	RunID          uuid.UUID
+	RunAgentID     uuid.UUID
+	Case           CaseContext
+	ChallengeID    *uuid.UUID
+	JudgeRefs      []JudgeRef
+	MetricRefs     []MetricRef
+	FailedChecks   []string
+	ReplayStepRefs []ReplayStepRef
+	OnlyLLMJudges  bool
 }
 
 type scorecardDocument struct {
@@ -458,10 +459,10 @@ func finalizeGroup(group *itemGroup, input RunAgentInput, scorecard scorecardDoc
 
 	promotable := input.RunStatus == domain.RunStatusCompleted && group.ChallengeID != nil && evidenceTier != EvidenceTierNone
 	promotionModes := make([]PromotionMode, 0, 2)
-	if promotable && (evidenceTier == EvidenceTierNativeStructured || evidenceTier == EvidenceTierHostedStructured) && input.ChallengePackStatus == "runnable" {
+	if promotable && input.HasChallengeInputSet && (evidenceTier == EvidenceTierNativeStructured || evidenceTier == EvidenceTierHostedStructured) && input.ChallengePackStatus == "runnable" {
 		promotionModes = append(promotionModes, PromotionModeFullExecutable)
 	}
-	if promotable && finalOutputRef != nil {
+	if promotable && input.HasChallengeInputSet && finalOutputRef != nil {
 		promotionModes = append(promotionModes, PromotionModeOutputOnly)
 		group.ReplayStepRefs = append(group.ReplayStepRefs, *finalOutputRef)
 		dedupReplayRefs(&group.ReplayStepRefs)

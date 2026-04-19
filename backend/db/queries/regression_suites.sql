@@ -49,6 +49,11 @@ SELECT count(*)
 FROM workspace_regression_suites
 WHERE workspace_id = @workspace_id;
 
+-- name: CountRegressionCasesBySuiteID :one
+SELECT count(*)
+FROM workspace_regression_cases
+WHERE suite_id = @suite_id;
+
 -- name: PatchRegressionSuite :one
 UPDATE workspace_regression_suites
 SET name = COALESCE(sqlc.narg('name'), name),
@@ -210,3 +215,10 @@ INSERT INTO workspace_regression_promotions (
     @promotion_snapshot
 )
 RETURNING *;
+
+-- name: GetLatestRegressionPromotionByCaseID :one
+SELECT *
+FROM workspace_regression_promotions
+WHERE workspace_regression_case_id = @workspace_regression_case_id
+ORDER BY created_at DESC, id DESC
+LIMIT 1;

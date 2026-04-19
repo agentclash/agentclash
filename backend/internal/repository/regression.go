@@ -25,6 +25,7 @@ type RegressionSuite struct {
 	Status                domain.RegressionSuiteStatus
 	SourceMode            string
 	DefaultGateSeverity   domain.RegressionSeverity
+	CaseCount             int
 	CreatedByUserID       uuid.UUID
 	CreatedAt             time.Time
 	UpdatedAt             time.Time
@@ -54,6 +55,7 @@ type RegressionCase struct {
 	ExpectedContract             json.RawMessage
 	ValidatorOverrides           json.RawMessage
 	Metadata                     json.RawMessage
+	LatestPromotion              *RegressionPromotion
 	CreatedAt                    time.Time
 	UpdatedAt                    time.Time
 }
@@ -205,6 +207,10 @@ func (r *Repository) GetRegressionSuiteByID(ctx context.Context, id uuid.UUID) (
 	if err != nil {
 		return RegressionSuite{}, fmt.Errorf("map regression suite: %w", err)
 	}
+	suite.CaseCount, err = r.countRegressionCasesBySuiteID(ctx, suite.ID)
+	if err != nil {
+		return RegressionSuite{}, err
+	}
 	return suite, nil
 }
 
@@ -223,6 +229,10 @@ func (r *Repository) ListRegressionSuitesByWorkspaceID(ctx context.Context, work
 		suite, mapErr := mapRegressionSuite(row)
 		if mapErr != nil {
 			return nil, fmt.Errorf("map regression suite %s: %w", row.ID, mapErr)
+		}
+		suite.CaseCount, mapErr = r.countRegressionCasesBySuiteID(ctx, suite.ID)
+		if mapErr != nil {
+			return nil, mapErr
 		}
 		suites = append(suites, suite)
 	}
@@ -302,6 +312,10 @@ func (r *Repository) PatchRegressionSuite(ctx context.Context, params PatchRegre
 	if err != nil {
 		return RegressionSuite{}, fmt.Errorf("map regression suite: %w", err)
 	}
+	suite.CaseCount, err = r.countRegressionCasesBySuiteID(ctx, suite.ID)
+	if err != nil {
+		return RegressionSuite{}, err
+	}
 	return suite, nil
 }
 
@@ -365,6 +379,10 @@ func (r *Repository) GetRegressionCaseByID(ctx context.Context, id uuid.UUID) (R
 	if err != nil {
 		return RegressionCase{}, fmt.Errorf("map regression case: %w", err)
 	}
+	regressionCase.LatestPromotion, err = r.latestRegressionPromotionByCaseID(ctx, regressionCase.ID)
+	if err != nil {
+		return RegressionCase{}, err
+	}
 	return regressionCase, nil
 }
 
@@ -381,6 +399,10 @@ func (r *Repository) ListRegressionCasesBySuiteID(ctx context.Context, suiteID u
 		regressionCase, mapErr := mapRegressionCaseFromListRow(row)
 		if mapErr != nil {
 			return nil, fmt.Errorf("map regression case %s: %w", row.ID, mapErr)
+		}
+		regressionCase.LatestPromotion, mapErr = r.latestRegressionPromotionByCaseID(ctx, regressionCase.ID)
+		if mapErr != nil {
+			return nil, mapErr
 		}
 		cases = append(cases, regressionCase)
 	}
@@ -666,6 +688,34 @@ func challengeInputSetID(inputSet *ChallengeInputSetExecutionContext) *uuid.UUID
 	return &id
 }
 
+func (r *Repository) countRegressionCasesBySuiteID(ctx context.Context, suiteID uuid.UUID) (int, error) {
+	count, err := r.queries.CountRegressionCasesBySuiteID(ctx, repositorysqlc.CountRegressionCasesBySuiteIDParams{
+		SuiteID: suiteID,
+	})
+	if err != nil {
+		return 0, fmt.Errorf("count regression cases by suite id: %w", err)
+	}
+	return int(count), nil
+}
+
+func (r *Repository) latestRegressionPromotionByCaseID(ctx context.Context, caseID uuid.UUID) (*RegressionPromotion, error) {
+	row, err := r.queries.GetLatestRegressionPromotionByCaseID(ctx, repositorysqlc.GetLatestRegressionPromotionByCaseIDParams{
+		WorkspaceRegressionCaseID: caseID,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get latest regression promotion by case id: %w", err)
+	}
+
+	promotion, err := mapRegressionPromotion(row)
+	if err != nil {
+		return nil, fmt.Errorf("map latest regression promotion: %w", err)
+	}
+	return &promotion, nil
+}
+
 func mapRegressionSuite(row repositorysqlc.WorkspaceRegressionSuite) (RegressionSuite, error) {
 	status, err := domain.ParseRegressionSuiteStatus(row.Status)
 	if err != nil {
@@ -693,6 +743,7 @@ func mapRegressionSuite(row repositorysqlc.WorkspaceRegressionSuite) (Regression
 		Status:                status,
 		SourceMode:            row.SourceMode,
 		DefaultGateSeverity:   defaultGateSeverity,
+		CaseCount:             0,
 		CreatedByUserID:       row.CreatedByUserID,
 		CreatedAt:             createdAt,
 		UpdatedAt:             updatedAt,
@@ -745,6 +796,7 @@ func mapRegressionCase(row regressionCaseFields) (RegressionCase, error) {
 		ExpectedContract:             cloneJSON(row.expectedContract),
 		ValidatorOverrides:           cloneJSON(row.validatorOverrides),
 		Metadata:                     cloneJSON(row.metadata),
+		LatestPromotion:              nil,
 		CreatedAt:                    createdAt,
 		UpdatedAt:                    updatedAt,
 	}, nil

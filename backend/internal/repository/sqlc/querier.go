@@ -12,6 +12,7 @@ import (
 
 type Querier interface {
 	ApplyHostedRunEvent(ctx context.Context, arg ApplyHostedRunEventParams) (HostedRunExecution, error)
+	CountRegressionCasesBySuiteID(ctx context.Context, arg CountRegressionCasesBySuiteIDParams) (int64, error)
 	CountRegressionSuitesByWorkspaceID(ctx context.Context, arg CountRegressionSuitesByWorkspaceIDParams) (int64, error)
 	CountRunsByWorkspaceID(ctx context.Context, arg CountRunsByWorkspaceIDParams) (int64, error)
 	CreateAgentBuild(ctx context.Context, arg CreateAgentBuildParams) (AgentBuild, error)
@@ -36,6 +37,7 @@ type Querier interface {
 	GetEvaluationSpecByChallengePackVersionAndVersion(ctx context.Context, arg GetEvaluationSpecByChallengePackVersionAndVersionParams) (EvaluationSpec, error)
 	GetEvaluationSpecByID(ctx context.Context, arg GetEvaluationSpecByIDParams) (EvaluationSpec, error)
 	GetHostedRunExecutionByRunAgentID(ctx context.Context, arg GetHostedRunExecutionByRunAgentIDParams) (HostedRunExecution, error)
+	GetLatestRegressionPromotionByCaseID(ctx context.Context, arg GetLatestRegressionPromotionByCaseIDParams) (WorkspaceRegressionPromotion, error)
 	GetLatestVersionNumberForBuild(ctx context.Context, arg GetLatestVersionNumberForBuildParams) (int32, error)
 	GetPlaygroundByID(ctx context.Context, arg GetPlaygroundByIDParams) (Playground, error)
 	GetPlaygroundExperimentByID(ctx context.Context, arg GetPlaygroundExperimentByIDParams) (PlaygroundExperiment, error)

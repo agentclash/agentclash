@@ -71,6 +71,7 @@ WITH winning_run_agent AS (
 selected_regression_cases AS (
     SELECT DISTINCT ON (rcs.regression_case_id)
         rcs.regression_case_id,
+        rcs.challenge_identity_id,
         c.title AS regression_case_title,
         s.id AS suite_id,
         s.name AS suite_name
@@ -85,7 +86,7 @@ selected_regression_cases AS (
 ),
 winning_case_outcomes AS (
     SELECT
-        jr.regression_case_id,
+        jr.challenge_identity_id,
         CASE
             WHEN bool_or(jr.verdict = 'fail') THEN 'fail'
             WHEN bool_or(jr.verdict = 'pass') THEN 'pass'
@@ -94,8 +95,8 @@ winning_case_outcomes AS (
     FROM judge_results AS jr
     JOIN winning_run_agent AS wra
       ON jr.run_agent_id = wra.winning_run_agent_id
-    WHERE jr.regression_case_id IS NOT NULL
-    GROUP BY jr.regression_case_id
+    WHERE jr.challenge_identity_id IS NOT NULL
+    GROUP BY jr.challenge_identity_id
 )
 SELECT
     src.regression_case_id,
@@ -105,7 +106,7 @@ SELECT
     COALESCE(wco.outcome, 'pending') AS outcome
 FROM selected_regression_cases AS src
 LEFT JOIN winning_case_outcomes AS wco
-  ON wco.regression_case_id = src.regression_case_id
+  ON wco.challenge_identity_id = src.challenge_identity_id
 ORDER BY src.suite_name ASC NULLS LAST, src.regression_case_title ASC, src.regression_case_id ASC;
 
 -- name: GetRunByID :one

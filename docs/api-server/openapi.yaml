@@ -5124,6 +5124,7 @@ components:
           status,
           source_mode,
           default_gate_severity,
+          case_count,
           created_by_user_id,
           created_at,
           updated_at,
@@ -5149,6 +5150,8 @@ components:
           enum: [derived_only, mixed_manual]
         default_gate_severity:
           $ref: "#/components/schemas/RegressionSeverity"
+        case_count:
+          type: integer
         created_by_user_id:
           type: string
           format: uuid
@@ -5245,6 +5248,8 @@ components:
         metadata:
           type: object
           additionalProperties: true
+        latest_promotion:
+          $ref: "#/components/schemas/RegressionPromotion"
         created_at:
           type: string
           format: date-time

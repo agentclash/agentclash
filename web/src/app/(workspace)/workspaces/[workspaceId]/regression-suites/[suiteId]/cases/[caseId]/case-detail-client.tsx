@@ -141,7 +141,19 @@ export function CaseDetailClient({
           </MetaRow>
           <MetaRow label="Promoted At">
             <span className="text-muted-foreground">
-              {new Date(c.created_at).toLocaleString()}
+              {new Date(
+                c.latest_promotion?.created_at ?? c.created_at,
+              ).toLocaleString()}
+            </span>
+          </MetaRow>
+          <MetaRow label="Promoted By">
+            <span className="font-[family-name:var(--font-mono)] text-xs text-muted-foreground">
+              {c.latest_promotion?.promoted_by_user_id ?? "\u2014"}
+            </span>
+          </MetaRow>
+          <MetaRow label="Event Refs">
+            <span className="text-muted-foreground">
+              {c.latest_promotion?.source_event_refs?.length ?? 0}
             </span>
           </MetaRow>
         </dl>
@@ -150,11 +162,16 @@ export function CaseDetailClient({
             {c.failure_summary}
           </p>
         )}
-        <p className="mt-3 text-xs text-muted-foreground">
-          Promoter, promotion reason, and detailed audit trail live on the
-          promotions record and will surface once subissue F lands the
-          promote-from-failure action.
-        </p>
+        {c.latest_promotion?.promotion_reason && (
+          <div className="mt-3 rounded-md border border-border bg-background/60 p-3">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground/80">
+              Promotion Reason
+            </p>
+            <p className="mt-1 text-sm text-muted-foreground whitespace-pre-wrap">
+              {c.latest_promotion.promotion_reason}
+            </p>
+          </div>
+        )}
       </Section>
 
       <Section title="Payload Snapshot">
@@ -174,6 +191,15 @@ export function CaseDetailClient({
       {Object.keys(c.metadata ?? {}).length > 0 && (
         <Section title="Metadata">
           <JsonViewer value={c.metadata} defaultOpen={false} />
+        </Section>
+      )}
+
+      {c.latest_promotion && (
+        <Section title="Promotion Snapshot">
+          <JsonViewer
+            value={c.latest_promotion.promotion_snapshot}
+            defaultOpen={false}
+          />
         </Section>
       )}
 

@@ -61,19 +61,20 @@ func (r *Repository) ListRunFailureReviewItems(ctx context.Context, runID uuid.U
 		}
 
 		runAgentItems, err := failurereview.BuildRunAgentItems(failurereview.RunAgentInput{
-			RunID:               executionContext.Run.ID,
-			RunStatus:           executionContext.Run.Status,
-			RunAgentID:          runAgent.ID,
-			RunAgentLabel:       runAgent.Label,
-			DeploymentType:      executionContext.Deployment.DeploymentType,
-			ChallengePackStatus: challengePackStatus,
-			ToolPolicy:          executionContext.ChallengePackVersion.Manifest,
-			Cases:               mapFailureReviewCases(executionContext.ChallengeInputSet),
-			Scorecard:           scorecard.Scorecard,
-			JudgeResults:        mapFailureReviewJudgeResults(judgeResults),
-			MetricResults:       mapFailureReviewMetricResults(metricResults),
-			LLMJudgeResults:     mapFailureReviewLLMJudgeResults(llmJudgeResults),
-			Events:              mapFailureReviewEvents(runEvents),
+			RunID:                executionContext.Run.ID,
+			RunStatus:            executionContext.Run.Status,
+			RunAgentID:           runAgent.ID,
+			RunAgentLabel:        runAgent.Label,
+			DeploymentType:       executionContext.Deployment.DeploymentType,
+			ChallengePackStatus:  challengePackStatus,
+			HasChallengeInputSet: executionContext.ChallengeInputSet != nil,
+			ToolPolicy:           executionContext.ChallengePackVersion.Manifest,
+			Cases:                mapFailureReviewCases(executionContext.ChallengeInputSet),
+			Scorecard:            scorecard.Scorecard,
+			JudgeResults:         mapFailureReviewJudgeResults(judgeResults),
+			MetricResults:        mapFailureReviewMetricResults(metricResults),
+			LLMJudgeResults:      mapFailureReviewLLMJudgeResults(llmJudgeResults),
+			Events:               mapFailureReviewEvents(runEvents),
 		})
 		if err != nil {
 			return nil, fmt.Errorf("build failure review items for %s: %w", runAgent.ID, err)

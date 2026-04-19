@@ -12,6 +12,23 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countRegressionCasesBySuiteID = `-- name: CountRegressionCasesBySuiteID :one
+SELECT count(*)
+FROM workspace_regression_cases
+WHERE suite_id = $1
+`
+
+type CountRegressionCasesBySuiteIDParams struct {
+	SuiteID uuid.UUID
+}
+
+func (q *Queries) CountRegressionCasesBySuiteID(ctx context.Context, arg CountRegressionCasesBySuiteIDParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countRegressionCasesBySuiteID, arg.SuiteID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countRegressionSuitesByWorkspaceID = `-- name: CountRegressionSuitesByWorkspaceID :one
 SELECT count(*)
 FROM workspace_regression_suites
@@ -281,6 +298,35 @@ func (q *Queries) CreateRegressionSuite(ctx context.Context, arg CreateRegressio
 		&i.CreatedByUserID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getLatestRegressionPromotionByCaseID = `-- name: GetLatestRegressionPromotionByCaseID :one
+SELECT id, workspace_regression_case_id, source_run_id, source_run_agent_id, source_event_refs, promoted_by_user_id, promotion_reason, promotion_snapshot, created_at
+FROM workspace_regression_promotions
+WHERE workspace_regression_case_id = $1
+ORDER BY created_at DESC, id DESC
+LIMIT 1
+`
+
+type GetLatestRegressionPromotionByCaseIDParams struct {
+	WorkspaceRegressionCaseID uuid.UUID
+}
+
+func (q *Queries) GetLatestRegressionPromotionByCaseID(ctx context.Context, arg GetLatestRegressionPromotionByCaseIDParams) (WorkspaceRegressionPromotion, error) {
+	row := q.db.QueryRow(ctx, getLatestRegressionPromotionByCaseID, arg.WorkspaceRegressionCaseID)
+	var i WorkspaceRegressionPromotion
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceRegressionCaseID,
+		&i.SourceRunID,
+		&i.SourceRunAgentID,
+		&i.SourceEventRefs,
+		&i.PromotedByUserID,
+		&i.PromotionReason,
+		&i.PromotionSnapshot,
+		&i.CreatedAt,
 	)
 	return i, err
 }

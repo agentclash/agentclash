@@ -464,9 +464,22 @@ type regressionSuiteResponse struct {
 	Status                domain.RegressionSuiteStatus `json:"status"`
 	SourceMode            string                       `json:"source_mode"`
 	DefaultGateSeverity   domain.RegressionSeverity    `json:"default_gate_severity"`
+	CaseCount             int                          `json:"case_count"`
 	CreatedByUserID       uuid.UUID                    `json:"created_by_user_id"`
 	CreatedAt             time.Time                    `json:"created_at"`
 	UpdatedAt             time.Time                    `json:"updated_at"`
+}
+
+type regressionPromotionResponse struct {
+	ID                        uuid.UUID       `json:"id"`
+	WorkspaceRegressionCaseID uuid.UUID       `json:"workspace_regression_case_id"`
+	SourceRunID               uuid.UUID       `json:"source_run_id"`
+	SourceRunAgentID          uuid.UUID       `json:"source_run_agent_id"`
+	SourceEventRefs           json.RawMessage `json:"source_event_refs"`
+	PromotedByUserID          uuid.UUID       `json:"promoted_by_user_id"`
+	PromotionReason           string          `json:"promotion_reason"`
+	PromotionSnapshot         json.RawMessage `json:"promotion_snapshot"`
+	CreatedAt                 time.Time       `json:"created_at"`
 }
 
 type regressionCaseResponse struct {
@@ -493,6 +506,7 @@ type regressionCaseResponse struct {
 	ExpectedContract             json.RawMessage                `json:"expected_contract"`
 	ValidatorOverrides           json.RawMessage                `json:"validator_overrides,omitempty"`
 	Metadata                     json.RawMessage                `json:"metadata"`
+	LatestPromotion              *regressionPromotionResponse   `json:"latest_promotion,omitempty"`
 	CreatedAt                    time.Time                      `json:"created_at"`
 	UpdatedAt                    time.Time                      `json:"updated_at"`
 }
@@ -849,6 +863,7 @@ func buildRegressionSuiteResponse(suite repository.RegressionSuite) regressionSu
 		Status:                suite.Status,
 		SourceMode:            suite.SourceMode,
 		DefaultGateSeverity:   suite.DefaultGateSeverity,
+		CaseCount:             suite.CaseCount,
 		CreatedByUserID:       suite.CreatedByUserID,
 		CreatedAt:             suite.CreatedAt,
 		UpdatedAt:             suite.UpdatedAt,
@@ -856,6 +871,21 @@ func buildRegressionSuiteResponse(suite repository.RegressionSuite) regressionSu
 }
 
 func buildRegressionCaseResponse(regressionCase repository.RegressionCase) regressionCaseResponse {
+	var latestPromotion *regressionPromotionResponse
+	if regressionCase.LatestPromotion != nil {
+		latestPromotion = &regressionPromotionResponse{
+			ID:                        regressionCase.LatestPromotion.ID,
+			WorkspaceRegressionCaseID: regressionCase.LatestPromotion.WorkspaceRegressionCaseID,
+			SourceRunID:               regressionCase.LatestPromotion.SourceRunID,
+			SourceRunAgentID:          regressionCase.LatestPromotion.SourceRunAgentID,
+			SourceEventRefs:           regressionCase.LatestPromotion.SourceEventRefs,
+			PromotedByUserID:          regressionCase.LatestPromotion.PromotedByUserID,
+			PromotionReason:           regressionCase.LatestPromotion.PromotionReason,
+			PromotionSnapshot:         regressionCase.LatestPromotion.PromotionSnapshot,
+			CreatedAt:                 regressionCase.LatestPromotion.CreatedAt,
+		}
+	}
+
 	return regressionCaseResponse{
 		ID:                           regressionCase.ID,
 		SuiteID:                      regressionCase.SuiteID,
@@ -880,6 +910,7 @@ func buildRegressionCaseResponse(regressionCase repository.RegressionCase) regre
 		ExpectedContract:             regressionCase.ExpectedContract,
 		ValidatorOverrides:           regressionCase.ValidatorOverrides,
 		Metadata:                     regressionCase.Metadata,
+		LatestPromotion:              latestPromotion,
 		CreatedAt:                    regressionCase.CreatedAt,
 		UpdatedAt:                    regressionCase.UpdatedAt,
 	}

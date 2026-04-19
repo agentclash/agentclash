@@ -161,6 +161,14 @@ func TestListRunFailuresEndpointRejectsMalformedQueryParams(t *testing.T) {
 			query: url.Values{"severity": []string{"severe"}},
 		},
 		{
+			name:  "bad failure class",
+			query: url.Values{"failure_class": []string{"mystery_failure"}},
+		},
+		{
+			name:  "bad evidence tier",
+			query: url.Values{"evidence_tier": []string{"semi_structured"}},
+		},
+		{
 			name:  "bad cursor",
 			query: url.Values{"cursor": []string{"{not-json"}},
 		},
