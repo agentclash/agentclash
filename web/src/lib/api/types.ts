@@ -1039,6 +1039,103 @@ export interface PlaygroundExperimentComparison {
   per_case: PlaygroundCaseComparison[];
 }
 
+// --- Failure Review ---
+// Mirrors schemas under `FailureReview*` in docs/api-server/openapi.yaml.
+
+export type FailureReviewFailureState =
+  | "failed"
+  | "warning"
+  | "flaky"
+  | "incomplete_evidence";
+
+export type FailureReviewFailureClass =
+  | "incorrect_final_output"
+  | "tool_selection_error"
+  | "tool_argument_error"
+  | "retrieval_grounding_failure"
+  | "policy_violation"
+  | "timeout_or_budget_exhaustion"
+  | "sandbox_failure"
+  | "malformed_output"
+  | "flaky_non_deterministic"
+  | "insufficient_evidence"
+  | "other";
+
+export type FailureReviewEvidenceTier =
+  | "none"
+  | "native_structured"
+  | "hosted_structured"
+  | "hosted_black_box"
+  | "derived_summary";
+
+export type FailureReviewPromotionMode = "full_executable" | "output_only";
+
+export type FailureReviewSeverity = "info" | "warning" | "blocking";
+
+export interface FailureReviewReplayStepRef {
+  sequence_number: number;
+  event_type: string;
+  kind: string;
+}
+
+export interface FailureReviewArtifactRef {
+  key: string;
+  kind?: string;
+  path?: string;
+  media_type?: string;
+}
+
+export interface FailureReviewJudgeRef {
+  key: string;
+  kind: string;
+  verdict?: string;
+  state?: string;
+  normalized_score?: number;
+  reason?: string;
+  sequence_number?: number;
+  event_type?: string;
+}
+
+export interface FailureReviewMetricRef {
+  key: string;
+  metric_type: string;
+  state?: string;
+  reason?: string;
+  numeric_value?: number;
+  text_value?: string;
+  boolean_value?: boolean;
+  unit?: string;
+}
+
+export interface FailureReviewItem {
+  run_id: string;
+  run_agent_id: string;
+  challenge_identity_id?: string;
+  challenge_key: string;
+  case_key: string;
+  item_key: string;
+  failure_state: FailureReviewFailureState;
+  failed_dimensions: string[];
+  failed_checks: string[];
+  failure_class: FailureReviewFailureClass;
+  headline: string;
+  detail: string;
+  recommended_action: string;
+  promotable: boolean;
+  promotion_mode_available: FailureReviewPromotionMode[];
+  replay_step_refs: FailureReviewReplayStepRef[];
+  artifact_refs: FailureReviewArtifactRef[];
+  judge_refs: FailureReviewJudgeRef[];
+  metric_refs: FailureReviewMetricRef[];
+  evidence_tier: FailureReviewEvidenceTier;
+  severity: FailureReviewSeverity;
+}
+
+export interface ListRunFailuresResponse {
+  items: FailureReviewItem[];
+  next_cursor?: string;
+}
+
 // --- Errors ---
 
 /** Standard error envelope returned by all backend error responses. */
