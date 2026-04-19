@@ -132,6 +132,17 @@ function deltaLabel(delta?: number): string {
   return delta > 0 ? `+${pct}%` : `${pct}%`;
 }
 
+function outcomeVariant(outcome: "pending" | "pass" | "fail") {
+  switch (outcome) {
+    case "pass":
+      return "default";
+    case "fail":
+      return "destructive";
+    default:
+      return "outline";
+  }
+}
+
 // --- Component ---
 
 interface RunDetailClientProps {
@@ -473,6 +484,74 @@ export function RunDetailClient({
           })}
         </div>
       </div>
+
+      {run.regression_coverage &&
+        (run.regression_coverage.suites.length > 0 ||
+          run.regression_coverage.unmatched_cases.length > 0) && (
+          <div>
+            <h2 className="text-sm font-semibold mb-3">Regression Coverage</h2>
+            <div className="space-y-3">
+              {run.regression_coverage.suites.length > 0 && (
+                <div className="rounded-lg border border-border overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Suite</TableHead>
+                        <TableHead className="text-right">Cases</TableHead>
+                        <TableHead className="text-right">Pass</TableHead>
+                        <TableHead className="text-right">Fail</TableHead>
+                        <TableHead className="text-right">Pending</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {run.regression_coverage.suites.map((suite) => {
+                        const pendingCount =
+                          suite.case_count - suite.pass_count - suite.fail_count;
+                        return (
+                          <TableRow key={suite.id}>
+                            <TableCell className="font-medium">
+                              {suite.name}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {suite.case_count}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {suite.pass_count}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {suite.fail_count}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {pendingCount}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+
+              {run.regression_coverage.unmatched_cases.length > 0 && (
+                <div className="rounded-lg border border-border p-4">
+                  <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">
+                    Unmatched Cases
+                  </h3>
+                  <div className="flex flex-wrap gap-2">
+                    {run.regression_coverage.unmatched_cases.map((item) => (
+                      <Badge
+                        key={item.id}
+                        variant={outcomeVariant(item.outcome)}
+                      >
+                        {item.title}: {item.outcome}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
       {/* === Ranking === */}
       {(run.status === "completed" ||

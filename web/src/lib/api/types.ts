@@ -397,10 +397,30 @@ export interface Run {
   failed_at?: string;
   created_at: string;
   updated_at: string;
+  regression_coverage?: RunRegressionCoverage;
   links: {
     self: string;
     agents: string;
   };
+}
+
+export interface RunRegressionCoverage {
+  suites: RunRegressionCoverageSuite[];
+  unmatched_cases: RunRegressionCoverageCase[];
+}
+
+export interface RunRegressionCoverageSuite {
+  id: string;
+  name: string;
+  case_count: number;
+  pass_count: number;
+  fail_count: number;
+}
+
+export interface RunRegressionCoverageCase {
+  id: string;
+  title: string;
+  outcome: "pending" | "pass" | "fail";
 }
 
 export type RunStatus =
