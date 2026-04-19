@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/domain"
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/scoring"
 	repositorysqlc "github.com/Atharva-Kanherkar/agentclash/backend/internal/repository/sqlc"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -148,6 +147,7 @@ type PromoteFailureParams struct {
 	EvidenceTier          string
 	SourceCaseKey         string
 	SourceItemKey         *string
+	ExpectedContract      json.RawMessage
 	ValidatorOverrides    json.RawMessage
 	Metadata              json.RawMessage
 	SourceEventRefs       json.RawMessage
@@ -480,24 +480,13 @@ func (r *Repository) PromoteFailure(ctx context.Context, params PromoteFailurePa
 	if !params.PromotionMode.Valid() {
 		return PromoteFailureResult{}, fmt.Errorf("%w: %q", domain.ErrInvalidPromotionMode, params.PromotionMode)
 	}
-
-	tx, err := r.db.Begin(ctx)
-	if err != nil {
-		return PromoteFailureResult{}, fmt.Errorf("begin regression promotion transaction: %w", err)
-	}
-	defer rollback(ctx, tx)
-
-	txQueries := r.queries.WithTx(tx)
-	existingID, err := txQueries.GetRegressionCaseIDByPromotionSource(ctx, repositorysqlc.GetRegressionCaseIDByPromotionSourceParams{
+	existingID, err := r.queries.GetRegressionCaseIDByPromotionSource(ctx, repositorysqlc.GetRegressionCaseIDByPromotionSourceParams{
 		SuiteID:                   params.SuiteID,
 		SourceRunAgentID:          &params.RunAgentID,
 		SourceChallengeIdentityID: params.ChallengeIdentityID,
 	})
 	switch {
 	case err == nil:
-		if commitErr := tx.Commit(ctx); commitErr != nil {
-			return PromoteFailureResult{}, fmt.Errorf("commit regression promotion lookup transaction: %w", commitErr)
-		}
 		existing, getErr := r.GetRegressionCaseByID(ctx, existingID)
 		if getErr != nil {
 			return PromoteFailureResult{}, getErr
@@ -507,6 +496,13 @@ func (r *Repository) PromoteFailure(ctx context.Context, params PromoteFailurePa
 		return PromoteFailureResult{}, fmt.Errorf("lookup existing regression case: %w", err)
 	}
 
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return PromoteFailureResult{}, fmt.Errorf("begin regression promotion transaction: %w", err)
+	}
+	defer rollback(ctx, tx)
+
+	txQueries := r.queries.WithTx(tx)
 	executionContextRow, err := txQueries.GetRunAgentExecutionContextByID(ctx, repositorysqlc.GetRunAgentExecutionContextByIDParams{
 		ID: params.RunAgentID,
 	})
@@ -521,32 +517,6 @@ func (r *Repository) PromoteFailure(ctx context.Context, params PromoteFailurePa
 	payloadSnapshot, err := payloadSnapshotForChallenge(executionContext, params.ChallengeIdentityID)
 	if err != nil {
 		return PromoteFailureResult{}, err
-	}
-
-	scorecardRow, err := txQueries.GetRunAgentScorecardByRunAgentID(ctx, repositorysqlc.GetRunAgentScorecardByRunAgentIDParams{
-		RunAgentID: params.RunAgentID,
-	})
-	if err != nil {
-		return PromoteFailureResult{}, fmt.Errorf("load run agent scorecard: %w", err)
-	}
-	scorecard, err := mapRunAgentScorecard(scorecardRow)
-	if err != nil {
-		return PromoteFailureResult{}, fmt.Errorf("map run agent scorecard: %w", err)
-	}
-
-	evaluationSpecRow, err := txQueries.GetEvaluationSpecByID(ctx, repositorysqlc.GetEvaluationSpecByIDParams{
-		ID: scorecard.EvaluationSpecID,
-	})
-	if err != nil {
-		return PromoteFailureResult{}, fmt.Errorf("load evaluation spec: %w", err)
-	}
-	evaluationSpec, err := mapEvaluationSpecRecord(evaluationSpecRow)
-	if err != nil {
-		return PromoteFailureResult{}, fmt.Errorf("map evaluation spec: %w", err)
-	}
-	expectedContract, err := expectedContractSubset(evaluationSpec.Definition)
-	if err != nil {
-		return PromoteFailureResult{}, fmt.Errorf("build expected contract: %w", err)
 	}
 
 	var replayID *uuid.UUID
@@ -581,7 +551,7 @@ func (r *Repository) PromoteFailure(ctx context.Context, params PromoteFailurePa
 		FailureClass:                 params.FailureClass,
 		FailureSummary:               params.FailureSummary,
 		PayloadSnapshot:              payloadSnapshot,
-		ExpectedContract:             expectedContract,
+		ExpectedContract:             cloneJSON(params.ExpectedContract),
 		ValidatorOverrides:           cloneJSON(params.ValidatorOverrides),
 		Metadata:                     cloneJSON(params.Metadata),
 	})
@@ -694,37 +664,6 @@ func challengeInputSetID(inputSet *ChallengeInputSetExecutionContext) *uuid.UUID
 	}
 	id := inputSet.ID
 	return &id
-}
-
-func expectedContractSubset(definition json.RawMessage) (json.RawMessage, error) {
-	spec, err := scoring.DecodeDefinition(definition)
-	if err != nil {
-		return nil, err
-	}
-
-	subset := struct {
-		JudgeMode           scoring.JudgeMode              `json:"judge_mode"`
-		Validators          []scoring.ValidatorDeclaration `json:"validators,omitempty"`
-		Metrics             []scoring.MetricDeclaration    `json:"metrics,omitempty"`
-		Behavioral          *scoring.BehavioralConfig      `json:"behavioral,omitempty"`
-		LLMJudges           []scoring.LLMJudgeDeclaration  `json:"llm_judges,omitempty"`
-		PostExecutionChecks []scoring.PostExecutionCheck   `json:"post_execution_checks,omitempty"`
-		Scorecard           scoring.ScorecardDeclaration   `json:"scorecard"`
-	}{
-		JudgeMode:           spec.JudgeMode,
-		Validators:          spec.Validators,
-		Metrics:             spec.Metrics,
-		Behavioral:          spec.Behavioral,
-		LLMJudges:           spec.LLMJudges,
-		PostExecutionChecks: spec.PostExecutionChecks,
-		Scorecard:           spec.Scorecard,
-	}
-
-	encoded, err := json.Marshal(subset)
-	if err != nil {
-		return nil, err
-	}
-	return encoded, nil
 }
 
 func mapRegressionSuite(row repositorysqlc.WorkspaceRegressionSuite) (RegressionSuite, error) {

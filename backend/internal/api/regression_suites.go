@@ -14,6 +14,7 @@ import (
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/domain"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/failurereview"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/scoring"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
@@ -31,6 +32,8 @@ type RegressionRepository interface {
 	GetRunByID(ctx context.Context, id uuid.UUID) (domain.Run, error)
 	ListRunFailureReviewItems(ctx context.Context, runID uuid.UUID, agentID *uuid.UUID) ([]failurereview.Item, error)
 	GetRunAgentExecutionContextByID(ctx context.Context, runAgentID uuid.UUID) (repository.RunAgentExecutionContext, error)
+	GetRunAgentScorecardByRunAgentID(ctx context.Context, runAgentID uuid.UUID) (repository.RunAgentScorecard, error)
+	GetEvaluationSpecByID(ctx context.Context, id uuid.UUID) (repository.EvaluationSpecRecord, error)
 	PromoteFailure(ctx context.Context, params repository.PromoteFailureParams) (repository.PromoteFailureResult, error)
 }
 
@@ -113,12 +116,12 @@ type RegressionManager struct {
 var ErrChallengePackNotFound = errors.New("challenge pack not found")
 
 var (
-	ErrFailureReviewItemNotFound      = errors.New("failure review item not found")
-	ErrFailureReviewItemAmbiguous     = errors.New("failure review item is ambiguous")
-	ErrFailurePromotionNotAllowed     = errors.New("failure review item is not promotable")
+	ErrFailureReviewItemNotFound       = errors.New("failure review item not found")
+	ErrFailureReviewItemAmbiguous      = errors.New("failure review item is ambiguous")
+	ErrFailurePromotionNotAllowed      = errors.New("failure review item is not promotable")
 	ErrFailurePromotionModeUnavailable = errors.New("promotion mode unavailable for failure review item")
-	ErrRegressionSuiteArchived        = errors.New("regression suite is archived")
-	ErrRegressionSuitePackMismatch    = errors.New("regression suite source pack does not match run pack")
+	ErrRegressionSuiteArchived         = errors.New("regression suite is archived")
+	ErrRegressionSuitePackMismatch     = errors.New("regression suite source pack does not match run pack")
 )
 
 func NewRegressionManager(authorizer WorkspaceAuthorizer, repo RegressionRepository) *RegressionManager {
@@ -294,6 +297,18 @@ func (m *RegressionManager) PromoteFailure(ctx context.Context, caller Caller, i
 	if suite.SourceChallengePackID != executionContext.ChallengePackVersion.ChallengePackID {
 		return PromoteFailureResult{}, ErrRegressionSuitePackMismatch
 	}
+	scorecard, err := m.repo.GetRunAgentScorecardByRunAgentID(ctx, item.RunAgentID)
+	if err != nil {
+		return PromoteFailureResult{}, err
+	}
+	evaluationSpec, err := m.repo.GetEvaluationSpecByID(ctx, scorecard.EvaluationSpecID)
+	if err != nil {
+		return PromoteFailureResult{}, err
+	}
+	expectedContract, err := expectedContractSubset(evaluationSpec.Definition)
+	if err != nil {
+		return PromoteFailureResult{}, fmt.Errorf("build expected contract: %w", err)
+	}
 
 	severity := domain.DefaultPromotionSeverityForFailureClass(string(item.FailureClass))
 	if input.Request.Severity != nil {
@@ -322,6 +337,7 @@ func (m *RegressionManager) PromoteFailure(ctx context.Context, caller Caller, i
 		EvidenceTier:        string(item.EvidenceTier),
 		SourceCaseKey:       item.CaseKey,
 		SourceItemKey:       optionalStringPtr(item.ItemKey),
+		ExpectedContract:    expectedContract,
 		ValidatorOverrides:  input.Request.ValidatorOverrides,
 		Metadata:            input.Request.Metadata,
 		SourceEventRefs:     sourceEventRefs,
@@ -350,7 +366,7 @@ func (m *RegressionManager) findFailureReviewItem(ctx context.Context, runID, ch
 		if item.ChallengeIdentityID == nil || *item.ChallengeIdentityID != challengeIdentityID {
 			continue
 		}
-		if match != nil && match.RunAgentID != item.RunAgentID {
+		if match != nil {
 			return failurereview.Item{}, ErrFailureReviewItemAmbiguous
 		}
 		candidate := item
@@ -394,6 +410,37 @@ func marshalPromotionSnapshot(item failurereview.Item, request domain.PromotionR
 	snapshot.Request.Metadata = request.Metadata
 
 	return json.Marshal(snapshot)
+}
+
+func expectedContractSubset(definition json.RawMessage) (json.RawMessage, error) {
+	spec, err := scoring.DecodeDefinition(definition)
+	if err != nil {
+		return nil, err
+	}
+
+	subset := struct {
+		JudgeMode           scoring.JudgeMode              `json:"judge_mode"`
+		Validators          []scoring.ValidatorDeclaration `json:"validators,omitempty"`
+		Metrics             []scoring.MetricDeclaration    `json:"metrics,omitempty"`
+		Behavioral          *scoring.BehavioralConfig      `json:"behavioral,omitempty"`
+		LLMJudges           []scoring.LLMJudgeDeclaration  `json:"llm_judges,omitempty"`
+		PostExecutionChecks []scoring.PostExecutionCheck   `json:"post_execution_checks,omitempty"`
+		Scorecard           scoring.ScorecardDeclaration   `json:"scorecard"`
+	}{
+		JudgeMode:           spec.JudgeMode,
+		Validators:          spec.Validators,
+		Metrics:             spec.Metrics,
+		Behavioral:          spec.Behavioral,
+		LLMJudges:           spec.LLMJudges,
+		PostExecutionChecks: spec.PostExecutionChecks,
+		Scorecard:           spec.Scorecard,
+	}
+
+	encoded, err := json.Marshal(subset)
+	if err != nil {
+		return nil, err
+	}
+	return encoded, nil
 }
 
 func optionalStringPtr(value string) *string {

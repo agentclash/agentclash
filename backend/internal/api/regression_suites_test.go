@@ -127,6 +127,12 @@ func TestRegressionManagerPromoteFailureDefaultsSeverity(t *testing.T) {
 				ChallengePackID: challengePackID,
 			},
 		},
+		scorecard: repository.RunAgentScorecard{
+			EvaluationSpecID: uuid.New(),
+		},
+		evaluationSpec: repository.EvaluationSpecRecord{
+			Definition: json.RawMessage(`{"name":"spec","version_number":1,"judge_mode":"deterministic","validators":[{"key":"exact","type":"exact_match","target":"final_output","expected_from":"challenge_input"}],"runtime_limits":{"max_duration_ms":60000},"scorecard":{"dimensions":["correctness"]}}`),
+		},
 		promoteResult: repository.PromoteFailureResult{
 			Case: repository.RegressionCase{ID: uuid.New(), WorkspaceID: workspaceID},
 		},
@@ -155,6 +161,16 @@ func TestRegressionManagerPromoteFailureDefaultsSeverity(t *testing.T) {
 	}
 	if got := manager.repo.(*fakeRegressionRepository).promoteInput.Severity; got != domain.RegressionSeverityBlocking {
 		t.Fatalf("default severity = %s, want blocking", got)
+	}
+	var expectedContract map[string]any
+	if err := json.Unmarshal(manager.repo.(*fakeRegressionRepository).promoteInput.ExpectedContract, &expectedContract); err != nil {
+		t.Fatalf("json.Unmarshal expected contract returned error: %v", err)
+	}
+	if _, ok := expectedContract["scorecard"]; !ok {
+		t.Fatalf("expected contract = %#v, want scorecard subset", expectedContract)
+	}
+	if _, ok := expectedContract["runtime_limits"]; ok {
+		t.Fatalf("expected contract = %#v, did not expect runtime_limits in frozen subset", expectedContract)
 	}
 	if result.Case.ID == uuid.Nil {
 		t.Fatal("expected promoted case to be returned")
@@ -212,6 +228,232 @@ func TestRegressionManagerPromoteFailureRejectsPackMismatch(t *testing.T) {
 	})
 	if !errors.Is(err, ErrRegressionSuitePackMismatch) {
 		t.Fatalf("PromoteFailure error = %v, want ErrRegressionSuitePackMismatch", err)
+	}
+}
+
+func TestRegressionManagerPromoteFailureRejectsArchivedSuite(t *testing.T) {
+	workspaceID := uuid.New()
+	runID := uuid.New()
+	suiteID := uuid.New()
+
+	manager := NewRegressionManager(NewCallerWorkspaceAuthorizer(), &fakeRegressionRepository{
+		run: domain.Run{ID: runID, WorkspaceID: workspaceID},
+		suite: repository.RegressionSuite{
+			ID:          suiteID,
+			WorkspaceID: workspaceID,
+			Status:      domain.RegressionSuiteStatusArchived,
+		},
+	})
+
+	_, err := manager.PromoteFailure(context.Background(), Caller{
+		UserID: uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: RoleWorkspaceMember},
+		},
+	}, PromoteFailureInput{
+		WorkspaceID:         workspaceID,
+		RunID:               runID,
+		ChallengeIdentityID: uuid.New(),
+		Request: domain.PromotionRequest{
+			SuiteID:       suiteID,
+			PromotionMode: domain.RegressionPromotionModeFullExecutable,
+			Title:         "Promoted failure",
+		},
+	})
+	if !errors.Is(err, ErrRegressionSuiteArchived) {
+		t.Fatalf("PromoteFailure error = %v, want ErrRegressionSuiteArchived", err)
+	}
+}
+
+func TestRegressionManagerPromoteFailureRejectsCrossWorkspaceSuite(t *testing.T) {
+	workspaceID := uuid.New()
+	runID := uuid.New()
+	suiteID := uuid.New()
+
+	manager := NewRegressionManager(NewCallerWorkspaceAuthorizer(), &fakeRegressionRepository{
+		run: domain.Run{ID: runID, WorkspaceID: workspaceID},
+		suite: repository.RegressionSuite{
+			ID:          suiteID,
+			WorkspaceID: uuid.New(),
+			Status:      domain.RegressionSuiteStatusActive,
+		},
+	})
+
+	_, err := manager.PromoteFailure(context.Background(), Caller{
+		UserID: uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: RoleWorkspaceMember},
+		},
+	}, PromoteFailureInput{
+		WorkspaceID:         workspaceID,
+		RunID:               runID,
+		ChallengeIdentityID: uuid.New(),
+		Request: domain.PromotionRequest{
+			SuiteID:       suiteID,
+			PromotionMode: domain.RegressionPromotionModeFullExecutable,
+			Title:         "Promoted failure",
+		},
+	})
+	if !errors.Is(err, repository.ErrRegressionSuiteNotFound) {
+		t.Fatalf("PromoteFailure error = %v, want ErrRegressionSuiteNotFound", err)
+	}
+}
+
+func TestRegressionManagerPromoteFailureRejectsNonPromotableItem(t *testing.T) {
+	workspaceID := uuid.New()
+	runID := uuid.New()
+	suiteID := uuid.New()
+	challengeIdentityID := uuid.New()
+	challengePackID := uuid.New()
+
+	manager := NewRegressionManager(NewCallerWorkspaceAuthorizer(), &fakeRegressionRepository{
+		run: domain.Run{ID: runID, WorkspaceID: workspaceID},
+		suite: repository.RegressionSuite{
+			ID:                    suiteID,
+			WorkspaceID:           workspaceID,
+			SourceChallengePackID: challengePackID,
+			Status:                domain.RegressionSuiteStatusActive,
+		},
+		failureItems: []failurereview.Item{{
+			RunID:                  runID,
+			RunAgentID:             uuid.New(),
+			ChallengeIdentityID:    &challengeIdentityID,
+			Promotable:             false,
+			PromotionModeAvailable: []failurereview.PromotionMode{failurereview.PromotionModeFullExecutable},
+		}},
+	})
+
+	_, err := manager.PromoteFailure(context.Background(), Caller{
+		UserID: uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: RoleWorkspaceMember},
+		},
+	}, PromoteFailureInput{
+		WorkspaceID:         workspaceID,
+		RunID:               runID,
+		ChallengeIdentityID: challengeIdentityID,
+		Request: domain.PromotionRequest{
+			SuiteID:       suiteID,
+			PromotionMode: domain.RegressionPromotionModeFullExecutable,
+			Title:         "Promoted failure",
+		},
+	})
+	if !errors.Is(err, ErrFailurePromotionNotAllowed) {
+		t.Fatalf("PromoteFailure error = %v, want ErrFailurePromotionNotAllowed", err)
+	}
+}
+
+func TestRegressionManagerPromoteFailureRejectsUnavailableMode(t *testing.T) {
+	workspaceID := uuid.New()
+	runID := uuid.New()
+	suiteID := uuid.New()
+	challengeIdentityID := uuid.New()
+	challengePackID := uuid.New()
+
+	manager := NewRegressionManager(NewCallerWorkspaceAuthorizer(), &fakeRegressionRepository{
+		run: domain.Run{ID: runID, WorkspaceID: workspaceID},
+		suite: repository.RegressionSuite{
+			ID:                    suiteID,
+			WorkspaceID:           workspaceID,
+			SourceChallengePackID: challengePackID,
+			Status:                domain.RegressionSuiteStatusActive,
+		},
+		failureItems: []failurereview.Item{{
+			RunID:                  runID,
+			RunAgentID:             uuid.New(),
+			ChallengeIdentityID:    &challengeIdentityID,
+			Promotable:             true,
+			PromotionModeAvailable: []failurereview.PromotionMode{failurereview.PromotionModeOutputOnly},
+		}},
+	})
+
+	_, err := manager.PromoteFailure(context.Background(), Caller{
+		UserID: uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: RoleWorkspaceMember},
+		},
+	}, PromoteFailureInput{
+		WorkspaceID:         workspaceID,
+		RunID:               runID,
+		ChallengeIdentityID: challengeIdentityID,
+		Request: domain.PromotionRequest{
+			SuiteID:       suiteID,
+			PromotionMode: domain.RegressionPromotionModeFullExecutable,
+			Title:         "Promoted failure",
+		},
+	})
+	if !errors.Is(err, ErrFailurePromotionModeUnavailable) {
+		t.Fatalf("PromoteFailure error = %v, want ErrFailurePromotionModeUnavailable", err)
+	}
+}
+
+func TestRegressionManagerPromoteFailureRejectsCrossWorkspaceRun(t *testing.T) {
+	workspaceID := uuid.New()
+	runID := uuid.New()
+	suiteID := uuid.New()
+
+	manager := NewRegressionManager(NewCallerWorkspaceAuthorizer(), &fakeRegressionRepository{
+		run: domain.Run{ID: runID, WorkspaceID: uuid.New()},
+	})
+
+	_, err := manager.PromoteFailure(context.Background(), Caller{
+		UserID: uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: RoleWorkspaceMember},
+		},
+	}, PromoteFailureInput{
+		WorkspaceID:         workspaceID,
+		RunID:               runID,
+		ChallengeIdentityID: uuid.New(),
+		Request: domain.PromotionRequest{
+			SuiteID:       suiteID,
+			PromotionMode: domain.RegressionPromotionModeFullExecutable,
+			Title:         "Promoted failure",
+		},
+	})
+	if !errors.Is(err, repository.ErrRunNotFound) {
+		t.Fatalf("PromoteFailure error = %v, want ErrRunNotFound", err)
+	}
+}
+
+func TestRegressionManagerPromoteFailureRejectsAmbiguousFailureItem(t *testing.T) {
+	workspaceID := uuid.New()
+	runID := uuid.New()
+	suiteID := uuid.New()
+	challengeIdentityID := uuid.New()
+	challengePackID := uuid.New()
+
+	manager := NewRegressionManager(NewCallerWorkspaceAuthorizer(), &fakeRegressionRepository{
+		run: domain.Run{ID: runID, WorkspaceID: workspaceID},
+		suite: repository.RegressionSuite{
+			ID:                    suiteID,
+			WorkspaceID:           workspaceID,
+			SourceChallengePackID: challengePackID,
+			Status:                domain.RegressionSuiteStatusActive,
+		},
+		failureItems: []failurereview.Item{
+			{RunID: runID, RunAgentID: uuid.New(), ChallengeIdentityID: &challengeIdentityID, Promotable: true},
+			{RunID: runID, RunAgentID: uuid.New(), ChallengeIdentityID: &challengeIdentityID, Promotable: true},
+		},
+	})
+
+	_, err := manager.PromoteFailure(context.Background(), Caller{
+		UserID: uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: RoleWorkspaceMember},
+		},
+	}, PromoteFailureInput{
+		WorkspaceID:         workspaceID,
+		RunID:               runID,
+		ChallengeIdentityID: challengeIdentityID,
+		Request: domain.PromotionRequest{
+			SuiteID:       suiteID,
+			PromotionMode: domain.RegressionPromotionModeFullExecutable,
+			Title:         "Promoted failure",
+		},
+	})
+	if !errors.Is(err, ErrFailureReviewItemAmbiguous) {
+		t.Fatalf("PromoteFailure error = %v, want ErrFailureReviewItemAmbiguous", err)
 	}
 }
 
@@ -459,6 +701,10 @@ type fakeRegressionRepository struct {
 	failureItemsErr     error
 	executionContext    repository.RunAgentExecutionContext
 	executionContextErr error
+	scorecard           repository.RunAgentScorecard
+	scorecardErr        error
+	evaluationSpec      repository.EvaluationSpecRecord
+	evaluationSpecErr   error
 	promoteResult       repository.PromoteFailureResult
 	promoteErr          error
 	promoteInput        *repository.PromoteFailureParams
@@ -534,6 +780,20 @@ func (f *fakeRegressionRepository) GetRunAgentExecutionContextByID(_ context.Con
 		return repository.RunAgentExecutionContext{}, f.executionContextErr
 	}
 	return f.executionContext, nil
+}
+
+func (f *fakeRegressionRepository) GetRunAgentScorecardByRunAgentID(_ context.Context, _ uuid.UUID) (repository.RunAgentScorecard, error) {
+	if f.scorecardErr != nil {
+		return repository.RunAgentScorecard{}, f.scorecardErr
+	}
+	return f.scorecard, nil
+}
+
+func (f *fakeRegressionRepository) GetEvaluationSpecByID(_ context.Context, _ uuid.UUID) (repository.EvaluationSpecRecord, error) {
+	if f.evaluationSpecErr != nil {
+		return repository.EvaluationSpecRecord{}, f.evaluationSpecErr
+	}
+	return f.evaluationSpec, nil
 }
 
 func (f *fakeRegressionRepository) PromoteFailure(_ context.Context, params repository.PromoteFailureParams) (repository.PromoteFailureResult, error) {

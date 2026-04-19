@@ -2,7 +2,6 @@ package repository_test
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"testing"
 
@@ -355,6 +354,7 @@ func TestRepositoryPromoteFailureFreezesContextAndIsIdempotent(t *testing.T) {
 		EvidenceTier:        "native_structured",
 		SourceCaseKey:       "prompt.txt",
 		SourceItemKey:       stringPtr("prompt.txt"),
+		ExpectedContract:    []byte(`{"scorecard":{"dimensions":["correctness"]}}`),
 		ValidatorOverrides:  []byte(`{"judge_threshold_overrides":{"policy.filesystem":1}}`),
 		Metadata:            []byte(`{"source":"test"}`),
 		SourceEventRefs:     []byte(`[{"sequence_number":2,"event_type":"system.output.finalized","kind":"run_event"}]`),
@@ -374,15 +374,8 @@ func TestRepositoryPromoteFailureFreezesContextAndIsIdempotent(t *testing.T) {
 		t.Fatalf("payload snapshot = %s, want frozen case payload", result.Case.PayloadSnapshot)
 	}
 
-	var expectedContract map[string]any
-	if err := json.Unmarshal(result.Case.ExpectedContract, &expectedContract); err != nil {
-		t.Fatalf("json.Unmarshal expected contract returned error: %v", err)
-	}
-	if _, ok := expectedContract["scorecard"]; !ok {
-		t.Fatalf("expected contract = %#v, want scorecard subset", expectedContract)
-	}
-	if _, ok := expectedContract["runtime_limits"]; ok {
-		t.Fatalf("expected contract = %#v, did not expect runtime_limits in frozen subset", expectedContract)
+	if string(result.Case.ExpectedContract) != `{"scorecard":{"dimensions":["correctness"]}}` {
+		t.Fatalf("expected contract = %s, want manager-supplied frozen contract", result.Case.ExpectedContract)
 	}
 
 	second, err := repo.PromoteFailure(ctx, repository.PromoteFailureParams{
@@ -398,6 +391,7 @@ func TestRepositoryPromoteFailureFreezesContextAndIsIdempotent(t *testing.T) {
 		EvidenceTier:        "native_structured",
 		SourceCaseKey:       "prompt.txt",
 		SourceItemKey:       stringPtr("prompt.txt"),
+		ExpectedContract:    []byte(`{"scorecard":{"dimensions":["correctness"]}}`),
 		PromotedByUserID:    fixture.userID,
 	})
 	if err != nil {
