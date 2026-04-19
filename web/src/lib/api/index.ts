@@ -52,6 +52,18 @@ export type {
   RegressionCase,
   RegressionSeverity,
   RegressionSuite,
+  RegressionGateRules,
+  ReleaseGate,
+  ReleaseGateEvaluationDetails,
+  ReleaseGateEvidenceStatus,
+  ReleaseGatePolicy,
+  ReleaseGateRegressionEvidence,
+  ReleaseGateRegressionViolation,
+  ReleaseGateReplayStepRef,
+  ReleaseGateVerdict,
+  ListReleaseGatesResponse,
+  EvaluateReleaseGateRequest,
+  EvaluateReleaseGateResponse,
 } from "./types";
 export { AGENT_KINDS } from "./types";
 export { listRunFailures, type ListRunFailuresParams } from "./failure-reviews";
@@ -65,3 +77,13 @@ export {
   type PromoteFailureResult,
   type PromotionOverridesInput,
 } from "./regression";
+export {
+  EMPTY_REGRESSION_GATE_RULES_DRAFT,
+  REGRESSION_BLOCKING_RULES,
+  evaluateReleaseGate,
+  listReleaseGates,
+  normalizeRegressionGateRules,
+  regressionGateRulesToDraft,
+  regressionRuleLabel,
+  type RegressionGateRulesDraft,
+} from "./release-gates";

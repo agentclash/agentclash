@@ -913,13 +913,23 @@ export interface ReleaseGatePolicy {
   require_evidence_quality?: boolean;
   fail_on_candidate_failure?: boolean;
   fail_on_both_failed_differently?: boolean;
+  require_scorecard_pass?: boolean;
   required_dimensions?: string[];
   dimensions?: Record<string, DimensionThreshold>;
+  regression_gate_rules?: RegressionGateRules;
 }
 
 export interface DimensionThreshold {
   warn_delta?: number;
   fail_delta?: number;
+}
+
+/** Mirrors RegressionGateRules in backend/internal/releasegate/releasegate.go. */
+export interface RegressionGateRules {
+  no_blocking_regression_failure?: boolean;
+  no_new_blocking_failure_vs_baseline?: boolean;
+  max_warning_regression_failures?: number;
+  suite_ids?: string[];
 }
 
 export interface ReleaseGateEvaluationDetails {
@@ -931,6 +941,29 @@ export interface ReleaseGateEvaluationDetails {
   triggered_conditions?: string[];
   required_dimensions?: string[];
   dimension_results?: Record<string, DimensionEvaluation>;
+  regression_violations?: ReleaseGateRegressionViolation[];
+}
+
+/** Mirrors RegressionGateViolation in backend/internal/releasegate/regression_evaluator.go. */
+export interface ReleaseGateRegressionViolation {
+  rule: string; // "no_blocking_regression_failure" | "no_new_blocking_failure_vs_baseline" | "max_warning_regression_failures"
+  severity: string; // "info" | "warning" | "blocking"
+  regression_case_id: string;
+  suite_id: string;
+  observed_count?: number;
+  evidence: ReleaseGateRegressionEvidence;
+}
+
+export interface ReleaseGateRegressionEvidence {
+  scoring_result_id: string;
+  scoring_result_type: string;
+  replay_step_refs?: ReleaseGateReplayStepRef[];
+}
+
+export interface ReleaseGateReplayStepRef {
+  sequence_number: number;
+  event_type?: string;
+  kind?: string;
 }
 
 export interface DimensionEvaluation {
