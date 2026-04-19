@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -279,7 +280,7 @@ func (m *RunCreationManager) resolveRunCaseSelections(
 		}
 		suite, err := m.repo.GetRegressionSuiteByID(ctx, id)
 		if err != nil {
-			if err == repository.ErrRegressionSuiteNotFound {
+			if errors.Is(err, repository.ErrRegressionSuiteNotFound) {
 				return repository.RegressionSuite{}, RunCreationValidationError{
 					Code:    "invalid_regression_suite_ids",
 					Message: "regression_suite_ids must reference suites in the selected workspace",
@@ -297,6 +298,12 @@ func (m *RunCreationManager) resolveRunCaseSelections(
 			return repository.RegressionSuite{}, RunCreationValidationError{
 				Code:    "invalid_regression_suite_ids",
 				Message: "regression suites must belong to the selected challenge pack",
+			}
+		}
+		if suite.Status != domain.RegressionSuiteStatusActive {
+			return repository.RegressionSuite{}, RunCreationValidationError{
+				Code:    "inactive_regression_suite_ids",
+				Message: "regression_suite_ids must reference active suites",
 			}
 		}
 		suiteCache[id] = suite
@@ -330,7 +337,7 @@ func (m *RunCreationManager) resolveRunCaseSelections(
 
 		regressionCase, err := m.repo.GetRegressionCaseByID(ctx, regressionCaseID)
 		if err != nil {
-			if err == repository.ErrRegressionCaseNotFound {
+			if errors.Is(err, repository.ErrRegressionCaseNotFound) {
 				return nil, RunCreationValidationError{
 					Code:    "invalid_regression_case_ids",
 					Message: "regression_case_ids must reference cases in the selected workspace",
@@ -342,6 +349,12 @@ func (m *RunCreationManager) resolveRunCaseSelections(
 			return nil, RunCreationValidationError{
 				Code:    "invalid_regression_case_ids",
 				Message: "regression_case_ids must reference cases in the selected workspace",
+			}
+		}
+		if regressionCase.Status != domain.RegressionCaseStatusActive {
+			return nil, RunCreationValidationError{
+				Code:    "inactive_regression_case_ids",
+				Message: "regression_case_ids must reference active cases",
 			}
 		}
 		if _, err := loadSuite(regressionCase.SuiteID); err != nil {
@@ -365,6 +378,9 @@ func (m *RunCreationManager) resolveRunCaseSelections(
 			return nil, fmt.Errorf("list regression cases by suite: %w", err)
 		}
 		for _, regressionCase := range regressionCases {
+			if regressionCase.Status != domain.RegressionCaseStatusActive {
+				continue
+			}
 			appendSelection(repository.RunCaseSelectionOriginRegressionSuite, regressionCase.SourceChallengeIdentityID, &regressionCase.ID)
 		}
 	}

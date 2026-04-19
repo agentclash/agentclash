@@ -4669,10 +4669,27 @@ components:
           items:
             type: string
             format: uuid
+        regression_suite_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        regression_case_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        official_pack_mode:
+          type: string
+          enum: [full, suite_only]
+          description: >
+            Optional. Defaults to `full`. Use `suite_only` to execute only the
+            resolved regression selection instead of unioning it with the full
+            official pack case set.
 
     CreateRunResponse:
       type: object
-      required: [id, workspace_id, challenge_pack_version_id, status, execution_mode, created_at, links]
+      required: [id, workspace_id, challenge_pack_version_id, official_pack_mode, status, execution_mode, created_at, links]
       properties:
         id:
           type: string
@@ -4686,6 +4703,9 @@ components:
         challenge_input_set_id:
           type: string
           format: uuid
+        official_pack_mode:
+          type: string
+          enum: [full, suite_only]
         status:
           $ref: "#/components/schemas/RunStatus"
         execution_mode:
