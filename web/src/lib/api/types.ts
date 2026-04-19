@@ -1138,6 +1138,91 @@ export interface ListRunFailuresResponse {
   next_cursor?: string;
 }
 
+// --- Regression Suites & Cases ---
+// Mirrors schemas under `RegressionSuite*` / `RegressionCase*` in docs/api-server/openapi.yaml.
+
+export type RegressionSuiteStatus = "active" | "archived";
+export type RegressionCaseStatus = "active" | "muted" | "archived";
+export type RegressionSeverity = "info" | "warning" | "blocking";
+export type RegressionPromotionMode =
+  | "full_executable"
+  | "output_only"
+  | "manual";
+export type RegressionSourceMode = "derived_only" | "mixed_manual";
+
+/** GET /v1/workspaces/{ws}/regression-suites list item, POST response, PATCH response */
+export interface RegressionSuite {
+  id: string;
+  workspace_id: string;
+  source_challenge_pack_id: string;
+  name: string;
+  description: string;
+  status: RegressionSuiteStatus;
+  source_mode: RegressionSourceMode;
+  default_gate_severity: RegressionSeverity;
+  created_by_user_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/** GET /v1/workspaces/{ws}/regression-suites/{id}/cases list item, PATCH response */
+export interface RegressionCase {
+  id: string;
+  suite_id: string;
+  workspace_id: string;
+  title: string;
+  description: string;
+  status: RegressionCaseStatus;
+  severity: RegressionSeverity;
+  promotion_mode: RegressionPromotionMode;
+  source_run_id?: string;
+  source_run_agent_id?: string;
+  source_replay_id?: string;
+  source_challenge_pack_version_id: string;
+  source_challenge_input_set_id?: string;
+  source_challenge_identity_id: string;
+  source_case_key: string;
+  source_item_key?: string;
+  evidence_tier: string;
+  failure_class: string;
+  failure_summary: string;
+  payload_snapshot: Record<string, unknown>;
+  expected_contract: Record<string, unknown>;
+  validator_overrides?: Record<string, unknown> | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+/** POST /v1/workspaces/{ws}/regression-suites request */
+export interface CreateRegressionSuiteInput {
+  source_challenge_pack_id: string;
+  name: string;
+  description?: string;
+  default_gate_severity?: RegressionSeverity;
+}
+
+/** PATCH /v1/workspaces/{ws}/regression-suites/{id} request */
+export interface PatchRegressionSuiteInput {
+  name?: string;
+  description?: string;
+  status?: RegressionSuiteStatus;
+  default_gate_severity?: RegressionSeverity;
+}
+
+/** PATCH /v1/workspaces/{ws}/regression-cases/{id} request */
+export interface PatchRegressionCaseInput {
+  title?: string;
+  description?: string;
+  status?: RegressionCaseStatus;
+  severity?: RegressionSeverity;
+}
+
+/** GET /v1/workspaces/{ws}/regression-suites/{id}/cases response */
+export interface ListRegressionCasesResponse {
+  items: RegressionCase[];
+}
+
 // --- Errors ---
 
 /** Standard error envelope returned by all backend error responses. */
