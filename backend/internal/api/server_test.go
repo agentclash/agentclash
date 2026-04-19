@@ -54,6 +54,10 @@ func (stubChallengePackReadService) ListChallengePacks(_ context.Context) (ListC
 	return ListChallengePacksResult{}, errors.New("not implemented")
 }
 
+func (stubChallengePackReadService) ListChallengeInputSets(_ context.Context, _ uuid.UUID) (ListChallengeInputSetsResult, error) {
+	return ListChallengeInputSetsResult{}, errors.New("not implemented")
+}
+
 type stubReplayReadService struct{}
 
 func (stubReplayReadService) GetRunAgentReplay(_ context.Context, _ Caller, _ uuid.UUID, _ ReplayStepPageParams) (GetRunAgentReplayResult, error) {

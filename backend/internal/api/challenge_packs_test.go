@@ -19,6 +19,8 @@ import (
 
 type fakeChallengePackReadRepository struct {
 	lastWorkspaceID uuid.UUID
+	runnableVersion repository.RunnableChallengePackVersion
+	inputSets       []repository.ChallengeInputSetSummary
 }
 
 func (f *fakeChallengePackReadRepository) ListVisibleChallengePacks(_ context.Context, workspaceID uuid.UUID) ([]repository.ChallengePackSummary, error) {
@@ -44,6 +46,20 @@ func (f *fakeChallengePackReadRepository) ListRunnableChallengePVersionsByPackID
 			UpdatedAt:       time.Now().UTC(),
 		},
 	}, nil
+}
+
+func (f *fakeChallengePackReadRepository) GetRunnableChallengePackVersionByID(_ context.Context, id uuid.UUID) (repository.RunnableChallengePackVersion, error) {
+	if f.runnableVersion.ID == uuid.Nil || f.runnableVersion.ID != id {
+		return repository.RunnableChallengePackVersion{}, repository.ErrChallengePackVersionNotFound
+	}
+	return f.runnableVersion, nil
+}
+
+func (f *fakeChallengePackReadRepository) ListChallengeInputSetsByVersionID(_ context.Context, challengePackVersionID uuid.UUID) ([]repository.ChallengeInputSetSummary, error) {
+	if f.runnableVersion.ID == uuid.Nil || f.runnableVersion.ID != challengePackVersionID {
+		return nil, repository.ErrChallengePackVersionNotFound
+	}
+	return f.inputSets, nil
 }
 
 type fakeChallengePackAuthoringRepository struct {
@@ -123,6 +139,193 @@ func TestChallengePackAuthoringManagerValidateBundleReturnsFieldErrors(t *testin
 	}
 	if len(result.Errors) == 0 {
 		t.Fatal("expected validation errors")
+	}
+}
+
+func TestChallengePackReadManagerListsInputSetsForWorkspaceVisibleVersion(t *testing.T) {
+	workspaceID := uuid.New()
+	versionID := uuid.New()
+	repo := &fakeChallengePackReadRepository{
+		runnableVersion: repository.RunnableChallengePackVersion{
+			ID:          versionID,
+			WorkspaceID: &workspaceID,
+		},
+		inputSets: []repository.ChallengeInputSetSummary{
+			{
+				ID:                     uuid.New(),
+				ChallengePackVersionID: versionID,
+				InputKey:               "default",
+				Name:                   "Default",
+			},
+		},
+	}
+	manager := NewChallengePackReadManager(repo)
+
+	ctx := context.WithValue(context.Background(), workspaceIDContextKey{}, workspaceID)
+	result, err := manager.ListChallengeInputSets(ctx, versionID)
+	if err != nil {
+		t.Fatalf("ListChallengeInputSets returned error: %v", err)
+	}
+
+	if len(result.InputSets) != 1 {
+		t.Fatalf("input set count = %d, want 1", len(result.InputSets))
+	}
+	if result.InputSets[0].InputKey != "default" {
+		t.Fatalf("input key = %q, want default", result.InputSets[0].InputKey)
+	}
+}
+
+func TestChallengePackReadManagerHidesInputSetsForOtherWorkspace(t *testing.T) {
+	workspaceID := uuid.New()
+	otherWorkspaceID := uuid.New()
+	versionID := uuid.New()
+	repo := &fakeChallengePackReadRepository{
+		runnableVersion: repository.RunnableChallengePackVersion{
+			ID:          versionID,
+			WorkspaceID: &otherWorkspaceID,
+		},
+	}
+	manager := NewChallengePackReadManager(repo)
+
+	ctx := context.WithValue(context.Background(), workspaceIDContextKey{}, workspaceID)
+	_, err := manager.ListChallengeInputSets(ctx, versionID)
+	if !errors.Is(err, repository.ErrChallengePackVersionNotFound) {
+		t.Fatalf("error = %v, want challenge pack version not found", err)
+	}
+}
+
+type challengePackReadServiceForInputSetRoute struct {
+	result ListChallengeInputSetsResult
+	err    error
+}
+
+func (s challengePackReadServiceForInputSetRoute) ListChallengePacks(_ context.Context) (ListChallengePacksResult, error) {
+	return ListChallengePacksResult{}, errors.New("not implemented")
+}
+
+func (s challengePackReadServiceForInputSetRoute) ListChallengeInputSets(_ context.Context, _ uuid.UUID) (ListChallengeInputSetsResult, error) {
+	return s.result, s.err
+}
+
+func TestListChallengeInputSetsHandlerReturnsItems(t *testing.T) {
+	logger := challengePackTestLogger(t)
+	workspaceID := uuid.New()
+	userID := uuid.New()
+	versionID := uuid.New()
+	inputSetID := uuid.New()
+
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"/v1/workspaces/"+workspaceID.String()+"/challenge-pack-versions/"+versionID.String()+"/input-sets",
+		nil,
+	)
+	req.Header.Set(headerUserID, userID.String())
+	req.Header.Set(headerWorkspaceMemberships, workspaceID.String()+":workspace_admin")
+	recorder := httptest.NewRecorder()
+
+	newRouter("dev", nil,
+		logger,
+		NewDevelopmentAuthenticator(),
+		NewCallerWorkspaceAuthorizer(),
+		nil,
+		0,
+		stubRunCreationService{},
+		stubRunReadService{},
+		stubReplayReadService{},
+		stubHostedRunIngestionService{},
+		nil,
+		stubAgentDeploymentReadService{},
+		challengePackReadServiceForInputSetRoute{
+			result: ListChallengeInputSetsResult{
+				InputSets: []repository.ChallengeInputSetSummary{
+					{
+						ID:                     inputSetID,
+						ChallengePackVersionID: versionID,
+						InputKey:               "support_ticket_triage",
+						Name:                   "Support Ticket Triage",
+					},
+				},
+			},
+		},
+		stubAgentBuildService{},
+		noopReleaseGateService{},
+		stubChallengePackAuthoringService{},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+	).ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+
+	var response listChallengeInputSetsResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(response.Items) != 1 {
+		t.Fatalf("item count = %d, want 1", len(response.Items))
+	}
+	if response.Items[0].ID != inputSetID {
+		t.Fatalf("input set id = %s, want %s", response.Items[0].ID, inputSetID)
+	}
+	if response.Items[0].InputKey != "support_ticket_triage" {
+		t.Fatalf("input key = %q, want support_ticket_triage", response.Items[0].InputKey)
+	}
+}
+
+func TestListChallengeInputSetsHandlerReturnsNotFound(t *testing.T) {
+	logger := challengePackTestLogger(t)
+	workspaceID := uuid.New()
+	userID := uuid.New()
+	versionID := uuid.New()
+
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"/v1/workspaces/"+workspaceID.String()+"/challenge-pack-versions/"+versionID.String()+"/input-sets",
+		nil,
+	)
+	req.Header.Set(headerUserID, userID.String())
+	req.Header.Set(headerWorkspaceMemberships, workspaceID.String()+":workspace_admin")
+	recorder := httptest.NewRecorder()
+
+	newRouter("dev", nil,
+		logger,
+		NewDevelopmentAuthenticator(),
+		NewCallerWorkspaceAuthorizer(),
+		nil,
+		0,
+		stubRunCreationService{},
+		stubRunReadService{},
+		stubReplayReadService{},
+		stubHostedRunIngestionService{},
+		nil,
+		stubAgentDeploymentReadService{},
+		challengePackReadServiceForInputSetRoute{err: repository.ErrChallengePackVersionNotFound},
+		stubAgentBuildService{},
+		noopReleaseGateService{},
+		stubChallengePackAuthoringService{},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+	).ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d; body=%s", recorder.Code, http.StatusNotFound, recorder.Body.String())
 	}
 }
 

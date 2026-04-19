@@ -8,6 +8,7 @@ import { ApiError } from "@/lib/api/errors";
 import type {
   AgentDeployment,
   ChallengePack,
+  ChallengeInputSetSummary,
   ChallengePackVersion,
   CreateRunRequest,
   CreateRunResponse,
@@ -59,6 +60,7 @@ export function CreateRunDialog({ workspaceId }: CreateRunDialogProps) {
   const [runnableVersions, setRunnableVersions] = useState<
     ChallengePackVersion[]
   >([]);
+  const [inputSets, setInputSets] = useState<ChallengeInputSetSummary[]>([]);
   const [deployments, setDeployments] = useState<AgentDeployment[]>([]);
   const [regressionSuites, setRegressionSuites] = useState<RegressionSuite[]>(
     [],
@@ -67,6 +69,7 @@ export function CreateRunDialog({ workspaceId }: CreateRunDialogProps) {
     {},
   );
   const [loading, setLoading] = useState(false);
+  const [loadingInputSets, setLoadingInputSets] = useState(false);
   const [loadingRegression, setLoadingRegression] = useState(false);
   const [regressionLoadError, setRegressionLoadError] = useState<string | null>(
     null,
@@ -114,6 +117,8 @@ export function CreateRunDialog({ workspaceId }: CreateRunDialogProps) {
   function handlePackChange(packId: string) {
     setSelectedPackId(packId);
     setSelectedVersionId("");
+    setInputSetId("");
+    setInputSets([]);
     setSelectedRegressionSuiteIds([]);
     setSelectedRegressionCaseIds([]);
     setOfficialPackMode("full");
@@ -147,6 +152,52 @@ export function CreateRunDialog({ workspaceId }: CreateRunDialogProps) {
       prev.includes(id) ? prev.filter((caseId) => caseId !== id) : [...prev, id],
     );
   }
+
+  useEffect(() => {
+    if (!open || !selectedVersionId) {
+      setInputSetId("");
+      setInputSets([]);
+      setLoadingInputSets(false);
+      return;
+    }
+
+    let cancelled = false;
+    setInputSetId("");
+    setInputSets([]);
+    setLoadingInputSets(true);
+
+    (async () => {
+      try {
+        const token = await getAccessToken();
+        const api = createApiClient(token);
+        const response = await api.get<{ items: ChallengeInputSetSummary[] }>(
+          `/v1/workspaces/${workspaceId}/challenge-pack-versions/${selectedVersionId}/input-sets`,
+        );
+
+        if (cancelled) return;
+
+        setInputSets(response.items);
+        if (response.items.length === 1) {
+          setInputSetId(response.items[0].id);
+        }
+      } catch (err) {
+        if (cancelled) return;
+        setInputSetId("");
+        setInputSets([]);
+        toast.error(
+          err instanceof ApiError ? err.message : "Failed to load input sets",
+        );
+      } finally {
+        if (!cancelled) {
+          setLoadingInputSets(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [getAccessToken, open, selectedVersionId, workspaceId]);
 
   useEffect(() => {
     if (!open || !selectedPackId) {
@@ -266,6 +317,7 @@ export function CreateRunDialog({ workspaceId }: CreateRunDialogProps) {
     setSelectedPackId("");
     setSelectedVersionId("");
     setInputSetId("");
+    setInputSets([]);
     setSelectedDeploymentIds([]);
     setSelectedRegressionSuiteIds([]);
     setSelectedRegressionCaseIds([]);
@@ -276,7 +328,12 @@ export function CreateRunDialog({ workspaceId }: CreateRunDialogProps) {
 
   const executionMode =
     selectedDeploymentIds.length > 1 ? "comparison" : "single_agent";
-  const canSubmit = selectedVersionId && selectedDeploymentIds.length > 0;
+  const requiresInputSetSelection = inputSets.length > 1;
+  const canSubmit =
+    Boolean(selectedVersionId) &&
+    selectedDeploymentIds.length > 0 &&
+    !loadingInputSets &&
+    (!requiresInputSetSelection || Boolean(inputSetId));
   const eligibleRegressionSuites = regressionSuites.filter(
     (suite) => suite.source_challenge_pack_id === selectedPackId,
   );
@@ -369,21 +426,57 @@ export function CreateRunDialog({ workspaceId }: CreateRunDialogProps) {
             </select>
           </div>
 
-          {/* Input Set ID (optional) */}
+          {/* Input Set */}
           <div>
             <label className="mb-1.5 block text-sm font-medium">
-              Input Set ID{" "}
-              <span className="text-muted-foreground font-normal">
-                (optional)
-              </span>
+              Input Set
             </label>
-            <input
-              type="text"
-              value={inputSetId}
-              onChange={(e) => setInputSetId(e.target.value)}
-              placeholder="UUID — leave empty for all input sets"
-              className="block w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm font-[family-name:var(--font-mono)] placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/50"
-            />
+            {!selectedVersionId ? (
+              <p className="text-sm text-muted-foreground">
+                Select a version to load its published input sets.
+              </p>
+            ) : loadingInputSets ? (
+              <p className="text-sm text-muted-foreground">Loading input sets...</p>
+            ) : inputSets.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                This version has no published input sets.
+              </p>
+            ) : inputSets.length === 1 ? (
+              <div className="space-y-1">
+                <select
+                  aria-label="Challenge Input Set"
+                  value={inputSetId}
+                  disabled
+                  className={selectClass}
+                >
+                  <option value={inputSets[0].id}>
+                    {inputSets[0].name} ({inputSets[0].input_key})
+                  </option>
+                </select>
+                <p className="text-xs text-muted-foreground">
+                  Auto-selected because this version has exactly one input set.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-1">
+                <select
+                  aria-label="Challenge Input Set"
+                  value={inputSetId}
+                  onChange={(e) => setInputSetId(e.target.value)}
+                  className={selectClass}
+                >
+                  <option value="">Select an input set</option>
+                  {inputSets.map((inputSet) => (
+                    <option key={inputSet.id} value={inputSet.id}>
+                      {inputSet.name} ({inputSet.input_key})
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-muted-foreground">
+                  Required because this version has multiple published input sets.
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="space-y-3 rounded-lg border border-border bg-muted/20 p-3">

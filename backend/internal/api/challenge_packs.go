@@ -15,20 +15,28 @@ import (
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/challengepack"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/storage"
+	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
 
 type ChallengePackReadRepository interface {
 	ListVisibleChallengePacks(ctx context.Context, workspaceID uuid.UUID) ([]repository.ChallengePackSummary, error)
 	ListRunnableChallengePVersionsByPackID(ctx context.Context, challengePackID uuid.UUID) ([]repository.ChallengePackVersionSummary, error)
+	GetRunnableChallengePackVersionByID(ctx context.Context, id uuid.UUID) (repository.RunnableChallengePackVersion, error)
+	ListChallengeInputSetsByVersionID(ctx context.Context, challengePackVersionID uuid.UUID) ([]repository.ChallengeInputSetSummary, error)
 }
 
 type ChallengePackReadService interface {
 	ListChallengePacks(ctx context.Context) (ListChallengePacksResult, error)
+	ListChallengeInputSets(ctx context.Context, challengePackVersionID uuid.UUID) (ListChallengeInputSetsResult, error)
 }
 
 type ListChallengePacksResult struct {
 	Packs []ChallengePackWithVersions
+}
+
+type ListChallengeInputSetsResult struct {
+	InputSets []repository.ChallengeInputSetSummary
 }
 
 type ChallengePackWithVersions struct {
@@ -72,6 +80,30 @@ func (m *ChallengePackReadManager) ListChallengePacks(ctx context.Context) (List
 
 	return ListChallengePacksResult{
 		Packs: result,
+	}, nil
+}
+
+func (m *ChallengePackReadManager) ListChallengeInputSets(ctx context.Context, challengePackVersionID uuid.UUID) (ListChallengeInputSetsResult, error) {
+	workspaceID, err := WorkspaceIDFromContext(ctx)
+	if err != nil {
+		return ListChallengeInputSetsResult{}, err
+	}
+
+	version, err := m.repo.GetRunnableChallengePackVersionByID(ctx, challengePackVersionID)
+	if err != nil {
+		return ListChallengeInputSetsResult{}, err
+	}
+	if version.WorkspaceID != nil && *version.WorkspaceID != workspaceID {
+		return ListChallengeInputSetsResult{}, repository.ErrChallengePackVersionNotFound
+	}
+
+	inputSets, err := m.repo.ListChallengeInputSetsByVersionID(ctx, challengePackVersionID)
+	if err != nil {
+		return ListChallengeInputSetsResult{}, fmt.Errorf("list challenge input sets for version %s: %w", challengePackVersionID, err)
+	}
+
+	return ListChallengeInputSetsResult{
+		InputSets: inputSets,
 	}, nil
 }
 
@@ -233,6 +265,17 @@ type listChallengePacksResponse struct {
 	Items []challengePackResponse `json:"items"`
 }
 
+type challengeInputSetResponse struct {
+	ID                     uuid.UUID `json:"id"`
+	ChallengePackVersionID uuid.UUID `json:"challenge_pack_version_id"`
+	InputKey               string    `json:"input_key"`
+	Name                   string    `json:"name"`
+}
+
+type listChallengeInputSetsResponse struct {
+	Items []challengeInputSetResponse `json:"items"`
+}
+
 func listChallengePacksHandler(logger *slog.Logger, service ChallengePackReadService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		result, err := service.ListChallengePacks(r.Context())
@@ -271,6 +314,45 @@ func listChallengePacksHandler(logger *slog.Logger, service ChallengePackReadSer
 		}
 
 		writeJSON(w, http.StatusOK, listChallengePacksResponse{Items: responseItems})
+	}
+}
+
+func listChallengeInputSetsHandler(logger *slog.Logger, service ChallengePackReadService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		versionID, err := uuid.Parse(chi.URLParam(r, "versionID"))
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_challenge_pack_version_id", "challenge pack version id must be a valid UUID")
+			return
+		}
+
+		result, err := service.ListChallengeInputSets(r.Context(), versionID)
+		if err != nil {
+			switch {
+			case errors.Is(err, repository.ErrChallengePackVersionNotFound):
+				writeError(w, http.StatusNotFound, "not_found", "challenge pack version not found")
+			default:
+				logger.Error("list challenge input sets request failed",
+					"method", r.Method,
+					"path", r.URL.Path,
+					"challenge_pack_version_id", versionID,
+					"error", err,
+				)
+				writeError(w, http.StatusInternalServerError, "internal_error", "internal server error")
+			}
+			return
+		}
+
+		responseItems := make([]challengeInputSetResponse, 0, len(result.InputSets))
+		for _, inputSet := range result.InputSets {
+			responseItems = append(responseItems, challengeInputSetResponse{
+				ID:                     inputSet.ID,
+				ChallengePackVersionID: inputSet.ChallengePackVersionID,
+				InputKey:               inputSet.InputKey,
+				Name:                   inputSet.Name,
+			})
+		}
+
+		writeJSON(w, http.StatusOK, listChallengeInputSetsResponse{Items: responseItems})
 	}
 }
 

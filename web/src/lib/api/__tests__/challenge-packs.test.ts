@@ -72,6 +72,42 @@ describe("Challenge Packs API", () => {
     expect(items[1].versions).toHaveLength(0);
   });
 
+  it("lists challenge input sets for a challenge-pack version", async () => {
+    const inputSets = {
+      items: [
+        {
+          id: "input-1",
+          challenge_pack_version_id: "ver-1",
+          input_key: "support_ticket_triage",
+          name: "Support Ticket Triage",
+        },
+        {
+          id: "input-2",
+          challenge_pack_version_id: "ver-1",
+          input_key: "incident_summary",
+          name: "Incident Summary",
+        },
+      ],
+    };
+    mockFetch.mockResolvedValueOnce(jsonResponse(inputSets));
+
+    const api = createApiClient("token");
+    const result = await api.get(
+      "/v1/workspaces/ws-1/challenge-pack-versions/ver-1/input-sets",
+    );
+
+    expect(result).toEqual(inputSets);
+    expect(mockFetch).toHaveBeenCalledWith(
+      "http://localhost:8080/v1/workspaces/ws-1/challenge-pack-versions/ver-1/input-sets",
+      expect.objectContaining({
+        method: "GET",
+        headers: expect.objectContaining({
+          Authorization: "Bearer token",
+        }),
+      }),
+    );
+  });
+
   it("validates a challenge pack bundle — valid", async () => {
     const validResponse = { valid: true, errors: [] };
     mockFetch.mockResolvedValueOnce(jsonResponse(validResponse));

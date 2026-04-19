@@ -196,7 +196,34 @@ function renderDialog() {
   };
 }
 
-function buildApiMock() {
+interface BuildApiMockOptions {
+  versions?: Array<{
+    id: string;
+    version_number: number;
+    lifecycle_status?: string;
+  }>;
+  inputSetsByVersionId?: Record<
+    string,
+    Array<{
+      id: string;
+      challenge_pack_version_id: string;
+      input_key: string;
+      name: string;
+    }>
+  >;
+}
+
+function buildApiMock(options: BuildApiMockOptions = {}) {
+  const versions = options.versions ?? [
+    {
+      id: "version-1",
+      version_number: 1,
+      lifecycle_status: "runnable",
+    },
+  ];
+  const inputSetsByVersionId = options.inputSetsByVersionId ?? {
+    "version-1": [],
+  };
   const post = vi.fn().mockResolvedValue({ id: "run-1" });
   const get = vi.fn(async (url: string) => {
     if (url === "/v1/workspaces/ws-1/challenge-packs") {
@@ -205,15 +232,16 @@ function buildApiMock() {
           {
             id: "pack-1",
             name: "Support Pack",
-            versions: [
-              {
-                id: "version-1",
-                version_number: 1,
-                lifecycle_status: "runnable",
-              },
-            ],
+            versions,
           },
         ],
+      };
+    }
+    if (url.startsWith("/v1/workspaces/ws-1/challenge-pack-versions/")) {
+      const parts = url.split("/");
+      const versionId = parts[5];
+      return {
+        items: inputSetsByVersionId[versionId] ?? [],
       };
     }
     if (url === "/v1/workspaces/ws-1/agent-deployments") {
@@ -324,6 +352,11 @@ describe("CreateRunDialog", () => {
           "/v1/workspaces/ws-1/regression-suites/suite-1/cases",
         );
       });
+      await waitFor(() => {
+        expect(api.get).toHaveBeenCalledWith(
+          "/v1/workspaces/ws-1/challenge-pack-versions/version-1/input-sets",
+        );
+      });
 
       clickElement(findCheckboxByLabel("Primary Agent"));
       clickElement(findCheckboxByLabel("Regression Suite"));
@@ -401,6 +434,239 @@ describe("CreateRunDialog", () => {
       await waitFor(() => {
         expect(officialPackModeSelect.value).toBe("full");
         expect(officialPackModeSelect.disabled).toBe(true);
+      });
+    } finally {
+      view.cleanup();
+    }
+  });
+
+  it("auto-selects the only input set for the selected version", async () => {
+    const api = buildApiMock({
+      inputSetsByVersionId: {
+        "version-1": [
+          {
+            id: "input-1",
+            challenge_pack_version_id: "version-1",
+            input_key: "support_ticket_triage",
+            name: "Support Ticket Triage",
+          },
+        ],
+      },
+    });
+    mockCreateApiClient.mockReturnValue(api);
+
+    const view = renderDialog();
+    try {
+      clickElement(findButton("New Run"));
+
+      await waitFor(() => {
+        expect(api.get).toHaveBeenCalledWith(
+          "/v1/workspaces/ws-1/challenge-packs",
+        );
+      });
+
+      const packSelect = document.querySelector(
+        'select[aria-label="Challenge Pack"]',
+      );
+      if (!(packSelect instanceof HTMLSelectElement)) {
+        throw new Error("Challenge Pack select not found");
+      }
+      changeSelect(packSelect, "pack-1");
+
+      await waitFor(() => {
+        expect(api.get).toHaveBeenCalledWith(
+          "/v1/workspaces/ws-1/challenge-pack-versions/version-1/input-sets",
+        );
+      });
+
+      const inputSetSelect = document.querySelector(
+        'select[aria-label="Challenge Input Set"]',
+      );
+      if (!(inputSetSelect instanceof HTMLSelectElement)) {
+        throw new Error("Challenge Input Set select not found");
+      }
+      expect(inputSetSelect.value).toBe("input-1");
+      expect(inputSetSelect.disabled).toBe(true);
+
+      clickElement(findCheckboxByLabel("Primary Agent"));
+      clickElement(findButton("Create Run"));
+
+      await waitFor(() => {
+        expect(api.post).toHaveBeenCalledWith("/v1/runs", {
+          workspace_id: "ws-1",
+          challenge_pack_version_id: "version-1",
+          challenge_input_set_id: "input-1",
+          name: undefined,
+          agent_deployment_ids: ["deploy-1"],
+          regression_suite_ids: undefined,
+          regression_case_ids: undefined,
+          official_pack_mode: undefined,
+        });
+      });
+    } finally {
+      view.cleanup();
+    }
+  });
+
+  it("requires an explicit input-set choice when a version has multiple input sets", async () => {
+    const api = buildApiMock({
+      inputSetsByVersionId: {
+        "version-1": [
+          {
+            id: "input-1",
+            challenge_pack_version_id: "version-1",
+            input_key: "support_ticket_triage",
+            name: "Support Ticket Triage",
+          },
+          {
+            id: "input-2",
+            challenge_pack_version_id: "version-1",
+            input_key: "incident_summary",
+            name: "Incident Summary",
+          },
+        ],
+      },
+    });
+    mockCreateApiClient.mockReturnValue(api);
+
+    const view = renderDialog();
+    try {
+      clickElement(findButton("New Run"));
+
+      await waitFor(() => {
+        expect(api.get).toHaveBeenCalledWith(
+          "/v1/workspaces/ws-1/challenge-packs",
+        );
+      });
+
+      const packSelect = document.querySelector(
+        'select[aria-label="Challenge Pack"]',
+      );
+      if (!(packSelect instanceof HTMLSelectElement)) {
+        throw new Error("Challenge Pack select not found");
+      }
+      changeSelect(packSelect, "pack-1");
+
+      await waitFor(() => {
+        expect(api.get).toHaveBeenCalledWith(
+          "/v1/workspaces/ws-1/challenge-pack-versions/version-1/input-sets",
+        );
+      });
+
+      clickElement(findCheckboxByLabel("Primary Agent"));
+
+      const createRunButton = findButton("Create Run");
+      expect(createRunButton).toHaveProperty("disabled", true);
+
+      const inputSetSelect = document.querySelector(
+        'select[aria-label="Challenge Input Set"]',
+      );
+      if (!(inputSetSelect instanceof HTMLSelectElement)) {
+        throw new Error("Challenge Input Set select not found");
+      }
+      changeSelect(inputSetSelect, "input-2");
+
+      await waitFor(() => {
+        expect(createRunButton).toHaveProperty("disabled", false);
+      });
+    } finally {
+      view.cleanup();
+    }
+  });
+
+  it("clears stale input-set selection when the chosen version changes", async () => {
+    const api = buildApiMock({
+      versions: [
+        {
+          id: "version-1",
+          version_number: 1,
+          lifecycle_status: "runnable",
+        },
+        {
+          id: "version-2",
+          version_number: 2,
+          lifecycle_status: "runnable",
+        },
+      ],
+      inputSetsByVersionId: {
+        "version-1": [
+          {
+            id: "input-1",
+            challenge_pack_version_id: "version-1",
+            input_key: "support_ticket_triage",
+            name: "Support Ticket Triage",
+          },
+          {
+            id: "input-2",
+            challenge_pack_version_id: "version-1",
+            input_key: "incident_summary",
+            name: "Incident Summary",
+          },
+        ],
+        "version-2": [
+          {
+            id: "input-3",
+            challenge_pack_version_id: "version-2",
+            input_key: "invoice_total_extraction",
+            name: "Invoice Total Extraction",
+          },
+        ],
+      },
+    });
+    mockCreateApiClient.mockReturnValue(api);
+
+    const view = renderDialog();
+    try {
+      clickElement(findButton("New Run"));
+
+      await waitFor(() => {
+        expect(api.get).toHaveBeenCalledWith(
+          "/v1/workspaces/ws-1/challenge-packs",
+        );
+      });
+
+      const packSelect = document.querySelector(
+        'select[aria-label="Challenge Pack"]',
+      );
+      if (!(packSelect instanceof HTMLSelectElement)) {
+        throw new Error("Challenge Pack select not found");
+      }
+      changeSelect(packSelect, "pack-1");
+
+      const versionSelect = document.querySelector(
+        'select[aria-label="Challenge Pack Version"]',
+      );
+      if (!(versionSelect instanceof HTMLSelectElement)) {
+        throw new Error("Challenge Pack Version select not found");
+      }
+      changeSelect(versionSelect, "version-1");
+
+      await waitFor(() => {
+        expect(api.get).toHaveBeenCalledWith(
+          "/v1/workspaces/ws-1/challenge-pack-versions/version-1/input-sets",
+        );
+      });
+
+      const inputSetSelect = document.querySelector(
+        'select[aria-label="Challenge Input Set"]',
+      );
+      if (!(inputSetSelect instanceof HTMLSelectElement)) {
+        throw new Error("Challenge Input Set select not found");
+      }
+      changeSelect(inputSetSelect, "input-2");
+      expect(inputSetSelect.value).toBe("input-2");
+
+      changeSelect(versionSelect, "version-2");
+
+      await waitFor(() => {
+        expect(api.get).toHaveBeenCalledWith(
+          "/v1/workspaces/ws-1/challenge-pack-versions/version-2/input-sets",
+        );
+      });
+
+      await waitFor(() => {
+        expect(inputSetSelect.value).toBe("input-3");
+        expect(inputSetSelect.disabled).toBe(true);
       });
     } finally {
       view.cleanup();

@@ -2712,6 +2712,37 @@ paths:
         "403":
           $ref: "#/components/responses/ForbiddenError"
 
+  /v1/workspaces/{workspaceID}/challenge-pack-versions/{versionID}/input-sets:
+    get:
+      operationId: listChallengeInputSets
+      tags: [ChallengePacks]
+      summary: List published input sets for a challenge-pack version
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - name: versionID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Published input sets for the selected runnable version
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListChallengeInputSetsResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
   # ---------------------------------------------------------------------------
   # Agent Builds
   # ---------------------------------------------------------------------------
@@ -6385,6 +6416,30 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ChallengePack"
+
+    ChallengeInputSetSummary:
+      type: object
+      required: [id, challenge_pack_version_id, input_key, name]
+      properties:
+        id:
+          type: string
+          format: uuid
+        challenge_pack_version_id:
+          type: string
+          format: uuid
+        input_key:
+          type: string
+        name:
+          type: string
+
+    ListChallengeInputSetsResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChallengeInputSetSummary"
 
     PublishChallengePackResponse:
       type: object

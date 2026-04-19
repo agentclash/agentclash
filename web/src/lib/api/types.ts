@@ -361,6 +361,13 @@ export interface ChallengePackVersion {
   updated_at: string;
 }
 
+export interface ChallengeInputSetSummary {
+  id: string;
+  challenge_pack_version_id: string;
+  input_key: string;
+  name: string;
+}
+
 /** POST /v1/workspaces/{id}/challenge-packs/validate response */
 export interface ValidateChallengePackResponse {
   valid: boolean;

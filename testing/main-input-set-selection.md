@@ -30,7 +30,7 @@
 ## Manual / cURL Tests
 ```bash
 curl -H "Authorization: Bearer $TOKEN" \
-  "http://localhost:8080/v1/challenge-pack-versions/<version-id>/input-sets"
+  "http://localhost:8080/v1/workspaces/<workspace-id>/challenge-pack-versions/<version-id>/input-sets"
 # Expected: 200 with items[] containing id, challenge_pack_version_id, input_key, name
 
 curl -X POST "http://localhost:8080/v1/runs" \
