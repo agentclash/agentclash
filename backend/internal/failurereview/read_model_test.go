@@ -231,6 +231,58 @@ func TestBuildRunAgentItemsSkipsOutputOnlyPromotionWithoutChallengeInputSet(t *t
 	}
 }
 
+func TestBuildRunAgentItemsSkipsFullExecutablePromotionWithoutChallengeInputSet(t *testing.T) {
+	t.Parallel()
+
+	runID := uuid.New()
+	runAgentID := uuid.New()
+	challengeID := uuid.New()
+	verdict := "fail"
+
+	items, err := BuildRunAgentItems(RunAgentInput{
+		RunID:                runID,
+		RunStatus:            domain.RunStatusCompleted,
+		RunAgentID:           runAgentID,
+		DeploymentType:       "native",
+		ChallengePackStatus:  "runnable",
+		HasChallengeInputSet: false,
+		Cases: []CaseContext{
+			{
+				ChallengeIdentityID: challengeID,
+				ChallengeKey:        "ticket-native-no-input-set",
+				CaseKey:             "case-y",
+				ItemKey:             "prompt.txt",
+			},
+		},
+		Scorecard: mustJSON(t, map[string]any{
+			"validator_details": []any{
+				map[string]any{
+					"key":     "policy.filesystem",
+					"type":    "exact_match",
+					"verdict": "fail",
+					"state":   "available",
+				},
+			},
+		}),
+		JudgeResults: []JudgeResult{
+			{
+				ChallengeIdentityID: &challengeID,
+				Key:                 "policy.filesystem",
+				Verdict:             &verdict,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("BuildRunAgentItems returned error: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("item count = %d, want 1", len(items))
+	}
+	if len(items[0].PromotionModeAvailable) != 0 {
+		t.Fatalf("promotion modes = %#v, want none without a challenge input set", items[0].PromotionModeAvailable)
+	}
+}
+
 func TestAssembleFailureReviewItemBuildsRefsAndFailedChecks(t *testing.T) {
 	t.Parallel()
 

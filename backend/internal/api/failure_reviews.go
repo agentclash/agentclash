@@ -206,7 +206,8 @@ func parseFailureSeverity(raw string) (failurereview.Severity, error) {
 }
 
 func parseFailureClass(raw string) (failurereview.FailureClass, error) {
-	switch failurereview.FailureClass(strings.TrimSpace(raw)) {
+	trimmed := strings.TrimSpace(raw)
+	switch failurereview.FailureClass(trimmed) {
 	case failurereview.FailureClassIncorrectFinalOutput,
 		failurereview.FailureClassToolSelectionError,
 		failurereview.FailureClassToolArgumentError,
@@ -218,20 +219,21 @@ func parseFailureClass(raw string) (failurereview.FailureClass, error) {
 		failurereview.FailureClassFlakyNonDeterministic,
 		failurereview.FailureClassInsufficientEvidence,
 		failurereview.FailureClassOther:
-		return failurereview.FailureClass(strings.TrimSpace(raw)), nil
+		return failurereview.FailureClass(trimmed), nil
 	default:
 		return "", errors.New("failure_class must be a valid failure review class")
 	}
 }
 
 func parseEvidenceTier(raw string) (failurereview.EvidenceTier, error) {
-	switch failurereview.EvidenceTier(strings.TrimSpace(raw)) {
+	trimmed := strings.TrimSpace(raw)
+	switch failurereview.EvidenceTier(trimmed) {
 	case failurereview.EvidenceTierNone,
 		failurereview.EvidenceTierNativeStructured,
 		failurereview.EvidenceTierHostedStructured,
 		failurereview.EvidenceTierHostedBlackBox,
 		failurereview.EvidenceTierDerivedSummary:
-		return failurereview.EvidenceTier(strings.TrimSpace(raw)), nil
+		return failurereview.EvidenceTier(trimmed), nil
 	default:
 		return "", errors.New("evidence_tier must be one of none, native_structured, hosted_structured, hosted_black_box, derived_summary")
 	}

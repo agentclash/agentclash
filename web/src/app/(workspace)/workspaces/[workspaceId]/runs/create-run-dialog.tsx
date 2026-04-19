@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
 import { createApiClient } from "@/lib/api/client";
@@ -71,6 +71,7 @@ export function CreateRunDialog({ workspaceId }: CreateRunDialogProps) {
   const [regressionLoadError, setRegressionLoadError] = useState<string | null>(
     null,
   );
+  const fetchedSuiteCaseIdsRef = useRef<Set<string>>(new Set());
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -158,13 +159,16 @@ export function CreateRunDialog({ workspaceId }: CreateRunDialogProps) {
     );
     const missingSuiteIds = eligibleSuites
       .map((suite) => suite.id)
-      .filter((suiteId) => suiteCases[suiteId] == null);
+      .filter((suiteId) => !fetchedSuiteCaseIdsRef.current.has(suiteId));
 
     if (missingSuiteIds.length === 0) return;
 
     let cancelled = false;
     setLoadingRegression(true);
     setRegressionLoadError(null);
+    for (const suiteId of missingSuiteIds) {
+      fetchedSuiteCaseIdsRef.current.add(suiteId);
+    }
 
     (async () => {
       try {
@@ -193,6 +197,9 @@ export function CreateRunDialog({ workspaceId }: CreateRunDialogProps) {
         });
       } catch (err) {
         if (cancelled) return;
+        for (const suiteId of missingSuiteIds) {
+          fetchedSuiteCaseIdsRef.current.delete(suiteId);
+        }
         setRegressionLoadError(
           err instanceof ApiError ? err.message : "Failed to load regression cases",
         );
@@ -204,7 +211,7 @@ export function CreateRunDialog({ workspaceId }: CreateRunDialogProps) {
     return () => {
       cancelled = true;
     };
-  }, [getAccessToken, open, regressionSuites, selectedPackId, suiteCases, workspaceId]);
+  }, [getAccessToken, open, regressionSuites, selectedPackId, workspaceId]);
 
   useEffect(() => {
     if (selectedRegressionSuiteIds.length === 0 && selectedRegressionCaseIds.length === 0) {
@@ -317,6 +324,7 @@ export function CreateRunDialog({ workspaceId }: CreateRunDialogProps) {
               Challenge Pack
             </label>
             <select
+              aria-label="Challenge Pack"
               value={selectedPackId}
               onChange={(e) => handlePackChange(e.target.value)}
               disabled={loading}
@@ -342,6 +350,7 @@ export function CreateRunDialog({ workspaceId }: CreateRunDialogProps) {
               </span>
             </label>
             <select
+              aria-label="Challenge Pack Version"
               value={selectedVersionId}
               onChange={(e) => setSelectedVersionId(e.target.value)}
               disabled={!selectedPackId}
@@ -468,6 +477,7 @@ export function CreateRunDialog({ workspaceId }: CreateRunDialogProps) {
                     Official Pack Mode
                   </label>
                   <select
+                    aria-label="Official Pack Mode"
                     value={officialPackMode}
                     onChange={(e) =>
                       setOfficialPackMode(e.target.value as OfficialPackMode)

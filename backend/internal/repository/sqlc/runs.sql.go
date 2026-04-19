@@ -331,6 +331,8 @@ selected_regression_cases AS (
     ORDER BY rcs.regression_case_id, rcs.selection_rank ASC, rcs.created_at ASC
 ),
 winning_case_outcomes AS (
+    -- Group by challenge_identity_id so overlapping regression selections for
+    -- the same challenge share the winning run-agent outcome.
     SELECT
         jr.challenge_identity_id,
         CASE
