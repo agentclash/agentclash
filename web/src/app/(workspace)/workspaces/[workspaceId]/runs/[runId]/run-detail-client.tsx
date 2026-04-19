@@ -32,6 +32,7 @@ import {
   XCircle,
   Loader2,
   AlertTriangle,
+  AlertOctagon,
 } from "lucide-react";
 import { ScorecardSummaryCard } from "./scorecard-summary-card";
 import { CompareRunPicker } from "./compare-run-picker";
@@ -313,6 +314,13 @@ export function RunDetailClient({
             workspaceId={workspaceId}
             runId={run.id}
           />
+          <Link
+            href={`/workspaces/${workspaceId}/runs/${run.id}/failures`}
+            className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 h-8 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
+          >
+            <AlertOctagon className="size-3.5" />
+            Failures
+          </Link>
         </div>
 
         {/* KPI strip */}
