@@ -24,7 +24,6 @@ func evaluateValidators(validators []ValidatorDeclaration, evidence extractedEvi
 			continue
 		}
 
-
 		// Resolve the target (actual) evidence.
 		actualValue, actualChallengeID, actualReason, actualErr := resolveEvidenceValue(validator.Target, evidence)
 		if actualErr != nil {
@@ -43,6 +42,7 @@ func evaluateValidators(validators []ValidatorDeclaration, evidence extractedEvi
 		// case specially so the validator can distinguish exists vs not-exists.
 		if validator.Type == ValidatorTypeFileExists && actualValue == nil {
 			result.ChallengeIdentityID = actualChallengeID
+			result.RegressionCaseID = regressionCaseIDForChallenge(evidence, actualChallengeID)
 			result.Source = resolveEvidenceSource(validator.Target, evidence)
 			outcome := validateFileExistsUnavailable(validator.Config)
 			result.State = OutputStateAvailable
@@ -88,6 +88,7 @@ func evaluateValidators(validators []ValidatorDeclaration, evidence extractedEvi
 			} else {
 				result.ChallengeIdentityID = expectedChallengeID
 			}
+			result.RegressionCaseID = regressionCaseIDForChallenge(evidence, result.ChallengeIdentityID)
 			result.RawOutput = mustMarshalJSON(map[string]any{
 				"state":  result.State,
 				"reason": result.Reason,
@@ -105,6 +106,7 @@ func evaluateValidators(validators []ValidatorDeclaration, evidence extractedEvi
 		} else {
 			result.ChallengeIdentityID = expectedChallengeID
 		}
+		result.RegressionCaseID = regressionCaseIDForChallenge(evidence, result.ChallengeIdentityID)
 		result.Source = resolveEvidenceSource(validator.Target, evidence)
 
 		expectedStr := ""

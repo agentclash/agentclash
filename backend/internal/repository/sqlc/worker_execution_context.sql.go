@@ -35,6 +35,7 @@ SELECT
     r.workspace_id AS run_workspace_id,
     r.challenge_pack_version_id AS run_challenge_pack_version_id,
     r.challenge_input_set_id AS run_challenge_input_set_id,
+    r.official_pack_mode AS run_official_pack_mode,
     r.created_by_user_id AS run_created_by_user_id,
     r.name AS run_name,
     r.status AS run_status,
@@ -120,6 +121,12 @@ JOIN runs AS r
 JOIN challenge_pack_versions AS cpv
   ON cpv.id = r.challenge_pack_version_id
 LEFT JOIN LATERAL (
+  SELECT count(*) AS selection_count
+  FROM run_case_selections
+  WHERE run_id = r.id
+) AS run_selection_counts
+  ON TRUE
+LEFT JOIN LATERAL (
   SELECT COALESCE(
     jsonb_agg(
       jsonb_build_object(
@@ -141,6 +148,15 @@ LEFT JOIN LATERAL (
     ON ci.id = cpvc.challenge_identity_id
    AND ci.challenge_pack_id = cpv.challenge_pack_id
   WHERE cpvc.challenge_pack_version_id = cpv.id
+    AND (
+      run_selection_counts.selection_count = 0 OR
+      EXISTS (
+        SELECT 1
+        FROM run_case_selections AS rcs
+        WHERE rcs.run_id = r.id
+          AND rcs.challenge_identity_id = cpvc.challenge_identity_id
+      )
+    )
 ) AS challenge_definitions
   ON TRUE
 LEFT JOIN challenge_input_sets AS cis
@@ -154,7 +170,8 @@ LEFT JOIN LATERAL (
         'challenge_identity_id', cii.challenge_identity_id,
         'challenge_key', ci.challenge_key,
         'item_key', cii.item_key,
-        'payload', cii.payload
+        'payload', cii.payload,
+        'regression_case_id', primary_regression_case.regression_case_id
       )
       ORDER BY cpvc.execution_order, cii.item_key
     ),
@@ -167,7 +184,26 @@ LEFT JOIN LATERAL (
   JOIN challenge_identities AS ci
     ON ci.id = cii.challenge_identity_id
    AND ci.challenge_pack_id = cpv.challenge_pack_id
+  LEFT JOIN LATERAL (
+    SELECT rcs.regression_case_id
+    FROM run_case_selections AS rcs
+    WHERE rcs.run_id = r.id
+      AND rcs.challenge_identity_id = cii.challenge_identity_id
+      AND rcs.regression_case_id IS NOT NULL
+    ORDER BY rcs.selection_rank ASC, rcs.regression_case_id ASC
+    LIMIT 1
+  ) AS primary_regression_case
+    ON TRUE
   WHERE cii.challenge_input_set_id = cis.id
+    AND (
+      run_selection_counts.selection_count = 0 OR
+      EXISTS (
+        SELECT 1
+        FROM run_case_selections AS rcs
+        WHERE rcs.run_id = r.id
+          AND rcs.challenge_identity_id = cii.challenge_identity_id
+      )
+    )
 ) AS challenge_input_items
   ON TRUE
 JOIN agent_deployment_snapshots AS ads
@@ -215,6 +251,7 @@ type GetRunAgentExecutionContextByIDRow struct {
 	RunWorkspaceID                          uuid.UUID
 	RunChallengePackVersionID               uuid.UUID
 	RunChallengeInputSetID                  *uuid.UUID
+	RunOfficialPackMode                     string
 	RunCreatedByUserID                      *uuid.UUID
 	RunName                                 string
 	RunStatus                               string
@@ -311,6 +348,7 @@ func (q *Queries) GetRunAgentExecutionContextByID(ctx context.Context, arg GetRu
 		&i.RunWorkspaceID,
 		&i.RunChallengePackVersionID,
 		&i.RunChallengeInputSetID,
+		&i.RunOfficialPackMode,
 		&i.RunCreatedByUserID,
 		&i.RunName,
 		&i.RunStatus,

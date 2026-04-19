@@ -29,6 +29,7 @@ const (
 
 type EvidenceInput struct {
 	ChallengeIdentityID uuid.UUID                   `json:"challenge_identity_id"`
+	RegressionCaseID    *uuid.UUID                  `json:"regression_case_id,omitempty"`
 	ChallengeKey        string                      `json:"challenge_key"`
 	CaseKey             string                      `json:"case_key,omitempty"`
 	ItemKey             string                      `json:"item_key"`
@@ -95,6 +96,7 @@ type ValidatorResult struct {
 	ActualValue         *string         `json:"actual_value,omitempty"`
 	ExpectedValue       *string         `json:"expected_value,omitempty"`
 	ChallengeIdentityID *uuid.UUID      `json:"challenge_identity_id,omitempty"`
+	RegressionCaseID    *uuid.UUID      `json:"regression_case_id,omitempty"`
 	Reason              string          `json:"reason,omitempty"`
 	Source              *Source         `json:"source,omitempty"`
 	RawOutput           json.RawMessage `json:"raw_output"`
@@ -110,6 +112,7 @@ type MetricResult struct {
 	TextValue           *string         `json:"text_value,omitempty"`
 	BooleanValue        *bool           `json:"boolean_value,omitempty"`
 	ChallengeIdentityID *uuid.UUID      `json:"challenge_identity_id,omitempty"`
+	RegressionCaseID    *uuid.UUID      `json:"regression_case_id,omitempty"`
 	Reason              string          `json:"reason,omitempty"`
 	Metadata            json.RawMessage `json:"metadata"`
 }

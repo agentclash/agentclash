@@ -199,6 +199,7 @@ type JudgeResultRecord struct {
 	RunAgentID          uuid.UUID
 	EvaluationSpecID    uuid.UUID
 	ChallengeIdentityID *uuid.UUID
+	RegressionCaseID    *uuid.UUID
 	JudgeKey            string
 	Verdict             *string
 	NormalizedScore     *float64
@@ -255,6 +256,7 @@ type MetricResultRecord struct {
 	RunAgentID          uuid.UUID
 	EvaluationSpecID    uuid.UUID
 	ChallengeIdentityID *uuid.UUID
+	RegressionCaseID    *uuid.UUID
 	MetricKey           string
 	MetricType          string
 	NumericValue        *float64
@@ -699,6 +701,7 @@ func (r *Repository) StoreRunAgentEvaluationResults(ctx context.Context, evaluat
 			RunAgentID:          evaluation.RunAgentID,
 			EvaluationSpecID:    evaluation.EvaluationSpecID,
 			ChallengeIdentityID: cloneUUIDPtr(result.ChallengeIdentityID),
+			RegressionCaseID:    cloneUUIDPtr(result.RegressionCaseID),
 			JudgeKey:            result.Key,
 			Verdict:             cloneStringPtr(optionalString(result.Verdict)),
 			NormalizedScore:     numericScore,
@@ -754,6 +757,7 @@ func (r *Repository) StoreRunAgentEvaluationResults(ctx context.Context, evaluat
 			RunAgentID:          evaluation.RunAgentID,
 			EvaluationSpecID:    evaluation.EvaluationSpecID,
 			ChallengeIdentityID: cloneUUIDPtr(result.ChallengeIdentityID),
+			RegressionCaseID:    cloneUUIDPtr(result.RegressionCaseID),
 			MetricKey:           result.Key,
 			MetricType:          string(result.Type),
 			NumericValue:        numericValue,
@@ -1884,6 +1888,7 @@ func mapJudgeResultRecord(row repositorysqlc.ListJudgeResultsByRunAgentAndEvalua
 		RunAgentID:          row.RunAgentID,
 		EvaluationSpecID:    row.EvaluationSpecID,
 		ChallengeIdentityID: cloneUUIDPtr(row.ChallengeIdentityID),
+		RegressionCaseID:    cloneUUIDPtr(row.RegressionCaseID),
 		JudgeKey:            row.JudgeKey,
 		Verdict:             cloneStringPtr(row.Verdict),
 		NormalizedScore:     numericPtr(row.NormalizedScore),
@@ -1930,6 +1935,7 @@ func mapMetricResultRecord(row repositorysqlc.ListMetricResultsByRunAgentAndEval
 		RunAgentID:          row.RunAgentID,
 		EvaluationSpecID:    row.EvaluationSpecID,
 		ChallengeIdentityID: cloneUUIDPtr(row.ChallengeIdentityID),
+		RegressionCaseID:    cloneUUIDPtr(row.RegressionCaseID),
 		MetricKey:           row.MetricKey,
 		MetricType:          row.MetricType,
 		NumericValue:        numericPtr(row.NumericValue),

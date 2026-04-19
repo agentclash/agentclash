@@ -57,6 +57,7 @@ type ChallengeInputSetExecutionContext struct {
 type ChallengeCaseExecutionContext struct {
 	ID                  uuid.UUID                       `json:"id"`
 	ChallengeIdentityID uuid.UUID                       `json:"challenge_identity_id"`
+	RegressionCaseID    *uuid.UUID                      `json:"regression_case_id,omitempty"`
 	ChallengeKey        string                          `json:"challenge_key"`
 	CaseKey             string                          `json:"case_key"`
 	ItemKey             string                          `json:"item_key"`
@@ -70,6 +71,7 @@ type ChallengeCaseExecutionContext struct {
 type ChallengeInputItemExecutionContext struct {
 	ID                  uuid.UUID       `json:"id"`
 	ChallengeIdentityID uuid.UUID       `json:"challenge_identity_id"`
+	RegressionCaseID    *uuid.UUID      `json:"regression_case_id,omitempty"`
 	ChallengeKey        string          `json:"challenge_key"`
 	ItemKey             string          `json:"item_key"`
 	Payload             json.RawMessage `json:"payload"`
@@ -176,6 +178,10 @@ func (r *Repository) GetRunAgentExecutionContextByID(ctx context.Context, runAge
 
 func mapRunAgentExecutionContext(row repositorysqlc.GetRunAgentExecutionContextByIDRow) (RunAgentExecutionContext, error) {
 	runStatus, err := domain.ParseRunStatus(row.RunStatus)
+	if err != nil {
+		return RunAgentExecutionContext{}, err
+	}
+	officialPackMode, err := domain.ParseOfficialPackMode(row.RunOfficialPackMode)
 	if err != nil {
 		return RunAgentExecutionContext{}, err
 	}
@@ -288,6 +294,7 @@ func mapRunAgentExecutionContext(row repositorysqlc.GetRunAgentExecutionContextB
 			WorkspaceID:            row.RunWorkspaceID,
 			ChallengePackVersionID: row.RunChallengePackVersionID,
 			ChallengeInputSetID:    cloneUUIDPtr(row.RunChallengeInputSetID),
+			OfficialPackMode:       officialPackMode,
 			CreatedByUserID:        cloneUUIDPtr(row.RunCreatedByUserID),
 			Name:                   row.RunName,
 			Status:                 runStatus,
@@ -425,6 +432,7 @@ func decodeChallengeCases(items []ChallengeInputItemExecutionContext) ([]Challen
 		cases = append(cases, ChallengeCaseExecutionContext{
 			ID:                  item.ID,
 			ChallengeIdentityID: item.ChallengeIdentityID,
+			RegressionCaseID:    cloneUUIDPtr(item.RegressionCaseID),
 			ChallengeKey:        item.ChallengeKey,
 			CaseKey:             caseKey,
 			ItemKey:             item.ItemKey,

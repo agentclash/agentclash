@@ -18,8 +18,8 @@ type eventRef struct {
 }
 
 type extractedEvidence struct {
-	finalOutput               *string
-	finalOutputChallengeID    *uuid.UUID
+	finalOutput            *string
+	finalOutputChallengeID *uuid.UUID
 	// finalOutputSource is set only by the dedicated system.output.finalized
 	// event (the narrow producer). It is never set from system.run.completed
 	// — that event wraps every preceding event in the run and would make
@@ -29,30 +29,31 @@ type extractedEvidence struct {
 	// and is used as the final_output source when no system.output.finalized
 	// event exists (i.e. native runs that don't synthesize a finalized event).
 	// A nil source beats pointing at the run.completed wrapper.
-	lastModelCallSource       *eventRef
-	challengeInputValue       *string
-	challengeInputChallengeID *uuid.UUID
-	caseInput                 *EvidenceInput
-	caseInputReason           string
-	startedAt                 *time.Time
-	firstOutputAt             *time.Time
-	terminalAt                *time.Time
-	completedSuccessfully     *bool
-	failureCount              int
-	inputTokens               *float64
-	outputTokens              *float64
-	totalTokens               *float64
-	modelUsage                []pricedUsage
-	observedModels            []modelRef
-	stepDurations             []stepDurationEvidence
-	capturedFiles             map[string]FileCaptureResult
-	capturedFileSources       map[string]eventRef
-	capturedDirListings       map[string]DirectoryListingResult
-	capturedDirListingSources map[string]eventRef
-	codeExecutionResults      map[string]CodeExecutionResult
-	codeExecutionSources      map[string]eventRef
-	toolCallTrace             []toolCallTraceEntry
-	warnings                  []string
+	lastModelCallSource            *eventRef
+	challengeInputValue            *string
+	challengeInputChallengeID      *uuid.UUID
+	challengeInputRegressionCaseID *uuid.UUID
+	caseInput                      *EvidenceInput
+	caseInputReason                string
+	startedAt                      *time.Time
+	firstOutputAt                  *time.Time
+	terminalAt                     *time.Time
+	completedSuccessfully          *bool
+	failureCount                   int
+	inputTokens                    *float64
+	outputTokens                   *float64
+	totalTokens                    *float64
+	modelUsage                     []pricedUsage
+	observedModels                 []modelRef
+	stepDurations                  []stepDurationEvidence
+	capturedFiles                  map[string]FileCaptureResult
+	capturedFileSources            map[string]eventRef
+	capturedDirListings            map[string]DirectoryListingResult
+	capturedDirListingSources      map[string]eventRef
+	codeExecutionResults           map[string]CodeExecutionResult
+	codeExecutionSources           map[string]eventRef
+	toolCallTrace                  []toolCallTraceEntry
+	warnings                       []string
 }
 
 // eventRefFrom returns a reference to the given event, or nil when the event
@@ -67,7 +68,7 @@ func eventRefFrom(event Event) *eventRef {
 
 func buildEvidence(challengeInputs []EvidenceInput, events []Event) extractedEvidence {
 	evidence := extractedEvidence{}
-	evidence.challengeInputValue, evidence.challengeInputChallengeID, evidence.warnings = resolveChallengeInputValue(challengeInputs)
+	evidence.challengeInputValue, evidence.challengeInputChallengeID, evidence.challengeInputRegressionCaseID, evidence.warnings = resolveChallengeInputValue(challengeInputs)
 	evidence.caseInput, evidence.caseInputReason = resolveCaseInput(challengeInputs)
 
 	var (
@@ -302,4 +303,17 @@ func buildEvidence(challengeInputs []EvidenceInput, events []Event) extractedEvi
 	}
 
 	return evidence
+}
+
+func regressionCaseIDForChallenge(evidence extractedEvidence, challengeID *uuid.UUID) *uuid.UUID {
+	if challengeID == nil {
+		return nil
+	}
+	if evidence.caseInput != nil && evidence.caseInput.ChallengeIdentityID == *challengeID {
+		return cloneUUIDPtr(evidence.caseInput.RegressionCaseID)
+	}
+	if evidence.challengeInputChallengeID != nil && *evidence.challengeInputChallengeID == *challengeID {
+		return cloneUUIDPtr(evidence.challengeInputRegressionCaseID)
+	}
+	return nil
 }
