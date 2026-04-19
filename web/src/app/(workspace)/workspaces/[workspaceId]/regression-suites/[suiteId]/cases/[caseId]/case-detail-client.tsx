@@ -1,15 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { History, PlayCircle } from "lucide-react";
+import { PlayCircle } from "lucide-react";
 
 import type { RegressionCase, RegressionSuite } from "@/lib/api/types";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
-import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
 
 import { CaseStatusBadge, SeverityBadge } from "../../../badges";
+import { SuiteRunHistory } from "../../suite-run-history";
 import { EditCaseDialog } from "./edit-case-dialog";
 
 interface CaseDetailClientProps {
@@ -204,10 +204,16 @@ export function CaseDetailClient({
       )}
 
       <Section title="Recent Outcomes">
-        <EmptyState
-          icon={<History className="size-10" />}
-          title="No recent outcomes"
-          description="Run-history data will appear here once regression runs execute against this suite."
+        <p className="mb-2 text-xs text-muted-foreground">
+          Runs that executed the parent suite. Per-matched-case outcomes
+          are not exposed by the list-runs read model yet, so use the run
+          link to drill into the scorecard.
+        </p>
+        <SuiteRunHistory
+          workspaceId={workspaceId}
+          suiteId={suite.id}
+          emptyTitle="This case has not executed in the last 20 runs."
+          emptyDescription="Once the parent suite runs in this workspace, the most recent outcomes will appear here."
         />
       </Section>
     </div>

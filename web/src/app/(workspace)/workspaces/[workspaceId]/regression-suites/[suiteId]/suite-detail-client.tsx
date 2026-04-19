@@ -36,6 +36,7 @@ import {
   SuiteStatusBadge,
 } from "../badges";
 import { EditSuiteDialog } from "./edit-suite-dialog";
+import { SuiteRunHistory } from "./suite-run-history";
 
 type CaseStatusFilter = "all" | RegressionCaseStatus;
 type SeverityFilter = "all" | RegressionSeverity;
@@ -240,11 +241,7 @@ export function SuiteDetailClient({
         </TabsContent>
 
         <TabsContent value="history" className="pt-4">
-          <EmptyState
-            icon={<History className="size-10" />}
-            title="Run history coming soon"
-            description="Once regression runs execute against this suite, the latest outcomes will appear here."
-          />
+          <SuiteRunHistory workspaceId={workspaceId} suiteId={suite.id} />
         </TabsContent>
       </Tabs>
     </div>
