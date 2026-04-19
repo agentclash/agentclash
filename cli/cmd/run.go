@@ -334,10 +334,7 @@ var runScorecardCmd = &cobra.Command{
 }
 
 func streamRunEvents(cmd *cobra.Command, rc *RunContext, runID string) error {
-	q := url.Values{}
-	q.Set("token", rc.Client.Token())
-
-	ch, err := rc.Client.StreamSSE(cmd.Context(), "/v1/runs/"+runID+"/events/stream", q)
+	ch, err := rc.Client.StreamSSE(cmd.Context(), "/v1/runs/"+runID+"/events/stream", nil)
 	if err != nil {
 		return fmt.Errorf("connecting to event stream: %w", err)
 	}

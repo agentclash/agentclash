@@ -47,17 +47,41 @@ The `agentclash` CLI lets you manage everything from your terminal — runs, bui
 
 ### Install
 
+macOS or Linux with Homebrew, after the tap is populated by a release:
+
 ```bash
-# Homebrew
-brew install agentclash/tap/agentclash
+brew install --cask agentclash/tap/agentclash
+```
 
-# Go
-go install github.com/Atharva-Kanherkar/agentclash/cli@latest
+Linux/macOS fallback script:
 
-# Shell script
-curl -sSL https://raw.githubusercontent.com/agentclash/agentclash/main/scripts/install/install.sh | sh
+```bash
+curl -fsSL https://raw.githubusercontent.com/agentclash/agentclash/main/scripts/install/install.sh | sh
+```
 
-# From source
+Windows PowerShell fallback script:
+
+```powershell
+irm https://raw.githubusercontent.com/agentclash/agentclash/main/scripts/install/install.ps1 | iex
+```
+
+Direct downloads are available from [GitHub Releases](https://github.com/agentclash/agentclash/releases). The installer scripts verify `checksums.txt` before installing.
+
+More install, uninstall, and release-channel details are in [CLI Distribution](docs/cli-distribution.md).
+
+Uninstall script-installed binaries:
+
+```bash
+rm -f /usr/local/bin/agentclash ~/.local/bin/agentclash
+```
+
+```powershell
+Remove-Item "$env:LOCALAPPDATA\agentclash\bin\agentclash.exe"
+```
+
+Build from source:
+
+```bash
 cd cli && make build
 ```
 

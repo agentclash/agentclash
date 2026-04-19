@@ -1,0 +1,17 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "include-v-in-tag": true,
+  "packages": {
+    ".": {
+      "release-type": "simple",
+      "package-name": "agentclash",
+      "changelog-path": "cli/CHANGELOG.md",
+      "exclude-paths": [
+        "backend/**",
+        "docs/**",
+        "web/**",
+        "testing/**"
+      ]
+    }
+  }
+}

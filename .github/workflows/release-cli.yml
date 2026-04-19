@@ -30,11 +30,12 @@ jobs:
         run: go test -short -race -count=1 ./...
 
       - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v6
+        uses: goreleaser/goreleaser-action@v7
         with:
-          version: latest
+          version: "~> v2"
           args: release --clean
           workdir: cli
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}

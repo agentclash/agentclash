@@ -1,0 +1,39 @@
+name: Release Please CLI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "cli/**"
+      - "scripts/install/**"
+      - ".github/workflows/cli*.yml"
+      - ".github/workflows/release-cli.yml"
+      - ".github/workflows/release-please.yml"
+      - ".github/release-please-config.json"
+      - ".github/.release-please-manifest.json"
+      - "README.md"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    name: Open or update CLI release PR
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_PLEASE_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+    steps:
+      - name: Require release token
+        if: ${{ env.RELEASE_PLEASE_TOKEN == '' }}
+        run: |
+          echo "::error::Set RELEASE_PLEASE_TOKEN to a PAT or GitHub App token. Tags created with GITHUB_TOKEN do not trigger release workflows."
+          exit 1
+
+      - uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ env.RELEASE_PLEASE_TOKEN }}
+          config-file: .github/release-please-config.json
+          manifest-file: .github/.release-please-manifest.json

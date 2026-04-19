@@ -1,0 +1,56 @@
+name: CLI Snapshot
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "cli/**"
+      - "scripts/install/**"
+      - ".github/workflows/cli*.yml"
+      - ".github/workflows/release-cli.yml"
+      - ".github/workflows/release-please.yml"
+      - ".github/release-please-config.json"
+      - ".github/.release-please-manifest.json"
+      - "README.md"
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: cli
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    name: Build snapshot artifacts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: cli/go.mod
+          cache-dependency-path: cli/go.sum
+
+      - name: Run tests
+        run: go test -short -race -count=1 ./...
+
+      - name: Run GoReleaser snapshot
+        uses: goreleaser/goreleaser-action@v7
+        with:
+          version: "~> v2"
+          args: release --snapshot --clean
+          workdir: cli
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload snapshot artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: agentclash-cli-snapshot-${{ github.sha }}
+          path: cli/dist/**
+          if-no-files-found: error
+          retention-days: 14

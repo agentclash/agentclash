@@ -12,8 +12,8 @@ import (
 )
 
 // registerEventStreamRoute adds the SSE endpoint for live run event streaming.
-// This route handles its own authentication via query-parameter token because
-// the browser EventSource API cannot set custom headers.
+// Browsers using EventSource cannot set custom headers, so the endpoint keeps
+// query-token fallback while preferring normal Authorization header auth.
 func registerEventStreamRoute(
 	router chi.Router,
 	logger *slog.Logger,
@@ -39,14 +39,17 @@ func streamRunEventsHandler(
 			return
 		}
 
-		// 2. Authenticate via query-param token (EventSource can't set headers).
-		token := r.URL.Query().Get("token")
-		if token == "" {
-			writeError(w, http.StatusUnauthorized, "missing_token", "token query parameter is required")
-			return
-		}
+		// 2. Authenticate via Authorization header, with query-token fallback for
+		// browser EventSource clients that cannot set custom headers.
 		authReq := r.Clone(r.Context())
-		authReq.Header.Set("Authorization", "Bearer "+token)
+		if authReq.Header.Get("Authorization") == "" {
+			token := r.URL.Query().Get("token")
+			if token == "" {
+				writeError(w, http.StatusUnauthorized, "missing_token", "Authorization header or token query parameter is required")
+				return
+			}
+			authReq.Header.Set("Authorization", "Bearer "+token)
+		}
 		caller, err := authenticator.Authenticate(authReq)
 		if err != nil {
 			writeError(w, http.StatusUnauthorized, "unauthorized", "invalid or expired credentials")

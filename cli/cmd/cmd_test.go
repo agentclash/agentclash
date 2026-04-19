@@ -33,6 +33,10 @@ func executeCommand(t *testing.T, args []string, apiURL string) error {
 	flagYes = false
 	flagDevice = false
 	flagForceLogin = false
+	if valueFlag := secretSetCmd.Flags().Lookup("value"); valueFlag != nil {
+		valueFlag.Value.Set("")
+		valueFlag.Changed = false
+	}
 
 	rootCmd.SetArgs(args)
 	return rootCmd.Execute()
@@ -188,6 +192,38 @@ func TestRunGetCallsCorrectEndpoint(t *testing.T) {
 	}
 	if !called {
 		t.Fatal("GET /v1/runs/run-456 was not called")
+	}
+}
+
+func TestRunEventsUsesAuthorizationHeaderWithoutQueryToken(t *testing.T) {
+	var called bool
+	var gotAuth string
+	var gotTokenQuery string
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"GET /v1/runs/run-456/events/stream": func(w http.ResponseWriter, r *http.Request) {
+			called = true
+			gotAuth = r.Header.Get("Authorization")
+			gotTokenQuery = r.URL.Query().Get("token")
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("id: 1\nevent: run_event\ndata: {\"EventType\":\"started\"}\n\n"))
+		},
+	})
+	defer srv.Close()
+
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+	err := executeCommand(t, []string{"run", "events", "run-456"}, srv.URL)
+	if err != nil {
+		t.Fatalf("run events error: %v", err)
+	}
+	if !called {
+		t.Fatal("GET /v1/runs/run-456/events/stream was not called")
+	}
+	if gotAuth != "Bearer test-tok" {
+		t.Fatalf("Authorization header = %q, want Bearer test-tok", gotAuth)
+	}
+	if gotTokenQuery != "" {
+		t.Fatalf("token query = %q, want empty", gotTokenQuery)
 	}
 }
 
