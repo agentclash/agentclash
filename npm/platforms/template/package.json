@@ -2,7 +2,7 @@
   "name": "@agentclash/cli-__TRIPLE__",
   "version": "0.0.0",
   "description": "AgentClash CLI binary for __OS__ __CPU__",
-  "license": "MIT",
+  "license": "SEE LICENSE IN LICENSE",
   "homepage": "https://www.agentclash.dev",
   "repository": {
     "type": "git",

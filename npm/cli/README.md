@@ -36,4 +36,8 @@ Source, Homebrew, Winget, and direct downloads are documented at
 
 ## License
 
-MIT — see `LICENSE`.
+[FSL-1.1-MIT](https://fsl.software) — see `LICENSE`.
+
+Short version: use and modify it for anything except running a competing
+commercial eval-engine service; each version auto-converts to MIT two years
+after release.

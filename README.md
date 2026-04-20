@@ -418,3 +418,22 @@ scripts/
   dev/                   — Local development helpers
   smoke/                 — Smoke test scripts
 ```
+
+## License
+
+AgentClash is released under [FSL-1.1-MIT](https://fsl.software) — the
+Functional Source License with an MIT Future License clause. See
+[`LICENSE`](./LICENSE) for the full text.
+
+The short version:
+
+- You can use, modify, fork, self-host, and embed AgentClash for essentially
+  any purpose — internal use, commercial product development, consulting,
+  research, education — with one exception:
+- You can't offer AgentClash (or something "substantially similar") as a
+  commercial product or service that competes with agentclash.dev.
+- Every released version auto-converts to **MIT** on its second anniversary,
+  so anything released 2+ years ago is fully permissive open source.
+
+If you want to do something this license doesn't obviously cover, email us
+before you build.

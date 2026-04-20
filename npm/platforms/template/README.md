@@ -15,4 +15,4 @@ npm i -g agentclash
 
 ## License
 
-MIT — see `LICENSE`.
+[FSL-1.1-MIT](https://fsl.software) — see `LICENSE`.

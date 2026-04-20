@@ -117,6 +117,7 @@ Production uses WorkOS AuthKit. Local dev uses `AUTH_MODE=dev` which reads `X-De
 ## Key Conventions
 
 - Go module paths: `github.com/agentclash/agentclash/backend` and `github.com/agentclash/agentclash/cli`. Two separate modules — migrations and refactors must touch both and run builds/tests from each directory.
+- License: **FSL-1.1-MIT** (Functional Source License, MIT Future). Not MIT, not OSI-approved. Any metadata that names the license must say `FSL-1.1-MIT`; npm `package.json` uses `"SEE LICENSE IN LICENSE"` because the SPDX list doesn't cover FSL yet. Do not "fix" that string to `"MIT"` or an SPDX identifier — it will misrepresent the license.
 - Migrations: goose format (`-- +goose Up` / `-- +goose Down`) in `backend/db/migrations/`
 - All dependencies are constructor-injected; no global state
 - Optional services default to noop implementations (see `newRouter()` in routes.go)
