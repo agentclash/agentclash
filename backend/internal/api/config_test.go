@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/secrets"
+	"github.com/agentclash/agentclash/backend/internal/secrets"
 )
 
 func TestLoadConfigFromEnv_DefaultAuthModeDev(t *testing.T) {

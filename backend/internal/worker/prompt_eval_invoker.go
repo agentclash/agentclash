@@ -3,9 +3,9 @@ package worker
 import (
 	"context"
 
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/engine"
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/provider"
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
+	"github.com/agentclash/agentclash/backend/internal/engine"
+	"github.com/agentclash/agentclash/backend/internal/provider"
+	"github.com/agentclash/agentclash/backend/internal/repository"
 )
 
 type PromptEvalInvoker struct {

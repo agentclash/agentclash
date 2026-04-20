@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Atharva-Kanherkar/agentclash/cli/internal/api"
+	"github.com/agentclash/agentclash/cli/internal/api"
 )
 
 func resetLoginTestHooks(t *testing.T) {

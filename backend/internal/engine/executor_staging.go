@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/challengepack"
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/sandbox"
+	"github.com/agentclash/agentclash/backend/internal/challengepack"
+	"github.com/agentclash/agentclash/backend/internal/repository"
+	"github.com/agentclash/agentclash/backend/internal/sandbox"
 )
 
 func marshalSandboxRunContext(executionContext repository.RunAgentExecutionContext) ([]byte, error) {

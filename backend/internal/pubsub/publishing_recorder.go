@@ -4,8 +4,8 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/worker"
+	"github.com/agentclash/agentclash/backend/internal/repository"
+	"github.com/agentclash/agentclash/backend/internal/worker"
 )
 
 // PublishingRecorder wraps a RunEventRecorder and publishes each

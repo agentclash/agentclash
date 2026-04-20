@@ -4,6 +4,16 @@ AgentClash ships the CLI through GitHub Releases first. Package managers and ins
 
 ## User Install Paths
 
+npm (any OS with Node 18+):
+
+```bash
+npm i -g agentclash
+# or
+npx agentclash --help
+```
+
+The root `agentclash` package carries only a small JS shim; the correct prebuilt binary is installed from one of the six per-platform optional dependencies (`@agentclash/cli-<platform>-<arch>`). No postinstall scripts run.
+
 macOS and Linux package manager after the tap is populated by a release:
 
 ```bash
@@ -22,7 +32,7 @@ Windows fallback script:
 irm https://raw.githubusercontent.com/agentclash/agentclash/main/scripts/install/install.ps1 | iex
 ```
 
-Windows package manager after Winget manifest approval:
+Windows package manager (configured; goes live once the first manifest is merged into `microsoft/winget-pkgs`):
 
 ```powershell
 winget install AgentClash.AgentClash
@@ -84,6 +94,12 @@ Winget:
 winget uninstall AgentClash.AgentClash
 ```
 
+npm install:
+
+```bash
+npm uninstall -g agentclash
+```
+
 ## Release Flow
 
 Stable releases are not cut on every merge. Release Please watches CLI-impacting paths and opens a version bump PR from conventional commits. Merging that release PR creates the `v*` tag, and the tag-triggered GoReleaser workflow publishes archives, checksums, Homebrew metadata, and Winget metadata.
@@ -108,6 +124,27 @@ Before advertising package-manager installs as live, make sure these external pi
 - `WINGET_TOKEN`, a PAT or GitHub App token that can push branches to that fork and open PRs to `microsoft/winget-pkgs`.
 - `RELEASE_PLEASE_TOKEN`, a PAT or GitHub App token for Release Please. Do not use the default `GITHUB_TOKEN` for this, because tags created by `GITHUB_TOKEN` do not trigger the downstream GoReleaser workflow.
 
+### npm setup (one-time)
+
+The `publish-npm` job in `.github/workflows/release-cli.yml` uses npm Trusted Publishing — no long-lived `NPM_TOKEN` secret is needed. Trusted Publishing requires the package to already exist on npm, so the first publish has to happen manually. The bootstrap flow:
+
+1. Reserve the package names on npm:
+   - unscoped root: `agentclash`
+   - scope: `@agentclash` (create the org)
+2. Create a granular, publish-only npm token scoped to `agentclash` + `@agentclash/*` with a 7-day expiry.
+3. Locally, from a clean checkout of a `v*` tag:
+   ```bash
+   cd cli && go run github.com/goreleaser/goreleaser/v2@latest release --snapshot --clean
+   node scripts/publish-npm/assemble.mjs v0.0.0-bootstrap dist
+   for p in npm-out/platforms/*/; do NODE_AUTH_TOKEN=$TOKEN npm publish "$p" --access=public; done
+   NODE_AUTH_TOKEN=$TOKEN npm publish npm-out/cli --access=public
+   ```
+4. In the npm web UI, configure Trusted Publishing on each of the seven packages (root + six platform packages), pointing at repo `agentclash/agentclash` and workflow `.github/workflows/release-cli.yml`.
+5. On the `agentclash` package and the `@agentclash` scope, enable "Require 2FA / disallow tokens" so future publishes must come through the trusted workflow.
+6. Revoke the bootstrap token.
+
+From then on, every tag-triggered release publishes through the workflow with provenance attestations emitted automatically.
+
 ## Local Verification
 
 ```bash
@@ -121,4 +158,17 @@ From the repository root:
 
 ```bash
 sh -n scripts/install/install.sh
+```
+
+npm packaging rehearsal (against the snapshot GoReleaser just produced):
+
+```bash
+node scripts/publish-npm/assemble.mjs v0.0.0-rehearse cli/dist
+for p in npm-out/platforms/*/ npm-out/cli; do (cd "$p" && npm pack --dry-run); done
+# End-to-end install check (on macOS arm64 host, adjust triple to match):
+(cd npm-out/platforms/darwin-arm64 && npm pack --pack-destination /tmp)
+(cd npm-out/cli && npm pack --pack-destination /tmp)
+mkdir /tmp/ac-scratch && cd /tmp/ac-scratch && npm init -y \
+  && npm i /tmp/agentclash-cli-darwin-arm64-*.tgz /tmp/agentclash-*.tgz \
+  && ./node_modules/.bin/agentclash version
 ```

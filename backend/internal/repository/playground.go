@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	repositorysqlc "github.com/Atharva-Kanherkar/agentclash/backend/internal/repository/sqlc"
+	repositorysqlc "github.com/agentclash/agentclash/backend/internal/repository/sqlc"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"

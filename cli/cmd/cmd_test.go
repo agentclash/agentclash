@@ -9,7 +9,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/Atharva-Kanherkar/agentclash/cli/internal/auth"
+	"github.com/agentclash/agentclash/cli/internal/auth"
 )
 
 // executeCommand runs a cobra command with args against a fake API server.

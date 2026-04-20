@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/scoring"
+	"github.com/agentclash/agentclash/backend/internal/scoring"
 	"github.com/google/uuid"
 	"gopkg.in/yaml.v3"
 )

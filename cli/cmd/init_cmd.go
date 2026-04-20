@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/Atharva-Kanherkar/agentclash/cli/internal/config"
+	"github.com/agentclash/agentclash/cli/internal/config"
 	"github.com/spf13/cobra"
 )
 
@@ -48,8 +48,8 @@ var initCmd = &cobra.Command{
 			return err
 		}
 
-		if rc.Output.IsJSON() {
-			return rc.Output.PrintJSON(cfg)
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(cfg)
 		}
 
 		rc.Output.PrintSuccess(fmt.Sprintf("Created %s (workspace: %s)", config.ProjectConfigFile, wsID))

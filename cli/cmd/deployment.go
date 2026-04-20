@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/Atharva-Kanherkar/agentclash/cli/internal/output"
+	"github.com/agentclash/agentclash/cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
@@ -50,8 +50,8 @@ var deploymentListCmd = &cobra.Command{
 			return err
 		}
 
-		if rc.Output.IsJSON() {
-			return rc.Output.PrintJSON(result)
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(result)
 		}
 
 		cols := []output.Column{{Header: "ID"}, {Header: "Name"}, {Header: "Status"}, {Header: "Build Version"}, {Header: "Created"}}
@@ -109,8 +109,8 @@ var deploymentCreateCmd = &cobra.Command{
 			return err
 		}
 
-		if rc.Output.IsJSON() {
-			return rc.Output.PrintJSON(deployment)
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(deployment)
 		}
 
 		rc.Output.PrintSuccess(fmt.Sprintf("Created deployment %s (%s)", str(deployment["name"]), str(deployment["id"])))

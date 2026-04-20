@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/challengepack"
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/scoring"
+	"github.com/agentclash/agentclash/backend/internal/challengepack"
+	"github.com/agentclash/agentclash/backend/internal/scoring"
 )
 
 func BuildScoringEvidenceInputs(manifest json.RawMessage, inputSet *ChallengeInputSetExecutionContext) ([]scoring.EvidenceInput, error) {

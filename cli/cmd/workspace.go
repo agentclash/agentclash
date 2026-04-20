@@ -3,8 +3,8 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/Atharva-Kanherkar/agentclash/cli/internal/config"
-	"github.com/Atharva-Kanherkar/agentclash/cli/internal/output"
+	"github.com/agentclash/agentclash/cli/internal/config"
+	"github.com/agentclash/agentclash/cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
@@ -71,8 +71,8 @@ var wsListCmd = &cobra.Command{
 			return err
 		}
 
-		if rc.Output.IsJSON() {
-			return rc.Output.PrintJSON(result)
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(result)
 		}
 
 		cols := []output.Column{{Header: "ID"}, {Header: "Name"}, {Header: "Slug"}, {Header: "Status"}}
@@ -109,8 +109,8 @@ var wsGetCmd = &cobra.Command{
 			return err
 		}
 
-		if rc.Output.IsJSON() {
-			return rc.Output.PrintJSON(ws)
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(ws)
 		}
 
 		rc.Output.PrintDetail("ID", str(ws["id"]))
@@ -157,8 +157,8 @@ var wsCreateCmd = &cobra.Command{
 			return err
 		}
 
-		if rc.Output.IsJSON() {
-			return rc.Output.PrintJSON(ws)
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(ws)
 		}
 
 		rc.Output.PrintSuccess(fmt.Sprintf("Created workspace %s (%s)", str(ws["name"]), str(ws["id"])))
@@ -199,8 +199,8 @@ var wsUpdateCmd = &cobra.Command{
 			return err
 		}
 
-		if rc.Output.IsJSON() {
-			return rc.Output.PrintJSON(ws)
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(ws)
 		}
 
 		rc.Output.PrintSuccess(fmt.Sprintf("Updated workspace %s", args[0]))
@@ -239,8 +239,8 @@ var wsUseCmd = &cobra.Command{
 			return fmt.Errorf("saving config: %w", err)
 		}
 
-		if rc.Output.IsJSON() {
-			return rc.Output.PrintJSON(map[string]string{
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(map[string]string{
 				"workspace_id":    args[0],
 				"workspace_name":  str(ws["name"]),
 				"organization_id": str(ws["organization_id"]),
@@ -279,8 +279,8 @@ var wsMembersListCmd = &cobra.Command{
 			return err
 		}
 
-		if rc.Output.IsJSON() {
-			return rc.Output.PrintJSON(result)
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(result)
 		}
 
 		cols := []output.Column{{Header: "ID"}, {Header: "User ID"}, {Header: "Email"}, {Header: "Role"}, {Header: "Status"}}
@@ -322,8 +322,8 @@ var wsMembersInviteCmd = &cobra.Command{
 			return err
 		}
 
-		if rc.Output.IsJSON() {
-			return rc.Output.PrintJSON(membership)
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(membership)
 		}
 
 		rc.Output.PrintSuccess(fmt.Sprintf("Invited %s as %s", email, role))
@@ -364,8 +364,8 @@ var wsMembersUpdateCmd = &cobra.Command{
 			return err
 		}
 
-		if rc.Output.IsJSON() {
-			return rc.Output.PrintJSON(membership)
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(membership)
 		}
 
 		rc.Output.PrintSuccess(fmt.Sprintf("Updated membership %s", args[0]))

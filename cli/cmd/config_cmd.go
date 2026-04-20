@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Atharva-Kanherkar/agentclash/cli/internal/config"
+	"github.com/agentclash/agentclash/cli/internal/config"
 	"github.com/spf13/cobra"
 )
 
@@ -48,8 +48,8 @@ var configSetCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		if !cfg.Set(args[0], args[1]) {
-			return fmt.Errorf("unknown config key %q\nValid keys: %s", args[0], strings.Join(config.Keys(), ", "))
+		if err := cfg.Set(args[0], args[1]); err != nil {
+			return fmt.Errorf("%w\nValid keys: %s", err, strings.Join(config.Keys(), ", "))
 		}
 		if err := config.Save(cfg); err != nil {
 			return err
@@ -72,8 +72,8 @@ var configListCmd = &cobra.Command{
 			return err
 		}
 
-		if rc != nil && rc.Output.IsJSON() {
-			return rc.Output.PrintJSON(map[string]string{
+		if rc != nil && rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(map[string]string{
 				"default_workspace": cfg.DefaultWorkspace,
 				"default_org":      cfg.DefaultOrg,
 				"api_url":          cfg.APIURL,

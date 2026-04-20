@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/Atharva-Kanherkar/agentclash/cli/internal/config"
+	"github.com/agentclash/agentclash/cli/internal/config"
 )
 
 // Credentials holds stored authentication data.

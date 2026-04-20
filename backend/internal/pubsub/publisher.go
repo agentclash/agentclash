@@ -3,7 +3,7 @@ package pubsub
 import (
 	"context"
 
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/runevents"
+	"github.com/agentclash/agentclash/backend/internal/runevents"
 	"github.com/google/uuid"
 )
 

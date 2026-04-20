@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/secrets"
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/workflow"
+	"github.com/agentclash/agentclash/backend/internal/secrets"
+	"github.com/agentclash/agentclash/backend/internal/workflow"
 )
 
 const (

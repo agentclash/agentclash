@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/workflow"
+	"github.com/agentclash/agentclash/backend/internal/workflow"
 )
 
 func TestLoadConfigFromEnvUsesDefaultsWhenUnset(t *testing.T) {

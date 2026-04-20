@@ -9,9 +9,9 @@ import (
 
 	"strings"
 
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/pubsub"
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/ratelimit"
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
+	"github.com/agentclash/agentclash/backend/internal/pubsub"
+	"github.com/agentclash/agentclash/backend/internal/ratelimit"
+	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )

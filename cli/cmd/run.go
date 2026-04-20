@@ -9,8 +9,9 @@ import (
 
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
+	"gopkg.in/yaml.v3"
 
-	"github.com/Atharva-Kanherkar/agentclash/cli/internal/output"
+	"github.com/agentclash/agentclash/cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
@@ -62,8 +63,8 @@ var runListCmd = &cobra.Command{
 			return err
 		}
 
-		if rc.Output.IsJSON() {
-			return rc.Output.PrintJSON(result)
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(result)
 		}
 
 		cols := []output.Column{{Header: "ID"}, {Header: "Name"}, {Header: "Status"}, {Header: "Agents"}, {Header: "Created"}}
@@ -106,8 +107,8 @@ var runGetCmd = &cobra.Command{
 			return err
 		}
 
-		if rc.Output.IsJSON() {
-			return rc.Output.PrintJSON(run)
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(run)
 		}
 
 		rc.Output.PrintDetail("ID", str(run["id"]))
@@ -167,8 +168,8 @@ var runCreateCmd = &cobra.Command{
 
 		sp.StopWithSuccess(fmt.Sprintf("Created run %s", str(run["id"])))
 
-		if rc.Output.IsJSON() {
-			return rc.Output.PrintJSON(run)
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(run)
 		}
 
 		rc.Output.PrintDetail("Run ID", str(run["id"]))
@@ -209,8 +210,8 @@ var runRankingCmd = &cobra.Command{
 			return err
 		}
 
-		if rc.Output.IsJSON() {
-			return rc.Output.PrintJSON(result)
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(result)
 		}
 
 		if rankings, ok := result["rankings"].([]any); ok {
@@ -264,8 +265,8 @@ var runAgentsCmd = &cobra.Command{
 			return err
 		}
 
-		if rc.Output.IsJSON() {
-			return rc.Output.PrintJSON(result)
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(result)
 		}
 
 		cols := []output.Column{{Header: "ID"}, {Header: "Deployment"}, {Header: "Status"}, {Header: "Started"}, {Header: "Completed"}}
@@ -315,8 +316,8 @@ var runScorecardCmd = &cobra.Command{
 			return err
 		}
 
-		if rc.Output.IsJSON() {
-			return rc.Output.PrintJSON(scorecard)
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(scorecard)
 		}
 
 		rc.Output.PrintDetail("Run Agent ID", str(scorecard["run_agent_id"]))
@@ -339,14 +340,36 @@ func streamRunEvents(cmd *cobra.Command, rc *RunContext, runID string) error {
 		return fmt.Errorf("connecting to event stream: %w", err)
 	}
 
-	if !rc.Output.IsJSON() {
+	if !rc.Output.IsStructured() {
 		fmt.Fprintf(os.Stderr, "%s Streaming events for run %s (Ctrl+C to stop)\n", output.Cyan("▸"), runID)
 	}
 
 	for event := range ch {
-		if rc.Output.IsJSON() {
+		switch {
+		case rc.Output.IsYAML():
+			// Emit a YAML document per event, separated by `---`, which is a
+			// valid multi-doc YAML stream that scripts can parse with
+			// yaml.SafeLoadAll / PyYAML load_all / js-yaml loadAll.
+			var parsed any
+			if err := json.Unmarshal(event.Data, &parsed); err != nil {
+				parsed = string(event.Data)
+			}
+			doc := map[string]any{
+				"event": event.Event,
+				"id":    event.ID,
+				"data":  parsed,
+			}
+			out, err := yaml.Marshal(doc)
+			if err != nil {
+				return fmt.Errorf("encoding event as yaml: %w", err)
+			}
+			fmt.Fprint(rc.Output.Writer(), "---\n")
+			fmt.Fprint(rc.Output.Writer(), string(out))
+		case rc.Output.IsStructured():
+			// JSON mode: one NDJSON line per event, byte-for-byte from the
+			// server so automation keeps receiving the exact payload shape.
 			fmt.Fprintln(rc.Output.Writer(), string(event.Data))
-		} else {
+		default:
 			ts := time.Now().Format("15:04:05")
 			var parsed map[string]any
 			summary := string(event.Data)
@@ -357,13 +380,13 @@ func streamRunEvents(cmd *cobra.Command, rc *RunContext, runID string) error {
 			}
 			fmt.Fprintf(rc.Output.Writer(), "%s [%s] %s\n",
 				output.Faint(ts),
-				output.Cyan(event.Event),
-				summary,
+				output.Cyan(output.SanitizeControl(event.Event)),
+				output.SanitizeControl(summary),
 			)
 		}
 	}
 
-	if !rc.Output.IsJSON() {
+	if !rc.Output.IsStructured() {
 		fmt.Fprintf(os.Stderr, "%s Stream ended\n", output.Faint("▸"))
 	}
 	return nil

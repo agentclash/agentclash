@@ -14,9 +14,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/domain"
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/storage"
+	"github.com/agentclash/agentclash/backend/internal/domain"
+	"github.com/agentclash/agentclash/backend/internal/repository"
+	"github.com/agentclash/agentclash/backend/internal/storage"
 	"github.com/google/uuid"
 )
 

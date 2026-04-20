@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -72,8 +73,10 @@ func (c UserConfig) Get(key string) string {
 	}
 }
 
-// Set updates a config value by key name.
-func (c *UserConfig) Set(key, value string) bool {
+// Set updates a config value by key name. Returns an error if the key is
+// unknown or the value fails validation for that key; a persisted but-ignored
+// output format like `output = yalm` is worse than a clear refusal.
+func (c *UserConfig) Set(key, value string) error {
 	switch key {
 	case "default_workspace":
 		c.DefaultWorkspace = value
@@ -82,11 +85,14 @@ func (c *UserConfig) Set(key, value string) bool {
 	case "api_url":
 		c.APIURL = value
 	case "output":
+		if err := ValidateOutputFormat(value); err != nil {
+			return err
+		}
 		c.Output = value
 	default:
-		return false
+		return fmt.Errorf("unknown config key %q", key)
 	}
-	return true
+	return nil
 }
 
 // Keys returns all valid config key names.

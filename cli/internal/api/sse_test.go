@@ -184,3 +184,26 @@ func TestStreamSSERespectsContextCancellation(t *testing.T) {
 		t.Fatal("timeout waiting for channel to close")
 	}
 }
+
+func TestStreamSSERefusesCrossOriginRedirect(t *testing.T) {
+	// A redirect target on a different host would, under Go's default
+	// client, cause the bearer token to leak (same-host) or at minimum
+	// downgrade the stream to a different origin. The hardened stream client
+	// must reject the redirect and surface an error instead of silently
+	// opening a stream against the attacker-controlled host.
+	evil := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatalf("stream client followed redirect to %s", r.Host)
+	}))
+	defer evil.Close()
+
+	src := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, evil.URL+"/events", http.StatusFound)
+	}))
+	defer src.Close()
+
+	c := NewClient(src.URL, "test-tok")
+	_, err := c.StreamSSE(context.Background(), "/events", nil)
+	if err == nil {
+		t.Fatalf("expected StreamSSE to refuse the cross-host redirect")
+	}
+}

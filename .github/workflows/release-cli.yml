@@ -5,10 +5,6 @@ on:
     tags:
       - "v*"
 
-defaults:
-  run:
-    working-directory: cli
-
 permissions:
   contents: write
 
@@ -16,6 +12,9 @@ jobs:
   release:
     name: Build & Release
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cli
     steps:
       - uses: actions/checkout@v4
         with:
@@ -39,3 +38,127 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
           WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
+
+  publish-npm:
+    name: Publish to npm
+    needs: release
+    # Run even if the `release` job reports failure. GoReleaser uploads the
+    # GitHub Release assets early; if a later publisher (Homebrew, Winget)
+    # fails the whole job is marked failed, but the release artifacts we need
+    # are already present. `gh release download` below will fail naturally if
+    # the tag never actually produced assets, so this can't accidentally
+    # publish a partial release.
+    if: ${{ !cancelled() && needs.release.result != 'skipped' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # required for npm Trusted Publishing provenance
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Node 24 ships npm 11.x which supports Trusted Publishing (needs
+          # npm >= 11.5.1 / Node >= 22.14). Trusted Publishing must be
+          # pre-configured on `agentclash` and each `@agentclash/cli-*`
+          # package on the npm registry.
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Download GitHub release assets
+        run: |
+          mkdir -p dist
+          gh release download "${GITHUB_REF_NAME}" --dir dist \
+            --pattern 'agentclash_*.tar.gz' \
+            --pattern 'agentclash_*.zip' \
+            --pattern 'checksums.txt'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify release checksums
+        run: (cd dist && sha256sum -c checksums.txt)
+
+      - name: Assemble npm packages
+        run: node scripts/publish-npm/assemble.mjs "${GITHUB_REF_NAME}" dist
+
+      - name: Publish platform packages
+        run: |
+          set -euo pipefail
+          scripts/publish-npm/publish-one.sh platform npm-out/platforms/*/
+
+      - name: Wait for platform packages to replicate
+        # npm's CDN has a multi-second-to-minute propagation window. If we
+        # publish the root `agentclash` package before every platform dep is
+        # globally visible, a user who installs during the gap can `npm i -g
+        # agentclash@<version>` successfully (optionalDependencies never fail
+        # the install) and only hit "no prebuilt binary" at runtime. Block
+        # until the registry reports all six triples at the target version.
+        run: |
+          set -euo pipefail
+          version="$(jq -r .version npm-out/cli/package.json)"
+          triples=(darwin-arm64 darwin-x64 linux-arm64 linux-x64 win32-arm64 win32-x64)
+          deadline=$(( $(date +%s) + 600 )) # 10 min max
+          for triple in "${triples[@]}"; do
+            name="@agentclash/cli-${triple}"
+            while true; do
+              got="$(npm view "${name}@${version}" version --silent 2>/dev/null || true)"
+              if [ "${got}" = "${version}" ]; then
+                echo "${name}@${version} visible"
+                break
+              fi
+              if [ "$(date +%s)" -gt "${deadline}" ]; then
+                echo "timed out waiting for ${name}@${version} (last saw '${got}')" >&2
+                exit 1
+              fi
+              sleep 5
+            done
+          done
+
+      - name: Publish root package
+        run: |
+          set -euo pipefail
+          scripts/publish-npm/publish-one.sh root npm-out/cli
+
+  smoke-npm:
+    name: Post-publish smoke (${{ matrix.os }})
+    needs: publish-npm
+    # Mirror publish-npm's independence: as long as publish-npm actually
+    # published, we should still smoke-test even if `release` is red.
+    if: ${{ needs.publish-npm.result == 'success' }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-14, windows-latest]
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Install published CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          # Two things can be lagging here: the root `agentclash` package
+          # itself, and (more subtly) the platform `@agentclash/cli-<triple>`
+          # optional dependency. A missing optional dep does NOT fail
+          # `npm install`, so the only way to detect a partial replication is
+          # to run the CLI and check it reports the right version. Retry the
+          # whole install + version block, not just install.
+          for attempt in 1 2 3 4 5 6 7 8; do
+            rm -rf "$HOME/.npm-global-smoke" || true
+            npm config set prefix "$HOME/.npm-global-smoke"
+            export PATH="$HOME/.npm-global-smoke/bin:$HOME/.npm-global-smoke:$PATH"
+            if npm install -g "agentclash@${version}" \
+                 && agentclash version \
+                 && agentclash version | grep -F "${version}"; then
+              echo "smoke install succeeded on attempt ${attempt}"
+              exit 0
+            fi
+            echo "smoke attempt ${attempt} failed; sleeping before retry..."
+            sleep 15
+          done
+          echo "smoke install never succeeded after 8 attempts" >&2
+          exit 1

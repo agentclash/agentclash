@@ -47,6 +47,13 @@ The `agentclash` CLI lets you manage everything from your terminal — runs, bui
 
 ### Install
 
+Fastest for JavaScript-ecosystem users — grabs the right prebuilt binary for your platform from npm, no postinstall downloads:
+
+```bash
+npm i -g agentclash
+# or: npx agentclash --help
+```
+
 macOS or Linux with Homebrew, after the tap is populated by a release:
 
 ```bash
@@ -63,6 +70,12 @@ Windows PowerShell fallback script:
 
 ```powershell
 irm https://raw.githubusercontent.com/agentclash/agentclash/main/scripts/install/install.ps1 | iex
+```
+
+Windows via Winget (pending Microsoft approval of the first manifest):
+
+```powershell
+winget install AgentClash.AgentClash
 ```
 
 Direct downloads are available from [GitHub Releases](https://github.com/agentclash/agentclash/releases). The installer scripts verify `checksums.txt` before installing.

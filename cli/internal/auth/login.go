@@ -7,8 +7,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/Atharva-Kanherkar/agentclash/cli/internal/api"
-	"github.com/Atharva-Kanherkar/agentclash/cli/internal/output"
+	"github.com/agentclash/agentclash/cli/internal/api"
+	"github.com/agentclash/agentclash/cli/internal/output"
 )
 
 const (
@@ -165,24 +165,129 @@ func deviceVerificationURL(resp createDeviceCodeResponse) (string, error) {
 	if resp.DeviceCode == "" {
 		return "", fmt.Errorf("verification response missing device_code")
 	}
-	if resp.VerificationURIComplete != "" {
-		return resp.VerificationURIComplete, nil
+
+	// If the server sent us an ABSOLUTE verification_uri, treat it as the
+	// authoritative base and require verification_uri_complete (if present)
+	// to agree with it on scheme/host/port/path AND carry our expected
+	// user_code. Otherwise rebuild the complete URL ourselves.
+	//
+	// A relative verification_uri is legal per RFC 8628 — GitHub's device
+	// flow, for example, ships one. In that case there's nothing to compare
+	// against, so we just accept verification_uri_complete as the sole
+	// source and rely on validateVerificationURL for scheme/host guarantees.
+	//
+	// The gap we're closing: a hostile server shipping
+	//   verification_uri:          https://agentclash.dev/device
+	//   verification_uri_complete: https://evil.example/device?user_code=XXX
+	// and the CLI opening the second one because it's convenient.
+	var base *url.URL
+	if resp.VerificationURI != "" {
+		parsed, err := url.Parse(resp.VerificationURI)
+		if err != nil {
+			return "", fmt.Errorf("parsing verification_uri: %w", err)
+		}
+		if parsed.IsAbs() {
+			base = parsed
+		} else if resp.VerificationURIComplete == "" {
+			// Relative verification_uri is only tolerable when the server
+			// also provided verification_uri_complete — otherwise we have
+			// nothing to open.
+			return "", fmt.Errorf("verification response missing verification_uri_complete and absolute verification_uri")
+		}
 	}
-	if resp.VerificationURI == "" {
+
+	var candidate string
+	switch {
+	case base != nil && resp.VerificationURIComplete != "":
+		completeURL, err := url.Parse(resp.VerificationURIComplete)
+		if err != nil {
+			return "", fmt.Errorf("parsing verification_uri_complete: %w", err)
+		}
+		if !verificationURLsSameOrigin(base, completeURL) {
+			return "", fmt.Errorf("verification_uri_complete disagrees with verification_uri on origin/path")
+		}
+		if got := completeURL.Query().Get("user_code"); got != resp.UserCode {
+			return "", fmt.Errorf("verification_uri_complete user_code %q does not match response user_code", got)
+		}
+		candidate = resp.VerificationURIComplete
+	case resp.VerificationURIComplete != "":
+		candidate = resp.VerificationURIComplete
+	case base != nil:
+		q := base.Query()
+		q.Set("user_code", resp.UserCode)
+		base.RawQuery = q.Encode()
+		candidate = base.String()
+	default:
 		return "", fmt.Errorf("verification response missing verification_uri_complete and verification_uri")
 	}
 
-	parsed, err := url.Parse(resp.VerificationURI)
+	if err := validateVerificationURL(candidate); err != nil {
+		return "", err
+	}
+	return candidate, nil
+}
+
+// verificationURLsSameOrigin returns true if a and b share scheme + hostname
+// + port + path. Query string and fragment are intentionally ignored — the
+// point is to make sure the "complete" variant still lands on the same
+// device-verification endpoint the server first advertised.
+func verificationURLsSameOrigin(a, b *url.URL) bool {
+	if a.Scheme != b.Scheme {
+		return false
+	}
+	if a.Hostname() != b.Hostname() {
+		return false
+	}
+	if a.Port() != b.Port() {
+		return false
+	}
+	return a.Path == b.Path
+}
+
+// validateVerificationURL enforces https for the device-verification URL. A
+// compromised backend or MITM on an http API endpoint could otherwise redirect
+// the user to an attacker-controlled http:// verification page. http is
+// permitted only for loopback hosts — the local dev loop against
+// http://localhost:8080.
+//
+// url.Parse treats opaque forms like "https:foo" as absolute URLs with no
+// host, so IsAbs() alone is not enough: we also require a hierarchical URL
+// (Opaque == "") with a real host.
+func validateVerificationURL(raw string) error {
+	parsed, err := url.Parse(raw)
 	if err != nil {
-		return "", fmt.Errorf("parsing verification_uri: %w", err)
+		return fmt.Errorf("parsing verification URL: %w", err)
 	}
 	if !parsed.IsAbs() {
-		return "", fmt.Errorf("verification response missing verification_uri_complete and absolute verification_uri")
+		return fmt.Errorf("verification URL must be absolute: %q", raw)
 	}
-	q := parsed.Query()
-	q.Set("user_code", resp.UserCode)
-	parsed.RawQuery = q.Encode()
-	return parsed.String(), nil
+	if parsed.Opaque != "" {
+		return fmt.Errorf("verification URL must be hierarchical, not opaque: %q", raw)
+	}
+	// Parse.Hostname strips any :port; an input like "https://:443/auth" has
+	// Host=":443" but Hostname()=="", which is still missing the real host.
+	if parsed.Hostname() == "" {
+		return fmt.Errorf("verification URL is missing a host: %q", raw)
+	}
+	switch parsed.Scheme {
+	case "https":
+		return nil
+	case "http":
+		if isLoopbackHost(parsed.Hostname()) {
+			return nil
+		}
+		return fmt.Errorf("verification URL must use https (got %q)", raw)
+	default:
+		return fmt.Errorf("verification URL scheme %q is not allowed", parsed.Scheme)
+	}
+}
+
+func isLoopbackHost(host string) bool {
+	switch host {
+	case "localhost", "127.0.0.1", "::1":
+		return true
+	}
+	return false
 }
 
 // ValidateToken checks the token against the session endpoint.

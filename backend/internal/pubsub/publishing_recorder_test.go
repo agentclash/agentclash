@@ -6,8 +6,8 @@ import (
 	"log/slog"
 	"testing"
 
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/runevents"
+	"github.com/agentclash/agentclash/backend/internal/repository"
+	"github.com/agentclash/agentclash/backend/internal/runevents"
 	"github.com/google/uuid"
 )
 

@@ -48,6 +48,20 @@ func (f *Formatter) IsJSON() bool {
 	return f.format == FormatJSON
 }
 
+// IsStructured returns true if the output format is machine-parsable
+// (JSON or YAML). Commands that previously gated on IsJSON should use this
+// so --output yaml works end-to-end.
+func (f *Formatter) IsStructured() bool {
+	return f.format == FormatJSON || f.format == FormatYAML
+}
+
+// IsYAML returns true if the active format is YAML. Streaming commands that
+// need per-event encoding (e.g. `run events`) use this to emit a proper
+// YAML document stream rather than NDJSON.
+func (f *Formatter) IsYAML() bool {
+	return f.format == FormatYAML
+}
+
 // Writer returns the primary output writer.
 func (f *Formatter) Writer() io.Writer {
 	return f.writer
@@ -89,15 +103,17 @@ func (f *Formatter) Print(data any, columns []Column, rows [][]string) {
 	}
 }
 
-// PrintRaw writes raw structured data (for JSON/YAML) or falls back to table.
-func (f *Formatter) PrintRaw(data any) {
+// PrintRaw writes raw structured data (for JSON/YAML) or falls back to JSON
+// when no structured format is selected (table mode prefers JSON over a YAML
+// dump of a map). Returns any encoder error.
+func (f *Formatter) PrintRaw(data any) error {
 	switch f.format {
-	case FormatJSON:
-		f.PrintJSON(data)
 	case FormatYAML:
-		f.PrintYAML(data)
+		return f.PrintYAML(data)
+	case FormatJSON:
+		return f.PrintJSON(data)
 	default:
-		f.PrintJSON(data)
+		return f.PrintJSON(data)
 	}
 }
 

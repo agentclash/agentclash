@@ -5,3 +5,12 @@ web/.data/
 web/.env.local
 cli/agentclash
 cli/dist/
+
+# Runtime state emitted by Claude Code's scheduler / background runners.
+.claude/scheduled_tasks.lock
+
+# Output of scripts/publish-npm/assemble.mjs.
+npm-out/
+
+# npm pack rehearsal output.
+npm/**/*.tgz

@@ -6,9 +6,9 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/provider"
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
-	workflowpkg "github.com/Atharva-Kanherkar/agentclash/backend/internal/workflow"
+	"github.com/agentclash/agentclash/backend/internal/provider"
+	"github.com/agentclash/agentclash/backend/internal/repository"
+	workflowpkg "github.com/agentclash/agentclash/backend/internal/workflow"
 	temporalsdk "go.temporal.io/sdk/client"
 	sdkworker "go.temporal.io/sdk/worker"
 )

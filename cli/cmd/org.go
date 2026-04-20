@@ -2,9 +2,8 @@ package cmd
 
 import (
 	"fmt"
-	"net/url"
 
-	"github.com/Atharva-Kanherkar/agentclash/cli/internal/output"
+	"github.com/agentclash/agentclash/cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
@@ -45,7 +44,7 @@ var orgListCmd = &cobra.Command{
 	Short: "List organizations you belong to",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		rc := GetRunContext(cmd)
-		resp, err := rc.Client.Get(cmd.Context(), "/v1/organizations", paginationQuery(cmd))
+		resp, err := rc.Client.Get(cmd.Context(), "/v1/organizations", nil)
 		if err != nil {
 			return err
 		}
@@ -60,8 +59,8 @@ var orgListCmd = &cobra.Command{
 			return err
 		}
 
-		if rc.Output.IsJSON() {
-			return rc.Output.PrintJSON(result)
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(result)
 		}
 
 		cols := []output.Column{{Header: "ID"}, {Header: "Name"}, {Header: "Slug"}, {Header: "Status"}}
@@ -98,8 +97,8 @@ var orgGetCmd = &cobra.Command{
 			return err
 		}
 
-		if rc.Output.IsJSON() {
-			return rc.Output.PrintJSON(org)
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(org)
 		}
 
 		rc.Output.PrintDetail("ID", str(org["id"]))
@@ -137,8 +136,8 @@ var orgCreateCmd = &cobra.Command{
 			return err
 		}
 
-		if rc.Output.IsJSON() {
-			return rc.Output.PrintJSON(org)
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(org)
 		}
 
 		rc.Output.PrintSuccess(fmt.Sprintf("Created organization %s (%s)", str(org["name"]), str(org["id"])))
@@ -179,8 +178,8 @@ var orgUpdateCmd = &cobra.Command{
 			return err
 		}
 
-		if rc.Output.IsJSON() {
-			return rc.Output.PrintJSON(org)
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(org)
 		}
 
 		rc.Output.PrintSuccess(fmt.Sprintf("Updated organization %s", str(org["id"])))
@@ -199,7 +198,7 @@ var orgMembersListCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		rc := GetRunContext(cmd)
-		resp, err := rc.Client.Get(cmd.Context(), "/v1/organizations/"+args[0]+"/memberships", paginationQuery(cmd))
+		resp, err := rc.Client.Get(cmd.Context(), "/v1/organizations/"+args[0]+"/memberships", nil)
 		if err != nil {
 			return err
 		}
@@ -214,8 +213,8 @@ var orgMembersListCmd = &cobra.Command{
 			return err
 		}
 
-		if rc.Output.IsJSON() {
-			return rc.Output.PrintJSON(result)
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(result)
 		}
 
 		cols := []output.Column{{Header: "ID"}, {Header: "User ID"}, {Header: "Email"}, {Header: "Role"}, {Header: "Status"}}
@@ -257,8 +256,8 @@ var orgMembersInviteCmd = &cobra.Command{
 			return err
 		}
 
-		if rc.Output.IsJSON() {
-			return rc.Output.PrintJSON(membership)
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(membership)
 		}
 
 		rc.Output.PrintSuccess(fmt.Sprintf("Invited %s as %s", email, role))
@@ -299,8 +298,8 @@ var orgMembersUpdateCmd = &cobra.Command{
 			return err
 		}
 
-		if rc.Output.IsJSON() {
-			return rc.Output.PrintJSON(membership)
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(membership)
 		}
 
 		rc.Output.PrintSuccess(fmt.Sprintf("Updated membership %s", args[0]))
@@ -310,15 +309,15 @@ var orgMembersUpdateCmd = &cobra.Command{
 
 // --- helpers ---
 
-func paginationQuery(cmd *cobra.Command) url.Values {
-	q := url.Values{}
-	// Pagination flags are not added globally but can be used via --limit/--offset if added.
-	return q
-}
-
+// str renders an arbitrary JSON-decoded value as a human-readable string and
+// strips terminal control bytes. Server-sourced values flow through this
+// helper before being written to table cells / detail rows, so a malicious
+// payload can't inject ANSI escapes, clear the screen, or smuggle OSC
+// hyperlinks into the user's terminal. Structured output (JSON/YAML) bypasses
+// this path and stays byte-for-byte.
 func str(v any) string {
 	if v == nil {
 		return ""
 	}
-	return fmt.Sprint(v)
+	return output.SanitizeControl(fmt.Sprint(v))
 }

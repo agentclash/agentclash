@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"net/url"
 
-	"github.com/Atharva-Kanherkar/agentclash/cli/internal/output"
+	"github.com/agentclash/agentclash/cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
@@ -40,11 +40,23 @@ var replayGetCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		if apiErr := resp.ParseError(); apiErr != nil {
-			if apiErr.StatusCode == 202 {
-				rc.Output.PrintWarning("Replay is still being generated. Try again shortly.")
-				return nil
+		// 202 Accepted means the replay is still being generated. The body
+		// carries polling state (state, message, pagination). Forward it to
+		// structured consumers so they can loop on state; show a short human
+		// hint in table mode. Check StatusCode before ParseError because
+		// ParseError returns nil for 2xx responses.
+		if resp.StatusCode == 202 {
+			if rc.Output.IsStructured() {
+				var pending map[string]any
+				if err := resp.DecodeJSON(&pending); err != nil {
+					return fmt.Errorf("decoding pending replay: %w", err)
+				}
+				return rc.Output.PrintRaw(pending)
 			}
+			rc.Output.PrintWarning("Replay is still being generated. Try again shortly.")
+			return nil
+		}
+		if apiErr := resp.ParseError(); apiErr != nil {
 			return apiErr
 		}
 
@@ -53,8 +65,8 @@ var replayGetCmd = &cobra.Command{
 			return err
 		}
 
-		if rc.Output.IsJSON() {
-			return rc.Output.PrintJSON(replay)
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(replay)
 		}
 
 		rc.Output.PrintDetail("Run Agent ID", args[0])
@@ -66,18 +78,31 @@ var replayGetCmd = &cobra.Command{
 			rows := make([][]string, len(steps))
 			for i, s := range steps {
 				step := s.(map[string]any)
-				summary := str(step["summary"])
-				if len(summary) > 80 {
-					summary = summary[:77] + "..."
-				}
 				rows[i] = []string{
 					fmt.Sprintf("%d", i+1),
-					str(step["step_type"]),
-					summary,
+					output.SanitizeControl(str(step["step_type"])),
+					truncateRunes(output.SanitizeControl(str(step["summary"])), 80),
 				}
 			}
 			rc.Output.PrintTable(cols, rows)
 		}
 		return nil
 	},
+}
+
+// truncateRunes returns s trimmed to at most max runes, appending "…" when
+// truncation occurred. Unlike string[:max] it never slices in the middle of
+// a multi-byte UTF-8 sequence.
+func truncateRunes(s string, max int) string {
+	if max <= 0 {
+		return ""
+	}
+	runes := []rune(s)
+	if len(runes) <= max {
+		return s
+	}
+	if max < 3 {
+		return string(runes[:max])
+	}
+	return string(runes[:max-3]) + "..."
 }

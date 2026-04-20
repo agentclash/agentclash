@@ -18,8 +18,8 @@ func TestUserConfigGetAndSet(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		if !cfg.Set(tt.key, tt.value) {
-			t.Fatalf("Set(%q) returned false", tt.key)
+		if err := cfg.Set(tt.key, tt.value); err != nil {
+			t.Fatalf("Set(%q): %v", tt.key, err)
 		}
 		got := cfg.Get(tt.key)
 		if got != tt.value {
@@ -28,10 +28,20 @@ func TestUserConfigGetAndSet(t *testing.T) {
 	}
 }
 
-func TestUserConfigSetUnknownKeyReturnsFalse(t *testing.T) {
+func TestUserConfigSetUnknownKeyReturnsError(t *testing.T) {
 	var cfg UserConfig
-	if cfg.Set("nonexistent", "value") {
-		t.Fatal("Set with unknown key should return false")
+	if err := cfg.Set("nonexistent", "value"); err == nil {
+		t.Fatal("Set with unknown key should return error")
+	}
+}
+
+func TestUserConfigSetOutputRejectsInvalidValue(t *testing.T) {
+	var cfg UserConfig
+	if err := cfg.Set("output", "yalm"); err == nil {
+		t.Fatal("Set output=yalm should return error, but it silently persisted")
+	}
+	if cfg.Output != "" {
+		t.Fatalf("invalid value leaked into config: %q", cfg.Output)
 	}
 }
 

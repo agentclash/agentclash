@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/budget"
+	"github.com/agentclash/agentclash/backend/internal/budget"
 	"github.com/google/uuid"
 )
 

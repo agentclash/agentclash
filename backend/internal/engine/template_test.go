@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/templateutil"
+	"github.com/agentclash/agentclash/backend/internal/templateutil"
 )
 
 func TestResolveTemplateMap_SubstitutesParametersAndNestedPaths(t *testing.T) {

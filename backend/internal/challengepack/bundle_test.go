@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/scoring"
+	"github.com/agentclash/agentclash/backend/internal/scoring"
 )
 
 func TestParseYAMLValidBundle(t *testing.T) {

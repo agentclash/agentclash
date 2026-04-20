@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/challengepack"
+	"github.com/agentclash/agentclash/backend/internal/challengepack"
 	"github.com/google/uuid"
 )
 

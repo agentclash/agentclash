@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/challengepack"
+	"github.com/agentclash/agentclash/backend/internal/challengepack"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"

@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/provider"
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/sandbox"
+	"github.com/agentclash/agentclash/backend/internal/provider"
+	"github.com/agentclash/agentclash/backend/internal/sandbox"
 )
 
 func TestBuildToolRegistry_DefaultPrimitivesVisible(t *testing.T) {

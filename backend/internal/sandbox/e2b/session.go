@@ -14,7 +14,7 @@ import (
 	filesystempb "github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/filesystem"
 	processpb "github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/process"
 
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/sandbox"
+	"github.com/agentclash/agentclash/backend/internal/sandbox"
 )
 
 type session struct {

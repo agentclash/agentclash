@@ -29,8 +29,8 @@ var versionCmd = &cobra.Command{
 	Short: "Show CLI version information",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		rc := GetRunContext(cmd)
-		if rc != nil && rc.Output.IsJSON() {
-			return rc.Output.PrintJSON(map[string]string{
+		if rc != nil && rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(map[string]string{
 				"version": cliVersion,
 				"commit":  cliCommit,
 				"date":    cliDate,

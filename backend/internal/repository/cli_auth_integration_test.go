@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
+	"github.com/agentclash/agentclash/backend/internal/repository"
 )
 
 func TestRepositoryDeviceAuthApproveConsumesRawTokenOnce(t *testing.T) {

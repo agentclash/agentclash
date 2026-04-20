@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
+	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/google/uuid"
 	"github.com/lestrrat-go/jwx/v2/jwa"
 	"github.com/lestrrat-go/jwx/v2/jwk"

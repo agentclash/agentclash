@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/pubsub"
+	"github.com/agentclash/agentclash/backend/internal/pubsub"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
@@ -114,10 +114,12 @@ func streamRunEventsHandler(
 }
 
 // extractSequenceNumber pulls the sequence_number from a JSON-serialized
-// Envelope for use as the SSE event ID. Falls back to "0" on parse failure.
+// Envelope for use as the SSE event ID. The wire field is snake_case —
+// matching the tag on runevents.Envelope — not Go's PascalCase name.
+// Falls back to "0" on parse failure.
 func extractSequenceNumber(data []byte) string {
 	var envelope struct {
-		SequenceNumber int64 `json:"SequenceNumber"`
+		SequenceNumber int64 `json:"sequence_number"`
 	}
 	if err := json.Unmarshal(data, &envelope); err != nil {
 		return "0"

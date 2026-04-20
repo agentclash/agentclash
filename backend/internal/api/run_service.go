@@ -7,8 +7,8 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/budget"
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
+	"github.com/agentclash/agentclash/backend/internal/budget"
+	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/google/uuid"
 )
 

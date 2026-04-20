@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/Atharva-Kanherkar/agentclash/cli/internal/output"
+	"github.com/agentclash/agentclash/cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
@@ -135,8 +135,8 @@ func newInfraResourceCmd(res infraResource) *cobra.Command {
 				return err
 			}
 
-			if rc.Output.IsJSON() {
-				return rc.Output.PrintJSON(result)
+			if rc.Output.IsStructured() {
+				return rc.Output.PrintRaw(result)
 			}
 
 			rows := make([][]string, len(result.Items))
@@ -176,8 +176,8 @@ func newInfraResourceCmd(res infraResource) *cobra.Command {
 				return err
 			}
 
-			if rc.Output.IsJSON() {
-				return rc.Output.PrintJSON(created)
+			if rc.Output.IsStructured() {
+				return rc.Output.PrintRaw(created)
 			}
 			rc.Output.PrintSuccess(fmt.Sprintf("Created %s %s", res.Name, str(created["id"])))
 			return nil
@@ -209,8 +209,7 @@ func newInfraResourceCmd(res infraResource) *cobra.Command {
 					return err
 				}
 
-				rc.Output.PrintRaw(item)
-				return nil
+				return rc.Output.PrintRaw(item)
 			},
 		}
 		parent.AddCommand(getCmd)
@@ -298,8 +297,8 @@ var modelCatalogListCmd = &cobra.Command{
 			return err
 		}
 
-		if rc.Output.IsJSON() {
-			return rc.Output.PrintJSON(result)
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(result)
 		}
 
 		cols := []output.Column{{Header: "ID"}, {Header: "Provider"}, {Header: "Model"}, {Header: "Family"}, {Header: "Status"}}
@@ -338,8 +337,8 @@ var modelCatalogGetCmd = &cobra.Command{
 			return err
 		}
 
-		if rc.Output.IsJSON() {
-			return rc.Output.PrintJSON(entry)
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(entry)
 		}
 
 		rc.Output.PrintDetail("ID", str(entry["id"]))

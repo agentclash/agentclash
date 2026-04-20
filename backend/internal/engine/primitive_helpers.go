@@ -7,7 +7,7 @@ import (
 	"path"
 	"strings"
 
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/sandbox"
+	"github.com/agentclash/agentclash/backend/internal/sandbox"
 	"github.com/google/uuid"
 )
 
