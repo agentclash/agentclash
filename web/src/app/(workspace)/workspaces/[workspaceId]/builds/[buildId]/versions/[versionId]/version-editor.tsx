@@ -345,25 +345,41 @@ export function VersionEditor({ version }: VersionEditorProps) {
     return body;
   }
 
-  async function handleSave() {
+  async function persistDraft(options?: {
+    showSuccessToast?: boolean;
+    refreshOnSuccess?: boolean;
+  }) {
     const body = buildRequestBody();
-    if (!body) return;
+    if (!body) return false;
 
     setSaving(true);
     try {
       const token = await getAccessToken();
       const api = createApiClient(token);
       await api.patch(`/v1/agent-build-versions/${version.id}`, body);
-      toast.success("Saved");
-      router.refresh();
+      if (options?.showSuccessToast) {
+        toast.success("Saved");
+      }
+      if (options?.refreshOnSuccess) {
+        router.refresh();
+      }
+      return true;
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Failed to save");
+      return false;
     } finally {
       setSaving(false);
     }
   }
 
+  async function handleSave() {
+    await persistDraft({ showSuccessToast: true, refreshOnSuccess: true });
+  }
+
   async function handleValidate() {
+    const saved = await persistDraft();
+    if (!saved) return;
+
     setValidating(true);
     setValidationErrors({});
     try {
@@ -394,6 +410,9 @@ export function VersionEditor({ version }: VersionEditorProps) {
   async function handleMarkReady() {
     setMarkingReady(true);
     try {
+      const saved = await persistDraft();
+      if (!saved) return;
+
       const token = await getAccessToken();
       const api = createApiClient(token);
       await api.post(`/v1/agent-build-versions/${version.id}/ready`);

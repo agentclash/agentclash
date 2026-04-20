@@ -332,6 +332,42 @@ describe("VersionEditor", () => {
 
     cleanup();
   });
+
+  it("saves the current draft before validating", async () => {
+    mockGetAccessToken.mockResolvedValue("token");
+    const patch = vi.fn().mockResolvedValue(undefined);
+    const post = vi.fn().mockResolvedValue({ valid: true, errors: [] });
+    mockCreateApiClient.mockReturnValue({ patch, post });
+
+    const { cleanup } = renderEditor();
+
+    act(() => {
+      changeTextArea(
+        findTextAreaByLabel("Mission / Instructions"),
+        "Investigate the request, compare competing options, and produce a recommendation backed by traceable evidence.",
+      );
+    });
+    await flushPromises();
+    act(() => {
+      clickElement(findButton("Validate"));
+    });
+    await flushPromises();
+
+    expect(patch).toHaveBeenCalledWith(
+      "/v1/agent-build-versions/version-1",
+      expect.objectContaining({
+        policy_spec: expect.objectContaining({
+          instructions:
+            "Investigate the request, compare competing options, and produce a recommendation backed by traceable evidence.",
+        }),
+      }),
+    );
+    expect(post).toHaveBeenCalledWith(
+      "/v1/agent-build-versions/version-1/validate",
+    );
+
+    cleanup();
+  });
 });
 
 function changeTextArea(element: HTMLTextAreaElement, value: string) {
