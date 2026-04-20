@@ -2301,14 +2301,15 @@ func (r *Repository) CountRunsByWorkspaceID(ctx context.Context, workspaceID uui
 }
 
 type AgentDeploymentSummary struct {
-	ID               uuid.UUID
-	OrganizationID   uuid.UUID
-	WorkspaceID      uuid.UUID
-	Name             string
-	Status           string
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
-	LatestSnapshotID *uuid.UUID
+	ID                    uuid.UUID
+	OrganizationID        uuid.UUID
+	WorkspaceID           uuid.UUID
+	CurrentBuildVersionID uuid.UUID
+	Name                  string
+	Status                string
+	CreatedAt             time.Time
+	UpdatedAt             time.Time
+	LatestSnapshotID      *uuid.UUID
 }
 
 func (r *Repository) ListActiveAgentDeploymentsByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) ([]AgentDeploymentSummary, error) {
@@ -2331,14 +2332,15 @@ func (r *Repository) ListActiveAgentDeploymentsByWorkspaceID(ctx context.Context
 		}
 
 		deployments = append(deployments, AgentDeploymentSummary{
-			ID:               row.ID,
-			OrganizationID:   row.OrganizationID,
-			WorkspaceID:      row.WorkspaceID,
-			Name:             row.Name,
-			Status:           row.Status,
-			CreatedAt:        createdAt,
-			UpdatedAt:        updatedAt,
-			LatestSnapshotID: cloneUUIDPtr(row.LatestSnapshotID),
+			ID:                    row.ID,
+			OrganizationID:        row.OrganizationID,
+			WorkspaceID:           row.WorkspaceID,
+			CurrentBuildVersionID: row.CurrentBuildVersionID,
+			Name:                  row.Name,
+			Status:                row.Status,
+			CreatedAt:             createdAt,
+			UpdatedAt:             updatedAt,
+			LatestSnapshotID:      cloneUUIDPtr(row.LatestSnapshotID),
 		})
 	}
 

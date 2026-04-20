@@ -3,6 +3,7 @@ SELECT DISTINCT ON (ad.id)
     ad.id,
     ad.organization_id,
     ad.workspace_id,
+    ad.current_build_version_id,
     ad.name,
     ad.status,
     ad.created_at,

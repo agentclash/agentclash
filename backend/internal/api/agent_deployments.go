@@ -44,14 +44,15 @@ func (m *AgentDeploymentReadManager) ListAgentDeployments(ctx context.Context, w
 }
 
 type agentDeploymentResponse struct {
-	ID               uuid.UUID  `json:"id"`
-	OrganizationID   uuid.UUID  `json:"organization_id"`
-	WorkspaceID      uuid.UUID  `json:"workspace_id"`
-	Name             string     `json:"name"`
-	Status           string     `json:"status"`
-	LatestSnapshotID *uuid.UUID `json:"latest_snapshot_id,omitempty"`
-	CreatedAt        time.Time  `json:"created_at"`
-	UpdatedAt        time.Time  `json:"updated_at"`
+	ID                    uuid.UUID  `json:"id"`
+	OrganizationID        uuid.UUID  `json:"organization_id"`
+	WorkspaceID           uuid.UUID  `json:"workspace_id"`
+	CurrentBuildVersionID uuid.UUID  `json:"current_build_version_id"`
+	Name                  string     `json:"name"`
+	Status                string     `json:"status"`
+	LatestSnapshotID      *uuid.UUID `json:"latest_snapshot_id,omitempty"`
+	CreatedAt             time.Time  `json:"created_at"`
+	UpdatedAt             time.Time  `json:"updated_at"`
 }
 
 type listAgentDeploymentsResponse struct {
@@ -81,14 +82,15 @@ func listAgentDeploymentsHandler(logger *slog.Logger, service AgentDeploymentRea
 		responseItems := make([]agentDeploymentResponse, 0, len(result.Deployments))
 		for _, deployment := range result.Deployments {
 			responseItems = append(responseItems, agentDeploymentResponse{
-				ID:               deployment.ID,
-				OrganizationID:   deployment.OrganizationID,
-				WorkspaceID:      deployment.WorkspaceID,
-				Name:             deployment.Name,
-				Status:           deployment.Status,
-				LatestSnapshotID: deployment.LatestSnapshotID,
-				CreatedAt:        deployment.CreatedAt,
-				UpdatedAt:        deployment.UpdatedAt,
+				ID:                    deployment.ID,
+				OrganizationID:        deployment.OrganizationID,
+				WorkspaceID:           deployment.WorkspaceID,
+				CurrentBuildVersionID: deployment.CurrentBuildVersionID,
+				Name:                  deployment.Name,
+				Status:                deployment.Status,
+				LatestSnapshotID:      deployment.LatestSnapshotID,
+				CreatedAt:             deployment.CreatedAt,
+				UpdatedAt:             deployment.UpdatedAt,
 			})
 		}
 
