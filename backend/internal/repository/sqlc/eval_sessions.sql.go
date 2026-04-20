@@ -190,6 +190,57 @@ func (q *Queries) ListEvalSessions(ctx context.Context, arg ListEvalSessionsPara
 	return items, nil
 }
 
+const listEvalSessionsByWorkspaceID = `-- name: ListEvalSessionsByWorkspaceID :many
+SELECT id, status, repetitions, aggregation_config, success_threshold_config, routing_task_snapshot, schema_version, created_at, started_at, finished_at, updated_at
+FROM eval_sessions
+WHERE EXISTS (
+    SELECT 1
+    FROM runs
+    WHERE runs.eval_session_id = eval_sessions.id
+      AND runs.workspace_id = $1
+)
+ORDER BY created_at DESC, id DESC
+LIMIT $3 OFFSET $2
+`
+
+type ListEvalSessionsByWorkspaceIDParams struct {
+	WorkspaceID  uuid.UUID
+	ResultOffset int32
+	ResultLimit  int32
+}
+
+func (q *Queries) ListEvalSessionsByWorkspaceID(ctx context.Context, arg ListEvalSessionsByWorkspaceIDParams) ([]EvalSession, error) {
+	rows, err := q.db.Query(ctx, listEvalSessionsByWorkspaceID, arg.WorkspaceID, arg.ResultOffset, arg.ResultLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []EvalSession
+	for rows.Next() {
+		var i EvalSession
+		if err := rows.Scan(
+			&i.ID,
+			&i.Status,
+			&i.Repetitions,
+			&i.AggregationConfig,
+			&i.SuccessThresholdConfig,
+			&i.RoutingTaskSnapshot,
+			&i.SchemaVersion,
+			&i.CreatedAt,
+			&i.StartedAt,
+			&i.FinishedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listRunsByEvalSessionID = `-- name: ListRunsByEvalSessionID :many
 SELECT id, organization_id, workspace_id, challenge_pack_version_id, challenge_input_set_id, created_by_user_id, name, status, execution_mode, temporal_workflow_id, temporal_run_id, execution_plan, queued_at, started_at, finished_at, cancelled_at, failed_at, created_at, updated_at, official_pack_mode, eval_session_id
 FROM runs

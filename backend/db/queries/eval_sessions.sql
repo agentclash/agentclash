@@ -32,6 +32,18 @@ FROM eval_sessions
 ORDER BY created_at DESC, id DESC
 LIMIT @result_limit OFFSET @result_offset;
 
+-- name: ListEvalSessionsByWorkspaceID :many
+SELECT *
+FROM eval_sessions
+WHERE EXISTS (
+    SELECT 1
+    FROM runs
+    WHERE runs.eval_session_id = eval_sessions.id
+      AND runs.workspace_id = @workspace_id
+)
+ORDER BY created_at DESC, id DESC
+LIMIT @result_limit OFFSET @result_offset;
+
 -- name: UpdateEvalSessionStatus :one
 UPDATE eval_sessions
 SET status = @to_status,

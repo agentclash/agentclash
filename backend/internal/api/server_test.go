@@ -30,12 +30,20 @@ func (stubRunReadService) GetRun(_ context.Context, _ Caller, _ uuid.UUID) (GetR
 	return GetRunResult{}, errors.New("not implemented")
 }
 
+func (stubRunReadService) GetEvalSession(_ context.Context, _ Caller, _ uuid.UUID) (GetEvalSessionResult, error) {
+	return GetEvalSessionResult{}, errors.New("not implemented")
+}
+
 func (stubRunReadService) GetRunRanking(_ context.Context, _ Caller, _ uuid.UUID, _ GetRunRankingInput) (GetRunRankingResult, error) {
 	return GetRunRankingResult{}, errors.New("not implemented")
 }
 
 func (stubRunReadService) GenerateRunRankingInsights(_ context.Context, _ Caller, _ uuid.UUID, _ GenerateRunRankingInsightsInput) (GenerateRunRankingInsightsResult, error) {
 	return GenerateRunRankingInsightsResult{}, errors.New("not implemented")
+}
+
+func (stubRunReadService) ListEvalSessions(_ context.Context, _ Caller, _ ListEvalSessionsInput) (ListEvalSessionsResult, error) {
+	return ListEvalSessionsResult{}, errors.New("not implemented")
 }
 
 func (stubRunReadService) ListRunAgents(_ context.Context, _ Caller, _ uuid.UUID) (ListRunAgentsResult, error) {

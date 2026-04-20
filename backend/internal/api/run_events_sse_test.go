@@ -164,12 +164,20 @@ func (f *fakeSSERunReadService) GetRun(context.Context, Caller, uuid.UUID) (GetR
 	return GetRunResult{}, nil
 }
 
+func (f *fakeSSERunReadService) GetEvalSession(context.Context, Caller, uuid.UUID) (GetEvalSessionResult, error) {
+	return GetEvalSessionResult{}, nil
+}
+
 func (f *fakeSSERunReadService) GetRunRanking(context.Context, Caller, uuid.UUID, GetRunRankingInput) (GetRunRankingResult, error) {
 	return GetRunRankingResult{}, nil
 }
 
 func (f *fakeSSERunReadService) GenerateRunRankingInsights(context.Context, Caller, uuid.UUID, GenerateRunRankingInsightsInput) (GenerateRunRankingInsightsResult, error) {
 	return GenerateRunRankingInsightsResult{}, nil
+}
+
+func (f *fakeSSERunReadService) ListEvalSessions(context.Context, Caller, ListEvalSessionsInput) (ListEvalSessionsResult, error) {
+	return ListEvalSessionsResult{}, nil
 }
 
 func (f *fakeSSERunReadService) ListRunAgents(context.Context, Caller, uuid.UUID) (ListRunAgentsResult, error) {

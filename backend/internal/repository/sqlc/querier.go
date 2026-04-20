@@ -66,6 +66,7 @@ type Querier interface {
 	ListChallengeInputSetsByVersionID(ctx context.Context, arg ListChallengeInputSetsByVersionIDParams) ([]ListChallengeInputSetsByVersionIDRow, error)
 	ListChallengePacks(ctx context.Context) ([]ListChallengePacksRow, error)
 	ListEvalSessions(ctx context.Context, arg ListEvalSessionsParams) ([]EvalSession, error)
+	ListEvalSessionsByWorkspaceID(ctx context.Context, arg ListEvalSessionsByWorkspaceIDParams) ([]EvalSession, error)
 	ListJudgeResultsByRunAgentAndEvaluationSpec(ctx context.Context, arg ListJudgeResultsByRunAgentAndEvaluationSpecParams) ([]ListJudgeResultsByRunAgentAndEvaluationSpecRow, error)
 	ListLLMJudgeResultsByRunAgentAndEvaluationSpec(ctx context.Context, arg ListLLMJudgeResultsByRunAgentAndEvaluationSpecParams) ([]LlmJudgeResult, error)
 	ListMetricResultsByRunAgentAndEvaluationSpec(ctx context.Context, arg ListMetricResultsByRunAgentAndEvaluationSpecParams) ([]ListMetricResultsByRunAgentAndEvaluationSpecRow, error)

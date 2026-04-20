@@ -1841,6 +1841,50 @@ paths:
                 $ref: "#/components/schemas/CreateRunErrorResponse"
 
   /v1/eval-sessions:
+    get:
+      operationId: listEvalSessions
+      tags: [EvalSessions]
+      summary: List eval sessions for a workspace
+      description: >
+        Lists recent eval sessions for the requested workspace, including child-run
+        summary counts and aggregation-readiness warnings.
+      security:
+        - bearerJWT: []
+      parameters:
+        - in: query
+          name: workspace_id
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: limit
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - in: query
+          name: offset
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        "200":
+          description: Eval sessions for the workspace
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListEvalSessionsResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
     post:
       operationId: createEvalSession
       tags: [EvalSessions]
@@ -1884,6 +1928,43 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/EvalSessionValidationEnvelope"
+
+  /v1/eval-sessions/{evalSessionID}:
+    get:
+      operationId: getEvalSession
+      tags: [EvalSessions]
+      summary: Get eval session details
+      description: >
+        Returns the eval session, attached child runs, child-run summary counts,
+        and aggregation-readiness warnings for inspection workflows.
+      security:
+        - bearerJWT: []
+      parameters:
+        - in: path
+          name: evalSessionID
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Eval session details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EvalSessionDetail"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          description: Eval session not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
 
   /v1/runs/{runID}:
     get:
@@ -5061,6 +5142,143 @@ components:
           type: string
         message:
           type: string
+
+    ListEvalSessionsResponse:
+      type: object
+      required: [items, limit, offset]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/EvalSessionListItem"
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    EvalSessionListItem:
+      type: object
+      required: [eval_session, summary, aggregate_result, evidence_warnings]
+      properties:
+        eval_session:
+          $ref: "#/components/schemas/EvalSessionResponse"
+        summary:
+          $ref: "#/components/schemas/EvalSessionRunSummary"
+        aggregate_result:
+          $ref: "#/components/schemas/EvalSessionAggregateResult"
+        evidence_warnings:
+          type: array
+          items:
+            type: string
+
+    EvalSessionDetail:
+      type: object
+      required: [eval_session, runs, summary, aggregate_result, evidence_warnings]
+      properties:
+        eval_session:
+          $ref: "#/components/schemas/EvalSessionResponse"
+        runs:
+          type: array
+          items:
+            $ref: "#/components/schemas/EvalSessionChildRun"
+        summary:
+          $ref: "#/components/schemas/EvalSessionRunSummary"
+        aggregate_result:
+          $ref: "#/components/schemas/EvalSessionAggregateResult"
+        evidence_warnings:
+          type: array
+          items:
+            type: string
+
+    EvalSessionRunSummary:
+      type: object
+      required: [run_counts]
+      properties:
+        run_counts:
+          $ref: "#/components/schemas/EvalSessionRunCounts"
+
+    EvalSessionRunCounts:
+      type: object
+      required: [total, draft, queued, provisioning, running, scoring, completed, failed, cancelled]
+      properties:
+        total:
+          type: integer
+        draft:
+          type: integer
+        queued:
+          type: integer
+        provisioning:
+          type: integer
+        running:
+          type: integer
+        scoring:
+          type: integer
+        completed:
+          type: integer
+        failed:
+          type: integer
+        cancelled:
+          type: integer
+
+    EvalSessionAggregateResult:
+      description: Reserved for future aggregated session result documents. Null until aggregation persistence lands.
+      anyOf:
+        - type: object
+          additionalProperties: true
+        - type: "null"
+
+    EvalSessionChildRun:
+      type: object
+      required:
+        [id, workspace_id, challenge_pack_version_id, official_pack_mode, name, status, execution_mode, created_at, updated_at, links]
+      properties:
+        id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+          format: uuid
+        challenge_pack_version_id:
+          type: string
+          format: uuid
+        challenge_input_set_id:
+          type: string
+          format: uuid
+        eval_session_id:
+          type: string
+          format: uuid
+        official_pack_mode:
+          type: string
+          enum: [full, suite_only]
+        name:
+          type: string
+        status:
+          $ref: "#/components/schemas/RunStatus"
+        execution_mode:
+          type: string
+        queued_at:
+          type: string
+          format: date-time
+        started_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          format: date-time
+        cancelled_at:
+          type: string
+          format: date-time
+        failed_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        links:
+          $ref: "#/components/schemas/RunLinks"
 
     CreateRunResponse:
       type: object
