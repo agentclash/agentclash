@@ -17,6 +17,27 @@ func WithWorkspaceSecrets(ctx context.Context, secrets map[string]string) contex
 	return context.WithValue(ctx, workspaceSecretsKey{}, secrets)
 }
 
+func PrepareCredentialContext(ctx context.Context, credentialReference string, loadWorkspaceSecrets func() (map[string]string, error)) (context.Context, error) {
+	if !strings.HasPrefix(credentialReference, "workspace-secret://") {
+		return ctx, nil
+	}
+	if loadWorkspaceSecrets == nil {
+		return nil, NewFailure(
+			"",
+			FailureCodeCredentialUnavailable,
+			fmt.Sprintf("workspace secrets not available for %q", credentialReference),
+			false,
+			ErrCredentialUnavailable,
+		)
+	}
+
+	secrets, err := loadWorkspaceSecrets()
+	if err != nil {
+		return nil, err
+	}
+	return WithWorkspaceSecrets(ctx, secrets), nil
+}
+
 func workspaceSecretsFromContext(ctx context.Context) map[string]string {
 	if s, ok := ctx.Value(workspaceSecretsKey{}).(map[string]string); ok {
 		return s

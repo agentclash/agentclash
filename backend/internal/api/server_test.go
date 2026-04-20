@@ -30,6 +30,10 @@ func (stubRunReadService) GetRunRanking(_ context.Context, _ Caller, _ uuid.UUID
 	return GetRunRankingResult{}, errors.New("not implemented")
 }
 
+func (stubRunReadService) GenerateRunRankingInsights(_ context.Context, _ Caller, _ uuid.UUID, _ GenerateRunRankingInsightsInput) (GenerateRunRankingInsightsResult, error) {
+	return GenerateRunRankingInsightsResult{}, errors.New("not implemented")
+}
+
 func (stubRunReadService) ListRunAgents(_ context.Context, _ Caller, _ uuid.UUID) (ListRunAgentsResult, error) {
 	return ListRunAgentsResult{}, errors.New("not implemented")
 }

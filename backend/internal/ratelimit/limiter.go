@@ -5,6 +5,7 @@ import (
 	"math"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -14,10 +15,12 @@ import (
 
 // Config holds the rate limiting configuration.
 type Config struct {
-	DefaultRPS       float64
-	DefaultBurst     int
-	RunCreationRPM   float64
-	RunCreationBurst int
+	DefaultRPS           float64
+	DefaultBurst         int
+	RunCreationRPM       float64
+	RunCreationBurst     int
+	RankingInsightsRPM   float64
+	RankingInsightsBurst int
 }
 
 // limiterKey uniquely identifies a rate limiter by workspace and group.
@@ -118,6 +121,10 @@ func limiterForGroup(cfg Config, group string) *rate.Limiter {
 	if group == "run_creation" {
 		rps := cfg.RunCreationRPM / 60.0
 		return rate.NewLimiter(rate.Limit(rps), cfg.RunCreationBurst)
+	}
+	if group == "run_ranking_insights" || strings.HasPrefix(group, "run_ranking_insights:") {
+		rps := cfg.RankingInsightsRPM / 60.0
+		return rate.NewLimiter(rate.Limit(rps), cfg.RankingInsightsBurst)
 	}
 	return rate.NewLimiter(rate.Limit(cfg.DefaultRPS), cfg.DefaultBurst)
 }

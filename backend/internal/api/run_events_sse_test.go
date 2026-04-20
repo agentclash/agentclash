@@ -168,6 +168,10 @@ func (f *fakeSSERunReadService) GetRunRanking(context.Context, Caller, uuid.UUID
 	return GetRunRankingResult{}, nil
 }
 
+func (f *fakeSSERunReadService) GenerateRunRankingInsights(context.Context, Caller, uuid.UUID, GenerateRunRankingInsightsInput) (GenerateRunRankingInsightsResult, error) {
+	return GenerateRunRankingInsightsResult{}, nil
+}
+
 func (f *fakeSSERunReadService) ListRunAgents(context.Context, Caller, uuid.UUID) (ListRunAgentsResult, error) {
 	return ListRunAgentsResult{}, nil
 }

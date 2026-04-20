@@ -412,10 +412,20 @@ type fakeRunReadRepository struct {
 	regressionCoverageCases []repository.RunRegressionCoverageCase
 	runAgents               []domain.RunAgent
 	failureItems            []failurereview.Item
+	spendPolicies           []repository.SpendPolicyRow
+	providerAccount         repository.ProviderAccountRow
+	modelAlias              repository.ModelAliasRow
+	modelCatalogEntry       repository.ModelCatalogEntryRow
+	workspaceSecrets        map[string]string
 	getRunErr               error
 	getRunScorecardErr      error
 	listRunAgentsErr        error
 	listRunFailuresErr      error
+	getProviderAccountErr   error
+	getModelAliasErr        error
+	getModelCatalogErr      error
+	listSpendPoliciesErr    error
+	loadWorkspaceSecretsErr error
 }
 
 func (f *fakeRunReadRepository) GetRunByID(_ context.Context, _ uuid.UUID) (domain.Run, error) {
@@ -446,11 +456,33 @@ func (f *fakeRunReadRepository) CountRunsByWorkspaceID(_ context.Context, _ uuid
 	return 0, nil
 }
 
+func (f *fakeRunReadRepository) GetProviderAccountByID(_ context.Context, _ uuid.UUID) (repository.ProviderAccountRow, error) {
+	return f.providerAccount, f.getProviderAccountErr
+}
+
+func (f *fakeRunReadRepository) GetModelAliasByID(_ context.Context, _ uuid.UUID) (repository.ModelAliasRow, error) {
+	return f.modelAlias, f.getModelAliasErr
+}
+
+func (f *fakeRunReadRepository) GetModelCatalogEntryByID(_ context.Context, _ uuid.UUID) (repository.ModelCatalogEntryRow, error) {
+	return f.modelCatalogEntry, f.getModelCatalogErr
+}
+
+func (f *fakeRunReadRepository) ListSpendPoliciesByWorkspaceID(_ context.Context, _ uuid.UUID) ([]repository.SpendPolicyRow, error) {
+	return f.spendPolicies, f.listSpendPoliciesErr
+}
+
+func (f *fakeRunReadRepository) LoadWorkspaceSecrets(_ context.Context, _ uuid.UUID) (map[string]string, error) {
+	return f.workspaceSecrets, f.loadWorkspaceSecretsErr
+}
+
 type fakeRunReadService struct {
 	getRunResult          GetRunResult
 	getRunErr             error
 	getRunRankingResult   GetRunRankingResult
 	getRunRankingErr      error
+	insightsResult        GenerateRunRankingInsightsResult
+	insightsErr           error
 	listRunAgentsResult   ListRunAgentsResult
 	listRunAgentsErr      error
 	listRunFailuresResult ListRunFailuresResult
@@ -463,6 +495,10 @@ func (f *fakeRunReadService) GetRun(_ context.Context, _ Caller, _ uuid.UUID) (G
 
 func (f *fakeRunReadService) GetRunRanking(_ context.Context, _ Caller, _ uuid.UUID, _ GetRunRankingInput) (GetRunRankingResult, error) {
 	return f.getRunRankingResult, f.getRunRankingErr
+}
+
+func (f *fakeRunReadService) GenerateRunRankingInsights(_ context.Context, _ Caller, _ uuid.UUID, _ GenerateRunRankingInsightsInput) (GenerateRunRankingInsightsResult, error) {
+	return f.insightsResult, f.insightsErr
 }
 
 func (f *fakeRunReadService) ListRunAgents(_ context.Context, _ Caller, _ uuid.UUID) (ListRunAgentsResult, error) {

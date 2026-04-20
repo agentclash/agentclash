@@ -333,6 +333,8 @@ export interface ProviderAccount {
 export interface ModelAlias {
   id: string;
   workspace_id?: string;
+  provider_account_id?: string;
+  model_catalog_entry_id: string;
   alias_key: string;
   display_name: string;
   status: string;
@@ -546,6 +548,46 @@ export interface RankingItem {
     string,
     { state: string; score?: number; better_direction?: string }
   >;
+}
+
+export interface CreateRunRankingInsightsRequest {
+  provider_account_id: string;
+  model_alias_id: string;
+}
+
+export interface RunRankingInsightsResponse {
+  generated_at: string;
+  grounding_scope: string;
+  provider_key: string;
+  provider_model_id: string;
+  recommended_winner: RunRankingInsightCandidate;
+  why_it_won: string;
+  tradeoffs: string[];
+  best_for_reliability?: RunRankingInsightRecommendation;
+  best_for_cost?: RunRankingInsightRecommendation;
+  best_for_latency?: RunRankingInsightRecommendation;
+  model_summaries: RunRankingModelInsight[];
+  recommended_next_step: string;
+  confidence_notes: string;
+}
+
+export interface RunRankingInsightCandidate {
+  run_agent_id: string;
+  label: string;
+}
+
+export interface RunRankingInsightRecommendation {
+  run_agent_id: string;
+  label: string;
+  reason: string;
+}
+
+export interface RunRankingModelInsight {
+  run_agent_id: string;
+  label: string;
+  strongest_dimension: string;
+  weakest_dimension: string;
+  summary: string;
 }
 
 // --- Workspace Secrets ---

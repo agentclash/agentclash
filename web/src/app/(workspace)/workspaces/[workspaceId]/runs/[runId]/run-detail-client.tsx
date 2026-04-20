@@ -36,6 +36,7 @@ import {
 } from "lucide-react";
 import { ScorecardSummaryCard } from "./scorecard-summary-card";
 import { CompareRunPicker } from "./compare-run-picker";
+import { RunRankingInsightsCard } from "./run-ranking-insights-card";
 import { UploadArtifactDialog } from "@/components/artifacts/upload-artifact-dialog";
 
 // --- Status variant maps ---
@@ -572,6 +573,15 @@ export function RunDetailClient({
             </div>
           ) : ranking.ranking ? (
             <>
+              {run.status === "completed" &&
+              run.execution_mode === "comparison" ? (
+                <RunRankingInsightsCard
+                  workspaceId={workspaceId}
+                  run={run}
+                  ranking={ranking}
+                />
+              ) : null}
+
               {/* Sort pills — includes custom dimensions from ranking data */}
               {(() => {
                 const sortOptions = buildSortOptions(ranking);

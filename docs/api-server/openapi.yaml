@@ -1909,6 +1909,59 @@ paths:
               schema:
                 $ref: "#/components/schemas/RunRankingResponse"
 
+  /v1/runs/{runID}/ranking-insights:
+    post:
+      operationId: createRunRankingInsights
+      tags: [Runs]
+      summary: Generate ranking insights
+      description: >
+        Generates an advisory summary for a completed comparison run using the
+        selected workspace provider account and model alias. The output is
+        grounded only in the current run's ranking evidence.
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/RunID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRunRankingInsightsRequest"
+      responses:
+        "200":
+          description: Ranking insights generated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunRankingInsightsResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "429":
+          description: Insight generation or the selected provider is rate limited
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "502":
+          description: Selected provider failed to generate insights
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Selected provider is temporarily unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /v1/runs/{runID}/agents:
     get:
       operationId: listRunAgents
@@ -5442,6 +5495,104 @@ components:
           type: string
         ranking:
           $ref: "#/components/schemas/RunRankingPayload"
+
+    CreateRunRankingInsightsRequest:
+      type: object
+      required: [provider_account_id, model_alias_id]
+      properties:
+        provider_account_id:
+          type: string
+          format: uuid
+        model_alias_id:
+          type: string
+          format: uuid
+
+    RunRankingInsightsResponse:
+      type: object
+      required:
+        [
+          generated_at,
+          grounding_scope,
+          provider_key,
+          provider_model_id,
+          recommended_winner,
+          why_it_won,
+          tradeoffs,
+          model_summaries,
+          recommended_next_step,
+          confidence_notes,
+        ]
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        grounding_scope:
+          type: string
+        provider_key:
+          type: string
+        provider_model_id:
+          type: string
+        recommended_winner:
+          $ref: "#/components/schemas/RunRankingInsightCandidate"
+        why_it_won:
+          type: string
+        tradeoffs:
+          type: array
+          items:
+            type: string
+        best_for_reliability:
+          $ref: "#/components/schemas/RunRankingInsightRecommendation"
+        best_for_cost:
+          $ref: "#/components/schemas/RunRankingInsightRecommendation"
+        best_for_latency:
+          $ref: "#/components/schemas/RunRankingInsightRecommendation"
+        model_summaries:
+          type: array
+          items:
+            $ref: "#/components/schemas/RunRankingModelInsight"
+        recommended_next_step:
+          type: string
+        confidence_notes:
+          type: string
+
+    RunRankingInsightCandidate:
+      type: object
+      required: [run_agent_id, label]
+      properties:
+        run_agent_id:
+          type: string
+          format: uuid
+        label:
+          type: string
+
+    RunRankingInsightRecommendation:
+      type: object
+      required: [run_agent_id, label, reason]
+      properties:
+        run_agent_id:
+          type: string
+          format: uuid
+        label:
+          type: string
+        reason:
+          type: string
+
+    RunRankingModelInsight:
+      type: object
+      required:
+        [run_agent_id, label, strongest_dimension, weakest_dimension, summary]
+      properties:
+        run_agent_id:
+          type: string
+          format: uuid
+        label:
+          type: string
+        strongest_dimension:
+          type: string
+        weakest_dimension:
+          type: string
+        summary:
+          type: string
 
     RunRankingPayload:
       type: object

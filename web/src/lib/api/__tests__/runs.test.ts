@@ -388,4 +388,52 @@ describe("Runs API", () => {
 
     expect((result as typeof pendingResponse).state).toBe("pending");
   });
+
+  it("posts ranking insights generation for a completed comparison run", async () => {
+    const insights = {
+      generated_at: "2026-04-20T08:30:00Z",
+      grounding_scope: "current_run_only",
+      provider_key: "openai",
+      provider_model_id: "gpt-5.4-mini",
+      recommended_winner: {
+        run_agent_id: "agent-1",
+        label: "Alpha",
+      },
+      why_it_won: "Alpha delivered the best overall mix for this run.",
+      tradeoffs: ["Beta stayed close on latency."],
+      model_summaries: [
+        {
+          run_agent_id: "agent-1",
+          label: "Alpha",
+          strongest_dimension: "correctness",
+          weakest_dimension: "latency",
+          summary: "Strongest overall performer.",
+        },
+      ],
+      recommended_next_step: "Run a reliability-focused follow-up.",
+      confidence_notes: "Confidence is moderate.",
+    };
+    mockFetch.mockResolvedValueOnce(jsonResponse(insights));
+
+    const api = createApiClient("token");
+    const result = await api.post("/v1/runs/run-1/ranking-insights", {
+      provider_account_id: "pa-1",
+      model_alias_id: "alias-1",
+    });
+
+    expect(result).toEqual(insights);
+    expect(mockFetch).toHaveBeenCalledWith(
+      "http://localhost:8080/v1/runs/run-1/ranking-insights",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          Authorization: "Bearer token",
+        }),
+        body: JSON.stringify({
+          provider_account_id: "pa-1",
+          model_alias_id: "alias-1",
+        }),
+      }),
+    );
+  });
 });
