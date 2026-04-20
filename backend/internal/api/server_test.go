@@ -20,6 +20,10 @@ func (stubRunCreationService) CreateRun(_ context.Context, _ Caller, _ CreateRun
 	return CreateRunResult{}, errors.New("not implemented")
 }
 
+func (stubRunCreationService) CreateEvalSession(_ context.Context, _ Caller, _ CreateEvalSessionInput) (CreateEvalSessionResult, error) {
+	return CreateEvalSessionResult{}, errors.New("not implemented")
+}
+
 type stubRunReadService struct{}
 
 func (stubRunReadService) GetRun(_ context.Context, _ Caller, _ uuid.UUID) (GetRunResult, error) {

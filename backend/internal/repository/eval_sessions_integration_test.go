@@ -559,6 +559,179 @@ func TestRepositorySupportsSingleRepetitionEvalSession(t *testing.T) {
 	}
 }
 
+func TestRepositoryCreateEvalSessionWithQueuedRunsCreatesAttachedChildren(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	result, err := repo.CreateEvalSessionWithQueuedRuns(ctx, repository.CreateEvalSessionWithQueuedRunsParams{
+		Session: repository.CreateEvalSessionParams{
+			Repetitions:            2,
+			AggregationConfig:      []byte(`{"schema_version":1,"method":"mean","report_variance":true,"confidence_interval":0.95}`),
+			SuccessThresholdConfig: []byte(`{"schema_version":1}`),
+			RoutingTaskSnapshot:    []byte(`{"schema_version":1,"routing":{"mode":"single_agent"},"task":{"pack_version":"v1"}}`),
+			SchemaVersion:          1,
+		},
+		Runs: []repository.CreateQueuedRunParams{
+			{
+				OrganizationID:         fixture.organizationID,
+				WorkspaceID:            fixture.workspaceID,
+				ChallengePackVersionID: fixture.challengePackVersionID,
+				ChallengeInputSetID:    &fixture.challengeInputSetID,
+				OfficialPackMode:       domain.OfficialPackModeFull,
+				CreatedByUserID:        &fixture.userID,
+				Name:                   "Repeated Eval [1/2]",
+				ExecutionMode:          "single_agent",
+				ExecutionPlan:          []byte(`{"participants":[{"lane_index":0}]}`),
+				RunAgents: []repository.CreateQueuedRunAgentParams{
+					{
+						AgentDeploymentID:         fixture.agentDeploymentID,
+						AgentDeploymentSnapshotID: fixture.agentDeploymentSnapshotID,
+						LaneIndex:                 0,
+						Label:                     "primary",
+					},
+				},
+				CaseSelections: []repository.CreateQueuedRunCaseSelectionParams{
+					{
+						ChallengeIdentityID: fixture.firstChallengeIdentityID,
+						SelectionOrigin:     repository.RunCaseSelectionOriginOfficial,
+						SelectionRank:       1,
+					},
+				},
+			},
+			{
+				OrganizationID:         fixture.organizationID,
+				WorkspaceID:            fixture.workspaceID,
+				ChallengePackVersionID: fixture.challengePackVersionID,
+				ChallengeInputSetID:    &fixture.challengeInputSetID,
+				OfficialPackMode:       domain.OfficialPackModeFull,
+				CreatedByUserID:        &fixture.userID,
+				Name:                   "Repeated Eval [2/2]",
+				ExecutionMode:          "single_agent",
+				ExecutionPlan:          []byte(`{"participants":[{"lane_index":0}]}`),
+				RunAgents: []repository.CreateQueuedRunAgentParams{
+					{
+						AgentDeploymentID:         fixture.agentDeploymentID,
+						AgentDeploymentSnapshotID: fixture.agentDeploymentSnapshotID,
+						LaneIndex:                 0,
+						Label:                     "primary",
+					},
+				},
+				CaseSelections: []repository.CreateQueuedRunCaseSelectionParams{
+					{
+						ChallengeIdentityID: fixture.firstChallengeIdentityID,
+						SelectionOrigin:     repository.RunCaseSelectionOriginOfficial,
+						SelectionRank:       1,
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateEvalSessionWithQueuedRuns returned error: %v", err)
+	}
+
+	if result.Session.Status != domain.EvalSessionStatusQueued {
+		t.Fatalf("session status = %s, want queued", result.Session.Status)
+	}
+	if len(result.Runs) != 2 {
+		t.Fatalf("child run count = %d, want 2", len(result.Runs))
+	}
+	for _, run := range result.Runs {
+		if run.EvalSessionID == nil || *run.EvalSessionID != result.Session.ID {
+			t.Fatalf("run eval_session_id = %v, want %s", run.EvalSessionID, result.Session.ID)
+		}
+	}
+
+	withRuns, err := repo.GetEvalSessionWithRuns(ctx, result.Session.ID)
+	if err != nil {
+		t.Fatalf("GetEvalSessionWithRuns returned error: %v", err)
+	}
+	if len(withRuns.Runs) != 2 {
+		t.Fatalf("persisted child run count = %d, want 2", len(withRuns.Runs))
+	}
+	if !jsonEqual(withRuns.Session.AggregationConfig.Document, []byte(`{"schema_version":1,"method":"mean","report_variance":true,"confidence_interval":0.95}`)) {
+		t.Fatalf("aggregation config = %s, want preserved snapshot", withRuns.Session.AggregationConfig.Document)
+	}
+}
+
+func TestRepositoryCreateEvalSessionWithQueuedRunsRollsBackOnInvalidChildRun(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	_, err := repo.CreateEvalSessionWithQueuedRuns(ctx, repository.CreateEvalSessionWithQueuedRunsParams{
+		Session: repository.CreateEvalSessionParams{
+			Repetitions:            2,
+			AggregationConfig:      []byte(`{"schema_version":1,"method":"mean","report_variance":true,"confidence_interval":0.95}`),
+			SuccessThresholdConfig: []byte(`{"schema_version":1}`),
+			RoutingTaskSnapshot:    []byte(`{"schema_version":1,"routing":{"mode":"single_agent"},"task":{"pack_version":"v1"}}`),
+			SchemaVersion:          1,
+		},
+		Runs: []repository.CreateQueuedRunParams{
+			{
+				OrganizationID:         fixture.organizationID,
+				WorkspaceID:            fixture.workspaceID,
+				ChallengePackVersionID: fixture.challengePackVersionID,
+				ChallengeInputSetID:    &fixture.challengeInputSetID,
+				OfficialPackMode:       domain.OfficialPackModeFull,
+				CreatedByUserID:        &fixture.userID,
+				Name:                   "Repeated Eval [1/2]",
+				ExecutionMode:          "single_agent",
+				ExecutionPlan:          []byte(`{"participants":[{"lane_index":0}]}`),
+				RunAgents: []repository.CreateQueuedRunAgentParams{
+					{
+						AgentDeploymentID:         fixture.agentDeploymentID,
+						AgentDeploymentSnapshotID: fixture.agentDeploymentSnapshotID,
+						LaneIndex:                 0,
+						Label:                     "primary",
+					},
+				},
+			},
+			{
+				OrganizationID:         fixture.organizationID,
+				WorkspaceID:            fixture.workspaceID,
+				ChallengePackVersionID: fixture.challengePackVersionID,
+				ChallengeInputSetID:    &fixture.challengeInputSetID,
+				OfficialPackMode:       domain.OfficialPackModeFull,
+				CreatedByUserID:        &fixture.userID,
+				Name:                   "Repeated Eval [2/2]",
+				ExecutionMode:          "single_agent",
+				ExecutionPlan:          []byte(`{"participants":[{"lane_index":0}]}`),
+				RunAgents: []repository.CreateQueuedRunAgentParams{
+					{
+						AgentDeploymentID:         fixture.agentDeploymentID,
+						AgentDeploymentSnapshotID: fixture.agentDeploymentSnapshotID,
+						LaneIndex:                 0,
+						Label:                     "",
+					},
+				},
+			},
+		},
+	})
+	if err == nil {
+		t.Fatal("expected child run validation error")
+	}
+
+	sessions, listErr := repo.ListEvalSessions(ctx, 10, 0)
+	if listErr != nil {
+		t.Fatalf("ListEvalSessions returned error: %v", listErr)
+	}
+	if len(sessions) != 0 {
+		t.Fatalf("eval session count after rollback = %d, want 0", len(sessions))
+	}
+
+	var attachedRunCount int
+	if err := db.QueryRow(ctx, `SELECT count(*) FROM runs WHERE eval_session_id IS NOT NULL`).Scan(&attachedRunCount); err != nil {
+		t.Fatalf("count attached runs returned error: %v", err)
+	}
+	if attachedRunCount != 0 {
+		t.Fatalf("attached run count after rollback = %d, want 0", attachedRunCount)
+	}
+}
+
 func TestRepositoryListEvalSessionsHonorsOrderingPaginationAndEmptyResult(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)

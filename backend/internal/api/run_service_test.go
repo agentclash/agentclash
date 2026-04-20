@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -224,6 +225,154 @@ func TestRunCreationManagerRejectsChallengePackVersionNotFound(t *testing.T) {
 	}
 	if validationErr.Code != "invalid_challenge_pack_version_id" {
 		t.Fatalf("validation code = %q, want invalid_challenge_pack_version_id", validationErr.Code)
+	}
+}
+
+func TestRunCreationManagerCreateEvalSessionCreatesQueuedRuns(t *testing.T) {
+	workspaceID := uuid.New()
+	challengePackVersionID := uuid.New()
+	challengeInputSetID := uuid.New()
+	buildVersionID := uuid.New()
+	deploymentID := uuid.New()
+	sessionID := uuid.New()
+	firstRunID := uuid.New()
+	secondRunID := uuid.New()
+	caller := Caller{
+		UserID: uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: "workspace_member"},
+		},
+	}
+
+	repo := &fakeRunCreationRepository{
+		challengePackVersion: repository.RunnableChallengePackVersion{ID: challengePackVersionID},
+		challengeInputSets: []repository.ChallengeInputSetSummary{
+			{ID: challengeInputSetID, ChallengePackVersionID: challengePackVersionID},
+		},
+		challengeIdentityIDs: []uuid.UUID{uuid.New(), uuid.New()},
+		deploymentsByBuildVersion: []repository.BuildVersionRunnableDeployment{
+			{
+				AgentBuildVersionID: buildVersionID,
+				Deployment: repository.RunnableDeployment{
+					ID:                        deploymentID,
+					OrganizationID:            uuid.New(),
+					WorkspaceID:               workspaceID,
+					Name:                      "Support Agent Deployment",
+					AgentDeploymentSnapshotID: uuid.New(),
+				},
+			},
+		},
+		createEvalSessionWithRunsResult: repository.CreateEvalSessionWithQueuedRunsResult{
+			Session: domain.EvalSession{
+				ID:            sessionID,
+				Status:        domain.EvalSessionStatusQueued,
+				Repetitions:   2,
+				SchemaVersion: 1,
+			},
+			Runs: []domain.Run{
+				{ID: firstRunID, EvalSessionID: &sessionID},
+				{ID: secondRunID, EvalSessionID: &sessionID},
+			},
+		},
+	}
+	manager := NewRunCreationManager(NewCallerWorkspaceAuthorizer(), repo, &fakeRunWorkflowStarter{}, nil)
+	manager.now = func() time.Time {
+		return time.Date(2026, 4, 20, 12, 0, 0, 0, time.UTC)
+	}
+
+	result, err := manager.CreateEvalSession(context.Background(), caller, CreateEvalSessionInput{
+		WorkspaceID:            workspaceID,
+		ChallengePackVersionID: challengePackVersionID,
+		Participants: []EvalSessionParticipantInput{
+			{AgentBuildVersionID: buildVersionID, Label: "Primary"},
+		},
+		ExecutionMode: "single_agent",
+		Name:          "Repeated support eval",
+		EvalSession: CreateEvalSessionConfigInput{
+			Repetitions: 2,
+			Aggregation: EvalSessionAggregationInput{
+				Method:             "mean",
+				ReportVariance:     true,
+				ConfidenceInterval: 0.95,
+			},
+			RoutingTaskSnapshot: EvalSessionRoutingTaskSnapshotInput{
+				Routing: json.RawMessage(`{"mode":"single_agent"}`),
+				Task:    json.RawMessage(`{"pack_version":"v1"}`),
+			},
+			SchemaVersion: 1,
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateEvalSession returned error: %v", err)
+	}
+
+	if result.Session.ID != sessionID {
+		t.Fatalf("session id = %s, want %s", result.Session.ID, sessionID)
+	}
+	if len(result.RunIDs) != 2 || result.RunIDs[0] != firstRunID || result.RunIDs[1] != secondRunID {
+		t.Fatalf("run ids = %v, want [%s %s]", result.RunIDs, firstRunID, secondRunID)
+	}
+	if repo.createEvalSessionWithRunsParams == nil {
+		t.Fatal("expected CreateEvalSessionWithQueuedRuns to be called")
+	}
+	if len(repo.createEvalSessionWithRunsParams.Runs) != 2 {
+		t.Fatalf("queued run count = %d, want 2", len(repo.createEvalSessionWithRunsParams.Runs))
+	}
+	if repo.createEvalSessionWithRunsParams.Runs[0].ExecutionMode != "single_agent" {
+		t.Fatalf("execution mode = %q, want single_agent", repo.createEvalSessionWithRunsParams.Runs[0].ExecutionMode)
+	}
+	if repo.createEvalSessionWithRunsParams.Runs[0].Name != "Repeated support eval [1/2]" {
+		t.Fatalf("first run name = %q, want repeated session suffix", repo.createEvalSessionWithRunsParams.Runs[0].Name)
+	}
+	if repo.createEvalSessionWithRunsParams.Session.Repetitions != 2 {
+		t.Fatalf("session repetitions = %d, want 2", repo.createEvalSessionWithRunsParams.Session.Repetitions)
+	}
+}
+
+func TestRunCreationManagerCreateEvalSessionRejectsUnresolvedBuildVersion(t *testing.T) {
+	workspaceID := uuid.New()
+	challengePackVersionID := uuid.New()
+	manager := NewRunCreationManager(NewCallerWorkspaceAuthorizer(), &fakeRunCreationRepository{
+		challengePackVersion: repository.RunnableChallengePackVersion{ID: challengePackVersionID},
+		challengeInputSets:   nil,
+	}, &fakeRunWorkflowStarter{}, nil)
+
+	_, err := manager.CreateEvalSession(context.Background(), Caller{
+		UserID: uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: "workspace_member"},
+		},
+	}, CreateEvalSessionInput{
+		WorkspaceID:            workspaceID,
+		ChallengePackVersionID: challengePackVersionID,
+		Participants: []EvalSessionParticipantInput{
+			{AgentBuildVersionID: uuid.New(), Label: "Primary"},
+		},
+		ExecutionMode: "single_agent",
+		EvalSession: CreateEvalSessionConfigInput{
+			Repetitions: 1,
+			Aggregation: EvalSessionAggregationInput{
+				Method:             "mean",
+				ReportVariance:     true,
+				ConfidenceInterval: 0.95,
+			},
+			RoutingTaskSnapshot: EvalSessionRoutingTaskSnapshotInput{
+				Routing: json.RawMessage(`{"mode":"single_agent"}`),
+				Task:    json.RawMessage(`{"pack_version":"v1"}`),
+			},
+			SchemaVersion: 1,
+		},
+	})
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+
+	var validationErr evalSessionValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("error = %v, want evalSessionValidationError", err)
+	}
+	if len(validationErr.Errors) != 1 || validationErr.Errors[0].Code != "participants.agent_build_version_id.unresolved" {
+		t.Fatalf("validation errors = %+v, want unresolved participant build version", validationErr.Errors)
 	}
 }
 
@@ -1018,18 +1167,21 @@ func TestRunCreationManagerSkipsInactiveSuiteCasesWhenExpandingSelections(t *tes
 }
 
 type fakeRunCreationRepository struct {
-	challengePackVersion    repository.RunnableChallengePackVersion
-	challengePackVersionErr error
-	challengeInputSet       repository.ChallengeInputSet
-	challengeInputSetErr    error
-	challengeInputSets      []repository.ChallengeInputSetSummary
-	challengeIdentityIDs    []uuid.UUID
-	deployments             []repository.RunnableDeployment
-	regressionSuites        map[uuid.UUID]repository.RegressionSuite
-	regressionCasesBySuite  map[uuid.UUID][]repository.RegressionCase
-	regressionCases         map[uuid.UUID]repository.RegressionCase
-	createResult            repository.CreateQueuedRunResult
-	createParams            *repository.CreateQueuedRunParams
+	challengePackVersion           repository.RunnableChallengePackVersion
+	challengePackVersionErr        error
+	challengeInputSet              repository.ChallengeInputSet
+	challengeInputSetErr           error
+	challengeInputSets             []repository.ChallengeInputSetSummary
+	challengeIdentityIDs           []uuid.UUID
+	deployments                    []repository.RunnableDeployment
+	deploymentsByBuildVersion      []repository.BuildVersionRunnableDeployment
+	regressionSuites               map[uuid.UUID]repository.RegressionSuite
+	regressionCasesBySuite         map[uuid.UUID][]repository.RegressionCase
+	regressionCases                map[uuid.UUID]repository.RegressionCase
+	createResult                   repository.CreateQueuedRunResult
+	createParams                   *repository.CreateQueuedRunParams
+	createEvalSessionWithRunsResult repository.CreateEvalSessionWithQueuedRunsResult
+	createEvalSessionWithRunsParams *repository.CreateEvalSessionWithQueuedRunsParams
 }
 
 func (f *fakeRunCreationRepository) GetRunnableChallengePackVersionByID(_ context.Context, _ uuid.UUID) (repository.RunnableChallengePackVersion, error) {
@@ -1050,6 +1202,10 @@ func (f *fakeRunCreationRepository) ListChallengeIdentityIDsByPackVersionID(_ co
 
 func (f *fakeRunCreationRepository) ListRunnableDeploymentsWithLatestSnapshot(_ context.Context, _ uuid.UUID, _ []uuid.UUID) ([]repository.RunnableDeployment, error) {
 	return f.deployments, nil
+}
+
+func (f *fakeRunCreationRepository) ListRunnableDeploymentsByBuildVersionID(_ context.Context, _ uuid.UUID, _ []uuid.UUID) ([]repository.BuildVersionRunnableDeployment, error) {
+	return append([]repository.BuildVersionRunnableDeployment(nil), f.deploymentsByBuildVersion...), nil
 }
 
 func (f *fakeRunCreationRepository) GetRegressionSuiteByID(_ context.Context, id uuid.UUID) (repository.RegressionSuite, error) {
@@ -1074,6 +1230,12 @@ func (f *fakeRunCreationRepository) CreateQueuedRun(_ context.Context, params re
 	cloned := params
 	f.createParams = &cloned
 	return f.createResult, nil
+}
+
+func (f *fakeRunCreationRepository) CreateEvalSessionWithQueuedRuns(_ context.Context, params repository.CreateEvalSessionWithQueuedRunsParams) (repository.CreateEvalSessionWithQueuedRunsResult, error) {
+	cloned := params
+	f.createEvalSessionWithRunsParams = &cloned
+	return f.createEvalSessionWithRunsResult, nil
 }
 
 type fakeRunWorkflowStarter struct {

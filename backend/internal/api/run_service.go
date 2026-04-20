@@ -20,10 +20,12 @@ type RunCreationRepository interface {
 	ListChallengeInputSetsByVersionID(ctx context.Context, challengePackVersionID uuid.UUID) ([]repository.ChallengeInputSetSummary, error)
 	ListChallengeIdentityIDsByPackVersionID(ctx context.Context, challengePackVersionID uuid.UUID) ([]uuid.UUID, error)
 	ListRunnableDeploymentsWithLatestSnapshot(ctx context.Context, workspaceID uuid.UUID, deploymentIDs []uuid.UUID) ([]repository.RunnableDeployment, error)
+	ListRunnableDeploymentsByBuildVersionID(ctx context.Context, workspaceID uuid.UUID, buildVersionIDs []uuid.UUID) ([]repository.BuildVersionRunnableDeployment, error)
 	GetRegressionSuiteByID(ctx context.Context, id uuid.UUID) (repository.RegressionSuite, error)
 	ListRegressionCasesBySuiteID(ctx context.Context, suiteID uuid.UUID) ([]repository.RegressionCase, error)
 	GetRegressionCaseByID(ctx context.Context, id uuid.UUID) (repository.RegressionCase, error)
 	CreateQueuedRun(ctx context.Context, params repository.CreateQueuedRunParams) (repository.CreateQueuedRunResult, error)
+	CreateEvalSessionWithQueuedRuns(ctx context.Context, params repository.CreateEvalSessionWithQueuedRunsParams) (repository.CreateEvalSessionWithQueuedRunsResult, error)
 }
 
 type RunWorkflowStarter interface {

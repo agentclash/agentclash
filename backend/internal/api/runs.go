@@ -20,6 +20,7 @@ const maxCreateRunRequestBytes = 1 << 20
 
 type RunCreationService interface {
 	CreateRun(ctx context.Context, caller Caller, input CreateRunInput) (CreateRunResult, error)
+	CreateEvalSession(ctx context.Context, caller Caller, input CreateEvalSessionInput) (CreateEvalSessionResult, error)
 }
 
 type createRunRequest struct {

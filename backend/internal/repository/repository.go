@@ -438,17 +438,8 @@ func (r *Repository) ListRunnableDeploymentsWithLatestSnapshot(
 }
 
 func (r *Repository) CreateQueuedRun(ctx context.Context, params CreateQueuedRunParams) (CreateQueuedRunResult, error) {
-	if params.Name == "" {
-		return CreateQueuedRunResult{}, ErrRunNameRequired
-	}
-	if params.OfficialPackMode == "" {
-		params.OfficialPackMode = domain.OfficialPackModeFull
-	}
-	if len(params.RunAgents) == 0 {
-		return CreateQueuedRunResult{}, ErrRunParticipantsRequired
-	}
-	if params.ExecutionMode != "single_agent" && params.ExecutionMode != "comparison" {
-		return CreateQueuedRunResult{}, ErrInvalidExecutionMode
+	if err := validateCreateQueuedRunParams(params); err != nil {
+		return CreateQueuedRunResult{}, err
 	}
 
 	tx, err := r.db.Begin(ctx)
@@ -457,8 +448,45 @@ func (r *Repository) CreateQueuedRun(ctx context.Context, params CreateQueuedRun
 	}
 	defer rollback(ctx, tx)
 
-	queries := r.queries.WithTx(tx)
-	queuedAt := pgtype.Timestamptz{Time: time.Now().UTC(), Valid: true}
+	result, err := createQueuedRunWithQueries(ctx, r.queries.WithTx(tx), params, time.Now().UTC())
+	if err != nil {
+		return CreateQueuedRunResult{}, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return CreateQueuedRunResult{}, fmt.Errorf("commit queued run creation: %w", err)
+	}
+
+	return result, nil
+}
+
+func validateCreateQueuedRunParams(params CreateQueuedRunParams) error {
+	if params.Name == "" {
+		return ErrRunNameRequired
+	}
+	if params.OfficialPackMode == "" {
+		params.OfficialPackMode = domain.OfficialPackModeFull
+	}
+	if len(params.RunAgents) == 0 {
+		return ErrRunParticipantsRequired
+	}
+	if params.ExecutionMode != "single_agent" && params.ExecutionMode != "comparison" {
+		return ErrInvalidExecutionMode
+	}
+	return nil
+}
+
+func createQueuedRunWithQueries(
+	ctx context.Context,
+	queries *repositorysqlc.Queries,
+	params CreateQueuedRunParams,
+	queuedAt time.Time,
+) (CreateQueuedRunResult, error) {
+	if params.OfficialPackMode == "" {
+		params.OfficialPackMode = domain.OfficialPackModeFull
+	}
+
+	queuedAtValue := pgtype.Timestamptz{Time: queuedAt.UTC(), Valid: true}
 	executionPlan := cloneJSON(params.ExecutionPlan)
 	if len(executionPlan) == 0 {
 		executionPlan = json.RawMessage(`{}`)
@@ -475,7 +503,7 @@ func (r *Repository) CreateQueuedRun(ctx context.Context, params CreateQueuedRun
 		Status:                 string(domain.RunStatusQueued),
 		ExecutionMode:          params.ExecutionMode,
 		ExecutionPlan:          executionPlan,
-		QueuedAt:               queuedAt,
+		QueuedAt:               queuedAtValue,
 	})
 	if err != nil {
 		return CreateQueuedRunResult{}, fmt.Errorf("create run: %w", err)
@@ -519,7 +547,7 @@ func (r *Repository) CreateQueuedRun(ctx context.Context, params CreateQueuedRun
 			LaneIndex:                 runAgent.LaneIndex,
 			Label:                     runAgent.Label,
 			Status:                    string(domain.RunAgentStatusQueued),
-			QueuedAt:                  queuedAt,
+			QueuedAt:                  queuedAtValue,
 		})
 		if createErr != nil {
 			return CreateQueuedRunResult{}, fmt.Errorf("create run agent lane %d: %w", runAgent.LaneIndex, createErr)
@@ -545,10 +573,6 @@ func (r *Repository) CreateQueuedRun(ctx context.Context, params CreateQueuedRun
 	run, err := mapRun(runRow)
 	if err != nil {
 		return CreateQueuedRunResult{}, fmt.Errorf("map run: %w", err)
-	}
-
-	if err := tx.Commit(ctx); err != nil {
-		return CreateQueuedRunResult{}, fmt.Errorf("commit queued run creation: %w", err)
 	}
 
 	return CreateQueuedRunResult{
