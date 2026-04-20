@@ -293,7 +293,7 @@ beforeEach(() => {
 });
 
 describe("CreateEvalSessionDialog", () => {
-  it("submits a repeated-eval request using deployment build version ids", async () => {
+  it("submits a repeated-eval request using deployment ids", async () => {
     const api = buildApiMock();
     mockCreateApiClient.mockReturnValue(api);
 
@@ -321,7 +321,7 @@ describe("CreateEvalSessionDialog", () => {
         execution_mode: "single_agent",
         participants: [
           {
-            agent_build_version_id: "build-version-1",
+            agent_deployment_id: "deploy-1",
             label: "Primary Agent",
           },
         ],
@@ -378,7 +378,7 @@ describe("CreateEvalSessionDialog", () => {
     }
   });
 
-  it("disables deployments whose build version is shared by another active deployment", async () => {
+  it("allows selecting deployments even when they share a build version", async () => {
     const api = buildApiMock(201, {
       deployments: [
         {
@@ -411,17 +411,11 @@ describe("CreateEvalSessionDialog", () => {
       changeSelect(findSelectForLabel("Challenge Pack"), "pack-1");
       await flushPromises();
 
-      expect(findCheckboxByLabel("Primary Agent").disabled).toBe(true);
-      expect(findCheckboxByLabel("Primary Agent Copy").disabled).toBe(true);
+      expect(findCheckboxByLabel("Primary Agent").disabled).toBe(false);
+      expect(findCheckboxByLabel("Primary Agent Copy").disabled).toBe(false);
       expect(findCheckboxByLabel("Unique Agent").disabled).toBe(false);
-      expect(document.body.textContent).toContain(
-        "unavailable for eval sessions because their current build version is shared by another active deployment",
-      );
-      expect(document.body.textContent).toContain(
-        "Unavailable: this build version is active on 2 deployments in this workspace",
-      );
 
-      clickElement(findCheckboxByLabel("Unique Agent"));
+      clickElement(findCheckboxByLabel("Primary Agent"));
       await flushPromises();
 
       clickElement(findButton("Create Eval Session"));
@@ -429,20 +423,30 @@ describe("CreateEvalSessionDialog", () => {
       await waitFor(() => {
         expect(api.postWithMeta).toHaveBeenCalledTimes(1);
       });
+
+      const [, request] = api.postWithMeta.mock.calls[0];
+      expect(request).toMatchObject({
+        participants: [
+          {
+            agent_deployment_id: "deploy-1",
+            label: "Primary Agent",
+          },
+        ],
+      });
     } finally {
       view.cleanup();
     }
   });
 
-  it("maps participant build-version ambiguity to a clearer toast", async () => {
+  it("maps unresolved deployment errors to a clearer toast", async () => {
     const api = buildApiMock(422, {
       responseData: {
         errors: [
           {
-            field: "participants[0].agent_build_version_id",
-            code: "participants.agent_build_version_id.ambiguous",
+            field: "participants[0].agent_deployment_id",
+            code: "participants.agent_deployment_id.unresolved",
             message:
-              "agent_build_version_id resolved to multiple active deployments in the selected workspace",
+              "agent_deployment_id must reference an active deployment with a snapshot in the selected workspace",
           },
         ],
       },
@@ -467,7 +471,7 @@ describe("CreateEvalSessionDialog", () => {
       });
 
       expect(toast.error).toHaveBeenCalledWith(
-        "One or more selected deployments are unavailable because their current build version is shared by multiple active deployments in this workspace.",
+        "One or more selected deployments are no longer active or available in this workspace. Refresh the dialog and choose another deployment.",
       );
     } finally {
       view.cleanup();

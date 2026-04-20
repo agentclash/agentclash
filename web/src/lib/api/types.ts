@@ -530,7 +530,8 @@ export interface EvalSessionResponse {
 }
 
 export interface EvalSessionParticipantInput {
-  agent_build_version_id: string;
+  agent_deployment_id: string;
+  agent_build_version_id?: string;
   label: string;
 }
 

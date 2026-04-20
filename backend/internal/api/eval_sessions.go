@@ -26,6 +26,7 @@ type createEvalSessionRequest struct {
 }
 
 type createEvalSessionParticipant struct {
+	AgentDeploymentID   string `json:"agent_deployment_id"`
 	AgentBuildVersionID string `json:"agent_build_version_id"`
 	Label               string `json:"label"`
 }
@@ -211,13 +212,36 @@ func decodeCreateEvalSessionRequest(_ context.Context, r *http.Request) (CreateE
 
 	participants := make([]EvalSessionParticipantInput, 0, len(body.Participants))
 	for _, participant := range body.Participants {
-		buildVersionID, parseErr := parseRequiredUUID(participant.AgentBuildVersionID, "participants.agent_build_version_id", "invalid_participants")
-		if parseErr != nil {
+		var deploymentID *uuid.UUID
+		if strings.TrimSpace(participant.AgentDeploymentID) != "" {
+			parsedDeploymentID, parseErr := parseRequiredUUID(participant.AgentDeploymentID, "participants.agent_deployment_id", "invalid_participants")
+			if parseErr != nil {
+				return CreateEvalSessionInput{}, RunCreationValidationError{
+					Code:    "invalid_participants",
+					Message: "participants must contain valid agent_deployment_id values",
+				}
+			}
+			deploymentID = &parsedDeploymentID
+		}
+
+		var buildVersionID *uuid.UUID
+		if deploymentID == nil && strings.TrimSpace(participant.AgentBuildVersionID) != "" {
+			parsedBuildVersionID, parseErr := parseRequiredUUID(participant.AgentBuildVersionID, "participants.agent_build_version_id", "invalid_participants")
+			if parseErr != nil {
+				return CreateEvalSessionInput{}, RunCreationValidationError{
+					Code:    "invalid_participants",
+					Message: "participants must contain valid agent_deployment_id values",
+				}
+			}
+			buildVersionID = &parsedBuildVersionID
+		}
+		if deploymentID == nil && buildVersionID == nil {
 			return CreateEvalSessionInput{}, RunCreationValidationError{
 				Code:    "invalid_participants",
-				Message: "participants must contain valid agent_build_version_id values",
+				Message: "participants must contain valid agent_deployment_id values",
 			}
 		}
+
 		label := strings.TrimSpace(participant.Label)
 		if label == "" {
 			return CreateEvalSessionInput{}, RunCreationValidationError{
@@ -226,6 +250,7 @@ func decodeCreateEvalSessionRequest(_ context.Context, r *http.Request) (CreateE
 			}
 		}
 		participants = append(participants, EvalSessionParticipantInput{
+			AgentDeploymentID:   deploymentID,
 			AgentBuildVersionID: buildVersionID,
 			Label:               label,
 		})

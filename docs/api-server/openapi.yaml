@@ -4945,11 +4945,17 @@ components:
 
     CreateEvalSessionParticipant:
       type: object
-      required: [agent_build_version_id, label]
+      required: [agent_deployment_id, label]
       properties:
+        agent_deployment_id:
+          type: string
+          format: uuid
+          description: Exact deployment to run as this eval-session participant.
         agent_build_version_id:
           type: string
           format: uuid
+          deprecated: true
+          description: Deprecated compatibility field. Prefer `agent_deployment_id`.
         label:
           type: string
           minLength: 1

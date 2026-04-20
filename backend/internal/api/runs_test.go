@@ -316,7 +316,7 @@ func TestCreateEvalSessionEndpointReturnsCreated(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/v1/eval-sessions", bytes.NewBufferString(`{
 		"workspace_id":"`+workspaceID.String()+`",
 		"challenge_pack_version_id":"`+uuid.New().String()+`",
-		"participants":[{"agent_build_version_id":"`+uuid.New().String()+`","label":"Primary"}],
+		"participants":[{"agent_deployment_id":"`+uuid.New().String()+`","label":"Primary"}],
 		"execution_mode":"single_agent",
 		"eval_session":{
 			"repetitions":2,
@@ -375,6 +375,9 @@ func TestCreateEvalSessionEndpointReturnsCreated(t *testing.T) {
 	if service.evalSessionInput.WorkspaceID != workspaceID {
 		t.Fatalf("workspace id = %s, want %s", service.evalSessionInput.WorkspaceID, workspaceID)
 	}
+	if len(service.evalSessionInput.Participants) != 1 || service.evalSessionInput.Participants[0].AgentDeploymentID == nil {
+		t.Fatalf("participants = %+v, want one participant deployment id", service.evalSessionInput.Participants)
+	}
 }
 
 func TestCreateEvalSessionEndpointRejectsWeightedMeanWithoutWeights(t *testing.T) {
@@ -382,7 +385,7 @@ func TestCreateEvalSessionEndpointRejectsWeightedMeanWithoutWeights(t *testing.T
 	req := httptest.NewRequest(http.MethodPost, "/v1/eval-sessions", bytes.NewBufferString(`{
 		"workspace_id":"`+workspaceID.String()+`",
 		"challenge_pack_version_id":"`+uuid.New().String()+`",
-		"participants":[{"agent_build_version_id":"`+uuid.New().String()+`","label":"Primary"}],
+		"participants":[{"agent_deployment_id":"`+uuid.New().String()+`","label":"Primary"}],
 		"execution_mode":"single_agent",
 		"eval_session":{
 			"repetitions":2,
@@ -462,7 +465,7 @@ func TestCreateEvalSessionEndpointAcceptsAggregationReliabilityWeight(t *testing
 	req := httptest.NewRequest(http.MethodPost, "/v1/eval-sessions", bytes.NewBufferString(`{
 		"workspace_id":"`+workspaceID.String()+`",
 		"challenge_pack_version_id":"`+uuid.New().String()+`",
-		"participants":[{"agent_build_version_id":"`+uuid.New().String()+`","label":"Primary"}],
+		"participants":[{"agent_deployment_id":"`+uuid.New().String()+`","label":"Primary"}],
 		"execution_mode":"single_agent",
 		"eval_session":{
 			"repetitions":2,
@@ -520,7 +523,7 @@ func TestCreateEvalSessionEndpointRejectsInvalidAggregationReliabilityWeight(t *
 	req := httptest.NewRequest(http.MethodPost, "/v1/eval-sessions", bytes.NewBufferString(`{
 		"workspace_id":"`+workspaceID.String()+`",
 		"challenge_pack_version_id":"`+uuid.New().String()+`",
-		"participants":[{"agent_build_version_id":"`+uuid.New().String()+`","label":"Primary"}],
+		"participants":[{"agent_deployment_id":"`+uuid.New().String()+`","label":"Primary"}],
 		"execution_mode":"single_agent",
 		"eval_session":{
 			"repetitions":2,
@@ -598,7 +601,7 @@ func TestCreateEvalSessionEndpointAcceptsNullOptionalObjects(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/v1/eval-sessions", bytes.NewBufferString(`{
 		"workspace_id":"`+workspaceID.String()+`",
 		"challenge_pack_version_id":"`+uuid.New().String()+`",
-		"participants":[{"agent_build_version_id":"`+uuid.New().String()+`","label":"Primary"}],
+		"participants":[{"agent_deployment_id":"`+uuid.New().String()+`","label":"Primary"}],
 		"execution_mode":"single_agent",
 		"eval_session":{
 			"repetitions":2,

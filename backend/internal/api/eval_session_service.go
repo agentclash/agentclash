@@ -14,7 +14,8 @@ import (
 )
 
 type EvalSessionParticipantInput struct {
-	AgentBuildVersionID uuid.UUID
+	AgentDeploymentID   *uuid.UUID
+	AgentBuildVersionID *uuid.UUID
 	Label               string
 }
 
@@ -160,30 +161,77 @@ func (m *RunCreationManager) CreateEvalSession(ctx context.Context, caller Calle
 		}
 	}
 
+	uniqueDeploymentIDs := make([]uuid.UUID, 0, len(input.Participants))
+	seenDeploymentIDs := make(map[uuid.UUID]struct{}, len(input.Participants))
 	uniqueBuildVersionIDs := make([]uuid.UUID, 0, len(input.Participants))
 	seenBuildVersionIDs := make(map[uuid.UUID]struct{}, len(input.Participants))
 	for _, participant := range input.Participants {
-		if _, ok := seenBuildVersionIDs[participant.AgentBuildVersionID]; ok {
+		if participant.AgentDeploymentID != nil {
+			if _, ok := seenDeploymentIDs[*participant.AgentDeploymentID]; ok {
+				continue
+			}
+			seenDeploymentIDs[*participant.AgentDeploymentID] = struct{}{}
+			uniqueDeploymentIDs = append(uniqueDeploymentIDs, *participant.AgentDeploymentID)
 			continue
 		}
-		seenBuildVersionIDs[participant.AgentBuildVersionID] = struct{}{}
-		uniqueBuildVersionIDs = append(uniqueBuildVersionIDs, participant.AgentBuildVersionID)
+		if participant.AgentBuildVersionID != nil {
+			if _, ok := seenBuildVersionIDs[*participant.AgentBuildVersionID]; ok {
+				continue
+			}
+			seenBuildVersionIDs[*participant.AgentBuildVersionID] = struct{}{}
+			uniqueBuildVersionIDs = append(uniqueBuildVersionIDs, *participant.AgentBuildVersionID)
+		}
 	}
 
-	deploymentsByBuildVersion, err := m.repo.ListRunnableDeploymentsByBuildVersionID(ctx, input.WorkspaceID, uniqueBuildVersionIDs)
-	if err != nil {
-		return CreateEvalSessionResult{}, fmt.Errorf("list runnable deployments by build version id: %w", err)
+	deploymentsByID := make(map[uuid.UUID]repository.RunnableDeployment, len(uniqueDeploymentIDs))
+	if len(uniqueDeploymentIDs) > 0 {
+		deployments, err := m.repo.ListRunnableDeploymentsWithLatestSnapshot(ctx, input.WorkspaceID, uniqueDeploymentIDs)
+		if err != nil {
+			return CreateEvalSessionResult{}, fmt.Errorf("list runnable deployments with latest snapshot: %w", err)
+		}
+		for _, deployment := range deployments {
+			deploymentsByID[deployment.ID] = deployment
+		}
 	}
 
-	groupedDeployments := make(map[uuid.UUID][]repository.RunnableDeployment, len(deploymentsByBuildVersion))
-	for _, item := range deploymentsByBuildVersion {
-		groupedDeployments[item.AgentBuildVersionID] = append(groupedDeployments[item.AgentBuildVersionID], item.Deployment)
+	groupedDeployments := make(map[uuid.UUID][]repository.RunnableDeployment, len(uniqueBuildVersionIDs))
+	if len(uniqueBuildVersionIDs) > 0 {
+		deploymentsByBuildVersion, err := m.repo.ListRunnableDeploymentsByBuildVersionID(ctx, input.WorkspaceID, uniqueBuildVersionIDs)
+		if err != nil {
+			return CreateEvalSessionResult{}, fmt.Errorf("list runnable deployments by build version id: %w", err)
+		}
+		for _, item := range deploymentsByBuildVersion {
+			groupedDeployments[item.AgentBuildVersionID] = append(groupedDeployments[item.AgentBuildVersionID], item.Deployment)
+		}
 	}
 
 	participantDetails := make([]evalSessionValidationDetail, 0)
 	participantDeployments := make([]repository.RunnableDeployment, 0, len(input.Participants))
 	for idx, participant := range input.Participants {
-		candidates := groupedDeployments[participant.AgentBuildVersionID]
+		if participant.AgentDeploymentID != nil {
+			deployment, ok := deploymentsByID[*participant.AgentDeploymentID]
+			if !ok {
+				participantDetails = append(participantDetails, evalSessionValidationDetail{
+					Field:   fmt.Sprintf("participants[%d].agent_deployment_id", idx),
+					Code:    "participants.agent_deployment_id.unresolved",
+					Message: "agent_deployment_id must reference an active deployment with a snapshot in the selected workspace",
+				})
+				continue
+			}
+			participantDeployments = append(participantDeployments, deployment)
+			continue
+		}
+
+		if participant.AgentBuildVersionID == nil {
+			participantDetails = append(participantDetails, evalSessionValidationDetail{
+				Field:   fmt.Sprintf("participants[%d]", idx),
+				Code:    "invalid_participants",
+				Message: "participants must include agent_deployment_id",
+			})
+			continue
+		}
+
+		candidates := groupedDeployments[*participant.AgentBuildVersionID]
 		switch len(candidates) {
 		case 0:
 			participantDetails = append(participantDetails, evalSessionValidationDetail{

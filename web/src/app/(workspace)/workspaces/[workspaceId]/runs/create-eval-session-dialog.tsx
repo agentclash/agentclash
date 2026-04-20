@@ -45,33 +45,15 @@ function collectTaskProperties(
   return Object.keys(properties).length > 0 ? properties : undefined;
 }
 
-function buildVersionCountsByDeployment(
-  deployments: AgentDeployment[],
-): Record<string, number> {
-  return deployments.reduce<Record<string, number>>((counts, deployment) => {
-    counts[deployment.current_build_version_id] =
-      (counts[deployment.current_build_version_id] ?? 0) + 1;
-    return counts;
-  }, {});
-}
-
 function formatValidationMessage(
   errors: EvalSessionValidationDetail[],
 ): string | null {
   if (
     errors.some(
-      (error) => error.code === "participants.agent_build_version_id.ambiguous",
+      (error) => error.code === "participants.agent_deployment_id.unresolved",
     )
   ) {
-    return "One or more selected deployments are unavailable because their current build version is shared by multiple active deployments in this workspace.";
-  }
-
-  if (
-    errors.some(
-      (error) => error.code === "participants.agent_build_version_id.unresolved",
-    )
-  ) {
-    return "One or more selected deployments are no longer eligible for eval sessions in this workspace. Refresh the dialog and choose another deployment.";
+    return "One or more selected deployments are no longer active or available in this workspace. Refresh the dialog and choose another deployment.";
   }
 
   return null;
@@ -118,44 +100,6 @@ export function CreateEvalSessionDialog({
   const deploymentById = Object.fromEntries(
     deployments.map((deployment) => [deployment.id, deployment]),
   );
-  const deploymentBuildVersionCounts = buildVersionCountsByDeployment(deployments);
-  const ambiguousDeploymentIds = new Set(
-    deployments
-      .filter(
-        (deployment) =>
-          (deploymentBuildVersionCounts[deployment.current_build_version_id] ?? 0) > 1,
-      )
-      .map((deployment) => deployment.id),
-  );
-  const ambiguousDeploymentCount = deployments.filter((deployment) =>
-    ambiguousDeploymentIds.has(deployment.id),
-  ).length;
-
-  useEffect(() => {
-    const buildVersionCounts = buildVersionCountsByDeployment(deployments);
-    const eligibleDeploymentIds = new Set<string>();
-    for (const deployment of deployments) {
-      if ((buildVersionCounts[deployment.current_build_version_id] ?? 0) === 1) {
-        eligibleDeploymentIds.add(deployment.id);
-      }
-    }
-
-    setSelectedDeploymentIds((current) => {
-      const next = current.filter((deploymentId) =>
-        eligibleDeploymentIds.has(deploymentId),
-      );
-      return next.length === current.length ? current : next;
-    });
-
-    setParticipantLabels((current) => {
-      const nextEntries = Object.entries(current).filter(([deploymentId]) =>
-        eligibleDeploymentIds.has(deploymentId),
-      );
-      return nextEntries.length === Object.keys(current).length
-        ? current
-        : Object.fromEntries(nextEntries);
-    });
-  }, [deployments]);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -268,7 +212,7 @@ export function CreateEvalSessionDialog({
 
   function toggleDeployment(deploymentId: string) {
     const deployment = deploymentById[deploymentId];
-    if (!deployment || ambiguousDeploymentIds.has(deploymentId)) return;
+    if (!deployment) return;
 
     setSelectedDeploymentIds((current) =>
       current.includes(deploymentId)
@@ -348,8 +292,7 @@ export function CreateEvalSessionDialog({
       challenge_pack_version_id: selectedVersionId,
       challenge_input_set_id: inputSetId.trim() || undefined,
       participants: selectedDeploymentIds.map((deploymentId) => ({
-        agent_build_version_id:
-          deploymentById[deploymentId].current_build_version_id,
+        agent_deployment_id: deploymentId,
         label: participantLabels[deploymentId]?.trim() || deploymentById[deploymentId].name,
       })),
       execution_mode:
@@ -519,27 +462,13 @@ export function CreateEvalSessionDialog({
             <div>
               <h3 className="text-sm font-medium">Participants</h3>
               <p className="mt-1 text-sm text-muted-foreground">
-                Select one or more active deployments. The current build version for each deployment will be used as the eval-session participant.
+                Select one or more active deployments. The exact deployments you pick here will be used as eval-session participants.
               </p>
             </div>
 
             <div className="space-y-3">
-              {ambiguousDeploymentCount > 0 ? (
-                <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-foreground">
-                  {ambiguousDeploymentCount} active deployment
-                  {ambiguousDeploymentCount === 1 ? " is" : "s are"} unavailable
-                  for eval sessions because {ambiguousDeploymentCount === 1 ? "its" : "their"}{" "}
-                  current build version is shared by another active deployment in this
-                  workspace. Pause or archive the duplicate deployment, or move one of
-                  them to a newer build version.
-                </div>
-              ) : null}
-
               {deployments.map((deployment) => {
                 const checked = selectedDeploymentIds.includes(deployment.id);
-                const duplicateCount =
-                  deploymentBuildVersionCounts[deployment.current_build_version_id] ?? 0;
-                const isAmbiguous = duplicateCount > 1;
                 return (
                   <div
                     key={deployment.id}
@@ -550,18 +479,10 @@ export function CreateEvalSessionDialog({
                         type="checkbox"
                         checked={checked}
                         onChange={() => toggleDeployment(deployment.id)}
-                        disabled={isAmbiguous}
                         className="size-4 rounded border-border accent-primary"
                       />
                       <span>{deployment.name}</span>
                     </label>
-                    {isAmbiguous ? (
-                      <p className="mt-2 text-xs text-muted-foreground">
-                        Unavailable: this build version is active on {duplicateCount}{" "}
-                        deployments in this workspace, so the system can not tell which
-                        deployment you meant.
-                      </p>
-                    ) : null}
                     {checked ? (
                       <div className="mt-3">
                         <label className="mb-1.5 block text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">

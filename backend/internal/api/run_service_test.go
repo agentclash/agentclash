@@ -232,7 +232,6 @@ func TestRunCreationManagerCreateEvalSessionCreatesQueuedRuns(t *testing.T) {
 	workspaceID := uuid.New()
 	challengePackVersionID := uuid.New()
 	challengeInputSetID := uuid.New()
-	buildVersionID := uuid.New()
 	deploymentID := uuid.New()
 	sessionID := uuid.New()
 	firstRunID := uuid.New()
@@ -250,16 +249,13 @@ func TestRunCreationManagerCreateEvalSessionCreatesQueuedRuns(t *testing.T) {
 			{ID: challengeInputSetID, ChallengePackVersionID: challengePackVersionID},
 		},
 		challengeIdentityIDs: []uuid.UUID{uuid.New(), uuid.New()},
-		deploymentsByBuildVersion: []repository.BuildVersionRunnableDeployment{
+		deployments: []repository.RunnableDeployment{
 			{
-				AgentBuildVersionID: buildVersionID,
-				Deployment: repository.RunnableDeployment{
-					ID:                        deploymentID,
-					OrganizationID:            uuid.New(),
-					WorkspaceID:               workspaceID,
-					Name:                      "Support Agent Deployment",
-					AgentDeploymentSnapshotID: uuid.New(),
-				},
+				ID:                        deploymentID,
+				OrganizationID:            uuid.New(),
+				WorkspaceID:               workspaceID,
+				Name:                      "Support Agent Deployment",
+				AgentDeploymentSnapshotID: uuid.New(),
 			},
 		},
 		createEvalSessionWithRunsResult: repository.CreateEvalSessionWithQueuedRunsResult{
@@ -284,7 +280,7 @@ func TestRunCreationManagerCreateEvalSessionCreatesQueuedRuns(t *testing.T) {
 		WorkspaceID:            workspaceID,
 		ChallengePackVersionID: challengePackVersionID,
 		Participants: []EvalSessionParticipantInput{
-			{AgentBuildVersionID: buildVersionID, Label: "Primary"},
+			{AgentDeploymentID: &deploymentID, Label: "Primary"},
 		},
 		ExecutionMode: "single_agent",
 		Name:          "Repeated support eval",
@@ -333,7 +329,6 @@ func TestRunCreationManagerCreateEvalSessionStartsEvalSessionWorkflow(t *testing
 	workspaceID := uuid.New()
 	challengePackVersionID := uuid.New()
 	challengeInputSetID := uuid.New()
-	buildVersionID := uuid.New()
 	deploymentID := uuid.New()
 	sessionID := uuid.New()
 	caller := Caller{
@@ -349,16 +344,13 @@ func TestRunCreationManagerCreateEvalSessionStartsEvalSessionWorkflow(t *testing
 			{ID: challengeInputSetID, ChallengePackVersionID: challengePackVersionID},
 		},
 		challengeIdentityIDs: []uuid.UUID{uuid.New()},
-		deploymentsByBuildVersion: []repository.BuildVersionRunnableDeployment{
+		deployments: []repository.RunnableDeployment{
 			{
-				AgentBuildVersionID: buildVersionID,
-				Deployment: repository.RunnableDeployment{
-					ID:                        deploymentID,
-					OrganizationID:            uuid.New(),
-					WorkspaceID:               workspaceID,
-					Name:                      "Support Agent Deployment",
-					AgentDeploymentSnapshotID: uuid.New(),
-				},
+				ID:                        deploymentID,
+				OrganizationID:            uuid.New(),
+				WorkspaceID:               workspaceID,
+				Name:                      "Support Agent Deployment",
+				AgentDeploymentSnapshotID: uuid.New(),
 			},
 		},
 		createEvalSessionWithRunsResult: repository.CreateEvalSessionWithQueuedRunsResult{
@@ -381,7 +373,7 @@ func TestRunCreationManagerCreateEvalSessionStartsEvalSessionWorkflow(t *testing
 		WorkspaceID:            workspaceID,
 		ChallengePackVersionID: challengePackVersionID,
 		Participants: []EvalSessionParticipantInput{
-			{AgentBuildVersionID: buildVersionID, Label: "Primary"},
+			{AgentDeploymentID: &deploymentID, Label: "Primary"},
 		},
 		ExecutionMode: "single_agent",
 		EvalSession: CreateEvalSessionConfigInput{
@@ -410,7 +402,6 @@ func TestRunCreationManagerCreateEvalSessionPersistsAggregationReliabilityWeight
 	workspaceID := uuid.New()
 	challengePackVersionID := uuid.New()
 	challengeInputSetID := uuid.New()
-	buildVersionID := uuid.New()
 	deploymentID := uuid.New()
 	sessionID := uuid.New()
 	caller := Caller{
@@ -426,16 +417,13 @@ func TestRunCreationManagerCreateEvalSessionPersistsAggregationReliabilityWeight
 			{ID: challengeInputSetID, ChallengePackVersionID: challengePackVersionID},
 		},
 		challengeIdentityIDs: []uuid.UUID{uuid.New()},
-		deploymentsByBuildVersion: []repository.BuildVersionRunnableDeployment{
+		deployments: []repository.RunnableDeployment{
 			{
-				AgentBuildVersionID: buildVersionID,
-				Deployment: repository.RunnableDeployment{
-					ID:                        deploymentID,
-					OrganizationID:            uuid.New(),
-					WorkspaceID:               workspaceID,
-					Name:                      "Support Agent Deployment",
-					AgentDeploymentSnapshotID: uuid.New(),
-				},
+				ID:                        deploymentID,
+				OrganizationID:            uuid.New(),
+				WorkspaceID:               workspaceID,
+				Name:                      "Support Agent Deployment",
+				AgentDeploymentSnapshotID: uuid.New(),
 			},
 		},
 		createEvalSessionWithRunsResult: repository.CreateEvalSessionWithQueuedRunsResult{
@@ -458,7 +446,7 @@ func TestRunCreationManagerCreateEvalSessionPersistsAggregationReliabilityWeight
 		WorkspaceID:            workspaceID,
 		ChallengePackVersionID: challengePackVersionID,
 		Participants: []EvalSessionParticipantInput{
-			{AgentBuildVersionID: buildVersionID, Label: "Primary"},
+			{AgentDeploymentID: &deploymentID, Label: "Primary"},
 		},
 		ExecutionMode: "single_agent",
 		EvalSession: CreateEvalSessionConfigInput{
@@ -484,9 +472,10 @@ func TestRunCreationManagerCreateEvalSessionPersistsAggregationReliabilityWeight
 	}
 }
 
-func TestRunCreationManagerCreateEvalSessionRejectsUnresolvedBuildVersion(t *testing.T) {
+func TestRunCreationManagerCreateEvalSessionRejectsUnresolvedDeployment(t *testing.T) {
 	workspaceID := uuid.New()
 	challengePackVersionID := uuid.New()
+	missingDeploymentID := uuid.New()
 	manager := NewRunCreationManager(NewCallerWorkspaceAuthorizer(), &fakeRunCreationRepository{
 		challengePackVersion: repository.RunnableChallengePackVersion{ID: challengePackVersionID},
 		challengeInputSets:   nil,
@@ -501,7 +490,7 @@ func TestRunCreationManagerCreateEvalSessionRejectsUnresolvedBuildVersion(t *tes
 		WorkspaceID:            workspaceID,
 		ChallengePackVersionID: challengePackVersionID,
 		Participants: []EvalSessionParticipantInput{
-			{AgentBuildVersionID: uuid.New(), Label: "Primary"},
+			{AgentDeploymentID: &missingDeploymentID, Label: "Primary"},
 		},
 		ExecutionMode: "single_agent",
 		EvalSession: CreateEvalSessionConfigInput{
@@ -526,8 +515,8 @@ func TestRunCreationManagerCreateEvalSessionRejectsUnresolvedBuildVersion(t *tes
 	if !errors.As(err, &validationErr) {
 		t.Fatalf("error = %v, want evalSessionValidationError", err)
 	}
-	if len(validationErr.Errors) != 1 || validationErr.Errors[0].Code != "participants.agent_build_version_id.unresolved" {
-		t.Fatalf("validation errors = %+v, want unresolved participant build version", validationErr.Errors)
+	if len(validationErr.Errors) != 1 || validationErr.Errors[0].Code != "participants.agent_deployment_id.unresolved" {
+		t.Fatalf("validation errors = %+v, want unresolved participant deployment", validationErr.Errors)
 	}
 }
 
