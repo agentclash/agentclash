@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-AgentClash is an open-source race engine that pits AI models against each other on real tasks with live scoring. It's a monorepo with a Go backend (API server + Temporal worker) and a Next.js 16 frontend.
+AgentClash is an open-source race engine that pits AI models against each other on real tasks with live scoring. It's a monorepo with a Go backend (API server + Temporal worker), a Go CLI (`cli/`, Cobra — also distributed as the `agentclash` npm package), and a Next.js 16 frontend.
 
 ## Commands
 
@@ -18,6 +18,19 @@ cd backend && go vet ./...         # Static analysis
 cd backend && go test -short -race -count=1 ./...          # Run tests (CI mode)
 cd backend && go test -short -race -count=1 ./internal/engine -run TestName  # Single test
 cd backend && sqlc generate        # Regenerate DB code from SQL queries
+```
+
+### CLI (Go)
+
+`cli/` is a separate Go module — run commands from inside that directory.
+
+```bash
+cd cli && go build ./...                                  # Build
+cd cli && go vet ./...                                    # Static analysis
+cd cli && go test -short -race -count=1 ./...             # Run tests
+cd cli && ~/go/bin/govulncheck ./...                      # Vuln scan (install once: go install golang.org/x/vuln/cmd/govulncheck@latest)
+cd cli && go run . --help                                 # Run locally against $AGENTCLASH_API_URL (default http://localhost:8080)
+cd cli && go run github.com/goreleaser/goreleaser/v2 release --snapshot --clean   # Local release rehearsal into cli/dist/
 ```
 
 ### Frontend (Next.js)
@@ -79,7 +92,7 @@ Authorization is data-aware — it happens in the manager after loading the reso
 
 ### Provider Router
 
-`backend/internal/provider/` uses an adapter pattern. Each LLM provider (OpenAI, Anthropic, Gemini, OpenRouter, Mistral) implements the `Client` interface. The `Router` dispatches by provider name. Providers normalize tool call shapes and classify errors into provider-agnostic failure codes.
+`backend/internal/provider/` uses an adapter pattern. Each LLM provider (OpenAI, Anthropic, Gemini, xAI, OpenRouter, Mistral) implements the `Client` interface. The `Router` dispatches by provider name. Providers normalize tool call shapes and classify errors into provider-agnostic failure codes. Adapter registrations are wired in `backend/cmd/worker/main.go`.
 
 ### Sandbox Abstraction
 
@@ -103,7 +116,7 @@ Production uses WorkOS AuthKit. Local dev uses `AUTH_MODE=dev` which reads `X-De
 
 ## Key Conventions
 
-- Go module path: `github.com/agentclash/agentclash/backend`
+- Go module paths: `github.com/agentclash/agentclash/backend` and `github.com/agentclash/agentclash/cli`. Two separate modules — migrations and refactors must touch both and run builds/tests from each directory.
 - Migrations: goose format (`-- +goose Up` / `-- +goose Down`) in `backend/db/migrations/`
 - All dependencies are constructor-injected; no global state
 - Optional services default to noop implementations (see `newRouter()` in routes.go)
@@ -132,3 +145,11 @@ When you add, modify, or remove a backend API route in `backend/internal/api/`:
 
 - Next.js waitlist routes (`web/src/app/api/waitlist/`) — separate frontend service
 - Internal Temporal workflow contracts — not HTTP APIs
+
+## CLI Distribution
+
+The `agentclash` CLI ships through five channels from a single GoReleaser build: GitHub Releases, Homebrew cask, Winget manifest, POSIX/PowerShell install scripts, and npm.
+
+- Release trigger: any `v*` tag runs `.github/workflows/release-cli.yml`. GoReleaser builds and uploads release assets first; the `publish-npm` job then assembles and publishes platform + root npm packages with Trusted Publishing + `--provenance`. A `smoke-npm` matrix installs on ubuntu/macOS/Windows and asserts `agentclash version`.
+- npm layout: a root `agentclash` wrapper (`npm/cli/`) plus six `@agentclash/cli-<os>-<arch>` platform packages wired via `optionalDependencies` (no postinstall). Binaries come from `scripts/publish-npm/assemble.mjs` reading GoReleaser's `dist/`; idempotent republish on rerun via `scripts/publish-npm/publish-one.sh`.
+- Full maintainer recipe (first-publish bootstrap for Trusted Publishing, local rehearsal, uninstall) lives in `docs/cli-distribution.md`.
