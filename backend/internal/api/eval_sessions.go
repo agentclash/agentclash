@@ -332,6 +332,7 @@ func decodeEvalSessionAggregation(raw json.RawMessage) (EvalSessionAggregationIn
 		Method             json.RawMessage `json:"method"`
 		ReportVariance     json.RawMessage `json:"report_variance"`
 		ConfidenceInterval json.RawMessage `json:"confidence_interval"`
+		ReliabilityWeight  json.RawMessage `json:"reliability_weight"`
 	}
 
 	var body aggregationRequest
@@ -371,10 +372,25 @@ func decodeEvalSessionAggregation(raw json.RawMessage) (EvalSessionAggregationIn
 		})
 	}
 
+	var reliabilityWeight *float64
+	if len(bytes.TrimSpace(body.ReliabilityWeight)) > 0 {
+		value, ok := decodeRequiredFloat64(body.ReliabilityWeight)
+		if !ok || value < 0 || value > 1 {
+			details = append(details, evalSessionValidationDetail{
+				Field:   "eval_session.aggregation.reliability_weight",
+				Code:    "eval_session.aggregation.reliability_weight.invalid",
+				Message: "aggregation.reliability_weight must be a float between 0 and 1",
+			})
+		} else {
+			reliabilityWeight = &value
+		}
+	}
+
 	return EvalSessionAggregationInput{
 		Method:             method,
 		ReportVariance:     reportVariance,
 		ConfidenceInterval: confidenceInterval,
+		ReliabilityWeight:  reliabilityWeight,
 	}, details
 }
 

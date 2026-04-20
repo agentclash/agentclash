@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -106,6 +107,64 @@ func TestRunReadManagerGetEvalSessionReturnsStoredAggregateResult(t *testing.T) 
 	}
 	if !slices.Equal(result.EvidenceWarnings, []string{"partial evidence warning"}) {
 		t.Fatalf("evidence warnings = %v, want persisted warnings only", result.EvidenceWarnings)
+	}
+}
+
+func TestRunReadManagerGetEvalSessionReturnsStoredNoisyComparisonAggregateAsIs(t *testing.T) {
+	workspaceID := uuid.New()
+	sessionID := uuid.New()
+	caller := Caller{
+		UserID: uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: "workspace_member"},
+		},
+	}
+
+	payload := []byte(`{
+		"schema_version":1,
+		"child_run_count":3,
+		"scored_child_count":3,
+		"participants":[
+			{"lane_index":0,"label":"Alpha","pass_at_k":{"effective_k":3,"by_k":{"3":{"n":3,"mean":0.57,"median":0.57,"std_dev":0.1,"min":0.4,"max":0.7,"high_variance":false,"high_variance_rule":"stddev/abs(mean)>0.15_or_range>0.10"}}},"metric_routing":{"source":"manual_override","reliability_weight":0.6,"reasoning":"manual override","primary_metric":"pass_pow_k","effective_k":3,"composite_agent_score":0.44}},
+			{"lane_index":1,"label":"Beta","pass_at_k":{"effective_k":3,"by_k":{"3":{"n":3,"mean":0.55,"median":0.55,"std_dev":0.1,"min":0.4,"max":0.7,"high_variance":false,"high_variance_rule":"stddev/abs(mean)>0.15_or_range>0.10"}}},"metric_routing":{"source":"manual_override","reliability_weight":0.6,"reasoning":"manual override","primary_metric":"pass_pow_k","effective_k":3,"composite_agent_score":0.43}}
+		],
+		"comparison":{"status":"no_clear_winner","reason_code":"interval_overlap","compared_metric":"pass_pow_k","effective_k":3}
+	}`)
+
+	manager := NewRunReadManager(NewCallerWorkspaceAuthorizer(), &fakeRunReadRepository{
+		evalSession: repository.EvalSessionWithRuns{
+			Session: domain.EvalSession{
+				ID:          sessionID,
+				Status:      domain.EvalSessionStatusCompleted,
+				Repetitions: 3,
+			},
+			Runs: []domain.Run{
+				{ID: uuid.New(), WorkspaceID: workspaceID, EvalSessionID: &sessionID, Status: domain.RunStatusCompleted},
+				{ID: uuid.New(), WorkspaceID: workspaceID, EvalSessionID: &sessionID, Status: domain.RunStatusCompleted},
+				{ID: uuid.New(), WorkspaceID: workspaceID, EvalSessionID: &sessionID, Status: domain.RunStatusCompleted},
+			},
+		},
+		evalSessionResults: map[uuid.UUID]repository.EvalSessionAggregateRecord{
+			sessionID: {
+				EvalSessionID: sessionID,
+				Aggregate:     payload,
+				Evidence:      []byte(`{"warnings":["comparison session top-level winner aggregate omitted because repeated-session evidence overlaps and no clear winner exists"]}`),
+			},
+		},
+	})
+
+	result, err := manager.GetEvalSession(context.Background(), caller, sessionID)
+	if err != nil {
+		t.Fatalf("GetEvalSession returned error: %v", err)
+	}
+	if string(result.AggregateResult) != string(payload) {
+		t.Fatalf("aggregate result = %s, want stored payload", result.AggregateResult)
+	}
+	if !slices.Equal(result.EvidenceWarnings, []string{"comparison session top-level winner aggregate omitted because repeated-session evidence overlaps and no clear winner exists"}) {
+		t.Fatalf("evidence warnings = %v, want persisted noisy-comparison warning", result.EvidenceWarnings)
+	}
+	if bytes.Contains(result.AggregateResult, []byte(`"overall"`)) {
+		t.Fatalf("aggregate result = %s, want no synthetic top-level overall", result.AggregateResult)
 	}
 }
 

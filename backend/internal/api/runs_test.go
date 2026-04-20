@@ -437,6 +437,144 @@ func TestCreateEvalSessionEndpointRejectsWeightedMeanWithoutWeights(t *testing.T
 	}
 }
 
+func TestCreateEvalSessionEndpointAcceptsAggregationReliabilityWeight(t *testing.T) {
+	userID := uuid.New()
+	workspaceID := uuid.New()
+	service := &fakeRunCreationService{
+		evalSessionResult: CreateEvalSessionResult{
+			Session: domain.EvalSession{
+				ID:          uuid.New(),
+				Status:      domain.EvalSessionStatusQueued,
+				Repetitions: 2,
+				AggregationConfig: domain.EvalSessionSnapshot{Document: []byte(
+					`{"schema_version":1,"method":"mean","report_variance":true,"confidence_interval":0.95,"reliability_weight":0.85}`,
+				)},
+				SuccessThresholdConfig: domain.EvalSessionSnapshot{Document: []byte(`{"schema_version":1}`)},
+				RoutingTaskSnapshot:    domain.EvalSessionSnapshot{Document: []byte(`{"schema_version":1,"routing":{"mode":"single_agent"},"task":{"pack_version":"v1"}}`)},
+				SchemaVersion:          1,
+				CreatedAt:              time.Date(2026, 4, 20, 12, 0, 0, 0, time.UTC),
+				UpdatedAt:              time.Date(2026, 4, 20, 12, 0, 0, 0, time.UTC),
+			},
+			RunIDs: []uuid.UUID{uuid.New(), uuid.New()},
+		},
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/eval-sessions", bytes.NewBufferString(`{
+		"workspace_id":"`+workspaceID.String()+`",
+		"challenge_pack_version_id":"`+uuid.New().String()+`",
+		"participants":[{"agent_build_version_id":"`+uuid.New().String()+`","label":"Primary"}],
+		"execution_mode":"single_agent",
+		"eval_session":{
+			"repetitions":2,
+			"aggregation":{"method":"mean","report_variance":true,"confidence_interval":0.95,"reliability_weight":0.85},
+			"routing_task_snapshot":{"routing":{"mode":"single_agent"},"task":{"pack_version":"v1"}},
+			"schema_version":1
+		}
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(headerUserID, userID.String())
+	req.Header.Set(headerWorkspaceMemberships, workspaceID.String()+":workspace_member")
+	recorder := httptest.NewRecorder()
+
+	newRouter("dev", nil,
+		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
+		NewDevelopmentAuthenticator(),
+		NewCallerWorkspaceAuthorizer(),
+		nil,
+		0,
+		service,
+		&fakeRunReadService{},
+		&fakeReplayReadService{},
+		stubHostedRunIngestionService{},
+		nil,
+		stubAgentDeploymentReadService{},
+		stubChallengePackReadService{},
+		stubAgentBuildService{},
+		noopReleaseGateService{},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+	).ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d: %s", recorder.Code, http.StatusCreated, recorder.Body.String())
+	}
+	if service.evalSessionInput.EvalSession.Aggregation.ReliabilityWeight == nil {
+		t.Fatal("reliability weight = nil, want 0.85")
+	}
+	if got := *service.evalSessionInput.EvalSession.Aggregation.ReliabilityWeight; got != 0.85 {
+		t.Fatalf("reliability weight = %.2f, want 0.85", got)
+	}
+}
+
+func TestCreateEvalSessionEndpointRejectsInvalidAggregationReliabilityWeight(t *testing.T) {
+	workspaceID := uuid.New()
+	req := httptest.NewRequest(http.MethodPost, "/v1/eval-sessions", bytes.NewBufferString(`{
+		"workspace_id":"`+workspaceID.String()+`",
+		"challenge_pack_version_id":"`+uuid.New().String()+`",
+		"participants":[{"agent_build_version_id":"`+uuid.New().String()+`","label":"Primary"}],
+		"execution_mode":"single_agent",
+		"eval_session":{
+			"repetitions":2,
+			"aggregation":{"method":"mean","report_variance":true,"confidence_interval":0.95,"reliability_weight":1.25},
+			"routing_task_snapshot":{"routing":{"mode":"single_agent"},"task":{"pack_version":"v1"}},
+			"schema_version":1
+		}
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(headerUserID, uuid.New().String())
+	req.Header.Set(headerWorkspaceMemberships, workspaceID.String()+":workspace_member")
+	recorder := httptest.NewRecorder()
+
+	newRouter("dev", nil,
+		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
+		NewDevelopmentAuthenticator(),
+		NewCallerWorkspaceAuthorizer(),
+		nil,
+		0,
+		&fakeRunCreationService{},
+		&fakeRunReadService{},
+		&fakeReplayReadService{},
+		stubHostedRunIngestionService{},
+		nil,
+		stubAgentDeploymentReadService{},
+		stubChallengePackReadService{},
+		stubAgentBuildService{},
+		noopReleaseGateService{},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+	).ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusUnprocessableEntity)
+	}
+
+	var response evalSessionValidationEnvelope
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to decode validation response: %v", err)
+	}
+	if len(response.Errors) != 1 || response.Errors[0].Code != "eval_session.aggregation.reliability_weight.invalid" {
+		t.Fatalf("validation errors = %+v, want eval_session.aggregation.reliability_weight.invalid", response.Errors)
+	}
+}
+
 func TestCreateEvalSessionEndpointAcceptsNullOptionalObjects(t *testing.T) {
 	userID := uuid.New()
 	workspaceID := uuid.New()

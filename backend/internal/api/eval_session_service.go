@@ -22,6 +22,7 @@ type EvalSessionAggregationInput struct {
 	Method             string
 	ReportVariance     bool
 	ConfidenceInterval float64
+	ReliabilityWeight  *float64
 }
 
 type EvalSessionSuccessThresholdInput struct {
@@ -330,6 +331,9 @@ func buildAggregationSnapshot(input CreateEvalSessionConfigInput) json.RawMessag
 		"method":              input.Aggregation.Method,
 		"report_variance":     input.Aggregation.ReportVariance,
 		"confidence_interval": input.Aggregation.ConfidenceInterval,
+	}
+	if input.Aggregation.ReliabilityWeight != nil {
+		payload["reliability_weight"] = *input.Aggregation.ReliabilityWeight
 	}
 	if input.ReliabilityWeights != nil {
 		reliabilityWeights := map[string]any{}
