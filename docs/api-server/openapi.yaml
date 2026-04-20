@@ -7529,7 +7529,7 @@ components:
 
     AgentDeployment:
       type: object
-      required: [id, organization_id, workspace_id, name, status, created_at, updated_at]
+      required: [id, organization_id, workspace_id, current_build_version_id, name, status, created_at, updated_at]
       properties:
         id:
           type: string
@@ -7538,6 +7538,9 @@ components:
           type: string
           format: uuid
         workspace_id:
+          type: string
+          format: uuid
+        current_build_version_id:
           type: string
           format: uuid
         name:

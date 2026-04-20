@@ -17,6 +17,7 @@ SELECT DISTINCT ON (ad.id)
     ad.id,
     ad.organization_id,
     ad.workspace_id,
+    ad.current_build_version_id,
     ad.name,
     ad.status,
     ad.created_at,
@@ -38,14 +39,15 @@ type ListActiveAgentDeploymentsByWorkspaceIDParams struct {
 }
 
 type ListActiveAgentDeploymentsByWorkspaceIDRow struct {
-	ID               uuid.UUID
-	OrganizationID   uuid.UUID
-	WorkspaceID      uuid.UUID
-	Name             string
-	Status           string
-	CreatedAt        pgtype.Timestamptz
-	UpdatedAt        pgtype.Timestamptz
-	LatestSnapshotID *uuid.UUID
+	ID                    uuid.UUID
+	OrganizationID        uuid.UUID
+	WorkspaceID           uuid.UUID
+	CurrentBuildVersionID uuid.UUID
+	Name                  string
+	Status                string
+	CreatedAt             pgtype.Timestamptz
+	UpdatedAt             pgtype.Timestamptz
+	LatestSnapshotID      *uuid.UUID
 }
 
 func (q *Queries) ListActiveAgentDeploymentsByWorkspaceID(ctx context.Context, arg ListActiveAgentDeploymentsByWorkspaceIDParams) ([]ListActiveAgentDeploymentsByWorkspaceIDRow, error) {
@@ -61,6 +63,7 @@ func (q *Queries) ListActiveAgentDeploymentsByWorkspaceID(ctx context.Context, a
 			&i.ID,
 			&i.OrganizationID,
 			&i.WorkspaceID,
+			&i.CurrentBuildVersionID,
 			&i.Name,
 			&i.Status,
 			&i.CreatedAt,

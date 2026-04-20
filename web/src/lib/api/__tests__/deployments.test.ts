@@ -26,6 +26,7 @@ describe("Deployment API calls", () => {
           id: "dep-1",
           organization_id: "org-1",
           workspace_id: "ws-1",
+          current_build_version_id: "ver-1",
           name: "prod-deploy",
           status: "active",
           created_at: "2026-04-12T00:00:00Z",
