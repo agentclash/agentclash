@@ -15,10 +15,11 @@ import (
 )
 
 var (
-	ErrRunMustBeQueued      = errors.New("run must already be queued")
-	ErrRunHasNoAgents       = errors.New("run must have at least one run agent")
-	ErrRunAgentMustBeQueued = errors.New("run agent must already be queued")
-	ErrRunAgentRunMismatch  = errors.New("run agent does not belong to run")
+	ErrEvalSessionMustBeQueued = errors.New("eval session must already be queued")
+	ErrRunMustBeQueued         = errors.New("run must already be queued")
+	ErrRunHasNoAgents          = errors.New("run must have at least one run agent")
+	ErrRunAgentMustBeQueued    = errors.New("run agent must already be queued")
+	ErrRunAgentRunMismatch     = errors.New("run agent does not belong to run")
 )
 
 type RunRepository interface {
@@ -43,6 +44,12 @@ type RunRepository interface {
 	MarkHostedRunExecutionTimedOut(ctx context.Context, params repository.MarkHostedRunExecutionTimedOutParams) (repository.HostedRunExecution, error)
 }
 
+type EvalSessionRepository interface {
+	GetEvalSessionByID(ctx context.Context, id uuid.UUID) (domain.EvalSession, error)
+	ListRunsByEvalSessionID(ctx context.Context, evalSessionID uuid.UUID) ([]domain.Run, error)
+	TransitionEvalSessionStatus(ctx context.Context, params repository.TransitionEvalSessionStatusParams) (domain.EvalSession, error)
+}
+
 type HostedRunStarter interface {
 	Start(ctx context.Context, input HostedRunStartInput) (hostedruns.StartResponse, error)
 }
@@ -60,6 +67,14 @@ func validateRunQueued(run domain.Run) error {
 	}
 
 	return fmt.Errorf("%w: run %s is %s", ErrRunMustBeQueued, run.ID, run.Status)
+}
+
+func validateEvalSessionQueued(session domain.EvalSession) error {
+	if session.Status == domain.EvalSessionStatusQueued {
+		return nil
+	}
+
+	return fmt.Errorf("%w: eval session %s is %s", ErrEvalSessionMustBeQueued, session.ID, session.Status)
 }
 
 func validateRunAgentQueued(runAgent domain.RunAgent, runID uuid.UUID) error {

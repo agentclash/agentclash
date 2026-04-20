@@ -309,6 +309,9 @@ func (m *RunCreationManager) CreateEvalSession(ctx context.Context, caller Calle
 	if err != nil {
 		return CreateEvalSessionResult{}, fmt.Errorf("create eval session with queued runs: %w", err)
 	}
+	if err := m.evalSessionWorkflowStarter.StartEvalSessionWorkflow(ctx, createResult.Session.ID); err != nil {
+		return CreateEvalSessionResult{}, fmt.Errorf("start eval session workflow for session %s: %w", createResult.Session.ID, err)
+	}
 
 	runIDs := make([]uuid.UUID, 0, len(createResult.Runs))
 	for _, run := range createResult.Runs {

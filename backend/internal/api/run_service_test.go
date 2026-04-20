@@ -329,6 +329,83 @@ func TestRunCreationManagerCreateEvalSessionCreatesQueuedRuns(t *testing.T) {
 	}
 }
 
+func TestRunCreationManagerCreateEvalSessionStartsEvalSessionWorkflow(t *testing.T) {
+	workspaceID := uuid.New()
+	challengePackVersionID := uuid.New()
+	challengeInputSetID := uuid.New()
+	buildVersionID := uuid.New()
+	deploymentID := uuid.New()
+	sessionID := uuid.New()
+	caller := Caller{
+		UserID: uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: "workspace_member"},
+		},
+	}
+
+	repo := &fakeRunCreationRepository{
+		challengePackVersion: repository.RunnableChallengePackVersion{ID: challengePackVersionID},
+		challengeInputSets: []repository.ChallengeInputSetSummary{
+			{ID: challengeInputSetID, ChallengePackVersionID: challengePackVersionID},
+		},
+		challengeIdentityIDs: []uuid.UUID{uuid.New()},
+		deploymentsByBuildVersion: []repository.BuildVersionRunnableDeployment{
+			{
+				AgentBuildVersionID: buildVersionID,
+				Deployment: repository.RunnableDeployment{
+					ID:                        deploymentID,
+					OrganizationID:            uuid.New(),
+					WorkspaceID:               workspaceID,
+					Name:                      "Support Agent Deployment",
+					AgentDeploymentSnapshotID: uuid.New(),
+				},
+			},
+		},
+		createEvalSessionWithRunsResult: repository.CreateEvalSessionWithQueuedRunsResult{
+			Session: domain.EvalSession{
+				ID:            sessionID,
+				Status:        domain.EvalSessionStatusQueued,
+				Repetitions:   1,
+				SchemaVersion: 1,
+			},
+			Runs: []domain.Run{
+				{ID: uuid.New(), EvalSessionID: &sessionID},
+			},
+		},
+	}
+	evalStarter := &fakeEvalSessionWorkflowStarter{}
+	manager := NewRunCreationManager(NewCallerWorkspaceAuthorizer(), repo, &fakeRunWorkflowStarter{}, nil).
+		WithEvalSessionWorkflowStarter(evalStarter)
+
+	_, err := manager.CreateEvalSession(context.Background(), caller, CreateEvalSessionInput{
+		WorkspaceID:            workspaceID,
+		ChallengePackVersionID: challengePackVersionID,
+		Participants: []EvalSessionParticipantInput{
+			{AgentBuildVersionID: buildVersionID, Label: "Primary"},
+		},
+		ExecutionMode: "single_agent",
+		EvalSession: CreateEvalSessionConfigInput{
+			Repetitions: 1,
+			Aggregation: EvalSessionAggregationInput{
+				Method:             "mean",
+				ReportVariance:     true,
+				ConfidenceInterval: 0.95,
+			},
+			RoutingTaskSnapshot: EvalSessionRoutingTaskSnapshotInput{
+				Routing: json.RawMessage(`{"mode":"single_agent"}`),
+				Task:    json.RawMessage(`{"pack_version":"v1"}`),
+			},
+			SchemaVersion: 1,
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateEvalSession returned error: %v", err)
+	}
+	if evalStarter.startedEvalSessionID != sessionID {
+		t.Fatalf("started eval session id = %s, want %s", evalStarter.startedEvalSessionID, sessionID)
+	}
+}
+
 func TestRunCreationManagerCreateEvalSessionRejectsUnresolvedBuildVersion(t *testing.T) {
 	workspaceID := uuid.New()
 	challengePackVersionID := uuid.New()
@@ -1167,19 +1244,19 @@ func TestRunCreationManagerSkipsInactiveSuiteCasesWhenExpandingSelections(t *tes
 }
 
 type fakeRunCreationRepository struct {
-	challengePackVersion           repository.RunnableChallengePackVersion
-	challengePackVersionErr        error
-	challengeInputSet              repository.ChallengeInputSet
-	challengeInputSetErr           error
-	challengeInputSets             []repository.ChallengeInputSetSummary
-	challengeIdentityIDs           []uuid.UUID
-	deployments                    []repository.RunnableDeployment
-	deploymentsByBuildVersion      []repository.BuildVersionRunnableDeployment
-	regressionSuites               map[uuid.UUID]repository.RegressionSuite
-	regressionCasesBySuite         map[uuid.UUID][]repository.RegressionCase
-	regressionCases                map[uuid.UUID]repository.RegressionCase
-	createResult                   repository.CreateQueuedRunResult
-	createParams                   *repository.CreateQueuedRunParams
+	challengePackVersion            repository.RunnableChallengePackVersion
+	challengePackVersionErr         error
+	challengeInputSet               repository.ChallengeInputSet
+	challengeInputSetErr            error
+	challengeInputSets              []repository.ChallengeInputSetSummary
+	challengeIdentityIDs            []uuid.UUID
+	deployments                     []repository.RunnableDeployment
+	deploymentsByBuildVersion       []repository.BuildVersionRunnableDeployment
+	regressionSuites                map[uuid.UUID]repository.RegressionSuite
+	regressionCasesBySuite          map[uuid.UUID][]repository.RegressionCase
+	regressionCases                 map[uuid.UUID]repository.RegressionCase
+	createResult                    repository.CreateQueuedRunResult
+	createParams                    *repository.CreateQueuedRunParams
 	createEvalSessionWithRunsResult repository.CreateEvalSessionWithQueuedRunsResult
 	createEvalSessionWithRunsParams *repository.CreateEvalSessionWithQueuedRunsParams
 }
@@ -1245,5 +1322,15 @@ type fakeRunWorkflowStarter struct {
 
 func (f *fakeRunWorkflowStarter) StartRunWorkflow(_ context.Context, runID uuid.UUID) error {
 	f.startedRunID = runID
+	return f.err
+}
+
+type fakeEvalSessionWorkflowStarter struct {
+	startedEvalSessionID uuid.UUID
+	err                  error
+}
+
+func (f *fakeEvalSessionWorkflowStarter) StartEvalSessionWorkflow(_ context.Context, evalSessionID uuid.UUID) error {
+	f.startedEvalSessionID = evalSessionID
 	return f.err
 }

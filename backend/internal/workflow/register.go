@@ -11,8 +11,12 @@ type Registrar interface {
 }
 
 func Register(registrar Registrar, activities *Activities) {
+	registrar.RegisterWorkflowWithOptions(EvalSessionWorkflow, sdkworkflow.RegisterOptions{Name: EvalSessionWorkflowName})
 	registrar.RegisterWorkflowWithOptions(RunWorkflow, sdkworkflow.RegisterOptions{Name: RunWorkflowName})
 	registrar.RegisterWorkflowWithOptions(RunAgentWorkflow, sdkworkflow.RegisterOptions{Name: RunAgentWorkflowName})
+	registrar.RegisterActivityWithOptions(activities.LoadEvalSession, sdkactivity.RegisterOptions{Name: loadEvalSessionActivityName})
+	registrar.RegisterActivityWithOptions(activities.ListEvalSessionRuns, sdkactivity.RegisterOptions{Name: listEvalSessionRunsActivityName})
+	registrar.RegisterActivityWithOptions(activities.TransitionEvalSessionStatus, sdkactivity.RegisterOptions{Name: transitionEvalSessionStatusActivityName})
 	registrar.RegisterActivityWithOptions(activities.LoadRun, sdkactivity.RegisterOptions{Name: loadRunActivityName})
 	registrar.RegisterActivityWithOptions(activities.ListRunAgents, sdkactivity.RegisterOptions{Name: listRunAgentsActivityName})
 	registrar.RegisterActivityWithOptions(activities.LoadRunAgent, sdkactivity.RegisterOptions{Name: loadRunAgentActivityName})

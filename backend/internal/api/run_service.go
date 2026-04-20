@@ -32,12 +32,23 @@ type RunWorkflowStarter interface {
 	StartRunWorkflow(ctx context.Context, runID uuid.UUID) error
 }
 
+type EvalSessionWorkflowStarter interface {
+	StartEvalSessionWorkflow(ctx context.Context, evalSessionID uuid.UUID) error
+}
+
 type RunCreationManager struct {
-	authorizer      WorkspaceAuthorizer
-	repo            RunCreationRepository
-	workflowStarter RunWorkflowStarter
-	budgetChecker   budget.BudgetChecker
-	now             func() time.Time
+	authorizer                 WorkspaceAuthorizer
+	repo                       RunCreationRepository
+	workflowStarter            RunWorkflowStarter
+	evalSessionWorkflowStarter EvalSessionWorkflowStarter
+	budgetChecker              budget.BudgetChecker
+	now                        func() time.Time
+}
+
+type noopEvalSessionWorkflowStarter struct{}
+
+func (noopEvalSessionWorkflowStarter) StartEvalSessionWorkflow(context.Context, uuid.UUID) error {
+	return nil
 }
 
 func NewRunCreationManager(
@@ -50,12 +61,23 @@ func NewRunCreationManager(
 		budgetChecker = budget.NoopChecker{}
 	}
 	return &RunCreationManager{
-		authorizer:      authorizer,
-		repo:            repo,
-		workflowStarter: workflowStarter,
-		budgetChecker:   budgetChecker,
-		now:             time.Now,
+		authorizer:                 authorizer,
+		repo:                       repo,
+		workflowStarter:            workflowStarter,
+		evalSessionWorkflowStarter: noopEvalSessionWorkflowStarter{},
+		budgetChecker:              budgetChecker,
+		now:                        time.Now,
 	}
+}
+
+func (m *RunCreationManager) WithEvalSessionWorkflowStarter(starter EvalSessionWorkflowStarter) *RunCreationManager {
+	if starter == nil {
+		m.evalSessionWorkflowStarter = noopEvalSessionWorkflowStarter{}
+		return m
+	}
+
+	m.evalSessionWorkflowStarter = starter
+	return m
 }
 
 func (m *RunCreationManager) CreateRun(ctx context.Context, caller Caller, input CreateRunInput) (CreateRunResult, error) {

@@ -17,6 +17,9 @@ import (
 )
 
 const (
+	loadEvalSessionActivityName              = "workflow.load_eval_session"
+	listEvalSessionRunsActivityName          = "workflow.list_eval_session_runs"
+	transitionEvalSessionStatusActivityName  = "workflow.transition_eval_session_status"
 	loadRunActivityName                      = "workflow.load_run"
 	listRunAgentsActivityName                = "workflow.list_run_agents"
 	loadRunAgentActivityName                 = "workflow.load_run_agent"
@@ -37,14 +40,16 @@ const (
 )
 
 const (
-	repositoryRunNotFoundErrorType       = "repository.ErrRunNotFound"
-	repositoryRunAgentNotFoundErrorType  = "repository.ErrRunAgentNotFound"
-	repositoryFrozenExecutionContextType = "repository.ErrFrozenExecutionContext"
-	repositoryTemporalIDConflictType     = "repository.ErrTemporalIDConflict"
-	repositoryInvalidTransitionType      = "repository.ErrInvalidTransition"
-	repositoryTransitionConflictType     = "repository.ErrTransitionConflict"
-	engineFailureErrorTypePrefix         = "engine."
-	providerFailureErrorTypePrefix       = "provider."
+	repositoryEvalSessionNotFoundErrorType = "repository.ErrEvalSessionNotFound"
+	repositoryRunNotFoundErrorType         = "repository.ErrRunNotFound"
+	repositoryRunAgentNotFoundErrorType    = "repository.ErrRunAgentNotFound"
+	repositoryFrozenExecutionContextType   = "repository.ErrFrozenExecutionContext"
+	repositoryTemporalIDConflictType       = "repository.ErrTemporalIDConflict"
+	repositoryIllegalSessionTransitionType = "repository.ErrIllegalSessionTransition"
+	repositoryInvalidTransitionType        = "repository.ErrInvalidTransition"
+	repositoryTransitionConflictType       = "repository.ErrTransitionConflict"
+	engineFailureErrorTypePrefix           = "engine."
+	providerFailureErrorTypePrefix         = "provider."
 )
 
 type FakeWorkHooks struct {
@@ -65,9 +70,23 @@ type PromptEvalInvoker interface {
 }
 
 type Activities struct {
-	repo        RunRepository
-	hooks       FakeWorkHooks
-	judgeClient provider.Client
+	repo            RunRepository
+	evalSessionRepo EvalSessionRepository
+	hooks           FakeWorkHooks
+	judgeClient     provider.Client
+}
+
+type LoadEvalSessionInput struct {
+	EvalSessionID uuid.UUID `json:"eval_session_id"`
+}
+
+type ListEvalSessionRunsInput struct {
+	EvalSessionID uuid.UUID `json:"eval_session_id"`
+}
+
+type TransitionEvalSessionStatusInput struct {
+	EvalSessionID uuid.UUID                `json:"eval_session_id"`
+	ToStatus      domain.EvalSessionStatus `json:"to_status"`
 }
 
 type LoadRunInput struct {
@@ -137,11 +156,46 @@ func NewActivities(repo RunRepository, hooks FakeWorkHooks, judgeClients ...prov
 	if len(judgeClients) > 0 {
 		judgeClient = judgeClients[0]
 	}
-	return &Activities{
-		repo:        repo,
-		hooks:       hooks,
-		judgeClient: judgeClient,
+	var evalSessionRepo EvalSessionRepository
+	if candidate, ok := repo.(EvalSessionRepository); ok {
+		evalSessionRepo = candidate
 	}
+	return &Activities{
+		repo:            repo,
+		evalSessionRepo: evalSessionRepo,
+		hooks:           hooks,
+		judgeClient:     judgeClient,
+	}
+}
+
+func (a *Activities) LoadEvalSession(ctx context.Context, input LoadEvalSessionInput) (domain.EvalSession, error) {
+	if a.evalSessionRepo == nil {
+		return domain.EvalSession{}, errors.New("eval session repository is not configured")
+	}
+
+	session, err := a.evalSessionRepo.GetEvalSessionByID(ctx, input.EvalSessionID)
+	return session, wrapActivityError(err)
+}
+
+func (a *Activities) ListEvalSessionRuns(ctx context.Context, input ListEvalSessionRunsInput) ([]domain.Run, error) {
+	if a.evalSessionRepo == nil {
+		return nil, errors.New("eval session repository is not configured")
+	}
+
+	runs, err := a.evalSessionRepo.ListRunsByEvalSessionID(ctx, input.EvalSessionID)
+	return runs, wrapActivityError(err)
+}
+
+func (a *Activities) TransitionEvalSessionStatus(ctx context.Context, input TransitionEvalSessionStatusInput) (domain.EvalSession, error) {
+	if a.evalSessionRepo == nil {
+		return domain.EvalSession{}, errors.New("eval session repository is not configured")
+	}
+
+	session, err := a.evalSessionRepo.TransitionEvalSessionStatus(ctx, repository.TransitionEvalSessionStatusParams{
+		EvalSessionID: input.EvalSessionID,
+		ToStatus:      input.ToStatus,
+	})
+	return session, wrapActivityError(err)
 }
 
 func (a *Activities) LoadRun(ctx context.Context, input LoadRunInput) (domain.Run, error) {
@@ -362,6 +416,8 @@ func wrapActivityError(err error) error {
 	}
 
 	switch {
+	case errors.Is(err, repository.ErrEvalSessionNotFound):
+		return temporal.NewNonRetryableApplicationError(err.Error(), repositoryEvalSessionNotFoundErrorType, err)
 	case errors.Is(err, repository.ErrRunNotFound):
 		return temporal.NewNonRetryableApplicationError(err.Error(), repositoryRunNotFoundErrorType, err)
 	case errors.Is(err, repository.ErrRunAgentNotFound):
@@ -370,6 +426,8 @@ func wrapActivityError(err error) error {
 		return temporal.NewNonRetryableApplicationError(err.Error(), repositoryFrozenExecutionContextType, err)
 	case errors.Is(err, repository.ErrTemporalIDConflict):
 		return temporal.NewNonRetryableApplicationError(err.Error(), repositoryTemporalIDConflictType, err)
+	case errors.Is(err, repository.ErrIllegalSessionTransition):
+		return temporal.NewNonRetryableApplicationError(err.Error(), repositoryIllegalSessionTransitionType, err)
 	case errors.Is(err, repository.ErrInvalidTransition):
 		return temporal.NewNonRetryableApplicationError(err.Error(), repositoryInvalidTransitionType, err)
 	case errors.Is(err, repository.ErrTransitionConflict):
