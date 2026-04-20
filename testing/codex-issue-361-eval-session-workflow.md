@@ -2,7 +2,7 @@
 
 ## Functional Behavior
 - Creating an eval session starts exactly one durable parent workflow for the new session after the session and child runs are created transactionally.
-- The parent workflow loads the eval session, verifies it is still `queued`, records Temporal workflow metadata on the session, and transitions the session `queued -> running`.
+- The parent workflow loads the eval session, verifies it is still `queued`, and transitions the session `queued -> running`.
 - The parent workflow launches one `RunWorkflow` child per attached child run using deterministic child workflow IDs derived from each run ID.
 - The parent workflow waits for every child workflow future to resolve before transitioning the session to `aggregating`.
 - If some child workflows fail but at least one child completes, the parent workflow still advances the session to `aggregating` and does not cancel successful children.
