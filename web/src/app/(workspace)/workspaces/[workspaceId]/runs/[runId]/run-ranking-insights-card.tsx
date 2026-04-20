@@ -188,6 +188,7 @@ export function RunRankingInsightsCard({
               value={selectedProviderAccountId}
               onChange={(event) => {
                 setSelectedProviderAccountId(event.target.value);
+                setInsights(null);
                 setError("");
               }}
               disabled={loadingOptions || generating || activeProviderAccounts.length === 0}
@@ -209,6 +210,7 @@ export function RunRankingInsightsCard({
               value={selectedModelAliasId}
               onChange={(event) => {
                 setSelectedModelAliasId(event.target.value);
+                setInsights(null);
                 setError("");
               }}
               disabled={loadingOptions || generating || compatibleModelAliases.length === 0}

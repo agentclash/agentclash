@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/budget"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/domain"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/failurereview"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/provider"
@@ -28,6 +29,7 @@ type RunReadRepository interface {
 	GetProviderAccountByID(ctx context.Context, id uuid.UUID) (repository.ProviderAccountRow, error)
 	GetModelAliasByID(ctx context.Context, id uuid.UUID) (repository.ModelAliasRow, error)
 	GetModelCatalogEntryByID(ctx context.Context, id uuid.UUID) (repository.ModelCatalogEntryRow, error)
+	ListSpendPoliciesByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) ([]repository.SpendPolicyRow, error)
 	LoadWorkspaceSecrets(ctx context.Context, workspaceID uuid.UUID) (map[string]string, error)
 }
 
@@ -80,24 +82,59 @@ type ListRunAgentsResult struct {
 	RunAgents []domain.RunAgent
 }
 
-type RunReadManager struct {
-	authorizer     WorkspaceAuthorizer
-	repo           RunReadRepository
-	insightsClient provider.Client
-	now            func() time.Time
+type WorkspaceRateLimiter interface {
+	Allow(workspaceID uuid.UUID, group string) (bool, time.Duration)
 }
+
+type RunReadManager struct {
+	authorizer      WorkspaceAuthorizer
+	repo            RunReadRepository
+	insightsClient  provider.Client
+	budgetChecker   budget.BudgetChecker
+	insightsLimiter WorkspaceRateLimiter
+	insightsTimeout time.Duration
+	now             func() time.Time
+}
+
+const rankingInsightsTimeout = 45 * time.Second
 
 func NewRunReadManager(authorizer WorkspaceAuthorizer, repo RunReadRepository) *RunReadManager {
 	return &RunReadManager{
-		authorizer: authorizer,
-		repo:       repo,
-		now:        time.Now,
+		authorizer:      authorizer,
+		repo:            repo,
+		budgetChecker:   budget.NoopChecker{},
+		insightsTimeout: rankingInsightsTimeout,
+		now:             time.Now,
 	}
 }
 
 func (m *RunReadManager) WithInsightsClient(client provider.Client) *RunReadManager {
 	m.insightsClient = client
 	return m
+}
+
+func (m *RunReadManager) WithBudgetChecker(checker budget.BudgetChecker) *RunReadManager {
+	if checker == nil {
+		checker = budget.NoopChecker{}
+	}
+	m.budgetChecker = checker
+	return m
+}
+
+func (m *RunReadManager) WithInsightsRateLimiter(limiter WorkspaceRateLimiter) *RunReadManager {
+	m.insightsLimiter = limiter
+	return m
+}
+
+func (m *RunReadManager) WithInsightsTimeout(timeout time.Duration) *RunReadManager {
+	if timeout > 0 {
+		m.insightsTimeout = timeout
+	}
+	return m
+}
+
+func (m *RunReadManager) InsightsConfigured() bool {
+	return m.insightsClient != nil
 }
 
 func (m *RunReadManager) GetRun(ctx context.Context, caller Caller, runID uuid.UUID) (GetRunResult, error) {

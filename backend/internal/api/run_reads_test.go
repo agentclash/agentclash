@@ -412,6 +412,7 @@ type fakeRunReadRepository struct {
 	regressionCoverageCases []repository.RunRegressionCoverageCase
 	runAgents               []domain.RunAgent
 	failureItems            []failurereview.Item
+	spendPolicies           []repository.SpendPolicyRow
 	providerAccount         repository.ProviderAccountRow
 	modelAlias              repository.ModelAliasRow
 	modelCatalogEntry       repository.ModelCatalogEntryRow
@@ -423,6 +424,7 @@ type fakeRunReadRepository struct {
 	getProviderAccountErr   error
 	getModelAliasErr        error
 	getModelCatalogErr      error
+	listSpendPoliciesErr    error
 	loadWorkspaceSecretsErr error
 }
 
@@ -464,6 +466,10 @@ func (f *fakeRunReadRepository) GetModelAliasByID(_ context.Context, _ uuid.UUID
 
 func (f *fakeRunReadRepository) GetModelCatalogEntryByID(_ context.Context, _ uuid.UUID) (repository.ModelCatalogEntryRow, error) {
 	return f.modelCatalogEntry, f.getModelCatalogErr
+}
+
+func (f *fakeRunReadRepository) ListSpendPoliciesByWorkspaceID(_ context.Context, _ uuid.UUID) ([]repository.SpendPolicyRow, error) {
+	return f.spendPolicies, f.listSpendPoliciesErr
 }
 
 func (f *fakeRunReadRepository) LoadWorkspaceSecrets(_ context.Context, _ uuid.UUID) (map[string]string, error) {

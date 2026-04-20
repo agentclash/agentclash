@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"log/slog"
-	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -64,15 +63,9 @@ func main() {
 		eventRecorder = pubsub.NewPublishingRecorder(repo, eventPublisher, logger)
 	}
 
-	hostedRunClient := workerapp.NewHostedRunClient(&http.Client{}, cfg.HostedCallbackBaseURL, cfg.HostedCallbackSecret)
-	providerRouter := provider.NewRouter(map[string]provider.Client{
-		"openai":     provider.NewOpenAICompatibleClient(&http.Client{}, "", provider.EnvCredentialResolver{}),
-		"anthropic":  provider.NewAnthropicClient(&http.Client{}, "", "", provider.EnvCredentialResolver{}),
-		"gemini":     provider.NewGeminiClient(&http.Client{}, "", provider.EnvCredentialResolver{}),
-		"xai":        provider.NewOpenAICompatibleClient(&http.Client{}, provider.DefaultXAIBaseURL(), provider.EnvCredentialResolver{}),
-		"openrouter": provider.NewOpenAICompatibleClient(&http.Client{}, "https://openrouter.ai/api/v1", provider.EnvCredentialResolver{}),
-		"mistral":    provider.NewOpenAICompatibleClient(&http.Client{}, "https://api.mistral.ai/v1", provider.EnvCredentialResolver{}),
-	})
+	httpClient := provider.NewDefaultHTTPClient()
+	hostedRunClient := workerapp.NewHostedRunClient(httpClient, cfg.HostedCallbackBaseURL, cfg.HostedCallbackSecret)
+	providerRouter := provider.NewDefaultRouter(httpClient, provider.EnvCredentialResolver{})
 	sandboxProvider := sandbox.Provider(sandbox.UnconfiguredProvider{})
 	if cfg.Sandbox.Provider == "e2b" {
 		sandboxProvider = e2b.NewProvider(e2b.Config{

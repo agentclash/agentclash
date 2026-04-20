@@ -138,6 +138,15 @@ function buildApiMock() {
             created_at: "2026-04-20T08:00:00Z",
             updated_at: "2026-04-20T08:00:00Z",
           },
+          {
+            id: "pa-2",
+            workspace_id: "ws-1",
+            provider_key: "anthropic",
+            name: "Anthropic Workspace",
+            status: "active",
+            created_at: "2026-04-20T08:00:00Z",
+            updated_at: "2026-04-20T08:00:00Z",
+          },
         ],
       };
     }
@@ -291,6 +300,76 @@ describe("RunRankingInsightsCard", () => {
       await waitFor(() => {
         expect(document.body.textContent).toContain("provider gateway failed");
       });
+    } finally {
+      view.cleanup();
+    }
+  });
+
+  it("clears stale insights when the provider selection changes", async () => {
+    const api = buildApiMock();
+    api.post.mockResolvedValue({
+      generated_at: "2026-04-20T08:30:00Z",
+      grounding_scope: "current_run_only",
+      provider_key: "openai",
+      provider_model_id: "gpt-5.4-mini",
+      recommended_winner: {
+        run_agent_id: "agent-1",
+        label: "Alpha",
+      },
+      why_it_won: "Alpha delivered the best overall mix for this run.",
+      tradeoffs: ["Beta stayed close on latency."],
+      model_summaries: [
+        {
+          run_agent_id: "agent-1",
+          label: "Alpha",
+          strongest_dimension: "correctness",
+          weakest_dimension: "latency",
+          summary: "Strongest overall performer.",
+        },
+      ],
+      recommended_next_step: "Run a reliability-focused follow-up.",
+      confidence_notes: "Confidence is moderate.",
+    });
+    mockCreateApiClient.mockReturnValue(api);
+
+    const view = renderCard();
+    try {
+      await waitFor(() => {
+        expect(api.get).toHaveBeenCalledWith("/v1/workspaces/ws-1/provider-accounts");
+        expect(api.get).toHaveBeenCalledWith("/v1/workspaces/ws-1/model-aliases");
+      });
+
+      const generateButton = Array.from(document.querySelectorAll("button")).find(
+        (button) => button.textContent?.includes("Generate insights"),
+      );
+      if (!generateButton) {
+        throw new Error("Generate insights button not found");
+      }
+
+      clickElement(generateButton);
+
+      await waitFor(() => {
+        expect(document.body.textContent).toContain("Recommended winner");
+        expect(document.body.textContent).toContain("Generated with openai / gpt-5.4-mini");
+      });
+
+      const providerSelect = document.querySelector(
+        'select[aria-label="Insight Provider Account"]',
+      );
+      if (!(providerSelect instanceof HTMLSelectElement)) {
+        throw new Error("Insight Provider Account select not found");
+      }
+
+      act(() => {
+        providerSelect.value = "pa-2";
+        providerSelect.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+
+      await waitFor(() => {
+        expect(document.body.textContent).toContain("No insights yet.");
+      });
+      expect(document.body.textContent).not.toContain("Recommended winner");
+      expect(document.body.textContent).not.toContain("Generated with openai / gpt-5.4-mini");
     } finally {
       view.cleanup();
     }

@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"log/slog"
-	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -13,6 +12,7 @@ import (
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/email"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/provider"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/pubsub"
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/ratelimit"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/storage"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/temporalutil"
@@ -85,15 +85,23 @@ func main() {
 		api.NewTemporalRunWorkflowStarter(temporalClient),
 		budgetChecker,
 	)
-	providerRouter := provider.NewRouter(map[string]provider.Client{
-		"openai":     provider.NewOpenAICompatibleClient(&http.Client{}, "", provider.EnvCredentialResolver{}),
-		"anthropic":  provider.NewAnthropicClient(&http.Client{}, "", "", provider.EnvCredentialResolver{}),
-		"gemini":     provider.NewGeminiClient(&http.Client{}, "", provider.EnvCredentialResolver{}),
-		"xai":        provider.NewOpenAICompatibleClient(&http.Client{}, provider.DefaultXAIBaseURL(), provider.EnvCredentialResolver{}),
-		"openrouter": provider.NewOpenAICompatibleClient(&http.Client{}, "https://openrouter.ai/api/v1", provider.EnvCredentialResolver{}),
-		"mistral":    provider.NewOpenAICompatibleClient(&http.Client{}, "https://api.mistral.ai/v1", provider.EnvCredentialResolver{}),
+	providerRouter := provider.NewDefaultRouter(nil, provider.EnvCredentialResolver{})
+	insightsLimiter := ratelimit.NewLimiter(ratelimit.Config{
+		DefaultRPS:           10.0,
+		DefaultBurst:         20,
+		RunCreationRPM:       30.0,
+		RunCreationBurst:     10,
+		RankingInsightsRPM:   0.2,
+		RankingInsightsBurst: 2,
 	})
-	runReadManager := api.NewRunReadManager(authorizer, repo).WithInsightsClient(providerRouter)
+	runReadManager := api.NewRunReadManager(authorizer, repo).
+		WithInsightsClient(providerRouter).
+		WithBudgetChecker(budgetChecker).
+		WithInsightsRateLimiter(insightsLimiter)
+	if !runReadManager.InsightsConfigured() {
+		logger.Error("run ranking insights client is not configured")
+		os.Exit(1)
+	}
 	replayReadManager := api.NewReplayReadManager(authorizer, repo)
 	compareReadManager := api.NewCompareReadManager(authorizer, repo)
 	releaseGateManager := api.NewReleaseGateManager(authorizer, repo)

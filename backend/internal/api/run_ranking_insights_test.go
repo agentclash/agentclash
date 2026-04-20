@@ -8,9 +8,11 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/budget"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/domain"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/provider"
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
@@ -263,6 +265,235 @@ func TestRunReadManagerGenerateRankingInsightsLoadsWorkspaceSecrets(t *testing.T
 	}
 }
 
+func TestRunReadManagerGenerateRankingInsightsRejectsForbiddenCallerWithoutInvokingProvider(t *testing.T) {
+	fixture := newRankingInsightsFixture(t)
+	client := &provider.FakeClient{}
+	manager := NewRunReadManager(NewCallerWorkspaceAuthorizer(), fixture.repo).WithInsightsClient(client)
+
+	_, err := manager.GenerateRunRankingInsights(context.Background(), Caller{
+		UserID:               uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{},
+	}, fixture.runID, GenerateRunRankingInsightsInput{
+		ProviderAccountID: fixture.providerAccountID,
+		ModelAliasID:      fixture.modelAliasID,
+	})
+	if !errors.Is(err, ErrForbidden) {
+		t.Fatalf("error = %v, want ErrForbidden", err)
+	}
+	if len(client.Requests) != 0 {
+		t.Fatalf("provider requests = %d, want 0", len(client.Requests))
+	}
+}
+
+func TestRunReadManagerGenerateRankingInsightsRejectsInactiveProviderAccount(t *testing.T) {
+	fixture := newRankingInsightsFixture(t)
+	fixture.repo.providerAccount.Status = "archived"
+	manager := NewRunReadManager(NewCallerWorkspaceAuthorizer(), fixture.repo).WithInsightsClient(&provider.FakeClient{})
+
+	_, err := manager.GenerateRunRankingInsights(context.Background(), newRunInsightsCaller(fixture.workspaceID), fixture.runID, GenerateRunRankingInsightsInput{
+		ProviderAccountID: fixture.providerAccountID,
+		ModelAliasID:      fixture.modelAliasID,
+	})
+
+	var validationErr RunRankingInsightsValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("error = %v, want validation error", err)
+	}
+	if validationErr.Code != "invalid_provider_account_id" {
+		t.Fatalf("validation code = %q, want invalid_provider_account_id", validationErr.Code)
+	}
+	if validationErr.Message != "provider_account_id must reference an active provider account visible to the run workspace" {
+		t.Fatalf("validation message = %q", validationErr.Message)
+	}
+}
+
+func TestRunReadManagerGenerateRankingInsightsRejectsModelAliasBoundToDifferentProviderAccount(t *testing.T) {
+	fixture := newRankingInsightsFixture(t)
+	fixture.repo.modelAlias.ProviderAccountID = uuidPtr(uuid.New())
+	manager := NewRunReadManager(NewCallerWorkspaceAuthorizer(), fixture.repo).WithInsightsClient(&provider.FakeClient{})
+
+	_, err := manager.GenerateRunRankingInsights(context.Background(), newRunInsightsCaller(fixture.workspaceID), fixture.runID, GenerateRunRankingInsightsInput{
+		ProviderAccountID: fixture.providerAccountID,
+		ModelAliasID:      fixture.modelAliasID,
+	})
+
+	var validationErr RunRankingInsightsValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("error = %v, want validation error", err)
+	}
+	if validationErr.Code != "invalid_model_alias_id" {
+		t.Fatalf("validation code = %q, want invalid_model_alias_id", validationErr.Code)
+	}
+	if validationErr.Message != "model_alias_id must reference an active model alias visible to the run workspace" {
+		t.Fatalf("validation message = %q", validationErr.Message)
+	}
+}
+
+func TestRunReadManagerGenerateRankingInsightsRejectsModelCatalogProviderMismatch(t *testing.T) {
+	fixture := newRankingInsightsFixture(t)
+	fixture.repo.modelCatalogEntry.ProviderKey = "anthropic"
+	manager := NewRunReadManager(NewCallerWorkspaceAuthorizer(), fixture.repo).WithInsightsClient(&provider.FakeClient{})
+
+	_, err := manager.GenerateRunRankingInsights(context.Background(), newRunInsightsCaller(fixture.workspaceID), fixture.runID, GenerateRunRankingInsightsInput{
+		ProviderAccountID: fixture.providerAccountID,
+		ModelAliasID:      fixture.modelAliasID,
+	})
+
+	var validationErr RunRankingInsightsValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("error = %v, want validation error", err)
+	}
+	if validationErr.Code != "invalid_model_alias_id" {
+		t.Fatalf("validation code = %q, want invalid_model_alias_id", validationErr.Code)
+	}
+}
+
+func TestRunReadManagerGenerateRankingInsightsRejectsBudgetExceeded(t *testing.T) {
+	fixture := newRankingInsightsFixture(t)
+	policyID := uuid.New()
+	fixture.repo.spendPolicies = []repository.SpendPolicyRow{{ID: policyID, WorkspaceID: uuidPtr(fixture.workspaceID)}}
+	manager := NewRunReadManager(NewCallerWorkspaceAuthorizer(), fixture.repo).
+		WithInsightsClient(&provider.FakeClient{}).
+		WithBudgetChecker(fakeBudgetChecker{
+			results: map[uuid.UUID]budget.BudgetCheckResult{
+				policyID: {Allowed: false},
+			},
+		})
+
+	_, err := manager.GenerateRunRankingInsights(context.Background(), newRunInsightsCaller(fixture.workspaceID), fixture.runID, GenerateRunRankingInsightsInput{
+		ProviderAccountID: fixture.providerAccountID,
+		ModelAliasID:      fixture.modelAliasID,
+	})
+
+	var validationErr RunRankingInsightsValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("error = %v, want validation error", err)
+	}
+	if validationErr.Code != "budget_exceeded" {
+		t.Fatalf("validation code = %q, want budget_exceeded", validationErr.Code)
+	}
+}
+
+func TestRunReadManagerGenerateRankingInsightsRejectsRateLimitedRun(t *testing.T) {
+	fixture := newRankingInsightsFixture(t)
+	manager := NewRunReadManager(NewCallerWorkspaceAuthorizer(), fixture.repo).
+		WithInsightsClient(&provider.FakeClient{}).
+		WithInsightsRateLimiter(fakeWorkspaceRateLimiter{
+			allowed:    false,
+			retryAfter: 3 * time.Second,
+		})
+
+	_, err := manager.GenerateRunRankingInsights(context.Background(), newRunInsightsCaller(fixture.workspaceID), fixture.runID, GenerateRunRankingInsightsInput{
+		ProviderAccountID: fixture.providerAccountID,
+		ModelAliasID:      fixture.modelAliasID,
+	})
+
+	var rateLimitErr RunRankingInsightsRateLimitError
+	if !errors.As(err, &rateLimitErr) {
+		t.Fatalf("error = %v, want rate limit error", err)
+	}
+	if rateLimitErr.RetryAfter != 3*time.Second {
+		t.Fatalf("retry after = %s, want 3s", rateLimitErr.RetryAfter)
+	}
+}
+
+func TestRunReadManagerGenerateRankingInsightsRejectsInvalidModelJSON(t *testing.T) {
+	fixture := newRankingInsightsFixture(t)
+	client := &provider.FakeClient{
+		Response: provider.Response{
+			ProviderKey:     "openai",
+			ProviderModelID: "gpt-5.4-mini",
+			OutputText:      `not json at all`,
+		},
+	}
+	manager := NewRunReadManager(NewCallerWorkspaceAuthorizer(), fixture.repo).WithInsightsClient(client)
+
+	_, err := manager.GenerateRunRankingInsights(context.Background(), newRunInsightsCaller(fixture.workspaceID), fixture.runID, GenerateRunRankingInsightsInput{
+		ProviderAccountID: fixture.providerAccountID,
+		ModelAliasID:      fixture.modelAliasID,
+	})
+
+	var validationErr RunRankingInsightsValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("error = %v, want validation error", err)
+	}
+	if validationErr.Code != "invalid_insights_output" {
+		t.Fatalf("validation code = %q, want invalid_insights_output", validationErr.Code)
+	}
+}
+
+func TestRunReadManagerGenerateRankingInsightsRejectsWinnerOutsideRun(t *testing.T) {
+	fixture := newRankingInsightsFixture(t)
+	client := &provider.FakeClient{
+		Response: provider.Response{
+			ProviderKey:     "openai",
+			ProviderModelID: "gpt-5.4-mini",
+			OutputText: `{
+				"recommended_winner":{"run_agent_id":"` + uuid.New().String() + `","label":"Injected"},
+				"why_it_won":"Not real.",
+				"tradeoffs":["Fake result."],
+				"model_summaries":[
+					{"run_agent_id":"` + fixture.alphaID.String() + `","label":"Alpha","strongest_dimension":"correctness","weakest_dimension":"latency","summary":"Strong overall."}
+				],
+				"recommended_next_step":"Ignore this output.",
+				"confidence_notes":"Confidence is low."
+			}`,
+		},
+	}
+	manager := NewRunReadManager(NewCallerWorkspaceAuthorizer(), fixture.repo).WithInsightsClient(client)
+
+	_, err := manager.GenerateRunRankingInsights(context.Background(), newRunInsightsCaller(fixture.workspaceID), fixture.runID, GenerateRunRankingInsightsInput{
+		ProviderAccountID: fixture.providerAccountID,
+		ModelAliasID:      fixture.modelAliasID,
+	})
+
+	var validationErr RunRankingInsightsValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("error = %v, want validation error", err)
+	}
+	if validationErr.Code != "invalid_insights_output" {
+		t.Fatalf("validation code = %q, want invalid_insights_output", validationErr.Code)
+	}
+}
+
+func TestRunReadManagerGenerateRankingInsightsRejectsWinnerDivergingFromDeterministicRanking(t *testing.T) {
+	fixture := newRankingInsightsFixture(t)
+	client := &provider.FakeClient{
+		Response: provider.Response{
+			ProviderKey:     "openai",
+			ProviderModelID: "gpt-5.4-mini",
+			OutputText: `{
+				"recommended_winner":{"run_agent_id":"` + fixture.betaID.String() + `","label":"Beta"},
+				"why_it_won":"Injected override.",
+				"tradeoffs":["Beta is faster."],
+				"model_summaries":[
+					{"run_agent_id":"` + fixture.alphaID.String() + `","label":"Alpha","strongest_dimension":"correctness","weakest_dimension":"latency","summary":"Strong overall."},
+					{"run_agent_id":"` + fixture.betaID.String() + `","label":"Beta","strongest_dimension":"latency","weakest_dimension":"cost","summary":"Fast but not the winner."}
+				],
+				"recommended_next_step":"Run another benchmark.",
+				"confidence_notes":"Confidence is low."
+			}`,
+		},
+	}
+	manager := NewRunReadManager(NewCallerWorkspaceAuthorizer(), fixture.repo).WithInsightsClient(client)
+
+	_, err := manager.GenerateRunRankingInsights(context.Background(), newRunInsightsCaller(fixture.workspaceID), fixture.runID, GenerateRunRankingInsightsInput{
+		ProviderAccountID: fixture.providerAccountID,
+		ModelAliasID:      fixture.modelAliasID,
+	})
+
+	var validationErr RunRankingInsightsValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("error = %v, want validation error", err)
+	}
+	if validationErr.Code != "invalid_insights_output" {
+		t.Fatalf("validation code = %q, want invalid_insights_output", validationErr.Code)
+	}
+	if !strings.Contains(validationErr.Message, "deterministic ranking winner") {
+		t.Fatalf("validation message = %q, want deterministic winner reference", validationErr.Message)
+	}
+}
+
 func TestCreateRunRankingInsightsEndpointReturnsInsights(t *testing.T) {
 	workspaceID := uuid.New()
 	runID := uuid.New()
@@ -338,6 +569,189 @@ func TestCreateRunRankingInsightsEndpointReturnsInsights(t *testing.T) {
 	}
 	if response.RecommendedWinner.RunAgentID != winnerID {
 		t.Fatalf("winner = %s, want %s", response.RecommendedWinner.RunAgentID, winnerID)
+	}
+}
+
+func TestCreateRunRankingInsightsEndpointMapsProviderAuthFailureTo400(t *testing.T) {
+	workspaceID := uuid.New()
+	runID := uuid.New()
+	providerAccountID := uuid.New()
+	modelAliasID := uuid.New()
+
+	body, err := json.Marshal(createRunRankingInsightsRequest{
+		ProviderAccountID: providerAccountID.String(),
+		ModelAliasID:      modelAliasID.String(),
+	})
+	if err != nil {
+		t.Fatalf("marshal request body: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/runs/"+runID.String()+"/ranking-insights", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(headerUserID, uuid.New().String())
+	req.Header.Set(headerWorkspaceMemberships, workspaceID.String()+":workspace_member")
+	recorder := httptest.NewRecorder()
+
+	newRouter("dev", nil,
+		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
+		NewDevelopmentAuthenticator(),
+		NewCallerWorkspaceAuthorizer(),
+		nil,
+		0,
+		stubRunCreationService{},
+		&fakeRunReadService{
+			insightsErr: provider.Failure{
+				Code:    provider.FailureCodeAuth,
+				Message: "raw upstream auth body should not leak",
+			},
+		},
+		&fakeReplayReadService{},
+		stubHostedRunIngestionService{},
+		nil,
+		stubAgentDeploymentReadService{},
+		stubChallengePackReadService{},
+		stubAgentBuildService{},
+		noopReleaseGateService{},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+	).ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusBadRequest)
+	}
+	if !strings.Contains(recorder.Body.String(), "invalid_provider_credentials") {
+		t.Fatalf("body = %s, want invalid_provider_credentials", recorder.Body.String())
+	}
+	if strings.Contains(recorder.Body.String(), "raw upstream auth body should not leak") {
+		t.Fatalf("body leaked raw provider message: %s", recorder.Body.String())
+	}
+}
+
+func TestCreateRunRankingInsightsEndpointMapsProviderRateLimitTo429(t *testing.T) {
+	workspaceID := uuid.New()
+	runID := uuid.New()
+	providerAccountID := uuid.New()
+	modelAliasID := uuid.New()
+
+	body, err := json.Marshal(createRunRankingInsightsRequest{
+		ProviderAccountID: providerAccountID.String(),
+		ModelAliasID:      modelAliasID.String(),
+	})
+	if err != nil {
+		t.Fatalf("marshal request body: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/runs/"+runID.String()+"/ranking-insights", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(headerUserID, uuid.New().String())
+	req.Header.Set(headerWorkspaceMemberships, workspaceID.String()+":workspace_member")
+	recorder := httptest.NewRecorder()
+
+	newRouter("dev", nil,
+		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
+		NewDevelopmentAuthenticator(),
+		NewCallerWorkspaceAuthorizer(),
+		nil,
+		0,
+		stubRunCreationService{},
+		&fakeRunReadService{
+			insightsErr: provider.Failure{
+				Code:       provider.FailureCodeRateLimit,
+				RetryAfter: 5 * time.Second,
+			},
+		},
+		&fakeReplayReadService{},
+		stubHostedRunIngestionService{},
+		nil,
+		stubAgentDeploymentReadService{},
+		stubChallengePackReadService{},
+		stubAgentBuildService{},
+		noopReleaseGateService{},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+	).ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusTooManyRequests {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusTooManyRequests)
+	}
+	if recorder.Header().Get("Retry-After") != "5" {
+		t.Fatalf("Retry-After = %q, want 5", recorder.Header().Get("Retry-After"))
+	}
+}
+
+func TestCreateRunRankingInsightsEndpointMapsManagerRateLimitTo429(t *testing.T) {
+	workspaceID := uuid.New()
+	runID := uuid.New()
+	providerAccountID := uuid.New()
+	modelAliasID := uuid.New()
+
+	body, err := json.Marshal(createRunRankingInsightsRequest{
+		ProviderAccountID: providerAccountID.String(),
+		ModelAliasID:      modelAliasID.String(),
+	})
+	if err != nil {
+		t.Fatalf("marshal request body: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/runs/"+runID.String()+"/ranking-insights", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(headerUserID, uuid.New().String())
+	req.Header.Set(headerWorkspaceMemberships, workspaceID.String()+":workspace_member")
+	recorder := httptest.NewRecorder()
+
+	newRouter("dev", nil,
+		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
+		NewDevelopmentAuthenticator(),
+		NewCallerWorkspaceAuthorizer(),
+		nil,
+		0,
+		stubRunCreationService{},
+		&fakeRunReadService{
+			insightsErr: RunRankingInsightsRateLimitError{RetryAfter: 7 * time.Second},
+		},
+		&fakeReplayReadService{},
+		stubHostedRunIngestionService{},
+		nil,
+		stubAgentDeploymentReadService{},
+		stubChallengePackReadService{},
+		stubAgentBuildService{},
+		noopReleaseGateService{},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+	).ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusTooManyRequests {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusTooManyRequests)
+	}
+	if recorder.Header().Get("Retry-After") != "7" {
+		t.Fatalf("Retry-After = %q, want 7", recorder.Header().Get("Retry-After"))
 	}
 }
 
@@ -448,4 +862,91 @@ func newRunInsightsCaller(workspaceID uuid.UUID) Caller {
 			workspaceID: {WorkspaceID: workspaceID, Role: "workspace_member"},
 		},
 	}
+}
+
+type rankingInsightsFixture struct {
+	workspaceID         uuid.UUID
+	runID               uuid.UUID
+	providerAccountID   uuid.UUID
+	modelCatalogEntryID uuid.UUID
+	modelAliasID        uuid.UUID
+	alphaID             uuid.UUID
+	betaID              uuid.UUID
+	repo                *fakeRunReadRepository
+}
+
+func newRankingInsightsFixture(t *testing.T) rankingInsightsFixture {
+	t.Helper()
+
+	workspaceID := uuid.New()
+	runID := uuid.New()
+	providerAccountID := uuid.New()
+	modelCatalogEntryID := uuid.New()
+	modelAliasID := uuid.New()
+	alphaID := uuid.New()
+	betaID := uuid.New()
+
+	return rankingInsightsFixture{
+		workspaceID:         workspaceID,
+		runID:               runID,
+		providerAccountID:   providerAccountID,
+		modelCatalogEntryID: modelCatalogEntryID,
+		modelAliasID:        modelAliasID,
+		alphaID:             alphaID,
+		betaID:              betaID,
+		repo: &fakeRunReadRepository{
+			run: buildInsightsRun(runID, workspaceID),
+			runAgents: []domain.RunAgent{
+				{ID: alphaID, RunID: runID, LaneIndex: 0, Label: "Alpha", Status: domain.RunAgentStatusCompleted},
+				{ID: betaID, RunID: runID, LaneIndex: 1, Label: "Beta", Status: domain.RunAgentStatusCompleted},
+			},
+			runScorecard: buildInsightsScorecard(t, runID, alphaID, betaID),
+			providerAccount: repository.ProviderAccountRow{
+				ID:                  providerAccountID,
+				WorkspaceID:         uuidPtr(workspaceID),
+				ProviderKey:         "openai",
+				CredentialReference: "env://OPENAI_API_KEY",
+				Status:              "active",
+			},
+			modelAlias: repository.ModelAliasRow{
+				ID:                  modelAliasID,
+				WorkspaceID:         uuidPtr(workspaceID),
+				ProviderAccountID:   uuidPtr(providerAccountID),
+				ModelCatalogEntryID: modelCatalogEntryID,
+				AliasKey:            "insights-default",
+				DisplayName:         "Insights Default",
+				Status:              "active",
+			},
+			modelCatalogEntry: repository.ModelCatalogEntryRow{
+				ID:              modelCatalogEntryID,
+				ProviderKey:     "openai",
+				ProviderModelID: "gpt-5.4-mini",
+				DisplayName:     "GPT-5.4 Mini",
+			},
+		},
+	}
+}
+
+type fakeBudgetChecker struct {
+	results map[uuid.UUID]budget.BudgetCheckResult
+	err     error
+}
+
+func (f fakeBudgetChecker) CheckPreRunBudget(_ context.Context, _ uuid.UUID, spendPolicyID uuid.UUID) (budget.BudgetCheckResult, error) {
+	if f.err != nil {
+		return budget.BudgetCheckResult{}, f.err
+	}
+	if result, ok := f.results[spendPolicyID]; ok {
+		return result, nil
+	}
+	return budget.BudgetCheckResult{Allowed: true}, nil
+}
+
+type fakeWorkspaceRateLimiter struct {
+	allowed    bool
+	retryAfter time.Duration
+}
+
+func (f fakeWorkspaceRateLimiter) Allow(_ uuid.UUID, _ string) (bool, time.Duration) {
+	return f.allowed, f.retryAfter
 }
