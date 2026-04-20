@@ -411,6 +411,7 @@ type fakeRunReadRepository struct {
 	evalSession             repository.EvalSessionWithRuns
 	evalSessions            []domain.EvalSession
 	evalSessionRuns         map[uuid.UUID][]domain.Run
+	evalSessionResults      map[uuid.UUID]repository.EvalSessionAggregateRecord
 	runScorecard            repository.RunScorecard
 	regressionCoverageCases []repository.RunRegressionCoverageCase
 	runAgents               []domain.RunAgent
@@ -422,6 +423,7 @@ type fakeRunReadRepository struct {
 	workspaceSecrets        map[string]string
 	getRunErr               error
 	getEvalSessionErr       error
+	getEvalSessionResultErr error
 	listEvalSessionRunsErr  error
 	getRunScorecardErr      error
 	listRunAgentsErr        error
@@ -440,6 +442,20 @@ func (f *fakeRunReadRepository) GetRunByID(_ context.Context, _ uuid.UUID) (doma
 
 func (f *fakeRunReadRepository) GetEvalSessionWithRuns(_ context.Context, _ uuid.UUID) (repository.EvalSessionWithRuns, error) {
 	return f.evalSession, f.getEvalSessionErr
+}
+
+func (f *fakeRunReadRepository) GetEvalSessionResultBySessionID(_ context.Context, evalSessionID uuid.UUID) (repository.EvalSessionAggregateRecord, error) {
+	if f.getEvalSessionResultErr != nil {
+		return repository.EvalSessionAggregateRecord{}, f.getEvalSessionResultErr
+	}
+	if f.evalSessionResults == nil {
+		return repository.EvalSessionAggregateRecord{}, repository.ErrEvalSessionResultNotFound
+	}
+	result, ok := f.evalSessionResults[evalSessionID]
+	if !ok {
+		return repository.EvalSessionAggregateRecord{}, repository.ErrEvalSessionResultNotFound
+	}
+	return result, nil
 }
 
 func (f *fakeRunReadRepository) ListRunsByEvalSessionID(_ context.Context, evalSessionID uuid.UUID) ([]domain.Run, error) {

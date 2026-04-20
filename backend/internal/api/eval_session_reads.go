@@ -112,7 +112,12 @@ func (m *RunReadManager) GetEvalSession(ctx context.Context, caller Caller, eval
 		}
 	}
 
-	return buildEvalSessionReadModel(value), nil
+	aggregateResult, err := loadEvalSessionAggregateResult(ctx, m.repo, evalSessionID)
+	if err != nil {
+		return GetEvalSessionResult{}, err
+	}
+
+	return buildEvalSessionReadModel(value, aggregateResult)
 }
 
 func (m *RunReadManager) ListEvalSessions(ctx context.Context, caller Caller, input ListEvalSessionsInput) (ListEvalSessionsResult, error) {
@@ -131,24 +136,35 @@ func (m *RunReadManager) ListEvalSessions(ctx context.Context, caller Caller, in
 		if runErr != nil {
 			return ListEvalSessionsResult{}, fmt.Errorf("load runs for eval session %s: %w", session.ID, runErr)
 		}
-		items = append(items, buildEvalSessionReadModel(repository.EvalSessionWithRuns{
+		aggregateResult, aggregateErr := loadEvalSessionAggregateResult(ctx, m.repo, session.ID)
+		if aggregateErr != nil {
+			return ListEvalSessionsResult{}, fmt.Errorf("load aggregate for eval session %s: %w", session.ID, aggregateErr)
+		}
+		item, buildErr := buildEvalSessionReadModel(repository.EvalSessionWithRuns{
 			Session: session,
 			Runs:    runs,
-		}))
+		}, aggregateResult)
+		if buildErr != nil {
+			return ListEvalSessionsResult{}, fmt.Errorf("build eval session read model for %s: %w", session.ID, buildErr)
+		}
+		items = append(items, item)
 	}
 
 	return ListEvalSessionsResult{Items: items}, nil
 }
 
-func buildEvalSessionReadModel(value repository.EvalSessionWithRuns) GetEvalSessionResult {
-	warnings := buildEvalSessionEvidenceWarnings(value.Session, value.Runs)
+func buildEvalSessionReadModel(value repository.EvalSessionWithRuns, aggregateResult *repository.EvalSessionAggregateRecord) (GetEvalSessionResult, error) {
+	aggregateJSON, warnings, err := resolveEvalSessionEvidence(value.Session, value.Runs, aggregateResult)
+	if err != nil {
+		return GetEvalSessionResult{}, err
+	}
 	return GetEvalSessionResult{
 		Session:          value.Session,
 		Runs:             append([]domain.Run(nil), value.Runs...),
 		Summary:          EvalSessionSummary{RunCounts: summarizeEvalSessionRuns(value.Runs)},
-		AggregateResult:  nil,
+		AggregateResult:  aggregateJSON,
 		EvidenceWarnings: warnings,
-	}
+	}, nil
 }
 
 func summarizeEvalSessionRuns(runs []domain.Run) EvalSessionRunCounts {
@@ -203,6 +219,38 @@ func buildEvalSessionEvidenceWarnings(session domain.EvalSession, runs []domain.
 
 	sort.Strings(warnings)
 	return warnings
+}
+
+type evalSessionAggregateEvidence struct {
+	Warnings []string `json:"warnings"`
+}
+
+func loadEvalSessionAggregateResult(ctx context.Context, repo RunReadRepository, evalSessionID uuid.UUID) (*repository.EvalSessionAggregateRecord, error) {
+	aggregateResult, err := repo.GetEvalSessionResultBySessionID(ctx, evalSessionID)
+	if err != nil {
+		if errors.Is(err, repository.ErrEvalSessionResultNotFound) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get eval session result by session id: %w", err)
+	}
+	return &aggregateResult, nil
+}
+
+func resolveEvalSessionEvidence(session domain.EvalSession, runs []domain.Run, aggregateResult *repository.EvalSessionAggregateRecord) (json.RawMessage, []string, error) {
+	if aggregateResult == nil {
+		return nil, buildEvalSessionEvidenceWarnings(session, runs), nil
+	}
+
+	var evidence evalSessionAggregateEvidence
+	if len(aggregateResult.Evidence) > 0 {
+		if err := json.Unmarshal(aggregateResult.Evidence, &evidence); err != nil {
+			return nil, nil, fmt.Errorf("decode eval session aggregate evidence: %w", err)
+		}
+	}
+
+	warnings := append([]string(nil), evidence.Warnings...)
+	sort.Strings(warnings)
+	return append(json.RawMessage(nil), aggregateResult.Aggregate...), warnings, nil
 }
 
 func evalSessionWorkspaceID(runs []domain.Run) (uuid.UUID, error) {

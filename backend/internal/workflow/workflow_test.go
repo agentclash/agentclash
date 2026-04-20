@@ -48,14 +48,18 @@ func TestEvalSessionWorkflowHappyPath(t *testing.T) {
 	if err := env.GetWorkflowError(); err != nil {
 		t.Fatalf("EvalSessionWorkflow returned error: %v", err)
 	}
-	if got := repo.currentEvalSession(sessionID).Status; got != domain.EvalSessionStatusAggregating {
-		t.Fatalf("eval session status = %s, want %s", got, domain.EvalSessionStatusAggregating)
+	if got := repo.currentEvalSession(sessionID).Status; got != domain.EvalSessionStatusCompleted {
+		t.Fatalf("eval session status = %s, want %s", got, domain.EvalSessionStatusCompleted)
 	}
 	if got := repo.evalSessionStatusSequence(sessionID); !equalEvalSessionStatuses(got, []domain.EvalSessionStatus{
 		domain.EvalSessionStatusRunning,
 		domain.EvalSessionStatusAggregating,
+		domain.EvalSessionStatusCompleted,
 	}) {
-		t.Fatalf("eval session statuses = %v, want [running aggregating]", got)
+		t.Fatalf("eval session statuses = %v, want [running aggregating completed]", got)
+	}
+	if repo.callCountWithPrefix("AggregateEvalSession:") != 1 {
+		t.Fatalf("AggregateEvalSession call count = %d, want 1", repo.callCountWithPrefix("AggregateEvalSession:"))
 	}
 	sort.Slice(started, func(i, j int) bool { return started[i].String() < started[j].String() })
 	wantStarted := []uuid.UUID{firstRunID, secondRunID}
@@ -84,8 +88,43 @@ func TestEvalSessionWorkflowPartialChildFailureStillAggregates(t *testing.T) {
 	if err := env.GetWorkflowError(); err != nil {
 		t.Fatalf("EvalSessionWorkflow returned error: %v", err)
 	}
-	if got := repo.currentEvalSession(sessionID).Status; got != domain.EvalSessionStatusAggregating {
-		t.Fatalf("eval session status = %s, want %s", got, domain.EvalSessionStatusAggregating)
+	if got := repo.currentEvalSession(sessionID).Status; got != domain.EvalSessionStatusCompleted {
+		t.Fatalf("eval session status = %s, want %s", got, domain.EvalSessionStatusCompleted)
+	}
+	if got := repo.evalSessionStatusSequence(sessionID); !equalEvalSessionStatuses(got, []domain.EvalSessionStatus{
+		domain.EvalSessionStatusRunning,
+		domain.EvalSessionStatusAggregating,
+		domain.EvalSessionStatusCompleted,
+	}) {
+		t.Fatalf("eval session statuses = %v, want [running aggregating completed]", got)
+	}
+}
+
+func TestEvalSessionWorkflowAggregationFailureMarksSessionFailed(t *testing.T) {
+	sessionID := uuid.New()
+	runID := uuid.New()
+	repo := newFakeRunRepository(fixtureRun(uuid.New(), domain.RunStatusQueued))
+	repo.setEvalSession(
+		fixtureEvalSession(sessionID, domain.EvalSessionStatusQueued),
+		fixtureChildRun(runID, sessionID),
+	)
+	repo.aggregateEvalSessionErr = repository.ErrEvalSessionAggregateUnavailable
+
+	env := newEvalSessionWorkflowTestEnvironment(repo, nil, nil)
+	env.ExecuteWorkflow(EvalSessionWorkflow, EvalSessionWorkflowInput{EvalSessionID: sessionID})
+
+	if err := env.GetWorkflowError(); err == nil {
+		t.Fatalf("expected workflow failure")
+	}
+	if got := repo.currentEvalSession(sessionID).Status; got != domain.EvalSessionStatusFailed {
+		t.Fatalf("eval session status = %s, want %s", got, domain.EvalSessionStatusFailed)
+	}
+	if got := repo.evalSessionStatusSequence(sessionID); !equalEvalSessionStatuses(got, []domain.EvalSessionStatus{
+		domain.EvalSessionStatusRunning,
+		domain.EvalSessionStatusAggregating,
+		domain.EvalSessionStatusFailed,
+	}) {
+		t.Fatalf("eval session statuses = %v, want [running aggregating failed]", got)
 	}
 }
 
@@ -250,8 +289,8 @@ func TestEvalSessionWorkflowWaitsForAllChildrenBeforeAggregating(t *testing.T) {
 	if err := env.GetWorkflowError(); err != nil {
 		t.Fatalf("EvalSessionWorkflow returned error: %v", err)
 	}
-	if got := repo.currentEvalSession(sessionID).Status; got != domain.EvalSessionStatusAggregating {
-		t.Fatalf("eval session status = %s, want %s", got, domain.EvalSessionStatusAggregating)
+	if got := repo.currentEvalSession(sessionID).Status; got != domain.EvalSessionStatusCompleted {
+		t.Fatalf("eval session status = %s, want %s", got, domain.EvalSessionStatusCompleted)
 	}
 }
 
@@ -1043,6 +1082,7 @@ func newEvalSessionWorkflowTestEnvironment(
 	env.RegisterActivityWithOptions(activities.LoadEvalSession, sdkactivity.RegisterOptions{Name: loadEvalSessionActivityName})
 	env.RegisterActivityWithOptions(activities.ListEvalSessionRuns, sdkactivity.RegisterOptions{Name: listEvalSessionRunsActivityName})
 	env.RegisterActivityWithOptions(activities.TransitionEvalSessionStatus, sdkactivity.RegisterOptions{Name: transitionEvalSessionStatusActivityName})
+	env.RegisterActivityWithOptions(activities.AggregateEvalSession, sdkactivity.RegisterOptions{Name: aggregateEvalSessionActivityName})
 	if childWorkflow == nil {
 		childWorkflow = func(ctx sdkworkflow.Context, input RunWorkflowInput) error {
 			if childErrs != nil {
@@ -1059,27 +1099,29 @@ func newEvalSessionWorkflowTestEnvironment(
 }
 
 type fakeRunRepository struct {
-	mu                     sync.Mutex
-	run                    domain.Run
-	evalSessions           map[uuid.UUID]domain.EvalSession
-	evalSessionRuns        map[uuid.UUID][]domain.Run
-	runAgents              map[uuid.UUID]domain.RunAgent
-	executionContexts      map[uuid.UUID]repository.RunAgentExecutionContext
-	evaluationSpecs        map[string]repository.EvaluationSpecRecord
-	hostedExecutions       map[uuid.UUID]repository.HostedRunExecution
-	replays                map[uuid.UUID]repository.RunAgentReplay
-	runEvents              map[uuid.UUID][]repository.RunEvent
-	evaluations            map[uuid.UUID]scoring.RunAgentEvaluation
-	runScorecards          map[uuid.UUID]repository.RunScorecard
-	runAgentStatusErrs     map[string]error
-	buildReplayErr         error
-	recordRunEventErr      error
-	callLog                []string
-	runStatusCalls         []repository.TransitionRunStatusParams
-	evalSessionStatusCalls []repository.TransitionEvalSessionStatusParams
-	runAgentStatusCalls    []repository.TransitionRunAgentStatusParams
-	setTemporalIDsCalls    []repository.SetRunTemporalIDsParams
-	buildReplayCalls       []uuid.UUID
+	mu                      sync.Mutex
+	run                     domain.Run
+	evalSessions            map[uuid.UUID]domain.EvalSession
+	evalSessionRuns         map[uuid.UUID][]domain.Run
+	runAgents               map[uuid.UUID]domain.RunAgent
+	executionContexts       map[uuid.UUID]repository.RunAgentExecutionContext
+	evaluationSpecs         map[string]repository.EvaluationSpecRecord
+	hostedExecutions        map[uuid.UUID]repository.HostedRunExecution
+	replays                 map[uuid.UUID]repository.RunAgentReplay
+	runEvents               map[uuid.UUID][]repository.RunEvent
+	evaluations             map[uuid.UUID]scoring.RunAgentEvaluation
+	runScorecards           map[uuid.UUID]repository.RunScorecard
+	evalSessionAggregates   map[uuid.UUID]repository.EvalSessionAggregateRecord
+	runAgentStatusErrs      map[string]error
+	buildReplayErr          error
+	aggregateEvalSessionErr error
+	recordRunEventErr       error
+	callLog                 []string
+	runStatusCalls          []repository.TransitionRunStatusParams
+	evalSessionStatusCalls  []repository.TransitionEvalSessionStatusParams
+	runAgentStatusCalls     []repository.TransitionRunAgentStatusParams
+	setTemporalIDsCalls     []repository.SetRunTemporalIDsParams
+	buildReplayCalls        []uuid.UUID
 }
 
 func newFakeRunRepository(run domain.Run, runAgents ...domain.RunAgent) *fakeRunRepository {
@@ -1089,18 +1131,19 @@ func newFakeRunRepository(run domain.Run, runAgents ...domain.RunAgent) *fakeRun
 	}
 
 	return &fakeRunRepository{
-		run:                cloneRun(run),
-		evalSessions:       make(map[uuid.UUID]domain.EvalSession),
-		evalSessionRuns:    make(map[uuid.UUID][]domain.Run),
-		runAgents:          runAgentMap,
-		executionContexts:  make(map[uuid.UUID]repository.RunAgentExecutionContext),
-		evaluationSpecs:    make(map[string]repository.EvaluationSpecRecord),
-		hostedExecutions:   make(map[uuid.UUID]repository.HostedRunExecution),
-		replays:            make(map[uuid.UUID]repository.RunAgentReplay),
-		runEvents:          make(map[uuid.UUID][]repository.RunEvent),
-		evaluations:        make(map[uuid.UUID]scoring.RunAgentEvaluation),
-		runScorecards:      make(map[uuid.UUID]repository.RunScorecard),
-		runAgentStatusErrs: make(map[string]error),
+		run:                   cloneRun(run),
+		evalSessions:          make(map[uuid.UUID]domain.EvalSession),
+		evalSessionRuns:       make(map[uuid.UUID][]domain.Run),
+		runAgents:             runAgentMap,
+		executionContexts:     make(map[uuid.UUID]repository.RunAgentExecutionContext),
+		evaluationSpecs:       make(map[string]repository.EvaluationSpecRecord),
+		hostedExecutions:      make(map[uuid.UUID]repository.HostedRunExecution),
+		replays:               make(map[uuid.UUID]repository.RunAgentReplay),
+		runEvents:             make(map[uuid.UUID][]repository.RunEvent),
+		evaluations:           make(map[uuid.UUID]scoring.RunAgentEvaluation),
+		runScorecards:         make(map[uuid.UUID]repository.RunScorecard),
+		evalSessionAggregates: make(map[uuid.UUID]repository.EvalSessionAggregateRecord),
+		runAgentStatusErrs:    make(map[string]error),
 	}
 }
 
@@ -1170,6 +1213,33 @@ func (r *fakeRunRepository) TransitionEvalSessionStatus(_ context.Context, param
 	r.callLog = append(r.callLog, fmt.Sprintf("TransitionEvalSessionStatus:%s:%s", params.EvalSessionID, params.ToStatus))
 
 	return cloneEvalSession(session), nil
+}
+
+func (r *fakeRunRepository) AggregateEvalSession(_ context.Context, evalSessionID uuid.UUID) (repository.EvalSessionAggregateRecord, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.callLog = append(r.callLog, fmt.Sprintf("AggregateEvalSession:%s", evalSessionID))
+	if r.aggregateEvalSessionErr != nil {
+		return repository.EvalSessionAggregateRecord{}, r.aggregateEvalSessionErr
+	}
+	record, ok := r.evalSessionAggregates[evalSessionID]
+	if !ok {
+		record = repository.EvalSessionAggregateRecord{
+			ID:               uuid.New(),
+			EvalSessionID:    evalSessionID,
+			SchemaVersion:    1,
+			ChildRunCount:    int32(len(r.evalSessionRuns[evalSessionID])),
+			ScoredChildCount: int32(len(r.evalSessionRuns[evalSessionID])),
+			Aggregate:        []byte(`{"schema_version":1}`),
+			Evidence:         []byte(`{"warnings":[]}`),
+			ComputedAt:       time.Now().UTC(),
+			CreatedAt:        time.Now().UTC(),
+			UpdatedAt:        time.Now().UTC(),
+		}
+		r.evalSessionAggregates[evalSessionID] = record
+	}
+	return record, nil
 }
 
 func (r *fakeRunRepository) GetRunByID(_ context.Context, id uuid.UUID) (domain.Run, error) {

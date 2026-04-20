@@ -48,6 +48,7 @@ type EvalSessionRepository interface {
 	GetEvalSessionByID(ctx context.Context, id uuid.UUID) (domain.EvalSession, error)
 	ListRunsByEvalSessionID(ctx context.Context, evalSessionID uuid.UUID) ([]domain.Run, error)
 	TransitionEvalSessionStatus(ctx context.Context, params repository.TransitionEvalSessionStatusParams) (domain.EvalSession, error)
+	AggregateEvalSession(ctx context.Context, evalSessionID uuid.UUID) (repository.EvalSessionAggregateRecord, error)
 }
 
 type HostedRunStarter interface {

@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/Atharva-Kanherkar/agentclash/backend/internal/domain"
+	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
 	"github.com/google/uuid"
 	enumspb "go.temporal.io/api/enums/v1"
 	sdkworkflow "go.temporal.io/sdk/workflow"
@@ -55,7 +56,14 @@ func runEvalSessionWorkflow(ctx sdkworkflow.Context, input EvalSessionWorkflowIn
 		return err
 	}
 
-	return transitionEvalSessionStatus(ctx, input.EvalSessionID, domain.EvalSessionStatusAggregating)
+	if err := transitionEvalSessionStatus(ctx, input.EvalSessionID, domain.EvalSessionStatusAggregating); err != nil {
+		return err
+	}
+	if err := aggregateEvalSession(ctx, input.EvalSessionID); err != nil {
+		return err
+	}
+
+	return transitionEvalSessionStatus(ctx, input.EvalSessionID, domain.EvalSessionStatusCompleted)
 }
 
 func loadEvalSession(ctx sdkworkflow.Context, evalSessionID uuid.UUID) (domain.EvalSession, error) {
@@ -80,6 +88,13 @@ func transitionEvalSessionStatus(ctx sdkworkflow.Context, evalSessionID uuid.UUI
 		EvalSessionID: evalSessionID,
 		ToStatus:      toStatus,
 	}).Get(ctx, &session)
+}
+
+func aggregateEvalSession(ctx sdkworkflow.Context, evalSessionID uuid.UUID) error {
+	var aggregateResult repository.EvalSessionAggregateRecord
+	return sdkworkflow.ExecuteActivity(ctx, aggregateEvalSessionActivityName, AggregateEvalSessionInput{
+		EvalSessionID: evalSessionID,
+	}).Get(ctx, &aggregateResult)
 }
 
 func executeEvalSessionRuns(ctx sdkworkflow.Context, runs []domain.Run) error {

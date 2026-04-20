@@ -146,6 +146,35 @@ func (q *Queries) GetEvalSessionByID(ctx context.Context, arg GetEvalSessionByID
 	return i, err
 }
 
+const getEvalSessionResultBySessionID = `-- name: GetEvalSessionResultBySessionID :one
+SELECT id, eval_session_id, schema_version, child_run_count, scored_child_count, aggregate, evidence, computed_at, created_at, updated_at
+FROM eval_session_results
+WHERE eval_session_id = $1
+LIMIT 1
+`
+
+type GetEvalSessionResultBySessionIDParams struct {
+	EvalSessionID uuid.UUID
+}
+
+func (q *Queries) GetEvalSessionResultBySessionID(ctx context.Context, arg GetEvalSessionResultBySessionIDParams) (EvalSessionResult, error) {
+	row := q.db.QueryRow(ctx, getEvalSessionResultBySessionID, arg.EvalSessionID)
+	var i EvalSessionResult
+	err := row.Scan(
+		&i.ID,
+		&i.EvalSessionID,
+		&i.SchemaVersion,
+		&i.ChildRunCount,
+		&i.ScoredChildCount,
+		&i.Aggregate,
+		&i.Evidence,
+		&i.ComputedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const listEvalSessions = `-- name: ListEvalSessions :many
 SELECT id, status, repetitions, aggregation_config, success_threshold_config, routing_task_snapshot, schema_version, created_at, started_at, finished_at, updated_at
 FROM eval_sessions
@@ -330,6 +359,67 @@ func (q *Queries) UpdateEvalSessionStatus(ctx context.Context, arg UpdateEvalSes
 		&i.CreatedAt,
 		&i.StartedAt,
 		&i.FinishedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const upsertEvalSessionResult = `-- name: UpsertEvalSessionResult :one
+INSERT INTO eval_session_results (
+    eval_session_id,
+    schema_version,
+    child_run_count,
+    scored_child_count,
+    aggregate,
+    evidence
+) VALUES (
+    $1,
+    $2,
+    $3,
+    $4,
+    $5,
+    $6
+)
+ON CONFLICT (eval_session_id)
+DO UPDATE SET
+    schema_version = EXCLUDED.schema_version,
+    child_run_count = EXCLUDED.child_run_count,
+    scored_child_count = EXCLUDED.scored_child_count,
+    aggregate = EXCLUDED.aggregate,
+    evidence = EXCLUDED.evidence,
+    computed_at = now()
+RETURNING id, eval_session_id, schema_version, child_run_count, scored_child_count, aggregate, evidence, computed_at, created_at, updated_at
+`
+
+type UpsertEvalSessionResultParams struct {
+	EvalSessionID    uuid.UUID
+	SchemaVersion    int32
+	ChildRunCount    int32
+	ScoredChildCount int32
+	Aggregate        []byte
+	Evidence         []byte
+}
+
+func (q *Queries) UpsertEvalSessionResult(ctx context.Context, arg UpsertEvalSessionResultParams) (EvalSessionResult, error) {
+	row := q.db.QueryRow(ctx, upsertEvalSessionResult,
+		arg.EvalSessionID,
+		arg.SchemaVersion,
+		arg.ChildRunCount,
+		arg.ScoredChildCount,
+		arg.Aggregate,
+		arg.Evidence,
+	)
+	var i EvalSessionResult
+	err := row.Scan(
+		&i.ID,
+		&i.EvalSessionID,
+		&i.SchemaVersion,
+		&i.ChildRunCount,
+		&i.ScoredChildCount,
+		&i.Aggregate,
+		&i.Evidence,
+		&i.ComputedAt,
+		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
 	return i, err

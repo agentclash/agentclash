@@ -71,3 +71,35 @@ SELECT *
 FROM runs
 WHERE eval_session_id = @eval_session_id
 ORDER BY created_at ASC, id ASC;
+
+-- name: GetEvalSessionResultBySessionID :one
+SELECT *
+FROM eval_session_results
+WHERE eval_session_id = @eval_session_id
+LIMIT 1;
+
+-- name: UpsertEvalSessionResult :one
+INSERT INTO eval_session_results (
+    eval_session_id,
+    schema_version,
+    child_run_count,
+    scored_child_count,
+    aggregate,
+    evidence
+) VALUES (
+    @eval_session_id,
+    @schema_version,
+    @child_run_count,
+    @scored_child_count,
+    @aggregate,
+    @evidence
+)
+ON CONFLICT (eval_session_id)
+DO UPDATE SET
+    schema_version = EXCLUDED.schema_version,
+    child_run_count = EXCLUDED.child_run_count,
+    scored_child_count = EXCLUDED.scored_child_count,
+    aggregate = EXCLUDED.aggregate,
+    evidence = EXCLUDED.evidence,
+    computed_at = now()
+RETURNING *;

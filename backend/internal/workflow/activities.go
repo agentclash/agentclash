@@ -20,6 +20,7 @@ const (
 	loadEvalSessionActivityName              = "workflow.load_eval_session"
 	listEvalSessionRunsActivityName          = "workflow.list_eval_session_runs"
 	transitionEvalSessionStatusActivityName  = "workflow.transition_eval_session_status"
+	aggregateEvalSessionActivityName         = "workflow.aggregate_eval_session"
 	loadRunActivityName                      = "workflow.load_run"
 	listRunAgentsActivityName                = "workflow.list_run_agents"
 	loadRunAgentActivityName                 = "workflow.load_run_agent"
@@ -40,16 +41,17 @@ const (
 )
 
 const (
-	repositoryEvalSessionNotFoundErrorType = "repository.ErrEvalSessionNotFound"
-	repositoryRunNotFoundErrorType         = "repository.ErrRunNotFound"
-	repositoryRunAgentNotFoundErrorType    = "repository.ErrRunAgentNotFound"
-	repositoryFrozenExecutionContextType   = "repository.ErrFrozenExecutionContext"
-	repositoryTemporalIDConflictType       = "repository.ErrTemporalIDConflict"
-	repositoryIllegalSessionTransitionType = "repository.ErrIllegalSessionTransition"
-	repositoryInvalidTransitionType        = "repository.ErrInvalidTransition"
-	repositoryTransitionConflictType       = "repository.ErrTransitionConflict"
-	engineFailureErrorTypePrefix           = "engine."
-	providerFailureErrorTypePrefix         = "provider."
+	repositoryEvalSessionNotFoundErrorType        = "repository.ErrEvalSessionNotFound"
+	repositoryEvalSessionAggregateUnavailableType = "repository.ErrEvalSessionAggregateUnavailable"
+	repositoryRunNotFoundErrorType                = "repository.ErrRunNotFound"
+	repositoryRunAgentNotFoundErrorType           = "repository.ErrRunAgentNotFound"
+	repositoryFrozenExecutionContextType          = "repository.ErrFrozenExecutionContext"
+	repositoryTemporalIDConflictType              = "repository.ErrTemporalIDConflict"
+	repositoryIllegalSessionTransitionType        = "repository.ErrIllegalSessionTransition"
+	repositoryInvalidTransitionType               = "repository.ErrInvalidTransition"
+	repositoryTransitionConflictType              = "repository.ErrTransitionConflict"
+	engineFailureErrorTypePrefix                  = "engine."
+	providerFailureErrorTypePrefix                = "provider."
 )
 
 type FakeWorkHooks struct {
@@ -87,6 +89,10 @@ type ListEvalSessionRunsInput struct {
 type TransitionEvalSessionStatusInput struct {
 	EvalSessionID uuid.UUID                `json:"eval_session_id"`
 	ToStatus      domain.EvalSessionStatus `json:"to_status"`
+}
+
+type AggregateEvalSessionInput struct {
+	EvalSessionID uuid.UUID `json:"eval_session_id"`
 }
 
 type LoadRunInput struct {
@@ -196,6 +202,15 @@ func (a *Activities) TransitionEvalSessionStatus(ctx context.Context, input Tran
 		ToStatus:      input.ToStatus,
 	})
 	return session, wrapActivityError(err)
+}
+
+func (a *Activities) AggregateEvalSession(ctx context.Context, input AggregateEvalSessionInput) (repository.EvalSessionAggregateRecord, error) {
+	if a.evalSessionRepo == nil {
+		return repository.EvalSessionAggregateRecord{}, errors.New("eval session repository is not configured")
+	}
+
+	result, err := a.evalSessionRepo.AggregateEvalSession(ctx, input.EvalSessionID)
+	return result, wrapActivityError(err)
 }
 
 func (a *Activities) LoadRun(ctx context.Context, input LoadRunInput) (domain.Run, error) {
@@ -418,6 +433,8 @@ func wrapActivityError(err error) error {
 	switch {
 	case errors.Is(err, repository.ErrEvalSessionNotFound):
 		return temporal.NewNonRetryableApplicationError(err.Error(), repositoryEvalSessionNotFoundErrorType, err)
+	case errors.Is(err, repository.ErrEvalSessionAggregateUnavailable):
+		return temporal.NewNonRetryableApplicationError(err.Error(), repositoryEvalSessionAggregateUnavailableType, err)
 	case errors.Is(err, repository.ErrRunNotFound):
 		return temporal.NewNonRetryableApplicationError(err.Error(), repositoryRunNotFoundErrorType, err)
 	case errors.Is(err, repository.ErrRunAgentNotFound):

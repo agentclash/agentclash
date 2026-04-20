@@ -109,6 +109,19 @@ type EvalSession struct {
 	UpdatedAt              pgtype.Timestamptz
 }
 
+type EvalSessionResult struct {
+	ID               uuid.UUID
+	EvalSessionID    uuid.UUID
+	SchemaVersion    int32
+	ChildRunCount    int32
+	ScoredChildCount int32
+	Aggregate        []byte
+	Evidence         []byte
+	ComputedAt       pgtype.Timestamptz
+	CreatedAt        pgtype.Timestamptz
+	UpdatedAt        pgtype.Timestamptz
+}
+
 type EvaluationSpec struct {
 	ID                     uuid.UUID
 	ChallengePackVersionID *uuid.UUID

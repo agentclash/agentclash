@@ -13,14 +13,14 @@ This matrix is the trust contract for repeated eval sessions. It separates low-c
 - Child runs are returned in deterministic creation order.
 - `summary.run_counts.total` equals the number of attached child runs.
 - Freshly created sessions surface queued child-run counts explicitly.
-- `aggregate_result` remains `null` until session-level aggregation persistence lands.
-- `evidence_warnings` explain missing aggregate evidence instead of leaving the field ambiguous.
+- Completed sessions with persisted aggregation return non-null `aggregate_result`.
+- `evidence_warnings` come from persisted aggregate evidence when an aggregate row exists.
 - Single-run mode (`repetitions=1`) uses the same read surfaces and summary math as repeated mode.
 
 ## CI Matrix
 | Tier | Repetitions | Coverage | Expected Outcome |
 |---|---:|---|---|
-| Single-run compatibility | 1 | API/repository tests plus local smoke when needed | Session read returns one child run, `total=1`, `queued=1`, `aggregate_result=null`, and an aggregate-evidence warning. |
+| Single-run compatibility | 1 | API/repository tests plus local smoke when needed | Session read returns one child run, terminal session state after workflow execution, and a non-null `aggregate_result` with deterministic evidence warnings. |
 | Small repeated run | 3 | API/repository tests plus `REPETITIONS=3 ./scripts/smoke/eval-session-read.sh` | Session read returns three child runs, ordered consistently, with `total=3`, `queued=3`. |
 | Small comparison-style inspection | 3 then 5 | `REPETITIONS=3 SECOND_REPETITIONS=5 ./scripts/smoke/eval-session-read.sh` | List read shows both sessions so a developer can inspect session-vs-session state side by side without querying raw tables. |
 
@@ -38,11 +38,11 @@ This matrix is the trust contract for repeated eval sessions. It separates low-c
 3. Run one medium or larger repetition tier and confirm:
    - detail read returns the requested repetition count
    - list read contains the created session
-   - `aggregate_result` is still `null`
-   - `evidence_warnings` explains the missing aggregate result
+   - completed sessions return non-null `aggregate_result`
+   - `evidence_warnings` matches the persisted aggregate evidence
 4. Run the two-session smoke command (`REPETITIONS=3 SECOND_REPETITIONS=5`) and confirm both sessions appear in list order for side-by-side inspection.
 5. Shut the local stack back down when finished.
 
 ## Notes
-- Until `#361` lands, the read-model contract intentionally reports `aggregate_result: null` and uses `evidence_warnings` to make that absence explicit.
-- When `#361` and `#362` land, extend this matrix rather than replacing it so single-run compatibility and scale-tier inspection stay locked.
+- `aggregate_result` remains `null` only for sessions that have not yet reached persisted aggregation.
+- When `#362` lands, extend this matrix rather than replacing it so single-run compatibility and scale-tier inspection stay locked.

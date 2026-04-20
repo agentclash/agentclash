@@ -21,6 +21,7 @@ import (
 type RunReadRepository interface {
 	GetRunByID(ctx context.Context, id uuid.UUID) (domain.Run, error)
 	GetEvalSessionWithRuns(ctx context.Context, id uuid.UUID) (repository.EvalSessionWithRuns, error)
+	GetEvalSessionResultBySessionID(ctx context.Context, evalSessionID uuid.UUID) (repository.EvalSessionAggregateRecord, error)
 	ListRunsByEvalSessionID(ctx context.Context, evalSessionID uuid.UUID) ([]domain.Run, error)
 	GetRunScorecardByRunID(ctx context.Context, runID uuid.UUID) (repository.RunScorecard, error)
 	ListRunRegressionCoverageCasesByRunID(ctx context.Context, runID uuid.UUID) ([]repository.RunRegressionCoverageCase, error)

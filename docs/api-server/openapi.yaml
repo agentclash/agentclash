@@ -5221,11 +5221,81 @@ components:
           type: integer
 
     EvalSessionAggregateResult:
-      description: Reserved for future aggregated session result documents. Null until aggregation persistence lands.
       anyOf:
-        - type: object
-          additionalProperties: true
+        - $ref: "#/components/schemas/EvalSessionAggregateDocument"
         - type: "null"
+
+    EvalSessionAggregateDocument:
+      type: object
+      required: [schema_version, child_run_count, scored_child_count]
+      properties:
+        schema_version:
+          type: integer
+        child_run_count:
+          type: integer
+        scored_child_count:
+          type: integer
+        top_level_source:
+          type: string
+        overall:
+          $ref: "#/components/schemas/EvalSessionMetricAggregate"
+        dimensions:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/EvalSessionMetricAggregate"
+        participants:
+          type: array
+          items:
+            $ref: "#/components/schemas/EvalSessionParticipantAggregate"
+
+    EvalSessionParticipantAggregate:
+      type: object
+      required: [lane_index, label]
+      properties:
+        lane_index:
+          type: integer
+        label:
+          type: string
+        overall:
+          $ref: "#/components/schemas/EvalSessionMetricAggregate"
+        dimensions:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/EvalSessionMetricAggregate"
+
+    EvalSessionMetricAggregate:
+      type: object
+      required: [n, mean, median, std_dev, min, max, high_variance, high_variance_rule]
+      properties:
+        n:
+          type: integer
+        mean:
+          type: number
+        median:
+          type: number
+        std_dev:
+          type: number
+        min:
+          type: number
+        max:
+          type: number
+        interval:
+          $ref: "#/components/schemas/EvalSessionAggregateInterval"
+        high_variance:
+          type: boolean
+        high_variance_rule:
+          type: string
+
+    EvalSessionAggregateInterval:
+      type: object
+      required: [estimator, lower, upper]
+      properties:
+        estimator:
+          type: string
+        lower:
+          type: number
+        upper:
+          type: number
 
     EvalSessionChildRun:
       type: object

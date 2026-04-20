@@ -61,6 +61,54 @@ func TestRunReadManagerGetEvalSessionReturnsAuthorizedSession(t *testing.T) {
 	}
 }
 
+func TestRunReadManagerGetEvalSessionReturnsStoredAggregateResult(t *testing.T) {
+	workspaceID := uuid.New()
+	sessionID := uuid.New()
+	runID := uuid.New()
+	caller := Caller{
+		UserID: uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: "workspace_member"},
+		},
+	}
+
+	manager := NewRunReadManager(NewCallerWorkspaceAuthorizer(), &fakeRunReadRepository{
+		evalSession: repository.EvalSessionWithRuns{
+			Session: domain.EvalSession{
+				ID:          sessionID,
+				Status:      domain.EvalSessionStatusCompleted,
+				Repetitions: 1,
+			},
+			Runs: []domain.Run{
+				{
+					ID:            runID,
+					WorkspaceID:   workspaceID,
+					EvalSessionID: &sessionID,
+					Status:        domain.RunStatusCompleted,
+				},
+			},
+		},
+		evalSessionResults: map[uuid.UUID]repository.EvalSessionAggregateRecord{
+			sessionID: {
+				EvalSessionID: sessionID,
+				Aggregate:     []byte(`{"schema_version":1,"child_run_count":1,"scored_child_count":1}`),
+				Evidence:      []byte(`{"warnings":["partial evidence warning"]}`),
+			},
+		},
+	})
+
+	result, err := manager.GetEvalSession(context.Background(), caller, sessionID)
+	if err != nil {
+		t.Fatalf("GetEvalSession returned error: %v", err)
+	}
+	if string(result.AggregateResult) != `{"schema_version":1,"child_run_count":1,"scored_child_count":1}` {
+		t.Fatalf("aggregate result = %s, want stored aggregate payload", result.AggregateResult)
+	}
+	if !slices.Equal(result.EvidenceWarnings, []string{"partial evidence warning"}) {
+		t.Fatalf("evidence warnings = %v, want persisted warnings only", result.EvidenceWarnings)
+	}
+}
+
 func TestRunReadManagerGetEvalSessionAllowsZeroRunSession(t *testing.T) {
 	sessionID := uuid.New()
 	manager := NewRunReadManager(NewCallerWorkspaceAuthorizer(), &fakeRunReadRepository{
@@ -250,6 +298,73 @@ func TestGetEvalSessionEndpointReturnsDetail(t *testing.T) {
 	}
 	if string(response.AggregateResult) != "null" {
 		t.Fatalf("aggregate_result = %s, want null", string(response.AggregateResult))
+	}
+}
+
+func TestGetEvalSessionEndpointReturnsStoredAggregateResult(t *testing.T) {
+	userID := uuid.New()
+	workspaceID := uuid.New()
+	sessionID := uuid.New()
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/eval-sessions/"+sessionID.String(), nil)
+	req.Header.Set(headerUserID, userID.String())
+	req.Header.Set(headerWorkspaceMemberships, workspaceID.String()+":workspace_member")
+	recorder := httptest.NewRecorder()
+
+	newRouter("dev", nil,
+		testLogger(t),
+		NewDevelopmentAuthenticator(),
+		NewCallerWorkspaceAuthorizer(),
+		nil,
+		0,
+		stubRunCreationService{},
+		&fakeRunReadService{
+			getEvalSessionResult: GetEvalSessionResult{
+				Session: domain.EvalSession{
+					ID:          sessionID,
+					Status:      domain.EvalSessionStatusCompleted,
+					Repetitions: 1,
+				},
+				Summary: EvalSessionSummary{
+					RunCounts: EvalSessionRunCounts{Total: 1, Completed: 1},
+				},
+				AggregateResult:  []byte(`{"schema_version":1,"child_run_count":1,"scored_child_count":1}`),
+				EvidenceWarnings: []string{"persisted warning"},
+			},
+		},
+		&fakeReplayReadService{},
+		stubHostedRunIngestionService{},
+		nil,
+		stubAgentDeploymentReadService{},
+		stubChallengePackReadService{},
+		stubAgentBuildService{},
+		noopReleaseGateService{},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+	).ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusOK)
+	}
+
+	var response getEvalSessionResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if string(response.AggregateResult) != `{"schema_version":1,"child_run_count":1,"scored_child_count":1}` {
+		t.Fatalf("aggregate_result = %s, want stored payload", response.AggregateResult)
+	}
+	if !slices.Equal(response.EvidenceWarnings, []string{"persisted warning"}) {
+		t.Fatalf("evidence warnings = %v, want persisted warning", response.EvidenceWarnings)
 	}
 }
 
