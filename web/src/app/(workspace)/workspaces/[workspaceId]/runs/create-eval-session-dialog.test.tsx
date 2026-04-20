@@ -201,12 +201,18 @@ function renderDialog() {
   };
 }
 
-function buildApiMock(status = 201) {
+function buildApiMock(
+  status = 201,
+  options?: {
+    deployments?: Array<Record<string, unknown>>;
+    responseData?: Record<string, unknown>;
+  },
+) {
   const postWithMeta = vi.fn().mockResolvedValue({
     status,
     data:
       status === 422
-        ? {
+        ? (options?.responseData ?? {
             errors: [
               {
                 field: "eval_session.repetitions",
@@ -214,7 +220,7 @@ function buildApiMock(status = 201) {
                 message: "repetitions must be an integer between 1 and 100",
               },
             ],
-          }
+          })
         : {
             eval_session: {
               id: "session-1",
@@ -244,14 +250,16 @@ function buildApiMock(status = 201) {
 
     if (url === "/v1/workspaces/ws-1/agent-deployments") {
       return {
-        items: [
-          {
-            id: "deploy-1",
-            name: "Primary Agent",
-            status: "active",
-            current_build_version_id: "build-version-1",
-          },
-        ],
+        items:
+          options?.deployments ??
+          [
+            {
+              id: "deploy-1",
+              name: "Primary Agent",
+              status: "active",
+              current_build_version_id: "build-version-1",
+            },
+          ],
       };
     }
 
@@ -365,6 +373,102 @@ describe("CreateEvalSessionDialog", () => {
         "repetitions must be an integer between 1 and 100",
       );
       expect(mockPush).not.toHaveBeenCalled();
+    } finally {
+      view.cleanup();
+    }
+  });
+
+  it("disables deployments whose build version is shared by another active deployment", async () => {
+    const api = buildApiMock(201, {
+      deployments: [
+        {
+          id: "deploy-1",
+          name: "Primary Agent",
+          status: "active",
+          current_build_version_id: "build-version-1",
+        },
+        {
+          id: "deploy-2",
+          name: "Primary Agent Copy",
+          status: "active",
+          current_build_version_id: "build-version-1",
+        },
+        {
+          id: "deploy-3",
+          name: "Unique Agent",
+          status: "active",
+          current_build_version_id: "build-version-2",
+        },
+      ],
+    });
+    mockCreateApiClient.mockReturnValue(api);
+
+    const view = renderDialog();
+    try {
+      clickElement(findButton("New Eval Session"));
+      await flushPromises();
+
+      changeSelect(findSelectForLabel("Challenge Pack"), "pack-1");
+      await flushPromises();
+
+      expect(findCheckboxByLabel("Primary Agent").disabled).toBe(true);
+      expect(findCheckboxByLabel("Primary Agent Copy").disabled).toBe(true);
+      expect(findCheckboxByLabel("Unique Agent").disabled).toBe(false);
+      expect(document.body.textContent).toContain(
+        "unavailable for eval sessions because their current build version is shared by another active deployment",
+      );
+      expect(document.body.textContent).toContain(
+        "Unavailable: this build version is active on 2 deployments in this workspace",
+      );
+
+      clickElement(findCheckboxByLabel("Unique Agent"));
+      await flushPromises();
+
+      clickElement(findButton("Create Eval Session"));
+
+      await waitFor(() => {
+        expect(api.postWithMeta).toHaveBeenCalledTimes(1);
+      });
+    } finally {
+      view.cleanup();
+    }
+  });
+
+  it("maps participant build-version ambiguity to a clearer toast", async () => {
+    const api = buildApiMock(422, {
+      responseData: {
+        errors: [
+          {
+            field: "participants[0].agent_build_version_id",
+            code: "participants.agent_build_version_id.ambiguous",
+            message:
+              "agent_build_version_id resolved to multiple active deployments in the selected workspace",
+          },
+        ],
+      },
+    });
+    mockCreateApiClient.mockReturnValue(api);
+
+    const view = renderDialog();
+    try {
+      clickElement(findButton("New Eval Session"));
+      await flushPromises();
+
+      changeSelect(findSelectForLabel("Challenge Pack"), "pack-1");
+      await flushPromises();
+
+      clickElement(findCheckboxByLabel("Primary Agent"));
+      await flushPromises();
+
+      clickElement(findButton("Create Eval Session"));
+
+      await waitFor(() => {
+        expect(api.postWithMeta).toHaveBeenCalledTimes(1);
+      });
+
+      expect(toast.error).toHaveBeenCalledWith(
+        "One or more selected deployments are unavailable because their current build version is shared by multiple active deployments in this workspace.",
+      );
     } finally {
       view.cleanup();
     }
