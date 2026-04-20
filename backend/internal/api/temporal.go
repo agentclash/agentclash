@@ -27,7 +27,7 @@ func (s TemporalRunWorkflowStarter) StartRunWorkflow(ctx context.Context, runID 
 	workflowID := fmt.Sprintf("%s/%s", workflow.RunWorkflowName, runID)
 	_, err := s.client.ExecuteWorkflow(ctx, temporalsdk.StartWorkflowOptions{
 		ID:        workflowID,
-		TaskQueue: workflow.RunWorkflowName,
+		TaskQueue: workflow.WorkflowTaskQueue,
 	}, workflow.RunWorkflowName, workflow.RunWorkflowInput{
 		RunID: runID,
 	})
@@ -46,7 +46,7 @@ func (s TemporalEvalSessionWorkflowStarter) StartEvalSessionWorkflow(ctx context
 	workflowID := fmt.Sprintf("%s/%s", workflow.EvalSessionWorkflowName, evalSessionID)
 	_, err := s.client.ExecuteWorkflow(ctx, temporalsdk.StartWorkflowOptions{
 		ID:        workflowID,
-		TaskQueue: workflow.RunWorkflowName,
+		TaskQueue: workflow.WorkflowTaskQueue,
 	}, workflow.EvalSessionWorkflowName, workflow.EvalSessionWorkflowInput{
 		EvalSessionID: evalSessionID,
 	})
@@ -65,7 +65,7 @@ func (s TemporalPlaygroundWorkflowStarter) StartPlaygroundExperimentWorkflow(ctx
 	workflowID := fmt.Sprintf("%s/%s", workflow.PlaygroundExperimentWorkflowName, experimentID)
 	_, err := s.client.ExecuteWorkflow(ctx, temporalsdk.StartWorkflowOptions{
 		ID:        workflowID,
-		TaskQueue: workflow.RunWorkflowName,
+		TaskQueue: workflow.WorkflowTaskQueue,
 	}, workflow.PlaygroundExperimentWorkflowName, workflow.PlaygroundExperimentWorkflowInput{
 		ExperimentID: experimentID,
 	})

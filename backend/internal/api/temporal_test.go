@@ -24,8 +24,8 @@ func TestTemporalEvalSessionWorkflowStarterStartEvalSessionWorkflow(t *testing.T
 	if client.options.ID != workflow.EvalSessionWorkflowName+"/"+sessionID.String() {
 		t.Fatalf("workflow id = %q, want %q", client.options.ID, workflow.EvalSessionWorkflowName+"/"+sessionID.String())
 	}
-	if client.options.TaskQueue != workflow.RunWorkflowName {
-		t.Fatalf("task queue = %q, want %q", client.options.TaskQueue, workflow.RunWorkflowName)
+	if client.options.TaskQueue != workflow.WorkflowTaskQueue {
+		t.Fatalf("task queue = %q, want %q", client.options.TaskQueue, workflow.WorkflowTaskQueue)
 	}
 
 	input, ok := client.args[0].(workflow.EvalSessionWorkflowInput)

@@ -120,6 +120,36 @@ func TestEvalSessionWorkflowAllChildrenFailMarksSessionFailed(t *testing.T) {
 	}
 }
 
+func TestEvalSessionWorkflowRunTransitionConflictStillMarksSessionFailed(t *testing.T) {
+	sessionID := uuid.New()
+	firstRunID := uuid.New()
+	secondRunID := uuid.New()
+	repo := newFakeRunRepository(fixtureRun(uuid.New(), domain.RunStatusQueued))
+	repo.setEvalSession(
+		fixtureEvalSession(sessionID, domain.EvalSessionStatusQueued),
+		fixtureChildRun(firstRunID, sessionID),
+		fixtureChildRun(secondRunID, sessionID),
+	)
+
+	conflictErr := temporal.NewNonRetryableApplicationError(
+		"child run transition conflict",
+		repositoryTransitionConflictType,
+		errors.New("conflict"),
+	)
+	env := newEvalSessionWorkflowTestEnvironment(repo, map[uuid.UUID]error{
+		firstRunID:  conflictErr,
+		secondRunID: conflictErr,
+	}, nil)
+	env.ExecuteWorkflow(EvalSessionWorkflow, EvalSessionWorkflowInput{EvalSessionID: sessionID})
+
+	if err := env.GetWorkflowError(); err == nil {
+		t.Fatalf("expected workflow failure")
+	}
+	if got := repo.currentEvalSession(sessionID).Status; got != domain.EvalSessionStatusFailed {
+		t.Fatalf("eval session status = %s, want %s", got, domain.EvalSessionStatusFailed)
+	}
+}
+
 func TestEvalSessionWorkflowCancellationMarksSessionCancelled(t *testing.T) {
 	sessionID := uuid.New()
 	runID := uuid.New()

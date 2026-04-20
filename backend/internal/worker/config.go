@@ -124,7 +124,7 @@ func LoadConfigFromEnv() (Config, error) {
 		TemporalAddress:       temporalAddress,
 		TemporalNamespace:     temporalNamespace,
 		Identity:              identity,
-		TaskQueue:             workflow.RunWorkflowName,
+		TaskQueue:             workflow.WorkflowTaskQueue,
 		HostedCallbackBaseURL: hostedCallbackBaseURL,
 		HostedCallbackSecret:  hostedCallbackSecret,
 		ShutdownTimeout:       shutdownTimeout,

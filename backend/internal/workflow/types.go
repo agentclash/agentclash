@@ -8,6 +8,7 @@ const (
 	RunAgentWorkflowName             = "RunAgentWorkflow"
 	PlaygroundExperimentWorkflowName = "PlaygroundExperimentWorkflow"
 	HostedRunEventSignal             = "hosted_run_event"
+	WorkflowTaskQueue                = RunWorkflowName
 )
 
 type EvalSessionWorkflowInput struct {

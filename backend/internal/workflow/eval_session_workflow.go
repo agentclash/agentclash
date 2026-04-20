@@ -141,6 +141,5 @@ func markEvalSessionCancelled(ctx sdkworkflow.Context, evalSessionID uuid.UUID, 
 func shouldSkipEvalSessionFailureTransition(err error) bool {
 	return errors.Is(err, ErrEvalSessionMustBeQueued) ||
 		hasApplicationErrorType(err, repositoryEvalSessionNotFoundErrorType) ||
-		hasApplicationErrorType(err, repositoryIllegalSessionTransitionType) ||
-		hasApplicationErrorType(err, repositoryTransitionConflictType)
+		hasApplicationErrorType(err, repositoryIllegalSessionTransitionType)
 }
