@@ -94,7 +94,6 @@ func TestEvalSessionMigrationAddsTableAndNullableRunForeignKey(t *testing.T) {
 func TestEvalSessionMigrationAcceptsAllStatusesAndRejectsInvalidValues(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)
-	seedFixture(t, ctx, db)
 
 	validStatuses := []domain.EvalSessionStatus{
 		domain.EvalSessionStatusQueued,
@@ -135,6 +134,26 @@ func TestEvalSessionMigrationAcceptsAllStatusesAndRejectsInvalidValues(t *testin
 		VALUES ($1, 'draft', 1, '{}'::jsonb, '{}'::jsonb, '{}'::jsonb, 1)
 	`, uuid.New()); err == nil {
 		t.Fatal("expected invalid eval session status insert to fail")
+	}
+}
+
+func TestRepositoryCreateEvalSessionRejectsSchemaVersionZero(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	repo := repository.New(db)
+
+	_, err := repo.CreateEvalSession(ctx, repository.CreateEvalSessionParams{
+		Repetitions:            1,
+		AggregationConfig:      nil,
+		SuccessThresholdConfig: nil,
+		RoutingTaskSnapshot:    nil,
+		SchemaVersion:          0,
+	})
+	if err == nil {
+		t.Fatal("expected schema version validation error")
+	}
+	if !errors.Is(err, repository.ErrEvalSessionSchemaVersion) {
+		t.Fatalf("CreateEvalSession error = %v, want ErrEvalSessionSchemaVersion", err)
 	}
 }
 
@@ -180,6 +199,30 @@ func TestRepositoryCreateEvalSessionSnapshotRoundTrip(t *testing.T) {
 	}
 	if !jsonEqual(persisted.RoutingTaskSnapshot.Document, []byte(`{"schema_version":1,"routing":{"mode":"comparison"},"task":{"pack_version":"v1","input_set":"default"}}`)) {
 		t.Fatalf("persisted routing task snapshot = %s, want preserved snapshot", persisted.RoutingTaskSnapshot.Document)
+	}
+}
+
+func TestRepositoryCreateEvalSessionDefaultsNilSnapshotsToEmptyJSONObjects(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	repo := repository.New(db)
+
+	session, err := repo.CreateEvalSession(ctx, repository.CreateEvalSessionParams{
+		Repetitions:   1,
+		SchemaVersion: 1,
+	})
+	if err != nil {
+		t.Fatalf("CreateEvalSession returned error: %v", err)
+	}
+
+	if string(session.AggregationConfig.Document) != "{}" {
+		t.Fatalf("aggregation config = %s, want {}", session.AggregationConfig.Document)
+	}
+	if string(session.SuccessThresholdConfig.Document) != "{}" {
+		t.Fatalf("success threshold config = %s, want {}", session.SuccessThresholdConfig.Document)
+	}
+	if string(session.RoutingTaskSnapshot.Document) != "{}" {
+		t.Fatalf("routing task snapshot = %s, want {}", session.RoutingTaskSnapshot.Document)
 	}
 }
 
@@ -237,6 +280,110 @@ func TestRepositoryAttachRunToEvalSessionAndGetWithRuns(t *testing.T) {
 	}
 	if result.Runs[1].EvalSessionID == nil || *result.Runs[1].EvalSessionID != session.ID {
 		t.Fatalf("second child eval_session_id = %v, want %s", result.Runs[1].EvalSessionID, session.ID)
+	}
+}
+
+func TestRepositoryAttachRunToEvalSessionIsIdempotentForSameSession(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	session, err := repo.CreateEvalSession(ctx, repository.CreateEvalSessionParams{
+		Repetitions:   1,
+		SchemaVersion: 1,
+	})
+	if err != nil {
+		t.Fatalf("CreateEvalSession returned error: %v", err)
+	}
+
+	run, _ := createTestRun(t, ctx, repo, fixture, 1, "idempotent-attach")
+	if err := repo.AttachRunToEvalSession(ctx, run.ID, session.ID); err != nil {
+		t.Fatalf("first AttachRunToEvalSession returned error: %v", err)
+	}
+	if err := repo.AttachRunToEvalSession(ctx, run.ID, session.ID); err != nil {
+		t.Fatalf("second AttachRunToEvalSession returned error: %v", err)
+	}
+
+	persisted, err := repo.GetRunByID(ctx, run.ID)
+	if err != nil {
+		t.Fatalf("GetRunByID returned error: %v", err)
+	}
+	if persisted.EvalSessionID == nil || *persisted.EvalSessionID != session.ID {
+		t.Fatalf("persisted eval_session_id = %v, want %s", persisted.EvalSessionID, session.ID)
+	}
+}
+
+func TestRepositoryAttachRunToEvalSessionRejectsDifferentExistingSession(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	firstSession, err := repo.CreateEvalSession(ctx, repository.CreateEvalSessionParams{
+		Repetitions:   1,
+		SchemaVersion: 1,
+	})
+	if err != nil {
+		t.Fatalf("CreateEvalSession(first) returned error: %v", err)
+	}
+	secondSession, err := repo.CreateEvalSession(ctx, repository.CreateEvalSessionParams{
+		Repetitions:   1,
+		SchemaVersion: 1,
+	})
+	if err != nil {
+		t.Fatalf("CreateEvalSession(second) returned error: %v", err)
+	}
+
+	run, _ := createTestRun(t, ctx, repo, fixture, 1, "conflict-attach")
+	if err := repo.AttachRunToEvalSession(ctx, run.ID, firstSession.ID); err != nil {
+		t.Fatalf("AttachRunToEvalSession(first) returned error: %v", err)
+	}
+
+	err = repo.AttachRunToEvalSession(ctx, run.ID, secondSession.ID)
+	if err == nil {
+		t.Fatal("expected already attached error")
+	}
+	if !errors.Is(err, repository.ErrRunAlreadyAttachedToSession) {
+		t.Fatalf("AttachRunToEvalSession error = %v, want ErrRunAlreadyAttachedToSession", err)
+	}
+}
+
+func TestRepositoryAttachRunToEvalSessionRejectsMissingSession(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	run, _ := createTestRun(t, ctx, repo, fixture, 1, "missing-session")
+	err := repo.AttachRunToEvalSession(ctx, run.ID, uuid.New())
+	if err == nil {
+		t.Fatal("expected missing eval session error")
+	}
+	if !errors.Is(err, repository.ErrEvalSessionNotFound) {
+		t.Fatalf("AttachRunToEvalSession error = %v, want ErrEvalSessionNotFound", err)
+	}
+}
+
+func TestRepositoryAttachRunToEvalSessionRejectsMissingRun(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	repo := repository.New(db)
+
+	session, err := repo.CreateEvalSession(ctx, repository.CreateEvalSessionParams{
+		Repetitions:   1,
+		SchemaVersion: 1,
+	})
+	if err != nil {
+		t.Fatalf("CreateEvalSession returned error: %v", err)
+	}
+
+	err = repo.AttachRunToEvalSession(ctx, uuid.New(), session.ID)
+	if err == nil {
+		t.Fatal("expected missing run error")
+	}
+	if !errors.Is(err, repository.ErrRunNotFound) {
+		t.Fatalf("AttachRunToEvalSession error = %v, want ErrRunNotFound", err)
 	}
 }
 
@@ -409,5 +556,72 @@ func TestRepositorySupportsSingleRepetitionEvalSession(t *testing.T) {
 	}
 	if len(withRuns.Runs) != 1 {
 		t.Fatalf("session child run count = %d, want 1", len(withRuns.Runs))
+	}
+}
+
+func TestRepositoryListEvalSessionsHonorsOrderingPaginationAndEmptyResult(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	repo := repository.New(db)
+
+	if _, err := db.Exec(ctx, `TRUNCATE TABLE eval_sessions RESTART IDENTITY CASCADE`); err != nil {
+		t.Fatalf("truncate eval_sessions returned error: %v", err)
+	}
+
+	sessions, err := repo.ListEvalSessions(ctx, 10, 0)
+	if err != nil {
+		t.Fatalf("ListEvalSessions(empty) returned error: %v", err)
+	}
+	if len(sessions) != 0 {
+		t.Fatalf("empty ListEvalSessions count = %d, want 0", len(sessions))
+	}
+
+	first, err := repo.CreateEvalSession(ctx, repository.CreateEvalSessionParams{
+		Repetitions:   1,
+		SchemaVersion: 1,
+	})
+	if err != nil {
+		t.Fatalf("CreateEvalSession(first) returned error: %v", err)
+	}
+	second, err := repo.CreateEvalSession(ctx, repository.CreateEvalSessionParams{
+		Repetitions:   2,
+		SchemaVersion: 1,
+	})
+	if err != nil {
+		t.Fatalf("CreateEvalSession(second) returned error: %v", err)
+	}
+
+	firstCreatedAt := time.Now().Add(-2 * time.Minute).UTC()
+	secondCreatedAt := time.Now().Add(-1 * time.Minute).UTC()
+	if _, err := db.Exec(ctx, `UPDATE eval_sessions SET created_at = $2 WHERE id = $1`, first.ID, firstCreatedAt); err != nil {
+		t.Fatalf("update first eval session created_at returned error: %v", err)
+	}
+	if _, err := db.Exec(ctx, `UPDATE eval_sessions SET created_at = $2 WHERE id = $1`, second.ID, secondCreatedAt); err != nil {
+		t.Fatalf("update second eval session created_at returned error: %v", err)
+	}
+
+	sessions, err = repo.ListEvalSessions(ctx, 10, 0)
+	if err != nil {
+		t.Fatalf("ListEvalSessions(all) returned error: %v", err)
+	}
+	if len(sessions) != 2 {
+		t.Fatalf("ListEvalSessions(all) count = %d, want 2", len(sessions))
+	}
+	if sessions[0].ID != second.ID {
+		t.Fatalf("first listed session id = %s, want %s", sessions[0].ID, second.ID)
+	}
+	if sessions[1].ID != first.ID {
+		t.Fatalf("second listed session id = %s, want %s", sessions[1].ID, first.ID)
+	}
+
+	paged, err := repo.ListEvalSessions(ctx, 1, 1)
+	if err != nil {
+		t.Fatalf("ListEvalSessions(paged) returned error: %v", err)
+	}
+	if len(paged) != 1 {
+		t.Fatalf("ListEvalSessions(paged) count = %d, want 1", len(paged))
+	}
+	if paged[0].ID != first.ID {
+		t.Fatalf("paged session id = %s, want %s", paged[0].ID, first.ID)
 	}
 }

@@ -19,7 +19,8 @@ CREATE INDEX eval_sessions_created_at_idx ON eval_sessions (created_at DESC);
 ALTER TABLE runs
 ADD COLUMN eval_session_id uuid REFERENCES eval_sessions (id) ON DELETE SET NULL;
 
-CREATE INDEX runs_eval_session_id_created_at_idx ON runs (eval_session_id, created_at ASC, id ASC);
+CREATE INDEX runs_eval_session_id_created_at_idx ON runs (eval_session_id, created_at ASC, id ASC)
+WHERE eval_session_id IS NOT NULL;
 
 CREATE TRIGGER eval_sessions_set_updated_at
 BEFORE UPDATE ON eval_sessions

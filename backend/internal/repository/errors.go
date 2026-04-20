@@ -26,6 +26,7 @@ var (
 	ErrInvalidTransition             = errors.New("invalid status transition")
 	ErrIllegalSessionTransition      = errors.New("illegal eval session transition")
 	ErrTransitionConflict            = errors.New("status transition conflict")
+	ErrAttachmentConflict            = errors.New("attachment conflict")
 	ErrRunAlreadyAttachedToSession   = errors.New("run already attached to an eval session")
 	ErrTemporalWorkflowID            = errors.New("temporal workflow id is required")
 	ErrTemporalRunID                 = errors.New("temporal run id is required")
@@ -74,6 +75,19 @@ func (e TransitionConflictError) Error() string {
 
 func (e TransitionConflictError) Is(target error) bool {
 	return target == ErrTransitionConflict
+}
+
+type AttachmentConflictError struct {
+	Entity string
+	ID     uuid.UUID
+}
+
+func (e AttachmentConflictError) Error() string {
+	return fmt.Sprintf("%s %s changed before the attachment could be applied", e.Entity, e.ID)
+}
+
+func (e AttachmentConflictError) Is(target error) bool {
+	return target == ErrAttachmentConflict
 }
 
 type IllegalSessionTransitionError struct {

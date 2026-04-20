@@ -104,6 +104,13 @@ func (r *Repository) GetEvalSessionWithRuns(ctx context.Context, id uuid.UUID) (
 }
 
 func (r *Repository) ListEvalSessions(ctx context.Context, limit int32, offset int32) ([]domain.EvalSession, error) {
+	if limit < 0 {
+		limit = 0
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
 	rows, err := r.queries.ListEvalSessions(ctx, repositorysqlc.ListEvalSessionsParams{
 		ResultLimit:  limit,
 		ResultOffset: offset,
@@ -239,6 +246,10 @@ func (r *Repository) AttachRunToEvalSession(ctx context.Context, runID uuid.UUID
 					ExistingEvalSessionID:  *currentRow.EvalSessionID,
 					RequestedEvalSessionID: evalSessionID,
 				}
+			}
+			return AttachmentConflictError{
+				Entity: "run",
+				ID:     runID,
 			}
 		}
 		return fmt.Errorf("attach run to eval session: %w", err)
