@@ -406,6 +406,84 @@ func TestRunCreationManagerCreateEvalSessionStartsEvalSessionWorkflow(t *testing
 	}
 }
 
+func TestRunCreationManagerCreateEvalSessionPersistsAggregationReliabilityWeight(t *testing.T) {
+	workspaceID := uuid.New()
+	challengePackVersionID := uuid.New()
+	challengeInputSetID := uuid.New()
+	buildVersionID := uuid.New()
+	deploymentID := uuid.New()
+	sessionID := uuid.New()
+	caller := Caller{
+		UserID: uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: "workspace_member"},
+		},
+	}
+
+	repo := &fakeRunCreationRepository{
+		challengePackVersion: repository.RunnableChallengePackVersion{ID: challengePackVersionID},
+		challengeInputSets: []repository.ChallengeInputSetSummary{
+			{ID: challengeInputSetID, ChallengePackVersionID: challengePackVersionID},
+		},
+		challengeIdentityIDs: []uuid.UUID{uuid.New()},
+		deploymentsByBuildVersion: []repository.BuildVersionRunnableDeployment{
+			{
+				AgentBuildVersionID: buildVersionID,
+				Deployment: repository.RunnableDeployment{
+					ID:                        deploymentID,
+					OrganizationID:            uuid.New(),
+					WorkspaceID:               workspaceID,
+					Name:                      "Support Agent Deployment",
+					AgentDeploymentSnapshotID: uuid.New(),
+				},
+			},
+		},
+		createEvalSessionWithRunsResult: repository.CreateEvalSessionWithQueuedRunsResult{
+			Session: domain.EvalSession{
+				ID:            sessionID,
+				Status:        domain.EvalSessionStatusQueued,
+				Repetitions:   1,
+				SchemaVersion: 1,
+			},
+			Runs: []domain.Run{
+				{ID: uuid.New(), EvalSessionID: &sessionID},
+			},
+		},
+	}
+
+	manager := NewRunCreationManager(NewCallerWorkspaceAuthorizer(), repo, &fakeRunWorkflowStarter{}, nil)
+	reliabilityWeight := 0.85
+
+	_, err := manager.CreateEvalSession(context.Background(), caller, CreateEvalSessionInput{
+		WorkspaceID:            workspaceID,
+		ChallengePackVersionID: challengePackVersionID,
+		Participants: []EvalSessionParticipantInput{
+			{AgentBuildVersionID: buildVersionID, Label: "Primary"},
+		},
+		ExecutionMode: "single_agent",
+		EvalSession: CreateEvalSessionConfigInput{
+			Repetitions: 1,
+			Aggregation: EvalSessionAggregationInput{
+				Method:             "mean",
+				ReportVariance:     true,
+				ConfidenceInterval: 0.95,
+				ReliabilityWeight:  &reliabilityWeight,
+			},
+			RoutingTaskSnapshot: EvalSessionRoutingTaskSnapshotInput{
+				Routing: json.RawMessage(`{"mode":"single_agent"}`),
+				Task:    json.RawMessage(`{"pack_version":"v1"}`),
+			},
+			SchemaVersion: 1,
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateEvalSession returned error: %v", err)
+	}
+	if got := string(repo.createEvalSessionWithRunsParams.Session.AggregationConfig); got != `{"confidence_interval":0.95,"method":"mean","reliability_weight":0.85,"report_variance":true,"schema_version":1}` {
+		t.Fatalf("aggregation config = %s, want reliability_weight persisted", got)
+	}
+}
+
 func TestRunCreationManagerCreateEvalSessionRejectsUnresolvedBuildVersion(t *testing.T) {
 	workspaceID := uuid.New()
 	challengePackVersionID := uuid.New()

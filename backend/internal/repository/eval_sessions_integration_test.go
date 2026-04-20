@@ -165,7 +165,7 @@ func TestRepositoryCreateEvalSessionSnapshotRoundTrip(t *testing.T) {
 
 	session, err := repo.CreateEvalSession(ctx, repository.CreateEvalSessionParams{
 		Repetitions:            3,
-		AggregationConfig:      []byte(`{"schema_version":1,"aggregation":"mean","weights":{"pass":0.8,"latency":0.2}}`),
+		AggregationConfig:      []byte(`{"schema_version":1,"aggregation":"mean","weights":{"pass":0.8,"latency":0.2},"reliability_weight":0.85}`),
 		SuccessThresholdConfig: []byte(`{"schema_version":1,"min_pass_rate":0.67,"require_all_dimensions":["correctness"]}`),
 		RoutingTaskSnapshot:    []byte(`{"schema_version":1,"routing":{"mode":"comparison"},"task":{"pack_version":"v1","input_set":"default"}}`),
 		SchemaVersion:          1,
@@ -183,7 +183,7 @@ func TestRepositoryCreateEvalSessionSnapshotRoundTrip(t *testing.T) {
 	if session.SchemaVersion != 1 {
 		t.Fatalf("session schema version = %d, want 1", session.SchemaVersion)
 	}
-	if !jsonEqual(session.AggregationConfig.Document, []byte(`{"schema_version":1,"aggregation":"mean","weights":{"pass":0.8,"latency":0.2}}`)) {
+	if !jsonEqual(session.AggregationConfig.Document, []byte(`{"schema_version":1,"aggregation":"mean","weights":{"pass":0.8,"latency":0.2},"reliability_weight":0.85}`)) {
 		t.Fatalf("aggregation config = %s, want preserved nested snapshot", session.AggregationConfig.Document)
 	}
 

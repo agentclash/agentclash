@@ -4993,6 +4993,11 @@ components:
           type: number
           exclusiveMinimum: 0
           exclusiveMaximum: 1
+        reliability_weight:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: Optional explicit override for repeated-eval routing weight.
 
     EvalSessionSuccessThresholdConfig:
       type: object
@@ -5243,10 +5248,22 @@ components:
           type: object
           additionalProperties:
             $ref: "#/components/schemas/EvalSessionMetricAggregate"
+        task_success:
+          type: array
+          items:
+            $ref: "#/components/schemas/EvalSessionTaskSuccess"
+        pass_at_k:
+          $ref: "#/components/schemas/EvalSessionPassMetricSeries"
+        pass_pow_k:
+          $ref: "#/components/schemas/EvalSessionPassMetricSeries"
+        metric_routing:
+          $ref: "#/components/schemas/EvalSessionMetricRouting"
         participants:
           type: array
           items:
             $ref: "#/components/schemas/EvalSessionParticipantAggregate"
+        comparison:
+          $ref: "#/components/schemas/EvalSessionRepeatedComparison"
 
     EvalSessionParticipantAggregate:
       type: object
@@ -5262,6 +5279,110 @@ components:
           type: object
           additionalProperties:
             $ref: "#/components/schemas/EvalSessionMetricAggregate"
+        task_success:
+          type: array
+          items:
+            $ref: "#/components/schemas/EvalSessionTaskSuccess"
+        pass_at_k:
+          $ref: "#/components/schemas/EvalSessionPassMetricSeries"
+        pass_pow_k:
+          $ref: "#/components/schemas/EvalSessionPassMetricSeries"
+        metric_routing:
+          $ref: "#/components/schemas/EvalSessionMetricRouting"
+
+    EvalSessionTaskSuccess:
+      type: object
+      required: [task_key, observed_trials, successful_trials, success_rate, source]
+      properties:
+        task_key:
+          type: string
+        challenge_identity_id:
+          type: string
+          format: uuid
+        challenge_key:
+          type: string
+        title:
+          type: string
+        observed_trials:
+          type: integer
+        successful_trials:
+          type: integer
+        success_rate:
+          type: number
+        source:
+          type: string
+        pass_at_k:
+          type: object
+          additionalProperties:
+            type: number
+        pass_pow_k:
+          type: object
+          additionalProperties:
+            type: number
+
+    EvalSessionPassMetricSeries:
+      type: object
+      required: [effective_k]
+      properties:
+        effective_k:
+          type: integer
+        by_k:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/EvalSessionMetricAggregate"
+
+    EvalSessionMetricRouting:
+      type: object
+      required: [source, reliability_weight, reasoning, primary_metric, effective_k, composite_agent_score]
+      properties:
+        source:
+          type: string
+        reliability_weight:
+          type: number
+        reasoning:
+          type: string
+        primary_metric:
+          type: string
+        effective_k:
+          type: integer
+        composite_agent_score:
+          type: number
+        composite_interval:
+          $ref: "#/components/schemas/EvalSessionAggregateInterval"
+
+    EvalSessionRepeatedComparison:
+      type: object
+      required: [status, effective_k]
+      properties:
+        status:
+          type: string
+          enum: [clear_winner, no_clear_winner, insufficient_evidence]
+        reason_code:
+          type: string
+        compared_metric:
+          type: string
+        effective_k:
+          type: integer
+        winner_lane_index:
+          type: integer
+        winner_label:
+          type: string
+        leader_lane_index:
+          type: integer
+        leader_label:
+          type: string
+        leader_value:
+          type: number
+        leader_interval:
+          $ref: "#/components/schemas/EvalSessionAggregateInterval"
+        runner_up_lane_index:
+          type: integer
+        runner_up_label:
+          type: string
+        runner_up_value:
+          type: number
+        runner_up_interval:
+          $ref: "#/components/schemas/EvalSessionAggregateInterval"
 
     EvalSessionMetricAggregate:
       type: object
