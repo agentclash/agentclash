@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.2](https://github.com/agentclash/agentclash/compare/v0.4.1...v0.4.2) (2026-04-21)
+
+
+### Bug Fixes
+
+* **ci:** wait for npm replication before smoke install ([dbdd248](https://github.com/agentclash/agentclash/commit/dbdd248443a927f60f72a173e7431b85b19c77fd))
+
 ## [0.4.1](https://github.com/agentclash/agentclash/compare/v0.4.0...v0.4.1) (2026-04-21)
 
 
