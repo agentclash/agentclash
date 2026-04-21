@@ -40,21 +40,8 @@ var replayGetCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		// 202 Accepted means the replay is still being generated. The body
-		// carries polling state (state, message, pagination). Forward it to
-		// structured consumers so they can loop on state; show a short human
-		// hint in table mode. Check StatusCode before ParseError because
-		// ParseError returns nil for 2xx responses.
-		if resp.StatusCode == 202 {
-			if rc.Output.IsStructured() {
-				var pending map[string]any
-				if err := resp.DecodeJSON(&pending); err != nil {
-					return fmt.Errorf("decoding pending replay: %w", err)
-				}
-				return rc.Output.PrintRaw(pending)
-			}
-			rc.Output.PrintWarning("Replay is still being generated. Try again shortly.")
-			return nil
+		if handled, err := handleStatefulReadResponse(rc, resp, "Replay"); handled {
+			return err
 		}
 		if apiErr := resp.ParseError(); apiErr != nil {
 			return apiErr
@@ -70,7 +57,13 @@ var replayGetCmd = &cobra.Command{
 		}
 
 		rc.Output.PrintDetail("Run Agent ID", args[0])
-		rc.Output.PrintDetail("Status", output.StatusColor(str(replay["status"])))
+		rc.Output.PrintDetail("State", output.StatusColor(mapString(replay, "state", "status")))
+		if message := mapString(replay, "message"); message != "" {
+			rc.Output.PrintDetail("Message", message)
+		}
+		if runAgentStatus := mapString(replay, "run_agent_status"); runAgentStatus != "" {
+			rc.Output.PrintDetail("Run Agent Status", output.StatusColor(runAgentStatus))
+		}
 
 		if steps, ok := replay["steps"].([]any); ok {
 			fmt.Fprintf(rc.Output.Writer(), "\n%s (%d steps)\n\n", output.Bold("Replay Steps"), len(steps))

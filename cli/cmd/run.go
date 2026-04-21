@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"sort"
+	"strings"
 	"time"
 
 	"golang.org/x/text/cases"
@@ -70,7 +72,7 @@ var runListCmd = &cobra.Command{
 		cols := []output.Column{{Header: "ID"}, {Header: "Name"}, {Header: "Status"}, {Header: "Agents"}, {Header: "Created"}}
 		rows := make([][]string, len(result.Items))
 		for i, item := range result.Items {
-			agentCount := "0"
+			agentCount := "-"
 			if agents, ok := item["agent_count"].(float64); ok {
 				agentCount = fmt.Sprintf("%.0f", agents)
 			}
@@ -119,8 +121,8 @@ var runGetCmd = &cobra.Command{
 		if str(run["started_at"]) != "" {
 			rc.Output.PrintDetail("Started", str(run["started_at"]))
 		}
-		if str(run["completed_at"]) != "" {
-			rc.Output.PrintDetail("Completed", str(run["completed_at"]))
+		if finished := mapString(run, "finished_at", "completed_at"); finished != "" {
+			rc.Output.PrintDetail("Completed", finished)
 		}
 		return nil
 	},
@@ -201,6 +203,9 @@ var runRankingCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		if handled, err := handleStatefulReadResponse(rc, resp, "Ranking"); handled {
+			return err
+		}
 		if apiErr := resp.ParseError(); apiErr != nil {
 			return apiErr
 		}
@@ -214,27 +219,45 @@ var runRankingCmd = &cobra.Command{
 			return rc.Output.PrintRaw(result)
 		}
 
-		if rankings, ok := result["rankings"].([]any); ok {
+		if ranking := mapObject(result, "ranking"); ranking != nil {
+			items := mapSlice(ranking, "items")
+			if len(items) == 0 {
+				rc.Output.PrintWarning("Ranking response did not include any ranked agents.")
+				return nil
+			}
+			cols := []output.Column{{Header: "Rank"}, {Header: "Agent"}, {Header: "Composite"}, {Header: "Correctness"}, {Header: "Reliability"}, {Header: "Latency"}, {Header: "Cost"}}
+			rows := make([][]string, len(items))
+			for i, r := range items {
+				rank := r.(map[string]any)
+				rankNumber := fmt.Sprintf("%d", i+1)
+				if value := mapValue(rank, "rank"); value != nil {
+					rankNumber = str(value)
+				}
+				rows[i] = []string{
+					rankNumber,
+					mapString(rank, "label", "agent_deployment_name"),
+					fmtScore(mapValue(rank, "composite_score")),
+					fmtScore(mapValue(rank, "correctness_score")),
+					fmtScore(mapValue(rank, "reliability_score")),
+					fmtScore(mapValue(rank, "latency_score")),
+					fmtScore(mapValue(rank, "cost_score")),
+				}
+			}
+			rc.Output.PrintTable(cols, rows)
+		} else if rankings := mapSlice(result, "rankings"); len(rankings) > 0 {
 			cols := []output.Column{{Header: "Rank"}, {Header: "Agent"}, {Header: "Composite"}, {Header: "Correctness"}, {Header: "Reliability"}, {Header: "Latency"}, {Header: "Cost"}}
 			rows := make([][]string, len(rankings))
 			for i, r := range rankings {
 				rank := r.(map[string]any)
-				scores := rank["scores"]
-				var correct, reliable, latency, cost string
-				if s, ok := scores.(map[string]any); ok {
-					correct = fmtScore(s["correctness"])
-					reliable = fmtScore(s["reliability"])
-					latency = fmtScore(s["latency"])
-					cost = fmtScore(s["cost"])
-				}
+				scores := mapObject(rank, "scores")
 				rows[i] = []string{
 					fmt.Sprintf("%d", i+1),
-					str(rank["agent_deployment_name"]),
-					fmtScore(rank["composite_score"]),
-					correct,
-					reliable,
-					latency,
-					cost,
+					mapString(rank, "agent_deployment_name", "label"),
+					fmtScore(mapValue(rank, "composite_score")),
+					fmtScore(mapValue(scores, "correctness")),
+					fmtScore(mapValue(scores, "reliability")),
+					fmtScore(mapValue(scores, "latency")),
+					fmtScore(mapValue(scores, "cost")),
 				}
 			}
 			rc.Output.PrintTable(cols, rows)
@@ -269,15 +292,15 @@ var runAgentsCmd = &cobra.Command{
 			return rc.Output.PrintRaw(result)
 		}
 
-		cols := []output.Column{{Header: "ID"}, {Header: "Deployment"}, {Header: "Status"}, {Header: "Started"}, {Header: "Completed"}}
+		cols := []output.Column{{Header: "ID"}, {Header: "Label"}, {Header: "Status"}, {Header: "Started"}, {Header: "Finished"}}
 		rows := make([][]string, len(result.Items))
 		for i, item := range result.Items {
 			rows[i] = []string{
 				str(item["id"]),
-				str(item["agent_deployment_name"]),
+				mapString(item, "label", "agent_deployment_name"),
 				output.StatusColor(str(item["status"])),
 				str(item["started_at"]),
-				str(item["completed_at"]),
+				mapString(item, "finished_at", "completed_at"),
 			}
 		}
 		rc.Output.PrintTable(cols, rows)
@@ -307,6 +330,9 @@ var runScorecardCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		if handled, err := handleStatefulReadResponse(rc, resp, "Scorecard"); handled {
+			return err
+		}
 		if apiErr := resp.ParseError(); apiErr != nil {
 			return apiErr
 		}
@@ -321,13 +347,68 @@ var runScorecardCmd = &cobra.Command{
 		}
 
 		rc.Output.PrintDetail("Run Agent ID", str(scorecard["run_agent_id"]))
-		rc.Output.PrintDetail("Status", output.StatusColor(str(scorecard["status"])))
+		rc.Output.PrintDetail("State", output.StatusColor(mapString(scorecard, "state", "status")))
+		if message := mapString(scorecard, "message"); message != "" {
+			rc.Output.PrintDetail("Message", message)
+		}
+		if runAgentStatus := mapString(scorecard, "run_agent_status"); runAgentStatus != "" {
+			rc.Output.PrintDetail("Run Agent Status", output.StatusColor(runAgentStatus))
+		}
 
-		if dimensions, ok := scorecard["dimensions"].(map[string]any); ok {
+		scoreLabels := []struct {
+			Key   string
+			Label string
+		}{
+			{Key: "overall_score", Label: "Overall Score"},
+			{Key: "correctness_score", Label: "Correctness"},
+			{Key: "reliability_score", Label: "Reliability"},
+			{Key: "latency_score", Label: "Latency"},
+			{Key: "cost_score", Label: "Cost"},
+			{Key: "behavioral_score", Label: "Behavioral"},
+		}
+		printedScores := false
+		for _, field := range scoreLabels {
+			if value := mapValue(scorecard, field.Key); value != nil {
+				if !printedScores {
+					fmt.Fprintln(rc.Output.Writer())
+					fmt.Fprintln(rc.Output.Writer(), output.Bold("Scores:"))
+					printedScores = true
+				}
+				rc.Output.PrintDetail(field.Label, fmtScore(value))
+			}
+		}
+
+		if document := mapObject(scorecard, "scorecard"); document != nil {
+			if passed := mapValue(document, "passed"); passed != nil {
+				rc.Output.PrintDetail("Passed", str(passed))
+			}
+			if strategy := mapString(document, "strategy"); strategy != "" {
+				rc.Output.PrintDetail("Strategy", strategy)
+			}
+
+			dimensions := mapObject(document, "dimensions")
+			if len(dimensions) > 0 {
+				keys := make([]string, 0, len(dimensions))
+				for name := range dimensions {
+					keys = append(keys, name)
+				}
+				sort.Strings(keys)
+				fmt.Fprintln(rc.Output.Writer())
+				fmt.Fprintln(rc.Output.Writer(), output.Bold("Dimensions:"))
+				for _, name := range keys {
+					rc.Output.PrintDetail(cases.Title(language.English).String(name), formatDimensionSummary(dimensions[name]))
+				}
+			}
+		} else if dimensions := mapObject(scorecard, "dimensions"); len(dimensions) > 0 {
 			fmt.Fprintln(rc.Output.Writer())
 			fmt.Fprintln(rc.Output.Writer(), output.Bold("Scores:"))
-			for name, val := range dimensions {
-				rc.Output.PrintDetail(cases.Title(language.English).String(name), fmtScore(val))
+			keys := make([]string, 0, len(dimensions))
+			for name := range dimensions {
+				keys = append(keys, name)
+			}
+			sort.Strings(keys)
+			for _, name := range keys {
+				rc.Output.PrintDetail(cases.Title(language.English).String(name), formatDimensionSummary(dimensions[name]))
 			}
 		}
 		return nil
@@ -400,4 +481,30 @@ func fmtScore(v any) string {
 		return fmt.Sprintf("%.2f", f)
 	}
 	return fmt.Sprint(v)
+}
+
+func formatDimensionSummary(v any) string {
+	dimension, ok := v.(map[string]any)
+	if !ok {
+		return str(v)
+	}
+
+	score := mapValue(dimension, "score")
+	state := mapString(dimension, "state")
+	reason := mapString(dimension, "reason")
+
+	switch {
+	case score != nil && state != "" && state != "available":
+		return fmt.Sprintf("%s (%s)", fmtScore(score), state)
+	case score != nil:
+		return fmtScore(score)
+	case state != "" && reason != "":
+		return strings.Join([]string{state, reason}, " — ")
+	case state != "":
+		return state
+	case reason != "":
+		return reason
+	default:
+		return str(v)
+	}
 }

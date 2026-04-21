@@ -120,7 +120,7 @@ var buildGetCmd = &cobra.Command{
 					str(ver["id"]),
 					str(ver["version_number"]),
 					str(ver["agent_kind"]),
-					output.StatusColor(str(ver["status"])),
+					output.StatusColor(mapString(ver, "version_status", "status")),
 					str(ver["created_at"]),
 				}
 			}
@@ -232,7 +232,7 @@ var buildVersionGetCmd = &cobra.Command{
 		rc.Output.PrintDetail("ID", str(version["id"]))
 		rc.Output.PrintDetail("Version", str(version["version_number"]))
 		rc.Output.PrintDetail("Agent Kind", str(version["agent_kind"]))
-		rc.Output.PrintDetail("Status", output.StatusColor(str(version["status"])))
+		rc.Output.PrintDetail("Status", output.StatusColor(mapString(version, "version_status", "status")))
 		rc.Output.PrintDetail("Created", str(version["created_at"]))
 		return nil
 	},

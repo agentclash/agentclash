@@ -70,8 +70,31 @@ var compareRunsCmd = &cobra.Command{
 		fmt.Fprintln(rc.Output.Writer(), output.Bold("Run Comparison"))
 		fmt.Fprintf(rc.Output.Writer(), "  Baseline:  %s\n", baseline)
 		fmt.Fprintf(rc.Output.Writer(), "  Candidate: %s\n\n", candidate)
+		rc.Output.PrintDetail("State", mapString(result, "state"))
+		rc.Output.PrintDetail("Status", output.StatusColor(mapString(result, "status")))
+		if reason := mapString(result, "reason_code"); reason != "" {
+			rc.Output.PrintDetail("Reason", reason)
+		}
+		if generated := mapString(result, "generated_at"); generated != "" {
+			rc.Output.PrintDetail("Generated", generated)
+		}
+		fmt.Fprintln(rc.Output.Writer())
 
-		if dimensions, ok := result["dimensions"].([]any); ok && len(dimensions) > 0 {
+		if deltas := mapSlice(result, "key_deltas"); len(deltas) > 0 {
+			cols := []output.Column{{Header: "Metric"}, {Header: "Baseline"}, {Header: "Candidate"}, {Header: "Delta"}, {Header: "Outcome"}}
+			rows := make([][]string, len(deltas))
+			for i, d := range deltas {
+				delta := d.(map[string]any)
+				rows[i] = []string{
+					mapString(delta, "metric"),
+					fmtScore(mapValue(delta, "baseline_value")),
+					fmtScore(mapValue(delta, "candidate_value")),
+					fmtDelta(mapValue(delta, "delta")),
+					mapString(delta, "outcome", "state"),
+				}
+			}
+			rc.Output.PrintTable(cols, rows)
+		} else if dimensions := mapSlice(result, "dimensions"); len(dimensions) > 0 {
 			cols := []output.Column{{Header: "Dimension"}, {Header: "Baseline"}, {Header: "Candidate"}, {Header: "Delta"}}
 			rows := make([][]string, len(dimensions))
 			for i, d := range dimensions {
@@ -85,6 +108,29 @@ var compareRunsCmd = &cobra.Command{
 				}
 			}
 			rc.Output.PrintTable(cols, rows)
+		}
+		if reasons := mapSlice(result, "regression_reasons"); len(reasons) > 0 {
+			fmt.Fprintln(rc.Output.Writer())
+			fmt.Fprintln(rc.Output.Writer(), output.Bold("Regression Reasons"))
+			for _, reason := range reasons {
+				fmt.Fprintf(rc.Output.Writer(), "  - %s\n", str(reason))
+			}
+		}
+		if evidence := mapObject(result, "evidence_quality"); evidence != nil {
+			if warnings := mapSlice(evidence, "warnings"); len(warnings) > 0 {
+				fmt.Fprintln(rc.Output.Writer())
+				fmt.Fprintln(rc.Output.Writer(), output.Bold("Evidence Warnings"))
+				for _, warning := range warnings {
+					fmt.Fprintf(rc.Output.Writer(), "  - %s\n", str(warning))
+				}
+			}
+			if missing := mapSlice(evidence, "missing_fields"); len(missing) > 0 {
+				fmt.Fprintln(rc.Output.Writer())
+				fmt.Fprintln(rc.Output.Writer(), output.Bold("Missing Evidence"))
+				for _, field := range missing {
+					fmt.Fprintf(rc.Output.Writer(), "  - %s\n", str(field))
+				}
+			}
 		}
 		return nil
 	},
