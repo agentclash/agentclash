@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
@@ -9,15 +10,40 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/agentclash/agentclash/backend/internal/runevents"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
+
+func TestExtractSequenceNumberReadsWireFormat(t *testing.T) {
+	// Marshal a real envelope, then feed the bytes through
+	// extractSequenceNumber. If the JSON tag drifts away from the envelope's
+	// snake_case wire format again, this test catches it before every SSE
+	// event ships as id: 0.
+	env := runevents.Envelope{SequenceNumber: 42}
+	data, err := json.Marshal(env)
+	if err != nil {
+		t.Fatalf("marshal envelope: %v", err)
+	}
+	if got := extractSequenceNumber(data); got != "42" {
+		t.Fatalf("extractSequenceNumber(%s) = %q, want 42", data, got)
+	}
+}
+
+func TestExtractSequenceNumberFallsBackOnInvalidJSON(t *testing.T) {
+	if got := extractSequenceNumber([]byte("not json")); got != "0" {
+		t.Fatalf("expected fallback 0, got %q", got)
+	}
+}
 
 func TestRunEventsStreamAuthenticatesWithAuthorizationHeader(t *testing.T) {
 	runID := uuid.New()
 	auth := &capturingSSEAuthenticator{caller: Caller{UserID: uuid.New()}}
 	subscriber := &fakeSSESubscriber{
-		events: [][]byte{[]byte(`{"SequenceNumber":7,"EventType":"started"}`)},
+		// Wire field is snake_case (`sequence_number`), matching the JSON
+		// tag on runevents.Envelope. This mirrors what the publisher
+		// actually emits; the SSE handler must read the same key.
+		events: [][]byte{[]byte(`{"sequence_number":7,"event_type":"started"}`)},
 	}
 
 	recorder := serveRunEventsSSE(t, auth, &fakeSSERunReadService{}, subscriber, runID, func(req *http.Request) {

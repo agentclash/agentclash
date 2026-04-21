@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/domain"
+	"github.com/agentclash/agentclash/backend/internal/domain"
 	"github.com/google/uuid"
 )
 

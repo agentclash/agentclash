@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/templateutil"
+	"github.com/agentclash/agentclash/backend/internal/templateutil"
 )
 
 type templateResolutionOptions struct {

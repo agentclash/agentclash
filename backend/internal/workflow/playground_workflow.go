@@ -3,7 +3,7 @@ package workflow
 import (
 	"time"
 
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
+	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/google/uuid"
 	"go.temporal.io/sdk/temporal"
 	sdkworkflow "go.temporal.io/sdk/workflow"

@@ -6,7 +6,7 @@ import (
 	"net/url"
 	"os"
 
-	"github.com/Atharva-Kanherkar/agentclash/cli/internal/output"
+	"github.com/agentclash/agentclash/cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
@@ -82,8 +82,8 @@ var pgListCmd = &cobra.Command{
 			return err
 		}
 
-		if rc.Output.IsJSON() {
-			return rc.Output.PrintJSON(result)
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(result)
 		}
 
 		cols := []output.Column{{Header: "ID"}, {Header: "Name"}, {Header: "Created"}}
@@ -130,8 +130,8 @@ var pgCreateCmd = &cobra.Command{
 			return err
 		}
 
-		if rc.Output.IsJSON() {
-			return rc.Output.PrintJSON(pg)
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(pg)
 		}
 		rc.Output.PrintSuccess(fmt.Sprintf("Created playground %s (%s)", str(pg["name"]), str(pg["id"])))
 		return nil
@@ -162,8 +162,8 @@ var pgUpdateCmd = &cobra.Command{
 			return err
 		}
 
-		if rc.Output.IsJSON() {
-			return rc.Output.PrintJSON(pg)
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(pg)
 		}
 		rc.Output.PrintSuccess(fmt.Sprintf("Updated playground %s", args[0]))
 		return nil
@@ -217,8 +217,8 @@ var pgTCListCmd = &cobra.Command{
 			return err
 		}
 
-		if rc.Output.IsJSON() {
-			return rc.Output.PrintJSON(result)
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(result)
 		}
 
 		cols := []output.Column{{Header: "ID"}, {Header: "Name"}, {Header: "Created"}}
@@ -255,8 +255,8 @@ var pgTCCreateCmd = &cobra.Command{
 			return err
 		}
 
-		if rc.Output.IsJSON() {
-			return rc.Output.PrintJSON(tc)
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(tc)
 		}
 		rc.Output.PrintSuccess(fmt.Sprintf("Created test case %s", str(tc["id"])))
 		return nil
@@ -287,8 +287,8 @@ var pgTCUpdateCmd = &cobra.Command{
 			return err
 		}
 
-		if rc.Output.IsJSON() {
-			return rc.Output.PrintJSON(tc)
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(tc)
 		}
 		rc.Output.PrintSuccess(fmt.Sprintf("Updated test case %s", args[0]))
 		return nil
@@ -342,8 +342,8 @@ var pgExpListCmd = &cobra.Command{
 			return err
 		}
 
-		if rc.Output.IsJSON() {
-			return rc.Output.PrintJSON(result)
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(result)
 		}
 
 		cols := []output.Column{{Header: "ID"}, {Header: "Status"}, {Header: "Model"}, {Header: "Created"}}
@@ -385,8 +385,8 @@ var pgExpCreateCmd = &cobra.Command{
 			return err
 		}
 
-		if rc.Output.IsJSON() {
-			return rc.Output.PrintJSON(exp)
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(exp)
 		}
 		rc.Output.PrintSuccess(fmt.Sprintf("Created experiment %s", str(exp["id"])))
 		return nil
@@ -417,8 +417,8 @@ var pgExpBatchCmd = &cobra.Command{
 			return err
 		}
 
-		if rc.Output.IsJSON() {
-			return rc.Output.PrintJSON(result)
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(result)
 		}
 		if items, ok := result["items"].([]any); ok {
 			rc.Output.PrintSuccess(fmt.Sprintf("Created %d experiments", len(items)))
@@ -453,8 +453,7 @@ var pgExpResultsCmd = &cobra.Command{
 			return err
 		}
 
-		rc.Output.PrintRaw(result)
-		return nil
+		return rc.Output.PrintRaw(result)
 	},
 }
 
@@ -483,8 +482,7 @@ var pgExpCompareCmd = &cobra.Command{
 			return err
 		}
 
-		rc.Output.PrintRaw(result)
-		return nil
+		return rc.Output.PrintRaw(result)
 	},
 }
 
@@ -506,8 +504,7 @@ func resourceGetCmd(pathPrefix string) func(*cobra.Command, []string) error {
 			return err
 		}
 
-		rc.Output.PrintRaw(result)
-		return nil
+		return rc.Output.PrintRaw(result)
 	}
 }
 

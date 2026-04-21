@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/hostedruns"
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/workflow"
+	"github.com/agentclash/agentclash/backend/internal/hostedruns"
+	"github.com/agentclash/agentclash/backend/internal/workflow"
 	"github.com/google/uuid"
 	temporalsdk "go.temporal.io/sdk/client"
 )

@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/sandbox"
+	"github.com/agentclash/agentclash/backend/internal/sandbox"
 )
 
 func TestRunTestsTool_AutoDetectsGoCommand(t *testing.T) {

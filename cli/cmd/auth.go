@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/Atharva-Kanherkar/agentclash/cli/internal/auth"
-	"github.com/Atharva-Kanherkar/agentclash/cli/internal/output"
+	"github.com/agentclash/agentclash/cli/internal/auth"
+	"github.com/agentclash/agentclash/cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
@@ -48,8 +48,8 @@ For CI/CD, set the AGENTCLASH_TOKEN environment variable instead.`,
 		if !flagForceLogin && rc.Client.Token() != "" {
 			result, err := auth.ValidateToken(cmd.Context(), rc.Client)
 			if err == nil {
-				if rc.Output.IsJSON() {
-					return rc.Output.PrintJSON(map[string]string{
+				if rc.Output.IsStructured() {
+					return rc.Output.PrintRaw(map[string]string{
 						"status":  "already_authenticated",
 						"source":  authSource(envTokenSet),
 						"user_id": result.UserID,
@@ -92,8 +92,8 @@ For CI/CD, set the AGENTCLASH_TOKEN environment variable instead.`,
 			rc.Output.PrintWarning("Saved new credentials, but AGENTCLASH_TOKEN is still set and will take precedence.")
 		}
 
-		if rc.Output.IsJSON() {
-			return rc.Output.PrintJSON(map[string]string{
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(map[string]string{
 				"user_id": result.UserID,
 				"email":   result.Email,
 			})
@@ -148,8 +148,8 @@ var authStatusCmd = &cobra.Command{
 			return err
 		}
 
-		if rc.Output.IsJSON() {
-			return rc.Output.PrintJSON(session)
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(session)
 		}
 
 		rc.Output.PrintDetail("User ID", str(session["user_id"]))
@@ -195,8 +195,8 @@ var authTokensListCmd = &cobra.Command{
 			return err
 		}
 
-		if rc.Output.IsJSON() {
-			return rc.Output.PrintJSON(result)
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(result)
 		}
 
 		cols := []output.Column{{Header: "ID"}, {Header: "Name"}, {Header: "Last Used"}, {Header: "Created"}}

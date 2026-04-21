@@ -9,11 +9,11 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/budget"
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/domain"
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/failurereview"
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/provider"
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
+	"github.com/agentclash/agentclash/backend/internal/budget"
+	"github.com/agentclash/agentclash/backend/internal/domain"
+	"github.com/agentclash/agentclash/backend/internal/failurereview"
+	"github.com/agentclash/agentclash/backend/internal/provider"
+	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/Atharva-Kanherkar/agentclash/cli/internal/output"
+	"github.com/agentclash/agentclash/cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
@@ -58,8 +58,8 @@ var buildListCmd = &cobra.Command{
 			return err
 		}
 
-		if rc.Output.IsJSON() {
-			return rc.Output.PrintJSON(result)
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(result)
 		}
 
 		cols := []output.Column{{Header: "ID"}, {Header: "Name"}, {Header: "Slug"}, {Header: "Status"}, {Header: "Created"}}
@@ -98,8 +98,8 @@ var buildGetCmd = &cobra.Command{
 			return err
 		}
 
-		if rc.Output.IsJSON() {
-			return rc.Output.PrintJSON(build)
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(build)
 		}
 
 		rc.Output.PrintDetail("ID", str(build["id"]))
@@ -120,7 +120,7 @@ var buildGetCmd = &cobra.Command{
 					str(ver["id"]),
 					str(ver["version_number"]),
 					str(ver["agent_kind"]),
-					output.StatusColor(str(ver["status"])),
+					output.StatusColor(mapString(ver, "version_status", "status")),
 					str(ver["created_at"]),
 				}
 			}
@@ -157,8 +157,8 @@ var buildCreateCmd = &cobra.Command{
 			return err
 		}
 
-		if rc.Output.IsJSON() {
-			return rc.Output.PrintJSON(build)
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(build)
 		}
 
 		rc.Output.PrintSuccess(fmt.Sprintf("Created build %s (%s)", str(build["name"]), str(build["id"])))
@@ -196,8 +196,8 @@ var buildVersionCreateCmd = &cobra.Command{
 			return err
 		}
 
-		if rc.Output.IsJSON() {
-			return rc.Output.PrintJSON(version)
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(version)
 		}
 
 		rc.Output.PrintSuccess(fmt.Sprintf("Created version %s (v%s)", str(version["id"]), str(version["version_number"])))
@@ -225,14 +225,14 @@ var buildVersionGetCmd = &cobra.Command{
 			return err
 		}
 
-		if rc.Output.IsJSON() {
-			return rc.Output.PrintJSON(version)
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(version)
 		}
 
 		rc.Output.PrintDetail("ID", str(version["id"]))
 		rc.Output.PrintDetail("Version", str(version["version_number"]))
 		rc.Output.PrintDetail("Agent Kind", str(version["agent_kind"]))
-		rc.Output.PrintDetail("Status", output.StatusColor(str(version["status"])))
+		rc.Output.PrintDetail("Status", output.StatusColor(mapString(version, "version_status", "status")))
 		rc.Output.PrintDetail("Created", str(version["created_at"]))
 		return nil
 	},
@@ -263,8 +263,8 @@ var buildVersionUpdateCmd = &cobra.Command{
 			return err
 		}
 
-		if rc.Output.IsJSON() {
-			return rc.Output.PrintJSON(version)
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(version)
 		}
 
 		rc.Output.PrintSuccess(fmt.Sprintf("Updated version %s", args[0]))
@@ -292,8 +292,8 @@ var buildVersionValidateCmd = &cobra.Command{
 			return err
 		}
 
-		if rc.Output.IsJSON() {
-			return rc.Output.PrintJSON(result)
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(result)
 		}
 
 		if valid, ok := result["valid"].(bool); ok && valid {
@@ -330,8 +330,8 @@ var buildVersionReadyCmd = &cobra.Command{
 			return err
 		}
 
-		if rc.Output.IsJSON() {
-			return rc.Output.PrintJSON(version)
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(version)
 		}
 
 		rc.Output.PrintSuccess(fmt.Sprintf("Version %s is now ready", args[0]))

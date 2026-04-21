@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/sandbox"
+	"github.com/agentclash/agentclash/backend/internal/sandbox"
 )
 
 func TestAllowsToolKind(t *testing.T) {

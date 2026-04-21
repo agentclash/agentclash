@@ -1,0 +1,41 @@
+{
+  "name": "agentclash",
+  "version": "0.0.0",
+  "description": "AgentClash CLI — evaluate, compare, and deploy AI agents",
+  "bin": {
+    "agentclash": "bin/agentclash.js"
+  },
+  "license": "SEE LICENSE IN LICENSE",
+  "engines": {
+    "node": ">=18"
+  },
+  "homepage": "https://www.agentclash.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/agentclash/agentclash.git"
+  },
+  "bugs": {
+    "url": "https://github.com/agentclash/agentclash/issues"
+  },
+  "keywords": [
+    "agentclash",
+    "ai",
+    "cli",
+    "evaluation",
+    "llm",
+    "agent"
+  ],
+  "files": [
+    "bin/agentclash.js",
+    "README.md",
+    "LICENSE"
+  ],
+  "optionalDependencies": {
+    "@agentclash/cli-darwin-arm64": "0.0.0",
+    "@agentclash/cli-darwin-x64": "0.0.0",
+    "@agentclash/cli-linux-arm64": "0.0.0",
+    "@agentclash/cli-linux-x64": "0.0.0",
+    "@agentclash/cli-win32-arm64": "0.0.0",
+    "@agentclash/cli-win32-x64": "0.0.0"
+  }
+}

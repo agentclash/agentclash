@@ -8,9 +8,9 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/provider"
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/sandbox"
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/templateutil"
+	"github.com/agentclash/agentclash/backend/internal/provider"
+	"github.com/agentclash/agentclash/backend/internal/sandbox"
+	"github.com/agentclash/agentclash/backend/internal/templateutil"
 )
 
 type ToolCategory string

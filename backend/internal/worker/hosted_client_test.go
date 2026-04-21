@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/domain"
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/hostedruns"
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
-	workflowpkg "github.com/Atharva-Kanherkar/agentclash/backend/internal/workflow"
+	"github.com/agentclash/agentclash/backend/internal/domain"
+	"github.com/agentclash/agentclash/backend/internal/hostedruns"
+	"github.com/agentclash/agentclash/backend/internal/repository"
+	workflowpkg "github.com/agentclash/agentclash/backend/internal/workflow"
 	"github.com/google/uuid"
 )
 

@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/workflow"
+	"github.com/agentclash/agentclash/backend/internal/workflow"
 	"github.com/google/uuid"
 	temporalsdk "go.temporal.io/sdk/client"
 )

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"net/url"
 
-	"github.com/Atharva-Kanherkar/agentclash/cli/internal/output"
+	"github.com/agentclash/agentclash/cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
@@ -40,11 +40,10 @@ var replayGetCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		if handled, err := handleStatefulReadResponse(rc, resp, "Replay"); handled {
+			return err
+		}
 		if apiErr := resp.ParseError(); apiErr != nil {
-			if apiErr.StatusCode == 202 {
-				rc.Output.PrintWarning("Replay is still being generated. Try again shortly.")
-				return nil
-			}
 			return apiErr
 		}
 
@@ -53,12 +52,18 @@ var replayGetCmd = &cobra.Command{
 			return err
 		}
 
-		if rc.Output.IsJSON() {
-			return rc.Output.PrintJSON(replay)
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(replay)
 		}
 
 		rc.Output.PrintDetail("Run Agent ID", args[0])
-		rc.Output.PrintDetail("Status", output.StatusColor(str(replay["status"])))
+		rc.Output.PrintDetail("State", output.StatusColor(mapString(replay, "state", "status")))
+		if message := mapString(replay, "message"); message != "" {
+			rc.Output.PrintDetail("Message", message)
+		}
+		if runAgentStatus := mapString(replay, "run_agent_status"); runAgentStatus != "" {
+			rc.Output.PrintDetail("Run Agent Status", output.StatusColor(runAgentStatus))
+		}
 
 		if steps, ok := replay["steps"].([]any); ok {
 			fmt.Fprintf(rc.Output.Writer(), "\n%s (%d steps)\n\n", output.Bold("Replay Steps"), len(steps))
@@ -66,18 +71,31 @@ var replayGetCmd = &cobra.Command{
 			rows := make([][]string, len(steps))
 			for i, s := range steps {
 				step := s.(map[string]any)
-				summary := str(step["summary"])
-				if len(summary) > 80 {
-					summary = summary[:77] + "..."
-				}
 				rows[i] = []string{
 					fmt.Sprintf("%d", i+1),
-					str(step["step_type"]),
-					summary,
+					output.SanitizeControl(str(step["step_type"])),
+					truncateRunes(output.SanitizeControl(str(step["summary"])), 80),
 				}
 			}
 			rc.Output.PrintTable(cols, rows)
 		}
 		return nil
 	},
+}
+
+// truncateRunes returns s trimmed to at most max runes, appending "…" when
+// truncation occurred. Unlike string[:max] it never slices in the middle of
+// a multi-byte UTF-8 sequence.
+func truncateRunes(s string, max int) string {
+	if max <= 0 {
+		return ""
+	}
+	runes := []rune(s)
+	if len(runes) <= max {
+		return s
+	}
+	if max < 3 {
+		return string(runes[:max])
+	}
+	return string(runes[:max-3]) + "..."
 }

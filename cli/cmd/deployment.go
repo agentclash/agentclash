@@ -4,8 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 
-	"github.com/Atharva-Kanherkar/agentclash/cli/internal/output"
+	"github.com/agentclash/agentclash/cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
@@ -16,6 +17,7 @@ func init() {
 
 	deploymentCreateCmd.Flags().String("from-file", "", "JSON file with deployment spec")
 	deploymentCreateCmd.Flags().String("name", "", "Deployment name")
+	deploymentCreateCmd.Flags().String("agent-build-id", "", "Agent build ID")
 	deploymentCreateCmd.Flags().String("build-version-id", "", "Agent build version ID")
 	deploymentCreateCmd.Flags().String("runtime-profile-id", "", "Runtime profile ID")
 	deploymentCreateCmd.Flags().String("provider-account-id", "", "Provider account ID")
@@ -50,8 +52,8 @@ var deploymentListCmd = &cobra.Command{
 			return err
 		}
 
-		if rc.Output.IsJSON() {
-			return rc.Output.PrintJSON(result)
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(result)
 		}
 
 		cols := []output.Column{{Header: "ID"}, {Header: "Name"}, {Header: "Status"}, {Header: "Build Version"}, {Header: "Created"}}
@@ -61,7 +63,7 @@ var deploymentListCmd = &cobra.Command{
 				str(item["id"]),
 				str(item["name"]),
 				output.StatusColor(str(item["status"])),
-				str(item["agent_build_version_id"]),
+				mapString(item, "current_build_version_id", "agent_build_version_id"),
 				str(item["created_at"]),
 			}
 		}
@@ -88,9 +90,15 @@ var deploymentCreateCmd = &cobra.Command{
 				return fmt.Errorf("parsing file: %w", err)
 			}
 		} else {
+			missing := requiredDeploymentCreateFlags(cmd)
+			if len(missing) > 0 {
+				return fmt.Errorf("missing required flags when --from-file is not used: %s", strings.Join(missing, ", "))
+			}
+
 			body = make(map[string]any)
 			setFlagIfChanged(cmd, body, "name", "name")
-			setFlagIfChanged(cmd, body, "build-version-id", "agent_build_version_id")
+			setFlagIfChanged(cmd, body, "agent-build-id", "agent_build_id")
+			setFlagIfChanged(cmd, body, "build-version-id", "build_version_id")
 			setFlagIfChanged(cmd, body, "runtime-profile-id", "runtime_profile_id")
 			setFlagIfChanged(cmd, body, "provider-account-id", "provider_account_id")
 			setFlagIfChanged(cmd, body, "model-alias-id", "model_alias_id")
@@ -109,8 +117,8 @@ var deploymentCreateCmd = &cobra.Command{
 			return err
 		}
 
-		if rc.Output.IsJSON() {
-			return rc.Output.PrintJSON(deployment)
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(deployment)
 		}
 
 		rc.Output.PrintSuccess(fmt.Sprintf("Created deployment %s (%s)", str(deployment["name"]), str(deployment["id"])))
@@ -123,4 +131,16 @@ func setFlagIfChanged(cmd *cobra.Command, body map[string]any, flagName, jsonKey
 		v, _ := cmd.Flags().GetString(flagName)
 		body[jsonKey] = v
 	}
+}
+
+func requiredDeploymentCreateFlags(cmd *cobra.Command) []string {
+	required := []string{"name", "agent-build-id", "build-version-id", "runtime-profile-id"}
+	missing := make([]string, 0, len(required))
+	for _, flagName := range required {
+		value, _ := cmd.Flags().GetString(flagName)
+		if strings.TrimSpace(value) == "" {
+			missing = append(missing, "--"+flagName)
+		}
+	}
+	return missing
 }

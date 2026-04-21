@@ -1,11 +1,32 @@
 package config
 
-import "os"
+import (
+	"fmt"
+	"os"
+)
 
 const (
 	defaultAPIURL = "http://localhost:8080"
 	defaultOutput = "table"
 )
+
+// ValidOutputFormats lists the user-selectable values for --output / $AGENTCLASH_OUTPUT.
+var ValidOutputFormats = []string{"table", "json", "yaml"}
+
+// ValidateOutputFormat returns a descriptive error if v is not one of the
+// supported output formats. The empty string is accepted and treated as
+// "use the default" by the Manager.
+func ValidateOutputFormat(v string) error {
+	if v == "" {
+		return nil
+	}
+	for _, ok := range ValidOutputFormats {
+		if v == ok {
+			return nil
+		}
+	}
+	return fmt.Errorf("invalid output format %q (want one of: table, json, yaml)", v)
+}
 
 // FlagOverrides holds values from CLI flags.
 type FlagOverrides struct {
@@ -72,16 +93,22 @@ func (m *Manager) OrgID() string {
 	return m.user.DefaultOrg
 }
 
-// OutputFormat returns the resolved output format.
+// OutputFormat returns the resolved output format. Unknown values fall back
+// to the default; callers that want to reject unknown inputs should call
+// ValidateOutputFormat on flags / config before constructing the manager.
 func (m *Manager) OutputFormat() string {
 	if m.flags.JSON {
 		return "json"
 	}
 	if m.flags.Output != "" {
-		return m.flags.Output
+		if ValidateOutputFormat(m.flags.Output) == nil {
+			return m.flags.Output
+		}
 	}
 	if m.user.Output != "" {
-		return m.user.Output
+		if ValidateOutputFormat(m.user.Output) == nil {
+			return m.user.Output
+		}
 	}
 	return defaultOutput
 }

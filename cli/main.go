@@ -1,10 +1,11 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
-	"github.com/Atharva-Kanherkar/agentclash/cli/cmd"
+	"github.com/agentclash/agentclash/cli/cmd"
 )
 
 // Set via ldflags at build time.
@@ -16,8 +17,19 @@ var (
 
 func main() {
 	cmd.SetVersionInfo(version, commit, date)
-	if err := cmd.Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+	err := cmd.Execute()
+	if err == nil {
+		return
 	}
+
+	var exitErr *cmd.ExitCodeError
+	if errors.As(err, &exitErr) {
+		if !exitErr.Silent() {
+			fmt.Fprintln(os.Stderr, exitErr)
+		}
+		os.Exit(exitErr.Code)
+	}
+
+	fmt.Fprintln(os.Stderr, err)
+	os.Exit(1)
 }

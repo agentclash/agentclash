@@ -8,9 +8,9 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/runevents"
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/scoring"
+	"github.com/agentclash/agentclash/backend/internal/repository"
+	"github.com/agentclash/agentclash/backend/internal/runevents"
+	"github.com/agentclash/agentclash/backend/internal/scoring"
 	"github.com/google/uuid"
 )
 

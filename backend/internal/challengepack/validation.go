@@ -8,8 +8,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/scoring"
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/templateutil"
+	"github.com/agentclash/agentclash/backend/internal/scoring"
+	"github.com/agentclash/agentclash/backend/internal/templateutil"
 )
 
 var (

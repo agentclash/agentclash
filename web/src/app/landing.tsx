@@ -160,7 +160,7 @@ export default function HomePage() {
             </Link>
           )}
           <a
-            href="https://github.com/Atharva-Kanherkar/agentclash"
+            href="https://github.com/agentclash/agentclash"
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-1.5 rounded-md border border-white/[0.08] bg-white/[0.03] px-3 py-1.5 text-xs font-medium text-white/50 hover:text-white/80 hover:border-white/15 transition-colors"

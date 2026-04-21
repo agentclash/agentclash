@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/email"
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
+	"github.com/agentclash/agentclash/backend/internal/email"
+	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/google/uuid"
 )
 

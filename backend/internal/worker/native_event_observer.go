@@ -7,10 +7,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/engine"
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/provider"
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/runevents"
+	"github.com/agentclash/agentclash/backend/internal/engine"
+	"github.com/agentclash/agentclash/backend/internal/provider"
+	"github.com/agentclash/agentclash/backend/internal/repository"
+	"github.com/agentclash/agentclash/backend/internal/runevents"
 )
 
 type NativeObserverFactory func(executionContext repository.RunAgentExecutionContext) (engine.Observer, error)

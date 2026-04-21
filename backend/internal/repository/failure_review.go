@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/failurereview"
+	"github.com/agentclash/agentclash/backend/internal/failurereview"
 	"github.com/google/uuid"
 )
 

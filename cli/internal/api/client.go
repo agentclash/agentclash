@@ -50,7 +50,8 @@ func NewClient(baseURL, token string, opts ...Option) *Client {
 		baseURL: strings.TrimRight(baseURL, "/"),
 		token:   token,
 		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout:       30 * time.Second,
+			CheckRedirect: StrictRedirectPolicy,
 		},
 		logger: slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug})),
 	}
@@ -58,6 +59,79 @@ func NewClient(baseURL, token string, opts ...Option) *Client {
 		opt(c)
 	}
 	return c
+}
+
+// StrictRedirectPolicy refuses to follow HTTP redirects that change scheme,
+// host, or port. Go's default net/http client strips Authorization across
+// cross-host redirects but retains it across cross-port, cross-scheme, and
+// cross-subdomain hops — a compromised or misconfigured origin could exploit
+// any of those to exfiltrate a bearer token. Loopback hops between localhost
+// aliases (localhost / 127.0.0.1 / ::1) on the same port are permitted to
+// keep the local dev loop working.
+func StrictRedirectPolicy(req *http.Request, via []*http.Request) error {
+	if len(via) == 0 {
+		return nil
+	}
+	if len(via) >= 10 {
+		return fmt.Errorf("stopped after 10 redirects")
+	}
+	origin := via[0].URL
+	dest := req.URL
+	if origin.Scheme != dest.Scheme {
+		return fmt.Errorf("refusing redirect: scheme changed %s → %s", origin.Scheme, dest.Scheme)
+	}
+	if !sameHostPort(origin, dest) {
+		return fmt.Errorf("refusing redirect: host/port changed %s → %s", origin.Host, dest.Host)
+	}
+	return nil
+}
+
+func sameHostPort(a, b *url.URL) bool {
+	ha, hb := a.Hostname(), b.Hostname()
+	pa, pb := a.Port(), b.Port()
+	if pa == "" {
+		pa = defaultPortForScheme(a.Scheme)
+	}
+	if pb == "" {
+		pb = defaultPortForScheme(b.Scheme)
+	}
+	if pa != pb {
+		return false
+	}
+	if ha == hb {
+		return true
+	}
+	return isLoopback(ha) && isLoopback(hb)
+}
+
+func defaultPortForScheme(scheme string) string {
+	switch scheme {
+	case "https":
+		return "443"
+	case "http":
+		return "80"
+	}
+	return ""
+}
+
+func isLoopback(host string) bool {
+	switch host {
+	case "localhost", "127.0.0.1", "::1":
+		return true
+	}
+	return false
+}
+
+// NewDownloadClient returns a fresh http.Client that shares this client's
+// transport (so corporate proxies / TLS config still apply) but has no
+// request timeout — artifact downloads can legitimately last minutes — and
+// reuses the strict redirect policy. Callers must pass a cancellable context
+// to the request so Ctrl+C cancels the download.
+func (c *Client) NewDownloadClient() *http.Client {
+	return &http.Client{
+		Transport:     c.httpClient.Transport,
+		CheckRedirect: StrictRedirectPolicy,
+	}
 }
 
 // Token returns the client's auth token.
@@ -154,32 +228,79 @@ type FileUpload struct {
 	Reader   io.Reader
 }
 
-// PostMultipart performs a multipart/form-data POST.
+// PostMultipart performs a multipart/form-data POST. The body is first
+// spooled to a temp file on disk, then replayed from that file as the
+// request body. This gives us three properties the original buffered-in-RAM
+// implementation couldn't:
+//
+//  1. Bounded memory use even for replay bundles that exceed 100MB.
+//  2. A real Content-Length header — some gateways and WAFs reject
+//     `Transfer-Encoding: chunked` uploads with 411/400.
+//  3. A `GetBody` implementation so Go can replay the body on same-origin
+//     307/308 redirects instead of silently failing.
 func (c *Client) PostMultipart(ctx context.Context, path string, fields map[string]string, files map[string]FileUpload) (*Response, error) {
-	var buf bytes.Buffer
-	writer := multipart.NewWriter(&buf)
+	spool, err := os.CreateTemp("", "agentclash-multipart-*")
+	if err != nil {
+		return nil, fmt.Errorf("creating multipart spool: %w", err)
+	}
+	spoolPath := spool.Name()
+	// Best-effort cleanup: unlink now so the fd keeps the bytes alive while
+	// in-flight, then the OS reclaims on close. On Windows, Remove-while-open
+	// fails, so fall back to a deferred Remove after the request completes.
+	defer func() {
+		_ = os.Remove(spoolPath)
+	}()
 
+	writer := multipart.NewWriter(spool)
 	for k, v := range fields {
 		if err := writer.WriteField(k, v); err != nil {
+			_ = spool.Close()
 			return nil, fmt.Errorf("writing field %s: %w", k, err)
 		}
 	}
-
 	for field, file := range files {
 		part, err := writer.CreateFormFile(field, file.Filename)
 		if err != nil {
+			_ = spool.Close()
 			return nil, fmt.Errorf("creating form file %s: %w", field, err)
 		}
 		if _, err := io.Copy(part, file.Reader); err != nil {
+			_ = spool.Close()
 			return nil, fmt.Errorf("copying file %s: %w", field, err)
 		}
 	}
-
 	if err := writer.Close(); err != nil {
-		return nil, err
+		_ = spool.Close()
+		return nil, fmt.Errorf("closing multipart writer: %w", err)
+	}
+	size, err := spool.Seek(0, io.SeekEnd)
+	if err != nil {
+		_ = spool.Close()
+		return nil, fmt.Errorf("measuring spooled body: %w", err)
+	}
+	if _, err := spool.Seek(0, io.SeekStart); err != nil {
+		_ = spool.Close()
+		return nil, fmt.Errorf("rewinding spooled body: %w", err)
 	}
 
-	return c.PostRaw(ctx, path, writer.FormDataContentType(), &buf)
+	fullURL := c.baseURL + path
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fullURL, spool)
+	if err != nil {
+		_ = spool.Close()
+		return nil, err
+	}
+	req.ContentLength = size
+	// GetBody lets net/http replay the body on a 307/308 redirect. Each
+	// invocation re-opens the spool file so concurrent replays don't share
+	// a file offset.
+	req.GetBody = func() (io.ReadCloser, error) {
+		return os.Open(spoolPath)
+	}
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	c.setAuth(req)
+	resp, err := c.execute(req)
+	_ = spool.Close()
+	return resp, err
 }
 
 func (c *Client) doJSON(ctx context.Context, method, path string, body any) (*Response, error) {

@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/runevents"
+	"github.com/agentclash/agentclash/backend/internal/runevents"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 )

@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/hostedruns"
+	"github.com/agentclash/agentclash/backend/internal/hostedruns"
 	"github.com/google/uuid"
 )
 

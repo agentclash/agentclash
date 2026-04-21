@@ -77,7 +77,7 @@ function buildWelcomeEmail(position: number) {
           Failure-to-eval flywheel &middot; Open source
         </td></tr>
         <tr><td style="text-align:center;padding-bottom:32px">
-          <a href="https://github.com/Atharva-Kanherkar/agentclash" style="display:inline-block;padding:10px 24px;background:rgba(255,255,255,0.9);color:#060606;font-size:13px;font-weight:600;text-decoration:none;border-radius:6px">Star on GitHub</a>
+          <a href="https://github.com/agentclash/agentclash" style="display:inline-block;padding:10px 24px;background:rgba(255,255,255,0.9);color:#060606;font-size:13px;font-weight:600;text-decoration:none;border-radius:6px">Star on GitHub</a>
         </td></tr>
         <tr><td style="text-align:center;color:rgba(255,255,255,0.15);font-size:11px;padding-top:24px;border-top:1px solid rgba(255,255,255,0.06)">
           AgentClash &middot; Ship the right agent.

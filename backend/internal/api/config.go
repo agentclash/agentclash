@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/secrets"
+	"github.com/agentclash/agentclash/backend/internal/secrets"
 )
 
 const (

@@ -32,8 +32,15 @@ func (c *Client) StreamSSE(ctx context.Context, path string, query url.Values) (
 	req.Header.Set("Cache-Control", "no-cache")
 	c.setAuth(req)
 
-	// Use a client without timeout for streaming.
-	streamClient := &http.Client{}
+	// Streaming client: share the main client's transport (proxy / TLS
+	// config) and its StrictRedirectPolicy so an SSE redirect can't silently
+	// follow a cross-scheme / cross-host / cross-port hop and leak the
+	// bearer token or downgrade to cleartext. No request timeout — SSE is
+	// intentionally long-lived; the caller cancels via ctx.
+	streamClient := &http.Client{
+		Transport:     c.httpClient.Transport,
+		CheckRedirect: StrictRedirectPolicy,
+	}
 	resp, err := streamClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("SSE connection failed: %w", err)

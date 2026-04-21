@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/sandbox"
+	"github.com/agentclash/agentclash/backend/internal/sandbox"
 )
 
 func TestCreateSandboxRequestUsesCamelCaseInternetField(t *testing.T) {

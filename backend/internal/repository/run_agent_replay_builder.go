@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"time"
 
-	repositorysqlc "github.com/Atharva-Kanherkar/agentclash/backend/internal/repository/sqlc"
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/runevents"
+	repositorysqlc "github.com/agentclash/agentclash/backend/internal/repository/sqlc"
+	"github.com/agentclash/agentclash/backend/internal/runevents"
 	"github.com/google/uuid"
 )
 

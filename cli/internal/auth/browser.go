@@ -1,25 +1,49 @@
 package auth
 
 import (
+	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	"runtime"
 )
 
-// OpenBrowser opens a URL in the user's default browser.
-func OpenBrowser(url string) error {
-	var cmd *exec.Cmd
+// browserRun executes a platform-specific opener command. Unit tests swap
+// this out with a stub that records the name/args and returns nil, which
+// keeps the test cross-platform — callers don't need a startable dummy
+// command to exist on the host.
+var browserRun = func(name string, args ...string) error {
+	return exec.Command(name, args...).Start()
+}
+
+// OpenBrowser opens a URL in the user's default browser. The URL is parsed
+// and its scheme validated before exec so that neither the shell nor cmd.exe
+// can interpret stray metacharacters from a compromised backend response.
+//
+// On Windows, we use rundll32 + url.dll,FileProtocolHandler instead of
+// `cmd /c start <url>`. `start` re-parses its argument through cmd.exe, so
+// `&`, `|`, `^`, and `"` in a hostile URL could spawn arbitrary commands.
+// rundll32 takes the URL as a direct argument and does no shell parsing.
+func OpenBrowser(raw string) error {
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return fmt.Errorf("invalid URL: %w", err)
+	}
+	switch parsed.Scheme {
+	case "http", "https":
+		// ok
+	default:
+		return fmt.Errorf("refusing to open URL with scheme %q", parsed.Scheme)
+	}
+
 	switch runtime.GOOS {
 	case "darwin":
-		cmd = exec.Command("open", url)
-	case "linux":
-		cmd = exec.Command("xdg-open", url)
+		return browserRun("open", raw)
 	case "windows":
-		cmd = exec.Command("cmd", "/c", "start", url)
+		return browserRun("rundll32", "url.dll,FileProtocolHandler", raw)
 	default:
-		cmd = exec.Command("xdg-open", url)
+		return browserRun("xdg-open", raw)
 	}
-	return cmd.Start()
 }
 
 // CanOpenBrowser returns false for environments that are very likely headless.

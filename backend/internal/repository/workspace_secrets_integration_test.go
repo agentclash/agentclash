@@ -7,8 +7,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/secrets"
+	"github.com/agentclash/agentclash/backend/internal/repository"
+	"github.com/agentclash/agentclash/backend/internal/secrets"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )

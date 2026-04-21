@@ -1,0 +1,19 @@
+{
+  "name": "@agentclash/cli-__TRIPLE__",
+  "version": "0.0.0",
+  "description": "AgentClash CLI binary for __OS__ __CPU__",
+  "license": "SEE LICENSE IN LICENSE",
+  "homepage": "https://www.agentclash.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/agentclash/agentclash.git"
+  },
+  "os": ["__OS__"],
+  "cpu": ["__CPU__"],
+  "files": [
+    "bin/agentclash__EXT__",
+    "README.md",
+    "LICENSE"
+  ],
+  "preferUnplugged": true
+}

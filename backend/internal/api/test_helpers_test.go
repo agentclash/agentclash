@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/hostedruns"
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/repository"
+	"github.com/agentclash/agentclash/backend/internal/hostedruns"
+	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/google/uuid"
 )
 

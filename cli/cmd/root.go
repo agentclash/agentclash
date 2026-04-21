@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/Atharva-Kanherkar/agentclash/cli/internal/api"
-	"github.com/Atharva-Kanherkar/agentclash/cli/internal/auth"
-	"github.com/Atharva-Kanherkar/agentclash/cli/internal/config"
-	"github.com/Atharva-Kanherkar/agentclash/cli/internal/output"
+	"github.com/agentclash/agentclash/cli/internal/api"
+	"github.com/agentclash/agentclash/cli/internal/auth"
+	"github.com/agentclash/agentclash/cli/internal/config"
+	"github.com/agentclash/agentclash/cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
@@ -69,6 +69,15 @@ Get started:
 	SilenceErrors: true,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		output.InitColors(flagNoColor)
+
+		// --json always wins over --output, so don't fail a command like
+		// `agentclash version --json --output invalid` — the invalid value
+		// is dead letter. Only enforce when --output is actually in effect.
+		if !flagJSON {
+			if err := config.ValidateOutputFormat(flagOutput); err != nil {
+				return err
+			}
+		}
 
 		flags := config.FlagOverrides{
 			APIURL:    flagAPIURL,

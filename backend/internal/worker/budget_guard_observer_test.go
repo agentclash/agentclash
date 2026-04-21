@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/engine"
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/provider"
+	"github.com/agentclash/agentclash/backend/internal/engine"
+	"github.com/agentclash/agentclash/backend/internal/provider"
 )
 
 func responseWithUsage(input, output int64) provider.Response {

@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/Atharva-Kanherkar/agentclash/backend/internal/provider"
+	"github.com/agentclash/agentclash/backend/internal/provider"
 )
 
 func (e NativeExecutor) invokeWithRetries(ctx context.Context, request provider.Request) (provider.Response, error) {

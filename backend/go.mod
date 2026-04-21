@@ -1,4 +1,4 @@
-module github.com/Atharva-Kanherkar/agentclash/backend
+module github.com/agentclash/agentclash/backend
 
 go 1.25.5
 

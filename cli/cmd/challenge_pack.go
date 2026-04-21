@@ -1,11 +1,11 @@
 package cmd
 
 import (
+	"bytes"
 	"fmt"
 	"os"
-	"strings"
 
-	"github.com/Atharva-Kanherkar/agentclash/cli/internal/output"
+	"github.com/agentclash/agentclash/cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
@@ -44,8 +44,8 @@ var cpListCmd = &cobra.Command{
 			return err
 		}
 
-		if rc.Output.IsJSON() {
-			return rc.Output.PrintJSON(result)
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(result)
 		}
 
 		cols := []output.Column{{Header: "ID"}, {Header: "Name"}, {Header: "Slug"}, {Header: "Status"}, {Header: "Versions"}}
@@ -82,7 +82,7 @@ var cpPublishCmd = &cobra.Command{
 		}
 
 		sp := output.NewSpinner("Publishing challenge pack...", flagQuiet)
-		resp, err := rc.Client.PostRaw(cmd.Context(), "/v1/workspaces/"+wsID+"/challenge-packs", "application/octet-stream", strings.NewReader(string(data)))
+		resp, err := rc.Client.PostRaw(cmd.Context(), "/v1/workspaces/"+wsID+"/challenge-packs", "application/octet-stream", bytes.NewReader(data))
 		if err != nil {
 			sp.StopWithError("Publish failed")
 			return err
@@ -99,8 +99,8 @@ var cpPublishCmd = &cobra.Command{
 
 		sp.StopWithSuccess("Published")
 
-		if rc.Output.IsJSON() {
-			return rc.Output.PrintJSON(result)
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(result)
 		}
 
 		rc.Output.PrintDetail("Pack ID", str(result["challenge_pack_id"]))
@@ -122,7 +122,7 @@ var cpValidateCmd = &cobra.Command{
 			return fmt.Errorf("reading file: %w", err)
 		}
 
-		resp, err := rc.Client.PostRaw(cmd.Context(), "/v1/workspaces/"+wsID+"/challenge-packs/validate", "application/octet-stream", strings.NewReader(string(data)))
+		resp, err := rc.Client.PostRaw(cmd.Context(), "/v1/workspaces/"+wsID+"/challenge-packs/validate", "application/octet-stream", bytes.NewReader(data))
 		if err != nil {
 			return err
 		}
@@ -135,8 +135,8 @@ var cpValidateCmd = &cobra.Command{
 			return err
 		}
 
-		if rc.Output.IsJSON() {
-			return rc.Output.PrintJSON(result)
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(result)
 		}
 
 		if valid, ok := result["valid"].(bool); ok && valid {
