@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.1](https://github.com/agentclash/agentclash/compare/v0.4.0...v0.4.1) (2026-04-21)
+
+
+### Bug Fixes
+
+* **ci:** allow release asset replacement on reruns ([4a7d63e](https://github.com/agentclash/agentclash/commit/4a7d63e4e595f15e56a2b12f86981db828241b55))
+* **ci:** publish npm packages from real paths ([094b099](https://github.com/agentclash/agentclash/commit/094b099f5f81f895f8e88b7e4416a2fdf605d916))
+
 ## [0.4.0](https://github.com/agentclash/agentclash/compare/v0.3.0...v0.4.0) (2026-04-21)
 
 
