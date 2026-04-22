@@ -1,0 +1,63 @@
+---
+title: Contributor Setup
+description: Clone the repo, bring up the local stack, and pick the fastest development loop for the part of AgentClash you are changing.
+---
+
+If you are touching backend workflows or the web product, start the full local stack. If you are only changing the CLI, point the CLI at staging and skip the backend entirely.
+
+## Full-stack local development
+
+### 1. Clone the repo and start the stack
+
+```bash
+git clone https://github.com/agentclash/agentclash.git
+cd agentclash
+./scripts/dev/start-local-stack.sh
+```
+
+That script starts PostgreSQL, Redis, Temporal, the API server, and the worker.
+
+### 2. Start the web app
+
+```bash
+cd web
+pnpm install
+pnpm dev
+```
+
+### 3. Seed local data
+
+```bash
+cd ..
+./scripts/dev/seed-local-run-fixture.sh
+./scripts/dev/curl-create-run.sh
+```
+
+## Faster loop for CLI-only work
+
+If you only need the CLI:
+
+```bash
+export AGENTCLASH_API_URL="https://staging-api.agentclash.dev"
+cd cli
+go run . auth login --device
+go run . workspace list
+go run . workspace use <WORKSPACE_ID>
+go run . run list
+```
+
+This is the fastest way to change the CLI without also running the API server and worker locally.
+
+## What lives where
+
+- `backend/cmd/api-server` — API entry point
+- `backend/cmd/worker` — worker entry point
+- `cli/` — Cobra CLI
+- `web/` — Next.js app
+- `docs/` — existing internal markdown docs and references
+- `testing/` — review contracts, test notes, and issue-specific validation docs
+
+## See also
+
+- [Self-Host Starter](/docs/getting-started/self-host)
+- [Architecture Overview](/docs/architecture/overview)

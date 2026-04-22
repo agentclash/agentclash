@@ -1,0 +1,68 @@
+---
+title: Hosted Quickstart
+description: Validate the CLI against the hosted staging backend, set a workspace, and get to your first runnable command in a few minutes.
+---
+
+This path is for people changing the CLI or trying the product without booting the whole stack locally.
+
+<Callout type="note">
+  The hosted quickstart assumes your workspace already has challenge packs and
+  deployments. If it does not, stop after `workspace use` and you have still
+  verified auth, connectivity, and workspace selection.
+</Callout>
+
+## 1. Install the CLI
+
+```bash
+npm i -g agentclash
+```
+
+## 2. Point the CLI at staging and log in
+
+```bash
+export AGENTCLASH_API_URL="https://staging-api.agentclash.dev"
+agentclash auth login --device
+```
+
+Use `--device` when you are in a remote shell or do not want the CLI to open a browser automatically.
+
+## 3. Pick a workspace
+
+```bash
+agentclash workspace list
+agentclash workspace use <WORKSPACE_ID>
+```
+
+The CLI resolves the API base URL in this order:
+
+```text
+--api-url > AGENTCLASH_API_URL > saved user config > http://localhost:8080
+```
+
+## 4. Inspect what is already there
+
+```bash
+agentclash run list
+agentclash run create --help
+```
+
+If the workspace is already seeded with challenge packs and agent deployments, create and follow a run:
+
+```bash
+agentclash run create --follow
+```
+
+## Verification
+
+You should now have:
+
+- a valid CLI login
+- a default workspace saved locally
+- a working connection to the hosted API
+- either a created run or enough context to see what the workspace is missing
+
+## See also
+
+- [Self-Host](/docs/getting-started/self-host)
+- [Runs and Evals](/docs/concepts/runs-and-evals)
+- [CLI Reference](/docs/reference/cli)

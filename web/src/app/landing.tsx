@@ -7,7 +7,13 @@ import { ArrowRight, Calendar, ExternalLink, LogIn, Star } from "lucide-react";
 
 const DEMO_URL = "https://cal.com/agentclash/demo";
 
-function ClashMark({ className = "" }: { className?: string }) {
+function ClashMark({
+  className = "",
+  animated = false,
+}: {
+  className?: string;
+  animated?: boolean;
+}) {
   return (
     <svg
       viewBox="0 0 512 512"
@@ -15,40 +21,46 @@ function ClashMark({ className = "" }: { className?: string }) {
       aria-label="AgentClash"
       role="img"
     >
-      <polygon
-        points="80,180 240,256 80,332"
-        fill="#ffffff"
-        opacity="0.95"
-      />
-      <polygon
-        points="432,180 272,256 432,332"
-        fill="#ffffff"
-        opacity="0.5"
-      />
-      <line
-        x1="256" y1="96" x2="256" y2="168"
-        stroke="#ffffff" strokeWidth="10" strokeLinecap="round" opacity="0.75"
-      />
-      <line
-        x1="256" y1="344" x2="256" y2="416"
-        stroke="#ffffff" strokeWidth="10" strokeLinecap="round" opacity="0.75"
-      />
-      <line
-        x1="186" y1="130" x2="216" y2="188"
-        stroke="#ffffff" strokeWidth="8" strokeLinecap="round" opacity="0.55"
-      />
-      <line
-        x1="326" y1="130" x2="296" y2="188"
-        stroke="#ffffff" strokeWidth="8" strokeLinecap="round" opacity="0.55"
-      />
-      <line
-        x1="186" y1="382" x2="216" y2="324"
-        stroke="#ffffff" strokeWidth="8" strokeLinecap="round" opacity="0.55"
-      />
-      <line
-        x1="326" y1="382" x2="296" y2="324"
-        stroke="#ffffff" strokeWidth="8" strokeLinecap="round" opacity="0.55"
-      />
+      <g className={animated ? "animate-clash-left" : undefined}>
+        <polygon
+          points="80,180 240,256 80,332"
+          fill="#ffffff"
+          opacity="0.95"
+        />
+      </g>
+      <g className={animated ? "animate-clash-right" : undefined}>
+        <polygon
+          points="432,180 272,256 432,332"
+          fill="#ffffff"
+          opacity="0.5"
+        />
+      </g>
+      <g className={animated ? "animate-clash-sparks" : undefined}>
+        <line
+          x1="256" y1="96" x2="256" y2="168"
+          stroke="#ffffff" strokeWidth="10" strokeLinecap="round" opacity="0.75"
+        />
+        <line
+          x1="256" y1="344" x2="256" y2="416"
+          stroke="#ffffff" strokeWidth="10" strokeLinecap="round" opacity="0.75"
+        />
+        <line
+          x1="186" y1="130" x2="216" y2="188"
+          stroke="#ffffff" strokeWidth="8" strokeLinecap="round" opacity="0.55"
+        />
+        <line
+          x1="326" y1="130" x2="296" y2="188"
+          stroke="#ffffff" strokeWidth="8" strokeLinecap="round" opacity="0.55"
+        />
+        <line
+          x1="186" y1="382" x2="216" y2="324"
+          stroke="#ffffff" strokeWidth="8" strokeLinecap="round" opacity="0.55"
+        />
+        <line
+          x1="326" y1="382" x2="296" y2="324"
+          stroke="#ffffff" strokeWidth="8" strokeLinecap="round" opacity="0.55"
+        />
+      </g>
     </svg>
   );
 }
@@ -123,6 +135,12 @@ export default function HomePage() {
             </span>
           </Link>
           <nav className="flex items-center gap-1 sm:gap-2 text-xs">
+            <Link
+              href="/docs"
+              className="hidden sm:inline-flex px-3 py-1.5 text-white/55 hover:text-white/85 transition-colors"
+            >
+              Docs
+            </Link>
             <Link
               href="/blog"
               className="hidden sm:inline-flex px-3 py-1.5 text-white/55 hover:text-white/85 transition-colors"
@@ -234,7 +252,10 @@ export default function HomePage() {
           </div>
 
           <div className="hidden md:flex items-center justify-center">
-            <ClashMark className="w-full max-w-[360px] aspect-square" />
+            <ClashMark
+              animated
+              className="w-full max-w-[360px] aspect-square"
+            />
           </div>
         </div>
       </section>

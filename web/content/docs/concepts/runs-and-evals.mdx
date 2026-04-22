@@ -1,0 +1,31 @@
+---
+title: Runs and Evals
+description: The product language around runs and evals is easy to blur. The current codebase makes one distinction especially important.
+---
+
+A **run** is the concrete execution object you create, stream, rank, compare, and inspect in AgentClash today.
+
+In the current user-facing product surface, `run` is the first-class noun:
+
+- `agentclash run create`
+- `agentclash run list`
+- `agentclash run ranking`
+- `agentclash compare gate --baseline <RUN_ID> --candidate <RUN_ID>`
+
+A run is not just one model token stream. It is the container for a scored evaluation attempt inside a workspace, including the challenge pack version, selected agent deployments, lifecycle timestamps, and ranking output.
+
+The word **eval** is broader. People use it to mean “the experiment I am trying to run” or “the graded set of results I care about.” That is reasonable, but if you are reading the code or the CLI, you should anchor on this:
+
+- **Run** = the concrete resource you create and query.
+- **Eval** = the broader exercise or outcome you are trying to measure.
+
+There are also places in the codebase that refer to eval sessions, but the main shipped workflow today still revolves around runs and ranked run results. If you keep that in your head, the CLI and API are much easier to follow.
+
+## Practical rule of thumb
+
+Use **run** when you are talking about a real resource ID. Use **eval** when you are talking about the experiment design or the larger testing loop.
+
+## See also
+
+- [Hosted Quickstart](/docs/getting-started/quickstart)
+- [CLI Reference](/docs/reference/cli)

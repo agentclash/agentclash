@@ -1,0 +1,71 @@
+---
+title: Architecture Overview
+description: AgentClash is a monorepo with a small number of load-bearing runtime components. This page names them and explains why they are split this way.
+---
+
+AgentClash has four main runtime surfaces:
+
+- a Next.js web app for the product UI
+- a Go API server for REST and WebSocket traffic
+- a Go worker that executes run workflows
+- a Go CLI that talks to the API directly
+
+## System sketch
+
+```text
+browser / CLI
+      |
+      v
+  API server  ----> Postgres
+      |
+      +----> Redis (optional event fanout)
+      |
+      v
+   Temporal  <----> worker
+                    |
+                    +----> provider router
+                    +----> sandbox provider (optional E2B)
+                    +----> artifact storage
+```
+
+## Why it is shaped this way
+
+Temporal is the backbone because long-running agent work is exactly the kind of thing that turns into retry, timeout, cancellation, and partial-progress pain if you try to improvise a one-off orchestrator. The API server stays relatively thin: validate the request, load context, enqueue or signal workflow work, and expose the resulting state. The worker owns the expensive and failure-prone part of the system: provider calls, sandboxed execution, event recording, and workflow activities.
+
+That split also keeps the user-facing web app simpler. The web app does not need to own the run engine. It just renders state, telemetry, and management flows on top of the API.
+
+## Runtime components
+
+### Web
+
+The web app lives in `web/` and is a Next.js app using App Router.
+
+### API server
+
+The API server entry point is `backend/cmd/api-server/main.go`. It loads config, opens Postgres and Temporal clients, initializes storage, auth, and managers, then starts the HTTP server.
+
+### Worker
+
+The worker entry point is `backend/cmd/worker/main.go`. It loads config, connects to Postgres and Temporal, wires the provider router and sandbox provider, and runs the Temporal worker loop.
+
+### CLI
+
+The CLI lives in `cli/`. The root Cobra command is defined in `cli/cmd/root.go`, and the user-facing workflows are grouped under `auth`, `workspace`, `run`, and `compare`.
+
+## Optional infrastructure
+
+- Redis enables event publishing and fanout.
+- E2B enables sandboxed native execution.
+- S3-compatible storage replaces local filesystem artifact storage in production.
+
+## Code pointers
+
+- `backend/cmd/api-server/main.go`
+- `backend/cmd/worker/main.go`
+- `cli/cmd/root.go`
+- `web/src/app`
+
+## See also
+
+- [Self-Host Starter](/docs/getting-started/self-host)
+- [Contributor Setup](/docs/contributing/setup)

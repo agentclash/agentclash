@@ -1,6 +1,25 @@
+import {
+  NextResponse,
+  type NextFetchEvent,
+  type NextRequest,
+} from "next/server";
 import { authkitMiddleware } from "@workos-inc/authkit-nextjs";
 
-export default authkitMiddleware();
+const authkit = authkitMiddleware();
+
+export default function middleware(
+  request: NextRequest,
+  event: NextFetchEvent,
+) {
+  if (
+    request.nextUrl.pathname === "/docs" ||
+    request.nextUrl.pathname.startsWith("/docs/")
+  ) {
+    return NextResponse.next();
+  }
+
+  return authkit(request, event);
+}
 
 export const config = {
   matcher: [

@@ -1,0 +1,84 @@
+---
+title: Self-Host Starter
+description: Bring up the local AgentClash stack with the repo’s existing scripts and understand which dependencies are mandatory versus optional.
+---
+
+This is the shortest honest path to a local AgentClash environment today. It is based on the repo’s existing development scripts, not an imagined one-click installer.
+
+<Callout type="warning">
+  The repo does not currently ship a Helm chart or a polished production
+  installer. What it does ship is a local stack script plus documented Railway
+  deployment building blocks for the backend.
+</Callout>
+
+## Prerequisites
+
+- Go `1.25+`
+- Docker
+- Temporal CLI
+- Node.js `20+`
+- `pnpm`
+- `psql`
+
+## 1. Start the local stack
+
+From the repo root:
+
+```bash
+./scripts/dev/start-local-stack.sh
+```
+
+This script starts PostgreSQL and Redis, applies migrations, launches the Temporal dev server if needed, then starts the API server and worker. Logs are written under `/tmp/agentclash-local-stack/`.
+
+## 2. Start the web app
+
+```bash
+cd web
+pnpm install
+pnpm dev
+```
+
+The web app runs at `http://localhost:3000`.
+
+## 3. Seed a runnable fixture
+
+Back in the repo root:
+
+```bash
+./scripts/dev/seed-local-run-fixture.sh
+./scripts/dev/curl-create-run.sh
+```
+
+Without a real sandbox provider such as E2B, native runs can still be created, but the model-backed execution path will not complete successfully.
+
+## Required vs optional services
+
+- Required: PostgreSQL, Temporal, API server, worker
+- Optional: Redis for event fanout and rate limiting
+- Optional: E2B for sandboxed native execution
+- Optional: S3-compatible storage for production artifact storage
+
+## Production notes
+
+The repo’s documented production building blocks today are:
+
+- Railway for the API server and worker
+- Temporal Cloud for orchestration
+- Vercel for `web/`
+- S3-compatible storage for artifacts
+
+## Verification
+
+You should be able to hit:
+
+```bash
+curl http://localhost:8080/healthz
+```
+
+Then open `http://localhost:3000`.
+
+## See also
+
+- [Hosted Quickstart](/docs/getting-started/quickstart)
+- [Architecture Overview](/docs/architecture/overview)
+- [Contributor Setup](/docs/contributing/setup)

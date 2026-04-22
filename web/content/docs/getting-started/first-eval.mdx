@@ -1,0 +1,75 @@
+---
+title: First Eval Walkthrough
+description: Use the current seeded local path to create a run, stream events, and inspect ranking output without inventing setup that is not in the repo.
+---
+
+This walkthrough sticks to what the repo already supports today: seed local data, create a run, stream events, and inspect the result.
+
+## 1. Bring up the local stack
+
+From the repo root:
+
+```bash
+./scripts/dev/start-local-stack.sh
+```
+
+If you want the browser UI too:
+
+```bash
+cd web
+pnpm install
+pnpm dev
+```
+
+## 2. Seed a runnable fixture
+
+Back in the repo root:
+
+```bash
+./scripts/dev/seed-local-run-fixture.sh
+```
+
+That script seeds enough data to create a local run through the API.
+
+## 3. Create the run
+
+You can hit the API directly:
+
+```bash
+./scripts/dev/curl-create-run.sh
+```
+
+Or, if you are using the CLI against a prepared workspace, create and follow the run there:
+
+```bash
+agentclash run create --follow
+```
+
+## 4. Inspect the result
+
+Once you have a run ID, inspect its status and ranking:
+
+```bash
+agentclash run get <RUN_ID>
+agentclash run ranking <RUN_ID>
+```
+
+If the web app is running, open the workspace run detail view in the browser and inspect the replay and scorecard surfaces from there.
+
+## What you should see
+
+- a run record created in the workspace
+- event streaming during execution when you follow the run
+- a ranking view once the backend has enough completed run-agent results to score
+
+<Callout type="warning">
+  Without a real sandbox provider such as E2B, the native model-backed path can
+  still stall or fail after run creation. That is expected in the unconfigured
+  local setup.
+</Callout>
+
+## See also
+
+- [Self-Host Starter](/docs/getting-started/self-host)
+- [Runs and Evals](/docs/concepts/runs-and-evals)
+- [Architecture Overview](/docs/architecture/overview)

@@ -86,6 +86,54 @@ body {
   background: rgba(255, 255, 255, 0.12);
 }
 
+/* Clash mark — the two-agent logo collision. Single allowed motion on the
+   landing page; everything else is static. */
+@keyframes clash-left {
+  0% { transform: translateX(-24px); }
+  18% { transform: translateX(0); }
+  23% { transform: translateX(4px); }
+  30% { transform: translateX(0); }
+  100% { transform: translateX(0); }
+}
+
+@keyframes clash-right {
+  0% { transform: translateX(24px); }
+  18% { transform: translateX(0); }
+  23% { transform: translateX(-4px); }
+  30% { transform: translateX(0); }
+  100% { transform: translateX(0); }
+}
+
+@keyframes clash-sparks {
+  0%, 13% { opacity: 0; transform: scale(0.88); }
+  18% { opacity: 1; transform: scale(1); }
+  28% { opacity: 0.55; }
+  38% { opacity: 0; transform: scale(0.9); }
+  100% { opacity: 0; transform: scale(0.88); }
+}
+
+.animate-clash-left {
+  animation: clash-left 4.5s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+.animate-clash-right {
+  animation: clash-right 4.5s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+.animate-clash-sparks {
+  animation: clash-sparks 4.5s ease-out infinite;
+  transform-origin: center;
+  transform-box: fill-box;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-clash-left,
+  .animate-clash-right,
+  .animate-clash-sparks {
+    animation: none;
+  }
+}
+
 /* Blog prose */
 .prose-agentclash {
   font-size: 15px;
@@ -178,6 +226,138 @@ body {
   border: none;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
   margin: 2rem 0;
+}
+
+/* Docs prose */
+.prose-agentclash-docs {
+  max-width: 72ch;
+  font-size: 15px;
+  line-height: 1.8;
+  color: rgba(255, 255, 255, 0.68);
+}
+
+.prose-agentclash-docs h2 {
+  margin-top: 2.75rem;
+  margin-bottom: 0.85rem;
+  font-family: var(--font-display), serif;
+  font-size: 1.65rem;
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.prose-agentclash-docs h3 {
+  margin-top: 2rem;
+  margin-bottom: 0.65rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.84);
+}
+
+.prose-agentclash-docs p,
+.prose-agentclash-docs ul,
+.prose-agentclash-docs ol,
+.prose-agentclash-docs pre,
+.prose-agentclash-docs blockquote {
+  margin-bottom: 1.2rem;
+}
+
+.prose-agentclash-docs ul,
+.prose-agentclash-docs ol {
+  padding-left: 1.3rem;
+}
+
+.prose-agentclash-docs li {
+  margin-bottom: 0.4rem;
+}
+
+.prose-agentclash-docs a {
+  color: rgba(222, 255, 170, 0.92);
+  text-decoration: underline;
+  text-decoration-color: rgba(222, 255, 170, 0.24);
+  text-underline-offset: 3px;
+  transition: color 0.15s, text-decoration-color 0.15s;
+}
+
+.prose-agentclash-docs a:hover {
+  color: rgba(236, 255, 205, 1);
+  text-decoration-color: rgba(236, 255, 205, 0.44);
+}
+
+.prose-agentclash-docs strong {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.prose-agentclash-docs code {
+  font-family: var(--font-mono), monospace;
+  font-size: 0.84em;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.05);
+  padding: 0.16em 0.38em;
+  border-radius: 0.45rem;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.prose-agentclash-docs pre {
+  overflow-x: auto;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 1rem;
+  padding: 1rem 1.15rem;
+}
+
+.prose-agentclash-docs pre code {
+  border: none;
+  background: transparent;
+  padding: 0;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.prose-agentclash-docs blockquote {
+  border-left: 2px solid rgba(212, 255, 79, 0.34);
+  padding-left: 1rem;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.prose-agentclash-docs hr {
+  border: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  margin: 2.25rem 0;
+}
+
+.prose-agentclash-docs table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 1.5rem;
+  overflow: hidden;
+  border-radius: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.prose-agentclash-docs thead {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.prose-agentclash-docs th,
+.prose-agentclash-docs td {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 0.8rem 0.9rem;
+  text-align: left;
+  vertical-align: top;
+  font-size: 0.9rem;
+}
+
+.prose-agentclash-docs th {
+  color: rgba(255, 255, 255, 0.82);
+  font-weight: 600;
+}
+
+.prose-agentclash-docs td {
+  color: rgba(255, 255, 255, 0.64);
+}
+
+.prose-agentclash-docs tr:last-child td {
+  border-bottom: none;
 }
 
 @theme inline {
