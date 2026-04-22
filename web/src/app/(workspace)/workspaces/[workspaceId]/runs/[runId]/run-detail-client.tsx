@@ -3,7 +3,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
 import { createApiClient } from "@/lib/api/client";
-import { useRunEvents } from "@/hooks/use-run-events";
+import { useRunEvents, type RunEvent } from "@/hooks/use-run-events";
+import { useAgentArena, EMPTY_LANE } from "@/hooks/use-agent-arena";
 import type {
   Run,
   RunStatus,
@@ -27,17 +28,18 @@ import Link from "next/link";
 import {
   Trophy,
   Clock,
-  Play,
   CheckCircle2,
   XCircle,
   Loader2,
   AlertTriangle,
   AlertOctagon,
+  Radio,
 } from "lucide-react";
 import { ScorecardSummaryCard } from "./scorecard-summary-card";
 import { CompareRunPicker } from "./compare-run-picker";
 import { RunRankingInsightsCard } from "./run-ranking-insights-card";
 import { UploadArtifactDialog } from "@/components/artifacts/upload-artifact-dialog";
+import { LiveAgentLane } from "@/components/arena/live-agent-lane";
 
 // --- Status variant maps ---
 
@@ -53,18 +55,6 @@ const runStatusVariant: Record<
   completed: "default",
   failed: "destructive",
   cancelled: "secondary",
-};
-
-const agentStatusVariant: Record<
-  RunAgentStatus,
-  "default" | "secondary" | "outline" | "destructive"
-> = {
-  queued: "secondary",
-  ready: "secondary",
-  executing: "outline",
-  evaluating: "outline",
-  completed: "default",
-  failed: "destructive",
 };
 
 const ACTIVE_RUN_STATUSES: RunStatus[] = [
@@ -198,19 +188,26 @@ export function RunDetailClient({
     };
   }, [isActive, getAccessToken]);
 
+  // Live per-lane arena projection from the SSE event stream.
+  const { lanes: arenaLanes, handleEvent: handleArenaEvent } = useAgentArena();
+
   // Debounced refetch: collapse rapid SSE events into a single fetch.
   const fetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const debouncedFetchAll = useCallback(() => {
-    if (fetchTimerRef.current) clearTimeout(fetchTimerRef.current);
-    fetchTimerRef.current = setTimeout(fetchAll, 300);
-  }, [fetchAll]);
+  const handleSSEEvent = useCallback(
+    (event: RunEvent) => {
+      handleArenaEvent(event);
+      if (fetchTimerRef.current) clearTimeout(fetchTimerRef.current);
+      fetchTimerRef.current = setTimeout(fetchAll, 300);
+    },
+    [fetchAll, handleArenaEvent],
+  );
 
   // Live event streaming via SSE (graceful degradation: falls back to polling).
   const { connected: sseConnected } = useRunEvents({
     runId: run.id,
     token: sseToken,
     enabled: isActive,
-    onEvent: debouncedFetchAll,
+    onEvent: handleSSEEvent,
   });
 
   // Auto-refresh: 30s safety-net when SSE is connected, 5s polling otherwise.
@@ -313,6 +310,15 @@ export function RunDetailClient({
             )}
             {run.status}
           </Badge>
+          {isActive && sseConnected && (
+            <span
+              className="inline-flex items-center gap-1 rounded-md border border-primary/30 bg-primary/10 px-1.5 h-6 text-[10px] font-medium uppercase tracking-wider text-primary"
+              title="Streaming live events"
+            >
+              <Radio className="size-3 animate-pulse" />
+              Live
+            </span>
+          )}
           <Badge variant="outline">
             {run.execution_mode === "comparison"
               ? "Comparison"
@@ -382,105 +388,28 @@ export function RunDetailClient({
           }`}
         >
           {sortedAgents.map((agent) => {
-            const isFailed = agent.status === "failed";
-            const isRunning = ACTIVE_AGENT_STATUSES.includes(agent.status);
             const isWinner =
               ranking?.ranking?.winner?.run_agent_id === agent.id;
+            const laneState = arenaLanes[agent.id] ?? EMPTY_LANE;
+            const isTerminal =
+              agent.status === "completed" || agent.status === "failed";
+            const footer = isTerminal ? (
+              <ScorecardSummaryCard
+                scorecard={scorecards[agent.id] ?? null}
+                loading={!(agent.id in scorecards)}
+              />
+            ) : null;
 
             return (
-              <div
+              <LiveAgentLane
                 key={agent.id}
-                className={`rounded-lg border p-4 ${
-                  isWinner
-                    ? "border-emerald-500/40 bg-emerald-500/5"
-                    : isFailed
-                      ? "border-destructive/30 bg-destructive/5"
-                      : "border-border"
-                }`}
-              >
-                {/* Card header */}
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    {isWinner && (
-                      <Trophy className="size-4 text-emerald-400" />
-                    )}
-                    <span className="font-medium text-sm">{agent.label}</span>
-                    <span className="text-xs text-muted-foreground/50">
-                      #{agent.lane_index}
-                    </span>
-                  </div>
-                  <Badge
-                    variant={agentStatusVariant[agent.status] ?? "outline"}
-                  >
-                    {isRunning && (
-                      <Loader2
-                        data-icon="inline-start"
-                        className="size-3 animate-spin"
-                      />
-                    )}
-                    {agent.status}
-                  </Badge>
-                </div>
-
-                {/* Timing */}
-                <div className="flex gap-4 text-xs text-muted-foreground mb-2">
-                  {agent.started_at && (
-                    <span>
-                      {agent.finished_at
-                        ? formatDuration(agent.started_at, agent.finished_at)
-                        : `Running ${formatDuration(agent.started_at)}`}
-                    </span>
-                  )}
-                  {!agent.started_at && agent.queued_at && (
-                    <span>Queued</span>
-                  )}
-                </div>
-
-                {/* Failure reason — auto-expanded */}
-                {isFailed && agent.failure_reason && (
-                  <div className="rounded-md bg-destructive/10 border border-destructive/20 px-3 py-2 text-xs text-destructive mb-2">
-                    <div className="flex items-center gap-1.5 font-medium mb-0.5">
-                      <XCircle className="size-3.5" />
-                      Failed
-                    </div>
-                    <p className="text-destructive/80">
-                      {agent.failure_reason}
-                    </p>
-                  </div>
-                )}
-
-                {/* Scorecard summary (inline) */}
-                {(agent.status === "completed" ||
-                  agent.status === "failed") && (
-                  <ScorecardSummaryCard
-                    scorecard={scorecards[agent.id] ?? null}
-                    loading={!(agent.id in scorecards)}
-                  />
-                )}
-
-                {/* Action links */}
-                <div className="flex gap-2 mt-2">
-                  <Link
-                    href={`/workspaces/${workspaceId}/runs/${run.id}/agents/${agent.id}/replay`}
-                    className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
-                  >
-                    <Play className="size-3" />
-                    Replay
-                  </Link>
-                  <Link
-                    href={`/workspaces/${workspaceId}/runs/${run.id}/agents/${agent.id}/scorecard`}
-                    className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1"
-                  >
-                    <CheckCircle2 className="size-3" />
-                    Scorecard
-                  </Link>
-                  <UploadArtifactDialog
-                    workspaceId={workspaceId}
-                    runId={run.id}
-                    runAgentId={agent.id}
-                  />
-                </div>
-              </div>
+                agent={agent}
+                lane={laneState}
+                isWinner={isWinner}
+                workspaceId={workspaceId}
+                runId={run.id}
+                footer={footer}
+              />
             );
           })}
         </div>
