@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 	"testing"
+
+	survey "github.com/AlecAivazis/survey/v2"
 )
 
 type errPicker struct {
@@ -125,6 +127,52 @@ func TestNormalizedPickerOptionsAvoidsPostNormalizationCollisions(t *testing.T) 
 		if got[i] != want[i] {
 			t.Fatalf("normalized labels = %#v, want %#v", got, want)
 		}
+	}
+}
+
+func TestSurveyPickerMultiSelectPreservesSelectionsOnSubmit(t *testing.T) {
+	oldSurveyAskOne := surveyAskOne
+	surveyAskOne = func(prompt survey.Prompt, response interface{}, opts ...survey.AskOpt) error {
+		var askOptions survey.AskOptions
+		for _, opt := range opts {
+			if err := opt(&askOptions); err != nil {
+				return err
+			}
+		}
+
+		selected := []survey.OptionAnswer{
+			{Value: "baseline", Index: 0},
+			{Value: "candidate", Index: 1},
+		}
+		for _, validator := range askOptions.Validators {
+			if err := validator(selected); err != nil {
+				return err
+			}
+		}
+
+		resolved, ok := response.(*[]string)
+		if !ok {
+			t.Fatalf("response type = %T, want *[]string", response)
+		}
+		*resolved = []string{"baseline", "candidate"}
+		return nil
+	}
+	t.Cleanup(func() { surveyAskOne = oldSurveyAskOne })
+
+	picker := &surveyPicker{}
+	selected, err := picker.MultiSelect("Choose deployments", []pickerOption{
+		{Label: "baseline", Value: "dep-a"},
+		{Label: "candidate", Value: "dep-b"},
+	}, 1)
+	if err != nil {
+		t.Fatalf("MultiSelect error: %v", err)
+	}
+
+	if len(selected) != 2 {
+		t.Fatalf("selected length = %d, want 2", len(selected))
+	}
+	if selected[0].Value != "dep-a" || selected[1].Value != "dep-b" {
+		t.Fatalf("selected values = %#v, want dep-a and dep-b", selected)
 	}
 }
 

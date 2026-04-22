@@ -20,6 +20,8 @@ type interactivePicker interface {
 	MultiSelect(prompt string, options []pickerOption, min int) ([]pickerOption, error)
 }
 
+var surveyAskOne = survey.AskOne
+
 var isInteractiveTerminal = func(rc *RunContext) bool {
 	if rc == nil || rc.Output == nil || rc.Output.IsStructured() {
 		return false
@@ -61,7 +63,7 @@ func (p *surveyPicker) Select(prompt string, options []pickerOption) (pickerOpti
 		PageSize:    pageSizeForOptions(normalized),
 		Description: describePickerOption(normalized),
 	}
-	if err := survey.AskOne(
+	if err := surveyAskOne(
 		promptUI,
 		&selection,
 		survey.WithValidator(survey.Required),
@@ -93,17 +95,10 @@ func (p *surveyPicker) MultiSelect(prompt string, options []pickerOption, min in
 		PageSize:    pageSizeForOptions(normalized),
 		Description: describePickerOption(normalized),
 	}
-	validator := func(answer interface{}) error {
-		selected, _ := answer.([]string)
-		if len(selected) < min {
-			return fmt.Errorf("choose at least %d option(s)", min)
-		}
-		return nil
-	}
-	if err := survey.AskOne(
+	if err := surveyAskOne(
 		promptUI,
 		&selections,
-		survey.WithValidator(validator),
+		survey.WithValidator(survey.MinItems(min)),
 		survey.WithStdio(p.in, p.out, p.err),
 	); err != nil {
 		return nil, err
