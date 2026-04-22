@@ -10,7 +10,10 @@ import {
 
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import type { CommentaryEntry } from "@/hooks/use-agent-commentary";
+import {
+  MAX_COMMENTARY_ENTRIES,
+  type CommentaryEntry,
+} from "@/hooks/use-agent-commentary";
 
 interface LiveCommentarySidebarProps {
   entries: CommentaryEntry[];
@@ -20,10 +23,10 @@ interface LiveCommentarySidebarProps {
 
 function formatClock(iso: string): string {
   const d = new Date(iso);
-  const h = d.getHours().toString().padStart(2, "0");
-  const m = d.getMinutes().toString().padStart(2, "0");
-  const s = d.getSeconds().toString().padStart(2, "0");
-  return `${h}:${m}:${s}`;
+  const h = d.getUTCHours().toString().padStart(2, "0");
+  const m = d.getUTCMinutes().toString().padStart(2, "0");
+  const s = d.getUTCSeconds().toString().padStart(2, "0");
+  return `${h}:${m}:${s} UTC`;
 }
 
 const TONE_STYLES: Record<CommentaryEntry["tone"], string> = {
@@ -41,7 +44,7 @@ export function LiveCommentarySidebar({
   className,
 }: LiveCommentarySidebarProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const recent = entries.slice(-12);
+  const recent = entries.slice(-MAX_COMMENTARY_ENTRIES);
 
   useEffect(() => {
     const el = scrollRef.current;

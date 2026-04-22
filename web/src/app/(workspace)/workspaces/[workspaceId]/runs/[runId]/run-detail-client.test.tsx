@@ -141,7 +141,7 @@ describe("RunDetailClient", () => {
     });
   });
 
-  it("toggles commentary and updates both the live lane and sidebar on incoming events", async () => {
+  it("toggles commentary, updates live state, and resets hidden commentary history", async () => {
     const { container, cleanup } = renderClient();
     await flushPromises();
 
@@ -178,6 +178,45 @@ describe("RunDetailClient", () => {
     expect(container.textContent).toContain("Calling openai/gpt-5.4-mini");
     expect(container.textContent).toContain(
       "Alpha checks in with openai/gpt-5.4-mini.",
+    );
+    expect(container.textContent).toContain("12:01:00 UTC");
+
+    act(() => {
+      clickElement(toggle!);
+    });
+
+    expect(container.textContent).not.toContain("Live sidebar callouts");
+
+    act(() => {
+      latestOnEvent?.({
+        EventID: "evt-hidden-tool",
+        SchemaVersion: "2026-03-15",
+        RunID: "run-1",
+        RunAgentID: "agent-1",
+        SequenceNumber: 13,
+        EventType: "tool.call.started",
+        Source: "native_engine",
+        OccurredAt: "2026-04-22T12:01:10Z",
+        Payload: {
+          tool_name: "search_query",
+        },
+        Summary: {},
+      });
+    });
+
+    expect(container.textContent).toContain("Tool: search_query");
+
+    act(() => {
+      clickElement(toggle!);
+    });
+
+    expect(container.textContent).toContain("Live sidebar callouts");
+    expect(container.textContent).toContain("Waiting for the next call");
+    expect(container.textContent).not.toContain(
+      "Alpha checks in with openai/gpt-5.4-mini.",
+    );
+    expect(container.textContent).not.toContain(
+      "Alpha reaches for search_query.",
     );
 
     cleanup();

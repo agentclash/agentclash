@@ -197,6 +197,7 @@ export function RunDetailClient({
   const {
     entries: commentaryEntries,
     handleEvent: handleCommentaryEvent,
+    reset: resetCommentary,
   } = useAgentCommentary(agents);
 
   // Debounced refetch: collapse rapid SSE events into a single fetch.
@@ -204,11 +205,13 @@ export function RunDetailClient({
   const handleSSEEvent = useCallback(
     (event: RunEvent) => {
       handleArenaEvent(event);
-      handleCommentaryEvent(event);
+      if (showCommentary) {
+        handleCommentaryEvent(event);
+      }
       if (fetchTimerRef.current) clearTimeout(fetchTimerRef.current);
       fetchTimerRef.current = setTimeout(fetchAll, 300);
     },
-    [fetchAll, handleArenaEvent, handleCommentaryEvent],
+    [fetchAll, handleArenaEvent, handleCommentaryEvent, showCommentary],
   );
 
   useEffect(() => {
@@ -350,7 +353,12 @@ export function RunDetailClient({
           <Button
             variant={showCommentary ? "default" : "outline"}
             size="sm"
-            onClick={() => setShowCommentary((current) => !current)}
+            onClick={() =>
+              setShowCommentary((current) => {
+                if (current) resetCommentary();
+                return !current;
+              })
+            }
             aria-pressed={showCommentary}
           >
             <MessageSquareText className="size-3.5" />
