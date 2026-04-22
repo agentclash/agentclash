@@ -9,44 +9,55 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/agentclash/agentclash/backend/internal/domain"
+	"github.com/agentclash/agentclash/backend/internal/pubsub"
+	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/backend/internal/runevents"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
 
-func TestExtractSequenceNumberReadsWireFormat(t *testing.T) {
+func TestExtractStreamEventIDReadsWireFormat(t *testing.T) {
 	// Marshal a real envelope, then feed the bytes through
-	// extractSequenceNumber. If the JSON tag drifts away from the envelope's
+	// extractStreamEventID. If the JSON tag drifts away from the envelope's
 	// snake_case wire format again, this test catches it before every SSE
-	// event ships as id: 0.
-	env := runevents.Envelope{SequenceNumber: 42}
+	// event ships with a non-unique id.
+	runAgentID := uuid.New()
+	env := runevents.Envelope{RunAgentID: runAgentID, SequenceNumber: 42}
 	data, err := json.Marshal(env)
 	if err != nil {
 		t.Fatalf("marshal envelope: %v", err)
 	}
-	if got := extractSequenceNumber(data); got != "42" {
-		t.Fatalf("extractSequenceNumber(%s) = %q, want 42", data, got)
+	want := persistedStreamEventID(runAgentID, 42)
+	if got := extractStreamEventID(data); got != want {
+		t.Fatalf("extractStreamEventID(%s) = %q, want %q", data, got, want)
 	}
 }
 
-func TestExtractSequenceNumberFallsBackOnInvalidJSON(t *testing.T) {
-	if got := extractSequenceNumber([]byte("not json")); got != "0" {
+func TestExtractStreamEventIDFallsBackOnInvalidJSON(t *testing.T) {
+	if got := extractStreamEventID([]byte("not json")); got != "0" {
 		t.Fatalf("expected fallback 0, got %q", got)
 	}
 }
 
 func TestRunEventsStreamAuthenticatesWithAuthorizationHeader(t *testing.T) {
 	runID := uuid.New()
+	runAgentID := uuid.New()
 	auth := &capturingSSEAuthenticator{caller: Caller{UserID: uuid.New()}}
-	subscriber := &fakeSSESubscriber{
-		// Wire field is snake_case (`sequence_number`), matching the JSON
-		// tag on runevents.Envelope. This mirrors what the publisher
-		// actually emits; the SSE handler must read the same key.
-		events: [][]byte{[]byte(`{"sequence_number":7,"event_type":"started"}`)},
+	runReadService := &fakeSSERunReadService{
+		streamResults: []ListRunEventStreamResult{
+			{
+				Run: persistedStreamRun(runID, domain.RunStatusCompleted),
+				Events: []repository.RunEvent{
+					persistedTestRunEvent(runID, runAgentID, 7, time.Date(2026, 4, 22, 10, 0, 0, 0, time.UTC)),
+				},
+			},
+		},
 	}
 
-	recorder := serveRunEventsSSE(t, auth, &fakeSSERunReadService{}, subscriber, runID, func(req *http.Request) {
+	recorder := serveRunEventsSSE(t, auth, runReadService, pubsub.NoopSubscriber{}, runID, func(req *http.Request) {
 		req.Header.Set("Authorization", "Bearer cli-token")
 	})
 
@@ -56,10 +67,7 @@ func TestRunEventsStreamAuthenticatesWithAuthorizationHeader(t *testing.T) {
 	if auth.gotAuth != "Bearer cli-token" {
 		t.Fatalf("auth header = %q, want Bearer cli-token", auth.gotAuth)
 	}
-	if !subscriber.called {
-		t.Fatal("expected subscriber to be called")
-	}
-	if body := recorder.Body.String(); !strings.Contains(body, "id: 7\n") || !strings.Contains(body, "event: run_event\n") {
+	if body := recorder.Body.String(); !strings.Contains(body, "id: "+persistedStreamEventID(runAgentID, 7)+"\n") || !strings.Contains(body, "event: run_event\n") {
 		t.Fatalf("unexpected SSE body: %q", body)
 	}
 }
@@ -68,7 +76,9 @@ func TestRunEventsStreamFallsBackToQueryToken(t *testing.T) {
 	runID := uuid.New()
 	auth := &capturingSSEAuthenticator{caller: Caller{UserID: uuid.New()}}
 
-	recorder := serveRunEventsSSE(t, auth, &fakeSSERunReadService{}, &fakeSSESubscriber{}, runID, func(req *http.Request) {
+	recorder := serveRunEventsSSE(t, auth, &fakeSSERunReadService{
+		streamResults: []ListRunEventStreamResult{{Run: persistedStreamRun(runID, domain.RunStatusCompleted)}},
+	}, pubsub.NoopSubscriber{}, runID, func(req *http.Request) {
 		q := req.URL.Query()
 		q.Set("token", "browser-token")
 		req.URL.RawQuery = q.Encode()
@@ -86,7 +96,9 @@ func TestRunEventsStreamPrefersAuthorizationHeaderOverQueryToken(t *testing.T) {
 	runID := uuid.New()
 	auth := &capturingSSEAuthenticator{caller: Caller{UserID: uuid.New()}}
 
-	recorder := serveRunEventsSSE(t, auth, &fakeSSERunReadService{}, &fakeSSESubscriber{}, runID, func(req *http.Request) {
+	recorder := serveRunEventsSSE(t, auth, &fakeSSERunReadService{
+		streamResults: []ListRunEventStreamResult{{Run: persistedStreamRun(runID, domain.RunStatusCompleted)}},
+	}, pubsub.NoopSubscriber{}, runID, func(req *http.Request) {
 		req.Header.Set("Authorization", "Bearer cli-token")
 		q := req.URL.Query()
 		q.Set("token", "browser-token")
@@ -105,7 +117,7 @@ func TestRunEventsStreamRejectsMissingCredentials(t *testing.T) {
 	runID := uuid.New()
 	auth := &capturingSSEAuthenticator{caller: Caller{UserID: uuid.New()}}
 
-	recorder := serveRunEventsSSE(t, auth, &fakeSSERunReadService{}, &fakeSSESubscriber{}, runID, nil)
+	recorder := serveRunEventsSSE(t, auth, &fakeSSERunReadService{}, pubsub.NoopSubscriber{}, runID, nil)
 
 	if recorder.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusUnauthorized)
@@ -122,7 +134,7 @@ func TestRunEventsStreamRejectsInvalidCredentials(t *testing.T) {
 	runID := uuid.New()
 	auth := &capturingSSEAuthenticator{err: ErrUnauthenticated}
 
-	recorder := serveRunEventsSSE(t, auth, &fakeSSERunReadService{}, &fakeSSESubscriber{}, runID, func(req *http.Request) {
+	recorder := serveRunEventsSSE(t, auth, &fakeSSERunReadService{}, pubsub.NoopSubscriber{}, runID, func(req *http.Request) {
 		req.Header.Set("Authorization", "Bearer bad-token")
 	})
 
@@ -137,11 +149,111 @@ func TestRunEventsStreamRejectsInvalidCredentials(t *testing.T) {
 	}
 }
 
+func TestRunEventsStreamEmitsPersistedEventsBeforeLiveTail(t *testing.T) {
+	runID := uuid.New()
+	firstAgentID := uuid.New()
+	secondAgentID := uuid.New()
+	auth := &capturingSSEAuthenticator{caller: Caller{UserID: uuid.New()}}
+	runReadService := &fakeSSERunReadService{
+		streamResults: []ListRunEventStreamResult{
+			{
+				Run: persistedStreamRun(runID, domain.RunStatusCompleted),
+				Events: []repository.RunEvent{
+					persistedTestRunEvent(runID, firstAgentID, 1, time.Date(2026, 4, 22, 10, 0, 0, 0, time.UTC)),
+					persistedTestRunEvent(runID, secondAgentID, 2, time.Date(2026, 4, 22, 10, 0, 1, 0, time.UTC)),
+				},
+			},
+		},
+	}
+
+	recorder := serveRunEventsSSE(t, auth, runReadService, pubsub.NoopSubscriber{}, runID, func(req *http.Request) {
+		req.Header.Set("Authorization", "Bearer cli-token")
+	})
+
+	body := recorder.Body.String()
+	if !strings.Contains(body, "id: "+persistedStreamEventID(firstAgentID, 1)+"\n") {
+		t.Fatalf("body missing first persisted event: %q", body)
+	}
+	if !strings.Contains(body, "id: "+persistedStreamEventID(secondAgentID, 2)+"\n") {
+		t.Fatalf("body missing second persisted event: %q", body)
+	}
+}
+
+func TestRunEventsStreamUsesUniqueCompoundEventIDs(t *testing.T) {
+	runID := uuid.New()
+	firstAgentID := uuid.New()
+	secondAgentID := uuid.New()
+	auth := &capturingSSEAuthenticator{caller: Caller{UserID: uuid.New()}}
+	runReadService := &fakeSSERunReadService{
+		streamResults: []ListRunEventStreamResult{
+			{
+				Run: persistedStreamRun(runID, domain.RunStatusCompleted),
+				Events: []repository.RunEvent{
+					persistedTestRunEvent(runID, firstAgentID, 1, time.Date(2026, 4, 22, 10, 0, 0, 0, time.UTC)),
+					persistedTestRunEvent(runID, secondAgentID, 1, time.Date(2026, 4, 22, 10, 0, 1, 0, time.UTC)),
+				},
+			},
+		},
+	}
+
+	recorder := serveRunEventsSSE(t, auth, runReadService, pubsub.NoopSubscriber{}, runID, func(req *http.Request) {
+		req.Header.Set("Authorization", "Bearer cli-token")
+	})
+
+	body := recorder.Body.String()
+	firstID := persistedStreamEventID(firstAgentID, 1)
+	secondID := persistedStreamEventID(secondAgentID, 1)
+	if firstID == secondID {
+		t.Fatal("compound SSE ids must be unique across run agents")
+	}
+	if !strings.Contains(body, "id: "+firstID+"\n") || !strings.Contains(body, "id: "+secondID+"\n") {
+		t.Fatalf("body missing unique compound ids: %q", body)
+	}
+}
+
+func TestRunEventsStreamPollsPersistedEventsWhenNoLiveMessagesArrive(t *testing.T) {
+	runID := uuid.New()
+	runAgentID := uuid.New()
+	auth := &capturingSSEAuthenticator{caller: Caller{UserID: uuid.New()}}
+	originalPollInterval := runEventStreamPollInterval
+	runEventStreamPollInterval = 5 * time.Millisecond
+	defer func() {
+		runEventStreamPollInterval = originalPollInterval
+	}()
+
+	firstEvent := persistedTestRunEvent(runID, runAgentID, 1, time.Date(2026, 4, 22, 10, 0, 0, 0, time.UTC))
+	secondEvent := persistedTestRunEvent(runID, runAgentID, 2, time.Date(2026, 4, 22, 10, 0, 1, 0, time.UTC))
+	runReadService := &fakeSSERunReadService{
+		streamResults: []ListRunEventStreamResult{
+			{
+				Run:    persistedStreamRun(runID, domain.RunStatusRunning),
+				Events: []repository.RunEvent{firstEvent},
+			},
+			{
+				Run:    persistedStreamRun(runID, domain.RunStatusCompleted),
+				Events: []repository.RunEvent{firstEvent, secondEvent},
+			},
+		},
+	}
+
+	recorder := serveRunEventsSSE(t, auth, runReadService, &fakeSSESubscriber{}, runID, func(req *http.Request) {
+		req.Header.Set("Authorization", "Bearer cli-token")
+	})
+
+	body := recorder.Body.String()
+	if !strings.Contains(body, "id: "+persistedStreamEventID(runAgentID, 1)+"\n") {
+		t.Fatalf("body missing initial persisted event: %q", body)
+	}
+	if !strings.Contains(body, "id: "+persistedStreamEventID(runAgentID, 2)+"\n") {
+		t.Fatalf("body missing polled persisted event: %q", body)
+	}
+}
+
 func serveRunEventsSSE(
 	t *testing.T,
 	auth Authenticator,
 	runReadService RunReadService,
-	subscriber *fakeSSESubscriber,
+	subscriber pubsub.EventSubscriber,
 	runID uuid.UUID,
 	mutate func(*http.Request),
 ) *httptest.ResponseRecorder {
@@ -180,7 +292,9 @@ func (a *capturingSSEAuthenticator) Authenticate(r *http.Request) (Caller, error
 }
 
 type fakeSSERunReadService struct {
-	err error
+	err           error
+	streamResults []ListRunEventStreamResult
+	streamCalls   int
 }
 
 func (f *fakeSSERunReadService) GetRun(context.Context, Caller, uuid.UUID) (GetRunResult, error) {
@@ -218,6 +332,21 @@ func (f *fakeSSERunReadService) ListRuns(context.Context, Caller, ListRunsInput)
 	return ListRunsResult{}, nil
 }
 
+func (f *fakeSSERunReadService) ListRunEventStream(context.Context, Caller, uuid.UUID) (ListRunEventStreamResult, error) {
+	if f.err != nil {
+		return ListRunEventStreamResult{}, f.err
+	}
+	if len(f.streamResults) == 0 {
+		return ListRunEventStreamResult{}, nil
+	}
+	if f.streamCalls >= len(f.streamResults) {
+		return f.streamResults[len(f.streamResults)-1], nil
+	}
+	result := f.streamResults[f.streamCalls]
+	f.streamCalls++
+	return result, nil
+}
+
 type fakeSSESubscriber struct {
 	events [][]byte
 	err    error
@@ -239,4 +368,23 @@ func (s *fakeSSESubscriber) Subscribe(context.Context, uuid.UUID) (<-chan []byte
 
 func (s *fakeSSESubscriber) Close() error {
 	return nil
+}
+
+func persistedStreamRun(runID uuid.UUID, status domain.RunStatus) domain.Run {
+	return domain.Run{
+		ID:     runID,
+		Status: status,
+	}
+}
+
+func persistedTestRunEvent(runID uuid.UUID, runAgentID uuid.UUID, sequenceNumber int64, occurredAt time.Time) repository.RunEvent {
+	return repository.RunEvent{
+		RunID:          runID,
+		RunAgentID:     runAgentID,
+		SequenceNumber: sequenceNumber,
+		EventType:      runevents.EventTypeSystemRunStarted,
+		Source:         runevents.SourceNativeEngine,
+		OccurredAt:     occurredAt,
+		Payload:        []byte(`{"phase":"testing"}`),
+	}
 }

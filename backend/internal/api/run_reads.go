@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sort"
 	"strconv"
 	"time"
 
@@ -48,6 +49,10 @@ type RunReadService interface {
 	ListRuns(ctx context.Context, caller Caller, input ListRunsInput) (ListRunsResult, error)
 }
 
+type RunEventStreamService interface {
+	ListRunEventStream(ctx context.Context, caller Caller, runID uuid.UUID) (ListRunEventStreamResult, error)
+}
+
 type ListRunsInput struct {
 	WorkspaceID uuid.UUID
 	Limit       int32
@@ -86,6 +91,11 @@ type RunRegressionCoverageCase struct {
 type ListRunAgentsResult struct {
 	Run       domain.Run
 	RunAgents []domain.RunAgent
+}
+
+type ListRunEventStreamResult struct {
+	Run    domain.Run
+	Events []repository.RunEvent
 }
 
 type WorkspaceRateLimiter interface {
@@ -202,6 +212,59 @@ func (m *RunReadManager) ListRunAgents(ctx context.Context, caller Caller, runID
 	return ListRunAgentsResult{
 		Run:       run,
 		RunAgents: runAgents,
+	}, nil
+}
+
+type runEventStreamRepository interface {
+	ListRunEventsByRunAgentID(ctx context.Context, runAgentID uuid.UUID) ([]repository.RunEvent, error)
+}
+
+func (m *RunReadManager) ListRunEventStream(ctx context.Context, caller Caller, runID uuid.UUID) (ListRunEventStreamResult, error) {
+	run, err := m.repo.GetRunByID(ctx, runID)
+	if err != nil {
+		return ListRunEventStreamResult{}, err
+	}
+	if err := m.authorizer.AuthorizeWorkspace(ctx, caller, run.WorkspaceID); err != nil {
+		return ListRunEventStreamResult{}, err
+	}
+
+	runAgents, err := m.repo.ListRunAgentsByRunID(ctx, runID)
+	if err != nil {
+		return ListRunEventStreamResult{}, fmt.Errorf("list run agents: %w", err)
+	}
+
+	eventRepo, ok := m.repo.(runEventStreamRepository)
+	if !ok {
+		return ListRunEventStreamResult{}, errors.New("run event stream repository is not configured")
+	}
+
+	laneByRunAgentID := make(map[uuid.UUID]int32, len(runAgents))
+	events := make([]repository.RunEvent, 0)
+	for _, runAgent := range runAgents {
+		laneByRunAgentID[runAgent.ID] = runAgent.LaneIndex
+		agentEvents, err := eventRepo.ListRunEventsByRunAgentID(ctx, runAgent.ID)
+		if err != nil {
+			return ListRunEventStreamResult{}, fmt.Errorf("list run events for %s: %w", runAgent.ID, err)
+		}
+		events = append(events, agentEvents...)
+	}
+
+	sort.SliceStable(events, func(i, j int) bool {
+		if !events[i].OccurredAt.Equal(events[j].OccurredAt) {
+			return events[i].OccurredAt.Before(events[j].OccurredAt)
+		}
+		if laneByRunAgentID[events[i].RunAgentID] != laneByRunAgentID[events[j].RunAgentID] {
+			return laneByRunAgentID[events[i].RunAgentID] < laneByRunAgentID[events[j].RunAgentID]
+		}
+		if events[i].SequenceNumber != events[j].SequenceNumber {
+			return events[i].SequenceNumber < events[j].SequenceNumber
+		}
+		return events[i].ID < events[j].ID
+	})
+
+	return ListRunEventStreamResult{
+		Run:    run,
+		Events: events,
 	}, nil
 }
 
