@@ -1,5 +1,12 @@
 import type { Metadata } from "next";
-import { Instrument_Serif, DM_Sans, IBM_Plex_Mono, Geist } from "next/font/google";
+import {
+  Instrument_Serif,
+  DM_Sans,
+  IBM_Plex_Mono,
+  Geist,
+  Geist_Mono,
+  Fraunces,
+} from "next/font/google";
 import { Analytics } from "@vercel/analytics/react";
 import { AuthKitProvider } from "@workos-inc/authkit-nextjs/components";
 import { Toaster } from "@/components/ui/sonner";
@@ -23,6 +30,19 @@ const ibmPlexMono = IBM_Plex_Mono({
   subsets: ["latin"],
   variable: "--font-mono",
   weight: ["400", "500"],
+});
+
+// Race-mode typography — loaded eagerly so the toggle is instant when flipped.
+const fraunces = Fraunces({
+  subsets: ["latin"],
+  variable: "--font-race-display",
+  style: ["normal", "italic"],
+  axes: ["SOFT", "WONK", "opsz"],
+});
+
+const geistMono = Geist_Mono({
+  subsets: ["latin"],
+  variable: "--font-race-mono",
 });
 
 const siteUrl = "https://agentclash.dev";
@@ -96,7 +116,7 @@ export default function RootLayout({
   return (
     <html lang="en" className={cn("dark font-sans", geist.variable)}>
       <body
-        className={`${instrumentSerif.variable} ${dmSans.variable} ${ibmPlexMono.variable}`}
+        className={`${instrumentSerif.variable} ${dmSans.variable} ${ibmPlexMono.variable} ${fraunces.variable} ${geistMono.variable}`}
       >
         <AuthKitProvider>{children}</AuthKitProvider>
         <Toaster position="bottom-right" />

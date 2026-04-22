@@ -5,11 +5,13 @@ import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
 
 import { LiveAgentLane } from "@/components/arena/live-agent-lane";
 import { LiveCommentarySidebar } from "@/components/arena/live-commentary-sidebar";
+import { RaceModeArena } from "@/components/arena/race-mode";
 import { UploadArtifactDialog } from "@/components/artifacts/upload-artifact-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useAgentArena, EMPTY_LANE } from "@/hooks/use-agent-arena";
 import { useAgentCommentary } from "@/hooks/use-agent-commentary";
+import { useArenaMode } from "@/hooks/use-arena-mode";
 import { useRunEvents, type RunEvent } from "@/hooks/use-run-events";
 import { createApiClient } from "@/lib/api/client";
 import { scorePercent } from "@/lib/scores";
@@ -41,6 +43,7 @@ import {
   AlertOctagon,
   Radio,
   MessageSquareText,
+  Flag,
 } from "lucide-react";
 
 import { CompareRunPicker } from "./compare-run-picker";
@@ -159,6 +162,7 @@ export function RunDetailClient({
     Record<string, ScorecardResponse | null>
   >({});
   const [showCommentary, setShowCommentary] = useState(false);
+  const [arenaMode, setArenaMode] = useArenaMode();
 
   const isActive =
     ACTIVE_RUN_STATUSES.includes(run.status) ||
@@ -364,6 +368,22 @@ export function RunDetailClient({
             <MessageSquareText className="size-3.5" />
             Commentary {showCommentary ? "On" : "Off"}
           </Button>
+          <Button
+            variant={arenaMode === "race" ? "default" : "outline"}
+            size="sm"
+            onClick={() =>
+              setArenaMode(arenaMode === "race" ? "dev" : "race")
+            }
+            aria-pressed={arenaMode === "race"}
+            title={
+              arenaMode === "race"
+                ? "Switch to development (classic) view"
+                : "Switch to race mode — the broadcast view"
+            }
+          >
+            <Flag className="size-3.5" />
+            {arenaMode === "race" ? "Race Mode" : "Dev Mode"}
+          </Button>
           <Link
             href={`/workspaces/${workspaceId}/runs/${run.id}/failures`}
             className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 h-8 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
@@ -414,55 +434,82 @@ export function RunDetailClient({
       {/* === Agent Lanes === */}
       <div>
         <h2 className="text-sm font-semibold mb-3">Agent Lanes</h2>
-        <div
-          className={`grid gap-4 ${
-            showCommentary
-              ? "grid-cols-1 xl:grid-cols-[minmax(0,2fr)_minmax(18rem,24rem)]"
-              : "grid-cols-1"
-          }`}
-        >
+        {arenaMode === "race" ? (
+          <RaceModeArena
+            agents={sortedAgents}
+            lanes={arenaLanes}
+            workspaceId={workspaceId}
+            runId={run.id}
+            winnerAgentId={ranking?.ranking?.winner?.run_agent_id}
+            showCommentary={showCommentary}
+            commentaryEntries={commentaryEntries}
+            isActive={isActive}
+            laneFooters={Object.fromEntries(
+              sortedAgents
+                .filter(
+                  (a) => a.status === "completed" || a.status === "failed",
+                )
+                .map((a) => [
+                  a.id,
+                  <ScorecardSummaryCard
+                    key={a.id}
+                    scorecard={scorecards[a.id] ?? null}
+                    loading={!(a.id in scorecards)}
+                  />,
+                ]),
+            )}
+          />
+        ) : (
           <div
-            className={`grid gap-3 ${
-              agents.length === 1
-                ? "grid-cols-1"
-                : "grid-cols-1 md:grid-cols-2"
+            className={`grid gap-4 ${
+              showCommentary
+                ? "grid-cols-1 xl:grid-cols-[minmax(0,2fr)_minmax(18rem,24rem)]"
+                : "grid-cols-1"
             }`}
           >
-            {sortedAgents.map((agent) => {
-              const isWinner =
-                ranking?.ranking?.winner?.run_agent_id === agent.id;
-              const laneState = arenaLanes[agent.id] ?? EMPTY_LANE;
-              const isTerminal =
-                agent.status === "completed" || agent.status === "failed";
-              const footer = isTerminal ? (
-                <ScorecardSummaryCard
-                  scorecard={scorecards[agent.id] ?? null}
-                  loading={!(agent.id in scorecards)}
-                />
-              ) : null;
+            <div
+              className={`grid gap-3 ${
+                agents.length === 1
+                  ? "grid-cols-1"
+                  : "grid-cols-1 md:grid-cols-2"
+              }`}
+            >
+              {sortedAgents.map((agent) => {
+                const isWinner =
+                  ranking?.ranking?.winner?.run_agent_id === agent.id;
+                const laneState = arenaLanes[agent.id] ?? EMPTY_LANE;
+                const isTerminal =
+                  agent.status === "completed" || agent.status === "failed";
+                const footer = isTerminal ? (
+                  <ScorecardSummaryCard
+                    scorecard={scorecards[agent.id] ?? null}
+                    loading={!(agent.id in scorecards)}
+                  />
+                ) : null;
 
-              return (
-                <LiveAgentLane
-                  key={agent.id}
-                  agent={agent}
-                  lane={laneState}
-                  isWinner={isWinner}
-                  workspaceId={workspaceId}
-                  runId={run.id}
-                  footer={footer}
-                />
-              );
-            })}
-          </div>
-          {showCommentary && (
-            <div className="xl:sticky xl:top-4 xl:self-start">
-              <LiveCommentarySidebar
-                entries={commentaryEntries}
-                isActive={isActive}
-              />
+                return (
+                  <LiveAgentLane
+                    key={agent.id}
+                    agent={agent}
+                    lane={laneState}
+                    isWinner={isWinner}
+                    workspaceId={workspaceId}
+                    runId={run.id}
+                    footer={footer}
+                  />
+                );
+              })}
             </div>
-          )}
-        </div>
+            {showCommentary && (
+              <div className="xl:sticky xl:top-4 xl:self-start">
+                <LiveCommentarySidebar
+                  entries={commentaryEntries}
+                  isActive={isActive}
+                />
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {run.regression_coverage &&

@@ -19,6 +19,13 @@ vi.mock("@workos-inc/authkit-nextjs/components", () => ({
   useAccessToken: () => ({ getAccessToken: mockGetAccessToken }),
 }));
 
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ replace: vi.fn(), push: vi.fn(), refresh: vi.fn() }),
+  usePathname: () =>
+    "/workspaces/workspace-1/runs/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+  useSearchParams: () => new URLSearchParams(),
+}));
+
 vi.mock("@/hooks/use-run-events", async () => {
   const actual = await vi.importActual<typeof import("@/hooks/use-run-events")>(
     "@/hooks/use-run-events",
