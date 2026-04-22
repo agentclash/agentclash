@@ -82,6 +82,59 @@ const PROVIDERS: Array<{ name: string; render: (size: number) => React.ReactNode
   { name: "OpenRouter", render: (size) => <OpenRouter size={size} color="#6566F1" /> },
 ];
 
+function DottedSpotlight({
+  children,
+  className = "",
+}: {
+  children?: React.ReactNode;
+  className?: string;
+}) {
+  function handleMouseMove(e: React.MouseEvent<HTMLDivElement>) {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    e.currentTarget.style.setProperty("--mx", `${x}px`);
+    e.currentTarget.style.setProperty("--my", `${y}px`);
+  }
+
+  const baseMask =
+    "radial-gradient(ellipse 70% 70% at center, black 0%, transparent 85%)";
+  const cursorMask =
+    "radial-gradient(220px circle at var(--mx) var(--my), black 0%, transparent 70%)";
+  const dotImage =
+    "radial-gradient(rgba(255,255,255,1) 1px, transparent 1px)";
+
+  return (
+    <div
+      onMouseMove={handleMouseMove}
+      className={`group relative ${className}`}
+      style={{ ["--mx" as string]: "50%", ["--my" as string]: "50%" }}
+    >
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 opacity-20"
+        style={{
+          backgroundImage: dotImage,
+          backgroundSize: "22px 22px",
+          maskImage: baseMask,
+          WebkitMaskImage: baseMask,
+        }}
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-200 group-hover:opacity-70"
+        style={{
+          backgroundImage: dotImage,
+          backgroundSize: "22px 22px",
+          maskImage: cursorMask,
+          WebkitMaskImage: cursorMask,
+        }}
+      />
+      <div className="relative">{children}</div>
+    </div>
+  );
+}
+
 function TargetGlyph() {
   return (
     <svg
@@ -276,10 +329,12 @@ export default function HomePage() {
           </div>
 
           <div className="hidden md:flex items-center justify-center">
-            <ClashMark
-              animated
-              className="w-full max-w-[360px] aspect-square"
-            />
+            <DottedSpotlight className="flex aspect-square w-full max-w-[520px] items-center justify-center">
+              <ClashMark
+                animated
+                className="w-full max-w-[360px] aspect-square"
+              />
+            </DottedSpotlight>
           </div>
         </div>
       </section>
