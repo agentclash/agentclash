@@ -1,45 +1,62 @@
 ---
 title: AgentClash Docs Foundation Contract
-description: Review-checkpoint contract for the first public docs implementation in the web app.
+description: Review-checkpoint contract for the public docs implementation and AI-ingest exports in the web app.
 ---
 
 # Scope
 
-Implement the first production-facing docs foundation for AgentClash inside the existing Next.js app at `/docs`, using the current MDX toolchain already present in `web/`, and extend that foundation so the docs are publicly reachable, easier to navigate, and less hand-maintained.
+Implement a production-facing docs system for AgentClash inside the existing Next.js app at `/docs`, then extend it into a much more detailed A-to-Z docs surface that covers onboarding, core mental models, results interpretation, architecture, and contributor workflows. Add AI-ingest endpoints so the docs can be consumed as `llms.txt`, a bundled full-text export, and per-page markdown exports without introducing a separate docs framework.
 
 # Functional expectations
 
 1. The web app exposes a dedicated docs experience at `/docs` with a docs home page and nested docs pages.
 2. Docs content is file-backed in the repo and stored separately from blog content.
 3. Docs pages support frontmatter with `title` and `description`.
-4. The docs shell includes a left-hand navigation for the initial docs sections and highlights the current page.
+4. The docs shell includes a left-hand navigation for the shipped docs sections and highlights the current page.
 5. The docs shell is visually distinct from the blog and matches the current dark AgentClash aesthetic.
 6. The landing page header exposes a `Docs` entry so the new docs area is discoverable.
-7. Sitemap output includes the docs landing page and the initial shipped docs pages.
-8. Initial docs content only documents features and workflows that are already grounded in the current repo:
+7. Sitemap output includes the docs landing page, the shipped docs pages, and the new AI-ingest endpoints.
+8. Detailed docs content only documents features and workflows that are already grounded in the current repo, docs, or generated source readers. The shipped set for this phase includes:
    - product/docs landing
    - hosted quickstart
    - self-host quickstart
-   - runs/evals concept
    - first eval walkthrough
+   - runs and evals concept
+   - agents and deployments concept
+   - challenge packs and inputs concept
+   - replay and scorecards concept
+   - interpret results guide
+   - use with AI tools guide
    - generated CLI reference
    - generated config reference
    - architecture overview
    - orchestration architecture
+   - sandbox architecture
+   - data model architecture
+   - evidence loop architecture
    - frontend architecture
    - contributor setup
-9. The implementation must reuse the existing MDX/content pattern where practical instead of introducing a second docs framework dependency in this first step.
+   - contributor codebase tour
+   - contributor testing workflow
+9. The implementation must reuse the existing MDX/content pattern where practical instead of introducing a second docs framework dependency.
 10. `/docs` and nested docs routes are publicly reachable without tripping the AuthKit middleware redirect-URI requirement in a local environment with no WorkOS redirect env configured.
 11. The docs shell includes inline search/filtering across the shipped docs set.
 12. The docs shell includes a heading-based table of contents for pages that have section headings.
 13. At least two reference pages are generated from current source inputs rather than being fully hand-maintained.
-14. The follow-up implementation remains isolated in the docs worktree branch and is prepared for a GitHub PR.
+14. The app exposes `GET /llms.txt` as a concise machine-oriented index of the docs set with stable links.
+15. The app exposes `GET /llms-full.txt` as a single bundled plain-text/markdown export of the shipped docs set.
+16. The app exposes per-page markdown/plain-text exports under `/docs-md/...` for file-backed and generated docs pages.
+17. The AI-ingest surfaces point at AgentClash docs content and markdown exports without claiming first-party support or plugin integration from third-party assistant products.
+18. The implementation remains isolated in the docs worktree branch and updates the existing GitHub PR rather than opening a second PR.
 
 # Tests to add or run
 
 1. Run `pnpm build` in `web/` to catch routing, metadata, and MDX compilation issues.
 2. Run the built app locally and verify that `/docs` returns successfully without the AuthKit redirect-URI runtime error.
 3. Verify that a generated reference page renders successfully.
+4. Verify that `/llms.txt` returns successfully and includes links into the shipped docs set.
+5. Verify that `/llms-full.txt` returns successfully and contains multiple concatenated docs sections.
+6. Verify that at least one nested `/docs-md/...` route returns markdown/plain text successfully.
 
 # Manual verification
 
@@ -50,9 +67,13 @@ Implement the first production-facing docs foundation for AgentClash inside the 
 5. Confirm the landing page header links to `/docs`.
 6. Confirm docs URLs are emitted by the sitemap source.
 7. Confirm `/docs` is reachable locally even when WorkOS redirect configuration is absent.
+8. Confirm `/llms.txt` lists the docs index, the full bundle, and section-level markdown exports.
+9. Confirm `/llms-full.txt` contains readable bundled markdown for multiple pages.
+10. Confirm `/docs-md/getting-started/quickstart` returns a plain-text/markdown version of the quickstart page.
 
 # Non-goals for this change
 
 1. Do not add a new third-party docs framework in this pass.
 2. Do not try to fully solve the broader public-marketing auth surface beyond making docs reachable.
 3. Do not publish roadmap or compare pages unless they are grounded in existing shipped behavior.
+4. Do not claim official first-party plugin or deep-link integration with ChatGPT, Codex, Claude Code, or similar tools; provide portable AI-friendly endpoints instead.

@@ -28,6 +28,8 @@ const CLI_CONFIG_FILE = path.join(
 );
 const BACKEND_ENV_FILE = path.join(REPO_ROOT, "backend", ".env.example");
 
+export const DOCS_ORIGIN = "https://agentclash.dev";
+
 export type DocNavItem = {
   title: string;
   description: string;
@@ -135,6 +137,48 @@ export const DOCS_NAV: DocNavSection[] = [
         slug: ["concepts", "runs-and-evals"],
         href: "/docs/concepts/runs-and-evals",
       },
+      {
+        title: "Agents and Deployments",
+        description:
+          "See how runnable agent targets are modeled before they can participate in an eval.",
+        slug: ["concepts", "agents-and-deployments"],
+        href: "/docs/concepts/agents-and-deployments",
+      },
+      {
+        title: "Challenge Packs and Inputs",
+        description:
+          "Understand how tasks, input sets, and scoring context are grouped into repeatable workloads.",
+        slug: ["concepts", "challenge-packs-and-inputs"],
+        href: "/docs/concepts/challenge-packs-and-inputs",
+      },
+      {
+        title: "Replay and Scorecards",
+        description:
+          "Learn how canonical events become timelines, evidence, and comparison-ready outputs.",
+        slug: ["concepts", "replay-and-scorecards"],
+        href: "/docs/concepts/replay-and-scorecards",
+      },
+    ],
+  },
+  {
+    title: "Guides",
+    description:
+      "Task-oriented walkthroughs for reading results and using the docs with AI tools.",
+    items: [
+      {
+        title: "Interpret Results",
+        description:
+          "Read timelines, scorecards, and ranking changes without getting lost in raw event volume.",
+        slug: ["guides", "interpret-results"],
+        href: "/docs/guides/interpret-results",
+      },
+      {
+        title: "Use with AI Tools",
+        description:
+          "Use llms.txt, the full bundle, and per-page markdown exports with assistants and coding agents.",
+        slug: ["guides", "use-with-ai-tools"],
+        href: "/docs/guides/use-with-ai-tools",
+      },
     ],
   },
   {
@@ -178,6 +222,27 @@ export const DOCS_NAV: DocNavSection[] = [
         href: "/docs/architecture/orchestration",
       },
       {
+        title: "Sandbox Layer",
+        description:
+          "Why execution is isolated behind a provider boundary and how E2B fits today.",
+        slug: ["architecture", "sandbox-layer"],
+        href: "/docs/architecture/sandbox-layer",
+      },
+      {
+        title: "Data Model",
+        description:
+          "The core entities behind workspaces, deployments, challenge packs, runs, and evidence.",
+        slug: ["architecture", "data-model"],
+        href: "/docs/architecture/data-model",
+      },
+      {
+        title: "Evidence Loop",
+        description:
+          "How run events, artifacts, and scorecards move from execution into replay and review.",
+        slug: ["architecture", "evidence-loop"],
+        href: "/docs/architecture/evidence-loop",
+      },
+      {
         title: "Frontend",
         description:
           "How the Next.js app is split between public product pages, authenticated app routes, and docs.",
@@ -196,6 +261,20 @@ export const DOCS_NAV: DocNavSection[] = [
           "Clone the repo, boot the local stack, and choose the fastest dev loop for your task.",
         slug: ["contributing", "setup"],
         href: "/docs/contributing/setup",
+      },
+      {
+        title: "Codebase Tour",
+        description:
+          "Map the top-level modules before you start changing APIs, workflows, or the web app.",
+        slug: ["contributing", "codebase-tour"],
+        href: "/docs/contributing/codebase-tour",
+      },
+      {
+        title: "Testing",
+        description:
+          "Pick the smallest useful validation loop and use review checkpoints for scoped changes.",
+        slug: ["contributing", "testing"],
+        href: "/docs/contributing/testing",
       },
     ],
   },
@@ -731,7 +810,7 @@ function collectBackendExampleRows() {
 }
 
 function renderEnvTable(title: string, rows: EnvRow[]) {
-  const lines = [`## ${title}`, "", "| Variable | Default | Description |", "| --- | --- | --- |"];
+  const lines = [`## ${title}`, "", "| Variable | Default | Description |", "| --- | --- | --- |"]; 
 
   for (const row of rows) {
     lines.push(
@@ -789,6 +868,49 @@ function uniqueSlugs(slugs: string[][]) {
   });
 }
 
+function docHrefToMarkdownHref(href: string, origin: string) {
+  if (href === "/docs") {
+    return `${origin}/docs-md`;
+  }
+
+  if (href.startsWith("/docs/")) {
+    return `${origin}/docs-md${href.slice("/docs".length)}`;
+  }
+
+  return href.startsWith("http") ? href : `${origin}${href}`;
+}
+
+function renderCallout(type: string, body: string) {
+  const label = type.charAt(0).toUpperCase() + type.slice(1);
+  const lines = body
+    .trim()
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (lines.length === 0) {
+    return `> ${label}`;
+  }
+
+  return [
+    `> ${label}: ${lines[0]}`,
+    ...lines.slice(1).map((line) => `> ${line}`),
+  ].join("\n");
+}
+
+function normalizeMarkdownForExport(content: string, origin: string) {
+  return content
+    .replace(/<Callout type="(info|warning|note)">([\s\S]*?)<\/Callout>/g, (_, type, body) =>
+      renderCallout(type, body),
+    )
+    .replace(/\]\((\/docs(?:\/[^)\s]*)?)\)/g, (_, href) => `](${docHrefToMarkdownHref(href, origin)})`)
+    .trim();
+}
+
+export function getDocMarkdownPath(slug: string[] = []) {
+  return slug.length === 0 ? "/docs-md" : `/docs-md/${slug.join("/")}`;
+}
+
 export function flattenDocsNav() {
   return DOCS_NAV.flatMap((section) => section.items);
 }
@@ -832,6 +954,10 @@ export function getAllDocPaths() {
   return getAllDocSlugs().map((slug) => slugToHref(slug));
 }
 
+export function getAllDocMarkdownPaths() {
+  return getAllDocSlugs().map((slug) => getDocMarkdownPath(slug));
+}
+
 export function getDocsSearchIndex(): DocSearchItem[] {
   return getAllDocSlugs()
     .map((slug) => getDocBySlug(slug))
@@ -844,4 +970,74 @@ export function getDocsSearchIndex(): DocSearchItem[] {
         .map((heading) => heading.text)
         .join(" ")} ${stripInlineMarkdown(doc.content).slice(0, 900)}`.toLowerCase(),
     }));
+}
+
+export function renderDocMarkdown(doc: DocPage, origin = DOCS_ORIGIN) {
+  const lines = [
+    `# ${doc.title}`,
+    "",
+    doc.description,
+    "",
+    `Source: ${origin}${doc.href}`,
+    `Markdown export: ${origin}${getDocMarkdownPath(doc.slug)}`,
+    "",
+    normalizeMarkdownForExport(doc.content, origin),
+  ];
+
+  return lines.join("\n").trim();
+}
+
+export function buildLlmsIndex(origin = DOCS_ORIGIN) {
+  const lines = [
+    "# AgentClash",
+    "",
+    "> AgentClash runs agents against repeatable challenge packs, captures replay evidence, and shows where a run won, failed, or drifted.",
+    "",
+    "Use this index when you want the shortest machine-readable map of the public docs. Fetch `/llms-full.txt` for the bundled corpus, or use the `/docs-md/...` links below for page-level markdown exports.",
+    "",
+    "## Core entrypoints",
+    "",
+    `- [Docs home](${origin}/docs-md) - overview, navigation, and starting points.`,
+    `- [Quickstart](${origin}/docs-md/getting-started/quickstart) - fastest path to a real run.`,
+    `- [Self-Host](${origin}/docs-md/getting-started/self-host) - local stack and service dependencies.`,
+    `- [First Eval](${origin}/docs-md/getting-started/first-eval) - end-to-end walkthrough of one eval path.`,
+    `- [CLI Reference](${origin}/docs-md/reference/cli) - generated command reference.`,
+    `- [Config Reference](${origin}/docs-md/reference/config) - generated environment and precedence reference.`,
+    `- [Full bundle](${origin}/llms-full.txt) - all shipped docs in one file.`,
+    "",
+  ];
+
+  for (const section of DOCS_NAV) {
+    lines.push(`## ${section.title}`, "");
+    for (const item of section.items) {
+      lines.push(
+        `- [${item.title}](${origin}${getDocMarkdownPath(item.slug)}) - ${item.description}`,
+      );
+    }
+    lines.push("");
+  }
+
+  return lines.join("\n").trim();
+}
+
+export function buildLlmsFull(origin = DOCS_ORIGIN) {
+  const orderedSlugs = uniqueSlugs([[], ...flattenDocsNav().map((item) => item.slug)]);
+  const docs = orderedSlugs
+    .map((slug) => getDocBySlug(slug))
+    .filter((doc): doc is DocPage => Boolean(doc));
+
+  const lines = [
+    "# AgentClash Docs Bundle",
+    "",
+    `Canonical docs home: ${origin}/docs`,
+    `Machine-readable index: ${origin}/llms.txt`,
+    "",
+    "This file concatenates the currently shipped AgentClash docs pages into one markdown-oriented bundle for assistants, coding agents, and local retrieval pipelines.",
+  ];
+
+  for (const doc of docs) {
+    lines.push("", "---", "", renderDocMarkdown(doc, origin));
+  }
+
+  return lines.join("\n").trim();
 }

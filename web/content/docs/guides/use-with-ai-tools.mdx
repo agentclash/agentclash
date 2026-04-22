@@ -1,0 +1,93 @@
+---
+title: Use with AI Tools
+description: Feed AgentClash docs into ChatGPT, Codex, Claude Code, and similar tools using llms.txt and markdown exports.
+---
+
+Goal: give an assistant or coding agent enough AgentClash context to answer questions, draft workflows, or transform the docs into internal runbooks.
+
+Prerequisites:
+
+- You can open or paste URLs into the assistant you are using.
+- You know whether you want the full docs bundle or just one page.
+
+## Pick the right docs export
+
+AgentClash now exposes three AI-friendly surfaces:
+
+- `/llms.txt`: a compact index of the shipped docs set
+- `/llms-full.txt`: one bundled markdown-oriented export of the full docs corpus
+- `/docs-md/...`: page-level markdown exports that mirror `/docs/...`
+
+Use them differently:
+
+- use `llms.txt` when the tool needs a map first
+- use `llms-full.txt` when you want one-shot context for a larger prompt
+- use `/docs-md/...` when you only need one focused page, like quickstart or config
+
+## Fastest workflow in ChatGPT, Codex, or Claude Code
+
+1. Start with `https://agentclash.dev/llms.txt`.
+2. If the tool can fetch URLs directly, give it that URL first.
+3. If the tool cannot fetch URLs, open the file yourself and paste the contents.
+4. Ask the tool which page it needs next.
+5. Feed the relevant `/docs-md/...` page or the full bundle, depending on scope.
+
+That keeps the context tight. Do not dump the full bundle into every prompt by default.
+
+## Good prompt patterns
+
+Use prompts that ask the model to stay anchored to the supplied docs. Examples:
+
+```text
+Using https://agentclash.dev/llms.txt, tell me which docs pages I should read to self-host AgentClash and understand the worker architecture.
+```
+
+```text
+Use the markdown from https://agentclash.dev/docs-md/guides/interpret-results and turn it into a short incident-review checklist for my eval team.
+```
+
+```text
+Use https://agentclash.dev/llms-full.txt as the product docs corpus and answer only from that material: what is the difference between a run, an eval, and a challenge pack?
+```
+
+## When to use page-level exports instead of the full bundle
+
+Prefer page-level exports when:
+
+- you are debugging one subsystem
+- you want tighter answers with lower token cost
+- the assistant tends to over-generalize when given too much context
+
+Prefer the full bundle when:
+
+- you want a holistic onboarding summary
+- you are asking for a docs-wide rewrite or glossary
+- you are building internal retrieval or indexing pipelines
+
+## Verification
+
+You should now be able to hand any of these URLs to a tool and get grounded answers:
+
+- `https://agentclash.dev/llms.txt`
+- `https://agentclash.dev/llms-full.txt`
+- `https://agentclash.dev/docs-md/getting-started/quickstart`
+
+## Troubleshooting
+
+### The assistant cannot open URLs
+
+Open the relevant endpoint yourself and paste the content directly.
+
+### The answer is too vague
+
+Use a narrower `/docs-md/...` page instead of the full bundle.
+
+### The answer mixes product claims with guesses
+
+Tell the tool to answer only from the supplied docs export and cite the page title it used.
+
+## See also
+
+- [Quickstart](../getting-started/quickstart)
+- [Config Reference](../reference/config)
+- [Codebase Tour](../contributing/codebase-tour)

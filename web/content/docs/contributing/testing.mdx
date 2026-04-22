@@ -1,0 +1,78 @@
+---
+title: Testing
+description: Choose the smallest useful validation loop and use review checkpoints to keep implementation work scoped.
+---
+
+Testing in AgentClash should match the surface you changed. Do not default to the biggest possible loop.
+
+## Pick the smallest loop that can prove the change
+
+A useful rule is:
+
+- docs or web route changes: start with `pnpm build` in `web/`
+- CLI changes: use the `cli/` module commands and tests
+- packaging changes: rehearse the release flow instead of guessing
+- workflow or backend changes: validate the specific service path you touched
+
+For CLI work, the repo already gives you a concrete baseline:
+
+```bash
+cd cli
+go build ./...
+go vet ./...
+go test -short -race -count=1 ./...
+go run github.com/goreleaser/goreleaser/v2@latest check
+go run github.com/goreleaser/goreleaser/v2@latest release --snapshot --clean
+```
+
+## Use review checkpoints for implementation work
+
+When the change is more than a one-line fix, lock the contract before you start coding.
+
+The review-checkpoint workflow is simple:
+
+1. create `testing/<branch-or-task>.md`
+2. write the scope, functional expectations, tests, manual verification, and non-goals
+3. treat that contract as fixed until requirements explicitly change
+4. after each implementation step, update `/tmp/reviewcheckpoint.json`
+5. run the scoped verification listed in the contract before you declare the work ready
+
+This does two things well:
+
+- it prevents scope drift
+- it makes agent-assisted changes auditable instead of magical
+
+<Callout type="note">
+  Keep `/tmp/reviewcheckpoint.json` local scratch only. It is a working review log,
+  not repo content.
+</Callout>
+
+## What to record in each checkpoint
+
+A good checkpoint update includes:
+
+- the current step number
+- which files changed
+- which contract items were addressed
+- self-review result for that step
+- cumulative review result across all steps so far
+- unresolved risks
+
+That cumulative review matters. It is how you catch drift after several small edits have accumulated.
+
+## Manual verification still matters
+
+Not every useful check is a unit test. For docs, routing, and UI work, manual verification is often part of the contract. Be explicit about it.
+
+Examples:
+
+- opening a docs route and confirming it renders
+- confirming a public route bypasses auth middleware correctly
+- verifying a generated reference page actually contains generated content
+
+## See also
+
+- [Codebase Tour](../contributing/codebase-tour)
+- [Setup](../contributing/setup)
+- [CLI Reference](../reference/cli)
+- [Config Reference](../reference/config)

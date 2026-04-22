@@ -13,7 +13,11 @@ export default function middleware(
 ) {
   if (
     request.nextUrl.pathname === "/docs" ||
-    request.nextUrl.pathname.startsWith("/docs/")
+    request.nextUrl.pathname.startsWith("/docs/") ||
+    request.nextUrl.pathname === "/docs-md" ||
+    request.nextUrl.pathname.startsWith("/docs-md/") ||
+    request.nextUrl.pathname === "/llms.txt" ||
+    request.nextUrl.pathname === "/llms-full.txt"
   ) {
     return NextResponse.next();
   }

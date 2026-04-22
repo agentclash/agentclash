@@ -1,0 +1,115 @@
+---
+title: Interpret Results
+description: Read AgentClash run output from top-line score to raw replay evidence without getting lost.
+---
+
+Goal: turn a finished run or eval into a decision you can defend.
+
+Prerequisites:
+
+- You have a run or eval to inspect.
+- You understand the basic difference between a run and an eval.
+- You know which challenge pack or workload the result came from.
+
+## Start with the top-line state
+
+Before you read the full timeline, answer three simple questions:
+
+1. Did the run complete, fail, or time out?
+2. Which deployment produced the result?
+3. Which challenge pack or input set was this run judged against?
+
+If you skip this step, you will mix together infrastructure problems, workload problems, and actual agent regressions.
+
+## Read the score before the trace
+
+The scorecard or summary view is the fastest way to orient yourself. Use it to identify:
+
+- the overall outcome
+- the dimension that changed since the last comparable run
+- any obvious outlier input or scenario
+- whether the run generated enough evidence to trust the outcome
+
+<Callout type="info">
+  A score change is only actionable when the underlying workload is comparable.
+  Always confirm you are looking at the same deployment class and challenge pack.
+</Callout>
+
+## Use the replay timeline to explain the result
+
+Once you know what changed, move to the replay or event timeline.
+
+A useful reading order is:
+
+1. find the first non-trivial event after run start
+2. follow tool calls or sandbox transitions in order
+3. locate the first irreversible failure or divergence
+4. inspect any terminal event that explains why scoring ended where it did
+
+You are looking for the earliest point where the run stopped being healthy. That might be an agent reasoning mistake, but it might just as easily be a sandbox issue, a bad callback, or a missing artifact.
+
+## Separate agent failures from platform failures
+
+This distinction matters for every comparison review.
+
+Treat these as different buckets:
+
+- agent failure: the deployment ran, but the behavior was wrong or weak
+- scenario failure: the workload or scoring context exposed a gap or ambiguity
+- platform failure: orchestration, sandbox, callback, artifact, or infrastructure issues broke the run
+
+Only the first bucket should drive model or prompt claims directly.
+
+## Compare runs only after you trust each side
+
+When you compare two runs, make sure both have:
+
+- the same or intentionally different deployment target
+- the same workload definition
+- enough replay evidence to justify the score
+- no obvious infrastructure corruption hiding behind the final state
+
+If one side is missing replay evidence or has an incomplete artifact trail, the comparison is weak even if the ranking UI still renders.
+
+## What to do with a useful failure
+
+A good failure is not just something to fix. It is something to preserve.
+
+When a run reveals a real gap:
+
+1. capture the replay and artifacts that make the issue obvious
+2. tie the failure back to the scenario or input that exposed it
+3. promote it into a repeatable challenge-pack case when the product surface supports it
+4. rerun after the fix so the score change is evidence-backed, not anecdotal
+
+That is the core loop behind serious evaluation work.
+
+## Verification
+
+You should now be able to look at one run and answer:
+
+- what failed
+- where it failed first
+- whether the failure belongs to the agent, workload, or platform
+- what evidence you would preserve for future regression testing
+
+## Troubleshooting
+
+### The score changed, but I cannot explain why
+
+Open the replay view and find the first event where the run diverged from the baseline. If you cannot find one, the run may be missing evidence or you may be comparing different workloads.
+
+### The run failed before any meaningful agent work happened
+
+Treat that as a platform or setup issue first. Check orchestration, sandbox configuration, callbacks, and artifacts before concluding the deployment regressed.
+
+### Two runs disagree, but both look messy
+
+Do not force a ranking conclusion. Clean the workload, rerun under the same conditions, and compare again.
+
+## See also
+
+- [Replay and Scorecards](../concepts/replay-and-scorecards)
+- [Runs and Evals](../concepts/runs-and-evals)
+- [Evidence Loop](../architecture/evidence-loop)
+- [First Eval](../getting-started/first-eval)
