@@ -134,6 +134,34 @@ body {
   }
 }
 
+/* Light flowing through arrows — replay-section illustration.
+   Each arrow is faint at rest, brightens briefly with a soft halo;
+   staggered animation-delay inline on each element sweeps the pulse
+   down the column. */
+@keyframes arrow-flow {
+  0%,
+  100% {
+    opacity: 0.1;
+    filter: drop-shadow(0 0 0 rgba(255, 255, 255, 0));
+  }
+  45%,
+  55% {
+    opacity: 1;
+    filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.55));
+  }
+}
+
+.animate-arrow-flow {
+  animation: arrow-flow 3.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-arrow-flow {
+    animation: none;
+    opacity: 0.35;
+  }
+}
+
 /* Blog prose */
 .prose-agentclash {
   font-size: 15px;

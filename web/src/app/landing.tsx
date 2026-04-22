@@ -1,7 +1,6 @@
 "use client";
 
 import type React from "react";
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { useAuth } from "@workos-inc/authkit-nextjs/components";
 import { ArrowRight, Calendar, ExternalLink, LogIn, Star } from "lucide-react";
@@ -186,132 +185,34 @@ function LineupGlyph() {
   );
 }
 
-const REPLAY_EVENTS = [
-  { n: "01", type: "think", label: "reasoning through the failure" },
-  { n: "02", type: "model", label: "grok-4-reasoning" },
-  { n: "03", type: "tool", label: "read_file  ·  auth/session.go" },
-  { n: "04", type: "observe", label: "tests failing  ·  2 / 10" },
-  { n: "05", type: "think", label: "locating the timestamp bug" },
-  { n: "06", type: "tool", label: "write_file  ·  auth/session.go" },
-  { n: "07", type: "submit", label: "tests green  ·  10 / 10" },
-];
-
-const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
-
-function subscribeReducedMotion(callback: () => void) {
-  if (typeof window === "undefined") return () => {};
-  const mq = window.matchMedia(REDUCED_MOTION_QUERY);
-  mq.addEventListener("change", callback);
-  return () => mq.removeEventListener("change", callback);
-}
-
-function getReducedMotion() {
-  return window.matchMedia(REDUCED_MOTION_QUERY).matches;
-}
-
-function ReplayScrubber() {
-  const [activeIdx, setActiveIdx] = useState(0);
-  const [isVisible, setIsVisible] = useState(false);
-  const reducedMotion = useSyncExternalStore(
-    subscribeReducedMotion,
-    getReducedMotion,
-    () => false,
-  );
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!ref.current) return;
-    const observer = new IntersectionObserver(
-      ([entry]) => setIsVisible(entry.isIntersecting),
-      { threshold: 0.25 },
-    );
-    observer.observe(ref.current);
-    return () => observer.disconnect();
-  }, []);
-
-  useEffect(() => {
-    if (!isVisible || reducedMotion) return;
-    const interval = setInterval(() => {
-      setActiveIdx((i) => (i + 1) % REPLAY_EVENTS.length);
-    }, 1800);
-    return () => clearInterval(interval);
-  }, [isVisible, reducedMotion]);
-
+function LightFlowArrows() {
+  const COUNT = 9;
+  const DURATION = 3.6;
   return (
     <div
-      ref={ref}
-      className="rounded-xl border border-white/[0.08] bg-white/[0.015] p-5 sm:p-6"
+      className="flex flex-col items-center justify-center gap-5 py-8 sm:gap-7 sm:py-12"
+      aria-hidden
     >
-      <div className="flex items-center justify-between pb-4 mb-4 border-b border-white/[0.06]">
-        <div className="flex items-center gap-2 text-[11px] text-white/45 font-[family-name:var(--font-mono)]">
-          <span className="inline-block size-1.5 rounded-full bg-[#c7ff3c]/80" />
-          replay · run 7dd0c04c · grok-4
-        </div>
-        <div className="text-[11px] text-white/30 font-[family-name:var(--font-mono)] tabular-nums">
-          {String(activeIdx + 1).padStart(2, "0")} / {REPLAY_EVENTS.length}
-        </div>
-      </div>
-
-      <ol className="space-y-1">
-        {REPLAY_EVENTS.map((event, i) => {
-          const isActive = i === activeIdx;
-          const isPast = i < activeIdx;
-          return (
-            <li
-              key={event.n}
-              className={`flex items-center gap-3 rounded-md border-l-2 px-3 py-2.5 transition-[background-color,border-color,color] duration-500 ease-out ${
-                isActive
-                  ? "border-[#c7ff3c] bg-white/[0.04]"
-                  : "border-transparent"
-              }`}
-            >
-              <span
-                className={`w-7 font-[family-name:var(--font-mono)] text-[11px] tabular-nums ${
-                  isActive
-                    ? "text-white/75"
-                    : isPast
-                    ? "text-white/20"
-                    : "text-white/35"
-                }`}
-              >
-                {event.n}
-              </span>
-              <span
-                className={`w-16 font-[family-name:var(--font-mono)] text-[10px] tracking-wider ${
-                  isActive ? "text-white/55" : "text-white/25"
-                }`}
-              >
-                {event.type}
-              </span>
-              <span
-                className={`truncate text-sm ${
-                  isActive
-                    ? "text-white/95"
-                    : isPast
-                    ? "text-white/30"
-                    : "text-white/50"
-                }`}
-              >
-                {event.label}
-              </span>
-              {isActive && (
-                <span className="ml-auto text-[10px] text-[#c7ff3c]/80 font-[family-name:var(--font-mono)]">
-                  ▸
-                </span>
-              )}
-            </li>
-          );
-        })}
-      </ol>
-
-      <div className="mt-5 h-[2px] w-full overflow-hidden rounded-full bg-white/[0.06]">
-        <div
-          className="h-full bg-[#c7ff3c]/55 transition-[width] duration-[1500ms] ease-out"
+      {Array.from({ length: COUNT }).map((_, i) => (
+        <svg
+          key={i}
+          viewBox="0 0 48 24"
+          className="animate-arrow-flow h-5 w-11 text-white"
           style={{
-            width: `${((activeIdx + 1) / REPLAY_EVENTS.length) * 100}%`,
+            animationDelay: `${(-(i / COUNT) * DURATION).toFixed(2)}s`,
           }}
-        />
-      </div>
+          focusable="false"
+        >
+          <path
+            d="M6 7 L24 19 L42 7"
+            stroke="currentColor"
+            strokeWidth="2.25"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            fill="none"
+          />
+        </svg>
+      ))}
     </div>
   );
 }
@@ -329,8 +230,8 @@ function TrackGlyph() {
     >
       <line x1="5" y1="24" x2="34" y2="24" opacity="0.45" />
       <circle cx="10" cy="24" r="1.3" fill="currentColor" opacity="0.4" stroke="none" />
-      <circle cx="18" cy="24" r="1.3" fill="currentColor" opacity="0.6" stroke="none" />
-      <circle cx="26" cy="24" r="2" fill="#c7ff3c" opacity="1" stroke="none" />
+      <circle cx="18" cy="24" r="1.3" fill="currentColor" opacity="0.65" stroke="none" />
+      <circle cx="26" cy="24" r="2" fill="currentColor" opacity="0.95" stroke="none" />
       <line x1="36" y1="12" x2="36" y2="36" strokeWidth="1.2" opacity="0.55" />
       <g fill="currentColor" stroke="none" opacity="0.9">
         <rect x="37" y="12" width="3" height="3" />
@@ -610,7 +511,7 @@ export default function HomePage() {
             </p>
           </div>
           <div>
-            <ReplayScrubber />
+            <LightFlowArrows />
           </div>
         </div>
       </section>
