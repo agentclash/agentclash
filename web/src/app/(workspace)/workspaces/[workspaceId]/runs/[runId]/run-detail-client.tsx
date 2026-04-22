@@ -2,9 +2,17 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
-import { createApiClient } from "@/lib/api/client";
-import { useRunEvents, type RunEvent } from "@/hooks/use-run-events";
+
+import { LiveAgentLane } from "@/components/arena/live-agent-lane";
+import { LiveCommentarySidebar } from "@/components/arena/live-commentary-sidebar";
+import { UploadArtifactDialog } from "@/components/artifacts/upload-artifact-dialog";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { useAgentArena, EMPTY_LANE } from "@/hooks/use-agent-arena";
+import { useAgentCommentary } from "@/hooks/use-agent-commentary";
+import { useRunEvents, type RunEvent } from "@/hooks/use-run-events";
+import { createApiClient } from "@/lib/api/client";
+import { scorePercent } from "@/lib/scores";
 import type {
   Run,
   RunStatus,
@@ -14,8 +22,6 @@ import type {
   RankingItem,
   ScorecardResponse,
 } from "@/lib/api/types";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -34,12 +40,12 @@ import {
   AlertTriangle,
   AlertOctagon,
   Radio,
+  MessageSquareText,
 } from "lucide-react";
-import { ScorecardSummaryCard } from "./scorecard-summary-card";
+
 import { CompareRunPicker } from "./compare-run-picker";
 import { RunRankingInsightsCard } from "./run-ranking-insights-card";
-import { UploadArtifactDialog } from "@/components/artifacts/upload-artifact-dialog";
-import { LiveAgentLane } from "@/components/arena/live-agent-lane";
+import { ScorecardSummaryCard } from "./scorecard-summary-card";
 
 // --- Status variant maps ---
 
@@ -100,9 +106,6 @@ function buildSortOptions(
   }));
   return [...LEGACY_SORT_OPTIONS, ...custom];
 }
-
-import { scorePercent } from "@/lib/scores";
-
 // --- Helpers ---
 
 function formatDuration(start: string, end?: string): string {
@@ -155,6 +158,7 @@ export function RunDetailClient({
   const [scorecards, setScorecards] = useState<
     Record<string, ScorecardResponse | null>
   >({});
+  const [showCommentary, setShowCommentary] = useState(false);
 
   const isActive =
     ACTIVE_RUN_STATUSES.includes(run.status) ||
@@ -190,17 +194,31 @@ export function RunDetailClient({
 
   // Live per-lane arena projection from the SSE event stream.
   const { lanes: arenaLanes, handleEvent: handleArenaEvent } = useAgentArena();
+  const {
+    entries: commentaryEntries,
+    handleEvent: handleCommentaryEvent,
+    reset: resetCommentary,
+  } = useAgentCommentary(agents);
 
   // Debounced refetch: collapse rapid SSE events into a single fetch.
   const fetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleSSEEvent = useCallback(
     (event: RunEvent) => {
       handleArenaEvent(event);
+      if (showCommentary) {
+        handleCommentaryEvent(event);
+      }
       if (fetchTimerRef.current) clearTimeout(fetchTimerRef.current);
       fetchTimerRef.current = setTimeout(fetchAll, 300);
     },
-    [fetchAll, handleArenaEvent],
+    [fetchAll, handleArenaEvent, handleCommentaryEvent, showCommentary],
   );
+
+  useEffect(() => {
+    return () => {
+      if (fetchTimerRef.current) clearTimeout(fetchTimerRef.current);
+    };
+  }, []);
 
   // Live event streaming via SSE (graceful degradation: falls back to polling).
   const { connected: sseConnected } = useRunEvents({
@@ -332,6 +350,20 @@ export function RunDetailClient({
             workspaceId={workspaceId}
             runId={run.id}
           />
+          <Button
+            variant={showCommentary ? "default" : "outline"}
+            size="sm"
+            onClick={() =>
+              setShowCommentary((current) => {
+                if (current) resetCommentary();
+                return !current;
+              })
+            }
+            aria-pressed={showCommentary}
+          >
+            <MessageSquareText className="size-3.5" />
+            Commentary {showCommentary ? "On" : "Off"}
+          </Button>
           <Link
             href={`/workspaces/${workspaceId}/runs/${run.id}/failures`}
             className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 h-8 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
@@ -383,35 +415,53 @@ export function RunDetailClient({
       <div>
         <h2 className="text-sm font-semibold mb-3">Agent Lanes</h2>
         <div
-          className={`grid gap-3 ${
-            agents.length === 1 ? "grid-cols-1" : "grid-cols-1 md:grid-cols-2"
+          className={`grid gap-4 ${
+            showCommentary
+              ? "grid-cols-1 xl:grid-cols-[minmax(0,2fr)_minmax(18rem,24rem)]"
+              : "grid-cols-1"
           }`}
         >
-          {sortedAgents.map((agent) => {
-            const isWinner =
-              ranking?.ranking?.winner?.run_agent_id === agent.id;
-            const laneState = arenaLanes[agent.id] ?? EMPTY_LANE;
-            const isTerminal =
-              agent.status === "completed" || agent.status === "failed";
-            const footer = isTerminal ? (
-              <ScorecardSummaryCard
-                scorecard={scorecards[agent.id] ?? null}
-                loading={!(agent.id in scorecards)}
-              />
-            ) : null;
+          <div
+            className={`grid gap-3 ${
+              agents.length === 1
+                ? "grid-cols-1"
+                : "grid-cols-1 md:grid-cols-2"
+            }`}
+          >
+            {sortedAgents.map((agent) => {
+              const isWinner =
+                ranking?.ranking?.winner?.run_agent_id === agent.id;
+              const laneState = arenaLanes[agent.id] ?? EMPTY_LANE;
+              const isTerminal =
+                agent.status === "completed" || agent.status === "failed";
+              const footer = isTerminal ? (
+                <ScorecardSummaryCard
+                  scorecard={scorecards[agent.id] ?? null}
+                  loading={!(agent.id in scorecards)}
+                />
+              ) : null;
 
-            return (
-              <LiveAgentLane
-                key={agent.id}
-                agent={agent}
-                lane={laneState}
-                isWinner={isWinner}
-                workspaceId={workspaceId}
-                runId={run.id}
-                footer={footer}
+              return (
+                <LiveAgentLane
+                  key={agent.id}
+                  agent={agent}
+                  lane={laneState}
+                  isWinner={isWinner}
+                  workspaceId={workspaceId}
+                  runId={run.id}
+                  footer={footer}
+                />
+              );
+            })}
+          </div>
+          {showCommentary && (
+            <div className="xl:sticky xl:top-4 xl:self-start">
+              <LiveCommentarySidebar
+                entries={commentaryEntries}
+                isActive={isActive}
               />
-            );
-          })}
+            </div>
+          )}
         </div>
       </div>
 
