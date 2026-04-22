@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@workos-inc/authkit-nextjs/components";
 import { ArrowRight, Calendar, ExternalLink, LogIn, Star } from "lucide-react";
@@ -73,49 +72,6 @@ const PROVIDERS = [
   "Mistral",
   "OpenRouter",
 ];
-
-function ProductShot({
-  src,
-  alt,
-  caption,
-  aspect = "16 / 10",
-}: {
-  src: string;
-  alt: string;
-  caption: string;
-  aspect?: string;
-}) {
-  const [loaded, setLoaded] = useState(false);
-  const [errored, setErrored] = useState(false);
-
-  return (
-    <figure
-      className="relative w-full overflow-hidden rounded-xl border border-white/10 bg-white/[0.02]"
-      style={{ aspectRatio: aspect }}
-    >
-      {!errored && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={src}
-          alt={alt}
-          onLoad={() => setLoaded(true)}
-          onError={() => setErrored(true)}
-          className={`absolute inset-0 h-full w-full object-cover ${loaded ? "opacity-100" : "opacity-0"}`}
-        />
-      )}
-      {(!loaded || errored) && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-8 text-center">
-          <span className="font-[family-name:var(--font-mono)] text-[10px] uppercase tracking-[0.18em] text-white/30">
-            drop in · {src}
-          </span>
-          <span className="max-w-md font-[family-name:var(--font-display)] text-xl leading-snug text-white/60">
-            {caption}
-          </span>
-        </div>
-      )}
-    </figure>
-  );
-}
 
 export default function HomePage() {
   const { user, loading: authLoading } = useAuth();
@@ -254,37 +210,54 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ── Hero product shot (race arena) ──────────────────────── */}
-      <section className="px-4 sm:px-8 pb-32 sm:pb-48">
-        <div className="mx-auto max-w-[1600px]">
-          <ProductShot
-            src="/product/race-arena.png"
-            alt="AgentClash Race Arena — six AI models racing head-to-head on the same challenge, with live step counts, tool calls, and composite scores"
-            caption="Race Arena — six models racing head-to-head, live scoring, streaming output, lap timeline across the top."
-            aspect="16 / 10"
-          />
-          <p className="mt-6 font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-[0.18em] text-white/30 text-center">
-            Live run view &middot; same challenge, six agents, one leader
-          </p>
-        </div>
-      </section>
-
-      {/* ── Problem ─────────────────────────────────────────────── */}
+      {/* ── Why we built this ───────────────────────────────────── */}
       <section className="border-t border-white/[0.06] px-8 sm:px-12 py-32 sm:py-48">
         <div className="mx-auto max-w-[1440px]">
           <p className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-[0.18em] text-white/35 mb-12">
-            The problem
+            Why we built this
           </p>
           <h2 className="font-[family-name:var(--font-display)] font-normal tracking-[-0.03em] leading-[1.02] text-[clamp(2.5rem,6vw,5.5rem)] max-w-[22ch]">
-            Static benchmarks leak. Leaderboards reward hype.
+            We got tired of being lied to.
           </h2>
-          <p className="mt-12 max-w-[52ch] text-lg leading-[1.55] text-white/55">
-            Your workload is not MMLU. It is your codebase, your schema, your
-            broken auth server, your three-month-old ticket. The only honest
-            way to pick a model is to run it against the same task you&apos;d
-            pay it to do — next to every other model you&apos;re considering
-            — and watch what happens.
-          </p>
+
+          <div className="mt-14 max-w-[58ch] space-y-7 text-lg leading-[1.65] text-white/65">
+            <p>
+              A few months ago we were picking a model for a production
+              agent — the kind that reads a ticket, opens a PR, runs the
+              tests, writes a comment. The benchmarks said one thing. MMLU
+              said another. Vendor blog posts told a third. We ran our own
+              evals; they were flaky and painful to reason about. We picked
+              a model. A week in, it started failing on the exact shape of
+              ticket we&apos;d built it for — the same shape it had passed
+              every eval we threw at it.
+            </p>
+            <p>
+              We re-read every score. None of them had touched our task.
+              They had measured one kind of intelligence, and we had
+              shipped another.
+            </p>
+            <p className="font-[family-name:var(--font-display)] text-2xl sm:text-3xl leading-[1.3] tracking-[-0.015em] text-white/90 !mt-12">
+              Static benchmarks leak. Leaderboards reward hype. The only
+              eval you can trust is the one you ran yourself, on your own
+              task, against every other model you were considering, at the
+              same time.
+            </p>
+            <p>
+              AgentClash is what we wish had existed that week. You
+              describe the task the way your product actually does it. Pick
+              six models. They race, live, on the same inputs, with the
+              same tools, scored on what matters in production —
+              correctness, cost, latency, behaviour under pressure. When
+              one fails, the failing trace becomes a test. Every mistake
+              ratchets the eval tighter.
+            </p>
+            <p>
+              We&apos;re building it in the open because no closed
+              benchmark has ever stayed honest for long. If this feels
+              familiar — run a race. Your task. Your models. Your
+              scoreboard.
+            </p>
+          </div>
         </div>
       </section>
 
@@ -332,28 +305,20 @@ export default function HomePage() {
       </section>
 
       {/* ── Feature · Replay ────────────────────────────────────── */}
-      <section className="border-t border-white/[0.06] px-4 sm:px-8 py-32 sm:py-48">
-        <div className="mx-auto max-w-[1600px]">
-          <div className="px-4 sm:px-4 mb-16">
-            <p className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-[0.18em] text-white/35 mb-10">
-              Every step, on record
-            </p>
-            <h2 className="font-[family-name:var(--font-display)] font-normal tracking-[-0.03em] leading-[1.02] text-[clamp(2.25rem,5vw,4.5rem)] max-w-[22ch]">
-              Scrub the replay. See exactly where it got stuck.
-            </h2>
-            <p className="mt-10 max-w-[48ch] text-lg leading-[1.55] text-white/55">
-              Every think, every tool call, every observation is captured.
-              Step back to the moment a model went sideways — the prompt it
-              saw, the output it produced, the state it worked from.
-            </p>
-          </div>
-
-          <ProductShot
-            src="/product/replay-scrubber.png"
-            alt="AgentClash Replay — step-by-step playback of an agent's run, showing its reasoning, tool calls, and model state at each step"
-            caption="Replay scrubber — step through any finished agent, frame by frame."
-            aspect="16 / 9"
-          />
+      <section className="border-t border-white/[0.06] px-8 sm:px-12 py-32 sm:py-48">
+        <div className="mx-auto max-w-[1440px]">
+          <p className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-[0.18em] text-white/35 mb-10">
+            Every step, on record
+          </p>
+          <h2 className="font-[family-name:var(--font-display)] font-normal tracking-[-0.03em] leading-[1.02] text-[clamp(2.25rem,5vw,4.5rem)] max-w-[22ch]">
+            Scrub the replay. See exactly where it got stuck.
+          </h2>
+          <p className="mt-10 max-w-[52ch] text-lg leading-[1.6] text-white/55">
+            Every think, every tool call, every observation is captured.
+            Step back to the moment a model went sideways — the prompt it
+            saw, the output it produced, the state it worked from. No more
+            guessing why one model won and another flunked.
+          </p>
         </div>
       </section>
 
