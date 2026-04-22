@@ -1,68 +1,135 @@
 ---
 title: Agents and Deployments
-description: Understand how AgentClash turns an abstract agent idea into a concrete runnable target inside a workspace.
+description: Understand how AgentClash turns a build plus runtime/provider resources into a concrete deployment that can be scheduled into a run.
 ---
 
-A deployment is the concrete runnable target that AgentClash can schedule into a run.
+A deployment is the workspace-scoped runnable target that AgentClash can attach to a run.
 
-<Callout type="warning">
-  The deployment surface is still evolving. Treat the current docs as a model
-  for how the system is shaped today, not a frozen 1.0 contract.
-</Callout>
+## Why a deployment exists at all
 
-## Why AgentClash talks about deployments
+AgentClash is stricter than a typical playground because it has to compare like with like. A model name by itself is not enough. The scheduler needs a concrete object that says:
 
-Most evaluation tools stop at the model name. AgentClash has to be stricter than that because it needs to run the same thing repeatedly, under the same constraints, and compare the resulting evidence. A deployment is the unit that gives the platform that stability.
+- which build is being run
+- which build version is current
+- which runtime policy applies
+- which provider credentials or model mapping are attached
 
-In practice, a deployment answers questions like these:
+That concrete object is the deployment.
 
-- What agent should be invoked for this run?
-- Which workspace owns that runnable target?
-- Which credentials or backing provider settings are attached?
-- Which challenge packs is the deployment expected to handle?
+## The current creation contract
 
-That is why the docs separate the idea of an "agent" from the thing the scheduler can actually execute. The agent is the product concept. The deployment is the runnable contract.
+The current API schema for `CreateAgentDeploymentRequest` requires:
 
-## The lifecycle from workspace to run
+- `name`
+- `agent_build_id`
+- `build_version_id`
+- `runtime_profile_id`
 
-A typical flow looks like this:
+It also supports these optional fields:
+
+- `provider_account_id`
+- `model_alias_id`
+- `deployment_config`
+
+The OpenAPI description also says only ready build versions can be deployed.
 
 ```mermaid
 flowchart LR
-  W[Workspace] --> D[Deployment]
+  AB[Agent build] --> BV[Ready build version]
+  RP[Runtime profile] --> D[Deployment]
+  PA[Provider account] --> D
+  MA[Model alias] --> D
+  BV --> D
   D --> R[Run]
-  CP[Challenge pack] --> R
-  R --> EV[Replay events]
-  R --> SC[Scorecards]
 ```
 
-The workspace owns the deployment. A run then combines that deployment with a challenge pack or other eval input. From there the worker executes the attempt, streams canonical events, and stores the evidence needed for scoring and replay.
+## Runtime profiles are the execution envelope
 
-The important part is reproducibility. If two runs claim to compare the same deployment, they need to point at the same runnable target, not just the same marketing label.
+A runtime profile defines how aggressive or constrained execution should be. In the current API and web types, a runtime profile carries fields like:
 
-## What is stable today
+- `execution_target`
+- `trace_mode`
+- `max_iterations`
+- `max_tool_calls`
+- `step_timeout_seconds`
+- `run_timeout_seconds`
+- `profile_config`
 
-The repo already reflects the existence of workspaces, deployments, challenge packs, and runs. You can see this in the CLI flow and the current docs/build notes:
+That last field matters. The native executor reads runtime-profile sandbox overrides from `profile_config`, including things like filesystem roots and `allow_shell` or `allow_network` toggles.
 
-- the CLI expects you to select a workspace before creating runs
-- local and staging walkthroughs assume challenge packs and deployments already exist
-- the current architecture separates orchestration from execution so a run can target a concrete deployment repeatedly
+The clean mental model is:
 
-What is still moving is the exact shape of the deployment surface, especially around provider-specific configuration and richer setup workflows.
+- the challenge pack defines what the workload wants
+- the runtime profile defines execution ceilings and local overrides
+- the deployment binds those choices to a runnable target
 
-## How to think about provider configuration
+## Provider accounts are how credentials enter the system
 
-The clean mental model is this:
+A provider account is a workspace resource with:
 
-- provider details are implementation details
-- the deployment is the stable runtime handle
-- the run binds that deployment to an input workload
+- `provider_key`
+- `name`
+- `credential_reference`
+- optional `limits_config`
 
-That keeps the user-facing evaluation model simple. You compare runs and evals. Under the hood, AgentClash still knows which runnable target produced those results.
+The important detail is how credentials are stored.
+
+If you create a provider account with a raw `api_key`, the infrastructure manager stores that value as a workspace secret and rewrites the credential reference automatically to:
+
+```text
+workspace-secret://PROVIDER_<PROVIDER_KEY>_API_KEY
+```
+
+So the product already prefers indirection over plaintext credentials on the resource itself.
+
+## Model aliases are not just display sugar
+
+The user question usually comes out as “provider alias” or “model alias.” In the current product surface, the real resource is `model alias`.
+
+A model alias maps a workspace-friendly key to a model catalog entry, and can optionally be tied to a provider account. The current fields are:
+
+- `alias_key`
+- `display_name`
+- `model_catalog_entry_id`
+- optional `provider_account_id`
+
+That gives you a stable name inside the workspace even if the underlying provider model identifier is ugly or if you need multiple account-specific mappings.
+
+## A deployment is where these pieces come together
+
+A good way to think about the chain is:
+
+- agent build version: what logic is being deployed
+- runtime profile: how it is allowed to execute
+- provider account: which credentials or spend limits back external model calls
+- model alias: which model selection the deployment should use consistently
+- deployment: the runnable handle used by runs
+
+This is why the docs should not collapse deployment into “selected model.” The object is richer than that.
+
+## What the UI and CLI expose today
+
+The current repo already exposes the resource model across multiple surfaces:
+
+- CLI `deployment create` and `deployment list`
+- workspace pages for runtime profiles, provider accounts, model aliases, deployments, secrets, and tools
+- run creation UI that asks for challenge pack and deployment selection separately
+
+That separation is deliberate. A run is an execution event. A deployment is reusable infrastructure state.
+
+## What is stable versus still moving
+
+The stable part is the dependency chain and the API surface. The still-moving part is how richly each resource is edited in the UI and how much automation exists around them.
+
+So the right docs posture is:
+
+- document the current fields and flows precisely
+- avoid pretending the deployment UX is fully polished
+- treat the resource model itself as real and important
 
 ## See also
 
-- [Runs and Evals](../concepts/runs-and-evals)
+- [Configure Runtime Resources](../guides/configure-runtime-resources)
 - [Challenge Packs and Inputs](../concepts/challenge-packs-and-inputs)
-- [First Eval](../getting-started/first-eval)
+- [Tools, Network, and Secrets](../concepts/tools-network-and-secrets)
 - [CLI Reference](../reference/cli)

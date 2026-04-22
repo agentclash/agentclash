@@ -158,13 +158,41 @@ export const DOCS_NAV: DocNavSection[] = [
         slug: ["concepts", "replay-and-scorecards"],
         href: "/docs/concepts/replay-and-scorecards",
       },
+      {
+        title: "Tools, Network, and Secrets",
+        description:
+          "See how pack-defined tools delegate to primitives, how outbound internet is controlled, and where secrets resolve.",
+        slug: ["concepts", "tools-network-and-secrets"],
+        href: "/docs/concepts/tools-network-and-secrets",
+      },
+      {
+        title: "Artifacts",
+        description:
+          "Understand stored files, pack assets, run evidence, and signed downloads.",
+        slug: ["concepts", "artifacts"],
+        href: "/docs/concepts/artifacts",
+      },
     ],
   },
   {
     title: "Guides",
     description:
-      "Task-oriented walkthroughs for reading results and using the docs with AI tools.",
+      "Task-oriented walkthroughs for authoring packs, setting up deployments, reading results, and using the docs with AI tools.",
     items: [
+      {
+        title: "Write a Challenge Pack",
+        description:
+          "Author a bundle YAML file, validate it, publish it, and understand the IDs AgentClash returns.",
+        slug: ["guides", "write-a-challenge-pack"],
+        href: "/docs/guides/write-a-challenge-pack",
+      },
+      {
+        title: "Configure Runtime Resources",
+        description:
+          "Create secrets, provider accounts, model aliases, runtime profiles, and deployments in the order the product expects.",
+        slug: ["guides", "configure-runtime-resources"],
+        href: "/docs/guides/configure-runtime-resources",
+      },
       {
         title: "Interpret Results",
         description:
@@ -810,7 +838,7 @@ function collectBackendExampleRows() {
 }
 
 function renderEnvTable(title: string, rows: EnvRow[]) {
-  const lines = [`## ${title}`, "", "| Variable | Default | Description |", "| --- | --- | --- |"]; 
+  const lines = [`## ${title}`, "", "| Variable | Default | Description |", "| --- | --- | --- |"];
 
   for (const row of rows) {
     lines.push(

@@ -1,0 +1,216 @@
+---
+title: Write a Challenge Pack
+description: Author a challenge-pack bundle in YAML, validate it against the current parser, and publish it into a workspace.
+---
+
+Goal: write a pack that the current AgentClash parser, validator, and publish flow will accept.
+
+Prerequisites:
+
+- You have the CLI installed and logged in.
+- You selected a workspace with `agentclash workspace use <WORKSPACE_ID>`.
+- You know whether the pack should be `prompt_eval` or `native`.
+
+## 1. Start from the current minimum shape
+
+This is the smallest honest starting point based on the current bundle parser and tests:
+
+```yaml
+pack:
+  slug: support-eval
+  name: Support Eval
+  family: support
+
+version:
+  number: 1
+  execution_mode: prompt_eval
+  evaluation_spec:
+    name: support-v1
+    version_number: 1
+    judge_mode: deterministic
+    validators:
+      - key: exact
+        type: exact_match
+        target: final_output
+        expected_from: challenge_input
+    scorecard:
+      dimensions: [correctness]
+
+challenges:
+  - key: ticket-1
+    title: Ticket One
+    category: support
+    difficulty: medium
+    instructions: |
+      Read the request and produce the final answer.
+
+input_sets:
+  - key: default
+    name: Default Inputs
+    cases:
+      - challenge_key: ticket-1
+        case_key: sample-1
+        inputs:
+          - key: prompt
+            kind: text
+            value: hello
+        expectations:
+          - key: answer
+            kind: text
+            source: input:prompt
+```
+
+This is not a glamorous pack. It is a good pack skeleton because it matches the current parser shape.
+
+## 2. Add execution policy only when you need it
+
+If the pack is `native`, you can add runtime sections like `tool_policy`, `sandbox`, and `tools`.
+
+Example:
+
+```yaml
+version:
+  number: 2
+  execution_mode: native
+  tool_policy:
+    allowed_tool_kinds:
+      - file
+      - shell
+      - network
+  sandbox:
+    network_access: true
+    network_allowlist:
+      - 203.0.113.0/24
+  evaluation_spec:
+    name: support-v2
+    version_number: 2
+    judge_mode: hybrid
+    validators:
+      - key: exact
+        type: exact_match
+        target: final_output
+        expected_from: challenge_input
+    scorecard:
+      dimensions: [correctness]
+
+tools:
+  custom:
+    - name: check_inventory
+      description: Check inventory by SKU
+      parameters:
+        type: object
+        properties:
+          sku:
+            type: string
+      implementation:
+        primitive: http_request
+        args:
+          method: GET
+          url: https://api.example.com/inventory/${sku}
+          headers:
+            Authorization: Bearer ${secrets.INVENTORY_API_KEY}
+```
+
+Use these sections deliberately.
+
+- `tool_policy` decides what kinds of tools are even available.
+- `sandbox.network_access` and `network_allowlist` control outbound networking.
+- `tools.custom` defines the tool contract the agent sees.
+- `implementation.primitive` picks the executor primitive that actually runs.
+
+## 3. Add assets when inputs should point at files
+
+If the pack needs files, declare them as assets instead of hardcoding mystery paths all over the bundle.
+
+Example:
+
+```yaml
+version:
+  number: 1
+  execution_mode: native
+  assets:
+    - key: fixtures
+      path: fixtures/workspace.zip
+      media_type: application/zip
+```
+
+You can also back an asset with an uploaded artifact by setting `artifact_id` instead of only relying on a repository path.
+
+Then cases and expectations can refer to those assets by key.
+
+## 4. Validate before you publish
+
+The current CLI command is:
+
+```bash
+agentclash challenge-pack validate support-eval.yaml
+```
+
+This calls the workspace-scoped validation endpoint and checks the same parser and validation logic the publish path uses.
+
+Typical failures the current code will catch early:
+
+- unknown placeholders like `${missing}`
+- invalid CIDR entries in `network_allowlist`
+- self-referencing or cyclic composed tools
+- invalid tool parameter schemas
+- unknown artifact keys or nonexistent stored artifact IDs
+
+## 5. Publish the bundle
+
+Once validation passes:
+
+```bash
+agentclash challenge-pack publish support-eval.yaml
+```
+
+The publish response returns concrete IDs, including:
+
+- `challenge_pack_id`
+- `challenge_pack_version_id`
+- `evaluation_spec_id`
+- `input_set_ids`
+- optional `bundle_artifact_id`
+
+Those IDs matter later because run creation asks for a pack version, not a filename.
+
+## 6. Confirm the workspace can see it
+
+```bash
+agentclash challenge-pack list
+```
+
+If the pack published cleanly, it should show up in the workspace list with its versions.
+
+## Verification
+
+You should now have:
+
+- a bundle YAML file the current parser accepts
+- a successful `validate` result
+- a published pack version ID you can use in run creation
+
+## Troubleshooting
+
+### Validation says a tool placeholder is unknown
+
+Your `implementation.args` template is referencing a variable that is not declared by the tool parameter schema or available template context.
+
+### Validation says a tool references itself or forms a cycle
+
+Your composed tool graph is recursive. Break the cycle and delegate to a primitive or a non-cyclic tool chain.
+
+### Validation says an artifact key is missing
+
+You referenced an asset or artifact key in a case or expectation that was never declared in the pack.
+
+### The pack needs internet access
+
+Do not assume that adding `http_request` is enough. You also need the relevant sandbox/network policy in the pack and runtime path.
+
+## See also
+
+- [Challenge Packs and Inputs](../concepts/challenge-packs-and-inputs)
+- [Tools, Network, and Secrets](../concepts/tools-network-and-secrets)
+- [Artifacts](../concepts/artifacts)
+- [CLI Reference](../reference/cli)

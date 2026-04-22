@@ -1,0 +1,223 @@
+---
+title: Configure Runtime Resources
+description: Create secrets, provider accounts, model aliases, runtime profiles, and deployments in the order the current product expects.
+---
+
+Goal: assemble the resource chain that turns a ready build version into a runnable deployment.
+
+Prerequisites:
+
+- You already selected a workspace.
+- You already have an `agent_build_id` and a ready `build_version_id`.
+- You have the provider credential you intend to use.
+
+## 1. Store provider credentials as workspace secrets
+
+If you already want explicit secret management, set the secret first:
+
+```bash
+printf '%s' "$OPENAI_API_KEY" | agentclash secret set OPENAI_API_KEY
+agentclash secret list
+```
+
+The list endpoint returns metadata only. Secret values are not exposed back to you.
+
+## 2. Inspect the model catalog
+
+Model aliases point at model catalog entries, so fetch the catalog first:
+
+```bash
+agentclash infra model-catalog list
+agentclash infra model-catalog get <MODEL_CATALOG_ENTRY_ID>
+```
+
+This gives you the model entry ID you will use when creating the alias.
+
+## 3. Create a provider account
+
+You have two current patterns.
+
+### Pattern A: reference an existing workspace secret
+
+`provider-account.json`:
+
+```json
+{
+  "provider_key": "openai",
+  "name": "OpenAI Workspace Account",
+  "credential_reference": "workspace-secret://OPENAI_API_KEY",
+  "limits_config": {
+    "rpm": 60
+  }
+}
+```
+
+Create it:
+
+```bash
+agentclash infra provider-account create --from-file provider-account.json
+```
+
+### Pattern B: pass `api_key` directly on creation
+
+```json
+{
+  "provider_key": "openai",
+  "name": "OpenAI Workspace Account",
+  "api_key": "<PASTE_KEY_HERE>"
+}
+```
+
+The current infrastructure manager does not keep that raw value on the account row. It stores the key as a workspace secret and rewrites the provider account to use a `workspace-secret://...` credential reference automatically.
+
+## 4. Create a runtime profile
+
+A runtime profile controls execution target and limits.
+
+`runtime-profile.json`:
+
+```json
+{
+  "name": "default-native",
+  "execution_target": "native",
+  "trace_mode": "full",
+  "max_iterations": 24,
+  "max_tool_calls": 32,
+  "step_timeout_seconds": 120,
+  "run_timeout_seconds": 1800,
+  "profile_config": {
+    "sandbox": {
+      "allow_shell": true,
+      "allow_network": false
+    }
+  }
+}
+```
+
+Create it:
+
+```bash
+agentclash infra runtime-profile create --from-file runtime-profile.json
+```
+
+## 5. Create a model alias
+
+A model alias gives the workspace a stable handle for one model catalog entry.
+
+`model-alias.json`:
+
+```json
+{
+  "alias_key": "primary-chat",
+  "display_name": "Primary Chat Model",
+  "model_catalog_entry_id": "<MODEL_CATALOG_ENTRY_ID>",
+  "provider_account_id": "<PROVIDER_ACCOUNT_ID>"
+}
+```
+
+Create it:
+
+```bash
+agentclash infra model-alias create --from-file model-alias.json
+```
+
+Use aliases when you want deployment configuration and playgrounds to refer to a stable workspace label instead of a raw provider model identifier.
+
+## 6. Create the deployment
+
+The current deployment create contract requires:
+
+- `name`
+- `agent_build_id`
+- `build_version_id`
+- `runtime_profile_id`
+
+Optional but commonly useful:
+
+- `provider_account_id`
+- `model_alias_id`
+
+Fast path with flags:
+
+```bash
+agentclash deployment create \
+  --name support-bot-staging \
+  --agent-build-id <AGENT_BUILD_ID> \
+  --build-version-id <BUILD_VERSION_ID> \
+  --runtime-profile-id <RUNTIME_PROFILE_ID> \
+  --provider-account-id <PROVIDER_ACCOUNT_ID> \
+  --model-alias-id <MODEL_ALIAS_ID>
+```
+
+JSON-file path if you want the full request shape:
+
+```json
+{
+  "name": "support-bot-staging",
+  "agent_build_id": "<AGENT_BUILD_ID>",
+  "build_version_id": "<BUILD_VERSION_ID>",
+  "runtime_profile_id": "<RUNTIME_PROFILE_ID>",
+  "provider_account_id": "<PROVIDER_ACCOUNT_ID>",
+  "model_alias_id": "<MODEL_ALIAS_ID>",
+  "deployment_config": {}
+}
+```
+
+Then:
+
+```bash
+agentclash deployment create --from-file deployment.json
+```
+
+## 7. List what you created
+
+```bash
+agentclash infra runtime-profile list
+agentclash infra provider-account list
+agentclash infra model-alias list
+agentclash deployment list
+```
+
+At that point the workspace has a real runnable target the run-creation flow can select.
+
+## Where tools fit
+
+Workspace tools are their own infra resource surface:
+
+```bash
+agentclash infra tool list
+agentclash infra tool create --from-file tool.json
+```
+
+That is separate from pack-defined composed tools. Do not mix those up in your mental model.
+
+## Verification
+
+You should now have:
+
+- a workspace secret for provider credentials
+- a provider account that resolves credentials indirectly
+- a runtime profile defining execution limits
+- a model alias pointing at a model catalog entry
+- a deployment that can be selected during run creation
+
+## Troubleshooting
+
+### Deployment creation fails because the build version is not deployable
+
+The current API requires a ready build version. Mark the build version ready before deploying it.
+
+### I do not know which model alias to create
+
+Start from `agentclash infra model-catalog list`, then create the alias only after you know which catalog entry and provider account you want to bind.
+
+### I passed an API key directly and now cannot see it again
+
+That is expected. Raw provider keys are stored as workspace secrets and the account keeps only a credential reference.
+
+## See also
+
+- [Agents and Deployments](../concepts/agents-and-deployments)
+- [Tools, Network, and Secrets](../concepts/tools-network-and-secrets)
+- [Config Reference](../reference/config)
+- [CLI Reference](../reference/cli)

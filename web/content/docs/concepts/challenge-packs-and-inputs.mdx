@@ -1,71 +1,164 @@
 ---
 title: Challenge Packs and Inputs
-description: Learn how AgentClash groups tasks, examples, and scoring context into repeatable evaluation workloads.
+description: Learn what a challenge pack really is in AgentClash, how the bundle is structured, and how inputs become runnable cases.
 ---
 
-A challenge pack is the repeatable workload definition that tells AgentClash what to run, against which inputs, and how to interpret the resulting evidence.
+A challenge pack is a versioned YAML bundle that defines the workload, scoring contract, execution policy, and input sets for a repeatable evaluation.
 
-## Why challenge packs exist
+## What makes it a challenge pack instead of a prompt
 
-A single prompt or one-off run is not enough to tell you whether an agent is improving. AgentClash needs a package of work that can be rerun, compared, and discussed without argument about the setup. That is what the challenge pack is for.
+A challenge pack is not just a task description. In the current repo, a runnable pack carries enough structure for AgentClash to do four jobs consistently:
 
-From the current evaluation docs, the load-bearing idea is not just "a scenario". It is a bundle that includes the task definition, the input set, and the scoring context around that task. That gives you three useful properties:
+- execute the same workload again later
+- attach one or more deployments to that workload
+- score the result using a versioned evaluation spec
+- preserve the relationship between a failed case and the evidence that exposed it
 
-- repeatability: the same workload can be rerun after code or prompt changes
-- comparability: two deployments can be graded against the same workload
-- traceability: when a run fails, you can tie the failure back to a concrete case
+That is why the API does not ask you to start a run with a loose prompt blob. It asks for a `challenge_pack_version_id`.
 
-## Pack, scenario, and input are different things
+## The current bundle shape
 
-These terms are easy to blur together, so keep them separate:
+The parser in `backend/internal/challengepack/bundle.go` expects a YAML bundle with these top-level sections:
 
-- challenge pack: the top-level container for a repeatable eval workload
-- scenario: the task pattern or rules an agent is being judged against
-- input: the concrete example or case that turns a scenario into an actual run attempt
+- `pack`: human metadata like `slug`, `name`, and `family`
+- `version`: the executable version block
+- `tools`: optional pack-defined composed tools
+- `challenges`: the workload definitions
+- `input_sets`: the concrete runnable cases
+
+A pack becomes runnable through its `version` block. That block currently carries the load-bearing execution data:
+
+- `number`: the pack version number
+- `execution_mode`: `native` or `prompt_eval`
+- `tool_policy`: allowed tool kinds and runtime toggles
+- `filesystem`: optional filesystem constraints
+- `sandbox`: network, env, package, and template configuration
+- `evaluation_spec`: the scoring contract
+- `assets`: version-scoped files or artifact references
 
 ```mermaid
 flowchart TD
-  CP[Challenge pack]
-  CP --> S1[Scenario A]
-  CP --> S2[Scenario B]
-  S1 --> I1[Input 1]
-  S1 --> I2[Input 2]
-  S2 --> I3[Input 3]
-  I1 --> R1[Run attempt]
-  I2 --> R2[Run attempt]
-  I3 --> R3[Run attempt]
+  P[pack metadata]
+  V[version]
+  V --> ES[evaluation_spec]
+  V --> SB[sandbox]
+  V --> TP[tool_policy]
+  V --> AS[version assets]
+  C[challenges] --> IS[input_sets]
+  IS --> CASES[cases]
+  V --> RUN[run execution]
+  CASES --> RUN
+  ES --> SCORE[scorecards]
 ```
 
-When you look at results, this distinction matters. A weak score can come from one bad input, one brittle scenario, or a deployment that underperforms across the whole pack.
+## Challenge, input set, case, and asset are different things
 
-## What the pack needs to carry
+These terms are easy to blur together. Do not blur them.
 
-The current challenge-pack design notes point toward a few pieces that matter in practice:
+- challenge pack: the entire versioned bundle
+- challenge: one task definition inside the bundle
+- input set: one named collection of runnable cases for that pack version
+- case: one concrete workload item tied to a challenge via `challenge_key`
+- asset: a file-like dependency declared by key and path, optionally backed by a stored artifact ID
 
-- metadata so humans know what the workload is supposed to test
-- the input set that actually drives the run fan-out
-- scoring or judgment context so results can be turned into something comparable
-- enough structure to promote good examples into regression workloads later
+The bundle model in the repo uses `input_sets[].cases[]` as the main execution unit. A case can carry:
 
-That last part matters more than it sounds. In a serious eval system, good challenge packs are built from real failures, not invented in isolation.
+- `payload`
+- structured `inputs`
+- structured `expectations`
+- `artifacts`
+- case-local `assets`
 
-## How this shows up in a run
+That makes cases more expressive than a single flat prompt. They can reference files, expected outputs, and evaluator inputs without inventing an ad-hoc schema per benchmark.
 
-A run is where the abstract pack becomes concrete. The run binds:
+## The evaluation spec is part of the pack, not global product config
 
-- one deployment
-- one workload definition
-- one concrete execution attempt per input or case
+The current evaluation docs are explicit about this. The scoring contract lives inside the pack version’s manifest. That means the pack defines:
 
-That means you can ask precise questions later:
+- validator keys and types
+- metrics and collectors
+- runtime limits
+- pricing rows used for cost scoring
+- scorecard dimensions and normalization thresholds
 
-- Did this deployment fail one input or the whole pack?
-- Did the replay show a sandbox failure, tool failure, or agent reasoning failure?
-- Did a new build improve the median score but regress one important scenario?
+This matters because AgentClash needs scorecards to remain auditable. When a run is scored, the product can persist the exact `evaluation_spec_id` that was used. The publish response already returns that ID.
+
+## Execution mode matters
+
+Two execution modes are visible in the current code and examples:
+
+- `prompt_eval`: lighter-weight packs that focus on prompt-style evaluation
+- `native`: packs that can carry sandbox, tool, and execution policy for richer runs
+
+You should choose the simpler mode unless the workload really needs a sandbox, files, or tool execution.
+
+## Sandbox, tool policy, and internet access belong to the pack version
+
+This is one of the most important design choices in the repo.
+
+The pack version can say what the evaluator is allowed to do:
+
+- which tool kinds are allowed
+- whether shell or network access is enabled
+- what network CIDRs are allowed
+- which additional packages should exist in the sandbox
+- which env vars are injected as literal values
+
+In other words, the pack is not only content. It is also policy.
+
+## Assets and artifact-backed packs
+
+The version block, challenge blocks, and case blocks can all reference assets. Each asset has a `key` and `path`, and may also carry `media_type`, `kind`, or `artifact_id`.
+
+That gives you two useful authoring patterns:
+
+- check small fixtures into the pack and refer to them by path
+- attach previously uploaded workspace artifacts and refer to them by `artifact_id`
+
+Validation already checks that asset references are real. If a case or expectation points at an artifact key that was never declared, publish-time validation fails.
+
+## Publish and validate are first-class workflow steps
+
+The API and CLI already expose the authoring loop directly:
+
+- validate with `POST /v1/workspaces/{workspaceID}/challenge-packs/validate`
+- publish with `POST /v1/workspaces/{workspaceID}/challenge-packs`
+- list packs with `GET /v1/workspaces/{workspaceID}/challenge-packs`
+- list published input sets with `GET /v1/workspaces/{workspaceID}/challenge-pack-versions/{versionID}/input-sets`
+
+The CLI mirrors that with:
+
+```bash
+agentclash challenge-pack validate <file>
+agentclash challenge-pack publish <file>
+agentclash challenge-pack list
+```
+
+Publish returns more than a pack ID. It returns:
+
+- `challenge_pack_id`
+- `challenge_pack_version_id`
+- `evaluation_spec_id`
+- `input_set_ids`
+- optional `bundle_artifact_id`
+
+That tells you the pack bundle is treated as a concrete artifact of record, not just transient YAML.
+
+## How a pack becomes a run
+
+A run binds:
+
+- one `challenge_pack_version_id`
+- one or more deployment IDs
+- optionally one selected input set
+
+From there the worker resolves the pack manifest, execution policy, assets, and scoring contract into the runtime path.
+
+That is why challenge packs are foundational in AgentClash. They are the unit that makes two runs comparable without hand-waving.
 
 ## See also
 
-- [First Eval](../getting-started/first-eval)
-- [Replay and Scorecards](../concepts/replay-and-scorecards)
-- [Interpret Results](../guides/interpret-results)
-- [Runs and Evals](../concepts/runs-and-evals)
+- [Write a Challenge Pack](../guides/write-a-challenge-pack)
+- [Agents and Deployments](../concepts/agents-and-deployments)
+- [Tools, Network, and Secrets](../concepts/tools-network-and-secrets)
+- [Artifacts](../concepts/artifacts)
