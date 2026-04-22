@@ -1,6 +1,7 @@
 "use client";
 
 import type React from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { useAuth } from "@workos-inc/authkit-nextjs/components";
 import { ArrowRight, Calendar, ExternalLink, LogIn, Star } from "lucide-react";
@@ -182,6 +183,136 @@ function LineupGlyph() {
       <polygon points="20,28 28,33 20,38" opacity="0.4" />
       <polygon points="34,28 42,33 34,38" opacity="0.3" />
     </svg>
+  );
+}
+
+const REPLAY_EVENTS = [
+  { n: "01", type: "think", label: "reasoning through the failure" },
+  { n: "02", type: "model", label: "grok-4-reasoning" },
+  { n: "03", type: "tool", label: "read_file  ·  auth/session.go" },
+  { n: "04", type: "observe", label: "tests failing  ·  2 / 10" },
+  { n: "05", type: "think", label: "locating the timestamp bug" },
+  { n: "06", type: "tool", label: "write_file  ·  auth/session.go" },
+  { n: "07", type: "submit", label: "tests green  ·  10 / 10" },
+];
+
+const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
+
+function subscribeReducedMotion(callback: () => void) {
+  if (typeof window === "undefined") return () => {};
+  const mq = window.matchMedia(REDUCED_MOTION_QUERY);
+  mq.addEventListener("change", callback);
+  return () => mq.removeEventListener("change", callback);
+}
+
+function getReducedMotion() {
+  return window.matchMedia(REDUCED_MOTION_QUERY).matches;
+}
+
+function ReplayScrubber() {
+  const [activeIdx, setActiveIdx] = useState(0);
+  const [isVisible, setIsVisible] = useState(false);
+  const reducedMotion = useSyncExternalStore(
+    subscribeReducedMotion,
+    getReducedMotion,
+    () => false,
+  );
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!ref.current) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => setIsVisible(entry.isIntersecting),
+      { threshold: 0.25 },
+    );
+    observer.observe(ref.current);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!isVisible || reducedMotion) return;
+    const interval = setInterval(() => {
+      setActiveIdx((i) => (i + 1) % REPLAY_EVENTS.length);
+    }, 1800);
+    return () => clearInterval(interval);
+  }, [isVisible, reducedMotion]);
+
+  return (
+    <div
+      ref={ref}
+      className="rounded-xl border border-white/[0.08] bg-white/[0.015] p-5 sm:p-6"
+    >
+      <div className="flex items-center justify-between pb-4 mb-4 border-b border-white/[0.06]">
+        <div className="flex items-center gap-2 text-[11px] text-white/45 font-[family-name:var(--font-mono)]">
+          <span className="inline-block size-1.5 rounded-full bg-[#c7ff3c]/80" />
+          replay · run 7dd0c04c · grok-4
+        </div>
+        <div className="text-[11px] text-white/30 font-[family-name:var(--font-mono)] tabular-nums">
+          {String(activeIdx + 1).padStart(2, "0")} / {REPLAY_EVENTS.length}
+        </div>
+      </div>
+
+      <ol className="space-y-1">
+        {REPLAY_EVENTS.map((event, i) => {
+          const isActive = i === activeIdx;
+          const isPast = i < activeIdx;
+          return (
+            <li
+              key={event.n}
+              className={`flex items-center gap-3 rounded-md border-l-2 px-3 py-2.5 transition-[background-color,border-color,color] duration-500 ease-out ${
+                isActive
+                  ? "border-[#c7ff3c] bg-white/[0.04]"
+                  : "border-transparent"
+              }`}
+            >
+              <span
+                className={`w-7 font-[family-name:var(--font-mono)] text-[11px] tabular-nums ${
+                  isActive
+                    ? "text-white/75"
+                    : isPast
+                    ? "text-white/20"
+                    : "text-white/35"
+                }`}
+              >
+                {event.n}
+              </span>
+              <span
+                className={`w-16 font-[family-name:var(--font-mono)] text-[10px] tracking-wider ${
+                  isActive ? "text-white/55" : "text-white/25"
+                }`}
+              >
+                {event.type}
+              </span>
+              <span
+                className={`truncate text-sm ${
+                  isActive
+                    ? "text-white/95"
+                    : isPast
+                    ? "text-white/30"
+                    : "text-white/50"
+                }`}
+              >
+                {event.label}
+              </span>
+              {isActive && (
+                <span className="ml-auto text-[10px] text-[#c7ff3c]/80 font-[family-name:var(--font-mono)]">
+                  ▸
+                </span>
+              )}
+            </li>
+          );
+        })}
+      </ol>
+
+      <div className="mt-5 h-[2px] w-full overflow-hidden rounded-full bg-white/[0.06]">
+        <div
+          className="h-full bg-[#c7ff3c]/55 transition-[width] duration-[1500ms] ease-out"
+          style={{
+            width: `${((activeIdx + 1) / REPLAY_EVENTS.length) * 100}%`,
+          }}
+        />
+      </div>
+    </div>
   );
 }
 
@@ -466,16 +597,21 @@ export default function HomePage() {
 
       {/* ── Feature · Replay ────────────────────────────────────── */}
       <section className="border-t border-white/[0.06] px-8 sm:px-12 py-32 sm:py-48">
-        <div className="mx-auto max-w-[1440px]">
-          <h2 className="font-[family-name:var(--font-display)] font-normal tracking-[-0.03em] leading-[1.02] text-[clamp(2.25rem,5vw,4.5rem)] max-w-[22ch]">
-            Scrub the replay. See exactly where it got stuck.
-          </h2>
-          <p className="mt-10 max-w-[52ch] text-lg leading-[1.6] text-white/55">
-            Every think, every tool call, every observation is captured.
-            Step back to the moment a model went sideways — the prompt it
-            saw, the output it produced, the state it worked from. No more
-            guessing why one model won and another flunked.
-          </p>
+        <div className="mx-auto max-w-[1440px] grid gap-16 md:grid-cols-2 md:gap-20 items-center">
+          <div>
+            <h2 className="font-[family-name:var(--font-display)] font-normal tracking-[-0.03em] leading-[1.02] text-[clamp(2.25rem,5vw,4.5rem)] max-w-[20ch]">
+              Scrub the replay. See exactly where it got stuck.
+            </h2>
+            <p className="mt-10 max-w-[48ch] text-lg leading-[1.6] text-white/55">
+              Every think, every tool call, every observation is captured.
+              Step back to the moment a model went sideways — the prompt
+              it saw, the output it produced, the state it worked from. No
+              more guessing why one model won and another flunked.
+            </p>
+          </div>
+          <div>
+            <ReplayScrubber />
+          </div>
         </div>
       </section>
 
