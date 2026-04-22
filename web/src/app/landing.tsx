@@ -3,6 +3,14 @@
 import Link from "next/link";
 import { useAuth } from "@workos-inc/authkit-nextjs/components";
 import { ArrowRight, Calendar, ExternalLink, LogIn, Star } from "lucide-react";
+import {
+  Anthropic,
+  Gemini,
+  Mistral,
+  OpenAI,
+  OpenRouter,
+  XAI,
+} from "@lobehub/icons";
 
 const DEMO_URL = "https://cal.com/agentclash/demo";
 
@@ -65,12 +73,12 @@ function ClashMark({
 }
 
 const PROVIDERS = [
-  "OpenAI",
-  "Anthropic",
-  "Gemini",
-  "xAI",
-  "Mistral",
-  "OpenRouter",
+  { name: "OpenAI", Icon: OpenAI },
+  { name: "Anthropic", Icon: Anthropic },
+  { name: "Gemini", Icon: Gemini },
+  { name: "xAI", Icon: XAI },
+  { name: "Mistral", Icon: Mistral },
+  { name: "OpenRouter", Icon: OpenRouter },
 ];
 
 function TargetGlyph() {
@@ -435,25 +443,39 @@ export default function HomePage() {
       </section>
 
       {/* ── Providers ───────────────────────────────────────────── */}
-      <section className="border-t border-white/[0.06] px-8 sm:px-12 py-24 sm:py-32">
+      <section className="border-t border-white/[0.06] px-8 sm:px-12 py-32 sm:py-48">
         <div className="mx-auto max-w-[1440px]">
           <p className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-[0.18em] text-white/35 mb-10">
             Works with
           </p>
-          <div className="flex flex-wrap gap-2">
-            {PROVIDERS.map((p) => (
-              <span
-                key={p}
-                className="inline-flex items-center rounded-md border border-white/[0.08] bg-white/[0.03] px-4 py-2 text-sm text-white/70"
-              >
-                {p}
-              </span>
-            ))}
+          <div className="flex flex-col gap-10 md:flex-row md:items-end md:justify-between md:gap-16">
+            <h2 className="font-[family-name:var(--font-display)] font-normal tracking-[-0.03em] leading-[1.02] text-[clamp(2.5rem,6vw,5.5rem)] max-w-[20ch]">
+              Six providers.
+              <br />
+              <span className="text-white/40">One finish line.</span>
+            </h2>
+            <p className="max-w-[40ch] text-base leading-[1.6] text-white/50">
+              Normalised tool-calls, normalised errors, same scoring rules.
+              Drop in a new provider without rewriting the scoreboard.
+            </p>
           </div>
-          <p className="mt-8 max-w-[56ch] text-base leading-[1.6] text-white/45">
-            Normalised tool-calls, normalised errors, same scoring rules. Drop
-            in a new provider without rewriting the scoreboard.
-          </p>
+
+          <ul className="mt-20 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-px border-y border-white/[0.06] bg-white/[0.06]">
+            {PROVIDERS.map(({ name, Icon }) => (
+              <li
+                key={name}
+                className="group flex flex-col items-center justify-center gap-4 bg-[#060606] py-14 transition-colors hover:bg-white/[0.015]"
+              >
+                <Icon
+                  size={40}
+                  className="text-white/55 transition-colors group-hover:text-white/95"
+                />
+                <span className="font-[family-name:var(--font-mono)] text-[10px] uppercase tracking-[0.22em] text-white/35 transition-colors group-hover:text-white/65">
+                  {name}
+                </span>
+              </li>
+            ))}
+          </ul>
         </div>
       </section>
 
