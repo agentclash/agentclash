@@ -97,12 +97,16 @@ function DottedSpotlight({
     e.currentTarget.style.setProperty("--my", `${y}px`);
   }
 
+  const ambientHalo =
+    "radial-gradient(ellipse 60% 60% at center, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0.025) 40%, transparent 78%)";
   const baseMask =
-    "radial-gradient(ellipse 70% 70% at center, black 0%, transparent 85%)";
+    "radial-gradient(ellipse 75% 75% at center, black 20%, transparent 88%)";
   const cursorMask =
-    "radial-gradient(220px circle at var(--mx) var(--my), black 0%, transparent 70%)";
+    "radial-gradient(320px circle at var(--mx) var(--my), black 0%, black 25%, transparent 72%)";
   const dotImage =
     "radial-gradient(rgba(255,255,255,1) 1px, transparent 1px)";
+  const cursorBloom =
+    "radial-gradient(240px circle at var(--mx) var(--my), rgba(255,255,255,0.09) 0%, rgba(255,255,255,0.03) 35%, transparent 70%)";
 
   return (
     <div
@@ -112,7 +116,12 @@ function DottedSpotlight({
     >
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 opacity-20"
+        className="pointer-events-none absolute inset-0"
+        style={{ backgroundImage: ambientHalo }}
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 opacity-30"
         style={{
           backgroundImage: dotImage,
           backgroundSize: "22px 22px",
@@ -122,7 +131,12 @@ function DottedSpotlight({
       />
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-200 group-hover:opacity-70"
+        className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-300 ease-out group-hover:opacity-100"
+        style={{ backgroundImage: cursorBloom }}
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-300 ease-out group-hover:opacity-90"
         style={{
           backgroundImage: dotImage,
           backgroundSize: "22px 22px",
