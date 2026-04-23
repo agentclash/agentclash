@@ -98,15 +98,15 @@ function DottedSpotlight({
   }
 
   const ambientHalo =
-    "radial-gradient(ellipse 60% 60% at center, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0.025) 40%, transparent 78%)";
+    "radial-gradient(circle closest-side at center, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.025) 40%, transparent 75%)";
   const baseMask =
-    "radial-gradient(ellipse 75% 75% at center, black 20%, transparent 88%)";
+    "radial-gradient(circle closest-side at center, black 0%, black 25%, transparent 75%)";
   const cursorMask =
-    "radial-gradient(320px circle at var(--mx) var(--my), black 0%, black 25%, transparent 72%)";
+    "radial-gradient(260px circle at var(--mx) var(--my), black 0%, black 20%, transparent 70%)";
   const dotImage =
     "radial-gradient(rgba(255,255,255,1) 1px, transparent 1px)";
   const cursorBloom =
-    "radial-gradient(240px circle at var(--mx) var(--my), rgba(255,255,255,0.09) 0%, rgba(255,255,255,0.03) 35%, transparent 70%)";
+    "radial-gradient(210px circle at var(--mx) var(--my), rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.03) 35%, transparent 70%)";
 
   return (
     <div
