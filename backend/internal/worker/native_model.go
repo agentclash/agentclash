@@ -14,6 +14,7 @@ type NativeModelInvoker struct {
 	sandboxProvider sandbox.Provider
 	observerFactory NativeObserverFactory
 	secretsLookup   engine.SecretsLookup
+	toolLookup      engine.WorkspaceToolLookup
 }
 
 func NewNativeModelInvoker(client provider.Client, sandboxProvider sandbox.Provider) NativeModelInvoker {
@@ -43,6 +44,13 @@ func (i NativeModelInvoker) WithSecretsLookup(lookup engine.SecretsLookup) Nativ
 	return i
 }
 
+// WithWorkspaceToolLookup returns an invoker that propagates workspace tool
+// lookup to every NativeExecutor it constructs.
+func (i NativeModelInvoker) WithWorkspaceToolLookup(lookup engine.WorkspaceToolLookup) NativeModelInvoker {
+	i.toolLookup = lookup
+	return i
+}
+
 func (i NativeModelInvoker) InvokeNativeModel(ctx context.Context, executionContext repository.RunAgentExecutionContext) (engine.Result, error) {
 	observer := engine.Observer(engine.NoopObserver{})
 	if i.observerFactory != nil {
@@ -58,6 +66,9 @@ func (i NativeModelInvoker) InvokeNativeModel(ctx context.Context, executionCont
 	executor := engine.NewNativeExecutor(i.client, i.sandboxProvider, observer)
 	if i.secretsLookup != nil {
 		executor = executor.WithSecretsLookup(i.secretsLookup)
+	}
+	if i.toolLookup != nil {
+		executor = executor.WithWorkspaceToolLookup(i.toolLookup)
 	}
 	return executor.Execute(ctx, executionContext)
 }

@@ -79,7 +79,7 @@ func main() {
 		providerRouter,
 		sandboxProvider,
 		workerapp.NewBufferedNativeObserverFactory(eventRecorder),
-	).WithSecretsLookup(repo)
+	).WithSecretsLookup(repo).WithWorkspaceToolLookup(repo)
 	promptEvalInvoker := workerapp.NewPromptEvalInvokerWithObserverFactory(
 		providerRouter,
 		workerapp.NewBufferedPromptEvalObserverFactory(eventRecorder),

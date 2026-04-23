@@ -273,18 +273,18 @@ func (r *Repository) ArchiveProviderAccount(ctx context.Context, id uuid.UUID) e
 // --------------------------------------------------------------------------
 
 type ModelCatalogEntryRow struct {
-	ID                          uuid.UUID
-	ProviderKey                 string
-	ProviderModelID             string
-	DisplayName                 string
-	ModelFamily                 string
-	Modality                    string
-	LifecycleStatus             string
-	Metadata                    json.RawMessage
-	InputCostPerMillionTokens   float64
-	OutputCostPerMillionTokens  float64
-	CreatedAt                   time.Time
-	UpdatedAt                   time.Time
+	ID                         uuid.UUID
+	ProviderKey                string
+	ProviderModelID            string
+	DisplayName                string
+	ModelFamily                string
+	Modality                   string
+	LifecycleStatus            string
+	Metadata                   json.RawMessage
+	InputCostPerMillionTokens  float64
+	OutputCostPerMillionTokens float64
+	CreatedAt                  time.Time
+	UpdatedAt                  time.Time
 }
 
 func (r *Repository) GetModelCatalogEntryByID(ctx context.Context, id uuid.UUID) (ModelCatalogEntryRow, error) {
@@ -611,6 +611,45 @@ func (r *Repository) ListToolsByWorkspaceID(ctx context.Context, workspaceID uui
 	return result, nil
 }
 
+func (r *Repository) ListToolsByIDs(ctx context.Context, workspaceID uuid.UUID, ids []uuid.UUID) ([]ToolRow, error) {
+	if len(ids) == 0 {
+		return []ToolRow{}, nil
+	}
+
+	rows, err := r.db.Query(ctx, `
+		SELECT id, organization_id, workspace_id, name, slug, tool_kind, capability_key, definition, lifecycle_status, created_at, updated_at
+		FROM tools
+		WHERE workspace_id = $1
+		  AND archived_at IS NULL
+		  AND id = ANY($2::uuid[])
+		ORDER BY name
+	`, workspaceID, ids)
+	if err != nil {
+		return nil, fmt.Errorf("list tools by ids: %w", err)
+	}
+	defer rows.Close()
+
+	var result []ToolRow
+	for rows.Next() {
+		var row ToolRow
+		var createdAt, updatedAt pgtype.Timestamptz
+		if err := rows.Scan(&row.ID, &row.OrganizationID, &row.WorkspaceID, &row.Name, &row.Slug, &row.ToolKind,
+			&row.CapabilityKey, &row.Definition, &row.LifecycleStatus, &createdAt, &updatedAt); err != nil {
+			return nil, fmt.Errorf("scan tool: %w", err)
+		}
+		row.CreatedAt = createdAt.Time
+		row.UpdatedAt = updatedAt.Time
+		result = append(result, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate tools by ids: %w", err)
+	}
+	if result == nil {
+		result = []ToolRow{}
+	}
+	return result, nil
+}
+
 // --------------------------------------------------------------------------
 // Knowledge Sources
 // --------------------------------------------------------------------------
@@ -914,10 +953,10 @@ func isDuplicateSlug(err error) bool {
 
 // GetWorkspaceID methods implement WorkspaceOwned for authorization checks.
 func (r RuntimeProfileRow) GetWorkspaceID() *uuid.UUID  { return r.WorkspaceID }
-func (r ProviderAccountRow) GetWorkspaceID() *uuid.UUID  { return r.WorkspaceID }
-func (r ModelAliasRow) GetWorkspaceID() *uuid.UUID       { return r.WorkspaceID }
-func (r ToolRow) GetWorkspaceID() *uuid.UUID             { return r.WorkspaceID }
-func (r KnowledgeSourceRow) GetWorkspaceID() *uuid.UUID  { return r.WorkspaceID }
+func (r ProviderAccountRow) GetWorkspaceID() *uuid.UUID { return r.WorkspaceID }
+func (r ModelAliasRow) GetWorkspaceID() *uuid.UUID      { return r.WorkspaceID }
+func (r ToolRow) GetWorkspaceID() *uuid.UUID            { return r.WorkspaceID }
+func (r KnowledgeSourceRow) GetWorkspaceID() *uuid.UUID { return r.WorkspaceID }
 
 func defaultStr(v, fallback string) string {
 	if v == "" {

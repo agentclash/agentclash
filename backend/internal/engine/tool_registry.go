@@ -20,6 +20,7 @@ const (
 	ToolCategoryPrimitive ToolCategory = "primitive"
 	ToolCategoryComposed  ToolCategory = "composed"
 	ToolCategoryMock      ToolCategory = "mock"
+	ToolCategoryWorkspace ToolCategory = "workspace"
 
 	ToolFailureOriginPolicy     ToolFailureOrigin = "policy"
 	ToolFailureOriginResolution ToolFailureOrigin = "resolution"
@@ -75,6 +76,7 @@ type Registry struct {
 	primitives map[string]Tool
 	composed   map[string]Tool
 	mocks      map[string]Tool
+	workspace  map[string]Tool
 	visible    map[string]Tool
 }
 
@@ -98,6 +100,9 @@ func (r *Registry) resolveAny(name string) (Tool, bool) {
 		return tool, true
 	}
 	if tool, ok := r.mocks[name]; ok {
+		return tool, true
+	}
+	if tool, ok := r.workspace[name]; ok {
 		return tool, true
 	}
 	return nil, false
@@ -151,7 +156,7 @@ type snapshotToolOverrides struct {
 	Denied []string `json:"denied"`
 }
 
-func buildToolRegistry(toolPolicy sandbox.ToolPolicy, manifest json.RawMessage, snapshotConfig json.RawMessage, secrets map[string]string) (*Registry, error) {
+func buildToolRegistry(toolPolicy sandbox.ToolPolicy, manifest json.RawMessage, snapshotConfig json.RawMessage, secrets map[string]string, workspaceBindings ...workspaceToolBinding) (*Registry, error) {
 	primitives := nativePrimitiveTools(toolPolicy)
 	visible := make(map[string]Tool, len(primitives))
 	for name, tool := range primitives {
@@ -175,6 +180,7 @@ func buildToolRegistry(toolPolicy sandbox.ToolPolicy, manifest json.RawMessage, 
 
 	composed := map[string]Tool{}
 	mocks := map[string]Tool{}
+	workspace := map[string]Tool{}
 
 	for _, custom := range manifestTools.Custom {
 		tool, disabledReason, err := newManifestCustomTool(custom, secrets)
@@ -206,6 +212,36 @@ func buildToolRegistry(toolPolicy sandbox.ToolPolicy, manifest json.RawMessage, 
 		visible[name] = tool
 	}
 
+	for _, binding := range workspaceBindings {
+		if !allowsWorkspaceTool(toolPolicy, binding.Tool.ToolKind) {
+			slog.Default().Warn("disabling workspace tool from registry build", "tool_id", binding.Tool.ID, "tool_name", binding.Tool.Name, "tool_kind", binding.Tool.ToolKind, "reason", "tool kind is not allowed in this runtime")
+			continue
+		}
+
+		tool, err := newWorkspaceTool(binding)
+		if err != nil {
+			return nil, err
+		}
+		name := tool.Name()
+		if _, exists := primitives[name]; exists {
+			return nil, fmt.Errorf("tool %q is already defined", name)
+		}
+		if _, exists := composed[name]; exists {
+			return nil, fmt.Errorf("tool %q is already defined", name)
+		}
+		if _, exists := mocks[name]; exists {
+			return nil, fmt.Errorf("tool %q is already defined", name)
+		}
+		if _, exists := workspace[name]; exists {
+			return nil, fmt.Errorf("tool %q is already defined", name)
+		}
+		if tool.Category() != ToolCategoryWorkspace {
+			return nil, fmt.Errorf("tool %q has unsupported category %q", name, tool.Category())
+		}
+		workspace[name] = tool
+		visible[name] = tool
+	}
+
 	for {
 		removed := 0
 		for name, tool := range composed {
@@ -216,11 +252,13 @@ func buildToolRegistry(toolPolicy sandbox.ToolPolicy, manifest json.RawMessage, 
 			if _, exists := primitives[ct.primitive]; !exists {
 				if _, exists := composed[ct.primitive]; !exists {
 					if _, exists := mocks[ct.primitive]; !exists {
-						slog.Default().Warn("disabling composed tool with missing delegate", "tool_name", name, "delegate", ct.primitive)
-						delete(composed, name)
-						delete(visible, name)
-						removed++
-						continue
+						if _, exists := workspace[ct.primitive]; !exists {
+							slog.Default().Warn("disabling composed tool with missing delegate", "tool_name", name, "delegate", ct.primitive)
+							delete(composed, name)
+							delete(visible, name)
+							removed++
+							continue
+						}
 					}
 				}
 			}
@@ -265,6 +303,7 @@ func buildToolRegistry(toolPolicy sandbox.ToolPolicy, manifest json.RawMessage, 
 		primitives: primitives,
 		composed:   composed,
 		mocks:      mocks,
+		workspace:  workspace,
 		visible:    visible,
 	}, nil
 }

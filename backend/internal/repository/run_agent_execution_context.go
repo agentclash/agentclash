@@ -106,6 +106,7 @@ type AgentBuildVersionExecutionContext struct {
 	OutputSchema    json.RawMessage
 	TraceContract   json.RawMessage
 	PublicationSpec json.RawMessage
+	Tools           []AgentBuildVersionToolBinding
 }
 
 type RuntimeProfileExecutionContext struct {
@@ -497,6 +498,7 @@ func decodeAgentBuildVersionExecutionContext(buildVersionID uuid.UUID, payload [
 		OutputSchema    json.RawMessage `json:"output_schema"`
 		TraceContract   json.RawMessage `json:"trace_contract"`
 		PublicationSpec json.RawMessage `json:"publication_spec"`
+		Tools           []AgentBuildVersionToolBinding
 	}
 
 	if err := json.Unmarshal(agentSpecJSON, &decoded); err != nil {
@@ -517,6 +519,7 @@ func decodeAgentBuildVersionExecutionContext(buildVersionID uuid.UUID, payload [
 		OutputSchema:    defaultExecutionContextJSON(decoded.OutputSchema),
 		TraceContract:   defaultExecutionContextJSON(decoded.TraceContract),
 		PublicationSpec: defaultExecutionContextJSON(decoded.PublicationSpec),
+		Tools:           normalizeToolBindings(decoded.Tools),
 	}, nil
 }
 
