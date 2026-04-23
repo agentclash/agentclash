@@ -134,6 +134,18 @@ function DottedSpotlight({
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
         <div
           aria-hidden
+          className="animate-dots-breathe absolute inset-0"
+          style={{
+            backgroundImage: dotImage,
+            backgroundSize: "22px 22px",
+            maskImage:
+              "radial-gradient(ellipse 40% 60% at 50% 50%, black 0%, black 25%, transparent 80%)",
+            WebkitMaskImage:
+              "radial-gradient(ellipse 40% 60% at 50% 50%, black 0%, black 25%, transparent 80%)",
+          }}
+        />
+        <div
+          aria-hidden
           className={`absolute inset-0 transition-opacity duration-500 ease-out ${isActive ? "opacity-100" : "opacity-0"}`}
           style={{ backgroundImage: cursorBloom }}
         />
@@ -842,7 +854,7 @@ export default function HomePage() {
           <nav className="flex items-center gap-1 sm:gap-2 text-xs">
             <Link
               href="/docs"
-              className="hidden sm:inline-flex px-3 py-1.5 text-white/55 hover:text-white/85 transition-colors"
+              className="inline-flex px-3 py-1.5 text-white/55 hover:text-white/85 transition-colors"
             >
               Docs
             </Link>
@@ -900,12 +912,12 @@ export default function HomePage() {
               completion, speed, and efficiency.
             </p>
 
-            <div className="mt-10 flex flex-wrap items-center gap-3">
+            <div className="mt-10 flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3">
               {user ? (
                 <>
                   <Link
                     href="/dashboard"
-                    className="inline-flex items-center gap-2 rounded-md bg-white px-6 py-3 text-sm font-medium text-[#060606] hover:bg-white/90 transition-colors"
+                    className="inline-flex items-center justify-center gap-2 rounded-md bg-white px-6 py-3 text-sm font-medium text-[#060606] hover:bg-white/90 transition-colors"
                   >
                     Go to dashboard
                     <ArrowRight className="size-4" />
@@ -914,7 +926,7 @@ export default function HomePage() {
                     href="https://github.com/agentclash/agentclash"
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 rounded-md border border-white/15 bg-white/[0.04] px-6 py-3 text-sm font-medium text-white/80 hover:text-white hover:border-white/30 transition-colors"
+                    className="inline-flex items-center justify-center gap-2 rounded-md border border-white/15 bg-white/[0.04] px-6 py-3 text-sm font-medium text-white/80 hover:text-white hover:border-white/30 transition-colors"
                   >
                     <Star className="size-4" />
                     View on GitHub
@@ -926,14 +938,14 @@ export default function HomePage() {
                     href={DEMO_URL}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 rounded-md bg-white px-6 py-3 text-sm font-medium text-[#060606] hover:bg-white/90 transition-colors"
+                    className="inline-flex items-center justify-center gap-2 rounded-md bg-white px-6 py-3 text-sm font-medium text-[#060606] hover:bg-white/90 transition-colors"
                   >
                     <Calendar className="size-4" />
                     Book a demo
                   </a>
                   <Link
                     href="/auth/login"
-                    className="inline-flex items-center gap-2 rounded-md border border-white/15 bg-white/[0.04] px-6 py-3 text-sm font-medium text-white/80 hover:text-white hover:border-white/30 transition-colors"
+                    className="inline-flex items-center justify-center gap-2 rounded-md border border-white/15 bg-white/[0.04] px-6 py-3 text-sm font-medium text-white/80 hover:text-white hover:border-white/30 transition-colors"
                   >
                     Get started
                     <ArrowRight className="size-4" />
@@ -942,7 +954,7 @@ export default function HomePage() {
                     href="https://github.com/agentclash/agentclash"
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 rounded-md border border-white/[0.08] bg-white/[0.02] px-6 py-3 text-sm font-medium text-white/60 hover:text-white/90 hover:border-white/20 transition-colors"
+                    className="inline-flex items-center justify-center gap-2 rounded-md border border-white/[0.08] bg-white/[0.02] px-6 py-3 text-sm font-medium text-white/60 hover:text-white/90 hover:border-white/20 transition-colors"
                   >
                     <Star className="size-4" />
                     GitHub
@@ -1235,6 +1247,27 @@ export default function HomePage() {
               ))}
             </div>
 
+            {/* Mobile vertical connector — dashed line + streaks running
+                top to bottom through the stacked step rings. */}
+            <div
+              className="md:hidden pointer-events-none absolute top-[32px] bottom-0 left-[31px] border-l border-dashed border-white/10"
+              aria-hidden
+            />
+            <div
+              className="md:hidden pointer-events-none absolute top-0 bottom-0 left-[30px] w-[4px] overflow-hidden"
+              aria-hidden
+            >
+              {[0, 1].map((i) => (
+                <div
+                  key={i}
+                  className="animate-steps-streak-vertical absolute left-[1px] w-[2px] h-12 rounded-full bg-white"
+                  style={{
+                    animationDelay: `${(-(i / 2) * 4).toFixed(2)}s`,
+                  }}
+                />
+              ))}
+            </div>
+
             <ol className="relative grid gap-20 md:grid-cols-3 md:gap-14">
               {[
                 {
@@ -1336,11 +1369,11 @@ export default function HomePage() {
               <br />
               <span className="text-white/40">Start racing.</span>
             </h2>
-            <div className="mt-10 flex flex-wrap gap-3">
+            <div className="mt-10 flex flex-col sm:flex-row sm:flex-wrap gap-3">
               {user ? (
                 <Link
                   href="/dashboard"
-                  className="inline-flex items-center gap-2 rounded-md bg-white px-7 py-3 text-sm font-medium text-[#060606] hover:bg-white/90 transition-colors"
+                  className="inline-flex items-center justify-center gap-2 rounded-md bg-white px-7 py-3 text-sm font-medium text-[#060606] hover:bg-white/90 transition-colors"
                 >
                   Go to dashboard
                   <ArrowRight className="size-4" />
@@ -1351,14 +1384,14 @@ export default function HomePage() {
                     href={DEMO_URL}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 rounded-md bg-white px-7 py-3 text-sm font-medium text-[#060606] hover:bg-white/90 transition-colors"
+                    className="inline-flex items-center justify-center gap-2 rounded-md bg-white px-7 py-3 text-sm font-medium text-[#060606] hover:bg-white/90 transition-colors"
                   >
                     <Calendar className="size-4" />
                     Book a demo
                   </a>
                   <Link
                     href="/auth/login"
-                    className="inline-flex items-center gap-2 rounded-md border border-white/15 bg-white/[0.04] px-7 py-3 text-sm font-medium text-white/80 hover:text-white hover:border-white/30 transition-colors"
+                    className="inline-flex items-center justify-center gap-2 rounded-md border border-white/15 bg-white/[0.04] px-7 py-3 text-sm font-medium text-white/80 hover:text-white hover:border-white/30 transition-colors"
                   >
                     Start your first race
                     <ArrowRight className="size-4" />
@@ -1369,7 +1402,7 @@ export default function HomePage() {
                 href="https://github.com/agentclash/agentclash"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 rounded-md border border-white/[0.08] bg-white/[0.02] px-7 py-3 text-sm font-medium text-white/60 hover:text-white/90 hover:border-white/20 transition-colors"
+                className="inline-flex items-center justify-center gap-2 rounded-md border border-white/[0.08] bg-white/[0.02] px-7 py-3 text-sm font-medium text-white/60 hover:text-white/90 hover:border-white/20 transition-colors"
               >
                 <Star className="size-4" />
                 Star on GitHub

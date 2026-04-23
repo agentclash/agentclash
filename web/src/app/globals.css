@@ -267,10 +267,8 @@ body {
   }
 }
 
-/* How-it-works connector — white light streaks threading the dashed line
-   behind steps 01 → 02 → 03. Pure CSS `left` animation inside an
-   `overflow-hidden` track so the streak enters off-left and exits
-   off-right without needing JS or SVG paths. */
+/* How-it-works connector — horizontal white light streaks threading the
+   dashed line behind steps 01 → 02 → 03 on desktop. */
 @keyframes steps-streak {
   0% {
     left: -48px;
@@ -294,10 +292,61 @@ body {
     drop-shadow(0 0 2px rgba(255, 255, 255, 1));
 }
 
+/* Mobile vertical variant — steps stack vertically, so the streak falls
+   top-to-bottom along a vertical connector. */
+@keyframes steps-streak-vertical {
+  0% {
+    top: -48px;
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  90% {
+    opacity: 1;
+  }
+  100% {
+    top: 100%;
+    opacity: 0;
+  }
+}
+
+.animate-steps-streak-vertical {
+  animation: steps-streak-vertical 4s linear infinite;
+  filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.9))
+    drop-shadow(0 0 2px rgba(255, 255, 255, 1));
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .animate-steps-streak {
+  .animate-steps-streak,
+  .animate-steps-streak-vertical {
     animation: none;
     opacity: 0;
+  }
+}
+
+/* Hero dot layer breathes independently of hover/touch — a slow 10s pulse
+   that briefly reveals the dotted pattern in the center and fades back.
+   Runs regardless of pointer interaction so mobile users see the texture
+   exist even without tapping. */
+@keyframes dots-breathe {
+  0%,
+  100% {
+    opacity: 0;
+  }
+  50% {
+    opacity: 0.28;
+  }
+}
+
+.animate-dots-breathe {
+  animation: dots-breathe 10s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-dots-breathe {
+    animation: none;
+    opacity: 0.08;
   }
 }
 
