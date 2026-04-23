@@ -783,24 +783,49 @@ function FeedbackLoop() {
         <circle
           cx="70"
           cy="115"
-          r="30"
-          fill="none"
+          r="38"
+          fill="#060606"
           stroke="white"
           strokeWidth="1.2"
-          opacity="0.7"
+          opacity="0.85"
         />
+        <text
+          x="70"
+          y="119"
+          textAnchor="middle"
+          fill="white"
+          opacity="0.85"
+          fontSize="10"
+          fontFamily="var(--font-mono), monospace"
+          letterSpacing="0.16em"
+        >
+          FAILURES
+        </text>
+
         <circle
           cx="330"
           cy="115"
-          r="30"
-          fill="none"
+          r="38"
+          fill="#060606"
           stroke="white"
           strokeWidth="1.2"
-          opacity="0.7"
+          opacity="0.85"
         />
+        <text
+          x="330"
+          y="119"
+          textAnchor="middle"
+          fill="white"
+          opacity="0.85"
+          fontSize="10"
+          fontFamily="var(--font-mono), monospace"
+          letterSpacing="0.16em"
+        >
+          EVALS
+        </text>
 
         <path
-          d="M 92 99 Q 200 10 308 99"
+          d="M 100 93 Q 200 10 300 93"
           stroke="white"
           strokeWidth="1.25"
           fill="none"
@@ -810,7 +835,7 @@ function FeedbackLoop() {
         <circle r="3.2" fill="white" className="animate-travel-top" />
 
         <path
-          d="M 308 131 Q 200 220 92 131"
+          d="M 300 137 Q 200 220 100 137"
           stroke="white"
           strokeWidth="1.25"
           fill="none"
@@ -1206,6 +1231,64 @@ const LANDING_FEATURES: Array<{
   },
 ];
 
+type MarkKind = "yes" | "partial" | "no";
+
+const COMPARISON_COLUMNS: Array<{
+  name: string;
+  tag: string;
+  highlight?: boolean;
+}> = [
+  { name: "AgentClash", tag: "agent eval", highlight: true },
+  { name: "Braintrust", tag: "prompt eval" },
+  { name: "LangSmith", tag: "prompt eval" },
+  { name: "Promptfoo", tag: "prompt eval" },
+  { name: "Langfuse", tag: "prompt eval" },
+  { name: "Arize Phoenix", tag: "prompt eval" },
+  { name: "OpenAI Evals", tag: "prompt eval" },
+];
+
+const COMPARISON_ROWS: Array<{
+  label: string;
+  sub: string;
+  cells: readonly MarkKind[];
+}> = [
+  {
+    label: "Multi-turn agent loops",
+    sub: "Think → tool → observe → repeat, for minutes, with a fresh environment. Not one prompt → one response.",
+    cells: ["yes", "partial", "partial", "no", "partial", "partial", "partial"],
+  },
+  {
+    label: "Sandboxed tool execution",
+    sub: "A fresh microVM per agent — real files, real shell, real network, real side effects.",
+    cells: ["yes", "no", "no", "no", "no", "no", "no"],
+  },
+  {
+    label: "Head-to-head concurrent race",
+    sub: "Every model runs the same task at the same time, on the same budget. No staggered runs, no warm caches.",
+    cells: ["yes", "no", "no", "no", "no", "no", "no"],
+  },
+  {
+    label: "Trajectory scoring",
+    sub: "Judges the path, not just the final answer — tool-choice efficiency, recovery from error, scope discipline.",
+    cells: ["yes", "partial", "partial", "no", "partial", "partial", "no"],
+  },
+  {
+    label: "Cross-provider tool-call normalisation",
+    sub: "One schema across OpenAI, Anthropic, Gemini, xAI, Mistral, OpenRouter. Errors classified, retries sane.",
+    cells: ["yes", "partial", "partial", "partial", "partial", "partial", "no"],
+  },
+  {
+    label: "Four-vantage composite verdict",
+    sub: "Deterministic + mathematic + behavioural + LLM, with consensus aggregation and weights you control.",
+    cells: ["yes", "partial", "partial", "partial", "partial", "partial", "partial"],
+  },
+  {
+    label: "Failures auto-promote to regression",
+    sub: "Flunked traces freeze into permanent tests and replay in every future race, by default.",
+    cells: ["yes", "partial", "partial", "partial", "partial", "partial", "no"],
+  },
+];
+
 export default function HomePage() {
   const { user, loading: authLoading } = useAuth();
 
@@ -1224,7 +1307,7 @@ export default function HomePage() {
   return (
     <main className="main min-h-screen flex flex-col">
       {/* ── Header ──────────────────────────────────────────────── */}
-      <header className="px-8 sm:px-12 py-6 border-b border-white/[0.06]">
+      <header className="px-5 sm:px-12 py-5 sm:py-6 border-b border-white/[0.06]">
         <div className="mx-auto flex max-w-[1440px] items-center justify-between">
           <Link
             href="/"
@@ -1235,16 +1318,16 @@ export default function HomePage() {
               AgentClash
             </span>
           </Link>
-          <nav className="flex items-center gap-1 sm:gap-2 text-xs">
+          <nav className="flex items-center gap-0.5 sm:gap-2 text-xs">
             <a
               href="#features"
-              className="inline-flex px-3 py-1.5 text-white/55 hover:text-white/85 transition-colors"
+              className="hidden sm:inline-flex px-3 py-1.5 text-white/55 hover:text-white/85 transition-colors"
             >
               Features
             </a>
             <Link
               href="/docs"
-              className="inline-flex px-3 py-1.5 text-white/55 hover:text-white/85 transition-colors"
+              className="inline-flex px-2.5 sm:px-3 py-1.5 text-white/55 hover:text-white/85 transition-colors"
             >
               Docs
             </Link>
@@ -1258,28 +1341,31 @@ export default function HomePage() {
               href="https://github.com/agentclash/agentclash"
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-md border border-white/[0.08] bg-white/[0.03] px-3 py-1.5 text-white/60 hover:text-white/85 hover:border-white/15 transition-colors"
+              aria-label="GitHub"
+              className="inline-flex items-center gap-1.5 rounded-md border border-white/[0.08] bg-white/[0.03] px-2 sm:px-3 py-1.5 text-white/60 hover:text-white/85 hover:border-white/15 transition-colors"
             >
               <Star className="size-3.5" />
-              GitHub
+              <span className="hidden sm:inline">GitHub</span>
             </a>
             {authLoading ? (
-              <span className="inline-flex h-[30px] w-[88px] rounded-md border border-white/[0.08] bg-white/[0.04]" />
+              <span className="inline-flex h-[30px] w-[40px] sm:w-[88px] rounded-md border border-white/[0.08] bg-white/[0.04]" />
             ) : user ? (
               <Link
                 href="/dashboard"
-                className="inline-flex items-center gap-1.5 rounded-md bg-white px-3 py-1.5 font-medium text-[#060606] hover:bg-white/90 transition-colors"
+                aria-label="Dashboard"
+                className="inline-flex items-center gap-1.5 rounded-md bg-white px-2 sm:px-3 py-1.5 font-medium text-[#060606] hover:bg-white/90 transition-colors"
               >
-                Dashboard
+                <span className="hidden sm:inline">Dashboard</span>
                 <ArrowRight className="size-3" />
               </Link>
             ) : (
               <Link
                 href="/auth/login"
-                className="inline-flex items-center gap-1.5 rounded-md border border-white/15 bg-white/[0.04] px-3 py-1.5 text-white/75 hover:text-white hover:border-white/25 transition-colors"
+                aria-label="Sign in"
+                className="inline-flex items-center gap-1.5 rounded-md border border-white/15 bg-white/[0.04] px-2 sm:px-3 py-1.5 text-white/75 hover:text-white hover:border-white/25 transition-colors"
               >
                 <LogIn className="size-3.5" />
-                Sign in
+                <span className="hidden sm:inline">Sign in</span>
               </Link>
             )}
           </nav>
@@ -1711,7 +1797,60 @@ export default function HomePage() {
             </p>
           </div>
 
-          <div className="mt-20 -mx-8 sm:mx-0 overflow-x-auto">
+          {/* Mobile: stacked per-capability cards */}
+          <div className="md:hidden mt-16 space-y-10">
+            {COMPARISON_ROWS.map((row) => (
+              <div
+                key={`m-${row.label}`}
+                className="border-b border-white/[0.08] pb-8 last:border-b-0"
+              >
+                <p className="text-[16px] font-medium text-white/90 leading-[1.35]">
+                  {row.label}
+                </p>
+                <p className="mt-2 text-[13px] leading-[1.55] text-white/40">
+                  {row.sub}
+                </p>
+                <dl className="mt-5 grid grid-cols-1 gap-0">
+                  {COMPARISON_COLUMNS.map((col, j) => (
+                    <div
+                      key={col.name}
+                      className={`flex items-center justify-between gap-4 border-b border-white/[0.05] py-2.5 last:border-b-0 ${
+                        col.highlight ? "bg-white/[0.025] -mx-3 px-3 rounded" : ""
+                      }`}
+                    >
+                      <div className="flex flex-col">
+                        <dt
+                          className={`text-[13px] ${
+                            col.highlight
+                              ? "text-white/95 font-medium"
+                              : "text-white/60"
+                          }`}
+                        >
+                          {col.name}
+                        </dt>
+                        <span
+                          className={`text-[9px] font-[family-name:var(--font-mono)] uppercase tracking-[0.2em] ${
+                            col.highlight ? "text-white/45" : "text-white/25"
+                          }`}
+                        >
+                          {col.tag}
+                        </span>
+                      </div>
+                      <dd>
+                        <ComparisonMark
+                          kind={row.cells[j]}
+                          highlight={col.highlight}
+                        />
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              </div>
+            ))}
+          </div>
+
+          {/* Desktop: full matrix */}
+          <div className="hidden md:block mt-20 -mx-8 sm:mx-0 overflow-x-auto">
             <div className="min-w-[1040px] px-8 sm:px-0">
               {/* Header row */}
               <div className="grid grid-cols-[1.7fr_repeat(7,minmax(0,1fr))] border-b border-white/[0.12]">
@@ -1720,76 +1859,33 @@ export default function HomePage() {
                     Capability
                   </p>
                 </div>
-                <div className="flex flex-col items-center justify-end gap-1 pb-5 px-2">
-                  <span className="text-[13px] font-[family-name:var(--font-display)] tracking-[-0.01em] text-white/95">
-                    AgentClash
-                  </span>
-                  <span className="text-[9px] font-[family-name:var(--font-mono)] uppercase tracking-[0.2em] text-white/30">
-                    agent eval
-                  </span>
-                </div>
-                {[
-                  "Braintrust",
-                  "LangSmith",
-                  "Promptfoo",
-                  "Langfuse",
-                  "Arize Phoenix",
-                  "OpenAI Evals",
-                ].map((name) => (
+                {COMPARISON_COLUMNS.map((col) => (
                   <div
-                    key={name}
+                    key={col.name}
                     className="flex flex-col items-center justify-end gap-1 pb-5 px-2"
                   >
-                    <span className="text-[12px] font-[family-name:var(--font-mono)] uppercase tracking-[0.16em] text-white/45 text-center leading-tight">
-                      {name}
+                    <span
+                      className={`text-center leading-tight ${
+                        col.highlight
+                          ? "text-[13px] font-[family-name:var(--font-display)] tracking-[-0.01em] text-white/95"
+                          : "text-[12px] font-[family-name:var(--font-mono)] uppercase tracking-[0.16em] text-white/45"
+                      }`}
+                    >
+                      {col.name}
                     </span>
-                    <span className="text-[9px] font-[family-name:var(--font-mono)] uppercase tracking-[0.2em] text-white/25">
-                      prompt eval
+                    <span
+                      className={`text-[9px] font-[family-name:var(--font-mono)] uppercase tracking-[0.2em] ${
+                        col.highlight ? "text-white/30" : "text-white/25"
+                      }`}
+                    >
+                      {col.tag}
                     </span>
                   </div>
                 ))}
               </div>
 
               {/* Rows */}
-              {(
-                [
-                  {
-                    label: "Multi-turn agent loops",
-                    sub: "Think → tool → observe → repeat, for minutes, with a fresh environment. Not one prompt → one response.",
-                    cells: ["yes", "partial", "partial", "no", "partial", "partial", "partial"],
-                  },
-                  {
-                    label: "Sandboxed tool execution",
-                    sub: "A fresh microVM per agent — real files, real shell, real network, real side effects.",
-                    cells: ["yes", "no", "no", "no", "no", "no", "no"],
-                  },
-                  {
-                    label: "Head-to-head concurrent race",
-                    sub: "Every model runs the same task at the same time, on the same budget. No staggered runs, no warm caches.",
-                    cells: ["yes", "no", "no", "no", "no", "no", "no"],
-                  },
-                  {
-                    label: "Trajectory scoring",
-                    sub: "Judges the path, not just the final answer — tool-choice efficiency, recovery from error, scope discipline.",
-                    cells: ["yes", "partial", "partial", "no", "partial", "partial", "no"],
-                  },
-                  {
-                    label: "Cross-provider tool-call normalisation",
-                    sub: "One schema across OpenAI, Anthropic, Gemini, xAI, Mistral, OpenRouter. Errors classified, retries sane.",
-                    cells: ["yes", "partial", "partial", "partial", "partial", "partial", "no"],
-                  },
-                  {
-                    label: "Four-vantage composite verdict",
-                    sub: "Deterministic + mathematic + behavioural + LLM, with consensus aggregation and weights you control.",
-                    cells: ["yes", "partial", "partial", "partial", "partial", "partial", "partial"],
-                  },
-                  {
-                    label: "Failures auto-promote to regression",
-                    sub: "Flunked traces freeze into permanent tests and replay in every future race, by default.",
-                    cells: ["yes", "partial", "partial", "partial", "partial", "partial", "no"],
-                  },
-                ] as const
-              ).map((row) => (
+              {COMPARISON_ROWS.map((row) => (
                 <div
                   key={row.label}
                   className="grid grid-cols-[1.7fr_repeat(7,minmax(0,1fr))] border-b border-white/[0.05] last:border-b-0"

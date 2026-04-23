@@ -184,14 +184,14 @@ body {
 }
 
 .animate-travel-top {
-  offset-path: path("M 92 99 Q 200 10 308 99");
+  offset-path: path("M 100 93 Q 200 10 300 93");
   offset-rotate: 0deg;
   animation: travel-along-path 3s linear infinite;
   filter: drop-shadow(0 0 7px rgba(255, 255, 255, 0.75));
 }
 
 .animate-travel-bottom {
-  offset-path: path("M 308 131 Q 200 220 92 131");
+  offset-path: path("M 300 137 Q 200 220 100 137");
   offset-rotate: 0deg;
   animation: travel-along-path 3s linear infinite;
   filter: drop-shadow(0 0 7px rgba(255, 255, 255, 0.75));
