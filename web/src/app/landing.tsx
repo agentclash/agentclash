@@ -241,37 +241,53 @@ function ScoringPipeline() {
     letterSpacing: "0.1em",
     textTransform: "uppercase" as const,
   } as const;
-  
+
   const ringStroke = {
-    fill: "rgba(255,255,255,0.03)",
-    stroke: "rgba(255,255,255,0.2)",
+    fill: "rgba(255,255,255,0.02)",
+    stroke: "rgba(255,255,255,0.22)",
     strokeWidth: 1.2,
   } as const;
 
+  const AGENT_X = 60;
+  const AGENT_YS = [40, 105, 170, 235, 300, 365];
+  const AGENT_R = 16;
+
+  const JUDGE_X = 300;
+  const JUDGES = [
+    { y: 85, label: "deterministic" },
+    { y: 165, label: "mathematic" },
+    { y: 245, label: "behavioural" },
+    { y: 325, label: "llm + aggregation" },
+  ];
+  const JUDGE_R = 16;
+
+  // 6 agents → 4 judges by nearest y, then 4 judges → verdict.
   const paths = [
-    "M 78 60  Q 170 60  248 146",
-    "M 78 140 Q 170 148 246 170",
-    "M 78 220 Q 170 212 246 190",
-    "M 78 300 Q 170 300 248 214",
-    "M 352 146 Q 430 150 510 162",
-    "M 354 170 Q 430 172 510 175",
-    "M 354 190 Q 430 188 510 185",
-    "M 352 214 Q 430 208 510 198",
+    "M 76 40  Q 180 60  282 85",
+    "M 76 105 Q 180 95  282 85",
+    "M 76 170 Q 180 167 282 165",
+    "M 76 235 Q 180 240 282 245",
+    "M 76 300 Q 180 315 282 325",
+    "M 76 365 Q 180 345 282 325",
+    "M 318 85  Q 420 130 506 190",
+    "M 318 165 Q 420 180 506 202",
+    "M 318 245 Q 420 220 506 212",
+    "M 318 325 Q 420 270 506 222",
   ];
 
   return (
     <div className="flex items-center justify-center py-4" aria-hidden>
       <svg
-        viewBox="0 0 600 360"
-        className="w-full max-w-[560px]"
+        viewBox="0 0 600 440"
+        className="w-full max-w-[580px]"
         focusable="false"
       >
         <defs>
           <filter id="cyan-glow" x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+            <feGaussianBlur stdDeviation="3" result="coloredBlur" />
             <feMerge>
-              <feMergeNode in="coloredBlur"/>
-              <feMergeNode in="SourceGraphic"/>
+              <feMergeNode in="coloredBlur" />
+              <feMergeNode in="SourceGraphic" />
             </feMerge>
           </filter>
           <filter id="soft-glow" x="-20%" y="-20%" width="140%" height="140%">
@@ -280,45 +296,63 @@ function ScoringPipeline() {
           </filter>
         </defs>
 
-        <text x="24" y="180" textAnchor="middle" transform="rotate(-90 24 180)" {...labelProps}>
+        <text
+          x="24"
+          y="210"
+          textAnchor="middle"
+          transform="rotate(-90 24 210)"
+          {...labelProps}
+        >
           agents
         </text>
-        <text x="300" y="108" textAnchor="middle" {...labelProps}>
+        <text x="300" y="46" textAnchor="middle" {...labelProps}>
           judges
         </text>
-        <text x="540" y="128" textAnchor="middle" {...labelProps}>
+        <text x="540" y="150" textAnchor="middle" {...labelProps}>
           verdict
         </text>
 
-        {/* Agent nodes with subtle internal geometry */}
-        <g>
-          <circle cx="60" cy="60" r="14" {...ringStroke} />
-          <circle cx="60" cy="60" r="3" fill="rgba(255,255,255,0.4)" />
-          
-          <circle cx="60" cy="140" r="14" {...ringStroke} />
-          <rect x="57" y="137" width="6" height="6" fill="rgba(255,255,255,0.4)" />
+        {AGENT_YS.map((y, i) => {
+          const provider = PROVIDERS[i];
+          if (!provider) return null;
+          const iconSize = 22;
+          return (
+            <g key={provider.name}>
+              <circle cx={AGENT_X} cy={y} r={AGENT_R} {...ringStroke} />
+              <g transform={`translate(${AGENT_X - iconSize / 2} ${y - iconSize / 2})`}>
+                {provider.render(iconSize)}
+              </g>
+            </g>
+          );
+        })}
 
-          <circle cx="60" cy="220" r="14" {...ringStroke} />
-          <polygon points="60,216 64,223 56,223" fill="rgba(255,255,255,0.4)" />
+        {JUDGES.map((j) => (
+          <g key={j.label}>
+            <circle
+              cx={JUDGE_X}
+              cy={j.y}
+              r={JUDGE_R}
+              {...ringStroke}
+              filter="url(#soft-glow)"
+            />
+            <text
+              x={JUDGE_X + JUDGE_R + 10}
+              y={j.y + 4}
+              textAnchor="start"
+              fill="white"
+              opacity="0.55"
+              fontSize="10.5"
+              fontFamily="var(--font-mono), monospace"
+              letterSpacing="0.04em"
+            >
+              {j.label}
+            </text>
+          </g>
+        ))}
 
-          <circle cx="60" cy="300" r="14" {...ringStroke} />
-          <circle cx="60" cy="300" r="8" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="1.2" />
-        </g>
-
-        {/* Judge Node */}
-        <circle cx="300" cy="180" r="54" {...ringStroke} filter="url(#soft-glow)" />
-        {/* Processing State Indicator */}
-        <circle 
-          cx="300" cy="180" r="44" 
-          fill="none" stroke="rgba(255,255,255,0.15)" 
-          strokeWidth="1.5" strokeDasharray="6 6" 
-          className="animate-[spin_20s_linear_infinite]" 
-        />
-
-        {/* Verdict Node */}
         <circle
           cx="540"
-          cy="180"
+          cy="205"
           r="30"
           {...ringStroke}
           stroke="#0ea5e9"
@@ -333,7 +367,7 @@ function ScoringPipeline() {
             d={d}
             fill="none"
             stroke="rgba(255,255,255,0.15)"
-            strokeWidth="1.5"
+            strokeWidth="1.2"
           />
         ))}
 
@@ -863,50 +897,57 @@ export default function HomePage() {
             <h2 className="font-[family-name:var(--font-display)] font-normal tracking-[-0.03em] leading-[1.02] text-[clamp(2.25rem,5vw,4.5rem)] max-w-[20ch]">
               One number is a lie.
             </h2>
-            <p className="mt-10 max-w-[48ch] text-lg leading-[1.6] text-white/60">
-              Every run is judged from four independent vantage points.
-              One composite verdict. Weights you control.
+            <p className="mt-10 max-w-[50ch] text-lg leading-[1.6] text-white/60">
+              Every run is judged from four independent vantage points,
+              with consensus aggregation across multiple judge models.
+              One composite verdict per eval session. Weights you control.
             </p>
 
             <dl className="mt-10 grid gap-x-10 gap-y-5 sm:grid-cols-2">
               <div>
                 <dt className="text-[15px] font-medium text-white/90">
-                  Validators
+                  Deterministic
                 </dt>
                 <dd className="mt-1 text-[13px] leading-[1.55] text-white/50">
-                  exact, regex, JSON Schema, math, BLEU / ROUGE / ChrF,
-                  code execution, file-tree.
+                  exact, regex, JSON Schema, code execution, file-tree
+                  assertions.
                 </dd>
               </div>
               <div>
                 <dt className="text-[15px] font-medium text-white/90">
-                  Runtime metrics
+                  Mathematic
                 </dt>
                 <dd className="mt-1 text-[13px] leading-[1.55] text-white/50">
-                  latency, cost, reliability across retries.
+                  math equivalence, BLEU, ROUGE, ChrF, token F1, numeric
+                  tolerance.
                 </dd>
               </div>
               <div>
                 <dt className="text-[15px] font-medium text-white/90">
-                  Behavioural signals
+                  Behavioural
                 </dt>
                 <dd className="mt-1 text-[13px] leading-[1.55] text-white/50">
                   recovery, exploration, scope adherence, confidence
-                  calibration.
+                  calibration &middot; plus latency, cost, reliability.
                 </dd>
               </div>
               <div>
                 <dt className="text-[15px] font-medium text-white/90">
-                  LLM-as-judge
+                  LLM + aggregation
                 </dt>
                 <dd className="mt-1 text-[13px] leading-[1.55] text-white/50">
-                  rubric, assertion, reference, pairwise — median or
-                  majority consensus.
+                  rubric, assertion, reference, pairwise &middot; median,
+                  mean, majority-vote, unanimous consensus.
                 </dd>
               </div>
             </dl>
 
-            <p className="mt-8 text-sm text-white/40">
+            <p className="mt-10 max-w-[52ch] text-sm text-white/45">
+              Grounded in a decade of open evaluation research. We
+              didn&apos;t invent the primitives; we wired them together
+              so you can run them all in one eval session.
+            </p>
+            <p className="mt-4 text-sm text-white/40">
               Combined weighted, binary, or hybrid-with-gates — tuned to
               the bar you&apos;d ship against.
             </p>
