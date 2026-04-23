@@ -205,6 +205,40 @@ body {
   }
 }
 
+/* Sandbox lanes — sandbox section. A glowing dot traverses each lane
+   left-to-right, then fades out at the wall. Each lane is an isolated
+   container (bordered rectangle); dots never cross. Phase-offset across
+   lanes so the pulses stay desynchronised — reads as parallel isolated
+   sandboxes. */
+@keyframes sandbox-travel {
+  0% {
+    left: 4px;
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  90% {
+    opacity: 1;
+  }
+  100% {
+    left: calc(100% - 12px);
+    opacity: 0;
+  }
+}
+
+.animate-sandbox-travel {
+  animation: sandbox-travel 3.4s linear infinite;
+  filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.8));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-sandbox-travel {
+    animation: none;
+    opacity: 0.45;
+  }
+}
+
 /* Provider-cell halo — soft white radial glow behind each icon. Staggered
    so one cell gently breathes brighter than the others at any given time. */
 @keyframes provider-glow {

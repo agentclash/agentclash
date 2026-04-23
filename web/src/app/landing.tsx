@@ -249,6 +249,31 @@ function HorizontalArrowFlow() {
   );
 }
 
+function SandboxLanes() {
+  const LANES = 5;
+  const DURATION = 3.4;
+  return (
+    <div
+      className="flex flex-col items-stretch justify-center gap-4 py-6 sm:gap-5 sm:py-10"
+      aria-hidden
+    >
+      {Array.from({ length: LANES }).map((_, i) => (
+        <div
+          key={i}
+          className="relative h-11 overflow-hidden rounded-md border border-white/[0.14]"
+        >
+          <div
+            className="animate-sandbox-travel absolute top-1/2 size-2 -translate-y-1/2 rounded-full bg-white"
+            style={{
+              animationDelay: `${(-(i / LANES) * DURATION).toFixed(2)}s`,
+            }}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function FeedbackLoop() {
   return (
     <div className="flex items-center justify-center py-6 sm:py-10" aria-hidden>
@@ -684,6 +709,43 @@ export default function HomePage() {
             Plus 300 more via OpenRouter. New first-class providers landing
             every month.
           </p>
+        </div>
+      </section>
+
+      {/* ── Sandbox ─────────────────────────────────────────────── */}
+      <section className="border-t border-white/[0.06] px-8 sm:px-12 py-32 sm:py-48">
+        <div className="mx-auto max-w-[1440px] grid gap-16 md:grid-cols-2 md:gap-20 items-center">
+          <div>
+            <h2 className="font-[family-name:var(--font-display)] font-normal tracking-[-0.03em] leading-[1.02] text-[clamp(2.25rem,5vw,4.5rem)] max-w-[20ch]">
+              A fresh microVM for every agent.
+            </h2>
+            <p className="mt-10 max-w-[48ch] text-lg leading-[1.6] text-white/60">
+              Each racer boots into its own Firecracker microVM — isolated
+              filesystem, isolated network, no shared kernel. When the race
+              ends, the sandbox is torn down. The next one spins up clean.
+            </p>
+            <p className="mt-6 max-w-[48ch] text-lg leading-[1.6] text-white/60">
+              That isolation isn&apos;t just safety. It&apos;s what makes
+              the race fair. No model gets a warm cache. No prompt leaks
+              between lanes. The only variable in the race is the model.
+            </p>
+            <p className="mt-10 max-w-[48ch] text-sm text-white/40">
+              Powered by{" "}
+              <a
+                href="https://e2b.dev"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-white/65 underline decoration-white/20 underline-offset-4 transition-colors hover:text-white/90 hover:decoration-white/40"
+              >
+                E2B
+              </a>
+              &nbsp;— the sandbox infrastructure behind AI products at
+              Perplexity, Hugging Face, and Groq.
+            </p>
+          </div>
+          <div>
+            <SandboxLanes />
+          </div>
         </div>
       </section>
 
