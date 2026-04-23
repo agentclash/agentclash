@@ -232,6 +232,68 @@ body {
   }
 }
 
+/* Convergence scoring — scoring section. Four glowing dots ride the four
+   arms of a cross, arriving at the center at staggered intervals. Reads
+   as: independent evidence streams composing a single verdict. Same
+   `offset-path` technique used for the feedback loop. */
+@keyframes converge-pulse {
+  0% {
+    offset-distance: 0%;
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  82% {
+    opacity: 1;
+  }
+  100% {
+    offset-distance: 100%;
+    opacity: 0;
+  }
+}
+
+.animate-converge-top {
+  offset-path: path("M 160 44 L 160 136");
+  offset-rotate: 0deg;
+  animation: converge-pulse 3.2s linear infinite;
+  filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.65));
+}
+
+.animate-converge-right {
+  offset-path: path("M 276 160 L 184 160");
+  offset-rotate: 0deg;
+  animation: converge-pulse 3.2s linear infinite;
+  animation-delay: -0.8s;
+  filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.65));
+}
+
+.animate-converge-bottom {
+  offset-path: path("M 160 276 L 160 184");
+  offset-rotate: 0deg;
+  animation: converge-pulse 3.2s linear infinite;
+  animation-delay: -1.6s;
+  filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.65));
+}
+
+.animate-converge-left {
+  offset-path: path("M 44 160 L 136 160");
+  offset-rotate: 0deg;
+  animation: converge-pulse 3.2s linear infinite;
+  animation-delay: -2.4s;
+  filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.65));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-converge-top,
+  .animate-converge-right,
+  .animate-converge-bottom,
+  .animate-converge-left {
+    animation: none;
+    opacity: 0.5;
+  }
+}
+
 /* Provider-cell halo — soft white radial glow behind each icon. Staggered
    so one cell gently breathes brighter than the others at any given time. */
 @keyframes provider-glow {

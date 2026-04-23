@@ -249,6 +249,138 @@ function HorizontalArrowFlow() {
   );
 }
 
+function ConvergenceScoring() {
+  return (
+    <div
+      className="flex items-center justify-center py-6 sm:py-10"
+      aria-hidden
+    >
+      <svg
+        viewBox="0 0 320 320"
+        className="w-full max-w-[400px]"
+        focusable="false"
+      >
+        <circle
+          cx="160"
+          cy="160"
+          r="10"
+          fill="white"
+          opacity="0.9"
+        />
+        <circle
+          cx="160"
+          cy="160"
+          r="22"
+          fill="none"
+          stroke="white"
+          strokeWidth="1"
+          opacity="0.3"
+        />
+        <circle
+          cx="160"
+          cy="160"
+          r="34"
+          fill="none"
+          stroke="white"
+          strokeWidth="1"
+          opacity="0.12"
+        />
+
+        <line
+          x1="160"
+          y1="44"
+          x2="160"
+          y2="136"
+          stroke="white"
+          strokeWidth="1.1"
+          opacity="0.38"
+        />
+        <line
+          x1="276"
+          y1="160"
+          x2="184"
+          y2="160"
+          stroke="white"
+          strokeWidth="1.1"
+          opacity="0.38"
+        />
+        <line
+          x1="160"
+          y1="276"
+          x2="160"
+          y2="184"
+          stroke="white"
+          strokeWidth="1.1"
+          opacity="0.38"
+        />
+        <line
+          x1="44"
+          y1="160"
+          x2="136"
+          y2="160"
+          stroke="white"
+          strokeWidth="1.1"
+          opacity="0.38"
+        />
+
+        <circle r="3.2" fill="white" className="animate-converge-top" />
+        <circle r="3.2" fill="white" className="animate-converge-right" />
+        <circle r="3.2" fill="white" className="animate-converge-bottom" />
+        <circle r="3.2" fill="white" className="animate-converge-left" />
+
+        <text
+          x="160"
+          y="28"
+          textAnchor="middle"
+          fill="white"
+          opacity="0.55"
+          fontSize="11"
+          fontFamily="var(--font-mono), monospace"
+          letterSpacing="0.05em"
+        >
+          validators
+        </text>
+        <text
+          x="294"
+          y="164"
+          textAnchor="start"
+          fill="white"
+          opacity="0.55"
+          fontSize="11"
+          fontFamily="var(--font-mono), monospace"
+          letterSpacing="0.05em"
+        >
+          metrics
+        </text>
+        <text
+          x="160"
+          y="304"
+          textAnchor="middle"
+          fill="white"
+          opacity="0.55"
+          fontSize="11"
+          fontFamily="var(--font-mono), monospace"
+          letterSpacing="0.05em"
+        >
+          judges
+        </text>
+        <text
+          x="26"
+          y="164"
+          textAnchor="end"
+          fill="white"
+          opacity="0.55"
+          fontSize="11"
+          fontFamily="var(--font-mono), monospace"
+          letterSpacing="0.05em"
+        >
+          signals
+        </text>
+      </svg>
+    </div>
+  );
+}
+
 function SandboxLanes() {
   const DURATION = 3.8;
   return (
@@ -746,6 +878,76 @@ export default function HomePage() {
           </div>
           <div>
             <SandboxLanes />
+          </div>
+        </div>
+      </section>
+
+      {/* ── Scoring ─────────────────────────────────────────────── */}
+      <section className="border-t border-white/[0.06] px-8 sm:px-12 py-32 sm:py-48">
+        <div className="mx-auto max-w-[1440px] grid gap-16 md:grid-cols-2 md:gap-20 items-center">
+          <div>
+            <h2 className="font-[family-name:var(--font-display)] font-normal tracking-[-0.03em] leading-[1.02] text-[clamp(2.25rem,5vw,4.5rem)] max-w-[20ch]">
+              One number is a lie.
+            </h2>
+            <p className="mt-10 max-w-[48ch] text-lg leading-[1.6] text-white/60">
+              A passing benchmark and a working product are two different
+              things. Every run is judged across independent signals —
+              answer correctness, runtime efficiency, how the agent
+              behaves when the easy path breaks, and peer review from a
+              panel of judge models. You weight them however your
+              workload demands.
+            </p>
+
+            <dl className="mt-10 grid gap-x-10 gap-y-6 sm:grid-cols-2">
+              <div>
+                <dt className="font-[family-name:var(--font-display)] text-lg tracking-[-0.015em] text-white/90">
+                  Validators
+                </dt>
+                <dd className="mt-2 text-[13.5px] leading-[1.55] text-white/50">
+                  Exact, regex, JSON Schema, math equivalence, BLEU /
+                  ROUGE / ChrF, code execution, file-tree assertions. If
+                  you can define &ldquo;right,&rdquo; we can check it.
+                </dd>
+              </div>
+              <div>
+                <dt className="font-[family-name:var(--font-display)] text-lg tracking-[-0.015em] text-white/90">
+                  Runtime metrics
+                </dt>
+                <dd className="mt-2 text-[13.5px] leading-[1.55] text-white/50">
+                  Latency, cost per run, reliability across retries — the
+                  numbers that decide whether you can ship it.
+                </dd>
+              </div>
+              <div>
+                <dt className="font-[family-name:var(--font-display)] text-lg tracking-[-0.015em] text-white/90">
+                  Behavioural signals
+                </dt>
+                <dd className="mt-2 text-[13.5px] leading-[1.55] text-white/50">
+                  Recovery after failure, tool-use diversity, scope
+                  adherence, confidence calibration. How an agent{" "}
+                  <em>acts</em> when things go sideways.
+                </dd>
+              </div>
+              <div>
+                <dt className="font-[family-name:var(--font-display)] text-lg tracking-[-0.015em] text-white/90">
+                  LLM-as-judge
+                </dt>
+                <dd className="mt-2 text-[13.5px] leading-[1.55] text-white/50">
+                  Rubric, assertion, reference, and pairwise modes. Run
+                  multiple judges, take the median or majority — no
+                  single model gets to be the sole arbiter.
+                </dd>
+              </div>
+            </dl>
+
+            <p className="mt-10 max-w-[52ch] text-sm text-white/40">
+              Three composition strategies — weighted average, binary
+              pass/fail, or hybrid with gates — so the verdict matches
+              the bar you&apos;d actually ship against.
+            </p>
+          </div>
+          <div>
+            <ConvergenceScoring />
           </div>
         </div>
       </section>
