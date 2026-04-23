@@ -80,7 +80,7 @@ export function DocsSearch() {
             // small delay to allow clicking a result
             setTimeout(() => setIsOpen(false), 200);
           }}
-          placeholder="Search InsForge docs..."
+          placeholder="Search AgentClash docs..."
           className="h-9 w-full rounded-md border border-zinc-800 bg-zinc-900/50 pl-10 pr-10 text-sm text-zinc-200 outline-none transition-colors placeholder:text-zinc-500 focus:border-emerald-500/50 focus:bg-zinc-900"
         />
         <div className="pointer-events-none absolute right-3 flex items-center gap-1 text-[10px] text-zinc-500">

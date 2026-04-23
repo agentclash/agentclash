@@ -14,18 +14,18 @@ export function DocsSidebar({
   return (
     <div className="flex flex-col gap-8 pb-10">
       <div className="space-y-2 px-1">
-        <a href="#" className="flex items-center gap-3 rounded-md px-2 py-1.5 text-sm font-medium text-zinc-400 transition-colors hover:bg-zinc-800/50 hover:text-zinc-100">
+        <div className="flex cursor-not-allowed items-center gap-3 rounded-md px-2 py-1.5 text-sm font-medium text-zinc-600">
           <MessageSquare className="size-4" />
           Community
-        </a>
+        </div>
         <Link href="/blog" className="flex items-center gap-3 rounded-md px-2 py-1.5 text-sm font-medium text-zinc-400 transition-colors hover:bg-zinc-800/50 hover:text-zinc-100">
           <BookOpen className="size-4" />
           Blog
         </Link>
-        <a href="#" className="flex items-center gap-3 rounded-md px-2 py-1.5 text-sm font-medium text-zinc-400 transition-colors hover:bg-zinc-800/50 hover:text-zinc-100">
+        <div className="flex cursor-not-allowed items-center gap-3 rounded-md px-2 py-1.5 text-sm font-medium text-zinc-600">
           <Map className="size-4" />
           Roadmap
-        </a>
+        </div>
         <a href="https://github.com/agentclash/agentclash" target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 rounded-md px-2 py-1.5 text-sm font-medium text-zinc-400 transition-colors hover:bg-zinc-800/50 hover:text-zinc-100">
           <Github className="size-4" />
           GitHub

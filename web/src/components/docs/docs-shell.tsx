@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { Copy, Sparkles, Moon } from "lucide-react";
+import { Copy, Sparkles } from "lucide-react";
 import type { DocHeading, DocNavSection } from "@/lib/docs";
 import { DocsSidebar } from "@/components/docs/docs-sidebar";
 import { DocsToc } from "@/components/docs/docs-toc";
@@ -39,8 +39,8 @@ export function DocsShell({
                 Docs
                 <span className="absolute -bottom-[22px] left-0 right-0 h-0.5 bg-emerald-500" />
               </Link>
-              <Link href="#" className="hover:text-zinc-100 transition-colors">SDK & Examples</Link>
-              <Link href="#" className="hover:text-zinc-100 transition-colors">API Reference</Link>
+              <span className="cursor-not-allowed text-zinc-600">SDK & Examples</span>
+              <span className="cursor-not-allowed text-zinc-600">API Reference</span>
             </nav>
           </div>
 
@@ -54,9 +54,6 @@ export function DocsShell({
             >
               Get Started &rarr;
             </a>
-            <button className="flex size-8 items-center justify-center rounded-md text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100">
-              <Moon className="size-4" />
-            </button>
           </div>
         </div>
       </header>
