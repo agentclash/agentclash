@@ -1,9 +1,12 @@
+"use client";
+
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { ArrowUpRight, BookOpenText } from "lucide-react";
+import { Copy, Sparkles } from "lucide-react";
 import type { DocHeading, DocNavSection } from "@/lib/docs";
 import { DocsSidebar } from "@/components/docs/docs-sidebar";
 import { DocsToc } from "@/components/docs/docs-toc";
+import { DocsSearch } from "@/components/docs/docs-search";
 
 export function DocsShell({
   currentHref,
@@ -23,72 +26,75 @@ export function DocsShell({
   children: ReactNode;
 }) {
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(212,255,79,0.09),transparent_24%),radial-gradient(circle_at_top_right,rgba(255,255,255,0.06),transparent_18%),#050505] text-white">
-      <header className="border-b border-white/[0.08] bg-black/20 backdrop-blur">
-        <div className="mx-auto flex w-full max-w-[1440px] items-center justify-between gap-4 px-6 py-4 sm:px-8">
-          <div className="flex items-center gap-3">
-            <div className="flex size-10 items-center justify-center rounded-2xl border border-white/[0.08] bg-white/[0.03]">
-              <BookOpenText className="size-4 text-lime-200" />
-            </div>
-            <div>
-              <Link
-                href="/docs"
-                className="font-[family-name:var(--font-display)] text-xl tracking-[-0.02em] text-white/95"
-              >
-                AgentClash Docs
+    <main className="min-h-screen bg-[#060606] text-zinc-300">
+      <header className="sticky top-0 z-40 border-b border-zinc-800/60 bg-[#060606]/90 backdrop-blur">
+        <div className="flex h-16 w-full items-center justify-between gap-4 px-6">
+          <div className="flex items-center gap-6">
+            <Link href="/" className="flex items-center gap-2 text-zinc-100">
+              <Sparkles className="size-5" />
+              <span className="font-semibold tracking-tight">AgentClash</span>
+            </Link>
+            <nav className="hidden items-center gap-6 text-sm font-medium text-zinc-400 md:flex">
+              <Link href="/docs" className="text-zinc-100 relative">
+                Docs
+                <span className="absolute -bottom-[22px] left-0 right-0 h-0.5 bg-emerald-500" />
               </Link>
-              <p className="text-xs text-white/35">
-                Product, reference, and contributor docs in one place.
-              </p>
-            </div>
+              <span className="cursor-not-allowed text-zinc-600">SDK & Examples</span>
+              <span className="cursor-not-allowed text-zinc-600">API Reference</span>
+            </nav>
           </div>
 
-          <div className="flex items-center gap-2 text-xs">
-            <Link
-              href="/"
-              className="rounded-full border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-white/65 transition-colors hover:border-white/15 hover:text-white/90"
-            >
-              Product
-            </Link>
+          <div className="flex flex-1 items-center justify-end gap-4 md:flex-none">
+            <DocsSearch />
             <a
-              href="https://github.com/agentclash/agentclash"
+              href="https://cal.com/agentclash/demo"
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-white/65 transition-colors hover:border-white/15 hover:text-white/90"
+              className="hidden rounded-full bg-emerald-600 px-4 py-1.5 text-sm font-medium text-white transition-colors hover:bg-emerald-700 sm:block"
             >
-              GitHub
-              <ArrowUpRight className="size-3" />
+              Get Started &rarr;
             </a>
           </div>
         </div>
       </header>
 
-      <div className="mx-auto grid w-full max-w-[1440px] gap-12 px-6 py-10 sm:px-8 lg:grid-cols-[280px_minmax(0,1fr)] lg:gap-16 lg:py-14 xl:grid-cols-[280px_minmax(0,1fr)_220px] xl:items-start">
-        <aside className="lg:sticky lg:top-8 lg:h-fit">
+      <div className="mx-auto flex w-full max-w-[1536px] items-start px-6 lg:px-8">
+        <aside className="sticky top-16 hidden h-[calc(100vh-4rem)] w-64 shrink-0 overflow-y-auto border-r border-zinc-800/60 pt-8 lg:block">
           <DocsSidebar sections={sections} currentHref={currentHref} />
         </aside>
 
-        <section className="min-w-0">
-          <div className="rounded-[32px] border border-white/[0.08] bg-white/[0.03] px-6 py-8 shadow-[0_24px_80px_rgba(0,0,0,0.32)] sm:px-10 sm:py-10">
-            <div className="max-w-3xl">
-              <p className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-[0.18em] text-lime-200/70">
+        <section className="flex-1 min-w-0 pb-20 pt-8 lg:px-12 lg:pt-12">
+          <div className="mx-auto max-w-[800px]">
+            <div className="mb-8">
+              <p className="mb-2 text-sm font-medium text-emerald-500">
                 {sectionTitle ?? "Documentation"}
               </p>
-              <h1 className="mt-4 font-[family-name:var(--font-display)] text-4xl tracking-[-0.04em] text-white sm:text-5xl">
-                {title}
-              </h1>
-              <p className="mt-4 max-w-2xl text-base leading-7 text-white/55 sm:text-lg">
+              <div className="flex items-start justify-between gap-4">
+                <h1 className="text-3xl font-bold tracking-tight text-zinc-100 sm:text-4xl">
+                  {title}
+                </h1>
+                <button 
+                  onClick={() => navigator.clipboard.writeText(window.location.href)}
+                  className="hidden items-center gap-2 rounded-md border border-zinc-800 px-3 py-1.5 text-xs font-medium text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100 sm:flex"
+                >
+                  <Copy className="size-3.5" />
+                  Copy page
+                </button>
+              </div>
+              <p className="mt-4 text-lg text-zinc-400">
                 {description}
               </p>
             </div>
 
-            <div className="mt-10 border-t border-white/[0.08] pt-8">
+            <div className="prose prose-invert prose-zinc max-w-none prose-headings:text-zinc-100 prose-a:text-emerald-500 prose-a:no-underline hover:prose-a:underline prose-code:text-zinc-200 prose-pre:bg-zinc-900 prose-pre:border prose-pre:border-zinc-800">
               {children}
             </div>
           </div>
         </section>
 
-        <DocsToc headings={headings} />
+        <div className="hidden w-64 shrink-0 xl:block">
+          <DocsToc headings={headings} />
+        </div>
       </div>
     </main>
   );
