@@ -232,16 +232,17 @@ body {
   }
 }
 
-/* Convergence scoring — scoring section. Four glowing dots ride the four
-   arms of a cross, arriving at the center at staggered intervals. Reads
-   as: independent evidence streams composing a single verdict. Same
-   `offset-path` technique used for the feedback loop. */
-@keyframes converge-pulse {
+/* Scoring pipeline — scoring section. Small arrowhead glyphs (polygons)
+   sprint along curved bezier paths from agents → judges → verdict,
+   tangent-aligned via `offset-rotate: auto`. Each glyph's offset-path
+   and animation-delay are set inline so a single CSS rule covers all
+   eight. Fast 1.6s cycle reads as "light-speed" evaluation. */
+@keyframes scoring-flow {
   0% {
     offset-distance: 0%;
     opacity: 0;
   }
-  12% {
+  10% {
     opacity: 1;
   }
   82% {
@@ -253,43 +254,33 @@ body {
   }
 }
 
-.animate-converge-top {
-  offset-path: path("M 160 44 L 160 136");
-  offset-rotate: 0deg;
-  animation: converge-pulse 3.2s linear infinite;
-  filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.65));
+.animate-scoring-flow {
+  offset-rotate: auto;
+  animation: scoring-flow 1.6s linear infinite;
+  filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.85));
 }
 
-.animate-converge-right {
-  offset-path: path("M 276 160 L 184 160");
-  offset-rotate: 0deg;
-  animation: converge-pulse 3.2s linear infinite;
-  animation-delay: -0.8s;
-  filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.65));
+/* Verdict box pulses softly — "supercharging" as evidence flows in. */
+@keyframes results-glow {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.12));
+  }
+  50% {
+    filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0.32));
+  }
 }
 
-.animate-converge-bottom {
-  offset-path: path("M 160 276 L 160 184");
-  offset-rotate: 0deg;
-  animation: converge-pulse 3.2s linear infinite;
-  animation-delay: -1.6s;
-  filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.65));
-}
-
-.animate-converge-left {
-  offset-path: path("M 44 160 L 136 160");
-  offset-rotate: 0deg;
-  animation: converge-pulse 3.2s linear infinite;
-  animation-delay: -2.4s;
-  filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.65));
+.animate-results-glow {
+  animation: results-glow 3.2s ease-in-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .animate-converge-top,
-  .animate-converge-right,
-  .animate-converge-bottom,
-  .animate-converge-left {
+  .animate-scoring-flow,
+  .animate-results-glow {
     animation: none;
+  }
+  .animate-scoring-flow {
     opacity: 0.5;
   }
 }

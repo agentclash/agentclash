@@ -249,133 +249,140 @@ function HorizontalArrowFlow() {
   );
 }
 
-function ConvergenceScoring() {
+const SCORING_PATHS = {
+  a2j: [
+    "M 90 64 Q 170 55 250 74",
+    "M 90 134 Q 170 132 250 149",
+    "M 90 204 Q 170 218 250 224",
+    "M 90 274 Q 170 292 250 299",
+  ],
+  j2r: [
+    "M 390 74 Q 450 120 510 175",
+    "M 390 149 Q 450 172 510 190",
+    "M 390 224 Q 450 216 510 210",
+    "M 390 299 Q 450 270 510 225",
+  ],
+};
+
+function ScoringPipeline() {
+  const labelProps = {
+    fill: "white",
+    opacity: 0.55,
+    fontSize: 11,
+    fontFamily: "var(--font-mono), monospace",
+    letterSpacing: "0.05em",
+  } as const;
+  const boxStroke = {
+    fill: "none",
+    stroke: "white",
+    strokeWidth: 1.2,
+    opacity: 0.55,
+  } as const;
+
+  const allPaths = [...SCORING_PATHS.a2j, ...SCORING_PATHS.j2r];
+
   return (
-    <div
-      className="flex items-center justify-center py-6 sm:py-10"
-      aria-hidden
-    >
+    <div className="flex items-center justify-center py-4" aria-hidden>
       <svg
-        viewBox="0 0 320 320"
-        className="w-full max-w-[400px]"
+        viewBox="0 0 640 400"
+        className="w-full max-w-[580px]"
         focusable="false"
       >
-        <circle
-          cx="160"
-          cy="160"
-          r="10"
-          fill="white"
-          opacity="0.9"
+        <defs>
+          <marker
+            id="scoring-arrow"
+            viewBox="0 0 10 10"
+            refX="8"
+            refY="5"
+            markerWidth="6"
+            markerHeight="6"
+            orient="auto"
+          >
+            <polygon points="0,0 10,5 0,10" fill="white" opacity="0.65" />
+          </marker>
+        </defs>
+
+        <text x="55" y="36" textAnchor="middle" {...labelProps}>
+          agents
+        </text>
+        <text x="320" y="20" textAnchor="middle" {...labelProps}>
+          validators &middot; judges
+        </text>
+        <text x="560" y="130" textAnchor="middle" {...labelProps}>
+          verdict
+        </text>
+
+        {[50, 120, 190, 260].map((y) => (
+          <rect
+            key={`a-${y}`}
+            x="20"
+            y={y}
+            width="70"
+            height="28"
+            rx="8"
+            {...boxStroke}
+          />
+        ))}
+
+        <rect
+          x="230"
+          y="30"
+          width="180"
+          height="340"
+          rx="16"
+          {...boxStroke}
+          opacity="0.35"
         />
-        <circle
-          cx="160"
-          cy="160"
-          r="22"
+
+        {[60, 135, 210, 285].map((y) => (
+          <rect
+            key={`j-${y}`}
+            x="250"
+            y={y}
+            width="140"
+            height="28"
+            rx="8"
+            {...boxStroke}
+          />
+        ))}
+
+        <rect
+          x="510"
+          y="140"
+          width="100"
+          height="120"
+          rx="14"
           fill="none"
           stroke="white"
-          strokeWidth="1"
-          opacity="0.3"
-        />
-        <circle
-          cx="160"
-          cy="160"
-          r="34"
-          fill="none"
-          stroke="white"
-          strokeWidth="1"
-          opacity="0.12"
+          strokeWidth="1.3"
+          opacity="0.72"
+          className="animate-results-glow"
         />
 
-        <line
-          x1="160"
-          y1="44"
-          x2="160"
-          y2="136"
-          stroke="white"
-          strokeWidth="1.1"
-          opacity="0.38"
-        />
-        <line
-          x1="276"
-          y1="160"
-          x2="184"
-          y2="160"
-          stroke="white"
-          strokeWidth="1.1"
-          opacity="0.38"
-        />
-        <line
-          x1="160"
-          y1="276"
-          x2="160"
-          y2="184"
-          stroke="white"
-          strokeWidth="1.1"
-          opacity="0.38"
-        />
-        <line
-          x1="44"
-          y1="160"
-          x2="136"
-          y2="160"
-          stroke="white"
-          strokeWidth="1.1"
-          opacity="0.38"
-        />
+        {allPaths.map((d, i) => (
+          <path
+            key={`p-${i}`}
+            d={d}
+            fill="none"
+            stroke="white"
+            strokeWidth="1.1"
+            opacity="0.42"
+            markerEnd="url(#scoring-arrow)"
+          />
+        ))}
 
-        <circle r="3.2" fill="white" className="animate-converge-top" />
-        <circle r="3.2" fill="white" className="animate-converge-right" />
-        <circle r="3.2" fill="white" className="animate-converge-bottom" />
-        <circle r="3.2" fill="white" className="animate-converge-left" />
-
-        <text
-          x="160"
-          y="28"
-          textAnchor="middle"
-          fill="white"
-          opacity="0.55"
-          fontSize="11"
-          fontFamily="var(--font-mono), monospace"
-          letterSpacing="0.05em"
-        >
-          validators
-        </text>
-        <text
-          x="294"
-          y="164"
-          textAnchor="start"
-          fill="white"
-          opacity="0.55"
-          fontSize="11"
-          fontFamily="var(--font-mono), monospace"
-          letterSpacing="0.05em"
-        >
-          metrics
-        </text>
-        <text
-          x="160"
-          y="304"
-          textAnchor="middle"
-          fill="white"
-          opacity="0.55"
-          fontSize="11"
-          fontFamily="var(--font-mono), monospace"
-          letterSpacing="0.05em"
-        >
-          judges
-        </text>
-        <text
-          x="26"
-          y="164"
-          textAnchor="end"
-          fill="white"
-          opacity="0.55"
-          fontSize="11"
-          fontFamily="var(--font-mono), monospace"
-          letterSpacing="0.05em"
-        >
-          signals
-        </text>
+        {allPaths.map((d, i) => (
+          <polygon
+            key={`g-${i}`}
+            points="0,-3 6,0 0,3"
+            fill="white"
+            className="animate-scoring-flow"
+            style={{
+              offsetPath: `path('${d}')`,
+              animationDelay: `${-(i / allPaths.length) * 1.6}s`,
+            }}
+          />
+        ))}
       </svg>
     </div>
   );
@@ -890,64 +897,55 @@ export default function HomePage() {
               One number is a lie.
             </h2>
             <p className="mt-10 max-w-[48ch] text-lg leading-[1.6] text-white/60">
-              A passing benchmark and a working product are two different
-              things. Every run is judged across independent signals —
-              answer correctness, runtime efficiency, how the agent
-              behaves when the easy path breaks, and peer review from a
-              panel of judge models. You weight them however your
-              workload demands.
+              Every run is judged from four independent vantage points.
+              One composite verdict. Weights you control.
             </p>
 
-            <dl className="mt-10 grid gap-x-10 gap-y-6 sm:grid-cols-2">
+            <dl className="mt-10 grid gap-x-10 gap-y-5 sm:grid-cols-2">
               <div>
-                <dt className="font-[family-name:var(--font-display)] text-lg tracking-[-0.015em] text-white/90">
+                <dt className="text-[15px] font-medium text-white/90">
                   Validators
                 </dt>
-                <dd className="mt-2 text-[13.5px] leading-[1.55] text-white/50">
-                  Exact, regex, JSON Schema, math equivalence, BLEU /
-                  ROUGE / ChrF, code execution, file-tree assertions. If
-                  you can define &ldquo;right,&rdquo; we can check it.
+                <dd className="mt-1 text-[13px] leading-[1.55] text-white/50">
+                  exact, regex, JSON Schema, math, BLEU / ROUGE / ChrF,
+                  code execution, file-tree.
                 </dd>
               </div>
               <div>
-                <dt className="font-[family-name:var(--font-display)] text-lg tracking-[-0.015em] text-white/90">
+                <dt className="text-[15px] font-medium text-white/90">
                   Runtime metrics
                 </dt>
-                <dd className="mt-2 text-[13.5px] leading-[1.55] text-white/50">
-                  Latency, cost per run, reliability across retries — the
-                  numbers that decide whether you can ship it.
+                <dd className="mt-1 text-[13px] leading-[1.55] text-white/50">
+                  latency, cost, reliability across retries.
                 </dd>
               </div>
               <div>
-                <dt className="font-[family-name:var(--font-display)] text-lg tracking-[-0.015em] text-white/90">
+                <dt className="text-[15px] font-medium text-white/90">
                   Behavioural signals
                 </dt>
-                <dd className="mt-2 text-[13.5px] leading-[1.55] text-white/50">
-                  Recovery after failure, tool-use diversity, scope
-                  adherence, confidence calibration. How an agent{" "}
-                  <em>acts</em> when things go sideways.
+                <dd className="mt-1 text-[13px] leading-[1.55] text-white/50">
+                  recovery, exploration, scope adherence, confidence
+                  calibration.
                 </dd>
               </div>
               <div>
-                <dt className="font-[family-name:var(--font-display)] text-lg tracking-[-0.015em] text-white/90">
+                <dt className="text-[15px] font-medium text-white/90">
                   LLM-as-judge
                 </dt>
-                <dd className="mt-2 text-[13.5px] leading-[1.55] text-white/50">
-                  Rubric, assertion, reference, and pairwise modes. Run
-                  multiple judges, take the median or majority — no
-                  single model gets to be the sole arbiter.
+                <dd className="mt-1 text-[13px] leading-[1.55] text-white/50">
+                  rubric, assertion, reference, pairwise — median or
+                  majority consensus.
                 </dd>
               </div>
             </dl>
 
-            <p className="mt-10 max-w-[52ch] text-sm text-white/40">
-              Three composition strategies — weighted average, binary
-              pass/fail, or hybrid with gates — so the verdict matches
-              the bar you&apos;d actually ship against.
+            <p className="mt-8 text-sm text-white/40">
+              Combined weighted, binary, or hybrid-with-gates — tuned to
+              the bar you&apos;d ship against.
             </p>
           </div>
           <div>
-            <ConvergenceScoring />
+            <ScoringPipeline />
           </div>
         </div>
       </section>
