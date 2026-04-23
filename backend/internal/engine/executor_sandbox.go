@@ -90,6 +90,48 @@ func (e NativeExecutor) loadWorkspaceSecrets(ctx context.Context, workspaceID uu
 	return loaded, nil
 }
 
+func (e NativeExecutor) loadWorkspaceTools(ctx context.Context, workspaceID uuid.UUID, bindings []repository.AgentBuildVersionToolBinding) ([]workspaceToolBinding, error) {
+	if len(bindings) == 0 {
+		return nil, nil
+	}
+	if e.workspaceToolLookup == nil {
+		return nil, fmt.Errorf("workspace tool lookup is not configured")
+	}
+
+	toolIDs := make([]uuid.UUID, 0, len(bindings))
+	seen := make(map[uuid.UUID]struct{}, len(bindings))
+	for _, binding := range bindings {
+		if _, ok := seen[binding.ToolID]; ok {
+			continue
+		}
+		seen[binding.ToolID] = struct{}{}
+		toolIDs = append(toolIDs, binding.ToolID)
+	}
+
+	rows, err := e.workspaceToolLookup.ListToolsByIDs(ctx, workspaceID, toolIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	toolByID := make(map[uuid.UUID]repository.ToolRow, len(rows))
+	for _, row := range rows {
+		toolByID[row.ID] = row
+	}
+
+	out := make([]workspaceToolBinding, 0, len(bindings))
+	for _, binding := range bindings {
+		row, ok := toolByID[binding.ToolID]
+		if !ok {
+			return nil, fmt.Errorf("workspace tool %s is not available in this workspace", binding.ToolID)
+		}
+		out = append(out, workspaceToolBinding{
+			Tool:    row,
+			Binding: binding,
+		})
+	}
+	return out, nil
+}
+
 func sandboxTTL(executionContext repository.RunAgentExecutionContext) time.Duration {
 	timeout := runTimeout(executionContext)
 	if timeout <= 0 {

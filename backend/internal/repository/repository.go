@@ -3801,15 +3801,15 @@ type AgentBuildVersion struct {
 }
 
 type AgentBuildVersionToolBinding struct {
-	ToolID        uuid.UUID
-	BindingRole   string
-	BindingConfig json.RawMessage
+	ToolID        uuid.UUID       `json:"tool_id"`
+	BindingRole   string          `json:"binding_role"`
+	BindingConfig json.RawMessage `json:"binding_config"`
 }
 
 type AgentBuildVersionKnowledgeSourceBinding struct {
-	KnowledgeSourceID uuid.UUID
-	BindingRole       string
-	BindingConfig     json.RawMessage
+	KnowledgeSourceID uuid.UUID       `json:"knowledge_source_id"`
+	BindingRole       string          `json:"binding_role"`
+	BindingConfig     json.RawMessage `json:"binding_config"`
 }
 
 type AgentDeploymentRow struct {

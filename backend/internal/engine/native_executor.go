@@ -119,11 +119,18 @@ type SecretsLookup interface {
 	LoadWorkspaceSecrets(ctx context.Context, workspaceID uuid.UUID) (map[string]string, error)
 }
 
+// WorkspaceToolLookup resolves workspace-scoped tool records referenced by
+// frozen agent-build tool bindings at run start.
+type WorkspaceToolLookup interface {
+	ListToolsByIDs(ctx context.Context, workspaceID uuid.UUID, ids []uuid.UUID) ([]repository.ToolRow, error)
+}
+
 type NativeExecutor struct {
 	client              provider.Client
 	sandboxProvider     sandbox.Provider
 	observer            Observer
 	secretsLookup       SecretsLookup
+	workspaceToolLookup WorkspaceToolLookup
 	maxRetryAttempts    int
 	initialRetryBackoff time.Duration
 }
@@ -148,6 +155,13 @@ func NewNativeExecutor(client provider.Client, sandboxProvider sandbox.Provider,
 // secrets path.
 func (e NativeExecutor) WithSecretsLookup(lookup SecretsLookup) NativeExecutor {
 	e.secretsLookup = lookup
+	return e
+}
+
+// WithWorkspaceToolLookup attaches a workspace-tool source used to resolve
+// bound tool IDs from the frozen deployment snapshot at run start.
+func (e NativeExecutor) WithWorkspaceToolLookup(lookup WorkspaceToolLookup) NativeExecutor {
+	e.workspaceToolLookup = lookup
 	return e
 }
 
@@ -198,6 +212,16 @@ func (e NativeExecutor) Execute(ctx context.Context, executionContext repository
 	workspaceSecrets, err := e.loadWorkspaceSecrets(ctx, executionContext.Run.WorkspaceID)
 	if err != nil {
 		return Result{}, NewFailure(StopReasonSandboxError, fmt.Sprintf("load workspace secrets: %v", err), err)
+	}
+	workspaceTools, err := e.loadWorkspaceTools(ctx, executionContext.Run.WorkspaceID, executionContext.Deployment.AgentBuildVersion.Tools)
+	if err != nil {
+		return Result{}, provider.NewFailure(
+			executionContext.Deployment.ProviderAccount.ProviderKey,
+			provider.FailureCodeInvalidRequest,
+			"load workspace tools",
+			false,
+			err,
+		)
 	}
 
 	session, err := e.prepareSandbox(ctx, executionContext, sandboxRequest)
@@ -252,6 +276,7 @@ func (e NativeExecutor) Execute(ctx context.Context, executionContext repository
 		executionContext.ChallengePackVersion.Manifest,
 		executionContext.Deployment.SnapshotConfig,
 		workspaceSecrets,
+		workspaceTools...,
 	)
 	if err != nil {
 		return Result{}, provider.NewFailure(
