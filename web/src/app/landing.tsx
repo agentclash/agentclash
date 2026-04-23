@@ -14,7 +14,7 @@ import {
   XAI,
 } from "@lobehub/icons";
 
-const DEMO_URL = "https://cal.com/agentclash/demo";
+const DEMO_URL = "https://cal.com/atharva-kanherkar-epgztu/agentclash-demo";
 
 function ClashMark({
   className = "",
