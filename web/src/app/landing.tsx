@@ -1,6 +1,7 @@
 "use client";
 
 import type React from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@workos-inc/authkit-nextjs/components";
 import { ArrowRight, Calendar, ExternalLink, LogIn, Star } from "lucide-react";
@@ -89,12 +90,14 @@ function DottedSpotlight({
   children?: React.ReactNode;
   className?: string;
 }) {
-  function handleMouseMove(e: React.MouseEvent<HTMLDivElement>) {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    e.currentTarget.style.setProperty("--mx", `${x}px`);
-    e.currentTarget.style.setProperty("--my", `${y}px`);
+  const ref = useRef<HTMLElement | null>(null);
+  const [isActive, setIsActive] = useState(false);
+
+  function updatePosition(clientX: number, clientY: number) {
+    if (!ref.current) return;
+    const rect = ref.current.getBoundingClientRect();
+    ref.current.style.setProperty("--mx", `${clientX - rect.left}px`);
+    ref.current.style.setProperty("--my", `${clientY - rect.top}px`);
   }
 
   const cursorMask =
@@ -106,19 +109,37 @@ function DottedSpotlight({
 
   return (
     <section
-      onMouseMove={handleMouseMove}
-      className={`group relative ${className}`}
+      ref={ref}
+      onMouseMove={(e) => {
+        updatePosition(e.clientX, e.clientY);
+        setIsActive(true);
+      }}
+      onMouseLeave={() => setIsActive(false)}
+      onTouchStart={(e) => {
+        const t = e.touches[0];
+        if (!t) return;
+        updatePosition(t.clientX, t.clientY);
+        setIsActive(true);
+      }}
+      onTouchMove={(e) => {
+        const t = e.touches[0];
+        if (!t) return;
+        updatePosition(t.clientX, t.clientY);
+      }}
+      onTouchEnd={() => setIsActive(false)}
+      onTouchCancel={() => setIsActive(false)}
+      className={`relative ${className}`}
       style={{ ["--mx" as string]: "50%", ["--my" as string]: "50%" }}
     >
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
         <div
           aria-hidden
-          className="absolute inset-0 opacity-0 transition-opacity duration-500 ease-out group-hover:opacity-100"
+          className={`absolute inset-0 transition-opacity duration-500 ease-out ${isActive ? "opacity-100" : "opacity-0"}`}
           style={{ backgroundImage: cursorBloom }}
         />
         <div
           aria-hidden
-          className="absolute inset-0 opacity-0 transition-opacity duration-500 ease-out group-hover:opacity-90"
+          className={`absolute inset-0 transition-opacity duration-500 ease-out ${isActive ? "opacity-90" : "opacity-0"}`}
           style={{
             backgroundImage: dotImage,
             backgroundSize: "22px 22px",
