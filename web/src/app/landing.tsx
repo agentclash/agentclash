@@ -2100,44 +2100,34 @@ export default function HomePage() {
             We got tired of being lied to.
           </h2>
 
-          <div className="mt-14 max-w-[58ch] space-y-7 text-lg leading-[1.65] text-white/65">
-            <p>
-              A few months ago we were picking a model for a production
-              agent — the kind that reads a ticket, opens a PR, runs the
-              tests, writes a comment. The benchmarks said one thing. MMLU
-              said another. Vendor blog posts told a third. We ran our own
-              evals; they were flaky and painful to reason about. We picked
-              a model. A week in, it started failing on the exact shape of
-              ticket we&apos;d built it for — the same shape it had passed
-              every eval we threw at it.
-            </p>
-            <p>
-              We re-read every score. None of them had touched our task.
-              They had measured one kind of intelligence, and we had
-              shipped another.
-            </p>
-            <p className="font-[family-name:var(--font-display)] text-2xl sm:text-3xl leading-[1.3] tracking-[-0.015em] text-white/90 !mt-12">
-              Static benchmarks leak. Leaderboards reward hype. The only
-              eval you can trust is the one you ran yourself, on your own
-              task, against every other model you were considering, at the
-              same time.
-            </p>
-            <p>
-              AgentClash is what we wish had existed that week. You
-              describe the task the way your product actually does it. Pick
-              six models. They race, live, on the same inputs, with the
-              same tools, scored on what matters in production —
-              correctness, cost, latency, behaviour under pressure. When
-              one fails, the failing trace becomes a test. Every mistake
-              ratchets the eval tighter.
-            </p>
-            <p>
-              We&apos;re building it in the open because no closed
-              benchmark has ever stayed honest for long. If this feels
-              familiar — run a race. Your task. Your models. Your
-              scoreboard.
-            </p>
-          </div>
+          <p className="mt-24 font-[family-name:var(--font-display)] font-normal tracking-[-0.02em] leading-[1.1] text-[clamp(1.875rem,4.2vw,3.5rem)] text-white/90 max-w-[30ch]">
+            It passed every eval we had. It failed in week one.
+          </p>
+
+          <p className="mt-16 font-[family-name:var(--font-display)] font-normal tracking-[-0.02em] leading-[1.15] text-[clamp(1.625rem,3.2vw,2.75rem)] text-white/60 max-w-[34ch]">
+            None of the benchmarks had touched our task.
+          </p>
+
+          <p className="mt-24 font-[family-name:var(--font-display)] font-normal tracking-[-0.025em] leading-[1.05] text-[clamp(2.125rem,5vw,4.25rem)] text-white/95 max-w-[30ch]">
+            The only eval you can trust is the one you ran yourself —
+            your task, every model, at the same time.
+          </p>
+
+          <p className="mt-16 font-[family-name:var(--font-display)] font-normal tracking-[-0.02em] leading-[1.15] text-[clamp(1.625rem,3.2vw,2.75rem)] text-white/90 max-w-[24ch]">
+            AgentClash is that eval.
+          </p>
+
+          <p className="mt-24 max-w-[56ch] text-[15px] leading-[1.7] text-white/50">
+            Pick your task the way your product actually runs it. Six
+            models race, live, on the same inputs with the same tools.
+            Scored on what matters in production — correctness, cost,
+            latency, behaviour under pressure. When one fails, the failing
+            trace becomes a test. Every mistake ratchets the eval tighter.
+          </p>
+
+          <p className="mt-20 font-[family-name:var(--font-display)] font-normal tracking-[-0.025em] leading-[1.05] text-[clamp(1.875rem,4.5vw,3.5rem)] text-white/95 max-w-[26ch]">
+            Your task. Your models. Your scoreboard.
+          </p>
         </div>
       </section>
 
