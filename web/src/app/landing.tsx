@@ -262,7 +262,7 @@ function SandboxLanes() {
           className="relative h-12 overflow-hidden rounded-md border border-white/[0.14]"
         >
           <div
-            className="animate-sandbox-travel absolute top-1/2 -translate-y-1/2 flex items-center justify-center"
+            className="animate-sandbox-travel absolute inset-0 flex items-center justify-center"
             style={{
               animationDelay: `${(-(i / PROVIDERS.length) * DURATION).toFixed(2)}s`,
             }}

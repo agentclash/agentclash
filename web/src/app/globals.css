@@ -209,19 +209,20 @@ body {
    outside the left wall, glides across, exits through the right wall.
    `overflow-hidden` on the lane does the containment. Phase-offset across
    lanes so every provider stays desynchronised — reads as parallel
-   isolated sandboxes, one model per lane. */
+   isolated sandboxes, one model per lane. Uses transform (GPU-composited)
+   instead of `left` so there's no repaint smear trailing behind. */
 @keyframes sandbox-travel {
   0% {
-    left: -25%;
+    transform: translateX(-110%);
   }
   100% {
-    left: 125%;
+    transform: translateX(110%);
   }
 }
 
 .animate-sandbox-travel {
   animation: sandbox-travel 3.8s linear infinite;
-  filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.45));
+  will-change: transform;
 }
 
 @media (prefers-reduced-motion: reduce) {
