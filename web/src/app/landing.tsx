@@ -880,26 +880,16 @@ function TrackGlyph() {
   );
 }
 
-function BetaPill() {
-  return (
-    <span className="inline-flex items-center gap-2 rounded-full border border-white/[0.14] bg-white/[0.04] px-3.5 py-1.5 text-[11px] font-[family-name:var(--font-mono)] uppercase tracking-[0.22em] text-white/70">
-      <span className="relative flex size-1.5">
-        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white opacity-60" />
-        <span className="relative inline-flex size-1.5 rounded-full bg-white" />
-      </span>
-      Released in beta
-    </span>
-  );
-}
-
 function ShippingConstellation() {
   const CX = 300;
   const CY = 300;
   const R = 220;
-  const CENTER_R = 40;
-  const NODE_R = 15;
+  const CENTER_R = 46;
+  const NODE_R = 26;
+  const PROVIDER_ICON_SIZE = 30;
+  const CLASH_SIZE = 68;
   const DURATION = 1.4;
-  const COUNT = 8;
+  const COUNT = PROVIDERS.length;
 
   const nodes = Array.from({ length: COUNT }, (_, i) => {
     const angle = (i / COUNT) * Math.PI * 2 - Math.PI / 2;
@@ -913,10 +903,10 @@ function ShippingConstellation() {
   });
 
   const paths = nodes.map((n) => {
-    const startX = CX + CENTER_R * n.cos;
-    const startY = CY + CENTER_R * n.sin;
-    const endX = CX + (R - NODE_R - 2) * n.cos;
-    const endY = CY + (R - NODE_R - 2) * n.sin;
+    const startX = CX + (CENTER_R + 2) * n.cos;
+    const startY = CY + (CENTER_R + 2) * n.sin;
+    const endX = CX + (R - NODE_R - 4) * n.cos;
+    const endY = CY + (R - NODE_R - 4) * n.sin;
     return `M ${startX.toFixed(1)} ${startY.toFixed(1)} L ${endX.toFixed(1)} ${endY.toFixed(1)}`;
   });
 
@@ -925,7 +915,7 @@ function ShippingConstellation() {
       <svg viewBox="0 0 600 600" className="w-full max-w-[560px]" focusable="false">
         <defs>
           <filter id="sc-center-glow" x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur stdDeviation="8" result="blur" />
+            <feGaussianBlur stdDeviation="10" result="blur" />
             <feComposite in="SourceGraphic" in2="blur" operator="over" />
           </filter>
           <radialGradient id="sc-center-fill">
@@ -935,6 +925,7 @@ function ShippingConstellation() {
           </radialGradient>
         </defs>
 
+        {/* Outer orbit guide */}
         <circle
           cx={CX}
           cy={CY}
@@ -945,6 +936,7 @@ function ShippingConstellation() {
           strokeDasharray="2 6"
         />
 
+        {/* Static connector lines */}
         {paths.map((d, i) => (
           <path
             key={`sc-line-${i}`}
@@ -955,10 +947,11 @@ function ShippingConstellation() {
           />
         ))}
 
+        {/* Central node — AgentClash */}
         <circle
           cx={CX}
           cy={CY}
-          r={CENTER_R + 18}
+          r={CENTER_R + 22}
           fill="url(#sc-center-fill)"
           className="animate-results-glow"
         />
@@ -966,35 +959,56 @@ function ShippingConstellation() {
           cx={CX}
           cy={CY}
           r={CENTER_R}
-          fill="rgba(255,255,255,0.04)"
+          fill="#060606"
           stroke="rgba(255,255,255,0.55)"
           strokeWidth="1.4"
           filter="url(#sc-center-glow)"
         />
-        <circle cx={CX} cy={CY} r="5" fill="white" opacity="0.9" />
+        <svg
+          x={CX - CLASH_SIZE / 2}
+          y={CY - CLASH_SIZE / 2}
+          width={CLASH_SIZE}
+          height={CLASH_SIZE}
+          viewBox="0 0 512 512"
+        >
+          <polygon points="80,180 240,256 80,332" fill="#ffffff" opacity="0.95" />
+          <polygon points="432,180 272,256 432,332" fill="#ffffff" opacity="0.5" />
+        </svg>
 
-        {nodes.map((n) => (
-          <g key={`sc-node-${n.i}`}>
-            <circle
-              cx={n.x}
-              cy={n.y}
-              r={NODE_R + 6}
-              fill="none"
-              stroke="rgba(255,255,255,0.08)"
-              strokeWidth="1"
-            />
-            <circle
-              cx={n.x}
-              cy={n.y}
-              r={NODE_R}
-              fill="#060606"
-              stroke="rgba(255,255,255,0.32)"
-              strokeWidth="1.2"
-            />
-            <circle cx={n.x} cy={n.y} r="3" fill="white" opacity="0.55" />
-          </g>
-        ))}
+        {/* Outer nodes — model providers */}
+        {nodes.map((n) => {
+          const provider = PROVIDERS[n.i];
+          if (!provider) return null;
+          return (
+            <g key={`sc-node-${n.i}`}>
+              <circle
+                cx={n.x}
+                cy={n.y}
+                r={NODE_R + 8}
+                fill="none"
+                stroke="rgba(255,255,255,0.08)"
+                strokeWidth="1"
+              />
+              <circle
+                cx={n.x}
+                cy={n.y}
+                r={NODE_R}
+                fill="#060606"
+                stroke="rgba(255,255,255,0.32)"
+                strokeWidth="1.2"
+              />
+              <g
+                transform={`translate(${n.x - PROVIDER_ICON_SIZE / 2} ${
+                  n.y - PROVIDER_ICON_SIZE / 2
+                })`}
+              >
+                {provider.render(PROVIDER_ICON_SIZE)}
+              </g>
+            </g>
+          );
+        })}
 
+        {/* Light streaks radiating outward */}
         {paths.map((d, i) => (
           <line
             key={`sc-streak-${i}`}
@@ -1276,8 +1290,7 @@ export default function HomePage() {
       <DottedSpotlight className="px-8 sm:px-12 pt-32 pb-20 sm:pt-44 sm:pb-28">
         <div className="mx-auto max-w-[1440px] grid gap-16 md:grid-cols-[1.5fr_1fr] md:gap-20 items-center">
           <div>
-            <BetaPill />
-            <h1 className="mt-8 font-[family-name:var(--font-display)] font-normal tracking-[-0.04em] leading-[0.95] text-[clamp(3rem,7vw,7.5rem)] max-w-[16ch]">
+            <h1 className="font-[family-name:var(--font-display)] font-normal tracking-[-0.04em] leading-[0.95] text-[clamp(3rem,7vw,7.5rem)] max-w-[16ch]">
               Ship the right agent.
               <br />
               <span className="text-white/40">Not the loudest one.</span>
@@ -1820,8 +1833,7 @@ export default function HomePage() {
         <div className="mx-auto max-w-[1440px]">
           <div className="grid gap-16 md:grid-cols-[1.3fr_1fr] md:gap-20 items-center">
             <div>
-              <BetaPill />
-              <h2 className="mt-8 font-[family-name:var(--font-display)] font-normal tracking-[-0.04em] leading-[0.95] text-[clamp(2.75rem,6.5vw,6.5rem)] max-w-[18ch]">
+              <h2 className="font-[family-name:var(--font-display)] font-normal tracking-[-0.04em] leading-[0.95] text-[clamp(2.75rem,6.5vw,6.5rem)] max-w-[18ch]">
                 We&apos;re shipping more
                 <br />
                 <span className="text-white/40">than you think.</span>
