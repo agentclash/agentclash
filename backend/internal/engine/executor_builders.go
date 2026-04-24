@@ -13,18 +13,27 @@ import (
 )
 
 const (
-	submitToolName      = "submit"
-	readFileToolName    = "read_file"
-	writeFileToolName   = "write_file"
-	listFilesToolName   = "list_files"
-	searchFilesToolName = "search_files"
-	searchTextToolName  = "search_text"
-	queryJSONToolName   = "query_json"
-	querySQLToolName    = "query_sql"
-	httpRequestToolName = "http_request"
-	runTestsToolName    = "run_tests"
-	buildToolName       = "build"
-	execToolName        = "exec"
+	submitToolName            = "submit"
+	readFileToolName          = "read_file"
+	writeFileToolName         = "write_file"
+	listFilesToolName         = "list_files"
+	searchFilesToolName       = "search_files"
+	searchTextToolName        = "search_text"
+	queryJSONToolName         = "query_json"
+	querySQLToolName          = "query_sql"
+	httpRequestToolName       = "http_request"
+	browserStartToolName      = "browser_start"
+	browserOpenToolName       = "browser_open"
+	browserInfoToolName       = "browser_info"
+	browserScreenshotToolName = "browser_screenshot"
+	browserClickToolName      = "browser_click"
+	browserTypeToolName       = "browser_type"
+	browserKeyToolName        = "browser_key"
+	browserEvalToolName       = "browser_eval"
+	browserStopToolName       = "browser_stop"
+	runTestsToolName          = "run_tests"
+	buildToolName             = "build"
+	execToolName              = "exec"
 )
 
 func toolMessage(result provider.ToolResult) provider.Message {
@@ -200,6 +209,8 @@ func (e NativeExecutor) executeToolCalls(
 	networkAllowlist []string,
 	toolCallsUsedSoFar int,
 	toolCalls []provider.ToolCall,
+	runAgentID string,
+	workspaceSecrets map[string]string,
 ) ([]provider.Message, string, bool, int, error) {
 	toolMessages := make([]provider.Message, 0, len(toolCalls))
 	toolCallsUsed := 0
@@ -243,6 +254,8 @@ func (e NativeExecutor) executeToolCalls(
 			ToolPolicy:       toolPolicy,
 			NetworkAllowlist: append([]string(nil), networkAllowlist...),
 			Registry:         registry,
+			RunAgentID:       runAgentID,
+			WorkspaceSecrets: cloneStringMap(workspaceSecrets),
 		})
 		if hardErr != nil {
 			return nil, "", false, toolCallsUsed, hardErr

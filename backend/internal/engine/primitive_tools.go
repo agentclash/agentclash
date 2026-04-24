@@ -81,6 +81,12 @@ func nativePrimitiveTools(toolPolicy sandbox.ToolPolicy) map[string]Tool {
 		}
 	}
 
+	if allowsBrowserTools(toolPolicy) {
+		for name, tool := range browserPrimitiveTools() {
+			tools[name] = tool
+		}
+	}
+
 	if allowsBuildTools(toolPolicy) {
 		tools[runTestsToolName] = primitiveTool{
 			name:        runTestsToolName,

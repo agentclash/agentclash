@@ -1,0 +1,88 @@
+pack:
+  slug: browser-navigation-smoke
+  name: Browser Navigation Smoke
+  family: browser
+  description: Minimal browser-use benchmark for navigating a live page and extracting visible page state.
+
+version:
+  number: 1
+  execution_mode: native
+  sandbox:
+    network_access: true
+  tool_policy:
+    allowed_tool_kinds:
+      - browser
+  evaluation_spec:
+    name: browser-navigation-smoke-v1
+    version_number: 1
+    judge_mode: deterministic
+    validators:
+      - key: final_output_shape
+        type: json_schema
+        target: final_output
+        expected_from: "literal:{\"type\":\"object\",\"required\":[\"url\",\"title\",\"observations\"],\"properties\":{\"url\":{\"type\":\"string\",\"pattern\":\"^https://example\\\\.com/?$\"},\"title\":{\"type\":\"string\",\"minLength\":1},\"observations\":{\"type\":\"array\",\"minItems\":2,\"items\":{\"type\":\"string\",\"minLength\":3}}}}"
+      - key: mentions_example_domain
+        type: contains
+        target: final_output
+        expected_from: literal:Example Domain
+      - key: completed
+        type: json_path_match
+        target: final_output
+        expected_from: "literal:{\"path\":\"$.completed\",\"comparator\":\"equals\",\"value\":true}"
+    metrics:
+      - key: run_completed
+        type: boolean
+        collector: run_completed_successfully
+      - key: latency_ms
+        type: numeric
+        collector: run_total_latency_ms
+        unit: ms
+      - key: browser_tool_calls
+        type: numeric
+        collector: run_tool_call_count
+    scorecard:
+      dimensions:
+        - key: correctness
+          source: validators
+          gate: true
+          pass_threshold: 1
+        - key: latency
+          source: latency
+          better_direction: lower
+          normalization:
+            target: 30000
+            max: 120000
+
+challenges:
+  - key: inspect-example-domain
+    title: Inspect Example Domain
+    category: browser
+    difficulty: easy
+    instructions: |
+      Use the browser tools to open https://example.com/ and inspect the page.
+      Submit a JSON object with this shape:
+
+      {
+        "url": "https://example.com/",
+        "title": "<page title>",
+        "observations": ["<visible fact 1>", "<visible fact 2>"],
+        "completed": true
+      }
+
+      The observations must be based on the rendered browser page, not a direct
+      HTTP request.
+
+input_sets:
+  - key: default
+    name: Default
+    cases:
+      - challenge_key: inspect-example-domain
+        case_key: example-com
+        inputs:
+          - key: target_url
+            kind: text
+            value: https://example.com/
+        expectations:
+          - key: title
+            kind: text
+            value: Example Domain

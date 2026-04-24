@@ -46,6 +46,8 @@ type ToolExecutionRequest struct {
 	NetworkAllowlist []string
 	Registry         *Registry
 	DelegationChain  []string
+	RunAgentID       string
+	WorkspaceSecrets map[string]string
 }
 
 type ToolExecutionResult struct {
@@ -495,6 +497,8 @@ func (t *composedTool) Execute(ctx context.Context, request ToolExecutionRequest
 		NetworkAllowlist: append([]string(nil), request.NetworkAllowlist...),
 		Registry:         request.Registry,
 		DelegationChain:  chain,
+		RunAgentID:       request.RunAgentID,
+		WorkspaceSecrets: cloneStringMap(request.WorkspaceSecrets),
 	})
 	if execErr != nil {
 		return ToolExecutionResult{}, execErr

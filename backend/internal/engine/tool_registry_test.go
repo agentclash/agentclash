@@ -138,6 +138,8 @@ func TestRegistryResolve_ReturnsStructuredUnknownToolErrorPath(t *testing.T) {
 			ID:   "call-unknown",
 			Name: "does_not_exist",
 		}},
+		"",
+		nil,
 	)
 	if err != nil {
 		t.Fatalf("executeToolCalls returned error: %v", err)
@@ -667,6 +669,70 @@ func (p passthroughPrimitive) Category() ToolCategory {
 
 func (p passthroughPrimitive) Execute(_ context.Context, req ToolExecutionRequest) (ToolExecutionResult, error) {
 	return ToolExecutionResult{Content: string(req.Args)}, nil
+}
+
+type capturingPrimitive struct {
+	name string
+	seen *ToolExecutionRequest
+}
+
+func (p capturingPrimitive) Name() string {
+	return p.name
+}
+
+func (p capturingPrimitive) Description() string {
+	return "capture"
+}
+
+func (p capturingPrimitive) Parameters() json.RawMessage {
+	return json.RawMessage(`{"type":"object"}`)
+}
+
+func (p capturingPrimitive) Category() ToolCategory {
+	return ToolCategoryPrimitive
+}
+
+func (p capturingPrimitive) Execute(_ context.Context, req ToolExecutionRequest) (ToolExecutionResult, error) {
+	copied := req
+	copied.NetworkAllowlist = append([]string(nil), req.NetworkAllowlist...)
+	copied.DelegationChain = append([]string(nil), req.DelegationChain...)
+	copied.WorkspaceSecrets = cloneStringMap(req.WorkspaceSecrets)
+	*p.seen = copied
+	return ToolExecutionResult{Content: `{"ok":true}`}, nil
+}
+
+func TestComposedTool_ForwardsRunAgentAndWorkspaceSecrets(t *testing.T) {
+	tool, _, err := newManifestCustomTool(manifestCustomToolConfig{
+		Name:           "browser_wrapper",
+		Description:    "browser wrapper",
+		Parameters:     json.RawMessage(`{"type":"object"}`),
+		Implementation: json.RawMessage(`{"primitive":"capture","args":{}}`),
+	}, nil)
+	if err != nil {
+		t.Fatalf("create composed tool: %v", err)
+	}
+
+	var seen ToolExecutionRequest
+	registry := &Registry{
+		primitives: map[string]Tool{"capture": capturingPrimitive{name: "capture", seen: &seen}},
+	}
+	result, execErr := tool.Execute(t.Context(), ToolExecutionRequest{
+		Registry:         registry,
+		RunAgentID:       "run-agent-123",
+		WorkspaceSecrets: map[string]string{browserAPIKeySecretName: "secret-key"},
+	})
+	if execErr != nil {
+		t.Fatalf("Execute returned error: %v", execErr)
+	}
+	if result.IsError {
+		t.Fatalf("expected success, got error: %s", result.Content)
+	}
+	if seen.RunAgentID != "run-agent-123" {
+		t.Fatalf("RunAgentID = %q, want run-agent-123", seen.RunAgentID)
+	}
+	if seen.WorkspaceSecrets[browserAPIKeySecretName] != "secret-key" {
+		t.Fatalf("workspace secret was not forwarded")
+	}
 }
 
 func TestComposedTool_ChainsComposedToComposed(t *testing.T) {
