@@ -37,17 +37,16 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-          WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
 
   publish-npm:
     name: Publish to npm
     needs: release
     # Run even if the `release` job reports failure. GoReleaser uploads the
-    # GitHub Release assets early; if a later publisher (Homebrew, Winget)
-    # fails the whole job is marked failed, but the release artifacts we need
-    # are already present. `gh release download` below will fail naturally if
-    # the tag never actually produced assets, so this can't accidentally
-    # publish a partial release.
+    # GitHub Release assets early; if the later Homebrew publish fails the
+    # whole job is marked failed, but the release artifacts we need are
+    # already present. `gh release download` below will fail naturally if the
+    # tag never actually produced assets, so this can't accidentally publish a
+    # partial release.
     if: ${{ !cancelled() && needs.release.result != 'skipped' }}
     runs-on: ubuntu-latest
     permissions:

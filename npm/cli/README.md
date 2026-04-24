@@ -77,7 +77,7 @@ Routine npm releases should not be manual.
 
 ## Other install channels
 
-Source, Homebrew, Winget, and direct downloads are documented at
+Source, Homebrew, install scripts, and direct downloads are documented at
 <https://github.com/agentclash/agentclash#cli>.
 
 The full maintainer playbook, including the one-time npm Trusted Publishing bootstrap, lives at

@@ -130,7 +130,7 @@ const FAQ_ITEMS = [
   {
     question: "Does AgentClash work from the CLI?",
     answer:
-      "Yes. `agentclash run create`, `agentclash run follow`, and `agentclash regression run` are first-class commands. Runs can be fired from a developer laptop, a CI workflow, or a scheduled cron. The CLI ships via Homebrew, Winget, install scripts, and npm.",
+      "Yes. `agentclash run create`, `agentclash run follow`, and `agentclash regression run` are first-class commands. Runs can be fired from a developer laptop, a CI workflow, or a scheduled cron. The CLI ships via npm, Homebrew on macOS/Linux, and install scripts.",
   },
   {
     question: "What about red-teaming?",

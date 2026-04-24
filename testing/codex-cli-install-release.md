@@ -5,7 +5,7 @@
 - `go install` is removed from primary user install guidance while the CLI module path still points at the old GitHub owner.
 - `scripts/install/install.sh` supports Linux and macOS on amd64/arm64, respects `VERSION` and `INSTALL_DIR`, uses `curl -fsSL`, verifies release assets and `checksums.txt`, falls back to a user install directory when `/usr/local/bin` is not writable and sudo is unavailable, and prints clear uninstall guidance.
 - `scripts/install/install.ps1` supports Windows amd64/arm64, respects `-Version` and `-InstallDir`, downloads the matching zip, verifies `checksums.txt`, installs to `%LOCALAPPDATA%\agentclash\bin` by default, and prints PATH guidance when needed.
-- GoReleaser keeps the stable release model tag-triggered, publishes GitHub release assets for linux/darwin/windows amd64/arm64, and is configured for first-class Homebrew cask and Winget metadata without making prereleases overwrite stable package-manager channels.
+- GoReleaser keeps the stable release model tag-triggered, publishes GitHub release assets for linux/darwin/windows amd64/arm64, and is configured for first-class Homebrew cask metadata without making prereleases overwrite stable package-manager channels.
 - Release Please creates CLI-scoped release PRs from conventional commits affecting CLI, installer, or release config paths.
 - A main-branch snapshot workflow builds fresh CLI artifacts on CLI-impacting merges without marking every merge as a stable release.
 - `agentclash run events` authenticates SSE with the `Authorization` header and never places the CLI bearer token in the URL.
@@ -36,14 +36,13 @@
 - Manual `printf 'line1\nline2\n' | agentclash secret set KEY` should store the full value without trimming.
 
 ## E2E Tests
-- N/A for local automation — full package-manager publishing requires repository secrets, a Homebrew tap, and Winget review/acceptance.
+- N/A for local automation — full Homebrew publishing still requires repository secrets and the `agentclash/homebrew-tap` repository.
 - Browser run-event streaming remains compatible with the legacy query-token SSE path until a separate browser-safe design replaces `EventSource`.
 
 ## Manual / cURL Tests
 - Confirm the next real release creates Linux, macOS, and Windows archives plus `checksums.txt`.
 - Confirm the Homebrew tap repository `agentclash/homebrew-tap` exists and `HOMEBREW_TAP_TOKEN` can push to it before advertising Homebrew as live.
-- Confirm Winget publishing credentials/tokens are available before enabling public Winget submission.
 - Install matrix after release:
   - macOS Intel and Apple Silicon: Homebrew cask and `install.sh`.
   - Linux amd64 and arm64: Homebrew cask on Linux where supported and `install.sh`.
-  - Windows amd64 and arm64: `install.ps1`, direct zip, then Winget once manifest publishing is accepted.
+  - Windows amd64 and arm64: npm install, `install.ps1`, and direct zip.
