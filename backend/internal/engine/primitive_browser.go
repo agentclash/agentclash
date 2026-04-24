@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/sandbox"
+	"github.com/google/uuid"
 )
 
 const (
@@ -98,7 +99,7 @@ if not payload["already_running"]:
     payload["browser_id"] = browser.get("id")
     payload["live_url"] = browser.get("liveUrl")
 print(json.dumps(payload))
-`, timeout, pyLiteral(strings.TrimSpace(args.ProfileName)), pyLiteralOrDefault(strings.TrimSpace(args.ProxyCountryCode), "us"))
+`, timeout, pyOptionalString(strings.TrimSpace(args.ProfileName)), pyLiteralOrDefault(strings.TrimSpace(args.ProxyCountryCode), "us"))
 	return executeBrowserPython(ctx, request, browserStartToolName, code, false)
 }
 
@@ -147,7 +148,7 @@ func executeBrowserScreenshotTool(ctx context.Context, request ToolExecutionRequ
 	}
 	screenshotPath := strings.TrimSpace(args.Path)
 	if screenshotPath == "" {
-		screenshotPath = "/workspace/browser-screenshot.png"
+		screenshotPath = fmt.Sprintf("/workspace/browser-screenshot-%s.png", uuid.NewString())
 	}
 	if _, err := validateSandboxPath(screenshotPath); err != nil {
 		return ToolExecutionResult{Content: encodeToolErrorMessage(err.Error()), IsError: true}, nil
@@ -267,7 +268,7 @@ func executeBrowserPython(ctx context.Context, request ToolExecutionRequest, too
 		return ToolExecutionResult{}, NewFailure(StopReasonSandboxError, "execute browser harness", err)
 	}
 	if result.ExitCode != 0 {
-		message := strings.TrimSpace(scrubStderrSecrets(result.Stderr))
+		message := strings.TrimSpace(scrubStderrSecretsWithValues(result.Stderr, request.WorkspaceSecrets[browserAPIKeySecretName]))
 		if message == "" {
 			message = fmt.Sprintf("browser harness exited with code %d", result.ExitCode)
 		}
@@ -359,6 +360,13 @@ func pyLiteral(value string) string {
 func pyLiteralOrDefault(value string, fallback string) string {
 	if value == "" {
 		value = fallback
+	}
+	return pyLiteral(value)
+}
+
+func pyOptionalString(value string) string {
+	if value == "" {
+		return "None"
 	}
 	return pyLiteral(value)
 }

@@ -70,6 +70,59 @@ func TestBrowserOpenTool_ExecutesHarnessWithRunAgentNamespace(t *testing.T) {
 	}
 }
 
+func TestBrowserStartTool_OmitsProfileNameAsPythonNone(t *testing.T) {
+	session := sandbox.NewFakeSession("browser-start")
+	session.SetExecResult(sandbox.ExecResult{ExitCode: 0, Stdout: `{"ok":true}`})
+
+	result, err := executeBrowserStartTool(t.Context(), ToolExecutionRequest{
+		Args:       json.RawMessage(`{}`),
+		Session:    session,
+		ToolPolicy: sandbox.ToolPolicy{AllowedToolKinds: []string{toolKindBrowser}},
+		RunAgentID: "run-agent-123",
+	})
+	if err != nil {
+		t.Fatalf("executeBrowserStartTool returned error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("expected success, got %#v", result)
+	}
+	calls := session.ExecCalls()
+	if len(calls) != 1 {
+		t.Fatalf("exec call count = %d, want 1", len(calls))
+	}
+	if !strings.Contains(calls[0].Command[2], "profileName=None") {
+		t.Fatalf("expected omitted profile_name to be Python None, command=%s", calls[0].Command[2])
+	}
+}
+
+func TestBrowserScreenshotTool_DefaultPathIsUnique(t *testing.T) {
+	session := sandbox.NewFakeSession("browser-screenshot")
+	session.SetExecResult(sandbox.ExecResult{ExitCode: 0, Stdout: `{"ok":true}`})
+	request := ToolExecutionRequest{
+		Args:       json.RawMessage(`{}`),
+		Session:    session,
+		ToolPolicy: sandbox.ToolPolicy{AllowedToolKinds: []string{toolKindBrowser}},
+		RunAgentID: "run-agent-123",
+	}
+
+	if _, err := executeBrowserScreenshotTool(t.Context(), request); err != nil {
+		t.Fatalf("first executeBrowserScreenshotTool returned error: %v", err)
+	}
+	if _, err := executeBrowserScreenshotTool(t.Context(), request); err != nil {
+		t.Fatalf("second executeBrowserScreenshotTool returned error: %v", err)
+	}
+	calls := session.ExecCalls()
+	if len(calls) != 2 {
+		t.Fatalf("exec call count = %d, want 2", len(calls))
+	}
+	if calls[0].Command[2] == calls[1].Command[2] {
+		t.Fatalf("default screenshot commands reused the same path: %s", calls[0].Command[2])
+	}
+	if !strings.Contains(calls[0].Command[2], "/workspace/browser-screenshot-") || !strings.Contains(calls[1].Command[2], "/workspace/browser-screenshot-") {
+		t.Fatalf("default screenshot commands should use unique browser-screenshot paths: %#v", calls)
+	}
+}
+
 func TestBrowserOpenTool_DeniedWithoutBrowserKind(t *testing.T) {
 	session := sandbox.NewFakeSession("browser-denied")
 	session.SetExecFunc(func(sandbox.ExecRequest, map[string][]byte) (sandbox.ExecResult, error) {
@@ -90,6 +143,33 @@ func TestBrowserOpenTool_DeniedWithoutBrowserKind(t *testing.T) {
 	}
 	if !strings.Contains(result.Content, "browser tools are not allowed") {
 		t.Fatalf("denial content = %s", result.Content)
+	}
+}
+
+func TestBrowserTool_ScrubsRawBrowserAPIKeyFromStderr(t *testing.T) {
+	session := sandbox.NewFakeSession("browser-secret-stderr")
+	session.SetExecResult(sandbox.ExecResult{
+		ExitCode: 1,
+		Stderr:   "Traceback: request failed for key bu_secret_value",
+	})
+
+	result, err := executeBrowserInfoTool(t.Context(), ToolExecutionRequest{
+		Session:          session,
+		ToolPolicy:       sandbox.ToolPolicy{AllowedToolKinds: []string{toolKindBrowser}},
+		RunAgentID:       "run-agent-123",
+		WorkspaceSecrets: map[string]string{browserAPIKeySecretName: "bu_secret_value"},
+	})
+	if err != nil {
+		t.Fatalf("executeBrowserInfoTool returned error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatalf("expected tool error")
+	}
+	if strings.Contains(result.Content, "bu_secret_value") {
+		t.Fatalf("raw browser API key leaked in content: %s", result.Content)
+	}
+	if !strings.Contains(result.Content, redactedHeaderMarker) {
+		t.Fatalf("expected redaction marker in content: %s", result.Content)
 	}
 }
 

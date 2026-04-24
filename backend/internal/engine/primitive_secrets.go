@@ -130,22 +130,22 @@ var sensitiveResponseHeaders = map[string]struct{}{
 	"cookie":     {},
 	"set-cookie": {},
 	// Common vendor / custom auth headers.
-	"x-api-key":            {},
-	"x-apikey":             {},
-	"api-key":              {},
-	"apikey":               {},
-	"x-auth-token":         {},
-	"x-access-token":       {},
-	"x-access-key":         {},
-	"x-secret-key":         {},
-	"x-session-token":      {},
-	"x-session-id":         {},
-	"x-csrf-token":         {},
-	"x-xsrf-token":         {},
+	"x-api-key":       {},
+	"x-apikey":        {},
+	"api-key":         {},
+	"apikey":          {},
+	"x-auth-token":    {},
+	"x-access-token":  {},
+	"x-access-key":    {},
+	"x-secret-key":    {},
+	"x-session-token": {},
+	"x-session-id":    {},
+	"x-csrf-token":    {},
+	"x-xsrf-token":    {},
 	// AWS SigV4 / STS.
 	"x-amz-security-token": {},
 	// Google Cloud user credential headers.
-	"x-goog-api-key":         {},
+	"x-goog-api-key":                 {},
 	"x-goog-iam-authorization-token": {},
 	// Bare token-style names some APIs use.
 	"token": {},
@@ -210,6 +210,18 @@ func scrubStderrSecrets(stderr string) string {
 	scrubbed := stderr
 	for _, pattern := range stderrSecretPatterns {
 		scrubbed = pattern.ReplaceAllString(scrubbed, redactedHeaderMarker)
+	}
+	return scrubbed
+}
+
+func scrubStderrSecretsWithValues(stderr string, values ...string) string {
+	scrubbed := scrubStderrSecrets(stderr)
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		scrubbed = strings.ReplaceAll(scrubbed, value, redactedHeaderMarker)
 	}
 	return scrubbed
 }
