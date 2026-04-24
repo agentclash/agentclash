@@ -20,6 +20,7 @@ builds:
       - -X main.version={{.Version}}
       - -X main.commit={{.ShortCommit}}
       - -X main.date={{.Date}}
+      - -X github.com/agentclash/agentclash/cli/internal/config.defaultAPIURL=https://api.agentclash.dev
 
 archives:
   - id: archive

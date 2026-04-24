@@ -53,7 +53,8 @@ go run . run create --follow
 Resolution order for the API base URL is:
 
 ```text
---api-url > AGENTCLASH_API_URL > saved user config > http://localhost:8080
+--api-url > AGENTCLASH_API_URL > saved user config > default
+  (source builds: http://localhost:8080; released binaries: https://api.agentclash.dev)
 ```
 
 Useful automation / CI env vars:

@@ -109,7 +109,7 @@ go run . run create --help
 go run . run create --follow
 ```
 
-Use `https://api.agentclash.dev` only when you intentionally want production. Resolution order is `--api-url` > `AGENTCLASH_API_URL` > saved user config > `http://localhost:8080`.
+Resolution order is `--api-url` > `AGENTCLASH_API_URL` > saved user config > default. Source builds (`go run .`, `make build`) default to `http://localhost:8080`; released binaries default to `https://api.agentclash.dev`. Set `AGENTCLASH_API_URL=https://staging-api.agentclash.dev` for staging.
 
 ### Quick start
 
