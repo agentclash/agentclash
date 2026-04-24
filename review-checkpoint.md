@@ -110,19 +110,23 @@ Files changed:
 ### Slice 4: CLI --race-context flags
 
 Status:
-- pending
+- completed
 
 Reviewer should check:
-- `cli/` run create command exposes `--race-context` (bool) and `--race-context-cadence` (int, default 0 = use backend default).
-- Flags piped into API request body.
-- `cd cli && go vet ./...` and `go test ./...` pass.
-- CLI help text explains the flag briefly.
+- `cli/cmd/run.go` exposes `--race-context` (bool, default false) and `--race-context-cadence` (int, default 0 = backend default, [1, 10] otherwise).
+- Both flags add their fields to the POST `/v1/runs` body **only when set** (preserves backwards-compatible request shape).
+- Help text explains the 2+ agents requirement and the cadence range.
+- `cli/cmd/cmd_test.go` `executeCommand` helper now resets `--race-context` and `--race-context-cadence` so absence-assertions work across tests (cobra stores flag state on the package-level command).
+- `cd cli && go build ./...`, `go vet ./...`, `go test -short -race -count=1 ./...` all green.
 
-Relevant tests:
-- CLI test that the flag propagates into the POST body.
+Relevant tests (all green):
+- `TestRunCreateRaceContextFlagsPropagate` — flags set → body contains `race_context: true` and `race_context_min_step_gap: 4`.
+- `TestRunCreateWithoutRaceContextFlagsOmitsFields` — flags unset → neither key appears in the body.
 
 Files changed:
-- (to be filled)
+- `cli/cmd/run.go` (flag registration + body building)
+- `cli/cmd/run_create_interactive_test.go` (two new tests)
+- `cli/cmd/cmd_test.go` (flag reset between tests)
 
 ### Slice 5: Redis standings writer (event subscriber)
 

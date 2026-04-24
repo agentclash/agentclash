@@ -37,6 +37,15 @@ func executeCommand(t *testing.T, args []string, apiURL string) error {
 		valueFlag.Value.Set("")
 		valueFlag.Changed = false
 	}
+	// runCreateCmd flags persist between test calls because cobra stores the
+	// parsed values on the package-level command. Reset the race-context
+	// knobs so absence-assertions (e.g. "field NOT in body") are reliable.
+	for _, flagName := range []string{"race-context", "race-context-cadence"} {
+		if f := runCreateCmd.Flags().Lookup(flagName); f != nil {
+			f.Value.Set(f.DefValue)
+			f.Changed = false
+		}
+	}
 
 	rootCmd.SetArgs(args)
 	return rootCmd.Execute()

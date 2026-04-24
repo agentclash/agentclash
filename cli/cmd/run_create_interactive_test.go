@@ -322,3 +322,92 @@ func TestRunCreateExplicitFlagsBypassGuidedPrompts(t *testing.T) {
 		t.Fatalf("challenge_input_set_id = %v, want input-explicit", gotBody["challenge_input_set_id"])
 	}
 }
+
+func TestRunCreateRaceContextFlagsPropagate(t *testing.T) {
+	oldInteractive := isInteractiveTerminal
+	oldPickerFactory := newInteractivePicker
+	isInteractiveTerminal = func(*RunContext) bool { return true }
+	newInteractivePicker = func() interactivePicker {
+		return &fakePicker{selectIndices: nil, multiSelectIndices: nil}
+	}
+	t.Cleanup(func() {
+		isInteractiveTerminal = oldInteractive
+		newInteractivePicker = oldPickerFactory
+	})
+
+	var gotBody map[string]any
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"POST /v1/runs": func(w http.ResponseWriter, r *http.Request) {
+			if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+				t.Fatalf("decode request body: %v", err)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": "run-race", "status": "queued"})
+		},
+	})
+	defer srv.Close()
+
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+	if err := executeCommand(t, []string{
+		"run", "create",
+		"-w", "ws-1",
+		"--challenge-pack-version", "cpv-explicit",
+		"--deployments", "dep-a,dep-b",
+		"--race-context",
+		"--race-context-cadence", "4",
+	}, srv.URL); err != nil {
+		t.Fatalf("run create error: %v", err)
+	}
+
+	if gotBody["race_context"] != true {
+		t.Fatalf("race_context = %v, want true", gotBody["race_context"])
+	}
+	// JSON decodes numeric fields as float64 unless explicitly typed.
+	if got, ok := gotBody["race_context_min_step_gap"].(float64); !ok || got != 4 {
+		t.Fatalf("race_context_min_step_gap = %v (%T), want 4", gotBody["race_context_min_step_gap"], gotBody["race_context_min_step_gap"])
+	}
+}
+
+func TestRunCreateWithoutRaceContextFlagsOmitsFields(t *testing.T) {
+	oldInteractive := isInteractiveTerminal
+	oldPickerFactory := newInteractivePicker
+	isInteractiveTerminal = func(*RunContext) bool { return true }
+	newInteractivePicker = func() interactivePicker {
+		return &fakePicker{selectIndices: nil, multiSelectIndices: nil}
+	}
+	t.Cleanup(func() {
+		isInteractiveTerminal = oldInteractive
+		newInteractivePicker = oldPickerFactory
+	})
+
+	var gotBody map[string]any
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"POST /v1/runs": func(w http.ResponseWriter, r *http.Request) {
+			if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+				t.Fatalf("decode request body: %v", err)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": "run-norace", "status": "queued"})
+		},
+	})
+	defer srv.Close()
+
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+	if err := executeCommand(t, []string{
+		"run", "create",
+		"-w", "ws-1",
+		"--challenge-pack-version", "cpv-explicit",
+		"--deployments", "dep-a",
+	}, srv.URL); err != nil {
+		t.Fatalf("run create error: %v", err)
+	}
+
+	if _, present := gotBody["race_context"]; present {
+		t.Fatalf("race_context present when flag not set, want absent; body = %#v", gotBody)
+	}
+	if _, present := gotBody["race_context_min_step_gap"]; present {
+		t.Fatalf("race_context_min_step_gap present when flag not set, want absent")
+	}
+}
