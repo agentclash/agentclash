@@ -50,6 +50,10 @@ export TEMPORAL_HOST_PORT="${TEMPORAL_HOST_PORT:-localhost:7233}"
 export TEMPORAL_NAMESPACE="${TEMPORAL_NAMESPACE:-default}"
 export GOCACHE="${GOCACHE:-/tmp/go-build}"
 
+# Flip the CLI's built-in default away from hosted prod for anyone running
+# against this local stack. The CLI otherwise defaults to https://api.agentclash.dev.
+export AGENTCLASH_DEV=1
+
 if [[ -n "${OPENAI_API_KEY:-}" && -z "${AGENTCLASH_SECRET_OPENAI:-}" ]]; then
   export AGENTCLASH_SECRET_OPENAI="${OPENAI_API_KEY}"
 fi

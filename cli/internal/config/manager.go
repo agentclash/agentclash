@@ -6,9 +6,27 @@ import (
 )
 
 const (
-	defaultAPIURL = "http://localhost:8080"
+	// prodAPIURL is where a freshly-installed CLI points by default. It must
+	// be the hosted prod URL so `npm i -g agentclash` users land somewhere
+	// real on their first command.
+	prodAPIURL = "https://api.agentclash.dev"
+
+	// devAPIURL is the local stack. Only picked when AGENTCLASH_DEV=1 is set
+	// (e.g., by scripts/dev/start-local-stack.sh). Contributors editing the
+	// CLI itself export AGENTCLASH_DEV=1 once in their shell.
+	devAPIURL = "http://localhost:8080"
+
 	defaultOutput = "table"
 )
+
+// defaultAPIURL resolves the built-in default at call time so AGENTCLASH_DEV
+// can flip it without mutating a package var.
+func defaultAPIURL() string {
+	if os.Getenv("AGENTCLASH_DEV") == "1" {
+		return devAPIURL
+	}
+	return prodAPIURL
+}
 
 // ValidOutputFormats lists the user-selectable values for --output / $AGENTCLASH_OUTPUT.
 var ValidOutputFormats = []string{"table", "json", "yaml"}
@@ -65,7 +83,7 @@ func (m *Manager) APIURL() string {
 	if m.user.APIURL != "" {
 		return m.user.APIURL
 	}
-	return defaultAPIURL
+	return defaultAPIURL()
 }
 
 // WorkspaceID returns the resolved workspace ID.

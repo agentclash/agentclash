@@ -88,26 +88,88 @@ func TestManagerPrecedenceUserConfigOverridesDefaults(t *testing.T) {
 	}
 }
 
-func TestManagerDefaultValues(t *testing.T) {
+func TestManagerDefaultValuesUsesHostedProdByDefault(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", tmpDir)
 	t.Setenv("AGENTCLASH_API_URL", "")
 	t.Setenv("AGENTCLASH_WORKSPACE", "")
 	t.Setenv("AGENTCLASH_ORG", "")
+	t.Setenv("AGENTCLASH_DEV", "")
 
 	mgr, err := NewManager(FlagOverrides{})
 	if err != nil {
 		t.Fatalf("NewManager error: %v", err)
 	}
 
-	if mgr.APIURL() != defaultAPIURL {
-		t.Fatalf("APIURL = %q, want default %q", mgr.APIURL(), defaultAPIURL)
+	if mgr.APIURL() != prodAPIURL {
+		t.Fatalf("APIURL = %q, want hosted prod %q — a fresh `npm i -g agentclash` install must not point at localhost", mgr.APIURL(), prodAPIURL)
 	}
 	if mgr.WorkspaceID() != "" {
 		t.Fatalf("WorkspaceID = %q, want empty", mgr.WorkspaceID())
 	}
 	if mgr.OutputFormat() != defaultOutput {
 		t.Fatalf("OutputFormat = %q, want default %q", mgr.OutputFormat(), defaultOutput)
+	}
+}
+
+func TestAgentclashDevEnvFlipsDefaultToLocalhost(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
+	t.Setenv("AGENTCLASH_API_URL", "")
+	t.Setenv("AGENTCLASH_DEV", "1")
+
+	mgr, err := NewManager(FlagOverrides{})
+	if err != nil {
+		t.Fatalf("NewManager error: %v", err)
+	}
+
+	if mgr.APIURL() != devAPIURL {
+		t.Fatalf("APIURL = %q, want dev %q when AGENTCLASH_DEV=1", mgr.APIURL(), devAPIURL)
+	}
+}
+
+func TestAgentclashDevOnlyActivatesWhenValueIsExactlyOne(t *testing.T) {
+	// Guardrail: `AGENTCLASH_DEV=0` / `AGENTCLASH_DEV=true` must NOT flip to
+	// localhost. Only the literal string "1" counts, so shells that export
+	// boolean-ish values don't accidentally point a prod user at localhost.
+	for _, v := range []string{"0", "false", "true", "yes", ""} {
+		t.Run("val="+v, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			t.Setenv("XDG_CONFIG_HOME", tmpDir)
+			t.Setenv("AGENTCLASH_API_URL", "")
+			t.Setenv("AGENTCLASH_DEV", v)
+
+			mgr, err := NewManager(FlagOverrides{})
+			if err != nil {
+				t.Fatalf("NewManager error: %v", err)
+			}
+			if mgr.APIURL() != prodAPIURL {
+				t.Fatalf("AGENTCLASH_DEV=%q unexpectedly flipped to %q; want %q", v, mgr.APIURL(), prodAPIURL)
+			}
+		})
+	}
+}
+
+func TestAgentclashDevIsOverriddenByExplicitEnvAndFlag(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
+	t.Setenv("AGENTCLASH_DEV", "1")
+	t.Setenv("AGENTCLASH_API_URL", "https://env.example.com")
+
+	mgr, err := NewManager(FlagOverrides{})
+	if err != nil {
+		t.Fatalf("NewManager error: %v", err)
+	}
+	if mgr.APIURL() != "https://env.example.com" {
+		t.Fatalf("env should beat AGENTCLASH_DEV default, got %q", mgr.APIURL())
+	}
+
+	mgr2, err := NewManager(FlagOverrides{APIURL: "https://flag.example.com"})
+	if err != nil {
+		t.Fatalf("NewManager error: %v", err)
+	}
+	if mgr2.APIURL() != "https://flag.example.com" {
+		t.Fatalf("flag should beat env + AGENTCLASH_DEV, got %q", mgr2.APIURL())
 	}
 }
 
