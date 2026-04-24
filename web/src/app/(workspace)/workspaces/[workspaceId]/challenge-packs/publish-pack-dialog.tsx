@@ -20,7 +20,8 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { CheckCircle2, Loader2, Plus, XCircle } from "lucide-react";
+import { CheckCircle2, Loader2, Plus, XCircle, Maximize2, Minimize2 } from "lucide-react";
+import Editor from "@monaco-editor/react";
 
 interface PublishPackDialogProps {
   workspaceId: string;
@@ -41,6 +42,7 @@ export function PublishPackDialog({
     if (controlledOpen === undefined) setInternalOpen(next);
     controlledOnOpenChange?.(next);
   };
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [yaml, setYaml] = useState("");
   const [validating, setValidating] = useState(false);
   const [publishing, setPublishing] = useState(false);
@@ -52,6 +54,7 @@ export function PublishPackDialog({
     setValidating(false);
     setPublishing(false);
     setValidationResult(null);
+    setIsFullscreen(false);
   }
 
   async function handleValidate() {
@@ -142,7 +145,23 @@ export function PublishPackDialog({
         <Plus data-icon="inline-start" className="size-4" />
         Publish New Pack
       </DialogTrigger>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent
+        className={
+          isFullscreen
+            ? "max-w-[100vw] w-[100vw] h-[100vh] m-0 rounded-none p-6 flex flex-col sm:max-w-none data-closed:zoom-out-95 data-open:zoom-in-95 data-closed:fade-out-0 data-open:fade-in-0"
+            : "sm:max-w-3xl flex flex-col max-h-[90vh]"
+        }
+      >
+        <Button
+          variant="ghost"
+          onClick={() => setIsFullscreen(!isFullscreen)}
+          className="absolute top-2 right-10"
+          size="icon-sm"
+        >
+          {isFullscreen ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
+          <span className="sr-only">Toggle Fullscreen</span>
+        </Button>
+
         <DialogHeader>
           <DialogTitle>Publish Challenge Pack</DialogTitle>
           <DialogDescription>
@@ -151,34 +170,44 @@ export function PublishPackDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-3 py-2">
-          <div>
-            <label className="mb-1.5 block text-sm font-medium">
-              YAML Bundle
-            </label>
-            <textarea
+        <div className="flex-1 flex flex-col gap-3 py-2 min-h-[400px]">
+          <div className="flex-1 border rounded-lg overflow-hidden relative">
+            <Editor
+              height="100%"
+              defaultLanguage="yaml"
+              theme="vs-dark"
               value={yaml}
-              onChange={(e) => {
-                setYaml(e.target.value);
-                // Reset validation when content changes
+              onChange={(value) => {
+                setYaml(value || "");
                 if (validationResult) setValidationResult(null);
               }}
-              placeholder={`pack:\n  slug: my-pack\n  name: My Challenge Pack\n  description: ...\nversion: "1"\nchallenges:\n  - ...`}
-              rows={14}
-              className="block w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm font-[family-name:var(--font-mono)] placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/50 resize-y"
+              options={{
+                minimap: { enabled: false },
+                fontSize: 14,
+                wordWrap: "on",
+                scrollBeyondLastLine: false,
+                tabSize: 2,
+                insertSpaces: true,
+                formatOnPaste: true,
+              }}
+              loading={
+                <div className="flex items-center justify-center h-full text-muted-foreground">
+                  <Loader2 className="size-6 animate-spin" />
+                </div>
+              }
             />
           </div>
 
           {/* Validation result */}
           {isValid && (
-            <div className="flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-400">
+            <div className="flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-400 shrink-0">
               <CheckCircle2 className="size-4 shrink-0" />
               Bundle is valid — ready to publish.
             </div>
           )}
 
           {hasErrors && (
-            <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm">
+            <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm overflow-y-auto max-h-40 shrink-0">
               <div className="flex items-center gap-2 text-destructive mb-1.5">
                 <XCircle className="size-4 shrink-0" />
                 Validation failed
@@ -203,7 +232,7 @@ export function PublishPackDialog({
           )}
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="shrink-0 mt-auto">
           <Button
             variant="outline"
             onClick={() => setOpen(false)}
