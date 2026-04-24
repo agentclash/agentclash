@@ -72,12 +72,6 @@ Windows PowerShell fallback script:
 irm https://raw.githubusercontent.com/agentclash/agentclash/main/scripts/install/install.ps1 | iex
 ```
 
-Windows via Winget (pending Microsoft approval of the first manifest):
-
-```powershell
-winget install AgentClash.AgentClash
-```
-
 Direct downloads are available from [GitHub Releases](https://github.com/agentclash/agentclash/releases). The installer scripts verify `checksums.txt` before installing.
 
 More install, uninstall, and release-channel details are in [CLI Distribution](docs/cli-distribution.md).

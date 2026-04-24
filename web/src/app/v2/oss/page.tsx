@@ -35,7 +35,7 @@ const FEATURES = [
   {
     label: "CLI",
     title: "agentclash — one binary, every channel.",
-    body: "Ships via npm, Homebrew, Winget, and POSIX/PowerShell install scripts from a single GoReleaser build. Authenticate, trigger races, stream live logs, gate CI.",
+    body: "Ships via npm, Homebrew on macOS/Linux, and POSIX/PowerShell install scripts from a single GoReleaser build. Authenticate, trigger races, stream live logs, gate CI.",
   },
   {
     label: "FSL-1.1-MIT",
@@ -198,9 +198,9 @@ agentclash run create --follow`}
                 One binary. Every channel.
               </h2>
               <p className="mt-8 text-lg leading-[1.6] text-white/55">
-                A single GoReleaser build feeds npm, Homebrew, Winget, and
-                POSIX/PowerShell install scripts — pick whichever matches
-                your runner.
+                A single GoReleaser build feeds npm, Homebrew on macOS/Linux,
+                and POSIX/PowerShell install scripts, with direct downloads on
+                GitHub Releases when you want the archives themselves.
               </p>
             </div>
 
