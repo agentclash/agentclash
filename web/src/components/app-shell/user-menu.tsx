@@ -1,7 +1,6 @@
 "use client";
 
 import { useAuth } from "@workos-inc/authkit-nextjs/components";
-import { toast } from "sonner";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -10,9 +9,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { LogOut, Settings2, Sparkles } from "lucide-react";
+import { LogOut, Settings2 } from "lucide-react";
 import Link from "next/link";
-import { restartOnboarding } from "@/components/onboarding/use-onboarding-state";
 
 interface UserMenuProps {
   displayName?: string;
@@ -20,7 +18,6 @@ interface UserMenuProps {
   avatarUrl?: string;
   orgName?: string;
   orgSlug?: string;
-  workspaceId?: string;
 }
 
 export function UserMenu({
@@ -29,15 +26,8 @@ export function UserMenu({
   avatarUrl,
   orgName,
   orgSlug,
-  workspaceId,
 }: UserMenuProps) {
   const { signOut } = useAuth();
-
-  function handleRestartOnboarding() {
-    if (!workspaceId) return;
-    restartOnboarding(workspaceId);
-    toast.success("Onboarding restarted.");
-  }
   const initials = (displayName || email || "U")
     .split(" ")
     .map((w) => w[0])
@@ -77,12 +67,6 @@ export function UserMenu({
             >
               <Settings2 className="size-4" />
               Organization Settings
-            </DropdownMenuItem>
-          )}
-          {workspaceId && (
-            <DropdownMenuItem onClick={handleRestartOnboarding}>
-              <Sparkles className="size-4" />
-              Restart onboarding
             </DropdownMenuItem>
           )}
           <DropdownMenuItem onClick={() => signOut()}>

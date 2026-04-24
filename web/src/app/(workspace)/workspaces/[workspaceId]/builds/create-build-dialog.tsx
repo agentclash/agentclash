@@ -21,23 +21,12 @@ import { Loader2, Plus } from "lucide-react";
 
 interface CreateBuildDialogProps {
   workspaceId: string;
-  open?: boolean;
-  onOpenChange?: (open: boolean) => void;
 }
 
-export function CreateBuildDialog({
-  workspaceId,
-  open: controlledOpen,
-  onOpenChange: controlledOnOpenChange,
-}: CreateBuildDialogProps) {
+export function CreateBuildDialog({ workspaceId }: CreateBuildDialogProps) {
   const router = useRouter();
   const { getAccessToken } = useAccessToken();
-  const [internalOpen, setInternalOpen] = useState(false);
-  const open = controlledOpen ?? internalOpen;
-  const setOpen = (next: boolean) => {
-    if (controlledOpen === undefined) setInternalOpen(next);
-    controlledOnOpenChange?.(next);
-  };
+  const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [submitting, setSubmitting] = useState(false);
