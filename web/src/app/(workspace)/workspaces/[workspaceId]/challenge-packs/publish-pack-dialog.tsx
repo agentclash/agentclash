@@ -25,23 +25,12 @@ import Editor from "@monaco-editor/react";
 
 interface PublishPackDialogProps {
   workspaceId: string;
-  open?: boolean;
-  onOpenChange?: (open: boolean) => void;
 }
 
-export function PublishPackDialog({
-  workspaceId,
-  open: controlledOpen,
-  onOpenChange: controlledOnOpenChange,
-}: PublishPackDialogProps) {
+export function PublishPackDialog({ workspaceId }: PublishPackDialogProps) {
   const router = useRouter();
   const { getAccessToken } = useAccessToken();
-  const [internalOpen, setInternalOpen] = useState(false);
-  const open = controlledOpen ?? internalOpen;
-  const setOpen = (next: boolean) => {
-    if (controlledOpen === undefined) setInternalOpen(next);
-    controlledOnOpenChange?.(next);
-  };
+  const [open, setOpen] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [yaml, setYaml] = useState("");
   const [validating, setValidating] = useState(false);

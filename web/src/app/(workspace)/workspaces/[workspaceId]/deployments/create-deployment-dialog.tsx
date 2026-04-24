@@ -30,24 +30,15 @@ import { Loader2, Plus } from "lucide-react";
 
 interface CreateDeploymentDialogProps {
   workspaceId: string;
-  open?: boolean;
-  onOpenChange?: (open: boolean) => void;
 }
 
 export function CreateDeploymentDialog({
   workspaceId,
-  open: controlledOpen,
-  onOpenChange: controlledOnOpenChange,
 }: CreateDeploymentDialogProps) {
   const router = useRouter();
   const { getAccessToken } = useAccessToken();
 
-  const [internalOpen, setInternalOpen] = useState(false);
-  const open = controlledOpen ?? internalOpen;
-  const setOpen = (next: boolean) => {
-    if (controlledOpen === undefined) setInternalOpen(next);
-    controlledOnOpenChange?.(next);
-  };
+  const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [selectedBuildId, setSelectedBuildId] = useState("");
   const [selectedVersionId, setSelectedVersionId] = useState("");

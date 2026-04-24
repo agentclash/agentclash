@@ -114,7 +114,6 @@ vi.mock("@/components/ui/dialog", async () => {
 vi.mock("lucide-react", () => ({
   Loader2: () => React.createElement("span", null, "loader"),
   Plus: () => React.createElement("span", null, "plus"),
-  HelpCircle: () => React.createElement("span", null, "help"),
 }));
 
 async function flushPromises() {
