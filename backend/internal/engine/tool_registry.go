@@ -46,6 +46,8 @@ type ToolExecutionRequest struct {
 	NetworkAllowlist []string
 	Registry         *Registry
 	DelegationChain  []string
+	RunAgentID       string
+	WorkspaceSecrets map[string]string
 }
 
 type ToolExecutionResult struct {

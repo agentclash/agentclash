@@ -138,6 +138,8 @@ func TestRegistryResolve_ReturnsStructuredUnknownToolErrorPath(t *testing.T) {
 			ID:   "call-unknown",
 			Name: "does_not_exist",
 		}},
+		"",
+		nil,
 	)
 	if err != nil {
 		t.Fatalf("executeToolCalls returned error: %v", err)

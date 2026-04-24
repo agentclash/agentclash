@@ -334,7 +334,17 @@ func (e NativeExecutor) Execute(ctx context.Context, executionContext repository
 			return Result{}, NewFailure(StopReasonProviderError, "assistant response did not contain a tool call or submit action", nil)
 		}
 
-		toolMessages, finalOutput, completed, toolCallCount, toolErr := e.executeToolCalls(runCtx, session, registry, sandboxRequest.ToolPolicy, sandboxRequest.NetworkAllowlist, state.toolCallCount, response.ToolCalls)
+		toolMessages, finalOutput, completed, toolCallCount, toolErr := e.executeToolCalls(
+			runCtx,
+			session,
+			registry,
+			sandboxRequest.ToolPolicy,
+			sandboxRequest.NetworkAllowlist,
+			state.toolCallCount,
+			response.ToolCalls,
+			executionContext.RunAgent.ID.String(),
+			workspaceSecrets,
+		)
 		state.toolCallCount += toolCallCount
 		if toolErr != nil {
 			return Result{}, toolErr
