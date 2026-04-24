@@ -91,6 +91,12 @@ func (m *RunCreationManager) CreateRun(ctx context.Context, caller Caller, input
 			Message: "at least one agent deployment id is required",
 		}
 	}
+	if input.RaceContext && len(input.AgentDeploymentIDs) < 2 {
+		return CreateRunResult{}, RunCreationValidationError{
+			Code:    "invalid_race_context",
+			Message: "race_context requires at least two agents",
+		}
+	}
 	if input.OfficialPackMode == "" {
 		input.OfficialPackMode = domain.OfficialPackModeFull
 	}
@@ -273,6 +279,8 @@ func (m *RunCreationManager) CreateRun(ctx context.Context, caller Caller, input
 		ExecutionPlan:          executionPlan,
 		RunAgents:              runAgents,
 		CaseSelections:         caseSelections,
+		RaceContext:            input.RaceContext,
+		RaceContextMinStepGap:  input.RaceContextMinStepGap,
 	})
 	if err != nil {
 		return CreateRunResult{}, fmt.Errorf("create queued run: %w", err)

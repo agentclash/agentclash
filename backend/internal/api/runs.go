@@ -32,6 +32,12 @@ type createRunRequest struct {
 	RegressionSuiteIDs     []string `json:"regression_suite_ids,omitempty"`
 	RegressionCaseIDs      []string `json:"regression_case_ids,omitempty"`
 	OfficialPackMode       string   `json:"official_pack_mode,omitempty"`
+	// RaceContext opts the run into live peer-standings injection. See #400.
+	// Requires at least two agents; a request with true + one agent is 400.
+	RaceContext bool `json:"race_context,omitempty"`
+	// RaceContextMinStepGap overrides the default cadence threshold. When
+	// omitted, the executor uses the backend default. Valid range [1, 10].
+	RaceContextMinStepGap *int `json:"race_context_min_step_gap,omitempty"`
 }
 
 type CreateRunInput struct {
@@ -43,6 +49,8 @@ type CreateRunInput struct {
 	AgentDeploymentIDs     []uuid.UUID
 	RegressionSuiteIDs     []uuid.UUID
 	RegressionCaseIDs      []uuid.UUID
+	RaceContext            bool
+	RaceContextMinStepGap  *int32
 }
 
 type CreateRunResult struct {
@@ -59,6 +67,8 @@ type createRunResponse struct {
 	ExecutionMode          string           `json:"execution_mode"`
 	CreatedAt              time.Time        `json:"created_at"`
 	QueuedAt               *time.Time       `json:"queued_at,omitempty"`
+	RaceContext            bool             `json:"race_context"`
+	RaceContextMinStepGap  *int32           `json:"race_context_min_step_gap,omitempty"`
 	Links                  runLinksResponse `json:"links"`
 }
 
@@ -178,6 +188,8 @@ func buildCreateRunResponse(run domain.Run) createRunResponse {
 		ExecutionMode:          run.ExecutionMode,
 		CreatedAt:              run.CreatedAt,
 		QueuedAt:               run.QueuedAt,
+		RaceContext:            run.RaceContext,
+		RaceContextMinStepGap:  run.RaceContextMinStepGap,
 		Links:                  buildRunLinks(run.ID),
 	}
 }
@@ -273,6 +285,19 @@ func decodeCreateRunRequest(r *http.Request) (CreateRunInput, error) {
 		regressionCaseIDs = append(regressionCaseIDs, caseID)
 	}
 
+	var raceContextMinStepGap *int32
+	if body.RaceContextMinStepGap != nil {
+		gap := *body.RaceContextMinStepGap
+		if gap < 1 || gap > 10 {
+			return CreateRunInput{}, RunCreationValidationError{
+				Code:    "invalid_race_context_min_step_gap",
+				Message: "race_context_min_step_gap must be between 1 and 10",
+			}
+		}
+		gap32 := int32(gap)
+		raceContextMinStepGap = &gap32
+	}
+
 	return CreateRunInput{
 		WorkspaceID:            workspaceID,
 		ChallengePackVersionID: challengePackVersionID,
@@ -282,6 +307,8 @@ func decodeCreateRunRequest(r *http.Request) (CreateRunInput, error) {
 		AgentDeploymentIDs:     deploymentIDs,
 		RegressionSuiteIDs:     regressionSuiteIDs,
 		RegressionCaseIDs:      regressionCaseIDs,
+		RaceContext:            body.RaceContext,
+		RaceContextMinStepGap:  raceContextMinStepGap,
 	}, nil
 }
 

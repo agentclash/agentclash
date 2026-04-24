@@ -161,6 +161,8 @@ type CreateQueuedRunParams struct {
 	ExecutionPlan          json.RawMessage
 	RunAgents              []CreateQueuedRunAgentParams
 	CaseSelections         []CreateQueuedRunCaseSelectionParams
+	RaceContext            bool
+	RaceContextMinStepGap  *int32
 }
 
 type CreateQueuedRunResult struct {
@@ -504,6 +506,8 @@ func createQueuedRunWithQueries(
 		ExecutionMode:          params.ExecutionMode,
 		ExecutionPlan:          executionPlan,
 		QueuedAt:               queuedAtValue,
+		RaceContext:            params.RaceContext,
+		RaceContextMinStepGap:  cloneInt32Ptr(params.RaceContextMinStepGap),
 	})
 	if err != nil {
 		return CreateQueuedRunResult{}, fmt.Errorf("create run: %w", err)

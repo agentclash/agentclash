@@ -198,6 +198,34 @@ func TestRunCreationManagerRejectsEmptyDeployments(t *testing.T) {
 	}
 }
 
+func TestRunCreationManagerRejectsRaceContextWithSingleAgent(t *testing.T) {
+	workspaceID := uuid.New()
+	manager := NewRunCreationManager(NewCallerWorkspaceAuthorizer(), &fakeRunCreationRepository{}, &fakeRunWorkflowStarter{}, nil)
+
+	_, err := manager.CreateRun(context.Background(), Caller{
+		UserID: uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: "workspace_member"},
+		},
+	}, CreateRunInput{
+		WorkspaceID:            workspaceID,
+		ChallengePackVersionID: uuid.New(),
+		AgentDeploymentIDs:     []uuid.UUID{uuid.New()},
+		RaceContext:            true,
+	})
+	if err == nil {
+		t.Fatalf("expected validation error when race_context is enabled with one agent")
+	}
+
+	var validationErr RunCreationValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("error = %v, want RunCreationValidationError", err)
+	}
+	if validationErr.Code != "invalid_race_context" {
+		t.Fatalf("validation code = %q, want invalid_race_context", validationErr.Code)
+	}
+}
+
 func TestRunCreationManagerRejectsChallengePackVersionNotFound(t *testing.T) {
 	workspaceID := uuid.New()
 	deploymentID := uuid.New()

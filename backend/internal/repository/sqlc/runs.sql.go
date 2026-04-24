@@ -47,7 +47,9 @@ INSERT INTO runs (
     started_at,
     finished_at,
     cancelled_at,
-    failed_at
+    failed_at,
+    race_context,
+    race_context_min_step_gap
 ) VALUES (
     $1,
     $2,
@@ -65,7 +67,9 @@ INSERT INTO runs (
     $14,
     $15,
     $16,
-    $17
+    $17,
+    $18,
+    $19
 )
 RETURNING id, organization_id, workspace_id, challenge_pack_version_id, challenge_input_set_id, created_by_user_id, name, status, execution_mode, temporal_workflow_id, temporal_run_id, execution_plan, queued_at, started_at, finished_at, cancelled_at, failed_at, created_at, updated_at, official_pack_mode, eval_session_id, race_context, race_context_min_step_gap
 `
@@ -88,6 +92,8 @@ type CreateRunParams struct {
 	FinishedAt             pgtype.Timestamptz
 	CancelledAt            pgtype.Timestamptz
 	FailedAt               pgtype.Timestamptz
+	RaceContext            bool
+	RaceContextMinStepGap  *int32
 }
 
 func (q *Queries) CreateRun(ctx context.Context, arg CreateRunParams) (Run, error) {
@@ -109,6 +115,8 @@ func (q *Queries) CreateRun(ctx context.Context, arg CreateRunParams) (Run, erro
 		arg.FinishedAt,
 		arg.CancelledAt,
 		arg.FailedAt,
+		arg.RaceContext,
+		arg.RaceContextMinStepGap,
 	)
 	var i Run
 	err := row.Scan(

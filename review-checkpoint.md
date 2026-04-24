@@ -79,22 +79,33 @@ Files changed:
 ### Slice 3: API field + OpenAPI spec + N<2 validation
 
 Status:
-- pending
+- completed
 
 Reviewer should check:
-- `POST /workspaces/{id}/runs` request schema accepts optional `race_context` (bool) and `race_context_min_step_gap` (int).
-- Validation: `race_context: true` with `agents.length < 2` returns `400`.
-- `RunDetail` response includes both fields.
-- `docs/api-server/openapi.yaml` updated: request schema, response schema.
-- `npx @redocly/cli lint docs/api-server/openapi.yaml` passes.
+- `createRunRequest` accepts optional `race_context` (bool, default false) and `race_context_min_step_gap` (pointer int).
+- Decoder validates cadence range `[1, 10]` with code `invalid_race_context_min_step_gap`.
+- `RunCreationManager.CreateRun` rejects `race_context && len(agents) < 2` with code `invalid_race_context`.
+- Fields flow through `CreateRunInput` → `CreateQueuedRunParams` → sqlc `CreateRunParams` → DB.
+- Both `createRunResponse` and `getRunResponse` return the new fields. Omitted cadence in the response is `null` (via `omitempty` + pointer).
+- OpenAPI `CreateRunRequest`, `CreateRunResponse`, `RunDetail` schemas updated. `@redocly/cli lint` passes.
+- Backwards compat: omitted field defaults to false; existing `TestCreateRunEndpointReturnsCreated` still passes without changes.
 
-Relevant tests:
-- Handler test: 400 when race_context + N<2.
-- Handler test: 201 when race_context + N≥2, fields persist.
-- Handler test: backwards-compat — omitted field defaults to false.
+Relevant tests (all green):
+- `TestCreateRunEndpointPropagatesRaceContext` — race_context=true + N=2 + cadence=5 → 201, fake sees correct input, response body echoes fields.
+- `TestCreateRunEndpointRejectsRaceContextCadenceOutOfRange` — cadence=11 → 400 with `invalid_race_context_min_step_gap`.
+- `TestRunCreationManagerRejectsRaceContextWithSingleAgent` — race_context=true + N=1 → `invalid_race_context`.
+- Full backend `go test ./...` green.
 
 Files changed:
-- (to be filled)
+- `backend/db/queries/runs.sql` (INSERT columns + params)
+- `backend/internal/repository/repository.go` (`CreateQueuedRunParams` + sqlc call)
+- `backend/internal/api/runs.go` (request + input + response + decoder cadence check)
+- `backend/internal/api/run_service.go` (N<2 validation + pass-through)
+- `backend/internal/api/run_reads.go` (`getRunResponse` + builder)
+- `backend/internal/api/runs_test.go` (two endpoint tests)
+- `backend/internal/api/run_service_test.go` (manager test)
+- `backend/internal/repository/sqlc/runs.sql.go` (regenerated)
+- `docs/api-server/openapi.yaml` (three schemas)
 
 ### Slice 4: CLI --race-context flags
 

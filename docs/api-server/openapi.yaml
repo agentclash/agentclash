@@ -4909,6 +4909,22 @@ components:
             Optional. Defaults to `full`. Use `suite_only` to execute only the
             resolved regression selection instead of unioning it with the full
             official pack case set.
+        race_context:
+          type: boolean
+          default: false
+          description: >
+            Optional. When true, the executor injects live peer standings into
+            each agent's message stream during the run. Requires at least two
+            agents; `true` with a single agent is rejected with code
+            `invalid_race_context`. See issue #400.
+        race_context_min_step_gap:
+          type: integer
+          minimum: 1
+          maximum: 10
+          description: >
+            Optional. Overrides the default cadence (minimum steps between
+            standings injections). Null / omitted uses the backend default.
+            Only meaningful when `race_context` is true.
 
     CreateEvalSessionRequest:
       type: object
@@ -5480,7 +5496,7 @@ components:
 
     CreateRunResponse:
       type: object
-      required: [id, workspace_id, challenge_pack_version_id, official_pack_mode, status, execution_mode, created_at, links]
+      required: [id, workspace_id, challenge_pack_version_id, official_pack_mode, status, execution_mode, race_context, created_at, links]
       properties:
         id:
           type: string
@@ -5507,6 +5523,16 @@ components:
         queued_at:
           type: string
           format: date-time
+        race_context:
+          type: boolean
+          description: >
+            Whether live peer-standings injection is enabled for this run.
+        race_context_min_step_gap:
+          type: integer
+          minimum: 1
+          maximum: 10
+          description: >
+            Per-run cadence override. Null when the backend default is in use.
         links:
           $ref: "#/components/schemas/RunLinks"
 
@@ -5530,7 +5556,7 @@ components:
 
     RunDetail:
       type: object
-      required: [id, workspace_id, challenge_pack_version_id, official_pack_mode, name, status, execution_mode, created_at, updated_at, links]
+      required: [id, workspace_id, challenge_pack_version_id, official_pack_mode, name, status, execution_mode, race_context, created_at, updated_at, links]
       properties:
         id:
           type: string
@@ -5578,6 +5604,16 @@ components:
         updated_at:
           type: string
           format: date-time
+        race_context:
+          type: boolean
+          description: >
+            Whether live peer-standings injection is enabled for this run.
+        race_context_min_step_gap:
+          type: integer
+          minimum: 1
+          maximum: 10
+          description: >
+            Per-run cadence override. Null when the backend default is in use.
         regression_coverage:
           $ref: "#/components/schemas/RegressionCoverage"
         links:
