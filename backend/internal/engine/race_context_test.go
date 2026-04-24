@@ -3,9 +3,11 @@ package engine
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/agentclash/agentclash/backend/internal/domain"
 	"github.com/agentclash/agentclash/backend/internal/provider"
 	"github.com/agentclash/agentclash/backend/internal/racecontext"
 	"github.com/agentclash/agentclash/backend/internal/repository"
@@ -15,10 +17,16 @@ import (
 
 type fakeStandingsStore struct {
 	snapshot map[uuid.UUID]racecontext.StandingsEntry
+	updates  []racecontext.StandingsEntry
 	err      error
 }
 
-func (f *fakeStandingsStore) Update(context.Context, uuid.UUID, racecontext.StandingsEntry) error {
+func (f *fakeStandingsStore) Update(_ context.Context, _ uuid.UUID, update racecontext.StandingsEntry) error {
+	if f.snapshot == nil {
+		f.snapshot = map[uuid.UUID]racecontext.StandingsEntry{}
+	}
+	f.updates = append(f.updates, update)
+	f.snapshot[update.RunAgentID] = racecontext.MergeEntry(f.snapshot[update.RunAgentID], update)
 	return nil
 }
 
@@ -330,6 +338,73 @@ func TestMaybeInjectRaceStandingsTracksPeerStatesEvenWhenNotInjecting(t *testing
 	}
 	if state.lastPeerStates[peer] != racecontext.StandingsStateRunning {
 		t.Errorf("lastPeerStates should refresh even on no-inject; got %+v", state.lastPeerStates)
+	}
+}
+
+func TestMaybeInjectRaceStandingsSeedsMissingPeersAsNotStarted(t *testing.T) {
+	obs := &captureObserver{}
+	self := uuid.New()
+	peer := uuid.New()
+	store := &fakeStandingsStore{
+		snapshot: map[uuid.UUID]racecontext.StandingsEntry{
+			self: {RunAgentID: self, Model: "grok-4", Step: 3, State: racecontext.StandingsStateRunning},
+		},
+	}
+	executor := NewNativeExecutor(nil, nil, obs).WithStandingsStore(store)
+
+	execCtx := repository.RunAgentExecutionContext{}
+	execCtx.Run.ID = uuid.New()
+	execCtx.Run.RaceContext = true
+	execCtx.RunAgent.ID = self
+	execCtx.RunAgents = []domain.RunAgent{
+		{ID: self, RunID: execCtx.Run.ID},
+		{ID: peer, RunID: execCtx.Run.ID},
+	}
+	state := &loopState{stepCount: 3}
+
+	if err := executor.maybeInjectRaceStandings(context.Background(), execCtx, state); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(obs.injections) != 1 {
+		t.Fatalf("expected 1 injection event, got %d", len(obs.injections))
+	}
+	text := obs.injections[0].StandingsSnapshot
+	if !strings.Contains(text, "2 agents running, 0 submitted.") {
+		t.Fatalf("standings header = %q, want missing peer counted as running/not_started", text)
+	}
+	if !strings.Contains(text, "agent-"+peer.String()[:8]+" — not started") {
+		t.Fatalf("standings snapshot = %q, want missing peer rendered as not started", text)
+	}
+}
+
+func TestSyncRaceContextStepStartUpdatesStoreBeforeSnapshot(t *testing.T) {
+	self := uuid.New()
+	store := &fakeStandingsStore{}
+	executor := NewNativeExecutor(nil, nil, &captureObserver{}).WithStandingsStore(store)
+
+	execCtx := repository.RunAgentExecutionContext{}
+	execCtx.Run.ID = uuid.New()
+	execCtx.Run.RaceContext = true
+	execCtx.RunAgent.ID = self
+	execCtx.Deployment.ModelAlias = &repository.ModelAliasExecutionContext{
+		ModelCatalogEntry: repository.ModelCatalogEntryExecutionContext{ProviderModelID: "gpt-5"},
+	}
+	state := &loopState{stepCount: 3}
+
+	executor.syncRaceContextStepStart(context.Background(), execCtx, state)
+
+	entry := store.snapshot[self]
+	if entry.RunAgentID != self {
+		t.Fatalf("synced run_agent_id = %s, want %s", entry.RunAgentID, self)
+	}
+	if entry.Step != 3 || entry.State != racecontext.StandingsStateRunning {
+		t.Fatalf("synced standings = step %d state %q, want step 3 running", entry.Step, entry.State)
+	}
+	if entry.Model != "gpt-5" {
+		t.Fatalf("synced model = %q, want gpt-5", entry.Model)
+	}
+	if entry.StartedAt == nil {
+		t.Fatalf("synced standings should set started_at")
 	}
 }
 

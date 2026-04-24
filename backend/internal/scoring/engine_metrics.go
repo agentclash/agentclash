@@ -84,31 +84,22 @@ func collectMetric(metric MetricDeclaration, evidence extractedEvidence, validat
 			"collector": metric.Collector,
 		})
 	case "run_total_tokens":
-		// Issue #400 slice 8: total tokens now includes race-context
-		// injection tokens (see run_race_context_tokens). For runs
-		// without race_context this is byte-identical to pre-#400:
-		// raceContextTokens is 0 and the math collapses.
-		if evidence.totalTokens == nil && evidence.raceContextTokens == 0 {
+		if evidence.totalTokens == nil {
 			return unavailableMetric("total token usage is unavailable", metric)
 		}
-		var agent float64
-		if evidence.totalTokens != nil {
-			agent = *evidence.totalTokens
-		}
-		total := agent + evidence.raceContextTokens
-		return OutputStateAvailable, floatPtr(total), nil, nil, "", mustMarshalJSON(map[string]any{
+		return OutputStateAvailable, floatPtr(*evidence.totalTokens), nil, nil, "", mustMarshalJSON(map[string]any{
 			"state":     OutputStateAvailable,
 			"collector": metric.Collector,
 		})
 	case "run_agent_tokens":
-		// Model-authored input+output only; excludes race-context
-		// injection tokens. Use this collector for spend-based
-		// downstream logic so observational injections don't inflate
-		// billable totals.
 		if evidence.totalTokens == nil {
 			return unavailableMetric("agent token usage is unavailable", metric)
 		}
-		return OutputStateAvailable, floatPtr(*evidence.totalTokens), nil, nil, "", mustMarshalJSON(map[string]any{
+		agentTokens := *evidence.totalTokens - evidence.raceContextTokens
+		if agentTokens < 0 {
+			agentTokens = 0
+		}
+		return OutputStateAvailable, floatPtr(agentTokens), nil, nil, "", mustMarshalJSON(map[string]any{
 			"state":     OutputStateAvailable,
 			"collector": metric.Collector,
 		})

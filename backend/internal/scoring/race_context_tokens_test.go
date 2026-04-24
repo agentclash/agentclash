@@ -54,10 +54,11 @@ func TestRunTotalTokensUnchangedWithoutRaceContext(t *testing.T) {
 	}
 }
 
-// TestRunTotalTokensSumsAgentAndRaceContext exercises a race-context run:
-// model-authored tokens stay in run_agent_tokens, injection tokens land in
-// run_race_context_tokens, and run_total_tokens sums both.
-func TestRunTotalTokensSumsAgentAndRaceContext(t *testing.T) {
+// TestRaceContextTokenSplitUsesProviderTotalOnce exercises a race-context
+// run: provider total usage already includes the injected prompt bytes, so
+// run_total_tokens must not add them a second time. The estimated injected
+// tokens are exposed separately and subtracted from run_agent_tokens.
+func TestRaceContextTokenSplitUsesProviderTotalOnce(t *testing.T) {
 	spec := EvaluationSpec{
 		Name:          "tokens-with-race",
 		VersionNumber: 1,
@@ -91,14 +92,14 @@ func TestRunTotalTokensSumsAgentAndRaceContext(t *testing.T) {
 	total := evaluation.MetricResults[0].NumericValue
 	agent := evaluation.MetricResults[1].NumericValue
 	race := evaluation.MetricResults[2].NumericValue
-	if agent == nil || *agent != 2000 {
-		t.Errorf("run_agent_tokens = %v, want 2000 (model-authored only)", agent)
+	if total == nil || *total != 2000 {
+		t.Errorf("run_total_tokens = %v, want 2000 (provider total as-is)", total)
+	}
+	if agent == nil || *agent != 1745 {
+		t.Errorf("run_agent_tokens = %v, want 1745 (2000 total - 255 race)", agent)
 	}
 	if race == nil || *race != 255 {
 		t.Errorf("run_race_context_tokens = %v, want 255 (120 + 135)", race)
-	}
-	if total == nil || *total != 2255 {
-		t.Errorf("run_total_tokens = %v, want 2255 (2000 agent + 255 race)", total)
 	}
 }
 

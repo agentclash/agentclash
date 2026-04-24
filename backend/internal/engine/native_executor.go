@@ -318,6 +318,7 @@ func (e NativeExecutor) Execute(ctx context.Context, executionContext repository
 		if observerErr := e.observer.OnStepStart(runCtx, state.stepCount); observerErr != nil {
 			return Result{}, NewFailure(StopReasonObserverError, "record native step start event", observerErr)
 		}
+		e.syncRaceContextStepStart(runCtx, executionContext, &state)
 
 		if injectErr := e.maybeInjectRaceStandings(runCtx, executionContext, &state); injectErr != nil {
 			return Result{}, NewFailure(StopReasonObserverError, "record race-context standings injection", injectErr)
@@ -443,9 +444,14 @@ func (e NativeExecutor) maybeInjectRaceStandings(ctx context.Context, executionC
 		)
 		return nil
 	}
+	snapshot = seedMissingStandingsPeers(snapshot, executionContext)
+	snapshot = seedCurrentStandingsAgent(snapshot, executionContext, state.stepCount)
 	if len(snapshot) == 0 {
 		// No peers have recorded standings yet. Nothing meaningful to
 		// inject; try again next eligible step.
+		return nil
+	}
+	if !hasRaceContextPeer(snapshot, executionContext.RunAgent.ID) {
 		return nil
 	}
 
@@ -488,6 +494,93 @@ func (e NativeExecutor) maybeInjectRaceStandings(ctx context.Context, executionC
 		MinStepGap:        minGap,
 	}
 	return e.observer.OnStandingsInjected(ctx, injection)
+}
+
+func (e NativeExecutor) syncRaceContextStepStart(ctx context.Context, executionContext repository.RunAgentExecutionContext, state *loopState) {
+	if !executionContext.Run.RaceContext || e.standingsStore == nil {
+		return
+	}
+	now := time.Now().UTC()
+	update := racecontext.StandingsEntry{
+		RunAgentID: executionContext.RunAgent.ID,
+		Model:      raceContextModelLabel(executionContext),
+		Step:       state.stepCount,
+		State:      racecontext.StandingsStateRunning,
+		StartedAt:  &now,
+	}
+	if err := e.standingsStore.Update(ctx, executionContext.Run.ID, update); err != nil {
+		slog.Default().Warn("race-context: step-start standings update failed",
+			"run_id", executionContext.Run.ID,
+			"run_agent_id", executionContext.RunAgent.ID,
+			"step", state.stepCount,
+			"error", err,
+		)
+	}
+}
+
+func seedMissingStandingsPeers(snapshot map[uuid.UUID]racecontext.StandingsEntry, executionContext repository.RunAgentExecutionContext) map[uuid.UUID]racecontext.StandingsEntry {
+	if len(executionContext.RunAgents) == 0 {
+		return snapshot
+	}
+	seeded := make(map[uuid.UUID]racecontext.StandingsEntry, len(snapshot)+len(executionContext.RunAgents))
+	for agentID, entry := range snapshot {
+		if entry.RunAgentID == uuid.Nil {
+			entry.RunAgentID = agentID
+		}
+		if entry.State == "" {
+			entry.State = racecontext.StandingsStateNotStarted
+		}
+		seeded[agentID] = entry
+	}
+	for _, runAgent := range executionContext.RunAgents {
+		if _, ok := seeded[runAgent.ID]; ok {
+			continue
+		}
+		seeded[runAgent.ID] = racecontext.StandingsEntry{
+			RunAgentID: runAgent.ID,
+			State:      racecontext.StandingsStateNotStarted,
+		}
+	}
+	return seeded
+}
+
+func seedCurrentStandingsAgent(snapshot map[uuid.UUID]racecontext.StandingsEntry, executionContext repository.RunAgentExecutionContext, step int) map[uuid.UUID]racecontext.StandingsEntry {
+	if executionContext.RunAgent.ID == uuid.Nil {
+		return snapshot
+	}
+	seeded := make(map[uuid.UUID]racecontext.StandingsEntry, len(snapshot)+1)
+	for agentID, entry := range snapshot {
+		seeded[agentID] = entry
+	}
+	entry := seeded[executionContext.RunAgent.ID]
+	entry.RunAgentID = executionContext.RunAgent.ID
+	if entry.Model == "" {
+		entry.Model = raceContextModelLabel(executionContext)
+	}
+	if step > entry.Step {
+		entry.Step = step
+	}
+	if entry.State == "" || entry.State == racecontext.StandingsStateNotStarted {
+		entry.State = racecontext.StandingsStateRunning
+	}
+	seeded[executionContext.RunAgent.ID] = entry
+	return seeded
+}
+
+func hasRaceContextPeer(snapshot map[uuid.UUID]racecontext.StandingsEntry, selfID uuid.UUID) bool {
+	for agentID := range snapshot {
+		if agentID != selfID {
+			return true
+		}
+	}
+	return false
+}
+
+func raceContextModelLabel(executionContext repository.RunAgentExecutionContext) string {
+	if executionContext.Deployment.ModelAlias == nil {
+		return ""
+	}
+	return executionContext.Deployment.ModelAlias.ModelCatalogEntry.ProviderModelID
 }
 
 // evaluateRaceContextCadence decides whether to inject and, if so, what
