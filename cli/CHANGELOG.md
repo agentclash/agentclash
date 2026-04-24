@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.0](https://github.com/agentclash/agentclash/compare/v0.4.3...v0.5.0) (2026-04-24)
+
+
+### Features
+
+* **cli:** default released binaries to https://api.agentclash.dev ([95e9d0d](https://github.com/agentclash/agentclash/commit/95e9d0d0855e9d4673be30a41f9c6ca95e2ae196))
+* **cli:** default released binaries to https://api.agentclash.dev ([6360d6b](https://github.com/agentclash/agentclash/commit/6360d6bc6dc73a96c8f37374aa1fd316db48c3aa))
+
 ## [0.4.3](https://github.com/agentclash/agentclash/compare/v0.4.2...v0.4.3) (2026-04-22)
 
 
