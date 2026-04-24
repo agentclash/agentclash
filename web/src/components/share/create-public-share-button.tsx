@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
 import { Copy, Loader2, Share2 } from "lucide-react";
 import { toast } from "sonner";
@@ -32,6 +32,10 @@ export function CreatePublicShareButton({
   const { getAccessToken } = useAccessToken();
   const [sharing, setSharing] = useState(false);
   const [url, setUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    setUrl(null);
+  }, [resourceType, resourceId]);
 
   async function handleShare() {
     if (url) {

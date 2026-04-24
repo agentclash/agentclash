@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
+import { PublicShareRenderer } from "@/components/share/public-share-renderers";
 import { createApiClient } from "@/lib/api/client";
 import { ApiError } from "@/lib/api/errors";
 import type { PublicShareResponse } from "@/lib/api/types";
@@ -54,15 +55,7 @@ export default async function PublicSharePage({
         </header>
 
         <PublicResourceSummary share={share} />
-
-        <section className="rounded-lg border border-border bg-card">
-          <div className="border-b border-border px-4 py-3">
-            <h2 className="text-sm font-semibold">Public payload</h2>
-          </div>
-          <pre className="max-h-[70vh] overflow-auto p-4 text-xs leading-relaxed text-muted-foreground">
-            {JSON.stringify(share.resource, null, 2)}
-          </pre>
-        </section>
+        <PublicShareRenderer resource={share.resource as Record<string, unknown>} />
       </div>
     </main>
   );

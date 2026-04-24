@@ -66,14 +66,18 @@ type PublicChallengePackVersionSnapshot struct {
 }
 
 type PublicRunScorecardSnapshot struct {
-	Run       domain.Run
-	Scorecard RunScorecard
+	Run             domain.Run
+	Agents          []domain.RunAgent
+	AgentScorecards []RunAgentScorecard
+	Scorecard       RunScorecard
 }
 
 type PublicRunAgentScorecardSnapshot struct {
-	Run       domain.Run
-	RunAgent  domain.RunAgent
-	Scorecard RunAgentScorecard
+	Run             domain.Run
+	RunAgent        domain.RunAgent
+	SiblingAgents   []domain.RunAgent
+	AgentScorecards []RunAgentScorecard
+	Scorecard       RunAgentScorecard
 }
 
 type PublicRunAgentReplaySnapshot struct {
@@ -246,11 +250,19 @@ func (r *Repository) GetPublicRunScorecardSnapshot(ctx context.Context, runID uu
 	if err != nil {
 		return PublicRunScorecardSnapshot{}, err
 	}
+	agents, err := r.ListRunAgentsByRunID(ctx, runID)
+	if err != nil {
+		return PublicRunScorecardSnapshot{}, err
+	}
+	agentScorecards, err := r.listAvailableRunAgentScorecards(ctx, agents)
+	if err != nil {
+		return PublicRunScorecardSnapshot{}, err
+	}
 	scorecard, err := r.GetRunScorecardByRunID(ctx, runID)
 	if err != nil {
 		return PublicRunScorecardSnapshot{}, err
 	}
-	return PublicRunScorecardSnapshot{Run: run, Scorecard: scorecard}, nil
+	return PublicRunScorecardSnapshot{Run: run, Agents: agents, AgentScorecards: agentScorecards, Scorecard: scorecard}, nil
 }
 
 func (r *Repository) GetPublicRunAgentScorecardSnapshot(ctx context.Context, runAgentID uuid.UUID) (PublicRunAgentScorecardSnapshot, error) {
@@ -262,11 +274,19 @@ func (r *Repository) GetPublicRunAgentScorecardSnapshot(ctx context.Context, run
 	if err != nil {
 		return PublicRunAgentScorecardSnapshot{}, err
 	}
+	agents, err := r.ListRunAgentsByRunID(ctx, run.ID)
+	if err != nil {
+		return PublicRunAgentScorecardSnapshot{}, err
+	}
+	agentScorecards, err := r.listAvailableRunAgentScorecards(ctx, agents)
+	if err != nil {
+		return PublicRunAgentScorecardSnapshot{}, err
+	}
 	scorecard, err := r.GetRunAgentScorecardByRunAgentID(ctx, runAgentID)
 	if err != nil {
 		return PublicRunAgentScorecardSnapshot{}, err
 	}
-	return PublicRunAgentScorecardSnapshot{Run: run, RunAgent: runAgent, Scorecard: scorecard}, nil
+	return PublicRunAgentScorecardSnapshot{Run: run, RunAgent: runAgent, SiblingAgents: agents, AgentScorecards: agentScorecards, Scorecard: scorecard}, nil
 }
 
 func (r *Repository) GetPublicRunAgentReplaySnapshot(ctx context.Context, runAgentID uuid.UUID) (PublicRunAgentReplaySnapshot, error) {
@@ -313,4 +333,19 @@ func scanPublicShareLink(row publicShareScanner) (PublicShareLink, error) {
 	}
 	share.ResourceType = PublicShareResourceType(resourceType)
 	return share, nil
+}
+
+func (r *Repository) listAvailableRunAgentScorecards(ctx context.Context, agents []domain.RunAgent) ([]RunAgentScorecard, error) {
+	scorecards := make([]RunAgentScorecard, 0, len(agents))
+	for _, agent := range agents {
+		scorecard, err := r.GetRunAgentScorecardByRunAgentID(ctx, agent.ID)
+		if err != nil {
+			if errors.Is(err, ErrRunAgentScorecardNotFound) {
+				continue
+			}
+			return nil, err
+		}
+		scorecards = append(scorecards, scorecard)
+	}
+	return scorecards, nil
 }

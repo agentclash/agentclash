@@ -119,6 +119,71 @@ func TestPublicShareManager_GetPublicShareReturnsNarrowPayload(t *testing.T) {
 	}
 }
 
+func TestPublicShareManager_GetPublicShareKeepsReplayAgentDistinct(t *testing.T) {
+	ctx := context.Background()
+	orgID := uuid.New()
+	workspaceID := uuid.New()
+	runID := uuid.New()
+	firstAgentID := uuid.New()
+	secondAgentID := uuid.New()
+	repo := newFakePublicShareRepository(orgID, workspaceID)
+	repo.share = repository.PublicShareLink{
+		ID:             uuid.New(),
+		Key:            "second-agent-replay",
+		OrganizationID: orgID,
+		WorkspaceID:    workspaceID,
+		ResourceType:   repository.PublicShareResourceRunAgentReplay,
+		ResourceID:     secondAgentID,
+		IsActive:       true,
+		CreatedAt:      time.Now().UTC(),
+		UpdatedAt:      time.Now().UTC(),
+	}
+	repo.run = domain.Run{
+		ID:             runID,
+		OrganizationID: orgID,
+		WorkspaceID:    workspaceID,
+		Name:           "distinct agents",
+		Status:         domain.RunStatusCompleted,
+		CreatedAt:      time.Now().UTC(),
+		UpdatedAt:      time.Now().UTC(),
+	}
+	repo.runAgent = domain.RunAgent{
+		ID:             secondAgentID,
+		OrganizationID: orgID,
+		WorkspaceID:    workspaceID,
+		RunID:          runID,
+		LaneIndex:      1,
+		Label:          "anthropic",
+		Status:         domain.RunAgentStatusCompleted,
+		CreatedAt:      time.Now().UTC(),
+		UpdatedAt:      time.Now().UTC(),
+	}
+	repo.replay = repository.RunAgentReplay{
+		ID:         uuid.New(),
+		RunAgentID: secondAgentID,
+		Summary:    json.RawMessage(`{"steps":[{"headline":"second agent step"}]}`),
+		CreatedAt:  time.Now().UTC(),
+		UpdatedAt:  time.Now().UTC(),
+	}
+	manager := NewPublicShareManager(NewCallerWorkspaceAuthorizer(), repo, "https://agentclash.dev")
+
+	payload, err := manager.GetPublicShare(ctx, "second-agent-replay")
+	if err != nil {
+		t.Fatalf("GetPublicShare returned error: %v", err)
+	}
+	resource, ok := payload.Resource.(map[string]any)
+	if !ok {
+		t.Fatalf("resource type = %T, want map", payload.Resource)
+	}
+	runAgent, ok := resource["run_agent"].(map[string]any)
+	if !ok {
+		t.Fatalf("run_agent type = %T, want map", resource["run_agent"])
+	}
+	if got := runAgent["id"]; got != secondAgentID {
+		t.Fatalf("shared replay agent id = %v, want %s and not %s", got, secondAgentID, firstAgentID)
+	}
+}
+
 func callerWithWorkspace(workspaceID uuid.UUID) Caller {
 	userID := uuid.New()
 	return Caller{
@@ -251,6 +316,17 @@ func (r *fakePublicShareRepository) GetRunAgentByID(_ context.Context, id uuid.U
 	return r.runAgent, nil
 }
 
+func (r *fakePublicShareRepository) ListRunAgentsByRunID(_ context.Context, runID uuid.UUID) ([]domain.RunAgent, error) {
+	if r.run.ID != runID {
+		return nil, repository.ErrRunNotFound
+	}
+	agents := []domain.RunAgent{}
+	if r.runAgent.ID != uuid.Nil {
+		agents = append(agents, r.runAgent)
+	}
+	return agents, nil
+}
+
 func (r *fakePublicShareRepository) GetRunAgentScorecardByRunAgentID(_ context.Context, runAgentID uuid.UUID) (repository.RunAgentScorecard, error) {
 	if r.agentScorecard.RunAgentID != runAgentID {
 		return repository.RunAgentScorecard{}, repository.ErrRunAgentScorecardNotFound
@@ -284,14 +360,14 @@ func (r *fakePublicShareRepository) GetPublicRunScorecardSnapshot(_ context.Cont
 	if r.run.ID != runID {
 		return repository.PublicRunScorecardSnapshot{}, repository.ErrRunNotFound
 	}
-	return repository.PublicRunScorecardSnapshot{Run: r.run, Scorecard: r.runScorecard}, nil
+	return repository.PublicRunScorecardSnapshot{Run: r.run, Agents: []domain.RunAgent{r.runAgent}, AgentScorecards: []repository.RunAgentScorecard{r.agentScorecard}, Scorecard: r.runScorecard}, nil
 }
 
 func (r *fakePublicShareRepository) GetPublicRunAgentScorecardSnapshot(_ context.Context, runAgentID uuid.UUID) (repository.PublicRunAgentScorecardSnapshot, error) {
 	if r.runAgent.ID != runAgentID {
 		return repository.PublicRunAgentScorecardSnapshot{}, repository.ErrRunAgentNotFound
 	}
-	return repository.PublicRunAgentScorecardSnapshot{Run: r.run, RunAgent: r.runAgent, Scorecard: r.agentScorecard}, nil
+	return repository.PublicRunAgentScorecardSnapshot{Run: r.run, RunAgent: r.runAgent, SiblingAgents: []domain.RunAgent{r.runAgent}, AgentScorecards: []repository.RunAgentScorecard{r.agentScorecard}, Scorecard: r.agentScorecard}, nil
 }
 
 func (r *fakePublicShareRepository) GetPublicRunAgentReplaySnapshot(_ context.Context, runAgentID uuid.UUID) (repository.PublicRunAgentReplaySnapshot, error) {

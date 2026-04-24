@@ -29,6 +29,7 @@ type PublicShareRepository interface {
 	GetRunByID(ctx context.Context, id uuid.UUID) (domain.Run, error)
 	GetRunScorecardByRunID(ctx context.Context, runID uuid.UUID) (repository.RunScorecard, error)
 	GetRunAgentByID(ctx context.Context, id uuid.UUID) (domain.RunAgent, error)
+	ListRunAgentsByRunID(ctx context.Context, runID uuid.UUID) ([]domain.RunAgent, error)
 	GetRunAgentScorecardByRunAgentID(ctx context.Context, runAgentID uuid.UUID) (repository.RunAgentScorecard, error)
 	GetRunAgentReplayByRunAgentID(ctx context.Context, runAgentID uuid.UUID) (repository.RunAgentReplay, error)
 	GetPublicChallengePackVersionSnapshot(ctx context.Context, versionID uuid.UUID) (repository.PublicChallengePackVersionSnapshot, error)
@@ -424,18 +425,22 @@ func mapPublicChallengePackVersion(snapshot repository.PublicChallengePackVersio
 
 func mapPublicRunScorecard(snapshot repository.PublicRunScorecardSnapshot) any {
 	return map[string]any{
-		"type":      "run_scorecard",
-		"run":       mapPublicRun(snapshot.Run),
-		"scorecard": mapRunScorecardResponse(snapshot.Scorecard),
+		"type":             "run_scorecard",
+		"run":              mapPublicRun(snapshot.Run),
+		"agents":           mapPublicRunAgents(snapshot.Agents),
+		"agent_scorecards": mapPublicRunAgentScorecards(snapshot.AgentScorecards),
+		"scorecard":        mapRunScorecardResponse(snapshot.Scorecard),
 	}
 }
 
 func mapPublicRunAgentScorecard(snapshot repository.PublicRunAgentScorecardSnapshot) any {
 	return map[string]any{
-		"type":      "run_agent_scorecard",
-		"run":       mapPublicRun(snapshot.Run),
-		"run_agent": mapPublicRunAgent(snapshot.RunAgent),
-		"scorecard": mapRunAgentScorecardPublicResponse(snapshot.Scorecard),
+		"type":             "run_agent_scorecard",
+		"run":              mapPublicRun(snapshot.Run),
+		"run_agent":        mapPublicRunAgent(snapshot.RunAgent),
+		"sibling_agents":   mapPublicRunAgents(snapshot.SiblingAgents),
+		"agent_scorecards": mapPublicRunAgentScorecards(snapshot.AgentScorecards),
+		"scorecard":        mapRunAgentScorecardPublicResponse(snapshot.Scorecard),
 	}
 }
 
@@ -481,6 +486,22 @@ func mapPublicRunAgent(runAgent domain.RunAgent) map[string]any {
 		"finished_at":    runAgent.FinishedAt,
 		"failure_reason": runAgent.FailureReason,
 	}
+}
+
+func mapPublicRunAgents(agents []domain.RunAgent) []map[string]any {
+	items := make([]map[string]any, 0, len(agents))
+	for _, agent := range agents {
+		items = append(items, mapPublicRunAgent(agent))
+	}
+	return items
+}
+
+func mapPublicRunAgentScorecards(scorecards []repository.RunAgentScorecard) []map[string]any {
+	items := make([]map[string]any, 0, len(scorecards))
+	for _, scorecard := range scorecards {
+		items = append(items, mapRunAgentScorecardPublicResponse(scorecard))
+	}
+	return items
 }
 
 func mapRunScorecardResponse(scorecard repository.RunScorecard) map[string]any {
