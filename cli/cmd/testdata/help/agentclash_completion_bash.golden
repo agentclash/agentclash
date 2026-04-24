@@ -1,0 +1,38 @@
+Generate the autocompletion script for the bash shell.
+
+This script depends on the 'bash-completion' package.
+If it is not installed already, you can install it via your OS's package manager.
+
+To load completions in your current shell session:
+
+	source <(agentclash completion bash)
+
+To load completions for every new session, execute once:
+
+#### Linux:
+
+	agentclash completion bash > /etc/bash_completion.d/agentclash
+
+#### macOS:
+
+	agentclash completion bash > $(brew --prefix)/etc/bash_completion.d/agentclash
+
+You will need to start a new shell for this setup to take effect.
+
+Usage:
+  agentclash completion bash
+
+Flags:
+  -h, --help              help for bash
+      --no-descriptions   disable completion descriptions
+
+Global Flags:
+      --api-url string     API base URL (overrides config)
+      --json               Output in JSON format
+      --no-color           Disable color output
+      --non-interactive    Disable interactive prompts (also honored: CI=true, AGENTCLASH_NON_INTERACTIVE=1, --json, no TTY)
+  -o, --output string      Output format: table, json, yaml
+  -q, --quiet              Suppress non-essential output
+  -v, --verbose            Enable debug output on stderr
+  -w, --workspace string   Workspace ID (overrides config)
+      --yes                Skip confirmation prompts

@@ -1,0 +1,18 @@
+Set a config value
+
+Usage:
+  agentclash config set <key> <value> [flags]
+
+Flags:
+  -h, --help   help for set
+
+Global Flags:
+      --api-url string     API base URL (overrides config)
+      --json               Output in JSON format
+      --no-color           Disable color output
+      --non-interactive    Disable interactive prompts (also honored: CI=true, AGENTCLASH_NON_INTERACTIVE=1, --json, no TTY)
+  -o, --output string      Output format: table, json, yaml
+  -q, --quiet              Suppress non-essential output
+  -v, --verbose            Enable debug output on stderr
+  -w, --workspace string   Workspace ID (overrides config)
+      --yes                Skip confirmation prompts

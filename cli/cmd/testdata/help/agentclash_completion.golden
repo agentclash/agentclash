@@ -1,0 +1,27 @@
+Generate the autocompletion script for agentclash for the specified shell.
+See each sub-command's help for details on how to use the generated script.
+
+Usage:
+  agentclash completion [command]
+
+Available Commands:
+  bash        Generate the autocompletion script for bash
+  fish        Generate the autocompletion script for fish
+  powershell  Generate the autocompletion script for powershell
+  zsh         Generate the autocompletion script for zsh
+
+Flags:
+  -h, --help   help for completion
+
+Global Flags:
+      --api-url string     API base URL (overrides config)
+      --json               Output in JSON format
+      --no-color           Disable color output
+      --non-interactive    Disable interactive prompts (also honored: CI=true, AGENTCLASH_NON_INTERACTIVE=1, --json, no TTY)
+  -o, --output string      Output format: table, json, yaml
+  -q, --quiet              Suppress non-essential output
+  -v, --verbose            Enable debug output on stderr
+  -w, --workspace string   Workspace ID (overrides config)
+      --yes                Skip confirmation prompts
+
+Use "agentclash completion [command] --help" for more information about a command.

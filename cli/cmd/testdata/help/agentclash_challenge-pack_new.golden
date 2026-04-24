@@ -1,0 +1,28 @@
+Writes <name>.yaml in the current directory (or --dir) with a
+commented starter challenge. Edit the file to add your own challenges,
+then:
+
+  agentclash challenge-pack check <name>.yaml
+  agentclash eval <name>.yaml --models <model-name>
+
+Re-running with the same name errors out by default so you don't overwrite
+a pack you're iterating on — pass --force if you really mean it.
+
+Usage:
+  agentclash challenge-pack new <name> [flags]
+
+Flags:
+      --dir string   Directory to write the starter pack into (default ".")
+      --force        Overwrite <name>.yaml if it already exists
+  -h, --help         help for new
+
+Global Flags:
+      --api-url string     API base URL (overrides config)
+      --json               Output in JSON format
+      --no-color           Disable color output
+      --non-interactive    Disable interactive prompts (also honored: CI=true, AGENTCLASH_NON_INTERACTIVE=1, --json, no TTY)
+  -o, --output string      Output format: table, json, yaml
+  -q, --quiet              Suppress non-essential output
+  -v, --verbose            Enable debug output on stderr
+  -w, --workspace string   Workspace ID (overrides config)
+      --yes                Skip confirmation prompts

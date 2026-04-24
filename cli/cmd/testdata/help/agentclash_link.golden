@@ -1,0 +1,31 @@
+Pull the current workspace and its deployments and write a project
+config (.agentclash.yaml) + a playbook for AI agents (AGENTS.md).
+
+link is read-only — it does NOT provision, create, or modify any backend
+resources. Set up your workspace, provider keys, and deployments in the web
+app first (https://agentclash.dev), then run:
+
+  agentclash link                 # interactive workspace picker when needed
+  agentclash link -w <id>         # pick explicitly
+  agentclash link --json          # machine-readable output
+
+If you need to provision from the terminal (CI, automation), use
+`agentclash init --provision` instead.
+
+Usage:
+  agentclash link [flags]
+
+Flags:
+  -h, --help         help for link
+      --org string   Organization ID (overrides default; needed only if you belong to multiple orgs)
+
+Global Flags:
+      --api-url string     API base URL (overrides config)
+      --json               Output in JSON format
+      --no-color           Disable color output
+      --non-interactive    Disable interactive prompts (also honored: CI=true, AGENTCLASH_NON_INTERACTIVE=1, --json, no TTY)
+  -o, --output string      Output format: table, json, yaml
+  -q, --quiet              Suppress non-essential output
+  -v, --verbose            Enable debug output on stderr
+  -w, --workspace string   Workspace ID (overrides config)
+      --yes                Skip confirmation prompts

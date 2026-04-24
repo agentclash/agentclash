@@ -1,0 +1,26 @@
+Fetches run details plus the ranking (when the run has finished)
+and prints a single-screen summary: status, duration, per-agent composite
+scores, top regressions. Intended for quick "tell me what happened" after
+an eval.
+
+For machine-readable output, use --json (which emits the full ranking
+payload), or the underlying commands: `run get`, `run ranking`, `run scorecard`.
+
+Exits 0 regardless of run verdict — this command reports, it doesn't gate.
+
+Usage:
+  agentclash run show <run-id> [flags]
+
+Flags:
+  -h, --help   help for show
+
+Global Flags:
+      --api-url string     API base URL (overrides config)
+      --json               Output in JSON format
+      --no-color           Disable color output
+      --non-interactive    Disable interactive prompts (also honored: CI=true, AGENTCLASH_NON_INTERACTIVE=1, --json, no TTY)
+  -o, --output string      Output format: table, json, yaml
+  -q, --quiet              Suppress non-essential output
+  -v, --verbose            Enable debug output on stderr
+  -w, --workspace string   Workspace ID (overrides config)
+      --yes                Skip confirmation prompts

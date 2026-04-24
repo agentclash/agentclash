@@ -1,0 +1,37 @@
+Publishes the challenge pack, creates a run against every deployment
+named in --models, waits for the run to finish, and prints a scorecard.
+
+Prerequisites (run once in each project):
+  agentclash auth login
+  agentclash link
+
+The --models flag accepts deployment NAMES (not UUIDs) as written in
+.agentclash.yaml by `agentclash link`. Unknown names fail fast with
+DEPLOYMENT_NOT_FOUND.
+
+Exit codes:
+  0  pass            all agents completed.
+  1  fail            run failed, at least one agent did not complete, or
+                     (with --allow-partial off) any agent errored.
+  2  timeout         --timeout elapsed before the run reached terminal status.
+
+Usage:
+  agentclash eval <pack.yaml> [flags]
+
+Flags:
+      --allow-partial      Exit 0 even if one or more agents fail mid-run
+  -h, --help               help for eval
+      --models strings     Comma-separated deployment names to race (required; must exist in .agentclash.yaml)
+      --name string        Optional run name
+      --timeout duration   Give up waiting for terminal status after this long (default 10m0s)
+
+Global Flags:
+      --api-url string     API base URL (overrides config)
+      --json               Output in JSON format
+      --no-color           Disable color output
+      --non-interactive    Disable interactive prompts (also honored: CI=true, AGENTCLASH_NON_INTERACTIVE=1, --json, no TTY)
+  -o, --output string      Output format: table, json, yaml
+  -q, --quiet              Suppress non-essential output
+  -v, --verbose            Enable debug output on stderr
+  -w, --workspace string   Workspace ID (overrides config)
+      --yes                Skip confirmation prompts

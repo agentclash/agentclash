@@ -31,6 +31,7 @@ func executeCommand(t *testing.T, args []string, apiURL string) error {
 	flagWorkspace = ""
 	flagAPIURL = apiURL
 	flagYes = false
+	flagNonInteractive = false
 	flagDevice = false
 	flagForceLogin = false
 	if valueFlag := secretSetCmd.Flags().Lookup("value"); valueFlag != nil {

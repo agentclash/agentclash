@@ -14,14 +14,15 @@ import (
 
 // Global flags.
 var (
-	flagJSON      bool
-	flagOutput    string
-	flagQuiet     bool
-	flagVerbose   bool
-	flagNoColor   bool
-	flagWorkspace string
-	flagAPIURL    string
-	flagYes       bool
+	flagJSON           bool
+	flagOutput         string
+	flagQuiet          bool
+	flagVerbose        bool
+	flagNoColor        bool
+	flagWorkspace      string
+	flagAPIURL         string
+	flagYes            bool
+	flagNonInteractive bool
 )
 
 // RunContext is passed to all commands via cobra context.
@@ -31,6 +32,40 @@ type RunContext struct {
 	Output    *output.Formatter
 	Workspace string
 }
+
+// IsNonInteractive is true when any signal indicates this is not a human-
+// driven session: stdout/stdin not a TTY, structured output (--json or
+// --output=json/yaml), --non-interactive flag, AGENTCLASH_NON_INTERACTIVE=1,
+// or CI=true. Commands use this to decide whether to prompt interactively,
+// launch browsers, etc.
+//
+// It ORs all signals — any one is sufficient to disable interactive
+// behavior. Commands should never try to undo non-interactive mode once
+// detected.
+func (rc *RunContext) IsNonInteractive() bool {
+	if rc == nil {
+		return true
+	}
+	if flagNonInteractive {
+		return true
+	}
+	if rc.Output != nil && rc.Output.IsStructured() {
+		return true
+	}
+	if v := os.Getenv("AGENTCLASH_NON_INTERACTIVE"); v == "1" {
+		return true
+	}
+	// CI=true is a widely-honored convention — GitHub Actions, GitLab,
+	// CircleCI, and most shells set it. Don't trigger on CI=false.
+	if v := os.Getenv("CI"); v == "true" {
+		return true
+	}
+	return !ttyAttached()
+}
+
+// ttyAttached is a package variable so tests can swap it; the default
+// delegates to the real os.Stdin/Stdout TTY check via the picker helper.
+var ttyAttached = defaultTTYAttached
 
 type contextKey struct{}
 
@@ -131,6 +166,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVarP(&flagWorkspace, "workspace", "w", "", "Workspace ID (overrides config)")
 	rootCmd.PersistentFlags().StringVar(&flagAPIURL, "api-url", "", "API base URL (overrides config)")
 	rootCmd.PersistentFlags().BoolVar(&flagYes, "yes", false, "Skip confirmation prompts")
+	rootCmd.PersistentFlags().BoolVar(&flagNonInteractive, "non-interactive", false, "Disable interactive prompts (also honored: CI=true, AGENTCLASH_NON_INTERACTIVE=1, --json, no TTY)")
 }
 
 // Execute runs the root command.

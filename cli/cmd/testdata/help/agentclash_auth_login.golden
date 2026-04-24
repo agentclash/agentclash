@@ -1,0 +1,27 @@
+Log in to your AgentClash account by verifying the login in your browser.
+
+The CLI prints a verification link, opens it in your default browser when possible,
+and waits for you to approve the login in your AgentClash instance.
+
+For headless or remote shells, pass --device to print the link without auto-opening.
+Pass --force to create a fresh CLI token even when you are already logged in.
+For CI/CD, set the AGENTCLASH_TOKEN environment variable instead.
+
+Usage:
+  agentclash auth login [flags]
+
+Flags:
+      --device   Print the verification URL instead of opening the browser automatically
+      --force    Start a new browser login even if existing credentials are valid
+  -h, --help     help for login
+
+Global Flags:
+      --api-url string     API base URL (overrides config)
+      --json               Output in JSON format
+      --no-color           Disable color output
+      --non-interactive    Disable interactive prompts (also honored: CI=true, AGENTCLASH_NON_INTERACTIVE=1, --json, no TTY)
+  -o, --output string      Output format: table, json, yaml
+  -q, --quiet              Suppress non-essential output
+  -v, --verbose            Enable debug output on stderr
+  -w, --workspace string   Workspace ID (overrides config)
+      --yes                Skip confirmation prompts

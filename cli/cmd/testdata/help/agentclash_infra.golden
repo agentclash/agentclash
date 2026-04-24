@@ -1,0 +1,31 @@
+Manage runtime profiles, provider accounts, model aliases,
+tools, knowledge sources, routing policies, and spend policies.
+
+Usage:
+  agentclash infra [command]
+
+Available Commands:
+  knowledge-source Manage knowledge-sources
+  model-alias      Manage model-aliases
+  model-catalog    Browse the global model catalog
+  provider-account Manage provider-accounts
+  routing-policy   Manage routing-policies
+  runtime-profile  Manage runtime-profiles
+  spend-policy     Manage spend-policies
+  tool             Manage tools
+
+Flags:
+  -h, --help   help for infra
+
+Global Flags:
+      --api-url string     API base URL (overrides config)
+      --json               Output in JSON format
+      --no-color           Disable color output
+      --non-interactive    Disable interactive prompts (also honored: CI=true, AGENTCLASH_NON_INTERACTIVE=1, --json, no TTY)
+  -o, --output string      Output format: table, json, yaml
+  -q, --quiet              Suppress non-essential output
+  -v, --verbose            Enable debug output on stderr
+  -w, --workspace string   Workspace ID (overrides config)
+      --yes                Skip confirmation prompts
+
+Use "agentclash infra [command] --help" for more information about a command.

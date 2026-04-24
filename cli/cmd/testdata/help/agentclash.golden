@@ -1,0 +1,49 @@
+AgentClash CLI is the command-line interface for the AgentClash platform.
+
+Manage organizations, workspaces, agent builds, deployments, evaluation runs,
+challenge packs, playgrounds, and infrastructure — all from your terminal.
+
+Get started:
+  agentclash auth login         Log in to your account
+  agentclash workspace use      Set your default workspace
+  agentclash run create         Create an evaluation run
+  agentclash run events <id>    Stream live run events
+
+Usage:
+  agentclash [command]
+
+Available Commands:
+  artifact       Upload and download artifacts
+  auth           Manage authentication
+  build          Manage agent builds
+  challenge-pack Manage challenge packs
+  compare        Compare runs and evaluate release gates
+  completion     Generate the autocompletion script for the specified shell
+  config         Manage CLI configuration
+  deployment     Manage agent deployments
+  eval           Race deployed models on a challenge pack and print a scorecard
+  help           Help about any command
+  infra          Manage infrastructure resources
+  init           Initialize a project with .agentclash.yaml
+  link           Link this directory to your AgentClash workspace
+  org            Manage organizations
+  playground     Manage playgrounds, test cases, and experiments
+  replay         View execution replays
+  run            Manage evaluation runs
+  secret         Manage workspace secrets
+  version        Show CLI version information
+  workspace      Manage workspaces
+
+Flags:
+      --api-url string     API base URL (overrides config)
+  -h, --help               help for agentclash
+      --json               Output in JSON format
+      --no-color           Disable color output
+      --non-interactive    Disable interactive prompts (also honored: CI=true, AGENTCLASH_NON_INTERACTIVE=1, --json, no TTY)
+  -o, --output string      Output format: table, json, yaml
+  -q, --quiet              Suppress non-essential output
+  -v, --verbose            Enable debug output on stderr
+  -w, --workspace string   Workspace ID (overrides config)
+      --yes                Skip confirmation prompts
+
+Use "agentclash [command] --help" for more information about a command.

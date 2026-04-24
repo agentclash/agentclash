@@ -1,0 +1,27 @@
+Manage agent deployments
+
+Usage:
+  agentclash deployment [command]
+
+Aliases:
+  deployment, deploy
+
+Available Commands:
+  create      Create an agent deployment
+  list        List agent deployments
+
+Flags:
+  -h, --help   help for deployment
+
+Global Flags:
+      --api-url string     API base URL (overrides config)
+      --json               Output in JSON format
+      --no-color           Disable color output
+      --non-interactive    Disable interactive prompts (also honored: CI=true, AGENTCLASH_NON_INTERACTIVE=1, --json, no TTY)
+  -o, --output string      Output format: table, json, yaml
+  -q, --quiet              Suppress non-essential output
+  -v, --verbose            Enable debug output on stderr
+  -w, --workspace string   Workspace ID (overrides config)
+      --yes                Skip confirmation prompts
+
+Use "agentclash deployment [command] --help" for more information about a command.

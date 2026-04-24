@@ -22,10 +22,16 @@ type interactivePicker interface {
 
 var surveyAskOne = survey.AskOne
 
+// isInteractiveTerminal is the inverse of RunContext.IsNonInteractive.
+// Kept as a package var so tests can force a specific branch without
+// needing a real tty.
 var isInteractiveTerminal = func(rc *RunContext) bool {
-	if rc == nil || rc.Output == nil || rc.Output.IsStructured() {
-		return false
-	}
+	return !rc.IsNonInteractive()
+}
+
+// defaultTTYAttached is the production implementation of ttyAttached in
+// root.go. Lives here so picker.go owns all the tty-detection bits.
+func defaultTTYAttached() bool {
 	return term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd()))
 }
 

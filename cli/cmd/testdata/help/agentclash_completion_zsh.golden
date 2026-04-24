@@ -1,0 +1,40 @@
+Generate the autocompletion script for the zsh shell.
+
+If shell completion is not already enabled in your environment you will need
+to enable it.  You can execute the following once:
+
+	echo "autoload -U compinit; compinit" >> ~/.zshrc
+
+To load completions in your current shell session:
+
+	source <(agentclash completion zsh)
+
+To load completions for every new session, execute once:
+
+#### Linux:
+
+	agentclash completion zsh > "${fpath[1]}/_agentclash"
+
+#### macOS:
+
+	agentclash completion zsh > $(brew --prefix)/share/zsh/site-functions/_agentclash
+
+You will need to start a new shell for this setup to take effect.
+
+Usage:
+  agentclash completion zsh [flags]
+
+Flags:
+  -h, --help              help for zsh
+      --no-descriptions   disable completion descriptions
+
+Global Flags:
+      --api-url string     API base URL (overrides config)
+      --json               Output in JSON format
+      --no-color           Disable color output
+      --non-interactive    Disable interactive prompts (also honored: CI=true, AGENTCLASH_NON_INTERACTIVE=1, --json, no TTY)
+  -o, --output string      Output format: table, json, yaml
+  -q, --quiet              Suppress non-essential output
+  -v, --verbose            Enable debug output on stderr
+  -w, --workspace string   Workspace ID (overrides config)
+      --yes                Skip confirmation prompts

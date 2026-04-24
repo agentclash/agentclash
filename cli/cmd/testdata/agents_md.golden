@@ -1,0 +1,63 @@
+# AGENTS.md
+
+This directory is linked to an [AgentClash](https://agentclash.dev) workspace. Use this playbook when an AI coding agent (Claude Code, Cursor, Codex, etc.) needs to race models on this project's challenge packs.
+
+- **Workspace:** raj-personal (`00000000-0000-4000-8000-000000000001`)
+- **Deployments available:** `claude-4.7`, `gemini-3`, `gpt-5`
+
+## The two-command recipe
+
+Given a challenge pack at `./<name>.yaml`, race it against one or more deployed models:
+
+```bash
+# 1. Sanity-check the pack (fails fast on bad YAML):
+agentclash challenge-pack check ./<name>.yaml --json
+
+# 2. Race and get a structured scorecard:
+agentclash eval ./<name>.yaml \
+  --models <m1>,<m2>,... \
+  --json --non-interactive
+```
+
+Exit codes:
+
+- `0` pass — scorecard matches or beats baseline `main`.
+- `1` fail / regression — at least one (task × model) regressed. `details.regressions` lists the pairs.
+- `2` warn — soft degradation; review before promoting.
+- `3` insufficient_evidence — baseline was missing a dimension; fix the spec and rerun.
+
+## Error codes to branch on
+
+Instead of parsing English, match on `error.code` in the JSON error envelope:
+
+| Code | Meaning | Agent action |
+|------|---------|--------------|
+| `MODEL_NOT_FOUND` | The name didn't resolve in the model catalog. | Ask the human for a valid model name. |
+| `MODEL_AMBIGUOUS` | The name matched >1 catalog entry. `details.candidates` lists them. | Pick one from the list or ask the human. |
+| `DEPLOYMENT_NOT_FOUND` | Model resolves, but isn't deployed in this workspace. `details.deploy_url` points to the web UI. | Tell the human to deploy at the link. Do **not** try to provision — that needs provider API keys you should not touch. |
+| `REGRESSION_DETECTED` | New scorecard regressed vs baseline. `details.regressions` lists (task, model) pairs. | Summarize the regressions to the human. |
+| `PARTIAL_EXECUTION` | At least one `run_agent` failed (rate limit, auth). | Default is to exit 1; pass `--allow-partial` if that's acceptable for this run. |
+| `MISSING_FLAG` | Non-interactive run missing a required flag. `field` names it. | Supply the named flag and retry. |
+
+## Scaffolding a new challenge pack
+
+```bash
+agentclash challenge-pack new <name>
+# Writes ./<name>.yaml with a commented starter challenge.
+```
+
+The pack YAML has a `challenges:` array. Each entry is `{key, title, challenge_input, expected_output, ...}`. See `docs/challenge-packs` on the web for the full schema.
+
+## When the human wants a new model
+
+New providers and deployments live in the web app. The CLI does **not** enter provider API keys — that's deliberately kept in the browser flow, which has full SSO/credentialed UX. If a needed model isn't listed above, tell the human:
+
+> Deploy it at https://agentclash.dev/workspaces/00000000-0000-4000-8000-000000000001/deployments, then run `agentclash link` here to refresh this file.
+
+(Advanced CLI-first users can also run `agentclash init --provision --provider <p> --model <m>`, but that requires provider keys to be accessible to the current shell.)
+
+## Notes for agents
+
+_(timestamp stripped for golden comparison)_
+- `.agentclash.yaml` alongside this file holds the workspace + deployment map. Treat it as machine-written.
+- Never put deployment UUIDs in challenge packs or user-facing text. Use deployment names (keys in `deployments` in `.agentclash.yaml`).

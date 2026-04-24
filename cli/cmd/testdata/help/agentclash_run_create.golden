@@ -1,0 +1,30 @@
+Create and submit an evaluation run.
+
+In a normal terminal session, omitting --challenge-pack-version and/or
+--deployments launches an interactive picker so you can scroll through
+available challenge packs, versions, input sets, and deployments and press
+Enter to select them.
+
+For CI and other non-interactive use, keep passing explicit IDs via flags.
+
+Usage:
+  agentclash run create [flags]
+
+Flags:
+      --challenge-pack-version string   Challenge pack version ID (optional in a TTY; prompted when omitted)
+      --deployments strings             Agent deployment IDs (optional in a TTY; prompted when omitted)
+      --follow                          Follow run events after creation
+  -h, --help                            help for create
+      --input-set string                Challenge input set ID (optional)
+      --name string                     Run name (optional)
+
+Global Flags:
+      --api-url string     API base URL (overrides config)
+      --json               Output in JSON format
+      --no-color           Disable color output
+      --non-interactive    Disable interactive prompts (also honored: CI=true, AGENTCLASH_NON_INTERACTIVE=1, --json, no TTY)
+  -o, --output string      Output format: table, json, yaml
+  -q, --quiet              Suppress non-essential output
+  -v, --verbose            Enable debug output on stderr
+  -w, --workspace string   Workspace ID (overrides config)
+      --yes                Skip confirmation prompts

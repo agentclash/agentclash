@@ -1,0 +1,26 @@
+Manage provider-accounts
+
+Usage:
+  agentclash infra provider-account [command]
+
+Available Commands:
+  create      Create a provider-account
+  delete      Delete a provider-account
+  get         Get a provider-account
+  list        List provider-accounts
+
+Flags:
+  -h, --help   help for provider-account
+
+Global Flags:
+      --api-url string     API base URL (overrides config)
+      --json               Output in JSON format
+      --no-color           Disable color output
+      --non-interactive    Disable interactive prompts (also honored: CI=true, AGENTCLASH_NON_INTERACTIVE=1, --json, no TTY)
+  -o, --output string      Output format: table, json, yaml
+  -q, --quiet              Suppress non-essential output
+  -v, --verbose            Enable debug output on stderr
+  -w, --workspace string   Workspace ID (overrides config)
+      --yes                Skip confirmation prompts
+
+Use "agentclash infra provider-account [command] --help" for more information about a command.

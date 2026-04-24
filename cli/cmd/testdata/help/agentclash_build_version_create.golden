@@ -1,0 +1,20 @@
+Create a new draft version
+
+Usage:
+  agentclash build version create <buildId> [flags]
+
+Flags:
+      --agent-kind string   Agent kind: llm_agent, workflow_agent, programmatic_agent, multi_agent_system, hosted_external
+  -h, --help                help for create
+      --spec-file string    JSON file with version spec fields
+
+Global Flags:
+      --api-url string     API base URL (overrides config)
+      --json               Output in JSON format
+      --no-color           Disable color output
+      --non-interactive    Disable interactive prompts (also honored: CI=true, AGENTCLASH_NON_INTERACTIVE=1, --json, no TTY)
+  -o, --output string      Output format: table, json, yaml
+  -q, --quiet              Suppress non-essential output
+  -v, --verbose            Enable debug output on stderr
+  -w, --workspace string   Workspace ID (overrides config)
+      --yes                Skip confirmation prompts
