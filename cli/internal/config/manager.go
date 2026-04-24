@@ -5,10 +5,15 @@ import (
 	"os"
 )
 
-const (
-	defaultAPIURL = "http://localhost:8080"
-	defaultOutput = "table"
-)
+const defaultOutput = "table"
+
+// defaultAPIURL is the fallback API base URL when no --api-url flag,
+// AGENTCLASH_API_URL env var, or saved user config is set. Stamped to
+// https://api.agentclash.dev at release build time via
+// -X github.com/agentclash/agentclash/cli/internal/config.defaultAPIURL=...
+// in cli/.goreleaser.yaml. Source builds keep the localhost default so
+// `go run .` / `make build` talk to a local `make api-server`.
+var defaultAPIURL = "http://localhost:8080"
 
 // ValidOutputFormats lists the user-selectable values for --output / $AGENTCLASH_OUTPUT.
 var ValidOutputFormats = []string{"table", "json", "yaml"}

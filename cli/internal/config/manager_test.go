@@ -111,6 +111,15 @@ func TestManagerDefaultValues(t *testing.T) {
 	}
 }
 
+func TestManagerDefaultSourceValue(t *testing.T) {
+	// Source builds (no -ldflags stamping) must default to localhost so
+	// `go run .` / `make build` talk to a local api server. Release builds
+	// override this via the ldflag in cli/.goreleaser.yaml.
+	if defaultAPIURL != "http://localhost:8080" {
+		t.Fatalf("source defaultAPIURL = %q, want %q (released builds override this via ldflags)", defaultAPIURL, "http://localhost:8080")
+	}
+}
+
 func TestManagerJSONFlagOverridesOutputFormat(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", tmpDir)
