@@ -132,6 +132,21 @@ func (b *BufferedObserver) OnPostExecutionVerification(ctx context.Context, resu
 	return nil
 }
 
+// OnStandingsInjected is buffered like the other mid-run callbacks. The
+// injection itself has already happened (the user message has been
+// appended) by the time this fires; the event persistence can run
+// asynchronously alongside the rest of the stream.
+func (b *BufferedObserver) OnStandingsInjected(ctx context.Context, injection engine.StandingsInjection) error {
+	if err := b.checkBgError(); err != nil {
+		return err
+	}
+	bgCtx := context.WithoutCancel(ctx)
+	b.enqueue(func() error {
+		return b.inner.OnStandingsInjected(bgCtx, injection)
+	})
+	return nil
+}
+
 // --- Terminal methods: flush then delegate synchronously ---
 
 func (b *BufferedObserver) OnRunComplete(ctx context.Context, result engine.Result) error {

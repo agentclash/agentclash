@@ -332,6 +332,9 @@ func (o *recordingObserver) OnStepEnd(context.Context, int) error {
 func (o *recordingObserver) OnPostExecutionVerification(context.Context, []PostExecutionVerificationResult) error {
 	return nil
 }
+func (o *recordingObserver) OnStandingsInjected(context.Context, StandingsInjection) error {
+	return nil
+}
 func (o *recordingObserver) OnRunComplete(context.Context, Result) error {
 	o.runComplete = true
 	return nil

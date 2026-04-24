@@ -63,6 +63,10 @@ func (o *recordingObserver) OnPostExecutionVerification(_ context.Context, _ []e
 	o.record("OnPostExecutionVerification")
 	return nil
 }
+func (o *recordingObserver) OnStandingsInjected(_ context.Context, _ engine.StandingsInjection) error {
+	o.record("OnStandingsInjected")
+	return nil
+}
 func (o *recordingObserver) OnRunComplete(_ context.Context, _ engine.Result) error {
 	o.record("OnRunComplete")
 	return nil

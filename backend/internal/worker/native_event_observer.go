@@ -241,6 +241,28 @@ func (o *NativeRunEventObserver) OnPostExecutionVerification(ctx context.Context
 	return nil
 }
 
+// OnStandingsInjected persists a `race.standings.injected` event for the
+// race-context feature (issue #400). The payload carries the exact
+// newswire text the agent saw plus the estimated token count, so
+// downstream scoring can split billable model tokens from injected ones.
+func (o *NativeRunEventObserver) OnStandingsInjected(ctx context.Context, injection engine.StandingsInjection) error {
+	if err := o.ensureRunStarted(ctx); err != nil {
+		return err
+	}
+	payload := map[string]any{
+		"tokens_added":       injection.TokensAdded,
+		"standings_snapshot": injection.StandingsSnapshot,
+		"triggered_by":       string(injection.TriggeredBy),
+		"self_step_index":    injection.StepIndex,
+		"min_step_gap":       injection.MinStepGap,
+	}
+	return o.recordEvent(ctx, runevents.EventTypeRaceStandingsInjected, payload, runevents.SummaryMetadata{
+		Status:        "running",
+		StepIndex:     injection.StepIndex,
+		EvidenceLevel: runevents.EvidenceLevelNativeStructured,
+	})
+}
+
 func (o *NativeRunEventObserver) OnRunComplete(ctx context.Context, result engine.Result) error {
 	if err := o.ensureRunStarted(ctx); err != nil {
 		return err

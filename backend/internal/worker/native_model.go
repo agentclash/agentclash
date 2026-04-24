@@ -5,6 +5,7 @@ import (
 
 	"github.com/agentclash/agentclash/backend/internal/engine"
 	"github.com/agentclash/agentclash/backend/internal/provider"
+	"github.com/agentclash/agentclash/backend/internal/racecontext"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/backend/internal/sandbox"
 )
@@ -14,6 +15,7 @@ type NativeModelInvoker struct {
 	sandboxProvider sandbox.Provider
 	observerFactory NativeObserverFactory
 	secretsLookup   engine.SecretsLookup
+	standingsStore  racecontext.Store
 }
 
 func NewNativeModelInvoker(client provider.Client, sandboxProvider sandbox.Provider) NativeModelInvoker {
@@ -43,6 +45,14 @@ func (i NativeModelInvoker) WithSecretsLookup(lookup engine.SecretsLookup) Nativ
 	return i
 }
 
+// WithStandingsStore attaches the race-context standings source so that
+// runs with race_context: true get live peer-standings injection. See
+// issue #400. Passing nil (or not calling this) leaves injection inert.
+func (i NativeModelInvoker) WithStandingsStore(store racecontext.Store) NativeModelInvoker {
+	i.standingsStore = store
+	return i
+}
+
 func (i NativeModelInvoker) InvokeNativeModel(ctx context.Context, executionContext repository.RunAgentExecutionContext) (engine.Result, error) {
 	observer := engine.Observer(engine.NoopObserver{})
 	if i.observerFactory != nil {
@@ -58,6 +68,9 @@ func (i NativeModelInvoker) InvokeNativeModel(ctx context.Context, executionCont
 	executor := engine.NewNativeExecutor(i.client, i.sandboxProvider, observer)
 	if i.secretsLookup != nil {
 		executor = executor.WithSecretsLookup(i.secretsLookup)
+	}
+	if i.standingsStore != nil {
+		executor = executor.WithStandingsStore(i.standingsStore)
 	}
 	return executor.Execute(ctx, executionContext)
 }

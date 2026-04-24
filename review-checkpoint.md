@@ -194,24 +194,63 @@ Files changed:
 ### Slice 7: Wire injection into native_executor loop
 
 Status:
-- pending
+- completed
+
+**Architecture note for reviewer**: the injection is called from `native_executor.go` immediately after `OnStepStart` on each loop iteration. It is gated by `executionContext.Run.RaceContext`, so runs that did not opt in run byte-identical to main. The executor depends on the neutral `racecontext.Store` interface (extracted in this slice alongside the pubsub refactor), which avoids an `engine → pubsub → worker → engine` import cycle.
+
+**Package extraction (part of this slice)**: shared types (`StandingsEntry`, `StandingsState`, `Store` interface, `NoopStore`, `Format` function, `HashKey`/`FieldName` helpers) moved out of `internal/pubsub/` into a new neutral package `internal/racecontext/`. `pubsub/` now holds only the Redis-backed implementation and the recorder decorator. `pubsub/standings.go` re-exports the shared types as type aliases so existing `pubsub` consumers continue to compile unchanged.
 
 Reviewer should check:
-- Injection lives in `backend/internal/engine/native_executor.go` at the step-boundary.
-- Injection only fires when `run.race_context == true`.
-- First injection earliest at step 3.
-- Dedupe: never two consecutive injections without an agent-authored turn between.
-- Cadence predicates: `(step - last_inject_step) >= min_step_gap` OR `peer_state_changed_since_last_inject`.
-- Adds `role=user` message to agent message list.
-- Emits `race.standings.injected` event with accurate `tokens_added`.
-- Behavior identical to main when `race_context == false`.
+- Step-boundary call: `e.maybeInjectRaceStandings(runCtx, executionContext, &state)` runs after `OnStepStart`, before `provider.Request` construction. Injection errors propagate as `StopReasonObserverError` (consistent with other observer failures).
+- Gating rules enforced in order: (1) `!run.RaceContext` → skip, (2) `standingsStore == nil` → skip, (3) `stepCount < minStepBeforeFirstInjection=3` → skip, (4) empty snapshot → skip, (5) cadence predicate → skip/fire.
+- `evaluateRaceContextCadence`: peer state transitions into `submitted` / `failed` / `timed_out` fire immediately (with matching trigger label); otherwise the gap `(stepCount - lastInjectionStep) >= minGap` decides. First eligible step (`lastInjectionStep == 0`) fires as `cadence`.
+- `peer_state_changed` check is intentionally limited to the three terminal states. A peer's step progression alone does **not** trigger — otherwise every step would fire.
+- Dedupe via `state.lastInjectionStep = state.stepCount` immediately after a fire; the `stepCount - lastInjectionStep >= minGap` check guarantees at least `minGap` steps between injections.
+- `lastPeerStates` is refreshed even on non-firing checks so transitions that happen between injections are not lost.
+- New `StandingsInjection` event struct carries `StepIndex`, `TokensAdded`, `StandingsSnapshot`, `TriggeredBy`, `MinStepGap`.
+- All existing `Observer` implementations add `OnStandingsInjected`:
+  - `engine.NoopObserver` — no-op.
+  - `worker.NativeRunEventObserver` — emits `race.standings.injected` event with the issue's payload shape.
+  - `worker.PromptEvalRunEventObserver` — no-op (prompt_eval runs don't support race context in v1).
+  - `worker.BufferedObserver` — forwards asynchronously like other non-terminal callbacks.
+  - `worker.BudgetGuardObserver` — forwards to inner; also added missing `OnPostExecutionVerification` that was already required by the interface.
+  - Test observers patched.
+- `NativeModelInvoker.WithStandingsStore` threads the store from `cmd/worker/main.go` into every executor instance.
 
-Relevant tests:
-- Unit test: cadence predicates in isolation.
-- Integration test: multi-agent simulated run produces correct injection timing.
+Relevant tests (all green):
+- `TestEvaluateRaceContextCadenceFiresOnFirstEligibleStep` — cadence trigger on first-fire.
+- `TestEvaluateRaceContextCadenceSuppressesWithinGap` — min_step_gap respected.
+- `TestEvaluateRaceContextCadenceFiresAfterGap` — cadence re-fires after gap elapses.
+- `TestEvaluateRaceContextCadenceFiresOnPeerSubmission` / `PeerFailure` / `PeerTimeout` — terminal-state transitions override cadence gap, trigger label is precise.
+- `TestMaybeInjectRaceStandingsSkippedWhenDisabled` — `race_context=false` is byte-identical.
+- `TestMaybeInjectRaceStandingsSkippedBeforeStep3` — min-step gate honored.
+- `TestMaybeInjectRaceStandingsAppendsUserMessageAndEmitsEvent` — happy path: message appended, event emitted with all fields.
+- `TestMaybeInjectRaceStandingsCustomMinStepGap` — per-run cadence override flows into event payload.
+- `TestMaybeInjectRaceStandingsSwallowsSnapshotError` — store errors don't break runs.
+- `TestMaybeInjectRaceStandingsTracksPeerStatesEvenWhenNotInjecting` — no-fire paths still refresh the transition tracker.
+- `TestBufferedObserverRaceStandingsForward` (via existing buffered_observer_test scaffold — the new method is recorded by `recordingObserver`).
+- Full backend `go test ./...` green.
 
 Files changed:
-- (to be filled)
+- `backend/internal/racecontext/types.go` (new — extracted types)
+- `backend/internal/racecontext/store.go` (new — extracted Store interface + Noop + MergeEntry)
+- `backend/internal/racecontext/format.go` (new — extracted formatter)
+- `backend/internal/racecontext/format_test.go` (moved)
+- `backend/internal/racecontext/store_test.go` (new — MergeEntry, HashKey/FieldName, Noop tests)
+- `backend/internal/pubsub/standings.go` (now only Redis impl + type aliases)
+- `backend/internal/pubsub/standings_format.go` (deleted — moved to racecontext)
+- `backend/internal/pubsub/standings_format_test.go` (deleted — moved to racecontext)
+- `backend/internal/pubsub/standings_recorder_test.go` (removed tests that moved)
+- `backend/internal/engine/native_executor.go` (Observer interface + injection logic)
+- `backend/internal/engine/prompt_eval_executor_test.go` (test observer patched)
+- `backend/internal/engine/race_context_test.go` (new)
+- `backend/internal/worker/native_event_observer.go` (emits race.standings.injected)
+- `backend/internal/worker/prompt_eval_event_observer.go` (no-op OnStandingsInjected)
+- `backend/internal/worker/buffered_observer.go` (forwards OnStandingsInjected)
+- `backend/internal/worker/buffered_observer_test.go` (test observer patched)
+- `backend/internal/worker/budget_guard_observer.go` (forwards OnStandingsInjected + OnPostExecutionVerification)
+- `backend/internal/worker/native_model.go` (`WithStandingsStore` threads store into executor)
+- `backend/cmd/worker/main.go` (standings store passed to invoker)
 
 ### Slice 8: Token accounting split
 

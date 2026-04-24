@@ -1,4 +1,4 @@
-package pubsub
+package racecontext
 
 import (
 	"strings"
@@ -46,7 +46,7 @@ func TestFormatStandingsShowsRunningPeers(t *testing.T) {
 		},
 	}
 
-	text, tokens := FormatStandings(FormatStandingsInput{
+	text, tokens := Format(FormatInput{
 		Snapshot:       snapshot,
 		SelfRunAgentID: self,
 		SelfStepIndex:  9,
@@ -96,7 +96,7 @@ func TestFormatStandingsPinsSubmittersToTop(t *testing.T) {
 		},
 	}
 
-	text, _ := FormatStandings(FormatStandingsInput{
+	text, _ := Format(FormatInput{
 		Snapshot: snapshot, SelfRunAgentID: self, SelfStepIndex: 8, Now: now,
 	})
 	lines := strings.Split(text, "\n")
@@ -126,7 +126,7 @@ func TestFormatStandingsShowsFailedAndTimedOut(t *testing.T) {
 		timedOut: {RunAgentID: timedOut, Model: "gpt-5", Step: 7, State: StandingsStateTimedOut},
 	}
 
-	text, _ := FormatStandings(FormatStandingsInput{
+	text, _ := Format(FormatInput{
 		Snapshot: snapshot, SelfRunAgentID: self, SelfStepIndex: 4, Now: now,
 	})
 	if !strings.Contains(text, "mistral-large — FAILED at step 3") {
@@ -151,7 +151,7 @@ func TestFormatStandingsHandlesNotStarted(t *testing.T) {
 		unborn: {RunAgentID: unborn, State: StandingsStateNotStarted},
 	}
 
-	text, _ := FormatStandings(FormatStandingsInput{
+	text, _ := Format(FormatInput{
 		Snapshot: snapshot, SelfRunAgentID: self, SelfStepIndex: 3, Now: now,
 	})
 	if !strings.Contains(text, "not started") {
@@ -178,7 +178,7 @@ func TestFormatStandingsAllSubmittedOneRunning(t *testing.T) {
 		peer2: {RunAgentID: peer2, Model: "claude-sonnet-4-6", Step: 11, State: StandingsStateSubmitted, StartedAt: &started, SubmittedAt: &t1},
 	}
 
-	text, _ := FormatStandings(FormatStandingsInput{
+	text, _ := Format(FormatInput{
 		Snapshot: snapshot, SelfRunAgentID: self, SelfStepIndex: 9, Now: now,
 	})
 	lines := strings.Split(text, "\n")
@@ -195,13 +195,13 @@ func TestFormatStandingsAllSubmittedOneRunning(t *testing.T) {
 }
 
 func TestEstimateTokens(t *testing.T) {
-	if got := estimateTokens(""); got != 0 {
+	if got := EstimateTokens(""); got != 0 {
 		t.Errorf("empty string tokens = %d, want 0", got)
 	}
-	if got := estimateTokens("abcd"); got != 1 {
+	if got := EstimateTokens("abcd"); got != 1 {
 		t.Errorf("4 chars = %d tokens, want 1", got)
 	}
-	if got := estimateTokens("abcde"); got != 2 {
+	if got := EstimateTokens("abcde"); got != 2 {
 		t.Errorf("5 chars = %d tokens, want 2 (rounded up)", got)
 	}
 }

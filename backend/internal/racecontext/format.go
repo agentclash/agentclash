@@ -1,4 +1,4 @@
-package pubsub
+package racecontext
 
 import (
 	"fmt"
@@ -9,26 +9,25 @@ import (
 	"github.com/google/uuid"
 )
 
-// FormatStandingsInput is the pure-function input for the race-context
-// newswire formatter. Passing Now explicitly keeps the function
-// deterministic under test.
-type FormatStandingsInput struct {
+// FormatInput is the pure-function input for the race-context newswire
+// formatter. Now is passed explicitly to keep Format deterministic under
+// test (no wall-clock reads).
+type FormatInput struct {
 	Snapshot       map[uuid.UUID]StandingsEntry
 	SelfRunAgentID uuid.UUID
 	SelfStepIndex  int
 	Now            time.Time
 }
 
-// FormatStandings renders a race-context newswire message. It returns the
-// text that will be injected as a `role=user` message and an estimated
-// token count for billable-token accounting (see slice 8). The formatter
-// is deliberately neutral and factual — no directives, no second-person
-// imperatives — so the injection does not prime the model toward any
-// behavior beyond observing peer progress.
+// Format renders the race-context newswire message. It returns the text
+// that will be injected as a role=user message and an estimated token
+// count for billable-token accounting. The format is deliberately
+// neutral: third-person, factual, no imperatives, no second-person
+// pressure language.
 //
-// Ordering: submitters pinned to top in submission order, remaining peers
-// ranked by step descending, ties broken by run_agent_id for determinism.
-func FormatStandings(in FormatStandingsInput) (string, int) {
+// Ordering: submitters pinned to top in submission-time order; remaining
+// peers ranked by step count descending, ties broken on run_agent_id.
+func Format(in FormatInput) (string, int) {
 	entries := orderStandings(in.Snapshot)
 
 	running, submitted := 0, 0
@@ -39,7 +38,7 @@ func FormatStandings(in FormatStandingsInput) (string, int) {
 		case StandingsStateRunning, StandingsStateNotStarted, "":
 			running++
 		}
-		// FAILED and TIMED OUT are shown but not counted in either total.
+		// FAILED and TIMED OUT are shown but excluded from both totals.
 	}
 
 	var b strings.Builder
@@ -48,12 +47,12 @@ func FormatStandings(in FormatStandingsInput) (string, int) {
 
 	for _, entry := range entries {
 		b.WriteString("- ")
-		b.WriteString(formatEntryLine(entry, in.SelfRunAgentID, in.Now))
+		b.WriteString(formatEntryLine(entry, in.SelfRunAgentID))
 		b.WriteString("\n")
 	}
 
 	text := strings.TrimRight(b.String(), "\n")
-	return text, estimateTokens(text)
+	return text, EstimateTokens(text)
 }
 
 func orderStandings(snapshot map[uuid.UUID]StandingsEntry) []StandingsEntry {
@@ -62,17 +61,15 @@ func orderStandings(snapshot map[uuid.UUID]StandingsEntry) []StandingsEntry {
 		entries = append(entries, e)
 	}
 	sort.SliceStable(entries, func(i, j int) bool {
-		// Submitters float to the top, ordered by submission time.
 		iSubmitted := entries[i].State == StandingsStateSubmitted
 		jSubmitted := entries[j].State == StandingsStateSubmitted
 		if iSubmitted != jSubmitted {
 			return iSubmitted
 		}
 		if iSubmitted && jSubmitted {
-			// Earlier submission shows first.
 			switch {
 			case entries[i].SubmittedAt == nil && entries[j].SubmittedAt == nil:
-				// fall through to step-based tiebreak
+				// fall through
 			case entries[i].SubmittedAt == nil:
 				return false
 			case entries[j].SubmittedAt == nil:
@@ -83,21 +80,17 @@ func orderStandings(snapshot map[uuid.UUID]StandingsEntry) []StandingsEntry {
 				}
 			}
 		}
-		// Higher step first.
 		if entries[i].Step != entries[j].Step {
 			return entries[i].Step > entries[j].Step
 		}
-		// Deterministic tiebreak.
 		return entries[i].RunAgentID.String() < entries[j].RunAgentID.String()
 	})
 	return entries
 }
 
-func formatEntryLine(entry StandingsEntry, selfRunAgentID uuid.UUID, now time.Time) string {
+func formatEntryLine(entry StandingsEntry, selfRunAgentID uuid.UUID) string {
 	modelLabel := entry.Model
 	if modelLabel == "" {
-		// Fall back to a short id so the model has something to anchor on
-		// before the first model.call.completed populates the name.
 		modelLabel = "agent-" + entry.RunAgentID.String()[:8]
 	}
 	prefix := modelLabel
@@ -116,7 +109,6 @@ func formatEntryLine(entry StandingsEntry, selfRunAgentID uuid.UUID, now time.Ti
 	case StandingsStateNotStarted, "":
 		return fmt.Sprintf("%s — not started", prefix)
 	default:
-		// Running (or any unexpected state): show progress.
 		return fmt.Sprintf("%s — %d steps, %d tool calls, %d tokens", prefix, entry.Step, entry.ToolCalls, entry.TokensUsed)
 	}
 }
@@ -134,14 +126,12 @@ func formatElapsed(start, end *time.Time) string {
 	return fmt.Sprintf("%dm%02ds", minutes, seconds)
 }
 
-// estimateTokens is a cheap approximation of the prompt-side token count
-// (roughly 4 chars per token for English prose). Used solely for the
-// race-context token-accounting split in slice 8 — we don't need
-// provider-accurate tokenization for spend observability.
-func estimateTokens(text string) int {
+// EstimateTokens approximates prompt-side token count at ~4 chars/token.
+// Not provider-accurate; used only for the token-accounting split so
+// race-context bytes don't get counted as billable model spend.
+func EstimateTokens(text string) int {
 	if text == "" {
 		return 0
 	}
-	// Round up so a 1-char string still reports at least 1 token.
 	return (len(text) + 3) / 4
 }
