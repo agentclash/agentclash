@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	"github.com/agentclash/agentclash/cli/internal/auth"
+	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 // executeCommand runs a cobra command with args against a fake API server.
@@ -38,13 +40,11 @@ func executeCommand(t *testing.T, args []string, apiURL string) error {
 		valueFlag.Value.Set("")
 		valueFlag.Changed = false
 	}
-	// StringSlice flags on subcommands retain appended values across
-	// rootCmd.Execute() calls. Reset the ones tests exercise so sequential
-	// `eval --models A,B` + `eval --models C` don't silently merge into
-	// `A,B,C` on the second call.
-	resetSliceFlags([][2]string{
-		{"eval", "models"},
-	})
+	// Cobra retains flag state on subcommands across Execute() calls, so
+	// a `--force` or StringSlice like `--models A,B` set by one test
+	// leaks into the next unless reset. Walk the whole tree and restore
+	// every flag to its declared default. Much safer than whack-a-mole.
+	resetAllSubcommandFlags(rootCmd)
 
 	rootCmd.SetArgs(args)
 	return rootCmd.Execute()
@@ -52,26 +52,45 @@ func executeCommand(t *testing.T, args []string, apiURL string) error {
 
 var cmdMu sync.Mutex
 
-// resetSliceFlags wipes StringSlice (and similar repeated) flag state on the
-// named subcommand+flag pairs so successive test runs start clean. Missing
-// commands or flags are silently ignored — the test is still useful even if
-// the command gets renamed.
-func resetSliceFlags(targets [][2]string) {
-	for _, t := range targets {
-		cmdName, flagName := t[0], t[1]
-		sub, _, err := rootCmd.Find([]string{cmdName})
-		if err != nil || sub == nil {
-			continue
+// resetAllSubcommandFlags walks every cobra subcommand and restores each
+// local flag to the default it was declared with. Persistent flags on the
+// root are left alone — those are reset manually above by assigning the
+// flagJSON/flagOutput/... globals.
+//
+// Covers three pitfalls sequenced test runs hit:
+//   - StringSlice values append across invocations (e.g., `--models A,B`
+//     then `--models C` becomes `A,B,C`).
+//   - Bool flags stay true after a test that passed `--force` or
+//     `--allow-partial`.
+//   - f.Changed sticks, which cobra callers read to decide whether a flag
+//     was explicitly set.
+func resetAllSubcommandFlags(root *cobra.Command) {
+	var walk func(c *cobra.Command)
+	walk = func(c *cobra.Command) {
+		c.Flags().VisitAll(func(f *pflag.Flag) {
+			if !f.Changed {
+				return
+			}
+			// StringSlice.Set appends rather than replaces, and DefValue
+			// serialises an empty slice as the literal "[]" — calling
+			// Set("[]") would make the slice contain a single-element
+			// "[]" string, which is exactly the bug this function exists
+			// to prevent. Use Replace(nil) for slice-shaped values and
+			// skip the trailing Set entirely.
+			if slice, ok := f.Value.(interface{ Replace([]string) error }); ok {
+				_ = slice.Replace(nil)
+				f.Changed = false
+				return
+			}
+			_ = f.Value.Set(f.DefValue)
+			f.Changed = false
+		})
+		for _, sub := range c.Commands() {
+			walk(sub)
 		}
-		f := sub.Flags().Lookup(flagName)
-		if f == nil {
-			continue
-		}
-		_ = f.Value.Set("")
-		if slice, ok := f.Value.(interface{ Replace([]string) error }); ok {
-			_ = slice.Replace(nil)
-		}
-		f.Changed = false
+	}
+	for _, sub := range root.Commands() {
+		walk(sub)
 	}
 }
 
