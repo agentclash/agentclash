@@ -8,8 +8,8 @@ import {
   Fraunces,
 } from "next/font/google";
 import { Analytics } from "@vercel/analytics/react";
-import { AuthKitProvider } from "@workos-inc/authkit-nextjs/components";
 import { Toaster } from "@/components/ui/sonner";
+import { AppProviders } from "@/app/providers";
 import "./globals.css";
 import { cn } from "@/lib/utils";
 
@@ -118,7 +118,7 @@ export default function RootLayout({
       <body
         className={`${instrumentSerif.variable} ${dmSans.variable} ${ibmPlexMono.variable} ${fraunces.variable} ${geistMono.variable}`}
       >
-        <AuthKitProvider>{children}</AuthKitProvider>
+        <AppProviders>{children}</AppProviders>
         <Toaster position="bottom-right" />
         <Analytics />
       </body>

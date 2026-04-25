@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
 import { createApiClient } from "@/lib/api/client";
+import { useApiMutator, type ApiQueryKey } from "@/lib/api/swr";
 import { ApiError } from "@/lib/api/errors";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,14 +21,17 @@ import { Loader2, Trash2 } from "lucide-react";
 interface DeleteResourceButtonProps {
   endpoint: string;
   resourceName: string;
+  invalidateKeys?: ApiQueryKey[];
 }
 
 export function DeleteResourceButton({
   endpoint,
   resourceName,
+  invalidateKeys,
 }: DeleteResourceButtonProps) {
   const router = useRouter();
   const { getAccessToken } = useAccessToken();
+  const { mutateMany } = useApiMutator();
   const [open, setOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -39,7 +43,11 @@ export function DeleteResourceButton({
       await api.del(endpoint);
       toast.success(`${resourceName} deleted`);
       setOpen(false);
-      router.refresh();
+      if (invalidateKeys && invalidateKeys.length > 0) {
+        await mutateMany(invalidateKeys);
+      } else {
+        router.refresh();
+      }
     } catch (err) {
       toast.error(
         err instanceof ApiError ? err.message : `Failed to delete ${resourceName}`,

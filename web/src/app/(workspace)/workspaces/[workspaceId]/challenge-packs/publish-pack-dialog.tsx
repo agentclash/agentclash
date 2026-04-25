@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
 import { createApiClient } from "@/lib/api/client";
+import { useApiMutator } from "@/lib/api/swr";
 import { ApiError } from "@/lib/api/errors";
+import { workspaceResourceKeys } from "@/lib/workspace-resource";
 import type {
   ValidateChallengePackResponse,
   PublishChallengePackResponse,
@@ -28,8 +29,8 @@ interface PublishPackDialogProps {
 }
 
 export function PublishPackDialog({ workspaceId }: PublishPackDialogProps) {
-  const router = useRouter();
   const { getAccessToken } = useAccessToken();
+  const { mutate } = useApiMutator();
   const [open, setOpen] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [yaml, setYaml] = useState("");
@@ -102,7 +103,7 @@ export function PublishPackDialog({ workspaceId }: PublishPackDialogProps) {
       toast.success("Challenge pack published");
       setOpen(false);
       reset();
-      router.refresh();
+      await mutate(workspaceResourceKeys.challengePacks(workspaceId));
       return result;
     } catch (err) {
       if (err instanceof ApiError) {

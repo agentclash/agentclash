@@ -23,6 +23,13 @@ export function WorkspaceSwitcher({
   const router = useRouter();
   const pathname = usePathname();
 
+  function getWorkspacePath(workspaceId: string) {
+    return pathname.replace(
+      /\/workspaces\/[^/]+/,
+      `/workspaces/${workspaceId}`,
+    );
+  }
+
   const allWorkspaces: (UserMeWorkspace & { orgName: string })[] = [];
   for (const org of organizations) {
     for (const ws of org.workspaces) {
@@ -33,10 +40,7 @@ export function WorkspaceSwitcher({
   const current = allWorkspaces.find((ws) => ws.id === currentWorkspaceId);
 
   function switchWorkspace(workspaceId: string) {
-    const newPath = pathname.replace(
-      /\/workspaces\/[^/]+/,
-      `/workspaces/${workspaceId}`,
-    );
+    const newPath = getWorkspacePath(workspaceId);
     router.push(newPath);
   }
 
@@ -61,6 +65,8 @@ export function WorkspaceSwitcher({
           <DropdownMenuItem
             key={ws.id}
             onClick={() => switchWorkspace(ws.id)}
+            onMouseEnter={() => void router.prefetch(getWorkspacePath(ws.id))}
+            onFocus={() => void router.prefetch(getWorkspacePath(ws.id))}
             className="flex items-center justify-between py-2"
           >
             <div className="flex flex-col gap-0.5">

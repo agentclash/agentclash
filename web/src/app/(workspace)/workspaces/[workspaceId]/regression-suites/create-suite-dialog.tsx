@@ -1,13 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
 import { toast } from "sonner";
 import { Loader2, Plus } from "lucide-react";
 
 import { createApiClient } from "@/lib/api/client";
+import { useApiMutator } from "@/lib/api/swr";
 import { ApiError } from "@/lib/api/errors";
+import { workspaceResourceKeys } from "@/lib/workspace-resource";
 import type {
   ChallengePack,
   CreateRegressionSuiteInput,
@@ -40,6 +41,7 @@ interface CreateSuiteDialogProps {
   packs: ChallengePack[];
   initialOpen?: boolean;
   initialPackId?: string;
+  offset?: number;
 }
 
 function hasRunnableVersion(pack: ChallengePack): boolean {
@@ -51,9 +53,10 @@ export function CreateSuiteDialog({
   packs,
   initialOpen = false,
   initialPackId,
+  offset = 0,
 }: CreateSuiteDialogProps) {
-  const router = useRouter();
   const { getAccessToken } = useAccessToken();
+  const { mutate } = useApiMutator();
   const [open, setOpen] = useState(initialOpen);
 
   const eligiblePacks = packs.filter(hasRunnableVersion);
@@ -108,7 +111,7 @@ export function CreateSuiteDialog({
       toast.success("Regression suite created");
       setOpen(false);
       reset();
-      router.refresh();
+      await mutate(workspaceResourceKeys.regressionSuites(workspaceId, offset));
     } catch (err) {
       if (err instanceof ApiError) {
         toast.error(err.message);

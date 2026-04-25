@@ -1,7 +1,4 @@
-import { withAuth } from "@workos-inc/authkit-nextjs";
-import { redirect } from "next/navigation";
-import { createApiClient } from "@/lib/api/client";
-import type { SessionResponse, UserMeResponse } from "@/lib/api/types";
+import { getWorkspaceShellData } from "@/lib/auth/server";
 import { Sidebar } from "@/components/app-shell/sidebar";
 import { TopBar } from "@/components/app-shell/top-bar";
 
@@ -12,32 +9,15 @@ export default async function WorkspaceLayout({
   children: React.ReactNode;
   params: Promise<{ workspaceId: string }>;
 }) {
-  const { user, accessToken } = await withAuth();
-  if (!user) redirect("/auth/login");
-
   const { workspaceId } = await params;
-
-  let session: SessionResponse | null = null;
-  let userMe: UserMeResponse | null = null;
-
-  try {
-    const api = createApiClient(accessToken);
-    [session, userMe] = await Promise.all([
-      api.get<SessionResponse>("/v1/auth/session"),
-      api.get<UserMeResponse>("/v1/users/me"),
-    ]);
-  } catch {
-    redirect("/auth/login");
-  }
-
-  // Validate workspace access
-  const hasMembership = session.workspace_memberships.some(
-    (m) => m.workspace_id === workspaceId,
-  );
-  // Also check implicit access via org_admin
-  const hasOrgAccess = session.organization_memberships.some(
-    (m) => m.role === "org_admin",
-  );
+  const {
+    user,
+    userMe,
+    hasMembership,
+    hasOrgAccess,
+    orgName,
+    orgSlug,
+  } = await getWorkspaceShellData(workspaceId);
 
   if (!hasMembership && !hasOrgAccess) {
     return (
@@ -56,17 +36,6 @@ export default async function WorkspaceLayout({
         </div>
       </div>
     );
-  }
-
-  // Find org name and slug for the current workspace
-  let orgName: string | undefined;
-  let orgSlug: string | undefined;
-  for (const org of userMe.organizations) {
-    if (org.workspaces.some((w) => w.id === workspaceId)) {
-      orgName = org.name;
-      orgSlug = org.slug;
-      break;
-    }
   }
 
   return (

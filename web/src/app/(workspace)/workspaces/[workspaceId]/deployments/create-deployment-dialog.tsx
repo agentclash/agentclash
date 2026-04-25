@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useRouter } from "next/navigation";
 import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
 import { createApiClient } from "@/lib/api/client";
+import { useApiMutator } from "@/lib/api/swr";
 import { ApiError } from "@/lib/api/errors";
+import { workspaceResourceKeys } from "@/lib/workspace-resource";
 import type {
   AgentBuild,
   AgentBuildDetail,
@@ -35,8 +36,8 @@ interface CreateDeploymentDialogProps {
 export function CreateDeploymentDialog({
   workspaceId,
 }: CreateDeploymentDialogProps) {
-  const router = useRouter();
   const { getAccessToken } = useAccessToken();
+  const { mutate } = useApiMutator();
 
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
@@ -148,7 +149,7 @@ export function CreateDeploymentDialog({
       toast.success(`Deployed "${name.trim()}"`);
       setOpen(false);
       resetForm();
-      router.refresh();
+      await mutate(workspaceResourceKeys.deployments(workspaceId));
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Failed to create deployment");
     } finally {

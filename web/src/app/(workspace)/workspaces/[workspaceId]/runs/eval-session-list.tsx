@@ -1,16 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
 import { FlaskConical } from "lucide-react";
 
-import { createApiClient } from "@/lib/api/client";
 import type {
   EvalSessionListItem,
   EvalSessionStatus,
   ListEvalSessionsResponse,
 } from "@/lib/api/types";
+import { useApiQuery } from "@/lib/api/swr";
+import { workspacePageSizes } from "@/lib/workspace-resource";
+import { WorkspaceListLoading } from "@/components/app-shell/workspace-loading";
 import {
   formatEvalSessionMetricName,
   normalizeEvalSessionWarnings,
@@ -29,13 +29,8 @@ import {
 import { evalSessionStatusVariant } from "./status-variant";
 
 const ACTIVE_STATUSES: EvalSessionStatus[] = ["queued", "running", "aggregating"];
-const PAGE_SIZE = 20;
+const PAGE_SIZE = workspacePageSizes.runs;
 const POLL_INTERVAL_MS = 5000;
-
-interface EvalSessionListProps {
-  workspaceId: string;
-  initialSessions: EvalSessionListItem[];
-}
 
 function formatPrimaryMetric(item: EvalSessionListItem): string {
   const primaryMetric = item.aggregate_result?.metric_routing?.primary_metric;
@@ -56,39 +51,36 @@ function formatRunSummary(item: EvalSessionListItem): string {
   return `${counts.completed}/${counts.total} completed`;
 }
 
-export function EvalSessionList({
-  workspaceId,
-  initialSessions,
-}: EvalSessionListProps) {
-  const { getAccessToken } = useAccessToken();
-  const [sessions, setSessions] = useState(initialSessions);
-
-  const fetchSessions = useCallback(async () => {
-    try {
-      const token = await getAccessToken();
-      const api = createApiClient(token);
-      const response = await api.get<ListEvalSessionsResponse>("/v1/eval-sessions", {
-        params: {
-          workspace_id: workspaceId,
-          limit: PAGE_SIZE,
-          offset: 0,
-        },
-      });
-      setSessions(response.items);
-    } catch {
-      // Keep the current data when background refresh fails.
-    }
-  }, [getAccessToken, workspaceId]);
-
-  const hasActiveSessions = sessions.some((item) =>
-    ACTIVE_STATUSES.includes(item.eval_session.status),
+export function EvalSessionList({ workspaceId }: { workspaceId: string }) {
+  const { data, error, isLoading } = useApiQuery<ListEvalSessionsResponse>(
+    "/v1/eval-sessions",
+    {
+      workspace_id: workspaceId,
+      limit: PAGE_SIZE,
+      offset: 0,
+    },
+    {
+      refreshInterval: (response) =>
+        response?.items.some((item) =>
+          ACTIVE_STATUSES.includes(item.eval_session.status),
+        )
+          ? POLL_INTERVAL_MS
+          : 0,
+    },
   );
+  const sessions = data?.items ?? [];
 
-  useEffect(() => {
-    if (!hasActiveSessions) return;
-    const interval = setInterval(fetchSessions, POLL_INTERVAL_MS);
-    return () => clearInterval(interval);
-  }, [fetchSessions, hasActiveSessions]);
+  if (isLoading && !data) {
+    return <WorkspaceListLoading rows={6} />;
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-4 text-sm text-destructive">
+        Failed to load eval sessions.
+      </div>
+    );
+  }
 
   if (sessions.length === 0) {
     return (

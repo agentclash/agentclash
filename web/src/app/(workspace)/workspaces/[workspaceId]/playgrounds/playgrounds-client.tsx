@@ -1,11 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
 import { createApiClient } from "@/lib/api/client";
 import type { Playground } from "@/lib/api/types";
+import { useApiListQuery, useApiMutator } from "@/lib/api/swr";
+import { workspaceResourceKeys } from "@/lib/workspace-resource";
+import { WorkspaceListLoading } from "@/components/app-shell/workspace-loading";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
@@ -58,13 +60,17 @@ const defaultEvalSpec = {
 
 export function PlaygroundsClient({
   workspaceId,
-  initialPlaygrounds,
 }: {
   workspaceId: string;
-  initialPlaygrounds: Playground[];
 }) {
-  const router = useRouter();
   const { getAccessToken } = useAccessToken();
+  const { mutate } = useApiMutator();
+  const {
+    data,
+    error: loadError,
+    isLoading,
+  } = useApiListQuery<Playground>(`/v1/workspaces/${workspaceId}/playgrounds`);
+  const playgrounds = data?.items ?? [];
   const [name, setName] = useState("");
   const [promptTemplate, setPromptTemplate] = useState(
     "Summarize {{topic}} in one sentence.",
@@ -90,7 +96,10 @@ export function PlaygroundsClient({
         evaluation_spec: evalSpec,
       });
       setName("");
-      router.refresh();
+      setPromptTemplate("Summarize {{topic}} in one sentence.");
+      setSystemPrompt("Be precise and concise.");
+      setEvalSpec(defaultEvalSpec);
+      await mutate(workspaceResourceKeys.playgrounds(workspaceId));
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Failed to create playground",
@@ -164,7 +173,13 @@ export function PlaygroundsClient({
         </div>
       </form>
 
-      {initialPlaygrounds.length === 0 ? (
+      {isLoading && !data ? (
+        <WorkspaceListLoading rows={6} />
+      ) : loadError ? (
+        <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-4 text-sm text-destructive">
+          Failed to load playgrounds.
+        </div>
+      ) : playgrounds.length === 0 ? (
         <EmptyState
           icon={<FlaskConical className="size-10" />}
           title="No playgrounds yet"
@@ -181,7 +196,7 @@ export function PlaygroundsClient({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {initialPlaygrounds.map((playground) => (
+              {playgrounds.map((playground) => (
                 <TableRow key={playground.id}>
                   <TableCell>
                     <Link

@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
 import { createApiClient } from "@/lib/api/client";
+import { useApiMutator } from "@/lib/api/swr";
 import { ApiError } from "@/lib/api/errors";
+import { workspaceResourceKeys } from "@/lib/workspace-resource";
 import type { AgentBuild } from "@/lib/api/types";
 import { Button } from "@/components/ui/button";
 import {
@@ -24,8 +25,8 @@ interface CreateBuildDialogProps {
 }
 
 export function CreateBuildDialog({ workspaceId }: CreateBuildDialogProps) {
-  const router = useRouter();
   const { getAccessToken } = useAccessToken();
+  const { mutate } = useApiMutator();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -49,7 +50,7 @@ export function CreateBuildDialog({ workspaceId }: CreateBuildDialogProps) {
       setOpen(false);
       setName("");
       setDescription("");
-      router.refresh();
+      await mutate(workspaceResourceKeys.builds(workspaceId));
     } catch (err) {
       if (err instanceof ApiError) {
         toast.error(err.message);

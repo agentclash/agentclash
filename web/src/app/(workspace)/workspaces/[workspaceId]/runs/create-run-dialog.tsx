@@ -4,7 +4,9 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
 import { createApiClient } from "@/lib/api/client";
+import { useApiMutator } from "@/lib/api/swr";
 import { ApiError } from "@/lib/api/errors";
+import { workspaceMutationKeys, workspaceResourceKeys } from "@/lib/workspace-resource";
 import type {
   AgentDeployment,
   ChallengePack,
@@ -37,6 +39,7 @@ interface CreateRunDialogProps {
 export function CreateRunDialog({ workspaceId }: CreateRunDialogProps) {
   const router = useRouter();
   const { getAccessToken } = useAccessToken();
+  const { mutate, mutateMany } = useApiMutator();
 
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
@@ -113,6 +116,11 @@ export function CreateRunDialog({ workspaceId }: CreateRunDialogProps) {
   useEffect(() => {
     if (open) loadData();
   }, [open, loadData]);
+
+  useEffect(() => {
+    if (!open) return;
+    void mutateMany(workspaceMutationKeys.createRunDialog(workspaceId));
+  }, [mutateMany, open, workspaceId]);
 
   function handlePackChange(packId: string) {
     setSelectedPackId(packId);
@@ -302,7 +310,7 @@ export function CreateRunDialog({ workspaceId }: CreateRunDialogProps) {
       setOpen(false);
       resetForm();
       router.push(`/workspaces/${workspaceId}/runs/${result.id}`);
-      router.refresh();
+      void mutate(workspaceResourceKeys.runs(workspaceId, 0));
     } catch (err) {
       toast.error(
         err instanceof ApiError ? err.message : "Failed to create run",

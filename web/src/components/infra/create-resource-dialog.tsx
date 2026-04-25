@@ -4,6 +4,7 @@ import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
 import { createApiClient } from "@/lib/api/client";
+import { useApiMutator, type ApiQueryKey } from "@/lib/api/swr";
 import { ApiError } from "@/lib/api/errors";
 import { Button } from "@/components/ui/button";
 import {
@@ -34,6 +35,7 @@ interface CreateResourceDialogProps {
   fields: Field[];
   buttonLabel?: string;
   children?: ReactNode;
+  invalidateKeys?: ApiQueryKey[];
 }
 
 export function CreateResourceDialog({
@@ -42,9 +44,11 @@ export function CreateResourceDialog({
   endpoint,
   fields,
   buttonLabel = "Create",
+  invalidateKeys,
 }: CreateResourceDialogProps) {
   const router = useRouter();
   const { getAccessToken } = useAccessToken();
+  const { mutateMany } = useApiMutator();
   const [open, setOpen] = useState(false);
   const [values, setValues] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
@@ -92,7 +96,11 @@ export function CreateResourceDialog({
       toast.success("Created successfully");
       setOpen(false);
       setValues({});
-      router.refresh();
+      if (invalidateKeys && invalidateKeys.length > 0) {
+        await mutateMany(invalidateKeys);
+      } else {
+        router.refresh();
+      }
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Failed to create");
     } finally {

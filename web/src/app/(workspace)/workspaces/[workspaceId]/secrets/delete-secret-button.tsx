@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
 import { createApiClient } from "@/lib/api/client";
+import { useApiMutator } from "@/lib/api/swr";
 import { ApiError } from "@/lib/api/errors";
+import { workspaceResourceKeys } from "@/lib/workspace-resource";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { Loader2, Trash2 } from "lucide-react";
@@ -18,8 +19,8 @@ export function DeleteSecretButton({
   workspaceId,
   secretKey,
 }: DeleteSecretButtonProps) {
-  const router = useRouter();
   const { getAccessToken } = useAccessToken();
+  const { mutate } = useApiMutator();
   const [deleting, setDeleting] = useState(false);
 
   async function handleDelete() {
@@ -33,7 +34,7 @@ export function DeleteSecretButton({
         `/v1/workspaces/${workspaceId}/secrets/${encodeURIComponent(secretKey)}`,
       );
       toast.success(`Deleted "${secretKey}"`);
-      router.refresh();
+      await mutate(workspaceResourceKeys.secrets(workspaceId));
     } catch (err) {
       if (err instanceof ApiError && err.code === "secret_not_found") {
         toast.error("Secret not found — it may have already been deleted");

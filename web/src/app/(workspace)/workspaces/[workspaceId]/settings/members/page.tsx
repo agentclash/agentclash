@@ -1,7 +1,6 @@
-import { withAuth } from "@workos-inc/authkit-nextjs";
-import { redirect } from "next/navigation";
-import { createApiClient } from "@/lib/api/client";
-import type { WorkspaceMember, SessionResponse } from "@/lib/api/types";
+import { getServerApiClient } from "@/lib/api/server";
+import { requireWorkspaceAdminAccess } from "@/lib/auth/server";
+import type { WorkspaceMember } from "@/lib/api/types";
 import { WsMembersClient } from "./ws-members-client";
 import Link from "next/link";
 
@@ -10,27 +9,16 @@ export default async function WorkspaceMembersPage({
 }: {
   params: Promise<{ workspaceId: string }>;
 }) {
-  const { accessToken } = await withAuth();
-  if (!accessToken) redirect("/auth/login");
-
   const { workspaceId } = await params;
-  const api = createApiClient(accessToken);
+  const api = await getServerApiClient();
 
-  const [res, session] = await Promise.all([
+  const [res, adminAccess] = await Promise.all([
     api.get<{ items: WorkspaceMember[]; total: number }>(
       `/v1/workspaces/${workspaceId}/memberships`,
       { params: { limit: 50, offset: 0 } },
     ),
-    api.get<SessionResponse>("/v1/auth/session"),
+    requireWorkspaceAdminAccess(workspaceId),
   ]);
-
-  const isWsAdmin = session.workspace_memberships.some(
-    (m) => m.workspace_id === workspaceId && m.role === "workspace_admin",
-  );
-  const isOrgAdmin = session.organization_memberships.some(
-    (m) => m.role === "org_admin",
-  );
-  const isAdmin = isWsAdmin || isOrgAdmin;
 
   return (
     <div>
@@ -46,8 +34,8 @@ export default async function WorkspaceMembersPage({
       </div>
       <WsMembersClient
         workspaceId={workspaceId}
-        isAdmin={isAdmin}
-        currentUserId={session.user_id}
+        isAdmin
+        currentUserId={adminAccess.session.user_id}
         initialMembers={res.items}
         initialTotal={res.total}
       />

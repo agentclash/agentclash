@@ -3,7 +3,9 @@
 import { useState, useRef } from "react";
 import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
 import { uploadArtifact } from "@/lib/api/artifacts";
+import { useApiMutator } from "@/lib/api/swr";
 import { ApiError } from "@/lib/api/errors";
+import { workspaceResourceKeys } from "@/lib/workspace-resource";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -33,6 +35,7 @@ export function UploadArtifactDialog({
   onUploaded,
 }: UploadArtifactDialogProps) {
   const { getAccessToken } = useAccessToken();
+  const { mutate } = useApiMutator();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
   const [file, setFile] = useState<File | null>(null);
@@ -104,6 +107,7 @@ export function UploadArtifactDialog({
         onProgress: setProgress,
       });
       setSuccess(true);
+      await mutate(workspaceResourceKeys.artifacts(workspaceId));
       onUploaded?.();
     } catch (err) {
       setApiError(

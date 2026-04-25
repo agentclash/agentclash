@@ -7,7 +7,9 @@ import { Loader2, Sigma } from "lucide-react";
 import { toast } from "sonner";
 
 import { createApiClient } from "@/lib/api/client";
+import { useApiMutator } from "@/lib/api/swr";
 import { ApiError } from "@/lib/api/errors";
+import { workspaceMutationKeys, workspaceResourceKeys } from "@/lib/workspace-resource";
 import type {
   AgentDeployment,
   ChallengeInputSetSummary,
@@ -64,6 +66,7 @@ export function CreateEvalSessionDialog({
 }: CreateEvalSessionDialogProps) {
   const router = useRouter();
   const { getAccessToken } = useAccessToken();
+  const { mutate, mutateMany } = useApiMutator();
 
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
@@ -128,6 +131,11 @@ export function CreateEvalSessionDialog({
   useEffect(() => {
     if (open) void loadData();
   }, [loadData, open]);
+
+  useEffect(() => {
+    if (!open) return;
+    void mutateMany(workspaceMutationKeys.createEvalSessionDialog(workspaceId));
+  }, [mutateMany, open, workspaceId]);
 
   useEffect(() => {
     if (!open || !selectedVersionId) {
@@ -349,7 +357,7 @@ export function CreateEvalSessionDialog({
       router.push(
         `/workspaces/${workspaceId}/eval-sessions/${body.eval_session.id}`,
       );
-      router.refresh();
+      void mutate(workspaceResourceKeys.evalSessions(workspaceId, 0));
     } catch (err) {
       toast.error(
         err instanceof ApiError ? err.message : "Failed to create eval session",

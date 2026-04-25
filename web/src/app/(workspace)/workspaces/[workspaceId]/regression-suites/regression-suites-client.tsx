@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
 import { toast } from "sonner";
 import { MoreHorizontal, ShieldAlert } from "lucide-react";
 
 import { createApiClient } from "@/lib/api/client";
+import { useApiListQuery, useApiMutator, usePaginatedApiQuery } from "@/lib/api/swr";
 import { ApiError } from "@/lib/api/errors";
 import type {
   ChallengePack,
@@ -15,6 +16,8 @@ import type {
   RegressionSuite,
   RegressionSuiteStatus,
 } from "@/lib/api/types";
+import { workspacePageSizes, workspaceResourceKeys } from "@/lib/workspace-resource";
+import { WorkspaceListLoading } from "@/components/app-shell/workspace-loading";
 import { Button } from "@/components/ui/button";
 import { ConfirmProvider, useConfirm } from "@/components/ui/confirm-dialog";
 import {
@@ -45,42 +48,54 @@ import {
 import { SeverityBadge, SuiteStatusBadge } from "./badges";
 import { CreateSuiteDialog } from "./create-suite-dialog";
 
-const PAGE_SIZE = 50;
+const PAGE_SIZE = workspacePageSizes.suites;
 
 type StatusFilter = "all" | RegressionSuiteStatus;
 
-interface RegressionSuitesClientProps {
-  workspaceId: string;
-  suites: RegressionSuite[];
-  total: number;
-  offset: number;
-  packs: ChallengePack[];
-  initialCreateOpen?: boolean;
-  initialCreatePackId?: string;
-}
-
-export function RegressionSuitesClient(props: RegressionSuitesClientProps) {
+export function RegressionSuitesClient({ workspaceId }: { workspaceId: string }) {
   return (
     <ConfirmProvider>
-      <RegressionSuitesInner {...props} />
+      <RegressionSuitesInner workspaceId={workspaceId} />
     </ConfirmProvider>
   );
 }
 
 function RegressionSuitesInner({
   workspaceId,
-  suites,
-  total,
-  offset,
-  packs,
-  initialCreateOpen,
-  initialCreatePackId,
-}: RegressionSuitesClientProps) {
+}: {
+  workspaceId: string;
+}) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { getAccessToken } = useAccessToken();
+  const { mutate } = useApiMutator();
   const confirm = useConfirm();
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [pending, setPending] = useState<string | null>(null);
+  const offset = Math.max(
+    0,
+    Number.parseInt(searchParams.get("offset") ?? "0", 10) || 0,
+  );
+  const initialCreateOpen = searchParams.get("create") === "1";
+  const initialCreatePackId = searchParams.get("sourcePackId") ?? undefined;
+  const {
+    data: suitesPage,
+    error: suitesError,
+    isLoading: suitesLoading,
+  } = usePaginatedApiQuery<RegressionSuite>(
+    `/v1/workspaces/${workspaceId}/regression-suites`,
+    { limit: PAGE_SIZE, offset },
+  );
+  const {
+    data: packsResponse,
+    error: packsError,
+    isLoading: packsLoading,
+  } = useApiListQuery<ChallengePack>(
+    `/v1/workspaces/${workspaceId}/challenge-packs`,
+  );
+  const suites = suitesPage?.items ?? [];
+  const total = suitesPage?.total ?? 0;
+  const packs = packsResponse?.items ?? [];
 
   const packsById = new Map(packs.map((p) => [p.id, p]));
   const hasAnyPack = packs.length > 0;
@@ -119,7 +134,7 @@ function RegressionSuitesInner({
       toast.success(
         next === "archived" ? "Suite archived" : "Suite reactivated",
       );
-      router.refresh();
+      await mutate(workspaceResourceKeys.regressionSuites(workspaceId, offset));
     } catch (err) {
       if (err instanceof ApiError) {
         toast.error(err.message);
@@ -147,6 +162,18 @@ function RegressionSuitesInner({
     await patchStatus(suite, "active");
   }
 
+  if ((suitesLoading && !suitesPage) || (packsLoading && !packsResponse)) {
+    return <WorkspaceListLoading rows={6} />;
+  }
+
+  if (suitesError || packsError) {
+    return (
+      <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-4 text-sm text-destructive">
+        Failed to load regression suites.
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -159,6 +186,7 @@ function RegressionSuitesInner({
               packs={packs}
               initialOpen={initialCreateOpen}
               initialPackId={initialCreatePackId}
+              offset={offset}
             />
           ) : null
         }

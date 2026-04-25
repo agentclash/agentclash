@@ -1,5 +1,5 @@
-import { withAuth } from "@workos-inc/authkit-nextjs";
-import { createApiClient, type ApiClient } from "./client";
+import { getServerApiClient as getCachedServerApiClient } from "@/lib/auth/server";
+import type { ApiClient } from "./client";
 
 /**
  * Create an API client pre-configured with the current user's access token.
@@ -10,6 +10,5 @@ import { createApiClient, type ApiClient } from "./client";
  *   const session = await api.get<SessionResponse>("/v1/auth/session");
  */
 export async function getServerApiClient(): Promise<ApiClient> {
-  const { accessToken } = await withAuth();
-  return createApiClient(accessToken);
+  return getCachedServerApiClient();
 }

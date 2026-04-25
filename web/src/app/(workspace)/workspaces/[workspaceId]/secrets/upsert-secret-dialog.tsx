@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
 import { createApiClient } from "@/lib/api/client";
+import { useApiMutator } from "@/lib/api/swr";
 import { ApiError } from "@/lib/api/errors";
+import { workspaceResourceKeys } from "@/lib/workspace-resource";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -25,8 +26,8 @@ interface UpsertSecretDialogProps {
 }
 
 export function UpsertSecretDialog({ workspaceId }: UpsertSecretDialogProps) {
-  const router = useRouter();
   const { getAccessToken } = useAccessToken();
+  const { mutate } = useApiMutator();
   const [open, setOpen] = useState(false);
   const [key, setKey] = useState("");
   const [value, setValue] = useState("");
@@ -66,7 +67,7 @@ export function UpsertSecretDialog({ workspaceId }: UpsertSecretDialogProps) {
       setKey("");
       setValue("");
       setKeyError("");
-      router.refresh();
+      await mutate(workspaceResourceKeys.secrets(workspaceId));
     } catch (err) {
       if (err instanceof ApiError) {
         toast.error(err.message);

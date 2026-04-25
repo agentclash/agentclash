@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
-import { createApiClient } from "@/lib/api/client";
 import type { Run, RunStatus } from "@/lib/api/types";
+import { usePaginatedApiQuery } from "@/lib/api/swr";
+import { workspacePageSizes } from "@/lib/workspace-resource";
+import { WorkspaceListLoading } from "@/components/app-shell/workspace-loading";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import {
@@ -26,71 +27,36 @@ const ACTIVE_STATUSES: RunStatus[] = [
   "running",
   "scoring",
 ];
-const PAGE_SIZE = 20;
 const POLL_INTERVAL_MS = 5000;
 
-interface RunListProps {
-  workspaceId: string;
-  initialRuns: Run[];
-  initialTotal: number;
-}
+const PAGE_SIZE = workspacePageSizes.runs;
 
-export function RunList({
-  workspaceId,
-  initialRuns,
-  initialTotal,
-}: RunListProps) {
-  const { getAccessToken } = useAccessToken();
+export function RunList({ workspaceId }: { workspaceId: string }) {
   const router = useRouter();
-  const [runs, setRuns] = useState<Run[]>(initialRuns);
-  const [total, setTotal] = useState(initialTotal);
   const [offset, setOffset] = useState(0);
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
-  const hasActiveRuns = runs.some((r) =>
-    ACTIVE_STATUSES.includes(r.status),
-  );
-
-  const fetchRuns = useCallback(
-    async (currentOffset: number) => {
-      try {
-        const token = await getAccessToken();
-        const api = createApiClient(token);
-        const res = await api.get<{
-          items: Run[];
-          total: number;
-          limit: number;
-          offset: number;
-        }>(`/v1/workspaces/${workspaceId}/runs`, {
-          params: { limit: PAGE_SIZE, offset: currentOffset },
-        });
-        setRuns(res.items);
-        setTotal(res.total);
-      } catch {
-        // Silently fail on poll — data stays stale until next poll
-      }
+  const { data, error, isLoading } = usePaginatedApiQuery<Run>(
+    `/v1/workspaces/${workspaceId}/runs`,
+    { limit: PAGE_SIZE, offset },
+    {
+      refreshInterval: (response) =>
+        response?.items.some((run) => ACTIVE_STATUSES.includes(run.status))
+          ? POLL_INTERVAL_MS
+          : 0,
     },
-    [getAccessToken, workspaceId],
   );
-
-  // Auto-refresh when there are active runs
-  useEffect(() => {
-    if (!hasActiveRuns) return;
-    const interval = setInterval(() => fetchRuns(offset), POLL_INTERVAL_MS);
-    return () => clearInterval(interval);
-  }, [hasActiveRuns, offset, fetchRuns]);
+  const runs = data?.items ?? [];
+  const total = data?.total ?? 0;
 
   function handlePrev() {
-    const newOffset = Math.max(0, offset - PAGE_SIZE);
-    setOffset(newOffset);
-    fetchRuns(newOffset);
+    setOffset((current) => Math.max(0, current - PAGE_SIZE));
   }
 
   function handleNext() {
     const newOffset = offset + PAGE_SIZE;
     if (newOffset < total) {
       setOffset(newOffset);
-      fetchRuns(newOffset);
     }
   }
 
@@ -116,6 +82,18 @@ export function RunList({
     const [baseline, candidate] = Array.from(selected);
     router.push(
       `/workspaces/${workspaceId}/compare?baseline=${baseline}&candidate=${candidate}`,
+    );
+  }
+
+  if (isLoading && !data) {
+    return <WorkspaceListLoading rows={6} />;
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-4 text-sm text-destructive">
+        Failed to load runs.
+      </div>
     );
   }
 

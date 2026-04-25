@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { navSections } from "./nav-items";
 import { PanelLeftClose, PanelLeft } from "lucide-react";
@@ -56,6 +56,11 @@ function SidebarNav({
   collapsed,
 }: SidebarProps & { collapsed: boolean }) {
   const pathname = usePathname();
+  const router = useRouter();
+
+  function warmRoute(href: string) {
+    void router.prefetch(href);
+  }
 
   return (
     <nav className={cn("flex-1 overflow-y-auto py-3", collapsed ? "px-1.5" : "px-2.5")}>
@@ -76,6 +81,8 @@ function SidebarNav({
                 <Link
                   key={item.label}
                   href={href}
+                  onMouseEnter={() => warmRoute(href)}
+                  onFocus={() => warmRoute(href)}
                   className={cn(
                     "group relative flex items-center rounded-md text-[0.8125rem] transition-colors",
                     collapsed
@@ -118,6 +125,7 @@ function SidebarNav({
 
 /** Desktop sidebar — collapsible */
 export function Sidebar({ workspaceId }: SidebarProps) {
+  const router = useRouter();
   const [collapsed, setCollapsed] = useState(() => {
     if (typeof window === "undefined") return false;
     return localStorage.getItem("sidebar-collapsed") === "true";
@@ -147,6 +155,8 @@ export function Sidebar({ workspaceId }: SidebarProps) {
         >
           <Link
             href={`/workspaces/${workspaceId}`}
+            onMouseEnter={() => void router.prefetch(`/workspaces/${workspaceId}`)}
+            onFocus={() => void router.prefetch(`/workspaces/${workspaceId}`)}
             className="flex items-center gap-2 text-foreground/90"
           >
             <LogoMark className="size-6 text-foreground" />
