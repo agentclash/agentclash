@@ -17,6 +17,11 @@ import (
 // API endpoints were called. Output formatting is tested in the output package.
 func executeCommand(t *testing.T, args []string, apiURL string) error {
 	t.Helper()
+	return executeCommandWithQuiet(t, args, apiURL, true)
+}
+
+func executeCommandWithQuiet(t *testing.T, args []string, apiURL string, quiet bool) error {
+	t.Helper()
 
 	// Cobra retains global flag state. Use a mutex to serialize test execution
 	// and reset flags before each call.
@@ -25,7 +30,7 @@ func executeCommand(t *testing.T, args []string, apiURL string) error {
 
 	flagJSON = false
 	flagOutput = ""
-	flagQuiet = true // suppress output in tests
+	flagQuiet = quiet
 	flagVerbose = false
 	flagNoColor = true
 	flagWorkspace = ""
@@ -570,6 +575,109 @@ func TestAuthLoginForceStartsDeviceFlowWhenStoredTokenValid(t *testing.T) {
 	}
 	if creds.Token != "clitok_forced" {
 		t.Fatalf("saved token = %q, want clitok_forced", creds.Token)
+	}
+}
+
+func TestAuthLoginFallsBackToEmailWhenDisplayNameMissing(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
+	t.Setenv("AGENTCLASH_TOKEN", "")
+
+	stderr := captureStderr(t)
+
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"POST /v1/cli-auth/device": jsonHandler(201, map[string]any{
+			"device_code":               "dc_test",
+			"user_code":                 "ABCD-EFGH",
+			"verification_uri":          "https://agentclash.dev/auth/device",
+			"verification_uri_complete": "https://agentclash.dev/auth/device?user_code=ABCD-EFGH",
+			"expires_in":                60,
+			"interval":                  1,
+		}),
+		"POST /v1/cli-auth/device/token": jsonHandler(200, map[string]any{
+			"token": "clitok_new",
+		}),
+		"GET /v1/auth/session": jsonHandler(200, map[string]any{
+			"user_id": "user-1",
+			"email":   "dev@example.com",
+		}),
+	})
+	defer srv.Close()
+
+	if err := executeCommandWithQuiet(t, []string{"auth", "login", "--device"}, srv.URL, false); err != nil {
+		t.Fatalf("auth login error: %v", err)
+	}
+
+	output := stderr.finish()
+	if !strings.Contains(output, "Logged in as dev@example.com") {
+		t.Fatalf("stderr = %q, want email fallback in success output", output)
+	}
+}
+
+func TestAuthLoginFallsBackToUserIDWhenIdentityMissing(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
+	t.Setenv("AGENTCLASH_TOKEN", "")
+
+	stderr := captureStderr(t)
+
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"POST /v1/cli-auth/device": jsonHandler(201, map[string]any{
+			"device_code":               "dc_test",
+			"user_code":                 "ABCD-EFGH",
+			"verification_uri":          "https://agentclash.dev/auth/device",
+			"verification_uri_complete": "https://agentclash.dev/auth/device?user_code=ABCD-EFGH",
+			"expires_in":                60,
+			"interval":                  1,
+		}),
+		"POST /v1/cli-auth/device/token": jsonHandler(200, map[string]any{
+			"token": "clitok_new",
+		}),
+		"GET /v1/auth/session": jsonHandler(200, map[string]any{
+			"user_id": "user-1",
+		}),
+	})
+	defer srv.Close()
+
+	if err := executeCommandWithQuiet(t, []string{"auth", "login", "--device"}, srv.URL, false); err != nil {
+		t.Fatalf("auth login error: %v", err)
+	}
+
+	output := stderr.finish()
+	if !strings.Contains(output, "Logged in as user-1") {
+		t.Fatalf("stderr = %q, want user_id fallback in success output", output)
+	}
+}
+
+func TestAuthLoginAlreadyAuthenticatedFallsBackToUserIDWhenIdentityMissing(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
+	t.Setenv("AGENTCLASH_TOKEN", "")
+	if err := auth.SaveCredentials(auth.Credentials{Token: "stored-token"}); err != nil {
+		t.Fatalf("SaveCredentials() error = %v", err)
+	}
+
+	stderr := captureStderr(t)
+
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"GET /v1/auth/session": func(w http.ResponseWriter, r *http.Request) {
+			if got := r.Header.Get("Authorization"); got != "Bearer stored-token" {
+				t.Fatalf("Authorization header = %q, want Bearer stored-token", got)
+			}
+			jsonHandler(200, map[string]any{
+				"user_id": "user-1",
+			})(w, r)
+		},
+	})
+	defer srv.Close()
+
+	if err := executeCommandWithQuiet(t, []string{"auth", "login", "--device"}, srv.URL, false); err != nil {
+		t.Fatalf("auth login error: %v", err)
+	}
+
+	output := stderr.finish()
+	if !strings.Contains(output, "Already logged in as user-1") {
+		t.Fatalf("stderr = %q, want user_id fallback in already-authenticated output", output)
 	}
 }
 

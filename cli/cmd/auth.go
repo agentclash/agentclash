@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/agentclash/agentclash/cli/internal/auth"
 	"github.com/agentclash/agentclash/cli/internal/output"
@@ -57,10 +58,7 @@ For CI/CD, set the AGENTCLASH_TOKEN environment variable instead.`,
 					})
 				}
 
-				name := result.Display
-				if name == "" {
-					name = result.Email
-				}
+				name := loginIdentityLabel(result)
 				if envTokenSet {
 					rc.Output.PrintSuccess(fmt.Sprintf("Already logged in as %s using AGENTCLASH_TOKEN", name))
 				} else {
@@ -99,13 +97,22 @@ For CI/CD, set the AGENTCLASH_TOKEN environment variable instead.`,
 			})
 		}
 
-		name := result.Display
-		if name == "" {
-			name = result.Email
-		}
+		name := loginIdentityLabel(result)
 		rc.Output.PrintSuccess(fmt.Sprintf("Logged in as %s", name))
 		return nil
 	},
+}
+
+func loginIdentityLabel(result *auth.LoginResult) string {
+	if result == nil {
+		return "authenticated user"
+	}
+	for _, candidate := range []string{result.Display, result.Email, result.UserID} {
+		if value := strings.TrimSpace(candidate); value != "" {
+			return value
+		}
+	}
+	return "authenticated user"
 }
 
 func authSource(envTokenSet bool) string {

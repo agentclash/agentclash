@@ -2480,6 +2480,11 @@ type CreateUserInput struct {
 	DisplayName  string
 }
 
+type BackfillUserEmailInput struct {
+	UserID uuid.UUID
+	Email  string
+}
+
 type UserMeOrgRow struct {
 	ID   uuid.UUID
 	Name string
@@ -2708,6 +2713,33 @@ func (r *Repository) CreateUser(ctx context.Context, input CreateUserInput) (Use
 			return User{}, fmt.Errorf("%w: constraint=%s detail=%s", ErrUserAlreadyExists, pgErr.ConstraintName, pgErr.Detail)
 		}
 		return User{}, fmt.Errorf("create user: %w", err)
+	}
+	return user, nil
+}
+
+func (r *Repository) BackfillUserEmail(ctx context.Context, input BackfillUserEmailInput) (User, error) {
+	email := strings.TrimSpace(input.Email)
+
+	var user User
+	err := r.db.QueryRow(ctx, `
+		UPDATE users
+		SET
+			email = CASE
+				WHEN COALESCE(email, '') = '' AND $2 <> '' THEN $2
+				ELSE email
+			END,
+			updated_at = CASE
+				WHEN COALESCE(email, '') = '' AND $2 <> '' THEN now()
+				ELSE updated_at
+			END
+		WHERE id = $1 AND archived_at IS NULL
+		RETURNING id, workos_user_id, COALESCE(email, ''), COALESCE(display_name, '')
+	`, input.UserID, email).Scan(&user.ID, &user.WorkOSUserID, &user.Email, &user.DisplayName)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return User{}, ErrUserNotFound
+		}
+		return User{}, fmt.Errorf("backfill user email: %w", err)
 	}
 	return user, nil
 }
