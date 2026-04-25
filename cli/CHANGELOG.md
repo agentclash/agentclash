@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.6.0](https://github.com/agentclash/agentclash/compare/v0.5.0...v0.6.0) (2026-04-25)
+
+
+### Features
+
+* race-context — live peer-standings injection (Phase 1 backend + API + CLI) ([a2eed19](https://github.com/agentclash/agentclash/commit/a2eed19a5374a1260c3f59ea46102a79cd0e0c60))
+
+
+### Bug Fixes
+
+* **auth:** show user identity after cli login ([7b77fb0](https://github.com/agentclash/agentclash/commit/7b77fb0639d2671960de864ab28ddcacb285c73c))
+* **cli:** step 2 show login identity fallback ([e3574d8](https://github.com/agentclash/agentclash/commit/e3574d80ca83327b0da7cb939c54902571031f2b))
+
 ## [0.5.0](https://github.com/agentclash/agentclash/compare/v0.4.3...v0.5.0) (2026-04-24)
 
 
