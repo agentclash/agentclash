@@ -5,6 +5,7 @@
 - Primary workspace list routes should render through thin shells and fetch their data client-side with stale-while-revalidate behavior.
 - Shared workspace auth and membership checks must remain server-enforced.
 - Shared workspace session and user fetches should be deduplicated through cached server helpers so settings and layout do not repeatedly call the same endpoints in a single request.
+- Workspace shell auth/session fetch failures should redirect to `/auth/login` instead of surfacing a 500 page.
 - Sidebar and workspace-switcher links should warm routes on hover/focus to improve perceived speed on common navigations.
 - Representative create/update/delete flows on sidebar-backed pages should update their visible list state through SWR mutation rather than `router.refresh()`.
 - Run and eval-session creation dialogs should warm their dependent SWR keys once when the dialog opens instead of repeatedly revalidating while form state changes.
@@ -18,6 +19,7 @@
 - Nested route loading shells render expected placeholders for heavy detail views.
 - Run and eval-session creation dialogs trigger their warm-up invalidation once per open, not on later rerenders.
 - Run and eval-session creation dialogs wait for list revalidation before redirecting, and surface a follow-up toast if revalidation fails after the create succeeds.
+- Workspace shell auth helpers redirect to `/auth/login` when session or user fetches fail.
 
 ## Integration / Functional Tests
 - Workspace shell loads under `AuthKitProvider` and SWR config without breaking existing route rendering.
@@ -25,6 +27,7 @@
 - Representative mutation flows invalidate the correct SWR keys and no longer call `router.refresh()` on those migrated pages.
 - Run and eval-session creation keep their existing create payloads and redirects while making cache refresh ordering explicit.
 - Workspace settings and workspace members still enforce admin access with cached session helpers.
+- Workspace layout preserves the pre-refactor login redirect behavior for revoked or failed auth/session calls.
 
 ## Smoke Tests
 - `npm test -- --runInBand` or repo-equivalent Vitest run passes for the updated frontend tests.

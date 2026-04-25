@@ -31,10 +31,17 @@ export const getServerUserMe = cache(async (): Promise<UserMeResponse> => {
 
 export const getWorkspaceShellData = cache(async (workspaceId: string) => {
   const { user } = await getRequiredServerAuth();
-  const [session, userMe] = await Promise.all([
-    getServerSession(),
-    getServerUserMe(),
-  ]);
+  let session: SessionResponse;
+  let userMe: UserMeResponse;
+
+  try {
+    [session, userMe] = await Promise.all([
+      getServerSession(),
+      getServerUserMe(),
+    ]);
+  } catch {
+    redirect("/auth/login");
+  }
 
   const hasMembership = session.workspace_memberships.some(
     (membership) => membership.workspace_id === workspaceId,
