@@ -1,12 +1,13 @@
-import { withAuth } from "@workos-inc/authkit-nextjs";
 import { redirect } from "next/navigation";
+import { AuthenticatedAppProviders } from "@/app/providers";
 import { getServerApiClient } from "@/lib/api/server";
+import { getRequiredServerAuth, toInitialAuth } from "@/lib/auth/server";
 import type { SessionResponse } from "@/lib/api/types";
 import { OnboardingWizard } from "./onboarding-wizard";
 
 export default async function OnboardPage() {
-  const { user } = await withAuth();
-  if (!user) redirect("/auth/login");
+  const auth = await getRequiredServerAuth();
+  const initialAuth = toInitialAuth(auth);
 
   // Check if already onboarded — fetch outside redirect logic.
   let session: SessionResponse | null = null;
@@ -32,5 +33,9 @@ export default async function OnboardPage() {
     }
   }
 
-  return <OnboardingWizard />;
+  return (
+    <AuthenticatedAppProviders initialAuth={initialAuth}>
+      <OnboardingWizard />
+    </AuthenticatedAppProviders>
+  );
 }

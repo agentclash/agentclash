@@ -1,8 +1,11 @@
 import { cache } from "react";
 import { withAuth } from "@workos-inc/authkit-nextjs";
+import type { NoUserInfo, UserInfo } from "@workos-inc/authkit-nextjs";
 import { redirect } from "next/navigation";
 import { createApiClient, type ApiClient } from "@/lib/api/client";
 import type { SessionResponse, UserMeResponse } from "@/lib/api/types";
+
+export type InitialAuth = Omit<UserInfo | NoUserInfo, "accessToken">;
 
 export const getServerAuth = cache(async () => withAuth());
 
@@ -13,6 +16,16 @@ export const getRequiredServerAuth = cache(async () => {
   }
   return auth;
 });
+
+export function toInitialAuth(auth: UserInfo | NoUserInfo): InitialAuth {
+  const initialAuth = { ...auth } as Partial<UserInfo | NoUserInfo>;
+  Reflect.deleteProperty(initialAuth, "accessToken");
+  return initialAuth as InitialAuth;
+}
+
+export const getRequiredInitialAuth = cache(
+  async (): Promise<InitialAuth> => toInitialAuth(await getRequiredServerAuth()),
+);
 
 export const getServerApiClient = cache(async (): Promise<ApiClient> => {
   const { accessToken } = await getRequiredServerAuth();

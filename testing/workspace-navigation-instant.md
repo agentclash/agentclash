@@ -3,6 +3,7 @@
 ## Functional Behavior
 - Workspace sidebar navigation should respond immediately by showing a loading shell instead of waiting on the next server-rendered page payload.
 - Primary workspace list routes should render through thin shells and fetch their data client-side with stale-while-revalidate behavior.
+- Protected workspace and org routes should hydrate AuthKit from server-provided auth state so client components do not start from an anonymous auth context after login.
 - Shared workspace auth and membership checks must remain server-enforced.
 - Shared workspace session and user fetches should be deduplicated through cached server helpers so settings and layout do not repeatedly call the same endpoints in a single request.
 - Workspace shell auth/session fetch failures should redirect to `/auth/login` instead of surfacing a 500 page.
@@ -23,6 +24,7 @@
 
 ## Integration / Functional Tests
 - Workspace shell loads under `AuthKitProvider` and SWR config without breaking existing route rendering.
+- The first client-side workspace data fetch after login does not emit an unauthorized `401` caused by missing hydration state.
 - `runs`, `builds`, `deployments`, `challenge-packs`, `playgrounds`, `regression-suites`, `runtime-profiles`, `provider-accounts`, `model-aliases`, `tools`, `knowledge-sources`, `artifacts`, and `secrets` fetch via SWR and render their empty/table states correctly.
 - Representative mutation flows invalidate the correct SWR keys and no longer call `router.refresh()` on those migrated pages.
 - Run and eval-session creation keep their existing create payloads and redirects while making cache refresh ordering explicit.
@@ -33,12 +35,14 @@
 - `npm test -- --runInBand` or repo-equivalent Vitest run passes for the updated frontend tests.
 - `npm run build` for `web/` completes successfully.
 - Opening the app and clicking between primary sidebar destinations shows a loading shell immediately and then hydrated data.
+- Logging in and landing on the default workspace route does not show a first-load `401` or a React crash before data appears.
 
 ## E2E Tests
 - N/A — there is no dedicated browser E2E suite in this change.
 
 ## Manual / cURL Tests
 - Manual: start the frontend, open a workspace, and click between `Runs`, `Builds`, `Deployments`, `Challenge Packs`, `Playgrounds`, and `Secrets`; confirm the page body swaps to a skeleton immediately instead of pausing on the previous page.
+- Manual: sign in from a fresh browser session and let the app redirect to the default workspace route; confirm the first list load does not make an unauthorized request or surface a React hook-order crash.
 - Manual: hover or focus major sidebar links, then click them; confirm repeated visits feel warmer than the first navigation.
 - Manual: create a build, deployment, challenge pack, run, eval session, regression suite, artifact upload, and secret; confirm each affected list updates without a full page refresh.
 - Manual: open the run and eval-session dialogs, interact with multiple fields, and confirm dependent data is warmed once on open rather than re-fetching on every keystroke.

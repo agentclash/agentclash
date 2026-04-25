@@ -1,6 +1,7 @@
-import { withAuth } from "@workos-inc/authkit-nextjs";
 import { redirect, notFound } from "next/navigation";
+import { AuthenticatedAppProviders } from "@/app/providers";
 import { createApiClient } from "@/lib/api/client";
+import { getRequiredServerAuth, toInitialAuth } from "@/lib/auth/server";
 import type { UserMeResponse, SessionResponse } from "@/lib/api/types";
 import { OrgSettingsSidebar } from "./org-settings-sidebar";
 import { OrgProvider } from "./org-context";
@@ -12,8 +13,9 @@ export default async function OrgLayout({
   children: React.ReactNode;
   params: Promise<{ orgSlug: string }>;
 }) {
-  const { user, accessToken } = await withAuth();
-  if (!user) redirect("/auth/login");
+  const auth = await getRequiredServerAuth();
+  const { accessToken } = auth;
+  const initialAuth = toInitialAuth(auth);
 
   const { orgSlug } = await params;
 
@@ -35,25 +37,27 @@ export default async function OrgLayout({
   const isAdmin = org.role === "org_admin";
 
   return (
-    <OrgProvider
-      value={{
-        orgId: org.id,
-        orgSlug: org.slug,
-        orgName: org.name,
-        isAdmin,
-        currentUserId: session.user_id,
-      }}
-    >
-      <div className="flex min-h-screen">
-        <OrgSettingsSidebar
-          orgSlug={orgSlug}
-          orgName={org.name}
-          isAdmin={isAdmin}
-        />
-        <main className="flex-1 overflow-y-auto p-6 max-w-4xl">
-          {children}
-        </main>
-      </div>
-    </OrgProvider>
+    <AuthenticatedAppProviders initialAuth={initialAuth}>
+      <OrgProvider
+        value={{
+          orgId: org.id,
+          orgSlug: org.slug,
+          orgName: org.name,
+          isAdmin,
+          currentUserId: session.user_id,
+        }}
+      >
+        <div className="flex min-h-screen">
+          <OrgSettingsSidebar
+            orgSlug={orgSlug}
+            orgName={org.name}
+            isAdmin={isAdmin}
+          />
+          <main className="flex-1 overflow-y-auto p-6 max-w-4xl">
+            {children}
+          </main>
+        </div>
+      </OrgProvider>
+    </AuthenticatedAppProviders>
   );
 }

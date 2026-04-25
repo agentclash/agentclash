@@ -432,6 +432,7 @@ describe("CreateRunDialog", () => {
           regression_suite_ids: ["suite-1"],
           regression_case_ids: ["case-1"],
           official_pack_mode: "suite_only",
+          race_context: false,
         });
       });
     } finally {
@@ -674,6 +675,7 @@ describe("CreateRunDialog", () => {
           regression_suite_ids: undefined,
           regression_case_ids: undefined,
           official_pack_mode: undefined,
+          race_context: false,
         });
       });
     } finally {

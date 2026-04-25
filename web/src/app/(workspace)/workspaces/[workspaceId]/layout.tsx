@@ -1,4 +1,5 @@
-import { getWorkspaceShellData } from "@/lib/auth/server";
+import { AuthenticatedAppProviders } from "@/app/providers";
+import { getRequiredInitialAuth, getWorkspaceShellData } from "@/lib/auth/server";
 import { Sidebar } from "@/components/app-shell/sidebar";
 import { TopBar } from "@/components/app-shell/top-bar";
 
@@ -10,6 +11,7 @@ export default async function WorkspaceLayout({
   params: Promise<{ workspaceId: string }>;
 }) {
   const { workspaceId } = await params;
+  const initialAuth = await getRequiredInitialAuth();
   const {
     user,
     userMe,
@@ -39,20 +41,22 @@ export default async function WorkspaceLayout({
   }
 
   return (
-    <div className="flex h-screen overflow-hidden">
-      <Sidebar workspaceId={workspaceId} />
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <TopBar
-          workspaceId={workspaceId}
-          organizations={userMe.organizations}
-          displayName={user.firstName ? `${user.firstName} ${user.lastName ?? ""}`.trim() : undefined}
-          email={user.email ?? undefined}
-          avatarUrl={user.profilePictureUrl ?? undefined}
-          orgName={orgName}
-          orgSlug={orgSlug}
-        />
-        <main className="flex-1 overflow-y-auto p-6">{children}</main>
+    <AuthenticatedAppProviders initialAuth={initialAuth}>
+      <div className="flex h-screen overflow-hidden">
+        <Sidebar workspaceId={workspaceId} />
+        <div className="flex flex-1 flex-col overflow-hidden">
+          <TopBar
+            workspaceId={workspaceId}
+            organizations={userMe.organizations}
+            displayName={user.firstName ? `${user.firstName} ${user.lastName ?? ""}`.trim() : undefined}
+            email={user.email ?? undefined}
+            avatarUrl={user.profilePictureUrl ?? undefined}
+            orgName={orgName}
+            orgSlug={orgSlug}
+          />
+          <main className="flex-1 overflow-y-auto p-6">{children}</main>
+        </div>
       </div>
-    </div>
+    </AuthenticatedAppProviders>
   );
 }
