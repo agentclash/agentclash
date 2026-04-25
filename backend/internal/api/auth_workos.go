@@ -31,6 +31,7 @@ type UserRepository interface {
 	GetActiveWorkspaceMembershipsByUserID(ctx context.Context, userID uuid.UUID) ([]repository.WorkspaceMembershipRow, error)
 	GetActiveOrganizationMembershipsByUserID(ctx context.Context, userID uuid.UUID) ([]repository.OrgMembershipRow, error)
 	CreateUser(ctx context.Context, input repository.CreateUserInput) (repository.User, error)
+	BackfillUserEmail(ctx context.Context, input repository.BackfillUserEmailInput) (repository.User, error)
 	LinkWorkOSUser(ctx context.Context, userID uuid.UUID, workosUserID string) (repository.User, error)
 	RelinkWorkOSUser(ctx context.Context, userID uuid.UUID, workosUserID string) (repository.User, error)
 	IsUserArchivedByWorkOSID(ctx context.Context, workosUserID string) (bool, error)
@@ -183,6 +184,18 @@ func (a *WorkOSAuthenticator) resolveUser(ctx context.Context, workosUserID, ema
 	// Step 1: active user with this WorkOS ID.
 	user, err := a.repo.GetUserByWorkOSID(ctx, workosUserID)
 	if err == nil {
+		if user.Email == "" && email != "" {
+			backfilled, backfillErr := a.repo.BackfillUserEmail(ctx, repository.BackfillUserEmailInput{
+				UserID: user.ID,
+				Email:  email,
+			})
+			if backfillErr != nil {
+				log.ErrorContext(ctx, "resolve_user: failed to backfill missing email", "user_id", user.ID, "error", backfillErr)
+				return repository.User{}, fmt.Errorf("%w: %v", ErrUnauthenticated, backfillErr)
+			}
+			user = backfilled
+			log.InfoContext(ctx, "resolve_user: backfilled missing email from token claims", "user_id", user.ID)
+		}
 		log.DebugContext(ctx, "resolve_user: found active user by workos_id", "user_id", user.ID)
 		return user, nil
 	}
