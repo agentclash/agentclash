@@ -120,6 +120,18 @@ export function ScorecardSummaryCard({
           );
         })}
       </div>
+
+      {/* Token split */}
+      {scorecard.scorecard?.metric_summary?.run_total_tokens != null && (
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-muted-foreground">
+          <span className="font-[family-name:var(--font-mono)]">{scorecard.scorecard.metric_summary.run_total_tokens.toLocaleString()} tokens</span>
+          {(scorecard.scorecard.metric_summary.run_race_context_tokens ?? 0) > 0 && (
+            <span className="text-muted-foreground/60 font-[family-name:var(--font-mono)]">
+              ({scorecard.scorecard.metric_summary.run_agent_tokens?.toLocaleString() ?? 0} agent + {scorecard.scorecard.metric_summary.run_race_context_tokens.toLocaleString()} context)
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
 }

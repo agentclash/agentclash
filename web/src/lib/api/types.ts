@@ -432,6 +432,8 @@ export interface Run {
   name: string;
   status: RunStatus;
   execution_mode: string; // "single_agent" | "comparison"
+  race_context: boolean;
+  race_context_min_step_gap?: number;
   temporal_workflow_id?: string;
   temporal_run_id?: string;
   queued_at?: string;
@@ -489,6 +491,8 @@ export interface CreateRunRequest {
   regression_suite_ids?: string[];
   regression_case_ids?: string[];
   official_pack_mode?: OfficialPackMode;
+  race_context?: boolean;
+  race_context_min_step_gap?: number;
 }
 
 /** POST /v1/runs response (201) */

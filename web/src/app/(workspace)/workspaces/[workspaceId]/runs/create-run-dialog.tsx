@@ -54,6 +54,7 @@ export function CreateRunDialog({ workspaceId }: CreateRunDialogProps) {
   >([]);
   const [officialPackMode, setOfficialPackMode] =
     useState<OfficialPackMode>("full");
+  const [raceContext, setRaceContext] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const [packs, setPacks] = useState<ChallengePack[]>([]);
@@ -136,9 +137,13 @@ export function CreateRunDialog({ workspaceId }: CreateRunDialogProps) {
   }
 
   function toggleDeployment(id: string) {
-    setSelectedDeploymentIds((prev) =>
-      prev.includes(id) ? prev.filter((d) => d !== id) : [...prev, id],
-    );
+    setSelectedDeploymentIds((prev) => {
+      const next = prev.includes(id) ? prev.filter((d) => d !== id) : [...prev, id];
+      if (next.length < 2) {
+        setRaceContext(false);
+      }
+      return next;
+    });
   }
 
   function toggleRegressionSuite(id: string) {
@@ -296,6 +301,7 @@ export function CreateRunDialog({ workspaceId }: CreateRunDialogProps) {
           selectedRegressionCaseIds.length > 0
             ? officialPackMode
             : undefined,
+        race_context: raceContext,
       };
       const result = await api.post<CreateRunResponse>("/v1/runs", request);
       toast.success("Run created");
@@ -322,6 +328,7 @@ export function CreateRunDialog({ workspaceId }: CreateRunDialogProps) {
     setSelectedRegressionSuiteIds([]);
     setSelectedRegressionCaseIds([]);
     setOfficialPackMode("full");
+    setRaceContext(false);
     setRegressionLoadError(null);
     setRunnableVersions([]);
   }
@@ -619,6 +626,29 @@ export function CreateRunDialog({ workspaceId }: CreateRunDialogProps) {
                 ))}
               </div>
             )}
+          </div>
+
+          {/* Race Context */}
+          <div className="flex items-start gap-3 rounded-lg border border-border p-3">
+            <input
+              type="checkbox"
+              id="race-context"
+              checked={raceContext}
+              onChange={(e) => setRaceContext(e.target.checked)}
+              disabled={selectedDeploymentIds.length < 2}
+              className="mt-1 rounded border-input disabled:opacity-50"
+            />
+            <div className="space-y-1">
+              <label
+                htmlFor="race-context"
+                className={`text-sm font-medium ${selectedDeploymentIds.length < 2 ? "opacity-50" : "cursor-pointer"}`}
+              >
+                Race context (agents see live peer standings)
+              </label>
+              <p className={`text-xs text-muted-foreground ${selectedDeploymentIds.length < 2 ? "opacity-50" : ""}`}>
+                Injects live peer progress updates into the agent&apos;s prompt mid-run. Requires at least 2 agents.
+              </p>
+            </div>
           </div>
 
           {/* Preview */}

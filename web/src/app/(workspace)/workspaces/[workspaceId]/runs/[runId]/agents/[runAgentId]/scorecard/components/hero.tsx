@@ -99,6 +99,19 @@ export function Hero({
               value={scorecard.evaluation_spec_id.slice(0, 8)}
               mono
             />
+            {doc?.metric_summary?.run_total_tokens != null && (
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-[9px] uppercase tracking-[0.18em] text-white/35">Tokens</span>
+                <span className="text-xs text-white/80 font-[family-name:var(--font-mono)]">
+                  {doc.metric_summary.run_total_tokens.toLocaleString()}
+                  {(doc.metric_summary.run_race_context_tokens ?? 0) > 0 && (
+                    <span className="text-white/40 ml-1">
+                      ({doc.metric_summary.run_agent_tokens?.toLocaleString() ?? 0} agent + {doc.metric_summary.run_race_context_tokens.toLocaleString()} context)
+                    </span>
+                  )}
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Overall reason — full width, no cramping */}

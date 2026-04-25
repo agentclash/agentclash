@@ -91,32 +91,43 @@ export function LiveEventTicker({
             <li
               key={entry.id}
               className={cn(
-                "flex items-center gap-2 px-2 py-1.5 animate-in fade-in slide-in-from-bottom-1 duration-300",
+                "flex flex-col gap-1 px-2 py-1.5 animate-in fade-in slide-in-from-bottom-1 duration-300",
                 entry.error && "bg-destructive/5",
               )}
             >
-              <span className="shrink-0 tabular-nums text-muted-foreground/70">
-                {formatClock(entry.occurredAt)}
-              </span>
-              {entry.error ? (
-                <AlertTriangle className="size-3.5 shrink-0 text-destructive" />
-              ) : (
-                <Icon className="size-3.5 shrink-0 text-muted-foreground" />
-              )}
-              <span
-                className={cn(
-                  "min-w-0 flex-1 truncate",
-                  entry.error
-                    ? "text-destructive"
-                    : "text-foreground",
-                )}
-              >
-                {entry.headline}
-              </span>
-              {entry.detail && (
-                <span className="hidden sm:inline truncate max-w-[40%] text-muted-foreground">
-                  {entry.detail}
+              <div className="flex items-center gap-2 w-full">
+                <span className="shrink-0 tabular-nums text-muted-foreground/70">
+                  {formatClock(entry.occurredAt)}
                 </span>
+                {entry.error ? (
+                  <AlertTriangle className="size-3.5 shrink-0 text-destructive" />
+                ) : (
+                  <Icon className="size-3.5 shrink-0 text-muted-foreground" />
+                )}
+                <span
+                  className={cn(
+                    "min-w-0 flex-1 truncate",
+                    entry.error
+                      ? "text-destructive"
+                      : "text-foreground",
+                  )}
+                >
+                  {entry.headline}
+                </span>
+                {entry.kind !== "system" || entry.headline !== "Race standings injected" ? (
+                  entry.detail && (
+                    <span className="hidden sm:inline truncate max-w-[40%] text-muted-foreground">
+                      {entry.detail}
+                    </span>
+                  )
+                ) : null}
+              </div>
+              {entry.kind === "system" && entry.headline === "Race standings injected" && entry.detail && (
+                <div className="pl-[4.5rem] w-full">
+                  <pre className="text-[10px] text-muted-foreground whitespace-pre-wrap break-words font-[family-name:var(--font-mono)] bg-muted/30 p-2 rounded border border-border/50">
+                    {entry.detail}
+                  </pre>
+                </div>
               )}
             </li>
           );

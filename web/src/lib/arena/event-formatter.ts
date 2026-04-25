@@ -79,6 +79,7 @@ export function eventKind(event: RunEvent): ArenaEventKind {
     return "file";
   if (t.startsWith("grader.verification")) return "sandbox";
   if (t.startsWith("scoring.")) return "scoring";
+  if (t.startsWith("race.")) return "system";
   if (t.startsWith("system.")) return "system";
   return "unknown";
 }
@@ -224,6 +225,15 @@ export function summarizeEvent(event: RunEvent): TickerEntry | null {
     case "grader.verification.directory_listed":
     case "grader.verification.code_executed":
       return { ...base, headline: "Grader captured evidence" };
+
+    case "race.standings.injected": {
+      const p = payload<{ tokens_added?: number; triggered_by?: string; standings_snapshot?: string }>(event);
+      return {
+        ...base,
+        headline: "Race standings injected",
+        detail: p.standings_snapshot || (p.triggered_by ? `Trigger: ${p.triggered_by.replace(/_/g, " ")}` : undefined),
+      };
+    }
 
     case "scoring.started":
       return { ...base, headline: "Scoring started" };
