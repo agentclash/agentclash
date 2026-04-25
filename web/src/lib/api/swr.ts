@@ -1,3 +1,4 @@
+import { useCallback } from "react";
 import useSWR, { type SWRConfiguration, type SWRResponse, useSWRConfig } from "swr";
 import { createApiClient } from "@/lib/api/client";
 
@@ -69,9 +70,9 @@ export function usePaginatedApiQuery<T>(
 export function useApiMutator() {
   const { mutate } = useSWRConfig();
 
-  async function mutateMany(keys: ApiQueryKey[]) {
+  const mutateMany = useCallback(async (keys: ApiQueryKey[]) => {
     await Promise.all(keys.map((key) => mutate(key)));
-  }
+  }, [mutate]);
 
   return { mutate, mutateMany };
 }

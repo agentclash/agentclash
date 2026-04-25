@@ -309,8 +309,12 @@ export function CreateRunDialog({ workspaceId }: CreateRunDialogProps) {
       toast.success("Run created");
       setOpen(false);
       resetForm();
+      try {
+        await mutate(workspaceResourceKeys.runs(workspaceId, 0));
+      } catch {
+        toast.error("Run created, but the runs list could not be refreshed.");
+      }
       router.push(`/workspaces/${workspaceId}/runs/${result.id}`);
-      void mutate(workspaceResourceKeys.runs(workspaceId, 0));
     } catch (err) {
       toast.error(
         err instanceof ApiError ? err.message : "Failed to create run",

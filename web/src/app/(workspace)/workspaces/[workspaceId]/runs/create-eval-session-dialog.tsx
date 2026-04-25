@@ -354,10 +354,14 @@ export function CreateEvalSessionDialog({
       toast.success("Eval session created");
       setOpen(false);
       resetForm();
-      router.push(
-        `/workspaces/${workspaceId}/eval-sessions/${body.eval_session.id}`,
-      );
-      void mutate(workspaceResourceKeys.evalSessions(workspaceId, 0));
+      try {
+        await mutate(workspaceResourceKeys.evalSessions(workspaceId, 0));
+      } catch {
+        toast.error(
+          "Eval session created, but the eval sessions list could not be refreshed.",
+        );
+      }
+      router.push(`/workspaces/${workspaceId}/eval-sessions/${body.eval_session.id}`);
     } catch (err) {
       toast.error(
         err instanceof ApiError ? err.message : "Failed to create eval session",

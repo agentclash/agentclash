@@ -1,6 +1,7 @@
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { workspaceMutationKeys, workspaceResourceKeys } from "@/lib/workspace-resource";
 
 import { CreateRunDialog } from "./create-run-dialog";
 
@@ -9,6 +10,8 @@ const {
   mockRefresh,
   mockGetAccessToken,
   mockCreateApiClient,
+  mockMutate,
+  mockMutateMany,
   toast,
 } = vi.hoisted(() => {
   return {
@@ -16,6 +19,8 @@ const {
     mockRefresh: vi.fn(),
     mockGetAccessToken: vi.fn(),
     mockCreateApiClient: vi.fn(),
+    mockMutate: vi.fn(),
+    mockMutateMany: vi.fn(),
     toast: Object.assign(vi.fn(), {
       success: vi.fn(),
       error: vi.fn(),
@@ -38,6 +43,17 @@ vi.mock("sonner", () => ({
 vi.mock("@/lib/api/client", () => ({
   createApiClient: (...args: unknown[]) => mockCreateApiClient(...args),
 }));
+
+vi.mock("@/lib/api/swr", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/api/swr")>();
+  return {
+    ...actual,
+    useApiMutator: () => ({
+      mutate: mockMutate,
+      mutateMany: mockMutateMany,
+    }),
+  };
+});
 
 vi.mock("@/components/ui/button", () => ({
   Button: ({
@@ -137,17 +153,33 @@ async function waitFor(assertion: () => void, attempts = 30) {
 }
 
 function clickElement(element: Element) {
-  element.dispatchEvent(
-    new MouseEvent("click", {
-      bubbles: true,
-      cancelable: true,
-    }),
-  );
+  act(() => {
+    element.dispatchEvent(
+      new MouseEvent("click", {
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+  });
 }
 
 function changeSelect(element: HTMLSelectElement, value: string) {
-  element.value = value;
-  element.dispatchEvent(new Event("change", { bubbles: true }));
+  act(() => {
+    element.value = value;
+    element.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+}
+
+function changeInput(element: HTMLInputElement, value: string) {
+  const descriptor = Object.getOwnPropertyDescriptor(
+    HTMLInputElement.prototype,
+    "value",
+  );
+  act(() => {
+    descriptor?.set?.call(element, value);
+    element.dispatchEvent(new Event("input", { bubbles: true }));
+    element.dispatchEvent(new Event("change", { bubbles: true }));
+  });
 }
 
 function findButton(text: string) {
@@ -194,6 +226,16 @@ function renderDialog() {
       container.remove();
     },
   };
+}
+
+function deferredPromise<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((innerResolve, innerReject) => {
+    resolve = innerResolve;
+    reject = innerReject;
+  });
+  return { promise, resolve, reject };
 }
 
 interface BuildApiMockOptions {
@@ -313,16 +355,24 @@ function buildApiMock(options: BuildApiMockOptions = {}) {
 
 describe("CreateRunDialog", () => {
   beforeEach(() => {
+    // These component tests drive React through manual DOM events rather than RTL.
+    // Mark the environment explicitly so React's act() warnings stay actionable.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
     document.body.innerHTML = "";
     mockPush.mockReset();
     mockRefresh.mockReset();
     mockGetAccessToken.mockReset();
     mockCreateApiClient.mockReset();
+    mockMutate.mockReset();
+    mockMutateMany.mockReset();
     toast.mockReset();
     toast.success.mockReset();
     toast.error.mockReset();
 
     mockGetAccessToken.mockResolvedValue("token");
+    mockMutate.mockResolvedValue(undefined);
+    mockMutateMany.mockResolvedValue(undefined);
   });
 
   it("submits regression selections and official pack mode in the create run request", async () => {
@@ -384,6 +434,129 @@ describe("CreateRunDialog", () => {
           official_pack_mode: "suite_only",
         });
       });
+    } finally {
+      view.cleanup();
+    }
+  });
+
+  it("warms dialog data once per open instead of revalidating on later rerenders", async () => {
+    const api = buildApiMock();
+    mockCreateApiClient.mockReturnValue(api);
+
+    const view = renderDialog();
+    try {
+      clickElement(findButton("New Run"));
+
+      await waitFor(() => {
+        expect(mockMutateMany).toHaveBeenCalledWith(
+          workspaceMutationKeys.createRunDialog("ws-1"),
+        );
+      });
+      expect(mockMutateMany).toHaveBeenCalledTimes(1);
+
+      const nameInput = document.querySelector('input[type="text"]');
+      if (!(nameInput instanceof HTMLInputElement)) {
+        throw new Error("Name input not found");
+      }
+      changeInput(nameInput, "Fresh run");
+      await flushPromises();
+
+      expect(mockMutateMany).toHaveBeenCalledTimes(1);
+    } finally {
+      view.cleanup();
+    }
+  });
+
+  it("waits for run list revalidation to finish before redirecting", async () => {
+    const api = buildApiMock();
+    const revalidation = deferredPromise<void>();
+    mockCreateApiClient.mockReturnValue(api);
+    mockMutate.mockReturnValue(revalidation.promise);
+
+    const view = renderDialog();
+    try {
+      clickElement(findButton("New Run"));
+
+      await waitFor(() => {
+        expect(api.get).toHaveBeenCalledWith(
+          "/v1/workspaces/ws-1/challenge-packs",
+        );
+      });
+
+      const packSelect = document.querySelector(
+        'select[aria-label="Challenge Pack"]',
+      );
+      if (!(packSelect instanceof HTMLSelectElement)) {
+        throw new Error("Challenge Pack select not found");
+      }
+      changeSelect(packSelect, "pack-1");
+
+      await waitFor(() => {
+        expect(api.get).toHaveBeenCalledWith(
+          "/v1/workspaces/ws-1/challenge-pack-versions/version-1/input-sets",
+        );
+      });
+
+      clickElement(findCheckboxByLabel("Primary Agent"));
+      clickElement(findButton("Create Run"));
+
+      await waitFor(() => {
+        expect(mockMutate).toHaveBeenCalledWith(
+          workspaceResourceKeys.runs("ws-1", 0),
+        );
+      });
+      expect(mockPush).not.toHaveBeenCalled();
+
+      revalidation.resolve(undefined);
+      await flushPromises();
+
+      await waitFor(() => {
+        expect(mockPush).toHaveBeenCalledWith("/workspaces/ws-1/runs/run-1");
+      });
+    } finally {
+      view.cleanup();
+    }
+  });
+
+  it("shows a follow-up toast and still redirects when run list revalidation fails", async () => {
+    const api = buildApiMock();
+    mockCreateApiClient.mockReturnValue(api);
+    mockMutate.mockRejectedValueOnce(new Error("revalidation failed"));
+
+    const view = renderDialog();
+    try {
+      clickElement(findButton("New Run"));
+
+      await waitFor(() => {
+        expect(api.get).toHaveBeenCalledWith(
+          "/v1/workspaces/ws-1/challenge-packs",
+        );
+      });
+
+      const packSelect = document.querySelector(
+        'select[aria-label="Challenge Pack"]',
+      );
+      if (!(packSelect instanceof HTMLSelectElement)) {
+        throw new Error("Challenge Pack select not found");
+      }
+      changeSelect(packSelect, "pack-1");
+
+      await waitFor(() => {
+        expect(api.get).toHaveBeenCalledWith(
+          "/v1/workspaces/ws-1/challenge-pack-versions/version-1/input-sets",
+        );
+      });
+
+      clickElement(findCheckboxByLabel("Primary Agent"));
+      clickElement(findButton("Create Run"));
+
+      await waitFor(() => {
+        expect(mockPush).toHaveBeenCalledWith("/workspaces/ws-1/runs/run-1");
+      });
+      expect(toast.success).toHaveBeenCalledWith("Run created");
+      expect(toast.error).toHaveBeenCalledWith(
+        "Run created, but the runs list could not be refreshed.",
+      );
     } finally {
       view.cleanup();
     }
@@ -665,8 +838,14 @@ describe("CreateRunDialog", () => {
       });
 
       await waitFor(() => {
-        expect(inputSetSelect.value).toBe("input-3");
-        expect(inputSetSelect.disabled).toBe(true);
+        const refreshedInputSetSelect = document.querySelector(
+          'select[aria-label="Challenge Input Set"]',
+        );
+        if (!(refreshedInputSetSelect instanceof HTMLSelectElement)) {
+          throw new Error("Challenge Input Set select not found");
+        }
+        expect(refreshedInputSetSelect.value).toBe("input-3");
+        expect(refreshedInputSetSelect.disabled).toBe(true);
       });
     } finally {
       view.cleanup();

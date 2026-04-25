@@ -1,6 +1,7 @@
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { workspaceMutationKeys, workspaceResourceKeys } from "@/lib/workspace-resource";
 
 import { CreateEvalSessionDialog } from "./create-eval-session-dialog";
 
@@ -9,6 +10,8 @@ const {
   mockRefresh,
   mockGetAccessToken,
   mockCreateApiClient,
+  mockMutate,
+  mockMutateMany,
   toast,
 } = vi.hoisted(() => {
   return {
@@ -16,6 +19,8 @@ const {
     mockRefresh: vi.fn(),
     mockGetAccessToken: vi.fn(),
     mockCreateApiClient: vi.fn(),
+    mockMutate: vi.fn(),
+    mockMutateMany: vi.fn(),
     toast: Object.assign(vi.fn(), {
       success: vi.fn(),
       error: vi.fn(),
@@ -38,6 +43,17 @@ vi.mock("sonner", () => ({
 vi.mock("@/lib/api/client", () => ({
   createApiClient: (...args: unknown[]) => mockCreateApiClient(...args),
 }));
+
+vi.mock("@/lib/api/swr", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/api/swr")>();
+  return {
+    ...actual,
+    useApiMutator: () => ({
+      mutate: mockMutate,
+      mutateMany: mockMutateMany,
+    }),
+  };
+});
 
 vi.mock("@/components/ui/button", () => ({
   Button: ({
@@ -201,6 +217,16 @@ function renderDialog() {
   };
 }
 
+function deferredPromise<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((innerResolve, innerReject) => {
+    resolve = innerResolve;
+    reject = innerReject;
+  });
+  return { promise, resolve, reject };
+}
+
 function buildApiMock(
   status = 201,
   options?: {
@@ -288,8 +314,12 @@ beforeEach(() => {
   mockGetAccessToken.mockReset();
   mockGetAccessToken.mockResolvedValue("token");
   mockCreateApiClient.mockReset();
+  mockMutate.mockReset();
+  mockMutateMany.mockReset();
   toast.success.mockReset();
   toast.error.mockReset();
+  mockMutate.mockResolvedValue(undefined);
+  mockMutateMany.mockResolvedValue(undefined);
 });
 
 describe("CreateEvalSessionDialog", () => {
@@ -343,6 +373,105 @@ describe("CreateEvalSessionDialog", () => {
         "/workspaces/ws-1/eval-sessions/session-1",
       );
       expect(toast.success).toHaveBeenCalledWith("Eval session created");
+    } finally {
+      view.cleanup();
+    }
+  });
+
+  it("warms dialog data once per open instead of revalidating on later rerenders", async () => {
+    const api = buildApiMock();
+    mockCreateApiClient.mockReturnValue(api);
+
+    const view = renderDialog();
+    try {
+      clickElement(findButton("New Eval Session"));
+      await flushPromises();
+
+      await waitFor(() => {
+        expect(mockMutateMany).toHaveBeenCalledWith(
+          workspaceMutationKeys.createEvalSessionDialog("ws-1"),
+        );
+      });
+      expect(mockMutateMany).toHaveBeenCalledTimes(1);
+
+      changeSelect(findSelectForLabel("Challenge Pack"), "pack-1");
+      await flushPromises();
+
+      clickElement(findCheckboxByLabel("Primary Agent"));
+      await flushPromises();
+
+      expect(mockMutateMany).toHaveBeenCalledTimes(1);
+    } finally {
+      view.cleanup();
+    }
+  });
+
+  it("waits for eval-session list revalidation to finish before redirecting", async () => {
+    const api = buildApiMock();
+    const revalidation = deferredPromise<void>();
+    mockCreateApiClient.mockReturnValue(api);
+    mockMutate.mockReturnValue(revalidation.promise);
+
+    const view = renderDialog();
+    try {
+      clickElement(findButton("New Eval Session"));
+      await flushPromises();
+
+      changeSelect(findSelectForLabel("Challenge Pack"), "pack-1");
+      await flushPromises();
+
+      clickElement(findCheckboxByLabel("Primary Agent"));
+      await flushPromises();
+
+      clickElement(findButton("Create Eval Session"));
+
+      await waitFor(() => {
+        expect(mockMutate).toHaveBeenCalledWith(
+          workspaceResourceKeys.evalSessions("ws-1", 0),
+        );
+      });
+      expect(mockPush).not.toHaveBeenCalled();
+
+      revalidation.resolve(undefined);
+      await flushPromises();
+
+      await waitFor(() => {
+        expect(mockPush).toHaveBeenCalledWith(
+          "/workspaces/ws-1/eval-sessions/session-1",
+        );
+      });
+    } finally {
+      view.cleanup();
+    }
+  });
+
+  it("shows a follow-up toast and still redirects when eval-session list revalidation fails", async () => {
+    const api = buildApiMock();
+    mockCreateApiClient.mockReturnValue(api);
+    mockMutate.mockRejectedValueOnce(new Error("revalidation failed"));
+
+    const view = renderDialog();
+    try {
+      clickElement(findButton("New Eval Session"));
+      await flushPromises();
+
+      changeSelect(findSelectForLabel("Challenge Pack"), "pack-1");
+      await flushPromises();
+
+      clickElement(findCheckboxByLabel("Primary Agent"));
+      await flushPromises();
+
+      clickElement(findButton("Create Eval Session"));
+
+      await waitFor(() => {
+        expect(mockPush).toHaveBeenCalledWith(
+          "/workspaces/ws-1/eval-sessions/session-1",
+        );
+      });
+      expect(toast.success).toHaveBeenCalledWith("Eval session created");
+      expect(toast.error).toHaveBeenCalledWith(
+        "Eval session created, but the eval sessions list could not be refreshed.",
+      );
     } finally {
       view.cleanup();
     }
