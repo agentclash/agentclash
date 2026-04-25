@@ -286,6 +286,8 @@ type getRunResponse struct {
 	FailedAt               *time.Time                     `json:"failed_at,omitempty"`
 	CreatedAt              time.Time                      `json:"created_at"`
 	UpdatedAt              time.Time                      `json:"updated_at"`
+	RaceContext            bool                           `json:"race_context"`
+	RaceContextMinStepGap  *int32                         `json:"race_context_min_step_gap,omitempty"`
 	RegressionCoverage     *runRegressionCoverageResponse `json:"regression_coverage,omitempty"`
 	Links                  runLinksResponse               `json:"links"`
 }
@@ -502,6 +504,8 @@ func buildGetRunResponse(run domain.Run, regressionCoverage *RunRegressionCovera
 		FailedAt:               run.FailedAt,
 		CreatedAt:              run.CreatedAt,
 		UpdatedAt:              run.UpdatedAt,
+		RaceContext:            run.RaceContext,
+		RaceContextMinStepGap:  run.RaceContextMinStepGap,
 		Links:                  buildRunLinks(run.ID),
 	}
 	if regressionCoverage != nil {

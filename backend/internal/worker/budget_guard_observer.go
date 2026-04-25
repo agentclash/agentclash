@@ -70,6 +70,14 @@ func (b *BudgetGuardObserver) OnStepEnd(ctx context.Context, step int) error {
 	return b.inner.OnStepEnd(ctx, step)
 }
 
+func (b *BudgetGuardObserver) OnPostExecutionVerification(ctx context.Context, results []engine.PostExecutionVerificationResult) error {
+	return b.inner.OnPostExecutionVerification(ctx, results)
+}
+
+func (b *BudgetGuardObserver) OnStandingsInjected(ctx context.Context, injection engine.StandingsInjection) error {
+	return b.inner.OnStandingsInjected(ctx, injection)
+}
+
 func (b *BudgetGuardObserver) OnRunComplete(ctx context.Context, result engine.Result) error {
 	return b.inner.OnRunComplete(ctx, result)
 }

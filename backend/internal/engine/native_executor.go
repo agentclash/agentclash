@@ -10,10 +10,22 @@ import (
 	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/provider"
+	"github.com/agentclash/agentclash/backend/internal/racecontext"
 	"github.com/agentclash/agentclash/backend/internal/repository"
+	"github.com/agentclash/agentclash/backend/internal/runevents"
 	"github.com/agentclash/agentclash/backend/internal/sandbox"
 	"github.com/google/uuid"
 )
+
+// defaultRaceContextMinStepGap is the cadence fallback when a run doesn't
+// override race_context_min_step_gap. See issue #400: 3 steps is the
+// smallest cadence that isn't pathologically noisy.
+const defaultRaceContextMinStepGap = 3
+
+// minStepBeforeFirstInjection enforces the "no injection before step 3"
+// rule from the spec. Without this, the very first injection could fire
+// on step 1 for a run that arrives with peer standings already populated.
+const minStepBeforeFirstInjection = 3
 
 const (
 	defaultRetryAttempts = 3
@@ -90,8 +102,21 @@ type Observer interface {
 	OnToolExecution(ctx context.Context, record ToolExecutionRecord) error
 	OnStepEnd(ctx context.Context, step int) error
 	OnPostExecutionVerification(ctx context.Context, results []PostExecutionVerificationResult) error
+	OnStandingsInjected(ctx context.Context, injection StandingsInjection) error
 	OnRunComplete(ctx context.Context, result Result) error
 	OnRunFailure(ctx context.Context, err error) error
+}
+
+// StandingsInjection describes a race-context newswire message inserted
+// into the agent's context at a step boundary. Observers that persist
+// events should record this as `race.standings.injected` with the same
+// payload shape (see runevents.RaceStandingsInjectedPayload).
+type StandingsInjection struct {
+	StepIndex         int
+	TokensAdded       int
+	StandingsSnapshot string
+	TriggeredBy       runevents.RaceStandingsTrigger
+	MinStepGap        int
 }
 
 type NoopObserver struct{}
@@ -109,8 +134,9 @@ func (NoopObserver) OnStepEnd(context.Context, int) error { return nil }
 func (NoopObserver) OnPostExecutionVerification(context.Context, []PostExecutionVerificationResult) error {
 	return nil
 }
-func (NoopObserver) OnRunComplete(context.Context, Result) error { return nil }
-func (NoopObserver) OnRunFailure(context.Context, error) error   { return nil }
+func (NoopObserver) OnStandingsInjected(context.Context, StandingsInjection) error { return nil }
+func (NoopObserver) OnRunComplete(context.Context, Result) error                   { return nil }
+func (NoopObserver) OnRunFailure(context.Context, error) error                     { return nil }
 
 // SecretsLookup resolves ${secrets.X} references at run-start by returning
 // the plaintext secret map for a workspace. *repository.Repository satisfies
@@ -124,6 +150,7 @@ type NativeExecutor struct {
 	sandboxProvider     sandbox.Provider
 	observer            Observer
 	secretsLookup       SecretsLookup
+	standingsStore      racecontext.Store
 	maxRetryAttempts    int
 	initialRetryBackoff time.Duration
 }
@@ -139,6 +166,15 @@ func NewNativeExecutor(client provider.Client, sandboxProvider sandbox.Provider,
 		maxRetryAttempts:    defaultRetryAttempts,
 		initialRetryBackoff: defaultRetryBackoff,
 	}
+}
+
+// WithStandingsStore attaches the race-context standings source so the
+// executor can read peer progress at step boundaries and inject newswire
+// messages (issue #400). Passing a NoopStore is equivalent to not calling
+// this at all — the injection path stays inert.
+func (e NativeExecutor) WithStandingsStore(store racecontext.Store) NativeExecutor {
+	e.standingsStore = store
+	return e
 }
 
 // WithSecretsLookup attaches a secrets source used to resolve ${secrets.X}
@@ -282,6 +318,11 @@ func (e NativeExecutor) Execute(ctx context.Context, executionContext repository
 		if observerErr := e.observer.OnStepStart(runCtx, state.stepCount); observerErr != nil {
 			return Result{}, NewFailure(StopReasonObserverError, "record native step start event", observerErr)
 		}
+		e.syncRaceContextStepStart(runCtx, executionContext, &state)
+
+		if injectErr := e.maybeInjectRaceStandings(runCtx, executionContext, &state); injectErr != nil {
+			return Result{}, NewFailure(StopReasonObserverError, "record race-context standings injection", injectErr)
+		}
 
 		request := provider.Request{
 			ProviderKey:         executionContext.Deployment.ProviderAccount.ProviderKey,
@@ -373,4 +414,219 @@ type loopState struct {
 	toolCallCount int
 	startedAt     time.Time
 	usage         provider.Usage
+	// Race-context injection bookkeeping. See issue #400.
+	lastInjectionStep int
+	lastPeerStates    map[uuid.UUID]racecontext.StandingsState
+}
+
+// maybeInjectRaceStandings evaluates the race-context cadence predicates
+// at a step boundary and, if due, appends a newswire `role=user` message
+// to state.messages and emits a `race.standings.injected` observer event.
+// Returns nil when injection is not enabled, not due, or the snapshot is
+// empty. Store errors are logged and swallowed — race-context must never
+// break the underlying run.
+func (e NativeExecutor) maybeInjectRaceStandings(ctx context.Context, executionContext repository.RunAgentExecutionContext, state *loopState) error {
+	if !executionContext.Run.RaceContext {
+		return nil
+	}
+	if e.standingsStore == nil {
+		return nil
+	}
+	if state.stepCount < minStepBeforeFirstInjection {
+		return nil
+	}
+
+	snapshot, err := e.standingsStore.Snapshot(ctx, executionContext.Run.ID)
+	if err != nil {
+		slog.Default().Warn("race-context: snapshot failed, skipping injection",
+			"run_id", executionContext.Run.ID,
+			"error", err,
+		)
+		return nil
+	}
+	snapshot = seedMissingStandingsPeers(snapshot, executionContext)
+	snapshot = seedCurrentStandingsAgent(snapshot, executionContext, state.stepCount)
+	if len(snapshot) == 0 {
+		// No peers have recorded standings yet. Nothing meaningful to
+		// inject; try again next eligible step.
+		return nil
+	}
+	if !hasRaceContextPeer(snapshot, executionContext.RunAgent.ID) {
+		return nil
+	}
+
+	minGap := defaultRaceContextMinStepGap
+	if executionContext.Run.RaceContextMinStepGap != nil {
+		minGap = int(*executionContext.Run.RaceContextMinStepGap)
+	}
+
+	trigger, shouldInject := evaluateRaceContextCadence(state, snapshot, executionContext.RunAgent.ID, minGap)
+	if !shouldInject {
+		// Still update the peer-state map so future cadence decisions
+		// use the latest snapshot. Without this, a state change that
+		// arrives between injections would be lost.
+		state.lastPeerStates = currentPeerStates(snapshot, executionContext.RunAgent.ID)
+		return nil
+	}
+
+	text, tokens := racecontext.Format(racecontext.FormatInput{
+		Snapshot:       snapshot,
+		SelfRunAgentID: executionContext.RunAgent.ID,
+		SelfStepIndex:  state.stepCount,
+		Now:            time.Now().UTC(),
+	})
+	if text == "" {
+		return nil
+	}
+
+	state.messages = append(state.messages, provider.Message{
+		Role:    "user",
+		Content: text,
+	})
+	state.lastInjectionStep = state.stepCount
+	state.lastPeerStates = currentPeerStates(snapshot, executionContext.RunAgent.ID)
+
+	injection := StandingsInjection{
+		StepIndex:         state.stepCount,
+		TokensAdded:       tokens,
+		StandingsSnapshot: text,
+		TriggeredBy:       trigger,
+		MinStepGap:        minGap,
+	}
+	return e.observer.OnStandingsInjected(ctx, injection)
+}
+
+func (e NativeExecutor) syncRaceContextStepStart(ctx context.Context, executionContext repository.RunAgentExecutionContext, state *loopState) {
+	if !executionContext.Run.RaceContext || e.standingsStore == nil {
+		return
+	}
+	now := time.Now().UTC()
+	update := racecontext.StandingsEntry{
+		RunAgentID: executionContext.RunAgent.ID,
+		Model:      raceContextModelLabel(executionContext),
+		Step:       state.stepCount,
+		State:      racecontext.StandingsStateRunning,
+		StartedAt:  &now,
+	}
+	if err := e.standingsStore.Update(ctx, executionContext.Run.ID, update); err != nil {
+		slog.Default().Warn("race-context: step-start standings update failed",
+			"run_id", executionContext.Run.ID,
+			"run_agent_id", executionContext.RunAgent.ID,
+			"step", state.stepCount,
+			"error", err,
+		)
+	}
+}
+
+func seedMissingStandingsPeers(snapshot map[uuid.UUID]racecontext.StandingsEntry, executionContext repository.RunAgentExecutionContext) map[uuid.UUID]racecontext.StandingsEntry {
+	if len(executionContext.RunAgents) == 0 {
+		return snapshot
+	}
+	seeded := make(map[uuid.UUID]racecontext.StandingsEntry, len(snapshot)+len(executionContext.RunAgents))
+	for agentID, entry := range snapshot {
+		if entry.RunAgentID == uuid.Nil {
+			entry.RunAgentID = agentID
+		}
+		if entry.State == "" {
+			entry.State = racecontext.StandingsStateNotStarted
+		}
+		seeded[agentID] = entry
+	}
+	for _, runAgent := range executionContext.RunAgents {
+		if _, ok := seeded[runAgent.ID]; ok {
+			continue
+		}
+		seeded[runAgent.ID] = racecontext.StandingsEntry{
+			RunAgentID: runAgent.ID,
+			State:      racecontext.StandingsStateNotStarted,
+		}
+	}
+	return seeded
+}
+
+func seedCurrentStandingsAgent(snapshot map[uuid.UUID]racecontext.StandingsEntry, executionContext repository.RunAgentExecutionContext, step int) map[uuid.UUID]racecontext.StandingsEntry {
+	if executionContext.RunAgent.ID == uuid.Nil {
+		return snapshot
+	}
+	seeded := make(map[uuid.UUID]racecontext.StandingsEntry, len(snapshot)+1)
+	for agentID, entry := range snapshot {
+		seeded[agentID] = entry
+	}
+	entry := seeded[executionContext.RunAgent.ID]
+	entry.RunAgentID = executionContext.RunAgent.ID
+	if entry.Model == "" {
+		entry.Model = raceContextModelLabel(executionContext)
+	}
+	if step > entry.Step {
+		entry.Step = step
+	}
+	if entry.State == "" || entry.State == racecontext.StandingsStateNotStarted {
+		entry.State = racecontext.StandingsStateRunning
+	}
+	seeded[executionContext.RunAgent.ID] = entry
+	return seeded
+}
+
+func hasRaceContextPeer(snapshot map[uuid.UUID]racecontext.StandingsEntry, selfID uuid.UUID) bool {
+	for agentID := range snapshot {
+		if agentID != selfID {
+			return true
+		}
+	}
+	return false
+}
+
+func raceContextModelLabel(executionContext repository.RunAgentExecutionContext) string {
+	if executionContext.Deployment.ModelAlias == nil {
+		return ""
+	}
+	return executionContext.Deployment.ModelAlias.ModelCatalogEntry.ProviderModelID
+}
+
+// evaluateRaceContextCadence decides whether to inject and, if so, what
+// trigger label to tag the event with. Peer-state changes (into submitted
+// / failed / timed_out) fire immediately; otherwise we fall back to the
+// cadence gap. On the very first eligible step (lastInjectionStep == 0)
+// the injection fires as cadence — the caller is responsible for gating
+// the minimum-step-before-first-injection rule upstream.
+func evaluateRaceContextCadence(state *loopState, snapshot map[uuid.UUID]racecontext.StandingsEntry, selfID uuid.UUID, minGap int) (runevents.RaceStandingsTrigger, bool) {
+	current := currentPeerStates(snapshot, selfID)
+
+	if state.lastPeerStates != nil {
+		for agentID, newState := range current {
+			prev := state.lastPeerStates[agentID]
+			if prev == newState {
+				continue
+			}
+			switch newState {
+			case racecontext.StandingsStateSubmitted:
+				return runevents.RaceStandingsTriggerPeerSubmitted, true
+			case racecontext.StandingsStateFailed:
+				return runevents.RaceStandingsTriggerPeerFailed, true
+			case racecontext.StandingsStateTimedOut:
+				return runevents.RaceStandingsTriggerPeerTimedOut, true
+			}
+		}
+	}
+
+	if state.lastInjectionStep == 0 {
+		return runevents.RaceStandingsTriggerCadence, true
+	}
+	if state.stepCount-state.lastInjectionStep >= minGap {
+		return runevents.RaceStandingsTriggerCadence, true
+	}
+	return "", false
+}
+
+// currentPeerStates returns a map of each peer's (non-self) current
+// state. Used to track transitions between injections.
+func currentPeerStates(snapshot map[uuid.UUID]racecontext.StandingsEntry, selfID uuid.UUID) map[uuid.UUID]racecontext.StandingsState {
+	out := make(map[uuid.UUID]racecontext.StandingsState, len(snapshot))
+	for agentID, entry := range snapshot {
+		if agentID == selfID {
+			continue
+		}
+		out[agentID] = entry.State
+	}
+	return out
 }

@@ -265,6 +265,8 @@ type Run struct {
 	UpdatedAt              pgtype.Timestamptz
 	OfficialPackMode       string
 	EvalSessionID          *uuid.UUID
+	RaceContext            bool
+	RaceContextMinStepGap  *int32
 }
 
 type RunAgent struct {

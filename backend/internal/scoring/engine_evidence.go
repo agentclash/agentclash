@@ -43,6 +43,12 @@ type extractedEvidence struct {
 	inputTokens                    *float64
 	outputTokens                   *float64
 	totalTokens                    *float64
+	// raceContextTokens is the estimated prompt-side token spend from
+	// race-context standings injections (issue #400). It is accumulated
+	// from race.standings.injected events and must stay separate from
+	// model-authored totals so billable-spend metrics are not inflated
+	// by observational injections.
+	raceContextTokens float64
 	modelUsage                     []pricedUsage
 	observedModels                 []modelRef
 	stepDurations                  []stepDurationEvidence
@@ -208,6 +214,12 @@ func buildEvidence(challengeInputs []EvidenceInput, events []Event) extractedEvi
 				totalFromCalls += value
 				usageFromCalls = true
 				addModelUsage(usageByModel, providerKey, providerModelID, "total_tokens", value)
+			}
+		case "race.standings.injected":
+			// Aggregate race-context injection tokens separately from
+			// model-authored tokens. See issue #400 slice 8.
+			if value, ok := numericValue(payload, "tokens_added"); ok {
+				evidence.raceContextTokens += value
 			}
 		case "grader.verification.file_captured":
 			var capture FileCaptureResult

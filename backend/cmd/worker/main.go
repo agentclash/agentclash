@@ -43,8 +43,10 @@ func main() {
 
 	repo := repository.New(db).WithCipher(cfg.SecretsCipher)
 
-	// Redis event publishing (optional).
+	// Redis event publishing (optional). The same client backs the
+	// race-context standings hash (issue #400) when Redis is available.
 	var eventPublisher pubsub.EventPublisher = pubsub.NoopPublisher{}
+	var standingsStore pubsub.StandingsStore = pubsub.NoopStandingsStore{}
 	if redisCfg, ok := pubsub.LoadRedisConfigFromEnv(); ok {
 		redisClient, redisErr := pubsub.NewRedisClient(redisCfg)
 		if redisErr != nil {
@@ -53,14 +55,20 @@ func main() {
 		}
 		defer redisClient.Close()
 		eventPublisher = pubsub.NewRedisPublisher(redisClient)
+		standingsStore = pubsub.NewRedisStandingsStore(redisClient)
 		logger.Info("redis event publisher: enabled")
+		logger.Info("race-context standings store: enabled")
 	} else {
 		logger.Info("redis event publisher: disabled (REDIS_URL not set)")
+		logger.Info("race-context standings store: disabled (REDIS_URL not set)")
 	}
 
 	var eventRecorder workerapp.RunEventRecorder = repo
 	if _, isNoop := eventPublisher.(pubsub.NoopPublisher); !isNoop {
-		eventRecorder = pubsub.NewPublishingRecorder(repo, eventPublisher, logger)
+		eventRecorder = pubsub.NewPublishingRecorder(eventRecorder, eventPublisher, logger)
+	}
+	if _, isNoop := standingsStore.(pubsub.NoopStandingsStore); !isNoop {
+		eventRecorder = pubsub.NewStandingsRecorder(eventRecorder, standingsStore, logger)
 	}
 
 	httpClient := provider.NewDefaultHTTPClient()
@@ -79,7 +87,7 @@ func main() {
 		providerRouter,
 		sandboxProvider,
 		workerapp.NewBufferedNativeObserverFactory(eventRecorder),
-	).WithSecretsLookup(repo)
+	).WithSecretsLookup(repo).WithStandingsStore(standingsStore)
 	promptEvalInvoker := workerapp.NewPromptEvalInvokerWithObserverFactory(
 		providerRouter,
 		workerapp.NewBufferedPromptEvalObserverFactory(eventRecorder),

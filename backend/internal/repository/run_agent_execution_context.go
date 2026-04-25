@@ -18,6 +18,7 @@ import (
 type RunAgentExecutionContext struct {
 	Run                  domain.Run
 	RunAgent             domain.RunAgent
+	RunAgents            []domain.RunAgent
 	ChallengePackVersion ChallengePackVersionExecutionContext
 	ChallengeInputSet    *ChallengeInputSetExecutionContext
 	Deployment           AgentDeploymentExecutionContext
@@ -173,6 +174,12 @@ func (r *Repository) GetRunAgentExecutionContextByID(ctx context.Context, runAge
 		return RunAgentExecutionContext{}, fmt.Errorf("map run-agent execution context: %w", err)
 	}
 
+	runAgents, err := r.ListRunAgentsByRunID(ctx, executionContext.Run.ID)
+	if err != nil {
+		return RunAgentExecutionContext{}, err
+	}
+	executionContext.RunAgents = runAgents
+
 	return executionContext, nil
 }
 
@@ -307,6 +314,8 @@ func mapRunAgentExecutionContext(row repositorysqlc.GetRunAgentExecutionContextB
 			FinishedAt:             optionalTime(row.RunFinishedAt),
 			CancelledAt:            optionalTime(row.RunCancelledAt),
 			FailedAt:               optionalTime(row.RunFailedAt),
+			RaceContext:            row.RunRaceContext,
+			RaceContextMinStepGap:  cloneInt32Ptr(row.RunRaceContextMinStepGap),
 			CreatedAt:              runCreatedAt,
 			UpdatedAt:              runUpdatedAt,
 		},

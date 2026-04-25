@@ -34,6 +34,8 @@ SELECT
     r.finished_at AS run_finished_at,
     r.cancelled_at AS run_cancelled_at,
     r.failed_at AS run_failed_at,
+    r.race_context AS run_race_context,
+    r.race_context_min_step_gap AS run_race_context_min_step_gap,
     r.created_at AS run_created_at,
     r.updated_at AS run_updated_at,
 

@@ -91,6 +91,23 @@ func collectMetric(metric MetricDeclaration, evidence extractedEvidence, validat
 			"state":     OutputStateAvailable,
 			"collector": metric.Collector,
 		})
+	case "run_agent_tokens":
+		if evidence.totalTokens == nil {
+			return unavailableMetric("agent token usage is unavailable", metric)
+		}
+		agentTokens := *evidence.totalTokens - evidence.raceContextTokens
+		if agentTokens < 0 {
+			agentTokens = 0
+		}
+		return OutputStateAvailable, floatPtr(agentTokens), nil, nil, "", mustMarshalJSON(map[string]any{
+			"state":     OutputStateAvailable,
+			"collector": metric.Collector,
+		})
+	case "run_race_context_tokens":
+		return OutputStateAvailable, floatPtr(evidence.raceContextTokens), nil, nil, "", mustMarshalJSON(map[string]any{
+			"state":     OutputStateAvailable,
+			"collector": metric.Collector,
+		})
 	case "run_model_cost_usd":
 		value, reason, metadata := modelCostMetric(evidence, spec)
 		if value == nil {

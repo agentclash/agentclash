@@ -16,7 +16,9 @@ INSERT INTO runs (
     started_at,
     finished_at,
     cancelled_at,
-    failed_at
+    failed_at,
+    race_context,
+    race_context_min_step_gap
 ) VALUES (
     @organization_id,
     @workspace_id,
@@ -34,7 +36,9 @@ INSERT INTO runs (
     sqlc.narg('started_at'),
     sqlc.narg('finished_at'),
     sqlc.narg('cancelled_at'),
-    sqlc.narg('failed_at')
+    sqlc.narg('failed_at'),
+    @race_context,
+    sqlc.narg('race_context_min_step_gap')
 )
 RETURNING *;
 

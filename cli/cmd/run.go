@@ -32,6 +32,8 @@ func init() {
 	runCreateCmd.Flags().String("name", "", "Run name (optional)")
 	runCreateCmd.Flags().String("input-set", "", "Challenge input set ID (optional)")
 	runCreateCmd.Flags().Bool("follow", false, "Follow run events after creation")
+	runCreateCmd.Flags().Bool("race-context", false, "Enable live peer-standings injection during the run (requires 2+ agents)")
+	runCreateCmd.Flags().Int("race-context-cadence", 0, "Override race-context cadence; minimum steps between standings injections, [1, 10]. 0 uses the backend default.")
 
 	runRankingCmd.Flags().String("sort-by", "", "Sort by: composite, correctness, reliability, latency, cost")
 }
@@ -157,6 +159,15 @@ For CI and other non-interactive use, keep passing explicit IDs via flags.`,
 		}
 		if selections.challengeInputSetID != "" {
 			body["challenge_input_set_id"] = selections.challengeInputSetID
+		}
+		if raceContext, _ := cmd.Flags().GetBool("race-context"); raceContext {
+			body["race_context"] = true
+		}
+		if cadence, _ := cmd.Flags().GetInt("race-context-cadence"); cadence > 0 {
+			if cadence > 10 {
+				return fmt.Errorf("--race-context-cadence must be between 1 and 10, got %d", cadence)
+			}
+			body["race_context_min_step_gap"] = cadence
 		}
 
 		sp := output.NewSpinner("Creating run...", flagQuiet)

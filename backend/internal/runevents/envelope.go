@@ -45,6 +45,8 @@ const (
 	EventTypeScoringMetricRecorded Type = "scoring.metric.recorded"
 	EventTypeScoringCompleted      Type = "scoring.completed"
 	EventTypeScoringFailed         Type = "scoring.failed"
+
+	EventTypeRaceStandingsInjected Type = "race.standings.injected"
 )
 
 type Source string
@@ -170,7 +172,8 @@ func isValidType(eventType Type) bool {
 		EventTypeScoringStarted,
 		EventTypeScoringMetricRecorded,
 		EventTypeScoringCompleted,
-		EventTypeScoringFailed:
+		EventTypeScoringFailed,
+		EventTypeRaceStandingsInjected:
 		return true
 	default:
 		return false

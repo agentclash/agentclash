@@ -177,8 +177,16 @@ type Run struct {
 	FinishedAt             *time.Time
 	CancelledAt            *time.Time
 	FailedAt               *time.Time
-	CreatedAt              time.Time
-	UpdatedAt              time.Time
+	// RaceContext opts the run into live peer-standings injection during
+	// execution. Nil or false means the run behaves identically to pre-#400
+	// main: no standings are injected, no race.standings.injected events
+	// are emitted, and billable-token accounting is unchanged.
+	RaceContext bool
+	// RaceContextMinStepGap overrides the default minimum steps between
+	// standings injections. Nil = backend default. Valid range [1, 10].
+	RaceContextMinStepGap *int32
+	CreatedAt             time.Time
+	UpdatedAt             time.Time
 }
 
 type RunAgent struct {

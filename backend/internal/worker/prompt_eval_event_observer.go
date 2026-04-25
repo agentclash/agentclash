@@ -130,6 +130,13 @@ func (o *PromptEvalRunEventObserver) OnPostExecutionVerification(context.Context
 	return nil
 }
 
+// OnStandingsInjected is a no-op for prompt_eval runs. The race-context
+// feature only targets native execution (issue #400); prompt_eval runs
+// don't have a step loop that could accept mid-run injections.
+func (o *PromptEvalRunEventObserver) OnStandingsInjected(context.Context, engine.StandingsInjection) error {
+	return nil
+}
+
 func (o *PromptEvalRunEventObserver) OnRunComplete(ctx context.Context, result engine.Result) error {
 	if err := o.ensureRunStarted(ctx); err != nil {
 		return err

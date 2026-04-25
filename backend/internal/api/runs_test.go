@@ -291,6 +291,139 @@ func TestCreateRunEndpointRejectsOversizedRequestBody(t *testing.T) {
 	}
 }
 
+func TestCreateRunEndpointPropagatesRaceContext(t *testing.T) {
+	userID := uuid.New()
+	workspaceID := uuid.New()
+	runID := uuid.New()
+	minStepGap := int32(5)
+	service := &fakeRunCreationService{
+		result: CreateRunResult{
+			Run: domain.Run{
+				ID:                     runID,
+				WorkspaceID:            workspaceID,
+				ChallengePackVersionID: uuid.New(),
+				Status:                 domain.RunStatusQueued,
+				ExecutionMode:          "comparison",
+				CreatedAt:              time.Date(2026, 4, 25, 12, 0, 0, 0, time.UTC),
+				RaceContext:            true,
+				RaceContextMinStepGap:  &minStepGap,
+			},
+		},
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/runs", bytes.NewBufferString(`{
+		"workspace_id":"`+workspaceID.String()+`",
+		"challenge_pack_version_id":"`+uuid.New().String()+`",
+		"agent_deployment_ids":["`+uuid.New().String()+`","`+uuid.New().String()+`"],
+		"race_context":true,
+		"race_context_min_step_gap":5
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(headerUserID, userID.String())
+	req.Header.Set(headerWorkspaceMemberships, workspaceID.String()+":workspace_member")
+	recorder := httptest.NewRecorder()
+
+	newRouter("dev", nil,
+		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
+		NewDevelopmentAuthenticator(),
+		NewCallerWorkspaceAuthorizer(),
+		nil,
+		0,
+		service,
+		&fakeRunReadService{},
+		&fakeReplayReadService{},
+		stubHostedRunIngestionService{},
+		nil,
+		stubAgentDeploymentReadService{},
+		stubChallengePackReadService{},
+		stubAgentBuildService{},
+		noopReleaseGateService{},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+	).ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d (body: %s)", recorder.Code, http.StatusCreated, recorder.Body.String())
+	}
+	if !service.input.RaceContext {
+		t.Fatalf("service saw RaceContext = false, want true")
+	}
+	if service.input.RaceContextMinStepGap == nil || *service.input.RaceContextMinStepGap != 5 {
+		t.Fatalf("service saw MinStepGap = %v, want 5", service.input.RaceContextMinStepGap)
+	}
+
+	var response createRunResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if !response.RaceContext {
+		t.Fatalf("response race_context = false, want true")
+	}
+	if response.RaceContextMinStepGap == nil || *response.RaceContextMinStepGap != 5 {
+		t.Fatalf("response min_step_gap = %v, want 5", response.RaceContextMinStepGap)
+	}
+}
+
+func TestCreateRunEndpointRejectsRaceContextCadenceOutOfRange(t *testing.T) {
+	workspaceID := uuid.New()
+	// 11 is out of range (valid is [1, 10]).
+	req := httptest.NewRequest(http.MethodPost, "/v1/runs", bytes.NewBufferString(`{
+		"workspace_id":"`+workspaceID.String()+`",
+		"challenge_pack_version_id":"`+uuid.New().String()+`",
+		"agent_deployment_ids":["`+uuid.New().String()+`","`+uuid.New().String()+`"],
+		"race_context":true,
+		"race_context_min_step_gap":11
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(headerUserID, uuid.New().String())
+	req.Header.Set(headerWorkspaceMemberships, workspaceID.String()+":workspace_member")
+	recorder := httptest.NewRecorder()
+
+	newRouter("dev", nil,
+		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
+		NewDevelopmentAuthenticator(),
+		NewCallerWorkspaceAuthorizer(),
+		nil,
+		0,
+		&fakeRunCreationService{},
+		&fakeRunReadService{},
+		&fakeReplayReadService{},
+		stubHostedRunIngestionService{},
+		nil,
+		stubAgentDeploymentReadService{},
+		stubChallengePackReadService{},
+		stubAgentBuildService{},
+		noopReleaseGateService{},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+	).ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 (body: %s)", recorder.Code, recorder.Body.String())
+	}
+	if !bytes.Contains(recorder.Body.Bytes(), []byte("invalid_race_context_min_step_gap")) {
+		t.Fatalf("expected error code invalid_race_context_min_step_gap in body, got %s", recorder.Body.String())
+	}
+}
+
 func TestCreateEvalSessionEndpointReturnsCreated(t *testing.T) {
 	userID := uuid.New()
 	workspaceID := uuid.New()
