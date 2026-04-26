@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.7.0](https://github.com/agentclash/agentclash/compare/v0.6.0...v0.7.0) (2026-04-26)
+
+
+### Features
+
+* **cli:** add workflow-first eval commands ([af2f30a](https://github.com/agentclash/agentclash/commit/af2f30ada53a5243022a1bbe1a0ca461f50348c1))
+
+
+### Bug Fixes
+
+* **cli:** address PR [#414](https://github.com/agentclash/agentclash/issues/414) remote review findings ([75cc67f](https://github.com/agentclash/agentclash/commit/75cc67f7516cf6e4a0e08359ac2077af841aa579))
+* **cli:** address PR [#414](https://github.com/agentclash/agentclash/issues/414) review findings ([58f5761](https://github.com/agentclash/agentclash/commit/58f57617a89d1552efd82dfa386d55bc49cf4b10))
+
 ## [0.6.0](https://github.com/agentclash/agentclash/compare/v0.5.0...v0.6.0) (2026-04-25)
 
 
