@@ -101,12 +101,11 @@ export AGENTCLASH_API_URL="https://staging-api.agentclash.dev"
 
 cd cli
 go run . auth login --device
-go run . workspace list
-go run . workspace use <workspace-id>
+go run . link
 go run . run list
-go run . run create --help
+go run . eval start --help
 # When the workspace already has challenge packs and deployments:
-go run . run create --follow
+go run . eval start --follow
 ```
 
 Resolution order is `--api-url` > `AGENTCLASH_API_URL` > saved user config > default. Source builds (`go run .`, `make build`) default to `http://localhost:8080`; released binaries default to `https://api.agentclash.dev`. Set `AGENTCLASH_API_URL=https://staging-api.agentclash.dev` for staging.
@@ -114,13 +113,17 @@ Resolution order is `--api-url` > `AGENTCLASH_API_URL` > saved user config > def
 ### Quick start
 
 ```bash
-agentclash auth login                  # Authenticate
-agentclash workspace use <id>          # Set default workspace
-agentclash run create --follow         # Start an evaluation with interactive selection
-agentclash run ranking <run-id>        # View results
-agentclash compare gate \              # CI/CD quality gate
-  --baseline <run1> --candidate <run2>
+agentclash auth login                           # Authenticate
+agentclash link                                 # Pick and save your default workspace
+agentclash challenge-pack init support-eval.yaml
+agentclash challenge-pack validate support-eval.yaml
+agentclash challenge-pack publish support-eval.yaml
+agentclash eval start --follow                  # Start an evaluation with guided selection
+agentclash baseline set                         # Bookmark a baseline run
+agentclash eval scorecard                       # View scorecard + regression verdict
 ```
+
+If your workspace is already seeded with challenge packs and deployments, you can skip the authoring commands and start at `agentclash eval start --follow`.
 
 ### CI/CD
 
@@ -150,6 +153,9 @@ go vet ./...
 go test -short -race -count=1 ./...
 go run github.com/goreleaser/goreleaser/v2@latest check
 go run github.com/goreleaser/goreleaser/v2@latest release --snapshot --clean
+cd ../web && pnpm build
+cd ..
+bash testing/cli-e2e-suite.sh --help
 ```
 
 If you changed packaging or install behavior, rehearse the npm packages locally from the snapshot artifacts:

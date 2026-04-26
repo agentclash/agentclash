@@ -88,6 +88,61 @@ func TestManagerPrecedenceUserConfigOverridesDefaults(t *testing.T) {
 	}
 }
 
+func TestManagerBaselineBookmarkUsesResolvedWorkspace(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
+	t.Setenv("AGENTCLASH_WORKSPACE", "")
+
+	if err := Save(UserConfig{
+		DefaultWorkspace: "user-ws-id",
+		BaselineBookmarks: map[string]BaselineBookmark{
+			"user-ws-id": {RunID: "run-1"},
+		},
+	}); err != nil {
+		t.Fatalf("Save error: %v", err)
+	}
+
+	mgr, err := NewManager(FlagOverrides{})
+	if err != nil {
+		t.Fatalf("NewManager error: %v", err)
+	}
+
+	bookmark, ok := mgr.BaselineBookmark("")
+	if !ok {
+		t.Fatal("expected resolved workspace bookmark")
+	}
+	if bookmark.RunID != "run-1" {
+		t.Fatalf("RunID = %q, want %q", bookmark.RunID, "run-1")
+	}
+}
+
+func TestManagerBaselineBookmarkHonorsExplicitWorkspace(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
+
+	if err := Save(UserConfig{
+		DefaultWorkspace: "user-ws-id",
+		BaselineBookmarks: map[string]BaselineBookmark{
+			"other-ws-id": {RunID: "run-2"},
+		},
+	}); err != nil {
+		t.Fatalf("Save error: %v", err)
+	}
+
+	mgr, err := NewManager(FlagOverrides{})
+	if err != nil {
+		t.Fatalf("NewManager error: %v", err)
+	}
+
+	bookmark, ok := mgr.BaselineBookmark("other-ws-id")
+	if !ok {
+		t.Fatal("expected explicit workspace bookmark")
+	}
+	if bookmark.RunID != "run-2" {
+		t.Fatalf("RunID = %q, want %q", bookmark.RunID, "run-2")
+	}
+}
+
 func TestManagerDefaultValues(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", tmpDir)

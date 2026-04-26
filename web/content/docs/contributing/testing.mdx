@@ -23,7 +23,17 @@ go vet ./...
 go test -short -race -count=1 ./...
 go run github.com/goreleaser/goreleaser/v2@latest check
 go run github.com/goreleaser/goreleaser/v2@latest release --snapshot --clean
+cd ../web && pnpm build
+cd ..
+bash testing/cli-e2e-suite.sh --help
 ```
+
+If the change affects human-facing CLI output, also add assertions for:
+
+- `agentclash --help` and command-level `--help`
+- table output for the happy path
+- JSON envelopes for workflow commands such as `eval scorecard --json`
+- config persistence when the command writes local state
 
 ## Use review checkpoints for implementation work
 

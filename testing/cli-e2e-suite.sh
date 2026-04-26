@@ -731,6 +731,13 @@ if [[ -n "$EXPECTED_VERSION" ]]; then
   fi
 fi
 
+say "Workflow Discovery"
+expect_contains "root help mentions link" "agentclash link" "${BASE[@]}" --help || true
+expect_contains "eval help lists start" "start" "${BASE[@]}" eval --help || true
+expect_contains "baseline help lists set" "set" "${BASE[@]}" baseline --help || true
+expect_contains "doctor help describes readiness checks" "Check auth, workspace, and eval readiness" "${BASE[@]}" doctor --help || true
+expect_contains "challenge-pack init help works" "Scaffold a minimal challenge pack YAML bundle" "${BASE[@]}" challenge-pack init --help || true
+
 say "Config and Auth"
 printf 'api: %s\n' "$API_URL"
 printf 'temp config: %s/agentclash\n' "$RUN_XDG"

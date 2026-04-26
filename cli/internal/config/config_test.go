@@ -61,6 +61,12 @@ func TestSaveAndLoadUserConfig(t *testing.T) {
 		DefaultOrg:       "org-def",
 		APIURL:           "https://test.example.com",
 		Output:           "yaml",
+		BaselineBookmarks: map[string]BaselineBookmark{
+			"ws-abc": {
+				RunID:      "run-1",
+				RunAgentID: "agent-1",
+			},
+		},
 	}
 
 	if err := Save(original); err != nil {
@@ -83,6 +89,16 @@ func TestSaveAndLoadUserConfig(t *testing.T) {
 	}
 	if loaded.Output != original.Output {
 		t.Fatalf("Output = %q, want %q", loaded.Output, original.Output)
+	}
+	bookmark, ok := loaded.BaselineBookmarkForWorkspace("ws-abc")
+	if !ok {
+		t.Fatal("expected baseline bookmark for ws-abc")
+	}
+	if bookmark.RunID != "run-1" {
+		t.Fatalf("bookmark.RunID = %q, want %q", bookmark.RunID, "run-1")
+	}
+	if bookmark.RunAgentID != "agent-1" {
+		t.Fatalf("bookmark.RunAgentID = %q, want %q", bookmark.RunAgentID, "agent-1")
 	}
 }
 
@@ -115,5 +131,62 @@ func TestKeysReturnsAllValidKeys(t *testing.T) {
 		if !expected[k] {
 			t.Fatalf("unexpected key %q", k)
 		}
+	}
+}
+
+func TestBaselineBookmarkForWorkspace(t *testing.T) {
+	cfg := UserConfig{
+		BaselineBookmarks: map[string]BaselineBookmark{
+			"ws-1": {
+				RunID:      "run-1",
+				RunAgentID: "agent-1",
+			},
+		},
+	}
+
+	bookmark, ok := cfg.BaselineBookmarkForWorkspace("ws-1")
+	if !ok {
+		t.Fatal("expected bookmark for ws-1")
+	}
+	if bookmark.RunID != "run-1" {
+		t.Fatalf("RunID = %q, want %q", bookmark.RunID, "run-1")
+	}
+	if _, ok := cfg.BaselineBookmarkForWorkspace("ws-2"); ok {
+		t.Fatal("unexpected bookmark for ws-2")
+	}
+}
+
+func TestSetBaselineBookmarkInitializesMap(t *testing.T) {
+	var cfg UserConfig
+	cfg.SetBaselineBookmark("ws-1", BaselineBookmark{RunID: "run-1"})
+
+	bookmark, ok := cfg.BaselineBookmarkForWorkspace("ws-1")
+	if !ok {
+		t.Fatal("expected bookmark after SetBaselineBookmark")
+	}
+	if bookmark.RunID != "run-1" {
+		t.Fatalf("RunID = %q, want %q", bookmark.RunID, "run-1")
+	}
+}
+
+func TestClearBaselineBookmark(t *testing.T) {
+	cfg := UserConfig{
+		BaselineBookmarks: map[string]BaselineBookmark{
+			"ws-1": {RunID: "run-1"},
+			"ws-2": {RunID: "run-2"},
+		},
+	}
+
+	if !cfg.ClearBaselineBookmark("ws-1") {
+		t.Fatal("expected bookmark removal to return true")
+	}
+	if _, ok := cfg.BaselineBookmarkForWorkspace("ws-1"); ok {
+		t.Fatal("bookmark ws-1 should be cleared")
+	}
+	if _, ok := cfg.BaselineBookmarkForWorkspace("ws-2"); !ok {
+		t.Fatal("bookmark ws-2 should remain")
+	}
+	if cfg.ClearBaselineBookmark("ws-1") {
+		t.Fatal("clearing the same bookmark twice should return false")
 	}
 }

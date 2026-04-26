@@ -25,8 +25,9 @@ Supported platforms:
 
 ```bash
 agentclash auth login
-agentclash workspace use <workspace-id>
-agentclash run create --help
+agentclash link
+agentclash challenge-pack init support-eval.yaml
+agentclash eval start --help
 ```
 
 ## Use a local CLI build against a hosted backend
@@ -38,11 +39,11 @@ export AGENTCLASH_API_URL="https://staging-api.agentclash.dev"
 
 cd cli
 go run . auth login --device
-go run . workspace use <workspace-id>
+go run . link
 go run . run list
-go run . run create --help
+go run . eval start --help
 # When the workspace already has challenge packs and deployments:
-go run . run create --follow
+go run . eval start --follow
 ```
 
 `--api-url` overrides `AGENTCLASH_API_URL` for one-off commands.
@@ -56,6 +57,7 @@ go vet ./...
 go test -short -race -count=1 ./...
 go run github.com/goreleaser/goreleaser/v2@latest check
 go run github.com/goreleaser/goreleaser/v2@latest release --snapshot --clean
+cd ../web && pnpm build
 ```
 
 If you changed npm packaging, rehearse it locally:

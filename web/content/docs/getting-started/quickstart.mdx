@@ -7,8 +7,9 @@ This path is for people changing the CLI or trying the product without booting t
 
 <Callout type="note">
   The hosted quickstart assumes your workspace already has challenge packs and
-  deployments. If it does not, stop after `workspace use` and you have still
-  verified auth, connectivity, and workspace selection.
+  deployments. If it does not, stop after `link` and then author a pack with
+  `challenge-pack init`; you have still verified auth, connectivity, and
+  workspace selection.
 </Callout>
 
 ## 1. Install the CLI
@@ -26,11 +27,10 @@ agentclash auth login --device
 
 Use `--device` when you are in a remote shell or do not want the CLI to open a browser automatically.
 
-## 3. Pick a workspace
+## 3. Link a workspace
 
 ```bash
-agentclash workspace list
-agentclash workspace use <WORKSPACE_ID>
+agentclash link
 ```
 
 The CLI resolves the API base URL in this order:
@@ -39,17 +39,30 @@ The CLI resolves the API base URL in this order:
 --api-url > AGENTCLASH_API_URL > saved user config > http://localhost:8080
 ```
 
-## 4. Inspect what is already there
+`agentclash link` saves the selected workspace in user config so later commands do not need raw IDs by default.
+
+## 4. Choose your next path
 
 ```bash
-agentclash run list
-agentclash run create --help
+agentclash doctor
+agentclash eval start --help
 ```
 
 If the workspace is already seeded with challenge packs and agent deployments, create and follow a run:
 
 ```bash
-agentclash run create --follow
+agentclash eval start --follow
+```
+
+If the workspace is empty, scaffold a starter pack first:
+
+```bash
+agentclash challenge-pack init support-eval.yaml
+agentclash challenge-pack validate support-eval.yaml
+agentclash challenge-pack publish support-eval.yaml
+agentclash eval start --follow
+agentclash baseline set
+agentclash eval scorecard
 ```
 
 ## Verification
@@ -57,9 +70,10 @@ agentclash run create --follow
 You should now have:
 
 - a valid CLI login
-- a default workspace saved locally
+- a default workspace linked locally
 - a working connection to the hosted API
 - either a created run or enough context to see what the workspace is missing
+- a clear next step: publish a challenge pack, start an eval, or save a baseline
 
 ## See also
 

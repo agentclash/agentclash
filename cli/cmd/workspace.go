@@ -211,7 +211,7 @@ var wsUpdateCmd = &cobra.Command{
 var wsUseCmd = &cobra.Command{
 	Use:   "use <id>",
 	Short: "Set the default workspace",
-	Long:  "Sets the workspace ID as the default for subsequent commands.\nStored in ~/.config/agentclash/config.yaml.",
+	Long:  "Sets the workspace ID as the default for subsequent commands.\nStored in ~/.config/agentclash/config.yaml.\n\nFor the guided post-login flow, prefer `agentclash link`.",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		rc := GetRunContext(cmd)

@@ -3,15 +3,11 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"gopkg.in/yaml.v3"
 	"net/url"
 	"os"
-	"sort"
 	"strings"
 	"time"
-
-	"golang.org/x/text/cases"
-	"golang.org/x/text/language"
-	"gopkg.in/yaml.v3"
 
 	"github.com/agentclash/agentclash/cli/internal/output"
 	"github.com/spf13/cobra"
@@ -32,6 +28,9 @@ func init() {
 	runCreateCmd.Flags().String("name", "", "Run name (optional)")
 	runCreateCmd.Flags().String("input-set", "", "Challenge input set ID (optional)")
 	runCreateCmd.Flags().Bool("follow", false, "Follow run events after creation")
+	runCreateCmd.Flags().String("scope", "full", "Run scope: full or suite_only")
+	runCreateCmd.Flags().StringSlice("suite", nil, "Regression suite IDs (repeatable; required with --scope suite_only unless --case is used)")
+	runCreateCmd.Flags().StringSlice("case", nil, "Regression case IDs (repeatable)")
 	runCreateCmd.Flags().Bool("race-context", false, "Enable live peer-standings injection during the run (requires 2+ agents)")
 	runCreateCmd.Flags().Int("race-context-cadence", 0, "Override race-context cadence; minimum steps between standings injections, [1, 10]. 0 uses the backend default.")
 
@@ -133,6 +132,8 @@ var runCreateCmd = &cobra.Command{
 	Short: "Create and submit an evaluation run",
 	Long: `Create and submit an evaluation run.
 
+For the guided workflow-first path, prefer 'agentclash eval start'.
+
 In a normal terminal session, omitting --challenge-pack-version and/or
 --deployments launches an interactive picker so you can scroll through
 available challenge packs, versions, input sets, and deployments and press
@@ -143,66 +144,31 @@ For CI and other non-interactive use, keep passing explicit IDs via flags.`,
 		rc := GetRunContext(cmd)
 		wsID := RequireWorkspace(cmd)
 
+		request, err := runCreateRequestFromFlags(cmd, runCreateRequest{})
+		if err != nil {
+			return err
+		}
+
 		selections, err := resolveRunCreateSelections(cmd, rc, wsID)
 		if err != nil {
 			return err
 		}
-		name, _ := cmd.Flags().GetString("name")
+		request.ChallengePackVersionID = selections.challengePackVersionID
+		request.ChallengeInputSetID = selections.challengeInputSetID
+		request.DeploymentIDs = selections.deploymentIDs
 
-		body := map[string]any{
-			"workspace_id":              wsID,
-			"challenge_pack_version_id": selections.challengePackVersionID,
-			"agent_deployment_ids":      selections.deploymentIDs,
-		}
-		if name != "" {
-			body["name"] = name
-		}
-		if selections.challengeInputSetID != "" {
-			body["challenge_input_set_id"] = selections.challengeInputSetID
-		}
-		if raceContext, _ := cmd.Flags().GetBool("race-context"); raceContext {
-			body["race_context"] = true
-		}
-		if cadence, _ := cmd.Flags().GetInt("race-context-cadence"); cadence > 0 {
-			if cadence > 10 {
-				return fmt.Errorf("--race-context-cadence must be between 1 and 10, got %d", cadence)
-			}
-			body["race_context_min_step_gap"] = cadence
-		}
-
-		sp := output.NewSpinner("Creating run...", flagQuiet)
-		resp, err := rc.Client.Post(cmd.Context(), "/v1/runs", body)
+		body, err := buildRunCreateBody(wsID, request)
 		if err != nil {
-			sp.StopWithError("Failed to create run")
-			return err
-		}
-		if apiErr := resp.ParseError(); apiErr != nil {
-			sp.StopWithError("Failed to create run")
-			return apiErr
-		}
-
-		var run map[string]any
-		if err := resp.DecodeJSON(&run); err != nil {
 			return err
 		}
 
-		sp.StopWithSuccess(fmt.Sprintf("Created run %s", str(run["id"])))
-
-		if rc.Output.IsStructured() {
-			return rc.Output.PrintRaw(run)
+		run, err := createRun(cmd, rc, body)
+		if err != nil {
+			return err
 		}
 
-		rc.Output.PrintDetail("Run ID", str(run["id"]))
-		rc.Output.PrintDetail("Status", output.StatusColor(str(run["status"])))
-
-		// If --follow, tail events.
 		follow, _ := cmd.Flags().GetBool("follow")
-		if follow {
-			fmt.Fprintln(os.Stderr)
-			return streamRunEvents(cmd, rc, str(run["id"]))
-		}
-
-		return nil
+		return presentCreatedRun(cmd, rc, run, follow, nil)
 	},
 }
 
@@ -340,95 +306,22 @@ var runEventsCmd = &cobra.Command{
 var runScorecardCmd = &cobra.Command{
 	Use:   "scorecard <runAgentId>",
 	Short: "Get agent scorecard",
+	Long:  "Get the scorecard for a specific run agent.\n\nFor the run-first workflow that can also compare against the bookmarked baseline, prefer `agentclash eval scorecard`.",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		rc := GetRunContext(cmd)
-
-		resp, err := rc.Client.Get(cmd.Context(), "/v1/scorecards/"+args[0], nil)
+		resp, scorecard, err := fetchRunAgentScorecard(cmd, rc, args[0])
 		if err != nil {
 			return err
 		}
 		if handled, err := handleStatefulReadResponse(rc, resp, "Scorecard"); handled {
 			return err
 		}
-		if apiErr := resp.ParseError(); apiErr != nil {
-			return apiErr
-		}
-
-		var scorecard map[string]any
-		if err := resp.DecodeJSON(&scorecard); err != nil {
-			return err
-		}
 
 		if rc.Output.IsStructured() {
 			return rc.Output.PrintRaw(scorecard)
 		}
-
-		rc.Output.PrintDetail("Run Agent ID", str(scorecard["run_agent_id"]))
-		rc.Output.PrintDetail("State", output.StatusColor(mapString(scorecard, "state", "status")))
-		if message := mapString(scorecard, "message"); message != "" {
-			rc.Output.PrintDetail("Message", message)
-		}
-		if runAgentStatus := mapString(scorecard, "run_agent_status"); runAgentStatus != "" {
-			rc.Output.PrintDetail("Run Agent Status", output.StatusColor(runAgentStatus))
-		}
-
-		scoreLabels := []struct {
-			Key   string
-			Label string
-		}{
-			{Key: "overall_score", Label: "Overall Score"},
-			{Key: "correctness_score", Label: "Correctness"},
-			{Key: "reliability_score", Label: "Reliability"},
-			{Key: "latency_score", Label: "Latency"},
-			{Key: "cost_score", Label: "Cost"},
-			{Key: "behavioral_score", Label: "Behavioral"},
-		}
-		printedScores := false
-		for _, field := range scoreLabels {
-			if value := mapValue(scorecard, field.Key); value != nil {
-				if !printedScores {
-					fmt.Fprintln(rc.Output.Writer())
-					fmt.Fprintln(rc.Output.Writer(), output.Bold("Scores:"))
-					printedScores = true
-				}
-				rc.Output.PrintDetail(field.Label, fmtScore(value))
-			}
-		}
-
-		if document := mapObject(scorecard, "scorecard"); document != nil {
-			if passed := mapValue(document, "passed"); passed != nil {
-				rc.Output.PrintDetail("Passed", str(passed))
-			}
-			if strategy := mapString(document, "strategy"); strategy != "" {
-				rc.Output.PrintDetail("Strategy", strategy)
-			}
-
-			dimensions := mapObject(document, "dimensions")
-			if len(dimensions) > 0 {
-				keys := make([]string, 0, len(dimensions))
-				for name := range dimensions {
-					keys = append(keys, name)
-				}
-				sort.Strings(keys)
-				fmt.Fprintln(rc.Output.Writer())
-				fmt.Fprintln(rc.Output.Writer(), output.Bold("Dimensions:"))
-				for _, name := range keys {
-					rc.Output.PrintDetail(cases.Title(language.English).String(name), formatDimensionSummary(dimensions[name]))
-				}
-			}
-		} else if dimensions := mapObject(scorecard, "dimensions"); len(dimensions) > 0 {
-			fmt.Fprintln(rc.Output.Writer())
-			fmt.Fprintln(rc.Output.Writer(), output.Bold("Scores:"))
-			keys := make([]string, 0, len(dimensions))
-			for name := range dimensions {
-				keys = append(keys, name)
-			}
-			sort.Strings(keys)
-			for _, name := range keys {
-				rc.Output.PrintDetail(cases.Title(language.English).String(name), formatDimensionSummary(dimensions[name]))
-			}
-		}
+		renderRunAgentScorecard(rc, scorecard)
 		return nil
 	},
 }

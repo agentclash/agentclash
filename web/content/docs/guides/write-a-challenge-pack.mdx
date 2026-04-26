@@ -8,10 +8,20 @@ Goal: write a pack that the current AgentClash parser, validator, and publish fl
 Prerequisites:
 
 - You have the CLI installed and logged in.
-- You selected a workspace with `agentclash workspace use <WORKSPACE_ID>`.
+- You linked a workspace with `agentclash link`.
 - You know whether the pack should be `prompt_eval` or `native`.
 
-## 1. Start from the current minimum shape
+## 1. Start with the CLI scaffold
+
+The fastest way to get a valid starter file is:
+
+```bash
+agentclash challenge-pack init support-eval.yaml
+```
+
+This generates a minimal bundle that matches the current parser shape. Use `--template native` if you want a native starter instead of the default `prompt_eval`.
+
+## 2. Edit the current minimum shape
 
 This is the smallest honest starting point based on the current bundle parser and tests:
 
@@ -62,7 +72,7 @@ input_sets:
 
 This is not a glamorous pack. It is a good pack skeleton because it matches the current parser shape.
 
-## 2. Add execution policy only when you need it
+## 3. Add execution policy only when you need it
 
 If the pack is `native`, you can add runtime sections like `tool_policy`, `sandbox`, and `tools`.
 
@@ -118,7 +128,7 @@ Use these sections deliberately.
 - `tools.custom` defines the tool contract the agent sees.
 - `implementation.primitive` picks the executor primitive that actually runs.
 
-## 3. Add assets when inputs should point at files
+## 4. Add assets when inputs should point at files
 
 If the pack needs files, declare them as assets instead of hardcoding mystery paths all over the bundle.
 
@@ -138,7 +148,7 @@ You can also back an asset with an uploaded artifact by setting `artifact_id` in
 
 Then cases and expectations can refer to those assets by key.
 
-## 4. Validate before you publish
+## 5. Validate before you publish
 
 The current CLI command is:
 
@@ -156,7 +166,7 @@ Typical failures the current code will catch early:
 - invalid tool parameter schemas
 - unknown artifact keys or nonexistent stored artifact IDs
 
-## 5. Publish the bundle
+## 6. Publish the bundle
 
 Once validation passes:
 
@@ -174,13 +184,21 @@ The publish response returns concrete IDs, including:
 
 Those IDs matter later because run creation asks for a pack version, not a filename.
 
-## 6. Confirm the workspace can see it
+## 7. Confirm the workspace can see it
 
 ```bash
 agentclash challenge-pack list
 ```
 
 If the pack published cleanly, it should show up in the workspace list with its versions.
+
+## 8. Run it through the workflow-first eval path
+
+```bash
+agentclash eval start --follow
+agentclash baseline set
+agentclash eval scorecard
+```
 
 ## Verification
 
@@ -189,6 +207,7 @@ You should now have:
 - a bundle YAML file the current parser accepts
 - a successful `validate` result
 - a published pack version ID you can use in run creation
+- a workflow path you can reuse without raw IDs for every step
 
 ## Troubleshooting
 

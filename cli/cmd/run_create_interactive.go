@@ -70,7 +70,11 @@ func resolveRunCreateSelections(cmd *cobra.Command, rc *RunContext, workspaceID 
 		selections.challengePackVersionID = selectedVersion
 	}
 
-	if selections.challengeInputSetID == "" {
+	// Keep `run create` relatively explicit: only guide the user through input
+	// set selection when the challenge-pack version itself was picked
+	// interactively. Workflow-first input-set auto-resolution lives in
+	// `agentclash eval start`.
+	if selections.challengeInputSetID == "" && cpvID == "" {
 		selectedInputSet, err := maybePromptForChallengeInputSet(cmd, rc, workspaceID, selections.challengePackVersionID, picker)
 		if err != nil {
 			return runCreateSelections{}, err

@@ -48,6 +48,45 @@ func TestDeploymentCreateBuildVersionFlagsUseCurrentRequestShape(t *testing.T) {
 	}
 }
 
+func TestRunCreateUsesRegressionSelectorsAndOfficialPackMode(t *testing.T) {
+	var gotBody map[string]any
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"POST /v1/runs": func(w http.ResponseWriter, r *http.Request) {
+			if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+				t.Fatalf("decode request body: %v", err)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": "run-1", "status": "queued"})
+		},
+	})
+	defer srv.Close()
+
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+	err := executeCommand(t, []string{
+		"run", "create",
+		"-w", "ws-1",
+		"--challenge-pack-version", "ver-1",
+		"--deployments", "dep-1",
+		"--scope", "suite_only",
+		"--suite", "suite-1",
+		"--case", "case-1",
+	}, srv.URL)
+	if err != nil {
+		t.Fatalf("run create error: %v", err)
+	}
+
+	if gotBody["official_pack_mode"] != "suite_only" {
+		t.Fatalf("official_pack_mode = %v, want suite_only", gotBody["official_pack_mode"])
+	}
+	if suiteIDs, ok := gotBody["regression_suite_ids"].([]any); !ok || len(suiteIDs) != 1 || suiteIDs[0] != "suite-1" {
+		t.Fatalf("regression_suite_ids = %#v, want [suite-1]", gotBody["regression_suite_ids"])
+	}
+	if caseIDs, ok := gotBody["regression_case_ids"].([]any); !ok || len(caseIDs) != 1 || caseIDs[0] != "case-1" {
+		t.Fatalf("regression_case_ids = %#v, want [case-1]", gotBody["regression_case_ids"])
+	}
+}
+
 func TestCompareRunsUsesKeyDeltasAndRegressionReasons(t *testing.T) {
 	srv := fakeAPI(t, map[string]http.HandlerFunc{
 		"GET /v1/compare": jsonHandler(200, map[string]any{

@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	"github.com/agentclash/agentclash/cli/internal/auth"
+	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 // executeCommand runs a cobra command with args against a fake API server.
@@ -28,6 +30,7 @@ func executeCommandWithQuiet(t *testing.T, args []string, apiURL string, quiet b
 	cmdMu.Lock()
 	defer cmdMu.Unlock()
 
+	resetCommandFlags(rootCmd)
 	flagJSON = false
 	flagOutput = ""
 	flagQuiet = quiet
@@ -38,25 +41,38 @@ func executeCommandWithQuiet(t *testing.T, args []string, apiURL string, quiet b
 	flagYes = false
 	flagDevice = false
 	flagForceLogin = false
-	if valueFlag := secretSetCmd.Flags().Lookup("value"); valueFlag != nil {
-		valueFlag.Value.Set("")
-		valueFlag.Changed = false
-	}
-	// runCreateCmd flags persist between test calls because cobra stores the
-	// parsed values on the package-level command. Reset the race-context
-	// knobs so absence-assertions (e.g. "field NOT in body") are reliable.
-	for _, flagName := range []string{"race-context", "race-context-cadence"} {
-		if f := runCreateCmd.Flags().Lookup(flagName); f != nil {
-			f.Value.Set(f.DefValue)
-			f.Changed = false
-		}
-	}
 
 	rootCmd.SetArgs(args)
 	return rootCmd.Execute()
 }
 
 var cmdMu sync.Mutex
+
+func resetCommandFlags(cmd *cobra.Command) {
+	cmd.Flags().VisitAll(func(f *pflag.Flag) {
+		resetFlagValue(f)
+	})
+	cmd.PersistentFlags().VisitAll(func(f *pflag.Flag) {
+		resetFlagValue(f)
+	})
+	for _, child := range cmd.Commands() {
+		resetCommandFlags(child)
+	}
+}
+
+type resettableSliceFlag interface {
+	Replace([]string) error
+}
+
+func resetFlagValue(f *pflag.Flag) {
+	if resettable, ok := f.Value.(resettableSliceFlag); ok {
+		_ = resettable.Replace(nil)
+		f.Changed = false
+		return
+	}
+	_ = f.Value.Set(f.DefValue)
+	f.Changed = false
+}
 
 func fakeAPI(t *testing.T, routes map[string]http.HandlerFunc) *httptest.Server {
 	t.Helper()
@@ -98,6 +114,27 @@ func TestVersionCommandSucceeds(t *testing.T) {
 	err := executeCommand(t, []string{"version"}, "http://unused")
 	if err != nil {
 		t.Fatalf("version command should succeed, got: %v", err)
+	}
+}
+
+func TestRootHelpHighlightsWorkflowCommands(t *testing.T) {
+	stdout := captureStdout(t)
+	err := executeCommand(t, []string{"--help"}, "http://unused")
+	if err != nil {
+		t.Fatalf("root help error: %v", err)
+	}
+
+	out := stdout.finish()
+	for _, snippet := range []string{
+		"agentclash link",
+		"agentclash challenge-pack init",
+		"agentclash eval start --follow",
+		"agentclash baseline set",
+		"agentclash eval scorecard",
+	} {
+		if !strings.Contains(out, snippet) {
+			t.Fatalf("root help missing %q\n---\n%s", snippet, out)
+		}
 	}
 }
 

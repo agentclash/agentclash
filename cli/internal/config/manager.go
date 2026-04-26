@@ -142,3 +142,13 @@ func (m *Manager) DevWorkspaceMemberships() string {
 func (m *Manager) UserConfig() *UserConfig {
 	return &m.user
 }
+
+// BaselineBookmark returns the workspace-scoped baseline bookmark for the
+// provided workspace ID. When workspaceID is empty, the resolved default
+// workspace is used.
+func (m *Manager) BaselineBookmark(workspaceID string) (BaselineBookmark, bool) {
+	if workspaceID == "" {
+		workspaceID = m.WorkspaceID()
+	}
+	return m.user.BaselineBookmarkForWorkspace(workspaceID)
+}
