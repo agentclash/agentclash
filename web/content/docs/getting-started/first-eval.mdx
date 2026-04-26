@@ -42,8 +42,13 @@ You can hit the API directly:
 Or, if you are using the CLI against a prepared workspace, create and follow the run there:
 
 ```bash
-agentclash run create --follow
+agentclash eval start --follow
 ```
+
+`eval start` is the workflow-first wrapper around `run create` — it resolves
+challenge packs, versions, input sets, and deployments by name or interactive
+selection. Use `agentclash run create` directly when you want to pass IDs
+explicitly (CI scripts, automation).
 
 ## 4. Inspect the result
 

@@ -12,6 +12,12 @@ In the current user-facing product surface, `run` is the first-class noun:
 - `agentclash run ranking`
 - `agentclash compare gate --baseline <RUN_ID> --candidate <RUN_ID>`
 
+The workflow-first surface (`agentclash eval start`, `agentclash baseline set`,
+`agentclash eval scorecard`) wraps these resource commands with name-based
+selectors and a bookmarked baseline so day-to-day evaluation does not require
+juggling raw run IDs. The resource commands above remain the canonical
+ID-centric path for CI and automation.
+
 A run is not just one model token stream. It is the container for a scored evaluation attempt inside a workspace, including the challenge pack version, selected agent deployments, lifecycle timestamps, and ranking output.
 
 The word **eval** is broader. People use it to mean “the experiment I am trying to run” or “the graded set of results I care about.” That is reasonable, but if you are reading the code or the CLI, you should anchor on this:

@@ -25,7 +25,10 @@ var doctorCmd = &cobra.Command{
 	Short: "Check auth, workspace, and eval readiness",
 	Long: `Inspect the current CLI setup and report whether the happy path is ready:
 
-auth login -> link -> challenge-pack init/publish -> eval start -> baseline set -> eval scorecard`,
+auth login -> link -> challenge-pack init/publish -> eval start -> baseline set -> eval scorecard
+
+Exits non-zero (code 1) if any check is not 'ok', so this command can be used
+as a CI gate: 'agentclash doctor && agentclash eval start --json'.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		rc := GetRunContext(cmd)
 
@@ -252,23 +255,32 @@ func printDoctorResult(rc *RunContext, checks []doctorCheck) error {
 		"next_steps": nextSteps,
 	}
 	if rc.Output.IsStructured() {
-		return rc.Output.PrintRaw(result)
+		if err := rc.Output.PrintRaw(result); err != nil {
+			return err
+		}
+	} else {
+		fmt.Fprintln(rc.Output.Writer(), "AgentClash Doctor")
+		fmt.Fprintln(rc.Output.Writer())
+		for _, check := range checks {
+			fmt.Fprintf(rc.Output.Writer(), "%-18s %s\n", doctorStatusLabel(check.Name), check.Detail)
+			if check.NextStep != "" {
+				fmt.Fprintf(rc.Output.Writer(), "%-18s %s\n", "", "next: "+check.NextStep)
+			}
+		}
+		if len(nextSteps) > 0 {
+			fmt.Fprintln(rc.Output.Writer())
+			fmt.Fprintln(rc.Output.Writer(), "Suggested next steps")
+			for _, step := range nextSteps {
+				fmt.Fprintf(rc.Output.Writer(), "  - %s\n", step)
+			}
+		}
 	}
 
-	fmt.Fprintln(rc.Output.Writer(), "AgentClash Doctor")
-	fmt.Fprintln(rc.Output.Writer())
-	for _, check := range checks {
-		fmt.Fprintf(rc.Output.Writer(), "%-18s %s\n", doctorStatusLabel(check.Name), check.Detail)
-		if check.NextStep != "" {
-			fmt.Fprintf(rc.Output.Writer(), "%-18s %s\n", "", "next: "+check.NextStep)
-		}
-	}
-	if len(nextSteps) > 0 {
-		fmt.Fprintln(rc.Output.Writer())
-		fmt.Fprintln(rc.Output.Writer(), "Suggested next steps")
-		for _, step := range nextSteps {
-			fmt.Fprintf(rc.Output.Writer(), "  - %s\n", step)
-		}
+	if !ready {
+		// Silent ExitCodeError: the rendered output above (table or JSON
+		// envelope with `ready: false`) already conveys the failure state;
+		// main should not print an additional error line.
+		return &ExitCodeError{Code: 1}
 	}
 	return nil
 }

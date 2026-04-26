@@ -144,6 +144,56 @@ func TestEvalScorecardJSONEnvelopeIncludesBaselineComparisonAndGate(t *testing.T
 	}
 }
 
+// TestEvalScorecardPicksNewestRunRegardlessOfAPIOrder pins the defensive sort
+// in resolveRunSummary's empty-selector path. The current backend orders runs
+// by created_at DESC, but `eval scorecard` (no run argument) and the
+// post-`eval start --follow` summary must not silently flip semantics if a
+// future backend refactor changes that ordering.
+func TestEvalScorecardPicksNewestRunRegardlessOfAPIOrder(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+
+	// Return runs in oldest-first order. The CLI must still pick the newest.
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"GET /v1/workspaces/ws-1/runs": jsonHandler(200, map[string]any{
+			"items": []map[string]any{
+				{"id": "run-old", "workspace_id": "ws-1", "name": "Old", "status": "completed", "created_at": "2026-04-20T09:00:00Z"},
+				{"id": "run-new", "workspace_id": "ws-1", "name": "New", "status": "completed", "created_at": "2026-04-25T09:00:00Z"},
+			},
+		}),
+		"GET /v1/runs/run-new/agents": jsonHandler(200, map[string]any{
+			"items": []map[string]any{
+				{"id": "agent-new", "run_id": "run-new", "label": "candidate", "status": "completed"},
+			},
+		}),
+		"GET /v1/scorecards/agent-new": jsonHandler(200, map[string]any{
+			"state":            "ready",
+			"run_agent_id":     "agent-new",
+			"run_agent_status": "completed",
+			"overall_score":    0.92,
+		}),
+	})
+	defer srv.Close()
+
+	stdout := captureStdout(t)
+	if err := executeCommand(t, []string{"eval", "scorecard", "-w", "ws-1", "--json"}, srv.URL); err != nil {
+		t.Fatalf("eval scorecard error: %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(stdout.finish()), &payload); err != nil {
+		t.Fatalf("Unmarshal() error: %v", err)
+	}
+	candidate, ok := payload["candidate"].(map[string]any)
+	if !ok {
+		t.Fatalf("candidate field missing from envelope: %#v", payload)
+	}
+	if candidate["run_id"] != "run-new" {
+		t.Fatalf("candidate.run_id = %v, want run-new (newest by created_at)", candidate["run_id"])
+	}
+}
+
 func TestEvalScorecardRequiresAgentSelectorForMultiAgentRuns(t *testing.T) {
 	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
 

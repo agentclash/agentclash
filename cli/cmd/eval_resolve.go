@@ -608,6 +608,13 @@ func resolveRunSummary(cmd *cobra.Command, rc *RunContext, workspaceID, selector
 		if len(runs) == 0 {
 			return runWorkflowSummary{}, fmt.Errorf("no runs found in workspace %s", workspaceID)
 		}
+		// Defensive: don't rely on backend ordering. The current backend
+		// returns ORDER BY created_at DESC, but a future change there must
+		// not silently flip "latest run" semantics for `eval scorecard` or
+		// the post-`eval start --follow` summary.
+		sort.SliceStable(runs, func(i, j int) bool {
+			return runs[i].CreatedAt > runs[j].CreatedAt
+		})
 		return runs[0], nil
 	}
 

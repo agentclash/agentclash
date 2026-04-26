@@ -354,6 +354,7 @@ func TestRunCreateRaceContextFlagsPropagate(t *testing.T) {
 		"run", "create",
 		"-w", "ws-1",
 		"--challenge-pack-version", "cpv-explicit",
+		"--input-set", "input-explicit",
 		"--deployments", "dep-a,dep-b",
 		"--race-context",
 		"--race-context-cadence", "4",
@@ -397,6 +398,7 @@ func TestRunCreateRaceContextCadenceOutOfRangeFailsLocally(t *testing.T) {
 		"run", "create",
 		"-w", "ws-1",
 		"--challenge-pack-version", "cpv-explicit",
+		"--input-set", "input-explicit",
 		"--deployments", "dep-a,dep-b",
 		"--race-context",
 		"--race-context-cadence", "15",
@@ -404,8 +406,68 @@ func TestRunCreateRaceContextCadenceOutOfRangeFailsLocally(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected error for out-of-range cadence")
 	}
-	if !strings.Contains(err.Error(), "between 1 and 10") {
-		t.Errorf("error message = %q, want to mention the range", err.Error())
+	// The validator accepts 0 (backend default) plus [1, 10]. The error must
+	// reflect that so users who pass -1 or 11 don't read it and conclude that
+	// 0 is also invalid.
+	if !strings.Contains(err.Error(), "0 (backend default) or between 1 and 10") {
+		t.Errorf("error message = %q, want full range guidance including the 0 sentinel", err.Error())
+	}
+}
+
+// TestRunCreateInputSetPickerFiresWhenChallengePackVersionIsExplicit pins the
+// behavior we restored after PR #414's review: passing
+// --challenge-pack-version without --input-set in a TTY must still launch the
+// interactive input-set picker. Silently submitting without an input set was
+// a regression on the prior CLI surface.
+func TestRunCreateInputSetPickerFiresWhenChallengePackVersionIsExplicit(t *testing.T) {
+	picker := &fakePicker{
+		// Only the input-set picker should be called: cpv is explicit, only
+		// one deployment exists so selectManyOrAuto auto-resolves it.
+		selectIndices: []int{0},
+	}
+	oldInteractive := isInteractiveTerminal
+	oldPickerFactory := newInteractivePicker
+	isInteractiveTerminal = func(*RunContext) bool { return true }
+	newInteractivePicker = func() interactivePicker { return picker }
+	t.Cleanup(func() {
+		isInteractiveTerminal = oldInteractive
+		newInteractivePicker = oldPickerFactory
+	})
+
+	var gotBody map[string]any
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"GET /v1/workspaces/ws-1/challenge-pack-versions/cpv-explicit/input-sets": jsonHandler(200, map[string]any{
+			"items": []map[string]any{
+				{"id": "input-1", "name": "Small", "input_key": "small"},
+				{"id": "input-2", "name": "Large", "input_key": "large"},
+			},
+		}),
+		"POST /v1/runs": func(w http.ResponseWriter, r *http.Request) {
+			if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+				t.Fatalf("decode request body: %v", err)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": "run-1", "status": "queued"})
+		},
+	})
+	defer srv.Close()
+
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+	if err := executeCommand(t, []string{
+		"run", "create",
+		"-w", "ws-1",
+		"--challenge-pack-version", "cpv-explicit",
+		"--deployments", "dep-a",
+	}, srv.URL); err != nil {
+		t.Fatalf("run create error: %v", err)
+	}
+
+	if gotBody["challenge_input_set_id"] != "input-1" {
+		t.Fatalf("challenge_input_set_id = %v, want input-1 (picker should have fired)", gotBody["challenge_input_set_id"])
+	}
+	if picker.selectCalls != 1 {
+		t.Fatalf("picker select calls = %d, want 1 (input-set picker only)", picker.selectCalls)
 	}
 }
 
@@ -439,6 +501,7 @@ func TestRunCreateWithoutRaceContextFlagsOmitsFields(t *testing.T) {
 		"run", "create",
 		"-w", "ws-1",
 		"--challenge-pack-version", "cpv-explicit",
+		"--input-set", "input-explicit",
 		"--deployments", "dep-a",
 	}, srv.URL); err != nil {
 		t.Fatalf("run create error: %v", err)

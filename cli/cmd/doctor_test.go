@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"testing"
 
@@ -36,8 +37,16 @@ func TestDoctorReportsMissingWorkspaceAndNextStep(t *testing.T) {
 	defer srv.Close()
 
 	stdout := captureStdout(t)
-	if err := executeCommand(t, []string{"doctor", "--json"}, srv.URL); err != nil {
-		t.Fatalf("doctor error: %v", err)
+	err := executeCommand(t, []string{"doctor", "--json"}, srv.URL)
+
+	// Doctor must exit non-zero when ready=false so it can be used as a CI
+	// gate (`agentclash doctor && agentclash eval start --json`).
+	var exitErr *ExitCodeError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("expected *ExitCodeError, got %T (%v)", err, err)
+	}
+	if exitErr.Code != 1 {
+		t.Fatalf("exit code = %d, want 1", exitErr.Code)
 	}
 
 	var payload struct {

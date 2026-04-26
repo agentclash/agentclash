@@ -64,7 +64,7 @@ func buildRunCreateBody(workspaceID string, request runCreateRequest) (map[strin
 		return nil, fmt.Errorf("--scope suite_only requires at least one regression suite or regression case")
 	}
 	if request.RaceContextCadence < 0 || request.RaceContextCadence > 10 {
-		return nil, fmt.Errorf("--race-context-cadence must be between 1 and 10, got %d", request.RaceContextCadence)
+		return nil, fmt.Errorf("--race-context-cadence must be 0 (backend default) or between 1 and 10, got %d", request.RaceContextCadence)
 	}
 
 	body := map[string]any{
