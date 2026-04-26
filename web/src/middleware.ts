@@ -7,6 +7,8 @@ import { authkitMiddleware } from "@workos-inc/authkit-nextjs";
 
 const authkit = authkitMiddleware();
 
+const WORKSPACE_ROOT_PATTERN = /^\/workspaces\/[^/]+\/?$/;
+
 export default function middleware(
   request: NextRequest,
   event: NextFetchEvent,
@@ -22,6 +24,12 @@ export default function middleware(
     request.nextUrl.pathname.startsWith("/share/")
   ) {
     return NextResponse.next();
+  }
+
+  if (WORKSPACE_ROOT_PATTERN.test(request.nextUrl.pathname)) {
+    const url = request.nextUrl.clone();
+    url.pathname = `${request.nextUrl.pathname.replace(/\/$/, "")}/runs`;
+    return NextResponse.redirect(url, 307);
   }
 
   return authkit(request, event);
