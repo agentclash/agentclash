@@ -32,13 +32,14 @@ const THEMES = {
   sky: { main: [0.8, 0.95, 1], low: [0.5, 0.8, 0.95], mid: [0.65, 0.88, 1], high: [0.95, 0.98, 1] },
   rose: { main: [1, 0.75, 0.85], low: [0.95, 0.45, 0.65], mid: [1, 0.6, 0.75], high: [1, 0.92, 0.95] },
   // AgentClash-tuned dark palettes — main lives near pure black so the
-  // card "blends in", with a single hue carried in mid/high for the
-  // hover-reveal lift.
-  darkSlate:   { main: [0.05, 0.06, 0.09], low: [0.10, 0.13, 0.20], mid: [0.18, 0.26, 0.42], high: [0.55, 0.70, 0.95] },
-  darkAmber:   { main: [0.07, 0.05, 0.03], low: [0.16, 0.10, 0.05], mid: [0.36, 0.22, 0.10], high: [0.85, 0.62, 0.30] },
-  darkCrimson: { main: [0.07, 0.04, 0.05], low: [0.18, 0.07, 0.10], mid: [0.40, 0.13, 0.20], high: [0.85, 0.40, 0.50] },
-  darkViolet:  { main: [0.06, 0.05, 0.09], low: [0.13, 0.10, 0.22], mid: [0.28, 0.20, 0.42], high: [0.65, 0.50, 0.90] },
-  darkEmerald: { main: [0.04, 0.07, 0.06], low: [0.07, 0.16, 0.12], mid: [0.13, 0.32, 0.24], high: [0.40, 0.78, 0.60] },
+  // card "blends in"; mid carries the visible hue veins so even the
+  // resting (collapsed) cards have life; high is the brightest crest
+  // that's most visible during the hover lift.
+  darkSlate:   { main: [0.05, 0.06, 0.09], low: [0.12, 0.16, 0.24], mid: [0.25, 0.36, 0.58], high: [0.65, 0.80, 1.00] },
+  darkAmber:   { main: [0.07, 0.05, 0.03], low: [0.20, 0.12, 0.06], mid: [0.50, 0.30, 0.14], high: [0.95, 0.72, 0.38] },
+  darkCrimson: { main: [0.07, 0.04, 0.05], low: [0.22, 0.09, 0.12], mid: [0.55, 0.18, 0.27], high: [0.95, 0.48, 0.58] },
+  darkViolet:  { main: [0.06, 0.05, 0.09], low: [0.16, 0.12, 0.26], mid: [0.38, 0.28, 0.58], high: [0.78, 0.60, 1.00] },
+  darkEmerald: { main: [0.04, 0.07, 0.06], low: [0.09, 0.20, 0.15], mid: [0.18, 0.44, 0.33], high: [0.50, 0.92, 0.72] },
 } as const;
 
 export type FluidShaderTheme = keyof typeof THEMES;
