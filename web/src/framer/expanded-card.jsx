@@ -45,6 +45,19 @@
  */
 import { routes, stdin_default } from "./chunks/chunk-WDXJCQ5O.js";
 
+// Patch: swap each card's photographic BG for an animated FluidShader,
+// themed by the card number (SalXds4M0). Re-running `npx unframer` will
+// overwrite this file — re-apply this import + the FluidShader render
+// further down where `<Image>` would otherwise appear inside Background.
+import { FluidShader } from "@/components/marketing/fluid-shader";
+const FLUID_THEMES_BY_CARD = {
+	"01": "blue",
+	"02": "peach",
+	"03": "crimson",
+	"04": "purple",
+	"05": "mint",
+};
+
 // virtual:expanded-card
 import { Fragment as Fragment3 } from "react";
 import { ContextProviders } from "unframer";
@@ -313,25 +326,10 @@ var Component = /* @__PURE__ */ React.forwardRef(function (props, ref) {
 								borderTopRightRadius: 10,
 							}}
 						>
-							<Image
-								background={{
-									alt: "",
-									fit: "fill",
-									loading: getLoadingLazyAtYPosition(
-										(componentViewport?.y || 0) +
-											((componentViewport?.height || 400) * 0.5000000000000002 -
-												((componentViewport?.height || 400) * 1) / 2) +
-											(0 +
-												((componentViewport?.height || 400) * 1 -
-													0 -
-													((componentViewport?.height || 400) * 1 - 0) * 1) /
-													2),
-									),
-									pixelHeight: 2400,
-									pixelWidth: 1808,
-									sizes: "400px",
-									...toResponsiveImage(qRiSJSdCR),
-								}}
+							{/* Patched: was <Image background={qRiSJSdCR}/>, now an animated
+							    FluidShader picked by card number. See FLUID_THEMES_BY_CARD
+							    above. */}
+							<motion.div
 								className={"framer-oia2f5"}
 								data-framer-name={"Image"}
 								layoutDependency={layoutDependency}
@@ -341,56 +339,13 @@ var Component = /* @__PURE__ */ React.forwardRef(function (props, ref) {
 									borderBottomRightRadius: 10,
 									borderTopLeftRadius: 10,
 									borderTopRightRadius: 10,
+									overflow: "hidden",
 								}}
-								{...addPropertyOverrides(
-									{
-										l4kNLZSMb: {
-											background: {
-												alt: "",
-												fit: "fill",
-												loading: getLoadingLazyAtYPosition(
-													(componentViewport?.y || 0) +
-														((componentViewport?.height || 400) *
-															0.5000000000000002 -
-															((componentViewport?.height || 400) * 1) / 2) +
-														(0 +
-															((componentViewport?.height || 400) * 1 -
-																0 -
-																420) /
-																2),
-												),
-												pixelHeight: 2400,
-												pixelWidth: 1808,
-												sizes: `max(${componentViewport?.width || "100vw"}, 1px)`,
-												...toResponsiveImage(qRiSJSdCR),
-											},
-										},
-										M4jMDboVd: {
-											background: {
-												alt: "",
-												fit: "fill",
-												loading: getLoadingLazyAtYPosition(
-													(componentViewport?.y || 0) +
-														((componentViewport?.height || 42) *
-															0.5000000000000002 -
-															((componentViewport?.height || 42) * 1) / 2) +
-														(0 +
-															((componentViewport?.height || 42) * 1 -
-																0 -
-																420) /
-																2),
-												),
-												pixelHeight: 2400,
-												pixelWidth: 1808,
-												sizes: `max(${componentViewport?.width || "100vw"}, 1px)`,
-												...toResponsiveImage(qRiSJSdCR),
-											},
-										},
-									},
-									baseVariant,
-									gestureVariant,
-								)}
-							/>
+							>
+								<FluidShader
+									theme={FLUID_THEMES_BY_CARD[SalXds4M0] ?? "blue"}
+								/>
+							</motion.div>
 							<motion.div
 								className={"framer-1qokm0z"}
 								data-framer-name={"Overlay"}
