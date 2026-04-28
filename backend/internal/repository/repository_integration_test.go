@@ -579,6 +579,47 @@ func TestRepositoryBackfillUserEmailOnlyFillsMissingEmail(t *testing.T) {
 	}
 }
 
+func TestRepositoryBackfillUserProfileOnlyFillsMissingFields(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	if _, err := db.Exec(ctx, `UPDATE users SET email = '', display_name = '' WHERE id = $1`, fixture.userID); err != nil {
+		t.Fatalf("clear user profile returned error: %v", err)
+	}
+
+	backfilled, err := repo.BackfillUserProfile(ctx, repository.BackfillUserProfileInput{
+		UserID:      fixture.userID,
+		Email:       "restored@example.com",
+		DisplayName: "Restored User",
+	})
+	if err != nil {
+		t.Fatalf("BackfillUserProfile returned error: %v", err)
+	}
+	if backfilled.Email != "restored@example.com" {
+		t.Fatalf("email = %q, want %q", backfilled.Email, "restored@example.com")
+	}
+	if backfilled.DisplayName != "Restored User" {
+		t.Fatalf("display_name = %q, want %q", backfilled.DisplayName, "Restored User")
+	}
+
+	preserved, err := repo.BackfillUserProfile(ctx, repository.BackfillUserProfileInput{
+		UserID:      fixture.userID,
+		Email:       "new@example.com",
+		DisplayName: "New User",
+	})
+	if err != nil {
+		t.Fatalf("BackfillUserProfile second call returned error: %v", err)
+	}
+	if preserved.Email != "restored@example.com" {
+		t.Fatalf("email after second call = %q, want %q", preserved.Email, "restored@example.com")
+	}
+	if preserved.DisplayName != "Restored User" {
+		t.Fatalf("display_name after second call = %q, want %q", preserved.DisplayName, "Restored User")
+	}
+}
+
 func TestRepositoryPublishChallengePackBundle(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)
