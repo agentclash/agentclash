@@ -11,6 +11,9 @@ import { Analytics } from "@vercel/analytics/react";
 import { Toaster } from "@/components/ui/sonner";
 import { AppProviders } from "@/app/providers";
 import "./globals.css";
+// Framer fonts + reset for components exported via unframer (used by the
+// landing-page expanded-cards section). Imported once, globally.
+import "@/framer/styles.css";
 import { cn } from "@/lib/utils";
 
 const geist = Geist({subsets:['latin'],variable:'--font-sans'});

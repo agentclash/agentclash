@@ -16,7 +16,7 @@ import {
 } from "@lobehub/icons";
 import { LuminousGrid } from "@/components/marketing/luminous-grid";
 import { PricingBlock } from "@/components/marketing/pricing-block";
-import { UseCasesCarousel } from "@/components/marketing/use-cases-carousel";
+import { ExpandedCardsBlock } from "@/components/marketing/expanded-cards-block";
 
 const DEMO_LINK = "atharva-kanherkar-epgztu/agentclash-demo";
 const DEMO_BUTTON_CONFIG = JSON.stringify({ layout: "month_view" });
@@ -1101,43 +1101,31 @@ function CiCdGlyph() {
   );
 }
 
-const LANDING_USE_CASES: Array<{
-  label: string;
-  brief: string;
-  captures: string;
-  hueShift: number;
-}> = [
+const LANDING_USE_CASES: Array<{ title: string; paragraph: string }> = [
   {
-    label: "Coding",
-    brief:
+    title: "Coding",
+    paragraph:
       "Two of ten tests are red in server/auth. Ship a PR that makes them green without changing the test shapes or the public types.",
-    captures:
-      "Files touched, tools used, test pass-rate, token spend, full step-by-step replay.",
-    hueShift: -90,
   },
   {
-    label: "Research",
-    brief:
-      "Compare how three recent papers model RLHF reward hacking. Cite every claim with paper and section.",
-    captures:
-      "Citation grounding against the source corpus, fabricated-citation detection, retrieval trajectory.",
-    hueShift: 0,
+    title: "Research",
+    paragraph:
+      "Compare how three recent papers model RLHF reward hacking. Cite every claim with paper and section — we check.",
   },
   {
-    label: "SRE",
-    brief:
+    title: "SRE",
+    paragraph:
       "p99 on /checkout jumped at 14:03 UTC. Localise the cause from logs, traces, and the last two deploys.",
-    captures:
-      "Incident-report shape, evidence checklist, escalation decision, time to first hypothesis.",
-    hueShift: 90,
   },
   {
-    label: "Multi-step ops",
-    brief:
-      "Customer was charged twice. Refund the duplicate, not the original, then confirm the active subscription survived.",
-    captures:
-      "Action trajectory, idempotency, side-effect log, recovery from a wrong tool call.",
-    hueShift: 180,
+    title: "Multi-step ops",
+    paragraph:
+      "Customer charged twice. Refund the duplicate, not the original, then confirm the active subscription survived.",
+  },
+  {
+    title: "Codebase Q&A",
+    paragraph:
+      "Where is the rate limiter applied to /runs? Give file paths, line numbers, and the call chain. Files cited must actually exist.",
   },
 ];
 
@@ -1787,20 +1775,20 @@ export default function HomePage() {
       </section>
 
       {/* ── Use cases ───────────────────────────────────────────── */}
-      <section className="border-t border-white/[0.06] px-8 sm:px-12 py-24 sm:py-32">
+      <section className="border-t border-white/[0.06] px-4 sm:px-12 py-24 sm:py-32">
         <div className="mx-auto max-w-[1440px]">
           <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between md:gap-16">
             <h2 className="font-[family-name:var(--font-display)] font-normal tracking-[-0.03em] leading-[1.02] text-[clamp(2.25rem,5vw,4rem)] max-w-[20ch]">
               What teams race here.
             </h2>
             <p className="max-w-[44ch] text-sm leading-[1.6] text-white/50">
-              Four task families AgentClash is built for. Each one
-              captures different signals — open one to see what.
+              Five task families AgentClash is built for. Hover any
+              card to read the brief.
             </p>
           </div>
 
           <div className="mt-14 sm:mt-16">
-            <UseCasesCarousel items={LANDING_USE_CASES} />
+            <ExpandedCardsBlock cards={LANDING_USE_CASES} />
           </div>
         </div>
       </section>
