@@ -95,19 +95,20 @@ func testUserInfoServer(t *testing.T, handler http.HandlerFunc) *httptest.Server
 // --- stub UserRepository for tests ---
 
 type stubUserRepo struct {
-	user              repository.User
-	memberships       []repository.WorkspaceMembershipRow
-	orgMemberships    []repository.OrgMembershipRow
-	createdUser       repository.User
-	backfilledUser    repository.User
-	err               error
-	membershipErr     error
-	orgMembershipErr  error
-	createUserErr     error
-	backfillEmailErr  error
-	backfillEmail     *string
-	backfillUserID    *uuid.UUID
-	backfillCallCount *int
+	user                repository.User
+	memberships         []repository.WorkspaceMembershipRow
+	orgMemberships      []repository.OrgMembershipRow
+	createdUser         repository.User
+	backfilledUser      repository.User
+	err                 error
+	membershipErr       error
+	orgMembershipErr    error
+	createUserErr       error
+	backfillEmailErr    error
+	backfillEmail       *string
+	backfillDisplayName *string
+	backfillUserID      *uuid.UUID
+	backfillCallCount   *int
 }
 
 func (s stubUserRepo) GetUserByWorkOSID(_ context.Context, _ string) (repository.User, error) {
@@ -146,12 +147,15 @@ func (s stubUserRepo) CreateUser(_ context.Context, input repository.CreateUserI
 	}, nil
 }
 
-func (s stubUserRepo) BackfillUserEmail(_ context.Context, input repository.BackfillUserEmailInput) (repository.User, error) {
+func (s stubUserRepo) BackfillUserProfile(_ context.Context, input repository.BackfillUserProfileInput) (repository.User, error) {
 	if s.backfillCallCount != nil {
 		*s.backfillCallCount = *s.backfillCallCount + 1
 	}
 	if s.backfillEmail != nil {
 		*s.backfillEmail = input.Email
+	}
+	if s.backfillDisplayName != nil {
+		*s.backfillDisplayName = input.DisplayName
 	}
 	if s.backfillUserID != nil {
 		*s.backfillUserID = input.UserID
@@ -165,6 +169,9 @@ func (s stubUserRepo) BackfillUserEmail(_ context.Context, input repository.Back
 	user := s.user
 	if user.Email == "" {
 		user.Email = input.Email
+	}
+	if user.DisplayName == "" {
+		user.DisplayName = input.DisplayName
 	}
 	return user, nil
 }
@@ -687,6 +694,108 @@ func TestWorkOSAuthenticator_FallsBackToUserInfoEmailWhenClaimMissing(t *testing
 	}
 	if userInfoCalls != 1 {
 		t.Fatalf("userinfo calls = %d, want 1", userInfoCalls)
+	}
+}
+
+func TestWorkOSAuthenticator_BackfillsMissingIdentityFromUserInfo(t *testing.T) {
+	privKey, jwksServer := testJWKS(t)
+
+	userInfoServer := testUserInfoServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Fatalf("method = %s, want %s", r.Method, http.MethodPost)
+		}
+		json.NewEncoder(w).Encode(map[string]any{
+			"sub":          "user_01ABC",
+			"email":        "userinfo@example.com",
+			"display_name": "Dev User",
+		})
+	})
+
+	userID := uuid.New()
+	var backfillCalls int
+	repo := stubUserRepo{
+		user: repository.User{
+			ID:           userID,
+			WorkOSUserID: "user_01ABC",
+			Email:        "",
+			DisplayName:  "",
+		},
+		backfillCallCount: &backfillCalls,
+	}
+
+	auth, err := newWorkOSAuthenticator(jwksServer.URL, "test-client", userInfoServer.URL, repo, authTestLogger)
+	if err != nil {
+		t.Fatalf("create authenticator: %v", err)
+	}
+
+	token := signTestJWT(t, privKey, map[string]interface{}{
+		"sub": "user_01ABC",
+		"iss": userInfoServer.URL,
+		"iat": time.Now().Unix(),
+		"exp": time.Now().Add(5 * time.Minute).Unix(),
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/auth/session", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	caller, err := auth.Authenticate(req)
+	if err != nil {
+		t.Fatalf("authenticate: %v", err)
+	}
+	if caller.Email != "userinfo@example.com" {
+		t.Fatalf("Email = %q, want %q", caller.Email, "userinfo@example.com")
+	}
+	if caller.DisplayName != "Dev User" {
+		t.Fatalf("DisplayName = %q, want %q", caller.DisplayName, "Dev User")
+	}
+	if backfillCalls != 1 {
+		t.Fatalf("backfill calls = %d, want 1", backfillCalls)
+	}
+}
+
+func TestWorkOSAuthenticator_FirstLoginStoresDisplayNameFromUserInfo(t *testing.T) {
+	privKey, jwksServer := testJWKS(t)
+
+	userInfoServer := testUserInfoServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Fatalf("method = %s, want %s", r.Method, http.MethodPost)
+		}
+		json.NewEncoder(w).Encode(map[string]any{
+			"sub":        "user_01NEW",
+			"email":      "new@example.com",
+			"first_name": "Dev",
+			"last_name":  "User",
+		})
+	})
+
+	repo := stubUserRepo{
+		err: repository.ErrUserNotFound,
+	}
+
+	auth, err := newWorkOSAuthenticator(jwksServer.URL, "test-client", userInfoServer.URL, repo, authTestLogger)
+	if err != nil {
+		t.Fatalf("create authenticator: %v", err)
+	}
+
+	token := signTestJWT(t, privKey, map[string]interface{}{
+		"sub": "user_01NEW",
+		"iss": userInfoServer.URL,
+		"iat": time.Now().Unix(),
+		"exp": time.Now().Add(5 * time.Minute).Unix(),
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/auth/session", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	caller, err := auth.Authenticate(req)
+	if err != nil {
+		t.Fatalf("authenticate: %v", err)
+	}
+	if caller.Email != "new@example.com" {
+		t.Fatalf("Email = %q, want %q", caller.Email, "new@example.com")
+	}
+	if caller.DisplayName != "Dev User" {
+		t.Fatalf("DisplayName = %q, want %q", caller.DisplayName, "Dev User")
 	}
 }
 

@@ -2485,6 +2485,12 @@ type BackfillUserEmailInput struct {
 	Email  string
 }
 
+type BackfillUserProfileInput struct {
+	UserID      uuid.UUID
+	Email       string
+	DisplayName string
+}
+
 type UserMeOrgRow struct {
 	ID   uuid.UUID
 	Name string
@@ -2718,7 +2724,15 @@ func (r *Repository) CreateUser(ctx context.Context, input CreateUserInput) (Use
 }
 
 func (r *Repository) BackfillUserEmail(ctx context.Context, input BackfillUserEmailInput) (User, error) {
+	return r.BackfillUserProfile(ctx, BackfillUserProfileInput{
+		UserID: input.UserID,
+		Email:  input.Email,
+	})
+}
+
+func (r *Repository) BackfillUserProfile(ctx context.Context, input BackfillUserProfileInput) (User, error) {
 	email := strings.TrimSpace(input.Email)
+	displayName := strings.TrimSpace(input.DisplayName)
 
 	var user User
 	err := r.db.QueryRow(ctx, `
@@ -2728,18 +2742,23 @@ func (r *Repository) BackfillUserEmail(ctx context.Context, input BackfillUserEm
 				WHEN COALESCE(email, '') = '' AND $2 <> '' THEN $2
 				ELSE email
 			END,
+			display_name = CASE
+				WHEN COALESCE(display_name, '') = '' AND $3 <> '' THEN $3
+				ELSE display_name
+			END,
 			updated_at = CASE
-				WHEN COALESCE(email, '') = '' AND $2 <> '' THEN now()
+				WHEN (COALESCE(email, '') = '' AND $2 <> '')
+					OR (COALESCE(display_name, '') = '' AND $3 <> '') THEN now()
 				ELSE updated_at
 			END
 		WHERE id = $1 AND archived_at IS NULL
 		RETURNING id, workos_user_id, COALESCE(email, ''), COALESCE(display_name, '')
-	`, input.UserID, email).Scan(&user.ID, &user.WorkOSUserID, &user.Email, &user.DisplayName)
+	`, input.UserID, email, displayName).Scan(&user.ID, &user.WorkOSUserID, &user.Email, &user.DisplayName)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return User{}, ErrUserNotFound
 		}
-		return User{}, fmt.Errorf("backfill user email: %w", err)
+		return User{}, fmt.Errorf("backfill user profile: %w", err)
 	}
 	return user, nil
 }
