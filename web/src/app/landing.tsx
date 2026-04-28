@@ -17,6 +17,7 @@ import {
 import { LuminousGrid } from "@/components/marketing/luminous-grid";
 import { PricingBlock } from "@/components/marketing/pricing-block";
 import { ExpandedCardsBlock } from "@/components/marketing/expanded-cards-block";
+import { TrackBox } from "@/components/marketing/track-box";
 
 const DEMO_LINK = "atharva-kanherkar-epgztu/agentclash-demo";
 const DEMO_BUTTON_CONFIG = JSON.stringify({ layout: "month_view" });
@@ -183,6 +184,10 @@ function LightFlowArrows() {
   );
 }
 
+// Kept intact while we trial the 3D `TrackBox` version; if the 3D feel
+// doesn't land, swap the call site at the bottom of the file back to
+// <TransparentFrame /> and the page returns to the original 2D rendering.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function TransparentFrame() {
   const ys = [82, 118, 154, 190, 226];
   const paths = ys.map((y) => `M -30 ${y} L 430 ${y}`);
@@ -2135,8 +2140,10 @@ export default function HomePage() {
               </p>
             </div>
           </div>
-          <div>
-            <TransparentFrame />
+          <div className="flex items-center justify-center">
+            {/* Was <TransparentFrame /> (flat 2D SVG, still defined above). */}
+            {/* To revert if the 3D version doesn't land, swap this line.   */}
+            <TrackBox />
           </div>
         </div>
       </section>
