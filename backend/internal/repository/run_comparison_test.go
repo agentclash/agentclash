@@ -5,7 +5,52 @@ import (
 	"math"
 	"strings"
 	"testing"
+
+	"github.com/google/uuid"
 )
+
+func TestValidateBuildRunComparisonParamsAllowsSameRunDifferentAgents(t *testing.T) {
+	runID := uuid.New()
+	baselineRunAgentID := uuid.New()
+	candidateRunAgentID := uuid.New()
+
+	err := validateBuildRunComparisonParams(BuildRunComparisonParams{
+		BaselineRunID:       runID,
+		CandidateRunID:      runID,
+		BaselineRunAgentID:  &baselineRunAgentID,
+		CandidateRunAgentID: &candidateRunAgentID,
+	})
+	if err != nil {
+		t.Fatalf("validateBuildRunComparisonParams returned error: %v", err)
+	}
+}
+
+func TestValidateBuildRunComparisonParamsRejectsSameRunSameAgent(t *testing.T) {
+	runID := uuid.New()
+	runAgentID := uuid.New()
+
+	err := validateBuildRunComparisonParams(BuildRunComparisonParams{
+		BaselineRunID:       runID,
+		CandidateRunID:      runID,
+		BaselineRunAgentID:  &runAgentID,
+		CandidateRunAgentID: &runAgentID,
+	})
+	if err == nil {
+		t.Fatal("validateBuildRunComparisonParams returned nil error, want validation error")
+	}
+}
+
+func TestValidateBuildRunComparisonParamsRejectsSameRunWithoutExplicitAgents(t *testing.T) {
+	runID := uuid.New()
+
+	err := validateBuildRunComparisonParams(BuildRunComparisonParams{
+		BaselineRunID:  runID,
+		CandidateRunID: runID,
+	})
+	if err == nil {
+		t.Fatal("validateBuildRunComparisonParams returned nil error, want validation error")
+	}
+}
 
 // Phase 4: the legacy 4-dim hardcoded comparison map is replaced by a walk
 // over the union of baseline + candidate scorecard dimension keys. A custom

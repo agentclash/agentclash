@@ -2928,6 +2928,75 @@ func TestRepositoryBuildRunComparisonExplicitParticipantSelectionForMultiAgentRu
 	}
 }
 
+func TestRepositoryBuildRunComparisonExplicitParticipantSelectionWithinSameRun(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	run, runAgents := createTestRun(t, ctx, repo, fixture, 2, "same-run")
+	evaluationSpecID := insertEvaluationSpecRecord(t, ctx, db, fixture.challengePackVersionID, "compare-same-run", 1)
+
+	insertRunAgentScorecardRecord(t, ctx, db, runAgents[0].ID, evaluationSpecID, scorecardFixture{
+		Correctness: float64Ptr(0.71),
+		Reliability: float64Ptr(0.88),
+		Latency:     float64Ptr(0.39),
+		Cost:        float64Ptr(0.26),
+	})
+	insertRunAgentScorecardRecord(t, ctx, db, runAgents[1].ID, evaluationSpecID, scorecardFixture{
+		Correctness: float64Ptr(0.76),
+		Reliability: float64Ptr(0.84),
+		Latency:     float64Ptr(0.33),
+		Cost:        float64Ptr(0.22),
+	})
+	insertReplaySummaryRecord(t, ctx, db, runAgents[0].ID, replaySummaryFixture{
+		Status:            "completed",
+		Headline:          "Baseline lane",
+		Events:            9,
+		ReplaySteps:       4,
+		ModelCalls:        2,
+		ToolCalls:         1,
+		Outputs:           1,
+		ScoringEvents:     1,
+		TerminalStatus:    "completed",
+		TerminalEventType: "system.run.completed",
+	})
+	insertReplaySummaryRecord(t, ctx, db, runAgents[1].ID, replaySummaryFixture{
+		Status:            "completed",
+		Headline:          "Candidate lane",
+		Events:            11,
+		ReplaySteps:       5,
+		ModelCalls:        3,
+		ToolCalls:         1,
+		Outputs:           1,
+		ScoringEvents:     1,
+		TerminalStatus:    "completed",
+		TerminalEventType: "system.run.completed",
+	})
+	insertJudgeResultRecord(t, ctx, db, runAgents[0].ID, evaluationSpecID, fixture.firstChallengeIdentityID, "exact")
+	insertJudgeResultRecord(t, ctx, db, runAgents[1].ID, evaluationSpecID, fixture.firstChallengeIdentityID, "exact")
+
+	comparison, err := repo.BuildRunComparison(ctx, repository.BuildRunComparisonParams{
+		BaselineRunID:       run.ID,
+		CandidateRunID:      run.ID,
+		BaselineRunAgentID:  &runAgents[0].ID,
+		CandidateRunAgentID: &runAgents[1].ID,
+	})
+	if err != nil {
+		t.Fatalf("BuildRunComparison returned error: %v", err)
+	}
+
+	if comparison.Status != repository.RunComparisonStatusComparable {
+		t.Fatalf("comparison status = %s, want comparable", comparison.Status)
+	}
+	if comparison.BaselineRunAgentID == nil || *comparison.BaselineRunAgentID != runAgents[0].ID {
+		t.Fatalf("baseline selected run agent = %v, want %s", comparison.BaselineRunAgentID, runAgents[0].ID)
+	}
+	if comparison.CandidateRunAgentID == nil || *comparison.CandidateRunAgentID != runAgents[1].ID {
+		t.Fatalf("candidate selected run agent = %v, want %s", comparison.CandidateRunAgentID, runAgents[1].ID)
+	}
+}
+
 func TestRepositoryBuildRunComparisonEvaluationSpecMismatch(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)
