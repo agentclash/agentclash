@@ -7,6 +7,7 @@
 // names because they're typed via JSDoc.
 
 import ExpandedCardFramerComponent from "@/framer/expanded-card";
+import { ClashMark } from "./clash-mark";
 
 export type ExpandedCard = {
   title: string;
@@ -20,18 +21,50 @@ export function ExpandedCardsBlock({ cards }: { cards: ExpandedCard[] }) {
 
   return (
     <div className="mx-auto w-full max-w-[1280px]">
-      <ExpandedCardFramerComponent.Responsive
-        card1Title={c(0).title}
-        card1Paragraph={c(0).paragraph}
-        card2Title={c(1).title}
-        card2Paragraph={c(1).paragraph}
-        card3Title={c(2).title}
-        card3Paragraph={c(2).paragraph}
-        card4Title={c(3).title}
-        card4Paragraph={c(3).paragraph}
-        card5Title={c(4).title}
-        card5Paragraph={c(4).paragraph}
-      />
+      <div className="flex flex-col items-center justify-center gap-3 sm:flex-row sm:items-stretch">
+        <ExpandedCardFramerComponent.Responsive
+          card1Title={c(0).title}
+          card1Paragraph={c(0).paragraph}
+          card2Title={c(1).title}
+          card2Paragraph={c(1).paragraph}
+          card3Title={c(2).title}
+          card3Paragraph={c(2).paragraph}
+          card4Title={c(3).title}
+          card4Paragraph={c(3).paragraph}
+          card5Title={c(4).title}
+          card5Paragraph={c(4).paragraph}
+        />
+        <ImagineMoreCard />
+      </div>
     </div>
+  );
+}
+
+// Sixth slot — sized to mirror a collapsed accordion card on desktop and
+// reads as a soft punctuation to the row: "and many more, depending on
+// what you build."
+function ImagineMoreCard() {
+  return (
+    <article
+      className="relative flex w-full sm:w-[160px] sm:h-[400px] flex-col items-center justify-between overflow-hidden rounded-[10px] glass-card glass-shine px-4 py-6"
+      style={{ backgroundColor: "rgba(255, 255, 255, 0.04)" }}
+    >
+      <span className="self-start text-base font-medium tabular-nums text-white/85">
+        06
+      </span>
+
+      <div className="flex flex-col items-center gap-3">
+        <ClashMark className="size-12 sm:size-14 opacity-90" />
+        <p className="max-w-[18ch] text-center text-[13px] leading-[1.45] text-white/80">
+          and many more —
+          <br />
+          whatever you can imagine.
+        </p>
+      </div>
+
+      <span className="self-start font-[family-name:var(--font-display)] text-[15px] tracking-[-0.01em] text-white/65">
+        AgentClash
+      </span>
+    </article>
   );
 }
