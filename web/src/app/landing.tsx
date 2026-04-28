@@ -1104,49 +1104,39 @@ function CiCdGlyph() {
 const LANDING_USE_CASES: Array<{
   label: string;
   brief: string;
-  verdict: string;
+  captures: string;
   hueShift: number;
 }> = [
   {
-    label: "Autonomous coding",
+    label: "Coding",
     brief:
-      "Two of ten tests are red in server/auth. Ship a PR that makes them green without changing the test shapes, the public types, or the migration files.",
-    verdict: "6 models · 3 passed · winner claude-sonnet-4.6 · 4m12s",
-    hueShift: -120,
+      "Two of ten tests are red in server/auth. Ship a PR that makes them green without changing the test shapes or the public types.",
+    captures:
+      "Files touched, tools used, test pass-rate, token spend, full step-by-step replay.",
+    hueShift: -90,
   },
   {
-    label: "Deep research",
+    label: "Research",
     brief:
-      "Compare how three recent papers model RLHF reward hacking. Cite every claim with paper + section. No fabricated citations — we check.",
-    verdict: "6 models · 4 passed · winner gpt-5.1 · 2m47s",
-    hueShift: -60,
-  },
-  {
-    label: "SQL & data",
-    brief:
-      "Find the three slowest queries in the last 24h that touch the orders table. Return SQL plus explain plan. Schema is attached; warehouse is real.",
-    verdict: "6 models · 5 passed · winner gemini-ultra-2 · 1m58s",
+      "Compare how three recent papers model RLHF reward hacking. Cite every claim with paper and section.",
+    captures:
+      "Citation grounding against the source corpus, fabricated-citation detection, retrieval trajectory.",
     hueShift: 0,
-  },
-  {
-    label: "Support",
-    brief:
-      "Customer charged twice for the same subscription. Refund the duplicate, not the original. Confirm the active sub survived and email the customer the outcome.",
-    verdict: "6 models · 2 passed · winner claude-sonnet-4.6 · 1m22s",
-    hueShift: 60,
   },
   {
     label: "SRE",
     brief:
-      "p99 on /checkout jumped at 14:03 UTC. Logs, traces, and the last two deploys are attached. Localise the cause. Do not restart anything.",
-    verdict: "6 models · 3 passed · winner gpt-5.1 · 3m04s",
-    hueShift: 120,
+      "p99 on /checkout jumped at 14:03 UTC. Localise the cause from logs, traces, and the last two deploys.",
+    captures:
+      "Incident-report shape, evidence checklist, escalation decision, time to first hypothesis.",
+    hueShift: 90,
   },
   {
-    label: "Codebase Q&A",
+    label: "Multi-step ops",
     brief:
-      "Where is the rate limiter applied to the /runs endpoint? Give file paths, line numbers, and the call chain. Files you cite must actually exist.",
-    verdict: "6 models · 4 passed · winner claude-opus-4.7 · 0m54s",
+      "Customer was charged twice. Refund the duplicate, not the original, then confirm the active subscription survived.",
+    captures:
+      "Action trajectory, idempotency, side-effect log, recovery from a wrong tool call.",
     hueShift: 180,
   },
 ];
@@ -1804,7 +1794,8 @@ export default function HomePage() {
               What teams race here.
             </h2>
             <p className="max-w-[44ch] text-sm leading-[1.6] text-white/50">
-              Six recent briefs, same models on each. Tap a card for the verdict.
+              Four task families AgentClash is built for. Each one
+              captures different signals — open one to see what.
             </p>
           </div>
 
