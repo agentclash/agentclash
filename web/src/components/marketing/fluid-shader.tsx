@@ -10,6 +10,11 @@
 
 import { useEffect, useRef } from "react";
 
+// Theme palettes, kept in [main, low, mid, high] format used by the shader.
+// The original Framer palettes (orange/blue/purple/...) are preserved as-is
+// for compatibility, plus a `dark*` family tuned for AgentClash: deeper
+// base, single accent hue, designed to read as a dark tinted card rather
+// than a vibrant gradient.
 const THEMES = {
   orange: { main: [1, 0.95, 0.7], low: [0.95, 0.75, 0.4], mid: [0.98, 0.7, 0.6], high: [1, 1, 1] },
   blue: { main: [0.7, 0.85, 1], low: [0.4, 0.6, 0.9], mid: [0.5, 0.7, 1], high: [0.9, 0.95, 1] },
@@ -26,6 +31,14 @@ const THEMES = {
   peach: { main: [1, 0.9, 0.8], low: [0.95, 0.7, 0.55], mid: [1, 0.8, 0.68], high: [1, 0.97, 0.93] },
   sky: { main: [0.8, 0.95, 1], low: [0.5, 0.8, 0.95], mid: [0.65, 0.88, 1], high: [0.95, 0.98, 1] },
   rose: { main: [1, 0.75, 0.85], low: [0.95, 0.45, 0.65], mid: [1, 0.6, 0.75], high: [1, 0.92, 0.95] },
+  // AgentClash-tuned dark palettes — main lives near pure black so the
+  // card "blends in", with a single hue carried in mid/high for the
+  // hover-reveal lift.
+  darkSlate:   { main: [0.05, 0.06, 0.09], low: [0.10, 0.13, 0.20], mid: [0.18, 0.26, 0.42], high: [0.55, 0.70, 0.95] },
+  darkAmber:   { main: [0.07, 0.05, 0.03], low: [0.16, 0.10, 0.05], mid: [0.36, 0.22, 0.10], high: [0.85, 0.62, 0.30] },
+  darkCrimson: { main: [0.07, 0.04, 0.05], low: [0.18, 0.07, 0.10], mid: [0.40, 0.13, 0.20], high: [0.85, 0.40, 0.50] },
+  darkViolet:  { main: [0.06, 0.05, 0.09], low: [0.13, 0.10, 0.22], mid: [0.28, 0.20, 0.42], high: [0.65, 0.50, 0.90] },
+  darkEmerald: { main: [0.04, 0.07, 0.06], low: [0.07, 0.16, 0.12], mid: [0.13, 0.32, 0.24], high: [0.40, 0.78, 0.60] },
 } as const;
 
 export type FluidShaderTheme = keyof typeof THEMES;
