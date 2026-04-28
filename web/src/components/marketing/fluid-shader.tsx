@@ -41,7 +41,9 @@ void main() {
 
 const FS = `#version 300 es
 precision highp float;
-#define NUM_OCTAVES 4
+// Perf: original Framer shader uses 4 FBM octaves. Three is visually
+// indistinguishable for this fluid look and ~25% cheaper per pixel.
+#define NUM_OCTAVES 3
 in vec2 out_uv;
 out vec4 fragColor;
 uniform float u_time;
@@ -179,8 +181,13 @@ vec3 getFluidColor(vec2 st, float time) {
 }
 
 void main() {
-  vec2 st = out_uv - 0.5;
-  st.x *= u_viewport.x / u_viewport.y;
+  // Patch (vs original Framer shader): the original does
+  //   st.x *= viewport.x / viewport.y;
+  // which compresses the noise field into a hard horizontal band on the
+  // tall, narrow accordion cards. Normalize against the shorter side
+  // instead so the wave scale stays consistent regardless of aspect;
+  // narrow cards just sample a vertical slice of the same field.
+  vec2 st = (out_uv - 0.5) * (u_viewport / min(u_viewport.x, u_viewport.y));
   fragColor = vec4(getFluidColor(st, u_time), 1.0);
 }`;
 
@@ -309,50 +316,40 @@ export function FluidShader({
     let lastTs = performance.now();
     let rafId = 0;
     let isVisible = true;
+    // Collapsed accordion cards (the narrow "spines") don't need to animate
+    // — the user can't see motion in a 60px-wide strip anyway. We freeze
+    // those on the last drawn frame and only animate when expanded.
+    let isWide = true;
+    // 5 simultaneous WebGL contexts at 60fps was the source of the hangs.
+    // 30fps target — half the GPU work, no visible difference for slow
+    // fluid motion. `prefers-reduced-motion` users get a single static
+    // frame.
+    const reducedMotion =
+      typeof window !== "undefined" &&
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    const FRAME_BUDGET_MS = 1000 / 30;
+    let lastDrawTs = 0;
+    let drewOnce = false;
 
-    const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+    // Cap DPR aggressively. The shader is a soft fluid background; even at
+    // 0.6× the user can't tell, and we save ~3× pixel-shader work vs 1.5×.
+    const dpr = Math.min(window.devicePixelRatio || 1, 0.75);
+    const COLLAPSED_THRESHOLD_PX = 200;
     const resize = () => {
-      const w = Math.max(1, Math.floor(canvas.clientWidth * dpr));
-      const h = Math.max(1, Math.floor(canvas.clientHeight * dpr));
+      const cssW = canvas.clientWidth;
+      const cssH = canvas.clientHeight;
+      isWide = cssW >= COLLAPSED_THRESHOLD_PX;
+      const w = Math.max(1, Math.floor(cssW * dpr));
+      const h = Math.max(1, Math.floor(cssH * dpr));
       if (canvas.width !== w || canvas.height !== h) {
         canvas.width = w;
         canvas.height = h;
       }
       gl.viewport(0, 0, canvas.width, canvas.height);
     };
-    const ro = new ResizeObserver(resize);
-    ro.observe(canvas);
-    resize();
 
-    const io = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          const wasVisible = isVisible;
-          isVisible = entry.isIntersecting;
-          if (isVisible && !wasVisible) {
-            lastTs = performance.now();
-            if (!rafId) rafId = requestAnimationFrame(frame);
-          } else if (!isVisible && wasVisible && rafId) {
-            cancelAnimationFrame(rafId);
-            rafId = 0;
-          }
-        });
-      },
-      { threshold: 0 },
-    );
-    io.observe(canvas);
-
-    const frame = (ts: number) => {
-      if (!isVisible) {
-        rafId = 0;
-        return;
-      }
-      rafId = requestAnimationFrame(frame);
-      const delta = (ts - lastTs) / 1000;
-      lastTs = ts;
+    const draw = () => {
       const p = propsRef.current;
-      globalTime += delta * p.speed;
-      resize();
       const t = THEMES[p.theme] ?? THEMES.blue;
       gl.useProgram(prog);
       gl.bindVertexArray(vao);
@@ -375,8 +372,67 @@ export function FluidShader({
       gl.uniform1f(U.noiseSc, p.noiseScale);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
       gl.bindVertexArray(null);
+      drewOnce = true;
     };
-    rafId = requestAnimationFrame(frame);
+
+    const ro = new ResizeObserver(() => {
+      const wasWide = isWide;
+      resize();
+      // Re-kick the loop if we just expanded; force a redraw if the canvas
+      // dimensions changed and we're collapsed (so the static frame
+      // matches the new size).
+      if (isWide && !wasWide && isVisible && !rafId) {
+        lastTs = performance.now();
+        rafId = requestAnimationFrame(frame);
+      } else if (!isWide && drewOnce) {
+        draw();
+      }
+    });
+    ro.observe(canvas);
+    resize();
+
+    const io = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          const wasVisible = isVisible;
+          isVisible = entry.isIntersecting;
+          if (isVisible && !wasVisible) {
+            lastTs = performance.now();
+            if (!rafId && isWide && !reducedMotion) {
+              rafId = requestAnimationFrame(frame);
+            } else if (!drewOnce) {
+              // Single static frame for collapsed-on-mount or reduced-motion
+              // cards — without this they'd render as solid black.
+              draw();
+            }
+          } else if (!isVisible && wasVisible && rafId) {
+            cancelAnimationFrame(rafId);
+            rafId = 0;
+          }
+        });
+      },
+      { threshold: 0 },
+    );
+    io.observe(canvas);
+
+    const frame = (ts: number) => {
+      if (!isVisible || !isWide || reducedMotion) {
+        rafId = 0;
+        if (!drewOnce) draw();
+        return;
+      }
+      rafId = requestAnimationFrame(frame);
+      // 30fps frame skip — still smooth, half the cost.
+      if (ts - lastDrawTs < FRAME_BUDGET_MS) return;
+      const delta = (ts - lastTs) / 1000;
+      lastTs = ts;
+      lastDrawTs = ts;
+      const p = propsRef.current;
+      globalTime += delta * p.speed;
+      draw();
+    };
+    if (!reducedMotion) rafId = requestAnimationFrame(frame);
+    else draw();
 
     return () => {
       if (rafId) cancelAnimationFrame(rafId);
