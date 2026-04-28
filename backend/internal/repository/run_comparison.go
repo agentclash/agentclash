@@ -196,8 +196,8 @@ func (r *Repository) GetRunComparisonByRunIDs(ctx context.Context, baselineRunID
 }
 
 func (r *Repository) BuildRunComparison(ctx context.Context, params BuildRunComparisonParams) (RunComparison, error) {
-	if params.BaselineRunID == params.CandidateRunID {
-		return RunComparison{}, fmt.Errorf("baseline and candidate run ids must differ")
+	if err := validateBuildRunComparisonParams(params); err != nil {
+		return RunComparison{}, err
 	}
 
 	baselineRun, err := r.GetRunByID(ctx, params.BaselineRunID)
@@ -293,6 +293,18 @@ func (r *Repository) BuildRunComparison(ctx context.Context, params BuildRunComp
 		fingerprint,
 		summary,
 	)
+}
+
+func validateBuildRunComparisonParams(params BuildRunComparisonParams) error {
+	if params.BaselineRunID == params.CandidateRunID {
+		if params.BaselineRunAgentID == nil || params.CandidateRunAgentID == nil {
+			return fmt.Errorf("same-run comparison requires baseline and candidate run agent ids")
+		}
+		if *params.BaselineRunAgentID == *params.CandidateRunAgentID {
+			return fmt.Errorf("baseline and candidate run agent ids must differ for same-run comparison")
+		}
+	}
+	return nil
 }
 
 func (r *Repository) resolveRunComparisonParticipants(

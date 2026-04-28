@@ -67,6 +67,115 @@ func TestCompareReadManagerReturnsPartialEvidenceState(t *testing.T) {
 	}
 }
 
+func TestCompareReadManagerAllowsSameRunDifferentExplicitAgents(t *testing.T) {
+	workspaceID := uuid.New()
+	runID := uuid.New()
+	baselineRunAgentID := uuid.New()
+	candidateRunAgentID := uuid.New()
+	repo := &fakeCompareReadRepository{
+		runs: map[uuid.UUID]domain.Run{
+			runID: {ID: runID, WorkspaceID: workspaceID},
+		},
+		comparison: repository.RunComparison{
+			ID:                  uuid.New(),
+			BaselineRunID:       runID,
+			CandidateRunID:      runID,
+			BaselineRunAgentID:  &baselineRunAgentID,
+			CandidateRunAgentID: &candidateRunAgentID,
+			Status:              repository.RunComparisonStatusComparable,
+			Summary: []byte(`{
+				"schema_version":"2026-03-17",
+				"status":"comparable",
+				"baseline_refs":{"run_id":"` + runID.String() + `","run_agent_id":"` + baselineRunAgentID.String() + `"},
+				"candidate_refs":{"run_id":"` + runID.String() + `","run_agent_id":"` + candidateRunAgentID.String() + `"},
+				"failure_divergence":{"candidate_failed_baseline_succeeded":false,"candidate_succeeded_baseline_failed":false,"both_failed_differently":false},
+				"replay_summary_divergence":{"state":"available"},
+				"evidence_quality":{}
+			}`),
+			UpdatedAt: time.Date(2026, 4, 28, 10, 0, 0, 0, time.UTC),
+		},
+	}
+	manager := NewCompareReadManager(NewCallerWorkspaceAuthorizer(), repo)
+
+	_, err := manager.GetRunComparison(context.Background(), Caller{
+		UserID: uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: "workspace_member"},
+		},
+	}, GetRunComparisonInput{
+		BaselineRunID:       runID,
+		CandidateRunID:      runID,
+		BaselineRunAgentID:  &baselineRunAgentID,
+		CandidateRunAgentID: &candidateRunAgentID,
+	})
+	if err != nil {
+		t.Fatalf("GetRunComparison returned error: %v", err)
+	}
+	if repo.buildCalls != 1 {
+		t.Fatalf("BuildRunComparison calls = %d, want 1", repo.buildCalls)
+	}
+	if repo.buildParams.BaselineRunID != runID || repo.buildParams.CandidateRunID != runID {
+		t.Fatalf("BuildRunComparison run ids = (%s, %s), want same run %s", repo.buildParams.BaselineRunID, repo.buildParams.CandidateRunID, runID)
+	}
+}
+
+func TestCompareReadManagerRejectsSameRunSameAgent(t *testing.T) {
+	workspaceID := uuid.New()
+	runID := uuid.New()
+	runAgentID := uuid.New()
+	repo := &fakeCompareReadRepository{
+		runs: map[uuid.UUID]domain.Run{
+			runID: {ID: runID, WorkspaceID: workspaceID},
+		},
+	}
+	manager := NewCompareReadManager(NewCallerWorkspaceAuthorizer(), repo)
+
+	_, err := manager.GetRunComparison(context.Background(), Caller{
+		UserID: uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: "workspace_member"},
+		},
+	}, GetRunComparisonInput{
+		BaselineRunID:       runID,
+		CandidateRunID:      runID,
+		BaselineRunAgentID:  &runAgentID,
+		CandidateRunAgentID: &runAgentID,
+	})
+	if err == nil {
+		t.Fatal("GetRunComparison returned nil error, want validation error")
+	}
+	if repo.buildCalls != 0 {
+		t.Fatalf("BuildRunComparison calls = %d, want 0", repo.buildCalls)
+	}
+}
+
+func TestCompareReadManagerRejectsSameRunWithoutExplicitAgents(t *testing.T) {
+	workspaceID := uuid.New()
+	runID := uuid.New()
+	repo := &fakeCompareReadRepository{
+		runs: map[uuid.UUID]domain.Run{
+			runID: {ID: runID, WorkspaceID: workspaceID},
+		},
+	}
+	manager := NewCompareReadManager(NewCallerWorkspaceAuthorizer(), repo)
+
+	_, err := manager.GetRunComparison(context.Background(), Caller{
+		UserID: uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: "workspace_member"},
+		},
+	}, GetRunComparisonInput{
+		BaselineRunID:  runID,
+		CandidateRunID: runID,
+	})
+	if err == nil {
+		t.Fatal("GetRunComparison returned nil error, want validation error")
+	}
+	if repo.buildCalls != 0 {
+		t.Fatalf("BuildRunComparison calls = %d, want 0", repo.buildCalls)
+	}
+}
+
 func TestGetRunComparisonEndpointReturnsJSONPayload(t *testing.T) {
 	workspaceID := uuid.New()
 	baselineRunID := uuid.New()
@@ -139,6 +248,51 @@ func TestGetRunComparisonEndpointReturnsJSONPayload(t *testing.T) {
 	}
 }
 
+func TestGetRunComparisonEndpointMapsValidationErrorsToBadRequest(t *testing.T) {
+	workspaceID := uuid.New()
+	baselineRunID := uuid.New()
+	candidateRunID := uuid.New()
+	req := httptest.NewRequest(http.MethodGet, "/v1/compare?baseline_run_id="+baselineRunID.String()+"&candidate_run_id="+candidateRunID.String(), nil)
+	req.Header.Set(headerUserID, uuid.New().String())
+	req.Header.Set(headerWorkspaceMemberships, workspaceID.String()+":workspace_member")
+	recorder := httptest.NewRecorder()
+
+	newRouter("dev", nil,
+		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
+		NewDevelopmentAuthenticator(),
+		NewCallerWorkspaceAuthorizer(),
+		nil,
+		0,
+		stubRunCreationService{},
+		stubRunReadService{},
+		stubReplayReadService{},
+		stubHostedRunIngestionService{},
+		&fakeCompareReadService{err: errors.New("baseline_run_id and candidate_run_id must differ")},
+		stubAgentDeploymentReadService{},
+		stubChallengePackReadService{},
+		stubAgentBuildService{},
+		noopReleaseGateService{},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+	).ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d; body=%s", recorder.Code, http.StatusBadRequest, recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Body.String(), "invalid_compare_request") {
+		t.Fatalf("body = %s, want invalid_compare_request", recorder.Body.String())
+	}
+}
+
 func TestCompareViewerEndpointReturnsHTMLShell(t *testing.T) {
 	workspaceID := uuid.New()
 	baselineRunID := uuid.New()
@@ -193,9 +347,11 @@ func TestCompareViewerEndpointReturnsHTMLShell(t *testing.T) {
 }
 
 type fakeCompareReadRepository struct {
-	runs       map[uuid.UUID]domain.Run
-	comparison repository.RunComparison
-	err        error
+	runs        map[uuid.UUID]domain.Run
+	comparison  repository.RunComparison
+	err         error
+	buildCalls  int
+	buildParams repository.BuildRunComparisonParams
 }
 
 func (f *fakeCompareReadRepository) GetRunByID(_ context.Context, id uuid.UUID) (domain.Run, error) {
@@ -206,7 +362,9 @@ func (f *fakeCompareReadRepository) GetRunByID(_ context.Context, id uuid.UUID) 
 	return run, nil
 }
 
-func (f *fakeCompareReadRepository) BuildRunComparison(_ context.Context, _ repository.BuildRunComparisonParams) (repository.RunComparison, error) {
+func (f *fakeCompareReadRepository) BuildRunComparison(_ context.Context, params repository.BuildRunComparisonParams) (repository.RunComparison, error) {
+	f.buildCalls++
+	f.buildParams = params
 	if f.err != nil {
 		return repository.RunComparison{}, f.err
 	}

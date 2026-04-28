@@ -40,6 +40,8 @@ const (
 	ComparisonReadStateNotComparable   ComparisonReadState = "not_comparable"
 )
 
+var ErrInvalidCompareRequest = errors.New("invalid compare request")
+
 type GetRunComparisonResult struct {
 	BaselineRun       domain.Run
 	CandidateRun      domain.Run
@@ -64,13 +66,18 @@ func NewCompareReadManager(authorizer WorkspaceAuthorizer, repo CompareReadRepos
 
 func (m *CompareReadManager) GetRunComparison(ctx context.Context, caller Caller, input GetRunComparisonInput) (GetRunComparisonResult, error) {
 	if input.BaselineRunID == uuid.Nil {
-		return GetRunComparisonResult{}, errors.New("baseline_run_id is required")
+		return GetRunComparisonResult{}, invalidCompareRequest("baseline_run_id is required")
 	}
 	if input.CandidateRunID == uuid.Nil {
-		return GetRunComparisonResult{}, errors.New("candidate_run_id is required")
+		return GetRunComparisonResult{}, invalidCompareRequest("candidate_run_id is required")
 	}
 	if input.BaselineRunID == input.CandidateRunID {
-		return GetRunComparisonResult{}, errors.New("baseline_run_id and candidate_run_id must differ")
+		if input.BaselineRunAgentID == nil || input.CandidateRunAgentID == nil {
+			return GetRunComparisonResult{}, invalidCompareRequest("same-run comparison requires baseline_run_agent_id and candidate_run_agent_id")
+		}
+		if *input.BaselineRunAgentID == *input.CandidateRunAgentID {
+			return GetRunComparisonResult{}, invalidCompareRequest("baseline_run_agent_id and candidate_run_agent_id must differ for same-run comparison")
+		}
 	}
 
 	baselineRun, err := m.repo.GetRunByID(ctx, input.BaselineRunID)
@@ -221,6 +228,8 @@ func getRunComparisonHandler(logger *slog.Logger, service CompareReadService) ht
 		result, err := service.GetRunComparison(r.Context(), caller, input)
 		if err != nil {
 			switch {
+			case isCompareValidationError(err):
+				writeError(w, http.StatusBadRequest, "invalid_compare_request", err.Error())
 			case errors.Is(err, repository.ErrRunNotFound):
 				writeError(w, http.StatusNotFound, "run_not_found", "run not found")
 			case errors.Is(err, ErrForbidden):
@@ -239,6 +248,27 @@ func getRunComparisonHandler(logger *slog.Logger, service CompareReadService) ht
 		}
 
 		writeJSON(w, http.StatusOK, buildGetRunComparisonResponse(result, r))
+	}
+}
+
+func invalidCompareRequest(message string) error {
+	return fmt.Errorf("%w: %s", ErrInvalidCompareRequest, message)
+}
+
+func isCompareValidationError(err error) bool {
+	if errors.Is(err, ErrInvalidCompareRequest) {
+		return true
+	}
+	switch err.Error() {
+	case "baseline_run_id is required",
+		"candidate_run_id is required",
+		"baseline_run_id and candidate_run_id must differ",
+		"baseline and candidate run ids must differ",
+		"same-run comparison requires baseline and candidate run agent ids",
+		"baseline and candidate run agent ids must differ for same-run comparison":
+		return true
+	default:
+		return false
 	}
 }
 
