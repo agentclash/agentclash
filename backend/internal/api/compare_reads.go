@@ -256,20 +256,8 @@ func invalidCompareRequest(message string) error {
 }
 
 func isCompareValidationError(err error) bool {
-	if errors.Is(err, ErrInvalidCompareRequest) {
-		return true
-	}
-	switch err.Error() {
-	case "baseline_run_id is required",
-		"candidate_run_id is required",
-		"baseline_run_id and candidate_run_id must differ",
-		"baseline and candidate run ids must differ",
-		"same-run comparison requires baseline and candidate run agent ids",
-		"baseline and candidate run agent ids must differ for same-run comparison":
-		return true
-	default:
-		return false
-	}
+	return errors.Is(err, ErrInvalidCompareRequest) ||
+		errors.Is(err, repository.ErrInvalidRunComparisonParams)
 }
 
 func buildGetRunComparisonResponse(result GetRunComparisonResult, r *http.Request) getRunComparisonResponse {

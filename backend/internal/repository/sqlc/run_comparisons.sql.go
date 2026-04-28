@@ -54,7 +54,7 @@ func (q *Queries) GetRunComparisonByRunIDs(ctx context.Context, arg GetRunCompar
 	return i, err
 }
 
-const upsertRunComparison = `-- name: UpsertRunComparison :one
+const upsertCrossRunComparison = `-- name: UpsertCrossRunComparison :one
 INSERT INTO run_comparisons (
     baseline_run_id,
     candidate_run_id,
@@ -76,6 +76,7 @@ VALUES (
     $8
 )
 ON CONFLICT (baseline_run_id, candidate_run_id)
+WHERE baseline_run_id <> candidate_run_id
 DO UPDATE SET
     baseline_run_agent_id = EXCLUDED.baseline_run_agent_id,
     candidate_run_agent_id = EXCLUDED.candidate_run_agent_id,
@@ -97,7 +98,7 @@ RETURNING
     updated_at
 `
 
-type UpsertRunComparisonParams struct {
+type UpsertCrossRunComparisonParams struct {
 	BaselineRunID       uuid.UUID
 	CandidateRunID      uuid.UUID
 	BaselineRunAgentID  *uuid.UUID
@@ -108,8 +109,94 @@ type UpsertRunComparisonParams struct {
 	Summary             []byte
 }
 
-func (q *Queries) UpsertRunComparison(ctx context.Context, arg UpsertRunComparisonParams) (RunComparison, error) {
-	row := q.db.QueryRow(ctx, upsertRunComparison,
+func (q *Queries) UpsertCrossRunComparison(ctx context.Context, arg UpsertCrossRunComparisonParams) (RunComparison, error) {
+	row := q.db.QueryRow(ctx, upsertCrossRunComparison,
+		arg.BaselineRunID,
+		arg.CandidateRunID,
+		arg.BaselineRunAgentID,
+		arg.CandidateRunAgentID,
+		arg.Status,
+		arg.ReasonCode,
+		arg.SourceFingerprint,
+		arg.Summary,
+	)
+	var i RunComparison
+	err := row.Scan(
+		&i.ID,
+		&i.BaselineRunID,
+		&i.CandidateRunID,
+		&i.BaselineRunAgentID,
+		&i.CandidateRunAgentID,
+		&i.Status,
+		&i.ReasonCode,
+		&i.SourceFingerprint,
+		&i.Summary,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const upsertSameRunAgentComparison = `-- name: UpsertSameRunAgentComparison :one
+INSERT INTO run_comparisons (
+    baseline_run_id,
+    candidate_run_id,
+    baseline_run_agent_id,
+    candidate_run_agent_id,
+    status,
+    reason_code,
+    source_fingerprint,
+    summary
+)
+VALUES (
+    $1,
+    $2,
+    $3,
+    $4,
+    $5,
+    $6,
+    $7,
+    $8
+)
+ON CONFLICT (
+    baseline_run_id,
+    candidate_run_id,
+    baseline_run_agent_id,
+    candidate_run_agent_id
+)
+WHERE baseline_run_id = candidate_run_id
+DO UPDATE SET
+    status = EXCLUDED.status,
+    reason_code = EXCLUDED.reason_code,
+    source_fingerprint = EXCLUDED.source_fingerprint,
+    summary = EXCLUDED.summary
+RETURNING
+    id,
+    baseline_run_id,
+    candidate_run_id,
+    baseline_run_agent_id,
+    candidate_run_agent_id,
+    status,
+    reason_code,
+    source_fingerprint,
+    summary,
+    created_at,
+    updated_at
+`
+
+type UpsertSameRunAgentComparisonParams struct {
+	BaselineRunID       uuid.UUID
+	CandidateRunID      uuid.UUID
+	BaselineRunAgentID  *uuid.UUID
+	CandidateRunAgentID *uuid.UUID
+	Status              string
+	ReasonCode          *string
+	SourceFingerprint   string
+	Summary             []byte
+}
+
+func (q *Queries) UpsertSameRunAgentComparison(ctx context.Context, arg UpsertSameRunAgentComparisonParams) (RunComparison, error) {
+	row := q.db.QueryRow(ctx, upsertSameRunAgentComparison,
 		arg.BaselineRunID,
 		arg.CandidateRunID,
 		arg.BaselineRunAgentID,

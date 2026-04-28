@@ -2,6 +2,7 @@ package repository
 
 import (
 	"encoding/json"
+	"errors"
 	"math"
 	"strings"
 	"testing"
@@ -49,6 +50,17 @@ func TestValidateBuildRunComparisonParamsRejectsSameRunWithoutExplicitAgents(t *
 	})
 	if err == nil {
 		t.Fatal("validateBuildRunComparisonParams returned nil error, want validation error")
+	}
+}
+
+func TestValidateBuildRunComparisonParamsErrorUsesSentinel(t *testing.T) {
+	runID := uuid.New()
+	err := validateBuildRunComparisonParams(BuildRunComparisonParams{
+		BaselineRunID:  runID,
+		CandidateRunID: runID,
+	})
+	if !errors.Is(err, ErrInvalidRunComparisonParams) {
+		t.Fatalf("error = %v, want ErrInvalidRunComparisonParams", err)
 	}
 }
 
