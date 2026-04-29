@@ -953,6 +953,34 @@ function ParticleFlywheel() {
         ctx.fill();
       }
 
+      // Continuous flow stream between the spheres — fades out during merge.
+      const flowVisible = Math.max(0, a * (1 - b));
+      if (flowVisible > 0.04) {
+        const N_FLOW = 18;
+        const lx = cx - sep * a;
+        const rx = cx + sep * a;
+        for (let i = 0; i < N_FLOW; i++) {
+          const half = N_FLOW / 2;
+          const top = i < half;
+          // Travel duration ~2.4s, staggered start per particle.
+          const phase = ((now / 2400 + (i % half) / half) % 1);
+          const x0 = top ? lx : rx;
+          const x1 = top ? rx : lx;
+          const cpy = cy + (top ? -1 : 1) * sphR * 0.95;
+          const tt = phase;
+          const omt = 1 - tt;
+          const fx = omt * omt * x0 + 2 * omt * tt * ((x0 + x1) / 2) + tt * tt * x1;
+          const fy = omt * omt * cy + 2 * omt * tt * cpy + tt * tt * cy;
+          // Fade in/out at each sphere edge so dots emerge from / vanish into the spheres.
+          const edgeFade = Math.min(1, Math.min(tt, 1 - tt) * 5);
+          const alpha = 0.55 * flowVisible * edgeFade;
+          ctx.fillStyle = `rgba(240, 210, 138, ${alpha})`;
+          ctx.beginPath();
+          ctx.arc(fx, fy, 1.4, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
       ctx.font =
         '11px var(--font-mono), ui-monospace, SFMono-Regular, monospace';
       ctx.textAlign = "center";
@@ -984,11 +1012,15 @@ function ParticleFlywheel() {
   }, []);
 
   return (
-    <div className="flex items-center justify-center py-6 sm:py-10" aria-hidden>
+    <div className="flex flex-col items-center justify-center py-6 sm:py-10">
       <canvas
         ref={canvasRef}
         className="w-full max-w-[640px] aspect-[5/4] touch-none"
+        aria-hidden
       />
+      <p className="mt-4 text-[11px] uppercase tracking-[0.18em] text-white/35 font-[family-name:var(--font-mono)]">
+        each dot &middot; one frozen failing trace
+      </p>
     </div>
   );
 }
