@@ -64,7 +64,9 @@ func SubscriptionEntitlements(input DodoSubscriptionInput) (EffectiveEntitlement
 	if err := ValidateSeatQuantity(plan, input.Quantity); err != nil {
 		return EffectiveEntitlements{}, err
 	}
-	return MaterializeEntitlements(plan, mapping.BillingPeriod, input.Quantity, "active"), nil
+	entitlements := MaterializeEntitlements(plan, mapping.BillingPeriod, input.Quantity, input.Status)
+	entitlements.ExpiresAt = input.ExpiresAt
+	return entitlements, nil
 }
 
 func DodoStatusIsEntitled(status string) bool {

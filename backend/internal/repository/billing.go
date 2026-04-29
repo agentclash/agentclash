@@ -152,7 +152,8 @@ func (r *Repository) GetOrganizationEntitlements(ctx context.Context, orgID uuid
 			max_models_per_race,
 			replay_retention_days,
 			concurrency_limit,
-			feature_flags
+			feature_flags,
+			expires_at
 		FROM organization_entitlements
 		WHERE organization_id = $1
 	`, orgID).Scan(
@@ -167,6 +168,7 @@ func (r *Repository) GetOrganizationEntitlements(ctx context.Context, orgID uuid
 		&entitlements.ReplayRetentionDays,
 		&entitlements.ConcurrentRaces,
 		&featureFlags,
+		&entitlements.ExpiresAt,
 	)
 	if err != nil {
 		return billing.EffectiveEntitlements{}, err
@@ -182,10 +184,13 @@ func (r *Repository) GetOrganizationEntitlements(ctx context.Context, orgID uuid
 	if plan, ok := billing.PlanByKey(entitlements.PlanKey); ok {
 		entitlements.UpgradeTarget = plan.UpgradeTarget
 	}
-	return entitlements, nil
+	return entitlements.WithComputedStatus(time.Now().UTC()), nil
 }
 
 func (r *Repository) UpsertOrganizationEntitlements(ctx context.Context, orgID uuid.UUID, entitlements billing.EffectiveEntitlements, sourceSubscriptionID *uuid.UUID, expiresAt *time.Time) error {
+	if expiresAt == nil && entitlements.ExpiresAt != nil {
+		expiresAt = entitlements.ExpiresAt
+	}
 	featureFlags, err := json.Marshal(entitlements.FeatureFlags)
 	if err != nil {
 		return fmt.Errorf("marshal feature flags: %w", err)

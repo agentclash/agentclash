@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"time"
 )
 
 const (
@@ -15,6 +16,11 @@ const (
 	PeriodMonthly = "monthly"
 	PeriodYearly  = "yearly"
 	PeriodCustom  = "custom"
+
+	EntitlementStatusActive   = "active"
+	EntitlementStatusTrialing = "trialing"
+	EntitlementStatusExpired  = "expired"
+	EntitlementStatusInactive = "inactive"
 )
 
 var (
@@ -64,6 +70,7 @@ type EffectiveEntitlements struct {
 	ConcurrentRaces        *int            `json:"concurrent_races"`
 	FeatureFlags           map[string]bool `json:"feature_flags"`
 	UpgradeTarget          string          `json:"upgrade_target,omitempty"`
+	ExpiresAt              *time.Time      `json:"expires_at,omitempty"`
 }
 
 func Catalog() []Plan {
@@ -227,7 +234,7 @@ func ValidateSeatQuantity(plan Plan, seatQuantity int) error {
 }
 
 func DefaultEntitlements() EffectiveEntitlements {
-	return MaterializeEntitlements(MustPlan(PlanFree), PeriodMonthly, 1, "active")
+	return MaterializeEntitlements(MustPlan(PlanFree), PeriodMonthly, 1, EntitlementStatusActive)
 }
 
 func MaterializeEntitlements(plan Plan, billingPeriod string, seatQuantity int, status string) EffectiveEntitlements {
@@ -238,7 +245,7 @@ func MaterializeEntitlements(plan Plan, billingPeriod string, seatQuantity int, 
 		seatQuantity = plan.DefaultSeats
 	}
 	if status == "" {
-		status = "active"
+		status = EntitlementStatusActive
 	}
 	return EffectiveEntitlements{
 		PlanKey:                plan.Key,
@@ -254,6 +261,31 @@ func MaterializeEntitlements(plan Plan, billingPeriod string, seatQuantity int, 
 		FeatureFlags:           cloneFlags(plan.FeatureFlags),
 		UpgradeTarget:          plan.UpgradeTarget,
 	}
+}
+
+func (e EffectiveEntitlements) IsExpired(now time.Time) bool {
+	if e.ExpiresAt == nil {
+		return false
+	}
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	return !now.UTC().Before(e.ExpiresAt.UTC())
+}
+
+func (e EffectiveEntitlements) WithComputedStatus(now time.Time) EffectiveEntitlements {
+	if e.IsExpired(now) {
+		e.Status = EntitlementStatusExpired
+		e.UpgradeTarget = expiredUpgradeTarget(e.PlanKey, e.UpgradeTarget)
+	}
+	return e
+}
+
+func expiredUpgradeTarget(planKey string, fallback string) string {
+	if planKey != "" && planKey != PlanFree {
+		return planKey
+	}
+	return fallback
 }
 
 func SortedPlanKeys() []string {

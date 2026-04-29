@@ -14,6 +14,8 @@ Issue: https://github.com/agentclash/agentclash/issues/432
 - Checkout creates a durable local intent and returns a hosted Dodo checkout URL. Return URLs and query params never provision paid access by themselves.
 - Dodo webhooks are verified with Standard Webhooks headers, persisted idempotently by `webhook-id`, tolerate duplicates and stale out-of-order events, and update local materialized organization entitlements.
 - Workspace entitlement APIs return effective workspace limits, usage, remaining quota, reset time, and structured gate summaries.
+- Trial entitlements are plan-specific: a Pro trial gets exactly Pro limits, a Team trial gets exactly Team limits, and product/plan mapping must never grant a higher plan than the selected trial.
+- Trial entitlements with `expires_at` in the past are treated as expired for product gates. Expired trials return structured billing errors telling the caller to add billing/upgrade, and they must not allow run/eval creation, workspace creation, or seat-consuming membership changes.
 - Workspace role authorization remains separate from billing: viewers still cannot mutate even on paid plans; active member/admin callers inherit the organization plan for every workspace they can access.
 - Workspace creation enforces the plan workspace limit.
 - Organization and workspace member invitation/activation enforce billable seat limits using active organization members without double-counting the same user across multiple workspaces.
@@ -32,11 +34,13 @@ Issue: https://github.com/agentclash/agentclash/issues/432
   - Dodo product/add-on/status mapping resolves plan key, billing period, active/inactive state, and seat quantity.
   - invalid plan keys, below-minimum seat quantities, unknown Dodo product IDs, and inactive statuses fail with stable errors.
   - entitlement resolution falls back to Free when no active subscription exists.
+  - expired trial entitlements fail gates with a stable `entitlement_expired` code and include the expired plan key.
   - gate decisions produce stable machine-readable codes for feature, quota, concurrency, workspace, and seat blocks.
 - `backend/internal/api`
   - run creation blocks Free at 5 models, Pro at 9, and Team at 13.
   - run creation blocks quota exhausted and concurrency exhausted.
   - eval-session creation applies the same participant, quota, and concurrency rules as single-run creation.
+  - expired trial entitlements block run gate construction before quota is consumed.
   - billing handlers validate input and return structured JSON errors.
   - webhook handler rejects missing/invalid Standard Webhooks signatures and accepts valid signed events.
 - Membership/workspace managers
@@ -51,6 +55,7 @@ Issue: https://github.com/agentclash/agentclash/issues/432
   - migration/backfill makes existing organizations resolvable as Free.
   - Dodo webhook event insert is idempotent by `webhook-id`.
   - active subscription upsert updates materialized organization entitlements.
+  - expired materialized trial entitlements are read back as expired and block queued-run creation even if their plan limits would otherwise allow the run.
   - run and eval-session creation atomically consume quota and refuse concurrent over-limit attempts.
 - API integration/handler tests:
   - `GET /v1/billing/plans` returns the canonical catalog.

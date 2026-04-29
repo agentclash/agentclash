@@ -56,7 +56,7 @@ func TestDodoProductMappingAndSeatValidation(t *testing.T) {
 
 	entitlements, err := SubscriptionEntitlements(DodoSubscriptionInput{
 		ProductID: "agentclash_team_monthly",
-		Status:    "active",
+		Status:    "trialing",
 		Quantity:  3,
 	})
 	if err != nil {
@@ -64,6 +64,9 @@ func TestDodoProductMappingAndSeatValidation(t *testing.T) {
 	}
 	if entitlements.PlanKey != PlanTeam || entitlements.BillingPeriod != PeriodMonthly {
 		t.Fatalf("entitlements = %+v, want team monthly", entitlements)
+	}
+	if entitlements.Status != EntitlementStatusTrialing {
+		t.Fatalf("entitlement status = %q, want trialing", entitlements.Status)
 	}
 	assertIntPtr(t, "team per-seat quota", entitlements.RacesPerWorkspaceMonth, 6000)
 }
@@ -101,6 +104,26 @@ func TestGateDecisionsCarryStructuredLimits(t *testing.T) {
 	}
 	if decision.ResetAt == nil || !decision.ResetAt.Equal(resetAt) {
 		t.Fatalf("reset_at = %v, want %v", decision.ResetAt, resetAt)
+	}
+}
+
+func TestExpiredTrialEntitlementBlocksGates(t *testing.T) {
+	expiresAt := time.Now().UTC().Add(-time.Minute)
+	entitlements := MaterializeEntitlements(MustPlan(PlanPro), PeriodMonthly, 5, EntitlementStatusTrialing)
+	entitlements.ExpiresAt = &expiresAt
+
+	decision := CheckMaxModels(entitlements, 1)
+	if decision.Allowed {
+		t.Fatal("CheckMaxModels allowed expired trial")
+	}
+	if decision.Code != GateCodeEntitlementExpired {
+		t.Fatalf("code = %q, want %q", decision.Code, GateCodeEntitlementExpired)
+	}
+	if decision.PlanKey != PlanPro || decision.UpgradeTarget != PlanPro {
+		t.Fatalf("plan/upgrade = %q/%q, want pro/pro", decision.PlanKey, decision.UpgradeTarget)
+	}
+	if decision.ExpiresAt == nil || !decision.ExpiresAt.Equal(expiresAt) {
+		t.Fatalf("expires_at = %v, want %v", decision.ExpiresAt, expiresAt)
 	}
 }
 

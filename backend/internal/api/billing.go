@@ -220,14 +220,18 @@ func (m *BillingManager) GetWorkspaceEntitlements(ctx context.Context, caller Ca
 	if err != nil {
 		return WorkspaceEntitlementsResult{}, err
 	}
-	windowStart, windowEnd := usageWindow(m.now().UTC())
+	now := m.now().UTC()
+	windowStart, windowEnd := usageWindow(now)
 	usage, err := m.repo.GetWorkspaceUsageSnapshot(ctx, workspaceID, windowStart, windowEnd)
 	if err != nil {
 		return WorkspaceEntitlementsResult{}, err
 	}
-	runDecision := billingpkg.CheckRaceQuota(entitlements, usage.RaceCount, 1, windowEnd)
+	runDecision := billingpkg.CheckEntitlementActive(entitlements, now)
 	if runDecision.Allowed {
-		runDecision = billingpkg.CheckConcurrency(entitlements, usage.ActiveRuns, 1)
+		runDecision = billingpkg.CheckRaceQuota(entitlements, usage.RaceCount, 1, windowEnd)
+		if runDecision.Allowed {
+			runDecision = billingpkg.CheckConcurrency(entitlements, usage.ActiveRuns, 1)
+		}
 	}
 	return WorkspaceEntitlementsResult{
 		OrganizationID: orgID,
@@ -245,13 +249,17 @@ func (m *BillingManager) BuildRunGate(ctx context.Context, workspaceID uuid.UUID
 	if err != nil {
 		return nil, err
 	}
+	now := m.now().UTC()
+	if decision := billingpkg.CheckEntitlementActive(entitlements, now); !decision.Allowed {
+		return nil, billingpkg.GateError{Decision: decision}
+	}
 	if decision := billingpkg.CheckMaxModels(entitlements, participantCount); !decision.Allowed {
 		return nil, billingpkg.GateError{Decision: decision}
 	}
 	if raceCount <= 0 {
 		raceCount = 1
 	}
-	windowStart, windowEnd := usageWindow(m.now().UTC())
+	windowStart, windowEnd := usageWindow(now)
 	usage, err := m.repo.GetWorkspaceUsageSnapshot(ctx, workspaceID, windowStart, windowEnd)
 	if err != nil {
 		return nil, err
@@ -276,6 +284,9 @@ func (m *BillingManager) CheckWorkspaceCreation(ctx context.Context, orgID uuid.
 	if err != nil {
 		return err
 	}
+	if decision := billingpkg.CheckEntitlementActive(entitlements, m.now().UTC()); !decision.Allowed {
+		return billingpkg.GateError{Decision: decision}
+	}
 	count, err := m.repo.CountActiveWorkspaces(ctx, orgID)
 	if err != nil {
 		return err
@@ -293,6 +304,9 @@ func (m *BillingManager) CheckSeatAvailability(ctx context.Context, orgID uuid.U
 	entitlements, err := m.repo.GetOrganizationEntitlements(ctx, orgID)
 	if err != nil {
 		return err
+	}
+	if decision := billingpkg.CheckEntitlementActive(entitlements, m.now().UTC()); !decision.Allowed {
+		return billingpkg.GateError{Decision: decision}
 	}
 	activeSeats, err := m.repo.CountActiveOrgMembers(ctx, orgID)
 	if err != nil {
@@ -397,14 +411,31 @@ func (m *BillingManager) applySubscriptionWebhook(ctx context.Context, envelope 
 
 	entitlements := billingpkg.DefaultEntitlements()
 	sourceSubscriptionID := (*uuid.UUID)(nil)
+	entitlementExpiresAt := (*time.Time)(nil)
 	if billingpkg.DodoStatusIsEntitled(status) {
 		if err := billingpkg.ValidateSeatQuantity(plan, seatQuantity); err != nil {
 			return err
 		}
-		entitlements = billingpkg.MaterializeEntitlements(plan, mapping.BillingPeriod, seatQuantity, "active")
+		entitlements = billingpkg.MaterializeEntitlements(plan, mapping.BillingPeriod, seatQuantity, status)
 		sourceSubscriptionID = &subscription.ID
+		if shouldExpireMaterializedEntitlement(status, subscription.CancelAtNextBillingDate, subscription.ExpiresAt) {
+			entitlementExpiresAt = subscription.ExpiresAt
+			entitlements.ExpiresAt = subscription.ExpiresAt
+		}
 	}
-	return m.repo.UpsertOrganizationEntitlements(ctx, orgID, entitlements, sourceSubscriptionID, subscription.ExpiresAt)
+	return m.repo.UpsertOrganizationEntitlements(ctx, orgID, entitlements, sourceSubscriptionID, entitlementExpiresAt)
+}
+
+func shouldExpireMaterializedEntitlement(status string, cancelAtNextBillingDate bool, expiresAt *time.Time) bool {
+	if expiresAt == nil {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case billingpkg.EntitlementStatusTrialing, billingpkg.EntitlementStatusExpired, billingpkg.EntitlementStatusInactive, "cancelled", "canceled", "failed", "on_hold":
+		return true
+	default:
+		return cancelAtNextBillingDate
+	}
 }
 
 func (m *BillingManager) createDodoCheckoutSession(ctx context.Context, caller Caller, _ uuid.UUID, intentID uuid.UUID, plan billingpkg.Plan, input CreateBillingCheckoutInput, metadata json.RawMessage) (string, string, error) {

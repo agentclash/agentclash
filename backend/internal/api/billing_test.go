@@ -73,6 +73,31 @@ func TestBillingManagerBuildRunGateRejectsQuotaAndConcurrency(t *testing.T) {
 	}
 }
 
+func TestBillingManagerBuildRunGateRejectsExpiredTrial(t *testing.T) {
+	workspaceID := uuid.New()
+	repo := newFakeBillingRepository(workspaceID)
+	now := time.Date(2026, 4, 29, 12, 0, 0, 0, time.UTC)
+	expiresAt := now.Add(-time.Second)
+	repo.entitlements = billingpkg.MaterializeEntitlements(billingpkg.MustPlan(billingpkg.PlanPro), billingpkg.PeriodMonthly, 5, billingpkg.EntitlementStatusTrialing)
+	repo.entitlements.ExpiresAt = &expiresAt
+	manager := NewBillingManager(NewCallerOrganizationAuthorizer(), NewCallerWorkspaceAuthorizer(), repo, BillingManagerConfig{
+		WebhookSecret: "secret",
+	})
+	manager.now = func() time.Time { return now }
+
+	_, err := manager.BuildRunGate(context.Background(), workspaceID, 1, 1)
+	var gateErr billingpkg.GateError
+	if !errors.As(err, &gateErr) {
+		t.Fatalf("error = %v, want billing.GateError", err)
+	}
+	if gateErr.Decision.Code != billingpkg.GateCodeEntitlementExpired {
+		t.Fatalf("gate code = %q, want %q", gateErr.Decision.Code, billingpkg.GateCodeEntitlementExpired)
+	}
+	if gateErr.Decision.PlanKey != billingpkg.PlanPro || gateErr.Decision.UpgradeTarget != billingpkg.PlanPro {
+		t.Fatalf("plan/upgrade = %q/%q, want pro/pro", gateErr.Decision.PlanKey, gateErr.Decision.UpgradeTarget)
+	}
+}
+
 func TestBillingManagerProcessesSignedDodoWebhook(t *testing.T) {
 	workspaceID := uuid.New()
 	repo := newFakeBillingRepository(workspaceID)
@@ -97,6 +122,9 @@ func TestBillingManagerProcessesSignedDodoWebhook(t *testing.T) {
 	if repo.entitlements.PlanKey != billingpkg.PlanPro {
 		t.Fatalf("materialized plan = %q, want pro", repo.entitlements.PlanKey)
 	}
+	if repo.entitlements.ExpiresAt != nil {
+		t.Fatalf("active paid entitlement expires_at = %v, want nil", repo.entitlements.ExpiresAt)
+	}
 	assertIntPtr(t, "pro materialized quota", repo.entitlements.RacesPerWorkspaceMonth, 2500)
 
 	result, err = manager.ProcessDodoWebhook(context.Background(), headers, []byte(body))
@@ -106,6 +134,33 @@ func TestBillingManagerProcessesSignedDodoWebhook(t *testing.T) {
 	if !result.Duplicate {
 		t.Fatal("second webhook should be duplicate")
 	}
+}
+
+func TestBillingManagerProcessesTrialingDodoWebhookWithExpiry(t *testing.T) {
+	workspaceID := uuid.New()
+	repo := newFakeBillingRepository(workspaceID)
+	secret := "agentclash-test-webhook-secret"
+	manager := NewBillingManager(NewCallerOrganizationAuthorizer(), NewCallerWorkspaceAuthorizer(), repo, BillingManagerConfig{
+		WebhookSecret: secret,
+	})
+
+	body := `{"business_id":"biz_test","type":"subscription.updated","timestamp":"2026-04-29T00:00:00Z","data":{"payload_type":"Subscription","subscription_id":"sub_trial","customer_id":"cus_trial","product_id":"agentclash_team_monthly","status":"trialing","quantity":2,"expires_at":"2026-06-13T00:00:00Z","metadata":{"organization_id":"` + repo.orgID.String() + `"}}}`
+	headers := signedDodoHeaders(secret, "wh_test_trial_432", "1777420800", body)
+
+	if _, err := manager.ProcessDodoWebhook(context.Background(), headers, []byte(body)); err != nil {
+		t.Fatalf("ProcessDodoWebhook returned error: %v", err)
+	}
+	if repo.entitlements.PlanKey != billingpkg.PlanTeam {
+		t.Fatalf("materialized plan = %q, want team", repo.entitlements.PlanKey)
+	}
+	if repo.entitlements.Status != billingpkg.EntitlementStatusTrialing {
+		t.Fatalf("materialized status = %q, want trialing", repo.entitlements.Status)
+	}
+	if repo.entitlements.ExpiresAt == nil || repo.entitlements.ExpiresAt.Format(time.RFC3339) != "2026-06-13T00:00:00Z" {
+		t.Fatalf("expires_at = %v, want 2026-06-13T00:00:00Z", repo.entitlements.ExpiresAt)
+	}
+	assertIntPtr(t, "team trial quota", repo.entitlements.RacesPerWorkspaceMonth, 4000)
+	assertIntPtr(t, "team trial models", repo.entitlements.MaxModelsPerRace, 12)
 }
 
 func TestBillingManagerRejectsInvalidDodoWebhookSignature(t *testing.T) {
@@ -295,9 +350,12 @@ func (f *fakeBillingRepository) GetOrganizationEntitlements(_ context.Context, o
 	return f.entitlements, nil
 }
 
-func (f *fakeBillingRepository) UpsertOrganizationEntitlements(_ context.Context, orgID uuid.UUID, entitlements billingpkg.EffectiveEntitlements, _ *uuid.UUID, _ *time.Time) error {
+func (f *fakeBillingRepository) UpsertOrganizationEntitlements(_ context.Context, orgID uuid.UUID, entitlements billingpkg.EffectiveEntitlements, _ *uuid.UUID, expiresAt *time.Time) error {
 	if orgID != f.orgID {
 		return pgx.ErrNoRows
+	}
+	if expiresAt != nil {
+		entitlements.ExpiresAt = expiresAt
 	}
 	f.entitlements = entitlements
 	return nil
@@ -347,16 +405,18 @@ func (f *fakeBillingRepository) UpsertBillingSubscription(_ context.Context, inp
 		addons = json.RawMessage(`{}`)
 	}
 	f.subscription = repository.BillingSubscription{
-		ID:                 uuid.New(),
-		OrganizationID:     input.OrganizationID,
-		DodoSubscriptionID: input.DodoSubscriptionID,
-		DodoProductID:      input.DodoProductID,
-		PlanKey:            input.PlanKey,
-		BillingPeriod:      input.BillingPeriod,
-		Status:             input.Status,
-		SeatQuantity:       input.SeatQuantity,
-		AddonQuantities:    addons,
-		LatestDodoEventAt:  input.LatestDodoEventAt,
+		ID:                      uuid.New(),
+		OrganizationID:          input.OrganizationID,
+		DodoSubscriptionID:      input.DodoSubscriptionID,
+		DodoProductID:           input.DodoProductID,
+		PlanKey:                 input.PlanKey,
+		BillingPeriod:           input.BillingPeriod,
+		Status:                  input.Status,
+		SeatQuantity:            input.SeatQuantity,
+		AddonQuantities:         addons,
+		CancelAtNextBillingDate: input.CancelAtNextBillingDate,
+		ExpiresAt:               input.ExpiresAt,
+		LatestDodoEventAt:       input.LatestDodoEventAt,
 	}
 	return f.subscription, nil
 }

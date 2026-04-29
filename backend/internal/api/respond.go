@@ -21,6 +21,7 @@ type apiError struct {
 	Used          *int    `json:"used,omitempty"`
 	Remaining     *int    `json:"remaining,omitempty"`
 	ResetAt       *string `json:"reset_at,omitempty"`
+	ExpiresAt     *string `json:"expires_at,omitempty"`
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload any) {
@@ -52,6 +53,11 @@ func writeBillingGateError(w http.ResponseWriter, status int, decision billing.G
 		formatted := decision.ResetAt.UTC().Format("2006-01-02T15:04:05Z")
 		resetAt = &formatted
 	}
+	var expiresAt *string
+	if decision.ExpiresAt != nil {
+		formatted := decision.ExpiresAt.UTC().Format("2006-01-02T15:04:05Z")
+		expiresAt = &formatted
+	}
 	writeJSON(w, status, errorEnvelope{
 		Error: apiError{
 			Code:          decision.Code,
@@ -62,6 +68,7 @@ func writeBillingGateError(w http.ResponseWriter, status int, decision billing.G
 			Used:          &used,
 			Remaining:     decision.Remaining,
 			ResetAt:       resetAt,
+			ExpiresAt:     expiresAt,
 		},
 	})
 }

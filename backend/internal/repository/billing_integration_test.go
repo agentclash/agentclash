@@ -149,6 +149,44 @@ func TestRepositoryRunEntitlementGateBlocksConcurrentOverage(t *testing.T) {
 	}
 }
 
+func TestRepositoryExpiredTrialEntitlementsBlockRunCreation(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+	windowStart, windowEnd := billingTestWindow()
+	expiresAt := time.Now().UTC().Add(-time.Minute)
+
+	entitlements := billing.MaterializeEntitlements(billing.MustPlan(billing.PlanPro), billing.PeriodMonthly, 5, billing.EntitlementStatusTrialing)
+	entitlements.ExpiresAt = &expiresAt
+	if err := repo.UpsertOrganizationEntitlements(ctx, fixture.organizationID, entitlements, nil, nil); err != nil {
+		t.Fatalf("UpsertOrganizationEntitlements returned error: %v", err)
+	}
+
+	_, resolved, err := repo.ResolveWorkspaceEntitlements(ctx, fixture.workspaceID)
+	if err != nil {
+		t.Fatalf("ResolveWorkspaceEntitlements returned error: %v", err)
+	}
+	if resolved.PlanKey != billing.PlanPro || resolved.Status != billing.EntitlementStatusExpired {
+		t.Fatalf("resolved entitlements = %+v, want expired pro trial", resolved)
+	}
+
+	_, err = repo.CreateQueuedRun(ctx, billingTestRunParams(fixture, "expired trial blocked", &repository.RunEntitlementGate{
+		Entitlements:    resolved,
+		RaceCost:        1,
+		ConcurrencyCost: 1,
+		WindowStart:     windowStart,
+		WindowEnd:       windowEnd,
+	}))
+	var gateErr billing.GateError
+	if !errors.As(err, &gateErr) {
+		t.Fatalf("CreateQueuedRun expired trial error = %v, want billing.GateError", err)
+	}
+	if gateErr.Decision.Code != billing.GateCodeEntitlementExpired {
+		t.Fatalf("gate code = %q, want %q", gateErr.Decision.Code, billing.GateCodeEntitlementExpired)
+	}
+}
+
 func billingTestRunParams(fixture testFixture, name string, gate *repository.RunEntitlementGate) repository.CreateQueuedRunParams {
 	return repository.CreateQueuedRunParams{
 		OrganizationID:         fixture.organizationID,

@@ -482,6 +482,9 @@ func enforceRunEntitlementGate(ctx context.Context, tx pgx.Tx, workspaceID uuid.
 	if concurrencyCost <= 0 {
 		concurrencyCost = raceCost
 	}
+	if decision := billing.CheckEntitlementActive(gate.Entitlements, time.Now().UTC()); !decision.Allowed {
+		return billing.GateError{Decision: decision}
+	}
 
 	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1::text, 432))`, workspaceID.String()); err != nil {
 		return fmt.Errorf("lock workspace billing gate: %w", err)

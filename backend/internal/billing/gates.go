@@ -11,6 +11,8 @@ const (
 	GateCodeConcurrencyLimitExceeded = "concurrency_limit_exceeded"
 	GateCodeSeatLimitExceeded        = "seat_limit_exceeded"
 	GateCodeFeatureNotEntitled       = "feature_not_entitled"
+	GateCodeEntitlementExpired       = "entitlement_expired"
+	GateCodeEntitlementInactive      = "entitlement_inactive"
 )
 
 type GateDecision struct {
@@ -23,6 +25,7 @@ type GateDecision struct {
 	Used          int        `json:"used,omitempty"`
 	Remaining     *int       `json:"remaining,omitempty"`
 	ResetAt       *time.Time `json:"reset_at,omitempty"`
+	ExpiresAt     *time.Time `json:"expires_at,omitempty"`
 }
 
 type GateError struct {
@@ -44,10 +47,52 @@ func Allow(entitlements EffectiveEntitlements) GateDecision {
 		Allowed:       true,
 		PlanKey:       entitlements.PlanKey,
 		UpgradeTarget: entitlements.UpgradeTarget,
+		ExpiresAt:     cloneTime(entitlements.ExpiresAt),
+	}
+}
+
+func CheckEntitlementActive(entitlements EffectiveEntitlements, now time.Time) GateDecision {
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	if entitlements.IsExpired(now) {
+		return GateDecision{
+			Allowed:       false,
+			Code:          GateCodeEntitlementExpired,
+			Message:       fmt.Sprintf("%s trial has expired. Add billing to continue.", entitlements.PlanKey),
+			PlanKey:       entitlements.PlanKey,
+			UpgradeTarget: expiredUpgradeTarget(entitlements.PlanKey, entitlements.UpgradeTarget),
+			ExpiresAt:     cloneTime(entitlements.ExpiresAt),
+		}
+	}
+	switch normalizeStatus(entitlements.Status) {
+	case "", EntitlementStatusActive, EntitlementStatusTrialing, "renewed":
+		return Allow(entitlements)
+	case EntitlementStatusExpired:
+		return GateDecision{
+			Allowed:       false,
+			Code:          GateCodeEntitlementExpired,
+			Message:       fmt.Sprintf("%s trial has expired. Add billing to continue.", entitlements.PlanKey),
+			PlanKey:       entitlements.PlanKey,
+			UpgradeTarget: expiredUpgradeTarget(entitlements.PlanKey, entitlements.UpgradeTarget),
+			ExpiresAt:     cloneTime(entitlements.ExpiresAt),
+		}
+	default:
+		return GateDecision{
+			Allowed:       false,
+			Code:          GateCodeEntitlementInactive,
+			Message:       fmt.Sprintf("%s billing is inactive. Add billing to continue.", entitlements.PlanKey),
+			PlanKey:       entitlements.PlanKey,
+			UpgradeTarget: expiredUpgradeTarget(entitlements.PlanKey, entitlements.UpgradeTarget),
+			ExpiresAt:     cloneTime(entitlements.ExpiresAt),
+		}
 	}
 }
 
 func CheckMaxModels(entitlements EffectiveEntitlements, participantCount int) GateDecision {
+	if decision := CheckEntitlementActive(entitlements, time.Now().UTC()); !decision.Allowed {
+		return decision
+	}
 	if entitlements.MaxModelsPerRace == nil || participantCount <= *entitlements.MaxModelsPerRace {
 		return Allow(entitlements)
 	}
@@ -65,6 +110,9 @@ func CheckMaxModels(entitlements EffectiveEntitlements, participantCount int) Ga
 }
 
 func CheckRaceQuota(entitlements EffectiveEntitlements, used int, requested int, resetAt time.Time) GateDecision {
+	if decision := CheckEntitlementActive(entitlements, time.Now().UTC()); !decision.Allowed {
+		return decision
+	}
 	if entitlements.RacesPerWorkspaceMonth == nil || used+requested <= *entitlements.RacesPerWorkspaceMonth {
 		return Allow(entitlements)
 	}
@@ -86,6 +134,9 @@ func CheckRaceQuota(entitlements EffectiveEntitlements, used int, requested int,
 }
 
 func CheckConcurrency(entitlements EffectiveEntitlements, active int, requested int) GateDecision {
+	if decision := CheckEntitlementActive(entitlements, time.Now().UTC()); !decision.Allowed {
+		return decision
+	}
 	if entitlements.ConcurrentRaces == nil || active+requested <= *entitlements.ConcurrentRaces {
 		return Allow(entitlements)
 	}
@@ -106,6 +157,9 @@ func CheckConcurrency(entitlements EffectiveEntitlements, active int, requested 
 }
 
 func CheckSeatLimit(entitlements EffectiveEntitlements, activeSeats int, requestedSeats int) GateDecision {
+	if decision := CheckEntitlementActive(entitlements, time.Now().UTC()); !decision.Allowed {
+		return decision
+	}
 	if entitlements.SeatsLimit == nil || activeSeats+requestedSeats <= *entitlements.SeatsLimit {
 		return Allow(entitlements)
 	}
@@ -126,6 +180,9 @@ func CheckSeatLimit(entitlements EffectiveEntitlements, activeSeats int, request
 }
 
 func CheckWorkspaceLimit(entitlements EffectiveEntitlements, activeWorkspaces int, requestedWorkspaces int) GateDecision {
+	if decision := CheckEntitlementActive(entitlements, time.Now().UTC()); !decision.Allowed {
+		return decision
+	}
 	if entitlements.WorkspacesLimit == nil || activeWorkspaces+requestedWorkspaces <= *entitlements.WorkspacesLimit {
 		return Allow(entitlements)
 	}
@@ -146,6 +203,9 @@ func CheckWorkspaceLimit(entitlements EffectiveEntitlements, activeWorkspaces in
 }
 
 func CheckFeature(entitlements EffectiveEntitlements, feature string) GateDecision {
+	if decision := CheckEntitlementActive(entitlements, time.Now().UTC()); !decision.Allowed {
+		return decision
+	}
 	if entitlements.FeatureFlags[feature] {
 		return Allow(entitlements)
 	}
@@ -163,5 +223,13 @@ func cloneInt(value *int) *int {
 		return nil
 	}
 	cloned := *value
+	return &cloned
+}
+
+func cloneTime(value *time.Time) *time.Time {
+	if value == nil {
+		return nil
+	}
+	cloned := value.UTC()
 	return &cloned
 }
