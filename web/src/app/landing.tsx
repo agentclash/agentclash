@@ -1,7 +1,7 @@
 "use client";
 
 import type React from "react";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { getCalApi } from "@calcom/embed-react";
 import { useAuth } from "@workos-inc/authkit-nextjs/components";
@@ -698,91 +698,195 @@ function SandboxLanes() {
 }
 
 function FeedbackLoop() {
+  return <ParticleFlywheel />;
+}
+
+function ParticleFlywheel() {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const N_PER = 130;
+    const N = N_PER * 2;
+    const CYCLE_MS = 5500;
+
+    type P = {
+      group: 0 | 1;
+      cylTheta: number;
+      cylY: number;
+      flyTheta: number;
+      flyPhi: number;
+      jitterX: number;
+      jitterY: number;
+    };
+
+    const particles: P[] = [];
+    for (let i = 0; i < N; i++) {
+      particles.push({
+        group: i < N_PER ? 0 : 1,
+        cylTheta: Math.random() * Math.PI * 2,
+        cylY: Math.random() * 2 - 1,
+        flyTheta: (i / N) * Math.PI * 2 + (Math.random() - 0.5) * 0.06,
+        flyPhi: Math.random() * Math.PI * 2,
+        jitterX: (Math.random() - 0.5) * 2,
+        jitterY: (Math.random() - 0.5) * 2,
+      });
+    }
+
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    let W = 0;
+    let H = 0;
+
+    const resize = () => {
+      const rect = canvas.getBoundingClientRect();
+      W = rect.width;
+      H = rect.height;
+      canvas.width = Math.max(1, Math.floor(W * dpr));
+      canvas.height = Math.max(1, Math.floor(H * dpr));
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    };
+    resize();
+    const ro = new ResizeObserver(resize);
+    ro.observe(canvas);
+
+    const lerp = (a: number, b: number, k: number) => a + (b - a) * k;
+    const smooth = (k: number) => k * k * (3 - 2 * k);
+
+    const reduceMotion = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+
+    let raf = 0;
+    const start = performance.now();
+
+    const draw = (now: number) => {
+      const elapsed = (now - start) % CYCLE_MS;
+      const t = reduceMotion ? 0 : elapsed / CYCLE_MS;
+
+      ctx.clearRect(0, 0, W, H);
+
+      const cx = W / 2;
+      const cy = H / 2;
+      const minDim = Math.min(W, H);
+      const cylR = minDim * 0.13;
+      const cylH = minDim * 0.5;
+      const sep = Math.min(W * 0.32, minDim * 0.42);
+      const flyR = minDim * 0.22;
+      const flyTube = minDim * 0.055;
+
+      const rot = now * 0.0009;
+      const flyRot = now * 0.0016;
+
+      let a: number;
+      let b: number;
+      let c: number;
+      if (reduceMotion) {
+        a = 1;
+        b = 0;
+        c = 0;
+      } else if (t < 0.45) {
+        a = 1;
+        b = 0;
+        c = 0;
+      } else if (t < 0.6) {
+        const k = (t - 0.45) / 0.15;
+        a = 1 - smooth(k);
+        b = 0;
+        c = smooth(k) * 0.5;
+      } else if (t < 0.7) {
+        const k = (t - 0.6) / 0.1;
+        a = 0;
+        b = smooth(k);
+        c = 1 - Math.abs(k - 0.5) * 2;
+      } else if (t < 0.92) {
+        a = 0;
+        b = 1;
+        c = 0;
+      } else {
+        const k = (t - 0.92) / 0.08;
+        a = smooth(k);
+        b = 1 - smooth(k);
+        c = 0;
+      }
+
+      const FAIL: [number, number, number] = [217, 112, 112];
+      const EV: [number, number, number] = [106, 163, 232];
+      const MERGE: [number, number, number] = [240, 210, 138];
+
+      for (const p of particles) {
+        const groupOffset = p.group === 0 ? -sep * a : sep * a;
+        const cylX = cx + groupOffset + Math.cos(p.cylTheta + rot) * cylR;
+        const depth = Math.sin(p.cylTheta + rot);
+        const cylYpos = cy + p.cylY * cylH * 0.5;
+
+        const tilt = 0.55;
+        const ft = p.flyTheta + flyRot;
+        const fp = p.flyPhi;
+        const flyX = cx + (flyR + flyTube * Math.cos(fp)) * Math.cos(ft);
+        const flyY =
+          cy +
+          (flyR + flyTube * Math.cos(fp)) * Math.sin(ft) * tilt +
+          flyTube * Math.sin(fp) * 0.6;
+        const flyDepth = Math.sin(ft);
+
+        const ease = smooth(b);
+        const px = lerp(cylX, flyX, ease) + p.jitterX * c * 12;
+        const py = lerp(cylYpos, flyY, ease) + p.jitterY * c * 12;
+        const d = lerp(depth, flyDepth, ease);
+
+        const baseRGB = p.group === 0 ? FAIL : EV;
+        const r = lerp(baseRGB[0], MERGE[0], b);
+        const g = lerp(baseRGB[1], MERGE[1], b);
+        const bl = lerp(baseRGB[2], MERGE[2], b);
+
+        const size = 1.3 + d * 0.7 + b * 0.2;
+        const alpha = Math.max(
+          0.12,
+          Math.min(1, 0.55 + d * 0.4 - c * 0.15),
+        );
+
+        ctx.fillStyle = `rgba(${r | 0}, ${g | 0}, ${bl | 0}, ${alpha})`;
+        ctx.beginPath();
+        ctx.arc(px, py, Math.max(0.6, size), 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      ctx.font =
+        '10px var(--font-mono), ui-monospace, SFMono-Regular, monospace';
+      ctx.textAlign = "center";
+      const labelY = cy - cylH * 0.55;
+      if (a > 0.05) {
+        ctx.fillStyle = `rgba(217,112,112,${0.6 * a})`;
+        ctx.fillText("FAILURES", cx - sep * a, labelY);
+        ctx.fillStyle = `rgba(106,163,232,${0.6 * a})`;
+        ctx.fillText("EVALS", cx + sep * a, labelY);
+      }
+      if (b > 0.05) {
+        ctx.fillStyle = `rgba(240,210,138,${0.7 * b})`;
+        ctx.fillText("FLYWHEEL", cx, cy - flyR - flyTube - 14);
+      }
+
+      raf = requestAnimationFrame(draw);
+    };
+
+    raf = requestAnimationFrame(draw);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      ro.disconnect();
+    };
+  }, []);
+
   return (
     <div className="flex items-center justify-center py-6 sm:py-10" aria-hidden>
-      <svg
-        viewBox="0 0 400 230"
-        className="w-full max-w-[480px]"
-        focusable="false"
-      >
-        <defs>
-          <marker
-            id="feedback-arrow-head"
-            viewBox="0 0 10 10"
-            refX="8"
-            refY="5"
-            markerWidth="6"
-            markerHeight="6"
-            orient="auto"
-          >
-            <polygon points="0,0 10,5 0,10" fill="white" opacity="0.7" />
-          </marker>
-        </defs>
-
-        <circle
-          cx="70"
-          cy="115"
-          r="38"
-          fill="#060606"
-          stroke="white"
-          strokeWidth="1.2"
-          opacity="0.85"
-        />
-        <text
-          x="70"
-          y="119"
-          textAnchor="middle"
-          fill="white"
-          opacity="0.85"
-          fontSize="10"
-          fontFamily="var(--font-mono), monospace"
-          letterSpacing="0.16em"
-        >
-          FAILURES
-        </text>
-
-        <circle
-          cx="330"
-          cy="115"
-          r="38"
-          fill="#060606"
-          stroke="white"
-          strokeWidth="1.2"
-          opacity="0.85"
-        />
-        <text
-          x="330"
-          y="119"
-          textAnchor="middle"
-          fill="white"
-          opacity="0.85"
-          fontSize="10"
-          fontFamily="var(--font-mono), monospace"
-          letterSpacing="0.16em"
-        >
-          EVALS
-        </text>
-
-        <path
-          d="M 100 93 Q 200 10 300 93"
-          stroke="white"
-          strokeWidth="1.25"
-          fill="none"
-          opacity="0.42"
-          markerEnd="url(#feedback-arrow-head)"
-        />
-        <circle r="3.2" fill="white" className="animate-travel-top" />
-
-        <path
-          d="M 300 137 Q 200 220 100 137"
-          stroke="white"
-          strokeWidth="1.25"
-          fill="none"
-          opacity="0.42"
-          markerEnd="url(#feedback-arrow-head)"
-        />
-        <circle r="3.2" fill="white" className="animate-travel-bottom" />
-      </svg>
+      <canvas
+        ref={canvasRef}
+        className="w-full max-w-[480px] aspect-[400/260]"
+      />
     </div>
   );
 }
