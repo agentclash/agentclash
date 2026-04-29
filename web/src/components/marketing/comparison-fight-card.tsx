@@ -2,6 +2,18 @@
 
 import { useState } from "react";
 
+const NOISE_SVG_URI =
+  "data:image/svg+xml;utf8," +
+  encodeURIComponent(
+    "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 240 240'>" +
+      "<filter id='n'>" +
+      "<feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/>" +
+      "<feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.6 0'/>" +
+      "</filter>" +
+      "<rect width='100%' height='100%' filter='url(#n)'/>" +
+      "</svg>",
+  );
+
 type Matchup = {
   name: string;
   tag: string;
@@ -123,6 +135,22 @@ export function ComparisonFightCard() {
           key={m.name}
           className="relative overflow-hidden rounded-3xl border border-white/[0.08] bg-white/[0.025] p-8 backdrop-blur-2xl backdrop-saturate-150 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2 motion-safe:duration-500 sm:p-12 lg:p-16"
         >
+          {/* dark green tint */}
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0"
+            style={{ backgroundColor: "rgba(14, 48, 32, 0.32)" }}
+          />
+          {/* film-grain noise (overlay-blended with the green tint behind) */}
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 opacity-[0.18] mix-blend-overlay"
+            style={{
+              backgroundImage: `url("${NOISE_SVG_URI}")`,
+              backgroundSize: "240px 240px",
+              backgroundRepeat: "repeat",
+            }}
+          />
           {/* top edge highlight */}
           <div
             aria-hidden
