@@ -16,6 +16,7 @@ import {
 } from "@lobehub/icons";
 import { LuminousGrid } from "@/components/marketing/luminous-grid";
 import { PricingBlock } from "@/components/marketing/pricing-block";
+import { ComparisonFightCard } from "@/components/marketing/comparison-fight-card";
 import { ExpandedCardsBlock } from "@/components/marketing/expanded-cards-block";
 import { TrackBox } from "@/components/marketing/track-box";
 
@@ -787,36 +788,6 @@ function FeedbackLoop() {
   );
 }
 
-function ComparisonMark({
-  kind,
-  highlight,
-}: {
-  kind: "yes" | "partial" | "no";
-  highlight?: boolean;
-}) {
-  if (kind === "yes") {
-    return (
-      <span
-        aria-label="supported"
-        className={`inline-block size-2 rounded-full ${
-          highlight ? "bg-white shadow-[0_0_12px_rgba(255,255,255,0.55)]" : "bg-white/70"
-        }`}
-      />
-    );
-  }
-  if (kind === "partial") {
-    return (
-      <span
-        aria-label="partial"
-        className="inline-block size-2 rounded-full border border-white/50"
-      />
-    );
-  }
-  return (
-    <span aria-label="not supported" className="block h-px w-3 bg-white/20" />
-  );
-}
-
 function TrackGlyph() {
   return (
     <svg
@@ -1195,64 +1166,6 @@ const LANDING_FEATURES: Array<{
     body:
       "Trigger races from GitHub Actions, a webhook, or the CLI. Fail the build when your agent regresses on the scorecard you care about. Eval moves from a dashboard you visit to a check that blocks bad code.",
     glyph: <CiCdGlyph />,
-  },
-];
-
-type MarkKind = "yes" | "partial" | "no";
-
-const COMPARISON_COLUMNS: Array<{
-  name: string;
-  tag: string;
-  highlight?: boolean;
-}> = [
-  { name: "AgentClash", tag: "agent eval", highlight: true },
-  { name: "Braintrust", tag: "prompt eval" },
-  { name: "LangSmith", tag: "prompt eval" },
-  { name: "Promptfoo", tag: "prompt eval" },
-  { name: "Langfuse", tag: "prompt eval" },
-  { name: "Arize Phoenix", tag: "prompt eval" },
-  { name: "OpenAI Evals", tag: "prompt eval" },
-];
-
-const COMPARISON_ROWS: Array<{
-  label: string;
-  sub: string;
-  cells: readonly MarkKind[];
-}> = [
-  {
-    label: "Multi-turn agent loops",
-    sub: "Think → tool → observe → repeat, for minutes, with a fresh environment. Not one prompt → one response.",
-    cells: ["yes", "partial", "partial", "no", "partial", "partial", "partial"],
-  },
-  {
-    label: "Sandboxed tool execution",
-    sub: "A fresh microVM per agent — real files, real shell, real network, real side effects.",
-    cells: ["yes", "no", "no", "no", "no", "no", "no"],
-  },
-  {
-    label: "Head-to-head concurrent race",
-    sub: "Every model runs the same task at the same time, on the same budget. No staggered runs, no warm caches.",
-    cells: ["yes", "no", "no", "no", "no", "no", "no"],
-  },
-  {
-    label: "Trajectory scoring",
-    sub: "Judges the path, not just the final answer — tool-choice efficiency, recovery from error, scope discipline.",
-    cells: ["yes", "partial", "partial", "no", "partial", "partial", "no"],
-  },
-  {
-    label: "Cross-provider tool-call normalisation",
-    sub: "One schema across OpenAI, Anthropic, Gemini, xAI, Mistral, OpenRouter. Errors classified, retries sane.",
-    cells: ["yes", "partial", "partial", "partial", "partial", "partial", "no"],
-  },
-  {
-    label: "Four-vantage composite verdict",
-    sub: "Deterministic + mathematic + behavioural + LLM, with consensus aggregation and weights you control.",
-    cells: ["yes", "partial", "partial", "partial", "partial", "partial", "partial"],
-  },
-  {
-    label: "Failures auto-promote to regression",
-    sub: "Flunked traces freeze into permanent tests and replay in every future race, by default.",
-    cells: ["yes", "partial", "partial", "partial", "partial", "partial", "no"],
   },
 ];
 
@@ -1815,127 +1728,9 @@ export default function HomePage() {
             </p>
           </div>
 
-          {/* Mobile: stacked per-capability cards */}
-          <div className="md:hidden mt-16 space-y-10">
-            {COMPARISON_ROWS.map((row) => (
-              <div
-                key={`m-${row.label}`}
-                className="border-b border-white/[0.08] pb-8 last:border-b-0"
-              >
-                <p className="text-[16px] font-medium text-white/90 leading-[1.35]">
-                  {row.label}
-                </p>
-                <p className="mt-2 text-[13px] leading-[1.55] text-white/40">
-                  {row.sub}
-                </p>
-                <dl className="mt-5 grid grid-cols-1 gap-0">
-                  {COMPARISON_COLUMNS.map((col, j) => (
-                    <div
-                      key={col.name}
-                      className={`flex items-center justify-between gap-4 border-b border-white/[0.05] py-2.5 last:border-b-0 ${
-                        col.highlight ? "bg-white/[0.025] -mx-3 px-3 rounded" : ""
-                      }`}
-                    >
-                      <div className="flex flex-col">
-                        <dt
-                          className={`text-[13px] ${
-                            col.highlight
-                              ? "text-white/95 font-medium"
-                              : "text-white/60"
-                          }`}
-                        >
-                          {col.name}
-                        </dt>
-                        <span
-                          className={`text-[9px] font-[family-name:var(--font-mono)] uppercase tracking-[0.2em] ${
-                            col.highlight ? "text-white/45" : "text-white/25"
-                          }`}
-                        >
-                          {col.tag}
-                        </span>
-                      </div>
-                      <dd>
-                        <ComparisonMark
-                          kind={row.cells[j]}
-                          highlight={col.highlight}
-                        />
-                      </dd>
-                    </div>
-                  ))}
-                </dl>
-              </div>
-            ))}
+          <div className="mt-16 sm:mt-20">
+            <ComparisonFightCard />
           </div>
-
-          {/* Desktop: full matrix */}
-          <div className="hidden md:block mt-20 -mx-8 sm:mx-0 overflow-x-auto">
-            <div className="min-w-[1040px] px-8 sm:px-0">
-              {/* Header row */}
-              <div className="grid grid-cols-[1.7fr_repeat(7,minmax(0,1fr))] border-b border-white/[0.12]">
-                <div className="pb-5 pr-4">
-                  <p className="text-[11px] font-[family-name:var(--font-mono)] uppercase tracking-[0.18em] text-white/35">
-                    Capability
-                  </p>
-                </div>
-                {COMPARISON_COLUMNS.map((col) => (
-                  <div
-                    key={col.name}
-                    className="flex flex-col items-center justify-end gap-1 pb-5 px-2"
-                  >
-                    <span
-                      className={`text-center leading-tight ${
-                        col.highlight
-                          ? "text-[13px] font-[family-name:var(--font-display)] tracking-[-0.01em] text-white/95"
-                          : "text-[12px] font-[family-name:var(--font-mono)] uppercase tracking-[0.16em] text-white/45"
-                      }`}
-                    >
-                      {col.name}
-                    </span>
-                    <span
-                      className={`text-[9px] font-[family-name:var(--font-mono)] uppercase tracking-[0.2em] ${
-                        col.highlight ? "text-white/30" : "text-white/25"
-                      }`}
-                    >
-                      {col.tag}
-                    </span>
-                  </div>
-                ))}
-              </div>
-
-              {/* Rows */}
-              {COMPARISON_ROWS.map((row) => (
-                <div
-                  key={row.label}
-                  className="grid grid-cols-[1.7fr_repeat(7,minmax(0,1fr))] border-b border-white/[0.05] last:border-b-0"
-                >
-                  <div className="py-7 pr-6">
-                    <p className="text-[15px] text-white/85">{row.label}</p>
-                    <p className="mt-1.5 text-[12px] leading-[1.5] text-white/40">
-                      {row.sub}
-                    </p>
-                  </div>
-                  {row.cells.map((mark, j) => (
-                    <div
-                      key={j}
-                      className={`flex items-center justify-center py-7 px-2 ${
-                        j === 0 ? "bg-white/[0.025]" : ""
-                      }`}
-                    >
-                      <ComparisonMark kind={mark} highlight={j === 0} />
-                    </div>
-                  ))}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <p className="mt-10 text-[12px] font-[family-name:var(--font-mono)] text-white/35">
-            <span className="text-white/60">●</span>&nbsp;&nbsp;supported
-            &nbsp;·&nbsp; <span className="text-white/45">◐</span>
-            &nbsp;&nbsp;partial &nbsp;·&nbsp;
-            <span className="text-white/30">—</span>&nbsp;&nbsp;not a core
-            capability
-          </p>
         </div>
       </section>
 
