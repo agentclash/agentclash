@@ -71,6 +71,7 @@ type Config struct {
 	FrontendURL               string
 	DodoPaymentsAPIKey        string
 	DodoPaymentsWebhookKey    string
+	DodoAPIBaseURL            string
 	DodoCheckoutBaseURL       string
 	DodoPortalBaseURL         string
 }
@@ -203,6 +204,7 @@ func LoadConfigFromEnv() (Config, error) {
 		FrontendURL:               frontendURL,
 		DodoPaymentsAPIKey:        dodoPaymentsAPIKey,
 		DodoPaymentsWebhookKey:    dodoPaymentsWebhookKey,
+		DodoAPIBaseURL:            os.Getenv("DODO_API_BASE_URL"),
 		DodoCheckoutBaseURL:       os.Getenv("DODO_CHECKOUT_BASE_URL"),
 		DodoPortalBaseURL:         os.Getenv("DODO_PORTAL_BASE_URL"),
 	}

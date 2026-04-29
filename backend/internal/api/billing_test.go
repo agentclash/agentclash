@@ -181,6 +181,71 @@ func TestCreateBillingCheckoutHandlerDecodesSnakeCaseJSON(t *testing.T) {
 	}
 }
 
+func TestBillingManagerCreateCheckoutUsesDodoAPIWhenConfigured(t *testing.T) {
+	workspaceID := uuid.New()
+	repo := newFakeBillingRepository(workspaceID)
+	var capturedAuth string
+	var capturedPayload map[string]any
+	dodoServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedAuth = r.Header.Get("Authorization")
+		if r.URL.Path != "/checkouts" {
+			t.Fatalf("path = %s, want /checkouts", r.URL.Path)
+		}
+		if err := json.NewDecoder(r.Body).Decode(&capturedPayload); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		writeJSON(w, http.StatusOK, map[string]string{
+			"session_id":   "cks_test_123",
+			"checkout_url": "https://test.checkout.dodopayments.com/session/cks_test_123",
+		})
+	}))
+	defer dodoServer.Close()
+
+	manager := NewBillingManager(NewCallerOrganizationAuthorizer(), NewCallerWorkspaceAuthorizer(), repo, BillingManagerConfig{
+		DodoAPIKey:     "dodo_test_key",
+		DodoAPIBaseURL: dodoServer.URL,
+		WebhookSecret:  "secret",
+	})
+	caller := Caller{
+		UserID:      uuid.New(),
+		Email:       "owner@example.com",
+		DisplayName: "Owner",
+		OrganizationMemberships: map[uuid.UUID]OrganizationMembership{
+			repo.orgID: {OrganizationID: repo.orgID, Role: "org_admin"},
+		},
+	}
+
+	result, err := manager.CreateCheckout(context.Background(), caller, repo.orgID, CreateBillingCheckoutInput{
+		PlanKey:       "pro",
+		BillingPeriod: "monthly",
+		SeatQuantity:  5,
+		ReturnURL:     "http://localhost:3000/billing/return",
+	})
+	if err != nil {
+		t.Fatalf("CreateCheckout returned error: %v", err)
+	}
+	if capturedAuth != "Bearer dodo_test_key" {
+		t.Fatalf("authorization = %q, want bearer token", capturedAuth)
+	}
+	if result.CheckoutURL != "https://test.checkout.dodopayments.com/session/cks_test_123" {
+		t.Fatalf("checkout URL = %q, want Dodo response URL", result.CheckoutURL)
+	}
+	if repo.checkoutInput.DodoCheckoutID != "cks_test_123" {
+		t.Fatalf("stored Dodo checkout id = %q, want cks_test_123", repo.checkoutInput.DodoCheckoutID)
+	}
+	productCart, ok := capturedPayload["product_cart"].([]any)
+	if !ok || len(productCart) != 1 {
+		t.Fatalf("product_cart = %#v, want one item", capturedPayload["product_cart"])
+	}
+	item, ok := productCart[0].(map[string]any)
+	if !ok {
+		t.Fatalf("product cart item = %#v, want object", productCart[0])
+	}
+	if item["product_id"] != "agentclash_pro_monthly" || item["quantity"] != float64(5) {
+		t.Fatalf("product cart item = %#v, want pro monthly quantity 5", item)
+	}
+}
+
 func signedDodoHeaders(secret string, id string, timestamp string, body string) DodoWebhookHeaders {
 	mac := hmac.New(sha256.New, []byte(secret))
 	_, _ = mac.Write([]byte(id + "." + timestamp + "." + body))
@@ -192,12 +257,13 @@ func signedDodoHeaders(secret string, id string, timestamp string, body string) 
 }
 
 type fakeBillingRepository struct {
-	orgID        uuid.UUID
-	workspaceID  uuid.UUID
-	entitlements billingpkg.EffectiveEntitlements
-	usage        repository.WorkspaceUsageSnapshot
-	webhookIDs   map[string]bool
-	subscription repository.BillingSubscription
+	orgID         uuid.UUID
+	workspaceID   uuid.UUID
+	entitlements  billingpkg.EffectiveEntitlements
+	usage         repository.WorkspaceUsageSnapshot
+	webhookIDs    map[string]bool
+	subscription  repository.BillingSubscription
+	checkoutInput repository.BillingCheckoutIntentInput
 }
 
 func newFakeBillingRepository(workspaceID uuid.UUID) *fakeBillingRepository {
@@ -257,6 +323,7 @@ func (f *fakeBillingRepository) GetWorkspaceUsageSnapshot(_ context.Context, _ u
 }
 
 func (f *fakeBillingRepository) CreateBillingCheckoutIntent(_ context.Context, input repository.BillingCheckoutIntentInput) (repository.BillingCheckoutIntent, error) {
+	f.checkoutInput = input
 	return repository.BillingCheckoutIntent{
 		ID:               uuid.New(),
 		OrganizationID:   input.OrganizationID,

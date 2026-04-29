@@ -121,6 +121,8 @@ func main() {
 	userManager := api.NewUserManager(repo)
 	orgAuthz := api.NewCallerOrganizationAuthorizer()
 	billingManager := api.NewBillingManager(orgAuthz, authorizer, repo, api.BillingManagerConfig{
+		DodoAPIKey:      cfg.DodoPaymentsAPIKey,
+		DodoAPIBaseURL:  cfg.DodoAPIBaseURL,
 		WebhookSecret:   cfg.DodoPaymentsWebhookKey,
 		CheckoutBaseURL: cfg.DodoCheckoutBaseURL,
 		PortalBaseURL:   cfg.DodoPortalBaseURL,

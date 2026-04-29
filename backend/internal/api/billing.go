@@ -58,6 +58,9 @@ type BillingManager struct {
 	orgAuthz        OrganizationAuthorizer
 	authorizer      WorkspaceAuthorizer
 	repo            BillingRepository
+	dodoAPIKey      string
+	dodoAPIBaseURL  string
+	httpClient      *http.Client
 	webhookSecret   string
 	checkoutBaseURL string
 	portalBaseURL   string
@@ -67,6 +70,9 @@ type BillingManager struct {
 var errInvalidWebhookSignature = errors.New("invalid webhook signature")
 
 type BillingManagerConfig struct {
+	DodoAPIKey      string
+	DodoAPIBaseURL  string
+	HTTPClient      *http.Client
 	WebhookSecret   string
 	CheckoutBaseURL string
 	PortalBaseURL   string
@@ -77,6 +83,9 @@ func NewBillingManager(orgAuthz OrganizationAuthorizer, authorizer WorkspaceAuth
 		orgAuthz:        orgAuthz,
 		authorizer:      authorizer,
 		repo:            repo,
+		dodoAPIKey:      strings.TrimSpace(cfg.DodoAPIKey),
+		dodoAPIBaseURL:  strings.TrimRight(defaultBillingString(cfg.DodoAPIBaseURL, "https://api.dodopayments.com"), "/"),
+		httpClient:      defaultHTTPClient(cfg.HTTPClient),
 		webhookSecret:   strings.TrimSpace(cfg.WebhookSecret),
 		checkoutBaseURL: strings.TrimRight(defaultBillingString(cfg.CheckoutBaseURL, "https://checkout.dodopayments.com/checkout"), "/"),
 		portalBaseURL:   strings.TrimRight(defaultBillingString(cfg.PortalBaseURL, "https://app.dodopayments.com/customer-portal"), "/"),
@@ -168,7 +177,10 @@ func (m *BillingManager) CreateCheckout(ctx context.Context, caller Caller, orgI
 		return CreateBillingCheckoutResult{}, err
 	}
 	intentID := uuid.New()
-	checkoutURL := m.checkoutURL(intentID, plan.Key, input.BillingPeriod, input.SeatQuantity, input.ReturnURL)
+	checkoutURL, dodoCheckoutID, err := m.createDodoCheckoutSession(ctx, caller, orgID, intentID, plan, input, metadata)
+	if err != nil {
+		return CreateBillingCheckoutResult{}, err
+	}
 	intent, err := m.repo.CreateBillingCheckoutIntent(ctx, repository.BillingCheckoutIntentInput{
 		OrganizationID:   orgID,
 		CreatedByUserID:  caller.UserID,
@@ -177,6 +189,7 @@ func (m *BillingManager) CreateCheckout(ctx context.Context, caller Caller, orgI
 		SeatQuantity:     input.SeatQuantity,
 		ReturnURL:        input.ReturnURL,
 		CheckoutURL:      checkoutURL,
+		DodoCheckoutID:   dodoCheckoutID,
 		Metadata:         metadata,
 	})
 	if err != nil {
@@ -392,6 +405,65 @@ func (m *BillingManager) applySubscriptionWebhook(ctx context.Context, envelope 
 		sourceSubscriptionID = &subscription.ID
 	}
 	return m.repo.UpsertOrganizationEntitlements(ctx, orgID, entitlements, sourceSubscriptionID, subscription.ExpiresAt)
+}
+
+func (m *BillingManager) createDodoCheckoutSession(ctx context.Context, caller Caller, _ uuid.UUID, intentID uuid.UUID, plan billingpkg.Plan, input CreateBillingCheckoutInput, metadata json.RawMessage) (string, string, error) {
+	if m.dodoAPIKey == "" {
+		return m.checkoutURL(intentID, plan.Key, input.BillingPeriod, input.SeatQuantity, input.ReturnURL), "", nil
+	}
+	productID := plan.DodoProductIDs[input.BillingPeriod]
+	if productID == "" {
+		return "", "", validationError("invalid_billing_period", "selected plan does not have a Dodo product for this billing period")
+	}
+	requestPayload := map[string]any{
+		"product_cart": []map[string]any{
+			{
+				"product_id": productID,
+				"quantity":   input.SeatQuantity,
+			},
+		},
+		"return_url": input.ReturnURL,
+		"metadata":   json.RawMessage(metadata),
+	}
+	if caller.Email != "" || caller.DisplayName != "" {
+		requestPayload["customer"] = map[string]string{
+			"email": caller.Email,
+			"name":  caller.DisplayName,
+		}
+	}
+	payload, err := json.Marshal(requestPayload)
+	if err != nil {
+		return "", "", fmt.Errorf("marshal dodo checkout request: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, m.dodoAPIBaseURL+"/checkouts", strings.NewReader(string(payload)))
+	if err != nil {
+		return "", "", fmt.Errorf("build dodo checkout request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+m.dodoAPIKey)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := m.httpClient.Do(req)
+	if err != nil {
+		return "", "", fmt.Errorf("create dodo checkout session: %w", err)
+	}
+	defer resp.Body.Close()
+	responseBody, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return "", "", fmt.Errorf("read dodo checkout response: %w", err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "", "", fmt.Errorf("create dodo checkout session: dodo returned HTTP %d", resp.StatusCode)
+	}
+	var decoded struct {
+		SessionID   string `json:"session_id"`
+		CheckoutURL string `json:"checkout_url"`
+	}
+	if err := json.Unmarshal(responseBody, &decoded); err != nil {
+		return "", "", fmt.Errorf("decode dodo checkout response: %w", err)
+	}
+	if strings.TrimSpace(decoded.CheckoutURL) == "" {
+		return "", "", errors.New("dodo checkout response did not include checkout_url")
+	}
+	return decoded.CheckoutURL, decoded.SessionID, nil
 }
 
 func (m *BillingManager) checkoutURL(intentID uuid.UUID, planKey string, period string, seats int, returnURL string) string {
@@ -635,6 +707,13 @@ func defaultBillingString(value string, fallback string) string {
 		return fallback
 	}
 	return value
+}
+
+func defaultHTTPClient(client *http.Client) *http.Client {
+	if client != nil {
+		return client
+	}
+	return &http.Client{Timeout: 10 * time.Second}
 }
 
 func optionalString(value string) *string {
