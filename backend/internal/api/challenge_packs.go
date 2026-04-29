@@ -454,7 +454,7 @@ func writeChallengePackEntitlementError(w http.ResponseWriter, logger *slog.Logg
 	var gateErr billingpkg.GateError
 	switch {
 	case errors.As(err, &gateErr):
-		writeBillingGateError(w, http.StatusForbidden, gateErr.Decision)
+		writeBillingGateError(w, gateErr.Decision)
 	default:
 		logger.Error("challenge pack entitlement gate failed", "error", err)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal server error")

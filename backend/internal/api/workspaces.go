@@ -402,7 +402,7 @@ func handleWorkspaceError(w http.ResponseWriter, logger *slog.Logger, err error)
 	case errors.Is(err, ErrForbidden):
 		writeError(w, http.StatusForbidden, "forbidden", "access denied")
 	case errors.As(err, &gateErr):
-		writeBillingGateError(w, http.StatusForbidden, gateErr.Decision)
+		writeBillingGateError(w, gateErr.Decision)
 	case errors.Is(err, repository.ErrWorkspaceNotFound):
 		writeError(w, http.StatusNotFound, "not_found", "workspace not found")
 	case errors.Is(err, repository.ErrSlugTaken):

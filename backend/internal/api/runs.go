@@ -143,7 +143,7 @@ func createRunHandler(logger *slog.Logger, service RunCreationService) http.Hand
 			default:
 				var gateErr billing.GateError
 				if errors.As(err, &gateErr) {
-					writeBillingGateError(w, http.StatusForbidden, gateErr.Decision)
+					writeBillingGateError(w, gateErr.Decision)
 					return
 				}
 

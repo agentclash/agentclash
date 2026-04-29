@@ -17,6 +17,7 @@ func TestLoadConfigFromEnv_DefaultAuthModeDev(t *testing.T) {
 	unsetEnv(t, "ARTIFACT_SIGNING_SECRET")
 	unsetEnv(t, "ARTIFACT_STORAGE_BACKEND")
 	unsetEnv(t, "AGENTCLASH_SECRETS_MASTER_KEY")
+	unsetDodoPaymentsEnv(t)
 
 	cfg, err := LoadConfigFromEnv()
 	if err != nil {
@@ -71,6 +72,7 @@ func TestLoadConfigFromEnvGeneratesEphemeralSecretsKeyInDevelopment(t *testing.T
 	unsetEnv(t, "AGENTCLASH_SECRETS_MASTER_KEY")
 	unsetEnv(t, "ARTIFACT_SIGNING_SECRET")
 	unsetEnv(t, "ARTIFACT_STORAGE_BACKEND")
+	unsetDodoPaymentsEnv(t)
 
 	cfg, err := LoadConfigFromEnv()
 	if err != nil {
@@ -97,6 +99,7 @@ func TestLoadConfigFromEnvAcceptsValidSecretsKeyInProduction(t *testing.T) {
 	t.Setenv("AGENTCLASH_SECRETS_MASTER_KEY", base64.StdEncoding.EncodeToString(key))
 	t.Setenv("ARTIFACT_SIGNING_SECRET", "01234567890123456789012345678901234567890123")
 	t.Setenv("ARTIFACT_STORAGE_BACKEND", "filesystem")
+	unsetDodoPaymentsEnv(t)
 
 	cfg, err := LoadConfigFromEnv()
 	if err != nil {
@@ -147,4 +150,67 @@ func TestLoadConfigFromEnvRejectsInvalidSecretsKey(t *testing.T) {
 	if !errors.Is(err, ErrInvalidConfig) {
 		t.Fatalf("error = %v, want ErrInvalidConfig", err)
 	}
+}
+
+func TestLoadConfigFromEnvRequiresDodoWebhookSecretWhenAPIKeyConfigured(t *testing.T) {
+	setRequiredProductionConfig(t)
+	t.Setenv("DODO_PAYMENTS_API_KEY", "dodo_live_key")
+	unsetEnv(t, "DODO_PAYMENTS_WEBHOOK_KEY")
+
+	_, err := LoadConfigFromEnv()
+	if err == nil {
+		t.Fatal("expected Dodo webhook key error")
+	}
+	if !errors.Is(err, ErrInvalidConfig) {
+		t.Fatalf("error = %v, want ErrInvalidConfig", err)
+	}
+	if !strings.Contains(err.Error(), "DODO_PAYMENTS_WEBHOOK_KEY") {
+		t.Fatalf("error = %v, want DODO_PAYMENTS_WEBHOOK_KEY", err)
+	}
+}
+
+func TestLoadConfigFromEnvRejectsMalformedDodoWebhookSecret(t *testing.T) {
+	setRequiredProductionConfig(t)
+	t.Setenv("DODO_PAYMENTS_WEBHOOK_KEY", "raw-secret")
+
+	_, err := LoadConfigFromEnv()
+	if err == nil {
+		t.Fatal("expected malformed Dodo webhook key error")
+	}
+	if !errors.Is(err, ErrInvalidConfig) {
+		t.Fatalf("error = %v, want ErrInvalidConfig", err)
+	}
+}
+
+func TestLoadConfigFromEnvAcceptsWhsecDodoWebhookSecret(t *testing.T) {
+	setRequiredProductionConfig(t)
+	t.Setenv("DODO_PAYMENTS_API_KEY", "dodo_live_key")
+	t.Setenv("DODO_PAYMENTS_WEBHOOK_KEY", "whsec_"+base64.StdEncoding.EncodeToString([]byte("dodo-webhook-secret")))
+
+	cfg, err := LoadConfigFromEnv()
+	if err != nil {
+		t.Fatalf("LoadConfigFromEnv returned error: %v", err)
+	}
+	if cfg.DodoPaymentsWebhookKey == "" {
+		t.Fatal("DodoPaymentsWebhookKey is empty")
+	}
+}
+
+func setRequiredProductionConfig(t *testing.T) {
+	t.Helper()
+	key := make([]byte, secrets.MasterKeySize)
+	if _, err := rand.Read(key); err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("AGENTCLASH_SECRETS_MASTER_KEY", base64.StdEncoding.EncodeToString(key))
+	t.Setenv("ARTIFACT_SIGNING_SECRET", "01234567890123456789012345678901234567890123")
+	t.Setenv("ARTIFACT_STORAGE_BACKEND", "filesystem")
+	unsetDodoPaymentsEnv(t)
+}
+
+func unsetDodoPaymentsEnv(t *testing.T) {
+	t.Helper()
+	unsetEnv(t, "DODO_PAYMENTS_API_KEY")
+	unsetEnv(t, "DODO_PAYMENTS_WEBHOOK_KEY")
 }

@@ -31,25 +31,6 @@ func TestRepositoryBillingEntitlementDefaultsAndWebhookIdempotency(t *testing.T)
 	assertIntPtr(t, "free race quota", entitlements.RacesPerWorkspaceMonth, 25)
 
 	eventTime := time.Date(2026, 4, 29, 0, 0, 0, 0, time.UTC)
-	webhookID := "wh_repo_test_" + uuid.NewString()
-	if err := repo.RecordBillingWebhookEvent(ctx, repository.BillingWebhookEventInput{
-		WebhookID:      webhookID,
-		EventType:      "subscription.active",
-		EventTimestamp: &eventTime,
-		Payload:        []byte(`{"type":"subscription.active"}`),
-	}); err != nil {
-		t.Fatalf("RecordBillingWebhookEvent first returned error: %v", err)
-	}
-	err = repo.RecordBillingWebhookEvent(ctx, repository.BillingWebhookEventInput{
-		WebhookID:      webhookID,
-		EventType:      "subscription.active",
-		EventTimestamp: &eventTime,
-		Payload:        []byte(`{"type":"subscription.active"}`),
-	})
-	if !errors.Is(err, repository.ErrBillingWebhookAlreadyProcessed) {
-		t.Fatalf("RecordBillingWebhookEvent duplicate error = %v, want ErrBillingWebhookAlreadyProcessed", err)
-	}
-
 	proEntitlements := billing.MaterializeEntitlements(billing.MustPlan(billing.PlanPro), billing.PeriodMonthly, 5, "active")
 	subscriptionID := "sub_repo_test_" + uuid.NewString()
 	subscription, err := repo.UpsertBillingSubscription(ctx, repository.BillingSubscriptionInput{

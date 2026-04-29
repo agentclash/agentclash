@@ -5,9 +5,10 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
-	"encoding/hex"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -98,10 +99,23 @@ func TestBillingManagerBuildRunGateRejectsExpiredTrial(t *testing.T) {
 	}
 }
 
+func TestBillingGateHTTPStatus(t *testing.T) {
+	entitlements := billingpkg.DefaultEntitlements()
+	featureDecision := billingpkg.CheckFeature(entitlements, billingpkg.FeaturePrivateChallengePacks)
+	if got := billingGateHTTPStatus(featureDecision); got != http.StatusForbidden {
+		t.Fatalf("feature gate status = %d, want %d", got, http.StatusForbidden)
+	}
+
+	quotaDecision := billingpkg.CheckRaceQuota(entitlements, 25, 1, time.Now())
+	if got := billingGateHTTPStatus(quotaDecision); got != http.StatusPaymentRequired {
+		t.Fatalf("quota gate status = %d, want %d", got, http.StatusPaymentRequired)
+	}
+}
+
 func TestBillingManagerProcessesSignedDodoWebhook(t *testing.T) {
 	workspaceID := uuid.New()
 	repo := newFakeBillingRepository(workspaceID)
-	secret := "agentclash-test-webhook-secret"
+	secret := dodoTestWebhookSecret()
 	manager := NewBillingManager(NewCallerOrganizationAuthorizer(), NewCallerWorkspaceAuthorizer(), repo, BillingManagerConfig{
 		WebhookSecret: secret,
 	})
@@ -140,7 +154,7 @@ func TestBillingManagerProcessesSignedDodoWebhook(t *testing.T) {
 func TestBillingManagerProcessesTrialingDodoWebhookWithExpiry(t *testing.T) {
 	workspaceID := uuid.New()
 	repo := newFakeBillingRepository(workspaceID)
-	secret := "agentclash-test-webhook-secret"
+	secret := dodoTestWebhookSecret()
 	manager := NewBillingManager(NewCallerOrganizationAuthorizer(), NewCallerWorkspaceAuthorizer(), repo, BillingManagerConfig{
 		WebhookSecret: secret,
 	})
@@ -169,7 +183,7 @@ func TestBillingManagerRejectsInvalidDodoWebhookSignature(t *testing.T) {
 	workspaceID := uuid.New()
 	repo := newFakeBillingRepository(workspaceID)
 	manager := NewBillingManager(NewCallerOrganizationAuthorizer(), NewCallerWorkspaceAuthorizer(), repo, BillingManagerConfig{
-		WebhookSecret: "secret",
+		WebhookSecret: dodoTestWebhookSecret(),
 	})
 
 	_, err := manager.ProcessDodoWebhook(context.Background(), DodoWebhookHeaders{
@@ -185,10 +199,49 @@ func TestBillingManagerRejectsInvalidDodoWebhookSignature(t *testing.T) {
 	}
 }
 
+func TestBillingManagerRejectsLegacyDodoWebhookSignatureShapes(t *testing.T) {
+	workspaceID := uuid.New()
+	repo := newFakeBillingRepository(workspaceID)
+	secret := dodoTestWebhookSecret()
+	manager := NewBillingManager(NewCallerOrganizationAuthorizer(), NewCallerWorkspaceAuthorizer(), repo, BillingManagerConfig{
+		WebhookSecret: secret,
+	})
+	manager.now = func() time.Time { return time.Unix(1777420800, 0).UTC() }
+
+	body := `{"type":"subscription.active","data":{"subscription_id":"sub_test","customer_id":"cus_test","product_id":"agentclash_pro_monthly","status":"active","quantity":5,"metadata":{"organization_id":"` + repo.orgID.String() + `"}}}`
+	decoded, err := decodeDodoWebhookSecret(secret)
+	if err != nil {
+		t.Fatalf("decode test secret: %v", err)
+	}
+	mac := hmac.New(sha256.New, decoded)
+	_, _ = mac.Write([]byte("wh_legacy_shape.1777420800." + body))
+	digest := mac.Sum(nil)
+
+	legacyHeaders := []string{
+		base64.StdEncoding.EncodeToString(digest),
+		"v1=" + base64.StdEncoding.EncodeToString(digest),
+		fmt.Sprintf("%x", digest),
+		"v1," + base64.StdEncoding.EncodeToString(digest) + ",extra",
+	}
+	for _, signature := range legacyHeaders {
+		_, err := manager.ProcessDodoWebhook(context.Background(), DodoWebhookHeaders{
+			WebhookID:        "wh_legacy_shape",
+			WebhookTimestamp: "1777420800",
+			WebhookSignature: signature,
+		}, []byte(body))
+		if !errors.Is(err, errInvalidWebhookSignature) {
+			t.Fatalf("signature %q error = %v, want invalid webhook signature", signature, err)
+		}
+	}
+	if len(repo.webhookIDs) != 0 {
+		t.Fatalf("recorded webhook count = %d, want 0", len(repo.webhookIDs))
+	}
+}
+
 func TestBillingManagerRejectsStaleDodoWebhookTimestamp(t *testing.T) {
 	workspaceID := uuid.New()
 	repo := newFakeBillingRepository(workspaceID)
-	secret := "agentclash-test-webhook-secret"
+	secret := dodoTestWebhookSecret()
 	manager := NewBillingManager(NewCallerOrganizationAuthorizer(), NewCallerWorkspaceAuthorizer(), repo, BillingManagerConfig{
 		WebhookSecret: secret,
 	})
@@ -324,13 +377,21 @@ func TestBillingManagerCreateCheckoutUsesDodoAPIWhenConfigured(t *testing.T) {
 }
 
 func signedDodoHeaders(secret string, id string, timestamp string, body string) DodoWebhookHeaders {
-	mac := hmac.New(sha256.New, []byte(secret))
+	decoded, err := decodeDodoWebhookSecret(secret)
+	if err != nil {
+		panic(err)
+	}
+	mac := hmac.New(sha256.New, decoded)
 	_, _ = mac.Write([]byte(id + "." + timestamp + "." + body))
 	return DodoWebhookHeaders{
 		WebhookID:        id,
 		WebhookTimestamp: timestamp,
-		WebhookSignature: hex.EncodeToString(mac.Sum(nil)),
+		WebhookSignature: "v1," + base64.StdEncoding.EncodeToString(mac.Sum(nil)),
 	}
+}
+
+func dodoTestWebhookSecret() string {
+	return "whsec_" + base64.StdEncoding.EncodeToString([]byte("agentclash-test-webhook-secret"))
 }
 
 type fakeBillingRepository struct {
@@ -449,14 +510,6 @@ func (f *fakeBillingRepository) GetBillingOverview(context.Context, uuid.UUID) (
 
 func (f *fakeBillingRepository) FindOrganizationByDodoSubscriptionOrCustomer(context.Context, string, string) (uuid.UUID, error) {
 	return f.orgID, nil
-}
-
-func (f *fakeBillingRepository) RecordBillingWebhookEvent(_ context.Context, input repository.BillingWebhookEventInput) error {
-	if f.webhookIDs[input.WebhookID] {
-		return repository.ErrBillingWebhookAlreadyProcessed
-	}
-	f.webhookIDs[input.WebhookID] = true
-	return nil
 }
 
 func (f *fakeBillingRepository) ApplyBillingWebhookEvent(ctx context.Context, event repository.BillingWebhookEventInput, application repository.BillingWebhookApplication) (bool, error) {

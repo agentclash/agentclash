@@ -493,51 +493,22 @@ func (r *Repository) GetBillingOverview(ctx context.Context, orgID uuid.UUID) (B
 func (r *Repository) FindOrganizationByDodoSubscriptionOrCustomer(ctx context.Context, subscriptionID string, customerID string) (uuid.UUID, error) {
 	var orgID uuid.UUID
 	err := r.db.QueryRow(ctx, `
-		SELECT organization_id
-		FROM billing_subscriptions
-		WHERE dodo_subscription_id = $1
-		UNION
-		SELECT organization_id
-		FROM billing_accounts
-		WHERE dodo_customer_id = NULLIF($2, '')
+		SELECT organization_id FROM (
+			SELECT organization_id, 1 AS priority, latest_dodo_event_at AS event_at
+			FROM billing_subscriptions
+			WHERE dodo_subscription_id = $1
+			UNION ALL
+			SELECT organization_id, 2 AS priority, updated_at AS event_at
+			FROM billing_accounts
+			WHERE dodo_customer_id = NULLIF($2, '')
+		) candidates
+		ORDER BY priority, event_at DESC NULLS LAST
 		LIMIT 1
 	`, subscriptionID, customerID).Scan(&orgID)
 	if err != nil {
 		return uuid.Nil, err
 	}
 	return orgID, nil
-}
-
-func (r *Repository) RecordBillingWebhookEvent(ctx context.Context, input BillingWebhookEventInput) error {
-	status := input.Status
-	if status == "" {
-		status = "processed"
-	}
-	payload := normalizeJSON(input.Payload)
-	hash := sha256.Sum256(payload)
-	tag, err := r.db.Exec(ctx, `
-		INSERT INTO billing_webhook_events (
-			webhook_id,
-			event_type,
-			dodo_business_id,
-			payload_type,
-			event_timestamp,
-			processed_at,
-			payload_hash,
-			status,
-			error,
-			payload
-		)
-		VALUES ($1, $2, $3, $4, $5, now(), $6, $7, $8, $9::jsonb)
-		ON CONFLICT (webhook_id) DO NOTHING
-	`, input.WebhookID, input.EventType, input.DodoBusinessID, input.PayloadType, input.EventTimestamp, hex.EncodeToString(hash[:]), status, input.Error, payload)
-	if err != nil {
-		return fmt.Errorf("record billing webhook event: %w", err)
-	}
-	if tag.RowsAffected() == 0 {
-		return ErrBillingWebhookAlreadyProcessed
-	}
-	return nil
 }
 
 func (r *Repository) ApplyBillingWebhookEvent(ctx context.Context, event BillingWebhookEventInput, application BillingWebhookApplication) (bool, error) {

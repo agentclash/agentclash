@@ -457,7 +457,7 @@ func handleMembershipError(w http.ResponseWriter, logger *slog.Logger, err error
 	case errors.Is(err, ErrForbidden):
 		writeError(w, http.StatusForbidden, "forbidden", "access denied")
 	case errors.As(err, &gateErr):
-		writeBillingGateError(w, http.StatusForbidden, gateErr.Decision)
+		writeBillingGateError(w, gateErr.Decision)
 	case errors.Is(err, repository.ErrMembershipNotFound):
 		writeError(w, http.StatusNotFound, "not_found", "membership not found")
 	case errors.Is(err, repository.ErrAlreadyMember):

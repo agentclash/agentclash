@@ -46,8 +46,12 @@ func writeError(w http.ResponseWriter, status int, code string, message string) 
 	})
 }
 
-func writeBillingGateError(w http.ResponseWriter, status int, decision billing.GateDecision) {
-	used := decision.Used
+func writeBillingGateError(w http.ResponseWriter, decision billing.GateDecision) {
+	var used *int
+	if decision.Limit != nil || decision.Remaining != nil || decision.ResetAt != nil {
+		value := decision.Used
+		used = &value
+	}
 	var resetAt *string
 	if decision.ResetAt != nil {
 		formatted := decision.ResetAt.UTC().Format("2006-01-02T15:04:05Z")
@@ -58,17 +62,24 @@ func writeBillingGateError(w http.ResponseWriter, status int, decision billing.G
 		formatted := decision.ExpiresAt.UTC().Format("2006-01-02T15:04:05Z")
 		expiresAt = &formatted
 	}
-	writeJSON(w, status, errorEnvelope{
+	writeJSON(w, billingGateHTTPStatus(decision), errorEnvelope{
 		Error: apiError{
 			Code:          decision.Code,
 			Message:       decision.Message,
 			PlanKey:       decision.PlanKey,
 			UpgradeTarget: decision.UpgradeTarget,
 			Limit:         decision.Limit,
-			Used:          &used,
+			Used:          used,
 			Remaining:     decision.Remaining,
 			ResetAt:       resetAt,
 			ExpiresAt:     expiresAt,
 		},
 	})
+}
+
+func billingGateHTTPStatus(decision billing.GateDecision) int {
+	if decision.Code == billing.GateCodeFeatureNotEntitled {
+		return http.StatusForbidden
+	}
+	return http.StatusPaymentRequired
 }

@@ -493,6 +493,9 @@ challenges:
 	if response.Error.PlanKey != billingpkg.PlanFree {
 		t.Fatalf("plan key = %q, want free", response.Error.PlanKey)
 	}
+	if response.Error.Used != nil {
+		t.Fatalf("used = %d, want omitted for feature gate", *response.Error.Used)
+	}
 	if gate.checkedWorkspace != workspaceID {
 		t.Fatalf("checked workspace = %s, want %s", gate.checkedWorkspace, workspaceID)
 	}

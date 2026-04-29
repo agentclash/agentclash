@@ -33,7 +33,7 @@ const (
 	defaultRateLimitBurst            = 20
 	defaultRateLimitRunCreationRPM   = 30.0
 	defaultRateLimitRunCreationBurst = 10
-	defaultDodoWebhookKey            = "agentclash-dev-dodo-webhook-secret"
+	defaultDodoWebhookKey            = "whsec_YWdlbnRjbGFzaC1kZXYtZG9kby13ZWJob29rLXNlY3JldA=="
 )
 
 var ErrInvalidConfig = errors.New("invalid api server config")
@@ -166,6 +166,14 @@ func LoadConfigFromEnv() (Config, error) {
 	dodoPaymentsWebhookKey := os.Getenv("DODO_PAYMENTS_WEBHOOK_KEY")
 	if dodoPaymentsWebhookKey == "" && isDevelopmentEnvironment(appEnvironment) {
 		dodoPaymentsWebhookKey = defaultDodoWebhookKey
+	}
+	if dodoPaymentsAPIKey != "" && dodoPaymentsWebhookKey == "" {
+		return Config{}, fmt.Errorf("%w: DODO_PAYMENTS_WEBHOOK_KEY must be set when DODO_PAYMENTS_API_KEY is set", ErrInvalidConfig)
+	}
+	if dodoPaymentsWebhookKey != "" {
+		if _, err := decodeDodoWebhookSecret(dodoPaymentsWebhookKey); err != nil {
+			return Config{}, fmt.Errorf("%w: DODO_PAYMENTS_WEBHOOK_KEY must be a whsec_ base64 secret", ErrInvalidConfig)
+		}
 	}
 	frontendURL := os.Getenv("FRONTEND_URL")
 	if frontendURL == "" {

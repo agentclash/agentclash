@@ -5,7 +5,6 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -52,7 +51,6 @@ type BillingRepository interface {
 	UpsertBillingSubscription(ctx context.Context, input repository.BillingSubscriptionInput) (repository.BillingSubscription, error)
 	GetBillingOverview(ctx context.Context, orgID uuid.UUID) (repository.BillingOverview, error)
 	FindOrganizationByDodoSubscriptionOrCustomer(ctx context.Context, subscriptionID string, customerID string) (uuid.UUID, error)
-	RecordBillingWebhookEvent(ctx context.Context, input repository.BillingWebhookEventInput) error
 	ApplyBillingWebhookEvent(ctx context.Context, event repository.BillingWebhookEventInput, application repository.BillingWebhookApplication) (bool, error)
 }
 
@@ -537,14 +535,33 @@ func (m *BillingManager) verifyWebhook(headers DodoWebhookHeaders, rawBody []byt
 	if timestamp.Before(now.Add(-dodoWebhookTimestampTolerance)) || timestamp.After(now.Add(dodoWebhookTimestampTolerance)) {
 		return errInvalidWebhookSignature
 	}
+	secret, err := decodeDodoWebhookSecret(m.webhookSecret)
+	if err != nil {
+		return errInvalidWebhookSignature
+	}
 	signedPayload := headers.WebhookID + "." + headers.WebhookTimestamp + "." + string(rawBody)
-	mac := hmac.New(sha256.New, []byte(m.webhookSecret))
+	mac := hmac.New(sha256.New, secret)
 	_, _ = mac.Write([]byte(signedPayload))
 	expected := mac.Sum(nil)
-	if !signatureMatches(headers.WebhookSignature, expected) {
+	if !dodoSignatureMatches(headers.WebhookSignature, expected) {
 		return errInvalidWebhookSignature
 	}
 	return nil
+}
+
+func decodeDodoWebhookSecret(secret string) ([]byte, error) {
+	secret = strings.TrimSpace(secret)
+	if !strings.HasPrefix(secret, "whsec_") {
+		return nil, errInvalidWebhookSignature
+	}
+	decoded, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(secret, "whsec_"))
+	if err != nil {
+		return nil, errInvalidWebhookSignature
+	}
+	if len(decoded) == 0 {
+		return nil, errInvalidWebhookSignature
+	}
+	return decoded, nil
 }
 
 func parseDodoWebhookTimestamp(value string) (time.Time, error) {
@@ -560,27 +577,15 @@ func parseDodoWebhookTimestamp(value string) (time.Time, error) {
 	return parsed.UTC(), nil
 }
 
-func signatureMatches(header string, expected []byte) bool {
-	hexExpected := hex.EncodeToString(expected)
+func dodoSignatureMatches(header string, expected []byte) bool {
 	base64Expected := base64.StdEncoding.EncodeToString(expected)
-	for _, candidate := range strings.Fields(strings.TrimSpace(header)) {
-		for _, part := range strings.Split(candidate, ",") {
-			part = strings.TrimSpace(part)
-			if part == "" || part == "v1" {
-				continue
-			}
-			if strings.HasPrefix(part, "v1=") {
-				part = strings.TrimPrefix(part, "v1=")
-			}
-			if hmac.Equal([]byte(part), []byte(hexExpected)) || hmac.Equal([]byte(part), []byte(base64Expected)) {
-				return true
-			}
-			if decoded, err := hex.DecodeString(part); err == nil && hmac.Equal(decoded, expected) {
-				return true
-			}
-			if decoded, err := base64.StdEncoding.DecodeString(part); err == nil && hmac.Equal(decoded, expected) {
-				return true
-			}
+	for _, part := range strings.Fields(strings.TrimSpace(header)) {
+		version, signature, ok := strings.Cut(part, ",")
+		if !ok || version != "v1" || signature == "" || strings.Contains(signature, ",") {
+			continue
+		}
+		if hmac.Equal([]byte(signature), []byte(base64Expected)) {
+			return true
 		}
 	}
 	return false
@@ -959,7 +964,7 @@ func writeBillingServiceError(w http.ResponseWriter, logger *slog.Logger, err er
 	case errors.As(err, &validationErr):
 		writeError(w, http.StatusBadRequest, validationErr.Code, validationErr.Message)
 	case errors.As(err, &gateErr):
-		writeBillingGateError(w, http.StatusConflict, gateErr.Decision)
+		writeBillingGateError(w, gateErr.Decision)
 	default:
 		logger.Error("billing service error", "error", err)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal server error")
