@@ -16,51 +16,52 @@ import (
 )
 
 const (
-	defaultBindAddress             = ":8080"
-	defaultDatabaseURL             = "postgres://agentclash:agentclash@localhost:5432/agentclash?sslmode=disable"
-	defaultTemporalTarget          = "localhost:7233"
-	defaultNamespace               = "default"
-	defaultAppEnvironment          = "development"
-	defaultAuthMode                = "dev"
-	defaultShutdownTime            = 10 * time.Second
-	defaultHostedRunCallbackSecret = "agentclash-dev-hosted-callback-secret"
-	minArtifactSigningSecretLength = 32
-	defaultArtifactStorageBackend  = "filesystem"
-	defaultArtifactStorageBucket   = "agentclash-dev-artifacts"
-	defaultArtifactSignedURLTTL    = 5 * time.Minute
-	defaultArtifactMaxUploadBytes  = 100 << 20
-	defaultRateLimitRPS            = 10.0
-	defaultRateLimitBurst          = 20
-	defaultRateLimitRunCreationRPM = 30.0
+	defaultBindAddress               = ":8080"
+	defaultDatabaseURL               = "postgres://agentclash:agentclash@localhost:5432/agentclash?sslmode=disable"
+	defaultTemporalTarget            = "localhost:7233"
+	defaultNamespace                 = "default"
+	defaultAppEnvironment            = "development"
+	defaultAuthMode                  = "dev"
+	defaultShutdownTime              = 10 * time.Second
+	defaultHostedRunCallbackSecret   = "agentclash-dev-hosted-callback-secret"
+	minArtifactSigningSecretLength   = 32
+	defaultArtifactStorageBackend    = "filesystem"
+	defaultArtifactStorageBucket     = "agentclash-dev-artifacts"
+	defaultArtifactSignedURLTTL      = 5 * time.Minute
+	defaultArtifactMaxUploadBytes    = 100 << 20
+	defaultRateLimitRPS              = 10.0
+	defaultRateLimitBurst            = 20
+	defaultRateLimitRunCreationRPM   = 30.0
 	defaultRateLimitRunCreationBurst = 10
+	defaultDodoWebhookKey            = "agentclash-dev-dodo-webhook-secret"
 )
 
 var ErrInvalidConfig = errors.New("invalid api server config")
 
 type Config struct {
-	AppEnvironment           string
-	AuthMode                 string // "dev" or "workos"
-	WorkOSClientID           string // required when AuthMode is "workos"
-	WorkOSIssuer             string // optional; defaults to "https://api.workos.com/user_management/{ClientID}"
-	BindAddress              string
-	DatabaseURL              string
-	TemporalAddress          string
-	TemporalNamespace        string
-	HostedRunCallbackSecret  string
-	CORSAllowedOrigins       map[string]struct{} // parsed from CORS_ALLOWED_ORIGINS; empty means wildcard in dev, deny in prod
-	ShutdownTimeout          time.Duration
-	ArtifactStorageBackend   string
-	ArtifactStorageBucket    string
-	ArtifactFilesystemRoot   string
-	ArtifactS3Region         string
-	ArtifactS3Endpoint       string
-	ArtifactS3AccessKeyID    string
-	ArtifactS3SecretKey      string
-	ArtifactS3ForcePathStyle bool
-	ArtifactSigningSecret    string
-	ArtifactSignedURLTTL     time.Duration
-	ArtifactMaxUploadBytes   int64
-	SecretsCipher            *secrets.AESGCMCipher
+	AppEnvironment            string
+	AuthMode                  string // "dev" or "workos"
+	WorkOSClientID            string // required when AuthMode is "workos"
+	WorkOSIssuer              string // optional; defaults to "https://api.workos.com/user_management/{ClientID}"
+	BindAddress               string
+	DatabaseURL               string
+	TemporalAddress           string
+	TemporalNamespace         string
+	HostedRunCallbackSecret   string
+	CORSAllowedOrigins        map[string]struct{} // parsed from CORS_ALLOWED_ORIGINS; empty means wildcard in dev, deny in prod
+	ShutdownTimeout           time.Duration
+	ArtifactStorageBackend    string
+	ArtifactStorageBucket     string
+	ArtifactFilesystemRoot    string
+	ArtifactS3Region          string
+	ArtifactS3Endpoint        string
+	ArtifactS3AccessKeyID     string
+	ArtifactS3SecretKey       string
+	ArtifactS3ForcePathStyle  bool
+	ArtifactSigningSecret     string
+	ArtifactSignedURLTTL      time.Duration
+	ArtifactMaxUploadBytes    int64
+	SecretsCipher             *secrets.AESGCMCipher
 	RateLimitRPS              float64
 	RateLimitBurst            int
 	RateLimitRunCreationRPM   float64
@@ -68,6 +69,10 @@ type Config struct {
 	ResendAPIKey              string
 	ResendFromEmail           string
 	FrontendURL               string
+	DodoPaymentsAPIKey        string
+	DodoPaymentsWebhookKey    string
+	DodoCheckoutBaseURL       string
+	DodoPortalBaseURL         string
 }
 
 func LoadConfigFromEnv() (Config, error) {
@@ -156,33 +161,38 @@ func LoadConfigFromEnv() (Config, error) {
 
 	resendAPIKey := os.Getenv("RESEND_API_KEY")
 	resendFromEmail := os.Getenv("RESEND_FROM_EMAIL")
+	dodoPaymentsAPIKey := os.Getenv("DODO_PAYMENTS_API_KEY")
+	dodoPaymentsWebhookKey := os.Getenv("DODO_PAYMENTS_WEBHOOK_KEY")
+	if dodoPaymentsWebhookKey == "" && isDevelopmentEnvironment(appEnvironment) {
+		dodoPaymentsWebhookKey = defaultDodoWebhookKey
+	}
 	frontendURL := os.Getenv("FRONTEND_URL")
 	if frontendURL == "" {
 		frontendURL = "http://localhost:3000"
 	}
 
 	cfg := Config{
-		AppEnvironment:           appEnvironment,
-		AuthMode:                 authMode,
-		WorkOSClientID:           workosClientID,
-		WorkOSIssuer:             workosIssuer,
-		BindAddress:              bindAddress,
-		DatabaseURL:              databaseURL,
-		TemporalAddress:          temporalAddress,
-		TemporalNamespace:        temporalNamespace,
-		HostedRunCallbackSecret:  hostedRunCallbackSecret,
-		CORSAllowedOrigins:       corsAllowedOrigins,
-		ShutdownTimeout:          defaultShutdownTime,
-		ArtifactStorageBackend:   artifactStorageBackend,
-		ArtifactStorageBucket:    artifactStorageBucket,
-		ArtifactFilesystemRoot:   artifactFilesystemRoot,
-		ArtifactS3Region:         artifactS3Region,
-		ArtifactS3Endpoint:       artifactS3Endpoint,
-		ArtifactS3AccessKeyID:    artifactS3AccessKeyID,
-		ArtifactS3SecretKey:      artifactS3SecretKey,
-		ArtifactS3ForcePathStyle: artifactS3ForcePathStyle,
-		ArtifactSigningSecret:    artifactSigningSecret,
-		ArtifactSignedURLTTL:     artifactSignedURLTTL,
+		AppEnvironment:            appEnvironment,
+		AuthMode:                  authMode,
+		WorkOSClientID:            workosClientID,
+		WorkOSIssuer:              workosIssuer,
+		BindAddress:               bindAddress,
+		DatabaseURL:               databaseURL,
+		TemporalAddress:           temporalAddress,
+		TemporalNamespace:         temporalNamespace,
+		HostedRunCallbackSecret:   hostedRunCallbackSecret,
+		CORSAllowedOrigins:        corsAllowedOrigins,
+		ShutdownTimeout:           defaultShutdownTime,
+		ArtifactStorageBackend:    artifactStorageBackend,
+		ArtifactStorageBucket:     artifactStorageBucket,
+		ArtifactFilesystemRoot:    artifactFilesystemRoot,
+		ArtifactS3Region:          artifactS3Region,
+		ArtifactS3Endpoint:        artifactS3Endpoint,
+		ArtifactS3AccessKeyID:     artifactS3AccessKeyID,
+		ArtifactS3SecretKey:       artifactS3SecretKey,
+		ArtifactS3ForcePathStyle:  artifactS3ForcePathStyle,
+		ArtifactSigningSecret:     artifactSigningSecret,
+		ArtifactSignedURLTTL:      artifactSignedURLTTL,
 		ArtifactMaxUploadBytes:    artifactMaxUploadBytes,
 		RateLimitRPS:              defaultRateLimitRPS,
 		RateLimitBurst:            defaultRateLimitBurst,
@@ -191,6 +201,10 @@ func LoadConfigFromEnv() (Config, error) {
 		ResendAPIKey:              resendAPIKey,
 		ResendFromEmail:           resendFromEmail,
 		FrontendURL:               frontendURL,
+		DodoPaymentsAPIKey:        dodoPaymentsAPIKey,
+		DodoPaymentsWebhookKey:    dodoPaymentsWebhookKey,
+		DodoCheckoutBaseURL:       os.Getenv("DODO_CHECKOUT_BASE_URL"),
+		DodoPortalBaseURL:         os.Getenv("DODO_PORTAL_BASE_URL"),
 	}
 
 	if err := validateArtifactConfig(cfg); err != nil {

@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/agentclash/agentclash/backend/internal/billing"
 	"github.com/agentclash/agentclash/backend/internal/domain"
 	"github.com/google/uuid"
 )
@@ -140,6 +141,12 @@ func createRunHandler(logger *slog.Logger, service RunCreationService) http.Hand
 			case errors.Is(err, ErrForbidden):
 				writeAuthzError(w, err)
 			default:
+				var gateErr billing.GateError
+				if errors.As(err, &gateErr) {
+					writeBillingGateError(w, http.StatusForbidden, gateErr.Decision)
+					return
+				}
+
 				var validationErr RunCreationValidationError
 				if errors.As(err, &validationErr) {
 					writeError(w, http.StatusBadRequest, validationErr.Code, validationErr.Message)

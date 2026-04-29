@@ -16,8 +16,9 @@ type BuildVersionRunnableDeployment struct {
 }
 
 type CreateEvalSessionWithQueuedRunsParams struct {
-	Session CreateEvalSessionParams
-	Runs    []CreateQueuedRunParams
+	Session         CreateEvalSessionParams
+	Runs            []CreateQueuedRunParams
+	EntitlementGate *RunEntitlementGate
 }
 
 type CreateEvalSessionWithQueuedRunsResult struct {
@@ -95,6 +96,12 @@ func (r *Repository) CreateEvalSessionWithQueuedRuns(
 	defer rollback(ctx, tx)
 
 	queries := r.queries.WithTx(tx)
+	if params.EntitlementGate != nil && len(params.Runs) > 0 {
+		workspaceID := params.Runs[0].WorkspaceID
+		if err := enforceRunEntitlementGate(ctx, tx, workspaceID, params.EntitlementGate); err != nil {
+			return CreateEvalSessionWithQueuedRunsResult{}, err
+		}
+	}
 	sessionRow, err := queries.CreateEvalSession(ctx, repositorysqlc.CreateEvalSessionParams{
 		Status:                 string(domain.EvalSessionStatusQueued),
 		Repetitions:            params.Session.Repetitions,

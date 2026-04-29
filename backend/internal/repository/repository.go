@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/agentclash/agentclash/backend/internal/billing"
 	"github.com/agentclash/agentclash/backend/internal/domain"
 	repositorysqlc "github.com/agentclash/agentclash/backend/internal/repository/sqlc"
 	"github.com/agentclash/agentclash/backend/internal/runevents"
@@ -163,6 +164,7 @@ type CreateQueuedRunParams struct {
 	CaseSelections         []CreateQueuedRunCaseSelectionParams
 	RaceContext            bool
 	RaceContextMinStepGap  *int32
+	EntitlementGate        *RunEntitlementGate
 }
 
 type CreateQueuedRunResult struct {
@@ -450,6 +452,12 @@ func (r *Repository) CreateQueuedRun(ctx context.Context, params CreateQueuedRun
 	}
 	defer rollback(ctx, tx)
 
+	if params.EntitlementGate != nil {
+		if err := enforceRunEntitlementGate(ctx, tx, params.WorkspaceID, params.EntitlementGate); err != nil {
+			return CreateQueuedRunResult{}, err
+		}
+	}
+
 	result, err := createQueuedRunWithQueries(ctx, r.queries.WithTx(tx), params, time.Now().UTC())
 	if err != nil {
 		return CreateQueuedRunResult{}, err
@@ -460,6 +468,72 @@ func (r *Repository) CreateQueuedRun(ctx context.Context, params CreateQueuedRun
 	}
 
 	return result, nil
+}
+
+func enforceRunEntitlementGate(ctx context.Context, tx pgx.Tx, workspaceID uuid.UUID, gate *RunEntitlementGate) error {
+	if gate == nil {
+		return nil
+	}
+	raceCost := gate.RaceCost
+	if raceCost <= 0 {
+		raceCost = 1
+	}
+	concurrencyCost := gate.ConcurrencyCost
+	if concurrencyCost <= 0 {
+		concurrencyCost = raceCost
+	}
+
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1::text, 432))`, workspaceID.String()); err != nil {
+		return fmt.Errorf("lock workspace billing gate: %w", err)
+	}
+
+	if gate.Entitlements.ConcurrentRaces != nil {
+		var activeRuns int
+		if err := tx.QueryRow(ctx, activeWorkspaceRunsSQL, workspaceID).Scan(&activeRuns); err != nil {
+			return fmt.Errorf("count active workspace runs: %w", err)
+		}
+		decision := billing.CheckConcurrency(gate.Entitlements, activeRuns, concurrencyCost)
+		if !decision.Allowed {
+			return billing.GateError{Decision: decision}
+		}
+	}
+
+	if gate.Entitlements.RacesPerWorkspaceMonth == nil {
+		return nil
+	}
+	if gate.WindowStart.IsZero() || gate.WindowEnd.IsZero() {
+		return fmt.Errorf("billing quota gate requires a usage window")
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO workspace_usage_windows (workspace_id, window_start, window_end, race_count)
+		VALUES ($1, $2, $3, 0)
+		ON CONFLICT (workspace_id, window_start) DO NOTHING
+	`, workspaceID, gate.WindowStart, gate.WindowEnd); err != nil {
+		return fmt.Errorf("ensure workspace usage window: %w", err)
+	}
+	var raceCount int
+	if err := tx.QueryRow(ctx, `
+		SELECT race_count
+		FROM workspace_usage_windows
+		WHERE workspace_id = $1
+		  AND window_start = $2
+		FOR UPDATE
+	`, workspaceID, gate.WindowStart).Scan(&raceCount); err != nil {
+		return fmt.Errorf("lock workspace usage window: %w", err)
+	}
+	decision := billing.CheckRaceQuota(gate.Entitlements, raceCount, raceCost, gate.WindowEnd)
+	if !decision.Allowed {
+		return billing.GateError{Decision: decision}
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE workspace_usage_windows
+		SET race_count = race_count + $3
+		WHERE workspace_id = $1
+		  AND window_start = $2
+	`, workspaceID, gate.WindowStart, raceCost); err != nil {
+		return fmt.Errorf("consume workspace race quota: %w", err)
+	}
+	return nil
 }
 
 func validateCreateQueuedRunParams(params CreateQueuedRunParams) error {
@@ -3645,6 +3719,33 @@ func (r *Repository) CreateOrganizationWithAdmin(ctx context.Context, input Crea
 	`, org.ID, input.UserID)
 	if err != nil {
 		return OrganizationRow{}, fmt.Errorf("insert org admin membership: %w", err)
+	}
+
+	defaultEntitlements := billing.DefaultEntitlements()
+	featureFlags, err := json.Marshal(defaultEntitlements.FeatureFlags)
+	if err != nil {
+		return OrganizationRow{}, fmt.Errorf("marshal default entitlements: %w", err)
+	}
+	_, err = tx.Exec(ctx, `
+		INSERT INTO organization_entitlements (
+			organization_id,
+			plan_key,
+			billing_period,
+			status,
+			seat_quantity,
+			seats_limit,
+			workspaces_limit,
+			races_per_workspace_month,
+			max_models_per_race,
+			replay_retention_days,
+			concurrency_limit,
+			feature_flags
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb)
+		ON CONFLICT (organization_id) DO NOTHING
+	`, org.ID, defaultEntitlements.PlanKey, defaultEntitlements.BillingPeriod, defaultEntitlements.Status, defaultEntitlements.SeatQuantity, defaultEntitlements.SeatsLimit, defaultEntitlements.WorkspacesLimit, defaultEntitlements.RacesPerWorkspaceMonth, defaultEntitlements.MaxModelsPerRace, defaultEntitlements.ReplayRetentionDays, defaultEntitlements.ConcurrentRaces, featureFlags)
+	if err != nil {
+		return OrganizationRow{}, fmt.Errorf("insert default organization entitlements: %w", err)
 	}
 
 	if err := tx.Commit(ctx); err != nil {

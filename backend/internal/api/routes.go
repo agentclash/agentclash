@@ -35,10 +35,12 @@ func registerProtectedRoutes(
 	workspaceSecretsService WorkspaceSecretsService,
 	cliAuthService CLIAuthService,
 	publicShareService PublicShareService,
+	billingService BillingService,
 ) {
 	router.Get("/auth/session", sessionHandler)
 	router.Get("/users/me", getUserMeHandler(logger, userService))
 	router.Post("/onboarding", onboardHandler(logger, onboardingService))
+	registerBillingRoutes(router, logger, billingService)
 
 	router.Route("/organizations", func(r chi.Router) {
 		r.Get("/", listOrganizationsHandler(logger, orgService))

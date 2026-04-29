@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/agentclash/agentclash/backend/internal/billing"
 	"github.com/agentclash/agentclash/backend/internal/domain"
 	"github.com/google/uuid"
 )
@@ -106,6 +107,12 @@ func createEvalSessionHandler(logger *slog.Logger, service RunCreationService) h
 }
 
 func writeCreateEvalSessionError(logger *slog.Logger, w http.ResponseWriter, r *http.Request, err error) {
+	var gateErr billing.GateError
+	if errors.As(err, &gateErr) {
+		writeBillingGateError(w, http.StatusForbidden, gateErr.Decision)
+		return
+	}
+
 	var validationErr RunCreationValidationError
 	if errors.As(err, &validationErr) {
 		writeError(w, http.StatusBadRequest, validationErr.Code, validationErr.Message)

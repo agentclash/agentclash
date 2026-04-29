@@ -42,6 +42,7 @@ type RunCreationManager struct {
 	workflowStarter            RunWorkflowStarter
 	evalSessionWorkflowStarter EvalSessionWorkflowStarter
 	budgetChecker              budget.BudgetChecker
+	entitlementGate            EntitlementGateService
 	now                        func() time.Time
 }
 
@@ -77,6 +78,11 @@ func (m *RunCreationManager) WithEvalSessionWorkflowStarter(starter EvalSessionW
 	}
 
 	m.evalSessionWorkflowStarter = starter
+	return m
+}
+
+func (m *RunCreationManager) WithEntitlementGateService(service EntitlementGateService) *RunCreationManager {
+	m.entitlementGate = service
 	return m
 }
 
@@ -267,6 +273,14 @@ func (m *RunCreationManager) CreateRun(ctx context.Context, caller Caller, input
 		return CreateRunResult{}, err
 	}
 
+	var entitlementGate *repository.RunEntitlementGate
+	if m.entitlementGate != nil {
+		entitlementGate, err = m.entitlementGate.BuildRunGate(ctx, input.WorkspaceID, len(runAgents), 1)
+		if err != nil {
+			return CreateRunResult{}, err
+		}
+	}
+
 	result, err := m.repo.CreateQueuedRun(ctx, repository.CreateQueuedRunParams{
 		OrganizationID:         organizationID,
 		WorkspaceID:            input.WorkspaceID,
@@ -281,6 +295,7 @@ func (m *RunCreationManager) CreateRun(ctx context.Context, caller Caller, input
 		CaseSelections:         caseSelections,
 		RaceContext:            input.RaceContext,
 		RaceContextMinStepGap:  input.RaceContextMinStepGap,
+		EntitlementGate:        entitlementGate,
 	})
 	if err != nil {
 		return CreateRunResult{}, fmt.Errorf("create queued run: %w", err)

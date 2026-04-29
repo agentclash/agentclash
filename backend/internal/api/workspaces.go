@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"time"
 
+	billingpkg "github.com/agentclash/agentclash/backend/internal/billing"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -61,17 +62,27 @@ type WorkspaceCRUDRepository interface {
 }
 
 type WorkspaceManager struct {
-	orgAuthz OrganizationAuthorizer
-	repo     WorkspaceCRUDRepository
+	orgAuthz        OrganizationAuthorizer
+	repo            WorkspaceCRUDRepository
+	entitlementGate EntitlementGateService
 }
 
-func NewWorkspaceManager(orgAuthz OrganizationAuthorizer, repo WorkspaceCRUDRepository) *WorkspaceManager {
-	return &WorkspaceManager{orgAuthz: orgAuthz, repo: repo}
+func NewWorkspaceManager(orgAuthz OrganizationAuthorizer, repo WorkspaceCRUDRepository, entitlementGate ...EntitlementGateService) *WorkspaceManager {
+	var gate EntitlementGateService
+	if len(entitlementGate) > 0 {
+		gate = entitlementGate[0]
+	}
+	return &WorkspaceManager{orgAuthz: orgAuthz, repo: repo, entitlementGate: gate}
 }
 
 func (m *WorkspaceManager) CreateWorkspace(ctx context.Context, caller Caller, orgID uuid.UUID, input CreateWorkspaceInput) (WorkspaceResult, error) {
 	if err := m.orgAuthz.AuthorizeOrganizationAdmin(ctx, caller, orgID); err != nil {
 		return WorkspaceResult{}, err
+	}
+	if m.entitlementGate != nil {
+		if err := m.entitlementGate.CheckWorkspaceCreation(ctx, orgID); err != nil {
+			return WorkspaceResult{}, err
+		}
 	}
 
 	slug := ""
@@ -382,9 +393,12 @@ func updateWorkspaceHandler(logger *slog.Logger, service WorkspaceService) http.
 }
 
 func handleWorkspaceError(w http.ResponseWriter, logger *slog.Logger, err error) {
+	var gateErr billingpkg.GateError
 	switch {
 	case errors.Is(err, ErrForbidden):
 		writeError(w, http.StatusForbidden, "forbidden", "access denied")
+	case errors.As(err, &gateErr):
+		writeBillingGateError(w, http.StatusForbidden, gateErr.Decision)
 	case errors.Is(err, repository.ErrWorkspaceNotFound):
 		writeError(w, http.StatusNotFound, "not_found", "workspace not found")
 	case errors.Is(err, repository.ErrSlugTaken):

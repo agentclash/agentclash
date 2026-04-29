@@ -120,9 +120,15 @@ func main() {
 	agentBuildManager := api.NewAgentBuildManager(repo)
 	userManager := api.NewUserManager(repo)
 	orgAuthz := api.NewCallerOrganizationAuthorizer()
+	billingManager := api.NewBillingManager(orgAuthz, authorizer, repo, api.BillingManagerConfig{
+		WebhookSecret:   cfg.DodoPaymentsWebhookKey,
+		CheckoutBaseURL: cfg.DodoCheckoutBaseURL,
+		PortalBaseURL:   cfg.DodoPortalBaseURL,
+	})
+	runCreationManager.WithEntitlementGateService(billingManager)
 	orgManager := api.NewOrganizationManager(orgAuthz, repo)
-	wsManager := api.NewWorkspaceManager(orgAuthz, repo)
-	orgMembershipManager := api.NewOrgMembershipManager(orgAuthz, repo)
+	wsManager := api.NewWorkspaceManager(orgAuthz, repo, billingManager)
+	orgMembershipManager := api.NewOrgMembershipManager(orgAuthz, repo, billingManager)
 
 	var emailSender email.Sender
 	if cfg.ResendAPIKey != "" {
@@ -184,6 +190,7 @@ func main() {
 		infraManager,
 		workspaceSecretsManager,
 		publicShareManager,
+		billingManager,
 		eventSubscriber,
 		cliAuthManager,
 	)
