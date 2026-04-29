@@ -1,7 +1,7 @@
 "use client";
 
 import type React from "react";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { getCalApi } from "@calcom/embed-react";
 import { useAuth } from "@workos-inc/authkit-nextjs/components";
@@ -698,91 +698,297 @@ function SandboxLanes() {
 }
 
 function FeedbackLoop() {
+  return <ParticleFlywheel />;
+}
+
+function ParticleFlywheel() {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const N_PER = 850;
+    const N = N_PER * 2;
+    const CYCLE_MS = 5500;
+
+    type P = {
+      group: 0 | 1;
+      sphTheta: number;
+      sphPhi: number;
+      sphRadius: number;
+      flyTheta: number;
+      flyPhi: number;
+      flyRadius: number;
+      jitterX: number;
+      jitterY: number;
+    };
+
+    const particles: P[] = [];
+    for (let i = 0; i < N; i++) {
+      const u = Math.random();
+      const v = Math.random();
+      particles.push({
+        group: i < N_PER ? 0 : 1,
+        sphTheta: 2 * Math.PI * u,
+        sphPhi: Math.acos(2 * v - 1),
+        // Bias toward surface so the sphere reads as a shell, not a fog.
+        sphRadius: 0.78 + Math.pow(Math.random(), 0.45) * 0.22,
+        flyTheta: (i / N) * Math.PI * 2 + (Math.random() - 0.5) * 0.08,
+        flyPhi: Math.random() * Math.PI * 2,
+        flyRadius: 0.85 + Math.random() * 0.15,
+        jitterX: (Math.random() - 0.5) * 2,
+        jitterY: (Math.random() - 0.5) * 2,
+      });
+    }
+
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    let W = 0;
+    let H = 0;
+
+    const resize = () => {
+      const rect = canvas.getBoundingClientRect();
+      W = rect.width;
+      H = rect.height;
+      canvas.width = Math.max(1, Math.floor(W * dpr));
+      canvas.height = Math.max(1, Math.floor(H * dpr));
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    };
+    resize();
+    const ro = new ResizeObserver(resize);
+    ro.observe(canvas);
+
+    const lerp = (a: number, b: number, k: number) => a + (b - a) * k;
+    const smooth = (k: number) => k * k * (3 - 2 * k);
+
+    const reduceMotion = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+
+    // Pointer state — canvas-local coords, -1 when absent so repulsion is off.
+    let pointerX = -1;
+    let pointerY = -1;
+    let pointerActive = false;
+
+    const onPointerMove = (e: PointerEvent) => {
+      const rect = canvas.getBoundingClientRect();
+      pointerX = e.clientX - rect.left;
+      pointerY = e.clientY - rect.top;
+      pointerActive = true;
+    };
+    const onPointerLeave = () => {
+      pointerActive = false;
+    };
+    canvas.addEventListener("pointermove", onPointerMove, { passive: true });
+    canvas.addEventListener("pointerleave", onPointerLeave, { passive: true });
+    canvas.addEventListener("pointercancel", onPointerLeave, { passive: true });
+
+    // Run/pause control: only animate when (a) section is visible on screen
+    // and (b) the document/tab is visible.
+    let raf = 0;
+    let elapsedMs = 0;
+    let prevTs = 0;
+    let onScreen = false;
+    let pageVisible =
+      typeof document === "undefined" ? true : !document.hidden;
+    let running = false;
+
+    const tick = (now: number) => {
+      const dt = prevTs === 0 ? 16 : Math.min(60, now - prevTs);
+      prevTs = now;
+      if (!reduceMotion) {
+        elapsedMs = (elapsedMs + dt) % CYCLE_MS;
+      }
+      draw(now);
+      if (running) raf = requestAnimationFrame(tick);
+    };
+
+    const startLoop = () => {
+      if (running) return;
+      running = true;
+      prevTs = 0;
+      raf = requestAnimationFrame(tick);
+    };
+    const stopLoop = () => {
+      running = false;
+      if (raf) cancelAnimationFrame(raf);
+      raf = 0;
+    };
+    const refresh = () => {
+      if (onScreen && pageVisible) startLoop();
+      else stopLoop();
+    };
+
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          onScreen = e.isIntersecting;
+        }
+        refresh();
+      },
+      { threshold: 0.05 },
+    );
+    io.observe(canvas);
+
+    const onVisibility = () => {
+      pageVisible = !document.hidden;
+      refresh();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+
+    const draw = (now: number) => {
+      const t = reduceMotion ? 0 : elapsedMs / CYCLE_MS;
+
+      ctx.clearRect(0, 0, W, H);
+
+      const cx = W / 2;
+      const cy = H / 2;
+      const minDim = Math.min(W, H);
+      const sphR = minDim * 0.22;
+      const sep = Math.min(W * 0.32, minDim * 0.46);
+      const flyR = minDim * 0.32;
+      const flyTube = minDim * 0.085;
+
+      const rot = now * 0.00085;
+      const flyRot = now * 0.0016;
+
+      let a: number;
+      let b: number;
+      let c: number;
+      if (reduceMotion) {
+        a = 1;
+        b = 0;
+        c = 0;
+      } else if (t < 0.45) {
+        a = 1;
+        b = 0;
+        c = 0;
+      } else if (t < 0.6) {
+        const k = (t - 0.45) / 0.15;
+        a = 1 - smooth(k);
+        b = 0;
+        c = smooth(k) * 0.5;
+      } else if (t < 0.7) {
+        const k = (t - 0.6) / 0.1;
+        a = 0;
+        b = smooth(k);
+        c = 1 - Math.abs(k - 0.5) * 2;
+      } else if (t < 0.92) {
+        a = 0;
+        b = 1;
+        c = 0;
+      } else {
+        const k = (t - 0.92) / 0.08;
+        a = smooth(k);
+        b = 1 - smooth(k);
+        c = 0;
+      }
+
+      const FAIL: [number, number, number] = [217, 112, 112];
+      const EV: [number, number, number] = [106, 163, 232];
+      const MERGE: [number, number, number] = [240, 210, 138];
+
+      // Pointer repulsion radius scales with composition.
+      const repelR = minDim * 0.16;
+      const repelR2 = repelR * repelR;
+      const repelStrength = minDim * 0.07;
+
+      for (const p of particles) {
+        const groupOffset = p.group === 0 ? -sep * a : sep * a;
+        const r3 = sphR * p.sphRadius;
+        const sx = Math.sin(p.sphPhi) * Math.cos(p.sphTheta + rot);
+        const sy = Math.cos(p.sphPhi);
+        const sz = Math.sin(p.sphPhi) * Math.sin(p.sphTheta + rot);
+        const sphX = cx + groupOffset + sx * r3;
+        const sphYpos = cy + sy * r3;
+        const depth = sz;
+
+        const tilt = 0.55;
+        const ft = p.flyTheta + flyRot;
+        const fp = p.flyPhi;
+        const fr = flyR * p.flyRadius;
+        const ftube = flyTube * p.flyRadius;
+        const flyX = cx + (fr + ftube * Math.cos(fp)) * Math.cos(ft);
+        const flyY =
+          cy +
+          (fr + ftube * Math.cos(fp)) * Math.sin(ft) * tilt +
+          ftube * Math.sin(fp) * 0.6;
+        const flyDepth = Math.sin(ft);
+
+        const ease = smooth(b);
+        let px = lerp(sphX, flyX, ease) + p.jitterX * c * 14;
+        let py = lerp(sphYpos, flyY, ease) + p.jitterY * c * 14;
+        const d = lerp(depth, flyDepth, ease);
+
+        // Pointer repulsion (only when cursor is on the canvas).
+        if (pointerActive) {
+          const dx = px - pointerX;
+          const dy = py - pointerY;
+          const d2 = dx * dx + dy * dy;
+          if (d2 < repelR2 && d2 > 0.01) {
+            const dist = Math.sqrt(d2);
+            const falloff = 1 - dist / repelR;
+            const f = falloff * falloff * repelStrength;
+            px += (dx / dist) * f;
+            py += (dy / dist) * f;
+          }
+        }
+
+        const baseRGB = p.group === 0 ? FAIL : EV;
+        const r = lerp(baseRGB[0], MERGE[0], b);
+        const g = lerp(baseRGB[1], MERGE[1], b);
+        const bl = lerp(baseRGB[2], MERGE[2], b);
+
+        const size = 0.65 + d * 0.55 + b * 0.2;
+        const alpha = Math.max(
+          0.1,
+          Math.min(1, 0.45 + d * 0.45 - c * 0.15),
+        );
+
+        ctx.fillStyle = `rgba(${r | 0}, ${g | 0}, ${bl | 0}, ${alpha})`;
+        ctx.beginPath();
+        ctx.arc(px, py, Math.max(0.4, size), 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      ctx.font =
+        '11px var(--font-mono), ui-monospace, SFMono-Regular, monospace';
+      ctx.textAlign = "center";
+      const labelY = cy - sphR - 20;
+      if (a > 0.05) {
+        ctx.fillStyle = `rgba(217,112,112,${0.65 * a})`;
+        ctx.fillText("FAILURES", cx - sep * a, labelY);
+        ctx.fillStyle = `rgba(106,163,232,${0.65 * a})`;
+        ctx.fillText("EVALS", cx + sep * a, labelY);
+      }
+      if (b > 0.05) {
+        ctx.fillStyle = `rgba(240,210,138,${0.75 * b})`;
+        ctx.fillText("FLYWHEEL", cx, cy - flyR - flyTube - 18);
+      }
+    };
+
+    // First paint so the section isn't blank if the user lands above it.
+    draw(performance.now());
+
+    return () => {
+      stopLoop();
+      ro.disconnect();
+      io.disconnect();
+      document.removeEventListener("visibilitychange", onVisibility);
+      canvas.removeEventListener("pointermove", onPointerMove);
+      canvas.removeEventListener("pointerleave", onPointerLeave);
+      canvas.removeEventListener("pointercancel", onPointerLeave);
+    };
+  }, []);
+
   return (
     <div className="flex items-center justify-center py-6 sm:py-10" aria-hidden>
-      <svg
-        viewBox="0 0 400 230"
-        className="w-full max-w-[480px]"
-        focusable="false"
-      >
-        <defs>
-          <marker
-            id="feedback-arrow-head"
-            viewBox="0 0 10 10"
-            refX="8"
-            refY="5"
-            markerWidth="6"
-            markerHeight="6"
-            orient="auto"
-          >
-            <polygon points="0,0 10,5 0,10" fill="white" opacity="0.7" />
-          </marker>
-        </defs>
-
-        <circle
-          cx="70"
-          cy="115"
-          r="38"
-          fill="#060606"
-          stroke="white"
-          strokeWidth="1.2"
-          opacity="0.85"
-        />
-        <text
-          x="70"
-          y="119"
-          textAnchor="middle"
-          fill="white"
-          opacity="0.85"
-          fontSize="10"
-          fontFamily="var(--font-mono), monospace"
-          letterSpacing="0.16em"
-        >
-          FAILURES
-        </text>
-
-        <circle
-          cx="330"
-          cy="115"
-          r="38"
-          fill="#060606"
-          stroke="white"
-          strokeWidth="1.2"
-          opacity="0.85"
-        />
-        <text
-          x="330"
-          y="119"
-          textAnchor="middle"
-          fill="white"
-          opacity="0.85"
-          fontSize="10"
-          fontFamily="var(--font-mono), monospace"
-          letterSpacing="0.16em"
-        >
-          EVALS
-        </text>
-
-        <path
-          d="M 100 93 Q 200 10 300 93"
-          stroke="white"
-          strokeWidth="1.25"
-          fill="none"
-          opacity="0.42"
-          markerEnd="url(#feedback-arrow-head)"
-        />
-        <circle r="3.2" fill="white" className="animate-travel-top" />
-
-        <path
-          d="M 300 137 Q 200 220 100 137"
-          stroke="white"
-          strokeWidth="1.25"
-          fill="none"
-          opacity="0.42"
-          markerEnd="url(#feedback-arrow-head)"
-        />
-        <circle r="3.2" fill="white" className="animate-travel-bottom" />
-      </svg>
+      <canvas
+        ref={canvasRef}
+        className="w-full max-w-[640px] aspect-[5/4] touch-none"
+      />
     </div>
   );
 }
