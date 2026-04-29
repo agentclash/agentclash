@@ -5,16 +5,7 @@ import { useEffect } from "react";
 import Link from "next/link";
 import { getCalApi } from "@calcom/embed-react";
 import { useAuth } from "@workos-inc/authkit-nextjs/components";
-import {
-  ArrowRight,
-  BarChart3,
-  Calendar,
-  ExternalLink,
-  Globe,
-  Infinity as InfinityIcon,
-  LogIn,
-  Star,
-} from "lucide-react";
+import { ArrowRight, Calendar, ExternalLink, LogIn, Star } from "lucide-react";
 import {
   Anthropic,
   Gemini,
@@ -1141,30 +1132,20 @@ const LANDING_USE_CASES: Array<{ title: string; paragraph: string }> = [
     paragraph:
       "Where is the rate limiter applied to /runs? Give file paths, line numbers, and the call chain. Files cited must actually exist.",
   },
-];
-
-const LANDING_USE_CASES_EXTRA: Array<{
-  title: string;
-  paragraph: string;
-  Icon: React.ComponentType<{ className?: string }>;
-}> = [
   {
     title: "Data analysis",
     paragraph:
       "Here's a 200k-row CSV of failed checkouts. Find the top three failure modes and prove each with a query you can rerun.",
-    Icon: BarChart3,
   },
   {
     title: "Browser ops",
     paragraph:
       "Book the cheapest direct flight LHR→JFK on 2026-05-12 under £400, refundable. Don't book if no option qualifies.",
-    Icon: Globe,
   },
   {
     title: "Long-running agents",
     paragraph:
       "Run unattended for six hours: triage the bug queue, open draft PRs for the top five, and leave a handoff note we can act on.",
-    Icon: InfinityIcon,
   },
 ];
 
@@ -1828,40 +1809,6 @@ export default function HomePage() {
 
           <div className="mt-14 sm:mt-16">
             <ExpandedCardsBlock cards={LANDING_USE_CASES} />
-          </div>
-
-          <div className="mt-20 sm:mt-24">
-            <div className="mb-8 flex items-center gap-4">
-              <div className="h-px flex-1 bg-white/[0.06]" />
-              <span className="text-[11px] uppercase tracking-[0.18em] text-white/35">
-                And on deck
-              </span>
-              <div className="h-px flex-1 bg-white/[0.06]" />
-            </div>
-
-            <ul className="grid gap-4 sm:gap-5 md:grid-cols-3">
-              {LANDING_USE_CASES_EXTRA.map(({ title, paragraph, Icon }) => (
-                <li
-                  key={title}
-                  className="group relative overflow-hidden rounded-2xl border border-white/[0.06] bg-white/[0.015] p-7 transition-colors duration-300 hover:border-white/[0.12] hover:bg-white/[0.03]"
-                >
-                  <div
-                    className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100"
-                    aria-hidden
-                  />
-                  <Icon
-                    className="size-5 text-white/55 transition-colors duration-300 group-hover:text-white/85"
-                    aria-hidden
-                  />
-                  <h3 className="mt-6 font-[family-name:var(--font-display)] text-xl tracking-[-0.01em] text-white/90">
-                    {title}
-                  </h3>
-                  <p className="mt-3 text-[13.5px] leading-[1.6] text-white/50">
-                    {paragraph}
-                  </p>
-                </li>
-              ))}
-            </ul>
           </div>
         </div>
       </section>
