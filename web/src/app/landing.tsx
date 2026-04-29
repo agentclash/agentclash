@@ -710,14 +710,14 @@ function ParticleFlywheel() {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    const N_PER = 130;
+    const N_PER = 220;
     const N = N_PER * 2;
     const CYCLE_MS = 5500;
 
     type P = {
       group: 0 | 1;
-      cylTheta: number;
-      cylY: number;
+      sphTheta: number;
+      sphPhi: number;
       flyTheta: number;
       flyPhi: number;
       jitterX: number;
@@ -726,10 +726,13 @@ function ParticleFlywheel() {
 
     const particles: P[] = [];
     for (let i = 0; i < N; i++) {
+      // Uniform distribution on a sphere surface.
+      const u = Math.random();
+      const v = Math.random();
       particles.push({
         group: i < N_PER ? 0 : 1,
-        cylTheta: Math.random() * Math.PI * 2,
-        cylY: Math.random() * 2 - 1,
+        sphTheta: 2 * Math.PI * u,
+        sphPhi: Math.acos(2 * v - 1),
         flyTheta: (i / N) * Math.PI * 2 + (Math.random() - 0.5) * 0.06,
         flyPhi: Math.random() * Math.PI * 2,
         jitterX: (Math.random() - 0.5) * 2,
@@ -772,13 +775,12 @@ function ParticleFlywheel() {
       const cx = W / 2;
       const cy = H / 2;
       const minDim = Math.min(W, H);
-      const cylR = minDim * 0.13;
-      const cylH = minDim * 0.5;
-      const sep = Math.min(W * 0.32, minDim * 0.42);
-      const flyR = minDim * 0.22;
-      const flyTube = minDim * 0.055;
+      const sphR = minDim * 0.22;
+      const sep = Math.min(W * 0.32, minDim * 0.46);
+      const flyR = minDim * 0.32;
+      const flyTube = minDim * 0.085;
 
-      const rot = now * 0.0009;
+      const rot = now * 0.00085;
       const flyRot = now * 0.0016;
 
       let a: number;
@@ -819,9 +821,13 @@ function ParticleFlywheel() {
 
       for (const p of particles) {
         const groupOffset = p.group === 0 ? -sep * a : sep * a;
-        const cylX = cx + groupOffset + Math.cos(p.cylTheta + rot) * cylR;
-        const depth = Math.sin(p.cylTheta + rot);
-        const cylYpos = cy + p.cylY * cylH * 0.5;
+        // Sphere: rotate around vertical axis (theta + rot), keep phi fixed.
+        const sx = Math.sin(p.sphPhi) * Math.cos(p.sphTheta + rot);
+        const sy = Math.cos(p.sphPhi);
+        const sz = Math.sin(p.sphPhi) * Math.sin(p.sphTheta + rot);
+        const sphX = cx + groupOffset + sx * sphR;
+        const sphYpos = cy + sy * sphR;
+        const depth = sz;
 
         const tilt = 0.55;
         const ft = p.flyTheta + flyRot;
@@ -834,8 +840,8 @@ function ParticleFlywheel() {
         const flyDepth = Math.sin(ft);
 
         const ease = smooth(b);
-        const px = lerp(cylX, flyX, ease) + p.jitterX * c * 12;
-        const py = lerp(cylYpos, flyY, ease) + p.jitterY * c * 12;
+        const px = lerp(sphX, flyX, ease) + p.jitterX * c * 14;
+        const py = lerp(sphYpos, flyY, ease) + p.jitterY * c * 14;
         const d = lerp(depth, flyDepth, ease);
 
         const baseRGB = p.group === 0 ? FAIL : EV;
@@ -843,7 +849,7 @@ function ParticleFlywheel() {
         const g = lerp(baseRGB[1], MERGE[1], b);
         const bl = lerp(baseRGB[2], MERGE[2], b);
 
-        const size = 1.3 + d * 0.7 + b * 0.2;
+        const size = 1.5 + d * 0.9 + b * 0.25;
         const alpha = Math.max(
           0.12,
           Math.min(1, 0.55 + d * 0.4 - c * 0.15),
@@ -856,18 +862,18 @@ function ParticleFlywheel() {
       }
 
       ctx.font =
-        '10px var(--font-mono), ui-monospace, SFMono-Regular, monospace';
+        '11px var(--font-mono), ui-monospace, SFMono-Regular, monospace';
       ctx.textAlign = "center";
-      const labelY = cy - cylH * 0.55;
+      const labelY = cy - sphR - 20;
       if (a > 0.05) {
-        ctx.fillStyle = `rgba(217,112,112,${0.6 * a})`;
+        ctx.fillStyle = `rgba(217,112,112,${0.65 * a})`;
         ctx.fillText("FAILURES", cx - sep * a, labelY);
-        ctx.fillStyle = `rgba(106,163,232,${0.6 * a})`;
+        ctx.fillStyle = `rgba(106,163,232,${0.65 * a})`;
         ctx.fillText("EVALS", cx + sep * a, labelY);
       }
       if (b > 0.05) {
-        ctx.fillStyle = `rgba(240,210,138,${0.7 * b})`;
-        ctx.fillText("FLYWHEEL", cx, cy - flyR - flyTube - 14);
+        ctx.fillStyle = `rgba(240,210,138,${0.75 * b})`;
+        ctx.fillText("FLYWHEEL", cx, cy - flyR - flyTube - 18);
       }
 
       raf = requestAnimationFrame(draw);
@@ -885,7 +891,7 @@ function ParticleFlywheel() {
     <div className="flex items-center justify-center py-6 sm:py-10" aria-hidden>
       <canvas
         ref={canvasRef}
-        className="w-full max-w-[480px] aspect-[400/260]"
+        className="w-full max-w-[640px] aspect-[5/4]"
       />
     </div>
   );
