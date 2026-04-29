@@ -45,17 +45,20 @@
  */
 import { routes, stdin_default } from "./chunks/chunk-WDXJCQ5O.js";
 
-// Patch: swap each card's photographic BG for an animated FluidShader,
-// themed by the card number (SalXds4M0). Re-running `npx unframer` will
-// overwrite this file — re-apply this import + the FluidShader render
-// further down where `<Image>` would otherwise appear inside Background.
+// Patch: swap each card's photographic BG for an animated FluidShader and
+// each card's stock shield for a per-task-family lucide icon, both keyed
+// off the card number (SalXds4M0). Re-running `npx unframer` will
+// overwrite this file — re-apply: (1) these imports + maps, (2) the
+// FluidShader render in place of <Image> inside Background, (3) the
+// CARD_ICONS render in place of <Instance Component={Myka4MPLk}>.
 import { FluidShader } from "@/components/marketing/fluid-shader";
+import { CARD_ICONS } from "@/components/marketing/card-icons";
 const FLUID_THEMES_BY_CARD = {
-	"01": "blue",
-	"02": "peach",
-	"03": "crimson",
-	"04": "purple",
-	"05": "mint",
+	"01": "darkSlate", // Coding
+	"02": "darkAmber", // Research
+	"03": "darkCrimson", // SRE
+	"04": "darkViolet", // Multi-step ops
+	"05": "darkEmerald", // Codebase Q&A
 };
 
 // virtual:expanded-card
@@ -472,18 +475,19 @@ var Component = /* @__PURE__ */ React.forwardRef(function (props, ref) {
 										layoutDependency={layoutDependency}
 										layoutId={"TGs0JIuam"}
 									>
-										<Instance
-											animated={true}
-											className={"framer-14t09ok"}
-											Component={Myka4MPLk}
-											layoutDependency={layoutDependency}
-											layoutId={"LLlvOYzXT"}
-											style={{
-												"--1m6trwb": 0,
-												"--21h8s6": "rgb(255, 255, 255)",
-												"--pgex8v": 1.5,
-											}}
-										/>
+										{/* Patched: was Framer's stock shield via
+										    <Instance Component={Myka4MPLk}/>. Now a per-card
+										    lucide glyph indexed by SalXds4M0. */}
+										{(() => {
+											const Icon = CARD_ICONS[SalXds4M0] ?? CARD_ICONS["01"];
+											return (
+												<Icon
+													className={"framer-14t09ok"}
+													strokeWidth={1.6}
+													style={{ width: 20, height: 20, color: "rgb(255, 255, 255)" }}
+												/>
+											);
+										})()}
 										{isDisplayed1() && (
 											<RichText
 												__fromCanvasComponent={true}

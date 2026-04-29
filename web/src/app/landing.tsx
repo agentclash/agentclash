@@ -17,6 +17,7 @@ import {
 import { LuminousGrid } from "@/components/marketing/luminous-grid";
 import { PricingBlock } from "@/components/marketing/pricing-block";
 import { ExpandedCardsBlock } from "@/components/marketing/expanded-cards-block";
+import { TrackBox } from "@/components/marketing/track-box";
 
 const DEMO_LINK = "atharva-kanherkar-epgztu/agentclash-demo";
 const DEMO_BUTTON_CONFIG = JSON.stringify({ layout: "month_view" });
@@ -183,6 +184,10 @@ function LightFlowArrows() {
   );
 }
 
+// Kept intact while we trial the 3D `TrackBox` version; if the 3D feel
+// doesn't land, swap the call site at the bottom of the file back to
+// <TransparentFrame /> and the page returns to the original 2D rendering.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function TransparentFrame() {
   const ys = [82, 118, 154, 190, 226];
   const paths = ys.map((y) => `M -30 ${y} L 430 ${y}`);
@@ -1127,6 +1132,21 @@ const LANDING_USE_CASES: Array<{ title: string; paragraph: string }> = [
     paragraph:
       "Where is the rate limiter applied to /runs? Give file paths, line numbers, and the call chain. Files cited must actually exist.",
   },
+  {
+    title: "Data analysis",
+    paragraph:
+      "Here's a 200k-row CSV of failed checkouts. Find the top three failure modes and prove each with a query you can rerun.",
+  },
+  {
+    title: "Browser ops",
+    paragraph:
+      "Book the cheapest direct flight LHR→JFK on 2026-05-12 under £400, refundable. Don't book if no option qualifies.",
+  },
+  {
+    title: "Long-running agents",
+    paragraph:
+      "Run unattended for six hours: triage the bug queue, open draft PRs for the top five, and leave a handoff note we can act on.",
+  },
 ];
 
 const LANDING_FEATURES: Array<{
@@ -1782,7 +1802,7 @@ export default function HomePage() {
               What teams race here.
             </h2>
             <p className="max-w-[44ch] text-sm leading-[1.6] text-white/50">
-              Five task families AgentClash is built for. Hover any
+              Eight task families AgentClash is built for. Hover any
               card to read the brief.
             </p>
           </div>
@@ -2135,8 +2155,10 @@ export default function HomePage() {
               </p>
             </div>
           </div>
-          <div>
-            <TransparentFrame />
+          <div className="flex items-center justify-center">
+            {/* Was <TransparentFrame /> (flat 2D SVG, still defined above). */}
+            {/* To revert if the 3D version doesn't land, swap this line.   */}
+            <TrackBox />
           </div>
         </div>
       </section>
