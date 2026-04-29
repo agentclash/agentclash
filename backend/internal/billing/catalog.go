@@ -21,6 +21,8 @@ const (
 	EntitlementStatusTrialing = "trialing"
 	EntitlementStatusExpired  = "expired"
 	EntitlementStatusInactive = "inactive"
+
+	FeaturePrivateChallengePacks = "private_challenge_packs"
 )
 
 var (
@@ -111,12 +113,12 @@ func Catalog() []Plan {
 				ConcurrentRaces:        valueLimit(3),
 			},
 			FeatureFlags: map[string]bool{
-				"byok_llm":                true,
-				"byok_e2b":                true,
-				"hosted_sandbox_credit":   true,
-				"private_challenge_packs": true,
-				"ci_integration":          true,
-				"email_support":           true,
+				"byok_llm":                   true,
+				"byok_e2b":                   true,
+				"hosted_sandbox_credit":      true,
+				FeaturePrivateChallengePacks: true,
+				"ci_integration":             true,
+				"email_support":              true,
 			},
 			UpgradeTarget: PlanTeam,
 			DodoProductIDs: map[string]string{
@@ -139,14 +141,14 @@ func Catalog() []Plan {
 				ConcurrentRaces:        valueLimit(10),
 			},
 			FeatureFlags: map[string]bool{
-				"byok_llm":                true,
-				"byok_e2b":                true,
-				"hosted_sandbox_credit":   true,
-				"private_challenge_packs": true,
-				"ci_integration":          true,
-				"audit_log":               true,
-				"slack_notifications":     true,
-				"priority_support":        true,
+				"byok_llm":                   true,
+				"byok_e2b":                   true,
+				"hosted_sandbox_credit":      true,
+				FeaturePrivateChallengePacks: true,
+				"ci_integration":             true,
+				"audit_log":                  true,
+				"slack_notifications":        true,
+				"priority_support":           true,
 			},
 			UpgradeTarget: PlanEnterprise,
 			DodoProductIDs: map[string]string{
@@ -169,19 +171,19 @@ func Catalog() []Plan {
 				ConcurrentRaces:        customLimit(),
 			},
 			FeatureFlags: map[string]bool{
-				"byok_llm":                true,
-				"byok_e2b":                true,
-				"hosted_sandbox_credit":   true,
-				"private_challenge_packs": true,
-				"ci_integration":          true,
-				"audit_log":               true,
-				"slack_notifications":     true,
-				"priority_support":        true,
-				"sso_saml":                true,
-				"org_wide_audit_logs":     true,
-				"sla":                     true,
-				"dedicated_support":       true,
-				"custom_billing":          true,
+				"byok_llm":                   true,
+				"byok_e2b":                   true,
+				"hosted_sandbox_credit":      true,
+				FeaturePrivateChallengePacks: true,
+				"ci_integration":             true,
+				"audit_log":                  true,
+				"slack_notifications":        true,
+				"priority_support":           true,
+				"sso_saml":                   true,
+				"org_wide_audit_logs":        true,
+				"sla":                        true,
+				"dedicated_support":          true,
+				"custom_billing":             true,
 			},
 		},
 	}

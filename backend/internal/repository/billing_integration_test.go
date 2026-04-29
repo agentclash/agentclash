@@ -252,6 +252,97 @@ func TestRepositoryBillingWebhookFailureIsRetryable(t *testing.T) {
 	}
 }
 
+func TestRepositoryBillingWebhookIgnoresStaleSubscriptionState(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+	subscriptionID := "sub_stale_test_" + uuid.NewString()
+	customerID := "cus_stale_test_" + uuid.NewString()
+	olderEventAt := time.Date(2026, 4, 29, 0, 0, 0, 0, time.UTC)
+	newerEventAt := olderEventAt.Add(time.Hour)
+
+	freeEntitlements := billing.DefaultEntitlements()
+	duplicate, err := repo.ApplyBillingWebhookEvent(ctx, repository.BillingWebhookEventInput{
+		WebhookID:      "wh_cancelled_" + uuid.NewString(),
+		EventType:      "subscription.cancelled",
+		EventTimestamp: &newerEventAt,
+		Payload:        []byte(`{"type":"subscription.cancelled"}`),
+	}, repository.BillingWebhookApplication{
+		Subscription: &repository.BillingSubscriptionInput{
+			OrganizationID:     fixture.organizationID,
+			DodoSubscriptionID: subscriptionID,
+			DodoCustomerID:     customerID,
+			DodoProductID:      "agentclash_pro_monthly",
+			PlanKey:            billing.PlanPro,
+			BillingPeriod:      billing.PeriodMonthly,
+			Status:             "cancelled",
+			SeatQuantity:       5,
+			AddonQuantities:    []byte(`{}`),
+			LatestDodoEventAt:  &newerEventAt,
+		},
+		Entitlements: &repository.BillingWebhookEntitlementsInput{
+			OrganizationID: fixture.organizationID,
+			Entitlements:   freeEntitlements,
+		},
+	})
+	if err != nil {
+		t.Fatalf("newer cancelled webhook returned error: %v", err)
+	}
+	if duplicate {
+		t.Fatal("newer cancelled webhook should not be duplicate")
+	}
+
+	proEntitlements := billing.MaterializeEntitlements(billing.MustPlan(billing.PlanPro), billing.PeriodMonthly, 5, billing.EntitlementStatusActive)
+	duplicate, err = repo.ApplyBillingWebhookEvent(ctx, repository.BillingWebhookEventInput{
+		WebhookID:      "wh_older_active_" + uuid.NewString(),
+		EventType:      "subscription.active",
+		EventTimestamp: &olderEventAt,
+		Payload:        []byte(`{"type":"subscription.active"}`),
+	}, repository.BillingWebhookApplication{
+		Subscription: &repository.BillingSubscriptionInput{
+			OrganizationID:     fixture.organizationID,
+			DodoSubscriptionID: subscriptionID,
+			DodoCustomerID:     customerID,
+			DodoProductID:      "agentclash_pro_monthly",
+			PlanKey:            billing.PlanPro,
+			BillingPeriod:      billing.PeriodMonthly,
+			Status:             billing.EntitlementStatusActive,
+			SeatQuantity:       5,
+			AddonQuantities:    []byte(`{}`),
+			LatestDodoEventAt:  &olderEventAt,
+		},
+		Entitlements: &repository.BillingWebhookEntitlementsInput{
+			OrganizationID:          fixture.organizationID,
+			Entitlements:            proEntitlements,
+			UseSubscriptionAsSource: true,
+		},
+	})
+	if err != nil {
+		t.Fatalf("older active webhook returned error: %v", err)
+	}
+	if duplicate {
+		t.Fatal("older active webhook should be recorded, not treated as duplicate")
+	}
+
+	overview, err := repo.GetBillingOverview(ctx, fixture.organizationID)
+	if err != nil {
+		t.Fatalf("GetBillingOverview returned error: %v", err)
+	}
+	if overview.Subscription == nil {
+		t.Fatal("overview subscription is nil")
+	}
+	if overview.Subscription.Status != "cancelled" {
+		t.Fatalf("subscription status = %q, want cancelled", overview.Subscription.Status)
+	}
+	if overview.Subscription.LatestDodoEventAt == nil || !overview.Subscription.LatestDodoEventAt.Equal(newerEventAt) {
+		t.Fatalf("latest event = %v, want %v", overview.Subscription.LatestDodoEventAt, newerEventAt)
+	}
+	if overview.Entitlements.PlanKey != billing.PlanFree {
+		t.Fatalf("entitlement plan = %q, want free after stale active webhook", overview.Entitlements.PlanKey)
+	}
+}
+
 func TestRepositoryOrganizationEntitlementGatesBlockWorkspaceAndSeatWrites(t *testing.T) {
 	db := openTestDB(t)
 	ctx := context.Background()

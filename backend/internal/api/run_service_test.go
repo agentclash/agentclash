@@ -1499,3 +1499,7 @@ func (f *fakeEntitlementGateService) BuildWorkspaceCreationGate(context.Context,
 func (f *fakeEntitlementGateService) BuildSeatGate(context.Context, uuid.UUID, bool) (*repository.OrganizationEntitlementGate, error) {
 	return nil, f.err
 }
+
+func (f *fakeEntitlementGateService) CheckWorkspaceFeature(context.Context, uuid.UUID, string) error {
+	return f.err
+}

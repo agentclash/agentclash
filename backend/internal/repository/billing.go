@@ -406,13 +406,13 @@ func upsertBillingAccount(ctx context.Context, exec repositoryExecutor, input Bi
 }
 
 func (r *Repository) UpsertBillingSubscription(ctx context.Context, input BillingSubscriptionInput) (BillingSubscription, error) {
-	return upsertBillingSubscription(ctx, r.db, input)
+	subscription, _, err := upsertBillingSubscription(ctx, r.db, input)
+	return subscription, err
 }
 
-func upsertBillingSubscription(ctx context.Context, exec repositoryExecutor, input BillingSubscriptionInput) (BillingSubscription, error) {
+func upsertBillingSubscription(ctx context.Context, exec repositoryExecutor, input BillingSubscriptionInput) (BillingSubscription, bool, error) {
 	addons := normalizeJSON(input.AddonQuantities)
-	var subscription BillingSubscription
-	err := exec.QueryRow(ctx, `
+	subscription, err := scanBillingSubscription(exec.QueryRow(ctx, `
 		INSERT INTO billing_subscriptions (
 			organization_id,
 			dodo_subscription_id,
@@ -445,32 +445,27 @@ func upsertBillingSubscription(ctx context.Context, exec repositoryExecutor, inp
 			trial_period_days = EXCLUDED.trial_period_days,
 			seat_quantity = EXCLUDED.seat_quantity,
 			addon_quantities = EXCLUDED.addon_quantities,
-			latest_dodo_event_at = GREATEST(billing_subscriptions.latest_dodo_event_at, EXCLUDED.latest_dodo_event_at)
+			latest_dodo_event_at = COALESCE(
+				GREATEST(billing_subscriptions.latest_dodo_event_at, EXCLUDED.latest_dodo_event_at),
+				billing_subscriptions.latest_dodo_event_at,
+				EXCLUDED.latest_dodo_event_at
+			)
+		WHERE billing_subscriptions.latest_dodo_event_at IS NULL
+		   OR EXCLUDED.latest_dodo_event_at IS NULL
+		   OR EXCLUDED.latest_dodo_event_at >= billing_subscriptions.latest_dodo_event_at
 		RETURNING id, organization_id, dodo_subscription_id, dodo_customer_id, dodo_product_id, plan_key, billing_period, status, next_billing_date, cancel_at_next_billing_date, cancelled_at, expires_at, trial_period_days, seat_quantity, addon_quantities, latest_dodo_event_at, created_at, updated_at
-	`, input.OrganizationID, input.DodoSubscriptionID, input.DodoCustomerID, input.DodoProductID, input.PlanKey, input.BillingPeriod, input.Status, input.NextBillingDate, input.CancelAtNextBillingDate, input.CancelledAt, input.ExpiresAt, input.TrialPeriodDays, input.SeatQuantity, addons, input.LatestDodoEventAt).Scan(
-		&subscription.ID,
-		&subscription.OrganizationID,
-		&subscription.DodoSubscriptionID,
-		&subscription.DodoCustomerID,
-		&subscription.DodoProductID,
-		&subscription.PlanKey,
-		&subscription.BillingPeriod,
-		&subscription.Status,
-		&subscription.NextBillingDate,
-		&subscription.CancelAtNextBillingDate,
-		&subscription.CancelledAt,
-		&subscription.ExpiresAt,
-		&subscription.TrialPeriodDays,
-		&subscription.SeatQuantity,
-		&subscription.AddonQuantities,
-		&subscription.LatestDodoEventAt,
-		&subscription.CreatedAt,
-		&subscription.UpdatedAt,
-	)
-	if err != nil {
-		return BillingSubscription{}, fmt.Errorf("upsert billing subscription: %w", err)
+	`, input.OrganizationID, input.DodoSubscriptionID, input.DodoCustomerID, input.DodoProductID, input.PlanKey, input.BillingPeriod, input.Status, input.NextBillingDate, input.CancelAtNextBillingDate, input.CancelledAt, input.ExpiresAt, input.TrialPeriodDays, input.SeatQuantity, addons, input.LatestDodoEventAt))
+	if errors.Is(err, pgx.ErrNoRows) {
+		subscription, selectErr := getBillingSubscriptionByDodoID(ctx, exec, input.DodoSubscriptionID)
+		if selectErr != nil {
+			return BillingSubscription{}, false, selectErr
+		}
+		return subscription, false, nil
 	}
-	return subscription, nil
+	if err != nil {
+		return BillingSubscription{}, false, fmt.Errorf("upsert billing subscription: %w", err)
+	}
+	return subscription, true, nil
 }
 
 func (r *Repository) GetBillingOverview(ctx context.Context, orgID uuid.UUID) (BillingOverview, error) {
@@ -637,17 +632,20 @@ func finishBillingWebhookEvent(ctx context.Context, exec repositoryExecutor, web
 
 func applyBillingWebhookApplication(ctx context.Context, exec repositoryExecutor, application BillingWebhookApplication) error {
 	var subscriptionID *uuid.UUID
+	if application.Subscription != nil {
+		subscription, applied, err := upsertBillingSubscription(ctx, exec, *application.Subscription)
+		if err != nil {
+			return err
+		}
+		if !applied {
+			return nil
+		}
+		subscriptionID = &subscription.ID
+	}
 	if application.Account != nil {
 		if err := upsertBillingAccount(ctx, exec, *application.Account); err != nil {
 			return err
 		}
-	}
-	if application.Subscription != nil {
-		subscription, err := upsertBillingSubscription(ctx, exec, *application.Subscription)
-		if err != nil {
-			return err
-		}
-		subscriptionID = &subscription.ID
 	}
 	if application.Entitlements != nil {
 		sourceSubscriptionID := (*uuid.UUID)(nil)
@@ -662,14 +660,26 @@ func applyBillingWebhookApplication(ctx context.Context, exec repositoryExecutor
 }
 
 func (r *Repository) getLatestBillingSubscription(ctx context.Context, orgID uuid.UUID) (BillingSubscription, error) {
-	var subscription BillingSubscription
-	err := r.db.QueryRow(ctx, `
+	return scanBillingSubscription(r.db.QueryRow(ctx, `
 		SELECT id, organization_id, dodo_subscription_id, dodo_customer_id, dodo_product_id, plan_key, billing_period, status, next_billing_date, cancel_at_next_billing_date, cancelled_at, expires_at, trial_period_days, seat_quantity, addon_quantities, latest_dodo_event_at, created_at, updated_at
 		FROM billing_subscriptions
 		WHERE organization_id = $1
 		ORDER BY latest_dodo_event_at DESC NULLS LAST, updated_at DESC
 		LIMIT 1
-	`, orgID).Scan(
+	`, orgID))
+}
+
+func getBillingSubscriptionByDodoID(ctx context.Context, exec repositoryExecutor, subscriptionID string) (BillingSubscription, error) {
+	return scanBillingSubscription(exec.QueryRow(ctx, `
+		SELECT id, organization_id, dodo_subscription_id, dodo_customer_id, dodo_product_id, plan_key, billing_period, status, next_billing_date, cancel_at_next_billing_date, cancelled_at, expires_at, trial_period_days, seat_quantity, addon_quantities, latest_dodo_event_at, created_at, updated_at
+		FROM billing_subscriptions
+		WHERE dodo_subscription_id = $1
+	`, subscriptionID))
+}
+
+func scanBillingSubscription(row pgx.Row) (BillingSubscription, error) {
+	var subscription BillingSubscription
+	err := row.Scan(
 		&subscription.ID,
 		&subscription.OrganizationID,
 		&subscription.DodoSubscriptionID,

@@ -36,6 +36,7 @@ type EntitlementGateService interface {
 	BuildRunGate(ctx context.Context, workspaceID uuid.UUID, participantCount int, raceCount int) (*repository.RunEntitlementGate, error)
 	BuildWorkspaceCreationGate(ctx context.Context, orgID uuid.UUID) (*repository.OrganizationEntitlementGate, error)
 	BuildSeatGate(ctx context.Context, orgID uuid.UUID, userAlreadyActive bool) (*repository.OrganizationEntitlementGate, error)
+	CheckWorkspaceFeature(ctx context.Context, workspaceID uuid.UUID, feature string) error
 }
 
 type BillingRepository interface {
@@ -305,6 +306,17 @@ func (m *BillingManager) BuildSeatGate(ctx context.Context, orgID uuid.UUID, use
 		return nil, billingpkg.GateError{Decision: decision}
 	}
 	return &repository.OrganizationEntitlementGate{OrganizationID: orgID, Entitlements: entitlements}, nil
+}
+
+func (m *BillingManager) CheckWorkspaceFeature(ctx context.Context, workspaceID uuid.UUID, feature string) error {
+	_, entitlements, err := m.repo.ResolveWorkspaceEntitlements(ctx, workspaceID)
+	if err != nil {
+		return err
+	}
+	if decision := billingpkg.CheckFeature(entitlements, feature); !decision.Allowed {
+		return billingpkg.GateError{Decision: decision}
+	}
+	return nil
 }
 
 func (m *BillingManager) ProcessDodoWebhook(ctx context.Context, headers DodoWebhookHeaders, rawBody []byte) (ProcessDodoWebhookResult, error) {
