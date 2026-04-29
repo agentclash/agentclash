@@ -848,10 +848,12 @@ function ParticleFlywheel() {
       const cx = W / 2;
       const cy = H / 2;
       const minDim = Math.min(W, H);
-      const sphR = minDim * 0.3;
-      const sep = Math.min(W * 0.34, minDim * 0.5);
-      const flyR = minDim * 0.36;
-      const flyTube = minDim * 0.1;
+      // Sized so both spheres + the flywheel fit fully inside the canvas
+      // across all widths (sep + sphR + margin < W/2).
+      const sphR = minDim * 0.24;
+      const sep = Math.min(W * 0.26, minDim * 0.36);
+      const flyR = minDim * 0.3;
+      const flyTube = minDim * 0.085;
 
       const rot = now * 0.00085;
       const flyRot = now * 0.0016;
