@@ -710,7 +710,7 @@ function ParticleFlywheel() {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    const N_PER = 220;
+    const N_PER = 850;
     const N = N_PER * 2;
     const CYCLE_MS = 5500;
 
@@ -718,23 +718,27 @@ function ParticleFlywheel() {
       group: 0 | 1;
       sphTheta: number;
       sphPhi: number;
+      sphRadius: number;
       flyTheta: number;
       flyPhi: number;
+      flyRadius: number;
       jitterX: number;
       jitterY: number;
     };
 
     const particles: P[] = [];
     for (let i = 0; i < N; i++) {
-      // Uniform distribution on a sphere surface.
       const u = Math.random();
       const v = Math.random();
       particles.push({
         group: i < N_PER ? 0 : 1,
         sphTheta: 2 * Math.PI * u,
         sphPhi: Math.acos(2 * v - 1),
-        flyTheta: (i / N) * Math.PI * 2 + (Math.random() - 0.5) * 0.06,
+        // Bias toward surface so the sphere reads as a shell, not a fog.
+        sphRadius: 0.78 + Math.pow(Math.random(), 0.45) * 0.22,
+        flyTheta: (i / N) * Math.PI * 2 + (Math.random() - 0.5) * 0.08,
         flyPhi: Math.random() * Math.PI * 2,
+        flyRadius: 0.85 + Math.random() * 0.15,
         jitterX: (Math.random() - 0.5) * 2,
         jitterY: (Math.random() - 0.5) * 2,
       });
@@ -763,12 +767,79 @@ function ParticleFlywheel() {
       "(prefers-reduced-motion: reduce)",
     ).matches;
 
+    // Pointer state — canvas-local coords, -1 when absent so repulsion is off.
+    let pointerX = -1;
+    let pointerY = -1;
+    let pointerActive = false;
+
+    const onPointerMove = (e: PointerEvent) => {
+      const rect = canvas.getBoundingClientRect();
+      pointerX = e.clientX - rect.left;
+      pointerY = e.clientY - rect.top;
+      pointerActive = true;
+    };
+    const onPointerLeave = () => {
+      pointerActive = false;
+    };
+    canvas.addEventListener("pointermove", onPointerMove, { passive: true });
+    canvas.addEventListener("pointerleave", onPointerLeave, { passive: true });
+    canvas.addEventListener("pointercancel", onPointerLeave, { passive: true });
+
+    // Run/pause control: only animate when (a) section is visible on screen
+    // and (b) the document/tab is visible.
     let raf = 0;
-    const start = performance.now();
+    let elapsedMs = 0;
+    let prevTs = 0;
+    let onScreen = false;
+    let pageVisible =
+      typeof document === "undefined" ? true : !document.hidden;
+    let running = false;
+
+    const tick = (now: number) => {
+      const dt = prevTs === 0 ? 16 : Math.min(60, now - prevTs);
+      prevTs = now;
+      if (!reduceMotion) {
+        elapsedMs = (elapsedMs + dt) % CYCLE_MS;
+      }
+      draw(now);
+      if (running) raf = requestAnimationFrame(tick);
+    };
+
+    const startLoop = () => {
+      if (running) return;
+      running = true;
+      prevTs = 0;
+      raf = requestAnimationFrame(tick);
+    };
+    const stopLoop = () => {
+      running = false;
+      if (raf) cancelAnimationFrame(raf);
+      raf = 0;
+    };
+    const refresh = () => {
+      if (onScreen && pageVisible) startLoop();
+      else stopLoop();
+    };
+
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          onScreen = e.isIntersecting;
+        }
+        refresh();
+      },
+      { threshold: 0.05 },
+    );
+    io.observe(canvas);
+
+    const onVisibility = () => {
+      pageVisible = !document.hidden;
+      refresh();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
 
     const draw = (now: number) => {
-      const elapsed = (now - start) % CYCLE_MS;
-      const t = reduceMotion ? 0 : elapsed / CYCLE_MS;
+      const t = reduceMotion ? 0 : elapsedMs / CYCLE_MS;
 
       ctx.clearRect(0, 0, W, H);
 
@@ -819,45 +890,66 @@ function ParticleFlywheel() {
       const EV: [number, number, number] = [106, 163, 232];
       const MERGE: [number, number, number] = [240, 210, 138];
 
+      // Pointer repulsion radius scales with composition.
+      const repelR = minDim * 0.16;
+      const repelR2 = repelR * repelR;
+      const repelStrength = minDim * 0.07;
+
       for (const p of particles) {
         const groupOffset = p.group === 0 ? -sep * a : sep * a;
-        // Sphere: rotate around vertical axis (theta + rot), keep phi fixed.
+        const r3 = sphR * p.sphRadius;
         const sx = Math.sin(p.sphPhi) * Math.cos(p.sphTheta + rot);
         const sy = Math.cos(p.sphPhi);
         const sz = Math.sin(p.sphPhi) * Math.sin(p.sphTheta + rot);
-        const sphX = cx + groupOffset + sx * sphR;
-        const sphYpos = cy + sy * sphR;
+        const sphX = cx + groupOffset + sx * r3;
+        const sphYpos = cy + sy * r3;
         const depth = sz;
 
         const tilt = 0.55;
         const ft = p.flyTheta + flyRot;
         const fp = p.flyPhi;
-        const flyX = cx + (flyR + flyTube * Math.cos(fp)) * Math.cos(ft);
+        const fr = flyR * p.flyRadius;
+        const ftube = flyTube * p.flyRadius;
+        const flyX = cx + (fr + ftube * Math.cos(fp)) * Math.cos(ft);
         const flyY =
           cy +
-          (flyR + flyTube * Math.cos(fp)) * Math.sin(ft) * tilt +
-          flyTube * Math.sin(fp) * 0.6;
+          (fr + ftube * Math.cos(fp)) * Math.sin(ft) * tilt +
+          ftube * Math.sin(fp) * 0.6;
         const flyDepth = Math.sin(ft);
 
         const ease = smooth(b);
-        const px = lerp(sphX, flyX, ease) + p.jitterX * c * 14;
-        const py = lerp(sphYpos, flyY, ease) + p.jitterY * c * 14;
+        let px = lerp(sphX, flyX, ease) + p.jitterX * c * 14;
+        let py = lerp(sphYpos, flyY, ease) + p.jitterY * c * 14;
         const d = lerp(depth, flyDepth, ease);
+
+        // Pointer repulsion (only when cursor is on the canvas).
+        if (pointerActive) {
+          const dx = px - pointerX;
+          const dy = py - pointerY;
+          const d2 = dx * dx + dy * dy;
+          if (d2 < repelR2 && d2 > 0.01) {
+            const dist = Math.sqrt(d2);
+            const falloff = 1 - dist / repelR;
+            const f = falloff * falloff * repelStrength;
+            px += (dx / dist) * f;
+            py += (dy / dist) * f;
+          }
+        }
 
         const baseRGB = p.group === 0 ? FAIL : EV;
         const r = lerp(baseRGB[0], MERGE[0], b);
         const g = lerp(baseRGB[1], MERGE[1], b);
         const bl = lerp(baseRGB[2], MERGE[2], b);
 
-        const size = 1.5 + d * 0.9 + b * 0.25;
+        const size = 0.65 + d * 0.55 + b * 0.2;
         const alpha = Math.max(
-          0.12,
-          Math.min(1, 0.55 + d * 0.4 - c * 0.15),
+          0.1,
+          Math.min(1, 0.45 + d * 0.45 - c * 0.15),
         );
 
         ctx.fillStyle = `rgba(${r | 0}, ${g | 0}, ${bl | 0}, ${alpha})`;
         ctx.beginPath();
-        ctx.arc(px, py, Math.max(0.6, size), 0, Math.PI * 2);
+        ctx.arc(px, py, Math.max(0.4, size), 0, Math.PI * 2);
         ctx.fill();
       }
 
@@ -875,15 +967,19 @@ function ParticleFlywheel() {
         ctx.fillStyle = `rgba(240,210,138,${0.75 * b})`;
         ctx.fillText("FLYWHEEL", cx, cy - flyR - flyTube - 18);
       }
-
-      raf = requestAnimationFrame(draw);
     };
 
-    raf = requestAnimationFrame(draw);
+    // First paint so the section isn't blank if the user lands above it.
+    draw(performance.now());
 
     return () => {
-      cancelAnimationFrame(raf);
+      stopLoop();
       ro.disconnect();
+      io.disconnect();
+      document.removeEventListener("visibilitychange", onVisibility);
+      canvas.removeEventListener("pointermove", onPointerMove);
+      canvas.removeEventListener("pointerleave", onPointerLeave);
+      canvas.removeEventListener("pointercancel", onPointerLeave);
     };
   }, []);
 
@@ -891,7 +987,7 @@ function ParticleFlywheel() {
     <div className="flex items-center justify-center py-6 sm:py-10" aria-hidden>
       <canvas
         ref={canvasRef}
-        className="w-full max-w-[640px] aspect-[5/4]"
+        className="w-full max-w-[640px] aspect-[5/4] touch-none"
       />
     </div>
   );
