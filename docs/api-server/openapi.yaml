@@ -7835,6 +7835,9 @@ components:
               model_alias_id:
                 type: string
                 format: uuid
+              request_config:
+                type: ["object", "null"]
+                additionalProperties: true
         request_config:
           type: ["object", "null"]
           additionalProperties: true

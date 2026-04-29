@@ -144,6 +144,7 @@ type BatchExperimentModelEntry struct {
 	Name              string
 	ProviderAccountID uuid.UUID
 	ModelAliasID      uuid.UUID
+	RequestConfig     json.RawMessage
 }
 
 func (m *PlaygroundManager) CreatePlayground(ctx context.Context, caller Caller, input CreatePlaygroundInput) (repository.Playground, error) {
@@ -356,12 +357,16 @@ func (m *PlaygroundManager) CreatePlaygroundExperiment(ctx context.Context, call
 func (m *PlaygroundManager) BatchCreatePlaygroundExperiments(ctx context.Context, caller Caller, input BatchCreatePlaygroundExperimentsInput) ([]repository.PlaygroundExperiment, error) {
 	experiments := make([]repository.PlaygroundExperiment, 0, len(input.Models))
 	for _, model := range input.Models {
+		requestConfig := input.RequestConfig
+		if len(model.RequestConfig) > 0 {
+			requestConfig = model.RequestConfig
+		}
 		experiment, err := m.CreatePlaygroundExperiment(ctx, caller, CreatePlaygroundExperimentInput{
 			PlaygroundID:      input.PlaygroundID,
 			Name:              model.Name,
 			ProviderAccountID: model.ProviderAccountID,
 			ModelAliasID:      model.ModelAliasID,
-			RequestConfig:     input.RequestConfig,
+			RequestConfig:     requestConfig,
 		})
 		if err != nil {
 			// If one fails, still return the successfully created ones.
@@ -465,9 +470,10 @@ type batchPlaygroundExperimentRequest struct {
 }
 
 type batchExperimentModelEntry struct {
-	ProviderAccountID string `json:"provider_account_id"`
-	ModelAliasID      string `json:"model_alias_id"`
-	Name              string `json:"name"`
+	ProviderAccountID string          `json:"provider_account_id"`
+	ModelAliasID      string          `json:"model_alias_id"`
+	Name              string          `json:"name"`
+	RequestConfig     json.RawMessage `json:"request_config"`
 }
 
 type playgroundResponse struct {
@@ -868,6 +874,7 @@ func batchCreatePlaygroundExperimentsHandler(logger *slog.Logger, service Playgr
 				Name:              entry.Name,
 				ProviderAccountID: providerAccountID,
 				ModelAliasID:      modelAliasID,
+				RequestConfig:     entry.RequestConfig,
 			})
 		}
 		experiments, err := service.BatchCreatePlaygroundExperiments(r.Context(), caller, BatchCreatePlaygroundExperimentsInput{

@@ -4,12 +4,13 @@ import { createApiClient } from "@/lib/api/client";
 import { ApiError } from "@/lib/api/errors";
 import type {
   ModelAlias,
+  KnowledgeSource,
   Playground,
   PlaygroundExperiment,
   PlaygroundExperimentComparison,
-  PlaygroundExperimentResult,
   PlaygroundTestCase,
   ProviderAccount,
+  WorkspaceTool,
 } from "@/lib/api/types";
 import { PlaygroundDetailClient } from "./playground-detail-client";
 
@@ -18,13 +19,13 @@ export default async function PlaygroundDetailPage({
   searchParams,
 }: {
   params: Promise<{ workspaceId: string; playgroundId: string }>;
-  searchParams: Promise<{ experiment?: string; baseline?: string; candidate?: string }>;
+  searchParams: Promise<{ baseline?: string; candidate?: string }>;
 }) {
   const { accessToken } = await withAuth();
   if (!accessToken) redirect("/auth/login");
 
   const { workspaceId, playgroundId } = await params;
-  const { experiment, baseline, candidate } = await searchParams;
+  const { baseline, candidate } = await searchParams;
   const api = createApiClient(accessToken);
 
   let playground: Playground;
@@ -32,21 +33,35 @@ export default async function PlaygroundDetailPage({
   let experiments: PlaygroundExperiment[];
   let providerAccounts: ProviderAccount[];
   let modelAliases: ModelAlias[];
+  let tools: WorkspaceTool[];
+  let knowledgeSources: KnowledgeSource[];
 
   try {
-    const [playgroundRes, testCasesRes, experimentsRes, providerAccountsRes, modelAliasesRes] =
+    const [
+      playgroundRes,
+      testCasesRes,
+      experimentsRes,
+      providerAccountsRes,
+      modelAliasesRes,
+      toolsRes,
+      knowledgeSourcesRes,
+    ] =
       await Promise.all([
         api.get<Playground>(`/v1/playgrounds/${playgroundId}`),
         api.get<{ items: PlaygroundTestCase[] }>(`/v1/playgrounds/${playgroundId}/test-cases`),
         api.get<{ items: PlaygroundExperiment[] }>(`/v1/playgrounds/${playgroundId}/experiments`),
         api.get<{ items: ProviderAccount[] }>(`/v1/workspaces/${workspaceId}/provider-accounts`),
         api.get<{ items: ModelAlias[] }>(`/v1/workspaces/${workspaceId}/model-aliases`),
+        api.get<{ items: WorkspaceTool[] }>(`/v1/workspaces/${workspaceId}/tools`),
+        api.get<{ items: KnowledgeSource[] }>(`/v1/workspaces/${workspaceId}/knowledge-sources`),
       ]);
     playground = playgroundRes;
     testCases = testCasesRes.items;
     experiments = experimentsRes.items;
     providerAccounts = providerAccountsRes.items;
     modelAliases = modelAliasesRes.items;
+    tools = toolsRes.items;
+    knowledgeSources = knowledgeSourcesRes.items;
   } catch (err) {
     const message = err instanceof ApiError ? err.message : "Failed to load playground";
     return (
@@ -56,24 +71,15 @@ export default async function PlaygroundDetailPage({
     );
   }
 
-  const [selectedResults, comparison] = await Promise.all([
-    experiment
-      ? api
-          .get<{ items: PlaygroundExperimentResult[] }>(
-            `/v1/playground-experiments/${experiment}/results`,
-          )
-          .then((res) => res.items)
-          .catch(() => null)
-      : Promise.resolve(null),
+  const comparison =
     baseline && candidate
-      ? api
+      ? await api
           .get<PlaygroundExperimentComparison>(
             "/v1/playground-experiments/compare",
             { params: { baseline, candidate } },
           )
           .catch(() => null)
-      : Promise.resolve(null),
-  ]);
+      : null;
 
   return (
     <div>
@@ -84,8 +90,8 @@ export default async function PlaygroundDetailPage({
         experiments={experiments}
         providerAccounts={providerAccounts}
         modelAliases={modelAliases}
-        selectedExperimentResults={selectedResults}
-        selectedExperimentId={experiment ?? null}
+        tools={tools}
+        knowledgeSources={knowledgeSources}
         comparison={comparison}
         baselineExperimentId={baseline ?? null}
         candidateExperimentId={candidate ?? null}
