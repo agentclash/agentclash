@@ -138,15 +138,18 @@ func (m *OrgMembershipManager) InviteOrgMember(ctx context.Context, caller Calle
 		if existing.MembershipStatus == "active" || existing.MembershipStatus == "invited" {
 			return OrgMembershipResult{}, repository.ErrAlreadyMember
 		}
+		var entitlementGate *repository.OrganizationEntitlementGate
 		if m.entitlementGate != nil {
-			if err := m.entitlementGate.CheckSeatAvailability(ctx, orgID, false); err != nil {
+			entitlementGate, err = m.entitlementGate.BuildSeatGate(ctx, orgID, false)
+			if err != nil {
 				return OrgMembershipResult{}, err
 			}
 		}
 		// Previously archived — allow re-invite by updating status.
 		result, err := m.repo.UpdateOrgMembership(ctx, existing.ID, repository.UpdateOrgMembershipInput{
-			Role:   &input.Role,
-			Status: strPtr("invited"),
+			Role:            &input.Role,
+			Status:          strPtr("invited"),
+			EntitlementGate: entitlementGate,
 		})
 		if err != nil {
 			return OrgMembershipResult{}, err
@@ -156,16 +159,19 @@ func (m *OrgMembershipManager) InviteOrgMember(ctx context.Context, caller Calle
 	if !errors.Is(err, repository.ErrMembershipNotFound) {
 		return OrgMembershipResult{}, err
 	}
+	var entitlementGate *repository.OrganizationEntitlementGate
 	if m.entitlementGate != nil {
-		if err := m.entitlementGate.CheckSeatAvailability(ctx, orgID, false); err != nil {
+		entitlementGate, err = m.entitlementGate.BuildSeatGate(ctx, orgID, false)
+		if err != nil {
 			return OrgMembershipResult{}, err
 		}
 	}
 
 	result, err := m.repo.CreateOrgMembership(ctx, repository.CreateOrgMembershipInput{
-		OrganizationID: orgID,
-		UserID:         user.ID,
-		Role:           input.Role,
+		OrganizationID:  orgID,
+		UserID:          user.ID,
+		Role:            input.Role,
+		EntitlementGate: entitlementGate,
 	})
 	if err != nil {
 		return OrgMembershipResult{}, err
@@ -210,12 +216,14 @@ func (m *OrgMembershipManager) UpdateOrgMembership(ctx context.Context, caller C
 	}
 
 	// Validate status transitions.
+	var entitlementGate *repository.OrganizationEntitlementGate
 	if input.Status != nil {
 		if err := validateOrgMembershipTransition(membership.MembershipStatus, *input.Status); err != nil {
 			return OrgMembershipResult{}, err
 		}
 		if *input.Status == "active" && membership.MembershipStatus != "active" && m.entitlementGate != nil {
-			if err := m.entitlementGate.CheckSeatAvailability(ctx, membership.OrganizationID, false); err != nil {
+			entitlementGate, err = m.entitlementGate.BuildSeatGate(ctx, membership.OrganizationID, false)
+			if err != nil {
 				return OrgMembershipResult{}, err
 			}
 		}
@@ -238,8 +246,9 @@ func (m *OrgMembershipManager) UpdateOrgMembership(ctx context.Context, caller C
 	}
 
 	result, err := m.repo.UpdateOrgMembership(ctx, membershipID, repository.UpdateOrgMembershipInput{
-		Role:   input.Role,
-		Status: input.Status,
+		Role:            input.Role,
+		Status:          input.Status,
+		EntitlementGate: entitlementGate,
 	})
 	if err != nil {
 		return OrgMembershipResult{}, err

@@ -79,8 +79,11 @@ func (m *WorkspaceManager) CreateWorkspace(ctx context.Context, caller Caller, o
 	if err := m.orgAuthz.AuthorizeOrganizationAdmin(ctx, caller, orgID); err != nil {
 		return WorkspaceResult{}, err
 	}
+	var entitlementGate *repository.OrganizationEntitlementGate
 	if m.entitlementGate != nil {
-		if err := m.entitlementGate.CheckWorkspaceCreation(ctx, orgID); err != nil {
+		var err error
+		entitlementGate, err = m.entitlementGate.BuildWorkspaceCreationGate(ctx, orgID)
+		if err != nil {
 			return WorkspaceResult{}, err
 		}
 	}
@@ -99,10 +102,11 @@ func (m *WorkspaceManager) CreateWorkspace(ctx context.Context, caller Caller, o
 	}
 
 	ws, err := m.repo.CreateWorkspaceWithAdmin(ctx, repository.CreateWorkspaceWithAdminInput{
-		OrganizationID: orgID,
-		Name:           input.Name,
-		Slug:           slug,
-		UserID:         caller.UserID,
+		OrganizationID:  orgID,
+		Name:            input.Name,
+		Slug:            slug,
+		UserID:          caller.UserID,
+		EntitlementGate: entitlementGate,
 	})
 	if err != nil {
 		return WorkspaceResult{}, err

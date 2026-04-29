@@ -539,6 +539,62 @@ func enforceRunEntitlementGate(ctx context.Context, tx pgx.Tx, workspaceID uuid.
 	return nil
 }
 
+func enforceWorkspaceCreationEntitlementGate(ctx context.Context, tx pgx.Tx, orgID uuid.UUID, gate *OrganizationEntitlementGate) error {
+	if gate == nil {
+		return nil
+	}
+	if gate.OrganizationID != uuid.Nil && gate.OrganizationID != orgID {
+		return fmt.Errorf("workspace entitlement gate organization mismatch")
+	}
+	if decision := billing.CheckEntitlementActive(gate.Entitlements, time.Now().UTC()); !decision.Allowed {
+		return billing.GateError{Decision: decision}
+	}
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1::text, 436))`, orgID.String()); err != nil {
+		return fmt.Errorf("lock organization workspace gate: %w", err)
+	}
+	var activeWorkspaces int
+	if err := tx.QueryRow(ctx, `
+		SELECT count(*)
+		FROM workspaces
+		WHERE organization_id = $1
+		  AND status = 'active'
+	`, orgID).Scan(&activeWorkspaces); err != nil {
+		return fmt.Errorf("count active workspaces: %w", err)
+	}
+	if decision := billing.CheckWorkspaceLimit(gate.Entitlements, activeWorkspaces, 1); !decision.Allowed {
+		return billing.GateError{Decision: decision}
+	}
+	return nil
+}
+
+func enforceSeatEntitlementGate(ctx context.Context, tx pgx.Tx, orgID uuid.UUID, gate *OrganizationEntitlementGate) error {
+	if gate == nil {
+		return nil
+	}
+	if gate.OrganizationID != uuid.Nil && gate.OrganizationID != orgID {
+		return fmt.Errorf("seat entitlement gate organization mismatch")
+	}
+	if decision := billing.CheckEntitlementActive(gate.Entitlements, time.Now().UTC()); !decision.Allowed {
+		return billing.GateError{Decision: decision}
+	}
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1::text, 437))`, orgID.String()); err != nil {
+		return fmt.Errorf("lock organization seat gate: %w", err)
+	}
+	var activeSeats int
+	if err := tx.QueryRow(ctx, `
+		SELECT count(*)
+		FROM organization_memberships
+		WHERE organization_id = $1
+		  AND membership_status = 'active'
+	`, orgID).Scan(&activeSeats); err != nil {
+		return fmt.Errorf("count active org members: %w", err)
+	}
+	if decision := billing.CheckSeatLimit(gate.Entitlements, activeSeats, 1); !decision.Allowed {
+		return billing.GateError{Decision: decision}
+	}
+	return nil
+}
+
 func validateCreateQueuedRunParams(params CreateQueuedRunParams) error {
 	if params.Name == "" {
 		return ErrRunNameRequired
@@ -2614,10 +2670,11 @@ type WorkspaceRow struct {
 }
 
 type CreateWorkspaceWithAdminInput struct {
-	OrganizationID uuid.UUID
-	Name           string
-	Slug           string
-	UserID         uuid.UUID
+	OrganizationID  uuid.UUID
+	Name            string
+	Slug            string
+	UserID          uuid.UUID
+	EntitlementGate *OrganizationEntitlementGate
 }
 
 type UpdateWorkspaceInput struct {
@@ -2638,14 +2695,16 @@ type OrgMembershipFullRow struct {
 }
 
 type CreateOrgMembershipInput struct {
-	OrganizationID uuid.UUID
-	UserID         uuid.UUID
-	Role           string
+	OrganizationID  uuid.UUID
+	UserID          uuid.UUID
+	Role            string
+	EntitlementGate *OrganizationEntitlementGate
 }
 
 type UpdateOrgMembershipInput struct {
-	Role   *string
-	Status *string
+	Role            *string
+	Status          *string
+	EntitlementGate *OrganizationEntitlementGate
 }
 
 type WorkspaceMembershipFullRow struct {
@@ -3335,8 +3394,18 @@ func (r *Repository) GetOrgMembershipByOrgAndUser(ctx context.Context, orgID, us
 }
 
 func (r *Repository) CreateOrgMembership(ctx context.Context, input CreateOrgMembershipInput) (OrgMembershipFullRow, error) {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return OrgMembershipFullRow{}, fmt.Errorf("begin org membership creation transaction: %w", err)
+	}
+	defer rollback(ctx, tx)
+
+	if err := enforceSeatEntitlementGate(ctx, tx, input.OrganizationID, input.EntitlementGate); err != nil {
+		return OrgMembershipFullRow{}, err
+	}
+
 	var m OrgMembershipFullRow
-	err := r.db.QueryRow(ctx, `
+	err = tx.QueryRow(ctx, `
 		INSERT INTO organization_memberships (id, organization_id, user_id, role, membership_status)
 		VALUES (gen_random_uuid(), $1, $2, $3, 'invited')
 		RETURNING id, organization_id, user_id, role, membership_status, created_at, updated_at
@@ -3353,12 +3422,14 @@ func (r *Repository) CreateOrgMembership(ctx context.Context, input CreateOrgMem
 
 	// Fetch user details to fill the response.
 	var user User
-	if err = r.db.QueryRow(ctx, `SELECT email, COALESCE(display_name, '') FROM users WHERE id = $1`, input.UserID).Scan(&user.Email, &user.DisplayName); err != nil {
-		return m, nil // membership created; user details are non-critical
+	if err = tx.QueryRow(ctx, `SELECT email, COALESCE(display_name, '') FROM users WHERE id = $1`, input.UserID).Scan(&user.Email, &user.DisplayName); err == nil {
+		m.Email = user.Email
+		m.DisplayName = user.DisplayName
 	}
-	m.Email = user.Email
-	m.DisplayName = user.DisplayName
 
+	if err := tx.Commit(ctx); err != nil {
+		return OrgMembershipFullRow{}, fmt.Errorf("commit org membership creation: %w", err)
+	}
 	return m, nil
 }
 
@@ -3415,8 +3486,27 @@ func (r *Repository) UpdateOrgMembership(ctx context.Context, membershipID uuid.
 	`, strings.Join(setClauses, ", "), argIdx)
 	args = append(args, membershipID)
 
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return OrgMembershipFullRow{}, fmt.Errorf("begin org membership update transaction: %w", err)
+	}
+	defer rollback(ctx, tx)
+
+	if input.EntitlementGate != nil {
+		var orgID uuid.UUID
+		if err := tx.QueryRow(ctx, `SELECT organization_id FROM organization_memberships WHERE id = $1`, membershipID).Scan(&orgID); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return OrgMembershipFullRow{}, ErrMembershipNotFound
+			}
+			return OrgMembershipFullRow{}, fmt.Errorf("get org membership organization: %w", err)
+		}
+		if err := enforceSeatEntitlementGate(ctx, tx, orgID, input.EntitlementGate); err != nil {
+			return OrgMembershipFullRow{}, err
+		}
+	}
+
 	var m OrgMembershipFullRow
-	err := r.db.QueryRow(ctx, query, args...).Scan(
+	err = tx.QueryRow(ctx, query, args...).Scan(
 		&m.ID, &m.OrganizationID, &m.UserID, &m.Role, &m.MembershipStatus, &m.CreatedAt, &m.UpdatedAt,
 	)
 	if err != nil {
@@ -3428,12 +3518,14 @@ func (r *Repository) UpdateOrgMembership(ctx context.Context, membershipID uuid.
 
 	// Fetch user details.
 	var user User
-	if err = r.db.QueryRow(ctx, `SELECT email, COALESCE(display_name, '') FROM users WHERE id = $1`, m.UserID).Scan(&user.Email, &user.DisplayName); err != nil {
-		return m, nil // membership updated; user details are non-critical
+	if err = tx.QueryRow(ctx, `SELECT email, COALESCE(display_name, '') FROM users WHERE id = $1`, m.UserID).Scan(&user.Email, &user.DisplayName); err == nil {
+		m.Email = user.Email
+		m.DisplayName = user.DisplayName
 	}
-	m.Email = user.Email
-	m.DisplayName = user.DisplayName
 
+	if err := tx.Commit(ctx); err != nil {
+		return OrgMembershipFullRow{}, fmt.Errorf("commit org membership update: %w", err)
+	}
 	return m, nil
 }
 
@@ -3470,6 +3562,10 @@ func (r *Repository) CreateWorkspaceWithAdmin(ctx context.Context, input CreateW
 		return WorkspaceRow{}, fmt.Errorf("begin tx: %w", err)
 	}
 	defer tx.Rollback(ctx)
+
+	if err := enforceWorkspaceCreationEntitlementGate(ctx, tx, input.OrganizationID, input.EntitlementGate); err != nil {
+		return WorkspaceRow{}, err
+	}
 
 	var ws WorkspaceRow
 	err = tx.QueryRow(ctx, `

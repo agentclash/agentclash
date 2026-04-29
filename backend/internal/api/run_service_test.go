@@ -1492,10 +1492,10 @@ func (f *fakeEntitlementGateService) BuildRunGate(_ context.Context, _ uuid.UUID
 	return f.gate, f.err
 }
 
-func (f *fakeEntitlementGateService) CheckWorkspaceCreation(context.Context, uuid.UUID) error {
-	return f.err
+func (f *fakeEntitlementGateService) BuildWorkspaceCreationGate(context.Context, uuid.UUID) (*repository.OrganizationEntitlementGate, error) {
+	return nil, f.err
 }
 
-func (f *fakeEntitlementGateService) CheckSeatAvailability(context.Context, uuid.UUID, bool) error {
-	return f.err
+func (f *fakeEntitlementGateService) BuildSeatGate(context.Context, uuid.UUID, bool) (*repository.OrganizationEntitlementGate, error) {
+	return nil, f.err
 }

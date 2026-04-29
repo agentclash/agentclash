@@ -12,9 +12,15 @@ import (
 	"github.com/agentclash/agentclash/backend/internal/billing"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 var ErrBillingWebhookAlreadyProcessed = errors.New("billing webhook already processed")
+
+type repositoryExecutor interface {
+	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}
 
 type BillingCheckoutIntentInput struct {
 	OrganizationID   uuid.UUID
@@ -93,6 +99,26 @@ type BillingWebhookEventInput struct {
 	Error          *string
 }
 
+type BillingAccountInput struct {
+	OrganizationID uuid.UUID
+	DodoCustomerID string
+	BillingEmail   string
+	Status         string
+}
+
+type BillingWebhookEntitlementsInput struct {
+	OrganizationID          uuid.UUID
+	Entitlements            billing.EffectiveEntitlements
+	UseSubscriptionAsSource bool
+	ExpiresAt               *time.Time
+}
+
+type BillingWebhookApplication struct {
+	Account      *BillingAccountInput
+	Subscription *BillingSubscriptionInput
+	Entitlements *BillingWebhookEntitlementsInput
+}
+
 type BillingOverview struct {
 	Entitlements billing.EffectiveEntitlements `json:"entitlements"`
 	Subscription *BillingSubscription          `json:"subscription,omitempty"`
@@ -112,6 +138,11 @@ type RunEntitlementGate struct {
 	ConcurrencyCost int
 	WindowStart     time.Time
 	WindowEnd       time.Time
+}
+
+type OrganizationEntitlementGate struct {
+	OrganizationID uuid.UUID
+	Entitlements   billing.EffectiveEntitlements
 }
 
 func (r *Repository) ResolveWorkspaceEntitlements(ctx context.Context, workspaceID uuid.UUID) (uuid.UUID, billing.EffectiveEntitlements, error) {
@@ -188,6 +219,10 @@ func (r *Repository) GetOrganizationEntitlements(ctx context.Context, orgID uuid
 }
 
 func (r *Repository) UpsertOrganizationEntitlements(ctx context.Context, orgID uuid.UUID, entitlements billing.EffectiveEntitlements, sourceSubscriptionID *uuid.UUID, expiresAt *time.Time) error {
+	return upsertOrganizationEntitlements(ctx, r.db, orgID, entitlements, sourceSubscriptionID, expiresAt)
+}
+
+func upsertOrganizationEntitlements(ctx context.Context, exec repositoryExecutor, orgID uuid.UUID, entitlements billing.EffectiveEntitlements, sourceSubscriptionID *uuid.UUID, expiresAt *time.Time) error {
 	if expiresAt == nil && entitlements.ExpiresAt != nil {
 		expiresAt = entitlements.ExpiresAt
 	}
@@ -195,7 +230,7 @@ func (r *Repository) UpsertOrganizationEntitlements(ctx context.Context, orgID u
 	if err != nil {
 		return fmt.Errorf("marshal feature flags: %w", err)
 	}
-	_, err = r.db.Exec(ctx, `
+	_, err = exec.Exec(ctx, `
 		INSERT INTO organization_entitlements (
 			organization_id,
 			plan_key,
@@ -343,17 +378,27 @@ func (r *Repository) CreateBillingCheckoutIntent(ctx context.Context, input Bill
 }
 
 func (r *Repository) UpsertBillingAccount(ctx context.Context, orgID uuid.UUID, dodoCustomerID string, billingEmail string, status string) error {
+	return upsertBillingAccount(ctx, r.db, BillingAccountInput{
+		OrganizationID: orgID,
+		DodoCustomerID: dodoCustomerID,
+		BillingEmail:   billingEmail,
+		Status:         status,
+	})
+}
+
+func upsertBillingAccount(ctx context.Context, exec repositoryExecutor, input BillingAccountInput) error {
+	status := input.Status
 	if status == "" {
 		status = "active"
 	}
-	_, err := r.db.Exec(ctx, `
+	_, err := exec.Exec(ctx, `
 		INSERT INTO billing_accounts (organization_id, dodo_customer_id, billing_email, status)
 		VALUES ($1, NULLIF($2, ''), NULLIF($3, ''), $4)
 		ON CONFLICT (organization_id) DO UPDATE SET
 			dodo_customer_id = COALESCE(EXCLUDED.dodo_customer_id, billing_accounts.dodo_customer_id),
 			billing_email = COALESCE(EXCLUDED.billing_email, billing_accounts.billing_email),
 			status = EXCLUDED.status
-	`, orgID, dodoCustomerID, billingEmail, status)
+	`, input.OrganizationID, input.DodoCustomerID, input.BillingEmail, status)
 	if err != nil {
 		return fmt.Errorf("upsert billing account: %w", err)
 	}
@@ -361,9 +406,13 @@ func (r *Repository) UpsertBillingAccount(ctx context.Context, orgID uuid.UUID, 
 }
 
 func (r *Repository) UpsertBillingSubscription(ctx context.Context, input BillingSubscriptionInput) (BillingSubscription, error) {
+	return upsertBillingSubscription(ctx, r.db, input)
+}
+
+func upsertBillingSubscription(ctx context.Context, exec repositoryExecutor, input BillingSubscriptionInput) (BillingSubscription, error) {
 	addons := normalizeJSON(input.AddonQuantities)
 	var subscription BillingSubscription
-	err := r.db.QueryRow(ctx, `
+	err := exec.QueryRow(ctx, `
 		INSERT INTO billing_subscriptions (
 			organization_id,
 			dodo_subscription_id,
@@ -492,6 +541,122 @@ func (r *Repository) RecordBillingWebhookEvent(ctx context.Context, input Billin
 	}
 	if tag.RowsAffected() == 0 {
 		return ErrBillingWebhookAlreadyProcessed
+	}
+	return nil
+}
+
+func (r *Repository) ApplyBillingWebhookEvent(ctx context.Context, event BillingWebhookEventInput, application BillingWebhookApplication) (bool, error) {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return false, fmt.Errorf("begin billing webhook transaction: %w", err)
+	}
+	defer rollback(ctx, tx)
+
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1::text, 435))`, event.WebhookID); err != nil {
+		return false, fmt.Errorf("lock billing webhook event: %w", err)
+	}
+
+	duplicate, err := beginBillingWebhookEvent(ctx, tx, event)
+	if err != nil || duplicate {
+		return duplicate, err
+	}
+
+	if err := applyBillingWebhookApplication(ctx, tx, application); err != nil {
+		return false, err
+	}
+
+	if err := finishBillingWebhookEvent(ctx, tx, event.WebhookID, "processed", ""); err != nil {
+		return false, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return false, fmt.Errorf("commit billing webhook transaction: %w", err)
+	}
+	return false, nil
+}
+
+func beginBillingWebhookEvent(ctx context.Context, exec repositoryExecutor, input BillingWebhookEventInput) (bool, error) {
+	payload := normalizeJSON(input.Payload)
+	hash := sha256.Sum256(payload)
+	var status string
+	err := exec.QueryRow(ctx, `
+		INSERT INTO billing_webhook_events (
+			webhook_id,
+			event_type,
+			dodo_business_id,
+			payload_type,
+			event_timestamp,
+			processed_at,
+			payload_hash,
+			status,
+			error,
+			payload
+		)
+		VALUES ($1, $2, $3, $4, $5, NULL, $6, 'failed', NULL, $7::jsonb)
+		ON CONFLICT (webhook_id) DO UPDATE SET
+			event_type = EXCLUDED.event_type,
+			dodo_business_id = EXCLUDED.dodo_business_id,
+			payload_type = EXCLUDED.payload_type,
+			event_timestamp = EXCLUDED.event_timestamp,
+			processed_at = NULL,
+			payload_hash = EXCLUDED.payload_hash,
+			status = 'failed',
+			error = NULL,
+			payload = EXCLUDED.payload
+		WHERE billing_webhook_events.status = 'failed'
+		RETURNING status
+	`, input.WebhookID, input.EventType, input.DodoBusinessID, input.PayloadType, input.EventTimestamp, hex.EncodeToString(hash[:]), payload).Scan(&status)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return true, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("begin billing webhook event: %w", err)
+	}
+	return false, nil
+}
+
+func finishBillingWebhookEvent(ctx context.Context, exec repositoryExecutor, webhookID string, status string, message string) error {
+	var errorMessage *string
+	if message != "" {
+		errorMessage = &message
+	}
+	tag, err := exec.Exec(ctx, `
+		UPDATE billing_webhook_events
+		SET status = $2,
+		    error = $3,
+		    processed_at = now()
+		WHERE webhook_id = $1
+	`, webhookID, status, errorMessage)
+	if err != nil {
+		return fmt.Errorf("finish billing webhook event: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrBillingWebhookAlreadyProcessed
+	}
+	return nil
+}
+
+func applyBillingWebhookApplication(ctx context.Context, exec repositoryExecutor, application BillingWebhookApplication) error {
+	var subscriptionID *uuid.UUID
+	if application.Account != nil {
+		if err := upsertBillingAccount(ctx, exec, *application.Account); err != nil {
+			return err
+		}
+	}
+	if application.Subscription != nil {
+		subscription, err := upsertBillingSubscription(ctx, exec, *application.Subscription)
+		if err != nil {
+			return err
+		}
+		subscriptionID = &subscription.ID
+	}
+	if application.Entitlements != nil {
+		sourceSubscriptionID := (*uuid.UUID)(nil)
+		if application.Entitlements.UseSubscriptionAsSource {
+			sourceSubscriptionID = subscriptionID
+		}
+		if err := upsertOrganizationEntitlements(ctx, exec, application.Entitlements.OrganizationID, application.Entitlements.Entitlements, sourceSubscriptionID, application.Entitlements.ExpiresAt); err != nil {
+			return err
+		}
 	}
 	return nil
 }

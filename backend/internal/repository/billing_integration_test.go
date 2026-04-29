@@ -187,6 +187,125 @@ func TestRepositoryExpiredTrialEntitlementsBlockRunCreation(t *testing.T) {
 	}
 }
 
+func TestRepositoryBillingWebhookFailureIsRetryable(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+	webhookID := "wh_retry_test_" + uuid.NewString()
+	event := repository.BillingWebhookEventInput{
+		WebhookID: webhookID,
+		EventType: "subscription.active",
+		Payload:   []byte(`{"type":"subscription.active"}`),
+	}
+
+	badEntitlements := billing.DefaultEntitlements()
+	badEntitlements.PlanKey = "bad-plan"
+	duplicate, err := repo.ApplyBillingWebhookEvent(ctx, event, repository.BillingWebhookApplication{
+		Entitlements: &repository.BillingWebhookEntitlementsInput{
+			OrganizationID: fixture.organizationID,
+			Entitlements:   badEntitlements,
+		},
+	})
+	if err == nil {
+		t.Fatal("ApplyBillingWebhookEvent with invalid entitlements returned nil error")
+	}
+	if duplicate {
+		t.Fatal("failed first delivery should not be duplicate")
+	}
+
+	var eventCount int
+	if err := db.QueryRow(ctx, `SELECT count(*) FROM billing_webhook_events WHERE webhook_id = $1`, webhookID).Scan(&eventCount); err != nil {
+		t.Fatalf("count failed webhook rows returned error: %v", err)
+	}
+	if eventCount != 0 {
+		t.Fatalf("failed webhook rows = %d, want rollback to leave 0", eventCount)
+	}
+
+	proEntitlements := billing.MaterializeEntitlements(billing.MustPlan(billing.PlanPro), billing.PeriodMonthly, 5, billing.EntitlementStatusActive)
+	duplicate, err = repo.ApplyBillingWebhookEvent(ctx, event, repository.BillingWebhookApplication{
+		Entitlements: &repository.BillingWebhookEntitlementsInput{
+			OrganizationID: fixture.organizationID,
+			Entitlements:   proEntitlements,
+		},
+	})
+	if err != nil {
+		t.Fatalf("retry ApplyBillingWebhookEvent returned error: %v", err)
+	}
+	if duplicate {
+		t.Fatal("retry of failed webhook should not be duplicate")
+	}
+	var status string
+	if err := db.QueryRow(ctx, `SELECT status FROM billing_webhook_events WHERE webhook_id = $1`, webhookID).Scan(&status); err != nil {
+		t.Fatalf("select processed webhook status returned error: %v", err)
+	}
+	if status != "processed" {
+		t.Fatalf("processed webhook status = %q, want processed", status)
+	}
+
+	duplicate, err = repo.ApplyBillingWebhookEvent(ctx, event, repository.BillingWebhookApplication{})
+	if err != nil {
+		t.Fatalf("duplicate processed ApplyBillingWebhookEvent returned error: %v", err)
+	}
+	if !duplicate {
+		t.Fatal("processed webhook retry should be duplicate")
+	}
+}
+
+func TestRepositoryOrganizationEntitlementGatesBlockWorkspaceAndSeatWrites(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+	entitlements := billing.DefaultEntitlements()
+	gate := &repository.OrganizationEntitlementGate{
+		OrganizationID: fixture.organizationID,
+		Entitlements:   entitlements,
+	}
+
+	_, err := repo.CreateWorkspaceWithAdmin(ctx, repository.CreateWorkspaceWithAdminInput{
+		OrganizationID:  fixture.organizationID,
+		Name:            "Blocked Workspace",
+		Slug:            "blocked-workspace",
+		UserID:          fixture.userID,
+		EntitlementGate: gate,
+	})
+	var gateErr billing.GateError
+	if !errors.As(err, &gateErr) {
+		t.Fatalf("CreateWorkspaceWithAdmin error = %v, want billing.GateError", err)
+	}
+	if gateErr.Decision.Code != billing.GateCodePlanLimitExceeded {
+		t.Fatalf("workspace gate code = %q, want %q", gateErr.Decision.Code, billing.GateCodePlanLimitExceeded)
+	}
+
+	if _, err := db.Exec(ctx, `
+		INSERT INTO organization_memberships (id, organization_id, user_id, role, membership_status)
+		VALUES (gen_random_uuid(), $1, $2, 'org_admin', 'active')
+	`, fixture.organizationID, fixture.userID); err != nil {
+		t.Fatalf("insert active org membership returned error: %v", err)
+	}
+	inviteeID := uuid.New()
+	if _, err := db.Exec(ctx, `
+		INSERT INTO users (id, workos_user_id, email, display_name)
+		VALUES ($1, $2, $3, $4)
+	`, inviteeID, "workos-invitee", "invitee@example.com", "Invitee"); err != nil {
+		t.Fatalf("insert invitee returned error: %v", err)
+	}
+
+	_, err = repo.CreateOrgMembership(ctx, repository.CreateOrgMembershipInput{
+		OrganizationID:  fixture.organizationID,
+		UserID:          inviteeID,
+		Role:            "org_member",
+		EntitlementGate: gate,
+	})
+	if !errors.As(err, &gateErr) {
+		t.Fatalf("CreateOrgMembership error = %v, want billing.GateError", err)
+	}
+	if gateErr.Decision.Code != billing.GateCodeSeatLimitExceeded {
+		t.Fatalf("seat gate code = %q, want %q", gateErr.Decision.Code, billing.GateCodeSeatLimitExceeded)
+	}
+}
+
 func billingTestRunParams(fixture testFixture, name string, gate *repository.RunEntitlementGate) repository.CreateQueuedRunParams {
 	return repository.CreateQueuedRunParams{
 		OrganizationID:         fixture.organizationID,

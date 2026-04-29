@@ -127,6 +127,19 @@ func TestExpiredTrialEntitlementBlocksGates(t *testing.T) {
 	}
 }
 
+func TestEmptyEntitlementStatusFailsClosed(t *testing.T) {
+	entitlements := MaterializeEntitlements(MustPlan(PlanPro), PeriodMonthly, 5, EntitlementStatusActive)
+	entitlements.Status = ""
+
+	decision := CheckMaxModels(entitlements, 1)
+	if decision.Allowed {
+		t.Fatal("CheckMaxModels allowed an entitlement with empty status")
+	}
+	if decision.Code != GateCodeEntitlementInactive {
+		t.Fatalf("code = %q, want %q", decision.Code, GateCodeEntitlementInactive)
+	}
+}
+
 func assertIntPtr(t *testing.T, label string, got *int, want int) {
 	t.Helper()
 	if got == nil {

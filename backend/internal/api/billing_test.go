@@ -105,6 +105,7 @@ func TestBillingManagerProcessesSignedDodoWebhook(t *testing.T) {
 	manager := NewBillingManager(NewCallerOrganizationAuthorizer(), NewCallerWorkspaceAuthorizer(), repo, BillingManagerConfig{
 		WebhookSecret: secret,
 	})
+	manager.now = func() time.Time { return time.Unix(1777420800, 0).UTC() }
 
 	body := `{"business_id":"biz_test","type":"subscription.active","timestamp":"2026-04-29T00:00:00Z","data":{"payload_type":"Subscription","subscription_id":"sub_test","customer_id":"cus_test","product_id":"agentclash_pro_monthly","status":"active","quantity":5,"metadata":{"organization_id":"` + repo.orgID.String() + `"}}}`
 	headers := signedDodoHeaders(secret, "wh_test_432", "1777420800", body)
@@ -143,6 +144,7 @@ func TestBillingManagerProcessesTrialingDodoWebhookWithExpiry(t *testing.T) {
 	manager := NewBillingManager(NewCallerOrganizationAuthorizer(), NewCallerWorkspaceAuthorizer(), repo, BillingManagerConfig{
 		WebhookSecret: secret,
 	})
+	manager.now = func() time.Time { return time.Unix(1777420800, 0).UTC() }
 
 	body := `{"business_id":"biz_test","type":"subscription.updated","timestamp":"2026-04-29T00:00:00Z","data":{"payload_type":"Subscription","subscription_id":"sub_trial","customer_id":"cus_trial","product_id":"agentclash_team_monthly","status":"trialing","quantity":2,"expires_at":"2026-06-13T00:00:00Z","metadata":{"organization_id":"` + repo.orgID.String() + `"}}}`
 	headers := signedDodoHeaders(secret, "wh_test_trial_432", "1777420800", body)
@@ -175,6 +177,26 @@ func TestBillingManagerRejectsInvalidDodoWebhookSignature(t *testing.T) {
 		WebhookTimestamp: "1777420800",
 		WebhookSignature: "not-valid",
 	}, []byte(`{"type":"subscription.active","data":{}}`))
+	if !errors.Is(err, errInvalidWebhookSignature) {
+		t.Fatalf("error = %v, want invalid webhook signature", err)
+	}
+	if len(repo.webhookIDs) != 0 {
+		t.Fatalf("recorded webhook count = %d, want 0", len(repo.webhookIDs))
+	}
+}
+
+func TestBillingManagerRejectsStaleDodoWebhookTimestamp(t *testing.T) {
+	workspaceID := uuid.New()
+	repo := newFakeBillingRepository(workspaceID)
+	secret := "agentclash-test-webhook-secret"
+	manager := NewBillingManager(NewCallerOrganizationAuthorizer(), NewCallerWorkspaceAuthorizer(), repo, BillingManagerConfig{
+		WebhookSecret: secret,
+	})
+	manager.now = func() time.Time { return time.Unix(1777420800, 0).Add(10 * time.Minute).UTC() }
+
+	body := `{"type":"subscription.active","data":{"subscription_id":"sub_test","customer_id":"cus_test","product_id":"agentclash_pro_monthly","status":"active","quantity":5,"metadata":{"organization_id":"` + repo.orgID.String() + `"}}}`
+	headers := signedDodoHeaders(secret, "wh_stale_432", "1777420800", body)
+	_, err := manager.ProcessDodoWebhook(context.Background(), headers, []byte(body))
 	if !errors.Is(err, errInvalidWebhookSignature) {
 		t.Fatalf("error = %v, want invalid webhook signature", err)
 	}
@@ -435,6 +457,35 @@ func (f *fakeBillingRepository) RecordBillingWebhookEvent(_ context.Context, inp
 	}
 	f.webhookIDs[input.WebhookID] = true
 	return nil
+}
+
+func (f *fakeBillingRepository) ApplyBillingWebhookEvent(ctx context.Context, event repository.BillingWebhookEventInput, application repository.BillingWebhookApplication) (bool, error) {
+	if f.webhookIDs[event.WebhookID] {
+		return true, nil
+	}
+	f.webhookIDs[event.WebhookID] = true
+	if application.Account != nil {
+		if err := f.UpsertBillingAccount(ctx, application.Account.OrganizationID, application.Account.DodoCustomerID, application.Account.BillingEmail, application.Account.Status); err != nil {
+			return false, err
+		}
+	}
+	var sourceSubscriptionID *uuid.UUID
+	if application.Subscription != nil {
+		subscription, err := f.UpsertBillingSubscription(ctx, *application.Subscription)
+		if err != nil {
+			return false, err
+		}
+		sourceSubscriptionID = &subscription.ID
+	}
+	if application.Entitlements != nil {
+		if !application.Entitlements.UseSubscriptionAsSource {
+			sourceSubscriptionID = nil
+		}
+		if err := f.UpsertOrganizationEntitlements(ctx, application.Entitlements.OrganizationID, application.Entitlements.Entitlements, sourceSubscriptionID, application.Entitlements.ExpiresAt); err != nil {
+			return false, err
+		}
+	}
+	return false, nil
 }
 
 func assertIntPtr(t *testing.T, label string, got *int, want int) {

@@ -34,8 +34,8 @@ type BillingService interface {
 
 type EntitlementGateService interface {
 	BuildRunGate(ctx context.Context, workspaceID uuid.UUID, participantCount int, raceCount int) (*repository.RunEntitlementGate, error)
-	CheckWorkspaceCreation(ctx context.Context, orgID uuid.UUID) error
-	CheckSeatAvailability(ctx context.Context, orgID uuid.UUID, userAlreadyActive bool) error
+	BuildWorkspaceCreationGate(ctx context.Context, orgID uuid.UUID) (*repository.OrganizationEntitlementGate, error)
+	BuildSeatGate(ctx context.Context, orgID uuid.UUID, userAlreadyActive bool) (*repository.OrganizationEntitlementGate, error)
 }
 
 type BillingRepository interface {
@@ -52,6 +52,7 @@ type BillingRepository interface {
 	GetBillingOverview(ctx context.Context, orgID uuid.UUID) (repository.BillingOverview, error)
 	FindOrganizationByDodoSubscriptionOrCustomer(ctx context.Context, subscriptionID string, customerID string) (uuid.UUID, error)
 	RecordBillingWebhookEvent(ctx context.Context, input repository.BillingWebhookEventInput) error
+	ApplyBillingWebhookEvent(ctx context.Context, event repository.BillingWebhookEventInput, application repository.BillingWebhookApplication) (bool, error)
 }
 
 type BillingManager struct {
@@ -68,6 +69,8 @@ type BillingManager struct {
 }
 
 var errInvalidWebhookSignature = errors.New("invalid webhook signature")
+
+const dodoWebhookTimestampTolerance = 5 * time.Minute
 
 type BillingManagerConfig struct {
 	DodoAPIKey      string
@@ -279,43 +282,29 @@ func (m *BillingManager) BuildRunGate(ctx context.Context, workspaceID uuid.UUID
 	}, nil
 }
 
-func (m *BillingManager) CheckWorkspaceCreation(ctx context.Context, orgID uuid.UUID) error {
+func (m *BillingManager) BuildWorkspaceCreationGate(ctx context.Context, orgID uuid.UUID) (*repository.OrganizationEntitlementGate, error) {
 	entitlements, err := m.repo.GetOrganizationEntitlements(ctx, orgID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if decision := billingpkg.CheckEntitlementActive(entitlements, m.now().UTC()); !decision.Allowed {
-		return billingpkg.GateError{Decision: decision}
+		return nil, billingpkg.GateError{Decision: decision}
 	}
-	count, err := m.repo.CountActiveWorkspaces(ctx, orgID)
-	if err != nil {
-		return err
-	}
-	if decision := billingpkg.CheckWorkspaceLimit(entitlements, count, 1); !decision.Allowed {
-		return billingpkg.GateError{Decision: decision}
-	}
-	return nil
+	return &repository.OrganizationEntitlementGate{OrganizationID: orgID, Entitlements: entitlements}, nil
 }
 
-func (m *BillingManager) CheckSeatAvailability(ctx context.Context, orgID uuid.UUID, userAlreadyActive bool) error {
+func (m *BillingManager) BuildSeatGate(ctx context.Context, orgID uuid.UUID, userAlreadyActive bool) (*repository.OrganizationEntitlementGate, error) {
 	if userAlreadyActive {
-		return nil
+		return nil, nil
 	}
 	entitlements, err := m.repo.GetOrganizationEntitlements(ctx, orgID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if decision := billingpkg.CheckEntitlementActive(entitlements, m.now().UTC()); !decision.Allowed {
-		return billingpkg.GateError{Decision: decision}
+		return nil, billingpkg.GateError{Decision: decision}
 	}
-	activeSeats, err := m.repo.CountActiveOrgMembers(ctx, orgID)
-	if err != nil {
-		return err
-	}
-	if decision := billingpkg.CheckSeatLimit(entitlements, activeSeats, 1); !decision.Allowed {
-		return billingpkg.GateError{Decision: decision}
-	}
-	return nil
+	return &repository.OrganizationEntitlementGate{OrganizationID: orgID, Entitlements: entitlements}, nil
 }
 
 func (m *BillingManager) ProcessDodoWebhook(ctx context.Context, headers DodoWebhookHeaders, rawBody []byte) (ProcessDodoWebhookResult, error) {
@@ -329,30 +318,34 @@ func (m *BillingManager) ProcessDodoWebhook(ctx context.Context, headers DodoWeb
 	}
 	eventTime := envelope.EventTime()
 	payloadType := envelope.PayloadType()
-	recordErr := m.repo.RecordBillingWebhookEvent(ctx, repository.BillingWebhookEventInput{
+	eventInput := repository.BillingWebhookEventInput{
 		WebhookID:      headers.WebhookID,
 		EventType:      envelope.Type,
 		DodoBusinessID: optionalString(envelope.BusinessID),
 		PayloadType:    optionalString(payloadType),
 		EventTimestamp: eventTime,
 		Payload:        rawBody,
-	})
-	if errors.Is(recordErr, repository.ErrBillingWebhookAlreadyProcessed) {
-		return ProcessDodoWebhookResult{Duplicate: true, EventType: envelope.Type}, nil
-	}
-	if recordErr != nil {
-		return ProcessDodoWebhookResult{}, recordErr
 	}
 
+	var duplicate bool
 	if strings.HasPrefix(envelope.Type, "subscription.") || envelope.Type == "payment.failed" || strings.HasPrefix(envelope.Type, "dunning.") {
-		if err := m.applySubscriptionWebhook(ctx, envelope); err != nil {
-			return ProcessDodoWebhookResult{}, err
-		}
+		duplicate, err = m.applySubscriptionWebhook(ctx, eventInput, envelope)
+	} else {
+		duplicate, err = m.repo.ApplyBillingWebhookEvent(ctx, eventInput, repository.BillingWebhookApplication{})
+	}
+	if errors.Is(err, repository.ErrBillingWebhookAlreadyProcessed) {
+		return ProcessDodoWebhookResult{Duplicate: true, EventType: envelope.Type}, nil
+	}
+	if err != nil {
+		return ProcessDodoWebhookResult{}, err
+	}
+	if duplicate {
+		return ProcessDodoWebhookResult{Duplicate: true, EventType: envelope.Type}, nil
 	}
 	return ProcessDodoWebhookResult{EventType: envelope.Type}, nil
 }
 
-func (m *BillingManager) applySubscriptionWebhook(ctx context.Context, envelope dodoWebhookEnvelope) error {
+func (m *BillingManager) applySubscriptionWebhook(ctx context.Context, eventInput repository.BillingWebhookEventInput, envelope dodoWebhookEnvelope) (bool, error) {
 	subscriptionID := envelope.DataString("subscription_id", "id", "dodo_subscription_id")
 	customerID := envelope.DataString("customer_id", "dodo_customer_id")
 	productID := envelope.DataString("product_id", "dodo_product_id")
@@ -367,23 +360,23 @@ func (m *BillingManager) applySubscriptionWebhook(ctx context.Context, envelope 
 		orgID, err = m.repo.FindOrganizationByDodoSubscriptionOrCustomer(ctx, subscriptionID, customerID)
 	}
 	if err != nil {
-		return fmt.Errorf("resolve webhook organization: %w", err)
+		return false, fmt.Errorf("resolve webhook organization: %w", err)
 	}
 
 	mapping, err := billingpkg.MapDodoProduct(productID)
 	if err != nil {
-		return err
+		return false, err
 	}
 	plan, ok := billingpkg.PlanByKey(mapping.PlanKey)
 	if !ok {
-		return fmt.Errorf("%w: %s", billingpkg.ErrUnknownPlan, mapping.PlanKey)
+		return false, fmt.Errorf("%w: %s", billingpkg.ErrUnknownPlan, mapping.PlanKey)
 	}
 	addons, _ := json.Marshal(envelope.DataObject("addon_quantities"))
 	if len(addons) == 0 || string(addons) == "null" {
 		addons = []byte(`{}`)
 	}
 	eventTime := envelope.EventTimeValue(m.now().UTC())
-	subscription, err := m.repo.UpsertBillingSubscription(ctx, repository.BillingSubscriptionInput{
+	subscriptionInput := repository.BillingSubscriptionInput{
 		OrganizationID:          orgID,
 		DodoSubscriptionID:      subscriptionID,
 		DodoCustomerID:          customerID,
@@ -399,31 +392,41 @@ func (m *BillingManager) applySubscriptionWebhook(ctx context.Context, envelope 
 		SeatQuantity:            seatQuantity,
 		AddonQuantities:         addons,
 		LatestDodoEventAt:       &eventTime,
-	})
-	if err != nil {
-		return err
-	}
-	if customerID != "" {
-		if err := m.repo.UpsertBillingAccount(ctx, orgID, customerID, envelope.DataString("customer_email", "email"), "active"); err != nil {
-			return err
-		}
 	}
 
 	entitlements := billingpkg.DefaultEntitlements()
-	sourceSubscriptionID := (*uuid.UUID)(nil)
+	useSubscriptionAsSource := false
 	entitlementExpiresAt := (*time.Time)(nil)
 	if billingpkg.DodoStatusIsEntitled(status) {
 		if err := billingpkg.ValidateSeatQuantity(plan, seatQuantity); err != nil {
-			return err
+			return false, err
 		}
 		entitlements = billingpkg.MaterializeEntitlements(plan, mapping.BillingPeriod, seatQuantity, status)
-		sourceSubscriptionID = &subscription.ID
-		if shouldExpireMaterializedEntitlement(status, subscription.CancelAtNextBillingDate, subscription.ExpiresAt) {
-			entitlementExpiresAt = subscription.ExpiresAt
-			entitlements.ExpiresAt = subscription.ExpiresAt
+		useSubscriptionAsSource = true
+		if shouldExpireMaterializedEntitlement(status, subscriptionInput.CancelAtNextBillingDate, subscriptionInput.ExpiresAt) {
+			entitlementExpiresAt = subscriptionInput.ExpiresAt
+			entitlements.ExpiresAt = subscriptionInput.ExpiresAt
 		}
 	}
-	return m.repo.UpsertOrganizationEntitlements(ctx, orgID, entitlements, sourceSubscriptionID, entitlementExpiresAt)
+
+	application := repository.BillingWebhookApplication{
+		Subscription: &subscriptionInput,
+		Entitlements: &repository.BillingWebhookEntitlementsInput{
+			OrganizationID:          orgID,
+			Entitlements:            entitlements,
+			UseSubscriptionAsSource: useSubscriptionAsSource,
+			ExpiresAt:               entitlementExpiresAt,
+		},
+	}
+	if customerID != "" {
+		application.Account = &repository.BillingAccountInput{
+			OrganizationID: orgID,
+			DodoCustomerID: customerID,
+			BillingEmail:   envelope.DataString("customer_email", "email"),
+			Status:         "active",
+		}
+	}
+	return m.repo.ApplyBillingWebhookEvent(ctx, eventInput, application)
 }
 
 func shouldExpireMaterializedEntitlement(status string, cancelAtNextBillingDate bool, expiresAt *time.Time) bool {
@@ -514,6 +517,14 @@ func (m *BillingManager) verifyWebhook(headers DodoWebhookHeaders, rawBody []byt
 	if strings.TrimSpace(headers.WebhookID) == "" || strings.TrimSpace(headers.WebhookTimestamp) == "" || strings.TrimSpace(headers.WebhookSignature) == "" {
 		return errInvalidWebhookSignature
 	}
+	timestamp, err := parseDodoWebhookTimestamp(headers.WebhookTimestamp)
+	if err != nil {
+		return errInvalidWebhookSignature
+	}
+	now := m.now().UTC()
+	if timestamp.Before(now.Add(-dodoWebhookTimestampTolerance)) || timestamp.After(now.Add(dodoWebhookTimestampTolerance)) {
+		return errInvalidWebhookSignature
+	}
 	signedPayload := headers.WebhookID + "." + headers.WebhookTimestamp + "." + string(rawBody)
 	mac := hmac.New(sha256.New, []byte(m.webhookSecret))
 	_, _ = mac.Write([]byte(signedPayload))
@@ -522,6 +533,19 @@ func (m *BillingManager) verifyWebhook(headers DodoWebhookHeaders, rawBody []byt
 		return errInvalidWebhookSignature
 	}
 	return nil
+}
+
+func parseDodoWebhookTimestamp(value string) (time.Time, error) {
+	value = strings.TrimSpace(value)
+	seconds, err := strconv.ParseInt(value, 10, 64)
+	if err == nil {
+		return time.Unix(seconds, 0).UTC(), nil
+	}
+	parsed, err := time.Parse(time.RFC3339, value)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return parsed.UTC(), nil
 }
 
 func signatureMatches(header string, expected []byte) bool {

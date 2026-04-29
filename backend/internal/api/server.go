@@ -336,7 +336,7 @@ func buildRouter(opts routerOptions) http.Handler {
 		Get("/public/shares/{token}", getPublicShareHandler(logger, publicShareService))
 	registerPublicRoutes(router, logger, artifactService)
 	registerHostedIntegrationRoutes(router, logger, hostedRunIngestionService)
-	registerDodoWebhookRoute(router, logger, billingService)
+	registerDodoWebhookRoute(router.With(rateLimiter.Middleware("default", extractWorkspaceID)), logger, billingService)
 	registerEventStreamRoute(router, logger, authenticator, runReadService, eventSubscriber)
 
 	if cliAuthService != nil {

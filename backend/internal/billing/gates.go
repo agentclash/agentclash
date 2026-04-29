@@ -66,7 +66,7 @@ func CheckEntitlementActive(entitlements EffectiveEntitlements, now time.Time) G
 		}
 	}
 	switch normalizeStatus(entitlements.Status) {
-	case "", EntitlementStatusActive, EntitlementStatusTrialing, "renewed":
+	case EntitlementStatusActive, EntitlementStatusTrialing, "renewed":
 		return Allow(entitlements)
 	case EntitlementStatusExpired:
 		return GateDecision{
