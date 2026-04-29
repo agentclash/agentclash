@@ -1,0 +1,281 @@
+package api
+
+import (
+	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
+	billingpkg "github.com/agentclash/agentclash/backend/internal/billing"
+	"github.com/agentclash/agentclash/backend/internal/repository"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+)
+
+func TestBillingManagerBuildRunGateRejectsFreeModelLimit(t *testing.T) {
+	workspaceID := uuid.New()
+	repo := newFakeBillingRepository(workspaceID)
+	manager := NewBillingManager(NewCallerOrganizationAuthorizer(), NewCallerWorkspaceAuthorizer(), repo, BillingManagerConfig{
+		WebhookSecret: "secret",
+	})
+
+	_, err := manager.BuildRunGate(context.Background(), workspaceID, 5, 1)
+	if err == nil {
+		t.Fatal("expected gate error")
+	}
+	var gateErr billingpkg.GateError
+	if !errors.As(err, &gateErr) {
+		t.Fatalf("error = %v, want billing.GateError", err)
+	}
+	if gateErr.Decision.Code != billingpkg.GateCodePlanLimitExceeded {
+		t.Fatalf("gate code = %q, want %q", gateErr.Decision.Code, billingpkg.GateCodePlanLimitExceeded)
+	}
+	if gateErr.Decision.PlanKey != billingpkg.PlanFree {
+		t.Fatalf("plan key = %q, want free", gateErr.Decision.PlanKey)
+	}
+}
+
+func TestBillingManagerBuildRunGateRejectsQuotaAndConcurrency(t *testing.T) {
+	workspaceID := uuid.New()
+	repo := newFakeBillingRepository(workspaceID)
+	repo.usage.RaceCount = 25
+	manager := NewBillingManager(NewCallerOrganizationAuthorizer(), NewCallerWorkspaceAuthorizer(), repo, BillingManagerConfig{
+		WebhookSecret: "secret",
+	})
+
+	_, err := manager.BuildRunGate(context.Background(), workspaceID, 1, 1)
+	var gateErr billingpkg.GateError
+	if !errors.As(err, &gateErr) {
+		t.Fatalf("quota error = %v, want billing.GateError", err)
+	}
+	if gateErr.Decision.Code != billingpkg.GateCodeQuotaExceeded {
+		t.Fatalf("quota gate code = %q, want %q", gateErr.Decision.Code, billingpkg.GateCodeQuotaExceeded)
+	}
+
+	repo.usage.RaceCount = 0
+	repo.usage.ActiveRuns = 1
+	_, err = manager.BuildRunGate(context.Background(), workspaceID, 1, 1)
+	if !errors.As(err, &gateErr) {
+		t.Fatalf("concurrency error = %v, want billing.GateError", err)
+	}
+	if gateErr.Decision.Code != billingpkg.GateCodeConcurrencyLimitExceeded {
+		t.Fatalf("concurrency gate code = %q, want %q", gateErr.Decision.Code, billingpkg.GateCodeConcurrencyLimitExceeded)
+	}
+}
+
+func TestBillingManagerProcessesSignedDodoWebhook(t *testing.T) {
+	workspaceID := uuid.New()
+	repo := newFakeBillingRepository(workspaceID)
+	secret := "agentclash-test-webhook-secret"
+	manager := NewBillingManager(NewCallerOrganizationAuthorizer(), NewCallerWorkspaceAuthorizer(), repo, BillingManagerConfig{
+		WebhookSecret: secret,
+	})
+
+	body := `{"business_id":"biz_test","type":"subscription.active","timestamp":"2026-04-29T00:00:00Z","data":{"payload_type":"Subscription","subscription_id":"sub_test","customer_id":"cus_test","product_id":"agentclash_pro_monthly","status":"active","quantity":5,"metadata":{"organization_id":"` + repo.orgID.String() + `"}}}`
+	headers := signedDodoHeaders(secret, "wh_test_432", "1777420800", body)
+
+	result, err := manager.ProcessDodoWebhook(context.Background(), headers, []byte(body))
+	if err != nil {
+		t.Fatalf("ProcessDodoWebhook returned error: %v", err)
+	}
+	if result.Duplicate {
+		t.Fatal("first webhook should not be duplicate")
+	}
+	if repo.subscription.PlanKey != billingpkg.PlanPro {
+		t.Fatalf("subscription plan = %q, want pro", repo.subscription.PlanKey)
+	}
+	if repo.entitlements.PlanKey != billingpkg.PlanPro {
+		t.Fatalf("materialized plan = %q, want pro", repo.entitlements.PlanKey)
+	}
+	assertIntPtr(t, "pro materialized quota", repo.entitlements.RacesPerWorkspaceMonth, 2500)
+
+	result, err = manager.ProcessDodoWebhook(context.Background(), headers, []byte(body))
+	if err != nil {
+		t.Fatalf("duplicate ProcessDodoWebhook returned error: %v", err)
+	}
+	if !result.Duplicate {
+		t.Fatal("second webhook should be duplicate")
+	}
+}
+
+func TestBillingManagerRejectsInvalidDodoWebhookSignature(t *testing.T) {
+	workspaceID := uuid.New()
+	repo := newFakeBillingRepository(workspaceID)
+	manager := NewBillingManager(NewCallerOrganizationAuthorizer(), NewCallerWorkspaceAuthorizer(), repo, BillingManagerConfig{
+		WebhookSecret: "secret",
+	})
+
+	_, err := manager.ProcessDodoWebhook(context.Background(), DodoWebhookHeaders{
+		WebhookID:        "wh_bad",
+		WebhookTimestamp: "1777420800",
+		WebhookSignature: "not-valid",
+	}, []byte(`{"type":"subscription.active","data":{}}`))
+	if !errors.Is(err, errInvalidWebhookSignature) {
+		t.Fatalf("error = %v, want invalid webhook signature", err)
+	}
+	if len(repo.webhookIDs) != 0 {
+		t.Fatalf("recorded webhook count = %d, want 0", len(repo.webhookIDs))
+	}
+}
+
+func TestListBillingPlansHandler(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/v1/billing/plans", nil)
+	req = req.WithContext(context.WithValue(req.Context(), callerContextKey{}, Caller{UserID: uuid.New()}))
+	rr := httptest.NewRecorder()
+
+	listBillingPlansHandler(slog.Default(), noopBillingService{}).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), `"key":"free"`) || !strings.Contains(rr.Body.String(), `"key":"enterprise"`) {
+		t.Fatalf("response missing plan catalog: %s", rr.Body.String())
+	}
+}
+
+func signedDodoHeaders(secret string, id string, timestamp string, body string) DodoWebhookHeaders {
+	mac := hmac.New(sha256.New, []byte(secret))
+	_, _ = mac.Write([]byte(id + "." + timestamp + "." + body))
+	return DodoWebhookHeaders{
+		WebhookID:        id,
+		WebhookTimestamp: timestamp,
+		WebhookSignature: hex.EncodeToString(mac.Sum(nil)),
+	}
+}
+
+type fakeBillingRepository struct {
+	orgID        uuid.UUID
+	workspaceID  uuid.UUID
+	entitlements billingpkg.EffectiveEntitlements
+	usage        repository.WorkspaceUsageSnapshot
+	webhookIDs   map[string]bool
+	subscription repository.BillingSubscription
+}
+
+func newFakeBillingRepository(workspaceID uuid.UUID) *fakeBillingRepository {
+	windowStart, windowEnd := usageWindow(time.Date(2026, 4, 29, 0, 0, 0, 0, time.UTC))
+	return &fakeBillingRepository{
+		orgID:        uuid.New(),
+		workspaceID:  workspaceID,
+		entitlements: billingpkg.DefaultEntitlements(),
+		usage: repository.WorkspaceUsageSnapshot{
+			WorkspaceID: workspaceID,
+			WindowStart: windowStart,
+			WindowEnd:   windowEnd,
+		},
+		webhookIDs: map[string]bool{},
+	}
+}
+
+func (f *fakeBillingRepository) ResolveWorkspaceEntitlements(_ context.Context, workspaceID uuid.UUID) (uuid.UUID, billingpkg.EffectiveEntitlements, error) {
+	if workspaceID != f.workspaceID {
+		return uuid.Nil, billingpkg.EffectiveEntitlements{}, repository.ErrWorkspaceNotFound
+	}
+	return f.orgID, f.entitlements, nil
+}
+
+func (f *fakeBillingRepository) GetOrganizationEntitlements(_ context.Context, orgID uuid.UUID) (billingpkg.EffectiveEntitlements, error) {
+	if orgID != f.orgID {
+		return billingpkg.EffectiveEntitlements{}, pgx.ErrNoRows
+	}
+	return f.entitlements, nil
+}
+
+func (f *fakeBillingRepository) UpsertOrganizationEntitlements(_ context.Context, orgID uuid.UUID, entitlements billingpkg.EffectiveEntitlements, _ *uuid.UUID, _ *time.Time) error {
+	if orgID != f.orgID {
+		return pgx.ErrNoRows
+	}
+	f.entitlements = entitlements
+	return nil
+}
+
+func (f *fakeBillingRepository) CountActiveOrgMembers(context.Context, uuid.UUID) (int, error) {
+	return 1, nil
+}
+
+func (f *fakeBillingRepository) CountActiveWorkspaces(context.Context, uuid.UUID) (int, error) {
+	return 1, nil
+}
+
+func (f *fakeBillingRepository) CountActiveWorkspaceRuns(context.Context, uuid.UUID) (int, error) {
+	return f.usage.ActiveRuns, nil
+}
+
+func (f *fakeBillingRepository) GetWorkspaceUsageSnapshot(_ context.Context, _ uuid.UUID, windowStart, windowEnd time.Time) (repository.WorkspaceUsageSnapshot, error) {
+	usage := f.usage
+	usage.WindowStart = windowStart
+	usage.WindowEnd = windowEnd
+	return usage, nil
+}
+
+func (f *fakeBillingRepository) CreateBillingCheckoutIntent(_ context.Context, input repository.BillingCheckoutIntentInput) (repository.BillingCheckoutIntent, error) {
+	return repository.BillingCheckoutIntent{
+		ID:               uuid.New(),
+		OrganizationID:   input.OrganizationID,
+		RequestedPlanKey: input.RequestedPlanKey,
+		BillingPeriod:    input.BillingPeriod,
+		SeatQuantity:     input.SeatQuantity,
+		ReturnURL:        input.ReturnURL,
+		CheckoutURL:      input.CheckoutURL,
+		Metadata:         input.Metadata,
+		Status:           "created",
+	}, nil
+}
+
+func (f *fakeBillingRepository) UpsertBillingAccount(context.Context, uuid.UUID, string, string, string) error {
+	return nil
+}
+
+func (f *fakeBillingRepository) UpsertBillingSubscription(_ context.Context, input repository.BillingSubscriptionInput) (repository.BillingSubscription, error) {
+	addons := input.AddonQuantities
+	if len(addons) == 0 {
+		addons = json.RawMessage(`{}`)
+	}
+	f.subscription = repository.BillingSubscription{
+		ID:                 uuid.New(),
+		OrganizationID:     input.OrganizationID,
+		DodoSubscriptionID: input.DodoSubscriptionID,
+		DodoProductID:      input.DodoProductID,
+		PlanKey:            input.PlanKey,
+		BillingPeriod:      input.BillingPeriod,
+		Status:             input.Status,
+		SeatQuantity:       input.SeatQuantity,
+		AddonQuantities:    addons,
+		LatestDodoEventAt:  input.LatestDodoEventAt,
+	}
+	return f.subscription, nil
+}
+
+func (f *fakeBillingRepository) GetBillingOverview(context.Context, uuid.UUID) (repository.BillingOverview, error) {
+	return repository.BillingOverview{Entitlements: f.entitlements}, nil
+}
+
+func (f *fakeBillingRepository) FindOrganizationByDodoSubscriptionOrCustomer(context.Context, string, string) (uuid.UUID, error) {
+	return f.orgID, nil
+}
+
+func (f *fakeBillingRepository) RecordBillingWebhookEvent(_ context.Context, input repository.BillingWebhookEventInput) error {
+	if f.webhookIDs[input.WebhookID] {
+		return repository.ErrBillingWebhookAlreadyProcessed
+	}
+	f.webhookIDs[input.WebhookID] = true
+	return nil
+}
+
+func assertIntPtr(t *testing.T, label string, got *int, want int) {
+	t.Helper()
+	if got == nil {
+		t.Fatalf("%s = nil, want %d", label, want)
+	}
+	if *got != want {
+		t.Fatalf("%s = %d, want %d", label, *got, want)
+	}
+}

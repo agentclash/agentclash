@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/agentclash/agentclash/backend/internal/billing"
 	"github.com/agentclash/agentclash/backend/internal/domain"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/google/uuid"
@@ -82,6 +83,58 @@ func TestRunCreationManagerCreatesQueuedRunAndStartsWorkflow(t *testing.T) {
 	}
 	if starter.startedRunID != runID {
 		t.Fatalf("started run id = %s, want %s", starter.startedRunID, runID)
+	}
+}
+
+func TestRunCreationManagerRejectsEntitlementGateBeforeQueue(t *testing.T) {
+	workspaceID := uuid.New()
+	challengePackVersionID := uuid.New()
+	deploymentIDs := []uuid.UUID{uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New()}
+	caller := Caller{
+		UserID: uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: "workspace_member"},
+		},
+	}
+
+	deployments := make([]repository.RunnableDeployment, 0, len(deploymentIDs))
+	orgID := uuid.New()
+	for _, deploymentID := range deploymentIDs {
+		deployments = append(deployments, repository.RunnableDeployment{
+			ID:                        deploymentID,
+			OrganizationID:            orgID,
+			WorkspaceID:               workspaceID,
+			Name:                      "Deployment",
+			AgentDeploymentSnapshotID: uuid.New(),
+		})
+	}
+	repo := &fakeRunCreationRepository{
+		challengePackVersion: repository.RunnableChallengePackVersion{ID: challengePackVersionID},
+		deployments:          deployments,
+	}
+	entitlements := billing.MaterializeEntitlements(billing.MustPlan(billing.PlanFree), billing.PeriodMonthly, 1, "active")
+	manager := NewRunCreationManager(NewCallerWorkspaceAuthorizer(), repo, &fakeRunWorkflowStarter{}, nil).
+		WithEntitlementGateService(&fakeEntitlementGateService{
+			err: billing.GateError{Decision: billing.CheckMaxModels(entitlements, len(deploymentIDs))},
+		})
+
+	_, err := manager.CreateRun(context.Background(), caller, CreateRunInput{
+		WorkspaceID:            workspaceID,
+		ChallengePackVersionID: challengePackVersionID,
+		AgentDeploymentIDs:     deploymentIDs,
+	})
+	if err == nil {
+		t.Fatal("expected entitlement gate error")
+	}
+	var gateErr billing.GateError
+	if !errors.As(err, &gateErr) {
+		t.Fatalf("error = %v, want billing.GateError", err)
+	}
+	if gateErr.Decision.Code != billing.GateCodePlanLimitExceeded {
+		t.Fatalf("gate code = %q, want %q", gateErr.Decision.Code, billing.GateCodePlanLimitExceeded)
+	}
+	if repo.createParams != nil {
+		t.Fatal("CreateQueuedRun should not be called when entitlement gate rejects")
 	}
 }
 
@@ -1427,5 +1480,22 @@ type fakeEvalSessionWorkflowStarter struct {
 
 func (f *fakeEvalSessionWorkflowStarter) StartEvalSessionWorkflow(_ context.Context, evalSessionID uuid.UUID) error {
 	f.startedEvalSessionID = evalSessionID
+	return f.err
+}
+
+type fakeEntitlementGateService struct {
+	gate *repository.RunEntitlementGate
+	err  error
+}
+
+func (f *fakeEntitlementGateService) BuildRunGate(_ context.Context, _ uuid.UUID, _ int, _ int) (*repository.RunEntitlementGate, error) {
+	return f.gate, f.err
+}
+
+func (f *fakeEntitlementGateService) CheckWorkspaceCreation(context.Context, uuid.UUID) error {
+	return f.err
+}
+
+func (f *fakeEntitlementGateService) CheckSeatAvailability(context.Context, uuid.UUID, bool) error {
 	return f.err
 }
