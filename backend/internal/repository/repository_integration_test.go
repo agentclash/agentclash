@@ -2934,7 +2934,7 @@ func TestRepositoryBuildRunComparisonExplicitParticipantSelectionWithinSameRun(t
 	fixture := seedFixture(t, ctx, db)
 	repo := repository.New(db)
 
-	run, runAgents := createTestRun(t, ctx, repo, fixture, 2, "same-run")
+	run, runAgents := createTestRun(t, ctx, repo, fixture, 3, "same-run")
 	evaluationSpecID := insertEvaluationSpecRecord(t, ctx, db, fixture.challengePackVersionID, "compare-same-run", 1)
 
 	insertRunAgentScorecardRecord(t, ctx, db, runAgents[0].ID, evaluationSpecID, scorecardFixture{
@@ -2948,6 +2948,12 @@ func TestRepositoryBuildRunComparisonExplicitParticipantSelectionWithinSameRun(t
 		Reliability: float64Ptr(0.84),
 		Latency:     float64Ptr(0.33),
 		Cost:        float64Ptr(0.22),
+	})
+	insertRunAgentScorecardRecord(t, ctx, db, runAgents[2].ID, evaluationSpecID, scorecardFixture{
+		Correctness: float64Ptr(0.66),
+		Reliability: float64Ptr(0.74),
+		Latency:     float64Ptr(0.43),
+		Cost:        float64Ptr(0.32),
 	})
 	insertReplaySummaryRecord(t, ctx, db, runAgents[0].ID, replaySummaryFixture{
 		Status:            "completed",
@@ -2973,8 +2979,21 @@ func TestRepositoryBuildRunComparisonExplicitParticipantSelectionWithinSameRun(t
 		TerminalStatus:    "completed",
 		TerminalEventType: "system.run.completed",
 	})
+	insertReplaySummaryRecord(t, ctx, db, runAgents[2].ID, replaySummaryFixture{
+		Status:            "completed",
+		Headline:          "Second candidate lane",
+		Events:            12,
+		ReplaySteps:       6,
+		ModelCalls:        4,
+		ToolCalls:         1,
+		Outputs:           1,
+		ScoringEvents:     1,
+		TerminalStatus:    "completed",
+		TerminalEventType: "system.run.completed",
+	})
 	insertJudgeResultRecord(t, ctx, db, runAgents[0].ID, evaluationSpecID, fixture.firstChallengeIdentityID, "exact")
 	insertJudgeResultRecord(t, ctx, db, runAgents[1].ID, evaluationSpecID, fixture.firstChallengeIdentityID, "exact")
+	insertJudgeResultRecord(t, ctx, db, runAgents[2].ID, evaluationSpecID, fixture.firstChallengeIdentityID, "exact")
 
 	comparison, err := repo.BuildRunComparison(ctx, repository.BuildRunComparisonParams{
 		BaselineRunID:       run.ID,
@@ -2994,6 +3013,31 @@ func TestRepositoryBuildRunComparisonExplicitParticipantSelectionWithinSameRun(t
 	}
 	if comparison.CandidateRunAgentID == nil || *comparison.CandidateRunAgentID != runAgents[1].ID {
 		t.Fatalf("candidate selected run agent = %v, want %s", comparison.CandidateRunAgentID, runAgents[1].ID)
+	}
+
+	secondComparison, err := repo.BuildRunComparison(ctx, repository.BuildRunComparisonParams{
+		BaselineRunID:       run.ID,
+		CandidateRunID:      run.ID,
+		BaselineRunAgentID:  &runAgents[0].ID,
+		CandidateRunAgentID: &runAgents[2].ID,
+	})
+	if err != nil {
+		t.Fatalf("second BuildRunComparison returned error: %v", err)
+	}
+	if secondComparison.ID == comparison.ID {
+		t.Fatalf("same-run comparisons reused row id %s for different candidate agents", comparison.ID)
+	}
+
+	var storedRows int
+	if err := db.QueryRow(ctx, `
+		SELECT count(*)
+		FROM run_comparisons
+		WHERE baseline_run_id = $1 AND candidate_run_id = $1
+	`, run.ID).Scan(&storedRows); err != nil {
+		t.Fatalf("count same-run comparisons: %v", err)
+	}
+	if storedRows != 2 {
+		t.Fatalf("stored same-run comparisons = %d, want 2 distinct agent-pair rows", storedRows)
 	}
 }
 

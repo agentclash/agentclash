@@ -102,6 +102,7 @@ type Querier interface {
 	UpdatePlaygroundTestCase(ctx context.Context, arg UpdatePlaygroundTestCaseParams) (PlaygroundTestCase, error)
 	UpdateRunAgentStatus(ctx context.Context, arg UpdateRunAgentStatusParams) (RunAgent, error)
 	UpdateRunStatus(ctx context.Context, arg UpdateRunStatusParams) (Run, error)
+	UpsertCrossRunComparison(ctx context.Context, arg UpsertCrossRunComparisonParams) (RunComparison, error)
 	UpsertEvalSessionResult(ctx context.Context, arg UpsertEvalSessionResultParams) (EvalSessionResult, error)
 	UpsertJudgeResult(ctx context.Context, arg UpsertJudgeResultParams) (UpsertJudgeResultRow, error)
 	UpsertLLMJudgeResult(ctx context.Context, arg UpsertLLMJudgeResultParams) (LlmJudgeResult, error)
@@ -110,8 +111,8 @@ type Querier interface {
 	UpsertRunAgentReplayIndex(ctx context.Context, arg UpsertRunAgentReplayIndexParams) (RunAgentReplay, error)
 	UpsertRunAgentReplaySummary(ctx context.Context, arg UpsertRunAgentReplaySummaryParams) (RunAgentReplay, error)
 	UpsertRunAgentScorecard(ctx context.Context, arg UpsertRunAgentScorecardParams) (UpsertRunAgentScorecardRow, error)
-	UpsertRunComparison(ctx context.Context, arg UpsertRunComparisonParams) (RunComparison, error)
 	UpsertRunScorecard(ctx context.Context, arg UpsertRunScorecardParams) (RunScorecard, error)
+	UpsertSameRunAgentComparison(ctx context.Context, arg UpsertSameRunAgentComparisonParams) (RunComparison, error)
 }
 
 var _ Querier = (*Queries)(nil)

@@ -18,6 +18,7 @@ var (
 	ErrRunScorecardNotFound            = errors.New("run scorecard not found")
 	ErrPublicShareLinkNotFound         = errors.New("public share link not found")
 	ErrRunComparisonNotFound           = errors.New("run comparison not found")
+	ErrInvalidRunComparisonParams      = errors.New("invalid run comparison params")
 	ErrRegressionSuiteNotFound         = errors.New("regression suite not found")
 	ErrRegressionCaseNotFound          = errors.New("regression case not found")
 	ErrRegressionSuiteNameConflict     = errors.New("regression suite name already exists in workspace")

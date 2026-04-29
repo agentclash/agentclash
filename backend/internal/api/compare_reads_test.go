@@ -267,7 +267,7 @@ func TestGetRunComparisonEndpointMapsValidationErrorsToBadRequest(t *testing.T) 
 		stubRunReadService{},
 		stubReplayReadService{},
 		stubHostedRunIngestionService{},
-		&fakeCompareReadService{err: errors.New("baseline_run_id and candidate_run_id must differ")},
+		&fakeCompareReadService{err: invalidCompareRequest("baseline_run_id and candidate_run_id must differ")},
 		stubAgentDeploymentReadService{},
 		stubChallengePackReadService{},
 		stubAgentBuildService{},

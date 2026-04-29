@@ -176,6 +176,10 @@ type selectedRunComparisonParticipant struct {
 }
 
 func (r *Repository) GetRunComparisonByRunIDs(ctx context.Context, baselineRunID uuid.UUID, candidateRunID uuid.UUID) (RunComparison, error) {
+	if baselineRunID == candidateRunID {
+		return RunComparison{}, fmt.Errorf("%w: same-run comparison lookup requires run agent ids", ErrInvalidRunComparisonParams)
+	}
+
 	row, err := r.queries.GetRunComparisonByRunIDs(ctx, repositorysqlc.GetRunComparisonByRunIDsParams{
 		BaselineRunID:  baselineRunID,
 		CandidateRunID: candidateRunID,
@@ -298,10 +302,10 @@ func (r *Repository) BuildRunComparison(ctx context.Context, params BuildRunComp
 func validateBuildRunComparisonParams(params BuildRunComparisonParams) error {
 	if params.BaselineRunID == params.CandidateRunID {
 		if params.BaselineRunAgentID == nil || params.CandidateRunAgentID == nil {
-			return fmt.Errorf("same-run comparison requires baseline and candidate run agent ids")
+			return fmt.Errorf("%w: same-run comparison requires baseline and candidate run agent ids", ErrInvalidRunComparisonParams)
 		}
 		if *params.BaselineRunAgentID == *params.CandidateRunAgentID {
-			return fmt.Errorf("baseline and candidate run agent ids must differ for same-run comparison")
+			return fmt.Errorf("%w: baseline and candidate run agent ids must differ for same-run comparison", ErrInvalidRunComparisonParams)
 		}
 	}
 	return nil
@@ -878,7 +882,7 @@ func (r *Repository) upsertRunComparisonRecord(
 	fingerprint string,
 	summary json.RawMessage,
 ) (RunComparison, error) {
-	row, err := r.queries.UpsertRunComparison(ctx, repositorysqlc.UpsertRunComparisonParams{
+	params := repositorysqlc.UpsertCrossRunComparisonParams{
 		BaselineRunID:       baselineRunID,
 		CandidateRunID:      candidateRunID,
 		BaselineRunAgentID:  cloneUUIDPtr(baselineRunAgentID),
@@ -887,7 +891,16 @@ func (r *Repository) upsertRunComparisonRecord(
 		ReasonCode:          cloneStringPtr(reasonCode),
 		SourceFingerprint:   fingerprint,
 		Summary:             cloneJSON(summary),
-	})
+	}
+	var (
+		row repositorysqlc.RunComparison
+		err error
+	)
+	if baselineRunID == candidateRunID {
+		row, err = r.queries.UpsertSameRunAgentComparison(ctx, repositorysqlc.UpsertSameRunAgentComparisonParams(params))
+	} else {
+		row, err = r.queries.UpsertCrossRunComparison(ctx, params)
+	}
 	if err != nil {
 		return RunComparison{}, fmt.Errorf("upsert run comparison: %w", err)
 	}
