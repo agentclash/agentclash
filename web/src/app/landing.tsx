@@ -1132,6 +1132,21 @@ const LANDING_USE_CASES: Array<{ title: string; paragraph: string }> = [
     paragraph:
       "Where is the rate limiter applied to /runs? Give file paths, line numbers, and the call chain. Files cited must actually exist.",
   },
+  {
+    title: "Data analysis",
+    paragraph:
+      "Here's a 200k-row CSV of failed checkouts. Find the top three failure modes and prove each with a query you can rerun.",
+  },
+  {
+    title: "Browser ops",
+    paragraph:
+      "Book the cheapest direct flight LHR→JFK on 2026-05-12 under £400, refundable. Don't book if no option qualifies.",
+  },
+  {
+    title: "Long-running agents",
+    paragraph:
+      "Run unattended for six hours: triage the bug queue, open draft PRs for the top five, and leave a handoff note we can act on.",
+  },
 ];
 
 const LANDING_FEATURES: Array<{
@@ -1787,7 +1802,7 @@ export default function HomePage() {
               What teams race here.
             </h2>
             <p className="max-w-[44ch] text-sm leading-[1.6] text-white/50">
-              Five task families AgentClash is built for. Hover any
+              Eight task families AgentClash is built for. Hover any
               card to read the brief.
             </p>
           </div>
