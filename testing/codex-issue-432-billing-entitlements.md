@@ -106,7 +106,7 @@ Plan catalog:
 ```bash
 curl -i \
   -H "X-Agentclash-User-Id: ${USER_ID}" \
-  -H "X-Agentclash-Organization-Memberships: ${AUTH_ORG}" \
+  -H "X-Agentclash-Org-Memberships: ${AUTH_ORG}" \
   -H "X-Agentclash-Workspace-Memberships: ${AUTH_WS}" \
   "${API}/v1/billing/plans"
 # Expected: HTTP 200, body contains plan keys free, pro, team, enterprise.
@@ -117,7 +117,7 @@ Workspace entitlements:
 ```bash
 curl -i \
   -H "X-Agentclash-User-Id: ${USER_ID}" \
-  -H "X-Agentclash-Organization-Memberships: ${AUTH_ORG}" \
+  -H "X-Agentclash-Org-Memberships: ${AUTH_ORG}" \
   -H "X-Agentclash-Workspace-Memberships: ${AUTH_WS}" \
   "${API}/v1/workspaces/${WORKSPACE_ID}/entitlements"
 # Expected: HTTP 200, body contains plan_key and gate summaries.
@@ -128,7 +128,7 @@ Billing state:
 ```bash
 curl -i \
   -H "X-Agentclash-User-Id: ${USER_ID}" \
-  -H "X-Agentclash-Organization-Memberships: ${AUTH_ORG}" \
+  -H "X-Agentclash-Org-Memberships: ${AUTH_ORG}" \
   -H "X-Agentclash-Workspace-Memberships: ${AUTH_WS}" \
   "${API}/v1/organizations/${ORG_ID}/billing"
 # Expected: HTTP 200 for org admin, body contains entitlement and subscription summary.
@@ -140,7 +140,7 @@ Checkout intent:
 curl -i -X POST \
   -H "Content-Type: application/json" \
   -H "X-Agentclash-User-Id: ${USER_ID}" \
-  -H "X-Agentclash-Organization-Memberships: ${AUTH_ORG}" \
+  -H "X-Agentclash-Org-Memberships: ${AUTH_ORG}" \
   -H "X-Agentclash-Workspace-Memberships: ${AUTH_WS}" \
   -d '{"plan_key":"pro","billing_period":"monthly","seat_quantity":5,"return_url":"http://localhost:3000/billing/return"}' \
   "${API}/v1/organizations/${ORG_ID}/billing/checkout"
@@ -167,7 +167,7 @@ Run gate:
 curl -i -X POST \
   -H "Content-Type: application/json" \
   -H "X-Agentclash-User-Id: ${USER_ID}" \
-  -H "X-Agentclash-Organization-Memberships: ${AUTH_ORG}" \
+  -H "X-Agentclash-Org-Memberships: ${AUTH_ORG}" \
   -H "X-Agentclash-Workspace-Memberships: ${AUTH_WS}" \
   -d '{"workspace_id":"'"${WORKSPACE_ID}"'","challenge_pack_version_id":"replace-with-version","agent_deployment_ids":["a","b","c","d","e"]}' \
   "${API}/v1/runs"

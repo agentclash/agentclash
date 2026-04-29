@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
@@ -16,6 +17,7 @@ import (
 
 	billingpkg "github.com/agentclash/agentclash/backend/internal/billing"
 	"github.com/agentclash/agentclash/backend/internal/repository"
+	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
@@ -138,6 +140,44 @@ func TestListBillingPlansHandler(t *testing.T) {
 	}
 	if !strings.Contains(rr.Body.String(), `"key":"free"`) || !strings.Contains(rr.Body.String(), `"key":"enterprise"`) {
 		t.Fatalf("response missing plan catalog: %s", rr.Body.String())
+	}
+}
+
+func TestCreateBillingCheckoutHandlerDecodesSnakeCaseJSON(t *testing.T) {
+	workspaceID := uuid.New()
+	repo := newFakeBillingRepository(workspaceID)
+	manager := NewBillingManager(NewCallerOrganizationAuthorizer(), NewCallerWorkspaceAuthorizer(), repo, BillingManagerConfig{
+		WebhookSecret: "secret",
+	})
+	caller := Caller{
+		UserID: uuid.New(),
+		OrganizationMemberships: map[uuid.UUID]OrganizationMembership{
+			repo.orgID: {OrganizationID: repo.orgID, Role: "org_admin"},
+		},
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: "workspace_admin"},
+		},
+	}
+
+	router := chi.NewRouter()
+	router.Post("/v1/organizations/{organizationID}/billing/checkout", createBillingCheckoutHandler(slog.Default(), manager))
+	req := httptest.NewRequest(http.MethodPost, "/v1/organizations/"+repo.orgID.String()+"/billing/checkout", bytes.NewBufferString(`{
+		"plan_key":"pro",
+		"billing_period":"monthly",
+		"seat_quantity":5,
+		"return_url":"http://localhost:3000/billing/return"
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(context.WithValue(req.Context(), callerContextKey{}, caller))
+	rr := httptest.NewRecorder()
+
+	router.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201; body=%s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), `"plan_key":"pro"`) || !strings.Contains(rr.Body.String(), `"seat_quantity":5`) {
+		t.Fatalf("checkout response did not preserve decoded fields: %s", rr.Body.String())
 	}
 }
 

@@ -9,6 +9,7 @@ import (
 	"github.com/agentclash/agentclash/backend/internal/billing"
 	"github.com/agentclash/agentclash/backend/internal/domain"
 	"github.com/agentclash/agentclash/backend/internal/repository"
+	"github.com/google/uuid"
 )
 
 func TestRepositoryBillingEntitlementDefaultsAndWebhookIdempotency(t *testing.T) {
@@ -30,8 +31,9 @@ func TestRepositoryBillingEntitlementDefaultsAndWebhookIdempotency(t *testing.T)
 	assertIntPtr(t, "free race quota", entitlements.RacesPerWorkspaceMonth, 25)
 
 	eventTime := time.Date(2026, 4, 29, 0, 0, 0, 0, time.UTC)
+	webhookID := "wh_repo_test_" + uuid.NewString()
 	if err := repo.RecordBillingWebhookEvent(ctx, repository.BillingWebhookEventInput{
-		WebhookID:      "wh_repo_test",
+		WebhookID:      webhookID,
 		EventType:      "subscription.active",
 		EventTimestamp: &eventTime,
 		Payload:        []byte(`{"type":"subscription.active"}`),
@@ -39,7 +41,7 @@ func TestRepositoryBillingEntitlementDefaultsAndWebhookIdempotency(t *testing.T)
 		t.Fatalf("RecordBillingWebhookEvent first returned error: %v", err)
 	}
 	err = repo.RecordBillingWebhookEvent(ctx, repository.BillingWebhookEventInput{
-		WebhookID:      "wh_repo_test",
+		WebhookID:      webhookID,
 		EventType:      "subscription.active",
 		EventTimestamp: &eventTime,
 		Payload:        []byte(`{"type":"subscription.active"}`),
@@ -49,9 +51,10 @@ func TestRepositoryBillingEntitlementDefaultsAndWebhookIdempotency(t *testing.T)
 	}
 
 	proEntitlements := billing.MaterializeEntitlements(billing.MustPlan(billing.PlanPro), billing.PeriodMonthly, 5, "active")
+	subscriptionID := "sub_repo_test_" + uuid.NewString()
 	subscription, err := repo.UpsertBillingSubscription(ctx, repository.BillingSubscriptionInput{
 		OrganizationID:     fixture.organizationID,
-		DodoSubscriptionID: "sub_repo_test",
+		DodoSubscriptionID: subscriptionID,
 		DodoCustomerID:     "cus_repo_test",
 		DodoProductID:      "agentclash_pro_monthly",
 		PlanKey:            billing.PlanPro,
@@ -74,8 +77,8 @@ func TestRepositoryBillingEntitlementDefaultsAndWebhookIdempotency(t *testing.T)
 	if overview.Entitlements.PlanKey != billing.PlanPro {
 		t.Fatalf("overview plan = %q, want pro", overview.Entitlements.PlanKey)
 	}
-	if overview.Subscription == nil || overview.Subscription.DodoSubscriptionID != "sub_repo_test" {
-		t.Fatalf("overview subscription = %+v, want sub_repo_test", overview.Subscription)
+	if overview.Subscription == nil || overview.Subscription.DodoSubscriptionID != subscriptionID {
+		t.Fatalf("overview subscription = %+v, want %s", overview.Subscription, subscriptionID)
 	}
 }
 

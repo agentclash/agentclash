@@ -89,10 +89,10 @@ type ListBillingPlansResult struct {
 }
 
 type CreateBillingCheckoutInput struct {
-	PlanKey       string
-	BillingPeriod string
-	SeatQuantity  int
-	ReturnURL     string
+	PlanKey       string `json:"plan_key"`
+	BillingPeriod string `json:"billing_period"`
+	SeatQuantity  int    `json:"seat_quantity"`
+	ReturnURL     string `json:"return_url"`
 }
 
 type CreateBillingCheckoutResult struct {
