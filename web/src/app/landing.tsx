@@ -710,7 +710,7 @@ function ParticleFlywheel() {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    const N_PER = 850;
+    const N_PER = 3500;
     const N = N_PER * 2;
     const CYCLE_MS = 5500;
 
@@ -724,6 +724,7 @@ function ParticleFlywheel() {
       flyRadius: number;
       jitterX: number;
       jitterY: number;
+      colorPhase: number;
     };
 
     const particles: P[] = [];
@@ -734,13 +735,14 @@ function ParticleFlywheel() {
         group: i < N_PER ? 0 : 1,
         sphTheta: 2 * Math.PI * u,
         sphPhi: Math.acos(2 * v - 1),
-        // Bias toward surface so the sphere reads as a shell, not a fog.
-        sphRadius: 0.78 + Math.pow(Math.random(), 0.45) * 0.22,
+        // Mostly near the surface, with some inner haze for a glowing core.
+        sphRadius: 0.55 + Math.pow(Math.random(), 0.55) * 0.5,
         flyTheta: (i / N) * Math.PI * 2 + (Math.random() - 0.5) * 0.08,
         flyPhi: Math.random() * Math.PI * 2,
-        flyRadius: 0.85 + Math.random() * 0.15,
+        flyRadius: 0.78 + Math.random() * 0.24,
         jitterX: (Math.random() - 0.5) * 2,
         jitterY: (Math.random() - 0.5) * 2,
+        colorPhase: Math.random(),
       });
     }
 
@@ -846,10 +848,10 @@ function ParticleFlywheel() {
       const cx = W / 2;
       const cy = H / 2;
       const minDim = Math.min(W, H);
-      const sphR = minDim * 0.22;
-      const sep = Math.min(W * 0.32, minDim * 0.46);
-      const flyR = minDim * 0.32;
-      const flyTube = minDim * 0.085;
+      const sphR = minDim * 0.3;
+      const sep = Math.min(W * 0.34, minDim * 0.5);
+      const flyR = minDim * 0.36;
+      const flyTube = minDim * 0.1;
 
       const rot = now * 0.00085;
       const flyRot = now * 0.0016;
@@ -886,14 +888,22 @@ function ParticleFlywheel() {
         c = 0;
       }
 
-      const FAIL: [number, number, number] = [217, 112, 112];
-      const EV: [number, number, number] = [106, 163, 232];
-      const MERGE: [number, number, number] = [240, 210, 138];
+      // Per-group inner/outer color stops give each cloud a vibrant
+      // gradient (cool→warm within the sphere) instead of a flat hue.
+      const FAIL_OUT: [number, number, number] = [255, 100, 110];
+      const FAIL_IN: [number, number, number] = [205, 60, 160];
+      const EVAL_OUT: [number, number, number] = [90, 190, 255];
+      const EVAL_IN: [number, number, number] = [130, 100, 250];
+      const MERGE_OUT: [number, number, number] = [255, 215, 130];
+      const MERGE_IN: [number, number, number] = [255, 140, 80];
 
-      // Pointer repulsion radius scales with composition.
       const repelR = minDim * 0.16;
       const repelR2 = repelR * repelR;
       const repelStrength = minDim * 0.07;
+
+      // Additive blending — overlapping particles brighten the core,
+      // giving the dense cloud its glowing nebula quality.
+      ctx.globalCompositeOperation = "lighter";
 
       for (const p of particles) {
         const groupOffset = p.group === 0 ? -sep * a : sep * a;
@@ -936,35 +946,47 @@ function ParticleFlywheel() {
           }
         }
 
-        const baseRGB = p.group === 0 ? FAIL : EV;
-        const r = lerp(baseRGB[0], MERGE[0], b);
-        const g = lerp(baseRGB[1], MERGE[1], b);
-        const bl = lerp(baseRGB[2], MERGE[2], b);
+        const groupOut = p.group === 0 ? FAIL_OUT : EVAL_OUT;
+        const groupIn = p.group === 0 ? FAIL_IN : EVAL_IN;
+        const cp = p.colorPhase;
+        const baseR = lerp(groupOut[0], groupIn[0], cp);
+        const baseG = lerp(groupOut[1], groupIn[1], cp);
+        const baseB = lerp(groupOut[2], groupIn[2], cp);
+        const mergeR = lerp(MERGE_OUT[0], MERGE_IN[0], cp);
+        const mergeG = lerp(MERGE_OUT[1], MERGE_IN[1], cp);
+        const mergeB = lerp(MERGE_OUT[2], MERGE_IN[2], cp);
+        const r = lerp(baseR, mergeR, b);
+        const g = lerp(baseG, mergeG, b);
+        const bl = lerp(baseB, mergeB, b);
 
-        const size = 0.65 + d * 0.55 + b * 0.2;
+        // Tiny dots — additive blending does the brightness work.
+        const size = 0.45 + d * 0.35 + b * 0.15;
         const alpha = Math.max(
-          0.1,
-          Math.min(1, 0.45 + d * 0.45 - c * 0.15),
+          0.08,
+          Math.min(0.85, 0.35 + d * 0.35 - c * 0.12),
         );
 
         ctx.fillStyle = `rgba(${r | 0}, ${g | 0}, ${bl | 0}, ${alpha})`;
         ctx.beginPath();
-        ctx.arc(px, py, Math.max(0.4, size), 0, Math.PI * 2);
+        ctx.arc(px, py, Math.max(0.3, size), 0, Math.PI * 2);
         ctx.fill();
       }
+
+      // Reset blend mode so labels render normally.
+      ctx.globalCompositeOperation = "source-over";
 
       ctx.font =
         '11px var(--font-mono), ui-monospace, SFMono-Regular, monospace';
       ctx.textAlign = "center";
       const labelY = cy - sphR - 20;
       if (a > 0.05) {
-        ctx.fillStyle = `rgba(217,112,112,${0.65 * a})`;
+        ctx.fillStyle = `rgba(255,120,140,${0.7 * a})`;
         ctx.fillText("FAILURES", cx - sep * a, labelY);
-        ctx.fillStyle = `rgba(106,163,232,${0.65 * a})`;
+        ctx.fillStyle = `rgba(120,180,255,${0.7 * a})`;
         ctx.fillText("EVALS", cx + sep * a, labelY);
       }
       if (b > 0.05) {
-        ctx.fillStyle = `rgba(240,210,138,${0.75 * b})`;
+        ctx.fillStyle = `rgba(255,210,140,${0.8 * b})`;
         ctx.fillText("FLYWHEEL", cx, cy - flyR - flyTube - 18);
       }
     };
@@ -1865,7 +1887,7 @@ export default function HomePage() {
         <div className="mx-auto max-w-[1440px] grid gap-16 md:grid-cols-2 md:gap-20 items-center">
           <div>
             <h2 className="font-[family-name:var(--font-display)] font-normal tracking-[-0.03em] leading-[1.02] text-[clamp(2rem,4.5vw,4rem)]">
-              Failures become your regression suite.
+              Failures and evals are one loop.
             </h2>
             <div className="mt-10 space-y-6">
               <p className="text-lg leading-[1.6] text-white/60">
