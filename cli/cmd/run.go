@@ -22,6 +22,8 @@ func init() {
 	runCmd.AddCommand(runAgentsCmd)
 	runCmd.AddCommand(runEventsCmd)
 	runCmd.AddCommand(runScorecardCmd)
+	runCmd.AddCommand(runFailuresCmd)
+	runCmd.AddCommand(runPromoteFailureCmd)
 
 	runCreateCmd.Flags().String("challenge-pack-version", "", "Challenge pack version ID (optional in a TTY; prompted when omitted)")
 	runCreateCmd.Flags().StringSlice("deployments", nil, "Agent deployment IDs (optional in a TTY; prompted when omitted)")
@@ -35,6 +37,20 @@ func init() {
 	runCreateCmd.Flags().Int("race-context-cadence", 0, "Override race-context cadence; minimum steps between standings injections, [1, 10]. 0 uses the backend default.")
 
 	runRankingCmd.Flags().String("sort-by", "", "Sort by: composite, correctness, reliability, latency, cost")
+	runFailuresCmd.Flags().String("agent", "", "Filter by run agent ID")
+	runFailuresCmd.Flags().String("severity", "", "Filter by severity: info, warning, or blocking")
+	runFailuresCmd.Flags().String("class", "", "Filter by failure class")
+	runFailuresCmd.Flags().String("evidence-tier", "", "Filter by evidence tier")
+	runFailuresCmd.Flags().String("cursor", "", "Pagination cursor")
+	runFailuresCmd.Flags().Int("limit", 0, "Maximum failures to return")
+
+	runPromoteFailureCmd.Flags().String("from-file", "", "JSON file with promotion payload")
+	runPromoteFailureCmd.Flags().String("run-agent", "", "Run agent ID")
+	runPromoteFailureCmd.Flags().String("suite", "", "Regression suite ID")
+	runPromoteFailureCmd.Flags().String("promotion-mode", "", "Promotion mode: full_executable or output_only")
+	runPromoteFailureCmd.Flags().String("title", "", "Regression case title")
+	runPromoteFailureCmd.Flags().String("failure-summary", "", "Failure summary")
+	runPromoteFailureCmd.Flags().String("severity", "", "Case severity: info, warning, or blocking")
 }
 
 var runCmd = &cobra.Command{
@@ -322,6 +338,114 @@ var runScorecardCmd = &cobra.Command{
 			return rc.Output.PrintRaw(scorecard)
 		}
 		renderRunAgentScorecard(rc, scorecard)
+		return nil
+	},
+}
+
+var runFailuresCmd = &cobra.Command{
+	Use:   "failures <runId>",
+	Short: "List failure review items for a run",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		rc := GetRunContext(cmd)
+		wsID := RequireWorkspace(cmd)
+		q := url.Values{}
+		if v, _ := cmd.Flags().GetString("agent"); v != "" {
+			q.Set("agent_id", v)
+		}
+		if v, _ := cmd.Flags().GetString("severity"); v != "" {
+			q.Set("severity", v)
+		}
+		if v, _ := cmd.Flags().GetString("class"); v != "" {
+			q.Set("class", v)
+		}
+		if v, _ := cmd.Flags().GetString("evidence-tier"); v != "" {
+			q.Set("evidence_tier", v)
+		}
+		if v, _ := cmd.Flags().GetString("cursor"); v != "" {
+			q.Set("cursor", v)
+		}
+		if v, _ := cmd.Flags().GetInt("limit"); v > 0 {
+			q.Set("limit", fmt.Sprintf("%d", v))
+		}
+
+		resp, err := rc.Client.Get(cmd.Context(), "/v1/workspaces/"+wsID+"/runs/"+args[0]+"/failures", q)
+		if err != nil {
+			return err
+		}
+		if apiErr := resp.ParseError(); apiErr != nil {
+			return apiErr
+		}
+
+		var result struct {
+			Items      []map[string]any `json:"items"`
+			NextCursor string           `json:"next_cursor,omitempty"`
+		}
+		if err := resp.DecodeJSON(&result); err != nil {
+			return err
+		}
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(result)
+		}
+
+		cols := []output.Column{{Header: "Agent"}, {Header: "Challenge"}, {Header: "State"}, {Header: "Severity"}, {Header: "Class"}, {Header: "Promotable"}}
+		rows := make([][]string, len(result.Items))
+		for i, item := range result.Items {
+			rows[i] = []string{
+				str(item["run_agent_id"]),
+				mapString(item, "challenge_identity_id", "challenge_key"),
+				output.StatusColor(str(item["failure_state"])),
+				str(item["severity"]),
+				str(item["failure_class"]),
+				str(item["promotable"]),
+			}
+		}
+		rc.Output.PrintTable(cols, rows)
+		if result.NextCursor != "" {
+			rc.Output.PrintDetail("Next Cursor", result.NextCursor)
+		}
+		return nil
+	},
+}
+
+var runPromoteFailureCmd = &cobra.Command{
+	Use:   "promote-failure <runId> <challengeIdentityId>",
+	Short: "Promote a run failure into a regression case",
+	Args:  cobra.ExactArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		rc := GetRunContext(cmd)
+		wsID := RequireWorkspace(cmd)
+		body, err := loadBodyFromFileOrFlags(cmd)
+		if err != nil {
+			return err
+		}
+		setFlagIfChanged(cmd, body, "run-agent", "run_agent_id")
+		setFlagIfChanged(cmd, body, "suite", "suite_id")
+		setFlagIfChanged(cmd, body, "promotion-mode", "promotion_mode")
+		setFlagIfChanged(cmd, body, "title", "title")
+		setFlagIfChanged(cmd, body, "failure-summary", "failure_summary")
+		setFlagIfChanged(cmd, body, "severity", "severity")
+
+		resp, err := rc.Client.Post(cmd.Context(), "/v1/workspaces/"+wsID+"/runs/"+args[0]+"/failures/"+args[1]+"/promote", body)
+		if err != nil {
+			return err
+		}
+		if apiErr := resp.ParseError(); apiErr != nil {
+			return apiErr
+		}
+
+		var result map[string]any
+		if err := resp.DecodeJSON(&result); err != nil {
+			return err
+		}
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(result)
+		}
+		if regressionCase := mapObject(result, "case"); regressionCase != nil {
+			rc.Output.PrintSuccess(fmt.Sprintf("Promoted failure to regression case %s", str(regressionCase["id"])))
+			return nil
+		}
+		rc.Output.PrintSuccess("Promoted failure")
 		return nil
 	},
 }
