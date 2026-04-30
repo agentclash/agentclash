@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.10.0](https://github.com/agentclash/agentclash/compare/v0.9.0...v0.10.0) (2026-04-30)
+
+
+### Features
+
+* **agent-harnesses:** add chat execution prompt ([c53c25b](https://github.com/agentclash/agentclash/commit/c53c25b651c30a07214acf84d129b4d5a16f8a01))
+* **agent-harnesses:** step 4 add execution cli ([e3647ff](https://github.com/agentclash/agentclash/commit/e3647ff5b9b9439e851f77a410ef10e635a44deb))
+* **cli:** follow agent harness executions ([9a0d665](https://github.com/agentclash/agentclash/commit/9a0d66584cbd722b337bcb73a3cfb005beec2dba))
+
+
+### Bug Fixes
+
+* **agent-harnesses:** require api key auth ([2309cff](https://github.com/agentclash/agentclash/commit/2309cffadd13a16a58fa49bf05cb4675279522e8))
+
 ## [0.9.0](https://github.com/agentclash/agentclash/compare/v0.8.0...v0.9.0) (2026-04-30)
 
 
