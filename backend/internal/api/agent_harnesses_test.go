@@ -229,6 +229,114 @@ func TestAgentHarnessManagerGetReturnsNotFoundForWorkspaceMismatch(t *testing.T)
 	}
 }
 
+func TestAgentHarnessExecutionManagerStartSnapshotsHarness(t *testing.T) {
+	workspaceID := uuid.New()
+	harness := testAgentHarnessRecord(workspaceID, "Codex execution harness")
+	harness.ExecutionConfig = json.RawMessage(`{"timeout_seconds":600}`)
+	harness.EvaluationConfig = json.RawMessage(`{"validators":[{"type":"command"}]}`)
+	repo := &fakeAgentHarnessRepo{organizationID: harness.OrganizationID, harness: harness}
+	manager := NewAgentHarnessManager(NewCallerWorkspaceAuthorizer(), repo)
+
+	execution, err := manager.StartAgentHarnessExecution(context.Background(), testAgentHarnessCaller(workspaceID), workspaceID, harness.ID)
+	if err != nil {
+		t.Fatalf("StartAgentHarnessExecution error: %v", err)
+	}
+
+	if execution.Status != "queued" {
+		t.Fatalf("status = %q, want queued", execution.Status)
+	}
+	if repo.createdExecution.AgentHarnessID != harness.ID {
+		t.Fatalf("agent_harness_id = %s, want %s", repo.createdExecution.AgentHarnessID, harness.ID)
+	}
+	if string(repo.createdExecution.ExecutionConfigSnapshot) != string(harness.ExecutionConfig) {
+		t.Fatalf("execution snapshot = %s", repo.createdExecution.ExecutionConfigSnapshot)
+	}
+	if string(repo.createdExecution.EvaluationConfigSnapshot) != string(harness.EvaluationConfig) {
+		t.Fatalf("evaluation snapshot = %s", repo.createdExecution.EvaluationConfigSnapshot)
+	}
+	var snapshot agentHarnessResponse
+	if err := json.Unmarshal(repo.createdExecution.HarnessSnapshot, &snapshot); err != nil {
+		t.Fatalf("decode harness snapshot: %v", err)
+	}
+	if snapshot.ID != harness.ID || snapshot.Name != harness.Name {
+		t.Fatalf("snapshot = %#v, want harness id/name", snapshot)
+	}
+}
+
+func TestAgentHarnessExecutionManagerStartChecksWorkspaceBeforeHarnessFetch(t *testing.T) {
+	workspaceID := uuid.New()
+	repo := &fakeAgentHarnessRepo{organizationID: uuid.New()}
+	manager := NewAgentHarnessManager(NewCallerWorkspaceAuthorizer(), repo)
+
+	_, err := manager.StartAgentHarnessExecution(context.Background(), testAgentHarnessCaller(uuid.New()), workspaceID, uuid.New())
+	if !errors.Is(err, ErrForbidden) {
+		t.Fatalf("error = %v, want ErrForbidden", err)
+	}
+	if repo.getByIDCalls != 0 {
+		t.Fatalf("GetAgentHarnessByID calls = %d, want 0", repo.getByIDCalls)
+	}
+}
+
+func TestAgentHarnessExecutionManagerGetReturnsNotFoundForWorkspaceMismatch(t *testing.T) {
+	workspaceID := uuid.New()
+	execution := testAgentHarnessExecutionRecord(uuid.New(), uuid.New())
+	repo := &fakeAgentHarnessRepo{organizationID: uuid.New(), execution: execution}
+	manager := NewAgentHarnessManager(NewCallerWorkspaceAuthorizer(), repo)
+
+	_, err := manager.GetAgentHarnessExecution(context.Background(), testAgentHarnessCaller(workspaceID), workspaceID, execution.ID)
+	if !errors.Is(err, repository.ErrAgentHarnessExecutionNotFound) {
+		t.Fatalf("error = %v, want ErrAgentHarnessExecutionNotFound", err)
+	}
+}
+
+func TestAgentHarnessExecutionRoutes(t *testing.T) {
+	workspaceID := uuid.New()
+	harness := testAgentHarnessRecord(workspaceID, "Existing harness")
+	execution := testAgentHarnessExecutionRecord(workspaceID, harness.ID)
+	service := &fakeAgentHarnessService{
+		harnesses:  []repository.AgentHarness{harness},
+		executions: []repository.AgentHarnessExecution{execution},
+	}
+	router := chi.NewRouter()
+	router.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := context.WithValue(r.Context(), callerContextKey{}, testAgentHarnessCaller(workspaceID))
+			ctx = context.WithValue(ctx, workspaceIDContextKey{}, workspaceID)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	})
+	router.Post("/v1/workspaces/{workspaceID}/agent-harnesses/{harnessID}/executions", startAgentHarnessExecutionHandler(slog.Default(), service))
+	router.Get("/v1/workspaces/{workspaceID}/agent-harness-executions", listAgentHarnessExecutionsHandler(slog.Default(), service))
+	router.Get("/v1/workspaces/{workspaceID}/agent-harness-executions/{executionID}", getAgentHarnessExecutionHandler(slog.Default(), service))
+
+	startReq := httptest.NewRequest(http.MethodPost, "/v1/workspaces/"+workspaceID.String()+"/agent-harnesses/"+harness.ID.String()+"/executions", nil)
+	startRec := httptest.NewRecorder()
+	router.ServeHTTP(startRec, startReq)
+	if startRec.Code != http.StatusCreated {
+		t.Fatalf("start status = %d, body %s", startRec.Code, startRec.Body.String())
+	}
+	if service.startedHarnessID != harness.ID {
+		t.Fatalf("started harness id = %s, want %s", service.startedHarnessID, harness.ID)
+	}
+
+	listReq := httptest.NewRequest(http.MethodGet, "/v1/workspaces/"+workspaceID.String()+"/agent-harness-executions?harness_id="+harness.ID.String(), nil)
+	listRec := httptest.NewRecorder()
+	router.ServeHTTP(listRec, listReq)
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("list status = %d, body %s", listRec.Code, listRec.Body.String())
+	}
+	if service.listExecutionsHarnessID == nil || *service.listExecutionsHarnessID != harness.ID {
+		t.Fatalf("list harness id = %#v, want %s", service.listExecutionsHarnessID, harness.ID)
+	}
+
+	getReq := httptest.NewRequest(http.MethodGet, "/v1/workspaces/"+workspaceID.String()+"/agent-harness-executions/"+execution.ID.String(), nil)
+	getRec := httptest.NewRecorder()
+	router.ServeHTTP(getRec, getReq)
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("get status = %d, body %s", getRec.Code, getRec.Body.String())
+	}
+}
+
 func testAgentHarnessCaller(workspaceID uuid.UUID) Caller {
 	return Caller{
 		UserID: uuid.New(),
@@ -260,11 +368,30 @@ func testAgentHarnessRecord(workspaceID uuid.UUID, name string) repository.Agent
 	}
 }
 
+func testAgentHarnessExecutionRecord(workspaceID uuid.UUID, harnessID uuid.UUID) repository.AgentHarnessExecution {
+	now := time.Now().UTC()
+	return repository.AgentHarnessExecution{
+		ID:                       uuid.New(),
+		OrganizationID:           uuid.New(),
+		WorkspaceID:              workspaceID,
+		AgentHarnessID:           harnessID,
+		Status:                   "queued",
+		HarnessSnapshot:          json.RawMessage(`{}`),
+		ExecutionConfigSnapshot:  json.RawMessage(`{}`),
+		EvaluationConfigSnapshot: json.RawMessage(`{}`),
+		CreatedAt:                now,
+		UpdatedAt:                now,
+	}
+}
+
 type fakeAgentHarnessRepo struct {
-	organizationID uuid.UUID
-	created        repository.CreateAgentHarnessParams
-	harness        repository.AgentHarness
-	getByIDCalls   int
+	organizationID   uuid.UUID
+	created          repository.CreateAgentHarnessParams
+	createdExecution repository.CreateAgentHarnessExecutionParams
+	harness          repository.AgentHarness
+	execution        repository.AgentHarnessExecution
+	executions       []repository.AgentHarnessExecution
+	getByIDCalls     int
 }
 
 func (f *fakeAgentHarnessRepo) GetOrganizationIDByWorkspaceID(context.Context, uuid.UUID) (uuid.UUID, error) {
@@ -311,10 +438,42 @@ func (f *fakeAgentHarnessRepo) ListAgentHarnessesByWorkspaceID(context.Context, 
 	return nil, nil
 }
 
+func (f *fakeAgentHarnessRepo) CreateAgentHarnessExecution(_ context.Context, p repository.CreateAgentHarnessExecutionParams) (repository.AgentHarnessExecution, error) {
+	f.createdExecution = p
+	now := time.Now().UTC()
+	return repository.AgentHarnessExecution{
+		ID:                       uuid.New(),
+		OrganizationID:           p.OrganizationID,
+		WorkspaceID:              p.WorkspaceID,
+		AgentHarnessID:           p.AgentHarnessID,
+		CreatedByUserID:          p.CreatedByUserID,
+		Status:                   "queued",
+		HarnessSnapshot:          p.HarnessSnapshot,
+		ExecutionConfigSnapshot:  p.ExecutionConfigSnapshot,
+		EvaluationConfigSnapshot: p.EvaluationConfigSnapshot,
+		CreatedAt:                now,
+		UpdatedAt:                now,
+	}, nil
+}
+
+func (f *fakeAgentHarnessRepo) GetAgentHarnessExecutionByID(_ context.Context, id uuid.UUID) (repository.AgentHarnessExecution, error) {
+	if f.execution.ID == id {
+		return f.execution, nil
+	}
+	return repository.AgentHarnessExecution{}, repository.ErrAgentHarnessExecutionNotFound
+}
+
+func (f *fakeAgentHarnessRepo) ListAgentHarnessExecutions(context.Context, repository.ListAgentHarnessExecutionsParams) ([]repository.AgentHarnessExecution, error) {
+	return f.executions, nil
+}
+
 type fakeAgentHarnessService struct {
-	harnesses    []repository.AgentHarness
-	createdInput CreateAgentHarnessInput
-	createErr    error
+	harnesses               []repository.AgentHarness
+	executions              []repository.AgentHarnessExecution
+	createdInput            CreateAgentHarnessInput
+	startedHarnessID        uuid.UUID
+	listExecutionsHarnessID *uuid.UUID
+	createErr               error
 }
 
 func (f *fakeAgentHarnessService) CreateAgentHarness(_ context.Context, _ Caller, workspaceID uuid.UUID, input CreateAgentHarnessInput) (repository.AgentHarness, error) {
@@ -336,4 +495,23 @@ func (f *fakeAgentHarnessService) GetAgentHarness(_ context.Context, _ Caller, _
 
 func (f *fakeAgentHarnessService) ListAgentHarnesses(context.Context, Caller, uuid.UUID) ([]repository.AgentHarness, error) {
 	return f.harnesses, nil
+}
+
+func (f *fakeAgentHarnessService) StartAgentHarnessExecution(_ context.Context, _ Caller, workspaceID uuid.UUID, harnessID uuid.UUID) (repository.AgentHarnessExecution, error) {
+	f.startedHarnessID = harnessID
+	return testAgentHarnessExecutionRecord(workspaceID, harnessID), nil
+}
+
+func (f *fakeAgentHarnessService) GetAgentHarnessExecution(_ context.Context, _ Caller, _ uuid.UUID, id uuid.UUID) (repository.AgentHarnessExecution, error) {
+	for _, execution := range f.executions {
+		if execution.ID == id {
+			return execution, nil
+		}
+	}
+	return repository.AgentHarnessExecution{}, repository.ErrAgentHarnessExecutionNotFound
+}
+
+func (f *fakeAgentHarnessService) ListAgentHarnessExecutions(_ context.Context, _ Caller, _ uuid.UUID, harnessID *uuid.UUID) ([]repository.AgentHarnessExecution, error) {
+	f.listExecutionsHarnessID = harnessID
+	return f.executions, nil
 }
