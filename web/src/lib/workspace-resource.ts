@@ -9,6 +9,8 @@ export const workspaceResourceKeys = {
     apiQueryKey(`/v1/workspaces/${workspaceId}/agent-builds`),
   deployments: (workspaceId: string): ApiQueryKey =>
     apiQueryKey(`/v1/workspaces/${workspaceId}/agent-deployments`),
+  agentHarnesses: (workspaceId: string): ApiQueryKey =>
+    apiQueryKey(`/v1/workspaces/${workspaceId}/agent-harnesses`),
   challengePacks: (workspaceId: string): ApiQueryKey =>
     apiQueryKey(`/v1/workspaces/${workspaceId}/challenge-packs`),
   runs: (workspaceId: string, offset = 0): ApiQueryKey =>
