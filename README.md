@@ -97,7 +97,7 @@ cd cli && make build
 If you're only changing the CLI, you do not need to run the API server or worker locally. Point the local binary at a hosted API with `AGENTCLASH_API_URL` or `--api-url`.
 
 ```bash
-export AGENTCLASH_API_URL="https://staging-api.agentclash.dev"
+export AGENTCLASH_API_URL="https://api.agentclash.dev"
 
 cd cli
 go run . auth login --device
@@ -108,7 +108,7 @@ go run . eval start --help
 go run . eval start --follow
 ```
 
-Resolution order is `--api-url` > `AGENTCLASH_API_URL` > saved user config > default. Source builds (`go run .`, `make build`) default to `http://localhost:8080`; released binaries default to `https://api.agentclash.dev`. Set `AGENTCLASH_API_URL=https://staging-api.agentclash.dev` for staging.
+Resolution order is `--api-url` > `AGENTCLASH_API_URL` > saved user config > default. Source builds (`go run .`, `make build`) default to `http://localhost:8080`; released binaries default to `https://api.agentclash.dev`.
 
 ### Quick start
 
@@ -130,7 +130,7 @@ If your workspace is already seeded with challenge packs and deployments, you ca
 All commands also work non-interactively with environment variables and explicit IDs:
 
 ```bash
-export AGENTCLASH_API_URL="https://staging-api.agentclash.dev"
+export AGENTCLASH_API_URL="https://api.agentclash.dev"
 export AGENTCLASH_TOKEN="your-token"
 export AGENTCLASH_WORKSPACE="your-workspace-id"
 agentclash run create \
@@ -294,7 +294,7 @@ cp backend/.env.example backend/.env
 | `E2B_TEMPLATE_ID` | — | Required if `SANDBOX_PROVIDER=e2b` |
 | `ARTIFACT_STORAGE_BACKEND` | `filesystem` | `filesystem` or `s3` |
 | `ARTIFACT_SIGNING_SECRET` | auto-generated in dev | Required in production (min 32 bytes) |
-| `APP_ENV` | `development` | `development`, `staging`, or `production` |
+| `APP_ENV` | `development` | `development` or `production` |
 
 Provider API keys (set whichever you need):
 
@@ -323,7 +323,7 @@ After the local stack is running:
 
 ## Deploying to Railway
 
-AgentClash uses a multi-service Railway project with two environments: **staging** and **production**.
+AgentClash uses a multi-service Railway project for production services.
 
 ### Services overview
 
@@ -339,7 +339,7 @@ External services (not on Railway):
 
 | Service | Notes |
 |---------|-------|
-| **Temporal Cloud** | Use [cloud.temporal.io](https://cloud.temporal.io) for staging/prod. Self-hosting Temporal on Railway is not recommended for production. |
+| **Temporal Cloud** | Use [cloud.temporal.io](https://cloud.temporal.io) for production orchestration. Self-hosting Temporal on Railway is not recommended for production. |
 | **Vercel** | Deploy the `web/` frontend on Vercel. |
 | **E2B** | Sign up at [e2b.dev](https://e2b.dev) if you need sandboxed execution. |
 | **S3** | Any S3-compatible provider (AWS S3, Cloudflare R2, etc.) for artifact storage. |
@@ -359,13 +359,9 @@ railway login
 railway init
 ```
 
-#### 2. Create environments
+#### 2. Create the production environment
 
-In the Railway dashboard, create two environments for your project:
-- **staging**
-- **production**
-
-All services and databases are duplicated per environment automatically.
+In the Railway dashboard, create or select the **production** environment for your project.
 
 #### 3. Add PostgreSQL
 
@@ -380,15 +376,15 @@ Create a new service in Railway:
 - **Build:** Dockerfile
 - **Build args:** `TARGET=api-server`
 
-Set these environment variables (per environment):
+Set these environment variables:
 
 ```
-APP_ENV=staging                          # or "production"
+APP_ENV=production
 DATABASE_URL=${{Postgres.DATABASE_URL}}  # Railway variable reference
 TEMPORAL_HOST_PORT=<your-temporal-cloud-host>:7233
 TEMPORAL_NAMESPACE=<your-namespace>
 ARTIFACT_SIGNING_SECRET=<random-64-char-hex>
-ARTIFACT_STORAGE_BACKEND=s3              # or "filesystem" for staging
+ARTIFACT_STORAGE_BACKEND=s3
 ARTIFACT_STORAGE_BUCKET=<your-bucket>
 ARTIFACT_STORAGE_S3_REGION=<region>
 ARTIFACT_STORAGE_S3_ACCESS_KEY_ID=<key>
@@ -439,16 +435,16 @@ vercel --prod
 
 Set `NEXT_PUBLIC_API_URL` to point to your Railway API server domain.
 
-### Staging vs Production
+### Production Deployment
 
-| Concern | Staging | Production |
-|---------|---------|------------|
-| `APP_ENV` | `staging` | `production` |
-| Temporal | Temporal Cloud (staging namespace) | Temporal Cloud (production namespace) |
-| Artifacts | `filesystem` or S3 test bucket | S3 production bucket |
-| Sandbox | `unconfigured` (optional) | `e2b` |
-| Domain | `staging-api.agentclash.dev` | `api.agentclash.dev` |
-| Signing secret | Unique per env | Unique per env |
+| Concern | Production |
+|---------|------------|
+| `APP_ENV` | `production` |
+| Temporal | Temporal Cloud production namespace |
+| Artifacts | S3 production bucket |
+| Sandbox | `e2b` |
+| Domain | `api.agentclash.dev` |
+| Signing secret | Unique per environment |
 
 ### Running migrations
 

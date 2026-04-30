@@ -28,10 +28,10 @@ Wire AgentClash comparisons into release decisions and CI checks.
 - CI secret names for `AGENTCLASH_TOKEN`, workspace, and API URL.
 
 ## Environment
-For CI against staging:
+For CI against production:
 
 ```bash
-export AGENTCLASH_API_URL="https://staging-api.agentclash.dev"
+export AGENTCLASH_API_URL="https://api.agentclash.dev"
 export AGENTCLASH_TOKEN="<token>"
 export AGENTCLASH_WORKSPACE="<workspace-id>"
 ```
@@ -45,7 +45,7 @@ export AGENTCLASH_WORKSPACE="<workspace-id>"
 
 ## Commands
 ```bash
-export AGENTCLASH_API_URL="https://staging-api.agentclash.dev"
+export AGENTCLASH_API_URL="https://api.agentclash.dev"
 agentclash baseline show
 agentclash baseline set <run-id>
 agentclash compare runs <baseline-run-id> <candidate-run-id>
@@ -70,7 +70,7 @@ jobs:
       - run: npm i -g agentclash
       - run: agentclash compare gate "$AGENTCLASH_GATE_ID" --candidate "$AGENTCLASH_CANDIDATE_RUN"
         env:
-          AGENTCLASH_API_URL: https://staging-api.agentclash.dev
+          AGENTCLASH_API_URL: https://api.agentclash.dev
           AGENTCLASH_TOKEN: ${{ secrets.AGENTCLASH_TOKEN }}
           AGENTCLASH_WORKSPACE: ${{ secrets.AGENTCLASH_WORKSPACE }}
           AGENTCLASH_GATE_ID: ${{ vars.AGENTCLASH_GATE_ID }}

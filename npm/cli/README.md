@@ -32,10 +32,10 @@ agentclash eval start --help
 
 ## Use a local CLI build against a hosted backend
 
-If you're working on the CLI itself, you can run the local Go binary against a hosted AgentClash API. Staging is the safest default:
+If you're working on the CLI itself, you can run the local Go binary against a hosted AgentClash API. Production is the default:
 
 ```bash
-export AGENTCLASH_API_URL="https://staging-api.agentclash.dev"
+export AGENTCLASH_API_URL="https://api.agentclash.dev"
 
 cd cli
 go run . auth login --device

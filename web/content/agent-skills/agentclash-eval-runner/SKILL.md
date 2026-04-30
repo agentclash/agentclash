@@ -28,10 +28,10 @@ Start an AgentClash run or eval, follow it to a useful stopping point, and repor
 - Input set, scope, and whether the run should be followed live.
 
 ## Environment
-Use staging unless the user intentionally targets production or local:
+Use production by default; only override for local or self-hosted work:
 
 ```bash
-export AGENTCLASH_API_URL="https://staging-api.agentclash.dev"
+export AGENTCLASH_API_URL="https://api.agentclash.dev"
 ```
 
 ## Procedure
@@ -43,7 +43,7 @@ export AGENTCLASH_API_URL="https://staging-api.agentclash.dev"
 
 ## Commands
 ```bash
-export AGENTCLASH_API_URL="https://staging-api.agentclash.dev"
+export AGENTCLASH_API_URL="https://api.agentclash.dev"
 agentclash workspace use <workspace-id>
 agentclash run create --follow
 agentclash run get <run-id>

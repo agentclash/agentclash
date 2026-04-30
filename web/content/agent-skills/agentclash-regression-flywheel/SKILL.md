@@ -28,10 +28,10 @@ Turn useful run failures into durable regression coverage.
 - Expected behavior for the promoted case.
 
 ## Environment
-Use staging unless another backend is explicit:
+Use production by default; only override when another backend is explicit:
 
 ```bash
-export AGENTCLASH_API_URL="https://staging-api.agentclash.dev"
+export AGENTCLASH_API_URL="https://api.agentclash.dev"
 ```
 
 ## Procedure
@@ -44,7 +44,7 @@ export AGENTCLASH_API_URL="https://staging-api.agentclash.dev"
 
 ## Commands
 ```bash
-export AGENTCLASH_API_URL="https://staging-api.agentclash.dev"
+export AGENTCLASH_API_URL="https://api.agentclash.dev"
 agentclash run failures <run-id>
 agentclash regression-suite list
 agentclash regression-suite create --name "<suite-name>"

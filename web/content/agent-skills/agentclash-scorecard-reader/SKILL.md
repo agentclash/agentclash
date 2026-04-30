@@ -27,10 +27,10 @@ Convert AgentClash result evidence into a concise engineering readout.
 - Comparison baseline or expected winner when relevant.
 
 ## Environment
-Use staging unless another backend is explicit:
+Use production by default; only override when another backend is explicit:
 
 ```bash
-export AGENTCLASH_API_URL="https://staging-api.agentclash.dev"
+export AGENTCLASH_API_URL="https://api.agentclash.dev"
 ```
 
 ## Procedure
@@ -42,7 +42,7 @@ export AGENTCLASH_API_URL="https://staging-api.agentclash.dev"
 
 ## Commands
 ```bash
-export AGENTCLASH_API_URL="https://staging-api.agentclash.dev"
+export AGENTCLASH_API_URL="https://api.agentclash.dev"
 agentclash run ranking <run-id>
 agentclash run agents <run-id>
 agentclash run scorecard <run-id> <run-agent-id>

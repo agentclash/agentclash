@@ -1,6 +1,6 @@
 ---
 name: agentclash-cli-setup
-description: Use when configuring the AgentClash CLI, authenticating, selecting a workspace, linking a project, or diagnosing CLI access against staging, production, or local backends.
+description: Use when configuring the AgentClash CLI, authenticating, selecting a workspace, linking a project, or diagnosing CLI access against production or local backends.
 metadata:
   agentclash.role: setup
   agentclash.version: "1"
@@ -22,15 +22,15 @@ Configure a local AgentClash CLI session that can talk to the intended backend a
 - The user is asking for production release automation rather than setup.
 
 ## Inputs Needed
-- Target backend: staging, production, or local.
+- Target backend: production or local.
 - Workspace ID or enough context to choose one from `workspace list`.
 - Whether browser-based device auth is acceptable.
 
 ## Environment
-Use staging unless the user explicitly asks for production:
+Use production by default; only override for local or self-hosted work:
 
 ```bash
-export AGENTCLASH_API_URL="https://staging-api.agentclash.dev"
+export AGENTCLASH_API_URL="https://api.agentclash.dev"
 ```
 
 Resolution order for the API base URL:
@@ -48,7 +48,7 @@ Resolution order for the API base URL:
 
 ## Commands
 ```bash
-export AGENTCLASH_API_URL="https://staging-api.agentclash.dev"
+export AGENTCLASH_API_URL="https://api.agentclash.dev"
 agentclash auth login --device
 agentclash workspace list
 agentclash workspace use <workspace-id>
@@ -74,7 +74,7 @@ agentclash --api-url http://localhost:8080 doctor
 
 ## Safety Notes
 - Do not print tokens in chat or commit them to files.
-- Prefer staging for exploratory work.
+- Prefer small workspaces and smoke checks for exploratory work.
 - Ask before changing a user's saved production config.
 
 ## Report Back Format

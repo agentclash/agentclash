@@ -35,10 +35,10 @@ cd cli && go run github.com/goreleaser/goreleaser/v2@latest release --snapshot -
 
 ### CLI Against Hosted Backend
 
-If the task is CLI-only, you usually do not need a local API server or worker. Point the local CLI at staging:
+If the task is CLI-only, you usually do not need a local API server or worker. Point the local CLI at production:
 
 ```bash
-export AGENTCLASH_API_URL="https://staging-api.agentclash.dev"
+export AGENTCLASH_API_URL="https://api.agentclash.dev"
 
 cd cli
 go run . auth login --device
@@ -60,7 +60,7 @@ Resolution order for the API base URL is:
 Useful automation / CI env vars:
 
 ```bash
-export AGENTCLASH_API_URL="https://staging-api.agentclash.dev"
+export AGENTCLASH_API_URL="https://api.agentclash.dev"
 export AGENTCLASH_TOKEN="..."
 export AGENTCLASH_WORKSPACE="workspace-id"
 ```
