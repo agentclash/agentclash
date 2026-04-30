@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/agentclash/agentclash/cli/internal/output"
 	"github.com/spf13/cobra"
@@ -15,6 +16,10 @@ func init() {
 	agentHarnessCmd.AddCommand(agentHarnessListCmd)
 	agentHarnessCmd.AddCommand(agentHarnessCreateCmd)
 	agentHarnessCmd.AddCommand(agentHarnessGetCmd)
+	agentHarnessCmd.AddCommand(agentHarnessRunCmd)
+	agentHarnessCmd.AddCommand(agentHarnessExecutionsCmd)
+	agentHarnessCmd.AddCommand(agentHarnessExecutionCmd)
+	agentHarnessExecutionCmd.AddCommand(agentHarnessExecutionGetCmd)
 
 	agentHarnessCreateCmd.Flags().String("from-file", "", "JSON file with agent harness spec")
 	agentHarnessCreateCmd.Flags().String("name", "", "Harness name")
@@ -22,14 +27,16 @@ func init() {
 	agentHarnessCreateCmd.Flags().String("task", "", "Task prompt for the coding harness")
 	agentHarnessCreateCmd.Flags().String("codex-template", "codex", "E2B template with Codex installed")
 	agentHarnessCreateCmd.Flags().String("codex-model", "", "Codex model override")
-	agentHarnessCreateCmd.Flags().String("auth-mode", "chatgpt_device", "Codex auth mode: chatgpt_device, api_key_secret, bring_your_own_env")
+	agentHarnessCreateCmd.Flags().String("auth-mode", "api_key_secret", "Codex auth mode: api_key_secret")
 	agentHarnessCreateCmd.Flags().String("openai-api-key-secret", "", "Workspace secret name containing OPENAI_API_KEY")
-	agentHarnessCreateCmd.Flags().String("e2b-api-key-secret", "E2B_API_KEY", "Workspace secret name containing E2B_API_KEY")
 	agentHarnessCreateCmd.Flags().String("repository-url", "", "Repository URL for the harness task")
 	agentHarnessCreateCmd.Flags().String("base-branch", "", "Base branch for repository work")
 	agentHarnessCreateCmd.Flags().String("execution-config", "", "Inline JSON execution config")
 	agentHarnessCreateCmd.Flags().String("evaluation-config", "", "Inline JSON evaluation config")
 	agentHarnessCreateCmd.Flags().String("evaluation-config-file", "", "JSON file with validators and LLM judges")
+	agentHarnessRunCmd.Flags().String("message", "", "Override the harness task prompt for this execution")
+	agentHarnessRunCmd.Flags().Bool("follow", false, "Poll until the harness execution reaches a terminal status")
+	agentHarnessRunCmd.Flags().Duration("poll-interval", 2*time.Second, "Polling interval for --follow")
 }
 
 var agentHarnessCmd = &cobra.Command{
@@ -158,6 +165,170 @@ var agentHarnessCreateCmd = &cobra.Command{
 	},
 }
 
+var agentHarnessRunCmd = &cobra.Command{
+	Use:   "run <harness-id>",
+	Short: "Start an agent harness execution",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		rc := GetRunContext(cmd)
+		wsID := RequireWorkspace(cmd)
+
+		body := map[string]any{}
+		if message, _ := cmd.Flags().GetString("message"); strings.TrimSpace(message) != "" {
+			body["message"] = strings.TrimSpace(message)
+		}
+		resp, err := rc.Client.Post(cmd.Context(), "/v1/workspaces/"+wsID+"/agent-harnesses/"+args[0]+"/executions", body)
+		if err != nil {
+			return err
+		}
+		if apiErr := resp.ParseError(); apiErr != nil {
+			return apiErr
+		}
+
+		var execution map[string]any
+		if err := resp.DecodeJSON(&execution); err != nil {
+			return err
+		}
+
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(execution)
+		}
+
+		rc.Output.PrintSuccess(fmt.Sprintf("Started agent harness execution %s", str(execution["id"])))
+		rc.Output.PrintDetail("Harness", str(execution["agent_harness_id"]))
+		rc.Output.PrintDetail("Status", output.StatusColor(str(execution["status"])))
+		follow, _ := cmd.Flags().GetBool("follow")
+		if !follow {
+			return nil
+		}
+		pollInterval, _ := cmd.Flags().GetDuration("poll-interval")
+		if pollInterval <= 0 {
+			pollInterval = 2 * time.Second
+		}
+		return followAgentHarnessExecution(cmd, wsID, str(execution["id"]), pollInterval)
+	},
+}
+
+func followAgentHarnessExecution(cmd *cobra.Command, workspaceID, executionID string, pollInterval time.Duration) error {
+	rc := GetRunContext(cmd)
+	for {
+		resp, err := rc.Client.Get(cmd.Context(), "/v1/workspaces/"+workspaceID+"/agent-harness-executions/"+executionID, nil)
+		if err != nil {
+			return err
+		}
+		if apiErr := resp.ParseError(); apiErr != nil {
+			return apiErr
+		}
+
+		var execution map[string]any
+		if err := resp.DecodeJSON(&execution); err != nil {
+			return err
+		}
+		status := str(execution["status"])
+		rc.Output.PrintDetail("Status", output.StatusColor(status))
+		if isTerminalAgentHarnessExecutionStatus(status) {
+			return nil
+		}
+
+		timer := time.NewTimer(pollInterval)
+		select {
+		case <-cmd.Context().Done():
+			timer.Stop()
+			return cmd.Context().Err()
+		case <-timer.C:
+		}
+	}
+}
+
+func isTerminalAgentHarnessExecutionStatus(status string) bool {
+	switch status {
+	case "completed", "failed", "cancelled":
+		return true
+	default:
+		return false
+	}
+}
+
+var agentHarnessExecutionsCmd = &cobra.Command{
+	Use:   "executions <harness-id>",
+	Short: "List executions for an agent harness",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		rc := GetRunContext(cmd)
+		wsID := RequireWorkspace(cmd)
+
+		resp, err := rc.Client.Get(cmd.Context(), "/v1/workspaces/"+wsID+"/agent-harness-executions?harness_id="+args[0], nil)
+		if err != nil {
+			return err
+		}
+		if apiErr := resp.ParseError(); apiErr != nil {
+			return apiErr
+		}
+
+		var result struct {
+			Items []map[string]any `json:"items"`
+		}
+		if err := resp.DecodeJSON(&result); err != nil {
+			return err
+		}
+
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(result)
+		}
+
+		cols := []output.Column{{Header: "ID"}, {Header: "Harness"}, {Header: "Status"}, {Header: "Created"}}
+		rows := make([][]string, len(result.Items))
+		for i, item := range result.Items {
+			rows[i] = []string{
+				str(item["id"]),
+				str(item["agent_harness_id"]),
+				output.StatusColor(str(item["status"])),
+				str(item["created_at"]),
+			}
+		}
+		rc.Output.PrintTable(cols, rows)
+		return nil
+	},
+}
+
+var agentHarnessExecutionCmd = &cobra.Command{
+	Use:   "execution",
+	Short: "Inspect agent harness executions",
+}
+
+var agentHarnessExecutionGetCmd = &cobra.Command{
+	Use:   "get <execution-id>",
+	Short: "Get an agent harness execution",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		rc := GetRunContext(cmd)
+		wsID := RequireWorkspace(cmd)
+
+		resp, err := rc.Client.Get(cmd.Context(), "/v1/workspaces/"+wsID+"/agent-harness-executions/"+args[0], nil)
+		if err != nil {
+			return err
+		}
+		if apiErr := resp.ParseError(); apiErr != nil {
+			return apiErr
+		}
+
+		var execution map[string]any
+		if err := resp.DecodeJSON(&execution); err != nil {
+			return err
+		}
+
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(execution)
+		}
+
+		rc.Output.PrintDetail("ID", str(execution["id"]))
+		rc.Output.PrintDetail("Harness", str(execution["agent_harness_id"]))
+		rc.Output.PrintDetail("Status", output.StatusColor(str(execution["status"])))
+		rc.Output.PrintDetail("Created", str(execution["created_at"]))
+		return nil
+	},
+}
+
 func buildAgentHarnessCreateBody(cmd *cobra.Command) (map[string]any, error) {
 	if fromFile, _ := cmd.Flags().GetString("from-file"); fromFile != "" {
 		data, err := os.ReadFile(fromFile)
@@ -188,10 +359,6 @@ func buildAgentHarnessCreateBody(cmd *cobra.Command) (map[string]any, error) {
 	body["codex_template"] = codexTemplate
 	authMode, _ := cmd.Flags().GetString("auth-mode")
 	body["auth_mode"] = authMode
-	if e2bSecret, _ := cmd.Flags().GetString("e2b-api-key-secret"); strings.TrimSpace(e2bSecret) != "" {
-		body["e2b_api_key_secret_name"] = e2bSecret
-	}
-
 	if err := setJSONFlag(cmd, body, "execution-config", "execution_config"); err != nil {
 		return nil, err
 	}
@@ -210,11 +377,7 @@ func buildAgentHarnessCreateBody(cmd *cobra.Command) (map[string]any, error) {
 }
 
 func requiredAgentHarnessCreateFlags(cmd *cobra.Command) []string {
-	required := []string{"name", "task", "auth-mode"}
-	authMode, _ := cmd.Flags().GetString("auth-mode")
-	if strings.TrimSpace(authMode) == "api_key_secret" {
-		required = append(required, "openai-api-key-secret")
-	}
+	required := []string{"name", "task", "auth-mode", "openai-api-key-secret"}
 	missing := make([]string, 0, len(required))
 	for _, flagName := range required {
 		value, _ := cmd.Flags().GetString(flagName)

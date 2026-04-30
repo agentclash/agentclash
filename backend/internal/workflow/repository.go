@@ -51,6 +51,14 @@ type EvalSessionRepository interface {
 	AggregateEvalSession(ctx context.Context, evalSessionID uuid.UUID) (repository.EvalSessionAggregateRecord, error)
 }
 
+type AgentHarnessExecutionRepository interface {
+	GetAgentHarnessByID(ctx context.Context, id uuid.UUID) (repository.AgentHarness, error)
+	GetAgentHarnessExecutionByID(ctx context.Context, id uuid.UUID) (repository.AgentHarnessExecution, error)
+	LoadWorkspaceSecrets(ctx context.Context, workspaceID uuid.UUID) (map[string]string, error)
+	TransitionAgentHarnessExecutionStatus(ctx context.Context, params repository.TransitionAgentHarnessExecutionStatusParams) (repository.AgentHarnessExecution, error)
+	RecordAgentHarnessExecutionEvent(ctx context.Context, params repository.RecordAgentHarnessExecutionEventParams) (repository.AgentHarnessExecutionEvent, error)
+}
+
 type HostedRunStarter interface {
 	Start(ctx context.Context, input HostedRunStartInput) (hostedruns.StartResponse, error)
 }

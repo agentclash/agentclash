@@ -11,7 +11,7 @@ func TestAgentHarnessListCallsCorrectEndpoint(t *testing.T) {
 	srv := fakeAPI(t, map[string]http.HandlerFunc{
 		"GET /v1/workspaces/ws-123/agent-harnesses": captureHandler(t, &called, 200, map[string]any{
 			"items": []map[string]any{
-				{"id": "harness-1", "name": "Codex", "auth_mode": "chatgpt_device", "codex_template": "codex", "status": "draft"},
+				{"id": "harness-1", "name": "Codex", "auth_mode": "api_key_secret", "codex_template": "codex", "status": "draft"},
 			},
 		}),
 	})
@@ -31,7 +31,7 @@ func TestAgentHarnessGetCallsCorrectEndpoint(t *testing.T) {
 	var called bool
 	srv := fakeAPI(t, map[string]http.HandlerFunc{
 		"GET /v1/workspaces/ws-123/agent-harnesses/harness-123": captureHandler(t, &called, 200, map[string]any{
-			"id": "harness-123", "name": "Codex", "auth_mode": "chatgpt_device", "codex_template": "codex", "status": "draft",
+			"id": "harness-123", "name": "Codex", "auth_mode": "api_key_secret", "codex_template": "codex", "status": "draft",
 		}),
 	})
 	defer srv.Close()
@@ -72,7 +72,6 @@ func TestAgentHarnessCreateBuildsCodexE2BPayload(t *testing.T) {
 		"--task", "Implement the feature and run tests.",
 		"--auth-mode", "api_key_secret",
 		"--openai-api-key-secret", "OPENAI_API_KEY",
-		"--e2b-api-key-secret", "E2B_API_KEY",
 		"--repository-url", "https://github.com/acme/repo",
 		"--base-branch", "main",
 		"--evaluation-config", `{"validators":[{"type":"command","command":"go test ./..."}]}`,
@@ -111,5 +110,124 @@ func TestAgentHarnessCreateRequiresOpenAISecretForAPIKeyMode(t *testing.T) {
 	}, "http://unused")
 	if err == nil {
 		t.Fatal("expected missing OpenAI secret error")
+	}
+}
+
+func TestAgentHarnessRunCallsCorrectEndpoint(t *testing.T) {
+	var called bool
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"POST /v1/workspaces/ws-123/agent-harnesses/harness-123/executions": captureHandler(t, &called, 201, map[string]any{
+			"id": "execution-1", "agent_harness_id": "harness-123", "status": "queued",
+		}),
+	})
+	defer srv.Close()
+
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+	err := executeCommand(t, []string{"--workspace", "ws-123", "agent-harness", "run", "harness-123"}, srv.URL)
+	if err != nil {
+		t.Fatalf("agent-harness run error: %v", err)
+	}
+	if !called {
+		t.Fatal("POST /v1/workspaces/ws-123/agent-harnesses/harness-123/executions was not called")
+	}
+}
+
+func TestAgentHarnessRunSendsMessageOverride(t *testing.T) {
+	var gotBody map[string]any
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"POST /v1/workspaces/ws-123/agent-harnesses/harness-123/executions": func(w http.ResponseWriter, r *http.Request) {
+			if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+				t.Fatalf("decode request: %v", err)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			json.NewEncoder(w).Encode(map[string]any{
+				"id": "execution-1", "agent_harness_id": "harness-123", "status": "queued",
+			})
+		},
+	})
+	defer srv.Close()
+
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+	err := executeCommand(t, []string{"--workspace", "ws-123", "agent-harness", "run", "harness-123", "--message", "Patch the flaky test"}, srv.URL)
+	if err != nil {
+		t.Fatalf("agent-harness run error: %v", err)
+	}
+	if gotBody["message"] != "Patch the flaky test" {
+		t.Fatalf("message = %v, want override", gotBody["message"])
+	}
+}
+
+func TestAgentHarnessRunFollowPollsUntilTerminalStatus(t *testing.T) {
+	var started bool
+	var polled bool
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"POST /v1/workspaces/ws-123/agent-harnesses/harness-123/executions": captureHandler(t, &started, 201, map[string]any{
+			"id": "execution-1", "agent_harness_id": "harness-123", "status": "queued",
+		}),
+		"GET /v1/workspaces/ws-123/agent-harness-executions/execution-1": captureHandler(t, &polled, 200, map[string]any{
+			"id": "execution-1", "agent_harness_id": "harness-123", "status": "completed",
+		}),
+	})
+	defer srv.Close()
+
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+	err := executeCommand(t, []string{"--workspace", "ws-123", "agent-harness", "run", "harness-123", "--follow", "--poll-interval", "1ms"}, srv.URL)
+	if err != nil {
+		t.Fatalf("agent-harness run --follow error: %v", err)
+	}
+	if !started {
+		t.Fatal("POST /v1/workspaces/ws-123/agent-harnesses/harness-123/executions was not called")
+	}
+	if !polled {
+		t.Fatal("GET /v1/workspaces/ws-123/agent-harness-executions/execution-1 was not called")
+	}
+}
+
+func TestAgentHarnessExecutionsCallsCorrectEndpoint(t *testing.T) {
+	var called bool
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"GET /v1/workspaces/ws-123/agent-harness-executions": func(w http.ResponseWriter, r *http.Request) {
+			called = true
+			if got := r.URL.Query().Get("harness_id"); got != "harness-123" {
+				t.Fatalf("harness_id query = %q, want harness-123", got)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(map[string]any{
+				"items": []map[string]any{
+					{"id": "execution-1", "agent_harness_id": "harness-123", "status": "queued"},
+				},
+			})
+		},
+	})
+	defer srv.Close()
+
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+	err := executeCommand(t, []string{"--workspace", "ws-123", "agent-harness", "executions", "harness-123"}, srv.URL)
+	if err != nil {
+		t.Fatalf("agent-harness executions error: %v", err)
+	}
+	if !called {
+		t.Fatal("GET /v1/workspaces/ws-123/agent-harness-executions was not called")
+	}
+}
+
+func TestAgentHarnessExecutionGetCallsCorrectEndpoint(t *testing.T) {
+	var called bool
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"GET /v1/workspaces/ws-123/agent-harness-executions/execution-1": captureHandler(t, &called, 200, map[string]any{
+			"id": "execution-1", "agent_harness_id": "harness-123", "status": "queued",
+		}),
+	})
+	defer srv.Close()
+
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+	err := executeCommand(t, []string{"--workspace", "ws-123", "agent-harness", "execution", "get", "execution-1"}, srv.URL)
+	if err != nil {
+		t.Fatalf("agent-harness execution get error: %v", err)
+	}
+	if !called {
+		t.Fatal("GET /v1/workspaces/ws-123/agent-harness-executions/execution-1 was not called")
 	}
 }

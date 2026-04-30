@@ -4,11 +4,7 @@ import { useState } from "react";
 import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
 import { createApiClient } from "@/lib/api/client";
 import { ApiError } from "@/lib/api/errors";
-import type {
-  AgentHarness,
-  AgentHarnessAuthMode,
-  CreateAgentHarnessRequest,
-} from "@/lib/api/types";
+import type { AgentHarness, CreateAgentHarnessRequest } from "@/lib/api/types";
 import { useApiMutator } from "@/lib/api/swr";
 import { workspaceResourceKeys } from "@/lib/workspace-resource";
 import { Button } from "@/components/ui/button";
@@ -52,10 +48,7 @@ export function CreateAgentHarnessDialog({
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [taskPrompt, setTaskPrompt] = useState("");
-  const [authMode, setAuthMode] =
-    useState<AgentHarnessAuthMode>("chatgpt_device");
   const [openAISecret, setOpenAISecret] = useState("");
-  const [e2bSecret, setE2bSecret] = useState("E2B_API_KEY");
   const [repositoryURL, setRepositoryURL] = useState("");
   const [baseBranch, setBaseBranch] = useState("main");
   const [codexTemplate, setCodexTemplate] = useState("codex");
@@ -70,7 +63,7 @@ export function CreateAgentHarnessDialog({
     const parsedEvaluationConfig = parseEvaluationConfig();
     if (parsedEvaluationConfig === undefined) return;
     if (!name.trim() || !taskPrompt.trim()) return;
-    if (authMode === "api_key_secret" && !openAISecret.trim()) {
+    if (!openAISecret.trim()) {
       toast.error("OpenAI secret is required for API-key auth");
       return;
     }
@@ -81,9 +74,8 @@ export function CreateAgentHarnessDialog({
       task_prompt: taskPrompt.trim(),
       codex_template: codexTemplate.trim() || "codex",
       codex_model: codexModel.trim() || undefined,
-      auth_mode: authMode,
+      auth_mode: "api_key_secret",
       openai_api_key_secret_name: openAISecret.trim() || undefined,
-      e2b_api_key_secret_name: e2bSecret.trim() || undefined,
       repository_url: repositoryURL.trim() || undefined,
       base_branch: baseBranch.trim() || undefined,
       evaluation_config: parsedEvaluationConfig,
@@ -129,9 +121,7 @@ export function CreateAgentHarnessDialog({
     setName("");
     setDescription("");
     setTaskPrompt("");
-    setAuthMode("chatgpt_device");
     setOpenAISecret("");
-    setE2bSecret("E2B_API_KEY");
     setRepositoryURL("");
     setBaseBranch("main");
     setCodexTemplate("codex");
@@ -140,12 +130,10 @@ export function CreateAgentHarnessDialog({
     setJsonError(undefined);
   }
 
-  const selectClass =
-    "block w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/50";
   const canSubmit =
     name.trim() &&
     taskPrompt.trim() &&
-    (authMode !== "api_key_secret" || openAISecret.trim());
+    openAISecret.trim();
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -174,19 +162,13 @@ export function CreateAgentHarnessDialog({
             </div>
             <div>
               <label className="mb-1.5 block text-sm font-medium">
-                Auth Mode
+                OpenAI Secret
               </label>
-              <select
-                value={authMode}
-                onChange={(event) =>
-                  setAuthMode(event.target.value as AgentHarnessAuthMode)
-                }
-                className={selectClass}
-              >
-                <option value="chatgpt_device">ChatGPT device login</option>
-                <option value="api_key_secret">API key from workspace secret</option>
-                <option value="bring_your_own_env">Bring your own environment</option>
-              </select>
+              <Input
+                value={openAISecret}
+                onChange={(event) => setOpenAISecret(event.target.value)}
+                placeholder="OPENAI_API_KEY"
+              />
             </div>
           </div>
 
@@ -254,31 +236,6 @@ export function CreateAgentHarnessDialog({
                 value={codexModel}
                 onChange={(event) => setCodexModel(event.target.value)}
                 placeholder="Use Codex default"
-              />
-            </div>
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-2">
-            <div>
-              <label className="mb-1.5 block text-sm font-medium">
-                OpenAI Secret
-              </label>
-              <Input
-                value={openAISecret}
-                onChange={(event) => setOpenAISecret(event.target.value)}
-                placeholder={
-                  authMode === "api_key_secret" ? "OPENAI_API_KEY" : "Optional"
-                }
-              />
-            </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium">
-                E2B Secret
-              </label>
-              <Input
-                value={e2bSecret}
-                onChange={(event) => setE2bSecret(event.target.value)}
-                placeholder="E2B_API_KEY"
               />
             </div>
           </div>

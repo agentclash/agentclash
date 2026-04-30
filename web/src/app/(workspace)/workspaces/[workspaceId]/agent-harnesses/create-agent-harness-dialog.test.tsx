@@ -179,15 +179,6 @@ function changeInput(index: number, value: string) {
   });
 }
 
-function changeSelect(value: string) {
-  const select = document.querySelector("select");
-  if (!select) throw new Error("select not found");
-  act(() => {
-    select.value = value;
-    select.dispatchEvent(new Event("change", { bubbles: true }));
-  });
-}
-
 function changeTextarea(index: number, value: string) {
   const textarea = document.querySelectorAll("textarea")[index];
   const descriptor = Object.getOwnPropertyDescriptor(
@@ -223,9 +214,8 @@ describe("CreateAgentHarnessDialog", () => {
 
     clickButton("New Harness");
     changeInput(0, "Codex long runner");
-    changeSelect("api_key_secret");
+    changeInput(1, "OPENAI_API_KEY");
     changeTextarea(0, "Implement the requested feature and run tests.");
-    changeInput(6, "OPENAI_API_KEY");
     clickButton("Create Harness");
     await flushPromises();
 
@@ -237,7 +227,6 @@ describe("CreateAgentHarnessDialog", () => {
         codex_template: "codex",
         auth_mode: "api_key_secret",
         openai_api_key_secret_name: "OPENAI_API_KEY",
-        e2b_api_key_secret_name: "E2B_API_KEY",
         evaluation_config: expect.objectContaining({
           validators: expect.any(Array),
           llm_judges: expect.any(Array),
@@ -255,7 +244,6 @@ describe("CreateAgentHarnessDialog", () => {
 
     clickButton("New Harness");
     changeInput(0, "Codex long runner");
-    changeSelect("api_key_secret");
     changeTextarea(0, "Implement the requested feature.");
     const submit = findButton("Create Harness");
     await flushPromises();

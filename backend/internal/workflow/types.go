@@ -3,12 +3,13 @@ package workflow
 import "github.com/google/uuid"
 
 const (
-	EvalSessionWorkflowName          = "EvalSessionWorkflow"
-	RunWorkflowName                  = "RunWorkflow"
-	RunAgentWorkflowName             = "RunAgentWorkflow"
-	PlaygroundExperimentWorkflowName = "PlaygroundExperimentWorkflow"
-	HostedRunEventSignal             = "hosted_run_event"
-	WorkflowTaskQueue                = RunWorkflowName
+	EvalSessionWorkflowName           = "EvalSessionWorkflow"
+	RunWorkflowName                   = "RunWorkflow"
+	RunAgentWorkflowName              = "RunAgentWorkflow"
+	AgentHarnessExecutionWorkflowName = "AgentHarnessExecutionWorkflow"
+	PlaygroundExperimentWorkflowName  = "PlaygroundExperimentWorkflow"
+	HostedRunEventSignal              = "hosted_run_event"
+	WorkflowTaskQueue                 = RunWorkflowName
 )
 
 type EvalSessionWorkflowInput struct {
@@ -22,6 +23,10 @@ type RunWorkflowInput struct {
 type RunAgentWorkflowInput struct {
 	RunID      uuid.UUID `json:"run_id"`
 	RunAgentID uuid.UUID `json:"run_agent_id"`
+}
+
+type AgentHarnessExecutionWorkflowInput struct {
+	ExecutionID uuid.UUID `json:"execution_id"`
 }
 
 type PlaygroundExperimentWorkflowInput struct {
