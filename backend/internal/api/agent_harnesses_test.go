@@ -293,9 +293,19 @@ func TestAgentHarnessExecutionRoutes(t *testing.T) {
 	workspaceID := uuid.New()
 	harness := testAgentHarnessRecord(workspaceID, "Existing harness")
 	execution := testAgentHarnessExecutionRecord(workspaceID, harness.ID)
+	event := repository.AgentHarnessExecutionEvent{
+		ID:                      1,
+		AgentHarnessExecutionID: execution.ID,
+		SequenceNumber:          1,
+		EventType:               "execution.queued",
+		ActorType:               "system",
+		OccurredAt:              time.Now().UTC(),
+		Payload:                 json.RawMessage(`{"message":"queued"}`),
+	}
 	service := &fakeAgentHarnessService{
 		harnesses:  []repository.AgentHarness{harness},
 		executions: []repository.AgentHarnessExecution{execution},
+		events:     []repository.AgentHarnessExecutionEvent{event},
 	}
 	router := chi.NewRouter()
 	router.Use(func(next http.Handler) http.Handler {
@@ -334,6 +344,13 @@ func TestAgentHarnessExecutionRoutes(t *testing.T) {
 	router.ServeHTTP(getRec, getReq)
 	if getRec.Code != http.StatusOK {
 		t.Fatalf("get status = %d, body %s", getRec.Code, getRec.Body.String())
+	}
+	var gotExecution agentHarnessExecutionResponse
+	if err := json.Unmarshal(getRec.Body.Bytes(), &gotExecution); err != nil {
+		t.Fatalf("decode execution: %v", err)
+	}
+	if len(gotExecution.Events) != 1 || gotExecution.Events[0].SequenceNumber != 1 {
+		t.Fatalf("events = %#v, want one sequenced event", gotExecution.Events)
 	}
 }
 
@@ -467,9 +484,14 @@ func (f *fakeAgentHarnessRepo) ListAgentHarnessExecutions(context.Context, repos
 	return f.executions, nil
 }
 
+func (f *fakeAgentHarnessRepo) ListAgentHarnessExecutionEvents(context.Context, uuid.UUID) ([]repository.AgentHarnessExecutionEvent, error) {
+	return nil, nil
+}
+
 type fakeAgentHarnessService struct {
 	harnesses               []repository.AgentHarness
 	executions              []repository.AgentHarnessExecution
+	events                  []repository.AgentHarnessExecutionEvent
 	createdInput            CreateAgentHarnessInput
 	startedHarnessID        uuid.UUID
 	listExecutionsHarnessID *uuid.UUID
@@ -509,6 +531,10 @@ func (f *fakeAgentHarnessService) GetAgentHarnessExecution(_ context.Context, _ 
 		}
 	}
 	return repository.AgentHarnessExecution{}, repository.ErrAgentHarnessExecutionNotFound
+}
+
+func (f *fakeAgentHarnessService) ListAgentHarnessExecutionEvents(context.Context, Caller, uuid.UUID, uuid.UUID) ([]repository.AgentHarnessExecutionEvent, error) {
+	return f.events, nil
 }
 
 func (f *fakeAgentHarnessService) ListAgentHarnessExecutions(_ context.Context, _ Caller, _ uuid.UUID, harnessID *uuid.UUID) ([]repository.AgentHarnessExecution, error) {

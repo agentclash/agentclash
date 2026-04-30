@@ -30,6 +30,7 @@ type AgentHarnessRepository interface {
 	CreateAgentHarnessExecution(ctx context.Context, p repository.CreateAgentHarnessExecutionParams) (repository.AgentHarnessExecution, error)
 	GetAgentHarnessExecutionByID(ctx context.Context, id uuid.UUID) (repository.AgentHarnessExecution, error)
 	ListAgentHarnessExecutions(ctx context.Context, p repository.ListAgentHarnessExecutionsParams) ([]repository.AgentHarnessExecution, error)
+	ListAgentHarnessExecutionEvents(ctx context.Context, executionID uuid.UUID) ([]repository.AgentHarnessExecutionEvent, error)
 }
 
 type AgentHarnessService interface {
@@ -39,6 +40,7 @@ type AgentHarnessService interface {
 	StartAgentHarnessExecution(ctx context.Context, caller Caller, workspaceID uuid.UUID, harnessID uuid.UUID) (repository.AgentHarnessExecution, error)
 	GetAgentHarnessExecution(ctx context.Context, caller Caller, workspaceID uuid.UUID, executionID uuid.UUID) (repository.AgentHarnessExecution, error)
 	ListAgentHarnessExecutions(ctx context.Context, caller Caller, workspaceID uuid.UUID, harnessID *uuid.UUID) ([]repository.AgentHarnessExecution, error)
+	ListAgentHarnessExecutionEvents(ctx context.Context, caller Caller, workspaceID uuid.UUID, executionID uuid.UUID) ([]repository.AgentHarnessExecutionEvent, error)
 }
 
 type AgentHarnessManager struct {
@@ -173,6 +175,13 @@ func (m *AgentHarnessManager) GetAgentHarnessExecution(ctx context.Context, call
 	return execution, nil
 }
 
+func (m *AgentHarnessManager) ListAgentHarnessExecutionEvents(ctx context.Context, caller Caller, workspaceID uuid.UUID, executionID uuid.UUID) ([]repository.AgentHarnessExecutionEvent, error) {
+	if _, err := m.GetAgentHarnessExecution(ctx, caller, workspaceID, executionID); err != nil {
+		return nil, err
+	}
+	return m.repo.ListAgentHarnessExecutionEvents(ctx, executionID)
+}
+
 func (m *AgentHarnessManager) ListAgentHarnessExecutions(ctx context.Context, caller Caller, workspaceID uuid.UUID, harnessID *uuid.UUID) ([]repository.AgentHarnessExecution, error) {
 	if err := m.authorizer.AuthorizeWorkspace(ctx, caller, workspaceID); err != nil {
 		return nil, err
@@ -257,21 +266,33 @@ type listAgentHarnessesResponse struct {
 }
 
 type agentHarnessExecutionResponse struct {
-	ID                       uuid.UUID       `json:"id"`
-	OrganizationID           uuid.UUID       `json:"organization_id"`
-	WorkspaceID              uuid.UUID       `json:"workspace_id"`
-	AgentHarnessID           uuid.UUID       `json:"agent_harness_id"`
-	CreatedByUserID          *uuid.UUID      `json:"created_by_user_id,omitempty"`
-	Status                   string          `json:"status"`
-	HarnessSnapshot          json.RawMessage `json:"harness_snapshot"`
-	ExecutionConfigSnapshot  json.RawMessage `json:"execution_config_snapshot"`
-	EvaluationConfigSnapshot json.RawMessage `json:"evaluation_config_snapshot"`
-	ErrorMessage             *string         `json:"error_message,omitempty"`
-	StartedAt                *time.Time      `json:"started_at,omitempty"`
-	CompletedAt              *time.Time      `json:"completed_at,omitempty"`
-	CancelledAt              *time.Time      `json:"cancelled_at,omitempty"`
-	CreatedAt                time.Time       `json:"created_at"`
-	UpdatedAt                time.Time       `json:"updated_at"`
+	ID                       uuid.UUID                            `json:"id"`
+	OrganizationID           uuid.UUID                            `json:"organization_id"`
+	WorkspaceID              uuid.UUID                            `json:"workspace_id"`
+	AgentHarnessID           uuid.UUID                            `json:"agent_harness_id"`
+	CreatedByUserID          *uuid.UUID                           `json:"created_by_user_id,omitempty"`
+	Status                   string                               `json:"status"`
+	HarnessSnapshot          json.RawMessage                      `json:"harness_snapshot"`
+	ExecutionConfigSnapshot  json.RawMessage                      `json:"execution_config_snapshot"`
+	EvaluationConfigSnapshot json.RawMessage                      `json:"evaluation_config_snapshot"`
+	ErrorMessage             *string                              `json:"error_message,omitempty"`
+	StartedAt                *time.Time                           `json:"started_at,omitempty"`
+	CompletedAt              *time.Time                           `json:"completed_at,omitempty"`
+	CancelledAt              *time.Time                           `json:"cancelled_at,omitempty"`
+	CreatedAt                time.Time                            `json:"created_at"`
+	UpdatedAt                time.Time                            `json:"updated_at"`
+	Events                   []agentHarnessExecutionEventResponse `json:"events,omitempty"`
+}
+
+type agentHarnessExecutionEventResponse struct {
+	ID                      int64           `json:"id"`
+	AgentHarnessExecutionID uuid.UUID       `json:"agent_harness_execution_id"`
+	SequenceNumber          int64           `json:"sequence_number"`
+	EventType               string          `json:"event_type"`
+	ActorType               string          `json:"actor_type"`
+	OccurredAt              time.Time       `json:"occurred_at"`
+	ArtifactID              *uuid.UUID      `json:"artifact_id,omitempty"`
+	Payload                 json.RawMessage `json:"payload"`
 }
 
 type listAgentHarnessExecutionsResponse struct {
@@ -437,7 +458,14 @@ func getAgentHarnessExecutionHandler(logger *slog.Logger, service AgentHarnessSe
 			writeAgentHarnessError(w, logger, r, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, mapAgentHarnessExecutionResponse(execution))
+		response := mapAgentHarnessExecutionResponse(execution)
+		events, err := service.ListAgentHarnessExecutionEvents(r.Context(), caller, workspaceID, executionID)
+		if err != nil {
+			writeAgentHarnessError(w, logger, r, err)
+			return
+		}
+		response.Events = mapAgentHarnessExecutionEventResponses(events)
+		writeJSON(w, http.StatusOK, response)
 	}
 }
 
@@ -485,6 +513,26 @@ func mapAgentHarnessExecutionResponse(e repository.AgentHarnessExecution) agentH
 		CreatedAt:                e.CreatedAt,
 		UpdatedAt:                e.UpdatedAt,
 	}
+}
+
+func mapAgentHarnessExecutionEventResponses(events []repository.AgentHarnessExecutionEvent) []agentHarnessExecutionEventResponse {
+	if len(events) == 0 {
+		return nil
+	}
+	items := make([]agentHarnessExecutionEventResponse, 0, len(events))
+	for _, event := range events {
+		items = append(items, agentHarnessExecutionEventResponse{
+			ID:                      event.ID,
+			AgentHarnessExecutionID: event.AgentHarnessExecutionID,
+			SequenceNumber:          event.SequenceNumber,
+			EventType:               event.EventType,
+			ActorType:               event.ActorType,
+			OccurredAt:              event.OccurredAt,
+			ArtifactID:              event.ArtifactID,
+			Payload:                 event.Payload,
+		})
+	}
+	return items
 }
 
 func marshalAgentHarnessSnapshot(h repository.AgentHarness) (json.RawMessage, error) {
@@ -540,6 +588,10 @@ func (noopAgentHarnessService) StartAgentHarnessExecution(context.Context, Calle
 
 func (noopAgentHarnessService) GetAgentHarnessExecution(context.Context, Caller, uuid.UUID, uuid.UUID) (repository.AgentHarnessExecution, error) {
 	return repository.AgentHarnessExecution{}, errors.New("agent harness service is not configured")
+}
+
+func (noopAgentHarnessService) ListAgentHarnessExecutionEvents(context.Context, Caller, uuid.UUID, uuid.UUID) ([]repository.AgentHarnessExecutionEvent, error) {
+	return nil, errors.New("agent harness service is not configured")
 }
 
 func (noopAgentHarnessService) ListAgentHarnessExecutions(context.Context, Caller, uuid.UUID, *uuid.UUID) ([]repository.AgentHarnessExecution, error) {
