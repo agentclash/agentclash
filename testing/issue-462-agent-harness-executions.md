@@ -8,6 +8,9 @@
 - A workspace user can start, list, and get executions only within workspaces they can access.
 - Cross-workspace fetches return not found instead of leaking existence.
 - The initial API/CLI surface creates queued executions; worker/E2B execution is outside this PR unless existing worker hooks are already ready to attach safely.
+- Execution status changes are persisted with status history rows.
+- Execution events are persisted with per-execution sequence numbers so future workers can append replay/log events.
+- Execution detail includes recent events so CLI/API users can inspect early progress without a separate replay implementation.
 
 ## Unit Tests
 
@@ -18,6 +21,8 @@
   - `agent-harness run <harness-id>` posts to the execution endpoint.
   - `agent-harness executions <harness-id>` lists executions scoped to a harness.
   - `agent-harness execution get <execution-id>` fetches a single execution.
+- `TestAgentHarnessExecutionStatusTransitions` — legal execution status transitions succeed and illegal transitions fail.
+- `TestAgentHarnessExecutionEventsSequencePerExecution` — events append in order with sequence numbers scoped to one execution.
 
 ## Integration / Functional Tests
 
@@ -26,6 +31,7 @@
   - `GET /v1/workspaces/{workspaceID}/agent-harness-executions`
   - `GET /v1/workspaces/{workspaceID}/agent-harness-executions/{executionID}`
 - Repository tests cover create/list/get behavior for the new execution table if the project has a suitable database test harness.
+- Repository tests cover transition history and event append/read behavior if the project has a suitable database test harness.
 
 ## Smoke Tests
 
@@ -51,3 +57,4 @@ Expected:
 - `run` prints the new execution ID and `queued` status.
 - `executions` includes the new execution.
 - `execution get` shows the harness ID, status, created timestamp, and snapshot-backed fields.
+- When events exist, `execution get --output json` includes an `events` array ordered by `sequence_number`.
