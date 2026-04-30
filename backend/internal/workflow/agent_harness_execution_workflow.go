@@ -288,9 +288,6 @@ func agentHarnessEnv(h agentHarnessSnapshot, secrets map[string]string) (map[str
 		}
 		env["OPENAI_API_KEY"] = openAIKey
 		env["CODEX_API_KEY"] = openAIKey
-	case "chatgpt_device":
-		return nil, errors.New("chatgpt_device auth mode is not supported for hosted agent harness execution")
-	case "bring_your_own_env":
 	default:
 		return nil, fmt.Errorf("unsupported agent harness auth mode %q", h.AuthMode)
 	}

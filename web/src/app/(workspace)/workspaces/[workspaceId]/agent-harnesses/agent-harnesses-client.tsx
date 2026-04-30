@@ -24,9 +24,7 @@ import { Loader2, MessageSquare, PackageCheck, Play, Send } from "lucide-react";
 import { CreateAgentHarnessDialog } from "./create-agent-harness-dialog";
 
 const authLabel: Record<string, string> = {
-  chatgpt_device: "ChatGPT device",
   api_key_secret: "API key secret",
-  bring_your_own_env: "Environment",
 };
 
 const statusVariant: Record<string, "default" | "secondary" | "outline"> = {

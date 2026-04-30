@@ -11,7 +11,7 @@ func TestAgentHarnessListCallsCorrectEndpoint(t *testing.T) {
 	srv := fakeAPI(t, map[string]http.HandlerFunc{
 		"GET /v1/workspaces/ws-123/agent-harnesses": captureHandler(t, &called, 200, map[string]any{
 			"items": []map[string]any{
-				{"id": "harness-1", "name": "Codex", "auth_mode": "chatgpt_device", "codex_template": "codex", "status": "draft"},
+				{"id": "harness-1", "name": "Codex", "auth_mode": "api_key_secret", "codex_template": "codex", "status": "draft"},
 			},
 		}),
 	})
@@ -31,7 +31,7 @@ func TestAgentHarnessGetCallsCorrectEndpoint(t *testing.T) {
 	var called bool
 	srv := fakeAPI(t, map[string]http.HandlerFunc{
 		"GET /v1/workspaces/ws-123/agent-harnesses/harness-123": captureHandler(t, &called, 200, map[string]any{
-			"id": "harness-123", "name": "Codex", "auth_mode": "chatgpt_device", "codex_template": "codex", "status": "draft",
+			"id": "harness-123", "name": "Codex", "auth_mode": "api_key_secret", "codex_template": "codex", "status": "draft",
 		}),
 	})
 	defer srv.Close()

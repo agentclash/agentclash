@@ -308,9 +308,7 @@ export interface AgentDeploymentCreateResponse {
 // --- Agent Harnesses ---
 
 export type AgentHarnessAuthMode =
-  | "chatgpt_device"
-  | "api_key_secret"
-  | "bring_your_own_env";
+  | "api_key_secret";
 
 /** GET /v1/workspaces/{id}/agent-harnesses list item, POST response */
 export interface AgentHarness {

@@ -32,7 +32,7 @@ func TestAgentHarnessManagerCreateValidatesRequiredFields(t *testing.T) {
 			name: "name required",
 			input: CreateAgentHarnessInput{
 				TaskPrompt: "Do the task",
-				AuthMode:   AgentHarnessAuthModeChatGPTDevice,
+				AuthMode:   AgentHarnessAuthModeAPIKeySecret,
 			},
 			code: "invalid_name",
 		},
@@ -40,7 +40,7 @@ func TestAgentHarnessManagerCreateValidatesRequiredFields(t *testing.T) {
 			name: "task prompt required",
 			input: CreateAgentHarnessInput{
 				Name:     "Codex harness",
-				AuthMode: AgentHarnessAuthModeChatGPTDevice,
+				AuthMode: AgentHarnessAuthModeAPIKeySecret,
 			},
 			code: "invalid_task_prompt",
 		},
@@ -143,7 +143,8 @@ func TestAgentHarnessRoutesCreateAndList(t *testing.T) {
 	createReq := httptest.NewRequest(http.MethodPost, "/v1/workspaces/"+workspaceID.String()+"/agent-harnesses", bytes.NewBufferString(`{
 		"name": "Codex autonomy check",
 		"task_prompt": "Make the requested change and run tests.",
-		"auth_mode": "chatgpt_device",
+		"auth_mode": "api_key_secret",
+		"openai_api_key_secret_name": "OPENAI_API_KEY",
 		"evaluation_config": {"llm_judges": [{"key": "autonomy"}]}
 	}`))
 	createRec := httptest.NewRecorder()
@@ -151,7 +152,7 @@ func TestAgentHarnessRoutesCreateAndList(t *testing.T) {
 	if createRec.Code != http.StatusCreated {
 		t.Fatalf("create status = %d, body %s", createRec.Code, createRec.Body.String())
 	}
-	if service.createdInput.AuthMode != AgentHarnessAuthModeChatGPTDevice {
+	if service.createdInput.AuthMode != AgentHarnessAuthModeAPIKeySecret {
 		t.Fatalf("auth_mode = %q", service.createdInput.AuthMode)
 	}
 
@@ -193,7 +194,8 @@ func TestAgentHarnessRouteReturnsConflictOnDuplicateSlug(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/v1/workspaces/"+workspaceID.String()+"/agent-harnesses", bytes.NewBufferString(`{
 		"name": "Codex autonomy check",
 		"task_prompt": "Make the requested change and run tests.",
-		"auth_mode": "chatgpt_device"
+		"auth_mode": "api_key_secret",
+		"openai_api_key_secret_name": "OPENAI_API_KEY"
 	}`))
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
@@ -401,7 +403,7 @@ func testAgentHarnessRecord(workspaceID uuid.UUID, name string) repository.Agent
 		HarnessKind:      "codex_e2b",
 		TaskPrompt:       "Do the task",
 		CodexTemplate:    "codex",
-		AuthMode:         AgentHarnessAuthModeChatGPTDevice,
+		AuthMode:         AgentHarnessAuthModeAPIKeySecret,
 		ExecutionConfig:  json.RawMessage(`{}`),
 		EvaluationConfig: json.RawMessage(`{}`),
 		CreatedAt:        now,

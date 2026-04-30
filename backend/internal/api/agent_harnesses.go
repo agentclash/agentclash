@@ -16,10 +16,8 @@ import (
 )
 
 const (
-	AgentHarnessAuthModeChatGPTDevice   = "chatgpt_device"
-	AgentHarnessAuthModeAPIKeySecret    = "api_key_secret"
-	AgentHarnessAuthModeBringYourOwnEnv = "bring_your_own_env"
-	defaultCodexE2BTemplate             = "codex"
+	AgentHarnessAuthModeAPIKeySecret = "api_key_secret"
+	defaultCodexE2BTemplate          = "codex"
 )
 
 type AgentHarnessRepository interface {
@@ -233,11 +231,11 @@ func validateAgentHarnessInput(input CreateAgentHarnessInput) error {
 		return AgentHarnessValidationError{Code: "invalid_task_prompt", Message: "task_prompt is required"}
 	}
 	switch strings.TrimSpace(input.AuthMode) {
-	case AgentHarnessAuthModeChatGPTDevice, AgentHarnessAuthModeAPIKeySecret, AgentHarnessAuthModeBringYourOwnEnv:
+	case AgentHarnessAuthModeAPIKeySecret:
 	case "":
 		return AgentHarnessValidationError{Code: "invalid_auth_mode", Message: "auth_mode is required"}
 	default:
-		return AgentHarnessValidationError{Code: "invalid_auth_mode", Message: "auth_mode must be one of chatgpt_device, api_key_secret, bring_your_own_env"}
+		return AgentHarnessValidationError{Code: "invalid_auth_mode", Message: "auth_mode must be api_key_secret for hosted agent harness execution"}
 	}
 	if strings.TrimSpace(input.AuthMode) == AgentHarnessAuthModeAPIKeySecret && strings.TrimSpace(input.OpenAIAPIKeySecretName) == "" {
 		return AgentHarnessValidationError{Code: "missing_openai_secret", Message: "openai_api_key_secret_name is required when auth_mode is api_key_secret"}

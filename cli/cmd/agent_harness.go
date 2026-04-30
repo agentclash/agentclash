@@ -27,7 +27,7 @@ func init() {
 	agentHarnessCreateCmd.Flags().String("task", "", "Task prompt for the coding harness")
 	agentHarnessCreateCmd.Flags().String("codex-template", "codex", "E2B template with Codex installed")
 	agentHarnessCreateCmd.Flags().String("codex-model", "", "Codex model override")
-	agentHarnessCreateCmd.Flags().String("auth-mode", "chatgpt_device", "Codex auth mode: chatgpt_device, api_key_secret, bring_your_own_env")
+	agentHarnessCreateCmd.Flags().String("auth-mode", "api_key_secret", "Codex auth mode: api_key_secret")
 	agentHarnessCreateCmd.Flags().String("openai-api-key-secret", "", "Workspace secret name containing OPENAI_API_KEY")
 	agentHarnessCreateCmd.Flags().String("repository-url", "", "Repository URL for the harness task")
 	agentHarnessCreateCmd.Flags().String("base-branch", "", "Base branch for repository work")
@@ -377,11 +377,7 @@ func buildAgentHarnessCreateBody(cmd *cobra.Command) (map[string]any, error) {
 }
 
 func requiredAgentHarnessCreateFlags(cmd *cobra.Command) []string {
-	required := []string{"name", "task", "auth-mode"}
-	authMode, _ := cmd.Flags().GetString("auth-mode")
-	if strings.TrimSpace(authMode) == "api_key_secret" {
-		required = append(required, "openai-api-key-secret")
-	}
+	required := []string{"name", "task", "auth-mode", "openai-api-key-secret"}
 	missing := make([]string, 0, len(required))
 	for _, flagName := range required {
 		value, _ := cmd.Flags().GetString(flagName)
