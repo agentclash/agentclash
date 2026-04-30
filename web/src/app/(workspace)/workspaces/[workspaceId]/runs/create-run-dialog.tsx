@@ -6,6 +6,7 @@ import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
 import { createApiClient } from "@/lib/api/client";
 import { useApiMutator } from "@/lib/api/swr";
 import { ApiError } from "@/lib/api/errors";
+import { billingGateToastMessage } from "@/lib/billing";
 import { workspaceMutationKeys, workspaceResourceKeys } from "@/lib/workspace-resource";
 import type {
   AgentDeployment,
@@ -323,7 +324,8 @@ export function CreateRunDialog({ workspaceId }: CreateRunDialogProps) {
       router.push(`/workspaces/${workspaceId}/runs/${result.id}`);
     } catch (err) {
       toast.error(
-        err instanceof ApiError ? err.message : "Failed to create run",
+        billingGateToastMessage(err) ??
+          (err instanceof ApiError ? err.message : "Failed to create run"),
       );
     } finally {
       setSubmitting(false);

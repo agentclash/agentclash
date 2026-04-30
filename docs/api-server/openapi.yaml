@@ -768,6 +768,38 @@ paths:
         "500":
           $ref: "#/components/responses/InternalError"
 
+  /v1/organizations/{organizationID}/billing/trial:
+    post:
+      operationId: startBillingTrial
+      tags: [Billing]
+      summary: Start a 45-day billing trial
+      description: Requires org_admin role. Only Free organizations can start a trial.
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/OrganizationID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StartBillingTrialRequest"
+      responses:
+        "201":
+          description: Billing trial started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingOverviewResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
   /v1/organizations/{organizationID}/billing/checkout:
     post:
       operationId: createBillingCheckout
@@ -4699,6 +4731,18 @@ components:
           $ref: "#/components/schemas/BillingEntitlements"
         subscription:
           $ref: "#/components/schemas/BillingSubscriptionResponse"
+
+    StartBillingTrialRequest:
+      type: object
+      required: [plan_key]
+      properties:
+        plan_key:
+          type: string
+          enum: [pro, team]
+        billing_period:
+          type: string
+          enum: [monthly, yearly]
+          default: monthly
 
     CreateBillingCheckoutRequest:
       type: object

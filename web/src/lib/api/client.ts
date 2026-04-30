@@ -60,7 +60,15 @@ function buildUrl(
 async function parseErrorResponse(res: Response): Promise<ApiError> {
   try {
     const body = (await res.json()) as ApiErrorResponse;
-    return new ApiError(res.status, body.error.code, body.error.message);
+    return new ApiError(res.status, body.error.code, body.error.message, {
+      planKey: body.error.plan_key,
+      upgradeTarget: body.error.upgrade_target,
+      limit: body.error.limit,
+      used: body.error.used,
+      remaining: body.error.remaining,
+      resetAt: body.error.reset_at,
+      expiresAt: body.error.expires_at,
+    });
   } catch {
     return new ApiError(res.status, "unknown", res.statusText || "Request failed");
   }

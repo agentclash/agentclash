@@ -29,23 +29,23 @@ export function createSWRApiFetcher(
 }
 
 export function useApiQuery<T>(
-  path: string,
+  path: string | null,
   params?: ApiQueryParams,
   config?: SWRConfiguration<T>,
 ): SWRResponse<T> {
-  return useSWR<T>(apiQueryKey(path, params), config);
+  return useSWR<T>(path ? apiQueryKey(path, params) : null, config);
 }
 
 export function useApiListQuery<T>(
-  path: string,
+  path: string | null,
   params?: ApiQueryParams,
   config?: SWRConfiguration<{ items: T[] }>,
 ): SWRResponse<{ items: T[] }> {
-  return useSWR<{ items: T[] }>(apiQueryKey(path, params), config);
+  return useSWR<{ items: T[] }>(path ? apiQueryKey(path, params) : null, config);
 }
 
 export function usePaginatedApiQuery<T>(
-  path: string,
+  path: string | null,
   params?: ApiQueryParams,
   config?: SWRConfiguration<{
     items: T[];
@@ -64,7 +64,7 @@ export function usePaginatedApiQuery<T>(
     total: number;
     limit: number;
     offset: number;
-  }>(apiQueryKey(path, params), config);
+  }>(path ? apiQueryKey(path, params) : null, config);
 }
 
 export function useApiMutator() {

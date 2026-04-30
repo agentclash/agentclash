@@ -25,6 +25,7 @@ import (
 type BillingService interface {
 	ListPlans(ctx context.Context, caller Caller) (ListBillingPlansResult, error)
 	GetOrganizationBilling(ctx context.Context, caller Caller, orgID uuid.UUID) (repository.BillingOverview, error)
+	StartTrial(ctx context.Context, caller Caller, orgID uuid.UUID, input StartBillingTrialInput) (repository.BillingOverview, error)
 	CreateCheckout(ctx context.Context, caller Caller, orgID uuid.UUID, input CreateBillingCheckoutInput) (CreateBillingCheckoutResult, error)
 	CreatePortal(ctx context.Context, caller Caller, orgID uuid.UUID) (CreateBillingPortalResult, error)
 	GetWorkspaceEntitlements(ctx context.Context, caller Caller, workspaceID uuid.UUID) (WorkspaceEntitlementsResult, error)
@@ -106,6 +107,11 @@ type CreateBillingCheckoutInput struct {
 	ReturnURL     string `json:"return_url"`
 }
 
+type StartBillingTrialInput struct {
+	PlanKey       string `json:"plan_key"`
+	BillingPeriod string `json:"billing_period"`
+}
+
 type CreateBillingCheckoutResult struct {
 	CheckoutIntentID uuid.UUID `json:"checkout_intent_id"`
 	CheckoutURL      string    `json:"checkout_url"`
@@ -147,6 +153,42 @@ func (m *BillingManager) ListPlans(_ context.Context, _ Caller) (ListBillingPlan
 
 func (m *BillingManager) GetOrganizationBilling(ctx context.Context, caller Caller, orgID uuid.UUID) (repository.BillingOverview, error) {
 	if err := m.orgAuthz.AuthorizeOrganizationAdmin(ctx, caller, orgID); err != nil {
+		return repository.BillingOverview{}, err
+	}
+	return m.repo.GetBillingOverview(ctx, orgID)
+}
+
+func (m *BillingManager) StartTrial(ctx context.Context, caller Caller, orgID uuid.UUID, input StartBillingTrialInput) (repository.BillingOverview, error) {
+	if err := m.orgAuthz.AuthorizeOrganizationAdmin(ctx, caller, orgID); err != nil {
+		return repository.BillingOverview{}, err
+	}
+	current, err := m.repo.GetOrganizationEntitlements(ctx, orgID)
+	if err != nil {
+		return repository.BillingOverview{}, err
+	}
+	if current.PlanKey != billingpkg.PlanFree {
+		return repository.BillingOverview{}, validationError("trial_not_available", "trial is only available from the Free plan")
+	}
+	planKey := strings.TrimSpace(input.PlanKey)
+	if planKey != billingpkg.PlanPro && planKey != billingpkg.PlanTeam {
+		return repository.BillingOverview{}, validationError("invalid_plan_key", "plan_key must be pro or team")
+	}
+	plan, _ := billingpkg.PlanByKey(planKey)
+	period := strings.TrimSpace(input.BillingPeriod)
+	if period == "" {
+		period = billingpkg.PeriodMonthly
+	}
+	if err := billingpkg.ValidateBillingPeriod(plan, period); err != nil {
+		return repository.BillingOverview{}, validationError("invalid_billing_period", err.Error())
+	}
+	seatQuantity := plan.DefaultSeats
+	if seatQuantity < plan.MinimumSeats {
+		seatQuantity = plan.MinimumSeats
+	}
+	expiresAt := m.now().UTC().Add(45 * 24 * time.Hour)
+	entitlements := billingpkg.MaterializeEntitlements(plan, period, seatQuantity, billingpkg.EntitlementStatusTrialing)
+	entitlements.ExpiresAt = &expiresAt
+	if err := m.repo.UpsertOrganizationEntitlements(ctx, orgID, entitlements, nil, &expiresAt); err != nil {
 		return repository.BillingOverview{}, err
 	}
 	return m.repo.GetBillingOverview(ctx, orgID)
@@ -840,6 +882,7 @@ func registerBillingRoutes(router chi.Router, logger *slog.Logger, service Billi
 	}
 	router.Get("/billing/plans", listBillingPlansHandler(logger, service))
 	router.Get("/organizations/{organizationID}/billing", getOrganizationBillingHandler(logger, service))
+	router.Post("/organizations/{organizationID}/billing/trial", startBillingTrialHandler(logger, service))
 	router.Post("/organizations/{organizationID}/billing/checkout", createBillingCheckoutHandler(logger, service))
 	router.Post("/organizations/{organizationID}/billing/portal", createBillingPortalHandler(logger, service))
 	router.Get("/workspaces/{workspaceID}/entitlements", getWorkspaceEntitlementsHandler(logger, service))
@@ -880,6 +923,32 @@ func getOrganizationBillingHandler(logger *slog.Logger, service BillingService) 
 			return
 		}
 		writeJSON(w, http.StatusOK, result)
+	}
+}
+
+func startBillingTrialHandler(logger *slog.Logger, service BillingService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		caller, err := CallerFromContext(r.Context())
+		if err != nil {
+			writeAuthzError(w, err)
+			return
+		}
+		orgID, err := uuid.Parse(chi.URLParam(r, "organizationID"))
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_organization_id", "organization ID is malformed")
+			return
+		}
+		var input StartBillingTrialInput
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&input); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_request_body", "request body must be valid JSON")
+			return
+		}
+		result, err := service.StartTrial(r.Context(), caller, orgID, input)
+		if err != nil {
+			writeBillingServiceError(w, logger, err)
+			return
+		}
+		writeJSON(w, http.StatusCreated, result)
 	}
 }
 
@@ -977,6 +1046,9 @@ func (noopBillingService) ListPlans(context.Context, Caller) (ListBillingPlansRe
 	return ListBillingPlansResult{Items: billingpkg.Catalog()}, nil
 }
 func (noopBillingService) GetOrganizationBilling(context.Context, Caller, uuid.UUID) (repository.BillingOverview, error) {
+	return repository.BillingOverview{}, errors.New("billing service is not configured")
+}
+func (noopBillingService) StartTrial(context.Context, Caller, uuid.UUID, StartBillingTrialInput) (repository.BillingOverview, error) {
 	return repository.BillingOverview{}, errors.New("billing service is not configured")
 }
 func (noopBillingService) CreateCheckout(context.Context, Caller, uuid.UUID, CreateBillingCheckoutInput) (CreateBillingCheckoutResult, error) {

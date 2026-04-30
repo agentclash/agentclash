@@ -311,6 +311,67 @@ func TestCreateBillingCheckoutHandlerDecodesSnakeCaseJSON(t *testing.T) {
 	}
 }
 
+func TestBillingManagerStartTrialMaterializesSelectedPlan(t *testing.T) {
+	workspaceID := uuid.New()
+	repo := newFakeBillingRepository(workspaceID)
+	now := time.Date(2026, 4, 30, 12, 0, 0, 0, time.UTC)
+	manager := NewBillingManager(NewCallerOrganizationAuthorizer(), NewCallerWorkspaceAuthorizer(), repo, BillingManagerConfig{
+		WebhookSecret: "secret",
+	})
+	manager.now = func() time.Time { return now }
+	caller := Caller{
+		UserID: uuid.New(),
+		OrganizationMemberships: map[uuid.UUID]OrganizationMembership{
+			repo.orgID: {OrganizationID: repo.orgID, Role: "org_admin"},
+		},
+	}
+
+	overview, err := manager.StartTrial(context.Background(), caller, repo.orgID, StartBillingTrialInput{
+		PlanKey:       billingpkg.PlanTeam,
+		BillingPeriod: billingpkg.PeriodMonthly,
+	})
+	if err != nil {
+		t.Fatalf("StartTrial returned error: %v", err)
+	}
+	if overview.Entitlements.PlanKey != billingpkg.PlanTeam {
+		t.Fatalf("plan = %q, want team", overview.Entitlements.PlanKey)
+	}
+	if overview.Entitlements.Status != billingpkg.EntitlementStatusTrialing {
+		t.Fatalf("status = %q, want trialing", overview.Entitlements.Status)
+	}
+	if overview.Entitlements.ExpiresAt == nil || !overview.Entitlements.ExpiresAt.Equal(now.Add(45*24*time.Hour)) {
+		t.Fatalf("expires_at = %v, want %v", overview.Entitlements.ExpiresAt, now.Add(45*24*time.Hour))
+	}
+	assertIntPtr(t, "team trial model limit", overview.Entitlements.MaxModelsPerRace, 12)
+}
+
+func TestBillingManagerStartTrialRejectsExistingPaidPlan(t *testing.T) {
+	workspaceID := uuid.New()
+	repo := newFakeBillingRepository(workspaceID)
+	repo.entitlements = billingpkg.MaterializeEntitlements(billingpkg.MustPlan(billingpkg.PlanPro), billingpkg.PeriodMonthly, 5, billingpkg.EntitlementStatusTrialing)
+	manager := NewBillingManager(NewCallerOrganizationAuthorizer(), NewCallerWorkspaceAuthorizer(), repo, BillingManagerConfig{
+		WebhookSecret: "secret",
+	})
+	caller := Caller{
+		UserID: uuid.New(),
+		OrganizationMemberships: map[uuid.UUID]OrganizationMembership{
+			repo.orgID: {OrganizationID: repo.orgID, Role: "org_admin"},
+		},
+	}
+
+	_, err := manager.StartTrial(context.Background(), caller, repo.orgID, StartBillingTrialInput{
+		PlanKey:       billingpkg.PlanTeam,
+		BillingPeriod: billingpkg.PeriodMonthly,
+	})
+	var validationErr validationErrorEnvelope
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("error = %v, want validation error", err)
+	}
+	if validationErr.Code != "trial_not_available" {
+		t.Fatalf("code = %q, want trial_not_available", validationErr.Code)
+	}
+}
+
 func TestBillingManagerCreateCheckoutUsesDodoAPIWhenConfigured(t *testing.T) {
 	workspaceID := uuid.New()
 	repo := newFakeBillingRepository(workspaceID)

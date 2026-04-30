@@ -65,10 +65,14 @@ export const getWorkspaceShellData = cache(async (workspaceId: string) => {
 
   let orgName: string | undefined;
   let orgSlug: string | undefined;
+  let orgId: string | undefined;
+  let orgRole: string | undefined;
   for (const organization of userMe.organizations) {
     if (organization.workspaces.some((workspace) => workspace.id === workspaceId)) {
       orgName = organization.name;
       orgSlug = organization.slug;
+      orgId = organization.id;
+      orgRole = organization.role;
       break;
     }
   }
@@ -79,7 +83,9 @@ export const getWorkspaceShellData = cache(async (workspaceId: string) => {
     userMe,
     hasMembership,
     hasOrgAccess,
+    orgId,
     orgName,
+    orgRole,
     orgSlug,
   };
 });

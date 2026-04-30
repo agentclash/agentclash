@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { createApiClient } from "@/lib/api/client";
 import { useApiMutator } from "@/lib/api/swr";
 import { ApiError } from "@/lib/api/errors";
+import { billingGateToastMessage } from "@/lib/billing";
 import { workspaceMutationKeys, workspaceResourceKeys } from "@/lib/workspace-resource";
 import type {
   AgentDeployment,
@@ -364,7 +365,8 @@ export function CreateEvalSessionDialog({
       router.push(`/workspaces/${workspaceId}/eval-sessions/${body.eval_session.id}`);
     } catch (err) {
       toast.error(
-        err instanceof ApiError ? err.message : "Failed to create eval session",
+        billingGateToastMessage(err) ??
+          (err instanceof ApiError ? err.message : "Failed to create eval session"),
       );
     } finally {
       setSubmitting(false);

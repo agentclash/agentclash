@@ -5,6 +5,7 @@ import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
 import { createApiClient } from "@/lib/api/client";
 import { useApiMutator } from "@/lib/api/swr";
 import { ApiError } from "@/lib/api/errors";
+import { billingGateToastMessage } from "@/lib/billing";
 import { workspaceResourceKeys } from "@/lib/workspace-resource";
 import type {
   ValidateChallengePackResponse,
@@ -107,7 +108,7 @@ export function PublishPackDialog({ workspaceId }: PublishPackDialogProps) {
       return result;
     } catch (err) {
       if (err instanceof ApiError) {
-        toast.error(err.message);
+        toast.error(billingGateToastMessage(err) ?? err.message);
       } else {
         toast.error("Failed to publish challenge pack");
       }
