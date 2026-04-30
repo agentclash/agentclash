@@ -41,6 +41,15 @@ vi.mock("sonner", () => ({
   toast,
 }));
 
+vi.mock("next/link", () => ({
+  default: ({
+    href,
+    children,
+    ...props
+  }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { href: string }) =>
+    React.createElement("a", { href, ...props }, children),
+}));
+
 vi.mock("@/components/ui/button", () => ({
   Button: ({
     children,
@@ -223,6 +232,26 @@ describe("CreateAgentHarnessDialog", () => {
       }),
     );
     expect(mockMutate).toHaveBeenCalled();
+    rendered.cleanup();
+  });
+
+  it("falls back to the task prompt for names when the repo URL has no owner and repo path", async () => {
+    const post = vi.fn().mockResolvedValue({ id: "harness-1" });
+    mockCreateApiClient.mockReturnValue({ post });
+    const rendered = renderDialog();
+
+    clickButton("New Harness");
+    changeInput(0, "https://github.com");
+    changeTextarea(0, "Implement the requested feature and run tests.");
+    clickButton("Create Harness");
+    await flushPromises();
+
+    expect(post).toHaveBeenCalledWith(
+      "/v1/workspaces/ws-1/agent-harnesses",
+      expect.objectContaining({
+        name: "Implement the requested feature Codex",
+      }),
+    );
     rendered.cleanup();
   });
 

@@ -60,7 +60,6 @@ export function CreateAgentHarnessDialog({
   const [submitting, setSubmitting] = useState(false);
 
   async function handleCreate() {
-    const openAISecret = inferOpenAISecret(secretsData?.items ?? []);
     if (!repositoryURL.trim() || !taskPrompt.trim()) return;
     if (!openAISecret) {
       toast.error("Add OPENAI_API_KEY under workspace Secrets first");
@@ -203,15 +202,27 @@ function inferOpenAISecret(secrets: WorkspaceSecret[]): string | undefined {
 }
 
 function buildHarnessName(repositoryURL: string, taskPrompt: string): string {
-  const repoName = repositoryURL
-    .trim()
-    .replace(/\.git$/i, "")
-    .split("/")
-    .filter(Boolean)
-    .slice(-2)
-    .join("/");
+  const repoName = parseRepositoryName(repositoryURL);
   if (repoName) {
     return `${repoName} Codex`;
   }
   return `${taskPrompt.trim().split(/\s+/).slice(0, 4).join(" ")} Codex`;
+}
+
+function parseRepositoryName(repositoryURL: string): string | undefined {
+  const trimmed = repositoryURL.trim().replace(/\.git$/i, "");
+  const scpPath = trimmed.match(/^[^@]+@[^:]+:(.+)$/)?.[1];
+  if (scpPath) {
+    const segments = scpPath.split("/").filter(Boolean);
+    return segments.length >= 2 ? segments.slice(-2).join("/") : undefined;
+  }
+
+  try {
+    const url = new URL(trimmed);
+    const segments = url.pathname.split("/").filter(Boolean);
+    return segments.length >= 2 ? segments.slice(-2).join("/") : undefined;
+  } catch {
+    const segments = trimmed.split("/").filter(Boolean);
+    return segments.length >= 2 ? segments.slice(-2).join("/") : undefined;
+  }
 }
