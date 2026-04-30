@@ -15,6 +15,7 @@ import (
 
 func init() {
 	rootCmd.AddCommand(artifactCmd)
+	artifactCmd.AddCommand(artifactListCmd)
 	artifactCmd.AddCommand(artifactUploadCmd)
 	artifactCmd.AddCommand(artifactDownloadCmd)
 
@@ -30,6 +31,49 @@ func init() {
 var artifactCmd = &cobra.Command{
 	Use:   "artifact",
 	Short: "Upload and download artifacts",
+}
+
+var artifactListCmd = &cobra.Command{
+	Use:   "list",
+	Short: "List artifacts in the workspace",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		rc := GetRunContext(cmd)
+		wsID := RequireWorkspace(cmd)
+
+		resp, err := rc.Client.Get(cmd.Context(), "/v1/workspaces/"+wsID+"/artifacts", nil)
+		if err != nil {
+			return err
+		}
+		if apiErr := resp.ParseError(); apiErr != nil {
+			return apiErr
+		}
+
+		var result struct {
+			Items []map[string]any `json:"items"`
+		}
+		if err := resp.DecodeJSON(&result); err != nil {
+			return err
+		}
+
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(result)
+		}
+
+		cols := []output.Column{{Header: "ID"}, {Header: "Type"}, {Header: "Size"}, {Header: "Run"}, {Header: "Run Agent"}, {Header: "Created"}}
+		rows := make([][]string, len(result.Items))
+		for i, item := range result.Items {
+			rows[i] = []string{
+				str(item["id"]),
+				mapString(item, "artifact_type", "type"),
+				str(item["size_bytes"]),
+				str(item["run_id"]),
+				str(item["run_agent_id"]),
+				str(item["created_at"]),
+			}
+		}
+		rc.Output.PrintTable(cols, rows)
+		return nil
+	},
 }
 
 var artifactUploadCmd = &cobra.Command{
