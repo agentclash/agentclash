@@ -59,7 +59,7 @@ export default async function DocsPage({ params }: Props) {
                 key={section.title}
                 className="rounded-[24px] border border-white/[0.08] bg-black/20 p-5"
               >
-                <p className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-[0.18em] text-white/30">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
                   {section.title}
                 </p>
                 <p className="mt-3 text-sm leading-6 text-white/45">

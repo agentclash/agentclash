@@ -186,6 +186,69 @@ export const DOCS_NAV: DocNavSection[] = [
     ],
   },
   {
+    title: "Challenge packs",
+    description:
+      "YAML reference grounded in backend/parser/scoring/enforcement paths—meant for pack authors publishing real workloads.",
+    items: [
+      {
+        title: "Reference overview",
+        description:
+          "Map of every challenge-pack documentation page and where each topic is enforced in Go.",
+        slug: ["challenge-packs"],
+        href: "/docs/challenge-packs",
+      },
+      {
+        title: "Bundle YAML reference",
+        description:
+          "Top-level bundle keys, manifests, constraints for prompt_eval versus native.",
+        slug: ["challenge-packs", "bundle-yaml-reference"],
+        href: "/docs/challenge-packs/bundle-yaml-reference",
+      },
+      {
+        title: "Evaluation spec",
+        description:
+          "Validators, targets, metric collectors, scorecard dimensions, strategies, post-execution captures.",
+        slug: ["challenge-packs", "evaluation-spec-reference"],
+        href: "/docs/challenge-packs/evaluation-spec-reference",
+      },
+      {
+        title: "LLM judges",
+        description:
+          "Rubric, assertion, n_wise, and reference modes plus consensus keys and budgets.",
+        slug: ["challenge-packs", "llm-judges"],
+        href: "/docs/challenge-packs/llm-judges",
+      },
+      {
+        title: "Tools, primitives & policy",
+        description:
+          "allowed_tool_kinds, built-in primitives, composed tools to http_request mocks and cycles.",
+        slug: ["challenge-packs", "tools-primitives-and-policy"],
+        href: "/docs/challenge-packs/tools-primitives-and-policy",
+      },
+      {
+        title: "Sandbox & E2B",
+        description:
+          "Pack sandbox block, outbound network CIDR lists, sandbox provider env, no-op modes.",
+        slug: ["challenge-packs", "sandbox-and-e2b"],
+        href: "/docs/challenge-packs/sandbox-and-e2b",
+      },
+      {
+        title: "Input sets & cases",
+        description:
+          "Case inputs expectations artifacts legacy payloads and how payloads are persisted.",
+        slug: ["challenge-packs", "input-sets-and-cases"],
+        href: "/docs/challenge-packs/input-sets-and-cases",
+      },
+      {
+        title: "Eval workflows & gates",
+        description:
+          "CLI eval start baseline scorecard compare gates and regression scope flags grounded in Cobra.",
+        slug: ["challenge-packs", "eval-workflows-and-gates"],
+        href: "/docs/challenge-packs/eval-workflows-and-gates",
+      },
+    ],
+  },
+  {
     title: "Guides",
     description:
       "Task-oriented walkthroughs for authoring packs, setting up deployments, reading results, and using the docs with AI tools.",

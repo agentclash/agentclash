@@ -70,7 +70,7 @@ export function DocsShell({
                 {sectionTitle ?? "Documentation"}
               </p>
               <div className="flex items-start justify-between gap-4">
-                <h1 className="text-3xl font-bold tracking-tight text-zinc-100 sm:text-4xl">
+                <h1 className="font-sans text-3xl font-semibold tracking-tight text-zinc-100 antialiased sm:text-[2.125rem] sm:leading-tight">
                   {title}
                 </h1>
                 <button 
@@ -86,7 +86,7 @@ export function DocsShell({
               </p>
             </div>
 
-            <div className="prose prose-invert prose-zinc max-w-none prose-headings:text-zinc-100 prose-a:text-emerald-500 prose-a:no-underline hover:prose-a:underline prose-code:text-zinc-200 prose-pre:bg-zinc-900 prose-pre:border prose-pre:border-zinc-800">
+            <div className="prose prose-invert prose-zinc max-w-none prose-headings:font-sans prose-headings:tracking-tight prose-headings:text-zinc-100 prose-headings:not-italic prose-p:leading-relaxed prose-strong:text-zinc-200 prose-a:text-emerald-500 prose-a:no-underline hover:prose-a:underline prose-code:font-normal prose-code:text-zinc-200 prose-pre:bg-zinc-900 prose-pre:border prose-pre:border-zinc-800">
               {children}
             </div>
           </div>

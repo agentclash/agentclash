@@ -1,0 +1,77 @@
+---
+title: Input sets & cases
+description: How cases bind challenges, structured inputs, expectations, assets, and legacy payloads—grounded in challengepack.CaseDefinition.
+---
+
+Input sets are the unit AgentClash schedules per deployment/candidate. Each `input_sets[]` entry contains **`cases[]`** (`CaseDefinition` in `backend/internal/challengepack/bundle.go`).
+
+## Case identity
+
+- **`challenge_key`** — must reference an existing `challenges[].key`
+- **`case_key`** / legacy **`item_key`** — both accepted; normalization duplicates missing side from the other
+
+`EffectiveKey()` chooses `case_key` when present for stored rows.
+
+## Three authoring styles (coexist)
+
+1. **Legacy payload-only** — fill `payload` map; omit structured inputs/expectations  
+2. **Structured eval** — `inputs[]` + `expectations[]` with explicit `kind` fields  
+3. **Artifact heavy** — `assets[]` + `artifacts[]` referencing declared version/challenge assets
+
+`IsLegacyPayloadOnly` detects style (1) for storage compatibility.
+
+### Stored document shape
+
+When modern fields exist, `StoredPayload()` marshals `StoredCaseDocument` JSON with `schema_version: 1`, preserving:
+
+- `payload`
+- `inputs`
+- `expectations`
+- `artifacts`
+- `assets`
+
+This is what scoring + replay pull back—not the raw YAML fragment.
+
+## Case inputs (`inputs[]`)
+
+`CaseInput` fields:
+
+| Field | Role |
+| --- | --- |
+| `key` | Stable id for templates / UI |
+| `kind` | Drives rendering + validator binding (`text`, `artifact`, etc.—product-specific kinds should match worker expectations) |
+| `value` | Inline scalar/object |
+| `artifact_key` | Pull bytes from declared asset map |
+| `path` | Optional relative path inside asset bundle |
+
+Validators can address values through `case.inputs.<key>` evidence paths.
+
+## Expectations (`expectations[]`)
+
+`CaseExpectation` parallels inputs:
+
+- `key`, `kind`, `value`, `artifact_key`, plus **`source`** telling graders where dynamic gold values originate (`input:prompt` pattern seen in CLI template packs)
+
+Use expectations for:
+
+- deterministic string compares
+- supplying LLM judge `reference_from` bindings
+- filesystem validators comparing outputs to expected files
+
+## Assets on cases
+
+Case-level `assets[]` references use the same `AssetReference` structure as version-level entries (key, path, optional `artifact_id`). Validation ensures cross-references exist before publish succeeds.
+
+## Input set metadata
+
+Optional `description` on an input set is preserved for UI/discovery; there is no behavioral magic—selection happens by id/key at run creation time.
+
+## Choosing input set at run time
+
+CLI `eval start` accepts `--input-set` when multiple sets exist; otherwise TTY flows prompt. API consumers pass the chosen `input_set_id` when creating runs (see OpenAPI `CreateRun` family).
+
+## See also
+
+- [Bundle YAML reference](bundle-yaml-reference)
+- [Evaluation spec — evidence references](evaluation-spec-reference)
+- [Artifacts concept](../concepts/artifacts)

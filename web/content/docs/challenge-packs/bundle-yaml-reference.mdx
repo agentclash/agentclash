@@ -1,0 +1,106 @@
+---
+title: Bundle YAML reference
+description: Structured reference for challenge-pack bundles as parsed by backend/internal/challengepack.
+---
+
+AgentClash challenge packs ship as **one YAML file** decoded into `challengepack.Bundle` (`backend/internal/challengepack/bundle.go`). Publication stores a JSON manifest combining the pack body with metadata for execution and scoring (`ManifestJSON` in the same file).
+
+## Top-level keys
+
+All keys listed here are persisted or validated somewhere in publish/validate—not decorative.
+
+### `pack` (required)
+
+Human metadata surfaced in API and CLI lists:
+
+- `slug` — required, workspace-unique branding string
+- `name` — required display name  
+- `family` — required grouping/category string  
+- `description` — optional
+
+### `version` (required)
+
+The executable spine of the bundle:
+
+| Field | Notes |
+| --- | --- |
+| `number` | Required positive integer (`int32`). Bumps when you materially change validators, tooling, sandbox, scores, etc. |
+| `execution_mode` | `native` **or** `prompt_eval`. Empty accepts as legacy but you should always set explicitly. See execution rules below. |
+| `tool_policy` | Arbitrary-shaped map mirrored into manifest `tool_policy`. **Must be omitted** when `execution_mode` is `prompt_eval` (validated in `ValidateBundle`). |
+| `filesystem` | Optional filesystem constraints blob (same manifest path as today). |
+| `sandbox` | Optional `SandboxConfig`. **Forbidden** when `execution_mode` is `prompt_eval`. |
+| `evaluation_spec` | Required scoring contract unmarshalled through scoring package strict decode (`scoring.StrictDecodeEvaluationSpec`). Typos surface at parse time rather than silently defaulting. |
+| `assets` | Version-scoped `AssetReference[]` keyed for cases and uploads. |
+
+`SandboxConfig` (`bundle.go`) currently supports:
+
+- `network_access` (bool)
+- `network_allowlist` (CIDR strings; invalid CIDR rejects publish)
+- `env_vars` (map of string literals—see [Sandbox & E2B](sandbox-and-e2b))
+- `additional_packages` (APT-style names constrained by regexp in validation)
+- `sandbox_template_id` (optional provider template override)
+
+Manifest JSON merges `sandbox_template_id` from `version.sandbox` into the serialized `version` block for backends that historically keyed off that field separately.
+
+### `tools` (optional)
+
+Optional map keyed by integration style; authoring today uses **`tools.custom`** as an array of composed tools (`validation.go`). **Must be empty** when mode is `prompt_eval`.
+
+See [Tools, primitives & policy](tools-primitives-and-policy).
+
+### `challenges` (required, non-empty)
+
+Each challenge includes:
+
+| Field | Required | Purpose |
+| --- | --- | --- |
+| `key` | yes | Stable id referenced by cases |
+| `title` | yes | Display |
+| `category` | yes | Stored metadata |
+| `difficulty` | yes | Stored metadata (`easy`/`medium`/… as free text unless your org standardizes it) |
+| `instructions` | often | Prompt body; mirrored into `definition.instructions` if missing there |
+| `definition` | optional | Extra JSON-compatible bag for product-specific authoring |
+| `assets` | optional | Challenge-scoped files |
+| `artifact_refs` | optional | Artifact key references validated against declared artifacts |
+
+### `input_sets` (required)
+
+Defines runnable **cases**:
+
+- **`key`** and **`name`** required on each set.
+- Prefer modern **`cases`** array. Legacy `items` aliases are normalized into `cases` during `normalizeBundle`; do not rely on `items` in new authoring.
+
+Cases are modeled by `CaseDefinition` with `challenge_key`, `case_key`, optional rich `inputs`/`expectations`, `artifacts`, `assets`, plus legacy **`payload`** for blob-only authoring.
+
+Deep dive: [Input sets & cases](input-sets-and-cases).
+
+## Execution mode compatibility
+
+Validated in `ValidateBundle`:
+
+When `execution_mode` is **`prompt_eval`**:
+
+- `tools` block must **not** be present
+- `version.sandbox` must **not** be present  
+- `version.tool_policy` must be **empty**
+
+When **`native`** you may populate sandbox, allowed tool kinds, and composed tools—the worker will hydrate the richer runtime path (`native_executor` flow).
+
+Choose `prompt_eval` for pure model-output workloads; promote to `native` when you rely on sandbox files, primitives, validators that read captured files (`file:` evidence), etc.
+
+## After publish — IDs returned
+
+Publishing returns stable identifiers referenced by runs (see authoring guide):
+
+- `challenge_pack_id`
+- `challenge_pack_version_id`
+- `evaluation_spec_id`
+- `input_set_ids`
+- Optional `bundle_artifact_id`
+
+Run creation binds `challenge_pack_version_id` specifically—YAML filenames stop mattering immediately after publish.
+
+## See also
+
+- [Evaluation spec reference](evaluation-spec-reference)
+- [Challenge packs and inputs — conceptual overview](../concepts/challenge-packs-and-inputs)

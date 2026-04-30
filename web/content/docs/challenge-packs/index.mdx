@@ -1,0 +1,30 @@
+---
+title: Challenge pack documentation
+description: Deep, consumer-facing YAML and runtime reference keyed to the parsers, validators, and workers in this repository.
+---
+
+These pages complement the short concept guide [Challenge packs and inputs](../concepts/challenge-packs-and-inputs). They spell out everything a benchmark author needs to publish a pack that survives server-side parsing, validation, and execution.
+
+Everything here is keyed to shipped code paths—not roadmap language. When behavior changes upstream, validate again with:
+
+```bash
+agentclash challenge-pack validate your-pack.yaml
+```
+
+## What's covered
+
+| Topic | Use when you… | Anchor in repo |
+| --- | --- | --- |
+| [Bundle YAML reference](bundle-yaml-reference) | Need the authoritative field list and `prompt_eval` vs `native` rules | `backend/internal/challengepack/bundle.go`, `validation.go` |
+| [Evaluation spec reference](evaluation-spec-reference) | Choose validator types, wire `target`/`expected_from`, add metrics | `backend/internal/scoring/spec.go`, `validation.go`, `engine_*.go` |
+| [LLM judges](llm-judges) | Add rubrics, assertions, pairwise comparison, budgets | `backend/internal/scoring/spec.go`, `validation_judges.go` |
+| [Tools, primitives & policy](tools-primitives-and-policy) | Decide `allowed_tool_kinds`, map composed tools → primitives | `backend/internal/engine/primitive_tools.go`, `tool_registry.go`, `sandbox/sandbox.go` |
+| [Sandbox & E2B](sandbox-and-e2b) | Tune network_allowlist, template id, sandbox provider | `backend/internal/challengepack/bundle.go`, `sandbox/e2b/`, worker config |
+| [Input sets & cases](input-sets-and-cases) | Model fixtures, typed inputs and expectations | `challengepack/bundle.go` (`CaseDefinition`), `StoredCaseDocument` |
+| [Eval workflows & gates](eval-workflows-and-gates) | Chain `eval start`, baselines, scorecards, comparisons | `cli/cmd/eval.go`, `baseline.go`, `compare.go` |
+
+## See also
+
+- [Write a challenge pack](../guides/write-a-challenge-pack) — minimal happy-path checklist
+- [Tools, network, and secrets](../concepts/tools-network-and-secrets) — mental model overview
+- [Sandbox layer](../architecture/sandbox-layer) — provider boundary explanation
