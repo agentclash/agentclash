@@ -126,10 +126,19 @@ func (s *FakeSession) Exec(_ context.Context, request ExecRequest) (ExecResult, 
 	s.execCalls = append(s.execCalls, cloneExecRequest(request))
 
 	if s.execFn != nil {
-		return s.execFn(request, cloneFileMap(s.files))
+		result, err := s.execFn(request, cloneFileMap(s.files))
+		if err == nil {
+			if callbackErr := emitExecCallbacks(request, result); callbackErr != nil {
+				return ExecResult{}, callbackErr
+			}
+		}
+		return result, err
 	}
 	if s.execErr != nil {
 		return ExecResult{}, s.execErr
+	}
+	if err := emitExecCallbacks(request, s.execResult); err != nil {
+		return ExecResult{}, err
 	}
 	return s.execResult, nil
 }
@@ -256,6 +265,8 @@ func cloneCreateRequest(request CreateRequest) CreateRequest {
 func cloneExecRequest(request ExecRequest) ExecRequest {
 	cloned := request
 	cloned.Command = append([]string(nil), request.Command...)
+	cloned.OnStdout = nil
+	cloned.OnStderr = nil
 	if request.Environment != nil {
 		cloned.Environment = make(map[string]string, len(request.Environment))
 		for key, value := range request.Environment {
@@ -263,6 +274,20 @@ func cloneExecRequest(request ExecRequest) ExecRequest {
 		}
 	}
 	return cloned
+}
+
+func emitExecCallbacks(request ExecRequest, result ExecResult) error {
+	if request.OnStdout != nil && result.Stdout != "" {
+		if err := request.OnStdout([]byte(result.Stdout)); err != nil {
+			return err
+		}
+	}
+	if request.OnStderr != nil && result.Stderr != "" {
+		if err := request.OnStderr([]byte(result.Stderr)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func cloneFileMap(files map[string][]byte) map[string][]byte {

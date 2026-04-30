@@ -203,8 +203,18 @@ func (s *session) Exec(ctx context.Context, request sandbox.ExecRequest) (sandbo
 			switch out := data.(type) {
 			case *processpb.ProcessEvent_DataEvent_Stdout:
 				_, _ = stdout.Write(out.Stdout)
+				if request.OnStdout != nil {
+					if err := request.OnStdout(out.Stdout); err != nil {
+						return sandbox.ExecResult{}, err
+					}
+				}
 			case *processpb.ProcessEvent_DataEvent_Stderr:
 				_, _ = stderr.Write(out.Stderr)
+				if request.OnStderr != nil {
+					if err := request.OnStderr(out.Stderr); err != nil {
+						return sandbox.ExecResult{}, err
+					}
+				}
 			}
 		case *processpb.ProcessEvent_End:
 			result.ExitCode = int(e.End.GetExitCode())

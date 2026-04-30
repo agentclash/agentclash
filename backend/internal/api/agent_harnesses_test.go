@@ -383,6 +383,13 @@ func TestAgentHarnessExecutionRoutes(t *testing.T) {
 	if service.listExecutionsHarnessID == nil || *service.listExecutionsHarnessID != harness.ID {
 		t.Fatalf("list harness id = %#v, want %s", service.listExecutionsHarnessID, harness.ID)
 	}
+	var listed listAgentHarnessExecutionsResponse
+	if err := json.Unmarshal(listRec.Body.Bytes(), &listed); err != nil {
+		t.Fatalf("decode listed executions: %v", err)
+	}
+	if len(listed.Items) != 1 || len(listed.Items[0].Events) != 1 || listed.Items[0].Events[0].SequenceNumber != 1 {
+		t.Fatalf("listed events = %#v, want one sequenced event", listed.Items)
+	}
 
 	getReq := httptest.NewRequest(http.MethodGet, "/v1/workspaces/"+workspaceID.String()+"/agent-harness-executions/"+execution.ID.String(), nil)
 	getRec := httptest.NewRecorder()

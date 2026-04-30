@@ -59,10 +59,12 @@ type FilesystemSpec struct {
 }
 
 type ExecRequest struct {
-	Command          []string          `json:"command"`
-	WorkingDirectory string            `json:"working_directory,omitempty"`
-	Environment      map[string]string `json:"environment,omitempty"`
-	Timeout          time.Duration     `json:"timeout,omitempty"`
+	Command          []string           `json:"command"`
+	WorkingDirectory string             `json:"working_directory,omitempty"`
+	Environment      map[string]string  `json:"environment,omitempty"`
+	Timeout          time.Duration      `json:"timeout,omitempty"`
+	OnStdout         func([]byte) error `json:"-"`
+	OnStderr         func([]byte) error `json:"-"`
 }
 
 type ExecResult struct {

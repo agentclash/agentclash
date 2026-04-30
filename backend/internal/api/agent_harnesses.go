@@ -465,7 +465,14 @@ func listAgentHarnessExecutionsHandler(logger *slog.Logger, service AgentHarness
 		}
 		items := make([]agentHarnessExecutionResponse, 0, len(executions))
 		for _, execution := range executions {
-			items = append(items, mapAgentHarnessExecutionResponse(execution))
+			response := mapAgentHarnessExecutionResponse(execution)
+			events, err := service.ListAgentHarnessExecutionEvents(r.Context(), caller, workspaceID, execution.ID)
+			if err != nil {
+				writeAgentHarnessError(w, logger, r, err)
+				return
+			}
+			response.Events = mapAgentHarnessExecutionEventResponses(events)
+			items = append(items, response)
 		}
 		writeJSON(w, http.StatusOK, listAgentHarnessExecutionsResponse{Items: items})
 	}

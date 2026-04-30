@@ -239,11 +239,26 @@ func (a *Activities) execHarnessCommand(ctx context.Context, executionID uuid.UU
 	if err := a.recordAgentHarnessEvent(ctx, executionID, eventType+".started", "worker", map[string]any{"command": command, "working_directory": workdir}); err != nil {
 		return sandbox.ExecResult{}, err
 	}
+	stdoutRemainder := ""
+	onStdout := func(chunk []byte) error {
+		if eventType != "codex.exec" {
+			return nil
+		}
+		remainder, err := a.recordCodexOutputEvents(ctx, executionID, stdoutRemainder+string(chunk), false)
+		stdoutRemainder = remainder
+		return err
+	}
 	result, err := session.Exec(ctx, sandbox.ExecRequest{
 		Command:          command,
 		WorkingDirectory: workdir,
 		Timeout:          timeout,
+		OnStdout:         onStdout,
 	})
+	if eventType == "codex.exec" && stdoutRemainder != "" {
+		if _, parseErr := a.recordCodexOutputEvents(ctx, executionID, stdoutRemainder, true); err == nil && parseErr != nil {
+			return sandbox.ExecResult{}, parseErr
+		}
+	}
 	payload := map[string]any{"command": command, "working_directory": workdir}
 	if err != nil {
 		payload["error"] = err.Error()
@@ -257,6 +272,34 @@ func (a *Activities) execHarnessCommand(ctx context.Context, executionID uuid.UU
 		return result, a.recordAgentHarnessEvent(ctx, executionID, eventType+".completed", "worker", payload)
 	}
 	return result, a.recordAgentHarnessEvent(ctx, executionID, eventType+".failed", "worker", payload)
+}
+
+func (a *Activities) recordCodexOutputEvents(ctx context.Context, executionID uuid.UUID, raw string, flush bool) (string, error) {
+	lines := strings.Split(raw, "\n")
+	remainder := ""
+	if !flush {
+		remainder = lines[len(lines)-1]
+		lines = lines[:len(lines)-1]
+	}
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		payload := map[string]any{"stream": "stdout", "raw": line}
+		var decoded map[string]any
+		if err := json.Unmarshal([]byte(line), &decoded); err == nil {
+			for key, value := range decoded {
+				payload[key] = value
+			}
+		} else {
+			payload["message"] = line
+		}
+		if err := a.recordAgentHarnessEvent(ctx, executionID, "codex.exec.output", "codex", payload); err != nil {
+			return remainder, err
+		}
+	}
+	return remainder, nil
 }
 
 func (a *Activities) recordAgentHarnessEvent(ctx context.Context, executionID uuid.UUID, eventType string, actorType string, payload map[string]any) error {

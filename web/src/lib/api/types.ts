@@ -359,7 +359,7 @@ export type AgentHarnessExecutionStatus =
   | "cancelled";
 
 export interface AgentHarnessExecutionEvent {
-  id: string;
+  id: string | number;
   agent_harness_execution_id: string;
   sequence_number: number;
   event_type: string;

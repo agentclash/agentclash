@@ -84,6 +84,23 @@ func TestExecuteAgentHarnessExecutionRunsCodexAndRecordsTrace(t *testing.T) {
 	if got := len(repo.agentHarnessEvents[executionID]); got < 8 {
 		t.Fatalf("recorded events = %d, want at least 8", got)
 	}
+	var sawCodexOutput bool
+	for _, event := range repo.agentHarnessEvents[executionID] {
+		if event.EventType != "codex.exec.output" {
+			continue
+		}
+		sawCodexOutput = true
+		var payload map[string]any
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			t.Fatalf("decode codex output payload: %v", err)
+		}
+		if payload["type"] != "final" || payload["message"] != "done" {
+			t.Fatalf("codex output payload = %#v, want final done", payload)
+		}
+	}
+	if !sawCodexOutput {
+		t.Fatal("expected live codex output event")
+	}
 }
 
 func TestAgentHarnessTimeoutDefaults(t *testing.T) {
