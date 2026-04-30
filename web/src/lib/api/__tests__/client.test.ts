@@ -118,6 +118,40 @@ describe("createApiClient", () => {
     }
   });
 
+  it("preserves billing gate error metadata", async () => {
+    mockFetch.mockResolvedValueOnce(
+      jsonResponse(
+        {
+          error: {
+            code: "quota_exceeded",
+            message: "quota exhausted",
+            plan_key: "free",
+            upgrade_target: "pro",
+            limit: 25,
+            used: 25,
+            remaining: 0,
+            reset_at: "2026-05-01T00:00:00Z",
+          },
+        },
+        402,
+      ),
+    );
+
+    const api = createApiClient("token");
+
+    await expect(api.post("/v1/runs", {})).rejects.toMatchObject({
+      name: "ApiError",
+      status: 402,
+      code: "quota_exceeded",
+      planKey: "free",
+      upgradeTarget: "pro",
+      limit: 25,
+      used: 25,
+      remaining: 0,
+      resetAt: "2026-05-01T00:00:00Z",
+    });
+  });
+
   it("throws ApiError on non-JSON error response", async () => {
     mockFetch.mockResolvedValueOnce(
       new Response("Internal Server Error", { status: 500 }),

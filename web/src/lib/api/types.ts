@@ -1649,6 +1649,141 @@ export interface ListRegressionCasesResponse {
   items: RegressionCase[];
 }
 
+// --- Billing ---
+
+export type BillingPlanKey = "free" | "pro" | "team" | "enterprise";
+export type BillingPeriod = "monthly" | "yearly" | "custom";
+export type BillingStatus = "active" | "trialing" | "expired" | "inactive" | string;
+
+export interface BillingLimit {
+  value?: number;
+  per_seat?: boolean;
+  unlimited?: boolean;
+  custom?: boolean;
+}
+
+export interface BillingPlanLimits {
+  seats: BillingLimit;
+  workspaces: BillingLimit;
+  races_per_workspace_month: BillingLimit;
+  max_models_per_race: BillingLimit;
+  replay_retention_days: BillingLimit;
+  concurrent_races: BillingLimit;
+}
+
+export interface BillingPlan {
+  key: BillingPlanKey;
+  display_name: string;
+  minimum_seats: number;
+  default_seats: number;
+  billing_periods: BillingPeriod[];
+  limits: BillingPlanLimits;
+  feature_flags: Record<string, boolean>;
+  upgrade_target?: BillingPlanKey;
+  dodo_product_ids?: Partial<Record<BillingPeriod, string>>;
+}
+
+export interface BillingPlansResponse {
+  items: BillingPlan[];
+}
+
+export interface EffectiveEntitlements {
+  plan_key: BillingPlanKey;
+  billing_period: BillingPeriod;
+  status: BillingStatus;
+  seat_quantity: number;
+  seats_limit?: number | null;
+  workspaces_limit?: number | null;
+  races_per_workspace_month?: number | null;
+  max_models_per_race?: number | null;
+  replay_retention_days?: number | null;
+  concurrent_races?: number | null;
+  feature_flags: Record<string, boolean>;
+  upgrade_target?: BillingPlanKey;
+  expires_at?: string;
+}
+
+export interface BillingSubscription {
+  id: string;
+  organization_id: string;
+  dodo_subscription_id: string;
+  dodo_customer_id?: string;
+  dodo_product_id: string;
+  plan_key: BillingPlanKey;
+  billing_period: BillingPeriod;
+  status: BillingStatus;
+  next_billing_date?: string;
+  cancel_at_next_billing_date: boolean;
+  cancelled_at?: string;
+  expires_at?: string;
+  trial_period_days?: number;
+  seat_quantity: number;
+  addon_quantities: unknown;
+  latest_dodo_event_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BillingOverviewResponse {
+  entitlements: EffectiveEntitlements;
+  subscription?: BillingSubscription;
+}
+
+export interface StartBillingTrialRequest {
+  plan_key: "pro" | "team";
+  billing_period?: BillingPeriod;
+}
+
+export interface CreateBillingCheckoutRequest {
+  plan_key: "pro" | "team" | "enterprise";
+  billing_period: BillingPeriod;
+  seat_quantity: number;
+  return_url: string;
+}
+
+export interface CreateBillingCheckoutResponse {
+  checkout_intent_id: string;
+  checkout_url: string;
+  plan_key: BillingPlanKey;
+  billing_period: BillingPeriod;
+  seat_quantity: number;
+}
+
+export interface CreateBillingPortalResponse {
+  portal_url: string;
+}
+
+export interface BillingGateDecision {
+  allowed: boolean;
+  code?: string;
+  message?: string;
+  plan_key: BillingPlanKey;
+  upgrade_target?: BillingPlanKey;
+  limit?: number | null;
+  used?: number;
+  remaining?: number | null;
+  reset_at?: string;
+  expires_at?: string;
+}
+
+export interface WorkspaceUsageSnapshot {
+  workspace_id: string;
+  race_count: number;
+  active_runs: number;
+  window_start: string;
+  window_end: string;
+}
+
+export interface WorkspaceEntitlementsResponse {
+  organization_id: string;
+  workspace_id: string;
+  entitlements: EffectiveEntitlements;
+  usage: WorkspaceUsageSnapshot;
+  gates: {
+    run: BillingGateDecision;
+  };
+}
+
 // --- Errors ---
 
 /** Standard error envelope returned by all backend error responses. */
@@ -1656,5 +1791,12 @@ export interface ApiErrorResponse {
   error: {
     code: string;
     message: string;
+    plan_key?: BillingPlanKey;
+    upgrade_target?: BillingPlanKey;
+    limit?: number | null;
+    used?: number;
+    remaining?: number | null;
+    reset_at?: string;
+    expires_at?: string;
   };
 }

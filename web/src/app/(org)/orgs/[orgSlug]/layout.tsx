@@ -5,6 +5,7 @@ import { getRequiredServerAuth, toInitialAuth } from "@/lib/auth/server";
 import type { UserMeResponse, SessionResponse } from "@/lib/api/types";
 import { OrgSettingsSidebar } from "./org-settings-sidebar";
 import { OrgProvider } from "./org-context";
+import { TrialUpgradePrompt } from "@/components/billing/trial-upgrade-prompt";
 
 export default async function OrgLayout({
   children,
@@ -52,6 +53,11 @@ export default async function OrgLayout({
             orgSlug={orgSlug}
             orgName={org.name}
             isAdmin={isAdmin}
+          />
+          <TrialUpgradePrompt
+            orgId={org.id}
+            orgSlug={org.slug}
+            isOrgAdmin={isAdmin}
           />
           <main className="flex-1 overflow-y-auto p-6 max-w-4xl">
             {children}

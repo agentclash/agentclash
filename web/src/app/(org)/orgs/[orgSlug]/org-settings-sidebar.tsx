@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { Settings2, Users, Layers, ArrowLeft } from "lucide-react";
+import { Settings2, Users, Layers, ArrowLeft, CreditCard } from "lucide-react";
 
 interface OrgSettingsSidebarProps {
   orgSlug: string;
@@ -18,6 +18,11 @@ const navItems = (orgSlug: string, isAdmin: boolean) => [
           label: "General",
           href: `/orgs/${orgSlug}/settings`,
           icon: Settings2,
+        },
+        {
+          label: "Billing",
+          href: `/orgs/${orgSlug}/billing`,
+          icon: CreditCard,
         },
       ]
     : []),

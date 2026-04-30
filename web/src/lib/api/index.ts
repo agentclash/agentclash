@@ -64,6 +64,23 @@ export type {
   ListReleaseGatesResponse,
   EvaluateReleaseGateRequest,
   EvaluateReleaseGateResponse,
+  BillingPlanKey,
+  BillingPeriod,
+  BillingStatus,
+  BillingLimit,
+  BillingPlanLimits,
+  BillingPlan,
+  BillingPlansResponse,
+  EffectiveEntitlements,
+  BillingSubscription,
+  BillingOverviewResponse,
+  StartBillingTrialRequest,
+  CreateBillingCheckoutRequest,
+  CreateBillingCheckoutResponse,
+  CreateBillingPortalResponse,
+  BillingGateDecision,
+  WorkspaceUsageSnapshot,
+  WorkspaceEntitlementsResponse,
 } from "./types";
 export { AGENT_KINDS } from "./types";
 export { listRunFailures, type ListRunFailuresParams } from "./failure-reviews";

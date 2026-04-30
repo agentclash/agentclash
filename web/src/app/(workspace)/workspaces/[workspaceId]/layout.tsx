@@ -2,6 +2,8 @@ import { AuthenticatedAppProviders } from "@/app/providers";
 import { getRequiredInitialAuth, getWorkspaceShellData } from "@/lib/auth/server";
 import { Sidebar } from "@/components/app-shell/sidebar";
 import { TopBar } from "@/components/app-shell/top-bar";
+import { TrialUpgradePrompt } from "@/components/billing/trial-upgrade-prompt";
+import { WorkspaceBillingBanner } from "@/components/billing/workspace-billing-banner";
 
 export default async function WorkspaceLayout({
   children,
@@ -17,7 +19,9 @@ export default async function WorkspaceLayout({
     userMe,
     hasMembership,
     hasOrgAccess,
+    orgId,
     orgName,
+    orgRole,
     orgSlug,
   } = await getWorkspaceShellData(workspaceId);
 
@@ -54,6 +58,12 @@ export default async function WorkspaceLayout({
             orgName={orgName}
             orgSlug={orgSlug}
           />
+          <TrialUpgradePrompt
+            orgId={orgId}
+            orgSlug={orgSlug}
+            isOrgAdmin={orgRole === "org_admin"}
+          />
+          <WorkspaceBillingBanner workspaceId={workspaceId} orgSlug={orgSlug} />
           <main className="flex-1 overflow-y-auto p-6">{children}</main>
         </div>
       </div>
