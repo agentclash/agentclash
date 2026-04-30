@@ -15,6 +15,10 @@ func init() {
 	agentHarnessCmd.AddCommand(agentHarnessListCmd)
 	agentHarnessCmd.AddCommand(agentHarnessCreateCmd)
 	agentHarnessCmd.AddCommand(agentHarnessGetCmd)
+	agentHarnessCmd.AddCommand(agentHarnessRunCmd)
+	agentHarnessCmd.AddCommand(agentHarnessExecutionsCmd)
+	agentHarnessCmd.AddCommand(agentHarnessExecutionCmd)
+	agentHarnessExecutionCmd.AddCommand(agentHarnessExecutionGetCmd)
 
 	agentHarnessCreateCmd.Flags().String("from-file", "", "JSON file with agent harness spec")
 	agentHarnessCreateCmd.Flags().String("name", "", "Harness name")
@@ -154,6 +158,118 @@ var agentHarnessCreateCmd = &cobra.Command{
 		rc.Output.PrintSuccess(fmt.Sprintf("Created agent harness %s (%s)", str(harness["name"]), str(harness["id"])))
 		rc.Output.PrintDetail("Auth", str(harness["auth_mode"]))
 		rc.Output.PrintDetail("Codex Template", str(harness["codex_template"]))
+		return nil
+	},
+}
+
+var agentHarnessRunCmd = &cobra.Command{
+	Use:   "run <harness-id>",
+	Short: "Start an agent harness execution",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		rc := GetRunContext(cmd)
+		wsID := RequireWorkspace(cmd)
+
+		resp, err := rc.Client.Post(cmd.Context(), "/v1/workspaces/"+wsID+"/agent-harnesses/"+args[0]+"/executions", map[string]any{})
+		if err != nil {
+			return err
+		}
+		if apiErr := resp.ParseError(); apiErr != nil {
+			return apiErr
+		}
+
+		var execution map[string]any
+		if err := resp.DecodeJSON(&execution); err != nil {
+			return err
+		}
+
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(execution)
+		}
+
+		rc.Output.PrintSuccess(fmt.Sprintf("Started agent harness execution %s", str(execution["id"])))
+		rc.Output.PrintDetail("Harness", str(execution["agent_harness_id"]))
+		rc.Output.PrintDetail("Status", output.StatusColor(str(execution["status"])))
+		return nil
+	},
+}
+
+var agentHarnessExecutionsCmd = &cobra.Command{
+	Use:   "executions <harness-id>",
+	Short: "List executions for an agent harness",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		rc := GetRunContext(cmd)
+		wsID := RequireWorkspace(cmd)
+
+		resp, err := rc.Client.Get(cmd.Context(), "/v1/workspaces/"+wsID+"/agent-harness-executions?harness_id="+args[0], nil)
+		if err != nil {
+			return err
+		}
+		if apiErr := resp.ParseError(); apiErr != nil {
+			return apiErr
+		}
+
+		var result struct {
+			Items []map[string]any `json:"items"`
+		}
+		if err := resp.DecodeJSON(&result); err != nil {
+			return err
+		}
+
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(result)
+		}
+
+		cols := []output.Column{{Header: "ID"}, {Header: "Harness"}, {Header: "Status"}, {Header: "Created"}}
+		rows := make([][]string, len(result.Items))
+		for i, item := range result.Items {
+			rows[i] = []string{
+				str(item["id"]),
+				str(item["agent_harness_id"]),
+				output.StatusColor(str(item["status"])),
+				str(item["created_at"]),
+			}
+		}
+		rc.Output.PrintTable(cols, rows)
+		return nil
+	},
+}
+
+var agentHarnessExecutionCmd = &cobra.Command{
+	Use:   "execution",
+	Short: "Inspect agent harness executions",
+}
+
+var agentHarnessExecutionGetCmd = &cobra.Command{
+	Use:   "get <execution-id>",
+	Short: "Get an agent harness execution",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		rc := GetRunContext(cmd)
+		wsID := RequireWorkspace(cmd)
+
+		resp, err := rc.Client.Get(cmd.Context(), "/v1/workspaces/"+wsID+"/agent-harness-executions/"+args[0], nil)
+		if err != nil {
+			return err
+		}
+		if apiErr := resp.ParseError(); apiErr != nil {
+			return apiErr
+		}
+
+		var execution map[string]any
+		if err := resp.DecodeJSON(&execution); err != nil {
+			return err
+		}
+
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(execution)
+		}
+
+		rc.Output.PrintDetail("ID", str(execution["id"]))
+		rc.Output.PrintDetail("Harness", str(execution["agent_harness_id"]))
+		rc.Output.PrintDetail("Status", output.StatusColor(str(execution["status"])))
+		rc.Output.PrintDetail("Created", str(execution["created_at"]))
 		return nil
 	},
 }

@@ -113,3 +113,70 @@ func TestAgentHarnessCreateRequiresOpenAISecretForAPIKeyMode(t *testing.T) {
 		t.Fatal("expected missing OpenAI secret error")
 	}
 }
+
+func TestAgentHarnessRunCallsCorrectEndpoint(t *testing.T) {
+	var called bool
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"POST /v1/workspaces/ws-123/agent-harnesses/harness-123/executions": captureHandler(t, &called, 201, map[string]any{
+			"id": "execution-1", "agent_harness_id": "harness-123", "status": "queued",
+		}),
+	})
+	defer srv.Close()
+
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+	err := executeCommand(t, []string{"--workspace", "ws-123", "agent-harness", "run", "harness-123"}, srv.URL)
+	if err != nil {
+		t.Fatalf("agent-harness run error: %v", err)
+	}
+	if !called {
+		t.Fatal("POST /v1/workspaces/ws-123/agent-harnesses/harness-123/executions was not called")
+	}
+}
+
+func TestAgentHarnessExecutionsCallsCorrectEndpoint(t *testing.T) {
+	var called bool
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"GET /v1/workspaces/ws-123/agent-harness-executions": func(w http.ResponseWriter, r *http.Request) {
+			called = true
+			if got := r.URL.Query().Get("harness_id"); got != "harness-123" {
+				t.Fatalf("harness_id query = %q, want harness-123", got)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(map[string]any{
+				"items": []map[string]any{
+					{"id": "execution-1", "agent_harness_id": "harness-123", "status": "queued"},
+				},
+			})
+		},
+	})
+	defer srv.Close()
+
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+	err := executeCommand(t, []string{"--workspace", "ws-123", "agent-harness", "executions", "harness-123"}, srv.URL)
+	if err != nil {
+		t.Fatalf("agent-harness executions error: %v", err)
+	}
+	if !called {
+		t.Fatal("GET /v1/workspaces/ws-123/agent-harness-executions was not called")
+	}
+}
+
+func TestAgentHarnessExecutionGetCallsCorrectEndpoint(t *testing.T) {
+	var called bool
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"GET /v1/workspaces/ws-123/agent-harness-executions/execution-1": captureHandler(t, &called, 200, map[string]any{
+			"id": "execution-1", "agent_harness_id": "harness-123", "status": "queued",
+		}),
+	})
+	defer srv.Close()
+
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+	err := executeCommand(t, []string{"--workspace", "ws-123", "agent-harness", "execution", "get", "execution-1"}, srv.URL)
+	if err != nil {
+		t.Fatalf("agent-harness execution get error: %v", err)
+	}
+	if !called {
+		t.Fatal("GET /v1/workspaces/ws-123/agent-harness-executions/execution-1 was not called")
+	}
+}
