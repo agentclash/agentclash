@@ -41,14 +41,7 @@ Runs and replay events can also point at artifacts. Those become part of the evi
 
 That is why replay and failure-review models carry artifact references. Artifacts are part of the audit trail, not just incidental attachments.
 
-```mermaid
-flowchart LR
-  WA[Workspace artifact upload] --> CP[Challenge pack assets]
-  WA --> R[Run]
-  R --> EV[Replay events]
-  EV --> FR[Failure review]
-  CP --> SCORE[Scoring evidence]
-```
+<DiagramArtifactFlow />
 
 ## Challenge-pack assets and artifact refs
 

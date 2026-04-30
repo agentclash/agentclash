@@ -6,7 +6,20 @@ import {
 } from "react";
 import { Callout } from "@/components/docs/callout";
 import { CopyableCodeBlock } from "@/components/docs/copyable-code-block";
+import {
+  DiagramAgentsToRun,
+  DiagramArtifactFlow,
+  DiagramChallengePackBundleShape,
+  DiagramCodebaseTourShortcuts,
+  DiagramEvidenceClosingLoop,
+  DiagramFrontendRouteSplit,
+  DiagramOrchestrationRuntimeSplit,
+  DiagramReplayVsScorecards,
+  DiagramSandboxBoundary,
+  DiagramWorkspaceDataModel,
+} from "@/components/docs/docs-diagram-presets";
 import { slugify } from "@/lib/docs";
+import { cn } from "@/lib/utils";
 
 function flattenText(children: ReactNode): string {
   return Children.toArray(children)
@@ -27,6 +40,7 @@ function flattenText(children: ReactNode): string {
 function DocsHeading({
   level,
   children,
+  className,
   ...props
 }: ComponentPropsWithoutRef<"h2"> & {
   level: 2 | 3;
@@ -35,7 +49,17 @@ function DocsHeading({
   const Tag = level === 2 ? "h2" : "h3";
 
   return (
-    <Tag id={id} {...props}>
+    <Tag
+      id={id}
+      {...props}
+      className={cn(
+        "scroll-mt-28 font-sans font-semibold tracking-tight text-zinc-100 not-italic antialiased",
+        level === 2
+          ? "mt-14 border-b border-zinc-800 pb-3 text-xl"
+          : "mt-10 text-[1.0625rem] leading-snug",
+        className,
+      )}
+    >
       {children}
     </Tag>
   );
@@ -43,6 +67,16 @@ function DocsHeading({
 
 export const docsMDXComponents = {
   Callout,
+  DiagramAgentsToRun,
+  DiagramArtifactFlow,
+  DiagramChallengePackBundleShape,
+  DiagramCodebaseTourShortcuts,
+  DiagramEvidenceClosingLoop,
+  DiagramFrontendRouteSplit,
+  DiagramOrchestrationRuntimeSplit,
+  DiagramReplayVsScorecards,
+  DiagramSandboxBoundary,
+  DiagramWorkspaceDataModel,
   h2: (props: ComponentPropsWithoutRef<"h2">) => (
     <DocsHeading level={2} {...props} />
   ),

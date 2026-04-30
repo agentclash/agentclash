@@ -20,15 +20,7 @@ If you only remember one thing, remember this: the web app is not the whole prod
 
 A useful mental path through the repo is:
 
-```mermaid
-flowchart LR
-  WEB[web/] --> API[backend/internal/api]
-  API --> WF[Temporal workflows]
-  WF --> WRK[backend/internal/worker]
-  WRK --> SB[Sandbox provider]
-  WRK --> EV[Replay events and artifacts]
-  CLI[cli/] --> API
-```
+<DiagramCodebaseTourShortcuts />
 
 That is the shortest route from "user action" to "why did this run behave that way".
 

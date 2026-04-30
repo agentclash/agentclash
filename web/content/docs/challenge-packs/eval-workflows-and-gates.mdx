@@ -1,0 +1,70 @@
+---
+title: Eval workflows & gates
+description: CLI-first eval commands, baselines, scorecards, comparisons, and release gates as implemented in cli/cmd.
+---
+
+Challenge packs are useless until a **run** binds a `challenge_pack_version_id` to one or more **deployments**. The product ships a workflow-oriented CLI path so you rarely hand-copy UUIDs.
+
+## Happy path commands
+
+From `cli/cmd/eval.go`, `baseline.go`, `compare.go`, `release_gate.go`:
+
+```bash
+agentclash eval start --follow
+agentclash baseline set [run_id] [--agent <label>]
+agentclash eval scorecard [run_id] [--agent <label>] [--json]
+agentclash compare runs --baseline <run> --candidate <run>
+agentclash compare gate --baseline <run> --candidate <run>
+agentclash release-gate list [--baseline ... --candidate ...]
+```
+
+### `eval start`
+
+Key flags (see `eval.go` / `eval_resolve.go`):
+
+| Flag | Purpose |
+| --- | --- |
+| `--pack` | Pack id, slug, or exact name |
+| `--pack-version` | Version id or integer |
+| `--input-set` | Disambiguates when multiple sets published |
+| `--deployment` | Repeatable; accepts id or exact name |
+| `--follow` | Stream run events after creation |
+| `--scope` | `full` vs `suite_only` regression scoping |
+| `--suite` / `--case` | Target regression fixtures |
+| `--race-context` | Peer standings injection (multi-agent) |
+
+Non-interactive environments must supply enough disambiguators—resolver errors spell out what’s missing.
+
+### `eval scorecard`
+
+Prints the latest candidate scorecard and, when configured, enriches with **baseline + comparison + release gate** envelopes in one JSON payload for CI (`eval_test.go` asserts those keys).
+
+Omitting `run_id` uses deterministic “latest relevant run” semantics documented in tests—do not assume hidden state in automation; pass explicit ids in CI.
+
+### Baseline bookmarks
+
+`baseline set|show|clear` stores a **workspace-scoped** pointer to a run (and optional specific `run_agent`). This unlocks diff language inside `eval scorecard` without retyping ids.
+
+`doctor` treats missing baseline as **informational** only—CI gates should not fail solely because no baseline exists yet.
+
+## Compare & release gates
+
+- `compare runs` hits comparison APIs with explicit baseline/candidate pair (optional agent ids).  
+- `compare gate` posts to `/v1/release-gates/evaluate` with those ids—response includes `policy_snapshot`, `evaluation_details`, timestamps (see `compare.go` long help).
+- `release-gate list` surfaces historical evaluations with optional filters.
+
+Gate outcomes use structured status codes (documented in `compare.go` help text) for scripting.
+
+## Relationship to `run create`
+
+`run create` still exists for power users, but product messaging steers new usage to `eval start` (`run.go` long help cross-links). Pick one style per automation story to avoid divergent flag semantics.
+
+## Docs for consumers vs operators
+
+This page is for **people driving hosted or staging workspaces** from the CLI. Self-host operators should still read [Self-host quickstart](../getting-started/self-host) for bringing up Postgres + Temporal + worker parity.
+
+## See also
+
+- [Runs and evals](../concepts/runs-and-evals)
+- [Interpret results](../guides/interpret-results)
+- [CLI reference](../reference/cli)

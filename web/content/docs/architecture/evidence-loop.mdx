@@ -16,17 +16,7 @@ AgentClash leans on a canonical event model so the same execution can feed multi
 - scorecards for compact judgments
 - future workload design when a failure is worth preserving
 
-```mermaid
-flowchart LR
-  EX[Execution] --> EV[Canonical events]
-  EV --> RP[Replay views]
-  EV --> AR[Artifacts and logs]
-  EV --> SC[Scorecards]
-  RP --> RV[Reviewer understanding]
-  SC --> CMP[Comparison decisions]
-  RV --> CP[Future challenge-pack improvements]
-  CMP --> CP
-```
+<DiagramEvidenceClosingLoop />
 
 ## The canonical event envelope is the hinge
 

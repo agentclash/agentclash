@@ -26,14 +26,7 @@ The main benefits are straightforward:
 - runtime setup is explicit and configurable through worker environment
 - the provider can be swapped later without rewriting the product model around runs and evidence
 
-```mermaid
-flowchart LR
-  API[API server] --> WF[Temporal workflow]
-  WF --> WK[Worker activity]
-  WK --> SB[Sandbox provider]
-  SB --> AG[Agent execution]
-  AG --> EV[Replay events and artifacts]
-```
+<DiagramSandboxBoundary />
 
 ## What this boundary protects
 

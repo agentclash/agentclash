@@ -7,15 +7,7 @@ AgentClash models long-running execution as workflow work, not as a single API r
 
 ## The runtime split
 
-```mermaid
-flowchart LR
-  BrowserOrCLI[Browser or CLI] --> API[API server]
-  API --> Temporal[Temporal]
-  Temporal --> Worker[Worker]
-  Worker --> Providers[Provider router]
-  Worker --> Sandbox[Sandbox provider]
-  Worker --> Events[Run event recorder]
-```
+<DiagramOrchestrationRuntimeSplit />
 
 ## What the API server does
 

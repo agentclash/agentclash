@@ -1,0 +1,83 @@
+---
+title: LLM judges
+description: LLM-as-judge declarations, rubric/assertion modes, consensus, budgets, evidence wiring—straight from scoring/spec.go and validation_judges.go.
+---
+
+Agents can be scored by **deterministic validators** alone, pure **LLM judges**, or **`hybrid`** combining both—the tri-state lives in `judge_mode` on `EvaluationSpec` (`backend/internal/scoring/spec.go`).
+
+Judge bodies live in **`evaluation_spec.llm_judges[]`** (`LLMJudgeDeclaration`). Dimensions that consume judges set `source: llm_judge` and **`judge_key`** referencing exactly one declaration (1:1 mapping by design).
+
+## Supported grader modes (`mode`)
+
+| Mode | Typical use |
+| --- | --- |
+| `rubric` | Structured numeric rubric graded each sample |
+| `assertion` | Yes/no factual checks; aggregates via majority/unanimous |
+| `n_wise` | Single prompt ranks all competing agents simultaneously |
+| `reference` | Rubric calibrated against gold text from resolved evidence |
+
+`IsNumeric` / `IsBooleanScope` helpers govern which consensus math applies.
+
+## Required fields by mode
+
+Validation (`validation_judges.go`) enforces:
+
+- **`rubric`** — non-empty rubric string
+- **`reference`** — rubric + `reference_from` evidence reference (must pass `isSupportedEvidenceReference`)
+- **`assertion`** — non-empty natural-language assertion; optional `expect` bool flips desired polarity
+- **`n_wise`** — non-empty ranking `prompt`; optional `position_debiasing` combats ordering bias across samples
+
+## Model fan-out
+
+Exactly **one** of:
+
+- `model` — single model id string (resolved by worker/provider wiring)
+- `models` — non-empty list for multi-model judging
+
+If `len(models) > 1`, you must include **`consensus`** with:
+
+- `aggregation` — `median`, `mean`, `majority_vote`, or `unanimous`
+- Optional `min_agreement_threshold`, `flag_on_disagreement`
+
+Boolean-scope modes restrict some aggregations (assertions cannot be mean-averaged nonsensically—validator enforces compatibility).
+
+## Samples & ceilings
+
+- `samples` — per-model repeat count; `0` normalizes to `JudgeDefaultSamples` (3)
+- Hard cap `JudgeMaxSamplesCeiling` (10) applied even if the pack requests more—cost attack guard
+
+## Evidence conditioning (`context_from[]`)
+
+Each entry must be a supported evidence reference (same family as validator `target` strings). The workflow evaluator stitches these fragments into the judge envelope before the LLM call.
+
+## Optional controls
+
+| Field | Role |
+| --- | --- |
+| `output_schema` | JSON Schema for parser validation of model output |
+| `score_scale` | `{min,max}` normalization (defaults 1..5 when omitted) |
+| `anti_gaming_clauses` | Pack-supplied safety copy **appended** to defaults (never replaces base mitigations) |
+| `timeout_ms` | Per-judge activity budget (clamped by outer Temporal activity timeout) |
+
+## Scorecard wiring
+
+1. Declare judges under `llm_judges`.
+2. Add a dimension with `source: llm_judge` and `judge_key` matching a judge `key`.
+3. Keep **keys unique across validators, metrics, and judges**—collisions are validation errors (namespace collision prevents ambiguous evidence routing).
+
+## Budgets & cost isolation
+
+`scorecard.judge_limits` tracks **judge** spend separately from agent model spend covered by `runtime_limits`. This split is intentional (see Q7 discussion embedded in `JudgeLimits` comments in `spec.go`): agent overages should not hide judge runaway.
+
+When cumulative judge calls exceed configured USD/token budgets, remaining samples downgrade to `unable_to_judge` states feeding scorecard `OutputStateUnavailable` paths.
+
+## Practical authoring tips
+
+- Start with **`rubric`** + single `model` + default samples; add `models`+`consensus` only after deterministic dims stabilise.
+- Use **`reference`** when you already store golden answers in `case.expectations` or artifacts—keeps judges aligned to ground truth.
+- Assertions excel as **binary gates** (`gate: true` on the dimension) while numeric rubrics express partial credit.
+
+## See also
+
+- [Evaluation spec reference](evaluation-spec-reference)
+- [Interpret results](../guides/interpret-results)

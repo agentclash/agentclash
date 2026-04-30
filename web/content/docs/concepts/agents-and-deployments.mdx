@@ -33,15 +33,7 @@ It also supports these optional fields:
 
 The OpenAPI description also says only ready build versions can be deployed.
 
-```mermaid
-flowchart LR
-  AB[Agent build] --> BV[Ready build version]
-  RP[Runtime profile] --> D[Deployment]
-  PA[Provider account] --> D
-  MA[Model alias] --> D
-  BV --> D
-  D --> R[Run]
-```
+<DiagramAgentsToRun />
 
 ## Runtime profiles are the execution envelope
 

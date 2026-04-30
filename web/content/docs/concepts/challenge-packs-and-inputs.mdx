@@ -5,6 +5,8 @@ description: Learn what a challenge pack really is in AgentClash, how the bundle
 
 A challenge pack is a versioned YAML bundle that defines the workload, scoring contract, execution policy, and input sets for a repeatable evaluation.
 
+For field-by-field YAML, scoring enums, judge modes, primitives, sandbox flags, and CLI eval flows, use the **[challenge pack reference hub](../challenge-packs)**—it is written for pack authors who need repo-accurate depth, not a marketing overview.
+
 ## What makes it a challenge pack instead of a prompt
 
 A challenge pack is not just a task description. In the current repo, a runnable pack carries enough structure for AgentClash to do four jobs consistently:
@@ -36,20 +38,7 @@ A pack becomes runnable through its `version` block. That block currently carrie
 - `evaluation_spec`: the scoring contract
 - `assets`: version-scoped files or artifact references
 
-```mermaid
-flowchart TD
-  P[pack metadata]
-  V[version]
-  V --> ES[evaluation_spec]
-  V --> SB[sandbox]
-  V --> TP[tool_policy]
-  V --> AS[version assets]
-  C[challenges] --> IS[input_sets]
-  IS --> CASES[cases]
-  V --> RUN[run execution]
-  CASES --> RUN
-  ES --> SCORE[scorecards]
-```
+<DiagramChallengePackBundleShape />
 
 ## Challenge, input set, case, and asset are different things
 
