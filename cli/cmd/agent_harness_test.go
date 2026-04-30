@@ -72,7 +72,6 @@ func TestAgentHarnessCreateBuildsCodexE2BPayload(t *testing.T) {
 		"--task", "Implement the feature and run tests.",
 		"--auth-mode", "api_key_secret",
 		"--openai-api-key-secret", "OPENAI_API_KEY",
-		"--e2b-api-key-secret", "E2B_API_KEY",
 		"--repository-url", "https://github.com/acme/repo",
 		"--base-branch", "main",
 		"--evaluation-config", `{"validators":[{"type":"command","command":"go test ./..."}]}`,
@@ -130,6 +129,32 @@ func TestAgentHarnessRunCallsCorrectEndpoint(t *testing.T) {
 	}
 	if !called {
 		t.Fatal("POST /v1/workspaces/ws-123/agent-harnesses/harness-123/executions was not called")
+	}
+}
+
+func TestAgentHarnessRunFollowPollsUntilTerminalStatus(t *testing.T) {
+	var started bool
+	var polled bool
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"POST /v1/workspaces/ws-123/agent-harnesses/harness-123/executions": captureHandler(t, &started, 201, map[string]any{
+			"id": "execution-1", "agent_harness_id": "harness-123", "status": "queued",
+		}),
+		"GET /v1/workspaces/ws-123/agent-harness-executions/execution-1": captureHandler(t, &polled, 200, map[string]any{
+			"id": "execution-1", "agent_harness_id": "harness-123", "status": "completed",
+		}),
+	})
+	defer srv.Close()
+
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+	err := executeCommand(t, []string{"--workspace", "ws-123", "agent-harness", "run", "harness-123", "--follow", "--poll-interval", "1ms"}, srv.URL)
+	if err != nil {
+		t.Fatalf("agent-harness run --follow error: %v", err)
+	}
+	if !started {
+		t.Fatal("POST /v1/workspaces/ws-123/agent-harnesses/harness-123/executions was not called")
+	}
+	if !polled {
+		t.Fatal("GET /v1/workspaces/ws-123/agent-harness-executions/execution-1 was not called")
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/agentclash/agentclash/cli/internal/output"
 	"github.com/spf13/cobra"
@@ -28,12 +29,13 @@ func init() {
 	agentHarnessCreateCmd.Flags().String("codex-model", "", "Codex model override")
 	agentHarnessCreateCmd.Flags().String("auth-mode", "chatgpt_device", "Codex auth mode: chatgpt_device, api_key_secret, bring_your_own_env")
 	agentHarnessCreateCmd.Flags().String("openai-api-key-secret", "", "Workspace secret name containing OPENAI_API_KEY")
-	agentHarnessCreateCmd.Flags().String("e2b-api-key-secret", "E2B_API_KEY", "Workspace secret name containing E2B_API_KEY")
 	agentHarnessCreateCmd.Flags().String("repository-url", "", "Repository URL for the harness task")
 	agentHarnessCreateCmd.Flags().String("base-branch", "", "Base branch for repository work")
 	agentHarnessCreateCmd.Flags().String("execution-config", "", "Inline JSON execution config")
 	agentHarnessCreateCmd.Flags().String("evaluation-config", "", "Inline JSON evaluation config")
 	agentHarnessCreateCmd.Flags().String("evaluation-config-file", "", "JSON file with validators and LLM judges")
+	agentHarnessRunCmd.Flags().Bool("follow", false, "Poll until the harness execution reaches a terminal status")
+	agentHarnessRunCmd.Flags().Duration("poll-interval", 2*time.Second, "Polling interval for --follow")
 }
 
 var agentHarnessCmd = &cobra.Command{
@@ -190,8 +192,56 @@ var agentHarnessRunCmd = &cobra.Command{
 		rc.Output.PrintSuccess(fmt.Sprintf("Started agent harness execution %s", str(execution["id"])))
 		rc.Output.PrintDetail("Harness", str(execution["agent_harness_id"]))
 		rc.Output.PrintDetail("Status", output.StatusColor(str(execution["status"])))
-		return nil
+		follow, _ := cmd.Flags().GetBool("follow")
+		if !follow {
+			return nil
+		}
+		pollInterval, _ := cmd.Flags().GetDuration("poll-interval")
+		if pollInterval <= 0 {
+			pollInterval = 2 * time.Second
+		}
+		return followAgentHarnessExecution(cmd, wsID, str(execution["id"]), pollInterval)
 	},
+}
+
+func followAgentHarnessExecution(cmd *cobra.Command, workspaceID, executionID string, pollInterval time.Duration) error {
+	rc := GetRunContext(cmd)
+	for {
+		resp, err := rc.Client.Get(cmd.Context(), "/v1/workspaces/"+workspaceID+"/agent-harness-executions/"+executionID, nil)
+		if err != nil {
+			return err
+		}
+		if apiErr := resp.ParseError(); apiErr != nil {
+			return apiErr
+		}
+
+		var execution map[string]any
+		if err := resp.DecodeJSON(&execution); err != nil {
+			return err
+		}
+		status := str(execution["status"])
+		rc.Output.PrintDetail("Status", output.StatusColor(status))
+		if isTerminalAgentHarnessExecutionStatus(status) {
+			return nil
+		}
+
+		timer := time.NewTimer(pollInterval)
+		select {
+		case <-cmd.Context().Done():
+			timer.Stop()
+			return cmd.Context().Err()
+		case <-timer.C:
+		}
+	}
+}
+
+func isTerminalAgentHarnessExecutionStatus(status string) bool {
+	switch status {
+	case "completed", "failed", "cancelled":
+		return true
+	default:
+		return false
+	}
 }
 
 var agentHarnessExecutionsCmd = &cobra.Command{
@@ -304,10 +354,6 @@ func buildAgentHarnessCreateBody(cmd *cobra.Command) (map[string]any, error) {
 	body["codex_template"] = codexTemplate
 	authMode, _ := cmd.Flags().GetString("auth-mode")
 	body["auth_mode"] = authMode
-	if e2bSecret, _ := cmd.Flags().GetString("e2b-api-key-secret"); strings.TrimSpace(e2bSecret) != "" {
-		body["e2b_api_key_secret_name"] = e2bSecret
-	}
-
 	if err := setJSONFlag(cmd, body, "execution-config", "execution_config"); err != nil {
 		return nil, err
 	}
