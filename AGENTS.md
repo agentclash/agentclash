@@ -10,10 +10,10 @@ Quick reference for AI coding agents working on the AgentClash CLI.
 
 ## Run the CLI locally against a hosted backend
 
-Use staging unless you intentionally need production:
+Use production unless you intentionally need a local or self-hosted backend:
 
 ```bash
-export AGENTCLASH_API_URL="https://staging-api.agentclash.dev"
+export AGENTCLASH_API_URL="https://api.agentclash.dev"
 
 cd cli
 go run . auth login --device
@@ -34,7 +34,7 @@ Resolution order for the API base URL is:
 Useful env vars:
 
 ```bash
-export AGENTCLASH_API_URL="https://staging-api.agentclash.dev"
+export AGENTCLASH_API_URL="https://api.agentclash.dev"
 export AGENTCLASH_TOKEN="..."
 export AGENTCLASH_WORKSPACE="workspace-id"
 ```
