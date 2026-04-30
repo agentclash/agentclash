@@ -328,7 +328,6 @@ export interface AgentHarness {
   codex_model?: string;
   auth_mode: AgentHarnessAuthMode;
   openai_api_key_secret_name?: string;
-  e2b_api_key_secret_name?: string;
   repository_url?: string;
   base_branch?: string;
   execution_config: unknown;
@@ -346,11 +345,46 @@ export interface CreateAgentHarnessRequest {
   codex_model?: string;
   auth_mode: AgentHarnessAuthMode;
   openai_api_key_secret_name?: string;
-  e2b_api_key_secret_name?: string;
   repository_url?: string;
   base_branch?: string;
   execution_config?: unknown;
   evaluation_config?: unknown;
+}
+
+export type AgentHarnessExecutionStatus =
+  | "queued"
+  | "provisioning"
+  | "running"
+  | "scoring"
+  | "completed"
+  | "failed"
+  | "cancelled";
+
+export interface AgentHarnessExecutionEvent {
+  id: string;
+  execution_id: string;
+  event_type: string;
+  actor_type: string;
+  occurred_at: string;
+  payload: unknown;
+}
+
+/** GET /v1/workspaces/{id}/agent-harness-executions item, POST response */
+export interface AgentHarnessExecution {
+  id: string;
+  organization_id: string;
+  workspace_id: string;
+  agent_harness_id: string;
+  status: AgentHarnessExecutionStatus;
+  status_reason?: string;
+  harness_snapshot: unknown;
+  execution_config_snapshot: unknown;
+  evaluation_config_snapshot: unknown;
+  created_at: string;
+  updated_at: string;
+  started_at?: string;
+  completed_at?: string;
+  events?: AgentHarnessExecutionEvent[];
 }
 
 // --- Infrastructure Resources ---

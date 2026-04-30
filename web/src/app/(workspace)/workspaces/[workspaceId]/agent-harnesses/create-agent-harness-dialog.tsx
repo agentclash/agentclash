@@ -55,7 +55,6 @@ export function CreateAgentHarnessDialog({
   const [authMode, setAuthMode] =
     useState<AgentHarnessAuthMode>("chatgpt_device");
   const [openAISecret, setOpenAISecret] = useState("");
-  const [e2bSecret, setE2bSecret] = useState("E2B_API_KEY");
   const [repositoryURL, setRepositoryURL] = useState("");
   const [baseBranch, setBaseBranch] = useState("main");
   const [codexTemplate, setCodexTemplate] = useState("codex");
@@ -83,7 +82,6 @@ export function CreateAgentHarnessDialog({
       codex_model: codexModel.trim() || undefined,
       auth_mode: authMode,
       openai_api_key_secret_name: openAISecret.trim() || undefined,
-      e2b_api_key_secret_name: e2bSecret.trim() || undefined,
       repository_url: repositoryURL.trim() || undefined,
       base_branch: baseBranch.trim() || undefined,
       evaluation_config: parsedEvaluationConfig,
@@ -131,7 +129,6 @@ export function CreateAgentHarnessDialog({
     setTaskPrompt("");
     setAuthMode("chatgpt_device");
     setOpenAISecret("");
-    setE2bSecret("E2B_API_KEY");
     setRepositoryURL("");
     setBaseBranch("main");
     setCodexTemplate("codex");
@@ -269,16 +266,6 @@ export function CreateAgentHarnessDialog({
                 placeholder={
                   authMode === "api_key_secret" ? "OPENAI_API_KEY" : "Optional"
                 }
-              />
-            </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium">
-                E2B Secret
-              </label>
-              <Input
-                value={e2bSecret}
-                onChange={(event) => setE2bSecret(event.target.value)}
-                placeholder="E2B_API_KEY"
               />
             </div>
           </div>

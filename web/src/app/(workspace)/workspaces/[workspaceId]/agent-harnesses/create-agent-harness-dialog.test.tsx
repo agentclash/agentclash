@@ -237,7 +237,6 @@ describe("CreateAgentHarnessDialog", () => {
         codex_template: "codex",
         auth_mode: "api_key_secret",
         openai_api_key_secret_name: "OPENAI_API_KEY",
-        e2b_api_key_secret_name: "E2B_API_KEY",
         evaluation_config: expect.objectContaining({
           validators: expect.any(Array),
           llm_judges: expect.any(Array),
