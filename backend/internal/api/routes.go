@@ -122,9 +122,12 @@ func registerProtectedRoutes(
 	router.Get("/playground-experiments/compare", comparePlaygroundExperimentsHandler(logger, playgroundService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Get("/workspaces/{workspaceID}/agent-deployments", listAgentDeploymentsHandler(logger, agentDeploymentReadService))
-	router.Post("/workspaces/{workspaceID}/agent-harnesses", createAgentHarnessHandler(logger, agentHarnessService))
-	router.Get("/workspaces/{workspaceID}/agent-harnesses", listAgentHarnessesHandler(logger, agentHarnessService))
-	router.Get("/agent-harnesses/{harnessID}", getAgentHarnessHandler(logger, agentHarnessService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Post("/workspaces/{workspaceID}/agent-harnesses", createAgentHarnessHandler(logger, agentHarnessService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Get("/workspaces/{workspaceID}/agent-harnesses", listAgentHarnessesHandler(logger, agentHarnessService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Get("/workspaces/{workspaceID}/agent-harnesses/{harnessID}", getAgentHarnessHandler(logger, agentHarnessService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Get("/workspaces/{workspaceID}/challenge-packs", listChallengePacksHandler(logger, challengePackReadService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).

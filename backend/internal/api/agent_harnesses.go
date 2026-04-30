@@ -31,7 +31,7 @@ type AgentHarnessRepository interface {
 
 type AgentHarnessService interface {
 	CreateAgentHarness(ctx context.Context, caller Caller, workspaceID uuid.UUID, input CreateAgentHarnessInput) (repository.AgentHarness, error)
-	GetAgentHarness(ctx context.Context, caller Caller, id uuid.UUID) (repository.AgentHarness, error)
+	GetAgentHarness(ctx context.Context, caller Caller, workspaceID uuid.UUID, id uuid.UUID) (repository.AgentHarness, error)
 	ListAgentHarnesses(ctx context.Context, caller Caller, workspaceID uuid.UUID) ([]repository.AgentHarness, error)
 }
 
@@ -106,13 +106,16 @@ func (m *AgentHarnessManager) CreateAgentHarness(ctx context.Context, caller Cal
 	})
 }
 
-func (m *AgentHarnessManager) GetAgentHarness(ctx context.Context, caller Caller, id uuid.UUID) (repository.AgentHarness, error) {
+func (m *AgentHarnessManager) GetAgentHarness(ctx context.Context, caller Caller, workspaceID uuid.UUID, id uuid.UUID) (repository.AgentHarness, error) {
+	if err := m.authorizer.AuthorizeWorkspace(ctx, caller, workspaceID); err != nil {
+		return repository.AgentHarness{}, err
+	}
 	harness, err := m.repo.GetAgentHarnessByID(ctx, id)
 	if err != nil {
 		return repository.AgentHarness{}, err
 	}
-	if err := m.authorizer.AuthorizeWorkspace(ctx, caller, harness.WorkspaceID); err != nil {
-		return repository.AgentHarness{}, err
+	if harness.WorkspaceID != workspaceID {
+		return repository.AgentHarness{}, repository.ErrAgentHarnessNotFound
 	}
 	return harness, nil
 }
@@ -195,9 +198,9 @@ func createAgentHarnessHandler(logger *slog.Logger, service AgentHarnessService)
 			writeAuthzError(w, err)
 			return
 		}
-		workspaceID, err := uuid.Parse(chi.URLParam(r, "workspaceID"))
+		workspaceID, err := WorkspaceIDFromContext(r.Context())
 		if err != nil {
-			writeError(w, http.StatusBadRequest, "invalid_workspace_id", "workspaceID must be a UUID")
+			writeAuthzError(w, err)
 			return
 		}
 		var input CreateAgentHarnessInput
@@ -221,9 +224,9 @@ func listAgentHarnessesHandler(logger *slog.Logger, service AgentHarnessService)
 			writeAuthzError(w, err)
 			return
 		}
-		workspaceID, err := uuid.Parse(chi.URLParam(r, "workspaceID"))
+		workspaceID, err := WorkspaceIDFromContext(r.Context())
 		if err != nil {
-			writeError(w, http.StatusBadRequest, "invalid_workspace_id", "workspaceID must be a UUID")
+			writeAuthzError(w, err)
 			return
 		}
 		harnesses, err := service.ListAgentHarnesses(r.Context(), caller, workspaceID)
@@ -246,12 +249,17 @@ func getAgentHarnessHandler(logger *slog.Logger, service AgentHarnessService) ht
 			writeAuthzError(w, err)
 			return
 		}
+		workspaceID, err := WorkspaceIDFromContext(r.Context())
+		if err != nil {
+			writeAuthzError(w, err)
+			return
+		}
 		harnessID, err := uuid.Parse(chi.URLParam(r, "harnessID"))
 		if err != nil {
 			writeError(w, http.StatusBadRequest, "invalid_harness_id", "harnessID must be a UUID")
 			return
 		}
-		harness, err := service.GetAgentHarness(r.Context(), caller, harnessID)
+		harness, err := service.GetAgentHarness(r.Context(), caller, workspaceID, harnessID)
 		if err != nil {
 			writeAgentHarnessError(w, logger, r, err)
 			return
@@ -291,6 +299,8 @@ func writeAgentHarnessError(w http.ResponseWriter, logger *slog.Logger, r *http.
 	switch {
 	case errors.As(err, &validationErr):
 		writeError(w, http.StatusBadRequest, validationErr.Code, validationErr.Message)
+	case errors.Is(err, repository.ErrAgentHarnessSlugConflict):
+		writeError(w, http.StatusConflict, "agent_harness_slug_conflict", "an agent harness with this name already exists in the workspace")
 	case errors.Is(err, repository.ErrAgentHarnessNotFound):
 		writeError(w, http.StatusNotFound, "not_found", "agent harness not found")
 	default:
@@ -313,7 +323,7 @@ func (noopAgentHarnessService) CreateAgentHarness(context.Context, Caller, uuid.
 	return repository.AgentHarness{}, errors.New("agent harness service is not configured")
 }
 
-func (noopAgentHarnessService) GetAgentHarness(context.Context, Caller, uuid.UUID) (repository.AgentHarness, error) {
+func (noopAgentHarnessService) GetAgentHarness(context.Context, Caller, uuid.UUID, uuid.UUID) (repository.AgentHarness, error) {
 	return repository.AgentHarness{}, errors.New("agent harness service is not configured")
 }
 

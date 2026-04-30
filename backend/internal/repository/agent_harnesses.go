@@ -4,13 +4,18 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
-var ErrAgentHarnessNotFound = errors.New("agent harness not found")
+var (
+	ErrAgentHarnessNotFound     = errors.New("agent harness not found")
+	ErrAgentHarnessSlugConflict = errors.New("agent harness slug already exists in workspace")
+)
 
 type AgentHarness struct {
 	ID                     uuid.UUID
@@ -75,7 +80,14 @@ RETURNING id, organization_id, workspace_id, created_by_user_id, name, slug, des
 		p.TaskPrompt, p.CodexTemplate, p.CodexModel, p.AuthMode, p.OpenAIAPIKeySecretName,
 		p.E2BAPIKeySecretName, p.RepositoryURL, p.BaseBranch, p.ExecutionConfig, p.EvaluationConfig,
 	)
-	return scanAgentHarness(row)
+	harness, err := scanAgentHarness(row)
+	if err != nil {
+		if isAgentHarnessSlugConflict(err) {
+			return AgentHarness{}, ErrAgentHarnessSlugConflict
+		}
+		return AgentHarness{}, err
+	}
+	return harness, nil
 }
 
 func (r *Repository) GetAgentHarnessByID(ctx context.Context, id uuid.UUID) (AgentHarness, error) {
@@ -151,4 +163,9 @@ func scanAgentHarness(scanner agentHarnessScanner) (AgentHarness, error) {
 		return AgentHarness{}, ErrAgentHarnessNotFound
 	}
 	return h, err
+}
+
+func isAgentHarnessSlugConflict(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505" && strings.Contains(pgErr.ConstraintName, "slug")
 }

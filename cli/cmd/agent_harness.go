@@ -92,8 +92,9 @@ var agentHarnessGetCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		rc := GetRunContext(cmd)
+		wsID := RequireWorkspace(cmd)
 
-		resp, err := rc.Client.Get(cmd.Context(), "/v1/agent-harnesses/"+args[0], nil)
+		resp, err := rc.Client.Get(cmd.Context(), "/v1/workspaces/"+wsID+"/agent-harnesses/"+args[0], nil)
 		if err != nil {
 			return err
 		}

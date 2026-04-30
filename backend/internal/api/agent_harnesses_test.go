@@ -133,11 +133,13 @@ func TestAgentHarnessRoutesCreateAndList(t *testing.T) {
 	router.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx := context.WithValue(r.Context(), callerContextKey{}, testAgentHarnessCaller(workspaceID))
+			ctx = context.WithValue(ctx, workspaceIDContextKey{}, workspaceID)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	})
 	router.Post("/v1/workspaces/{workspaceID}/agent-harnesses", createAgentHarnessHandler(slog.Default(), service))
 	router.Get("/v1/workspaces/{workspaceID}/agent-harnesses", listAgentHarnessesHandler(slog.Default(), service))
+	router.Get("/v1/workspaces/{workspaceID}/agent-harnesses/{harnessID}", getAgentHarnessHandler(slog.Default(), service))
 
 	createReq := httptest.NewRequest(http.MethodPost, "/v1/workspaces/"+workspaceID.String()+"/agent-harnesses", bytes.NewBufferString(`{
 		"name": "Codex autonomy check",
@@ -166,6 +168,64 @@ func TestAgentHarnessRoutesCreateAndList(t *testing.T) {
 	}
 	if len(listed.Items) != 1 || listed.Items[0].Name != "Existing harness" {
 		t.Fatalf("items = %#v", listed.Items)
+	}
+
+	getReq := httptest.NewRequest(http.MethodGet, "/v1/workspaces/"+workspaceID.String()+"/agent-harnesses/"+service.harnesses[0].ID.String(), nil)
+	getRec := httptest.NewRecorder()
+	router.ServeHTTP(getRec, getReq)
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("get status = %d, body %s", getRec.Code, getRec.Body.String())
+	}
+}
+
+func TestAgentHarnessRouteReturnsConflictOnDuplicateSlug(t *testing.T) {
+	workspaceID := uuid.New()
+	service := &fakeAgentHarnessService{createErr: repository.ErrAgentHarnessSlugConflict}
+	router := chi.NewRouter()
+	router.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := context.WithValue(r.Context(), callerContextKey{}, testAgentHarnessCaller(workspaceID))
+			ctx = context.WithValue(ctx, workspaceIDContextKey{}, workspaceID)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	})
+	router.Post("/v1/workspaces/{workspaceID}/agent-harnesses", createAgentHarnessHandler(slog.Default(), service))
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/workspaces/"+workspaceID.String()+"/agent-harnesses", bytes.NewBufferString(`{
+		"name": "Codex autonomy check",
+		"task_prompt": "Make the requested change and run tests.",
+		"auth_mode": "chatgpt_device"
+	}`))
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want %d; body %s", rec.Code, http.StatusConflict, rec.Body.String())
+	}
+}
+
+func TestAgentHarnessManagerGetChecksWorkspaceBeforeFetch(t *testing.T) {
+	workspaceID := uuid.New()
+	repo := &fakeAgentHarnessRepo{organizationID: uuid.New()}
+	manager := NewAgentHarnessManager(NewCallerWorkspaceAuthorizer(), repo)
+
+	_, err := manager.GetAgentHarness(context.Background(), testAgentHarnessCaller(uuid.New()), workspaceID, uuid.New())
+	if !errors.Is(err, ErrForbidden) {
+		t.Fatalf("error = %v, want ErrForbidden", err)
+	}
+	if repo.getByIDCalls != 0 {
+		t.Fatalf("GetAgentHarnessByID calls = %d, want 0", repo.getByIDCalls)
+	}
+}
+
+func TestAgentHarnessManagerGetReturnsNotFoundForWorkspaceMismatch(t *testing.T) {
+	workspaceID := uuid.New()
+	harness := testAgentHarnessRecord(uuid.New(), "Other workspace harness")
+	repo := &fakeAgentHarnessRepo{organizationID: uuid.New(), harness: harness}
+	manager := NewAgentHarnessManager(NewCallerWorkspaceAuthorizer(), repo)
+
+	_, err := manager.GetAgentHarness(context.Background(), testAgentHarnessCaller(workspaceID), workspaceID, harness.ID)
+	if !errors.Is(err, repository.ErrAgentHarnessNotFound) {
+		t.Fatalf("error = %v, want ErrAgentHarnessNotFound", err)
 	}
 }
 
@@ -203,6 +263,8 @@ func testAgentHarnessRecord(workspaceID uuid.UUID, name string) repository.Agent
 type fakeAgentHarnessRepo struct {
 	organizationID uuid.UUID
 	created        repository.CreateAgentHarnessParams
+	harness        repository.AgentHarness
+	getByIDCalls   int
 }
 
 func (f *fakeAgentHarnessRepo) GetOrganizationIDByWorkspaceID(context.Context, uuid.UUID) (uuid.UUID, error) {
@@ -237,7 +299,11 @@ func (f *fakeAgentHarnessRepo) CreateAgentHarness(_ context.Context, p repositor
 	}, nil
 }
 
-func (f *fakeAgentHarnessRepo) GetAgentHarnessByID(context.Context, uuid.UUID) (repository.AgentHarness, error) {
+func (f *fakeAgentHarnessRepo) GetAgentHarnessByID(_ context.Context, id uuid.UUID) (repository.AgentHarness, error) {
+	f.getByIDCalls++
+	if f.harness.ID == id {
+		return f.harness, nil
+	}
 	return repository.AgentHarness{}, repository.ErrAgentHarnessNotFound
 }
 
@@ -248,14 +314,18 @@ func (f *fakeAgentHarnessRepo) ListAgentHarnessesByWorkspaceID(context.Context, 
 type fakeAgentHarnessService struct {
 	harnesses    []repository.AgentHarness
 	createdInput CreateAgentHarnessInput
+	createErr    error
 }
 
 func (f *fakeAgentHarnessService) CreateAgentHarness(_ context.Context, _ Caller, workspaceID uuid.UUID, input CreateAgentHarnessInput) (repository.AgentHarness, error) {
 	f.createdInput = input
+	if f.createErr != nil {
+		return repository.AgentHarness{}, f.createErr
+	}
 	return testAgentHarnessRecord(workspaceID, input.Name), nil
 }
 
-func (f *fakeAgentHarnessService) GetAgentHarness(_ context.Context, _ Caller, id uuid.UUID) (repository.AgentHarness, error) {
+func (f *fakeAgentHarnessService) GetAgentHarness(_ context.Context, _ Caller, _ uuid.UUID, id uuid.UUID) (repository.AgentHarness, error) {
 	for _, harness := range f.harnesses {
 		if harness.ID == id {
 			return harness, nil

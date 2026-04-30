@@ -30,19 +30,19 @@ func TestAgentHarnessListCallsCorrectEndpoint(t *testing.T) {
 func TestAgentHarnessGetCallsCorrectEndpoint(t *testing.T) {
 	var called bool
 	srv := fakeAPI(t, map[string]http.HandlerFunc{
-		"GET /v1/agent-harnesses/harness-123": captureHandler(t, &called, 200, map[string]any{
+		"GET /v1/workspaces/ws-123/agent-harnesses/harness-123": captureHandler(t, &called, 200, map[string]any{
 			"id": "harness-123", "name": "Codex", "auth_mode": "chatgpt_device", "codex_template": "codex", "status": "draft",
 		}),
 	})
 	defer srv.Close()
 
 	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
-	err := executeCommand(t, []string{"agent-harness", "get", "harness-123"}, srv.URL)
+	err := executeCommand(t, []string{"--workspace", "ws-123", "agent-harness", "get", "harness-123"}, srv.URL)
 	if err != nil {
 		t.Fatalf("agent-harness get error: %v", err)
 	}
 	if !called {
-		t.Fatal("GET /v1/agent-harnesses/harness-123 was not called")
+		t.Fatal("GET /v1/workspaces/ws-123/agent-harnesses/harness-123 was not called")
 	}
 }
 
