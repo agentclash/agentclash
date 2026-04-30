@@ -151,7 +151,7 @@ export function DiagramAgentsToRun() {
             <Pill>Agent build</Pill>
             <ArrowD />
             <Pill>Ready build version</Pill>
-            <ArrowR className="self-end md:hidden" />
+            <ArrowD className="md:hidden" />
           </div>
           <div className="flex flex-col items-center gap-2 md:items-start">
             <Pill>Runtime profile</Pill>

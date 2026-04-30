@@ -445,22 +445,7 @@ export const DOCS_NAV: DocNavSection[] = [
   },
 ];
 
-const GENERATED_DOCS: Record<string, GeneratedDocDefinition> = {
-  "reference/cli": {
-    title: "CLI Reference",
-    description:
-      "Commands, flags, and command groups generated from the current Cobra CLI source.",
-    sectionTitle: "Reference",
-    buildContent: renderCLIReference,
-  },
-  "reference/config": {
-    title: "Config Reference",
-    description:
-      "Environment variables and config precedence generated from the current source readers.",
-    sectionTitle: "Reference",
-    buildContent: renderConfigReference,
-  },
-};
+const GENERATED_DOCS: Record<string, GeneratedDocDefinition> = {};
 
 const AGENT_SKILL_CATEGORIES: Record<
   string,
@@ -1411,6 +1396,28 @@ export function getDocNeighbors(currentHref: string) {
 }
 
 export function getDocBySlug(slug: string[] = []): DocPage | null {
+  const key = slugKey(slug);
+
+  // Reference bodies are synthesized from repo sources (`render*` below). Checked-in
+  // `reference/*.mdx` gives linters/crawlers an on-disk slug and lets us prepend prose.
+  if (key === "reference/cli") {
+    const file = getFileDocBySlug(slug);
+    if (!file) return null;
+    return {
+      ...file,
+      content: `${file.content.trim()}\n\n${renderCLIReference()}`,
+    };
+  }
+
+  if (key === "reference/config") {
+    const file = getFileDocBySlug(slug);
+    if (!file) return null;
+    return {
+      ...file,
+      content: `${file.content.trim()}\n\n${renderConfigReference()}`,
+    };
+  }
+
   return getGeneratedDocBySlug(slug) ?? getFileDocBySlug(slug);
 }
 
