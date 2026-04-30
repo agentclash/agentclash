@@ -6,6 +6,18 @@ import {
 } from "react";
 import { Callout } from "@/components/docs/callout";
 import { CopyableCodeBlock } from "@/components/docs/copyable-code-block";
+import {
+  DiagramAgentsToRun,
+  DiagramArtifactFlow,
+  DiagramChallengePackBundleShape,
+  DiagramCodebaseTourShortcuts,
+  DiagramEvidenceClosingLoop,
+  DiagramFrontendRouteSplit,
+  DiagramOrchestrationRuntimeSplit,
+  DiagramReplayVsScorecards,
+  DiagramSandboxBoundary,
+  DiagramWorkspaceDataModel,
+} from "@/components/docs/docs-diagram-presets";
 import { slugify } from "@/lib/docs";
 import { cn } from "@/lib/utils";
 
@@ -55,6 +67,16 @@ function DocsHeading({
 
 export const docsMDXComponents = {
   Callout,
+  DiagramAgentsToRun,
+  DiagramArtifactFlow,
+  DiagramChallengePackBundleShape,
+  DiagramCodebaseTourShortcuts,
+  DiagramEvidenceClosingLoop,
+  DiagramFrontendRouteSplit,
+  DiagramOrchestrationRuntimeSplit,
+  DiagramReplayVsScorecards,
+  DiagramSandboxBoundary,
+  DiagramWorkspaceDataModel,
   h2: (props: ComponentPropsWithoutRef<"h2">) => (
     <DocsHeading level={2} {...props} />
   ),
