@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.8.0](https://github.com/agentclash/agentclash/compare/v0.7.0...v0.8.0) (2026-04-30)
+
+
+### Features
+
+* **cli:** expose regression and artifact surfaces ([9f0ae01](https://github.com/agentclash/agentclash/commit/9f0ae01d0d026f5fbc423a923b952c995a9c387d))
+* **cli:** expose regression and artifact surfaces ([84ed7a5](https://github.com/agentclash/agentclash/commit/84ed7a568439a24ca739fbeb1eb922dcbf193c58))
+
 ## [0.7.0](https://github.com/agentclash/agentclash/compare/v0.6.0...v0.7.0) (2026-04-26)
 
 
