@@ -3,6 +3,7 @@ import path from "path";
 import matter from "gray-matter";
 
 const CONTENT_DIR = path.join(process.cwd(), "content", "docs");
+const AGENT_SKILLS_DIR = path.join(process.cwd(), "content", "agent-skills");
 const REPO_ROOT = path.join(process.cwd(), "..");
 const CLI_CMD_DIR = path.join(REPO_ROOT, "cli", "cmd");
 const API_CONFIG_FILE = path.join(
@@ -71,6 +72,16 @@ type GeneratedDocDefinition = {
   description: string;
   sectionTitle: string;
   buildContent: () => string;
+};
+
+type AgentSkillDoc = {
+  slug: string;
+  name: string;
+  title: string;
+  description: string;
+  metadata: Record<string, string>;
+  content: string;
+  raw: string;
 };
 
 type ParsedFlag = {
@@ -210,6 +221,62 @@ export const DOCS_NAV: DocNavSection[] = [
     ],
   },
   {
+    title: "Agent Skills",
+    description:
+      "Copyable AgentClash workflows that coding agents can install or fetch as markdown.",
+    items: [
+      {
+        title: "Skill Catalog",
+        description:
+          "Choose the right AgentClash skill for setup, authoring, running, reviewing, regression, or CI.",
+        slug: ["agent-skills"],
+        href: "/docs/agent-skills",
+      },
+      {
+        title: "CLI Setup Skill",
+        description:
+          "Configure the CLI, authenticate, select workspaces, and run doctor checks.",
+        slug: ["agent-skills", "agentclash-cli-setup"],
+        href: "/docs/agent-skills/agentclash-cli-setup",
+      },
+      {
+        title: "Challenge Pack Author Skill",
+        description:
+          "Draft, validate, and publish challenge packs from task requirements.",
+        slug: ["agent-skills", "agentclash-challenge-pack-author"],
+        href: "/docs/agent-skills/agentclash-challenge-pack-author",
+      },
+      {
+        title: "Eval Runner Skill",
+        description:
+          "Start, follow, and report AgentClash evals and runs with useful evidence.",
+        slug: ["agent-skills", "agentclash-eval-runner"],
+        href: "/docs/agent-skills/agentclash-eval-runner",
+      },
+      {
+        title: "Scorecard Reader Skill",
+        description:
+          "Turn rankings, scorecards, and replay evidence into engineering findings.",
+        slug: ["agent-skills", "agentclash-scorecard-reader"],
+        href: "/docs/agent-skills/agentclash-scorecard-reader",
+      },
+      {
+        title: "Regression Flywheel Skill",
+        description:
+          "Promote useful run failures into regression suites and verify suite-only runs.",
+        slug: ["agent-skills", "agentclash-regression-flywheel"],
+        href: "/docs/agent-skills/agentclash-regression-flywheel",
+      },
+      {
+        title: "CI Release Gate Skill",
+        description:
+          "Compare candidates against baselines and wire AgentClash gates into CI.",
+        slug: ["agent-skills", "agentclash-ci-release-gate"],
+        href: "/docs/agent-skills/agentclash-ci-release-gate",
+      },
+    ],
+  },
+  {
     title: "Reference",
     description:
       "Reference surfaces generated from current source readers where possible.",
@@ -324,6 +391,130 @@ const GENERATED_DOCS: Record<string, GeneratedDocDefinition> = {
     buildContent: renderConfigReference,
   },
 };
+
+function formatTitleFromSlug(slug: string) {
+  const acronyms = new Map([
+    ["ci", "CI"],
+    ["cli", "CLI"],
+  ]);
+
+  return slug
+    .split("-")
+    .map((part) => acronyms.get(part) ?? part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function stringifyMatterValue(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return "";
+}
+
+function readAgentSkills(): AgentSkillDoc[] {
+  if (!fs.existsSync(AGENT_SKILLS_DIR)) return [];
+
+  return fs
+    .readdirSync(AGENT_SKILLS_DIR, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => {
+      const filePath = path.join(AGENT_SKILLS_DIR, entry.name, "SKILL.md");
+      if (!fs.existsSync(filePath)) return null;
+
+      const raw = fs.readFileSync(filePath, "utf-8");
+      const { data, content } = matter(raw);
+      const metadata =
+        data.metadata && typeof data.metadata === "object" && !Array.isArray(data.metadata)
+          ? Object.fromEntries(
+              Object.entries(data.metadata).map(([key, value]) => [
+                key,
+                stringifyMatterValue(value),
+              ]),
+            )
+          : {};
+      const name = stringifyMatterValue(data.name) || entry.name;
+      const description = stringifyMatterValue(data.description);
+
+      return {
+        slug: entry.name,
+        name,
+        title: `${formatTitleFromSlug(name.replace(/^agentclash-/, ""))} Skill`,
+        description,
+        metadata,
+        content: content.trim(),
+        raw: raw.trim(),
+      };
+    })
+    .filter((skill): skill is AgentSkillDoc => Boolean(skill))
+    .sort((a, b) => a.slug.localeCompare(b.slug));
+}
+
+function getAgentSkillBySlug(slug: string) {
+  return readAgentSkills().find((skill) => skill.slug === slug) ?? null;
+}
+
+function getAgentSkillDocSlugs() {
+  return [
+    ["agent-skills"],
+    ...readAgentSkills().map((skill) => ["agent-skills", skill.slug]),
+  ];
+}
+
+function renderAgentSkillsIndex() {
+  const skills = readAgentSkills();
+  const lines = [
+    "AgentClash ships portable Agent Skills for coding agents that understand the `SKILL.md` folder format. The canonical source lives in `web/content/agent-skills/<skill>/SKILL.md`; docs pages and markdown exports are generated from that source.",
+    "",
+    "## Install Targets",
+    "",
+    "- Codex: copy a skill folder into `.agents/skills/<skill>/SKILL.md` or point Codex at the markdown export.",
+    "- Claude Code: copy a skill folder into `.claude/skills/<skill>/SKILL.md`; if the repo already uses `AGENTS.md`, add a `CLAUDE.md` import for `@AGENTS.md`.",
+    "- Cursor: use these pages as agent-requested rule references, or add thin `.cursor/rules/*.mdc` stubs that link to the matching markdown export.",
+    "- Generic agents: fetch `/llms.txt`, `/llms-full.txt`, or the individual `/docs-md/agent-skills/<skill>` pages.",
+    "",
+    "## Catalog",
+    "",
+  ];
+
+  for (const skill of skills) {
+    const role = skill.metadata["agentclash.role"];
+    lines.push(
+      `- [${skill.name}](/docs/agent-skills/${skill.slug})${role ? ` - ${role}` : ""}: ${skill.description}`,
+    );
+  }
+
+  lines.push(
+    "",
+    "## Canonical Layout",
+    "",
+    "```text",
+    "web/content/agent-skills/<skill>/SKILL.md",
+    "```",
+    "",
+    "Each skill keeps the main instructions focused and uses trigger-oriented frontmatter so agents can discover the right workflow before loading the full body.",
+  );
+
+  return lines.join("\n");
+}
+
+function renderAgentSkillPage(skill: AgentSkillDoc) {
+  const lines = [
+    `Canonical source: \`web/content/agent-skills/${skill.slug}/SKILL.md\``,
+    "",
+    `Markdown export: \`/docs-md/agent-skills/${skill.slug}\``,
+    "",
+    "## Use This Skill When",
+    "",
+    skill.description,
+    "",
+    "## Full SKILL.md",
+    "",
+    "````markdown",
+    skill.raw,
+    "````",
+  ];
+
+  return lines.join("\n");
+}
 
 const CONFIG_DESCRIPTIONS: Record<string, string> = {
   AGENTCLASH_API_URL: "Override the CLI API base URL.",
@@ -524,7 +715,32 @@ function getFileDocBySlug(slug: string[]) {
 function getGeneratedDocBySlug(slug: string[]) {
   const key = slugKey(slug);
   const generated = GENERATED_DOCS[key];
-  if (!generated) return null;
+  if (!generated) {
+    if (key === "agent-skills") {
+      return createDocPage(
+        slug,
+        "Agent Skills",
+        "Copyable AgentClash skills for coding agents, exposed as docs pages and markdown exports.",
+        renderAgentSkillsIndex(),
+        "Agent Skills",
+      );
+    }
+
+    if (slug.length === 2 && slug[0] === "agent-skills") {
+      const skill = getAgentSkillBySlug(slug[1]);
+      if (!skill) return null;
+
+      return createDocPage(
+        slug,
+        skill.title,
+        skill.description,
+        renderAgentSkillPage(skill),
+        "Agent Skills",
+      );
+    }
+
+    return null;
+  }
 
   return createDocPage(
     slug,
@@ -1049,7 +1265,11 @@ export function getAllDocSlugs() {
   const generatedSlugs = Object.keys(GENERATED_DOCS).map((value) =>
     value.split("/"),
   );
-  return uniqueSlugs([...readSlugs(CONTENT_DIR), ...generatedSlugs]);
+  return uniqueSlugs([
+    ...readSlugs(CONTENT_DIR),
+    ...generatedSlugs,
+    ...getAgentSkillDocSlugs(),
+  ]);
 }
 
 export function getAllDocPaths() {
@@ -1105,6 +1325,7 @@ export function buildLlmsIndex(origin = DOCS_ORIGIN) {
     `- [First Eval](${origin}/docs-md/getting-started/first-eval) - end-to-end walkthrough of one eval path.`,
     `- [CLI Reference](${origin}/docs-md/reference/cli) - generated command reference.`,
     `- [Config Reference](${origin}/docs-md/reference/config) - generated environment and precedence reference.`,
+    `- [Agent Skills](${origin}/docs-md/agent-skills) - copyable AgentClash skills for coding agents.`,
     `- [Full bundle](${origin}/llms-full.txt) - all shipped docs in one file.`,
     "",
   ];

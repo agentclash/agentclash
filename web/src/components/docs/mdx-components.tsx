@@ -5,6 +5,7 @@ import {
   type ReactNode,
 } from "react";
 import { Callout } from "@/components/docs/callout";
+import { CopyableCodeBlock } from "@/components/docs/copyable-code-block";
 import { slugify } from "@/lib/docs";
 
 function flattenText(children: ReactNode): string {
@@ -47,5 +48,8 @@ export const docsMDXComponents = {
   ),
   h3: (props: ComponentPropsWithoutRef<"h3">) => (
     <DocsHeading level={3} {...props} />
+  ),
+  pre: (props: ComponentPropsWithoutRef<"pre">) => (
+    <CopyableCodeBlock>{props.children}</CopyableCodeBlock>
   ),
 };
