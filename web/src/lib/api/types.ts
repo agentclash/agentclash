@@ -305,6 +305,54 @@ export interface AgentDeploymentCreateResponse {
   updated_at: string;
 }
 
+// --- Agent Harnesses ---
+
+export type AgentHarnessAuthMode =
+  | "chatgpt_device"
+  | "api_key_secret"
+  | "bring_your_own_env";
+
+/** GET /v1/workspaces/{id}/agent-harnesses list item, POST response */
+export interface AgentHarness {
+  id: string;
+  organization_id: string;
+  workspace_id: string;
+  created_by_user_id?: string;
+  name: string;
+  slug: string;
+  description: string;
+  status: string;
+  harness_kind: "codex_e2b";
+  task_prompt: string;
+  codex_template: string;
+  codex_model?: string;
+  auth_mode: AgentHarnessAuthMode;
+  openai_api_key_secret_name?: string;
+  e2b_api_key_secret_name?: string;
+  repository_url?: string;
+  base_branch?: string;
+  execution_config: unknown;
+  evaluation_config: unknown;
+  created_at: string;
+  updated_at: string;
+}
+
+/** POST /v1/workspaces/{id}/agent-harnesses request */
+export interface CreateAgentHarnessRequest {
+  name: string;
+  description?: string;
+  task_prompt: string;
+  codex_template?: string;
+  codex_model?: string;
+  auth_mode: AgentHarnessAuthMode;
+  openai_api_key_secret_name?: string;
+  e2b_api_key_secret_name?: string;
+  repository_url?: string;
+  base_branch?: string;
+  execution_config?: unknown;
+  evaluation_config?: unknown;
+}
+
 // --- Infrastructure Resources ---
 
 /** GET /v1/workspaces/{id}/runtime-profiles list item */
