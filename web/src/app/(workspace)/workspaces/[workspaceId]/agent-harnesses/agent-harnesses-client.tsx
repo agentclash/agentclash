@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { type FormEvent, useMemo, useState } from "react";
 import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
 import { createApiClient } from "@/lib/api/client";
 import type { AgentHarness, AgentHarnessExecution } from "@/lib/api/types";
@@ -10,6 +10,7 @@ import { WorkspaceListLoading } from "@/components/app-shell/workspace-loading";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/page-header";
 import {
   Table,
@@ -19,7 +20,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Loader2, PackageCheck, Play } from "lucide-react";
+import { Loader2, MessageSquare, PackageCheck, Play, Send } from "lucide-react";
 import { CreateAgentHarnessDialog } from "./create-agent-harness-dialog";
 
 const authLabel: Record<string, string> = {
@@ -49,6 +50,8 @@ export function AgentHarnessesClient({
   const { getAccessToken } = useAccessToken();
   const { mutate } = useApiMutator();
   const [runningHarnessId, setRunningHarnessId] = useState<string | null>(null);
+  const [chatHarnessId, setChatHarnessId] = useState<string>("");
+  const [chatMessage, setChatMessage] = useState("");
   const [runError, setRunError] = useState<string | null>(null);
   const { data, error, isLoading } = useApiListQuery<AgentHarness>(
     `/v1/workspaces/${workspaceId}/agent-harnesses`,
@@ -57,6 +60,8 @@ export function AgentHarnessesClient({
     `/v1/workspaces/${workspaceId}/agent-harness-executions`,
   );
   const harnesses = data?.items ?? [];
+  const selectedChatHarness =
+    harnesses.find((harness) => harness.id === chatHarnessId) ?? harnesses[0];
   const latestExecutionByHarness = useMemo(() => {
     const latest = new Map<string, AgentHarnessExecution>();
     for (const execution of executionsData?.items ?? []) {
@@ -68,7 +73,7 @@ export function AgentHarnessesClient({
     return latest;
   }, [executionsData?.items]);
 
-  async function handleRun(harnessId: string) {
+  async function startHarnessExecution(harnessId: string, message?: string) {
     setRunError(null);
     setRunningHarnessId(harnessId);
     try {
@@ -76,7 +81,7 @@ export function AgentHarnessesClient({
       const api = createApiClient(token);
       await api.post(
         `/v1/workspaces/${workspaceId}/agent-harnesses/${harnessId}/executions`,
-        {},
+        message?.trim() ? { message: message.trim() } : {},
       );
       await Promise.all([
         mutate(workspaceResourceKeys.agentHarnesses(workspaceId)),
@@ -91,8 +96,15 @@ export function AgentHarnessesClient({
     }
   }
 
+  async function handleChatSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedChatHarness || !chatMessage.trim()) return;
+    await startHarnessExecution(selectedChatHarness.id, chatMessage);
+    setChatMessage("");
+  }
+
   return (
-    <div>
+    <div className="space-y-6">
       <PageHeader
         title="Agent Harnesses"
         breadcrumbs={[{ label: "Agent Harnesses" }]}
@@ -118,8 +130,59 @@ export function AgentHarnessesClient({
           description="Create a Codex harness to evaluate long-running autonomous coding tasks without writing a challenge pack."
         />
       ) : (
-        <div className="rounded-lg border border-border">
-          <Table>
+        <>
+          <form
+            onSubmit={handleChatSubmit}
+            className="space-y-3 rounded-lg border border-border bg-card p-4"
+          >
+            <div className="flex flex-col gap-3 md:flex-row md:items-center">
+              <div className="flex min-w-0 flex-1 items-center gap-2">
+                <MessageSquare className="size-4 text-muted-foreground" />
+                <select
+                  value={selectedChatHarness?.id ?? ""}
+                  onChange={(event) => setChatHarnessId(event.target.value)}
+                  className="h-8 min-w-0 rounded-lg border border-input bg-transparent px-2 text-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/50"
+                >
+                  {harnesses.map((harness) => (
+                    <option key={harness.id} value={harness.id}>
+                      {harness.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {selectedChatHarness ? (
+                <Badge variant={statusVariant[selectedChatHarness.auth_mode] ?? "outline"}>
+                  {authLabel[selectedChatHarness.auth_mode] ?? selectedChatHarness.auth_mode}
+                </Badge>
+              ) : null}
+            </div>
+            <div className="flex flex-col gap-2 md:flex-row">
+              <Input
+                value={chatMessage}
+                onChange={(event) => setChatMessage(event.target.value)}
+                placeholder="Ask this harness to inspect, patch, or test something..."
+                className="min-h-9 flex-1"
+              />
+              <Button
+                type="submit"
+                disabled={
+                  !selectedChatHarness ||
+                  !chatMessage.trim() ||
+                  runningHarnessId === selectedChatHarness.id
+                }
+              >
+                {runningHarnessId === selectedChatHarness?.id ? (
+                  <Loader2 data-icon="inline-start" className="size-4 animate-spin" />
+                ) : (
+                  <Send data-icon="inline-start" className="size-4" />
+                )}
+                Send
+              </Button>
+            </div>
+          </form>
+
+          <div className="rounded-lg border border-border">
+            <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Name</TableHead>
@@ -178,7 +241,7 @@ export function AgentHarnessesClient({
                         variant="outline"
                         aria-label={`Run ${harness.name}`}
                         disabled={isRunning || harness.status === "archived"}
-                        onClick={() => void handleRun(harness.id)}
+                        onClick={() => void startHarnessExecution(harness.id)}
                       >
                         {isRunning ? (
                           <Loader2 className="size-4 animate-spin" />
@@ -191,8 +254,9 @@ export function AgentHarnessesClient({
                 );
               })}
             </TableBody>
-          </Table>
-        </div>
+            </Table>
+          </div>
+        </>
       )}
     </div>
   );

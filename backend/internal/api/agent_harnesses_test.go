@@ -236,7 +236,7 @@ func TestAgentHarnessExecutionManagerStartSnapshotsHarness(t *testing.T) {
 	repo := &fakeAgentHarnessRepo{organizationID: harness.OrganizationID, harness: harness}
 	manager := NewAgentHarnessManager(NewCallerWorkspaceAuthorizer(), repo)
 
-	execution, err := manager.StartAgentHarnessExecution(context.Background(), testAgentHarnessCaller(workspaceID), workspaceID, harness.ID)
+	execution, err := manager.StartAgentHarnessExecution(context.Background(), testAgentHarnessCaller(workspaceID), workspaceID, harness.ID, StartAgentHarnessExecutionInput{})
 	if err != nil {
 		t.Fatalf("StartAgentHarnessExecution error: %v", err)
 	}
@@ -262,12 +262,34 @@ func TestAgentHarnessExecutionManagerStartSnapshotsHarness(t *testing.T) {
 	}
 }
 
+func TestAgentHarnessExecutionManagerStartUsesChatMessagePrompt(t *testing.T) {
+	workspaceID := uuid.New()
+	harness := testAgentHarnessRecord(workspaceID, "Codex chat harness")
+	repo := &fakeAgentHarnessRepo{organizationID: harness.OrganizationID, harness: harness}
+	manager := NewAgentHarnessManager(NewCallerWorkspaceAuthorizer(), repo)
+
+	_, err := manager.StartAgentHarnessExecution(context.Background(), testAgentHarnessCaller(workspaceID), workspaceID, harness.ID, StartAgentHarnessExecutionInput{
+		Message: "Investigate the failing test and patch it.",
+	})
+	if err != nil {
+		t.Fatalf("StartAgentHarnessExecution error: %v", err)
+	}
+
+	var snapshot agentHarnessResponse
+	if err := json.Unmarshal(repo.createdExecution.HarnessSnapshot, &snapshot); err != nil {
+		t.Fatalf("decode harness snapshot: %v", err)
+	}
+	if snapshot.TaskPrompt != "Investigate the failing test and patch it." {
+		t.Fatalf("task prompt = %q, want chat message", snapshot.TaskPrompt)
+	}
+}
+
 func TestAgentHarnessExecutionManagerStartChecksWorkspaceBeforeHarnessFetch(t *testing.T) {
 	workspaceID := uuid.New()
 	repo := &fakeAgentHarnessRepo{organizationID: uuid.New()}
 	manager := NewAgentHarnessManager(NewCallerWorkspaceAuthorizer(), repo)
 
-	_, err := manager.StartAgentHarnessExecution(context.Background(), testAgentHarnessCaller(uuid.New()), workspaceID, uuid.New())
+	_, err := manager.StartAgentHarnessExecution(context.Background(), testAgentHarnessCaller(uuid.New()), workspaceID, uuid.New(), StartAgentHarnessExecutionInput{})
 	if !errors.Is(err, ErrForbidden) {
 		t.Fatalf("error = %v, want ErrForbidden", err)
 	}
@@ -318,7 +340,7 @@ func TestAgentHarnessExecutionRoutes(t *testing.T) {
 	router.Get("/v1/workspaces/{workspaceID}/agent-harness-executions", listAgentHarnessExecutionsHandler(slog.Default(), service))
 	router.Get("/v1/workspaces/{workspaceID}/agent-harness-executions/{executionID}", getAgentHarnessExecutionHandler(slog.Default(), service))
 
-	startReq := httptest.NewRequest(http.MethodPost, "/v1/workspaces/"+workspaceID.String()+"/agent-harnesses/"+harness.ID.String()+"/executions", nil)
+	startReq := httptest.NewRequest(http.MethodPost, "/v1/workspaces/"+workspaceID.String()+"/agent-harnesses/"+harness.ID.String()+"/executions", bytes.NewBufferString(`{"message":"Patch the failing test."}`))
 	startRec := httptest.NewRecorder()
 	router.ServeHTTP(startRec, startReq)
 	if startRec.Code != http.StatusCreated {
@@ -326,6 +348,9 @@ func TestAgentHarnessExecutionRoutes(t *testing.T) {
 	}
 	if service.startedHarnessID != harness.ID {
 		t.Fatalf("started harness id = %s, want %s", service.startedHarnessID, harness.ID)
+	}
+	if service.startedInput.Message != "Patch the failing test." {
+		t.Fatalf("started message = %q", service.startedInput.Message)
 	}
 
 	listReq := httptest.NewRequest(http.MethodGet, "/v1/workspaces/"+workspaceID.String()+"/agent-harness-executions?harness_id="+harness.ID.String(), nil)
@@ -492,6 +517,7 @@ type fakeAgentHarnessService struct {
 	events                  []repository.AgentHarnessExecutionEvent
 	createdInput            CreateAgentHarnessInput
 	startedHarnessID        uuid.UUID
+	startedInput            StartAgentHarnessExecutionInput
 	listExecutionsHarnessID *uuid.UUID
 	createErr               error
 }
@@ -517,8 +543,9 @@ func (f *fakeAgentHarnessService) ListAgentHarnesses(context.Context, Caller, uu
 	return f.harnesses, nil
 }
 
-func (f *fakeAgentHarnessService) StartAgentHarnessExecution(_ context.Context, _ Caller, workspaceID uuid.UUID, harnessID uuid.UUID) (repository.AgentHarnessExecution, error) {
+func (f *fakeAgentHarnessService) StartAgentHarnessExecution(_ context.Context, _ Caller, workspaceID uuid.UUID, harnessID uuid.UUID, input StartAgentHarnessExecutionInput) (repository.AgentHarnessExecution, error) {
 	f.startedHarnessID = harnessID
+	f.startedInput = input
 	return testAgentHarnessExecutionRecord(workspaceID, harnessID), nil
 }
 

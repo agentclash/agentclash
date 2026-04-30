@@ -34,6 +34,7 @@ func init() {
 	agentHarnessCreateCmd.Flags().String("execution-config", "", "Inline JSON execution config")
 	agentHarnessCreateCmd.Flags().String("evaluation-config", "", "Inline JSON evaluation config")
 	agentHarnessCreateCmd.Flags().String("evaluation-config-file", "", "JSON file with validators and LLM judges")
+	agentHarnessRunCmd.Flags().String("message", "", "Override the harness task prompt for this execution")
 	agentHarnessRunCmd.Flags().Bool("follow", false, "Poll until the harness execution reaches a terminal status")
 	agentHarnessRunCmd.Flags().Duration("poll-interval", 2*time.Second, "Polling interval for --follow")
 }
@@ -172,7 +173,11 @@ var agentHarnessRunCmd = &cobra.Command{
 		rc := GetRunContext(cmd)
 		wsID := RequireWorkspace(cmd)
 
-		resp, err := rc.Client.Post(cmd.Context(), "/v1/workspaces/"+wsID+"/agent-harnesses/"+args[0]+"/executions", map[string]any{})
+		body := map[string]any{}
+		if message, _ := cmd.Flags().GetString("message"); strings.TrimSpace(message) != "" {
+			body["message"] = strings.TrimSpace(message)
+		}
+		resp, err := rc.Client.Post(cmd.Context(), "/v1/workspaces/"+wsID+"/agent-harnesses/"+args[0]+"/executions", body)
 		if err != nil {
 			return err
 		}

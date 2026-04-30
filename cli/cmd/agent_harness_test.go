@@ -132,6 +132,32 @@ func TestAgentHarnessRunCallsCorrectEndpoint(t *testing.T) {
 	}
 }
 
+func TestAgentHarnessRunSendsMessageOverride(t *testing.T) {
+	var gotBody map[string]any
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"POST /v1/workspaces/ws-123/agent-harnesses/harness-123/executions": func(w http.ResponseWriter, r *http.Request) {
+			if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+				t.Fatalf("decode request: %v", err)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			json.NewEncoder(w).Encode(map[string]any{
+				"id": "execution-1", "agent_harness_id": "harness-123", "status": "queued",
+			})
+		},
+	})
+	defer srv.Close()
+
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+	err := executeCommand(t, []string{"--workspace", "ws-123", "agent-harness", "run", "harness-123", "--message", "Patch the flaky test"}, srv.URL)
+	if err != nil {
+		t.Fatalf("agent-harness run error: %v", err)
+	}
+	if gotBody["message"] != "Patch the flaky test" {
+		t.Fatalf("message = %v, want override", gotBody["message"])
+	}
+}
+
 func TestAgentHarnessRunFollowPollsUntilTerminalStatus(t *testing.T) {
 	var started bool
 	var polled bool

@@ -37,7 +37,7 @@ type AgentHarnessService interface {
 	CreateAgentHarness(ctx context.Context, caller Caller, workspaceID uuid.UUID, input CreateAgentHarnessInput) (repository.AgentHarness, error)
 	GetAgentHarness(ctx context.Context, caller Caller, workspaceID uuid.UUID, id uuid.UUID) (repository.AgentHarness, error)
 	ListAgentHarnesses(ctx context.Context, caller Caller, workspaceID uuid.UUID) ([]repository.AgentHarness, error)
-	StartAgentHarnessExecution(ctx context.Context, caller Caller, workspaceID uuid.UUID, harnessID uuid.UUID) (repository.AgentHarnessExecution, error)
+	StartAgentHarnessExecution(ctx context.Context, caller Caller, workspaceID uuid.UUID, harnessID uuid.UUID, input StartAgentHarnessExecutionInput) (repository.AgentHarnessExecution, error)
 	GetAgentHarnessExecution(ctx context.Context, caller Caller, workspaceID uuid.UUID, executionID uuid.UUID) (repository.AgentHarnessExecution, error)
 	ListAgentHarnessExecutions(ctx context.Context, caller Caller, workspaceID uuid.UUID, harnessID *uuid.UUID) ([]repository.AgentHarnessExecution, error)
 	ListAgentHarnessExecutionEvents(ctx context.Context, caller Caller, workspaceID uuid.UUID, executionID uuid.UUID) ([]repository.AgentHarnessExecutionEvent, error)
@@ -79,6 +79,10 @@ type CreateAgentHarnessInput struct {
 	BaseBranch             string          `json:"base_branch"`
 	ExecutionConfig        json.RawMessage `json:"execution_config"`
 	EvaluationConfig       json.RawMessage `json:"evaluation_config"`
+}
+
+type StartAgentHarnessExecutionInput struct {
+	Message string `json:"message"`
 }
 
 type AgentHarnessValidationError struct {
@@ -148,7 +152,7 @@ func (m *AgentHarnessManager) ListAgentHarnesses(ctx context.Context, caller Cal
 	return m.repo.ListAgentHarnessesByWorkspaceID(ctx, workspaceID)
 }
 
-func (m *AgentHarnessManager) StartAgentHarnessExecution(ctx context.Context, caller Caller, workspaceID uuid.UUID, harnessID uuid.UUID) (repository.AgentHarnessExecution, error) {
+func (m *AgentHarnessManager) StartAgentHarnessExecution(ctx context.Context, caller Caller, workspaceID uuid.UUID, harnessID uuid.UUID, input StartAgentHarnessExecutionInput) (repository.AgentHarnessExecution, error) {
 	if err := m.authorizer.AuthorizeWorkspace(ctx, caller, workspaceID); err != nil {
 		return repository.AgentHarnessExecution{}, err
 	}
@@ -159,7 +163,7 @@ func (m *AgentHarnessManager) StartAgentHarnessExecution(ctx context.Context, ca
 	if harness.WorkspaceID != workspaceID {
 		return repository.AgentHarnessExecution{}, repository.ErrAgentHarnessNotFound
 	}
-	snapshot, err := marshalAgentHarnessSnapshot(harness)
+	snapshot, err := marshalAgentHarnessSnapshot(harness, input)
 	if err != nil {
 		return repository.AgentHarnessExecution{}, err
 	}
@@ -412,7 +416,14 @@ func startAgentHarnessExecutionHandler(logger *slog.Logger, service AgentHarness
 			writeError(w, http.StatusBadRequest, "invalid_harness_id", "harnessID must be a UUID")
 			return
 		}
-		execution, err := service.StartAgentHarnessExecution(r.Context(), caller, workspaceID, harnessID)
+		var input StartAgentHarnessExecutionInput
+		if r.Body != nil && r.ContentLength != 0 {
+			if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+				writeError(w, http.StatusBadRequest, "invalid_json", "request body must be JSON")
+				return
+			}
+		}
+		execution, err := service.StartAgentHarnessExecution(r.Context(), caller, workspaceID, harnessID, input)
 		if err != nil {
 			writeAgentHarnessError(w, logger, r, err)
 			return
@@ -553,8 +564,12 @@ func mapAgentHarnessExecutionEventResponses(events []repository.AgentHarnessExec
 	return items
 }
 
-func marshalAgentHarnessSnapshot(h repository.AgentHarness) (json.RawMessage, error) {
-	snapshot, err := json.Marshal(mapAgentHarnessResponse(h))
+func marshalAgentHarnessSnapshot(h repository.AgentHarness, input StartAgentHarnessExecutionInput) (json.RawMessage, error) {
+	response := mapAgentHarnessResponse(h)
+	if message := strings.TrimSpace(input.Message); message != "" {
+		response.TaskPrompt = message
+	}
+	snapshot, err := json.Marshal(response)
 	if err != nil {
 		return nil, err
 	}
@@ -600,7 +615,7 @@ func (noopAgentHarnessService) ListAgentHarnesses(context.Context, Caller, uuid.
 	return nil, errors.New("agent harness service is not configured")
 }
 
-func (noopAgentHarnessService) StartAgentHarnessExecution(context.Context, Caller, uuid.UUID, uuid.UUID) (repository.AgentHarnessExecution, error) {
+func (noopAgentHarnessService) StartAgentHarnessExecution(context.Context, Caller, uuid.UUID, uuid.UUID, StartAgentHarnessExecutionInput) (repository.AgentHarnessExecution, error) {
 	return repository.AgentHarnessExecution{}, errors.New("agent harness service is not configured")
 }
 

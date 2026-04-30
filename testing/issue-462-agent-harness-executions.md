@@ -9,6 +9,7 @@
 - Cross-workspace fetches return not found instead of leaking existence.
 - Starting an execution schedules the Temporal worker path that provisions a platform-owned E2B sandbox, clones the configured repository, runs Codex, and records trace/artifact events.
 - AgentClash owns E2B billing through worker/provider config; users only provide Codex auth secrets.
+- The web and CLI can start an execution from a chat-style message that overrides the reusable harness task for that execution snapshot.
 - Execution status changes are persisted with status history rows.
 - Execution events are persisted with per-execution sequence numbers so future workers can append replay/log events.
 - Execution detail includes recent events so CLI/API users can inspect early progress without a separate replay implementation.
@@ -20,6 +21,7 @@
 - `TestAgentHarnessExecutionManagerGetReturnsNotFoundForWorkspaceMismatch` — workspace mismatch maps to not found.
 - CLI command tests verify:
   - `agent-harness run <harness-id>` posts to the execution endpoint.
+  - `agent-harness run <harness-id> --message "..."` snapshots the message as that execution's prompt.
   - `agent-harness run <harness-id> --follow` polls until a terminal execution status.
   - `agent-harness executions <harness-id>` lists executions scoped to a harness.
   - `agent-harness execution get <execution-id>` fetches a single execution.
@@ -37,6 +39,7 @@
 - Repository tests cover transition history and event append/read behavior if the project has a suitable database test harness.
 - API Temporal starter tests verify execution starts the correct workflow name, ID, and task queue.
 - Web tests verify harness creation no longer asks for an E2B secret.
+- API manager tests verify chat messages override only the execution snapshot prompt, not the stored harness.
 
 ## Smoke Tests
 
@@ -54,7 +57,7 @@ N/A — live hosted E2B execution requires deployed worker credentials. The work
 ```bash
 export AGENTCLASH_API_URL="https://api.agentclash.dev"
 cd cli
-go run . agent-harness run <harness-id> --workspace <workspace-id> --follow
+go run . agent-harness run <harness-id> --workspace <workspace-id> --message "Inspect the repo and patch the failing test" --follow
 go run . agent-harness executions <harness-id> --workspace <workspace-id>
 go run . agent-harness execution get <execution-id> --workspace <workspace-id>
 ```
