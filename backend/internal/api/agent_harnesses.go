@@ -26,6 +26,7 @@ type AgentHarnessRepository interface {
 	GetAgentHarnessByID(ctx context.Context, id uuid.UUID) (repository.AgentHarness, error)
 	ListAgentHarnessesByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) ([]repository.AgentHarness, error)
 	CreateAgentHarnessExecution(ctx context.Context, p repository.CreateAgentHarnessExecutionParams) (repository.AgentHarnessExecution, error)
+	TransitionAgentHarnessExecutionStatus(ctx context.Context, p repository.TransitionAgentHarnessExecutionStatusParams) (repository.AgentHarnessExecution, error)
 	GetAgentHarnessExecutionByID(ctx context.Context, id uuid.UUID) (repository.AgentHarnessExecution, error)
 	ListAgentHarnessExecutions(ctx context.Context, p repository.ListAgentHarnessExecutionsParams) ([]repository.AgentHarnessExecution, error)
 	ListAgentHarnessExecutionEvents(ctx context.Context, executionID uuid.UUID) ([]repository.AgentHarnessExecutionEvent, error)
@@ -178,6 +179,12 @@ func (m *AgentHarnessManager) StartAgentHarnessExecution(ctx context.Context, ca
 		return repository.AgentHarnessExecution{}, err
 	}
 	if err := m.workflowStarter.StartAgentHarnessExecutionWorkflow(ctx, execution.ID); err != nil {
+		reason := err.Error()
+		_, _ = m.repo.TransitionAgentHarnessExecutionStatus(ctx, repository.TransitionAgentHarnessExecutionStatusParams{
+			ExecutionID: execution.ID,
+			ToStatus:    repository.AgentHarnessExecutionStatusFailed,
+			Reason:      &reason,
+		})
 		return repository.AgentHarnessExecution{}, err
 	}
 	return execution, nil

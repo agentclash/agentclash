@@ -286,6 +286,25 @@ func TestAgentHarnessExecutionManagerStartUsesChatMessagePrompt(t *testing.T) {
 	}
 }
 
+func TestAgentHarnessExecutionManagerMarksFailedWhenWorkflowStartFails(t *testing.T) {
+	workspaceID := uuid.New()
+	harness := testAgentHarnessRecord(workspaceID, "Codex execution harness")
+	repo := &fakeAgentHarnessRepo{organizationID: harness.OrganizationID, harness: harness}
+	starterErr := errors.New("temporal unavailable")
+	manager := NewAgentHarnessManager(NewCallerWorkspaceAuthorizer(), repo, fakeAgentHarnessWorkflowStarter{err: starterErr})
+
+	_, err := manager.StartAgentHarnessExecution(context.Background(), testAgentHarnessCaller(workspaceID), workspaceID, harness.ID, StartAgentHarnessExecutionInput{})
+	if !errors.Is(err, starterErr) {
+		t.Fatalf("error = %v, want workflow start error", err)
+	}
+	if repo.transitionedStatus != repository.AgentHarnessExecutionStatusFailed {
+		t.Fatalf("transitioned status = %q, want failed", repo.transitionedStatus)
+	}
+	if repo.transitionedReason == nil || *repo.transitionedReason != starterErr.Error() {
+		t.Fatalf("transitioned reason = %#v, want starter error", repo.transitionedReason)
+	}
+}
+
 func TestAgentHarnessExecutionManagerStartChecksWorkspaceBeforeHarnessFetch(t *testing.T) {
 	workspaceID := uuid.New()
 	repo := &fakeAgentHarnessRepo{organizationID: uuid.New()}
@@ -428,13 +447,15 @@ func testAgentHarnessExecutionRecord(workspaceID uuid.UUID, harnessID uuid.UUID)
 }
 
 type fakeAgentHarnessRepo struct {
-	organizationID   uuid.UUID
-	created          repository.CreateAgentHarnessParams
-	createdExecution repository.CreateAgentHarnessExecutionParams
-	harness          repository.AgentHarness
-	execution        repository.AgentHarnessExecution
-	executions       []repository.AgentHarnessExecution
-	getByIDCalls     int
+	organizationID     uuid.UUID
+	created            repository.CreateAgentHarnessParams
+	createdExecution   repository.CreateAgentHarnessExecutionParams
+	transitionedStatus repository.AgentHarnessExecutionStatus
+	transitionedReason *string
+	harness            repository.AgentHarness
+	execution          repository.AgentHarnessExecution
+	executions         []repository.AgentHarnessExecution
+	getByIDCalls       int
 }
 
 func (f *fakeAgentHarnessRepo) GetOrganizationIDByWorkspaceID(context.Context, uuid.UUID) (uuid.UUID, error) {
@@ -496,6 +517,14 @@ func (f *fakeAgentHarnessRepo) CreateAgentHarnessExecution(_ context.Context, p 
 		CreatedAt:                now,
 		UpdatedAt:                now,
 	}, nil
+}
+
+func (f *fakeAgentHarnessRepo) TransitionAgentHarnessExecutionStatus(_ context.Context, p repository.TransitionAgentHarnessExecutionStatusParams) (repository.AgentHarnessExecution, error) {
+	f.transitionedStatus = p.ToStatus
+	f.transitionedReason = p.Reason
+	f.execution.Status = string(p.ToStatus)
+	f.execution.ErrorMessage = p.Reason
+	return f.execution, nil
 }
 
 func (f *fakeAgentHarnessRepo) GetAgentHarnessExecutionByID(_ context.Context, id uuid.UUID) (repository.AgentHarnessExecution, error) {
@@ -567,4 +596,12 @@ func (f *fakeAgentHarnessService) ListAgentHarnessExecutionEvents(context.Contex
 func (f *fakeAgentHarnessService) ListAgentHarnessExecutions(_ context.Context, _ Caller, _ uuid.UUID, harnessID *uuid.UUID) ([]repository.AgentHarnessExecution, error) {
 	f.listExecutionsHarnessID = harnessID
 	return f.executions, nil
+}
+
+type fakeAgentHarnessWorkflowStarter struct {
+	err error
+}
+
+func (f fakeAgentHarnessWorkflowStarter) StartAgentHarnessExecutionWorkflow(context.Context, uuid.UUID) error {
+	return f.err
 }

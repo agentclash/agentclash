@@ -286,7 +286,25 @@ func (r *Repository) RecordAgentHarnessExecutionEvent(ctx context.Context, p Rec
 	if occurredAt.IsZero() {
 		occurredAt = time.Now().UTC()
 	}
-	row := r.db.QueryRow(ctx, `
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return AgentHarnessExecutionEvent{}, fmt.Errorf("begin agent harness execution event transaction: %w", err)
+	}
+	defer rollback(ctx, tx)
+
+	var lockedExecutionID uuid.UUID
+	if err := tx.QueryRow(ctx, `
+SELECT id
+FROM agent_harness_executions
+WHERE id = $1
+FOR UPDATE`, p.ExecutionID).Scan(&lockedExecutionID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return AgentHarnessExecutionEvent{}, ErrAgentHarnessExecutionNotFound
+		}
+		return AgentHarnessExecutionEvent{}, err
+	}
+
+	event, err := scanAgentHarnessExecutionEvent(tx.QueryRow(ctx, `
 WITH next_sequence AS (
     SELECT COALESCE(MAX(sequence_number), 0) + 1 AS sequence_number
     FROM agent_harness_execution_events
@@ -299,8 +317,14 @@ SELECT
     $1, next_sequence.sequence_number, $2, $3, $4, $5, $6
 FROM next_sequence
 RETURNING id, agent_harness_execution_id, sequence_number, event_type, actor_type, occurred_at, artifact_id, payload`,
-		p.ExecutionID, p.EventType, p.ActorType, occurredAt.UTC(), p.ArtifactID, defaultRepositoryJSON(p.Payload))
-	return scanAgentHarnessExecutionEvent(row)
+		p.ExecutionID, p.EventType, p.ActorType, occurredAt.UTC(), p.ArtifactID, defaultRepositoryJSON(p.Payload)))
+	if err != nil {
+		return AgentHarnessExecutionEvent{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return AgentHarnessExecutionEvent{}, fmt.Errorf("commit agent harness execution event transaction: %w", err)
+	}
+	return event, nil
 }
 
 func (r *Repository) ListAgentHarnessExecutionEvents(ctx context.Context, executionID uuid.UUID) ([]AgentHarnessExecutionEvent, error) {

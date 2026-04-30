@@ -360,7 +360,8 @@ export type AgentHarnessExecutionStatus =
 
 export interface AgentHarnessExecutionEvent {
   id: string;
-  execution_id: string;
+  agent_harness_execution_id: string;
+  sequence_number: number;
   event_type: string;
   actor_type: string;
   occurred_at: string;
@@ -382,6 +383,7 @@ export interface AgentHarnessExecution {
   updated_at: string;
   started_at?: string;
   completed_at?: string;
+  cancelled_at?: string;
   events?: AgentHarnessExecutionEvent[];
 }
 
