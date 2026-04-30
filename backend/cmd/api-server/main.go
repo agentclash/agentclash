@@ -114,6 +114,7 @@ func main() {
 		logger,
 	)
 	agentDeploymentReadManager := api.NewAgentDeploymentReadManager(repo)
+	agentHarnessManager := api.NewAgentHarnessManager(authorizer, repo)
 	challengePackReadManager := api.NewChallengePackReadManager(repo)
 	challengePackAuthoringManager := api.NewChallengePackAuthoringManager(repo, artifactStore)
 	publicShareManager := api.NewPublicShareManager(authorizer, repo, cfg.FrontendURL)
@@ -180,6 +181,7 @@ func main() {
 		regressionManager,
 		hostedRunIngestionManager,
 		agentDeploymentReadManager,
+		agentHarnessManager,
 		challengePackReadManager,
 		challengePackAuthoringManager,
 		agentBuildManager,

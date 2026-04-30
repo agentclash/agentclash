@@ -1,0 +1,269 @@
+package api
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+
+	"github.com/agentclash/agentclash/backend/internal/repository"
+	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
+)
+
+func TestAgentHarnessManagerCreateValidatesRequiredFields(t *testing.T) {
+	workspaceID := uuid.New()
+	caller := testAgentHarnessCaller(workspaceID)
+	manager := NewAgentHarnessManager(NewCallerWorkspaceAuthorizer(), &fakeAgentHarnessRepo{
+		organizationID: uuid.New(),
+	})
+
+	tests := []struct {
+		name  string
+		input CreateAgentHarnessInput
+		code  string
+	}{
+		{
+			name: "name required",
+			input: CreateAgentHarnessInput{
+				TaskPrompt: "Do the task",
+				AuthMode:   AgentHarnessAuthModeChatGPTDevice,
+			},
+			code: "invalid_name",
+		},
+		{
+			name: "task prompt required",
+			input: CreateAgentHarnessInput{
+				Name:     "Codex harness",
+				AuthMode: AgentHarnessAuthModeChatGPTDevice,
+			},
+			code: "invalid_task_prompt",
+		},
+		{
+			name: "known auth mode required",
+			input: CreateAgentHarnessInput{
+				Name:       "Codex harness",
+				TaskPrompt: "Do the task",
+				AuthMode:   "oauth_magic",
+			},
+			code: "invalid_auth_mode",
+		},
+		{
+			name: "api key auth needs secret",
+			input: CreateAgentHarnessInput{
+				Name:       "Codex harness",
+				TaskPrompt: "Do the task",
+				AuthMode:   AgentHarnessAuthModeAPIKeySecret,
+			},
+			code: "missing_openai_secret",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := manager.CreateAgentHarness(context.Background(), caller, workspaceID, tc.input)
+			var validationErr AgentHarnessValidationError
+			if err == nil {
+				t.Fatal("expected validation error")
+			}
+			if !errors.As(err, &validationErr) {
+				t.Fatalf("error type = %T, want AgentHarnessValidationError", err)
+			}
+			if validationErr.Code != tc.code {
+				t.Fatalf("code = %q, want %q", validationErr.Code, tc.code)
+			}
+		})
+	}
+}
+
+func TestAgentHarnessManagerCreatePersistsHarnessDefaults(t *testing.T) {
+	workspaceID := uuid.New()
+	orgID := uuid.New()
+	repo := &fakeAgentHarnessRepo{organizationID: orgID}
+	manager := NewAgentHarnessManager(NewCallerWorkspaceAuthorizer(), repo)
+
+	harness, err := manager.CreateAgentHarness(context.Background(), testAgentHarnessCaller(workspaceID), workspaceID, CreateAgentHarnessInput{
+		Name:                   " Codex Long Runner ",
+		Description:            "  checks long tasks  ",
+		TaskPrompt:             "  implement the requested change  ",
+		AuthMode:               AgentHarnessAuthModeAPIKeySecret,
+		OpenAIAPIKeySecretName: " OPENAI_API_KEY ",
+		E2BAPIKeySecretName:    " E2B_API_KEY ",
+		RepositoryURL:          " https://github.com/acme/repo ",
+		BaseBranch:             " main ",
+		EvaluationConfig:       json.RawMessage(`{"validators":[{"type":"command","command":"go test ./..."}]}`),
+	})
+	if err != nil {
+		t.Fatalf("CreateAgentHarness error: %v", err)
+	}
+
+	if harness.OrganizationID != orgID {
+		t.Fatalf("organization_id = %s, want %s", harness.OrganizationID, orgID)
+	}
+	if harness.Name != "Codex Long Runner" {
+		t.Fatalf("name = %q", harness.Name)
+	}
+	if harness.Slug != "codex-long-runner" {
+		t.Fatalf("slug = %q", harness.Slug)
+	}
+	if harness.CodexTemplate != "codex" {
+		t.Fatalf("codex_template = %q, want codex", harness.CodexTemplate)
+	}
+	if harness.OpenAIAPIKeySecretName == nil || *harness.OpenAIAPIKeySecretName != "OPENAI_API_KEY" {
+		t.Fatalf("openai secret = %#v", harness.OpenAIAPIKeySecretName)
+	}
+	if string(repo.created.EvaluationConfig) == "{}" {
+		t.Fatal("evaluation_config was not persisted")
+	}
+}
+
+func TestAgentHarnessRoutesCreateAndList(t *testing.T) {
+	workspaceID := uuid.New()
+	service := &fakeAgentHarnessService{
+		harnesses: []repository.AgentHarness{
+			testAgentHarnessRecord(workspaceID, "Existing harness"),
+		},
+	}
+	router := chi.NewRouter()
+	router.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := context.WithValue(r.Context(), callerContextKey{}, testAgentHarnessCaller(workspaceID))
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	})
+	router.Post("/v1/workspaces/{workspaceID}/agent-harnesses", createAgentHarnessHandler(slog.Default(), service))
+	router.Get("/v1/workspaces/{workspaceID}/agent-harnesses", listAgentHarnessesHandler(slog.Default(), service))
+
+	createReq := httptest.NewRequest(http.MethodPost, "/v1/workspaces/"+workspaceID.String()+"/agent-harnesses", bytes.NewBufferString(`{
+		"name": "Codex autonomy check",
+		"task_prompt": "Make the requested change and run tests.",
+		"auth_mode": "chatgpt_device",
+		"evaluation_config": {"llm_judges": [{"key": "autonomy"}]}
+	}`))
+	createRec := httptest.NewRecorder()
+	router.ServeHTTP(createRec, createReq)
+	if createRec.Code != http.StatusCreated {
+		t.Fatalf("create status = %d, body %s", createRec.Code, createRec.Body.String())
+	}
+	if service.createdInput.AuthMode != AgentHarnessAuthModeChatGPTDevice {
+		t.Fatalf("auth_mode = %q", service.createdInput.AuthMode)
+	}
+
+	listReq := httptest.NewRequest(http.MethodGet, "/v1/workspaces/"+workspaceID.String()+"/agent-harnesses", nil)
+	listRec := httptest.NewRecorder()
+	router.ServeHTTP(listRec, listReq)
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("list status = %d", listRec.Code)
+	}
+	var listed listAgentHarnessesResponse
+	if err := json.Unmarshal(listRec.Body.Bytes(), &listed); err != nil {
+		t.Fatalf("decode list: %v", err)
+	}
+	if len(listed.Items) != 1 || listed.Items[0].Name != "Existing harness" {
+		t.Fatalf("items = %#v", listed.Items)
+	}
+}
+
+func testAgentHarnessCaller(workspaceID uuid.UUID) Caller {
+	return Caller{
+		UserID: uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: "workspace_admin"},
+		},
+		OrganizationMemberships: map[uuid.UUID]OrganizationMembership{},
+	}
+}
+
+func testAgentHarnessRecord(workspaceID uuid.UUID, name string) repository.AgentHarness {
+	now := time.Now().UTC()
+	return repository.AgentHarness{
+		ID:               uuid.New(),
+		OrganizationID:   uuid.New(),
+		WorkspaceID:      workspaceID,
+		Name:             name,
+		Slug:             generateSlug(name),
+		Description:      "description",
+		Status:           "draft",
+		HarnessKind:      "codex_e2b",
+		TaskPrompt:       "Do the task",
+		CodexTemplate:    "codex",
+		AuthMode:         AgentHarnessAuthModeChatGPTDevice,
+		ExecutionConfig:  json.RawMessage(`{}`),
+		EvaluationConfig: json.RawMessage(`{}`),
+		CreatedAt:        now,
+		UpdatedAt:        now,
+	}
+}
+
+type fakeAgentHarnessRepo struct {
+	organizationID uuid.UUID
+	created        repository.CreateAgentHarnessParams
+}
+
+func (f *fakeAgentHarnessRepo) GetOrganizationIDByWorkspaceID(context.Context, uuid.UUID) (uuid.UUID, error) {
+	return f.organizationID, nil
+}
+
+func (f *fakeAgentHarnessRepo) CreateAgentHarness(_ context.Context, p repository.CreateAgentHarnessParams) (repository.AgentHarness, error) {
+	f.created = p
+	now := time.Now().UTC()
+	return repository.AgentHarness{
+		ID:                     uuid.New(),
+		OrganizationID:         p.OrganizationID,
+		WorkspaceID:            p.WorkspaceID,
+		CreatedByUserID:        p.CreatedByUserID,
+		Name:                   p.Name,
+		Slug:                   p.Slug,
+		Description:            p.Description,
+		Status:                 "draft",
+		HarnessKind:            "codex_e2b",
+		TaskPrompt:             p.TaskPrompt,
+		CodexTemplate:          p.CodexTemplate,
+		CodexModel:             p.CodexModel,
+		AuthMode:               p.AuthMode,
+		OpenAIAPIKeySecretName: p.OpenAIAPIKeySecretName,
+		E2BAPIKeySecretName:    p.E2BAPIKeySecretName,
+		RepositoryURL:          p.RepositoryURL,
+		BaseBranch:             p.BaseBranch,
+		ExecutionConfig:        p.ExecutionConfig,
+		EvaluationConfig:       p.EvaluationConfig,
+		CreatedAt:              now,
+		UpdatedAt:              now,
+	}, nil
+}
+
+func (f *fakeAgentHarnessRepo) GetAgentHarnessByID(context.Context, uuid.UUID) (repository.AgentHarness, error) {
+	return repository.AgentHarness{}, repository.ErrAgentHarnessNotFound
+}
+
+func (f *fakeAgentHarnessRepo) ListAgentHarnessesByWorkspaceID(context.Context, uuid.UUID) ([]repository.AgentHarness, error) {
+	return nil, nil
+}
+
+type fakeAgentHarnessService struct {
+	harnesses    []repository.AgentHarness
+	createdInput CreateAgentHarnessInput
+}
+
+func (f *fakeAgentHarnessService) CreateAgentHarness(_ context.Context, _ Caller, workspaceID uuid.UUID, input CreateAgentHarnessInput) (repository.AgentHarness, error) {
+	f.createdInput = input
+	return testAgentHarnessRecord(workspaceID, input.Name), nil
+}
+
+func (f *fakeAgentHarnessService) GetAgentHarness(_ context.Context, _ Caller, id uuid.UUID) (repository.AgentHarness, error) {
+	for _, harness := range f.harnesses {
+		if harness.ID == id {
+			return harness, nil
+		}
+	}
+	return repository.AgentHarness{}, repository.ErrAgentHarnessNotFound
+}
+
+func (f *fakeAgentHarnessService) ListAgentHarnesses(context.Context, Caller, uuid.UUID) ([]repository.AgentHarness, error) {
+	return f.harnesses, nil
+}

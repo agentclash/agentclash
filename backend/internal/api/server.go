@@ -38,6 +38,7 @@ type routerOptions struct {
 	regressionService          RegressionService
 	hostedRunIngestionService  HostedRunIngestionService
 	agentDeploymentReadService AgentDeploymentReadService
+	agentHarnessService        AgentHarnessService
 	challengePackReadService   ChallengePackReadService
 	challengePackAuthoringSvc  ChallengePackAuthoringService
 	agentBuildService          AgentBuildService
@@ -70,6 +71,7 @@ func NewServer(
 	regressionService RegressionService,
 	hostedRunIngestionService HostedRunIngestionService,
 	agentDeploymentReadService AgentDeploymentReadService,
+	agentHarnessService AgentHarnessService,
 	challengePackReadService ChallengePackReadService,
 	challengePackAuthoringService ChallengePackAuthoringService,
 	agentBuildService AgentBuildService,
@@ -103,6 +105,7 @@ func NewServer(
 		regressionService:          regressionService,
 		hostedRunIngestionService:  hostedRunIngestionService,
 		agentDeploymentReadService: agentDeploymentReadService,
+		agentHarnessService:        agentHarnessService,
 		challengePackReadService:   challengePackReadService,
 		challengePackAuthoringSvc:  challengePackAuthoringService,
 		agentBuildService:          agentBuildService,
@@ -244,6 +247,7 @@ func buildRouter(opts routerOptions) http.Handler {
 	hostedRunIngestionService := opts.hostedRunIngestionService
 	compareReadService := opts.compareReadService
 	agentDeploymentReadService := opts.agentDeploymentReadService
+	agentHarnessService := opts.agentHarnessService
 	challengePackReadService := opts.challengePackReadService
 	agentBuildService := opts.agentBuildService
 	releaseGateService := opts.releaseGateService
@@ -286,6 +290,9 @@ func buildRouter(opts routerOptions) http.Handler {
 	}
 	if challengePackAuthoringService == nil {
 		challengePackAuthoringService = noopChallengePackAuthoringService{}
+	}
+	if agentHarnessService == nil {
+		agentHarnessService = noopAgentHarnessService{}
 	}
 	if regressionService == nil {
 		regressionService = noopRegressionService{}
@@ -349,7 +356,7 @@ func buildRouter(opts routerOptions) http.Handler {
 	router.Route("/v1", func(r chi.Router) {
 		r.Use(authenticateRequest(logger, authenticator))
 		r.Use(rateLimiter.Middleware("default", extractWorkspaceID))
-		registerProtectedRoutes(r, logger, authorizer, playgroundService, artifactService, artifactMaxUploadBytes, runCreationService, runReadService, replayReadService, compareReadService, releaseGateService, regressionService, agentDeploymentReadService, challengePackReadService, challengePackAuthoringService, agentBuildService, userService, orgService, wsService, orgMembershipService, wsMembershipService, onboardingService, infraService, workspaceSecretsService, cliAuthService, publicShareService, billingService)
+		registerProtectedRoutes(r, logger, authorizer, playgroundService, artifactService, artifactMaxUploadBytes, runCreationService, runReadService, replayReadService, compareReadService, releaseGateService, regressionService, agentDeploymentReadService, agentHarnessService, challengePackReadService, challengePackAuthoringService, agentBuildService, userService, orgService, wsService, orgMembershipService, wsMembershipService, onboardingService, infraService, workspaceSecretsService, cliAuthService, publicShareService, billingService)
 	})
 
 	return router
