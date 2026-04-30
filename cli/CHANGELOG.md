@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.9.0](https://github.com/agentclash/agentclash/compare/v0.8.0...v0.9.0) (2026-04-30)
+
+
+### Features
+
+* add Agent Harnesses for Codex on E2B ([8b4cdcd](https://github.com/agentclash/agentclash/commit/8b4cdcdf32724186fe59704e79e71adde0095f68))
+* **agent-harnesses:** step 2 add cli and workspace ui ([f153e35](https://github.com/agentclash/agentclash/commit/f153e350ae4e0f92b35a0678b5775581be9fca1b))
+
+
+### Bug Fixes
+
+* **agent-harnesses:** address greptile review feedback ([52e2239](https://github.com/agentclash/agentclash/commit/52e22391328e0e9fa9618ffd90768f60cda00d38))
+
 ## [0.8.0](https://github.com/agentclash/agentclash/compare/v0.7.0...v0.8.0) (2026-04-30)
 
 
