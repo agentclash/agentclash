@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"time"
 
+	billingpkg "github.com/agentclash/agentclash/backend/internal/billing"
 	"github.com/agentclash/agentclash/backend/internal/challengepack"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/backend/internal/storage"
@@ -389,7 +390,7 @@ func validateChallengePackHandler(logger *slog.Logger, service ChallengePackAuth
 	}
 }
 
-func publishChallengePackHandler(logger *slog.Logger, service ChallengePackAuthoringService, authorizer WorkspaceAuthorizer) http.HandlerFunc {
+func publishChallengePackHandler(logger *slog.Logger, service ChallengePackAuthoringService, authorizer WorkspaceAuthorizer, entitlementGate EntitlementGateService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		caller, err := CallerFromContext(r.Context())
 		if err != nil {
@@ -406,6 +407,13 @@ func publishChallengePackHandler(logger *slog.Logger, service ChallengePackAutho
 		if err := AuthorizeWorkspaceAction(r.Context(), authorizer, caller, workspaceID, ActionPublishChallengePack); err != nil {
 			writeAuthzError(w, err)
 			return
+		}
+
+		if entitlementGate != nil {
+			if err := entitlementGate.CheckWorkspaceFeature(r.Context(), workspaceID, billingpkg.FeaturePrivateChallengePacks); err != nil {
+				writeChallengePackEntitlementError(w, logger, err)
+				return
+			}
 		}
 
 		body, err := readChallengePackBundleRequestBody(w, r)
@@ -439,6 +447,17 @@ func publishChallengePackHandler(logger *slog.Logger, service ChallengePackAutho
 		}
 
 		writeJSON(w, http.StatusCreated, result)
+	}
+}
+
+func writeChallengePackEntitlementError(w http.ResponseWriter, logger *slog.Logger, err error) {
+	var gateErr billingpkg.GateError
+	switch {
+	case errors.As(err, &gateErr):
+		writeBillingGateError(w, gateErr.Decision)
+	default:
+		logger.Error("challenge pack entitlement gate failed", "error", err)
+		writeError(w, http.StatusInternalServerError, "internal_error", "internal server error")
 	}
 }
 

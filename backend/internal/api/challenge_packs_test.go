@@ -6,15 +6,16 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
+	billingpkg "github.com/agentclash/agentclash/backend/internal/billing"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/backend/internal/storage"
 	"github.com/google/uuid"
-	"log/slog"
 )
 
 type fakeChallengePackReadRepository struct {
@@ -87,6 +88,30 @@ func (f *fakeChallengePackAuthoringRepository) PublishChallengePackBundle(_ cont
 		}
 	}
 	return f.published, nil
+}
+
+type fakeChallengePackEntitlementGate struct {
+	err              error
+	checkedWorkspace uuid.UUID
+	checkedFeature   string
+}
+
+func (f *fakeChallengePackEntitlementGate) BuildRunGate(context.Context, uuid.UUID, int, int) (*repository.RunEntitlementGate, error) {
+	return nil, f.err
+}
+
+func (f *fakeChallengePackEntitlementGate) BuildWorkspaceCreationGate(context.Context, uuid.UUID) (*repository.OrganizationEntitlementGate, error) {
+	return nil, f.err
+}
+
+func (f *fakeChallengePackEntitlementGate) BuildSeatGate(context.Context, uuid.UUID, bool) (*repository.OrganizationEntitlementGate, error) {
+	return nil, f.err
+}
+
+func (f *fakeChallengePackEntitlementGate) CheckWorkspaceFeature(_ context.Context, workspaceID uuid.UUID, feature string) error {
+	f.checkedWorkspace = workspaceID
+	f.checkedFeature = feature
+	return f.err
 }
 
 type fakeChallengePackStore struct{}
@@ -403,6 +428,82 @@ challenges:
 	}
 	if response.ChallengePackID == uuid.Nil {
 		t.Fatal("challenge_pack_id is nil")
+	}
+}
+
+func TestPublishChallengePackHandlerRejectsFreePrivateChallengePackGate(t *testing.T) {
+	logger := challengePackTestLogger(t)
+	repo := &fakeChallengePackAuthoringRepository{}
+	service := NewChallengePackAuthoringManager(repo, fakeChallengePackStore{})
+	workspaceID := uuid.New()
+	userID := uuid.New()
+	freeEntitlements := billingpkg.DefaultEntitlements()
+	decision := billingpkg.CheckFeature(freeEntitlements, billingpkg.FeaturePrivateChallengePacks)
+	gate := &fakeChallengePackEntitlementGate{
+		err: billingpkg.GateError{Decision: decision},
+	}
+
+	body := []byte(`
+pack:
+  slug: support-eval
+  name: Support Eval
+  family: support
+version:
+  number: 1
+  evaluation_spec:
+    name: support-v1
+    version_number: 1
+    judge_mode: deterministic
+    validators:
+      - key: exact
+        type: exact_match
+        target: final_output
+        expected_from: challenge_input
+    scorecard:
+      dimensions: [correctness]
+challenges:
+  - key: ticket-1
+    title: Ticket One
+    category: support
+    difficulty: easy
+`)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/workspaces/"+workspaceID.String()+"/challenge-packs", bytes.NewReader(body))
+	req = req.WithContext(context.WithValue(req.Context(), callerContextKey{}, Caller{
+		UserID: userID,
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: RoleWorkspaceAdmin},
+		},
+	}))
+	req = req.WithContext(context.WithValue(req.Context(), workspaceIDContextKey{}, workspaceID))
+	recorder := httptest.NewRecorder()
+
+	publishChallengePackHandler(logger, service, NewCallerWorkspaceAuthorizer(), gate).ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d; body=%s", recorder.Code, http.StatusForbidden, recorder.Body.String())
+	}
+	var response errorEnvelope
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response.Error.Code != billingpkg.GateCodeFeatureNotEntitled {
+		t.Fatalf("error code = %q, want %q", response.Error.Code, billingpkg.GateCodeFeatureNotEntitled)
+	}
+	if response.Error.PlanKey != billingpkg.PlanFree {
+		t.Fatalf("plan key = %q, want free", response.Error.PlanKey)
+	}
+	if response.Error.Used != nil {
+		t.Fatalf("used = %d, want omitted for feature gate", *response.Error.Used)
+	}
+	if gate.checkedWorkspace != workspaceID {
+		t.Fatalf("checked workspace = %s, want %s", gate.checkedWorkspace, workspaceID)
+	}
+	if gate.checkedFeature != billingpkg.FeaturePrivateChallengePacks {
+		t.Fatalf("checked feature = %q, want %q", gate.checkedFeature, billingpkg.FeaturePrivateChallengePacks)
+	}
+	if repo.published.ChallengePackID != uuid.Nil {
+		t.Fatal("challenge pack was published despite billing gate failure")
 	}
 }
 

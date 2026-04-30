@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"time"
 
+	billingpkg "github.com/agentclash/agentclash/backend/internal/billing"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -64,12 +65,17 @@ type OrgMembershipRepository interface {
 const inviteExpiryDays = 7
 
 type OrgMembershipManager struct {
-	orgAuthz OrganizationAuthorizer
-	repo     OrgMembershipRepository
+	orgAuthz        OrganizationAuthorizer
+	repo            OrgMembershipRepository
+	entitlementGate EntitlementGateService
 }
 
-func NewOrgMembershipManager(orgAuthz OrganizationAuthorizer, repo OrgMembershipRepository) *OrgMembershipManager {
-	return &OrgMembershipManager{orgAuthz: orgAuthz, repo: repo}
+func NewOrgMembershipManager(orgAuthz OrganizationAuthorizer, repo OrgMembershipRepository, entitlementGate ...EntitlementGateService) *OrgMembershipManager {
+	var gate EntitlementGateService
+	if len(entitlementGate) > 0 {
+		gate = entitlementGate[0]
+	}
+	return &OrgMembershipManager{orgAuthz: orgAuthz, repo: repo, entitlementGate: gate}
 }
 
 func (m *OrgMembershipManager) ListOrgMemberships(ctx context.Context, caller Caller, orgID uuid.UUID, limit, offset int32) (ListOrgMembershipsResult, error) {
@@ -132,10 +138,18 @@ func (m *OrgMembershipManager) InviteOrgMember(ctx context.Context, caller Calle
 		if existing.MembershipStatus == "active" || existing.MembershipStatus == "invited" {
 			return OrgMembershipResult{}, repository.ErrAlreadyMember
 		}
+		var entitlementGate *repository.OrganizationEntitlementGate
+		if m.entitlementGate != nil {
+			entitlementGate, err = m.entitlementGate.BuildSeatGate(ctx, orgID, false)
+			if err != nil {
+				return OrgMembershipResult{}, err
+			}
+		}
 		// Previously archived — allow re-invite by updating status.
 		result, err := m.repo.UpdateOrgMembership(ctx, existing.ID, repository.UpdateOrgMembershipInput{
-			Role:   &input.Role,
-			Status: strPtr("invited"),
+			Role:            &input.Role,
+			Status:          strPtr("invited"),
+			EntitlementGate: entitlementGate,
 		})
 		if err != nil {
 			return OrgMembershipResult{}, err
@@ -145,11 +159,19 @@ func (m *OrgMembershipManager) InviteOrgMember(ctx context.Context, caller Calle
 	if !errors.Is(err, repository.ErrMembershipNotFound) {
 		return OrgMembershipResult{}, err
 	}
+	var entitlementGate *repository.OrganizationEntitlementGate
+	if m.entitlementGate != nil {
+		entitlementGate, err = m.entitlementGate.BuildSeatGate(ctx, orgID, false)
+		if err != nil {
+			return OrgMembershipResult{}, err
+		}
+	}
 
 	result, err := m.repo.CreateOrgMembership(ctx, repository.CreateOrgMembershipInput{
-		OrganizationID: orgID,
-		UserID:         user.ID,
-		Role:           input.Role,
+		OrganizationID:  orgID,
+		UserID:          user.ID,
+		Role:            input.Role,
+		EntitlementGate: entitlementGate,
 	})
 	if err != nil {
 		return OrgMembershipResult{}, err
@@ -194,9 +216,16 @@ func (m *OrgMembershipManager) UpdateOrgMembership(ctx context.Context, caller C
 	}
 
 	// Validate status transitions.
+	var entitlementGate *repository.OrganizationEntitlementGate
 	if input.Status != nil {
 		if err := validateOrgMembershipTransition(membership.MembershipStatus, *input.Status); err != nil {
 			return OrgMembershipResult{}, err
+		}
+		if *input.Status == "active" && membership.MembershipStatus != "active" && m.entitlementGate != nil {
+			entitlementGate, err = m.entitlementGate.BuildSeatGate(ctx, membership.OrganizationID, false)
+			if err != nil {
+				return OrgMembershipResult{}, err
+			}
 		}
 	}
 
@@ -217,8 +246,9 @@ func (m *OrgMembershipManager) UpdateOrgMembership(ctx context.Context, caller C
 	}
 
 	result, err := m.repo.UpdateOrgMembership(ctx, membershipID, repository.UpdateOrgMembershipInput{
-		Role:   input.Role,
-		Status: input.Status,
+		Role:            input.Role,
+		Status:          input.Status,
+		EntitlementGate: entitlementGate,
 	})
 	if err != nil {
 		return OrgMembershipResult{}, err
@@ -422,9 +452,12 @@ func updateOrgMembershipHandler(logger *slog.Logger, service OrgMembershipServic
 }
 
 func handleMembershipError(w http.ResponseWriter, logger *slog.Logger, err error) {
+	var gateErr billingpkg.GateError
 	switch {
 	case errors.Is(err, ErrForbidden):
 		writeError(w, http.StatusForbidden, "forbidden", "access denied")
+	case errors.As(err, &gateErr):
+		writeBillingGateError(w, gateErr.Decision)
 	case errors.Is(err, repository.ErrMembershipNotFound):
 		writeError(w, http.StatusNotFound, "not_found", "membership not found")
 	case errors.Is(err, repository.ErrAlreadyMember):

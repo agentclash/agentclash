@@ -50,6 +50,7 @@ type routerOptions struct {
 	infraService               InfrastructureService
 	workspaceSecretsService    WorkspaceSecretsService
 	publicShareService         PublicShareService
+	billingService             BillingService
 	eventSubscriber            pubsub.EventSubscriber
 	cliAuthServices            []CLIAuthService
 }
@@ -81,6 +82,7 @@ func NewServer(
 	infraService InfrastructureService,
 	workspaceSecretsService WorkspaceSecretsService,
 	publicShareService PublicShareService,
+	billingService BillingService,
 	eventSubscriber pubsub.EventSubscriber,
 	cliAuthServices ...CLIAuthService,
 ) *Server {
@@ -113,6 +115,7 @@ func NewServer(
 		infraService:               infraService,
 		workspaceSecretsService:    workspaceSecretsService,
 		publicShareService:         publicShareService,
+		billingService:             billingService,
 		eventSubscriber:            eventSubscriber,
 		cliAuthServices:            cliAuthServices,
 	})
@@ -220,6 +223,7 @@ func newRouter(
 		infraService:               infraServiceArg,
 		workspaceSecretsService:    workspaceSecretsServiceArg,
 		publicShareService:         nil,
+		billingService:             nil,
 		eventSubscriber:            eventSubscriber,
 		cliAuthServices:            cliAuthServices,
 	})
@@ -254,6 +258,7 @@ func buildRouter(opts routerOptions) http.Handler {
 	infraService := opts.infraService
 	workspaceSecretsService := opts.workspaceSecretsService
 	publicShareService := opts.publicShareService
+	billingService := opts.billingService
 	eventSubscriber := opts.eventSubscriber
 	var cliAuthService CLIAuthService
 	if len(opts.cliAuthServices) > 0 {
@@ -290,6 +295,9 @@ func buildRouter(opts routerOptions) http.Handler {
 	}
 	if publicShareService == nil {
 		publicShareService = noopPublicShareService{}
+	}
+	if billingService == nil {
+		billingService = noopBillingService{}
 	}
 
 	router := chi.NewRouter()
@@ -328,6 +336,7 @@ func buildRouter(opts routerOptions) http.Handler {
 		Get("/public/shares/{token}", getPublicShareHandler(logger, publicShareService))
 	registerPublicRoutes(router, logger, artifactService)
 	registerHostedIntegrationRoutes(router, logger, hostedRunIngestionService)
+	registerDodoWebhookRoute(router.With(rateLimiter.Middleware("default", extractWorkspaceID)), logger, billingService)
 	registerEventStreamRoute(router, logger, authenticator, runReadService, eventSubscriber)
 
 	if cliAuthService != nil {
@@ -340,7 +349,7 @@ func buildRouter(opts routerOptions) http.Handler {
 	router.Route("/v1", func(r chi.Router) {
 		r.Use(authenticateRequest(logger, authenticator))
 		r.Use(rateLimiter.Middleware("default", extractWorkspaceID))
-		registerProtectedRoutes(r, logger, authorizer, playgroundService, artifactService, artifactMaxUploadBytes, runCreationService, runReadService, replayReadService, compareReadService, releaseGateService, regressionService, agentDeploymentReadService, challengePackReadService, challengePackAuthoringService, agentBuildService, userService, orgService, wsService, orgMembershipService, wsMembershipService, onboardingService, infraService, workspaceSecretsService, cliAuthService, publicShareService)
+		registerProtectedRoutes(r, logger, authorizer, playgroundService, artifactService, artifactMaxUploadBytes, runCreationService, runReadService, replayReadService, compareReadService, releaseGateService, regressionService, agentDeploymentReadService, challengePackReadService, challengePackAuthoringService, agentBuildService, userService, orgService, wsService, orgMembershipService, wsMembershipService, onboardingService, infraService, workspaceSecretsService, cliAuthService, publicShareService, billingService)
 	})
 
 	return router

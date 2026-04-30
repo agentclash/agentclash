@@ -345,6 +345,14 @@ func (m *RunCreationManager) CreateEvalSession(ctx context.Context, caller Calle
 		})
 	}
 
+	var entitlementGate *repository.RunEntitlementGate
+	if m.entitlementGate != nil {
+		entitlementGate, err = m.entitlementGate.BuildRunGate(ctx, input.WorkspaceID, len(runAgents), len(childRuns))
+		if err != nil {
+			return CreateEvalSessionResult{}, err
+		}
+	}
+
 	createResult, err := m.repo.CreateEvalSessionWithQueuedRuns(ctx, repository.CreateEvalSessionWithQueuedRunsParams{
 		Session: repository.CreateEvalSessionParams{
 			Repetitions:            input.EvalSession.Repetitions,
@@ -353,7 +361,8 @@ func (m *RunCreationManager) CreateEvalSession(ctx context.Context, caller Calle
 			RoutingTaskSnapshot:    buildRoutingTaskSnapshot(input.EvalSession),
 			SchemaVersion:          input.EvalSession.SchemaVersion,
 		},
-		Runs: childRuns,
+		Runs:            childRuns,
+		EntitlementGate: entitlementGate,
 	})
 	if err != nil {
 		return CreateEvalSessionResult{}, fmt.Errorf("create eval session with queued runs: %w", err)

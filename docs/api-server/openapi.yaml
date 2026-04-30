@@ -38,6 +38,8 @@ tags:
     description: Workspace regression suite and case management
   - name: Artifacts
     description: File upload, download, and content delivery
+  - name: Billing
+    description: Billing plans, entitlements, checkout, and Dodo webhook handling
   - name: ChallengePacks
     description: Challenge pack management and authoring
   - name: AgentBuilds
@@ -194,6 +196,64 @@ paths:
           $ref: "#/components/responses/NotFoundError"
         "415":
           $ref: "#/components/responses/UnsupportedMediaType"
+
+  # ---------------------------------------------------------------------------
+  # Billing webhooks
+  # ---------------------------------------------------------------------------
+  /v1/dodo/webhooks:
+    post:
+      operationId: processDodoWebhook
+      tags: [Billing]
+      summary: Process a Dodo webhook
+      description: >
+        Accepts signed Dodo billing webhooks and applies subscription
+        entitlement changes idempotently. The signature timestamp must be
+        within the server tolerance window.
+      security: []
+      parameters:
+        - name: webhook-id
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: webhook-timestamp
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: webhook-signature
+          in: header
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "202":
+          description: Webhook accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProcessDodoWebhookResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "413":
+          description: Request body exceeds 1 MiB
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "500":
+          $ref: "#/components/responses/InternalError"
 
   # ---------------------------------------------------------------------------
   # Session
@@ -443,6 +503,57 @@ paths:
           $ref: "#/components/responses/ForbiddenError"
 
   # ---------------------------------------------------------------------------
+  # Billing
+  # ---------------------------------------------------------------------------
+  /v1/billing/plans:
+    get:
+      operationId: listBillingPlans
+      tags: [Billing]
+      summary: List billing plans
+      description: Returns the public billing plan catalog and Dodo product mappings.
+      security:
+        - bearerJWT: []
+      responses:
+        "200":
+          description: Billing plans
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListBillingPlansResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/workspaces/{workspaceID}/entitlements:
+    get:
+      operationId: getWorkspaceEntitlements
+      tags: [Billing]
+      summary: Get workspace billing entitlements
+      description: >
+        Returns the workspace organization entitlements, current usage window,
+        and the current run gate decision.
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+      responses:
+        "200":
+          description: Workspace entitlement snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceEntitlementsResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  # ---------------------------------------------------------------------------
   # User Profile
   # ---------------------------------------------------------------------------
   /v1/users/me:
@@ -630,6 +741,94 @@ paths:
           $ref: "#/components/responses/ConflictError"
         "415":
           $ref: "#/components/responses/UnsupportedMediaType"
+
+  /v1/organizations/{organizationID}/billing:
+    get:
+      operationId: getOrganizationBilling
+      tags: [Billing]
+      summary: Get organization billing
+      description: Requires org_admin role.
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/OrganizationID"
+      responses:
+        "200":
+          description: Organization billing overview
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingOverviewResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/organizations/{organizationID}/billing/checkout:
+    post:
+      operationId: createBillingCheckout
+      tags: [Billing]
+      summary: Create a billing checkout
+      description: Requires org_admin role.
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/OrganizationID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateBillingCheckoutRequest"
+      responses:
+        "201":
+          description: Billing checkout created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateBillingCheckoutResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/organizations/{organizationID}/billing/portal:
+    post:
+      operationId: createBillingPortal
+      tags: [Billing]
+      summary: Create a billing portal link
+      description: Requires org_admin role.
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/OrganizationID"
+      responses:
+        "200":
+          description: Billing portal link
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateBillingPortalResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "500":
+          $ref: "#/components/responses/InternalError"
 
   /v1/organizations/{organizationID}/workspaces:
     get:
@@ -3796,6 +3995,28 @@ components:
               type: string
             message:
               type: string
+            plan_key:
+              type: string
+              description: Present on billing entitlement gate failures.
+            upgrade_target:
+              type: string
+              description: Suggested plan key for resolving a billing gate failure.
+            limit:
+              anyOf:
+                - type: integer
+                - type: "null"
+            used:
+              type: integer
+            remaining:
+              anyOf:
+                - type: integer
+                - type: "null"
+            reset_at:
+              type: string
+              format: date-time
+            expires_at:
+              type: string
+              format: date-time
 
     EmptyObject:
       type: object
@@ -4245,6 +4466,383 @@ components:
         offset:
           type: integer
           format: int32
+
+    # --- Billing ---
+
+    BillingPlanKey:
+      type: string
+      enum: [free, pro, team, enterprise]
+
+    BillingPeriod:
+      type: string
+      enum: [monthly, yearly, custom]
+
+    BillingLimit:
+      type: object
+      properties:
+        value:
+          anyOf:
+            - type: integer
+            - type: "null"
+        per_seat:
+          type: boolean
+        unlimited:
+          type: boolean
+        custom:
+          type: boolean
+
+    BillingPlanLimits:
+      type: object
+      required:
+        [
+          seats,
+          workspaces,
+          races_per_workspace_month,
+          max_models_per_race,
+          replay_retention_days,
+          concurrent_races,
+        ]
+      properties:
+        seats:
+          $ref: "#/components/schemas/BillingLimit"
+        workspaces:
+          $ref: "#/components/schemas/BillingLimit"
+        races_per_workspace_month:
+          $ref: "#/components/schemas/BillingLimit"
+        max_models_per_race:
+          $ref: "#/components/schemas/BillingLimit"
+        replay_retention_days:
+          $ref: "#/components/schemas/BillingLimit"
+        concurrent_races:
+          $ref: "#/components/schemas/BillingLimit"
+
+    BillingPlan:
+      type: object
+      required:
+        [
+          key,
+          display_name,
+          minimum_seats,
+          default_seats,
+          billing_periods,
+          limits,
+          feature_flags,
+        ]
+      properties:
+        key:
+          $ref: "#/components/schemas/BillingPlanKey"
+        display_name:
+          type: string
+        minimum_seats:
+          type: integer
+          minimum: 1
+        default_seats:
+          type: integer
+          minimum: 1
+        billing_periods:
+          type: array
+          items:
+            $ref: "#/components/schemas/BillingPeriod"
+        limits:
+          $ref: "#/components/schemas/BillingPlanLimits"
+        feature_flags:
+          type: object
+          additionalProperties:
+            type: boolean
+        upgrade_target:
+          $ref: "#/components/schemas/BillingPlanKey"
+        dodo_product_ids:
+          type: object
+          additionalProperties:
+            type: string
+
+    ListBillingPlansResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/BillingPlan"
+
+    BillingEntitlements:
+      type: object
+      required:
+        [
+          plan_key,
+          billing_period,
+          status,
+          seat_quantity,
+          seats_limit,
+          workspaces_limit,
+          races_per_workspace_month,
+          max_models_per_race,
+          replay_retention_days,
+          concurrent_races,
+          feature_flags,
+        ]
+      properties:
+        plan_key:
+          $ref: "#/components/schemas/BillingPlanKey"
+        billing_period:
+          $ref: "#/components/schemas/BillingPeriod"
+        status:
+          type: string
+          enum: [active, trialing, expired, inactive, renewed]
+        seat_quantity:
+          type: integer
+          minimum: 1
+        seats_limit:
+          anyOf:
+            - type: integer
+            - type: "null"
+        workspaces_limit:
+          anyOf:
+            - type: integer
+            - type: "null"
+        races_per_workspace_month:
+          anyOf:
+            - type: integer
+            - type: "null"
+        max_models_per_race:
+          anyOf:
+            - type: integer
+            - type: "null"
+        replay_retention_days:
+          anyOf:
+            - type: integer
+            - type: "null"
+        concurrent_races:
+          anyOf:
+            - type: integer
+            - type: "null"
+        feature_flags:
+          type: object
+          additionalProperties:
+            type: boolean
+        upgrade_target:
+          $ref: "#/components/schemas/BillingPlanKey"
+        expires_at:
+          type: string
+          format: date-time
+
+    BillingSubscriptionResponse:
+      type: object
+      required:
+        [
+          id,
+          organization_id,
+          dodo_subscription_id,
+          dodo_product_id,
+          plan_key,
+          billing_period,
+          status,
+          cancel_at_next_billing_date,
+          seat_quantity,
+          addon_quantities,
+          created_at,
+          updated_at,
+        ]
+      properties:
+        id:
+          type: string
+          format: uuid
+        organization_id:
+          type: string
+          format: uuid
+        dodo_subscription_id:
+          type: string
+        dodo_customer_id:
+          type: string
+        dodo_product_id:
+          type: string
+        plan_key:
+          $ref: "#/components/schemas/BillingPlanKey"
+        billing_period:
+          $ref: "#/components/schemas/BillingPeriod"
+        status:
+          type: string
+        next_billing_date:
+          type: string
+          format: date-time
+        cancel_at_next_billing_date:
+          type: boolean
+        cancelled_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+        trial_period_days:
+          type: integer
+        seat_quantity:
+          type: integer
+          minimum: 1
+        addon_quantities:
+          type: object
+          additionalProperties: true
+        latest_dodo_event_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    BillingOverviewResponse:
+      type: object
+      required: [entitlements]
+      properties:
+        entitlements:
+          $ref: "#/components/schemas/BillingEntitlements"
+        subscription:
+          $ref: "#/components/schemas/BillingSubscriptionResponse"
+
+    CreateBillingCheckoutRequest:
+      type: object
+      required: [plan_key, billing_period, seat_quantity, return_url]
+      properties:
+        plan_key:
+          type: string
+          enum: [pro, team, enterprise]
+        billing_period:
+          type: string
+          enum: [monthly, yearly, custom]
+        seat_quantity:
+          type: integer
+          minimum: 1
+        return_url:
+          type: string
+          format: uri
+
+    CreateBillingCheckoutResponse:
+      type: object
+      required:
+        [
+          checkout_intent_id,
+          checkout_url,
+          plan_key,
+          billing_period,
+          seat_quantity,
+        ]
+      properties:
+        checkout_intent_id:
+          type: string
+          format: uuid
+        checkout_url:
+          type: string
+          format: uri
+        plan_key:
+          type: string
+          enum: [pro, team, enterprise]
+        billing_period:
+          type: string
+          enum: [monthly, yearly, custom]
+        seat_quantity:
+          type: integer
+          minimum: 1
+
+    CreateBillingPortalResponse:
+      type: object
+      required: [portal_url]
+      properties:
+        portal_url:
+          type: string
+          format: uri
+
+    WorkspaceUsageSnapshot:
+      type: object
+      required: [workspace_id, race_count, active_runs, window_start, window_end]
+      properties:
+        workspace_id:
+          type: string
+          format: uuid
+        race_count:
+          type: integer
+        active_runs:
+          type: integer
+        window_start:
+          type: string
+          format: date-time
+        window_end:
+          type: string
+          format: date-time
+
+    BillingGateDecision:
+      type: object
+      required: [allowed, plan_key]
+      properties:
+        allowed:
+          type: boolean
+        code:
+          type: string
+          enum:
+            [
+              plan_limit_exceeded,
+              quota_exceeded,
+              concurrency_limit_exceeded,
+              seat_limit_exceeded,
+              feature_not_entitled,
+              entitlement_expired,
+              entitlement_inactive,
+            ]
+        message:
+          type: string
+        plan_key:
+          $ref: "#/components/schemas/BillingPlanKey"
+        upgrade_target:
+          $ref: "#/components/schemas/BillingPlanKey"
+        limit:
+          anyOf:
+            - type: integer
+            - type: "null"
+        used:
+          type: integer
+        remaining:
+          anyOf:
+            - type: integer
+            - type: "null"
+        reset_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+
+    WorkspaceGateSummary:
+      type: object
+      required: [run]
+      properties:
+        run:
+          $ref: "#/components/schemas/BillingGateDecision"
+
+    WorkspaceEntitlementsResponse:
+      type: object
+      required: [organization_id, workspace_id, entitlements, usage, gates]
+      properties:
+        organization_id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+          format: uuid
+        entitlements:
+          $ref: "#/components/schemas/BillingEntitlements"
+        usage:
+          $ref: "#/components/schemas/WorkspaceUsageSnapshot"
+        gates:
+          $ref: "#/components/schemas/WorkspaceGateSummary"
+
+    ProcessDodoWebhookResponse:
+      type: object
+      required: [duplicate, event_type]
+      properties:
+        duplicate:
+          type: boolean
+        event_type:
+          type: string
 
     # --- Organization Memberships ---
 

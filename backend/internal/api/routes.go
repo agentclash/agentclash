@@ -35,10 +35,14 @@ func registerProtectedRoutes(
 	workspaceSecretsService WorkspaceSecretsService,
 	cliAuthService CLIAuthService,
 	publicShareService PublicShareService,
+	billingService BillingService,
 ) {
+	entitlementGate := entitlementGateFromBillingService(billingService)
+
 	router.Get("/auth/session", sessionHandler)
 	router.Get("/users/me", getUserMeHandler(logger, userService))
 	router.Post("/onboarding", onboardHandler(logger, onboardingService))
+	registerBillingRoutes(router, logger, billingService)
 
 	router.Route("/organizations", func(r chi.Router) {
 		r.Get("/", listOrganizationsHandler(logger, orgService))
@@ -122,7 +126,7 @@ func registerProtectedRoutes(
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Get("/workspaces/{workspaceID}/challenge-pack-versions/{versionID}/input-sets", listChallengeInputSetsHandler(logger, challengePackReadService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
-		Post("/workspaces/{workspaceID}/challenge-packs", publishChallengePackHandler(logger, challengePackAuthoringService, authorizer))
+		Post("/workspaces/{workspaceID}/challenge-packs", publishChallengePackHandler(logger, challengePackAuthoringService, authorizer, entitlementGate))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Post("/workspaces/{workspaceID}/challenge-packs/validate", validateChallengePackHandler(logger, challengePackAuthoringService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
@@ -209,6 +213,14 @@ func registerProtectedRoutes(
 	// Spend Policies
 	router.Method("POST", "/workspaces/{workspaceID}/spend-policies", wsMiddleware(infraCreateHandler(logger, authorizer, infraService.CreateSpendPolicy, mapSpendPolicy)))
 	router.Method("GET", "/workspaces/{workspaceID}/spend-policies", wsMiddleware(infraListHandler(logger, infraService.ListSpendPolicies, mapSpendPolicy)))
+}
+
+func entitlementGateFromBillingService(service BillingService) EntitlementGateService {
+	gate, ok := service.(EntitlementGateService)
+	if !ok {
+		return nil
+	}
+	return gate
 }
 
 func registerPublicRoutes(router chi.Router, logger *slog.Logger, artifactService ArtifactService) {
