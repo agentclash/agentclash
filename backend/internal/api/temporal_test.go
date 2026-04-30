@@ -37,6 +37,30 @@ func TestTemporalEvalSessionWorkflowStarterStartEvalSessionWorkflow(t *testing.T
 	}
 }
 
+func TestTemporalAgentHarnessExecutionWorkflowStarter(t *testing.T) {
+	executionID := uuid.New()
+	client := &fakeTemporalClient{}
+
+	err := NewTemporalAgentHarnessExecutionWorkflowStarter(client).StartAgentHarnessExecutionWorkflow(context.Background(), executionID)
+	if err != nil {
+		t.Fatalf("StartAgentHarnessExecutionWorkflow returned error: %v", err)
+	}
+
+	if client.workflowName != workflow.AgentHarnessExecutionWorkflowName {
+		t.Fatalf("workflow name = %q, want %q", client.workflowName, workflow.AgentHarnessExecutionWorkflowName)
+	}
+	if client.options.ID != workflow.AgentHarnessExecutionWorkflowName+"/"+executionID.String() {
+		t.Fatalf("workflow id = %q, want %q", client.options.ID, workflow.AgentHarnessExecutionWorkflowName+"/"+executionID.String())
+	}
+	input, ok := client.args[0].(workflow.AgentHarnessExecutionWorkflowInput)
+	if !ok {
+		t.Fatalf("workflow input type = %T, want workflow.AgentHarnessExecutionWorkflowInput", client.args[0])
+	}
+	if input.ExecutionID != executionID {
+		t.Fatalf("execution id = %s, want %s", input.ExecutionID, executionID)
+	}
+}
+
 type fakeTemporalClient struct {
 	options      temporalsdk.StartWorkflowOptions
 	workflowName string

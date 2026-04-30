@@ -114,7 +114,7 @@ func main() {
 		logger,
 	)
 	agentDeploymentReadManager := api.NewAgentDeploymentReadManager(repo)
-	agentHarnessManager := api.NewAgentHarnessManager(authorizer, repo)
+	agentHarnessManager := api.NewAgentHarnessManager(authorizer, repo, api.NewTemporalAgentHarnessExecutionWorkflowStarter(temporalClient))
 	challengePackReadManager := api.NewChallengePackReadManager(repo)
 	challengePackAuthoringManager := api.NewChallengePackAuthoringManager(repo, artifactStore)
 	publicShareManager := api.NewPublicShareManager(authorizer, repo, cfg.FrontendURL)

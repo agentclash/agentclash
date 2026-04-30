@@ -53,6 +53,25 @@ func (s TemporalEvalSessionWorkflowStarter) StartEvalSessionWorkflow(ctx context
 	return err
 }
 
+type TemporalAgentHarnessExecutionWorkflowStarter struct {
+	client TemporalClient
+}
+
+func NewTemporalAgentHarnessExecutionWorkflowStarter(client TemporalClient) TemporalAgentHarnessExecutionWorkflowStarter {
+	return TemporalAgentHarnessExecutionWorkflowStarter{client: client}
+}
+
+func (s TemporalAgentHarnessExecutionWorkflowStarter) StartAgentHarnessExecutionWorkflow(ctx context.Context, executionID uuid.UUID) error {
+	workflowID := fmt.Sprintf("%s/%s", workflow.AgentHarnessExecutionWorkflowName, executionID)
+	_, err := s.client.ExecuteWorkflow(ctx, temporalsdk.StartWorkflowOptions{
+		ID:        workflowID,
+		TaskQueue: workflow.WorkflowTaskQueue,
+	}, workflow.AgentHarnessExecutionWorkflowName, workflow.AgentHarnessExecutionWorkflowInput{
+		ExecutionID: executionID,
+	})
+	return err
+}
+
 type TemporalPlaygroundWorkflowStarter struct {
 	client TemporalClient
 }

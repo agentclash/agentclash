@@ -7,7 +7,8 @@
 - Execution status supports `queued`, `provisioning`, `running`, `scoring`, `completed`, `failed`, and `cancelled`.
 - A workspace user can start, list, and get executions only within workspaces they can access.
 - Cross-workspace fetches return not found instead of leaking existence.
-- The initial API/CLI surface creates queued executions; worker/E2B execution is outside this PR unless existing worker hooks are already ready to attach safely.
+- Starting an execution schedules the Temporal worker path that provisions a platform-owned E2B sandbox, clones the configured repository, runs Codex, and records trace/artifact events.
+- AgentClash owns E2B billing through worker/provider config; users only provide Codex auth secrets.
 - Execution status changes are persisted with status history rows.
 - Execution events are persisted with per-execution sequence numbers so future workers can append replay/log events.
 - Execution detail includes recent events so CLI/API users can inspect early progress without a separate replay implementation.
@@ -19,10 +20,12 @@
 - `TestAgentHarnessExecutionManagerGetReturnsNotFoundForWorkspaceMismatch` — workspace mismatch maps to not found.
 - CLI command tests verify:
   - `agent-harness run <harness-id>` posts to the execution endpoint.
+  - `agent-harness run <harness-id> --follow` polls until a terminal execution status.
   - `agent-harness executions <harness-id>` lists executions scoped to a harness.
   - `agent-harness execution get <execution-id>` fetches a single execution.
 - `TestAgentHarnessExecutionStatusTransitions` — legal execution status transitions succeed and illegal transitions fail.
 - `TestAgentHarnessExecutionEventsSequencePerExecution` — events append in order with sequence numbers scoped to one execution.
+- Workflow activity tests verify Codex execution records sandbox, command, diff, and changed-file events without requiring user-supplied E2B secrets.
 
 ## Integration / Functional Tests
 
@@ -32,22 +35,26 @@
   - `GET /v1/workspaces/{workspaceID}/agent-harness-executions/{executionID}`
 - Repository tests cover create/list/get behavior for the new execution table if the project has a suitable database test harness.
 - Repository tests cover transition history and event append/read behavior if the project has a suitable database test harness.
+- API Temporal starter tests verify execution starts the correct workflow name, ID, and task queue.
+- Web tests verify harness creation no longer asks for an E2B secret.
 
 ## Smoke Tests
 
-- `cd backend && go test ./internal/api ./internal/repository`
-- `cd cli && go test ./cmd`
+- `cd backend && go test ./...`
+- `cd cli && go test ./...`
+- `cd web && npm test -- agent-harnesses`
+- `cd web && npx tsc --noEmit`
 
 ## E2E Tests
 
-N/A — this PR creates the execution control plane. Full hosted Codex/E2B execution, replay, artifacts, scoring, and web run UX remain follow-up slices from issue #462.
+N/A — live hosted E2B execution requires deployed worker credentials. The worker path is covered with fake sandbox tests in this PR.
 
 ## Manual / cURL Tests
 
 ```bash
 export AGENTCLASH_API_URL="https://api.agentclash.dev"
 cd cli
-go run . agent-harness run <harness-id> --workspace <workspace-id>
+go run . agent-harness run <harness-id> --workspace <workspace-id> --follow
 go run . agent-harness executions <harness-id> --workspace <workspace-id>
 go run . agent-harness execution get <execution-id> --workspace <workspace-id>
 ```

@@ -11,33 +11,36 @@ import (
 	"github.com/agentclash/agentclash/backend/internal/engine"
 	"github.com/agentclash/agentclash/backend/internal/provider"
 	"github.com/agentclash/agentclash/backend/internal/repository"
+	"github.com/agentclash/agentclash/backend/internal/sandbox"
 	"github.com/agentclash/agentclash/backend/internal/scoring"
 	"github.com/google/uuid"
 	"go.temporal.io/sdk/temporal"
 )
 
 const (
-	loadEvalSessionActivityName              = "workflow.load_eval_session"
-	listEvalSessionRunsActivityName          = "workflow.list_eval_session_runs"
-	transitionEvalSessionStatusActivityName  = "workflow.transition_eval_session_status"
-	aggregateEvalSessionActivityName         = "workflow.aggregate_eval_session"
-	loadRunActivityName                      = "workflow.load_run"
-	listRunAgentsActivityName                = "workflow.list_run_agents"
-	loadRunAgentActivityName                 = "workflow.load_run_agent"
-	loadRunAgentExecutionContextActivityName = "workflow.load_run_agent_execution_context"
-	attachTemporalIDsActivityName            = "workflow.attach_run_temporal_ids"
-	transitionRunStatusActivityName          = "workflow.transition_run_status"
-	transitionRunAgentStatusActivityName     = "workflow.transition_run_agent_status"
-	prepareLaneActivityName                  = "workflow.prepare_execution_lane"
-	startHostedRunActivityName               = "workflow.start_hosted_run"
-	markHostedRunTimedOutActivityName        = "workflow.mark_hosted_run_timed_out"
-	executeNativeModelStepActivityName       = "workflow.execute_native_model_step"
-	executePromptEvalStepActivityName        = "workflow.execute_prompt_eval_step"
-	scoreRunAgentActivityName                = "workflow.score_run_agent"
-	buildRunScorecardActivityName            = "workflow.build_run_scorecard"
-	buildRunAgentReplayActivityName          = "workflow.build_run_agent_replay"
-	simulateExecutionActivityName            = "workflow.simulate_execution"
-	simulateEvaluationActivityName           = "workflow.simulate_evaluation"
+	loadEvalSessionActivityName                       = "workflow.load_eval_session"
+	listEvalSessionRunsActivityName                   = "workflow.list_eval_session_runs"
+	transitionEvalSessionStatusActivityName           = "workflow.transition_eval_session_status"
+	aggregateEvalSessionActivityName                  = "workflow.aggregate_eval_session"
+	loadRunActivityName                               = "workflow.load_run"
+	listRunAgentsActivityName                         = "workflow.list_run_agents"
+	loadRunAgentActivityName                          = "workflow.load_run_agent"
+	loadRunAgentExecutionContextActivityName          = "workflow.load_run_agent_execution_context"
+	attachTemporalIDsActivityName                     = "workflow.attach_run_temporal_ids"
+	transitionRunStatusActivityName                   = "workflow.transition_run_status"
+	transitionRunAgentStatusActivityName              = "workflow.transition_run_agent_status"
+	prepareLaneActivityName                           = "workflow.prepare_execution_lane"
+	startHostedRunActivityName                        = "workflow.start_hosted_run"
+	markHostedRunTimedOutActivityName                 = "workflow.mark_hosted_run_timed_out"
+	executeNativeModelStepActivityName                = "workflow.execute_native_model_step"
+	executePromptEvalStepActivityName                 = "workflow.execute_prompt_eval_step"
+	scoreRunAgentActivityName                         = "workflow.score_run_agent"
+	buildRunScorecardActivityName                     = "workflow.build_run_scorecard"
+	buildRunAgentReplayActivityName                   = "workflow.build_run_agent_replay"
+	simulateExecutionActivityName                     = "workflow.simulate_execution"
+	simulateEvaluationActivityName                    = "workflow.simulate_evaluation"
+	transitionAgentHarnessExecutionStatusActivityName = "workflow.transition_agent_harness_execution_status"
+	executeAgentHarnessExecutionActivityName          = "workflow.execute_agent_harness_execution"
 )
 
 const (
@@ -72,10 +75,12 @@ type PromptEvalInvoker interface {
 }
 
 type Activities struct {
-	repo            RunRepository
-	evalSessionRepo EvalSessionRepository
-	hooks           FakeWorkHooks
-	judgeClient     provider.Client
+	repo             RunRepository
+	evalSessionRepo  EvalSessionRepository
+	agentHarnessRepo AgentHarnessExecutionRepository
+	hooks            FakeWorkHooks
+	judgeClient      provider.Client
+	sandboxProvider  sandbox.Provider
 }
 
 type LoadEvalSessionInput struct {
@@ -166,12 +171,27 @@ func NewActivities(repo RunRepository, hooks FakeWorkHooks, judgeClients ...prov
 	if candidate, ok := repo.(EvalSessionRepository); ok {
 		evalSessionRepo = candidate
 	}
-	return &Activities{
-		repo:            repo,
-		evalSessionRepo: evalSessionRepo,
-		hooks:           hooks,
-		judgeClient:     judgeClient,
+	var agentHarnessRepo AgentHarnessExecutionRepository
+	if candidate, ok := repo.(AgentHarnessExecutionRepository); ok {
+		agentHarnessRepo = candidate
 	}
+	return &Activities{
+		repo:             repo,
+		evalSessionRepo:  evalSessionRepo,
+		agentHarnessRepo: agentHarnessRepo,
+		hooks:            hooks,
+		judgeClient:      judgeClient,
+		sandboxProvider:  sandbox.UnconfiguredProvider{},
+	}
+}
+
+func (a *Activities) WithSandboxProvider(provider sandbox.Provider) *Activities {
+	if provider == nil {
+		a.sandboxProvider = sandbox.UnconfiguredProvider{}
+		return a
+	}
+	a.sandboxProvider = provider
+	return a
 }
 
 func (a *Activities) LoadEvalSession(ctx context.Context, input LoadEvalSessionInput) (domain.EvalSession, error) {

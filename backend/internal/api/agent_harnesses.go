@@ -43,13 +43,28 @@ type AgentHarnessService interface {
 	ListAgentHarnessExecutionEvents(ctx context.Context, caller Caller, workspaceID uuid.UUID, executionID uuid.UUID) ([]repository.AgentHarnessExecutionEvent, error)
 }
 
-type AgentHarnessManager struct {
-	authorizer WorkspaceAuthorizer
-	repo       AgentHarnessRepository
+type AgentHarnessExecutionWorkflowStarter interface {
+	StartAgentHarnessExecutionWorkflow(ctx context.Context, executionID uuid.UUID) error
 }
 
-func NewAgentHarnessManager(authorizer WorkspaceAuthorizer, repo AgentHarnessRepository) *AgentHarnessManager {
-	return &AgentHarnessManager{authorizer: authorizer, repo: repo}
+type noopAgentHarnessExecutionWorkflowStarter struct{}
+
+func (noopAgentHarnessExecutionWorkflowStarter) StartAgentHarnessExecutionWorkflow(context.Context, uuid.UUID) error {
+	return nil
+}
+
+type AgentHarnessManager struct {
+	authorizer      WorkspaceAuthorizer
+	repo            AgentHarnessRepository
+	workflowStarter AgentHarnessExecutionWorkflowStarter
+}
+
+func NewAgentHarnessManager(authorizer WorkspaceAuthorizer, repo AgentHarnessRepository, starters ...AgentHarnessExecutionWorkflowStarter) *AgentHarnessManager {
+	starter := AgentHarnessExecutionWorkflowStarter(noopAgentHarnessExecutionWorkflowStarter{})
+	if len(starters) > 0 && starters[0] != nil {
+		starter = starters[0]
+	}
+	return &AgentHarnessManager{authorizer: authorizer, repo: repo, workflowStarter: starter}
 }
 
 type CreateAgentHarnessInput struct {
@@ -60,7 +75,6 @@ type CreateAgentHarnessInput struct {
 	CodexModel             string          `json:"codex_model"`
 	AuthMode               string          `json:"auth_mode"`
 	OpenAIAPIKeySecretName string          `json:"openai_api_key_secret_name"`
-	E2BAPIKeySecretName    string          `json:"e2b_api_key_secret_name"`
 	RepositoryURL          string          `json:"repository_url"`
 	BaseBranch             string          `json:"base_branch"`
 	ExecutionConfig        json.RawMessage `json:"execution_config"`
@@ -106,7 +120,6 @@ func (m *AgentHarnessManager) CreateAgentHarness(ctx context.Context, caller Cal
 		CodexModel:             optionalHarnessString(input.CodexModel),
 		AuthMode:               strings.TrimSpace(input.AuthMode),
 		OpenAIAPIKeySecretName: optionalHarnessString(input.OpenAIAPIKeySecretName),
-		E2BAPIKeySecretName:    optionalHarnessString(input.E2BAPIKeySecretName),
 		RepositoryURL:          optionalHarnessString(input.RepositoryURL),
 		BaseBranch:             optionalHarnessString(input.BaseBranch),
 		ExecutionConfig:        defaultJSON(input.ExecutionConfig),
@@ -150,7 +163,7 @@ func (m *AgentHarnessManager) StartAgentHarnessExecution(ctx context.Context, ca
 	if err != nil {
 		return repository.AgentHarnessExecution{}, err
 	}
-	return m.repo.CreateAgentHarnessExecution(ctx, repository.CreateAgentHarnessExecutionParams{
+	execution, err := m.repo.CreateAgentHarnessExecution(ctx, repository.CreateAgentHarnessExecutionParams{
 		OrganizationID:           harness.OrganizationID,
 		WorkspaceID:              workspaceID,
 		AgentHarnessID:           harness.ID,
@@ -159,6 +172,13 @@ func (m *AgentHarnessManager) StartAgentHarnessExecution(ctx context.Context, ca
 		ExecutionConfigSnapshot:  defaultJSON(harness.ExecutionConfig),
 		EvaluationConfigSnapshot: defaultJSON(harness.EvaluationConfig),
 	})
+	if err != nil {
+		return repository.AgentHarnessExecution{}, err
+	}
+	if err := m.workflowStarter.StartAgentHarnessExecutionWorkflow(ctx, execution.ID); err != nil {
+		return repository.AgentHarnessExecution{}, err
+	}
+	return execution, nil
 }
 
 func (m *AgentHarnessManager) GetAgentHarnessExecution(ctx context.Context, caller Caller, workspaceID uuid.UUID, executionID uuid.UUID) (repository.AgentHarnessExecution, error) {
@@ -252,7 +272,6 @@ type agentHarnessResponse struct {
 	CodexModel             *string         `json:"codex_model,omitempty"`
 	AuthMode               string          `json:"auth_mode"`
 	OpenAIAPIKeySecretName *string         `json:"openai_api_key_secret_name,omitempty"`
-	E2BAPIKeySecretName    *string         `json:"e2b_api_key_secret_name,omitempty"`
 	RepositoryURL          *string         `json:"repository_url,omitempty"`
 	BaseBranch             *string         `json:"base_branch,omitempty"`
 	ExecutionConfig        json.RawMessage `json:"execution_config"`
@@ -485,7 +504,6 @@ func mapAgentHarnessResponse(h repository.AgentHarness) agentHarnessResponse {
 		CodexModel:             h.CodexModel,
 		AuthMode:               h.AuthMode,
 		OpenAIAPIKeySecretName: h.OpenAIAPIKeySecretName,
-		E2BAPIKeySecretName:    h.E2BAPIKeySecretName,
 		RepositoryURL:          h.RepositoryURL,
 		BaseBranch:             h.BaseBranch,
 		ExecutionConfig:        h.ExecutionConfig,

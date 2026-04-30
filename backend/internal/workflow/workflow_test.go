@@ -1112,6 +1112,10 @@ type fakeRunRepository struct {
 	evaluations             map[uuid.UUID]scoring.RunAgentEvaluation
 	runScorecards           map[uuid.UUID]repository.RunScorecard
 	evalSessionAggregates   map[uuid.UUID]repository.EvalSessionAggregateRecord
+	agentHarnesses          map[uuid.UUID]repository.AgentHarness
+	agentHarnessExecutions  map[uuid.UUID]repository.AgentHarnessExecution
+	agentHarnessEvents      map[uuid.UUID][]repository.AgentHarnessExecutionEvent
+	workspaceSecrets        map[uuid.UUID]map[string]string
 	runAgentStatusErrs      map[string]error
 	buildReplayErr          error
 	aggregateEvalSessionErr error
@@ -1131,19 +1135,23 @@ func newFakeRunRepository(run domain.Run, runAgents ...domain.RunAgent) *fakeRun
 	}
 
 	return &fakeRunRepository{
-		run:                   cloneRun(run),
-		evalSessions:          make(map[uuid.UUID]domain.EvalSession),
-		evalSessionRuns:       make(map[uuid.UUID][]domain.Run),
-		runAgents:             runAgentMap,
-		executionContexts:     make(map[uuid.UUID]repository.RunAgentExecutionContext),
-		evaluationSpecs:       make(map[string]repository.EvaluationSpecRecord),
-		hostedExecutions:      make(map[uuid.UUID]repository.HostedRunExecution),
-		replays:               make(map[uuid.UUID]repository.RunAgentReplay),
-		runEvents:             make(map[uuid.UUID][]repository.RunEvent),
-		evaluations:           make(map[uuid.UUID]scoring.RunAgentEvaluation),
-		runScorecards:         make(map[uuid.UUID]repository.RunScorecard),
-		evalSessionAggregates: make(map[uuid.UUID]repository.EvalSessionAggregateRecord),
-		runAgentStatusErrs:    make(map[string]error),
+		run:                    cloneRun(run),
+		evalSessions:           make(map[uuid.UUID]domain.EvalSession),
+		evalSessionRuns:        make(map[uuid.UUID][]domain.Run),
+		runAgents:              runAgentMap,
+		executionContexts:      make(map[uuid.UUID]repository.RunAgentExecutionContext),
+		evaluationSpecs:        make(map[string]repository.EvaluationSpecRecord),
+		hostedExecutions:       make(map[uuid.UUID]repository.HostedRunExecution),
+		replays:                make(map[uuid.UUID]repository.RunAgentReplay),
+		runEvents:              make(map[uuid.UUID][]repository.RunEvent),
+		evaluations:            make(map[uuid.UUID]scoring.RunAgentEvaluation),
+		runScorecards:          make(map[uuid.UUID]repository.RunScorecard),
+		evalSessionAggregates:  make(map[uuid.UUID]repository.EvalSessionAggregateRecord),
+		agentHarnesses:         make(map[uuid.UUID]repository.AgentHarness),
+		agentHarnessExecutions: make(map[uuid.UUID]repository.AgentHarnessExecution),
+		agentHarnessEvents:     make(map[uuid.UUID][]repository.AgentHarnessExecutionEvent),
+		workspaceSecrets:       make(map[uuid.UUID]map[string]string),
+		runAgentStatusErrs:     make(map[string]error),
 	}
 }
 
@@ -1321,8 +1329,16 @@ func (r *fakeRunRepository) GetRunAgentExecutionContextByID(_ context.Context, i
 	return executionContext, nil
 }
 
-func (r *fakeRunRepository) LoadWorkspaceSecrets(_ context.Context, _ uuid.UUID) (map[string]string, error) {
-	return map[string]string{}, nil
+func (r *fakeRunRepository) LoadWorkspaceSecrets(_ context.Context, workspaceID uuid.UUID) (map[string]string, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	secrets := r.workspaceSecrets[workspaceID]
+	cloned := make(map[string]string, len(secrets))
+	for key, value := range secrets {
+		cloned[key] = value
+	}
+	return cloned, nil
 }
 
 func (r *fakeRunRepository) BuildRunAgentReplay(_ context.Context, runAgentID uuid.UUID) (repository.RunAgentReplay, error) {
@@ -1457,6 +1473,85 @@ func (r *fakeRunRepository) setExecutionContext(runAgentID uuid.UUID, executionC
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.executionContexts[runAgentID] = executionContext
+}
+
+func (r *fakeRunRepository) setAgentHarness(harness repository.AgentHarness) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.agentHarnesses[harness.ID] = harness
+}
+
+func (r *fakeRunRepository) setAgentHarnessExecution(execution repository.AgentHarnessExecution) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.agentHarnessExecutions[execution.ID] = execution
+}
+
+func (r *fakeRunRepository) setWorkspaceSecrets(workspaceID uuid.UUID, secrets map[string]string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.workspaceSecrets[workspaceID] = secrets
+}
+
+func (r *fakeRunRepository) GetAgentHarnessByID(_ context.Context, id uuid.UUID) (repository.AgentHarness, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	harness, ok := r.agentHarnesses[id]
+	if !ok {
+		return repository.AgentHarness{}, repository.ErrAgentHarnessNotFound
+	}
+	return harness, nil
+}
+
+func (r *fakeRunRepository) GetAgentHarnessExecutionByID(_ context.Context, id uuid.UUID) (repository.AgentHarnessExecution, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	execution, ok := r.agentHarnessExecutions[id]
+	if !ok {
+		return repository.AgentHarnessExecution{}, repository.ErrAgentHarnessExecutionNotFound
+	}
+	return execution, nil
+}
+
+func (r *fakeRunRepository) TransitionAgentHarnessExecutionStatus(_ context.Context, params repository.TransitionAgentHarnessExecutionStatusParams) (repository.AgentHarnessExecution, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	execution, ok := r.agentHarnessExecutions[params.ExecutionID]
+	if !ok {
+		return repository.AgentHarnessExecution{}, repository.ErrAgentHarnessExecutionNotFound
+	}
+	current, err := repository.ParseAgentHarnessExecutionStatus(execution.Status)
+	if err != nil {
+		return repository.AgentHarnessExecution{}, err
+	}
+	if !current.CanTransitionTo(params.ToStatus) {
+		return repository.AgentHarnessExecution{}, repository.InvalidTransitionError{
+			Entity: "agent_harness_execution",
+			From:   string(current),
+			To:     string(params.ToStatus),
+		}
+	}
+	execution.Status = string(params.ToStatus)
+	r.agentHarnessExecutions[params.ExecutionID] = execution
+	return execution, nil
+}
+
+func (r *fakeRunRepository) RecordAgentHarnessExecutionEvent(_ context.Context, params repository.RecordAgentHarnessExecutionEventParams) (repository.AgentHarnessExecutionEvent, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	sequenceNumber := int64(len(r.agentHarnessEvents[params.ExecutionID]) + 1)
+	event := repository.AgentHarnessExecutionEvent{
+		ID:                      sequenceNumber,
+		AgentHarnessExecutionID: params.ExecutionID,
+		SequenceNumber:          sequenceNumber,
+		EventType:               params.EventType,
+		ActorType:               params.ActorType,
+		OccurredAt:              params.OccurredAt,
+		ArtifactID:              params.ArtifactID,
+		Payload:                 append([]byte(nil), params.Payload...),
+	}
+	r.agentHarnessEvents[params.ExecutionID] = append(r.agentHarnessEvents[params.ExecutionID], event)
+	return event, nil
 }
 
 func evaluationSpecKey(challengePackVersionID uuid.UUID, name string, versionNumber int32) string {
