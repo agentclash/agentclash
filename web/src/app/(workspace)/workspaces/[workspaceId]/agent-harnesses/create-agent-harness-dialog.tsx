@@ -1,11 +1,16 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
 import { createApiClient } from "@/lib/api/client";
 import { ApiError } from "@/lib/api/errors";
-import type { AgentHarness, CreateAgentHarnessRequest } from "@/lib/api/types";
-import { useApiMutator } from "@/lib/api/swr";
+import type {
+  AgentHarness,
+  CreateAgentHarnessRequest,
+  WorkspaceSecret,
+} from "@/lib/api/types";
+import { useApiListQuery, useApiMutator } from "@/lib/api/swr";
 import { workspaceResourceKeys } from "@/lib/workspace-resource";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,24 +23,24 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { JsonField } from "@/components/ui/json-field";
 import { toast } from "sonner";
-import { Loader2, Plus } from "lucide-react";
+import { GitBranch, Github, Loader2, Plus } from "lucide-react";
 
-const defaultEvaluationConfig = `{
-  "validators": [
+const defaultEvaluationConfig = {
+  validators: [
     {
-      "type": "command",
-      "command": "go test ./..."
-    }
+      type: "command",
+      command: "go test ./...",
+    },
   ],
-  "llm_judges": [
+  llm_judges: [
     {
-      "key": "autonomy",
-      "rubric": "Did the coding agent complete the task with coherent, tested changes?"
-    }
-  ]
-}`;
+      key: "autonomy",
+      rubric:
+        "Did the coding agent complete the task with coherent, tested changes?",
+    },
+  ],
+};
 
 export function CreateAgentHarnessDialog({
   workspaceId,
@@ -44,41 +49,33 @@ export function CreateAgentHarnessDialog({
 }) {
   const { getAccessToken } = useAccessToken();
   const { mutate } = useApiMutator();
+  const { data: secretsData, isLoading: secretsLoading } =
+    useApiListQuery<WorkspaceSecret>(
+      `/v1/workspaces/${workspaceId}/secrets`,
+    );
   const [open, setOpen] = useState(false);
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
   const [taskPrompt, setTaskPrompt] = useState("");
-  const [openAISecret, setOpenAISecret] = useState("");
   const [repositoryURL, setRepositoryURL] = useState("");
   const [baseBranch, setBaseBranch] = useState("main");
-  const [codexTemplate, setCodexTemplate] = useState("codex");
-  const [codexModel, setCodexModel] = useState("");
-  const [evaluationConfig, setEvaluationConfig] = useState(
-    defaultEvaluationConfig,
-  );
-  const [jsonError, setJsonError] = useState<string | undefined>();
   const [submitting, setSubmitting] = useState(false);
 
   async function handleCreate() {
-    const parsedEvaluationConfig = parseEvaluationConfig();
-    if (parsedEvaluationConfig === undefined) return;
-    if (!name.trim() || !taskPrompt.trim()) return;
-    if (!openAISecret.trim()) {
-      toast.error("OpenAI secret is required for API-key auth");
+    const openAISecret = inferOpenAISecret(secretsData?.items ?? []);
+    if (!repositoryURL.trim() || !taskPrompt.trim()) return;
+    if (!openAISecret) {
+      toast.error("Add OPENAI_API_KEY under workspace Secrets first");
       return;
     }
 
     const payload: CreateAgentHarnessRequest = {
-      name: name.trim(),
-      description: description.trim() || undefined,
+      name: buildHarnessName(repositoryURL, taskPrompt),
       task_prompt: taskPrompt.trim(),
-      codex_template: codexTemplate.trim() || "codex",
-      codex_model: codexModel.trim() || undefined,
+      codex_template: "codex",
       auth_mode: "api_key_secret",
-      openai_api_key_secret_name: openAISecret.trim() || undefined,
+      openai_api_key_secret_name: openAISecret,
       repository_url: repositoryURL.trim() || undefined,
       base_branch: baseBranch.trim() || undefined,
-      evaluation_config: parsedEvaluationConfig,
+      evaluation_config: defaultEvaluationConfig,
     };
 
     setSubmitting(true);
@@ -89,7 +86,7 @@ export function CreateAgentHarnessDialog({
         `/v1/workspaces/${workspaceId}/agent-harnesses`,
         payload,
       );
-      toast.success(`Created "${name.trim()}"`);
+      toast.success(`Created "${payload.name}"`);
       setOpen(false);
       resetForm();
       await mutate(workspaceResourceKeys.agentHarnesses(workspaceId));
@@ -102,38 +99,18 @@ export function CreateAgentHarnessDialog({
     }
   }
 
-  function parseEvaluationConfig(): unknown | undefined {
-    if (!evaluationConfig.trim()) {
-      setJsonError(undefined);
-      return {};
-    }
-    try {
-      const parsed = JSON.parse(evaluationConfig);
-      setJsonError(undefined);
-      return parsed;
-    } catch {
-      setJsonError("Evaluation config must be valid JSON.");
-      return undefined;
-    }
-  }
-
   function resetForm() {
-    setName("");
-    setDescription("");
     setTaskPrompt("");
-    setOpenAISecret("");
     setRepositoryURL("");
     setBaseBranch("main");
-    setCodexTemplate("codex");
-    setCodexModel("");
-    setEvaluationConfig(defaultEvaluationConfig);
-    setJsonError(undefined);
   }
 
+  const openAISecret = inferOpenAISecret(secretsData?.items ?? []);
   const canSubmit =
-    name.trim() &&
+    repositoryURL.trim() &&
     taskPrompt.trim() &&
-    openAISecret.trim();
+    openAISecret &&
+    !secretsLoading;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -145,68 +122,27 @@ export function CreateAgentHarnessDialog({
         <DialogHeader>
           <DialogTitle>New Agent Harness</DialogTitle>
           <DialogDescription>
-            Define a Codex-on-E2B coding task and its evaluation hooks.
+            Point Codex at a repo and describe the work.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="max-h-[68vh] space-y-4 overflow-y-auto py-2">
+        <div className="space-y-4 py-2">
           <div className="grid gap-4 md:grid-cols-2">
             <div>
-              <label className="mb-1.5 block text-sm font-medium">Name</label>
-              <Input
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                placeholder="Codex repo autonomy check"
-                autoFocus
-              />
-            </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium">
-                OpenAI Secret
-              </label>
-              <Input
-                value={openAISecret}
-                onChange={(event) => setOpenAISecret(event.target.value)}
-                placeholder="OPENAI_API_KEY"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="mb-1.5 block text-sm font-medium">
-              Description
-            </label>
-            <Input
-              value={description}
-              onChange={(event) => setDescription(event.target.value)}
-              placeholder="Long-running task harness for repository changes"
-            />
-          </div>
-
-          <div>
-            <label className="mb-1.5 block text-sm font-medium">Task</label>
-            <textarea
-              value={taskPrompt}
-              onChange={(event) => setTaskPrompt(event.target.value)}
-              spellCheck={false}
-              className="min-h-28 w-full resize-y rounded-lg border border-input bg-transparent px-3 py-2 text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-ring/50"
-              placeholder="Clone the repository, implement the requested change, run tests, and summarize the diff."
-            />
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-2">
-            <div>
-              <label className="mb-1.5 block text-sm font-medium">
+              <label className="mb-1.5 flex items-center gap-2 text-sm font-medium">
+                <Github className="size-4 text-muted-foreground" />
                 Repository URL
               </label>
               <Input
                 value={repositoryURL}
                 onChange={(event) => setRepositoryURL(event.target.value)}
                 placeholder="https://github.com/org/repo"
+                autoFocus
               />
             </div>
             <div>
-              <label className="mb-1.5 block text-sm font-medium">
+              <label className="mb-1.5 flex items-center gap-2 text-sm font-medium">
+                <GitBranch className="size-4 text-muted-foreground" />
                 Base Branch
               </label>
               <Input
@@ -217,37 +153,29 @@ export function CreateAgentHarnessDialog({
             </div>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2">
-            <div>
-              <label className="mb-1.5 block text-sm font-medium">
-                E2B Template
-              </label>
-              <Input
-                value={codexTemplate}
-                onChange={(event) => setCodexTemplate(event.target.value)}
-                placeholder="codex"
-              />
-            </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium">
-                Codex Model
-              </label>
-              <Input
-                value={codexModel}
-                onChange={(event) => setCodexModel(event.target.value)}
-                placeholder="Use Codex default"
-              />
-            </div>
+          <div>
+            <label className="mb-1.5 block text-sm font-medium">Task</label>
+            <textarea
+              value={taskPrompt}
+              onChange={(event) => setTaskPrompt(event.target.value)}
+              spellCheck={false}
+              className="min-h-36 w-full resize-y rounded-lg border border-input bg-transparent px-3 py-2 text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-ring/50"
+              placeholder="Implement the requested change, run the relevant tests, and summarize the diff."
+            />
           </div>
 
-          <JsonField
-            label="Evaluation Config"
-            value={evaluationConfig}
-            onChange={setEvaluationConfig}
-            error={jsonError}
-            rows={8}
-            description="Validators and LLM judges stored with the harness."
-          />
+          {!secretsLoading && !openAISecret ? (
+            <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-200">
+              Add an <code className="font-[family-name:var(--font-mono)]">OPENAI_API_KEY</code>{" "}
+              workspace secret before creating a Codex harness.{" "}
+              <Link
+                href={`/workspaces/${workspaceId}/secrets`}
+                className="font-medium underline underline-offset-4"
+              >
+                Open Secrets
+              </Link>
+            </div>
+          ) : null}
         </div>
 
         <DialogFooter>
@@ -263,4 +191,27 @@ export function CreateAgentHarnessDialog({
       </DialogContent>
     </Dialog>
   );
+}
+
+function inferOpenAISecret(secrets: WorkspaceSecret[]): string | undefined {
+  const exact = secrets.find((secret) => secret.key === "OPENAI_API_KEY");
+  if (exact) return exact.key;
+  return secrets.find((secret) => {
+    const key = secret.key.toUpperCase();
+    return key.includes("OPENAI") && key.includes("KEY");
+  })?.key;
+}
+
+function buildHarnessName(repositoryURL: string, taskPrompt: string): string {
+  const repoName = repositoryURL
+    .trim()
+    .replace(/\.git$/i, "")
+    .split("/")
+    .filter(Boolean)
+    .slice(-2)
+    .join("/");
+  if (repoName) {
+    return `${repoName} Codex`;
+  }
+  return `${taskPrompt.trim().split(/\s+/).slice(0, 4).join(" ")} Codex`;
 }

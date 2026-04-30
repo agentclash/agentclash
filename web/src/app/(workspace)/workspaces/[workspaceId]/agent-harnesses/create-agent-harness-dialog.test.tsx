@@ -4,11 +4,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CreateAgentHarnessDialog } from "./create-agent-harness-dialog";
 
-const { mockGetAccessToken, mockCreateApiClient, mockMutate, toast } =
+const { mockGetAccessToken, mockCreateApiClient, mockMutate, mockSecrets, toast } =
   vi.hoisted(() => ({
     mockGetAccessToken: vi.fn(),
     mockCreateApiClient: vi.fn(),
     mockMutate: vi.fn(),
+    mockSecrets: vi.fn(),
     toast: Object.assign(vi.fn(), {
       success: vi.fn(),
       error: vi.fn(),
@@ -27,6 +28,11 @@ vi.mock("@/lib/api/swr", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api/swr")>();
   return {
     ...actual,
+    useApiListQuery: () => ({
+      data: { items: mockSecrets() },
+      isLoading: false,
+      error: null,
+    }),
     useApiMutator: () => ({ mutate: mockMutate }),
   };
 });
@@ -46,32 +52,6 @@ vi.mock("@/components/ui/button", () => ({
 vi.mock("@/components/ui/input", () => ({
   Input: (props: React.InputHTMLAttributes<HTMLInputElement>) =>
     React.createElement("input", props),
-}));
-
-vi.mock("@/components/ui/json-field", () => ({
-  JsonField: ({
-    label,
-    value,
-    onChange,
-    error,
-  }: {
-    label: string;
-    value: string;
-    onChange: (value: string) => void;
-    error?: string;
-  }) =>
-    React.createElement(
-      "label",
-      null,
-      label,
-      React.createElement("textarea", {
-        "aria-label": label,
-        value,
-        onChange: (event: React.ChangeEvent<HTMLTextAreaElement>) =>
-          onChange(event.target.value),
-      }),
-      error ? React.createElement("span", null, error) : null,
-    ),
 }));
 
 vi.mock("@/components/ui/dialog", async () => {
@@ -130,6 +110,8 @@ vi.mock("@/components/ui/dialog", async () => {
 });
 
 vi.mock("lucide-react", () => ({
+  GitBranch: () => React.createElement("span", null, "branch"),
+  Github: () => React.createElement("span", null, "github"),
   Loader2: () => React.createElement("span", null, "loader"),
   Plus: () => React.createElement("span", null, "plus"),
 }));
@@ -205,16 +187,23 @@ describe("CreateAgentHarnessDialog", () => {
     document.body.innerHTML = "";
     vi.clearAllMocks();
     mockGetAccessToken.mockResolvedValue("token");
+    mockSecrets.mockReturnValue([
+      {
+        key: "OPENAI_API_KEY",
+        created_at: "2026-05-01T00:00:00Z",
+        updated_at: "2026-05-01T00:00:00Z",
+      },
+    ]);
   });
 
-  it("posts Codex/E2B harness payload with API-key secret auth", async () => {
+  it("posts Codex/E2B harness payload using the inferred OpenAI secret", async () => {
     const post = vi.fn().mockResolvedValue({ id: "harness-1" });
     mockCreateApiClient.mockReturnValue({ post });
     const rendered = renderDialog();
 
     clickButton("New Harness");
-    changeInput(0, "Codex long runner");
-    changeInput(1, "OPENAI_API_KEY");
+    changeInput(0, "https://github.com/acme/agent-app");
+    changeInput(1, "main");
     changeTextarea(0, "Implement the requested feature and run tests.");
     clickButton("Create Harness");
     await flushPromises();
@@ -222,7 +211,7 @@ describe("CreateAgentHarnessDialog", () => {
     expect(post).toHaveBeenCalledWith(
       "/v1/workspaces/ws-1/agent-harnesses",
       expect.objectContaining({
-        name: "Codex long runner",
+        name: "acme/agent-app Codex",
         task_prompt: "Implement the requested feature and run tests.",
         codex_template: "codex",
         auth_mode: "api_key_secret",
@@ -237,13 +226,14 @@ describe("CreateAgentHarnessDialog", () => {
     rendered.cleanup();
   });
 
-  it("blocks API-key auth without an OpenAI secret", async () => {
+  it("disables creation when no OpenAI secret is available", async () => {
+    mockSecrets.mockReturnValue([]);
     const post = vi.fn();
     mockCreateApiClient.mockReturnValue({ post });
     const rendered = renderDialog();
 
     clickButton("New Harness");
-    changeInput(0, "Codex long runner");
+    changeInput(0, "https://github.com/acme/agent-app");
     changeTextarea(0, "Implement the requested feature.");
     const submit = findButton("Create Harness");
     await flushPromises();
