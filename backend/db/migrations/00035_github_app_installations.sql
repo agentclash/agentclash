@@ -11,6 +11,7 @@ CREATE TABLE organization_github_installations (
     status text NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'suspended', 'deleted')),
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (id, organization_id),
     UNIQUE (organization_id, github_installation_id)
 );
 
@@ -30,6 +31,7 @@ CREATE TABLE workspace_github_installation_bindings (
     created_by_user_id uuid REFERENCES users (id) ON DELETE SET NULL,
     created_at timestamptz NOT NULL DEFAULT now(),
     UNIQUE (workspace_id, organization_github_installation_id),
+    FOREIGN KEY (organization_github_installation_id, organization_id) REFERENCES organization_github_installations (id, organization_id) ON DELETE CASCADE,
     FOREIGN KEY (workspace_id, organization_id) REFERENCES workspaces (id, organization_id) ON DELETE CASCADE
 );
 

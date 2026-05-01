@@ -76,6 +76,20 @@ func TestGitHubIntegrationManagerListsWorkspaceRepositories(t *testing.T) {
 	}
 }
 
+func TestGitHubIntegrationManagerListRepositoriesRequiresRunPermission(t *testing.T) {
+	workspaceID := uuid.New()
+	repo := &fakeGitHubIntegrationRepo{organizationID: uuid.New()}
+	manager := NewGitHubIntegrationManager(NewCallerWorkspaceAuthorizer(), repo, GitHubIntegrationConfig{
+		AppSlug:     "agentclash-dev",
+		StateSecret: "state-secret",
+	})
+
+	_, err := manager.ListGitHubRepositories(context.Background(), testAgentHarnessCallerWithRole(workspaceID, RoleWorkspaceViewer), workspaceID, "")
+	if err == nil {
+		t.Fatal("expected viewer to be forbidden from listing GitHub repositories")
+	}
+}
+
 type fakeGitHubIntegrationRepo struct {
 	organizationID         uuid.UUID
 	installations          []repository.GitHubInstallation

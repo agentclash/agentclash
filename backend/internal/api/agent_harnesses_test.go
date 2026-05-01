@@ -121,6 +121,24 @@ func TestAgentHarnessManagerCreatePersistsHarnessDefaults(t *testing.T) {
 	}
 }
 
+func TestAgentHarnessManagerCreateRequiresRunPermission(t *testing.T) {
+	workspaceID := uuid.New()
+	manager := NewAgentHarnessManager(NewCallerWorkspaceAuthorizer(), &fakeAgentHarnessRepo{
+		organizationID: uuid.New(),
+	})
+
+	_, err := manager.CreateAgentHarness(context.Background(), testAgentHarnessCallerWithRole(workspaceID, RoleWorkspaceViewer), workspaceID, CreateAgentHarnessInput{
+		Name:                   "Viewer harness",
+		TaskPrompt:             "Do the task",
+		AuthMode:               AgentHarnessAuthModeAPIKeySecret,
+		OpenAIAPIKeySecretName: "OPENAI_API_KEY",
+		RepositoryURL:          "https://github.com/acme/repo",
+	})
+	if !errors.Is(err, ErrForbidden) {
+		t.Fatalf("error = %v, want ErrForbidden", err)
+	}
+}
+
 func TestAgentHarnessManagerCreateValidatesGitHubRepositoryBinding(t *testing.T) {
 	workspaceID := uuid.New()
 	repo := &fakeAgentHarnessRepo{
@@ -398,6 +416,21 @@ func TestAgentHarnessExecutionManagerStartChecksWorkspaceBeforeHarnessFetch(t *t
 	}
 }
 
+func TestAgentHarnessExecutionManagerStartRequiresRunPermission(t *testing.T) {
+	workspaceID := uuid.New()
+	harness := testAgentHarnessRecord(workspaceID, "Codex execution harness")
+	repo := &fakeAgentHarnessRepo{organizationID: harness.OrganizationID, harness: harness}
+	manager := NewAgentHarnessManager(NewCallerWorkspaceAuthorizer(), repo)
+
+	_, err := manager.StartAgentHarnessExecution(context.Background(), testAgentHarnessCallerWithRole(workspaceID, RoleWorkspaceViewer), workspaceID, harness.ID, StartAgentHarnessExecutionInput{})
+	if !errors.Is(err, ErrForbidden) {
+		t.Fatalf("error = %v, want ErrForbidden", err)
+	}
+	if repo.getByIDCalls != 0 {
+		t.Fatalf("GetAgentHarnessByID calls = %d, want 0", repo.getByIDCalls)
+	}
+}
+
 func TestAgentHarnessExecutionManagerGetReturnsNotFoundForWorkspaceMismatch(t *testing.T) {
 	workspaceID := uuid.New()
 	execution := testAgentHarnessExecutionRecord(uuid.New(), uuid.New())
@@ -486,10 +519,14 @@ func TestAgentHarnessExecutionRoutes(t *testing.T) {
 }
 
 func testAgentHarnessCaller(workspaceID uuid.UUID) Caller {
+	return testAgentHarnessCallerWithRole(workspaceID, RoleWorkspaceAdmin)
+}
+
+func testAgentHarnessCallerWithRole(workspaceID uuid.UUID, role string) Caller {
 	return Caller{
 		UserID: uuid.New(),
 		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
-			workspaceID: {WorkspaceID: workspaceID, Role: "workspace_admin"},
+			workspaceID: {WorkspaceID: workspaceID, Role: role},
 		},
 		OrganizationMemberships: map[uuid.UUID]OrganizationMembership{},
 	}

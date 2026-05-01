@@ -111,7 +111,7 @@ func (m *GitHubIntegrationManager) ListGitHubInstallations(ctx context.Context, 
 }
 
 func (m *GitHubIntegrationManager) ListGitHubRepositories(ctx context.Context, caller Caller, workspaceID uuid.UUID, query string) ([]repository.GitHubInstallationRepository, error) {
-	if err := AuthorizeWorkspaceAction(ctx, m.authorizer, caller, workspaceID, ActionReadWorkspace); err != nil {
+	if err := AuthorizeWorkspaceAction(ctx, m.authorizer, caller, workspaceID, ActionCreateRun); err != nil {
 		return nil, err
 	}
 	return m.repo.ListWorkspaceGitHubRepositories(ctx, repository.ListWorkspaceGitHubRepositoriesParams{

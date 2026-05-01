@@ -98,7 +98,7 @@ func (e AgentHarnessValidationError) Error() string {
 }
 
 func (m *AgentHarnessManager) CreateAgentHarness(ctx context.Context, caller Caller, workspaceID uuid.UUID, input CreateAgentHarnessInput) (repository.AgentHarness, error) {
-	if err := m.authorizer.AuthorizeWorkspace(ctx, caller, workspaceID); err != nil {
+	if err := AuthorizeWorkspaceAction(ctx, m.authorizer, caller, workspaceID, ActionCreateRun); err != nil {
 		return repository.AgentHarness{}, err
 	}
 	if err := validateAgentHarnessInput(input); err != nil {
@@ -188,7 +188,7 @@ func (m *AgentHarnessManager) ListAgentHarnesses(ctx context.Context, caller Cal
 }
 
 func (m *AgentHarnessManager) StartAgentHarnessExecution(ctx context.Context, caller Caller, workspaceID uuid.UUID, harnessID uuid.UUID, input StartAgentHarnessExecutionInput) (repository.AgentHarnessExecution, error) {
-	if err := m.authorizer.AuthorizeWorkspace(ctx, caller, workspaceID); err != nil {
+	if err := AuthorizeWorkspaceAction(ctx, m.authorizer, caller, workspaceID, ActionCreateRun); err != nil {
 		return repository.AgentHarnessExecution{}, err
 	}
 	harness, err := m.repo.GetAgentHarnessByID(ctx, harnessID)

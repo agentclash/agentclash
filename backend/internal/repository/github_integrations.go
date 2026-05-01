@@ -58,6 +58,7 @@ SELECT i.id, i.organization_id, i.github_installation_id, i.github_account_id,
 FROM organization_github_installations i
 JOIN workspace_github_installation_bindings b
     ON b.organization_github_installation_id = i.id
+    AND b.organization_id = i.organization_id
 WHERE b.workspace_id = $1
     AND i.status = 'active'
 ORDER BY i.github_account_login, i.github_installation_id`, workspaceID)
@@ -89,6 +90,7 @@ JOIN organization_github_installations install
     ON install.id = repo.organization_github_installation_id
 JOIN workspace_github_installation_bindings binding
     ON binding.organization_github_installation_id = install.id
+    AND binding.organization_id = install.organization_id
 WHERE binding.workspace_id = $1
     AND install.status = 'active'
     AND repo.status = 'active'
@@ -130,6 +132,7 @@ JOIN organization_github_installations install
     ON install.id = repo.organization_github_installation_id
 JOIN workspace_github_installation_bindings binding
     ON binding.organization_github_installation_id = install.id
+    AND binding.organization_id = install.organization_id
 WHERE binding.workspace_id = $1
     AND repo.github_repository_id = $2
     AND ($3::bigint IS NULL OR install.github_installation_id = $3)
