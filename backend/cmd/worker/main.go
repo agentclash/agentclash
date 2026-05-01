@@ -83,6 +83,18 @@ func main() {
 			RequestTimeout: cfg.Sandbox.E2B.RequestTimeout,
 		})
 	}
+	var githubClient workflowpkg.GitHubPullRequestClient
+	if cfg.GitHubAppID > 0 && cfg.GitHubAppPrivateKey != "" {
+		githubClient, err = workflowpkg.NewGitHubAppClient(workflowpkg.GitHubAppClientConfig{
+			AppID:         cfg.GitHubAppID,
+			PrivateKeyPEM: cfg.GitHubAppPrivateKey,
+			HTTPClient:    httpClient,
+		})
+		if err != nil {
+			logger.Error("failed to configure github app client", "error", err)
+			os.Exit(1)
+		}
+	}
 	nativeModelInvoker := workerapp.NewNativeModelInvokerWithObserverFactory(
 		providerRouter,
 		sandboxProvider,
@@ -92,7 +104,7 @@ func main() {
 		providerRouter,
 		workerapp.NewBufferedPromptEvalObserverFactory(eventRecorder),
 	).WithSecretsLookup(repo)
-	temporalWorker := workerapp.NewTemporalWorker(temporalClient, cfg, repo, providerRouter, sandboxProvider, workflowpkg.FakeWorkHooks{
+	temporalWorker := workerapp.NewTemporalWorker(temporalClient, cfg, repo, providerRouter, sandboxProvider, githubClient, workflowpkg.FakeWorkHooks{
 		HostedRunStarter:   hostedRunClient,
 		NativeModelInvoker: nativeModelInvoker,
 		PromptEvalInvoker:  promptEvalInvoker,

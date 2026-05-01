@@ -81,6 +81,7 @@ type Activities struct {
 	hooks            FakeWorkHooks
 	judgeClient      provider.Client
 	sandboxProvider  sandbox.Provider
+	githubClient     GitHubPullRequestClient
 }
 
 type LoadEvalSessionInput struct {
@@ -191,6 +192,11 @@ func (a *Activities) WithSandboxProvider(provider sandbox.Provider) *Activities 
 		return a
 	}
 	a.sandboxProvider = provider
+	return a
+}
+
+func (a *Activities) WithGitHubPullRequestClient(client GitHubPullRequestClient) *Activities {
+	a.githubClient = client
 	return a
 }
 

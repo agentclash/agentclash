@@ -197,16 +197,24 @@ func (a *Activities) ExecuteAgentHarnessExecution(ctx context.Context, input Exe
 
 	workdir := agentHarnessWorkspaceDir
 	hasRepository := harness.RepositoryURL != nil && strings.TrimSpace(*harness.RepositoryURL) != ""
+	gitEnv := env
+	var gitHubToken string
 	if hasRepository {
+		if isStructuredGitHubHarness(harness) {
+			gitEnv, gitHubToken, err = a.prepareGitHubGitAuth(ctx, execution.ID, session, harness, env)
+			if err != nil {
+				return err
+			}
+		}
 		clone := []string{"git", "clone", strings.TrimSpace(*harness.RepositoryURL), workdir}
-		if result, err := a.execHarnessCommand(ctx, execution.ID, session, "repository.clone", clone, "", timeout, env); err != nil {
+		if result, err := a.execHarnessCommand(ctx, execution.ID, session, "repository.clone", clone, "", timeout, gitEnv); err != nil {
 			return err
 		} else if result.ExitCode != 0 {
 			return fmt.Errorf("repository clone failed with exit code %d", result.ExitCode)
 		}
 		if harness.BaseBranch != nil && strings.TrimSpace(*harness.BaseBranch) != "" {
 			checkout := []string{"git", "checkout", strings.TrimSpace(*harness.BaseBranch)}
-			if result, err := a.execHarnessCommand(ctx, execution.ID, session, "repository.checkout", checkout, workdir, timeout, env); err != nil {
+			if result, err := a.execHarnessCommand(ctx, execution.ID, session, "repository.checkout", checkout, workdir, timeout, gitEnv); err != nil {
 				return err
 			} else if result.ExitCode != 0 {
 				return fmt.Errorf("repository checkout failed with exit code %d", result.ExitCode)
@@ -236,10 +244,17 @@ func (a *Activities) ExecuteAgentHarnessExecution(ctx context.Context, input Exe
 		} else {
 			_ = a.recordAgentHarnessEvent(ctx, execution.ID, "artifact.git_diff", "worker", map[string]any{"diff": result.Stdout})
 		}
+		changedFiles := ""
 		if result, err := a.execHarnessCommand(ctx, execution.ID, session, "git.changed_files", []string{"git", "status", "--short"}, workdir, 60*time.Second, env); err != nil {
 			return err
 		} else {
+			changedFiles = result.Stdout
 			_ = a.recordAgentHarnessEvent(ctx, execution.ID, "artifact.changed_files", "worker", map[string]any{"changed_files": result.Stdout})
+		}
+		if isStructuredGitHubHarness(harness) {
+			if err := a.createGitHubPullRequest(ctx, execution.ID, session, harness, workdir, timeout, gitEnv, gitHubToken, changedFiles); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -291,7 +306,7 @@ func (a *Activities) agentHarnessSnapshot(ctx context.Context, execution reposit
 }
 
 func (a *Activities) verifyAgentHarnessGitHubAccess(ctx context.Context, executionID uuid.UUID, harness agentHarnessSnapshot) error {
-	if derefString(harness.RepositoryProvider) != "github" || harness.GitHubRepositoryID == nil {
+	if !isStructuredGitHubHarness(harness) {
 		return nil
 	}
 	_, err := a.agentHarnessRepo.GetWorkspaceGitHubRepository(ctx, harness.WorkspaceID, *harness.GitHubRepositoryID, harness.GitHubInstallationID)
@@ -307,6 +322,106 @@ func (a *Activities) verifyAgentHarnessGitHubAccess(ctx context.Context, executi
 		return fmt.Errorf("%w: github repository access was revoked or removed", repository.ErrGitHubRepositoryNotInstalled)
 	}
 	return err
+}
+
+func (a *Activities) prepareGitHubGitAuth(ctx context.Context, executionID uuid.UUID, session sandbox.Session, harness agentHarnessSnapshot, baseEnv map[string]string) (map[string]string, string, error) {
+	if a.githubClient == nil || harness.GitHubInstallationID == nil {
+		_ = a.recordAgentHarnessEvent(ctx, executionID, "github.pull_request.skipped", "worker", map[string]any{"reason": "github_app_client_not_configured"})
+		return baseEnv, "", nil
+	}
+	token, err := a.githubClient.CreateInstallationToken(ctx, *harness.GitHubInstallationID)
+	if err != nil {
+		return nil, "", fmt.Errorf("create github installation token: %w", err)
+	}
+	askpassPath := "/tmp/agentclash-git-askpass.sh"
+	askpass := []byte("#!/bin/sh\ncase \"$1\" in\n*Username*) echo x-access-token ;;\n*) echo \"$GITHUB_TOKEN\" ;;\nesac\n")
+	if err := session.WriteFile(ctx, askpassPath, askpass); err != nil {
+		return nil, "", fmt.Errorf("write github askpass helper: %w", err)
+	}
+	authEnv := maputil.CloneStringMap(baseEnv)
+	authEnv["GIT_ASKPASS"] = askpassPath
+	authEnv["GIT_TERMINAL_PROMPT"] = "0"
+	authEnv["GITHUB_TOKEN"] = token
+	if result, err := a.execHarnessCommand(ctx, executionID, session, "github.git_auth.prepare", []string{"chmod", "700", askpassPath}, "", 30*time.Second, baseEnv); err != nil {
+		return nil, "", err
+	} else if result.ExitCode != 0 {
+		return nil, "", fmt.Errorf("github git auth prepare failed with exit code %d", result.ExitCode)
+	}
+	return authEnv, token, nil
+}
+
+func (a *Activities) createGitHubPullRequest(ctx context.Context, executionID uuid.UUID, session sandbox.Session, harness agentHarnessSnapshot, workdir string, timeout time.Duration, gitEnv map[string]string, token string, changedFiles string) error {
+	if strings.TrimSpace(changedFiles) == "" {
+		return a.recordAgentHarnessEvent(ctx, executionID, "github.pull_request.skipped", "worker", map[string]any{"reason": "no_changes"})
+	}
+	if a.githubClient == nil || token == "" {
+		return a.recordAgentHarnessEvent(ctx, executionID, "github.pull_request.skipped", "worker", map[string]any{"reason": "github_app_client_not_configured"})
+	}
+	owner, repo, ok := parseGitHubFullName(derefString(harness.RepositoryFullName))
+	if !ok {
+		return a.recordAgentHarnessEvent(ctx, executionID, "github.pull_request.skipped", "worker", map[string]any{"reason": "missing_repository_full_name"})
+	}
+	baseBranch := strings.TrimSpace(derefString(harness.BaseBranch))
+	if baseBranch == "" {
+		baseBranch = "main"
+	}
+	branch := "agentclash/harness/" + strings.ReplaceAll(executionID.String()[:8], "-", "")
+	pushURL := "https://github.com/" + owner + "/" + repo + ".git"
+	commands := []struct {
+		event   string
+		command []string
+	}{
+		{"git.config_user_email", []string{"git", "config", "user.email", "agentclash[bot]@users.noreply.github.com"}},
+		{"git.config_user_name", []string{"git", "config", "user.name", "agentclash[bot]"}},
+		{"git.create_branch", []string{"git", "checkout", "-B", branch}},
+		{"git.add_all", []string{"git", "add", "--all"}},
+		{"git.commit", []string{"git", "-c", "core.hooksPath=/dev/null", "commit", "-m", "AgentClash harness changes"}},
+		{"git.push_branch", []string{"git", "-c", "core.hooksPath=/dev/null", "-c", "credential.helper=", "push", pushURL, "HEAD:refs/heads/" + branch}},
+	}
+	for _, step := range commands {
+		stepEnv := map[string]string(nil)
+		if step.event == "git.push_branch" {
+			stepEnv = gitEnv
+		}
+		if result, err := a.execHarnessCommand(ctx, executionID, session, step.event, step.command, workdir, timeout, stepEnv); err != nil {
+			return err
+		} else if result.ExitCode != 0 {
+			return fmt.Errorf("%s failed with exit code %d", step.event, result.ExitCode)
+		}
+	}
+	pr, err := a.githubClient.CreatePullRequest(ctx, CreateGitHubPullRequestInput{
+		Token: token,
+		Owner: owner,
+		Repo:  repo,
+		Title: "AgentClash harness changes",
+		Head:  owner + ":" + branch,
+		Base:  baseBranch,
+		Body:  "Created automatically by an AgentClash agent harness execution.\n\nExecution: " + executionID.String(),
+		Draft: true,
+	})
+	if err != nil {
+		return fmt.Errorf("create github pull request: %w", err)
+	}
+	return a.recordAgentHarnessEvent(ctx, executionID, "github.pull_request.created", "worker", map[string]any{
+		"number": pr.Number,
+		"url":    pr.HTMLURL,
+		"state":  pr.State,
+		"draft":  pr.Draft,
+		"branch": branch,
+		"base":   baseBranch,
+	})
+}
+
+func isStructuredGitHubHarness(harness agentHarnessSnapshot) bool {
+	return derefString(harness.RepositoryProvider) == "github" && harness.GitHubRepositoryID != nil
+}
+
+func parseGitHubFullName(fullName string) (string, string, bool) {
+	parts := strings.Split(strings.TrimSpace(fullName), "/")
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return "", "", false
+	}
+	return parts[0], parts[1], true
 }
 
 func (a *Activities) execHarnessCommand(ctx context.Context, executionID uuid.UUID, session sandbox.Session, eventType string, command []string, workdir string, timeout time.Duration, env map[string]string) (sandbox.ExecResult, error) {

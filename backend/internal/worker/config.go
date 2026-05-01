@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -34,6 +35,8 @@ type Config struct {
 	TaskQueue             string
 	HostedCallbackBaseURL string
 	HostedCallbackSecret  string
+	GitHubAppID           int64
+	GitHubAppPrivateKey   string
 	ShutdownTimeout       time.Duration
 	Sandbox               SandboxConfig
 	SecretsCipher         *secrets.AESGCMCipher
@@ -77,6 +80,10 @@ func LoadConfigFromEnv() (Config, error) {
 		return Config{}, err
 	}
 	hostedCallbackSecret, err := envOrDefault("HOSTED_RUN_CALLBACK_SECRET", defaultHostedCallbackSecret)
+	if err != nil {
+		return Config{}, err
+	}
+	githubAppID, err := optionalInt64Env("GITHUB_APP_ID")
 	if err != nil {
 		return Config{}, err
 	}
@@ -127,6 +134,8 @@ func LoadConfigFromEnv() (Config, error) {
 		TaskQueue:             workflow.WorkflowTaskQueue,
 		HostedCallbackBaseURL: hostedCallbackBaseURL,
 		HostedCallbackSecret:  hostedCallbackSecret,
+		GitHubAppID:           githubAppID,
+		GitHubAppPrivateKey:   normalizePEMEnv(os.Getenv("GITHUB_APP_PRIVATE_KEY")),
 		ShutdownTimeout:       shutdownTimeout,
 		Sandbox: SandboxConfig{
 			Provider: sandboxProvider,
@@ -193,6 +202,25 @@ func optionalEnv(key string) (string, error) {
 		return "", nil
 	}
 	return value, nil
+}
+
+func optionalInt64Env(key string) (int64, error) {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return 0, nil
+	}
+	parsed, err := strconv.ParseInt(value, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("%w: %s must be an integer", ErrInvalidConfig, key)
+	}
+	if parsed <= 0 {
+		return 0, fmt.Errorf("%w: %s must be greater than zero", ErrInvalidConfig, key)
+	}
+	return parsed, nil
+}
+
+func normalizePEMEnv(value string) string {
+	return strings.ReplaceAll(value, `\n`, "\n")
 }
 
 func durationEnvOrDefault(key string, fallback time.Duration) (time.Duration, error) {

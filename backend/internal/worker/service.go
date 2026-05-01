@@ -27,13 +27,16 @@ func NewTemporalWorker(
 	repo *repository.Repository,
 	playgroundClient provider.Client,
 	sandboxProvider sandbox.Provider,
+	githubClient workflowpkg.GitHubPullRequestClient,
 	executionHooks workflowpkg.FakeWorkHooks,
 ) sdkworker.Worker {
 	temporalWorker := sdkworker.New(client, cfg.TaskQueue, sdkworker.Options{
 		Identity: cfg.Identity,
 	})
 
-	activities := workflowpkg.NewActivities(repo, executionHooks, playgroundClient).WithSandboxProvider(sandboxProvider)
+	activities := workflowpkg.NewActivities(repo, executionHooks, playgroundClient).
+		WithSandboxProvider(sandboxProvider).
+		WithGitHubPullRequestClient(githubClient)
 	workflowpkg.Register(temporalWorker, activities)
 	workflowpkg.RegisterPlayground(temporalWorker, workflowpkg.NewPlaygroundActivities(repo, playgroundClient, repo))
 
