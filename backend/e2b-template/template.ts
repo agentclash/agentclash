@@ -19,6 +19,9 @@ export const template = Template()
       '&& rm -rf /var/lib/apt/lists/*',
   )
 
+  // Codex CLI for Agent Harness coding tasks
+  .runCmd('npm install -g @openai/codex')
+
   // Python 3, Go, C/C++ toolchain
   .runCmd(
     'apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ' +
@@ -64,6 +67,6 @@ export const template = Template()
   .copy('tools/', '/tools/', { user: 'root', mode: 0o755 })
 
   // Workspace setup
-  .runCmd('mkdir -p /workspace/agentclash')
+  .runCmd('mkdir -p /workspace')
   .setWorkdir('/workspace')
   .setStartCmd('sleep infinity', 'sleep 20')
