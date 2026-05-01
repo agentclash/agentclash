@@ -210,6 +210,23 @@ func TestAgentHarnessTimeoutDefaults(t *testing.T) {
 	}
 }
 
+func TestAgentHarnessExecutionActivityOptionsUseHarnessTimeout(t *testing.T) {
+	options := agentHarnessExecutionActivityOptions(120)
+	want := 120*time.Second + agentHarnessActivityTimeoutBuffer
+	if options.StartToCloseTimeout != want {
+		t.Fatalf("start to close timeout = %s, want %s", options.StartToCloseTimeout, want)
+	}
+	if options.RetryPolicy == nil || options.RetryPolicy.MaximumAttempts != 1 {
+		t.Fatalf("retry policy maximum attempts = %#v, want 1", options.RetryPolicy)
+	}
+
+	defaultOptions := agentHarnessExecutionActivityOptions(0)
+	defaultWant := 30*time.Minute + agentHarnessActivityTimeoutBuffer
+	if defaultOptions.StartToCloseTimeout != defaultWant {
+		t.Fatalf("default start to close timeout = %s, want %s", defaultOptions.StartToCloseTimeout, defaultWant)
+	}
+}
+
 func containsString(values []string, target string) bool {
 	for _, value := range values {
 		if value == target {

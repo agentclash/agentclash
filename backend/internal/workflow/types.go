@@ -26,7 +26,8 @@ type RunAgentWorkflowInput struct {
 }
 
 type AgentHarnessExecutionWorkflowInput struct {
-	ExecutionID uuid.UUID `json:"execution_id"`
+	ExecutionID    uuid.UUID `json:"execution_id"`
+	TimeoutSeconds int       `json:"timeout_seconds,omitempty"`
 }
 
 type PlaygroundExperimentWorkflowInput struct {

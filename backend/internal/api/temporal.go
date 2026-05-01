@@ -61,13 +61,14 @@ func NewTemporalAgentHarnessExecutionWorkflowStarter(client TemporalClient) Temp
 	return TemporalAgentHarnessExecutionWorkflowStarter{client: client}
 }
 
-func (s TemporalAgentHarnessExecutionWorkflowStarter) StartAgentHarnessExecutionWorkflow(ctx context.Context, executionID uuid.UUID) error {
+func (s TemporalAgentHarnessExecutionWorkflowStarter) StartAgentHarnessExecutionWorkflow(ctx context.Context, executionID uuid.UUID, timeoutSeconds int) error {
 	workflowID := fmt.Sprintf("%s/%s", workflow.AgentHarnessExecutionWorkflowName, executionID)
 	_, err := s.client.ExecuteWorkflow(ctx, temporalsdk.StartWorkflowOptions{
 		ID:        workflowID,
 		TaskQueue: workflow.WorkflowTaskQueue,
 	}, workflow.AgentHarnessExecutionWorkflowName, workflow.AgentHarnessExecutionWorkflowInput{
-		ExecutionID: executionID,
+		ExecutionID:    executionID,
+		TimeoutSeconds: timeoutSeconds,
 	})
 	return err
 }
