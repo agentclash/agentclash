@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -187,7 +188,8 @@ func (a *Activities) ExecuteAgentHarnessExecution(ctx context.Context, input Exe
 	}
 
 	workdir := agentHarnessWorkspaceDir
-	if harness.RepositoryURL != nil && strings.TrimSpace(*harness.RepositoryURL) != "" {
+	hasRepository := harness.RepositoryURL != nil && strings.TrimSpace(*harness.RepositoryURL) != ""
+	if hasRepository {
 		clone := []string{"git", "clone", strings.TrimSpace(*harness.RepositoryURL), workdir}
 		if result, err := a.execHarnessCommand(ctx, execution.ID, session, "repository.clone", clone, "", timeout, env); err != nil {
 			return err
@@ -215,15 +217,22 @@ func (a *Activities) ExecuteAgentHarnessExecution(ctx context.Context, input Exe
 		return fmt.Errorf("codex exec failed with exit code %d", codexResult.ExitCode)
 	}
 
-	if result, err := a.execHarnessCommand(ctx, execution.ID, session, "git.diff", []string{"git", "diff", "--binary"}, workdir, 60*time.Second, env); err != nil {
-		return err
-	} else {
-		_ = a.recordAgentHarnessEvent(ctx, execution.ID, "artifact.git_diff", "worker", map[string]any{"diff": result.Stdout})
-	}
-	if result, err := a.execHarnessCommand(ctx, execution.ID, session, "git.changed_files", []string{"git", "status", "--short"}, workdir, 60*time.Second, env); err != nil {
-		return err
-	} else {
-		_ = a.recordAgentHarnessEvent(ctx, execution.ID, "artifact.changed_files", "worker", map[string]any{"changed_files": result.Stdout})
+	if hasRepository {
+		if result, err := a.execHarnessCommand(ctx, execution.ID, session, "git.add_intent", []string{"git", "add", "--intent-to-add", "--all"}, workdir, 60*time.Second, env); err != nil {
+			return err
+		} else if result.ExitCode != 0 {
+			return fmt.Errorf("git add intent failed with exit code %d", result.ExitCode)
+		}
+		if result, err := a.execHarnessCommand(ctx, execution.ID, session, "git.diff", []string{"git", "diff", "--binary"}, workdir, 60*time.Second, env); err != nil {
+			return err
+		} else {
+			_ = a.recordAgentHarnessEvent(ctx, execution.ID, "artifact.git_diff", "worker", map[string]any{"diff": result.Stdout})
+		}
+		if result, err := a.execHarnessCommand(ctx, execution.ID, session, "git.changed_files", []string{"git", "status", "--short"}, workdir, 60*time.Second, env); err != nil {
+			return err
+		} else {
+			_ = a.recordAgentHarnessEvent(ctx, execution.ID, "artifact.changed_files", "worker", map[string]any{"changed_files": result.Stdout})
+		}
 	}
 
 	if _, err := a.TransitionAgentHarnessExecutionStatus(ctx, TransitionAgentHarnessExecutionStatusInput{
@@ -359,16 +368,13 @@ func (a *Activities) evaluateCommandValidator(ctx context.Context, executionID u
 		_ = a.recordAgentHarnessEvent(ctx, executionID, "validator.command.failed", "worker", map[string]any{"index": index, "error": err.Error()})
 		return false, err
 	}
-	workdir := strings.TrimSpace(validator.WorkingDirectory)
-	if workdir == "" {
-		workdir = defaultWorkdir
-	}
+	workdir := agentHarnessValidatorWorkdir(defaultWorkdir, validator.WorkingDirectory)
 	timeout := defaultTimeout
 	if validator.TimeoutSeconds > 0 {
 		timeout = time.Duration(validator.TimeoutSeconds) * time.Second
 	}
 
-	result, err := a.execHarnessCommand(ctx, executionID, session, "validator.command.exec", []string{"sh", "-lc", command}, workdir, timeout, env)
+	result, err := a.execHarnessCommand(ctx, executionID, session, "validator.command.exec", []string{"bash", "-lc", command}, workdir, timeout, env)
 	payload := map[string]any{
 		"index":             index,
 		"command":           command,
@@ -389,6 +395,17 @@ func (a *Activities) evaluateCommandValidator(ctx context.Context, executionID u
 	payload["error"] = err.Error()
 	_ = a.recordAgentHarnessEvent(ctx, executionID, "validator.command.failed", "worker", payload)
 	return false, err
+}
+
+func agentHarnessValidatorWorkdir(defaultWorkdir string, configured string) string {
+	workdir := strings.TrimSpace(configured)
+	if workdir == "" {
+		return defaultWorkdir
+	}
+	if filepath.IsAbs(workdir) {
+		return filepath.Clean(workdir)
+	}
+	return filepath.Join(defaultWorkdir, workdir)
 }
 
 func decodeAgentHarnessEvaluationConfig(raw json.RawMessage) (agentHarnessEvaluationConfig, error) {

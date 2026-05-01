@@ -29,7 +29,7 @@ func TestExecuteAgentHarnessExecutionRunsCodexAndRecordsTrace(t *testing.T) {
 		RepositoryURL:          stringPtr("https://github.com/acme/repo"),
 		BaseBranch:             stringPtr("main"),
 		ExecutionConfig:        json.RawMessage(`{"timeout_seconds":120}`),
-		EvaluationConfig:       json.RawMessage(`{"validators":[{"type":"command","command":"go test ./...","timeout_seconds":60}]}`),
+		EvaluationConfig:       json.RawMessage(`{"validators":[{"type":"command","command":"go test ./...","working_directory":"backend","timeout_seconds":60}]}`),
 	})
 	repo.setAgentHarnessExecution(repository.AgentHarnessExecution{
 		ID:                      executionID,
@@ -57,11 +57,16 @@ func TestExecuteAgentHarnessExecutionRunsCodexAndRecordsTrace(t *testing.T) {
 				t.Fatalf("codex command = %#v, want -C workspace", request.Command)
 			}
 			return sandbox.ExecResult{ExitCode: 0, Stdout: `{"type":"final","message":"done"}`}, nil
+		case len(request.Command) >= 3 && request.Command[0] == "git" && request.Command[1] == "add" && request.Command[2] == "--intent-to-add":
+			return sandbox.ExecResult{ExitCode: 0}, nil
 		case len(request.Command) >= 2 && request.Command[0] == "git" && request.Command[1] == "diff":
 			return sandbox.ExecResult{ExitCode: 0, Stdout: "diff --git a/file b/file"}, nil
 		case len(request.Command) >= 2 && request.Command[0] == "git" && request.Command[1] == "status":
 			return sandbox.ExecResult{ExitCode: 0, Stdout: " M file"}, nil
-		case len(request.Command) >= 3 && request.Command[0] == "sh" && request.Command[1] == "-lc" && request.Command[2] == "go test ./...":
+		case len(request.Command) >= 3 && request.Command[0] == "bash" && request.Command[1] == "-lc" && request.Command[2] == "go test ./...":
+			if request.WorkingDirectory != agentHarnessWorkspaceDir+"/backend" {
+				t.Fatalf("validator workdir = %q, want backend under workspace", request.WorkingDirectory)
+			}
 			return sandbox.ExecResult{ExitCode: 0, Stdout: "ok"}, nil
 		default:
 			t.Fatalf("unexpected command: %#v", request.Command)
@@ -88,6 +93,18 @@ func TestExecuteAgentHarnessExecutionRunsCodexAndRecordsTrace(t *testing.T) {
 	}
 	if session.DestroyCalls() != 1 {
 		t.Fatalf("destroy calls = %d, want 1", session.DestroyCalls())
+	}
+	calls := session.ExecCalls()
+	addIntentIndex := commandIndex(calls, "git", "add", "--intent-to-add")
+	diffIndex := commandIndex(calls, "git", "diff", "--binary")
+	if addIntentIndex == -1 {
+		t.Fatal("expected git add --intent-to-add before diff capture")
+	}
+	if diffIndex == -1 {
+		t.Fatal("expected git diff --binary capture")
+	}
+	if addIntentIndex > diffIndex {
+		t.Fatalf("git add --intent-to-add call index = %d, diff index = %d; want add before diff", addIntentIndex, diffIndex)
 	}
 	if got := len(repo.agentHarnessEvents[executionID]); got < 8 {
 		t.Fatalf("recorded events = %d, want at least 8", got)
@@ -157,13 +174,15 @@ func TestExecuteAgentHarnessExecutionFailsRequiredValidator(t *testing.T) {
 			return sandbox.ExecResult{ExitCode: 0}, nil
 		case len(request.Command) >= 2 && request.Command[0] == "codex" && request.Command[1] == "exec":
 			return sandbox.ExecResult{ExitCode: 0, Stdout: `{"type":"final","message":"done"}`}, nil
+		case len(request.Command) >= 3 && request.Command[0] == "git" && request.Command[1] == "add" && request.Command[2] == "--intent-to-add":
+			return sandbox.ExecResult{ExitCode: 0}, nil
 		case len(request.Command) >= 2 && request.Command[0] == "git" && request.Command[1] == "diff":
 			return sandbox.ExecResult{ExitCode: 0}, nil
 		case len(request.Command) >= 2 && request.Command[0] == "git" && request.Command[1] == "status":
 			return sandbox.ExecResult{ExitCode: 0}, nil
-		case len(request.Command) >= 3 && request.Command[0] == "sh" && request.Command[1] == "-lc" && request.Command[2] == "go test ./...":
+		case len(request.Command) >= 3 && request.Command[0] == "bash" && request.Command[1] == "-lc" && request.Command[2] == "go test ./...":
 			return sandbox.ExecResult{ExitCode: 0, Stdout: "ok"}, nil
-		case len(request.Command) >= 3 && request.Command[0] == "sh" && request.Command[1] == "-lc" && request.Command[2] == "npm test":
+		case len(request.Command) >= 3 && request.Command[0] == "bash" && request.Command[1] == "-lc" && request.Command[2] == "npm test":
 			return sandbox.ExecResult{ExitCode: 1, Stderr: "failed"}, nil
 		default:
 			t.Fatalf("unexpected command: %#v", request.Command)
@@ -201,6 +220,59 @@ func TestExecuteAgentHarnessExecutionFailsRequiredValidator(t *testing.T) {
 	}
 }
 
+func TestExecuteAgentHarnessExecutionWithoutRepositorySkipsGitArtifactCapture(t *testing.T) {
+	workspaceID := uuid.New()
+	harnessID := uuid.New()
+	executionID := uuid.New()
+	openAISecret := "OPENAI_API_KEY"
+	repo := newFakeRunRepository(fixtureRun(uuid.New(), domain.RunStatusQueued))
+	repo.setAgentHarness(repository.AgentHarness{
+		ID:                     harnessID,
+		OrganizationID:         uuid.New(),
+		WorkspaceID:            workspaceID,
+		TaskPrompt:             "write a file without a repository",
+		CodexTemplate:          "codex",
+		AuthMode:               "api_key_secret",
+		OpenAIAPIKeySecretName: &openAISecret,
+		ExecutionConfig:        json.RawMessage(`{"timeout_seconds":120}`),
+	})
+	repo.setAgentHarnessExecution(repository.AgentHarnessExecution{
+		ID:                      executionID,
+		WorkspaceID:             workspaceID,
+		AgentHarnessID:          harnessID,
+		Status:                  string(repository.AgentHarnessExecutionStatusRunning),
+		ExecutionConfigSnapshot: json.RawMessage(`{"timeout_seconds":120}`),
+	})
+	repo.setWorkspaceSecrets(workspaceID, map[string]string{openAISecret: "sk-test"})
+
+	session := sandbox.NewFakeSession("sandbox-1")
+	session.SetExecFunc(func(request sandbox.ExecRequest, _ map[string][]byte) (sandbox.ExecResult, error) {
+		switch {
+		case len(request.Command) >= 2 && request.Command[0] == "codex" && request.Command[1] == "exec":
+			if request.WorkingDirectory != "/" {
+				t.Fatalf("codex workdir = %q, want root for no-repo harness", request.WorkingDirectory)
+			}
+			return sandbox.ExecResult{ExitCode: 0, Stdout: `{"type":"final","message":"done"}`}, nil
+		default:
+			t.Fatalf("unexpected command for no-repo harness: %#v", request.Command)
+			return sandbox.ExecResult{}, nil
+		}
+	})
+	provider := &sandbox.FakeProvider{NextSession: session}
+	activities := NewActivities(repo, FakeWorkHooks{}).WithSandboxProvider(provider)
+
+	err := activities.ExecuteAgentHarnessExecution(context.Background(), ExecuteAgentHarnessExecutionInput{ExecutionID: executionID})
+	if err != nil {
+		t.Fatalf("ExecuteAgentHarnessExecution error: %v", err)
+	}
+
+	for _, call := range session.ExecCalls() {
+		if len(call.Command) > 0 && call.Command[0] == "git" {
+			t.Fatalf("no-repo harness should not run git artifact commands, saw %#v", call.Command)
+		}
+	}
+}
+
 func TestAgentHarnessTimeoutDefaults(t *testing.T) {
 	if got := agentHarnessTimeout(nil); got != 30*time.Minute {
 		t.Fatalf("default timeout = %s, want 30m", got)
@@ -227,6 +299,47 @@ func TestAgentHarnessExecutionActivityOptionsUseHarnessTimeout(t *testing.T) {
 	}
 }
 
+func TestAgentHarnessValidatorWorkdir(t *testing.T) {
+	tests := []struct {
+		name           string
+		defaultWorkdir string
+		configured     string
+		want           string
+	}{
+		{
+			name:           "empty uses default",
+			defaultWorkdir: "/workspace",
+			configured:     "",
+			want:           "/workspace",
+		},
+		{
+			name:           "relative joins default",
+			defaultWorkdir: "/workspace",
+			configured:     "cli",
+			want:           "/workspace/cli",
+		},
+		{
+			name:           "relative cleans path",
+			defaultWorkdir: "/workspace/repo",
+			configured:     "./backend/../cli",
+			want:           "/workspace/repo/cli",
+		},
+		{
+			name:           "absolute preserved",
+			defaultWorkdir: "/workspace",
+			configured:     "/tmp/project",
+			want:           "/tmp/project",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := agentHarnessValidatorWorkdir(tt.defaultWorkdir, tt.configured); got != tt.want {
+				t.Fatalf("agentHarnessValidatorWorkdir(%q, %q) = %q, want %q", tt.defaultWorkdir, tt.configured, got, tt.want)
+			}
+		})
+	}
+}
+
 func containsString(values []string, target string) bool {
 	for _, value := range values {
 		if value == target {
@@ -234,4 +347,23 @@ func containsString(values []string, target string) bool {
 		}
 	}
 	return false
+}
+
+func commandIndex(calls []sandbox.ExecRequest, parts ...string) int {
+	for index, call := range calls {
+		if len(call.Command) < len(parts) {
+			continue
+		}
+		matches := true
+		for partIndex, part := range parts {
+			if call.Command[partIndex] != part {
+				matches = false
+				break
+			}
+		}
+		if matches {
+			return index
+		}
+	}
+	return -1
 }
