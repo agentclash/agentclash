@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/agentclash/agentclash/backend/internal/maputil"
 	"github.com/agentclash/agentclash/backend/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/filesystem/filesystemconnect"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/process/processconnect"
@@ -59,7 +60,8 @@ func (p *Provider) Create(ctx context.Context, request sandbox.CreateRequest) (s
 			processClient: p.client.processClient(record),
 			filesClient:   p.client.filesystemClient(record),
 		},
-		allowShell: request.ToolPolicy.AllowShell,
+		allowShell:         request.ToolPolicy.AllowShell,
+		defaultEnvironment: maputil.CloneStringMap(request.EnvVars),
 	}
 
 	if len(request.AdditionalPackages) > 0 {
