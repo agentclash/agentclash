@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -77,7 +78,7 @@ ORDER BY i.github_account_login, i.github_installation_id`, workspaceID)
 }
 
 func (r *Repository) ListWorkspaceGitHubRepositories(ctx context.Context, p ListWorkspaceGitHubRepositoriesParams) ([]GitHubInstallationRepository, error) {
-	query := "%" + p.Query + "%"
+	query := "%" + escapePostgresLikePattern(p.Query) + "%"
 	rows, err := r.db.Query(ctx, `
 SELECT repo.id, repo.organization_github_installation_id, install.github_installation_id,
     repo.github_repository_id, repo.full_name, repo.owner_login, repo.name,
@@ -92,7 +93,7 @@ WHERE binding.workspace_id = $1
     AND install.status = 'active'
     AND repo.status = 'active'
     AND repo.archived = false
-    AND ($2 = '%%' OR repo.full_name ILIKE $2)
+    AND ($2 = '%%' OR repo.full_name ILIKE $2 ESCAPE '\')
 ORDER BY repo.full_name
 LIMIT 100`, p.WorkspaceID, query)
 	if err != nil {
@@ -109,6 +110,13 @@ LIMIT 100`, p.WorkspaceID, query)
 		repositories = append(repositories, repo)
 	}
 	return repositories, rows.Err()
+}
+
+func escapePostgresLikePattern(value string) string {
+	value = strings.ReplaceAll(value, `\`, `\\`)
+	value = strings.ReplaceAll(value, `%`, `\%`)
+	value = strings.ReplaceAll(value, `_`, `\_`)
+	return value
 }
 
 func (r *Repository) GetWorkspaceGitHubRepository(ctx context.Context, workspaceID uuid.UUID, githubRepositoryID int64, githubInstallationID *int64) (GitHubInstallationRepository, error) {
