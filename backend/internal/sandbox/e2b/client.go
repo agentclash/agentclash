@@ -21,8 +21,9 @@ import (
 )
 
 type apiClient struct {
-	httpClient *http.Client
-	config     Config
+	httpClient       *http.Client
+	streamHTTPClient *http.Client
+	config           Config
 }
 
 type sandboxRecord struct {
@@ -36,8 +37,9 @@ type sandboxRecord struct {
 
 func newAPIClient(config Config) *apiClient {
 	return &apiClient{
-		httpClient: &http.Client{Timeout: config.requestTimeout()},
-		config:     config,
+		httpClient:       &http.Client{Timeout: config.requestTimeout()},
+		streamHTTPClient: &http.Client{},
+		config:           config,
 	}
 }
 
@@ -66,7 +68,7 @@ func (c *apiClient) filesystemClient(record sandboxRecord) filesystemconnect.Fil
 }
 
 func (c *apiClient) processClient(record sandboxRecord) processconnect.ProcessClient {
-	return processconnect.NewProcessClient(c.httpClient, c.envdBaseURL(record))
+	return processconnect.NewProcessClient(c.streamHTTPClient, c.envdBaseURL(record))
 }
 
 func (c *apiClient) readFile(ctx context.Context, record sandboxRecord, filePath string) ([]byte, error) {

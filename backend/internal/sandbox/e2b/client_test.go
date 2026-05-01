@@ -4,9 +4,21 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/sandbox"
 )
+
+func TestAPIClientUsesUntimedHTTPClientForProcessStreams(t *testing.T) {
+	client := newAPIClient(Config{RequestTimeout: 10 * time.Second})
+
+	if client.httpClient.Timeout != 10*time.Second {
+		t.Fatalf("control-plane timeout = %s, want 10s", client.httpClient.Timeout)
+	}
+	if client.streamHTTPClient.Timeout != 0 {
+		t.Fatalf("stream timeout = %s, want no total HTTP timeout", client.streamHTTPClient.Timeout)
+	}
+}
 
 func TestCreateSandboxRequestUsesCamelCaseInternetField(t *testing.T) {
 	payload, err := json.Marshal(createSandboxRequest{
