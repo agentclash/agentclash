@@ -116,9 +116,12 @@ func main() {
 	agentDeploymentReadManager := api.NewAgentDeploymentReadManager(repo)
 	agentHarnessManager := api.NewAgentHarnessManager(authorizer, repo, api.NewTemporalAgentHarnessExecutionWorkflowStarter(temporalClient))
 	githubIntegrationManager := api.NewGitHubIntegrationManager(authorizer, repo, api.GitHubIntegrationConfig{
-		AppSlug:     cfg.GitHubAppSlug,
-		StateSecret: cfg.GitHubAppStateSecret,
-		FrontendURL: cfg.FrontendURL,
+		AppSlug:       cfg.GitHubAppSlug,
+		AppID:         cfg.GitHubAppID,
+		PrivateKeyPEM: cfg.GitHubAppPrivateKey,
+		StateSecret:   cfg.GitHubAppStateSecret,
+		WebhookSecret: cfg.GitHubWebhookSecret,
+		FrontendURL:   cfg.FrontendURL,
 	})
 	challengePackReadManager := api.NewChallengePackReadManager(repo)
 	challengePackAuthoringManager := api.NewChallengePackAuthoringManager(repo, artifactStore)

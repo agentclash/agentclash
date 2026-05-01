@@ -10,6 +10,7 @@ import type {
   CreateAgentHarnessRequest,
   GitHubInstallation,
   GitHubRepository,
+  StartGitHubInstallationResponse,
   WorkspaceSecret,
 } from "@/lib/api/types";
 import { useApiListQuery, useApiMutator } from "@/lib/api/swr";
@@ -68,6 +69,25 @@ export function CreateAgentHarnessDialog({
   const [repositoryURL, setRepositoryURL] = useState("");
   const [baseBranch, setBaseBranch] = useState("main");
   const [submitting, setSubmitting] = useState(false);
+  const [connectingGitHub, setConnectingGitHub] = useState(false);
+
+  async function handleConnectGitHub() {
+    setConnectingGitHub(true);
+    try {
+      const token = await getAccessToken();
+      const api = createApiClient(token);
+      const result = await api.post<StartGitHubInstallationResponse>(
+        `/v1/workspaces/${workspaceId}/github/installations/start`,
+        { return_path: `/workspaces/${workspaceId}/agent-harnesses` },
+      );
+      window.location.assign(result.install_url);
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError ? err.message : "Failed to connect GitHub",
+      );
+      setConnectingGitHub(false);
+    }
+  }
 
   async function handleCreate() {
     const selectedRepository = githubRepositories.find(
@@ -182,41 +202,84 @@ export function CreateAgentHarnessDialog({
           </div>
 
           {sourceMode === "github" ? (
+            <>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <label className="mb-1.5 flex items-center gap-2 text-sm font-medium">
+                    <Github className="size-4 text-muted-foreground" />
+                    Repository
+                  </label>
+                  <select
+                    value={selectedRepositoryID}
+                    onChange={(event) => {
+                      const nextID = event.target.value;
+                      setSelectedRepositoryID(nextID);
+                      const nextRepo = githubRepositories.find(
+                        (repo) => String(repo.github_repository_id) === nextID,
+                      );
+                      if (nextRepo) setBaseBranch(nextRepo.default_branch);
+                    }}
+                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring/50"
+                    autoFocus
+                  >
+                    <option value="">
+                      {hasGitHubRepositories
+                        ? "Select repository"
+                        : githubInstallations.length > 0
+                          ? "No repositories connected"
+                          : "Connect GitHub first"}
+                    </option>
+                    {githubRepositories.map((repo) => (
+                      <option
+                        key={`${repo.github_installation_id}:${repo.github_repository_id}`}
+                        value={repo.github_repository_id}
+                      >
+                        {repo.full_name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1.5 flex items-center gap-2 text-sm font-medium">
+                    <GitBranch className="size-4 text-muted-foreground" />
+                    Base Branch
+                  </label>
+                  <Input
+                    value={baseBranch}
+                    onChange={(event) => setBaseBranch(event.target.value)}
+                    placeholder={selectedRepository?.default_branch ?? "main"}
+                  />
+                </div>
+              </div>
+              {!hasGitHubRepositories ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleConnectGitHub}
+                  disabled={connectingGitHub}
+                >
+                  {connectingGitHub ? (
+                    <Loader2 data-icon="inline-start" className="size-4 animate-spin" />
+                  ) : (
+                    <Github data-icon="inline-start" className="size-4" />
+                  )}
+                  {connectingGitHub ? "Connecting..." : "Connect GitHub"}
+                </Button>
+              ) : null}
+            </>
+          ) : (
             <div className="grid gap-4 md:grid-cols-2">
               <div>
                 <label className="mb-1.5 flex items-center gap-2 text-sm font-medium">
                   <Github className="size-4 text-muted-foreground" />
-                  Repository
+                  Repository URL
                 </label>
-                <select
-                  value={selectedRepositoryID}
-                  onChange={(event) => {
-                    const nextID = event.target.value;
-                    setSelectedRepositoryID(nextID);
-                    const nextRepo = githubRepositories.find(
-                      (repo) => String(repo.github_repository_id) === nextID,
-                    );
-                    if (nextRepo) setBaseBranch(nextRepo.default_branch);
-                  }}
-                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring/50"
+                <Input
+                  value={repositoryURL}
+                  onChange={(event) => setRepositoryURL(event.target.value)}
+                  placeholder="https://github.com/org/repo"
                   autoFocus
-                >
-                  <option value="">
-                    {hasGitHubRepositories
-                      ? "Select repository"
-                      : githubInstallations.length > 0
-                        ? "No repositories connected"
-                        : "Connect GitHub first"}
-                  </option>
-                  {githubRepositories.map((repo) => (
-                    <option
-                      key={`${repo.github_installation_id}:${repo.github_repository_id}`}
-                      value={repo.github_repository_id}
-                    >
-                      {repo.full_name}
-                    </option>
-                  ))}
-                </select>
+                />
               </div>
               <div>
                 <label className="mb-1.5 flex items-center gap-2 text-sm font-medium">
@@ -226,35 +289,9 @@ export function CreateAgentHarnessDialog({
                 <Input
                   value={baseBranch}
                   onChange={(event) => setBaseBranch(event.target.value)}
-                  placeholder={selectedRepository?.default_branch ?? "main"}
+                  placeholder="main"
                 />
               </div>
-            </div>
-          ) : (
-            <div className="grid gap-4 md:grid-cols-2">
-            <div>
-              <label className="mb-1.5 flex items-center gap-2 text-sm font-medium">
-                <Github className="size-4 text-muted-foreground" />
-                Repository URL
-              </label>
-              <Input
-                value={repositoryURL}
-                onChange={(event) => setRepositoryURL(event.target.value)}
-                placeholder="https://github.com/org/repo"
-                autoFocus
-              />
-            </div>
-            <div>
-              <label className="mb-1.5 flex items-center gap-2 text-sm font-medium">
-                <GitBranch className="size-4 text-muted-foreground" />
-                Base Branch
-              </label>
-              <Input
-                value={baseBranch}
-                onChange={(event) => setBaseBranch(event.target.value)}
-                placeholder="main"
-              />
-            </div>
             </div>
           )}
 

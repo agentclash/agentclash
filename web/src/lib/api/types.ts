@@ -357,6 +357,22 @@ export interface CreateAgentHarnessRequest {
   evaluation_config?: unknown;
 }
 
+export interface StartGitHubInstallationResponse {
+  install_url: string;
+  state: string;
+  expires_at: string;
+}
+
+export interface CompleteGitHubInstallationRequest {
+  installation_id: number;
+  state: string;
+}
+
+export interface CompleteGitHubInstallationResponse {
+  installation: GitHubInstallation;
+  repositories: GitHubRepository[];
+}
+
 export interface GitHubInstallation {
   id: string;
   github_installation_id: number;

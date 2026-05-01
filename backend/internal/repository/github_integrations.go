@@ -45,9 +45,154 @@ type GitHubInstallationRepository struct {
 	LastSyncedAt                     time.Time
 }
 
+type UpsertGitHubInstallationParams struct {
+	OrganizationID       uuid.UUID
+	GitHubInstallationID int64
+	GitHubAccountID      int64
+	GitHubAccountLogin   string
+	GitHubAccountType    string
+	RepositorySelection  string
+	InstalledByUserID    *uuid.UUID
+	Status               string
+}
+
+type BindGitHubInstallationToWorkspaceParams struct {
+	OrganizationID       uuid.UUID
+	WorkspaceID          uuid.UUID
+	GitHubInstallationID int64
+	CreatedByUserID      *uuid.UUID
+}
+
+type UpsertGitHubInstallationRepositoryParams struct {
+	OrganizationGitHubInstallationID uuid.UUID
+	GitHubRepositoryID               int64
+	FullName                         string
+	OwnerLogin                       string
+	Name                             string
+	Private                          bool
+	DefaultBranch                    string
+	HTMLURL                          string
+	CloneURL                         string
+	Archived                         bool
+	Permissions                      json.RawMessage
+	Status                           string
+}
+
 type ListWorkspaceGitHubRepositoriesParams struct {
 	WorkspaceID uuid.UUID
 	Query       string
+}
+
+func (r *Repository) UpsertGitHubInstallation(ctx context.Context, p UpsertGitHubInstallationParams) (GitHubInstallation, error) {
+	status := p.Status
+	if status == "" {
+		status = "active"
+	}
+	repositorySelection := p.RepositorySelection
+	if repositorySelection == "" {
+		repositorySelection = "selected"
+	}
+	row := r.db.QueryRow(ctx, `
+INSERT INTO organization_github_installations (
+    organization_id, github_installation_id, github_account_id, github_account_login,
+    github_account_type, repository_selection, installed_by_user_id, status
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+ON CONFLICT (organization_id, github_installation_id) DO UPDATE SET
+    github_account_id = EXCLUDED.github_account_id,
+    github_account_login = EXCLUDED.github_account_login,
+    github_account_type = EXCLUDED.github_account_type,
+    repository_selection = EXCLUDED.repository_selection,
+    installed_by_user_id = COALESCE(EXCLUDED.installed_by_user_id, organization_github_installations.installed_by_user_id),
+    status = EXCLUDED.status
+RETURNING id, organization_id, github_installation_id, github_account_id,
+    github_account_login, github_account_type, repository_selection,
+    installed_by_user_id, status, created_at, updated_at`,
+		p.OrganizationID, p.GitHubInstallationID, p.GitHubAccountID, p.GitHubAccountLogin,
+		p.GitHubAccountType, repositorySelection, p.InstalledByUserID, status,
+	)
+	return scanGitHubInstallation(row)
+}
+
+func (r *Repository) BindGitHubInstallationToWorkspace(ctx context.Context, p BindGitHubInstallationToWorkspaceParams) error {
+	_, err := r.db.Exec(ctx, `
+INSERT INTO workspace_github_installation_bindings (
+    organization_id, workspace_id, organization_github_installation_id, created_by_user_id
+)
+SELECT $1, $2, install.id, $4
+FROM organization_github_installations install
+WHERE install.organization_id = $1
+    AND install.github_installation_id = $3
+    AND install.status = 'active'
+ON CONFLICT (workspace_id, organization_github_installation_id) DO NOTHING`,
+		p.OrganizationID, p.WorkspaceID, p.GitHubInstallationID, p.CreatedByUserID)
+	return err
+}
+
+func (r *Repository) GetGitHubInstallationByGitHubID(ctx context.Context, githubInstallationID int64) (GitHubInstallation, error) {
+	row := r.db.QueryRow(ctx, `
+SELECT id, organization_id, github_installation_id, github_account_id,
+    github_account_login, github_account_type, repository_selection,
+    installed_by_user_id, status, created_at, updated_at
+FROM organization_github_installations
+WHERE github_installation_id = $1`, githubInstallationID)
+	return scanGitHubInstallation(row)
+}
+
+func (r *Repository) UpdateGitHubInstallationStatus(ctx context.Context, githubInstallationID int64, status string) error {
+	_, err := r.db.Exec(ctx, `
+UPDATE organization_github_installations
+SET status = $2
+WHERE github_installation_id = $1`, githubInstallationID, status)
+	return err
+}
+
+func (r *Repository) UpsertGitHubInstallationRepositories(ctx context.Context, organizationGitHubInstallationID uuid.UUID, repos []UpsertGitHubInstallationRepositoryParams) error {
+	for _, repo := range repos {
+		status := repo.Status
+		if status == "" {
+			status = "active"
+		}
+		permissions := repo.Permissions
+		if len(permissions) == 0 {
+			permissions = json.RawMessage(`{}`)
+		}
+		_, err := r.db.Exec(ctx, `
+INSERT INTO github_installation_repositories (
+    organization_github_installation_id, github_repository_id, full_name, owner_login, name,
+    private, default_branch, html_url, clone_url, archived, permissions, status, last_synced_at
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, now())
+ON CONFLICT (organization_github_installation_id, github_repository_id) DO UPDATE SET
+    full_name = EXCLUDED.full_name,
+    owner_login = EXCLUDED.owner_login,
+    name = EXCLUDED.name,
+    private = EXCLUDED.private,
+    default_branch = EXCLUDED.default_branch,
+    html_url = EXCLUDED.html_url,
+    clone_url = EXCLUDED.clone_url,
+    archived = EXCLUDED.archived,
+    permissions = EXCLUDED.permissions,
+    status = EXCLUDED.status,
+    last_synced_at = now()`,
+			organizationGitHubInstallationID, repo.GitHubRepositoryID, repo.FullName, repo.OwnerLogin, repo.Name,
+			repo.Private, repo.DefaultBranch, repo.HTMLURL, repo.CloneURL, repo.Archived, permissions, status,
+		)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *Repository) MarkGitHubInstallationRepositoriesRemoved(ctx context.Context, organizationGitHubInstallationID uuid.UUID, repositoryIDs []int64) error {
+	if len(repositoryIDs) == 0 {
+		return nil
+	}
+	_, err := r.db.Exec(ctx, `
+UPDATE github_installation_repositories
+SET status = 'removed'
+WHERE organization_github_installation_id = $1
+    AND github_repository_id = ANY($2)`, organizationGitHubInstallationID, repositoryIDs)
+	return err
 }
 
 func (r *Repository) ListWorkspaceGitHubInstallations(ctx context.Context, workspaceID uuid.UUID) ([]GitHubInstallation, error) {

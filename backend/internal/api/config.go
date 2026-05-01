@@ -70,7 +70,10 @@ type Config struct {
 	ResendFromEmail           string
 	FrontendURL               string
 	GitHubAppSlug             string
+	GitHubAppID               int64
+	GitHubAppPrivateKey       string
 	GitHubAppStateSecret      string
+	GitHubWebhookSecret       string
 	DodoPaymentsAPIKey        string
 	DodoPaymentsWebhookKey    string
 	DodoAPIBaseURL            string
@@ -181,6 +184,10 @@ func LoadConfigFromEnv() (Config, error) {
 	if frontendURL == "" {
 		frontendURL = "http://localhost:3000"
 	}
+	githubAppID, err := optionalInt64Env("GITHUB_APP_ID")
+	if err != nil {
+		return Config{}, err
+	}
 
 	cfg := Config{
 		AppEnvironment:            appEnvironment,
@@ -213,7 +220,10 @@ func LoadConfigFromEnv() (Config, error) {
 		ResendFromEmail:           resendFromEmail,
 		FrontendURL:               frontendURL,
 		GitHubAppSlug:             os.Getenv("GITHUB_APP_SLUG"),
+		GitHubAppID:               githubAppID,
+		GitHubAppPrivateKey:       normalizePEMEnv(os.Getenv("GITHUB_APP_PRIVATE_KEY")),
 		GitHubAppStateSecret:      os.Getenv("GITHUB_APP_STATE_SECRET"),
+		GitHubWebhookSecret:       os.Getenv("GITHUB_WEBHOOK_SECRET"),
 		DodoPaymentsAPIKey:        dodoPaymentsAPIKey,
 		DodoPaymentsWebhookKey:    dodoPaymentsWebhookKey,
 		DodoAPIBaseURL:            os.Getenv("DODO_API_BASE_URL"),
@@ -232,6 +242,25 @@ func LoadConfigFromEnv() (Config, error) {
 	cfg.SecretsCipher = secretsCipher
 
 	return cfg, nil
+}
+
+func optionalInt64Env(key string) (int64, error) {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return 0, nil
+	}
+	parsed, err := strconv.ParseInt(value, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("%w: %s must be an integer", ErrInvalidConfig, key)
+	}
+	if parsed <= 0 {
+		return 0, fmt.Errorf("%w: %s must be greater than zero", ErrInvalidConfig, key)
+	}
+	return parsed, nil
+}
+
+func normalizePEMEnv(value string) string {
+	return strings.ReplaceAll(value, `\n`, "\n")
 }
 
 func envOrDefault(key string, fallback string) (string, error) {

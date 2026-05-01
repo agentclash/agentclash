@@ -350,6 +350,7 @@ func buildRouter(opts routerOptions) http.Handler {
 		Get("/public/shares/{token}", getPublicShareHandler(logger, publicShareService))
 	registerPublicRoutes(router, logger, artifactService)
 	registerHostedIntegrationRoutes(router, logger, hostedRunIngestionService)
+	registerGitHubWebhookRoute(router, logger, githubIntegrationService)
 	registerDodoWebhookRoute(router.With(rateLimiter.Middleware("default", extractWorkspaceID)), logger, billingService)
 	registerEventStreamRoute(router, logger, authenticator, runReadService, eventSubscriber)
 
