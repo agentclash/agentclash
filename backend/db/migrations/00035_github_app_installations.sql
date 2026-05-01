@@ -2,7 +2,7 @@
 CREATE TABLE organization_github_installations (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     organization_id uuid NOT NULL REFERENCES organizations (id) ON DELETE CASCADE,
-    github_installation_id bigint NOT NULL UNIQUE,
+    github_installation_id bigint NOT NULL,
     github_account_id bigint NOT NULL,
     github_account_login text NOT NULL,
     github_account_type text NOT NULL CHECK (github_account_type IN ('User', 'Organization')),
@@ -11,6 +11,7 @@ CREATE TABLE organization_github_installations (
     status text NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'suspended', 'deleted')),
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT organization_github_installations_github_installation_id_key UNIQUE (github_installation_id),
     UNIQUE (id, organization_id),
     UNIQUE (organization_id, github_installation_id)
 );

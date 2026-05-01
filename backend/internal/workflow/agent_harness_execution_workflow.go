@@ -64,6 +64,11 @@ type agentHarnessSnapshot struct {
 	AuthMode               string          `json:"auth_mode"`
 	OpenAIAPIKeySecretName *string         `json:"openai_api_key_secret_name,omitempty"`
 	RepositoryURL          *string         `json:"repository_url,omitempty"`
+	RepositoryProvider     *string         `json:"repository_provider,omitempty"`
+	GitHubRepositoryID     *int64          `json:"github_repository_id,omitempty"`
+	GitHubInstallationID   *int64          `json:"github_installation_id,omitempty"`
+	RepositoryFullName     *string         `json:"repository_full_name,omitempty"`
+	RepositoryCloneURL     *string         `json:"repository_clone_url,omitempty"`
 	BaseBranch             *string         `json:"base_branch,omitempty"`
 	ExecutionConfig        json.RawMessage `json:"execution_config,omitempty"`
 	EvaluationConfig       json.RawMessage `json:"evaluation_config,omitempty"`
@@ -141,6 +146,9 @@ func (a *Activities) ExecuteAgentHarnessExecution(ctx context.Context, input Exe
 	}
 	harness, err := a.agentHarnessSnapshot(ctx, execution)
 	if err != nil {
+		return wrapActivityError(err)
+	}
+	if err := a.verifyAgentHarnessGitHubAccess(ctx, execution.ID, harness); err != nil {
 		return wrapActivityError(err)
 	}
 	secrets, err := a.agentHarnessRepo.LoadWorkspaceSecrets(ctx, execution.WorkspaceID)
@@ -271,10 +279,34 @@ func (a *Activities) agentHarnessSnapshot(ctx context.Context, execution reposit
 		AuthMode:               harness.AuthMode,
 		OpenAIAPIKeySecretName: harness.OpenAIAPIKeySecretName,
 		RepositoryURL:          harness.RepositoryURL,
+		RepositoryProvider:     harness.RepositoryProvider,
+		GitHubRepositoryID:     harness.GitHubRepositoryID,
+		GitHubInstallationID:   harness.GitHubInstallationID,
+		RepositoryFullName:     harness.RepositoryFullName,
+		RepositoryCloneURL:     harness.RepositoryCloneURL,
 		BaseBranch:             harness.BaseBranch,
 		ExecutionConfig:        harness.ExecutionConfig,
 		EvaluationConfig:       harness.EvaluationConfig,
 	}, nil
+}
+
+func (a *Activities) verifyAgentHarnessGitHubAccess(ctx context.Context, executionID uuid.UUID, harness agentHarnessSnapshot) error {
+	if derefString(harness.RepositoryProvider) != "github" || harness.GitHubRepositoryID == nil {
+		return nil
+	}
+	_, err := a.agentHarnessRepo.GetWorkspaceGitHubRepository(ctx, harness.WorkspaceID, *harness.GitHubRepositoryID, harness.GitHubInstallationID)
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, repository.ErrGitHubRepositoryNotInstalled) {
+		_ = a.recordAgentHarnessEvent(ctx, executionID, "github.repository_access_revoked", "worker", map[string]any{
+			"github_repository_id":   *harness.GitHubRepositoryID,
+			"github_installation_id": harness.GitHubInstallationID,
+			"repository_full_name":   harness.RepositoryFullName,
+		})
+		return fmt.Errorf("%w: github repository access was revoked or removed", repository.ErrGitHubRepositoryNotInstalled)
+	}
+	return err
 }
 
 func (a *Activities) execHarnessCommand(ctx context.Context, executionID uuid.UUID, session sandbox.Session, eventType string, command []string, workdir string, timeout time.Duration, env map[string]string) (sandbox.ExecResult, error) {

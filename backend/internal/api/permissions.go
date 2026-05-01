@@ -15,16 +15,17 @@ const (
 	ActionReadWorkspace Action = "read_workspace"
 
 	// Member-level write actions — allowed for workspace_admin and workspace_member.
-	ActionCreateAgentBuild        Action = "create_agent_build"
-	ActionCreateAgentBuildVersion Action = "create_agent_build_version"
-	ActionUpdateAgentBuildVersion Action = "update_agent_build_version"
-	ActionMarkAgentBuildReady     Action = "mark_agent_build_ready"
-	ActionCreateAgentDeployment   Action = "create_agent_deployment"
-	ActionCreateRun               Action = "create_run"
-	ActionManagePlaygrounds       Action = "manage_playgrounds"
-	ActionManageRegressions       Action = "manage_regressions"
-	ActionPublishChallengePack    Action = "publish_challenge_pack"
-	ActionUploadArtifact          Action = "upload_artifact"
+	ActionCreateAgentBuild            Action = "create_agent_build"
+	ActionCreateAgentBuildVersion     Action = "create_agent_build_version"
+	ActionUpdateAgentBuildVersion     Action = "update_agent_build_version"
+	ActionMarkAgentBuildReady         Action = "mark_agent_build_ready"
+	ActionCreateAgentDeployment       Action = "create_agent_deployment"
+	ActionCreateRun                   Action = "create_run"
+	ActionManagePlaygrounds           Action = "manage_playgrounds"
+	ActionManageRegressions           Action = "manage_regressions"
+	ActionSelectIntegrationRepository Action = "select_integration_repository"
+	ActionPublishChallengePack        Action = "publish_challenge_pack"
+	ActionUploadArtifact              Action = "upload_artifact"
 
 	// Admin-level actions — allowed for workspace_admin only.
 	// Infrastructure CRUD endpoints don't exist yet, but the matrix
@@ -47,33 +48,35 @@ const (
 // org_admin is handled separately via implicit access (treated as workspace_admin).
 var permissionMatrix = map[string]map[Action]bool{
 	RoleWorkspaceAdmin: {
-		ActionReadWorkspace:           true,
-		ActionCreateAgentBuild:        true,
-		ActionCreateAgentBuildVersion: true,
-		ActionUpdateAgentBuildVersion: true,
-		ActionMarkAgentBuildReady:     true,
-		ActionCreateAgentDeployment:   true,
-		ActionCreateRun:               true,
-		ActionManagePlaygrounds:       true,
-		ActionManageRegressions:       true,
-		ActionPublishChallengePack:    true,
-		ActionUploadArtifact:          true,
-		ActionManageInfrastructure:    true,
-		ActionManageIntegrations:      true,
-		ActionManageSecrets:           true,
+		ActionReadWorkspace:               true,
+		ActionCreateAgentBuild:            true,
+		ActionCreateAgentBuildVersion:     true,
+		ActionUpdateAgentBuildVersion:     true,
+		ActionMarkAgentBuildReady:         true,
+		ActionCreateAgentDeployment:       true,
+		ActionCreateRun:                   true,
+		ActionManagePlaygrounds:           true,
+		ActionManageRegressions:           true,
+		ActionSelectIntegrationRepository: true,
+		ActionPublishChallengePack:        true,
+		ActionUploadArtifact:              true,
+		ActionManageInfrastructure:        true,
+		ActionManageIntegrations:          true,
+		ActionManageSecrets:               true,
 	},
 	RoleWorkspaceMember: {
-		ActionReadWorkspace:           true,
-		ActionCreateAgentBuild:        true,
-		ActionCreateAgentBuildVersion: true,
-		ActionUpdateAgentBuildVersion: true,
-		ActionMarkAgentBuildReady:     true,
-		ActionCreateAgentDeployment:   true,
-		ActionCreateRun:               true,
-		ActionManagePlaygrounds:       true,
-		ActionManageRegressions:       true,
-		ActionPublishChallengePack:    true,
-		ActionUploadArtifact:          true,
+		ActionReadWorkspace:               true,
+		ActionCreateAgentBuild:            true,
+		ActionCreateAgentBuildVersion:     true,
+		ActionUpdateAgentBuildVersion:     true,
+		ActionMarkAgentBuildReady:         true,
+		ActionCreateAgentDeployment:       true,
+		ActionCreateRun:                   true,
+		ActionManagePlaygrounds:           true,
+		ActionManageRegressions:           true,
+		ActionSelectIntegrationRepository: true,
+		ActionPublishChallengePack:        true,
+		ActionUploadArtifact:              true,
 	},
 	RoleWorkspaceViewer: {
 		ActionReadWorkspace: true,

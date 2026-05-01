@@ -1116,6 +1116,8 @@ type fakeRunRepository struct {
 	agentHarnessExecutions  map[uuid.UUID]repository.AgentHarnessExecution
 	agentHarnessEvents      map[uuid.UUID][]repository.AgentHarnessExecutionEvent
 	workspaceSecrets        map[uuid.UUID]map[string]string
+	githubRepo              repository.GitHubInstallationRepository
+	githubRepoErr           error
 	runAgentStatusErrs      map[string]error
 	buildReplayErr          error
 	aggregateEvalSessionErr error
@@ -1511,6 +1513,15 @@ func (r *fakeRunRepository) GetAgentHarnessExecutionByID(_ context.Context, id u
 		return repository.AgentHarnessExecution{}, repository.ErrAgentHarnessExecutionNotFound
 	}
 	return execution, nil
+}
+
+func (r *fakeRunRepository) GetWorkspaceGitHubRepository(_ context.Context, _ uuid.UUID, _ int64, _ *int64) (repository.GitHubInstallationRepository, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.githubRepoErr != nil {
+		return repository.GitHubInstallationRepository{}, r.githubRepoErr
+	}
+	return r.githubRepo, nil
 }
 
 func (r *fakeRunRepository) TransitionAgentHarnessExecutionStatus(_ context.Context, params repository.TransitionAgentHarnessExecutionStatusParams) (repository.AgentHarnessExecution, error) {

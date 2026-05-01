@@ -138,6 +138,43 @@ func TestGitHubIntegrationManagerCompleteInstallationVerifiesStateAndSyncsReposi
 	}
 }
 
+func TestGitHubIntegrationManagerCompleteInstallationReportsCrossOrgConflict(t *testing.T) {
+	workspaceID := uuid.New()
+	caller := testAgentHarnessCaller(workspaceID)
+	repo := &fakeGitHubIntegrationRepo{
+		organizationID: uuid.New(),
+		upsertErr:      repository.ErrGitHubInstallationOwnedByOtherOrg,
+	}
+	manager := NewGitHubIntegrationManager(NewCallerWorkspaceAuthorizer(), repo, GitHubIntegrationConfig{
+		AppSlug:     "agentclash-dev",
+		StateSecret: "state-secret",
+		StateTTL:    time.Minute,
+	})
+	manager.client = fakeGitHubAppClient{
+		installation: githubAPIInstallation{
+			ID:                  42,
+			Account:             githubAPIAccount{ID: 99, Login: "acme", Type: "Organization"},
+			RepositorySelection: "selected",
+		},
+	}
+	started, err := manager.StartGitHubInstallation(context.Background(), caller, workspaceID, StartGitHubInstallationInput{})
+	if err != nil {
+		t.Fatalf("StartGitHubInstallation error: %v", err)
+	}
+
+	_, err = manager.CompleteGitHubInstallation(context.Background(), caller, workspaceID, CompleteGitHubInstallationInput{
+		InstallationID: 42,
+		State:          started.State,
+	})
+	var validationErr GitHubIntegrationValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("error = %v, want validation error", err)
+	}
+	if validationErr.Code != "installation_owned_by_other_org" {
+		t.Fatalf("validation code = %q", validationErr.Code)
+	}
+}
+
 func TestGitHubWebhookHandlerRejectsInvalidSignature(t *testing.T) {
 	manager := NewGitHubIntegrationManager(NewCallerWorkspaceAuthorizer(), &fakeGitHubIntegrationRepo{}, GitHubIntegrationConfig{
 		WebhookSecret: "webhook-secret",
@@ -178,6 +215,7 @@ type fakeGitHubIntegrationRepo struct {
 	upsertInstallation     repository.UpsertGitHubInstallationParams
 	binding                repository.BindGitHubInstallationToWorkspaceParams
 	upsertRepositories     []repository.UpsertGitHubInstallationRepositoryParams
+	upsertErr              error
 }
 
 func (f *fakeGitHubIntegrationRepo) GetOrganizationIDByWorkspaceID(context.Context, uuid.UUID) (uuid.UUID, error) {
@@ -186,6 +224,9 @@ func (f *fakeGitHubIntegrationRepo) GetOrganizationIDByWorkspaceID(context.Conte
 
 func (f *fakeGitHubIntegrationRepo) UpsertGitHubInstallation(_ context.Context, p repository.UpsertGitHubInstallationParams) (repository.GitHubInstallation, error) {
 	f.upsertInstallation = p
+	if f.upsertErr != nil {
+		return repository.GitHubInstallation{}, f.upsertErr
+	}
 	return repository.GitHubInstallation{
 		ID:                   uuid.New(),
 		OrganizationID:       p.OrganizationID,

@@ -4,6 +4,7 @@ import { createApiClient } from "@/lib/api/client";
 import type {
   CompleteGitHubInstallationRequest,
   CompleteGitHubInstallationResponse,
+  UserMeResponse,
 } from "@/lib/api/types";
 import { sanitizeReturnTo } from "@/lib/auth/return-to";
 
@@ -35,14 +36,13 @@ export default async function GitHubSetupPage({
   const decoded = decodeGitHubSetupState(state);
   const workspaceID = decoded?.workspace_id;
 
-  if (
-    !Number.isSafeInteger(installationID) ||
-    installationID <= 0 ||
-    !workspaceID
-  ) {
+  if (!Number.isSafeInteger(installationID) || installationID <= 0) {
     return (
       <GitHubSetupFailure message="GitHub did not return a valid installation." />
     );
+  }
+  if (!workspaceID) {
+    return <GitHubSetupRecovery accessToken={accessToken} />;
   }
 
   try {
@@ -106,6 +106,61 @@ function safeWorkspaceReturnPath(
     return raw;
   }
   return `/workspaces/${workspaceID}/agent-harnesses`;
+}
+
+async function GitHubSetupRecovery({ accessToken }: { accessToken: string }) {
+  let workspaces: Array<{ id: string; name: string }> = [];
+  try {
+    const api = createApiClient(accessToken);
+    const me = await api.get<UserMeResponse>("/v1/users/me");
+    workspaces = me.organizations.flatMap((organization) =>
+      organization.workspaces
+        .filter(
+          (workspace) =>
+            organization.role === "org_admin" ||
+            workspace.role === "workspace_admin",
+        )
+        .map((workspace) => ({
+          id: workspace.id,
+          name: workspace.name || workspace.slug || workspace.id,
+        })),
+    );
+  } catch {
+    workspaces = [];
+  }
+
+  return (
+    <main className="flex min-h-screen items-center justify-center px-6">
+      <div className="w-full max-w-lg">
+        <h1 className="text-lg font-semibold">Finish connecting GitHub</h1>
+        <p className="mt-2 text-sm leading-6 text-muted-foreground">
+          This installation started from GitHub, so AgentClash needs a workspace
+          to create a signed connection. Open a workspace, then use Connect
+          GitHub from the New Harness dialog.
+        </p>
+        {workspaces.length > 0 ? (
+          <div className="mt-5 grid gap-2">
+            {workspaces.map((workspace) => (
+              <a
+                key={workspace.id}
+                href={`/workspaces/${workspace.id}/agent-harnesses`}
+                className="rounded-lg border border-border px-4 py-3 text-sm font-medium hover:bg-muted"
+              >
+                {workspace.name}
+              </a>
+            ))}
+          </div>
+        ) : (
+          <a
+            href="/dashboard"
+            className="mt-5 inline-flex text-sm font-medium underline underline-offset-4"
+          >
+            Back to dashboard
+          </a>
+        )}
+      </div>
+    </main>
+  );
 }
 
 function GitHubSetupFailure({ message }: { message: string }) {

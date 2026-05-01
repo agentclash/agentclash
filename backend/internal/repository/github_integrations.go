@@ -9,9 +9,11 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 var ErrGitHubRepositoryNotInstalled = errors.New("github repository is not installed for workspace")
+var ErrGitHubInstallationOwnedByOtherOrg = errors.New("github installation is already bound to another organization")
 
 type GitHubInstallation struct {
 	ID                   uuid.UUID
@@ -110,7 +112,11 @@ RETURNING id, organization_id, github_installation_id, github_account_id,
 		p.OrganizationID, p.GitHubInstallationID, p.GitHubAccountID, p.GitHubAccountLogin,
 		p.GitHubAccountType, repositorySelection, p.InstalledByUserID, status,
 	)
-	return scanGitHubInstallation(row)
+	installation, err := scanGitHubInstallation(row)
+	if isGitHubInstallationGlobalConflict(err) {
+		return GitHubInstallation{}, ErrGitHubInstallationOwnedByOtherOrg
+	}
+	return installation, err
 }
 
 func (r *Repository) BindGitHubInstallationToWorkspace(ctx context.Context, p BindGitHubInstallationToWorkspaceParams) error {
@@ -264,6 +270,13 @@ func escapePostgresLikePattern(value string) string {
 	value = strings.ReplaceAll(value, `%`, `\%`)
 	value = strings.ReplaceAll(value, `_`, `\_`)
 	return value
+}
+
+func isGitHubInstallationGlobalConflict(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) &&
+		pgErr.Code == "23505" &&
+		pgErr.ConstraintName == "organization_github_installations_github_installation_id_key"
 }
 
 func (r *Repository) GetWorkspaceGitHubRepository(ctx context.Context, workspaceID uuid.UUID, githubRepositoryID int64, githubInstallationID *int64) (GitHubInstallationRepository, error) {

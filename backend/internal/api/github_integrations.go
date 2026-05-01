@@ -189,6 +189,12 @@ func (m *GitHubIntegrationManager) CompleteGitHubInstallation(ctx context.Contex
 		Status:               "active",
 	})
 	if err != nil {
+		if errors.Is(err, repository.ErrGitHubInstallationOwnedByOtherOrg) {
+			return CompleteGitHubInstallationResult{}, GitHubIntegrationValidationError{
+				Code:    "installation_owned_by_other_org",
+				Message: "this GitHub installation is already bound to a different AgentClash organization. Uninstall it on GitHub or use the original AgentClash organization.",
+			}
+		}
 		return CompleteGitHubInstallationResult{}, err
 	}
 	if err := m.repo.BindGitHubInstallationToWorkspace(ctx, repository.BindGitHubInstallationToWorkspaceParams{
@@ -229,7 +235,7 @@ func (m *GitHubIntegrationManager) ListGitHubInstallations(ctx context.Context, 
 }
 
 func (m *GitHubIntegrationManager) ListGitHubRepositories(ctx context.Context, caller Caller, workspaceID uuid.UUID, query string) ([]repository.GitHubInstallationRepository, error) {
-	if err := AuthorizeWorkspaceAction(ctx, m.authorizer, caller, workspaceID, ActionCreateRun); err != nil {
+	if err := AuthorizeWorkspaceAction(ctx, m.authorizer, caller, workspaceID, ActionSelectIntegrationRepository); err != nil {
 		return nil, err
 	}
 	return m.repo.ListWorkspaceGitHubRepositories(ctx, repository.ListWorkspaceGitHubRepositoriesParams{
