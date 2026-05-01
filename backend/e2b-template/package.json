@@ -1,4 +1,10 @@
 {
+  "scripts": {
+    "build:dev": "tsx build.dev.ts",
+    "build:prod": "tsx build.prod.ts",
+    "build:codex:dev": "tsx build.codex.dev.ts",
+    "build:codex:prod": "tsx build.codex.prod.ts"
+  },
   "dependencies": {
     "e2b": "^2.14.1",
     "tsx": "^4.21.0"
