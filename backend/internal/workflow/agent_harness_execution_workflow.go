@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/agentclash/agentclash/backend/internal/maputil"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/backend/internal/sandbox"
 	"github.com/google/uuid"
@@ -272,7 +273,7 @@ func (a *Activities) execHarnessCommand(ctx context.Context, executionID uuid.UU
 		Command:          command,
 		WorkingDirectory: workdir,
 		Timeout:          timeout,
-		Environment:      cloneStringMap(env),
+		Environment:      maputil.CloneStringMap(env),
 		OnStdout:         onStdout,
 	})
 	if eventType == "codex.exec" && stdoutRemainder != "" {
@@ -315,7 +316,7 @@ func (a *Activities) evaluateAgentHarnessExecution(ctx context.Context, executio
 			if err != nil {
 				failed++
 				if validatorRequired(validator) {
-					_ = a.recordAgentHarnessEvent(ctx, executionID, "scoring.completed", "worker", map[string]any{"passed": passed, "failed": failed, "skipped": skipped, "score": 0})
+					_ = a.recordAgentHarnessEvent(ctx, executionID, "scoring.completed", "worker", map[string]any{"passed": passed, "failed": failed, "skipped": skipped, "score": agentHarnessScore(passed, failed)})
 					return err
 				}
 			}
@@ -336,12 +337,7 @@ func (a *Activities) evaluateAgentHarnessExecution(ctx context.Context, executio
 		}
 	}
 
-	totalScored := passed + failed
-	score := 1.0
-	if totalScored > 0 {
-		score = float64(passed) / float64(totalScored)
-	}
-	return a.recordAgentHarnessEvent(ctx, executionID, "scoring.completed", "worker", map[string]any{"passed": passed, "failed": failed, "skipped": skipped, "score": score})
+	return a.recordAgentHarnessEvent(ctx, executionID, "scoring.completed", "worker", map[string]any{"passed": passed, "failed": failed, "skipped": skipped, "score": agentHarnessScore(passed, failed)})
 }
 
 func (a *Activities) evaluateCommandValidator(ctx context.Context, executionID uuid.UUID, session sandbox.Session, validator agentHarnessValidatorConfig, index int, defaultWorkdir string, defaultTimeout time.Duration, env map[string]string) (bool, error) {
@@ -360,7 +356,7 @@ func (a *Activities) evaluateCommandValidator(ctx context.Context, executionID u
 		timeout = time.Duration(validator.TimeoutSeconds) * time.Second
 	}
 
-	result, err := a.execHarnessCommand(ctx, executionID, session, "validator.command", []string{"sh", "-lc", command}, workdir, timeout, env)
+	result, err := a.execHarnessCommand(ctx, executionID, session, "validator.command.exec", []string{"sh", "-lc", command}, workdir, timeout, env)
 	payload := map[string]any{
 		"index":             index,
 		"command":           command,
@@ -396,6 +392,14 @@ func decodeAgentHarnessEvaluationConfig(raw json.RawMessage) (agentHarnessEvalua
 
 func validatorRequired(validator agentHarnessValidatorConfig) bool {
 	return validator.Required == nil || *validator.Required
+}
+
+func agentHarnessScore(passed int, failed int) float64 {
+	totalScored := passed + failed
+	if totalScored == 0 {
+		return 1
+	}
+	return float64(passed) / float64(totalScored)
 }
 
 func (a *Activities) recordCodexOutputEvents(ctx context.Context, executionID uuid.UUID, raw string, flush bool) (string, error) {
@@ -459,17 +463,6 @@ func agentHarnessEnv(h agentHarnessSnapshot, secrets map[string]string) (map[str
 		return nil, fmt.Errorf("unsupported agent harness auth mode %q", h.AuthMode)
 	}
 	return env, nil
-}
-
-func cloneStringMap(values map[string]string) map[string]string {
-	if len(values) == 0 {
-		return nil
-	}
-	cloned := make(map[string]string, len(values))
-	for key, value := range values {
-		cloned[key] = value
-	}
-	return cloned
 }
 
 func agentHarnessTimeout(raw json.RawMessage) time.Duration {

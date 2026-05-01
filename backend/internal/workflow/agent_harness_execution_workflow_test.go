@@ -139,7 +139,7 @@ func TestExecuteAgentHarnessExecutionFailsRequiredValidator(t *testing.T) {
 		OpenAIAPIKeySecretName: &openAISecret,
 		RepositoryURL:          stringPtr("https://github.com/acme/repo"),
 		ExecutionConfig:        json.RawMessage(`{"timeout_seconds":120}`),
-		EvaluationConfig:       json.RawMessage(`{"validators":[{"type":"command","command":"go test ./..."}]}`),
+		EvaluationConfig:       json.RawMessage(`{"validators":[{"type":"command","command":"go test ./..."},{"type":"command","command":"npm test"}]}`),
 	})
 	repo.setAgentHarnessExecution(repository.AgentHarnessExecution{
 		ID:                      executionID,
@@ -162,6 +162,8 @@ func TestExecuteAgentHarnessExecutionFailsRequiredValidator(t *testing.T) {
 		case len(request.Command) >= 2 && request.Command[0] == "git" && request.Command[1] == "status":
 			return sandbox.ExecResult{ExitCode: 0}, nil
 		case len(request.Command) >= 3 && request.Command[0] == "sh" && request.Command[1] == "-lc" && request.Command[2] == "go test ./...":
+			return sandbox.ExecResult{ExitCode: 0, Stdout: "ok"}, nil
+		case len(request.Command) >= 3 && request.Command[0] == "sh" && request.Command[1] == "-lc" && request.Command[2] == "npm test":
 			return sandbox.ExecResult{ExitCode: 1, Stderr: "failed"}, nil
 		default:
 			t.Fatalf("unexpected command: %#v", request.Command)
@@ -175,27 +177,27 @@ func TestExecuteAgentHarnessExecutionFailsRequiredValidator(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected validator failure")
 	}
-	var sawValidatorFailed bool
-	var sawZeroScore bool
+	validatorFailedCount := 0
+	var sawPartialScore bool
 	for _, event := range repo.agentHarnessEvents[executionID] {
 		switch event.EventType {
 		case "validator.command.failed":
-			sawValidatorFailed = true
+			validatorFailedCount++
 		case "scoring.completed":
 			var payload map[string]any
 			if err := json.Unmarshal(event.Payload, &payload); err != nil {
 				t.Fatalf("decode scoring payload: %v", err)
 			}
-			if payload["score"] == float64(0) {
-				sawZeroScore = true
+			if payload["score"] == float64(0.5) {
+				sawPartialScore = true
 			}
 		}
 	}
-	if !sawValidatorFailed {
-		t.Fatal("expected validator failure event")
+	if validatorFailedCount != 1 {
+		t.Fatalf("validator.command.failed events = %d, want 1", validatorFailedCount)
 	}
-	if !sawZeroScore {
-		t.Fatal("expected zero score event")
+	if !sawPartialScore {
+		t.Fatal("expected partial score event")
 	}
 }
 
