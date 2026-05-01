@@ -22,6 +22,8 @@ func TestLoadConfigFromEnvUsesDefaultsWhenUnset(t *testing.T) {
 	unsetEnv(t, "E2B_API_BASE_URL")
 	unsetEnv(t, "E2B_REQUEST_TIMEOUT")
 	unsetEnv(t, "AGENTCLASH_SECRETS_MASTER_KEY")
+	unsetEnv(t, "GITHUB_APP_ID")
+	unsetEnv(t, "GITHUB_APP_PRIVATE_KEY")
 
 	cfg, err := LoadConfigFromEnv()
 	if err != nil {
@@ -48,6 +50,9 @@ func TestLoadConfigFromEnvUsesDefaultsWhenUnset(t *testing.T) {
 	}
 	if cfg.Sandbox.Provider != "unconfigured" {
 		t.Fatalf("Sandbox.Provider = %q, want unconfigured", cfg.Sandbox.Provider)
+	}
+	if cfg.GitHubAppID != 0 || cfg.GitHubAppPrivateKey != "" {
+		t.Fatalf("github app config = %d/%q, want empty", cfg.GitHubAppID, cfg.GitHubAppPrivateKey)
 	}
 }
 
@@ -91,6 +96,8 @@ func TestLoadConfigFromEnvOverrides(t *testing.T) {
 	t.Setenv("E2B_TEMPLATE_ID", "tmpl")
 	t.Setenv("E2B_API_BASE_URL", "https://api.example.com")
 	t.Setenv("E2B_REQUEST_TIMEOUT", "45s")
+	t.Setenv("GITHUB_APP_ID", "123")
+	t.Setenv("GITHUB_APP_PRIVATE_KEY", "-----BEGIN KEY-----\\nabc\\n-----END KEY-----")
 
 	cfg, err := LoadConfigFromEnv()
 	if err != nil {
@@ -120,6 +127,24 @@ func TestLoadConfigFromEnvOverrides(t *testing.T) {
 	}
 	if cfg.Sandbox.E2B.RequestTimeout != 45*time.Second {
 		t.Fatalf("RequestTimeout = %s, want %s", cfg.Sandbox.E2B.RequestTimeout, 45*time.Second)
+	}
+	if cfg.GitHubAppID != 123 {
+		t.Fatalf("GitHubAppID = %d, want 123", cfg.GitHubAppID)
+	}
+	if cfg.GitHubAppPrivateKey != "-----BEGIN KEY-----\nabc\n-----END KEY-----" {
+		t.Fatalf("GitHubAppPrivateKey was not normalized")
+	}
+}
+
+func TestLoadConfigFromEnvRejectsInvalidGitHubAppID(t *testing.T) {
+	t.Setenv("GITHUB_APP_ID", "abc")
+
+	_, err := LoadConfigFromEnv()
+	if err == nil {
+		t.Fatalf("LoadConfigFromEnv returned nil error")
+	}
+	if !errors.Is(err, ErrInvalidConfig) {
+		t.Fatalf("error = %v, want ErrInvalidConfig", err)
 	}
 }
 

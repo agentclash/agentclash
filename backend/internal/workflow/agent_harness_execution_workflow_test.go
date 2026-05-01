@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -329,6 +330,220 @@ func TestExecuteAgentHarnessExecutionFailsEarlyWhenGitHubAccessRevoked(t *testin
 	}
 }
 
+func TestExecuteAgentHarnessExecutionCreatesDraftPullRequestForGitHubHarness(t *testing.T) {
+	workspaceID := uuid.New()
+	harnessID := uuid.New()
+	executionID := uuid.New()
+	openAISecret := "OPENAI_API_KEY"
+	repositoryID := int64(100)
+	installationID := int64(42)
+	provider := "github"
+	repo := newFakeRunRepository(fixtureRun(uuid.New(), domain.RunStatusQueued))
+	repo.githubRepo = repository.GitHubInstallationRepository{
+		GitHubInstallationID: installationID,
+		GitHubRepositoryID:   repositoryID,
+		FullName:             "acme/repo",
+		DefaultBranch:        "main",
+		Status:               "active",
+	}
+	repo.setAgentHarness(repository.AgentHarness{
+		ID:                     harnessID,
+		OrganizationID:         uuid.New(),
+		WorkspaceID:            workspaceID,
+		TaskPrompt:             "make a sample change",
+		CodexTemplate:          "codex",
+		AuthMode:               "api_key_secret",
+		OpenAIAPIKeySecretName: &openAISecret,
+		RepositoryURL:          stringPtr("https://github.com/acme/repo"),
+		RepositoryProvider:     &provider,
+		GitHubRepositoryID:     &repositoryID,
+		GitHubInstallationID:   &installationID,
+		RepositoryFullName:     stringPtr("acme/repo"),
+		BaseBranch:             stringPtr("main"),
+	})
+	repo.setAgentHarnessExecution(repository.AgentHarnessExecution{
+		ID:                      executionID,
+		WorkspaceID:             workspaceID,
+		AgentHarnessID:          harnessID,
+		Status:                  string(repository.AgentHarnessExecutionStatusRunning),
+		ExecutionConfigSnapshot: json.RawMessage(`{"timeout_seconds":120}`),
+	})
+	repo.setWorkspaceSecrets(workspaceID, map[string]string{openAISecret: "sk-test"})
+
+	session := sandbox.NewFakeSession("sandbox-1")
+	session.SetExecFunc(func(request sandbox.ExecRequest, _ map[string][]byte) (sandbox.ExecResult, error) {
+		if containsString(request.Command, "ghs_test_token") {
+			t.Fatalf("command leaked github token: %#v", request.Command)
+		}
+		switch {
+		case len(request.Command) >= 2 && request.Command[0] == "chmod":
+			return sandbox.ExecResult{ExitCode: 0}, nil
+		case len(request.Command) >= 2 && request.Command[0] == "git" && request.Command[1] == "clone":
+			if request.Environment["GITHUB_TOKEN"] != "ghs_test_token" {
+				t.Fatalf("clone env missing github token")
+			}
+			return sandbox.ExecResult{ExitCode: 0}, nil
+		case len(request.Command) >= 2 && request.Command[0] == "git" && request.Command[1] == "checkout" && request.Command[2] == "main":
+			return sandbox.ExecResult{ExitCode: 0}, nil
+		case len(request.Command) >= 2 && request.Command[0] == "codex" && request.Command[1] == "exec":
+			if _, ok := request.Environment["GITHUB_TOKEN"]; ok {
+				t.Fatal("codex env must not include github token")
+			}
+			return sandbox.ExecResult{ExitCode: 0, Stdout: `{"type":"final","message":"done"}`}, nil
+		case len(request.Command) >= 3 && request.Command[0] == "git" && request.Command[1] == "add" && request.Command[2] == "--intent-to-add":
+			return sandbox.ExecResult{ExitCode: 0}, nil
+		case len(request.Command) >= 2 && request.Command[0] == "git" && request.Command[1] == "diff":
+			return sandbox.ExecResult{ExitCode: 0, Stdout: "diff --git a/README.md b/README.md"}, nil
+		case len(request.Command) >= 2 && request.Command[0] == "git" && request.Command[1] == "status":
+			return sandbox.ExecResult{ExitCode: 0, Stdout: " M README.md\n"}, nil
+		case len(request.Command) >= 2 && request.Command[0] == "git" && request.Command[1] == "config":
+			return sandbox.ExecResult{ExitCode: 0}, nil
+		case len(request.Command) >= 3 && request.Command[0] == "git" && request.Command[1] == "checkout" && request.Command[2] == "-B":
+			return sandbox.ExecResult{ExitCode: 0}, nil
+		case len(request.Command) >= 2 && request.Command[0] == "git" && request.Command[1] == "add":
+			return sandbox.ExecResult{ExitCode: 0}, nil
+		case isGitSubcommand(request.Command, "commit"):
+			if !containsString(request.Command, "core.hooksPath=/dev/null") {
+				t.Fatalf("commit command did not disable hooks: %#v", request.Command)
+			}
+			return sandbox.ExecResult{ExitCode: 0}, nil
+		case isGitSubcommand(request.Command, "push"):
+			if request.Environment["GITHUB_TOKEN"] != "ghs_test_token" {
+				t.Fatalf("push env missing github token")
+			}
+			if !containsString(request.Command, "core.hooksPath=/dev/null") || !containsString(request.Command, "credential.helper=") {
+				t.Fatalf("push command did not disable hooks and credential helpers: %#v", request.Command)
+			}
+			if !containsString(request.Command, "https://github.com/acme/repo.git") {
+				t.Fatalf("push command did not use explicit github url: %#v", request.Command)
+			}
+			return sandbox.ExecResult{ExitCode: 0}, nil
+		default:
+			t.Fatalf("unexpected command: %#v", request.Command)
+			return sandbox.ExecResult{}, nil
+		}
+	})
+	providerStub := &sandbox.FakeProvider{NextSession: session}
+	githubClient := &fakeGitHubPullRequestClient{token: "ghs_test_token"}
+	activities := NewActivities(repo, FakeWorkHooks{}).
+		WithSandboxProvider(providerStub).
+		WithGitHubPullRequestClient(githubClient)
+
+	err := activities.ExecuteAgentHarnessExecution(context.Background(), ExecuteAgentHarnessExecutionInput{ExecutionID: executionID})
+	if err != nil {
+		t.Fatalf("ExecuteAgentHarnessExecution error: %v", err)
+	}
+	if githubClient.tokenInstallationID != installationID {
+		t.Fatalf("token installation id = %d, want %d", githubClient.tokenInstallationID, installationID)
+	}
+	if githubClient.pullRequestInput.Owner != "acme" || githubClient.pullRequestInput.Repo != "repo" {
+		t.Fatalf("pull request repo = %s/%s, want acme/repo", githubClient.pullRequestInput.Owner, githubClient.pullRequestInput.Repo)
+	}
+	if !githubClient.pullRequestInput.Draft {
+		t.Fatal("pull request should be draft")
+	}
+	if githubClient.pullRequestInput.Head != "acme:agentclash/harness/"+strings.ReplaceAll(executionID.String()[:8], "-", "") {
+		t.Fatalf("pull request head = %q", githubClient.pullRequestInput.Head)
+	}
+	var sawPREvent bool
+	for _, event := range repo.agentHarnessEvents[executionID] {
+		if event.EventType == "github.pull_request.created" {
+			sawPREvent = true
+			break
+		}
+	}
+	if !sawPREvent {
+		t.Fatal("expected github.pull_request.created event")
+	}
+}
+
+func TestExecuteAgentHarnessExecutionSkipsPullRequestWhenNoChanges(t *testing.T) {
+	workspaceID := uuid.New()
+	harnessID := uuid.New()
+	executionID := uuid.New()
+	openAISecret := "OPENAI_API_KEY"
+	repositoryID := int64(100)
+	installationID := int64(42)
+	provider := "github"
+	repo := newFakeRunRepository(fixtureRun(uuid.New(), domain.RunStatusQueued))
+	repo.githubRepo = repository.GitHubInstallationRepository{
+		GitHubInstallationID: installationID,
+		GitHubRepositoryID:   repositoryID,
+		FullName:             "acme/repo",
+		DefaultBranch:        "main",
+		Status:               "active",
+	}
+	repo.setAgentHarness(repository.AgentHarness{
+		ID:                     harnessID,
+		OrganizationID:         uuid.New(),
+		WorkspaceID:            workspaceID,
+		TaskPrompt:             "make a sample change",
+		CodexTemplate:          "codex",
+		AuthMode:               "api_key_secret",
+		OpenAIAPIKeySecretName: &openAISecret,
+		RepositoryURL:          stringPtr("https://github.com/acme/repo"),
+		RepositoryProvider:     &provider,
+		GitHubRepositoryID:     &repositoryID,
+		GitHubInstallationID:   &installationID,
+		RepositoryFullName:     stringPtr("acme/repo"),
+		BaseBranch:             stringPtr("main"),
+	})
+	repo.setAgentHarnessExecution(repository.AgentHarnessExecution{
+		ID:                      executionID,
+		WorkspaceID:             workspaceID,
+		AgentHarnessID:          harnessID,
+		Status:                  string(repository.AgentHarnessExecutionStatusRunning),
+		ExecutionConfigSnapshot: json.RawMessage(`{"timeout_seconds":120}`),
+	})
+	repo.setWorkspaceSecrets(workspaceID, map[string]string{openAISecret: "sk-test"})
+
+	session := sandbox.NewFakeSession("sandbox-1")
+	session.SetExecFunc(func(request sandbox.ExecRequest, _ map[string][]byte) (sandbox.ExecResult, error) {
+		switch {
+		case len(request.Command) >= 2 && request.Command[0] == "chmod":
+			return sandbox.ExecResult{ExitCode: 0}, nil
+		case len(request.Command) >= 2 && request.Command[0] == "git" && request.Command[1] == "clone":
+			return sandbox.ExecResult{ExitCode: 0}, nil
+		case len(request.Command) >= 2 && request.Command[0] == "git" && request.Command[1] == "checkout" && request.Command[2] == "main":
+			return sandbox.ExecResult{ExitCode: 0}, nil
+		case len(request.Command) >= 2 && request.Command[0] == "codex" && request.Command[1] == "exec":
+			return sandbox.ExecResult{ExitCode: 0, Stdout: `{"type":"final","message":"done"}`}, nil
+		case len(request.Command) >= 3 && request.Command[0] == "git" && request.Command[1] == "add" && request.Command[2] == "--intent-to-add":
+			return sandbox.ExecResult{ExitCode: 0}, nil
+		case len(request.Command) >= 2 && request.Command[0] == "git" && request.Command[1] == "diff":
+			return sandbox.ExecResult{ExitCode: 0}, nil
+		case len(request.Command) >= 2 && request.Command[0] == "git" && request.Command[1] == "status":
+			return sandbox.ExecResult{ExitCode: 0}, nil
+		default:
+			t.Fatalf("unexpected command: %#v", request.Command)
+			return sandbox.ExecResult{}, nil
+		}
+	})
+	providerStub := &sandbox.FakeProvider{NextSession: session}
+	githubClient := &fakeGitHubPullRequestClient{token: "ghs_test_token"}
+	activities := NewActivities(repo, FakeWorkHooks{}).
+		WithSandboxProvider(providerStub).
+		WithGitHubPullRequestClient(githubClient)
+
+	err := activities.ExecuteAgentHarnessExecution(context.Background(), ExecuteAgentHarnessExecutionInput{ExecutionID: executionID})
+	if err != nil {
+		t.Fatalf("ExecuteAgentHarnessExecution error: %v", err)
+	}
+	if githubClient.pullRequestInput.Owner != "" {
+		t.Fatalf("pull request was created unexpectedly: %#v", githubClient.pullRequestInput)
+	}
+	var sawSkip bool
+	for _, event := range repo.agentHarnessEvents[executionID] {
+		if event.EventType == "github.pull_request.skipped" {
+			sawSkip = true
+			break
+		}
+	}
+	if !sawSkip {
+		t.Fatal("expected github.pull_request.skipped event")
+	}
+}
+
 func TestAgentHarnessTimeoutDefaults(t *testing.T) {
 	if got := agentHarnessTimeout(nil); got != 30*time.Minute {
 		t.Fatalf("default timeout = %s, want 30m", got)
@@ -405,6 +620,18 @@ func containsString(values []string, target string) bool {
 	return false
 }
 
+func isGitSubcommand(command []string, subcommand string) bool {
+	if len(command) == 0 || command[0] != "git" {
+		return false
+	}
+	for _, part := range command[1:] {
+		if part == subcommand {
+			return true
+		}
+	}
+	return false
+}
+
 func commandIndex(calls []sandbox.ExecRequest, parts ...string) int {
 	for index, call := range calls {
 		if len(call.Command) < len(parts) {
@@ -422,4 +649,20 @@ func commandIndex(calls []sandbox.ExecRequest, parts ...string) int {
 		}
 	}
 	return -1
+}
+
+type fakeGitHubPullRequestClient struct {
+	token               string
+	tokenInstallationID int64
+	pullRequestInput    CreateGitHubPullRequestInput
+}
+
+func (f *fakeGitHubPullRequestClient) CreateInstallationToken(_ context.Context, installationID int64) (string, error) {
+	f.tokenInstallationID = installationID
+	return f.token, nil
+}
+
+func (f *fakeGitHubPullRequestClient) CreatePullRequest(_ context.Context, input CreateGitHubPullRequestInput) (GitHubPullRequest, error) {
+	f.pullRequestInput = input
+	return GitHubPullRequest{Number: 12, HTMLURL: "https://github.com/acme/repo/pull/12", State: "open", Draft: true}, nil
 }
