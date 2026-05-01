@@ -4,12 +4,22 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CreateAgentHarnessDialog } from "./create-agent-harness-dialog";
 
-const { mockGetAccessToken, mockCreateApiClient, mockMutate, mockSecrets, toast } =
+const {
+  mockGetAccessToken,
+  mockCreateApiClient,
+  mockMutate,
+  mockSecrets,
+  mockInstallations,
+  mockRepositories,
+  toast,
+} =
   vi.hoisted(() => ({
     mockGetAccessToken: vi.fn(),
     mockCreateApiClient: vi.fn(),
     mockMutate: vi.fn(),
     mockSecrets: vi.fn(),
+    mockInstallations: vi.fn(),
+    mockRepositories: vi.fn(),
     toast: Object.assign(vi.fn(), {
       success: vi.fn(),
       error: vi.fn(),
@@ -28,11 +38,19 @@ vi.mock("@/lib/api/swr", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/api/swr")>();
   return {
     ...actual,
-    useApiListQuery: () => ({
-      data: { items: mockSecrets() },
-      isLoading: false,
-      error: null,
-    }),
+    useApiListQuery: (path: string) => {
+      if (path.includes("/github/installations")) {
+        return { data: { items: mockInstallations() }, isLoading: false, error: null };
+      }
+      if (path.includes("/github/repositories")) {
+        return { data: { items: mockRepositories() }, isLoading: false, error: null };
+      }
+      return {
+        data: { items: mockSecrets() },
+        isLoading: false,
+        error: null,
+      };
+    },
     useApiMutator: () => ({ mutate: mockMutate }),
   };
 });
@@ -183,6 +201,19 @@ function changeTextarea(index: number, value: string) {
   });
 }
 
+function changeSelect(index: number, value: string) {
+  const select = document.querySelectorAll("select")[index];
+  const descriptor = Object.getOwnPropertyDescriptor(
+    HTMLSelectElement.prototype,
+    "value",
+  );
+  act(() => {
+    descriptor?.set?.call(select, value);
+    select.dispatchEvent(new Event("input", { bubbles: true }));
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+}
+
 async function flushPromises() {
   await act(async () => {
     await Promise.resolve();
@@ -203,16 +234,46 @@ describe("CreateAgentHarnessDialog", () => {
         updated_at: "2026-05-01T00:00:00Z",
       },
     ]);
+    mockInstallations.mockReturnValue([]);
+    mockRepositories.mockReturnValue([]);
   });
 
   it("posts Codex/E2B harness payload using the inferred OpenAI secret", async () => {
+    mockInstallations.mockReturnValue([
+      {
+        id: "install-1",
+        github_installation_id: 42,
+        github_account_id: 9,
+        github_account_login: "acme",
+        github_account_type: "Organization",
+        repository_selection: "selected",
+        status: "active",
+        updated_at: "2026-05-01T00:00:00Z",
+      },
+    ]);
+    mockRepositories.mockReturnValue([
+      {
+        id: "repo-1",
+        github_installation_id: 42,
+        github_repository_id: 100,
+        full_name: "acme/agent-app",
+        owner_login: "acme",
+        name: "agent-app",
+        private: true,
+        default_branch: "main",
+        html_url: "https://github.com/acme/agent-app",
+        clone_url: "https://github.com/acme/agent-app.git",
+        permissions: {},
+        last_synced_at: "2026-05-01T00:00:00Z",
+      },
+    ]);
     const post = vi.fn().mockResolvedValue({ id: "harness-1" });
     mockCreateApiClient.mockReturnValue({ post });
     const rendered = renderDialog();
 
     clickButton("New Harness");
-    changeInput(0, "https://github.com/acme/agent-app");
-    changeInput(1, "main");
+    changeSelect(0, "100");
+    changeInput(0, "main");
     changeTextarea(0, "Implement the requested feature and run tests.");
     clickButton("Create Harness");
     await flushPromises();
@@ -225,6 +286,9 @@ describe("CreateAgentHarnessDialog", () => {
         codex_template: "codex",
         auth_mode: "api_key_secret",
         openai_api_key_secret_name: "OPENAI_API_KEY",
+        repository_provider: "github",
+        github_repository_id: 100,
+        github_installation_id: 42,
         evaluation_config: expect.objectContaining({
           validators: expect.any(Array),
           llm_judges: expect.any(Array),
@@ -241,6 +305,7 @@ describe("CreateAgentHarnessDialog", () => {
     const rendered = renderDialog();
 
     clickButton("New Harness");
+    clickButton("URL");
     changeInput(0, "https://github.com");
     changeTextarea(0, "Implement the requested feature and run tests.");
     clickButton("Create Harness");
@@ -255,6 +320,18 @@ describe("CreateAgentHarnessDialog", () => {
     rendered.cleanup();
   });
 
+  it("shows the GitHub connect empty state when no installation is cached", () => {
+    const post = vi.fn();
+    mockCreateApiClient.mockReturnValue({ post });
+    const rendered = renderDialog();
+
+    clickButton("New Harness");
+
+    expect(document.body.textContent).toContain("Connect GitHub first");
+    expect(post).not.toHaveBeenCalled();
+    rendered.cleanup();
+  });
+
   it("disables creation when no OpenAI secret is available", async () => {
     mockSecrets.mockReturnValue([]);
     const post = vi.fn();
@@ -262,6 +339,7 @@ describe("CreateAgentHarnessDialog", () => {
     const rendered = renderDialog();
 
     clickButton("New Harness");
+    clickButton("URL");
     changeInput(0, "https://github.com/acme/agent-app");
     changeTextarea(0, "Implement the requested feature.");
     const submit = findButton("Create Harness");

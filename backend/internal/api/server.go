@@ -39,6 +39,7 @@ type routerOptions struct {
 	hostedRunIngestionService  HostedRunIngestionService
 	agentDeploymentReadService AgentDeploymentReadService
 	agentHarnessService        AgentHarnessService
+	githubIntegrationService   GitHubIntegrationService
 	challengePackReadService   ChallengePackReadService
 	challengePackAuthoringSvc  ChallengePackAuthoringService
 	agentBuildService          AgentBuildService
@@ -72,6 +73,7 @@ func NewServer(
 	hostedRunIngestionService HostedRunIngestionService,
 	agentDeploymentReadService AgentDeploymentReadService,
 	agentHarnessService AgentHarnessService,
+	githubIntegrationService GitHubIntegrationService,
 	challengePackReadService ChallengePackReadService,
 	challengePackAuthoringService ChallengePackAuthoringService,
 	agentBuildService AgentBuildService,
@@ -106,6 +108,7 @@ func NewServer(
 		hostedRunIngestionService:  hostedRunIngestionService,
 		agentDeploymentReadService: agentDeploymentReadService,
 		agentHarnessService:        agentHarnessService,
+		githubIntegrationService:   githubIntegrationService,
 		challengePackReadService:   challengePackReadService,
 		challengePackAuthoringSvc:  challengePackAuthoringService,
 		agentBuildService:          agentBuildService,
@@ -248,6 +251,7 @@ func buildRouter(opts routerOptions) http.Handler {
 	compareReadService := opts.compareReadService
 	agentDeploymentReadService := opts.agentDeploymentReadService
 	agentHarnessService := opts.agentHarnessService
+	githubIntegrationService := opts.githubIntegrationService
 	challengePackReadService := opts.challengePackReadService
 	agentBuildService := opts.agentBuildService
 	releaseGateService := opts.releaseGateService
@@ -293,6 +297,9 @@ func buildRouter(opts routerOptions) http.Handler {
 	}
 	if agentHarnessService == nil {
 		agentHarnessService = noopAgentHarnessService{}
+	}
+	if githubIntegrationService == nil {
+		githubIntegrationService = noopGitHubIntegrationService{}
 	}
 	if regressionService == nil {
 		regressionService = noopRegressionService{}
@@ -343,6 +350,7 @@ func buildRouter(opts routerOptions) http.Handler {
 		Get("/public/shares/{token}", getPublicShareHandler(logger, publicShareService))
 	registerPublicRoutes(router, logger, artifactService)
 	registerHostedIntegrationRoutes(router, logger, hostedRunIngestionService)
+	registerGitHubWebhookRoute(router, logger, githubIntegrationService)
 	registerDodoWebhookRoute(router.With(rateLimiter.Middleware("default", extractWorkspaceID)), logger, billingService)
 	registerEventStreamRoute(router, logger, authenticator, runReadService, eventSubscriber)
 
@@ -356,7 +364,7 @@ func buildRouter(opts routerOptions) http.Handler {
 	router.Route("/v1", func(r chi.Router) {
 		r.Use(authenticateRequest(logger, authenticator))
 		r.Use(rateLimiter.Middleware("default", extractWorkspaceID))
-		registerProtectedRoutes(r, logger, authorizer, playgroundService, artifactService, artifactMaxUploadBytes, runCreationService, runReadService, replayReadService, compareReadService, releaseGateService, regressionService, agentDeploymentReadService, agentHarnessService, challengePackReadService, challengePackAuthoringService, agentBuildService, userService, orgService, wsService, orgMembershipService, wsMembershipService, onboardingService, infraService, workspaceSecretsService, cliAuthService, publicShareService, billingService)
+		registerProtectedRoutes(r, logger, authorizer, playgroundService, artifactService, artifactMaxUploadBytes, runCreationService, runReadService, replayReadService, compareReadService, releaseGateService, regressionService, agentDeploymentReadService, agentHarnessService, githubIntegrationService, challengePackReadService, challengePackAuthoringService, agentBuildService, userService, orgService, wsService, orgMembershipService, wsMembershipService, onboardingService, infraService, workspaceSecretsService, cliAuthService, publicShareService, billingService)
 	})
 
 	return router

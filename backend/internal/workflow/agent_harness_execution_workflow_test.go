@@ -3,6 +3,7 @@ package workflow
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
@@ -270,6 +271,61 @@ func TestExecuteAgentHarnessExecutionWithoutRepositorySkipsGitArtifactCapture(t 
 		if len(call.Command) > 0 && call.Command[0] == "git" {
 			t.Fatalf("no-repo harness should not run git artifact commands, saw %#v", call.Command)
 		}
+	}
+}
+
+func TestExecuteAgentHarnessExecutionFailsEarlyWhenGitHubAccessRevoked(t *testing.T) {
+	workspaceID := uuid.New()
+	harnessID := uuid.New()
+	executionID := uuid.New()
+	openAISecret := "OPENAI_API_KEY"
+	repositoryID := int64(100)
+	installationID := int64(42)
+	provider := "github"
+	repo := newFakeRunRepository(fixtureRun(uuid.New(), domain.RunStatusQueued))
+	repo.githubRepoErr = repository.ErrGitHubRepositoryNotInstalled
+	repo.setAgentHarness(repository.AgentHarness{
+		ID:                     harnessID,
+		OrganizationID:         uuid.New(),
+		WorkspaceID:            workspaceID,
+		TaskPrompt:             "implement issue 462",
+		CodexTemplate:          "codex",
+		AuthMode:               "api_key_secret",
+		OpenAIAPIKeySecretName: &openAISecret,
+		RepositoryURL:          stringPtr("https://github.com/acme/repo"),
+		RepositoryProvider:     &provider,
+		GitHubRepositoryID:     &repositoryID,
+		GitHubInstallationID:   &installationID,
+		RepositoryFullName:     stringPtr("acme/repo"),
+	})
+	repo.setAgentHarnessExecution(repository.AgentHarnessExecution{
+		ID:                      executionID,
+		WorkspaceID:             workspaceID,
+		AgentHarnessID:          harnessID,
+		Status:                  string(repository.AgentHarnessExecutionStatusRunning),
+		ExecutionConfigSnapshot: json.RawMessage(`{"timeout_seconds":120}`),
+	})
+	repo.setWorkspaceSecrets(workspaceID, map[string]string{openAISecret: "sk-test"})
+
+	providerStub := &sandbox.FakeProvider{NextSession: sandbox.NewFakeSession("sandbox-1")}
+	activities := NewActivities(repo, FakeWorkHooks{}).WithSandboxProvider(providerStub)
+
+	err := activities.ExecuteAgentHarnessExecution(context.Background(), ExecuteAgentHarnessExecutionInput{ExecutionID: executionID})
+	if !errors.Is(err, repository.ErrGitHubRepositoryNotInstalled) {
+		t.Fatalf("ExecuteAgentHarnessExecution error = %v, want ErrGitHubRepositoryNotInstalled", err)
+	}
+	if len(providerStub.CreateRequests) != 0 {
+		t.Fatalf("sandbox creates = %d, want none before access preflight passes", len(providerStub.CreateRequests))
+	}
+	var sawRevokedEvent bool
+	for _, event := range repo.agentHarnessEvents[executionID] {
+		if event.EventType == "github.repository_access_revoked" {
+			sawRevokedEvent = true
+			break
+		}
+	}
+	if !sawRevokedEvent {
+		t.Fatal("expected github.repository_access_revoked event")
 	}
 }
 

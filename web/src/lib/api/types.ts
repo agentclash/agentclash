@@ -327,6 +327,11 @@ export interface AgentHarness {
   auth_mode: AgentHarnessAuthMode;
   openai_api_key_secret_name?: string;
   repository_url?: string;
+  repository_provider?: "github";
+  github_repository_id?: number;
+  github_installation_id?: number;
+  repository_full_name?: string;
+  repository_clone_url?: string;
   base_branch?: string;
   execution_config: unknown;
   evaluation_config: unknown;
@@ -344,9 +349,55 @@ export interface CreateAgentHarnessRequest {
   auth_mode: AgentHarnessAuthMode;
   openai_api_key_secret_name?: string;
   repository_url?: string;
+  repository_provider?: "github";
+  github_repository_id?: number;
+  github_installation_id?: number;
   base_branch?: string;
   execution_config?: unknown;
   evaluation_config?: unknown;
+}
+
+export interface StartGitHubInstallationResponse {
+  install_url: string;
+  state: string;
+  expires_at: string;
+}
+
+export interface CompleteGitHubInstallationRequest {
+  installation_id: number;
+  state: string;
+}
+
+export interface CompleteGitHubInstallationResponse {
+  installation: GitHubInstallation;
+  repositories: GitHubRepository[];
+}
+
+export interface GitHubInstallation {
+  id: string;
+  github_installation_id: number;
+  github_account_id: number;
+  github_account_login: string;
+  github_account_type: "User" | "Organization";
+  repository_selection: "all" | "selected";
+  status: string;
+  installed_by_user_id?: string;
+  updated_at: string;
+}
+
+export interface GitHubRepository {
+  id: string;
+  github_installation_id: number;
+  github_repository_id: number;
+  full_name: string;
+  owner_login: string;
+  name: string;
+  private: boolean;
+  default_branch: string;
+  html_url: string;
+  clone_url: string;
+  permissions: unknown;
+  last_synced_at: string;
 }
 
 export type AgentHarnessExecutionStatus =

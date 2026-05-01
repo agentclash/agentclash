@@ -23,6 +23,7 @@ func registerProtectedRoutes(
 	regressionService RegressionService,
 	agentDeploymentReadService AgentDeploymentReadService,
 	agentHarnessService AgentHarnessService,
+	githubIntegrationService GitHubIntegrationService,
 	challengePackReadService ChallengePackReadService,
 	challengePackAuthoringService ChallengePackAuthoringService,
 	agentBuildService AgentBuildService,
@@ -135,6 +136,14 @@ func registerProtectedRoutes(
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Get("/workspaces/{workspaceID}/agent-harness-executions/{executionID}", getAgentHarnessExecutionHandler(logger, agentHarnessService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Post("/workspaces/{workspaceID}/github/installations/start", startGitHubInstallationHandler(logger, githubIntegrationService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Post("/workspaces/{workspaceID}/github/installations/complete", completeGitHubInstallationHandler(logger, githubIntegrationService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Get("/workspaces/{workspaceID}/github/installations", listGitHubInstallationsHandler(logger, githubIntegrationService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Get("/workspaces/{workspaceID}/github/repositories", listGitHubRepositoriesHandler(logger, githubIntegrationService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Get("/workspaces/{workspaceID}/challenge-packs", listChallengePacksHandler(logger, challengePackReadService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Get("/workspaces/{workspaceID}/challenge-pack-versions/{versionID}/input-sets", listChallengeInputSetsHandler(logger, challengePackReadService))
@@ -244,6 +253,10 @@ func registerHostedIntegrationRoutes(router chi.Router, logger *slog.Logger, ser
 	router.Route("/v1/integrations/hosted-runs", func(r chi.Router) {
 		r.Post("/{runID}/events", ingestHostedRunEventHandler(logger, service))
 	})
+}
+
+func registerGitHubWebhookRoute(router chi.Router, logger *slog.Logger, service GitHubIntegrationService) {
+	router.Post("/v1/github/webhook", githubWebhookHandler(logger, service))
 }
 
 func sessionHandler(w http.ResponseWriter, r *http.Request) {

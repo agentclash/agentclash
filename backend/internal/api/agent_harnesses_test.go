@@ -121,6 +121,99 @@ func TestAgentHarnessManagerCreatePersistsHarnessDefaults(t *testing.T) {
 	}
 }
 
+func TestAgentHarnessManagerCreateRequiresRunPermission(t *testing.T) {
+	workspaceID := uuid.New()
+	manager := NewAgentHarnessManager(NewCallerWorkspaceAuthorizer(), &fakeAgentHarnessRepo{
+		organizationID: uuid.New(),
+	})
+
+	_, err := manager.CreateAgentHarness(context.Background(), testAgentHarnessCallerWithRole(workspaceID, RoleWorkspaceViewer), workspaceID, CreateAgentHarnessInput{
+		Name:                   "Viewer harness",
+		TaskPrompt:             "Do the task",
+		AuthMode:               AgentHarnessAuthModeAPIKeySecret,
+		OpenAIAPIKeySecretName: "OPENAI_API_KEY",
+		RepositoryURL:          "https://github.com/acme/repo",
+	})
+	if !errors.Is(err, ErrForbidden) {
+		t.Fatalf("error = %v, want ErrForbidden", err)
+	}
+}
+
+func TestAgentHarnessManagerCreateValidatesGitHubRepositoryBinding(t *testing.T) {
+	workspaceID := uuid.New()
+	repo := &fakeAgentHarnessRepo{
+		organizationID: uuid.New(),
+		githubRepoErr:  repository.ErrGitHubRepositoryNotInstalled,
+	}
+	manager := NewAgentHarnessManager(NewCallerWorkspaceAuthorizer(), repo)
+
+	_, err := manager.CreateAgentHarness(context.Background(), testAgentHarnessCaller(workspaceID), workspaceID, CreateAgentHarnessInput{
+		Name:                   "GitHub harness",
+		TaskPrompt:             "Do the task",
+		AuthMode:               AgentHarnessAuthModeAPIKeySecret,
+		OpenAIAPIKeySecretName: "OPENAI_API_KEY",
+		RepositoryProvider:     "github",
+		GitHubRepositoryID:     123,
+	})
+	var validationErr AgentHarnessValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("error = %T %v, want AgentHarnessValidationError", err, err)
+	}
+	if validationErr.Code != "github_repo_not_installed" {
+		t.Fatalf("code = %q, want github_repo_not_installed", validationErr.Code)
+	}
+}
+
+func TestAgentHarnessManagerCreatePersistsGitHubRepositoryMetadata(t *testing.T) {
+	workspaceID := uuid.New()
+	orgID := uuid.New()
+	repo := &fakeAgentHarnessRepo{
+		organizationID: orgID,
+		githubRepo: repository.GitHubInstallationRepository{
+			GitHubInstallationID: 456,
+			GitHubRepositoryID:   123,
+			FullName:             "acme/private-repo",
+			DefaultBranch:        "trunk",
+			HTMLURL:              "https://github.com/acme/private-repo",
+			CloneURL:             "https://github.com/acme/private-repo.git",
+		},
+	}
+	manager := NewAgentHarnessManager(NewCallerWorkspaceAuthorizer(), repo)
+
+	harness, err := manager.CreateAgentHarness(context.Background(), testAgentHarnessCaller(workspaceID), workspaceID, CreateAgentHarnessInput{
+		Name:                   "GitHub harness",
+		TaskPrompt:             "Do the task",
+		AuthMode:               AgentHarnessAuthModeAPIKeySecret,
+		OpenAIAPIKeySecretName: "OPENAI_API_KEY",
+		RepositoryProvider:     "github",
+		GitHubRepositoryID:     123,
+	})
+	if err != nil {
+		t.Fatalf("CreateAgentHarness error: %v", err)
+	}
+	if harness.RepositoryProvider == nil || *harness.RepositoryProvider != "github" {
+		t.Fatalf("repository_provider = %#v", harness.RepositoryProvider)
+	}
+	if harness.GitHubRepositoryID == nil || *harness.GitHubRepositoryID != 123 {
+		t.Fatalf("github_repository_id = %#v", harness.GitHubRepositoryID)
+	}
+	if harness.GitHubInstallationID == nil || *harness.GitHubInstallationID != 456 {
+		t.Fatalf("github_installation_id = %#v", harness.GitHubInstallationID)
+	}
+	if harness.RepositoryFullName == nil || *harness.RepositoryFullName != "acme/private-repo" {
+		t.Fatalf("repository_full_name = %#v", harness.RepositoryFullName)
+	}
+	if harness.RepositoryCloneURL == nil || *harness.RepositoryCloneURL != "https://github.com/acme/private-repo.git" {
+		t.Fatalf("repository_clone_url = %#v", harness.RepositoryCloneURL)
+	}
+	if harness.BaseBranch == nil || *harness.BaseBranch != "trunk" {
+		t.Fatalf("base_branch = %#v", harness.BaseBranch)
+	}
+	if repo.githubLookupWorkspaceID != workspaceID {
+		t.Fatalf("lookup workspace = %s, want %s", repo.githubLookupWorkspaceID, workspaceID)
+	}
+}
+
 func TestAgentHarnessRoutesCreateAndList(t *testing.T) {
 	workspaceID := uuid.New()
 	service := &fakeAgentHarnessService{
@@ -323,6 +416,21 @@ func TestAgentHarnessExecutionManagerStartChecksWorkspaceBeforeHarnessFetch(t *t
 	}
 }
 
+func TestAgentHarnessExecutionManagerStartRequiresRunPermission(t *testing.T) {
+	workspaceID := uuid.New()
+	harness := testAgentHarnessRecord(workspaceID, "Codex execution harness")
+	repo := &fakeAgentHarnessRepo{organizationID: harness.OrganizationID, harness: harness}
+	manager := NewAgentHarnessManager(NewCallerWorkspaceAuthorizer(), repo)
+
+	_, err := manager.StartAgentHarnessExecution(context.Background(), testAgentHarnessCallerWithRole(workspaceID, RoleWorkspaceViewer), workspaceID, harness.ID, StartAgentHarnessExecutionInput{})
+	if !errors.Is(err, ErrForbidden) {
+		t.Fatalf("error = %v, want ErrForbidden", err)
+	}
+	if repo.getByIDCalls != 0 {
+		t.Fatalf("GetAgentHarnessByID calls = %d, want 0", repo.getByIDCalls)
+	}
+}
+
 func TestAgentHarnessExecutionManagerGetReturnsNotFoundForWorkspaceMismatch(t *testing.T) {
 	workspaceID := uuid.New()
 	execution := testAgentHarnessExecutionRecord(uuid.New(), uuid.New())
@@ -411,10 +519,14 @@ func TestAgentHarnessExecutionRoutes(t *testing.T) {
 }
 
 func testAgentHarnessCaller(workspaceID uuid.UUID) Caller {
+	return testAgentHarnessCallerWithRole(workspaceID, RoleWorkspaceAdmin)
+}
+
+func testAgentHarnessCallerWithRole(workspaceID uuid.UUID, role string) Caller {
 	return Caller{
 		UserID: uuid.New(),
 		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
-			workspaceID: {WorkspaceID: workspaceID, Role: "workspace_admin"},
+			workspaceID: {WorkspaceID: workspaceID, Role: role},
 		},
 		OrganizationMemberships: map[uuid.UUID]OrganizationMembership{},
 	}
@@ -458,15 +570,18 @@ func testAgentHarnessExecutionRecord(workspaceID uuid.UUID, harnessID uuid.UUID)
 }
 
 type fakeAgentHarnessRepo struct {
-	organizationID     uuid.UUID
-	created            repository.CreateAgentHarnessParams
-	createdExecution   repository.CreateAgentHarnessExecutionParams
-	transitionedStatus repository.AgentHarnessExecutionStatus
-	transitionedReason *string
-	harness            repository.AgentHarness
-	execution          repository.AgentHarnessExecution
-	executions         []repository.AgentHarnessExecution
-	getByIDCalls       int
+	organizationID          uuid.UUID
+	created                 repository.CreateAgentHarnessParams
+	createdExecution        repository.CreateAgentHarnessExecutionParams
+	transitionedStatus      repository.AgentHarnessExecutionStatus
+	transitionedReason      *string
+	harness                 repository.AgentHarness
+	execution               repository.AgentHarnessExecution
+	executions              []repository.AgentHarnessExecution
+	getByIDCalls            int
+	githubRepo              repository.GitHubInstallationRepository
+	githubRepoErr           error
+	githubLookupWorkspaceID uuid.UUID
 }
 
 func (f *fakeAgentHarnessRepo) GetOrganizationIDByWorkspaceID(context.Context, uuid.UUID) (uuid.UUID, error) {
@@ -492,12 +607,25 @@ func (f *fakeAgentHarnessRepo) CreateAgentHarness(_ context.Context, p repositor
 		AuthMode:               p.AuthMode,
 		OpenAIAPIKeySecretName: p.OpenAIAPIKeySecretName,
 		RepositoryURL:          p.RepositoryURL,
+		RepositoryProvider:     p.RepositoryProvider,
+		GitHubRepositoryID:     p.GitHubRepositoryID,
+		GitHubInstallationID:   p.GitHubInstallationID,
+		RepositoryFullName:     p.RepositoryFullName,
+		RepositoryCloneURL:     p.RepositoryCloneURL,
 		BaseBranch:             p.BaseBranch,
 		ExecutionConfig:        p.ExecutionConfig,
 		EvaluationConfig:       p.EvaluationConfig,
 		CreatedAt:              now,
 		UpdatedAt:              now,
 	}, nil
+}
+
+func (f *fakeAgentHarnessRepo) GetWorkspaceGitHubRepository(_ context.Context, workspaceID uuid.UUID, _ int64, _ *int64) (repository.GitHubInstallationRepository, error) {
+	f.githubLookupWorkspaceID = workspaceID
+	if f.githubRepoErr != nil {
+		return repository.GitHubInstallationRepository{}, f.githubRepoErr
+	}
+	return f.githubRepo, nil
 }
 
 func (f *fakeAgentHarnessRepo) GetAgentHarnessByID(_ context.Context, id uuid.UUID) (repository.AgentHarness, error) {

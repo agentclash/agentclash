@@ -54,6 +54,7 @@ type EvalSessionRepository interface {
 type AgentHarnessExecutionRepository interface {
 	GetAgentHarnessByID(ctx context.Context, id uuid.UUID) (repository.AgentHarness, error)
 	GetAgentHarnessExecutionByID(ctx context.Context, id uuid.UUID) (repository.AgentHarnessExecution, error)
+	GetWorkspaceGitHubRepository(ctx context.Context, workspaceID uuid.UUID, githubRepositoryID int64, githubInstallationID *int64) (repository.GitHubInstallationRepository, error)
 	LoadWorkspaceSecrets(ctx context.Context, workspaceID uuid.UUID) (map[string]string, error)
 	TransitionAgentHarnessExecutionStatus(ctx context.Context, params repository.TransitionAgentHarnessExecutionStatusParams) (repository.AgentHarnessExecution, error)
 	RecordAgentHarnessExecutionEvent(ctx context.Context, params repository.RecordAgentHarnessExecutionEventParams) (repository.AgentHarnessExecutionEvent, error)

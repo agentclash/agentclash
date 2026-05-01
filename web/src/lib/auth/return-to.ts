@@ -1,6 +1,11 @@
 const DEFAULT_RETURN_TO = "/dashboard";
 const DEVICE_PATH = "/auth/device";
-const ALLOWED_RETURN_PATHS = new Set([DEFAULT_RETURN_TO, DEVICE_PATH]);
+const GITHUB_SETUP_PATH = "/github/setup";
+const ALLOWED_RETURN_PATHS = new Set([
+  DEFAULT_RETURN_TO,
+  DEVICE_PATH,
+  GITHUB_SETUP_PATH,
+]);
 const RETURN_TO_BASE_URL = "http://agentclash.local";
 
 export function sanitizeReturnTo(raw: string | null | undefined): string {
@@ -27,7 +32,32 @@ export function sanitizeReturnTo(raw: string | null | undefined): string {
     return buildDeviceReturnTo(parsed.searchParams.get("user_code"));
   }
 
+  if (parsed.pathname === GITHUB_SETUP_PATH) {
+    return buildGitHubSetupReturnTo(parsed.searchParams);
+  }
+
   return DEFAULT_RETURN_TO;
+}
+
+export function buildGitHubSetupReturnTo(searchParams: URLSearchParams): string {
+  const installationID = searchParams.get("installation_id");
+  const state = searchParams.get("state");
+  if (
+    !installationID?.match(/^\d+$/) ||
+    !state?.match(/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/)
+  ) {
+    return GITHUB_SETUP_PATH;
+  }
+
+  const params = new URLSearchParams({
+    installation_id: installationID,
+    state: state.slice(0, 4096),
+  });
+  const setupAction = searchParams.get("setup_action");
+  if (setupAction?.match(/^[A-Za-z0-9_-]{1,64}$/)) {
+    params.set("setup_action", setupAction);
+  }
+  return `${GITHUB_SETUP_PATH}?${params.toString()}`;
 }
 
 export function buildDeviceReturnTo(

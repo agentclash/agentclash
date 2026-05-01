@@ -22,6 +22,7 @@ const (
 
 type AgentHarnessRepository interface {
 	GetOrganizationIDByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) (uuid.UUID, error)
+	GetWorkspaceGitHubRepository(ctx context.Context, workspaceID uuid.UUID, githubRepositoryID int64, githubInstallationID *int64) (repository.GitHubInstallationRepository, error)
 	CreateAgentHarness(ctx context.Context, p repository.CreateAgentHarnessParams) (repository.AgentHarness, error)
 	GetAgentHarnessByID(ctx context.Context, id uuid.UUID) (repository.AgentHarness, error)
 	ListAgentHarnessesByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) ([]repository.AgentHarness, error)
@@ -75,6 +76,9 @@ type CreateAgentHarnessInput struct {
 	AuthMode               string          `json:"auth_mode"`
 	OpenAIAPIKeySecretName string          `json:"openai_api_key_secret_name"`
 	RepositoryURL          string          `json:"repository_url"`
+	RepositoryProvider     string          `json:"repository_provider"`
+	GitHubRepositoryID     int64           `json:"github_repository_id"`
+	GitHubInstallationID   int64           `json:"github_installation_id"`
 	BaseBranch             string          `json:"base_branch"`
 	ExecutionConfig        json.RawMessage `json:"execution_config"`
 	EvaluationConfig       json.RawMessage `json:"evaluation_config"`
@@ -94,7 +98,7 @@ func (e AgentHarnessValidationError) Error() string {
 }
 
 func (m *AgentHarnessManager) CreateAgentHarness(ctx context.Context, caller Caller, workspaceID uuid.UUID, input CreateAgentHarnessInput) (repository.AgentHarness, error) {
-	if err := m.authorizer.AuthorizeWorkspace(ctx, caller, workspaceID); err != nil {
+	if err := AuthorizeWorkspaceAction(ctx, m.authorizer, caller, workspaceID, ActionCreateRun); err != nil {
 		return repository.AgentHarness{}, err
 	}
 	if err := validateAgentHarnessInput(input); err != nil {
@@ -110,6 +114,33 @@ func (m *AgentHarnessManager) CreateAgentHarness(ctx context.Context, caller Cal
 	if codexTemplate == "" {
 		codexTemplate = defaultCodexE2BTemplate
 	}
+	repositoryProvider := optionalHarnessString(input.RepositoryProvider)
+	var githubRepositoryID *int64
+	var githubInstallationID *int64
+	repositoryURL := optionalHarnessString(input.RepositoryURL)
+	var repositoryFullName *string
+	var repositoryCloneURL *string
+	baseBranch := optionalHarnessString(input.BaseBranch)
+	if repositoryProvider != nil && *repositoryProvider == "github" {
+		githubRepositoryID = optionalHarnessInt64(input.GitHubRepositoryID)
+		githubInstallationID = optionalHarnessInt64(input.GitHubInstallationID)
+		selected, err := m.repo.GetWorkspaceGitHubRepository(ctx, workspaceID, input.GitHubRepositoryID, githubInstallationID)
+		if err != nil {
+			if errors.Is(err, repository.ErrGitHubRepositoryNotInstalled) {
+				return repository.AgentHarness{}, AgentHarnessValidationError{Code: "github_repo_not_installed", Message: "github repository is not installed for this workspace"}
+			}
+			return repository.AgentHarness{}, err
+		}
+		githubInstallationID = &selected.GitHubInstallationID
+		repositoryFullName = &selected.FullName
+		repositoryCloneURL = &selected.CloneURL
+		if baseBranch == nil {
+			baseBranch = &selected.DefaultBranch
+		}
+		if repositoryURL == nil && selected.HTMLURL != "" {
+			repositoryURL = &selected.HTMLURL
+		}
+	}
 
 	return m.repo.CreateAgentHarness(ctx, repository.CreateAgentHarnessParams{
 		OrganizationID:         orgID,
@@ -123,8 +154,13 @@ func (m *AgentHarnessManager) CreateAgentHarness(ctx context.Context, caller Cal
 		CodexModel:             optionalHarnessString(input.CodexModel),
 		AuthMode:               strings.TrimSpace(input.AuthMode),
 		OpenAIAPIKeySecretName: optionalHarnessString(input.OpenAIAPIKeySecretName),
-		RepositoryURL:          optionalHarnessString(input.RepositoryURL),
-		BaseBranch:             optionalHarnessString(input.BaseBranch),
+		RepositoryURL:          repositoryURL,
+		RepositoryProvider:     repositoryProvider,
+		GitHubRepositoryID:     githubRepositoryID,
+		GitHubInstallationID:   githubInstallationID,
+		RepositoryFullName:     repositoryFullName,
+		RepositoryCloneURL:     repositoryCloneURL,
+		BaseBranch:             baseBranch,
 		ExecutionConfig:        defaultJSON(input.ExecutionConfig),
 		EvaluationConfig:       defaultJSON(input.EvaluationConfig),
 	})
@@ -152,7 +188,7 @@ func (m *AgentHarnessManager) ListAgentHarnesses(ctx context.Context, caller Cal
 }
 
 func (m *AgentHarnessManager) StartAgentHarnessExecution(ctx context.Context, caller Caller, workspaceID uuid.UUID, harnessID uuid.UUID, input StartAgentHarnessExecutionInput) (repository.AgentHarnessExecution, error) {
-	if err := m.authorizer.AuthorizeWorkspace(ctx, caller, workspaceID); err != nil {
+	if err := AuthorizeWorkspaceAction(ctx, m.authorizer, caller, workspaceID, ActionCreateRun); err != nil {
 		return repository.AgentHarnessExecution{}, err
 	}
 	harness, err := m.repo.GetAgentHarnessByID(ctx, harnessID)
@@ -247,6 +283,15 @@ func validateAgentHarnessInput(input CreateAgentHarnessInput) error {
 	if strings.TrimSpace(input.AuthMode) == AgentHarnessAuthModeAPIKeySecret && strings.TrimSpace(input.OpenAIAPIKeySecretName) == "" {
 		return AgentHarnessValidationError{Code: "missing_openai_secret", Message: "openai_api_key_secret_name is required when auth_mode is api_key_secret"}
 	}
+	switch strings.TrimSpace(input.RepositoryProvider) {
+	case "":
+	case "github":
+		if input.GitHubRepositoryID <= 0 {
+			return AgentHarnessValidationError{Code: "missing_github_repository", Message: "github_repository_id is required when repository_provider is github"}
+		}
+	default:
+		return AgentHarnessValidationError{Code: "invalid_repository_provider", Message: "repository_provider must be github when provided"}
+	}
 	for field, raw := range map[string]json.RawMessage{
 		"execution_config":  input.ExecutionConfig,
 		"evaluation_config": input.EvaluationConfig,
@@ -264,6 +309,13 @@ func optionalHarnessString(value string) *string {
 		return nil
 	}
 	return &trimmed
+}
+
+func optionalHarnessInt64(value int64) *int64 {
+	if value <= 0 {
+		return nil
+	}
+	return &value
 }
 
 func agentHarnessExecutionTimeoutSeconds(raw json.RawMessage) int {
@@ -290,6 +342,11 @@ type agentHarnessResponse struct {
 	AuthMode               string          `json:"auth_mode"`
 	OpenAIAPIKeySecretName *string         `json:"openai_api_key_secret_name,omitempty"`
 	RepositoryURL          *string         `json:"repository_url,omitempty"`
+	RepositoryProvider     *string         `json:"repository_provider,omitempty"`
+	GitHubRepositoryID     *int64          `json:"github_repository_id,omitempty"`
+	GitHubInstallationID   *int64          `json:"github_installation_id,omitempty"`
+	RepositoryFullName     *string         `json:"repository_full_name,omitempty"`
+	RepositoryCloneURL     *string         `json:"repository_clone_url,omitempty"`
 	BaseBranch             *string         `json:"base_branch,omitempty"`
 	ExecutionConfig        json.RawMessage `json:"execution_config"`
 	EvaluationConfig       json.RawMessage `json:"evaluation_config"`
@@ -536,6 +593,11 @@ func mapAgentHarnessResponse(h repository.AgentHarness) agentHarnessResponse {
 		AuthMode:               h.AuthMode,
 		OpenAIAPIKeySecretName: h.OpenAIAPIKeySecretName,
 		RepositoryURL:          h.RepositoryURL,
+		RepositoryProvider:     h.RepositoryProvider,
+		GitHubRepositoryID:     h.GitHubRepositoryID,
+		GitHubInstallationID:   h.GitHubInstallationID,
+		RepositoryFullName:     h.RepositoryFullName,
+		RepositoryCloneURL:     h.RepositoryCloneURL,
 		BaseBranch:             h.BaseBranch,
 		ExecutionConfig:        h.ExecutionConfig,
 		EvaluationConfig:       h.EvaluationConfig,

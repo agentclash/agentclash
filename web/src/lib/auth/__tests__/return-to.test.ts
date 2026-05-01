@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildGitHubSetupReturnTo,
   buildDeviceReturnTo,
   normalizeDeviceUserCode,
   sanitizeReturnTo,
@@ -16,6 +17,24 @@ describe("sanitizeReturnTo", () => {
   it("preserves the device verification route with a normalized code", () => {
     expect(sanitizeReturnTo("/auth/device?user_code=ab cd-1234&foo=bar")).toBe(
       "/auth/device?user_code=ABCD-1234",
+    );
+  });
+
+  it("preserves a sanitized GitHub setup callback", () => {
+    expect(
+      sanitizeReturnTo(
+        "/github/setup?installation_id=42&state=abc_DEF-123.sig_456&setup_action=install&evil=https://example.com",
+      ),
+    ).toBe(
+      "/github/setup?installation_id=42&state=abc_DEF-123.sig_456&setup_action=install",
+    );
+  });
+});
+
+describe("github setup return-to helpers", () => {
+  it("requires installation id and signed state", () => {
+    expect(buildGitHubSetupReturnTo(new URLSearchParams("installation_id=x"))).toBe(
+      "/github/setup",
     );
   });
 });
