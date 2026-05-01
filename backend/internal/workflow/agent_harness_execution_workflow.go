@@ -15,7 +15,11 @@ import (
 	sdkworkflow "go.temporal.io/sdk/workflow"
 )
 
-const agentHarnessWorkspaceDir = "/workspace"
+const (
+	agentHarnessWorkspaceDir          = "/workspace"
+	agentHarnessActivityTimeoutBuffer = 2 * time.Minute
+	defaultAgentHarnessTimeoutSeconds = 1800
+)
 
 var (
 	ErrAgentHarnessRepositoryMissing = errors.New("agent harness repository is not configured")
@@ -73,7 +77,7 @@ func AgentHarnessExecutionWorkflow(ctx sdkworkflow.Context, input AgentHarnessEx
 	if err := transitionAgentHarnessExecutionStatus(ctx, input.ExecutionID, repository.AgentHarnessExecutionStatusRunning, nil); err != nil {
 		return err
 	}
-	if err := executeAgentHarnessExecution(ctx, input.ExecutionID); err != nil {
+	if err := executeAgentHarnessExecution(ctx, input.ExecutionID, input.TimeoutSeconds); err != nil {
 		return markAgentHarnessExecutionFailed(ctx, input.ExecutionID, err)
 	}
 	if err := transitionAgentHarnessExecutionStatus(ctx, input.ExecutionID, repository.AgentHarnessExecutionStatusCompleted, nil); err != nil {
@@ -91,10 +95,18 @@ func transitionAgentHarnessExecutionStatus(ctx sdkworkflow.Context, executionID 
 	}).Get(ctx, &execution)
 }
 
-func executeAgentHarnessExecution(ctx sdkworkflow.Context, executionID uuid.UUID) error {
-	return sdkworkflow.ExecuteActivity(ctx, executeAgentHarnessExecutionActivityName, ExecuteAgentHarnessExecutionInput{
+func executeAgentHarnessExecution(ctx sdkworkflow.Context, executionID uuid.UUID, timeoutSeconds int) error {
+	executeCtx := sdkworkflow.WithActivityOptions(ctx, agentHarnessExecutionActivityOptions(timeoutSeconds))
+	return sdkworkflow.ExecuteActivity(executeCtx, executeAgentHarnessExecutionActivityName, ExecuteAgentHarnessExecutionInput{
 		ExecutionID: executionID,
 	}).Get(ctx, nil)
+}
+
+func agentHarnessExecutionActivityOptions(timeoutSeconds int) sdkworkflow.ActivityOptions {
+	return sdkworkflow.ActivityOptions{
+		StartToCloseTimeout: agentHarnessTimeoutFromSeconds(timeoutSeconds) + agentHarnessActivityTimeoutBuffer,
+		RetryPolicy:         defaultActivityOptions.RetryPolicy,
+	}
 }
 
 func markAgentHarnessExecutionFailed(ctx sdkworkflow.Context, executionID uuid.UUID, cause error) error {
@@ -466,12 +478,16 @@ func agentHarnessEnv(h agentHarnessSnapshot, secrets map[string]string) (map[str
 }
 
 func agentHarnessTimeout(raw json.RawMessage) time.Duration {
-	cfg := agentHarnessExecutionConfig{TimeoutSeconds: 1800}
+	cfg := agentHarnessExecutionConfig{TimeoutSeconds: defaultAgentHarnessTimeoutSeconds}
 	_ = json.Unmarshal(raw, &cfg)
-	if cfg.TimeoutSeconds <= 0 {
-		cfg.TimeoutSeconds = 1800
+	return agentHarnessTimeoutFromSeconds(cfg.TimeoutSeconds)
+}
+
+func agentHarnessTimeoutFromSeconds(timeoutSeconds int) time.Duration {
+	if timeoutSeconds <= 0 {
+		timeoutSeconds = defaultAgentHarnessTimeoutSeconds
 	}
-	return time.Duration(cfg.TimeoutSeconds) * time.Second
+	return time.Duration(timeoutSeconds) * time.Second
 }
 
 func derefString(value *string) string {

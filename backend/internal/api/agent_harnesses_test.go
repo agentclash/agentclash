@@ -236,7 +236,8 @@ func TestAgentHarnessExecutionManagerStartSnapshotsHarness(t *testing.T) {
 	harness.ExecutionConfig = json.RawMessage(`{"timeout_seconds":600}`)
 	harness.EvaluationConfig = json.RawMessage(`{"validators":[{"type":"command"}]}`)
 	repo := &fakeAgentHarnessRepo{organizationID: harness.OrganizationID, harness: harness}
-	manager := NewAgentHarnessManager(NewCallerWorkspaceAuthorizer(), repo)
+	starter := &fakeAgentHarnessWorkflowStarter{}
+	manager := NewAgentHarnessManager(NewCallerWorkspaceAuthorizer(), repo, starter)
 
 	execution, err := manager.StartAgentHarnessExecution(context.Background(), testAgentHarnessCaller(workspaceID), workspaceID, harness.ID, StartAgentHarnessExecutionInput{})
 	if err != nil {
@@ -254,6 +255,9 @@ func TestAgentHarnessExecutionManagerStartSnapshotsHarness(t *testing.T) {
 	}
 	if string(repo.createdExecution.EvaluationConfigSnapshot) != string(harness.EvaluationConfig) {
 		t.Fatalf("evaluation snapshot = %s", repo.createdExecution.EvaluationConfigSnapshot)
+	}
+	if starter.timeoutSeconds != 600 {
+		t.Fatalf("workflow timeout seconds = %d, want 600", starter.timeoutSeconds)
 	}
 	var snapshot agentHarnessResponse
 	if err := json.Unmarshal(repo.createdExecution.HarnessSnapshot, &snapshot); err != nil {
@@ -291,7 +295,7 @@ func TestAgentHarnessExecutionManagerMarksFailedWhenWorkflowStartFails(t *testin
 	harness := testAgentHarnessRecord(workspaceID, "Codex execution harness")
 	repo := &fakeAgentHarnessRepo{organizationID: harness.OrganizationID, harness: harness}
 	starterErr := errors.New("temporal unavailable")
-	manager := NewAgentHarnessManager(NewCallerWorkspaceAuthorizer(), repo, fakeAgentHarnessWorkflowStarter{err: starterErr})
+	manager := NewAgentHarnessManager(NewCallerWorkspaceAuthorizer(), repo, &fakeAgentHarnessWorkflowStarter{err: starterErr})
 
 	_, err := manager.StartAgentHarnessExecution(context.Background(), testAgentHarnessCaller(workspaceID), workspaceID, harness.ID, StartAgentHarnessExecutionInput{})
 	if !errors.Is(err, starterErr) {
@@ -606,9 +610,11 @@ func (f *fakeAgentHarnessService) ListAgentHarnessExecutions(_ context.Context, 
 }
 
 type fakeAgentHarnessWorkflowStarter struct {
-	err error
+	err            error
+	timeoutSeconds int
 }
 
-func (f fakeAgentHarnessWorkflowStarter) StartAgentHarnessExecutionWorkflow(context.Context, uuid.UUID) error {
+func (f *fakeAgentHarnessWorkflowStarter) StartAgentHarnessExecutionWorkflow(_ context.Context, _ uuid.UUID, timeoutSeconds int) error {
+	f.timeoutSeconds = timeoutSeconds
 	return f.err
 }

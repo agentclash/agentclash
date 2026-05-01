@@ -43,12 +43,12 @@ type AgentHarnessService interface {
 }
 
 type AgentHarnessExecutionWorkflowStarter interface {
-	StartAgentHarnessExecutionWorkflow(ctx context.Context, executionID uuid.UUID) error
+	StartAgentHarnessExecutionWorkflow(ctx context.Context, executionID uuid.UUID, timeoutSeconds int) error
 }
 
 type noopAgentHarnessExecutionWorkflowStarter struct{}
 
-func (noopAgentHarnessExecutionWorkflowStarter) StartAgentHarnessExecutionWorkflow(context.Context, uuid.UUID) error {
+func (noopAgentHarnessExecutionWorkflowStarter) StartAgentHarnessExecutionWorkflow(context.Context, uuid.UUID, int) error {
 	return nil
 }
 
@@ -178,7 +178,7 @@ func (m *AgentHarnessManager) StartAgentHarnessExecution(ctx context.Context, ca
 	if err != nil {
 		return repository.AgentHarnessExecution{}, err
 	}
-	if err := m.workflowStarter.StartAgentHarnessExecutionWorkflow(ctx, execution.ID); err != nil {
+	if err := m.workflowStarter.StartAgentHarnessExecutionWorkflow(ctx, execution.ID, agentHarnessExecutionTimeoutSeconds(execution.ExecutionConfigSnapshot)); err != nil {
 		reason := err.Error()
 		_, _ = m.repo.TransitionAgentHarnessExecutionStatus(ctx, repository.TransitionAgentHarnessExecutionStatusParams{
 			ExecutionID: execution.ID,
@@ -264,6 +264,14 @@ func optionalHarnessString(value string) *string {
 		return nil
 	}
 	return &trimmed
+}
+
+func agentHarnessExecutionTimeoutSeconds(raw json.RawMessage) int {
+	var config struct {
+		TimeoutSeconds int `json:"timeout_seconds,omitempty"`
+	}
+	_ = json.Unmarshal(raw, &config)
+	return config.TimeoutSeconds
 }
 
 type agentHarnessResponse struct {

@@ -41,7 +41,7 @@ func TestTemporalAgentHarnessExecutionWorkflowStarter(t *testing.T) {
 	executionID := uuid.New()
 	client := &fakeTemporalClient{}
 
-	err := NewTemporalAgentHarnessExecutionWorkflowStarter(client).StartAgentHarnessExecutionWorkflow(context.Background(), executionID)
+	err := NewTemporalAgentHarnessExecutionWorkflowStarter(client).StartAgentHarnessExecutionWorkflow(context.Background(), executionID, 600)
 	if err != nil {
 		t.Fatalf("StartAgentHarnessExecutionWorkflow returned error: %v", err)
 	}
@@ -58,6 +58,9 @@ func TestTemporalAgentHarnessExecutionWorkflowStarter(t *testing.T) {
 	}
 	if input.ExecutionID != executionID {
 		t.Fatalf("execution id = %s, want %s", input.ExecutionID, executionID)
+	}
+	if input.TimeoutSeconds != 600 {
+		t.Fatalf("timeout seconds = %d, want 600", input.TimeoutSeconds)
 	}
 }
 
