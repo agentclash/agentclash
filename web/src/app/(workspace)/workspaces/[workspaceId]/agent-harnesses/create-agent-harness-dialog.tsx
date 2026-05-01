@@ -8,6 +8,8 @@ import { ApiError } from "@/lib/api/errors";
 import type {
   AgentHarness,
   CreateAgentHarnessRequest,
+  GitHubInstallation,
+  GitHubRepository,
   WorkspaceSecret,
 } from "@/lib/api/types";
 import { useApiListQuery, useApiMutator } from "@/lib/api/swr";
@@ -53,29 +55,54 @@ export function CreateAgentHarnessDialog({
     useApiListQuery<WorkspaceSecret>(
       `/v1/workspaces/${workspaceId}/secrets`,
     );
+  const { data: installationsData } = useApiListQuery<GitHubInstallation>(
+    `/v1/workspaces/${workspaceId}/github/installations`,
+  );
+  const { data: repositoriesData } = useApiListQuery<GitHubRepository>(
+    `/v1/workspaces/${workspaceId}/github/repositories`,
+  );
   const [open, setOpen] = useState(false);
   const [taskPrompt, setTaskPrompt] = useState("");
+  const [sourceMode, setSourceMode] = useState<"github" | "url">("github");
+  const [selectedRepositoryID, setSelectedRepositoryID] = useState("");
   const [repositoryURL, setRepositoryURL] = useState("");
   const [baseBranch, setBaseBranch] = useState("main");
   const [submitting, setSubmitting] = useState(false);
 
   async function handleCreate() {
-    if (!repositoryURL.trim() || !taskPrompt.trim()) return;
+    const selectedRepository = githubRepositories.find(
+      (repo) => String(repo.github_repository_id) === selectedRepositoryID,
+    );
+    if (sourceMode === "github" && !selectedRepository) return;
+    if (sourceMode === "url" && !repositoryURL.trim()) return;
+    if (!taskPrompt.trim()) return;
     if (!openAISecret) {
       toast.error("Add OPENAI_API_KEY under workspace Secrets first");
       return;
     }
 
     const payload: CreateAgentHarnessRequest = {
-      name: buildHarnessName(repositoryURL, taskPrompt),
+      name: buildHarnessName(
+        sourceMode === "github" ? selectedRepository?.full_name ?? "" : repositoryURL,
+        taskPrompt,
+      ),
       task_prompt: taskPrompt.trim(),
       codex_template: "codex",
       auth_mode: "api_key_secret",
       openai_api_key_secret_name: openAISecret,
-      repository_url: repositoryURL.trim() || undefined,
-      base_branch: baseBranch.trim() || undefined,
+      base_branch:
+        baseBranch.trim() ||
+        (sourceMode === "github" ? selectedRepository?.default_branch : undefined),
       evaluation_config: defaultEvaluationConfig,
     };
+    if (sourceMode === "github" && selectedRepository) {
+      payload.repository_provider = "github";
+      payload.github_repository_id = selectedRepository.github_repository_id;
+      payload.github_installation_id = selectedRepository.github_installation_id;
+      payload.repository_url = selectedRepository.html_url;
+    } else {
+      payload.repository_url = repositoryURL.trim() || undefined;
+    }
 
     setSubmitting(true);
     try {
@@ -100,13 +127,23 @@ export function CreateAgentHarnessDialog({
 
   function resetForm() {
     setTaskPrompt("");
+    setSourceMode("github");
+    setSelectedRepositoryID("");
     setRepositoryURL("");
     setBaseBranch("main");
   }
 
   const openAISecret = inferOpenAISecret(secretsData?.items ?? []);
+  const githubInstallations = installationsData?.items ?? [];
+  const githubRepositories = repositoriesData?.items ?? [];
+  const selectedRepository = githubRepositories.find(
+    (repo) => String(repo.github_repository_id) === selectedRepositoryID,
+  );
+  const hasGitHubRepositories = githubRepositories.length > 0;
   const canSubmit =
-    repositoryURL.trim() &&
+    (sourceMode === "github"
+      ? Boolean(selectedRepository)
+      : Boolean(repositoryURL.trim())) &&
     taskPrompt.trim() &&
     openAISecret &&
     !secretsLoading;
@@ -126,7 +163,75 @@ export function CreateAgentHarnessDialog({
         </DialogHeader>
 
         <div className="space-y-4 py-2">
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant={sourceMode === "github" ? "default" : "outline"}
+              onClick={() => setSourceMode("github")}
+            >
+              <Github data-icon="inline-start" className="size-4" />
+              GitHub
+            </Button>
+            <Button
+              type="button"
+              variant={sourceMode === "url" ? "default" : "outline"}
+              onClick={() => setSourceMode("url")}
+            >
+              URL
+            </Button>
+          </div>
+
+          {sourceMode === "github" ? (
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
+                <label className="mb-1.5 flex items-center gap-2 text-sm font-medium">
+                  <Github className="size-4 text-muted-foreground" />
+                  Repository
+                </label>
+                <select
+                  value={selectedRepositoryID}
+                  onChange={(event) => {
+                    const nextID = event.target.value;
+                    setSelectedRepositoryID(nextID);
+                    const nextRepo = githubRepositories.find(
+                      (repo) => String(repo.github_repository_id) === nextID,
+                    );
+                    if (nextRepo) setBaseBranch(nextRepo.default_branch);
+                  }}
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring/50"
+                  autoFocus
+                >
+                  <option value="">
+                    {hasGitHubRepositories
+                      ? "Select repository"
+                      : githubInstallations.length > 0
+                        ? "No repositories connected"
+                        : "Connect GitHub first"}
+                  </option>
+                  {githubRepositories.map((repo) => (
+                    <option
+                      key={`${repo.github_installation_id}:${repo.github_repository_id}`}
+                      value={repo.github_repository_id}
+                    >
+                      {repo.full_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1.5 flex items-center gap-2 text-sm font-medium">
+                  <GitBranch className="size-4 text-muted-foreground" />
+                  Base Branch
+                </label>
+                <Input
+                  value={baseBranch}
+                  onChange={(event) => setBaseBranch(event.target.value)}
+                  placeholder={selectedRepository?.default_branch ?? "main"}
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2">
             <div>
               <label className="mb-1.5 flex items-center gap-2 text-sm font-medium">
                 <Github className="size-4 text-muted-foreground" />
@@ -150,7 +255,8 @@ export function CreateAgentHarnessDialog({
                 placeholder="main"
               />
             </div>
-          </div>
+            </div>
+          )}
 
           <div>
             <label className="mb-1.5 block text-sm font-medium">Task</label>

@@ -23,6 +23,7 @@ func registerProtectedRoutes(
 	regressionService RegressionService,
 	agentDeploymentReadService AgentDeploymentReadService,
 	agentHarnessService AgentHarnessService,
+	githubIntegrationService GitHubIntegrationService,
 	challengePackReadService ChallengePackReadService,
 	challengePackAuthoringService ChallengePackAuthoringService,
 	agentBuildService AgentBuildService,
@@ -134,6 +135,12 @@ func registerProtectedRoutes(
 		Get("/workspaces/{workspaceID}/agent-harness-executions", listAgentHarnessExecutionsHandler(logger, agentHarnessService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Get("/workspaces/{workspaceID}/agent-harness-executions/{executionID}", getAgentHarnessExecutionHandler(logger, agentHarnessService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Post("/workspaces/{workspaceID}/github/installations/start", startGitHubInstallationHandler(logger, githubIntegrationService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Get("/workspaces/{workspaceID}/github/installations", listGitHubInstallationsHandler(logger, githubIntegrationService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Get("/workspaces/{workspaceID}/github/repositories", listGitHubRepositoriesHandler(logger, githubIntegrationService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Get("/workspaces/{workspaceID}/challenge-packs", listChallengePacksHandler(logger, challengePackReadService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).

@@ -34,6 +34,11 @@ type AgentHarness struct {
 	OpenAIAPIKeySecretName *string
 	E2BAPIKeySecretName    *string
 	RepositoryURL          *string
+	RepositoryProvider     *string
+	GitHubRepositoryID     *int64
+	GitHubInstallationID   *int64
+	RepositoryFullName     *string
+	RepositoryCloneURL     *string
 	BaseBranch             *string
 	ExecutionConfig        json.RawMessage
 	EvaluationConfig       json.RawMessage
@@ -56,6 +61,11 @@ type CreateAgentHarnessParams struct {
 	OpenAIAPIKeySecretName *string
 	E2BAPIKeySecretName    *string
 	RepositoryURL          *string
+	RepositoryProvider     *string
+	GitHubRepositoryID     *int64
+	GitHubInstallationID   *int64
+	RepositoryFullName     *string
+	RepositoryCloneURL     *string
 	BaseBranch             *string
 	ExecutionConfig        json.RawMessage
 	EvaluationConfig       json.RawMessage
@@ -66,19 +76,24 @@ func (r *Repository) CreateAgentHarness(ctx context.Context, p CreateAgentHarnes
 INSERT INTO agent_harnesses (
     organization_id, workspace_id, created_by_user_id, name, slug, description,
     task_prompt, codex_template, codex_model, auth_mode, openai_api_key_secret_name,
-    e2b_api_key_secret_name, repository_url, base_branch, execution_config, evaluation_config
+    e2b_api_key_secret_name, repository_url, repository_provider, github_repository_id,
+    github_installation_id, repository_full_name, repository_clone_url, base_branch,
+    execution_config, evaluation_config
 ) VALUES (
     $1, $2, $3, $4, $5, $6,
     $7, $8, $9, $10, $11,
-    $12, $13, $14, $15, $16
+    $12, $13, $14, $15, $16, $17, $18, $19, $20, $21
 )
 RETURNING id, organization_id, workspace_id, created_by_user_id, name, slug, description,
     status, harness_kind, task_prompt, codex_template, codex_model, auth_mode,
-    openai_api_key_secret_name, e2b_api_key_secret_name, repository_url, base_branch,
+    openai_api_key_secret_name, e2b_api_key_secret_name, repository_url, repository_provider,
+    github_repository_id, github_installation_id, repository_full_name, repository_clone_url, base_branch,
     execution_config, evaluation_config, created_at, updated_at, archived_at`,
 		p.OrganizationID, p.WorkspaceID, p.CreatedByUserID, p.Name, p.Slug, p.Description,
 		p.TaskPrompt, p.CodexTemplate, p.CodexModel, p.AuthMode, p.OpenAIAPIKeySecretName,
-		p.E2BAPIKeySecretName, p.RepositoryURL, p.BaseBranch, p.ExecutionConfig, p.EvaluationConfig,
+		p.E2BAPIKeySecretName, p.RepositoryURL, p.RepositoryProvider, p.GitHubRepositoryID,
+		p.GitHubInstallationID, p.RepositoryFullName, p.RepositoryCloneURL, p.BaseBranch,
+		p.ExecutionConfig, p.EvaluationConfig,
 	)
 	harness, err := scanAgentHarness(row)
 	if err != nil {
@@ -94,7 +109,8 @@ func (r *Repository) GetAgentHarnessByID(ctx context.Context, id uuid.UUID) (Age
 	row := r.db.QueryRow(ctx, `
 SELECT id, organization_id, workspace_id, created_by_user_id, name, slug, description,
     status, harness_kind, task_prompt, codex_template, codex_model, auth_mode,
-    openai_api_key_secret_name, e2b_api_key_secret_name, repository_url, base_branch,
+    openai_api_key_secret_name, e2b_api_key_secret_name, repository_url, repository_provider,
+    github_repository_id, github_installation_id, repository_full_name, repository_clone_url, base_branch,
     execution_config, evaluation_config, created_at, updated_at, archived_at
 FROM agent_harnesses
 WHERE id = $1 AND archived_at IS NULL`, id)
@@ -105,7 +121,8 @@ func (r *Repository) ListAgentHarnessesByWorkspaceID(ctx context.Context, worksp
 	rows, err := r.db.Query(ctx, `
 SELECT id, organization_id, workspace_id, created_by_user_id, name, slug, description,
     status, harness_kind, task_prompt, codex_template, codex_model, auth_mode,
-    openai_api_key_secret_name, e2b_api_key_secret_name, repository_url, base_branch,
+    openai_api_key_secret_name, e2b_api_key_secret_name, repository_url, repository_provider,
+    github_repository_id, github_installation_id, repository_full_name, repository_clone_url, base_branch,
     execution_config, evaluation_config, created_at, updated_at, archived_at
 FROM agent_harnesses
 WHERE workspace_id = $1 AND archived_at IS NULL
@@ -152,6 +169,11 @@ func scanAgentHarness(scanner agentHarnessScanner) (AgentHarness, error) {
 		&h.OpenAIAPIKeySecretName,
 		&h.E2BAPIKeySecretName,
 		&h.RepositoryURL,
+		&h.RepositoryProvider,
+		&h.GitHubRepositoryID,
+		&h.GitHubInstallationID,
+		&h.RepositoryFullName,
+		&h.RepositoryCloneURL,
 		&h.BaseBranch,
 		&h.ExecutionConfig,
 		&h.EvaluationConfig,

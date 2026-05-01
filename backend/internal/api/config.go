@@ -69,6 +69,8 @@ type Config struct {
 	ResendAPIKey              string
 	ResendFromEmail           string
 	FrontendURL               string
+	GitHubAppSlug             string
+	GitHubAppStateSecret      string
 	DodoPaymentsAPIKey        string
 	DodoPaymentsWebhookKey    string
 	DodoAPIBaseURL            string
@@ -210,6 +212,8 @@ func LoadConfigFromEnv() (Config, error) {
 		ResendAPIKey:              resendAPIKey,
 		ResendFromEmail:           resendFromEmail,
 		FrontendURL:               frontendURL,
+		GitHubAppSlug:             os.Getenv("GITHUB_APP_SLUG"),
+		GitHubAppStateSecret:      os.Getenv("GITHUB_APP_STATE_SECRET"),
 		DodoPaymentsAPIKey:        dodoPaymentsAPIKey,
 		DodoPaymentsWebhookKey:    dodoPaymentsWebhookKey,
 		DodoAPIBaseURL:            os.Getenv("DODO_API_BASE_URL"),
