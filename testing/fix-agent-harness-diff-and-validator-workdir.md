@@ -7,6 +7,7 @@
 - Command validators with no `working_directory` still run in the execution default workdir.
 - Command validators with a relative `working_directory` run relative to the cloned repository workdir.
 - Command validators with an absolute `working_directory` continue to run exactly there.
+- Command validators run through bash so coding template shell initialization and common developer commands work.
 
 ## Unit Tests
 
@@ -14,6 +15,7 @@
 - New test coverage verifies `git add --intent-to-add --all` happens before `git diff --binary`.
 - New test coverage verifies relative validator working directories resolve under the default repository workdir.
 - New test coverage verifies absolute validator working directories are preserved.
+- Existing workflow tests verify command validators execute via bash.
 
 ## Integration / Functional Tests
 
