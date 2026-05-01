@@ -35,6 +35,19 @@ type agentHarnessExecutionConfig struct {
 	TimeoutSeconds int `json:"timeout_seconds,omitempty"`
 }
 
+type agentHarnessEvaluationConfig struct {
+	Validators []agentHarnessValidatorConfig `json:"validators,omitempty"`
+	LLMJudges  []json.RawMessage             `json:"llm_judges,omitempty"`
+}
+
+type agentHarnessValidatorConfig struct {
+	Type             string `json:"type"`
+	Command          string `json:"command,omitempty"`
+	WorkingDirectory string `json:"working_directory,omitempty"`
+	TimeoutSeconds   int    `json:"timeout_seconds,omitempty"`
+	Required         *bool  `json:"required,omitempty"`
+}
+
 type agentHarnessSnapshot struct {
 	ID                     uuid.UUID       `json:"id"`
 	WorkspaceID            uuid.UUID       `json:"workspace_id"`
@@ -60,9 +73,6 @@ func AgentHarnessExecutionWorkflow(ctx sdkworkflow.Context, input AgentHarnessEx
 		return err
 	}
 	if err := executeAgentHarnessExecution(ctx, input.ExecutionID); err != nil {
-		return markAgentHarnessExecutionFailed(ctx, input.ExecutionID, err)
-	}
-	if err := transitionAgentHarnessExecutionStatus(ctx, input.ExecutionID, repository.AgentHarnessExecutionStatusScoring, nil); err != nil {
 		return markAgentHarnessExecutionFailed(ctx, input.ExecutionID, err)
 	}
 	if err := transitionAgentHarnessExecutionStatus(ctx, input.ExecutionID, repository.AgentHarnessExecutionStatusCompleted, nil); err != nil {
@@ -166,14 +176,14 @@ func (a *Activities) ExecuteAgentHarnessExecution(ctx context.Context, input Exe
 	workdir := agentHarnessWorkspaceDir
 	if harness.RepositoryURL != nil && strings.TrimSpace(*harness.RepositoryURL) != "" {
 		clone := []string{"git", "clone", strings.TrimSpace(*harness.RepositoryURL), workdir}
-		if result, err := a.execHarnessCommand(ctx, execution.ID, session, "repository.clone", clone, "", timeout); err != nil {
+		if result, err := a.execHarnessCommand(ctx, execution.ID, session, "repository.clone", clone, "", timeout, env); err != nil {
 			return err
 		} else if result.ExitCode != 0 {
 			return fmt.Errorf("repository clone failed with exit code %d", result.ExitCode)
 		}
 		if harness.BaseBranch != nil && strings.TrimSpace(*harness.BaseBranch) != "" {
 			checkout := []string{"git", "checkout", strings.TrimSpace(*harness.BaseBranch)}
-			if result, err := a.execHarnessCommand(ctx, execution.ID, session, "repository.checkout", checkout, workdir, timeout); err != nil {
+			if result, err := a.execHarnessCommand(ctx, execution.ID, session, "repository.checkout", checkout, workdir, timeout, env); err != nil {
 				return err
 			} else if result.ExitCode != 0 {
 				return fmt.Errorf("repository checkout failed with exit code %d", result.ExitCode)
@@ -183,8 +193,8 @@ func (a *Activities) ExecuteAgentHarnessExecution(ctx context.Context, input Exe
 		workdir = "/"
 	}
 
-	codexCommand := []string{"codex", "exec", "--full-auto", "--skip-git-repo-check", "--json", harness.TaskPrompt}
-	codexResult, err := a.execHarnessCommand(ctx, execution.ID, session, "codex.exec", codexCommand, workdir, timeout)
+	codexCommand := []string{"codex", "exec", "--full-auto", "--skip-git-repo-check", "--json", "-C", workdir, harness.TaskPrompt}
+	codexResult, err := a.execHarnessCommand(ctx, execution.ID, session, "codex.exec", codexCommand, workdir, timeout, env)
 	if err != nil {
 		return err
 	}
@@ -192,15 +202,25 @@ func (a *Activities) ExecuteAgentHarnessExecution(ctx context.Context, input Exe
 		return fmt.Errorf("codex exec failed with exit code %d", codexResult.ExitCode)
 	}
 
-	if result, err := a.execHarnessCommand(ctx, execution.ID, session, "git.diff", []string{"git", "diff", "--binary"}, workdir, 60*time.Second); err != nil {
+	if result, err := a.execHarnessCommand(ctx, execution.ID, session, "git.diff", []string{"git", "diff", "--binary"}, workdir, 60*time.Second, env); err != nil {
 		return err
 	} else {
 		_ = a.recordAgentHarnessEvent(ctx, execution.ID, "artifact.git_diff", "worker", map[string]any{"diff": result.Stdout})
 	}
-	if result, err := a.execHarnessCommand(ctx, execution.ID, session, "git.changed_files", []string{"git", "status", "--short"}, workdir, 60*time.Second); err != nil {
+	if result, err := a.execHarnessCommand(ctx, execution.ID, session, "git.changed_files", []string{"git", "status", "--short"}, workdir, 60*time.Second, env); err != nil {
 		return err
 	} else {
 		_ = a.recordAgentHarnessEvent(ctx, execution.ID, "artifact.changed_files", "worker", map[string]any{"changed_files": result.Stdout})
+	}
+
+	if _, err := a.TransitionAgentHarnessExecutionStatus(ctx, TransitionAgentHarnessExecutionStatusInput{
+		ExecutionID: execution.ID,
+		ToStatus:    repository.AgentHarnessExecutionStatusScoring,
+	}); err != nil {
+		return err
+	}
+	if err := a.evaluateAgentHarnessExecution(ctx, execution.ID, session, harness.EvaluationConfig, workdir, timeout, env); err != nil {
+		return err
 	}
 
 	return nil
@@ -235,7 +255,7 @@ func (a *Activities) agentHarnessSnapshot(ctx context.Context, execution reposit
 	}, nil
 }
 
-func (a *Activities) execHarnessCommand(ctx context.Context, executionID uuid.UUID, session sandbox.Session, eventType string, command []string, workdir string, timeout time.Duration) (sandbox.ExecResult, error) {
+func (a *Activities) execHarnessCommand(ctx context.Context, executionID uuid.UUID, session sandbox.Session, eventType string, command []string, workdir string, timeout time.Duration, env map[string]string) (sandbox.ExecResult, error) {
 	if err := a.recordAgentHarnessEvent(ctx, executionID, eventType+".started", "worker", map[string]any{"command": command, "working_directory": workdir}); err != nil {
 		return sandbox.ExecResult{}, err
 	}
@@ -252,6 +272,7 @@ func (a *Activities) execHarnessCommand(ctx context.Context, executionID uuid.UU
 		Command:          command,
 		WorkingDirectory: workdir,
 		Timeout:          timeout,
+		Environment:      cloneStringMap(env),
 		OnStdout:         onStdout,
 	})
 	if eventType == "codex.exec" && stdoutRemainder != "" {
@@ -272,6 +293,109 @@ func (a *Activities) execHarnessCommand(ctx context.Context, executionID uuid.UU
 		return result, a.recordAgentHarnessEvent(ctx, executionID, eventType+".completed", "worker", payload)
 	}
 	return result, a.recordAgentHarnessEvent(ctx, executionID, eventType+".failed", "worker", payload)
+}
+
+func (a *Activities) evaluateAgentHarnessExecution(ctx context.Context, executionID uuid.UUID, session sandbox.Session, rawConfig json.RawMessage, workdir string, defaultTimeout time.Duration, env map[string]string) error {
+	config, err := decodeAgentHarnessEvaluationConfig(rawConfig)
+	if err != nil {
+		_ = a.recordAgentHarnessEvent(ctx, executionID, "scoring.failed", "worker", map[string]any{"error": err.Error()})
+		return err
+	}
+	if len(config.Validators) == 0 && len(config.LLMJudges) == 0 {
+		return a.recordAgentHarnessEvent(ctx, executionID, "scoring.skipped", "worker", map[string]any{"reason": "evaluation_config has no validators or llm_judges"})
+	}
+
+	passed := 0
+	failed := 0
+	skipped := 0
+	for index, validator := range config.Validators {
+		switch strings.TrimSpace(validator.Type) {
+		case "command":
+			ok, err := a.evaluateCommandValidator(ctx, executionID, session, validator, index, workdir, defaultTimeout, env)
+			if err != nil {
+				failed++
+				if validatorRequired(validator) {
+					_ = a.recordAgentHarnessEvent(ctx, executionID, "scoring.completed", "worker", map[string]any{"passed": passed, "failed": failed, "skipped": skipped, "score": 0})
+					return err
+				}
+			}
+			if ok {
+				passed++
+			}
+		default:
+			skipped++
+			if err := a.recordAgentHarnessEvent(ctx, executionID, "validator.skipped", "worker", map[string]any{"index": index, "type": validator.Type, "reason": "unsupported validator type"}); err != nil {
+				return err
+			}
+		}
+	}
+	if len(config.LLMJudges) > 0 {
+		skipped += len(config.LLMJudges)
+		if err := a.recordAgentHarnessEvent(ctx, executionID, "llm_judges.skipped", "worker", map[string]any{"count": len(config.LLMJudges), "reason": "agent harness LLM judge scoring is not wired yet"}); err != nil {
+			return err
+		}
+	}
+
+	totalScored := passed + failed
+	score := 1.0
+	if totalScored > 0 {
+		score = float64(passed) / float64(totalScored)
+	}
+	return a.recordAgentHarnessEvent(ctx, executionID, "scoring.completed", "worker", map[string]any{"passed": passed, "failed": failed, "skipped": skipped, "score": score})
+}
+
+func (a *Activities) evaluateCommandValidator(ctx context.Context, executionID uuid.UUID, session sandbox.Session, validator agentHarnessValidatorConfig, index int, defaultWorkdir string, defaultTimeout time.Duration, env map[string]string) (bool, error) {
+	command := strings.TrimSpace(validator.Command)
+	if command == "" {
+		err := fmt.Errorf("command validator %d is missing command", index)
+		_ = a.recordAgentHarnessEvent(ctx, executionID, "validator.command.failed", "worker", map[string]any{"index": index, "error": err.Error()})
+		return false, err
+	}
+	workdir := strings.TrimSpace(validator.WorkingDirectory)
+	if workdir == "" {
+		workdir = defaultWorkdir
+	}
+	timeout := defaultTimeout
+	if validator.TimeoutSeconds > 0 {
+		timeout = time.Duration(validator.TimeoutSeconds) * time.Second
+	}
+
+	result, err := a.execHarnessCommand(ctx, executionID, session, "validator.command", []string{"sh", "-lc", command}, workdir, timeout, env)
+	payload := map[string]any{
+		"index":             index,
+		"command":           command,
+		"working_directory": workdir,
+	}
+	if err != nil {
+		payload["error"] = err.Error()
+		_ = a.recordAgentHarnessEvent(ctx, executionID, "validator.command.failed", "worker", payload)
+		return false, err
+	}
+	payload["exit_code"] = result.ExitCode
+	payload["stdout"] = result.Stdout
+	payload["stderr"] = result.Stderr
+	if result.ExitCode == 0 {
+		return true, a.recordAgentHarnessEvent(ctx, executionID, "validator.command.passed", "worker", payload)
+	}
+	err = fmt.Errorf("command validator %d failed with exit code %d", index, result.ExitCode)
+	payload["error"] = err.Error()
+	_ = a.recordAgentHarnessEvent(ctx, executionID, "validator.command.failed", "worker", payload)
+	return false, err
+}
+
+func decodeAgentHarnessEvaluationConfig(raw json.RawMessage) (agentHarnessEvaluationConfig, error) {
+	if len(raw) == 0 || string(raw) == "null" {
+		return agentHarnessEvaluationConfig{}, nil
+	}
+	var config agentHarnessEvaluationConfig
+	if err := json.Unmarshal(raw, &config); err != nil {
+		return agentHarnessEvaluationConfig{}, fmt.Errorf("decode evaluation_config: %w", err)
+	}
+	return config, nil
+}
+
+func validatorRequired(validator agentHarnessValidatorConfig) bool {
+	return validator.Required == nil || *validator.Required
 }
 
 func (a *Activities) recordCodexOutputEvents(ctx context.Context, executionID uuid.UUID, raw string, flush bool) (string, error) {
@@ -335,6 +459,17 @@ func agentHarnessEnv(h agentHarnessSnapshot, secrets map[string]string) (map[str
 		return nil, fmt.Errorf("unsupported agent harness auth mode %q", h.AuthMode)
 	}
 	return env, nil
+}
+
+func cloneStringMap(values map[string]string) map[string]string {
+	if len(values) == 0 {
+		return nil
+	}
+	cloned := make(map[string]string, len(values))
+	for key, value := range values {
+		cloned[key] = value
+	}
+	return cloned
 }
 
 func agentHarnessTimeout(raw json.RawMessage) time.Duration {

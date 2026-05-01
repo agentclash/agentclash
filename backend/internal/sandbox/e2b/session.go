@@ -18,10 +18,11 @@ import (
 )
 
 type session struct {
-	mu         sync.Mutex
-	client     clientSession
-	closed     bool
-	allowShell bool
+	mu                 sync.Mutex
+	client             clientSession
+	closed             bool
+	allowShell         bool
+	defaultEnvironment map[string]string
 }
 
 func (s *session) ID() string {
@@ -177,7 +178,7 @@ func (s *session) Exec(ctx context.Context, request sandbox.ExecRequest) (sandbo
 		Process: &processpb.ProcessConfig{
 			Cmd:  request.Command[0],
 			Args: request.Command[1:],
-			Envs: request.Environment,
+			Envs: mergeEnvironment(s.defaultEnvironment, request.Environment),
 			Cwd:  stringPtr(request.WorkingDirectory),
 		},
 		Stdin: &stdin,
@@ -229,6 +230,20 @@ func (s *session) Exec(ctx context.Context, request sandbox.ExecRequest) (sandbo
 	result.Stdout = stdout.String()
 	result.Stderr = stderr.String()
 	return result, nil
+}
+
+func mergeEnvironment(base map[string]string, override map[string]string) map[string]string {
+	if len(base) == 0 && len(override) == 0 {
+		return nil
+	}
+	merged := make(map[string]string, len(base)+len(override))
+	for key, value := range base {
+		merged[key] = value
+	}
+	for key, value := range override {
+		merged[key] = value
+	}
+	return merged
 }
 
 func (s *session) DownloadFile(ctx context.Context, path string) ([]byte, error) {

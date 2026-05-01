@@ -59,7 +59,8 @@ func (p *Provider) Create(ctx context.Context, request sandbox.CreateRequest) (s
 			processClient: p.client.processClient(record),
 			filesClient:   p.client.filesystemClient(record),
 		},
-		allowShell: request.ToolPolicy.AllowShell,
+		allowShell:         request.ToolPolicy.AllowShell,
+		defaultEnvironment: cloneEnvironment(request.EnvVars),
 	}
 
 	if len(request.AdditionalPackages) > 0 {
@@ -89,6 +90,17 @@ func (p *Provider) installAdditionalPackages(ctx context.Context, sess *session,
 	}
 	slog.Default().Info("sandbox additional packages installed", "sandbox_id", sess.ID(), "run_id", request.RunID, "packages", request.AdditionalPackages, "duration", time.Since(startedAt))
 	return nil
+}
+
+func cloneEnvironment(env map[string]string) map[string]string {
+	if len(env) == 0 {
+		return nil
+	}
+	cloned := make(map[string]string, len(env))
+	for key, value := range env {
+		cloned[key] = value
+	}
+	return cloned
 }
 
 type clientSession struct {

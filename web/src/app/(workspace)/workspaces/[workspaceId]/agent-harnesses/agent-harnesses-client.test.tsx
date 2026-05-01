@@ -196,6 +196,20 @@ describe("AgentHarnessesClient", () => {
               working_directory: "/workspace",
             },
           },
+          {
+            id: "event-3",
+            agent_harness_execution_id: "execution-1",
+            sequence_number: 3,
+            event_type: "scoring.completed",
+            actor_type: "worker",
+            occurred_at: "2026-05-01T00:01:40Z",
+            payload: {
+              score: 1,
+              passed: 1,
+              failed: 0,
+              skipped: 1,
+            },
+          },
         ],
       },
     ]);
@@ -206,9 +220,9 @@ describe("AgentHarnessesClient", () => {
 
     expect(document.body.textContent).toContain("Live Activity");
     expect(document.body.textContent).toContain("running");
-    expect(document.body.textContent).toContain("Codex · Exec · Started");
-    expect(document.body.textContent).toContain("Command: codex exec --full-auto");
-    expect(document.body.textContent).toContain("Working Directory: /workspace");
+    expect(document.body.textContent).toContain("Scoring · Completed");
+    expect(document.body.textContent).toContain("Score: 1");
+    expect(document.body.textContent).toContain("Passed: 1");
 
     rendered.cleanup();
   });
@@ -219,7 +233,7 @@ describe("AgentHarnessesClient", () => {
     clickButtonByLabel("Show activity for agentclash Codex");
 
     expect(document.body.textContent).toContain("Execution timeline");
-    expect(document.body.textContent).toContain("2 events");
+    expect(document.body.textContent).toContain("3 events");
     expect(document.body.textContent).toContain("#1 · worker");
     expect(document.body.textContent).toContain("Repository · Clone · Started");
     expect(document.body.textContent).toContain(

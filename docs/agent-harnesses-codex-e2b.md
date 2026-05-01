@@ -28,6 +28,15 @@ judges.
   can create PRs from connected repositories, but this PR models the CLI-on-E2B
   path because AgentClash needs to orchestrate and score runs itself. Source:
   https://developers.openai.com/codex/cloud
+- OpenHands' benchmark harnesses separate runtime setup, agent execution,
+  trajectory/history capture, metrics, and final evaluation output. Their docs
+  show benchmark code creating a sandbox/runtime, running the controller, then
+  returning an `EvalOutput` with history, metrics, test result, and errors.
+  Source: https://docs.openhands.dev/openhands/usage/developers/evaluation-harness
+- The OpenHands benchmarks repository also highlights real-time rich logging of
+  tool calls and end-of-instance summaries, which is the shape Agent Harnesses
+  should mirror for useful debugging and ranking. Source:
+  https://github.com/OpenHands/benchmarks
 
 ## Product Shape
 
@@ -63,3 +72,15 @@ A follow-up worker can turn a persisted harness into an execution by:
 
 This keeps challenge packs optional for coding-harness evaluations while still
 letting AgentClash reuse validators and LLM judges.
+
+## Runtime Lessons
+
+- E2B command execution must receive the OpenAI/Codex key in the per-command
+  environment. Sandbox-level env is useful for templates, but the AgentClash E2B
+  process bridge does not assume command inheritance.
+- Use Codex's `-C <repo>` flag in addition to setting the process working
+  directory. This matches the E2B Codex examples and makes the intended repo
+  context explicit in the recorded command trace.
+- A harness run is not complete when Codex exits. It must run configured
+  validators, record pass/fail scoring events, and fail the execution when a
+  required validator fails.

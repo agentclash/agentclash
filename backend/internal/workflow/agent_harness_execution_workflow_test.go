@@ -29,7 +29,7 @@ func TestExecuteAgentHarnessExecutionRunsCodexAndRecordsTrace(t *testing.T) {
 		RepositoryURL:          stringPtr("https://github.com/acme/repo"),
 		BaseBranch:             stringPtr("main"),
 		ExecutionConfig:        json.RawMessage(`{"timeout_seconds":120}`),
-		EvaluationConfig:       json.RawMessage(`{}`),
+		EvaluationConfig:       json.RawMessage(`{"validators":[{"type":"command","command":"go test ./...","timeout_seconds":60}]}`),
 	})
 	repo.setAgentHarnessExecution(repository.AgentHarnessExecution{
 		ID:                      executionID,
@@ -50,11 +50,19 @@ func TestExecuteAgentHarnessExecutionRunsCodexAndRecordsTrace(t *testing.T) {
 		case len(request.Command) >= 2 && request.Command[0] == "git" && request.Command[1] == "checkout":
 			return sandbox.ExecResult{ExitCode: 0, Stdout: "checked out"}, nil
 		case len(request.Command) >= 2 && request.Command[0] == "codex" && request.Command[1] == "exec":
+			if request.Environment["CODEX_API_KEY"] != "sk-test" || request.Environment["OPENAI_API_KEY"] != "sk-test" {
+				t.Fatalf("codex env = %#v, want OpenAI and Codex keys", request.Environment)
+			}
+			if !containsString(request.Command, "-C") || !containsString(request.Command, agentHarnessWorkspaceDir) {
+				t.Fatalf("codex command = %#v, want -C workspace", request.Command)
+			}
 			return sandbox.ExecResult{ExitCode: 0, Stdout: `{"type":"final","message":"done"}`}, nil
 		case len(request.Command) >= 2 && request.Command[0] == "git" && request.Command[1] == "diff":
 			return sandbox.ExecResult{ExitCode: 0, Stdout: "diff --git a/file b/file"}, nil
 		case len(request.Command) >= 2 && request.Command[0] == "git" && request.Command[1] == "status":
 			return sandbox.ExecResult{ExitCode: 0, Stdout: " M file"}, nil
+		case len(request.Command) >= 3 && request.Command[0] == "sh" && request.Command[1] == "-lc" && request.Command[2] == "go test ./...":
+			return sandbox.ExecResult{ExitCode: 0, Stdout: "ok"}, nil
 		default:
 			t.Fatalf("unexpected command: %#v", request.Command)
 			return sandbox.ExecResult{}, nil
@@ -85,21 +93,109 @@ func TestExecuteAgentHarnessExecutionRunsCodexAndRecordsTrace(t *testing.T) {
 		t.Fatalf("recorded events = %d, want at least 8", got)
 	}
 	var sawCodexOutput bool
+	var sawValidatorPassed bool
+	var sawScoringCompleted bool
 	for _, event := range repo.agentHarnessEvents[executionID] {
-		if event.EventType != "codex.exec.output" {
-			continue
-		}
-		sawCodexOutput = true
-		var payload map[string]any
-		if err := json.Unmarshal(event.Payload, &payload); err != nil {
-			t.Fatalf("decode codex output payload: %v", err)
-		}
-		if payload["type"] != "final" || payload["message"] != "done" {
-			t.Fatalf("codex output payload = %#v, want final done", payload)
+		switch event.EventType {
+		case "codex.exec.output":
+			sawCodexOutput = true
+			var payload map[string]any
+			if err := json.Unmarshal(event.Payload, &payload); err != nil {
+				t.Fatalf("decode codex output payload: %v", err)
+			}
+			if payload["type"] != "final" || payload["message"] != "done" {
+				t.Fatalf("codex output payload = %#v, want final done", payload)
+			}
+		case "validator.command.passed":
+			sawValidatorPassed = true
+		case "scoring.completed":
+			sawScoringCompleted = true
 		}
 	}
 	if !sawCodexOutput {
 		t.Fatal("expected live codex output event")
+	}
+	if !sawValidatorPassed {
+		t.Fatal("expected validator pass event")
+	}
+	if !sawScoringCompleted {
+		t.Fatal("expected scoring completed event")
+	}
+}
+
+func TestExecuteAgentHarnessExecutionFailsRequiredValidator(t *testing.T) {
+	workspaceID := uuid.New()
+	harnessID := uuid.New()
+	executionID := uuid.New()
+	openAISecret := "OPENAI_API_KEY"
+	repo := newFakeRunRepository(fixtureRun(uuid.New(), domain.RunStatusQueued))
+	repo.setAgentHarness(repository.AgentHarness{
+		ID:                     harnessID,
+		OrganizationID:         uuid.New(),
+		WorkspaceID:            workspaceID,
+		TaskPrompt:             "implement issue 462",
+		CodexTemplate:          "codex",
+		AuthMode:               "api_key_secret",
+		OpenAIAPIKeySecretName: &openAISecret,
+		RepositoryURL:          stringPtr("https://github.com/acme/repo"),
+		ExecutionConfig:        json.RawMessage(`{"timeout_seconds":120}`),
+		EvaluationConfig:       json.RawMessage(`{"validators":[{"type":"command","command":"go test ./..."}]}`),
+	})
+	repo.setAgentHarnessExecution(repository.AgentHarnessExecution{
+		ID:                      executionID,
+		WorkspaceID:             workspaceID,
+		AgentHarnessID:          harnessID,
+		Status:                  string(repository.AgentHarnessExecutionStatusRunning),
+		ExecutionConfigSnapshot: json.RawMessage(`{"timeout_seconds":120}`),
+	})
+	repo.setWorkspaceSecrets(workspaceID, map[string]string{openAISecret: "sk-test"})
+
+	session := sandbox.NewFakeSession("sandbox-1")
+	session.SetExecFunc(func(request sandbox.ExecRequest, _ map[string][]byte) (sandbox.ExecResult, error) {
+		switch {
+		case len(request.Command) >= 2 && request.Command[0] == "git" && request.Command[1] == "clone":
+			return sandbox.ExecResult{ExitCode: 0}, nil
+		case len(request.Command) >= 2 && request.Command[0] == "codex" && request.Command[1] == "exec":
+			return sandbox.ExecResult{ExitCode: 0, Stdout: `{"type":"final","message":"done"}`}, nil
+		case len(request.Command) >= 2 && request.Command[0] == "git" && request.Command[1] == "diff":
+			return sandbox.ExecResult{ExitCode: 0}, nil
+		case len(request.Command) >= 2 && request.Command[0] == "git" && request.Command[1] == "status":
+			return sandbox.ExecResult{ExitCode: 0}, nil
+		case len(request.Command) >= 3 && request.Command[0] == "sh" && request.Command[1] == "-lc" && request.Command[2] == "go test ./...":
+			return sandbox.ExecResult{ExitCode: 1, Stderr: "failed"}, nil
+		default:
+			t.Fatalf("unexpected command: %#v", request.Command)
+			return sandbox.ExecResult{}, nil
+		}
+	})
+	provider := &sandbox.FakeProvider{NextSession: session}
+	activities := NewActivities(repo, FakeWorkHooks{}).WithSandboxProvider(provider)
+
+	err := activities.ExecuteAgentHarnessExecution(context.Background(), ExecuteAgentHarnessExecutionInput{ExecutionID: executionID})
+	if err == nil {
+		t.Fatal("expected validator failure")
+	}
+	var sawValidatorFailed bool
+	var sawZeroScore bool
+	for _, event := range repo.agentHarnessEvents[executionID] {
+		switch event.EventType {
+		case "validator.command.failed":
+			sawValidatorFailed = true
+		case "scoring.completed":
+			var payload map[string]any
+			if err := json.Unmarshal(event.Payload, &payload); err != nil {
+				t.Fatalf("decode scoring payload: %v", err)
+			}
+			if payload["score"] == float64(0) {
+				sawZeroScore = true
+			}
+		}
+	}
+	if !sawValidatorFailed {
+		t.Fatal("expected validator failure event")
+	}
+	if !sawZeroScore {
+		t.Fatal("expected zero score event")
 	}
 }
 
@@ -110,4 +206,13 @@ func TestAgentHarnessTimeoutDefaults(t *testing.T) {
 	if got := agentHarnessTimeout(json.RawMessage(`{"timeout_seconds":5}`)); got != 5*time.Second {
 		t.Fatalf("configured timeout = %s, want 5s", got)
 	}
+}
+
+func containsString(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
 }
