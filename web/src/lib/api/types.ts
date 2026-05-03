@@ -503,6 +503,7 @@ export interface ModelAlias {
 export interface ChallengePack {
   id: string;
   name: string;
+  slug: string;
   description?: string;
   versions: ChallengePackVersion[];
   created_at: string;
