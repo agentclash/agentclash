@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.11.0](https://github.com/agentclash/agentclash/compare/v0.10.0...v0.11.0) (2026-05-03)
+
+
+### Features
+
+* **cli:** add --repetitions flag to eval start ([23e06f2](https://github.com/agentclash/agentclash/commit/23e06f263cab6a0ff041721cabcf5485ca034184))
+* **cli:** add --repetitions flag to eval start for multi-run sessions ([edd819a](https://github.com/agentclash/agentclash/commit/edd819a2a8a82548ce21ca900c8e74ba317a17d2))
+
 ## [0.10.0](https://github.com/agentclash/agentclash/compare/v0.9.0...v0.10.0) (2026-04-30)
 
 
