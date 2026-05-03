@@ -32,7 +32,7 @@ type PublishedChallengePack struct {
 
 func (r *Repository) ListVisibleChallengePacks(ctx context.Context, workspaceID uuid.UUID) ([]ChallengePackSummary, error) {
 	rows, err := r.db.Query(ctx, `
-		SELECT id, name, description, created_at, updated_at
+		SELECT id, name, slug, description, created_at, updated_at
 		FROM challenge_packs
 		WHERE archived_at IS NULL
 		  AND (workspace_id IS NULL OR workspace_id = $1)
@@ -47,7 +47,7 @@ func (r *Repository) ListVisibleChallengePacks(ctx context.Context, workspaceID 
 	for rows.Next() {
 		var pack ChallengePackSummary
 		var createdAt, updatedAt time.Time
-		if err := rows.Scan(&pack.ID, &pack.Name, &pack.Description, &createdAt, &updatedAt); err != nil {
+		if err := rows.Scan(&pack.ID, &pack.Name, &pack.Slug, &pack.Description, &createdAt, &updatedAt); err != nil {
 			return nil, fmt.Errorf("scan visible challenge pack: %w", err)
 		}
 		pack.CreatedAt = createdAt

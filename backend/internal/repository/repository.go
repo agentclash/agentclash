@@ -2497,6 +2497,7 @@ func (r *Repository) ListActiveAgentDeploymentsByWorkspaceID(ctx context.Context
 type ChallengePackSummary struct {
 	ID          uuid.UUID
 	Name        string
+	Slug        string
 	Description *string
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
