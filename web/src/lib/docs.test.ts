@@ -119,6 +119,23 @@ describe("agent skill docs", () => {
     expect(doc?.content).toContain("ready versions are immutable");
   });
 
+  it("generates the agent deployment setup skill with source-backed details", () => {
+    const doc = getDocBySlug([
+      "agent-skills",
+      "agent-build-skills",
+      "agentclash-agent-deployment-setup",
+    ]);
+
+    expect(doc?.title).toBe("Agent Deployment Setup Skill");
+    expect(doc?.content).toContain("agentclash deployment create --from-file deployment.json");
+    expect(doc?.content).toContain("\"agent_build_id\": \"<AGENT_BUILD_ID>\"");
+    expect(doc?.content).toContain("\"runtime_profile_id\": \"<RUNTIME_PROFILE_ID>\"");
+    expect(doc?.content).toContain("\"model\": \"gpt-4.1\"");
+    expect(doc?.content).toContain("only ready versions can be deployed");
+    expect(doc?.content).toContain("agent_deployment_ids");
+    expect(doc?.content).toContain("active deployments with snapshots");
+  });
+
   it("includes the index and every skill in markdown paths", () => {
     const paths = getAllDocMarkdownPaths();
 
