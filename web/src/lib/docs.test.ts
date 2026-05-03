@@ -101,6 +101,22 @@ describe("agent skill docs", () => {
     expect(doc?.content).toContain("`x-ai` becomes `PROVIDER_X_AI_API_KEY`");
   });
 
+  it("generates the agent build author skill with source-backed details", () => {
+    const doc = getDocBySlug([
+      "agent-skills",
+      "agent-build-skills",
+      "agentclash-agent-build-author",
+    ]);
+
+    expect(doc?.title).toBe("Agent Build Author Skill");
+    expect(doc?.content).toContain("agentclash build version create <BUILD_ID> --spec-file");
+    expect(doc?.content).toContain("\"agent_kind\": \"llm_agent\"");
+    expect(doc?.content).toContain("\"policy_spec\"");
+    expect(doc?.content).toContain("\"instructions\"");
+    expect(doc?.content).toContain("`version_status`");
+    expect(doc?.content).toContain("ready versions are immutable");
+  });
+
   it("includes the index and every skill in markdown paths", () => {
     const paths = getAllDocMarkdownPaths();
 
