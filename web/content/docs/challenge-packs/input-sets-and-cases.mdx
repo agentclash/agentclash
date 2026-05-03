@@ -10,6 +10,8 @@ Input sets are the unit AgentClash schedules per deployment/candidate. Each `inp
 - **`challenge_key`** — must reference an existing `challenges[].key`
 - **`case_key`** / legacy **`item_key`** — both accepted; normalization duplicates missing side from the other
 
+All cases in one `input_sets[]` entry must reference the same `challenge_key`; split mixed-challenge suites into separate input sets.
+
 `EffectiveKey()` chooses `case_key` when present for stored rows.
 
 ## Three authoring styles (coexist)
