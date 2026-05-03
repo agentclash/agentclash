@@ -67,7 +67,7 @@ jobs:
       CODEX_MODEL: ${{ vars.AGENTCLASH_SKILL_HARNESS_CODEX_MODEL }}
       REPOSITORY_URL: https://github.com/${{ github.repository }}.git
       BASE_BRANCH: ${{ github.head_ref || github.ref_name }}
-      RUN_LABEL: pr-${{ github.event.pull_request.number || github.run_number }}-${{ github.run_attempt }}
+      RUN_LABEL: run-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v4
         with:
