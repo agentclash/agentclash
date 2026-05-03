@@ -55,6 +55,14 @@ describe("agent skill docs", () => {
     expect(doc?.content).toContain("## Full SKILL.md");
     expect(doc?.content).toContain("name: agentclash-cli-setup");
     expect(doc?.content).toContain('AGENTCLASH_API_URL="https://api.agentclash.dev"');
+    expect(doc?.content).toContain(
+      "Workspace resolution:",
+    );
+    expect(doc?.content).toContain(
+      "AGENTCLASH_TOKEN > stored CLI credentials",
+    );
+    expect(doc?.content).toContain("agentclash init --workspace-id");
+    expect(doc?.content).toContain("doctor --json");
   });
 
   it("generates nested challenge pack and agent build skill pages", () => {
@@ -109,5 +117,6 @@ describe("agent skill docs", () => {
     expect(bundle).toContain("# CLI Setup Skill");
     expect(bundle).toContain("# Challenge Pack YAML Author Skill");
     expect(bundle).toContain("name: agentclash-cli-setup");
+    expect(bundle).toContain("Commands unexpectedly hit `http://localhost:8080`");
   });
 });
