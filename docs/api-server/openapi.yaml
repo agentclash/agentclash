@@ -7902,12 +7902,14 @@ components:
 
     ChallengePack:
       type: object
-      required: [id, name, versions, created_at, updated_at]
+      required: [id, name, slug, versions, created_at, updated_at]
       properties:
         id:
           type: string
           format: uuid
         name:
+          type: string
+        slug:
           type: string
         description:
           type: string
