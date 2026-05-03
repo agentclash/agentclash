@@ -22,6 +22,7 @@ func init() {
 	evalStartCmd.Flags().StringSlice("case", nil, "Regression case IDs (repeatable)")
 	evalStartCmd.Flags().Bool("race-context", false, "Enable live peer-standings injection during the run (requires 2+ agents)")
 	evalStartCmd.Flags().Int("race-context-cadence", 0, "Override race-context cadence; minimum steps between standings injections, [1, 10]. 0 uses the backend default.")
+	evalStartCmd.Flags().Int("repetitions", 1, "Repeat the eval N times in a multi-run eval session, [1, 100]. >=2 routes through /v1/eval-sessions and unlocks pass@K + pass^K aggregation.")
 
 	evalScorecardCmd.Flags().String("agent", "", "Run agent ID or label (optional)")
 }
@@ -76,6 +77,26 @@ selection when possible.`,
 			return fmt.Errorf("--scope suite_only requires at least one --suite or --case")
 		}
 
+		repetitions, _ := cmd.Flags().GetInt("repetitions")
+		if repetitions < evalSessionMinRepetitions || repetitions > evalSessionMaxRepetitions {
+			return fmt.Errorf("--repetitions must be between %d and %d", evalSessionMinRepetitions, evalSessionMaxRepetitions)
+		}
+		follow, _ := cmd.Flags().GetBool("follow")
+		if repetitions >= 2 {
+			if follow {
+				return fmt.Errorf("--follow is not supported with --repetitions >= 2; tail individual runs with 'agentclash run list' instead")
+			}
+			body, err := buildEvalSessionBody(workspaceID, request, repetitions)
+			if err != nil {
+				return err
+			}
+			result, err := createEvalSession(cmd, rc, body)
+			if err != nil {
+				return err
+			}
+			return presentCreatedEvalSession(rc, result)
+		}
+
 		body, err := buildRunCreateBody(workspaceID, request)
 		if err != nil {
 			return err
@@ -86,7 +107,6 @@ selection when possible.`,
 			return err
 		}
 
-		follow, _ := cmd.Flags().GetBool("follow")
 		return presentCreatedRun(cmd, rc, run, follow, func(runID string) error {
 			if _, ok := rc.Config.BaselineBookmark(workspaceID); !ok {
 				return nil
