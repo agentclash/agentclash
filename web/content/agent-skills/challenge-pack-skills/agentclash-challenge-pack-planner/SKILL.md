@@ -42,7 +42,7 @@ Use this skill to produce the planning artifact that downstream skills can conve
    - `native` when the agent must use files, tools, sandbox policy, network, packages, artifacts, or code/file validators.
 3. Define one or more `challenges`. Each challenge should have a stable `key`, title, category, difficulty (`easy`, `medium`, `hard`, or `expert`), and instructions.
 4. Design cases before scoring. For each case, define a stable `case_key`, the `challenge_key` it targets, concrete inputs, expected outputs or expectations, and why the case exists.
-5. Group cases into `input_sets`: at minimum `smoke` or `default`; add `full`, `regression`, or `ci` only when their purpose and budget differ.
+5. Group cases into `input_sets`: at minimum `smoke` or `default`; add `full`, `regression`, or `ci` only when their purpose and budget differ. Each input set must contain cases for a single `challenge_key`; split mixed-challenge suites into separate input sets.
 6. Pick evidence sources. Decide whether success is visible in `final_output`, structured JSON, files, artifacts, tool behavior, metrics, or LLM-judge rationale.
 7. Choose scoring:
    - deterministic validators for exact, regex, JSON, numeric, token overlap, math, file, directory, or code-execution checks.

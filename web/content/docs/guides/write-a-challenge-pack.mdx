@@ -72,6 +72,8 @@ input_sets:
 
 This is not a glamorous pack. It is a good pack skeleton because it matches the current parser shape.
 
+Keep every case in a single `input_sets[]` entry pointed at the same `challenge_key`. If a pack covers multiple challenges, split them into separate input sets so each run has one final-output contract to satisfy.
+
 ## 3. Add execution policy only when you need it
 
 If the pack is `native`, you can add runtime sections like `tool_policy`, `sandbox`, and `tools`.

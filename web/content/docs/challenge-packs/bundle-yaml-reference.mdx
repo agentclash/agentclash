@@ -69,6 +69,7 @@ Defines runnable **cases**:
 
 - **`key`** and **`name`** required on each set.
 - Prefer modern **`cases`** array. Legacy `items` aliases are normalized into `cases` during `normalizeBundle`; do not rely on `items` in new authoring.
+- All cases in a single input set must reference the same `challenge_key`; use separate input sets for separate challenges.
 
 Cases are modeled by `CaseDefinition` with `challenge_key`, `case_key`, optional rich `inputs`/`expectations`, `artifacts`, `assets`, plus legacy **`payload`** for blob-only authoring.
 

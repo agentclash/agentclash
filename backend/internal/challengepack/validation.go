@@ -130,11 +130,20 @@ func ValidateBundle(bundle Bundle) error {
 		}
 
 		caseKeys := map[string]struct{}{}
+		inputSetChallengeKey := ""
 		for caseIndex, item := range inputSet.Cases {
 			itemPath := fmt.Sprintf("%s.cases[%d]", path, caseIndex)
 			if item.ChallengeKey == "" {
 				errs = append(errs, ValidationError{Field: itemPath + ".challenge_key", Message: "is required"})
 			} else {
+				if inputSetChallengeKey == "" {
+					inputSetChallengeKey = item.ChallengeKey
+				} else if item.ChallengeKey != inputSetChallengeKey {
+					errs = append(errs, ValidationError{
+						Field:   itemPath + ".challenge_key",
+						Message: "must reference the same challenge as the other cases in this input set",
+					})
+				}
 				if _, exists := challengeKeys[item.ChallengeKey]; !exists {
 					errs = append(errs, ValidationError{Field: itemPath + ".challenge_key", Message: "must reference a declared challenge"})
 				}
