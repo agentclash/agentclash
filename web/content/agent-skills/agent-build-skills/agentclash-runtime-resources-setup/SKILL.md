@@ -29,7 +29,7 @@ Prepare the workspace infrastructure chain that lets AgentClash turn a ready age
 - Provider key, such as `openai`, and the credential secret key name.
 - Desired model catalog entry ID or enough criteria to pick one from the model catalog.
 - Runtime profile requirements: execution target, trace mode, iteration/tool limits, timeouts, and sandbox/network policy.
-- Model alias key/display name and the provider account it should bind to.
+- Model alias key/display name and, when needed, the provider account it should bind to.
 - Optional workspace tool names, tool kinds, and JSON specs.
 - Whether the user wants to create resources now or only audit readiness.
 
@@ -55,7 +55,7 @@ If workspace resolution fails, run the CLI setup skill first and do not create r
 3. Inspect the global model catalog and choose a model catalog entry.
 4. Create a provider account that references a workspace secret.
 5. Create a runtime profile with execution and sandbox limits.
-6. Create a model alias that binds a catalog entry to a provider account.
+6. Create a model alias that points at a catalog entry and optionally binds to a provider account.
 7. Create optional workspace tools if deployments or packs expect reusable workspace tools.
 8. List resources and record IDs for agent build/deployment setup.
 
@@ -65,7 +65,7 @@ If workspace resolution fails, run the CLI setup skill first and do not create r
 3. Run `agentclash infra model-catalog list` and `get` the candidate model entry before creating aliases.
 4. Create or select the provider account. Prefer `credential_reference: "workspace-secret://KEY"` over putting raw keys in JSON files.
 5. Create or select a runtime profile. Keep limits explicit: iterations, tool calls, step timeout, run timeout, and sandbox/network policy.
-6. Create or select a model alias that points to the model catalog entry and provider account.
+6. Create or select a model alias that points to the model catalog entry and, when needed, the provider account.
 7. Create workspace tools only when the deployment or product workflow needs reusable workspace tool resources. Keep these separate from pack-defined composed tools.
 8. Re-list all resources and report the IDs downstream skills need.
 
@@ -182,7 +182,7 @@ agentclash secret delete <SECRET_KEY>
 ## Failure Modes
 - `no workspace specified`: run `agentclash link`, pass `--workspace`, set `AGENTCLASH_WORKSPACE`, or add project config with `agentclash init`.
 - Provider account creation fails because the secret is missing: run `agentclash secret list`, then set the expected key and use `workspace-secret://KEY`.
-- A raw `api_key` was passed and cannot be read back: expected behavior; the infrastructure manager stores it as a workspace secret and keeps only a credential reference on the provider account.
+- A raw `api_key` was passed and cannot be read back: expected behavior; the infrastructure manager stores it as a workspace secret named `PROVIDER_<PROVIDER_KEY>_API_KEY` and keeps only `workspace-secret://PROVIDER_<PROVIDER_KEY>_API_KEY` on the provider account.
 - Model alias creation fails because the model catalog entry is wrong or unavailable: inspect with `agentclash infra model-catalog get <MODEL_CATALOG_ENTRY_ID>` and choose an active entry for the intended provider.
 - Deployment setup later fails because no runtime profile exists: create or select a runtime profile and pass its ID into deployment setup.
 - Runs fail because network, shell, timeout, or tool-call limits are too strict: review `profile_config`, `max_iterations`, `max_tool_calls`, `step_timeout_seconds`, and `run_timeout_seconds`.
