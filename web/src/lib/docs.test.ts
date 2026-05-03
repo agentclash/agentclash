@@ -34,6 +34,8 @@ describe("agent skill docs", () => {
     expect(doc?.content).toContain("web/content/agent-skills/.../SKILL.md");
     expect(doc?.content).toContain("agentclash-cli-setup");
     expect(doc?.content).toContain("Challenge Pack Skills");
+    expect(doc?.content).toContain("name: agentclash-skill-catalog");
+    expect(doc?.content).toContain("## Generated Docs Contract");
   });
 
   it("generates category pages", () => {
@@ -102,6 +104,8 @@ describe("agent skill docs", () => {
     const bundle = buildLlmsFull("https://example.test");
 
     expect(bundle).toContain("# Agent Skills");
+    expect(bundle).toContain("name: agentclash-skill-catalog");
+    expect(bundle).toContain("## Generated Docs Contract");
     expect(bundle).toContain("# CLI Setup Skill");
     expect(bundle).toContain("# Challenge Pack YAML Author Skill");
     expect(bundle).toContain("name: agentclash-cli-setup");

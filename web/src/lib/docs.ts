@@ -529,6 +529,12 @@ function readAgentSkills(): AgentSkillDoc[] {
   );
 }
 
+function readAgentSkillsCatalogRaw() {
+  const skillPath = path.join(AGENT_SKILLS_DIR, "SKILL.md");
+  if (!fs.existsSync(skillPath)) return null;
+  return fs.readFileSync(skillPath, "utf-8").trim();
+}
+
 function getAgentSkillBySlugPath(slugPath: string[]) {
   return (
     readAgentSkills().find((skill) => skill.relativePath === slugPath.join("/")) ?? null
@@ -596,6 +602,20 @@ function renderAgentSkillsIndex() {
     "",
     "Each skill keeps the main instructions focused and uses trigger-oriented frontmatter so agents can discover the right workflow before loading the full body.",
   );
+
+  const catalogRaw = readAgentSkillsCatalogRaw();
+  if (catalogRaw) {
+    lines.push(
+      "",
+      "## Catalog Contract",
+      "",
+      "The root catalog skill is the authoring and review contract for all AgentClash skills.",
+      "",
+      "````markdown",
+      catalogRaw,
+      "````",
+    );
+  }
 
   return lines.join("\n");
 }
