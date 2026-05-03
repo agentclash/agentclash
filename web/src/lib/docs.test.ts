@@ -85,6 +85,20 @@ describe("agent skill docs", () => {
     );
   });
 
+  it("generates the runtime resources setup skill with source-backed details", () => {
+    const doc = getDocBySlug([
+      "agent-skills",
+      "agent-build-skills",
+      "agentclash-runtime-resources-setup",
+    ]);
+
+    expect(doc?.title).toBe("Runtime Resources Setup Skill");
+    expect(doc?.content).toContain("workspace-secret://OPENAI_API_KEY");
+    expect(doc?.content).toContain("agentclash infra model-catalog list");
+    expect(doc?.content).toContain("agentclash infra runtime-profile create --from-file");
+    expect(doc?.content).toContain("workspace tools are `agentclash infra tool ...` resources");
+  });
+
   it("includes the index and every skill in markdown paths", () => {
     const paths = getAllDocMarkdownPaths();
 
@@ -118,5 +132,7 @@ describe("agent skill docs", () => {
     expect(bundle).toContain("# Challenge Pack YAML Author Skill");
     expect(bundle).toContain("name: agentclash-cli-setup");
     expect(bundle).toContain("Commands unexpectedly hit `http://localhost:8080`");
+    expect(bundle).toContain("name: agentclash-runtime-resources-setup");
+    expect(bundle).toContain("credential_reference: \"workspace-secret://KEY\"");
   });
 });
