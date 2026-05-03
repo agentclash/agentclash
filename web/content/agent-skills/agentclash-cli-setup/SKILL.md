@@ -1,6 +1,6 @@
 ---
 name: agentclash-cli-setup
-description: Use when configuring the AgentClash CLI, authenticating with device login or tokens, selecting a workspace, linking local config, resolving API URL precedence, or diagnosing CLI access against production, local, or self-hosted backends.
+description: Use when configuring the AgentClash CLI, authenticating with device login or tokens, selecting a workspace, saving default config with link, creating project config with init, resolving API URL precedence, or diagnosing CLI access against production, local, or self-hosted backends.
 metadata:
   agentclash.role: setup
   agentclash.version: "1"
@@ -15,7 +15,7 @@ Configure an AgentClash CLI session that can reach the intended backend, authent
 ## Use When
 - A user asks to install, authenticate, verify, or repair AgentClash CLI access.
 - A coding agent needs AgentClash access but does not have the AgentClash source repo.
-- A user needs to switch workspaces, save a default workspace, or connect a local project to a workspace.
+- A user needs to switch workspaces, save a default workspace, or create project-local `.agentclash.yaml` config.
 - A CLI command fails because API URL, token, organization, workspace, or saved config precedence is unclear.
 - CI needs a non-interactive setup path with `AGENTCLASH_TOKEN`.
 
@@ -32,6 +32,7 @@ Configure an AgentClash CLI session that can reach the intended backend, authent
 - Organization ID if `workspace list` cannot infer one from saved config.
 - Workspace ID, workspace slug/name, or permission to choose one interactively with `agentclash link`.
 - Whether the command should mutate saved user config under `~/.config/agentclash/config.yaml`.
+- Whether the current repository should get project-local `.agentclash.yaml` config with `agentclash init`.
 
 ## Environment
 Use hosted production by default:
@@ -88,14 +89,17 @@ Saved user config lives at:
 ~/.config/agentclash/config.yaml
 ```
 
+Project-local config lives in `.agentclash.yaml` and is discovered by walking up from the current directory. It can store `workspace_id` and `org_id`.
+
 ## Procedure
 1. Choose the backend. For normal hosted work, export `AGENTCLASH_API_URL="https://api.agentclash.dev"` first.
 2. Verify the CLI is callable with `agentclash version` or, from the repo `cli/` directory, `go run . version`.
 3. Authenticate. Prefer `agentclash auth login --device` for remote shells; use `AGENTCLASH_TOKEN` for CI.
 4. Check the authenticated identity with `agentclash auth status`.
-5. Select a workspace with `agentclash link` for the guided flow, or `agentclash workspace use <workspace-id>` when the ID is already known.
-6. Run `agentclash doctor` to verify install, auth, workspace, challenge-pack visibility, deployment visibility, and baseline readiness.
-7. Report the effective backend, auth state, workspace, doctor result, and the next command the user should run.
+5. Select a workspace with `agentclash link` for the guided flow, or `agentclash workspace use <workspace-id>` when the ID is already known. Both commands write saved user config.
+6. If this repository should carry its own workspace binding, run `agentclash init --workspace-id <workspace-id> --org-id <organization-id>` from the project root.
+7. Run `agentclash doctor` to verify install, auth, workspace, challenge-pack visibility, deployment visibility, and baseline readiness.
+8. Report the effective backend, auth state, workspace, doctor result, and the next command the user should run.
 
 ## Commands
 Hosted production, interactive setup:
@@ -127,6 +131,12 @@ agentclash workspace get <workspace-id>
 agentclash workspace use <workspace-id>
 ```
 
+Project-local config for a repository:
+
+```bash
+agentclash init --workspace-id <workspace-id> --org-id <organization-id>
+```
+
 CI or non-interactive setup:
 
 ```bash
@@ -155,8 +165,9 @@ agentclash --api-url http://localhost:8080 doctor
 ## Expected Output
 - `auth login --device` prints a verification URL or confirms an existing valid login.
 - `auth status` shows the authenticated user and accessible organization/workspace counts.
-- `link` saves the selected workspace and organization in user config and prints the next suggested command.
+- `link` saves the selected workspace and organization in user config and prints the next suggested command. It does not write `.agentclash.yaml`.
 - `workspace use <workspace-id>` validates access and saves `default_workspace`; it also saves `default_org` when the workspace details include an organization ID.
+- `init --workspace-id <workspace-id> --org-id <organization-id>` writes project-local `.agentclash.yaml` in the current directory.
 - `doctor` prints the effective API URL, workspace, setup checks, and suggested next steps. In JSON mode, `ready: true` means no `warn` or `fail` checks remain.
 
 ## Failure Modes

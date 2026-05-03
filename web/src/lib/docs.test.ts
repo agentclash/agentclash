@@ -61,6 +61,7 @@ describe("agent skill docs", () => {
     expect(doc?.content).toContain(
       "AGENTCLASH_TOKEN > stored CLI credentials",
     );
+    expect(doc?.content).toContain("agentclash init --workspace-id");
     expect(doc?.content).toContain("doctor --json");
   });
 
