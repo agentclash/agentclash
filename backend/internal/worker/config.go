@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -15,13 +16,15 @@ import (
 )
 
 const (
-	defaultDatabaseURL           = "postgres://agentclash:agentclash@localhost:5432/agentclash?sslmode=disable"
-	defaultTemporalTarget        = "localhost:7233"
-	defaultNamespace             = "default"
-	defaultAppEnvironment        = "development"
-	defaultShutdownTime          = 10 * time.Second
-	defaultHostedCallbackBaseURL = "http://localhost:8080"
-	defaultHostedCallbackSecret  = "agentclash-dev-hosted-callback-secret"
+	defaultDatabaseURL            = "postgres://agentclash:agentclash@localhost:5432/agentclash?sslmode=disable"
+	defaultTemporalTarget         = "localhost:7233"
+	defaultNamespace              = "default"
+	defaultAppEnvironment         = "development"
+	defaultShutdownTime           = 10 * time.Second
+	defaultHostedCallbackBaseURL  = "http://localhost:8080"
+	defaultHostedCallbackSecret   = "agentclash-dev-hosted-callback-secret"
+	defaultArtifactStorageBackend = "filesystem"
+	defaultArtifactStorageBucket  = "agentclash-dev-artifacts"
 )
 
 var ErrInvalidConfig = errors.New("invalid worker config")
@@ -38,8 +41,20 @@ type Config struct {
 	GitHubAppID           int64
 	GitHubAppPrivateKey   string
 	ShutdownTimeout       time.Duration
+	ArtifactStorage       ArtifactStorageConfig
 	Sandbox               SandboxConfig
 	SecretsCipher         *secrets.AESGCMCipher
+}
+
+type ArtifactStorageConfig struct {
+	Backend          string
+	Bucket           string
+	FilesystemRoot   string
+	S3Region         string
+	S3Endpoint       string
+	S3AccessKeyID    string
+	S3SecretKey      string
+	S3ForcePathStyle bool
 }
 
 type SandboxConfig struct {
@@ -108,6 +123,22 @@ func LoadConfigFromEnv() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	artifactStorageBackend, err := envOrDefault("ARTIFACT_STORAGE_BACKEND", defaultArtifactStorageBackend)
+	if err != nil {
+		return Config{}, err
+	}
+	artifactStorageBucket, err := envOrDefault("ARTIFACT_STORAGE_BUCKET", defaultArtifactStorageBucket)
+	if err != nil {
+		return Config{}, err
+	}
+	artifactFilesystemRoot, err := envOrDefault("ARTIFACT_STORAGE_FILESYSTEM_ROOT", filepath.Join(os.TempDir(), "agentclash-artifacts"))
+	if err != nil {
+		return Config{}, err
+	}
+	artifactS3ForcePathStyle, err := boolEnvOrDefault("ARTIFACT_STORAGE_S3_FORCE_PATH_STYLE", true)
+	if err != nil {
+		return Config{}, err
+	}
 	if sandboxProvider != "unconfigured" && sandboxProvider != "e2b" {
 		return Config{}, fmt.Errorf("%w: SANDBOX_PROVIDER must be one of unconfigured or e2b", ErrInvalidConfig)
 	}
@@ -137,6 +168,16 @@ func LoadConfigFromEnv() (Config, error) {
 		GitHubAppID:           githubAppID,
 		GitHubAppPrivateKey:   normalizePEMEnv(os.Getenv("GITHUB_APP_PRIVATE_KEY")),
 		ShutdownTimeout:       shutdownTimeout,
+		ArtifactStorage: ArtifactStorageConfig{
+			Backend:          artifactStorageBackend,
+			Bucket:           artifactStorageBucket,
+			FilesystemRoot:   artifactFilesystemRoot,
+			S3Region:         os.Getenv("ARTIFACT_STORAGE_S3_REGION"),
+			S3Endpoint:       os.Getenv("ARTIFACT_STORAGE_S3_ENDPOINT"),
+			S3AccessKeyID:    os.Getenv("ARTIFACT_STORAGE_S3_ACCESS_KEY_ID"),
+			S3SecretKey:      os.Getenv("ARTIFACT_STORAGE_S3_SECRET_ACCESS_KEY"),
+			S3ForcePathStyle: artifactS3ForcePathStyle,
+		},
 		Sandbox: SandboxConfig{
 			Provider: sandboxProvider,
 			E2B: E2BConfig{
@@ -215,6 +256,22 @@ func optionalInt64Env(key string) (int64, error) {
 	}
 	if parsed <= 0 {
 		return 0, fmt.Errorf("%w: %s must be greater than zero", ErrInvalidConfig, key)
+	}
+	return parsed, nil
+}
+
+func boolEnvOrDefault(key string, fallback bool) (bool, error) {
+	value, ok := os.LookupEnv(key)
+	if !ok {
+		return fallback, nil
+	}
+	if value == "" {
+		return false, fmt.Errorf("%w: %s cannot be empty", ErrInvalidConfig, key)
+	}
+
+	parsed, err := strconv.ParseBool(value)
+	if err != nil {
+		return false, fmt.Errorf("%w: %s must be a boolean", ErrInvalidConfig, key)
 	}
 	return parsed, nil
 }

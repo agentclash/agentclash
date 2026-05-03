@@ -15,6 +15,7 @@ type NativeModelInvoker struct {
 	sandboxProvider sandbox.Provider
 	observerFactory NativeObserverFactory
 	secretsLookup   engine.SecretsLookup
+	assetLoader     engine.AssetLoader
 	standingsStore  racecontext.Store
 }
 
@@ -45,6 +46,13 @@ func (i NativeModelInvoker) WithSecretsLookup(lookup engine.SecretsLookup) Nativ
 	return i
 }
 
+// WithAssetLoader returns an invoker that lets native executors materialize
+// artifact-backed challenge-pack assets into the sandbox before execution.
+func (i NativeModelInvoker) WithAssetLoader(loader engine.AssetLoader) NativeModelInvoker {
+	i.assetLoader = loader
+	return i
+}
+
 // WithStandingsStore attaches the race-context standings source so that
 // runs with race_context: true get live peer-standings injection. See
 // issue #400. Passing nil (or not calling this) leaves injection inert.
@@ -68,6 +76,9 @@ func (i NativeModelInvoker) InvokeNativeModel(ctx context.Context, executionCont
 	executor := engine.NewNativeExecutor(i.client, i.sandboxProvider, observer)
 	if i.secretsLookup != nil {
 		executor = executor.WithSecretsLookup(i.secretsLookup)
+	}
+	if i.assetLoader != nil {
+		executor = executor.WithAssetLoader(i.assetLoader)
 	}
 	if i.standingsStore != nil {
 		executor = executor.WithStandingsStore(i.standingsStore)

@@ -24,6 +24,14 @@ func TestLoadConfigFromEnvUsesDefaultsWhenUnset(t *testing.T) {
 	unsetEnv(t, "AGENTCLASH_SECRETS_MASTER_KEY")
 	unsetEnv(t, "GITHUB_APP_ID")
 	unsetEnv(t, "GITHUB_APP_PRIVATE_KEY")
+	unsetEnv(t, "ARTIFACT_STORAGE_BACKEND")
+	unsetEnv(t, "ARTIFACT_STORAGE_BUCKET")
+	unsetEnv(t, "ARTIFACT_STORAGE_FILESYSTEM_ROOT")
+	unsetEnv(t, "ARTIFACT_STORAGE_S3_REGION")
+	unsetEnv(t, "ARTIFACT_STORAGE_S3_ENDPOINT")
+	unsetEnv(t, "ARTIFACT_STORAGE_S3_ACCESS_KEY_ID")
+	unsetEnv(t, "ARTIFACT_STORAGE_S3_SECRET_ACCESS_KEY")
+	unsetEnv(t, "ARTIFACT_STORAGE_S3_FORCE_PATH_STYLE")
 
 	cfg, err := LoadConfigFromEnv()
 	if err != nil {
@@ -53,6 +61,18 @@ func TestLoadConfigFromEnvUsesDefaultsWhenUnset(t *testing.T) {
 	}
 	if cfg.GitHubAppID != 0 || cfg.GitHubAppPrivateKey != "" {
 		t.Fatalf("github app config = %d/%q, want empty", cfg.GitHubAppID, cfg.GitHubAppPrivateKey)
+	}
+	if cfg.ArtifactStorage.Backend != defaultArtifactStorageBackend {
+		t.Fatalf("ArtifactStorage.Backend = %q, want %q", cfg.ArtifactStorage.Backend, defaultArtifactStorageBackend)
+	}
+	if cfg.ArtifactStorage.Bucket != defaultArtifactStorageBucket {
+		t.Fatalf("ArtifactStorage.Bucket = %q, want %q", cfg.ArtifactStorage.Bucket, defaultArtifactStorageBucket)
+	}
+	if cfg.ArtifactStorage.FilesystemRoot == "" {
+		t.Fatalf("ArtifactStorage.FilesystemRoot was empty")
+	}
+	if !cfg.ArtifactStorage.S3ForcePathStyle {
+		t.Fatalf("ArtifactStorage.S3ForcePathStyle = false, want true")
 	}
 }
 
@@ -98,6 +118,14 @@ func TestLoadConfigFromEnvOverrides(t *testing.T) {
 	t.Setenv("E2B_REQUEST_TIMEOUT", "45s")
 	t.Setenv("GITHUB_APP_ID", "123")
 	t.Setenv("GITHUB_APP_PRIVATE_KEY", "-----BEGIN KEY-----\\nabc\\n-----END KEY-----")
+	t.Setenv("ARTIFACT_STORAGE_BACKEND", "s3")
+	t.Setenv("ARTIFACT_STORAGE_BUCKET", "prod-assets")
+	t.Setenv("ARTIFACT_STORAGE_FILESYSTEM_ROOT", "/var/lib/agentclash-artifacts")
+	t.Setenv("ARTIFACT_STORAGE_S3_REGION", "ap-south-1")
+	t.Setenv("ARTIFACT_STORAGE_S3_ENDPOINT", "https://s3.example.com")
+	t.Setenv("ARTIFACT_STORAGE_S3_ACCESS_KEY_ID", "access-key")
+	t.Setenv("ARTIFACT_STORAGE_S3_SECRET_ACCESS_KEY", "secret-key")
+	t.Setenv("ARTIFACT_STORAGE_S3_FORCE_PATH_STYLE", "false")
 
 	cfg, err := LoadConfigFromEnv()
 	if err != nil {
@@ -133,6 +161,24 @@ func TestLoadConfigFromEnvOverrides(t *testing.T) {
 	}
 	if cfg.GitHubAppPrivateKey != "-----BEGIN KEY-----\nabc\n-----END KEY-----" {
 		t.Fatalf("GitHubAppPrivateKey was not normalized")
+	}
+	if cfg.ArtifactStorage.Backend != "s3" {
+		t.Fatalf("ArtifactStorage.Backend = %q, want s3", cfg.ArtifactStorage.Backend)
+	}
+	if cfg.ArtifactStorage.Bucket != "prod-assets" {
+		t.Fatalf("ArtifactStorage.Bucket = %q, want prod-assets", cfg.ArtifactStorage.Bucket)
+	}
+	if cfg.ArtifactStorage.FilesystemRoot != "/var/lib/agentclash-artifacts" {
+		t.Fatalf("ArtifactStorage.FilesystemRoot = %q, want override", cfg.ArtifactStorage.FilesystemRoot)
+	}
+	if cfg.ArtifactStorage.S3Region != "ap-south-1" || cfg.ArtifactStorage.S3Endpoint != "https://s3.example.com" {
+		t.Fatalf("S3 endpoint config = %q/%q, want overrides", cfg.ArtifactStorage.S3Region, cfg.ArtifactStorage.S3Endpoint)
+	}
+	if cfg.ArtifactStorage.S3AccessKeyID != "access-key" || cfg.ArtifactStorage.S3SecretKey != "secret-key" {
+		t.Fatalf("S3 credentials were not loaded")
+	}
+	if cfg.ArtifactStorage.S3ForcePathStyle {
+		t.Fatalf("ArtifactStorage.S3ForcePathStyle = true, want false")
 	}
 }
 

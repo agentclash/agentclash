@@ -30,6 +30,9 @@ func (e NativeExecutor) prepareSandbox(ctx context.Context, executionContext rep
 	if err := stageSandboxInputs(ctx, session, executionContext); err != nil {
 		return nil, cleanupSandboxOnError(session, err)
 	}
+	if err := e.stageArtifactBackedAssets(ctx, session, executionContext); err != nil {
+		return nil, cleanupSandboxOnError(session, err)
+	}
 	return session, nil
 }
 

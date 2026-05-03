@@ -145,11 +145,24 @@ type SecretsLookup interface {
 	LoadWorkspaceSecrets(ctx context.Context, workspaceID uuid.UUID) (map[string]string, error)
 }
 
+type AssetContent struct {
+	Content     []byte
+	ContentType string
+}
+
+// AssetLoader resolves artifact-backed challenge-pack assets before the
+// native sandbox starts executing. *worker.ArtifactAssetLoader is the
+// production implementation; tests can substitute an in-memory fake.
+type AssetLoader interface {
+	LoadAsset(ctx context.Context, workspaceID uuid.UUID, artifactID uuid.UUID) (AssetContent, error)
+}
+
 type NativeExecutor struct {
 	client              provider.Client
 	sandboxProvider     sandbox.Provider
 	observer            Observer
 	secretsLookup       SecretsLookup
+	assetLoader         AssetLoader
 	standingsStore      racecontext.Store
 	maxRetryAttempts    int
 	initialRetryBackoff time.Duration
@@ -184,6 +197,14 @@ func (e NativeExecutor) WithStandingsStore(store racecontext.Store) NativeExecut
 // secrets path.
 func (e NativeExecutor) WithSecretsLookup(lookup SecretsLookup) NativeExecutor {
 	e.secretsLookup = lookup
+	return e
+}
+
+// WithAssetLoader attaches artifact storage for challenge-pack assets declared
+// with artifact_id. Executors without a loader fail closed when such assets are
+// present, because otherwise the pack would start without its promised data.
+func (e NativeExecutor) WithAssetLoader(loader AssetLoader) NativeExecutor {
+	e.assetLoader = loader
 	return e
 }
 
