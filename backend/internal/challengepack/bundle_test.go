@@ -314,6 +314,51 @@ func TestValidateBundleRejectsInputSetCasesAcrossMultipleChallenges(t *testing.T
 	}
 }
 
+func TestValidateBundleRejectsInputSetMixedChallengesAfterMissingKey(t *testing.T) {
+	err := ValidateBundle(Bundle{
+		Pack: PackMetadata{
+			Slug:   "support-eval",
+			Name:   "Support Eval",
+			Family: "support",
+		},
+		Version: VersionMetadata{
+			Number:         1,
+			EvaluationSpec: minimalSpec(),
+		},
+		Challenges: []ChallengeDefinition{
+			{Key: "ticket-1", Title: "Ticket One", Category: "support", Difficulty: "easy"},
+			{Key: "ticket-2", Title: "Ticket Two", Category: "support", Difficulty: "easy"},
+		},
+		InputSets: []InputSetDefinition{
+			{
+				Key:  "default",
+				Name: "Default",
+				Cases: []CaseDefinition{
+					{CaseKey: "missing-challenge"},
+					{ChallengeKey: "ticket-1", CaseKey: "case-1"},
+					{ChallengeKey: "ticket-2", CaseKey: "case-2"},
+				},
+			},
+		},
+	})
+	if err == nil {
+		t.Fatal("ValidateBundle returned nil error")
+	}
+
+	validationErrs, ok := err.(ValidationErrors)
+	if !ok {
+		t.Fatalf("error type = %T, want ValidationErrors", err)
+	}
+	for _, field := range []string{
+		"input_sets[0].cases[0].challenge_key",
+		"input_sets[0].cases[2].challenge_key",
+	} {
+		if !containsField(validationErrs, field) {
+			t.Fatalf("expected field %q in validation errors: %v", field, validationErrs)
+		}
+	}
+}
+
 func TestValidateBundleAllowsInputSetCasesForOneChallenge(t *testing.T) {
 	err := ValidateBundle(Bundle{
 		Pack: PackMetadata{
