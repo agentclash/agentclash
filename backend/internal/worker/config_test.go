@@ -32,6 +32,7 @@ func TestLoadConfigFromEnvUsesDefaultsWhenUnset(t *testing.T) {
 	unsetEnv(t, "ARTIFACT_STORAGE_S3_ACCESS_KEY_ID")
 	unsetEnv(t, "ARTIFACT_STORAGE_S3_SECRET_ACCESS_KEY")
 	unsetEnv(t, "ARTIFACT_STORAGE_S3_FORCE_PATH_STYLE")
+	unsetEnv(t, "ARTIFACT_SANDBOX_ASSET_MAX_BYTES")
 
 	cfg, err := LoadConfigFromEnv()
 	if err != nil {
@@ -73,6 +74,9 @@ func TestLoadConfigFromEnvUsesDefaultsWhenUnset(t *testing.T) {
 	}
 	if !cfg.ArtifactStorage.S3ForcePathStyle {
 		t.Fatalf("ArtifactStorage.S3ForcePathStyle = false, want true")
+	}
+	if cfg.ArtifactStorage.MaxDownloadBytes != defaultArtifactMaxAssetBytes {
+		t.Fatalf("ArtifactStorage.MaxDownloadBytes = %d, want %d", cfg.ArtifactStorage.MaxDownloadBytes, defaultArtifactMaxAssetBytes)
 	}
 }
 
@@ -126,6 +130,7 @@ func TestLoadConfigFromEnvOverrides(t *testing.T) {
 	t.Setenv("ARTIFACT_STORAGE_S3_ACCESS_KEY_ID", "access-key")
 	t.Setenv("ARTIFACT_STORAGE_S3_SECRET_ACCESS_KEY", "secret-key")
 	t.Setenv("ARTIFACT_STORAGE_S3_FORCE_PATH_STYLE", "false")
+	t.Setenv("ARTIFACT_SANDBOX_ASSET_MAX_BYTES", "2048")
 
 	cfg, err := LoadConfigFromEnv()
 	if err != nil {
@@ -179,6 +184,21 @@ func TestLoadConfigFromEnvOverrides(t *testing.T) {
 	}
 	if cfg.ArtifactStorage.S3ForcePathStyle {
 		t.Fatalf("ArtifactStorage.S3ForcePathStyle = true, want false")
+	}
+	if cfg.ArtifactStorage.MaxDownloadBytes != 2048 {
+		t.Fatalf("ArtifactStorage.MaxDownloadBytes = %d, want 2048", cfg.ArtifactStorage.MaxDownloadBytes)
+	}
+}
+
+func TestLoadConfigFromEnvRejectsInvalidArtifactSandboxAssetMaxBytes(t *testing.T) {
+	t.Setenv("ARTIFACT_SANDBOX_ASSET_MAX_BYTES", "0")
+
+	_, err := LoadConfigFromEnv()
+	if err == nil {
+		t.Fatalf("LoadConfigFromEnv returned nil error")
+	}
+	if !errors.Is(err, ErrInvalidConfig) {
+		t.Fatalf("error = %v, want ErrInvalidConfig", err)
 	}
 }
 

@@ -116,7 +116,7 @@ func main() {
 		sandboxProvider,
 		workerapp.NewBufferedNativeObserverFactory(eventRecorder),
 	).WithSecretsLookup(repo).
-		WithAssetLoader(workerapp.NewArtifactAssetLoader(repo, artifactStore)).
+		WithAssetLoader(workerapp.NewArtifactAssetLoader(repo, artifactStore).WithMaxBytes(cfg.ArtifactStorage.MaxDownloadBytes)).
 		WithStandingsStore(standingsStore)
 	promptEvalInvoker := workerapp.NewPromptEvalInvokerWithObserverFactory(
 		providerRouter,

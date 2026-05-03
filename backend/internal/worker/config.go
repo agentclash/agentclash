@@ -25,6 +25,7 @@ const (
 	defaultHostedCallbackSecret   = "agentclash-dev-hosted-callback-secret"
 	defaultArtifactStorageBackend = "filesystem"
 	defaultArtifactStorageBucket  = "agentclash-dev-artifacts"
+	defaultArtifactMaxAssetBytes  = 100 << 20
 )
 
 var ErrInvalidConfig = errors.New("invalid worker config")
@@ -55,6 +56,7 @@ type ArtifactStorageConfig struct {
 	S3AccessKeyID    string
 	S3SecretKey      string
 	S3ForcePathStyle bool
+	MaxDownloadBytes int64
 }
 
 type SandboxConfig struct {
@@ -139,6 +141,10 @@ func LoadConfigFromEnv() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	artifactMaxDownloadBytes, err := int64EnvOrDefault("ARTIFACT_SANDBOX_ASSET_MAX_BYTES", defaultArtifactMaxAssetBytes)
+	if err != nil {
+		return Config{}, err
+	}
 	if sandboxProvider != "unconfigured" && sandboxProvider != "e2b" {
 		return Config{}, fmt.Errorf("%w: SANDBOX_PROVIDER must be one of unconfigured or e2b", ErrInvalidConfig)
 	}
@@ -177,6 +183,7 @@ func LoadConfigFromEnv() (Config, error) {
 			S3AccessKeyID:    os.Getenv("ARTIFACT_STORAGE_S3_ACCESS_KEY_ID"),
 			S3SecretKey:      os.Getenv("ARTIFACT_STORAGE_S3_SECRET_ACCESS_KEY"),
 			S3ForcePathStyle: artifactS3ForcePathStyle,
+			MaxDownloadBytes: artifactMaxDownloadBytes,
 		},
 		Sandbox: SandboxConfig{
 			Provider: sandboxProvider,
@@ -249,6 +256,24 @@ func optionalInt64Env(key string) (int64, error) {
 	value := strings.TrimSpace(os.Getenv(key))
 	if value == "" {
 		return 0, nil
+	}
+	parsed, err := strconv.ParseInt(value, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("%w: %s must be an integer", ErrInvalidConfig, key)
+	}
+	if parsed <= 0 {
+		return 0, fmt.Errorf("%w: %s must be greater than zero", ErrInvalidConfig, key)
+	}
+	return parsed, nil
+}
+
+func int64EnvOrDefault(key string, fallback int64) (int64, error) {
+	value, ok := os.LookupEnv(key)
+	if !ok {
+		return fallback, nil
+	}
+	if value == "" {
+		return 0, fmt.Errorf("%w: %s cannot be empty", ErrInvalidConfig, key)
 	}
 	parsed, err := strconv.ParseInt(value, 10, 64)
 	if err != nil {
