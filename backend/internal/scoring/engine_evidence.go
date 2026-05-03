@@ -295,6 +295,9 @@ func buildEvidence(challengeInputs []EvidenceInput, events []Event) extractedEvi
 			evidence.totalTokens = floatPtr(*evidence.inputTokens + *evidence.outputTokens)
 		}
 	}
+	// Prefer the terminal run summary when present. Older or synthetic event
+	// streams may only have individual tool-call events, so use the trace as a
+	// best-effort fallback instead of leaving the collector unsupported.
 	if evidence.toolCallCount == nil && len(evidence.toolCallTrace) > 0 {
 		evidence.toolCallCount = floatPtr(float64(len(evidence.toolCallTrace)))
 	}
