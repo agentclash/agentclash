@@ -73,6 +73,109 @@ func TestEvaluateRunAgentCompletesWithDeterministicEvidence(t *testing.T) {
 	}
 }
 
+func TestEvaluateRunAgentCollectsToolCallCountFromRunCompleted(t *testing.T) {
+	spec := EvaluationSpec{
+		Name:          "fixture",
+		VersionNumber: 1,
+		JudgeMode:     JudgeModeDeterministic,
+		Validators: []ValidatorDeclaration{
+			{
+				Key:          "exact",
+				Type:         ValidatorTypeExactMatch,
+				Target:       "final_output",
+				ExpectedFrom: "challenge_input",
+			},
+		},
+		Metrics: []MetricDeclaration{
+			{Key: "tool_calls", Type: MetricTypeNumeric, Collector: "run_tool_call_count"},
+		},
+		Scorecard: ScorecardDeclaration{
+			Dimensions: []DimensionDeclaration{{Key: "reliability"}},
+		},
+	}
+
+	evaluation, err := EvaluateRunAgent(EvaluationInput{
+		RunAgentID:       uuid.New(),
+		EvaluationSpecID: uuid.New(),
+		ChallengeInputs: []EvidenceInput{
+			{
+				ChallengeIdentityID: uuid.New(),
+				ItemKey:             "expected.txt",
+				Payload:             []byte(`"done"`),
+			},
+		},
+		Events: []Event{
+			{Type: "system.run.completed", OccurredAt: time.Date(2026, 3, 16, 9, 0, 2, 0, time.UTC), Payload: []byte(`{"final_output":"done","tool_call_count":4}`)},
+		},
+	}, spec)
+	if err != nil {
+		t.Fatalf("EvaluateRunAgent returned error: %v", err)
+	}
+
+	if len(evaluation.MetricResults) != 1 {
+		t.Fatalf("metric count = %d, want 1", len(evaluation.MetricResults))
+	}
+	metric := evaluation.MetricResults[0]
+	if metric.State != OutputStateAvailable {
+		t.Fatalf("metric state = %s, want available; reason = %q", metric.State, metric.Reason)
+	}
+	if metric.NumericValue == nil || *metric.NumericValue != 4 {
+		t.Fatalf("tool call count = %v, want 4", metric.NumericValue)
+	}
+}
+
+func TestEvaluateRunAgentCollectsToolCallCountFromToolTraceFallback(t *testing.T) {
+	spec := EvaluationSpec{
+		Name:          "fixture",
+		VersionNumber: 1,
+		JudgeMode:     JudgeModeDeterministic,
+		Validators: []ValidatorDeclaration{
+			{
+				Key:          "exact",
+				Type:         ValidatorTypeExactMatch,
+				Target:       "final_output",
+				ExpectedFrom: "challenge_input",
+			},
+		},
+		Metrics: []MetricDeclaration{
+			{Key: "tool_calls", Type: MetricTypeNumeric, Collector: "run_tool_call_count"},
+		},
+		Scorecard: ScorecardDeclaration{
+			Dimensions: []DimensionDeclaration{{Key: "reliability"}},
+		},
+	}
+
+	evaluation, err := EvaluateRunAgent(EvaluationInput{
+		RunAgentID:       uuid.New(),
+		EvaluationSpecID: uuid.New(),
+		ChallengeInputs: []EvidenceInput{
+			{
+				ChallengeIdentityID: uuid.New(),
+				ItemKey:             "expected.txt",
+				Payload:             []byte(`"done"`),
+			},
+		},
+		Events: []Event{
+			{Type: "tool.call.completed", OccurredAt: time.Date(2026, 3, 16, 9, 0, 1, 0, time.UTC), Payload: []byte(`{"tool_name":"read_file","arguments":{"path":"/workspace/a.txt"},"result":{"content":"ok"}}`)},
+			{Type: "tool.call.failed", OccurredAt: time.Date(2026, 3, 16, 9, 0, 2, 0, time.UTC), Payload: []byte(`{"tool_name":"query_sql","arguments":{"path":"/workspace/db.sqlite"},"failure_origin":"primitive","result":{"is_error":true,"content":"table missing"}}`)},
+		},
+	}, spec)
+	if err != nil {
+		t.Fatalf("EvaluateRunAgent returned error: %v", err)
+	}
+
+	if len(evaluation.MetricResults) != 1 {
+		t.Fatalf("metric count = %d, want 1", len(evaluation.MetricResults))
+	}
+	metric := evaluation.MetricResults[0]
+	if metric.State != OutputStateAvailable {
+		t.Fatalf("metric state = %s, want available; reason = %q", metric.State, metric.Reason)
+	}
+	if metric.NumericValue == nil || *metric.NumericValue != 2 {
+		t.Fatalf("tool call count = %v, want 2", metric.NumericValue)
+	}
+}
+
 func TestEvaluateRunAgentReturnsPartialWhenEvidenceIsMissing(t *testing.T) {
 	spec := EvaluationSpec{
 		Name:          "fixture",

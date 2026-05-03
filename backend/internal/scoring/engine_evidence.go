@@ -43,23 +43,24 @@ type extractedEvidence struct {
 	inputTokens                    *float64
 	outputTokens                   *float64
 	totalTokens                    *float64
+	toolCallCount                  *float64
 	// raceContextTokens is the estimated prompt-side token spend from
 	// race-context standings injections (issue #400). It is accumulated
 	// from race.standings.injected events and must stay separate from
 	// model-authored totals so billable-spend metrics are not inflated
 	// by observational injections.
-	raceContextTokens float64
-	modelUsage                     []pricedUsage
-	observedModels                 []modelRef
-	stepDurations                  []stepDurationEvidence
-	capturedFiles                  map[string]FileCaptureResult
-	capturedFileSources            map[string]eventRef
-	capturedDirListings            map[string]DirectoryListingResult
-	capturedDirListingSources      map[string]eventRef
-	codeExecutionResults           map[string]CodeExecutionResult
-	codeExecutionSources           map[string]eventRef
-	toolCallTrace                  []toolCallTraceEntry
-	warnings                       []string
+	raceContextTokens         float64
+	modelUsage                []pricedUsage
+	observedModels            []modelRef
+	stepDurations             []stepDurationEvidence
+	capturedFiles             map[string]FileCaptureResult
+	capturedFileSources       map[string]eventRef
+	capturedDirListings       map[string]DirectoryListingResult
+	capturedDirListingSources map[string]eventRef
+	codeExecutionResults      map[string]CodeExecutionResult
+	codeExecutionSources      map[string]eventRef
+	toolCallTrace             []toolCallTraceEntry
+	warnings                  []string
 }
 
 // eventRefFrom returns a reference to the given event, or nil when the event
@@ -155,6 +156,9 @@ func buildEvidence(challengeInputs []EvidenceInput, events []Event) extractedEvi
 			}
 			if value, ok := numericValue(payload, "total_tokens"); ok {
 				evidence.totalTokens = floatPtr(value)
+			}
+			if value, ok := numericValue(payload, "tool_call_count"); ok {
+				evidence.toolCallCount = floatPtr(value)
 			}
 			if value, ok := usageValue(payload, "input_tokens"); ok && evidence.inputTokens == nil {
 				evidence.inputTokens = floatPtr(value)
@@ -290,6 +294,12 @@ func buildEvidence(challengeInputs []EvidenceInput, events []Event) extractedEvi
 		} else if evidence.inputTokens != nil && evidence.outputTokens != nil {
 			evidence.totalTokens = floatPtr(*evidence.inputTokens + *evidence.outputTokens)
 		}
+	}
+	// Prefer the terminal run summary when present. Older or synthetic event
+	// streams may only have individual tool-call events, so use the trace as a
+	// best-effort fallback instead of leaving the collector unsupported.
+	if evidence.toolCallCount == nil && len(evidence.toolCallTrace) > 0 {
+		evidence.toolCallCount = floatPtr(float64(len(evidence.toolCallTrace)))
 	}
 	for _, usage := range usageByModel {
 		if usage.TotalTokens == 0 && (usage.InputTokens > 0 || usage.OutputTokens > 0) {
