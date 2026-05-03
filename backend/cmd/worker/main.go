@@ -12,6 +12,7 @@ import (
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/backend/internal/sandbox"
 	"github.com/agentclash/agentclash/backend/internal/sandbox/e2b"
+	"github.com/agentclash/agentclash/backend/internal/storage"
 	"github.com/agentclash/agentclash/backend/internal/temporalutil"
 	workerapp "github.com/agentclash/agentclash/backend/internal/worker"
 	workflowpkg "github.com/agentclash/agentclash/backend/internal/workflow"
@@ -42,6 +43,21 @@ func main() {
 	defer temporalClient.Close()
 
 	repo := repository.New(db).WithCipher(cfg.SecretsCipher)
+
+	artifactStore, err := storage.NewStore(context.Background(), storage.Config{
+		Backend:          cfg.ArtifactStorage.Backend,
+		Bucket:           cfg.ArtifactStorage.Bucket,
+		FilesystemRoot:   cfg.ArtifactStorage.FilesystemRoot,
+		S3Region:         cfg.ArtifactStorage.S3Region,
+		S3Endpoint:       cfg.ArtifactStorage.S3Endpoint,
+		S3AccessKeyID:    cfg.ArtifactStorage.S3AccessKeyID,
+		S3SecretKey:      cfg.ArtifactStorage.S3SecretKey,
+		S3ForcePathStyle: cfg.ArtifactStorage.S3ForcePathStyle,
+	})
+	if err != nil {
+		logger.Error("failed to configure artifact storage", "error", err)
+		os.Exit(1)
+	}
 
 	// Redis event publishing (optional). The same client backs the
 	// race-context standings hash (issue #400) when Redis is available.
@@ -99,7 +115,9 @@ func main() {
 		providerRouter,
 		sandboxProvider,
 		workerapp.NewBufferedNativeObserverFactory(eventRecorder),
-	).WithSecretsLookup(repo).WithStandingsStore(standingsStore)
+	).WithSecretsLookup(repo).
+		WithAssetLoader(workerapp.NewArtifactAssetLoader(repo, artifactStore).WithMaxBytes(cfg.ArtifactStorage.MaxDownloadBytes)).
+		WithStandingsStore(standingsStore)
 	promptEvalInvoker := workerapp.NewPromptEvalInvokerWithObserverFactory(
 		providerRouter,
 		workerapp.NewBufferedPromptEvalObserverFactory(eventRecorder),
