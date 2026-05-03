@@ -30,6 +30,7 @@ func (f *fakeChallengePackReadRepository) ListVisibleChallengePacks(_ context.Co
 		{
 			ID:        uuid.New(),
 			Name:      "Workspace Pack",
+			Slug:      "workspace-pack",
 			CreatedAt: time.Now().UTC(),
 			UpdatedAt: time.Now().UTC(),
 		},
@@ -149,6 +150,33 @@ func TestChallengePackReadManagerUsesWorkspaceFromContext(t *testing.T) {
 	}
 	if len(result.Packs) != 1 {
 		t.Fatalf("pack count = %d, want 1", len(result.Packs))
+	}
+}
+
+func TestListChallengePacksHandlerIncludesSlug(t *testing.T) {
+	workspaceID := uuid.New()
+	manager := NewChallengePackReadManager(&fakeChallengePackReadRepository{})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	handler := listChallengePacksHandler(logger, manager)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/workspaces/"+workspaceID.String()+"/challenge-packs", nil)
+	req = req.WithContext(context.WithValue(req.Context(), workspaceIDContextKey{}, workspaceID))
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body = %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	var response listChallengePacksResponse
+	if err := json.NewDecoder(rec.Body).Decode(&response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(response.Items) != 1 {
+		t.Fatalf("item count = %d, want 1", len(response.Items))
+	}
+	if response.Items[0].Slug != "workspace-pack" {
+		t.Fatalf("slug = %q, want workspace-pack", response.Items[0].Slug)
 	}
 }
 

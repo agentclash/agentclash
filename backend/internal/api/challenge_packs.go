@@ -247,6 +247,7 @@ func mapChallengePackValidationErrors(errs challengepack.ValidationErrors) []val
 type challengePackResponse struct {
 	ID          uuid.UUID                      `json:"id"`
 	Name        string                         `json:"name"`
+	Slug        string                         `json:"slug"`
 	Description *string                        `json:"description,omitempty"`
 	Versions    []challengePackVersionResponse `json:"versions"`
 	CreatedAt   time.Time                      `json:"created_at"`
@@ -307,6 +308,7 @@ func listChallengePacksHandler(logger *slog.Logger, service ChallengePackReadSer
 			responseItems = append(responseItems, challengePackResponse{
 				ID:          packWithVersions.Pack.ID,
 				Name:        packWithVersions.Pack.Name,
+				Slug:        packWithVersions.Pack.Slug,
 				Description: packWithVersions.Pack.Description,
 				Versions:    versions,
 				CreatedAt:   packWithVersions.Pack.CreatedAt,
