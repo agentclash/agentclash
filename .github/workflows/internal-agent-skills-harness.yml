@@ -1,0 +1,127 @@
+name: Internal Agent Skills Harness
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "web/content/agent-skills/**/SKILL.md"
+      - ".github/workflows/internal-agent-skills-harness.yml"
+      - "scripts/internal-agent-skills/**"
+  workflow_dispatch:
+    inputs:
+      skills:
+        description: "JSON array of skill paths to evaluate. Leave empty to diff the current ref."
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: internal-agent-skills-harness-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  detect:
+    name: Detect Changed Skills
+    runs-on: ubuntu-latest
+    outputs:
+      skills: ${{ steps.changed.outputs.skills }}
+      count: ${{ steps.changed.outputs.count }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Detect changed SKILL.md files
+        id: changed
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          DISPATCH_SKILLS: ${{ inputs.skills }}
+        run: |
+          set -euo pipefail
+          if [ -n "${DISPATCH_SKILLS}" ]; then
+            echo "skills=${DISPATCH_SKILLS}" >> "$GITHUB_OUTPUT"
+            node -e 'const skills = JSON.parse(process.env.DISPATCH_SKILLS); if (!Array.isArray(skills)) process.exit(1); console.log(`count=${skills.length}`)' >> "$GITHUB_OUTPUT"
+          else
+            node scripts/internal-agent-skills/detect-changed-skills.mjs
+          fi
+
+  harness:
+    name: Blind Skill Harness
+    needs: detect
+    if: ${{ needs.detect.outputs.count != '0' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      AGENTCLASH_API_URL: ${{ vars.AGENTCLASH_API_URL || 'https://api.agentclash.dev' }}
+      AGENTCLASH_TOKEN: ${{ secrets.AGENTCLASH_TOKEN }}
+      AGENTCLASH_WORKSPACE: ${{ secrets.AGENTCLASH_WORKSPACE }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      OPENAI_SECRET_NAME: OPENAI_API_KEY
+      CODEX_MODEL: ${{ vars.AGENTCLASH_SKILL_HARNESS_CODEX_MODEL }}
+      REPOSITORY_URL: https://github.com/${{ github.repository }}.git
+      BASE_BRANCH: ${{ github.head_ref || github.ref_name }}
+      RUN_LABEL: pr-${{ github.event.pull_request.number || github.run_number }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: cli/go.mod
+          cache-dependency-path: cli/go.sum
+
+      - name: Require internal harness secrets
+        run: |
+          set -euo pipefail
+          test -n "${AGENTCLASH_TOKEN}" || { echo "::error::Set AGENTCLASH_TOKEN for the internal skill harness."; exit 1; }
+          test -n "${AGENTCLASH_WORKSPACE}" || { echo "::error::Set AGENTCLASH_WORKSPACE for the internal skill harness."; exit 1; }
+          test -n "${OPENAI_API_KEY}" || { echo "::error::Set OPENAI_API_KEY for the internal skill harness."; exit 1; }
+
+      - name: Build AgentClash CLI
+        working-directory: cli
+        run: go build -o /tmp/agentclash .
+
+      - name: Verify AgentClash auth and sync OpenAI workspace secret
+        run: |
+          set -euo pipefail
+          /tmp/agentclash doctor
+          printf '%s' "${OPENAI_API_KEY}" | /tmp/agentclash secret set "${OPENAI_SECRET_NAME}"
+
+      - name: Prepare blind harness specs
+        env:
+          CHANGED_SKILLS_JSON: ${{ needs.detect.outputs.skills }}
+          OUT_DIR: .agentclash/skill-harnesses
+        run: node scripts/internal-agent-skills/prepare-skill-harnesses.mjs
+
+      - name: Run AgentClash harness for each changed skill
+        run: |
+          set -euo pipefail
+          jq -r '.harnesses[].spec' .agentclash/skill-harnesses/manifest.json | while read -r spec; do
+            echo "::group::AgentClash skill harness ${spec}"
+            /tmp/agentclash agent-harness create --from-file "${spec}" --json > "${spec}.create.json"
+            harness_id="$(jq -r '.id' "${spec}.create.json")"
+            test -n "${harness_id}" && test "${harness_id}" != "null"
+            /tmp/agentclash agent-harness run "${harness_id}" --follow --poll-interval 10s
+            echo "::endgroup::"
+          done
+
+  skipped-fork:
+    name: Fork Safety Skip
+    needs: detect
+    if: ${{ needs.detect.outputs.count != '0' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Skipping internal AgentClash skill harness for forked PR because secrets are unavailable."
