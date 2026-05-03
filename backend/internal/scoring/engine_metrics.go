@@ -91,6 +91,14 @@ func collectMetric(metric MetricDeclaration, evidence extractedEvidence, validat
 			"state":     OutputStateAvailable,
 			"collector": metric.Collector,
 		})
+	case "run_tool_call_count":
+		if evidence.toolCallCount == nil {
+			return unavailableMetric("tool call count is unavailable", metric)
+		}
+		return OutputStateAvailable, floatPtr(*evidence.toolCallCount), nil, nil, "", mustMarshalJSON(map[string]any{
+			"state":     OutputStateAvailable,
+			"collector": metric.Collector,
+		})
 	case "run_agent_tokens":
 		if evidence.totalTokens == nil {
 			return unavailableMetric("agent token usage is unavailable", metric)
