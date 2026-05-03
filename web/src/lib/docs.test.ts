@@ -110,10 +110,12 @@ describe("agent skill docs", () => {
 
     expect(doc?.title).toBe("Agent Build Author Skill");
     expect(doc?.content).toContain("agentclash build version create <BUILD_ID> --spec-file");
+    expect(doc?.content).toContain("agentclash build version validate <VERSION_ID> --json");
     expect(doc?.content).toContain("\"agent_kind\": \"llm_agent\"");
     expect(doc?.content).toContain("\"policy_spec\"");
     expect(doc?.content).toContain("\"instructions\"");
     expect(doc?.content).toContain("`version_status`");
+    expect(doc?.content).toContain("Version is valid");
     expect(doc?.content).toContain("ready versions are immutable");
   });
 

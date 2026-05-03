@@ -51,7 +51,7 @@ Build commands need a resolved workspace for list/create. Workspace resolution f
 4. Draft `version-spec.json` from the exact build-version fields below. Keep unknown or not-yet-used spec sections as JSON objects, not prose.
 5. Create a draft build version with `agentclash build version create <BUILD_ID> --spec-file version-spec.json`.
 6. Inspect the draft with `agentclash build version get <VERSION_ID> --json`.
-7. Validate with `agentclash build version validate <VERSION_ID>`. Fix any errors by editing the spec and running `agentclash build version update <VERSION_ID> --spec-file version-spec.json`.
+7. Validate with `agentclash build version validate <VERSION_ID> --json` so a coding agent can inspect `valid` and `errors`. Fix any errors by editing the spec and running `agentclash build version update <VERSION_ID> --spec-file version-spec.json`.
 8. Mark ready only after validation passes and the user confirms the draft is deployable: `agentclash build version ready <VERSION_ID>`.
 9. Report the `agent_build_id`, `build_version_id`, `version_status`, agent kind, and deployment prerequisites.
 
@@ -150,7 +150,7 @@ Create, inspect, validate, update, and ready a build version:
 ```bash
 agentclash build version create <BUILD_ID> --spec-file version-spec.json
 agentclash build version get <VERSION_ID> --json
-agentclash build version validate <VERSION_ID>
+agentclash build version validate <VERSION_ID> --json
 agentclash build version update <VERSION_ID> --spec-file version-spec.json
 agentclash build version ready <VERSION_ID>
 ```
@@ -167,7 +167,7 @@ agentclash build version create <BUILD_ID> --agent-kind llm_agent --spec-file ve
 - `build create` returns a build ID and generated slug.
 - `build version create` returns a draft version ID and version number.
 - `build version get --json` returns `version_status`, `agent_kind`, all spec objects, tool bindings, knowledge-source bindings, and creation time.
-- `build version validate` returns `valid: true` when the agent kind is supported and `policy_spec.instructions` exists.
+- `build version validate --json` returns `valid: true` when the agent kind is supported and `policy_spec.instructions` exists. Without `--json`, the CLI prints `Version is valid` or `Version has validation errors`.
 - `build version ready` changes `version_status` to `ready`; ready versions are the deployable handoff to deployment setup.
 
 ## Failure Modes
