@@ -30,7 +30,7 @@ Use this skill to produce the planning artifact that downstream skills can conve
 - Evaluation goal: the behavior, capability, or failure mode the pack should expose.
 - Target agent class: coding agent, support bot, research agent, workflow agent, extraction agent, etc.
 - Good, bad, and borderline outputs.
-- Expected evidence: final text, JSON fields, files, artifacts, tool traces, latency, cost, or judge rationale.
+- Expected evidence: final text, JSON fields, captured files/directories, artifacts, metrics, latency, cost, or judge rationale.
 - Case inventory: representative, edge, adversarial, regression, and smoke examples.
 - Execution needs: `prompt_eval` versus `native`, tools, network, files, packages, secrets, and time budget.
 - Release intent: exploration, regression suite, CI gate, public comparison, or customer demo.
@@ -60,7 +60,7 @@ Use these product nouns consistently:
 - `tools`: optional top-level pack-defined composed tools. Do not plan these for `prompt_eval`.
 - `challenges`: task definitions. Cases reference them by `challenge_key`.
 - `input_sets`: named groups of runnable cases.
-- `cases`: concrete workload items with `case_key`, `payload`, `inputs`, `expectations`, `assets`, and artifact refs as needed.
+- `cases`: concrete workload items with `case_key`, `payload`, `inputs`, `expectations`, case `artifacts`, and case-local `assets` as needed.
 - `evaluation_spec`: score contract with `judge_mode`, validators, optional metrics or LLM judges, runtime limits, pricing, and scorecard dimensions.
 
 ## Planning Heuristics
@@ -113,7 +113,7 @@ Only include these when the workload needs them.
 - `version.sandbox.network_allowlist` should be specific when network is needed.
 - `version.sandbox.additional_packages` should name only packages required by the workload or validators.
 - Version, challenge, and case assets should have stable `key` and `path`; artifact-backed assets also need an `artifact_id` after upload.
-- Case expectations can refer to input-derived values, literal expectations, or artifact/file evidence, depending on the downstream authoring skill.
+- Case expectations can use `value`, `artifact_key`, or `source`. Supported `source` values are empty, `input:<case-input-key>`, or `artifact:<version-asset-key>`.
 
 ## Output Format
 ```text
