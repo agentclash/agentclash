@@ -2,6 +2,7 @@ package challengepack
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/agentclash/agentclash/backend/internal/scoring"
@@ -268,6 +269,78 @@ func TestValidateBundleRejectsDuplicateAssetKeys(t *testing.T) {
 	}
 	if !containsField(validationErrs, "version.assets[1].key") {
 		t.Fatalf("expected duplicate version asset key error, got %v", validationErrs)
+	}
+}
+
+func TestValidateBundleRejectsInputSetCasesAcrossMultipleChallenges(t *testing.T) {
+	err := ValidateBundle(Bundle{
+		Pack: PackMetadata{
+			Slug:   "support-eval",
+			Name:   "Support Eval",
+			Family: "support",
+		},
+		Version: VersionMetadata{
+			Number:         1,
+			EvaluationSpec: minimalSpec(),
+		},
+		Challenges: []ChallengeDefinition{
+			{Key: "ticket-1", Title: "Ticket One", Category: "support", Difficulty: "easy"},
+			{Key: "ticket-2", Title: "Ticket Two", Category: "support", Difficulty: "easy"},
+		},
+		InputSets: []InputSetDefinition{
+			{
+				Key:  "default",
+				Name: "Default",
+				Cases: []CaseDefinition{
+					{ChallengeKey: "ticket-1", CaseKey: "case-1"},
+					{ChallengeKey: "ticket-2", CaseKey: "case-2"},
+				},
+			},
+		},
+	})
+	if err == nil {
+		t.Fatal("ValidateBundle returned nil error")
+	}
+
+	validationErrs, ok := err.(ValidationErrors)
+	if !ok {
+		t.Fatalf("error type = %T, want ValidationErrors", err)
+	}
+	if !containsField(validationErrs, "input_sets[0].cases[1].challenge_key") {
+		t.Fatalf("expected mixed challenge_key error, got %v", validationErrs)
+	}
+	if got := validationErrs.Error(); !strings.Contains(got, "same challenge") {
+		t.Fatalf("error = %q, want same challenge guidance", got)
+	}
+}
+
+func TestValidateBundleAllowsInputSetCasesForOneChallenge(t *testing.T) {
+	err := ValidateBundle(Bundle{
+		Pack: PackMetadata{
+			Slug:   "support-eval",
+			Name:   "Support Eval",
+			Family: "support",
+		},
+		Version: VersionMetadata{
+			Number:         1,
+			EvaluationSpec: minimalSpec(),
+		},
+		Challenges: []ChallengeDefinition{
+			{Key: "ticket-1", Title: "Ticket One", Category: "support", Difficulty: "easy"},
+		},
+		InputSets: []InputSetDefinition{
+			{
+				Key:  "default",
+				Name: "Default",
+				Cases: []CaseDefinition{
+					{ChallengeKey: "ticket-1", CaseKey: "case-1"},
+					{ChallengeKey: "ticket-1", CaseKey: "case-2"},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("ValidateBundle returned error: %v", err)
 	}
 }
 
