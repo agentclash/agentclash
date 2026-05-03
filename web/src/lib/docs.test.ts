@@ -136,6 +136,32 @@ describe("agent skill docs", () => {
     expect(doc?.content).toContain("active deployments with snapshots");
   });
 
+  it("generates the challenge pack planner skill with source-backed details", () => {
+    const doc = getDocBySlug([
+      "agent-skills",
+      "challenge-pack-skills",
+      "agentclash-challenge-pack-planner",
+    ]);
+
+    expect(doc?.title).toBe("Challenge Pack Planner Skill");
+    expect(doc?.content).toContain(
+      "`pack`, `version`, optional top-level `tools`, `challenges`, and `input_sets`",
+    );
+    expect(doc?.content).toContain("`prompt_eval` for prompt-style tasks");
+    expect(doc?.content).toContain(
+      "`native` when the agent must use files, tools, sandbox policy",
+    );
+    expect(doc?.content).toContain(
+      "Allowed tool kinds in `version.tool_policy.allowed_tool_kinds`",
+    );
+    expect(doc?.content).toContain(
+      "Source: validators | metric | reliability | latency | cost | behavioral | llm_judge",
+    );
+    expect(doc?.content).toContain(
+      "Next skill: <agentclash-challenge-pack-yaml-author | other>",
+    );
+  });
+
   it("includes the index and every skill in markdown paths", () => {
     const paths = getAllDocMarkdownPaths();
 
