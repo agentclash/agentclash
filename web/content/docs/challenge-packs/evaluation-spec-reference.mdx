@@ -52,7 +52,7 @@ Always check `requires_expected_from`: e.g., `file_exists`, `directory_structure
 
 Collectors wired today (verbatim keys):
 
-`run_total_latency_ms`, `run_ttft_ms`, `run_input_tokens`, `run_output_tokens`, `run_total_tokens`, `run_agent_tokens`, `run_race_context_tokens`, `run_model_cost_usd`, `run_completed_successfully`, `run_failure_count`, behavioral scores (`behavioral_recovery_score`, … ), `validator_pass_rate`
+`run_total_latency_ms`, `run_ttft_ms`, `run_input_tokens`, `run_output_tokens`, `run_total_tokens`, `run_agent_tokens`, `run_race_context_tokens`, `run_model_cost_usd`, `run_completed_successfully`, `run_failure_count`, `run_tool_call_count`, behavioral scores (`behavioral_recovery_score`, … ), `validator_pass_rate`
 
 Declaring a collector that does not exist will fail silently only if evidence missing—prefer copying keys from tests in `backend/internal/scoring/engine_metrics.go`.
 
