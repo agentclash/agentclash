@@ -97,6 +97,8 @@ describe("agent skill docs", () => {
     expect(doc?.content).toContain("agentclash infra model-catalog list");
     expect(doc?.content).toContain("agentclash infra runtime-profile create --from-file");
     expect(doc?.content).toContain("workspace tools are `agentclash infra tool ...` resources");
+    expect(doc?.content).toContain("\"capability_key\": \"inventory.lookup\"");
+    expect(doc?.content).toContain("`x-ai` becomes `PROVIDER_X_AI_API_KEY`");
   });
 
   it("includes the index and every skill in markdown paths", () => {

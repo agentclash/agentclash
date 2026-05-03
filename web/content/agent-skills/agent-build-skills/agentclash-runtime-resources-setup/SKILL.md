@@ -61,7 +61,7 @@ If workspace resolution fails, run the CLI setup skill first and do not create r
 
 ## Procedure
 1. Run `agentclash doctor` and stop on auth or workspace warnings.
-2. Run `agentclash secret list` to see which secret keys already exist. Set missing provider credentials without echoing values into chat.
+2. Run `agentclash secret list` to see which secret keys already exist. If a secret value is not already available in the user's shell, ask the user to set it themselves with `agentclash secret set <KEY>`; do not request or receive the value in chat.
 3. Run `agentclash infra model-catalog list` and `get` the candidate model entry before creating aliases.
 4. Create or select the provider account. Prefer `credential_reference: "workspace-secret://KEY"` over putting raw keys in JSON files.
 5. Create or select a runtime profile. Keep limits explicit: iterations, tool calls, step timeout, run timeout, and sandbox/network policy.
@@ -155,6 +155,17 @@ agentclash infra model-alias get <MODEL_ALIAS_ID>
 
 Optional workspace tools:
 
+`tool.json`:
+
+```json
+{
+  "name": "inventory-api",
+  "tool_kind": "http",
+  "capability_key": "inventory.lookup",
+  "definition": {}
+}
+```
+
 ```bash
 agentclash infra tool list
 agentclash infra tool create --from-file tool.json
@@ -182,14 +193,14 @@ agentclash secret delete <SECRET_KEY>
 ## Failure Modes
 - `no workspace specified`: run `agentclash link`, pass `--workspace`, set `AGENTCLASH_WORKSPACE`, or add project config with `agentclash init`.
 - Provider account creation fails because the secret is missing: run `agentclash secret list`, then set the expected key and use `workspace-secret://KEY`.
-- A raw `api_key` was passed and cannot be read back: expected behavior; the infrastructure manager stores it as a workspace secret named `PROVIDER_<PROVIDER_KEY>_API_KEY` and keeps only `workspace-secret://PROVIDER_<PROVIDER_KEY>_API_KEY` on the provider account.
+- A raw `api_key` was passed and cannot be read back: expected behavior; the infrastructure manager stores it as a workspace secret named `PROVIDER_<PROVIDER_KEY>_API_KEY` and keeps only `workspace-secret://PROVIDER_<PROVIDER_KEY>_API_KEY` on the provider account. The provider key is uppercased and hyphens become underscores, so `x-ai` becomes `PROVIDER_X_AI_API_KEY`.
 - Model alias creation fails because the model catalog entry is wrong or unavailable: inspect with `agentclash infra model-catalog get <MODEL_CATALOG_ENTRY_ID>` and choose an active entry for the intended provider.
 - Deployment setup later fails because no runtime profile exists: create or select a runtime profile and pass its ID into deployment setup.
 - Runs fail because network, shell, timeout, or tool-call limits are too strict: review `profile_config`, `max_iterations`, `max_tool_calls`, `step_timeout_seconds`, and `run_timeout_seconds`.
 - Workspace tools are confused with pack-defined tools: workspace tools are `agentclash infra tool ...` resources; pack-defined tools live inside challenge pack YAML.
 
 ## Safety Notes
-- Never print, paste, or commit raw provider keys. Prefer stdin for `secret set`.
+- Never print, paste, request, receive, or commit raw provider keys. Prefer stdin for `secret set`; if the value is not already in the user's shell, ask the user to run the command themselves.
 - Prefer `credential_reference: "workspace-secret://KEY"` in provider account specs.
 - Treat `delete` and `archive` commands as destructive enough to require explicit user confirmation.
 - Use `list` and `get` before `create`, `delete`, or `archive` to avoid duplicating or mutating the wrong workspace resource.
