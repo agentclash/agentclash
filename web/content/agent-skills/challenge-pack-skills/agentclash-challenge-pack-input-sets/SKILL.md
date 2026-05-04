@@ -189,7 +189,7 @@ agentclash eval start --input-set <INPUT_SET_ID_OR_KEY_OR_EXACT_NAME>
 
 ## Common Validation Failures
 - One input set mixes `challenge_key` values.
-- `case_key` is missing because the agent used only legacy `item_key`.
+- The case has neither `case_key` nor legacy `item_key`.
 - Duplicate `input_sets[].key`, duplicate case keys, duplicate input keys, or duplicate expectation keys.
 - `challenge_key` points at a title instead of the declared challenge `key`.
 - `source: input:...` references an input key that does not exist in the same case.
