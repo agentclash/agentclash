@@ -81,8 +81,6 @@ type Config struct {
 	DodoEnvironment           string
 	DodoProductIDs            billingpkg.DodoProductIDs
 	DodoAPIBaseURL            string
-	DodoCheckoutBaseURL       string
-	DodoPortalBaseURL         string
 }
 
 func LoadConfigFromEnv() (Config, error) {
@@ -253,8 +251,6 @@ func LoadConfigFromEnv() (Config, error) {
 		DodoEnvironment:           dodoEnvironment,
 		DodoProductIDs:            dodoProductIDs,
 		DodoAPIBaseURL:            os.Getenv("DODO_API_BASE_URL"),
-		DodoCheckoutBaseURL:       os.Getenv("DODO_CHECKOUT_BASE_URL"),
-		DodoPortalBaseURL:         os.Getenv("DODO_PORTAL_BASE_URL"),
 	}
 
 	if err := validateArtifactConfig(cfg); err != nil {

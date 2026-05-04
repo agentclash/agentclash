@@ -135,8 +135,6 @@ func main() {
 		DodoEnvironment: cfg.DodoEnvironment,
 		DodoProductIDs:  cfg.DodoProductIDs,
 		WebhookSecret:   cfg.DodoPaymentsWebhookKey,
-		CheckoutBaseURL: cfg.DodoCheckoutBaseURL,
-		PortalBaseURL:   cfg.DodoPortalBaseURL,
 	})
 	runCreationManager.WithEntitlementGateService(billingManager)
 	orgManager := api.NewOrganizationManager(orgAuthz, repo)

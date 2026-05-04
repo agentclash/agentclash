@@ -81,8 +81,6 @@ type BillingManagerConfig struct {
 	DodoProductIDs  billingpkg.DodoProductIDs
 	HTTPClient      *http.Client
 	WebhookSecret   string
-	CheckoutBaseURL string
-	PortalBaseURL   string
 }
 
 func NewBillingManager(orgAuthz OrganizationAuthorizer, authorizer WorkspaceAuthorizer, repo BillingRepository, cfg BillingManagerConfig) *BillingManager {
