@@ -454,6 +454,30 @@ func TestCIShouldRunMatchesLabel(t *testing.T) {
 	}
 }
 
+func TestCIShouldRunMatchesChangedPathAndLabel(t *testing.T) {
+	target := writeCIManifest(t, sampleCIManifestYAML)
+	result := runCIShouldRunJSON(t, []string{
+		"ci", "should-run",
+		"--manifest", target,
+		"--changed-file", "prompts/system.md",
+		"--labels", "agentclash/eval",
+		"--json",
+	})
+
+	if !result.ShouldRun {
+		t.Fatalf("should_run = false, want true: %+v", result)
+	}
+	if result.Reason != "changed files matched trigger.paths and labels matched trigger.labels" {
+		t.Fatalf("reason = %q, want mixed match reason", result.Reason)
+	}
+	if len(result.MatchedPaths) != 1 {
+		t.Fatalf("matched_paths = %+v, want one match", result.MatchedPaths)
+	}
+	if len(result.MatchedLabels) != 1 || result.MatchedLabels[0] != "agentclash/eval" {
+		t.Fatalf("matched_labels = %+v, want agentclash/eval", result.MatchedLabels)
+	}
+}
+
 func TestCIShouldRunNoMatch(t *testing.T) {
 	target := writeCIManifest(t, sampleCIManifestYAML)
 	result := runCIShouldRunJSON(t, []string{
@@ -534,6 +558,50 @@ func TestCIShouldRunDerivesChangedFilesFromGitDiff(t *testing.T) {
 
 	if !result.ShouldRun {
 		t.Fatalf("should_run = false, want true: %+v", result)
+	}
+	if len(result.ChangedFiles) != 1 || result.ChangedFiles[0] != "prompts/system.md" {
+		t.Fatalf("changed_files = %+v, want prompts/system.md", result.ChangedFiles)
+	}
+}
+
+func TestCIShouldRunDerivesRefsFromGitHubEnvironment(t *testing.T) {
+	repo := t.TempDir()
+	runGit(t, repo, "init")
+	runGit(t, repo, "config", "user.email", "ci@example.test")
+	runGit(t, repo, "config", "user.name", "CI Test")
+	if err := os.WriteFile(filepath.Join(repo, "README.md"), []byte("hello\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile() error: %v", err)
+	}
+	runGit(t, repo, "add", "README.md")
+	runGit(t, repo, "commit", "-m", "base")
+	base := strings.TrimSpace(runGit(t, repo, "rev-parse", "HEAD"))
+	runGit(t, repo, "update-ref", "refs/remotes/origin/main", base)
+
+	if err := os.MkdirAll(filepath.Join(repo, "prompts"), 0o755); err != nil {
+		t.Fatalf("MkdirAll() error: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "prompts", "system.md"), []byte("prompt\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile() error: %v", err)
+	}
+	runGit(t, repo, "add", "prompts/system.md")
+	runGit(t, repo, "commit", "-m", "prompt")
+	head := strings.TrimSpace(runGit(t, repo, "rev-parse", "HEAD"))
+
+	t.Setenv("AGENTCLASH_CI_BASE", "")
+	t.Setenv("AGENTCLASH_CI_HEAD", "")
+	t.Setenv("GITHUB_BASE_REF", "main")
+	t.Setenv("GITHUB_SHA", head)
+
+	target := writeCIManifest(t, sampleCIManifestYAML)
+	result := runCIShouldRunJSON(t, []string{
+		"ci", "should-run",
+		"--manifest", target,
+		"--repo", repo,
+		"--json",
+	})
+
+	if !result.ShouldRun {
+		t.Fatalf("should_run = false, want true from GitHub env refs: %+v", result)
 	}
 	if len(result.ChangedFiles) != 1 || result.ChangedFiles[0] != "prompts/system.md" {
 		t.Fatalf("changed_files = %+v, want prompts/system.md", result.ChangedFiles)
