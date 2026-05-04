@@ -163,6 +163,34 @@ describe("agent skill docs", () => {
     );
   });
 
+  it("generates the challenge pack yaml author skill with source-backed details", () => {
+    const doc = getDocBySlug([
+      "agent-skills",
+      "challenge-pack-skills",
+      "agentclash-challenge-pack-yaml-author",
+    ]);
+
+    expect(doc?.title).toBe("Challenge Pack YAML Author Skill");
+    expect(doc?.content).toContain(
+      "agentclash challenge-pack init support-eval.yaml --template prompt_eval",
+    );
+    expect(doc?.content).toContain(
+      "agentclash challenge-pack validate support-eval.yaml --json",
+    );
+    expect(doc?.content).toContain("`pack`, `version`, `challenges`, `input_sets`");
+    expect(doc?.content).toContain("case_key");
+    expect(doc?.content).toContain("source: input:prompt");
+    expect(doc?.content).toContain(
+      "Supported `version.tool_policy.allowed_tool_kinds` values are exactly `browser`, `build`, `data`, `file`, and `network`",
+    );
+    expect(doc?.content).toContain("Do not use `shell` as an allowed tool kind");
+    expect(doc?.content).toContain(
+      "`prompt_eval` cannot use:\n- top-level `tools`\n- `version.tool_policy`\n- `version.sandbox`",
+    );
+    expect(doc?.content).toContain("`version.evaluation_spec.validators`");
+    expect(doc?.content).toContain("judge_mode: hybrid");
+  });
+
   it("includes the index and every skill in markdown paths", () => {
     const paths = getAllDocMarkdownPaths();
 
