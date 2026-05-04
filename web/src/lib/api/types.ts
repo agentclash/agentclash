@@ -1711,7 +1711,7 @@ export interface FailureReviewClusterHistory {
   prior_failure_count: number;
   last_seen_run_id?: string;
   last_seen_at?: string;
-  last_run_failure_count?: number;
+  last_run_failure_count: number;
 }
 
 export interface FailureReviewClusterSummary {
