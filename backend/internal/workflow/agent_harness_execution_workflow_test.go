@@ -275,6 +275,84 @@ func TestExecuteAgentHarnessExecutionWithoutRepositorySkipsGitArtifactCapture(t 
 	}
 }
 
+func TestExecuteAgentHarnessExecutionRunsClaudeAndRecordsTrace(t *testing.T) {
+	workspaceID := uuid.New()
+	harnessID := uuid.New()
+	executionID := uuid.New()
+	anthropicSecret := "ANTHROPIC_API_KEY"
+	model := "claude-sonnet-4-6"
+	repo := newFakeRunRepository(fixtureRun(uuid.New(), domain.RunStatusQueued))
+	repo.setAgentHarness(repository.AgentHarness{
+		ID:                     harnessID,
+		OrganizationID:         uuid.New(),
+		WorkspaceID:            workspaceID,
+		HarnessKind:            "claude_e2b",
+		TaskPrompt:             "implement issue 462",
+		CodexTemplate:          "agentclash-claude-fullstack",
+		CodexModel:             &model,
+		AuthMode:               "api_key_secret",
+		OpenAIAPIKeySecretName: &anthropicSecret,
+		ExecutionConfig:        json.RawMessage(`{"timeout_seconds":120}`),
+	})
+	repo.setAgentHarnessExecution(repository.AgentHarnessExecution{
+		ID:                      executionID,
+		WorkspaceID:             workspaceID,
+		AgentHarnessID:          harnessID,
+		Status:                  string(repository.AgentHarnessExecutionStatusRunning),
+		ExecutionConfigSnapshot: json.RawMessage(`{"timeout_seconds":120}`),
+	})
+	repo.setWorkspaceSecrets(workspaceID, map[string]string{anthropicSecret: "sk-ant-test"})
+
+	session := sandbox.NewFakeSession("sandbox-1")
+	session.SetExecFunc(func(request sandbox.ExecRequest, _ map[string][]byte) (sandbox.ExecResult, error) {
+		switch {
+		case len(request.Command) >= 2 && request.Command[0] == "claude" && request.Command[1] == "-p":
+			if request.Environment["ANTHROPIC_API_KEY"] != "sk-ant-test" {
+				t.Fatalf("claude env = %#v, want Anthropic key", request.Environment)
+			}
+			if containsString(request.Command, "OPENAI_API_KEY") {
+				t.Fatalf("claude command leaked secret name: %#v", request.Command)
+			}
+			if !containsString(request.Command, "--output-format") || !containsString(request.Command, "stream-json") {
+				t.Fatalf("claude command = %#v, want stream-json output", request.Command)
+			}
+			if !containsString(request.Command, "--permission-mode") || !containsString(request.Command, "bypassPermissions") {
+				t.Fatalf("claude command = %#v, want bypass permission mode", request.Command)
+			}
+			if !containsString(request.Command, "--model") || !containsString(request.Command, model) {
+				t.Fatalf("claude command = %#v, want model override", request.Command)
+			}
+			return sandbox.ExecResult{ExitCode: 0, Stdout: `{"type":"assistant","message":"done"}`}, nil
+		default:
+			t.Fatalf("unexpected command: %#v", request.Command)
+			return sandbox.ExecResult{}, nil
+		}
+	})
+	provider := &sandbox.FakeProvider{NextSession: session}
+	activities := NewActivities(repo, FakeWorkHooks{}).WithSandboxProvider(provider)
+
+	err := activities.ExecuteAgentHarnessExecution(context.Background(), ExecuteAgentHarnessExecutionInput{ExecutionID: executionID})
+	if err != nil {
+		t.Fatalf("ExecuteAgentHarnessExecution error: %v", err)
+	}
+	if provider.CreateRequests[0].TemplateID != "agentclash-claude-fullstack" {
+		t.Fatalf("template id = %q, want Claude template", provider.CreateRequests[0].TemplateID)
+	}
+	if provider.CreateRequests[0].EnvVars["ANTHROPIC_API_KEY"] != "sk-ant-test" {
+		t.Fatalf("sandbox env vars = %#v, want Anthropic key", provider.CreateRequests[0].EnvVars)
+	}
+	var sawClaudeOutput bool
+	for _, event := range repo.agentHarnessEvents[executionID] {
+		if event.EventType == "claude.exec.output" && event.ActorType == "claude" {
+			sawClaudeOutput = true
+			break
+		}
+	}
+	if !sawClaudeOutput {
+		t.Fatal("expected live claude output event")
+	}
+}
+
 func TestExecuteAgentHarnessExecutionFailsEarlyWhenGitHubAccessRevoked(t *testing.T) {
 	workspaceID := uuid.New()
 	harnessID := uuid.New()

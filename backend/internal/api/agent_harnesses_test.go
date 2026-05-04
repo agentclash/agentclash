@@ -54,6 +54,17 @@ func TestAgentHarnessManagerCreateValidatesRequiredFields(t *testing.T) {
 			code: "invalid_auth_mode",
 		},
 		{
+			name: "known harness kind required",
+			input: CreateAgentHarnessInput{
+				Name:                   "Codex harness",
+				HarnessKind:            "mystery_runner",
+				TaskPrompt:             "Do the task",
+				AuthMode:               AgentHarnessAuthModeAPIKeySecret,
+				OpenAIAPIKeySecretName: "OPENAI_API_KEY",
+			},
+			code: "invalid_harness_kind",
+		},
+		{
 			name: "api key auth needs secret",
 			input: CreateAgentHarnessInput{
 				Name:       "Codex harness",
@@ -113,11 +124,42 @@ func TestAgentHarnessManagerCreatePersistsHarnessDefaults(t *testing.T) {
 	if harness.CodexTemplate != "codex" {
 		t.Fatalf("codex_template = %q, want codex", harness.CodexTemplate)
 	}
+	if repo.created.HarnessKind != AgentHarnessKindCodexE2B {
+		t.Fatalf("harness_kind = %q, want codex_e2b", repo.created.HarnessKind)
+	}
 	if harness.OpenAIAPIKeySecretName == nil || *harness.OpenAIAPIKeySecretName != "OPENAI_API_KEY" {
 		t.Fatalf("openai secret = %#v", harness.OpenAIAPIKeySecretName)
 	}
 	if string(repo.created.EvaluationConfig) == "{}" {
 		t.Fatal("evaluation_config was not persisted")
+	}
+}
+
+func TestAgentHarnessManagerCreatePersistsClaudeHarnessDefaults(t *testing.T) {
+	workspaceID := uuid.New()
+	orgID := uuid.New()
+	repo := &fakeAgentHarnessRepo{organizationID: orgID}
+	manager := NewAgentHarnessManager(NewCallerWorkspaceAuthorizer(), repo)
+
+	harness, err := manager.CreateAgentHarness(context.Background(), testAgentHarnessCaller(workspaceID), workspaceID, CreateAgentHarnessInput{
+		Name:                   "Claude Long Runner",
+		HarnessKind:            AgentHarnessKindClaudeE2B,
+		TaskPrompt:             "implement the requested change",
+		AuthMode:               AgentHarnessAuthModeAPIKeySecret,
+		OpenAIAPIKeySecretName: "ANTHROPIC_API_KEY",
+	})
+	if err != nil {
+		t.Fatalf("CreateAgentHarness error: %v", err)
+	}
+
+	if harness.HarnessKind != AgentHarnessKindClaudeE2B {
+		t.Fatalf("harness_kind = %q, want claude_e2b", harness.HarnessKind)
+	}
+	if harness.CodexTemplate != defaultClaudeE2BTemplate {
+		t.Fatalf("codex_template = %q, want %q", harness.CodexTemplate, defaultClaudeE2BTemplate)
+	}
+	if repo.created.HarnessKind != AgentHarnessKindClaudeE2B {
+		t.Fatalf("created harness_kind = %q", repo.created.HarnessKind)
 	}
 }
 
@@ -600,7 +642,7 @@ func (f *fakeAgentHarnessRepo) CreateAgentHarness(_ context.Context, p repositor
 		Slug:                   p.Slug,
 		Description:            p.Description,
 		Status:                 "draft",
-		HarnessKind:            "codex_e2b",
+		HarnessKind:            p.HarnessKind,
 		TaskPrompt:             p.TaskPrompt,
 		CodexTemplate:          p.CodexTemplate,
 		CodexModel:             p.CodexModel,

@@ -19,8 +19,8 @@ export const template = Template()
       '&& rm -rf /var/lib/apt/lists/*',
   )
 
-  // Codex CLI for Agent Harness coding tasks
-  .runCmd('npm install -g @openai/codex')
+  // Coding-agent CLIs for Agent Harness tasks
+  .runCmd('npm install -g @openai/codex @anthropic-ai/claude-code')
 
   // Python 3, Go, C/C++ toolchain
   .runCmd(
