@@ -80,6 +80,18 @@ function compactList(values: string[], maxVisible = 3): string {
   return `${visible} +${values.length - maxVisible}`;
 }
 
+function clusterHistorySummary(cluster: FailureReviewClusterSummary): string {
+  const { history } = cluster;
+  if (history.prior_run_count === 0) {
+    const runLabel = history.window_run_count === 1 ? "run" : "runs";
+    return `No prior matches in ${history.window_run_count} comparable ${runLabel}`;
+  }
+  const lastSeen = history.last_seen_at
+    ? ` · last ${new Date(history.last_seen_at).toLocaleDateString()}`
+    : "";
+  return `${history.prior_run_count} prior runs · ${history.prior_failure_count} prior failures${lastSeen}`;
+}
+
 const severityVariant: Record<
   FailureReviewSeverity,
   "default" | "secondary" | "outline" | "destructive"
@@ -97,6 +109,16 @@ const failureStateVariant: Record<
   warning: "outline",
   flaky: "outline",
   incomplete_evidence: "secondary",
+};
+
+const clusterTrendVariant: Record<
+  FailureReviewClusterSummary["history"]["trend"],
+  "default" | "secondary" | "outline" | "destructive"
+> = {
+  new: "default",
+  recurring: "secondary",
+  increasing: "destructive",
+  decreasing: "outline",
 };
 
 // --- URL <-> state helpers ---
@@ -471,6 +493,9 @@ function FailureClusterRollups({
                     <Badge variant="secondary">
                       {humanize(cluster.evidence_tier)}
                     </Badge>
+                    <Badge variant={clusterTrendVariant[cluster.history.trend]}>
+                      {humanize(cluster.history.trend)}
+                    </Badge>
                     {active && <Badge>active</Badge>}
                   </div>
                   <div className="min-w-0">
@@ -484,6 +509,12 @@ function FailureClusterRollups({
                     )}
                   </div>
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                    <span className="min-w-0 truncate">
+                      History:{" "}
+                      <span className="text-foreground/80">
+                        {clusterHistorySummary(cluster)}
+                      </span>
+                    </span>
                     <span className="min-w-0 truncate">
                       Challenges:{" "}
                       <span className="text-foreground/80">
@@ -513,6 +544,14 @@ function FailureClusterRollups({
                     </div>
                     <div className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
                       promote
+                    </div>
+                  </div>
+                  <div className="rounded-md border border-border px-2.5 py-1 text-right">
+                    <div className="text-sm font-semibold tabular-nums">
+                      {cluster.history.prior_run_count}
+                    </div>
+                    <div className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+                      prior
                     </div>
                   </div>
                 </div>

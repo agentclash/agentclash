@@ -121,6 +121,15 @@ function makeCluster(
     run_agent_ids: ["agent-1"],
     headline: "Filesystem write failures cluster together",
     recommended_action: "Promote one representative filesystem regression.",
+    history: {
+      trend: "increasing",
+      window_run_count: 10,
+      prior_run_count: 3,
+      prior_failure_count: 5,
+      last_seen_run_id: "run-prev",
+      last_seen_at: "2026-04-21T12:00:00Z",
+      last_run_failure_count: 1,
+    },
     ...overrides,
   };
 }
@@ -226,6 +235,10 @@ describe("FailuresClient", () => {
       expect(view.container.textContent).toContain("1 promotable");
       expect(view.container.textContent).toContain(
         "Filesystem write failures cluster together",
+      );
+      expect(view.container.textContent).toContain("increasing");
+      expect(view.container.textContent).toContain(
+        "3 prior runs · 5 prior failures",
       );
       expect(view.container.textContent).toContain("challenge-a, challenge-b");
       expect(view.container.textContent).toContain(

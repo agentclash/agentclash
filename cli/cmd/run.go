@@ -408,13 +408,16 @@ var runFailuresCmd = &cobra.Command{
 		rc.Output.PrintTable(cols, rows)
 		if len(result.Clusters) > 0 {
 			rc.Output.PrintDetail("Failure Clusters (filtered)", fmt.Sprintf("%d", len(result.Clusters)))
-			clusterCols := []output.Column{{Header: "Cluster"}, {Header: "Count"}, {Header: "Promotable"}, {Header: "Severity"}, {Header: "Class"}, {Header: "Challenges"}}
+			clusterCols := []output.Column{{Header: "Cluster"}, {Header: "Count"}, {Header: "Promotable"}, {Header: "Trend"}, {Header: "Prior Runs"}, {Header: "Severity"}, {Header: "Class"}, {Header: "Challenges"}}
 			clusterRows := make([][]string, len(result.Clusters))
 			for i, cluster := range result.Clusters {
+				history := mapObject(cluster, "history")
 				clusterRows[i] = []string{
 					str(cluster["failure_cluster_key"]),
 					str(cluster["count"]),
 					str(cluster["promotable_count"]),
+					mapString(history, "trend"),
+					mapString(history, "prior_run_count"),
 					str(cluster["severity"]),
 					str(cluster["failure_class"]),
 					joinMapStrings(cluster, "challenge_keys"),
