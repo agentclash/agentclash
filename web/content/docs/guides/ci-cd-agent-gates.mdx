@@ -187,6 +187,7 @@ jobs:
         run: |
           set +e
           agentclash ci run --manifest .agentclash/ci.yaml --json \
+            --artifact-dir agentclash-artifacts \
             > agentclash-ci-result.json
           status=$?
           cat agentclash-ci-result.json
@@ -197,9 +198,20 @@ jobs:
           AGENTCLASH_API_URL: https://api.agentclash.dev
           AGENTCLASH_TOKEN: ${{ secrets.AGENTCLASH_TOKEN }}
           AGENTCLASH_WORKSPACE: ${{ secrets.AGENTCLASH_WORKSPACE }}
+
+      - name: Upload AgentClash gate artifacts
+        if: always() && steps.should-run.outputs.should_run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: agentclash-ci
+          path: |
+            agentclash-ci-result.json
+            agentclash-artifacts/*.json
 ```
 
-`agentclash ci run` exits nonzero when the gate verdict should block CI, when the candidate run times out, or when the manifest/API setup is invalid. In GitHub Actions, it automatically attaches repository, pull request, branch, commit, workflow, event, and workflow-run URL metadata to the AgentClash run. Use `--ci-repository`, `--ci-pull-request`, `--ci-branch`, `--ci-commit`, and the other `--ci-*` flags when running from another CI system or a custom wrapper.
+`agentclash ci run` exits nonzero when the gate verdict should block CI, when the candidate run times out, or when the manifest/API setup is invalid. In GitHub Actions, it automatically attaches repository, pull request, branch, commit, workflow, event, and workflow-run URL metadata to the AgentClash run. It also appends a reviewer-friendly Markdown section when the `$GITHUB_STEP_SUMMARY` environment variable is set. Pass `--summary-file <path>` for another Markdown destination, or `--github-step-summary=false` to disable the automatic GitHub summary.
+
+`--artifact-dir` writes stable JSON files intended for `actions/upload-artifact`: `result.json` for the final CLI envelope, `run.json` for run creation/completion payloads, `scorecard.json` for candidate scorecard evidence, `comparison.json` for baseline/candidate comparison evidence, and `gate.json` for the release-gate verdict and policy metadata. The summary and artifacts include the challenge pack version, baseline, candidate, policy, verdict, top evidence lines, and AgentClash links when the API returns them. Use `--ci-repository`, `--ci-pull-request`, `--ci-branch`, `--ci-commit`, and the other `--ci-*` flags when running from another CI system or a custom wrapper.
 
 ## Regression promotion policy
 
@@ -233,7 +245,7 @@ Only a future main-branch workflow should auto-promote high-confidence failures 
 - `agentclash ci validate` validates the manifest shape locally; pass `--remote` for API-backed resource checks.
 - `agentclash ci should-run` only decides whether a gate should run; `agentclash ci run` performs the orchestration.
 - `agentclash ci run` creates a one-off candidate deployment for the manifest build version; cleanup/retention policy is still a follow-up.
-- PR comments, check-run summaries, and uploaded JSON artifacts are still follow-up work.
+- Native PR comments and GitHub Check Runs are still follow-up work; use the GitHub step summary and uploaded JSON artifacts today.
 - Automatic regression promotion should remain opt-in and conservative.
 
 ## See also
