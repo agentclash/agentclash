@@ -132,6 +132,7 @@ AgentClash CI/CD gates the candidate agent revision against a repeatable workloa
 ```bash
 agentclash ci init .agentclash/ci.yaml
 agentclash ci validate .agentclash/ci.yaml
+agentclash ci should-run --changed-file prompts/system.md --json
 ```
 
 The current CLI can validate that manifest locally. Existing commands also work non-interactively with environment variables and explicit IDs:

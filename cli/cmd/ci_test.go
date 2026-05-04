@@ -3,6 +3,7 @@ package cmd
 import (
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -360,6 +361,290 @@ regressions:
 	}
 }
 
+func TestCIShouldRunMatchesChangedPath(t *testing.T) {
+	target := writeCIManifest(t, sampleCIManifestYAML)
+	result := runCIShouldRunJSON(t, []string{
+		"ci", "should-run",
+		"--manifest", target,
+		"--changed-file", "prompts/system.md",
+		"--json",
+	})
+
+	if !result.ShouldRun {
+		t.Fatalf("should_run = false, want true: %+v", result)
+	}
+	if len(result.MatchedPaths) != 1 {
+		t.Fatalf("matched_paths = %+v, want one match", result.MatchedPaths)
+	}
+	if result.MatchedPaths[0].Pattern != "prompts/**" || result.MatchedPaths[0].File != "prompts/system.md" {
+		t.Fatalf("matched path = %+v, want prompts/** -> prompts/system.md", result.MatchedPaths[0])
+	}
+}
+
+func TestCIShouldRunDoublestarPathSemantics(t *testing.T) {
+	tests := []struct {
+		name    string
+		pattern string
+		file    string
+		want    bool
+	}{
+		{
+			name:    "double star in middle matches zero directories",
+			pattern: "prompts/**/*.md",
+			file:    "prompts/system.md",
+			want:    true,
+		},
+		{
+			name:    "leading double star matches zero directories",
+			pattern: "**/system.md",
+			file:    "system.md",
+			want:    true,
+		},
+		{
+			name:    "trailing double star matches direct child",
+			pattern: "prompts/**",
+			file:    "prompts/system.md",
+			want:    true,
+		},
+		{
+			name:    "trailing double star matches nested child",
+			pattern: "prompts/**",
+			file:    "prompts/nested/system.md",
+			want:    true,
+		},
+		{
+			name:    "single star does not cross directory boundary",
+			pattern: "prompts/*",
+			file:    "prompts/nested/system.md",
+			want:    false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ciGlobMatches(tt.pattern, tt.file)
+			if err != nil {
+				t.Fatalf("ciGlobMatches() error: %v", err)
+			}
+			if got != tt.want {
+				t.Fatalf("ciGlobMatches(%q, %q) = %v, want %v", tt.pattern, tt.file, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCIShouldRunMatchesLabel(t *testing.T) {
+	target := writeCIManifest(t, sampleCIManifestYAML)
+	result := runCIShouldRunJSON(t, []string{
+		"ci", "should-run",
+		"--manifest", target,
+		"--changed-file", "docs/readme.md",
+		"--labels", "agentclash/eval",
+		"--json",
+	})
+
+	if !result.ShouldRun {
+		t.Fatalf("should_run = false, want true: %+v", result)
+	}
+	if len(result.MatchedLabels) != 1 || result.MatchedLabels[0] != "agentclash/eval" {
+		t.Fatalf("matched_labels = %+v, want agentclash/eval", result.MatchedLabels)
+	}
+	if len(result.MatchedPaths) != 0 {
+		t.Fatalf("matched_paths = %+v, want none", result.MatchedPaths)
+	}
+}
+
+func TestCIShouldRunMatchesChangedPathAndLabel(t *testing.T) {
+	target := writeCIManifest(t, sampleCIManifestYAML)
+	result := runCIShouldRunJSON(t, []string{
+		"ci", "should-run",
+		"--manifest", target,
+		"--changed-file", "prompts/system.md",
+		"--labels", "agentclash/eval",
+		"--json",
+	})
+
+	if !result.ShouldRun {
+		t.Fatalf("should_run = false, want true: %+v", result)
+	}
+	if result.Reason != "changed files matched trigger.paths and labels matched trigger.labels" {
+		t.Fatalf("reason = %q, want mixed match reason", result.Reason)
+	}
+	if len(result.MatchedPaths) != 1 {
+		t.Fatalf("matched_paths = %+v, want one match", result.MatchedPaths)
+	}
+	if len(result.MatchedLabels) != 1 || result.MatchedLabels[0] != "agentclash/eval" {
+		t.Fatalf("matched_labels = %+v, want agentclash/eval", result.MatchedLabels)
+	}
+}
+
+func TestCIShouldRunNoMatch(t *testing.T) {
+	target := writeCIManifest(t, sampleCIManifestYAML)
+	result := runCIShouldRunJSON(t, []string{
+		"ci", "should-run",
+		"--manifest", target,
+		"--changed-file", "docs/readme.md",
+		"--labels", "docs-only",
+		"--json",
+	})
+
+	if result.ShouldRun {
+		t.Fatalf("should_run = true, want false: %+v", result)
+	}
+	if result.Reason != "no changed files or labels matched manifest triggers" {
+		t.Fatalf("reason = %q, want no-match reason", result.Reason)
+	}
+}
+
+func TestCIShouldRunRejectsInvalidGlob(t *testing.T) {
+	manifest := strings.Replace(sampleCIManifestYAML, "    - prompts/**", "    - prompts/[", 1)
+	target := writeCIManifest(t, manifest)
+
+	err := executeCommand(t, []string{
+		"ci", "should-run",
+		"--manifest", target,
+		"--changed-file", "prompts/system.md",
+	}, "http://unused")
+	if err == nil || !strings.Contains(err.Error(), "invalid trigger glob") {
+		t.Fatalf("error = %v, want invalid trigger glob", err)
+	}
+}
+
+func TestCIShouldRunRejectsInvalidGlobEvenWhenLabelMatches(t *testing.T) {
+	manifest := strings.Replace(sampleCIManifestYAML, "    - prompts/**", "    - prompts/[", 1)
+	target := writeCIManifest(t, manifest)
+
+	err := executeCommand(t, []string{
+		"ci", "should-run",
+		"--manifest", target,
+		"--labels", "agentclash/eval",
+	}, "http://unused")
+	if err == nil || !strings.Contains(err.Error(), "invalid trigger glob") {
+		t.Fatalf("error = %v, want invalid trigger glob", err)
+	}
+}
+
+func TestCIShouldRunDerivesChangedFilesFromGitDiff(t *testing.T) {
+	repo := t.TempDir()
+	runGit(t, repo, "init")
+	runGit(t, repo, "config", "user.email", "ci@example.test")
+	runGit(t, repo, "config", "user.name", "CI Test")
+	if err := os.WriteFile(filepath.Join(repo, "README.md"), []byte("hello\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile() error: %v", err)
+	}
+	runGit(t, repo, "add", "README.md")
+	runGit(t, repo, "commit", "-m", "base")
+	base := strings.TrimSpace(runGit(t, repo, "rev-parse", "HEAD"))
+
+	if err := os.MkdirAll(filepath.Join(repo, "prompts"), 0o755); err != nil {
+		t.Fatalf("MkdirAll() error: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "prompts", "system.md"), []byte("prompt\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile() error: %v", err)
+	}
+	runGit(t, repo, "add", "prompts/system.md")
+	runGit(t, repo, "commit", "-m", "prompt")
+	head := strings.TrimSpace(runGit(t, repo, "rev-parse", "HEAD"))
+
+	target := writeCIManifest(t, sampleCIManifestYAML)
+	result := runCIShouldRunJSON(t, []string{
+		"ci", "should-run",
+		"--manifest", target,
+		"--repo", repo,
+		"--base", base,
+		"--head", head,
+		"--json",
+	})
+
+	if !result.ShouldRun {
+		t.Fatalf("should_run = false, want true: %+v", result)
+	}
+	if len(result.ChangedFiles) != 1 || result.ChangedFiles[0] != "prompts/system.md" {
+		t.Fatalf("changed_files = %+v, want prompts/system.md", result.ChangedFiles)
+	}
+}
+
+func TestCIShouldRunDerivesRefsFromGitHubEnvironment(t *testing.T) {
+	repo := t.TempDir()
+	runGit(t, repo, "init")
+	runGit(t, repo, "config", "user.email", "ci@example.test")
+	runGit(t, repo, "config", "user.name", "CI Test")
+	if err := os.WriteFile(filepath.Join(repo, "README.md"), []byte("hello\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile() error: %v", err)
+	}
+	runGit(t, repo, "add", "README.md")
+	runGit(t, repo, "commit", "-m", "base")
+	base := strings.TrimSpace(runGit(t, repo, "rev-parse", "HEAD"))
+	runGit(t, repo, "update-ref", "refs/remotes/origin/main", base)
+
+	if err := os.MkdirAll(filepath.Join(repo, "prompts"), 0o755); err != nil {
+		t.Fatalf("MkdirAll() error: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "prompts", "system.md"), []byte("prompt\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile() error: %v", err)
+	}
+	runGit(t, repo, "add", "prompts/system.md")
+	runGit(t, repo, "commit", "-m", "prompt")
+	head := strings.TrimSpace(runGit(t, repo, "rev-parse", "HEAD"))
+
+	t.Setenv("AGENTCLASH_CI_BASE", "")
+	t.Setenv("AGENTCLASH_CI_HEAD", "")
+	t.Setenv("GITHUB_BASE_REF", "main")
+	t.Setenv("GITHUB_SHA", head)
+
+	target := writeCIManifest(t, sampleCIManifestYAML)
+	result := runCIShouldRunJSON(t, []string{
+		"ci", "should-run",
+		"--manifest", target,
+		"--repo", repo,
+		"--json",
+	})
+
+	if !result.ShouldRun {
+		t.Fatalf("should_run = false, want true from GitHub env refs: %+v", result)
+	}
+	if len(result.ChangedFiles) != 1 || result.ChangedFiles[0] != "prompts/system.md" {
+		t.Fatalf("changed_files = %+v, want prompts/system.md", result.ChangedFiles)
+	}
+}
+
+func TestCIShouldRunDerivesDeletedFilesFromGitDiff(t *testing.T) {
+	repo := t.TempDir()
+	runGit(t, repo, "init")
+	runGit(t, repo, "config", "user.email", "ci@example.test")
+	runGit(t, repo, "config", "user.name", "CI Test")
+	if err := os.MkdirAll(filepath.Join(repo, "prompts"), 0o755); err != nil {
+		t.Fatalf("MkdirAll() error: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "prompts", "system.md"), []byte("prompt\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile() error: %v", err)
+	}
+	runGit(t, repo, "add", "prompts/system.md")
+	runGit(t, repo, "commit", "-m", "base")
+	base := strings.TrimSpace(runGit(t, repo, "rev-parse", "HEAD"))
+
+	runGit(t, repo, "rm", "prompts/system.md")
+	runGit(t, repo, "commit", "-m", "remove prompt")
+	head := strings.TrimSpace(runGit(t, repo, "rev-parse", "HEAD"))
+
+	target := writeCIManifest(t, sampleCIManifestYAML)
+	result := runCIShouldRunJSON(t, []string{
+		"ci", "should-run",
+		"--manifest", target,
+		"--repo", repo,
+		"--base", base,
+		"--head", head,
+		"--json",
+	})
+
+	if !result.ShouldRun {
+		t.Fatalf("should_run = false, want true for deleted prompt: %+v", result)
+	}
+	if len(result.ChangedFiles) != 1 || result.ChangedFiles[0] != "prompts/system.md" {
+		t.Fatalf("changed_files = %+v, want deleted prompts/system.md", result.ChangedFiles)
+	}
+}
+
 func writeCIManifest(t *testing.T, text string) string {
 	t.Helper()
 	target := filepath.Join(t.TempDir(), "agentclash-ci.yaml")
@@ -367,4 +652,38 @@ func writeCIManifest(t *testing.T, text string) string {
 		t.Fatalf("WriteFile() error: %v", err)
 	}
 	return target
+}
+
+type ciShouldRunJSONResult struct {
+	ShouldRun     bool                   `json:"should_run"`
+	Reason        string                 `json:"reason"`
+	ChangedFiles  []string               `json:"changed_files"`
+	MatchedPaths  []ciShouldRunPathMatch `json:"matched_paths"`
+	MatchedLabels []string               `json:"matched_labels"`
+}
+
+func runCIShouldRunJSON(t *testing.T, args []string) ciShouldRunJSONResult {
+	t.Helper()
+	stdout := captureStdout(t)
+	err := executeCommand(t, args, "http://unused")
+	out := stdout.finish()
+	if err != nil {
+		t.Fatalf("executeCommand() error: %v", err)
+	}
+
+	var result ciShouldRunJSONResult
+	if err := json.Unmarshal([]byte(out), &result); err != nil {
+		t.Fatalf("json output parse error: %v\n---\n%s", err, out)
+	}
+	return result
+}
+
+func runGit(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %s error: %v\n%s", strings.Join(args, " "), err, string(out))
+	}
+	return string(out)
 }

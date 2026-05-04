@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
 	"github.com/agentclash/agentclash/cli/internal/output"
+	"github.com/bmatcuk/doublestar/v4"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
@@ -16,8 +18,15 @@ func init() {
 	rootCmd.AddCommand(ciCmd)
 	ciCmd.AddCommand(ciInitCmd)
 	ciCmd.AddCommand(ciValidateCmd)
+	ciCmd.AddCommand(ciShouldRunCmd)
 
 	ciInitCmd.Flags().Bool("force", false, "Overwrite an existing manifest")
+	ciShouldRunCmd.Flags().String("manifest", ".agentclash/ci.yaml", "Path to the AgentClash CI manifest")
+	ciShouldRunCmd.Flags().StringArray("changed-file", nil, "Changed file path; may be repeated")
+	ciShouldRunCmd.Flags().StringSlice("labels", nil, "Pull request labels; may be comma-separated or repeated")
+	ciShouldRunCmd.Flags().String("base", "", "Base git ref for deriving changed files")
+	ciShouldRunCmd.Flags().String("head", "", "Head git ref for deriving changed files")
+	ciShouldRunCmd.Flags().String("repo", ".", "Git repository path for --base/--head diff")
 }
 
 var ciCmd = &cobra.Command{
@@ -98,6 +107,66 @@ var ciValidateCmd = &cobra.Command{
 	},
 }
 
+var ciShouldRunCmd = &cobra.Command{
+	Use:   "should-run",
+	Short: "Decide whether AgentClash CI should run",
+	Long: `Decide whether AgentClash CI should run for a change set.
+
+The decision uses trigger.paths and trigger.labels from the CI manifest. Pass
+changed files explicitly with --changed-file, or pass --base and --head to derive
+changed files from git diff.`,
+	Args: cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		rc := GetRunContext(cmd)
+		manifestPath, _ := cmd.Flags().GetString("manifest")
+		changedFiles, _ := cmd.Flags().GetStringArray("changed-file")
+		labels, _ := cmd.Flags().GetStringSlice("labels")
+		base, _ := cmd.Flags().GetString("base")
+		head, _ := cmd.Flags().GetString("head")
+		repo, _ := cmd.Flags().GetString("repo")
+
+		validation, err := validateCIManifestFile(manifestPath)
+		if err != nil {
+			return err
+		}
+		for _, pattern := range validation.Manifest.Trigger.Paths {
+			if err := ciValidateGlob(pattern); err != nil {
+				return err
+			}
+		}
+
+		base, head = defaultCIShouldRunRefs(base, head)
+		if len(changedFiles) == 0 && (base != "" || head != "") {
+			derived, err := gitChangedFiles(repo, base, head)
+			if err != nil {
+				return err
+			}
+			changedFiles = derived
+		}
+
+		result, err := evaluateCIShouldRun(manifestPath, *validation.Manifest, changedFiles, labels)
+		if err != nil {
+			return err
+		}
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(result)
+		}
+		if result.ShouldRun {
+			rc.Output.PrintSuccess("AgentClash CI should run")
+		} else {
+			rc.Output.PrintDetail("Decision", "skip")
+		}
+		rc.Output.PrintDetail("Reason", result.Reason)
+		if len(result.MatchedPaths) > 0 {
+			rc.Output.PrintDetail("Matched Paths", fmt.Sprintf("%d", len(result.MatchedPaths)))
+		}
+		if len(result.MatchedLabels) > 0 {
+			rc.Output.PrintDetail("Matched Labels", strings.Join(result.MatchedLabels, ", "))
+		}
+		return nil
+	},
+}
+
 type ciManifest struct {
 	Version     int                   `yaml:"version" json:"version"`
 	Trigger     ciManifestTrigger     `yaml:"trigger" json:"trigger"`
@@ -156,6 +225,23 @@ type ciManifestValidationResult struct {
 	Valid    bool        `json:"valid" yaml:"valid"`
 	Errors   []string    `json:"errors,omitempty" yaml:"errors,omitempty"`
 	Manifest *ciManifest `json:"manifest,omitempty" yaml:"manifest,omitempty"`
+}
+
+type ciShouldRunPathMatch struct {
+	Pattern string `json:"pattern" yaml:"pattern"`
+	File    string `json:"file" yaml:"file"`
+}
+
+type ciShouldRunResult struct {
+	Path             string                 `json:"path" yaml:"path"`
+	ShouldRun        bool                   `json:"should_run" yaml:"should_run"`
+	Reason           string                 `json:"reason" yaml:"reason"`
+	ChangedFiles     []string               `json:"changed_files" yaml:"changed_files"`
+	Labels           []string               `json:"labels" yaml:"labels"`
+	CheckedPathGlobs []string               `json:"checked_path_globs" yaml:"checked_path_globs"`
+	CheckedLabels    []string               `json:"checked_labels" yaml:"checked_labels"`
+	MatchedPaths     []ciShouldRunPathMatch `json:"matched_paths,omitempty" yaml:"matched_paths,omitempty"`
+	MatchedLabels    []string               `json:"matched_labels,omitempty" yaml:"matched_labels,omitempty"`
 }
 
 const sampleCIManifestYAML = `version: 1
@@ -288,4 +374,150 @@ func hasBlankString(values []string) bool {
 		}
 	}
 	return false
+}
+
+func evaluateCIShouldRun(path string, manifest ciManifest, changedFiles []string, labels []string) (ciShouldRunResult, error) {
+	result := ciShouldRunResult{
+		Path:             path,
+		ChangedFiles:     normalizeCIValues(changedFiles),
+		Labels:           normalizeCIValues(labels),
+		CheckedPathGlobs: normalizeCIValues(manifest.Trigger.Paths),
+		CheckedLabels:    normalizeCIValues(manifest.Trigger.Labels),
+	}
+
+	for _, pattern := range result.CheckedPathGlobs {
+		if err := ciValidateGlob(pattern); err != nil {
+			return result, err
+		}
+	}
+	for _, pattern := range result.CheckedPathGlobs {
+		for _, file := range result.ChangedFiles {
+			matched, err := ciGlobMatches(pattern, file)
+			if err != nil {
+				return result, err
+			}
+			if matched {
+				result.MatchedPaths = append(result.MatchedPaths, ciShouldRunPathMatch{
+					Pattern: pattern,
+					File:    file,
+				})
+			}
+		}
+	}
+
+	allowedLabels := make(map[string]struct{}, len(result.CheckedLabels))
+	for _, label := range result.CheckedLabels {
+		allowedLabels[label] = struct{}{}
+	}
+	seenLabels := map[string]struct{}{}
+	for _, label := range result.Labels {
+		if _, ok := allowedLabels[label]; ok {
+			if _, seen := seenLabels[label]; !seen {
+				result.MatchedLabels = append(result.MatchedLabels, label)
+				seenLabels[label] = struct{}{}
+			}
+		}
+	}
+
+	result.ShouldRun = len(result.MatchedPaths) > 0 || len(result.MatchedLabels) > 0
+	result.Reason = ciShouldRunReason(result)
+	return result, nil
+}
+
+func ciShouldRunReason(result ciShouldRunResult) string {
+	switch {
+	case len(result.MatchedPaths) > 0 && len(result.MatchedLabels) > 0:
+		return "changed files matched trigger.paths and labels matched trigger.labels"
+	case len(result.MatchedPaths) > 0:
+		return "changed files matched trigger.paths"
+	case len(result.MatchedLabels) > 0:
+		return "labels matched trigger.labels"
+	case len(result.ChangedFiles) == 0 && len(result.Labels) == 0:
+		return "no changed files or labels were provided"
+	default:
+		return "no changed files or labels matched manifest triggers"
+	}
+}
+
+func normalizeCIValues(values []string) []string {
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed != "" {
+			out = append(out, trimmed)
+		}
+	}
+	return out
+}
+
+func normalizeCIPath(value string) string {
+	path := filepath.ToSlash(strings.TrimSpace(value))
+	path = strings.TrimPrefix(path, "./")
+	return path
+}
+
+func ciValidateGlob(pattern string) error {
+	normalized := normalizeCIPath(pattern)
+	if normalized == "" {
+		return fmt.Errorf("invalid trigger glob %q: cannot be blank", pattern)
+	}
+	if !doublestar.ValidatePattern(normalized) {
+		return fmt.Errorf("invalid trigger glob %q", pattern)
+	}
+	return nil
+}
+
+func ciGlobMatches(pattern string, file string) (bool, error) {
+	if err := ciValidateGlob(pattern); err != nil {
+		return false, err
+	}
+	normalized := normalizeCIPath(pattern)
+	matched, err := doublestar.Match(normalized, normalizeCIPath(file))
+	if err != nil {
+		return false, fmt.Errorf("invalid trigger glob %q: %w", pattern, err)
+	}
+	return matched, nil
+}
+
+func defaultCIShouldRunRefs(base string, head string) (string, string) {
+	if strings.TrimSpace(base) == "" {
+		if envBase := strings.TrimSpace(os.Getenv("AGENTCLASH_CI_BASE")); envBase != "" {
+			base = envBase
+		} else if githubBase := strings.TrimSpace(os.Getenv("GITHUB_BASE_REF")); githubBase != "" {
+			base = "origin/" + githubBase
+		}
+	}
+	if strings.TrimSpace(head) == "" {
+		if envHead := strings.TrimSpace(os.Getenv("AGENTCLASH_CI_HEAD")); envHead != "" {
+			head = envHead
+		} else if githubSHA := strings.TrimSpace(os.Getenv("GITHUB_SHA")); githubSHA != "" {
+			head = githubSHA
+		} else if strings.TrimSpace(base) != "" {
+			head = "HEAD"
+		}
+	}
+	return strings.TrimSpace(base), strings.TrimSpace(head)
+}
+
+func gitChangedFiles(repo string, base string, head string) ([]string, error) {
+	if strings.TrimSpace(base) == "" || strings.TrimSpace(head) == "" {
+		return nil, fmt.Errorf("--base and --head are required to derive changed files")
+	}
+	diffRange := fmt.Sprintf("%s...%s", base, head)
+	cmd := exec.Command("git", "-C", repo, "diff", "--name-only", "--diff-filter=ACDMRTUXB", diffRange)
+	out, err := cmd.Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			stderr := strings.TrimSpace(string(exitErr.Stderr))
+			if stderr != "" {
+				return nil, fmt.Errorf("deriving changed files with git diff: %s", output.SanitizeLine(stderr))
+			}
+		}
+		return nil, fmt.Errorf("deriving changed files with git diff: %w", err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	if len(lines) == 1 && lines[0] == "" {
+		return nil, nil
+	}
+	return normalizeCIValues(lines), nil
 }
