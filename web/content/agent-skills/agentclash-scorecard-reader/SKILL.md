@@ -396,7 +396,7 @@ Filters supported by the CLI:
 - `--cursor <NEXT_CURSOR>`
 - `--limit <COUNT>`
 
-Failure classes currently accepted by the API are `incorrect_final_output`, `tool_selection_error`, `tool_argument_error`, `retrieval_grounding`, `policy_violation`, `timeout_or_budget`, `sandbox_failure`, `malformed_output`, `flaky_nondeterministic`, `insufficient_evidence`, and `other`.
+Failure classes currently accepted by the API are `incorrect_final_output`, `tool_selection_error`, `tool_argument_error`, `retrieval_grounding_failure`, `policy_violation`, `timeout_or_budget_exhaustion`, `sandbox_failure`, `malformed_output`, `flaky_non_deterministic`, `insufficient_evidence`, and `other`.
 
 ## Stateful Reads and Exit Codes
 Ranking, scorecard, and replay reads can be ready, pending, or errored.
