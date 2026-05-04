@@ -669,6 +669,34 @@ func TestCIValidateRemoteRegressionCasesStayScopedToExplicitSuites(t *testing.T)
 	}
 }
 
+func TestCIValidateRemoteBaselineRunAgentReportsRunAgentField(t *testing.T) {
+	manifest := strings.Replace(sampleCIManifestYAML, "  max_age_days: 30\n", "", 1)
+	manifest = strings.Replace(manifest,
+		"  run_id: 00000000-0000-0000-0000-000000000008\n",
+		"  run_id: 00000000-0000-0000-0000-000000000008\n  run_agent_id: agent-missing\n",
+		1,
+	)
+	target := writeCIManifest(t, manifest)
+	srv := fakeAPI(t, remoteCIValidateRoutes(t, map[string]http.HandlerFunc{
+		"GET /v1/runs/00000000-0000-0000-0000-000000000008/agents": jsonHandler(200, map[string]any{
+			"items": []map[string]any{},
+		}),
+	}))
+	defer srv.Close()
+	t.Setenv("AGENTCLASH_TOKEN", "test-token")
+
+	result, err, _ := runCIValidateJSON(t, []string{"ci", "validate", target, "--remote", "-w", "ws-1", "--json"}, srv.URL)
+	if err == nil || !strings.Contains(err.Error(), "ci manifest remote validation failed") {
+		t.Fatalf("error = %v, want remote validation failure", err)
+	}
+	if !ciRemoteChecksContainField(result.Remote.Checks, "baseline.run_agent_id", false) {
+		t.Fatalf("remote checks missing run-agent failure: %+v", result.Remote.Checks)
+	}
+	if ciRemoteChecksContainField(result.Remote.Checks, "baseline.run_id", false) {
+		t.Fatalf("remote checks attributed run-agent failure to run id: %+v", result.Remote.Checks)
+	}
+}
+
 func TestCIShouldRunMatchesChangedPath(t *testing.T) {
 	target := writeCIManifest(t, sampleCIManifestYAML)
 	result := runCIShouldRunJSON(t, []string{

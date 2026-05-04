@@ -696,22 +696,15 @@ func validateCIManifestRemoteRegressionCases(cmd *cobra.Command, rc *RunContext,
 }
 
 func validateCIManifestRemoteBaseline(cmd *cobra.Command, rc *RunContext, result *ciManifestRemoteValidationResult, workspaceID, manifestPath string, manifest ciManifest) error {
-	field := "baseline.run_id"
-	resource := "run"
-	id := strings.TrimSpace(manifest.Baseline.RunID)
-	if id == "" {
-		field = "baseline.deployment_id"
-		resource = "agent_deployment"
-		id = strings.TrimSpace(manifest.Baseline.DeploymentID)
-	}
 	_, err := resolveCIManifestBaseline(cmd, rc, workspaceID, manifestPath, manifest, time.Now().UTC())
+	field, resource, id := ciManifestRemoteBaselineField(manifest, err)
 	if err == nil {
 		result.addPass(field, resource, id, "baseline resolves to a completed run compatible with the selected workload")
 		return nil
 	}
 	if apiErr, ok := ciRemoteAPIError(err); ok {
 		if ciRemoteAPIErrorCanBeFieldFailure(apiErr) {
-			result.addFailure(field, resource, id, ciRemoteAPIErrorCode(apiErr), err.Error())
+			result.addFailure(field, resource, id, ciRemoteAPIErrorCode(apiErr), apiErr.Error())
 			return nil
 		}
 		result.addAPIError(err)
@@ -721,27 +714,27 @@ func validateCIManifestRemoteBaseline(cmd *cobra.Command, rc *RunContext, result
 	return nil
 }
 
-func listCIManifestRemoteObjects(cmd *cobra.Command, rc *RunContext, path string, query url.Values) ([]map[string]any, error) {
-	resp, err := rc.Client.Get(cmd.Context(), path, query)
-	if err != nil {
-		return nil, err
+func ciManifestRemoteBaselineField(manifest ciManifest, err error) (string, string, string) {
+	if strings.TrimSpace(manifest.Baseline.RunAgentID) != "" && err != nil && strings.Contains(err.Error(), "baseline.run_agent_id") {
+		return "baseline.run_agent_id", "run_agent", strings.TrimSpace(manifest.Baseline.RunAgentID)
 	}
-	if apiErr := resp.ParseError(); apiErr != nil {
-		return nil, apiErr
+	if runID := strings.TrimSpace(manifest.Baseline.RunID); runID != "" {
+		return "baseline.run_id", "run", runID
 	}
-	var result struct {
-		Items []map[string]any `json:"items"`
-	}
-	if err := resp.DecodeJSON(&result); err != nil {
-		return nil, err
-	}
-	return result.Items, nil
+	return "baseline.deployment_id", "agent_deployment", strings.TrimSpace(manifest.Baseline.DeploymentID)
 }
 
-func listCIManifestRemoteRegressionCases(cmd *cobra.Command, rc *RunContext, workspaceID string, suiteIDs []string) ([]ciRegressionCaseRemoteSummary, error) {
-	var cases []ciRegressionCaseRemoteSummary
-	for _, suiteID := range suiteIDs {
-		resp, err := rc.Client.Get(cmd.Context(), "/v1/workspaces/"+workspaceID+"/regression-suites/"+suiteID+"/cases", nil)
+const ciRemoteValidationPageLimit = 100
+
+func listCIManifestRemoteObjects(cmd *cobra.Command, rc *RunContext, path string, query url.Values) ([]map[string]any, error) {
+	var items []map[string]any
+	for offset := 0; ; offset += ciRemoteValidationPageLimit {
+		pageQuery := cloneURLValues(query)
+		pageQuery.Set("limit", fmt.Sprintf("%d", ciRemoteValidationPageLimit))
+		if offset > 0 {
+			pageQuery.Set("offset", fmt.Sprintf("%d", offset))
+		}
+		resp, err := rc.Client.Get(cmd.Context(), path, pageQuery)
 		if err != nil {
 			return nil, err
 		}
@@ -749,14 +742,60 @@ func listCIManifestRemoteRegressionCases(cmd *cobra.Command, rc *RunContext, wor
 			return nil, apiErr
 		}
 		var result struct {
-			Items []ciRegressionCaseRemoteSummary `json:"items"`
+			Items []map[string]any `json:"items"`
+			Total *int64           `json:"total,omitempty"`
 		}
 		if err := resp.DecodeJSON(&result); err != nil {
 			return nil, err
 		}
-		cases = append(cases, result.Items...)
+		items = append(items, result.Items...)
+		if result.Total == nil || len(result.Items) == 0 || len(result.Items) < ciRemoteValidationPageLimit || int64(len(items)) >= *result.Total {
+			break
+		}
+	}
+	return items, nil
+}
+
+func listCIManifestRemoteRegressionCases(cmd *cobra.Command, rc *RunContext, workspaceID string, suiteIDs []string) ([]ciRegressionCaseRemoteSummary, error) {
+	var cases []ciRegressionCaseRemoteSummary
+	for _, suiteID := range suiteIDs {
+		suiteCasesFetched := 0
+		for offset := 0; ; offset += ciRemoteValidationPageLimit {
+			query := url.Values{}
+			query.Set("limit", fmt.Sprintf("%d", ciRemoteValidationPageLimit))
+			if offset > 0 {
+				query.Set("offset", fmt.Sprintf("%d", offset))
+			}
+			resp, err := rc.Client.Get(cmd.Context(), "/v1/workspaces/"+workspaceID+"/regression-suites/"+suiteID+"/cases", query)
+			if err != nil {
+				return nil, err
+			}
+			if apiErr := resp.ParseError(); apiErr != nil {
+				return nil, apiErr
+			}
+			var result struct {
+				Items []ciRegressionCaseRemoteSummary `json:"items"`
+				Total *int64                          `json:"total,omitempty"`
+			}
+			if err := resp.DecodeJSON(&result); err != nil {
+				return nil, err
+			}
+			cases = append(cases, result.Items...)
+			suiteCasesFetched += len(result.Items)
+			if result.Total == nil || len(result.Items) == 0 || len(result.Items) < ciRemoteValidationPageLimit || int64(suiteCasesFetched) >= *result.Total {
+				break
+			}
+		}
 	}
 	return cases, nil
+}
+
+func cloneURLValues(values url.Values) url.Values {
+	out := url.Values{}
+	for key, entries := range values {
+		out[key] = append([]string(nil), entries...)
+	}
+	return out
 }
 
 func findCIManifestRemoteObjectByID(items []map[string]any, id string) (map[string]any, bool) {
