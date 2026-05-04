@@ -540,6 +540,43 @@ func TestCIShouldRunDerivesChangedFilesFromGitDiff(t *testing.T) {
 	}
 }
 
+func TestCIShouldRunDerivesDeletedFilesFromGitDiff(t *testing.T) {
+	repo := t.TempDir()
+	runGit(t, repo, "init")
+	runGit(t, repo, "config", "user.email", "ci@example.test")
+	runGit(t, repo, "config", "user.name", "CI Test")
+	if err := os.MkdirAll(filepath.Join(repo, "prompts"), 0o755); err != nil {
+		t.Fatalf("MkdirAll() error: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "prompts", "system.md"), []byte("prompt\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile() error: %v", err)
+	}
+	runGit(t, repo, "add", "prompts/system.md")
+	runGit(t, repo, "commit", "-m", "base")
+	base := strings.TrimSpace(runGit(t, repo, "rev-parse", "HEAD"))
+
+	runGit(t, repo, "rm", "prompts/system.md")
+	runGit(t, repo, "commit", "-m", "remove prompt")
+	head := strings.TrimSpace(runGit(t, repo, "rev-parse", "HEAD"))
+
+	target := writeCIManifest(t, sampleCIManifestYAML)
+	result := runCIShouldRunJSON(t, []string{
+		"ci", "should-run",
+		"--manifest", target,
+		"--repo", repo,
+		"--base", base,
+		"--head", head,
+		"--json",
+	})
+
+	if !result.ShouldRun {
+		t.Fatalf("should_run = false, want true for deleted prompt: %+v", result)
+	}
+	if len(result.ChangedFiles) != 1 || result.ChangedFiles[0] != "prompts/system.md" {
+		t.Fatalf("changed_files = %+v, want deleted prompts/system.md", result.ChangedFiles)
+	}
+}
+
 func writeCIManifest(t *testing.T, text string) string {
 	t.Helper()
 	target := filepath.Join(t.TempDir(), "agentclash-ci.yaml")

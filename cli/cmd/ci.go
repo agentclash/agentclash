@@ -499,7 +499,7 @@ func gitChangedFiles(repo string, base string, head string) ([]string, error) {
 		return nil, fmt.Errorf("--base and --head are required to derive changed files")
 	}
 	diffRange := fmt.Sprintf("%s...%s", base, head)
-	cmd := exec.Command("git", "-C", repo, "diff", "--name-only", "--diff-filter=ACMRTUXB", diffRange)
+	cmd := exec.Command("git", "-C", repo, "diff", "--name-only", "--diff-filter=ACDMRTUXB", diffRange)
 	out, err := cmd.Output()
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
