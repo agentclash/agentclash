@@ -101,6 +101,20 @@ function makeCase(overrides: Partial<RegressionCase> = {}): RegressionCase {
       source_failure_fingerprint: "frf-test-fingerprint",
       source_failure_cluster_key: "frc-test-cluster",
     },
+    validation: {
+      status: "reproducing",
+      run_count: 5,
+      failure_count: 3,
+      pass_count: 2,
+      reproduction_rate: 0.6,
+      reproduction_threshold: 0.6,
+      required_runs: 5,
+      remaining_runs: 0,
+      last_outcome: "pass",
+      last_validated_at: "2026-04-22T12:30:00Z",
+      recommended_action:
+        "Failure reproduces at or above threshold; keep this case active in CI gates.",
+    },
     created_at: "2026-04-22T12:00:00Z",
     updated_at: "2026-04-22T12:00:00Z",
     ...overrides,
@@ -138,6 +152,8 @@ describe("regression provenance UI", () => {
     try {
       expect(view.container.textContent).toContain("ticket-1");
       expect(view.container.textContent).toContain("frc-test-cluster");
+      expect(view.container.textContent).toContain("reproducing");
+      expect(view.container.textContent).toContain("60% repro");
     } finally {
       view.cleanup();
     }
@@ -158,6 +174,9 @@ describe("regression provenance UI", () => {
       expect(view.container.textContent).toContain("frc-test-cluster");
       expect(view.container.textContent).toContain("Failure Fingerprint");
       expect(view.container.textContent).toContain("frf-test-fingerprint");
+      expect(view.container.textContent).toContain("Validation");
+      expect(view.container.textContent).toContain("3 fail");
+      expect(view.container.textContent).toContain("60% / 60%");
     } finally {
       view.cleanup();
     }

@@ -35,6 +35,7 @@ import {
   CaseStatusBadge,
   SeverityBadge,
   SuiteStatusBadge,
+  ValidationBadge,
 } from "../badges";
 import { EditSuiteDialog } from "./edit-suite-dialog";
 import { SuiteRunHistory } from "./suite-run-history";
@@ -182,6 +183,7 @@ export function SuiteDetailClient({
                       <TableHead>Severity</TableHead>
                       <TableHead>Failure Class</TableHead>
                       <TableHead>Source</TableHead>
+                      <TableHead>Validation</TableHead>
                       <TableHead>Created</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -189,7 +191,7 @@ export function SuiteDetailClient({
                     {filteredCases.length === 0 ? (
                       <TableRow>
                         <TableCell
-                          colSpan={6}
+                          colSpan={7}
                           className="py-8 text-center text-sm text-muted-foreground"
                         >
                           No cases match the current filters.
@@ -222,6 +224,9 @@ export function SuiteDetailClient({
                           </TableCell>
                           <TableCell>
                             <CaseProvenanceSummary regressionCase={c} />
+                          </TableCell>
+                          <TableCell>
+                            <CaseValidationSummary regressionCase={c} />
                           </TableCell>
                           <TableCell className="text-sm text-muted-foreground">
                             {new Date(c.created_at).toLocaleDateString()}
@@ -314,6 +319,29 @@ function CaseProvenanceSummary({
         )}
     </div>
   );
+}
+
+function CaseValidationSummary({
+  regressionCase,
+}: {
+  regressionCase: RegressionCase;
+}) {
+  const validation = regressionCase.validation;
+  const detail =
+    validation.reproduction_rate === undefined
+      ? `${validation.run_count}/${validation.required_runs} runs`
+      : `${formatPercent(validation.reproduction_rate)} repro`;
+
+  return (
+    <div className="flex flex-col items-start gap-1">
+      <ValidationBadge status={validation.status} />
+      <span className="text-xs text-muted-foreground">{detail}</span>
+    </div>
+  );
+}
+
+function formatPercent(value: number): string {
+  return `${Math.round(value * 100)}%`;
 }
 
 function FilterSelect<T extends string>({

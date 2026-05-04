@@ -17,7 +17,7 @@ UPDATE runs
 SET eval_session_id = $1
 WHERE id = $2
   AND eval_session_id IS NULL
-RETURNING id, organization_id, workspace_id, challenge_pack_version_id, challenge_input_set_id, created_by_user_id, name, status, execution_mode, temporal_workflow_id, temporal_run_id, execution_plan, queued_at, started_at, finished_at, cancelled_at, failed_at, created_at, updated_at, official_pack_mode, eval_session_id, race_context, race_context_min_step_gap
+RETURNING id, organization_id, workspace_id, challenge_pack_version_id, challenge_input_set_id, created_by_user_id, name, status, execution_mode, temporal_workflow_id, temporal_run_id, execution_plan, queued_at, started_at, finished_at, cancelled_at, failed_at, created_at, updated_at, official_pack_mode, eval_session_id, race_context, race_context_min_step_gap, ci_metadata
 `
 
 type AttachRunToEvalSessionParams struct {
@@ -52,6 +52,7 @@ func (q *Queries) AttachRunToEvalSession(ctx context.Context, arg AttachRunToEva
 		&i.EvalSessionID,
 		&i.RaceContext,
 		&i.RaceContextMinStepGap,
+		&i.CiMetadata,
 	)
 	return i, err
 }
@@ -273,7 +274,7 @@ func (q *Queries) ListEvalSessionsByWorkspaceID(ctx context.Context, arg ListEva
 }
 
 const listRunsByEvalSessionID = `-- name: ListRunsByEvalSessionID :many
-SELECT id, organization_id, workspace_id, challenge_pack_version_id, challenge_input_set_id, created_by_user_id, name, status, execution_mode, temporal_workflow_id, temporal_run_id, execution_plan, ci_metadata, queued_at, started_at, finished_at, cancelled_at, failed_at, created_at, updated_at, official_pack_mode, eval_session_id, race_context, race_context_min_step_gap
+SELECT id, organization_id, workspace_id, challenge_pack_version_id, challenge_input_set_id, created_by_user_id, name, status, execution_mode, temporal_workflow_id, temporal_run_id, execution_plan, queued_at, started_at, finished_at, cancelled_at, failed_at, created_at, updated_at, official_pack_mode, eval_session_id, race_context, race_context_min_step_gap, ci_metadata
 FROM runs
 WHERE eval_session_id = $1
 ORDER BY created_at ASC, id ASC
@@ -305,7 +306,6 @@ func (q *Queries) ListRunsByEvalSessionID(ctx context.Context, arg ListRunsByEva
 			&i.TemporalWorkflowID,
 			&i.TemporalRunID,
 			&i.ExecutionPlan,
-			&i.CiMetadata,
 			&i.QueuedAt,
 			&i.StartedAt,
 			&i.FinishedAt,
@@ -317,6 +317,7 @@ func (q *Queries) ListRunsByEvalSessionID(ctx context.Context, arg ListRunsByEva
 			&i.EvalSessionID,
 			&i.RaceContext,
 			&i.RaceContextMinStepGap,
+			&i.CiMetadata,
 		); err != nil {
 			return nil, err
 		}

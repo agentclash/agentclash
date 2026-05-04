@@ -6765,6 +6765,7 @@ components:
           payload_snapshot,
           expected_contract,
           metadata,
+          validation,
           created_at,
           updated_at,
         ]
@@ -6838,12 +6839,72 @@ components:
           additionalProperties: true
         latest_promotion:
           $ref: "#/components/schemas/RegressionPromotion"
+        validation:
+          $ref: "#/components/schemas/RegressionCaseValidation"
         created_at:
           type: string
           format: date-time
         updated_at:
           type: string
           format: date-time
+
+    RegressionCaseValidation:
+      type: object
+      required:
+        [
+          status,
+          run_count,
+          failure_count,
+          pass_count,
+          reproduction_threshold,
+          required_runs,
+          remaining_runs,
+          recommended_action,
+        ]
+      properties:
+        status:
+          type: string
+          enum:
+            [
+              not_validated,
+              collecting_signal,
+              reproducing,
+              passing,
+              flaky,
+            ]
+        run_count:
+          type: integer
+          minimum: 0
+        failure_count:
+          type: integer
+          minimum: 0
+        pass_count:
+          type: integer
+          minimum: 0
+        reproduction_rate:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 1
+        reproduction_threshold:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 1
+        required_runs:
+          type: integer
+          minimum: 1
+        remaining_runs:
+          type: integer
+          minimum: 0
+        last_outcome:
+          type: string
+          enum: [pass, fail]
+        last_validated_at:
+          type: string
+          format: date-time
+        recommended_action:
+          type: string
 
     RegressionPromotion:
       type: object

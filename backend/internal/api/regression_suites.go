@@ -490,35 +490,50 @@ type regressionPromotionResponse struct {
 }
 
 type regressionCaseResponse struct {
-	ID                           uuid.UUID                      `json:"id"`
-	SuiteID                      uuid.UUID                      `json:"suite_id"`
-	WorkspaceID                  uuid.UUID                      `json:"workspace_id"`
-	Title                        string                         `json:"title"`
-	Description                  string                         `json:"description"`
-	Status                       domain.RegressionCaseStatus    `json:"status"`
-	Severity                     domain.RegressionSeverity      `json:"severity"`
-	PromotionMode                domain.RegressionPromotionMode `json:"promotion_mode"`
-	SourceRunID                  *uuid.UUID                     `json:"source_run_id,omitempty"`
-	SourceRunAgentID             *uuid.UUID                     `json:"source_run_agent_id,omitempty"`
-	SourceReplayID               *uuid.UUID                     `json:"source_replay_id,omitempty"`
-	SourceChallengePackVersionID uuid.UUID                      `json:"source_challenge_pack_version_id"`
-	SourceChallengeInputSetID    *uuid.UUID                     `json:"source_challenge_input_set_id,omitempty"`
-	SourceChallengeIdentityID    uuid.UUID                      `json:"source_challenge_identity_id"`
-	SourceChallengeKey           *string                        `json:"source_challenge_key,omitempty"`
-	SourceCaseKey                string                         `json:"source_case_key"`
-	SourceItemKey                *string                        `json:"source_item_key,omitempty"`
-	SourceFailureFingerprint     *string                        `json:"source_failure_fingerprint,omitempty"`
-	SourceFailureClusterKey      *string                        `json:"source_failure_cluster_key,omitempty"`
-	EvidenceTier                 string                         `json:"evidence_tier"`
-	FailureClass                 string                         `json:"failure_class"`
-	FailureSummary               string                         `json:"failure_summary"`
-	PayloadSnapshot              json.RawMessage                `json:"payload_snapshot"`
-	ExpectedContract             json.RawMessage                `json:"expected_contract"`
-	ValidatorOverrides           json.RawMessage                `json:"validator_overrides,omitempty"`
-	Metadata                     json.RawMessage                `json:"metadata"`
-	LatestPromotion              *regressionPromotionResponse   `json:"latest_promotion,omitempty"`
-	CreatedAt                    time.Time                      `json:"created_at"`
-	UpdatedAt                    time.Time                      `json:"updated_at"`
+	ID                           uuid.UUID                        `json:"id"`
+	SuiteID                      uuid.UUID                        `json:"suite_id"`
+	WorkspaceID                  uuid.UUID                        `json:"workspace_id"`
+	Title                        string                           `json:"title"`
+	Description                  string                           `json:"description"`
+	Status                       domain.RegressionCaseStatus      `json:"status"`
+	Severity                     domain.RegressionSeverity        `json:"severity"`
+	PromotionMode                domain.RegressionPromotionMode   `json:"promotion_mode"`
+	SourceRunID                  *uuid.UUID                       `json:"source_run_id,omitempty"`
+	SourceRunAgentID             *uuid.UUID                       `json:"source_run_agent_id,omitempty"`
+	SourceReplayID               *uuid.UUID                       `json:"source_replay_id,omitempty"`
+	SourceChallengePackVersionID uuid.UUID                        `json:"source_challenge_pack_version_id"`
+	SourceChallengeInputSetID    *uuid.UUID                       `json:"source_challenge_input_set_id,omitempty"`
+	SourceChallengeIdentityID    uuid.UUID                        `json:"source_challenge_identity_id"`
+	SourceChallengeKey           *string                          `json:"source_challenge_key,omitempty"`
+	SourceCaseKey                string                           `json:"source_case_key"`
+	SourceItemKey                *string                          `json:"source_item_key,omitempty"`
+	SourceFailureFingerprint     *string                          `json:"source_failure_fingerprint,omitempty"`
+	SourceFailureClusterKey      *string                          `json:"source_failure_cluster_key,omitempty"`
+	EvidenceTier                 string                           `json:"evidence_tier"`
+	FailureClass                 string                           `json:"failure_class"`
+	FailureSummary               string                           `json:"failure_summary"`
+	PayloadSnapshot              json.RawMessage                  `json:"payload_snapshot"`
+	ExpectedContract             json.RawMessage                  `json:"expected_contract"`
+	ValidatorOverrides           json.RawMessage                  `json:"validator_overrides,omitempty"`
+	Metadata                     json.RawMessage                  `json:"metadata"`
+	LatestPromotion              *regressionPromotionResponse     `json:"latest_promotion,omitempty"`
+	Validation                   regressionCaseValidationResponse `json:"validation"`
+	CreatedAt                    time.Time                        `json:"created_at"`
+	UpdatedAt                    time.Time                        `json:"updated_at"`
+}
+
+type regressionCaseValidationResponse struct {
+	Status                string     `json:"status"`
+	RunCount              int        `json:"run_count"`
+	FailureCount          int        `json:"failure_count"`
+	PassCount             int        `json:"pass_count"`
+	ReproductionRate      *float64   `json:"reproduction_rate,omitempty"`
+	ReproductionThreshold float64    `json:"reproduction_threshold"`
+	RequiredRuns          int        `json:"required_runs"`
+	RemainingRuns         int        `json:"remaining_runs"`
+	LastOutcome           *string    `json:"last_outcome,omitempty"`
+	LastValidatedAt       *time.Time `json:"last_validated_at,omitempty"`
+	RecommendedAction     string     `json:"recommended_action"`
 }
 
 type listRegressionSuitesResponse struct {
@@ -925,9 +940,62 @@ func buildRegressionCaseResponse(regressionCase repository.RegressionCase) regre
 		ValidatorOverrides:           regressionCase.ValidatorOverrides,
 		Metadata:                     regressionCase.Metadata,
 		LatestPromotion:              latestPromotion,
+		Validation:                   buildRegressionCaseValidationResponse(regressionCase.ValidationStats),
 		CreatedAt:                    regressionCase.CreatedAt,
 		UpdatedAt:                    regressionCase.UpdatedAt,
 	}
+}
+
+const (
+	regressionValidationRequiredRuns          = 5
+	regressionValidationReproductionThreshold = 0.6
+
+	regressionValidationStatusNotValidated     = "not_validated"
+	regressionValidationStatusCollectingSignal = "collecting_signal"
+	regressionValidationStatusReproducing      = "reproducing"
+	regressionValidationStatusPassing          = "passing"
+	regressionValidationStatusFlaky            = "flaky"
+)
+
+func buildRegressionCaseValidationResponse(stats *repository.RegressionCaseValidationStats) regressionCaseValidationResponse {
+	response := regressionCaseValidationResponse{
+		Status:                regressionValidationStatusNotValidated,
+		ReproductionThreshold: regressionValidationReproductionThreshold,
+		RequiredRuns:          regressionValidationRequiredRuns,
+		RemainingRuns:         regressionValidationRequiredRuns,
+		RecommendedAction:     "Run this regression case in CI or suite-only mode to establish a reproduction signal.",
+	}
+	if stats == nil || stats.RunCount == 0 {
+		return response
+	}
+
+	response.RunCount = stats.RunCount
+	response.FailureCount = stats.FailureCount
+	response.PassCount = stats.PassCount
+	response.RemainingRuns = max(regressionValidationRequiredRuns-stats.RunCount, 0)
+	reproductionRate := stats.ReproductionRate
+	response.ReproductionRate = &reproductionRate
+	if strings.TrimSpace(stats.LastOutcome) != "" {
+		outcome := stats.LastOutcome
+		response.LastOutcome = &outcome
+	}
+	response.LastValidatedAt = stats.LastValidatedAt
+
+	switch {
+	case stats.RunCount < regressionValidationRequiredRuns:
+		response.Status = regressionValidationStatusCollectingSignal
+		response.RecommendedAction = fmt.Sprintf("Collect %d more scored run(s) before treating this case as statistically validated.", response.RemainingRuns)
+	case stats.ReproductionRate >= regressionValidationReproductionThreshold:
+		response.Status = regressionValidationStatusReproducing
+		response.RecommendedAction = "Failure reproduces at or above threshold; keep this case active in CI gates."
+	case stats.FailureCount == 0:
+		response.Status = regressionValidationStatusPassing
+		response.RecommendedAction = "No failures observed across the validation window; keep as a guardrail or archive if obsolete."
+	default:
+		response.Status = regressionValidationStatusFlaky
+		response.RecommendedAction = "Mixed outcomes are below the reproduction threshold; inspect replay evidence before making this case blocking."
+	}
+	return response
 }
 
 type regressionFailureProvenance struct {

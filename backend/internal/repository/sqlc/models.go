@@ -256,7 +256,6 @@ type Run struct {
 	TemporalWorkflowID     *string
 	TemporalRunID          *string
 	ExecutionPlan          []byte
-	CiMetadata             []byte
 	QueuedAt               pgtype.Timestamptz
 	StartedAt              pgtype.Timestamptz
 	FinishedAt             pgtype.Timestamptz
@@ -268,6 +267,7 @@ type Run struct {
 	EvalSessionID          *uuid.UUID
 	RaceContext            bool
 	RaceContextMinStepGap  *int32
+	CiMetadata             []byte
 }
 
 type RunAgent struct {
