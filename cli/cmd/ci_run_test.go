@@ -32,6 +32,12 @@ func TestCIRunCreatesCandidateRunAndEvaluatesPassingGate(t *testing.T) {
 	if result.Baseline.RunID != "00000000-0000-0000-0000-000000000008" {
 		t.Fatalf("baseline run = %q, want manifest baseline", result.Baseline.RunID)
 	}
+	if result.BaselineResolution.Strategy != "locked_run" {
+		t.Fatalf("baseline strategy = %q, want locked_run", result.BaselineResolution.Strategy)
+	}
+	if result.BaselineResolution.Source != "baseline.run_id" || result.BaselineResolution.Refresh.Mode != "manual" {
+		t.Fatalf("baseline resolution = %+v, want source and refresh policy", result.BaselineResolution)
+	}
 	if captures.BuildVersionBody["agent_kind"] != "llm_agent" {
 		t.Fatalf("build version body = %+v, want spec payload", captures.BuildVersionBody)
 	}
@@ -74,6 +80,35 @@ regressions: {}
 	}
 	if result.ExitCode != ciRunExitInvalidManifest || !strings.Contains(strings.Join(result.Errors, "\n"), "trigger.paths") {
 		t.Fatalf("result = %+v, want invalid manifest errors", result)
+	}
+}
+
+func TestCIRunMissingWorkspaceReturnsJSONExitCode(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("AGENTCLASH_WORKSPACE", "")
+	target := writeCIRunManifest(t)
+
+	result, err, _ := runCIRunJSON(t, []string{"ci", "run", "--manifest", target, "--json"}, "http://unused")
+	if got := exitCodeOf(t, err); got != ciRunExitInvalidManifest {
+		t.Fatalf("exit code = %d, want invalid manifest %d (err %v)", got, ciRunExitInvalidManifest, err)
+	}
+	if result.ExitCode != ciRunExitInvalidManifest || !strings.Contains(strings.Join(result.Errors, "\n"), "no workspace specified") {
+		t.Fatalf("result = %+v, want workspace error", result)
+	}
+}
+
+func TestCIRunRejectsUnsafeSpecFilePaths(t *testing.T) {
+	for _, path := range []string{
+		"/tmp/agent.json",
+		"../agent.json",
+		".",
+		"..",
+	} {
+		t.Run(path, func(t *testing.T) {
+			if err := validateCIRunSpecPath(path); err == nil {
+				t.Fatalf("validateCIRunSpecPath(%q) error = nil, want rejection", path)
+			}
+		})
 	}
 }
 
@@ -149,7 +184,11 @@ type ciRunRouteCaptures struct {
 
 func writeCIRunManifest(t *testing.T) string {
 	t.Helper()
-	dir := t.TempDir()
+	dir, err := os.MkdirTemp(".", "ci-run-spec-*")
+	if err != nil {
+		t.Fatalf("MkdirTemp(spec) error: %v", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
 	specPath := filepath.Join(dir, "agent.json")
 	if err := os.WriteFile(specPath, []byte(`{"agent_kind":"llm_agent","prompt_spec":{"system":"be useful"}}`), 0o644); err != nil {
 		t.Fatalf("WriteFile(spec) error: %v", err)

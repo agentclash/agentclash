@@ -1,10 +1,12 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -47,7 +49,10 @@ Exit codes:
   10  invalid manifest or local candidate spec
   20  API/auth failure
   30  candidate run timed out
-  31  candidate run failed before gate evaluation`,
+  31  candidate run failed before gate evaluation
+
+Missing workspace configuration exits 10 for this command so --json callers
+still receive a machine-readable envelope.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		rc := GetRunContext(cmd)
@@ -67,16 +72,17 @@ Exit codes:
 }
 
 type ciRunResult struct {
-	ManifestPath     string                            `json:"manifest_path" yaml:"manifest_path"`
-	WorkspaceID      string                            `json:"workspace_id" yaml:"workspace_id"`
-	RemoteValidation *ciManifestRemoteValidationResult `json:"remote_validation,omitempty" yaml:"remote_validation,omitempty"`
-	Candidate        ciRunCandidateResult              `json:"candidate" yaml:"candidate"`
-	Baseline         ciBaselineRunResolution           `json:"baseline" yaml:"baseline"`
-	ReleaseGate      map[string]any                    `json:"release_gate,omitempty" yaml:"release_gate,omitempty"`
-	GateVerdict      string                            `json:"gate_verdict,omitempty" yaml:"gate_verdict,omitempty"`
-	FailureReason    string                            `json:"failure_reason,omitempty" yaml:"failure_reason,omitempty"`
-	ExitCode         int                               `json:"exit_code" yaml:"exit_code"`
-	Errors           []string                          `json:"errors,omitempty" yaml:"errors,omitempty"`
+	ManifestPath       string                            `json:"manifest_path" yaml:"manifest_path"`
+	WorkspaceID        string                            `json:"workspace_id" yaml:"workspace_id"`
+	RemoteValidation   *ciManifestRemoteValidationResult `json:"remote_validation,omitempty" yaml:"remote_validation,omitempty"`
+	Candidate          ciRunCandidateResult              `json:"candidate" yaml:"candidate"`
+	BaselineResolution ciBaselineResolution              `json:"baseline_resolution,omitempty" yaml:"baseline_resolution,omitempty"`
+	Baseline           ciBaselineRunResolution           `json:"baseline" yaml:"baseline"`
+	ReleaseGate        map[string]any                    `json:"release_gate,omitempty" yaml:"release_gate,omitempty"`
+	GateVerdict        string                            `json:"gate_verdict,omitempty" yaml:"gate_verdict,omitempty"`
+	FailureReason      string                            `json:"failure_reason,omitempty" yaml:"failure_reason,omitempty"`
+	ExitCode           int                               `json:"exit_code" yaml:"exit_code"`
+	Errors             []string                          `json:"errors,omitempty" yaml:"errors,omitempty"`
 }
 
 type ciRunCandidateResult struct {
@@ -91,8 +97,12 @@ type ciRunCandidateResult struct {
 }
 
 func executeCIRun(cmd *cobra.Command, rc *RunContext) (ciRunResult, error) {
-	workspaceID := RequireWorkspace(cmd)
 	manifestPath, _ := cmd.Flags().GetString("manifest")
+	workspaceID := strings.TrimSpace(rc.Workspace)
+	if workspaceID == "" {
+		msg := "no workspace specified. Run 'agentclash link' to choose a default workspace, or pass --workspace, set AGENTCLASH_WORKSPACE, or create .agentclash.yaml with 'agentclash init'."
+		return ciRunResult{ManifestPath: manifestPath, ExitCode: ciRunExitInvalidManifest, Errors: []string{msg}}, &ExitCodeError{Code: ciRunExitInvalidManifest, Message: msg}
+	}
 	follow, _ := cmd.Flags().GetBool("follow")
 	timeout, _ := cmd.Flags().GetDuration("timeout")
 	pollInterval, _ := cmd.Flags().GetDuration("poll-interval")
@@ -170,10 +180,14 @@ func executeCIRun(cmd *cobra.Command, rc *RunContext) (ciRunResult, error) {
 
 	baseline, err := resolveCIManifestBaseline(cmd, rc, workspaceID, manifestPath, manifest, time.Now().UTC())
 	if err != nil {
-		result.ExitCode = ciRunExitForError(err).(*ExitCodeError).Code
+		result.ExitCode = ciRunExitInvalidManifest
+		if ciRunIsAPIError(err) {
+			result.ExitCode = ciRunExitAPI
+		}
 		result.Errors = append(result.Errors, err.Error())
-		return result, err
+		return result, &ExitCodeError{Code: result.ExitCode, Message: err.Error()}
 	}
+	result.BaselineResolution = baseline
 	result.Baseline = baseline.Baseline
 
 	run, err := createCIRun(cmd, rc, workspaceID, manifest, result.Candidate.DeploymentID)
@@ -254,6 +268,9 @@ func createCIBuildVersion(cmd *cobra.Command, rc *RunContext, manifest ciManifes
 }
 
 func ciRunSpecBody(path string) (map[string]any, error) {
+	if err := validateCIRunSpecPath(path); err != nil {
+		return nil, err
+	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("reading candidate.build.spec_file: %w", err)
@@ -263,6 +280,17 @@ func ciRunSpecBody(path string) (map[string]any, error) {
 		return nil, fmt.Errorf("parsing candidate.build.spec_file: %w", err)
 	}
 	return body, nil
+}
+
+func validateCIRunSpecPath(path string) error {
+	if filepath.IsAbs(path) {
+		return fmt.Errorf("candidate.build.spec_file must be a relative path inside the repository")
+	}
+	cleaned := filepath.Clean(path)
+	if cleaned == "." || cleaned == ".." || strings.HasPrefix(cleaned, ".."+string(os.PathSeparator)) {
+		return fmt.Errorf("candidate.build.spec_file must stay inside the repository")
+	}
+	return nil
 }
 
 func markCIBuildVersionReady(cmd *cobra.Command, rc *RunContext, versionID string) (map[string]any, error) {
@@ -369,8 +397,21 @@ func waitForCIRunCompletion(cmd *cobra.Command, rc *RunContext, runID string, ti
 			}
 		}
 		if sleepFor > 0 {
-			time.Sleep(sleepFor)
+			if err := sleepCIRunPoll(cmd.Context(), sleepFor); err != nil {
+				return run, err
+			}
 		}
+	}
+}
+
+func sleepCIRunPoll(ctx context.Context, duration time.Duration) error {
+	timer := time.NewTimer(duration)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
 	}
 }
 
@@ -393,7 +434,7 @@ func ciRunTerminalStatus(status string) (terminal bool, success bool) {
 	switch strings.ToLower(strings.TrimSpace(status)) {
 	case "completed", "succeeded", "success":
 		return true, true
-	case "failed", "error", "errored", "canceled", "cancelled":
+	case "failed", "error", "errored", "canceled", "cancelled", "aborted", "timed_out", "timeout", "expired":
 		return true, false
 	default:
 		return false, false
@@ -440,7 +481,7 @@ func evaluateCIRunReleaseGate(cmd *cobra.Command, rc *RunContext, baselineRunID,
 	}
 	var raw map[string]any
 	if err := resp.DecodeJSON(&raw); err != nil {
-		return nil, releaseGateVerdict{}, fmt.Errorf("decoding release gate response: %w", err)
+		return nil, releaseGateVerdict{}, fmt.Errorf("decoding raw release gate response: %w", err)
 	}
 	return raw, verdict, nil
 }

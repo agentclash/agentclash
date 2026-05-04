@@ -185,10 +185,14 @@ jobs:
         if: steps.should-run.outputs.should_run == 'true'
         id: agentclash
         run: |
+          set +e
           agentclash ci run --manifest .agentclash/ci.yaml --json \
-            | tee agentclash-ci-result.json
+            > agentclash-ci-result.json
+          status=$?
+          cat agentclash-ci-result.json
           echo "run_id=$(jq -r '.candidate.run_id' agentclash-ci-result.json)" >> "$GITHUB_OUTPUT"
           echo "gate_verdict=$(jq -r '.gate_verdict' agentclash-ci-result.json)" >> "$GITHUB_OUTPUT"
+          exit "$status"
         env:
           AGENTCLASH_API_URL: https://api.agentclash.dev
           AGENTCLASH_TOKEN: ${{ secrets.AGENTCLASH_TOKEN }}
