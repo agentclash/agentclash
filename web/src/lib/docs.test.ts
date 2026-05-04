@@ -191,6 +191,28 @@ describe("agent skill docs", () => {
     expect(doc?.content).toContain("judge_mode: hybrid");
   });
 
+  it("generates the challenge pack input sets skill with source-backed details", () => {
+    const doc = getDocBySlug([
+      "agent-skills",
+      "challenge-pack-skills",
+      "agentclash-challenge-pack-input-sets",
+    ]);
+
+    expect(doc?.title).toBe("Challenge Pack Input Sets Skill");
+    expect(doc?.content).toContain("agentclash challenge-pack validate path/to/pack.yaml --json");
+    expect(doc?.content).toContain("input_sets:");
+    expect(doc?.content).toContain("cases:");
+    expect(doc?.content).toContain("challenge_key: refund-question");
+    expect(doc?.content).toContain("case_key: refund-window-basic");
+    expect(doc?.content).toContain("payload:");
+    expect(doc?.content).toContain("inputs:");
+    expect(doc?.content).toContain("expectations:");
+    expect(doc?.content).toContain("source: input:prompt");
+    expect(doc?.content).toContain("All cases inside the same input set must reference the same `challenge_key`");
+    expect(doc?.content).toContain("smoke, CI, full, regression, and edge");
+    expect(doc?.content).toContain("`--scope suite_only` is for regression suite/case selection");
+  });
+
   it("includes the index and every skill in markdown paths", () => {
     const paths = getAllDocMarkdownPaths();
 
