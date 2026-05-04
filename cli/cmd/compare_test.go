@@ -13,8 +13,8 @@ import (
 
 func TestCompareGateReturnsExitCodeByVerdict(t *testing.T) {
 	cases := []struct {
-		verdict string
-		wantErr bool
+		verdict  string
+		wantErr  bool
 		wantCode int
 	}{
 		{"pass", false, 0},
@@ -117,6 +117,41 @@ func TestCompareGateStructuredOutputPreservesFullPayload(t *testing.T) {
 	}
 }
 
+func TestCompareGateForwardsAgentRefs(t *testing.T) {
+	var gotBody map[string]any
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"POST /v1/release-gates/evaluate": func(w http.ResponseWriter, r *http.Request) {
+			json.NewDecoder(r.Body).Decode(&gotBody)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(200)
+			json.NewEncoder(w).Encode(map[string]any{
+				"release_gate": map[string]any{
+					"verdict":         "pass",
+					"summary":         "ok",
+					"reason_code":     "all_pass",
+					"evidence_status": "complete",
+				},
+			})
+		},
+	})
+	defer srv.Close()
+
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+	err := executeCommand(t, []string{
+		"compare", "gate",
+		"--baseline", "run-b",
+		"--candidate", "run-c",
+		"--baseline-agent", "agent-b",
+		"--candidate-agent", "agent-c",
+	}, srv.URL)
+	if err != nil {
+		t.Fatalf("compare gate error: %v", err)
+	}
+	if gotBody["baseline_run_agent_id"] != "agent-b" || gotBody["candidate_run_agent_id"] != "agent-c" {
+		t.Fatalf("body = %#v, want both agent refs", gotBody)
+	}
+}
+
 func TestCompareGateSanitizesHostileSummary(t *testing.T) {
 	// A compromised backend can't be allowed to:
 	// (1) move the cursor / clear the screen / smuggle OSC hyperlinks, or
@@ -162,11 +197,11 @@ func TestCompareGateSanitizesHostileSummary(t *testing.T) {
 }
 
 type streamCapture struct {
-	t       *testing.T
-	target  **os.File
+	t        *testing.T
+	target   **os.File
 	original *os.File
-	r, w    *os.File
-	done    chan string
+	r, w     *os.File
+	done     chan string
 }
 
 func captureStdout(t *testing.T) *streamCapture {

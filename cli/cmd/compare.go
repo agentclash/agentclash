@@ -23,6 +23,8 @@ func init() {
 
 	compareGateCmd.Flags().String("baseline", "", "Baseline run ID (required)")
 	compareGateCmd.Flags().String("candidate", "", "Candidate run ID (required)")
+	compareGateCmd.Flags().String("baseline-agent", "", "Baseline run agent ID (optional)")
+	compareGateCmd.Flags().String("candidate-agent", "", "Candidate run agent ID (optional)")
 	compareGateCmd.MarkFlagRequired("baseline")
 	compareGateCmd.MarkFlagRequired("candidate")
 }
@@ -173,10 +175,18 @@ This makes the command usable as a CI/CD quality gate.`,
 		rc := GetRunContext(cmd)
 		baseline, _ := cmd.Flags().GetString("baseline")
 		candidate, _ := cmd.Flags().GetString("candidate")
+		baselineAgent, _ := cmd.Flags().GetString("baseline-agent")
+		candidateAgent, _ := cmd.Flags().GetString("candidate-agent")
 
 		body := map[string]any{
 			"baseline_run_id":  baseline,
 			"candidate_run_id": candidate,
+		}
+		if baselineAgent != "" {
+			body["baseline_run_agent_id"] = baselineAgent
+		}
+		if candidateAgent != "" {
+			body["candidate_run_agent_id"] = candidateAgent
 		}
 
 		resp, err := rc.Client.Post(cmd.Context(), "/v1/release-gates/evaluate", body)
