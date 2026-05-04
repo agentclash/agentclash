@@ -134,11 +134,12 @@ agentclash ci init .agentclash/ci.yaml
 agentclash ci validate .agentclash/ci.yaml
 export AGENTCLASH_WORKSPACE="your-workspace-id" # or pass -w
 agentclash ci validate .agentclash/ci.yaml --remote --json
+agentclash ci run --manifest .agentclash/ci.yaml --json
 agentclash ci baseline --manifest .agentclash/ci.yaml --json
 agentclash ci should-run --changed-file prompts/system.md --json
 ```
 
-The current CLI validates that manifest locally by default, can optionally check referenced resource IDs against the selected workspace with `--remote`, and resolves the exact baseline run that the gate will compare against. For pull request gates, prefer a locked `baseline.run_id`; update it only after a successful mainline run in a reviewed, auditable change.
+The current CLI validates that manifest locally by default, can optionally check referenced resource IDs against the selected workspace with `--remote`, runs the manifest workflow with `ci run`, and resolves the exact baseline run that the gate will compare against. For pull request gates, prefer a locked `baseline.run_id`; update it only after a successful mainline run in a reviewed, auditable change.
 
 Existing commands also work non-interactively with environment variables and explicit IDs:
 

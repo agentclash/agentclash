@@ -5,6 +5,7 @@ web/.data/
 web/.env.local
 cli/agentclash
 cli/dist/
+cli/cmd/ci-run-spec-*/
 
 # Runtime state emitted by Claude Code's scheduler / background runners.
 .claude/scheduled_tasks.lock
