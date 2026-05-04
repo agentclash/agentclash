@@ -213,6 +213,31 @@ describe("agent skill docs", () => {
     expect(doc?.content).toContain("`--scope suite_only` is for regression suite/case selection");
   });
 
+  it("generates the challenge pack tools sandbox skill with source-backed details", () => {
+    const doc = getDocBySlug([
+      "agent-skills",
+      "challenge-pack-skills",
+      "agentclash-challenge-pack-tools-sandbox",
+    ]);
+
+    expect(doc?.title).toBe("Challenge Pack Tools Sandbox Skill");
+    expect(doc?.content).toContain("agentclash challenge-pack validate path/to/pack.yaml --json");
+    expect(doc?.content).toContain("tools:");
+    expect(doc?.content).toContain("custom:");
+    expect(doc?.content).toContain("implementation:");
+    expect(doc?.content).toContain("primitive: http_request");
+    expect(doc?.content).toContain("args:");
+    expect(doc?.content).toContain("version.tool_policy.allowed_tool_kinds");
+    expect(doc?.content).toContain("`browser`, `build`, `data`, `file`, and `network`");
+    expect(doc?.content).toContain("Do not use `shell`");
+    expect(doc?.content).toContain("`${secrets.INVENTORY_API_KEY}`");
+    expect(doc?.content).toContain("`prompt_eval` packs cannot use challenge-pack tools or sandbox settings");
+    expect(doc?.content).toContain("network_allowlist");
+    expect(doc?.content).toContain("additional_packages");
+    expect(doc?.content).toContain("sandbox_template_id");
+    expect(doc?.content).toContain("`version.filesystem` exists as a raw map");
+  });
+
   it("includes the index and every skill in markdown paths", () => {
     const paths = getAllDocMarkdownPaths();
 
