@@ -202,6 +202,7 @@ case_run_outcomes AS (
         src.regression_case_id,
         src.run_id,
         COALESCE(r.finished_at, r.started_at, r.created_at)::timestamptz AS validated_at,
+        -- Treat any failed winning-agent judge verdict as a reproduced failure.
         CASE
             WHEN bool_or(jr.verdict = 'fail') THEN 'fail'
             WHEN bool_or(jr.verdict = 'pass') THEN 'pass'
@@ -220,6 +221,7 @@ case_run_outcomes AS (
         jr.regression_case_id = src.regression_case_id
         OR (
             jr.regression_case_id IS NULL
+            -- Older judge rows only carry the challenge identity; use it as a fallback.
             AND jr.challenge_identity_id = src.challenge_identity_id
         )
      )
@@ -256,6 +258,7 @@ case_run_outcomes AS (
         src.regression_case_id,
         src.run_id,
         COALESCE(r.finished_at, r.started_at, r.created_at)::timestamptz AS validated_at,
+        -- Treat any failed winning-agent judge verdict as a reproduced failure.
         CASE
             WHEN bool_or(jr.verdict = 'fail') THEN 'fail'
             WHEN bool_or(jr.verdict = 'pass') THEN 'pass'
@@ -274,6 +277,7 @@ case_run_outcomes AS (
         jr.regression_case_id = src.regression_case_id
         OR (
             jr.regression_case_id IS NULL
+            -- Older judge rows only carry the challenge identity; use it as a fallback.
             AND jr.challenge_identity_id = src.challenge_identity_id
         )
      )

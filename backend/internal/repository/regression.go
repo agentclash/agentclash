@@ -421,6 +421,9 @@ func (r *Repository) ListRegressionCasesBySuiteID(ctx context.Context, suiteID u
 		}
 		cases = append(cases, regressionCase)
 	}
+	if len(cases) == 0 {
+		return cases, nil
+	}
 	statsByCaseID, err := r.regressionCaseValidationStatsBySuiteID(ctx, suiteID)
 	if err != nil {
 		return nil, err
