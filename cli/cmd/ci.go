@@ -3,10 +3,13 @@ package cmd
 import (
 	"bytes"
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
+	"time"
 
 	"github.com/agentclash/agentclash/cli/internal/output"
 	"github.com/bmatcuk/doublestar/v4"
@@ -19,8 +22,10 @@ func init() {
 	ciCmd.AddCommand(ciInitCmd)
 	ciCmd.AddCommand(ciValidateCmd)
 	ciCmd.AddCommand(ciShouldRunCmd)
+	ciCmd.AddCommand(ciBaselineCmd)
 
 	ciInitCmd.Flags().Bool("force", false, "Overwrite an existing manifest")
+	ciBaselineCmd.Flags().String("manifest", ".agentclash/ci.yaml", "Path to the AgentClash CI manifest")
 	ciShouldRunCmd.Flags().String("manifest", ".agentclash/ci.yaml", "Path to the AgentClash CI manifest")
 	ciShouldRunCmd.Flags().StringArray("changed-file", nil, "Changed file path; may be repeated")
 	ciShouldRunCmd.Flags().StringSlice("labels", nil, "Pull request labels; may be comma-separated or repeated")
@@ -167,6 +172,55 @@ changed files from git diff.`,
 	},
 }
 
+var ciBaselineCmd = &cobra.Command{
+	Use:   "baseline",
+	Short: "Resolve the baseline selected by an AgentClash CI manifest",
+	Long: `Resolve the baseline selected by an AgentClash CI manifest.
+
+For pull request gates, prefer a locked baseline.run_id. A deployment baseline
+is resolved to the newest completed, workload-compatible run whose participant
+used baseline.deployment_id. The result explains the source, refresh policy, and
+the exact run id that downstream gate commands should compare against.`,
+	Args: cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		rc := GetRunContext(cmd)
+		workspaceID := RequireWorkspace(cmd)
+		manifestPath, _ := cmd.Flags().GetString("manifest")
+
+		validation, err := validateCIManifestFile(manifestPath)
+		if err != nil {
+			return err
+		}
+		resolution, err := resolveCIManifestBaseline(cmd, rc, workspaceID, manifestPath, *validation.Manifest, time.Now().UTC())
+		if err != nil {
+			return err
+		}
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(resolution)
+		}
+
+		rc.Output.PrintSuccess("Resolved AgentClash CI baseline")
+		rc.Output.PrintDetail("Strategy", resolution.Strategy)
+		rc.Output.PrintDetail("Source", resolution.Source)
+		rc.Output.PrintDetail("Run", resolution.Baseline.RunID)
+		if resolution.Baseline.RunAgentID != "" {
+			rc.Output.PrintDetail("Run Agent", resolution.Baseline.RunAgentID)
+		}
+		if resolution.Baseline.DeploymentID != "" {
+			rc.Output.PrintDetail("Deployment", resolution.Baseline.DeploymentID)
+		}
+		rc.Output.PrintDetail("Reason", resolution.Reason)
+		rc.Output.PrintDetail("Refresh", fmt.Sprintf("%s - %s", resolution.Refresh.Mode, resolution.Refresh.NextAction))
+		if resolution.Baseline.AgeDays > 0 {
+			rc.Output.PrintDetail("Age", fmt.Sprintf("%d day(s)", resolution.Baseline.AgeDays))
+		}
+		for _, warning := range resolution.Warnings {
+			rc.Output.PrintWarning(warning)
+		}
+		return nil
+	},
+}
+
 type ciManifest struct {
 	Version     int                   `yaml:"version" json:"version"`
 	Trigger     ciManifestTrigger     `yaml:"trigger" json:"trigger"`
@@ -208,7 +262,10 @@ type ciManifestEvaluation struct {
 
 type ciManifestBaseline struct {
 	RunID        string `yaml:"run_id,omitempty" json:"run_id,omitempty"`
+	RunAgentID   string `yaml:"run_agent_id,omitempty" json:"run_agent_id,omitempty"`
 	DeploymentID string `yaml:"deployment_id,omitempty" json:"deployment_id,omitempty"`
+	Refresh      string `yaml:"refresh,omitempty" json:"refresh,omitempty"`
+	MaxAgeDays   int    `yaml:"max_age_days,omitempty" json:"max_age_days,omitempty"`
 }
 
 type ciManifestGate struct {
@@ -244,6 +301,36 @@ type ciShouldRunResult struct {
 	MatchedLabels    []string               `json:"matched_labels,omitempty" yaml:"matched_labels,omitempty"`
 }
 
+type ciBaselineResolution struct {
+	ManifestPath string                      `json:"manifest_path" yaml:"manifest_path"`
+	WorkspaceID  string                      `json:"workspace_id" yaml:"workspace_id"`
+	Strategy     string                      `json:"strategy" yaml:"strategy"`
+	Source       string                      `json:"source" yaml:"source"`
+	Reason       string                      `json:"reason" yaml:"reason"`
+	Baseline     ciBaselineRunResolution     `json:"baseline" yaml:"baseline"`
+	Refresh      ciBaselineRefreshResolution `json:"refresh" yaml:"refresh"`
+	Warnings     []string                    `json:"warnings,omitempty" yaml:"warnings,omitempty"`
+}
+
+type ciBaselineRunResolution struct {
+	RunID                  string `json:"run_id" yaml:"run_id"`
+	RunAgentID             string `json:"run_agent_id,omitempty" yaml:"run_agent_id,omitempty"`
+	DeploymentID           string `json:"deployment_id,omitempty" yaml:"deployment_id,omitempty"`
+	RunName                string `json:"run_name,omitempty" yaml:"run_name,omitempty"`
+	Status                 string `json:"status" yaml:"status"`
+	ChallengePackVersionID string `json:"challenge_pack_version_id,omitempty" yaml:"challenge_pack_version_id,omitempty"`
+	InputSetID             string `json:"input_set_id,omitempty" yaml:"input_set_id,omitempty"`
+	CreatedAt              string `json:"created_at,omitempty" yaml:"created_at,omitempty"`
+	FinishedAt             string `json:"finished_at,omitempty" yaml:"finished_at,omitempty"`
+	AgeDays                int    `json:"age_days,omitempty" yaml:"age_days,omitempty"`
+}
+
+type ciBaselineRefreshResolution struct {
+	Mode       string `json:"mode" yaml:"mode"`
+	Branch     string `json:"branch,omitempty" yaml:"branch,omitempty"`
+	NextAction string `json:"next_action" yaml:"next_action"`
+}
+
 const sampleCIManifestYAML = `version: 1
 trigger:
   paths:
@@ -268,6 +355,8 @@ evaluation:
     - 00000000-0000-0000-0000-000000000007
 baseline:
   run_id: 00000000-0000-0000-0000-000000000008
+  refresh: manual
+  max_age_days: 30
 gate:
   fail_on: regression
 regressions:
@@ -334,6 +423,18 @@ func validateCIManifest(manifest ciManifest) []string {
 	if strings.TrimSpace(manifest.Baseline.RunID) == "" && strings.TrimSpace(manifest.Baseline.DeploymentID) == "" {
 		errors = append(errors, "baseline.run_id or baseline.deployment_id is required")
 	}
+	if strings.TrimSpace(manifest.Baseline.RunID) != "" && strings.TrimSpace(manifest.Baseline.DeploymentID) != "" {
+		errors = append(errors, "baseline.run_id and baseline.deployment_id are mutually exclusive")
+	}
+	if strings.TrimSpace(manifest.Baseline.RunAgentID) != "" && strings.TrimSpace(manifest.Baseline.RunID) == "" {
+		errors = append(errors, "baseline.run_agent_id requires baseline.run_id")
+	}
+	if refresh := strings.TrimSpace(manifest.Baseline.Refresh); refresh != "" && !allowedCIManifestValue(refresh, "manual", "propose", "auto_on_main") {
+		errors = append(errors, "baseline.refresh must be one of manual, propose, auto_on_main")
+	}
+	if manifest.Baseline.MaxAgeDays < 0 {
+		errors = append(errors, "baseline.max_age_days must be greater than or equal to 0")
+	}
 	if failOn := strings.TrimSpace(manifest.Gate.FailOn); failOn == "" {
 		errors = append(errors, "gate.fail_on is required")
 	} else if !allowedCIManifestValue(failOn, "regression", "warning", "insufficient_evidence") {
@@ -345,6 +446,195 @@ func validateCIManifest(manifest ciManifest) []string {
 		errors = append(errors, "regressions.promote_failures must be one of disabled, proposed, auto_on_main")
 	}
 	return errors
+}
+
+func resolveCIManifestBaseline(cmd *cobra.Command, rc *RunContext, workspaceID, manifestPath string, manifest ciManifest, now time.Time) (ciBaselineResolution, error) {
+	mode := ciBaselineRefreshMode(manifest.Baseline.Refresh)
+	resolution := ciBaselineResolution{
+		ManifestPath: manifestPath,
+		WorkspaceID:  workspaceID,
+		Refresh: ciBaselineRefreshResolution{
+			Mode:       mode,
+			Branch:     "main",
+			NextAction: ciBaselineRefreshNextAction(mode),
+		},
+	}
+
+	runID := strings.TrimSpace(manifest.Baseline.RunID)
+	deploymentID := strings.TrimSpace(manifest.Baseline.DeploymentID)
+	switch {
+	case runID != "":
+		run, err := getRunSummaryByID(cmd, rc, runID)
+		if err != nil {
+			return resolution, fmt.Errorf("resolving baseline.run_id %s: %w", runID, err)
+		}
+		if err := validateCIBaselineRun(workspaceID, manifest, run, now); err != nil {
+			return resolution, err
+		}
+
+		runAgentID := strings.TrimSpace(manifest.Baseline.RunAgentID)
+		if runAgentID != "" {
+			agent, err := resolveRunAgentSummary(cmd, rc, run.ID, runAgentID)
+			if err != nil {
+				return resolution, fmt.Errorf("resolving baseline.run_agent_id %s: %w", runAgentID, err)
+			}
+			runAgentID = agent.ID
+		}
+
+		resolution.Strategy = "locked_run"
+		resolution.Source = "baseline.run_id"
+		resolution.Reason = "baseline.run_id pins the exact accepted run for pull request gates"
+		resolution.Baseline = buildCIBaselineRunResolution(run, runAgentID, "", now)
+		return resolution, nil
+
+	case deploymentID != "":
+		resolved, err := resolveCIBaselineDeployment(cmd, rc, workspaceID, manifest, deploymentID, now)
+		if err != nil {
+			return resolution, err
+		}
+		resolution.Strategy = "deployment_latest_completed"
+		resolution.Source = "baseline.deployment_id"
+		resolution.Reason = "baseline.deployment_id resolved to the newest completed compatible run for that deployment"
+		resolution.Baseline = resolved
+		resolution.Warnings = append(resolution.Warnings, "deployment baselines move when a newer compatible run exists; use baseline.run_id for fully locked PR gates")
+		return resolution, nil
+
+	default:
+		return resolution, fmt.Errorf("baseline.run_id or baseline.deployment_id is required")
+	}
+}
+
+func ciBaselineRefreshMode(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "manual"
+	}
+	return value
+}
+
+func ciBaselineRefreshNextAction(mode string) string {
+	switch mode {
+	case "propose":
+		return "after a successful mainline run, open a reviewed change that updates baseline.run_id"
+	case "auto_on_main":
+		return "after a successful protected mainline run, automation may update baseline.run_id with an auditable commit"
+	default:
+		return "after a successful mainline run, update baseline.run_id intentionally in a reviewed change"
+	}
+}
+
+func resolveCIBaselineDeployment(cmd *cobra.Command, rc *RunContext, workspaceID string, manifest ciManifest, deploymentID string, now time.Time) (ciBaselineRunResolution, error) {
+	runs, err := listCIBaselineRuns(cmd, rc, workspaceID)
+	if err != nil {
+		return ciBaselineRunResolution{}, fmt.Errorf("listing runs for baseline.deployment_id %s: %w", deploymentID, err)
+	}
+	sort.SliceStable(runs, func(i, j int) bool {
+		return runs[i].CreatedAt > runs[j].CreatedAt
+	})
+
+	for _, run := range runs {
+		if err := validateCIBaselineRun(workspaceID, manifest, run, now); err != nil {
+			continue
+		}
+		agents, err := listRunAgentsForWorkflow(cmd, rc, run.ID)
+		if err != nil {
+			return ciBaselineRunResolution{}, fmt.Errorf("listing agents for baseline candidate run %s: %w", run.ID, err)
+		}
+		for _, agent := range agents {
+			if agent.AgentDeploymentID != deploymentID {
+				continue
+			}
+			if agent.Status != "" && agent.Status != "completed" {
+				continue
+			}
+			return buildCIBaselineRunResolution(run, agent.ID, deploymentID, now), nil
+		}
+	}
+	return ciBaselineRunResolution{}, fmt.Errorf("no completed compatible baseline run found for baseline.deployment_id %s", deploymentID)
+}
+
+func listCIBaselineRuns(cmd *cobra.Command, rc *RunContext, workspaceID string) ([]runWorkflowSummary, error) {
+	query := url.Values{}
+	query.Set("limit", "100")
+	resp, err := rc.Client.Get(cmd.Context(), "/v1/workspaces/"+workspaceID+"/runs", query)
+	if err != nil {
+		return nil, err
+	}
+	if apiErr := resp.ParseError(); apiErr != nil {
+		return nil, apiErr
+	}
+
+	var result struct {
+		Items []runWorkflowSummary `json:"items"`
+	}
+	if err := resp.DecodeJSON(&result); err != nil {
+		return nil, err
+	}
+	return result.Items, nil
+}
+
+func validateCIBaselineRun(workspaceID string, manifest ciManifest, run runWorkflowSummary, now time.Time) error {
+	if run.WorkspaceID != "" && workspaceID != "" && run.WorkspaceID != workspaceID {
+		return fmt.Errorf("baseline run %s belongs to workspace %s, not %s", run.ID, run.WorkspaceID, workspaceID)
+	}
+	if run.Status != "completed" {
+		return fmt.Errorf("baseline run %s status is %s, want completed", run.ID, run.Status)
+	}
+	if run.ChallengePackVersionID != "" && manifest.Evaluation.ChallengePackVersionID != "" && run.ChallengePackVersionID != manifest.Evaluation.ChallengePackVersionID {
+		return fmt.Errorf("baseline run %s uses challenge pack version %s, not %s", run.ID, run.ChallengePackVersionID, manifest.Evaluation.ChallengePackVersionID)
+	}
+	if manifest.Evaluation.InputSetID != "" && run.ChallengeInputSetID != manifest.Evaluation.InputSetID {
+		return fmt.Errorf("baseline run %s uses input set %s, not %s", run.ID, run.ChallengeInputSetID, manifest.Evaluation.InputSetID)
+	}
+	if err := validateCIBaselineAge(manifest.Baseline.MaxAgeDays, run, now); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateCIBaselineAge(maxAgeDays int, run runWorkflowSummary, now time.Time) error {
+	if maxAgeDays <= 0 {
+		return nil
+	}
+	timestamp, ok := ciBaselineRunTimestamp(run)
+	if !ok {
+		return fmt.Errorf("baseline run %s has no created_at or finished_at timestamp for max_age_days", run.ID)
+	}
+	if now.Sub(timestamp) > time.Duration(maxAgeDays)*24*time.Hour {
+		return fmt.Errorf("baseline run %s is older than baseline.max_age_days (%d)", run.ID, maxAgeDays)
+	}
+	return nil
+}
+
+func ciBaselineRunTimestamp(run runWorkflowSummary) (time.Time, bool) {
+	for _, raw := range []string{run.FinishedAt, run.CreatedAt} {
+		if strings.TrimSpace(raw) == "" {
+			continue
+		}
+		parsed, err := time.Parse(time.RFC3339, raw)
+		if err == nil {
+			return parsed, true
+		}
+	}
+	return time.Time{}, false
+}
+
+func buildCIBaselineRunResolution(run runWorkflowSummary, runAgentID string, deploymentID string, now time.Time) ciBaselineRunResolution {
+	out := ciBaselineRunResolution{
+		RunID:                  run.ID,
+		RunAgentID:             runAgentID,
+		DeploymentID:           deploymentID,
+		RunName:                run.Name,
+		Status:                 run.Status,
+		ChallengePackVersionID: run.ChallengePackVersionID,
+		InputSetID:             run.ChallengeInputSetID,
+		CreatedAt:              run.CreatedAt,
+		FinishedAt:             run.FinishedAt,
+	}
+	if timestamp, ok := ciBaselineRunTimestamp(run); ok {
+		out.AgeDays = int(now.Sub(timestamp).Hours() / 24)
+	}
+	return out
 }
 
 func allowedCIManifestValue(value string, allowed ...string) bool {

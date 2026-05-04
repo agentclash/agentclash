@@ -81,13 +81,15 @@ type runWorkflowSummary struct {
 	ChallengeInputSetID    string `json:"challenge_input_set_id"`
 	OfficialPackMode       string `json:"official_pack_mode"`
 	CreatedAt              string `json:"created_at"`
+	FinishedAt             string `json:"finished_at"`
 }
 
 type runAgentWorkflowSummary struct {
-	ID     string `json:"id"`
-	RunID  string `json:"run_id"`
-	Label  string `json:"label"`
-	Status string `json:"status"`
+	ID                string `json:"id"`
+	RunID             string `json:"run_id"`
+	Label             string `json:"label"`
+	Status            string `json:"status"`
+	AgentDeploymentID string `json:"agent_deployment_id"`
 }
 
 type resolvedChallengePack struct {
