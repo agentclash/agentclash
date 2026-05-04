@@ -35,6 +35,18 @@ func TestCIInitWritesSampleManifest(t *testing.T) {
 	}
 }
 
+func TestCIInitCreatesParentDirectories(t *testing.T) {
+	target := filepath.Join(t.TempDir(), ".agentclash", "ci.yaml")
+
+	if err := executeCommand(t, []string{"ci", "init", target}, "http://unused"); err != nil {
+		t.Fatalf("ci init error: %v", err)
+	}
+
+	if _, err := os.Stat(target); err != nil {
+		t.Fatalf("Stat(%q) error: %v", target, err)
+	}
+}
+
 func TestCIInitRequiresForceToOverwrite(t *testing.T) {
 	target := filepath.Join(t.TempDir(), "agentclash-ci.yaml")
 	if err := os.WriteFile(target, []byte("existing"), 0o644); err != nil {

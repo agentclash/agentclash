@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/agentclash/agentclash/cli/internal/output"
@@ -41,6 +42,11 @@ var ciInitCmd = &cobra.Command{
 				return fmt.Errorf("%s already exists; pass --force to overwrite", target)
 			} else if !os.IsNotExist(err) {
 				return fmt.Errorf("checking %s: %w", target, err)
+			}
+		}
+		if parent := filepath.Dir(target); parent != "." {
+			if err := os.MkdirAll(parent, 0o755); err != nil {
+				return fmt.Errorf("creating parent directory for %s: %w", target, err)
 			}
 		}
 		if err := os.WriteFile(target, []byte(sampleCIManifestYAML), 0o644); err != nil {
