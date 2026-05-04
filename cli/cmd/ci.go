@@ -129,6 +129,11 @@ changed files from git diff.`,
 		if err != nil {
 			return err
 		}
+		for _, pattern := range validation.Manifest.Trigger.Paths {
+			if err := ciValidateGlob(pattern); err != nil {
+				return err
+			}
+		}
 
 		base, head = defaultCIShouldRunRefs(base, head)
 		if len(changedFiles) == 0 && (base != "" || head != "") {
