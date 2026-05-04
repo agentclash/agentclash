@@ -426,6 +426,8 @@ type fakeRunReadRepository struct {
 	regressionCoverageCases []repository.RunRegressionCoverageCase
 	runAgents               []domain.RunAgent
 	failureItems            []failurereview.Item
+	failureItemsByRunID     map[uuid.UUID][]failurereview.Item
+	recentComparableRuns    []domain.Run
 	spendPolicies           []repository.SpendPolicyRow
 	providerAccount         repository.ProviderAccountRow
 	modelAlias              repository.ModelAliasRow
@@ -438,6 +440,7 @@ type fakeRunReadRepository struct {
 	getRunScorecardErr      error
 	listRunAgentsErr        error
 	listRunFailuresErr      error
+	listRecentRunsErr       error
 	listEvalSessionsErr     error
 	getProviderAccountErr   error
 	getModelAliasErr        error
@@ -487,8 +490,17 @@ func (f *fakeRunReadRepository) ListRunAgentsByRunID(_ context.Context, _ uuid.U
 	return f.runAgents, f.listRunAgentsErr
 }
 
-func (f *fakeRunReadRepository) ListRunFailureReviewItems(_ context.Context, _ uuid.UUID, _ *uuid.UUID) ([]failurereview.Item, error) {
+func (f *fakeRunReadRepository) ListRunFailureReviewItems(_ context.Context, runID uuid.UUID, _ *uuid.UUID) ([]failurereview.Item, error) {
+	if f.failureItemsByRunID != nil {
+		if items, ok := f.failureItemsByRunID[runID]; ok {
+			return append([]failurereview.Item(nil), items...), f.listRunFailuresErr
+		}
+	}
 	return f.failureItems, f.listRunFailuresErr
+}
+
+func (f *fakeRunReadRepository) ListRecentComparableScoredRunsBeforeRunID(_ context.Context, _ uuid.UUID, _ int32) ([]domain.Run, error) {
+	return append([]domain.Run(nil), f.recentComparableRuns...), f.listRecentRunsErr
 }
 
 func (f *fakeRunReadRepository) ListEvalSessionsByWorkspaceID(_ context.Context, _ uuid.UUID, _ int32, _ int32) ([]domain.EvalSession, error) {

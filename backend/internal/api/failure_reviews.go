@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/domain"
 	"github.com/agentclash/agentclash/backend/internal/failurereview"
@@ -17,8 +18,9 @@ import (
 )
 
 const (
-	defaultRunFailurePageLimit = 50
-	maxRunFailurePageLimit     = 200
+	defaultRunFailurePageLimit         = 50
+	maxRunFailurePageLimit             = 200
+	defaultFailureClusterTrendRunLimit = 20
 )
 
 type ListRunFailuresInput struct {
@@ -60,6 +62,13 @@ func (m *RunReadManager) ListRunFailures(ctx context.Context, caller Caller, inp
 	}
 	filtered := failurereview.FilterItems(items, input.AgentID, input.Severity, input.FailureClass, input.EvidenceTier, input.ChallengeKey, input.CaseKey, input.FailureClusterKey)
 	clusters := failurereview.BuildClusterSummaries(filtered)
+	if len(clusters) > 0 {
+		historicalRuns, historyErr := m.failureClusterHistoryRuns(ctx, input)
+		if historyErr != nil {
+			return ListRunFailuresResult{}, historyErr
+		}
+		clusters = failurereview.AttachClusterHistory(clusters, historicalRuns)
+	}
 	page, next := failurereview.PaginateItems(filtered, input.Cursor, input.Limit)
 
 	var nextCursor *string
@@ -77,6 +86,38 @@ func (m *RunReadManager) ListRunFailures(ctx context.Context, caller Caller, inp
 		Clusters:   clusters,
 		NextCursor: nextCursor,
 	}, nil
+}
+
+func (m *RunReadManager) failureClusterHistoryRuns(ctx context.Context, input ListRunFailuresInput) ([]failurereview.ClusterHistoryRun, error) {
+	runs, err := m.repo.ListRecentComparableScoredRunsBeforeRunID(ctx, input.RunID, defaultFailureClusterTrendRunLimit)
+	if err != nil {
+		return nil, err
+	}
+
+	historicalRuns := make([]failurereview.ClusterHistoryRun, 0, len(runs))
+	for _, run := range runs {
+		items, itemErr := m.repo.ListRunFailureReviewItems(ctx, run.ID, nil)
+		if itemErr != nil {
+			return nil, itemErr
+		}
+		filtered := failurereview.FilterItems(items, nil, input.Severity, input.FailureClass, input.EvidenceTier, input.ChallengeKey, input.CaseKey, nil)
+		historicalRuns = append(historicalRuns, failurereview.ClusterHistoryRun{
+			RunID:      run.ID,
+			ObservedAt: runObservedAt(run),
+			Clusters:   failurereview.BuildClusterSummaries(filtered),
+		})
+	}
+	return historicalRuns, nil
+}
+
+func runObservedAt(run domain.Run) time.Time {
+	if run.FinishedAt != nil {
+		return *run.FinishedAt
+	}
+	if run.StartedAt != nil {
+		return *run.StartedAt
+	}
+	return run.CreatedAt
 }
 
 type listRunFailuresResponse struct {

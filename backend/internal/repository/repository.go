@@ -2468,6 +2468,27 @@ func (r *Repository) ListRunsByWorkspaceID(ctx context.Context, workspaceID uuid
 	return runs, nil
 }
 
+func (r *Repository) ListRecentComparableScoredRunsBeforeRunID(ctx context.Context, runID uuid.UUID, limit int32) ([]domain.Run, error) {
+	rows, err := r.queries.ListRecentComparableScoredRunsBeforeRunID(ctx, repositorysqlc.ListRecentComparableScoredRunsBeforeRunIDParams{
+		RunID:       runID,
+		ResultLimit: limit,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list recent comparable scored runs before run id: %w", err)
+	}
+
+	runs := make([]domain.Run, 0, len(rows))
+	for _, row := range rows {
+		run, mapErr := mapRun(row)
+		if mapErr != nil {
+			return nil, fmt.Errorf("map run %s: %w", row.ID, mapErr)
+		}
+		runs = append(runs, run)
+	}
+
+	return runs, nil
+}
+
 func (r *Repository) CountRunsByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) (int64, error) {
 	count, err := r.queries.CountRunsByWorkspaceID(ctx, repositorysqlc.CountRunsByWorkspaceIDParams{
 		WorkspaceID: workspaceID,

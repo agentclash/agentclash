@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"sort"
 	"testing"
+	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/domain"
 	"github.com/agentclash/agentclash/backend/internal/failurereview"
@@ -181,6 +182,62 @@ func TestListRunFailuresEndpointReturnsClusterSummariesBeforePagination(t *testi
 	}
 	if ticketACluster.RepresentativeFailureFingerprint == "" {
 		t.Fatalf("ticket-a representative fingerprint is empty")
+	}
+}
+
+func TestListRunFailuresEndpointEnrichesClustersWithHistory(t *testing.T) {
+	workspaceID := uuid.New()
+	runID := uuid.New()
+	priorRunID := uuid.New()
+	now := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
+	priorFinishedAt := now.Add(-24 * time.Hour)
+	currentItems := []failurereview.Item{
+		mustBuildFailureItem(t, runID, uuid.New(), "ticket-a", "case-a", "policy.filesystem"),
+		mustBuildFailureItem(t, runID, uuid.New(), "ticket-a", "case-a", "policy.filesystem"),
+	}
+	priorItems := []failurereview.Item{
+		mustBuildFailureItem(t, priorRunID, uuid.New(), "ticket-a", "case-a", "policy.filesystem"),
+	}
+
+	service := NewRunReadManager(NewCallerWorkspaceAuthorizer(), &fakeRunReadRepository{
+		run: domain.Run{
+			ID:          runID,
+			WorkspaceID: workspaceID,
+			CreatedAt:   now,
+		},
+		recentComparableRuns: []domain.Run{
+			{
+				ID:          priorRunID,
+				WorkspaceID: workspaceID,
+				FinishedAt:  &priorFinishedAt,
+				CreatedAt:   priorFinishedAt,
+			},
+		},
+		failureItemsByRunID: map[uuid.UUID][]failurereview.Item{
+			runID:      currentItems,
+			priorRunID: priorItems,
+		},
+	})
+
+	response := performListRunFailuresRequest(t, service, workspaceID, runID, url.Values{"limit": []string{"1"}})
+	if len(response.Clusters) != 1 {
+		t.Fatalf("clusters = %#v, want one historical cluster", response.Clusters)
+	}
+	history := response.Clusters[0].History
+	if history.Trend != failurereview.ClusterTrendIncreasing {
+		t.Fatalf("trend = %s, want increasing", history.Trend)
+	}
+	if history.WindowRunCount != 1 || history.PriorRunCount != 1 || history.PriorFailureCount != 1 {
+		t.Fatalf("history counts = %#v, want window=1 prior_runs=1 prior_failures=1", history)
+	}
+	if history.LastSeenRunID == nil || *history.LastSeenRunID != priorRunID {
+		t.Fatalf("last_seen_run_id = %v, want %s", history.LastSeenRunID, priorRunID)
+	}
+	if history.LastSeenAt == nil || !history.LastSeenAt.Equal(priorFinishedAt) {
+		t.Fatalf("last_seen_at = %v, want %s", history.LastSeenAt, priorFinishedAt)
+	}
+	if len(response.Items) != 1 {
+		t.Fatalf("page items = %d, want pagination unchanged", len(response.Items))
 	}
 }
 

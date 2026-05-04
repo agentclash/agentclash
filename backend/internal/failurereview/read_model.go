@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/domain"
 	"github.com/google/uuid"
@@ -75,19 +76,45 @@ type Item struct {
 }
 
 type ClusterSummary struct {
-	FailureClusterKey                string       `json:"failure_cluster_key"`
-	RepresentativeFailureFingerprint string       `json:"representative_failure_fingerprint"`
-	Count                            int          `json:"count"`
-	PromotableCount                  int          `json:"promotable_count"`
-	Severity                         Severity     `json:"severity"`
-	FailureState                     FailureState `json:"failure_state"`
-	FailureClass                     FailureClass `json:"failure_class"`
-	EvidenceTier                     EvidenceTier `json:"evidence_tier"`
-	ChallengeKeys                    []string     `json:"challenge_keys"`
-	CaseKeys                         []string     `json:"case_keys"`
-	RunAgentIDs                      []string     `json:"run_agent_ids"`
-	Headline                         string       `json:"headline"`
-	RecommendedAction                string       `json:"recommended_action"`
+	FailureClusterKey                string         `json:"failure_cluster_key"`
+	RepresentativeFailureFingerprint string         `json:"representative_failure_fingerprint"`
+	Count                            int            `json:"count"`
+	PromotableCount                  int            `json:"promotable_count"`
+	Severity                         Severity       `json:"severity"`
+	FailureState                     FailureState   `json:"failure_state"`
+	FailureClass                     FailureClass   `json:"failure_class"`
+	EvidenceTier                     EvidenceTier   `json:"evidence_tier"`
+	ChallengeKeys                    []string       `json:"challenge_keys"`
+	CaseKeys                         []string       `json:"case_keys"`
+	RunAgentIDs                      []string       `json:"run_agent_ids"`
+	Headline                         string         `json:"headline"`
+	RecommendedAction                string         `json:"recommended_action"`
+	History                          ClusterHistory `json:"history"`
+}
+
+type ClusterTrend string
+
+const (
+	ClusterTrendNew        ClusterTrend = "new"
+	ClusterTrendRecurring  ClusterTrend = "recurring"
+	ClusterTrendIncreasing ClusterTrend = "increasing"
+	ClusterTrendDecreasing ClusterTrend = "decreasing"
+)
+
+type ClusterHistory struct {
+	Trend               ClusterTrend `json:"trend"`
+	WindowRunCount      int          `json:"window_run_count"`
+	PriorRunCount       int          `json:"prior_run_count"`
+	PriorFailureCount   int          `json:"prior_failure_count"`
+	LastSeenRunID       *uuid.UUID   `json:"last_seen_run_id,omitempty"`
+	LastSeenAt          *time.Time   `json:"last_seen_at,omitempty"`
+	LastRunFailureCount int          `json:"last_run_failure_count,omitempty"`
+}
+
+type ClusterHistoryRun struct {
+	RunID      uuid.UUID
+	ObservedAt time.Time
+	Clusters   []ClusterSummary
 }
 
 type ReplayStepRef struct {
@@ -416,6 +443,49 @@ func BuildClusterSummaries(items []Item) []ClusterSummary {
 		return summaries[i].FailureClusterKey < summaries[j].FailureClusterKey
 	})
 	return summaries
+}
+
+func AttachClusterHistory(summaries []ClusterSummary, historicalRuns []ClusterHistoryRun) []ClusterSummary {
+	enriched := append([]ClusterSummary(nil), summaries...)
+	for i := range enriched {
+		enriched[i].History = buildClusterHistory(enriched[i], historicalRuns)
+	}
+	return enriched
+}
+
+func buildClusterHistory(summary ClusterSummary, historicalRuns []ClusterHistoryRun) ClusterHistory {
+	history := ClusterHistory{
+		Trend:          ClusterTrendNew,
+		WindowRunCount: len(historicalRuns),
+	}
+	for _, run := range historicalRuns {
+		for _, historicalCluster := range run.Clusters {
+			if historicalCluster.FailureClusterKey != summary.FailureClusterKey {
+				continue
+			}
+			history.PriorRunCount++
+			history.PriorFailureCount += historicalCluster.Count
+			if history.LastSeenRunID == nil {
+				runID := run.RunID
+				observedAt := run.ObservedAt
+				history.LastSeenRunID = &runID
+				history.LastSeenAt = &observedAt
+				history.LastRunFailureCount = historicalCluster.Count
+			}
+			break
+		}
+	}
+	if history.PriorRunCount == 0 {
+		return history
+	}
+	if summary.Count > history.LastRunFailureCount {
+		history.Trend = ClusterTrendIncreasing
+	} else if summary.Count < history.LastRunFailureCount {
+		history.Trend = ClusterTrendDecreasing
+	} else {
+		history.Trend = ClusterTrendRecurring
+	}
+	return history
 }
 
 func EncodeCursor(key CursorKey) (string, error) {
