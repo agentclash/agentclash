@@ -19,8 +19,8 @@
 - CI regression promotion metadata preserves existing fields while adding source fingerprint and source cluster key.
 
 ## Smoke Tests
-- `go test ./backend/internal/failurereview ./backend/internal/api`
-- `go test ./cli/cmd`
+- `(cd backend && go test ./internal/failurereview ./internal/api)`
+- `(cd cli && go test ./cmd)`
 
 ## E2E Tests
 - N/A - this slice adds read-model identity fields and CI metadata only. Full curation/trend workflows are intentionally reserved for follow-up issue #82 slices.

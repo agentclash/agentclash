@@ -39,6 +39,8 @@ type ciRunFailureReviewItem struct {
 	RunAgentID             string   `json:"run_agent_id"`
 	ChallengeIdentityID    string   `json:"challenge_identity_id"`
 	ChallengeKey           string   `json:"challenge_key"`
+	FailureFingerprint     string   `json:"failure_fingerprint"`
+	FailureClusterKey      string   `json:"failure_cluster_key"`
 	FailureState           string   `json:"failure_state"`
 	FailureClass           string   `json:"failure_class"`
 	Headline               string   `json:"headline"`
@@ -330,6 +332,8 @@ func ciRunPromotionMetadata(failure ciRunFailureReviewItem, result ciRunResult, 
 		"challenge_pack_version_id":    manifest.Evaluation.ChallengePackVersionID,
 		"source_challenge_identity_id": failure.ChallengeIdentityID,
 		"source_challenge_key":         failure.ChallengeKey,
+		"source_failure_fingerprint":   failure.FailureFingerprint,
+		"source_failure_cluster_key":   failure.FailureClusterKey,
 		"source_failure_state":         failure.FailureState,
 		"source_failure_class":         failure.FailureClass,
 		"source_failure_severity":      failure.Severity,

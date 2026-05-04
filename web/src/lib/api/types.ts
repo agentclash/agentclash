@@ -1679,6 +1679,8 @@ export interface FailureReviewItem {
   challenge_key: string;
   case_key: string;
   item_key: string;
+  failure_fingerprint: string;
+  failure_cluster_key: string;
   failure_state: FailureReviewFailureState;
   failed_dimensions: string[];
   failed_checks: string[];
