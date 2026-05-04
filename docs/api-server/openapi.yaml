@@ -6806,9 +6806,15 @@ components:
         source_challenge_identity_id:
           type: string
           format: uuid
+        source_challenge_key:
+          type: string
         source_case_key:
           type: string
         source_item_key:
+          type: string
+        source_failure_fingerprint:
+          type: string
+        source_failure_cluster_key:
           type: string
         evidence_tier:
           type: string

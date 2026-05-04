@@ -1781,8 +1781,11 @@ export interface RegressionCase {
   source_challenge_pack_version_id: string;
   source_challenge_input_set_id?: string;
   source_challenge_identity_id: string;
+  source_challenge_key?: string;
   source_case_key: string;
   source_item_key?: string;
+  source_failure_fingerprint?: string;
+  source_failure_cluster_key?: string;
   evidence_tier: string;
   failure_class: string;
   failure_summary: string;

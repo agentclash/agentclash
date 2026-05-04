@@ -11,6 +11,7 @@ import type {
   RegressionSeverity,
   RegressionSuite,
 } from "@/lib/api/types";
+import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
 import {
@@ -180,6 +181,7 @@ export function SuiteDetailClient({
                       <TableHead>Status</TableHead>
                       <TableHead>Severity</TableHead>
                       <TableHead>Failure Class</TableHead>
+                      <TableHead>Source</TableHead>
                       <TableHead>Created</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -187,7 +189,7 @@ export function SuiteDetailClient({
                     {filteredCases.length === 0 ? (
                       <TableRow>
                         <TableCell
-                          colSpan={5}
+                          colSpan={6}
                           className="py-8 text-center text-sm text-muted-foreground"
                         >
                           No cases match the current filters.
@@ -217,6 +219,9 @@ export function SuiteDetailClient({
                           </TableCell>
                           <TableCell className="text-sm text-muted-foreground">
                             {c.failure_class}
+                          </TableCell>
+                          <TableCell>
+                            <CaseProvenanceSummary regressionCase={c} />
                           </TableCell>
                           <TableCell className="text-sm text-muted-foreground">
                             {new Date(c.created_at).toLocaleDateString()}
@@ -263,6 +268,50 @@ function MetaRow({
         {label}
       </dt>
       <dd className="flex items-center">{children}</dd>
+    </div>
+  );
+}
+
+function CaseProvenanceSummary({
+  regressionCase,
+}: {
+  regressionCase: RegressionCase;
+}) {
+  const hasFailureProvenance =
+    regressionCase.source_challenge_key ||
+    regressionCase.source_failure_cluster_key ||
+    regressionCase.source_failure_fingerprint;
+
+  if (!hasFailureProvenance) {
+    return <span className="text-sm text-muted-foreground">{"\u2014"}</span>;
+  }
+
+  return (
+    <div className="flex max-w-sm flex-wrap items-center gap-1.5">
+      {regressionCase.source_challenge_key && (
+        <span className="max-w-[12rem] truncate font-[family-name:var(--font-mono)] text-xs text-foreground">
+          {regressionCase.source_challenge_key}
+        </span>
+      )}
+      {regressionCase.source_failure_cluster_key && (
+        <Badge
+          variant="outline"
+          className="max-w-[10rem] truncate font-[family-name:var(--font-mono)]"
+          title={regressionCase.source_failure_cluster_key}
+        >
+          {regressionCase.source_failure_cluster_key}
+        </Badge>
+      )}
+      {!regressionCase.source_failure_cluster_key &&
+        regressionCase.source_failure_fingerprint && (
+          <Badge
+            variant="outline"
+            className="max-w-[10rem] truncate font-[family-name:var(--font-mono)]"
+            title={regressionCase.source_failure_fingerprint}
+          >
+            {regressionCase.source_failure_fingerprint}
+          </Badge>
+        )}
     </div>
   );
 }

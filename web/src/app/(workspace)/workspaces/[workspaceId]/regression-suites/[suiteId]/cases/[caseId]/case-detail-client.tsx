@@ -116,11 +116,29 @@ export function CaseDetailClient({
             label="Challenge Identity"
             value={c.source_challenge_identity_id}
           />
+          {c.source_challenge_key && (
+            <ProvenanceRow
+              label="Challenge Key"
+              value={c.source_challenge_key}
+            />
+          )}
           <ProvenanceRow label="Case Key" value={c.source_case_key} />
           <ProvenanceRow
             label="Item Key"
             value={c.source_item_key ?? null}
           />
+          {c.source_failure_cluster_key && (
+            <ProvenanceRow
+              label="Failure Cluster"
+              value={c.source_failure_cluster_key}
+            />
+          )}
+          {c.source_failure_fingerprint && (
+            <ProvenanceRow
+              label="Failure Fingerprint"
+              value={c.source_failure_fingerprint}
+            />
+          )}
           <ProvenanceRow
             label="Input Set"
             value={c.source_challenge_input_set_id ?? null}

@@ -589,7 +589,7 @@ func TestRegressionSuiteEndpointsRoundTrip(t *testing.T) {
 			FailureSummary:               "Regressed",
 			PayloadSnapshot:              json.RawMessage(`{"payload":"snapshot"}`),
 			ExpectedContract:             json.RawMessage(`{"contract":"expected"}`),
-			Metadata:                     json.RawMessage(`{"origin":"test"}`),
+			Metadata:                     json.RawMessage(`{"origin":"test","source_challenge_key":"ticket-1","source_failure_fingerprint":"frf-test","source_failure_cluster_key":"frc-test"}`),
 			LatestPromotion: &repository.RegressionPromotion{
 				ID:                        uuid.New(),
 				WorkspaceRegressionCaseID: caseID,
@@ -689,6 +689,22 @@ func TestRegressionSuiteEndpointsRoundTrip(t *testing.T) {
 	if casesRec.Code != http.StatusOK {
 		t.Fatalf("LIST cases status = %d, want 200", casesRec.Code)
 	}
+	var casesResponse listRegressionCasesResponse
+	if err := json.Unmarshal(casesRec.Body.Bytes(), &casesResponse); err != nil {
+		t.Fatalf("json.Unmarshal cases response returned error: %v", err)
+	}
+	if len(casesResponse.Items) != 1 {
+		t.Fatalf("cases response items = %d, want 1", len(casesResponse.Items))
+	}
+	if casesResponse.Items[0].SourceChallengeKey == nil || *casesResponse.Items[0].SourceChallengeKey != "ticket-1" {
+		t.Fatalf("source_challenge_key = %v, want ticket-1", casesResponse.Items[0].SourceChallengeKey)
+	}
+	if casesResponse.Items[0].SourceFailureFingerprint == nil || *casesResponse.Items[0].SourceFailureFingerprint != "frf-test" {
+		t.Fatalf("source_failure_fingerprint = %v, want frf-test", casesResponse.Items[0].SourceFailureFingerprint)
+	}
+	if casesResponse.Items[0].SourceFailureClusterKey == nil || *casesResponse.Items[0].SourceFailureClusterKey != "frc-test" {
+		t.Fatalf("source_failure_cluster_key = %v, want frc-test", casesResponse.Items[0].SourceFailureClusterKey)
+	}
 
 	casePatchRec := httptest.NewRecorder()
 	casePatchReq := httptest.NewRequest(http.MethodPatch, "/v1/workspaces/"+workspaceID.String()+"/regression-cases/"+caseID.String(), bytes.NewBufferString(`{
@@ -719,6 +735,59 @@ func TestRegressionSuiteEndpointsRoundTrip(t *testing.T) {
 	}
 	if service.patchSuiteInput == nil || service.patchCaseInput == nil {
 		t.Fatalf("expected patch inputs to be captured")
+	}
+}
+
+func TestRegressionFailureProvenanceFromMetadata(t *testing.T) {
+	tests := []struct {
+		name        string
+		metadata    json.RawMessage
+		challenge   *string
+		fingerprint *string
+		cluster     *string
+	}{
+		{
+			name:     "empty metadata",
+			metadata: nil,
+		},
+		{
+			name:     "null metadata",
+			metadata: json.RawMessage(`null`),
+		},
+		{
+			name:     "malformed metadata",
+			metadata: json.RawMessage(`{"source_failure_cluster_key":`),
+		},
+		{
+			name:     "non string values are ignored",
+			metadata: json.RawMessage(`{"source_challenge_key":123,"source_failure_fingerprint":true,"source_failure_cluster_key":{"key":"frc"}}`),
+		},
+		{
+			name:        "strings are trimmed and blanks are ignored",
+			metadata:    json.RawMessage(`{"source_challenge_key":" ticket-1 ","source_failure_fingerprint":"   ","source_failure_cluster_key":"\tfrc-test\n"}`),
+			challenge:   stringPtr("ticket-1"),
+			fingerprint: nil,
+			cluster:     stringPtr("frc-test"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := regressionFailureProvenanceFromMetadata(tt.metadata)
+			assertOptionalString(t, "source_challenge_key", got.SourceChallengeKey, tt.challenge)
+			assertOptionalString(t, "source_failure_fingerprint", got.SourceFailureFingerprint, tt.fingerprint)
+			assertOptionalString(t, "source_failure_cluster_key", got.SourceFailureClusterKey, tt.cluster)
+		})
+	}
+}
+
+func assertOptionalString(t *testing.T, name string, got *string, want *string) {
+	t.Helper()
+	if got == nil && want == nil {
+		return
+	}
+	if got == nil || want == nil || *got != *want {
+		t.Fatalf("%s = %v, want %v", name, got, want)
 	}
 }
 
