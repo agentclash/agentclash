@@ -9,6 +9,7 @@ const baseBranch = process.env.BASE_BRANCH || "";
 const openAISecretName = process.env.OPENAI_SECRET_NAME || "OPENAI_API_KEY";
 const codexModel = process.env.CODEX_MODEL || "";
 const runLabel = process.env.RUN_LABEL || "local";
+const safeRunLabel = runLabel.replace(/[^a-z0-9-]+/gi, "-").replace(/^-+|-+$/g, "") || "local";
 
 function parseFrontmatter(content, file) {
   if (!content.startsWith("---\n")) {
@@ -105,7 +106,7 @@ for (const skillPath of skills) {
   const slug = meta.name.replace(/[^a-z0-9-]+/gi, "-").toLowerCase();
   const specPath = path.join(outDir, `${slug}.harness.json`);
   const spec = {
-    name: `skill-self-test-${slug}-${runLabel}`.slice(0, 120),
+    name: `skill-self-test-${safeRunLabel}-${slug}`.slice(0, 120),
     description: `Internal blind self-containment test for ${skillPath}`,
     task_prompt: taskPrompt(skillPath, meta, title),
     codex_template: "codex",

@@ -82,6 +82,7 @@ const manifestPath = execFileSync(
 const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
 assert.equal(manifest.harnesses.length, 1);
 const spec = JSON.parse(readFileSync(manifest.harnesses[0].spec, "utf8"));
+assert.match(spec.name, /^skill-self-test-unit-agentclash-example-skill$/);
 assert.equal(spec.auth_mode, "api_key_secret");
 assert.equal(spec.openai_api_key_secret_name, "OPENAI_API_KEY");
 assert.equal(spec.repository_url, "https://github.com/agentclash/agentclash.git");
@@ -91,6 +92,40 @@ assert.match(spec.task_prompt, /Read only this file:/);
 assert.match(spec.task_prompt, /agentclash-example-skill/);
 assert.equal(spec.evaluation_config.validators[0].type, "command");
 assert.match(spec.evaluation_config.validators[0].command, /validate-skill-harness-output\.mjs/);
+
+const longSkillDir = path.join(tmp, "web/content/agent-skills/very-long-skill");
+mkdirSync(longSkillDir, { recursive: true });
+const longSkillPath = path.join(longSkillDir, "SKILL.md");
+writeFileSync(
+  longSkillPath,
+  `---
+name: agentclash-challenge-pack-yaml-author-with-extra-long-name
+description: Use when testing long harness names.
+metadata:
+  agentclash.role: testing
+  agentclash.version: "1"
+  agentclash.requires_cli: "false"
+---
+
+# Long Skill
+`,
+);
+const longOutDir = path.join(tmp, "long-out");
+const longManifestPath = execFileSync(
+  "node",
+  ["scripts/internal-agent-skills/prepare-skill-harnesses.mjs", JSON.stringify([longSkillPath]), longOutDir],
+  {
+    cwd: repo,
+    env: {
+      ...process.env,
+      RUN_LABEL: "run-123456789-1",
+    },
+    encoding: "utf8",
+  },
+).trim();
+const longManifest = JSON.parse(readFileSync(longManifestPath, "utf8"));
+const longSpec = JSON.parse(readFileSync(longManifest.harnesses[0].spec, "utf8"));
+assert.match(longSpec.name.slice(0, 60), /^skill-self-test-run-123456789-1-/);
 
 const resultPath = path.join(tmp, "result.json");
 writeFileSync(
