@@ -13,6 +13,7 @@ export interface ListRunFailuresParams {
   evidenceTier?: FailureReviewEvidenceTier;
   challengeKey?: string;
   caseKey?: string;
+  failureClusterKey?: string;
   cursor?: string;
   limit?: number;
   signal?: AbortSignal;
@@ -35,6 +36,7 @@ export function listRunFailures(
     evidenceTier,
     challengeKey,
     caseKey,
+    failureClusterKey,
     cursor,
     limit,
     signal,
@@ -50,6 +52,7 @@ export function listRunFailures(
         evidence_tier: evidenceTier,
         challenge_key: challengeKey,
         case_key: caseKey,
+        failure_cluster_key: failureClusterKey,
         cursor,
         limit,
       },

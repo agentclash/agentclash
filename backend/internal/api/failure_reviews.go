@@ -22,16 +22,17 @@ const (
 )
 
 type ListRunFailuresInput struct {
-	WorkspaceID  uuid.UUID
-	RunID        uuid.UUID
-	AgentID      *uuid.UUID
-	Severity     *failurereview.Severity
-	FailureClass *failurereview.FailureClass
-	EvidenceTier *failurereview.EvidenceTier
-	ChallengeKey *string
-	CaseKey      *string
-	Cursor       *failurereview.CursorKey
-	Limit        int
+	WorkspaceID       uuid.UUID
+	RunID             uuid.UUID
+	AgentID           *uuid.UUID
+	Severity          *failurereview.Severity
+	FailureClass      *failurereview.FailureClass
+	EvidenceTier      *failurereview.EvidenceTier
+	ChallengeKey      *string
+	CaseKey           *string
+	FailureClusterKey *string
+	Cursor            *failurereview.CursorKey
+	Limit             int
 }
 
 type ListRunFailuresResult struct {
@@ -57,7 +58,7 @@ func (m *RunReadManager) ListRunFailures(ctx context.Context, caller Caller, inp
 	if err != nil {
 		return ListRunFailuresResult{}, err
 	}
-	filtered := failurereview.FilterItems(items, input.AgentID, input.Severity, input.FailureClass, input.EvidenceTier, input.ChallengeKey, input.CaseKey)
+	filtered := failurereview.FilterItems(items, input.AgentID, input.Severity, input.FailureClass, input.EvidenceTier, input.ChallengeKey, input.CaseKey, input.FailureClusterKey)
 	clusters := failurereview.BuildClusterSummaries(filtered)
 	page, next := failurereview.PaginateItems(filtered, input.Cursor, input.Limit)
 
@@ -176,6 +177,9 @@ func listRunFailuresInputFromRequest(r *http.Request) (ListRunFailuresInput, err
 	}
 	if raw := strings.TrimSpace(query.Get("case_key")); raw != "" {
 		input.CaseKey = &raw
+	}
+	if raw := strings.TrimSpace(query.Get("failure_cluster_key")); raw != "" {
+		input.FailureClusterKey = &raw
 	}
 	if raw := strings.TrimSpace(query.Get("limit")); raw != "" {
 		parsed, parseErr := strconv.Atoi(raw)

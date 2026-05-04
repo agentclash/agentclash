@@ -184,6 +184,45 @@ func TestListRunFailuresEndpointReturnsClusterSummariesBeforePagination(t *testi
 	}
 }
 
+func TestListRunFailuresEndpointFiltersByClusterKeyBeforePagination(t *testing.T) {
+	workspaceID := uuid.New()
+	runID := uuid.New()
+	items := []failurereview.Item{
+		mustBuildFailureItem(t, runID, uuid.New(), "ticket-a", "case-a", "policy.filesystem"),
+		mustBuildFailureItem(t, runID, uuid.New(), "ticket-a", "case-a", "policy.filesystem"),
+		mustBuildFailureItem(t, runID, uuid.New(), "ticket-b", "case-b", "tool_argument.schema"),
+	}
+	targetClusterKey := items[0].FailureClusterKey
+
+	service := NewRunReadManager(NewCallerWorkspaceAuthorizer(), &fakeRunReadRepository{
+		run: domain.Run{
+			ID:          runID,
+			WorkspaceID: workspaceID,
+		},
+		failureItems: items,
+	})
+
+	response := performListRunFailuresRequest(t, service, workspaceID, runID, url.Values{
+		"failure_cluster_key": []string{targetClusterKey},
+		"limit":               []string{"1"},
+	})
+	if len(response.Items) != 1 {
+		t.Fatalf("page items = %d, want 1", len(response.Items))
+	}
+	if response.Items[0].FailureClusterKey != targetClusterKey {
+		t.Fatalf("item cluster key = %q, want %q", response.Items[0].FailureClusterKey, targetClusterKey)
+	}
+	if len(response.Clusters) != 1 {
+		t.Fatalf("clusters = %#v, want 1 filtered cluster summary", response.Clusters)
+	}
+	if response.Clusters[0].FailureClusterKey != targetClusterKey {
+		t.Fatalf("cluster key = %q, want %q", response.Clusters[0].FailureClusterKey, targetClusterKey)
+	}
+	if response.Clusters[0].Count != 2 {
+		t.Fatalf("cluster count = %d, want full filtered count before pagination", response.Clusters[0].Count)
+	}
+}
+
 func TestListRunFailuresEndpointRejectsMalformedQueryParams(t *testing.T) {
 	t.Parallel()
 

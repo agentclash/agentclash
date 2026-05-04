@@ -2392,6 +2392,11 @@ paths:
           description: Limit results to a single case key.
           schema:
             type: string
+        - name: failure_cluster_key
+          in: query
+          description: Limit results to a single derived failure cluster key.
+          schema:
+            type: string
         - name: cursor
           in: query
           description: Opaque base64url-encoded pagination cursor returned by a previous response.
