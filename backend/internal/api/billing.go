@@ -631,7 +631,11 @@ func (m *BillingManager) createDodoCheckoutSession(ctx context.Context, caller C
 	if strings.TrimSpace(decoded.CheckoutURL) == "" {
 		return "", "", errors.New("dodo checkout response did not include checkout_url")
 	}
-	return decoded.CheckoutURL, decoded.SessionID, nil
+	parsed, err := url.Parse(decoded.CheckoutURL)
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" {
+		return "", "", errors.New("dodo checkout response url is not a valid https URL")
+	}
+	return parsed.String(), decoded.SessionID, nil
 }
 
 func (m *BillingManager) createDodoCustomerPortalSession(ctx context.Context, customerID string) (string, error) {
@@ -663,7 +667,11 @@ func (m *BillingManager) createDodoCustomerPortalSession(ctx context.Context, cu
 	if strings.TrimSpace(decoded.Link) == "" {
 		return "", errors.New("dodo customer portal response did not include link")
 	}
-	return decoded.Link, nil
+	parsed, err := url.Parse(decoded.Link)
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" {
+		return "", errors.New("dodo customer portal response url is not a valid https URL")
+	}
+	return parsed.String(), nil
 }
 
 func (m *BillingManager) verifyWebhook(headers DodoWebhookHeaders, rawBody []byte) error {
