@@ -151,13 +151,15 @@ evaluation:
     - 00000000-0000-0000-0000-000000000007
 baseline:
   run_id: 00000000-0000-0000-0000-000000000008
+  refresh: manual
+  max_age_days: 30
 gate:
   fail_on: regression
 regressions:
   promote_failures: proposed
 ```
 
-The exact IDs should come from your AgentClash workspace. The process should be explicit: update the candidate when the agent changes, update the workload when the eval strategy changes, and update the baseline only after the new mainline behavior is accepted.
+The exact IDs should come from your AgentClash workspace. The process should be explicit: update the candidate when the agent changes, update the workload when the eval strategy changes, and update the baseline only after the new mainline behavior is accepted. Use `agentclash ci baseline --manifest .agentclash/ci.yaml --json` in CI to print the exact baseline run used and why.
 
 ## See Also
 

@@ -14,6 +14,7 @@ Create a repo-tracked manifest:
 ```bash
 agentclash ci init .agentclash/ci.yaml
 agentclash ci validate .agentclash/ci.yaml
+agentclash ci baseline --manifest .agentclash/ci.yaml --json
 agentclash ci should-run --changed-file prompts/system.md --json
 ```
 
@@ -44,6 +45,8 @@ evaluation:
     - 00000000-0000-0000-0000-000000000007
 baseline:
   run_id: 00000000-0000-0000-0000-000000000008
+  refresh: manual
+  max_age_days: 30
 gate:
   fail_on: regression
 regressions:
@@ -58,7 +61,7 @@ The IDs in the generated file are placeholders. Replace them with workspace reso
 - `candidate.build` names the existing AgentClash build and the source-backed build-version spec to test.
 - `candidate.deployment` names the runtime resources used for the candidate deployment.
 - `evaluation` names the workload: challenge pack version, optional input set, and optional regression suites or cases.
-- `baseline` names the locked reference run or deployment.
+- `baseline` names the locked reference run or deployment, plus explicit refresh and staleness rules.
 - `gate` names the release-gate failure threshold.
 - `regressions` controls whether failed cases should only be reported, proposed for promotion, or eventually auto-promoted on main.
 
@@ -71,6 +74,37 @@ release gate = decision policy
 ```
 
 If you are deciding what the workload should contain, use [CI/CD Workload Recipes](/docs/guides/ci-cd-workload-recipes) for coding, research, support/ops, and long-horizon agent patterns.
+
+## Baseline strategy and refresh
+
+For pull request gates, prefer `baseline.run_id`. It pins the exact accepted mainline run, so every reviewer can see what changed when the baseline moves. Add `baseline.run_agent_id` only when the locked run has multiple participants and the gate must compare against one specific agent lane.
+
+Use `baseline.deployment_id` only when the team intentionally wants a moving selector. `agentclash ci baseline` resolves it to the newest completed run in the workspace that matches the manifest workload and includes that deployment. The command prints the exact resolved `run_id` and `run_agent_id` so downstream automation still compares against concrete IDs.
+
+Use `baseline.max_age_days` when a stale baseline should block the gate. The resolver checks the chosen run's `finished_at` or `created_at` timestamp and fails instead of silently comparing against old behavior.
+
+Refreshes are explicit:
+
+```yaml
+baseline:
+  run_id: 00000000-0000-0000-0000-000000000008
+  refresh: manual
+  max_age_days: 30
+```
+
+- `manual`: after a successful mainline run, update `baseline.run_id` in a reviewed change.
+- `propose`: automation may propose the new baseline, but a human still reviews the manifest change.
+- `auto_on_main`: a protected mainline workflow may update the manifest with an auditable commit after the gate passes.
+
+Resolve the baseline before running a gate:
+
+```bash
+agentclash ci baseline \
+  --manifest .agentclash/ci.yaml \
+  --json
+```
+
+The JSON includes `strategy`, `source`, `baseline.run_id`, optional `baseline.run_agent_id`, `refresh.mode`, and `refresh.next_action`.
 
 ## Decide whether CI should run
 
@@ -104,7 +138,7 @@ agentclash ci should-run \
 
 ## GitHub Actions sketch
 
-The first shipped CLI surface validates the manifest. Full orchestration will be a follow-up command built on the same file. Until then, teams can validate the contract and keep using the existing explicit run and gate commands. The workflow below repeats selected manifest IDs as GitHub variables only because `agentclash ci run` does not exist yet; once it does, the manifest should be the single source of truth.
+The shipped CI surface validates the manifest, resolves the baseline, and decides whether a gate should run. Full orchestration will be a follow-up command built on the same file. Until then, teams can validate the contract and keep using the existing explicit run and gate commands. The workflow below repeats selected candidate IDs as GitHub variables only because `agentclash ci run` does not exist yet; once it does, the manifest should be the single source of truth.
 
 ```yaml
 name: AgentClash gate
@@ -140,6 +174,18 @@ jobs:
           SHOULD_RUN=$(agentclash ci should-run --json | jq -r '.should_run')
           echo "should_run=$SHOULD_RUN" >> "$GITHUB_OUTPUT"
 
+      - name: Resolve AgentClash baseline
+        if: steps.should-run.outputs.should_run == 'true'
+        id: baseline
+        run: |
+          BASELINE_JSON=$(agentclash ci baseline --json)
+          echo "run_id=$(echo "$BASELINE_JSON" | jq -r '.baseline.run_id')" >> "$GITHUB_OUTPUT"
+          echo "run_agent_id=$(echo "$BASELINE_JSON" | jq -r '.baseline.run_agent_id // ""')" >> "$GITHUB_OUTPUT"
+        env:
+          AGENTCLASH_API_URL: https://api.agentclash.dev
+          AGENTCLASH_TOKEN: ${{ secrets.AGENTCLASH_TOKEN }}
+          AGENTCLASH_WORKSPACE: ${{ secrets.AGENTCLASH_WORKSPACE }}
+
       - name: Create candidate run
         if: steps.should-run.outputs.should_run == 'true'
         id: candidate
@@ -148,7 +194,12 @@ jobs:
             --challenge-pack-version "$AGENTCLASH_CHALLENGE_PACK_VERSION" \
             --deployments "$AGENTCLASH_CANDIDATE_DEPLOYMENT" \
             --json)
-          echo "run_id=$(echo "$RUN_JSON" | jq -r '.id')" >> "$GITHUB_OUTPUT"
+          RUN_ID=$(echo "$RUN_JSON" | jq -r '.id')
+          CANDIDATE_AGENT_ID=$(agentclash run agents "$RUN_ID" --json \
+            | jq -r --arg dep "$AGENTCLASH_CANDIDATE_DEPLOYMENT" '.items[] | select(.agent_deployment_id == $dep) | .id' \
+            | head -n 1)
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+          echo "run_agent_id=$CANDIDATE_AGENT_ID" >> "$GITHUB_OUTPUT"
         env:
           AGENTCLASH_API_URL: https://api.agentclash.dev
           AGENTCLASH_TOKEN: ${{ secrets.AGENTCLASH_TOKEN }}
@@ -159,15 +210,25 @@ jobs:
       - name: Evaluate release gate
         if: steps.should-run.outputs.should_run == 'true'
         run: |
-          agentclash compare gate \
-            --baseline "$AGENTCLASH_BASELINE_RUN" \
+          args=(
+            compare gate
+            --baseline "${{ steps.baseline.outputs.run_id }}"
             --candidate "${{ steps.candidate.outputs.run_id }}"
+          )
+          if [ -n "${{ steps.baseline.outputs.run_agent_id }}" ]; then
+            args+=(--baseline-agent "${{ steps.baseline.outputs.run_agent_id }}")
+          fi
+          if [ -n "${{ steps.candidate.outputs.run_agent_id }}" ]; then
+            args+=(--candidate-agent "${{ steps.candidate.outputs.run_agent_id }}")
+          fi
+          agentclash "${args[@]}"
         env:
           AGENTCLASH_API_URL: https://api.agentclash.dev
           AGENTCLASH_TOKEN: ${{ secrets.AGENTCLASH_TOKEN }}
           AGENTCLASH_WORKSPACE: ${{ secrets.AGENTCLASH_WORKSPACE }}
-          AGENTCLASH_BASELINE_RUN: ${{ vars.AGENTCLASH_BASELINE_RUN }}
 ```
+
+For multi-agent candidate runs, resolve the candidate lane with `agentclash run agents <run-id> --json` and pass `--candidate-agent <run-agent-id>` for the participant you intend to gate.
 
 ## Regression promotion policy
 
@@ -199,6 +260,7 @@ Only a future main-branch workflow should auto-promote high-confidence failures 
 ## Current limits
 
 - `agentclash ci validate` validates the manifest shape locally; it does not check that IDs exist in the API.
+- `agentclash ci baseline` checks and resolves only the baseline; full API-backed validation for every manifest resource is still separate follow-up work.
 - `agentclash ci should-run` only decides whether a gate should run; it does not create runs or evaluate gates.
 - There is not yet an `agentclash ci run` wrapper that creates the candidate build version, deployment, run, gate, and PR report in one command.
 - PR metadata such as repository, pull request number, branch, and commit SHA is not yet attached to runs by the CLI.

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -213,6 +214,102 @@ regressions:
   promote_failures: proposed
 `,
 			want: "baseline.run_id or baseline.deployment_id",
+		},
+		{
+			name: "conflicting baseline selectors",
+			manifest: `version: 1
+trigger:
+  paths:
+    - .agentclash/agent.json
+candidate:
+  build:
+    agent_build_id: build-1
+    spec_file: .agentclash/agent.json
+  deployment:
+    runtime_profile_id: runtime-1
+evaluation:
+  challenge_pack_version_id: pack-version-1
+baseline:
+  run_id: run-1
+  deployment_id: dep-1
+gate:
+  fail_on: regression
+regressions:
+  promote_failures: proposed
+`,
+			want: "baseline.run_id and baseline.deployment_id",
+		},
+		{
+			name: "run agent without fixed run",
+			manifest: `version: 1
+trigger:
+  paths:
+    - .agentclash/agent.json
+candidate:
+  build:
+    agent_build_id: build-1
+    spec_file: .agentclash/agent.json
+  deployment:
+    runtime_profile_id: runtime-1
+evaluation:
+  challenge_pack_version_id: pack-version-1
+baseline:
+  deployment_id: dep-1
+  run_agent_id: agent-1
+gate:
+  fail_on: regression
+regressions:
+  promote_failures: proposed
+`,
+			want: "baseline.run_agent_id requires baseline.run_id",
+		},
+		{
+			name: "invalid baseline refresh mode",
+			manifest: `version: 1
+trigger:
+  paths:
+    - .agentclash/agent.json
+candidate:
+  build:
+    agent_build_id: build-1
+    spec_file: .agentclash/agent.json
+  deployment:
+    runtime_profile_id: runtime-1
+evaluation:
+  challenge_pack_version_id: pack-version-1
+baseline:
+  run_id: run-1
+  refresh: surprise
+gate:
+  fail_on: regression
+regressions:
+  promote_failures: proposed
+`,
+			want: "baseline.refresh",
+		},
+		{
+			name: "negative max age",
+			manifest: `version: 1
+trigger:
+  paths:
+    - .agentclash/agent.json
+candidate:
+  build:
+    agent_build_id: build-1
+    spec_file: .agentclash/agent.json
+  deployment:
+    runtime_profile_id: runtime-1
+evaluation:
+  challenge_pack_version_id: pack-version-1
+baseline:
+  run_id: run-1
+  max_age_days: -1
+gate:
+  fail_on: regression
+regressions:
+  promote_failures: proposed
+`,
+			want: "baseline.max_age_days",
 		},
 		{
 			name: "invalid gate fail mode",
@@ -645,6 +742,461 @@ func TestCIShouldRunDerivesDeletedFilesFromGitDiff(t *testing.T) {
 	}
 }
 
+func TestCIBaselineResolvesFixedRun(t *testing.T) {
+	target := writeCIManifest(t, strings.Replace(sampleCIManifestYAML, "  max_age_days: 30\n", "", 1))
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"GET /v1/runs/00000000-0000-0000-0000-000000000008": jsonHandler(200, map[string]any{
+			"id":                        "00000000-0000-0000-0000-000000000008",
+			"workspace_id":              "ws-1",
+			"name":                      "Locked mainline",
+			"status":                    "completed",
+			"challenge_pack_version_id": "00000000-0000-0000-0000-000000000005",
+			"challenge_input_set_id":    "00000000-0000-0000-0000-000000000006",
+			"created_at":                "2026-05-01T00:00:00Z",
+		}),
+	})
+	defer srv.Close()
+	t.Setenv("AGENTCLASH_TOKEN", "test-token")
+
+	result := runCIBaselineJSON(t, []string{
+		"ci", "baseline",
+		"--manifest", target,
+		"-w", "ws-1",
+		"--json",
+	}, srv.URL)
+
+	if result.Strategy != "locked_run" || result.Source != "baseline.run_id" {
+		t.Fatalf("strategy/source = %q/%q, want locked_run/baseline.run_id", result.Strategy, result.Source)
+	}
+	if result.Baseline.RunID != "00000000-0000-0000-0000-000000000008" {
+		t.Fatalf("run_id = %q, want manifest run", result.Baseline.RunID)
+	}
+	if result.Refresh.Mode != "manual" {
+		t.Fatalf("refresh mode = %q, want manual", result.Refresh.Mode)
+	}
+}
+
+func TestCIBaselineResolvesFixedRunAgent(t *testing.T) {
+	manifest := strings.Replace(sampleCIManifestYAML, "  max_age_days: 30\n", "", 1)
+	manifest = strings.Replace(manifest, "  run_id: 00000000-0000-0000-0000-000000000008\n", "  run_id: run-base\n  run_agent_id: agent-base\n", 1)
+	target := writeCIManifest(t, manifest)
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"GET /v1/runs/run-base": jsonHandler(200, map[string]any{
+			"id":                        "run-base",
+			"workspace_id":              "ws-1",
+			"status":                    "completed",
+			"challenge_pack_version_id": "00000000-0000-0000-0000-000000000005",
+			"challenge_input_set_id":    "00000000-0000-0000-0000-000000000006",
+			"created_at":                "2026-05-01T00:00:00Z",
+		}),
+		"GET /v1/runs/run-base/agents": jsonHandler(200, map[string]any{
+			"items": []map[string]any{{
+				"id":                  "agent-base",
+				"run_id":              "run-base",
+				"label":               "baseline",
+				"status":              "completed",
+				"agent_deployment_id": "dep-base",
+			}},
+		}),
+	})
+	defer srv.Close()
+	t.Setenv("AGENTCLASH_TOKEN", "test-token")
+
+	result := runCIBaselineJSON(t, []string{
+		"ci", "baseline",
+		"--manifest", target,
+		"-w", "ws-1",
+		"--json",
+	}, srv.URL)
+
+	if result.Baseline.RunAgentID != "agent-base" {
+		t.Fatalf("run_agent_id = %q, want agent-base", result.Baseline.RunAgentID)
+	}
+}
+
+func TestCIBaselineResolvesDeploymentBaseline(t *testing.T) {
+	manifest := strings.Replace(sampleCIManifestYAML, "  run_id: 00000000-0000-0000-0000-000000000008\n  refresh: manual\n  max_age_days: 30\n", "  deployment_id: dep-base\n  refresh: manual\n", 1)
+	target := writeCIManifest(t, manifest)
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"GET /v1/workspaces/ws-1/runs": jsonHandler(200, map[string]any{
+			"items": []map[string]any{
+				{
+					"id":                        "run-old",
+					"workspace_id":              "ws-1",
+					"status":                    "completed",
+					"challenge_pack_version_id": "00000000-0000-0000-0000-000000000005",
+					"challenge_input_set_id":    "00000000-0000-0000-0000-000000000006",
+					"created_at":                "2026-05-01T00:00:00Z",
+				},
+				{
+					"id":                        "run-new",
+					"workspace_id":              "ws-1",
+					"status":                    "completed",
+					"challenge_pack_version_id": "00000000-0000-0000-0000-000000000005",
+					"challenge_input_set_id":    "00000000-0000-0000-0000-000000000006",
+					"created_at":                "2026-05-03T00:00:00Z",
+				},
+			},
+		}),
+		"GET /v1/runs/run-new/agents": jsonHandler(200, map[string]any{
+			"items": []map[string]any{{
+				"id":                  "agent-new",
+				"run_id":              "run-new",
+				"status":              "completed",
+				"agent_deployment_id": "dep-base",
+			}},
+		}),
+	})
+	defer srv.Close()
+	t.Setenv("AGENTCLASH_TOKEN", "test-token")
+
+	result := runCIBaselineJSON(t, []string{
+		"ci", "baseline",
+		"--manifest", target,
+		"-w", "ws-1",
+		"--json",
+	}, srv.URL)
+
+	if result.Strategy != "deployment_latest_completed" {
+		t.Fatalf("strategy = %q, want deployment_latest_completed", result.Strategy)
+	}
+	if result.Baseline.RunID != "run-new" || result.Baseline.RunAgentID != "agent-new" || result.Baseline.DeploymentID != "dep-base" {
+		t.Fatalf("baseline = %+v, want run-new/agent-new/dep-base", result.Baseline)
+	}
+}
+
+func TestCIBaselineResolvesDeploymentBaselineByFinishedAt(t *testing.T) {
+	manifest := strings.Replace(sampleCIManifestYAML, "  run_id: 00000000-0000-0000-0000-000000000008\n  refresh: manual\n  max_age_days: 30\n", "  deployment_id: dep-base\n  refresh: manual\n", 1)
+	target := writeCIManifest(t, manifest)
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"GET /v1/workspaces/ws-1/runs": jsonHandler(200, map[string]any{
+			"items": []map[string]any{
+				{
+					"id":                        "run-created-newer",
+					"workspace_id":              "ws-1",
+					"status":                    "completed",
+					"challenge_pack_version_id": "00000000-0000-0000-0000-000000000005",
+					"challenge_input_set_id":    "00000000-0000-0000-0000-000000000006",
+					"created_at":                "2026-05-04T00:00:00Z",
+					"finished_at":               "2026-05-04T00:10:00Z",
+				},
+				{
+					"id":                        "run-finished-newer",
+					"workspace_id":              "ws-1",
+					"status":                    "completed",
+					"challenge_pack_version_id": "00000000-0000-0000-0000-000000000005",
+					"challenge_input_set_id":    "00000000-0000-0000-0000-000000000006",
+					"created_at":                "2026-05-03T00:00:00Z",
+					"finished_at":               "2026-05-04T00:20:00Z",
+				},
+			},
+		}),
+		"GET /v1/runs/run-finished-newer/agents": jsonHandler(200, map[string]any{
+			"items": []map[string]any{{
+				"id":                  "agent-finished-newer",
+				"run_id":              "run-finished-newer",
+				"status":              "completed",
+				"agent_deployment_id": "dep-base",
+			}},
+		}),
+	})
+	defer srv.Close()
+	t.Setenv("AGENTCLASH_TOKEN", "test-token")
+
+	result := runCIBaselineJSON(t, []string{
+		"ci", "baseline",
+		"--manifest", target,
+		"-w", "ws-1",
+		"--json",
+	}, srv.URL)
+
+	if result.Baseline.RunID != "run-finished-newer" || result.Baseline.RunAgentID != "agent-finished-newer" {
+		t.Fatalf("baseline = %+v, want newest finished run", result.Baseline)
+	}
+}
+
+func TestCIBaselineResolvesDeploymentBaselineAcrossPages(t *testing.T) {
+	manifest := strings.Replace(sampleCIManifestYAML, "  run_id: 00000000-0000-0000-0000-000000000008\n  refresh: manual\n  max_age_days: 30\n", "  deployment_id: dep-base\n  refresh: manual\n", 1)
+	target := writeCIManifest(t, manifest)
+	var offsets []string
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"GET /v1/workspaces/ws-1/runs": func(w http.ResponseWriter, r *http.Request) {
+			if got := r.URL.Query().Get("limit"); got != "100" {
+				t.Errorf("limit = %q, want 100", got)
+			}
+			offset := r.URL.Query().Get("offset")
+			offsets = append(offsets, offset)
+			w.Header().Set("Content-Type", "application/json")
+			switch offset {
+			case "":
+				items := make([]map[string]any, 100)
+				for i := range items {
+					items[i] = map[string]any{
+						"id":                        "run-incompatible",
+						"workspace_id":              "ws-1",
+						"status":                    "completed",
+						"challenge_pack_version_id": "other-pack-version",
+						"challenge_input_set_id":    "00000000-0000-0000-0000-000000000006",
+						"created_at":                "2026-05-03T00:00:00Z",
+					}
+				}
+				json.NewEncoder(w).Encode(map[string]any{"items": items, "total": 101, "limit": 100, "offset": 0})
+			case "100":
+				json.NewEncoder(w).Encode(map[string]any{
+					"items": []map[string]any{{
+						"id":                        "run-new",
+						"workspace_id":              "ws-1",
+						"status":                    "completed",
+						"challenge_pack_version_id": "00000000-0000-0000-0000-000000000005",
+						"challenge_input_set_id":    "00000000-0000-0000-0000-000000000006",
+						"created_at":                "2026-05-04T00:00:00Z",
+					}},
+					"total":  101,
+					"limit":  100,
+					"offset": 100,
+				})
+			default:
+				t.Errorf("offset = %q, want empty or 100", offset)
+				w.WriteHeader(http.StatusNotFound)
+			}
+		},
+		"GET /v1/runs/run-new/agents": jsonHandler(200, map[string]any{
+			"items": []map[string]any{{
+				"id":                  "agent-new",
+				"run_id":              "run-new",
+				"status":              "completed",
+				"agent_deployment_id": "dep-base",
+			}},
+		}),
+	})
+	defer srv.Close()
+	t.Setenv("AGENTCLASH_TOKEN", "test-token")
+
+	result := runCIBaselineJSON(t, []string{
+		"ci", "baseline",
+		"--manifest", target,
+		"-w", "ws-1",
+		"--json",
+	}, srv.URL)
+
+	if got := strings.Join(offsets, ","); got != ",100" {
+		t.Fatalf("offsets = %q, want first page then offset 100", got)
+	}
+	if result.Baseline.RunID != "run-new" || result.Baseline.RunAgentID != "agent-new" {
+		t.Fatalf("baseline = %+v, want paged run-new/agent-new", result.Baseline)
+	}
+}
+
+func TestCIBaselineRejectsStaleRun(t *testing.T) {
+	manifest := strings.Replace(sampleCIManifestYAML, "  run_id: 00000000-0000-0000-0000-000000000008\n", "  run_id: run-old\n", 1)
+	manifest = strings.Replace(manifest, "  max_age_days: 30\n", "  max_age_days: 1\n", 1)
+	target := writeCIManifest(t, manifest)
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"GET /v1/runs/run-old": jsonHandler(200, map[string]any{
+			"id":                        "run-old",
+			"workspace_id":              "ws-1",
+			"status":                    "completed",
+			"challenge_pack_version_id": "00000000-0000-0000-0000-000000000005",
+			"challenge_input_set_id":    "00000000-0000-0000-0000-000000000006",
+			"created_at":                "2000-01-01T00:00:00Z",
+		}),
+	})
+	defer srv.Close()
+	t.Setenv("AGENTCLASH_TOKEN", "test-token")
+
+	err := executeCommand(t, []string{
+		"ci", "baseline",
+		"--manifest", target,
+		"-w", "ws-1",
+	}, srv.URL)
+	if err == nil || !strings.Contains(err.Error(), "older than baseline.max_age_days") {
+		t.Fatalf("error = %v, want stale baseline error", err)
+	}
+}
+
+func TestCIBaselineRejectsInaccessibleRun(t *testing.T) {
+	manifest := strings.Replace(sampleCIManifestYAML, "  max_age_days: 30\n", "", 1)
+	target := writeCIManifest(t, manifest)
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"GET /v1/runs/00000000-0000-0000-0000-000000000008": jsonHandler(404, map[string]any{
+			"error": map[string]any{"code": "run_not_found", "message": "run not found"},
+		}),
+	})
+	defer srv.Close()
+	t.Setenv("AGENTCLASH_TOKEN", "test-token")
+
+	err := executeCommand(t, []string{
+		"ci", "baseline",
+		"--manifest", target,
+		"-w", "ws-1",
+	}, srv.URL)
+	if err == nil || !strings.Contains(err.Error(), "run_not_found") {
+		t.Fatalf("error = %v, want inaccessible run error", err)
+	}
+}
+
+func TestCIBaselineRejectsStaleDeploymentCandidate(t *testing.T) {
+	manifest := strings.Replace(sampleCIManifestYAML, "  run_id: 00000000-0000-0000-0000-000000000008\n  refresh: manual\n  max_age_days: 30\n", "  deployment_id: dep-base\n  refresh: manual\n  max_age_days: 1\n", 1)
+	target := writeCIManifest(t, manifest)
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"GET /v1/workspaces/ws-1/runs": jsonHandler(200, map[string]any{
+			"items": []map[string]any{{
+				"id":                        "run-old",
+				"workspace_id":              "ws-1",
+				"status":                    "completed",
+				"challenge_pack_version_id": "00000000-0000-0000-0000-000000000005",
+				"challenge_input_set_id":    "00000000-0000-0000-0000-000000000006",
+				"created_at":                "2000-01-01T00:00:00Z",
+			}},
+		}),
+	})
+	defer srv.Close()
+	t.Setenv("AGENTCLASH_TOKEN", "test-token")
+
+	err := executeCommand(t, []string{
+		"ci", "baseline",
+		"--manifest", target,
+		"-w", "ws-1",
+	}, srv.URL)
+	if err == nil || !strings.Contains(err.Error(), "older than baseline.max_age_days") {
+		t.Fatalf("error = %v, want stale deployment baseline error", err)
+	}
+}
+
+func TestCIBaselineRejectsNonCompletedDeploymentAgent(t *testing.T) {
+	manifest := strings.Replace(sampleCIManifestYAML, "  run_id: 00000000-0000-0000-0000-000000000008\n  refresh: manual\n  max_age_days: 30\n", "  deployment_id: dep-base\n  refresh: manual\n", 1)
+	target := writeCIManifest(t, manifest)
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"GET /v1/workspaces/ws-1/runs": jsonHandler(200, map[string]any{
+			"items": []map[string]any{{
+				"id":                        "run-1",
+				"workspace_id":              "ws-1",
+				"status":                    "completed",
+				"challenge_pack_version_id": "00000000-0000-0000-0000-000000000005",
+				"challenge_input_set_id":    "00000000-0000-0000-0000-000000000006",
+				"created_at":                "2026-05-03T00:00:00Z",
+			}},
+		}),
+		"GET /v1/runs/run-1/agents": jsonHandler(200, map[string]any{
+			"items": []map[string]any{{
+				"id":                  "agent-running",
+				"run_id":              "run-1",
+				"status":              "running",
+				"agent_deployment_id": "dep-base",
+			}},
+		}),
+	})
+	defer srv.Close()
+	t.Setenv("AGENTCLASH_TOKEN", "test-token")
+
+	err := executeCommand(t, []string{
+		"ci", "baseline",
+		"--manifest", target,
+		"-w", "ws-1",
+	}, srv.URL)
+	if err == nil || !strings.Contains(err.Error(), `status is "running", want completed`) {
+		t.Fatalf("error = %v, want non-completed agent baseline error", err)
+	}
+}
+
+func TestCIBaselineReportsNewestDeploymentRejections(t *testing.T) {
+	manifest := strings.Replace(sampleCIManifestYAML, "  run_id: 00000000-0000-0000-0000-000000000008\n  refresh: manual\n  max_age_days: 30\n", "  deployment_id: dep-base\n  refresh: manual\n", 1)
+	target := writeCIManifest(t, manifest)
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"GET /v1/workspaces/ws-1/runs": jsonHandler(200, map[string]any{
+			"items": []map[string]any{
+				{
+					"id":                        "run-missing-agent",
+					"workspace_id":              "ws-1",
+					"status":                    "completed",
+					"challenge_pack_version_id": "00000000-0000-0000-0000-000000000005",
+					"challenge_input_set_id":    "00000000-0000-0000-0000-000000000006",
+					"created_at":                "2026-05-04T00:00:00Z",
+				},
+				{
+					"id":                        "run-empty-agent-status",
+					"workspace_id":              "ws-1",
+					"status":                    "completed",
+					"challenge_pack_version_id": "00000000-0000-0000-0000-000000000005",
+					"challenge_input_set_id":    "00000000-0000-0000-0000-000000000006",
+					"created_at":                "2026-05-03T00:00:00Z",
+				},
+			},
+		}),
+		"GET /v1/runs/run-missing-agent/agents": jsonHandler(200, map[string]any{
+			"items": []map[string]any{{
+				"id":                  "agent-other",
+				"run_id":              "run-missing-agent",
+				"status":              "completed",
+				"agent_deployment_id": "dep-other",
+			}},
+		}),
+		"GET /v1/runs/run-empty-agent-status/agents": jsonHandler(200, map[string]any{
+			"items": []map[string]any{{
+				"id":                  "agent-empty",
+				"run_id":              "run-empty-agent-status",
+				"agent_deployment_id": "dep-base",
+			}},
+		}),
+	})
+	defer srv.Close()
+	t.Setenv("AGENTCLASH_TOKEN", "test-token")
+
+	err := executeCommand(t, []string{
+		"ci", "baseline",
+		"--manifest", target,
+		"-w", "ws-1",
+	}, srv.URL)
+	if err == nil {
+		t.Fatal("error = nil, want deployment rejection diagnostics")
+	}
+	for _, snippet := range []string{
+		"newest rejected baseline candidates",
+		"baseline run run-missing-agent has no agent for baseline.deployment_id dep-base",
+		"baseline run run-empty-agent-status agent agent-empty for baseline.deployment_id dep-base status is <missing>, want completed",
+	} {
+		if !strings.Contains(err.Error(), snippet) {
+			t.Fatalf("error missing %q:\n%v", snippet, err)
+		}
+	}
+}
+
+func TestCIBaselineRejectsMissingDeploymentMatch(t *testing.T) {
+	manifest := strings.Replace(sampleCIManifestYAML, "  run_id: 00000000-0000-0000-0000-000000000008\n  refresh: manual\n  max_age_days: 30\n", "  deployment_id: dep-base\n  refresh: manual\n", 1)
+	target := writeCIManifest(t, manifest)
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"GET /v1/workspaces/ws-1/runs": jsonHandler(200, map[string]any{
+			"items": []map[string]any{{
+				"id":                        "run-1",
+				"workspace_id":              "ws-1",
+				"status":                    "completed",
+				"challenge_pack_version_id": "00000000-0000-0000-0000-000000000005",
+				"challenge_input_set_id":    "00000000-0000-0000-0000-000000000006",
+				"created_at":                "2026-05-03T00:00:00Z",
+			}},
+		}),
+		"GET /v1/runs/run-1/agents": jsonHandler(200, map[string]any{
+			"items": []map[string]any{{
+				"id":                  "agent-other",
+				"run_id":              "run-1",
+				"status":              "completed",
+				"agent_deployment_id": "dep-other",
+			}},
+		}),
+	})
+	defer srv.Close()
+	t.Setenv("AGENTCLASH_TOKEN", "test-token")
+
+	err := executeCommand(t, []string{
+		"ci", "baseline",
+		"--manifest", target,
+		"-w", "ws-1",
+	}, srv.URL)
+	if err == nil || !strings.Contains(err.Error(), "no completed compatible baseline run") {
+		t.Fatalf("error = %v, want missing deployment match", err)
+	}
+}
+
 func writeCIManifest(t *testing.T, text string) string {
 	t.Helper()
 	target := filepath.Join(t.TempDir(), "agentclash-ci.yaml")
@@ -662,6 +1214,19 @@ type ciShouldRunJSONResult struct {
 	MatchedLabels []string               `json:"matched_labels"`
 }
 
+type ciBaselineJSONResult struct {
+	Strategy string `json:"strategy"`
+	Source   string `json:"source"`
+	Baseline struct {
+		RunID        string `json:"run_id"`
+		RunAgentID   string `json:"run_agent_id"`
+		DeploymentID string `json:"deployment_id"`
+	} `json:"baseline"`
+	Refresh struct {
+		Mode string `json:"mode"`
+	} `json:"refresh"`
+}
+
 func runCIShouldRunJSON(t *testing.T, args []string) ciShouldRunJSONResult {
 	t.Helper()
 	stdout := captureStdout(t)
@@ -672,6 +1237,22 @@ func runCIShouldRunJSON(t *testing.T, args []string) ciShouldRunJSONResult {
 	}
 
 	var result ciShouldRunJSONResult
+	if err := json.Unmarshal([]byte(out), &result); err != nil {
+		t.Fatalf("json output parse error: %v\n---\n%s", err, out)
+	}
+	return result
+}
+
+func runCIBaselineJSON(t *testing.T, args []string, apiURL string) ciBaselineJSONResult {
+	t.Helper()
+	stdout := captureStdout(t)
+	err := executeCommand(t, args, apiURL)
+	out := stdout.finish()
+	if err != nil {
+		t.Fatalf("executeCommand() error: %v", err)
+	}
+
+	var result ciBaselineJSONResult
 	if err := json.Unmarshal([]byte(out), &result); err != nil {
 		t.Fatalf("json output parse error: %v\n---\n%s", err, out)
 	}
