@@ -1,7 +1,9 @@
 package failurereview
 
 import (
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -52,6 +54,8 @@ type Item struct {
 	ChallengeKey           string          `json:"challenge_key"`
 	CaseKey                string          `json:"case_key"`
 	ItemKey                string          `json:"item_key"`
+	FailureFingerprint     string          `json:"failure_fingerprint"`
+	FailureClusterKey      string          `json:"failure_cluster_key"`
 	FailureState           FailureState    `json:"failure_state"`
 	FailedDimensions       []string        `json:"failed_dimensions"`
 	FailedChecks           []string        `json:"failed_checks"`
@@ -181,6 +185,8 @@ type CursorKey struct {
 	ItemKey      string
 }
 
+const failureIdentitySchemaVersion = "failure_review_identity.v1"
+
 func BuildRunAgentItems(input RunAgentInput) ([]Item, error) {
 	scorecard, err := decodeScorecardDocument(input.Scorecard)
 	if err != nil {
@@ -235,7 +241,10 @@ func BuildRunAgentItems(input RunAgentInput) ([]Item, error) {
 
 	items := make([]Item, 0, len(groups))
 	for _, group := range groups {
-		item, ok := finalizeGroup(group, input, scorecard)
+		item, ok, err := finalizeGroup(group, input, scorecard)
+		if err != nil {
+			return nil, err
+		}
 		if !ok {
 			continue
 		}
@@ -411,7 +420,7 @@ func ensureGroup(groups map[string]*itemGroup, caseByID map[string]CaseContext, 
 	return group
 }
 
-func finalizeGroup(group *itemGroup, input RunAgentInput, scorecard scorecardDocument) (Item, bool) {
+func finalizeGroup(group *itemGroup, input RunAgentInput, scorecard scorecardDocument) (Item, bool, error) {
 	failedDimensions := failedDimensions(scorecard.Dimensions)
 	evidenceTier := inferEvidenceTier(input.DeploymentType, input.Events)
 	finalOutputRef := finalOutputReplayRef(input.Events)
@@ -454,7 +463,7 @@ func finalizeGroup(group *itemGroup, input RunAgentInput, scorecard scorecardDoc
 	failureState := deriveFailureState(group.FailedChecks, failedDimensions, evidenceTier)
 
 	if len(group.FailedChecks) == 0 && len(failedDimensions) == 0 && failureState == FailureStateWarning {
-		return Item{}, false
+		return Item{}, false, nil
 	}
 
 	promotable := input.RunStatus == domain.RunStatusCompleted && group.ChallengeID != nil && evidenceTier != EvidenceTierNone
@@ -502,7 +511,79 @@ func finalizeGroup(group *itemGroup, input RunAgentInput, scorecard scorecardDoc
 			ItemKey:      group.Case.ItemKey,
 		},
 	}
-	return item, true
+	fingerprint, err := buildFailureFingerprint(item)
+	if err != nil {
+		return Item{}, false, err
+	}
+	clusterKey, err := buildFailureClusterKey(item)
+	if err != nil {
+		return Item{}, false, err
+	}
+	item.FailureFingerprint = fingerprint
+	item.FailureClusterKey = clusterKey
+	return item, true, nil
+}
+
+type failureIdentityPayload struct {
+	SchemaVersion       string          `json:"schema_version"`
+	Scope               string          `json:"scope"`
+	RunID               string          `json:"run_id,omitempty"`
+	RunAgentID          string          `json:"run_agent_id,omitempty"`
+	ChallengeIdentityID string          `json:"challenge_identity_id,omitempty"`
+	ChallengeKey        string          `json:"challenge_key,omitempty"`
+	CaseKey             string          `json:"case_key,omitempty"`
+	ItemKey             string          `json:"item_key,omitempty"`
+	FailureState        FailureState    `json:"failure_state,omitempty"`
+	FailureClass        FailureClass    `json:"failure_class,omitempty"`
+	FailedDimensions    []string        `json:"failed_dimensions,omitempty"`
+	FailedChecks        []string        `json:"failed_checks,omitempty"`
+	EvidenceTier        EvidenceTier    `json:"evidence_tier,omitempty"`
+	ReplayStepRefs      []ReplayStepRef `json:"replay_step_refs,omitempty"`
+}
+
+func buildFailureFingerprint(item Item) (string, error) {
+	return hashFailureIdentity("frf_", failureIdentityPayload{
+		SchemaVersion:       failureIdentitySchemaVersion,
+		Scope:               "run_failure",
+		RunID:               item.RunID.String(),
+		RunAgentID:          item.RunAgentID.String(),
+		ChallengeIdentityID: uuidString(item.ChallengeIdentityID),
+		ChallengeKey:        item.ChallengeKey,
+		CaseKey:             item.CaseKey,
+		ItemKey:             item.ItemKey,
+		FailureState:        item.FailureState,
+		FailureClass:        item.FailureClass,
+		FailedDimensions:    sortedStringCopy(item.FailedDimensions),
+		FailedChecks:        sortedStringCopy(item.FailedChecks),
+		EvidenceTier:        item.EvidenceTier,
+		ReplayStepRefs:      sortedReplayRefCopy(item.ReplayStepRefs),
+	})
+}
+
+// buildFailureClusterKey intentionally omits run-scoped and challenge UUIDs so
+// equivalent challenge keys can trend across reruns and pack-version rebuilds.
+func buildFailureClusterKey(item Item) (string, error) {
+	return hashFailureIdentity("frc_", failureIdentityPayload{
+		SchemaVersion:    failureIdentitySchemaVersion,
+		Scope:            "failure_cluster",
+		ChallengeKey:     item.ChallengeKey,
+		CaseKey:          item.CaseKey,
+		ItemKey:          item.ItemKey,
+		FailureState:     item.FailureState,
+		FailureClass:     item.FailureClass,
+		FailedDimensions: sortedStringCopy(item.FailedDimensions),
+		FailedChecks:     sortedStringCopy(item.FailedChecks),
+		EvidenceTier:     item.EvidenceTier,
+	})
+}
+
+func hashFailureIdentity(prefix string, payload failureIdentityPayload) (string, error) {
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return "", fmt.Errorf("marshal %s failure identity: %w", payload.Scope, err)
+	}
+	sum := sha256.Sum256(encoded)
+	return prefix + hex.EncodeToString(sum[:]), nil
 }
 
 func failedDimensions(dimensions map[string]dimensionSummary) []string {
@@ -759,6 +840,32 @@ func buildArtifactRefs(artifacts []ArtifactContext) []ArtifactRef {
 		return refs[i].Key < refs[j].Key
 	})
 	return refs
+}
+
+func sortedStringCopy(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	copied := append([]string(nil), values...)
+	sort.Strings(copied)
+	return copied
+}
+
+func sortedReplayRefCopy(values []ReplayStepRef) []ReplayStepRef {
+	if len(values) == 0 {
+		return nil
+	}
+	copied := append([]ReplayStepRef(nil), values...)
+	sort.SliceStable(copied, func(i, j int) bool {
+		if copied[i].SequenceNumber != copied[j].SequenceNumber {
+			return copied[i].SequenceNumber < copied[j].SequenceNumber
+		}
+		if copied[i].EventType != copied[j].EventType {
+			return copied[i].EventType < copied[j].EventType
+		}
+		return copied[i].Kind < copied[j].Kind
+	})
+	return copied
 }
 
 func dedupStrings(values *[]string) {

@@ -6497,6 +6497,8 @@ components:
         - challenge_key
         - case_key
         - item_key
+        - failure_fingerprint
+        - failure_cluster_key
         - failure_state
         - failed_dimensions
         - failed_checks
@@ -6528,6 +6530,12 @@ components:
           type: string
         item_key:
           type: string
+        failure_fingerprint:
+          type: string
+          description: Deterministic identity for this exact run-agent failure review item.
+        failure_cluster_key:
+          type: string
+          description: Deterministic grouping key for the same challenge failure shape across runs.
         failure_state:
           $ref: "#/components/schemas/FailureReviewFailureState"
         failed_dimensions:

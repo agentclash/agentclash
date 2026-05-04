@@ -390,6 +390,9 @@ func TestCIRunProposesRegressionCandidatesOnFailingGate(t *testing.T) {
 	if metadata["source"] != "agentclash_ci" || ciMetadata["pull_request_number"] != float64(42) {
 		t.Fatalf("metadata = %+v, want ci metadata and source", metadata)
 	}
+	if metadata["source_failure_fingerprint"] != "frf-test" || metadata["source_failure_cluster_key"] != "frc-test" {
+		t.Fatalf("metadata = %+v, want failure identity metadata", metadata)
+	}
 }
 
 func TestCIRunDisabledRegressionPromotionSkipsFailureAPIs(t *testing.T) {
@@ -956,6 +959,8 @@ func ciRunRegressionPromotionRoutes(t *testing.T, captures *ciRunRouteCaptures, 
 					"run_agent_id":             "agent-candidate",
 					"challenge_identity_id":    "challenge-1",
 					"challenge_key":            "challenge.one",
+					"failure_fingerprint":      "frf-test",
+					"failure_cluster_key":      "frc-test",
 					"failure_state":            "failed",
 					"failure_class":            "policy_violation",
 					"headline":                 "Policy regression",

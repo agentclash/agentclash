@@ -128,6 +128,166 @@ func TestBuildRunAgentItemsComputesPromotionEligibilityAndRefs(t *testing.T) {
 	}
 }
 
+func TestBuildRunAgentItemsComputesStableFailureIdentity(t *testing.T) {
+	t.Parallel()
+
+	verdict := "fail"
+	scorecard := mustJSON(t, map[string]any{
+		"dimensions": map[string]any{
+			"grounding":   map[string]any{"state": "available", "score": 0.4},
+			"correctness": map[string]any{"state": "available", "score": 0.2},
+		},
+		"validator_details": []any{
+			map[string]any{
+				"key":     "tool_argument.schema",
+				"type":    "json_schema",
+				"verdict": "fail",
+				"state":   "available",
+				"source": map[string]any{
+					"kind":       "tool_call",
+					"sequence":   12,
+					"event_type": "tool.call.completed",
+				},
+			},
+			map[string]any{
+				"key":     "policy.filesystem",
+				"type":    "exact_match",
+				"verdict": "fail",
+				"state":   "available",
+				"source": map[string]any{
+					"kind":       "final_output",
+					"sequence":   18,
+					"event_type": "system.output.finalized",
+				},
+			},
+		},
+	})
+
+	buildItem := func(runID, runAgentID, challengeID uuid.UUID, reversed bool) Item {
+		t.Helper()
+		judgeResults := []JudgeResult{
+			{
+				ChallengeIdentityID: &challengeID,
+				Key:                 "tool_argument.schema",
+				Verdict:             &verdict,
+			},
+			{
+				ChallengeIdentityID: &challengeID,
+				Key:                 "policy.filesystem",
+				Verdict:             &verdict,
+			},
+		}
+		if reversed {
+			judgeResults[0], judgeResults[1] = judgeResults[1], judgeResults[0]
+		}
+
+		items, err := BuildRunAgentItems(RunAgentInput{
+			RunID:               runID,
+			RunStatus:           domain.RunStatusCompleted,
+			RunAgentID:          runAgentID,
+			DeploymentType:      "native",
+			ChallengePackStatus: "runnable",
+			Cases: []CaseContext{
+				{
+					ChallengeIdentityID: challengeID,
+					ChallengeKey:        "ticket-stable",
+					CaseKey:             "case-stable",
+					ItemKey:             "prompt.txt",
+				},
+			},
+			Scorecard:    scorecard,
+			JudgeResults: judgeResults,
+			Events: []Event{
+				{SequenceNumber: 18, EventType: "system.output.finalized", Payload: mustJSON(t, map[string]any{"final_output": "oops"})},
+			},
+		})
+		if err != nil {
+			t.Fatalf("BuildRunAgentItems returned error: %v", err)
+		}
+		if len(items) != 1 {
+			t.Fatalf("item count = %d, want 1", len(items))
+		}
+		return items[0]
+	}
+
+	first := buildItem(uuid.New(), uuid.New(), uuid.New(), false)
+	rerun := buildItem(uuid.New(), uuid.New(), uuid.New(), true)
+	repeat := buildItem(first.RunID, first.RunAgentID, *first.ChallengeIdentityID, true)
+
+	if !strings.HasPrefix(first.FailureFingerprint, "frf_") {
+		t.Fatalf("failure fingerprint = %q, want frf_ prefix", first.FailureFingerprint)
+	}
+	if !strings.HasPrefix(first.FailureClusterKey, "frc_") {
+		t.Fatalf("failure cluster key = %q, want frc_ prefix", first.FailureClusterKey)
+	}
+	if first.FailureFingerprint == rerun.FailureFingerprint {
+		t.Fatalf("fingerprint stayed stable across run identity changes: %q", first.FailureFingerprint)
+	}
+	if first.FailureClusterKey != rerun.FailureClusterKey {
+		t.Fatalf("cluster key = %q, want stable %q across reruns", rerun.FailureClusterKey, first.FailureClusterKey)
+	}
+	if first.FailureFingerprint != repeat.FailureFingerprint {
+		t.Fatalf("fingerprint = %q, want deterministic %q for equivalent ordered inputs", repeat.FailureFingerprint, first.FailureFingerprint)
+	}
+	if first.FailureClusterKey != repeat.FailureClusterKey {
+		t.Fatalf("cluster key = %q, want deterministic %q for equivalent ordered inputs", repeat.FailureClusterKey, first.FailureClusterKey)
+	}
+}
+
+func TestFailureIdentityCanonicalizesSortedInputs(t *testing.T) {
+	t.Parallel()
+
+	challengeID := uuid.New()
+	base := Item{
+		RunID:               uuid.New(),
+		RunAgentID:          uuid.New(),
+		ChallengeIdentityID: &challengeID,
+		ChallengeKey:        "ticket-canonical",
+		CaseKey:             "case-canonical",
+		ItemKey:             "prompt.txt",
+		FailureState:        FailureStateFailed,
+		FailureClass:        FailureClassToolArgumentError,
+		FailedDimensions:    []string{"grounding", "correctness"},
+		FailedChecks:        []string{"tool_argument.schema", "policy.filesystem"},
+		EvidenceTier:        EvidenceTierNativeStructured,
+		ReplayStepRefs: []ReplayStepRef{
+			{SequenceNumber: 20, EventType: "tool.call.completed", Kind: "tool_call"},
+			{SequenceNumber: 10, EventType: "system.output.finalized", Kind: "final_output"},
+		},
+	}
+	reversed := base
+	reversed.FailedDimensions = []string{"correctness", "grounding"}
+	reversed.FailedChecks = []string{"policy.filesystem", "tool_argument.schema"}
+	reversed.ReplayStepRefs = []ReplayStepRef{
+		{SequenceNumber: 10, EventType: "system.output.finalized", Kind: "final_output"},
+		{SequenceNumber: 20, EventType: "tool.call.completed", Kind: "tool_call"},
+	}
+
+	baseFingerprint, err := buildFailureFingerprint(base)
+	if err != nil {
+		t.Fatalf("buildFailureFingerprint(base) returned error: %v", err)
+	}
+	reversedFingerprint, err := buildFailureFingerprint(reversed)
+	if err != nil {
+		t.Fatalf("buildFailureFingerprint(reversed) returned error: %v", err)
+	}
+	if baseFingerprint != reversedFingerprint {
+		t.Fatalf("fingerprint = %q, want canonical %q", reversedFingerprint, baseFingerprint)
+	}
+
+	baseClusterKey, err := buildFailureClusterKey(base)
+	if err != nil {
+		t.Fatalf("buildFailureClusterKey(base) returned error: %v", err)
+	}
+	reversedClusterKey, err := buildFailureClusterKey(reversed)
+	if err != nil {
+		t.Fatalf("buildFailureClusterKey(reversed) returned error: %v", err)
+	}
+	if baseClusterKey != reversedClusterKey {
+		t.Fatalf("cluster key = %q, want canonical %q", reversedClusterKey, baseClusterKey)
+	}
+}
+
 func TestBuildRunAgentItemsHandlesHostedBlackBoxEligibility(t *testing.T) {
 	t.Parallel()
 
@@ -360,6 +520,9 @@ func TestAssembleFailureReviewItemBuildsRefsAndFailedChecks(t *testing.T) {
 	}
 	if !json.Valid(encoded) || !strings.Contains(string(encoded), `"severity":"`) {
 		t.Fatalf("encoded item = %s, want severity on the wire", encoded)
+	}
+	if !strings.Contains(string(encoded), `"failure_fingerprint":"`) || !strings.Contains(string(encoded), `"failure_cluster_key":"`) {
+		t.Fatalf("encoded item = %s, want failure identity fields on the wire", encoded)
 	}
 }
 
