@@ -70,6 +70,8 @@ challenge pack/regression suite = workload used to test it
 release gate = decision policy
 ```
 
+If you are deciding what the workload should contain, use [CI/CD Workload Recipes](ci-cd-workload-recipes) for coding, research, support/ops, and long-horizon agent patterns.
+
 ## Decide whether CI should run
 
 Use `agentclash ci should-run` when you want AgentClash to explain whether a pull request touches the agent contract. A matching path or label produces `should_run: true`; unrelated docs-only changes produce `should_run: false`.
@@ -207,3 +209,4 @@ Only a future main-branch workflow should auto-promote high-confidence failures 
 - [Agents and Deployments](../concepts/agents-and-deployments)
 - [Challenge Packs and Inputs](../concepts/challenge-packs-and-inputs)
 - [Eval Workflows and Gates](../challenge-packs/eval-workflows-and-gates)
+- [CI/CD Workload Recipes](ci-cd-workload-recipes)

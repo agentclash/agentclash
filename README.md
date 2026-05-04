@@ -148,7 +148,7 @@ agentclash run list --json
 agentclash compare gate --baseline $BASE --candidate $CAND  # exit 1 = regression
 ```
 
-See [CI/CD Agent Gates](web/content/docs/guides/ci-cd-agent-gates.mdx) for the GitHub Actions sketch and the manifest contract.
+See [CI/CD Agent Gates](web/content/docs/guides/ci-cd-agent-gates.mdx) for the GitHub Actions sketch and manifest contract, and [CI/CD Workload Recipes](web/content/docs/guides/ci-cd-workload-recipes.mdx) for realistic agent workload patterns.
 
 Run `agentclash --help` for the full command reference.
 
