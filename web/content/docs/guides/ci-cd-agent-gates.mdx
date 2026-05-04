@@ -14,6 +14,7 @@ Create a repo-tracked manifest:
 ```bash
 agentclash ci init .agentclash/ci.yaml
 agentclash ci validate .agentclash/ci.yaml
+agentclash ci validate .agentclash/ci.yaml --remote --json
 agentclash ci baseline --manifest .agentclash/ci.yaml --json
 agentclash ci should-run --changed-file prompts/system.md --json
 ```
@@ -54,6 +55,8 @@ regressions:
 ```
 
 The IDs in the generated file are placeholders. Replace them with workspace resources before using the manifest for a real gate.
+
+Local validation is always offline. Add `--remote` when you want the CLI to call the AgentClash API and verify that the manifest's agent build, runtime profile, provider account, model alias, challenge pack version, input set, regression suites or cases, and baseline are visible from the selected workspace. JSON output includes a `remote.checks[]` entry per referenced field, so CI can report whether a failure came from the local manifest contract or from an API/resource check.
 
 ## What each section means
 
@@ -166,7 +169,11 @@ jobs:
       - run: npm i -g agentclash
 
       - name: Validate AgentClash CI manifest
-        run: agentclash ci validate .agentclash/ci.yaml
+        run: agentclash ci validate .agentclash/ci.yaml --remote
+        env:
+          AGENTCLASH_API_URL: https://api.agentclash.dev
+          AGENTCLASH_TOKEN: ${{ secrets.AGENTCLASH_TOKEN }}
+          AGENTCLASH_WORKSPACE: ${{ secrets.AGENTCLASH_WORKSPACE }}
 
       - name: Decide whether AgentClash gate should run
         id: should-run

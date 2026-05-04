@@ -2,7 +2,9 @@ package cmd
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
@@ -11,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	cliapi "github.com/agentclash/agentclash/cli/internal/api"
 	"github.com/agentclash/agentclash/cli/internal/output"
 	"github.com/bmatcuk/doublestar/v4"
 	"github.com/spf13/cobra"
@@ -25,6 +28,7 @@ func init() {
 	ciCmd.AddCommand(ciBaselineCmd)
 
 	ciInitCmd.Flags().Bool("force", false, "Overwrite an existing manifest")
+	ciValidateCmd.Flags().Bool("remote", false, "Validate manifest resource IDs against the selected workspace")
 	ciBaselineCmd.Flags().String("manifest", ".agentclash/ci.yaml", "Path to the AgentClash CI manifest")
 	ciShouldRunCmd.Flags().String("manifest", ".agentclash/ci.yaml", "Path to the AgentClash CI manifest")
 	ciShouldRunCmd.Flags().StringArray("changed-file", nil, "Changed file path; may be repeated")
@@ -87,7 +91,24 @@ var ciValidateCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		rc := GetRunContext(cmd)
+		remote, _ := cmd.Flags().GetBool("remote")
 		result, err := validateCIManifestFile(args[0])
+		if remote && err == nil {
+			workspaceID := RequireWorkspace(cmd)
+			remoteResult, remoteErr := validateCIManifestRemote(cmd, rc, workspaceID, args[0], *result.Manifest)
+			result.Remote = &remoteResult
+			if len(remoteResult.Errors) > 0 {
+				result.Errors = append(result.Errors, remoteResult.Errors...)
+			}
+			if !remoteResult.Valid {
+				result.Valid = false
+			}
+			if remoteErr != nil {
+				err = fmt.Errorf("remote ci manifest validation failed: %w", remoteErr)
+			} else if !remoteResult.Valid {
+				err = fmt.Errorf("ci manifest remote validation failed")
+			}
+		}
 		if rc.Output.IsStructured() {
 			if printErr := rc.Output.PrintRaw(result); printErr != nil {
 				return printErr
@@ -108,6 +129,10 @@ var ciValidateCmd = &cobra.Command{
 		rc.Output.PrintSuccess("AgentClash CI manifest is valid")
 		rc.Output.PrintDetail("Watched Paths", fmt.Sprintf("%d", len(result.Manifest.Trigger.Paths)))
 		rc.Output.PrintDetail("Evaluation", result.Manifest.Evaluation.ChallengePackVersionID)
+		if result.Remote != nil {
+			rc.Output.PrintDetail("Workspace", result.Remote.WorkspaceID)
+			rc.Output.PrintDetail("Remote Checks", fmt.Sprintf("%d", len(result.Remote.Checks)))
+		}
 		return nil
 	},
 }
@@ -279,10 +304,36 @@ type ciManifestRegressions struct {
 }
 
 type ciManifestValidationResult struct {
-	Path     string      `json:"path" yaml:"path"`
-	Valid    bool        `json:"valid" yaml:"valid"`
-	Errors   []string    `json:"errors,omitempty" yaml:"errors,omitempty"`
-	Manifest *ciManifest `json:"manifest,omitempty" yaml:"manifest,omitempty"`
+	Path     string                            `json:"path" yaml:"path"`
+	Valid    bool                              `json:"valid" yaml:"valid"`
+	Errors   []string                          `json:"errors,omitempty" yaml:"errors,omitempty"`
+	Manifest *ciManifest                       `json:"manifest,omitempty" yaml:"manifest,omitempty"`
+	Remote   *ciManifestRemoteValidationResult `json:"remote,omitempty" yaml:"remote,omitempty"`
+}
+
+type ciManifestRemoteValidationResult struct {
+	WorkspaceID string                  `json:"workspace_id" yaml:"workspace_id"`
+	Valid       bool                    `json:"valid" yaml:"valid"`
+	Checks      []ciManifestRemoteCheck `json:"checks" yaml:"checks"`
+	Errors      []string                `json:"errors,omitempty" yaml:"errors,omitempty"`
+}
+
+type ciManifestRemoteCheck struct {
+	Field    string `json:"field" yaml:"field"`
+	Resource string `json:"resource" yaml:"resource"`
+	ID       string `json:"id,omitempty" yaml:"id,omitempty"`
+	Valid    bool   `json:"valid" yaml:"valid"`
+	Code     string `json:"code,omitempty" yaml:"code,omitempty"`
+	Message  string `json:"message,omitempty" yaml:"message,omitempty"`
+}
+
+type ciRegressionCaseRemoteSummary struct {
+	ID                           string `json:"id"`
+	SuiteID                      string `json:"suite_id"`
+	WorkspaceID                  string `json:"workspace_id"`
+	Status                       string `json:"status"`
+	SourceChallengePackVersionID string `json:"source_challenge_pack_version_id"`
+	SourceChallengeInputSetID    string `json:"source_challenge_input_set_id"`
 }
 
 type ciShouldRunPathMatch struct {
@@ -389,6 +440,386 @@ func validateCIManifestFile(path string) (ciManifestValidationResult, error) {
 		return result, fmt.Errorf("ci manifest validation failed")
 	}
 	return result, nil
+}
+
+func validateCIManifestRemote(cmd *cobra.Command, rc *RunContext, workspaceID, manifestPath string, manifest ciManifest) (ciManifestRemoteValidationResult, error) {
+	result := ciManifestRemoteValidationResult{
+		WorkspaceID: workspaceID,
+		Valid:       true,
+	}
+
+	if _, err := validateCIManifestRemoteAgentBuild(cmd, rc, &result, workspaceID, manifest.Candidate.Build.AgentBuildID); err != nil {
+		result.addAPIError(err)
+		return result, err
+	}
+
+	if _, err := validateCIManifestRemoteListResource(cmd, rc, &result, workspaceID, "candidate.deployment.runtime_profile_id", "runtime_profile", manifest.Candidate.Deployment.RuntimeProfileID, "/v1/workspaces/%s/runtime-profiles"); err != nil {
+		result.addAPIError(err)
+		return result, err
+	}
+	var err error
+	var providerAccount map[string]any
+	if manifest.Candidate.Deployment.ProviderAccountID != "" {
+		providerAccount, err = validateCIManifestRemoteListResource(cmd, rc, &result, workspaceID, "candidate.deployment.provider_account_id", "provider_account", manifest.Candidate.Deployment.ProviderAccountID, "/v1/workspaces/%s/provider-accounts")
+		if err != nil {
+			result.addAPIError(err)
+			return result, err
+		}
+	}
+	var modelAlias map[string]any
+	if manifest.Candidate.Deployment.ModelAliasID != "" {
+		modelAlias, err = validateCIManifestRemoteListResource(cmd, rc, &result, workspaceID, "candidate.deployment.model_alias_id", "model_alias", manifest.Candidate.Deployment.ModelAliasID, "/v1/workspaces/%s/model-aliases")
+		if err != nil {
+			result.addAPIError(err)
+			return result, err
+		}
+	}
+	validateCIManifestRemoteModelProvider(&result, manifest, providerAccount, modelAlias)
+
+	packID, versionID, err := validateCIManifestRemoteChallengeVersion(cmd, rc, &result, workspaceID, manifest.Evaluation.ChallengePackVersionID)
+	if err != nil {
+		result.addAPIError(err)
+		return result, err
+	}
+	if err := validateCIManifestRemoteInputSet(cmd, rc, &result, workspaceID, versionID, manifest.Evaluation.InputSetID); err != nil {
+		result.addAPIError(err)
+		return result, err
+	}
+	var suites []regressionSuiteSummary
+	var selectedSuiteIDs []string
+	if len(manifest.Evaluation.RegressionSuites) > 0 || len(manifest.Evaluation.RegressionCases) > 0 {
+		suites, selectedSuiteIDs, err = validateCIManifestRemoteRegressionSuites(cmd, rc, &result, workspaceID, packID, manifest.Evaluation.RegressionSuites)
+		if err != nil {
+			result.addAPIError(err)
+			return result, err
+		}
+	}
+	if err := validateCIManifestRemoteRegressionCases(cmd, rc, &result, workspaceID, versionID, manifest.Evaluation.InputSetID, suites, selectedSuiteIDs, manifest.Evaluation.RegressionCases); err != nil {
+		result.addAPIError(err)
+		return result, err
+	}
+	if err := validateCIManifestRemoteBaseline(cmd, rc, &result, workspaceID, manifestPath, manifest); err != nil {
+		return result, err
+	}
+
+	return result, nil
+}
+
+func validateCIManifestRemoteAgentBuild(cmd *cobra.Command, rc *RunContext, result *ciManifestRemoteValidationResult, workspaceID, id string) (map[string]any, error) {
+	field := "candidate.build.agent_build_id"
+	resp, err := rc.Client.Get(cmd.Context(), "/v1/agent-builds/"+id, nil)
+	if err != nil {
+		return nil, err
+	}
+	if apiErr := resp.ParseError(); apiErr != nil {
+		if ciRemoteAPIErrorCanBeFieldFailure(apiErr) {
+			result.addFailure(field, "agent_build", id, ciRemoteAPIErrorCode(apiErr), fmt.Sprintf("agent build %s is not accessible in workspace %s: %s", id, workspaceID, apiErr.Error()))
+			return nil, nil
+		}
+		return nil, apiErr
+	}
+
+	var build map[string]any
+	if err := resp.DecodeJSON(&build); err != nil {
+		return nil, err
+	}
+	if !ciRemoteWorkspaceMatches(result, field, "agent_build", id, mapString(build, "workspace_id"), workspaceID) {
+		return build, nil
+	}
+	result.addPass(field, "agent_build", id, "agent build is accessible in the selected workspace")
+	return build, nil
+}
+
+func validateCIManifestRemoteListResource(cmd *cobra.Command, rc *RunContext, result *ciManifestRemoteValidationResult, workspaceID, field, resource, id, pathTemplate string) (map[string]any, error) {
+	items, err := listCIManifestRemoteObjects(cmd, rc, fmt.Sprintf(pathTemplate, workspaceID), nil)
+	if err != nil {
+		return nil, err
+	}
+	item, ok := findCIManifestRemoteObjectByID(items, id)
+	if !ok {
+		result.addFailure(field, resource, id, "not_found", fmt.Sprintf("%s %s was not found in or is not accessible to workspace %s", resource, id, workspaceID))
+		return nil, nil
+	}
+	if !ciRemoteWorkspaceMatches(result, field, resource, id, mapString(item, "workspace_id"), workspaceID) {
+		return item, nil
+	}
+	result.addPass(field, resource, id, fmt.Sprintf("%s exists in the selected workspace", resource))
+	return item, nil
+}
+
+func validateCIManifestRemoteModelProvider(result *ciManifestRemoteValidationResult, manifest ciManifest, providerAccount map[string]any, modelAlias map[string]any) {
+	if providerAccount == nil || modelAlias == nil {
+		return
+	}
+	providerAccountID := strings.TrimSpace(manifest.Candidate.Deployment.ProviderAccountID)
+	aliasProviderID := strings.TrimSpace(mapString(modelAlias, "provider_account_id"))
+	if providerAccountID == "" || aliasProviderID == "" || aliasProviderID == providerAccountID {
+		return
+	}
+	result.addFailure(
+		"candidate.deployment.model_alias_id",
+		"model_alias",
+		manifest.Candidate.Deployment.ModelAliasID,
+		"incompatible",
+		fmt.Sprintf("model alias %s uses provider account %s, not candidate.deployment.provider_account_id %s", manifest.Candidate.Deployment.ModelAliasID, aliasProviderID, providerAccountID),
+	)
+}
+
+func validateCIManifestRemoteChallengeVersion(cmd *cobra.Command, rc *RunContext, result *ciManifestRemoteValidationResult, workspaceID, versionID string) (string, string, error) {
+	packs, err := listChallengePacksForWorkflow(cmd, rc, workspaceID)
+	if err != nil {
+		return "", "", err
+	}
+	for _, pack := range packs {
+		for _, version := range pack.Versions {
+			if version.ID == versionID {
+				result.addPass("evaluation.challenge_pack_version_id", "challenge_pack_version", versionID, "challenge pack version exists in the selected workspace")
+				return pack.ID, version.ID, nil
+			}
+		}
+	}
+	result.addFailure("evaluation.challenge_pack_version_id", "challenge_pack_version", versionID, "not_found", fmt.Sprintf("challenge pack version %s was not found in workspace %s", versionID, workspaceID))
+	return "", "", nil
+}
+
+func validateCIManifestRemoteInputSet(cmd *cobra.Command, rc *RunContext, result *ciManifestRemoteValidationResult, workspaceID, challengePackVersionID, inputSetID string) error {
+	if strings.TrimSpace(inputSetID) == "" {
+		return nil
+	}
+	if strings.TrimSpace(challengePackVersionID) == "" {
+		result.addFailure("evaluation.input_set_id", "challenge_input_set", inputSetID, "dependency_failed", "input set cannot be validated because evaluation.challenge_pack_version_id did not resolve")
+		return nil
+	}
+	inputSets, err := listChallengeInputSets(cmd, rc, workspaceID, challengePackVersionID)
+	if err != nil {
+		return err
+	}
+	for _, inputSet := range inputSets {
+		if inputSet.ID == inputSetID {
+			result.addPass("evaluation.input_set_id", "challenge_input_set", inputSetID, "input set exists for the selected challenge pack version")
+			return nil
+		}
+	}
+	result.addFailure("evaluation.input_set_id", "challenge_input_set", inputSetID, "not_found", fmt.Sprintf("input set %s was not found for challenge pack version %s", inputSetID, challengePackVersionID))
+	return nil
+}
+
+func validateCIManifestRemoteRegressionSuites(cmd *cobra.Command, rc *RunContext, result *ciManifestRemoteValidationResult, workspaceID, packID string, suiteIDs []string) ([]regressionSuiteSummary, []string, error) {
+	suites, err := listRegressionSuites(cmd, rc, workspaceID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(suiteIDs) == 0 {
+		return suites, nil, nil
+	}
+
+	var selected []string
+	byID := make(map[string]regressionSuiteSummary, len(suites))
+	for _, suite := range suites {
+		byID[suite.ID] = suite
+	}
+	for _, suiteID := range suiteIDs {
+		suite, ok := byID[suiteID]
+		if !ok {
+			result.addFailure("evaluation.regression_suites", "regression_suite", suiteID, "not_found", fmt.Sprintf("regression suite %s was not found in workspace %s", suiteID, workspaceID))
+			continue
+		}
+		if suite.WorkspaceID != "" && suite.WorkspaceID != workspaceID {
+			result.addFailure("evaluation.regression_suites", "regression_suite", suiteID, "wrong_workspace", fmt.Sprintf("regression suite %s belongs to workspace %s, not %s", suiteID, suite.WorkspaceID, workspaceID))
+			continue
+		}
+		if suite.Status != "" && suite.Status != "active" {
+			result.addFailure("evaluation.regression_suites", "regression_suite", suiteID, "inactive", fmt.Sprintf("regression suite %s status is %s, want active", suiteID, suite.Status))
+			continue
+		}
+		if packID != "" && suite.SourceChallengePackID != "" && suite.SourceChallengePackID != packID {
+			result.addFailure("evaluation.regression_suites", "regression_suite", suiteID, "incompatible", fmt.Sprintf("regression suite %s belongs to challenge pack %s, not %s", suiteID, suite.SourceChallengePackID, packID))
+			continue
+		}
+		selected = append(selected, suite.ID)
+		result.addPass("evaluation.regression_suites", "regression_suite", suiteID, "regression suite exists and is compatible with the selected workload")
+	}
+	return suites, selected, nil
+}
+
+func validateCIManifestRemoteRegressionCases(cmd *cobra.Command, rc *RunContext, result *ciManifestRemoteValidationResult, workspaceID, challengePackVersionID, inputSetID string, suites []regressionSuiteSummary, selectedSuiteIDs []string, caseIDs []string) error {
+	if len(caseIDs) == 0 {
+		return nil
+	}
+	searchSuiteIDs := selectedSuiteIDs
+	if len(searchSuiteIDs) == 0 {
+		for _, suite := range suites {
+			if suite.Status == "" || suite.Status == "active" {
+				searchSuiteIDs = append(searchSuiteIDs, suite.ID)
+			}
+		}
+	}
+	cases, err := listCIManifestRemoteRegressionCases(cmd, rc, workspaceID, searchSuiteIDs)
+	if err != nil {
+		return err
+	}
+	byID := make(map[string]ciRegressionCaseRemoteSummary, len(cases))
+	for _, regressionCase := range cases {
+		byID[regressionCase.ID] = regressionCase
+	}
+	for _, caseID := range caseIDs {
+		regressionCase, ok := byID[caseID]
+		if !ok {
+			result.addFailure("evaluation.regression_cases", "regression_case", caseID, "not_found", fmt.Sprintf("regression case %s was not found in the selected workspace or suites", caseID))
+			continue
+		}
+		if regressionCase.WorkspaceID != "" && regressionCase.WorkspaceID != workspaceID {
+			result.addFailure("evaluation.regression_cases", "regression_case", caseID, "wrong_workspace", fmt.Sprintf("regression case %s belongs to workspace %s, not %s", caseID, regressionCase.WorkspaceID, workspaceID))
+			continue
+		}
+		if regressionCase.Status != "" && regressionCase.Status != "active" {
+			result.addFailure("evaluation.regression_cases", "regression_case", caseID, "inactive", fmt.Sprintf("regression case %s status is %s, want active", caseID, regressionCase.Status))
+			continue
+		}
+		if challengePackVersionID != "" && regressionCase.SourceChallengePackVersionID != "" && regressionCase.SourceChallengePackVersionID != challengePackVersionID {
+			result.addFailure("evaluation.regression_cases", "regression_case", caseID, "incompatible", fmt.Sprintf("regression case %s belongs to challenge pack version %s, not %s", caseID, regressionCase.SourceChallengePackVersionID, challengePackVersionID))
+			continue
+		}
+		if inputSetID != "" && regressionCase.SourceChallengeInputSetID != "" && regressionCase.SourceChallengeInputSetID != inputSetID {
+			result.addFailure("evaluation.regression_cases", "regression_case", caseID, "incompatible", fmt.Sprintf("regression case %s belongs to input set %s, not %s", caseID, regressionCase.SourceChallengeInputSetID, inputSetID))
+			continue
+		}
+		result.addPass("evaluation.regression_cases", "regression_case", caseID, "regression case exists and is compatible with the selected workload")
+	}
+	return nil
+}
+
+func validateCIManifestRemoteBaseline(cmd *cobra.Command, rc *RunContext, result *ciManifestRemoteValidationResult, workspaceID, manifestPath string, manifest ciManifest) error {
+	field := "baseline.run_id"
+	resource := "run"
+	id := strings.TrimSpace(manifest.Baseline.RunID)
+	if id == "" {
+		field = "baseline.deployment_id"
+		resource = "agent_deployment"
+		id = strings.TrimSpace(manifest.Baseline.DeploymentID)
+	}
+	_, err := resolveCIManifestBaseline(cmd, rc, workspaceID, manifestPath, manifest, time.Now().UTC())
+	if err == nil {
+		result.addPass(field, resource, id, "baseline resolves to a completed run compatible with the selected workload")
+		return nil
+	}
+	if apiErr, ok := ciRemoteAPIError(err); ok && !ciRemoteAPIErrorCanBeFieldFailure(apiErr) {
+		result.addAPIError(err)
+		return err
+	}
+	result.addFailure(field, resource, id, "incompatible", err.Error())
+	return nil
+}
+
+func listCIManifestRemoteObjects(cmd *cobra.Command, rc *RunContext, path string, query url.Values) ([]map[string]any, error) {
+	resp, err := rc.Client.Get(cmd.Context(), path, query)
+	if err != nil {
+		return nil, err
+	}
+	if apiErr := resp.ParseError(); apiErr != nil {
+		return nil, apiErr
+	}
+	var result struct {
+		Items []map[string]any `json:"items"`
+	}
+	if err := resp.DecodeJSON(&result); err != nil {
+		return nil, err
+	}
+	return result.Items, nil
+}
+
+func listCIManifestRemoteRegressionCases(cmd *cobra.Command, rc *RunContext, workspaceID string, suiteIDs []string) ([]ciRegressionCaseRemoteSummary, error) {
+	var cases []ciRegressionCaseRemoteSummary
+	for _, suiteID := range suiteIDs {
+		resp, err := rc.Client.Get(cmd.Context(), "/v1/workspaces/"+workspaceID+"/regression-suites/"+suiteID+"/cases", nil)
+		if err != nil {
+			return nil, err
+		}
+		if apiErr := resp.ParseError(); apiErr != nil {
+			return nil, apiErr
+		}
+		var result struct {
+			Items []ciRegressionCaseRemoteSummary `json:"items"`
+		}
+		if err := resp.DecodeJSON(&result); err != nil {
+			return nil, err
+		}
+		cases = append(cases, result.Items...)
+	}
+	return cases, nil
+}
+
+func findCIManifestRemoteObjectByID(items []map[string]any, id string) (map[string]any, bool) {
+	for _, item := range items {
+		if mapString(item, "id") == id {
+			return item, true
+		}
+	}
+	return nil, false
+}
+
+func ciRemoteWorkspaceMatches(result *ciManifestRemoteValidationResult, field, resource, id, resourceWorkspaceID, selectedWorkspaceID string) bool {
+	if resourceWorkspaceID == "" || selectedWorkspaceID == "" || resourceWorkspaceID == selectedWorkspaceID {
+		return true
+	}
+	result.addFailure(field, resource, id, "wrong_workspace", fmt.Sprintf("%s %s belongs to workspace %s, not %s", resource, id, resourceWorkspaceID, selectedWorkspaceID))
+	return false
+}
+
+func (r *ciManifestRemoteValidationResult) addPass(field, resource, id, message string) {
+	r.Checks = append(r.Checks, ciManifestRemoteCheck{
+		Field:    field,
+		Resource: resource,
+		ID:       id,
+		Valid:    true,
+		Code:     "ok",
+		Message:  message,
+	})
+}
+
+func (r *ciManifestRemoteValidationResult) addFailure(field, resource, id, code, message string) {
+	r.Valid = false
+	r.Checks = append(r.Checks, ciManifestRemoteCheck{
+		Field:    field,
+		Resource: resource,
+		ID:       id,
+		Valid:    false,
+		Code:     code,
+		Message:  message,
+	})
+	r.Errors = append(r.Errors, fmt.Sprintf("%s: %s", field, message))
+}
+
+func (r *ciManifestRemoteValidationResult) addAPIError(err error) {
+	r.Valid = false
+	r.Errors = append(r.Errors, fmt.Sprintf("remote API error: %v", err))
+}
+
+func ciRemoteAPIError(err error) (*cliapi.APIError, bool) {
+	var apiErr *cliapi.APIError
+	if errors.As(err, &apiErr) {
+		return apiErr, true
+	}
+	return nil, false
+}
+
+func ciRemoteAPIErrorCanBeFieldFailure(apiErr *cliapi.APIError) bool {
+	switch apiErr.StatusCode {
+	case http.StatusBadRequest, http.StatusForbidden, http.StatusNotFound:
+		return true
+	default:
+		return false
+	}
+}
+
+func ciRemoteAPIErrorCode(apiErr *cliapi.APIError) string {
+	if apiErr.Code != "" {
+		return apiErr.Code
+	}
+	if apiErr.StatusCode > 0 {
+		return fmt.Sprintf("http_%d", apiErr.StatusCode)
+	}
+	return "api_error"
 }
 
 func validateCIManifest(manifest ciManifest) []string {
