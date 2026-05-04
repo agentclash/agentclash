@@ -275,6 +275,13 @@ export const DOCS_NAV: DocNavSection[] = [
         href: "/docs/guides/interpret-results",
       },
       {
+        title: "CI/CD Agent Gates",
+        description:
+          "Define the agent revision, workload, baseline, and release gate a pull request should run.",
+        slug: ["guides", "ci-cd-agent-gates"],
+        href: "/docs/guides/ci-cd-agent-gates",
+      },
+      {
         title: "Use with AI Tools",
         description:
           "Use llms.txt, the full bundle, and per-page markdown exports with assistants and coding agents.",

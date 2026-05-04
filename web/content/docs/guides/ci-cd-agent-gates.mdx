@@ -1,0 +1,167 @@
+---
+title: CI/CD Agent Gates
+description: Use a repo-tracked AgentClash CI manifest to define which agent revision, workload, baseline, and gate a pull request should run.
+---
+
+AgentClash CI should gate an agent revision, not only a prompt diff.
+
+Prompt-focused tools can usually watch `prompts/**` and rerun a prompt eval. AgentClash's main product model is richer: an agent change can touch instructions, workflow code, tool bindings, model aliases, runtime limits, output schemas, guardrails, or retrieval configuration. The CI contract therefore needs to name the candidate agent build, deployment settings, challenge workload, baseline, and gate policy explicitly.
+
+## The manifest is the contract
+
+Create a repo-tracked manifest:
+
+```bash
+agentclash ci init .agentclash/ci.yaml
+agentclash ci validate .agentclash/ci.yaml
+```
+
+The generated manifest has this shape:
+
+```yaml
+version: 1
+trigger:
+  paths:
+    - .agentclash/agent.json
+    - prompts/**
+    - tools/**
+  labels:
+    - agentclash/eval
+candidate:
+  build:
+    agent_build_id: 00000000-0000-0000-0000-000000000001
+    spec_file: .agentclash/agent.json
+  deployment:
+    name: pr-candidate
+    runtime_profile_id: 00000000-0000-0000-0000-000000000002
+    provider_account_id: 00000000-0000-0000-0000-000000000003
+    model_alias_id: 00000000-0000-0000-0000-000000000004
+evaluation:
+  challenge_pack_version_id: 00000000-0000-0000-0000-000000000005
+  input_set_id: 00000000-0000-0000-0000-000000000006
+  regression_suites:
+    - 00000000-0000-0000-0000-000000000007
+baseline:
+  run_id: 00000000-0000-0000-0000-000000000008
+gate:
+  fail_on: regression
+regressions:
+  promote_failures: proposed
+```
+
+The IDs in the generated file are placeholders. Replace them with workspace resources before using the manifest for a real gate.
+
+## What each section means
+
+- `trigger` says which repository paths and optional labels should cause the workflow to run.
+- `candidate.build` names the existing AgentClash build and the source-backed build-version spec to test.
+- `candidate.deployment` names the runtime resources used for the candidate deployment.
+- `evaluation` names the workload: challenge pack version, optional input set, and optional regression suites or cases.
+- `baseline` names the locked reference run or deployment.
+- `gate` names the release-gate failure threshold.
+- `regressions` controls whether failed cases should only be reported, proposed for promotion, or eventually auto-promoted on main.
+
+The important distinction is:
+
+```text
+agent build/deployment = thing under test
+challenge pack/regression suite = workload used to test it
+release gate = decision policy
+```
+
+## GitHub Actions sketch
+
+The first shipped CLI surface validates the manifest. Full orchestration will be a follow-up command built on the same file. Until then, teams can validate the contract and keep using the existing explicit run and gate commands. The workflow below repeats selected manifest IDs as GitHub variables only because `agentclash ci run` does not exist yet; once it does, the manifest should be the single source of truth.
+
+```yaml
+name: AgentClash gate
+
+on:
+  pull_request:
+    paths:
+      - ".agentclash/**"
+      - "prompts/**"
+      - "tools/**"
+
+jobs:
+  agentclash:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - run: npm i -g agentclash
+
+      - name: Validate AgentClash CI manifest
+        run: agentclash ci validate .agentclash/ci.yaml
+
+      - name: Create candidate run
+        id: candidate
+        run: |
+          RUN_JSON=$(agentclash run create \
+            --challenge-pack-version "$AGENTCLASH_CHALLENGE_PACK_VERSION" \
+            --deployments "$AGENTCLASH_CANDIDATE_DEPLOYMENT" \
+            --json)
+          echo "run_id=$(echo "$RUN_JSON" | jq -r '.id')" >> "$GITHUB_OUTPUT"
+        env:
+          AGENTCLASH_API_URL: https://api.agentclash.dev
+          AGENTCLASH_TOKEN: ${{ secrets.AGENTCLASH_TOKEN }}
+          AGENTCLASH_WORKSPACE: ${{ secrets.AGENTCLASH_WORKSPACE }}
+          AGENTCLASH_CHALLENGE_PACK_VERSION: ${{ vars.AGENTCLASH_CHALLENGE_PACK_VERSION }}
+          AGENTCLASH_CANDIDATE_DEPLOYMENT: ${{ vars.AGENTCLASH_CANDIDATE_DEPLOYMENT }}
+
+      - name: Evaluate release gate
+        run: |
+          agentclash compare gate \
+            --baseline "$AGENTCLASH_BASELINE_RUN" \
+            --candidate "${{ steps.candidate.outputs.run_id }}"
+        env:
+          AGENTCLASH_API_URL: https://api.agentclash.dev
+          AGENTCLASH_TOKEN: ${{ secrets.AGENTCLASH_TOKEN }}
+          AGENTCLASH_WORKSPACE: ${{ secrets.AGENTCLASH_WORKSPACE }}
+          AGENTCLASH_BASELINE_RUN: ${{ vars.AGENTCLASH_BASELINE_RUN }}
+```
+
+## Regression promotion policy
+
+Do not auto-promote every PR failure by default. A bad run, flaky dependency, or weak evaluator could pollute the regression suite.
+
+Use this conservative progression:
+
+```yaml
+regressions:
+  promote_failures: disabled
+```
+
+Report failures only.
+
+```yaml
+regressions:
+  promote_failures: proposed
+```
+
+Record promotion candidates for review.
+
+```yaml
+regressions:
+  promote_failures: auto_on_main
+```
+
+Only a future main-branch workflow should auto-promote high-confidence failures after the gate has proven useful.
+
+## Current limits
+
+- `agentclash ci validate` validates the manifest shape locally; it does not check that IDs exist in the API.
+- There is not yet an `agentclash ci run` wrapper that creates the candidate build version, deployment, run, gate, and PR report in one command.
+- PR metadata such as repository, pull request number, branch, and commit SHA is not yet attached to runs by the CLI.
+- Automatic regression promotion should remain opt-in and conservative.
+
+## See also
+
+- [Agents and Deployments](../concepts/agents-and-deployments)
+- [Challenge Packs and Inputs](../concepts/challenge-packs-and-inputs)
+- [Eval Workflows and Gates](../challenge-packs/eval-workflows-and-gates)

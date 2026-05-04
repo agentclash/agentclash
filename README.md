@@ -127,7 +127,14 @@ If your workspace is already seeded with challenge packs and deployments, you ca
 
 ### CI/CD
 
-All commands also work non-interactively with environment variables and explicit IDs:
+AgentClash CI/CD gates the candidate agent revision against a repeatable workload. Start by committing an explicit manifest that maps repo changes to the candidate build, deployment settings, challenge pack, baseline, and release gate:
+
+```bash
+agentclash ci init .agentclash/ci.yaml
+agentclash ci validate .agentclash/ci.yaml
+```
+
+The current CLI can validate that manifest locally. Existing commands also work non-interactively with environment variables and explicit IDs:
 
 ```bash
 export AGENTCLASH_API_URL="https://api.agentclash.dev"
@@ -139,6 +146,8 @@ agentclash run create \
 agentclash run list --json
 agentclash compare gate --baseline $BASE --candidate $CAND  # exit 1 = regression
 ```
+
+See [CI/CD Agent Gates](web/content/docs/guides/ci-cd-agent-gates.mdx) for the GitHub Actions sketch and the manifest contract.
 
 Run `agentclash --help` for the full command reference.
 
