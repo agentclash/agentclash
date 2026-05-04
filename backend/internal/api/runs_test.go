@@ -235,6 +235,55 @@ func TestCreateRunEndpointRejectsInvalidCIMetadata(t *testing.T) {
 	}
 }
 
+func TestCreateRunEndpointRejectsUnsafeCIMetadataURL(t *testing.T) {
+	workspaceID := uuid.New()
+	req := httptest.NewRequest(http.MethodPost, "/v1/runs", bytes.NewBufferString(`{
+		"workspace_id":"`+workspaceID.String()+`",
+		"challenge_pack_version_id":"`+uuid.New().String()+`",
+		"agent_deployment_ids":["`+uuid.New().String()+`"],
+		"ci_metadata":{"workflow_run_url":"javascript:alert(1)"}
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(headerUserID, uuid.New().String())
+	req.Header.Set(headerWorkspaceMemberships, workspaceID.String()+":workspace_member")
+	recorder := httptest.NewRecorder()
+
+	newRouter("dev", nil,
+		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
+		NewDevelopmentAuthenticator(),
+		NewCallerWorkspaceAuthorizer(),
+		nil,
+		0,
+		&fakeRunCreationService{},
+		&fakeRunReadService{},
+		&fakeReplayReadService{},
+		stubHostedRunIngestionService{},
+		nil,
+		stubAgentDeploymentReadService{},
+		stubChallengePackReadService{},
+		stubAgentBuildService{},
+		noopReleaseGateService{},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+	).ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusBadRequest)
+	}
+	if !bytes.Contains(recorder.Body.Bytes(), []byte("ci_metadata.workflow_run_url must be an http or https URL")) {
+		t.Fatalf("body = %s, want workflow_run_url validation error", recorder.Body.String())
+	}
+}
+
 func TestCreateRunEndpointRejectsInvalidPayload(t *testing.T) {
 	workspaceID := uuid.New()
 	req := httptest.NewRequest(http.MethodPost, "/v1/runs", bytes.NewBufferString(`{"workspace_id":"`+workspaceID.String()+`"}`))

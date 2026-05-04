@@ -150,6 +150,17 @@ function shortCommit(sha?: string): string | null {
   return sha.length > 7 ? sha.slice(0, 7) : sha;
 }
 
+function safeHTTPURL(raw?: string): string | null {
+  if (!raw) return null;
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
 // --- Component ---
 
 interface RunDetailClientProps {
@@ -328,6 +339,7 @@ export function RunDetailClient({
   );
   const ciMetadata = run.ci_metadata;
   const ciCommit = shortCommit(ciMetadata?.commit_sha);
+  const ciWorkflowURL = safeHTTPURL(ciMetadata?.workflow_run_url);
 
   return (
     <div className="space-y-8">
@@ -465,9 +477,9 @@ export function RunDetailClient({
                   {ciCommit}
                 </code>
               )}
-              {ciMetadata.workflow_run_url && (
+              {ciWorkflowURL && (
                 <a
-                  href={ciMetadata.workflow_run_url}
+                  href={ciWorkflowURL}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1 text-white/80 hover:text-white transition-colors"

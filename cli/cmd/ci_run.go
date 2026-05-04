@@ -24,7 +24,7 @@ func init() {
 	ciRunCmd.Flags().Duration("poll-interval", 5*time.Second, "Polling interval while waiting for run completion")
 	ciRunCmd.Flags().String("ci-provider", "", "CI provider metadata override")
 	ciRunCmd.Flags().String("ci-repository", "", "Repository metadata override, for example owner/repo")
-	ciRunCmd.Flags().Int("ci-pull-request", 0, "Pull request number metadata override")
+	ciRunCmd.Flags().Int("ci-pull-request", 0, "Positive pull request number metadata override")
 	ciRunCmd.Flags().String("ci-branch", "", "Branch metadata override")
 	ciRunCmd.Flags().String("ci-ref", "", "Git ref metadata override")
 	ciRunCmd.Flags().String("ci-commit", "", "Commit SHA metadata override")

@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"mime"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -372,7 +373,18 @@ func normalizeCreateRunCIMetadata(metadata *domain.RunCIMetadata) (*domain.RunCI
 	if len(normalized.WorkflowRunURL) > 2048 {
 		return nil, RunCreationValidationError{Code: "invalid_ci_metadata", Message: "ci_metadata.workflow_run_url must be 2048 characters or fewer"}
 	}
+	if normalized.WorkflowRunURL != "" && !isHTTPURL(normalized.WorkflowRunURL) {
+		return nil, RunCreationValidationError{Code: "invalid_ci_metadata", Message: "ci_metadata.workflow_run_url must be an http or https URL"}
+	}
 	return normalized, nil
+}
+
+func isHTTPURL(raw string) bool {
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return false
+	}
+	return parsed.Host != "" && (parsed.Scheme == "http" || parsed.Scheme == "https")
 }
 
 func cloneInt32Ptr(value *int32) *int32 {

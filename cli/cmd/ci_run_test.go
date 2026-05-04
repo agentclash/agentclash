@@ -131,6 +131,37 @@ func TestCIRunManualMetadataFlagsOverrideGitHubActions(t *testing.T) {
 	}
 }
 
+func TestCIRunRejectsNonPositivePullRequestMetadata(t *testing.T) {
+	target := writeCIRunManifest(t)
+	called := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+	t.Setenv("AGENTCLASH_TOKEN", "test-token")
+
+	result, err, stderr := runCIRunJSON(t, []string{
+		"ci", "run",
+		"--manifest", target,
+		"-w", "ws-1",
+		"--json",
+		"--ci-pull-request", "0",
+	}, srv.URL)
+	if err == nil {
+		t.Fatal("ci run error = nil, want validation error")
+	}
+	if result.ExitCode != ciRunExitInvalidManifest {
+		t.Fatalf("exit code = %d, want %d", result.ExitCode, ciRunExitInvalidManifest)
+	}
+	if !strings.Contains(stderr, "--ci-pull-request must be greater than 0") {
+		t.Fatalf("stderr = %q, want ci-pull-request validation", stderr)
+	}
+	if called {
+		t.Fatal("API server was called despite invalid CI metadata")
+	}
+}
+
 func TestCIRunRejectsInvalidManifestBeforeAPIWrites(t *testing.T) {
 	target := writeCIManifest(t, `version: 1
 trigger: {}

@@ -36,13 +36,10 @@ func ciMetadataFromFlags(cmd *cobra.Command) (map[string]any, error) {
 	}
 	if flags.Changed("ci-pull-request") {
 		value, _ := flags.GetInt("ci-pull-request")
-		if value < 0 {
-			return nil, fmt.Errorf("--ci-pull-request must be greater than or equal to 0")
+		if value <= 0 {
+			return nil, fmt.Errorf("--ci-pull-request must be greater than 0")
 		}
-		metadata.PullRequestNumber = nil
-		if value > 0 {
-			metadata.PullRequestNumber = &value
-		}
+		metadata.PullRequestNumber = &value
 	}
 	if flags.Changed("ci-branch") {
 		metadata.Branch, _ = flags.GetString("ci-branch")

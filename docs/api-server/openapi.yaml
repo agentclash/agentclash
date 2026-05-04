@@ -5594,12 +5594,14 @@ components:
           type: integer
           minimum: 1
           maximum: 10
-        ci_metadata:
-          $ref: "#/components/schemas/RunCIMetadata"
           description: >
             Optional. Overrides the default cadence (minimum steps between
             standings injections). Null / omitted uses the backend default.
             Only meaningful when `race_context` is true.
+        ci_metadata:
+          $ref: "#/components/schemas/RunCIMetadata"
+          description: >
+            Optional CI source metadata attached by AgentClash CI integrations.
 
     CreateEvalSessionRequest:
       type: object

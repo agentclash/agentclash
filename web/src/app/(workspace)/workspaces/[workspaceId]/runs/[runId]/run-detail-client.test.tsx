@@ -80,7 +80,7 @@ function clickElement(element: Element) {
   );
 }
 
-function renderClient() {
+function renderClient(options?: { workflowRunURL?: string }) {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const root: Root = createRoot(container);
@@ -104,7 +104,9 @@ function renderClient() {
             branch: "feature/gate",
             commit_sha: "abc123456789",
             workflow: "AgentClash gate",
-            workflow_run_url: "https://github.com/acme/agent/actions/runs/99",
+            workflow_run_url:
+              options?.workflowRunURL ??
+              "https://github.com/acme/agent/actions/runs/99",
           },
           created_at: "2026-04-22T12:00:00Z",
           updated_at: "2026-04-22T12:00:00Z",
@@ -169,6 +171,11 @@ describe("RunDetailClient", () => {
     expect(container.textContent).toContain("PR #42");
     expect(container.textContent).toContain("abc1234");
     expect(container.textContent).toContain("AgentClash gate");
+    expect(
+      container.querySelector(
+        'a[href="https://github.com/acme/agent/actions/runs/99"]',
+      ),
+    ).toBeTruthy();
 
     act(() => {
       clickElement(toggle!);
@@ -238,6 +245,19 @@ describe("RunDetailClient", () => {
     expect(container.textContent).not.toContain(
       "Alpha reaches for search_query.",
     );
+
+    cleanup();
+  });
+
+  it("does not render unsafe CI workflow URLs as links", async () => {
+    const { container, cleanup } = renderClient({
+      workflowRunURL: "javascript:alert(1)",
+    });
+    await flushPromises();
+
+    expect(container.querySelector('a[href^="javascript:"]')).toBeNull();
+    expect(container.textContent).toContain("acme/agent:feature/gate");
+    expect(container.textContent).toContain("PR #42");
 
     cleanup();
   });

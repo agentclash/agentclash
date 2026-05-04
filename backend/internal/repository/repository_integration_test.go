@@ -1378,6 +1378,13 @@ func TestRepositoryCreateQueuedRunWritesRunRunAgentsAndInitialHistory(t *testing
 	if result.Run.CIMetadata == nil || result.Run.CIMetadata.Repository != "acme/agent" || result.Run.CIMetadata.PullRequestNumber == nil || *result.Run.CIMetadata.PullRequestNumber != prNumber {
 		t.Fatalf("ci metadata = %+v, want persisted GitHub metadata", result.Run.CIMetadata)
 	}
+	persistedRun, err := repo.GetRunByID(ctx, result.Run.ID)
+	if err != nil {
+		t.Fatalf("GetRunByID returned error: %v", err)
+	}
+	if persistedRun.CIMetadata == nil || persistedRun.CIMetadata.Repository != "acme/agent" || persistedRun.CIMetadata.PullRequestNumber == nil || *persistedRun.CIMetadata.PullRequestNumber != prNumber {
+		t.Fatalf("persisted ci metadata = %+v, want GitHub metadata after read", persistedRun.CIMetadata)
+	}
 	if len(result.RunAgents) != 1 {
 		t.Fatalf("run agent count = %d, want 1", len(result.RunAgents))
 	}
