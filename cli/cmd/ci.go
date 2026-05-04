@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -195,7 +196,9 @@ func validateCIManifestFile(path string) (ciManifestValidationResult, error) {
 	}
 
 	var manifest ciManifest
-	if err := yaml.Unmarshal(data, &manifest); err != nil {
+	decoder := yaml.NewDecoder(bytes.NewReader(data))
+	decoder.KnownFields(true)
+	if err := decoder.Decode(&manifest); err != nil {
 		result := ciManifestValidationResult{Path: path, Valid: false, Errors: []string{fmt.Sprintf("parse YAML: %v", err)}}
 		return result, fmt.Errorf("parse YAML: %w", err)
 	}
@@ -235,6 +238,12 @@ func validateCIManifest(manifest ciManifest) []string {
 	}
 	if strings.TrimSpace(manifest.Evaluation.ChallengePackVersionID) == "" {
 		errors = append(errors, "evaluation.challenge_pack_version_id is required")
+	}
+	if hasBlankString(manifest.Evaluation.RegressionSuites) {
+		errors = append(errors, "evaluation.regression_suites cannot include blank entries")
+	}
+	if hasBlankString(manifest.Evaluation.RegressionCases) {
+		errors = append(errors, "evaluation.regression_cases cannot include blank entries")
 	}
 	if strings.TrimSpace(manifest.Baseline.RunID) == "" && strings.TrimSpace(manifest.Baseline.DeploymentID) == "" {
 		errors = append(errors, "baseline.run_id or baseline.deployment_id is required")

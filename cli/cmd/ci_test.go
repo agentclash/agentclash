@@ -264,6 +264,82 @@ regressions:
 			manifest: "version: [",
 			want:     "parse YAML",
 		},
+		{
+			name: "unknown manifest field",
+			manifest: `version: 1
+trigger:
+  paths:
+    - .agentclash/agent.json
+candidate:
+  build:
+    agent_build_id: build-1
+    spec_file: .agentclash/agent.json
+  deployment:
+    runtime_profile_id: runtime-1
+evaluation:
+  challenge_pack_version_id: pack-version-1
+  regression_sweets:
+    - suite-1
+baseline:
+  run_id: run-1
+gate:
+  fail_on: regression
+regressions:
+  promote_failures: proposed
+`,
+			want: "regression_sweets",
+		},
+		{
+			name: "blank regression suite",
+			manifest: `version: 1
+trigger:
+  paths:
+    - .agentclash/agent.json
+candidate:
+  build:
+    agent_build_id: build-1
+    spec_file: .agentclash/agent.json
+  deployment:
+    runtime_profile_id: runtime-1
+evaluation:
+  challenge_pack_version_id: pack-version-1
+  regression_suites:
+    - suite-1
+    - "   "
+baseline:
+  run_id: run-1
+gate:
+  fail_on: regression
+regressions:
+  promote_failures: proposed
+`,
+			want: "evaluation.regression_suites",
+		},
+		{
+			name: "blank regression case",
+			manifest: `version: 1
+trigger:
+  paths:
+    - .agentclash/agent.json
+candidate:
+  build:
+    agent_build_id: build-1
+    spec_file: .agentclash/agent.json
+  deployment:
+    runtime_profile_id: runtime-1
+evaluation:
+  challenge_pack_version_id: pack-version-1
+  regression_cases:
+    - ""
+baseline:
+  run_id: run-1
+gate:
+  fail_on: regression
+regressions:
+  promote_failures: proposed
+`,
+			want: "evaluation.regression_cases",
+		},
 	}
 
 	for _, tt := range tests {
