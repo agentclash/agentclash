@@ -6,10 +6,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strings"
 
 	"github.com/agentclash/agentclash/cli/internal/output"
+	"github.com/bmatcuk/doublestar/v4"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
@@ -380,18 +380,18 @@ func evaluateCIShouldRun(path string, manifest ciManifest, changedFiles []string
 		CheckedLabels:    normalizeCIValues(manifest.Trigger.Labels),
 	}
 
-	globs := make([]*regexp.Regexp, 0, len(result.CheckedPathGlobs))
 	for _, pattern := range result.CheckedPathGlobs {
-		re, err := ciGlobRegexp(pattern)
-		if err != nil {
+		if err := ciValidateGlob(pattern); err != nil {
 			return result, err
 		}
-		globs = append(globs, re)
 	}
-
-	for i, pattern := range result.CheckedPathGlobs {
+	for _, pattern := range result.CheckedPathGlobs {
 		for _, file := range result.ChangedFiles {
-			if globs[i].MatchString(normalizeCIPath(file)) {
+			matched, err := ciGlobMatches(pattern, file)
+			if err != nil {
+				return result, err
+			}
+			if matched {
 				result.MatchedPaths = append(result.MatchedPaths, ciShouldRunPathMatch{
 					Pattern: pattern,
 					File:    file,
@@ -451,61 +451,27 @@ func normalizeCIPath(value string) string {
 	return path
 }
 
-func ciGlobRegexp(pattern string) (*regexp.Regexp, error) {
+func ciValidateGlob(pattern string) error {
 	normalized := normalizeCIPath(pattern)
 	if normalized == "" {
-		return nil, fmt.Errorf("invalid trigger glob %q: cannot be blank", pattern)
+		return fmt.Errorf("invalid trigger glob %q: cannot be blank", pattern)
 	}
+	if !doublestar.ValidatePattern(normalized) {
+		return fmt.Errorf("invalid trigger glob %q", pattern)
+	}
+	return nil
+}
 
-	var b strings.Builder
-	b.WriteString("^")
-	for i := 0; i < len(normalized); i++ {
-		switch ch := normalized[i]; ch {
-		case '*':
-			if i+1 < len(normalized) && normalized[i+1] == '*' {
-				b.WriteString(".*")
-				i++
-			} else {
-				b.WriteString("[^/]*")
-			}
-		case '?':
-			b.WriteString("[^/]")
-		case '[':
-			end := i + 1
-			if end < len(normalized) && normalized[end] == '!' {
-				end++
-			}
-			if end < len(normalized) && normalized[end] == ']' {
-				end++
-			}
-			for end < len(normalized) && normalized[end] != ']' {
-				end++
-			}
-			if end >= len(normalized) {
-				return nil, fmt.Errorf("invalid trigger glob %q: missing closing bracket", pattern)
-			}
-			charClass := normalized[i : end+1]
-			if len(charClass) > 2 && charClass[1] == '!' {
-				charClass = "[^" + charClass[2:]
-			}
-			b.WriteString(charClass)
-			i = end
-		case '\\':
-			if i+1 >= len(normalized) {
-				return nil, fmt.Errorf("invalid trigger glob %q: trailing escape", pattern)
-			}
-			i++
-			b.WriteString(regexp.QuoteMeta(string(normalized[i])))
-		default:
-			b.WriteString(regexp.QuoteMeta(string(ch)))
-		}
+func ciGlobMatches(pattern string, file string) (bool, error) {
+	if err := ciValidateGlob(pattern); err != nil {
+		return false, err
 	}
-	b.WriteString("$")
-	re, err := regexp.Compile(b.String())
+	normalized := normalizeCIPath(pattern)
+	matched, err := doublestar.Match(normalized, normalizeCIPath(file))
 	if err != nil {
-		return nil, fmt.Errorf("invalid trigger glob %q: %w", pattern, err)
+		return false, fmt.Errorf("invalid trigger glob %q: %w", pattern, err)
 	}
-	return re, nil
+	return matched, nil
 }
 
 func defaultCIShouldRunRefs(base string, head string) (string, string) {

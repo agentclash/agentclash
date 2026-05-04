@@ -381,6 +381,58 @@ func TestCIShouldRunMatchesChangedPath(t *testing.T) {
 	}
 }
 
+func TestCIShouldRunDoublestarPathSemantics(t *testing.T) {
+	tests := []struct {
+		name    string
+		pattern string
+		file    string
+		want    bool
+	}{
+		{
+			name:    "double star in middle matches zero directories",
+			pattern: "prompts/**/*.md",
+			file:    "prompts/system.md",
+			want:    true,
+		},
+		{
+			name:    "leading double star matches zero directories",
+			pattern: "**/system.md",
+			file:    "system.md",
+			want:    true,
+		},
+		{
+			name:    "trailing double star matches direct child",
+			pattern: "prompts/**",
+			file:    "prompts/system.md",
+			want:    true,
+		},
+		{
+			name:    "trailing double star matches nested child",
+			pattern: "prompts/**",
+			file:    "prompts/nested/system.md",
+			want:    true,
+		},
+		{
+			name:    "single star does not cross directory boundary",
+			pattern: "prompts/*",
+			file:    "prompts/nested/system.md",
+			want:    false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ciGlobMatches(tt.pattern, tt.file)
+			if err != nil {
+				t.Fatalf("ciGlobMatches() error: %v", err)
+			}
+			if got != tt.want {
+				t.Fatalf("ciGlobMatches(%q, %q) = %v, want %v", tt.pattern, tt.file, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestCIShouldRunMatchesLabel(t *testing.T) {
 	target := writeCIManifest(t, sampleCIManifestYAML)
 	result := runCIShouldRunJSON(t, []string{
@@ -428,6 +480,20 @@ func TestCIShouldRunRejectsInvalidGlob(t *testing.T) {
 		"ci", "should-run",
 		"--manifest", target,
 		"--changed-file", "prompts/system.md",
+	}, "http://unused")
+	if err == nil || !strings.Contains(err.Error(), "invalid trigger glob") {
+		t.Fatalf("error = %v, want invalid trigger glob", err)
+	}
+}
+
+func TestCIShouldRunRejectsInvalidGlobEvenWhenLabelMatches(t *testing.T) {
+	manifest := strings.Replace(sampleCIManifestYAML, "    - prompts/**", "    - prompts/[", 1)
+	target := writeCIManifest(t, manifest)
+
+	err := executeCommand(t, []string{
+		"ci", "should-run",
+		"--manifest", target,
+		"--labels", "agentclash/eval",
 	}, "http://unused")
 	if err == nil || !strings.Contains(err.Error(), "invalid trigger glob") {
 		t.Fatalf("error = %v, want invalid trigger glob", err)
