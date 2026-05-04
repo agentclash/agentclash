@@ -1,0 +1,168 @@
+---
+title: CI/CD Workload Recipes
+description: Choose realistic AgentClash CI workloads for coding, research, support, ops, and long-horizon agents.
+---
+
+AgentClash CI should answer one question for a pull request: did this agent revision remain good enough against the workload that matters?
+
+The agent is the thing under test. In a manifest, that means the candidate build, deployment, runtime resources, model alias, provider account, tools, schemas, policies, prompts, and workflow code. The challenge pack or regression suite is the workload used to test it. The release gate is the decision policy that turns the run into pass, warn, or fail.
+
+Use this page after you have read the [CI/CD Agent Gates](/docs/guides/ci-cd-agent-gates) manifest guide. It focuses on what teams should actually evaluate when their agents are more complex than a single prompt.
+
+## Broad Packs And Regression Suites
+
+Use a broad challenge pack when you need confidence that the agent still performs its main job across representative scenarios. Broad packs should cover normal work, edge cases, tool use, policy boundaries, and output quality.
+
+Use a narrow regression suite when you need to lock failures that have already happened. Regression suites should be small, high-signal, and cheap enough to run often. They are strongest when they include failure evidence, a stable expected behavior, and a clear reason the case matters.
+
+Most CI setups need both:
+
+- Pull requests run a smoke challenge pack plus critical regressions.
+- Nightly or mainline workflows run the full challenge pack plus larger regression suites.
+- Expensive long-horizon tasks run on labels, scheduled workflows, or release branches.
+
+## Coding Agent Recipe
+
+Coding agents change when prompts, repository skills, tool policy, model aliases, sandbox settings, or patch-generation code changes. A useful CI workload should exercise the agent's ability to inspect a repo, edit files, run tests, and stop safely.
+
+| Decision | Recommended shape |
+| --- | --- |
+| Watched paths | `.agentclash/agent.json`, `.agentclash/ci.yaml`, `prompts/**`, `tools/**`, `skills/**`, `evals/coding/**`, sandbox templates, patch validators, model alias config |
+| Candidate resources | Candidate agent build spec, deployment, runtime profile with shell access, provider account, model alias, repository fixture artifact, tool policy |
+| Workload type | Small deterministic coding tasks in a challenge pack, plus regression cases for previously broken diffs |
+| Baseline strategy | Lock a known-good mainline run for the same repo fixture and update it only after a green mainline run |
+| Gate policy | Fail on correctness regression, invalid patch, missing tests, unsafe command use, timeout, or material score drop; warn on latency/cost drift |
+
+Start with tasks that have objective validation:
+
+- update a small API and make unit tests pass
+- fix a failing parser with a constrained fixture
+- modify a config file and preserve unrelated formatting
+- refuse a task that asks for destructive commands outside policy
+
+The pack should capture the repository fixture, expected patch behavior, allowed commands, timeout, and validation command. Regression cases should come from concrete failures such as editing the wrong file, skipping tests, breaking an unrelated API, or looping after a failed command.
+
+## Research Agent Recipe
+
+Research agents change when retrieval settings, browsing tools, citation prompts, source filters, answer schemas, or model aliases change. The workload should measure whether the agent can triangulate sources, handle contradictions, and cite evidence without overclaiming.
+
+| Decision | Recommended shape |
+| --- | --- |
+| Watched paths | `prompts/research/**`, `retrieval/**`, `tools/search/**`, `schemas/research-output.json`, source allowlists, model alias config |
+| Candidate resources | Candidate deployment, retrieval profile, browser/search tool policy, provider account, model alias, output schema |
+| Workload type | Challenge pack with time-bounded research questions and expected evidence properties; regression suite for past hallucinations or citation failures |
+| Baseline strategy | Compare against a stable deployment run on the same source snapshot or same controlled source corpus |
+| Gate policy | Fail on unsupported claims, missing citations, fabricated citations, ignored contradictions, schema violations, or unsafe source use |
+
+Good tasks ask for decisions that require evidence:
+
+- compare two vendors and cite primary documentation
+- summarize a policy change while distinguishing effective dates
+- answer a question with conflicting sources and explain uncertainty
+- refuse to infer facts not present in the allowed source set
+
+For CI, prefer source snapshots or controlled fixtures when possible. Live web tasks are useful in nightly runs, but PR gates should avoid failures caused by normal web drift unless the agent's job is specifically live research.
+
+## Support And Ops Agent Recipe
+
+Support and ops agents change when escalation rules, tool bindings, PII policy, ticket schemas, incident workflows, or account-access rules change. The workload should verify tool-call correctness and policy adherence before conversational style.
+
+| Decision | Recommended shape |
+| --- | --- |
+| Watched paths | `prompts/support/**`, `policies/**`, `tools/crm/**`, `tools/ticketing/**`, `schemas/ticket*.json`, escalation rules, model alias config |
+| Candidate resources | Candidate deployment, mocked CRM/ticketing tools, secret references, runtime profile without broad network, output schema |
+| Workload type | Challenge pack with mocked tool calls, structured outputs, escalation scenarios, and safety/PII cases |
+| Baseline strategy | Lock the current production deployment or last accepted mainline run for the same tool mock version |
+| Gate policy | Fail on wrong tool arguments, unauthorized action, missed escalation, PII leak, schema violation, or unsafe automation; warn on tone/style deltas |
+
+Useful cases include:
+
+- refund request that must call the correct account lookup before action
+- angry customer that needs escalation rather than policy invention
+- incident triage that must create a ticket with the right severity and owner
+- request containing PII that must be redacted in summaries and logs
+
+Keep the tool layer mocked and deterministic in PR CI. Production-like integrations are better for staging or scheduled validation, where external service noise will not block every pull request.
+
+## Long-Horizon Agent Recipe
+
+Long-horizon agents are expensive and nondeterministic enough that one run is rarely enough. Their CI should be tiered: fast smoke checks on every relevant pull request, broader repeated runs on main or release branches, and deep suites on schedule.
+
+| Decision | Recommended shape |
+| --- | --- |
+| Watched paths | Agent orchestration code, planning prompts, tool policy, memory/retrieval config, runtime limits, model aliases, environment templates |
+| Candidate resources | Candidate deployment, runtime profile with explicit timeout/tool-call limits, model alias, workload artifacts, optional regression suites |
+| Workload type | Smoke challenge pack for PRs; full challenge pack plus high-severity regressions for main; repeated long tasks for scheduled runs |
+| Baseline strategy | Lock a baseline deployment or run series, not a single lucky pass; refresh after a successful mainline batch |
+| Gate policy | Fail PR smoke on deterministic blockers; use pass-rate, repeated-run, or confidence thresholds for longer suites; warn when evidence is insufficient |
+
+For long-horizon agents, track both optimistic and pessimistic reliability:
+
+- `pass@k`: at least one attempt succeeds across `k` tries
+- `pass^k`: every attempt succeeds across `k` tries
+
+PR gates should usually run a small number of deterministic smoke tasks. Nightly gates can run repeated trials, larger fixtures, and statistical checks. A failure should become a regression candidate only when it reproduces often enough to be signal instead of noise.
+
+## Choosing The First CI Workload
+
+Start smaller than the final eval strategy:
+
+1. Pick one agent deployment that matters.
+2. Lock one baseline run from a known-good mainline revision.
+3. Choose a smoke challenge pack with 3 to 10 high-signal cases.
+4. Add only the top production or staging regressions.
+5. Fail on clear correctness or policy regressions; warn on cost and latency until the gate earns trust.
+
+Then expand:
+
+- Add broad coverage when the smoke gate is stable.
+- Promote repeated failures into regression suites after review.
+- Split PR, mainline, nightly, and release workloads by cost and confidence.
+- Refresh baselines explicitly, never as a side effect of an arbitrary PR.
+
+## Manifest Example
+
+This manifest watches the coding-agent surface, runs a smoke pack plus critical regressions, and compares the candidate against a locked baseline run:
+
+```yaml
+version: 1
+trigger:
+  paths:
+    - .agentclash/agent.json
+    - .agentclash/ci.yaml
+    - prompts/coding/**
+    - tools/repo/**
+    - skills/coding/**
+  labels:
+    - agentclash/eval
+candidate:
+  build:
+    agent_build_id: 00000000-0000-0000-0000-000000000001
+    spec_file: .agentclash/agent.json
+  deployment:
+    name: pr-coding-agent
+    runtime_profile_id: 00000000-0000-0000-0000-000000000002
+    provider_account_id: 00000000-0000-0000-0000-000000000003
+    model_alias_id: 00000000-0000-0000-0000-000000000004
+evaluation:
+  challenge_pack_version_id: 00000000-0000-0000-0000-000000000005
+  input_set_id: 00000000-0000-0000-0000-000000000006
+  regression_suites:
+    - 00000000-0000-0000-0000-000000000007
+baseline:
+  run_id: 00000000-0000-0000-0000-000000000008
+gate:
+  fail_on: regression
+regressions:
+  promote_failures: proposed
+```
+
+The exact IDs should come from your AgentClash workspace. The process should be explicit: update the candidate when the agent changes, update the workload when the eval strategy changes, and update the baseline only after the new mainline behavior is accepted.
+
+## See Also
+
+- [CI/CD Agent Gates](/docs/guides/ci-cd-agent-gates)
+- [Write a Challenge Pack](/docs/guides/write-a-challenge-pack)
+- [Challenge Pack Documentation](/docs/challenge-packs)
+- [Eval Workflows and Gates](/docs/challenge-packs/eval-workflows-and-gates)
+- [Agents and Deployments](/docs/concepts/agents-and-deployments)

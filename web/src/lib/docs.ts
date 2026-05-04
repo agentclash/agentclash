@@ -282,6 +282,13 @@ export const DOCS_NAV: DocNavSection[] = [
         href: "/docs/guides/ci-cd-agent-gates",
       },
       {
+        title: "CI/CD Workload Recipes",
+        description:
+          "Pick realistic agent CI workloads for coding, research, support, ops, and long-horizon agents.",
+        slug: ["guides", "ci-cd-workload-recipes"],
+        href: "/docs/guides/ci-cd-workload-recipes",
+      },
+      {
         title: "Use with AI Tools",
         description:
           "Use llms.txt, the full bundle, and per-page markdown exports with assistants and coding agents.",
