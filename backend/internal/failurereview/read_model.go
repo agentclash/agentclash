@@ -76,20 +76,20 @@ type Item struct {
 }
 
 type ClusterSummary struct {
-	FailureClusterKey                string         `json:"failure_cluster_key"`
-	RepresentativeFailureFingerprint string         `json:"representative_failure_fingerprint"`
-	Count                            int            `json:"count"`
-	PromotableCount                  int            `json:"promotable_count"`
-	Severity                         Severity       `json:"severity"`
-	FailureState                     FailureState   `json:"failure_state"`
-	FailureClass                     FailureClass   `json:"failure_class"`
-	EvidenceTier                     EvidenceTier   `json:"evidence_tier"`
-	ChallengeKeys                    []string       `json:"challenge_keys"`
-	CaseKeys                         []string       `json:"case_keys"`
-	RunAgentIDs                      []string       `json:"run_agent_ids"`
-	Headline                         string         `json:"headline"`
-	RecommendedAction                string         `json:"recommended_action"`
-	History                          ClusterHistory `json:"history"`
+	FailureClusterKey                string          `json:"failure_cluster_key"`
+	RepresentativeFailureFingerprint string          `json:"representative_failure_fingerprint"`
+	Count                            int             `json:"count"`
+	PromotableCount                  int             `json:"promotable_count"`
+	Severity                         Severity        `json:"severity"`
+	FailureState                     FailureState    `json:"failure_state"`
+	FailureClass                     FailureClass    `json:"failure_class"`
+	EvidenceTier                     EvidenceTier    `json:"evidence_tier"`
+	ChallengeKeys                    []string        `json:"challenge_keys"`
+	CaseKeys                         []string        `json:"case_keys"`
+	RunAgentIDs                      []string        `json:"run_agent_ids"`
+	Headline                         string          `json:"headline"`
+	RecommendedAction                string          `json:"recommended_action"`
+	History                          *ClusterHistory `json:"history,omitempty"`
 }
 
 type ClusterTrend string
@@ -108,7 +108,7 @@ type ClusterHistory struct {
 	PriorFailureCount   int          `json:"prior_failure_count"`
 	LastSeenRunID       *uuid.UUID   `json:"last_seen_run_id,omitempty"`
 	LastSeenAt          *time.Time   `json:"last_seen_at,omitempty"`
-	LastRunFailureCount int          `json:"last_run_failure_count,omitempty"`
+	LastRunFailureCount int          `json:"last_run_failure_count"`
 }
 
 type ClusterHistoryRun struct {
@@ -448,7 +448,8 @@ func BuildClusterSummaries(items []Item) []ClusterSummary {
 func AttachClusterHistory(summaries []ClusterSummary, historicalRuns []ClusterHistoryRun) []ClusterSummary {
 	enriched := append([]ClusterSummary(nil), summaries...)
 	for i := range enriched {
-		enriched[i].History = buildClusterHistory(enriched[i], historicalRuns)
+		history := buildClusterHistory(enriched[i], historicalRuns)
+		enriched[i].History = &history
 	}
 	return enriched
 }

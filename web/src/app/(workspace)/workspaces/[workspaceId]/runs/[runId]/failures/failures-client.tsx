@@ -80,9 +80,13 @@ function compactList(values: string[], maxVisible = 3): string {
   return `${visible} +${values.length - maxVisible}`;
 }
 
-function clusterHistorySummary(cluster: FailureReviewClusterSummary): string {
-  const { history } = cluster;
+function clusterHistorySummary(
+  history: NonNullable<FailureReviewClusterSummary["history"]>,
+): string {
   if (history.prior_run_count === 0) {
+    if (history.window_run_count === 0) {
+      return "First scored run for this pack";
+    }
     const runLabel = history.window_run_count === 1 ? "run" : "runs";
     return `No prior matches in ${history.window_run_count} comparable ${runLabel}`;
   }
@@ -112,7 +116,7 @@ const failureStateVariant: Record<
 };
 
 const clusterTrendVariant: Record<
-  FailureReviewClusterSummary["history"]["trend"],
+  NonNullable<FailureReviewClusterSummary["history"]>["trend"],
   "default" | "secondary" | "outline" | "destructive"
 > = {
   new: "default",
@@ -463,6 +467,7 @@ function FailureClusterRollups({
       <ul className="divide-y divide-border">
         {clusters.map((cluster) => {
           const active = cluster.failure_cluster_key === activeClusterKey;
+          const history = cluster.history;
           return (
             <li key={cluster.failure_cluster_key}>
               <button
@@ -493,9 +498,11 @@ function FailureClusterRollups({
                     <Badge variant="secondary">
                       {humanize(cluster.evidence_tier)}
                     </Badge>
-                    <Badge variant={clusterTrendVariant[cluster.history.trend]}>
-                      {humanize(cluster.history.trend)}
-                    </Badge>
+                    {history && (
+                      <Badge variant={clusterTrendVariant[history.trend]}>
+                        {humanize(history.trend)}
+                      </Badge>
+                    )}
                     {active && <Badge>active</Badge>}
                   </div>
                   <div className="min-w-0">
@@ -509,12 +516,14 @@ function FailureClusterRollups({
                     )}
                   </div>
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                    <span className="min-w-0 truncate">
-                      History:{" "}
-                      <span className="text-foreground/80">
-                        {clusterHistorySummary(cluster)}
+                    {history && (
+                      <span className="min-w-0 truncate">
+                        History:{" "}
+                        <span className="text-foreground/80">
+                          {clusterHistorySummary(history)}
+                        </span>
                       </span>
-                    </span>
+                    )}
                     <span className="min-w-0 truncate">
                       Challenges:{" "}
                       <span className="text-foreground/80">
@@ -546,14 +555,16 @@ function FailureClusterRollups({
                       promote
                     </div>
                   </div>
-                  <div className="rounded-md border border-border px-2.5 py-1 text-right">
-                    <div className="text-sm font-semibold tabular-nums">
-                      {cluster.history.prior_run_count}
+                  {history && (
+                    <div className="rounded-md border border-border px-2.5 py-1 text-right">
+                      <div className="text-sm font-semibold tabular-nums">
+                        {history.prior_run_count}
+                      </div>
+                      <div className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+                        prior
+                      </div>
                     </div>
-                    <div className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
-                      prior
-                    </div>
-                  </div>
+                  )}
                 </div>
               </button>
             </li>

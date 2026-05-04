@@ -436,6 +436,9 @@ func TestAttachClusterHistoryLabelsNewAndRecurringTrends(t *testing.T) {
 				Count:             tt.currentCount,
 			}}, historicalRuns)
 			history := summaries[0].History
+			if history == nil {
+				t.Fatal("history = nil, want populated")
+			}
 
 			if history.Trend != tt.wantTrend {
 				t.Fatalf("trend = %s, want %s", history.Trend, tt.wantTrend)

@@ -417,36 +417,37 @@ func TestListRunAgentsEndpointReturnsForbidden(t *testing.T) {
 }
 
 type fakeRunReadRepository struct {
-	run                     domain.Run
-	evalSession             repository.EvalSessionWithRuns
-	evalSessions            []domain.EvalSession
-	evalSessionRuns         map[uuid.UUID][]domain.Run
-	evalSessionResults      map[uuid.UUID]repository.EvalSessionAggregateRecord
-	runScorecard            repository.RunScorecard
-	regressionCoverageCases []repository.RunRegressionCoverageCase
-	runAgents               []domain.RunAgent
-	failureItems            []failurereview.Item
-	failureItemsByRunID     map[uuid.UUID][]failurereview.Item
-	recentComparableRuns    []domain.Run
-	spendPolicies           []repository.SpendPolicyRow
-	providerAccount         repository.ProviderAccountRow
-	modelAlias              repository.ModelAliasRow
-	modelCatalogEntry       repository.ModelCatalogEntryRow
-	workspaceSecrets        map[string]string
-	getRunErr               error
-	getEvalSessionErr       error
-	getEvalSessionResultErr error
-	listEvalSessionRunsErr  error
-	getRunScorecardErr      error
-	listRunAgentsErr        error
-	listRunFailuresErr      error
-	listRecentRunsErr       error
-	listEvalSessionsErr     error
-	getProviderAccountErr   error
-	getModelAliasErr        error
-	getModelCatalogErr      error
-	listSpendPoliciesErr    error
-	loadWorkspaceSecretsErr error
+	run                      domain.Run
+	evalSession              repository.EvalSessionWithRuns
+	evalSessions             []domain.EvalSession
+	evalSessionRuns          map[uuid.UUID][]domain.Run
+	evalSessionResults       map[uuid.UUID]repository.EvalSessionAggregateRecord
+	runScorecard             repository.RunScorecard
+	regressionCoverageCases  []repository.RunRegressionCoverageCase
+	runAgents                []domain.RunAgent
+	failureItems             []failurereview.Item
+	failureItemsByRunID      map[uuid.UUID][]failurereview.Item
+	recentComparableRuns     []domain.Run
+	recentComparableRunCalls int
+	spendPolicies            []repository.SpendPolicyRow
+	providerAccount          repository.ProviderAccountRow
+	modelAlias               repository.ModelAliasRow
+	modelCatalogEntry        repository.ModelCatalogEntryRow
+	workspaceSecrets         map[string]string
+	getRunErr                error
+	getEvalSessionErr        error
+	getEvalSessionResultErr  error
+	listEvalSessionRunsErr   error
+	getRunScorecardErr       error
+	listRunAgentsErr         error
+	listRunFailuresErr       error
+	listRecentRunsErr        error
+	listEvalSessionsErr      error
+	getProviderAccountErr    error
+	getModelAliasErr         error
+	getModelCatalogErr       error
+	listSpendPoliciesErr     error
+	loadWorkspaceSecretsErr  error
 }
 
 func (f *fakeRunReadRepository) GetRunByID(_ context.Context, _ uuid.UUID) (domain.Run, error) {
@@ -500,6 +501,7 @@ func (f *fakeRunReadRepository) ListRunFailureReviewItems(_ context.Context, run
 }
 
 func (f *fakeRunReadRepository) ListRecentComparableScoredRunsBeforeRunID(_ context.Context, _ uuid.UUID, _ int32) ([]domain.Run, error) {
+	f.recentComparableRunCalls++
 	return append([]domain.Run(nil), f.recentComparableRuns...), f.listRecentRunsErr
 }
 

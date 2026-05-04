@@ -210,7 +210,6 @@ WHERE r.id <> a.id
       SELECT 1
       FROM run_scorecards AS rs
       WHERE rs.run_id = r.id
-        AND rs.winning_run_agent_id IS NOT NULL
   )
 ORDER BY r.created_at DESC, r.id DESC
 LIMIT @result_limit;

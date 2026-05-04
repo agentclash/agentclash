@@ -241,6 +241,37 @@ func TestListRunFailuresEndpointEnrichesClustersWithHistory(t *testing.T) {
 	}
 }
 
+func TestListRunFailuresEndpointSkipsClusterHistoryForCursorPages(t *testing.T) {
+	workspaceID := uuid.New()
+	runID := uuid.New()
+	repo := &fakeRunReadRepository{
+		run: domain.Run{
+			ID:          runID,
+			WorkspaceID: workspaceID,
+		},
+		failureItems:         []failurereview.Item{mustBuildFailureItem(t, runID, uuid.New(), "ticket-a", "case-a", "policy.filesystem")},
+		recentComparableRuns: []domain.Run{{ID: uuid.New(), WorkspaceID: workspaceID}},
+	}
+	service := NewRunReadManager(NewCallerWorkspaceAuthorizer(), repo)
+	cursor, err := failurereview.EncodeCursor(failurereview.CursorKey{ChallengeKey: "ticket-a"})
+	if err != nil {
+		t.Fatalf("EncodeCursor returned error: %v", err)
+	}
+
+	response := performListRunFailuresRequest(t, service, workspaceID, runID, url.Values{
+		"cursor": []string{cursor},
+	})
+	if repo.recentComparableRunCalls != 0 {
+		t.Fatalf("recent comparable run calls = %d, want 0 on cursor pages", repo.recentComparableRunCalls)
+	}
+	if len(response.Clusters) != 1 {
+		t.Fatalf("clusters = %#v, want one cluster without history", response.Clusters)
+	}
+	if response.Clusters[0].History != nil {
+		t.Fatalf("history = %#v, want omitted on cursor pages", response.Clusters[0].History)
+	}
+}
+
 func TestListRunFailuresEndpointFiltersByClusterKeyBeforePagination(t *testing.T) {
 	workspaceID := uuid.New()
 	runID := uuid.New()

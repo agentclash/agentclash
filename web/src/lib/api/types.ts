@@ -1728,7 +1728,7 @@ export interface FailureReviewClusterSummary {
   run_agent_ids: string[];
   headline: string;
   recommended_action: string;
-  history: FailureReviewClusterHistory;
+  history?: FailureReviewClusterHistory;
 }
 
 export interface ListRunFailuresResponse {

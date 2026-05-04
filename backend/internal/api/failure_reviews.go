@@ -62,7 +62,9 @@ func (m *RunReadManager) ListRunFailures(ctx context.Context, caller Caller, inp
 	}
 	filtered := failurereview.FilterItems(items, input.AgentID, input.Severity, input.FailureClass, input.EvidenceTier, input.ChallengeKey, input.CaseKey, input.FailureClusterKey)
 	clusters := failurereview.BuildClusterSummaries(filtered)
-	if len(clusters) > 0 {
+	// Cluster history is an expensive bounded scan. Return it on the first
+	// all-agent page where the trend scope matches the current cluster counts.
+	if len(clusters) > 0 && input.Cursor == nil && input.AgentID == nil {
 		historicalRuns, historyErr := m.failureClusterHistoryRuns(ctx, input)
 		if historyErr != nil {
 			return ListRunFailuresResult{}, historyErr

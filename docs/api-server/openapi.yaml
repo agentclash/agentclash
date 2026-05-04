@@ -6594,6 +6594,7 @@ components:
         - window_run_count
         - prior_run_count
         - prior_failure_count
+        - last_run_failure_count
       properties:
         trend:
           type: string
@@ -6638,7 +6639,6 @@ components:
         - run_agent_ids
         - headline
         - recommended_action
-        - history
       properties:
         failure_cluster_key:
           type: string
@@ -6679,6 +6679,7 @@ components:
         recommended_action:
           type: string
         history:
+          description: Present on first-page all-agent failure-cluster responses; omitted on cursor pages and agent-filtered views.
           $ref: "#/components/schemas/FailureReviewClusterHistory"
 
     ListRunFailuresResponse:
