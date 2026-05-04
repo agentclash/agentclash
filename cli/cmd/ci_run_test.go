@@ -185,7 +185,9 @@ func TestCIRunTimeoutWritesSummary(t *testing.T) {
 	}))
 	defer srv.Close()
 	t.Setenv("AGENTCLASH_TOKEN", "test-token")
-	summaryPath := filepath.Join(t.TempDir(), "summary.md")
+	dir := t.TempDir()
+	summaryPath := filepath.Join(dir, "summary.md")
+	artifactDir := filepath.Join(dir, "artifacts")
 
 	result, err, _ := runCIRunJSON(t, []string{
 		"ci", "run",
@@ -196,16 +198,24 @@ func TestCIRunTimeoutWritesSummary(t *testing.T) {
 		"--timeout", "1ms",
 		"--summary-file", summaryPath,
 		"--github-step-summary=false",
+		"--artifact-dir", artifactDir,
 	}, srv.URL)
 	if got := exitCodeOf(t, err); got != ciRunExitTimeout {
 		t.Fatalf("exit code = %d, want timeout %d", got, ciRunExitTimeout)
 	}
-	if result.Reports == nil || len(result.Reports.SummaryFiles) != 1 {
-		t.Fatalf("reports = %+v, want timeout summary path", result.Reports)
+	if result.Reports == nil || len(result.Reports.SummaryFiles) != 1 || len(result.Reports.Artifacts) != 5 {
+		t.Fatalf("reports = %+v, want timeout summary and artifacts", result.Reports)
 	}
 	summary := readTextFile(t, summaryPath)
 	if !strings.Contains(summary, "timed out waiting for candidate run run-candidate") || !strings.Contains(summary, "Exit Code") {
 		t.Fatalf("timeout summary missing error/exit code\n---\n%s", summary)
+	}
+	for _, name := range []string{"result.json", "run.json", "scorecard.json", "comparison.json", "gate.json"} {
+		var envelope map[string]any
+		readTestJSONFile(t, filepath.Join(artifactDir, name), &envelope)
+		if envelope["schema_version"] != ciRunArtifactSchemaVersion {
+			t.Fatalf("%s schema_version = %v, want %s", name, envelope["schema_version"], ciRunArtifactSchemaVersion)
+		}
 	}
 }
 
