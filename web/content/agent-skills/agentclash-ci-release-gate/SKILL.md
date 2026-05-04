@@ -10,9 +10,10 @@ metadata:
 # AgentClash CI Release Gate
 
 ## Purpose
-Wire AgentClash comparisons into release decisions and CI checks.
+Wire AgentClash manifest-based comparisons into release decisions and CI checks.
 
 ## Use When
+- A user wants to gate an agent change in CI/CD.
 - A user wants to compare a candidate run against a baseline.
 - A release gate should block regressions.
 - A GitHub Actions workflow needs AgentClash commands and exit-code behavior.
@@ -22,10 +23,13 @@ Wire AgentClash comparisons into release decisions and CI checks.
 - The user only wants a narrative readout from an existing scorecard.
 
 ## Inputs Needed
-- Baseline run or configured baseline.
-- Candidate run or command to create one.
-- Release gate ID or gate policy.
-- CI secret names for `AGENTCLASH_TOKEN`, workspace, and API URL.
+- Repo-tracked CI manifest path, usually `.agentclash/ci.yaml`.
+- AgentClash workspace secret name.
+- AgentClash API token secret name.
+- Candidate agent build and deployment resources referenced by the manifest.
+- Evaluation workload: challenge pack version, optional input set, and optional regression suites/cases.
+- Baseline strategy: locked `baseline.run_id` for PRs, or an intentional `baseline.deployment_id` selector.
+- Gate policy and `regressions.promote_failures` mode.
 
 ## Environment
 For CI against production:
@@ -37,20 +41,25 @@ export AGENTCLASH_WORKSPACE="<workspace-id>"
 ```
 
 ## Procedure
-1. Confirm which baseline and candidate should be compared.
-2. Run or fetch the candidate result.
-3. Evaluate the comparison or release gate.
-4. In CI, fail the job when the gate command exits non-zero.
-5. Report the candidate, baseline, gate verdict, and linkable follow-up commands.
+1. Confirm the manifest names the agent revision, workload, baseline, gate, and regression promotion policy.
+2. Validate the manifest locally, then with `--remote` when workspace credentials are available.
+3. Decide whether the change should run from manifest paths and labels.
+4. Resolve the baseline so reviewers know the exact accepted run.
+5. Run `agentclash ci run` or the reusable GitHub Action.
+6. In CI, fail the job when the gate command exits non-zero.
+7. Report the manifest, baseline, candidate, gate verdict, exit code, summaries, and artifact paths.
 
 ## Commands
 ```bash
 export AGENTCLASH_API_URL="https://api.agentclash.dev"
-agentclash baseline show
-agentclash baseline set <run-id>
-agentclash compare runs <baseline-run-id> <candidate-run-id>
-agentclash compare gate <gate-id> --candidate <candidate-run-id>
-agentclash release-gate list
+export AGENTCLASH_TOKEN="<token>"
+export AGENTCLASH_WORKSPACE="<workspace-id>"
+
+agentclash ci validate .agentclash/ci.yaml
+agentclash ci validate .agentclash/ci.yaml --remote --json
+agentclash ci should-run --manifest .agentclash/ci.yaml --base origin/main --head HEAD --json
+agentclash ci baseline --manifest .agentclash/ci.yaml --json
+agentclash ci run --manifest .agentclash/ci.yaml --json --artifact-dir agentclash-artifacts
 ```
 
 ## GitHub Actions Sketch
@@ -64,44 +73,61 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - run: npm i -g agentclash
-      - run: agentclash compare gate "$AGENTCLASH_GATE_ID" --candidate "$AGENTCLASH_CANDIDATE_RUN"
-        env:
-          AGENTCLASH_API_URL: https://api.agentclash.dev
-          AGENTCLASH_TOKEN: ${{ secrets.AGENTCLASH_TOKEN }}
-          AGENTCLASH_WORKSPACE: ${{ secrets.AGENTCLASH_WORKSPACE }}
-          AGENTCLASH_GATE_ID: ${{ vars.AGENTCLASH_GATE_ID }}
-          AGENTCLASH_CANDIDATE_RUN: ${{ vars.AGENTCLASH_CANDIDATE_RUN }}
+      - id: agentclash
+        uses: agentclash/agentclash/.github/actions/agentclash-ci@main
+        with:
+          token: ${{ secrets.AGENTCLASH_TOKEN }}
+          workspace: ${{ secrets.AGENTCLASH_WORKSPACE }}
+          manifest: .agentclash/ci.yaml
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.agentclash.outputs['should-run'] == 'true'
+        with:
+          name: agentclash-ci
+          path: |
+            ${{ steps.agentclash.outputs.result-file }}
+            ${{ steps.agentclash.outputs.artifact-dir }}/*.json
 ```
 
 ## Expected Output
-- Comparison commands print pass/fail or verdict details.
-- CI fails when the gate detects a blocking regression.
-- The report includes exact commands to inspect the comparison manually.
+- `ci run` prints a JSON envelope with baseline, candidate, gate verdict, exit code, reports, and regression promotion outcomes.
+- GitHub Actions receives a step summary when `$GITHUB_STEP_SUMMARY` is set.
+- JSON artifacts include `result.json`, `run.json`, `scorecard.json`, `comparison.json`, and `gate.json` when available.
+- CI fails when the gate detects a blocking regression, times out, or hits an API/setup error.
+- The report includes exact commands or links to inspect the comparison manually.
 
 ## Failure Modes
 - Missing token in CI: check secret name and workspace access.
-- Candidate run is incomplete: wait for completion or rerun with `--follow`.
-- Gate ID points at the wrong workspace: list gates under the same workspace.
+- Manifest validation fails: fix the repo-tracked manifest before running the gate.
+- Remote validation fails: verify workspace IDs, challenge pack versions, deployment resources, and baseline visibility.
+- `ci should-run` skips unexpectedly: inspect `trigger.paths`, labels, checkout `fetch-depth`, and base/head refs.
+- Candidate run is incomplete or slow: adjust `--timeout`, `--poll-interval`, or run with `follow: true`.
+- `auto_on_main` regression promotion is blocked: ensure the workflow is on the default branch, not a pull request event.
 
 ## Safety Notes
-- Confirm before changing the shared baseline.
+- Confirm before changing a shared baseline or switching from `proposed` to `auto_on_main`.
 - Do not echo tokens in CI logs.
 - Treat production release gates as blocking unless the user explicitly overrides them.
+- Prefer `baseline.run_id` for pull request gates so baseline movement is reviewed.
 
 ## Report Back Format
 ```text
-Baseline: <run-id>
-Candidate: <run-id>
-Gate: <gate-id>
+Manifest: <path>
+Should run: <true/false + reason>
+Baseline: <run-id or selector>
+Candidate run: <run-id>
 Verdict: <pass/fail>
-CI behavior: <exit code summary>
+Exit code: <code + meaning>
+Artifacts: <result.json/artifact-dir>
+Regression candidates: <created/existing/skipped/blocked summary>
 Next command: <command>
 ```
 
 ## Related Docs
-- `/docs-md/reference/cli`
-- `/docs-md/guides/interpret-results`
+- `/docs-md/guides/ci-cd-agent-gates`
+- `/docs-md/guides/ci-cd-workload-recipes`
+- `/docs-md/challenge-packs/eval-workflows-and-gates`
