@@ -91,6 +91,26 @@ describe("agent skill docs", () => {
     expect(doc?.content).toContain("invalid_race_context");
   });
 
+  it("generates the scorecard reader skill with source-backed details", () => {
+    const doc = getDocBySlug(["agent-skills", "agentclash-scorecard-reader"]);
+
+    expect(doc?.title).toBe("Scorecard Reader Skill");
+    expect(doc?.content).toContain("agentclash run ranking <RUN_ID> --json");
+    expect(doc?.content).toContain("agentclash run scorecard <RUN_AGENT_ID> --json");
+    expect(doc?.content).toContain("agentclash replay get <RUN_AGENT_ID> --limit 50 --json");
+    expect(doc?.content).toContain("artifact list` is workspace-wide");
+    expect(doc?.content).toContain("It does not have a `--run` filter today");
+    expect(doc?.content).toContain("\"ranking\":");
+    expect(doc?.content).toContain("\"evidence_quality\"");
+    expect(doc?.content).toContain("\"llm_judge_results\"");
+    expect(doc?.content).toContain("\"validator_details\"");
+    expect(doc?.content).toContain("\"failure_cluster_key\"");
+    expect(doc?.content).toContain("HTTP 202");
+    expect(doc?.content).toContain("HTTP 409");
+    expect(doc?.content).toContain("incorrect_final_output");
+    expect(doc?.content).toContain("agentclash-regression-flywheel");
+  });
+
   it("generates nested challenge pack and agent build skill pages", () => {
     const challengePackDoc = getDocBySlug([
       "agent-skills",
