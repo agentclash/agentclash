@@ -252,7 +252,7 @@ func executeCIRun(cmd *cobra.Command, rc *RunContext) (ciRunResult, error) {
 		if link := ciRunLink(completedRun); link != "" {
 			result.Candidate.RunURL = link
 		}
-		result.ExitCode = ciRunExitForError(err).(*ExitCodeError).Code
+		result.ExitCode = ciRunExitForError(err).Code
 		result.Errors = append(result.Errors, err.Error())
 		return finishWithReports(err, run, completedRun, nil, nil, nil)
 	}
@@ -592,7 +592,7 @@ func ciRunLink(run map[string]any) string {
 	return mapString(run, "url", "web_url", "html_url")
 }
 
-func ciRunExitForError(err error) error {
+func ciRunExitForError(err error) *ExitCodeError {
 	var exitErr *ExitCodeError
 	if errors.As(err, &exitErr) {
 		return exitErr

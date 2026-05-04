@@ -247,6 +247,40 @@ func TestCIRunReportWriteFailurePreservesPrimaryExitCode(t *testing.T) {
 	}
 }
 
+func TestCIRunReportWriteFailurePreservesGateExitCode(t *testing.T) {
+	target := writeCIRunManifest(t)
+	captures := &ciRunRouteCaptures{}
+	srv := fakeAPI(t, ciRunRoutes(t, captures, map[string]http.HandlerFunc{
+		"POST /v1/release-gates/evaluate": ciRunGateHandler(t, captures, "fail"),
+	}))
+	defer srv.Close()
+	t.Setenv("AGENTCLASH_TOKEN", "test-token")
+	notDir := filepath.Join(t.TempDir(), "not-dir")
+	if err := os.WriteFile(notDir, []byte("file"), 0o644); err != nil {
+		t.Fatalf("WriteFile(not-dir) error: %v", err)
+	}
+
+	result, err, _ := runCIRunJSON(t, []string{
+		"ci", "run",
+		"--manifest", target,
+		"-w", "ws-1",
+		"--json",
+		"--poll-interval", "1ms",
+		"--timeout", "1s",
+		"--summary-file", filepath.Join(notDir, "summary.md"),
+		"--github-step-summary=false",
+	}, srv.URL)
+	if got := exitCodeOf(t, err); got != gateExitFail {
+		t.Fatalf("exit code = %d, want gate fail %d", got, gateExitFail)
+	}
+	if result.ExitCode != gateExitFail {
+		t.Fatalf("result exit code = %d, want gate fail %d", result.ExitCode, gateExitFail)
+	}
+	if !strings.Contains(strings.Join(result.Errors, "\n"), "create ci summary directory") {
+		t.Fatalf("errors = %#v, want report write error recorded", result.Errors)
+	}
+}
+
 func TestCIRunWritesSummaryAndArtifactsForNonPassingVerdicts(t *testing.T) {
 	cases := []struct {
 		verdict string
