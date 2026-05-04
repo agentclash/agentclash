@@ -528,7 +528,6 @@ func (m *BillingManager) applySubscriptionWebhook(ctx context.Context, eventInpu
 	}
 
 	application := repository.BillingWebhookApplication{
-		Subscription: &subscriptionInput,
 		Entitlements: &repository.BillingWebhookEntitlementsInput{
 			OrganizationID:          orgID,
 			Entitlements:            entitlements,
@@ -536,6 +535,13 @@ func (m *BillingManager) applySubscriptionWebhook(ctx context.Context, eventInpu
 			ExpiresAt:               entitlementExpiresAt,
 		},
 		CheckoutIntentID: envelope.CheckoutIntentID(),
+	}
+	// Skip the subscription upsert when there's no Dodo subscription ID
+	// (e.g. one-off payment.succeeded events): otherwise every such event
+	// collides on UNIQUE(dodo_subscription_id) into a single ghost row keyed
+	// by '' that can shadow the real subscription.
+	if subscriptionID != "" {
+		application.Subscription = &subscriptionInput
 	}
 	if customerID != "" {
 		application.Account = &repository.BillingAccountInput{
