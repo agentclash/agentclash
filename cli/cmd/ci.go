@@ -328,7 +328,6 @@ type ciBaselineRunResolution struct {
 
 type ciBaselineRefreshResolution struct {
 	Mode       string `json:"mode" yaml:"mode"`
-	Branch     string `json:"branch,omitempty" yaml:"branch,omitempty"`
 	NextAction string `json:"next_action" yaml:"next_action"`
 }
 
@@ -456,7 +455,6 @@ func resolveCIManifestBaseline(cmd *cobra.Command, rc *RunContext, workspaceID, 
 		WorkspaceID:  workspaceID,
 		Refresh: ciBaselineRefreshResolution{
 			Mode:       mode,
-			Branch:     "main",
 			NextAction: ciBaselineRefreshNextAction(mode),
 		},
 	}
@@ -524,6 +522,8 @@ func ciBaselineRefreshNextAction(mode string) string {
 	}
 }
 
+const ciBaselineDeploymentRejectionLimit = 3
+
 func resolveCIBaselineDeployment(cmd *cobra.Command, rc *RunContext, workspaceID string, manifest ciManifest, deploymentID string, now time.Time) (ciBaselineRunResolution, error) {
 	runs, err := listCIBaselineRuns(cmd, rc, workspaceID)
 	if err != nil {
@@ -531,11 +531,19 @@ func resolveCIBaselineDeployment(cmd *cobra.Command, rc *RunContext, workspaceID
 	}
 	sort.SliceStable(runs, func(i, j int) bool { return ciBaselineRunNewer(runs[i], runs[j]) })
 
-	var newestRejectedCandidate error
+	var rejectedCandidates []string
+	recordRejection := func(err error) {
+		if err == nil || len(rejectedCandidates) >= ciBaselineDeploymentRejectionLimit {
+			return
+		}
+		rejectedCandidates = append(rejectedCandidates, err.Error())
+	}
+
 	for _, run := range runs {
 		if err := validateCIBaselineRun(workspaceID, manifest, run, now); err != nil {
-			if newestRejectedCandidate == nil {
-				newestRejectedCandidate = err
+			recordRejection(err)
+			if ciBaselineRunExhaustsFreshWindow(manifest.Baseline.MaxAgeDays, run, now) {
+				break
 			}
 			continue
 		}
@@ -550,19 +558,17 @@ func resolveCIBaselineDeployment(cmd *cobra.Command, rc *RunContext, workspaceID
 			}
 			matchedDeployment = true
 			if agent.Status != "completed" {
-				if newestRejectedCandidate == nil {
-					newestRejectedCandidate = fmt.Errorf("baseline run %s agent %s for baseline.deployment_id %s status is %q, want completed", run.ID, agent.ID, deploymentID, agent.Status)
-				}
+				recordRejection(fmt.Errorf("baseline run %s agent %s for baseline.deployment_id %s status is %s, want completed", run.ID, agent.ID, deploymentID, ciBaselineStatusForError(agent.Status)))
 				continue
 			}
 			return buildCIBaselineRunResolution(run, agent.ID, deploymentID, now), nil
 		}
-		if !matchedDeployment && newestRejectedCandidate == nil {
-			newestRejectedCandidate = fmt.Errorf("baseline run %s has no agent for baseline.deployment_id %s", run.ID, deploymentID)
+		if !matchedDeployment {
+			recordRejection(fmt.Errorf("baseline run %s has no agent for baseline.deployment_id %s", run.ID, deploymentID))
 		}
 	}
-	if newestRejectedCandidate != nil {
-		return ciBaselineRunResolution{}, fmt.Errorf("no completed compatible baseline run found for baseline.deployment_id %s; newest rejected baseline candidate: %w", deploymentID, newestRejectedCandidate)
+	if len(rejectedCandidates) > 0 {
+		return ciBaselineRunResolution{}, fmt.Errorf("no completed compatible baseline run found for baseline.deployment_id %s; newest rejected baseline candidates: %s", deploymentID, strings.Join(rejectedCandidates, "; "))
 	}
 	return ciBaselineRunResolution{}, fmt.Errorf("no completed compatible baseline run found for baseline.deployment_id %s", deploymentID)
 }
@@ -653,6 +659,25 @@ func validateCIBaselineAge(maxAgeDays int, run runWorkflowSummary, now time.Time
 		return fmt.Errorf("baseline run %s is older than baseline.max_age_days (%d)", run.ID, maxAgeDays)
 	}
 	return nil
+}
+
+func ciBaselineRunExhaustsFreshWindow(maxAgeDays int, run runWorkflowSummary, now time.Time) bool {
+	if maxAgeDays <= 0 {
+		return false
+	}
+	timestamp, ok := ciBaselineRunTimestamp(run)
+	if !ok {
+		return true
+	}
+	return now.Sub(timestamp) > time.Duration(maxAgeDays)*24*time.Hour
+}
+
+func ciBaselineStatusForError(status string) string {
+	status = strings.TrimSpace(status)
+	if status == "" {
+		return "<missing>"
+	}
+	return fmt.Sprintf("%q", status)
 }
 
 func ciBaselineRunTimestamp(run runWorkflowSummary) (time.Time, bool) {

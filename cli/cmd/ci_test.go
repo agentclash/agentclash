@@ -1099,6 +1099,68 @@ func TestCIBaselineRejectsNonCompletedDeploymentAgent(t *testing.T) {
 	}
 }
 
+func TestCIBaselineReportsNewestDeploymentRejections(t *testing.T) {
+	manifest := strings.Replace(sampleCIManifestYAML, "  run_id: 00000000-0000-0000-0000-000000000008\n  refresh: manual\n  max_age_days: 30\n", "  deployment_id: dep-base\n  refresh: manual\n", 1)
+	target := writeCIManifest(t, manifest)
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"GET /v1/workspaces/ws-1/runs": jsonHandler(200, map[string]any{
+			"items": []map[string]any{
+				{
+					"id":                        "run-missing-agent",
+					"workspace_id":              "ws-1",
+					"status":                    "completed",
+					"challenge_pack_version_id": "00000000-0000-0000-0000-000000000005",
+					"challenge_input_set_id":    "00000000-0000-0000-0000-000000000006",
+					"created_at":                "2026-05-04T00:00:00Z",
+				},
+				{
+					"id":                        "run-empty-agent-status",
+					"workspace_id":              "ws-1",
+					"status":                    "completed",
+					"challenge_pack_version_id": "00000000-0000-0000-0000-000000000005",
+					"challenge_input_set_id":    "00000000-0000-0000-0000-000000000006",
+					"created_at":                "2026-05-03T00:00:00Z",
+				},
+			},
+		}),
+		"GET /v1/runs/run-missing-agent/agents": jsonHandler(200, map[string]any{
+			"items": []map[string]any{{
+				"id":                  "agent-other",
+				"run_id":              "run-missing-agent",
+				"status":              "completed",
+				"agent_deployment_id": "dep-other",
+			}},
+		}),
+		"GET /v1/runs/run-empty-agent-status/agents": jsonHandler(200, map[string]any{
+			"items": []map[string]any{{
+				"id":                  "agent-empty",
+				"run_id":              "run-empty-agent-status",
+				"agent_deployment_id": "dep-base",
+			}},
+		}),
+	})
+	defer srv.Close()
+	t.Setenv("AGENTCLASH_TOKEN", "test-token")
+
+	err := executeCommand(t, []string{
+		"ci", "baseline",
+		"--manifest", target,
+		"-w", "ws-1",
+	}, srv.URL)
+	if err == nil {
+		t.Fatal("error = nil, want deployment rejection diagnostics")
+	}
+	for _, snippet := range []string{
+		"newest rejected baseline candidates",
+		"baseline run run-missing-agent has no agent for baseline.deployment_id dep-base",
+		"baseline run run-empty-agent-status agent agent-empty for baseline.deployment_id dep-base status is <missing>, want completed",
+	} {
+		if !strings.Contains(err.Error(), snippet) {
+			t.Fatalf("error missing %q:\n%v", snippet, err)
+		}
+	}
+}
+
 func TestCIBaselineRejectsMissingDeploymentMatch(t *testing.T) {
 	manifest := strings.Replace(sampleCIManifestYAML, "  run_id: 00000000-0000-0000-0000-000000000008\n  refresh: manual\n  max_age_days: 30\n", "  deployment_id: dep-base\n  refresh: manual\n", 1)
 	target := writeCIManifest(t, manifest)

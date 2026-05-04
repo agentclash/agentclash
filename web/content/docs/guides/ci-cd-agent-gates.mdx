@@ -194,7 +194,12 @@ jobs:
             --challenge-pack-version "$AGENTCLASH_CHALLENGE_PACK_VERSION" \
             --deployments "$AGENTCLASH_CANDIDATE_DEPLOYMENT" \
             --json)
-          echo "run_id=$(echo "$RUN_JSON" | jq -r '.id')" >> "$GITHUB_OUTPUT"
+          RUN_ID=$(echo "$RUN_JSON" | jq -r '.id')
+          CANDIDATE_AGENT_ID=$(agentclash run agents "$RUN_ID" --json \
+            | jq -r --arg dep "$AGENTCLASH_CANDIDATE_DEPLOYMENT" '.items[] | select(.agent_deployment_id == $dep) | .id' \
+            | head -n 1)
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+          echo "run_agent_id=$CANDIDATE_AGENT_ID" >> "$GITHUB_OUTPUT"
         env:
           AGENTCLASH_API_URL: https://api.agentclash.dev
           AGENTCLASH_TOKEN: ${{ secrets.AGENTCLASH_TOKEN }}
@@ -213,6 +218,9 @@ jobs:
           if [ -n "${{ steps.baseline.outputs.run_agent_id }}" ]; then
             args+=(--baseline-agent "${{ steps.baseline.outputs.run_agent_id }}")
           fi
+          if [ -n "${{ steps.candidate.outputs.run_agent_id }}" ]; then
+            args+=(--candidate-agent "${{ steps.candidate.outputs.run_agent_id }}")
+          fi
           agentclash "${args[@]}"
         env:
           AGENTCLASH_API_URL: https://api.agentclash.dev
@@ -220,7 +228,7 @@ jobs:
           AGENTCLASH_WORKSPACE: ${{ secrets.AGENTCLASH_WORKSPACE }}
 ```
 
-For multi-agent candidate runs, also pass `--candidate-agent <run-agent-id>` for the candidate participant you intend to gate.
+For multi-agent candidate runs, resolve the candidate lane with `agentclash run agents <run-id> --json` and pass `--candidate-agent <run-agent-id>` for the participant you intend to gate.
 
 ## Regression promotion policy
 
