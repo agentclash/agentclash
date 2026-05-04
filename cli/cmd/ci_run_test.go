@@ -55,6 +55,144 @@ func TestCIRunCreatesCandidateRunAndEvaluatesPassingGate(t *testing.T) {
 	}
 }
 
+func TestCIRunWritesSummaryAndArtifacts(t *testing.T) {
+	target := writeCIRunManifest(t)
+	captures := &ciRunRouteCaptures{}
+	srv := fakeAPI(t, ciRunRoutes(t, captures, nil))
+	defer srv.Close()
+	t.Setenv("AGENTCLASH_TOKEN", "test-token")
+	dir := t.TempDir()
+	summaryPath := filepath.Join(dir, "summary.md")
+	artifactDir := filepath.Join(dir, "artifacts")
+
+	result, err, _ := runCIRunJSON(t, []string{
+		"ci", "run",
+		"--manifest", target,
+		"-w", "ws-1",
+		"--json",
+		"--poll-interval", "1ms",
+		"--timeout", "1s",
+		"--summary-file", summaryPath,
+		"--artifact-dir", artifactDir,
+	}, srv.URL)
+	if err != nil {
+		t.Fatalf("ci run error: %v", err)
+	}
+	if result.Reports == nil || result.Reports.ArtifactDir != artifactDir || len(result.Reports.Artifacts) != 5 {
+		t.Fatalf("reports = %+v, want summary and five artifacts", result.Reports)
+	}
+
+	summary := readTextFile(t, summaryPath)
+	for _, snippet := range []string{
+		"AgentClash CI Gate: PASS",
+		"Challenge Pack Version",
+		"00000000-0000-0000-0000-000000000005",
+		"Baseline Run",
+		"Candidate run",
+		"default / v1 / fp-123",
+		"candidate passed",
+	} {
+		if !strings.Contains(summary, snippet) {
+			t.Fatalf("summary missing %q\n---\n%s", snippet, summary)
+		}
+	}
+
+	for _, name := range []string{"result.json", "run.json", "scorecard.json", "comparison.json", "gate.json"} {
+		path := filepath.Join(artifactDir, name)
+		var envelope map[string]any
+		readTestJSONFile(t, path, &envelope)
+		if envelope["schema_version"] != ciRunArtifactSchemaVersion {
+			t.Fatalf("%s schema_version = %v, want %s", name, envelope["schema_version"], ciRunArtifactSchemaVersion)
+		}
+		if envelope["challenge_pack_version_id"] != "00000000-0000-0000-0000-000000000005" {
+			t.Fatalf("%s challenge_pack_version_id = %v", name, envelope["challenge_pack_version_id"])
+		}
+		if envelope["payload"] == nil {
+			t.Fatalf("%s payload is nil", name)
+		}
+	}
+}
+
+func TestCIRunUsesGitHubStepSummary(t *testing.T) {
+	target := writeCIRunManifest(t)
+	captures := &ciRunRouteCaptures{}
+	srv := fakeAPI(t, ciRunRoutes(t, captures, nil))
+	defer srv.Close()
+	t.Setenv("AGENTCLASH_TOKEN", "test-token")
+	summaryPath := filepath.Join(t.TempDir(), "github-step-summary.md")
+	t.Setenv("GITHUB_STEP_SUMMARY", summaryPath)
+
+	if _, err, _ := runCIRunJSON(t, []string{"ci", "run", "--manifest", target, "-w", "ws-1", "--json", "--poll-interval", "1ms", "--timeout", "1s"}, srv.URL); err != nil {
+		t.Fatalf("ci run error: %v", err)
+	}
+
+	summary := readTextFile(t, summaryPath)
+	if !strings.Contains(summary, "AgentClash CI Gate: PASS") || !strings.Contains(summary, "Candidate Run") {
+		t.Fatalf("github step summary = %q, want gate summary", summary)
+	}
+}
+
+func TestCIRunWritesSummaryAndArtifactsForNonPassingVerdicts(t *testing.T) {
+	cases := []struct {
+		verdict string
+		code    int
+	}{
+		{verdict: "warn", code: gateExitWarn},
+		{verdict: "fail", code: gateExitFail},
+		{verdict: "insufficient_evidence", code: gateExitInsufficientEvidence},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.verdict, func(t *testing.T) {
+			target := writeCIRunManifest(t)
+			captures := &ciRunRouteCaptures{}
+			srv := fakeAPI(t, ciRunRoutes(t, captures, map[string]http.HandlerFunc{
+				"POST /v1/release-gates/evaluate": ciRunGateHandler(t, captures, tc.verdict),
+				"GET /v1/compare": jsonHandler(200, map[string]any{
+					"state":       "ready",
+					"status":      "regressed",
+					"reason_code": "candidate_regressed",
+					"regression_reasons": []string{
+						"latency regressed by 22%",
+					},
+				}),
+			}))
+			defer srv.Close()
+			t.Setenv("AGENTCLASH_TOKEN", "test-token")
+			dir := t.TempDir()
+			summaryPath := filepath.Join(dir, "summary.md")
+			artifactDir := filepath.Join(dir, "artifacts")
+
+			result, err, _ := runCIRunJSON(t, []string{
+				"ci", "run",
+				"--manifest", target,
+				"-w", "ws-1",
+				"--json",
+				"--poll-interval", "1ms",
+				"--timeout", "1s",
+				"--summary-file", summaryPath,
+				"--artifact-dir", artifactDir,
+			}, srv.URL)
+			if got := exitCodeOf(t, err); got != tc.code {
+				t.Fatalf("exit code = %d, want %d", got, tc.code)
+			}
+			if result.Reports == nil || len(result.Reports.Artifacts) != 5 {
+				t.Fatalf("reports = %+v, want artifacts despite non-passing gate", result.Reports)
+			}
+			summary := readTextFile(t, summaryPath)
+			if !strings.Contains(summary, "AgentClash CI Gate: "+strings.ToUpper(tc.verdict)) || !strings.Contains(summary, "Regression: latency regressed by 22%") {
+				t.Fatalf("summary for %s missing verdict/failure\n---\n%s", tc.verdict, summary)
+			}
+			var gateArtifact map[string]any
+			readTestJSONFile(t, filepath.Join(artifactDir, "gate.json"), &gateArtifact)
+			if gateArtifact["gate_verdict"] != tc.verdict {
+				t.Fatalf("gate artifact verdict = %v, want %s", gateArtifact["gate_verdict"], tc.verdict)
+			}
+		})
+	}
+}
+
 func TestCIRunAttachesGitHubActionsMetadata(t *testing.T) {
 	target := writeCIRunManifest(t)
 	captures := &ciRunRouteCaptures{}
@@ -410,6 +548,31 @@ func ciRunRoutes(t *testing.T, captures *ciRunRouteCaptures, overrides map[strin
 				"agent_deployment_id": "dep-candidate",
 			}},
 		}),
+		"GET /v1/scorecards/agent-candidate": jsonHandler(200, map[string]any{
+			"run_agent_id":  "agent-candidate",
+			"state":         "ready",
+			"overall_score": 0.97,
+			"web_url":       "https://app.agentclash.dev/scorecards/agent-candidate",
+			"replay_url":    "https://app.agentclash.dev/replays/agent-candidate",
+			"scorecard": map[string]any{
+				"passed": true,
+				"dimensions": map[string]any{
+					"latency": map[string]any{
+						"passed": true,
+						"score":  0.94,
+					},
+				},
+			},
+		}),
+		"GET /v1/compare": jsonHandler(200, map[string]any{
+			"state":       "ready",
+			"status":      "comparable",
+			"reason_code": "candidate_comparable",
+			"web_url":     "https://app.agentclash.dev/compare/run-baseline/run-candidate",
+			"evidence_quality": map[string]any{
+				"warnings": []string{"cost evidence incomplete"},
+			},
+		}),
 		"POST /v1/release-gates/evaluate": ciRunGateHandler(t, captures, "pass"),
 	})
 	for key, handler := range overrides {
@@ -430,10 +593,16 @@ func ciRunGateHandler(t *testing.T, captures *ciRunRouteCaptures, verdict string
 		}
 		jsonHandler(200, map[string]any{
 			"release_gate": map[string]any{
-				"verdict":         verdict,
-				"reason_code":     reason,
-				"summary":         summary,
-				"evidence_status": verdict,
+				"verdict":            verdict,
+				"reason_code":        reason,
+				"summary":            summary,
+				"evidence_status":    verdict,
+				"policy_key":         "default",
+				"policy_version":     1,
+				"policy_fingerprint": "fp-123",
+				"evaluation_details": map[string]any{
+					"triggered_conditions": []string{"latency_delta"},
+				},
 			},
 		})(w, r)
 	}
@@ -455,4 +624,64 @@ func exitCodeOf(t *testing.T, err error) int {
 		t.Fatalf("expected *ExitCodeError, got %T (%v)", err, err)
 	}
 	return exitErr.Code
+}
+
+func readTextFile(t *testing.T, path string) string {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile(%s) error: %v", path, err)
+	}
+	return string(data)
+}
+
+func readTestJSONFile(t *testing.T, path string, target any) {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile(%s) error: %v", path, err)
+	}
+	if err := json.Unmarshal(data, target); err != nil {
+		t.Fatalf("Unmarshal(%s) error: %v\n---\n%s", path, err, data)
+	}
+}
+
+func TestCIRunMarkdownSummarySanitizesServerStrings(t *testing.T) {
+	hostile := "bad|cell\nforged\x1b[2J"
+	summary := renderCIRunMarkdownSummary(ciRunResult{
+		ManifestPath:  ".agentclash/ci.yaml",
+		WorkspaceID:   "ws-1",
+		GateVerdict:   "fail",
+		FailureReason: hostile,
+		Baseline: ciBaselineRunResolution{
+			RunID: "run-b",
+		},
+		Candidate: ciRunCandidateResult{
+			RunID:  "run-c",
+			RunURL: "javascript:alert(1)",
+		},
+	}, ciManifest{
+		Evaluation: ciManifestEvaluation{ChallengePackVersionID: "cpv-1"},
+	}, nil, map[string]any{
+		"regression_reasons": []any{hostile},
+	}, map[string]any{
+		"verdict":     "fail",
+		"summary":     hostile,
+		"reason_code": hostile,
+	})
+
+	for _, forbidden := range []string{"\x1b", "javascript:alert", "\nforged"} {
+		if strings.Contains(summary, forbidden) {
+			t.Fatalf("summary leaked %q\n---\n%s", forbidden, summary)
+		}
+	}
+	if !strings.Contains(summary, "bad\\|cell") && !strings.Contains(summary, "bad\\|cell forged") {
+		t.Fatalf("summary did not escape markdown table pipe\n---\n%s", summary)
+	}
+	if strings.Count(summary, "bad\\|cell") == 0 {
+		t.Fatalf("summary missing printable sanitized content\n---\n%s", summary)
+	}
+	if strings.Contains(summary, "Candidate run") {
+		t.Fatalf("unsafe candidate link rendered\n---\n%s", summary)
+	}
 }

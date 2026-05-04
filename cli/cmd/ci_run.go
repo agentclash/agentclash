@@ -22,6 +22,9 @@ func init() {
 	ciRunCmd.Flags().Bool("follow", false, "Stream run events while waiting for the candidate run")
 	ciRunCmd.Flags().Duration("timeout", 30*time.Minute, "Maximum time to wait for the candidate run; 0 disables the timeout")
 	ciRunCmd.Flags().Duration("poll-interval", 5*time.Second, "Polling interval while waiting for run completion")
+	ciRunCmd.Flags().String("summary-file", "", "Write a Markdown CI gate summary to this file")
+	ciRunCmd.Flags().Bool("github-step-summary", true, "Append a GitHub Actions step summary when GITHUB_STEP_SUMMARY is set")
+	ciRunCmd.Flags().String("artifact-dir", "", "Write stable AgentClash CI JSON artifacts to this directory")
 	ciRunCmd.Flags().String("ci-provider", "", "CI provider metadata override")
 	ciRunCmd.Flags().String("ci-repository", "", "Repository metadata override, for example owner/repo")
 	ciRunCmd.Flags().Int("ci-pull-request", 0, "Positive pull request number metadata override")
@@ -92,6 +95,7 @@ type ciRunResult struct {
 	ReleaseGate        map[string]any                    `json:"release_gate,omitempty" yaml:"release_gate,omitempty"`
 	GateVerdict        string                            `json:"gate_verdict,omitempty" yaml:"gate_verdict,omitempty"`
 	FailureReason      string                            `json:"failure_reason,omitempty" yaml:"failure_reason,omitempty"`
+	Reports            *ciRunReportOutputs               `json:"reports,omitempty" yaml:"reports,omitempty"`
 	ExitCode           int                               `json:"exit_code" yaml:"exit_code"`
 	Errors             []string                          `json:"errors,omitempty" yaml:"errors,omitempty"`
 }
@@ -250,6 +254,24 @@ func executeCIRun(cmd *cobra.Command, rc *RunContext) (ciRunResult, error) {
 	}
 	result.Candidate.RunAgentID = candidateAgent.ID
 
+	var scorecard map[string]any
+	var comparison map[string]any
+	if ciRunReportsEnabled(cmd) {
+		_, scorecard, err = fetchRunAgentScorecard(cmd, rc, result.Candidate.RunAgentID)
+		if err != nil {
+			result.ExitCode = ciRunExitAPI
+			result.Errors = append(result.Errors, err.Error())
+			return result, err
+		}
+
+		comparison, err = fetchRunComparison(cmd, rc, result.Baseline.RunID, result.Candidate.RunID, result.Baseline.RunAgentID, result.Candidate.RunAgentID)
+		if err != nil {
+			result.ExitCode = ciRunExitAPI
+			result.Errors = append(result.Errors, err.Error())
+			return result, err
+		}
+	}
+
 	gateEnvelope, gateVerdict, err := evaluateCIRunReleaseGate(cmd, rc, result.Baseline.RunID, result.Candidate.RunID, result.Baseline.RunAgentID, result.Candidate.RunAgentID)
 	if err != nil {
 		result.ExitCode = ciRunExitAPI
@@ -260,6 +282,15 @@ func executeCIRun(cmd *cobra.Command, rc *RunContext) (ciRunResult, error) {
 	result.GateVerdict = gateVerdict.ReleaseGate.Verdict
 	result.FailureReason = ciRunGateFailureReason(result.ReleaseGate)
 	result.ExitCode = ciRunExitCodeForGate(result.GateVerdict)
+	reports, reportErr := writeCIRunReports(cmd, result, manifest, run, completedRun, scorecard, comparison, gateEnvelope)
+	if reports != nil {
+		result.Reports = reports
+	}
+	if reportErr != nil {
+		result.ExitCode = ciRunExitAPI
+		result.Errors = append(result.Errors, reportErr.Error())
+		return result, &ExitCodeError{Code: ciRunExitAPI, Message: reportErr.Error()}
+	}
 	if result.ExitCode != 0 {
 		return result, &ExitCodeError{Code: result.ExitCode}
 	}
