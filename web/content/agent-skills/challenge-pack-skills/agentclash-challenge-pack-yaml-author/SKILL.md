@@ -237,6 +237,8 @@ evaluation_spec:
     dimensions:
       - key: schema_gate
         source: validators
+        validators:
+          - has_json
         weight: 1
         gate: true
         pass_threshold: 1
@@ -255,6 +257,10 @@ Evidence references accepted by validators and judges include `final_output`, `r
 File validators require a `file:` target. `code_execution` validators must target a `post_execution_checks` entry of type `file_capture`.
 
 For `judge_mode: deterministic`, omit `llm_judges`. For `judge_mode: llm_judge`, include at least one judge. For `judge_mode: hybrid`, include validators and at least one judge; hybrid scorecards need a gated dimension.
+
+For scorecard dimensions with `source: validators`, omit the `validators` list only when the dimension should score every validator. Add `validators: [<validator_key>]` when the dimension should cover a specific subset.
+
+Do not put `${secrets.*}` references in LLM judge `rubric`, `assertion`, or `prompt` text. Secrets are allowed in native tool implementation args when the runtime provides them, but judge prompt text rejects secret references.
 
 ## Authoring Procedure
 1. Start with `agentclash challenge-pack init ... --template prompt_eval` or `--template native`.
