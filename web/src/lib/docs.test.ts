@@ -114,6 +114,27 @@ describe("agent skill docs", () => {
     expect(doc?.content).toContain("agentclash-regression-flywheel");
   });
 
+  it("generates the regression flywheel skill with source-backed details", () => {
+    const doc = getDocBySlug(["agent-skills", "agentclash-regression-flywheel"]);
+
+    expect(doc?.title).toBe("Regression Flywheel Skill");
+    expect(doc?.content).toContain("agentclash run failures <RUN_ID> --json");
+    expect(doc?.content).toContain("agentclash regression-suite create");
+    expect(doc?.content).toContain("--source-challenge-pack-id <CHALLENGE_PACK_ID>");
+    expect(doc?.content).toContain("agentclash run promote-failure <RUN_ID> <CHALLENGE_IDENTITY_ID>");
+    expect(doc?.content).toContain("not `failure_fingerprint` or `failure_cluster_key`");
+    expect(doc?.content).toContain("\"source_challenge_pack_id\"");
+    expect(doc?.content).toContain("\"promotion_mode\": \"full_executable\"");
+    expect(doc?.content).toContain("\"judge_threshold_overrides\"");
+    expect(doc?.content).toContain("regression-suite case update <CASE_ID>");
+    expect(doc?.content).toContain("There is no CLI command today to create a regression case directly");
+    expect(doc?.content).toContain("Backend duplicate protection is intentionally narrow");
+    expect(doc?.content).toContain("--scope suite_only");
+    expect(doc?.content).toContain("regression_coverage");
+    expect(doc?.content).toContain("failure_review_item_ambiguous");
+    expect(doc?.content).toContain("agentclash-ci-release-gate");
+  });
+
   it("generates nested challenge pack and agent build skill pages", () => {
     const challengePackDoc = getDocBySlug([
       "agent-skills",
