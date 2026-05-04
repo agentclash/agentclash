@@ -525,6 +525,9 @@ func TestCIRunRegressionPromotionSkipsExistingCase(t *testing.T) {
 		"status":                       "proposed",
 		"source_challenge_identity_id": "challenge-1",
 		"title":                        "Existing proposal",
+		"metadata": map[string]any{
+			"source_failure_cluster_key": "frc-from-another-failure",
+		},
 	}})))
 	defer srv.Close()
 	t.Setenv("AGENTCLASH_TOKEN", "test-token")
@@ -542,6 +545,9 @@ func TestCIRunRegressionPromotionSkipsExistingCase(t *testing.T) {
 	}
 	if result.RegressionPromotions == nil || len(result.RegressionPromotions.Existing) != 1 || result.RegressionPromotions.Existing[0].CaseID != "case-existing" {
 		t.Fatalf("regression promotions = %+v, want existing case skip", result.RegressionPromotions)
+	}
+	if result.RegressionPromotions.Existing[0].ChallengeIdentityID != "challenge-1" {
+		t.Fatalf("existing challenge identity = %q, want current failure challenge identity", result.RegressionPromotions.Existing[0].ChallengeIdentityID)
 	}
 	if len(captures.PromotionBodies) != 0 {
 		t.Fatalf("promotion bodies = %+v, want no promote request for existing case", captures.PromotionBodies)
@@ -576,6 +582,9 @@ func TestCIRunRegressionPromotionSkipsExistingCaseByClusterKey(t *testing.T) {
 	}
 	if result.RegressionPromotions == nil || len(result.RegressionPromotions.Existing) != 1 || result.RegressionPromotions.Existing[0].CaseID != "case-existing-cluster" {
 		t.Fatalf("regression promotions = %+v, want existing cluster case", result.RegressionPromotions)
+	}
+	if result.RegressionPromotions.Existing[0].ChallengeIdentityID != "challenge-1" {
+		t.Fatalf("existing challenge identity = %q, want current failure challenge identity", result.RegressionPromotions.Existing[0].ChallengeIdentityID)
 	}
 	if result.RegressionPromotions.Existing[0].FailureClusterKey != "frc-test" {
 		t.Fatalf("existing failure cluster key = %q, want frc-test", result.RegressionPromotions.Existing[0].FailureClusterKey)

@@ -268,7 +268,7 @@ func ciRunExistingPromotionCase(suiteID string, existing ciRunRegressionCaseSumm
 	return ciRunRegressionPromotionCase{
 		SuiteID:             suiteID,
 		CaseID:              existing.ID,
-		ChallengeIdentityID: firstNonEmptyString(existing.ChallengeIdentityID, failure.ChallengeIdentityID),
+		ChallengeIdentityID: failure.ChallengeIdentityID,
 		ChallengeKey:        failure.ChallengeKey,
 		FailureClusterKey:   failure.FailureClusterKey,
 		Status:              existing.Status,
