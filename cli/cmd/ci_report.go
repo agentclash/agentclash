@@ -97,14 +97,16 @@ func writeCIRunReports(cmd *cobra.Command, result ciRunResult, manifest ciManife
 			outputs.Artifacts = append(outputs.Artifacts, item.file)
 		}
 
-		resultWithReports := result
-		resultWithReports.Reports = outputs
 		resultFile := ciRunArtifactFile{Kind: "agentclash.ci.result", Path: filepath.Join(artifactDir, "result.json")}
+		resultOutputs := *outputs
+		resultOutputs.Artifacts = append(append([]ciRunArtifactFile(nil), outputs.Artifacts...), resultFile)
+		resultWithReports := result
+		resultWithReports.Reports = &resultOutputs
 		envelope := buildCIRunArtifactEnvelope(resultFile.Kind, generatedAt, result, manifest, releaseGate, resultWithReports)
 		if err := writeCIRunJSONArtifact(resultFile.Path, envelope); err != nil {
 			return outputs, err
 		}
-		outputs.Artifacts = append(outputs.Artifacts, resultFile)
+		outputs.Artifacts = resultOutputs.Artifacts
 	}
 
 	return outputs, nil

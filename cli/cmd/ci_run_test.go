@@ -111,6 +111,14 @@ func TestCIRunWritesSummaryAndArtifacts(t *testing.T) {
 			t.Fatalf("%s payload is nil", name)
 		}
 	}
+
+	var resultEnvelope struct {
+		Payload ciRunResult `json:"payload"`
+	}
+	readTestJSONFile(t, filepath.Join(artifactDir, "result.json"), &resultEnvelope)
+	if resultEnvelope.Payload.Reports == nil || len(resultEnvelope.Payload.Reports.Artifacts) != 5 {
+		t.Fatalf("result artifact reports = %+v, want result.json included", resultEnvelope.Payload.Reports)
+	}
 }
 
 func TestCIRunUsesGitHubStepSummary(t *testing.T) {
@@ -198,6 +206,44 @@ func TestCIRunTimeoutWritesSummary(t *testing.T) {
 	summary := readTextFile(t, summaryPath)
 	if !strings.Contains(summary, "timed out waiting for candidate run run-candidate") || !strings.Contains(summary, "Exit Code") {
 		t.Fatalf("timeout summary missing error/exit code\n---\n%s", summary)
+	}
+}
+
+func TestCIRunReportWriteFailurePreservesPrimaryExitCode(t *testing.T) {
+	target := writeCIRunManifest(t)
+	captures := &ciRunRouteCaptures{}
+	srv := fakeAPI(t, ciRunRoutes(t, captures, map[string]http.HandlerFunc{
+		"GET /v1/runs/run-candidate": jsonHandler(200, map[string]any{
+			"id":      "run-candidate",
+			"status":  "running",
+			"web_url": "https://app.agentclash.dev/runs/run-candidate",
+		}),
+	}))
+	defer srv.Close()
+	t.Setenv("AGENTCLASH_TOKEN", "test-token")
+	notDir := filepath.Join(t.TempDir(), "not-dir")
+	if err := os.WriteFile(notDir, []byte("file"), 0o644); err != nil {
+		t.Fatalf("WriteFile(not-dir) error: %v", err)
+	}
+
+	result, err, _ := runCIRunJSON(t, []string{
+		"ci", "run",
+		"--manifest", target,
+		"-w", "ws-1",
+		"--json",
+		"--poll-interval", "1ms",
+		"--timeout", "1ms",
+		"--summary-file", filepath.Join(notDir, "summary.md"),
+		"--github-step-summary=false",
+	}, srv.URL)
+	if got := exitCodeOf(t, err); got != ciRunExitTimeout {
+		t.Fatalf("exit code = %d, want timeout %d", got, ciRunExitTimeout)
+	}
+	if result.ExitCode != ciRunExitTimeout {
+		t.Fatalf("result exit code = %d, want timeout %d", result.ExitCode, ciRunExitTimeout)
+	}
+	if !strings.Contains(strings.Join(result.Errors, "\n"), "create ci summary directory") {
+		t.Fatalf("errors = %#v, want report write error recorded", result.Errors)
 	}
 }
 

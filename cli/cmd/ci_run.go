@@ -155,8 +155,11 @@ func executeCIRun(cmd *cobra.Command, rc *RunContext) (ciRunResult, error) {
 			result.Reports = reports
 		}
 		if reportErr != nil {
-			result.ExitCode = ciRunExitAPI
 			result.Errors = append(result.Errors, reportErr.Error())
+			if err != nil || result.ExitCode != 0 {
+				return result, err
+			}
+			result.ExitCode = ciRunExitAPI
 			return result, &ExitCodeError{Code: ciRunExitAPI, Message: reportErr.Error()}
 		}
 		return result, err
