@@ -128,6 +128,6 @@ Next command: <command>
 ```
 
 ## Related Docs
-- `/docs/guides/ci-cd-agent-gates`
-- `/docs/guides/ci-cd-workload-recipes`
-- `/docs/challenge-packs/eval-workflows-and-gates`
+- `/docs-md/guides/ci-cd-agent-gates`
+- `/docs-md/guides/ci-cd-workload-recipes`
+- `/docs-md/challenge-packs/eval-workflows-and-gates`
