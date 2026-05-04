@@ -41,6 +41,7 @@ func init() {
 	runFailuresCmd.Flags().String("severity", "", "Filter by severity: info, warning, or blocking")
 	runFailuresCmd.Flags().String("class", "", "Filter by failure class")
 	runFailuresCmd.Flags().String("evidence-tier", "", "Filter by evidence tier")
+	runFailuresCmd.Flags().String("cluster", "", "Filter by failure cluster key")
 	runFailuresCmd.Flags().String("cursor", "", "Pagination cursor")
 	runFailuresCmd.Flags().Int("limit", 0, "Maximum failures to return")
 
@@ -361,6 +362,9 @@ var runFailuresCmd = &cobra.Command{
 		}
 		if v, _ := cmd.Flags().GetString("evidence-tier"); v != "" {
 			q.Set("evidence_tier", v)
+		}
+		if v, _ := cmd.Flags().GetString("cluster"); v != "" {
+			q.Set("failure_cluster_key", v)
 		}
 		if v, _ := cmd.Flags().GetString("cursor"); v != "" {
 			q.Set("cursor", v)

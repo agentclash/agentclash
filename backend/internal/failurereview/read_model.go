@@ -281,7 +281,7 @@ func BuildRunAgentItems(input RunAgentInput) ([]Item, error) {
 	return items, nil
 }
 
-func FilterItems(items []Item, agentID *uuid.UUID, severity *Severity, failureClass *FailureClass, evidenceTier *EvidenceTier, challengeKey, caseKey *string) []Item {
+func FilterItems(items []Item, agentID *uuid.UUID, severity *Severity, failureClass *FailureClass, evidenceTier *EvidenceTier, challengeKey, caseKey, clusterKey *string) []Item {
 	filtered := make([]Item, 0, len(items))
 	for _, item := range items {
 		if agentID != nil && item.RunAgentID != *agentID {
@@ -300,6 +300,9 @@ func FilterItems(items []Item, agentID *uuid.UUID, severity *Severity, failureCl
 			continue
 		}
 		if caseKey != nil && item.CaseKey != *caseKey {
+			continue
+		}
+		if clusterKey != nil && item.FailureClusterKey != *clusterKey {
 			continue
 		}
 		filtered = append(filtered, item)

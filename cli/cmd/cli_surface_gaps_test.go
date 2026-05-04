@@ -159,11 +159,12 @@ func TestRegressionCaseUpdatePayload(t *testing.T) {
 }
 
 func TestRunFailuresForwardsFilters(t *testing.T) {
-	var gotAgent, gotFailureClass, gotLimit string
+	var gotAgent, gotFailureClass, gotCluster, gotLimit string
 	srv := fakeAPI(t, map[string]http.HandlerFunc{
 		"GET /v1/workspaces/ws-123/runs/run-1/failures": func(w http.ResponseWriter, r *http.Request) {
 			gotAgent = r.URL.Query().Get("agent_id")
 			gotFailureClass = r.URL.Query().Get("failure_class")
+			gotCluster = r.URL.Query().Get("failure_cluster_key")
 			gotLimit = r.URL.Query().Get("limit")
 			jsonHandler(200, map[string]any{
 				"items": []map[string]any{
@@ -189,12 +190,13 @@ func TestRunFailuresForwardsFilters(t *testing.T) {
 		"run", "failures", "run-1", "-w", "ws-123",
 		"--agent", "agent-1",
 		"--class", "policy_violation",
+		"--cluster", "frc-test",
 		"--limit", "25",
 	}, srv.URL); err != nil {
 		t.Fatalf("run failures error: %v", err)
 	}
-	if gotAgent != "agent-1" || gotFailureClass != "policy_violation" || gotLimit != "25" {
-		t.Fatalf("query = agent %q failure_class %q limit %q", gotAgent, gotFailureClass, gotLimit)
+	if gotAgent != "agent-1" || gotFailureClass != "policy_violation" || gotCluster != "frc-test" || gotLimit != "25" {
+		t.Fatalf("query = agent %q failure_class %q cluster %q limit %q", gotAgent, gotFailureClass, gotCluster, gotLimit)
 	}
 }
 
