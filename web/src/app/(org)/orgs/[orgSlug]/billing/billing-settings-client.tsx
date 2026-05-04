@@ -207,10 +207,7 @@ export function BillingSettingsClient() {
   const dodoReturnStatus = searchParams.get("status");
   const checkoutPending =
     checkoutReturned &&
-    (entitlements?.status === "active"
-      ? overview?.latest_checkout_intent?.status !== "completed" &&
-        entitlements.plan_key === "free"
-      : true);
+    overview?.latest_checkout_intent?.status !== "completed";
 
   useEffect(() => {
     if (!checkoutReturned || !checkoutPending) return;
