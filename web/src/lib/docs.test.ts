@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildLlmsFull,
   buildLlmsIndex,
+  DOCS_NAV,
   getAllDocMarkdownPaths,
   getDocBySlug,
 } from "./docs";
@@ -144,6 +145,17 @@ describe("agent skill docs", () => {
     expect(paths).toContain("/docs-md/agent-skills/agent-build-skills");
     for (const slug of skillSlugs) {
       expect(paths).toContain(`/docs-md/agent-skills/${slug}`);
+    }
+  });
+
+  it("resolves every docs navigation item", () => {
+    for (const section of DOCS_NAV) {
+      for (const item of section.items) {
+        const doc = getDocBySlug(item.slug);
+
+        expect(doc, item.href).not.toBeNull();
+        expect(doc?.href).toBe(item.href);
+      }
     }
   });
 

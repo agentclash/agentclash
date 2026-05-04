@@ -71,7 +71,7 @@ release gate = decision policy
 
 ## GitHub Actions sketch
 
-The first shipped CLI surface validates the manifest. Full orchestration will be a follow-up command built on the same file. Until then, teams can validate the contract and keep using the existing explicit run and gate commands.
+The first shipped CLI surface validates the manifest. Full orchestration will be a follow-up command built on the same file. Until then, teams can validate the contract and keep using the existing explicit run and gate commands. The workflow below repeats selected manifest IDs as GitHub variables only because `agentclash ci run` does not exist yet; once it does, the manifest should be the single source of truth.
 
 ```yaml
 name: AgentClash gate
