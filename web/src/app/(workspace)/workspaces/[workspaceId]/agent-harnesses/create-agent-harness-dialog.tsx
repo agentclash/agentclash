@@ -29,6 +29,28 @@ import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { GitBranch, Github, Loader2, Plus } from "lucide-react";
 
+type HarnessKind = "codex_e2b" | "hermes_e2b";
+
+const harnessOptions: Record<
+  HarnessKind,
+  {
+    label: string;
+    template: string;
+    secretCandidates: string[];
+  }
+> = {
+  codex_e2b: {
+    label: "Codex",
+    template: "codex",
+    secretCandidates: ["OPENAI_API_KEY"],
+  },
+  hermes_e2b: {
+    label: "Hermes",
+    template: "agentclash-hermes-fullstack",
+    secretCandidates: ["OPENROUTER_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY"],
+  },
+};
+
 const defaultEvaluationConfig = {
   validators: [
     {
@@ -63,6 +85,7 @@ export function CreateAgentHarnessDialog({
     `/v1/workspaces/${workspaceId}/github/repositories`,
   );
   const [open, setOpen] = useState(false);
+  const [harnessKind, setHarnessKind] = useState<HarnessKind>("codex_e2b");
   const [taskPrompt, setTaskPrompt] = useState("");
   const [sourceMode, setSourceMode] = useState<"github" | "url">("github");
   const [selectedRepositoryID, setSelectedRepositoryID] = useState("");
@@ -96,8 +119,8 @@ export function CreateAgentHarnessDialog({
     if (sourceMode === "github" && !selectedRepository) return;
     if (sourceMode === "url" && !repositoryURL.trim()) return;
     if (!taskPrompt.trim()) return;
-    if (!openAISecret) {
-      toast.error("Add OPENAI_API_KEY under workspace Secrets first");
+    if (!apiKeySecret) {
+      toast.error(`Add ${runner.secretCandidates[0]} under workspace Secrets first`);
       return;
     }
 
@@ -105,11 +128,13 @@ export function CreateAgentHarnessDialog({
       name: buildHarnessName(
         sourceMode === "github" ? selectedRepository?.full_name ?? "" : repositoryURL,
         taskPrompt,
+        runner.label,
       ),
+      harness_kind: harnessKind,
       task_prompt: taskPrompt.trim(),
-      codex_template: "codex",
+      codex_template: runner.template,
       auth_mode: "api_key_secret",
-      openai_api_key_secret_name: openAISecret,
+      openai_api_key_secret_name: apiKeySecret,
       base_branch:
         baseBranch.trim() ||
         (sourceMode === "github" ? selectedRepository?.default_branch : undefined),
@@ -146,6 +171,7 @@ export function CreateAgentHarnessDialog({
   }
 
   function resetForm() {
+    setHarnessKind("codex_e2b");
     setTaskPrompt("");
     setSourceMode("github");
     setSelectedRepositoryID("");
@@ -153,7 +179,8 @@ export function CreateAgentHarnessDialog({
     setBaseBranch("main");
   }
 
-  const openAISecret = inferOpenAISecret(secretsData?.items ?? []);
+  const runner = harnessOptions[harnessKind];
+  const apiKeySecret = inferRunnerSecret(secretsData?.items ?? [], runner.secretCandidates);
   const githubInstallations = installationsData?.items ?? [];
   const githubRepositories = repositoriesData?.items ?? [];
   const selectedRepository = githubRepositories.find(
@@ -165,7 +192,7 @@ export function CreateAgentHarnessDialog({
       ? Boolean(selectedRepository)
       : Boolean(repositoryURL.trim())) &&
     taskPrompt.trim() &&
-    openAISecret &&
+    apiKeySecret &&
     !secretsLoading;
 
   return (
@@ -178,11 +205,26 @@ export function CreateAgentHarnessDialog({
         <DialogHeader>
           <DialogTitle>New Agent Harness</DialogTitle>
           <DialogDescription>
-            Point Codex at a repo and describe the work.
+            Point a coding harness at a repo and describe the work.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-2">
+          <div>
+            <label className="mb-1.5 block text-sm font-medium">Runner</label>
+            <select
+              value={harnessKind}
+              onChange={(event) => setHarnessKind(event.target.value as HarnessKind)}
+              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring/50"
+            >
+              {Object.entries(harnessOptions).map(([kind, option]) => (
+                <option key={kind} value={kind}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <div className="flex gap-2">
             <Button
               type="button"
@@ -306,10 +348,13 @@ export function CreateAgentHarnessDialog({
             />
           </div>
 
-          {!secretsLoading && !openAISecret ? (
+          {!secretsLoading && !apiKeySecret ? (
             <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-200">
-              Add an <code className="font-[family-name:var(--font-mono)]">OPENAI_API_KEY</code>{" "}
-              workspace secret before creating a Codex harness.{" "}
+              Add an{" "}
+              <code className="font-[family-name:var(--font-mono)]">
+                {runner.secretCandidates[0]}
+              </code>{" "}
+              workspace secret before creating a {runner.label} harness.{" "}
               <Link
                 href={`/workspaces/${workspaceId}/secrets`}
                 className="font-medium underline underline-offset-4"
@@ -335,21 +380,33 @@ export function CreateAgentHarnessDialog({
   );
 }
 
-function inferOpenAISecret(secrets: WorkspaceSecret[]): string | undefined {
-  const exact = secrets.find((secret) => secret.key === "OPENAI_API_KEY");
-  if (exact) return exact.key;
+function inferRunnerSecret(
+  secrets: WorkspaceSecret[],
+  candidates: string[],
+): string | undefined {
+  for (const candidate of candidates) {
+    const exact = secrets.find((secret) => secret.key === candidate);
+    if (exact) return exact.key;
+  }
   return secrets.find((secret) => {
     const key = secret.key.toUpperCase();
-    return key.includes("OPENAI") && key.includes("KEY");
+    return candidates.some((candidate) => {
+      const provider = candidate.split("_")[0];
+      return key.includes(provider) && key.includes("KEY");
+    });
   })?.key;
 }
 
-function buildHarnessName(repositoryURL: string, taskPrompt: string): string {
+function buildHarnessName(
+  repositoryURL: string,
+  taskPrompt: string,
+  runnerLabel: string,
+): string {
   const repoName = parseRepositoryName(repositoryURL);
   if (repoName) {
-    return `${repoName} Codex`;
+    return `${repoName} ${runnerLabel}`;
   }
-  return `${taskPrompt.trim().split(/\s+/).slice(0, 4).join(" ")} Codex`;
+  return `${taskPrompt.trim().split(/\s+/).slice(0, 4).join(" ")} ${runnerLabel}`;
 }
 
 function parseRepositoryName(repositoryURL: string): string | undefined {

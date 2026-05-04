@@ -19,8 +19,12 @@ export const template = Template()
       '&& rm -rf /var/lib/apt/lists/*',
   )
 
-  // Codex CLI for Agent Harness coding tasks
+  // Coding-agent CLIs for Agent Harness tasks
   .runCmd('npm install -g @openai/codex')
+  .runCmd(
+    'curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash ' +
+      '&& ln -sf /root/.local/bin/hermes /usr/local/bin/hermes',
+  )
 
   // Python 3, Go, C/C++ toolchain
   .runCmd(
