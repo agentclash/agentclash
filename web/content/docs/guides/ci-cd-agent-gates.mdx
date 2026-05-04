@@ -141,7 +141,7 @@ agentclash ci should-run \
 
 ## GitHub Actions sketch
 
-The shipped CI surface validates the manifest, resolves the baseline, and decides whether a gate should run. Full orchestration will be a follow-up command built on the same file. Until then, teams can validate the contract and keep using the existing explicit run and gate commands. The workflow below repeats selected candidate IDs as GitHub variables only because `agentclash ci run` does not exist yet; once it does, the manifest should be the single source of truth.
+The manifest is the single source of truth for the candidate revision, workload, baseline, and gate. A pull request workflow can validate it, decide whether it should run for the changed files, then let `agentclash ci run` create the candidate build version, deployment, run, and release-gate evaluation.
 
 ```yaml
 name: AgentClash gate
@@ -181,61 +181,21 @@ jobs:
           SHOULD_RUN=$(agentclash ci should-run --json | jq -r '.should_run')
           echo "should_run=$SHOULD_RUN" >> "$GITHUB_OUTPUT"
 
-      - name: Resolve AgentClash baseline
+      - name: Run AgentClash CI gate
         if: steps.should-run.outputs.should_run == 'true'
-        id: baseline
+        id: agentclash
         run: |
-          BASELINE_JSON=$(agentclash ci baseline --json)
-          echo "run_id=$(echo "$BASELINE_JSON" | jq -r '.baseline.run_id')" >> "$GITHUB_OUTPUT"
-          echo "run_agent_id=$(echo "$BASELINE_JSON" | jq -r '.baseline.run_agent_id // ""')" >> "$GITHUB_OUTPUT"
-        env:
-          AGENTCLASH_API_URL: https://api.agentclash.dev
-          AGENTCLASH_TOKEN: ${{ secrets.AGENTCLASH_TOKEN }}
-          AGENTCLASH_WORKSPACE: ${{ secrets.AGENTCLASH_WORKSPACE }}
-
-      - name: Create candidate run
-        if: steps.should-run.outputs.should_run == 'true'
-        id: candidate
-        run: |
-          RUN_JSON=$(agentclash run create \
-            --challenge-pack-version "$AGENTCLASH_CHALLENGE_PACK_VERSION" \
-            --deployments "$AGENTCLASH_CANDIDATE_DEPLOYMENT" \
-            --json)
-          RUN_ID=$(echo "$RUN_JSON" | jq -r '.id')
-          CANDIDATE_AGENT_ID=$(agentclash run agents "$RUN_ID" --json \
-            | jq -r --arg dep "$AGENTCLASH_CANDIDATE_DEPLOYMENT" '.items[] | select(.agent_deployment_id == $dep) | .id' \
-            | head -n 1)
-          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
-          echo "run_agent_id=$CANDIDATE_AGENT_ID" >> "$GITHUB_OUTPUT"
-        env:
-          AGENTCLASH_API_URL: https://api.agentclash.dev
-          AGENTCLASH_TOKEN: ${{ secrets.AGENTCLASH_TOKEN }}
-          AGENTCLASH_WORKSPACE: ${{ secrets.AGENTCLASH_WORKSPACE }}
-          AGENTCLASH_CHALLENGE_PACK_VERSION: ${{ vars.AGENTCLASH_CHALLENGE_PACK_VERSION }}
-          AGENTCLASH_CANDIDATE_DEPLOYMENT: ${{ vars.AGENTCLASH_CANDIDATE_DEPLOYMENT }}
-
-      - name: Evaluate release gate
-        if: steps.should-run.outputs.should_run == 'true'
-        run: |
-          args=(
-            compare gate
-            --baseline "${{ steps.baseline.outputs.run_id }}"
-            --candidate "${{ steps.candidate.outputs.run_id }}"
-          )
-          if [ -n "${{ steps.baseline.outputs.run_agent_id }}" ]; then
-            args+=(--baseline-agent "${{ steps.baseline.outputs.run_agent_id }}")
-          fi
-          if [ -n "${{ steps.candidate.outputs.run_agent_id }}" ]; then
-            args+=(--candidate-agent "${{ steps.candidate.outputs.run_agent_id }}")
-          fi
-          agentclash "${args[@]}"
+          agentclash ci run --manifest .agentclash/ci.yaml --json \
+            | tee agentclash-ci-result.json
+          echo "run_id=$(jq -r '.candidate.run_id' agentclash-ci-result.json)" >> "$GITHUB_OUTPUT"
+          echo "gate_verdict=$(jq -r '.gate_verdict' agentclash-ci-result.json)" >> "$GITHUB_OUTPUT"
         env:
           AGENTCLASH_API_URL: https://api.agentclash.dev
           AGENTCLASH_TOKEN: ${{ secrets.AGENTCLASH_TOKEN }}
           AGENTCLASH_WORKSPACE: ${{ secrets.AGENTCLASH_WORKSPACE }}
 ```
 
-For multi-agent candidate runs, resolve the candidate lane with `agentclash run agents <run-id> --json` and pass `--candidate-agent <run-agent-id>` for the participant you intend to gate.
+`agentclash ci run` exits nonzero when the gate verdict should block CI, when the candidate run times out, or when the manifest/API setup is invalid.
 
 ## Regression promotion policy
 
@@ -266,11 +226,11 @@ Only a future main-branch workflow should auto-promote high-confidence failures 
 
 ## Current limits
 
-- `agentclash ci validate` validates the manifest shape locally; it does not check that IDs exist in the API.
-- `agentclash ci baseline` checks and resolves only the baseline; full API-backed validation for every manifest resource is still separate follow-up work.
-- `agentclash ci should-run` only decides whether a gate should run; it does not create runs or evaluate gates.
-- There is not yet an `agentclash ci run` wrapper that creates the candidate build version, deployment, run, gate, and PR report in one command.
+- `agentclash ci validate` validates the manifest shape locally; pass `--remote` for API-backed resource checks.
+- `agentclash ci should-run` only decides whether a gate should run; `agentclash ci run` performs the orchestration.
+- `agentclash ci run` creates a one-off candidate deployment for the manifest build version; cleanup/retention policy is still a follow-up.
 - PR metadata such as repository, pull request number, branch, and commit SHA is not yet attached to runs by the CLI.
+- PR comments, check-run summaries, and uploaded JSON artifacts are still follow-up work.
 - Automatic regression promotion should remain opt-in and conservative.
 
 ## See also
