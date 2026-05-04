@@ -825,6 +825,7 @@ func writeCIRunManifest(t *testing.T) string {
 
 func writeCIRunManifestWith(t *testing.T, mutate func(string) string) string {
 	t.Helper()
+	t.Setenv("GITHUB_ACTIONS", "")
 	dir, err := os.MkdirTemp(".", "ci-run-spec-*")
 	if err != nil {
 		t.Fatalf("MkdirTemp(spec) error: %v", err)
