@@ -4773,9 +4773,10 @@ components:
           format: uuid
         requested_plan_key:
           type: string
-          enum: [pro, team, enterprise]
+          enum: [pro, team]
         billing_period:
-          $ref: "#/components/schemas/BillingPeriod"
+          type: string
+          enum: [monthly, yearly]
         seat_quantity:
           type: integer
           minimum: 1
@@ -4834,7 +4835,7 @@ components:
           enum: [pro, team]
         billing_period:
           type: string
-          enum: [monthly, yearly, custom]
+          enum: [monthly, yearly]
         seat_quantity:
           type: integer
           minimum: 1
@@ -4861,10 +4862,10 @@ components:
           format: uri
         plan_key:
           type: string
-          enum: [pro, team, enterprise]
+          enum: [pro, team]
         billing_period:
           type: string
-          enum: [monthly, yearly, custom]
+          enum: [monthly, yearly]
         seat_quantity:
           type: integer
           minimum: 1

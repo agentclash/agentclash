@@ -1871,8 +1871,8 @@ export interface BillingAccount {
 export interface BillingCheckoutIntent {
   id: string;
   organization_id: string;
-  requested_plan_key: "pro" | "team" | "enterprise";
-  billing_period: BillingPeriod;
+  requested_plan_key: "pro" | "team";
+  billing_period: "monthly" | "yearly";
   seat_quantity: number;
   return_url: string;
   checkout_url: string;
@@ -1897,7 +1897,7 @@ export interface StartBillingTrialRequest {
 
 export interface CreateBillingCheckoutRequest {
   plan_key: "pro" | "team";
-  billing_period: BillingPeriod;
+  billing_period: "monthly" | "yearly";
   seat_quantity: number;
   return_url: string;
 }
@@ -1905,8 +1905,8 @@ export interface CreateBillingCheckoutRequest {
 export interface CreateBillingCheckoutResponse {
   checkout_intent_id: string;
   checkout_url: string;
-  plan_key: BillingPlanKey;
-  billing_period: BillingPeriod;
+  plan_key: "pro" | "team";
+  billing_period: "monthly" | "yearly";
   seat_quantity: number;
 }
 
