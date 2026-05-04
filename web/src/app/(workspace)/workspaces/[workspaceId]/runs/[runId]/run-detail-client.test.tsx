@@ -97,6 +97,15 @@ function renderClient() {
           name: "Live Arena Run",
           status: "running",
           execution_mode: "comparison",
+          ci_metadata: {
+            provider: "github_actions",
+            repository: "acme/agent",
+            pull_request_number: 42,
+            branch: "feature/gate",
+            commit_sha: "abc123456789",
+            workflow: "AgentClash gate",
+            workflow_run_url: "https://github.com/acme/agent/actions/runs/99",
+          },
           created_at: "2026-04-22T12:00:00Z",
           updated_at: "2026-04-22T12:00:00Z",
           started_at: "2026-04-22T12:00:05Z",
@@ -156,6 +165,10 @@ describe("RunDetailClient", () => {
       (element) => element.textContent?.includes("Commentary Off"),
     );
     expect(toggle).toBeTruthy();
+    expect(container.textContent).toContain("acme/agent:feature/gate");
+    expect(container.textContent).toContain("PR #42");
+    expect(container.textContent).toContain("abc1234");
+    expect(container.textContent).toContain("AgentClash gate");
 
     act(() => {
       clickElement(toggle!);

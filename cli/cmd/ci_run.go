@@ -22,6 +22,17 @@ func init() {
 	ciRunCmd.Flags().Bool("follow", false, "Stream run events while waiting for the candidate run")
 	ciRunCmd.Flags().Duration("timeout", 30*time.Minute, "Maximum time to wait for the candidate run; 0 disables the timeout")
 	ciRunCmd.Flags().Duration("poll-interval", 5*time.Second, "Polling interval while waiting for run completion")
+	ciRunCmd.Flags().String("ci-provider", "", "CI provider metadata override")
+	ciRunCmd.Flags().String("ci-repository", "", "Repository metadata override, for example owner/repo")
+	ciRunCmd.Flags().Int("ci-pull-request", 0, "Pull request number metadata override")
+	ciRunCmd.Flags().String("ci-branch", "", "Branch metadata override")
+	ciRunCmd.Flags().String("ci-ref", "", "Git ref metadata override")
+	ciRunCmd.Flags().String("ci-commit", "", "Commit SHA metadata override")
+	ciRunCmd.Flags().String("ci-workflow", "", "Workflow name metadata override")
+	ciRunCmd.Flags().String("ci-workflow-run-id", "", "Workflow run id metadata override")
+	ciRunCmd.Flags().String("ci-workflow-run-attempt", "", "Workflow run attempt metadata override")
+	ciRunCmd.Flags().String("ci-workflow-run-url", "", "Workflow run URL metadata override")
+	ciRunCmd.Flags().String("ci-event", "", "CI event name metadata override")
 }
 
 const (
@@ -86,14 +97,15 @@ type ciRunResult struct {
 }
 
 type ciRunCandidateResult struct {
-	AgentBuildID   string `json:"agent_build_id" yaml:"agent_build_id"`
-	BuildVersionID string `json:"build_version_id,omitempty" yaml:"build_version_id,omitempty"`
-	DeploymentID   string `json:"deployment_id,omitempty" yaml:"deployment_id,omitempty"`
-	RunID          string `json:"run_id,omitempty" yaml:"run_id,omitempty"`
-	RunAgentID     string `json:"run_agent_id,omitempty" yaml:"run_agent_id,omitempty"`
-	RunStatus      string `json:"run_status,omitempty" yaml:"run_status,omitempty"`
-	RunURL         string `json:"run_url,omitempty" yaml:"run_url,omitempty"`
-	DeploymentName string `json:"deployment_name,omitempty" yaml:"deployment_name,omitempty"`
+	AgentBuildID   string         `json:"agent_build_id" yaml:"agent_build_id"`
+	BuildVersionID string         `json:"build_version_id,omitempty" yaml:"build_version_id,omitempty"`
+	DeploymentID   string         `json:"deployment_id,omitempty" yaml:"deployment_id,omitempty"`
+	RunID          string         `json:"run_id,omitempty" yaml:"run_id,omitempty"`
+	RunAgentID     string         `json:"run_agent_id,omitempty" yaml:"run_agent_id,omitempty"`
+	RunStatus      string         `json:"run_status,omitempty" yaml:"run_status,omitempty"`
+	RunURL         string         `json:"run_url,omitempty" yaml:"run_url,omitempty"`
+	DeploymentName string         `json:"deployment_name,omitempty" yaml:"deployment_name,omitempty"`
+	CIMetadata     map[string]any `json:"ci_metadata,omitempty" yaml:"ci_metadata,omitempty"`
 }
 
 func executeCIRun(cmd *cobra.Command, rc *RunContext) (ciRunResult, error) {
@@ -112,6 +124,10 @@ func executeCIRun(cmd *cobra.Command, rc *RunContext) (ciRunResult, error) {
 	}
 	if pollInterval <= 0 {
 		err := fmt.Errorf("--poll-interval must be greater than 0")
+		return ciRunResult{ManifestPath: manifestPath, WorkspaceID: workspaceID, ExitCode: ciRunExitInvalidManifest, Errors: []string{err.Error()}}, &ExitCodeError{Code: ciRunExitInvalidManifest, Message: err.Error()}
+	}
+	ciMetadata, err := ciMetadataFromFlags(cmd)
+	if err != nil {
 		return ciRunResult{ManifestPath: manifestPath, WorkspaceID: workspaceID, ExitCode: ciRunExitInvalidManifest, Errors: []string{err.Error()}}, &ExitCodeError{Code: ciRunExitInvalidManifest, Message: err.Error()}
 	}
 
@@ -187,7 +203,7 @@ func executeCIRun(cmd *cobra.Command, rc *RunContext) (ciRunResult, error) {
 	result.BaselineResolution = &baseline
 	result.Baseline = baseline.Baseline
 
-	run, err := createCIRun(cmd, rc, workspaceID, manifest, result.Candidate.DeploymentID)
+	run, err := createCIRun(cmd, rc, workspaceID, manifest, result.Candidate.DeploymentID, ciMetadata)
 	if err != nil {
 		result.ExitCode = ciRunExitAPI
 		result.Errors = append(result.Errors, err.Error())
@@ -196,6 +212,11 @@ func executeCIRun(cmd *cobra.Command, rc *RunContext) (ciRunResult, error) {
 	result.Candidate.RunID = mapString(run, "id")
 	result.Candidate.RunStatus = mapString(run, "status")
 	result.Candidate.RunURL = ciRunLink(run)
+	if metadata := mapObject(run, "ci_metadata"); metadata != nil {
+		result.Candidate.CIMetadata = metadata
+	} else if ciMetadata != nil {
+		result.Candidate.CIMetadata = ciMetadata
+	}
 
 	if follow && !rc.Output.IsStructured() {
 		fmt.Fprintln(os.Stderr)
@@ -359,7 +380,7 @@ func ciRunDeploymentName(manifest ciManifest) string {
 	return fmt.Sprintf("agentclash-ci-%d", time.Now().UTC().Unix())
 }
 
-func createCIRun(cmd *cobra.Command, rc *RunContext, workspaceID string, manifest ciManifest, deploymentID string) (map[string]any, error) {
+func createCIRun(cmd *cobra.Command, rc *RunContext, workspaceID string, manifest ciManifest, deploymentID string, ciMetadata map[string]any) (map[string]any, error) {
 	request := runCreateRequest{
 		ChallengePackVersionID: manifest.Evaluation.ChallengePackVersionID,
 		ChallengeInputSetID:    manifest.Evaluation.InputSetID,
@@ -368,6 +389,7 @@ func createCIRun(cmd *cobra.Command, rc *RunContext, workspaceID string, manifes
 		RegressionSuiteIDs:     manifest.Evaluation.RegressionSuites,
 		RegressionCaseIDs:      manifest.Evaluation.RegressionCases,
 		Name:                   ciRunName(manifest),
+		CIMetadata:             ciMetadata,
 	}
 	body, err := buildRunCreateBody(workspaceID, request)
 	if err != nil {

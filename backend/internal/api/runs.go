@@ -38,7 +38,8 @@ type createRunRequest struct {
 	RaceContext bool `json:"race_context,omitempty"`
 	// RaceContextMinStepGap overrides the default cadence threshold. When
 	// omitted, the executor uses the backend default. Valid range [1, 10].
-	RaceContextMinStepGap *int `json:"race_context_min_step_gap,omitempty"`
+	RaceContextMinStepGap *int                  `json:"race_context_min_step_gap,omitempty"`
+	CIMetadata            *domain.RunCIMetadata `json:"ci_metadata,omitempty"`
 }
 
 type CreateRunInput struct {
@@ -52,6 +53,7 @@ type CreateRunInput struct {
 	RegressionCaseIDs      []uuid.UUID
 	RaceContext            bool
 	RaceContextMinStepGap  *int32
+	CIMetadata             *domain.RunCIMetadata
 }
 
 type CreateRunResult struct {
@@ -59,18 +61,19 @@ type CreateRunResult struct {
 }
 
 type createRunResponse struct {
-	ID                     uuid.UUID        `json:"id"`
-	WorkspaceID            uuid.UUID        `json:"workspace_id"`
-	ChallengePackVersionID uuid.UUID        `json:"challenge_pack_version_id"`
-	ChallengeInputSetID    *uuid.UUID       `json:"challenge_input_set_id,omitempty"`
-	OfficialPackMode       string           `json:"official_pack_mode"`
-	Status                 domain.RunStatus `json:"status"`
-	ExecutionMode          string           `json:"execution_mode"`
-	CreatedAt              time.Time        `json:"created_at"`
-	QueuedAt               *time.Time       `json:"queued_at,omitempty"`
-	RaceContext            bool             `json:"race_context"`
-	RaceContextMinStepGap  *int32           `json:"race_context_min_step_gap,omitempty"`
-	Links                  runLinksResponse `json:"links"`
+	ID                     uuid.UUID             `json:"id"`
+	WorkspaceID            uuid.UUID             `json:"workspace_id"`
+	ChallengePackVersionID uuid.UUID             `json:"challenge_pack_version_id"`
+	ChallengeInputSetID    *uuid.UUID            `json:"challenge_input_set_id,omitempty"`
+	OfficialPackMode       string                `json:"official_pack_mode"`
+	Status                 domain.RunStatus      `json:"status"`
+	ExecutionMode          string                `json:"execution_mode"`
+	CreatedAt              time.Time             `json:"created_at"`
+	QueuedAt               *time.Time            `json:"queued_at,omitempty"`
+	RaceContext            bool                  `json:"race_context"`
+	RaceContextMinStepGap  *int32                `json:"race_context_min_step_gap,omitempty"`
+	CIMetadata             *domain.RunCIMetadata `json:"ci_metadata,omitempty"`
+	Links                  runLinksResponse      `json:"links"`
 }
 
 type runLinksResponse struct {
@@ -197,6 +200,7 @@ func buildCreateRunResponse(run domain.Run) createRunResponse {
 		QueuedAt:               run.QueuedAt,
 		RaceContext:            run.RaceContext,
 		RaceContextMinStepGap:  run.RaceContextMinStepGap,
+		CIMetadata:             cloneRunCIMetadata(run.CIMetadata),
 		Links:                  buildRunLinks(run.ID),
 	}
 }
@@ -304,6 +308,10 @@ func decodeCreateRunRequest(r *http.Request) (CreateRunInput, error) {
 		gap32 := int32(gap)
 		raceContextMinStepGap = &gap32
 	}
+	ciMetadata, err := normalizeCreateRunCIMetadata(body.CIMetadata)
+	if err != nil {
+		return CreateRunInput{}, err
+	}
 
 	return CreateRunInput{
 		WorkspaceID:            workspaceID,
@@ -316,7 +324,82 @@ func decodeCreateRunRequest(r *http.Request) (CreateRunInput, error) {
 		RegressionCaseIDs:      regressionCaseIDs,
 		RaceContext:            body.RaceContext,
 		RaceContextMinStepGap:  raceContextMinStepGap,
+		CIMetadata:             ciMetadata,
 	}, nil
+}
+
+func normalizeCreateRunCIMetadata(metadata *domain.RunCIMetadata) (*domain.RunCIMetadata, error) {
+	if metadata == nil {
+		return nil, nil
+	}
+	if metadata.PullRequestNumber != nil && *metadata.PullRequestNumber <= 0 {
+		return nil, RunCreationValidationError{
+			Code:    "invalid_ci_metadata",
+			Message: "ci_metadata.pull_request_number must be greater than 0",
+		}
+	}
+	normalized := &domain.RunCIMetadata{
+		Provider:           strings.TrimSpace(metadata.Provider),
+		Repository:         strings.TrimSpace(metadata.Repository),
+		PullRequestNumber:  cloneInt32Ptr(metadata.PullRequestNumber),
+		Branch:             strings.TrimSpace(metadata.Branch),
+		Ref:                strings.TrimSpace(metadata.Ref),
+		CommitSHA:          strings.TrimSpace(metadata.CommitSHA),
+		Workflow:           strings.TrimSpace(metadata.Workflow),
+		WorkflowRunID:      strings.TrimSpace(metadata.WorkflowRunID),
+		WorkflowRunAttempt: strings.TrimSpace(metadata.WorkflowRunAttempt),
+		WorkflowRunURL:     strings.TrimSpace(metadata.WorkflowRunURL),
+		EventName:          strings.TrimSpace(metadata.EventName),
+	}
+	if normalized.Empty() {
+		return nil, nil
+	}
+	for field, value := range map[string]string{
+		"ci_metadata.provider":             normalized.Provider,
+		"ci_metadata.repository":           normalized.Repository,
+		"ci_metadata.branch":               normalized.Branch,
+		"ci_metadata.ref":                  normalized.Ref,
+		"ci_metadata.commit_sha":           normalized.CommitSHA,
+		"ci_metadata.workflow":             normalized.Workflow,
+		"ci_metadata.workflow_run_id":      normalized.WorkflowRunID,
+		"ci_metadata.workflow_run_attempt": normalized.WorkflowRunAttempt,
+		"ci_metadata.event_name":           normalized.EventName,
+	} {
+		if len(value) > 512 {
+			return nil, RunCreationValidationError{Code: "invalid_ci_metadata", Message: field + " must be 512 characters or fewer"}
+		}
+	}
+	if len(normalized.WorkflowRunURL) > 2048 {
+		return nil, RunCreationValidationError{Code: "invalid_ci_metadata", Message: "ci_metadata.workflow_run_url must be 2048 characters or fewer"}
+	}
+	return normalized, nil
+}
+
+func cloneInt32Ptr(value *int32) *int32 {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
+}
+
+func cloneRunCIMetadata(metadata *domain.RunCIMetadata) *domain.RunCIMetadata {
+	if metadata == nil || metadata.Empty() {
+		return nil
+	}
+	return &domain.RunCIMetadata{
+		Provider:           metadata.Provider,
+		Repository:         metadata.Repository,
+		PullRequestNumber:  cloneInt32Ptr(metadata.PullRequestNumber),
+		Branch:             metadata.Branch,
+		Ref:                metadata.Ref,
+		CommitSHA:          metadata.CommitSHA,
+		Workflow:           metadata.Workflow,
+		WorkflowRunID:      metadata.WorkflowRunID,
+		WorkflowRunAttempt: metadata.WorkflowRunAttempt,
+		WorkflowRunURL:     metadata.WorkflowRunURL,
+		EventName:          metadata.EventName,
+	}
 }
 
 func parseRequiredUUID(raw string, field string, code string) (uuid.UUID, error) {

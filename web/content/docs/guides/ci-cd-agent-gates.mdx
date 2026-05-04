@@ -199,7 +199,7 @@ jobs:
           AGENTCLASH_WORKSPACE: ${{ secrets.AGENTCLASH_WORKSPACE }}
 ```
 
-`agentclash ci run` exits nonzero when the gate verdict should block CI, when the candidate run times out, or when the manifest/API setup is invalid.
+`agentclash ci run` exits nonzero when the gate verdict should block CI, when the candidate run times out, or when the manifest/API setup is invalid. In GitHub Actions, it automatically attaches repository, pull request, branch, commit, workflow, event, and workflow-run URL metadata to the AgentClash run. Use `--ci-repository`, `--ci-pull-request`, `--ci-branch`, `--ci-commit`, and the other `--ci-*` flags when running from another CI system or a custom wrapper.
 
 ## Regression promotion policy
 
@@ -233,7 +233,6 @@ Only a future main-branch workflow should auto-promote high-confidence failures 
 - `agentclash ci validate` validates the manifest shape locally; pass `--remote` for API-backed resource checks.
 - `agentclash ci should-run` only decides whether a gate should run; `agentclash ci run` performs the orchestration.
 - `agentclash ci run` creates a one-off candidate deployment for the manifest build version; cleanup/retention policy is still a follow-up.
-- PR metadata such as repository, pull request number, branch, and commit SHA is not yet attached to runs by the CLI.
 - PR comments, check-run summaries, and uploaded JSON artifacts are still follow-up work.
 - Automatic regression promotion should remain opt-in and conservative.
 

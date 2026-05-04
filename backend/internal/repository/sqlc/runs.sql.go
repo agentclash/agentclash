@@ -43,6 +43,7 @@ INSERT INTO runs (
     temporal_workflow_id,
     temporal_run_id,
     execution_plan,
+    ci_metadata,
     queued_at,
     started_at,
     finished_at,
@@ -69,9 +70,10 @@ INSERT INTO runs (
     $16,
     $17,
     $18,
-    $19
+    $19,
+    $20
 )
-RETURNING id, organization_id, workspace_id, challenge_pack_version_id, challenge_input_set_id, created_by_user_id, name, status, execution_mode, temporal_workflow_id, temporal_run_id, execution_plan, queued_at, started_at, finished_at, cancelled_at, failed_at, created_at, updated_at, official_pack_mode, eval_session_id, race_context, race_context_min_step_gap
+RETURNING id, organization_id, workspace_id, challenge_pack_version_id, challenge_input_set_id, created_by_user_id, name, status, execution_mode, temporal_workflow_id, temporal_run_id, execution_plan, ci_metadata, queued_at, started_at, finished_at, cancelled_at, failed_at, created_at, updated_at, official_pack_mode, eval_session_id, race_context, race_context_min_step_gap
 `
 
 type CreateRunParams struct {
@@ -87,6 +89,7 @@ type CreateRunParams struct {
 	TemporalWorkflowID     *string
 	TemporalRunID          *string
 	ExecutionPlan          []byte
+	CiMetadata             []byte
 	QueuedAt               pgtype.Timestamptz
 	StartedAt              pgtype.Timestamptz
 	FinishedAt             pgtype.Timestamptz
@@ -110,6 +113,7 @@ func (q *Queries) CreateRun(ctx context.Context, arg CreateRunParams) (Run, erro
 		arg.TemporalWorkflowID,
 		arg.TemporalRunID,
 		arg.ExecutionPlan,
+		arg.CiMetadata,
 		arg.QueuedAt,
 		arg.StartedAt,
 		arg.FinishedAt,
@@ -132,6 +136,7 @@ func (q *Queries) CreateRun(ctx context.Context, arg CreateRunParams) (Run, erro
 		&i.TemporalWorkflowID,
 		&i.TemporalRunID,
 		&i.ExecutionPlan,
+		&i.CiMetadata,
 		&i.QueuedAt,
 		&i.StartedAt,
 		&i.FinishedAt,

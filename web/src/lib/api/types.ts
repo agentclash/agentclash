@@ -589,6 +589,7 @@ export interface Run {
   execution_mode: string; // "single_agent" | "comparison"
   race_context: boolean;
   race_context_min_step_gap?: number;
+  ci_metadata?: RunCIMetadata;
   temporal_workflow_id?: string;
   temporal_run_id?: string;
   queued_at?: string;
@@ -603,6 +604,20 @@ export interface Run {
     self: string;
     agents: string;
   };
+}
+
+export interface RunCIMetadata {
+  provider?: string;
+  repository?: string;
+  pull_request_number?: number;
+  branch?: string;
+  ref?: string;
+  commit_sha?: string;
+  workflow?: string;
+  workflow_run_id?: string;
+  workflow_run_attempt?: string;
+  workflow_run_url?: string;
+  event_name?: string;
 }
 
 export interface RunRegressionCoverage {
@@ -648,6 +663,7 @@ export interface CreateRunRequest {
   official_pack_mode?: OfficialPackMode;
   race_context?: boolean;
   race_context_min_step_gap?: number;
+  ci_metadata?: RunCIMetadata;
 }
 
 /** POST /v1/runs response (201) */
@@ -661,6 +677,7 @@ export interface CreateRunResponse {
   execution_mode: string;
   created_at: string;
   queued_at?: string;
+  ci_metadata?: RunCIMetadata;
   links: {
     self: string;
     agents: string;

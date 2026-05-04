@@ -131,6 +131,7 @@ func TestGetRunEndpointReturnsRun(t *testing.T) {
 	runID := uuid.New()
 	workflowID := "RunWorkflow/" + runID.String()
 	temporalRunID := "temporal-run-id"
+	prNumber := int32(23)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/runs/"+runID.String(), nil)
 	req.Header.Set(headerUserID, userID.String())
@@ -155,8 +156,14 @@ func TestGetRunEndpointReturnsRun(t *testing.T) {
 					ExecutionMode:      "comparison",
 					TemporalWorkflowID: &workflowID,
 					TemporalRunID:      &temporalRunID,
-					CreatedAt:          time.Date(2026, 3, 13, 12, 0, 0, 0, time.UTC),
-					UpdatedAt:          time.Date(2026, 3, 13, 12, 1, 0, 0, time.UTC),
+					CIMetadata: &domain.RunCIMetadata{
+						Provider:          "github_actions",
+						Repository:        "acme/agent",
+						PullRequestNumber: &prNumber,
+						WorkflowRunURL:    "https://github.com/acme/agent/actions/runs/123",
+					},
+					CreatedAt: time.Date(2026, 3, 13, 12, 0, 0, 0, time.UTC),
+					UpdatedAt: time.Date(2026, 3, 13, 12, 1, 0, 0, time.UTC),
 				},
 				RegressionCoverage: &RunRegressionCoverage{
 					Suites: []RunRegressionCoverageSuite{
@@ -207,6 +214,9 @@ func TestGetRunEndpointReturnsRun(t *testing.T) {
 	}
 	if response.TemporalWorkflowID == nil || *response.TemporalWorkflowID != workflowID {
 		t.Fatalf("temporal workflow id = %v, want %q", response.TemporalWorkflowID, workflowID)
+	}
+	if response.CIMetadata == nil || response.CIMetadata.Repository != "acme/agent" || response.CIMetadata.PullRequestNumber == nil || *response.CIMetadata.PullRequestNumber != prNumber {
+		t.Fatalf("ci metadata = %+v, want GitHub metadata", response.CIMetadata)
 	}
 	if response.RegressionCoverage == nil || len(response.RegressionCoverage.Suites) != 1 {
 		t.Fatalf("regression_coverage = %#v, want one suite", response.RegressionCoverage)

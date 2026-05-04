@@ -256,6 +256,7 @@ type Run struct {
 	TemporalWorkflowID     *string
 	TemporalRunID          *string
 	ExecutionPlan          []byte
+	CiMetadata             []byte
 	QueuedAt               pgtype.Timestamptz
 	StartedAt              pgtype.Timestamptz
 	FinishedAt             pgtype.Timestamptz

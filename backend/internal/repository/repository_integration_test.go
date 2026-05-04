@@ -1340,6 +1340,7 @@ func TestRepositoryCreateQueuedRunWritesRunRunAgentsAndInitialHistory(t *testing
 	fixture := seedFixture(t, ctx, db)
 	repo := repository.New(db)
 	queries := repositorysqlc.New(db)
+	prNumber := int32(108)
 
 	result, err := repo.CreateQueuedRun(ctx, repository.CreateQueuedRunParams{
 		OrganizationID:         fixture.organizationID,
@@ -1349,6 +1350,12 @@ func TestRepositoryCreateQueuedRunWritesRunRunAgentsAndInitialHistory(t *testing
 		Name:                   "Created From API",
 		ExecutionMode:          "single_agent",
 		ExecutionPlan:          []byte(`{"participants":[{"lane_index":0}]}`),
+		CIMetadata: &domain.RunCIMetadata{
+			Provider:          "github_actions",
+			Repository:        "acme/agent",
+			PullRequestNumber: &prNumber,
+			WorkflowRunURL:    "https://github.com/acme/agent/actions/runs/108",
+		},
 		RunAgents: []repository.CreateQueuedRunAgentParams{
 			{
 				AgentDeploymentID:         fixture.agentDeploymentID,
@@ -1367,6 +1374,9 @@ func TestRepositoryCreateQueuedRunWritesRunRunAgentsAndInitialHistory(t *testing
 	}
 	if result.Run.QueuedAt == nil {
 		t.Fatalf("queued_at was not set")
+	}
+	if result.Run.CIMetadata == nil || result.Run.CIMetadata.Repository != "acme/agent" || result.Run.CIMetadata.PullRequestNumber == nil || *result.Run.CIMetadata.PullRequestNumber != prNumber {
+		t.Fatalf("ci metadata = %+v, want persisted GitHub metadata", result.Run.CIMetadata)
 	}
 	if len(result.RunAgents) != 1 {
 		t.Fatalf("run agent count = %d, want 1", len(result.RunAgents))
@@ -3644,6 +3654,7 @@ func seedFixture(t *testing.T, ctx context.Context, db *pgxpool.Pool) testFixtur
 		Status:                 string(domain.RunStatusDraft),
 		ExecutionMode:          "comparison",
 		ExecutionPlan:          []byte(`{}`),
+		CiMetadata:             []byte(`{}`),
 	})
 	if err != nil {
 		t.Fatalf("CreateRun returned error: %v", err)

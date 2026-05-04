@@ -19,6 +19,7 @@ type runCreateRequest struct {
 	RegressionCaseIDs      []string
 	RaceContext            bool
 	RaceContextCadence     int
+	CIMetadata             map[string]any
 }
 
 func runCreateRequestFromFlags(cmd *cobra.Command, base runCreateRequest) (runCreateRequest, error) {
@@ -90,6 +91,9 @@ func buildRunCreateBody(workspaceID string, request runCreateRequest) (map[strin
 	}
 	if request.RaceContextCadence > 0 {
 		body["race_context_min_step_gap"] = request.RaceContextCadence
+	}
+	if len(request.CIMetadata) > 0 {
+		body["ci_metadata"] = request.CIMetadata
 	}
 	return body, nil
 }
