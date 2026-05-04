@@ -231,7 +231,9 @@ describe("agent skill docs", () => {
     expect(doc?.content).toContain("artifact_id");
     expect(doc?.content).toContain("post_execution_checks");
     expect(doc?.content).toContain("file_capture");
+    expect(doc?.content).toContain("file_json_schema");
     expect(doc?.content).toContain("artifact.<path>");
+    expect(doc?.content).toContain("artifact.<artifact_key>[.<field>]");
     expect(doc?.content).toContain("file:<post_execution_check_key>");
     expect(doc?.content).toContain("agentclash artifact list");
     expect(doc?.content).toContain("It does not have a `--run` filter today");

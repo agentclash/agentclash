@@ -37,6 +37,8 @@ Use hosted production for CLI examples unless the user intentionally targets a l
 export AGENTCLASH_API_URL="https://api.agentclash.dev"
 ```
 
+`agentclash challenge-pack validate` is a hosted API call: authenticate first and select a workspace with `agentclash link`, `--workspace`, `AGENTCLASH_WORKSPACE`, or local `.agentclash.yaml`. Use `agentclash-cli-setup` if the machine is not already logged in.
+
 ## Validation Commands
 Validate after changing any asset, artifact reference, input artifact key, expectation artifact key, or file evidence target.
 
@@ -161,8 +163,8 @@ Scoring references case and artifact evidence through supported evidence-referen
 
 Artifact evidence:
 
-- Generic supported shape: `artifact.<path>`.
-- Do not read `<path>` as a filesystem path here. In practice, the first segment after `artifact.` is the case artifact key, for example `artifact.expected_summary`.
+- Supported prefix shape: `artifact.<path>`.
+- Do not read `<path>` as a filesystem path here. The concrete shape is `artifact.<artifact_key>[.<field>]`, where the first segment after `artifact.` is the case artifact key, for example `artifact.expected_summary`.
 - Use `artifact.expected_summary.path` for the asset path.
 - Use `artifact.expected_summary.media_type`, `artifact.expected_summary.kind`, or `artifact.expected_summary.key` when the metadata is what the validator or judge needs.
 
@@ -206,9 +208,12 @@ version:
       - key: generated_summary_exists
         type: file_exists
         target: file:generated_summary
-      - key: generated_summary_has_json
-        type: has_json
+      - key: generated_summary_matches_schema
+        type: file_json_schema
         target: file:generated_summary
+        config:
+          schema:
+            type: object
     scorecard:
       dimensions:
         - key: correctness
