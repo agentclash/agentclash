@@ -149,18 +149,30 @@ func executeCIRun(cmd *cobra.Command, rc *RunContext) (ciRunResult, error) {
 	manifest := *validation.Manifest
 	result.Candidate.AgentBuildID = manifest.Candidate.Build.AgentBuildID
 	result.Candidate.DeploymentName = ciRunDeploymentName(manifest)
+	finishWithReports := func(err error, createdRun, completedRun, scorecard, comparison, gateEnvelope map[string]any) (ciRunResult, error) {
+		reports, reportErr := writeCIRunReports(cmd, result, manifest, createdRun, completedRun, scorecard, comparison, gateEnvelope)
+		if reports != nil {
+			result.Reports = reports
+		}
+		if reportErr != nil {
+			result.ExitCode = ciRunExitAPI
+			result.Errors = append(result.Errors, reportErr.Error())
+			return result, &ExitCodeError{Code: ciRunExitAPI, Message: reportErr.Error()}
+		}
+		return result, err
+	}
 
 	remoteValidation, remoteErr := validateCIManifestRemote(cmd, rc, workspaceID, manifestPath, manifest)
 	result.RemoteValidation = &remoteValidation
 	if remoteErr != nil {
 		result.ExitCode = ciRunExitAPI
 		result.Errors = append(result.Errors, remoteValidation.Errors...)
-		return result, &ExitCodeError{Code: result.ExitCode, Message: remoteErr.Error()}
+		return finishWithReports(&ExitCodeError{Code: result.ExitCode, Message: remoteErr.Error()}, nil, nil, nil, nil, nil)
 	}
 	if !remoteValidation.Valid {
 		result.ExitCode = ciRunExitInvalidManifest
 		result.Errors = append(result.Errors, remoteValidation.Errors...)
-		return result, &ExitCodeError{Code: ciRunExitInvalidManifest, Message: "ci manifest remote validation failed"}
+		return finishWithReports(&ExitCodeError{Code: ciRunExitInvalidManifest, Message: "ci manifest remote validation failed"}, nil, nil, nil, nil, nil)
 	}
 
 	buildVersion, err := createCIBuildVersion(cmd, rc, manifest)
@@ -170,7 +182,7 @@ func executeCIRun(cmd *cobra.Command, rc *RunContext) (ciRunResult, error) {
 			result.ExitCode = ciRunExitInvalidManifest
 		}
 		result.Errors = append(result.Errors, err.Error())
-		return result, &ExitCodeError{Code: result.ExitCode, Message: err.Error()}
+		return finishWithReports(&ExitCodeError{Code: result.ExitCode, Message: err.Error()}, nil, nil, nil, nil, nil)
 	}
 	result.Candidate.BuildVersionID = mapString(buildVersion, "id")
 
@@ -178,7 +190,7 @@ func executeCIRun(cmd *cobra.Command, rc *RunContext) (ciRunResult, error) {
 	if err != nil {
 		result.ExitCode = ciRunExitAPI
 		result.Errors = append(result.Errors, err.Error())
-		return result, err
+		return finishWithReports(err, nil, nil, nil, nil, nil)
 	}
 	if id := mapString(readyVersion, "id"); id != "" {
 		result.Candidate.BuildVersionID = id
@@ -188,7 +200,7 @@ func executeCIRun(cmd *cobra.Command, rc *RunContext) (ciRunResult, error) {
 	if err != nil {
 		result.ExitCode = ciRunExitAPI
 		result.Errors = append(result.Errors, err.Error())
-		return result, err
+		return finishWithReports(err, nil, nil, nil, nil, nil)
 	}
 	result.Candidate.DeploymentID = mapString(deployment, "id")
 	if name := mapString(deployment, "name"); name != "" {
@@ -202,7 +214,7 @@ func executeCIRun(cmd *cobra.Command, rc *RunContext) (ciRunResult, error) {
 			result.ExitCode = ciRunExitAPI
 		}
 		result.Errors = append(result.Errors, err.Error())
-		return result, &ExitCodeError{Code: result.ExitCode, Message: err.Error()}
+		return finishWithReports(&ExitCodeError{Code: result.ExitCode, Message: err.Error()}, nil, nil, nil, nil, nil)
 	}
 	result.BaselineResolution = &baseline
 	result.Baseline = baseline.Baseline
@@ -211,7 +223,7 @@ func executeCIRun(cmd *cobra.Command, rc *RunContext) (ciRunResult, error) {
 	if err != nil {
 		result.ExitCode = ciRunExitAPI
 		result.Errors = append(result.Errors, err.Error())
-		return result, err
+		return finishWithReports(err, nil, nil, nil, nil, nil)
 	}
 	result.Candidate.RunID = mapString(run, "id")
 	result.Candidate.RunStatus = mapString(run, "status")
@@ -227,7 +239,7 @@ func executeCIRun(cmd *cobra.Command, rc *RunContext) (ciRunResult, error) {
 		if err := streamRunEvents(cmd, rc, result.Candidate.RunID); err != nil {
 			result.ExitCode = ciRunExitAPI
 			result.Errors = append(result.Errors, err.Error())
-			return result, err
+			return finishWithReports(err, run, nil, nil, nil, nil)
 		}
 	}
 
@@ -239,7 +251,7 @@ func executeCIRun(cmd *cobra.Command, rc *RunContext) (ciRunResult, error) {
 		}
 		result.ExitCode = ciRunExitForError(err).(*ExitCodeError).Code
 		result.Errors = append(result.Errors, err.Error())
-		return result, err
+		return finishWithReports(err, run, completedRun, nil, nil, nil)
 	}
 	result.Candidate.RunStatus = mapString(completedRun, "status")
 	if link := ciRunLink(completedRun); link != "" {
@@ -250,7 +262,7 @@ func executeCIRun(cmd *cobra.Command, rc *RunContext) (ciRunResult, error) {
 	if err != nil {
 		result.ExitCode = ciRunExitAPI
 		result.Errors = append(result.Errors, err.Error())
-		return result, err
+		return finishWithReports(err, run, completedRun, nil, nil, nil)
 	}
 	result.Candidate.RunAgentID = candidateAgent.ID
 
@@ -261,14 +273,14 @@ func executeCIRun(cmd *cobra.Command, rc *RunContext) (ciRunResult, error) {
 		if err != nil {
 			result.ExitCode = ciRunExitAPI
 			result.Errors = append(result.Errors, err.Error())
-			return result, err
+			return finishWithReports(err, run, completedRun, nil, nil, nil)
 		}
 
 		comparison, err = fetchRunComparison(cmd, rc, result.Baseline.RunID, result.Candidate.RunID, result.Baseline.RunAgentID, result.Candidate.RunAgentID)
 		if err != nil {
 			result.ExitCode = ciRunExitAPI
 			result.Errors = append(result.Errors, err.Error())
-			return result, err
+			return finishWithReports(err, run, completedRun, scorecard, nil, nil)
 		}
 	}
 
@@ -276,20 +288,15 @@ func executeCIRun(cmd *cobra.Command, rc *RunContext) (ciRunResult, error) {
 	if err != nil {
 		result.ExitCode = ciRunExitAPI
 		result.Errors = append(result.Errors, err.Error())
-		return result, err
+		return finishWithReports(err, run, completedRun, scorecard, comparison, nil)
 	}
 	result.ReleaseGate, _ = gateEnvelope["release_gate"].(map[string]any)
 	result.GateVerdict = gateVerdict.ReleaseGate.Verdict
 	result.FailureReason = ciRunGateFailureReason(result.ReleaseGate)
 	result.ExitCode = ciRunExitCodeForGate(result.GateVerdict)
-	reports, reportErr := writeCIRunReports(cmd, result, manifest, run, completedRun, scorecard, comparison, gateEnvelope)
-	if reports != nil {
-		result.Reports = reports
-	}
-	if reportErr != nil {
-		result.ExitCode = ciRunExitAPI
-		result.Errors = append(result.Errors, reportErr.Error())
-		return result, &ExitCodeError{Code: ciRunExitAPI, Message: reportErr.Error()}
+	result, err = finishWithReports(nil, run, completedRun, scorecard, comparison, gateEnvelope)
+	if err != nil {
+		return result, err
 	}
 	if result.ExitCode != 0 {
 		return result, &ExitCodeError{Code: result.ExitCode}

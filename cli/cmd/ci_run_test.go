@@ -132,6 +132,74 @@ func TestCIRunUsesGitHubStepSummary(t *testing.T) {
 	}
 }
 
+func TestCIRunSummaryFileWinsOverGitHubStepSummaryAppend(t *testing.T) {
+	target := writeCIRunManifest(t)
+	captures := &ciRunRouteCaptures{}
+	srv := fakeAPI(t, ciRunRoutes(t, captures, nil))
+	defer srv.Close()
+	t.Setenv("AGENTCLASH_TOKEN", "test-token")
+	summaryPath := filepath.Join(t.TempDir(), "summary.md")
+	if err := os.WriteFile(summaryPath, []byte("old summary\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(summary) error: %v", err)
+	}
+	t.Setenv("GITHUB_STEP_SUMMARY", summaryPath)
+
+	if _, err, _ := runCIRunJSON(t, []string{
+		"ci", "run",
+		"--manifest", target,
+		"-w", "ws-1",
+		"--json",
+		"--poll-interval", "1ms",
+		"--timeout", "1s",
+		"--summary-file", summaryPath,
+	}, srv.URL); err != nil {
+		t.Fatalf("ci run error: %v", err)
+	}
+
+	summary := readTextFile(t, summaryPath)
+	if strings.Contains(summary, "old summary") {
+		t.Fatalf("summary-file should truncate even when it equals GITHUB_STEP_SUMMARY\n---\n%s", summary)
+	}
+	if strings.Count(summary, "AgentClash CI Gate: PASS") != 1 {
+		t.Fatalf("summary = %q, want exactly one gate summary", summary)
+	}
+}
+
+func TestCIRunTimeoutWritesSummary(t *testing.T) {
+	target := writeCIRunManifest(t)
+	captures := &ciRunRouteCaptures{}
+	srv := fakeAPI(t, ciRunRoutes(t, captures, map[string]http.HandlerFunc{
+		"GET /v1/runs/run-candidate": jsonHandler(200, map[string]any{
+			"id":      "run-candidate",
+			"status":  "running",
+			"web_url": "https://app.agentclash.dev/runs/run-candidate",
+		}),
+	}))
+	defer srv.Close()
+	t.Setenv("AGENTCLASH_TOKEN", "test-token")
+	summaryPath := filepath.Join(t.TempDir(), "summary.md")
+
+	result, err, _ := runCIRunJSON(t, []string{
+		"ci", "run",
+		"--manifest", target,
+		"-w", "ws-1",
+		"--json",
+		"--poll-interval", "1ms",
+		"--timeout", "1ms",
+		"--summary-file", summaryPath,
+	}, srv.URL)
+	if got := exitCodeOf(t, err); got != ciRunExitTimeout {
+		t.Fatalf("exit code = %d, want timeout %d", got, ciRunExitTimeout)
+	}
+	if result.Reports == nil || len(result.Reports.SummaryFiles) != 1 {
+		t.Fatalf("reports = %+v, want timeout summary path", result.Reports)
+	}
+	summary := readTextFile(t, summaryPath)
+	if !strings.Contains(summary, "timed out waiting for candidate run run-candidate") || !strings.Contains(summary, "Exit Code") {
+		t.Fatalf("timeout summary missing error/exit code\n---\n%s", summary)
+	}
+}
+
 func TestCIRunWritesSummaryAndArtifactsForNonPassingVerdicts(t *testing.T) {
 	cases := []struct {
 		verdict string

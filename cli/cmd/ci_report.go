@@ -44,8 +44,9 @@ type ciRunArtifactEnvelope struct {
 }
 
 type ciRunSummaryTarget struct {
-	Path   string
-	Append bool
+	Path     string
+	Append   bool
+	Explicit bool
 }
 
 func writeCIRunReports(cmd *cobra.Command, result ciRunResult, manifest ciManifest, createdRun, completedRun, scorecard, comparison, gateEnvelope map[string]any) (*ciRunReportOutputs, error) {
@@ -75,69 +76,84 @@ func writeCIRunReports(cmd *cobra.Command, result ciRunResult, manifest ciManife
 			return outputs, fmt.Errorf("create ci artifact directory: %w", err)
 		}
 		outputs.ArtifactDir = artifactDir
-		files := []ciRunArtifactFile{
-			{Kind: "agentclash.ci.result", Path: filepath.Join(artifactDir, "result.json")},
-			{Kind: "agentclash.ci.run", Path: filepath.Join(artifactDir, "run.json")},
-			{Kind: "agentclash.ci.scorecard", Path: filepath.Join(artifactDir, "scorecard.json")},
-			{Kind: "agentclash.ci.comparison", Path: filepath.Join(artifactDir, "comparison.json")},
-			{Kind: "agentclash.ci.gate", Path: filepath.Join(artifactDir, "gate.json")},
+		files := []struct {
+			file    ciRunArtifactFile
+			payload any
+		}{
+			{file: ciRunArtifactFile{Kind: "agentclash.ci.run", Path: filepath.Join(artifactDir, "run.json")}},
+			{file: ciRunArtifactFile{Kind: "agentclash.ci.scorecard", Path: filepath.Join(artifactDir, "scorecard.json")}},
+			{file: ciRunArtifactFile{Kind: "agentclash.ci.comparison", Path: filepath.Join(artifactDir, "comparison.json")}},
+			{file: ciRunArtifactFile{Kind: "agentclash.ci.gate", Path: filepath.Join(artifactDir, "gate.json")}},
 		}
-		outputs.Artifacts = append(outputs.Artifacts, files...)
-		resultWithReports := result
-		resultWithReports.Reports = outputs
-		payloads := []any{
-			resultWithReports,
-			map[string]any{"created_run": createdRun, "completed_run": completedRun},
-			scorecard,
-			comparison,
-			gateEnvelope,
-		}
-		for i, file := range files {
-			envelope := ciRunArtifactEnvelope{
-				SchemaVersion:         ciRunArtifactSchemaVersion,
-				Kind:                  file.Kind,
-				GeneratedAt:           generatedAt.Format(time.RFC3339),
-				ManifestPath:          result.ManifestPath,
-				WorkspaceID:           result.WorkspaceID,
-				ChallengePackVersion:  manifest.Evaluation.ChallengePackVersionID,
-				Candidate:             result.Candidate,
-				Baseline:              result.Baseline,
-				GateVerdict:           result.GateVerdict,
-				GatePolicyKey:         mapString(releaseGate, "policy_key"),
-				GatePolicyVersion:     mapString(releaseGate, "policy_version"),
-				GatePolicyFingerprint: mapString(releaseGate, "policy_fingerprint"),
-				Payload:               payloads[i],
-			}
-			if err := writeCIRunJSONArtifact(file.Path, envelope); err != nil {
+		files[0].payload = map[string]any{"created_run": createdRun, "completed_run": completedRun}
+		files[1].payload = scorecard
+		files[2].payload = comparison
+		files[3].payload = gateEnvelope
+		for _, item := range files {
+			envelope := buildCIRunArtifactEnvelope(item.file.Kind, generatedAt, result, manifest, releaseGate, item.payload)
+			if err := writeCIRunJSONArtifact(item.file.Path, envelope); err != nil {
 				return outputs, err
 			}
+			outputs.Artifacts = append(outputs.Artifacts, item.file)
 		}
+
+		resultWithReports := result
+		resultWithReports.Reports = outputs
+		resultFile := ciRunArtifactFile{Kind: "agentclash.ci.result", Path: filepath.Join(artifactDir, "result.json")}
+		envelope := buildCIRunArtifactEnvelope(resultFile.Kind, generatedAt, result, manifest, releaseGate, resultWithReports)
+		if err := writeCIRunJSONArtifact(resultFile.Path, envelope); err != nil {
+			return outputs, err
+		}
+		outputs.Artifacts = append(outputs.Artifacts, resultFile)
 	}
 
 	return outputs, nil
 }
 
+func buildCIRunArtifactEnvelope(kind string, generatedAt time.Time, result ciRunResult, manifest ciManifest, releaseGate map[string]any, payload any) ciRunArtifactEnvelope {
+	return ciRunArtifactEnvelope{
+		SchemaVersion:         ciRunArtifactSchemaVersion,
+		Kind:                  kind,
+		GeneratedAt:           generatedAt.Format(time.RFC3339),
+		ManifestPath:          result.ManifestPath,
+		WorkspaceID:           result.WorkspaceID,
+		ChallengePackVersion:  manifest.Evaluation.ChallengePackVersionID,
+		Candidate:             result.Candidate,
+		Baseline:              result.Baseline,
+		GateVerdict:           result.GateVerdict,
+		GatePolicyKey:         mapString(releaseGate, "policy_key"),
+		GatePolicyVersion:     mapString(releaseGate, "policy_version"),
+		GatePolicyFingerprint: mapString(releaseGate, "policy_fingerprint"),
+		Payload:               payload,
+	}
+}
+
 func ciRunSummaryTargets(cmd *cobra.Command) []ciRunSummaryTarget {
 	var targets []ciRunSummaryTarget
-	add := func(path string, appendMode bool) {
+	add := func(path string, appendMode bool, explicit bool) {
 		path = strings.TrimSpace(path)
 		if path == "" {
 			return
 		}
 		for i := range targets {
 			if targets[i].Path == path {
-				targets[i].Append = targets[i].Append || appendMode
+				if explicit {
+					targets[i].Append = appendMode
+					targets[i].Explicit = true
+				} else if !targets[i].Explicit {
+					targets[i].Append = targets[i].Append || appendMode
+				}
 				return
 			}
 		}
-		targets = append(targets, ciRunSummaryTarget{Path: path, Append: appendMode})
+		targets = append(targets, ciRunSummaryTarget{Path: path, Append: appendMode, Explicit: explicit})
 	}
 
 	if summaryFile, _ := cmd.Flags().GetString("summary-file"); summaryFile != "" {
-		add(summaryFile, false)
+		add(summaryFile, false, true)
 	}
 	if enabled, _ := cmd.Flags().GetBool("github-step-summary"); enabled {
-		add(os.Getenv("GITHUB_STEP_SUMMARY"), true)
+		add(os.Getenv("GITHUB_STEP_SUMMARY"), true, false)
 	}
 	return targets
 }
@@ -194,6 +210,7 @@ func renderCIRunMarkdownSummary(result ciRunResult, manifest ciManifest, scoreca
 	fmt.Fprintf(&b, "## AgentClash CI Gate: %s\n\n", strings.ToUpper(output.SanitizeLine(verdict)))
 	writeCIRunSummaryTable(&b, [][2]string{
 		{"Verdict", verdict},
+		{"Exit Code", fmt.Sprintf("%d", result.ExitCode)},
 		{"Workspace", result.WorkspaceID},
 		{"Manifest", result.ManifestPath},
 		{"Challenge Pack Version", manifest.Evaluation.ChallengePackVersionID},
@@ -213,9 +230,18 @@ func renderCIRunMarkdownSummary(result ciRunResult, manifest ciManifest, scoreca
 		}
 	}
 
-	b.WriteString("\n### Gate Evidence\n\n")
-	for _, line := range ciRunTopFailureLines(result.GateVerdict, scorecard, comparison, releaseGate) {
-		fmt.Fprintf(&b, "- %s\n", ciMarkdownText(line))
+	if len(result.Errors) > 0 {
+		b.WriteString("\n### Errors\n\n")
+		for _, line := range result.Errors {
+			fmt.Fprintf(&b, "- %s\n", ciMarkdownText(line))
+		}
+	}
+
+	if lines := ciRunTopFailureLines(result.GateVerdict, scorecard, comparison, releaseGate); len(lines) > 0 {
+		b.WriteString("\n### Gate Evidence\n\n")
+		for _, line := range lines {
+			fmt.Fprintf(&b, "- %s\n", ciMarkdownText(line))
+		}
 	}
 	b.WriteByte('\n')
 	return b.String()
@@ -264,7 +290,7 @@ func ciRunSummaryLinks(result ciRunResult, scorecard, comparison, releaseGate ma
 	}
 	links := make([]string, 0, len(candidates))
 	for _, candidate := range candidates {
-		if safe := ciSafeHTTPURL(candidate.raw); safe != "" {
+		if safe := ciMarkdownURL(candidate.raw); safe != "" {
 			links = append(links, fmt.Sprintf("[%s](%s)", ciMarkdownText(candidate.label), safe))
 		}
 	}
@@ -316,6 +342,8 @@ func ciRunTopFailureLines(verdict string, scorecard, comparison, releaseGate map
 	if len(lines) == 0 {
 		if verdict == "pass" {
 			add("No blocking failures reported.")
+		} else if verdict == "" {
+			return nil
 		} else if reason := mapString(releaseGate, "reason_code"); reason != "" {
 			add("Gate reason: " + reason)
 		} else {
@@ -387,4 +415,11 @@ func ciSafeHTTPURL(raw string) string {
 		return ""
 	}
 	return parsed.String()
+}
+
+func ciMarkdownURL(raw string) string {
+	safe := ciSafeHTTPURL(raw)
+	safe = strings.ReplaceAll(safe, "(", "%28")
+	safe = strings.ReplaceAll(safe, ")", "%29")
+	return safe
 }
