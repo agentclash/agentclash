@@ -377,6 +377,8 @@ func BuildClusterSummaries(items []Item) []ClusterSummary {
 		if item.Promotable {
 			group.summary.PromotableCount++
 		}
+		// These fields are already part of the v1 cluster key; max-rank
+		// selection is defensive if a future identity version broadens clusters.
 		if severityRank(item.Severity) > severityRank(group.summary.Severity) {
 			group.summary.Severity = item.Severity
 		}

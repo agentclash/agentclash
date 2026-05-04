@@ -403,7 +403,7 @@ var runFailuresCmd = &cobra.Command{
 		}
 		rc.Output.PrintTable(cols, rows)
 		if len(result.Clusters) > 0 {
-			rc.Output.PrintDetail("Failure Clusters", fmt.Sprintf("%d", len(result.Clusters)))
+			rc.Output.PrintDetail("Failure Clusters (filtered)", fmt.Sprintf("%d", len(result.Clusters)))
 			clusterCols := []output.Column{{Header: "Cluster"}, {Header: "Count"}, {Header: "Promotable"}, {Header: "Severity"}, {Header: "Class"}, {Header: "Challenges"}}
 			clusterRows := make([][]string, len(result.Clusters))
 			for i, cluster := range result.Clusters {
