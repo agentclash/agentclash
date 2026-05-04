@@ -103,6 +103,7 @@ function makeCase(overrides: Partial<RegressionCase> = {}): RegressionCase {
     },
     validation: {
       status: "reproducing",
+      maintenance_status: "keep_active",
       run_count: 5,
       failure_count: 3,
       pass_count: 2,
@@ -114,6 +115,8 @@ function makeCase(overrides: Partial<RegressionCase> = {}): RegressionCase {
       last_validated_at: "2026-04-22T12:30:00Z",
       recommended_action:
         "Failure reproduces at or above threshold; keep this case active in CI gates.",
+      maintenance_action:
+        "Keep this case active; it is still catching a reproducible agent failure.",
     },
     created_at: "2026-04-22T12:00:00Z",
     updated_at: "2026-04-22T12:00:00Z",
@@ -153,6 +156,7 @@ describe("regression provenance UI", () => {
       expect(view.container.textContent).toContain("ticket-1");
       expect(view.container.textContent).toContain("frc-test-cluster");
       expect(view.container.textContent).toContain("reproducing");
+      expect(view.container.textContent).toContain("keep active");
       expect(view.container.textContent).toContain("60% repro");
     } finally {
       view.cleanup();
@@ -175,8 +179,13 @@ describe("regression provenance UI", () => {
       expect(view.container.textContent).toContain("Failure Fingerprint");
       expect(view.container.textContent).toContain("frf-test-fingerprint");
       expect(view.container.textContent).toContain("Validation");
+      expect(view.container.textContent).toContain("Maintenance");
+      expect(view.container.textContent).toContain("keep active");
       expect(view.container.textContent).toContain("3 fail");
       expect(view.container.textContent).toContain("60% / 60%");
+      expect(view.container.textContent).toContain(
+        "Keep this case active; it is still catching a reproducible agent failure.",
+      );
     } finally {
       view.cleanup();
     }

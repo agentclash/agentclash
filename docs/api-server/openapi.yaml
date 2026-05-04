@@ -6892,6 +6892,7 @@ components:
       required:
         [
           status,
+          maintenance_status,
           run_count,
           failure_count,
           pass_count,
@@ -6899,6 +6900,7 @@ components:
           required_runs,
           remaining_runs,
           recommended_action,
+          maintenance_action,
         ]
       properties:
         status:
@@ -6911,6 +6913,16 @@ components:
               passing,
               flaky,
             ]
+        maintenance_status:
+          type: string
+          enum:
+            [
+              needs_signal,
+              keep_active,
+              prune_candidate,
+              review_flaky,
+            ]
+          description: Operational maintenance bucket derived from validation status.
         run_count:
           type: integer
           minimum: 0
@@ -6943,6 +6955,8 @@ components:
           type: string
           format: date-time
         recommended_action:
+          type: string
+        maintenance_action:
           type: string
 
     RegressionPromotion:

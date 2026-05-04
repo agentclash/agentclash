@@ -10,6 +10,7 @@ import { PageHeader } from "@/components/ui/page-header";
 
 import {
   CaseStatusBadge,
+  MaintenanceBadge,
   SeverityBadge,
   ValidationBadge,
 } from "../../../badges";
@@ -97,6 +98,9 @@ export function CaseDetailClient({
           <MetaRow label="Status">
             <ValidationBadge status={c.validation.status} />
           </MetaRow>
+          <MetaRow label="Maintenance">
+            <MaintenanceBadge status={c.validation.maintenance_status} />
+          </MetaRow>
           <MetaRow label="Scored Runs">
             <span className="text-muted-foreground">
               {c.validation.run_count} ({c.validation.failure_count} fail /{" "}
@@ -130,6 +134,9 @@ export function CaseDetailClient({
         </dl>
         <p className="mt-3 text-sm text-muted-foreground">
           {c.validation.recommended_action}
+        </p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {c.validation.maintenance_action}
         </p>
       </Section>
 

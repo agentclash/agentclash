@@ -1759,6 +1759,11 @@ export type RegressionCaseValidationStatus =
   | "reproducing"
   | "passing"
   | "flaky";
+export type RegressionCaseMaintenanceStatus =
+  | "needs_signal"
+  | "keep_active"
+  | "prune_candidate"
+  | "review_flaky";
 
 export interface RegressionPromotion {
   id: string;
@@ -1774,6 +1779,7 @@ export interface RegressionPromotion {
 
 export interface RegressionCaseValidation {
   status: RegressionCaseValidationStatus;
+  maintenance_status: RegressionCaseMaintenanceStatus;
   run_count: number;
   failure_count: number;
   pass_count: number;
@@ -1784,6 +1790,7 @@ export interface RegressionCaseValidation {
   last_outcome?: "pass" | "fail";
   last_validated_at?: string;
   recommended_action: string;
+  maintenance_action: string;
 }
 
 /** GET /v1/workspaces/{ws}/regression-suites list item, POST response, PATCH response */

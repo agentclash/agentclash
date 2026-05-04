@@ -718,6 +718,12 @@ func TestRegressionSuiteEndpointsRoundTrip(t *testing.T) {
 	if validation.Status != regressionValidationStatusReproducing {
 		t.Fatalf("validation status = %q, want %q", validation.Status, regressionValidationStatusReproducing)
 	}
+	if validation.MaintenanceStatus != regressionMaintenanceStatusKeepActive {
+		t.Fatalf("maintenance status = %q, want %q", validation.MaintenanceStatus, regressionMaintenanceStatusKeepActive)
+	}
+	if validation.MaintenanceAction == "" {
+		t.Fatal("maintenance action is empty")
+	}
 	if validation.RunCount != 5 || validation.FailureCount != 3 || validation.PassCount != 2 {
 		t.Fatalf("validation counts = %+v, want 5/3/2", validation)
 	}
@@ -809,15 +815,17 @@ func TestRegressionFailureProvenanceFromMetadata(t *testing.T) {
 func TestBuildRegressionCaseValidationResponse(t *testing.T) {
 	validatedAt := time.Date(2026, 5, 4, 12, 0, 0, 0, time.UTC)
 	tests := []struct {
-		name   string
-		stats  *repository.RegressionCaseValidationStats
-		status string
-		rate   *float64
+		name              string
+		stats             *repository.RegressionCaseValidationStats
+		status            string
+		maintenanceStatus string
+		rate              *float64
 	}{
 		{
-			name:   "not validated",
-			stats:  nil,
-			status: regressionValidationStatusNotValidated,
+			name:              "not validated",
+			stats:             nil,
+			status:            regressionValidationStatusNotValidated,
+			maintenanceStatus: regressionMaintenanceStatusNeedsSignal,
 		},
 		{
 			name: "collecting signal",
@@ -829,8 +837,9 @@ func TestBuildRegressionCaseValidationResponse(t *testing.T) {
 				LastOutcome:      "fail",
 				LastValidatedAt:  &validatedAt,
 			},
-			status: regressionValidationStatusCollectingSignal,
-			rate:   float64Ptr(2.0 / 3.0),
+			status:            regressionValidationStatusCollectingSignal,
+			maintenanceStatus: regressionMaintenanceStatusNeedsSignal,
+			rate:              float64Ptr(2.0 / 3.0),
 		},
 		{
 			name: "reproducing",
@@ -842,8 +851,9 @@ func TestBuildRegressionCaseValidationResponse(t *testing.T) {
 				LastOutcome:      "pass",
 				LastValidatedAt:  &validatedAt,
 			},
-			status: regressionValidationStatusReproducing,
-			rate:   float64Ptr(0.6),
+			status:            regressionValidationStatusReproducing,
+			maintenanceStatus: regressionMaintenanceStatusKeepActive,
+			rate:              float64Ptr(0.6),
 		},
 		{
 			name: "passing",
@@ -855,8 +865,9 @@ func TestBuildRegressionCaseValidationResponse(t *testing.T) {
 				LastOutcome:      "pass",
 				LastValidatedAt:  &validatedAt,
 			},
-			status: regressionValidationStatusPassing,
-			rate:   float64Ptr(0),
+			status:            regressionValidationStatusPassing,
+			maintenanceStatus: regressionMaintenanceStatusPruneCandidate,
+			rate:              float64Ptr(0),
 		},
 		{
 			name: "flaky",
@@ -868,8 +879,9 @@ func TestBuildRegressionCaseValidationResponse(t *testing.T) {
 				LastOutcome:      "fail",
 				LastValidatedAt:  &validatedAt,
 			},
-			status: regressionValidationStatusFlaky,
-			rate:   float64Ptr(0.4),
+			status:            regressionValidationStatusFlaky,
+			maintenanceStatus: regressionMaintenanceStatusReviewFlaky,
+			rate:              float64Ptr(0.4),
 		},
 	}
 
@@ -878,6 +890,12 @@ func TestBuildRegressionCaseValidationResponse(t *testing.T) {
 			got := buildRegressionCaseValidationResponse(tt.stats)
 			if got.Status != tt.status {
 				t.Fatalf("status = %q, want %q", got.Status, tt.status)
+			}
+			if got.MaintenanceStatus != tt.maintenanceStatus {
+				t.Fatalf("maintenance status = %q, want %q", got.MaintenanceStatus, tt.maintenanceStatus)
+			}
+			if got.MaintenanceAction == "" {
+				t.Fatal("maintenance action is empty")
 			}
 			if got.RequiredRuns != regressionValidationRequiredRuns {
 				t.Fatalf("required_runs = %d, want %d", got.RequiredRuns, regressionValidationRequiredRuns)

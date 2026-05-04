@@ -33,6 +33,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import {
   CaseStatusBadge,
+  MaintenanceBadge,
   SeverityBadge,
   SuiteStatusBadge,
   ValidationBadge,
@@ -334,7 +335,10 @@ function CaseValidationSummary({
 
   return (
     <div className="flex flex-col items-start gap-1">
-      <ValidationBadge status={validation.status} />
+      <div className="flex flex-wrap gap-1">
+        <ValidationBadge status={validation.status} />
+        <MaintenanceBadge status={validation.maintenance_status} />
+      </div>
       <span className="text-xs text-muted-foreground">{detail}</span>
     </div>
   );
