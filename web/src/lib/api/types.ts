@@ -1698,8 +1698,25 @@ export interface FailureReviewItem {
   severity: FailureReviewSeverity;
 }
 
+export interface FailureReviewClusterSummary {
+  failure_cluster_key: string;
+  representative_failure_fingerprint: string;
+  count: number;
+  promotable_count: number;
+  severity: FailureReviewSeverity;
+  failure_state: FailureReviewFailureState;
+  failure_class: FailureReviewFailureClass;
+  evidence_tier: FailureReviewEvidenceTier;
+  challenge_keys: string[];
+  case_keys: string[];
+  run_agent_ids: string[];
+  headline: string;
+  recommended_action: string;
+}
+
 export interface ListRunFailuresResponse {
   items: FailureReviewItem[];
+  clusters: FailureReviewClusterSummary[];
   next_cursor?: string;
 }
 

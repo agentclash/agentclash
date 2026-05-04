@@ -35,9 +35,10 @@ type ListRunFailuresInput struct {
 }
 
 type ListRunFailuresResult struct {
-	Run        domain.Run           `json:"-"`
-	Items      []failurereview.Item `json:"items"`
-	NextCursor *string              `json:"next_cursor,omitempty"`
+	Run        domain.Run                     `json:"-"`
+	Items      []failurereview.Item           `json:"items"`
+	Clusters   []failurereview.ClusterSummary `json:"clusters"`
+	NextCursor *string                        `json:"next_cursor,omitempty"`
 }
 
 func (m *RunReadManager) ListRunFailures(ctx context.Context, caller Caller, input ListRunFailuresInput) (ListRunFailuresResult, error) {
@@ -57,6 +58,7 @@ func (m *RunReadManager) ListRunFailures(ctx context.Context, caller Caller, inp
 		return ListRunFailuresResult{}, err
 	}
 	filtered := failurereview.FilterItems(items, input.AgentID, input.Severity, input.FailureClass, input.EvidenceTier, input.ChallengeKey, input.CaseKey)
+	clusters := failurereview.BuildClusterSummaries(filtered)
 	page, next := failurereview.PaginateItems(filtered, input.Cursor, input.Limit)
 
 	var nextCursor *string
@@ -71,13 +73,15 @@ func (m *RunReadManager) ListRunFailures(ctx context.Context, caller Caller, inp
 	return ListRunFailuresResult{
 		Run:        run,
 		Items:      page,
+		Clusters:   clusters,
 		NextCursor: nextCursor,
 	}, nil
 }
 
 type listRunFailuresResponse struct {
-	Items      []failurereview.Item `json:"items"`
-	NextCursor *string              `json:"next_cursor,omitempty"`
+	Items      []failurereview.Item           `json:"items"`
+	Clusters   []failurereview.ClusterSummary `json:"clusters"`
+	NextCursor *string                        `json:"next_cursor,omitempty"`
 }
 
 func listRunFailuresHandler(logger *slog.Logger, service RunReadService) http.HandlerFunc {
@@ -116,6 +120,7 @@ func listRunFailuresHandler(logger *slog.Logger, service RunReadService) http.Ha
 
 		writeJSON(w, http.StatusOK, listRunFailuresResponse{
 			Items:      result.Items,
+			Clusters:   result.Clusters,
 			NextCursor: result.NextCursor,
 		})
 	}

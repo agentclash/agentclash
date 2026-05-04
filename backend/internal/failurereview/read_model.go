@@ -74,6 +74,22 @@ type Item struct {
 	sortKey                CursorKey       `json:"-"`
 }
 
+type ClusterSummary struct {
+	FailureClusterKey                string       `json:"failure_cluster_key"`
+	RepresentativeFailureFingerprint string       `json:"representative_failure_fingerprint"`
+	Count                            int          `json:"count"`
+	PromotableCount                  int          `json:"promotable_count"`
+	Severity                         Severity     `json:"severity"`
+	FailureState                     FailureState `json:"failure_state"`
+	FailureClass                     FailureClass `json:"failure_class"`
+	EvidenceTier                     EvidenceTier `json:"evidence_tier"`
+	ChallengeKeys                    []string     `json:"challenge_keys"`
+	CaseKeys                         []string     `json:"case_keys"`
+	RunAgentIDs                      []string     `json:"run_agent_ids"`
+	Headline                         string       `json:"headline"`
+	RecommendedAction                string       `json:"recommended_action"`
+}
+
 type ReplayStepRef struct {
 	SequenceNumber int64  `json:"sequence_number"`
 	EventType      string `json:"event_type"`
@@ -183,6 +199,13 @@ type CursorKey struct {
 	ChallengeKey string
 	CaseKey      string
 	ItemKey      string
+}
+
+type clusterAccumulator struct {
+	summary       ClusterSummary
+	challengeKeys map[string]struct{}
+	caseKeys      map[string]struct{}
+	runAgentIDs   map[string]struct{}
 }
 
 const failureIdentitySchemaVersion = "failure_review_identity.v1"
@@ -314,6 +337,82 @@ func PaginateItems(items []Item, after *CursorKey, limit int) ([]Item, *CursorKe
 	}
 	next := ordered[end-1].sortKey
 	return page, &next
+}
+
+func BuildClusterSummaries(items []Item) []ClusterSummary {
+	if len(items) == 0 {
+		return []ClusterSummary{}
+	}
+	groups := map[string]*clusterAccumulator{}
+	for _, item := range items {
+		key := strings.TrimSpace(item.FailureClusterKey)
+		if key == "" {
+			key = "unclustered:" + item.FailureFingerprint
+		}
+		group := groups[key]
+		if group == nil {
+			group = &clusterAccumulator{
+				summary: ClusterSummary{
+					FailureClusterKey:                key,
+					RepresentativeFailureFingerprint: item.FailureFingerprint,
+					Severity:                         item.Severity,
+					FailureState:                     item.FailureState,
+					FailureClass:                     item.FailureClass,
+					EvidenceTier:                     item.EvidenceTier,
+					Headline:                         item.Headline,
+					RecommendedAction:                item.RecommendedAction,
+				},
+				challengeKeys: map[string]struct{}{},
+				caseKeys:      map[string]struct{}{},
+				runAgentIDs:   map[string]struct{}{},
+			}
+			groups[key] = group
+		}
+		if item.FailureFingerprint != "" && (group.summary.RepresentativeFailureFingerprint == "" || item.FailureFingerprint < group.summary.RepresentativeFailureFingerprint) {
+			group.summary.RepresentativeFailureFingerprint = item.FailureFingerprint
+			group.summary.Headline = item.Headline
+			group.summary.RecommendedAction = item.RecommendedAction
+		}
+		group.summary.Count++
+		if item.Promotable {
+			group.summary.PromotableCount++
+		}
+		// These fields are already part of the v1 cluster key; max-rank
+		// selection is defensive if a future identity version broadens clusters.
+		if severityRank(item.Severity) > severityRank(group.summary.Severity) {
+			group.summary.Severity = item.Severity
+		}
+		if failureStateRank(item.FailureState) > failureStateRank(group.summary.FailureState) {
+			group.summary.FailureState = item.FailureState
+		}
+		if item.ChallengeKey != "" {
+			group.challengeKeys[item.ChallengeKey] = struct{}{}
+		}
+		if item.CaseKey != "" {
+			group.caseKeys[item.CaseKey] = struct{}{}
+		}
+		if item.RunAgentID != uuid.Nil {
+			group.runAgentIDs[item.RunAgentID.String()] = struct{}{}
+		}
+	}
+
+	summaries := make([]ClusterSummary, 0, len(groups))
+	for _, group := range groups {
+		group.summary.ChallengeKeys = sortedMapKeys(group.challengeKeys)
+		group.summary.CaseKeys = sortedMapKeys(group.caseKeys)
+		group.summary.RunAgentIDs = sortedMapKeys(group.runAgentIDs)
+		summaries = append(summaries, group.summary)
+	}
+	sort.SliceStable(summaries, func(i, j int) bool {
+		if severityRank(summaries[i].Severity) != severityRank(summaries[j].Severity) {
+			return severityRank(summaries[i].Severity) > severityRank(summaries[j].Severity)
+		}
+		if summaries[i].Count != summaries[j].Count {
+			return summaries[i].Count > summaries[j].Count
+		}
+		return summaries[i].FailureClusterKey < summaries[j].FailureClusterKey
+	})
+	return summaries
 }
 
 func EncodeCursor(key CursorKey) (string, error) {
@@ -866,6 +965,46 @@ func sortedReplayRefCopy(values []ReplayStepRef) []ReplayStepRef {
 		return copied[i].Kind < copied[j].Kind
 	})
 	return copied
+}
+
+func sortedMapKeys(values map[string]struct{}) []string {
+	if len(values) == 0 {
+		return []string{}
+	}
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func severityRank(severity Severity) int {
+	switch severity {
+	case SeverityBlocking:
+		return 3
+	case SeverityWarning:
+		return 2
+	case SeverityInfo:
+		return 1
+	default:
+		return 0
+	}
+}
+
+func failureStateRank(state FailureState) int {
+	switch state {
+	case FailureStateFailed:
+		return 4
+	case FailureStateFlaky:
+		return 3
+	case FailureStateWarning:
+		return 2
+	case FailureStateIncompleteEvidence:
+		return 1
+	default:
+		return 0
+	}
 }
 
 func dedupStrings(values *[]string) {

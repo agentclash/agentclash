@@ -6582,14 +6582,75 @@ components:
           type: string
           enum: [info, warning, blocking]
 
+    FailureReviewClusterSummary:
+      type: object
+      required:
+        - failure_cluster_key
+        - representative_failure_fingerprint
+        - count
+        - promotable_count
+        - severity
+        - failure_state
+        - failure_class
+        - evidence_tier
+        - challenge_keys
+        - case_keys
+        - run_agent_ids
+        - headline
+        - recommended_action
+      properties:
+        failure_cluster_key:
+          type: string
+          description: Deterministic grouping key shared by failure items with the same failure shape.
+        representative_failure_fingerprint:
+          type: string
+          description: Fingerprint of a representative failure item from this cluster.
+        count:
+          type: integer
+          format: int32
+        promotable_count:
+          type: integer
+          format: int32
+        severity:
+          type: string
+          enum: [info, warning, blocking]
+        failure_state:
+          $ref: "#/components/schemas/FailureReviewFailureState"
+        failure_class:
+          $ref: "#/components/schemas/FailureReviewFailureClass"
+        evidence_tier:
+          $ref: "#/components/schemas/FailureReviewEvidenceTier"
+        challenge_keys:
+          type: array
+          items:
+            type: string
+        case_keys:
+          type: array
+          items:
+            type: string
+        run_agent_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        headline:
+          type: string
+        recommended_action:
+          type: string
+
     ListRunFailuresResponse:
       type: object
-      required: [items]
+      required: [items, clusters]
       properties:
         items:
           type: array
           items:
             $ref: "#/components/schemas/FailureReviewItem"
+        clusters:
+          type: array
+          description: Cluster summaries for the full filtered result set before item pagination.
+          items:
+            $ref: "#/components/schemas/FailureReviewClusterSummary"
         next_cursor:
           type: string
           description: Opaque base64url-encoded pagination cursor.

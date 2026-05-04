@@ -2,6 +2,8 @@ package failurereview
 
 import (
 	"encoding/json"
+	"reflect"
+	"sort"
 	"strings"
 	"testing"
 
@@ -285,6 +287,79 @@ func TestFailureIdentityCanonicalizesSortedInputs(t *testing.T) {
 	}
 	if baseClusterKey != reversedClusterKey {
 		t.Fatalf("cluster key = %q, want canonical %q", reversedClusterKey, baseClusterKey)
+	}
+}
+
+func TestBuildClusterSummariesGroupsAndSortsDeterministically(t *testing.T) {
+	t.Parallel()
+
+	runAgentA := uuid.New()
+	runAgentB := uuid.New()
+	items := []Item{
+		{
+			RunAgentID:         runAgentA,
+			ChallengeKey:       "ticket-b",
+			CaseKey:            "case-b",
+			FailureFingerprint: "frf-b1",
+			FailureClusterKey:  "frc-b",
+			FailureState:       FailureStateFailed,
+			FailureClass:       FailureClassToolArgumentError,
+			EvidenceTier:       EvidenceTierNativeStructured,
+			Severity:           SeverityWarning,
+			Headline:           "ticket-b triggered tool_argument_error",
+			RecommendedAction:  "Inspect the replay around the failing tool call and correct the selection or arguments.",
+			Promotable:         true,
+		},
+		{
+			RunAgentID:         runAgentB,
+			ChallengeKey:       "ticket-a",
+			CaseKey:            "case-a",
+			FailureFingerprint: "frf-a",
+			FailureClusterKey:  "frc-a",
+			FailureState:       FailureStateFailed,
+			FailureClass:       FailureClassPolicyViolation,
+			EvidenceTier:       EvidenceTierNativeStructured,
+			Severity:           SeverityBlocking,
+			Headline:           "ticket-a triggered policy_violation",
+			RecommendedAction:  "Tighten the agent or tool policy before promoting this failure.",
+			Promotable:         true,
+		},
+		{
+			RunAgentID:         runAgentB,
+			ChallengeKey:       "ticket-b",
+			CaseKey:            "case-c",
+			FailureFingerprint: "frf-b2",
+			FailureClusterKey:  "frc-b",
+			FailureState:       FailureStateWarning,
+			FailureClass:       FailureClassToolArgumentError,
+			EvidenceTier:       EvidenceTierNativeStructured,
+			Severity:           SeverityWarning,
+			Headline:           "ticket-b triggered tool_argument_error",
+			RecommendedAction:  "Inspect the replay around the failing tool call and correct the selection or arguments.",
+			Promotable:         false,
+		},
+	}
+
+	summaries := BuildClusterSummaries(items)
+	if len(summaries) != 2 {
+		t.Fatalf("cluster count = %d, want 2: %#v", len(summaries), summaries)
+	}
+	if summaries[0].FailureClusterKey != "frc-a" {
+		t.Fatalf("first cluster = %q, want blocking cluster frc-a before warning cluster", summaries[0].FailureClusterKey)
+	}
+	if summaries[1].Count != 2 || summaries[1].PromotableCount != 1 {
+		t.Fatalf("frc-b counts = %d/%d, want count 2 promotable 1", summaries[1].Count, summaries[1].PromotableCount)
+	}
+	if !reflect.DeepEqual(summaries[1].CaseKeys, []string{"case-b", "case-c"}) {
+		t.Fatalf("case keys = %#v, want sorted case-b/case-c", summaries[1].CaseKeys)
+	}
+	wantRunAgentIDs := []string{runAgentA.String(), runAgentB.String()}
+	sort.Strings(wantRunAgentIDs)
+	if !reflect.DeepEqual(summaries[1].RunAgentIDs, wantRunAgentIDs) {
+		t.Fatalf("run agent ids = %#v, want sorted unique ids", summaries[1].RunAgentIDs)
+	}
+	if summaries[1].RepresentativeFailureFingerprint != "frf-b1" {
+		t.Fatalf("representative fingerprint = %q, want first matching fingerprint", summaries[1].RepresentativeFailureFingerprint)
 	}
 }
 

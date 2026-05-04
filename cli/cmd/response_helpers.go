@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/agentclash/agentclash/cli/internal/api"
 )
@@ -36,6 +37,24 @@ func mapSlice(m map[string]any, keys ...string) []any {
 		return out
 	}
 	return nil
+}
+
+func mapStringSlice(m map[string]any, keys ...string) []string {
+	raw := mapSlice(m, keys...)
+	if len(raw) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(raw))
+	for _, value := range raw {
+		if text := strings.TrimSpace(str(value)); text != "" {
+			out = append(out, text)
+		}
+	}
+	return out
+}
+
+func joinMapStrings(m map[string]any, key string) string {
+	return strings.Join(mapStringSlice(m, key), ", ")
 }
 
 func handleStatefulReadResponse(rc *RunContext, resp *api.Response, resource string) (bool, error) {
