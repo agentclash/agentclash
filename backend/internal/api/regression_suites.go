@@ -504,8 +504,11 @@ type regressionCaseResponse struct {
 	SourceChallengePackVersionID uuid.UUID                      `json:"source_challenge_pack_version_id"`
 	SourceChallengeInputSetID    *uuid.UUID                     `json:"source_challenge_input_set_id,omitempty"`
 	SourceChallengeIdentityID    uuid.UUID                      `json:"source_challenge_identity_id"`
+	SourceChallengeKey           *string                        `json:"source_challenge_key,omitempty"`
 	SourceCaseKey                string                         `json:"source_case_key"`
 	SourceItemKey                *string                        `json:"source_item_key,omitempty"`
+	SourceFailureFingerprint     *string                        `json:"source_failure_fingerprint,omitempty"`
+	SourceFailureClusterKey      *string                        `json:"source_failure_cluster_key,omitempty"`
 	EvidenceTier                 string                         `json:"evidence_tier"`
 	FailureClass                 string                         `json:"failure_class"`
 	FailureSummary               string                         `json:"failure_summary"`
@@ -892,6 +895,7 @@ func buildRegressionCaseResponse(regressionCase repository.RegressionCase) regre
 			CreatedAt:                 regressionCase.LatestPromotion.CreatedAt,
 		}
 	}
+	provenance := regressionFailureProvenanceFromMetadata(regressionCase.Metadata)
 
 	return regressionCaseResponse{
 		ID:                           regressionCase.ID,
@@ -908,8 +912,11 @@ func buildRegressionCaseResponse(regressionCase repository.RegressionCase) regre
 		SourceChallengePackVersionID: regressionCase.SourceChallengePackVersionID,
 		SourceChallengeInputSetID:    regressionCase.SourceChallengeInputSetID,
 		SourceChallengeIdentityID:    regressionCase.SourceChallengeIdentityID,
+		SourceChallengeKey:           provenance.SourceChallengeKey,
 		SourceCaseKey:                regressionCase.SourceCaseKey,
 		SourceItemKey:                regressionCase.SourceItemKey,
+		SourceFailureFingerprint:     provenance.SourceFailureFingerprint,
+		SourceFailureClusterKey:      provenance.SourceFailureClusterKey,
 		EvidenceTier:                 regressionCase.EvidenceTier,
 		FailureClass:                 regressionCase.FailureClass,
 		FailureSummary:               regressionCase.FailureSummary,
@@ -921,6 +928,39 @@ func buildRegressionCaseResponse(regressionCase repository.RegressionCase) regre
 		CreatedAt:                    regressionCase.CreatedAt,
 		UpdatedAt:                    regressionCase.UpdatedAt,
 	}
+}
+
+type regressionFailureProvenance struct {
+	SourceChallengeKey       *string
+	SourceFailureFingerprint *string
+	SourceFailureClusterKey  *string
+}
+
+func regressionFailureProvenanceFromMetadata(metadata json.RawMessage) regressionFailureProvenance {
+	values := map[string]any{}
+	if len(metadata) == 0 {
+		return regressionFailureProvenance{}
+	}
+	if err := json.Unmarshal(metadata, &values); err != nil {
+		return regressionFailureProvenance{}
+	}
+	return regressionFailureProvenance{
+		SourceChallengeKey:       optionalMetadataString(values, "source_challenge_key"),
+		SourceFailureFingerprint: optionalMetadataString(values, "source_failure_fingerprint"),
+		SourceFailureClusterKey:  optionalMetadataString(values, "source_failure_cluster_key"),
+	}
+}
+
+func optionalMetadataString(values map[string]any, key string) *string {
+	value, ok := values[key].(string)
+	if !ok {
+		return nil
+	}
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	return &value
 }
 
 func regressionSuiteIDFromURLParam(name string) func(*http.Request) (uuid.UUID, error) {

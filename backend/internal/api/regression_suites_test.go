@@ -589,7 +589,7 @@ func TestRegressionSuiteEndpointsRoundTrip(t *testing.T) {
 			FailureSummary:               "Regressed",
 			PayloadSnapshot:              json.RawMessage(`{"payload":"snapshot"}`),
 			ExpectedContract:             json.RawMessage(`{"contract":"expected"}`),
-			Metadata:                     json.RawMessage(`{"origin":"test"}`),
+			Metadata:                     json.RawMessage(`{"origin":"test","source_challenge_key":"ticket-1","source_failure_fingerprint":"frf-test","source_failure_cluster_key":"frc-test"}`),
 			LatestPromotion: &repository.RegressionPromotion{
 				ID:                        uuid.New(),
 				WorkspaceRegressionCaseID: caseID,
@@ -688,6 +688,22 @@ func TestRegressionSuiteEndpointsRoundTrip(t *testing.T) {
 	router.ServeHTTP(casesRec, casesReq)
 	if casesRec.Code != http.StatusOK {
 		t.Fatalf("LIST cases status = %d, want 200", casesRec.Code)
+	}
+	var casesResponse listRegressionCasesResponse
+	if err := json.Unmarshal(casesRec.Body.Bytes(), &casesResponse); err != nil {
+		t.Fatalf("json.Unmarshal cases response returned error: %v", err)
+	}
+	if len(casesResponse.Items) != 1 {
+		t.Fatalf("cases response items = %d, want 1", len(casesResponse.Items))
+	}
+	if casesResponse.Items[0].SourceChallengeKey == nil || *casesResponse.Items[0].SourceChallengeKey != "ticket-1" {
+		t.Fatalf("source_challenge_key = %v, want ticket-1", casesResponse.Items[0].SourceChallengeKey)
+	}
+	if casesResponse.Items[0].SourceFailureFingerprint == nil || *casesResponse.Items[0].SourceFailureFingerprint != "frf-test" {
+		t.Fatalf("source_failure_fingerprint = %v, want frf-test", casesResponse.Items[0].SourceFailureFingerprint)
+	}
+	if casesResponse.Items[0].SourceFailureClusterKey == nil || *casesResponse.Items[0].SourceFailureClusterKey != "frc-test" {
+		t.Fatalf("source_failure_cluster_key = %v, want frc-test", casesResponse.Items[0].SourceFailureClusterKey)
 	}
 
 	casePatchRec := httptest.NewRecorder()
