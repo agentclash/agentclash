@@ -738,6 +738,59 @@ func TestRegressionSuiteEndpointsRoundTrip(t *testing.T) {
 	}
 }
 
+func TestRegressionFailureProvenanceFromMetadata(t *testing.T) {
+	tests := []struct {
+		name        string
+		metadata    json.RawMessage
+		challenge   *string
+		fingerprint *string
+		cluster     *string
+	}{
+		{
+			name:     "empty metadata",
+			metadata: nil,
+		},
+		{
+			name:     "null metadata",
+			metadata: json.RawMessage(`null`),
+		},
+		{
+			name:     "malformed metadata",
+			metadata: json.RawMessage(`{"source_failure_cluster_key":`),
+		},
+		{
+			name:     "non string values are ignored",
+			metadata: json.RawMessage(`{"source_challenge_key":123,"source_failure_fingerprint":true,"source_failure_cluster_key":{"key":"frc"}}`),
+		},
+		{
+			name:        "strings are trimmed and blanks are ignored",
+			metadata:    json.RawMessage(`{"source_challenge_key":" ticket-1 ","source_failure_fingerprint":"   ","source_failure_cluster_key":"\tfrc-test\n"}`),
+			challenge:   stringPtr("ticket-1"),
+			fingerprint: nil,
+			cluster:     stringPtr("frc-test"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := regressionFailureProvenanceFromMetadata(tt.metadata)
+			assertOptionalString(t, "source_challenge_key", got.SourceChallengeKey, tt.challenge)
+			assertOptionalString(t, "source_failure_fingerprint", got.SourceFailureFingerprint, tt.fingerprint)
+			assertOptionalString(t, "source_failure_cluster_key", got.SourceFailureClusterKey, tt.cluster)
+		})
+	}
+}
+
+func assertOptionalString(t *testing.T, name string, got *string, want *string) {
+	t.Helper()
+	if got == nil && want == nil {
+		return
+	}
+	if got == nil || want == nil || *got != *want {
+		t.Fatalf("%s = %v, want %v", name, got, want)
+	}
+}
+
 func TestRegressionSuiteEndpointsRejectMalformedPagination(t *testing.T) {
 	workspaceID := uuid.New()
 	userID := uuid.New()

@@ -299,7 +299,7 @@ function CaseProvenanceSummary({
           className="max-w-[10rem] truncate font-[family-name:var(--font-mono)]"
           title={regressionCase.source_failure_cluster_key}
         >
-          {shortFailureKey(regressionCase.source_failure_cluster_key)}
+          {regressionCase.source_failure_cluster_key}
         </Badge>
       )}
       {!regressionCase.source_failure_cluster_key &&
@@ -309,17 +309,11 @@ function CaseProvenanceSummary({
             className="max-w-[10rem] truncate font-[family-name:var(--font-mono)]"
             title={regressionCase.source_failure_fingerprint}
           >
-            {shortFailureKey(regressionCase.source_failure_fingerprint)}
+            {regressionCase.source_failure_fingerprint}
           </Badge>
         )}
     </div>
   );
-}
-
-function shortFailureKey(value: string): string {
-  const trimmed = value.trim();
-  if (trimmed.length <= 16) return trimmed;
-  return `${trimmed.slice(0, 12)}...`;
 }
 
 function FilterSelect<T extends string>({
