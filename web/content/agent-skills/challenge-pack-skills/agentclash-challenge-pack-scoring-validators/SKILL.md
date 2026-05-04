@@ -108,7 +108,7 @@ Fields:
 - `expected_from`: required for most validators; omitted for `file_exists`, `file_json_schema`, `directory_structure`, and `code_execution`.
 - `config`: optional JSON/YAML object interpreted by the validator type.
 
-There is no validator-level `failure_message`, `pass_message`, or custom result text field. Results emit `verdict`, `normalized_score`, `reason`, `raw_output`, `target`, and `expected_from`; the reason text is produced by the scorer.
+There is no validator-level `failure_message`, `pass_message`, or custom result text field. Results emit `state`, `verdict`, `normalized_score`, `reason`, `raw_output`, `target`, `expected_from`, `actual_value`, and `expected_value`; the reason text is produced by the scorer.
 
 ## Supported Validator Types
 These are the exact validator type strings accepted by the scoring model:
@@ -244,7 +244,7 @@ validators:
 Source-backed config notes:
 
 - `fuzzy_match.threshold` and `token_f1.threshold` must be between `0` and `1` when set.
-- `numeric_match` accepts `absolute_tolerance`, `relative_tolerance`, `extract_number`, `significant_digits`, `tolerance_mode`, and `tolerance`; tolerances must be non-negative.
+- `numeric_match` accepts `absolute_tolerance`, `relative_tolerance`, `extract_number`, `significant_digits`, `tolerance_mode`, and `tolerance`; tolerances must be non-negative, and `significant_digits` must be greater than `0` when set.
 - `normalized_match.pipeline` accepts `trim`, `lowercase`, `collapse_whitespace`, `strip_punctuation`, `strip_currency`, `strip_formatting`, `normalize_unicode`, `remove_articles`, `sort_words`, and `sort_lines`.
 - `math_equivalence.comparison_mode` must be `symbolic` or `numeric`; `tolerance` must be non-negative.
 
@@ -381,7 +381,7 @@ metrics:
     collector: validator_pass_rate
 ```
 
-Metric `type` must be `numeric`, `text`, or `boolean`. The scorer currently implements these collectors:
+Metric `type` must be `numeric`, `text`, or `boolean`. The schema accepts `text`, but the current implemented collectors produce numeric or boolean values. The scorer currently implements these collectors:
 
 ```text
 run_total_latency_ms
