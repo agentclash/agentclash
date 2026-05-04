@@ -267,6 +267,36 @@ describe("agent skill docs", () => {
     expect(doc?.content).toContain("Unknown validator type such as `has_json`");
   });
 
+  it("generates the challenge pack llm judges skill with source-backed details", () => {
+    const doc = getDocBySlug([
+      "agent-skills",
+      "challenge-pack-skills",
+      "agentclash-challenge-pack-llm-judges",
+    ]);
+
+    expect(doc?.title).toBe("Challenge Pack LLM Judges Skill");
+    expect(doc?.content).toContain("agentclash challenge-pack validate path/to/pack.yaml --json");
+    expect(doc?.content).toContain("llm_judges");
+    expect(doc?.content).toContain("judge_mode: hybrid");
+    expect(doc?.content).toContain("rubric");
+    expect(doc?.content).toContain("assertion");
+    expect(doc?.content).toContain("reference");
+    expect(doc?.content).toContain("n_wise");
+    expect(doc?.content).toContain("context_from");
+    expect(doc?.content).toContain("reference_from");
+    expect(doc?.content).toContain("score_scale");
+    expect(doc?.content).toContain("consensus");
+    expect(doc?.content).toContain("models");
+    expect(doc?.content).toContain("samples");
+    expect(doc?.content).toContain("judge_limits");
+    expect(doc?.content).toContain("max_samples_per_judge");
+    expect(doc?.content).toContain("source: llm_judge");
+    expect(doc?.content).toContain("judge_key");
+    expect(doc?.content).toContain("anti_gaming_clauses");
+    expect(doc?.content).toContain("There is no `abstention_rule`");
+    expect(doc?.content).toContain("Validation rejects `${secrets.*}` references");
+  });
+
   it("generates the challenge pack tools sandbox skill with source-backed details", () => {
     const doc = getDocBySlug([
       "agent-skills",
