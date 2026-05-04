@@ -80,6 +80,22 @@ function compactList(values: string[], maxVisible = 3): string {
   return `${visible} +${values.length - maxVisible}`;
 }
 
+function clusterHistorySummary(
+  history: NonNullable<FailureReviewClusterSummary["history"]>,
+): string {
+  if (history.prior_run_count === 0) {
+    if (history.window_run_count === 0) {
+      return "First scored run for this pack";
+    }
+    const runLabel = history.window_run_count === 1 ? "run" : "runs";
+    return `No prior matches in ${history.window_run_count} comparable ${runLabel}`;
+  }
+  const lastSeen = history.last_seen_at
+    ? ` · last ${new Date(history.last_seen_at).toLocaleDateString()}`
+    : "";
+  return `${history.prior_run_count} prior runs · ${history.prior_failure_count} prior failures${lastSeen}`;
+}
+
 const severityVariant: Record<
   FailureReviewSeverity,
   "default" | "secondary" | "outline" | "destructive"
@@ -97,6 +113,16 @@ const failureStateVariant: Record<
   warning: "outline",
   flaky: "outline",
   incomplete_evidence: "secondary",
+};
+
+const clusterTrendVariant: Record<
+  NonNullable<FailureReviewClusterSummary["history"]>["trend"],
+  "default" | "secondary" | "outline" | "destructive"
+> = {
+  new: "default",
+  recurring: "secondary",
+  increasing: "destructive",
+  decreasing: "outline",
 };
 
 // --- URL <-> state helpers ---
@@ -441,6 +467,7 @@ function FailureClusterRollups({
       <ul className="divide-y divide-border">
         {clusters.map((cluster) => {
           const active = cluster.failure_cluster_key === activeClusterKey;
+          const history = cluster.history;
           return (
             <li key={cluster.failure_cluster_key}>
               <button
@@ -471,6 +498,11 @@ function FailureClusterRollups({
                     <Badge variant="secondary">
                       {humanize(cluster.evidence_tier)}
                     </Badge>
+                    {history && (
+                      <Badge variant={clusterTrendVariant[history.trend]}>
+                        {humanize(history.trend)}
+                      </Badge>
+                    )}
                     {active && <Badge>active</Badge>}
                   </div>
                   <div className="min-w-0">
@@ -484,6 +516,14 @@ function FailureClusterRollups({
                     )}
                   </div>
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                    {history && (
+                      <span className="min-w-0 truncate">
+                        History:{" "}
+                        <span className="text-foreground/80">
+                          {clusterHistorySummary(history)}
+                        </span>
+                      </span>
+                    )}
                     <span className="min-w-0 truncate">
                       Challenges:{" "}
                       <span className="text-foreground/80">
@@ -515,6 +555,16 @@ function FailureClusterRollups({
                       promote
                     </div>
                   </div>
+                  {history && (
+                    <div className="rounded-md border border-border px-2.5 py-1 text-right">
+                      <div className="text-sm font-semibold tabular-nums">
+                        {history.prior_run_count}
+                      </div>
+                      <div className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+                        prior
+                      </div>
+                    </div>
+                  )}
                 </div>
               </button>
             </li>

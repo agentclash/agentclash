@@ -6587,6 +6587,42 @@ components:
           type: string
           enum: [info, warning, blocking]
 
+    FailureReviewClusterHistory:
+      type: object
+      required:
+        - trend
+        - window_run_count
+        - prior_run_count
+        - prior_failure_count
+        - last_run_failure_count
+      properties:
+        trend:
+          type: string
+          enum: [new, recurring, increasing, decreasing]
+          description: Directional label comparing the current cluster count with the most recent prior occurrence.
+        window_run_count:
+          type: integer
+          format: int32
+          description: Number of prior comparable scored runs scanned for this cluster.
+        prior_run_count:
+          type: integer
+          format: int32
+          description: Number of scanned prior runs where this cluster appeared.
+        prior_failure_count:
+          type: integer
+          format: int32
+          description: Total failures from this cluster across scanned prior runs.
+        last_seen_run_id:
+          type: string
+          format: uuid
+        last_seen_at:
+          type: string
+          format: date-time
+        last_run_failure_count:
+          type: integer
+          format: int32
+          description: Failure count from the most recent prior run containing this cluster.
+
     FailureReviewClusterSummary:
       type: object
       required:
@@ -6642,6 +6678,9 @@ components:
           type: string
         recommended_action:
           type: string
+        history:
+          description: Present on first-page all-agent failure-cluster responses; omitted on cursor pages and agent-filtered views.
+          $ref: "#/components/schemas/FailureReviewClusterHistory"
 
     ListRunFailuresResponse:
       type: object

@@ -49,6 +49,41 @@ func TestRepositoryGetRunByID(t *testing.T) {
 	}
 }
 
+func TestRepositoryListRecentComparableScoredRunsBeforeRunID(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+	evaluationSpecID := insertEvaluationSpecRecord(t, ctx, db, fixture.challengePackVersionID, "cluster-trend", 1)
+	baseTime := time.Date(2026, 5, 4, 12, 0, 0, 0, time.UTC)
+
+	anchor, _ := createTestRun(t, ctx, repo, fixture, 1, "cluster-trend-anchor")
+	setRunForClusterTrendTest(t, ctx, db, anchor.ID, domain.RunStatusCompleted, baseTime)
+
+	priorScored, _ := createTestRun(t, ctx, repo, fixture, 1, "cluster-trend-prior")
+	setRunForClusterTrendTest(t, ctx, db, priorScored.ID, domain.RunStatusCompleted, baseTime.Add(-time.Hour))
+	insertRunScorecardRecord(t, ctx, db, priorScored.ID, evaluationSpecID, map[string]any{"status": "complete"})
+
+	unscored, _ := createTestRun(t, ctx, repo, fixture, 1, "cluster-trend-unscored")
+	setRunForClusterTrendTest(t, ctx, db, unscored.ID, domain.RunStatusCompleted, baseTime.Add(-2*time.Hour))
+
+	queuedScored, _ := createTestRun(t, ctx, repo, fixture, 1, "cluster-trend-queued")
+	setRunForClusterTrendTest(t, ctx, db, queuedScored.ID, domain.RunStatusQueued, baseTime.Add(-3*time.Hour))
+	insertRunScorecardRecord(t, ctx, db, queuedScored.ID, evaluationSpecID, map[string]any{"status": "complete"})
+
+	laterScored, _ := createTestRun(t, ctx, repo, fixture, 1, "cluster-trend-later")
+	setRunForClusterTrendTest(t, ctx, db, laterScored.ID, domain.RunStatusCompleted, baseTime.Add(time.Hour))
+	insertRunScorecardRecord(t, ctx, db, laterScored.ID, evaluationSpecID, map[string]any{"status": "complete"})
+
+	got, err := repo.ListRecentComparableScoredRunsBeforeRunID(ctx, anchor.ID, 10)
+	if err != nil {
+		t.Fatalf("ListRecentComparableScoredRunsBeforeRunID returned error: %v", err)
+	}
+	if len(got) != 1 || got[0].ID != priorScored.ID {
+		t.Fatalf("recent comparable runs = %#v, want only prior scored completed run %s", got, priorScored.ID)
+	}
+}
+
 func TestRepositoryListRunRegressionCoverageCasesByRunID(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)
@@ -3877,6 +3912,25 @@ func createTestRun(
 		t.Fatalf("CreateQueuedRun returned error: %v", err)
 	}
 	return result.Run, result.RunAgents
+}
+
+func setRunForClusterTrendTest(t *testing.T, ctx context.Context, db *pgxpool.Pool, runID uuid.UUID, status domain.RunStatus, observedAt time.Time) {
+	t.Helper()
+
+	var finishedAt *time.Time
+	if status == domain.RunStatusCompleted {
+		finishedAt = &observedAt
+	}
+	if _, err := db.Exec(ctx, `
+		UPDATE runs
+		SET status = $2,
+		    created_at = $3,
+		    started_at = $3,
+		    finished_at = $4
+		WHERE id = $1
+	`, runID, string(status), observedAt, finishedAt); err != nil {
+		t.Fatalf("set run %s for cluster trend test returned error: %v", runID, err)
+	}
 }
 
 func insertEvaluationSpecRecord(

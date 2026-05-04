@@ -76,6 +76,7 @@ type Querier interface {
 	ListPlaygroundExperimentsByPlaygroundID(ctx context.Context, arg ListPlaygroundExperimentsByPlaygroundIDParams) ([]PlaygroundExperiment, error)
 	ListPlaygroundTestCasesByPlaygroundID(ctx context.Context, arg ListPlaygroundTestCasesByPlaygroundIDParams) ([]PlaygroundTestCase, error)
 	ListPlaygroundsByWorkspaceID(ctx context.Context, arg ListPlaygroundsByWorkspaceIDParams) ([]Playground, error)
+	ListRecentComparableScoredRunsBeforeRunID(ctx context.Context, arg ListRecentComparableScoredRunsBeforeRunIDParams) ([]Run, error)
 	ListRegressionCaseValidationStatsBySuiteID(ctx context.Context, arg ListRegressionCaseValidationStatsBySuiteIDParams) ([]ListRegressionCaseValidationStatsBySuiteIDRow, error)
 	ListRegressionCasesBySuiteID(ctx context.Context, arg ListRegressionCasesBySuiteIDParams) ([]ListRegressionCasesBySuiteIDRow, error)
 	ListRegressionSuitesByWorkspaceID(ctx context.Context, arg ListRegressionSuitesByWorkspaceIDParams) ([]WorkspaceRegressionSuite, error)

@@ -188,6 +188,32 @@ WHERE workspace_id = @workspace_id
 ORDER BY created_at DESC
 LIMIT @result_limit OFFSET @result_offset;
 
+-- name: ListRecentComparableScoredRunsBeforeRunID :many
+WITH anchor AS (
+    SELECT
+        runs.workspace_id,
+        runs.challenge_pack_version_id,
+        runs.created_at,
+        runs.id
+    FROM runs
+    WHERE runs.id = @run_id
+)
+SELECT r.*
+FROM runs AS r
+JOIN anchor AS a
+  ON r.workspace_id = a.workspace_id
+ AND r.challenge_pack_version_id = a.challenge_pack_version_id
+WHERE r.id <> a.id
+  AND r.status = 'completed'
+  AND (r.created_at, r.id) < (a.created_at, a.id)
+  AND EXISTS (
+      SELECT 1
+      FROM run_scorecards AS rs
+      WHERE rs.run_id = r.id
+  )
+ORDER BY r.created_at DESC, r.id DESC
+LIMIT @result_limit;
+
 -- name: CountRunsByWorkspaceID :one
 SELECT count(*)
 FROM runs

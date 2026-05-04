@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/domain"
 	"github.com/google/uuid"
@@ -361,6 +362,120 @@ func TestBuildClusterSummariesGroupsAndSortsDeterministically(t *testing.T) {
 	if summaries[1].RepresentativeFailureFingerprint != "frf-b1" {
 		t.Fatalf("representative fingerprint = %q, want first matching fingerprint", summaries[1].RepresentativeFailureFingerprint)
 	}
+}
+
+func TestAttachClusterHistoryLabelsNewAndRecurringTrends(t *testing.T) {
+	t.Parallel()
+
+	mostRecent := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
+	older := mostRecent.Add(-24 * time.Hour)
+	mostRecentRunID := uuid.New()
+	olderRunID := uuid.New()
+
+	testCases := []struct {
+		name             string
+		currentCount     int
+		historicalCounts []int
+		wantTrend        ClusterTrend
+		wantPriorRuns    int
+		wantPriorFails   int
+		wantLastCount    int
+	}{
+		{
+			name:         "new",
+			currentCount: 1,
+			wantTrend:    ClusterTrendNew,
+		},
+		{
+			name:             "increasing",
+			currentCount:     3,
+			historicalCounts: []int{1, 2},
+			wantTrend:        ClusterTrendIncreasing,
+			wantPriorRuns:    2,
+			wantPriorFails:   3,
+			wantLastCount:    1,
+		},
+		{
+			name:             "decreasing",
+			currentCount:     1,
+			historicalCounts: []int{3},
+			wantTrend:        ClusterTrendDecreasing,
+			wantPriorRuns:    1,
+			wantPriorFails:   3,
+			wantLastCount:    3,
+		},
+		{
+			name:             "recurring",
+			currentCount:     2,
+			historicalCounts: []int{2},
+			wantTrend:        ClusterTrendRecurring,
+			wantPriorRuns:    1,
+			wantPriorFails:   2,
+			wantLastCount:    2,
+		},
+	}
+
+	for _, tt := range testCases {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			historicalRuns := []ClusterHistoryRun{
+				{
+					RunID:      mostRecentRunID,
+					ObservedAt: mostRecent,
+					Clusters:   historicalCluster("frc-target", tt.historicalCounts, 0),
+				},
+				{
+					RunID:      olderRunID,
+					ObservedAt: older,
+					Clusters:   historicalCluster("frc-target", tt.historicalCounts, 1),
+				},
+			}
+			summaries := AttachClusterHistory([]ClusterSummary{{
+				FailureClusterKey: "frc-target",
+				Count:             tt.currentCount,
+			}}, historicalRuns)
+			history := summaries[0].History
+			if history == nil {
+				t.Fatal("history = nil, want populated")
+			}
+
+			if history.Trend != tt.wantTrend {
+				t.Fatalf("trend = %s, want %s", history.Trend, tt.wantTrend)
+			}
+			if history.WindowRunCount != 2 {
+				t.Fatalf("window_run_count = %d, want 2", history.WindowRunCount)
+			}
+			if history.PriorRunCount != tt.wantPriorRuns || history.PriorFailureCount != tt.wantPriorFails {
+				t.Fatalf("prior counts = %d/%d, want %d/%d", history.PriorRunCount, history.PriorFailureCount, tt.wantPriorRuns, tt.wantPriorFails)
+			}
+			if tt.wantPriorRuns == 0 {
+				if history.LastSeenRunID != nil || history.LastSeenAt != nil {
+					t.Fatalf("last seen = %v/%v, want nils for new cluster", history.LastSeenRunID, history.LastSeenAt)
+				}
+				return
+			}
+			if history.LastSeenRunID == nil || *history.LastSeenRunID != mostRecentRunID {
+				t.Fatalf("last_seen_run_id = %v, want %s", history.LastSeenRunID, mostRecentRunID)
+			}
+			if history.LastSeenAt == nil || !history.LastSeenAt.Equal(mostRecent) {
+				t.Fatalf("last_seen_at = %v, want %s", history.LastSeenAt, mostRecent)
+			}
+			if history.LastRunFailureCount != tt.wantLastCount {
+				t.Fatalf("last_run_failure_count = %d, want %d", history.LastRunFailureCount, tt.wantLastCount)
+			}
+		})
+	}
+}
+
+func historicalCluster(key string, counts []int, index int) []ClusterSummary {
+	if index >= len(counts) {
+		return nil
+	}
+	return []ClusterSummary{{
+		FailureClusterKey: key,
+		Count:             counts[index],
+	}}
 }
 
 func TestBuildRunAgentItemsHandlesHostedBlackBoxEligibility(t *testing.T) {

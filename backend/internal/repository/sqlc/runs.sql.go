@@ -287,6 +287,83 @@ func (q *Queries) InsertRunStatusHistory(ctx context.Context, arg InsertRunStatu
 	return i, err
 }
 
+const listRecentComparableScoredRunsBeforeRunID = `-- name: ListRecentComparableScoredRunsBeforeRunID :many
+WITH anchor AS (
+    SELECT
+        runs.workspace_id,
+        runs.challenge_pack_version_id,
+        runs.created_at,
+        runs.id
+    FROM runs
+    WHERE runs.id = $2
+)
+SELECT r.id, r.organization_id, r.workspace_id, r.challenge_pack_version_id, r.challenge_input_set_id, r.created_by_user_id, r.name, r.status, r.execution_mode, r.temporal_workflow_id, r.temporal_run_id, r.execution_plan, r.queued_at, r.started_at, r.finished_at, r.cancelled_at, r.failed_at, r.created_at, r.updated_at, r.official_pack_mode, r.eval_session_id, r.race_context, r.race_context_min_step_gap, r.ci_metadata
+FROM runs AS r
+JOIN anchor AS a
+  ON r.workspace_id = a.workspace_id
+ AND r.challenge_pack_version_id = a.challenge_pack_version_id
+WHERE r.id <> a.id
+  AND r.status = 'completed'
+  AND (r.created_at, r.id) < (a.created_at, a.id)
+  AND EXISTS (
+      SELECT 1
+      FROM run_scorecards AS rs
+      WHERE rs.run_id = r.id
+  )
+ORDER BY r.created_at DESC, r.id DESC
+LIMIT $1
+`
+
+type ListRecentComparableScoredRunsBeforeRunIDParams struct {
+	ResultLimit int32
+	RunID       uuid.UUID
+}
+
+func (q *Queries) ListRecentComparableScoredRunsBeforeRunID(ctx context.Context, arg ListRecentComparableScoredRunsBeforeRunIDParams) ([]Run, error) {
+	rows, err := q.db.Query(ctx, listRecentComparableScoredRunsBeforeRunID, arg.ResultLimit, arg.RunID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Run
+	for rows.Next() {
+		var i Run
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrganizationID,
+			&i.WorkspaceID,
+			&i.ChallengePackVersionID,
+			&i.ChallengeInputSetID,
+			&i.CreatedByUserID,
+			&i.Name,
+			&i.Status,
+			&i.ExecutionMode,
+			&i.TemporalWorkflowID,
+			&i.TemporalRunID,
+			&i.ExecutionPlan,
+			&i.QueuedAt,
+			&i.StartedAt,
+			&i.FinishedAt,
+			&i.CancelledAt,
+			&i.FailedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.OfficialPackMode,
+			&i.EvalSessionID,
+			&i.RaceContext,
+			&i.RaceContextMinStepGap,
+			&i.CiMetadata,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listRunCaseSelectionsByRunID = `-- name: ListRunCaseSelectionsByRunID :many
 SELECT id, run_id, challenge_identity_id, selection_origin, regression_case_id, selection_rank, created_at
 FROM run_case_selections

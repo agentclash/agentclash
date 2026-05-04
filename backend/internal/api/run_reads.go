@@ -28,6 +28,7 @@ type RunReadRepository interface {
 	ListRunRegressionCoverageCasesByRunID(ctx context.Context, runID uuid.UUID) ([]repository.RunRegressionCoverageCase, error)
 	ListRunAgentsByRunID(ctx context.Context, runID uuid.UUID) ([]domain.RunAgent, error)
 	ListRunFailureReviewItems(ctx context.Context, runID uuid.UUID, agentID *uuid.UUID) ([]failurereview.Item, error)
+	ListRecentComparableScoredRunsBeforeRunID(ctx context.Context, runID uuid.UUID, limit int32) ([]domain.Run, error)
 	ListEvalSessionsByWorkspaceID(ctx context.Context, workspaceID uuid.UUID, limit int32, offset int32) ([]domain.EvalSession, error)
 	ListRunsByWorkspaceID(ctx context.Context, workspaceID uuid.UUID, limit int32, offset int32) ([]domain.Run, error)
 	CountRunsByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) (int64, error)

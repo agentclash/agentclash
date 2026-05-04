@@ -1698,6 +1698,22 @@ export interface FailureReviewItem {
   severity: FailureReviewSeverity;
 }
 
+export type FailureReviewClusterTrend =
+  | "new"
+  | "recurring"
+  | "increasing"
+  | "decreasing";
+
+export interface FailureReviewClusterHistory {
+  trend: FailureReviewClusterTrend;
+  window_run_count: number;
+  prior_run_count: number;
+  prior_failure_count: number;
+  last_seen_run_id?: string;
+  last_seen_at?: string;
+  last_run_failure_count: number;
+}
+
 export interface FailureReviewClusterSummary {
   failure_cluster_key: string;
   representative_failure_fingerprint: string;
@@ -1712,6 +1728,7 @@ export interface FailureReviewClusterSummary {
   run_agent_ids: string[];
   headline: string;
   recommended_action: string;
+  history?: FailureReviewClusterHistory;
 }
 
 export interface ListRunFailuresResponse {
