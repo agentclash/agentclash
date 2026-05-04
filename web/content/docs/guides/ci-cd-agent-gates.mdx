@@ -143,6 +143,8 @@ agentclash ci should-run \
 
 The manifest is the single source of truth for the candidate revision, workload, baseline, and gate. A pull request workflow can validate it, decide whether it should run for the changed files, then let `agentclash ci run` create the candidate build version, deployment, run, and release-gate evaluation.
 
+Use the reusable AgentClash action when you want the standard GitHub integration without rewriting the shell glue:
+
 ```yaml
 name: AgentClash gate
 
@@ -166,48 +168,25 @@ jobs:
         with:
           node-version: "22"
 
-      - run: npm i -g agentclash
-
-      - name: Validate AgentClash CI manifest
-        run: agentclash ci validate .agentclash/ci.yaml --remote
-        env:
-          AGENTCLASH_API_URL: https://api.agentclash.dev
-          AGENTCLASH_TOKEN: ${{ secrets.AGENTCLASH_TOKEN }}
-          AGENTCLASH_WORKSPACE: ${{ secrets.AGENTCLASH_WORKSPACE }}
-
-      - name: Decide whether AgentClash gate should run
-        id: should-run
-        run: |
-          SHOULD_RUN=$(agentclash ci should-run --json | jq -r '.should_run')
-          echo "should_run=$SHOULD_RUN" >> "$GITHUB_OUTPUT"
-
       - name: Run AgentClash CI gate
-        if: steps.should-run.outputs.should_run == 'true'
         id: agentclash
-        run: |
-          set +e
-          agentclash ci run --manifest .agentclash/ci.yaml --json \
-            --artifact-dir agentclash-artifacts \
-            > agentclash-ci-result.json
-          status=$?
-          cat agentclash-ci-result.json
-          echo "run_id=$(jq -r '.candidate.run_id' agentclash-ci-result.json)" >> "$GITHUB_OUTPUT"
-          echo "gate_verdict=$(jq -r '.gate_verdict' agentclash-ci-result.json)" >> "$GITHUB_OUTPUT"
-          exit "$status"
-        env:
-          AGENTCLASH_API_URL: https://api.agentclash.dev
-          AGENTCLASH_TOKEN: ${{ secrets.AGENTCLASH_TOKEN }}
-          AGENTCLASH_WORKSPACE: ${{ secrets.AGENTCLASH_WORKSPACE }}
+        uses: agentclash/agentclash/.github/actions/agentclash-ci@main
+        with:
+          token: ${{ secrets.AGENTCLASH_TOKEN }}
+          workspace: ${{ secrets.AGENTCLASH_WORKSPACE }}
+          manifest: .agentclash/ci.yaml
 
       - name: Upload AgentClash gate artifacts
-        if: always() && steps.should-run.outputs.should_run == 'true'
+        if: always() && steps.agentclash.outputs['should-run'] == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: agentclash-ci
           path: |
-            agentclash-ci-result.json
-            agentclash-artifacts/*.json
+            ${{ steps.agentclash.outputs.result-file }}
+            ${{ steps.agentclash.outputs.artifact-dir }}/*.json
 ```
+
+The action installs the published `agentclash` npm package by default, runs `ci validate --remote`, runs `ci should-run`, skips unrelated changes, runs `ci run` when matched, and exposes `should-run`, `skip-reason`, `run-id`, `gate-verdict`, `exit-code`, `result-file`, and `artifact-dir` outputs. It preserves the CLI exit code, so a blocking gate fails the workflow normally.
 
 `agentclash ci run` exits nonzero when the gate verdict should block CI, when the candidate run times out, or when the manifest/API setup is invalid. In GitHub Actions, it automatically attaches repository, pull request, branch, default branch, commit, workflow, event, and workflow-run URL metadata to the AgentClash run. It also appends a reviewer-friendly Markdown section when the `$GITHUB_STEP_SUMMARY` environment variable is set. Pass `--summary-file <path>` for another Markdown destination, or `--github-step-summary=false` to disable the automatic GitHub summary.
 
