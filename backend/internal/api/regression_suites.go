@@ -972,7 +972,7 @@ func buildRegressionCaseValidationResponse(stats *repository.RegressionCaseValid
 		RequiredRuns:          regressionValidationRequiredRuns,
 		RemainingRuns:         regressionValidationRequiredRuns,
 		RecommendedAction:     "Run this regression case in CI or suite-only mode to establish a reproduction signal.",
-		MaintenanceAction:     "Collect validation evidence before changing this case's suite role.",
+		MaintenanceAction:     "Schedule more reruns before changing this case's suite role.",
 	}
 	if stats == nil || stats.RunCount == 0 {
 		return response
@@ -1000,17 +1000,17 @@ func buildRegressionCaseValidationResponse(stats *repository.RegressionCaseValid
 		response.Status = regressionValidationStatusReproducing
 		response.MaintenanceStatus = regressionMaintenanceStatusKeepActive
 		response.RecommendedAction = "Failure reproduces at or above threshold; keep this case active in CI gates."
-		response.MaintenanceAction = "Keep this case active; it is still catching a reproducible agent failure."
+		response.MaintenanceAction = "Leave this case in the active gate set."
 	case stats.FailureCount == 0:
 		response.Status = regressionValidationStatusPassing
 		response.MaintenanceStatus = regressionMaintenanceStatusPruneCandidate
 		response.RecommendedAction = "No failures observed across the validation window; keep as a guardrail or archive if obsolete."
-		response.MaintenanceAction = "Review for pruning or downgrade to a non-blocking guardrail if the behavior is now stable."
+		response.MaintenanceAction = "Open a pruning review before archiving or downgrading it."
 	default:
 		response.Status = regressionValidationStatusFlaky
 		response.MaintenanceStatus = regressionMaintenanceStatusReviewFlaky
 		response.RecommendedAction = "Mixed outcomes are below the reproduction threshold; inspect replay evidence before making this case blocking."
-		response.MaintenanceAction = "Inspect recent replays before deciding whether to keep, mute, or rewrite this case."
+		response.MaintenanceAction = "Rewrite, split, or mute this case if replay evidence is nondeterministic."
 	}
 	return response
 }

@@ -115,8 +115,7 @@ function makeCase(overrides: Partial<RegressionCase> = {}): RegressionCase {
       last_validated_at: "2026-04-22T12:30:00Z",
       recommended_action:
         "Failure reproduces at or above threshold; keep this case active in CI gates.",
-      maintenance_action:
-        "Keep this case active; it is still catching a reproducible agent failure.",
+      maintenance_action: "Leave this case in the active gate set.",
     },
     created_at: "2026-04-22T12:00:00Z",
     updated_at: "2026-04-22T12:00:00Z",
@@ -184,8 +183,60 @@ describe("regression provenance UI", () => {
       expect(view.container.textContent).toContain("3 fail");
       expect(view.container.textContent).toContain("60% / 60%");
       expect(view.container.textContent).toContain(
-        "Keep this case active; it is still catching a reproducible agent failure.",
+        "Leave this case in the active gate set.",
       );
+    } finally {
+      view.cleanup();
+    }
+  });
+
+  it("renders maintenance variants in the suite case list", () => {
+    const view = render(
+      <SuiteDetailClient
+        workspaceId="ws-1"
+        suite={suite}
+        cases={[
+          makeCase({
+            id: "case-needs-signal",
+            title: "Needs signal",
+            validation: {
+              ...makeCase().validation,
+              status: "collecting_signal",
+              maintenance_status: "needs_signal",
+              maintenance_action:
+                "Keep this case in evidence-gathering mode until the validation window is full.",
+            },
+          }),
+          makeCase({
+            id: "case-prune",
+            title: "Prune candidate",
+            validation: {
+              ...makeCase().validation,
+              status: "passing",
+              maintenance_status: "prune_candidate",
+              maintenance_action:
+                "Open a pruning review before archiving or downgrading it.",
+            },
+          }),
+          makeCase({
+            id: "case-flaky",
+            title: "Review flaky",
+            validation: {
+              ...makeCase().validation,
+              status: "flaky",
+              maintenance_status: "review_flaky",
+              maintenance_action:
+                "Rewrite, split, or mute this case if replay evidence is nondeterministic.",
+            },
+          }),
+        ]}
+        sourcePack={sourcePack}
+      />,
+    );
+    try {
+      expect(view.container.textContent).toContain("needs signal");
+      expect(view.container.textContent).toContain("prune candidate");
+      expect(view.container.textContent).toContain("review flaky");
     } finally {
       view.cleanup();
     }
