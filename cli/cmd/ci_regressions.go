@@ -23,6 +23,7 @@ type ciRunRegressionPromotionCase struct {
 	CaseID              string `json:"case_id,omitempty" yaml:"case_id,omitempty"`
 	ChallengeIdentityID string `json:"challenge_identity_id,omitempty" yaml:"challenge_identity_id,omitempty"`
 	ChallengeKey        string `json:"challenge_key,omitempty" yaml:"challenge_key,omitempty"`
+	FailureClusterKey   string `json:"failure_cluster_key,omitempty" yaml:"failure_cluster_key,omitempty"`
 	Status              string `json:"status,omitempty" yaml:"status,omitempty"`
 	Created             bool   `json:"created" yaml:"created"`
 }
@@ -51,10 +52,11 @@ type ciRunFailureReviewItem struct {
 }
 
 type ciRunRegressionCaseSummary struct {
-	ID                  string `json:"id"`
-	Status              string `json:"status"`
-	ChallengeIdentityID string `json:"source_challenge_identity_id"`
-	Title               string `json:"title"`
+	ID                  string         `json:"id"`
+	Status              string         `json:"status"`
+	ChallengeIdentityID string         `json:"source_challenge_identity_id"`
+	Title               string         `json:"title"`
+	Metadata            map[string]any `json:"metadata"`
 }
 
 func promoteCIRunRegressionFailures(cmd *cobra.Command, rc *RunContext, workspaceID string, manifest ciManifest, result ciRunResult, releaseGate map[string]any) *ciRunRegressionPromotionResult {
@@ -109,7 +111,7 @@ func promoteCIRunRegressionFailures(cmd *cobra.Command, rc *RunContext, workspac
 			summary.Errors = append(summary.Errors, fmt.Sprintf("list regression cases for suite %s: %v", suiteID, err))
 			continue
 		}
-		existingByChallenge := ciRunExistingCaseByChallenge(existingCases)
+		existingByChallenge, existingByCluster := ciRunExistingCaseIndexes(existingCases)
 		for _, failure := range failures {
 			if !failure.Promotable {
 				summary.Skipped = append(summary.Skipped, ciRunRegressionPromotionSkip{
@@ -121,22 +123,16 @@ func promoteCIRunRegressionFailures(cmd *cobra.Command, rc *RunContext, workspac
 				})
 				continue
 			}
+			if existing, ok := ciRunFindExistingCase(failure, existingByChallenge, existingByCluster); ok {
+				summary.Existing = append(summary.Existing, ciRunExistingPromotionCase(suiteID, existing, failure))
+				continue
+			}
 			if strings.TrimSpace(failure.ChallengeIdentityID) == "" {
 				summary.Skipped = append(summary.Skipped, ciRunRegressionPromotionSkip{
 					SuiteID:      suiteID,
 					ChallengeKey: failure.ChallengeKey,
 					Reason:       "missing_challenge_identity",
 					Message:      "failure review item has no challenge identity id",
-				})
-				continue
-			}
-			if existing, ok := existingByChallenge[failure.ChallengeIdentityID]; ok {
-				summary.Existing = append(summary.Existing, ciRunRegressionPromotionCase{
-					SuiteID:             suiteID,
-					CaseID:              existing.ID,
-					ChallengeIdentityID: failure.ChallengeIdentityID,
-					ChallengeKey:        failure.ChallengeKey,
-					Status:              existing.Status,
 				})
 				continue
 			}
@@ -237,18 +233,46 @@ func listCIRunRegressionCases(cmd *cobra.Command, rc *RunContext, workspaceID, s
 	return result.Items, nil
 }
 
-func ciRunExistingCaseByChallenge(items []ciRunRegressionCaseSummary) map[string]ciRunRegressionCaseSummary {
-	out := make(map[string]ciRunRegressionCaseSummary)
+func ciRunExistingCaseIndexes(items []ciRunRegressionCaseSummary) (map[string]ciRunRegressionCaseSummary, map[string]ciRunRegressionCaseSummary) {
+	byChallenge := make(map[string]ciRunRegressionCaseSummary)
+	byCluster := make(map[string]ciRunRegressionCaseSummary)
 	for _, item := range items {
 		switch strings.TrimSpace(item.Status) {
 		case "archived", "rejected":
 			continue
 		}
 		if id := strings.TrimSpace(item.ChallengeIdentityID); id != "" {
-			out[id] = item
+			byChallenge[id] = item
+		}
+		if clusterKey := strings.TrimSpace(mapString(item.Metadata, "source_failure_cluster_key")); clusterKey != "" {
+			byCluster[clusterKey] = item
 		}
 	}
-	return out
+	return byChallenge, byCluster
+}
+
+func ciRunFindExistingCase(failure ciRunFailureReviewItem, byChallenge, byCluster map[string]ciRunRegressionCaseSummary) (ciRunRegressionCaseSummary, bool) {
+	if clusterKey := strings.TrimSpace(failure.FailureClusterKey); clusterKey != "" {
+		if existing, ok := byCluster[clusterKey]; ok {
+			return existing, true
+		}
+	}
+	if challengeIdentityID := strings.TrimSpace(failure.ChallengeIdentityID); challengeIdentityID != "" {
+		existing, ok := byChallenge[challengeIdentityID]
+		return existing, ok
+	}
+	return ciRunRegressionCaseSummary{}, false
+}
+
+func ciRunExistingPromotionCase(suiteID string, existing ciRunRegressionCaseSummary, failure ciRunFailureReviewItem) ciRunRegressionPromotionCase {
+	return ciRunRegressionPromotionCase{
+		SuiteID:             suiteID,
+		CaseID:              existing.ID,
+		ChallengeIdentityID: failure.ChallengeIdentityID,
+		ChallengeKey:        failure.ChallengeKey,
+		FailureClusterKey:   failure.FailureClusterKey,
+		Status:              existing.Status,
+	}
 }
 
 func ciRunPreferredPromotionMode(modes []string) string {
@@ -297,6 +321,7 @@ func promoteCIRunFailure(cmd *cobra.Command, rc *RunContext, workspaceID, suiteI
 		CaseID:              str(regressionCase["id"]),
 		ChallengeIdentityID: failure.ChallengeIdentityID,
 		ChallengeKey:        failure.ChallengeKey,
+		FailureClusterKey:   failure.FailureClusterKey,
 		Status:              firstNonEmptyString(str(regressionCase["status"]), caseStatus),
 		Created:             resp.StatusCode == 201,
 	}, nil

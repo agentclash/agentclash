@@ -525,6 +525,9 @@ func TestCIRunRegressionPromotionSkipsExistingCase(t *testing.T) {
 		"status":                       "proposed",
 		"source_challenge_identity_id": "challenge-1",
 		"title":                        "Existing proposal",
+		"metadata": map[string]any{
+			"source_failure_cluster_key": "frc-from-another-failure",
+		},
 	}})))
 	defer srv.Close()
 	t.Setenv("AGENTCLASH_TOKEN", "test-token")
@@ -543,8 +546,85 @@ func TestCIRunRegressionPromotionSkipsExistingCase(t *testing.T) {
 	if result.RegressionPromotions == nil || len(result.RegressionPromotions.Existing) != 1 || result.RegressionPromotions.Existing[0].CaseID != "case-existing" {
 		t.Fatalf("regression promotions = %+v, want existing case skip", result.RegressionPromotions)
 	}
+	if result.RegressionPromotions.Existing[0].ChallengeIdentityID != "challenge-1" {
+		t.Fatalf("existing challenge identity = %q, want current failure challenge identity", result.RegressionPromotions.Existing[0].ChallengeIdentityID)
+	}
 	if len(captures.PromotionBodies) != 0 {
 		t.Fatalf("promotion bodies = %+v, want no promote request for existing case", captures.PromotionBodies)
+	}
+}
+
+func TestCIRunRegressionPromotionSkipsExistingCaseByClusterKey(t *testing.T) {
+	target := writeCIRunManifest(t)
+	captures := &ciRunRouteCaptures{}
+	srv := fakeAPI(t, ciRunRoutes(t, captures, ciRunRegressionPromotionRoutes(t, captures, "fail", []map[string]any{{
+		"id":                           "case-existing-cluster",
+		"status":                       "proposed",
+		"source_challenge_identity_id": "challenge-from-prior-pack-version",
+		"title":                        "Existing cluster proposal",
+		"metadata": map[string]any{
+			"source_failure_cluster_key": "frc-test",
+		},
+	}})))
+	defer srv.Close()
+	t.Setenv("AGENTCLASH_TOKEN", "test-token")
+
+	result, err, _ := runCIRunJSON(t, []string{
+		"ci", "run",
+		"--manifest", target,
+		"-w", "ws-1",
+		"--json",
+		"--poll-interval", "1ms",
+		"--timeout", "1s",
+	}, srv.URL)
+	if got := exitCodeOf(t, err); got != gateExitFail {
+		t.Fatalf("exit code = %d, want gate fail %d", got, gateExitFail)
+	}
+	if result.RegressionPromotions == nil || len(result.RegressionPromotions.Existing) != 1 || result.RegressionPromotions.Existing[0].CaseID != "case-existing-cluster" {
+		t.Fatalf("regression promotions = %+v, want existing cluster case", result.RegressionPromotions)
+	}
+	if result.RegressionPromotions.Existing[0].ChallengeIdentityID != "challenge-1" {
+		t.Fatalf("existing challenge identity = %q, want current failure challenge identity", result.RegressionPromotions.Existing[0].ChallengeIdentityID)
+	}
+	if result.RegressionPromotions.Existing[0].FailureClusterKey != "frc-test" {
+		t.Fatalf("existing failure cluster key = %q, want frc-test", result.RegressionPromotions.Existing[0].FailureClusterKey)
+	}
+	if len(captures.PromotionBodies) != 0 {
+		t.Fatalf("promotion bodies = %+v, want no promote request for existing cluster case", captures.PromotionBodies)
+	}
+}
+
+func TestCIRunRegressionPromotionIgnoresArchivedClusterMatch(t *testing.T) {
+	target := writeCIRunManifest(t)
+	captures := &ciRunRouteCaptures{}
+	srv := fakeAPI(t, ciRunRoutes(t, captures, ciRunRegressionPromotionRoutes(t, captures, "fail", []map[string]any{{
+		"id":                           "case-archived-cluster",
+		"status":                       "archived",
+		"source_challenge_identity_id": "challenge-from-prior-pack-version",
+		"title":                        "Archived cluster proposal",
+		"metadata": map[string]any{
+			"source_failure_cluster_key": "frc-test",
+		},
+	}})))
+	defer srv.Close()
+	t.Setenv("AGENTCLASH_TOKEN", "test-token")
+
+	result, err, _ := runCIRunJSON(t, []string{
+		"ci", "run",
+		"--manifest", target,
+		"-w", "ws-1",
+		"--json",
+		"--poll-interval", "1ms",
+		"--timeout", "1s",
+	}, srv.URL)
+	if got := exitCodeOf(t, err); got != gateExitFail {
+		t.Fatalf("exit code = %d, want gate fail %d", got, gateExitFail)
+	}
+	if result.RegressionPromotions == nil || len(result.RegressionPromotions.Created) != 1 || result.RegressionPromotions.Created[0].FailureClusterKey != "frc-test" {
+		t.Fatalf("regression promotions = %+v, want new case because archived cluster is ignored", result.RegressionPromotions)
+	}
+	if len(captures.PromotionBodies) != 1 {
+		t.Fatalf("promotion bodies = %+v, want one promote request", captures.PromotionBodies)
 	}
 }
 
