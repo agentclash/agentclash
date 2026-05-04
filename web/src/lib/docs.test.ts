@@ -213,6 +213,32 @@ describe("agent skill docs", () => {
     expect(doc?.content).toContain("`--scope suite_only` is for regression suite/case selection");
   });
 
+  it("generates the challenge pack artifacts skill with source-backed details", () => {
+    const doc = getDocBySlug([
+      "agent-skills",
+      "challenge-pack-skills",
+      "agentclash-challenge-pack-artifacts",
+    ]);
+
+    expect(doc?.title).toBe("Challenge Pack Artifacts Skill");
+    expect(doc?.content).toContain("agentclash challenge-pack validate path/to/pack.yaml --json");
+    expect(doc?.content).toContain("version.assets");
+    expect(doc?.content).toContain("artifact_refs");
+    expect(doc?.content).toContain("artifacts");
+    expect(doc?.content).toContain("artifact_key");
+    expect(doc?.content).toContain("path");
+    expect(doc?.content).toContain("media_type");
+    expect(doc?.content).toContain("artifact_id");
+    expect(doc?.content).toContain("post_execution_checks");
+    expect(doc?.content).toContain("file_capture");
+    expect(doc?.content).toContain("file_json_schema");
+    expect(doc?.content).toContain("artifact.<path>");
+    expect(doc?.content).toContain("artifact.<artifact_key>[.<field>]");
+    expect(doc?.content).toContain("file:<post_execution_check_key>");
+    expect(doc?.content).toContain("agentclash artifact list");
+    expect(doc?.content).toContain("It does not have a `--run` filter today");
+  });
+
   it("generates the challenge pack tools sandbox skill with source-backed details", () => {
     const doc = getDocBySlug([
       "agent-skills",
