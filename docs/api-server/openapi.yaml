@@ -6610,7 +6610,7 @@ components:
 
     RegressionCaseStatus:
       type: string
-      enum: [active, muted, archived]
+      enum: [proposed, active, muted, archived, rejected]
 
     RegressionSeverity:
       type: string
@@ -6867,6 +6867,12 @@ components:
           type: string
         failure_summary:
           type: string
+        status:
+          type: string
+          enum: [active, proposed]
+          description: >
+            Optional initial case status. Manual promotions default to active;
+            CI integrations can use proposed to create reviewable candidates.
         severity:
           $ref: "#/components/schemas/RegressionSeverity"
         validator_overrides:

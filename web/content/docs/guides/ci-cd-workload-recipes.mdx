@@ -21,6 +21,8 @@ Most CI setups need both:
 - Nightly or mainline workflows run the full challenge pack plus larger regression suites.
 - Expensive long-horizon tasks run on labels, scheduled workflows, or release branches.
 
+When `regressions.promote_failures: proposed` is enabled, failing gates can add reviewable candidates to the suites listed in `evaluation.regression_suites`. Treat those proposals as a queue, not as automatic truth: accept cases that represent durable agent risk, reject noisy or duplicate failures, and keep the suite small enough that engineers still trust the gate.
+
 ## Coding Agent Recipe
 
 Coding agents change when prompts, repository skills, tool policy, model aliases, sandbox settings, or patch-generation code changes. A useful CI workload should exercise the agent's ability to inspect a repo, edit files, run tests, and stop safely.
@@ -119,6 +121,8 @@ Then expand:
 - Promote repeated failures into regression suites after review.
 - Split PR, mainline, nightly, and release workloads by cost and confidence.
 - Refresh baselines explicitly, never as a side effect of an arbitrary PR.
+
+Use `auto_on_main` only after this review loop is boring. It creates active regression cases from default-branch failures, while pull requests should normally stay on `proposed` so reviewers can decide whether a failure is a real product regression or just an unstable eval.
 
 ## Manifest Example
 

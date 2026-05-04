@@ -60,12 +60,19 @@ func (s RegressionSuiteStatus) CanTransitionTo(next RegressionSuiteStatus) bool 
 type RegressionCaseStatus string
 
 const (
+	RegressionCaseStatusProposed RegressionCaseStatus = "proposed"
 	RegressionCaseStatusActive   RegressionCaseStatus = "active"
 	RegressionCaseStatusMuted    RegressionCaseStatus = "muted"
 	RegressionCaseStatusArchived RegressionCaseStatus = "archived"
+	RegressionCaseStatusRejected RegressionCaseStatus = "rejected"
 )
 
 var regressionCaseTransitions = map[RegressionCaseStatus]map[RegressionCaseStatus]struct{}{
+	RegressionCaseStatusProposed: {
+		RegressionCaseStatusActive:   {},
+		RegressionCaseStatusArchived: {},
+		RegressionCaseStatusRejected: {},
+	},
 	RegressionCaseStatusActive: {
 		RegressionCaseStatusMuted:    {},
 		RegressionCaseStatusArchived: {},
@@ -75,6 +82,7 @@ var regressionCaseTransitions = map[RegressionCaseStatus]map[RegressionCaseStatu
 		RegressionCaseStatusArchived: {},
 	},
 	RegressionCaseStatusArchived: {},
+	RegressionCaseStatusRejected: {},
 }
 
 func ParseRegressionCaseStatus(raw string) (RegressionCaseStatus, error) {
@@ -154,13 +162,14 @@ func (m RegressionPromotionMode) Valid() bool {
 }
 
 type PromotionRequest struct {
-	SuiteID             uuid.UUID
-	PromotionMode       RegressionPromotionMode
-	Title               string
-	FailureSummary      string
-	Severity            *RegressionSeverity
-	ValidatorOverrides  json.RawMessage
-	Metadata            json.RawMessage
+	SuiteID            uuid.UUID
+	PromotionMode      RegressionPromotionMode
+	Title              string
+	FailureSummary     string
+	Status             *RegressionCaseStatus
+	Severity           *RegressionSeverity
+	ValidatorOverrides json.RawMessage
+	Metadata           json.RawMessage
 }
 
 type PromotionOverrides struct {

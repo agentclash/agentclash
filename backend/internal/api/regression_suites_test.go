@@ -138,6 +138,7 @@ func TestRegressionManagerPromoteFailureDefaultsSeverity(t *testing.T) {
 		},
 	})
 
+	proposedStatus := domain.RegressionCaseStatusProposed
 	result, err := manager.PromoteFailure(context.Background(), Caller{
 		UserID: uuid.New(),
 		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
@@ -151,6 +152,7 @@ func TestRegressionManagerPromoteFailureDefaultsSeverity(t *testing.T) {
 			SuiteID:       suiteID,
 			PromotionMode: domain.RegressionPromotionModeFullExecutable,
 			Title:         "Promoted failure",
+			Status:        &proposedStatus,
 		},
 	})
 	if err != nil {
@@ -161,6 +163,9 @@ func TestRegressionManagerPromoteFailureDefaultsSeverity(t *testing.T) {
 	}
 	if got := manager.repo.(*fakeRegressionRepository).promoteInput.Severity; got != domain.RegressionSeverityBlocking {
 		t.Fatalf("default severity = %s, want blocking", got)
+	}
+	if got := manager.repo.(*fakeRegressionRepository).promoteInput.Status; got != domain.RegressionCaseStatusProposed {
+		t.Fatalf("status = %s, want proposed", got)
 	}
 	var expectedContract map[string]any
 	if err := json.Unmarshal(manager.repo.(*fakeRegressionRepository).promoteInput.ExpectedContract, &expectedContract); err != nil {

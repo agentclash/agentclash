@@ -238,7 +238,7 @@ func TestPromoteFailureEndpointReturnsCreatedAndIdempotentOK(t *testing.T) {
 					WorkspaceID:                  workspaceID,
 					Title:                        "Promoted failure",
 					Description:                  "",
-					Status:                       domain.RegressionCaseStatusActive,
+					Status:                       domain.RegressionCaseStatusProposed,
 					Severity:                     domain.RegressionSeverityWarning,
 					PromotionMode:                domain.RegressionPromotionModeFullExecutable,
 					SourceChallengePackVersionID: uuid.New(),
@@ -288,7 +288,8 @@ func TestPromoteFailureEndpointReturnsCreatedAndIdempotentOK(t *testing.T) {
 					"run_agent_id":"`+runAgentID.String()+`",
 					"suite_id":"`+suiteID.String()+`",
 					"promotion_mode":"full_executable",
-					"title":"Promoted failure"
+					"title":"Promoted failure",
+					"status":"proposed"
 			}`))
 			req.Header.Set("Content-Type", "application/json")
 			req.Header.Set(headerUserID, uuid.New().String())
@@ -304,6 +305,9 @@ func TestPromoteFailureEndpointReturnsCreatedAndIdempotentOK(t *testing.T) {
 			}
 			if got := *service.promoteInput.RunAgentID; got != runAgentID {
 				t.Fatalf("run_agent_id = %s, want %s", got, runAgentID)
+			}
+			if service.promoteInput.Request.Status == nil || *service.promoteInput.Request.Status != domain.RegressionCaseStatusProposed {
+				t.Fatalf("status = %v, want proposed", service.promoteInput.Request.Status)
 			}
 		})
 	}

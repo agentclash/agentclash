@@ -149,9 +149,11 @@ export function SuiteDetailClient({
                   onChange={(v) => setStatusFilter(v as CaseStatusFilter)}
                   options={[
                     { value: "all", label: "All" },
+                    { value: "proposed", label: "Proposed" },
                     { value: "active", label: "Active" },
                     { value: "muted", label: "Muted" },
                     { value: "archived", label: "Archived" },
+                    { value: "rejected", label: "Rejected" },
                   ]}
                 />
                 <FilterSelect

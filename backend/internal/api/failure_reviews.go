@@ -291,6 +291,7 @@ func promoteFailureInputFromRequest(r *http.Request) (PromoteFailureInput, error
 		PromotionMode      string          `json:"promotion_mode"`
 		Title              string          `json:"title"`
 		FailureSummary     string          `json:"failure_summary,omitempty"`
+		Status             string          `json:"status,omitempty"`
 		Severity           *string         `json:"severity,omitempty"`
 		ValidatorOverrides json.RawMessage `json:"validator_overrides,omitempty"`
 		Metadata           json.RawMessage `json:"metadata,omitempty"`
@@ -317,6 +318,15 @@ func promoteFailureInputFromRequest(r *http.Request) (PromoteFailureInput, error
 	promotionMode, err := domain.ParseRegressionPromotionMode(req.PromotionMode)
 	if err != nil {
 		return PromoteFailureInput{}, errors.New("promotion_mode must be full_executable or output_only")
+	}
+
+	var status *domain.RegressionCaseStatus
+	if raw := strings.TrimSpace(req.Status); raw != "" {
+		parsed, parseErr := domain.ParseRegressionCaseStatus(raw)
+		if parseErr != nil || (parsed != domain.RegressionCaseStatusActive && parsed != domain.RegressionCaseStatusProposed) {
+			return PromoteFailureInput{}, errors.New("status must be active or proposed")
+		}
+		status = &parsed
 	}
 
 	var severity *domain.RegressionSeverity
@@ -347,6 +357,7 @@ func promoteFailureInputFromRequest(r *http.Request) (PromoteFailureInput, error
 			PromotionMode:      promotionMode,
 			Title:              strings.TrimSpace(req.Title),
 			FailureSummary:     strings.TrimSpace(req.FailureSummary),
+			Status:             status,
 			Severity:           severity,
 			ValidatorOverrides: validatorOverrides,
 			Metadata:           metadata,

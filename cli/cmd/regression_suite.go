@@ -32,7 +32,7 @@ func init() {
 	regressionCaseUpdateCmd.Flags().String("from-file", "", "JSON file with regression case patch payload")
 	regressionCaseUpdateCmd.Flags().String("title", "", "Case title")
 	regressionCaseUpdateCmd.Flags().String("description", "", "Case description")
-	regressionCaseUpdateCmd.Flags().String("status", "", "Case status: active, muted, or archived")
+	regressionCaseUpdateCmd.Flags().String("status", "", "Case status: proposed, active, muted, archived, or rejected")
 	regressionCaseUpdateCmd.Flags().String("severity", "", "Case severity: info, warning, or blocking")
 }
 

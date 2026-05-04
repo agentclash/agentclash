@@ -34,9 +34,11 @@ import {
 } from "@/components/ui/select";
 
 const STATUS_OPTIONS: { value: RegressionCaseStatus; label: string }[] = [
+  { value: "proposed", label: "Proposed" },
   { value: "active", label: "Active" },
   { value: "muted", label: "Muted" },
   { value: "archived", label: "Archived" },
+  { value: "rejected", label: "Rejected" },
 ];
 
 const SEVERITY_OPTIONS: RegressionSeverity[] = ["info", "warning", "blocking"];
@@ -72,7 +74,8 @@ export function EditCaseDialog({
     }
   }, [open, regressionCase]);
 
-  const archived = regressionCase.status === "archived";
+  const terminal =
+    regressionCase.status === "archived" || regressionCase.status === "rejected";
 
   async function handleSave(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -208,10 +211,10 @@ export function EditCaseDialog({
             </div>
           </div>
 
-          {archived && (
+          {terminal && (
             <p className="text-xs text-muted-foreground">
-              Archived cases cannot transition out of archived — this state is
-              final.
+              Archived and rejected cases cannot transition back into review —
+              these states are final.
             </p>
           )}
         </form>

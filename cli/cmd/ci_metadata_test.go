@@ -9,7 +9,7 @@ import (
 func TestDetectGitHubActionsCIMetadataReadsPullRequestEvent(t *testing.T) {
 	dir := t.TempDir()
 	eventPath := filepath.Join(dir, "event.json")
-	if err := os.WriteFile(eventPath, []byte(`{"pull_request":{"number":123}}`), 0o644); err != nil {
+	if err := os.WriteFile(eventPath, []byte(`{"pull_request":{"number":123},"repository":{"default_branch":"main"}}`), 0o644); err != nil {
 		t.Fatalf("WriteFile(event) error: %v", err)
 	}
 	env := map[string]string{
@@ -29,7 +29,7 @@ func TestDetectGitHubActionsCIMetadataReadsPullRequestEvent(t *testing.T) {
 		return env[key]
 	}, os.ReadFile)
 
-	if metadata.Repository != "acme/agent" || metadata.Branch != "feature/gate" || metadata.WorkflowRunURL != "https://github.com/acme/agent/actions/runs/987" {
+	if metadata.Repository != "acme/agent" || metadata.Branch != "feature/gate" || metadata.DefaultBranch != "main" || metadata.WorkflowRunURL != "https://github.com/acme/agent/actions/runs/987" {
 		t.Fatalf("metadata = %+v, want repository, branch, and workflow URL", metadata)
 	}
 	if metadata.PullRequestNumber == nil || *metadata.PullRequestNumber != 123 {

@@ -36,6 +36,7 @@ func init() {
 	ciRunCmd.Flags().String("ci-workflow-run-attempt", "", "Workflow run attempt metadata override")
 	ciRunCmd.Flags().String("ci-workflow-run-url", "", "Workflow run URL metadata override")
 	ciRunCmd.Flags().String("ci-event", "", "CI event name metadata override")
+	ciRunCmd.Flags().String("ci-default-branch", "", "Default branch metadata override for auto_on_main regression promotion")
 }
 
 const (
@@ -86,18 +87,19 @@ still receive a machine-readable envelope.`,
 }
 
 type ciRunResult struct {
-	ManifestPath       string                            `json:"manifest_path" yaml:"manifest_path"`
-	WorkspaceID        string                            `json:"workspace_id" yaml:"workspace_id"`
-	RemoteValidation   *ciManifestRemoteValidationResult `json:"remote_validation,omitempty" yaml:"remote_validation,omitempty"`
-	Candidate          ciRunCandidateResult              `json:"candidate" yaml:"candidate"`
-	BaselineResolution *ciBaselineResolution             `json:"baseline_resolution,omitempty" yaml:"baseline_resolution,omitempty"`
-	Baseline           ciBaselineRunResolution           `json:"baseline" yaml:"baseline"`
-	ReleaseGate        map[string]any                    `json:"release_gate,omitempty" yaml:"release_gate,omitempty"`
-	GateVerdict        string                            `json:"gate_verdict,omitempty" yaml:"gate_verdict,omitempty"`
-	FailureReason      string                            `json:"failure_reason,omitempty" yaml:"failure_reason,omitempty"`
-	Reports            *ciRunReportOutputs               `json:"reports,omitempty" yaml:"reports,omitempty"`
-	ExitCode           int                               `json:"exit_code" yaml:"exit_code"`
-	Errors             []string                          `json:"errors,omitempty" yaml:"errors,omitempty"`
+	ManifestPath         string                            `json:"manifest_path" yaml:"manifest_path"`
+	WorkspaceID          string                            `json:"workspace_id" yaml:"workspace_id"`
+	RemoteValidation     *ciManifestRemoteValidationResult `json:"remote_validation,omitempty" yaml:"remote_validation,omitempty"`
+	Candidate            ciRunCandidateResult              `json:"candidate" yaml:"candidate"`
+	BaselineResolution   *ciBaselineResolution             `json:"baseline_resolution,omitempty" yaml:"baseline_resolution,omitempty"`
+	Baseline             ciBaselineRunResolution           `json:"baseline" yaml:"baseline"`
+	ReleaseGate          map[string]any                    `json:"release_gate,omitempty" yaml:"release_gate,omitempty"`
+	GateVerdict          string                            `json:"gate_verdict,omitempty" yaml:"gate_verdict,omitempty"`
+	FailureReason        string                            `json:"failure_reason,omitempty" yaml:"failure_reason,omitempty"`
+	Reports              *ciRunReportOutputs               `json:"reports,omitempty" yaml:"reports,omitempty"`
+	RegressionPromotions *ciRunRegressionPromotionResult   `json:"regression_promotions,omitempty" yaml:"regression_promotions,omitempty"`
+	ExitCode             int                               `json:"exit_code" yaml:"exit_code"`
+	Errors               []string                          `json:"errors,omitempty" yaml:"errors,omitempty"`
 }
 
 type ciRunCandidateResult struct {
@@ -297,6 +299,12 @@ func executeCIRun(cmd *cobra.Command, rc *RunContext) (ciRunResult, error) {
 	result.GateVerdict = gateVerdict.ReleaseGate.Verdict
 	result.FailureReason = ciRunGateFailureReason(result.ReleaseGate)
 	result.ExitCode = ciRunExitCodeForGate(result.GateVerdict)
+	result.RegressionPromotions = promoteCIRunRegressionFailures(cmd, rc, workspaceID, manifest, result, result.ReleaseGate)
+	if result.RegressionPromotions != nil && len(result.RegressionPromotions.Errors) > 0 {
+		for _, msg := range result.RegressionPromotions.Errors {
+			result.Errors = append(result.Errors, "regression promotion: "+msg)
+		}
+	}
 	result, err = finishWithReports(nil, run, completedRun, scorecard, comparison, gateEnvelope)
 	if err != nil {
 		return result, err
@@ -614,6 +622,7 @@ func renderCIRunResult(rc *RunContext, result ciRunResult, err error) {
 		for _, msg := range result.Errors {
 			fmt.Fprintf(os.Stderr, "  - %s\n", output.SanitizeLine(msg))
 		}
+		renderCIRunRegressionPromotions(rc, result.RegressionPromotions)
 		return
 	}
 	rc.Output.PrintSuccess("AgentClash CI run completed")
@@ -631,5 +640,28 @@ func renderCIRunResult(rc *RunContext, result ciRunResult, err error) {
 		rc.Output.PrintDetail("Next", "review gate evidence before merging")
 	case "fail":
 		rc.Output.PrintDetail("Next", "fix the regression before merging")
+	}
+	renderCIRunRegressionPromotions(rc, result.RegressionPromotions)
+}
+
+func renderCIRunRegressionPromotions(rc *RunContext, promotions *ciRunRegressionPromotionResult) {
+	if promotions == nil {
+		return
+	}
+	rc.Output.PrintDetail("Regression Promotion Policy", promotions.Policy)
+	if promotions.CaseStatus != "" {
+		rc.Output.PrintDetail("Regression Candidate Status", promotions.CaseStatus)
+	}
+	if len(promotions.Created) > 0 {
+		rc.Output.PrintDetail("Regression Candidates Created", fmt.Sprintf("%d", len(promotions.Created)))
+	}
+	if len(promotions.Existing) > 0 {
+		rc.Output.PrintDetail("Regression Candidates Existing", fmt.Sprintf("%d", len(promotions.Existing)))
+	}
+	if len(promotions.Skipped) > 0 {
+		rc.Output.PrintDetail("Regression Candidates Skipped", fmt.Sprintf("%d", len(promotions.Skipped)))
+	}
+	if len(promotions.Blocked) > 0 {
+		rc.Output.PrintDetail("Regression Promotion Blocked", promotions.Blocked[0].Message)
 	}
 }
