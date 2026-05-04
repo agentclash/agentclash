@@ -22,6 +22,7 @@ type ciMetadata struct {
 	WorkflowRunAttempt string `json:"workflow_run_attempt,omitempty"`
 	WorkflowRunURL     string `json:"workflow_run_url,omitempty"`
 	EventName          string `json:"event_name,omitempty"`
+	DefaultBranch      string `json:"default_branch,omitempty"`
 }
 
 func ciMetadataFromFlags(cmd *cobra.Command) (map[string]any, error) {
@@ -65,6 +66,9 @@ func ciMetadataFromFlags(cmd *cobra.Command) (map[string]any, error) {
 	if flags.Changed("ci-event") {
 		metadata.EventName, _ = flags.GetString("ci-event")
 	}
+	if flags.Changed("ci-default-branch") {
+		metadata.DefaultBranch, _ = flags.GetString("ci-default-branch")
+	}
 
 	return ciMetadataMap(metadata), nil
 }
@@ -88,6 +92,7 @@ func detectGitHubActionsCIMetadata(getenv func(string) string, readFile func(str
 	if prNumber := githubPullRequestNumber(getenv, readFile); prNumber > 0 {
 		metadata.PullRequestNumber = &prNumber
 	}
+	metadata.DefaultBranch = githubDefaultBranch(getenv, readFile)
 	if metadata.Repository != "" && metadata.WorkflowRunID != "" {
 		serverURL := strings.TrimRight(firstNonEmptyString(getenv("GITHUB_SERVER_URL"), "https://github.com"), "/")
 		metadata.WorkflowRunURL = serverURL + "/" + metadata.Repository + "/actions/runs/" + metadata.WorkflowRunID
@@ -122,6 +127,26 @@ func githubPullRequestNumber(getenv func(string) string, readFile func(string) (
 	return event.Number
 }
 
+func githubDefaultBranch(getenv func(string) string, readFile func(string) ([]byte, error)) string {
+	eventPath := strings.TrimSpace(getenv("GITHUB_EVENT_PATH"))
+	if eventPath == "" {
+		return ""
+	}
+	payload, err := readFile(eventPath)
+	if err != nil {
+		return ""
+	}
+	var event struct {
+		Repository struct {
+			DefaultBranch string `json:"default_branch"`
+		} `json:"repository"`
+	}
+	if err := json.Unmarshal(payload, &event); err != nil {
+		return ""
+	}
+	return event.Repository.DefaultBranch
+}
+
 func githubPullRequestNumberFromRef(ref string) int {
 	parts := strings.Split(strings.TrimSpace(ref), "/")
 	if len(parts) >= 3 && parts[0] == "refs" && parts[1] == "pull" {
@@ -153,6 +178,7 @@ func ciMetadataMap(metadata ciMetadata) map[string]any {
 	addString("workflow_run_attempt", metadata.WorkflowRunAttempt)
 	addString("workflow_run_url", metadata.WorkflowRunURL)
 	addString("event_name", metadata.EventName)
+	addString("default_branch", metadata.DefaultBranch)
 	if len(out) == 0 {
 		return nil
 	}

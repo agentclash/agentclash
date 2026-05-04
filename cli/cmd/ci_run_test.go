@@ -352,6 +352,199 @@ func TestCIRunWritesSummaryAndArtifactsForNonPassingVerdicts(t *testing.T) {
 	}
 }
 
+func TestCIRunProposesRegressionCandidatesOnFailingGate(t *testing.T) {
+	target := writeCIRunManifest(t)
+	captures := &ciRunRouteCaptures{}
+	srv := fakeAPI(t, ciRunRoutes(t, captures, ciRunRegressionPromotionRoutes(t, captures, "fail", nil)))
+	defer srv.Close()
+	t.Setenv("AGENTCLASH_TOKEN", "test-token")
+
+	result, err, _ := runCIRunJSON(t, []string{
+		"ci", "run",
+		"--manifest", target,
+		"-w", "ws-1",
+		"--json",
+		"--poll-interval", "1ms",
+		"--timeout", "1s",
+		"--ci-provider", "github_actions",
+		"--ci-repository", "acme/agent",
+		"--ci-pull-request", "42",
+		"--ci-branch", "feature/gate",
+		"--ci-default-branch", "main",
+	}, srv.URL)
+	if got := exitCodeOf(t, err); got != gateExitFail {
+		t.Fatalf("exit code = %d, want gate fail %d", got, gateExitFail)
+	}
+	if result.RegressionPromotions == nil || result.RegressionPromotions.CaseStatus != "proposed" || len(result.RegressionPromotions.Created) != 1 {
+		t.Fatalf("regression promotions = %+v, want one proposed candidate", result.RegressionPromotions)
+	}
+	if len(captures.PromotionBodies) != 1 {
+		t.Fatalf("promotion bodies = %+v, want one request", captures.PromotionBodies)
+	}
+	body := captures.PromotionBodies[0]
+	if body["status"] != "proposed" || body["suite_id"] != "00000000-0000-0000-0000-000000000007" || body["run_agent_id"] != "agent-candidate" {
+		t.Fatalf("promotion body = %+v, want proposed candidate payload", body)
+	}
+	metadata := mapObject(body, "metadata")
+	ciMetadata := mapObject(metadata, "ci_metadata")
+	if metadata["source"] != "agentclash_ci" || ciMetadata["pull_request_number"] != float64(42) {
+		t.Fatalf("metadata = %+v, want ci metadata and source", metadata)
+	}
+}
+
+func TestCIRunDisabledRegressionPromotionSkipsFailureAPIs(t *testing.T) {
+	target := writeCIRunManifestWith(t, func(manifest string) string {
+		return strings.Replace(manifest, "  promote_failures: proposed", "  promote_failures: disabled", 1)
+	})
+	captures := &ciRunRouteCaptures{}
+	srv := fakeAPI(t, ciRunRoutes(t, captures, map[string]http.HandlerFunc{
+		"POST /v1/release-gates/evaluate": ciRunGateHandler(t, captures, "fail"),
+	}))
+	defer srv.Close()
+	t.Setenv("AGENTCLASH_TOKEN", "test-token")
+
+	result, err, _ := runCIRunJSON(t, []string{
+		"ci", "run",
+		"--manifest", target,
+		"-w", "ws-1",
+		"--json",
+		"--poll-interval", "1ms",
+		"--timeout", "1s",
+	}, srv.URL)
+	if got := exitCodeOf(t, err); got != gateExitFail {
+		t.Fatalf("exit code = %d, want gate fail %d", got, gateExitFail)
+	}
+	if result.RegressionPromotions == nil || len(result.RegressionPromotions.Skipped) != 1 || result.RegressionPromotions.Skipped[0].Reason != "policy_disabled" {
+		t.Fatalf("regression promotions = %+v, want disabled skip", result.RegressionPromotions)
+	}
+}
+
+func TestCIRunAutoOnMainBlocksPullRequestPromotion(t *testing.T) {
+	target := writeCIRunManifestWith(t, func(manifest string) string {
+		return strings.Replace(manifest, "  promote_failures: proposed", "  promote_failures: auto_on_main", 1)
+	})
+	captures := &ciRunRouteCaptures{}
+	srv := fakeAPI(t, ciRunRoutes(t, captures, map[string]http.HandlerFunc{
+		"POST /v1/release-gates/evaluate": ciRunGateHandler(t, captures, "fail"),
+	}))
+	defer srv.Close()
+	t.Setenv("AGENTCLASH_TOKEN", "test-token")
+
+	result, err, _ := runCIRunJSON(t, []string{
+		"ci", "run",
+		"--manifest", target,
+		"-w", "ws-1",
+		"--json",
+		"--poll-interval", "1ms",
+		"--timeout", "1s",
+		"--ci-provider", "github_actions",
+		"--ci-event", "pull_request",
+		"--ci-pull-request", "42",
+		"--ci-branch", "feature/gate",
+		"--ci-default-branch", "main",
+	}, srv.URL)
+	if got := exitCodeOf(t, err); got != gateExitFail {
+		t.Fatalf("exit code = %d, want gate fail %d", got, gateExitFail)
+	}
+	if result.RegressionPromotions == nil || len(result.RegressionPromotions.Blocked) != 1 || result.RegressionPromotions.Blocked[0].Reason != "pull_request_event" {
+		t.Fatalf("regression promotions = %+v, want pull_request block", result.RegressionPromotions)
+	}
+}
+
+func TestCIRunAutoOnMainBlocksNonDefaultBranchPromotion(t *testing.T) {
+	target := writeCIRunManifestWith(t, func(manifest string) string {
+		return strings.Replace(manifest, "  promote_failures: proposed", "  promote_failures: auto_on_main", 1)
+	})
+	captures := &ciRunRouteCaptures{}
+	srv := fakeAPI(t, ciRunRoutes(t, captures, map[string]http.HandlerFunc{
+		"POST /v1/release-gates/evaluate": ciRunGateHandler(t, captures, "fail"),
+	}))
+	defer srv.Close()
+	t.Setenv("AGENTCLASH_TOKEN", "test-token")
+
+	result, err, _ := runCIRunJSON(t, []string{
+		"ci", "run",
+		"--manifest", target,
+		"-w", "ws-1",
+		"--json",
+		"--poll-interval", "1ms",
+		"--timeout", "1s",
+		"--ci-provider", "github_actions",
+		"--ci-event", "push",
+		"--ci-branch", "release-candidate",
+		"--ci-default-branch", "main",
+	}, srv.URL)
+	if got := exitCodeOf(t, err); got != gateExitFail {
+		t.Fatalf("exit code = %d, want gate fail %d", got, gateExitFail)
+	}
+	if result.RegressionPromotions == nil || len(result.RegressionPromotions.Blocked) != 1 || result.RegressionPromotions.Blocked[0].Reason != "non_default_branch" {
+		t.Fatalf("regression promotions = %+v, want non-default branch block", result.RegressionPromotions)
+	}
+}
+
+func TestCIRunAutoOnMainPromotesActiveOnDefaultBranch(t *testing.T) {
+	target := writeCIRunManifestWith(t, func(manifest string) string {
+		return strings.Replace(manifest, "  promote_failures: proposed", "  promote_failures: auto_on_main", 1)
+	})
+	captures := &ciRunRouteCaptures{}
+	srv := fakeAPI(t, ciRunRoutes(t, captures, ciRunRegressionPromotionRoutes(t, captures, "fail", nil)))
+	defer srv.Close()
+	t.Setenv("AGENTCLASH_TOKEN", "test-token")
+
+	result, err, _ := runCIRunJSON(t, []string{
+		"ci", "run",
+		"--manifest", target,
+		"-w", "ws-1",
+		"--json",
+		"--poll-interval", "1ms",
+		"--timeout", "1s",
+		"--ci-provider", "github_actions",
+		"--ci-event", "push",
+		"--ci-branch", "main",
+		"--ci-default-branch", "main",
+	}, srv.URL)
+	if got := exitCodeOf(t, err); got != gateExitFail {
+		t.Fatalf("exit code = %d, want gate fail %d", got, gateExitFail)
+	}
+	if result.RegressionPromotions == nil || result.RegressionPromotions.CaseStatus != "active" || len(result.RegressionPromotions.Created) != 1 {
+		t.Fatalf("regression promotions = %+v, want active auto promotion", result.RegressionPromotions)
+	}
+	if len(captures.PromotionBodies) != 1 || captures.PromotionBodies[0]["status"] != "active" {
+		t.Fatalf("promotion bodies = %+v, want active status", captures.PromotionBodies)
+	}
+}
+
+func TestCIRunRegressionPromotionSkipsExistingCase(t *testing.T) {
+	target := writeCIRunManifest(t)
+	captures := &ciRunRouteCaptures{}
+	srv := fakeAPI(t, ciRunRoutes(t, captures, ciRunRegressionPromotionRoutes(t, captures, "fail", []map[string]any{{
+		"id":                           "case-existing",
+		"status":                       "proposed",
+		"source_challenge_identity_id": "challenge-1",
+		"title":                        "Existing proposal",
+	}})))
+	defer srv.Close()
+	t.Setenv("AGENTCLASH_TOKEN", "test-token")
+
+	result, err, _ := runCIRunJSON(t, []string{
+		"ci", "run",
+		"--manifest", target,
+		"-w", "ws-1",
+		"--json",
+		"--poll-interval", "1ms",
+		"--timeout", "1s",
+	}, srv.URL)
+	if got := exitCodeOf(t, err); got != gateExitFail {
+		t.Fatalf("exit code = %d, want gate fail %d", got, gateExitFail)
+	}
+	if result.RegressionPromotions == nil || len(result.RegressionPromotions.Existing) != 1 || result.RegressionPromotions.Existing[0].CaseID != "case-existing" {
+		t.Fatalf("regression promotions = %+v, want existing case skip", result.RegressionPromotions)
+	}
+	if len(captures.PromotionBodies) != 0 {
+		t.Fatalf("promotion bodies = %+v, want no promote request for existing case", captures.PromotionBodies)
+	}
+}
+
 func TestCIRunAttachesGitHubActionsMetadata(t *testing.T) {
 	target := writeCIRunManifest(t)
 	captures := &ciRunRouteCaptures{}
@@ -623,9 +816,14 @@ type ciRunRouteCaptures struct {
 	DeploymentBody   map[string]any
 	RunBody          map[string]any
 	GateBody         map[string]any
+	PromotionBodies  []map[string]any
 }
 
 func writeCIRunManifest(t *testing.T) string {
+	return writeCIRunManifestWith(t, func(manifest string) string { return manifest })
+}
+
+func writeCIRunManifestWith(t *testing.T, mutate func(string) string) string {
 	t.Helper()
 	dir, err := os.MkdirTemp(".", "ci-run-spec-*")
 	if err != nil {
@@ -638,6 +836,7 @@ func writeCIRunManifest(t *testing.T) string {
 	}
 	manifest := strings.Replace(sampleCIManifestYAML, "    spec_file: .agentclash/agent.json", "    spec_file: "+specPath, 1)
 	manifest = strings.Replace(manifest, "  max_age_days: 30\n", "", 1)
+	manifest = mutate(manifest)
 	return writeCIManifest(t, manifest)
 }
 
@@ -738,6 +937,51 @@ func ciRunRoutes(t *testing.T, captures *ciRunRouteCaptures, overrides map[strin
 		routes[key] = handler
 	}
 	return routes
+}
+
+func ciRunRegressionPromotionRoutes(t *testing.T, captures *ciRunRouteCaptures, verdict string, existingCases []map[string]any) map[string]http.HandlerFunc {
+	t.Helper()
+	if existingCases == nil {
+		existingCases = []map[string]any{}
+	}
+	return map[string]http.HandlerFunc{
+		"POST /v1/release-gates/evaluate": ciRunGateHandler(t, captures, verdict),
+		"GET /v1/workspaces/ws-1/runs/run-candidate/failures": func(w http.ResponseWriter, r *http.Request) {
+			if got := r.URL.Query().Get("agent_id"); got != "agent-candidate" {
+				t.Fatalf("failure query agent_id = %q, want agent-candidate", got)
+			}
+			jsonHandler(200, map[string]any{
+				"items": []map[string]any{{
+					"run_agent_id":             "agent-candidate",
+					"challenge_identity_id":    "challenge-1",
+					"challenge_key":            "challenge.one",
+					"failure_state":            "failed",
+					"failure_class":            "policy_violation",
+					"headline":                 "Policy regression",
+					"detail":                   "Candidate wrote outside the allowed workspace",
+					"promotable":               true,
+					"promotion_mode_available": []string{"output_only", "full_executable"},
+					"severity":                 "blocking",
+				}},
+			})(w, r)
+		},
+		"GET /v1/workspaces/ws-1/regression-suites/00000000-0000-0000-0000-000000000007/cases": jsonHandler(200, map[string]any{
+			"items": existingCases,
+		}),
+		"POST /v1/workspaces/ws-1/runs/run-candidate/failures/challenge-1/promote": func(w http.ResponseWriter, r *http.Request) {
+			var body map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode promotion body: %v", err)
+			}
+			captures.PromotionBodies = append(captures.PromotionBodies, body)
+			jsonHandler(201, map[string]any{
+				"id":                           "case-created",
+				"suite_id":                     body["suite_id"],
+				"status":                       body["status"],
+				"source_challenge_identity_id": "challenge-1",
+			})(w, r)
+		},
+	}
 }
 
 func ciRunGateHandler(t *testing.T, captures *ciRunRouteCaptures, verdict string) http.HandlerFunc {

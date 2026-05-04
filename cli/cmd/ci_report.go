@@ -245,6 +245,12 @@ func renderCIRunMarkdownSummary(result ciRunResult, manifest ciManifest, scoreca
 			fmt.Fprintf(&b, "- %s\n", ciMarkdownText(line))
 		}
 	}
+	if result.RegressionPromotions != nil {
+		b.WriteString("\n### Regression Candidates\n\n")
+		for _, line := range ciRunRegressionPromotionSummaryLines(result.RegressionPromotions) {
+			fmt.Fprintf(&b, "- %s\n", ciMarkdownText(line))
+		}
+	}
 	b.WriteByte('\n')
 	return b.String()
 }
@@ -275,6 +281,32 @@ func ciRunGatePolicyLabel(releaseGate map[string]any) string {
 		parts = append(parts, fingerprint)
 	}
 	return strings.Join(parts, " / ")
+}
+
+func ciRunRegressionPromotionSummaryLines(promotions *ciRunRegressionPromotionResult) []string {
+	if promotions == nil {
+		return nil
+	}
+	lines := []string{"Policy: " + promotions.Policy}
+	if promotions.CaseStatus != "" {
+		lines = append(lines, "Candidate status: "+promotions.CaseStatus)
+	}
+	if len(promotions.Created) > 0 {
+		lines = append(lines, fmt.Sprintf("Created: %d", len(promotions.Created)))
+	}
+	if len(promotions.Existing) > 0 {
+		lines = append(lines, fmt.Sprintf("Existing/skipped: %d", len(promotions.Existing)))
+	}
+	if len(promotions.Skipped) > 0 {
+		lines = append(lines, fmt.Sprintf("Skipped: %d", len(promotions.Skipped)))
+	}
+	for _, blocked := range promotions.Blocked {
+		lines = append(lines, "Blocked: "+blocked.Message)
+	}
+	for _, msg := range promotions.Errors {
+		lines = append(lines, "Error: "+msg)
+	}
+	return lines
 }
 
 func ciRunSummaryLinks(result ciRunResult, scorecard, comparison, releaseGate map[string]any) []string {
