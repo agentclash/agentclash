@@ -32,8 +32,8 @@ func TestCIRunCreatesCandidateRunAndEvaluatesPassingGate(t *testing.T) {
 	if result.Baseline.RunID != "00000000-0000-0000-0000-000000000008" {
 		t.Fatalf("baseline run = %q, want manifest baseline", result.Baseline.RunID)
 	}
-	if result.BaselineResolution.Strategy != "locked_run" {
-		t.Fatalf("baseline strategy = %q, want locked_run", result.BaselineResolution.Strategy)
+	if result.BaselineResolution == nil || result.BaselineResolution.Strategy != "locked_run" {
+		t.Fatalf("baseline resolution = %+v, want locked_run", result.BaselineResolution)
 	}
 	if result.BaselineResolution.Source != "baseline.run_id" || result.BaselineResolution.Refresh.Mode != "manual" {
 		t.Fatalf("baseline resolution = %+v, want source and refresh policy", result.BaselineResolution)
@@ -81,6 +81,9 @@ regressions: {}
 	if result.ExitCode != ciRunExitInvalidManifest || !strings.Contains(strings.Join(result.Errors, "\n"), "trigger.paths") {
 		t.Fatalf("result = %+v, want invalid manifest errors", result)
 	}
+	if result.BaselineResolution != nil {
+		t.Fatalf("baseline_resolution = %+v, want omitted on early failure", result.BaselineResolution)
+	}
 }
 
 func TestCIRunMissingWorkspaceReturnsJSONExitCode(t *testing.T) {
@@ -109,6 +112,42 @@ func TestCIRunRejectsUnsafeSpecFilePaths(t *testing.T) {
 				t.Fatalf("validateCIRunSpecPath(%q) error = nil, want rejection", path)
 			}
 		})
+	}
+}
+
+func TestCIRunRemoteDecodeErrorUsesAPIExitCode(t *testing.T) {
+	target := writeCIRunManifest(t)
+	captures := &ciRunRouteCaptures{}
+	srv := fakeAPI(t, ciRunRoutes(t, captures, map[string]http.HandlerFunc{
+		"GET /v1/agent-builds/00000000-0000-0000-0000-000000000001": invalidJSONHandler(200),
+	}))
+	defer srv.Close()
+	t.Setenv("AGENTCLASH_TOKEN", "test-token")
+
+	result, err, _ := runCIRunJSON(t, []string{"ci", "run", "--manifest", target, "-w", "ws-1", "--json"}, srv.URL)
+	if got := exitCodeOf(t, err); got != ciRunExitAPI {
+		t.Fatalf("exit code = %d, want API %d (err %v)", got, ciRunExitAPI, err)
+	}
+	if result.ExitCode != ciRunExitAPI {
+		t.Fatalf("result = %+v, want API exit code", result)
+	}
+}
+
+func TestCIRunBuildVersionDecodeErrorUsesAPIExitCode(t *testing.T) {
+	target := writeCIRunManifest(t)
+	captures := &ciRunRouteCaptures{}
+	srv := fakeAPI(t, ciRunRoutes(t, captures, map[string]http.HandlerFunc{
+		"POST /v1/agent-builds/00000000-0000-0000-0000-000000000001/versions": invalidJSONHandler(201),
+	}))
+	defer srv.Close()
+	t.Setenv("AGENTCLASH_TOKEN", "test-token")
+
+	result, err, _ := runCIRunJSON(t, []string{"ci", "run", "--manifest", target, "-w", "ws-1", "--json"}, srv.URL)
+	if got := exitCodeOf(t, err); got != ciRunExitAPI {
+		t.Fatalf("exit code = %d, want API %d (err %v)", got, ciRunExitAPI, err)
+	}
+	if result.ExitCode != ciRunExitAPI {
+		t.Fatalf("result = %+v, want API exit code", result)
 	}
 }
 
@@ -196,6 +235,14 @@ func writeCIRunManifest(t *testing.T) string {
 	manifest := strings.Replace(sampleCIManifestYAML, "    spec_file: .agentclash/agent.json", "    spec_file: "+specPath, 1)
 	manifest = strings.Replace(manifest, "  max_age_days: 30\n", "", 1)
 	return writeCIManifest(t, manifest)
+}
+
+func invalidJSONHandler(status int) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		_, _ = w.Write([]byte(`{`))
+	}
 }
 
 func runCIRunJSON(t *testing.T, args []string, apiURL string) (ciRunResult, error, string) {

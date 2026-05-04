@@ -76,7 +76,7 @@ type ciRunResult struct {
 	WorkspaceID        string                            `json:"workspace_id" yaml:"workspace_id"`
 	RemoteValidation   *ciManifestRemoteValidationResult `json:"remote_validation,omitempty" yaml:"remote_validation,omitempty"`
 	Candidate          ciRunCandidateResult              `json:"candidate" yaml:"candidate"`
-	BaselineResolution ciBaselineResolution              `json:"baseline_resolution,omitempty" yaml:"baseline_resolution,omitempty"`
+	BaselineResolution *ciBaselineResolution             `json:"baseline_resolution,omitempty" yaml:"baseline_resolution,omitempty"`
 	Baseline           ciBaselineRunResolution           `json:"baseline" yaml:"baseline"`
 	ReleaseGate        map[string]any                    `json:"release_gate,omitempty" yaml:"release_gate,omitempty"`
 	GateVerdict        string                            `json:"gate_verdict,omitempty" yaml:"gate_verdict,omitempty"`
@@ -133,9 +133,9 @@ func executeCIRun(cmd *cobra.Command, rc *RunContext) (ciRunResult, error) {
 	remoteValidation, remoteErr := validateCIManifestRemote(cmd, rc, workspaceID, manifestPath, manifest)
 	result.RemoteValidation = &remoteValidation
 	if remoteErr != nil {
-		result.ExitCode = ciRunExitForError(remoteErr).(*ExitCodeError).Code
+		result.ExitCode = ciRunExitAPI
 		result.Errors = append(result.Errors, remoteValidation.Errors...)
-		return result, remoteErr
+		return result, &ExitCodeError{Code: result.ExitCode, Message: remoteErr.Error()}
 	}
 	if !remoteValidation.Valid {
 		result.ExitCode = ciRunExitInvalidManifest
@@ -146,14 +146,11 @@ func executeCIRun(cmd *cobra.Command, rc *RunContext) (ciRunResult, error) {
 	buildVersion, err := createCIBuildVersion(cmd, rc, manifest)
 	if err != nil {
 		result.ExitCode = ciRunExitAPI
-		if !ciRunIsAPIError(err) {
+		if ciRunIsSpecError(err) {
 			result.ExitCode = ciRunExitInvalidManifest
 		}
 		result.Errors = append(result.Errors, err.Error())
-		if result.ExitCode == ciRunExitInvalidManifest {
-			return result, &ExitCodeError{Code: ciRunExitInvalidManifest, Message: err.Error()}
-		}
-		return result, err
+		return result, &ExitCodeError{Code: result.ExitCode, Message: err.Error()}
 	}
 	result.Candidate.BuildVersionID = mapString(buildVersion, "id")
 
@@ -187,7 +184,7 @@ func executeCIRun(cmd *cobra.Command, rc *RunContext) (ciRunResult, error) {
 		result.Errors = append(result.Errors, err.Error())
 		return result, &ExitCodeError{Code: result.ExitCode, Message: err.Error()}
 	}
-	result.BaselineResolution = baseline
+	result.BaselineResolution = &baseline
 	result.Baseline = baseline.Baseline
 
 	run, err := createCIRun(cmd, rc, workspaceID, manifest, result.Candidate.DeploymentID)
@@ -269,17 +266,34 @@ func createCIBuildVersion(cmd *cobra.Command, rc *RunContext, manifest ciManifes
 
 func ciRunSpecBody(path string) (map[string]any, error) {
 	if err := validateCIRunSpecPath(path); err != nil {
-		return nil, err
+		return nil, &ciRunSpecError{err: err}
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("reading candidate.build.spec_file: %w", err)
+		return nil, &ciRunSpecError{err: fmt.Errorf("reading candidate.build.spec_file: %w", err)}
 	}
 	var body map[string]any
 	if err := json.Unmarshal(data, &body); err != nil {
-		return nil, fmt.Errorf("parsing candidate.build.spec_file: %w", err)
+		return nil, &ciRunSpecError{err: fmt.Errorf("parsing candidate.build.spec_file: %w", err)}
 	}
 	return body, nil
+}
+
+type ciRunSpecError struct {
+	err error
+}
+
+func (e *ciRunSpecError) Error() string {
+	return e.err.Error()
+}
+
+func (e *ciRunSpecError) Unwrap() error {
+	return e.err
+}
+
+func ciRunIsSpecError(err error) bool {
+	var specErr *ciRunSpecError
+	return errors.As(err, &specErr)
 }
 
 func validateCIRunSpecPath(path string) error {
