@@ -14,6 +14,7 @@ Create a repo-tracked manifest:
 ```bash
 agentclash ci init .agentclash/ci.yaml
 agentclash ci validate .agentclash/ci.yaml
+agentclash ci should-run --changed-file prompts/system.md --json
 ```
 
 The generated manifest has this shape:
@@ -69,6 +70,36 @@ challenge pack/regression suite = workload used to test it
 release gate = decision policy
 ```
 
+## Decide whether CI should run
+
+Use `agentclash ci should-run` when you want AgentClash to explain whether a pull request touches the agent contract. A matching path or label produces `should_run: true`; unrelated docs-only changes produce `should_run: false`.
+
+```bash
+agentclash ci should-run \
+  --manifest .agentclash/ci.yaml \
+  --changed-file prompts/system.md
+```
+
+Labels can force the gate even when paths do not match:
+
+```bash
+agentclash ci should-run \
+  --manifest .agentclash/ci.yaml \
+  --changed-file docs/readme.md \
+  --labels agentclash/eval \
+  --json
+```
+
+For local or GitHub Actions diffing, pass refs explicitly:
+
+```bash
+agentclash ci should-run \
+  --manifest .agentclash/ci.yaml \
+  --base origin/main \
+  --head HEAD \
+  --json
+```
+
 ## GitHub Actions sketch
 
 The first shipped CLI surface validates the manifest. Full orchestration will be a follow-up command built on the same file. Until then, teams can validate the contract and keep using the existing explicit run and gate commands. The workflow below repeats selected manifest IDs as GitHub variables only because `agentclash ci run` does not exist yet; once it does, the manifest should be the single source of truth.
@@ -89,6 +120,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
@@ -99,7 +132,14 @@ jobs:
       - name: Validate AgentClash CI manifest
         run: agentclash ci validate .agentclash/ci.yaml
 
+      - name: Decide whether AgentClash gate should run
+        id: should-run
+        run: |
+          SHOULD_RUN=$(agentclash ci should-run --json | jq -r '.should_run')
+          echo "should_run=$SHOULD_RUN" >> "$GITHUB_OUTPUT"
+
       - name: Create candidate run
+        if: steps.should-run.outputs.should_run == 'true'
         id: candidate
         run: |
           RUN_JSON=$(agentclash run create \
@@ -115,6 +155,7 @@ jobs:
           AGENTCLASH_CANDIDATE_DEPLOYMENT: ${{ vars.AGENTCLASH_CANDIDATE_DEPLOYMENT }}
 
       - name: Evaluate release gate
+        if: steps.should-run.outputs.should_run == 'true'
         run: |
           agentclash compare gate \
             --baseline "$AGENTCLASH_BASELINE_RUN" \
@@ -156,6 +197,7 @@ Only a future main-branch workflow should auto-promote high-confidence failures 
 ## Current limits
 
 - `agentclash ci validate` validates the manifest shape locally; it does not check that IDs exist in the API.
+- `agentclash ci should-run` only decides whether a gate should run; it does not create runs or evaluate gates.
 - There is not yet an `agentclash ci run` wrapper that creates the candidate build version, deployment, run, gate, and PR report in one command.
 - PR metadata such as repository, pull request number, branch, and commit SHA is not yet attached to runs by the CLI.
 - Automatic regression promotion should remain opt-in and conservative.
