@@ -23,6 +23,7 @@ import { createApiClient } from "@/lib/api/client";
 import { ApiError } from "@/lib/api/errors";
 import { listRunFailures } from "@/lib/api/failure-reviews";
 import type {
+  FailureReviewClusterSummary,
   FailureReviewEvidenceTier,
   FailureReviewFailureClass,
   FailureReviewItem,
@@ -71,6 +72,11 @@ const EVIDENCE_TIER_OPTIONS: FailureReviewEvidenceTier[] = [
 
 function humanize(value: string): string {
   return value.replace(/_/g, " ");
+}
+
+function compactList(values: string[], maxVisible = 3): string {
+  if (values.length <= maxVisible) return values.join(", ");
+  return `${values.slice(0, maxVisible).join(", ")} +${values.length - maxVisible}`;
 }
 
 const severityVariant: Record<
@@ -173,6 +179,9 @@ function FailuresClientInner({
 
   // Drive data from filters. Initial SSR page corresponds to "no filters".
   const [items, setItems] = useState<FailureReviewItem[]>(initialPage.items);
+  const [clusters, setClusters] = useState<FailureReviewClusterSummary[]>(
+    initialPage.clusters ?? [],
+  );
   const [cursor, setCursor] = useState<string | undefined>(
     initialPage.next_cursor,
   );
@@ -213,6 +222,7 @@ function FailuresClientInner({
         });
         if (cancelled) return;
         setItems(res.items);
+        setClusters(res.clusters ?? []);
         setCursor(res.next_cursor);
         activeFiltersRef.current = urlFilters;
       } catch (err) {
@@ -268,6 +278,7 @@ function FailuresClientInner({
         ...urlFilters,
       });
       setItems((prev) => [...prev, ...res.items]);
+      setClusters(res.clusters ?? []);
       setCursor(res.next_cursor);
     } catch (err) {
       if (err instanceof ApiError) setError(err.message);
@@ -329,6 +340,8 @@ function FailuresClientInner({
         />
       ) : (
         <div className="space-y-3">
+          {clusters.length > 0 && <FailureClusterRollups clusters={clusters} />}
+
           {groups.map((group) => (
             <ChallengeGroup
               key={group.challengeKey}
@@ -377,6 +390,98 @@ function FailuresClientInner({
 }
 
 // --- Sub-components ---
+
+function FailureClusterRollups({
+  clusters,
+}: {
+  clusters: FailureReviewClusterSummary[];
+}) {
+  const totalFailures = clusters.reduce((sum, cluster) => sum + cluster.count, 0);
+  const totalPromotable = clusters.reduce(
+    (sum, cluster) => sum + cluster.promotable_count,
+    0,
+  );
+
+  return (
+    <section className="rounded-lg border border-border bg-card/40">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
+        <div className="min-w-0">
+          <h2 className="text-sm font-semibold">Failure clusters</h2>
+          <p className="text-xs text-muted-foreground">
+            {clusters.length} cluster{clusters.length === 1 ? "" : "s"} ·{" "}
+            {totalFailures} failure{totalFailures === 1 ? "" : "s"} ·{" "}
+            {totalPromotable} promotable
+          </p>
+        </div>
+      </div>
+      <ul className="divide-y divide-border">
+        {clusters.map((cluster) => (
+          <li
+            key={cluster.failure_cluster_key}
+            className="grid gap-3 px-4 py-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center"
+          >
+            <div className="min-w-0 space-y-2">
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <Badge variant={severityVariant[cluster.severity]}>
+                  {cluster.severity}
+                </Badge>
+                <Badge variant={failureStateVariant[cluster.failure_state]}>
+                  {humanize(cluster.failure_state)}
+                </Badge>
+                <Badge variant="outline">{humanize(cluster.failure_class)}</Badge>
+                <Badge variant="secondary">
+                  {humanize(cluster.evidence_tier)}
+                </Badge>
+              </div>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium">
+                  {cluster.headline || humanize(cluster.failure_class)}
+                </p>
+                {cluster.recommended_action && (
+                  <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                    {cluster.recommended_action}
+                  </p>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                <span className="min-w-0 truncate">
+                  Challenges:{" "}
+                  <span className="text-foreground/80">
+                    {compactList(cluster.challenge_keys)}
+                  </span>
+                </span>
+                <span className="min-w-0 truncate">
+                  Cases:{" "}
+                  <span className="text-foreground/80">
+                    {compactList(cluster.case_keys)}
+                  </span>
+                </span>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 md:justify-end">
+              <div className="rounded-md border border-border px-2.5 py-1 text-right">
+                <div className="text-sm font-semibold tabular-nums">
+                  {cluster.count}
+                </div>
+                <div className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+                  failures
+                </div>
+              </div>
+              <div className="rounded-md border border-border px-2.5 py-1 text-right">
+                <div className="text-sm font-semibold tabular-nums">
+                  {cluster.promotable_count}
+                </div>
+                <div className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+                  promote
+                </div>
+              </div>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
 
 function FilterBar({
   agents,
