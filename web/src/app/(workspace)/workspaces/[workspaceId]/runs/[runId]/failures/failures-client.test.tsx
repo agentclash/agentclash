@@ -348,6 +348,26 @@ describe("FailuresClient", () => {
           }),
         );
       });
+
+      await waitFor(() => {
+        const activeClusterButton = view.container.querySelector(
+          'button[aria-pressed="true"]',
+        );
+        expect(activeClusterButton).toBeTruthy();
+      });
+
+      mockReplace.mockReset();
+      const activeClusterButton = view.container.querySelector(
+        'button[aria-pressed="true"]',
+      );
+      act(() => {
+        clickElement(activeClusterButton!);
+      });
+
+      expect(mockReplace).toHaveBeenCalledWith(
+        "/workspaces/ws-1/runs/run-1/failures",
+        { scroll: false },
+      );
     } finally {
       view.cleanup();
     }

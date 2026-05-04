@@ -418,7 +418,7 @@ function FailureClusterRollups({
 }: {
   clusters: FailureReviewClusterSummary[];
   activeClusterKey?: string;
-  onSelectCluster: (clusterKey: string) => void;
+  onSelectCluster: (clusterKey: string | undefined) => void;
 }) {
   const totalFailures = clusters.reduce((sum, cluster) => sum + cluster.count, 0);
   const totalPromotable = clusters.reduce(
@@ -446,7 +446,11 @@ function FailureClusterRollups({
               <button
                 type="button"
                 aria-pressed={active}
-                onClick={() => onSelectCluster(cluster.failure_cluster_key)}
+                onClick={() =>
+                  onSelectCluster(
+                    active ? undefined : cluster.failure_cluster_key,
+                  )
+                }
                 className={cn(
                   "grid w-full gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/40",
                   "md:grid-cols-[minmax(0,1fr)_auto] md:items-center",
