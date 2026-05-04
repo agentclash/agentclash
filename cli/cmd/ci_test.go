@@ -593,6 +593,82 @@ func TestCIValidateRemoteAuthFailureIsAPIError(t *testing.T) {
 	}
 }
 
+func TestCIValidateRemotePreservesBaselineAPIErrorCode(t *testing.T) {
+	target := writeCIManifest(t, strings.Replace(sampleCIManifestYAML, "  max_age_days: 30\n", "", 1))
+	srv := fakeAPI(t, remoteCIValidateRoutes(t, map[string]http.HandlerFunc{
+		"GET /v1/runs/00000000-0000-0000-0000-000000000008": jsonHandler(404, map[string]any{
+			"error": map[string]any{"code": "run_not_found", "message": "run not found"},
+		}),
+	}))
+	defer srv.Close()
+	t.Setenv("AGENTCLASH_TOKEN", "test-token")
+
+	result, err, _ := runCIValidateJSON(t, []string{"ci", "validate", target, "--remote", "-w", "ws-1", "--json"}, srv.URL)
+	if err == nil || !strings.Contains(err.Error(), "ci manifest remote validation failed") {
+		t.Fatalf("error = %v, want remote validation failure", err)
+	}
+	var baselineCheck *ciManifestRemoteCheck
+	for i := range result.Remote.Checks {
+		if result.Remote.Checks[i].Field == "baseline.run_id" {
+			baselineCheck = &result.Remote.Checks[i]
+			break
+		}
+	}
+	if baselineCheck == nil {
+		t.Fatalf("checks = %+v, want baseline check", result.Remote.Checks)
+	}
+	if baselineCheck.Code != "run_not_found" {
+		t.Fatalf("baseline check code = %q, want run_not_found", baselineCheck.Code)
+	}
+}
+
+func TestCIValidateRemoteRegressionCasesStayScopedToExplicitSuites(t *testing.T) {
+	manifest := strings.Replace(sampleCIManifestYAML, "  max_age_days: 30\n", "", 1)
+	manifest = strings.Replace(manifest,
+		"  regression_suites:\n    - 00000000-0000-0000-0000-000000000007\n",
+		"  regression_suites:\n    - 00000000-0000-0000-0000-000000000007\n  regression_cases:\n    - case-1\n",
+		1,
+	)
+	target := writeCIManifest(t, manifest)
+	srv := fakeAPI(t, remoteCIValidateRoutes(t, map[string]http.HandlerFunc{
+		"GET /v1/workspaces/ws-1/regression-suites": jsonHandler(200, map[string]any{
+			"items": []map[string]any{{
+				"id":                       "suite-other",
+				"workspace_id":             "ws-1",
+				"source_challenge_pack_id": "pack-1",
+				"name":                     "Other suite",
+				"status":                   "active",
+			}},
+		}),
+		"GET /v1/workspaces/ws-1/regression-suites/suite-other/cases": jsonHandler(200, map[string]any{
+			"items": []map[string]any{{
+				"id":                               "case-1",
+				"suite_id":                         "suite-other",
+				"workspace_id":                     "ws-1",
+				"status":                           "active",
+				"source_challenge_pack_version_id": "00000000-0000-0000-0000-000000000005",
+				"source_challenge_input_set_id":    "00000000-0000-0000-0000-000000000006",
+			}},
+		}),
+	}))
+	defer srv.Close()
+	t.Setenv("AGENTCLASH_TOKEN", "test-token")
+
+	result, err, _ := runCIValidateJSON(t, []string{"ci", "validate", target, "--remote", "-w", "ws-1", "--json"}, srv.URL)
+	if err == nil || !strings.Contains(err.Error(), "ci manifest remote validation failed") {
+		t.Fatalf("error = %v, want remote validation failure", err)
+	}
+	if !ciRemoteChecksContainField(result.Remote.Checks, "evaluation.regression_suites", false) {
+		t.Fatalf("remote checks missing suite failure: %+v", result.Remote.Checks)
+	}
+	if !ciRemoteChecksContainField(result.Remote.Checks, "evaluation.regression_cases", false) {
+		t.Fatalf("remote checks missing scoped case failure: %+v", result.Remote.Checks)
+	}
+	if strings.Contains(strings.Join(result.Remote.Errors, "\n"), "regression case exists and is compatible") {
+		t.Fatalf("remote errors unexpectedly passed case from unselected suite: %v", result.Remote.Errors)
+	}
+}
+
 func TestCIShouldRunMatchesChangedPath(t *testing.T) {
 	target := writeCIManifest(t, sampleCIManifestYAML)
 	result := runCIShouldRunJSON(t, []string{

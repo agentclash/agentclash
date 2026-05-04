@@ -494,7 +494,7 @@ func validateCIManifestRemote(cmd *cobra.Command, rc *RunContext, workspaceID, m
 			return result, err
 		}
 	}
-	if err := validateCIManifestRemoteRegressionCases(cmd, rc, &result, workspaceID, versionID, manifest.Evaluation.InputSetID, suites, selectedSuiteIDs, manifest.Evaluation.RegressionCases); err != nil {
+	if err := validateCIManifestRemoteRegressionCases(cmd, rc, &result, workspaceID, versionID, manifest.Evaluation.InputSetID, suites, selectedSuiteIDs, len(manifest.Evaluation.RegressionSuites) > 0, manifest.Evaluation.RegressionCases); err != nil {
 		result.addAPIError(err)
 		return result, err
 	}
@@ -642,8 +642,14 @@ func validateCIManifestRemoteRegressionSuites(cmd *cobra.Command, rc *RunContext
 	return suites, selected, nil
 }
 
-func validateCIManifestRemoteRegressionCases(cmd *cobra.Command, rc *RunContext, result *ciManifestRemoteValidationResult, workspaceID, challengePackVersionID, inputSetID string, suites []regressionSuiteSummary, selectedSuiteIDs []string, caseIDs []string) error {
+func validateCIManifestRemoteRegressionCases(cmd *cobra.Command, rc *RunContext, result *ciManifestRemoteValidationResult, workspaceID, challengePackVersionID, inputSetID string, suites []regressionSuiteSummary, selectedSuiteIDs []string, suiteScopeExplicit bool, caseIDs []string) error {
 	if len(caseIDs) == 0 {
+		return nil
+	}
+	if suiteScopeExplicit && len(selectedSuiteIDs) == 0 {
+		for _, caseID := range caseIDs {
+			result.addFailure("evaluation.regression_cases", "regression_case", caseID, "dependency_failed", "regression case cannot be validated because no explicit evaluation.regression_suites entry resolved")
+		}
 		return nil
 	}
 	searchSuiteIDs := selectedSuiteIDs
@@ -703,7 +709,11 @@ func validateCIManifestRemoteBaseline(cmd *cobra.Command, rc *RunContext, result
 		result.addPass(field, resource, id, "baseline resolves to a completed run compatible with the selected workload")
 		return nil
 	}
-	if apiErr, ok := ciRemoteAPIError(err); ok && !ciRemoteAPIErrorCanBeFieldFailure(apiErr) {
+	if apiErr, ok := ciRemoteAPIError(err); ok {
+		if ciRemoteAPIErrorCanBeFieldFailure(apiErr) {
+			result.addFailure(field, resource, id, ciRemoteAPIErrorCode(apiErr), err.Error())
+			return nil
+		}
 		result.addAPIError(err)
 		return err
 	}

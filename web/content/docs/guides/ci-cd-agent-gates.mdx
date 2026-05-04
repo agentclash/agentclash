@@ -56,7 +56,7 @@ regressions:
 
 The IDs in the generated file are placeholders. Replace them with workspace resources before using the manifest for a real gate.
 
-Local validation is always offline. Add `--remote` when you want the CLI to call the AgentClash API and verify that the manifest's agent build, runtime profile, provider account, model alias, challenge pack version, input set, regression suites or cases, and baseline are visible from the selected workspace. JSON output includes a `remote.checks[]` entry per referenced field, so CI can report whether a failure came from the local manifest contract or from an API/resource check.
+Local validation is always offline. Add `--remote` when you want the CLI to call the AgentClash API and verify that the manifest's agent build, runtime profile, provider account, model alias, challenge pack version, input set, regression suites or cases, and baseline are visible from the selected workspace. Because this makes real authenticated API calls, set `AGENTCLASH_API_URL`, `AGENTCLASH_TOKEN`, and `AGENTCLASH_WORKSPACE` in CI and expect normal API latency, rate limits, and token scoping rules. JSON output includes a `remote.checks[]` entry per referenced field, so CI can report whether a failure came from the local manifest contract or from an API/resource check.
 
 ## What each section means
 
