@@ -234,6 +234,60 @@ func TestBuildRunAgentItemsComputesStableFailureIdentity(t *testing.T) {
 	}
 }
 
+func TestFailureIdentityCanonicalizesSortedInputs(t *testing.T) {
+	t.Parallel()
+
+	challengeID := uuid.New()
+	base := Item{
+		RunID:               uuid.New(),
+		RunAgentID:          uuid.New(),
+		ChallengeIdentityID: &challengeID,
+		ChallengeKey:        "ticket-canonical",
+		CaseKey:             "case-canonical",
+		ItemKey:             "prompt.txt",
+		FailureState:        FailureStateFailed,
+		FailureClass:        FailureClassToolArgumentError,
+		FailedDimensions:    []string{"grounding", "correctness"},
+		FailedChecks:        []string{"tool_argument.schema", "policy.filesystem"},
+		EvidenceTier:        EvidenceTierNativeStructured,
+		ReplayStepRefs: []ReplayStepRef{
+			{SequenceNumber: 20, EventType: "tool.call.completed", Kind: "tool_call"},
+			{SequenceNumber: 10, EventType: "system.output.finalized", Kind: "final_output"},
+		},
+	}
+	reversed := base
+	reversed.FailedDimensions = []string{"correctness", "grounding"}
+	reversed.FailedChecks = []string{"policy.filesystem", "tool_argument.schema"}
+	reversed.ReplayStepRefs = []ReplayStepRef{
+		{SequenceNumber: 10, EventType: "system.output.finalized", Kind: "final_output"},
+		{SequenceNumber: 20, EventType: "tool.call.completed", Kind: "tool_call"},
+	}
+
+	baseFingerprint, err := buildFailureFingerprint(base)
+	if err != nil {
+		t.Fatalf("buildFailureFingerprint(base) returned error: %v", err)
+	}
+	reversedFingerprint, err := buildFailureFingerprint(reversed)
+	if err != nil {
+		t.Fatalf("buildFailureFingerprint(reversed) returned error: %v", err)
+	}
+	if baseFingerprint != reversedFingerprint {
+		t.Fatalf("fingerprint = %q, want canonical %q", reversedFingerprint, baseFingerprint)
+	}
+
+	baseClusterKey, err := buildFailureClusterKey(base)
+	if err != nil {
+		t.Fatalf("buildFailureClusterKey(base) returned error: %v", err)
+	}
+	reversedClusterKey, err := buildFailureClusterKey(reversed)
+	if err != nil {
+		t.Fatalf("buildFailureClusterKey(reversed) returned error: %v", err)
+	}
+	if baseClusterKey != reversedClusterKey {
+		t.Fatalf("cluster key = %q, want canonical %q", reversedClusterKey, baseClusterKey)
+	}
+}
+
 func TestBuildRunAgentItemsHandlesHostedBlackBoxEligibility(t *testing.T) {
 	t.Parallel()
 

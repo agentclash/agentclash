@@ -241,7 +241,10 @@ func BuildRunAgentItems(input RunAgentInput) ([]Item, error) {
 
 	items := make([]Item, 0, len(groups))
 	for _, group := range groups {
-		item, ok := finalizeGroup(group, input, scorecard)
+		item, ok, err := finalizeGroup(group, input, scorecard)
+		if err != nil {
+			return nil, err
+		}
 		if !ok {
 			continue
 		}
@@ -417,7 +420,7 @@ func ensureGroup(groups map[string]*itemGroup, caseByID map[string]CaseContext, 
 	return group
 }
 
-func finalizeGroup(group *itemGroup, input RunAgentInput, scorecard scorecardDocument) (Item, bool) {
+func finalizeGroup(group *itemGroup, input RunAgentInput, scorecard scorecardDocument) (Item, bool, error) {
 	failedDimensions := failedDimensions(scorecard.Dimensions)
 	evidenceTier := inferEvidenceTier(input.DeploymentType, input.Events)
 	finalOutputRef := finalOutputReplayRef(input.Events)
@@ -460,7 +463,7 @@ func finalizeGroup(group *itemGroup, input RunAgentInput, scorecard scorecardDoc
 	failureState := deriveFailureState(group.FailedChecks, failedDimensions, evidenceTier)
 
 	if len(group.FailedChecks) == 0 && len(failedDimensions) == 0 && failureState == FailureStateWarning {
-		return Item{}, false
+		return Item{}, false, nil
 	}
 
 	promotable := input.RunStatus == domain.RunStatusCompleted && group.ChallengeID != nil && evidenceTier != EvidenceTierNone
@@ -508,9 +511,17 @@ func finalizeGroup(group *itemGroup, input RunAgentInput, scorecard scorecardDoc
 			ItemKey:      group.Case.ItemKey,
 		},
 	}
-	item.FailureFingerprint = buildFailureFingerprint(item)
-	item.FailureClusterKey = buildFailureClusterKey(item)
-	return item, true
+	fingerprint, err := buildFailureFingerprint(item)
+	if err != nil {
+		return Item{}, false, err
+	}
+	clusterKey, err := buildFailureClusterKey(item)
+	if err != nil {
+		return Item{}, false, err
+	}
+	item.FailureFingerprint = fingerprint
+	item.FailureClusterKey = clusterKey
+	return item, true, nil
 }
 
 type failureIdentityPayload struct {
@@ -527,11 +538,10 @@ type failureIdentityPayload struct {
 	FailedDimensions    []string        `json:"failed_dimensions,omitempty"`
 	FailedChecks        []string        `json:"failed_checks,omitempty"`
 	EvidenceTier        EvidenceTier    `json:"evidence_tier,omitempty"`
-	Severity            Severity        `json:"severity,omitempty"`
 	ReplayStepRefs      []ReplayStepRef `json:"replay_step_refs,omitempty"`
 }
 
-func buildFailureFingerprint(item Item) string {
+func buildFailureFingerprint(item Item) (string, error) {
 	return hashFailureIdentity("frf_", failureIdentityPayload{
 		SchemaVersion:       failureIdentitySchemaVersion,
 		Scope:               "run_failure",
@@ -546,12 +556,13 @@ func buildFailureFingerprint(item Item) string {
 		FailedDimensions:    sortedStringCopy(item.FailedDimensions),
 		FailedChecks:        sortedStringCopy(item.FailedChecks),
 		EvidenceTier:        item.EvidenceTier,
-		Severity:            item.Severity,
 		ReplayStepRefs:      sortedReplayRefCopy(item.ReplayStepRefs),
 	})
 }
 
-func buildFailureClusterKey(item Item) string {
+// buildFailureClusterKey intentionally omits run-scoped and challenge UUIDs so
+// equivalent challenge keys can trend across reruns and pack-version rebuilds.
+func buildFailureClusterKey(item Item) (string, error) {
 	return hashFailureIdentity("frc_", failureIdentityPayload{
 		SchemaVersion:    failureIdentitySchemaVersion,
 		Scope:            "failure_cluster",
@@ -563,14 +574,16 @@ func buildFailureClusterKey(item Item) string {
 		FailedDimensions: sortedStringCopy(item.FailedDimensions),
 		FailedChecks:     sortedStringCopy(item.FailedChecks),
 		EvidenceTier:     item.EvidenceTier,
-		Severity:         item.Severity,
 	})
 }
 
-func hashFailureIdentity(prefix string, payload failureIdentityPayload) string {
-	encoded, _ := json.Marshal(payload)
+func hashFailureIdentity(prefix string, payload failureIdentityPayload) (string, error) {
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return "", fmt.Errorf("marshal %s failure identity: %w", payload.Scope, err)
+	}
 	sum := sha256.Sum256(encoded)
-	return prefix + hex.EncodeToString(sum[:])
+	return prefix + hex.EncodeToString(sum[:]), nil
 }
 
 func failedDimensions(dimensions map[string]dimensionSummary) []string {
