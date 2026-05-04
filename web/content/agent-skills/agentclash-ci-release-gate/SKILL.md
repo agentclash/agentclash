@@ -277,7 +277,7 @@ Each artifact is wrapped in an envelope with `schema_version: "2026-05-04"`, `ki
 - `proposed`: creates proposed regression candidates.
 - `auto_on_main`: creates active cases only on the default branch outside pull request events; otherwise it blocks with `pull_request_event`, `missing_default_branch`, or `non_default_branch`.
 
-Promotion also blocks when `evaluation.regression_suites` is empty, using reason `no_regression_suites`. It lists candidate run failures with `limit=200`, prefers `full_executable` over `output_only`, skips non-promotable or unsupported failures, and avoids existing active/proposed cases by `source_challenge_identity_id` or metadata `source_failure_cluster_key`.
+Promotion also blocks when `evaluation.regression_suites` is empty, using reason `no_regression_suites`. It lists candidate run failures with `limit=200`, prefers `full_executable` over `output_only`, skips non-promotable or unsupported failures, and avoids existing cases by `source_challenge_identity_id` or metadata `source_failure_cluster_key` unless the existing case status is `archived` or `rejected`.
 
 `regression_promotions` contains `policy`, optional `case_status`, `created`, `existing`, `skipped`, `blocked`, and `errors`. Created/existing items include `suite_id`, `case_id`, `challenge_identity_id`, `challenge_key`, `failure_cluster_key`, `status`, and `created`.
 
