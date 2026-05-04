@@ -3,6 +3,7 @@ package cmd
 import (
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -455,6 +456,244 @@ regressions:
 				t.Fatalf("errors = %v, want %q", result.Errors, tt.want)
 			}
 		})
+	}
+}
+
+func TestCIValidateRemoteSuccess(t *testing.T) {
+	target := writeCIManifest(t, strings.Replace(sampleCIManifestYAML, "  max_age_days: 30\n", "", 1))
+	srv := fakeAPI(t, remoteCIValidateRoutes(t, nil))
+	defer srv.Close()
+	t.Setenv("AGENTCLASH_TOKEN", "test-token")
+
+	result, err, _ := runCIValidateJSON(t, []string{"ci", "validate", target, "--remote", "-w", "ws-1", "--json"}, srv.URL)
+	if err != nil {
+		t.Fatalf("ci validate --remote error: %v", err)
+	}
+	if !result.Valid {
+		t.Fatalf("valid = false, errors = %v", result.Errors)
+	}
+	if result.Remote == nil || !result.Remote.Valid {
+		t.Fatalf("remote = %+v, want valid remote result", result.Remote)
+	}
+	for _, field := range []string{
+		"candidate.build.agent_build_id",
+		"candidate.deployment.runtime_profile_id",
+		"candidate.deployment.provider_account_id",
+		"candidate.deployment.model_alias_id",
+		"evaluation.challenge_pack_version_id",
+		"evaluation.input_set_id",
+		"evaluation.regression_suites",
+		"baseline.run_id",
+	} {
+		if !ciRemoteChecksContainField(result.Remote.Checks, field, true) {
+			t.Fatalf("remote checks missing valid field %q: %+v", field, result.Remote.Checks)
+		}
+	}
+}
+
+func TestCIValidateRemoteIsOptIn(t *testing.T) {
+	target := writeCIManifest(t, sampleCIManifestYAML)
+	called := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	result, err, _ := runCIValidateJSON(t, []string{"ci", "validate", target, "--json"}, srv.URL)
+	if err != nil {
+		t.Fatalf("ci validate --json error: %v", err)
+	}
+	if !result.Valid {
+		t.Fatalf("valid = false, errors = %v", result.Errors)
+	}
+	if called {
+		t.Fatal("offline ci validate made an API request without --remote")
+	}
+	if result.Remote != nil {
+		t.Fatalf("remote = %+v, want nil without --remote", result.Remote)
+	}
+}
+
+func TestCIValidateRemoteMissingResourceReportsField(t *testing.T) {
+	target := writeCIManifest(t, strings.Replace(sampleCIManifestYAML, "  max_age_days: 30\n", "", 1))
+	srv := fakeAPI(t, remoteCIValidateRoutes(t, map[string]http.HandlerFunc{
+		"GET /v1/workspaces/ws-1/runtime-profiles": jsonHandler(200, map[string]any{"items": []map[string]any{}}),
+	}))
+	defer srv.Close()
+	t.Setenv("AGENTCLASH_TOKEN", "test-token")
+
+	result, err, _ := runCIValidateJSON(t, []string{"ci", "validate", target, "--remote", "-w", "ws-1", "--json"}, srv.URL)
+	if err == nil || !strings.Contains(err.Error(), "ci manifest remote validation failed") {
+		t.Fatalf("error = %v, want remote validation failure", err)
+	}
+	if result.Valid || result.Remote == nil || result.Remote.Valid {
+		t.Fatalf("result = %+v, want invalid remote result", result)
+	}
+	if !ciRemoteChecksContainField(result.Remote.Checks, "candidate.deployment.runtime_profile_id", false) {
+		t.Fatalf("remote checks missing runtime failure: %+v", result.Remote.Checks)
+	}
+	if !strings.Contains(strings.Join(result.Errors, "\n"), "candidate.deployment.runtime_profile_id") {
+		t.Fatalf("errors = %v, want runtime field error", result.Errors)
+	}
+}
+
+func TestCIValidateRemoteWrongWorkspaceRunReportsField(t *testing.T) {
+	target := writeCIManifest(t, strings.Replace(sampleCIManifestYAML, "  max_age_days: 30\n", "", 1))
+	srv := fakeAPI(t, remoteCIValidateRoutes(t, map[string]http.HandlerFunc{
+		"GET /v1/runs/00000000-0000-0000-0000-000000000008": jsonHandler(200, map[string]any{
+			"id":                        "00000000-0000-0000-0000-000000000008",
+			"workspace_id":              "ws-other",
+			"status":                    "completed",
+			"challenge_pack_version_id": "00000000-0000-0000-0000-000000000005",
+			"challenge_input_set_id":    "00000000-0000-0000-0000-000000000006",
+			"created_at":                "2026-05-01T00:00:00Z",
+		}),
+	}))
+	defer srv.Close()
+	t.Setenv("AGENTCLASH_TOKEN", "test-token")
+
+	result, err, _ := runCIValidateJSON(t, []string{"ci", "validate", target, "--remote", "-w", "ws-1", "--json"}, srv.URL)
+	if err == nil || !strings.Contains(err.Error(), "ci manifest remote validation failed") {
+		t.Fatalf("error = %v, want remote validation failure", err)
+	}
+	if result.Remote == nil || result.Remote.Valid {
+		t.Fatalf("remote = %+v, want invalid remote result", result.Remote)
+	}
+	if !ciRemoteChecksContainField(result.Remote.Checks, "baseline.run_id", false) {
+		t.Fatalf("remote checks missing baseline failure: %+v", result.Remote.Checks)
+	}
+	if !strings.Contains(strings.Join(result.Errors, "\n"), "belongs to workspace ws-other") {
+		t.Fatalf("errors = %v, want wrong-workspace diagnostic", result.Errors)
+	}
+}
+
+func TestCIValidateRemoteAuthFailureIsAPIError(t *testing.T) {
+	target := writeCIManifest(t, strings.Replace(sampleCIManifestYAML, "  max_age_days: 30\n", "", 1))
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"GET /v1/agent-builds/00000000-0000-0000-0000-000000000001": jsonHandler(401, map[string]any{
+			"error": map[string]any{"code": "unauthorized", "message": "bad token"},
+		}),
+	})
+	defer srv.Close()
+	t.Setenv("AGENTCLASH_TOKEN", "test-token")
+
+	result, err, _ := runCIValidateJSON(t, []string{"ci", "validate", target, "--remote", "-w", "ws-1", "--json"}, srv.URL)
+	if err == nil || !strings.Contains(err.Error(), "remote ci manifest validation failed") {
+		t.Fatalf("error = %v, want API failure", err)
+	}
+	if result.Remote == nil || result.Remote.Valid {
+		t.Fatalf("remote = %+v, want invalid remote API result", result.Remote)
+	}
+	if !strings.Contains(strings.Join(result.Remote.Errors, "\n"), "remote API error") {
+		t.Fatalf("remote errors = %v, want distinct API error", result.Remote.Errors)
+	}
+	if len(result.Remote.Checks) != 0 {
+		t.Fatalf("checks = %+v, want no contract checks for auth failure", result.Remote.Checks)
+	}
+}
+
+func TestCIValidateRemotePreservesBaselineAPIErrorCode(t *testing.T) {
+	target := writeCIManifest(t, strings.Replace(sampleCIManifestYAML, "  max_age_days: 30\n", "", 1))
+	srv := fakeAPI(t, remoteCIValidateRoutes(t, map[string]http.HandlerFunc{
+		"GET /v1/runs/00000000-0000-0000-0000-000000000008": jsonHandler(404, map[string]any{
+			"error": map[string]any{"code": "run_not_found", "message": "run not found"},
+		}),
+	}))
+	defer srv.Close()
+	t.Setenv("AGENTCLASH_TOKEN", "test-token")
+
+	result, err, _ := runCIValidateJSON(t, []string{"ci", "validate", target, "--remote", "-w", "ws-1", "--json"}, srv.URL)
+	if err == nil || !strings.Contains(err.Error(), "ci manifest remote validation failed") {
+		t.Fatalf("error = %v, want remote validation failure", err)
+	}
+	var baselineCheck *ciManifestRemoteCheck
+	for i := range result.Remote.Checks {
+		if result.Remote.Checks[i].Field == "baseline.run_id" {
+			baselineCheck = &result.Remote.Checks[i]
+			break
+		}
+	}
+	if baselineCheck == nil {
+		t.Fatalf("checks = %+v, want baseline check", result.Remote.Checks)
+	}
+	if baselineCheck.Code != "run_not_found" {
+		t.Fatalf("baseline check code = %q, want run_not_found", baselineCheck.Code)
+	}
+}
+
+func TestCIValidateRemoteRegressionCasesStayScopedToExplicitSuites(t *testing.T) {
+	manifest := strings.Replace(sampleCIManifestYAML, "  max_age_days: 30\n", "", 1)
+	manifest = strings.Replace(manifest,
+		"  regression_suites:\n    - 00000000-0000-0000-0000-000000000007\n",
+		"  regression_suites:\n    - 00000000-0000-0000-0000-000000000007\n  regression_cases:\n    - case-1\n",
+		1,
+	)
+	target := writeCIManifest(t, manifest)
+	srv := fakeAPI(t, remoteCIValidateRoutes(t, map[string]http.HandlerFunc{
+		"GET /v1/workspaces/ws-1/regression-suites": jsonHandler(200, map[string]any{
+			"items": []map[string]any{{
+				"id":                       "suite-other",
+				"workspace_id":             "ws-1",
+				"source_challenge_pack_id": "pack-1",
+				"name":                     "Other suite",
+				"status":                   "active",
+			}},
+		}),
+		"GET /v1/workspaces/ws-1/regression-suites/suite-other/cases": jsonHandler(200, map[string]any{
+			"items": []map[string]any{{
+				"id":                               "case-1",
+				"suite_id":                         "suite-other",
+				"workspace_id":                     "ws-1",
+				"status":                           "active",
+				"source_challenge_pack_version_id": "00000000-0000-0000-0000-000000000005",
+				"source_challenge_input_set_id":    "00000000-0000-0000-0000-000000000006",
+			}},
+		}),
+	}))
+	defer srv.Close()
+	t.Setenv("AGENTCLASH_TOKEN", "test-token")
+
+	result, err, _ := runCIValidateJSON(t, []string{"ci", "validate", target, "--remote", "-w", "ws-1", "--json"}, srv.URL)
+	if err == nil || !strings.Contains(err.Error(), "ci manifest remote validation failed") {
+		t.Fatalf("error = %v, want remote validation failure", err)
+	}
+	if !ciRemoteChecksContainField(result.Remote.Checks, "evaluation.regression_suites", false) {
+		t.Fatalf("remote checks missing suite failure: %+v", result.Remote.Checks)
+	}
+	if !ciRemoteChecksContainField(result.Remote.Checks, "evaluation.regression_cases", false) {
+		t.Fatalf("remote checks missing scoped case failure: %+v", result.Remote.Checks)
+	}
+	if strings.Contains(strings.Join(result.Remote.Errors, "\n"), "regression case exists and is compatible") {
+		t.Fatalf("remote errors unexpectedly passed case from unselected suite: %v", result.Remote.Errors)
+	}
+}
+
+func TestCIValidateRemoteBaselineRunAgentReportsRunAgentField(t *testing.T) {
+	manifest := strings.Replace(sampleCIManifestYAML, "  max_age_days: 30\n", "", 1)
+	manifest = strings.Replace(manifest,
+		"  run_id: 00000000-0000-0000-0000-000000000008\n",
+		"  run_id: 00000000-0000-0000-0000-000000000008\n  run_agent_id: agent-missing\n",
+		1,
+	)
+	target := writeCIManifest(t, manifest)
+	srv := fakeAPI(t, remoteCIValidateRoutes(t, map[string]http.HandlerFunc{
+		"GET /v1/runs/00000000-0000-0000-0000-000000000008/agents": jsonHandler(200, map[string]any{
+			"items": []map[string]any{},
+		}),
+	}))
+	defer srv.Close()
+	t.Setenv("AGENTCLASH_TOKEN", "test-token")
+
+	result, err, _ := runCIValidateJSON(t, []string{"ci", "validate", target, "--remote", "-w", "ws-1", "--json"}, srv.URL)
+	if err == nil || !strings.Contains(err.Error(), "ci manifest remote validation failed") {
+		t.Fatalf("error = %v, want remote validation failure", err)
+	}
+	if !ciRemoteChecksContainField(result.Remote.Checks, "baseline.run_agent_id", false) {
+		t.Fatalf("remote checks missing run-agent failure: %+v", result.Remote.Checks)
+	}
+	if ciRemoteChecksContainField(result.Remote.Checks, "baseline.run_id", false) {
+		t.Fatalf("remote checks attributed run-agent failure to run id: %+v", result.Remote.Checks)
 	}
 }
 
@@ -1257,6 +1496,100 @@ func runCIBaselineJSON(t *testing.T, args []string, apiURL string) ciBaselineJSO
 		t.Fatalf("json output parse error: %v\n---\n%s", err, out)
 	}
 	return result
+}
+
+func runCIValidateJSON(t *testing.T, args []string, apiURL string) (ciManifestValidationResult, error, string) {
+	t.Helper()
+	stdout := captureStdout(t)
+	err := executeCommand(t, args, apiURL)
+	out := stdout.finish()
+
+	var result ciManifestValidationResult
+	if decodeErr := json.Unmarshal([]byte(out), &result); decodeErr != nil {
+		t.Fatalf("json output parse error: %v\n---\n%s", decodeErr, out)
+	}
+	return result, err, out
+}
+
+func ciRemoteChecksContainField(checks []ciManifestRemoteCheck, field string, valid bool) bool {
+	for _, check := range checks {
+		if check.Field == field && check.Valid == valid {
+			return true
+		}
+	}
+	return false
+}
+
+func remoteCIValidateRoutes(t *testing.T, overrides map[string]http.HandlerFunc) map[string]http.HandlerFunc {
+	t.Helper()
+	routes := map[string]http.HandlerFunc{
+		"GET /v1/agent-builds/00000000-0000-0000-0000-000000000001": jsonHandler(200, map[string]any{
+			"id":           "00000000-0000-0000-0000-000000000001",
+			"workspace_id": "ws-1",
+			"name":         "Candidate build",
+		}),
+		"GET /v1/workspaces/ws-1/runtime-profiles": jsonHandler(200, map[string]any{
+			"items": []map[string]any{{
+				"id":           "00000000-0000-0000-0000-000000000002",
+				"workspace_id": "ws-1",
+				"name":         "CI runtime",
+			}},
+		}),
+		"GET /v1/workspaces/ws-1/provider-accounts": jsonHandler(200, map[string]any{
+			"items": []map[string]any{{
+				"id":           "00000000-0000-0000-0000-000000000003",
+				"workspace_id": "ws-1",
+				"name":         "CI provider",
+			}},
+		}),
+		"GET /v1/workspaces/ws-1/model-aliases": jsonHandler(200, map[string]any{
+			"items": []map[string]any{{
+				"id":                  "00000000-0000-0000-0000-000000000004",
+				"workspace_id":        "ws-1",
+				"provider_account_id": "00000000-0000-0000-0000-000000000003",
+				"display_name":        "CI model",
+			}},
+		}),
+		"GET /v1/workspaces/ws-1/challenge-packs": jsonHandler(200, map[string]any{
+			"items": []map[string]any{{
+				"id":   "pack-1",
+				"name": "CI pack",
+				"versions": []map[string]any{{
+					"id":               "00000000-0000-0000-0000-000000000005",
+					"version_number":   1,
+					"lifecycle_status": "published",
+				}},
+			}},
+		}),
+		"GET /v1/workspaces/ws-1/challenge-pack-versions/00000000-0000-0000-0000-000000000005/input-sets": jsonHandler(200, map[string]any{
+			"items": []map[string]any{{
+				"id":        "00000000-0000-0000-0000-000000000006",
+				"input_key": "default",
+				"name":      "Default",
+			}},
+		}),
+		"GET /v1/workspaces/ws-1/regression-suites": jsonHandler(200, map[string]any{
+			"items": []map[string]any{{
+				"id":                       "00000000-0000-0000-0000-000000000007",
+				"workspace_id":             "ws-1",
+				"source_challenge_pack_id": "pack-1",
+				"name":                     "Critical regressions",
+				"status":                   "active",
+			}},
+		}),
+		"GET /v1/runs/00000000-0000-0000-0000-000000000008": jsonHandler(200, map[string]any{
+			"id":                        "00000000-0000-0000-0000-000000000008",
+			"workspace_id":              "ws-1",
+			"status":                    "completed",
+			"challenge_pack_version_id": "00000000-0000-0000-0000-000000000005",
+			"challenge_input_set_id":    "00000000-0000-0000-0000-000000000006",
+			"created_at":                "2026-05-01T00:00:00Z",
+		}),
+	}
+	for key, handler := range overrides {
+		routes[key] = handler
+	}
+	return routes
 }
 
 func runGit(t *testing.T, dir string, args ...string) string {
