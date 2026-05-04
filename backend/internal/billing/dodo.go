@@ -33,10 +33,6 @@ type DodoProductMapping struct {
 	BillingPeriod string
 }
 
-func MapDodoProduct(productID string) (DodoProductMapping, error) {
-	return MapDodoProductFromCatalog(productID, Catalog())
-}
-
 func MapDodoProductFromCatalog(productID string, plans []Plan) (DodoProductMapping, error) {
 	productID = strings.TrimSpace(productID)
 	for _, plan := range plans {
@@ -51,10 +47,6 @@ func MapDodoProductFromCatalog(productID string, plans []Plan) (DodoProductMappi
 		}
 	}
 	return DodoProductMapping{}, fmt.Errorf("%w: %s", ErrUnknownDodoProduct, productID)
-}
-
-func SubscriptionEntitlements(input DodoSubscriptionInput) (EffectiveEntitlements, error) {
-	return SubscriptionEntitlementsFromCatalog(input, Catalog())
 }
 
 func SubscriptionEntitlementsFromCatalog(input DodoSubscriptionInput, plans []Plan) (EffectiveEntitlements, error) {
