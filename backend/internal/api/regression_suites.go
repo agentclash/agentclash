@@ -315,6 +315,10 @@ func (m *RegressionManager) PromoteFailure(ctx context.Context, caller Caller, i
 	if input.Request.Severity != nil {
 		severity = *input.Request.Severity
 	}
+	status := domain.RegressionCaseStatusActive
+	if input.Request.Status != nil {
+		status = *input.Request.Status
+	}
 
 	sourceEventRefs, err := json.Marshal(item.ReplayStepRefs)
 	if err != nil {
@@ -332,6 +336,7 @@ func (m *RegressionManager) PromoteFailure(ctx context.Context, caller Caller, i
 		ChallengeIdentityID: input.ChallengeIdentityID,
 		Title:               input.Request.Title,
 		FailureSummary:      input.Request.FailureSummary,
+		Status:              status,
 		Severity:            severity,
 		PromotionMode:       input.Request.PromotionMode,
 		FailureClass:        string(item.FailureClass),
@@ -398,6 +403,7 @@ func marshalPromotionSnapshot(item failurereview.Item, request domain.PromotionR
 			PromotionMode      domain.RegressionPromotionMode `json:"promotion_mode"`
 			Title              string                         `json:"title"`
 			FailureSummary     string                         `json:"failure_summary,omitempty"`
+			Status             *domain.RegressionCaseStatus   `json:"status,omitempty"`
 			Severity           domain.RegressionSeverity      `json:"severity"`
 			ValidatorOverrides json.RawMessage                `json:"validator_overrides,omitempty"`
 			Metadata           json.RawMessage                `json:"metadata,omitempty"`
@@ -409,6 +415,7 @@ func marshalPromotionSnapshot(item failurereview.Item, request domain.PromotionR
 	snapshot.Request.PromotionMode = request.PromotionMode
 	snapshot.Request.Title = request.Title
 	snapshot.Request.FailureSummary = request.FailureSummary
+	snapshot.Request.Status = request.Status
 	snapshot.Request.Severity = severity
 	snapshot.Request.ValidatorOverrides = request.ValidatorOverrides
 	snapshot.Request.Metadata = request.Metadata
@@ -821,7 +828,7 @@ func patchRegressionCaseHandler(logger *slog.Logger, service RegressionService) 
 		if req.Status != nil {
 			parsed, parseErr := domain.ParseRegressionCaseStatus(*req.Status)
 			if parseErr != nil {
-				writeError(w, http.StatusBadRequest, "validation_error", "status must be active, muted, or archived")
+				writeError(w, http.StatusBadRequest, "validation_error", "status must be proposed, active, muted, archived, or rejected")
 				return
 			}
 			status = &parsed

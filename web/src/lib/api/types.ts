@@ -1705,7 +1705,12 @@ export interface ListRunFailuresResponse {
 // Mirrors schemas under `RegressionSuite*` / `RegressionCase*` in docs/api-server/openapi.yaml.
 
 export type RegressionSuiteStatus = "active" | "archived";
-export type RegressionCaseStatus = "active" | "muted" | "archived";
+export type RegressionCaseStatus =
+  | "proposed"
+  | "active"
+  | "muted"
+  | "archived"
+  | "rejected";
 export type RegressionSeverity = "info" | "warning" | "blocking";
 export type RegressionPromotionMode =
   | "full_executable"

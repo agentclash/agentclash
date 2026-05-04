@@ -34,12 +34,17 @@ func TestRegressionCaseStatusTransitions(t *testing.T) {
 		to   RegressionCaseStatus
 		want bool
 	}{
+		{name: "proposed to active", from: RegressionCaseStatusProposed, to: RegressionCaseStatusActive, want: true},
+		{name: "proposed to archived", from: RegressionCaseStatusProposed, to: RegressionCaseStatusArchived, want: true},
+		{name: "proposed to rejected", from: RegressionCaseStatusProposed, to: RegressionCaseStatusRejected, want: true},
 		{name: "active to muted", from: RegressionCaseStatusActive, to: RegressionCaseStatusMuted, want: true},
 		{name: "active to archived", from: RegressionCaseStatusActive, to: RegressionCaseStatusArchived, want: true},
 		{name: "muted to active", from: RegressionCaseStatusMuted, to: RegressionCaseStatusActive, want: true},
 		{name: "muted to archived", from: RegressionCaseStatusMuted, to: RegressionCaseStatusArchived, want: true},
 		{name: "archived to active denied", from: RegressionCaseStatusArchived, to: RegressionCaseStatusActive, want: false},
 		{name: "archived to muted denied", from: RegressionCaseStatusArchived, to: RegressionCaseStatusMuted, want: false},
+		{name: "rejected to active denied", from: RegressionCaseStatusRejected, to: RegressionCaseStatusActive, want: false},
+		{name: "rejected to proposed denied", from: RegressionCaseStatusRejected, to: RegressionCaseStatusProposed, want: false},
 		{name: "active to active denied", from: RegressionCaseStatusActive, to: RegressionCaseStatusActive, want: false},
 	}
 

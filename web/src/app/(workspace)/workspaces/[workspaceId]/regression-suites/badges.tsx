@@ -17,9 +17,11 @@ const caseStatusVariant: Record<
   RegressionCaseStatus,
   "default" | "outline" | "secondary"
 > = {
+  proposed: "outline",
   active: "default",
   muted: "outline",
   archived: "secondary",
+  rejected: "secondary",
 };
 
 const severityVariant: Record<

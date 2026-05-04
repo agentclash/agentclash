@@ -143,6 +143,7 @@ type PromoteFailureParams struct {
 	ChallengeIdentityID uuid.UUID
 	Title               string
 	FailureSummary      string
+	Status              domain.RegressionCaseStatus
 	Severity            domain.RegressionSeverity
 	PromotionMode       domain.RegressionPromotionMode
 	FailureClass        string
@@ -496,6 +497,13 @@ func (r *Repository) CreateRegressionPromotion(ctx context.Context, params Creat
 }
 
 func (r *Repository) PromoteFailure(ctx context.Context, params PromoteFailureParams) (PromoteFailureResult, error) {
+	status := params.Status
+	if status == "" {
+		status = domain.RegressionCaseStatusActive
+	}
+	if !status.Valid() {
+		return PromoteFailureResult{}, fmt.Errorf("%w: %q", domain.ErrInvalidRegressionCaseStatus, status)
+	}
 	if !params.Severity.Valid() {
 		return PromoteFailureResult{}, fmt.Errorf("%w: %q", domain.ErrInvalidRegressionSeverity, params.Severity)
 	}
@@ -558,7 +566,7 @@ func (r *Repository) PromoteFailure(ctx context.Context, params PromoteFailurePa
 		SuiteID:                      params.SuiteID,
 		Title:                        strings.TrimSpace(params.Title),
 		Description:                  "",
-		Status:                       domain.RegressionCaseStatusActive,
+		Status:                       status,
 		Severity:                     params.Severity,
 		PromotionMode:                params.PromotionMode,
 		SourceRunID:                  &params.RunID,
