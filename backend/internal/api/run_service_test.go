@@ -25,6 +25,14 @@ func TestRunCreationManagerCreatesQueuedRunAndStartsWorkflow(t *testing.T) {
 			workspaceID: {WorkspaceID: workspaceID, Role: "workspace_member"},
 		},
 	}
+	prNumber := int32(42)
+	ciMetadata := &domain.RunCIMetadata{
+		Provider:          "github_actions",
+		Repository:        "acme/agent",
+		PullRequestNumber: &prNumber,
+		Branch:            "feature/gate",
+		CommitSHA:         "abc123",
+	}
 
 	repo := &fakeRunCreationRepository{
 		challengePackVersion: repository.RunnableChallengePackVersion{ID: challengePackVersionID},
@@ -58,6 +66,7 @@ func TestRunCreationManagerCreatesQueuedRunAndStartsWorkflow(t *testing.T) {
 		WorkspaceID:            workspaceID,
 		ChallengePackVersionID: challengePackVersionID,
 		AgentDeploymentIDs:     []uuid.UUID{deploymentID},
+		CIMetadata:             ciMetadata,
 	})
 	if err != nil {
 		t.Fatalf("CreateRun returned error: %v", err)
@@ -80,6 +89,12 @@ func TestRunCreationManagerCreatesQueuedRunAndStartsWorkflow(t *testing.T) {
 	}
 	if repo.createParams.RunAgents[0].AgentDeploymentSnapshotID != snapshotID {
 		t.Fatalf("snapshot id = %s, want %s", repo.createParams.RunAgents[0].AgentDeploymentSnapshotID, snapshotID)
+	}
+	if repo.createParams.CIMetadata == nil || repo.createParams.CIMetadata.Repository != "acme/agent" || repo.createParams.CIMetadata.PullRequestNumber == nil || *repo.createParams.CIMetadata.PullRequestNumber != prNumber {
+		t.Fatalf("ci metadata = %+v, want copied GitHub metadata", repo.createParams.CIMetadata)
+	}
+	if repo.createParams.CIMetadata == ciMetadata {
+		t.Fatal("ci metadata was not cloned before repository handoff")
 	}
 	if starter.startedRunID != runID {
 		t.Fatalf("started run id = %s, want %s", starter.startedRunID, runID)

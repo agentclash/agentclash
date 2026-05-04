@@ -45,6 +45,9 @@ import {
   Radio,
   MessageSquareText,
   Flag,
+  GitBranch,
+  GitPullRequest,
+  ExternalLink,
 } from "lucide-react";
 
 import { CompareRunPicker } from "./compare-run-picker";
@@ -139,6 +142,22 @@ function outcomeVariant(outcome: "pending" | "pass" | "fail") {
       return "destructive";
     default:
       return "outline";
+  }
+}
+
+function shortCommit(sha?: string): string | null {
+  if (!sha) return null;
+  return sha.length > 7 ? sha.slice(0, 7) : sha;
+}
+
+function safeHTTPURL(raw?: string): string | null {
+  if (!raw) return null;
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    return url.toString();
+  } catch {
+    return null;
   }
 }
 
@@ -318,6 +337,9 @@ export function RunDetailClient({
   const sortedAgents = [...agents].sort(
     (a, b) => a.lane_index - b.lane_index,
   );
+  const ciMetadata = run.ci_metadata;
+  const ciCommit = shortCommit(ciMetadata?.commit_sha);
+  const ciWorkflowURL = safeHTTPURL(ciMetadata?.workflow_run_url);
 
   return (
     <div className="space-y-8">
@@ -435,6 +457,39 @@ export function RunDetailClient({
               {run.id.slice(0, 8)}
             </code>
           </div>
+          {ciMetadata && (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 normal-case tracking-normal text-white/70">
+              {ciMetadata.repository && (
+                <span className="inline-flex items-center gap-1">
+                  <GitBranch className="size-3.5 text-white/40" />
+                  {ciMetadata.repository}
+                  {ciMetadata.branch ? `:${ciMetadata.branch}` : ""}
+                </span>
+              )}
+              {ciMetadata.pull_request_number && (
+                <span className="inline-flex items-center gap-1">
+                  <GitPullRequest className="size-3.5 text-white/40" />
+                  PR #{ciMetadata.pull_request_number}
+                </span>
+              )}
+              {ciCommit && (
+                <code className="font-[family-name:var(--font-mono)] text-white/70">
+                  {ciCommit}
+                </code>
+              )}
+              {ciWorkflowURL && (
+                <a
+                  href={ciWorkflowURL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-white/80 hover:text-white transition-colors"
+                >
+                  {ciMetadata.workflow ?? "Workflow"}
+                  <ExternalLink className="size-3" />
+                </a>
+              )}
+            </div>
+          )}
           {run.queued_at && (
             <div className="flex items-center gap-2">
               <span>Queued:</span>

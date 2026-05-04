@@ -754,7 +754,11 @@ function docPathForSlug(slug: string[]) {
     return path.join(CONTENT_DIR, "index.mdx");
   }
 
-  return path.join(CONTENT_DIR, ...slug) + ".mdx";
+  const directPath = path.join(CONTENT_DIR, ...slug) + ".mdx";
+  if (fs.existsSync(directPath)) {
+    return directPath;
+  }
+  return path.join(CONTENT_DIR, ...slug, "index.mdx");
 }
 
 function readSlugs(dir: string, prefix: string[] = []): string[][] {

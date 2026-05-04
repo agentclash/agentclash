@@ -172,6 +172,7 @@ type Run struct {
 	TemporalWorkflowID     *string
 	TemporalRunID          *string
 	ExecutionPlan          json.RawMessage
+	CIMetadata             *RunCIMetadata
 	QueuedAt               *time.Time
 	StartedAt              *time.Time
 	FinishedAt             *time.Time
@@ -187,6 +188,34 @@ type Run struct {
 	RaceContextMinStepGap *int32
 	CreatedAt             time.Time
 	UpdatedAt             time.Time
+}
+
+type RunCIMetadata struct {
+	Provider           string `json:"provider,omitempty"`
+	Repository         string `json:"repository,omitempty"`
+	PullRequestNumber  *int32 `json:"pull_request_number,omitempty"`
+	Branch             string `json:"branch,omitempty"`
+	Ref                string `json:"ref,omitempty"`
+	CommitSHA          string `json:"commit_sha,omitempty"`
+	Workflow           string `json:"workflow,omitempty"`
+	WorkflowRunID      string `json:"workflow_run_id,omitempty"`
+	WorkflowRunAttempt string `json:"workflow_run_attempt,omitempty"`
+	WorkflowRunURL     string `json:"workflow_run_url,omitempty"`
+	EventName          string `json:"event_name,omitempty"`
+}
+
+func (m RunCIMetadata) Empty() bool {
+	return m.Provider == "" &&
+		m.Repository == "" &&
+		m.PullRequestNumber == nil &&
+		m.Branch == "" &&
+		m.Ref == "" &&
+		m.CommitSHA == "" &&
+		m.Workflow == "" &&
+		m.WorkflowRunID == "" &&
+		m.WorkflowRunAttempt == "" &&
+		m.WorkflowRunURL == "" &&
+		m.EventName == ""
 }
 
 type RunAgent struct {

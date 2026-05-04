@@ -160,6 +160,7 @@ type CreateQueuedRunParams struct {
 	Name                   string
 	ExecutionMode          string
 	ExecutionPlan          json.RawMessage
+	CIMetadata             *domain.RunCIMetadata
 	RunAgents              []CreateQueuedRunAgentParams
 	CaseSelections         []CreateQueuedRunCaseSelectionParams
 	RaceContext            bool
@@ -626,6 +627,10 @@ func createQueuedRunWithQueries(
 	if len(executionPlan) == 0 {
 		executionPlan = json.RawMessage(`{}`)
 	}
+	ciMetadata, err := marshalRunCIMetadata(params.CIMetadata)
+	if err != nil {
+		return CreateQueuedRunResult{}, fmt.Errorf("marshal run ci metadata: %w", err)
+	}
 
 	runRow, err := queries.CreateRun(ctx, repositorysqlc.CreateRunParams{
 		OrganizationID:         params.OrganizationID,
@@ -638,6 +643,7 @@ func createQueuedRunWithQueries(
 		Status:                 string(domain.RunStatusQueued),
 		ExecutionMode:          params.ExecutionMode,
 		ExecutionPlan:          executionPlan,
+		CiMetadata:             ciMetadata,
 		QueuedAt:               queuedAtValue,
 		RaceContext:            params.RaceContext,
 		RaceContextMinStepGap:  cloneInt32Ptr(params.RaceContextMinStepGap),
@@ -1873,6 +1879,10 @@ func mapRun(row repositorysqlc.Run) (domain.Run, error) {
 	if err != nil {
 		return domain.Run{}, err
 	}
+	ciMetadata, err := unmarshalRunCIMetadata(row.CiMetadata)
+	if err != nil {
+		return domain.Run{}, err
+	}
 
 	return domain.Run{
 		ID:                     row.ID,
@@ -1889,6 +1899,7 @@ func mapRun(row repositorysqlc.Run) (domain.Run, error) {
 		TemporalWorkflowID:     cloneStringPtr(row.TemporalWorkflowID),
 		TemporalRunID:          cloneStringPtr(row.TemporalRunID),
 		ExecutionPlan:          cloneJSON(row.ExecutionPlan),
+		CIMetadata:             ciMetadata,
 		QueuedAt:               optionalTime(row.QueuedAt),
 		StartedAt:              optionalTime(row.StartedAt),
 		FinishedAt:             optionalTime(row.FinishedAt),
@@ -1899,6 +1910,27 @@ func mapRun(row repositorysqlc.Run) (domain.Run, error) {
 		CreatedAt:              createdAt,
 		UpdatedAt:              updatedAt,
 	}, nil
+}
+
+func marshalRunCIMetadata(metadata *domain.RunCIMetadata) ([]byte, error) {
+	if metadata == nil || metadata.Empty() {
+		return []byte(`{}`), nil
+	}
+	return json.Marshal(metadata)
+}
+
+func unmarshalRunCIMetadata(raw []byte) (*domain.RunCIMetadata, error) {
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	var metadata domain.RunCIMetadata
+	if err := json.Unmarshal(raw, &metadata); err != nil {
+		return nil, fmt.Errorf("parse runs.ci_metadata: %w", err)
+	}
+	if metadata.Empty() {
+		return nil, nil
+	}
+	return &metadata, nil
 }
 
 func (r *Repository) ListRunCaseSelectionsByRunID(ctx context.Context, runID uuid.UUID) ([]RunCaseSelection, error) {

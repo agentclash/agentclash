@@ -55,6 +55,113 @@ func TestCIRunCreatesCandidateRunAndEvaluatesPassingGate(t *testing.T) {
 	}
 }
 
+func TestCIRunAttachesGitHubActionsMetadata(t *testing.T) {
+	target := writeCIRunManifest(t)
+	captures := &ciRunRouteCaptures{}
+	srv := fakeAPI(t, ciRunRoutes(t, captures, nil))
+	defer srv.Close()
+	eventPath := filepath.Join(t.TempDir(), "event.json")
+	if err := os.WriteFile(eventPath, []byte(`{"pull_request":{"number":42}}`), 0o644); err != nil {
+		t.Fatalf("WriteFile(event) error: %v", err)
+	}
+	t.Setenv("AGENTCLASH_TOKEN", "test-token")
+	t.Setenv("GITHUB_ACTIONS", "true")
+	t.Setenv("GITHUB_REPOSITORY", "acme/agent")
+	t.Setenv("GITHUB_HEAD_REF", "feature/gate")
+	t.Setenv("GITHUB_REF", "refs/pull/42/merge")
+	t.Setenv("GITHUB_SHA", "abc123")
+	t.Setenv("GITHUB_WORKFLOW", "AgentClash gate")
+	t.Setenv("GITHUB_RUN_ID", "99")
+	t.Setenv("GITHUB_RUN_ATTEMPT", "2")
+	t.Setenv("GITHUB_EVENT_NAME", "pull_request")
+	t.Setenv("GITHUB_EVENT_PATH", eventPath)
+
+	result, err, _ := runCIRunJSON(t, []string{"ci", "run", "--manifest", target, "-w", "ws-1", "--json", "--poll-interval", "1ms", "--timeout", "1s"}, srv.URL)
+	if err != nil {
+		t.Fatalf("ci run error: %v", err)
+	}
+
+	metadata, ok := captures.RunBody["ci_metadata"].(map[string]any)
+	if !ok {
+		t.Fatalf("run body = %+v, want ci_metadata", captures.RunBody)
+	}
+	if metadata["repository"] != "acme/agent" || metadata["pull_request_number"] != float64(42) || metadata["workflow_run_url"] != "https://github.com/acme/agent/actions/runs/99" {
+		t.Fatalf("ci metadata = %+v, want GitHub Actions metadata", metadata)
+	}
+	if result.Candidate.CIMetadata["repository"] != "acme/agent" || result.Candidate.CIMetadata["pull_request_number"] != float64(42) {
+		t.Fatalf("result metadata = %+v, want persisted metadata", result.Candidate.CIMetadata)
+	}
+}
+
+func TestCIRunManualMetadataFlagsOverrideGitHubActions(t *testing.T) {
+	target := writeCIRunManifest(t)
+	captures := &ciRunRouteCaptures{}
+	srv := fakeAPI(t, ciRunRoutes(t, captures, nil))
+	defer srv.Close()
+	t.Setenv("AGENTCLASH_TOKEN", "test-token")
+	t.Setenv("GITHUB_ACTIONS", "true")
+	t.Setenv("GITHUB_REPOSITORY", "acme/env")
+	t.Setenv("GITHUB_RUN_ID", "99")
+
+	result, err, _ := runCIRunJSON(t, []string{
+		"ci", "run",
+		"--manifest", target,
+		"-w", "ws-1",
+		"--json",
+		"--poll-interval", "1ms",
+		"--timeout", "1s",
+		"--ci-repository", "manual/repo",
+		"--ci-pull-request", "7",
+		"--ci-branch", "manual-branch",
+		"--ci-workflow-run-url", "https://ci.example/runs/7",
+	}, srv.URL)
+	if err != nil {
+		t.Fatalf("ci run error: %v", err)
+	}
+
+	metadata, ok := captures.RunBody["ci_metadata"].(map[string]any)
+	if !ok {
+		t.Fatalf("run body = %+v, want ci_metadata", captures.RunBody)
+	}
+	if metadata["repository"] != "manual/repo" || metadata["pull_request_number"] != float64(7) || metadata["branch"] != "manual-branch" || metadata["workflow_run_url"] != "https://ci.example/runs/7" {
+		t.Fatalf("ci metadata = %+v, want manual override metadata", metadata)
+	}
+	if result.Candidate.CIMetadata["repository"] != "manual/repo" {
+		t.Fatalf("result metadata = %+v, want manual repo", result.Candidate.CIMetadata)
+	}
+}
+
+func TestCIRunRejectsNonPositivePullRequestMetadata(t *testing.T) {
+	target := writeCIRunManifest(t)
+	called := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+	t.Setenv("AGENTCLASH_TOKEN", "test-token")
+
+	result, err, stderr := runCIRunJSON(t, []string{
+		"ci", "run",
+		"--manifest", target,
+		"-w", "ws-1",
+		"--json",
+		"--ci-pull-request", "0",
+	}, srv.URL)
+	if err == nil {
+		t.Fatal("ci run error = nil, want validation error")
+	}
+	if result.ExitCode != ciRunExitInvalidManifest {
+		t.Fatalf("exit code = %d, want %d", result.ExitCode, ciRunExitInvalidManifest)
+	}
+	if !strings.Contains(stderr, "--ci-pull-request must be greater than 0") {
+		t.Fatalf("stderr = %q, want ci-pull-request validation", stderr)
+	}
+	if called {
+		t.Fatal("API server was called despite invalid CI metadata")
+	}
+}
+
 func TestCIRunRejectsInvalidManifestBeforeAPIWrites(t *testing.T) {
 	target := writeCIManifest(t, `version: 1
 trigger: {}
@@ -279,11 +386,15 @@ func ciRunRoutes(t *testing.T, captures *ciRunRouteCaptures, overrides map[strin
 		},
 		"POST /v1/runs": func(w http.ResponseWriter, r *http.Request) {
 			decodeJSONBody(t, r, &captures.RunBody)
-			jsonHandler(201, map[string]any{
+			response := map[string]any{
 				"id":      "run-candidate",
 				"status":  "queued",
 				"web_url": "https://app.agentclash.dev/runs/run-candidate",
-			})(w, r)
+			}
+			if metadata := captures.RunBody["ci_metadata"]; metadata != nil {
+				response["ci_metadata"] = metadata
+			}
+			jsonHandler(201, response)(w, r)
 		},
 		"GET /v1/runs/run-candidate": jsonHandler(200, map[string]any{
 			"id":      "run-candidate",

@@ -291,6 +291,7 @@ func (m *RunCreationManager) CreateRun(ctx context.Context, caller Caller, input
 		Name:                   runName,
 		ExecutionMode:          executionMode,
 		ExecutionPlan:          executionPlan,
+		CIMetadata:             cloneRunCIMetadata(input.CIMetadata),
 		RunAgents:              runAgents,
 		CaseSelections:         caseSelections,
 		RaceContext:            input.RaceContext,

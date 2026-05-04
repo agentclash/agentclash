@@ -5508,6 +5508,37 @@ components:
         agents:
           type: string
 
+    RunCIMetadata:
+      type: object
+      description: Source control and CI metadata attached to automation-created runs.
+      properties:
+        provider:
+          type: string
+          example: github_actions
+        repository:
+          type: string
+          example: acme/agent
+        pull_request_number:
+          type: integer
+          minimum: 1
+        branch:
+          type: string
+        ref:
+          type: string
+        commit_sha:
+          type: string
+        workflow:
+          type: string
+        workflow_run_id:
+          type: string
+        workflow_run_attempt:
+          type: string
+        workflow_run_url:
+          type: string
+          format: uri
+        event_name:
+          type: string
+
     CreateRunRequest:
       type: object
       required: [workspace_id, challenge_pack_version_id, agent_deployment_ids]
@@ -5567,6 +5598,10 @@ components:
             Optional. Overrides the default cadence (minimum steps between
             standings injections). Null / omitted uses the backend default.
             Only meaningful when `race_context` is true.
+        ci_metadata:
+          $ref: "#/components/schemas/RunCIMetadata"
+          description: >
+            Optional CI source metadata attached by AgentClash CI integrations.
 
     CreateEvalSessionRequest:
       type: object
@@ -6175,6 +6210,8 @@ components:
           maximum: 10
           description: >
             Per-run cadence override. Null when the backend default is in use.
+        ci_metadata:
+          $ref: "#/components/schemas/RunCIMetadata"
         links:
           $ref: "#/components/schemas/RunLinks"
 
@@ -6256,6 +6293,8 @@ components:
           maximum: 10
           description: >
             Per-run cadence override. Null when the backend default is in use.
+        ci_metadata:
+          $ref: "#/components/schemas/RunCIMetadata"
         regression_coverage:
           $ref: "#/components/schemas/RegressionCoverage"
         links:
