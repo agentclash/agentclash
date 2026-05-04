@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.12.0](https://github.com/agentclash/agentclash/compare/v0.11.0...v0.12.0) (2026-05-04)
+
+
+### Features
+
+* **cli:** add AgentClash CI manifest contract ([c652ec3](https://github.com/agentclash/agentclash/commit/c652ec37eb5fe4f2c8a7f2b0af54b15a7deadf6b))
+
+
+### Bug Fixes
+
+* **ci:** step 4 - create init parent directories ([8ab222f](https://github.com/agentclash/agentclash/commit/8ab222fa6de75ea864a785472a4c82ebffe71c7b))
+* **ci:** step 5 - reject loose manifest fields ([791a9e0](https://github.com/agentclash/agentclash/commit/791a9e087cec4e65494cbea079c5de15026ced09))
+
 ## [0.11.0](https://github.com/agentclash/agentclash/compare/v0.10.0...v0.11.0) (2026-05-03)
 
 
