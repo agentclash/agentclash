@@ -66,6 +66,31 @@ describe("agent skill docs", () => {
     expect(doc?.content).toContain("doctor --json");
   });
 
+  it("generates the eval runner skill with source-backed details", () => {
+    const doc = getDocBySlug(["agent-skills", "agentclash-eval-runner"]);
+
+    expect(doc?.title).toBe("Eval Runner Skill");
+    expect(doc?.content).toContain("agentclash eval start");
+    expect(doc?.content).toContain("--pack <PACK_ID_OR_SLUG_OR_EXACT_NAME>");
+    expect(doc?.content).toContain("--deployment <DEPLOYMENT_ID_OR_EXACT_NAME>");
+    expect(doc?.content).toContain("--deployments <AGENT_DEPLOYMENT_ID>");
+    expect(doc?.content).toContain("run create` does not resolve pack slugs");
+    expect(doc?.content).toContain("\"agent_deployment_ids\": [\"<AGENT_DEPLOYMENT_ID>\"]");
+    expect(doc?.content).toContain("\"race_context_min_step_gap\": 3");
+    expect(doc?.content).toContain("\"links\":");
+    expect(doc?.content).toContain("--scope suite_only");
+    expect(doc?.content).toContain("--repetitions >= 2");
+    expect(doc?.content).toContain("posts to `/v1/eval-sessions`");
+    expect(doc?.content).toContain("`--follow` is not supported with `--repetitions >= 2`");
+    expect(doc?.content).toContain("agentclash run events <RUN_ID>");
+    expect(doc?.content).toContain("do not stream events");
+    expect(doc?.content).toContain("one NDJSON event payload per line");
+    expect(doc?.content).toContain("agentclash eval scorecard <RUN_ID> --agent");
+    expect(doc?.content).toContain("`eval scorecard --json` returns an envelope");
+    expect(doc?.content).toContain("missing_challenge_input_set_id");
+    expect(doc?.content).toContain("invalid_race_context");
+  });
+
   it("generates nested challenge pack and agent build skill pages", () => {
     const challengePackDoc = getDocBySlug([
       "agent-skills",
