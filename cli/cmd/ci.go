@@ -180,7 +180,8 @@ var ciBaselineCmd = &cobra.Command{
 For pull request gates, prefer a locked baseline.run_id. A deployment baseline
 is resolved to the newest completed, workload-compatible run whose participant
 used baseline.deployment_id. The result explains the source, refresh policy, and
-the exact run id that downstream gate commands should compare against.`,
+max_age_days staleness policy, and the exact run id that downstream gate
+commands should compare against.`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		rc := GetRunContext(cmd)
@@ -528,9 +529,7 @@ func resolveCIBaselineDeployment(cmd *cobra.Command, rc *RunContext, workspaceID
 	if err != nil {
 		return ciBaselineRunResolution{}, fmt.Errorf("listing runs for baseline.deployment_id %s: %w", deploymentID, err)
 	}
-	sort.SliceStable(runs, func(i, j int) bool {
-		return runs[i].CreatedAt > runs[j].CreatedAt
-	})
+	sort.SliceStable(runs, func(i, j int) bool { return ciBaselineRunNewer(runs[i], runs[j]) })
 
 	var newestRejectedCandidate error
 	for _, run := range runs {
@@ -544,20 +543,43 @@ func resolveCIBaselineDeployment(cmd *cobra.Command, rc *RunContext, workspaceID
 		if err != nil {
 			return ciBaselineRunResolution{}, fmt.Errorf("listing agents for baseline candidate run %s: %w", run.ID, err)
 		}
+		matchedDeployment := false
 		for _, agent := range agents {
 			if agent.AgentDeploymentID != deploymentID {
 				continue
 			}
-			if agent.Status != "" && agent.Status != "completed" {
+			matchedDeployment = true
+			if agent.Status != "completed" {
+				if newestRejectedCandidate == nil {
+					newestRejectedCandidate = fmt.Errorf("baseline run %s agent %s for baseline.deployment_id %s status is %q, want completed", run.ID, agent.ID, deploymentID, agent.Status)
+				}
 				continue
 			}
 			return buildCIBaselineRunResolution(run, agent.ID, deploymentID, now), nil
+		}
+		if !matchedDeployment && newestRejectedCandidate == nil {
+			newestRejectedCandidate = fmt.Errorf("baseline run %s has no agent for baseline.deployment_id %s", run.ID, deploymentID)
 		}
 	}
 	if newestRejectedCandidate != nil {
 		return ciBaselineRunResolution{}, fmt.Errorf("no completed compatible baseline run found for baseline.deployment_id %s; newest rejected baseline candidate: %w", deploymentID, newestRejectedCandidate)
 	}
 	return ciBaselineRunResolution{}, fmt.Errorf("no completed compatible baseline run found for baseline.deployment_id %s", deploymentID)
+}
+
+func ciBaselineRunNewer(a, b runWorkflowSummary) bool {
+	aTimestamp, aOK := ciBaselineRunTimestamp(a)
+	bTimestamp, bOK := ciBaselineRunTimestamp(b)
+	if aOK && bOK && !aTimestamp.Equal(bTimestamp) {
+		return aTimestamp.After(bTimestamp)
+	}
+	if aOK != bOK {
+		return aOK
+	}
+	if a.CreatedAt != b.CreatedAt {
+		return a.CreatedAt > b.CreatedAt
+	}
+	return a.ID > b.ID
 }
 
 func listCIBaselineRuns(cmd *cobra.Command, rc *RunContext, workspaceID string) ([]runWorkflowSummary, error) {

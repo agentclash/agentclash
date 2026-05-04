@@ -865,6 +865,56 @@ func TestCIBaselineResolvesDeploymentBaseline(t *testing.T) {
 	}
 }
 
+func TestCIBaselineResolvesDeploymentBaselineByFinishedAt(t *testing.T) {
+	manifest := strings.Replace(sampleCIManifestYAML, "  run_id: 00000000-0000-0000-0000-000000000008\n  refresh: manual\n  max_age_days: 30\n", "  deployment_id: dep-base\n  refresh: manual\n", 1)
+	target := writeCIManifest(t, manifest)
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"GET /v1/workspaces/ws-1/runs": jsonHandler(200, map[string]any{
+			"items": []map[string]any{
+				{
+					"id":                        "run-created-newer",
+					"workspace_id":              "ws-1",
+					"status":                    "completed",
+					"challenge_pack_version_id": "00000000-0000-0000-0000-000000000005",
+					"challenge_input_set_id":    "00000000-0000-0000-0000-000000000006",
+					"created_at":                "2026-05-04T00:00:00Z",
+					"finished_at":               "2026-05-04T00:10:00Z",
+				},
+				{
+					"id":                        "run-finished-newer",
+					"workspace_id":              "ws-1",
+					"status":                    "completed",
+					"challenge_pack_version_id": "00000000-0000-0000-0000-000000000005",
+					"challenge_input_set_id":    "00000000-0000-0000-0000-000000000006",
+					"created_at":                "2026-05-03T00:00:00Z",
+					"finished_at":               "2026-05-04T00:20:00Z",
+				},
+			},
+		}),
+		"GET /v1/runs/run-finished-newer/agents": jsonHandler(200, map[string]any{
+			"items": []map[string]any{{
+				"id":                  "agent-finished-newer",
+				"run_id":              "run-finished-newer",
+				"status":              "completed",
+				"agent_deployment_id": "dep-base",
+			}},
+		}),
+	})
+	defer srv.Close()
+	t.Setenv("AGENTCLASH_TOKEN", "test-token")
+
+	result := runCIBaselineJSON(t, []string{
+		"ci", "baseline",
+		"--manifest", target,
+		"-w", "ws-1",
+		"--json",
+	}, srv.URL)
+
+	if result.Baseline.RunID != "run-finished-newer" || result.Baseline.RunAgentID != "agent-finished-newer" {
+		t.Fatalf("baseline = %+v, want newest finished run", result.Baseline)
+	}
+}
+
 func TestCIBaselineResolvesDeploymentBaselineAcrossPages(t *testing.T) {
 	manifest := strings.Replace(sampleCIManifestYAML, "  run_id: 00000000-0000-0000-0000-000000000008\n  refresh: manual\n  max_age_days: 30\n", "  deployment_id: dep-base\n  refresh: manual\n", 1)
 	target := writeCIManifest(t, manifest)
@@ -1010,6 +1060,42 @@ func TestCIBaselineRejectsStaleDeploymentCandidate(t *testing.T) {
 	}, srv.URL)
 	if err == nil || !strings.Contains(err.Error(), "older than baseline.max_age_days") {
 		t.Fatalf("error = %v, want stale deployment baseline error", err)
+	}
+}
+
+func TestCIBaselineRejectsNonCompletedDeploymentAgent(t *testing.T) {
+	manifest := strings.Replace(sampleCIManifestYAML, "  run_id: 00000000-0000-0000-0000-000000000008\n  refresh: manual\n  max_age_days: 30\n", "  deployment_id: dep-base\n  refresh: manual\n", 1)
+	target := writeCIManifest(t, manifest)
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"GET /v1/workspaces/ws-1/runs": jsonHandler(200, map[string]any{
+			"items": []map[string]any{{
+				"id":                        "run-1",
+				"workspace_id":              "ws-1",
+				"status":                    "completed",
+				"challenge_pack_version_id": "00000000-0000-0000-0000-000000000005",
+				"challenge_input_set_id":    "00000000-0000-0000-0000-000000000006",
+				"created_at":                "2026-05-03T00:00:00Z",
+			}},
+		}),
+		"GET /v1/runs/run-1/agents": jsonHandler(200, map[string]any{
+			"items": []map[string]any{{
+				"id":                  "agent-running",
+				"run_id":              "run-1",
+				"status":              "running",
+				"agent_deployment_id": "dep-base",
+			}},
+		}),
+	})
+	defer srv.Close()
+	t.Setenv("AGENTCLASH_TOKEN", "test-token")
+
+	err := executeCommand(t, []string{
+		"ci", "baseline",
+		"--manifest", target,
+		"-w", "ws-1",
+	}, srv.URL)
+	if err == nil || !strings.Contains(err.Error(), `status is "running", want completed`) {
+		t.Fatalf("error = %v, want non-completed agent baseline error", err)
 	}
 }
 

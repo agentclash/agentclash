@@ -220,6 +220,8 @@ jobs:
           AGENTCLASH_WORKSPACE: ${{ secrets.AGENTCLASH_WORKSPACE }}
 ```
 
+For multi-agent candidate runs, also pass `--candidate-agent <run-agent-id>` for the candidate participant you intend to gate.
+
 ## Regression promotion policy
 
 Do not auto-promote every PR failure by default. A bad run, flaky dependency, or weak evaluator could pollute the regression suite.
