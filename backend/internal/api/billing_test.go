@@ -205,6 +205,30 @@ func TestBillingManagerProcessesOnHoldWebhookAsInactivePaidPlan(t *testing.T) {
 	}
 }
 
+func TestBillingManagerProcessesOnHoldWebhookWithMissingQuantity(t *testing.T) {
+	workspaceID := uuid.New()
+	repo := newFakeBillingRepository(workspaceID)
+	secret := dodoTestWebhookSecret()
+	manager := NewBillingManager(NewCallerOrganizationAuthorizer(), NewCallerWorkspaceAuthorizer(), repo, BillingManagerConfig{
+		WebhookSecret:  secret,
+		DodoProductIDs: testDodoProductIDs(),
+	})
+	manager.now = func() time.Time { return time.Unix(1777420800, 0).UTC() }
+
+	body := `{"business_id":"biz_test","type":"subscription.on_hold","timestamp":"2026-04-29T00:00:00Z","data":{"payload_type":"Subscription","subscription_id":"sub_hold","customer_id":"cus_hold","product_id":"agentclash_pro_monthly","status":"on_hold","metadata":{"organization_id":"` + repo.orgID.String() + `"}}}`
+	headers := signedDodoHeaders(secret, "wh_test_hold_missing_qty", "1777420800", body)
+
+	if _, err := manager.ProcessDodoWebhook(context.Background(), headers, []byte(body)); err != nil {
+		t.Fatalf("ProcessDodoWebhook returned error: %v", err)
+	}
+	if repo.entitlements.PlanKey != billingpkg.PlanPro {
+		t.Fatalf("materialized plan = %q, want pro", repo.entitlements.PlanKey)
+	}
+	if repo.entitlements.Status != billingpkg.EntitlementStatusInactive {
+		t.Fatalf("materialized status = %q, want inactive", repo.entitlements.Status)
+	}
+}
+
 func TestBillingManagerRejectsInvalidDodoWebhookSignature(t *testing.T) {
 	workspaceID := uuid.New()
 	repo := newFakeBillingRepository(workspaceID)

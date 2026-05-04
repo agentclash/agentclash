@@ -510,9 +510,9 @@ func (m *BillingManager) applySubscriptionWebhook(ctx context.Context, eventInpu
 	useSubscriptionAsSource := false
 	entitlementExpiresAt := (*time.Time)(nil)
 	if shouldRetainPaidPlanInactive(status) {
-		if err := billingpkg.ValidateSeatQuantity(plan, seatQuantity); err != nil {
-			return false, err
-		}
+		// Inactive entitlements do not grant access, so the seat-minimum check
+		// is not load-bearing here. Skipping it prevents on_hold/failed
+		// webhooks with malformed quantities from looping in Dodo retries.
 		entitlements = billingpkg.MaterializeEntitlements(plan, mapping.BillingPeriod, seatQuantity, billingpkg.EntitlementStatusInactive)
 		useSubscriptionAsSource = true
 		entitlementExpiresAt = subscriptionInput.ExpiresAt
