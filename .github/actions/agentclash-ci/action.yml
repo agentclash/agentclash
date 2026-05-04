@@ -1,0 +1,122 @@
+name: AgentClash CI Gate
+description: Run an AgentClash manifest-based CI gate in GitHub Actions.
+
+branding:
+  icon: check-circle
+  color: green
+
+inputs:
+  manifest:
+    description: Path to the AgentClash CI manifest.
+    required: false
+    default: .agentclash/ci.yaml
+  token:
+    description: AgentClash API token. Defaults to AGENTCLASH_TOKEN when omitted.
+    required: false
+  workspace:
+    description: AgentClash workspace ID. Defaults to AGENTCLASH_WORKSPACE when omitted.
+    required: false
+  api-url:
+    description: AgentClash API base URL.
+    required: false
+    default: https://api.agentclash.dev
+  install-cli:
+    description: Install the published agentclash npm package before running.
+    required: false
+    default: "true"
+  cli-version:
+    description: npm version or tag for the agentclash package.
+    required: false
+    default: latest
+  remote-validate:
+    description: Validate manifest resource IDs against the AgentClash API.
+    required: false
+    default: "true"
+  skip-if-unmatched:
+    description: Skip ci run when manifest paths and labels do not match the change set.
+    required: false
+    default: "true"
+  base:
+    description: Base git ref for deriving changed files. Defaults to the pull request base branch when available.
+    required: false
+  head:
+    description: Head git ref for deriving changed files. Defaults to HEAD.
+    required: false
+  changed-files:
+    description: Newline-separated changed files. When set, these are passed directly to ci should-run.
+    required: false
+  labels:
+    description: Comma-separated pull request labels that may force the gate.
+    required: false
+  artifact-dir:
+    description: Directory for AgentClash CI JSON artifacts.
+    required: false
+    default: agentclash-artifacts
+  result-file:
+    description: Path for the top-level ci run JSON result.
+    required: false
+    default: agentclash-ci-result.json
+  timeout:
+    description: Optional ci run timeout, for example 30m or 0.
+    required: false
+  poll-interval:
+    description: Optional ci run poll interval, for example 5s.
+    required: false
+  follow:
+    description: Stream run events while waiting for the candidate run.
+    required: false
+    default: "false"
+  default-branch:
+    description: Optional default branch metadata override for auto_on_main regression promotion.
+    required: false
+
+outputs:
+  should-run:
+    description: Whether the manifest trigger matched and ci run was attempted.
+    value: ${{ steps.agentclash.outputs['should-run'] }}
+  skip-reason:
+    description: Reason returned by ci should-run when the gate is skipped.
+    value: ${{ steps.agentclash.outputs['skip-reason'] }}
+  run-id:
+    description: Candidate AgentClash run ID when ci run starts.
+    value: ${{ steps.agentclash.outputs['run-id'] }}
+  gate-verdict:
+    description: Release gate verdict from ci run.
+    value: ${{ steps.agentclash.outputs['gate-verdict'] }}
+  exit-code:
+    description: Exit code returned by agentclash ci run, or 0 when skipped.
+    value: ${{ steps.agentclash.outputs['exit-code'] }}
+  result-file:
+    description: Path to the top-level ci run JSON result.
+    value: ${{ steps.agentclash.outputs['result-file'] }}
+  artifact-dir:
+    description: Directory containing AgentClash CI JSON artifacts.
+    value: ${{ steps.agentclash.outputs['artifact-dir'] }}
+
+runs:
+  using: composite
+  steps:
+    - id: agentclash
+      name: Run AgentClash CI gate
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        INPUT_MANIFEST: ${{ inputs.manifest }}
+        INPUT_TOKEN: ${{ inputs.token }}
+        INPUT_WORKSPACE: ${{ inputs.workspace }}
+        INPUT_API_URL: ${{ inputs.api-url }}
+        INPUT_INSTALL_CLI: ${{ inputs.install-cli }}
+        INPUT_CLI_VERSION: ${{ inputs.cli-version }}
+        INPUT_REMOTE_VALIDATE: ${{ inputs.remote-validate }}
+        INPUT_SKIP_IF_UNMATCHED: ${{ inputs.skip-if-unmatched }}
+        INPUT_BASE: ${{ inputs.base }}
+        INPUT_HEAD: ${{ inputs.head }}
+        INPUT_CHANGED_FILES: ${{ inputs.changed-files }}
+        INPUT_LABELS: ${{ inputs.labels }}
+        INPUT_ARTIFACT_DIR: ${{ inputs.artifact-dir }}
+        INPUT_RESULT_FILE: ${{ inputs.result-file }}
+        INPUT_TIMEOUT: ${{ inputs.timeout }}
+        INPUT_POLL_INTERVAL: ${{ inputs.poll-interval }}
+        INPUT_FOLLOW: ${{ inputs.follow }}
+        INPUT_DEFAULT_BRANCH: ${{ inputs.default-branch }}
+      run: '"${ACTION_PATH}/run.sh"'

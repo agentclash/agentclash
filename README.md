@@ -143,6 +143,16 @@ The current CLI validates that manifest locally by default, can optionally check
 
 Set `regressions.promote_failures: proposed` when failing CI gates should create reviewable regression candidates in the manifest's `evaluation.regression_suites`. The CLI deduplicates against existing non-archived/non-rejected cases and reports created, existing, skipped, blocked, and error outcomes in JSON and GitHub summaries. Use `disabled` to report only, or `auto_on_main` for protected default-branch workflows that may create active cases after refusing pull request and non-default-branch events.
 
+For GitHub Actions, use the reusable [`agentclash-ci`](.github/actions/agentclash-ci) action to install the CLI, validate the manifest, skip unrelated changes, run the gate, and expose artifact paths:
+
+```yaml
+- id: agentclash
+  uses: agentclash/agentclash/.github/actions/agentclash-ci@main
+  with:
+    token: ${{ secrets.AGENTCLASH_TOKEN }}
+    workspace: ${{ secrets.AGENTCLASH_WORKSPACE }}
+```
+
 Existing commands also work non-interactively with environment variables and explicit IDs:
 
 ```bash
