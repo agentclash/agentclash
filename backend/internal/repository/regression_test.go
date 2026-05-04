@@ -3,13 +3,16 @@ package repository_test
 import (
 	"context"
 	"errors"
+	"math"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/domain"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func TestRepositoryRegressionSuiteCRUD(t *testing.T) {
@@ -168,6 +171,70 @@ func TestRepositoryRegressionCaseAndPromotionCRUD(t *testing.T) {
 	if promotion.WorkspaceRegressionCaseID != regressionCase.ID {
 		t.Fatalf("promotion case id = %s, want %s", promotion.WorkspaceRegressionCaseID, regressionCase.ID)
 	}
+}
+
+func TestRepositoryRegressionCaseValidationStats(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	sourceChallengePackID := lookupChallengePackID(t, ctx, db, fixture.challengePackVersionID)
+	suite, err := repo.CreateRegressionSuite(ctx, repository.CreateRegressionSuiteParams{
+		WorkspaceID:           fixture.workspaceID,
+		SourceChallengePackID: sourceChallengePackID,
+		Name:                  "Validation regressions",
+		Description:           "Seed suite for validation stats",
+		Status:                domain.RegressionSuiteStatusActive,
+		SourceMode:            "derived_only",
+		DefaultGateSeverity:   domain.RegressionSeverityWarning,
+		CreatedByUserID:       fixture.userID,
+	})
+	if err != nil {
+		t.Fatalf("CreateRegressionSuite returned error: %v", err)
+	}
+
+	regressionCase, err := repo.CreateRegressionCase(ctx, repository.CreateRegressionCaseParams{
+		SuiteID:                      suite.ID,
+		Title:                        "Validation case",
+		Status:                       domain.RegressionCaseStatusActive,
+		Severity:                     domain.RegressionSeverityBlocking,
+		PromotionMode:                domain.RegressionPromotionModeFullExecutable,
+		SourceChallengePackVersionID: fixture.challengePackVersionID,
+		SourceChallengeInputSetID:    &fixture.challengeInputSetID,
+		SourceChallengeIdentityID:    fixture.firstChallengeIdentityID,
+		SourceCaseKey:                "case-a",
+		EvidenceTier:                 "native_structured",
+		FailureClass:                 "policy_violation",
+		FailureSummary:               "Original failure",
+		PayloadSnapshot:              []byte(`{"input":"a"}`),
+		ExpectedContract:             []byte(`{"validator":"exact"}`),
+		Metadata:                     []byte(`{"source":"test"}`),
+	})
+	if err != nil {
+		t.Fatalf("CreateRegressionCase returned error: %v", err)
+	}
+
+	evaluationSpecID := insertEvaluationSpecRecord(t, ctx, db, fixture.challengePackVersionID, "regression-validation", 1)
+	baseTime := time.Date(2026, 5, 4, 12, 0, 0, 0, time.UTC)
+	for index, verdict := range []string{"fail", "fail", "pass", "fail", "pass"} {
+		insertRegressionValidationRun(t, ctx, db, repo, fixture, evaluationSpecID, regressionCase.ID, fixture.firstChallengeIdentityID, verdict, baseTime.Add(time.Duration(index)*time.Minute))
+	}
+
+	got, err := repo.GetRegressionCaseByID(ctx, regressionCase.ID)
+	if err != nil {
+		t.Fatalf("GetRegressionCaseByID returned error: %v", err)
+	}
+	assertValidationStats(t, got.ValidationStats, 5, 3, 2, 0.6, "pass", baseTime.Add(4*time.Minute))
+
+	cases, err := repo.ListRegressionCasesBySuiteID(ctx, suite.ID)
+	if err != nil {
+		t.Fatalf("ListRegressionCasesBySuiteID returned error: %v", err)
+	}
+	if len(cases) != 1 {
+		t.Fatalf("cases = %d, want 1", len(cases))
+	}
+	assertValidationStats(t, cases[0].ValidationStats, 5, 3, 2, 0.6, "pass", baseTime.Add(4*time.Minute))
 }
 
 func TestRepositoryPatchRegressionSuiteRejectsInvalidTransition(t *testing.T) {
@@ -515,6 +582,110 @@ func TestRepositoryPromoteFailureConcurrentRequestsStayIdempotent(t *testing.T) 
 	}
 	if promotionCount != 1 {
 		t.Fatalf("promotion count = %d, want 1", promotionCount)
+	}
+}
+
+func insertRegressionValidationRun(
+	t *testing.T,
+	ctx context.Context,
+	db *pgxpool.Pool,
+	repo *repository.Repository,
+	fixture testFixture,
+	evaluationSpecID uuid.UUID,
+	regressionCaseID uuid.UUID,
+	challengeIdentityID uuid.UUID,
+	verdict string,
+	finishedAt time.Time,
+) {
+	t.Helper()
+
+	run, runAgents := createTestRun(t, ctx, repo, fixture, 1, "regression-validation")
+	runAgentID := runAgents[0].ID
+	if _, err := db.Exec(ctx, `
+		UPDATE runs
+		SET status = 'completed',
+		    started_at = $2,
+		    finished_at = $2
+		WHERE id = $1
+	`, run.ID, finishedAt); err != nil {
+		t.Fatalf("mark validation run completed returned error: %v", err)
+	}
+
+	if _, err := db.Exec(ctx, `
+		INSERT INTO run_case_selections (
+			id,
+			run_id,
+			challenge_identity_id,
+			selection_origin,
+			regression_case_id,
+			selection_rank
+		)
+		VALUES ($1, $2, $3, 'regression_case', $4, 1)
+	`, uuid.New(), run.ID, challengeIdentityID, regressionCaseID); err != nil {
+		t.Fatalf("insert validation run selection returned error: %v", err)
+	}
+
+	if _, err := db.Exec(ctx, `
+		INSERT INTO run_scorecards (
+			id,
+			run_id,
+			evaluation_spec_id,
+			winning_run_agent_id,
+			scorecard
+		)
+		VALUES ($1, $2, $3, $4, $5)
+	`, uuid.New(), run.ID, evaluationSpecID, runAgentID, []byte(`{"status":"complete"}`)); err != nil {
+		t.Fatalf("insert validation run scorecard returned error: %v", err)
+	}
+
+	score := 1.0
+	if verdict == "fail" {
+		score = 0
+	}
+	if _, err := db.Exec(ctx, `
+		INSERT INTO judge_results (
+			id,
+			run_agent_id,
+			evaluation_spec_id,
+			challenge_identity_id,
+			regression_case_id,
+			judge_key,
+			verdict,
+			normalized_score,
+			raw_output
+		)
+		VALUES ($1, $2, $3, $4, $5, 'exact', $6, $7, $8)
+	`, uuid.New(), runAgentID, evaluationSpecID, challengeIdentityID, regressionCaseID, verdict, score, []byte(`{"state":"available"}`)); err != nil {
+		t.Fatalf("insert validation judge result returned error: %v", err)
+	}
+}
+
+func assertValidationStats(
+	t *testing.T,
+	stats *repository.RegressionCaseValidationStats,
+	runCount int,
+	failureCount int,
+	passCount int,
+	reproductionRate float64,
+	lastOutcome string,
+	lastValidatedAt time.Time,
+) {
+	t.Helper()
+
+	if stats == nil {
+		t.Fatal("validation stats = nil, want populated")
+	}
+	if stats.RunCount != runCount || stats.FailureCount != failureCount || stats.PassCount != passCount {
+		t.Fatalf("validation counts = %+v, want runs=%d failures=%d passes=%d", stats, runCount, failureCount, passCount)
+	}
+	if math.Abs(stats.ReproductionRate-reproductionRate) > 1e-9 {
+		t.Fatalf("reproduction rate = %f, want %f", stats.ReproductionRate, reproductionRate)
+	}
+	if stats.LastOutcome != lastOutcome {
+		t.Fatalf("last outcome = %q, want %q", stats.LastOutcome, lastOutcome)
+	}
+	if stats.LastValidatedAt == nil || !stats.LastValidatedAt.Equal(lastValidatedAt) {
+		t.Fatalf("last validated at = %v, want %s", stats.LastValidatedAt, lastValidatedAt)
 	}
 }
 

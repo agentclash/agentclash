@@ -8,7 +8,11 @@ import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
 
-import { CaseStatusBadge, SeverityBadge } from "../../../badges";
+import {
+  CaseStatusBadge,
+  SeverityBadge,
+  ValidationBadge,
+} from "../../../badges";
 import { SuiteRunHistory } from "../../suite-run-history";
 import { EditCaseDialog } from "./edit-case-dialog";
 
@@ -87,6 +91,47 @@ export function CaseDetailClient({
           </MetaRow>
         </dl>
       </div>
+
+      <Section title="Validation">
+        <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
+          <MetaRow label="Status">
+            <ValidationBadge status={c.validation.status} />
+          </MetaRow>
+          <MetaRow label="Scored Runs">
+            <span className="text-muted-foreground">
+              {c.validation.run_count} ({c.validation.failure_count} fail /{" "}
+              {c.validation.pass_count} pass)
+            </span>
+          </MetaRow>
+          <MetaRow label="Reproduction">
+            <span className="text-muted-foreground">
+              {c.validation.reproduction_rate === undefined
+                ? "\u2014"
+                : `${formatPercent(c.validation.reproduction_rate)} / ${formatPercent(c.validation.reproduction_threshold)}`}
+            </span>
+          </MetaRow>
+          <MetaRow label="Last Outcome">
+            <span className="text-muted-foreground">
+              {c.validation.last_outcome ?? "\u2014"}
+            </span>
+          </MetaRow>
+          <MetaRow label="Last Validated">
+            <span className="text-muted-foreground">
+              {c.validation.last_validated_at
+                ? new Date(c.validation.last_validated_at).toLocaleString()
+                : "\u2014"}
+            </span>
+          </MetaRow>
+          <MetaRow label="Remaining Runs">
+            <span className="text-muted-foreground">
+              {c.validation.remaining_runs}
+            </span>
+          </MetaRow>
+        </dl>
+        <p className="mt-3 text-sm text-muted-foreground">
+          {c.validation.recommended_action}
+        </p>
+      </Section>
 
       <Section title="Provenance">
         <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
@@ -268,6 +313,10 @@ function MetaRow({
       <dd className="flex items-center">{children}</dd>
     </div>
   );
+}
+
+function formatPercent(value: number): string {
+  return `${Math.round(value * 100)}%`;
 }
 
 function ProvenanceRow({

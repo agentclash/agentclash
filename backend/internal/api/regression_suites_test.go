@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -590,6 +591,14 @@ func TestRegressionSuiteEndpointsRoundTrip(t *testing.T) {
 			PayloadSnapshot:              json.RawMessage(`{"payload":"snapshot"}`),
 			ExpectedContract:             json.RawMessage(`{"contract":"expected"}`),
 			Metadata:                     json.RawMessage(`{"origin":"test","source_challenge_key":"ticket-1","source_failure_fingerprint":"frf-test","source_failure_cluster_key":"frc-test"}`),
+			ValidationStats: &repository.RegressionCaseValidationStats{
+				RunCount:         5,
+				FailureCount:     3,
+				PassCount:        2,
+				ReproductionRate: 0.6,
+				LastOutcome:      "pass",
+				LastValidatedAt:  &promotionCreatedAt,
+			},
 			LatestPromotion: &repository.RegressionPromotion{
 				ID:                        uuid.New(),
 				WorkspaceRegressionCaseID: caseID,
@@ -705,6 +714,22 @@ func TestRegressionSuiteEndpointsRoundTrip(t *testing.T) {
 	if casesResponse.Items[0].SourceFailureClusterKey == nil || *casesResponse.Items[0].SourceFailureClusterKey != "frc-test" {
 		t.Fatalf("source_failure_cluster_key = %v, want frc-test", casesResponse.Items[0].SourceFailureClusterKey)
 	}
+	validation := casesResponse.Items[0].Validation
+	if validation.Status != regressionValidationStatusReproducing {
+		t.Fatalf("validation status = %q, want %q", validation.Status, regressionValidationStatusReproducing)
+	}
+	if validation.RunCount != 5 || validation.FailureCount != 3 || validation.PassCount != 2 {
+		t.Fatalf("validation counts = %+v, want 5/3/2", validation)
+	}
+	if validation.ReproductionRate == nil || math.Abs(*validation.ReproductionRate-0.6) > 1e-9 {
+		t.Fatalf("validation reproduction_rate = %v, want 0.6", validation.ReproductionRate)
+	}
+	if validation.LastOutcome == nil || *validation.LastOutcome != "pass" {
+		t.Fatalf("validation last_outcome = %v, want pass", validation.LastOutcome)
+	}
+	if validation.LastValidatedAt == nil || !validation.LastValidatedAt.Equal(promotionCreatedAt) {
+		t.Fatalf("validation last_validated_at = %v, want %s", validation.LastValidatedAt, promotionCreatedAt)
+	}
 
 	casePatchRec := httptest.NewRecorder()
 	casePatchReq := httptest.NewRequest(http.MethodPatch, "/v1/workspaces/"+workspaceID.String()+"/regression-cases/"+caseID.String(), bytes.NewBufferString(`{
@@ -777,6 +802,98 @@ func TestRegressionFailureProvenanceFromMetadata(t *testing.T) {
 			assertOptionalString(t, "source_challenge_key", got.SourceChallengeKey, tt.challenge)
 			assertOptionalString(t, "source_failure_fingerprint", got.SourceFailureFingerprint, tt.fingerprint)
 			assertOptionalString(t, "source_failure_cluster_key", got.SourceFailureClusterKey, tt.cluster)
+		})
+	}
+}
+
+func TestBuildRegressionCaseValidationResponse(t *testing.T) {
+	validatedAt := time.Date(2026, 5, 4, 12, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name   string
+		stats  *repository.RegressionCaseValidationStats
+		status string
+		rate   *float64
+	}{
+		{
+			name:   "not validated",
+			stats:  nil,
+			status: regressionValidationStatusNotValidated,
+		},
+		{
+			name: "collecting signal",
+			stats: &repository.RegressionCaseValidationStats{
+				RunCount:         3,
+				FailureCount:     2,
+				PassCount:        1,
+				ReproductionRate: 2.0 / 3.0,
+				LastOutcome:      "fail",
+				LastValidatedAt:  &validatedAt,
+			},
+			status: regressionValidationStatusCollectingSignal,
+			rate:   float64Ptr(2.0 / 3.0),
+		},
+		{
+			name: "reproducing",
+			stats: &repository.RegressionCaseValidationStats{
+				RunCount:         5,
+				FailureCount:     3,
+				PassCount:        2,
+				ReproductionRate: 0.6,
+				LastOutcome:      "pass",
+				LastValidatedAt:  &validatedAt,
+			},
+			status: regressionValidationStatusReproducing,
+			rate:   float64Ptr(0.6),
+		},
+		{
+			name: "passing",
+			stats: &repository.RegressionCaseValidationStats{
+				RunCount:         5,
+				FailureCount:     0,
+				PassCount:        5,
+				ReproductionRate: 0,
+				LastOutcome:      "pass",
+				LastValidatedAt:  &validatedAt,
+			},
+			status: regressionValidationStatusPassing,
+			rate:   float64Ptr(0),
+		},
+		{
+			name: "flaky",
+			stats: &repository.RegressionCaseValidationStats{
+				RunCount:         5,
+				FailureCount:     2,
+				PassCount:        3,
+				ReproductionRate: 0.4,
+				LastOutcome:      "fail",
+				LastValidatedAt:  &validatedAt,
+			},
+			status: regressionValidationStatusFlaky,
+			rate:   float64Ptr(0.4),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := buildRegressionCaseValidationResponse(tt.stats)
+			if got.Status != tt.status {
+				t.Fatalf("status = %q, want %q", got.Status, tt.status)
+			}
+			if got.RequiredRuns != regressionValidationRequiredRuns {
+				t.Fatalf("required_runs = %d, want %d", got.RequiredRuns, regressionValidationRequiredRuns)
+			}
+			if got.ReproductionThreshold != regressionValidationReproductionThreshold {
+				t.Fatalf("reproduction_threshold = %f, want %f", got.ReproductionThreshold, regressionValidationReproductionThreshold)
+			}
+			if tt.rate == nil {
+				if got.ReproductionRate != nil {
+					t.Fatalf("reproduction_rate = %v, want nil", got.ReproductionRate)
+				}
+				return
+			}
+			if got.ReproductionRate == nil || math.Abs(*got.ReproductionRate-*tt.rate) > 1e-9 {
+				t.Fatalf("reproduction_rate = %v, want %f", got.ReproductionRate, *tt.rate)
+			}
 		})
 	}
 }

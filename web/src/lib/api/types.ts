@@ -1736,6 +1736,12 @@ export type RegressionPromotionMode =
   | "output_only"
   | "manual";
 export type RegressionSourceMode = "derived_only" | "mixed_manual";
+export type RegressionCaseValidationStatus =
+  | "not_validated"
+  | "collecting_signal"
+  | "reproducing"
+  | "passing"
+  | "flaky";
 
 export interface RegressionPromotion {
   id: string;
@@ -1747,6 +1753,20 @@ export interface RegressionPromotion {
   promotion_reason: string;
   promotion_snapshot: Record<string, unknown>;
   created_at: string;
+}
+
+export interface RegressionCaseValidation {
+  status: RegressionCaseValidationStatus;
+  run_count: number;
+  failure_count: number;
+  pass_count: number;
+  reproduction_rate?: number;
+  reproduction_threshold: number;
+  required_runs: number;
+  remaining_runs: number;
+  last_outcome?: "pass" | "fail";
+  last_validated_at?: string;
+  recommended_action: string;
 }
 
 /** GET /v1/workspaces/{ws}/regression-suites list item, POST response, PATCH response */
@@ -1794,6 +1814,7 @@ export interface RegressionCase {
   validator_overrides?: Record<string, unknown> | null;
   metadata: Record<string, unknown>;
   latest_promotion?: RegressionPromotion;
+  validation: RegressionCaseValidation;
   created_at: string;
   updated_at: string;
 }

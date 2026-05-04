@@ -56,8 +56,18 @@ type RegressionCase struct {
 	ValidatorOverrides           json.RawMessage
 	Metadata                     json.RawMessage
 	LatestPromotion              *RegressionPromotion
+	ValidationStats              *RegressionCaseValidationStats
 	CreatedAt                    time.Time
 	UpdatedAt                    time.Time
+}
+
+type RegressionCaseValidationStats struct {
+	RunCount         int
+	FailureCount     int
+	PassCount        int
+	ReproductionRate float64
+	LastOutcome      string
+	LastValidatedAt  *time.Time
 }
 
 type RegressionPromotion struct {
@@ -384,6 +394,10 @@ func (r *Repository) GetRegressionCaseByID(ctx context.Context, id uuid.UUID) (R
 	if err != nil {
 		return RegressionCase{}, err
 	}
+	regressionCase.ValidationStats, err = r.regressionCaseValidationStatsByCaseID(ctx, regressionCase.ID)
+	if err != nil {
+		return RegressionCase{}, err
+	}
 	return regressionCase, nil
 }
 
@@ -406,6 +420,18 @@ func (r *Repository) ListRegressionCasesBySuiteID(ctx context.Context, suiteID u
 			return nil, mapErr
 		}
 		cases = append(cases, regressionCase)
+	}
+	if len(cases) == 0 {
+		return cases, nil
+	}
+	statsByCaseID, err := r.regressionCaseValidationStatsBySuiteID(ctx, suiteID)
+	if err != nil {
+		return nil, err
+	}
+	for i := range cases {
+		if stats, ok := statsByCaseID[cases[i].ID]; ok {
+			cases[i].ValidationStats = &stats
+		}
 	}
 	return cases, nil
 }
@@ -724,6 +750,34 @@ func (r *Repository) latestRegressionPromotionByCaseID(ctx context.Context, case
 	return &promotion, nil
 }
 
+func (r *Repository) regressionCaseValidationStatsByCaseID(ctx context.Context, caseID uuid.UUID) (*RegressionCaseValidationStats, error) {
+	row, err := r.queries.GetRegressionCaseValidationStatsByCaseID(ctx, repositorysqlc.GetRegressionCaseValidationStatsByCaseIDParams{
+		RegressionCaseID: caseID,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get regression case validation stats by case id: %w", err)
+	}
+	stats := mapRegressionCaseValidationStatsFromCaseRow(row)
+	return &stats, nil
+}
+
+func (r *Repository) regressionCaseValidationStatsBySuiteID(ctx context.Context, suiteID uuid.UUID) (map[uuid.UUID]RegressionCaseValidationStats, error) {
+	rows, err := r.queries.ListRegressionCaseValidationStatsBySuiteID(ctx, repositorysqlc.ListRegressionCaseValidationStatsBySuiteIDParams{
+		SuiteID: suiteID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list regression case validation stats by suite id: %w", err)
+	}
+	stats := make(map[uuid.UUID]RegressionCaseValidationStats, len(rows))
+	for _, row := range rows {
+		stats[row.RegressionCaseID] = mapRegressionCaseValidationStatsFromSuiteRow(row)
+	}
+	return stats, nil
+}
+
 func mapRegressionSuite(row repositorysqlc.WorkspaceRegressionSuite) (RegressionSuite, error) {
 	status, err := domain.ParseRegressionSuiteStatus(row.Status)
 	if err != nil {
@@ -805,9 +859,32 @@ func mapRegressionCase(row regressionCaseFields) (RegressionCase, error) {
 		ValidatorOverrides:           cloneJSON(row.validatorOverrides),
 		Metadata:                     cloneJSON(row.metadata),
 		LatestPromotion:              nil,
+		ValidationStats:              nil,
 		CreatedAt:                    createdAt,
 		UpdatedAt:                    updatedAt,
 	}, nil
+}
+
+func mapRegressionCaseValidationStatsFromCaseRow(row repositorysqlc.GetRegressionCaseValidationStatsByCaseIDRow) RegressionCaseValidationStats {
+	return RegressionCaseValidationStats{
+		RunCount:         int(row.ValidationRunCount),
+		FailureCount:     int(row.ValidationFailureCount),
+		PassCount:        int(row.ValidationPassCount),
+		ReproductionRate: row.ReproductionRate,
+		LastOutcome:      row.LastValidationOutcome,
+		LastValidatedAt:  optionalTime(row.LastValidatedAt),
+	}
+}
+
+func mapRegressionCaseValidationStatsFromSuiteRow(row repositorysqlc.ListRegressionCaseValidationStatsBySuiteIDRow) RegressionCaseValidationStats {
+	return RegressionCaseValidationStats{
+		RunCount:         int(row.ValidationRunCount),
+		FailureCount:     int(row.ValidationFailureCount),
+		PassCount:        int(row.ValidationPassCount),
+		ReproductionRate: row.ReproductionRate,
+		LastOutcome:      row.LastValidationOutcome,
+		LastValidatedAt:  optionalTime(row.LastValidatedAt),
+	}
 }
 
 func mapRegressionCaseFromTableRowPartial(row repositorysqlc.WorkspaceRegressionCase) (RegressionCase, error) {

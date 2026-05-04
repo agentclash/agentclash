@@ -451,6 +451,91 @@ func (q *Queries) GetRegressionCaseIDByPromotionSource(ctx context.Context, arg 
 	return id, err
 }
 
+const getRegressionCaseValidationStatsByCaseID = `-- name: GetRegressionCaseValidationStatsByCaseID :one
+WITH selected_run_cases AS (
+    SELECT DISTINCT
+        $1::uuid AS regression_case_id,
+        rcs.run_id,
+        rcs.challenge_identity_id
+    FROM run_case_selections AS rcs
+    WHERE rcs.regression_case_id = $1::uuid
+),
+case_run_outcomes AS (
+    SELECT
+        src.regression_case_id,
+        src.run_id,
+        COALESCE(r.finished_at, r.started_at, r.created_at)::timestamptz AS validated_at,
+        -- Treat any failed winning-agent judge verdict as a reproduced failure.
+        CASE
+            WHEN bool_or(jr.verdict = 'fail') THEN 'fail'
+            WHEN bool_or(jr.verdict = 'pass') THEN 'pass'
+            ELSE 'pending'
+        END AS outcome
+    FROM selected_run_cases AS src
+    JOIN runs AS r
+      ON r.id = src.run_id
+     AND r.status = 'completed'
+    JOIN run_scorecards AS rs
+      ON rs.run_id = r.id
+     AND rs.winning_run_agent_id IS NOT NULL
+    LEFT JOIN judge_results AS jr
+      ON jr.run_agent_id = rs.winning_run_agent_id
+     AND (
+        jr.regression_case_id = src.regression_case_id
+        OR (
+            jr.regression_case_id IS NULL
+            -- Older judge rows only carry the challenge identity; use it as a fallback.
+            AND jr.challenge_identity_id = src.challenge_identity_id
+        )
+     )
+    GROUP BY src.regression_case_id, src.run_id, validated_at
+),
+scored_case_runs AS (
+    SELECT regression_case_id, run_id, validated_at, outcome
+    FROM case_run_outcomes
+    WHERE outcome IN ('pass', 'fail')
+)
+SELECT
+    regression_case_id,
+    count(*)::bigint AS validation_run_count,
+    count(*) FILTER (WHERE outcome = 'fail')::bigint AS validation_failure_count,
+    count(*) FILTER (WHERE outcome = 'pass')::bigint AS validation_pass_count,
+    ((count(*) FILTER (WHERE outcome = 'fail'))::float8 / count(*)::float8)::float8 AS reproduction_rate,
+    (array_agg(outcome ORDER BY validated_at DESC, run_id DESC))[1]::text AS last_validation_outcome,
+    max(validated_at)::timestamptz AS last_validated_at
+FROM scored_case_runs
+GROUP BY regression_case_id
+`
+
+type GetRegressionCaseValidationStatsByCaseIDParams struct {
+	RegressionCaseID uuid.UUID
+}
+
+type GetRegressionCaseValidationStatsByCaseIDRow struct {
+	RegressionCaseID       uuid.UUID
+	ValidationRunCount     int64
+	ValidationFailureCount int64
+	ValidationPassCount    int64
+	ReproductionRate       float64
+	LastValidationOutcome  string
+	LastValidatedAt        pgtype.Timestamptz
+}
+
+func (q *Queries) GetRegressionCaseValidationStatsByCaseID(ctx context.Context, arg GetRegressionCaseValidationStatsByCaseIDParams) (GetRegressionCaseValidationStatsByCaseIDRow, error) {
+	row := q.db.QueryRow(ctx, getRegressionCaseValidationStatsByCaseID, arg.RegressionCaseID)
+	var i GetRegressionCaseValidationStatsByCaseIDRow
+	err := row.Scan(
+		&i.RegressionCaseID,
+		&i.ValidationRunCount,
+		&i.ValidationFailureCount,
+		&i.ValidationPassCount,
+		&i.ReproductionRate,
+		&i.LastValidationOutcome,
+		&i.LastValidatedAt,
+	)
+	return i, err
+}
+
 const getRegressionSuiteByID = `-- name: GetRegressionSuiteByID :one
 SELECT id, workspace_id, source_challenge_pack_id, name, description, status, source_mode, default_gate_severity, created_by_user_id, created_at, updated_at
 FROM workspace_regression_suites
@@ -479,6 +564,108 @@ func (q *Queries) GetRegressionSuiteByID(ctx context.Context, arg GetRegressionS
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const listRegressionCaseValidationStatsBySuiteID = `-- name: ListRegressionCaseValidationStatsBySuiteID :many
+WITH selected_run_cases AS (
+    SELECT DISTINCT
+        c.id AS regression_case_id,
+        rcs.run_id,
+        rcs.challenge_identity_id
+    FROM run_case_selections AS rcs
+    JOIN workspace_regression_cases AS c
+      ON c.id = rcs.regression_case_id
+    WHERE c.suite_id = $1
+      AND rcs.regression_case_id IS NOT NULL
+),
+case_run_outcomes AS (
+    SELECT
+        src.regression_case_id,
+        src.run_id,
+        COALESCE(r.finished_at, r.started_at, r.created_at)::timestamptz AS validated_at,
+        -- Treat any failed winning-agent judge verdict as a reproduced failure.
+        CASE
+            WHEN bool_or(jr.verdict = 'fail') THEN 'fail'
+            WHEN bool_or(jr.verdict = 'pass') THEN 'pass'
+            ELSE 'pending'
+        END AS outcome
+    FROM selected_run_cases AS src
+    JOIN runs AS r
+      ON r.id = src.run_id
+     AND r.status = 'completed'
+    JOIN run_scorecards AS rs
+      ON rs.run_id = r.id
+     AND rs.winning_run_agent_id IS NOT NULL
+    LEFT JOIN judge_results AS jr
+      ON jr.run_agent_id = rs.winning_run_agent_id
+     AND (
+        jr.regression_case_id = src.regression_case_id
+        OR (
+            jr.regression_case_id IS NULL
+            -- Older judge rows only carry the challenge identity; use it as a fallback.
+            AND jr.challenge_identity_id = src.challenge_identity_id
+        )
+     )
+    GROUP BY src.regression_case_id, src.run_id, validated_at
+),
+scored_case_runs AS (
+    SELECT regression_case_id, run_id, validated_at, outcome
+    FROM case_run_outcomes
+    WHERE outcome IN ('pass', 'fail')
+)
+SELECT
+    regression_case_id,
+    count(*)::bigint AS validation_run_count,
+    count(*) FILTER (WHERE outcome = 'fail')::bigint AS validation_failure_count,
+    count(*) FILTER (WHERE outcome = 'pass')::bigint AS validation_pass_count,
+    ((count(*) FILTER (WHERE outcome = 'fail'))::float8 / count(*)::float8)::float8 AS reproduction_rate,
+    (array_agg(outcome ORDER BY validated_at DESC, run_id DESC))[1]::text AS last_validation_outcome,
+    max(validated_at)::timestamptz AS last_validated_at
+FROM scored_case_runs
+GROUP BY regression_case_id
+ORDER BY regression_case_id
+`
+
+type ListRegressionCaseValidationStatsBySuiteIDParams struct {
+	SuiteID uuid.UUID
+}
+
+type ListRegressionCaseValidationStatsBySuiteIDRow struct {
+	RegressionCaseID       uuid.UUID
+	ValidationRunCount     int64
+	ValidationFailureCount int64
+	ValidationPassCount    int64
+	ReproductionRate       float64
+	LastValidationOutcome  string
+	LastValidatedAt        pgtype.Timestamptz
+}
+
+func (q *Queries) ListRegressionCaseValidationStatsBySuiteID(ctx context.Context, arg ListRegressionCaseValidationStatsBySuiteIDParams) ([]ListRegressionCaseValidationStatsBySuiteIDRow, error) {
+	rows, err := q.db.Query(ctx, listRegressionCaseValidationStatsBySuiteID, arg.SuiteID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListRegressionCaseValidationStatsBySuiteIDRow
+	for rows.Next() {
+		var i ListRegressionCaseValidationStatsBySuiteIDRow
+		if err := rows.Scan(
+			&i.RegressionCaseID,
+			&i.ValidationRunCount,
+			&i.ValidationFailureCount,
+			&i.ValidationPassCount,
+			&i.ReproductionRate,
+			&i.LastValidationOutcome,
+			&i.LastValidatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listRegressionCasesBySuiteID = `-- name: ListRegressionCasesBySuiteID :many
