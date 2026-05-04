@@ -532,8 +532,12 @@ func resolveCIBaselineDeployment(cmd *cobra.Command, rc *RunContext, workspaceID
 		return runs[i].CreatedAt > runs[j].CreatedAt
 	})
 
+	var newestRejectedCandidate error
 	for _, run := range runs {
 		if err := validateCIBaselineRun(workspaceID, manifest, run, now); err != nil {
+			if newestRejectedCandidate == nil {
+				newestRejectedCandidate = err
+			}
 			continue
 		}
 		agents, err := listRunAgentsForWorkflow(cmd, rc, run.ID)
@@ -550,27 +554,50 @@ func resolveCIBaselineDeployment(cmd *cobra.Command, rc *RunContext, workspaceID
 			return buildCIBaselineRunResolution(run, agent.ID, deploymentID, now), nil
 		}
 	}
+	if newestRejectedCandidate != nil {
+		return ciBaselineRunResolution{}, fmt.Errorf("no completed compatible baseline run found for baseline.deployment_id %s; newest rejected baseline candidate: %w", deploymentID, newestRejectedCandidate)
+	}
 	return ciBaselineRunResolution{}, fmt.Errorf("no completed compatible baseline run found for baseline.deployment_id %s", deploymentID)
 }
 
 func listCIBaselineRuns(cmd *cobra.Command, rc *RunContext, workspaceID string) ([]runWorkflowSummary, error) {
-	query := url.Values{}
-	query.Set("limit", "100")
-	resp, err := rc.Client.Get(cmd.Context(), "/v1/workspaces/"+workspaceID+"/runs", query)
-	if err != nil {
-		return nil, err
-	}
-	if apiErr := resp.ParseError(); apiErr != nil {
-		return nil, apiErr
-	}
+	const pageLimit = 100
 
-	var result struct {
-		Items []runWorkflowSummary `json:"items"`
+	var runs []runWorkflowSummary
+	for offset := 0; ; offset += pageLimit {
+		query := url.Values{}
+		query.Set("limit", fmt.Sprintf("%d", pageLimit))
+		if offset > 0 {
+			query.Set("offset", fmt.Sprintf("%d", offset))
+		}
+		resp, err := rc.Client.Get(cmd.Context(), "/v1/workspaces/"+workspaceID+"/runs", query)
+		if err != nil {
+			return nil, err
+		}
+		if apiErr := resp.ParseError(); apiErr != nil {
+			return nil, apiErr
+		}
+
+		var result struct {
+			Items []runWorkflowSummary `json:"items"`
+			Total int64                `json:"total"`
+		}
+		if err := resp.DecodeJSON(&result); err != nil {
+			return nil, err
+		}
+
+		runs = append(runs, result.Items...)
+		if len(result.Items) == 0 {
+			break
+		}
+		if result.Total > 0 && int64(len(runs)) >= result.Total {
+			break
+		}
+		if len(result.Items) < pageLimit {
+			break
+		}
 	}
-	if err := resp.DecodeJSON(&result); err != nil {
-		return nil, err
-	}
-	return result.Items, nil
+	return runs, nil
 }
 
 func validateCIBaselineRun(workspaceID string, manifest ciManifest, run runWorkflowSummary, now time.Time) error {
