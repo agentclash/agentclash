@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
 import { createApiClient } from "@/lib/api/client";
 import { ApiError } from "@/lib/api/errors";
@@ -22,8 +23,25 @@ import {
 import { useOrgContext } from "../org-context";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2, RefreshCw } from "lucide-react";
+import { CreditCard, ExternalLink, Loader2, RefreshCw, Sparkles } from "lucide-react";
 import { toast } from "sonner";
+
+type SelfServePeriod = "monthly" | "yearly";
+
+const PRICE_COPY: Record<string, Record<SelfServePeriod, { value: string; suffix: string; note?: string }>> = {
+  free: {
+    monthly: { value: "$0", suffix: "/ month" },
+    yearly: { value: "$0", suffix: "/ month" },
+  },
+  pro: {
+    monthly: { value: "$49", suffix: "/ seat / month", note: "Billed monthly" },
+    yearly: { value: "$39", suffix: "/ seat / month", note: "$468 / seat / year" },
+  },
+  team: {
+    monthly: { value: "$100", suffix: "/ seat / month", note: "Billed monthly" },
+    yearly: { value: "$80", suffix: "/ seat / month", note: "$960 / seat / year" },
+  },
+};
 
 function LimitRow({ label, value }: { label: string; value?: number | null }) {
   return (
@@ -37,6 +55,7 @@ function LimitRow({ label, value }: { label: string; value?: number | null }) {
 function PlanCard({
   plan,
   currentPlan,
+  billingPeriod,
   trialAvailable,
   busyAction,
   onStartTrial,
@@ -44,6 +63,7 @@ function PlanCard({
 }: {
   plan: BillingPlan;
   currentPlan: string;
+  billingPeriod: SelfServePeriod;
   trialAvailable: boolean;
   busyAction: string | null;
   onStartTrial: (plan: BillingPlan) => void;
@@ -53,6 +73,7 @@ function PlanCard({
   const busy = busyAction === plan.key;
   const canTrial = trialAvailable && (plan.key === "pro" || plan.key === "team");
   const canCheckout = plan.key !== "free" && plan.key !== "enterprise";
+  const price = PRICE_COPY[plan.key]?.[billingPeriod];
 
   return (
     <div className="flex min-h-56 flex-col rounded-lg border border-white/[0.08] bg-white/[0.02] p-4">
@@ -69,6 +90,22 @@ function PlanCard({
         </div>
         {isCurrent && <Badge variant="secondary">Current</Badge>}
       </div>
+
+      {price && (
+        <div className="mt-4">
+          <div className="flex items-end gap-1">
+            <span className="text-2xl font-semibold tracking-tight">
+              {price.value}
+            </span>
+            <span className="pb-1 text-xs text-muted-foreground">
+              {price.suffix}
+            </span>
+          </div>
+          {price.note && (
+            <p className="mt-1 text-xs text-muted-foreground">{price.note}</p>
+          )}
+        </div>
+      )}
 
       <div className="mt-4 space-y-2">
         <LimitRow label="Seats" value={plan.limits.seats.value} />
@@ -89,7 +126,12 @@ function PlanCard({
             disabled={busy}
             onClick={() => onStartTrial(plan)}
           >
-            {busy ? <Loader2 className="size-4 animate-spin" /> : "Start Trial"}
+            {busy ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Sparkles className="size-4" />
+            )}
+            Start Trial
           </Button>
         )}
         {canCheckout && (
@@ -99,6 +141,11 @@ function PlanCard({
             disabled={busy}
             onClick={() => onCheckout(plan)}
           >
+            {busy ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <CreditCard className="size-4" />
+            )}
             Checkout
           </Button>
         )}
@@ -107,13 +154,47 @@ function PlanCard({
   );
 }
 
+function PeriodToggle({
+  value,
+  onChange,
+}: {
+  value: SelfServePeriod;
+  onChange: (value: SelfServePeriod) => void;
+}) {
+  return (
+    <div
+      className="inline-flex rounded-md border border-white/[0.08] bg-white/[0.03] p-1"
+      role="group"
+      aria-label="Billing period"
+    >
+      {(["monthly", "yearly"] as const).map((period) => (
+        <button
+          key={period}
+          type="button"
+          aria-pressed={value === period}
+          onClick={() => onChange(period)}
+          className={`rounded px-3 py-1.5 text-xs font-medium transition-colors ${
+            value === period
+              ? "bg-white text-background"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          {period === "monthly" ? "Monthly" : "Yearly"}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function BillingSettingsClient() {
   const { orgId } = useOrgContext();
+  const searchParams = useSearchParams();
   const { getAccessToken } = useAccessToken();
   const { data: overview, error, isLoading, mutate } =
     useApiQuery<BillingOverviewResponse>(`/v1/organizations/${orgId}/billing`);
   const { data: plansData } = useApiQuery<BillingPlansResponse>("/v1/billing/plans");
   const [busyAction, setBusyAction] = useState<string | null>(null);
+  const [billingPeriod, setBillingPeriod] = useState<SelfServePeriod>("monthly");
 
   const plans = useMemo(
     () => (plansData?.items ?? []).filter((plan) => plan.key !== "enterprise"),
@@ -121,6 +202,23 @@ export function BillingSettingsClient() {
   );
   const entitlements = overview?.entitlements;
   const trialAvailable = isFreeActive(entitlements);
+  const hasDodoCustomer = Boolean(overview?.account?.dodo_customer_id);
+  const checkoutReturned = searchParams.get("checkout") === "pending";
+  const dodoReturnStatus = searchParams.get("status");
+  const checkoutPending =
+    checkoutReturned &&
+    (entitlements?.status === "active"
+      ? overview?.latest_checkout_intent?.status !== "completed" &&
+        entitlements.plan_key === "free"
+      : true);
+
+  useEffect(() => {
+    if (!checkoutReturned || !checkoutPending) return;
+    const interval = window.setInterval(() => {
+      void mutate();
+    }, 4000);
+    return () => window.clearInterval(interval);
+  }, [checkoutPending, checkoutReturned, mutate]);
 
   async function startTrial(plan: BillingPlan) {
     setBusyAction(plan.key);
@@ -131,7 +229,7 @@ export function BillingSettingsClient() {
         `/v1/organizations/${orgId}/billing/trial`,
         {
           plan_key: plan.key,
-          billing_period: "monthly",
+          billing_period: billingPeriod,
         },
       );
       toast.success(`${plan.display_name} trial started`);
@@ -148,13 +246,25 @@ export function BillingSettingsClient() {
     try {
       const token = await getAccessToken();
       const api = createApiClient(token ?? undefined);
+      const returnURL = new URL(window.location.href);
+      for (const key of [
+        "checkout",
+        "checkout_intent_id",
+        "status",
+        "payment_id",
+        "subscription_id",
+        "email",
+        "license_key",
+      ]) {
+        returnURL.searchParams.delete(key);
+      }
       const result = await api.post<CreateBillingCheckoutResponse>(
         `/v1/organizations/${orgId}/billing/checkout`,
         {
           plan_key: plan.key,
-          billing_period: "monthly",
+          billing_period: billingPeriod,
           seat_quantity: Math.max(plan.minimum_seats, plan.default_seats),
-          return_url: window.location.href,
+          return_url: returnURL.toString(),
         },
       );
       window.location.assign(result.checkout_url);
@@ -207,16 +317,48 @@ export function BillingSettingsClient() {
         <Button
           variant="outline"
           size="sm"
-          disabled={busyAction === "portal"}
+          disabled={busyAction === "portal" || !hasDodoCustomer}
           onClick={openPortal}
+          title={
+            hasDodoCustomer
+              ? "Open Dodo customer portal"
+              : "Available after checkout creates a Dodo customer"
+          }
         >
           {busyAction === "portal" ? (
             <Loader2 className="size-4 animate-spin" />
           ) : (
-            "Manage Billing"
+            <ExternalLink className="size-4" />
           )}
+          Manage Billing
         </Button>
       </div>
+
+      {!hasDodoCustomer && (
+        <p className="-mt-4 text-sm text-muted-foreground">
+          Manage billing becomes available after the first Dodo checkout creates
+          a customer record.
+        </p>
+      )}
+
+      {checkoutReturned && (
+        <section className="rounded-lg border border-amber-400/20 bg-amber-400/5 p-4">
+          <div className="flex items-start gap-3">
+            <RefreshCw className="mt-0.5 size-4 text-amber-300" />
+            <div>
+              <h2 className="text-sm font-semibold">
+                {checkoutPending ? "Checkout pending" : "Checkout synced"}
+              </h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {checkoutPending
+                  ? "Dodo sent you back here. Billing access updates as soon as the webhook is processed."
+                  : "Dodo billing is reflected on this organization."}
+                {dodoReturnStatus ? ` Status: ${dodoReturnStatus}.` : ""}
+              </p>
+            </div>
+          </div>
+        </section>
+      )}
 
       <section className="rounded-lg border border-white/[0.08] bg-white/[0.02] p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -287,13 +429,17 @@ export function BillingSettingsClient() {
       )}
 
       <section>
-        <h2 className="mb-3 text-sm font-semibold">Plans</h2>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-sm font-semibold">Plans</h2>
+          <PeriodToggle value={billingPeriod} onChange={setBillingPeriod} />
+        </div>
         <div className="grid gap-3 lg:grid-cols-3">
           {plans.map((plan) => (
             <PlanCard
               key={plan.key}
               plan={plan}
               currentPlan={entitlements.plan_key}
+              billingPeriod={billingPeriod}
               trialAvailable={trialAvailable}
               busyAction={busyAction}
               onStartTrial={startTrial}

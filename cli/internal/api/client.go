@@ -157,13 +157,107 @@ func (r *Response) DecodeJSON(v any) error {
 
 // APIError represents a structured API error.
 type APIError struct {
-	StatusCode int    `json:"-"`
-	Code       string `json:"code"`
-	Message    string `json:"message"`
+	StatusCode    int        `json:"-"`
+	Code          string     `json:"code"`
+	Message       string     `json:"message"`
+	PlanKey       string     `json:"plan_key,omitempty"`
+	UpgradeTarget string     `json:"upgrade_target,omitempty"`
+	Limit         *int       `json:"limit,omitempty"`
+	Used          *int       `json:"used,omitempty"`
+	Remaining     *int       `json:"remaining,omitempty"`
+	ResetAt       *time.Time `json:"reset_at,omitempty"`
+	ExpiresAt     *time.Time `json:"expires_at,omitempty"`
 }
 
 func (e *APIError) Error() string {
+	if e.IsBillingGate() {
+		return e.BillingMessage()
+	}
 	return fmt.Sprintf("%s: %s (HTTP %d)", e.Code, e.Message, e.StatusCode)
+}
+
+func (e *APIError) IsBillingGate() bool {
+	switch e.Code {
+	case "plan_limit_exceeded",
+		"quota_exceeded",
+		"concurrency_limit_exceeded",
+		"seat_limit_exceeded",
+		"workspace_limit_exceeded",
+		"feature_not_entitled",
+		"entitlement_expired",
+		"entitlement_inactive":
+		return true
+	default:
+		return false
+	}
+}
+
+func (e *APIError) BillingMessage() string {
+	current := planLabel(e.PlanKey)
+	upgrade := planLabel(e.UpgradeTarget)
+	action := "Open the organization billing page in the AgentClash web app to start a trial or upgrade."
+	if e.UpgradeTarget == "" {
+		action = "Open the organization billing page in the AgentClash web app to update billing."
+	}
+
+	var detail string
+	switch e.Code {
+	case "feature_not_entitled":
+		detail = fmt.Sprintf("%s does not include this feature.", current)
+		if e.UpgradeTarget != "" {
+			detail = fmt.Sprintf("%s Upgrade target: %s.", detail, upgrade)
+		}
+	case "quota_exceeded":
+		detail = fmt.Sprintf("%s monthly run quota is exhausted.", current)
+		if e.Used != nil && e.Limit != nil {
+			detail = fmt.Sprintf("%s Used %d of %d.", detail, *e.Used, *e.Limit)
+		}
+		if e.ResetAt != nil {
+			detail = fmt.Sprintf("%s Resets %s.", detail, e.ResetAt.UTC().Format("2006-01-02"))
+		}
+	case "concurrency_limit_exceeded":
+		detail = fmt.Sprintf("%s concurrent run limit is reached.", current)
+		if e.Limit != nil {
+			detail = fmt.Sprintf("%s Limit: %d.", detail, *e.Limit)
+		}
+	case "seat_limit_exceeded":
+		detail = fmt.Sprintf("%s seat limit is reached.", current)
+		if e.Limit != nil {
+			detail = fmt.Sprintf("%s Limit: %d.", detail, *e.Limit)
+		}
+	case "workspace_limit_exceeded", "plan_limit_exceeded":
+		detail = fmt.Sprintf("%s plan limit is reached.", current)
+		if e.Limit != nil {
+			detail = fmt.Sprintf("%s Limit: %d.", detail, *e.Limit)
+		}
+	case "entitlement_expired":
+		detail = fmt.Sprintf("%s access has expired.", current)
+		if e.ExpiresAt != nil {
+			detail = fmt.Sprintf("%s Expired %s.", detail, e.ExpiresAt.UTC().Format("2006-01-02"))
+		}
+	case "entitlement_inactive":
+		detail = fmt.Sprintf("%s billing is inactive.", current)
+	default:
+		detail = e.Message
+	}
+	return fmt.Sprintf("%s %s (HTTP %d)", detail, action, e.StatusCode)
+}
+
+func planLabel(planKey string) string {
+	switch strings.TrimSpace(planKey) {
+	case "free":
+		return "Free"
+	case "pro":
+		return "Pro"
+	case "team":
+		return "Team"
+	case "enterprise":
+		return "Enterprise"
+	case "":
+		return "This organization"
+	default:
+		return planKey
+	}
 }
 
 // ParseError attempts to parse an API error from a response. Returns nil if status < 400.

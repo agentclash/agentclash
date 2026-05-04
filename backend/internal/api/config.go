@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	billingpkg "github.com/agentclash/agentclash/backend/internal/billing"
 	"github.com/agentclash/agentclash/backend/internal/secrets"
 )
 
@@ -34,6 +35,7 @@ const (
 	defaultRateLimitRunCreationRPM   = 30.0
 	defaultRateLimitRunCreationBurst = 10
 	defaultDodoWebhookKey            = "whsec_YWdlbnRjbGFzaC1kZXYtZG9kby13ZWJob29rLXNlY3JldA=="
+	defaultDodoEnvironment           = "test"
 )
 
 var ErrInvalidConfig = errors.New("invalid api server config")
@@ -76,6 +78,8 @@ type Config struct {
 	GitHubWebhookSecret       string
 	DodoPaymentsAPIKey        string
 	DodoPaymentsWebhookKey    string
+	DodoEnvironment           string
+	DodoProductIDs            billingpkg.DodoProductIDs
 	DodoAPIBaseURL            string
 	DodoCheckoutBaseURL       string
 	DodoPortalBaseURL         string
@@ -169,11 +173,31 @@ func LoadConfigFromEnv() (Config, error) {
 	resendFromEmail := os.Getenv("RESEND_FROM_EMAIL")
 	dodoPaymentsAPIKey := os.Getenv("DODO_PAYMENTS_API_KEY")
 	dodoPaymentsWebhookKey := os.Getenv("DODO_PAYMENTS_WEBHOOK_KEY")
+	dodoEnvironment, err := envOrDefault("DODO_ENVIRONMENT", defaultDodoEnvironment)
+	if err != nil {
+		return Config{}, err
+	}
+	dodoEnvironment = strings.ToLower(strings.TrimSpace(dodoEnvironment))
+	if dodoEnvironment != "test" && dodoEnvironment != "live" {
+		return Config{}, fmt.Errorf("%w: DODO_ENVIRONMENT must be \"test\" or \"live\", got %q", ErrInvalidConfig, dodoEnvironment)
+	}
+	dodoProductIDs := billingpkg.DodoProductIDs{
+		ProMonthly:  strings.TrimSpace(os.Getenv("DODO_PRODUCT_PRO_MONTHLY")),
+		ProYearly:   strings.TrimSpace(os.Getenv("DODO_PRODUCT_PRO_YEARLY")),
+		TeamMonthly: strings.TrimSpace(os.Getenv("DODO_PRODUCT_TEAM_MONTHLY")),
+		TeamYearly:  strings.TrimSpace(os.Getenv("DODO_PRODUCT_TEAM_YEARLY")),
+	}
+	if err := dodoProductIDs.Validate(); err != nil {
+		return Config{}, fmt.Errorf("%w: DODO_PRODUCT_PRO_MONTHLY, DODO_PRODUCT_PRO_YEARLY, DODO_PRODUCT_TEAM_MONTHLY, and DODO_PRODUCT_TEAM_YEARLY must all be set together", ErrInvalidConfig)
+	}
 	if dodoPaymentsWebhookKey == "" && isDevelopmentEnvironment(appEnvironment) {
 		dodoPaymentsWebhookKey = defaultDodoWebhookKey
 	}
 	if dodoPaymentsAPIKey != "" && dodoPaymentsWebhookKey == "" {
 		return Config{}, fmt.Errorf("%w: DODO_PAYMENTS_WEBHOOK_KEY must be set when DODO_PAYMENTS_API_KEY is set", ErrInvalidConfig)
+	}
+	if dodoPaymentsAPIKey != "" && !dodoProductIDs.IsComplete() {
+		return Config{}, fmt.Errorf("%w: Dodo paid checkout requires all DODO_PRODUCT_* environment variables", ErrInvalidConfig)
 	}
 	if dodoPaymentsWebhookKey != "" {
 		if _, err := decodeDodoWebhookSecret(dodoPaymentsWebhookKey); err != nil {
@@ -226,6 +250,8 @@ func LoadConfigFromEnv() (Config, error) {
 		GitHubWebhookSecret:       os.Getenv("GITHUB_WEBHOOK_SECRET"),
 		DodoPaymentsAPIKey:        dodoPaymentsAPIKey,
 		DodoPaymentsWebhookKey:    dodoPaymentsWebhookKey,
+		DodoEnvironment:           dodoEnvironment,
+		DodoProductIDs:            dodoProductIDs,
 		DodoAPIBaseURL:            os.Getenv("DODO_API_BASE_URL"),
 		DodoCheckoutBaseURL:       os.Getenv("DODO_CHECKOUT_BASE_URL"),
 		DodoPortalBaseURL:         os.Getenv("DODO_PORTAL_BASE_URL"),
