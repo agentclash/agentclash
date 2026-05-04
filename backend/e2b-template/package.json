@@ -3,7 +3,9 @@
     "build:dev": "tsx build.dev.ts",
     "build:prod": "tsx build.prod.ts",
     "build:codex:dev": "tsx build.codex.dev.ts",
-    "build:codex:prod": "tsx build.codex.prod.ts"
+    "build:codex:prod": "tsx build.codex.prod.ts",
+    "build:openclaw:dev": "tsx build.openclaw.dev.ts",
+    "build:openclaw:prod": "tsx build.openclaw.prod.ts"
   },
   "dependencies": {
     "e2b": "^2.14.1",

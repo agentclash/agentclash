@@ -275,6 +275,94 @@ func TestExecuteAgentHarnessExecutionWithoutRepositorySkipsGitArtifactCapture(t 
 	}
 }
 
+func TestExecuteAgentHarnessExecutionRunsOpenClawAndRecordsTrace(t *testing.T) {
+	workspaceID := uuid.New()
+	harnessID := uuid.New()
+	executionID := uuid.New()
+	openClawSecret := "OPENAI_API_KEY"
+	model := "openai/gpt-5.4"
+	repo := newFakeRunRepository(fixtureRun(uuid.New(), domain.RunStatusQueued))
+	repo.setAgentHarness(repository.AgentHarness{
+		ID:                     harnessID,
+		OrganizationID:         uuid.New(),
+		WorkspaceID:            workspaceID,
+		HarnessKind:            "openclaw_e2b",
+		TaskPrompt:             "implement issue 462",
+		CodexTemplate:          "agentclash-openclaw-fullstack",
+		CodexModel:             &model,
+		AuthMode:               "api_key_secret",
+		OpenAIAPIKeySecretName: &openClawSecret,
+		ExecutionConfig:        json.RawMessage(`{"timeout_seconds":120}`),
+	})
+	repo.setAgentHarnessExecution(repository.AgentHarnessExecution{
+		ID:                      executionID,
+		WorkspaceID:             workspaceID,
+		AgentHarnessID:          harnessID,
+		Status:                  string(repository.AgentHarnessExecutionStatusRunning),
+		ExecutionConfigSnapshot: json.RawMessage(`{"timeout_seconds":120}`),
+	})
+	repo.setWorkspaceSecrets(workspaceID, map[string]string{openClawSecret: "sk-openai-test"})
+
+	session := sandbox.NewFakeSession("sandbox-1")
+	session.SetExecFunc(func(request sandbox.ExecRequest, _ map[string][]byte) (sandbox.ExecResult, error) {
+		switch {
+		case len(request.Command) >= 3 && request.Command[0] == "bash" && request.Command[1] == "-lc":
+			if request.Environment["OPENAI_API_KEY"] != "sk-openai-test" {
+				t.Fatalf("openclaw env = %#v, want OpenAI key", request.Environment)
+			}
+			if request.Environment["AGENTCLASH_HARNESS_TASK"] != "implement issue 462" {
+				t.Fatalf("openclaw task env = %#v", request.Environment)
+			}
+			if request.Environment["AGENTCLASH_HARNESS_MODEL"] != model {
+				t.Fatalf("openclaw model env = %#v", request.Environment)
+			}
+			if request.Environment["AGENTCLASH_HARNESS_TIMEOUT_SECONDS"] != "120" {
+				t.Fatalf("openclaw timeout env = %#v", request.Environment)
+			}
+			if containsString(request.Command, "OPENAI_API_KEY") {
+				t.Fatalf("openclaw command leaked secret name: %#v", request.Command)
+			}
+			script := request.Command[2]
+			if !strings.Contains(script, "openclaw setup --workspace \"$PWD\" --non-interactive") {
+				t.Fatalf("openclaw script = %q, want non-interactive setup", script)
+			}
+			if !strings.Contains(script, "openclaw models set \"$AGENTCLASH_HARNESS_MODEL\"") {
+				t.Fatalf("openclaw script = %q, want model setup", script)
+			}
+			if !strings.Contains(script, "openclaw agent --local --session-id agentclash-harness --json") {
+				t.Fatalf("openclaw script = %q, want local json agent run", script)
+			}
+			return sandbox.ExecResult{ExitCode: 0, Stdout: `{"type":"assistant","message":"done"}`}, nil
+		default:
+			t.Fatalf("unexpected command: %#v", request.Command)
+			return sandbox.ExecResult{}, nil
+		}
+	})
+	provider := &sandbox.FakeProvider{NextSession: session}
+	activities := NewActivities(repo, FakeWorkHooks{}).WithSandboxProvider(provider)
+
+	err := activities.ExecuteAgentHarnessExecution(context.Background(), ExecuteAgentHarnessExecutionInput{ExecutionID: executionID})
+	if err != nil {
+		t.Fatalf("ExecuteAgentHarnessExecution error: %v", err)
+	}
+	if provider.CreateRequests[0].TemplateID != "agentclash-openclaw-fullstack" {
+		t.Fatalf("template id = %q, want OpenClaw template", provider.CreateRequests[0].TemplateID)
+	}
+	if provider.CreateRequests[0].EnvVars["OPENAI_API_KEY"] != "sk-openai-test" {
+		t.Fatalf("sandbox env vars = %#v, want OpenAI key", provider.CreateRequests[0].EnvVars)
+	}
+	var sawOpenClawOutput bool
+	for _, event := range repo.agentHarnessEvents[executionID] {
+		if event.EventType == "openclaw.exec.output" && event.ActorType == "openclaw" {
+			sawOpenClawOutput = true
+			break
+		}
+	}
+	if !sawOpenClawOutput {
+		t.Fatal("expected live openclaw output event")
+	}
+}
+
 func TestExecuteAgentHarnessExecutionFailsEarlyWhenGitHubAccessRevoked(t *testing.T) {
 	workspaceID := uuid.New()
 	harnessID := uuid.New()

@@ -12,15 +12,15 @@ export const template = Template()
       '&& rm -rf /var/lib/apt/lists/*',
   )
 
-  // Node.js 20 LTS via NodeSource
+  // Node.js 24 via NodeSource. OpenClaw requires Node 22.14+.
   .runCmd(
-    'curl -fsSL https://deb.nodesource.com/setup_20.x | bash - ' +
+    'curl -fsSL https://deb.nodesource.com/setup_24.x | bash - ' +
       '&& apt-get install -y nodejs ' +
       '&& rm -rf /var/lib/apt/lists/*',
   )
 
-  // Codex CLI for Agent Harness coding tasks
-  .runCmd('npm install -g @openai/codex')
+  // Coding-agent CLIs for Agent Harness tasks
+  .runCmd('npm install -g @openai/codex openclaw@latest')
 
   // Python 3, Go, C/C++ toolchain
   .runCmd(
