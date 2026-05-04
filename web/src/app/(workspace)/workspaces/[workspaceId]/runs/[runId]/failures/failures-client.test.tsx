@@ -197,6 +197,15 @@ async function waitFor(assertion: () => void, attempts = 20) {
   throw lastError;
 }
 
+function clickElement(element: Element) {
+  element.dispatchEvent(
+    new MouseEvent("click", {
+      bubbles: true,
+      cancelable: true,
+    }),
+  );
+}
+
 describe("FailuresClient", () => {
   beforeEach(() => {
     document.body.innerHTML = "";
@@ -280,6 +289,65 @@ describe("FailuresClient", () => {
       );
       expect(view.container.textContent).toContain("1 failure");
       expect(view.container.textContent).toContain("challenge-filtered");
+    } finally {
+      view.cleanup();
+    }
+  });
+
+  it("sets the cluster filter from a cluster rollup", async () => {
+    mockListRunFailures.mockResolvedValue(
+      makePage({
+        items: [
+          makeItem({
+            failure_cluster_key: "cluster-a",
+          }),
+        ],
+        clusters: [
+          makeCluster({
+            failure_cluster_key: "cluster-a",
+            count: 1,
+            promotable_count: 1,
+            challenge_keys: ["challenge-a"],
+            case_keys: ["case-a"],
+          }),
+        ],
+      }),
+    );
+
+    const view = renderClient();
+    try {
+      const clusterButton = Array.from(
+        view.container.querySelectorAll("button"),
+      ).find((button) =>
+        button.textContent?.includes(
+          "Filesystem write failures cluster together",
+        ),
+      );
+      expect(clusterButton).toBeTruthy();
+
+      act(() => {
+        clickElement(clusterButton!);
+      });
+
+      expect(mockReplace).toHaveBeenCalledWith(
+        "/workspaces/ws-1/runs/run-1/failures?cluster=cluster-a",
+        { scroll: false },
+      );
+
+      searchState.params = new URLSearchParams("cluster=cluster-a");
+      view.render();
+
+      await waitFor(() => {
+        expect(mockListRunFailures).toHaveBeenCalledWith(
+          { client: true },
+          "ws-1",
+          "run-1",
+          expect.objectContaining({
+            failureClusterKey: "cluster-a",
+            limit: 50,
+          }),
+        );
+      });
     } finally {
       view.cleanup();
     }

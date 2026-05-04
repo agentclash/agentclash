@@ -76,7 +76,8 @@ function humanize(value: string): string {
 
 function compactList(values: string[], maxVisible = 3): string {
   if (values.length <= maxVisible) return values.join(", ");
-  return `${values.slice(0, maxVisible).join(", ")} +${values.length - maxVisible}`;
+  const visible = values.slice(0, maxVisible).join(", ");
+  return `${visible} +${values.length - maxVisible}`;
 }
 
 const severityVariant: Record<
@@ -105,6 +106,7 @@ interface Filters {
   severity?: FailureReviewSeverity;
   failureClass?: FailureReviewFailureClass;
   evidenceTier?: FailureReviewEvidenceTier;
+  failureClusterKey?: string;
 }
 
 function parseFilters(params: URLSearchParams): Filters {
@@ -116,6 +118,7 @@ function parseFilters(params: URLSearchParams): Filters {
       (params.get("class") as FailureReviewFailureClass | null) ?? undefined,
     evidenceTier:
       (params.get("tier") as FailureReviewEvidenceTier | null) ?? undefined,
+    failureClusterKey: params.get("cluster") ?? undefined,
   };
 }
 
@@ -125,6 +128,7 @@ function filtersToQuery(filters: Filters): string {
   if (filters.severity) sp.set("severity", filters.severity);
   if (filters.failureClass) sp.set("class", filters.failureClass);
   if (filters.evidenceTier) sp.set("tier", filters.evidenceTier);
+  if (filters.failureClusterKey) sp.set("cluster", filters.failureClusterKey);
   const s = sp.toString();
   return s ? `?${s}` : "";
 }
@@ -134,7 +138,8 @@ function filtersEqual(a: Filters, b: Filters): boolean {
     a.agentId === b.agentId &&
     a.severity === b.severity &&
     a.failureClass === b.failureClass &&
-    a.evidenceTier === b.evidenceTier
+    a.evidenceTier === b.evidenceTier &&
+    a.failureClusterKey === b.failureClusterKey
   );
 }
 
@@ -197,7 +202,14 @@ function FailuresClientInner({
   const activeFiltersRef = useRef<Filters>({});
 
   const anyFilterActive = useMemo(
-    () => !!(urlFilters.agentId || urlFilters.severity || urlFilters.failureClass || urlFilters.evidenceTier),
+    () =>
+      !!(
+        urlFilters.agentId ||
+        urlFilters.severity ||
+        urlFilters.failureClass ||
+        urlFilters.evidenceTier ||
+        urlFilters.failureClusterKey
+      ),
     [urlFilters],
   );
 
@@ -340,7 +352,15 @@ function FailuresClientInner({
         />
       ) : (
         <div className="space-y-3">
-          {clusters.length > 0 && <FailureClusterRollups clusters={clusters} />}
+          {clusters.length > 0 && (
+            <FailureClusterRollups
+              clusters={clusters}
+              activeClusterKey={urlFilters.failureClusterKey}
+              onSelectCluster={(clusterKey) =>
+                updateFilter("failureClusterKey", clusterKey)
+              }
+            />
+          )}
 
           {groups.map((group) => (
             <ChallengeGroup
@@ -393,8 +413,12 @@ function FailuresClientInner({
 
 function FailureClusterRollups({
   clusters,
+  activeClusterKey,
+  onSelectCluster,
 }: {
   clusters: FailureReviewClusterSummary[];
+  activeClusterKey?: string;
+  onSelectCluster: (clusterKey: string) => void;
 }) {
   const totalFailures = clusters.reduce((sum, cluster) => sum + cluster.count, 0);
   const totalPromotable = clusters.reduce(
@@ -415,69 +439,83 @@ function FailureClusterRollups({
         </div>
       </div>
       <ul className="divide-y divide-border">
-        {clusters.map((cluster) => (
-          <li
-            key={cluster.failure_cluster_key}
-            className="grid gap-3 px-4 py-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center"
-          >
-            <div className="min-w-0 space-y-2">
-              <div className="flex min-w-0 flex-wrap items-center gap-2">
-                <Badge variant={severityVariant[cluster.severity]}>
-                  {cluster.severity}
-                </Badge>
-                <Badge variant={failureStateVariant[cluster.failure_state]}>
-                  {humanize(cluster.failure_state)}
-                </Badge>
-                <Badge variant="outline">{humanize(cluster.failure_class)}</Badge>
-                <Badge variant="secondary">
-                  {humanize(cluster.evidence_tier)}
-                </Badge>
-              </div>
-              <div className="min-w-0">
-                <p className="truncate text-sm font-medium">
-                  {cluster.headline || humanize(cluster.failure_class)}
-                </p>
-                {cluster.recommended_action && (
-                  <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-                    {cluster.recommended_action}
-                  </p>
+        {clusters.map((cluster) => {
+          const active = cluster.failure_cluster_key === activeClusterKey;
+          return (
+            <li key={cluster.failure_cluster_key}>
+              <button
+                type="button"
+                aria-pressed={active}
+                onClick={() => onSelectCluster(cluster.failure_cluster_key)}
+                className={cn(
+                  "grid w-full gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/40",
+                  "md:grid-cols-[minmax(0,1fr)_auto] md:items-center",
+                  active && "bg-muted/50",
                 )}
-              </div>
-              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                <span className="min-w-0 truncate">
-                  Challenges:{" "}
-                  <span className="text-foreground/80">
-                    {compactList(cluster.challenge_keys)}
-                  </span>
-                </span>
-                <span className="min-w-0 truncate">
-                  Cases:{" "}
-                  <span className="text-foreground/80">
-                    {compactList(cluster.case_keys)}
-                  </span>
-                </span>
-              </div>
-            </div>
-            <div className="flex items-center gap-2 md:justify-end">
-              <div className="rounded-md border border-border px-2.5 py-1 text-right">
-                <div className="text-sm font-semibold tabular-nums">
-                  {cluster.count}
+              >
+                <div className="min-w-0 space-y-2">
+                  <div className="flex min-w-0 flex-wrap items-center gap-2">
+                    <Badge variant={severityVariant[cluster.severity]}>
+                      {cluster.severity}
+                    </Badge>
+                    <Badge variant={failureStateVariant[cluster.failure_state]}>
+                      {humanize(cluster.failure_state)}
+                    </Badge>
+                    <Badge variant="outline">
+                      {humanize(cluster.failure_class)}
+                    </Badge>
+                    <Badge variant="secondary">
+                      {humanize(cluster.evidence_tier)}
+                    </Badge>
+                    {active && <Badge>active</Badge>}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">
+                      {cluster.headline || humanize(cluster.failure_class)}
+                    </p>
+                    {cluster.recommended_action && (
+                      <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                        {cluster.recommended_action}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                    <span className="min-w-0 truncate">
+                      Challenges:{" "}
+                      <span className="text-foreground/80">
+                        {compactList(cluster.challenge_keys)}
+                      </span>
+                    </span>
+                    <span className="min-w-0 truncate">
+                      Cases:{" "}
+                      <span className="text-foreground/80">
+                        {compactList(cluster.case_keys)}
+                      </span>
+                    </span>
+                  </div>
                 </div>
-                <div className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
-                  failures
+                <div className="flex items-center gap-2 md:justify-end">
+                  <div className="rounded-md border border-border px-2.5 py-1 text-right">
+                    <div className="text-sm font-semibold tabular-nums">
+                      {cluster.count}
+                    </div>
+                    <div className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+                      failures
+                    </div>
+                  </div>
+                  <div className="rounded-md border border-border px-2.5 py-1 text-right">
+                    <div className="text-sm font-semibold tabular-nums">
+                      {cluster.promotable_count}
+                    </div>
+                    <div className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+                      promote
+                    </div>
+                  </div>
                 </div>
-              </div>
-              <div className="rounded-md border border-border px-2.5 py-1 text-right">
-                <div className="text-sm font-semibold tabular-nums">
-                  {cluster.promotable_count}
-                </div>
-                <div className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
-                  promote
-                </div>
-              </div>
-            </div>
-          </li>
-        ))}
+              </button>
+            </li>
+          );
+        })}
       </ul>
     </section>
   );
