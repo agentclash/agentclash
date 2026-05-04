@@ -297,6 +297,34 @@ describe("agent skill docs", () => {
     expect(doc?.content).toContain("Validation rejects `${secrets.*}` references");
   });
 
+  it("generates the challenge pack validation publish skill with source-backed details", () => {
+    const doc = getDocBySlug([
+      "agent-skills",
+      "challenge-pack-skills",
+      "agentclash-challenge-pack-validation-publish",
+    ]);
+
+    expect(doc?.title).toBe("Challenge Pack Validation Publish Skill");
+    expect(doc?.content).toContain("agentclash challenge-pack validate path/to/pack.yaml --json");
+    expect(doc?.content).toContain("agentclash challenge-pack publish path/to/pack.yaml --json");
+    expect(doc?.content).toContain("POST /v1/workspaces/<workspace-id>/challenge-packs/validate");
+    expect(doc?.content).toContain("POST /v1/workspaces/<workspace-id>/challenge-packs");
+    expect(doc?.content).toContain("\"valid\": true");
+    expect(doc?.content).toContain("\"field\": \"version.evaluation_spec.validators[0].type\"");
+    expect(doc?.content).toContain("HTTP 400");
+    expect(doc?.content).toContain("challenge_pack_id");
+    expect(doc?.content).toContain("challenge_pack_version_id");
+    expect(doc?.content).toContain("evaluation_spec_id");
+    expect(doc?.content).toContain("input_set_ids");
+    expect(doc?.content).toContain("bundle_artifact_id");
+    expect(doc?.content).toContain("challenge_pack_version_exists");
+    expect(doc?.content).toContain("challenge_pack_metadata_conflict");
+    expect(doc?.content).toContain("The API request body is capped at 1 MiB");
+    expect(doc?.content).toContain("`publish` does not upload local files referenced by `path`");
+    expect(doc?.content).toContain("agentclash eval start");
+    expect(doc?.content).toContain("agentclash run create");
+  });
+
   it("generates the challenge pack tools sandbox skill with source-backed details", () => {
     const doc = getDocBySlug([
       "agent-skills",
