@@ -187,6 +187,7 @@ func TestCIRunTimeoutWritesSummary(t *testing.T) {
 		"--poll-interval", "1ms",
 		"--timeout", "1ms",
 		"--summary-file", summaryPath,
+		"--github-step-summary=false",
 	}, srv.URL)
 	if got := exitCodeOf(t, err); got != ciRunExitTimeout {
 		t.Fatalf("exit code = %d, want timeout %d", got, ciRunExitTimeout)
