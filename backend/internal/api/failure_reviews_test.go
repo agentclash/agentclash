@@ -142,6 +142,48 @@ func TestListRunFailuresEndpointFiltersByClassChallengeAndEvidenceTier(t *testin
 	}
 }
 
+func TestListRunFailuresEndpointReturnsClusterSummariesBeforePagination(t *testing.T) {
+	workspaceID := uuid.New()
+	runID := uuid.New()
+	items := []failurereview.Item{
+		mustBuildFailureItem(t, runID, uuid.New(), "ticket-a", "case-a", "policy.filesystem"),
+		mustBuildFailureItem(t, runID, uuid.New(), "ticket-a", "case-a", "policy.filesystem"),
+		mustBuildFailureItem(t, runID, uuid.New(), "ticket-b", "case-b", "tool_argument.schema"),
+	}
+
+	service := NewRunReadManager(NewCallerWorkspaceAuthorizer(), &fakeRunReadRepository{
+		run: domain.Run{
+			ID:          runID,
+			WorkspaceID: workspaceID,
+		},
+		failureItems: items,
+	})
+
+	response := performListRunFailuresRequest(t, service, workspaceID, runID, url.Values{"limit": []string{"1"}})
+	if len(response.Items) != 1 {
+		t.Fatalf("page items = %d, want 1", len(response.Items))
+	}
+	if len(response.Clusters) != 2 {
+		t.Fatalf("clusters = %#v, want 2 summaries for full filtered result set", response.Clusters)
+	}
+	var ticketACluster *failurereview.ClusterSummary
+	for i := range response.Clusters {
+		if len(response.Clusters[i].ChallengeKeys) == 1 && response.Clusters[i].ChallengeKeys[0] == "ticket-a" {
+			ticketACluster = &response.Clusters[i]
+			break
+		}
+	}
+	if ticketACluster == nil {
+		t.Fatalf("clusters = %#v, want ticket-a cluster", response.Clusters)
+	}
+	if ticketACluster.Count != 2 || ticketACluster.PromotableCount != 2 {
+		t.Fatalf("ticket-a cluster counts = %d/%d, want 2/2", ticketACluster.Count, ticketACluster.PromotableCount)
+	}
+	if ticketACluster.RepresentativeFailureFingerprint == "" {
+		t.Fatalf("ticket-a representative fingerprint is empty")
+	}
+}
+
 func TestListRunFailuresEndpointRejectsMalformedQueryParams(t *testing.T) {
 	t.Parallel()
 
