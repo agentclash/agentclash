@@ -1637,6 +1637,19 @@ export type FailureReviewPromotionMode = "full_executable" | "output_only";
 
 export type FailureReviewSeverity = "info" | "warning" | "blocking";
 
+export type FailureReviewTaxonomyFamily =
+  | "agent"
+  | "workflow"
+  | "platform"
+  | "evidence";
+
+export interface FailureReviewTaxonomy {
+  family: FailureReviewTaxonomyFamily;
+  code: string;
+  label: string;
+  agent_fault: boolean;
+}
+
 export interface FailureReviewReplayStepRef {
   sequence_number: number;
   event_type: string;
@@ -1685,6 +1698,7 @@ export interface FailureReviewItem {
   failed_dimensions: string[];
   failed_checks: string[];
   failure_class: FailureReviewFailureClass;
+  failure_taxonomy: FailureReviewTaxonomy;
   headline: string;
   detail: string;
   recommended_action: string;
@@ -1722,6 +1736,7 @@ export interface FailureReviewClusterSummary {
   severity: FailureReviewSeverity;
   failure_state: FailureReviewFailureState;
   failure_class: FailureReviewFailureClass;
+  failure_taxonomy: FailureReviewTaxonomy;
   evidence_tier: FailureReviewEvidenceTier;
   challenge_keys: string[];
   case_keys: string[];

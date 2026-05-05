@@ -61,6 +61,7 @@ type Item struct {
 	FailedDimensions       []string        `json:"failed_dimensions"`
 	FailedChecks           []string        `json:"failed_checks"`
 	FailureClass           FailureClass    `json:"failure_class"`
+	FailureTaxonomy        FailureTaxonomy `json:"failure_taxonomy"`
 	Headline               string          `json:"headline"`
 	Detail                 string          `json:"detail"`
 	RecommendedAction      string          `json:"recommended_action"`
@@ -83,6 +84,7 @@ type ClusterSummary struct {
 	Severity                         Severity        `json:"severity"`
 	FailureState                     FailureState    `json:"failure_state"`
 	FailureClass                     FailureClass    `json:"failure_class"`
+	FailureTaxonomy                  FailureTaxonomy `json:"failure_taxonomy"`
 	EvidenceTier                     EvidenceTier    `json:"evidence_tier"`
 	ChallengeKeys                    []string        `json:"challenge_keys"`
 	CaseKeys                         []string        `json:"case_keys"`
@@ -90,6 +92,13 @@ type ClusterSummary struct {
 	Headline                         string          `json:"headline"`
 	RecommendedAction                string          `json:"recommended_action"`
 	History                          *ClusterHistory `json:"history,omitempty"`
+}
+
+type FailureTaxonomy struct {
+	Family     string `json:"family"`
+	Code       string `json:"code"`
+	Label      string `json:"label"`
+	AgentFault bool   `json:"agent_fault"`
 }
 
 type ClusterTrend string
@@ -375,6 +384,10 @@ func BuildClusterSummaries(items []Item) []ClusterSummary {
 	}
 	groups := map[string]*clusterAccumulator{}
 	for _, item := range items {
+		taxonomy := item.FailureTaxonomy
+		if taxonomy.Code == "" {
+			taxonomy = TaxonomyForFailureClass(item.FailureClass)
+		}
 		key := strings.TrimSpace(item.FailureClusterKey)
 		if key == "" {
 			key = "unclustered:" + item.FailureFingerprint
@@ -388,6 +401,7 @@ func BuildClusterSummaries(items []Item) []ClusterSummary {
 					Severity:                         item.Severity,
 					FailureState:                     item.FailureState,
 					FailureClass:                     item.FailureClass,
+					FailureTaxonomy:                  taxonomy,
 					EvidenceTier:                     item.EvidenceTier,
 					Headline:                         item.Headline,
 					RecommendedAction:                item.RecommendedAction,
@@ -414,6 +428,9 @@ func BuildClusterSummaries(items []Item) []ClusterSummary {
 		}
 		if failureStateRank(item.FailureState) > failureStateRank(group.summary.FailureState) {
 			group.summary.FailureState = item.FailureState
+		}
+		if taxonomy.Code != "" && group.summary.FailureTaxonomy.Code == "" {
+			group.summary.FailureTaxonomy = taxonomy
 		}
 		if item.ChallengeKey != "" {
 			group.challengeKeys[item.ChallengeKey] = struct{}{}
@@ -665,6 +682,7 @@ func finalizeGroup(group *itemGroup, input RunAgentInput, scorecard scorecardDoc
 		FailedDimensions:       append([]string{}, failedDimensions...),
 		FailedChecks:           append([]string{}, group.FailedChecks...),
 		FailureClass:           failureClass,
+		FailureTaxonomy:        TaxonomyForFailureClass(failureClass),
 		Headline:               headline,
 		Detail:                 detail,
 		RecommendedAction:      recommendedAction,

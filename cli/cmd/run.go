@@ -393,25 +393,28 @@ var runFailuresCmd = &cobra.Command{
 			return rc.Output.PrintRaw(result)
 		}
 
-		cols := []output.Column{{Header: "Agent"}, {Header: "Challenge"}, {Header: "State"}, {Header: "Severity"}, {Header: "Class"}, {Header: "Promotable"}}
+		cols := []output.Column{{Header: "Agent"}, {Header: "Challenge"}, {Header: "State"}, {Header: "Severity"}, {Header: "Class"}, {Header: "Taxonomy"}, {Header: "Promotable"}}
 		rows := make([][]string, len(result.Items))
 		for i, item := range result.Items {
+			taxonomy := mapObject(item, "failure_taxonomy")
 			rows[i] = []string{
 				str(item["run_agent_id"]),
 				mapString(item, "challenge_identity_id", "challenge_key"),
 				output.StatusColor(str(item["failure_state"])),
 				str(item["severity"]),
 				str(item["failure_class"]),
+				mapString(taxonomy, "label", "code"),
 				str(item["promotable"]),
 			}
 		}
 		rc.Output.PrintTable(cols, rows)
 		if len(result.Clusters) > 0 {
 			rc.Output.PrintDetail("Failure Clusters (filtered)", fmt.Sprintf("%d", len(result.Clusters)))
-			clusterCols := []output.Column{{Header: "Cluster"}, {Header: "Count"}, {Header: "Promotable"}, {Header: "Trend"}, {Header: "Prior Runs"}, {Header: "Severity"}, {Header: "Class"}, {Header: "Challenges"}}
+			clusterCols := []output.Column{{Header: "Cluster"}, {Header: "Count"}, {Header: "Promotable"}, {Header: "Trend"}, {Header: "Prior Runs"}, {Header: "Severity"}, {Header: "Class"}, {Header: "Taxonomy"}, {Header: "Challenges"}}
 			clusterRows := make([][]string, len(result.Clusters))
 			for i, cluster := range result.Clusters {
 				history := mapObject(cluster, "history")
+				taxonomy := mapObject(cluster, "failure_taxonomy")
 				clusterRows[i] = []string{
 					str(cluster["failure_cluster_key"]),
 					str(cluster["count"]),
@@ -420,6 +423,7 @@ var runFailuresCmd = &cobra.Command{
 					mapString(history, "prior_run_count"),
 					str(cluster["severity"]),
 					str(cluster["failure_class"]),
+					mapString(taxonomy, "label", "code"),
 					joinMapStrings(cluster, "challenge_keys"),
 				}
 			}

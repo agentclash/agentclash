@@ -168,7 +168,12 @@ func TestRunFailuresForwardsFilters(t *testing.T) {
 			gotLimit = r.URL.Query().Get("limit")
 			jsonHandler(200, map[string]any{
 				"items": []map[string]any{
-					{"run_agent_id": "agent-1", "failure_state": "failed", "promotable": true},
+					{
+						"run_agent_id":     "agent-1",
+						"failure_state":    "failed",
+						"failure_taxonomy": map[string]any{"label": "Policy violation", "code": "agent.policy_violation"},
+						"promotable":       true,
+					},
 				},
 				"clusters": []map[string]any{
 					{
@@ -177,6 +182,7 @@ func TestRunFailuresForwardsFilters(t *testing.T) {
 						"promotable_count":    1,
 						"severity":            "blocking",
 						"failure_class":       "policy_violation",
+						"failure_taxonomy":    map[string]any{"label": "Policy violation", "code": "agent.policy_violation"},
 						"challenge_keys":      []string{"ticket-a"},
 					},
 				},
