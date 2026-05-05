@@ -21,7 +21,7 @@
 - The helper receives the action manifest path, result JSON, should-run JSON, repository, event path, API URL, and token through action inputs/environment without printing secrets.
 
 ## Smoke Tests
-- `python3 -m unittest .github/actions/agentclash-ci/comment_test.py` passes.
+- `python3 -m unittest discover -s .github/actions/agentclash-ci -p comment_test.py` passes.
 - `bash -n .github/actions/agentclash-ci/run.sh` passes.
 - Action metadata remains valid YAML.
 
@@ -30,7 +30,7 @@
 
 ## Manual / cURL Tests
 ```bash
-python3 -m unittest .github/actions/agentclash-ci/comment_test.py
+python3 -m unittest discover -s .github/actions/agentclash-ci -p comment_test.py
 bash -n .github/actions/agentclash-ci/run.sh
 ruby -e 'require "yaml"; YAML.load_file(".github/actions/agentclash-ci/action.yml"); puts "ok"'
 # Expected: all commands succeed.
