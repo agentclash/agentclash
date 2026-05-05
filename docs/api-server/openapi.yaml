@@ -5627,6 +5627,8 @@ components:
           format: uri
         event_name:
           type: string
+        default_branch:
+          type: string
 
     CreateRunRequest:
       type: object

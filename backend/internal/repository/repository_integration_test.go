@@ -1467,6 +1467,7 @@ func TestRepositoryCreateQueuedRunWritesRunRunAgentsAndInitialHistory(t *testing
 			Repository:        "acme/agent",
 			PullRequestNumber: &prNumber,
 			WorkflowRunURL:    "https://github.com/acme/agent/actions/runs/108",
+			DefaultBranch:     "main",
 		},
 		RunAgents: []repository.CreateQueuedRunAgentParams{
 			{
@@ -1487,14 +1488,14 @@ func TestRepositoryCreateQueuedRunWritesRunRunAgentsAndInitialHistory(t *testing
 	if result.Run.QueuedAt == nil {
 		t.Fatalf("queued_at was not set")
 	}
-	if result.Run.CIMetadata == nil || result.Run.CIMetadata.Repository != "acme/agent" || result.Run.CIMetadata.PullRequestNumber == nil || *result.Run.CIMetadata.PullRequestNumber != prNumber {
+	if result.Run.CIMetadata == nil || result.Run.CIMetadata.Repository != "acme/agent" || result.Run.CIMetadata.PullRequestNumber == nil || *result.Run.CIMetadata.PullRequestNumber != prNumber || result.Run.CIMetadata.DefaultBranch != "main" {
 		t.Fatalf("ci metadata = %+v, want persisted GitHub metadata", result.Run.CIMetadata)
 	}
 	persistedRun, err := repo.GetRunByID(ctx, result.Run.ID)
 	if err != nil {
 		t.Fatalf("GetRunByID returned error: %v", err)
 	}
-	if persistedRun.CIMetadata == nil || persistedRun.CIMetadata.Repository != "acme/agent" || persistedRun.CIMetadata.PullRequestNumber == nil || *persistedRun.CIMetadata.PullRequestNumber != prNumber {
+	if persistedRun.CIMetadata == nil || persistedRun.CIMetadata.Repository != "acme/agent" || persistedRun.CIMetadata.PullRequestNumber == nil || *persistedRun.CIMetadata.PullRequestNumber != prNumber || persistedRun.CIMetadata.DefaultBranch != "main" {
 		t.Fatalf("persisted ci metadata = %+v, want GitHub metadata after read", persistedRun.CIMetadata)
 	}
 	if len(result.RunAgents) != 1 {

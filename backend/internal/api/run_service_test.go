@@ -32,6 +32,7 @@ func TestRunCreationManagerCreatesQueuedRunAndStartsWorkflow(t *testing.T) {
 		PullRequestNumber: &prNumber,
 		Branch:            "feature/gate",
 		CommitSHA:         "abc123",
+		DefaultBranch:     "main",
 	}
 
 	repo := &fakeRunCreationRepository{
@@ -90,7 +91,7 @@ func TestRunCreationManagerCreatesQueuedRunAndStartsWorkflow(t *testing.T) {
 	if repo.createParams.RunAgents[0].AgentDeploymentSnapshotID != snapshotID {
 		t.Fatalf("snapshot id = %s, want %s", repo.createParams.RunAgents[0].AgentDeploymentSnapshotID, snapshotID)
 	}
-	if repo.createParams.CIMetadata == nil || repo.createParams.CIMetadata.Repository != "acme/agent" || repo.createParams.CIMetadata.PullRequestNumber == nil || *repo.createParams.CIMetadata.PullRequestNumber != prNumber {
+	if repo.createParams.CIMetadata == nil || repo.createParams.CIMetadata.Repository != "acme/agent" || repo.createParams.CIMetadata.PullRequestNumber == nil || *repo.createParams.CIMetadata.PullRequestNumber != prNumber || repo.createParams.CIMetadata.DefaultBranch != "main" {
 		t.Fatalf("ci metadata = %+v, want copied GitHub metadata", repo.createParams.CIMetadata)
 	}
 	if repo.createParams.CIMetadata == ciMetadata {

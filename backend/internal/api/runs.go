@@ -356,6 +356,7 @@ func normalizeCreateRunCIMetadata(metadata *domain.RunCIMetadata) (*domain.RunCI
 		WorkflowRunAttempt: strings.TrimSpace(metadata.WorkflowRunAttempt),
 		WorkflowRunURL:     strings.TrimSpace(metadata.WorkflowRunURL),
 		EventName:          strings.TrimSpace(metadata.EventName),
+		DefaultBranch:      strings.TrimSpace(metadata.DefaultBranch),
 	}
 	if normalized.Empty() {
 		return nil, nil
@@ -370,6 +371,7 @@ func normalizeCreateRunCIMetadata(metadata *domain.RunCIMetadata) (*domain.RunCI
 		"ci_metadata.workflow_run_id":      normalized.WorkflowRunID,
 		"ci_metadata.workflow_run_attempt": normalized.WorkflowRunAttempt,
 		"ci_metadata.event_name":           normalized.EventName,
+		"ci_metadata.default_branch":       normalized.DefaultBranch,
 	} {
 		if len(value) > 512 {
 			return nil, RunCreationValidationError{Code: "invalid_ci_metadata", Message: field + " must be 512 characters or fewer"}
@@ -416,6 +418,7 @@ func cloneRunCIMetadata(metadata *domain.RunCIMetadata) *domain.RunCIMetadata {
 		WorkflowRunAttempt: metadata.WorkflowRunAttempt,
 		WorkflowRunURL:     metadata.WorkflowRunURL,
 		EventName:          metadata.EventName,
+		DefaultBranch:      metadata.DefaultBranch,
 	}
 }
 

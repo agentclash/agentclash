@@ -775,7 +775,7 @@ func TestCIRunAttachesGitHubActionsMetadata(t *testing.T) {
 	srv := fakeAPI(t, ciRunRoutes(t, captures, nil))
 	defer srv.Close()
 	eventPath := filepath.Join(t.TempDir(), "event.json")
-	if err := os.WriteFile(eventPath, []byte(`{"pull_request":{"number":42}}`), 0o644); err != nil {
+	if err := os.WriteFile(eventPath, []byte(`{"pull_request":{"number":42},"repository":{"default_branch":"main"}}`), 0o644); err != nil {
 		t.Fatalf("WriteFile(event) error: %v", err)
 	}
 	t.Setenv("AGENTCLASH_TOKEN", "test-token")
@@ -799,10 +799,10 @@ func TestCIRunAttachesGitHubActionsMetadata(t *testing.T) {
 	if !ok {
 		t.Fatalf("run body = %+v, want ci_metadata", captures.RunBody)
 	}
-	if metadata["repository"] != "acme/agent" || metadata["pull_request_number"] != float64(42) || metadata["workflow_run_url"] != "https://github.com/acme/agent/actions/runs/99" {
+	if metadata["repository"] != "acme/agent" || metadata["pull_request_number"] != float64(42) || metadata["workflow_run_url"] != "https://github.com/acme/agent/actions/runs/99" || metadata["default_branch"] != "main" {
 		t.Fatalf("ci metadata = %+v, want GitHub Actions metadata", metadata)
 	}
-	if result.Candidate.CIMetadata["repository"] != "acme/agent" || result.Candidate.CIMetadata["pull_request_number"] != float64(42) {
+	if result.Candidate.CIMetadata["repository"] != "acme/agent" || result.Candidate.CIMetadata["pull_request_number"] != float64(42) || result.Candidate.CIMetadata["default_branch"] != "main" {
 		t.Fatalf("result metadata = %+v, want persisted metadata", result.Candidate.CIMetadata)
 	}
 }

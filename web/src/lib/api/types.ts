@@ -618,6 +618,7 @@ export interface RunCIMetadata {
   workflow_run_attempt?: string;
   workflow_run_url?: string;
   event_name?: string;
+  default_branch?: string;
 }
 
 export interface RunRegressionCoverage {
