@@ -56,6 +56,7 @@ PY
 post_pr_comment() {
   local status="$1"
   if ! bool_true "${INPUT_PR_COMMENT:-true}"; then
+    comment_posted=true
     return 0
   fi
 
@@ -75,12 +76,33 @@ post_pr_comment() {
   if [[ "$comment_status" -ne 0 ]]; then
     echo "::notice::AgentClash CI PR comment helper exited with status ${comment_status}"
   fi
+  comment_posted=true
+}
+
+write_early_error_result() {
+  if [[ -s "$result_file" ]]; then
+    return 0
+  fi
+  mkdir -p "$(dirname "$result_file")"
+  printf '%s\n' '{"gate_verdict":"error","failure_reason":"action_failed_before_ci_run","errors":["AgentClash action failed before ci run completed. Inspect the GitHub Actions log for the failing command."]}' >"$result_file"
+}
+
+on_error() {
+  local status="$?"
+  trap - ERR
+  if [[ "${comment_posted:-false}" != "true" ]]; then
+    write_early_error_result
+    post_pr_comment "$status" || true
+  fi
+  exit "$status"
 }
 
 manifest="${INPUT_MANIFEST:-.agentclash/ci.yaml}"
 artifact_dir="${INPUT_ARTIFACT_DIR:-agentclash-artifacts}"
 result_file="${INPUT_RESULT_FILE:-agentclash-ci-result.json}"
 should_run_file="${RUNNER_TEMP:-/tmp}/agentclash-should-run.json"
+comment_posted=false
+trap on_error ERR
 
 write_output "result-file" "$result_file"
 write_output "artifact-dir" "$artifact_dir"

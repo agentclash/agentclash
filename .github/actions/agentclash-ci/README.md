@@ -98,6 +98,6 @@ The action preserves the CLI exit code. A blocking AgentClash gate fails the job
 
 ## Pull Request Comments
 
-When `pr-comment` is enabled, the action posts a single sticky comment on pull requests. The comment summarizes the gate verdict, failure reason, candidate and baseline runs, score deltas, regression tracking outcome, and next actions. Later pushes update the existing AgentClash comment instead of creating a new one.
+When `pr-comment` is enabled, the action posts a single sticky comment on pull requests. The comment summarizes the gate verdict, failure reason, candidate and baseline runs, score deltas, regression tracking outcome, and next actions. If the action fails before a candidate run is created, the comment reports an errored setup state and points reviewers at the GitHub Actions log. Later pushes update the existing AgentClash comment instead of creating a new one.
 
 Commenting is best-effort. If the workflow is not running on a pull request, the token is missing, or the token lacks comment permissions, the action logs a notice and preserves the original AgentClash exit code. For GitHub-hosted PR comments, grant `issues: write` in the job permissions.
