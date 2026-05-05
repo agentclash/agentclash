@@ -280,7 +280,7 @@ export function CaseDetailClient({
           {taxonomyRows.length > 0 && (
             <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
               {taxonomyRows.map((row) => (
-                <MetaRow key={`${row.label}-${row.value}`} label={row.label}>
+                <MetaRow key={row.label} label={row.label}>
                   <span className="font-[family-name:var(--font-mono)] text-xs text-muted-foreground">
                     {row.value}
                   </span>
@@ -295,7 +295,7 @@ export function CaseDetailClient({
                   key={link.key}
                   href={link.href}
                   target="_blank"
-                  rel="noreferrer"
+                  rel="noopener noreferrer"
                   className={buttonVariants({
                     variant: "outline",
                     size: "sm",
