@@ -799,6 +799,43 @@ func TestRepositoryPublishChallengePackBundle(t *testing.T) {
 	}
 }
 
+func TestRepositoryPublishChallengePackBundleAllowsSharedEvaluationSpecNamesAcrossPacks(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	first, err := repo.PublishChallengePackBundle(ctx, repository.PublishChallengePackBundleParams{
+		OrganizationID: fixture.organizationID,
+		WorkspaceID:    fixture.workspaceID,
+		Bundle:         publishableChallengePackBundle("shared-spec-pack-a", "Shared Spec Pack A", "shared-eval-spec"),
+	})
+	if err != nil {
+		t.Fatalf("first PublishChallengePackBundle returned error: %v", err)
+	}
+
+	second, err := repo.PublishChallengePackBundle(ctx, repository.PublishChallengePackBundleParams{
+		OrganizationID: fixture.organizationID,
+		WorkspaceID:    fixture.workspaceID,
+		Bundle:         publishableChallengePackBundle("shared-spec-pack-b", "Shared Spec Pack B", "shared-eval-spec"),
+	})
+	if err != nil {
+		t.Fatalf("second PublishChallengePackBundle returned error: %v", err)
+	}
+
+	if first.EvaluationSpecID == second.EvaluationSpecID {
+		t.Fatal("evaluation spec ids matched across distinct challenge pack versions")
+	}
+
+	secondSpec, err := repo.GetEvaluationSpecByChallengePackVersionAndVersion(ctx, second.ChallengePackVersionID, "shared-eval-spec", 1)
+	if err != nil {
+		t.Fatalf("GetEvaluationSpecByChallengePackVersionAndVersion returned error: %v", err)
+	}
+	if secondSpec.ID != second.EvaluationSpecID {
+		t.Fatalf("second spec id = %s, want %s", secondSpec.ID, second.EvaluationSpecID)
+	}
+}
+
 func TestRepositoryPublishChallengePackBundleRejectsDuplicateVersion(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)
@@ -839,6 +876,46 @@ func TestRepositoryPublishChallengePackBundleRejectsDuplicateVersion(t *testing.
 	}
 	if _, err := repo.PublishChallengePackBundle(ctx, params); !errors.Is(err, repository.ErrChallengePackVersionExists) {
 		t.Fatalf("second PublishChallengePackBundle error = %v, want ErrChallengePackVersionExists", err)
+	}
+}
+
+func publishableChallengePackBundle(slug string, name string, evaluationSpecName string) challengepack.Bundle {
+	return challengepack.Bundle{
+		Pack: challengepack.PackMetadata{
+			Slug:   slug,
+			Name:   name,
+			Family: "support",
+		},
+		Version: challengepack.VersionMetadata{
+			Number: 1,
+			EvaluationSpec: scoring.EvaluationSpec{
+				Name:          evaluationSpecName,
+				VersionNumber: 1,
+				JudgeMode:     scoring.JudgeModeDeterministic,
+				Validators: []scoring.ValidatorDeclaration{
+					{Key: "exact", Type: scoring.ValidatorTypeExactMatch, Target: "final_output", ExpectedFrom: "challenge_input"},
+				},
+				Scorecard: scoring.ScorecardDeclaration{
+					Dimensions: []scoring.DimensionDeclaration{{Key: "correctness"}},
+				},
+			},
+		},
+		Challenges: []challengepack.ChallengeDefinition{
+			{Key: "ticket-1", Title: "Ticket One", Category: "support", Difficulty: "easy"},
+		},
+		InputSets: []challengepack.InputSetDefinition{
+			{
+				Key:  "default",
+				Name: "Default",
+				Cases: []challengepack.CaseDefinition{
+					{
+						ChallengeKey: "ticket-1",
+						CaseKey:      "case-1",
+						Payload:      map[string]any{"prompt": "Customer needs help"},
+					},
+				},
+			},
+		},
 	}
 }
 
