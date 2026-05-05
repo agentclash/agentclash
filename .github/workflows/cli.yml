@@ -5,11 +5,13 @@ on:
     branches: [main]
     paths:
       - "cli/**"
+      - ".github/actions/agentclash-ci/**"
       - ".github/workflows/cli.yml"
   pull_request:
     branches: [main]
     paths:
       - "cli/**"
+      - ".github/actions/agentclash-ci/**"
       - ".github/workflows/cli.yml"
 
 defaults:
@@ -47,3 +49,17 @@ jobs:
 
       - name: Run tests (short mode)
         run: go test -short -race -count=1 ./...
+
+  action-tests:
+    name: AgentClash CI Action Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run action tests
+        run: |
+          python3 .github/actions/agentclash-ci/run_test.py
+          python3 .github/actions/agentclash-ci/comment_test.py
