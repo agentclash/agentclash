@@ -83,6 +83,7 @@ func TestReleaseGateManagerEvaluatePersistsRegressionViolations(t *testing.T) {
 	evaluationSpecID := uuid.New()
 	comparisonID := uuid.New()
 	regressionCaseID := uuid.New()
+	proposedRegressionCaseID := uuid.New()
 	suiteID := uuid.New()
 	candidateJudgeResultID := uuid.New()
 
@@ -132,6 +133,11 @@ func TestReleaseGateManagerEvaluatePersistsRegressionViolations(t *testing.T) {
 							"event_type": "validator.completed",
 						},
 					},
+					map[string]any{
+						"key":                "proposed_check",
+						"state":              "available",
+						"regression_case_id": proposedRegressionCaseID.String(),
+					},
 				},
 				"metric_details": []any{},
 			})},
@@ -156,6 +162,14 @@ func TestReleaseGateManagerEvaluatePersistsRegressionViolations(t *testing.T) {
 					JudgeKey:         "correctness_check",
 					Verdict:          rgStringPtr("fail"),
 				},
+				{
+					ID:               uuid.New(),
+					RunAgentID:       candidateRunAgentID,
+					EvaluationSpecID: evaluationSpecID,
+					RegressionCaseID: &proposedRegressionCaseID,
+					JudgeKey:         "proposed_check",
+					Verdict:          rgStringPtr("fail"),
+				},
 			},
 			fakeReleaseGateResultsKey(baselineRunAgentID, evaluationSpecID): {
 				{
@@ -173,6 +187,7 @@ func TestReleaseGateManagerEvaluatePersistsRegressionViolations(t *testing.T) {
 				ID:          regressionCaseID,
 				WorkspaceID: workspaceID,
 				SuiteID:     suiteID,
+				Status:      domain.RegressionCaseStatusActive,
 				Severity:    domain.RegressionSeverityBlocking,
 				LatestPromotion: &repository.RegressionPromotion{
 					SourceEventRefs: mustJSON(t, []map[string]any{{
@@ -181,6 +196,13 @@ func TestReleaseGateManagerEvaluatePersistsRegressionViolations(t *testing.T) {
 						"kind":            "run_event",
 					}}),
 				},
+			},
+			proposedRegressionCaseID: {
+				ID:          proposedRegressionCaseID,
+				WorkspaceID: workspaceID,
+				SuiteID:     suiteID,
+				Status:      domain.RegressionCaseStatusProposed,
+				Severity:    domain.RegressionSeverityBlocking,
 			},
 		},
 		upsertedRecord: repository.RunComparisonReleaseGate{
@@ -337,6 +359,7 @@ func TestReleaseGateManagerEvaluateWarnsWhenBaselineRegressionEvidenceMissing(t 
 				ID:          regressionCaseID,
 				WorkspaceID: workspaceID,
 				SuiteID:     suiteID,
+				Status:      domain.RegressionCaseStatusActive,
 				Severity:    domain.RegressionSeverityBlocking,
 			},
 		},
@@ -545,6 +568,7 @@ func TestReleaseGateManagerEvaluateRejectsCrossWorkspaceRegressionCaseEvidence(t
 				ID:          regressionCaseID,
 				WorkspaceID: foreignWorkspaceID,
 				SuiteID:     uuid.New(),
+				Status:      domain.RegressionCaseStatusActive,
 				Severity:    domain.RegressionSeverityBlocking,
 			},
 		},
@@ -663,8 +687,8 @@ func TestReleaseGateManagerEvaluateScopesRegressionRulesToSelectedSuites(t *test
 			},
 		},
 		regressionCases: map[uuid.UUID]repository.RegressionCase{
-			allowedCaseID: {ID: allowedCaseID, WorkspaceID: workspaceID, SuiteID: allowedSuiteID, Severity: domain.RegressionSeverityBlocking},
-			blockedCaseID: {ID: blockedCaseID, WorkspaceID: workspaceID, SuiteID: blockedSuiteID, Severity: domain.RegressionSeverityBlocking},
+			allowedCaseID: {ID: allowedCaseID, WorkspaceID: workspaceID, SuiteID: allowedSuiteID, Status: domain.RegressionCaseStatusActive, Severity: domain.RegressionSeverityBlocking},
+			blockedCaseID: {ID: blockedCaseID, WorkspaceID: workspaceID, SuiteID: blockedSuiteID, Status: domain.RegressionCaseStatusActive, Severity: domain.RegressionSeverityBlocking},
 		},
 		upsertedRecord: repository.RunComparisonReleaseGate{
 			ID:        uuid.New(),
