@@ -38,6 +38,8 @@ import type {
   AgentDeployment,
   ChallengeInputSetSummary,
   ChallengePack,
+  CreateCISetupPullRequestRequest,
+  CreateCISetupPullRequestResponse,
   GitHubRepository,
   ModelAlias,
   ProviderAccount,
@@ -114,6 +116,10 @@ export function CISetupClient({ workspaceId }: CISetupClientProps) {
   const [runAgents, setRunAgents] = useState<RunAgent[]>([]);
   const [loadingInputSets, setLoadingInputSets] = useState(false);
   const [loadingRunAgents, setLoadingRunAgents] = useState(false);
+  const [selectedRepositoryKey, setSelectedRepositoryKey] = useState("");
+  const [creatingSetupPR, setCreatingSetupPR] = useState(false);
+  const [setupPRResult, setSetupPRResult] =
+    useState<CreateCISetupPullRequestResponse | null>(null);
 
   const builds = useApiListQuery<AgentBuild>(
     `/v1/workspaces/${workspaceId}/agent-builds`,
@@ -194,14 +200,35 @@ export function CISetupClient({ workspaceId }: CISetupClientProps) {
     () => (runs.data?.items ?? []).filter((run) => run.status === "completed"),
     [runs.data?.items],
   );
+  const githubRepositories = useMemo(
+    () => repositories.data?.items ?? [],
+    [repositories.data?.items],
+  );
+  const selectedGitHubRepository = useMemo(
+    () =>
+      githubRepositories.find((repo) => gitHubRepositoryKey(repo) === selectedRepositoryKey) ??
+      null,
+    [githubRepositories, selectedRepositoryKey],
+  );
 
   useEffect(() => {
-    const repository = repositories.data?.items?.[0];
+    const repository = githubRepositories[0];
     if (repository && !repositoryFullName) {
+      setSelectedRepositoryKey(gitHubRepositoryKey(repository));
       setRepositoryFullName(repository.full_name);
       setDefaultBranch(repository.default_branch || "main");
     }
-  }, [repositories.data?.items, repositoryFullName]);
+  }, [githubRepositories, repositoryFullName]);
+
+  useEffect(() => {
+    if (!selectedRepositoryKey || !repositories.data) return;
+    const repository = githubRepositories.find(
+      (repo) => gitHubRepositoryKey(repo) === selectedRepositoryKey,
+    );
+    if (!repository) {
+      setSelectedRepositoryKey("");
+    }
+  }, [githubRepositories, repositories.data, selectedRepositoryKey]);
 
   useEffect(() => {
     if (!builds.data) return;
@@ -385,6 +412,8 @@ export function CISetupClient({ workspaceId }: CISetupClientProps) {
   const readiness = ciSetupReadiness(config);
   const manifest = generateAgentClashCIManifest(config);
   const workflow = generateAgentClashGitHubWorkflow(config);
+  const canCreateSetupPR =
+    readiness.ready && selectedGitHubRepository !== null && !creatingSetupPR;
   const loadingAny =
     builds.isLoading ||
     deployments.isLoading ||
@@ -404,6 +433,48 @@ export function CISetupClient({ workspaceId }: CISetupClientProps) {
     modelAliases.error ||
     regressionSuites.error ||
     runs.error;
+
+  async function createSetupPullRequest() {
+    if (!selectedGitHubRepository) {
+      toast.error("Select an installed GitHub repository first");
+      return;
+    }
+    setCreatingSetupPR(true);
+    setSetupPRResult(null);
+    try {
+      const token = await getAccessToken();
+      const api = createApiClient(token ?? undefined);
+      const payload: CreateCISetupPullRequestRequest = {
+        github_repository_id: selectedGitHubRepository.github_repository_id,
+        github_installation_id: selectedGitHubRepository.github_installation_id,
+        base_branch: config.defaultBranch,
+        title: "Set up AgentClash CI",
+        body: [
+          "Adds AgentClash CI configuration generated from the workspace setup UI.",
+          "",
+          `Manifest: \`${config.manifestPath}\``,
+          `Workflow: \`${config.workflowPath}\``,
+        ].join("\n"),
+        draft: true,
+        files: [
+          { path: config.manifestPath, content: manifest },
+          { path: config.workflowPath, content: workflow },
+        ],
+      };
+      const result = await api.post<CreateCISetupPullRequestResponse>(
+        `/v1/workspaces/${workspaceId}/github/ci-setup-pull-request`,
+        payload,
+      );
+      setSetupPRResult(result);
+      toast.success(`Created setup PR #${result.pull_request.number}`);
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError ? err.message : "Failed to create setup PR",
+      );
+    } finally {
+      setCreatingSetupPR(false);
+    }
+  }
 
   return (
     <div className="mx-auto flex max-w-7xl flex-col gap-6">
@@ -439,6 +510,18 @@ export function CISetupClient({ workspaceId }: CISetupClientProps) {
             <Download data-icon="inline-start" className="size-4" />
             Workflow
           </Button>
+          <Button
+            size="sm"
+            disabled={!canCreateSetupPR}
+            onClick={createSetupPullRequest}
+          >
+            {creatingSetupPR ? (
+              <Loader2 data-icon="inline-start" className="size-4 animate-spin" />
+            ) : (
+              <Github data-icon="inline-start" className="size-4" />
+            )}
+            Open setup PR
+          </Button>
         </div>
       </header>
 
@@ -460,20 +543,25 @@ export function CISetupClient({ workspaceId }: CISetupClientProps) {
             <div className="grid gap-4 md:grid-cols-2">
               <Field label="Repository">
                 <select
-                  value={repositoryFullName}
+                  value={selectedRepositoryKey}
                   onChange={(event) => {
                     const value = event.target.value;
-                    setRepositoryFullName(value);
-                    const repo = repositories.data?.items?.find(
-                      (item) => item.full_name === value,
+                    setSelectedRepositoryKey(value);
+                    const repo = githubRepositories.find(
+                      (item) => gitHubRepositoryKey(item) === value,
                     );
-                    if (repo) setDefaultBranch(repo.default_branch || "main");
+                    if (repo) {
+                      setRepositoryFullName(repo.full_name);
+                      setDefaultBranch(repo.default_branch || "main");
+                    } else {
+                      setRepositoryFullName("");
+                    }
                   }}
                   className={selectClass}
                 >
                   <option value="">Enter manually below</option>
-                  {(repositories.data?.items ?? []).map((repo) => (
-                    <option key={repo.id} value={repo.full_name}>
+                  {githubRepositories.map((repo) => (
+                    <option key={repo.id} value={gitHubRepositoryKey(repo)}>
                       {repo.full_name}
                     </option>
                   ))}
@@ -489,7 +577,10 @@ export function CISetupClient({ workspaceId }: CISetupClientProps) {
               <Field label="Repository full name">
                 <Input
                   value={repositoryFullName}
-                  onChange={(event) => setRepositoryFullName(event.target.value)}
+                  onChange={(event) => {
+                    setSelectedRepositoryKey("");
+                    setRepositoryFullName(event.target.value);
+                  }}
                   placeholder="owner/repo"
                 />
               </Field>
@@ -873,6 +964,24 @@ export function CISetupClient({ workspaceId }: CISetupClientProps) {
             }
           />
 
+          {setupPRResult ? (
+            <StatusPanel
+              tone="success"
+              title={`Setup PR #${setupPRResult.pull_request.number} created`}
+              body={`Opened ${setupPRResult.branch} against ${setupPRResult.base_branch}.`}
+              action={
+                <a
+                  href={setupPRResult.pull_request.html_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-sm font-medium underline underline-offset-4"
+                >
+                  View pull request
+                </a>
+              }
+            />
+          ) : null}
+
           <div className="rounded-lg border border-border">
             <div className="flex items-center justify-between border-b border-border px-4 py-3">
               <div>
@@ -1010,10 +1119,12 @@ function StatusPanel({
   tone,
   title,
   body,
+  action,
 }: {
   tone: "success" | "warn" | "danger";
   title: string;
   body: string;
+  action?: React.ReactNode;
 }) {
   return (
     <div
@@ -1038,6 +1149,7 @@ function StatusPanel({
         <div>
           <h2 className="text-sm font-semibold">{title}</h2>
           <p className="mt-1 text-sm leading-6 text-muted-foreground">{body}</p>
+          {action ? <div className="mt-3">{action}</div> : null}
         </div>
       </div>
     </div>
@@ -1163,6 +1275,10 @@ function splitLines(value: string): string[] {
     .split(/\r?\n|,/)
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function gitHubRepositoryKey(repo: GitHubRepository): string {
+  return `${repo.github_installation_id}:${repo.github_repository_id}`;
 }
 
 async function copyText(value: string, message: string) {

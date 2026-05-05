@@ -401,6 +401,33 @@ export interface GitHubRepository {
   last_synced_at: string;
 }
 
+export interface CreateCISetupPullRequestRequest {
+  github_repository_id: number;
+  github_installation_id?: number;
+  base_branch: string;
+  title?: string;
+  body?: string;
+  draft?: boolean;
+  files: Array<{
+    path: string;
+    content: string;
+  }>;
+}
+
+export interface CreateCISetupPullRequestResponse {
+  pull_request: {
+    number: number;
+    html_url: string;
+    state: string;
+    draft: boolean;
+  };
+  branch: string;
+  base_branch: string;
+  files: Array<{
+    path: string;
+  }>;
+}
+
 export type AgentHarnessExecutionStatus =
   | "queued"
   | "provisioning"
