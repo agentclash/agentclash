@@ -243,20 +243,43 @@ func (a *Activities) ExecuteAgentHarnessExecution(ctx context.Context, input Exe
 		} else if result.ExitCode != 0 {
 			return fmt.Errorf("git add intent failed with exit code %d", result.ExitCode)
 		}
-		if result, err := a.execHarnessCommand(ctx, execution.ID, session, "git.diff", []string{"git", "diff", "--binary"}, workdir, 60*time.Second, env); err != nil {
+		baseRef := agentHarnessGitBaseRef(harness)
+		diffCommand := []string{"git", "diff", "--binary"}
+		if baseRef != "" {
+			diffCommand = append(diffCommand, baseRef)
+		}
+		if result, err := a.execHarnessCommand(ctx, execution.ID, session, "git.diff", diffCommand, workdir, 60*time.Second, env); err != nil {
 			return err
 		} else {
 			_ = a.recordAgentHarnessEvent(ctx, execution.ID, "artifact.git_diff", "worker", map[string]any{"diff": result.Stdout})
 		}
-		changedFiles := ""
+		baseChangedFiles := ""
+		changedFilesCommand := []string{"git", "diff", "--name-status"}
+		if baseRef != "" {
+			changedFilesCommand = append(changedFilesCommand, baseRef)
+		}
+		if result, err := a.execHarnessCommand(ctx, execution.ID, session, "git.base_changed_files", changedFilesCommand, workdir, 60*time.Second, env); err != nil {
+			return err
+		} else {
+			baseChangedFiles = result.Stdout
+		}
+		workingTreeFiles := ""
 		if result, err := a.execHarnessCommand(ctx, execution.ID, session, "git.changed_files", []string{"git", "status", "--short"}, workdir, 60*time.Second, env); err != nil {
 			return err
 		} else {
-			changedFiles = result.Stdout
-			_ = a.recordAgentHarnessEvent(ctx, execution.ID, "artifact.changed_files", "worker", map[string]any{"changed_files": result.Stdout})
+			workingTreeFiles = result.Stdout
+			_ = a.recordAgentHarnessEvent(ctx, execution.ID, "artifact.changed_files", "worker", map[string]any{
+				"changed_files":        combineGitChangeLists(baseChangedFiles, workingTreeFiles),
+				"base_changed_files":   baseChangedFiles,
+				"working_tree_changes": workingTreeFiles,
+			})
 		}
 		if isStructuredGitHubHarness(harness) {
-			if err := a.createGitHubPullRequest(ctx, execution.ID, session, harness, workdir, timeout, gitEnv, gitHubToken, changedFiles); err != nil {
+			changes := agentHarnessGitChanges{
+				ChangedFiles:       combineGitChangeLists(baseChangedFiles, workingTreeFiles),
+				WorkingTreeChanges: workingTreeFiles,
+			}
+			if err := a.createGitHubPullRequest(ctx, execution.ID, session, harness, workdir, timeout, gitEnv, gitHubToken, changes); err != nil {
 				return err
 			}
 		}
@@ -393,8 +416,44 @@ func normalizeAgentHarnessKind(kind string) string {
 	return trimmed
 }
 
-func (a *Activities) createGitHubPullRequest(ctx context.Context, executionID uuid.UUID, session sandbox.Session, harness agentHarnessSnapshot, workdir string, timeout time.Duration, gitEnv map[string]string, token string, changedFiles string) error {
-	if strings.TrimSpace(changedFiles) == "" {
+type agentHarnessGitChanges struct {
+	ChangedFiles       string
+	WorkingTreeChanges string
+}
+
+type agentHarnessGitCommand struct {
+	event   string
+	command []string
+}
+
+func (c agentHarnessGitChanges) hasChanges() bool {
+	return strings.TrimSpace(c.ChangedFiles) != ""
+}
+
+func (c agentHarnessGitChanges) hasWorkingTreeChanges() bool {
+	return strings.TrimSpace(c.WorkingTreeChanges) != ""
+}
+
+func agentHarnessGitBaseRef(harness agentHarnessSnapshot) string {
+	baseBranch := strings.TrimSpace(derefString(harness.BaseBranch))
+	if baseBranch == "" {
+		baseBranch = "main"
+	}
+	return "origin/" + baseBranch
+}
+
+func combineGitChangeLists(lists ...string) string {
+	parts := make([]string, 0, len(lists))
+	for _, list := range lists {
+		if trimmed := strings.TrimSpace(list); trimmed != "" {
+			parts = append(parts, trimmed)
+		}
+	}
+	return strings.Join(parts, "\n")
+}
+
+func (a *Activities) createGitHubPullRequest(ctx context.Context, executionID uuid.UUID, session sandbox.Session, harness agentHarnessSnapshot, workdir string, timeout time.Duration, gitEnv map[string]string, token string, changes agentHarnessGitChanges) error {
+	if !changes.hasChanges() {
 		return a.recordAgentHarnessEvent(ctx, executionID, "github.pull_request.skipped", "worker", map[string]any{"reason": "no_changes"})
 	}
 	if a.githubClient == nil || token == "" {
@@ -410,17 +469,18 @@ func (a *Activities) createGitHubPullRequest(ctx context.Context, executionID uu
 	}
 	branch := "agentclash/harness/" + strings.ReplaceAll(executionID.String()[:8], "-", "")
 	pushURL := "https://github.com/" + owner + "/" + repo + ".git"
-	commands := []struct {
-		event   string
-		command []string
-	}{
+	commands := []agentHarnessGitCommand{
 		{"git.config_user_email", []string{"git", "config", "user.email", "agentclash[bot]@users.noreply.github.com"}},
 		{"git.config_user_name", []string{"git", "config", "user.name", "agentclash[bot]"}},
 		{"git.create_branch", []string{"git", "checkout", "-B", branch}},
-		{"git.add_all", []string{"git", "add", "--all"}},
-		{"git.commit", []string{"git", "-c", "core.hooksPath=/dev/null", "commit", "-m", "AgentClash harness changes"}},
-		{"git.push_branch", []string{"git", "-c", "core.hooksPath=/dev/null", "-c", "credential.helper=", "push", pushURL, "HEAD:refs/heads/" + branch}},
 	}
+	if changes.hasWorkingTreeChanges() {
+		commands = append(commands,
+			agentHarnessGitCommand{"git.add_all", []string{"git", "add", "--all"}},
+			agentHarnessGitCommand{"git.commit", []string{"git", "-c", "core.hooksPath=/dev/null", "commit", "-m", "AgentClash harness changes"}},
+		)
+	}
+	commands = append(commands, agentHarnessGitCommand{"git.push_branch", []string{"git", "-c", "core.hooksPath=/dev/null", "-c", "credential.helper=", "push", pushURL, "HEAD:refs/heads/" + branch}})
 	for _, step := range commands {
 		stepEnv := map[string]string(nil)
 		if step.event == "git.push_branch" {
