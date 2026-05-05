@@ -14,5 +14,7 @@ WHERE challenge_pack_version_id IS NULL;
 DROP INDEX IF EXISTS evaluation_specs_global_name_version_uq;
 DROP INDEX IF EXISTS evaluation_specs_challenge_pack_version_name_version_uq;
 
+-- This down migration can fail if duplicate name/version pairs were written
+-- for different challenge pack versions after the Up migration ran.
 ALTER TABLE evaluation_specs
 ADD CONSTRAINT evaluation_specs_name_version_number_key UNIQUE (name, version_number);
