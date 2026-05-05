@@ -272,8 +272,9 @@ func validatePromptEvalConfig(cfg promptEvalConfig, maxCases int, result *prompt
 			result.Errors = append(result.Errors, fmt.Sprintf("tests[%d].key is required", i))
 		} else if seenTests[key] {
 			result.Errors = append(result.Errors, fmt.Sprintf("duplicate test key %q", key))
+		} else {
+			seenTests[key] = true
 		}
-		seenTests[key] = true
 		for _, name := range templateVars {
 			if _, ok := test.Vars[name]; !ok {
 				result.Errors = append(result.Errors, fmt.Sprintf("tests[%d] missing template variable %q", i, name))
@@ -302,6 +303,10 @@ func validatePromptEvalAssertion(testIndex, assertionIndex int, assertion prompt
 	value := strings.TrimSpace(promptEvalAssertionValueString(assertion.Value))
 	switch kind {
 	case "regex_match":
+		if value == "" {
+			result.Errors = append(result.Errors, fmt.Sprintf("tests[%d].assert[%d] regex_match requires a non-empty pattern", testIndex, assertionIndex))
+			return
+		}
 		if _, err := regexp.Compile(value); err != nil {
 			result.Errors = append(result.Errors, fmt.Sprintf("tests[%d].assert[%d] has invalid RE2 regex: %v", testIndex, assertionIndex, err))
 		}
