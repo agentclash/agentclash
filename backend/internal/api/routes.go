@@ -146,6 +146,8 @@ func registerProtectedRoutes(
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Get("/workspaces/{workspaceID}/github/repositories", listGitHubRepositoriesHandler(logger, githubIntegrationService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Post("/workspaces/{workspaceID}/github/ci-setup-pull-request", createCISetupPullRequestHandler(logger, githubIntegrationService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Get("/workspaces/{workspaceID}/challenge-packs", listChallengePacksHandler(logger, challengePackReadService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Get("/workspaces/{workspaceID}/challenge-pack-versions/{versionID}/input-sets", listChallengeInputSetsHandler(logger, challengePackReadService))

@@ -7,12 +7,14 @@ const {
   mockGetAccessToken,
   mockCreateApiClient,
   mockListResponse,
+  mockPost,
   mockRunsResponse,
   toast,
 } = vi.hoisted(() => ({
   mockGetAccessToken: vi.fn(),
   mockCreateApiClient: vi.fn(),
   mockListResponse: vi.fn(),
+  mockPost: vi.fn(),
   mockRunsResponse: vi.fn(),
   toast: Object.assign(vi.fn(), {
     success: vi.fn(),
@@ -108,6 +110,7 @@ const cleanups: Array<() => void> = [];
 
 beforeEach(() => {
   document.body.innerHTML = "";
+  mockPost.mockReset();
   mockGetAccessToken.mockResolvedValue("token");
   mockCreateApiClient.mockReturnValue({
     get: vi.fn(async (path: string) => {
@@ -142,6 +145,21 @@ beforeEach(() => {
       }
       return { items: [] };
     }),
+    post: mockPost,
+  });
+  mockPost.mockResolvedValue({
+    pull_request: {
+      number: 7,
+      html_url: "https://github.com/acme/support-agent/pull/7",
+      state: "open",
+      draft: true,
+    },
+    branch: "agentclash/ci-setup/abc12345",
+    base_branch: "main",
+    files: [
+      { path: ".agentclash/ci.yaml" },
+      { path: ".github/workflows/agentclash.yml" },
+    ],
   });
   mockListResponse.mockImplementation(listResponse);
   mockRunsResponse.mockReturnValue({
@@ -222,6 +240,59 @@ describe("CISetupClient", () => {
       expect.stringContaining('agent_build_id: "build-1"'),
     );
     expect(toast.success).toHaveBeenCalledWith("Manifest copied");
+  });
+
+  it("creates a GitHub setup pull request from the generated files", async () => {
+    renderClient();
+    await flushEffects();
+
+    const button = Array.from(document.querySelectorAll("button")).find(
+      (item) => item.textContent?.includes("Open setup PR"),
+    );
+    if (!button) throw new Error("Open setup PR button not found");
+    expect(button).not.toHaveProperty("disabled", true);
+
+    await act(async () => {
+      button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mockPost).toHaveBeenCalledWith(
+      "/v1/workspaces/ws-1/github/ci-setup-pull-request",
+      expect.objectContaining({
+        github_repository_id: 456,
+        github_installation_id: 123,
+        base_branch: "main",
+        files: [
+          expect.objectContaining({
+            path: ".agentclash/ci.yaml",
+            content: expect.stringContaining('agent_build_id: "build-1"'),
+          }),
+          expect.objectContaining({
+            path: ".github/workflows/agentclash.yml",
+            content: expect.stringContaining("name: AgentClash CI"),
+          }),
+        ],
+      }),
+    );
+    expect(document.body.textContent).toContain("Setup PR #7 created");
+    expect(toast.success).toHaveBeenCalledWith("Created setup PR #7");
+  });
+
+  it("disables setup PR creation for manual repositories", async () => {
+    mockListResponse.mockImplementation((path: string) =>
+      path.includes("/github/repositories") ? [] : listResponse(path),
+    );
+
+    renderClient();
+    await flushEffects();
+
+    const button = Array.from(document.querySelectorAll("button")).find(
+      (item) => item.textContent?.includes("Open setup PR"),
+    );
+    if (!button) throw new Error("Open setup PR button not found");
+    expect(button).toHaveProperty("disabled", true);
   });
 });
 
