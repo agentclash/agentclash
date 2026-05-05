@@ -46,7 +46,13 @@ func GetRunContext(cmd *cobra.Command) *RunContext {
 func RequireWorkspace(cmd *cobra.Command) string {
 	rc := GetRunContext(cmd)
 	if rc.Workspace == "" {
-		fmt.Fprintln(os.Stderr, "Error: no workspace specified. Run 'agentclash link' to choose a default workspace, or pass --workspace, set AGENTCLASH_WORKSPACE, or create .agentclash.yaml with 'agentclash init'.")
+		err := &cliError{
+			Code:    "missing_workspace",
+			Message: "no workspace specified. Run 'agentclash link' to choose a default workspace, or pass --workspace, set AGENTCLASH_WORKSPACE, or create .agentclash.yaml with 'agentclash init'.",
+		}
+		if _, rendered := RenderError(err, os.Stderr); !rendered {
+			fmt.Fprintln(os.Stderr, "Error: "+err.Error())
+		}
 		os.Exit(2)
 	}
 	return rc.Workspace

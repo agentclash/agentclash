@@ -22,6 +22,10 @@ func main() {
 		return
 	}
 
+	if code, rendered := cmd.RenderError(err, os.Stderr); rendered {
+		os.Exit(code)
+	}
+
 	var exitErr *cmd.ExitCodeError
 	if errors.As(err, &exitErr) {
 		if !exitErr.Silent() {
