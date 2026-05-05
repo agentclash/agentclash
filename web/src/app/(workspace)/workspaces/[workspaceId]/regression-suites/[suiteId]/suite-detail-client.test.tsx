@@ -190,6 +190,119 @@ describe("regression provenance UI", () => {
     }
   });
 
+  it("shows CI curation metadata in the case detail view", () => {
+    const view = render(
+      <CaseDetailClient
+        workspaceId="ws-1"
+        suite={suite}
+        regressionCase={makeCase({
+          metadata: {
+            source: "agentclash_ci",
+            failure_taxonomy: {
+              source: "release_gate",
+              failure_mode: "scorecard_dimension_regression",
+              severity_hint: "blocking",
+              gate_verdict: "fail",
+              gate_reason_code: "threshold_fail_correctness",
+              triggered_condition: "threshold_fail_correctness",
+            },
+            curation_links: {
+              candidate_run: "https://app.agentclash.dev/runs/run-candidate",
+              scorecard:
+                "https://app.agentclash.dev/scorecards/agent-candidate",
+              replay: "https://app.agentclash.dev/replays/agent-candidate",
+              comparison:
+                "https://app.agentclash.dev/compare/run-baseline/run-candidate",
+              release_gate:
+                "https://app.agentclash.dev/release-gates/gate-1",
+            },
+          },
+        })}
+      />,
+    );
+    try {
+      expect(view.container.textContent).toContain("CI Curation");
+      expect(view.container.textContent).toContain("Failure Mode");
+      expect(view.container.textContent).toContain(
+        "scorecard_dimension_regression",
+      );
+      expect(view.container.textContent).toContain("Reason Code");
+      expect(view.container.textContent).toContain("threshold_fail_correctness");
+      expect(view.container.textContent).toContain("Metadata");
+      expect(view.container.textContent).toContain("agentclash_ci");
+
+      for (const [label, href] of [
+        ["Candidate Run", "https://app.agentclash.dev/runs/run-candidate"],
+        [
+          "Scorecard",
+          "https://app.agentclash.dev/scorecards/agent-candidate",
+        ],
+        ["Replay", "https://app.agentclash.dev/replays/agent-candidate"],
+        [
+          "Comparison",
+          "https://app.agentclash.dev/compare/run-baseline/run-candidate",
+        ],
+        [
+          "Release Gate",
+          "https://app.agentclash.dev/release-gates/gate-1",
+        ],
+      ]) {
+        const link = view.container.querySelector<HTMLAnchorElement>(
+          `a[href="${href}"]`,
+        );
+        expect(link?.textContent).toContain(label);
+        expect(link?.getAttribute("target")).toBe("_blank");
+      }
+    } finally {
+      view.cleanup();
+    }
+  });
+
+  it("omits the CI curation section without CI metadata", () => {
+    const view = render(
+      <CaseDetailClient
+        workspaceId="ws-1"
+        suite={suite}
+        regressionCase={makeCase()}
+      />,
+    );
+    try {
+      expect(view.container.textContent).not.toContain("CI Curation");
+      expect(view.container.textContent).toContain("Metadata");
+    } finally {
+      view.cleanup();
+    }
+  });
+
+  it("omits unsafe CI curation links", () => {
+    const view = render(
+      <CaseDetailClient
+        workspaceId="ws-1"
+        suite={suite}
+        regressionCase={makeCase({
+          metadata: {
+            curation_links: {
+              candidate_run: "javascript:alert(1)",
+              replay: " https://app.agentclash.dev/replays/agent-candidate ",
+            },
+          },
+        })}
+      />,
+    );
+    try {
+      expect(
+        view.container.querySelector('a[href="javascript:alert(1)"]'),
+      ).toBeNull();
+      expect(view.container.textContent).not.toContain("Candidate Run");
+      const replayLink = view.container.querySelector<HTMLAnchorElement>(
+        'a[href="https://app.agentclash.dev/replays/agent-candidate"]',
+      );
+      expect(replayLink?.textContent).toContain("Replay");
+    } finally {
+      view.cleanup();
+    }
+  });
+
   it("renders maintenance variants in the suite case list", () => {
     const view = render(
       <SuiteDetailClient
