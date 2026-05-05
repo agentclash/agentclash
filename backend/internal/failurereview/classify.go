@@ -56,6 +56,8 @@ func Classify(input ClassificationInput) FailureClass {
 	return FailureClassOther
 }
 
+// TaxonomyForFailureClass keeps the triage family separate from whether the
+// failure should normally count against the evaluated agent.
 func TaxonomyForFailureClass(class FailureClass) FailureTaxonomy {
 	switch class {
 	case FailureClassIncorrectFinalOutput:

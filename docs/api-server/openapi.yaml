@@ -6708,7 +6708,10 @@ components:
           description: Human-facing taxonomy label.
         agent_fault:
           type: boolean
-          description: Whether the failure should normally count against the agent rather than evidence or platform.
+          description: >
+            Whether the failure should normally count against the agent. This is
+            independent from `family`; for example, a workflow-family timeout can
+            still be agent-caused.
 
     ListRunFailuresResponse:
       type: object

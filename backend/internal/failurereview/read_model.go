@@ -429,9 +429,6 @@ func BuildClusterSummaries(items []Item) []ClusterSummary {
 		if failureStateRank(item.FailureState) > failureStateRank(group.summary.FailureState) {
 			group.summary.FailureState = item.FailureState
 		}
-		if taxonomy.Code != "" && group.summary.FailureTaxonomy.Code == "" {
-			group.summary.FailureTaxonomy = taxonomy
-		}
 		if item.ChallengeKey != "" {
 			group.challengeKeys[item.ChallengeKey] = struct{}{}
 		}
