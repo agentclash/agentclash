@@ -385,9 +385,6 @@ func BuildClusterSummaries(items []Item) []ClusterSummary {
 	groups := map[string]*clusterAccumulator{}
 	for _, item := range items {
 		taxonomy := item.FailureTaxonomy
-		if taxonomy.Code == "" {
-			taxonomy = TaxonomyForFailureClass(item.FailureClass)
-		}
 		key := strings.TrimSpace(item.FailureClusterKey)
 		if key == "" {
 			key = "unclustered:" + item.FailureFingerprint
