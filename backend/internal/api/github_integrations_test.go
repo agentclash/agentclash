@@ -88,7 +88,7 @@ func TestGitHubIntegrationManagerCompleteInstallationVerifiesStateAndSyncsReposi
 		StateSecret: "state-secret",
 		StateTTL:    time.Minute,
 	})
-	manager.client = fakeGitHubAppClient{
+	manager.client = &fakeGitHubAppClient{
 		installation: githubAPIInstallation{
 			ID: 42,
 			Account: githubAPIAccount{
@@ -150,7 +150,7 @@ func TestGitHubIntegrationManagerCompleteInstallationReportsCrossOrgConflict(t *
 		StateSecret: "state-secret",
 		StateTTL:    time.Minute,
 	})
-	manager.client = fakeGitHubAppClient{
+	manager.client = &fakeGitHubAppClient{
 		installation: githubAPIInstallation{
 			ID:                  42,
 			Account:             githubAPIAccount{ID: 99, Login: "acme", Type: "Organization"},
@@ -207,10 +207,117 @@ func TestGitHubIntegrationManagerListRepositoriesRequiresRunPermission(t *testin
 	}
 }
 
+func TestGitHubIntegrationManagerCreateCISetupPullRequest(t *testing.T) {
+	workspaceID := uuid.New()
+	repo := &fakeGitHubIntegrationRepo{
+		organizationID: uuid.New(),
+		githubRepo: repository.GitHubInstallationRepository{
+			GitHubInstallationID: 123,
+			GitHubRepositoryID:   456,
+			FullName:             "acme/support-agent",
+			DefaultBranch:        "main",
+		},
+	}
+	client := &fakeGitHubAppClient{
+		pullRequest: githubPullRequest{
+			Number:  42,
+			HTMLURL: "https://github.com/acme/support-agent/pull/42",
+			State:   "open",
+			Draft:   true,
+		},
+	}
+	manager := NewGitHubIntegrationManager(NewCallerWorkspaceAuthorizer(), repo, GitHubIntegrationConfig{
+		AppSlug:     "agentclash-dev",
+		StateSecret: "state-secret",
+	})
+	manager.client = client
+
+	result, err := manager.CreateCISetupPullRequest(context.Background(), testAgentHarnessCaller(workspaceID), workspaceID, CreateCISetupPullRequestInput{
+		GitHubRepositoryID:   456,
+		GitHubInstallationID: 123,
+		BaseBranch:           "main",
+		Files: []CISetupPullRequestFile{
+			{Path: ".agentclash/ci.yaml", Content: "version: 1\n"},
+			{Path: ".github/workflows/agentclash.yml", Content: "name: AgentClash CI\n"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateCISetupPullRequest error: %v", err)
+	}
+	if repo.getRepositoryID != 456 || repo.getInstallationID == nil || *repo.getInstallationID != 123 {
+		t.Fatalf("repo lookup = %d/%v", repo.getRepositoryID, repo.getInstallationID)
+	}
+	if client.createFilesInput.Owner != "acme" || client.createFilesInput.Repo != "support-agent" {
+		t.Fatalf("github repo = %s/%s", client.createFilesInput.Owner, client.createFilesInput.Repo)
+	}
+	if client.createFilesInput.InstallationID != 123 || client.createFilesInput.BaseBranch != "main" {
+		t.Fatalf("github input = %#v", client.createFilesInput)
+	}
+	if client.createFilesInput.Branch == "" || !strings.HasPrefix(client.createFilesInput.Branch, "agentclash/ci-setup/") {
+		t.Fatalf("branch = %q", client.createFilesInput.Branch)
+	}
+	if len(client.createFilesInput.Files) != 2 || client.createFilesInput.Files[0].Path != ".agentclash/ci.yaml" {
+		t.Fatalf("files = %#v", client.createFilesInput.Files)
+	}
+	if result.PullRequest.Number != 42 || result.Branch != client.createFilesInput.Branch || len(result.Files) != 2 {
+		t.Fatalf("result = %#v", result)
+	}
+}
+
+func TestGitHubIntegrationManagerCreateCISetupPullRequestValidatesFiles(t *testing.T) {
+	workspaceID := uuid.New()
+	repo := &fakeGitHubIntegrationRepo{
+		organizationID: uuid.New(),
+		githubRepo: repository.GitHubInstallationRepository{
+			GitHubInstallationID: 123,
+			GitHubRepositoryID:   456,
+			FullName:             "acme/support-agent",
+			DefaultBranch:        "main",
+		},
+	}
+	manager := NewGitHubIntegrationManager(NewCallerWorkspaceAuthorizer(), repo, GitHubIntegrationConfig{
+		AppSlug:     "agentclash-dev",
+		StateSecret: "state-secret",
+	})
+	manager.client = &fakeGitHubAppClient{}
+
+	_, err := manager.CreateCISetupPullRequest(context.Background(), testAgentHarnessCaller(workspaceID), workspaceID, CreateCISetupPullRequestInput{
+		GitHubRepositoryID: 456,
+		Files: []CISetupPullRequestFile{
+			{Path: "../ci.yaml", Content: "version: 1\n"},
+		},
+	})
+	var validationErr GitHubIntegrationValidationError
+	if !errors.As(err, &validationErr) || validationErr.Code != "invalid_file_path" {
+		t.Fatalf("error = %#v, want invalid_file_path", err)
+	}
+}
+
+func TestGitHubIntegrationManagerCreateCISetupPullRequestRequiresAdminAction(t *testing.T) {
+	workspaceID := uuid.New()
+	manager := NewGitHubIntegrationManager(NewCallerWorkspaceAuthorizer(), &fakeGitHubIntegrationRepo{organizationID: uuid.New()}, GitHubIntegrationConfig{
+		AppSlug:     "agentclash-dev",
+		StateSecret: "state-secret",
+	})
+	manager.client = &fakeGitHubAppClient{}
+
+	_, err := manager.CreateCISetupPullRequest(context.Background(), testAgentHarnessCallerWithRole(workspaceID, RoleWorkspaceMember), workspaceID, CreateCISetupPullRequestInput{
+		GitHubRepositoryID: 456,
+		Files:              []CISetupPullRequestFile{{Path: ".agentclash/ci.yaml", Content: "version: 1\n"}},
+	})
+	if err == nil {
+		t.Fatal("expected member to be forbidden from creating CI setup pull request")
+	}
+}
+
 type fakeGitHubIntegrationRepo struct {
 	organizationID         uuid.UUID
 	installations          []repository.GitHubInstallation
 	repositories           []repository.GitHubInstallationRepository
+	githubRepo             repository.GitHubInstallationRepository
+	githubRepoErr          error
+	getRepositoryID        int64
+	getInstallationID      *int64
 	listRepositoriesParams repository.ListWorkspaceGitHubRepositoriesParams
 	upsertInstallation     repository.UpsertGitHubInstallationParams
 	binding                repository.BindGitHubInstallationToWorkspaceParams
@@ -276,9 +383,20 @@ func (f *fakeGitHubIntegrationRepo) ListWorkspaceGitHubRepositories(_ context.Co
 	return f.repositories, nil
 }
 
+func (f *fakeGitHubIntegrationRepo) GetWorkspaceGitHubRepository(_ context.Context, _ uuid.UUID, githubRepositoryID int64, githubInstallationID *int64) (repository.GitHubInstallationRepository, error) {
+	f.getRepositoryID = githubRepositoryID
+	f.getInstallationID = githubInstallationID
+	if f.githubRepoErr != nil {
+		return repository.GitHubInstallationRepository{}, f.githubRepoErr
+	}
+	return f.githubRepo, nil
+}
+
 type fakeGitHubAppClient struct {
-	installation githubAPIInstallation
-	repositories []githubAPIRepository
+	installation     githubAPIInstallation
+	repositories     []githubAPIRepository
+	createFilesInput githubCreateFilesPullRequestInput
+	pullRequest      githubPullRequest
 }
 
 func (f fakeGitHubAppClient) GetInstallation(context.Context, int64) (githubAPIInstallation, error) {
@@ -287,4 +405,9 @@ func (f fakeGitHubAppClient) GetInstallation(context.Context, int64) (githubAPII
 
 func (f fakeGitHubAppClient) ListInstallationRepositories(context.Context, int64) ([]githubAPIRepository, error) {
 	return f.repositories, nil
+}
+
+func (f *fakeGitHubAppClient) CreateRepositoryFilesPullRequest(_ context.Context, input githubCreateFilesPullRequestInput) (githubPullRequest, error) {
+	f.createFilesInput = input
+	return f.pullRequest, nil
 }

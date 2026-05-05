@@ -35,6 +35,7 @@ type GitHubIntegrationRepository interface {
 	MarkGitHubInstallationRepositoriesRemoved(ctx context.Context, organizationGitHubInstallationID uuid.UUID, repositoryIDs []int64) error
 	ListWorkspaceGitHubInstallations(ctx context.Context, workspaceID uuid.UUID) ([]repository.GitHubInstallation, error)
 	ListWorkspaceGitHubRepositories(ctx context.Context, p repository.ListWorkspaceGitHubRepositoriesParams) ([]repository.GitHubInstallationRepository, error)
+	GetWorkspaceGitHubRepository(ctx context.Context, workspaceID uuid.UUID, githubRepositoryID int64, githubInstallationID *int64) (repository.GitHubInstallationRepository, error)
 }
 
 type GitHubIntegrationService interface {
@@ -42,6 +43,7 @@ type GitHubIntegrationService interface {
 	CompleteGitHubInstallation(ctx context.Context, caller Caller, workspaceID uuid.UUID, input CompleteGitHubInstallationInput) (CompleteGitHubInstallationResult, error)
 	ListGitHubInstallations(ctx context.Context, caller Caller, workspaceID uuid.UUID) ([]repository.GitHubInstallation, error)
 	ListGitHubRepositories(ctx context.Context, caller Caller, workspaceID uuid.UUID, query string) ([]repository.GitHubInstallationRepository, error)
+	CreateCISetupPullRequest(ctx context.Context, caller Caller, workspaceID uuid.UUID, input CreateCISetupPullRequestInput) (CreateCISetupPullRequestResult, error)
 	HandleGitHubWebhook(ctx context.Context, headers http.Header, body []byte) error
 }
 
@@ -88,6 +90,59 @@ type CompleteGitHubInstallationResult struct {
 type GitHubAppClient interface {
 	GetInstallation(ctx context.Context, installationID int64) (githubAPIInstallation, error)
 	ListInstallationRepositories(ctx context.Context, installationID int64) ([]githubAPIRepository, error)
+	CreateRepositoryFilesPullRequest(ctx context.Context, input githubCreateFilesPullRequestInput) (githubPullRequest, error)
+}
+
+type CreateCISetupPullRequestInput struct {
+	GitHubRepositoryID   int64                    `json:"github_repository_id"`
+	GitHubInstallationID int64                    `json:"github_installation_id,omitempty"`
+	BaseBranch           string                   `json:"base_branch"`
+	Title                string                   `json:"title,omitempty"`
+	Body                 string                   `json:"body,omitempty"`
+	Draft                *bool                    `json:"draft,omitempty"`
+	Files                []CISetupPullRequestFile `json:"files"`
+}
+
+type CISetupPullRequestFile struct {
+	Path    string `json:"path"`
+	Content string `json:"content"`
+}
+
+type CreateCISetupPullRequestResult struct {
+	PullRequest githubPullRequestResponse       `json:"pull_request"`
+	Branch      string                          `json:"branch"`
+	BaseBranch  string                          `json:"base_branch"`
+	Files       []CISetupPullRequestFileSummary `json:"files"`
+}
+
+type CISetupPullRequestFileSummary struct {
+	Path string `json:"path"`
+}
+
+type githubCreateFilesPullRequestInput struct {
+	InstallationID int64
+	Owner          string
+	Repo           string
+	BaseBranch     string
+	Branch         string
+	Title          string
+	Body           string
+	Draft          bool
+	Files          []CISetupPullRequestFile
+}
+
+type githubPullRequest struct {
+	Number  int    `json:"number"`
+	HTMLURL string `json:"html_url"`
+	State   string `json:"state"`
+	Draft   bool   `json:"draft"`
+}
+
+type githubPullRequestResponse struct {
+	Number  int    `json:"number"`
+	HTMLURL string `json:"html_url"`
+	State   string `json:"state"`
+	Draft   bool   `json:"draft"`
 }
 
 type githubInstallState struct {
@@ -242,6 +297,125 @@ func (m *GitHubIntegrationManager) ListGitHubRepositories(ctx context.Context, c
 		WorkspaceID: workspaceID,
 		Query:       strings.TrimSpace(query),
 	})
+}
+
+func (m *GitHubIntegrationManager) CreateCISetupPullRequest(ctx context.Context, caller Caller, workspaceID uuid.UUID, input CreateCISetupPullRequestInput) (CreateCISetupPullRequestResult, error) {
+	if err := AuthorizeWorkspaceAction(ctx, m.authorizer, caller, workspaceID, ActionManageIntegrations); err != nil {
+		return CreateCISetupPullRequestResult{}, err
+	}
+	if m.client == nil {
+		return CreateCISetupPullRequestResult{}, GitHubIntegrationConfigError("github app credentials are not configured")
+	}
+	if input.GitHubRepositoryID <= 0 {
+		return CreateCISetupPullRequestResult{}, GitHubIntegrationValidationError{Code: "missing_github_repository", Message: "github_repository_id is required"}
+	}
+	var installationID *int64
+	if input.GitHubInstallationID > 0 {
+		installationID = &input.GitHubInstallationID
+	}
+	selected, err := m.repo.GetWorkspaceGitHubRepository(ctx, workspaceID, input.GitHubRepositoryID, installationID)
+	if err != nil {
+		if errors.Is(err, repository.ErrGitHubRepositoryNotInstalled) {
+			return CreateCISetupPullRequestResult{}, GitHubIntegrationValidationError{Code: "github_repo_not_installed", Message: "github repository is not installed for this workspace"}
+		}
+		return CreateCISetupPullRequestResult{}, err
+	}
+	owner, repoName, ok := parseGitHubFullName(selected.FullName)
+	if !ok {
+		return CreateCISetupPullRequestResult{}, GitHubIntegrationValidationError{Code: "invalid_github_repository", Message: "github repository full name is invalid"}
+	}
+	baseBranch := strings.TrimSpace(input.BaseBranch)
+	if baseBranch == "" {
+		baseBranch = strings.TrimSpace(selected.DefaultBranch)
+	}
+	if baseBranch == "" {
+		return CreateCISetupPullRequestResult{}, GitHubIntegrationValidationError{Code: "missing_base_branch", Message: "base_branch is required"}
+	}
+	files, err := validateCISetupPullRequestFiles(input.Files)
+	if err != nil {
+		return CreateCISetupPullRequestResult{}, err
+	}
+	title := strings.TrimSpace(input.Title)
+	if title == "" {
+		title = "Set up AgentClash CI"
+	}
+	body := strings.TrimSpace(input.Body)
+	if body == "" {
+		body = "Adds AgentClash CI configuration generated from the workspace setup UI."
+	}
+	draft := true
+	if input.Draft != nil {
+		draft = *input.Draft
+	}
+	branch := "agentclash/ci-setup/" + uuid.NewString()[:8]
+	pr, err := m.client.CreateRepositoryFilesPullRequest(ctx, githubCreateFilesPullRequestInput{
+		InstallationID: selected.GitHubInstallationID,
+		Owner:          owner,
+		Repo:           repoName,
+		BaseBranch:     baseBranch,
+		Branch:         branch,
+		Title:          title,
+		Body:           body,
+		Draft:          draft,
+		Files:          files,
+	})
+	if err != nil {
+		return CreateCISetupPullRequestResult{}, err
+	}
+	summaries := make([]CISetupPullRequestFileSummary, 0, len(files))
+	for _, file := range files {
+		summaries = append(summaries, CISetupPullRequestFileSummary{Path: file.Path})
+	}
+	return CreateCISetupPullRequestResult{
+		PullRequest: githubPullRequestResponse{
+			Number:  pr.Number,
+			HTMLURL: pr.HTMLURL,
+			State:   pr.State,
+			Draft:   pr.Draft,
+		},
+		Branch:     branch,
+		BaseBranch: baseBranch,
+		Files:      summaries,
+	}, nil
+}
+
+func validateCISetupPullRequestFiles(files []CISetupPullRequestFile) ([]CISetupPullRequestFile, error) {
+	if len(files) == 0 {
+		return nil, GitHubIntegrationValidationError{Code: "missing_files", Message: "at least one file is required"}
+	}
+	seen := make(map[string]struct{}, len(files))
+	validated := make([]CISetupPullRequestFile, 0, len(files))
+	for _, file := range files {
+		path := strings.TrimSpace(file.Path)
+		if !isSafeRepositoryFilePath(path) {
+			return nil, GitHubIntegrationValidationError{Code: "invalid_file_path", Message: "file paths must be relative repository paths without traversal"}
+		}
+		if _, ok := seen[path]; ok {
+			return nil, GitHubIntegrationValidationError{Code: "duplicate_file_path", Message: "file paths must be unique"}
+		}
+		content := file.Content
+		if strings.TrimSpace(content) == "" {
+			return nil, GitHubIntegrationValidationError{Code: "empty_file_content", Message: "file content cannot be empty"}
+		}
+		if len(content) > 1<<20 {
+			return nil, GitHubIntegrationValidationError{Code: "file_too_large", Message: "file content must be 1 MiB or smaller"}
+		}
+		seen[path] = struct{}{}
+		validated = append(validated, CISetupPullRequestFile{Path: path, Content: content})
+	}
+	return validated, nil
+}
+
+func isSafeRepositoryFilePath(path string) bool {
+	if path == "" || strings.HasPrefix(path, "/") || strings.Contains(path, `\`) {
+		return false
+	}
+	for _, part := range strings.Split(path, "/") {
+		if part == "" || part == "." || part == ".." {
+			return false
+		}
+	}
+	return true
 }
 
 func (m *GitHubIntegrationManager) signState(state githubInstallState) (string, error) {
@@ -501,6 +675,16 @@ type githubAPIAccessTokenResponse struct {
 	Token string `json:"token"`
 }
 
+type githubReferenceResponse struct {
+	Object struct {
+		SHA string `json:"sha"`
+	} `json:"object"`
+}
+
+type githubContentResponse struct {
+	SHA string `json:"sha"`
+}
+
 type githubWebhookInstallationPayload struct {
 	Action       string                `json:"action"`
 	Installation githubAPIInstallation `json:"installation"`
@@ -573,6 +757,100 @@ func (c *githubAppHTTPClient) ListInstallationRepositories(ctx context.Context, 
 	}
 }
 
+func (c *githubAppHTTPClient) CreateRepositoryFilesPullRequest(ctx context.Context, input githubCreateFilesPullRequestInput) (githubPullRequest, error) {
+	token, err := c.createInstallationToken(ctx, input.InstallationID)
+	if err != nil {
+		return githubPullRequest{}, err
+	}
+	base, err := c.getRepositoryRef(ctx, token, input.Owner, input.Repo, input.BaseBranch)
+	if err != nil {
+		return githubPullRequest{}, err
+	}
+	if err := c.createRepositoryRef(ctx, token, input.Owner, input.Repo, input.Branch, base.Object.SHA); err != nil {
+		return githubPullRequest{}, err
+	}
+	for _, file := range input.Files {
+		sha, err := c.getRepositoryContentSHA(ctx, token, input.Owner, input.Repo, file.Path, input.Branch)
+		if err != nil {
+			return githubPullRequest{}, err
+		}
+		if err := c.putRepositoryContent(ctx, token, input.Owner, input.Repo, input.Branch, file, sha); err != nil {
+			return githubPullRequest{}, err
+		}
+	}
+	return c.createRepositoryPullRequest(ctx, token, input)
+}
+
+func (c *githubAppHTTPClient) getRepositoryRef(ctx context.Context, token string, owner string, repo string, branch string) (githubReferenceResponse, error) {
+	var response githubReferenceResponse
+	path := fmt.Sprintf("/repos/%s/%s/git/ref/heads/%s", urlPathEscape(owner), urlPathEscape(repo), urlPathEscape(branch))
+	if err := c.doJSON(ctx, http.MethodGet, path, token, nil, &response); err != nil {
+		return githubReferenceResponse{}, err
+	}
+	return response, nil
+}
+
+func (c *githubAppHTTPClient) createRepositoryRef(ctx context.Context, token string, owner string, repo string, branch string, sha string) error {
+	body, err := json.Marshal(map[string]string{
+		"ref": "refs/heads/" + branch,
+		"sha": sha,
+	})
+	if err != nil {
+		return err
+	}
+	path := fmt.Sprintf("/repos/%s/%s/git/refs", urlPathEscape(owner), urlPathEscape(repo))
+	return c.doJSON(ctx, http.MethodPost, path, token, bytes.NewReader(body), nil)
+}
+
+func (c *githubAppHTTPClient) getRepositoryContentSHA(ctx context.Context, token string, owner string, repo string, path string, branch string) (string, error) {
+	var response githubContentResponse
+	apiPath := fmt.Sprintf("/repos/%s/%s/contents/%s?ref=%s", urlPathEscape(owner), urlPathEscape(repo), urlPathEscape(path), url.QueryEscape(branch))
+	err := c.doJSON(ctx, http.MethodGet, apiPath, token, nil, &response)
+	if err == nil {
+		return response.SHA, nil
+	}
+	if isGitHubNotFoundError(err) {
+		return "", nil
+	}
+	return "", err
+}
+
+func (c *githubAppHTTPClient) putRepositoryContent(ctx context.Context, token string, owner string, repo string, branch string, file CISetupPullRequestFile, sha string) error {
+	payload := map[string]any{
+		"message": "Set up AgentClash CI",
+		"content": base64.StdEncoding.EncodeToString([]byte(file.Content)),
+		"branch":  branch,
+	}
+	if sha != "" {
+		payload["sha"] = sha
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	path := fmt.Sprintf("/repos/%s/%s/contents/%s", urlPathEscape(owner), urlPathEscape(repo), urlPathEscape(file.Path))
+	return c.doJSON(ctx, http.MethodPut, path, token, bytes.NewReader(body), nil)
+}
+
+func (c *githubAppHTTPClient) createRepositoryPullRequest(ctx context.Context, token string, input githubCreateFilesPullRequestInput) (githubPullRequest, error) {
+	var response githubPullRequest
+	body, err := json.Marshal(map[string]any{
+		"title": input.Title,
+		"head":  input.Owner + ":" + input.Branch,
+		"base":  input.BaseBranch,
+		"body":  input.Body,
+		"draft": input.Draft,
+	})
+	if err != nil {
+		return githubPullRequest{}, err
+	}
+	path := fmt.Sprintf("/repos/%s/%s/pulls", urlPathEscape(input.Owner), urlPathEscape(input.Repo))
+	if err := c.doJSON(ctx, http.MethodPost, path, token, bytes.NewReader(body), &response); err != nil {
+		return githubPullRequest{}, err
+	}
+	return response, nil
+}
+
 func (c *githubAppHTTPClient) createInstallationToken(ctx context.Context, installationID int64) (string, error) {
 	var response githubAPIAccessTokenResponse
 	if err := c.doJSON(ctx, http.MethodPost, fmt.Sprintf("/app/installations/%d/access_tokens", installationID), "", bytes.NewReader([]byte(`{}`)), &response); err != nil {
@@ -610,12 +888,40 @@ func (c *githubAppHTTPClient) doJSON(ctx context.Context, method string, path st
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		payload, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return fmt.Errorf("github api %s %s returned %d: %s", method, path, resp.StatusCode, strings.TrimSpace(string(payload)))
+		return githubAPIError{Method: method, Path: path, StatusCode: resp.StatusCode, Body: strings.TrimSpace(string(payload))}
 	}
 	if out == nil {
 		return nil
 	}
 	return json.NewDecoder(resp.Body).Decode(out)
+}
+
+type githubAPIError struct {
+	Method     string
+	Path       string
+	StatusCode int
+	Body       string
+}
+
+func (e githubAPIError) Error() string {
+	return fmt.Sprintf("github api %s %s returned %d: %s", e.Method, e.Path, e.StatusCode, e.Body)
+}
+
+func isGitHubNotFoundError(err error) bool {
+	var apiErr githubAPIError
+	return errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound
+}
+
+func parseGitHubFullName(fullName string) (string, string, bool) {
+	parts := strings.Split(strings.TrimSpace(fullName), "/")
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return "", "", false
+	}
+	return parts[0], parts[1], true
+}
+
+func urlPathEscape(value string) string {
+	return strings.ReplaceAll(url.PathEscape(value), "%2F", "/")
 }
 
 func (c *githubAppHTTPClient) appJWT() (string, error) {
@@ -758,6 +1064,32 @@ func listGitHubRepositoriesHandler(logger *slog.Logger, service GitHubIntegratio
 	}
 }
 
+func createCISetupPullRequestHandler(logger *slog.Logger, service GitHubIntegrationService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		caller, err := CallerFromContext(r.Context())
+		if err != nil {
+			writeAuthzError(w, err)
+			return
+		}
+		workspaceID, err := WorkspaceIDFromContext(r.Context())
+		if err != nil {
+			writeAuthzError(w, err)
+			return
+		}
+		var input CreateCISetupPullRequestInput
+		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_json", "request body must be JSON")
+			return
+		}
+		result, err := service.CreateCISetupPullRequest(r.Context(), caller, workspaceID, input)
+		if err != nil {
+			writeGitHubIntegrationError(w, logger, r, err)
+			return
+		}
+		writeJSON(w, http.StatusCreated, result)
+	}
+}
+
 func mapGitHubInstallationResponse(i repository.GitHubInstallation) githubInstallationResponse {
 	return githubInstallationResponse{
 		ID:                   i.ID,
@@ -825,6 +1157,10 @@ func (noopGitHubIntegrationService) ListGitHubInstallations(context.Context, Cal
 
 func (noopGitHubIntegrationService) ListGitHubRepositories(context.Context, Caller, uuid.UUID, string) ([]repository.GitHubInstallationRepository, error) {
 	return nil, errors.New("github integration service is not configured")
+}
+
+func (noopGitHubIntegrationService) CreateCISetupPullRequest(context.Context, Caller, uuid.UUID, CreateCISetupPullRequestInput) (CreateCISetupPullRequestResult, error) {
+	return CreateCISetupPullRequestResult{}, errors.New("github integration service is not configured")
 }
 
 func (noopGitHubIntegrationService) HandleGitHubWebhook(context.Context, http.Header, []byte) error {
