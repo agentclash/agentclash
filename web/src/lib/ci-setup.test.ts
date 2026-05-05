@@ -123,18 +123,25 @@ describe("generateAgentClashGitHubWorkflow", () => {
     expect(workflow).toContain("token: ${{ secrets.AGENTCLASH_TOKEN }}");
     expect(workflow).toContain("workspace: ${{ secrets.AGENTCLASH_WORKSPACE }}");
     expect(workflow).toContain('manifest: ".agentclash/ci.yaml"');
+    expect(workflow).toContain("types: [opened, synchronize, reopened, labeled, unlabeled]");
+    expect(workflow).toContain(
+      "labels: \"${{ github.event_name == 'pull_request' && join(github.event.pull_request.labels.*.name, ',') || '' }}\"",
+    );
+    expect(workflow).toContain('default-branch: "main"');
+    expect(workflow).toContain("# AgentClash repository: acme/support-agent");
     expect(workflow).toContain("uses: actions/upload-artifact@v4");
     expect(workflow).toContain("${{ steps.agentclash.outputs.result-file }}");
   });
 
-  it("deduplicates workflow path filters", () => {
+  it("leaves path and label matching to the AgentClash action", () => {
     const workflow = generateAgentClashGitHubWorkflow({
       ...completeConfig,
       triggerPaths: [".agentclash/ci.yaml", ".agentclash/agent.json"],
     });
 
-    expect(workflow.split('      - ".agentclash/ci.yaml"')).toHaveLength(2);
-    expect(workflow.split('      - ".agentclash/agent.json"')).toHaveLength(2);
+    expect(workflow).not.toContain("    paths:");
+    expect(workflow).toContain("skip-if-unmatched");
+    expect(workflow).toContain("labels:");
   });
 });
 

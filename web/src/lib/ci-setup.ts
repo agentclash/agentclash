@@ -180,19 +180,15 @@ export function generateAgentClashCIManifest(config: CISetupConfig): string {
 }
 
 export function generateAgentClashGitHubWorkflow(config: CISetupConfig): string {
-  const workflowPaths = uniqueNonEmpty([
-    config.manifestPath,
-    config.agentSpecPath,
-    ...config.triggerPaths,
-  ]);
-
   const lines = [
     "name: AgentClash CI",
+    config.repositoryFullName
+      ? `# AgentClash repository: ${config.repositoryFullName.trim()}`
+      : "",
     "",
     "on:",
     "  pull_request:",
-    "    paths:",
-    ...workflowPaths.map((path) => `      - ${yamlScalar(path)}`),
+    "    types: [opened, synchronize, reopened, labeled, unlabeled]",
     "  workflow_dispatch:",
     "",
     "concurrency:",
@@ -221,6 +217,9 @@ export function generateAgentClashGitHubWorkflow(config: CISetupConfig): string 
     `          token: \${{ secrets.${secretName(config.tokenSecretName)} }}`,
     `          workspace: \${{ secrets.${secretName(config.workspaceSecretName)} }}`,
     `          manifest: ${yamlScalar(config.manifestPath)}`,
+    `          labels: "\${{ github.event_name == 'pull_request' && join(github.event.pull_request.labels.*.name, ',') || '' }}"`,
+    `          default-branch: ${yamlScalar(config.defaultBranch)}`,
+    "          skip-if-unmatched: \"true\"",
   ];
 
   if (config.apiUrl?.trim()) {
@@ -259,15 +258,11 @@ function appendStringList(
 }
 
 function yamlScalar(value: string): string {
-  return JSON.stringify(value.trim());
+  return JSON.stringify(value);
 }
 
 function nonEmpty(values: string[]): string[] {
   return values.map((value) => value.trim()).filter(Boolean);
-}
-
-function uniqueNonEmpty(values: string[]): string[] {
-  return Array.from(new Set(nonEmpty(values)));
 }
 
 function secretName(value: string): string {

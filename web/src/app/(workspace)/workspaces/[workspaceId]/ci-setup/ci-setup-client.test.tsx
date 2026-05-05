@@ -1,6 +1,6 @@
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CISetupClient } from "./ci-setup-client";
 
 const {
@@ -104,6 +104,8 @@ vi.mock("lucide-react", () => {
   };
 });
 
+const cleanups: Array<() => void> = [];
+
 beforeEach(() => {
   document.body.innerHTML = "";
   mockGetAccessToken.mockResolvedValue("token");
@@ -167,6 +169,12 @@ beforeEach(() => {
   });
 });
 
+afterEach(() => {
+  while (cleanups.length > 0) {
+    cleanups.pop()?.();
+  }
+});
+
 describe("CISetupClient", () => {
   it("renders generated manifest and workflow previews from workspace resources", async () => {
     renderClient();
@@ -224,12 +232,14 @@ function renderClient() {
   act(() => {
     root.render(React.createElement(CISetupClient, { workspaceId: "ws-1" }));
   });
-  return {
+  const rendered = {
     cleanup: () => {
       act(() => root.unmount());
       container.remove();
     },
   };
+  cleanups.push(rendered.cleanup);
+  return rendered;
 }
 
 async function flushEffects() {

@@ -46,7 +46,6 @@ import type {
   RunAgent,
   RuntimeProfile,
 } from "@/lib/api/types";
-import { workspacePageSizes } from "@/lib/workspace-resource";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -100,6 +99,8 @@ export function CISetupClient({ workspaceId }: CISetupClientProps) {
   const [baselineStrategy, setBaselineStrategy] =
     useState<CIBaselineStrategy>("locked_run");
   const [baselineRunId, setBaselineRunId] = useState("");
+  const [baselineRunIdManualOverride, setBaselineRunIdManualOverride] =
+    useState(false);
   const [baselineRunAgentId, setBaselineRunAgentId] = useState("");
   const [baselineDeploymentId, setBaselineDeploymentId] = useState("");
   const [baselineRefresh, setBaselineRefresh] =
@@ -140,15 +141,23 @@ export function CISetupClient({ workspaceId }: CISetupClientProps) {
     `/v1/workspaces/${workspaceId}/github/repositories`,
   );
   const runs = usePaginatedApiQuery<Run>(`/v1/workspaces/${workspaceId}/runs`, {
-    limit: workspacePageSizes.runs,
+    limit: 100,
     offset: 0,
+    status: "completed",
   });
 
+  const activeBuilds = useMemo(
+    () =>
+      (builds.data?.items ?? []).filter(
+        (item) => item.lifecycle_status === "active",
+      ),
+    [builds.data?.items],
+  );
   const activeDeployments = useMemo(
     () => (deployments.data?.items ?? []).filter((item) => item.status === "active"),
     [deployments.data?.items],
   );
-  const activeRuntimeProfiles = useMemo(
+  const runtimeProfileOptions = useMemo(
     () => runtimeProfiles.data?.items ?? [],
     [runtimeProfiles.data?.items],
   );
@@ -195,34 +204,43 @@ export function CISetupClient({ workspaceId }: CISetupClientProps) {
   }, [repositories.data?.items, repositoryFullName]);
 
   useEffect(() => {
-    if (!agentBuildId && builds.data?.items?.[0]) {
-      setAgentBuildId(builds.data.items[0].id);
+    if (!builds.data) return;
+    if (!activeBuilds.some((build) => build.id === agentBuildId)) {
+      setAgentBuildId(activeBuilds[0]?.id ?? "");
     }
-  }, [agentBuildId, builds.data?.items]);
+  }, [activeBuilds, agentBuildId, builds.data]);
 
   useEffect(() => {
-    if (!runtimeProfileId && activeRuntimeProfiles[0]) {
-      setRuntimeProfileId(activeRuntimeProfiles[0].id);
+    if (!runtimeProfiles.data) return;
+    if (!runtimeProfileOptions.some((profile) => profile.id === runtimeProfileId)) {
+      setRuntimeProfileId(runtimeProfileOptions[0]?.id ?? "");
     }
-  }, [activeRuntimeProfiles, runtimeProfileId]);
+  }, [runtimeProfileId, runtimeProfileOptions, runtimeProfiles.data]);
 
   useEffect(() => {
-    if (!baselineDeploymentId && activeDeployments[0]) {
-      setBaselineDeploymentId(activeDeployments[0].id);
+    if (!deployments.data) return;
+    if (
+      !activeDeployments.some(
+        (deployment) => deployment.id === baselineDeploymentId,
+      )
+    ) {
+      setBaselineDeploymentId(activeDeployments[0]?.id ?? "");
     }
-  }, [activeDeployments, baselineDeploymentId]);
+  }, [activeDeployments, baselineDeploymentId, deployments.data]);
 
   useEffect(() => {
-    if (!baselineRunId && completedRuns[0]) {
-      setBaselineRunId(completedRuns[0].id);
+    if (!runs.data || baselineRunIdManualOverride) return;
+    if (!completedRuns.some((run) => run.id === baselineRunId)) {
+      setBaselineRunId(completedRuns[0]?.id ?? "");
     }
-  }, [baselineRunId, completedRuns]);
+  }, [baselineRunId, baselineRunIdManualOverride, completedRuns, runs.data]);
 
   useEffect(() => {
-    if (!selectedPackId && challengePacks[0]) {
-      setSelectedPackId(challengePacks[0].id);
+    if (!packs.data) return;
+    if (!challengePacks.some((pack) => pack.id === selectedPackId)) {
+      setSelectedPackId(challengePacks[0]?.id ?? "");
     }
-  }, [challengePacks, selectedPackId]);
+  }, [challengePacks, packs.data, selectedPackId]);
 
   useEffect(() => {
     if (!selectedPack) return;
@@ -232,6 +250,36 @@ export function CISetupClient({ workspaceId }: CISetupClientProps) {
       setSelectedRegressionSuiteIds([]);
     }
   }, [runnableVersions, selectedPack, selectedVersionId]);
+
+  useEffect(() => {
+    if (!providerAccounts.data) return;
+    if (
+      providerAccountId &&
+      !activeProviderAccounts.some((account) => account.id === providerAccountId)
+    ) {
+      setProviderAccountId("");
+    }
+  }, [activeProviderAccounts, providerAccountId, providerAccounts.data]);
+
+  useEffect(() => {
+    if (!modelAliases.data) return;
+    if (
+      modelAliasId &&
+      !activeModelAliases.some((alias) => alias.id === modelAliasId)
+    ) {
+      setModelAliasId("");
+    }
+  }, [activeModelAliases, modelAliasId, modelAliases.data]);
+
+  useEffect(() => {
+    if (!regressionSuites.data) return;
+    setSelectedRegressionSuiteIds((current) => {
+      const next = current.filter((id) =>
+        activeRegressionSuites.some((suite) => suite.id === id),
+      );
+      return next.length === current.length ? current : next;
+    });
+  }, [activeRegressionSuites, regressionSuites.data]);
 
   useEffect(() => {
     if (!selectedVersionId) {
@@ -355,7 +403,6 @@ export function CISetupClient({ workspaceId }: CISetupClientProps) {
     providerAccounts.error ||
     modelAliases.error ||
     regressionSuites.error ||
-    repositories.error ||
     runs.error;
 
   return (
@@ -501,7 +548,7 @@ export function CISetupClient({ workspaceId }: CISetupClientProps) {
           <Section
             icon={<FileCode2 className="size-4" />}
             title="Candidate"
-            meta={builds.data?.items?.length ? `${builds.data.items.length} builds` : "No builds"}
+            meta={activeBuilds.length ? `${activeBuilds.length} active builds` : "No builds"}
           >
             <div className="grid gap-4 md:grid-cols-2">
               <Field label="Agent build">
@@ -511,7 +558,7 @@ export function CISetupClient({ workspaceId }: CISetupClientProps) {
                   className={selectClass}
                 >
                   <option value="">Select build</option>
-                  {(builds.data?.items ?? []).map((build) => (
+                  {activeBuilds.map((build) => (
                     <option key={build.id} value={build.id}>
                       {build.name}
                     </option>
@@ -531,7 +578,7 @@ export function CISetupClient({ workspaceId }: CISetupClientProps) {
                   className={selectClass}
                 >
                   <option value="">Select runtime profile</option>
-                  {activeRuntimeProfiles.map((profile) => (
+                  {runtimeProfileOptions.map((profile) => (
                     <option key={profile.id} value={profile.id}>
                       {profile.name}
                     </option>
@@ -672,7 +719,7 @@ export function CISetupClient({ workspaceId }: CISetupClientProps) {
 
           <Section
             icon={<ShieldCheck className="size-4" />}
-            title="Baseline And Gate"
+            title="Baseline and Gate"
             meta={baselineStrategy === "locked_run" ? "Locked run" : "Deployment"}
           >
             <div className="grid gap-4 md:grid-cols-2">
@@ -692,8 +739,15 @@ export function CISetupClient({ workspaceId }: CISetupClientProps) {
                 <>
                   <Field label="Baseline run">
                     <select
-                      value={baselineRunId}
-                      onChange={(event) => setBaselineRunId(event.target.value)}
+                      value={
+                        completedRuns.some((run) => run.id === baselineRunId)
+                          ? baselineRunId
+                          : ""
+                      }
+                      onChange={(event) => {
+                        setBaselineRunIdManualOverride(false);
+                        setBaselineRunId(event.target.value);
+                      }}
                       className={selectClass}
                     >
                       <option value="">Select completed run</option>
@@ -703,6 +757,16 @@ export function CISetupClient({ workspaceId }: CISetupClientProps) {
                         </option>
                       ))}
                     </select>
+                  </Field>
+                  <Field label="Baseline run ID">
+                    <Input
+                      value={baselineRunId}
+                      onChange={(event) => {
+                        setBaselineRunIdManualOverride(true);
+                        setBaselineRunId(event.target.value);
+                      }}
+                      placeholder="run_xxx"
+                    />
                   </Field>
                   <Field label="Baseline run agent">
                     <select
