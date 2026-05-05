@@ -2056,9 +2056,36 @@ export interface BillingSubscription {
   updated_at: string;
 }
 
+export interface BillingAccount {
+  id: string;
+  organization_id: string;
+  dodo_customer_id?: string;
+  billing_email?: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BillingCheckoutIntent {
+  id: string;
+  organization_id: string;
+  requested_plan_key: "pro" | "team";
+  billing_period: "monthly" | "yearly";
+  seat_quantity: number;
+  return_url: string;
+  checkout_url: string;
+  dodo_checkout_session_id?: string;
+  status: string;
+  metadata: unknown;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface BillingOverviewResponse {
   entitlements: EffectiveEntitlements;
+  account?: BillingAccount;
   subscription?: BillingSubscription;
+  latest_checkout_intent?: BillingCheckoutIntent;
 }
 
 export interface StartBillingTrialRequest {
@@ -2067,8 +2094,8 @@ export interface StartBillingTrialRequest {
 }
 
 export interface CreateBillingCheckoutRequest {
-  plan_key: "pro" | "team" | "enterprise";
-  billing_period: BillingPeriod;
+  plan_key: "pro" | "team";
+  billing_period: "monthly" | "yearly";
   seat_quantity: number;
   return_url: string;
 }
@@ -2076,8 +2103,8 @@ export interface CreateBillingCheckoutRequest {
 export interface CreateBillingCheckoutResponse {
   checkout_intent_id: string;
   checkout_url: string;
-  plan_key: BillingPlanKey;
-  billing_period: BillingPeriod;
+  plan_key: "pro" | "team";
+  billing_period: "monthly" | "yearly";
   seat_quantity: number;
 }
 

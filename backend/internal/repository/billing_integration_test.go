@@ -63,6 +63,41 @@ func TestRepositoryBillingEntitlementDefaultsAndWebhookIdempotency(t *testing.T)
 	}
 }
 
+func TestRepositoryBillingTrialGrantIsUniquePerOrganization(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+	now := time.Date(2026, 5, 4, 12, 0, 0, 0, time.UTC)
+
+	grant, err := repo.CreateBillingTrialGrant(ctx, repository.BillingTrialGrantInput{
+		OrganizationID:  fixture.organizationID,
+		PlanKey:         billing.PlanPro,
+		BillingPeriod:   billing.PeriodMonthly,
+		StartedByUserID: fixture.userID,
+		StartedAt:       now,
+		ExpiresAt:       now.Add(45 * 24 * time.Hour),
+	})
+	if err != nil {
+		t.Fatalf("CreateBillingTrialGrant returned error: %v", err)
+	}
+	if grant.OrganizationID != fixture.organizationID || grant.PlanKey != billing.PlanPro {
+		t.Fatalf("grant = %+v, want org pro grant", grant)
+	}
+
+	_, err = repo.CreateBillingTrialGrant(ctx, repository.BillingTrialGrantInput{
+		OrganizationID:  fixture.organizationID,
+		PlanKey:         billing.PlanTeam,
+		BillingPeriod:   billing.PeriodYearly,
+		StartedByUserID: fixture.userID,
+		StartedAt:       now,
+		ExpiresAt:       now.Add(45 * 24 * time.Hour),
+	})
+	if !errors.Is(err, repository.ErrBillingTrialAlreadyUsed) {
+		t.Fatalf("second CreateBillingTrialGrant error = %v, want ErrBillingTrialAlreadyUsed", err)
+	}
+}
+
 func TestRepositoryRunEntitlementGateConsumesQuotaAndBlocksOverage(t *testing.T) {
 	db := openTestDB(t)
 	ctx := context.Background()

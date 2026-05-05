@@ -640,7 +640,7 @@ paths:
       operationId: listBillingPlans
       tags: [Billing]
       summary: List billing plans
-      description: Returns the public billing plan catalog and Dodo product mappings.
+      description: Returns the public billing plan catalog. Dodo product mappings are present only when paid checkout is configured.
       security:
         - bearerJWT: []
       responses:
@@ -903,7 +903,7 @@ paths:
       operationId: startBillingTrial
       tags: [Billing]
       summary: Start a 45-day billing trial
-      description: Requires org_admin role. Only Free organizations can start a trial.
+      description: Requires org_admin role. Only Free organizations can start one self-serve trial per organization.
       security:
         - bearerJWT: []
       parameters:
@@ -971,7 +971,7 @@ paths:
       operationId: createBillingPortal
       tags: [Billing]
       summary: Create a billing portal link
-      description: Requires org_admin role.
+      description: Requires org_admin role and an existing Dodo customer for the organization.
       security:
         - bearerJWT: []
       parameters:
@@ -5127,14 +5127,96 @@ components:
           type: string
           format: date-time
 
+    BillingAccountResponse:
+      type: object
+      required: [id, organization_id, status, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        organization_id:
+          type: string
+          format: uuid
+        dodo_customer_id:
+          type: string
+        billing_email:
+          type: string
+          format: email
+        status:
+          type: string
+          enum: [active, inactive]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    BillingCheckoutIntentResponse:
+      type: object
+      required:
+        [
+          id,
+          organization_id,
+          requested_plan_key,
+          billing_period,
+          seat_quantity,
+          return_url,
+          checkout_url,
+          status,
+          metadata,
+          created_at,
+          updated_at,
+        ]
+      properties:
+        id:
+          type: string
+          format: uuid
+        organization_id:
+          type: string
+          format: uuid
+        requested_plan_key:
+          type: string
+          enum: [pro, team]
+        billing_period:
+          type: string
+          enum: [monthly, yearly]
+        seat_quantity:
+          type: integer
+          minimum: 1
+        return_url:
+          type: string
+          format: uri
+        checkout_url:
+          type: string
+          format: uri
+        dodo_checkout_session_id:
+          type: string
+        status:
+          type: string
+          enum: [created, pending, completed, cancelled, expired]
+        metadata:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
     BillingOverviewResponse:
       type: object
       required: [entitlements]
       properties:
         entitlements:
           $ref: "#/components/schemas/BillingEntitlements"
+        account:
+          $ref: "#/components/schemas/BillingAccountResponse"
         subscription:
           $ref: "#/components/schemas/BillingSubscriptionResponse"
+        latest_checkout_intent:
+          $ref: "#/components/schemas/BillingCheckoutIntentResponse"
 
     StartBillingTrialRequest:
       type: object
@@ -5154,10 +5236,10 @@ components:
       properties:
         plan_key:
           type: string
-          enum: [pro, team, enterprise]
+          enum: [pro, team]
         billing_period:
           type: string
-          enum: [monthly, yearly, custom]
+          enum: [monthly, yearly]
         seat_quantity:
           type: integer
           minimum: 1
@@ -5184,10 +5266,10 @@ components:
           format: uri
         plan_key:
           type: string
-          enum: [pro, team, enterprise]
+          enum: [pro, team]
         billing_period:
           type: string
-          enum: [monthly, yearly, custom]
+          enum: [monthly, yearly]
         seat_quantity:
           type: integer
           minimum: 1

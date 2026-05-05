@@ -69,6 +69,49 @@ type AgentDeployment struct {
 	ArchivedAt            pgtype.Timestamptz
 }
 
+type BillingAccount struct {
+	ID             uuid.UUID
+	OrganizationID uuid.UUID
+	DodoCustomerID *string
+	BillingEmail   *string
+	Status         string
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+}
+
+type BillingSubscription struct {
+	ID                      uuid.UUID
+	OrganizationID          uuid.UUID
+	DodoSubscriptionID      string
+	DodoCustomerID          *string
+	DodoProductID           string
+	PlanKey                 string
+	BillingPeriod           string
+	Status                  string
+	NextBillingDate         pgtype.Timestamptz
+	CancelAtNextBillingDate bool
+	CancelledAt             pgtype.Timestamptz
+	ExpiresAt               pgtype.Timestamptz
+	TrialPeriodDays         *int32
+	SeatQuantity            int32
+	AddonQuantities         []byte
+	LatestDodoEventAt       pgtype.Timestamptz
+	CreatedAt               pgtype.Timestamptz
+	UpdatedAt               pgtype.Timestamptz
+}
+
+type BillingTrialGrant struct {
+	ID              uuid.UUID
+	OrganizationID  uuid.UUID
+	PlanKey         string
+	BillingPeriod   string
+	StartedByUserID *uuid.UUID
+	StartedAt       pgtype.Timestamptz
+	ExpiresAt       pgtype.Timestamptz
+	CreatedAt       pgtype.Timestamptz
+	UpdatedAt       pgtype.Timestamptz
+}
+
 type ChallengeInputSet struct {
 	ID                     uuid.UUID
 	ChallengePackVersionID uuid.UUID
