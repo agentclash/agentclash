@@ -23,7 +23,7 @@ from typing import Any
 
 MARKER_PREFIX = "agentclash-ci-comment:v1"
 DIMENSION_ORDER = ("correctness", "reliability", "latency", "cost")
-DEFAULT_APP_URL = "https://app.agentclash.dev"
+DEFAULT_APP_URL = "https://agentclash.dev"
 
 
 @dataclass
