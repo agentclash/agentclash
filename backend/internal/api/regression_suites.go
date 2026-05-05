@@ -524,6 +524,7 @@ type regressionCaseResponse struct {
 
 type regressionCaseValidationResponse struct {
 	Status                string     `json:"status"`
+	MaintenanceStatus     string     `json:"maintenance_status"`
 	RunCount              int        `json:"run_count"`
 	FailureCount          int        `json:"failure_count"`
 	PassCount             int        `json:"pass_count"`
@@ -534,6 +535,7 @@ type regressionCaseValidationResponse struct {
 	LastOutcome           *string    `json:"last_outcome,omitempty"`
 	LastValidatedAt       *time.Time `json:"last_validated_at,omitempty"`
 	RecommendedAction     string     `json:"recommended_action"`
+	MaintenanceAction     string     `json:"maintenance_action"`
 }
 
 type listRegressionSuitesResponse struct {
@@ -955,15 +957,22 @@ const (
 	regressionValidationStatusReproducing      = "reproducing"
 	regressionValidationStatusPassing          = "passing"
 	regressionValidationStatusFlaky            = "flaky"
+
+	regressionMaintenanceStatusNeedsSignal    = "needs_signal"
+	regressionMaintenanceStatusKeepActive     = "keep_active"
+	regressionMaintenanceStatusPruneCandidate = "prune_candidate"
+	regressionMaintenanceStatusReviewFlaky    = "review_flaky"
 )
 
 func buildRegressionCaseValidationResponse(stats *repository.RegressionCaseValidationStats) regressionCaseValidationResponse {
 	response := regressionCaseValidationResponse{
 		Status:                regressionValidationStatusNotValidated,
+		MaintenanceStatus:     regressionMaintenanceStatusNeedsSignal,
 		ReproductionThreshold: regressionValidationReproductionThreshold,
 		RequiredRuns:          regressionValidationRequiredRuns,
 		RemainingRuns:         regressionValidationRequiredRuns,
 		RecommendedAction:     "Run this regression case in CI or suite-only mode to establish a reproduction signal.",
+		MaintenanceAction:     "Schedule more reruns before changing this case's suite role.",
 	}
 	if stats == nil || stats.RunCount == 0 {
 		return response
@@ -984,16 +993,24 @@ func buildRegressionCaseValidationResponse(stats *repository.RegressionCaseValid
 	switch {
 	case stats.RunCount < regressionValidationRequiredRuns:
 		response.Status = regressionValidationStatusCollectingSignal
+		response.MaintenanceStatus = regressionMaintenanceStatusNeedsSignal
 		response.RecommendedAction = fmt.Sprintf("Collect %d more scored run(s) before treating this case as statistically validated.", response.RemainingRuns)
+		response.MaintenanceAction = "Keep this case in evidence-gathering mode until the validation window is full."
 	case stats.ReproductionRate >= regressionValidationReproductionThreshold:
 		response.Status = regressionValidationStatusReproducing
+		response.MaintenanceStatus = regressionMaintenanceStatusKeepActive
 		response.RecommendedAction = "Failure reproduces at or above threshold; keep this case active in CI gates."
+		response.MaintenanceAction = "Leave this case in the active gate set."
 	case stats.FailureCount == 0:
 		response.Status = regressionValidationStatusPassing
+		response.MaintenanceStatus = regressionMaintenanceStatusPruneCandidate
 		response.RecommendedAction = "No failures observed across the validation window; keep as a guardrail or archive if obsolete."
+		response.MaintenanceAction = "Open a pruning review before archiving or downgrading it."
 	default:
 		response.Status = regressionValidationStatusFlaky
+		response.MaintenanceStatus = regressionMaintenanceStatusReviewFlaky
 		response.RecommendedAction = "Mixed outcomes are below the reproduction threshold; inspect replay evidence before making this case blocking."
+		response.MaintenanceAction = "Rewrite, split, or mute this case if replay evidence is nondeterministic."
 	}
 	return response
 }
