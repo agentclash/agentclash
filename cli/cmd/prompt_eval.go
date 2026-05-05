@@ -46,6 +46,7 @@ func init() {
 	promptEvalRunCmd.Flags().Duration("poll-interval", 3*time.Second, "Polling interval while following experiments")
 	promptEvalRunCmd.Flags().Duration("timeout", 20*time.Minute, "Maximum time to wait while following experiments; 0 disables the timeout")
 	promptEvalRunCmd.Flags().Float64("threshold", -1, "Override thresholds.assertion_pass_rate for this run")
+	promptEvalResultsCmd.Flags().Float64("threshold", -1, "Override the assertion pass-rate gate for fetched results")
 }
 
 var promptEvalCmd = &cobra.Command{
@@ -153,6 +154,9 @@ var promptEvalRunCmd = &cobra.Command{
 		threshold, _ := cmd.Flags().GetFloat64("threshold")
 		result, err := executePromptEvalRun(cmd, rc, path, maxCases, ciMode)
 		if err == nil && follow && result != nil {
+			if threshold < 0 {
+				threshold = result.AssertionPassThreshold
+			}
 			err = followPromptEvalRun(cmd, rc, result, promptEvalFollowOptions{PollInterval: pollInterval, Timeout: timeout, ThresholdOverride: threshold})
 		}
 		if rc.Output.IsStructured() {
@@ -177,7 +181,8 @@ var promptEvalResultsCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		rc := GetRunContext(cmd)
-		envelope, err := fetchPromptEvalResultsEnvelope(cmd, rc, args[0], -1)
+		threshold, _ := cmd.Flags().GetFloat64("threshold")
+		envelope, err := fetchPromptEvalResultsEnvelope(cmd, rc, args[0], threshold)
 		if rc.Output.IsStructured() {
 			if printErr := rc.Output.PrintRaw(envelope); printErr != nil {
 				return printErr
@@ -186,6 +191,9 @@ var promptEvalResultsCmd = &cobra.Command{
 			renderPromptEvalResults(rc, envelope)
 		}
 		if err != nil {
+			if exitErr := promptEvalExitForResults(envelope); exitErr != nil {
+				return exitErr
+			}
 			return err
 		}
 		return promptEvalExitForResults(envelope)
@@ -294,6 +302,8 @@ type promptEvalRunResult struct {
 	GateVerdict   string                      `json:"gate_verdict,omitempty" yaml:"gate_verdict,omitempty"`
 	Errors        []string                    `json:"errors,omitempty" yaml:"errors,omitempty"`
 	ExitCode      int                         `json:"exit_code" yaml:"exit_code"`
+
+	AssertionPassThreshold float64 `json:"-" yaml:"-"`
 }
 
 type promptEvalRunPlayground struct {
@@ -592,14 +602,15 @@ func executePromptEvalRun(cmd *cobra.Command, rc *RunContext, path string, maxCa
 		}, &ExitCodeError{Code: promptEvalExitInvalid}
 	}
 	run := &promptEvalRunResult{
-		SchemaVersion: promptEvalSchemaVersion,
-		Path:          path,
-		ConfigHash:    promptEvalConfigHash(data),
-		WorkspaceID:   validation.Remote.WorkspaceID,
-		ModelCount:    validation.ModelCount,
-		TestCount:     validation.TestCount,
-		CaseCount:     validation.CaseCount,
-		Playgrounds:   []promptEvalRunPlayground{},
+		SchemaVersion:          promptEvalSchemaVersion,
+		Path:                   path,
+		ConfigHash:             promptEvalConfigHash(data),
+		WorkspaceID:            validation.Remote.WorkspaceID,
+		ModelCount:             validation.ModelCount,
+		TestCount:              validation.TestCount,
+		CaseCount:              validation.CaseCount,
+		Playgrounds:            []promptEvalRunPlayground{},
+		AssertionPassThreshold: promptEvalAssertionPassThreshold(cfg),
 	}
 	groups := promptEvalTestGroups(cfg)
 	for _, group := range groups {
@@ -809,7 +820,13 @@ func followPromptEvalRun(cmd *cobra.Command, rc *RunContext, run *promptEvalRunR
 			run.Errors = append(run.Errors, "timed out waiting for prompt eval experiments")
 			return &ExitCodeError{Code: promptEvalExitExecution}
 		}
-		time.Sleep(options.PollInterval)
+		select {
+		case <-cmd.Context().Done():
+			run.ExitCode = promptEvalExitExecution
+			run.Errors = append(run.Errors, cmd.Context().Err().Error())
+			return &ExitCodeError{Code: promptEvalExitExecution}
+		case <-time.After(options.PollInterval):
+		}
 	}
 }
 
@@ -839,13 +856,20 @@ func fetchPromptEvalPartialResults(cmd *cobra.Command, rc *RunContext, run *prom
 	for _, playground := range run.Playgrounds {
 		for _, exp := range playground.Experiments {
 			envelope, err := fetchPromptEvalResultsEnvelope(cmd, rc, exp.ExperimentID, thresholdOverride)
-			if err != nil && envelope.ExperimentID == "" {
+			if err != nil {
 				continue
 			}
 			envelopes = append(envelopes, envelope)
 		}
 	}
 	return envelopes
+}
+
+func promptEvalAssertionPassThreshold(cfg promptEvalConfig) float64 {
+	if cfg.Thresholds.AssertionPassRate == nil {
+		return 1
+	}
+	return *cfg.Thresholds.AssertionPassRate
 }
 
 func promptEvalResultsStable(a, b promptEvalResultsEnvelope) bool {

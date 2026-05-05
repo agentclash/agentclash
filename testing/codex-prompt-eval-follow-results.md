@@ -10,7 +10,7 @@ Branch: `codex/prompt-eval-follow-results`
 - `--poll-interval` and `--timeout` control follow polling.
 - Follow treats terminal experiment status plus stable results as complete.
 - Aggregation reports completed cases, execution errors, assertion passes/fails, assertion pass rate, dimension scores, threshold verdict, and telemetry fields.
-- Exit codes are `0` for pass, `3` for threshold/assertion gate failure, `4` for post-launch provider/execution/timeout/auth failures, `5` for config/auth/workspace/validation errors before launch, and `1` for unexpected internal errors.
+- Exit codes are `0` for pass, `3` for threshold/assertion gate failure, `4` for post-launch provider/execution/timeout/non-auth failures, `5` for config/auth/workspace/validation errors including auth failures discovered while polling, and `1` for unexpected internal errors.
 - Structured output remains parseable for non-zero exits.
 
 ## Unit Tests

@@ -543,6 +543,21 @@ func TestPromptEvalRunFollowFailsAssertionGate(t *testing.T) {
 	}
 }
 
+func TestPromptEvalRunFollowUsesConfigThreshold(t *testing.T) {
+	body := strings.Replace(validPromptEvalYAML(), "assertion_pass_rate: 0.9", "assertion_pass_rate: 0.0", 1)
+	path := writePromptEvalFixture(t, body)
+	fake := newPromptEvalRunFake(t, &promptEvalRunFakeState{resultVerdict: "fail"})
+	defer fake.server.Close()
+
+	result, err := runPromptEvalRunJSONWithArgs(t, []string{"prompt-eval", "run", path, "-w", "ws-1", "--json", "--follow", "--poll-interval", "1ms"}, fake.server.URL)
+	if err != nil {
+		t.Fatalf("config threshold should allow zero pass rate: %v with result %+v", err, result)
+	}
+	if result.Results[0].Thresholds["assertion_pass_rate"] != 0 || result.GateVerdict != "pass" {
+		t.Fatalf("config threshold was not applied: %+v", result)
+	}
+}
+
 func TestPromptEvalRunFollowReportsExecutionError(t *testing.T) {
 	path := writePromptEvalFixture(t, validPromptEvalYAML())
 	fake := newPromptEvalRunFake(t, &promptEvalRunFakeState{caseStatus: "failed"})
@@ -604,6 +619,26 @@ func TestPromptEvalResultsCommandPrintsStableEnvelope(t *testing.T) {
 	}
 	if result.SchemaVersion != 1 || result.Summary.AssertionsPassed != 1 || result.GateVerdict != "pass" || result.Telemetry["row_count"] == nil {
 		t.Fatalf("unexpected results envelope: %+v", result)
+	}
+}
+
+func TestPromptEvalResultsCommandWrapsBackendErrorExit(t *testing.T) {
+	fake := newPromptEvalRunFake(t, &promptEvalRunFakeState{resultStatusCode: http.StatusBadGateway})
+	defer fake.server.Close()
+
+	stdout := captureStdout(t)
+	err := executeCommand(t, []string{"prompt-eval", "results", "exp-1", "--json"}, fake.server.URL)
+	out := stdout.finish()
+	var exitErr *ExitCodeError
+	if !errors.As(err, &exitErr) || exitErr.Code != promptEvalExitExecution {
+		t.Fatalf("expected execution exit, got %T %v\n%s", err, err, out)
+	}
+	var result promptEvalResultsEnvelope
+	if err := json.Unmarshal([]byte(out), &result); err != nil {
+		t.Fatalf("decode results json: %v\n%s", err, out)
+	}
+	if result.ExitCode != promptEvalExitExecution {
+		t.Fatalf("json exit_code = %d, want %d", result.ExitCode, promptEvalExitExecution)
 	}
 }
 
@@ -791,6 +826,7 @@ type promptEvalRunFakeState struct {
 	experimentStatus    string
 	caseStatus          string
 	resultVerdict       string
+	resultStatusCode    int
 	authOnExperimentGet bool
 }
 
@@ -810,6 +846,7 @@ type promptEvalRunFake struct {
 	experimentStatus    string
 	caseStatus          string
 	resultVerdict       string
+	resultStatusCode    int
 	authOnExperimentGet bool
 }
 
@@ -822,6 +859,7 @@ func newPromptEvalRunFake(t *testing.T, state *promptEvalRunFakeState) *promptEv
 		f.experimentStatus = state.experimentStatus
 		f.caseStatus = state.caseStatus
 		f.resultVerdict = state.resultVerdict
+		f.resultStatusCode = state.resultStatusCode
 		f.authOnExperimentGet = state.authOnExperimentGet
 	}
 	if f.experimentStatus == "" {
@@ -881,6 +919,11 @@ func newPromptEvalRunFake(t *testing.T, state *promptEvalRunFakeState) *promptEv
 			f.nextExperimentID++
 			json.NewEncoder(w).Encode(map[string]any{"id": id, "status": "queued", "url": "https://agentclash.dev/playground-experiments/" + id})
 		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/playground-experiments/") && strings.HasSuffix(r.URL.Path, "/results"):
+			if f.resultStatusCode != 0 {
+				w.WriteHeader(f.resultStatusCode)
+				json.NewEncoder(w).Encode(map[string]any{"error": map[string]any{"code": "bad_gateway", "message": "bad gateway"}})
+				return
+			}
 			json.NewEncoder(w).Encode(map[string]any{"items": []map[string]any{f.resultItem()}})
 		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/playground-experiments/"):
 			if f.authOnExperimentGet {
