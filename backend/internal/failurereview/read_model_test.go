@@ -99,6 +99,9 @@ func TestBuildRunAgentItemsComputesPromotionEligibilityAndRefs(t *testing.T) {
 	if item.FailureClass != FailureClassPolicyViolation {
 		t.Fatalf("failure class = %s, want %s", item.FailureClass, FailureClassPolicyViolation)
 	}
+	if item.FailureTaxonomy.Code != "agent.policy_violation" || !item.FailureTaxonomy.AgentFault {
+		t.Fatalf("failure taxonomy = %+v, want agent.policy_violation agent fault", item.FailureTaxonomy)
+	}
 	if item.Severity != SeverityBlocking {
 		t.Fatalf("severity = %s, want %s", item.Severity, SeverityBlocking)
 	}
@@ -305,6 +308,7 @@ func TestBuildClusterSummariesGroupsAndSortsDeterministically(t *testing.T) {
 			FailureClusterKey:  "frc-b",
 			FailureState:       FailureStateFailed,
 			FailureClass:       FailureClassToolArgumentError,
+			FailureTaxonomy:    TaxonomyForFailureClass(FailureClassToolArgumentError),
 			EvidenceTier:       EvidenceTierNativeStructured,
 			Severity:           SeverityWarning,
 			Headline:           "ticket-b triggered tool_argument_error",
@@ -319,6 +323,7 @@ func TestBuildClusterSummariesGroupsAndSortsDeterministically(t *testing.T) {
 			FailureClusterKey:  "frc-a",
 			FailureState:       FailureStateFailed,
 			FailureClass:       FailureClassPolicyViolation,
+			FailureTaxonomy:    TaxonomyForFailureClass(FailureClassPolicyViolation),
 			EvidenceTier:       EvidenceTierNativeStructured,
 			Severity:           SeverityBlocking,
 			Headline:           "ticket-a triggered policy_violation",
@@ -333,6 +338,7 @@ func TestBuildClusterSummariesGroupsAndSortsDeterministically(t *testing.T) {
 			FailureClusterKey:  "frc-b",
 			FailureState:       FailureStateWarning,
 			FailureClass:       FailureClassToolArgumentError,
+			FailureTaxonomy:    TaxonomyForFailureClass(FailureClassToolArgumentError),
 			EvidenceTier:       EvidenceTierNativeStructured,
 			Severity:           SeverityWarning,
 			Headline:           "ticket-b triggered tool_argument_error",
@@ -347,6 +353,9 @@ func TestBuildClusterSummariesGroupsAndSortsDeterministically(t *testing.T) {
 	}
 	if summaries[0].FailureClusterKey != "frc-a" {
 		t.Fatalf("first cluster = %q, want blocking cluster frc-a before warning cluster", summaries[0].FailureClusterKey)
+	}
+	if summaries[0].FailureTaxonomy.Code != "agent.policy_violation" {
+		t.Fatalf("first cluster taxonomy = %+v, want policy violation", summaries[0].FailureTaxonomy)
 	}
 	if summaries[1].Count != 2 || summaries[1].PromotableCount != 1 {
 		t.Fatalf("frc-b counts = %d/%d, want count 2 promotable 1", summaries[1].Count, summaries[1].PromotableCount)

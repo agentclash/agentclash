@@ -75,6 +75,20 @@ const agents: RunAgent[] = [
   },
 ];
 
+const policyTaxonomy = {
+  family: "agent",
+  code: "agent.policy_violation",
+  label: "Policy violation",
+  agent_fault: true,
+} as const;
+
+const toolSelectionTaxonomy = {
+  family: "agent",
+  code: "agent.tool_selection",
+  label: "Tool selection error",
+  agent_fault: true,
+} as const;
+
 function makeItem(overrides: Partial<FailureReviewItem> = {}): FailureReviewItem {
   return {
     run_id: "run-1",
@@ -89,6 +103,7 @@ function makeItem(overrides: Partial<FailureReviewItem> = {}): FailureReviewItem
     failed_dimensions: ["correctness"],
     failed_checks: ["capture.files"],
     failure_class: "policy_violation",
+    failure_taxonomy: policyTaxonomy,
     headline: "Filesystem write regression",
     detail: "The model attempted a forbidden file write.",
     recommended_action: "Add a regression case for filesystem access.",
@@ -115,6 +130,7 @@ function makeCluster(
     severity: "blocking",
     failure_state: "failed",
     failure_class: "policy_violation",
+    failure_taxonomy: policyTaxonomy,
     evidence_tier: "native_structured",
     challenge_keys: ["challenge-a", "challenge-b"],
     case_keys: ["case-a", "case-b", "case-c", "case-d"],
@@ -236,6 +252,7 @@ describe("FailuresClient", () => {
       expect(view.container.textContent).toContain(
         "Filesystem write failures cluster together",
       );
+      expect(view.container.textContent).toContain("agent · Policy violation");
       expect(view.container.textContent).toContain("increasing");
       expect(view.container.textContent).toContain(
         "3 prior runs · 5 prior failures",
@@ -258,6 +275,7 @@ describe("FailuresClient", () => {
             case_key: "case-filtered",
             item_key: "item-filtered",
             failure_class: "tool_selection_error",
+            failure_taxonomy: toolSelectionTaxonomy,
             headline: "Wrong tool selected",
           }),
         ],
@@ -267,6 +285,7 @@ describe("FailuresClient", () => {
             count: 1,
             promotable_count: 1,
             failure_class: "tool_selection_error",
+            failure_taxonomy: toolSelectionTaxonomy,
             headline: "Filtered tool selection failures",
             challenge_keys: ["challenge-filtered"],
             case_keys: ["case-filtered"],
@@ -301,6 +320,9 @@ describe("FailuresClient", () => {
         "Filesystem write failures cluster together",
       );
       expect(view.container.textContent).toContain("1 failure");
+      expect(view.container.textContent).toContain(
+        "agent · Tool selection error",
+      );
       expect(view.container.textContent).toContain("challenge-filtered");
     } finally {
       view.cleanup();

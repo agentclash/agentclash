@@ -6508,6 +6508,7 @@ components:
         - failed_dimensions
         - failed_checks
         - failure_class
+        - failure_taxonomy
         - headline
         - detail
         - recommended_action
@@ -6553,6 +6554,8 @@ components:
             type: string
         failure_class:
           $ref: "#/components/schemas/FailureReviewFailureClass"
+        failure_taxonomy:
+          $ref: "#/components/schemas/FailureReviewTaxonomy"
         headline:
           type: string
         detail:
@@ -6633,6 +6636,7 @@ components:
         - severity
         - failure_state
         - failure_class
+        - failure_taxonomy
         - evidence_tier
         - challenge_keys
         - case_keys
@@ -6659,6 +6663,8 @@ components:
           $ref: "#/components/schemas/FailureReviewFailureState"
         failure_class:
           $ref: "#/components/schemas/FailureReviewFailureClass"
+        failure_taxonomy:
+          $ref: "#/components/schemas/FailureReviewTaxonomy"
         evidence_tier:
           $ref: "#/components/schemas/FailureReviewEvidenceTier"
         challenge_keys:
@@ -6681,6 +6687,31 @@ components:
         history:
           description: Present on first-page all-agent failure-cluster responses; omitted on cursor pages and agent-filtered views.
           $ref: "#/components/schemas/FailureReviewClusterHistory"
+
+    FailureReviewTaxonomy:
+      type: object
+      required:
+        - family
+        - code
+        - label
+        - agent_fault
+      properties:
+        family:
+          type: string
+          enum: [agent, workflow, platform, evidence]
+          description: Broad owner bucket for triage dashboards and policy.
+        code:
+          type: string
+          description: Stable dotted taxonomy code derived from the failure class.
+        label:
+          type: string
+          description: Human-facing taxonomy label.
+        agent_fault:
+          type: boolean
+          description: >
+            Whether the failure should normally count against the agent. This is
+            independent from `family`; for example, a workflow-family timeout can
+            still be agent-caused.
 
     ListRunFailuresResponse:
       type: object

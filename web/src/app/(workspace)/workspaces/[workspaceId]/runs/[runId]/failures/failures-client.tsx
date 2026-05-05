@@ -80,6 +80,14 @@ function compactList(values: string[], maxVisible = 3): string {
   return `${visible} +${values.length - maxVisible}`;
 }
 
+function taxonomyLabel(
+  taxonomy: FailureReviewClusterSummary["failure_taxonomy"] | undefined,
+  failureClass: string,
+): string {
+  if (!taxonomy) return humanize(failureClass);
+  return `${taxonomy.family} · ${taxonomy.label || taxonomy.code}`;
+}
+
 function clusterHistorySummary(
   history: NonNullable<FailureReviewClusterSummary["history"]>,
 ): string {
@@ -495,6 +503,12 @@ function FailureClusterRollups({
                     <Badge variant="outline">
                       {humanize(cluster.failure_class)}
                     </Badge>
+                    <Badge variant="outline">
+                      {taxonomyLabel(
+                        cluster.failure_taxonomy,
+                        cluster.failure_class,
+                      )}
+                    </Badge>
                     <Badge variant="secondary">
                       {humanize(cluster.evidence_tier)}
                     </Badge>
@@ -804,6 +818,9 @@ function FailureRow({
               {humanize(item.failure_state)}
             </Badge>
             <Badge variant="outline">{humanize(item.failure_class)}</Badge>
+            <Badge variant="outline">
+              {taxonomyLabel(item.failure_taxonomy, item.failure_class)}
+            </Badge>
             <Badge variant={severityVariant[item.severity]}>
               {item.severity}
             </Badge>

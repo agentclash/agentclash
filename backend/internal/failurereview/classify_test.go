@@ -93,3 +93,30 @@ func TestClassifyFailureClassMappings(t *testing.T) {
 		})
 	}
 }
+
+func TestTaxonomyForFailureClass(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		class      FailureClass
+		family     string
+		code       string
+		agentFault bool
+	}{
+		{class: FailureClassToolArgumentError, family: "agent", code: "agent.tool_arguments", agentFault: true},
+		{class: FailureClassTimeoutOrBudget, family: "workflow", code: "workflow.timeout_budget", agentFault: true},
+		{class: FailureClassSandboxFailure, family: "platform", code: "platform.sandbox_failure", agentFault: false},
+		{class: FailureClassInsufficientEvidence, family: "evidence", code: "evidence.insufficient", agentFault: false},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(string(tt.class), func(t *testing.T) {
+			t.Parallel()
+			got := TaxonomyForFailureClass(tt.class)
+			if got.Family != tt.family || got.Code != tt.code || got.AgentFault != tt.agentFault || got.Label == "" {
+				t.Fatalf("taxonomy = %+v, want family=%s code=%s agent_fault=%t with label", got, tt.family, tt.code, tt.agentFault)
+			}
+		})
+	}
+}
