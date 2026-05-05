@@ -135,6 +135,47 @@ describe("agent skill docs", () => {
     expect(doc?.content).toContain("agentclash-ci-release-gate");
   });
 
+  it("generates the CI release gate skill with source-backed details", () => {
+    const doc = getDocBySlug(["agent-skills", "agentclash-ci-release-gate"]);
+
+    expect(doc?.title).toBe("CI Release Gate Skill");
+    expect(doc?.content).toContain("agentclash ci init .agentclash/ci.yaml");
+    expect(doc?.content).toContain(
+      "agentclash ci validate .agentclash/ci.yaml --remote --json",
+    );
+    expect(doc?.content).toContain(
+      "agentclash ci should-run --manifest .agentclash/ci.yaml --base origin/main --head HEAD --json",
+    );
+    expect(doc?.content).toContain(
+      "agentclash ci run --manifest .agentclash/ci.yaml --json --artifact-dir agentclash-artifacts",
+    );
+    expect(doc?.content).toContain("candidate.build.agent_build_id");
+    expect(doc?.content).toContain("candidate.deployment.runtime_profile_id");
+    expect(doc?.content).toContain("evaluation.challenge_pack_version_id");
+    expect(doc?.content).toContain("baseline.run_id");
+    expect(doc?.content).toContain("gate.fail_on");
+    expect(doc?.content).toContain("gate.policy_file");
+    expect(doc?.content).toContain("does not pass `gate.fail_on`");
+    expect(doc?.content).toContain("regressions.promote_failures");
+    expect(doc?.content).toContain("`0`: pass");
+    expect(doc?.content).toContain("`1`: release gate failed");
+    expect(doc?.content).toContain("`2`: release gate warning");
+    expect(doc?.content).toContain("`3`: insufficient gate evidence");
+    expect(doc?.content).toContain("`10`: invalid manifest");
+    expect(doc?.content).toContain("`20`: API/auth failure");
+    expect(doc?.content).toContain("`30`: candidate run timed out");
+    expect(doc?.content).toContain("`31`: candidate run failed before gate evaluation");
+    expect(doc?.content).toContain("agentclash-artifacts/run.json");
+    expect(doc?.content).toContain("agentclash-artifacts/scorecard.json");
+    expect(doc?.content).toContain("agentclash-artifacts/comparison.json");
+    expect(doc?.content).toContain("agentclash-artifacts/gate.json");
+    expect(doc?.content).toContain("agentclash-artifacts/result.json");
+    expect(doc?.content).toContain("schema_version: \"2026-05-04\"");
+    expect(doc?.content).toContain("Action inputs are exactly");
+    expect(doc?.content).toContain("Action outputs are exactly");
+    expect(doc?.content).toContain("agentclash-regression-flywheel");
+  });
+
   it("generates nested challenge pack and agent build skill pages", () => {
     const challengePackDoc = getDocBySlug([
       "agent-skills",
