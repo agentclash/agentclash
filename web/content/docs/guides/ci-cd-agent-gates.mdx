@@ -129,6 +129,8 @@ agentclash ci should-run \
   --json
 ```
 
+In GitHub Actions, `ci should-run` reads pull request labels from `GITHUB_EVENT_PATH` automatically when `--labels` is omitted, and the bundled action passes that behavior through. Use `--github-event <path>` only when testing a saved event payload locally.
+
 For local or GitHub Actions diffing, pass refs explicitly:
 
 ```bash
@@ -186,7 +188,7 @@ jobs:
             ${{ steps.agentclash.outputs.artifact-dir }}/*.json
 ```
 
-The action installs the published `agentclash` npm package by default, runs `ci validate --remote`, runs `ci should-run`, skips unrelated changes, runs `ci run` when matched, and exposes `should-run`, `skip-reason`, `run-id`, `gate-verdict`, `exit-code`, `result-file`, and `artifact-dir` outputs. It preserves the CLI exit code, so a blocking gate fails the workflow normally.
+The action installs the published `agentclash` npm package by default, runs `ci validate --remote`, runs `ci should-run`, auto-detects pull request labels from the GitHub event payload, skips unrelated changes, runs `ci run` when matched, and exposes `should-run`, `skip-reason`, `run-id`, `gate-verdict`, `exit-code`, `result-file`, and `artifact-dir` outputs. It preserves the CLI exit code, so a blocking gate fails the workflow normally.
 
 `agentclash ci run` exits nonzero when the gate verdict should block CI, when the candidate run times out, or when the manifest/API setup is invalid. In GitHub Actions, it automatically attaches repository, pull request, branch, default branch, commit, workflow, event, and workflow-run URL metadata to the AgentClash run. It also appends a reviewer-friendly Markdown section when the `$GITHUB_STEP_SUMMARY` environment variable is set. Pass `--summary-file <path>` for another Markdown destination, or `--github-step-summary=false` to disable the automatic GitHub summary.
 

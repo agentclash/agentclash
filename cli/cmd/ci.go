@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -36,6 +37,7 @@ func init() {
 	ciShouldRunCmd.Flags().String("base", "", "Base git ref for deriving changed files")
 	ciShouldRunCmd.Flags().String("head", "", "Head git ref for deriving changed files")
 	ciShouldRunCmd.Flags().String("repo", ".", "Git repository path for --base/--head diff")
+	ciShouldRunCmd.Flags().String("github-event", "", "GitHub event JSON file for deriving pull request labels")
 }
 
 var ciCmd = &cobra.Command{
@@ -154,6 +156,7 @@ changed files from git diff.`,
 		base, _ := cmd.Flags().GetString("base")
 		head, _ := cmd.Flags().GetString("head")
 		repo, _ := cmd.Flags().GetString("repo")
+		githubEventPath, _ := cmd.Flags().GetString("github-event")
 
 		validation, err := validateCIManifestFile(manifestPath)
 		if err != nil {
@@ -172,6 +175,18 @@ changed files from git diff.`,
 				return err
 			}
 			changedFiles = derived
+		}
+		if len(labels) == 0 {
+			if strings.TrimSpace(githubEventPath) == "" {
+				githubEventPath = os.Getenv("GITHUB_EVENT_PATH")
+			}
+			if strings.TrimSpace(githubEventPath) != "" {
+				derivedLabels, err := githubEventLabels(githubEventPath)
+				if err != nil {
+					return err
+				}
+				labels = derivedLabels
+			}
 		}
 
 		result, err := evaluateCIShouldRun(manifestPath, *validation.Manifest, changedFiles, labels)
@@ -351,6 +366,10 @@ type ciShouldRunResult struct {
 	CheckedLabels    []string               `json:"checked_labels" yaml:"checked_labels"`
 	MatchedPaths     []ciShouldRunPathMatch `json:"matched_paths,omitempty" yaml:"matched_paths,omitempty"`
 	MatchedLabels    []string               `json:"matched_labels,omitempty" yaml:"matched_labels,omitempty"`
+}
+
+type githubEventLabel struct {
+	Name string `json:"name"`
 }
 
 type ciBaselineResolution struct {
@@ -1290,6 +1309,69 @@ func normalizeCIValues(values []string) []string {
 		if trimmed != "" {
 			out = append(out, trimmed)
 		}
+	}
+	return out
+}
+
+func githubEventLabels(path string) ([]string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read GitHub event labels from %s: %w", path, err)
+	}
+
+	type githubPullRequest struct {
+		Labels []githubEventLabel `json:"labels"`
+	}
+	type githubIssue struct {
+		PullRequest json.RawMessage    `json:"pull_request"`
+		Labels      []githubEventLabel `json:"labels"`
+	}
+	var event struct {
+		PullRequest *githubPullRequest `json:"pull_request"`
+		Issue       *githubIssue       `json:"issue"`
+		Label       *githubEventLabel  `json:"label"`
+	}
+	if err := json.Unmarshal(data, &event); err != nil {
+		return nil, fmt.Errorf("parse GitHub event labels from %s: %w", path, err)
+	}
+
+	var labels []string
+	isPullRequestEvent := event.PullRequest != nil
+	switch {
+	case event.PullRequest != nil:
+		labels = labelNames(event.PullRequest.Labels)
+	case event.Issue != nil && githubIssueEventIsPullRequest(event.Issue.PullRequest):
+		isPullRequestEvent = true
+		labels = labelNames(event.Issue.Labels)
+	}
+	if isPullRequestEvent && event.Label != nil {
+		labels = append(labels, event.Label.Name)
+	}
+	return dedupeCIValues(normalizeCIValues(labels)), nil
+}
+
+func githubIssueEventIsPullRequest(raw json.RawMessage) bool {
+	text := strings.TrimSpace(string(raw))
+	return text != "" && text != "null"
+}
+
+func labelNames(labels []githubEventLabel) []string {
+	names := make([]string, 0, len(labels))
+	for _, label := range labels {
+		names = append(names, label.Name)
+	}
+	return names
+}
+
+func dedupeCIValues(values []string) []string {
+	seen := make(map[string]struct{}, len(values))
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
 	}
 	return out
 }

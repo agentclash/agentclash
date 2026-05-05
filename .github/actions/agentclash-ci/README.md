@@ -67,7 +67,7 @@ jobs:
 | `base` | pull request base branch | Base ref for `ci should-run`. |
 | `head` | `HEAD` | Head ref for `ci should-run`. |
 | `changed-files` | empty | Newline-separated files to pass directly to `ci should-run`. |
-| `labels` | empty | Comma-separated pull request labels. |
+| `labels` | GitHub event labels | Comma-separated pull request labels. Override only when the workflow cannot rely on the event payload. |
 | `artifact-dir` | `agentclash-artifacts` | Directory for `ci run` JSON artifacts. |
 | `result-file` | `agentclash-ci-result.json` | Top-level `ci run` JSON result path. |
 | `timeout` | CLI default | Optional `ci run` timeout, for example `30m` or `0`. |

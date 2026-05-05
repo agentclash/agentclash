@@ -790,6 +790,143 @@ func TestCIShouldRunMatchesLabel(t *testing.T) {
 	}
 }
 
+func TestCIShouldRunMatchesGitHubPullRequestEventLabels(t *testing.T) {
+	target := writeCIManifest(t, sampleCIManifestYAML)
+	eventPath := writeGitHubEvent(t, `{
+		"pull_request": {
+			"labels": [
+				{"name": "docs-only"},
+				{"name": "agentclash/eval"}
+			]
+		}
+	}`)
+	result := runCIShouldRunJSON(t, []string{
+		"ci", "should-run",
+		"--manifest", target,
+		"--changed-file", "docs/readme.md",
+		"--github-event", eventPath,
+		"--json",
+	})
+
+	if !result.ShouldRun {
+		t.Fatalf("should_run = false, want true: %+v", result)
+	}
+	if len(result.MatchedLabels) != 1 || result.MatchedLabels[0] != "agentclash/eval" {
+		t.Fatalf("matched_labels = %+v, want agentclash/eval", result.MatchedLabels)
+	}
+	if len(result.Labels) != 2 || result.Labels[0] != "docs-only" || result.Labels[1] != "agentclash/eval" {
+		t.Fatalf("labels = %+v, want GitHub event labels", result.Labels)
+	}
+}
+
+func TestCIShouldRunFallsBackToGitHubEventPath(t *testing.T) {
+	target := writeCIManifest(t, sampleCIManifestYAML)
+	eventPath := writeGitHubEvent(t, `{
+		"pull_request": {
+			"labels": [
+				{"name": "agentclash/eval"}
+			]
+		}
+	}`)
+	t.Setenv("GITHUB_EVENT_PATH", eventPath)
+
+	result := runCIShouldRunJSON(t, []string{
+		"ci", "should-run",
+		"--manifest", target,
+		"--changed-file", "docs/readme.md",
+		"--json",
+	})
+
+	if !result.ShouldRun {
+		t.Fatalf("should_run = false, want true: %+v", result)
+	}
+	if len(result.MatchedLabels) != 1 || result.MatchedLabels[0] != "agentclash/eval" {
+		t.Fatalf("matched_labels = %+v, want agentclash/eval", result.MatchedLabels)
+	}
+}
+
+func TestCIShouldRunExplicitLabelsOverrideGitHubEventLabels(t *testing.T) {
+	target := writeCIManifest(t, sampleCIManifestYAML)
+	eventPath := writeGitHubEvent(t, `{
+		"pull_request": {
+			"labels": [
+				{"name": "agentclash/eval"}
+			]
+		}
+	}`)
+	result := runCIShouldRunJSON(t, []string{
+		"ci", "should-run",
+		"--manifest", target,
+		"--changed-file", "docs/readme.md",
+		"--labels", "docs-only",
+		"--github-event", eventPath,
+		"--json",
+	})
+
+	if result.ShouldRun {
+		t.Fatalf("should_run = true, want false: %+v", result)
+	}
+	if len(result.Labels) != 1 || result.Labels[0] != "docs-only" {
+		t.Fatalf("labels = %+v, want explicit labels only", result.Labels)
+	}
+}
+
+func TestCIShouldRunRejectsMalformedGitHubEvent(t *testing.T) {
+	target := writeCIManifest(t, sampleCIManifestYAML)
+	eventPath := writeGitHubEvent(t, `{`)
+
+	err := executeCommand(t, []string{
+		"ci", "should-run",
+		"--manifest", target,
+		"--changed-file", "docs/readme.md",
+		"--github-event", eventPath,
+	}, "http://unused")
+	if err == nil || !strings.Contains(err.Error(), "parse GitHub event labels") {
+		t.Fatalf("error = %v, want parse GitHub event labels", err)
+	}
+}
+
+func TestGitHubEventLabelsReadsIssuePullRequestLabels(t *testing.T) {
+	eventPath := writeGitHubEvent(t, `{
+		"issue": {
+			"pull_request": {"url": "https://api.github.com/repos/acme/repo/pulls/1"},
+			"labels": [
+				{"name": "agentclash/eval"},
+				{"name": "agentclash/eval"}
+			]
+		},
+		"label": {"name": "agentclash/eval"}
+	}`)
+
+	labels, err := githubEventLabels(eventPath)
+	if err != nil {
+		t.Fatalf("githubEventLabels() error: %v", err)
+	}
+	if len(labels) != 1 || labels[0] != "agentclash/eval" {
+		t.Fatalf("labels = %+v, want deduped pull request issue labels", labels)
+	}
+}
+
+func TestGitHubEventLabelsIgnoresNonPullRequestIssues(t *testing.T) {
+	eventPath := writeGitHubEvent(t, `{
+		"issue": {
+			"pull_request": null,
+			"labels": [
+				{"name": "agentclash/eval"}
+			]
+		},
+		"label": {"name": "agentclash/eval"}
+	}`)
+
+	labels, err := githubEventLabels(eventPath)
+	if err != nil {
+		t.Fatalf("githubEventLabels() error: %v", err)
+	}
+	if len(labels) != 0 {
+		t.Fatalf("labels = %+v, want no labels for non-PR issue event", labels)
+	}
+}
+
 func TestCIShouldRunMatchesChangedPathAndLabel(t *testing.T) {
 	target := writeCIManifest(t, sampleCIManifestYAML)
 	result := runCIShouldRunJSON(t, []string{
@@ -1445,10 +1582,20 @@ func writeCIManifest(t *testing.T, text string) string {
 	return target
 }
 
+func writeGitHubEvent(t *testing.T, text string) string {
+	t.Helper()
+	target := filepath.Join(t.TempDir(), "event.json")
+	if err := os.WriteFile(target, []byte(text), 0o644); err != nil {
+		t.Fatalf("WriteFile() error: %v", err)
+	}
+	return target
+}
+
 type ciShouldRunJSONResult struct {
 	ShouldRun     bool                   `json:"should_run"`
 	Reason        string                 `json:"reason"`
 	ChangedFiles  []string               `json:"changed_files"`
+	Labels        []string               `json:"labels"`
 	MatchedPaths  []ciShouldRunPathMatch `json:"matched_paths"`
 	MatchedLabels []string               `json:"matched_labels"`
 }
