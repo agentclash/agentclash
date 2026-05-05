@@ -240,12 +240,12 @@ func (m *BillingManager) CreateCheckout(ctx context.Context, caller Caller, orgI
 	if err != nil {
 		return CreateBillingCheckoutResult{}, validationError("invalid_return_url", "return_url must be an absolute URL")
 	}
-	metadata, err := json.Marshal(map[string]any{
+	metadata, err := json.Marshal(map[string]string{
 		"organization_id":    orgID.String(),
 		"checkout_intent_id": intentID.String(),
 		"plan_key":           plan.Key,
 		"billing_period":     input.BillingPeriod,
-		"seat_quantity":      input.SeatQuantity,
+		"seat_quantity":      strconv.Itoa(input.SeatQuantity),
 	})
 	if err != nil {
 		return CreateBillingCheckoutResult{}, err
