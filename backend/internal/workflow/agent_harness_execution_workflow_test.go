@@ -323,11 +323,17 @@ func TestExecuteAgentHarnessExecutionRunsOpenClawAndRecordsTrace(t *testing.T) {
 				t.Fatalf("openclaw command leaked secret name: %#v", request.Command)
 			}
 			script := request.Command[2]
-			if !strings.Contains(script, "openclaw setup --workspace \"$PWD\" --non-interactive") {
+			if !strings.Contains(script, "openclaw setup --workspace \"$PWD\"") || !strings.Contains(script, "--non-interactive") {
 				t.Fatalf("openclaw script = %q, want non-interactive setup", script)
+			}
+			if !strings.Contains(script, "--mode local") {
+				t.Fatalf("openclaw script = %q, want --mode local for non-interactive setup", script)
 			}
 			if !strings.Contains(script, "openclaw models set \"$AGENTCLASH_HARNESS_MODEL\"") {
 				t.Fatalf("openclaw script = %q, want model setup", script)
+			}
+			if strings.Contains(script, ">/tmp/openclaw-setup.log") || strings.Contains(script, "|| true") {
+				t.Fatalf("openclaw script = %q, want visible fail-fast setup", script)
 			}
 			if !strings.Contains(script, "openclaw agent --local --session-id agentclash-harness --json") {
 				t.Fatalf("openclaw script = %q, want local json agent run", script)

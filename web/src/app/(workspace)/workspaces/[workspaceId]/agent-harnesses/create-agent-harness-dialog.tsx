@@ -120,7 +120,9 @@ export function CreateAgentHarnessDialog({
     if (sourceMode === "url" && !repositoryURL.trim()) return;
     if (!taskPrompt.trim()) return;
     if (!apiKeySecret) {
-      toast.error(`Add ${runner.secretCandidates[0]} under workspace Secrets first`);
+      toast.error(
+        `Add ${runner.secretCandidates.join(" / ")} under workspace Secrets first`,
+      );
       return;
     }
 
@@ -350,11 +352,14 @@ export function CreateAgentHarnessDialog({
 
           {!secretsLoading && !apiKeySecret ? (
             <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-200">
-              Add an{" "}
-              <code className="font-[family-name:var(--font-mono)]">
-                {runner.secretCandidates[0]}
-              </code>{" "}
-              workspace secret before creating a {runner.label} harness.{" "}
+              Add a workspace secret named{" "}
+              {runner.secretCandidates.map((candidate, index) => (
+                <span key={candidate}>
+                  {index > 0 ? (index === runner.secretCandidates.length - 1 ? ", or " : ", ") : ""}
+                  <code className="font-[family-name:var(--font-mono)]">{candidate}</code>
+                </span>
+              ))}{" "}
+              before creating a {runner.label} harness.{" "}
               <Link
                 href={`/workspaces/${workspaceId}/secrets`}
                 className="font-medium underline underline-offset-4"
