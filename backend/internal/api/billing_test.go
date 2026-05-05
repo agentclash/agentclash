@@ -563,6 +563,9 @@ func TestBillingManagerCreateCheckoutUsesDodoAPIWhenConfigured(t *testing.T) {
 	if metadata["organization_id"] != repo.orgID.String() || metadata["checkout_intent_id"] != result.CheckoutIntentID.String() || metadata["plan_key"] != "pro" {
 		t.Fatalf("metadata = %#v, want org/intent/plan", metadata)
 	}
+	if metadata["seat_quantity"] != "5" {
+		t.Fatalf("metadata seat_quantity = %#v, want string 5", metadata["seat_quantity"])
+	}
 	returnURL, ok := capturedPayload["return_url"].(string)
 	if !ok || !strings.Contains(returnURL, "checkout=pending") || !strings.Contains(returnURL, "checkout_intent_id="+result.CheckoutIntentID.String()) {
 		t.Fatalf("return_url = %#v, want checkout pending params", capturedPayload["return_url"])
