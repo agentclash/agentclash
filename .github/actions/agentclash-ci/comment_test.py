@@ -240,10 +240,11 @@ class CommentFormattingTests(unittest.TestCase):
         self.assertIn("agentclash prompt-eval run .agentclash/prompt-eval.yaml --ci --follow --json", body)
 
     def test_prompt_eval_redacts_common_token_shapes(self):
-        redacted = comment.redact_snippet("sk-abcdef1234567890 ghp_abcdefghijklmnopqrstuvwxyz Bearer abcdefghijklmnop")
+        redacted = comment.redact_snippet("sk-abcdef1234567890 ghp_abcdefghijklmnopqrstuvwxyz github_pat_abcdefghijklmnopqrstuvwxyz Bearer abcdefghijklmnop")
 
         self.assertIn("sk-[redacted]", redacted)
         self.assertIn("gh[redacted]", redacted)
+        self.assertIn("github_pat_[redacted]", redacted)
         self.assertIn("Bearer [redacted]", redacted)
         self.assertNotIn("abcdefghijklmnop", redacted)
 

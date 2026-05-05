@@ -326,6 +326,7 @@ def redact_snippet(value: Any, limit: int = 160) -> str:
     text = escape_cell(str(value or ""))
     text = re.sub(r"(?i)(api[_-]?key|token|secret|password)\s*[:=]\s*['\"]?[^\s,'\"]+", r"\1=[redacted]", text)
     text = re.sub(r"sk-[A-Za-z0-9_-]{12,}", "sk-[redacted]", text)
+    text = re.sub(r"github_pat_[A-Za-z0-9_]{12,}", "github_pat_[redacted]", text)
     text = re.sub(r"gh[pousr]_[A-Za-z0-9_]{12,}", "gh[redacted]", text)
     text = re.sub(r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----", "[private-key-redacted]", text)
     text = re.sub(r"(?i)bearer\s+[A-Za-z0-9._-]{12,}", "Bearer [redacted]", text)
