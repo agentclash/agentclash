@@ -628,7 +628,7 @@ func (m *BillingManager) createDodoCheckoutSession(ctx context.Context, caller C
 		return "", "", fmt.Errorf("read dodo checkout response: %w", err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", "", fmt.Errorf("create dodo checkout session: dodo returned HTTP %d", resp.StatusCode)
+		return "", "", formatDodoHTTPError("create dodo checkout session", resp.StatusCode, responseBody)
 	}
 	var decoded struct {
 		SessionID   string `json:"session_id"`
@@ -665,7 +665,7 @@ func (m *BillingManager) createDodoCustomerPortalSession(ctx context.Context, cu
 		return "", fmt.Errorf("read dodo customer portal response: %w", err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", fmt.Errorf("create dodo customer portal session: dodo returned HTTP %d", resp.StatusCode)
+		return "", formatDodoHTTPError("create dodo customer portal session", resp.StatusCode, responseBody)
 	}
 	var decoded struct {
 		Link string `json:"link"`
@@ -1022,6 +1022,14 @@ func defaultHTTPClient(client *http.Client) *http.Client {
 		return client
 	}
 	return &http.Client{Timeout: 10 * time.Second}
+}
+
+func formatDodoHTTPError(operation string, statusCode int, responseBody []byte) error {
+	body := strings.TrimSpace(strings.ToValidUTF8(string(responseBody), "?"))
+	if body == "" {
+		return fmt.Errorf("%s: dodo returned HTTP %d", operation, statusCode)
+	}
+	return fmt.Errorf("%s: dodo returned HTTP %d: %s", operation, statusCode, body)
 }
 
 func optionalString(value string) *string {
