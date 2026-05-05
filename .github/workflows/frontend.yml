@@ -24,7 +24,6 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
-      issues: write
     steps:
       - name: Exercise merged AgentClash CI comment path
         continue-on-error: true
