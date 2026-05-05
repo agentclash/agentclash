@@ -8,6 +8,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const ciRunFailureTaxonomySchemaVersion = "2026-05-05"
+
 type ciRunRegressionPromotionResult struct {
 	Policy     string                         `json:"policy" yaml:"policy"`
 	CaseStatus string                         `json:"case_status,omitempty" yaml:"case_status,omitempty"`
@@ -362,6 +364,7 @@ func ciRunPromotionMetadata(failure ciRunFailureReviewItem, result ciRunResult, 
 		"source_failure_state":         failure.FailureState,
 		"source_failure_class":         failure.FailureClass,
 		"source_failure_severity":      failure.Severity,
+		"failure_taxonomy":             ciRunPromotionFailureTaxonomy(failure, result, releaseGate),
 	}
 	if result.Candidate.CIMetadata != nil {
 		metadata["ci_metadata"] = result.Candidate.CIMetadata
@@ -376,4 +379,138 @@ func ciRunPromotionMetadata(failure ciRunFailureReviewItem, result ciRunResult, 
 		metadata["gate_policy_fingerprint"] = fingerprint
 	}
 	return metadata
+}
+
+func ciRunPromotionFailureTaxonomy(failure ciRunFailureReviewItem, result ciRunResult, releaseGate map[string]any) map[string]any {
+	reasonCode := firstNonEmptyString(mapString(releaseGate, "reason_code"), result.FailureReason)
+	triggeredCondition := ciRunFirstTriggeredCondition(releaseGate)
+	scorecardDimension := ciRunTaxonomyScorecardDimension(reasonCode, triggeredCondition)
+	failureMode := ciRunTaxonomyFailureMode(reasonCode, triggeredCondition, failure)
+	source := ciRunTaxonomySource(reasonCode, triggeredCondition, failureMode, failure)
+	severityHint := ciRunTaxonomySeverityHint(result.GateVerdict, failure)
+
+	taxonomy := map[string]any{
+		"schema_version":      ciRunFailureTaxonomySchemaVersion,
+		"source":              source,
+		"failure_mode":        failureMode,
+		"severity_hint":       severityHint,
+		"gate_verdict":        result.GateVerdict,
+		"gate_reason_code":    reasonCode,
+		"triggered_condition": triggeredCondition,
+	}
+	if scorecardDimension != "" {
+		taxonomy["scorecard_dimension"] = scorecardDimension
+	}
+	if failureClass := strings.TrimSpace(failure.FailureClass); failureClass != "" {
+		taxonomy["review_failure_class"] = failureClass
+	}
+	if failureState := strings.TrimSpace(failure.FailureState); failureState != "" {
+		taxonomy["review_failure_state"] = failureState
+	}
+	return taxonomy
+}
+
+func ciRunFirstTriggeredCondition(releaseGate map[string]any) string {
+	details := mapObject(releaseGate, "evaluation_details")
+	if details == nil {
+		return ""
+	}
+	for _, value := range mapSlice(details, "triggered_conditions") {
+		if condition := strings.TrimSpace(str(value)); condition != "" {
+			return condition
+		}
+	}
+	return ""
+}
+
+func ciRunTaxonomyScorecardDimension(reasonCode string, triggeredCondition string) string {
+	for _, value := range []string{reasonCode, triggeredCondition} {
+		value = strings.TrimSpace(strings.ToLower(value))
+		for _, prefix := range []string{"threshold_fail_", "threshold_warn_"} {
+			if strings.HasPrefix(value, prefix) {
+				return strings.TrimSpace(strings.TrimPrefix(value, prefix))
+			}
+		}
+		if strings.HasPrefix(value, "required_dimension_unavailable:") {
+			return strings.TrimSpace(strings.TrimPrefix(value, "required_dimension_unavailable:"))
+		}
+	}
+	return ""
+}
+
+func ciRunTaxonomyFailureMode(reasonCode string, triggeredCondition string, failure ciRunFailureReviewItem) string {
+	reason := strings.TrimSpace(strings.ToLower(reasonCode))
+	condition := strings.TrimSpace(strings.ToLower(triggeredCondition))
+	switch {
+	case strings.HasPrefix(reason, "threshold_fail_"), strings.HasPrefix(reason, "threshold_warn_"),
+		strings.HasPrefix(condition, "threshold_fail_"), strings.HasPrefix(condition, "threshold_warn_"):
+		return "scorecard_dimension_regression"
+	case reason == "scorecard_not_passed":
+		return "scorecard_not_passed"
+	case reason == "candidate_failed_baseline_succeeded":
+		return "candidate_execution_regression"
+	case reason == "both_failed_differently":
+		return "changed_failure_mode"
+	case ciRunIsRegressionGateReason(reason),
+		strings.HasPrefix(condition, "no_blocking_regression_failure:"),
+		strings.HasPrefix(condition, "no_new_blocking_failure_vs_baseline:"),
+		strings.HasPrefix(condition, "max_warning_regression_failures:"):
+		return "regression_case_failure"
+	}
+	if failureClass := strings.TrimSpace(failure.FailureClass); failureClass != "" {
+		return failureClass
+	}
+	if failureState := strings.TrimSpace(failure.FailureState); failureState != "" {
+		return "run_" + strings.ToLower(failureState)
+	}
+	return "gate_failure"
+}
+
+func ciRunTaxonomySource(reasonCode string, triggeredCondition string, failureMode string, failure ciRunFailureReviewItem) string {
+	reason := strings.TrimSpace(strings.ToLower(reasonCode))
+	condition := strings.TrimSpace(strings.ToLower(triggeredCondition))
+	switch {
+	case ciRunIsRegressionGateReason(reason),
+		strings.HasPrefix(condition, "no_blocking_regression_failure:"),
+		strings.HasPrefix(condition, "no_new_blocking_failure_vs_baseline:"),
+		strings.HasPrefix(condition, "max_warning_regression_failures:"):
+		return "regression_gate"
+	case strings.HasPrefix(reason, "threshold_"),
+		reason == "scorecard_not_passed",
+		strings.HasPrefix(condition, "threshold_"),
+		strings.HasPrefix(condition, "required_dimension_unavailable:"):
+		return "release_gate"
+	case strings.TrimSpace(failure.FailureClass) != "":
+		return "failure_review"
+	default:
+		if failureMode != "" && failureMode != "gate_failure" {
+			return "failure_review"
+		}
+		return "ci_gate"
+	}
+}
+
+func ciRunIsRegressionGateReason(reason string) bool {
+	switch strings.TrimSpace(strings.ToLower(reason)) {
+	case "regression_blocking_failure", "new_regression_blocking_failure", "regression_warning_failure_count":
+		return true
+	default:
+		return false
+	}
+}
+
+func ciRunTaxonomySeverityHint(gateVerdict string, failure ciRunFailureReviewItem) string {
+	if severity := strings.TrimSpace(failure.Severity); severity != "" {
+		return severity
+	}
+	switch strings.TrimSpace(strings.ToLower(gateVerdict)) {
+	case "fail":
+		return "blocking"
+	case "warn":
+		return "warning"
+	case "insufficient_evidence":
+		return "evidence"
+	default:
+		return ""
+	}
 }

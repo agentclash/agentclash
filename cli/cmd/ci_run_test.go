@@ -393,6 +393,67 @@ func TestCIRunProposesRegressionCandidatesOnFailingGate(t *testing.T) {
 	if metadata["source_failure_fingerprint"] != "frf-test" || metadata["source_failure_cluster_key"] != "frc-test" {
 		t.Fatalf("metadata = %+v, want failure identity metadata", metadata)
 	}
+	taxonomy := mapObject(metadata, "failure_taxonomy")
+	if taxonomy["schema_version"] != ciRunFailureTaxonomySchemaVersion ||
+		taxonomy["source"] != "failure_review" ||
+		taxonomy["failure_mode"] != "policy_violation" ||
+		taxonomy["gate_verdict"] != "fail" {
+		t.Fatalf("failure_taxonomy = %+v, want deterministic failure-review taxonomy", taxonomy)
+	}
+}
+
+func TestCIRunPromotionFailureTaxonomyRegressionGateFailure(t *testing.T) {
+	taxonomy := ciRunPromotionFailureTaxonomy(ciRunFailureReviewItem{
+		FailureClass: "policy_violation",
+		FailureState: "failed",
+		Severity:     "blocking",
+	}, ciRunResult{GateVerdict: "fail"}, map[string]any{
+		"reason_code": "regression_blocking_failure",
+		"evaluation_details": map[string]any{
+			"triggered_conditions": []any{"no_blocking_regression_failure:00000000-0000-0000-0000-000000000123"},
+		},
+	})
+
+	if taxonomy["source"] != "regression_gate" || taxonomy["failure_mode"] != "regression_case_failure" {
+		t.Fatalf("taxonomy = %+v, want regression gate failure", taxonomy)
+	}
+	if taxonomy["severity_hint"] != "blocking" || taxonomy["triggered_condition"] == "" {
+		t.Fatalf("taxonomy = %+v, want blocking severity and triggered condition", taxonomy)
+	}
+}
+
+func TestCIRunPromotionFailureTaxonomyScorecardDimensionFailure(t *testing.T) {
+	taxonomy := ciRunPromotionFailureTaxonomy(ciRunFailureReviewItem{
+		FailureClass: "score_regression",
+		FailureState: "failed",
+	}, ciRunResult{GateVerdict: "fail"}, map[string]any{
+		"reason_code": "threshold_fail_latency",
+		"evaluation_details": map[string]any{
+			"triggered_conditions": []any{"threshold_fail_latency"},
+		},
+	})
+
+	if taxonomy["source"] != "release_gate" || taxonomy["failure_mode"] != "scorecard_dimension_regression" {
+		t.Fatalf("taxonomy = %+v, want release gate scorecard regression", taxonomy)
+	}
+	if taxonomy["scorecard_dimension"] != "latency" || taxonomy["severity_hint"] != "blocking" {
+		t.Fatalf("taxonomy = %+v, want latency blocking taxonomy", taxonomy)
+	}
+}
+
+func TestCIRunPromotionFailureTaxonomyFallsBackToFailureReview(t *testing.T) {
+	taxonomy := ciRunPromotionFailureTaxonomy(ciRunFailureReviewItem{
+		FailureClass: "invalid_tool_invocation",
+		FailureState: "failed",
+		Severity:     "warning",
+	}, ciRunResult{GateVerdict: "fail", FailureReason: "candidate regressed"}, nil)
+
+	if taxonomy["source"] != "failure_review" || taxonomy["failure_mode"] != "invalid_tool_invocation" {
+		t.Fatalf("taxonomy = %+v, want failure review fallback", taxonomy)
+	}
+	if taxonomy["severity_hint"] != "warning" || taxonomy["gate_reason_code"] != "candidate regressed" {
+		t.Fatalf("taxonomy = %+v, want fallback severity and gate reason", taxonomy)
+	}
 }
 
 func TestCIRunDisabledRegressionPromotionSkipsFailureAPIs(t *testing.T) {
