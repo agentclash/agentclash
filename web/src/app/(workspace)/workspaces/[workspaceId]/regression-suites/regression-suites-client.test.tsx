@@ -7,6 +7,7 @@ import type {
   RegressionCase,
   RegressionSuite,
 } from "@/lib/api/types";
+import { ApiError } from "@/lib/api/errors";
 
 import { RegressionSuitesClient } from "./regression-suites-client";
 
@@ -16,6 +17,10 @@ const {
   mockPatch,
   mockMutate,
   mockRouterReplace,
+  mockConfirm,
+  mockSuitesPage,
+  mockProposedCasesPage,
+  mockPacksResponse,
   toast,
 } = vi.hoisted(() => ({
   mockGetAccessToken: vi.fn(),
@@ -23,6 +28,30 @@ const {
   mockPatch: vi.fn(),
   mockMutate: vi.fn(),
   mockRouterReplace: vi.fn(),
+  mockConfirm: vi.fn(),
+  mockSuitesPage: {
+    current: undefined as
+      | {
+          items: RegressionSuite[];
+          total: number;
+          limit: number;
+          offset: number;
+        }
+      | undefined,
+  },
+  mockProposedCasesPage: {
+    current: undefined as
+      | {
+          items: RegressionCase[];
+          total: number;
+          limit: number;
+          offset: number;
+        }
+      | undefined,
+  },
+  mockPacksResponse: {
+    current: undefined as { items: ChallengePack[] } | undefined,
+  },
   toast: Object.assign(vi.fn(), {
     success: vi.fn(),
     error: vi.fn(),
@@ -64,20 +93,34 @@ vi.mock("@/lib/api/swr", async (importOriginal) => {
     ...actual,
     useApiListQuery: (path: string) => {
       if (path.includes("challenge-packs")) {
-        return { data: { items: [pack] }, error: undefined, isLoading: false };
+        return {
+          data: mockPacksResponse.current ?? { items: [pack] },
+          error: undefined,
+          isLoading: false,
+        };
       }
       return { data: { items: [] }, error: undefined, isLoading: false };
     },
     usePaginatedApiQuery: (path: string) => {
       if (path.includes("regression-cases")) {
         return {
-          data: { items: [proposedCase], total: 1, limit: 20, offset: 0 },
+          data: mockProposedCasesPage.current ?? {
+            items: [proposedCase],
+            total: 1,
+            limit: 20,
+            offset: 0,
+          },
           error: undefined,
           isLoading: false,
         };
       }
       return {
-        data: { items: [suite], total: 1, limit: 50, offset: 0 },
+        data: mockSuitesPage.current ?? {
+          items: [suite],
+          total: 1,
+          limit: 50,
+          offset: 0,
+        },
         error: undefined,
         isLoading: false,
       };
@@ -88,7 +131,7 @@ vi.mock("@/lib/api/swr", async (importOriginal) => {
 
 vi.mock("@/components/ui/confirm-dialog", () => ({
   ConfirmProvider: ({ children }: { children: React.ReactNode }) => children,
-  useConfirm: () => vi.fn().mockResolvedValue(true),
+  useConfirm: () => mockConfirm,
 }));
 
 vi.mock("@/components/ui/page-header", () => ({
@@ -178,6 +221,7 @@ const proposedCase: RegressionCase = {
   id: "case-1",
   suite_id: "suite-1",
   workspace_id: "ws-1",
+  suite_name: "Critical regressions",
   title: "Missing escalation",
   description: "",
   status: "proposed",
@@ -241,11 +285,21 @@ describe("RegressionSuitesClient proposed queue", () => {
     mockCreateApiClient.mockReset().mockReturnValue({ patch: mockPatch });
     mockMutate.mockReset().mockResolvedValue(undefined);
     mockRouterReplace.mockReset();
+    mockConfirm.mockReset().mockResolvedValue(true);
+    mockSuitesPage.current = { items: [suite], total: 1, limit: 50, offset: 0 };
+    mockProposedCasesPage.current = {
+      items: [proposedCase],
+      total: 1,
+      limit: 20,
+      offset: 0,
+    };
+    mockPacksResponse.current = { items: [pack] };
     toast.success.mockReset();
     toast.error.mockReset();
   });
 
   it("renders proposed cases and promotes one from the workspace queue", async () => {
+    mockSuitesPage.current = { items: [], total: 0, limit: 50, offset: 0 };
     const view = render(<RegressionSuitesClient workspaceId="ws-1" />);
     try {
       expect(view.container.textContent).toContain("Proposed Cases");
@@ -268,7 +322,86 @@ describe("RegressionSuitesClient proposed queue", () => {
         { status: "active" },
       );
       expect(toast.success).toHaveBeenCalledWith("Case promoted");
-      expect(mockMutate).toHaveBeenCalled();
+      expect(mockMutate).toHaveBeenCalledTimes(2);
+      expect(mockMutate.mock.calls[0][0]).toEqual(expect.any(Function));
+      expect(
+        mockMutate.mock.calls[0][0]([
+          "/v1/workspaces/ws-1/regression-cases",
+          { status: "proposed", limit: 20, offset: 0 },
+        ]),
+      ).toBe(true);
+      expect(
+        mockMutate.mock.calls[1][0]([
+          "/v1/workspaces/ws-1/regression-suites",
+          { limit: 50, offset: 50 },
+        ]),
+      ).toBe(true);
+    } finally {
+      view.cleanup();
+    }
+  });
+
+  it("rejects a proposed case after confirmation", async () => {
+    const view = render(<RegressionSuitesClient workspaceId="ws-1" />);
+    try {
+      const reject = Array.from(view.container.querySelectorAll("button")).find(
+        (button) => button.getAttribute("aria-label") === "Reject proposed case",
+      );
+      expect(reject).toBeTruthy();
+
+      await act(async () => {
+        reject?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
+      await flushPromises();
+
+      expect(mockConfirm).toHaveBeenCalledWith(
+        expect.objectContaining({
+          confirmLabel: "Reject",
+          variant: "danger",
+        }),
+      );
+      expect(mockPatch).toHaveBeenCalledWith(
+        "/v1/workspaces/ws-1/regression-cases/case-1",
+        { status: "rejected" },
+      );
+      expect(toast.success).toHaveBeenCalledWith("Case rejected");
+    } finally {
+      view.cleanup();
+    }
+  });
+
+  it("shows API errors when case status patching fails", async () => {
+    mockPatch.mockRejectedValue(
+      new ApiError(409, "transition_conflict", "cannot transition"),
+    );
+    const view = render(<RegressionSuitesClient workspaceId="ws-1" />);
+    try {
+      const promote = Array.from(view.container.querySelectorAll("button")).find(
+        (button) => button.textContent?.includes("Promote"),
+      );
+      expect(promote).toBeTruthy();
+
+      await act(async () => {
+        promote?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
+      await flushPromises();
+
+      expect(toast.error).toHaveBeenCalledWith("cannot transition");
+    } finally {
+      view.cleanup();
+    }
+  });
+
+  it("hides the proposed queue when there are no proposed cases", () => {
+    mockProposedCasesPage.current = {
+      items: [],
+      total: 0,
+      limit: 20,
+      offset: 0,
+    };
+    const view = render(<RegressionSuitesClient workspaceId="ws-1" />);
+    try {
+      expect(view.container.textContent).not.toContain("Proposed Cases");
     } finally {
       view.cleanup();
     }

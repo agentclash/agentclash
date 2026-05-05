@@ -1335,6 +1335,7 @@ func TestRegressionSuiteEndpointsRejectMalformedPagination(t *testing.T) {
 	for _, path := range []string{
 		"/v1/workspaces/" + workspaceID.String() + "/regression-suites?limit=abc&offset=-1",
 		"/v1/workspaces/" + workspaceID.String() + "/regression-cases?limit=abc&offset=-1",
+		"/v1/workspaces/" + workspaceID.String() + "/regression-cases?status=all",
 		"/v1/workspaces/" + workspaceID.String() + "/regression-cases?status=surprise",
 	} {
 		req := httptest.NewRequest(http.MethodGet, path, nil)

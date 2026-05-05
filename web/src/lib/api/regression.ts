@@ -3,7 +3,6 @@ import type {
   FailureReviewEvidenceTier,
   FailureReviewFailureClass,
   FailureReviewPromotionMode,
-  ListWorkspaceRegressionCasesResponse,
   RegressionCase,
   RegressionPromotionMode,
   RegressionSeverity,
@@ -11,13 +10,6 @@ import type {
 } from "./types";
 
 export interface ListRegressionSuitesParams {
-  limit?: number;
-  offset?: number;
-}
-
-export interface ListWorkspaceRegressionCasesParams
-  extends Record<string, string | number | undefined> {
-  status?: string;
   limit?: number;
   offset?: number;
 }
@@ -72,17 +64,6 @@ export function listRegressionSuites(
   return api.paginated<RegressionSuite>(
     `/v1/workspaces/${workspaceId}/regression-suites`,
     params,
-  );
-}
-
-export function listWorkspaceRegressionCases(
-  api: ApiClient,
-  workspaceId: string,
-  params: ListWorkspaceRegressionCasesParams = {},
-): Promise<ListWorkspaceRegressionCasesResponse> {
-  return api.get<ListWorkspaceRegressionCasesResponse>(
-    `/v1/workspaces/${workspaceId}/regression-cases`,
-    { params },
   );
 }
 

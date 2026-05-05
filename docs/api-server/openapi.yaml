@@ -6941,6 +6941,8 @@ components:
         workspace_id:
           type: string
           format: uuid
+        suite_name:
+          type: string
         title:
           type: string
         description:

@@ -356,6 +356,7 @@ SELECT
     c.id,
     c.suite_id,
     s.workspace_id,
+    s.name AS suite_name,
     c.title,
     c.description,
     c.status,
@@ -392,6 +393,7 @@ type GetRegressionCaseByIDRow struct {
 	ID                           uuid.UUID
 	SuiteID                      uuid.UUID
 	WorkspaceID                  uuid.UUID
+	SuiteName                    string
 	Title                        string
 	Description                  string
 	Status                       string
@@ -423,6 +425,7 @@ func (q *Queries) GetRegressionCaseByID(ctx context.Context, arg GetRegressionCa
 		&i.ID,
 		&i.SuiteID,
 		&i.WorkspaceID,
+		&i.SuiteName,
 		&i.Title,
 		&i.Description,
 		&i.Status,
@@ -586,6 +589,147 @@ func (q *Queries) GetRegressionSuiteByID(ctx context.Context, arg GetRegressionS
 	return i, err
 }
 
+const listLatestRegressionPromotionsByCaseIDs = `-- name: ListLatestRegressionPromotionsByCaseIDs :many
+SELECT DISTINCT ON (workspace_regression_case_id)
+    id, workspace_regression_case_id, source_run_id, source_run_agent_id, source_event_refs, promoted_by_user_id, promotion_reason, promotion_snapshot, created_at
+FROM workspace_regression_promotions
+WHERE workspace_regression_case_id = ANY($1::uuid[])
+ORDER BY workspace_regression_case_id, created_at DESC, id DESC
+`
+
+type ListLatestRegressionPromotionsByCaseIDsParams struct {
+	WorkspaceRegressionCaseIds []uuid.UUID
+}
+
+func (q *Queries) ListLatestRegressionPromotionsByCaseIDs(ctx context.Context, arg ListLatestRegressionPromotionsByCaseIDsParams) ([]WorkspaceRegressionPromotion, error) {
+	rows, err := q.db.Query(ctx, listLatestRegressionPromotionsByCaseIDs, arg.WorkspaceRegressionCaseIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []WorkspaceRegressionPromotion
+	for rows.Next() {
+		var i WorkspaceRegressionPromotion
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceRegressionCaseID,
+			&i.SourceRunID,
+			&i.SourceRunAgentID,
+			&i.SourceEventRefs,
+			&i.PromotedByUserID,
+			&i.PromotionReason,
+			&i.PromotionSnapshot,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRegressionCaseValidationStatsByCaseIDs = `-- name: ListRegressionCaseValidationStatsByCaseIDs :many
+WITH selected_run_cases AS (
+    SELECT DISTINCT
+        rcs.regression_case_id,
+        rcs.run_id,
+        rcs.challenge_identity_id
+    FROM run_case_selections AS rcs
+    WHERE rcs.regression_case_id = ANY($1::uuid[])
+),
+case_run_outcomes AS (
+    SELECT
+        src.regression_case_id,
+        src.run_id,
+        COALESCE(r.finished_at, r.started_at, r.created_at)::timestamptz AS validated_at,
+        -- Treat any failed winning-agent judge verdict as a reproduced failure.
+        CASE
+            WHEN bool_or(jr.verdict = 'fail') THEN 'fail'
+            WHEN bool_or(jr.verdict = 'pass') THEN 'pass'
+            ELSE 'pending'
+        END AS outcome
+    FROM selected_run_cases AS src
+    JOIN runs AS r
+      ON r.id = src.run_id
+     AND r.status = 'completed'
+    JOIN run_scorecards AS rs
+      ON rs.run_id = r.id
+     AND rs.winning_run_agent_id IS NOT NULL
+    LEFT JOIN judge_results AS jr
+      ON jr.run_agent_id = rs.winning_run_agent_id
+     AND (
+        jr.regression_case_id = src.regression_case_id
+        OR (
+            jr.regression_case_id IS NULL
+            -- Older judge rows only carry the challenge identity; use it as a fallback.
+            AND jr.challenge_identity_id = src.challenge_identity_id
+        )
+     )
+    GROUP BY src.regression_case_id, src.run_id, validated_at
+),
+scored_case_runs AS (
+    SELECT regression_case_id, run_id, validated_at, outcome
+    FROM case_run_outcomes
+    WHERE outcome IN ('pass', 'fail')
+)
+SELECT
+    regression_case_id,
+    count(*)::bigint AS validation_run_count,
+    count(*) FILTER (WHERE outcome = 'fail')::bigint AS validation_failure_count,
+    count(*) FILTER (WHERE outcome = 'pass')::bigint AS validation_pass_count,
+    ((count(*) FILTER (WHERE outcome = 'fail'))::float8 / count(*)::float8)::float8 AS reproduction_rate,
+    (array_agg(outcome ORDER BY validated_at DESC, run_id DESC))[1]::text AS last_validation_outcome,
+    max(validated_at)::timestamptz AS last_validated_at
+FROM scored_case_runs
+GROUP BY regression_case_id
+ORDER BY regression_case_id
+`
+
+type ListRegressionCaseValidationStatsByCaseIDsParams struct {
+	RegressionCaseIds []uuid.UUID
+}
+
+type ListRegressionCaseValidationStatsByCaseIDsRow struct {
+	RegressionCaseID       *uuid.UUID
+	ValidationRunCount     int64
+	ValidationFailureCount int64
+	ValidationPassCount    int64
+	ReproductionRate       float64
+	LastValidationOutcome  string
+	LastValidatedAt        pgtype.Timestamptz
+}
+
+func (q *Queries) ListRegressionCaseValidationStatsByCaseIDs(ctx context.Context, arg ListRegressionCaseValidationStatsByCaseIDsParams) ([]ListRegressionCaseValidationStatsByCaseIDsRow, error) {
+	rows, err := q.db.Query(ctx, listRegressionCaseValidationStatsByCaseIDs, arg.RegressionCaseIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListRegressionCaseValidationStatsByCaseIDsRow
+	for rows.Next() {
+		var i ListRegressionCaseValidationStatsByCaseIDsRow
+		if err := rows.Scan(
+			&i.RegressionCaseID,
+			&i.ValidationRunCount,
+			&i.ValidationFailureCount,
+			&i.ValidationPassCount,
+			&i.ReproductionRate,
+			&i.LastValidationOutcome,
+			&i.LastValidatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listRegressionCaseValidationStatsBySuiteID = `-- name: ListRegressionCaseValidationStatsBySuiteID :many
 WITH selected_run_cases AS (
     SELECT DISTINCT
@@ -693,6 +837,7 @@ SELECT
     c.id,
     c.suite_id,
     s.workspace_id,
+    s.name AS suite_name,
     c.title,
     c.description,
     c.status,
@@ -729,6 +874,7 @@ type ListRegressionCasesBySuiteIDRow struct {
 	ID                           uuid.UUID
 	SuiteID                      uuid.UUID
 	WorkspaceID                  uuid.UUID
+	SuiteName                    string
 	Title                        string
 	Description                  string
 	Status                       string
@@ -766,6 +912,7 @@ func (q *Queries) ListRegressionCasesBySuiteID(ctx context.Context, arg ListRegr
 			&i.ID,
 			&i.SuiteID,
 			&i.WorkspaceID,
+			&i.SuiteName,
 			&i.Title,
 			&i.Description,
 			&i.Status,
@@ -804,6 +951,7 @@ SELECT
     c.id,
     c.suite_id,
     s.workspace_id,
+    s.name AS suite_name,
     c.title,
     c.description,
     c.status,
@@ -845,6 +993,7 @@ type ListRegressionCasesByWorkspaceIDRow struct {
 	ID                           uuid.UUID
 	SuiteID                      uuid.UUID
 	WorkspaceID                  uuid.UUID
+	SuiteName                    string
 	Title                        string
 	Description                  string
 	Status                       string
@@ -887,6 +1036,7 @@ func (q *Queries) ListRegressionCasesByWorkspaceID(ctx context.Context, arg List
 			&i.ID,
 			&i.SuiteID,
 			&i.WorkspaceID,
+			&i.SuiteName,
 			&i.Title,
 			&i.Description,
 			&i.Status,

@@ -59,6 +59,7 @@ SELECT
     c.id,
     c.suite_id,
     s.workspace_id,
+    s.name AS suite_name,
     c.title,
     c.description,
     c.status,
@@ -159,6 +160,7 @@ SELECT
     c.id,
     c.suite_id,
     s.workspace_id,
+    s.name AS suite_name,
     c.title,
     c.description,
     c.status,
@@ -199,6 +201,7 @@ SELECT
     c.id,
     c.suite_id,
     s.workspace_id,
+    s.name AS suite_name,
     c.title,
     c.description,
     c.status,
@@ -237,6 +240,62 @@ WITH selected_run_cases AS (
       ON c.id = rcs.regression_case_id
     WHERE c.suite_id = @suite_id
       AND rcs.regression_case_id IS NOT NULL
+),
+case_run_outcomes AS (
+    SELECT
+        src.regression_case_id,
+        src.run_id,
+        COALESCE(r.finished_at, r.started_at, r.created_at)::timestamptz AS validated_at,
+        -- Treat any failed winning-agent judge verdict as a reproduced failure.
+        CASE
+            WHEN bool_or(jr.verdict = 'fail') THEN 'fail'
+            WHEN bool_or(jr.verdict = 'pass') THEN 'pass'
+            ELSE 'pending'
+        END AS outcome
+    FROM selected_run_cases AS src
+    JOIN runs AS r
+      ON r.id = src.run_id
+     AND r.status = 'completed'
+    JOIN run_scorecards AS rs
+      ON rs.run_id = r.id
+     AND rs.winning_run_agent_id IS NOT NULL
+    LEFT JOIN judge_results AS jr
+      ON jr.run_agent_id = rs.winning_run_agent_id
+     AND (
+        jr.regression_case_id = src.regression_case_id
+        OR (
+            jr.regression_case_id IS NULL
+            -- Older judge rows only carry the challenge identity; use it as a fallback.
+            AND jr.challenge_identity_id = src.challenge_identity_id
+        )
+     )
+    GROUP BY src.regression_case_id, src.run_id, validated_at
+),
+scored_case_runs AS (
+    SELECT *
+    FROM case_run_outcomes
+    WHERE outcome IN ('pass', 'fail')
+)
+SELECT
+    regression_case_id,
+    count(*)::bigint AS validation_run_count,
+    count(*) FILTER (WHERE outcome = 'fail')::bigint AS validation_failure_count,
+    count(*) FILTER (WHERE outcome = 'pass')::bigint AS validation_pass_count,
+    ((count(*) FILTER (WHERE outcome = 'fail'))::float8 / count(*)::float8)::float8 AS reproduction_rate,
+    (array_agg(outcome ORDER BY validated_at DESC, run_id DESC))[1]::text AS last_validation_outcome,
+    max(validated_at)::timestamptz AS last_validated_at
+FROM scored_case_runs
+GROUP BY regression_case_id
+ORDER BY regression_case_id;
+
+-- name: ListRegressionCaseValidationStatsByCaseIDs :many
+WITH selected_run_cases AS (
+    SELECT DISTINCT
+        rcs.regression_case_id,
+        rcs.run_id,
+        rcs.challenge_identity_id
+    FROM run_case_selections AS rcs
+    WHERE rcs.regression_case_id = ANY(@regression_case_ids::uuid[])
 ),
 case_run_outcomes AS (
     SELECT
@@ -377,3 +436,10 @@ FROM workspace_regression_promotions
 WHERE workspace_regression_case_id = @workspace_regression_case_id
 ORDER BY created_at DESC, id DESC
 LIMIT 1;
+
+-- name: ListLatestRegressionPromotionsByCaseIDs :many
+SELECT DISTINCT ON (workspace_regression_case_id)
+    *
+FROM workspace_regression_promotions
+WHERE workspace_regression_case_id = ANY(@workspace_regression_case_ids::uuid[])
+ORDER BY workspace_regression_case_id, created_at DESC, id DESC;

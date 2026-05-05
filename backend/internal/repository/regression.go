@@ -35,6 +35,7 @@ type RegressionCase struct {
 	ID                           uuid.UUID
 	SuiteID                      uuid.UUID
 	WorkspaceID                  uuid.UUID
+	SuiteName                    string
 	Title                        string
 	Description                  string
 	Status                       domain.RegressionCaseStatus
@@ -472,27 +473,28 @@ func (r *Repository) populateRegressionCaseListMetadata(ctx context.Context, cas
 	if len(cases) == 0 {
 		return cases, nil
 	}
-	suiteIDs := make(map[uuid.UUID]struct{})
+	caseIDs := make([]uuid.UUID, 0, len(cases))
 	for i := range cases {
-		latestPromotion, err := r.latestRegressionPromotionByCaseID(ctx, cases[i].ID)
-		if err != nil {
-			return nil, err
-		}
-		cases[i].LatestPromotion = latestPromotion
-		suiteIDs[cases[i].SuiteID] = struct{}{}
+		caseIDs = append(caseIDs, cases[i].ID)
 	}
-	for suiteID := range suiteIDs {
-		statsByCaseID, err := r.regressionCaseValidationStatsBySuiteID(ctx, suiteID)
-		if err != nil {
-			return nil, err
+
+	promotionsByCaseID, err := r.latestRegressionPromotionsByCaseIDs(ctx, caseIDs)
+	if err != nil {
+		return nil, err
+	}
+	statsByCaseID, err := r.regressionCaseValidationStatsByCaseIDs(ctx, caseIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	for i := range cases {
+		if promotion, ok := promotionsByCaseID[cases[i].ID]; ok {
+			promotion := promotion
+			cases[i].LatestPromotion = &promotion
 		}
-		for i := range cases {
-			if cases[i].SuiteID != suiteID {
-				continue
-			}
-			if stats, ok := statsByCaseID[cases[i].ID]; ok {
-				cases[i].ValidationStats = &stats
-			}
+		if stats, ok := statsByCaseID[cases[i].ID]; ok {
+			stats := stats
+			cases[i].ValidationStats = &stats
 		}
 	}
 	return cases, nil
@@ -823,6 +825,27 @@ func (r *Repository) latestRegressionPromotionByCaseID(ctx context.Context, case
 	return &promotion, nil
 }
 
+func (r *Repository) latestRegressionPromotionsByCaseIDs(ctx context.Context, caseIDs []uuid.UUID) (map[uuid.UUID]RegressionPromotion, error) {
+	if len(caseIDs) == 0 {
+		return map[uuid.UUID]RegressionPromotion{}, nil
+	}
+	rows, err := r.queries.ListLatestRegressionPromotionsByCaseIDs(ctx, repositorysqlc.ListLatestRegressionPromotionsByCaseIDsParams{
+		WorkspaceRegressionCaseIds: caseIDs,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list latest regression promotions by case ids: %w", err)
+	}
+	promotions := make(map[uuid.UUID]RegressionPromotion, len(rows))
+	for _, row := range rows {
+		promotion, mapErr := mapRegressionPromotion(row)
+		if mapErr != nil {
+			return nil, fmt.Errorf("map latest regression promotion %s: %w", row.ID, mapErr)
+		}
+		promotions[row.WorkspaceRegressionCaseID] = promotion
+	}
+	return promotions, nil
+}
+
 func (r *Repository) regressionCaseValidationStatsByCaseID(ctx context.Context, caseID uuid.UUID) (*RegressionCaseValidationStats, error) {
 	row, err := r.queries.GetRegressionCaseValidationStatsByCaseID(ctx, repositorysqlc.GetRegressionCaseValidationStatsByCaseIDParams{
 		RegressionCaseID: caseID,
@@ -835,6 +858,26 @@ func (r *Repository) regressionCaseValidationStatsByCaseID(ctx context.Context, 
 	}
 	stats := mapRegressionCaseValidationStatsFromCaseRow(row)
 	return &stats, nil
+}
+
+func (r *Repository) regressionCaseValidationStatsByCaseIDs(ctx context.Context, caseIDs []uuid.UUID) (map[uuid.UUID]RegressionCaseValidationStats, error) {
+	if len(caseIDs) == 0 {
+		return map[uuid.UUID]RegressionCaseValidationStats{}, nil
+	}
+	rows, err := r.queries.ListRegressionCaseValidationStatsByCaseIDs(ctx, repositorysqlc.ListRegressionCaseValidationStatsByCaseIDsParams{
+		RegressionCaseIds: caseIDs,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list regression case validation stats by case ids: %w", err)
+	}
+	stats := make(map[uuid.UUID]RegressionCaseValidationStats, len(rows))
+	for _, row := range rows {
+		if row.RegressionCaseID == nil {
+			continue
+		}
+		stats[*row.RegressionCaseID] = mapRegressionCaseValidationStatsFromCaseIDsRow(row)
+	}
+	return stats, nil
 }
 
 func (r *Repository) regressionCaseValidationStatsBySuiteID(ctx context.Context, suiteID uuid.UUID) (map[uuid.UUID]RegressionCaseValidationStats, error) {
@@ -911,6 +954,7 @@ func mapRegressionCase(row regressionCaseFields) (RegressionCase, error) {
 		ID:                           row.id,
 		SuiteID:                      row.suiteID,
 		WorkspaceID:                  row.workspaceID,
+		SuiteName:                    row.suiteName,
 		Title:                        row.title,
 		Description:                  row.description,
 		Status:                       status,
@@ -960,6 +1004,17 @@ func mapRegressionCaseValidationStatsFromSuiteRow(row repositorysqlc.ListRegress
 	}
 }
 
+func mapRegressionCaseValidationStatsFromCaseIDsRow(row repositorysqlc.ListRegressionCaseValidationStatsByCaseIDsRow) RegressionCaseValidationStats {
+	return RegressionCaseValidationStats{
+		RunCount:         int(row.ValidationRunCount),
+		FailureCount:     int(row.ValidationFailureCount),
+		PassCount:        int(row.ValidationPassCount),
+		ReproductionRate: row.ReproductionRate,
+		LastOutcome:      row.LastValidationOutcome,
+		LastValidatedAt:  optionalTime(row.LastValidatedAt),
+	}
+}
+
 func mapRegressionCaseFromTableRowPartial(row repositorysqlc.WorkspaceRegressionCase) (RegressionCase, error) {
 	return mapRegressionCase(regressionCaseFields{
 		id:                           row.ID,
@@ -994,6 +1049,7 @@ func mapRegressionCaseFromJoinedRow(row repositorysqlc.GetRegressionCaseByIDRow)
 		id:                           row.ID,
 		suiteID:                      row.SuiteID,
 		workspaceID:                  row.WorkspaceID,
+		suiteName:                    row.SuiteName,
 		title:                        row.Title,
 		description:                  row.Description,
 		status:                       row.Status,
@@ -1024,6 +1080,7 @@ func mapRegressionCaseFromListRow(row repositorysqlc.ListRegressionCasesBySuiteI
 		id:                           row.ID,
 		suiteID:                      row.SuiteID,
 		workspaceID:                  row.WorkspaceID,
+		suiteName:                    row.SuiteName,
 		title:                        row.Title,
 		description:                  row.Description,
 		status:                       row.Status,
@@ -1054,6 +1111,7 @@ func mapRegressionCaseFromWorkspaceListRow(row repositorysqlc.ListRegressionCase
 		id:                           row.ID,
 		suiteID:                      row.SuiteID,
 		workspaceID:                  row.WorkspaceID,
+		suiteName:                    row.SuiteName,
 		title:                        row.Title,
 		description:                  row.Description,
 		status:                       row.Status,
@@ -1102,6 +1160,7 @@ type regressionCaseFields struct {
 	id                           uuid.UUID
 	suiteID                      uuid.UUID
 	workspaceID                  uuid.UUID
+	suiteName                    string
 	title                        string
 	description                  string
 	status                       string

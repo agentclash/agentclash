@@ -1831,6 +1831,7 @@ export interface RegressionCase {
   id: string;
   suite_id: string;
   workspace_id: string;
+  suite_name?: string;
   title: string;
   description: string;
   status: RegressionCaseStatus;

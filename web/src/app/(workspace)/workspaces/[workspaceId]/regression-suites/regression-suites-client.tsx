@@ -243,9 +243,11 @@ function RegressionSuitesInner({
         body,
       );
       toast.success(next === "active" ? "Case promoted" : "Case rejected");
+      const casesPath = `/v1/workspaces/${workspaceId}/regression-cases`;
+      const suitesPath = `/v1/workspaces/${workspaceId}/regression-suites`;
       await Promise.all([
-        mutate(workspaceResourceKeys.regressionCases(workspaceId, "proposed", caseOffset)),
-        mutate(workspaceResourceKeys.regressionSuites(workspaceId, offset)),
+        mutate((key) => Array.isArray(key) && key[0] === casesPath),
+        mutate((key) => Array.isArray(key) && key[0] === suitesPath),
       ]);
     } catch (err) {
       if (err instanceof ApiError) {
@@ -369,7 +371,9 @@ function RegressionSuitesInner({
                           href={`/workspaces/${workspaceId}/regression-suites/${regressionCase.suite_id}`}
                           className="hover:text-foreground hover:underline underline-offset-4"
                         >
-                          {suite?.name ?? shortID(regressionCase.suite_id)}
+                          {regressionCase.suite_name ??
+                            suite?.name ??
+                            shortID(regressionCase.suite_id)}
                         </Link>
                       </TableCell>
                       <TableCell>
@@ -405,6 +409,7 @@ function RegressionSuitesInner({
                             size="icon-sm"
                             disabled={disabled}
                             onClick={() => handleRejectCase(regressionCase)}
+                            aria-label="Reject proposed case"
                             title="Reject"
                           >
                             <XCircle className="size-4" />

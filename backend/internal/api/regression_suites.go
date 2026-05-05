@@ -746,6 +746,7 @@ type regressionCaseResponse struct {
 	ID                           uuid.UUID                        `json:"id"`
 	SuiteID                      uuid.UUID                        `json:"suite_id"`
 	WorkspaceID                  uuid.UUID                        `json:"workspace_id"`
+	SuiteName                    string                           `json:"suite_name,omitempty"`
 	Title                        string                           `json:"title"`
 	Description                  string                           `json:"description"`
 	Status                       domain.RegressionCaseStatus      `json:"status"`
@@ -1103,7 +1104,7 @@ func listWorkspaceRegressionCasesHandler(logger *slog.Logger, service Regression
 		}
 
 		var status *domain.RegressionCaseStatus
-		if raw := strings.TrimSpace(r.URL.Query().Get("status")); raw != "" && raw != "all" {
+		if raw := strings.TrimSpace(r.URL.Query().Get("status")); raw != "" {
 			parsed, parseErr := domain.ParseRegressionCaseStatus(raw)
 			if parseErr != nil {
 				writeError(w, http.StatusBadRequest, "validation_error", "status must be proposed, active, muted, archived, or rejected")
@@ -1419,6 +1420,7 @@ func buildRegressionCaseResponse(regressionCase repository.RegressionCase) regre
 		ID:                           regressionCase.ID,
 		SuiteID:                      regressionCase.SuiteID,
 		WorkspaceID:                  regressionCase.WorkspaceID,
+		SuiteName:                    regressionCase.SuiteName,
 		Title:                        regressionCase.Title,
 		Description:                  regressionCase.Description,
 		Status:                       regressionCase.Status,
