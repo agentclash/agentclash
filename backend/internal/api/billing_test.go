@@ -553,8 +553,8 @@ func TestBillingManagerCreateCheckoutUsesDodoAPIWhenConfigured(t *testing.T) {
 	if !ok {
 		t.Fatalf("product cart item = %#v, want object", productCart[0])
 	}
-	if item["product_id"] != "agentclash_pro_monthly" || item["quantity"] != float64(5) {
-		t.Fatalf("product cart item = %#v, want pro monthly quantity 5", item)
+	if item["product_id"] != "agentclash_pro_monthly" || item["quantity"] != float64(1) {
+		t.Fatalf("product cart item = %#v, want pro monthly quantity 1", item)
 	}
 	metadata, ok := capturedPayload["metadata"].(map[string]any)
 	if !ok {
