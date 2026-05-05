@@ -58,6 +58,7 @@ type agentHarnessSnapshot struct {
 	ID                     uuid.UUID       `json:"id"`
 	WorkspaceID            uuid.UUID       `json:"workspace_id"`
 	OrganizationID         uuid.UUID       `json:"organization_id"`
+	HarnessKind            string          `json:"harness_kind"`
 	TaskPrompt             string          `json:"task_prompt"`
 	CodexTemplate          string          `json:"codex_template"`
 	CodexModel             *string         `json:"codex_model,omitempty"`
@@ -224,13 +225,16 @@ func (a *Activities) ExecuteAgentHarnessExecution(ctx context.Context, input Exe
 		workdir = "/"
 	}
 
-	codexCommand := []string{"codex", "exec", "--full-auto", "--skip-git-repo-check", "--json", "-C", workdir, harness.TaskPrompt}
-	codexResult, err := a.execHarnessCommand(ctx, execution.ID, session, "codex.exec", codexCommand, workdir, timeout, env)
+	runner, err := agentHarnessRunnerFor(harness, workdir)
 	if err != nil {
 		return err
 	}
-	if codexResult.ExitCode != 0 {
-		return fmt.Errorf("codex exec failed with exit code %d", codexResult.ExitCode)
+	runnerResult, err := a.execHarnessCommand(ctx, execution.ID, session, runner.EventType, runner.Command, workdir, timeout, env)
+	if err != nil {
+		return err
+	}
+	if runnerResult.ExitCode != 0 {
+		return fmt.Errorf("%s failed with exit code %d", runner.DisplayName, runnerResult.ExitCode)
 	}
 
 	if hasRepository {
@@ -288,6 +292,7 @@ func (a *Activities) agentHarnessSnapshot(ctx context.Context, execution reposit
 		ID:                     harness.ID,
 		WorkspaceID:            harness.WorkspaceID,
 		OrganizationID:         harness.OrganizationID,
+		HarnessKind:            harness.HarnessKind,
 		TaskPrompt:             harness.TaskPrompt,
 		CodexTemplate:          harness.CodexTemplate,
 		CodexModel:             harness.CodexModel,
@@ -348,6 +353,44 @@ func (a *Activities) prepareGitHubGitAuth(ctx context.Context, executionID uuid.
 		return nil, "", fmt.Errorf("github git auth prepare failed with exit code %d", result.ExitCode)
 	}
 	return authEnv, token, nil
+}
+
+type agentHarnessRunner struct {
+	DisplayName string
+	EventType   string
+	Command     []string
+}
+
+func agentHarnessRunnerFor(h agentHarnessSnapshot, workdir string) (agentHarnessRunner, error) {
+	switch normalizeAgentHarnessKind(h.HarnessKind) {
+	case "codex_e2b":
+		return agentHarnessRunner{
+			DisplayName: "codex exec",
+			EventType:   "codex.exec",
+			Command:     []string{"codex", "exec", "--full-auto", "--skip-git-repo-check", "--json", "-C", workdir, h.TaskPrompt},
+		}, nil
+	case "hermes_e2b":
+		command := []string{"hermes", "chat", "--toolsets", "terminal,skills"}
+		if h.CodexModel != nil && strings.TrimSpace(*h.CodexModel) != "" {
+			command = append(command, "--model", strings.TrimSpace(*h.CodexModel))
+		}
+		command = append(command, "-q", h.TaskPrompt)
+		return agentHarnessRunner{
+			DisplayName: "hermes exec",
+			EventType:   "hermes.exec",
+			Command:     command,
+		}, nil
+	default:
+		return agentHarnessRunner{}, fmt.Errorf("unsupported agent harness kind %q", h.HarnessKind)
+	}
+}
+
+func normalizeAgentHarnessKind(kind string) string {
+	trimmed := strings.TrimSpace(kind)
+	if trimmed == "" {
+		return "codex_e2b"
+	}
+	return trimmed
 }
 
 func (a *Activities) createGitHubPullRequest(ctx context.Context, executionID uuid.UUID, session sandbox.Session, harness agentHarnessSnapshot, workdir string, timeout time.Duration, gitEnv map[string]string, token string, changedFiles string) error {
@@ -429,11 +472,12 @@ func (a *Activities) execHarnessCommand(ctx context.Context, executionID uuid.UU
 		return sandbox.ExecResult{}, err
 	}
 	stdoutRemainder := ""
+	outputEventType, outputActor, streamOutput := agentHarnessOutputStream(eventType)
 	onStdout := func(chunk []byte) error {
-		if eventType != "codex.exec" {
+		if !streamOutput {
 			return nil
 		}
-		remainder, err := a.recordCodexOutputEvents(ctx, executionID, stdoutRemainder+string(chunk), false)
+		remainder, err := a.recordAgentRunnerOutputEvents(ctx, executionID, outputEventType, outputActor, stdoutRemainder+string(chunk), false)
 		stdoutRemainder = remainder
 		return err
 	}
@@ -444,8 +488,8 @@ func (a *Activities) execHarnessCommand(ctx context.Context, executionID uuid.UU
 		Environment:      maputil.CloneStringMap(env),
 		OnStdout:         onStdout,
 	})
-	if eventType == "codex.exec" && stdoutRemainder != "" {
-		if _, parseErr := a.recordCodexOutputEvents(ctx, executionID, stdoutRemainder, true); err == nil && parseErr != nil {
+	if streamOutput && stdoutRemainder != "" {
+		if _, parseErr := a.recordAgentRunnerOutputEvents(ctx, executionID, outputEventType, outputActor, stdoutRemainder, true); err == nil && parseErr != nil {
 			return sandbox.ExecResult{}, parseErr
 		}
 	}
@@ -578,7 +622,18 @@ func agentHarnessScore(passed int, failed int) float64 {
 	return float64(passed) / float64(totalScored)
 }
 
-func (a *Activities) recordCodexOutputEvents(ctx context.Context, executionID uuid.UUID, raw string, flush bool) (string, error) {
+func agentHarnessOutputStream(eventType string) (string, string, bool) {
+	switch eventType {
+	case "codex.exec":
+		return "codex.exec.output", "codex", true
+	case "hermes.exec":
+		return "hermes.exec.output", "hermes", true
+	default:
+		return "", "", false
+	}
+}
+
+func (a *Activities) recordAgentRunnerOutputEvents(ctx context.Context, executionID uuid.UUID, eventType string, actorType string, raw string, flush bool) (string, error) {
 	lines := strings.Split(raw, "\n")
 	remainder := ""
 	if !flush {
@@ -599,7 +654,7 @@ func (a *Activities) recordCodexOutputEvents(ctx context.Context, executionID uu
 		} else {
 			payload["message"] = line
 		}
-		if err := a.recordAgentHarnessEvent(ctx, executionID, "codex.exec.output", "codex", payload); err != nil {
+		if err := a.recordAgentHarnessEvent(ctx, executionID, eventType, actorType, payload); err != nil {
 			return remainder, err
 		}
 	}
@@ -633,12 +688,34 @@ func agentHarnessEnv(h agentHarnessSnapshot, secrets map[string]string) (map[str
 		if openAIKey == "" {
 			return nil, fmt.Errorf("%w: %s", ErrAgentHarnessSecretMissing, openAISecretName)
 		}
-		env["OPENAI_API_KEY"] = openAIKey
-		env["CODEX_API_KEY"] = openAIKey
+		switch normalizeAgentHarnessKind(h.HarnessKind) {
+		case "codex_e2b":
+			env["OPENAI_API_KEY"] = openAIKey
+			env["CODEX_API_KEY"] = openAIKey
+		case "hermes_e2b":
+			applyHermesSecretEnv(env, openAISecretName, openAIKey)
+		default:
+			return nil, fmt.Errorf("unsupported agent harness kind %q", h.HarnessKind)
+		}
 	default:
 		return nil, fmt.Errorf("unsupported agent harness auth mode %q", h.AuthMode)
 	}
 	return env, nil
+}
+
+func applyHermesSecretEnv(env map[string]string, secretName string, secretValue string) {
+	upperName := strings.ToUpper(secretName)
+	switch {
+	case strings.Contains(upperName, "ANTHROPIC"):
+		env["ANTHROPIC_API_KEY"] = secretValue
+		env["HERMES_INFERENCE_PROVIDER"] = "anthropic"
+	case strings.Contains(upperName, "OPENAI"):
+		env["OPENAI_API_KEY"] = secretValue
+		env["HERMES_INFERENCE_PROVIDER"] = "openai-codex"
+	default:
+		env["OPENROUTER_API_KEY"] = secretValue
+		env["HERMES_INFERENCE_PROVIDER"] = "openrouter"
+	}
 }
 
 func agentHarnessTimeout(raw json.RawMessage) time.Duration {

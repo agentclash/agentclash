@@ -54,6 +54,7 @@ type CreateAgentHarnessParams struct {
 	Name                   string
 	Slug                   string
 	Description            string
+	HarnessKind            string
 	TaskPrompt             string
 	CodexTemplate          string
 	CodexModel             *string
@@ -75,14 +76,14 @@ func (r *Repository) CreateAgentHarness(ctx context.Context, p CreateAgentHarnes
 	row := r.db.QueryRow(ctx, `
 INSERT INTO agent_harnesses (
     organization_id, workspace_id, created_by_user_id, name, slug, description,
-    task_prompt, codex_template, codex_model, auth_mode, openai_api_key_secret_name,
+    harness_kind, task_prompt, codex_template, codex_model, auth_mode, openai_api_key_secret_name,
     e2b_api_key_secret_name, repository_url, repository_provider, github_repository_id,
     github_installation_id, repository_full_name, repository_clone_url, base_branch,
     execution_config, evaluation_config
 ) VALUES (
     $1, $2, $3, $4, $5, $6,
-    $7, $8, $9, $10, $11,
-    $12, $13, $14, $15, $16, $17, $18, $19, $20, $21
+    $7, $8, $9, $10, $11, $12,
+    $13, $14, $15, $16, $17, $18, $19, $20, $21, $22
 )
 RETURNING id, organization_id, workspace_id, created_by_user_id, name, slug, description,
     status, harness_kind, task_prompt, codex_template, codex_model, auth_mode,
@@ -90,7 +91,7 @@ RETURNING id, organization_id, workspace_id, created_by_user_id, name, slug, des
     github_repository_id, github_installation_id, repository_full_name, repository_clone_url, base_branch,
     execution_config, evaluation_config, created_at, updated_at, archived_at`,
 		p.OrganizationID, p.WorkspaceID, p.CreatedByUserID, p.Name, p.Slug, p.Description,
-		p.TaskPrompt, p.CodexTemplate, p.CodexModel, p.AuthMode, p.OpenAIAPIKeySecretName,
+		p.HarnessKind, p.TaskPrompt, p.CodexTemplate, p.CodexModel, p.AuthMode, p.OpenAIAPIKeySecretName,
 		p.E2BAPIKeySecretName, p.RepositoryURL, p.RepositoryProvider, p.GitHubRepositoryID,
 		p.GitHubInstallationID, p.RepositoryFullName, p.RepositoryCloneURL, p.BaseBranch,
 		p.ExecutionConfig, p.EvaluationConfig,

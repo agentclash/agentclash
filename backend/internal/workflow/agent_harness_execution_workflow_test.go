@@ -275,6 +275,84 @@ func TestExecuteAgentHarnessExecutionWithoutRepositorySkipsGitArtifactCapture(t 
 	}
 }
 
+func TestExecuteAgentHarnessExecutionRunsHermesAndRecordsTrace(t *testing.T) {
+	workspaceID := uuid.New()
+	harnessID := uuid.New()
+	executionID := uuid.New()
+	hermesSecret := "OPENROUTER_API_KEY"
+	model := "anthropic/claude-sonnet-4"
+	repo := newFakeRunRepository(fixtureRun(uuid.New(), domain.RunStatusQueued))
+	repo.setAgentHarness(repository.AgentHarness{
+		ID:                     harnessID,
+		OrganizationID:         uuid.New(),
+		WorkspaceID:            workspaceID,
+		HarnessKind:            "hermes_e2b",
+		TaskPrompt:             "implement issue 462",
+		CodexTemplate:          "agentclash-hermes-fullstack",
+		CodexModel:             &model,
+		AuthMode:               "api_key_secret",
+		OpenAIAPIKeySecretName: &hermesSecret,
+		ExecutionConfig:        json.RawMessage(`{"timeout_seconds":120}`),
+	})
+	repo.setAgentHarnessExecution(repository.AgentHarnessExecution{
+		ID:                      executionID,
+		WorkspaceID:             workspaceID,
+		AgentHarnessID:          harnessID,
+		Status:                  string(repository.AgentHarnessExecutionStatusRunning),
+		ExecutionConfigSnapshot: json.RawMessage(`{"timeout_seconds":120}`),
+	})
+	repo.setWorkspaceSecrets(workspaceID, map[string]string{hermesSecret: "sk-or-test"})
+
+	session := sandbox.NewFakeSession("sandbox-1")
+	session.SetExecFunc(func(request sandbox.ExecRequest, _ map[string][]byte) (sandbox.ExecResult, error) {
+		switch {
+		case len(request.Command) >= 2 && request.Command[0] == "hermes" && request.Command[1] == "chat":
+			if request.Environment["OPENROUTER_API_KEY"] != "sk-or-test" || request.Environment["HERMES_INFERENCE_PROVIDER"] != "openrouter" {
+				t.Fatalf("hermes env = %#v, want OpenRouter key and provider", request.Environment)
+			}
+			if containsString(request.Command, "OPENROUTER_API_KEY") {
+				t.Fatalf("hermes command leaked secret name: %#v", request.Command)
+			}
+			if !containsString(request.Command, "--toolsets") || !containsString(request.Command, "terminal,skills") {
+				t.Fatalf("hermes command = %#v, want terminal and skills toolsets", request.Command)
+			}
+			if !containsString(request.Command, "--model") || !containsString(request.Command, model) {
+				t.Fatalf("hermes command = %#v, want model override", request.Command)
+			}
+			if !containsString(request.Command, "-q") || !containsString(request.Command, "implement issue 462") {
+				t.Fatalf("hermes command = %#v, want single query task", request.Command)
+			}
+			return sandbox.ExecResult{ExitCode: 0, Stdout: `{"type":"assistant","message":"done"}`}, nil
+		default:
+			t.Fatalf("unexpected command: %#v", request.Command)
+			return sandbox.ExecResult{}, nil
+		}
+	})
+	provider := &sandbox.FakeProvider{NextSession: session}
+	activities := NewActivities(repo, FakeWorkHooks{}).WithSandboxProvider(provider)
+
+	err := activities.ExecuteAgentHarnessExecution(context.Background(), ExecuteAgentHarnessExecutionInput{ExecutionID: executionID})
+	if err != nil {
+		t.Fatalf("ExecuteAgentHarnessExecution error: %v", err)
+	}
+	if provider.CreateRequests[0].TemplateID != "agentclash-hermes-fullstack" {
+		t.Fatalf("template id = %q, want Hermes template", provider.CreateRequests[0].TemplateID)
+	}
+	if provider.CreateRequests[0].EnvVars["OPENROUTER_API_KEY"] != "sk-or-test" {
+		t.Fatalf("sandbox env vars = %#v, want OpenRouter key", provider.CreateRequests[0].EnvVars)
+	}
+	var sawHermesOutput bool
+	for _, event := range repo.agentHarnessEvents[executionID] {
+		if event.EventType == "hermes.exec.output" && event.ActorType == "hermes" {
+			sawHermesOutput = true
+			break
+		}
+	}
+	if !sawHermesOutput {
+		t.Fatal("expected live hermes output event")
+	}
+}
+
 func TestExecuteAgentHarnessExecutionFailsEarlyWhenGitHubAccessRevoked(t *testing.T) {
 	workspaceID := uuid.New()
 	harnessID := uuid.New()

@@ -272,7 +272,7 @@ describe("CreateAgentHarnessDialog", () => {
     const rendered = renderDialog();
 
     clickButton("New Harness");
-    changeSelect(0, "100");
+    changeSelect(1, "100");
     changeInput(0, "main");
     changeTextarea(0, "Implement the requested feature and run tests.");
     clickButton("Create Harness");
@@ -282,6 +282,7 @@ describe("CreateAgentHarnessDialog", () => {
       "/v1/workspaces/ws-1/agent-harnesses",
       expect.objectContaining({
         name: "acme/agent-app Codex",
+        harness_kind: "codex_e2b",
         task_prompt: "Implement the requested feature and run tests.",
         codex_template: "codex",
         auth_mode: "api_key_secret",
@@ -296,6 +297,38 @@ describe("CreateAgentHarnessDialog", () => {
       }),
     );
     expect(mockMutate).toHaveBeenCalled();
+    rendered.cleanup();
+  });
+
+  it("posts Hermes/E2B harness payload using the inferred Hermes secret", async () => {
+    mockSecrets.mockReturnValue([
+      {
+        key: "OPENROUTER_API_KEY",
+        created_at: "2026-05-01T00:00:00Z",
+        updated_at: "2026-05-01T00:00:00Z",
+      },
+    ]);
+    const post = vi.fn().mockResolvedValue({ id: "harness-1" });
+    mockCreateApiClient.mockReturnValue({ post });
+    const rendered = renderDialog();
+
+    clickButton("New Harness");
+    changeSelect(0, "hermes_e2b");
+    clickButton("URL");
+    changeInput(0, "https://github.com/acme/agent-app");
+    changeTextarea(0, "Implement the requested feature and run tests.");
+    clickButton("Create Harness");
+    await flushPromises();
+
+    expect(post).toHaveBeenCalledWith(
+      "/v1/workspaces/ws-1/agent-harnesses",
+      expect.objectContaining({
+        name: "acme/agent-app Hermes",
+        harness_kind: "hermes_e2b",
+        codex_template: "agentclash-hermes-fullstack",
+        openai_api_key_secret_name: "OPENROUTER_API_KEY",
+      }),
+    );
     rendered.cleanup();
   });
 

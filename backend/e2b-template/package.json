@@ -3,7 +3,9 @@
     "build:dev": "tsx build.dev.ts",
     "build:prod": "tsx build.prod.ts",
     "build:codex:dev": "tsx build.codex.dev.ts",
-    "build:codex:prod": "tsx build.codex.prod.ts"
+    "build:codex:prod": "tsx build.codex.prod.ts",
+    "build:hermes:dev": "tsx build.hermes.dev.ts",
+    "build:hermes:prod": "tsx build.hermes.prod.ts"
   },
   "dependencies": {
     "e2b": "^2.14.1",
