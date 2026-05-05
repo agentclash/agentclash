@@ -107,6 +107,13 @@ function makeItem(overrides: Partial<FailureReviewItem> = {}): FailureReviewItem
     headline: "Filesystem write regression",
     detail: "The model attempted a forbidden file write.",
     recommended_action: "Add a regression case for filesystem access.",
+    remediation: {
+      area: "prompt_or_model",
+      label: "Prompt or model behavior",
+      summary:
+        "The visible evidence points at agent behavior or answer quality.",
+      evidence: ["Failed dimensions: correctness", "Failed checks: capture.files"],
+    },
     promotable: true,
     promotion_mode_available: ["full_executable", "output_only"],
     replay_step_refs: [],
@@ -137,6 +144,13 @@ function makeCluster(
     run_agent_ids: ["agent-1"],
     headline: "Filesystem write failures cluster together",
     recommended_action: "Promote one representative filesystem regression.",
+    remediation: {
+      area: "prompt_or_model",
+      label: "Prompt or model behavior",
+      summary:
+        "The visible evidence points at agent behavior or answer quality.",
+      evidence: ["Failed dimensions: correctness", "Failed checks: capture.files"],
+    },
     history: {
       trend: "increasing",
       window_run_count: 10,
@@ -252,6 +266,8 @@ describe("FailuresClient", () => {
       expect(view.container.textContent).toContain(
         "Filesystem write failures cluster together",
       );
+      expect(view.container.textContent).toContain("Likely issue area");
+      expect(view.container.textContent).toContain("Prompt or model behavior");
       expect(view.container.textContent).toContain("agent · Policy violation");
       expect(view.container.textContent).toContain("increasing");
       expect(view.container.textContent).toContain(

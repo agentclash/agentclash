@@ -313,6 +313,7 @@ func TestBuildClusterSummariesGroupsAndSortsDeterministically(t *testing.T) {
 			Severity:           SeverityWarning,
 			Headline:           "ticket-b triggered tool_argument_error",
 			RecommendedAction:  "Inspect the replay around the failing tool call and correct the selection or arguments.",
+			Remediation:        RemediationHint{Area: RemediationAreaToolOrWorkflow, Label: "Tool or workflow", Summary: "Inspect tool wiring.", Evidence: []string{"Failed checks: tool_argument.schema"}},
 			Promotable:         true,
 		},
 		{
@@ -328,6 +329,7 @@ func TestBuildClusterSummariesGroupsAndSortsDeterministically(t *testing.T) {
 			Severity:           SeverityBlocking,
 			Headline:           "ticket-a triggered policy_violation",
 			RecommendedAction:  "Tighten the agent or tool policy before promoting this failure.",
+			Remediation:        RemediationHint{Area: RemediationAreaPromptOrModel, Label: "Prompt or model behavior", Summary: "Inspect prompt behavior.", Evidence: []string{"Failed checks: policy.filesystem"}},
 			Promotable:         true,
 		},
 		{
@@ -343,6 +345,7 @@ func TestBuildClusterSummariesGroupsAndSortsDeterministically(t *testing.T) {
 			Severity:           SeverityWarning,
 			Headline:           "ticket-b triggered tool_argument_error",
 			RecommendedAction:  "Inspect the replay around the failing tool call and correct the selection or arguments.",
+			Remediation:        RemediationHint{Area: RemediationAreaToolOrWorkflow, Label: "Tool or workflow", Summary: "Inspect tool wiring.", Evidence: []string{"Failed checks: tool_argument.schema"}},
 			Promotable:         false,
 		},
 	}
@@ -370,6 +373,9 @@ func TestBuildClusterSummariesGroupsAndSortsDeterministically(t *testing.T) {
 	}
 	if summaries[1].RepresentativeFailureFingerprint != "frf-b1" {
 		t.Fatalf("representative fingerprint = %q, want first matching fingerprint", summaries[1].RepresentativeFailureFingerprint)
+	}
+	if summaries[1].Remediation.Area != RemediationAreaToolOrWorkflow {
+		t.Fatalf("cluster remediation area = %s, want %s", summaries[1].Remediation.Area, RemediationAreaToolOrWorkflow)
 	}
 }
 
@@ -543,6 +549,12 @@ func TestBuildRunAgentItemsHandlesHostedBlackBoxEligibility(t *testing.T) {
 	if item.Severity != SeverityWarning {
 		t.Fatalf("severity = %s, want %s for hosted black-box evidence", item.Severity, SeverityWarning)
 	}
+	if item.Remediation.Area != RemediationAreaToolOrWorkflow {
+		t.Fatalf("remediation area = %s, want %s", item.Remediation.Area, RemediationAreaToolOrWorkflow)
+	}
+	if len(item.Remediation.Evidence) == 0 || !strings.Contains(item.Remediation.Evidence[0], "tool_argument.schema") {
+		t.Fatalf("remediation evidence = %#v, want failed tool argument check", item.Remediation.Evidence)
+	}
 }
 
 func TestBuildRunAgentItemsSkipsOutputOnlyPromotionWithoutChallengeInputSet(t *testing.T) {
@@ -713,12 +725,27 @@ func TestAssembleFailureReviewItemBuildsRefsAndFailedChecks(t *testing.T) {
 	if item.MetricRefs == nil {
 		t.Fatal("metric refs = nil, want empty slice for stable JSON arrays")
 	}
+	if item.FailureClass != FailureClassMalformedOutput {
+		t.Fatalf("failure class = %s, want %s from json_schema failure", item.FailureClass, FailureClassMalformedOutput)
+	}
+	if item.Remediation.Area != RemediationAreaOutputContract {
+		t.Fatalf("remediation area = %s, want %s", item.Remediation.Area, RemediationAreaOutputContract)
+	}
+	if item.Remediation.Label != "Output contract" {
+		t.Fatalf("remediation label = %q, want Output contract", item.Remediation.Label)
+	}
+	if len(item.Remediation.Evidence) == 0 || !strings.Contains(strings.Join(item.Remediation.Evidence, "\n"), "tool_argument.schema") {
+		t.Fatalf("remediation evidence = %#v, want failed schema check", item.Remediation.Evidence)
+	}
 	encoded, err := json.Marshal(item)
 	if err != nil {
 		t.Fatalf("json.Marshal returned error: %v", err)
 	}
 	if !json.Valid(encoded) || !strings.Contains(string(encoded), `"severity":"`) {
 		t.Fatalf("encoded item = %s, want severity on the wire", encoded)
+	}
+	if !strings.Contains(string(encoded), `"remediation":`) || !strings.Contains(string(encoded), `"area":"output_contract"`) {
+		t.Fatalf("encoded item = %s, want remediation on the wire", encoded)
 	}
 	if !strings.Contains(string(encoded), `"failure_fingerprint":"`) || !strings.Contains(string(encoded), `"failure_cluster_key":"`) {
 		t.Fatalf("encoded item = %s, want failure identity fields on the wire", encoded)
