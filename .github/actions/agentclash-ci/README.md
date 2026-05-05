@@ -64,7 +64,7 @@ jobs:
 | `token` | `AGENTCLASH_TOKEN` | AgentClash API token. |
 | `workspace` | `AGENTCLASH_WORKSPACE` | AgentClash workspace ID. |
 | `api-url` | `https://api.agentclash.dev` | AgentClash API base URL. |
-| `app-url` | `https://app.agentclash.dev` | AgentClash app base URL used for PR comment links. |
+| `app-url` | `https://www.agentclash.dev` | AgentClash app base URL used for PR comment links. |
 | `install-cli` | `true` | Install `agentclash` from npm before running. |
 | `cli-version` | `latest` | npm version or tag for the `agentclash` package. |
 | `remote-validate` | `true` | Validate manifest resource IDs against the API. |

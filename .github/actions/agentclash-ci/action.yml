@@ -23,7 +23,7 @@ inputs:
   app-url:
     description: AgentClash app base URL used for links in PR comments.
     required: false
-    default: https://app.agentclash.dev
+    default: https://www.agentclash.dev
   install-cli:
     description: Install the published agentclash npm package before running.
     required: false
