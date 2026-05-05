@@ -16,8 +16,11 @@ import (
 )
 
 const (
+	AgentHarnessKindCodexE2B         = "codex_e2b"
+	AgentHarnessKindOpenClawE2B      = "openclaw_e2b"
 	AgentHarnessAuthModeAPIKeySecret = "api_key_secret"
 	defaultCodexE2BTemplate          = "codex"
+	defaultOpenClawE2BTemplate       = "agentclash-openclaw-fullstack"
 )
 
 type AgentHarnessRepository interface {
@@ -70,6 +73,7 @@ func NewAgentHarnessManager(authorizer WorkspaceAuthorizer, repo AgentHarnessRep
 type CreateAgentHarnessInput struct {
 	Name                   string          `json:"name"`
 	Description            string          `json:"description"`
+	HarnessKind            string          `json:"harness_kind"`
 	TaskPrompt             string          `json:"task_prompt"`
 	CodexTemplate          string          `json:"codex_template"`
 	CodexModel             string          `json:"codex_model"`
@@ -110,9 +114,10 @@ func (m *AgentHarnessManager) CreateAgentHarness(ctx context.Context, caller Cal
 		return repository.AgentHarness{}, err
 	}
 
+	harnessKind := normalizeAgentHarnessKind(input.HarnessKind)
 	codexTemplate := strings.TrimSpace(input.CodexTemplate)
 	if codexTemplate == "" {
-		codexTemplate = defaultCodexE2BTemplate
+		codexTemplate = defaultAgentHarnessTemplate(harnessKind)
 	}
 	repositoryProvider := optionalHarnessString(input.RepositoryProvider)
 	var githubRepositoryID *int64
@@ -149,6 +154,7 @@ func (m *AgentHarnessManager) CreateAgentHarness(ctx context.Context, caller Cal
 		Name:                   strings.TrimSpace(input.Name),
 		Slug:                   generateSlug(input.Name),
 		Description:            strings.TrimSpace(input.Description),
+		HarnessKind:            harnessKind,
 		TaskPrompt:             strings.TrimSpace(input.TaskPrompt),
 		CodexTemplate:          codexTemplate,
 		CodexModel:             optionalHarnessString(input.CodexModel),
@@ -273,6 +279,11 @@ func validateAgentHarnessInput(input CreateAgentHarnessInput) error {
 	if strings.TrimSpace(input.TaskPrompt) == "" {
 		return AgentHarnessValidationError{Code: "invalid_task_prompt", Message: "task_prompt is required"}
 	}
+	switch normalizeAgentHarnessKind(input.HarnessKind) {
+	case AgentHarnessKindCodexE2B, AgentHarnessKindOpenClawE2B:
+	default:
+		return AgentHarnessValidationError{Code: "invalid_harness_kind", Message: "harness_kind must be codex_e2b or openclaw_e2b"}
+	}
 	switch strings.TrimSpace(input.AuthMode) {
 	case AgentHarnessAuthModeAPIKeySecret:
 	case "":
@@ -301,6 +312,23 @@ func validateAgentHarnessInput(input CreateAgentHarnessInput) error {
 		}
 	}
 	return nil
+}
+
+func normalizeAgentHarnessKind(kind string) string {
+	trimmed := strings.TrimSpace(kind)
+	if trimmed == "" {
+		return AgentHarnessKindCodexE2B
+	}
+	return trimmed
+}
+
+func defaultAgentHarnessTemplate(kind string) string {
+	switch kind {
+	case AgentHarnessKindOpenClawE2B:
+		return defaultOpenClawE2BTemplate
+	default:
+		return defaultCodexE2BTemplate
+	}
 }
 
 func optionalHarnessString(value string) *string {

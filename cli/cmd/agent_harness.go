@@ -25,9 +25,11 @@ func init() {
 	agentHarnessCreateCmd.Flags().String("name", "", "Harness name")
 	agentHarnessCreateCmd.Flags().String("description", "", "Harness description")
 	agentHarnessCreateCmd.Flags().String("task", "", "Task prompt for the coding harness")
-	agentHarnessCreateCmd.Flags().String("codex-template", "codex", "E2B template with Codex installed")
-	agentHarnessCreateCmd.Flags().String("codex-model", "", "Codex model override")
-	agentHarnessCreateCmd.Flags().String("auth-mode", "api_key_secret", "Codex auth mode: api_key_secret")
+	agentHarnessCreateCmd.Flags().String("harness-kind", "codex_e2b", "Harness runner kind: codex_e2b or openclaw_e2b")
+	agentHarnessCreateCmd.Flags().String("codex-template", "", "E2B template override for the harness runner")
+	agentHarnessCreateCmd.Flags().String("codex-model", "", "Runner model override")
+	agentHarnessCreateCmd.Flags().String("auth-mode", "api_key_secret", "Harness auth mode: api_key_secret")
+	agentHarnessCreateCmd.Flags().String("api-key-secret", "", "Workspace secret name containing the runner provider API key")
 	agentHarnessCreateCmd.Flags().String("openai-api-key-secret", "", "Workspace secret name containing OPENAI_API_KEY")
 	agentHarnessCreateCmd.Flags().String("repository-url", "", "Repository URL for the harness task")
 	agentHarnessCreateCmd.Flags().String("base-branch", "", "Base branch for repository work")
@@ -45,7 +47,7 @@ var agentHarnessCmd = &cobra.Command{
 	Short:   "Manage coding-agent harnesses",
 	Long: `Manage Agent Harnesses: workspace-scoped coding-agent task definitions.
 
-Agent Harnesses are not challenge packs. They store a task prompt, Codex/E2B
+Agent Harnesses are not challenge packs. They store a task prompt, runner/E2B
 execution settings, and reusable evaluation config for long-running autonomous
 coding checks.`,
 }
@@ -76,12 +78,13 @@ var agentHarnessListCmd = &cobra.Command{
 			return rc.Output.PrintRaw(result)
 		}
 
-		cols := []output.Column{{Header: "ID"}, {Header: "Name"}, {Header: "Auth"}, {Header: "Template"}, {Header: "Status"}, {Header: "Updated"}}
+		cols := []output.Column{{Header: "ID"}, {Header: "Name"}, {Header: "Kind"}, {Header: "Auth"}, {Header: "Template"}, {Header: "Status"}, {Header: "Updated"}}
 		rows := make([][]string, len(result.Items))
 		for i, item := range result.Items {
 			rows[i] = []string{
 				str(item["id"]),
 				str(item["name"]),
+				str(item["harness_kind"]),
 				str(item["auth_mode"]),
 				str(item["codex_template"]),
 				output.StatusColor(str(item["status"])),
@@ -120,8 +123,9 @@ var agentHarnessGetCmd = &cobra.Command{
 
 		rc.Output.PrintDetail("ID", str(harness["id"]))
 		rc.Output.PrintDetail("Name", str(harness["name"]))
+		rc.Output.PrintDetail("Kind", str(harness["harness_kind"]))
 		rc.Output.PrintDetail("Auth", str(harness["auth_mode"]))
-		rc.Output.PrintDetail("Codex Template", str(harness["codex_template"]))
+		rc.Output.PrintDetail("Template", str(harness["codex_template"]))
 		rc.Output.PrintDetail("Repository", str(harness["repository_url"]))
 		rc.Output.PrintDetail("Status", output.StatusColor(str(harness["status"])))
 		rc.Output.PrintDetail("Task", str(harness["task_prompt"]))
@@ -159,8 +163,9 @@ var agentHarnessCreateCmd = &cobra.Command{
 		}
 
 		rc.Output.PrintSuccess(fmt.Sprintf("Created agent harness %s (%s)", str(harness["name"]), str(harness["id"])))
+		rc.Output.PrintDetail("Kind", str(harness["harness_kind"]))
 		rc.Output.PrintDetail("Auth", str(harness["auth_mode"]))
-		rc.Output.PrintDetail("Codex Template", str(harness["codex_template"]))
+		rc.Output.PrintDetail("Template", str(harness["codex_template"]))
 		return nil
 	},
 }
@@ -351,11 +356,22 @@ func buildAgentHarnessCreateBody(cmd *cobra.Command) (map[string]any, error) {
 	setFlagIfChanged(cmd, body, "name", "name")
 	setFlagIfChanged(cmd, body, "description", "description")
 	setFlagIfChanged(cmd, body, "task", "task_prompt")
+	setFlagIfChanged(cmd, body, "harness-kind", "harness_kind")
 	setFlagIfChanged(cmd, body, "codex-model", "codex_model")
-	setFlagIfChanged(cmd, body, "openai-api-key-secret", "openai_api_key_secret_name")
 	setFlagIfChanged(cmd, body, "repository-url", "repository_url")
 	setFlagIfChanged(cmd, body, "base-branch", "base_branch")
+	apiKeySecret, _ := cmd.Flags().GetString("api-key-secret")
+	openAIAPIKeySecret, _ := cmd.Flags().GetString("openai-api-key-secret")
+	if strings.TrimSpace(apiKeySecret) != "" {
+		body["openai_api_key_secret_name"] = strings.TrimSpace(apiKeySecret)
+	} else if strings.TrimSpace(openAIAPIKeySecret) != "" {
+		body["openai_api_key_secret_name"] = strings.TrimSpace(openAIAPIKeySecret)
+	}
+	harnessKind, _ := cmd.Flags().GetString("harness-kind")
 	codexTemplate, _ := cmd.Flags().GetString("codex-template")
+	if strings.TrimSpace(codexTemplate) == "" {
+		codexTemplate = defaultAgentHarnessTemplateForKind(harnessKind)
+	}
 	body["codex_template"] = codexTemplate
 	authMode, _ := cmd.Flags().GetString("auth-mode")
 	body["auth_mode"] = authMode
@@ -377,7 +393,7 @@ func buildAgentHarnessCreateBody(cmd *cobra.Command) (map[string]any, error) {
 }
 
 func requiredAgentHarnessCreateFlags(cmd *cobra.Command) []string {
-	required := []string{"name", "task", "auth-mode", "openai-api-key-secret"}
+	required := []string{"name", "task", "auth-mode"}
 	missing := make([]string, 0, len(required))
 	for _, flagName := range required {
 		value, _ := cmd.Flags().GetString(flagName)
@@ -385,7 +401,21 @@ func requiredAgentHarnessCreateFlags(cmd *cobra.Command) []string {
 			missing = append(missing, "--"+flagName)
 		}
 	}
+	apiKeySecret, _ := cmd.Flags().GetString("api-key-secret")
+	openAIAPIKeySecret, _ := cmd.Flags().GetString("openai-api-key-secret")
+	if strings.TrimSpace(apiKeySecret) == "" && strings.TrimSpace(openAIAPIKeySecret) == "" {
+		missing = append(missing, "--api-key-secret")
+	}
 	return missing
+}
+
+func defaultAgentHarnessTemplateForKind(kind string) string {
+	switch strings.TrimSpace(kind) {
+	case "openclaw_e2b":
+		return "agentclash-openclaw-fullstack"
+	default:
+		return "codex"
+	}
 }
 
 func setJSONFlag(cmd *cobra.Command, body map[string]any, flagName, jsonKey string) error {
