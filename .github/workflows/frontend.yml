@@ -17,6 +17,24 @@ defaults:
     working-directory: web
 
 jobs:
+  agentclash-comment-smoke:
+    name: AgentClash PR Comment Smoke
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: write
+    steps:
+      - name: Exercise merged AgentClash CI comment path
+        continue-on-error: true
+        uses: agentclash/agentclash/.github/actions/agentclash-ci@main
+        with:
+          install-cli: "false"
+          remote-validate: "false"
+          manifest: .agentclash/comment-smoke-missing.yaml
+          pr-comment: "true"
+
   lint-typecheck:
     name: Lint & Typecheck
     runs-on: ubuntu-latest
