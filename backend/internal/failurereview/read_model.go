@@ -984,7 +984,7 @@ func recommendedActionForClass(class FailureClass) string {
 	case FailureClassSandboxFailure:
 		return "Inspect sandbox command events and environment assumptions before retrying."
 	case FailureClassDependencyResolution:
-		return "Verify dependency declarations, import paths, and registry availability before promoting this failure."
+		return "Verify dependency declarations, import paths, and registry availability."
 	case FailureClassMalformedOutput:
 		return "Validate the final-output contract and any JSON/schema formatting logic."
 	case FailureClassIncorrectFinalOutput:

@@ -39,18 +39,40 @@ func TestClassifyFailureClassMappings(t *testing.T) {
 			want: FailureClassDependencyResolution,
 		},
 		{
-			name: "unresolved import runtime message",
+			name: "dependency resolution import key",
 			input: ClassificationInput{
-				FailedChecks: []string{"Cannot find module '@fake/hallucinated-sdk'"},
+				FailedChecks: []string{"import.resolution.npm"},
 			},
 			want: FailureClassDependencyResolution,
 		},
 		{
-			name: "python missing package message",
+			name: "dependency resolution dependencies key",
 			input: ClassificationInput{
-				FailedChecks: []string{"No module named hallucinated_client"},
+				FailedChecks: []string{"dependencies.pypi"},
 			},
 			want: FailureClassDependencyResolution,
+		},
+		{
+			name: "registry package not found message",
+			input: ClassificationInput{
+				FailedChecks: []string{"Package hallucinated-client was not found in registry"},
+			},
+			want: FailureClassDependencyResolution,
+		},
+		{
+			name: "generic module not found stays other",
+			input: ClassificationInput{
+				FailedChecks: []string{"Cannot find module '@fake/hallucinated-sdk'"},
+			},
+			want: FailureClassOther,
+		},
+		{
+			name: "sandbox failure takes precedence over dependency key",
+			input: ClassificationInput{
+				FailedChecks:      []string{"dependency.registry"},
+				HasSandboxFailure: true,
+			},
+			want: FailureClassSandboxFailure,
 		},
 		{
 			name: "timeout and budget",
@@ -140,5 +162,16 @@ func TestTaxonomyForFailureClass(t *testing.T) {
 				t.Fatalf("taxonomy = %+v, want family=%s code=%s agent_fault=%t with label", got, tt.family, tt.code, tt.agentFault)
 			}
 		})
+	}
+}
+
+func TestDependencyResolutionPresentationDefaults(t *testing.T) {
+	t.Parallel()
+
+	if got := severityFor(FailureClassDependencyResolution, FailureStateFailed, EvidenceTierNativeStructured); got != SeverityWarning {
+		t.Fatalf("severityFor(dependency_resolution_failure) = %s, want %s", got, SeverityWarning)
+	}
+	if got := recommendedActionForClass(FailureClassDependencyResolution); got != "Verify dependency declarations, import paths, and registry availability." {
+		t.Fatalf("recommendedActionForClass(dependency_resolution_failure) = %q", got)
 	}
 }

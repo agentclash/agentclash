@@ -112,17 +112,14 @@ func containsAny(value string, needles ...string) bool {
 func isDependencyResolutionCheck(normalized string) bool {
 	return strings.HasPrefix(normalized, "dependency.") ||
 		strings.HasPrefix(normalized, "dependencies.") ||
-		strings.HasPrefix(normalized, "import.") ||
+		strings.HasPrefix(normalized, "import.resolution.") ||
+		strings.HasPrefix(normalized, "import.dependency.") ||
 		containsAny(
 			normalized,
-			"unresolved import",
-			"missing import",
-			"missing module",
-			"module_not_found",
-			"module not found",
-			"cannot find module",
-			"no module named",
-			"package not found",
+			"unresolved dependency",
+			"missing dependency",
+			"dependency not found",
+			"package not found in registry",
 			"no matching distribution",
 			"not found in registry",
 			"hallucinated dependency",
