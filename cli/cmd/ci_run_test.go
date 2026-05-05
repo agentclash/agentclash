@@ -433,6 +433,26 @@ func TestCIRunPromotionCurationLinksOmitMissingValues(t *testing.T) {
 	}
 }
 
+func TestCIRunPromotionCurationLinksUseFirstNonEmptyURL(t *testing.T) {
+	links := ciRunPromotionCurationLinks(ciRunResult{}, map[string]any{
+		"url":              "",
+		"release_gate_url": "https://app.agentclash.dev/release-gates/gate-1",
+	}, map[string]any{
+		"url":           "",
+		"web_url":       "https://app.agentclash.dev/scorecards/agent-candidate",
+		"scorecard_url": "https://app.agentclash.dev/scorecards/fallback",
+	}, map[string]any{
+		"url":            "",
+		"comparison_url": "https://app.agentclash.dev/compare/run-baseline/run-candidate",
+	})
+
+	if links["scorecard"] != "https://app.agentclash.dev/scorecards/agent-candidate" ||
+		links["comparison"] != "https://app.agentclash.dev/compare/run-baseline/run-candidate" ||
+		links["release_gate"] != "https://app.agentclash.dev/release-gates/gate-1" {
+		t.Fatalf("links = %+v, want first non-empty fallback URLs", links)
+	}
+}
+
 func TestCIRunPromotionFailureTaxonomyRegressionGateFailure(t *testing.T) {
 	taxonomy := ciRunPromotionFailureTaxonomy(ciRunFailureReviewItem{
 		FailureClass: "policy_violation",

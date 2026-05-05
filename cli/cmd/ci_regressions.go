@@ -393,11 +393,20 @@ func ciRunPromotionCurationLinks(result ciRunResult, releaseGate map[string]any,
 		}
 	}
 	add("candidate_run", result.Candidate.RunURL)
-	add("scorecard", mapString(scorecard, "url", "web_url", "scorecard_url"))
-	add("replay", mapString(scorecard, "replay_url"))
-	add("comparison", mapString(comparison, "url", "web_url", "comparison_url"))
-	add("release_gate", mapString(releaseGate, "url", "web_url", "release_gate_url"))
+	add("scorecard", ciRunFirstNonEmptyMapString(scorecard, "url", "web_url", "scorecard_url"))
+	add("replay", ciRunFirstNonEmptyMapString(scorecard, "replay_url"))
+	add("comparison", ciRunFirstNonEmptyMapString(comparison, "url", "web_url", "comparison_url"))
+	add("release_gate", ciRunFirstNonEmptyMapString(releaseGate, "url", "web_url", "release_gate_url"))
 	return links
+}
+
+func ciRunFirstNonEmptyMapString(m map[string]any, keys ...string) string {
+	for _, key := range keys {
+		if value := strings.TrimSpace(mapString(m, key)); value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func ciRunPromotionFailureTaxonomy(failure ciRunFailureReviewItem, result ciRunResult, releaseGate map[string]any) map[string]any {
