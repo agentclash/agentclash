@@ -56,6 +56,8 @@ export function CreateRunDialog({ workspaceId }: CreateRunDialogProps) {
   const [selectedRegressionCaseIds, setSelectedRegressionCaseIds] = useState<
     string[]
   >([]);
+  const [includeProposedRegressions, setIncludeProposedRegressions] =
+    useState(false);
   const [officialPackMode, setOfficialPackMode] =
     useState<OfficialPackMode>("full");
   const [raceContext, setRaceContext] = useState(false);
@@ -131,6 +133,7 @@ export function CreateRunDialog({ workspaceId }: CreateRunDialogProps) {
     setInputSets([]);
     setSelectedRegressionSuiteIds([]);
     setSelectedRegressionCaseIds([]);
+    setIncludeProposedRegressions(false);
     setOfficialPackMode("full");
     setRegressionLoadError(null);
     if (packId) {
@@ -246,7 +249,11 @@ export function CreateRunDialog({ workspaceId }: CreateRunDialogProps) {
             );
             return [
               suiteId,
-              response.items.filter((regressionCase) => regressionCase.status === "active"),
+              response.items.filter(
+                (regressionCase) =>
+                  regressionCase.status === "active" ||
+                  regressionCase.status === "proposed",
+              ),
             ] as const;
           }),
         );
@@ -279,6 +286,25 @@ export function CreateRunDialog({ workspaceId }: CreateRunDialogProps) {
   }, [getAccessToken, open, regressionSuites, selectedPackId, workspaceId]);
 
   useEffect(() => {
+    if (includeProposedRegressions) return;
+
+    const proposedCaseIds = new Set<string>();
+    for (const cases of Object.values(suiteCases)) {
+      for (const regressionCase of cases) {
+        if (regressionCase.status === "proposed") {
+          proposedCaseIds.add(regressionCase.id);
+        }
+      }
+    }
+
+    if (proposedCaseIds.size === 0) return;
+
+    setSelectedRegressionCaseIds((prev) =>
+      prev.filter((caseId) => !proposedCaseIds.has(caseId)),
+    );
+  }, [includeProposedRegressions, suiteCases]);
+
+  useEffect(() => {
     if (selectedRegressionSuiteIds.length === 0 && selectedRegressionCaseIds.length === 0) {
       setOfficialPackMode("full");
     }
@@ -289,6 +315,9 @@ export function CreateRunDialog({ workspaceId }: CreateRunDialogProps) {
 
     setSubmitting(true);
     try {
+      const hasRegressionSelection =
+        selectedRegressionSuiteIds.length > 0 ||
+        selectedRegressionCaseIds.length > 0;
       const token = await getAccessToken();
       const api = createApiClient(token);
       const request: CreateRunRequest = {
@@ -305,11 +334,10 @@ export function CreateRunDialog({ workspaceId }: CreateRunDialogProps) {
           selectedRegressionCaseIds.length > 0
             ? selectedRegressionCaseIds
             : undefined,
-        official_pack_mode:
-          selectedRegressionSuiteIds.length > 0 ||
-          selectedRegressionCaseIds.length > 0
-            ? officialPackMode
-            : undefined,
+        official_pack_mode: hasRegressionSelection ? officialPackMode : undefined,
+        include_proposed_regressions: hasRegressionSelection
+          ? includeProposedRegressions
+          : undefined,
         race_context: raceContext,
       };
       const result = await api.post<CreateRunResponse>("/v1/runs", request);
@@ -341,6 +369,7 @@ export function CreateRunDialog({ workspaceId }: CreateRunDialogProps) {
     setSelectedDeploymentIds([]);
     setSelectedRegressionSuiteIds([]);
     setSelectedRegressionCaseIds([]);
+    setIncludeProposedRegressions(false);
     setOfficialPackMode("full");
     setRaceContext(false);
     setRegressionLoadError(null);
@@ -524,9 +553,31 @@ export function CreateRunDialog({ workspaceId }: CreateRunDialogProps) {
               </p>
             ) : (
               <div className="space-y-3">
+                <label className="flex items-start gap-2 rounded-lg border border-input p-2 text-sm cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={includeProposedRegressions}
+                    onChange={(e) =>
+                      setIncludeProposedRegressions(e.target.checked)
+                    }
+                    className="mt-0.5 rounded border-input"
+                  />
+                  <span className="space-y-0.5">
+                    <span className="block font-medium text-foreground">
+                      Include proposed cases for validation
+                    </span>
+                    <span className="block text-xs text-muted-foreground">
+                      Proposed cases collect signal but do not block release gates.
+                    </span>
+                  </span>
+                </label>
                 <div className="space-y-2 rounded-lg border border-input p-2">
                   {eligibleRegressionSuites.map((suite) => {
-                    const cases = suiteCases[suite.id] ?? [];
+                    const cases = (suiteCases[suite.id] ?? []).filter(
+                      (regressionCase) =>
+                        regressionCase.status === "active" ||
+                        includeProposedRegressions,
+                    );
                     return (
                       <div key={suite.id} className="space-y-2 rounded-md border border-border/60 p-2">
                         <label className="flex items-start gap-2 text-sm cursor-pointer">
@@ -571,6 +622,11 @@ export function CreateRunDialog({ workspaceId }: CreateRunDialogProps) {
                                   <span className="ml-2 text-xs text-muted-foreground">
                                     {regressionCase.severity}
                                   </span>
+                                  {regressionCase.status === "proposed" && (
+                                    <span className="ml-2 text-xs text-muted-foreground">
+                                      proposed
+                                    </span>
+                                  )}
                                   {regressionCase.failure_summary && (
                                     <span className="mt-0.5 block text-xs text-muted-foreground">
                                       {regressionCase.failure_summary}
