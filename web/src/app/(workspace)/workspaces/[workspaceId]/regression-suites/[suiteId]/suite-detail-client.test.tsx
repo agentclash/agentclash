@@ -274,6 +274,35 @@ describe("regression provenance UI", () => {
     }
   });
 
+  it("omits unsafe CI curation links", () => {
+    const view = render(
+      <CaseDetailClient
+        workspaceId="ws-1"
+        suite={suite}
+        regressionCase={makeCase({
+          metadata: {
+            curation_links: {
+              candidate_run: "javascript:alert(1)",
+              replay: " https://app.agentclash.dev/replays/agent-candidate ",
+            },
+          },
+        })}
+      />,
+    );
+    try {
+      expect(
+        view.container.querySelector('a[href="javascript:alert(1)"]'),
+      ).toBeNull();
+      expect(view.container.textContent).not.toContain("Candidate Run");
+      const replayLink = view.container.querySelector<HTMLAnchorElement>(
+        'a[href="https://app.agentclash.dev/replays/agent-candidate"]',
+      );
+      expect(replayLink?.textContent).toContain("Replay");
+    } finally {
+      view.cleanup();
+    }
+  });
+
   it("renders maintenance variants in the suite case list", () => {
     const view = render(
       <SuiteDetailClient

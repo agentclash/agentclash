@@ -398,7 +398,7 @@ function getCurationLinks(metadata: Record<string, unknown>) {
 
   const result: CurationLink[] = [];
   for (const [key, label] of curationLinkLabels) {
-    const href = readString(links[key]);
+    const href = readExternalURL(links[key]);
     if (href) {
       result.push({ key, label, href });
     }
@@ -433,6 +433,20 @@ function readString(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   return trimmed === "" ? null : trimmed;
+}
+
+function readExternalURL(value: unknown): string | null {
+  const href = readString(value);
+  if (!href) return null;
+
+  try {
+    const parsed = new URL(href);
+    return parsed.protocol === "http:" || parsed.protocol === "https:"
+      ? href
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 function ProvenanceRow({
