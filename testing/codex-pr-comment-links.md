@@ -17,7 +17,8 @@
 
 ## Unit Tests
 - Formatter test for a failing result without API-provided `run_url` asserts the comment includes workspace-scoped candidate, baseline, comparison, failures, scorecard, replay, and regression-case links.
-- Formatter test for explicit safe API URLs asserts they are respected where appropriate.
+- Formatter test asserts workspace-scoped app links are preferred over explicit API run URLs when app metadata is present.
+- Formatter test for explicit safe API URLs asserts they are respected as fallbacks when app link metadata is unavailable.
 - Formatter test for unsafe URLs asserts `javascript:` or similar values are not rendered as links.
 - Existing formatting, skipped, context, create, update, and graceful-skip tests continue to pass.
 

@@ -115,8 +115,8 @@ def build_comment(
 
     status = status_label(result, exit_code)
     links = agentclash_links(result, app_url)
-    candidate_run_url = first_safe_url(nested(result, "candidate.run_url"), links.get("candidate_run"))
-    baseline_run_url = first_safe_url(nested(result, "baseline.run_url"), links.get("baseline_run"))
+    candidate_run_url = first_safe_url(links.get("candidate_run"), nested(result, "candidate.run_url"))
+    baseline_run_url = first_safe_url(links.get("baseline_run"), nested(result, "baseline.run_url"))
     lines = [
         marker,
         f"## AgentClash CI: {status}",

@@ -108,8 +108,32 @@ class CommentFormattingTests(unittest.TestCase):
 
         self.assertIn("https://agentclash.example.com/app/workspaces/workspace-1/runs/run-candidate", body)
 
-    def test_build_failed_comment_respects_safe_api_run_urls(self):
+    def test_build_failed_comment_prefers_app_links_over_safe_api_run_urls(self):
         result = failing_result()
+        result["candidate"]["run_url"] = "https://api.example.com/runs/candidate"
+        result["baseline"]["run_url"] = "https://api.example.com/runs/baseline"
+
+        body = comment.build_comment(
+            manifest=".agentclash/ci.yaml",
+            result=result,
+            should_run={"should_run": True},
+            exit_code=1,
+        )
+
+        self.assertIn(
+            "| Candidate run | [`run-candidate`](https://app.agentclash.dev/workspaces/workspace-1/runs/run-candidate) |",
+            body,
+        )
+        self.assertIn(
+            "| Baseline run | [`run-baseline`](https://app.agentclash.dev/workspaces/workspace-1/runs/run-baseline) |",
+            body,
+        )
+        self.assertNotIn("https://api.example.com/runs/candidate", body)
+        self.assertNotIn("https://api.example.com/runs/baseline", body)
+
+    def test_build_failed_comment_falls_back_to_safe_api_run_urls(self):
+        result = failing_result()
+        result["workspace_id"] = ""
         result["candidate"]["run_url"] = "https://api.example.com/runs/candidate"
         result["baseline"]["run_url"] = "https://api.example.com/runs/baseline"
 
