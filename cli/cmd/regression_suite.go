@@ -51,6 +51,7 @@ func init() {
 	regressionCaseCaptureProductionCmd.Flags().String("incident-id", "", "Production incident ID")
 	regressionCaseCaptureProductionCmd.Flags().String("external-url", "", "Production incident URL")
 	regressionCaseCaptureProductionCmd.Flags().String("source", "", "Production source label")
+	regressionCaseCaptureProductionCmd.Flags().String("observed-at", "", "Production observation timestamp (RFC3339)")
 }
 
 var regressionSuiteCmd = &cobra.Command{
@@ -283,6 +284,7 @@ var regressionCaseCaptureProductionCmd = &cobra.Command{
 		setFlagIfChanged(cmd, body, "incident-id", "incident_id")
 		setFlagIfChanged(cmd, body, "external-url", "external_url")
 		setFlagIfChanged(cmd, body, "source", "source")
+		setFlagIfChanged(cmd, body, "observed-at", "observed_at")
 
 		resp, err := rc.Client.Post(cmd.Context(), "/v1/workspaces/"+wsID+"/regression-suites/"+args[0]+"/production-failures", body)
 		if err != nil {

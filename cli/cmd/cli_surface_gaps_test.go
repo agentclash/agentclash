@@ -187,10 +187,11 @@ func TestRegressionCaseCaptureProductionPayload(t *testing.T) {
 		"--failure-summary", "Agent emitted an invalid tool argument.",
 		"--failure-class", "tool_argument_error",
 		"--incident-id", "INC-123",
+		"--observed-at", "2026-05-05T00:00:00Z",
 	}, srv.URL); err != nil {
 		t.Fatalf("capture production error: %v", err)
 	}
-	if gotBody["source_challenge_pack_version_id"] != "version-1" || gotBody["incident_id"] != "INC-123" {
+	if gotBody["source_challenge_pack_version_id"] != "version-1" || gotBody["incident_id"] != "INC-123" || gotBody["observed_at"] != "2026-05-05T00:00:00Z" {
 		t.Fatalf("unexpected body: %#v", gotBody)
 	}
 	if _, ok := gotBody["payload_snapshot"].(map[string]any); !ok {

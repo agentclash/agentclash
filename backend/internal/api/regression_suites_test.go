@@ -637,6 +637,41 @@ func TestRegressionManagerCaptureProductionFailureCreatesProposedCase(t *testing
 	}
 }
 
+func TestProductionFailureMetadataDefaultsSourceBeforeFingerprint(t *testing.T) {
+	versionID := uuid.New()
+	challengeIdentityID := uuid.New()
+	baseInput := CaptureProductionFailureInput{
+		SourceChallengePackVersionID: versionID,
+		SourceChallengeIdentityID:    challengeIdentityID,
+		SourceCaseKey:                "prod-incident-123",
+		FailureSummary:               "Agent emitted an invalid tool argument in production.",
+	}
+	defaultMetadata, err := productionFailureMetadata(baseInput, string(failurereview.FailureClassToolArgumentError))
+	if err != nil {
+		t.Fatalf("productionFailureMetadata default source: %v", err)
+	}
+	baseInput.Source = "production"
+	explicitMetadata, err := productionFailureMetadata(baseInput, string(failurereview.FailureClassToolArgumentError))
+	if err != nil {
+		t.Fatalf("productionFailureMetadata explicit source: %v", err)
+	}
+
+	var defaultValues map[string]any
+	if err := json.Unmarshal(defaultMetadata, &defaultValues); err != nil {
+		t.Fatalf("default metadata unmarshal: %v", err)
+	}
+	var explicitValues map[string]any
+	if err := json.Unmarshal(explicitMetadata, &explicitValues); err != nil {
+		t.Fatalf("explicit metadata unmarshal: %v", err)
+	}
+	if defaultValues["source"] != "production" {
+		t.Fatalf("default source = %#v, want production", defaultValues["source"])
+	}
+	if defaultValues["source_failure_fingerprint"] != explicitValues["source_failure_fingerprint"] {
+		t.Fatalf("fingerprint default source = %#v, explicit production = %#v", defaultValues["source_failure_fingerprint"], explicitValues["source_failure_fingerprint"])
+	}
+}
+
 func TestRegressionManagerCaptureProductionFailureRejectsInvalidSources(t *testing.T) {
 	workspaceID := uuid.New()
 	suiteID := uuid.New()
@@ -802,6 +837,78 @@ func TestCaptureProductionFailureEndpointCreatesProposedCase(t *testing.T) {
 	}
 	if service.captureInput.PromotionMode == nil || *service.captureInput.PromotionMode != domain.RegressionPromotionModeManual {
 		t.Fatalf("promotion mode = %v, want manual", service.captureInput.PromotionMode)
+	}
+}
+
+func TestCaptureProductionFailureEndpointRejectsInvalidClassAndEvidenceTier(t *testing.T) {
+	workspaceID := uuid.New()
+	userID := uuid.New()
+	suiteID := uuid.New()
+	versionID := uuid.New()
+	challengeIdentityID := uuid.New()
+	service := &fakeRegressionService{}
+	router := buildRouter(routerOptions{
+		authMode:                   "dev",
+		logger:                     testLogger(t),
+		authenticator:              NewDevelopmentAuthenticator(),
+		authorizer:                 NewCallerWorkspaceAuthorizer(),
+		runCreationService:         stubRunCreationService{},
+		runReadService:             stubRunReadService{},
+		replayReadService:          stubReplayReadService{},
+		hostedRunIngestionService:  stubHostedRunIngestionService{},
+		compareReadService:         stubCompareReadService{},
+		agentDeploymentReadService: stubAgentDeploymentReadService{},
+		challengePackReadService:   stubChallengePackReadService{},
+		agentBuildService:          stubAgentBuildService{},
+		releaseGateService:         noopReleaseGateService{},
+		regressionService:          service,
+	})
+
+	testCases := []struct {
+		name string
+		body string
+	}{
+		{
+			name: "invalid failure class",
+			body: fmt.Sprintf(`{
+				"source_challenge_pack_version_id":"%s",
+				"source_challenge_identity_id":"%s",
+				"source_case_key":"prod-incident-123",
+				"title":"Production tool schema incident",
+				"failure_summary":"Agent emitted an invalid tool argument in production.",
+				"failure_class":"custom_agent_breakage",
+				"payload_snapshot":{"ticket":"example"}
+			}`, versionID, challengeIdentityID),
+		},
+		{
+			name: "invalid evidence tier",
+			body: fmt.Sprintf(`{
+				"source_challenge_pack_version_id":"%s",
+				"source_challenge_identity_id":"%s",
+				"source_case_key":"prod-incident-123",
+				"title":"Production tool schema incident",
+				"failure_summary":"Agent emitted an invalid tool argument in production.",
+				"evidence_tier":"custom_replay",
+				"payload_snapshot":{"ticket":"example"}
+			}`, versionID, challengeIdentityID),
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "/v1/workspaces/"+workspaceID.String()+"/regression-suites/"+suiteID.String()+"/production-failures", bytes.NewBufferString(tc.body))
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set(headerUserID, userID.String())
+			req.Header.Set(headerWorkspaceMemberships, workspaceID.String()+":workspace_member")
+			rec := httptest.NewRecorder()
+
+			router.ServeHTTP(rec, req)
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want 400, body=%s", rec.Code, rec.Body.String())
+			}
+			if service.captureInput != nil {
+				t.Fatal("service should not be called for invalid enum input")
+			}
+		})
 	}
 }
 

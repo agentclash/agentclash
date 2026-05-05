@@ -152,7 +152,7 @@ var (
 	ErrFailurePromotionNotAllowed      = errors.New("failure review item is not promotable")
 	ErrFailurePromotionModeUnavailable = errors.New("promotion mode unavailable for failure review item")
 	ErrRegressionSuiteArchived         = errors.New("regression suite is archived")
-	ErrRegressionSuitePackMismatch     = errors.New("regression suite source pack does not match run pack")
+	ErrRegressionSuitePackMismatch     = errors.New("regression suite source pack does not match failure source pack")
 	ErrRegressionChallengeMismatch     = errors.New("challenge identity does not belong to challenge pack version")
 	ErrRegressionInputSetMismatch      = errors.New("challenge input set does not belong to challenge pack version")
 )
@@ -598,10 +598,7 @@ func productionFailureMetadata(input CaptureProductionFailureInput, failureClass
 		}
 	}
 
-	source := strings.TrimSpace(input.Source)
-	if source == "" {
-		source = "production"
-	}
+	source := productionFailureSource(input.Source)
 	incidentID := strings.TrimSpace(input.IncidentID)
 	externalURL := strings.TrimSpace(input.ExternalURL)
 	sourceCaseKey := strings.TrimSpace(input.SourceCaseKey)
@@ -642,7 +639,7 @@ func productionFailureFingerprint(input CaptureProductionFailureInput, failureCl
 		input.SourceChallengePackVersionID.String(),
 		input.SourceChallengeIdentityID.String(),
 		strings.TrimSpace(input.SourceCaseKey),
-		strings.TrimSpace(input.Source),
+		productionFailureSource(input.Source),
 		failureClass,
 		incidentID,
 	}, "\x00")))
@@ -656,6 +653,14 @@ func productionFailureClusterKey(input CaptureProductionFailureInput, failureCla
 		failureClass,
 	}, "\x00")))
 	return fmt.Sprintf("prod-cluster:%x", hash[:16])
+}
+
+func productionFailureSource(raw string) string {
+	source := strings.TrimSpace(raw)
+	if source == "" {
+		return "production"
+	}
+	return source
 }
 
 func optionalStringPtr(value string) *string {
@@ -1078,6 +1083,24 @@ func captureProductionFailureHandler(logger *slog.Logger, service RegressionServ
 			writeError(w, http.StatusBadRequest, "validation_error", "failure_summary is required")
 			return
 		}
+		failureClass := strings.TrimSpace(req.FailureClass)
+		if failureClass != "" {
+			parsed, parseErr := parseFailureClass(failureClass)
+			if parseErr != nil {
+				writeError(w, http.StatusBadRequest, "validation_error", parseErr.Error())
+				return
+			}
+			failureClass = string(parsed)
+		}
+		evidenceTier := strings.TrimSpace(req.EvidenceTier)
+		if evidenceTier != "" {
+			parsed, parseErr := parseEvidenceTier(evidenceTier)
+			if parseErr != nil {
+				writeError(w, http.StatusBadRequest, "validation_error", parseErr.Error())
+				return
+			}
+			evidenceTier = string(parsed)
+		}
 
 		payloadSnapshot, ok := regressionJSONObject(w, req.PayloadSnapshot, "payload_snapshot", true)
 		if !ok {
@@ -1127,8 +1150,8 @@ func captureProductionFailureHandler(logger *slog.Logger, service RegressionServ
 			SourceItemKey:                cloneStringPtr(req.SourceItemKey),
 			Title:                        req.Title,
 			FailureSummary:               req.FailureSummary,
-			FailureClass:                 req.FailureClass,
-			EvidenceTier:                 req.EvidenceTier,
+			FailureClass:                 failureClass,
+			EvidenceTier:                 evidenceTier,
 			Severity:                     severity,
 			PromotionMode:                promotionMode,
 			PayloadSnapshot:              payloadSnapshot,

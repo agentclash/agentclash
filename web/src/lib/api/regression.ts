@@ -1,5 +1,6 @@
 import type { ApiClient, PaginatedResponse } from "./client";
 import type {
+  FailureReviewEvidenceTier,
   FailureReviewFailureClass,
   FailureReviewPromotionMode,
   RegressionCase,
@@ -41,8 +42,8 @@ export interface CaptureProductionFailureInput {
   source_item_key?: string;
   title: string;
   failure_summary: string;
-  failure_class?: FailureReviewFailureClass | string;
-  evidence_tier?: string;
+  failure_class?: FailureReviewFailureClass;
+  evidence_tier?: FailureReviewEvidenceTier;
   severity?: RegressionSeverity;
   promotion_mode?: RegressionPromotionMode;
   payload_snapshot: Record<string, unknown>;
