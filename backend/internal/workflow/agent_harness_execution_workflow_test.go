@@ -538,6 +538,128 @@ func TestExecuteAgentHarnessExecutionCreatesDraftPullRequestForGitHubHarness(t *
 	}
 }
 
+func TestExecuteAgentHarnessExecutionCreatesPullRequestForAgentCommittedChanges(t *testing.T) {
+	workspaceID := uuid.New()
+	harnessID := uuid.New()
+	executionID := uuid.New()
+	openAISecret := "OPENAI_API_KEY"
+	repositoryID := int64(100)
+	installationID := int64(42)
+	provider := "github"
+	repo := newFakeRunRepository(fixtureRun(uuid.New(), domain.RunStatusQueued))
+	repo.githubRepo = repository.GitHubInstallationRepository{
+		GitHubInstallationID: installationID,
+		GitHubRepositoryID:   repositoryID,
+		FullName:             "acme/repo",
+		DefaultBranch:        "main",
+		Status:               "active",
+	}
+	repo.setAgentHarness(repository.AgentHarness{
+		ID:                     harnessID,
+		OrganizationID:         uuid.New(),
+		WorkspaceID:            workspaceID,
+		TaskPrompt:             "make and commit a sample change",
+		CodexTemplate:          "codex",
+		AuthMode:               "api_key_secret",
+		OpenAIAPIKeySecretName: &openAISecret,
+		RepositoryURL:          stringPtr("https://github.com/acme/repo"),
+		RepositoryProvider:     &provider,
+		GitHubRepositoryID:     &repositoryID,
+		GitHubInstallationID:   &installationID,
+		RepositoryFullName:     stringPtr("acme/repo"),
+		BaseBranch:             stringPtr("main"),
+	})
+	repo.setAgentHarnessExecution(repository.AgentHarnessExecution{
+		ID:                      executionID,
+		WorkspaceID:             workspaceID,
+		AgentHarnessID:          harnessID,
+		Status:                  string(repository.AgentHarnessExecutionStatusRunning),
+		ExecutionConfigSnapshot: json.RawMessage(`{"timeout_seconds":120}`),
+	})
+	repo.setWorkspaceSecrets(workspaceID, map[string]string{openAISecret: "sk-test"})
+
+	session := sandbox.NewFakeSession("sandbox-1")
+	session.SetExecFunc(func(request sandbox.ExecRequest, _ map[string][]byte) (sandbox.ExecResult, error) {
+		switch {
+		case len(request.Command) >= 2 && request.Command[0] == "chmod":
+			return sandbox.ExecResult{ExitCode: 0}, nil
+		case len(request.Command) >= 2 && request.Command[0] == "git" && request.Command[1] == "clone":
+			return sandbox.ExecResult{ExitCode: 0}, nil
+		case len(request.Command) >= 3 && request.Command[0] == "git" && request.Command[1] == "checkout" && request.Command[2] == "main":
+			return sandbox.ExecResult{ExitCode: 0}, nil
+		case len(request.Command) >= 2 && request.Command[0] == "codex" && request.Command[1] == "exec":
+			return sandbox.ExecResult{ExitCode: 0, Stdout: `{"type":"final","message":"committed"}`}, nil
+		case len(request.Command) >= 3 && request.Command[0] == "git" && request.Command[1] == "add" && request.Command[2] == "--intent-to-add":
+			return sandbox.ExecResult{ExitCode: 0}, nil
+		case len(request.Command) >= 3 && request.Command[0] == "git" && request.Command[1] == "diff" && request.Command[2] == "--binary":
+			if !containsString(request.Command, "origin/main") {
+				t.Fatalf("binary diff command = %#v, want origin/main", request.Command)
+			}
+			return sandbox.ExecResult{ExitCode: 0, Stdout: "diff --git a/README.md b/README.md"}, nil
+		case len(request.Command) >= 3 && request.Command[0] == "git" && request.Command[1] == "diff" && request.Command[2] == "--name-status":
+			if !containsString(request.Command, "origin/main") {
+				t.Fatalf("name-status diff command = %#v, want origin/main", request.Command)
+			}
+			return sandbox.ExecResult{ExitCode: 0, Stdout: "M\tREADME.md\n"}, nil
+		case len(request.Command) >= 2 && request.Command[0] == "git" && request.Command[1] == "status":
+			return sandbox.ExecResult{ExitCode: 0}, nil
+		case len(request.Command) >= 2 && request.Command[0] == "git" && request.Command[1] == "config":
+			return sandbox.ExecResult{ExitCode: 0}, nil
+		case len(request.Command) >= 3 && request.Command[0] == "git" && request.Command[1] == "checkout" && request.Command[2] == "-B":
+			return sandbox.ExecResult{ExitCode: 0}, nil
+		case len(request.Command) >= 2 && request.Command[0] == "git" && request.Command[1] == "add":
+			t.Fatalf("unexpected git add for already-committed agent changes: %#v", request.Command)
+			return sandbox.ExecResult{}, nil
+		case isGitSubcommand(request.Command, "commit"):
+			t.Fatalf("unexpected git commit for already-committed agent changes: %#v", request.Command)
+			return sandbox.ExecResult{}, nil
+		case isGitSubcommand(request.Command, "push"):
+			if request.Environment["GITHUB_TOKEN"] != "ghs_test_token" {
+				t.Fatalf("push env missing github token")
+			}
+			return sandbox.ExecResult{ExitCode: 0}, nil
+		default:
+			t.Fatalf("unexpected command: %#v", request.Command)
+			return sandbox.ExecResult{}, nil
+		}
+	})
+	providerStub := &sandbox.FakeProvider{NextSession: session}
+	githubClient := &fakeGitHubPullRequestClient{token: "ghs_test_token"}
+	activities := NewActivities(repo, FakeWorkHooks{}).
+		WithSandboxProvider(providerStub).
+		WithGitHubPullRequestClient(githubClient)
+
+	err := activities.ExecuteAgentHarnessExecution(context.Background(), ExecuteAgentHarnessExecutionInput{ExecutionID: executionID})
+	if err != nil {
+		t.Fatalf("ExecuteAgentHarnessExecution error: %v", err)
+	}
+	if githubClient.pullRequestInput.Head != "acme:agentclash/harness/"+strings.ReplaceAll(executionID.String()[:8], "-", "") {
+		t.Fatalf("pull request head = %q", githubClient.pullRequestInput.Head)
+	}
+	var sawPREvent bool
+	var sawBaseChanges bool
+	for _, event := range repo.agentHarnessEvents[executionID] {
+		switch event.EventType {
+		case "github.pull_request.created":
+			sawPREvent = true
+		case "artifact.changed_files":
+			var payload map[string]any
+			if err := json.Unmarshal(event.Payload, &payload); err != nil {
+				t.Fatalf("decode changed files payload: %v", err)
+			}
+			if payload["changed_files"] == "M\tREADME.md" {
+				sawBaseChanges = true
+			}
+		}
+	}
+	if !sawPREvent {
+		t.Fatal("expected github.pull_request.created event")
+	}
+	if !sawBaseChanges {
+		t.Fatal("expected artifact.changed_files to include base diff files")
+	}
+}
+
 func TestExecuteAgentHarnessExecutionSkipsPullRequestWhenNoChanges(t *testing.T) {
 	workspaceID := uuid.New()
 	harnessID := uuid.New()
