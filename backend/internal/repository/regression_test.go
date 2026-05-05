@@ -137,6 +137,35 @@ func TestRepositoryRegressionCaseAndPromotionCRUD(t *testing.T) {
 		t.Fatalf("case count = %d, want 1", len(cases))
 	}
 
+	active := domain.RegressionCaseStatusActive
+	workspaceCases, err := repo.ListRegressionCasesByWorkspaceID(ctx, repository.ListRegressionCasesByWorkspaceIDParams{
+		WorkspaceID: fixture.workspaceID,
+		Status:      &active,
+		Limit:       10,
+		Offset:      0,
+	})
+	if err != nil {
+		t.Fatalf("ListRegressionCasesByWorkspaceID returned error: %v", err)
+	}
+	if len(workspaceCases) != 1 || workspaceCases[0].ID != regressionCase.ID {
+		t.Fatalf("workspace cases = %+v, want active case %s", workspaceCases, regressionCase.ID)
+	}
+	activeCount, err := repo.CountRegressionCasesByWorkspaceID(ctx, fixture.workspaceID, &active)
+	if err != nil {
+		t.Fatalf("CountRegressionCasesByWorkspaceID returned error: %v", err)
+	}
+	if activeCount != 1 {
+		t.Fatalf("active workspace case count = %d, want 1", activeCount)
+	}
+	proposed := domain.RegressionCaseStatusProposed
+	proposedCount, err := repo.CountRegressionCasesByWorkspaceID(ctx, fixture.workspaceID, &proposed)
+	if err != nil {
+		t.Fatalf("CountRegressionCasesByWorkspaceID(proposed) returned error: %v", err)
+	}
+	if proposedCount != 0 {
+		t.Fatalf("proposed workspace case count = %d, want 0", proposedCount)
+	}
+
 	title := "Muted support case regression"
 	muted := domain.RegressionCaseStatusMuted
 	severity := domain.RegressionSeverityWarning

@@ -1101,6 +1101,28 @@ func TestRegressionSuiteEndpointsRoundTrip(t *testing.T) {
 		t.Fatalf("validation last_validated_at = %v, want %s", validation.LastValidatedAt, promotionCreatedAt)
 	}
 
+	workspaceCasesRec := httptest.NewRecorder()
+	workspaceCasesReq := httptest.NewRequest(http.MethodGet, "/v1/workspaces/"+workspaceID.String()+"/regression-cases?status=active&limit=10&offset=0", nil)
+	workspaceCasesReq.Header.Set(headerUserID, userID.String())
+	workspaceCasesReq.Header.Set(headerWorkspaceMemberships, workspaceID.String()+":workspace_member")
+	router.ServeHTTP(workspaceCasesRec, workspaceCasesReq)
+	if workspaceCasesRec.Code != http.StatusOK {
+		t.Fatalf("LIST workspace cases status = %d, want 200", workspaceCasesRec.Code)
+	}
+	var workspaceCasesResponse listWorkspaceRegressionCasesResponse
+	if err := json.Unmarshal(workspaceCasesRec.Body.Bytes(), &workspaceCasesResponse); err != nil {
+		t.Fatalf("json.Unmarshal workspace cases response returned error: %v", err)
+	}
+	if workspaceCasesResponse.Total != 1 || len(workspaceCasesResponse.Items) != 1 {
+		t.Fatalf("workspace cases response = %+v, want one item and total 1", workspaceCasesResponse)
+	}
+	if service.listCasesInput == nil || service.listCasesInput.Status == nil || *service.listCasesInput.Status != domain.RegressionCaseStatusActive {
+		t.Fatalf("workspace case status filter = %+v, want active", service.listCasesInput)
+	}
+	if workspaceCasesResponse.Items[0].ID != caseID {
+		t.Fatalf("workspace case id = %s, want %s", workspaceCasesResponse.Items[0].ID, caseID)
+	}
+
 	casePatchRec := httptest.NewRecorder()
 	casePatchReq := httptest.NewRequest(http.MethodPatch, "/v1/workspaces/"+workspaceID.String()+"/regression-cases/"+caseID.String(), bytes.NewBufferString(`{
 		"title":"Muted case",
@@ -1310,13 +1332,19 @@ func TestRegressionSuiteEndpointsRejectMalformedPagination(t *testing.T) {
 		regressionService:          &fakeRegressionService{},
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/v1/workspaces/"+workspaceID.String()+"/regression-suites?limit=abc&offset=-1", nil)
-	req.Header.Set(headerUserID, userID.String())
-	req.Header.Set(headerWorkspaceMemberships, workspaceID.String()+":workspace_member")
-	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("malformed pagination status = %d, want 400", rec.Code)
+	for _, path := range []string{
+		"/v1/workspaces/" + workspaceID.String() + "/regression-suites?limit=abc&offset=-1",
+		"/v1/workspaces/" + workspaceID.String() + "/regression-cases?limit=abc&offset=-1",
+		"/v1/workspaces/" + workspaceID.String() + "/regression-cases?status=surprise",
+	} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req.Header.Set(headerUserID, userID.String())
+		req.Header.Set(headerWorkspaceMemberships, workspaceID.String()+":workspace_member")
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("%s status = %d, want 400", path, rec.Code)
+		}
 	}
 }
 
@@ -1478,6 +1506,14 @@ func (f *fakeRegressionRepository) ListRegressionCasesBySuiteID(_ context.Contex
 	return f.listCases, f.listCasesErr
 }
 
+func (f *fakeRegressionRepository) ListRegressionCasesByWorkspaceID(_ context.Context, _ repository.ListRegressionCasesByWorkspaceIDParams) ([]repository.RegressionCase, error) {
+	return f.listCases, f.listCasesErr
+}
+
+func (f *fakeRegressionRepository) CountRegressionCasesByWorkspaceID(_ context.Context, _ uuid.UUID, _ *domain.RegressionCaseStatus) (int64, error) {
+	return int64(len(f.listCases)), f.listCasesErr
+}
+
 func (f *fakeRegressionRepository) PatchRegressionCase(_ context.Context, _ repository.PatchRegressionCaseParams) (repository.RegressionCase, error) {
 	return f.patchCaseResult, f.patchCaseErr
 }
@@ -1553,6 +1589,7 @@ type fakeRegressionService struct {
 	promoteErr      error
 	captureErr      error
 	patchSuiteInput *PatchRegressionSuiteInput
+	listCasesInput  *ListWorkspaceRegressionCasesInput
 	patchCaseInput  *PatchRegressionCaseInput
 	promoteInput    *PromoteFailureInput
 	captureInput    *CaptureProductionFailureInput
@@ -1611,6 +1648,19 @@ func (f *fakeRegressionService) ListRegressionCases(_ context.Context, _ Caller,
 		return nil, f.listCasesErr
 	}
 	return []repository.RegressionCase{f.regressionCase}, nil
+}
+
+func (f *fakeRegressionService) ListWorkspaceRegressionCases(_ context.Context, _ Caller, input ListWorkspaceRegressionCasesInput) (ListWorkspaceRegressionCasesResult, error) {
+	if f.listCasesErr != nil {
+		return ListWorkspaceRegressionCasesResult{}, f.listCasesErr
+	}
+	f.listCasesInput = &input
+	return ListWorkspaceRegressionCasesResult{
+		Items:  []repository.RegressionCase{f.regressionCase},
+		Total:  1,
+		Limit:  input.Limit,
+		Offset: input.Offset,
+	}, nil
 }
 
 func (f *fakeRegressionService) PatchRegressionCase(_ context.Context, _ Caller, input PatchRegressionCaseInput) (repository.RegressionCase, error) {

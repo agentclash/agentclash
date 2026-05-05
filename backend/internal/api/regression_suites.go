@@ -30,6 +30,8 @@ type RegressionRepository interface {
 	CreateRegressionCase(ctx context.Context, params repository.CreateRegressionCaseParams) (repository.RegressionCase, error)
 	GetRegressionCaseByID(ctx context.Context, id uuid.UUID) (repository.RegressionCase, error)
 	ListRegressionCasesBySuiteID(ctx context.Context, suiteID uuid.UUID) ([]repository.RegressionCase, error)
+	ListRegressionCasesByWorkspaceID(ctx context.Context, params repository.ListRegressionCasesByWorkspaceIDParams) ([]repository.RegressionCase, error)
+	CountRegressionCasesByWorkspaceID(ctx context.Context, workspaceID uuid.UUID, status *domain.RegressionCaseStatus) (int64, error)
 	PatchRegressionCase(ctx context.Context, params repository.PatchRegressionCaseParams) (repository.RegressionCase, error)
 	GetRunnableChallengePackVersionByID(ctx context.Context, id uuid.UUID) (repository.RunnableChallengePackVersion, error)
 	GetChallengeInputSetByID(ctx context.Context, id uuid.UUID) (repository.ChallengeInputSet, error)
@@ -48,6 +50,7 @@ type RegressionService interface {
 	GetRegressionSuite(ctx context.Context, caller Caller, input GetRegressionSuiteInput) (repository.RegressionSuite, error)
 	PatchRegressionSuite(ctx context.Context, caller Caller, input PatchRegressionSuiteInput) (repository.RegressionSuite, error)
 	ListRegressionCases(ctx context.Context, caller Caller, input ListRegressionCasesInput) ([]repository.RegressionCase, error)
+	ListWorkspaceRegressionCases(ctx context.Context, caller Caller, input ListWorkspaceRegressionCasesInput) (ListWorkspaceRegressionCasesResult, error)
 	PatchRegressionCase(ctx context.Context, caller Caller, input PatchRegressionCaseInput) (repository.RegressionCase, error)
 	PromoteFailure(ctx context.Context, caller Caller, input PromoteFailureInput) (PromoteFailureResult, error)
 	CaptureProductionFailure(ctx context.Context, caller Caller, input CaptureProductionFailureInput) (repository.RegressionCase, error)
@@ -84,6 +87,13 @@ type PatchRegressionSuiteInput struct {
 type ListRegressionCasesInput struct {
 	WorkspaceID uuid.UUID
 	SuiteID     uuid.UUID
+}
+
+type ListWorkspaceRegressionCasesInput struct {
+	WorkspaceID uuid.UUID
+	Status      *domain.RegressionCaseStatus
+	Limit       int32
+	Offset      int32
 }
 
 type PatchRegressionCaseInput struct {
@@ -134,6 +144,13 @@ type PromoteFailureResult struct {
 
 type ListRegressionSuitesResult struct {
 	Items  []repository.RegressionSuite
+	Total  int64
+	Limit  int32
+	Offset int32
+}
+
+type ListWorkspaceRegressionCasesResult struct {
+	Items  []repository.RegressionCase
 	Total  int64
 	Limit  int32
 	Offset int32
@@ -264,6 +281,33 @@ func (m *RegressionManager) ListRegressionCases(ctx context.Context, caller Call
 		return nil, ErrForbidden
 	}
 	return m.repo.ListRegressionCasesBySuiteID(ctx, input.SuiteID)
+}
+
+func (m *RegressionManager) ListWorkspaceRegressionCases(ctx context.Context, caller Caller, input ListWorkspaceRegressionCasesInput) (ListWorkspaceRegressionCasesResult, error) {
+	if err := AuthorizeWorkspaceAction(ctx, m.authorizer, caller, input.WorkspaceID, ActionReadWorkspace); err != nil {
+		return ListWorkspaceRegressionCasesResult{}, err
+	}
+
+	cases, err := m.repo.ListRegressionCasesByWorkspaceID(ctx, repository.ListRegressionCasesByWorkspaceIDParams{
+		WorkspaceID: input.WorkspaceID,
+		Status:      input.Status,
+		Limit:       input.Limit,
+		Offset:      input.Offset,
+	})
+	if err != nil {
+		return ListWorkspaceRegressionCasesResult{}, err
+	}
+	total, err := m.repo.CountRegressionCasesByWorkspaceID(ctx, input.WorkspaceID, input.Status)
+	if err != nil {
+		return ListWorkspaceRegressionCasesResult{}, err
+	}
+
+	return ListWorkspaceRegressionCasesResult{
+		Items:  cases,
+		Total:  total,
+		Limit:  input.Limit,
+		Offset: input.Offset,
+	}, nil
 }
 
 func (m *RegressionManager) PatchRegressionCase(ctx context.Context, caller Caller, input PatchRegressionCaseInput) (repository.RegressionCase, error) {
@@ -758,6 +802,13 @@ type listRegressionCasesResponse struct {
 	Items []regressionCaseResponse `json:"items"`
 }
 
+type listWorkspaceRegressionCasesResponse struct {
+	Items  []regressionCaseResponse `json:"items"`
+	Total  int64                    `json:"total"`
+	Limit  int32                    `json:"limit"`
+	Offset int32                    `json:"offset"`
+}
+
 func createRegressionSuiteHandler(logger *slog.Logger, service RegressionService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		caller, err := CallerFromContext(r.Context())
@@ -1013,6 +1064,75 @@ func listRegressionCasesHandler(logger *slog.Logger, service RegressionService) 
 			items = append(items, buildRegressionCaseResponse(regressionCase))
 		}
 		writeJSON(w, http.StatusOK, listRegressionCasesResponse{Items: items})
+	}
+}
+
+func listWorkspaceRegressionCasesHandler(logger *slog.Logger, service RegressionService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		caller, err := CallerFromContext(r.Context())
+		if err != nil {
+			writeAuthzError(w, err)
+			return
+		}
+		workspaceID, err := workspaceIDFromURLParam("workspaceID")(r)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_workspace_id", "workspace ID is malformed")
+			return
+		}
+
+		limit := int32(50)
+		if raw := r.URL.Query().Get("limit"); raw != "" {
+			parsed, parseErr := strconv.Atoi(raw)
+			if parseErr != nil || parsed <= 0 {
+				writeError(w, http.StatusBadRequest, "validation_error", "limit must be a positive integer")
+				return
+			}
+			limit = int32(parsed)
+		}
+		if limit > 100 {
+			limit = 100
+		}
+		offset := int32(0)
+		if raw := r.URL.Query().Get("offset"); raw != "" {
+			parsed, parseErr := strconv.Atoi(raw)
+			if parseErr != nil || parsed < 0 {
+				writeError(w, http.StatusBadRequest, "validation_error", "offset must be a non-negative integer")
+				return
+			}
+			offset = int32(parsed)
+		}
+
+		var status *domain.RegressionCaseStatus
+		if raw := strings.TrimSpace(r.URL.Query().Get("status")); raw != "" && raw != "all" {
+			parsed, parseErr := domain.ParseRegressionCaseStatus(raw)
+			if parseErr != nil {
+				writeError(w, http.StatusBadRequest, "validation_error", "status must be proposed, active, muted, archived, or rejected")
+				return
+			}
+			status = &parsed
+		}
+
+		result, err := service.ListWorkspaceRegressionCases(r.Context(), caller, ListWorkspaceRegressionCasesInput{
+			WorkspaceID: workspaceID,
+			Status:      status,
+			Limit:       limit,
+			Offset:      offset,
+		})
+		if err != nil {
+			handleRegressionError(w, logger, err)
+			return
+		}
+
+		items := make([]regressionCaseResponse, 0, len(result.Items))
+		for _, regressionCase := range result.Items {
+			items = append(items, buildRegressionCaseResponse(regressionCase))
+		}
+		writeJSON(w, http.StatusOK, listWorkspaceRegressionCasesResponse{
+			Items:  items,
+			Total:  result.Total,
+			Limit:  result.Limit,
+			Offset: result.Offset,
+		})
 	}
 }
 

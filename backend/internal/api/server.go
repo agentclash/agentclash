@@ -470,6 +470,10 @@ func (noopRegressionService) ListRegressionCases(_ context.Context, _ Caller, _ 
 	return nil, errors.New("regression service is not configured")
 }
 
+func (noopRegressionService) ListWorkspaceRegressionCases(_ context.Context, _ Caller, _ ListWorkspaceRegressionCasesInput) (ListWorkspaceRegressionCasesResult, error) {
+	return ListWorkspaceRegressionCasesResult{}, errors.New("regression service is not configured")
+}
+
 func (noopRegressionService) PatchRegressionCase(_ context.Context, _ Caller, _ PatchRegressionCaseInput) (repository.RegressionCase, error) {
 	return repository.RegressionCase{}, errors.New("regression service is not configured")
 }

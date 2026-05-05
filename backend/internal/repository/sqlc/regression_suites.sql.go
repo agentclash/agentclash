@@ -29,6 +29,26 @@ func (q *Queries) CountRegressionCasesBySuiteID(ctx context.Context, arg CountRe
 	return count, err
 }
 
+const countRegressionCasesByWorkspaceID = `-- name: CountRegressionCasesByWorkspaceID :one
+SELECT count(*)
+FROM workspace_regression_cases c
+JOIN workspace_regression_suites s ON s.id = c.suite_id
+WHERE s.workspace_id = $1
+  AND ($2::text IS NULL OR c.status = $2::text)
+`
+
+type CountRegressionCasesByWorkspaceIDParams struct {
+	WorkspaceID uuid.UUID
+	Status      *string
+}
+
+func (q *Queries) CountRegressionCasesByWorkspaceID(ctx context.Context, arg CountRegressionCasesByWorkspaceIDParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countRegressionCasesByWorkspaceID, arg.WorkspaceID, arg.Status)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countRegressionSuitesByWorkspaceID = `-- name: CountRegressionSuitesByWorkspaceID :one
 SELECT count(*)
 FROM workspace_regression_suites
@@ -742,6 +762,127 @@ func (q *Queries) ListRegressionCasesBySuiteID(ctx context.Context, arg ListRegr
 	var items []ListRegressionCasesBySuiteIDRow
 	for rows.Next() {
 		var i ListRegressionCasesBySuiteIDRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.SuiteID,
+			&i.WorkspaceID,
+			&i.Title,
+			&i.Description,
+			&i.Status,
+			&i.Severity,
+			&i.PromotionMode,
+			&i.SourceRunID,
+			&i.SourceRunAgentID,
+			&i.SourceReplayID,
+			&i.SourceChallengePackVersionID,
+			&i.SourceChallengeInputSetID,
+			&i.SourceChallengeIdentityID,
+			&i.SourceCaseKey,
+			&i.SourceItemKey,
+			&i.EvidenceTier,
+			&i.FailureClass,
+			&i.FailureSummary,
+			&i.PayloadSnapshot,
+			&i.ExpectedContract,
+			&i.ValidatorOverrides,
+			&i.Metadata,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRegressionCasesByWorkspaceID = `-- name: ListRegressionCasesByWorkspaceID :many
+SELECT
+    c.id,
+    c.suite_id,
+    s.workspace_id,
+    c.title,
+    c.description,
+    c.status,
+    c.severity,
+    c.promotion_mode,
+    c.source_run_id,
+    c.source_run_agent_id,
+    c.source_replay_id,
+    c.source_challenge_pack_version_id,
+    c.source_challenge_input_set_id,
+    c.source_challenge_identity_id,
+    c.source_case_key,
+    c.source_item_key,
+    c.evidence_tier,
+    c.failure_class,
+    c.failure_summary,
+    c.payload_snapshot,
+    c.expected_contract,
+    c.validator_overrides,
+    c.metadata,
+    c.created_at,
+    c.updated_at
+FROM workspace_regression_cases c
+JOIN workspace_regression_suites s ON s.id = c.suite_id
+WHERE s.workspace_id = $1
+  AND ($2::text IS NULL OR c.status = $2::text)
+ORDER BY c.created_at DESC, c.id DESC
+LIMIT $4 OFFSET $3
+`
+
+type ListRegressionCasesByWorkspaceIDParams struct {
+	WorkspaceID  uuid.UUID
+	Status       *string
+	ResultOffset int32
+	ResultLimit  int32
+}
+
+type ListRegressionCasesByWorkspaceIDRow struct {
+	ID                           uuid.UUID
+	SuiteID                      uuid.UUID
+	WorkspaceID                  uuid.UUID
+	Title                        string
+	Description                  string
+	Status                       string
+	Severity                     string
+	PromotionMode                string
+	SourceRunID                  *uuid.UUID
+	SourceRunAgentID             *uuid.UUID
+	SourceReplayID               *uuid.UUID
+	SourceChallengePackVersionID uuid.UUID
+	SourceChallengeInputSetID    *uuid.UUID
+	SourceChallengeIdentityID    uuid.UUID
+	SourceCaseKey                string
+	SourceItemKey                *string
+	EvidenceTier                 string
+	FailureClass                 string
+	FailureSummary               string
+	PayloadSnapshot              []byte
+	ExpectedContract             []byte
+	ValidatorOverrides           []byte
+	Metadata                     []byte
+	CreatedAt                    pgtype.Timestamptz
+	UpdatedAt                    pgtype.Timestamptz
+}
+
+func (q *Queries) ListRegressionCasesByWorkspaceID(ctx context.Context, arg ListRegressionCasesByWorkspaceIDParams) ([]ListRegressionCasesByWorkspaceIDRow, error) {
+	rows, err := q.db.Query(ctx, listRegressionCasesByWorkspaceID,
+		arg.WorkspaceID,
+		arg.Status,
+		arg.ResultOffset,
+		arg.ResultLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListRegressionCasesByWorkspaceIDRow
+	for rows.Next() {
+		var i ListRegressionCasesByWorkspaceIDRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.SuiteID,

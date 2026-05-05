@@ -54,6 +54,47 @@ SELECT count(*)
 FROM workspace_regression_cases
 WHERE suite_id = @suite_id;
 
+-- name: ListRegressionCasesByWorkspaceID :many
+SELECT
+    c.id,
+    c.suite_id,
+    s.workspace_id,
+    c.title,
+    c.description,
+    c.status,
+    c.severity,
+    c.promotion_mode,
+    c.source_run_id,
+    c.source_run_agent_id,
+    c.source_replay_id,
+    c.source_challenge_pack_version_id,
+    c.source_challenge_input_set_id,
+    c.source_challenge_identity_id,
+    c.source_case_key,
+    c.source_item_key,
+    c.evidence_tier,
+    c.failure_class,
+    c.failure_summary,
+    c.payload_snapshot,
+    c.expected_contract,
+    c.validator_overrides,
+    c.metadata,
+    c.created_at,
+    c.updated_at
+FROM workspace_regression_cases c
+JOIN workspace_regression_suites s ON s.id = c.suite_id
+WHERE s.workspace_id = @workspace_id
+  AND (sqlc.narg('status')::text IS NULL OR c.status = sqlc.narg('status')::text)
+ORDER BY c.created_at DESC, c.id DESC
+LIMIT @result_limit OFFSET @result_offset;
+
+-- name: CountRegressionCasesByWorkspaceID :one
+SELECT count(*)
+FROM workspace_regression_cases c
+JOIN workspace_regression_suites s ON s.id = c.suite_id
+WHERE s.workspace_id = @workspace_id
+  AND (sqlc.narg('status')::text IS NULL OR c.status = sqlc.narg('status')::text);
+
 -- name: PatchRegressionSuite :one
 UPDATE workspace_regression_suites
 SET name = COALESCE(sqlc.narg('name'), name),
