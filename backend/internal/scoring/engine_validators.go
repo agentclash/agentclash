@@ -268,14 +268,51 @@ func classifyValidatorErrorOutcome(result ValidatorResult) ValidatorOutcomeClass
 			return ValidatorOutcomeInfraError
 		}
 	}
-	switch {
-	case strings.HasPrefix(reason, "parse "),
-		strings.Contains(reason, "invalid regex pattern"),
-		strings.Contains(reason, "unsupported comparator"):
+	if isPackAuthorValidatorError(reason) {
 		return ValidatorOutcomePackError
-	default:
-		return ValidatorOutcomeEvaluatorError
 	}
+	return ValidatorOutcomeEvaluatorError
+}
+
+func isPackAuthorValidatorError(reason string) bool {
+	switch {
+	case strings.Contains(reason, "invalid regex pattern"),
+		strings.Contains(reason, "unsupported comparator"),
+		strings.Contains(reason, "invalid ") && strings.Contains(reason, " config"),
+		strings.Contains(reason, " config is required"),
+		strings.Contains(reason, " config.") && strings.Contains(reason, " is required"),
+		strings.Contains(reason, "unsupported match_mode"),
+		strings.Contains(reason, "unsupported validator type"):
+		return true
+	}
+
+	packPrefixes := []string{
+		"parse expected boolean assertion value",
+		"parse expected numeric value",
+		"parse expected as json",
+		"parse fuzzy_match config",
+		"parse numeric_match config",
+		"parse normalized_match config",
+		"parse token_f1 config",
+		"parse math_equivalence config",
+		"parse bleu_score config",
+		"parse bleu_score references",
+		"parse rouge_score config",
+		"parse rouge_score references",
+		"parse chrf_score config",
+		"parse chrf_score references",
+		"parse json schema",
+		"resolve json schema",
+		"parse json_path_match expectation",
+		"evaluate jsonpath expression",
+		"compare jsonpath value",
+	}
+	for _, prefix := range packPrefixes {
+		if strings.HasPrefix(reason, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 func withValidatorOutcomeClass(raw json.RawMessage, class ValidatorOutcomeClass) json.RawMessage {

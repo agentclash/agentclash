@@ -155,6 +155,96 @@ func TestEvaluateRunAgent_CodeExecutionErrorClassifiedAsInfraError(t *testing.T)
 	}
 }
 
+func TestClassifyValidatorErrorOutcome_PackAuthorErrors(t *testing.T) {
+	tests := []struct {
+		name   string
+		result ValidatorResult
+	}{
+		{
+			name: "invalid file_exists config",
+			result: ValidatorResult{
+				Type:   ValidatorTypeFileExists,
+				State:  OutputStateError,
+				Reason: "invalid file_exists config: json: cannot unmarshal string into Go struct field fileExistsConfig.must_exist of type bool",
+			},
+		},
+		{
+			name: "file_json_schema config required",
+			result: ValidatorResult{
+				Type:   ValidatorTypeFileJSONSchema,
+				State:  OutputStateError,
+				Reason: "file_json_schema config is required",
+			},
+		},
+		{
+			name: "nested config field required",
+			result: ValidatorResult{
+				Type:   ValidatorTypeFileJSONSchema,
+				State:  OutputStateError,
+				Reason: "file_json_schema config.schema is required",
+			},
+		},
+		{
+			name: "directory_structure config required",
+			result: ValidatorResult{
+				Type:   ValidatorTypeDirectoryStructure,
+				State:  OutputStateError,
+				Reason: "directory_structure config is required",
+			},
+		},
+		{
+			name: "unsupported match mode",
+			result: ValidatorResult{
+				Type:   ValidatorTypeFileContentMatch,
+				State:  OutputStateError,
+				Reason: `unsupported match_mode "weird"`,
+			},
+		},
+		{
+			name: "unsupported validator type",
+			result: ValidatorResult{
+				Type:   ValidatorType("made_up"),
+				State:  OutputStateError,
+				Reason: `unsupported validator type "made_up"`,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := classifyValidatorErrorOutcome(tt.result); got != ValidatorOutcomePackError {
+				t.Fatalf("classifyValidatorErrorOutcome() = %s, want %s", got, ValidatorOutcomePackError)
+			}
+		})
+	}
+}
+
+func TestClassifyValidatorErrorOutcome_ActualParseErrorsRemainEvaluatorErrors(t *testing.T) {
+	tests := []ValidatorResult{
+		{
+			Type:   ValidatorTypeJSONSchema,
+			State:  OutputStateError,
+			Reason: "parse actual JSON document: invalid character '}' looking for beginning of object key string",
+		},
+		{
+			Type:   ValidatorTypeNumericMatch,
+			State:  OutputStateError,
+			Reason: `parse actual numeric value: no numeric value found in "not a number"`,
+		},
+		{
+			Type:   ValidatorTypeFileContentMatch,
+			State:  OutputStateError,
+			Reason: "parse actual as JSON: invalid character 'x' looking for beginning of value",
+		},
+	}
+
+	for _, result := range tests {
+		if got := classifyValidatorErrorOutcome(result); got != ValidatorOutcomeEvaluatorError {
+			t.Fatalf("classifyValidatorErrorOutcome(%q) = %s, want %s", result.Reason, got, ValidatorOutcomeEvaluatorError)
+		}
+	}
+}
+
 func mustUnmarshalValidityObject(t *testing.T, raw json.RawMessage) map[string]any {
 	t.Helper()
 	var decoded map[string]any

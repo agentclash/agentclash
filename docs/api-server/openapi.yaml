@@ -7747,6 +7747,11 @@ components:
           type: boolean
         overall_reason:
           type: string
+        validity:
+          type: string
+          enum: [valid, degraded, invalid]
+        validity_reason:
+          type: string
         warnings:
           type: array
           items:
@@ -7785,6 +7790,9 @@ components:
           type: string
         state:
           type: string
+        outcome_class:
+          type: string
+          enum: [pass, fail, unavailable, infra_error, pack_error, evaluator_error]
         reason:
           type: string
         normalized_score:
