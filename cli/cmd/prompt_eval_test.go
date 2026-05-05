@@ -3,6 +3,8 @@ package cmd
 import (
 	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -173,6 +175,210 @@ func TestPromptEvalValidateJSONEnvelopeForMissingFile(t *testing.T) {
 	}
 }
 
+func TestPromptEvalValidateRemoteRequiresWorkspace(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("AGENTCLASH_WORKSPACE", "")
+	path := writePromptEvalFixture(t, validPromptEvalYAML())
+	stdout := captureStdout(t)
+	err := executeCommand(t, []string{"prompt-eval", "validate", path, "--remote", "--json"}, "http://unused")
+	out := stdout.finish()
+	var exitErr *ExitCodeError
+	if !errors.As(err, &exitErr) || exitErr.Code != promptEvalExitInvalid {
+		t.Fatalf("expected ExitCodeError{%d}, got %T %v", promptEvalExitInvalid, err, err)
+	}
+	var result promptEvalValidationResult
+	if err := json.Unmarshal([]byte(out), &result); err != nil {
+		t.Fatalf("decode json output: %v\n%s", err, out)
+	}
+	if result.Remote != nil {
+		t.Fatalf("remote payload should be absent when workspace is missing: %+v", result.Remote)
+	}
+	if !containsPromptEvalMessage(result.Errors, "no workspace specified for --remote") {
+		t.Fatalf("errors = %v", result.Errors)
+	}
+}
+
+func TestPromptEvalValidateCIRequiresRemote(t *testing.T) {
+	path := writePromptEvalFixture(t, validPromptEvalYAML())
+	result := runPromptEvalValidateJSON(t, []string{"prompt-eval", "validate", path, "--ci", "--json"}, "http://unused")
+	if result.Valid || !containsPromptEvalMessage(result.Errors, "--ci requires --remote") {
+		t.Fatalf("errors = %v", result.Errors)
+	}
+}
+
+func TestPromptEvalValidateRemoteResolvesAliasesAndProviderAccounts(t *testing.T) {
+	path := writePromptEvalFixture(t, validPromptEvalYAML())
+	srv := promptEvalRemoteFakeAPI(t, promptEvalRemoteFakeOptions{})
+	defer srv.Close()
+
+	stdout := captureStdout(t)
+	err := executeCommand(t, []string{"prompt-eval", "validate", path, "--remote", "-w", "ws-1", "--json"}, srv.URL)
+	out := stdout.finish()
+	if err != nil {
+		t.Fatalf("remote validate error: %v\n%s", err, out)
+	}
+	var result promptEvalValidationResult
+	if err := json.Unmarshal([]byte(out), &result); err != nil {
+		t.Fatalf("decode remote json: %v\n%s", err, out)
+	}
+	if result.Remote == nil || len(result.Remote.Models) != 1 {
+		t.Fatalf("remote models missing: %+v", result.Remote)
+	}
+	if got := result.Remote.Models[0].ProviderAccountID; got != "pa-1" {
+		t.Fatalf("provider_account_id = %q, want pa-1", got)
+	}
+}
+
+func TestPromptEvalValidateRemoteFollowsPagination(t *testing.T) {
+	path := writePromptEvalFixture(t, validPromptEvalYAML())
+	srv := promptEvalRemoteFakeAPI(t, promptEvalRemoteFakeOptions{PaginateAliases: true})
+	defer srv.Close()
+
+	result := runPromptEvalRemoteValidateJSON(t, path, srv.URL, false)
+	if !result.Valid {
+		t.Fatalf("remote validate errors = %v", result.Errors)
+	}
+	if got := result.Remote.Models[0].ModelAliasID; got != "alias-1" {
+		t.Fatalf("model_alias_id = %q, want alias-1", got)
+	}
+}
+
+func TestPromptEvalValidateRemoteRejectsUnknownOrAmbiguousModelAlias(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		options promptEvalRemoteFakeOptions
+		want    string
+	}{
+		{name: "unknown", options: promptEvalRemoteFakeOptions{ModelAliases: []map[string]any{}}, want: "model alias \"gpt-5.5\" was not found"},
+		{name: "ambiguous", options: promptEvalRemoteFakeOptions{ModelAliases: []map[string]any{
+			{"id": "alias-1", "alias_key": "gpt-5.5", "provider_key": "openai", "provider_account_id": "pa-1"},
+			{"id": "alias-2", "alias_key": "gpt-5.5", "provider_key": "openai", "provider_account_id": "pa-1"},
+		}}, want: "matched 2 workspace aliases"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := writePromptEvalFixture(t, validPromptEvalYAML())
+			srv := promptEvalRemoteFakeAPI(t, tc.options)
+			defer srv.Close()
+			result := runPromptEvalRemoteValidateJSON(t, path, srv.URL, false)
+			if result.Valid || !containsPromptEvalMessage(result.Errors, tc.want) {
+				t.Fatalf("errors = %v, want %q", result.Errors, tc.want)
+			}
+		})
+	}
+}
+
+func TestPromptEvalValidateRemoteRejectsProviderAmbiguity(t *testing.T) {
+	body := strings.Replace(validPromptEvalYAML(), "provider_account: default", "provider_account: openai", 1)
+	path := writePromptEvalFixture(t, body)
+	srv := promptEvalRemoteFakeAPI(t, promptEvalRemoteFakeOptions{ProviderAccounts: []map[string]any{
+		{"id": "pa-1", "provider_key": "openai", "status": "active"},
+		{"id": "pa-2", "provider_key": "openai", "status": "active"},
+	}})
+	defer srv.Close()
+
+	result := runPromptEvalRemoteValidateJSON(t, path, srv.URL, false)
+	if result.Valid || !containsPromptEvalMessage(result.Errors, "matched 2 provider accounts") {
+		t.Fatalf("errors = %v", result.Errors)
+	}
+}
+
+func TestPromptEvalValidateRemoteRejectsDefaultProviderInCI(t *testing.T) {
+	path := writePromptEvalFixture(t, validPromptEvalYAML())
+	srv := promptEvalRemoteFakeAPI(t, promptEvalRemoteFakeOptions{})
+	defer srv.Close()
+
+	result := runPromptEvalRemoteValidateJSON(t, path, srv.URL, true)
+	if result.Valid || !containsPromptEvalMessage(result.Errors, "provider_account: default is not allowed with --ci") {
+		t.Fatalf("errors = %v", result.Errors)
+	}
+}
+
+func TestPromptEvalValidateRemoteDetectsDuplicatePlaygrounds(t *testing.T) {
+	path := writePromptEvalFixture(t, validPromptEvalYAML())
+	srv := promptEvalRemoteFakeAPI(t, promptEvalRemoteFakeOptions{Playgrounds: []map[string]any{
+		{"id": "pg-1", "name": "Prompt Eval: refund-bot-v1"},
+		{"id": "pg-2", "name": "Prompt Eval: refund-bot-v1"},
+	}})
+	defer srv.Close()
+
+	result := runPromptEvalRemoteValidateJSON(t, path, srv.URL, false)
+	if result.Valid || !containsPromptEvalMessage(result.Errors, "multiple playgrounds named") {
+		t.Fatalf("errors = %v", result.Errors)
+	}
+}
+
+func TestPromptEvalValidateRemoteReportsDryRunCounts(t *testing.T) {
+	body := strings.Replace(validPromptEvalYAML(), "tests:\n  - key: greeting", "tests:\n  - key: salutation\n    vars:\n      input: Say hello in French\n    expect:\n      output: Bonjour\n    assert:\n      - type: contains\n        value: Salut\n        metric: correctness\n  - key: greeting", 1)
+	body = strings.Replace(body, "thresholds:", "  - key: farewell\n    vars:\n      input: Say goodbye in French\n    expect:\n      output: Au revoir\n    assert:\n      - type: contains\n        value: Au revoir\n        metric: correctness\nthresholds:", 1)
+	path := writePromptEvalFixture(t, body)
+	srv := promptEvalRemoteFakeAPI(t, promptEvalRemoteFakeOptions{
+		Playgrounds: []map[string]any{{"id": "pg-1", "name": "Prompt Eval: refund-bot-v1"}},
+		TestCases: []map[string]any{
+			{
+				"id":        "tc-1",
+				"case_key":  "greeting",
+				"variables": map[string]any{"input": "Say hello in French"},
+				"expectations": map[string]any{
+					"output": "Bonjour",
+					"prompt_eval_assertions": []any{
+						map[string]any{"type": "contains", "expected": "Bonjour", "metric": "correctness"},
+					},
+				},
+			},
+			{
+				"id":        "tc-3",
+				"case_key":  "farewell",
+				"variables": map[string]any{"input": "Say goodbye in French"},
+				"expectations": map[string]any{
+					"output": "Au revoir",
+					"prompt_eval_assertions": []any{
+						map[string]any{"type": "contains", "expected": "Bonjour", "metric": "correctness"},
+					},
+				},
+			},
+			{
+				"id":           "tc-2",
+				"case_key":     "orphan",
+				"variables":    map[string]any{"input": "old"},
+				"expectations": map[string]any{},
+			},
+		},
+	})
+	defer srv.Close()
+
+	result := runPromptEvalRemoteValidateJSON(t, path, srv.URL, false)
+	if !result.Valid {
+		t.Fatalf("remote validate errors = %v", result.Errors)
+	}
+	if got := result.Remote.DryRun.TestsCreate; got != 1 {
+		t.Fatalf("tests_create = %d, want 1", got)
+	}
+	if got := result.Remote.DryRun.TestsNoop; got != 1 {
+		t.Fatalf("tests_noop = %d, want 1", got)
+	}
+	if got := result.Remote.DryRun.TestsUpdate; got != 1 {
+		t.Fatalf("tests_update = %d, want 1", got)
+	}
+	if got := result.Remote.DryRun.TestsOrphan; got != 1 {
+		t.Fatalf("tests_orphan = %d, want 1", got)
+	}
+}
+
+func TestPromptEvalValidateRemoteIsReadOnly(t *testing.T) {
+	var writeCalled bool
+	path := writePromptEvalFixture(t, validPromptEvalYAML())
+	srv := promptEvalRemoteFakeAPI(t, promptEvalRemoteFakeOptions{OnWrite: func() { writeCalled = true }})
+	defer srv.Close()
+
+	result := runPromptEvalRemoteValidateJSON(t, path, srv.URL, false)
+	if !result.Valid {
+		t.Fatalf("remote validate errors = %v", result.Errors)
+	}
+	if writeCalled {
+		t.Fatal("remote validate performed a write request")
+	}
+}
+
 func TestChallengePackPromptEvalTemplateMentionsPromptEvalInit(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "pack.yaml")
@@ -230,4 +436,85 @@ thresholds:
   dimensions:
     correctness: 0.9
 `
+}
+
+type promptEvalRemoteFakeOptions struct {
+	ModelAliases     []map[string]any
+	ProviderAccounts []map[string]any
+	Playgrounds      []map[string]any
+	TestCases        []map[string]any
+	OnWrite          func()
+	PaginateAliases  bool
+}
+
+func promptEvalRemoteFakeAPI(t *testing.T, options promptEvalRemoteFakeOptions) *httptest.Server {
+	t.Helper()
+	modelAliases := options.ModelAliases
+	if modelAliases == nil {
+		modelAliases = []map[string]any{{"id": "alias-1", "alias_key": "gpt-5.5", "provider_key": "openai", "provider_account_id": "pa-1"}}
+	}
+	providerAccounts := options.ProviderAccounts
+	if providerAccounts == nil {
+		providerAccounts = []map[string]any{{"id": "pa-1", "provider_key": "openai", "name": "OpenAI", "status": "active"}}
+	}
+	playgrounds := options.Playgrounds
+	if playgrounds == nil {
+		playgrounds = []map[string]any{}
+	}
+	testCases := options.TestCases
+	if testCases == nil {
+		testCases = []map[string]any{}
+	}
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost || r.Method == http.MethodPatch || r.Method == http.MethodPut || r.Method == http.MethodDelete {
+			if options.OnWrite != nil {
+				options.OnWrite()
+			}
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]any{"error": map[string]any{"message": "unexpected write request"}})
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/workspaces/ws-1/model-aliases":
+			if options.PaginateAliases && r.URL.Query().Get("cursor") == "" {
+				json.NewEncoder(w).Encode(map[string]any{"items": []map[string]any{}, "next_cursor": "page-2"})
+				return
+			}
+			json.NewEncoder(w).Encode(map[string]any{"items": modelAliases})
+		case "/v1/workspaces/ws-1/provider-accounts":
+			json.NewEncoder(w).Encode(map[string]any{"items": providerAccounts})
+		case "/v1/workspaces/ws-1/playgrounds":
+			json.NewEncoder(w).Encode(map[string]any{"items": playgrounds})
+		case "/v1/playgrounds/pg-1/test-cases":
+			json.NewEncoder(w).Encode(map[string]any{"items": testCases})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+			json.NewEncoder(w).Encode(map[string]any{"error": map[string]any{"message": "not found"}})
+		}
+	}))
+}
+
+func runPromptEvalRemoteValidateJSON(t *testing.T, path, apiURL string, ciMode bool) promptEvalValidationResult {
+	t.Helper()
+	args := []string{"prompt-eval", "validate", path, "--remote", "-w", "ws-1", "--json"}
+	if ciMode {
+		args = append(args, "--ci")
+	}
+	return runPromptEvalValidateJSON(t, args, apiURL)
+}
+
+func runPromptEvalValidateJSON(t *testing.T, args []string, apiURL string) promptEvalValidationResult {
+	t.Helper()
+	stdout := captureStdout(t)
+	err := executeCommand(t, args, apiURL)
+	out := stdout.finish()
+	var result promptEvalValidationResult
+	if err := json.Unmarshal([]byte(out), &result); err != nil {
+		t.Fatalf("decode remote json: %v\n%s", err, out)
+	}
+	if result.Valid && err != nil {
+		t.Fatalf("remote validate returned error for valid result: %v\n%s", err, out)
+	}
+	return result
 }

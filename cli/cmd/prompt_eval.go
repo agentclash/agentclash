@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -31,6 +32,8 @@ func init() {
 	promptEvalInitCmd.Flags().String("name", "", "Prompt eval name (defaults from the file name)")
 
 	promptEvalValidateCmd.Flags().Int("max-cases", 100, "Maximum model x test cases allowed before launch")
+	promptEvalValidateCmd.Flags().Bool("remote", false, "Validate referenced AgentClash workspace resources without creating them")
+	promptEvalValidateCmd.Flags().Bool("ci", false, "Apply CI-safe validation rules")
 }
 
 var promptEvalCmd = &cobra.Command{
@@ -91,7 +94,21 @@ var promptEvalValidateCmd = &cobra.Command{
 			path = args[0]
 		}
 		maxCases, _ := cmd.Flags().GetInt("max-cases")
-		result := validatePromptEvalFile(path, maxCases)
+		remote, _ := cmd.Flags().GetBool("remote")
+		ciMode, _ := cmd.Flags().GetBool("ci")
+		cfg, result := validatePromptEvalFileWithConfig(path, maxCases)
+		if result.Valid && ciMode && !remote {
+			result.Valid = false
+			result.Errors = append(result.Errors, "--ci requires --remote so CI-safe provider and workspace checks run")
+			result.ExitCode = promptEvalExitInvalid
+		}
+		if result.Valid && remote {
+			validatePromptEvalRemote(cmd, rc, cfg, ciMode, &result)
+			result.Valid = len(result.Errors) == 0
+			if !result.Valid {
+				result.ExitCode = promptEvalExitInvalid
+			}
+		}
 		if rc.Output.IsStructured() {
 			if err := rc.Output.PrintRaw(result); err != nil {
 				return err
@@ -148,17 +165,50 @@ type promptEvalThresholds struct {
 }
 
 type promptEvalValidationResult struct {
-	SchemaVersion       int      `json:"schemaVersion" yaml:"schemaVersion"`
-	Path                string   `json:"path" yaml:"path"`
-	Valid               bool     `json:"valid" yaml:"valid"`
-	Errors              []string `json:"errors,omitempty" yaml:"errors,omitempty"`
-	Warnings            []string `json:"warnings,omitempty" yaml:"warnings,omitempty"`
-	ModelCount          int      `json:"model_count" yaml:"model_count"`
-	TestCount           int      `json:"test_count" yaml:"test_count"`
-	CaseCount           int      `json:"case_count" yaml:"case_count"`
-	MaxCases            int      `json:"max_cases" yaml:"max_cases"`
-	AssertionSignatures []string `json:"assertion_signatures" yaml:"assertion_signatures"`
-	ExitCode            int      `json:"exit_code" yaml:"exit_code"`
+	SchemaVersion       int                         `json:"schemaVersion" yaml:"schemaVersion"`
+	Path                string                      `json:"path" yaml:"path"`
+	Valid               bool                        `json:"valid" yaml:"valid"`
+	Errors              []string                    `json:"errors,omitempty" yaml:"errors,omitempty"`
+	Warnings            []string                    `json:"warnings,omitempty" yaml:"warnings,omitempty"`
+	ModelCount          int                         `json:"model_count" yaml:"model_count"`
+	TestCount           int                         `json:"test_count" yaml:"test_count"`
+	CaseCount           int                         `json:"case_count" yaml:"case_count"`
+	MaxCases            int                         `json:"max_cases" yaml:"max_cases"`
+	AssertionSignatures []string                    `json:"assertion_signatures" yaml:"assertion_signatures"`
+	Remote              *promptEvalRemoteValidation `json:"remote,omitempty" yaml:"remote,omitempty"`
+	ExitCode            int                         `json:"exit_code" yaml:"exit_code"`
+}
+
+type promptEvalRemoteValidation struct {
+	WorkspaceID string                       `json:"workspace_id" yaml:"workspace_id"`
+	Models      []promptEvalRemoteModel      `json:"models,omitempty" yaml:"models,omitempty"`
+	Playgrounds []promptEvalRemotePlayground `json:"playgrounds,omitempty" yaml:"playgrounds,omitempty"`
+	DryRun      promptEvalRemoteDryRun       `json:"dry_run" yaml:"dry_run"`
+}
+
+type promptEvalRemoteModel struct {
+	Alias             string `json:"alias,omitempty" yaml:"alias,omitempty"`
+	ModelAliasID      string `json:"model_alias_id" yaml:"model_alias_id"`
+	ProviderAccountID string `json:"provider_account_id" yaml:"provider_account_id"`
+}
+
+type promptEvalRemotePlayground struct {
+	Name         string `json:"name" yaml:"name"`
+	Signature    string `json:"signature" yaml:"signature"`
+	PlaygroundID string `json:"playground_id,omitempty" yaml:"playground_id,omitempty"`
+	TestsCreate  int    `json:"tests_create" yaml:"tests_create"`
+	TestsUpdate  int    `json:"tests_update" yaml:"tests_update"`
+	TestsNoop    int    `json:"tests_noop" yaml:"tests_noop"`
+	TestsOrphan  int    `json:"tests_orphan" yaml:"tests_orphan"`
+}
+
+type promptEvalRemoteDryRun struct {
+	PlaygroundsCreate int `json:"playgrounds_create" yaml:"playgrounds_create"`
+	PlaygroundsReuse  int `json:"playgrounds_reuse" yaml:"playgrounds_reuse"`
+	TestsCreate       int `json:"tests_create" yaml:"tests_create"`
+	TestsUpdate       int `json:"tests_update" yaml:"tests_update"`
+	TestsNoop         int `json:"tests_noop" yaml:"tests_noop"`
+	TestsOrphan       int `json:"tests_orphan" yaml:"tests_orphan"`
 }
 
 func buildPromptEvalScaffold(name string) ([]byte, error) {
@@ -186,6 +236,11 @@ Reply to: {{input}}
 }
 
 func validatePromptEvalFile(path string, maxCases int) promptEvalValidationResult {
+	_, result := validatePromptEvalFileWithConfig(path, maxCases)
+	return result
+}
+
+func validatePromptEvalFileWithConfig(path string, maxCases int) (promptEvalConfig, promptEvalValidationResult) {
 	result := promptEvalValidationResult{
 		SchemaVersion:       promptEvalSchemaVersion,
 		Path:                path,
@@ -198,7 +253,7 @@ func validatePromptEvalFile(path string, maxCases int) promptEvalValidationResul
 		result.Valid = false
 		result.Errors = append(result.Errors, fmt.Sprintf("reading file: %v", err))
 		result.ExitCode = promptEvalExitInvalid
-		return result
+		return promptEvalConfig{}, result
 	}
 	var cfg promptEvalConfig
 	decoder := yaml.NewDecoder(bytes.NewReader(data))
@@ -207,7 +262,7 @@ func validatePromptEvalFile(path string, maxCases int) promptEvalValidationResul
 		result.Valid = false
 		result.Errors = append(result.Errors, fmt.Sprintf("parsing yaml: %v", err))
 		result.ExitCode = promptEvalExitInvalid
-		return result
+		return promptEvalConfig{}, result
 	}
 	result.ModelCount = len(cfg.Models)
 	result.TestCount = len(cfg.Tests)
@@ -218,7 +273,7 @@ func validatePromptEvalFile(path string, maxCases int) promptEvalValidationResul
 	if !result.Valid {
 		result.ExitCode = promptEvalExitInvalid
 	}
-	return result
+	return cfg, result
 }
 
 func validatePromptEvalConfig(cfg promptEvalConfig, maxCases int, result *promptEvalValidationResult) {
@@ -292,6 +347,286 @@ func validatePromptEvalConfig(cfg promptEvalConfig, maxCases int, result *prompt
 		}
 	}
 	result.AssertionSignatures = sortedPromptEvalKeys(signatures)
+}
+
+func validatePromptEvalRemote(cmd *cobra.Command, rc *RunContext, cfg promptEvalConfig, ciMode bool, result *promptEvalValidationResult) {
+	workspaceID := strings.TrimSpace(rc.Workspace)
+	if workspaceID == "" {
+		result.Errors = append(result.Errors, "no workspace specified for --remote. Pass --workspace, set AGENTCLASH_WORKSPACE, or run agentclash link.")
+		return
+	}
+	remote := &promptEvalRemoteValidation{WorkspaceID: workspaceID}
+	result.Remote = remote
+
+	modelAliases, err := promptEvalListRemoteItems(cmd, rc, fmt.Sprintf("/v1/workspaces/%s/model-aliases", workspaceID))
+	if err != nil {
+		result.Errors = append(result.Errors, err.Error())
+		return
+	}
+	providerAccounts, err := promptEvalListRemoteItems(cmd, rc, fmt.Sprintf("/v1/workspaces/%s/provider-accounts", workspaceID))
+	if err != nil {
+		result.Errors = append(result.Errors, err.Error())
+		return
+	}
+	for i, model := range cfg.Models {
+		resolvedAlias, err := promptEvalResolveModelAlias(model, modelAliases)
+		if err != nil {
+			result.Errors = append(result.Errors, fmt.Sprintf("models[%d]: %v", i, err))
+			continue
+		}
+		resolvedProvider, err := promptEvalResolveProviderAccount(model, resolvedAlias, providerAccounts, ciMode)
+		if err != nil {
+			result.Errors = append(result.Errors, fmt.Sprintf("models[%d]: %v", i, err))
+			continue
+		}
+		remote.Models = append(remote.Models, promptEvalRemoteModel{
+			Alias:             strings.TrimSpace(model.Alias),
+			ModelAliasID:      mapString(resolvedAlias, "id"),
+			ProviderAccountID: mapString(resolvedProvider, "id"),
+		})
+	}
+	if len(result.Errors) > 0 {
+		return
+	}
+
+	playgrounds, err := promptEvalListRemoteItems(cmd, rc, fmt.Sprintf("/v1/workspaces/%s/playgrounds", workspaceID))
+	if err != nil {
+		result.Errors = append(result.Errors, err.Error())
+		return
+	}
+	groups := promptEvalTestGroups(cfg)
+	for _, group := range groups {
+		name := promptEvalPlaygroundName(cfg.Name, group.Signature, len(groups))
+		matches := promptEvalItemsByName(playgrounds, name)
+		pg := promptEvalRemotePlayground{Name: name, Signature: group.Signature}
+		switch len(matches) {
+		case 0:
+			pg.TestsCreate = len(group.Tests)
+			remote.DryRun.PlaygroundsCreate++
+		case 1:
+			pg.PlaygroundID = mapString(matches[0], "id")
+			remote.DryRun.PlaygroundsReuse++
+			promptEvalCompareRemoteTestCases(cmd, rc, pg.PlaygroundID, group, &pg, result)
+		default:
+			result.Errors = append(result.Errors, fmt.Sprintf("multiple playgrounds named %q; clean up duplicates before running prompt-eval", name))
+		}
+		remote.Playgrounds = append(remote.Playgrounds, pg)
+		remote.DryRun.TestsCreate += pg.TestsCreate
+		remote.DryRun.TestsUpdate += pg.TestsUpdate
+		remote.DryRun.TestsNoop += pg.TestsNoop
+		remote.DryRun.TestsOrphan += pg.TestsOrphan
+	}
+}
+
+func promptEvalListRemoteItems(cmd *cobra.Command, rc *RunContext, path string) ([]map[string]any, error) {
+	var out []map[string]any
+	var cursor string
+	for {
+		query := url.Values{}
+		if cursor != "" {
+			query.Set("cursor", cursor)
+		}
+		resp, err := rc.Client.Get(cmd.Context(), path, query)
+		if err != nil {
+			return nil, err
+		}
+		if apiErr := resp.ParseError(); apiErr != nil {
+			return nil, apiErr
+		}
+		var payload struct {
+			Items      []map[string]any `json:"items"`
+			NextCursor string           `json:"next_cursor"`
+		}
+		if err := resp.DecodeJSON(&payload); err != nil {
+			return nil, err
+		}
+		out = append(out, payload.Items...)
+		cursor = strings.TrimSpace(payload.NextCursor)
+		if cursor == "" {
+			break
+		}
+	}
+	return out, nil
+}
+
+func promptEvalResolveModelAlias(model promptEvalModel, aliases []map[string]any) (map[string]any, error) {
+	if id := strings.TrimSpace(model.ModelAliasID); id != "" {
+		for _, item := range aliases {
+			if mapString(item, "id") == id {
+				return item, nil
+			}
+		}
+		return nil, fmt.Errorf("model_alias_id %q was not found in the workspace", id)
+	}
+	alias := strings.TrimSpace(model.Alias)
+	matches := []map[string]any{}
+	for _, item := range aliases {
+		for _, key := range []string{"alias", "alias_key", "key", "name", "display_name"} {
+			if mapString(item, key) == alias {
+				matches = append(matches, item)
+				break
+			}
+		}
+	}
+	switch len(matches) {
+	case 0:
+		return nil, fmt.Errorf("model alias %q was not found", alias)
+	case 1:
+		return matches[0], nil
+	default:
+		return nil, fmt.Errorf("model alias %q matched %d workspace aliases; use model_alias_id", alias, len(matches))
+	}
+}
+
+func promptEvalResolveProviderAccount(model promptEvalModel, alias map[string]any, providers []map[string]any, ciMode bool) (map[string]any, error) {
+	selector := strings.TrimSpace(model.ProviderAccount)
+	if selector == "" {
+		return nil, fmt.Errorf("provider_account is required for --remote")
+	}
+	if selector == "default" {
+		if ciMode {
+			return nil, fmt.Errorf("provider_account: default is not allowed with --ci; pin a provider account")
+		}
+		aliasProviderID := mapString(alias, "provider_account_id")
+		if aliasProviderID != "" {
+			for _, item := range providers {
+				if promptEvalProviderActive(item) && mapString(item, "id") == aliasProviderID {
+					return item, nil
+				}
+			}
+			return nil, fmt.Errorf("default provider account %q from model alias was not found", aliasProviderID)
+		}
+		return nil, fmt.Errorf("model alias does not expose provider_account_id; set provider_account explicitly")
+	}
+	return promptEvalSingleProviderMatch(providers, func(item map[string]any) bool {
+		return mapString(item, "id") == selector ||
+			mapString(item, "provider_key", "provider") == selector ||
+			mapString(item, "name", "display_name") == selector
+	}, fmt.Sprintf("provider_account %q", selector))
+}
+
+func promptEvalSingleProviderMatch(providers []map[string]any, match func(map[string]any) bool, label string) (map[string]any, error) {
+	matches := []map[string]any{}
+	for _, item := range providers {
+		if promptEvalProviderActive(item) && match(item) {
+			matches = append(matches, item)
+		}
+	}
+	switch len(matches) {
+	case 0:
+		return nil, fmt.Errorf("%s was not found", label)
+	case 1:
+		return matches[0], nil
+	default:
+		return nil, fmt.Errorf("%s matched %d provider accounts; use a provider account id", label, len(matches))
+	}
+}
+
+func promptEvalProviderActive(item map[string]any) bool {
+	status := strings.TrimSpace(mapString(item, "status", "lifecycle_status"))
+	return status == "" || status == "active"
+}
+
+type promptEvalTestGroup struct {
+	Signature string
+	Tests     []promptEvalTest
+}
+
+func promptEvalTestGroups(cfg promptEvalConfig) []promptEvalTestGroup {
+	bySignature := map[string][]promptEvalTest{}
+	for _, test := range cfg.Tests {
+		signature := promptEvalAssertionSignature(promptEvalAssertionsForTest(test))
+		bySignature[signature] = append(bySignature[signature], test)
+	}
+	signatures := sortedPromptEvalKeys(promptEvalBoolMapKeys(bySignature))
+	groups := make([]promptEvalTestGroup, 0, len(signatures))
+	for _, signature := range signatures {
+		groups = append(groups, promptEvalTestGroup{Signature: signature, Tests: bySignature[signature]})
+	}
+	return groups
+}
+
+func promptEvalBoolMapKeys(values map[string][]promptEvalTest) map[string]bool {
+	keys := map[string]bool{}
+	for key := range values {
+		keys[key] = true
+	}
+	return keys
+}
+
+func promptEvalPlaygroundName(configName, signature string, groupCount int) string {
+	name := "Prompt Eval: " + strings.TrimSpace(configName)
+	if groupCount > 1 {
+		name += " [" + signature + "]"
+	}
+	return name
+}
+
+func promptEvalItemsByName(items []map[string]any, name string) []map[string]any {
+	var matches []map[string]any
+	for _, item := range items {
+		if mapString(item, "name") == name {
+			matches = append(matches, item)
+		}
+	}
+	return matches
+}
+
+func promptEvalCompareRemoteTestCases(cmd *cobra.Command, rc *RunContext, playgroundID string, group promptEvalTestGroup, pg *promptEvalRemotePlayground, result *promptEvalValidationResult) {
+	items, err := promptEvalListRemoteItems(cmd, rc, fmt.Sprintf("/v1/playgrounds/%s/test-cases", playgroundID))
+	if err != nil {
+		result.Errors = append(result.Errors, err.Error())
+		return
+	}
+	remoteByKey := map[string]map[string]any{}
+	for _, item := range items {
+		remoteByKey[mapString(item, "case_key")] = item
+	}
+	expectedKeys := map[string]bool{}
+	for _, test := range group.Tests {
+		expectedKeys[test.Key] = true
+		remote, exists := remoteByKey[test.Key]
+		if !exists {
+			pg.TestsCreate++
+			continue
+		}
+		if promptEvalCanonical(remote["variables"]) == promptEvalCanonical(test.Vars) &&
+			promptEvalCanonical(remote["expectations"]) == promptEvalCanonical(promptEvalExpectationsForTest(test)) {
+			pg.TestsNoop++
+			continue
+		}
+		pg.TestsUpdate++
+	}
+	for _, item := range items {
+		key := mapString(item, "case_key")
+		if key != "" && !expectedKeys[key] {
+			pg.TestsOrphan++
+		}
+	}
+}
+
+func promptEvalExpectationsForTest(test promptEvalTest) map[string]any {
+	assertions := make([]map[string]any, 0, len(promptEvalAssertionsForTest(test)))
+	for _, assertion := range promptEvalAssertionsForTest(test) {
+		assertions = append(assertions, map[string]any{
+			"type":     normalizePromptEvalAssertionType(assertion.Type),
+			"expected": promptEvalAssertionValueString(assertion.Value),
+			"metric":   strings.TrimSpace(assertion.Metric),
+		})
+	}
+	out := map[string]any{"prompt_eval_assertions": assertions}
+	if test.Expect.Output != nil {
+		out["output"] = test.Expect.Output
+	}
+	return out
+}
+
+func promptEvalCanonical(value any) string {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return fmt.Sprint(value)
+	}
+	return string(data)
 }
 
 func validatePromptEvalAssertion(testIndex, assertionIndex int, assertion promptEvalAssertion, result *promptEvalValidationResult) {
