@@ -12,6 +12,8 @@ import (
 	cliapi "github.com/agentclash/agentclash/cli/internal/api"
 )
 
+var runtimeOutputJSON bool
+
 type cliError struct {
 	Code    string
 	Message string
@@ -64,7 +66,11 @@ func RenderError(err error, w io.Writer) (int, bool) {
 }
 
 func structuredErrorOutputRequested() bool {
-	return flagJSON || flagOutput == "json"
+	return flagJSON || flagOutput == "json" || runtimeOutputJSON
+}
+
+func setRuntimeOutputFormat(format string) {
+	runtimeOutputJSON = format == "json"
 }
 
 func exitCodeForError(err error) int {

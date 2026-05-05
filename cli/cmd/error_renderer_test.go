@@ -9,6 +9,8 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+
+	"github.com/agentclash/agentclash/cli/internal/config"
 )
 
 func TestRenderErrorJSONPreservesAPIError(t *testing.T) {
@@ -72,6 +74,63 @@ func TestRenderErrorOutputJSONPreservesAPIError(t *testing.T) {
 	envelope := decodeStructuredError(t, stderr.String())
 	if envelope.Error.Code != "forbidden" || envelope.Error.Status != 403 {
 		t.Fatalf("error = %#v, want forbidden 403", envelope.Error)
+	}
+}
+
+func TestRenderErrorUserConfigJSONPreservesAPIError(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	if err := config.Save(config.UserConfig{Output: "json"}); err != nil {
+		t.Fatalf("Save() error: %v", err)
+	}
+
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"GET /v1/workspaces/ws-denied/runs": jsonHandler(403, map[string]any{
+			"error": map[string]any{"code": "forbidden", "message": "workspace access denied"},
+		}),
+	})
+	defer srv.Close()
+
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+	err := executeCommand(t, []string{"run", "list", "-w", "ws-denied"}, srv.URL)
+	if err == nil {
+		t.Fatal("expected API error")
+	}
+
+	var stderr bytes.Buffer
+	_, rendered := RenderError(err, &stderr)
+	if !rendered {
+		t.Fatal("expected structured error to render for config output json")
+	}
+
+	envelope := decodeStructuredError(t, stderr.String())
+	if envelope.Error.Code != "forbidden" || envelope.Error.Status != 403 {
+		t.Fatalf("error = %#v, want forbidden 403", envelope.Error)
+	}
+}
+
+func TestRenderErrorUserConfigTableDoesNotRender(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	if err := config.Save(config.UserConfig{Output: "table"}); err != nil {
+		t.Fatalf("Save() error: %v", err)
+	}
+
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"GET /v1/workspaces/ws-denied/runs": jsonHandler(403, map[string]any{
+			"error": map[string]any{"code": "forbidden", "message": "workspace access denied"},
+		}),
+	})
+	defer srv.Close()
+
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+	err := executeCommand(t, []string{"run", "list", "-w", "ws-denied"}, srv.URL)
+	if err == nil {
+		t.Fatal("expected API error")
+	}
+
+	var stderr bytes.Buffer
+	_, rendered := RenderError(err, &stderr)
+	if rendered {
+		t.Fatalf("expected table config to skip structured renderer, got %q", stderr.String())
 	}
 }
 

@@ -116,6 +116,7 @@ Get started:
 
 		client := api.NewClient(mgr.APIURL(), token, opts...)
 		formatter := output.NewFormatter(mgr.OutputFormat(), flagJSON, flagQuiet)
+		setRuntimeOutputFormat(formatter.Format())
 
 		rc := &RunContext{
 			Client:    client,
