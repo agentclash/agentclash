@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -111,5 +112,219 @@ func TestRunEventsEmitsNDJSONForJSON(t *testing.T) {
 		if !strings.HasPrefix(line, "{") {
 			t.Fatalf("line %d is not JSON: %q", i, line)
 		}
+	}
+}
+
+func TestRunCreateFollowJSONStreamsCreatedRunAndEvents(t *testing.T) {
+	sseBody := "event: step\n" +
+		"data: {\"EventType\":\"run.started\"}\n" +
+		"\n" +
+		"event: step\n" +
+		"data: {\"EventType\":\"run.completed\"}\n" +
+		"\n"
+
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"POST /v1/runs": jsonHandler(201, map[string]any{
+			"id":     "run-json-follow",
+			"status": "queued",
+		}),
+		"GET /v1/runs/run-json-follow/events/stream": sseHandler([]string{sseBody}),
+	})
+	defer srv.Close()
+
+	stdout := captureStdout(t)
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+	if err := executeCommand(t, []string{
+		"run", "create",
+		"-w", "ws-1",
+		"--challenge-pack-version", "cpv-1",
+		"--deployments", "dep-1",
+		"--follow",
+		"--json",
+	}, srv.URL); err != nil {
+		t.Fatalf("run create --follow --json: %v", err)
+	}
+	out := stdout.finish()
+
+	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+	if len(lines) != 3 {
+		t.Fatalf("expected created run + 2 event lines, got %d\n---\n%s", len(lines), out)
+	}
+
+	var created map[string]any
+	if err := json.Unmarshal([]byte(lines[0]), &created); err != nil {
+		t.Fatalf("created line is not JSON: %v\n%s", err, lines[0])
+	}
+	if created["type"] != "run.created" {
+		t.Fatalf("created.type = %v, want run.created", created["type"])
+	}
+	run, ok := created["run"].(map[string]any)
+	if !ok || run["id"] != "run-json-follow" {
+		t.Fatalf("created.run = %#v, want run-json-follow", created["run"])
+	}
+
+	for i, want := range []string{"run.started", "run.completed"} {
+		var event map[string]any
+		if err := json.Unmarshal([]byte(lines[i+1]), &event); err != nil {
+			t.Fatalf("event line %d is not JSON: %v\n%s", i+1, err, lines[i+1])
+		}
+		if event["EventType"] != want {
+			t.Fatalf("event line %d EventType = %v, want %s", i+1, event["EventType"], want)
+		}
+	}
+}
+
+func TestRunCreateJSONWithoutFollowStillPrintsSingleRunObject(t *testing.T) {
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"POST /v1/runs": jsonHandler(201, map[string]any{
+			"id":     "run-json",
+			"status": "queued",
+		}),
+	})
+	defer srv.Close()
+
+	stdout := captureStdout(t)
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+	if err := executeCommand(t, []string{
+		"run", "create",
+		"-w", "ws-1",
+		"--challenge-pack-version", "cpv-1",
+		"--deployments", "dep-1",
+		"--json",
+	}, srv.URL); err != nil {
+		t.Fatalf("run create --json: %v", err)
+	}
+	out := stdout.finish()
+
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(out), &payload); err != nil {
+		t.Fatalf("output is not a single JSON object: %v\n%s", err, out)
+	}
+	if payload["id"] != "run-json" {
+		t.Fatalf("payload.id = %v, want run-json", payload["id"])
+	}
+	if _, ok := payload["type"]; ok {
+		t.Fatalf("non-follow JSON must not use streaming envelope: %#v", payload)
+	}
+}
+
+func TestRunCreateFollowYAMLStreamsCreatedRunAndEvents(t *testing.T) {
+	sseBody := "event: step\n" +
+		"id: 1\n" +
+		"data: {\"EventType\":\"run.started\"}\n" +
+		"\n"
+
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"POST /v1/runs": jsonHandler(201, map[string]any{
+			"id":     "run-yaml-follow",
+			"status": "queued",
+		}),
+		"GET /v1/runs/run-yaml-follow/events/stream": sseHandler([]string{sseBody}),
+	})
+	defer srv.Close()
+
+	stdout := captureStdout(t)
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+	if err := executeCommand(t, []string{
+		"run", "create",
+		"-w", "ws-1",
+		"--challenge-pack-version", "cpv-1",
+		"--deployments", "dep-1",
+		"--follow",
+		"--output", "yaml",
+	}, srv.URL); err != nil {
+		t.Fatalf("run create --follow --output yaml: %v", err)
+	}
+	out := stdout.finish()
+
+	dec := yaml.NewDecoder(strings.NewReader(out))
+	var docs []map[string]any
+	for {
+		var doc map[string]any
+		err := dec.Decode(&doc)
+		if err != nil {
+			break
+		}
+		docs = append(docs, doc)
+	}
+	if len(docs) != 2 {
+		t.Fatalf("expected created run + 1 event YAML docs, got %d\n---\n%s", len(docs), out)
+	}
+	if docs[0]["type"] != "run.created" {
+		t.Fatalf("first doc type = %v, want run.created", docs[0]["type"])
+	}
+	if docs[1]["event"] != "step" {
+		t.Fatalf("second doc event = %v, want step", docs[1]["event"])
+	}
+}
+
+func TestEvalStartFollowJSONStreamsCreatedRunAndEvents(t *testing.T) {
+	sseBody := "event: step\n" +
+		"data: {\"EventType\":\"eval.completed\"}\n" +
+		"\n"
+
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"GET /v1/workspaces/ws-1/challenge-packs": jsonHandler(200, map[string]any{
+			"items": []map[string]any{
+				{
+					"id":   "pack-1",
+					"name": "Support Eval",
+					"slug": "support-eval",
+					"versions": []map[string]any{
+						{"id": "ver-1", "version_number": 1, "lifecycle_status": "active"},
+					},
+				},
+			},
+		}),
+		"GET /v1/workspaces/ws-1/challenge-pack-versions/ver-1/input-sets": jsonHandler(200, map[string]any{
+			"items": []map[string]any{
+				{"id": "input-1", "input_key": "default", "name": "Default Inputs"},
+			},
+		}),
+		"GET /v1/workspaces/ws-1/agent-deployments": jsonHandler(200, map[string]any{
+			"items": []map[string]any{
+				{"id": "dep-1", "name": "prod", "status": "ready"},
+			},
+		}),
+		"POST /v1/runs": jsonHandler(201, map[string]any{
+			"id":     "run-eval-follow",
+			"status": "queued",
+		}),
+		"GET /v1/runs/run-eval-follow/events/stream": sseHandler([]string{sseBody}),
+	})
+	defer srv.Close()
+
+	stdout := captureStdout(t)
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+	if err := executeCommand(t, []string{
+		"eval", "start",
+		"-w", "ws-1",
+		"--pack", "support-eval",
+		"--deployment", "prod",
+		"--follow",
+		"--json",
+	}, srv.URL); err != nil {
+		t.Fatalf("eval start --follow --json: %v", err)
+	}
+	out := stdout.finish()
+
+	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("expected created run + event lines, got %d\n---\n%s", len(lines), out)
+	}
+	var created map[string]any
+	if err := json.Unmarshal([]byte(lines[0]), &created); err != nil {
+		t.Fatalf("created line is not JSON: %v\n%s", err, lines[0])
+	}
+	if created["type"] != "run.created" {
+		t.Fatalf("created.type = %v, want run.created", created["type"])
+	}
+	var event map[string]any
+	if err := json.Unmarshal([]byte(lines[1]), &event); err != nil {
+		t.Fatalf("event line is not JSON: %v\n%s", err, lines[1])
+	}
+	if event["EventType"] != "eval.completed" {
+		t.Fatalf("event.EventType = %v, want eval.completed", event["EventType"])
 	}
 }

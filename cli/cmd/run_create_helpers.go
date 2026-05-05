@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -127,7 +128,13 @@ func createRun(cmd *cobra.Command, rc *RunContext, body map[string]any) (map[str
 
 func presentCreatedRun(cmd *cobra.Command, rc *RunContext, run map[string]any, follow bool, afterFollow func(string) error) error {
 	if rc.Output.IsStructured() {
-		return rc.Output.PrintRaw(run)
+		if !follow {
+			return rc.Output.PrintRaw(run)
+		}
+		if err := printStructuredRunCreated(rc, run); err != nil {
+			return err
+		}
+		return streamRunEvents(cmd, rc, str(run["id"]))
 	}
 
 	runID := str(run["id"])
@@ -145,6 +152,17 @@ func presentCreatedRun(cmd *cobra.Command, rc *RunContext, run map[string]any, f
 	}
 
 	return nil
+}
+
+func printStructuredRunCreated(rc *RunContext, run map[string]any) error {
+	envelope := map[string]any{
+		"type": "run.created",
+		"run":  run,
+	}
+	if rc.Output.IsYAML() {
+		return rc.Output.PrintRaw(envelope)
+	}
+	return json.NewEncoder(rc.Output.Writer()).Encode(envelope)
 }
 
 func compactNonEmptyStrings(values []string) []string {
