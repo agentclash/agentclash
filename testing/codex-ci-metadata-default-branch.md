@@ -17,8 +17,9 @@
 - Repository CI metadata round-trip tests cover `default_branch` persistence through `runs.ci_metadata`.
 
 ## Smoke Tests
-- `go test ./backend/internal/domain ./backend/internal/api ./cli/cmd` passes from the repository root.
-- `go test ./backend/internal/repository` may require local database services; if unavailable, record the blocker and rely on the repository test source review.
+- From `backend/`, `go test ./internal/domain ./internal/api` passes.
+- From `cli/`, `go test ./cmd` passes.
+- From `backend/`, `go test ./internal/repository -run TestRepositoryCreateQueuedRunWritesRunRunAgentsAndInitialHistory -count=1` passes.
 
 ## E2E Tests
 - N/A — this schema-alignment fix is covered at API/CLI contract level. Full hosted GitHub rerun is optional after merge/deploy because the production API needs this backend change deployed.
