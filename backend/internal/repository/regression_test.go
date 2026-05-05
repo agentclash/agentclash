@@ -73,6 +73,88 @@ func TestRepositoryRegressionSuiteCRUD(t *testing.T) {
 	}
 }
 
+func TestRepositoryRegressionSuiteListBatchesCaseCounts(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	sourceChallengePackID := lookupChallengePackID(t, ctx, db, fixture.challengePackVersionID)
+	secondChallengeIdentityID := lookupChallengeIdentityID(t, ctx, db, "second-ticket")
+
+	createSuite := func(name string) repository.RegressionSuite {
+		t.Helper()
+		suite, err := repo.CreateRegressionSuite(ctx, repository.CreateRegressionSuiteParams{
+			WorkspaceID:           fixture.workspaceID,
+			SourceChallengePackID: sourceChallengePackID,
+			Name:                  name,
+			Description:           "Seed suite for batched count coverage",
+			Status:                domain.RegressionSuiteStatusActive,
+			SourceMode:            "derived_only",
+			DefaultGateSeverity:   domain.RegressionSeverityWarning,
+			CreatedByUserID:       fixture.userID,
+		})
+		if err != nil {
+			t.Fatalf("CreateRegressionSuite(%q) returned error: %v", name, err)
+		}
+		return suite
+	}
+
+	createCase := func(suiteID uuid.UUID, challengeIdentityID uuid.UUID, key string) {
+		t.Helper()
+		if _, err := repo.CreateRegressionCase(ctx, repository.CreateRegressionCaseParams{
+			SuiteID:                      suiteID,
+			Title:                        "Regression " + key,
+			Description:                  "Case seeded for batched count coverage",
+			Status:                       domain.RegressionCaseStatusActive,
+			Severity:                     domain.RegressionSeverityWarning,
+			PromotionMode:                domain.RegressionPromotionModeOutputOnly,
+			SourceRunID:                  &fixture.runID,
+			SourceRunAgentID:             &fixture.primaryRunAgentID,
+			SourceChallengePackVersionID: fixture.challengePackVersionID,
+			SourceChallengeInputSetID:    &fixture.challengeInputSetID,
+			SourceChallengeIdentityID:    challengeIdentityID,
+			SourceCaseKey:                key,
+			EvidenceTier:                 "native_structured",
+			FailureClass:                 "behavioral_regression",
+			FailureSummary:               "Seed failure",
+			PayloadSnapshot:              []byte(`{"input":"fixture"}`),
+			ExpectedContract:             []byte(`{"expected":"pass"}`),
+			Metadata:                     []byte(`{"source":"test"}`),
+		}); err != nil {
+			t.Fatalf("CreateRegressionCase(%q) returned error: %v", key, err)
+		}
+	}
+
+	oneCaseSuite := createSuite("One case")
+	twoCaseSuite := createSuite("Two cases")
+	emptySuite := createSuite("No cases")
+	createCase(oneCaseSuite.ID, fixture.firstChallengeIdentityID, "one-a")
+	createCase(twoCaseSuite.ID, fixture.firstChallengeIdentityID, "two-a")
+	createCase(twoCaseSuite.ID, secondChallengeIdentityID, "two-b")
+
+	listed, err := repo.ListRegressionSuitesByWorkspaceID(ctx, fixture.workspaceID, 20, 0)
+	if err != nil {
+		t.Fatalf("ListRegressionSuitesByWorkspaceID returned error: %v", err)
+	}
+	if len(listed) != 3 {
+		t.Fatalf("listed suite count = %d, want 3", len(listed))
+	}
+	countsByName := make(map[string]int, len(listed))
+	for _, suite := range listed {
+		countsByName[suite.Name] = suite.CaseCount
+	}
+	for name, want := range map[string]int{
+		oneCaseSuite.Name: 1,
+		twoCaseSuite.Name: 2,
+		emptySuite.Name:   0,
+	} {
+		if got := countsByName[name]; got != want {
+			t.Fatalf("%s case_count = %d, want %d", name, got, want)
+		}
+	}
+}
+
 func TestRepositoryRegressionCaseAndPromotionCRUD(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)

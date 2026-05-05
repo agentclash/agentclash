@@ -54,6 +54,14 @@ SELECT count(*)
 FROM workspace_regression_cases
 WHERE suite_id = @suite_id;
 
+-- name: CountRegressionCasesBySuiteIDs :many
+SELECT
+    suite_id,
+    count(*)::bigint AS case_count
+FROM workspace_regression_cases
+WHERE suite_id = ANY(@suite_ids::uuid[])
+GROUP BY suite_id;
+
 -- name: ListRegressionCasesByWorkspaceID :many
 SELECT
     c.id,

@@ -249,11 +249,14 @@ func (r *Repository) ListRegressionSuitesByWorkspaceID(ctx context.Context, work
 		if mapErr != nil {
 			return nil, fmt.Errorf("map regression suite %s: %w", row.ID, mapErr)
 		}
-		suite.CaseCount, mapErr = r.countRegressionCasesBySuiteID(ctx, suite.ID)
-		if mapErr != nil {
-			return nil, mapErr
-		}
 		suites = append(suites, suite)
+	}
+	caseCountsBySuiteID, err := r.countRegressionCasesBySuiteIDs(ctx, suiteIDs(suites))
+	if err != nil {
+		return nil, err
+	}
+	for i := range suites {
+		suites[i].CaseCount = caseCountsBySuiteID[suites[i].ID]
 	}
 	return suites, nil
 }
@@ -805,6 +808,31 @@ func (r *Repository) countRegressionCasesBySuiteID(ctx context.Context, suiteID 
 		return 0, fmt.Errorf("count regression cases by suite id: %w", err)
 	}
 	return int(count), nil
+}
+
+func (r *Repository) countRegressionCasesBySuiteIDs(ctx context.Context, suiteIDs []uuid.UUID) (map[uuid.UUID]int, error) {
+	if len(suiteIDs) == 0 {
+		return map[uuid.UUID]int{}, nil
+	}
+	rows, err := r.queries.CountRegressionCasesBySuiteIDs(ctx, repositorysqlc.CountRegressionCasesBySuiteIDsParams{
+		SuiteIds: suiteIDs,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("count regression cases by suite ids: %w", err)
+	}
+	counts := make(map[uuid.UUID]int, len(rows))
+	for _, row := range rows {
+		counts[row.SuiteID] = int(row.CaseCount)
+	}
+	return counts, nil
+}
+
+func suiteIDs(suites []RegressionSuite) []uuid.UUID {
+	ids := make([]uuid.UUID, 0, len(suites))
+	for _, suite := range suites {
+		ids = append(ids, suite.ID)
+	}
+	return ids
 }
 
 func (r *Repository) latestRegressionPromotionByCaseID(ctx context.Context, caseID uuid.UUID) (*RegressionPromotion, error) {

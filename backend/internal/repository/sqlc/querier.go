@@ -14,6 +14,7 @@ type Querier interface {
 	ApplyHostedRunEvent(ctx context.Context, arg ApplyHostedRunEventParams) (HostedRunExecution, error)
 	AttachRunToEvalSession(ctx context.Context, arg AttachRunToEvalSessionParams) (Run, error)
 	CountRegressionCasesBySuiteID(ctx context.Context, arg CountRegressionCasesBySuiteIDParams) (int64, error)
+	CountRegressionCasesBySuiteIDs(ctx context.Context, arg CountRegressionCasesBySuiteIDsParams) ([]CountRegressionCasesBySuiteIDsRow, error)
 	CountRegressionCasesByWorkspaceID(ctx context.Context, arg CountRegressionCasesByWorkspaceIDParams) (int64, error)
 	CountRegressionSuitesByWorkspaceID(ctx context.Context, arg CountRegressionSuitesByWorkspaceIDParams) (int64, error)
 	CountRunsByWorkspaceID(ctx context.Context, arg CountRunsByWorkspaceIDParams) (int64, error)
