@@ -69,6 +69,13 @@ inputs:
   default-branch:
     description: Optional default branch metadata override for auto_on_main regression promotion.
     required: false
+  pr-comment:
+    description: Post or update a sticky structured AgentClash pull request comment when pull request context and permissions are available.
+    required: false
+    default: "true"
+  github-token:
+    description: GitHub token used for PR comments. Defaults to the workflow github.token when omitted.
+    required: false
 
 outputs:
   should-run:
@@ -119,4 +126,8 @@ runs:
         INPUT_POLL_INTERVAL: ${{ inputs.poll-interval }}
         INPUT_FOLLOW: ${{ inputs.follow }}
         INPUT_DEFAULT_BRANCH: ${{ inputs.default-branch }}
+        INPUT_PR_COMMENT: ${{ inputs.pr-comment }}
+        INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}
+        GITHUB_TOKEN: ${{ github.token }}
+        GITHUB_API_URL: ${{ github.api_url }}
       run: '"${ACTION_PATH}/run.sh"'
