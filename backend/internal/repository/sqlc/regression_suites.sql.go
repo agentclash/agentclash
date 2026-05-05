@@ -29,6 +29,44 @@ func (q *Queries) CountRegressionCasesBySuiteID(ctx context.Context, arg CountRe
 	return count, err
 }
 
+const countRegressionCasesBySuiteIDs = `-- name: CountRegressionCasesBySuiteIDs :many
+SELECT
+    suite_id,
+    count(*)::bigint AS case_count
+FROM workspace_regression_cases
+WHERE suite_id = ANY($1::uuid[])
+GROUP BY suite_id
+`
+
+type CountRegressionCasesBySuiteIDsParams struct {
+	SuiteIds []uuid.UUID
+}
+
+type CountRegressionCasesBySuiteIDsRow struct {
+	SuiteID   uuid.UUID
+	CaseCount int64
+}
+
+func (q *Queries) CountRegressionCasesBySuiteIDs(ctx context.Context, arg CountRegressionCasesBySuiteIDsParams) ([]CountRegressionCasesBySuiteIDsRow, error) {
+	rows, err := q.db.Query(ctx, countRegressionCasesBySuiteIDs, arg.SuiteIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CountRegressionCasesBySuiteIDsRow
+	for rows.Next() {
+		var i CountRegressionCasesBySuiteIDsRow
+		if err := rows.Scan(&i.SuiteID, &i.CaseCount); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const countRegressionCasesByWorkspaceID = `-- name: CountRegressionCasesByWorkspaceID :one
 SELECT count(*)
 FROM workspace_regression_cases c
