@@ -492,7 +492,7 @@ func ciRunTaxonomySource(reasonCode string, triggeredCondition string, failureMo
 
 func ciRunIsRegressionGateReason(reason string) bool {
 	switch strings.TrimSpace(strings.ToLower(reason)) {
-	case "regression_blocking_failure", "new_regression_blocking_failure", "regression_warning_failure_count":
+	case "regression_blocking_failure", "regression_new_blocking_failure", "regression_warning_threshold_exceeded", "regression_policy_violation":
 		return true
 	default:
 		return false
