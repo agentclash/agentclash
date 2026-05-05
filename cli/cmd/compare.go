@@ -13,6 +13,7 @@ func init() {
 	rootCmd.AddCommand(compareCmd)
 	compareCmd.AddCommand(compareRunsCmd)
 	compareCmd.AddCommand(compareGateCmd)
+	compareCmd.AddCommand(compareLatestCmd)
 
 	compareRunsCmd.Flags().String("baseline", "", "Baseline run ID (required)")
 	compareRunsCmd.Flags().String("candidate", "", "Candidate run ID (required)")
@@ -27,6 +28,11 @@ func init() {
 	compareGateCmd.Flags().String("candidate-agent", "", "Candidate run agent ID (optional)")
 	compareGateCmd.MarkFlagRequired("baseline")
 	compareGateCmd.MarkFlagRequired("candidate")
+
+	compareLatestCmd.Flags().String("agent", "", "Run agent ID or label to use for both runs when possible")
+	compareLatestCmd.Flags().String("baseline-agent", "", "Baseline run agent ID or label (defaults to the saved baseline agent)")
+	compareLatestCmd.Flags().String("candidate-agent", "", "Candidate run agent ID or label")
+	compareLatestCmd.Flags().Bool("gate", false, "Also evaluate the release gate and return a nonzero exit code for non-pass verdicts")
 }
 
 var compareCmd = &cobra.Command{
@@ -133,6 +139,32 @@ var compareRunsCmd = &cobra.Command{
 					fmt.Fprintf(rc.Output.Writer(), "  - %s\n", str(field))
 				}
 			}
+		}
+		return nil
+	},
+}
+
+var compareLatestCmd = &cobra.Command{
+	Use:   "latest",
+	Short: "Compare the saved baseline against the latest non-baseline run",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		rc := GetRunContext(cmd)
+		workspaceID := RequireWorkspace(cmd)
+
+		envelope, err := buildCompareLatestEnvelope(cmd, rc, workspaceID)
+		if err != nil {
+			return err
+		}
+		if rc.Output.IsStructured() {
+			if err := rc.Output.PrintRaw(envelope); err != nil {
+				return err
+			}
+		} else {
+			renderCompareLatestHuman(rc, envelope)
+		}
+
+		if gate := mapObject(envelope, "release_gate"); gate != nil {
+			return releaseGateExitError(gate)
 		}
 		return nil
 	},

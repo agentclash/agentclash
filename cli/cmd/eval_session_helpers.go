@@ -132,5 +132,10 @@ func presentCreatedEvalSession(rc *RunContext, result map[string]any) error {
 	for _, id := range runIDs {
 		fmt.Fprintf(rc.Output.Writer(), "  - %s\n", str(id))
 	}
+	if id := str(session["id"]); id != "" {
+		fmt.Fprintln(rc.Output.Writer())
+		fmt.Fprintf(rc.Output.Writer(), "Next: agentclash eval session follow %s\n", id)
+		fmt.Fprintf(rc.Output.Writer(), "Then: agentclash eval session get %s\n", id)
+	}
 	return nil
 }

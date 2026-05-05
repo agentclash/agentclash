@@ -11,9 +11,13 @@ import (
 func init() {
 	rootCmd.AddCommand(replayCmd)
 	replayCmd.AddCommand(replayGetCmd)
+	replayCmd.AddCommand(replayTriageCmd)
 
 	replayGetCmd.Flags().Int("cursor", 0, "Step offset to start from")
 	replayGetCmd.Flags().Int("limit", 50, "Steps per page (1-200)")
+	replayTriageCmd.Flags().String("agent", "", "Run agent ID or label to triage")
+	replayTriageCmd.Flags().Int("cursor", 0, "Replay step offset to start from")
+	replayTriageCmd.Flags().Int("limit", 5, "Replay steps to include (1-50)")
 }
 
 var replayCmd = &cobra.Command{
@@ -79,6 +83,29 @@ var replayGetCmd = &cobra.Command{
 			}
 			rc.Output.PrintTable(cols, rows)
 		}
+		return nil
+	},
+}
+
+var replayTriageCmd = &cobra.Command{
+	Use:   "triage [run]",
+	Short: "Summarize ranking, failures, scorecard, replay, and artifacts for debugging",
+	Args:  cobra.MaximumNArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		rc := GetRunContext(cmd)
+		workspaceID := RequireWorkspace(cmd)
+		runSelector := ""
+		if len(args) == 1 {
+			runSelector = args[0]
+		}
+		envelope, err := buildReplayTriageEnvelope(cmd, rc, workspaceID, runSelector)
+		if err != nil {
+			return err
+		}
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(envelope)
+		}
+		renderReplayTriageHuman(rc, envelope)
 		return nil
 	},
 }
