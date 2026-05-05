@@ -354,6 +354,7 @@ func TestCIRunWritesSummaryAndArtifactsForNonPassingVerdicts(t *testing.T) {
 
 func TestCIRunProposesRegressionCandidatesOnFailingGate(t *testing.T) {
 	target := writeCIRunManifest(t)
+	summaryPath := filepath.Join(t.TempDir(), "summary.md")
 	captures := &ciRunRouteCaptures{}
 	srv := fakeAPI(t, ciRunRoutes(t, captures, ciRunRegressionPromotionRoutes(t, captures, "fail", nil)))
 	defer srv.Close()
@@ -371,6 +372,7 @@ func TestCIRunProposesRegressionCandidatesOnFailingGate(t *testing.T) {
 		"--ci-pull-request", "42",
 		"--ci-branch", "feature/gate",
 		"--ci-default-branch", "main",
+		"--summary-file", summaryPath,
 	}, srv.URL)
 	if got := exitCodeOf(t, err); got != gateExitFail {
 		t.Fatalf("exit code = %d, want gate fail %d", got, gateExitFail)
@@ -399,6 +401,35 @@ func TestCIRunProposesRegressionCandidatesOnFailingGate(t *testing.T) {
 		taxonomy["failure_mode"] != "policy_violation" ||
 		taxonomy["gate_verdict"] != "fail" {
 		t.Fatalf("failure_taxonomy = %+v, want deterministic failure-review taxonomy", taxonomy)
+	}
+	links := mapObject(metadata, "curation_links")
+	if links["candidate_run"] != "https://app.agentclash.dev/runs/run-candidate" ||
+		links["scorecard"] != "https://app.agentclash.dev/scorecards/agent-candidate" ||
+		links["replay"] != "https://app.agentclash.dev/replays/agent-candidate" ||
+		links["comparison"] != "https://app.agentclash.dev/compare/run-baseline/run-candidate" ||
+		links["release_gate"] != "https://app.agentclash.dev/release-gates/gate-1" {
+		t.Fatalf("curation_links = %+v, want run/scorecard/replay/comparison/gate links", links)
+	}
+}
+
+func TestCIRunPromotionCurationLinksOmitMissingValues(t *testing.T) {
+	links := ciRunPromotionCurationLinks(ciRunResult{}, nil, nil, nil)
+	if len(links) != 0 {
+		t.Fatalf("links = %+v, want empty when inputs have no URLs", links)
+	}
+
+	links = ciRunPromotionCurationLinks(ciRunResult{
+		Candidate: ciRunCandidateResult{RunURL: " https://app.agentclash.dev/runs/run-candidate "},
+	}, map[string]any{
+		"web_url": "",
+	}, map[string]any{
+		"replay_url": "https://app.agentclash.dev/replays/agent-candidate",
+	}, map[string]any{})
+	if len(links) != 2 || links["candidate_run"] != "https://app.agentclash.dev/runs/run-candidate" || links["replay"] == "" {
+		t.Fatalf("links = %+v, want only non-empty candidate run and replay links", links)
+	}
+	if _, ok := links["release_gate"]; ok {
+		t.Fatalf("links = %+v, release_gate should be omitted when empty", links)
 	}
 }
 
@@ -1179,6 +1210,7 @@ func ciRunGateHandler(t *testing.T, captures *ciRunRouteCaptures, verdict string
 				"policy_key":         "default",
 				"policy_version":     1,
 				"policy_fingerprint": "fp-123",
+				"web_url":            "https://app.agentclash.dev/release-gates/gate-1",
 				"evaluation_details": map[string]any{
 					"triggered_conditions": []string{"latency_delta"},
 				},

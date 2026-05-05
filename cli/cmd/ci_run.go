@@ -299,7 +299,7 @@ func executeCIRun(cmd *cobra.Command, rc *RunContext) (ciRunResult, error) {
 	result.GateVerdict = gateVerdict.ReleaseGate.Verdict
 	result.FailureReason = ciRunGateFailureReason(result.ReleaseGate)
 	result.ExitCode = ciRunExitCodeForGate(result.GateVerdict)
-	result.RegressionPromotions = promoteCIRunRegressionFailures(cmd, rc, workspaceID, manifest, result, result.ReleaseGate)
+	result.RegressionPromotions = promoteCIRunRegressionFailures(cmd, rc, workspaceID, manifest, result, result.ReleaseGate, scorecard, comparison)
 	if result.RegressionPromotions != nil && len(result.RegressionPromotions.Errors) > 0 {
 		for _, msg := range result.RegressionPromotions.Errors {
 			result.Errors = append(result.Errors, "regression promotion: "+msg)
