@@ -12,6 +12,7 @@ const (
 	FailureClassPolicyViolation       FailureClass = "policy_violation"
 	FailureClassTimeoutOrBudget       FailureClass = "timeout_or_budget_exhaustion"
 	FailureClassSandboxFailure        FailureClass = "sandbox_failure"
+	FailureClassDependencyResolution  FailureClass = "dependency_resolution_failure"
 	FailureClassMalformedOutput       FailureClass = "malformed_output"
 	FailureClassFlakyNonDeterministic FailureClass = "flaky_non_deterministic"
 	FailureClassInsufficientEvidence  FailureClass = "insufficient_evidence"
@@ -46,6 +47,8 @@ func Classify(input ClassificationInput) FailureClass {
 			return FailureClassToolArgumentError
 		case containsAny(normalized, "tool_selection", "tool-selection", "wrong tool", "tool choice", "tool selection"):
 			return FailureClassToolSelectionError
+		case isDependencyResolutionCheck(normalized):
+			return FailureClassDependencyResolution
 		case containsAny(normalized, "retrieval", "grounding"):
 			return FailureClassRetrievalGrounding
 		case containsAny(normalized, "flaky", "non-deterministic", "nondeterministic"):
@@ -74,6 +77,8 @@ func TaxonomyForFailureClass(class FailureClass) FailureTaxonomy {
 		return FailureTaxonomy{Family: "workflow", Code: "workflow.timeout_budget", Label: "Timeout or budget exhaustion", AgentFault: true}
 	case FailureClassSandboxFailure:
 		return FailureTaxonomy{Family: "platform", Code: "platform.sandbox_failure", Label: "Sandbox failure", AgentFault: false}
+	case FailureClassDependencyResolution:
+		return FailureTaxonomy{Family: "workflow", Code: "workflow.dependency_resolution", Label: "Dependency resolution failure", AgentFault: true}
 	case FailureClassMalformedOutput:
 		return FailureTaxonomy{Family: "agent", Code: "agent.malformed_output", Label: "Malformed output", AgentFault: true}
 	case FailureClassFlakyNonDeterministic:
@@ -102,4 +107,22 @@ func containsAny(value string, needles ...string) bool {
 		}
 	}
 	return false
+}
+
+func isDependencyResolutionCheck(normalized string) bool {
+	return strings.HasPrefix(normalized, "dependency.") ||
+		strings.HasPrefix(normalized, "dependencies.") ||
+		strings.HasPrefix(normalized, "import.resolution.") ||
+		strings.HasPrefix(normalized, "import.dependency.") ||
+		containsAny(
+			normalized,
+			"unresolved dependency",
+			"missing dependency",
+			"dependency not found",
+			"package not found in registry",
+			"no matching distribution",
+			"not found in registry",
+			"hallucinated dependency",
+			"hallucinated package",
+		)
 }

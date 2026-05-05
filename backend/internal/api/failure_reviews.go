@@ -267,6 +267,7 @@ func parseFailureClass(raw string) (failurereview.FailureClass, error) {
 		failurereview.FailureClassPolicyViolation,
 		failurereview.FailureClassTimeoutOrBudget,
 		failurereview.FailureClassSandboxFailure,
+		failurereview.FailureClassDependencyResolution,
 		failurereview.FailureClassMalformedOutput,
 		failurereview.FailureClassFlakyNonDeterministic,
 		failurereview.FailureClassInsufficientEvidence,

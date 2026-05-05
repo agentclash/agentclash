@@ -110,6 +110,7 @@ describe("agent skill docs", () => {
     expect(doc?.content).toContain("incorrect_final_output");
     expect(doc?.content).toContain("retrieval_grounding_failure");
     expect(doc?.content).toContain("timeout_or_budget_exhaustion");
+    expect(doc?.content).toContain("dependency_resolution_failure");
     expect(doc?.content).toContain("flaky_non_deterministic");
     expect(doc?.content).toContain("agentclash-regression-flywheel");
   });

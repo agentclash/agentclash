@@ -56,6 +56,7 @@ const FAILURE_CLASS_OPTIONS: FailureReviewFailureClass[] = [
   "policy_violation",
   "timeout_or_budget_exhaustion",
   "sandbox_failure",
+  "dependency_resolution_failure",
   "malformed_output",
   "flaky_non_deterministic",
   "insufficient_evidence",
