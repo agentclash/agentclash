@@ -2,14 +2,16 @@
 
 Run a manifest-based AgentClash CI gate from GitHub Actions.
 
-This action is a thin wrapper around the published `agentclash` CLI:
+This action is a thin wrapper around the `agentclash` CLI:
 
 1. optionally install `agentclash` from npm
-2. validate the repo-tracked CI manifest
-3. run `agentclash ci should-run`
-4. run `agentclash ci run` when the manifest trigger matches
-5. post or update a sticky structured PR comment when pull request context and permissions are available
-6. expose result paths and gate outputs for artifact upload or downstream steps
+2. verify the installed CLI exposes the required CI commands
+3. fall back to the action checkout's Go source when npm has not caught up yet
+4. validate the repo-tracked CI manifest
+5. run `agentclash ci should-run`
+6. run `agentclash ci run` when the manifest trigger matches
+7. post or update a sticky structured PR comment when pull request context and permissions are available
+8. expose result paths and gate outputs for artifact upload or downstream steps
 
 ## Example
 
@@ -67,6 +69,8 @@ jobs:
 | `app-url` | `https://agentclash.dev` | AgentClash app base URL used for PR comment links. |
 | `install-cli` | `true` | Install `agentclash` from npm before running. |
 | `cli-version` | `latest` | npm version or tag for the `agentclash` package. |
+| `source-fallback` | `true` | Use the action checkout's Go source when the installed CLI does not expose `ci should-run` and `ci run`. When enabled, the action sets up Go with `go-version` before resolving the CLI. |
+| `go-version` | `1.25.x` | Go version used by the source fallback. |
 | `remote-validate` | `true` | Validate manifest resource IDs against the API. |
 | `skip-if-unmatched` | `true` | Skip `ci run` when manifest paths and labels do not match. |
 | `base` | pull request base branch | Base ref for `ci should-run`. |

@@ -32,6 +32,14 @@ inputs:
     description: npm version or tag for the agentclash package.
     required: false
     default: latest
+  source-fallback:
+    description: Run the CLI from this action checkout when the installed npm CLI does not expose the required CI commands.
+    required: false
+    default: "true"
+  go-version:
+    description: Go version used by the source fallback.
+    required: false
+    default: "1.25.x"
   remote-validate:
     description: Validate manifest resource IDs against the AgentClash API.
     required: false
@@ -107,6 +115,13 @@ outputs:
 runs:
   using: composite
   steps:
+    - name: Set up Go for source CLI fallback
+      if: ${{ inputs.source-fallback == 'true' }}
+      uses: actions/setup-go@v5
+      with:
+        go-version: ${{ inputs.go-version }}
+        cache: false
+
     - id: agentclash
       name: Run AgentClash CI gate
       shell: bash
@@ -119,6 +134,7 @@ runs:
         INPUT_APP_URL: ${{ inputs.app-url }}
         INPUT_INSTALL_CLI: ${{ inputs.install-cli }}
         INPUT_CLI_VERSION: ${{ inputs.cli-version }}
+        INPUT_SOURCE_FALLBACK: ${{ inputs.source-fallback }}
         INPUT_REMOTE_VALIDATE: ${{ inputs.remote-validate }}
         INPUT_SKIP_IF_UNMATCHED: ${{ inputs.skip-if-unmatched }}
         INPUT_BASE: ${{ inputs.base }}

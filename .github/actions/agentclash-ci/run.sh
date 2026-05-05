@@ -53,6 +53,49 @@ else:
 PY
 }
 
+agentclash_supports_ci_commands() {
+  local should_run_help
+  local run_help
+  should_run_help="$("$@" ci should-run --help 2>&1)" &&
+    run_help="$("$@" ci run --help 2>&1)" &&
+    [[ "$should_run_help" == *"agentclash ci should-run"* ]] &&
+    [[ "$should_run_help" == *"Flags:"* ]] &&
+    [[ "$run_help" == *"agentclash ci run"* ]] &&
+    [[ "$run_help" == *"Flags:"* ]]
+}
+
+resolve_agentclash_cli() {
+  agentclash_cmd=(agentclash)
+
+  if command -v agentclash >/dev/null 2>&1; then
+    if agentclash_supports_ci_commands agentclash; then
+      echo "Using installed agentclash CLI"
+      return 0
+    fi
+    echo "::notice::Installed agentclash CLI does not expose ci should-run/run; checking source fallback"
+  fi
+
+  if bool_true "${INPUT_SOURCE_FALLBACK:-true}"; then
+    local source_dir
+    source_dir="$(cd "${ACTION_PATH}/../../.." && pwd)/cli"
+    if [[ -d "$source_dir" ]] && command -v go >/dev/null 2>&1; then
+      if agentclash_supports_ci_commands go -C "$source_dir" run .; then
+        agentclash_cmd=(go -C "$source_dir" run .)
+        echo "Using AgentClash CLI source fallback from ${source_dir}"
+        return 0
+      fi
+      echo "::notice::AgentClash CLI source fallback exists but does not expose ci should-run/run"
+    elif [[ ! -d "$source_dir" ]]; then
+      echo "::notice::AgentClash CLI source fallback is unavailable at ${source_dir}"
+    else
+      echo "::notice::Go is unavailable, so AgentClash CLI source fallback cannot run"
+    fi
+  fi
+
+  echo "::error::AgentClash CI requires an agentclash CLI with 'ci should-run' and 'ci run'. Publish a newer npm CLI, set cli-version to a compatible version, or keep source-fallback enabled with Go available."
+  return 1
+}
+
 post_pr_comment() {
   local status="$1"
   if ! bool_true "${INPUT_PR_COMMENT:-true}"; then
@@ -120,10 +163,12 @@ if bool_true "${INPUT_INSTALL_CLI:-true}"; then
   npm install --global "agentclash@${INPUT_CLI_VERSION:-latest}"
 fi
 
+resolve_agentclash_cli
+
 if bool_true "${INPUT_REMOTE_VALIDATE:-true}"; then
-  agentclash ci validate "$manifest" --remote
+  "${agentclash_cmd[@]}" ci validate "$manifest" --remote
 else
-  agentclash ci validate "$manifest"
+  "${agentclash_cmd[@]}" ci validate "$manifest"
 fi
 
 should_args=(ci should-run --manifest "$manifest" --json)
@@ -149,7 +194,7 @@ if [[ -n "${INPUT_LABELS:-}" ]]; then
   should_args+=(--labels "${INPUT_LABELS}")
 fi
 
-agentclash "${should_args[@]}" >"$should_run_file"
+"${agentclash_cmd[@]}" "${should_args[@]}" >"$should_run_file"
 should_run="$(json_get "$should_run_file" should_run)"
 skip_reason="$(json_get "$should_run_file" reason)"
 write_output "should-run" "$should_run"
@@ -184,7 +229,7 @@ if [[ -n "${INPUT_DEFAULT_BRANCH:-}" ]]; then
 fi
 
 set +e
-agentclash "${run_args[@]}" >"$result_file"
+"${agentclash_cmd[@]}" "${run_args[@]}" >"$result_file"
 status=$?
 set -e
 
