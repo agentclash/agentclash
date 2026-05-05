@@ -1889,6 +1889,14 @@ export interface ListRegressionCasesResponse {
   items: RegressionCase[];
 }
 
+/** GET /v1/workspaces/{ws}/regression-cases response */
+export interface ListWorkspaceRegressionCasesResponse {
+  items: RegressionCase[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 // --- Billing ---
 
 export type BillingPlanKey = "free" | "pro" | "team" | "enterprise";
