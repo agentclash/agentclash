@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { PlayCircle } from "lucide-react";
+import { ArrowUpRight, PlayCircle } from "lucide-react";
 
 import type { RegressionCase, RegressionSuite } from "@/lib/api/types";
 import { Badge } from "@/components/ui/badge";
@@ -23,6 +23,33 @@ interface CaseDetailClientProps {
   regressionCase: RegressionCase;
 }
 
+const curationLinkLabels = [
+  ["candidate_run", "Candidate Run"],
+  ["scorecard", "Scorecard"],
+  ["replay", "Replay"],
+  ["comparison", "Comparison"],
+  ["release_gate", "Release Gate"],
+] as const;
+
+type CurationLink = {
+  key: (typeof curationLinkLabels)[number][0];
+  label: (typeof curationLinkLabels)[number][1];
+  href: string;
+};
+
+const taxonomyRowLabels = [
+  ["source", "Source"],
+  ["failure_mode", "Failure Mode"],
+  ["severity_hint", "Severity Hint"],
+  ["gate_verdict", "Gate Verdict"],
+  ["gate_reason_code", "Reason Code"],
+  ["reason_code", "Reason Code"],
+  ["triggered_condition", "Triggered Condition"],
+  ["scorecard_dimension", "Scorecard Dimension"],
+  ["review_failure_class", "Review Class"],
+  ["review_failure_state", "Review State"],
+] as const;
+
 export function CaseDetailClient({
   workspaceId,
   suite,
@@ -32,6 +59,10 @@ export function CaseDetailClient({
     c.source_run_id && c.source_run_agent_id
       ? `/workspaces/${workspaceId}/runs/${c.source_run_id}/agents/${c.source_run_agent_id}/replay`
       : null;
+  const curationLinks = getCurationLinks(c.metadata);
+  const taxonomyRows = getTaxonomyRows(c.metadata);
+  const hasCurationMetadata =
+    curationLinks.length > 0 || taxonomyRows.length > 0;
 
   return (
     <div className="space-y-6">
@@ -244,6 +275,41 @@ export function CaseDetailClient({
         )}
       </Section>
 
+      {hasCurationMetadata && (
+        <Section title="CI Curation">
+          {taxonomyRows.length > 0 && (
+            <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
+              {taxonomyRows.map((row) => (
+                <MetaRow key={`${row.label}-${row.value}`} label={row.label}>
+                  <span className="font-[family-name:var(--font-mono)] text-xs text-muted-foreground">
+                    {row.value}
+                  </span>
+                </MetaRow>
+              ))}
+            </dl>
+          )}
+          {curationLinks.length > 0 && (
+            <div className="mt-4 flex flex-wrap gap-2">
+              {curationLinks.map((link) => (
+                <Link
+                  key={link.key}
+                  href={link.href}
+                  target="_blank"
+                  rel="noreferrer"
+                  className={buttonVariants({
+                    variant: "outline",
+                    size: "sm",
+                  })}
+                >
+                  {link.label}
+                  <ArrowUpRight data-icon="inline-end" className="size-3.5" />
+                </Link>
+              ))}
+            </div>
+          )}
+        </Section>
+      )}
+
       <Section title="Payload Snapshot">
         <JsonViewer value={c.payload_snapshot} />
       </Section>
@@ -324,6 +390,49 @@ function MetaRow({
 
 function formatPercent(value: number): string {
   return `${Math.round(value * 100)}%`;
+}
+
+function getCurationLinks(metadata: Record<string, unknown>) {
+  const links = readRecord(metadata.curation_links);
+  if (!links) return [];
+
+  const result: CurationLink[] = [];
+  for (const [key, label] of curationLinkLabels) {
+    const href = readString(links[key]);
+    if (href) {
+      result.push({ key, label, href });
+    }
+  }
+  return result;
+}
+
+function getTaxonomyRows(metadata: Record<string, unknown>) {
+  const taxonomy = readRecord(metadata.failure_taxonomy);
+  if (!taxonomy) return [];
+
+  const seenLabels = new Set<string>();
+  const rows: Array<{ label: string; value: string }> = [];
+  for (const [key, label] of taxonomyRowLabels) {
+    if (seenLabels.has(label)) continue;
+    const value = readString(taxonomy[key]);
+    if (!value) continue;
+    seenLabels.add(label);
+    rows.push({ label, value });
+  }
+  return rows;
+}
+
+function readRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+function readString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed === "" ? null : trimmed;
 }
 
 function ProvenanceRow({
