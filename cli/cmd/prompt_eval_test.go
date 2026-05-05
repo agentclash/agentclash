@@ -3,11 +3,13 @@ package cmd
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -379,6 +381,136 @@ func TestPromptEvalValidateRemoteIsReadOnly(t *testing.T) {
 	}
 }
 
+func TestPromptEvalRunCreatesPlaygroundTestCasesAndExperiments(t *testing.T) {
+	path := writePromptEvalFixture(t, allAssertionsPromptEvalYAML())
+	fake := newPromptEvalRunFake(t, nil)
+	defer fake.server.Close()
+
+	result := runPromptEvalRunJSON(t, path, fake.server.URL)
+	if result.ExitCode != 0 || len(result.Playgrounds) != 1 || len(result.Playgrounds[0].Experiments) != 1 {
+		t.Fatalf("unexpected run result: %+v", result)
+	}
+	if len(fake.playgroundCreates) != 1 {
+		t.Fatalf("playground creates = %d, want 1", len(fake.playgroundCreates))
+	}
+	spec := mapObject(fake.playgroundCreates[0], "evaluation_spec")
+	validators := mapSlice(spec, "validators")
+	if len(validators) != 7 {
+		t.Fatalf("validators = %d, want 7: %#v", len(validators), validators)
+	}
+	for _, want := range []string{"exact_match", "contains", "regex_match", "json_schema", "json_path_match", "boolean_assert"} {
+		if !promptEvalValidatorTypesContain(validators, want) {
+			t.Fatalf("validators missing %s: %#v", want, validators)
+		}
+	}
+	if len(fake.testCaseCreates) != 1 {
+		t.Fatalf("test case creates = %d, want 1", len(fake.testCaseCreates))
+	}
+	expectations := mapObject(fake.testCaseCreates[0], "expectations")
+	if got := len(mapSlice(expectations, "prompt_eval_assertions")); got != 7 {
+		t.Fatalf("prompt_eval_assertions = %d, want 7", got)
+	}
+	if len(fake.experimentCreates) != 1 || fake.experimentCreates[0]["model_alias_id"] != "alias-1" || fake.experimentCreates[0]["provider_account_id"] != "pa-1" {
+		t.Fatalf("experiment create payloads = %#v", fake.experimentCreates)
+	}
+}
+
+func TestPromptEvalRunValidatorMappingCoversSupportedAssertions(t *testing.T) {
+	path := writePromptEvalFixture(t, allAssertionsPromptEvalYAML())
+	fake := newPromptEvalRunFake(t, nil)
+	defer fake.server.Close()
+
+	_ = runPromptEvalRunJSON(t, path, fake.server.URL)
+	spec := mapObject(fake.playgroundCreates[0], "evaluation_spec")
+	validators := mapSlice(spec, "validators")
+	for _, want := range []string{"exact_match", "contains", "regex_match", "json_schema", "json_path_match", "boolean_assert"} {
+		if !promptEvalValidatorTypesContain(validators, want) {
+			t.Fatalf("validators missing %s: %#v", want, validators)
+		}
+	}
+	for _, validator := range validators {
+		asMap := validator.(map[string]any)
+		if !strings.HasPrefix(str(asMap["expected_from"]), "case.expectations.prompt_eval_assertions.") {
+			t.Fatalf("validator expected_from should read prompt_eval_assertions: %#v", asMap)
+		}
+	}
+}
+
+func TestPromptEvalRunJSONEnvelope(t *testing.T) {
+	path := writePromptEvalFixture(t, validPromptEvalYAML())
+	fake := newPromptEvalRunFake(t, nil)
+	defer fake.server.Close()
+
+	result := runPromptEvalRunJSON(t, path, fake.server.URL)
+	if result.SchemaVersion != 1 || result.WorkspaceID != "ws-1" || result.ConfigHash == "" || result.ModelCount != 1 || result.TestCount != 1 || result.CaseCount != 1 {
+		t.Fatalf("unexpected envelope: %+v", result)
+	}
+	if len(result.Playgrounds) != 1 || result.Playgrounds[0].PlaygroundID == "" || result.Playgrounds[0].PlaygroundURL == "" {
+		t.Fatalf("missing playground envelope: %+v", result.Playgrounds)
+	}
+	if len(result.Playgrounds[0].Experiments) != 1 || result.Playgrounds[0].Experiments[0].ExperimentID == "" || result.Playgrounds[0].Experiments[0].ExperimentURL == "" {
+		t.Fatalf("missing experiment envelope: %+v", result.Playgrounds[0].Experiments)
+	}
+}
+
+func TestPromptEvalRunUpdatesExistingResourcesWithoutDeletingOrphans(t *testing.T) {
+	path := writePromptEvalFixture(t, validPromptEvalYAML())
+	fake := newPromptEvalRunFake(t, &promptEvalRunFakeState{
+		playgrounds: []map[string]any{{"id": "pg-1", "name": "Prompt Eval: refund-bot-v1"}},
+		testCases: []map[string]any{
+			{"id": "tc-1", "case_key": "greeting", "variables": map[string]any{"input": "old"}, "expectations": map[string]any{}},
+			{"id": "tc-orphan", "case_key": "orphan", "variables": map[string]any{}, "expectations": map[string]any{}},
+		},
+	})
+	defer fake.server.Close()
+
+	result := runPromptEvalRunJSON(t, path, fake.server.URL)
+	if result.ExitCode != 0 || result.Playgrounds[0].TestsUpdated != 1 {
+		t.Fatalf("unexpected run result: %+v", result)
+	}
+	if len(fake.playgroundUpdates) != 1 {
+		t.Fatalf("playground updates = %d, want 1", len(fake.playgroundUpdates))
+	}
+	if len(fake.testCaseUpdates) != 1 {
+		t.Fatalf("test case updates = %d, want 1", len(fake.testCaseUpdates))
+	}
+	if fake.deleteCalled {
+		t.Fatal("run deleted an orphan test case")
+	}
+}
+
+func TestPromptEvalRunGroupsByAssertionSignature(t *testing.T) {
+	body := strings.Replace(validPromptEvalYAML(), "thresholds:", "  - key: regex-case\n    vars:\n      input: Say hello in French\n    assert:\n      - type: regex\n        value: \"Bonjour|Salut\"\n        metric: correctness\nthresholds:", 1)
+	path := writePromptEvalFixture(t, body)
+	fake := newPromptEvalRunFake(t, nil)
+	defer fake.server.Close()
+
+	result := runPromptEvalRunJSON(t, path, fake.server.URL)
+	if len(result.Playgrounds) != 2 {
+		t.Fatalf("playgrounds = %d, want 2: %+v", len(result.Playgrounds), result.Playgrounds)
+	}
+	for _, create := range fake.playgroundCreates {
+		if !strings.Contains(str(create["name"]), "Prompt Eval: refund-bot-v1 [") {
+			t.Fatalf("grouped playground name missing signature suffix: %#v", create["name"])
+		}
+	}
+}
+
+func TestPromptEvalRunRerunNoopsExistingTestCases(t *testing.T) {
+	path := writePromptEvalFixture(t, validPromptEvalYAML())
+	fake := newPromptEvalRunFake(t, nil)
+	defer fake.server.Close()
+
+	first := runPromptEvalRunJSON(t, path, fake.server.URL)
+	second := runPromptEvalRunJSON(t, path, fake.server.URL)
+	if first.Playgrounds[0].TestsCreated != 1 {
+		t.Fatalf("first tests_created = %d, want 1", first.Playgrounds[0].TestsCreated)
+	}
+	if second.Playgrounds[0].TestsNoop != 1 || second.Playgrounds[0].TestsCreated != 0 || second.Playgrounds[0].TestsUpdated != 0 {
+		t.Fatalf("second run should no-op existing test case: %+v", second.Playgrounds[0])
+	}
+}
+
 func TestChallengePackPromptEvalTemplateMentionsPromptEvalInit(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "pack.yaml")
@@ -435,6 +567,44 @@ thresholds:
   assertion_pass_rate: 0.9
   dimensions:
     correctness: 0.9
+`
+}
+
+func allAssertionsPromptEvalYAML() string {
+	return `schemaVersion: 1
+name: all-assertions
+prompt:
+  template: |
+    Reply to: {{input}}
+models:
+  - alias: gpt-5.5
+    provider_account: default
+tests:
+  - key: all
+    vars:
+      input: test
+    assert:
+      - type: exact_match
+        value: done
+        metric: correctness
+      - type: equals
+        value: done
+        metric: correctness
+      - type: contains
+        value: done
+        metric: correctness
+      - type: regex
+        value: "done|ok"
+        metric: correctness
+      - type: json_schema
+        value: '{"type":"object"}'
+        metric: correctness
+      - type: json_path_match
+        value: '{"path":"$.ok","value":true}'
+        metric: correctness
+      - type: boolean_assert
+        value: true
+        metric: correctness
 `
 }
 
@@ -517,4 +687,123 @@ func runPromptEvalValidateJSON(t *testing.T, args []string, apiURL string) promp
 		t.Fatalf("remote validate returned error for valid result: %v\n%s", err, out)
 	}
 	return result
+}
+
+type promptEvalRunFakeState struct {
+	playgrounds []map[string]any
+	testCases   []map[string]any
+}
+
+type promptEvalRunFake struct {
+	server            *httptest.Server
+	mu                sync.Mutex
+	playgrounds       []map[string]any
+	testCases         []map[string]any
+	playgroundCreates []map[string]any
+	playgroundUpdates []map[string]any
+	testCaseCreates   []map[string]any
+	testCaseUpdates   []map[string]any
+	experimentCreates []map[string]any
+	deleteCalled      bool
+	nextPlaygroundID  int
+	nextExperimentID  int
+}
+
+func newPromptEvalRunFake(t *testing.T, state *promptEvalRunFakeState) *promptEvalRunFake {
+	t.Helper()
+	f := &promptEvalRunFake{nextPlaygroundID: 1, nextExperimentID: 1}
+	if state != nil {
+		f.playgrounds = append(f.playgrounds, state.playgrounds...)
+		f.testCases = append(f.testCases, state.testCases...)
+	}
+	f.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/workspaces/ws-1/model-aliases":
+			json.NewEncoder(w).Encode(map[string]any{"items": []map[string]any{{"id": "alias-1", "alias_key": "gpt-5.5", "provider_account_id": "pa-1"}}})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/workspaces/ws-1/provider-accounts":
+			json.NewEncoder(w).Encode(map[string]any{"items": []map[string]any{{"id": "pa-1", "provider_key": "openai", "status": "active"}}})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/workspaces/ws-1/playgrounds":
+			json.NewEncoder(w).Encode(map[string]any{"items": f.playgrounds})
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/workspaces/ws-1/playgrounds":
+			body := decodePromptEvalRequestBody(t, r)
+			f.playgroundCreates = append(f.playgroundCreates, body)
+			id := fmt.Sprintf("pg-%d", f.nextPlaygroundID)
+			f.nextPlaygroundID++
+			item := map[string]any{"id": id, "name": body["name"], "url": "https://agentclash.dev/playgrounds/" + id}
+			f.playgrounds = append(f.playgrounds, item)
+			json.NewEncoder(w).Encode(item)
+		case r.Method == http.MethodPatch && strings.HasPrefix(r.URL.Path, "/v1/playgrounds/"):
+			body := decodePromptEvalRequestBody(t, r)
+			f.playgroundUpdates = append(f.playgroundUpdates, body)
+			id := strings.TrimPrefix(r.URL.Path, "/v1/playgrounds/")
+			json.NewEncoder(w).Encode(map[string]any{"id": id, "name": body["name"], "url": "https://agentclash.dev/playgrounds/" + id})
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/playgrounds/") && strings.HasSuffix(r.URL.Path, "/test-cases"):
+			json.NewEncoder(w).Encode(map[string]any{"items": f.testCases})
+		case r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, "/v1/playgrounds/") && strings.HasSuffix(r.URL.Path, "/test-cases"):
+			body := decodePromptEvalRequestBody(t, r)
+			f.testCaseCreates = append(f.testCaseCreates, body)
+			id := fmt.Sprintf("tc-created-%d", len(f.testCaseCreates))
+			f.testCases = append(f.testCases, map[string]any{
+				"id":           id,
+				"case_key":     body["case_key"],
+				"variables":    body["variables"],
+				"expectations": body["expectations"],
+			})
+			json.NewEncoder(w).Encode(map[string]any{"id": id, "case_key": body["case_key"]})
+		case r.Method == http.MethodPatch && strings.HasPrefix(r.URL.Path, "/v1/playground-test-cases/"):
+			body := decodePromptEvalRequestBody(t, r)
+			f.testCaseUpdates = append(f.testCaseUpdates, body)
+			json.NewEncoder(w).Encode(map[string]any{"id": strings.TrimPrefix(r.URL.Path, "/v1/playground-test-cases/"), "case_key": body["case_key"]})
+		case r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, "/v1/playgrounds/") && strings.HasSuffix(r.URL.Path, "/experiments"):
+			body := decodePromptEvalRequestBody(t, r)
+			f.experimentCreates = append(f.experimentCreates, body)
+			id := fmt.Sprintf("exp-%d", f.nextExperimentID)
+			f.nextExperimentID++
+			json.NewEncoder(w).Encode(map[string]any{"id": id, "status": "queued", "url": "https://agentclash.dev/playground-experiments/" + id})
+		case r.Method == http.MethodDelete:
+			f.deleteCalled = true
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]any{"error": map[string]any{"message": "delete not allowed"}})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+			json.NewEncoder(w).Encode(map[string]any{"error": map[string]any{"message": "not found"}})
+		}
+	}))
+	return f
+}
+
+func decodePromptEvalRequestBody(t *testing.T, r *http.Request) map[string]any {
+	t.Helper()
+	var body map[string]any
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		t.Fatalf("decode request body: %v", err)
+	}
+	return body
+}
+
+func runPromptEvalRunJSON(t *testing.T, path, apiURL string) promptEvalRunResult {
+	t.Helper()
+	stdout := captureStdout(t)
+	err := executeCommand(t, []string{"prompt-eval", "run", path, "-w", "ws-1", "--json"}, apiURL)
+	out := stdout.finish()
+	if err != nil {
+		t.Fatalf("prompt-eval run error: %v\n%s", err, out)
+	}
+	var result promptEvalRunResult
+	if err := json.Unmarshal([]byte(out), &result); err != nil {
+		t.Fatalf("decode run json: %v\n%s", err, out)
+	}
+	return result
+}
+
+func promptEvalValidatorTypesContain(validators []any, want string) bool {
+	for _, item := range validators {
+		if asMap, ok := item.(map[string]any); ok && asMap["type"] == want {
+			return true
+		}
+	}
+	return false
 }
