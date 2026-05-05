@@ -819,6 +819,33 @@ func TestCIShouldRunMatchesGitHubPullRequestEventLabels(t *testing.T) {
 	}
 }
 
+func TestCIShouldRunIgnoresRemovedGitHubPullRequestLabel(t *testing.T) {
+	target := writeCIManifest(t, sampleCIManifestYAML)
+	eventPath := writeGitHubEvent(t, `{
+		"action": "unlabeled",
+		"pull_request": {
+			"labels": [
+				{"name": "docs-only"}
+			]
+		},
+		"label": {"name": "agentclash/eval"}
+	}`)
+	result := runCIShouldRunJSON(t, []string{
+		"ci", "should-run",
+		"--manifest", target,
+		"--changed-file", "docs/readme.md",
+		"--github-event", eventPath,
+		"--json",
+	})
+
+	if result.ShouldRun {
+		t.Fatalf("should_run = true, want false after label removal: %+v", result)
+	}
+	if len(result.Labels) != 1 || result.Labels[0] != "docs-only" {
+		t.Fatalf("labels = %+v, want current pull_request labels only", result.Labels)
+	}
+}
+
 func TestCIShouldRunFallsBackToGitHubEventPath(t *testing.T) {
 	target := writeCIManifest(t, sampleCIManifestYAML)
 	eventPath := writeGitHubEvent(t, `{
@@ -894,8 +921,7 @@ func TestGitHubEventLabelsReadsIssuePullRequestLabels(t *testing.T) {
 				{"name": "agentclash/eval"},
 				{"name": "agentclash/eval"}
 			]
-		},
-		"label": {"name": "agentclash/eval"}
+		}
 	}`)
 
 	labels, err := githubEventLabels(eventPath)

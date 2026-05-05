@@ -1329,23 +1329,17 @@ func githubEventLabels(path string) ([]string, error) {
 	var event struct {
 		PullRequest *githubPullRequest `json:"pull_request"`
 		Issue       *githubIssue       `json:"issue"`
-		Label       *githubEventLabel  `json:"label"`
 	}
 	if err := json.Unmarshal(data, &event); err != nil {
 		return nil, fmt.Errorf("parse GitHub event labels from %s: %w", path, err)
 	}
 
 	var labels []string
-	isPullRequestEvent := event.PullRequest != nil
 	switch {
 	case event.PullRequest != nil:
 		labels = labelNames(event.PullRequest.Labels)
 	case event.Issue != nil && githubIssueEventIsPullRequest(event.Issue.PullRequest):
-		isPullRequestEvent = true
 		labels = labelNames(event.Issue.Labels)
-	}
-	if isPullRequestEvent && event.Label != nil {
-		labels = append(labels, event.Label.Name)
 	}
 	return dedupeCIValues(normalizeCIValues(labels)), nil
 }
