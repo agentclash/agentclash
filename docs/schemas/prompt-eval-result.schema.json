@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentclash.dev/schemas/prompt-eval-result.schema.json",
+  "title": "AgentClash Prompt Eval Validation Result",
+  "type": "object",
+  "required": ["schemaVersion", "path", "valid", "model_count", "test_count", "case_count", "max_cases", "assertion_signatures", "exit_code"],
+  "additionalProperties": true,
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "path": {
+      "type": "string"
+    },
+    "valid": {
+      "type": "boolean"
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "model_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "test_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "case_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "max_cases": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "assertion_signatures": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "exit_code": {
+      "type": "integer"
+    }
+  }
+}
