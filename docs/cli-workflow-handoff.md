@@ -220,13 +220,13 @@ Review checkpoint contract:
 testing/codex-cli-phase2-workflows.md
 ```
 
-Expected verification from `cli/`:
+Verified from `cli/` on May 5, 2026:
 
 ```bash
-go test ./cmd -run '(EvalSession|Quickstart|CompareLatest|ReplayTriage)' -count=1
-go test -short ./...
-go vet ./...
-go build ./...
+go test ./cmd -run '(EvalSession|Quickstart|CompareLatest|ReplayTriage)' -count=1  # pass
+go test -short ./...                                                               # pass
+go vet ./...                                                                       # pass
+go build ./...                                                                     # pass
 ```
 
 Packaging does not need to be rehearsed for this phase unless release packaging
