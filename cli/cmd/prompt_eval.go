@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/agentclash/agentclash/cli/internal/output"
 	"github.com/spf13/cobra"
@@ -21,6 +22,8 @@ import (
 const (
 	promptEvalSchemaVersion = 1
 	promptEvalExitInvalid   = 5
+	promptEvalExitGate      = 3
+	promptEvalExitExecution = 4
 )
 
 func init() {
@@ -28,6 +31,7 @@ func init() {
 	promptEvalCmd.AddCommand(promptEvalInitCmd)
 	promptEvalCmd.AddCommand(promptEvalValidateCmd)
 	promptEvalCmd.AddCommand(promptEvalRunCmd)
+	promptEvalCmd.AddCommand(promptEvalResultsCmd)
 
 	promptEvalInitCmd.Flags().Bool("force", false, "Overwrite an existing file")
 	promptEvalInitCmd.Flags().String("name", "", "Prompt eval name (defaults from the file name)")
@@ -38,6 +42,10 @@ func init() {
 
 	promptEvalRunCmd.Flags().Int("max-cases", 100, "Maximum model x test cases allowed before launch")
 	promptEvalRunCmd.Flags().Bool("ci", false, "Apply CI-safe validation rules")
+	promptEvalRunCmd.Flags().Bool("follow", false, "Wait for launched experiments and print results")
+	promptEvalRunCmd.Flags().Duration("poll-interval", 3*time.Second, "Polling interval while following experiments")
+	promptEvalRunCmd.Flags().Duration("timeout", 20*time.Minute, "Maximum time to wait while following experiments; 0 disables the timeout")
+	promptEvalRunCmd.Flags().Float64("threshold", -1, "Override thresholds.assertion_pass_rate for this run")
 }
 
 var promptEvalCmd = &cobra.Command{
@@ -139,7 +147,14 @@ var promptEvalRunCmd = &cobra.Command{
 		}
 		maxCases, _ := cmd.Flags().GetInt("max-cases")
 		ciMode, _ := cmd.Flags().GetBool("ci")
+		follow, _ := cmd.Flags().GetBool("follow")
+		pollInterval, _ := cmd.Flags().GetDuration("poll-interval")
+		timeout, _ := cmd.Flags().GetDuration("timeout")
+		threshold, _ := cmd.Flags().GetFloat64("threshold")
 		result, err := executePromptEvalRun(cmd, rc, path, maxCases, ciMode)
+		if err == nil && follow && result != nil {
+			err = followPromptEvalRun(cmd, rc, result, promptEvalFollowOptions{PollInterval: pollInterval, Timeout: timeout, ThresholdOverride: threshold})
+		}
 		if rc.Output.IsStructured() {
 			if result != nil {
 				if printErr := rc.Output.PrintRaw(result); printErr != nil {
@@ -153,6 +168,27 @@ var promptEvalRunCmd = &cobra.Command{
 			return err
 		}
 		return nil
+	},
+}
+
+var promptEvalResultsCmd = &cobra.Command{
+	Use:   "results <experiment-id>",
+	Short: "Fetch prompt eval experiment results",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		rc := GetRunContext(cmd)
+		envelope, err := fetchPromptEvalResultsEnvelope(cmd, rc, args[0], -1)
+		if rc.Output.IsStructured() {
+			if printErr := rc.Output.PrintRaw(envelope); printErr != nil {
+				return printErr
+			}
+		} else {
+			renderPromptEvalResults(rc, envelope)
+		}
+		if err != nil {
+			return err
+		}
+		return promptEvalExitForResults(envelope)
 	},
 }
 
@@ -245,16 +281,19 @@ type promptEvalRemoteDryRun struct {
 }
 
 type promptEvalRunResult struct {
-	SchemaVersion int                       `json:"schemaVersion" yaml:"schemaVersion"`
-	Path          string                    `json:"path" yaml:"path"`
-	ConfigHash    string                    `json:"config_hash" yaml:"config_hash"`
-	WorkspaceID   string                    `json:"workspace_id" yaml:"workspace_id"`
-	ModelCount    int                       `json:"model_count" yaml:"model_count"`
-	TestCount     int                       `json:"test_count" yaml:"test_count"`
-	CaseCount     int                       `json:"case_count" yaml:"case_count"`
-	Playgrounds   []promptEvalRunPlayground `json:"playgrounds" yaml:"playgrounds"`
-	Errors        []string                  `json:"errors,omitempty" yaml:"errors,omitempty"`
-	ExitCode      int                       `json:"exit_code" yaml:"exit_code"`
+	SchemaVersion int                         `json:"schemaVersion" yaml:"schemaVersion"`
+	Path          string                      `json:"path" yaml:"path"`
+	ConfigHash    string                      `json:"config_hash" yaml:"config_hash"`
+	WorkspaceID   string                      `json:"workspace_id" yaml:"workspace_id"`
+	ModelCount    int                         `json:"model_count" yaml:"model_count"`
+	TestCount     int                         `json:"test_count" yaml:"test_count"`
+	CaseCount     int                         `json:"case_count" yaml:"case_count"`
+	Playgrounds   []promptEvalRunPlayground   `json:"playgrounds" yaml:"playgrounds"`
+	Results       []promptEvalResultsEnvelope `json:"results,omitempty" yaml:"results,omitempty"`
+	Summary       promptEvalResultsSummary    `json:"summary,omitempty" yaml:"summary,omitempty"`
+	GateVerdict   string                      `json:"gate_verdict,omitempty" yaml:"gate_verdict,omitempty"`
+	Errors        []string                    `json:"errors,omitempty" yaml:"errors,omitempty"`
+	ExitCode      int                         `json:"exit_code" yaml:"exit_code"`
 }
 
 type promptEvalRunPlayground struct {
@@ -274,6 +313,48 @@ type promptEvalRunExperiment struct {
 	ModelAliasID      string `json:"model_alias_id" yaml:"model_alias_id"`
 	ProviderAccountID string `json:"provider_account_id" yaml:"provider_account_id"`
 	Status            string `json:"status,omitempty" yaml:"status,omitempty"`
+}
+
+type promptEvalFollowOptions struct {
+	PollInterval      time.Duration
+	Timeout           time.Duration
+	ThresholdOverride float64
+}
+
+type promptEvalResultsEnvelope struct {
+	SchemaVersion int                      `json:"schemaVersion" yaml:"schemaVersion"`
+	ExperimentID  string                   `json:"experiment_id" yaml:"experiment_id"`
+	Status        string                   `json:"status,omitempty" yaml:"status,omitempty"`
+	Rows          []promptEvalResultRow    `json:"rows" yaml:"rows"`
+	Summary       promptEvalResultsSummary `json:"summary" yaml:"summary"`
+	Thresholds    map[string]float64       `json:"thresholds,omitempty" yaml:"thresholds,omitempty"`
+	GateVerdict   string                   `json:"gate_verdict" yaml:"gate_verdict"`
+	Telemetry     map[string]any           `json:"telemetry,omitempty" yaml:"telemetry,omitempty"`
+	Errors        []string                 `json:"errors,omitempty" yaml:"errors,omitempty"`
+	ExitCode      int                      `json:"exit_code" yaml:"exit_code"`
+}
+
+type promptEvalResultRow struct {
+	CaseKey      string   `json:"case_key" yaml:"case_key"`
+	AssertionKey string   `json:"assertion_key,omitempty" yaml:"assertion_key,omitempty"`
+	Assertion    string   `json:"assertion,omitempty" yaml:"assertion,omitempty"`
+	Result       string   `json:"result" yaml:"result"`
+	Score        *float64 `json:"score,omitempty" yaml:"score,omitempty"`
+	Actual       string   `json:"actual,omitempty" yaml:"actual,omitempty"`
+	Expected     string   `json:"expected,omitempty" yaml:"expected,omitempty"`
+	LatencyMS    int64    `json:"latency_ms,omitempty" yaml:"latency_ms,omitempty"`
+	Tokens       int64    `json:"tokens,omitempty" yaml:"tokens,omitempty"`
+	Error        string   `json:"error,omitempty" yaml:"error,omitempty"`
+}
+
+type promptEvalResultsSummary struct {
+	TotalCases        int                `json:"total_cases" yaml:"total_cases"`
+	CompletedCases    int                `json:"completed_cases" yaml:"completed_cases"`
+	ExecutionErrors   int                `json:"execution_errors" yaml:"execution_errors"`
+	AssertionsPassed  int                `json:"assertions_passed" yaml:"assertions_passed"`
+	AssertionsFailed  int                `json:"assertions_failed" yaml:"assertions_failed"`
+	AssertionPassRate float64            `json:"assertion_pass_rate" yaml:"assertion_pass_rate"`
+	DimensionScores   map[string]float64 `json:"dimension_scores,omitempty" yaml:"dimension_scores,omitempty"`
 }
 
 func buildPromptEvalScaffold(name string) ([]byte, error) {
@@ -672,6 +753,188 @@ func createPromptEvalExperiment(cmd *cobra.Command, rc *RunContext, playgroundID
 		ProviderAccountID: model.ProviderAccountID,
 		Status:            mapString(created, "status"),
 	}, nil
+}
+
+func followPromptEvalRun(cmd *cobra.Command, rc *RunContext, run *promptEvalRunResult, options promptEvalFollowOptions) error {
+	if options.PollInterval <= 0 {
+		options.PollInterval = 3 * time.Second
+	}
+	started := time.Now()
+	for {
+		allTerminal := true
+		var envelopes []promptEvalResultsEnvelope
+		for pIndex := range run.Playgrounds {
+			for eIndex := range run.Playgrounds[pIndex].Experiments {
+				exp := &run.Playgrounds[pIndex].Experiments[eIndex]
+				status, authErr, err := fetchPromptEvalExperimentStatus(cmd, rc, exp.ExperimentID)
+				if authErr {
+					run.ExitCode = promptEvalExitInvalid
+					run.Errors = append(run.Errors, "auth failed while polling experiment "+exp.ExperimentID)
+					return &ExitCodeError{Code: promptEvalExitInvalid}
+				}
+				if err != nil {
+					run.ExitCode = promptEvalExitExecution
+					run.Errors = append(run.Errors, err.Error())
+					return &ExitCodeError{Code: promptEvalExitExecution}
+				}
+				exp.Status = status
+				if status != "completed" && status != "failed" {
+					allTerminal = false
+					continue
+				}
+				envelope, err := fetchPromptEvalResultsEnvelope(cmd, rc, exp.ExperimentID, options.ThresholdOverride)
+				if err != nil {
+					run.ExitCode = promptEvalExitExecution
+					run.Errors = append(run.Errors, err.Error())
+					return &ExitCodeError{Code: promptEvalExitExecution}
+				}
+				envelopes = append(envelopes, envelope)
+			}
+		}
+		if allTerminal {
+			run.Results = envelopes
+			run.Summary = combinePromptEvalSummaries(envelopes)
+			run.GateVerdict = promptEvalCombinedGateVerdict(envelopes)
+			run.ExitCode = promptEvalExitCodeForSummary(run.Summary, run.GateVerdict)
+			if run.ExitCode != 0 {
+				return &ExitCodeError{Code: run.ExitCode}
+			}
+			return nil
+		}
+		if options.Timeout > 0 && time.Since(started) >= options.Timeout {
+			run.ExitCode = promptEvalExitExecution
+			run.Errors = append(run.Errors, "timed out waiting for prompt eval experiments")
+			return &ExitCodeError{Code: promptEvalExitExecution}
+		}
+		time.Sleep(options.PollInterval)
+	}
+}
+
+func fetchPromptEvalExperimentStatus(cmd *cobra.Command, rc *RunContext, experimentID string) (string, bool, error) {
+	resp, err := rc.Client.Get(cmd.Context(), "/v1/playground-experiments/"+experimentID, nil)
+	if err != nil {
+		return "", false, err
+	}
+	if resp.StatusCode == 401 {
+		return "", true, nil
+	}
+	if apiErr := resp.ParseError(); apiErr != nil {
+		return "", false, apiErr
+	}
+	var payload map[string]any
+	if err := resp.DecodeJSON(&payload); err != nil {
+		return "", false, err
+	}
+	return mapString(payload, "status"), false, nil
+}
+
+func fetchPromptEvalResultsEnvelope(cmd *cobra.Command, rc *RunContext, experimentID string, thresholdOverride float64) (promptEvalResultsEnvelope, error) {
+	resp, err := rc.Client.Get(cmd.Context(), "/v1/playground-experiments/"+experimentID+"/results", nil)
+	envelope := promptEvalResultsEnvelope{
+		SchemaVersion: promptEvalSchemaVersion,
+		ExperimentID:  experimentID,
+		Rows:          []promptEvalResultRow{},
+		Thresholds:    map[string]float64{},
+		Telemetry:     map[string]any{"fetched_at": time.Now().UTC().Format(time.RFC3339)},
+	}
+	if err != nil {
+		envelope.Errors = append(envelope.Errors, err.Error())
+		envelope.ExitCode = promptEvalExitExecution
+		return envelope, err
+	}
+	if resp.StatusCode == 401 {
+		err := fmt.Errorf("auth failed while fetching experiment results")
+		envelope.Errors = append(envelope.Errors, err.Error())
+		envelope.ExitCode = promptEvalExitInvalid
+		return envelope, &ExitCodeError{Code: promptEvalExitInvalid}
+	}
+	if apiErr := resp.ParseError(); apiErr != nil {
+		envelope.Errors = append(envelope.Errors, apiErr.Error())
+		envelope.ExitCode = promptEvalExitExecution
+		return envelope, apiErr
+	}
+	var payload struct {
+		Items []map[string]any `json:"items"`
+	}
+	if err := resp.DecodeJSON(&payload); err != nil {
+		envelope.Errors = append(envelope.Errors, err.Error())
+		envelope.ExitCode = promptEvalExitExecution
+		return envelope, err
+	}
+	envelope.Rows, envelope.Summary = aggregatePromptEvalRows(payload.Items)
+	threshold := thresholdOverride
+	if threshold < 0 {
+		threshold = 1
+	}
+	envelope.Thresholds["assertion_pass_rate"] = threshold
+	envelope.GateVerdict = "pass"
+	if envelope.Summary.ExecutionErrors > 0 {
+		envelope.GateVerdict = "error"
+		envelope.ExitCode = promptEvalExitExecution
+	} else if envelope.Summary.AssertionPassRate < threshold {
+		envelope.GateVerdict = "fail"
+		envelope.ExitCode = promptEvalExitGate
+	}
+	envelope.Telemetry["row_count"] = len(envelope.Rows)
+	return envelope, nil
+}
+
+func aggregatePromptEvalRows(items []map[string]any) ([]promptEvalResultRow, promptEvalResultsSummary) {
+	rows := []promptEvalResultRow{}
+	summary := promptEvalResultsSummary{TotalCases: len(items), DimensionScores: map[string]float64{}}
+	dimensionTotals := map[string]float64{}
+	dimensionCounts := map[string]int{}
+	for _, item := range items {
+		caseKey := mapString(item, "case_key")
+		status := mapString(item, "status")
+		if status == "completed" {
+			summary.CompletedCases++
+		}
+		if status == "failed" || mapString(item, "error_message") != "" {
+			summary.ExecutionErrors++
+			rows = append(rows, promptEvalResultRow{CaseKey: caseKey, Result: "ERROR", Error: mapString(item, "error_message"), Actual: truncateRunes(mapString(item, "actual_output"), 160), LatencyMS: promptEvalInt64(item["latency_ms"]), Tokens: promptEvalInt64(item["total_tokens"])})
+			continue
+		}
+		for _, raw := range mapSlice(item, "validator_results") {
+			validator, ok := raw.(map[string]any)
+			if !ok {
+				continue
+			}
+			verdict := mapString(validator, "verdict")
+			if verdict == "pass" {
+				summary.AssertionsPassed++
+			} else {
+				summary.AssertionsFailed++
+			}
+			score := promptEvalFloatPtr(mapValue(validator, "normalized_score", "score"))
+			rows = append(rows, promptEvalResultRow{
+				CaseKey:      caseKey,
+				AssertionKey: mapString(validator, "key"),
+				Assertion:    mapString(validator, "type"),
+				Result:       strings.ToUpper(verdict),
+				Score:        score,
+				Actual:       truncateRunes(mapString(item, "actual_output"), 160),
+				Expected:     mapString(validator, "expected", "expected_value"),
+				LatencyMS:    promptEvalInt64(item["latency_ms"]),
+				Tokens:       promptEvalInt64(item["total_tokens"]),
+				Error:        mapString(validator, "reason"),
+			})
+		}
+		for key, value := range mapObject(item, "dimension_scores") {
+			if f, ok := promptEvalFloat(value); ok {
+				dimensionTotals[key] += f
+				dimensionCounts[key]++
+			}
+		}
+	}
+	totalAssertions := summary.AssertionsPassed + summary.AssertionsFailed
+	if totalAssertions > 0 {
+		summary.AssertionPassRate = float64(summary.AssertionsPassed) / float64(totalAssertions)
+	}
+	for key, total := range dimensionTotals {
+		summary.DimensionScores[key] = total / float64(dimensionCounts[key])
+	}
+	return rows, summary
 }
 
 func promptEvalTestCaseBody(test promptEvalTest) map[string]any {
@@ -1095,6 +1358,114 @@ func renderPromptEvalRun(rc *RunContext, result promptEvalRunResult) {
 		}
 	}
 	rc.Output.PrintTable([]output.Column{{Header: "Playground"}, {Header: "Experiment"}, {Header: "Model Alias"}, {Header: "Status"}}, rows)
+}
+
+func renderPromptEvalResults(rc *RunContext, result promptEvalResultsEnvelope) {
+	if result.ExitCode != 0 {
+		rc.Output.PrintError("Prompt eval results failed")
+	}
+	rows := make([][]string, 0, len(result.Rows))
+	for _, row := range result.Rows {
+		score := "-"
+		if row.Score != nil {
+			score = fmt.Sprintf("%.2f", *row.Score)
+		}
+		rows = append(rows, []string{row.CaseKey, row.AssertionKey, row.Result, score, row.Error})
+	}
+	rc.Output.PrintTable([]output.Column{{Header: "Case"}, {Header: "Assertion"}, {Header: "Result"}, {Header: "Score"}, {Header: "Error"}}, rows)
+}
+
+func combinePromptEvalSummaries(envelopes []promptEvalResultsEnvelope) promptEvalResultsSummary {
+	out := promptEvalResultsSummary{DimensionScores: map[string]float64{}}
+	dimTotals := map[string]float64{}
+	dimCounts := map[string]int{}
+	for _, envelope := range envelopes {
+		out.TotalCases += envelope.Summary.TotalCases
+		out.CompletedCases += envelope.Summary.CompletedCases
+		out.ExecutionErrors += envelope.Summary.ExecutionErrors
+		out.AssertionsPassed += envelope.Summary.AssertionsPassed
+		out.AssertionsFailed += envelope.Summary.AssertionsFailed
+		for key, value := range envelope.Summary.DimensionScores {
+			dimTotals[key] += value
+			dimCounts[key]++
+		}
+	}
+	totalAssertions := out.AssertionsPassed + out.AssertionsFailed
+	if totalAssertions > 0 {
+		out.AssertionPassRate = float64(out.AssertionsPassed) / float64(totalAssertions)
+	}
+	for key, total := range dimTotals {
+		out.DimensionScores[key] = total / float64(dimCounts[key])
+	}
+	return out
+}
+
+func promptEvalCombinedGateVerdict(envelopes []promptEvalResultsEnvelope) string {
+	verdict := "pass"
+	for _, envelope := range envelopes {
+		if envelope.GateVerdict == "error" {
+			return "error"
+		}
+		if envelope.GateVerdict == "fail" {
+			verdict = "fail"
+		}
+	}
+	return verdict
+}
+
+func promptEvalExitForResults(envelope promptEvalResultsEnvelope) error {
+	if envelope.ExitCode == 0 {
+		return nil
+	}
+	return &ExitCodeError{Code: envelope.ExitCode}
+}
+
+func promptEvalExitCodeForSummary(summary promptEvalResultsSummary, verdict string) int {
+	if summary.ExecutionErrors > 0 || verdict == "error" {
+		return promptEvalExitExecution
+	}
+	if verdict == "fail" {
+		return promptEvalExitGate
+	}
+	return 0
+}
+
+func promptEvalFloat(value any) (float64, bool) {
+	switch typed := value.(type) {
+	case float64:
+		return typed, true
+	case float32:
+		return float64(typed), true
+	case int:
+		return float64(typed), true
+	case int64:
+		return float64(typed), true
+	case json.Number:
+		f, err := typed.Float64()
+		return f, err == nil
+	default:
+		return 0, false
+	}
+}
+
+func promptEvalFloatPtr(value any) *float64 {
+	if f, ok := promptEvalFloat(value); ok {
+		return &f
+	}
+	return nil
+}
+
+func promptEvalInt64(value any) int64 {
+	switch typed := value.(type) {
+	case float64:
+		return int64(typed)
+	case int64:
+		return typed
+	case int:
+		return int64(typed)
+	default:
+		return 0
+	}
 }
 
 func sortedPromptEvalKeys(values map[string]bool) []string {
