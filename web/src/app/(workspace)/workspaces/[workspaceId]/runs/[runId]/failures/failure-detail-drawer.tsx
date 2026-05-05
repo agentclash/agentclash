@@ -127,33 +127,31 @@ function FailureDetailBody({
           </Section>
         )}
 
-        {item.remediation && (
-          <Section title="Likely issue area">
-            <div className="space-y-3">
-              <div className="flex items-center gap-2 flex-wrap">
-                <Badge variant="outline">{item.remediation.label}</Badge>
-                <span className="text-xs text-muted-foreground font-[family-name:var(--font-mono)]">
-                  {item.remediation.area}
-                </span>
-              </div>
-              <p className="text-sm text-foreground/90 leading-relaxed">
-                {item.remediation.summary}
-              </p>
-              {item.remediation.evidence.length > 0 && (
-                <ul className="space-y-1.5">
-                  {item.remediation.evidence.map((evidence, i) => (
-                    <li
-                      key={i}
-                      className="text-xs text-muted-foreground leading-snug"
-                    >
-                      {evidence}
-                    </li>
-                  ))}
-                </ul>
-              )}
+        <Section title="Likely issue area">
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Badge variant="outline">{item.remediation.label}</Badge>
+              <span className="text-xs text-muted-foreground font-[family-name:var(--font-mono)]">
+                {item.remediation.area}
+              </span>
             </div>
-          </Section>
-        )}
+            <p className="text-sm text-foreground/90 leading-relaxed">
+              {item.remediation.summary}
+            </p>
+            {item.remediation.evidence.length > 0 && (
+              <ul className="space-y-1.5">
+                {item.remediation.evidence.map((evidence, i) => (
+                  <li
+                    key={i}
+                    className="text-xs text-muted-foreground leading-snug"
+                  >
+                    {evidence}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </Section>
 
         {item.recommended_action && (
           <Section title="Recommended action">

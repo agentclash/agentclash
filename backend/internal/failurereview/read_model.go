@@ -1016,6 +1016,8 @@ func remediationDefaults(class FailureClass) (RemediationArea, string, string) {
 	switch class {
 	case FailureClassMalformedOutput:
 		return RemediationAreaOutputContract, "Output contract", "The run reached scoring, but schema or final-output validation failed. Fix the agent output format or parser contract before changing challenge content."
+	case FailureClassPolicyViolation:
+		return RemediationAreaToolOrWorkflow, "Policy or workflow", "Policy evidence points at agent permissions, tool boundaries, or workflow guardrails. Tighten the policy contract before changing challenge content."
 	case FailureClassToolArgumentError, FailureClassToolSelectionError, FailureClassDependencyResolution:
 		return RemediationAreaToolOrWorkflow, "Tool or workflow", "Tool selection, arguments, or dependency evidence points at workflow wiring rather than just final-answer quality."
 	case FailureClassSandboxFailure, FailureClassTimeoutOrBudget:
@@ -1032,19 +1034,26 @@ func remediationDefaults(class FailureClass) (RemediationArea, string, string) {
 }
 
 func remediationEvidence(group *itemGroup, judgeRefs []JudgeRef, failedDimensions []string, evidenceTier EvidenceTier, events []Event) []string {
-	evidence := make([]string, 0, 5)
+	const maxRemediationEvidence = 5
+
+	evidence := make([]string, 0, maxRemediationEvidence)
+	appendEvidence := func(value string) {
+		if len(evidence) < maxRemediationEvidence {
+			evidence = append(evidence, value)
+		}
+	}
 	if len(failedDimensions) > 0 {
-		evidence = append(evidence, "Failed dimensions: "+compactEvidenceList(failedDimensions, 4))
+		appendEvidence("Failed dimensions: " + compactEvidenceList(failedDimensions, 4))
 	}
 	if len(group.FailedChecks) > 0 {
-		evidence = append(evidence, "Failed checks: "+compactEvidenceList(group.FailedChecks, 4))
+		appendEvidence("Failed checks: " + compactEvidenceList(group.FailedChecks, 4))
 	}
 	for _, ref := range judgeRefs {
 		if !isFailingJudgeRef(ref) {
 			continue
 		}
-		evidence = append(evidence, fmt.Sprintf("Judge evidence: %s (%s)", ref.Key, firstNonEmpty(ref.Kind, "judge")))
-		if len(evidence) >= 5 {
+		appendEvidence(fmt.Sprintf("Judge evidence: %s (%s)", ref.Key, firstNonEmpty(ref.Kind, "judge")))
+		if len(evidence) >= maxRemediationEvidence {
 			return evidence
 		}
 	}
@@ -1052,24 +1061,22 @@ func remediationEvidence(group *itemGroup, judgeRefs []JudgeRef, failedDimension
 		if ref.State != "error" && ref.State != "unavailable" && ref.State != "fail" {
 			continue
 		}
-		evidence = append(evidence, fmt.Sprintf("Metric evidence: %s (%s)", ref.Key, firstNonEmpty(ref.MetricType, "metric")))
-		if len(evidence) >= 5 {
+		appendEvidence(fmt.Sprintf("Metric evidence: %s (%s)", ref.Key, firstNonEmpty(ref.MetricType, "metric")))
+		if len(evidence) >= maxRemediationEvidence {
 			return evidence
 		}
 	}
 	if len(group.ReplayStepRefs) > 0 {
 		ref := group.ReplayStepRefs[0]
-		evidence = append(evidence, fmt.Sprintf("Replay step: #%d %s", ref.SequenceNumber, ref.EventType))
+		appendEvidence(fmt.Sprintf("Replay step: #%d %s", ref.SequenceNumber, ref.EventType))
 	}
-	if len(evidence) < 5 && hasTimeoutOrBudgetSignal(events) {
-		evidence = append(evidence, "Run event matched timeout or budget signal")
+	if hasTimeoutOrBudgetSignal(events) {
+		appendEvidence("Run event matched timeout or budget signal")
 	}
-	if len(evidence) < 5 && hasSandboxFailure(events) {
-		evidence = append(evidence, "Run event matched sandbox failure signal")
+	if hasSandboxFailure(events) {
+		appendEvidence("Run event matched sandbox failure signal")
 	}
-	if len(evidence) < 5 {
-		evidence = append(evidence, "Evidence tier: "+string(evidenceTier))
-	}
+	appendEvidence("Evidence tier: " + string(evidenceTier))
 	return evidence
 }
 

@@ -108,6 +108,12 @@ func TestBuildRunAgentItemsComputesPromotionEligibilityAndRefs(t *testing.T) {
 	if item.FailureState != FailureStateFailed {
 		t.Fatalf("failure state = %s, want %s", item.FailureState, FailureStateFailed)
 	}
+	if item.Remediation.Area != RemediationAreaToolOrWorkflow {
+		t.Fatalf("remediation area = %s, want %s", item.Remediation.Area, RemediationAreaToolOrWorkflow)
+	}
+	if item.Remediation.Label != "Policy or workflow" {
+		t.Fatalf("remediation label = %q, want Policy or workflow", item.Remediation.Label)
+	}
 	if item.EvidenceTier != EvidenceTierNativeStructured {
 		t.Fatalf("evidence tier = %s, want %s", item.EvidenceTier, EvidenceTierNativeStructured)
 	}
