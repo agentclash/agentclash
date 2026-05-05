@@ -23,6 +23,7 @@ from typing import Any
 
 MARKER_PREFIX = "agentclash-ci-comment:v1"
 DIMENSION_ORDER = ("correctness", "reliability", "latency", "cost")
+DEFAULT_APP_URL = "https://app.agentclash.dev"
 
 
 @dataclass
@@ -94,6 +95,7 @@ def build_comment(
     result: dict[str, Any],
     should_run: dict[str, Any],
     exit_code: int,
+    app_url: str = DEFAULT_APP_URL,
 ) -> str:
     marker = marker_for_manifest(manifest)
     if should_run and should_run.get("should_run") is False:
@@ -112,6 +114,9 @@ def build_comment(
         )
 
     status = status_label(result, exit_code)
+    links = agentclash_links(result, app_url)
+    candidate_run_url = first_safe_url(nested(result, "candidate.run_url"), links.get("candidate_run"))
+    baseline_run_url = first_safe_url(nested(result, "baseline.run_url"), links.get("baseline_run"))
     lines = [
         marker,
         f"## AgentClash CI: {status}",
@@ -122,20 +127,25 @@ def build_comment(
         f"| Verdict | `{escape_cell(str(result.get('gate_verdict') or 'n/a'))}` |",
         f"| Failure reason | `{escape_cell(str(result.get('failure_reason') or 'n/a'))}` |",
         f"| Exit code | `{exit_code}` |",
-        f"| Candidate run | {format_link_or_code(nested(result, 'candidate.run_id'), nested(result, 'candidate.run_url'))} |",
-        f"| Baseline run | {format_link_or_code(nested(result, 'baseline.run_id'), nested(result, 'baseline.run_url'))} |",
+        f"| Candidate run | {format_link_or_code(nested(result, 'candidate.run_id'), candidate_run_url)} |",
+        f"| Baseline run | {format_link_or_code(nested(result, 'baseline.run_id'), baseline_run_url)} |",
     ]
 
     workflow_url = nested(result, "candidate.ci_metadata.workflow_run_url")
-    if workflow_url:
+    if is_safe_http_url(workflow_url):
         lines.append(f"| Workflow run | [open]({workflow_url}) |")
+
+    inspect_lines = inspect_link_lines(links)
+    if inspect_lines:
+        lines.extend(["", "### Inspect in AgentClash", ""])
+        lines.extend(inspect_lines)
 
     dimensions = dimension_rows(result)
     if dimensions:
         lines.extend(["", "### Score Deltas", "", "| Dimension | Outcome | Observed delta | Fail threshold |", "| --- | --- | ---: | ---: |"])
         lines.extend(dimensions)
 
-    regression_summary = regression_lines(result)
+    regression_summary = regression_lines(result, links)
     if regression_summary:
         lines.extend(["", "### Regression Tracking", ""])
         lines.extend(regression_summary)
@@ -180,10 +190,11 @@ def dimension_rows(result: dict[str, Any]) -> list[str]:
     return rows
 
 
-def regression_lines(result: dict[str, Any]) -> list[str]:
+def regression_lines(result: dict[str, Any], links: dict[str, str] | None = None) -> list[str]:
     promotions = result.get("regression_promotions")
     if not isinstance(promotions, dict):
         return []
+    links = links or {}
     lines = []
     policy = promotions.get("policy")
     case_status = promotions.get("case_status")
@@ -197,18 +208,24 @@ def regression_lines(result: dict[str, Any]) -> list[str]:
     ):
         items = promotions.get(key)
         if isinstance(items, list) and items:
-            lines.append(f"- {label}: {summarize_regression_items(items)}")
+            lines.append(f"- {label}: {summarize_regression_items(items, links)}")
     errors = promotions.get("errors")
     if isinstance(errors, list) and errors:
         lines.append(f"- Promotion errors: {', '.join(f'`{escape_cell(str(error))}`' for error in errors[:3])}")
     return lines
 
 
-def summarize_regression_items(items: list[Any]) -> str:
+def summarize_regression_items(items: list[Any], links: dict[str, str] | None = None) -> str:
+    links = links or {}
     labels = []
     for item in items[:5]:
         if isinstance(item, dict):
-            labels.append(f"`{escape_cell(str(item.get('challenge_key') or item.get('case_id') or item.get('reason') or 'unknown'))}`")
+            label = escape_cell(str(item.get("challenge_key") or item.get("case_id") or item.get("reason") or "unknown"))
+            case_url = regression_case_url(item, links)
+            if case_url:
+                labels.append(f"[`{label}`]({case_url})")
+            else:
+                labels.append(f"`{label}`")
         else:
             labels.append(f"`{escape_cell(str(item))}`")
     if len(items) > 5:
@@ -236,9 +253,133 @@ def format_link_or_code(value: Any, url: Any = None) -> str:
     if not value:
         return "`n/a`"
     label = escape_cell(str(value))
-    if url:
+    if is_safe_http_url(url):
         return f"[`{label}`]({url})"
     return f"`{label}`"
+
+
+def inspect_link_lines(links: dict[str, str]) -> list[str]:
+    ordered = (
+        ("candidate_run", "Candidate run"),
+        ("baseline_run", "Baseline run"),
+        ("comparison", "Compare baseline vs candidate"),
+        ("candidate_failures", "Candidate failures"),
+        ("candidate_scorecard", "Candidate scorecard"),
+        ("candidate_replay", "Candidate replay"),
+    )
+    lines = []
+    for key, label in ordered:
+        url = links.get(key)
+        if url:
+            lines.append(f"- [{label}]({url})")
+    return lines
+
+
+def agentclash_links(result: dict[str, Any], app_url: str) -> dict[str, str]:
+    links: dict[str, str] = {}
+    workspace_id = clean_id(result.get("workspace_id"))
+    candidate_run_id = clean_id(nested(result, "candidate.run_id"))
+    candidate_run_agent_id = clean_id(nested(result, "candidate.run_agent_id"))
+    baseline_run_id = clean_id(nested(result, "baseline.run_id"))
+    baseline_run_agent_id = clean_id(nested(result, "baseline.run_agent_id"))
+
+    def add(key: str, url: Any) -> None:
+        safe = normalize_safe_url(url)
+        if safe:
+            links[key] = safe
+
+    if workspace_id:
+        links["_workspace_id"] = workspace_id
+    if normalize_safe_url(app_url):
+        links["_app_url"] = normalize_safe_url(app_url)
+
+    if workspace_id:
+        if candidate_run_id:
+            add("candidate_run", app_link(app_url, "workspaces", workspace_id, "runs", candidate_run_id))
+            add("candidate_failures", app_link(app_url, "workspaces", workspace_id, "runs", candidate_run_id, "failures"))
+            if candidate_run_agent_id:
+                add(
+                    "candidate_scorecard",
+                    app_link(app_url, "workspaces", workspace_id, "runs", candidate_run_id, "agents", candidate_run_agent_id, "scorecard"),
+                )
+                add(
+                    "candidate_replay",
+                    app_link(app_url, "workspaces", workspace_id, "runs", candidate_run_id, "agents", candidate_run_agent_id, "replay"),
+                )
+        if baseline_run_id:
+            add("baseline_run", app_link(app_url, "workspaces", workspace_id, "runs", baseline_run_id))
+            if baseline_run_agent_id:
+                add(
+                    "baseline_scorecard",
+                    app_link(app_url, "workspaces", workspace_id, "runs", baseline_run_id, "agents", baseline_run_agent_id, "scorecard"),
+                )
+                add(
+                    "baseline_replay",
+                    app_link(app_url, "workspaces", workspace_id, "runs", baseline_run_id, "agents", baseline_run_agent_id, "replay"),
+                )
+        if baseline_run_id and candidate_run_id:
+            query = urllib.parse.urlencode({"baseline": baseline_run_id, "candidate": candidate_run_id})
+            add("comparison", app_link(app_url, "workspaces", workspace_id, "compare", query=query))
+
+    add("candidate_run", links.get("candidate_run") or nested(result, "candidate.run_url"))
+    add("baseline_run", links.get("baseline_run") or nested(result, "baseline.run_url"))
+    add("workflow_run", nested(result, "candidate.ci_metadata.workflow_run_url"))
+    return links
+
+
+def regression_case_url(item: dict[str, Any], links: dict[str, str]) -> str:
+    workspace_id = clean_id(links.get("_workspace_id"))
+    if not workspace_id:
+        return ""
+    suite_id = clean_id(item.get("suite_id"))
+    case_id = clean_id(item.get("case_id"))
+    app_url = links.get("_app_url", "")
+    if not suite_id or not case_id:
+        return ""
+    return app_link(app_url, "workspaces", workspace_id, "regression-suites", suite_id, "cases", case_id)
+
+
+def app_link(app_url: str, *parts: str, query: str = "") -> str:
+    base = normalize_safe_url(app_url)
+    if not base:
+        return ""
+    path = "/".join(urllib.parse.quote(str(part).strip(), safe="") for part in parts if str(part).strip())
+    if not path:
+        return base.rstrip("/")
+    url = f"{base.rstrip('/')}/{path}"
+    if query:
+        url = f"{url}?{query}"
+    return url
+
+
+def clean_id(value: Any) -> str:
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
+def first_safe_url(*values: Any) -> str:
+    for value in values:
+        safe = normalize_safe_url(value)
+        if safe:
+            return safe
+    return ""
+
+
+def normalize_safe_url(value: Any) -> str:
+    if not isinstance(value, str):
+        return ""
+    url = value.strip()
+    if not url:
+        return ""
+    parsed = urllib.parse.urlsplit(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return ""
+    return url
+
+
+def is_safe_http_url(value: Any) -> bool:
+    return normalize_safe_url(value) != ""
 
 
 def nested(value: Any, path: str) -> Any:
@@ -314,6 +455,7 @@ def post_comment(
     api_url: str,
     env: dict[str, str],
     event_payload: dict[str, Any],
+    app_url: str = DEFAULT_APP_URL,
     client: Any | None = None,
 ) -> CommentOutcome:
     if not token:
@@ -324,7 +466,7 @@ def post_comment(
     if pr_number is None:
         return CommentOutcome("skipped", "missing pull request context")
 
-    body = build_comment(manifest=manifest, result=result, should_run=should_run, exit_code=exit_code)
+    body = build_comment(manifest=manifest, result=result, should_run=should_run, exit_code=exit_code, app_url=app_url)
     marker = marker_for_manifest(manifest)
     github = client or GitHubClient(api_url, repo, token)
     try:
@@ -345,6 +487,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--repo", default=os.environ.get("GITHUB_REPOSITORY", ""))
     parser.add_argument("--event-path", default=os.environ.get("GITHUB_EVENT_PATH", ""))
     parser.add_argument("--api-url", default=os.environ.get("GITHUB_API_URL", "https://api.github.com"))
+    parser.add_argument("--app-url", default=os.environ.get("AGENTCLASH_APP_URL", DEFAULT_APP_URL))
     return parser.parse_args(argv)
 
 
@@ -371,6 +514,7 @@ def main(argv: list[str]) -> int:
         repo=args.repo,
         token=os.environ.get("INPUT_GITHUB_TOKEN") or os.environ.get("GITHUB_TOKEN") or "",
         api_url=args.api_url,
+        app_url=args.app_url,
         env=dict(os.environ),
         event_payload=load_event_payload(args.event_path),
     )
