@@ -86,9 +86,14 @@ function getMemberActions(
   isLastAdmin: boolean,
   onChangeRole: (role: WorkspaceRole) => void,
   onChangeStatus: (status: OrgMembershipStatus) => void,
+  onCopyInviteLink: () => void,
 ): MemberAction[] {
   const actions: MemberAction[] = [];
   const isArchived = member.membership_status === "archived";
+
+  if (member.membership_status === "invited" && member.accept_url) {
+    actions.push({ label: "Copy Invite Link", onClick: onCopyInviteLink });
+  }
 
   if (!isArchived) {
     if (member.role !== "workspace_admin") {
@@ -247,6 +252,16 @@ export function WsMembersClient({
     }
   }
 
+  async function handleCopyInviteLink(member: WorkspaceMember) {
+    if (!member.accept_url) return;
+    try {
+      await navigator.clipboard.writeText(member.accept_url);
+      toast.success(`Copied invite link for ${member.email}`);
+    } catch {
+      toast.error("Failed to copy invite link");
+    }
+  }
+
   function canManageMember(member: WorkspaceMember): boolean {
     if (!isAdmin) return false;
     if (member.user_id === currentUserId) return false;
@@ -310,6 +325,7 @@ export function WsMembersClient({
                       isLastAdmin,
                       (role) => handleChangeRole(member, role),
                       (status) => handleChangeStatus(member, status),
+                      () => handleCopyInviteLink(member),
                     )
                   : [];
 

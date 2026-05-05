@@ -3502,7 +3502,7 @@ func (r *Repository) GetOrgMembershipByID(ctx context.Context, membershipID uuid
 		JOIN users u ON u.id = om.user_id
 		WHERE om.id = $1
 	`, membershipID).Scan(&m.ID, &m.OrganizationID, &m.UserID, &m.Email, &m.DisplayName,
-		&m.Role, &m.MembershipStatus, &m.CreatedAt)
+		&m.Role, &m.MembershipStatus, &m.CreatedAt, &m.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return OrgMembershipFullRow{}, ErrMembershipNotFound

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	billingpkg "github.com/agentclash/agentclash/backend/internal/billing"
+	"github.com/agentclash/agentclash/backend/internal/email"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -40,6 +41,7 @@ type OrgMembershipResult struct {
 	Role             string    `json:"role"`
 	MembershipStatus string    `json:"membership_status"`
 	CreatedAt        time.Time `json:"created_at"`
+	AcceptURL        string    `json:"accept_url,omitempty"`
 }
 
 type ListOrgMembershipsResult struct {
@@ -54,6 +56,7 @@ type OrgMembershipRepository interface {
 	CountOrgMemberships(ctx context.Context, orgID uuid.UUID) (int64, error)
 	GetUserByEmail(ctx context.Context, email string) (repository.User, error)
 	CreateUser(ctx context.Context, input repository.CreateUserInput) (repository.User, error)
+	GetOrganizationByID(ctx context.Context, orgID uuid.UUID) (repository.OrganizationRow, error)
 	GetOrgMembershipByOrgAndUser(ctx context.Context, orgID, userID uuid.UUID) (repository.OrgMembershipFullRow, error)
 	CreateOrgMembership(ctx context.Context, input repository.CreateOrgMembershipInput) (repository.OrgMembershipFullRow, error)
 	GetOrgMembershipByID(ctx context.Context, membershipID uuid.UUID) (repository.OrgMembershipFullRow, error)
@@ -67,15 +70,20 @@ const inviteExpiryDays = 7
 type OrgMembershipManager struct {
 	orgAuthz        OrganizationAuthorizer
 	repo            OrgMembershipRepository
+	emailSender     email.Sender
+	frontendURL     string
 	entitlementGate EntitlementGateService
 }
 
-func NewOrgMembershipManager(orgAuthz OrganizationAuthorizer, repo OrgMembershipRepository, entitlementGate ...EntitlementGateService) *OrgMembershipManager {
+func NewOrgMembershipManager(orgAuthz OrganizationAuthorizer, repo OrgMembershipRepository, emailSender email.Sender, frontendURL string, entitlementGate ...EntitlementGateService) *OrgMembershipManager {
 	var gate EntitlementGateService
 	if len(entitlementGate) > 0 {
 		gate = entitlementGate[0]
 	}
-	return &OrgMembershipManager{orgAuthz: orgAuthz, repo: repo, entitlementGate: gate}
+	if emailSender == nil {
+		emailSender = email.NoopSender{}
+	}
+	return &OrgMembershipManager{orgAuthz: orgAuthz, repo: repo, emailSender: emailSender, frontendURL: frontendURL, entitlementGate: gate}
 }
 
 func (m *OrgMembershipManager) ListOrgMemberships(ctx context.Context, caller Caller, orgID uuid.UUID, limit, offset int32) (ListOrgMembershipsResult, error) {
@@ -94,8 +102,12 @@ func (m *OrgMembershipManager) ListOrgMemberships(ctx context.Context, caller Ca
 	}
 
 	items := make([]OrgMembershipResult, 0, len(memberships))
+	includeInviteLinks := false
+	if membership, ok := caller.OrganizationMemberships[orgID]; ok && membership.Role == "org_admin" {
+		includeInviteLinks = true
+	}
 	for _, row := range memberships {
-		items = append(items, orgMembershipRowToResult(row))
+		items = append(items, m.orgMembershipRowToResult(row, includeInviteLinks))
 	}
 
 	return ListOrgMembershipsResult{
@@ -154,7 +166,9 @@ func (m *OrgMembershipManager) InviteOrgMember(ctx context.Context, caller Calle
 		if err != nil {
 			return OrgMembershipResult{}, err
 		}
-		return orgMembershipRowToResult(result), nil
+		acceptURL := organizationInviteAcceptURL(m.frontendURL, result.ID)
+		m.sendInviteEmail(ctx, caller, orgID, input.Email, input.Role, acceptURL)
+		return m.orgMembershipRowToResult(result, true), nil
 	}
 	if !errors.Is(err, repository.ErrMembershipNotFound) {
 		return OrgMembershipResult{}, err
@@ -177,9 +191,9 @@ func (m *OrgMembershipManager) InviteOrgMember(ctx context.Context, caller Calle
 		return OrgMembershipResult{}, err
 	}
 
-	// TODO: Send invitation email notification (stubbed for now).
-
-	return orgMembershipRowToResult(result), nil
+	acceptURL := organizationInviteAcceptURL(m.frontendURL, result.ID)
+	m.sendInviteEmail(ctx, caller, orgID, input.Email, input.Role, acceptURL)
+	return m.orgMembershipRowToResult(result, true), nil
 }
 
 func (m *OrgMembershipManager) UpdateOrgMembership(ctx context.Context, caller Caller, membershipID uuid.UUID, input UpdateOrgMembershipInput) (OrgMembershipResult, error) {
@@ -262,7 +276,31 @@ func (m *OrgMembershipManager) UpdateOrgMembership(ctx context.Context, caller C
 		}
 	}
 
-	return orgMembershipRowToResult(result), nil
+	return m.orgMembershipRowToResult(result, isAdmin), nil
+}
+
+func (m *OrgMembershipManager) sendInviteEmail(ctx context.Context, caller Caller, orgID uuid.UUID, inviteeEmail, role, acceptURL string) {
+	org, err := m.repo.GetOrganizationByID(ctx, orgID)
+	if err != nil {
+		slog.Default().Warn("failed to load organization for invite email", "organization_id", orgID, "error", err)
+		return
+	}
+
+	inviterEmail := caller.Email
+	if inviterEmail == "" {
+		inviterEmail = "a team member"
+	}
+
+	if err := m.emailSender.SendInvite(ctx, email.InviteEmail{
+		To:           inviteeEmail,
+		ResourceName: org.Name,
+		ResourceKind: "organization",
+		InviterEmail: inviterEmail,
+		Role:         role,
+		AcceptURL:    acceptURL,
+	}); err != nil {
+		slog.Default().Warn("failed to send invite email", "to", inviteeEmail, "organization_id", orgID, "error", err)
+	}
 }
 
 func isRemovingAdmin(membership repository.OrgMembershipFullRow, input UpdateOrgMembershipInput) bool {
@@ -296,8 +334,8 @@ func validateOrgMembershipTransition(from, to string) error {
 
 var ErrInvalidTransition = errors.New("invalid status transition")
 
-func orgMembershipRowToResult(row repository.OrgMembershipFullRow) OrgMembershipResult {
-	return OrgMembershipResult{
+func (m *OrgMembershipManager) orgMembershipRowToResult(row repository.OrgMembershipFullRow, includeInviteLink bool) OrgMembershipResult {
+	result := OrgMembershipResult{
 		ID:               row.ID,
 		OrganizationID:   row.OrganizationID,
 		UserID:           row.UserID,
@@ -307,6 +345,10 @@ func orgMembershipRowToResult(row repository.OrgMembershipFullRow) OrgMembership
 		MembershipStatus: row.MembershipStatus,
 		CreatedAt:        row.CreatedAt,
 	}
+	if includeInviteLink && row.MembershipStatus == "invited" {
+		result.AcceptURL = organizationInviteAcceptURL(m.frontendURL, row.ID)
+	}
+	return result
 }
 
 func strPtr(s string) *string { return &s }

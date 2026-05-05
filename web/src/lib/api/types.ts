@@ -109,6 +109,7 @@ export interface OrgMember {
   membership_status: OrgMembershipStatus;
   created_at: string;
   updated_at?: string;
+  accept_url?: string;
 }
 
 /** POST /v1/organizations/{id}/memberships request */
@@ -164,6 +165,7 @@ export interface WorkspaceMember {
   membership_status: OrgMembershipStatus; // same enum: invited/active/suspended/archived
   created_at: string;
   updated_at?: string;
+  accept_url?: string;
 }
 
 // --- Agent Builds ---

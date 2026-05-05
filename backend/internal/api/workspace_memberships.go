@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -42,6 +41,7 @@ type WorkspaceMembershipResult struct {
 	Role             string    `json:"role"`
 	MembershipStatus string    `json:"membership_status"`
 	CreatedAt        time.Time `json:"created_at"`
+	AcceptURL        string    `json:"accept_url,omitempty"`
 }
 
 type ListWorkspaceMembershipsResult struct {
@@ -92,8 +92,9 @@ func (m *WorkspaceMembershipManager) ListWorkspaceMemberships(ctx context.Contex
 	}
 
 	items := make([]WorkspaceMembershipResult, 0, len(memberships))
+	includeInviteLinks := m.callerCanCopyWorkspaceInviteLinks(ctx, caller, workspaceID)
 	for _, row := range memberships {
-		items = append(items, wsMembershipRowToResult(row))
+		items = append(items, m.wsMembershipRowToResult(row, includeInviteLinks))
 	}
 
 	return ListWorkspaceMembershipsResult{
@@ -157,8 +158,9 @@ func (m *WorkspaceMembershipManager) InviteWorkspaceMember(ctx context.Context, 
 		if err != nil {
 			return WorkspaceMembershipResult{}, err
 		}
-		m.sendInviteEmail(ctx, caller, workspaceID, input.Email, input.Role)
-		return wsMembershipRowToResult(result), nil
+		acceptURL := workspaceInviteAcceptURL(m.frontendURL, result.ID)
+		m.sendInviteEmail(ctx, caller, workspaceID, input.Email, input.Role, acceptURL)
+		return m.wsMembershipRowToResult(result, true), nil
 	}
 	if !errors.Is(err, repository.ErrMembershipNotFound) {
 		return WorkspaceMembershipResult{}, err
@@ -174,8 +176,9 @@ func (m *WorkspaceMembershipManager) InviteWorkspaceMember(ctx context.Context, 
 		return WorkspaceMembershipResult{}, err
 	}
 
-	m.sendInviteEmail(ctx, caller, workspaceID, input.Email, input.Role)
-	return wsMembershipRowToResult(result), nil
+	acceptURL := workspaceInviteAcceptURL(m.frontendURL, result.ID)
+	m.sendInviteEmail(ctx, caller, workspaceID, input.Email, input.Role, acceptURL)
+	return m.wsMembershipRowToResult(result, true), nil
 }
 
 func (m *WorkspaceMembershipManager) UpdateWorkspaceMembership(ctx context.Context, caller Caller, membershipID uuid.UUID, input UpdateWorkspaceMembershipInput) (WorkspaceMembershipResult, error) {
@@ -245,10 +248,10 @@ func (m *WorkspaceMembershipManager) UpdateWorkspaceMembership(ctx context.Conte
 		return WorkspaceMembershipResult{}, err
 	}
 
-	return wsMembershipRowToResult(result), nil
+	return m.wsMembershipRowToResult(result, isAdmin), nil
 }
 
-func (m *WorkspaceMembershipManager) sendInviteEmail(ctx context.Context, caller Caller, workspaceID uuid.UUID, inviteeEmail, role string) {
+func (m *WorkspaceMembershipManager) sendInviteEmail(ctx context.Context, caller Caller, workspaceID uuid.UUID, inviteeEmail, role, acceptURL string) {
 	workspace, err := m.repo.GetWorkspaceByID(ctx, workspaceID)
 	if err != nil {
 		slog.Default().Warn("failed to load workspace for invite email", "workspace_id", workspaceID, "error", err)
@@ -260,14 +263,13 @@ func (m *WorkspaceMembershipManager) sendInviteEmail(ctx context.Context, caller
 		inviterEmail = "a team member"
 	}
 
-	acceptURL := fmt.Sprintf("%s/dashboard", m.frontendURL)
-
 	if err := m.emailSender.SendInvite(ctx, email.InviteEmail{
-		To:            inviteeEmail,
-		WorkspaceName: workspace.Name,
-		InviterEmail:  inviterEmail,
-		Role:          role,
-		AcceptURL:     acceptURL,
+		To:           inviteeEmail,
+		ResourceName: workspace.Name,
+		ResourceKind: "workspace",
+		InviterEmail: inviterEmail,
+		Role:         role,
+		AcceptURL:    acceptURL,
 	}); err != nil {
 		slog.Default().Warn("failed to send invite email", "to", inviteeEmail, "workspace_id", workspaceID, "error", err)
 	}
@@ -301,6 +303,21 @@ func (m *WorkspaceMembershipManager) authorizeAdmin(ctx context.Context, caller 
 	return ErrForbidden
 }
 
+func (m *WorkspaceMembershipManager) callerCanCopyWorkspaceInviteLinks(ctx context.Context, caller Caller, workspaceID uuid.UUID) bool {
+	if wm, ok := caller.WorkspaceMemberships[workspaceID]; ok && wm.Role == "workspace_admin" {
+		return true
+	}
+	orgID, err := m.repo.GetOrganizationIDByWorkspaceID(ctx, workspaceID)
+	if err != nil {
+		slog.Default().Warn("failed to load organization for invite link visibility", "workspace_id", workspaceID, "error", err)
+		return false
+	}
+	if om, ok := caller.OrganizationMemberships[orgID]; ok && om.Role == "org_admin" {
+		return true
+	}
+	return false
+}
+
 func isRemovingWsAdmin(membership repository.WorkspaceMembershipFullRow, input UpdateWorkspaceMembershipInput) bool {
 	if membership.Role != "workspace_admin" || membership.MembershipStatus != "active" {
 		return false
@@ -328,8 +345,8 @@ func validateWsMembershipTransition(from, to string) error {
 	return ErrInvalidTransition
 }
 
-func wsMembershipRowToResult(row repository.WorkspaceMembershipFullRow) WorkspaceMembershipResult {
-	return WorkspaceMembershipResult{
+func (m *WorkspaceMembershipManager) wsMembershipRowToResult(row repository.WorkspaceMembershipFullRow, includeInviteLink bool) WorkspaceMembershipResult {
+	result := WorkspaceMembershipResult{
 		ID:               row.ID,
 		WorkspaceID:      row.WorkspaceID,
 		OrganizationID:   row.OrganizationID,
@@ -340,6 +357,10 @@ func wsMembershipRowToResult(row repository.WorkspaceMembershipFullRow) Workspac
 		MembershipStatus: row.MembershipStatus,
 		CreatedAt:        row.CreatedAt,
 	}
+	if includeInviteLink && row.MembershipStatus == "invited" {
+		result.AcceptURL = workspaceInviteAcceptURL(m.frontendURL, row.ID)
+	}
+	return result
 }
 
 // --- Handlers ---
