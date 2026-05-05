@@ -316,6 +316,9 @@ func TestExecuteAgentHarnessExecutionRunsClaudeAndRecordsTrace(t *testing.T) {
 			if !containsString(request.Command, "--output-format") || !containsString(request.Command, "stream-json") {
 				t.Fatalf("claude command = %#v, want stream-json output", request.Command)
 			}
+			if !containsString(request.Command, "--verbose") {
+				t.Fatalf("claude command = %#v, want --verbose (required when stream-json is paired with -p)", request.Command)
+			}
 			if !containsString(request.Command, "--permission-mode") || !containsString(request.Command, "bypassPermissions") {
 				t.Fatalf("claude command = %#v, want bypass permission mode", request.Command)
 			}

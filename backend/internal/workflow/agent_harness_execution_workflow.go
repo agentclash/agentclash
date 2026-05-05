@@ -370,7 +370,7 @@ func agentHarnessRunnerFor(h agentHarnessSnapshot, workdir string) (agentHarness
 			Command:     []string{"codex", "exec", "--full-auto", "--skip-git-repo-check", "--json", "-C", workdir, h.TaskPrompt},
 		}, nil
 	case "claude_e2b":
-		command := []string{"claude", "-p", "--output-format", "stream-json", "--permission-mode", "bypassPermissions"}
+		command := []string{"claude", "-p", "--output-format", "stream-json", "--verbose", "--permission-mode", "bypassPermissions"}
 		if h.CodexModel != nil && strings.TrimSpace(*h.CodexModel) != "" {
 			command = append(command, "--model", strings.TrimSpace(*h.CodexModel))
 		}
