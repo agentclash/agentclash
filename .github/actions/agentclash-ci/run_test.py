@@ -25,6 +25,7 @@ if [[ "$*" == "ci should-run --help" || "$*" == "ci run --help" ]]; then
   exit 0
 fi
 if [[ "$1 $2" == "ci validate" ]]; then
+  [[ -f "$3" ]] || exit 12
   exit 0
 fi
 if [[ "$1 $2" == "ci should-run" ]]; then
@@ -56,28 +57,7 @@ printf 'agentclash %s\\n' "$*" >>"{calls}"
 exit 1
 """,
             )
-            self.write_executable(
-                bin_dir / "go",
-                f"""#!/usr/bin/env bash
-printf 'go %s\\n' "$*" >>"{calls}"
-if [[ "$1" == "-C" && "$3 $4" == "run ." && "$5 $6" == "ci should-run" && "$7" == "--help" ]]; then
-  printf 'Usage:\\n  agentclash ci should-run [flags]\\n\\nFlags:\\n  --help\\n'
-  exit 0
-fi
-if [[ "$1" == "-C" && "$3 $4" == "run ." && "$5 $6" == "ci run" && "$7" == "--help" ]]; then
-  printf 'Usage:\\n  agentclash ci run [flags]\\n\\nFlags:\\n  --help\\n'
-  exit 0
-fi
-if [[ "$1" == "-C" && "$3 $4" == "run ." && "$5 $6" == "ci validate" ]]; then
-  exit 0
-fi
-if [[ "$1" == "-C" && "$3 $4" == "run ." && "$5 $6" == "ci should-run" ]]; then
-  printf '%s\\n' '{{"should_run":false,"reason":"no matched files"}}'
-  exit 0
-fi
-exit 9
-""",
-            )
+            self.write_fake_go(bin_dir / "go", calls)
 
             result = self.run_action(root, bin_dir)
 
@@ -86,6 +66,7 @@ exit 9
             call_log = calls.read_text()
             self.assertIn("agentclash ci should-run --help", call_log)
             self.assertIn("go -C", call_log)
+            self.assertIn("build -o", call_log)
             self.assertIn("ci validate", call_log)
             self.assertIn("ci should-run", call_log)
 
@@ -131,7 +112,8 @@ exit 1
         *,
         source_fallback: str = "true",
     ) -> subprocess.CompletedProcess[str]:
-        manifest = root / "ci.yaml"
+        manifest = root / ".agentclash" / "ci.yaml"
+        manifest.parent.mkdir(parents=True)
         manifest.write_text(
             textwrap.dedent(
                 """
@@ -166,7 +148,7 @@ exit 1
             "INPUT_SOURCE_FALLBACK": source_fallback,
             "INPUT_SKIP_IF_UNMATCHED": "true",
             "INPUT_PR_COMMENT": "false",
-            "INPUT_MANIFEST": str(manifest),
+            "INPUT_MANIFEST": ".agentclash/ci.yaml",
             "INPUT_CHANGED_FILES": "docs/readme.md",
             "RUNNER_TEMP": str(root),
         }
@@ -189,19 +171,27 @@ exit 1
             path,
             f"""#!/usr/bin/env bash
 printf 'go %s\\n' "$*" >>"{calls}"
-if [[ "$1" == "-C" && "$3 $4" == "run ." && "$5 $6" == "ci should-run" && "$7" == "--help" ]]; then
-  printf 'Usage:\\n  agentclash ci should-run [flags]\\n\\nFlags:\\n  --help\\n'
+if [[ "$1" == "-C" && "$3" == "build" && "$4" == "-o" && "$6" == "." ]]; then
+  cat >"$5" <<'BIN'
+#!/usr/bin/env bash
+printf 'source-agentclash %s\n' "$*" >>"__CALLS__"
+if [[ "$*" == "ci should-run --help" || "$*" == "ci run --help" ]]; then
+  printf 'Usage:\n  agentclash %s [flags]\n\nFlags:\n  --help\n' "${{*:1:2}}"
   exit 0
 fi
-if [[ "$1" == "-C" && "$3 $4" == "run ." && "$5 $6" == "ci run" && "$7" == "--help" ]]; then
-  printf 'Usage:\\n  agentclash ci run [flags]\\n\\nFlags:\\n  --help\\n'
+if [[ "$1 $2" == "ci validate" ]]; then
+  [[ -f "$3" ]] || exit 12
   exit 0
 fi
-if [[ "$1" == "-C" && "$3 $4" == "run ." && "$5 $6" == "ci validate" ]]; then
+if [[ "$1 $2" == "ci should-run" ]]; then
+  printf '%s\n' '{{"should_run":false,"reason":"no matched files"}}'
   exit 0
 fi
-if [[ "$1" == "-C" && "$3 $4" == "run ." && "$5 $6" == "ci should-run" ]]; then
-  printf '%s\\n' '{{"should_run":false,"reason":"no matched files"}}'
+exit 9
+BIN
+  sed -i.bak "s#__CALLS__#{calls}#g" "$5"
+  rm -f "$5.bak"
+  chmod +x "$5"
   exit 0
 fi
 exit 9

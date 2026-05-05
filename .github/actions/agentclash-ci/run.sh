@@ -77,14 +77,20 @@ resolve_agentclash_cli() {
 
   if bool_true "${INPUT_SOURCE_FALLBACK:-true}"; then
     local source_dir
+    local fallback_bin
     source_dir="$(cd "${ACTION_PATH}/../../.." && pwd)/cli"
     if [[ -d "$source_dir" ]] && command -v go >/dev/null 2>&1; then
-      if agentclash_supports_ci_commands go -C "$source_dir" run .; then
-        agentclash_cmd=(go -C "$source_dir" run .)
-        echo "Using AgentClash CLI source fallback from ${source_dir}"
-        return 0
+      fallback_bin="${RUNNER_TEMP:-/tmp}/agentclash-source-cli"
+      if go -C "$source_dir" build -o "$fallback_bin" .; then
+        if agentclash_supports_ci_commands "$fallback_bin"; then
+          agentclash_cmd=("$fallback_bin")
+          echo "Using AgentClash CLI source fallback from ${source_dir}"
+          return 0
+        fi
+        echo "::notice::AgentClash CLI source fallback exists but does not expose ci should-run/run"
+      else
+        echo "::notice::AgentClash CLI source fallback failed to build"
       fi
-      echo "::notice::AgentClash CLI source fallback exists but does not expose ci should-run/run"
     elif [[ ! -d "$source_dir" ]]; then
       echo "::notice::AgentClash CLI source fallback is unavailable at ${source_dir}"
     else
