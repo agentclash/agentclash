@@ -49,6 +49,8 @@ var (
 	ErrDeviceCodeNotFound              = errors.New("device code not found")
 	ErrDeviceCodeExpired               = errors.New("device code expired")
 	ErrWorkspaceSecretNotFound         = errors.New("workspace secret not found")
+	ErrWorkspaceCIProfileNotFound      = errors.New("workspace ci profile not found")
+	ErrWorkspaceCIProfileNameConflict  = errors.New("workspace ci profile name already exists")
 	ErrSecretsCipherUnset              = errors.New("secrets cipher is not configured")
 	ErrInvalidSecretKey                = errors.New("secret key must match [A-Za-z_][A-Za-z0-9_]* and be 1..128 characters")
 )

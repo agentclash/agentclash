@@ -64,6 +64,8 @@ tags:
     description: Workspace membership invitations and updates
   - name: WorkspaceSecrets
     description: Encrypted workspace secret management
+  - name: GitHubIntegrations
+    description: GitHub App installation, repository selection, and CI setup
   - name: RuntimeProfiles
     description: Execution runtime profile configuration
   - name: ProviderAccounts
@@ -501,6 +503,134 @@ paths:
           $ref: "#/components/responses/UnauthorizedError"
         "403":
           $ref: "#/components/responses/ForbiddenError"
+
+  /v1/workspaces/{workspaceID}/ci-profiles:
+    get:
+      operationId: listCIProfiles
+      tags: [GitHubIntegrations]
+      summary: List saved CI profiles
+      description: Lists reusable AgentClash CI setup profiles for a workspace.
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+      responses:
+        "200":
+          description: Saved CI profiles
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CIProfilesResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+    post:
+      operationId: createCIProfile
+      tags: [GitHubIntegrations]
+      summary: Create a saved CI profile
+      description: Saves a complete CI setup profile for later reuse in the workspace UI.
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SaveCIProfileRequest"
+      responses:
+        "201":
+          description: CI profile created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CIProfile"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+
+  /v1/workspaces/{workspaceID}/ci-profiles/{profileID}:
+    patch:
+      operationId: updateCIProfile
+      tags: [GitHubIntegrations]
+      summary: Update a saved CI profile
+      description: Replaces the saved CI setup profile snapshot with the supplied values.
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/ProfileID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SaveCIProfileRequest"
+      responses:
+        "200":
+          description: CI profile updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CIProfile"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+
+  /v1/workspaces/{workspaceID}/github/ci-setup-pull-request:
+    post:
+      operationId: createCISetupPullRequest
+      tags: [GitHubIntegrations]
+      summary: Open a GitHub setup PR for AgentClash CI
+      description: >
+        Creates a draft pull request containing generated AgentClash CI files.
+        If target files already exist and overwrite_existing is false, returns a
+        conflict preflight response without creating a pull request.
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCISetupPullRequestRequest"
+      responses:
+        "201":
+          description: Setup pull request created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateCISetupPullRequestResponse"
+        "200":
+          description: Conflict preflight completed without creating a pull request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateCISetupPullRequestResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "503":
+          $ref: "#/components/responses/InternalError"
 
   # ---------------------------------------------------------------------------
   # Billing
@@ -4142,6 +4272,191 @@ components:
     EmptyObject:
       type: object
       additionalProperties: false
+
+    CIProfilesResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/CIProfile"
+
+    CIProfile:
+      type: object
+      required:
+        - id
+        - workspace_id
+        - name
+        - repository_full_name
+        - default_branch
+        - manifest_path
+        - workflow_path
+        - config
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        repository_full_name:
+          type: string
+          example: acme/support-agent
+        github_repository_id:
+          type: integer
+          format: int64
+        github_installation_id:
+          type: integer
+          format: int64
+        default_branch:
+          type: string
+          example: main
+        manifest_path:
+          type: string
+          example: .agentclash/ci.yaml
+        workflow_path:
+          type: string
+          example: .github/workflows/agentclash.yml
+        config:
+          type: object
+          additionalProperties: true
+          description: UI profile snapshot. Includes schemaVersion for forward-compatible migrations.
+        created_by_user_id:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    SaveCIProfileRequest:
+      type: object
+      required: [name, repository_full_name, default_branch, manifest_path, workflow_path, config]
+      properties:
+        name:
+          type: string
+          maxLength: 120
+        repository_full_name:
+          type: string
+          example: acme/support-agent
+        github_repository_id:
+          type: integer
+          format: int64
+        github_installation_id:
+          type: integer
+          format: int64
+        default_branch:
+          type: string
+          example: main
+        manifest_path:
+          type: string
+          example: .agentclash/ci.yaml
+        workflow_path:
+          type: string
+          example: .github/workflows/agentclash.yml
+        config:
+          type: object
+          additionalProperties: true
+
+    CreateCISetupPullRequestRequest:
+      type: object
+      required: [github_repository_id, base_branch, files]
+      properties:
+        github_repository_id:
+          type: integer
+          format: int64
+        github_installation_id:
+          type: integer
+          format: int64
+        base_branch:
+          type: string
+          example: main
+        title:
+          type: string
+        body:
+          type: string
+        draft:
+          type: boolean
+        check_only:
+          type: boolean
+          description: Return target-file conflicts without creating a PR.
+        overwrite_existing:
+          type: boolean
+          description: Allow generated files to replace existing target paths in the setup PR branch.
+        files:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/CISetupPullRequestFile"
+
+    CreateCISetupPullRequestResponse:
+      type: object
+      required: [base_branch, files]
+      properties:
+        pull_request:
+          $ref: "#/components/schemas/GitHubPullRequest"
+        branch:
+          type: string
+          description: Created branch name. Empty when no pull request was created.
+        base_branch:
+          type: string
+        files:
+          type: array
+          items:
+            $ref: "#/components/schemas/CISetupPullRequestFileSummary"
+        conflicts:
+          type: array
+          items:
+            $ref: "#/components/schemas/CISetupFileConflict"
+
+    CISetupPullRequestFile:
+      type: object
+      required: [path, content]
+      properties:
+        path:
+          type: string
+          example: .agentclash/ci.yaml
+        content:
+          type: string
+
+    CISetupPullRequestFileSummary:
+      type: object
+      required: [path]
+      properties:
+        path:
+          type: string
+
+    CISetupFileConflict:
+      type: object
+      required: [path, exists]
+      properties:
+        path:
+          type: string
+        exists:
+          type: boolean
+        sha:
+          type: string
+
+    GitHubPullRequest:
+      type: object
+      required: [number, html_url, state, draft]
+      properties:
+        number:
+          type: integer
+        html_url:
+          type: string
+          format: uri
+        state:
+          type: string
+        draft:
+          type: boolean
 
     ValidationResult:
       type: object

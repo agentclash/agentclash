@@ -36,8 +36,10 @@ import {
 import type {
   AgentBuild,
   AgentDeployment,
+  CIProfile,
   ChallengeInputSetSummary,
   ChallengePack,
+  CISetupFileConflict,
   CreateCISetupPullRequestRequest,
   CreateCISetupPullRequestResponse,
   GitHubRepository,
@@ -47,6 +49,7 @@ import type {
   Run,
   RunAgent,
   RuntimeProfile,
+  SaveCIProfileRequest,
 } from "@/lib/api/types";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -117,9 +120,16 @@ export function CISetupClient({ workspaceId }: CISetupClientProps) {
   const [loadingInputSets, setLoadingInputSets] = useState(false);
   const [loadingRunAgents, setLoadingRunAgents] = useState(false);
   const [selectedRepositoryKey, setSelectedRepositoryKey] = useState("");
+  const [selectedProfileId, setSelectedProfileId] = useState("");
+  const [profileName, setProfileName] = useState("Default CI profile");
+  const [savingProfile, setSavingProfile] = useState(false);
   const [creatingSetupPR, setCreatingSetupPR] = useState(false);
   const [setupPRResult, setSetupPRResult] =
     useState<CreateCISetupPullRequestResponse | null>(null);
+  const [setupPRConflicts, setSetupPRConflicts] = useState<CISetupFileConflict[]>(
+    [],
+  );
+  const [overwriteExisting, setOverwriteExisting] = useState(false);
 
   const builds = useApiListQuery<AgentBuild>(
     `/v1/workspaces/${workspaceId}/agent-builds`,
@@ -145,6 +155,9 @@ export function CISetupClient({ workspaceId }: CISetupClientProps) {
   );
   const repositories = useApiListQuery<GitHubRepository>(
     `/v1/workspaces/${workspaceId}/github/repositories`,
+  );
+  const ciProfiles = useApiListQuery<CIProfile>(
+    `/v1/workspaces/${workspaceId}/ci-profiles`,
   );
   const runs = usePaginatedApiQuery<Run>(`/v1/workspaces/${workspaceId}/runs`, {
     limit: 100,
@@ -412,8 +425,6 @@ export function CISetupClient({ workspaceId }: CISetupClientProps) {
   const readiness = ciSetupReadiness(config);
   const manifest = generateAgentClashCIManifest(config);
   const workflow = generateAgentClashGitHubWorkflow(config);
-  const canCreateSetupPR =
-    readiness.ready && selectedGitHubRepository !== null && !creatingSetupPR;
   const loadingAny =
     builds.isLoading ||
     deployments.isLoading ||
@@ -423,7 +434,13 @@ export function CISetupClient({ workspaceId }: CISetupClientProps) {
     modelAliases.isLoading ||
     regressionSuites.isLoading ||
     repositories.isLoading ||
+    ciProfiles.isLoading ||
     runs.isLoading;
+  const canCreateSetupPR =
+    readiness.ready &&
+    selectedGitHubRepository !== null &&
+    !loadingAny &&
+    !creatingSetupPR;
   const loadError =
     builds.error ||
     deployments.error ||
@@ -432,7 +449,13 @@ export function CISetupClient({ workspaceId }: CISetupClientProps) {
     providerAccounts.error ||
     modelAliases.error ||
     regressionSuites.error ||
+    repositories.error ||
+    ciProfiles.error ||
     runs.error;
+
+  const savedProfiles = ciProfiles.data?.items ?? [];
+  const selectedProfile =
+    savedProfiles.find((profile) => profile.id === selectedProfileId) ?? null;
 
   async function createSetupPullRequest() {
     if (!selectedGitHubRepository) {
@@ -441,6 +464,7 @@ export function CISetupClient({ workspaceId }: CISetupClientProps) {
     }
     setCreatingSetupPR(true);
     setSetupPRResult(null);
+    setSetupPRConflicts([]);
     try {
       const token = await getAccessToken();
       const api = createApiClient(token ?? undefined);
@@ -456,6 +480,7 @@ export function CISetupClient({ workspaceId }: CISetupClientProps) {
           `Workflow: \`${config.workflowPath}\``,
         ].join("\n"),
         draft: true,
+        overwrite_existing: overwriteExisting,
         files: [
           { path: config.manifestPath, content: manifest },
           { path: config.workflowPath, content: workflow },
@@ -465,7 +490,15 @@ export function CISetupClient({ workspaceId }: CISetupClientProps) {
         `/v1/workspaces/${workspaceId}/github/ci-setup-pull-request`,
         payload,
       );
+      if (!result.pull_request) {
+        setSetupPRConflicts(result.conflicts ?? []);
+        if ((result.conflicts ?? []).length > 0) {
+          toast.warning("Generated files already exist. Confirm overwrite to open a setup PR.");
+        }
+        return;
+      }
       setSetupPRResult(result);
+      setOverwriteExisting(false);
       toast.success(`Created setup PR #${result.pull_request.number}`);
     } catch (err) {
       toast.error(
@@ -474,6 +507,132 @@ export function CISetupClient({ workspaceId }: CISetupClientProps) {
     } finally {
       setCreatingSetupPR(false);
     }
+  }
+
+  async function saveCIProfile() {
+    const name = profileName.trim();
+    if (!name) {
+      toast.error("Name the CI profile before saving");
+      return;
+    }
+    setSavingProfile(true);
+    try {
+      const token = await getAccessToken();
+      const api = createApiClient(token ?? undefined);
+      const payload: SaveCIProfileRequest = {
+        name,
+        repository_full_name: config.repositoryFullName,
+        github_repository_id: selectedGitHubRepository?.github_repository_id,
+        github_installation_id: selectedGitHubRepository?.github_installation_id,
+        default_branch: config.defaultBranch,
+        manifest_path: config.manifestPath,
+        workflow_path: config.workflowPath,
+        config: buildProfileConfig({
+          selectedRepositoryKey,
+          selectedPackId,
+          selectedRegressionSuiteIds,
+          triggerPathsText,
+          triggerLabelsText,
+          workflowPath,
+          manifestPath,
+          agentSpecPath,
+          repositoryFullName,
+          defaultBranch,
+          agentBuildId,
+          runtimeProfileId,
+          providerAccountId,
+          modelAliasId,
+          deploymentName,
+          selectedVersionId,
+          inputSetId,
+          baselineStrategy,
+          baselineRunId,
+          baselineRunAgentId,
+          baselineDeploymentId,
+          baselineRefresh,
+          baselineMaxAgeDays,
+          gateFailOn,
+          gatePolicyFile,
+          regressionPromotion,
+        }),
+      };
+      let saved: CIProfile;
+      if (selectedProfileId) {
+        saved = await api.patch<CIProfile>(
+          `/v1/workspaces/${workspaceId}/ci-profiles/${selectedProfileId}`,
+          payload,
+        );
+      } else {
+        saved = await api.post<CIProfile>(
+          `/v1/workspaces/${workspaceId}/ci-profiles`,
+          payload,
+        );
+      }
+      setSelectedProfileId(saved.id);
+      setProfileName(saved.name);
+      await ciProfiles.mutate?.();
+      toast.success("CI profile saved");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Failed to save CI profile");
+    } finally {
+      setSavingProfile(false);
+    }
+  }
+
+  function applyProfile(profile: CIProfile | null) {
+    if (!profile) return;
+    const stored = normalizeProfileConfig(profile.config);
+    setSelectedProfileId(profile.id);
+    setProfileName(profile.name);
+    setSelectedRepositoryKey(stringValue(stored.selectedRepositoryKey, ""));
+    setWorkflowPath(stringValue(stored.workflowPath, profile.workflow_path));
+    setManifestPath(stringValue(stored.manifestPath, profile.manifest_path));
+    setAgentSpecPath(
+      stringValue(stored.agentSpecPath, defaultCISetupConfig.agentSpecPath),
+    );
+    setTriggerPathsText(
+      stringArrayValue(stored.triggerPaths, defaultCISetupConfig.triggerPaths).join(
+        "\n",
+      ),
+    );
+    setTriggerLabelsText(
+      stringArrayValue(
+        stored.triggerLabels,
+        defaultCISetupConfig.triggerLabels,
+      ).join("\n"),
+    );
+    setRepositoryFullName(
+      stringValue(stored.repositoryFullName, profile.repository_full_name),
+    );
+    setDefaultBranch(stringValue(stored.defaultBranch, profile.default_branch));
+    setAgentBuildId(stringValue(stored.agentBuildId, ""));
+    setRuntimeProfileId(stringValue(stored.runtimeProfileId, ""));
+    setProviderAccountId(stringValue(stored.providerAccountId, ""));
+    setModelAliasId(stringValue(stored.modelAliasId, ""));
+    setDeploymentName(stringValue(stored.deploymentName, "pr-candidate"));
+    setSelectedPackId(stringValue(stored.selectedPackId, ""));
+    setSelectedVersionId(stringValue(stored.selectedVersionId, ""));
+    setInputSetId(stringValue(stored.inputSetId, ""));
+    setSelectedRegressionSuiteIds(
+      stringArrayValue(stored.selectedRegressionSuiteIds, []),
+    );
+    setBaselineStrategy(
+      stringValue(stored.baselineStrategy, "locked_run") as CIBaselineStrategy,
+    );
+    setBaselineRunId(stringValue(stored.baselineRunId, ""));
+    setBaselineRunIdManualOverride(Boolean(stored.baselineRunId));
+    setBaselineRunAgentId(stringValue(stored.baselineRunAgentId, ""));
+    setBaselineDeploymentId(stringValue(stored.baselineDeploymentId, ""));
+    setBaselineRefresh(
+      stringValue(stored.baselineRefresh, "manual") as CIBaselineRefresh,
+    );
+    setBaselineMaxAgeDays(numberValue(stored.baselineMaxAgeDays, 30));
+    setGateFailOn(stringValue(stored.gateFailOn, "regression") as CIGateFailOn);
+    setGatePolicyFile(stringValue(stored.gatePolicyFile, ""));
+    setRegressionPromotion(
+      stringValue(stored.regressionPromotion, "proposed") as CIRegressionPromotion,
+    );
+    toast.success(`Loaded ${profile.name}`);
   }
 
   return (
@@ -535,6 +694,65 @@ export function CISetupClient({ workspaceId }: CISetupClientProps) {
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.02fr)_minmax(420px,0.98fr)]">
         <div className="space-y-6">
+          <Section
+            icon={<ShieldCheck className="size-4" />}
+            title="Saved Profile"
+            meta={savedProfiles.length ? `${savedProfiles.length} saved` : "New"}
+          >
+            <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto]">
+              <Field label="Profile">
+                <select
+                  value={selectedProfileId}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setSelectedProfileId(value);
+                    const profile = savedProfiles.find((item) => item.id === value);
+                    if (profile) {
+                      applyProfile(profile);
+                    } else {
+                      setProfileName("Default CI profile");
+                    }
+                  }}
+                  className={selectClass}
+                >
+                  <option value="">Create a new profile</option>
+                  {savedProfiles.map((profile) => (
+                    <option key={profile.id} value={profile.id}>
+                      {profile.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <div className="flex items-end">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={!selectedProfile}
+                  onClick={() => applyProfile(selectedProfile)}
+                >
+                  <Download data-icon="inline-start" className="size-4" />
+                  Load profile
+                </Button>
+              </div>
+              <Field label="Profile name">
+                <Input
+                  value={profileName}
+                  onChange={(event) => setProfileName(event.target.value)}
+                />
+              </Field>
+              <div className="flex items-end">
+                <Button type="button" disabled={savingProfile} onClick={saveCIProfile}>
+                  {savingProfile ? (
+                    <Loader2 data-icon="inline-start" className="size-4 animate-spin" />
+                  ) : (
+                    <CheckCircle2 data-icon="inline-start" className="size-4" />
+                  )}
+                  Save profile
+                </Button>
+              </div>
+            </div>
+          </Section>
+
           <Section
             icon={<Github className="size-4" />}
             title="Repository"
@@ -964,7 +1182,7 @@ export function CISetupClient({ workspaceId }: CISetupClientProps) {
             }
           />
 
-          {setupPRResult ? (
+          {setupPRResult?.pull_request ? (
             <StatusPanel
               tone="success"
               title={`Setup PR #${setupPRResult.pull_request.number} created`}
@@ -978,6 +1196,33 @@ export function CISetupClient({ workspaceId }: CISetupClientProps) {
                 >
                   View pull request
                 </a>
+              }
+            />
+          ) : null}
+
+          {setupPRConflicts.length > 0 ? (
+            <StatusPanel
+              tone="warn"
+              title="Generated files already exist"
+              body={`AgentClash found ${setupPRConflicts.length} target file(s) on ${config.defaultBranch}. Review them before replacing repo CI configuration.`}
+              action={
+                <div className="space-y-3">
+                  <ul className="space-y-1 text-xs text-muted-foreground">
+                    {setupPRConflicts.map((conflict) => (
+                      <li key={conflict.path}>
+                        <code>{conflict.path}</code>
+                      </li>
+                    ))}
+                  </ul>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={overwriteExisting}
+                      onChange={(event) => setOverwriteExisting(event.target.checked)}
+                    />
+                    Overwrite these files in a setup PR
+                  </label>
+                </div>
               }
             />
           ) : null}
@@ -1037,6 +1282,18 @@ export function CISetupClient({ workspaceId }: CISetupClientProps) {
                 Result JSON and AgentClash artifact JSON files are uploaded on
                 every matched run.
               </BehaviorItem>
+              <BehaviorItem title="Regression tracking">
+                Failed CI cases are recorded as proposed regression work unless
+                auto_on_main promotion is selected for default-branch runs.
+              </BehaviorItem>
+            </div>
+            <div className="mt-4">
+              <Link
+                href={`/workspaces/${workspaceId}/regression-suites`}
+                className="text-sm font-medium underline underline-offset-4"
+              >
+                Review regression suites
+              </Link>
             </div>
           </div>
 
@@ -1268,6 +1525,115 @@ function ResourceLinks({ workspaceId }: { workspaceId: string }) {
       ))}
     </div>
   );
+}
+
+type StoredCIProfileConfig = {
+  schemaVersion?: unknown;
+  selectedRepositoryKey?: unknown;
+  selectedPackId?: unknown;
+  selectedRegressionSuiteIds?: unknown;
+  triggerPaths?: unknown;
+  triggerLabels?: unknown;
+  workflowPath?: unknown;
+  manifestPath?: unknown;
+  agentSpecPath?: unknown;
+  repositoryFullName?: unknown;
+  defaultBranch?: unknown;
+  agentBuildId?: unknown;
+  runtimeProfileId?: unknown;
+  providerAccountId?: unknown;
+  modelAliasId?: unknown;
+  deploymentName?: unknown;
+  selectedVersionId?: unknown;
+  inputSetId?: unknown;
+  baselineStrategy?: unknown;
+  baselineRunId?: unknown;
+  baselineRunAgentId?: unknown;
+  baselineDeploymentId?: unknown;
+  baselineRefresh?: unknown;
+  baselineMaxAgeDays?: unknown;
+  gateFailOn?: unknown;
+  gatePolicyFile?: unknown;
+  regressionPromotion?: unknown;
+};
+
+function buildProfileConfig(config: {
+  selectedRepositoryKey: string;
+  selectedPackId: string;
+  selectedRegressionSuiteIds: string[];
+  triggerPathsText: string;
+  triggerLabelsText: string;
+  workflowPath: string;
+  manifestPath: string;
+  agentSpecPath: string;
+  repositoryFullName: string;
+  defaultBranch: string;
+  agentBuildId: string;
+  runtimeProfileId: string;
+  providerAccountId: string;
+  modelAliasId: string;
+  deploymentName: string;
+  selectedVersionId: string;
+  inputSetId: string;
+  baselineStrategy: CIBaselineStrategy;
+  baselineRunId: string;
+  baselineRunAgentId: string;
+  baselineDeploymentId: string;
+  baselineRefresh: CIBaselineRefresh;
+  baselineMaxAgeDays: number;
+  gateFailOn: CIGateFailOn;
+  gatePolicyFile: string;
+  regressionPromotion: CIRegressionPromotion;
+}): StoredCIProfileConfig {
+  return {
+    schemaVersion: 1,
+    selectedRepositoryKey: config.selectedRepositoryKey,
+    selectedPackId: config.selectedPackId,
+    selectedRegressionSuiteIds: config.selectedRegressionSuiteIds,
+    triggerPaths: splitLines(config.triggerPathsText),
+    triggerLabels: splitLines(config.triggerLabelsText),
+    workflowPath: config.workflowPath,
+    manifestPath: config.manifestPath,
+    agentSpecPath: config.agentSpecPath,
+    repositoryFullName: config.repositoryFullName,
+    defaultBranch: config.defaultBranch,
+    agentBuildId: config.agentBuildId,
+    runtimeProfileId: config.runtimeProfileId,
+    providerAccountId: config.providerAccountId,
+    modelAliasId: config.modelAliasId,
+    deploymentName: config.deploymentName,
+    selectedVersionId: config.selectedVersionId,
+    inputSetId: config.inputSetId,
+    baselineStrategy: config.baselineStrategy,
+    baselineRunId: config.baselineRunId,
+    baselineRunAgentId: config.baselineRunAgentId,
+    baselineDeploymentId: config.baselineDeploymentId,
+    baselineRefresh: config.baselineRefresh,
+    baselineMaxAgeDays: config.baselineMaxAgeDays,
+    gateFailOn: config.gateFailOn,
+    gatePolicyFile: config.gatePolicyFile,
+    regressionPromotion: config.regressionPromotion,
+  };
+}
+
+function normalizeProfileConfig(config: unknown): StoredCIProfileConfig {
+  return config && typeof config === "object" && !Array.isArray(config)
+    ? (config as StoredCIProfileConfig)
+    : {};
+}
+
+function stringValue(value: unknown, fallback: string): string {
+  return typeof value === "string" ? value : fallback;
+}
+
+function numberValue(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function stringArrayValue(value: unknown, fallback: string[]): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : fallback;
 }
 
 function splitLines(value: string): string[] {
