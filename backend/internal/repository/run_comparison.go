@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/domain"
@@ -20,8 +21,9 @@ import (
 // runComparisonSummaryDocument changes in a way that schema-aware
 // consumers can observe. Phase 5 (2026-04-14) added the scorecard_pass
 // object so release-gate consumers can branch on whether the verdict is
-// known.
-const runComparisonSummarySchemaVersion = "2026-04-14"
+// known. The 2026-05-05 version added scorecard_validity so release gates
+// can separate evaluator/pack/platform failures from ordinary agent failures.
+const runComparisonSummarySchemaVersion = "2026-05-05"
 
 type RunComparisonStatus string
 
@@ -52,17 +54,18 @@ type RunComparison struct {
 }
 
 type runComparisonSummaryDocument struct {
-	SchemaVersion           string                         `json:"schema_version"`
-	Status                  RunComparisonStatus            `json:"status"`
-	ReasonCode              string                         `json:"reason_code,omitempty"`
-	BaselineRefs            runComparisonRefs              `json:"baseline_refs"`
-	CandidateRefs           runComparisonRefs              `json:"candidate_refs"`
-	MatchedParticipants     *runComparisonMatchedPair      `json:"matched_participants,omitempty"`
-	DimensionDeltas         map[string]runComparisonDelta  `json:"dimension_deltas,omitempty"`
-	ScorecardPass           *runComparisonScorecardPass    `json:"scorecard_pass,omitempty"`
-	FailureDivergence       runComparisonFailureDivergence `json:"failure_divergence"`
-	ReplaySummaryDivergence runComparisonReplayDivergence  `json:"replay_summary_divergence"`
-	EvidenceQuality         runComparisonEvidenceQuality   `json:"evidence_quality"`
+	SchemaVersion           string                          `json:"schema_version"`
+	Status                  RunComparisonStatus             `json:"status"`
+	ReasonCode              string                          `json:"reason_code,omitempty"`
+	BaselineRefs            runComparisonRefs               `json:"baseline_refs"`
+	CandidateRefs           runComparisonRefs               `json:"candidate_refs"`
+	MatchedParticipants     *runComparisonMatchedPair       `json:"matched_participants,omitempty"`
+	DimensionDeltas         map[string]runComparisonDelta   `json:"dimension_deltas,omitempty"`
+	ScorecardPass           *runComparisonScorecardPass     `json:"scorecard_pass,omitempty"`
+	ScorecardValidity       *runComparisonScorecardValidity `json:"scorecard_validity,omitempty"`
+	FailureDivergence       runComparisonFailureDivergence  `json:"failure_divergence"`
+	ReplaySummaryDivergence runComparisonReplayDivergence   `json:"replay_summary_divergence"`
+	EvidenceQuality         runComparisonEvidenceQuality    `json:"evidence_quality"`
 }
 
 // runComparisonScorecardPass carries the per-agent scorecard pass verdict
@@ -73,6 +76,16 @@ type runComparisonSummaryDocument struct {
 type runComparisonScorecardPass struct {
 	Baseline  *bool `json:"baseline,omitempty"`
 	Candidate *bool `json:"candidate,omitempty"`
+}
+
+type runComparisonScorecardValidity struct {
+	Baseline  *runComparisonScorecardValiditySide `json:"baseline,omitempty"`
+	Candidate *runComparisonScorecardValiditySide `json:"candidate,omitempty"`
+}
+
+type runComparisonScorecardValiditySide struct {
+	Validity       string `json:"validity"`
+	ValidityReason string `json:"validity_reason,omitempty"`
 }
 
 type runComparisonRefs struct {
@@ -132,12 +145,14 @@ type runComparisonEvidenceQuality struct {
 }
 
 type comparisonScorecardDocument struct {
-	Status        string                                      `json:"status"`
-	Strategy      string                                      `json:"strategy,omitempty"`
-	OverallScore  *float64                                    `json:"overall_score,omitempty"`
-	Passed        *bool                                       `json:"passed,omitempty"`
-	OverallReason string                                      `json:"overall_reason,omitempty"`
-	Dimensions    map[string]comparisonScorecardDimensionInfo `json:"dimensions"`
+	Status         string                                      `json:"status"`
+	Strategy       string                                      `json:"strategy,omitempty"`
+	OverallScore   *float64                                    `json:"overall_score,omitempty"`
+	Passed         *bool                                       `json:"passed,omitempty"`
+	OverallReason  string                                      `json:"overall_reason,omitempty"`
+	Validity       string                                      `json:"validity,omitempty"`
+	ValidityReason string                                      `json:"validity_reason,omitempty"`
+	Dimensions     map[string]comparisonScorecardDimensionInfo `json:"dimensions"`
 }
 
 type comparisonScorecardDimensionInfo struct {
@@ -506,6 +521,14 @@ func buildComparableRunComparisonSummary(
 	}
 	if candidatePassed == nil {
 		missingFields = append(missingFields, "scorecard_pass.candidate")
+	}
+	baselineValidity := runComparisonScorecardValidityFromDocument(baselineScorecardDoc)
+	candidateValidity := runComparisonScorecardValidityFromDocument(candidateScorecardDoc)
+	if baselineValidity != nil || candidateValidity != nil {
+		summary.ScorecardValidity = &runComparisonScorecardValidity{
+			Baseline:  baselineValidity,
+			Candidate: candidateValidity,
+		}
 	}
 	failureDivergence, failureWarnings := buildFailureDivergence(baseline.runAgent, candidate.runAgent, baseline.replay, candidate.replay)
 	warnings = append(warnings, failureWarnings...)
@@ -959,6 +982,17 @@ func resolveScorecardPass(scorecard *RunAgentScorecard, jsonbPassed *bool) *bool
 		return &value
 	}
 	return nil
+}
+
+func runComparisonScorecardValidityFromDocument(document comparisonScorecardDocument) *runComparisonScorecardValiditySide {
+	validity := strings.TrimSpace(document.Validity)
+	if validity == "" {
+		return nil
+	}
+	return &runComparisonScorecardValiditySide{
+		Validity:       validity,
+		ValidityReason: strings.TrimSpace(document.ValidityReason),
+	}
 }
 
 func decodeComparisonScorecard(payload json.RawMessage) (comparisonScorecardDocument, error) {

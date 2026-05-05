@@ -74,6 +74,7 @@ type ComparisonSummary struct {
 	CandidateRefs           ComparisonRunRefs         `json:"candidate_refs"`
 	DimensionDeltas         map[string]DimensionDelta `json:"dimension_deltas,omitempty"`
 	ScorecardPass           *ScorecardPassSummary     `json:"scorecard_pass,omitempty"`
+	ScorecardValidity       *ScorecardValiditySummary `json:"scorecard_validity,omitempty"`
 	FailureDivergence       FailureDivergence         `json:"failure_divergence"`
 	ReplaySummaryDivergence ReplayDivergence          `json:"replay_summary_divergence"`
 	EvidenceQuality         compareEvidenceQuality    `json:"evidence_quality"`
@@ -92,6 +93,16 @@ type ComparisonRunRefs struct {
 type ScorecardPassSummary struct {
 	Baseline  *bool `json:"baseline,omitempty"`
 	Candidate *bool `json:"candidate,omitempty"`
+}
+
+type ScorecardValiditySummary struct {
+	Baseline  *ScorecardValiditySide `json:"baseline,omitempty"`
+	Candidate *ScorecardValiditySide `json:"candidate,omitempty"`
+}
+
+type ScorecardValiditySide struct {
+	Validity       string `json:"validity"`
+	ValidityReason string `json:"validity_reason,omitempty"`
 }
 
 type DimensionDelta struct {
@@ -133,6 +144,7 @@ type EvaluationDetails struct {
 	TriggeredConditions  []string                       `json:"triggered_conditions,omitempty"`
 	RequiredDimensions   []string                       `json:"required_dimensions,omitempty"`
 	DimensionResults     map[string]DimensionEvaluation `json:"dimension_results,omitempty"`
+	ScorecardValidity    *ScorecardValiditySummary      `json:"scorecard_validity,omitempty"`
 	RegressionViolations []RegressionGateViolation      `json:"regression_violations,omitempty"`
 }
 
@@ -310,6 +322,7 @@ func Evaluate(summary ComparisonSummary, policy Policy) (Evaluation, error) {
 		Warnings:           append([]string(nil), summary.EvidenceQuality.Warnings...),
 		RequiredDimensions: append([]string(nil), normalized.RequiredDimensions...),
 		DimensionResults:   make(map[string]DimensionEvaluation, len(normalized.Dimensions)),
+		ScorecardValidity:  cloneScorecardValiditySummary(summary.ScorecardValidity),
 	}
 
 	if normalized.RequireComparable && summary.Status != "comparable" {
@@ -329,6 +342,18 @@ func Evaluate(summary ComparisonSummary, policy Policy) (Evaluation, error) {
 			Verdict:        VerdictInsufficientEvidence,
 			ReasonCode:     "comparison_evidence_missing",
 			Summary:        buildInsufficientSummary("comparison evidence is incomplete", "", details.MissingFields),
+			EvidenceStatus: EvidenceStatusInsufficient,
+			Details:        details,
+		}, nil
+	}
+
+	if side, validity := blockingScorecardValidity(summary.ScorecardValidity); validity != nil {
+		reasonCode := scorecardValidityReasonCode(side, validity.Validity)
+		details.TriggeredConditions = append(details.TriggeredConditions, reasonCode)
+		return Evaluation{
+			Verdict:        VerdictInsufficientEvidence,
+			ReasonCode:     reasonCode,
+			Summary:        scorecardValiditySummary(side, *validity),
 			EvidenceStatus: EvidenceStatusInsufficient,
 			Details:        details,
 		}, nil
@@ -470,6 +495,82 @@ func scorecardPassValue(summary *ScorecardPassSummary, candidate bool) *bool {
 	}
 	value := *source
 	return &value
+}
+
+func cloneScorecardValiditySummary(summary *ScorecardValiditySummary) *ScorecardValiditySummary {
+	if summary == nil {
+		return nil
+	}
+	return &ScorecardValiditySummary{
+		Baseline:  cloneScorecardValiditySide(summary.Baseline),
+		Candidate: cloneScorecardValiditySide(summary.Candidate),
+	}
+}
+
+func cloneScorecardValiditySide(side *ScorecardValiditySide) *ScorecardValiditySide {
+	if side == nil {
+		return nil
+	}
+	return &ScorecardValiditySide{
+		Validity:       side.Validity,
+		ValidityReason: side.ValidityReason,
+	}
+}
+
+func blockingScorecardValidity(summary *ScorecardValiditySummary) (string, *ScorecardValiditySide) {
+	if summary == nil {
+		return "", nil
+	}
+	if isBlockingScorecardValidity(summary.Candidate) {
+		return "candidate", summary.Candidate
+	}
+	if isBlockingScorecardValidity(summary.Baseline) {
+		return "baseline", summary.Baseline
+	}
+	return "", nil
+}
+
+func isBlockingScorecardValidity(side *ScorecardValiditySide) bool {
+	if side == nil {
+		return false
+	}
+	switch strings.TrimSpace(strings.ToLower(side.Validity)) {
+	case "invalid", "degraded":
+		return true
+	default:
+		return false
+	}
+}
+
+func scorecardValidityReasonCode(side string, validity string) string {
+	normalized := strings.TrimSpace(strings.ToLower(validity))
+	if normalized == "" {
+		normalized = "unknown"
+	}
+	return side + "_scorecard_" + normalized
+}
+
+func scorecardValiditySummary(side string, validity ScorecardValiditySide) string {
+	normalized := strings.TrimSpace(strings.ToLower(validity.Validity))
+	if normalized == "" {
+		normalized = "unknown"
+	}
+	switch normalized {
+	case "invalid":
+		return appendScorecardValidityReason(fmt.Sprintf("%s scorecard is invalid; fix evaluator, pack, or platform errors before evaluating agent changes", side), validity.ValidityReason)
+	case "degraded":
+		return appendScorecardValidityReason(fmt.Sprintf("%s scorecard is degraded; rerun or fix missing evidence before evaluating agent changes", side), validity.ValidityReason)
+	default:
+		return appendScorecardValidityReason(fmt.Sprintf("%s scorecard validity is %s", side, normalized), validity.ValidityReason)
+	}
+}
+
+func appendScorecardValidityReason(summary string, reason string) string {
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		return summary
+	}
+	return summary + ": " + reason
 }
 
 func worseningDelta(delta DimensionDelta) *float64 {

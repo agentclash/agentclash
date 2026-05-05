@@ -8227,10 +8227,30 @@ components:
           type: object
           additionalProperties:
             $ref: "#/components/schemas/ReleaseGateDimensionEvaluation"
+        scorecard_validity:
+          $ref: "#/components/schemas/ReleaseGateScorecardValidity"
         regression_violations:
           type: array
           items:
             $ref: "#/components/schemas/ReleaseGateRegressionViolation"
+
+    ReleaseGateScorecardValidity:
+      type: object
+      properties:
+        baseline:
+          $ref: "#/components/schemas/ReleaseGateScorecardValiditySide"
+        candidate:
+          $ref: "#/components/schemas/ReleaseGateScorecardValiditySide"
+
+    ReleaseGateScorecardValiditySide:
+      type: object
+      required: [validity]
+      properties:
+        validity:
+          type: string
+          enum: [valid, degraded, invalid]
+        validity_reason:
+          type: string
 
     ReleaseGateDimensionEvaluation:
       type: object

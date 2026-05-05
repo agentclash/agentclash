@@ -247,3 +247,58 @@ func TestRunComparisonSummaryEmitsPartialScorecardPass(t *testing.T) {
 		t.Fatalf("expected baseline-only scorecard_pass, got: %s", string(encoded))
 	}
 }
+
+func TestDecodeComparisonScorecardReadsValidity(t *testing.T) {
+	document, err := decodeComparisonScorecard(json.RawMessage(`{
+		"status":"completed",
+		"validity":"invalid",
+		"validity_reason":"validator \"regex_contract\" errored",
+		"dimensions":{}
+	}`))
+	if err != nil {
+		t.Fatalf("decodeComparisonScorecard returned error: %v", err)
+	}
+	if document.Validity != "invalid" {
+		t.Fatalf("validity = %q, want invalid", document.Validity)
+	}
+	if document.ValidityReason != `validator "regex_contract" errored` {
+		t.Fatalf("validity_reason = %q", document.ValidityReason)
+	}
+}
+
+func TestRunComparisonSummaryOmitsScorecardValidityWhenBothNil(t *testing.T) {
+	summary := runComparisonSummaryDocument{
+		SchemaVersion: runComparisonSummarySchemaVersion,
+		Status:        RunComparisonStatusComparable,
+	}
+	encoded, err := json.Marshal(summary)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if strings.Contains(string(encoded), "scorecard_validity") {
+		t.Fatalf("expected scorecard_validity to be omitted, got: %s", string(encoded))
+	}
+}
+
+func TestRunComparisonSummaryEmitsPartialScorecardValidity(t *testing.T) {
+	summary := runComparisonSummaryDocument{
+		SchemaVersion: runComparisonSummarySchemaVersion,
+		Status:        RunComparisonStatusComparable,
+		ScorecardValidity: &runComparisonScorecardValidity{
+			Candidate: &runComparisonScorecardValiditySide{
+				Validity:       "invalid",
+				ValidityReason: "pack error",
+			},
+		},
+	}
+	encoded, err := json.Marshal(summary)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if strings.Contains(string(encoded), `"baseline"`) {
+		t.Fatalf("expected baseline scorecard_validity to be omitted, got: %s", string(encoded))
+	}
+	if !strings.Contains(string(encoded), `"scorecard_validity":{"candidate":{"validity":"invalid","validity_reason":"pack error"}}`) {
+		t.Fatalf("expected candidate scorecard_validity, got: %s", string(encoded))
+	}
+}
