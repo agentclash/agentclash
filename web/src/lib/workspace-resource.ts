@@ -2,6 +2,7 @@ import { apiQueryKey, type ApiQueryKey } from "@/lib/api/swr";
 
 const RUN_PAGE_SIZE = 20;
 const SUITE_PAGE_SIZE = 50;
+const REGRESSION_CASE_PAGE_SIZE = 20;
 const MEMBERS_PAGE_SIZE = 50;
 
 export const workspaceResourceKeys = {
@@ -31,6 +32,16 @@ export const workspaceResourceKeys = {
   regressionSuites: (workspaceId: string, offset = 0): ApiQueryKey =>
     apiQueryKey(`/v1/workspaces/${workspaceId}/regression-suites`, {
       limit: SUITE_PAGE_SIZE,
+      offset,
+    }),
+  regressionCases: (
+    workspaceId: string,
+    status?: string,
+    offset = 0,
+  ): ApiQueryKey =>
+    apiQueryKey(`/v1/workspaces/${workspaceId}/regression-cases`, {
+      status,
+      limit: REGRESSION_CASE_PAGE_SIZE,
       offset,
     }),
   runtimeProfiles: (workspaceId: string): ApiQueryKey =>
@@ -81,5 +92,6 @@ export const workspaceMutationKeys = {
 export const workspacePageSizes = {
   runs: RUN_PAGE_SIZE,
   suites: SUITE_PAGE_SIZE,
+  regressionCases: REGRESSION_CASE_PAGE_SIZE,
   members: MEMBERS_PAGE_SIZE,
 };

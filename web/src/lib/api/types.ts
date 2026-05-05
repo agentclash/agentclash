@@ -1831,6 +1831,7 @@ export interface RegressionCase {
   id: string;
   suite_id: string;
   workspace_id: string;
+  suite_name?: string;
   title: string;
   description: string;
   status: RegressionCaseStatus;
@@ -1887,6 +1888,14 @@ export interface PatchRegressionCaseInput {
 /** GET /v1/workspaces/{ws}/regression-suites/{id}/cases response */
 export interface ListRegressionCasesResponse {
   items: RegressionCase[];
+}
+
+/** GET /v1/workspaces/{ws}/regression-cases response */
+export interface ListWorkspaceRegressionCasesResponse {
+  items: RegressionCase[];
+  total: number;
+  limit: number;
+  offset: number;
 }
 
 // --- Billing ---

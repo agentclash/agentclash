@@ -5,14 +5,16 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
 import { toast } from "sonner";
-import { MoreHorizontal, ShieldAlert } from "lucide-react";
+import { Check, MoreHorizontal, ShieldAlert, XCircle } from "lucide-react";
 
 import { createApiClient } from "@/lib/api/client";
 import { useApiListQuery, useApiMutator, usePaginatedApiQuery } from "@/lib/api/swr";
 import { ApiError } from "@/lib/api/errors";
 import type {
   ChallengePack,
+  PatchRegressionCaseInput,
   PatchRegressionSuiteInput,
+  RegressionCase,
   RegressionSuite,
   RegressionSuiteStatus,
 } from "@/lib/api/types";
@@ -45,7 +47,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-import { SeverityBadge, SuiteStatusBadge } from "./badges";
+import {
+  CaseStatusBadge,
+  MaintenanceBadge,
+  SeverityBadge,
+  SuiteStatusBadge,
+  ValidationBadge,
+} from "./badges";
 import { CreateSuiteDialog } from "./create-suite-dialog";
 
 const PAGE_SIZE = workspacePageSizes.suites;
@@ -58,6 +66,36 @@ export function RegressionSuitesClient({ workspaceId }: { workspaceId: string })
       <RegressionSuitesInner workspaceId={workspaceId} />
     </ConfirmProvider>
   );
+}
+
+function ProposedCaseValidationSummary({
+  regressionCase,
+}: {
+  regressionCase: RegressionCase;
+}) {
+  const validation = regressionCase.validation;
+  const detail =
+    validation.reproduction_rate === undefined
+      ? `${validation.run_count}/${validation.required_runs} runs`
+      : `${formatPercent(validation.reproduction_rate)} repro`;
+
+  return (
+    <div className="flex flex-col items-start gap-1">
+      <div className="flex flex-wrap gap-1">
+        <ValidationBadge status={validation.status} />
+        <MaintenanceBadge status={validation.maintenance_status} />
+      </div>
+      <span className="text-xs text-muted-foreground">{detail}</span>
+    </div>
+  );
+}
+
+function formatPercent(value: number): string {
+  return `${Math.round(value * 100)}%`;
+}
+
+function shortID(value: string): string {
+  return value.slice(0, 8);
 }
 
 function RegressionSuitesInner({
@@ -76,6 +114,10 @@ function RegressionSuitesInner({
     0,
     Number.parseInt(searchParams.get("offset") ?? "0", 10) || 0,
   );
+  const caseOffset = Math.max(
+    0,
+    Number.parseInt(searchParams.get("caseOffset") ?? "0", 10) || 0,
+  );
   const initialCreateOpen = searchParams.get("create") === "1";
   const initialCreatePackId = searchParams.get("sourcePackId") ?? undefined;
   const {
@@ -87,6 +129,18 @@ function RegressionSuitesInner({
     { limit: PAGE_SIZE, offset },
   );
   const {
+    data: proposedCasesPage,
+    error: proposedCasesError,
+    isLoading: proposedCasesLoading,
+  } = usePaginatedApiQuery<RegressionCase>(
+    `/v1/workspaces/${workspaceId}/regression-cases`,
+    {
+      status: "proposed",
+      limit: workspacePageSizes.regressionCases,
+      offset: caseOffset,
+    },
+  );
+  const {
     data: packsResponse,
     error: packsError,
     isLoading: packsLoading,
@@ -95,9 +149,12 @@ function RegressionSuitesInner({
   );
   const suites = suitesPage?.items ?? [];
   const total = suitesPage?.total ?? 0;
+  const proposedCases = proposedCasesPage?.items ?? [];
+  const proposedTotal = proposedCasesPage?.total ?? 0;
   const packs = packsResponse?.items ?? [];
 
   const packsById = new Map(packs.map((p) => [p.id, p]));
+  const suitesById = new Map(suites.map((s) => [s.id, s]));
   const hasAnyPack = packs.length > 0;
 
   useEffect(() => {
@@ -115,6 +172,16 @@ function RegressionSuitesInner({
   function handlePageChange(next: number) {
     const url = new URL(window.location.href);
     url.searchParams.set("offset", String(next));
+    router.push(`${url.pathname}${url.search}`);
+  }
+
+  function handleCasePageChange(next: number) {
+    const url = new URL(window.location.href);
+    if (next === 0) {
+      url.searchParams.delete("caseOffset");
+    } else {
+      url.searchParams.set("caseOffset", String(next));
+    }
     router.push(`${url.pathname}${url.search}`);
   }
 
@@ -162,14 +229,61 @@ function RegressionSuitesInner({
     await patchStatus(suite, "active");
   }
 
+  async function patchCaseStatus(
+    regressionCase: RegressionCase,
+    next: "active" | "rejected",
+  ) {
+    setPending(`case:${regressionCase.id}`);
+    try {
+      const token = await getAccessToken();
+      const api = createApiClient(token);
+      const body: PatchRegressionCaseInput = { status: next };
+      await api.patch<RegressionCase>(
+        `/v1/workspaces/${workspaceId}/regression-cases/${regressionCase.id}`,
+        body,
+      );
+      toast.success(next === "active" ? "Case promoted" : "Case rejected");
+      const casesPath = `/v1/workspaces/${workspaceId}/regression-cases`;
+      const suitesPath = `/v1/workspaces/${workspaceId}/regression-suites`;
+      await Promise.all([
+        mutate((key) => Array.isArray(key) && key[0] === casesPath),
+        mutate((key) => Array.isArray(key) && key[0] === suitesPath),
+      ]);
+    } catch (err) {
+      if (err instanceof ApiError) {
+        toast.error(err.message);
+      } else {
+        toast.error("Failed to update case");
+      }
+    } finally {
+      setPending(null);
+    }
+  }
+
+  async function handlePromoteCase(regressionCase: RegressionCase) {
+    await patchCaseStatus(regressionCase, "active");
+  }
+
+  async function handleRejectCase(regressionCase: RegressionCase) {
+    const ok = await confirm({
+      title: `Reject "${regressionCase.title}"?`,
+      description:
+        "Rejected cases leave the triage queue and stay available in the source suite history.",
+      confirmLabel: "Reject",
+      variant: "danger",
+    });
+    if (!ok) return;
+    await patchCaseStatus(regressionCase, "rejected");
+  }
+
   if ((suitesLoading && !suitesPage) || (packsLoading && !packsResponse)) {
     return <WorkspaceListLoading rows={6} />;
   }
 
-  if (suitesError || packsError) {
+  if (suitesError || packsError || proposedCasesError) {
     return (
       <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-4 text-sm text-destructive">
-        Failed to load regression suites.
+        Failed to load regression data.
       </div>
     );
   }
@@ -201,6 +315,130 @@ function RegressionSuitesInner({
           </span>
         </div>
       )}
+
+      {proposedCasesLoading && !proposedCasesPage ? (
+        <div className="rounded-lg border border-border px-4 py-3 text-sm text-muted-foreground">
+          Loading proposed cases...
+        </div>
+      ) : proposedTotal > 0 ? (
+        <section className="space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <h2 className="text-sm font-semibold text-foreground">
+                Proposed Cases
+              </h2>
+              <p className="text-xs text-muted-foreground">
+                {proposedTotal} waiting for review
+              </p>
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Case</TableHead>
+                  <TableHead>Suite</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Severity</TableHead>
+                  <TableHead>Failure Class</TableHead>
+                  <TableHead>Validation</TableHead>
+                  <TableHead>Created</TableHead>
+                  <TableHead className="w-[12rem]" />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {proposedCases.map((regressionCase) => {
+                  const suite = suitesById.get(regressionCase.suite_id);
+                  const disabled = pending === `case:${regressionCase.id}`;
+                  return (
+                    <TableRow key={regressionCase.id}>
+                      <TableCell>
+                        <Link
+                          href={`/workspaces/${workspaceId}/regression-suites/${regressionCase.suite_id}/cases/${regressionCase.id}`}
+                          className="font-medium text-foreground hover:underline underline-offset-4"
+                        >
+                          {regressionCase.title}
+                        </Link>
+                        {regressionCase.failure_summary && (
+                          <p className="mt-0.5 max-w-md truncate text-xs text-muted-foreground">
+                            {regressionCase.failure_summary}
+                          </p>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        <Link
+                          href={`/workspaces/${workspaceId}/regression-suites/${regressionCase.suite_id}`}
+                          className="hover:text-foreground hover:underline underline-offset-4"
+                        >
+                          {regressionCase.suite_name ??
+                            suite?.name ??
+                            shortID(regressionCase.suite_id)}
+                        </Link>
+                      </TableCell>
+                      <TableCell>
+                        <CaseStatusBadge status={regressionCase.status} />
+                      </TableCell>
+                      <TableCell>
+                        <SeverityBadge severity={regressionCase.severity} />
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {regressionCase.failure_class}
+                      </TableCell>
+                      <TableCell>
+                        <ProposedCaseValidationSummary
+                          regressionCase={regressionCase}
+                        />
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {new Date(regressionCase.created_at).toLocaleDateString()}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center justify-end gap-1.5">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={disabled}
+                            onClick={() => handlePromoteCase(regressionCase)}
+                          >
+                            <Check className="size-4" />
+                            Promote
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            disabled={disabled}
+                            onClick={() => handleRejectCase(regressionCase)}
+                            aria-label="Reject proposed case"
+                            title="Reject"
+                          >
+                            <XCircle className="size-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+
+          <PaginationControls
+            offset={caseOffset}
+            total={proposedTotal}
+            pageSize={workspacePageSizes.regressionCases}
+            onPrev={() =>
+              handleCasePageChange(
+                Math.max(0, caseOffset - workspacePageSizes.regressionCases),
+              )
+            }
+            onNext={() => {
+              const next = caseOffset + workspacePageSizes.regressionCases;
+              if (next < proposedTotal) handleCasePageChange(next);
+            }}
+          />
+        </section>
+      ) : null}
 
       {suites.length === 0 ? (
         <EmptyState

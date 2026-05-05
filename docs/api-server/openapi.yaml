@@ -2745,6 +2745,51 @@ paths:
         "415":
           $ref: "#/components/responses/UnsupportedMediaType"
 
+  /v1/workspaces/{workspaceID}/regression-cases:
+    get:
+      operationId: listWorkspaceRegressionCases
+      tags: [Regressions]
+      summary: List regression cases across a workspace
+      description: >
+        Lists regression cases across all suites in the workspace. Use
+        `status=proposed` to power the CI-generated candidate triage queue.
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/RegressionCaseStatus"
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            format: int32
+            default: 50
+            minimum: 1
+            maximum: 100
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            format: int32
+            default: 0
+            minimum: 0
+      responses:
+        "200":
+          description: Paginated workspace regression cases
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListWorkspaceRegressionCasesResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+
   /v1/workspaces/{workspaceID}/regression-cases/{caseID}:
     patch:
       operationId: patchRegressionCase
@@ -6896,6 +6941,8 @@ components:
         workspace_id:
           type: string
           format: uuid
+        suite_name:
+          type: string
         title:
           type: string
         description:
@@ -7245,6 +7292,24 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/RegressionCase"
+
+    ListWorkspaceRegressionCasesResponse:
+      type: object
+      required: [items, total, limit, offset]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/RegressionCase"
+        total:
+          type: integer
+          format: int64
+        limit:
+          type: integer
+          format: int32
+        offset:
+          type: integer
+          format: int32
 
     # --- Ranking ---
 
