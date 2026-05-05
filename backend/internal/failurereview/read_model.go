@@ -1001,9 +1001,6 @@ func buildDetail(caseCtx CaseContext, failedChecks []string, evidenceTier Eviden
 func buildRemediationHint(class FailureClass, group *itemGroup, judgeRefs []JudgeRef, failedDimensions []string, evidenceTier EvidenceTier, events []Event) RemediationHint {
 	area, label, summary := remediationDefaults(class)
 	evidence := remediationEvidence(group, judgeRefs, failedDimensions, evidenceTier, events)
-	if len(evidence) == 0 {
-		evidence = append(evidence, fmt.Sprintf("Failure class: %s", class))
-	}
 	return RemediationHint{
 		Area:     area,
 		Label:    label,
@@ -1081,10 +1078,13 @@ func remediationEvidence(group *itemGroup, judgeRefs []JudgeRef, failedDimension
 }
 
 func isFailingJudgeRef(ref JudgeRef) bool {
-	if strings.EqualFold(strings.TrimSpace(ref.Verdict), "fail") || strings.EqualFold(strings.TrimSpace(ref.State), "fail") {
+	switch strings.ToLower(strings.TrimSpace(ref.State)) {
+	case "fail", "error", "unavailable":
 		return true
 	}
-	return ref.NormalizedScore != nil && *ref.NormalizedScore < 1
+
+	verdict := strings.ToLower(strings.TrimSpace(ref.Verdict))
+	return verdict != "" && verdict != "pass"
 }
 
 func compactEvidenceList(values []string, maxVisible int) string {

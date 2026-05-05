@@ -799,6 +799,28 @@ func TestBuildRunAgentItemsIgnoresPassingLLMJudgeReasons(t *testing.T) {
 	}
 }
 
+func TestRemediationEvidenceIgnoresPassingJudgeScores(t *testing.T) {
+	t.Parallel()
+
+	score := 0.7
+	evidence := remediationEvidence(&itemGroup{}, []JudgeRef{
+		{
+			Key:             "soft_quality",
+			Kind:            "llm_judge",
+			Verdict:         "pass",
+			State:           "available",
+			NormalizedScore: &score,
+		},
+	}, nil, EvidenceTierNativeStructured, nil)
+
+	if strings.Contains(strings.Join(evidence, "\n"), "soft_quality") {
+		t.Fatalf("remediation evidence = %#v, want passing judge score excluded", evidence)
+	}
+	if len(evidence) != 1 || evidence[0] != "Evidence tier: native_structured" {
+		t.Fatalf("remediation evidence = %#v, want only evidence tier", evidence)
+	}
+}
+
 func TestCursorEncodingRoundTripsAndAcceptsLegacyJSON(t *testing.T) {
 	t.Parallel()
 
