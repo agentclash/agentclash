@@ -27,6 +27,7 @@ func init() {
 	rootCmd.AddCommand(promptEvalCmd)
 	promptEvalCmd.AddCommand(promptEvalInitCmd)
 	promptEvalCmd.AddCommand(promptEvalValidateCmd)
+	promptEvalCmd.AddCommand(promptEvalRunCmd)
 
 	promptEvalInitCmd.Flags().Bool("force", false, "Overwrite an existing file")
 	promptEvalInitCmd.Flags().String("name", "", "Prompt eval name (defaults from the file name)")
@@ -34,6 +35,9 @@ func init() {
 	promptEvalValidateCmd.Flags().Int("max-cases", 100, "Maximum model x test cases allowed before launch")
 	promptEvalValidateCmd.Flags().Bool("remote", false, "Validate referenced AgentClash workspace resources without creating them")
 	promptEvalValidateCmd.Flags().Bool("ci", false, "Apply CI-safe validation rules")
+
+	promptEvalRunCmd.Flags().Int("max-cases", 100, "Maximum model x test cases allowed before launch")
+	promptEvalRunCmd.Flags().Bool("ci", false, "Apply CI-safe validation rules")
 }
 
 var promptEvalCmd = &cobra.Command{
@@ -118,6 +122,35 @@ var promptEvalValidateCmd = &cobra.Command{
 		}
 		if !result.Valid {
 			return &ExitCodeError{Code: promptEvalExitInvalid}
+		}
+		return nil
+	},
+}
+
+var promptEvalRunCmd = &cobra.Command{
+	Use:   "run [file]",
+	Short: "Compile a prompt eval config and launch playground experiments",
+	Args:  cobra.MaximumNArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		rc := GetRunContext(cmd)
+		path := ".agentclash/prompt-eval.yaml"
+		if len(args) > 0 {
+			path = args[0]
+		}
+		maxCases, _ := cmd.Flags().GetInt("max-cases")
+		ciMode, _ := cmd.Flags().GetBool("ci")
+		result, err := executePromptEvalRun(cmd, rc, path, maxCases, ciMode)
+		if rc.Output.IsStructured() {
+			if result != nil {
+				if printErr := rc.Output.PrintRaw(result); printErr != nil {
+					return printErr
+				}
+			}
+		} else if result != nil {
+			renderPromptEvalRun(rc, *result)
+		}
+		if err != nil {
+			return err
 		}
 		return nil
 	},
@@ -209,6 +242,38 @@ type promptEvalRemoteDryRun struct {
 	TestsUpdate       int `json:"tests_update" yaml:"tests_update"`
 	TestsNoop         int `json:"tests_noop" yaml:"tests_noop"`
 	TestsOrphan       int `json:"tests_orphan" yaml:"tests_orphan"`
+}
+
+type promptEvalRunResult struct {
+	SchemaVersion int                       `json:"schemaVersion" yaml:"schemaVersion"`
+	Path          string                    `json:"path" yaml:"path"`
+	ConfigHash    string                    `json:"config_hash" yaml:"config_hash"`
+	WorkspaceID   string                    `json:"workspace_id" yaml:"workspace_id"`
+	ModelCount    int                       `json:"model_count" yaml:"model_count"`
+	TestCount     int                       `json:"test_count" yaml:"test_count"`
+	CaseCount     int                       `json:"case_count" yaml:"case_count"`
+	Playgrounds   []promptEvalRunPlayground `json:"playgrounds" yaml:"playgrounds"`
+	Errors        []string                  `json:"errors,omitempty" yaml:"errors,omitempty"`
+	ExitCode      int                       `json:"exit_code" yaml:"exit_code"`
+}
+
+type promptEvalRunPlayground struct {
+	Name          string                    `json:"name" yaml:"name"`
+	Signature     string                    `json:"signature" yaml:"signature"`
+	PlaygroundID  string                    `json:"playground_id" yaml:"playground_id"`
+	PlaygroundURL string                    `json:"playground_url,omitempty" yaml:"playground_url,omitempty"`
+	TestsCreated  int                       `json:"tests_created" yaml:"tests_created"`
+	TestsUpdated  int                       `json:"tests_updated" yaml:"tests_updated"`
+	TestsNoop     int                       `json:"tests_noop" yaml:"tests_noop"`
+	Experiments   []promptEvalRunExperiment `json:"experiments" yaml:"experiments"`
+}
+
+type promptEvalRunExperiment struct {
+	ExperimentID      string `json:"experiment_id" yaml:"experiment_id"`
+	ExperimentURL     string `json:"experiment_url,omitempty" yaml:"experiment_url,omitempty"`
+	ModelAliasID      string `json:"model_alias_id" yaml:"model_alias_id"`
+	ProviderAccountID string `json:"provider_account_id" yaml:"provider_account_id"`
+	Status            string `json:"status,omitempty" yaml:"status,omitempty"`
 }
 
 func buildPromptEvalScaffold(name string) ([]byte, error) {
@@ -416,6 +481,260 @@ func validatePromptEvalRemote(cmd *cobra.Command, rc *RunContext, cfg promptEval
 		remote.DryRun.TestsNoop += pg.TestsNoop
 		remote.DryRun.TestsOrphan += pg.TestsOrphan
 	}
+}
+
+func executePromptEvalRun(cmd *cobra.Command, rc *RunContext, path string, maxCases int, ciMode bool) (*promptEvalRunResult, error) {
+	cfg, validation := validatePromptEvalFileWithConfig(path, maxCases)
+	if validation.Valid {
+		validatePromptEvalRemote(cmd, rc, cfg, ciMode, &validation)
+		validation.Valid = len(validation.Errors) == 0
+		if !validation.Valid {
+			validation.ExitCode = promptEvalExitInvalid
+		}
+	}
+	if !validation.Valid {
+		if rc.Output.IsStructured() {
+			_ = rc.Output.PrintRaw(validation)
+		} else {
+			renderPromptEvalValidation(rc, validation)
+		}
+		return nil, &ExitCodeError{Code: promptEvalExitInvalid}
+	}
+	data, _ := os.ReadFile(path)
+	run := &promptEvalRunResult{
+		SchemaVersion: promptEvalSchemaVersion,
+		Path:          path,
+		ConfigHash:    promptEvalConfigHash(data),
+		WorkspaceID:   validation.Remote.WorkspaceID,
+		ModelCount:    validation.ModelCount,
+		TestCount:     validation.TestCount,
+		CaseCount:     validation.CaseCount,
+		Playgrounds:   []promptEvalRunPlayground{},
+	}
+	groups := promptEvalTestGroups(cfg)
+	for _, group := range groups {
+		compiled, err := compilePromptEvalGroup(cmd, rc, cfg, validation, group, len(groups))
+		if err != nil {
+			run.Errors = append(run.Errors, err.Error())
+			run.ExitCode = promptEvalExitInvalid
+			return run, &ExitCodeError{Code: promptEvalExitInvalid}
+		}
+		run.Playgrounds = append(run.Playgrounds, compiled)
+	}
+	return run, nil
+}
+
+func compilePromptEvalGroup(cmd *cobra.Command, rc *RunContext, cfg promptEvalConfig, validation promptEvalValidationResult, group promptEvalTestGroup, groupCount int) (promptEvalRunPlayground, error) {
+	name := promptEvalPlaygroundName(cfg.Name, group.Signature, groupCount)
+	playgroundID, playgroundURL, err := upsertPromptEvalPlayground(cmd, rc, validation.Remote.WorkspaceID, name, cfg.Prompt.Template, promptEvalEvaluationSpec(cfg.Name, group))
+	if err != nil {
+		return promptEvalRunPlayground{}, err
+	}
+	result := promptEvalRunPlayground{
+		Name:          name,
+		Signature:     group.Signature,
+		PlaygroundID:  playgroundID,
+		PlaygroundURL: playgroundURL,
+		Experiments:   []promptEvalRunExperiment{},
+	}
+	created, updated, noop, err := upsertPromptEvalTestCases(cmd, rc, playgroundID, group)
+	if err != nil {
+		return promptEvalRunPlayground{}, err
+	}
+	result.TestsCreated = created
+	result.TestsUpdated = updated
+	result.TestsNoop = noop
+	for _, model := range validation.Remote.Models {
+		experiment, err := createPromptEvalExperiment(cmd, rc, playgroundID, name, model)
+		if err != nil {
+			return promptEvalRunPlayground{}, err
+		}
+		result.Experiments = append(result.Experiments, experiment)
+	}
+	return result, nil
+}
+
+func upsertPromptEvalPlayground(cmd *cobra.Command, rc *RunContext, workspaceID, name, promptTemplate string, evaluationSpec map[string]any) (string, string, error) {
+	playgrounds, err := promptEvalListRemoteItems(cmd, rc, fmt.Sprintf("/v1/workspaces/%s/playgrounds", workspaceID))
+	if err != nil {
+		return "", "", err
+	}
+	matches := promptEvalItemsByName(playgrounds, name)
+	body := map[string]any{"name": name, "prompt_template": promptTemplate, "evaluation_spec": evaluationSpec}
+	switch len(matches) {
+	case 0:
+		resp, err := rc.Client.Post(cmd.Context(), fmt.Sprintf("/v1/workspaces/%s/playgrounds", workspaceID), body)
+		if err != nil {
+			return "", "", err
+		}
+		if apiErr := resp.ParseError(); apiErr != nil {
+			return "", "", apiErr
+		}
+		var created map[string]any
+		if err := resp.DecodeJSON(&created); err != nil {
+			return "", "", err
+		}
+		return mapString(created, "id"), promptEvalUIURL(created, "playground", mapString(created, "id")), nil
+	case 1:
+		id := mapString(matches[0], "id")
+		resp, err := rc.Client.Patch(cmd.Context(), "/v1/playgrounds/"+id, body)
+		if err != nil {
+			return "", "", err
+		}
+		if apiErr := resp.ParseError(); apiErr != nil {
+			return "", "", apiErr
+		}
+		var updated map[string]any
+		if err := resp.DecodeJSON(&updated); err != nil {
+			return "", "", err
+		}
+		if got := mapString(updated, "id"); got != "" {
+			id = got
+		}
+		return id, promptEvalUIURL(updated, "playground", id), nil
+	default:
+		return "", "", fmt.Errorf("multiple playgrounds named %q; clean up duplicates before running prompt-eval", name)
+	}
+}
+
+func upsertPromptEvalTestCases(cmd *cobra.Command, rc *RunContext, playgroundID string, group promptEvalTestGroup) (int, int, int, error) {
+	items, err := promptEvalListRemoteItems(cmd, rc, fmt.Sprintf("/v1/playgrounds/%s/test-cases", playgroundID))
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	remoteByKey := map[string]map[string]any{}
+	for _, item := range items {
+		remoteByKey[mapString(item, "case_key")] = item
+	}
+	var created, updated, noop int
+	for _, test := range group.Tests {
+		body := promptEvalTestCaseBody(test)
+		remote, exists := remoteByKey[test.Key]
+		if !exists {
+			resp, err := rc.Client.Post(cmd.Context(), fmt.Sprintf("/v1/playgrounds/%s/test-cases", playgroundID), body)
+			if err != nil {
+				return 0, 0, 0, err
+			}
+			if apiErr := resp.ParseError(); apiErr != nil {
+				return 0, 0, 0, apiErr
+			}
+			created++
+			continue
+		}
+		if promptEvalCanonical(remote["variables"]) == promptEvalCanonical(test.Vars) &&
+			promptEvalCanonical(remote["expectations"]) == promptEvalCanonical(promptEvalExpectationsForTest(test)) {
+			noop++
+			continue
+		}
+		resp, err := rc.Client.Patch(cmd.Context(), "/v1/playground-test-cases/"+mapString(remote, "id"), body)
+		if err != nil {
+			return 0, 0, 0, err
+		}
+		if apiErr := resp.ParseError(); apiErr != nil {
+			return 0, 0, 0, apiErr
+		}
+		updated++
+	}
+	return created, updated, noop, nil
+}
+
+func createPromptEvalExperiment(cmd *cobra.Command, rc *RunContext, playgroundID, playgroundName string, model promptEvalRemoteModel) (promptEvalRunExperiment, error) {
+	body := map[string]any{
+		"name":                playgroundName,
+		"provider_account_id": model.ProviderAccountID,
+		"model_alias_id":      model.ModelAliasID,
+	}
+	resp, err := rc.Client.Post(cmd.Context(), fmt.Sprintf("/v1/playgrounds/%s/experiments", playgroundID), body)
+	if err != nil {
+		return promptEvalRunExperiment{}, err
+	}
+	if apiErr := resp.ParseError(); apiErr != nil {
+		return promptEvalRunExperiment{}, apiErr
+	}
+	var created map[string]any
+	if err := resp.DecodeJSON(&created); err != nil {
+		return promptEvalRunExperiment{}, err
+	}
+	id := mapString(created, "id")
+	return promptEvalRunExperiment{
+		ExperimentID:      id,
+		ExperimentURL:     promptEvalUIURL(created, "experiment", id),
+		ModelAliasID:      model.ModelAliasID,
+		ProviderAccountID: model.ProviderAccountID,
+		Status:            mapString(created, "status"),
+	}, nil
+}
+
+func promptEvalTestCaseBody(test promptEvalTest) map[string]any {
+	return map[string]any{
+		"case_key":     test.Key,
+		"variables":    test.Vars,
+		"expectations": promptEvalExpectationsForTest(test),
+	}
+}
+
+func promptEvalEvaluationSpec(configName string, group promptEvalTestGroup) map[string]any {
+	assertions := promptEvalAssertionsForTest(group.Tests[0])
+	validators := make([]map[string]any, 0, len(assertions))
+	metricValidators := map[string][]string{}
+	for i, assertion := range assertions {
+		kind := normalizePromptEvalAssertionType(assertion.Type)
+		key := fmt.Sprintf("%s_%s_%d", group.Signature, kind, i+1)
+		metric := strings.TrimSpace(assertion.Metric)
+		if metric == "" {
+			metric = "correctness"
+		}
+		validators = append(validators, map[string]any{
+			"key":           key,
+			"type":          kind,
+			"target":        "final_output",
+			"expected_from": fmt.Sprintf("case.expectations.prompt_eval_assertions.%d.expected", i),
+		})
+		metricValidators[metric] = append(metricValidators[metric], key)
+	}
+	dimensions := make([]map[string]any, 0, len(metricValidators))
+	metrics := sortedPromptEvalStringSliceKeys(metricValidators)
+	for _, metric := range metrics {
+		dimensions = append(dimensions, map[string]any{
+			"key":              metric,
+			"source":           "validators",
+			"validators":       metricValidators[metric],
+			"better_direction": "higher",
+		})
+	}
+	return map[string]any{
+		"name":           slugifyChallengePackName(configName) + "-" + group.Signature,
+		"version_number": 1,
+		"judge_mode":     "deterministic",
+		"validators":     validators,
+		"scorecard": map[string]any{
+			"dimensions": dimensions,
+		},
+	}
+}
+
+func sortedPromptEvalStringSliceKeys(values map[string][]string) []string {
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func promptEvalConfigHash(data []byte) string {
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
+}
+
+func promptEvalUIURL(item map[string]any, fallbackKind, id string) string {
+	if link := mapString(item, "url", "web_url", "html_url"); link != "" {
+		return link
+	}
+	if id == "" {
+		return ""
+	}
+	return "https://agentclash.dev/" + fallbackKind + "s/" + id
 }
 
 func promptEvalListRemoteItems(cmd *cobra.Command, rc *RunContext, path string) ([]map[string]any, error) {
@@ -749,6 +1068,24 @@ func renderPromptEvalValidation(rc *RunContext, result promptEvalValidationResul
 		}
 		rc.Output.PrintTable(cols, rows)
 	}
+}
+
+func renderPromptEvalRun(rc *RunContext, result promptEvalRunResult) {
+	if result.ExitCode != 0 {
+		rc.Output.PrintError("Prompt eval run failed")
+		for _, msg := range result.Errors {
+			fmt.Fprintf(os.Stderr, "  - %s\n", msg)
+		}
+		return
+	}
+	rc.Output.PrintSuccess(fmt.Sprintf("Launched prompt eval (%d models x %d tests = %d cases)", result.ModelCount, result.TestCount, result.CaseCount))
+	rows := [][]string{}
+	for _, playground := range result.Playgrounds {
+		for _, experiment := range playground.Experiments {
+			rows = append(rows, []string{playground.PlaygroundID, experiment.ExperimentID, experiment.ModelAliasID, output.StatusColor(experiment.Status)})
+		}
+	}
+	rc.Output.PrintTable([]output.Column{{Header: "Playground"}, {Header: "Experiment"}, {Header: "Model Alias"}, {Header: "Status"}}, rows)
 }
 
 func sortedPromptEvalKeys(values map[string]bool) []string {
