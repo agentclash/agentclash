@@ -1017,6 +1017,7 @@ func buildRunAgentScorecardDocument(evaluation scoring.RunAgentEvaluation) (json
 		Type             string          `json:"type"`
 		Verdict          string          `json:"verdict"`
 		State            string          `json:"state"`
+		OutcomeClass     string          `json:"outcome_class,omitempty"`
 		Reason           string          `json:"reason,omitempty"`
 		NormalizedScore  *float64        `json:"normalized_score,omitempty"`
 		RegressionCaseID *uuid.UUID      `json:"regression_case_id,omitempty"`
@@ -1055,6 +1056,8 @@ func buildRunAgentScorecardDocument(evaluation scoring.RunAgentEvaluation) (json
 		OverallScore     *float64                    `json:"overall_score,omitempty"`
 		Passed           *bool                       `json:"passed,omitempty"`
 		OverallReason    string                      `json:"overall_reason,omitempty"`
+		Validity         scoring.EvaluationValidity  `json:"validity,omitempty"`
+		ValidityReason   string                      `json:"validity_reason,omitempty"`
 		Warnings         []string                    `json:"warnings,omitempty"`
 		Dimensions       map[string]dimensionSummary `json:"dimensions"`
 		ValidatorSummary map[string]int              `json:"validator_summary"`
@@ -1123,6 +1126,7 @@ func buildRunAgentScorecardDocument(evaluation scoring.RunAgentEvaluation) (json
 			Type:             string(vr.Type),
 			Verdict:          vr.Verdict,
 			State:            string(vr.State),
+			OutcomeClass:     string(vr.OutcomeClass),
 			Reason:           vr.Reason,
 			NormalizedScore:  cloneFloat64Ptr(vr.NormalizedScore),
 			RegressionCaseID: cloneUUIDPtr(vr.RegressionCaseID),
@@ -1173,6 +1177,8 @@ func buildRunAgentScorecardDocument(evaluation scoring.RunAgentEvaluation) (json
 		OverallScore:     cloneFloat64Ptr(evaluation.OverallScore),
 		Passed:           passedCopy,
 		OverallReason:    evaluation.OverallReason,
+		Validity:         evaluation.Validity,
+		ValidityReason:   evaluation.ValidityReason,
 		Warnings:         append([]string(nil), evaluation.Warnings...),
 		Dimensions:       dimensions,
 		ValidatorSummary: validatorSummary,

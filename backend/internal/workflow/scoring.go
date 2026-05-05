@@ -315,11 +315,11 @@ func scoringCompletedPayload(evaluation scoring.RunAgentEvaluation) map[string]a
 	llmJudgeResults := make([]map[string]any, 0, len(evaluation.LLMJudgeResults))
 	for _, result := range evaluation.LLMJudgeResults {
 		payload := map[string]any{
-			"judge_key":     result.JudgeKey,
-			"mode":          result.Mode,
-			"sample_count":  result.SampleCount,
-			"model_count":   result.ModelCount,
-			"reason":        result.Reason,
+			"judge_key":    result.JudgeKey,
+			"mode":         result.Mode,
+			"sample_count": result.SampleCount,
+			"model_count":  result.ModelCount,
+			"reason":       result.Reason,
 		}
 		if result.NormalizedScore != nil {
 			payload["normalized_score"] = *result.NormalizedScore
@@ -336,6 +336,8 @@ func scoringCompletedPayload(evaluation scoring.RunAgentEvaluation) map[string]a
 	return map[string]any{
 		"evaluation_spec_id": evaluation.EvaluationSpecID,
 		"status":             evaluation.Status,
+		"validity":           evaluation.Validity,
+		"validity_reason":    evaluation.ValidityReason,
 		"dimension_scores":   dimensionScores,
 		"llm_judge_results":  llmJudgeResults,
 		"warnings":           append([]string(nil), evaluation.Warnings...),

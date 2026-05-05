@@ -27,6 +27,25 @@ const (
 	EvaluationStatusFailed   EvaluationStatus = "failed"
 )
 
+type EvaluationValidity string
+
+const (
+	EvaluationValidityValid    EvaluationValidity = "valid"
+	EvaluationValidityDegraded EvaluationValidity = "degraded"
+	EvaluationValidityInvalid  EvaluationValidity = "invalid"
+)
+
+type ValidatorOutcomeClass string
+
+const (
+	ValidatorOutcomePass           ValidatorOutcomeClass = "pass"
+	ValidatorOutcomeFail           ValidatorOutcomeClass = "fail"
+	ValidatorOutcomeUnavailable    ValidatorOutcomeClass = "unavailable"
+	ValidatorOutcomeInfraError     ValidatorOutcomeClass = "infra_error"
+	ValidatorOutcomePackError      ValidatorOutcomeClass = "pack_error"
+	ValidatorOutcomeEvaluatorError ValidatorOutcomeClass = "evaluator_error"
+)
+
 type EvidenceInput struct {
 	ChallengeIdentityID uuid.UUID                   `json:"challenge_identity_id"`
 	RegressionCaseID    *uuid.UUID                  `json:"regression_case_id,omitempty"`
@@ -81,25 +100,28 @@ type RunAgentEvaluation struct {
 	OverallScore     *float64            `json:"overall_score,omitempty"`
 	Passed           *bool               `json:"passed,omitempty"`
 	OverallReason    string              `json:"overall_reason,omitempty"`
+	Validity         EvaluationValidity  `json:"validity,omitempty"`
+	ValidityReason   string              `json:"validity_reason,omitempty"`
 	Strategy         ScoringStrategy     `json:"strategy,omitempty"`
 	Warnings         []string            `json:"warnings,omitempty"`
 }
 
 type ValidatorResult struct {
-	Key                 string          `json:"key"`
-	Type                ValidatorType   `json:"type"`
-	State               OutputState     `json:"state"`
-	Verdict             string          `json:"verdict,omitempty"`
-	NormalizedScore     *float64        `json:"normalized_score,omitempty"`
-	Target              string          `json:"target"`
-	ExpectedFrom        string          `json:"expected_from"`
-	ActualValue         *string         `json:"actual_value,omitempty"`
-	ExpectedValue       *string         `json:"expected_value,omitempty"`
-	ChallengeIdentityID *uuid.UUID      `json:"challenge_identity_id,omitempty"`
-	RegressionCaseID    *uuid.UUID      `json:"regression_case_id,omitempty"`
-	Reason              string          `json:"reason,omitempty"`
-	Source              *Source         `json:"source,omitempty"`
-	RawOutput           json.RawMessage `json:"raw_output"`
+	Key                 string                `json:"key"`
+	Type                ValidatorType         `json:"type"`
+	State               OutputState           `json:"state"`
+	OutcomeClass        ValidatorOutcomeClass `json:"outcome_class,omitempty"`
+	Verdict             string                `json:"verdict,omitempty"`
+	NormalizedScore     *float64              `json:"normalized_score,omitempty"`
+	Target              string                `json:"target"`
+	ExpectedFrom        string                `json:"expected_from"`
+	ActualValue         *string               `json:"actual_value,omitempty"`
+	ExpectedValue       *string               `json:"expected_value,omitempty"`
+	ChallengeIdentityID *uuid.UUID            `json:"challenge_identity_id,omitempty"`
+	RegressionCaseID    *uuid.UUID            `json:"regression_case_id,omitempty"`
+	Reason              string                `json:"reason,omitempty"`
+	Source              *Source               `json:"source,omitempty"`
+	RawOutput           json.RawMessage       `json:"raw_output"`
 }
 
 type MetricResult struct {
@@ -219,6 +241,7 @@ func evaluateRunAgentWithResolvedJudges(
 	}
 
 	overallScore, passed, overallReason := computeOverallScore(spec, dimensionResults)
+	validity, validityReason := computeEvaluationValidity(validatorResults, metricResults, dimensionResults)
 
 	return RunAgentEvaluation{
 		RunAgentID:       input.RunAgentID,
@@ -232,6 +255,8 @@ func evaluateRunAgentWithResolvedJudges(
 		OverallScore:     overallScore,
 		Passed:           passed,
 		OverallReason:    overallReason,
+		Validity:         validity,
+		ValidityReason:   validityReason,
 		Strategy:         spec.Scorecard.Strategy,
 		Warnings:         uniqueStrings(warnings),
 	}, nil
@@ -292,18 +317,18 @@ func computeOverallScore(spec EvaluationSpec, results []DimensionResult) (*float
 		case ScoringStrategyBinary:
 			score := 0.0
 			passedVal := false
-			key, found := firstUnavailableRequiredDimension(spec.Scorecard.Dimensions, resultByKey, strategy)
-			return &score, &passedVal, unavailableGateReason(strategy, key, found)
+			key, state, found := firstUnavailableRequiredDimension(spec.Scorecard.Dimensions, resultByKey, strategy)
+			return &score, &passedVal, unavailableGateReason(strategy, key, state, found)
 		case ScoringStrategyHybrid:
-			if key, ok := firstUnavailableRequiredDimension(spec.Scorecard.Dimensions, resultByKey, strategy); ok {
+			if key, state, ok := firstUnavailableRequiredDimension(spec.Scorecard.Dimensions, resultByKey, strategy); ok {
 				score := 0.0
 				passedVal := false
-				return &score, &passedVal, unavailableGateReason(strategy, key, true)
+				return &score, &passedVal, unavailableGateReason(strategy, key, state, true)
 			}
 		case ScoringStrategyWeighted:
-			if key, ok := firstUnavailableRequiredDimension(spec.Scorecard.Dimensions, resultByKey, strategy); ok {
+			if key, state, ok := firstUnavailableRequiredDimension(spec.Scorecard.Dimensions, resultByKey, strategy); ok {
 				passedVal := false
-				return nil, &passedVal, unavailableGateReason(strategy, key, true)
+				return nil, &passedVal, unavailableGateReason(strategy, key, state, true)
 			}
 		}
 		return nil, nil, "no dimensions produced an available score"
@@ -324,7 +349,7 @@ func computeOverallScore(spec EvaluationSpec, results []DimensionResult) (*float
 		}
 	}
 
-	firstUnavailableGate, hasUnavailableGate := firstUnavailableRequiredDimension(spec.Scorecard.Dimensions, resultByKey, strategy)
+	firstUnavailableGate, unavailableGateState, hasUnavailableGate := firstUnavailableRequiredDimension(spec.Scorecard.Dimensions, resultByKey, strategy)
 	overallThreshold := spec.Scorecard.PassThreshold
 
 	switch strategy {
@@ -336,7 +361,7 @@ func computeOverallScore(spec EvaluationSpec, results []DimensionResult) (*float
 		}
 		reason := ""
 		if hasUnavailableGate {
-			reason = unavailableGateReason(strategy, firstUnavailableGate, true)
+			reason = unavailableGateReason(strategy, firstUnavailableGate, unavailableGateState, true)
 		} else if !passedVal {
 			reason = fmt.Sprintf("binary: dimension %q below pass_threshold", firstFailedGate)
 		}
@@ -346,7 +371,7 @@ func computeOverallScore(spec EvaluationSpec, results []DimensionResult) (*float
 		if hasUnavailableGate {
 			score := 0.0
 			passedVal := false
-			return &score, &passedVal, unavailableGateReason(strategy, firstUnavailableGate, true)
+			return &score, &passedVal, unavailableGateReason(strategy, firstUnavailableGate, unavailableGateState, true)
 		}
 		if anyGateFailed {
 			score := 0.0
@@ -388,7 +413,7 @@ func computeOverallScore(spec EvaluationSpec, results []DimensionResult) (*float
 		passedVal := !anyGateFailed && !hasUnavailableGate
 		reason := ""
 		if hasUnavailableGate {
-			reason = unavailableGateReason(strategy, firstUnavailableGate, true)
+			reason = unavailableGateReason(strategy, firstUnavailableGate, unavailableGateState, true)
 		} else if !passedVal {
 			reason = fmt.Sprintf("weighted: gated dimension %q below pass_threshold", firstFailedGate)
 		} else if overallThreshold != nil && score < *overallThreshold {
@@ -403,7 +428,7 @@ func firstUnavailableRequiredDimension(
 	decls []DimensionDeclaration,
 	results map[string]DimensionResult,
 	strategy ScoringStrategy,
-) (string, bool) {
+) (string, OutputState, bool) {
 	for _, decl := range decls {
 		required := decl.Gate || strategy == ScoringStrategyBinary
 		if !required {
@@ -411,15 +436,25 @@ func firstUnavailableRequiredDimension(
 		}
 		result, ok := results[decl.Key]
 		if !ok || result.State != OutputStateAvailable || result.Score == nil {
-			return decl.Key, true
+			return decl.Key, result.State, true
 		}
 	}
-	return "", false
+	return "", "", false
 }
 
-func unavailableGateReason(strategy ScoringStrategy, dimension string, found bool) string {
+func unavailableGateReason(strategy ScoringStrategy, dimension string, state OutputState, found bool) string {
 	if !found {
 		return "required dimension is unavailable"
+	}
+	if state == OutputStateError {
+		switch strategy {
+		case ScoringStrategyBinary:
+			return fmt.Sprintf("binary: dimension %q has evaluator error", dimension)
+		case ScoringStrategyHybrid:
+			return fmt.Sprintf("hybrid: gated dimension %q has evaluator error", dimension)
+		default:
+			return fmt.Sprintf("weighted: gated dimension %q has evaluator error", dimension)
+		}
 	}
 	switch strategy {
 	case ScoringStrategyBinary:

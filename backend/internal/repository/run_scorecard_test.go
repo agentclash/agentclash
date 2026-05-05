@@ -107,6 +107,52 @@ func TestBuildRunAgentScorecardDocumentIncludesRegressionCaseIDs(t *testing.T) {
 	}
 }
 
+func TestBuildRunAgentScorecardDocumentIncludesValidityAndValidatorOutcomeClass(t *testing.T) {
+	document, err := buildRunAgentScorecardDocument(scoring.RunAgentEvaluation{
+		RunAgentID:       uuid.New(),
+		EvaluationSpecID: uuid.New(),
+		Status:           scoring.EvaluationStatusPartial,
+		Validity:         scoring.EvaluationValidityInvalid,
+		ValidityReason:   `validator "unit_tests" errored: sandbox lease expired`,
+		ValidatorResults: []scoring.ValidatorResult{
+			{
+				Key:          "unit_tests",
+				Type:         scoring.ValidatorTypeCodeExecution,
+				State:        scoring.OutputStateError,
+				OutcomeClass: scoring.ValidatorOutcomeInfraError,
+				Verdict:      "error",
+				Reason:       "sandbox lease expired",
+			},
+		},
+		DimensionResults: []scoring.DimensionResult{
+			{
+				Dimension: "correctness",
+				State:     scoring.OutputStateError,
+				Reason:    `validator "unit_tests" errored: sandbox lease expired`,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("buildRunAgentScorecardDocument returned error: %v", err)
+	}
+
+	var decoded map[string]any
+	if err := json.Unmarshal(document, &decoded); err != nil {
+		t.Fatalf("unmarshal scorecard document: %v", err)
+	}
+	if decoded["validity"] != string(scoring.EvaluationValidityInvalid) {
+		t.Fatalf("validity = %v, want invalid", decoded["validity"])
+	}
+	if decoded["validity_reason"] != `validator "unit_tests" errored: sandbox lease expired` {
+		t.Fatalf("validity_reason = %v", decoded["validity_reason"])
+	}
+	validatorDetails := decoded["validator_details"].([]any)
+	got := validatorDetails[0].(map[string]any)["outcome_class"]
+	if got != string(scoring.ValidatorOutcomeInfraError) {
+		t.Fatalf("validator outcome_class = %v, want infra_error", got)
+	}
+}
+
 func TestBuildRunScorecardDocumentMarksSingleAgentAsTrivialWinner(t *testing.T) {
 	runID := uuid.New()
 	evaluationSpecID := uuid.New()
