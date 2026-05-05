@@ -335,9 +335,9 @@ export function CreateRunDialog({ workspaceId }: CreateRunDialogProps) {
             ? selectedRegressionCaseIds
             : undefined,
         official_pack_mode: hasRegressionSelection ? officialPackMode : undefined,
-        ...(hasRegressionSelection && includeProposedRegressions
-          ? { include_proposed_regressions: true }
-          : {}),
+        include_proposed_regressions: hasRegressionSelection
+          ? includeProposedRegressions
+          : undefined,
         race_context: raceContext,
       };
       const result = await api.post<CreateRunResponse>("/v1/runs", request);
