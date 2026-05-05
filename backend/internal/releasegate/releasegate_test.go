@@ -283,10 +283,10 @@ func TestEvaluateRequiresScorecardPass(t *testing.T) {
 	}`
 
 	tests := []struct {
-		name       string
-		payload    string
+		name        string
+		payload     string
 		wantVerdict Verdict
-		wantReason string
+		wantReason  string
 	}{
 		{"candidate_passed", passPayload, VerdictPass, "within_thresholds"},
 		{"candidate_failed", failPayload, VerdictFail, "scorecard_not_passed"},
@@ -305,6 +305,137 @@ func TestEvaluateRequiresScorecardPass(t *testing.T) {
 				t.Fatalf("reason code = %q, want %q", evaluation.ReasonCode, tt.wantReason)
 			}
 		})
+	}
+}
+
+func TestEvaluateBlocksInvalidScorecardBeforeScorecardPassFailure(t *testing.T) {
+	policy := scorecardValidityTestPolicy()
+	evaluation, err := Evaluate(testSummary(t, `{
+		"status":"comparable",
+		"dimension_deltas":{
+			"correctness":{"delta":0,"better_direction":"higher","state":"available"}
+		},
+		"scorecard_pass":{"baseline":true,"candidate":false},
+		"scorecard_validity":{
+			"baseline":{"validity":"valid"},
+			"candidate":{"validity":"invalid","validity_reason":"validator \"regex_contract\" errored: invalid regex pattern"}
+		},
+		"failure_divergence":{"candidate_failed_baseline_succeeded":false,"both_failed_differently":false},
+		"replay_summary_divergence":{"state":"available"},
+		"evidence_quality":{}
+	}`), policy)
+	if err != nil {
+		t.Fatalf("Evaluate returned error: %v", err)
+	}
+	if evaluation.Verdict != VerdictInsufficientEvidence {
+		t.Fatalf("verdict = %q, want %q", evaluation.Verdict, VerdictInsufficientEvidence)
+	}
+	if evaluation.ReasonCode != "candidate_scorecard_invalid" {
+		t.Fatalf("reason code = %q, want candidate_scorecard_invalid", evaluation.ReasonCode)
+	}
+	if evaluation.EvidenceStatus != EvidenceStatusInsufficient {
+		t.Fatalf("evidence status = %q, want %q", evaluation.EvidenceStatus, EvidenceStatusInsufficient)
+	}
+	if evaluation.Details.ScorecardValidity == nil || evaluation.Details.ScorecardValidity.Candidate == nil ||
+		evaluation.Details.ScorecardValidity.Candidate.ValidityReason == "" {
+		t.Fatalf("scorecard validity details missing candidate reason: %#v", evaluation.Details.ScorecardValidity)
+	}
+}
+
+func TestEvaluateScorecardValidityWinsOverGenericEvidenceMissing(t *testing.T) {
+	policy := scorecardValidityTestPolicy()
+	policy.RequireEvidenceQuality = true
+	evaluation, err := Evaluate(testSummary(t, `{
+		"status":"comparable",
+		"dimension_deltas":{
+			"correctness":{"delta":0,"better_direction":"higher","state":"available"}
+		},
+		"scorecard_pass":{"baseline":true},
+		"scorecard_validity":{
+			"baseline":{"validity":"valid"},
+			"candidate":{"validity":"invalid","validity_reason":"pack authoring error"}
+		},
+		"failure_divergence":{"candidate_failed_baseline_succeeded":false,"both_failed_differently":false},
+		"replay_summary_divergence":{"state":"available"},
+		"evidence_quality":{"missing_fields":["scorecard_pass.candidate"]}
+	}`), policy)
+	if err != nil {
+		t.Fatalf("Evaluate returned error: %v", err)
+	}
+	if evaluation.ReasonCode != "candidate_scorecard_invalid" {
+		t.Fatalf("reason code = %q, want candidate_scorecard_invalid", evaluation.ReasonCode)
+	}
+}
+
+func TestEvaluateBlocksDegradedScorecardWithDistinctReason(t *testing.T) {
+	policy := scorecardValidityTestPolicy()
+	evaluation, err := Evaluate(testSummary(t, `{
+		"status":"comparable",
+		"dimension_deltas":{
+			"correctness":{"delta":0,"better_direction":"higher","state":"available"}
+		},
+		"scorecard_pass":{"baseline":true,"candidate":true},
+		"scorecard_validity":{
+			"baseline":{"validity":"valid"},
+			"candidate":{"validity":"degraded","validity_reason":"dimension \"correctness\" unavailable: challenge input is unavailable"}
+		},
+		"failure_divergence":{"candidate_failed_baseline_succeeded":false,"both_failed_differently":false},
+		"replay_summary_divergence":{"state":"available"},
+		"evidence_quality":{}
+	}`), policy)
+	if err != nil {
+		t.Fatalf("Evaluate returned error: %v", err)
+	}
+	if evaluation.Verdict != VerdictInsufficientEvidence {
+		t.Fatalf("verdict = %q, want %q", evaluation.Verdict, VerdictInsufficientEvidence)
+	}
+	if evaluation.ReasonCode != "candidate_scorecard_degraded" {
+		t.Fatalf("reason code = %q, want candidate_scorecard_degraded", evaluation.ReasonCode)
+	}
+	if evaluation.Summary == "release gate failed because candidate scorecard did not pass" {
+		t.Fatal("degraded scorecard reused ordinary scorecard_not_passed summary")
+	}
+}
+
+func TestEvaluateValidScorecardPassFailureStillUsesScorecardNotPassed(t *testing.T) {
+	policy := scorecardValidityTestPolicy()
+	evaluation, err := Evaluate(testSummary(t, `{
+		"status":"comparable",
+		"dimension_deltas":{
+			"correctness":{"delta":0,"better_direction":"higher","state":"available"}
+		},
+		"scorecard_pass":{"baseline":true,"candidate":false},
+		"scorecard_validity":{
+			"baseline":{"validity":"valid"},
+			"candidate":{"validity":"valid"}
+		},
+		"failure_divergence":{"candidate_failed_baseline_succeeded":false,"both_failed_differently":false},
+		"replay_summary_divergence":{"state":"available"},
+		"evidence_quality":{}
+	}`), policy)
+	if err != nil {
+		t.Fatalf("Evaluate returned error: %v", err)
+	}
+	if evaluation.Verdict != VerdictFail {
+		t.Fatalf("verdict = %q, want %q", evaluation.Verdict, VerdictFail)
+	}
+	if evaluation.ReasonCode != "scorecard_not_passed" {
+		t.Fatalf("reason code = %q, want scorecard_not_passed", evaluation.ReasonCode)
+	}
+}
+
+func scorecardValidityTestPolicy() Policy {
+	warn := 0.05
+	fail := 0.10
+	return Policy{
+		PolicyKey:            "scorecard-validity-gate",
+		PolicyVersion:        1,
+		RequireComparable:    true,
+		RequireScorecardPass: true,
+		RequiredDimensions:   []string{"correctness"},
+		Dimensions: map[string]DimensionThreshold{
+			"correctness": {WarnDelta: &warn, FailDelta: &fail},
+		},
 	}
 }
 
