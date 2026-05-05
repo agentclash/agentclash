@@ -69,6 +69,48 @@ def failing_result():
     }
 
 
+def prompt_eval_result():
+    return {
+        "workspace_id": "workspace-1",
+        "gate_verdict": "fail",
+        "summary": {
+            "total_cases": 2,
+            "completed_cases": 2,
+            "assertions_passed": 1,
+            "assertions_failed": 1,
+            "assertion_pass_rate": 0.5,
+            "execution_errors": 0,
+        },
+        "playgrounds": [
+            {
+                "name": "refund-bot",
+                "playground_id": "pg-1",
+                "playground_url": "https://agentclash.dev/workspaces/workspace-1/playgrounds/pg-1",
+                "experiments": [
+                    {
+                        "experiment_id": "exp-1",
+                        "experiment_url": "https://agentclash.dev/workspaces/workspace-1/playground-experiments/exp-1",
+                    },
+                ],
+            },
+        ],
+        "results": [
+            {
+                "experiment_id": "exp-1",
+                "rows": [
+                    {
+                        "case_key": "refund",
+                        "assertion": "contains",
+                        "result": "FAIL",
+                        "expected": "refund denied",
+                        "actual": "token=super-secret-value refund accepted",
+                    },
+                ],
+            },
+        ],
+    }
+
+
 class CommentFormattingTests(unittest.TestCase):
     def test_build_failed_comment_contains_reviewer_triage(self):
         body = comment.build_comment(
@@ -176,6 +218,40 @@ class CommentFormattingTests(unittest.TestCase):
         self.assertIn("changed files did not match trigger.paths", body)
         self.assertNotIn("Score Deltas", body)
 
+    def test_build_prompt_eval_failed_comment_contains_actionable_triage(self):
+        body = comment.build_comment(
+            manifest=".agentclash/prompt-eval.yaml",
+            mode="prompt-eval",
+            result=prompt_eval_result(),
+            should_run={"should_run": True},
+            exit_code=3,
+        )
+
+        self.assertIn("<!-- agentclash:prompt-eval -->", body)
+        self.assertIn("## AgentClash Prompt Eval: Failed", body)
+        self.assertIn("0.5", body)
+        self.assertIn("Failed Assertions", body)
+        self.assertIn("refund", body)
+        self.assertIn("refund denied", body)
+        self.assertIn("token=[redacted]", body)
+        self.assertNotIn("super-secret-value", body)
+        self.assertIn("https://agentclash.dev/workspaces/workspace-1/playgrounds/pg-1", body)
+        self.assertIn("https://agentclash.dev/workspaces/workspace-1/playground-experiments/exp-1", body)
+        self.assertIn("agentclash prompt-eval run .agentclash/prompt-eval.yaml --ci --follow --json", body)
+
+    def test_build_prompt_eval_skipped_comment_uses_prompt_eval_marker(self):
+        body = comment.build_comment(
+            manifest=".agentclash/prompt-eval.yaml",
+            mode="prompt-eval",
+            result={},
+            should_run={"should_run": False, "reason": "changed files did not match prompt eval paths"},
+            exit_code=0,
+        )
+
+        self.assertIn("<!-- agentclash:prompt-eval -->", body)
+        self.assertIn("AgentClash Prompt Eval: Skipped", body)
+        self.assertIn("changed files did not match prompt eval paths", body)
+
 
 class CommentContextTests(unittest.TestCase):
     def test_find_pr_number_prefers_result_metadata(self):
@@ -213,6 +289,23 @@ class CommentUpsertTests(unittest.TestCase):
         self.assertEqual(outcome.action, "created")
         self.assertEqual(fake.created, [(42, f"{marker}\nnew body")])
         self.assertEqual(fake.updated, [])
+
+    def test_upsert_updates_existing_prompt_eval_comment(self):
+        marker = comment.PROMPT_EVAL_MARKER
+        fake = FakeGitHubClient(comments=[{"id": 12, "body": f"{marker}\nold body"}])
+
+        body = comment.build_comment(
+            manifest=".agentclash/prompt-eval.yaml",
+            mode="prompt-eval",
+            result=prompt_eval_result(),
+            should_run={"should_run": True},
+            exit_code=3,
+        )
+        outcome = comment.upsert_comment(fake, 42, marker, body)
+
+        self.assertEqual(outcome.action, "updated")
+        self.assertEqual(fake.updated, [(12, body)])
+        self.assertEqual(fake.created, [])
 
     def test_post_comment_gracefully_skips_missing_token_or_context(self):
         base = {

@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 MARKER_PREFIX = "agentclash-ci-comment:v1"
+PROMPT_EVAL_MARKER = "<!-- agentclash:prompt-eval -->"
 DIMENSION_ORDER = ("correctness", "reliability", "latency", "cost")
 DEFAULT_APP_URL = "https://agentclash.dev"
 
@@ -89,6 +90,10 @@ def marker_for_manifest(manifest: str) -> str:
     return f"<!-- {MARKER_PREFIX}:{digest} -->"
 
 
+def marker_for_mode(mode: str, manifest: str) -> str:
+    return PROMPT_EVAL_MARKER if mode == "prompt-eval" else marker_for_manifest(manifest)
+
+
 def build_comment(
     *,
     manifest: str,
@@ -96,7 +101,10 @@ def build_comment(
     should_run: dict[str, Any],
     exit_code: int,
     app_url: str = DEFAULT_APP_URL,
+    mode: str = "ci",
 ) -> str:
+    if mode == "prompt-eval":
+        return build_prompt_eval_comment(config=manifest, result=result, should_run=should_run, exit_code=exit_code, app_url=app_url)
     marker = marker_for_manifest(manifest)
     if should_run and should_run.get("should_run") is False:
         reason = str(should_run.get("reason") or "manifest trigger did not match this change set")
@@ -161,6 +169,78 @@ def build_comment(
     return "\n".join(lines)
 
 
+def build_prompt_eval_comment(
+    *,
+    config: str,
+    result: dict[str, Any],
+    should_run: dict[str, Any],
+    exit_code: int,
+    app_url: str = DEFAULT_APP_URL,
+) -> str:
+    marker = PROMPT_EVAL_MARKER
+    if should_run and should_run.get("should_run") is False:
+        reason = str(should_run.get("reason") or "prompt eval paths did not match this change set")
+        return "\n".join(
+            [
+                marker,
+                "## AgentClash Prompt Eval: Skipped",
+                "",
+                f"AgentClash did not run for `{config}`.",
+                "",
+                f"**Reason:** {escape_cell(reason)}",
+                "",
+                "_Updated automatically by AgentClash CI._",
+            ],
+        )
+
+    status = prompt_eval_status_label(result, exit_code)
+    summary = result.get("summary") if isinstance(result.get("summary"), dict) else {}
+    lines = [
+        marker,
+        f"## AgentClash Prompt Eval: {status}",
+        "",
+        "| Field | Value |",
+        "| --- | --- |",
+        f"| Config | `{escape_cell(config)}` |",
+        f"| Verdict | `{escape_cell(str(result.get('gate_verdict') or 'n/a'))}` |",
+        f"| Exit code | `{exit_code}` |",
+        f"| Cases | `{format_number(summary.get('completed_cases'))}/{format_number(summary.get('total_cases'))}` |",
+        f"| Assertions | `{format_number(summary.get('assertions_passed'))} passed / {format_number(summary.get('assertions_failed'))} failed` |",
+        f"| Assertion pass rate | `{format_number(summary.get('assertion_pass_rate'))}` |",
+        f"| Execution errors | `{format_number(summary.get('execution_errors'))}` |",
+    ]
+
+    links = prompt_eval_links(result, app_url)
+    if links:
+        lines.extend(["", "### Inspect in AgentClash", ""])
+        lines.extend(f"- [{label}]({url})" for label, url in links)
+
+    failed_rows = prompt_eval_failed_rows(result)
+    if failed_rows:
+        lines.extend(["", "### Failed Assertions", "", "| Case | Assertion | Expected | Actual / Error |", "| --- | --- | --- | --- |"])
+        for row in failed_rows[:5]:
+            lines.append(
+                f"| `{escape_cell(str(row.get('case_key') or 'n/a'))}` | "
+                f"`{escape_cell(str(row.get('assertion') or row.get('assertion_key') or 'n/a'))}` | "
+                f"`{redact_snippet(row.get('expected'))}` | "
+                f"`{redact_snippet(row.get('error') or row.get('actual'))}` |",
+            )
+        if len(failed_rows) > 5:
+            lines.append(f"| ... | ... | ... | `{len(failed_rows) - 5} more failed assertion(s)` |")
+
+    errors = result.get("errors")
+    if isinstance(errors, list) and errors:
+        lines.extend(["", "### Errors", ""])
+        lines.extend(f"- `{redact_snippet(error)}`" for error in errors[:5])
+
+    lines.extend(["", "### Reproduce Locally", ""])
+    lines.append(f"`agentclash prompt-eval run {escape_cell(config)} --ci --follow --json`")
+    lines.extend(["", "### Next Actions", ""])
+    lines.extend(prompt_eval_next_actions(result, exit_code))
+    lines.extend(["", "_Updated automatically by AgentClash CI._"])
+    return "\n".join(lines)
+
+
 def status_label(result: dict[str, Any], exit_code: int) -> str:
     if exit_code == 0:
         return "Passed"
@@ -170,6 +250,86 @@ def status_label(result: dict[str, Any], exit_code: int) -> str:
     if verdict in {"warn", "warning"}:
         return "Warning"
     return "Errored"
+
+
+def prompt_eval_status_label(result: dict[str, Any], exit_code: int) -> str:
+    if exit_code == 0:
+        return "Passed"
+    if exit_code == 3 or str(result.get("gate_verdict") or "").lower() == "fail":
+        return "Failed"
+    return "Errored"
+
+
+def prompt_eval_failed_rows(result: dict[str, Any]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for envelope in result.get("results") or []:
+        if not isinstance(envelope, dict):
+            continue
+        for row in envelope.get("rows") or []:
+            if isinstance(row, dict) and str(row.get("result") or "").upper() in {"FAIL", "ERROR"}:
+                rows.append(row)
+    return rows
+
+
+def prompt_eval_links(result: dict[str, Any], app_url: str) -> list[tuple[str, str]]:
+    links: list[tuple[str, str]] = []
+    seen: set[str] = set()
+
+    def add(label: str, url: Any) -> None:
+        safe = normalize_safe_url(url)
+        if safe and safe not in seen:
+            links.append((label, safe))
+            seen.add(safe)
+
+    for playground in result.get("playgrounds") or []:
+        if not isinstance(playground, dict):
+            continue
+        add(f"Playground {playground.get('name') or playground.get('playground_id') or ''}".strip(), playground.get("playground_url"))
+        for experiment in playground.get("experiments") or []:
+            if isinstance(experiment, dict):
+                add(f"Experiment {experiment.get('experiment_id') or ''}".strip(), experiment.get("experiment_url"))
+
+    workspace_id = clean_id(result.get("workspace_id"))
+    if workspace_id:
+        base = normalize_safe_url(app_url)
+        for playground in result.get("playgrounds") or []:
+            if not isinstance(playground, dict):
+                continue
+            playground_id = clean_id(playground.get("playground_id"))
+            if playground_id:
+                add("Playground", app_link(base, "workspaces", workspace_id, "playgrounds", playground_id))
+            for experiment in playground.get("experiments") or []:
+                if isinstance(experiment, dict):
+                    experiment_id = clean_id(experiment.get("experiment_id"))
+                    if experiment_id:
+                        add("Experiment", app_link(base, "workspaces", workspace_id, "playground-experiments", experiment_id))
+    return links[:8]
+
+
+def prompt_eval_next_actions(result: dict[str, Any], exit_code: int) -> list[str]:
+    verdict = str(result.get("gate_verdict") or "").lower()
+    if exit_code == 3 or verdict == "fail":
+        return [
+            "- Inspect the failed assertions and AgentClash experiment links above.",
+            "- Fix the prompt, model, provider account, or test expectation and push again.",
+            "- If the behavior change is intentional, update the prompt eval config deliberately in a separate review.",
+        ]
+    if exit_code == 0:
+        return ["- No action needed. The prompt eval gate passed."]
+    return [
+        "- Open the GitHub Actions log and AgentClash JSON output.",
+        "- Fix config, auth, provider, or runtime errors before trusting the gate result.",
+    ]
+
+
+def redact_snippet(value: Any, limit: int = 160) -> str:
+    text = escape_cell(str(value or ""))
+    text = re.sub(r"(?i)(api[_-]?key|token|secret|password)\s*[:=]\s*['\"]?[^\s,'\"]+", r"\1=[redacted]", text)
+    text = re.sub(r"sk-[A-Za-z0-9_-]{12,}", "sk-[redacted]", text)
+    text = re.sub(r"(?i)bearer\s+[A-Za-z0-9._-]{12,}", "Bearer [redacted]", text)
+    if len(text) > limit:
+        return text[: limit - 1] + "..."
+    return text
 
 
 def dimension_rows(result: dict[str, Any]) -> list[str]:
@@ -447,6 +607,7 @@ def upsert_comment(client: Any, pr_number: int, marker: str, body: str) -> Comme
 def post_comment(
     *,
     manifest: str,
+    mode: str = "ci",
     result: dict[str, Any],
     should_run: dict[str, Any],
     exit_code: int,
@@ -466,8 +627,8 @@ def post_comment(
     if pr_number is None:
         return CommentOutcome("skipped", "missing pull request context")
 
-    body = build_comment(manifest=manifest, result=result, should_run=should_run, exit_code=exit_code, app_url=app_url)
-    marker = marker_for_manifest(manifest)
+    body = build_comment(manifest=manifest, result=result, should_run=should_run, exit_code=exit_code, app_url=app_url, mode=mode)
+    marker = marker_for_mode(mode, manifest)
     github = client or GitHubClient(api_url, repo, token)
     try:
         return upsert_comment(github, pr_number, marker, body)
@@ -480,6 +641,7 @@ def post_comment(
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Post a sticky AgentClash CI pull request comment.")
     parser.add_argument("--manifest", required=True)
+    parser.add_argument("--mode", default="ci", choices=["ci", "prompt-eval"])
     parser.add_argument("--result-file", default="")
     parser.add_argument("--should-run-file", default="")
     parser.add_argument("--exit-code", type=int, default=0)
@@ -508,6 +670,7 @@ def main(argv: list[str]) -> int:
 
     outcome = post_comment(
         manifest=args.manifest,
+        mode=args.mode,
         result=result,
         should_run=should_run,
         exit_code=args.exit_code,

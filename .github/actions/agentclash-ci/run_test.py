@@ -199,5 +199,139 @@ exit 9
         )
 
 
+class RunScriptPromptEvalModeTests(unittest.TestCase):
+    def test_prompt_eval_runs_when_config_changed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            calls = root / "calls.log"
+            bin_dir = root / "bin"
+            bin_dir.mkdir()
+            self.write_prompt_eval_cli(bin_dir / "agentclash", calls, exit_code=0, verdict="pass")
+
+            result = self.run_prompt_eval_action(root, bin_dir, changed_files=".agentclash/prompt-eval.yaml\n")
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            call_log = calls.read_text()
+            self.assertIn("prompt-eval validate .agentclash/prompt-eval.yaml --remote --ci", call_log)
+            self.assertIn("prompt-eval run .agentclash/prompt-eval.yaml --json --follow --ci", call_log)
+            self.assertIn('"gate_verdict":"pass"', (root / "agentclash-ci-result.json").read_text())
+
+    def test_prompt_eval_skips_when_paths_do_not_match(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            calls = root / "calls.log"
+            bin_dir = root / "bin"
+            bin_dir.mkdir()
+            self.write_prompt_eval_cli(bin_dir / "agentclash", calls, exit_code=0, verdict="pass")
+
+            result = self.run_prompt_eval_action(root, bin_dir, changed_files="docs/readme.md\n")
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            call_log = calls.read_text()
+            self.assertIn("prompt-eval validate", call_log)
+            self.assertNotIn("prompt-eval run .agentclash/prompt-eval.yaml", call_log)
+            self.assertFalse((root / "agentclash-ci-result.json").exists())
+
+    def test_prompt_eval_gate_failure_preserves_exit_three_and_comments(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            calls = root / "calls.log"
+            bin_dir = root / "bin"
+            bin_dir.mkdir()
+            self.write_prompt_eval_cli(bin_dir / "agentclash", calls, exit_code=3, verdict="fail")
+
+            result = self.run_prompt_eval_action(root, bin_dir, changed_files=".agentclash/prompt-eval.yaml\n", pr_comment="true")
+
+            self.assertEqual(result.returncode, 3)
+            self.assertIn("AgentClash CI PR comment skipped", result.stdout)
+            self.assertIn('"gate_verdict":"fail"', (root / "agentclash-ci-result.json").read_text())
+
+    def test_prompt_eval_infrastructure_failure_preserves_exit_four(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            calls = root / "calls.log"
+            bin_dir = root / "bin"
+            bin_dir.mkdir()
+            self.write_prompt_eval_cli(bin_dir / "agentclash", calls, exit_code=4, verdict="error")
+
+            result = self.run_prompt_eval_action(root, bin_dir, changed_files=".agentclash/prompt-eval.yaml\n")
+
+            self.assertEqual(result.returncode, 4)
+            self.assertIn('"gate_verdict":"error"', (root / "agentclash-ci-result.json").read_text())
+
+    def run_prompt_eval_action(self, root: Path, bin_dir: Path, *, changed_files: str, pr_comment: str = "false"):
+        config = root / ".agentclash" / "prompt-eval.yaml"
+        config.parent.mkdir(parents=True)
+        config.write_text(
+            textwrap.dedent(
+                """
+                schemaVersion: 1
+                name: smoke
+                prompt:
+                  template: "Reply to {{input}}"
+                models:
+                  - alias: gpt-5.5
+                    provider_account: ci-openai
+                tests:
+                  - key: hello
+                    vars:
+                      input: hello
+                    assert:
+                      - type: contains
+                        value: hello
+                """
+            ).strip()
+            + "\n",
+        )
+        env = {
+            **os.environ,
+            "PATH": f"{bin_dir}:{os.environ['PATH']}",
+            "ACTION_PATH": str(ACTION_DIR),
+            "INPUT_MODE": "prompt-eval",
+            "INPUT_INSTALL_CLI": "false",
+            "INPUT_REMOTE_VALIDATE": "true",
+            "INPUT_SOURCE_FALLBACK": "false",
+            "INPUT_SKIP_IF_UNMATCHED": "true",
+            "INPUT_PR_COMMENT": pr_comment,
+            "INPUT_PROMPT_EVAL_CONFIG": ".agentclash/prompt-eval.yaml",
+            "INPUT_CHANGED_FILES": changed_files,
+            "RUNNER_TEMP": str(root),
+        }
+        return subprocess.run(
+            ["bash", str(ACTION_DIR / "run.sh")],
+            cwd=root,
+            env=env,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+    @staticmethod
+    def write_prompt_eval_cli(path: Path, calls: Path, *, exit_code: int, verdict: str):
+        path.write_text(
+            textwrap.dedent(
+                f"""#!/usr/bin/env bash
+                printf 'agentclash %s\\n' "$*" >>"{calls}"
+                if [[ "$*" == "prompt-eval validate --help" || "$*" == "prompt-eval run --help" ]]; then
+                  printf 'Usage:\\n  agentclash %s [flags]\\n\\nFlags:\\n  --help\\n' "${{*:1:2}}"
+                  exit 0
+                fi
+                if [[ "$1 $2" == "prompt-eval validate" ]]; then
+                  [[ -f "$3" ]] || exit 12
+                  exit 0
+                fi
+                if [[ "$1 $2" == "prompt-eval run" ]]; then
+                  cat <<'JSON'
+{{"schemaVersion":1,"workspace_id":"ws-1","gate_verdict":"{verdict}","summary":{{"total_cases":1,"completed_cases":1,"assertions_passed":0,"assertions_failed":1,"assertion_pass_rate":0,"execution_errors":0}},"playgrounds":[{{"name":"smoke","playground_id":"pg-1","playground_url":"https://agentclash.dev/workspaces/ws-1/playgrounds/pg-1","experiments":[{{"experiment_id":"exp-1","experiment_url":"https://agentclash.dev/workspaces/ws-1/playground-experiments/exp-1"}}]}}],"results":[{{"experiment_id":"exp-1","rows":[{{"case_key":"hello","assertion":"contains","result":"FAIL","expected":"hello","actual":"api_key=super-secret-value should be redacted"}}]}}],"exit_code":{exit_code}}}
+JSON
+                  exit {exit_code}
+                fi
+                exit 9
+                """,
+            ),
+        )
+        path.chmod(0o755)
+
+
 if __name__ == "__main__":
     unittest.main()
