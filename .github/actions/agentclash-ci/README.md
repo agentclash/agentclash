@@ -8,7 +8,8 @@ This action is a thin wrapper around the published `agentclash` CLI:
 2. validate the repo-tracked CI manifest
 3. run `agentclash ci should-run`
 4. run `agentclash ci run` when the manifest trigger matches
-5. expose result paths and gate outputs for artifact upload or downstream steps
+5. post or update a sticky structured PR comment when pull request context and permissions are available
+6. expose result paths and gate outputs for artifact upload or downstream steps
 
 ## Example
 
@@ -25,6 +26,10 @@ on:
 jobs:
   agentclash:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: write
 
     steps:
       - uses: actions/checkout@v4
@@ -74,6 +79,8 @@ jobs:
 | `poll-interval` | CLI default | Optional `ci run` poll interval, for example `5s`. |
 | `follow` | `false` | Stream run events while waiting. |
 | `default-branch` | auto-detected | Default branch metadata override for `auto_on_main` regression promotion. |
+| `pr-comment` | `true` | Post or update a sticky structured PR comment when pull request context is available. |
+| `github-token` | `github.token` | GitHub token used for PR comments. Override only for custom permission setups. |
 
 ## Outputs
 
@@ -88,3 +95,9 @@ jobs:
 | `artifact-dir` | Directory containing stable AgentClash JSON artifacts. |
 
 The action preserves the CLI exit code. A blocking AgentClash gate fails the job with the same code that `agentclash ci run` returned.
+
+## Pull Request Comments
+
+When `pr-comment` is enabled, the action posts a single sticky comment on pull requests. The comment summarizes the gate verdict, failure reason, candidate and baseline runs, score deltas, regression tracking outcome, and next actions. Later pushes update the existing AgentClash comment instead of creating a new one.
+
+Commenting is best-effort. If the workflow is not running on a pull request, the token is missing, or the token lacks comment permissions, the action logs a notice and preserves the original AgentClash exit code. For GitHub-hosted PR comments, grant `issues: write` in the job permissions.

@@ -53,6 +53,30 @@ else:
 PY
 }
 
+post_pr_comment() {
+  local status="$1"
+  if ! bool_true "${INPUT_PR_COMMENT:-true}"; then
+    return 0
+  fi
+
+  set +e
+  python3 "${ACTION_PATH}/comment.py" \
+    --manifest "$manifest" \
+    --result-file "$result_file" \
+    --should-run-file "$should_run_file" \
+    --exit-code "$status" \
+    --enabled "${INPUT_PR_COMMENT:-true}" \
+    --repo "${GITHUB_REPOSITORY:-}" \
+    --event-path "${GITHUB_EVENT_PATH:-}" \
+    --api-url "${GITHUB_API_URL:-https://api.github.com}"
+  local comment_status=$?
+  set -e
+
+  if [[ "$comment_status" -ne 0 ]]; then
+    echo "::notice::AgentClash CI PR comment helper exited with status ${comment_status}"
+  fi
+}
+
 manifest="${INPUT_MANIFEST:-.agentclash/ci.yaml}"
 artifact_dir="${INPUT_ARTIFACT_DIR:-agentclash-artifacts}"
 result_file="${INPUT_RESULT_FILE:-agentclash-ci-result.json}"
@@ -118,6 +142,7 @@ if [[ "$should_run" != "true" && "$skip_if_unmatched" == "true" ]]; then
   append_summary "## AgentClash CI"
   append_summary ""
   append_summary "Skipped: ${skip_reason:-manifest trigger did not match this change set}"
+  post_pr_comment "0"
   exit 0
 fi
 
@@ -149,4 +174,5 @@ else
   write_output "run-id" ""
   write_output "gate-verdict" ""
 fi
+post_pr_comment "$status"
 exit "$status"

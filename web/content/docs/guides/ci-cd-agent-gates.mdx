@@ -160,6 +160,10 @@ on:
 jobs:
   agentclash:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: write
 
     steps:
       - uses: actions/checkout@v4
@@ -188,9 +192,9 @@ jobs:
             ${{ steps.agentclash.outputs.artifact-dir }}/*.json
 ```
 
-The action installs the published `agentclash` npm package by default, runs `ci validate --remote`, runs `ci should-run`, auto-detects pull request labels from the GitHub event payload, skips unrelated changes, runs `ci run` when matched, and exposes `should-run`, `skip-reason`, `run-id`, `gate-verdict`, `exit-code`, `result-file`, and `artifact-dir` outputs. It preserves the CLI exit code, so a blocking gate fails the workflow normally.
+The action installs the published `agentclash` npm package by default, runs `ci validate --remote`, runs `ci should-run`, auto-detects pull request labels from the GitHub event payload, skips unrelated changes, runs `ci run` when matched, posts or updates a sticky structured PR comment when pull request context is available, and exposes `should-run`, `skip-reason`, `run-id`, `gate-verdict`, `exit-code`, `result-file`, and `artifact-dir` outputs. It preserves the CLI exit code, so a blocking gate fails the workflow normally. Grant `issues: write` when you want GitHub-hosted PR comments; commenting is best-effort and permission failures do not override the AgentClash result.
 
-`agentclash ci run` exits nonzero when the gate verdict should block CI, when the candidate run times out, or when the manifest/API setup is invalid. In GitHub Actions, it automatically attaches repository, pull request, branch, default branch, commit, workflow, event, and workflow-run URL metadata to the AgentClash run. It also appends a reviewer-friendly Markdown section when the `$GITHUB_STEP_SUMMARY` environment variable is set. Pass `--summary-file <path>` for another Markdown destination, or `--github-step-summary=false` to disable the automatic GitHub summary.
+`agentclash ci run` exits nonzero when the gate verdict should block CI, when the candidate run times out, or when the manifest/API setup is invalid. In GitHub Actions, it automatically attaches repository, pull request, branch, default branch, commit, workflow, event, and workflow-run URL metadata to the AgentClash run. It also appends a reviewer-friendly Markdown section when the `$GITHUB_STEP_SUMMARY` environment variable is set, while the bundled action turns the same run evidence into the PR comment. Pass `--summary-file <path>` for another Markdown destination, or `--github-step-summary=false` to disable the automatic GitHub summary.
 
 `--artifact-dir` writes stable JSON files intended for `actions/upload-artifact`: `result.json` for the final CLI envelope, `run.json` for run creation/completion payloads, `scorecard.json` for candidate scorecard evidence, `comparison.json` for baseline/candidate comparison evidence, and `gate.json` for the release-gate verdict and policy metadata. The summary and artifacts include the challenge pack version, baseline, candidate, policy, verdict, top evidence lines, regression candidate promotion outcomes, and AgentClash links when the API returns them. Use `--ci-repository`, `--ci-pull-request`, `--ci-branch`, `--ci-default-branch`, `--ci-commit`, and the other `--ci-*` flags when running from another CI system or a custom wrapper.
 
@@ -228,7 +232,7 @@ All modes preserve the original gate exit code. Promotion errors are reported in
 - `agentclash ci validate` validates the manifest shape locally; pass `--remote` for API-backed resource checks.
 - `agentclash ci should-run` only decides whether a gate should run; `agentclash ci run` performs the orchestration.
 - `agentclash ci run` creates a one-off candidate deployment for the manifest build version; cleanup/retention policy is still a follow-up.
-- Native PR comments and GitHub Check Runs are still follow-up work; use the GitHub step summary and uploaded JSON artifacts today.
+- GitHub Check Runs with rich annotations are still follow-up work; use the sticky PR comment, GitHub step summary, and uploaded JSON artifacts today.
 - Regression candidate promotion requires `evaluation.regression_suites`; without at least one target suite, `ci run` reports promotion as blocked.
 
 ## See also
