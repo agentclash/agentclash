@@ -41,7 +41,7 @@
     },
     "max_cases": {
       "type": "integer",
-      "minimum": 1
+      "minimum": 0
     },
     "assertion_signatures": {
       "type": "array",

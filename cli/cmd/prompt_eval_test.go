@@ -80,6 +80,10 @@ func TestPromptEvalValidateRejectsLocalSemanticErrors(t *testing.T) {
 		{name: "no tests", body: strings.Replace(validPromptEvalYAML(), "tests:\n  - key: greeting\n    vars:\n      input: Say hello in French\n    expect:\n      output: Bonjour\n    assert:\n      - type: contains\n        value: Bonjour\n        metric: correctness", "tests: []", 1), max: 100, wantErr: "at least one test"},
 		{name: "missing model selector", body: strings.Replace(validPromptEvalYAML(), "  - alias: gpt-5.5\n    provider_account: default", "  - provider_account: default", 1), max: 100, wantErr: "alias or model_alias_id"},
 		{name: "max cases", body: validPromptEvalYAML(), max: 0, wantErr: "--max-cases must be greater than 0"},
+		{name: "unknown yaml key", body: strings.Replace(validPromptEvalYAML(), "models:", "modls:", 1), max: 100, wantErr: "field modls not found"},
+		{name: "bad assertion threshold", body: strings.Replace(validPromptEvalYAML(), "assertion_pass_rate: 0.9", "assertion_pass_rate: 1.2", 1), max: 100, wantErr: "thresholds.assertion_pass_rate must be between 0 and 1"},
+		{name: "bad dimension threshold", body: strings.Replace(validPromptEvalYAML(), "correctness: 0.9", "correctness: -0.1", 1), max: 100, wantErr: "thresholds.dimensions.correctness must be between 0 and 1"},
+		{name: "dotted template variable", body: strings.Replace(validPromptEvalYAML(), "{{input}}", "{{user.name}}", 1), max: 100, wantErr: "unsupported; use simple {{var}}"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -145,6 +149,26 @@ func TestPromptEvalValidateJSONEnvelopeForInvalidConfig(t *testing.T) {
 	}
 	if result.Valid || result.ExitCode != promptEvalExitInvalid || len(result.Errors) == 0 {
 		t.Fatalf("unexpected invalid envelope: %+v", result)
+	}
+}
+
+func TestPromptEvalValidateJSONEnvelopeForMissingFile(t *testing.T) {
+	stdout := captureStdout(t)
+	err := executeCommand(t, []string{"prompt-eval", "validate", filepath.Join(t.TempDir(), "missing.yaml"), "--json"}, "http://unused")
+	out := stdout.finish()
+	var exitErr *ExitCodeError
+	if !errors.As(err, &exitErr) || exitErr.Code != promptEvalExitInvalid {
+		t.Fatalf("expected ExitCodeError{%d}, got %T %v", promptEvalExitInvalid, err, err)
+	}
+	var result promptEvalValidationResult
+	if err := json.Unmarshal([]byte(out), &result); err != nil {
+		t.Fatalf("decode json output: %v\n%s", err, out)
+	}
+	if result.AssertionSignatures == nil {
+		t.Fatalf("assertion_signatures should be an empty array, got nil")
+	}
+	if result.MaxCases != 100 || result.ExitCode != promptEvalExitInvalid {
+		t.Fatalf("unexpected missing-file envelope: %+v", result)
 	}
 }
 

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -99,20 +100,19 @@ var promptEvalValidateCmd = &cobra.Command{
 			renderPromptEvalValidation(rc, result)
 		}
 		if !result.Valid {
-			return &ExitCodeError{Code: promptEvalExitInvalid, Message: strings.Join(result.Errors, "; ")}
+			return &ExitCodeError{Code: promptEvalExitInvalid}
 		}
 		return nil
 	},
 }
 
 type promptEvalConfig struct {
-	SchemaVersion int                    `yaml:"schemaVersion" json:"schemaVersion"`
-	Name          string                 `yaml:"name" json:"name"`
-	Prompt        promptEvalPrompt       `yaml:"prompt" json:"prompt"`
-	Models        []promptEvalModel      `yaml:"models" json:"models"`
-	Tests         []promptEvalTest       `yaml:"tests" json:"tests"`
-	Thresholds    promptEvalThresholds   `yaml:"thresholds" json:"thresholds"`
-	Extra         map[string]interface{} `yaml:",inline" json:"-"`
+	SchemaVersion int                  `yaml:"schemaVersion" json:"schemaVersion"`
+	Name          string               `yaml:"name" json:"name"`
+	Prompt        promptEvalPrompt     `yaml:"prompt" json:"prompt"`
+	Models        []promptEvalModel    `yaml:"models" json:"models"`
+	Tests         []promptEvalTest     `yaml:"tests" json:"tests"`
+	Thresholds    promptEvalThresholds `yaml:"thresholds" json:"thresholds"`
 }
 
 type promptEvalPrompt struct {
@@ -126,11 +126,10 @@ type promptEvalModel struct {
 }
 
 type promptEvalTest struct {
-	Key    string                 `yaml:"key" json:"key"`
-	Vars   map[string]any         `yaml:"vars" json:"vars"`
-	Expect promptEvalExpect       `yaml:"expect" json:"expect"`
-	Assert []promptEvalAssertion  `yaml:"assert" json:"assert"`
-	Extra  map[string]interface{} `yaml:",inline" json:"-"`
+	Key    string                `yaml:"key" json:"key"`
+	Vars   map[string]any        `yaml:"vars" json:"vars"`
+	Expect promptEvalExpect      `yaml:"expect" json:"expect"`
+	Assert []promptEvalAssertion `yaml:"assert" json:"assert"`
 }
 
 type promptEvalExpect struct {
@@ -188,10 +187,11 @@ Reply to: {{input}}
 
 func validatePromptEvalFile(path string, maxCases int) promptEvalValidationResult {
 	result := promptEvalValidationResult{
-		SchemaVersion: promptEvalSchemaVersion,
-		Path:          path,
-		Valid:         true,
-		MaxCases:      maxCases,
+		SchemaVersion:       promptEvalSchemaVersion,
+		Path:                path,
+		Valid:               true,
+		MaxCases:            maxCases,
+		AssertionSignatures: []string{},
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -201,7 +201,9 @@ func validatePromptEvalFile(path string, maxCases int) promptEvalValidationResul
 		return result
 	}
 	var cfg promptEvalConfig
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
+	decoder := yaml.NewDecoder(bytes.NewReader(data))
+	decoder.KnownFields(true)
+	if err := decoder.Decode(&cfg); err != nil {
 		result.Valid = false
 		result.Errors = append(result.Errors, fmt.Sprintf("parsing yaml: %v", err))
 		result.ExitCode = promptEvalExitInvalid
@@ -252,6 +254,14 @@ func validatePromptEvalConfig(cfg promptEvalConfig, maxCases int, result *prompt
 		result.Errors = append(result.Errors, "--max-cases must be greater than 0")
 	} else if result.CaseCount > maxCases {
 		result.Errors = append(result.Errors, fmt.Sprintf("case count %d exceeds --max-cases %d", result.CaseCount, maxCases))
+	}
+	if cfg.Thresholds.AssertionPassRate != nil && (*cfg.Thresholds.AssertionPassRate < 0 || *cfg.Thresholds.AssertionPassRate > 1) {
+		result.Errors = append(result.Errors, "thresholds.assertion_pass_rate must be between 0 and 1")
+	}
+	for key, value := range cfg.Thresholds.Dimensions {
+		if value < 0 || value > 1 {
+			result.Errors = append(result.Errors, fmt.Sprintf("thresholds.dimensions.%s must be between 0 and 1", key))
+		}
 	}
 
 	seenTests := map[string]bool{}
@@ -317,7 +327,7 @@ func promptEvalTemplateVars(template string) ([]string, []string) {
 	vars := map[string]bool{}
 	for _, match := range matches {
 		name := strings.TrimSpace(match[1])
-		if !regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_.-]*$`).MatchString(name) {
+		if !regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_-]*$`).MatchString(name) {
 			errors = append(errors, fmt.Sprintf("prompt.template variable %q is unsupported; use simple {{var}} interpolation", name))
 			continue
 		}
