@@ -1,4 +1,4 @@
-# codex/add-hermes-agent-harness — Test Contract
+# codex/add-hermes-agent-harness - Test Contract
 
 ## Functional Behavior
 - Creating an Agent Harness may specify `harness_kind: "hermes_e2b"`.
@@ -23,7 +23,7 @@
 - `go test ./cmd -run TestAgentHarnessCreateBuildsHermes`.
 
 ## E2E Tests
-- N/A — hosted E2B execution depends on external sandbox/template credentials and provider API keys. The branch should still make the runner command deterministic and unit-covered.
+- N/A - hosted E2B execution depends on external sandbox/template credentials and provider API keys. The branch should still make the runner command deterministic and unit-covered.
 
 ## Manual / cURL Tests
 ```bash

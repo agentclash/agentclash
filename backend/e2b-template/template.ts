@@ -5,6 +5,13 @@ export const template = Template()
   .setUser('root')
   .setWorkdir('/')
 
+  // E2B builds run through public Ubuntu mirrors; pin a mirror that reliably
+  // carries all Noble pockets and make apt retry transient archive failures.
+  .runCmd(
+    "sed -i 's|http://archive.ubuntu.com/ubuntu/|http://mirrors.edge.kernel.org/ubuntu/|g; s|http://security.ubuntu.com/ubuntu/|http://mirrors.edge.kernel.org/ubuntu/|g' /etc/apt/sources.list.d/ubuntu.sources " +
+      "&& printf '%s\\n' 'Acquire::Retries \"8\";' 'Acquire::http::Timeout \"45\";' > /etc/apt/apt.conf.d/80-agentclash-retries",
+  )
+
   // System essentials
   .runCmd(
     'apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ' +
@@ -21,9 +28,13 @@ export const template = Template()
 
   // Coding-agent CLIs for Agent Harness tasks
   .runCmd('npm install -g @openai/codex')
+  // Hermes installs as root on Linux using the FHS layout, which already places
+  // the `hermes` shim at /usr/local/bin/hermes. We pass --skip-setup so the
+  // installer never asks for interactive provider config. Provider credentials
+  // are injected at run time via env vars (HERMES_INFERENCE_PROVIDER + *_API_KEY).
   .runCmd(
-    'curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash ' +
-      '&& ln -sf /root/.local/bin/hermes /usr/local/bin/hermes',
+    'curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash -s -- --skip-setup ' +
+      '&& command -v hermes >/dev/null',
   )
 
   // Python 3, Go, C/C++ toolchain
