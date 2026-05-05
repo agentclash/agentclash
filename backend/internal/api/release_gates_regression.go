@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/agentclash/agentclash/backend/internal/domain"
 	"github.com/agentclash/agentclash/backend/internal/releasegate"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/google/uuid"
@@ -158,22 +159,25 @@ func (m *ReleaseGateManager) loadRegressionCaseEvaluations(
 	evaluations := make(map[uuid.UUID]*releasegate.RegressionCaseEvaluation)
 	fallbackRefs := make(map[uuid.UUID][]releasegate.RegressionReplayStepRef)
 
-	ensureCase := func(caseID uuid.UUID) (*releasegate.RegressionCaseEvaluation, error) {
+	ensureCase := func(caseID uuid.UUID) (*releasegate.RegressionCaseEvaluation, bool, error) {
 		if existing, ok := evaluations[caseID]; ok {
-			return existing, nil
+			return existing, true, nil
 		}
 		regressionCase, ok := caseCache[caseID]
 		if !ok {
 			var loadErr error
 			regressionCase, loadErr = m.repo.GetRegressionCaseByID(ctx, caseID)
 			if loadErr != nil {
-				return nil, fmt.Errorf("load regression case %s: %w", caseID, loadErr)
+				return nil, false, fmt.Errorf("load regression case %s: %w", caseID, loadErr)
 			}
 			if regressionCase.WorkspaceID != workspaceID {
-				return nil, fmt.Errorf("%w: regression case %s belongs to workspace %s, want %s", errRegressionCaseWorkspaceMismatch, caseID, regressionCase.WorkspaceID, workspaceID)
+				return nil, false, fmt.Errorf("%w: regression case %s belongs to workspace %s, want %s", errRegressionCaseWorkspaceMismatch, caseID, regressionCase.WorkspaceID, workspaceID)
 			}
 			caseCache[caseID] = regressionCase
 			fallbackRefs[caseID] = promotionReplayRefs(regressionCase)
+		}
+		if regressionCase.Status != domain.RegressionCaseStatusActive {
+			return nil, false, nil
 		}
 		evaluation := &releasegate.RegressionCaseEvaluation{
 			RegressionCaseID: caseID,
@@ -181,19 +185,22 @@ func (m *ReleaseGateManager) loadRegressionCaseEvaluations(
 			Severity:         string(regressionCase.Severity),
 		}
 		evaluations[caseID] = evaluation
-		return evaluation, nil
+		return evaluation, true, nil
 	}
 
 	for _, result := range judgeResults {
 		if result.RegressionCaseID == nil {
 			continue
 		}
-		evaluation, err := ensureCase(*result.RegressionCaseID)
+		evaluation, ok, err := ensureCase(*result.RegressionCaseID)
 		if err != nil {
 			if errors.Is(err, errRegressionCaseWorkspaceMismatch) {
 				return nil, true, "regression scoring evidence referenced a regression case outside the authorized workspace; skipped regression gate rules", nil
 			}
 			return nil, false, "", err
+		}
+		if !ok {
+			continue
 		}
 		detail := validatorDetails[regressionDetailKey{CaseID: *result.RegressionCaseID, Key: result.JudgeKey}]
 		if !judgeResultFailed(result, detail) {
@@ -214,12 +221,15 @@ func (m *ReleaseGateManager) loadRegressionCaseEvaluations(
 		if result.RegressionCaseID == nil {
 			continue
 		}
-		evaluation, err := ensureCase(*result.RegressionCaseID)
+		evaluation, ok, err := ensureCase(*result.RegressionCaseID)
 		if err != nil {
 			if errors.Is(err, errRegressionCaseWorkspaceMismatch) {
 				return nil, true, "regression scoring evidence referenced a regression case outside the authorized workspace; skipped regression gate rules", nil
 			}
 			return nil, false, "", err
+		}
+		if !ok {
+			continue
 		}
 		detail := metricDetails[regressionDetailKey{CaseID: *result.RegressionCaseID, Key: result.MetricKey}]
 		if !metricResultFailed(result, detail) {

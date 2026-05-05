@@ -34,6 +34,9 @@ type createRunRequest struct {
 	RegressionSuiteIDs     []string `json:"regression_suite_ids,omitempty"`
 	RegressionCaseIDs      []string `json:"regression_case_ids,omitempty"`
 	OfficialPackMode       string   `json:"official_pack_mode,omitempty"`
+	// IncludeProposedRegressions lets explicit validation runs execute proposed
+	// cases before they are activated into CI gate scope.
+	IncludeProposedRegressions bool `json:"include_proposed_regressions,omitempty"`
 	// RaceContext opts the run into live peer-standings injection. See #400.
 	// Requires at least two agents; a request with true + one agent is 400.
 	RaceContext bool `json:"race_context,omitempty"`
@@ -44,17 +47,18 @@ type createRunRequest struct {
 }
 
 type CreateRunInput struct {
-	WorkspaceID            uuid.UUID
-	ChallengePackVersionID uuid.UUID
-	ChallengeInputSetID    *uuid.UUID
-	OfficialPackMode       domain.OfficialPackMode
-	Name                   string
-	AgentDeploymentIDs     []uuid.UUID
-	RegressionSuiteIDs     []uuid.UUID
-	RegressionCaseIDs      []uuid.UUID
-	RaceContext            bool
-	RaceContextMinStepGap  *int32
-	CIMetadata             *domain.RunCIMetadata
+	WorkspaceID                uuid.UUID
+	ChallengePackVersionID     uuid.UUID
+	ChallengeInputSetID        *uuid.UUID
+	OfficialPackMode           domain.OfficialPackMode
+	Name                       string
+	AgentDeploymentIDs         []uuid.UUID
+	RegressionSuiteIDs         []uuid.UUID
+	RegressionCaseIDs          []uuid.UUID
+	IncludeProposedRegressions bool
+	RaceContext                bool
+	RaceContextMinStepGap      *int32
+	CIMetadata                 *domain.RunCIMetadata
 }
 
 type CreateRunResult struct {
@@ -315,17 +319,18 @@ func decodeCreateRunRequest(r *http.Request) (CreateRunInput, error) {
 	}
 
 	return CreateRunInput{
-		WorkspaceID:            workspaceID,
-		ChallengePackVersionID: challengePackVersionID,
-		ChallengeInputSetID:    challengeInputSetID,
-		OfficialPackMode:       officialPackMode,
-		Name:                   strings.TrimSpace(body.Name),
-		AgentDeploymentIDs:     deploymentIDs,
-		RegressionSuiteIDs:     regressionSuiteIDs,
-		RegressionCaseIDs:      regressionCaseIDs,
-		RaceContext:            body.RaceContext,
-		RaceContextMinStepGap:  raceContextMinStepGap,
-		CIMetadata:             ciMetadata,
+		WorkspaceID:                workspaceID,
+		ChallengePackVersionID:     challengePackVersionID,
+		ChallengeInputSetID:        challengeInputSetID,
+		OfficialPackMode:           officialPackMode,
+		Name:                       strings.TrimSpace(body.Name),
+		AgentDeploymentIDs:         deploymentIDs,
+		RegressionSuiteIDs:         regressionSuiteIDs,
+		RegressionCaseIDs:          regressionCaseIDs,
+		IncludeProposedRegressions: body.IncludeProposedRegressions,
+		RaceContext:                body.RaceContext,
+		RaceContextMinStepGap:      raceContextMinStepGap,
+		CIMetadata:                 ciMetadata,
 	}, nil
 }
 

@@ -71,6 +71,7 @@ func TestRunCreateUsesRegressionSelectorsAndOfficialPackMode(t *testing.T) {
 		"--scope", "suite_only",
 		"--suite", "suite-1",
 		"--case", "case-1",
+		"--include-proposed-regressions",
 	}, srv.URL)
 	if err != nil {
 		t.Fatalf("run create error: %v", err)
@@ -84,6 +85,9 @@ func TestRunCreateUsesRegressionSelectorsAndOfficialPackMode(t *testing.T) {
 	}
 	if caseIDs, ok := gotBody["regression_case_ids"].([]any); !ok || len(caseIDs) != 1 || caseIDs[0] != "case-1" {
 		t.Fatalf("regression_case_ids = %#v, want [case-1]", gotBody["regression_case_ids"])
+	}
+	if gotBody["include_proposed_regressions"] != true {
+		t.Fatalf("include_proposed_regressions = %v, want true", gotBody["include_proposed_regressions"])
 	}
 }
 

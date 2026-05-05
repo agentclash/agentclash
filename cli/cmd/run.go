@@ -33,6 +33,7 @@ func init() {
 	runCreateCmd.Flags().String("scope", "full", "Run scope: full or suite_only")
 	runCreateCmd.Flags().StringSlice("suite", nil, "Regression suite IDs (repeatable; required with --scope suite_only unless --case is used)")
 	runCreateCmd.Flags().StringSlice("case", nil, "Regression case IDs (repeatable)")
+	runCreateCmd.Flags().Bool("include-proposed-regressions", false, "Include proposed regression cases for validation runs")
 	runCreateCmd.Flags().Bool("race-context", false, "Enable live peer-standings injection during the run (requires 2+ agents)")
 	runCreateCmd.Flags().Int("race-context-cadence", 0, "Override race-context cadence; minimum steps between standings injections, [1, 10]. 0 uses the backend default.")
 

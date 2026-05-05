@@ -399,10 +399,16 @@ func (m *RunCreationManager) resolveRunCaseSelections(
 				Message: "regression_case_ids must reference cases in the selected workspace",
 			}
 		}
-		if regressionCase.Status != domain.RegressionCaseStatusActive {
+		if !regressionCaseSelectableForRun(regressionCase.Status, input.IncludeProposedRegressions) {
+			if regressionCase.Status == domain.RegressionCaseStatusProposed && !input.IncludeProposedRegressions {
+				return nil, RunCreationValidationError{
+					Code:    "proposed_regression_case_ids",
+					Message: "regression_case_ids can include proposed cases only when include_proposed_regressions is true",
+				}
+			}
 			return nil, RunCreationValidationError{
 				Code:    "inactive_regression_case_ids",
-				Message: "regression_case_ids must reference active cases",
+				Message: "regression_case_ids must reference active cases or proposed cases explicitly included for validation",
 			}
 		}
 		if _, err := loadSuite(regressionCase.SuiteID); err != nil {
@@ -426,7 +432,7 @@ func (m *RunCreationManager) resolveRunCaseSelections(
 			return nil, fmt.Errorf("list regression cases by suite: %w", err)
 		}
 		for _, regressionCase := range regressionCases {
-			if regressionCase.Status != domain.RegressionCaseStatusActive {
+			if !regressionCaseSelectableForRun(regressionCase.Status, input.IncludeProposedRegressions) {
 				continue
 			}
 			appendSelection(repository.RunCaseSelectionOriginRegressionSuite, regressionCase.SourceChallengeIdentityID, &regressionCase.ID)
@@ -444,6 +450,11 @@ func (m *RunCreationManager) resolveRunCaseSelections(
 	}
 
 	return selections, nil
+}
+
+func regressionCaseSelectableForRun(status domain.RegressionCaseStatus, includeProposed bool) bool {
+	return status == domain.RegressionCaseStatusActive ||
+		(includeProposed && status == domain.RegressionCaseStatusProposed)
 }
 
 func buildExecutionPlan(input CreateRunInput, runAgents []repository.CreateQueuedRunAgentParams) (json.RawMessage, error) {

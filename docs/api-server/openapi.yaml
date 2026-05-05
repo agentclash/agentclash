@@ -5626,6 +5626,13 @@ components:
             Optional. Defaults to `full`. Use `suite_only` to execute only the
             resolved regression selection instead of unioning it with the full
             official pack case set.
+        include_proposed_regressions:
+          type: boolean
+          default: false
+          description: >
+            Optional. When true, explicitly selected regression suites and cases
+            may include proposed regression cases for validation runs. Release
+            gates still enforce only active regression cases.
         race_context:
           type: boolean
           default: false

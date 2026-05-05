@@ -1324,6 +1324,7 @@ func TestRunCreationManagerSkipsInactiveSuiteCasesWhenExpandingSelections(t *tes
 	runID := uuid.New()
 	suiteID := uuid.New()
 	activeCaseID := uuid.New()
+	proposedCaseID := uuid.New()
 	archivedCaseID := uuid.New()
 	activeChallengeID := uuid.New()
 
@@ -1365,6 +1366,13 @@ func TestRunCreationManagerSkipsInactiveSuiteCasesWhenExpandingSelections(t *tes
 					Status:                    domain.RegressionCaseStatusArchived,
 					SourceChallengeIdentityID: uuid.New(),
 				},
+				{
+					ID:                        proposedCaseID,
+					SuiteID:                   suiteID,
+					WorkspaceID:               workspaceID,
+					Status:                    domain.RegressionCaseStatusProposed,
+					SourceChallengeIdentityID: uuid.New(),
+				},
 			},
 		},
 		createResult: repository.CreateQueuedRunResult{
@@ -1403,6 +1411,175 @@ func TestRunCreationManagerSkipsInactiveSuiteCasesWhenExpandingSelections(t *tes
 	}
 	if repo.createParams.CaseSelections[0].RegressionCaseID == nil || *repo.createParams.CaseSelections[0].RegressionCaseID != activeCaseID {
 		t.Fatalf("selected regression case = %v, want %s", repo.createParams.CaseSelections[0].RegressionCaseID, activeCaseID)
+	}
+}
+
+func TestRunCreationManagerRejectsProposedRegressionCaseUnlessValidationEnabled(t *testing.T) {
+	workspaceID := uuid.New()
+	challengePackVersionID := uuid.New()
+	challengePackID := uuid.New()
+	deploymentID := uuid.New()
+	regressionCaseID := uuid.New()
+	suiteID := uuid.New()
+
+	repo := &fakeRunCreationRepository{
+		challengePackVersion: repository.RunnableChallengePackVersion{
+			ID:              challengePackVersionID,
+			ChallengePackID: challengePackID,
+		},
+		deployments: []repository.RunnableDeployment{
+			{
+				ID:                        deploymentID,
+				OrganizationID:            uuid.New(),
+				WorkspaceID:               workspaceID,
+				Name:                      "Agent",
+				AgentDeploymentSnapshotID: uuid.New(),
+			},
+		},
+		regressionSuites: map[uuid.UUID]repository.RegressionSuite{
+			suiteID: {
+				ID:                    suiteID,
+				WorkspaceID:           workspaceID,
+				SourceChallengePackID: challengePackID,
+				Status:                domain.RegressionSuiteStatusActive,
+			},
+		},
+		regressionCases: map[uuid.UUID]repository.RegressionCase{
+			regressionCaseID: {
+				ID:                        regressionCaseID,
+				SuiteID:                   suiteID,
+				WorkspaceID:               workspaceID,
+				Status:                    domain.RegressionCaseStatusProposed,
+				SourceChallengeIdentityID: uuid.New(),
+			},
+		},
+	}
+
+	manager := NewRunCreationManager(NewCallerWorkspaceAuthorizer(), repo, &fakeRunWorkflowStarter{}, nil)
+	_, err := manager.CreateRun(context.Background(), Caller{
+		UserID: uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: "workspace_member"},
+		},
+	}, CreateRunInput{
+		WorkspaceID:            workspaceID,
+		ChallengePackVersionID: challengePackVersionID,
+		AgentDeploymentIDs:     []uuid.UUID{deploymentID},
+		RegressionCaseIDs:      []uuid.UUID{regressionCaseID},
+	})
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	var validationErr RunCreationValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("error = %v, want RunCreationValidationError", err)
+	}
+	if validationErr.Code != "proposed_regression_case_ids" {
+		t.Fatalf("validation code = %q, want proposed_regression_case_ids", validationErr.Code)
+	}
+}
+
+func TestRunCreationManagerIncludesProposedRegressionCasesForValidationRuns(t *testing.T) {
+	workspaceID := uuid.New()
+	challengePackVersionID := uuid.New()
+	challengePackID := uuid.New()
+	deploymentID := uuid.New()
+	runID := uuid.New()
+	suiteID := uuid.New()
+	directProposedCaseID := uuid.New()
+	suiteProposedCaseID := uuid.New()
+	mutedCaseID := uuid.New()
+
+	repo := &fakeRunCreationRepository{
+		challengePackVersion: repository.RunnableChallengePackVersion{
+			ID:              challengePackVersionID,
+			ChallengePackID: challengePackID,
+		},
+		deployments: []repository.RunnableDeployment{
+			{
+				ID:                        deploymentID,
+				OrganizationID:            uuid.New(),
+				WorkspaceID:               workspaceID,
+				Name:                      "Agent",
+				AgentDeploymentSnapshotID: uuid.New(),
+			},
+		},
+		regressionSuites: map[uuid.UUID]repository.RegressionSuite{
+			suiteID: {
+				ID:                    suiteID,
+				WorkspaceID:           workspaceID,
+				SourceChallengePackID: challengePackID,
+				Status:                domain.RegressionSuiteStatusActive,
+			},
+		},
+		regressionCases: map[uuid.UUID]repository.RegressionCase{
+			directProposedCaseID: {
+				ID:                        directProposedCaseID,
+				SuiteID:                   suiteID,
+				WorkspaceID:               workspaceID,
+				Status:                    domain.RegressionCaseStatusProposed,
+				SourceChallengeIdentityID: uuid.New(),
+			},
+		},
+		regressionCasesBySuite: map[uuid.UUID][]repository.RegressionCase{
+			suiteID: {
+				{
+					ID:                        suiteProposedCaseID,
+					SuiteID:                   suiteID,
+					WorkspaceID:               workspaceID,
+					Status:                    domain.RegressionCaseStatusProposed,
+					SourceChallengeIdentityID: uuid.New(),
+				},
+				{
+					ID:                        mutedCaseID,
+					SuiteID:                   suiteID,
+					WorkspaceID:               workspaceID,
+					Status:                    domain.RegressionCaseStatusMuted,
+					SourceChallengeIdentityID: uuid.New(),
+				},
+			},
+		},
+		createResult: repository.CreateQueuedRunResult{
+			Run: domain.Run{
+				ID:               runID,
+				WorkspaceID:      workspaceID,
+				OfficialPackMode: domain.OfficialPackModeSuiteOnly,
+				Status:           domain.RunStatusQueued,
+				ExecutionMode:    "single_agent",
+			},
+		},
+	}
+
+	manager := NewRunCreationManager(NewCallerWorkspaceAuthorizer(), repo, &fakeRunWorkflowStarter{}, nil)
+	_, err := manager.CreateRun(context.Background(), Caller{
+		UserID: uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: "workspace_member"},
+		},
+	}, CreateRunInput{
+		WorkspaceID:                workspaceID,
+		ChallengePackVersionID:     challengePackVersionID,
+		OfficialPackMode:           domain.OfficialPackModeSuiteOnly,
+		AgentDeploymentIDs:         []uuid.UUID{deploymentID},
+		RegressionSuiteIDs:         []uuid.UUID{suiteID},
+		RegressionCaseIDs:          []uuid.UUID{directProposedCaseID},
+		IncludeProposedRegressions: true,
+	})
+	if err != nil {
+		t.Fatalf("CreateRun returned error: %v", err)
+	}
+
+	selected := map[uuid.UUID]bool{}
+	for _, selection := range repo.createParams.CaseSelections {
+		if selection.RegressionCaseID != nil {
+			selected[*selection.RegressionCaseID] = true
+		}
+	}
+	if !selected[directProposedCaseID] || !selected[suiteProposedCaseID] {
+		t.Fatalf("selected regression cases = %#v, want direct and suite proposed cases", selected)
+	}
+	if selected[mutedCaseID] {
+		t.Fatalf("selected muted case %s", mutedCaseID)
 	}
 }
 

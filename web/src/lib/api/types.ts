@@ -661,6 +661,7 @@ export interface CreateRunRequest {
   regression_suite_ids?: string[];
   regression_case_ids?: string[];
   official_pack_mode?: OfficialPackMode;
+  include_proposed_regressions?: boolean;
   race_context?: boolean;
   race_context_min_step_gap?: number;
   ci_metadata?: RunCIMetadata;

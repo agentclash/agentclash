@@ -10,16 +10,17 @@ import (
 )
 
 type runCreateRequest struct {
-	ChallengePackVersionID string
-	ChallengeInputSetID    string
-	DeploymentIDs          []string
-	Name                   string
-	OfficialPackMode       string
-	RegressionSuiteIDs     []string
-	RegressionCaseIDs      []string
-	RaceContext            bool
-	RaceContextCadence     int
-	CIMetadata             map[string]any
+	ChallengePackVersionID     string
+	ChallengeInputSetID        string
+	DeploymentIDs              []string
+	Name                       string
+	OfficialPackMode           string
+	RegressionSuiteIDs         []string
+	RegressionCaseIDs          []string
+	IncludeProposedRegressions bool
+	RaceContext                bool
+	RaceContextCadence         int
+	CIMetadata                 map[string]any
 }
 
 func runCreateRequestFromFlags(cmd *cobra.Command, base runCreateRequest) (runCreateRequest, error) {
@@ -44,6 +45,8 @@ func runCreateRequestFromFlags(cmd *cobra.Command, base runCreateRequest) (runCr
 	caseIDs, _ := cmd.Flags().GetStringSlice("case")
 	request.RegressionSuiteIDs = compactNonEmptyStrings(suiteIDs)
 	request.RegressionCaseIDs = compactNonEmptyStrings(caseIDs)
+	includeProposed, _ := cmd.Flags().GetBool("include-proposed-regressions")
+	request.IncludeProposedRegressions = includeProposed
 
 	raceContext, _ := cmd.Flags().GetBool("race-context")
 	request.RaceContext = raceContext
@@ -85,6 +88,9 @@ func buildRunCreateBody(workspaceID string, request runCreateRequest) (map[strin
 	}
 	if len(request.RegressionCaseIDs) > 0 {
 		body["regression_case_ids"] = request.RegressionCaseIDs
+	}
+	if request.IncludeProposedRegressions {
+		body["include_proposed_regressions"] = true
 	}
 	if request.RaceContext {
 		body["race_context"] = true
