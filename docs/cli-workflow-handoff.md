@@ -225,6 +225,7 @@ Verified from `cli/` on May 5, 2026:
 ```bash
 go test ./cmd -run '(EvalSession|Quickstart|CompareLatest|ReplayTriage)' -count=1  # pass
 go test -short ./...                                                               # pass
+go test -short -race -count=1 ./...                                                # pass
 go vet ./...                                                                       # pass
 go build ./...                                                                     # pass
 ```
