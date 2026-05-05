@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -26,9 +27,13 @@ type RegressionRepository interface {
 	ListRegressionSuitesByWorkspaceID(ctx context.Context, workspaceID uuid.UUID, limit, offset int32) ([]repository.RegressionSuite, error)
 	CountRegressionSuitesByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) (int64, error)
 	PatchRegressionSuite(ctx context.Context, params repository.PatchRegressionSuiteParams) (repository.RegressionSuite, error)
+	CreateRegressionCase(ctx context.Context, params repository.CreateRegressionCaseParams) (repository.RegressionCase, error)
 	GetRegressionCaseByID(ctx context.Context, id uuid.UUID) (repository.RegressionCase, error)
 	ListRegressionCasesBySuiteID(ctx context.Context, suiteID uuid.UUID) ([]repository.RegressionCase, error)
 	PatchRegressionCase(ctx context.Context, params repository.PatchRegressionCaseParams) (repository.RegressionCase, error)
+	GetRunnableChallengePackVersionByID(ctx context.Context, id uuid.UUID) (repository.RunnableChallengePackVersion, error)
+	GetChallengeInputSetByID(ctx context.Context, id uuid.UUID) (repository.ChallengeInputSet, error)
+	ListChallengeIdentityIDsByPackVersionID(ctx context.Context, challengePackVersionID uuid.UUID) ([]uuid.UUID, error)
 	GetRunByID(ctx context.Context, id uuid.UUID) (domain.Run, error)
 	ListRunFailureReviewItems(ctx context.Context, runID uuid.UUID, agentID *uuid.UUID) ([]failurereview.Item, error)
 	GetRunAgentExecutionContextByID(ctx context.Context, runAgentID uuid.UUID) (repository.RunAgentExecutionContext, error)
@@ -45,6 +50,7 @@ type RegressionService interface {
 	ListRegressionCases(ctx context.Context, caller Caller, input ListRegressionCasesInput) ([]repository.RegressionCase, error)
 	PatchRegressionCase(ctx context.Context, caller Caller, input PatchRegressionCaseInput) (repository.RegressionCase, error)
 	PromoteFailure(ctx context.Context, caller Caller, input PromoteFailureInput) (PromoteFailureResult, error)
+	CaptureProductionFailure(ctx context.Context, caller Caller, input CaptureProductionFailureInput) (repository.RegressionCase, error)
 }
 
 type CreateRegressionSuiteInput struct {
@@ -97,6 +103,30 @@ type PromoteFailureInput struct {
 	Request             domain.PromotionRequest
 }
 
+type CaptureProductionFailureInput struct {
+	WorkspaceID                  uuid.UUID
+	SuiteID                      uuid.UUID
+	SourceChallengePackVersionID uuid.UUID
+	SourceChallengeInputSetID    *uuid.UUID
+	SourceChallengeIdentityID    uuid.UUID
+	SourceCaseKey                string
+	SourceItemKey                *string
+	Title                        string
+	FailureSummary               string
+	FailureClass                 string
+	EvidenceTier                 string
+	Severity                     *domain.RegressionSeverity
+	PromotionMode                *domain.RegressionPromotionMode
+	PayloadSnapshot              json.RawMessage
+	ExpectedContract             json.RawMessage
+	ValidatorOverrides           json.RawMessage
+	Metadata                     json.RawMessage
+	IncidentID                   string
+	ExternalURL                  string
+	Source                       string
+	ObservedAt                   *time.Time
+}
+
 type PromoteFailureResult struct {
 	Case    repository.RegressionCase
 	Created bool
@@ -122,7 +152,9 @@ var (
 	ErrFailurePromotionNotAllowed      = errors.New("failure review item is not promotable")
 	ErrFailurePromotionModeUnavailable = errors.New("promotion mode unavailable for failure review item")
 	ErrRegressionSuiteArchived         = errors.New("regression suite is archived")
-	ErrRegressionSuitePackMismatch     = errors.New("regression suite source pack does not match run pack")
+	ErrRegressionSuitePackMismatch     = errors.New("regression suite source pack does not match failure source pack")
+	ErrRegressionChallengeMismatch     = errors.New("challenge identity does not belong to challenge pack version")
+	ErrRegressionInputSetMismatch      = errors.New("challenge input set does not belong to challenge pack version")
 )
 
 func NewRegressionManager(authorizer WorkspaceAuthorizer, repo RegressionRepository) *RegressionManager {
@@ -360,6 +392,109 @@ func (m *RegressionManager) PromoteFailure(ctx context.Context, caller Caller, i
 	}, nil
 }
 
+func (m *RegressionManager) CaptureProductionFailure(ctx context.Context, caller Caller, input CaptureProductionFailureInput) (repository.RegressionCase, error) {
+	if err := AuthorizeWorkspaceAction(ctx, m.authorizer, caller, input.WorkspaceID, ActionManageRegressions); err != nil {
+		return repository.RegressionCase{}, err
+	}
+
+	suite, err := m.repo.GetRegressionSuiteByID(ctx, input.SuiteID)
+	if err != nil {
+		return repository.RegressionCase{}, err
+	}
+	if suite.WorkspaceID != input.WorkspaceID {
+		return repository.RegressionCase{}, repository.ErrRegressionSuiteNotFound
+	}
+	if suite.Status != domain.RegressionSuiteStatusActive {
+		return repository.RegressionCase{}, ErrRegressionSuiteArchived
+	}
+
+	version, err := m.repo.GetRunnableChallengePackVersionByID(ctx, input.SourceChallengePackVersionID)
+	if err != nil {
+		return repository.RegressionCase{}, err
+	}
+	if version.WorkspaceID != nil && *version.WorkspaceID != input.WorkspaceID {
+		return repository.RegressionCase{}, repository.ErrChallengePackVersionNotFound
+	}
+	if version.ChallengePackID != suite.SourceChallengePackID {
+		return repository.RegressionCase{}, ErrRegressionSuitePackMismatch
+	}
+	if input.SourceChallengeInputSetID != nil {
+		inputSet, err := m.repo.GetChallengeInputSetByID(ctx, *input.SourceChallengeInputSetID)
+		if err != nil {
+			return repository.RegressionCase{}, err
+		}
+		if inputSet.ChallengePackVersionID != input.SourceChallengePackVersionID {
+			return repository.RegressionCase{}, ErrRegressionInputSetMismatch
+		}
+	}
+	if err := m.ensureChallengeIdentityInVersion(ctx, input.SourceChallengePackVersionID, input.SourceChallengeIdentityID); err != nil {
+		return repository.RegressionCase{}, err
+	}
+
+	failureClass := strings.TrimSpace(input.FailureClass)
+	if failureClass == "" {
+		failureClass = string(failurereview.FailureClassOther)
+	}
+	evidenceTier := strings.TrimSpace(input.EvidenceTier)
+	if evidenceTier == "" {
+		evidenceTier = string(failurereview.EvidenceTierHostedBlackBox)
+	}
+	severity := domain.DefaultPromotionSeverityForFailureClass(failureClass)
+	if input.Severity != nil {
+		severity = *input.Severity
+	}
+	promotionMode := domain.RegressionPromotionModeOutputOnly
+	if input.PromotionMode != nil {
+		promotionMode = *input.PromotionMode
+	}
+
+	metadata, err := productionFailureMetadata(input, failureClass)
+	if err != nil {
+		return repository.RegressionCase{}, err
+	}
+	sourceItemKey := ""
+	if input.SourceItemKey != nil {
+		sourceItemKey = *input.SourceItemKey
+	}
+
+	return m.repo.CreateRegressionCase(ctx, repository.CreateRegressionCaseParams{
+		SuiteID:                      input.SuiteID,
+		Title:                        strings.TrimSpace(input.Title),
+		Description:                  "",
+		Status:                       domain.RegressionCaseStatusProposed,
+		Severity:                     severity,
+		PromotionMode:                promotionMode,
+		SourceRunID:                  nil,
+		SourceRunAgentID:             nil,
+		SourceReplayID:               nil,
+		SourceChallengePackVersionID: input.SourceChallengePackVersionID,
+		SourceChallengeInputSetID:    cloneUUIDPtr(input.SourceChallengeInputSetID),
+		SourceChallengeIdentityID:    input.SourceChallengeIdentityID,
+		SourceCaseKey:                strings.TrimSpace(input.SourceCaseKey),
+		SourceItemKey:                optionalStringPtr(sourceItemKey),
+		EvidenceTier:                 evidenceTier,
+		FailureClass:                 failureClass,
+		FailureSummary:               strings.TrimSpace(input.FailureSummary),
+		PayloadSnapshot:              input.PayloadSnapshot,
+		ExpectedContract:             input.ExpectedContract,
+		ValidatorOverrides:           input.ValidatorOverrides,
+		Metadata:                     metadata,
+	})
+}
+
+func (m *RegressionManager) ensureChallengeIdentityInVersion(ctx context.Context, versionID, challengeIdentityID uuid.UUID) error {
+	ids, err := m.repo.ListChallengeIdentityIDsByPackVersionID(ctx, versionID)
+	if err != nil {
+		return err
+	}
+	for _, id := range ids {
+		if id == challengeIdentityID {
+			return nil
+		}
+	}
+	return ErrRegressionChallengeMismatch
+}
+
 func (m *RegressionManager) findFailureReviewItem(ctx context.Context, runID, challengeIdentityID uuid.UUID, runAgentID *uuid.UUID) (failurereview.Item, error) {
 	items, err := m.repo.ListRunFailureReviewItems(ctx, runID, nil)
 	if err != nil {
@@ -452,6 +587,80 @@ func expectedContractSubset(definition json.RawMessage) (json.RawMessage, error)
 		return nil, err
 	}
 	return encoded, nil
+}
+
+func productionFailureMetadata(input CaptureProductionFailureInput, failureClass string) (json.RawMessage, error) {
+	metadata := map[string]any{}
+	trimmed := strings.TrimSpace(string(input.Metadata))
+	if trimmed != "" && trimmed != "null" {
+		if err := json.Unmarshal([]byte(trimmed), &metadata); err != nil {
+			return nil, fmt.Errorf("decode production failure metadata: %w", err)
+		}
+	}
+
+	source := productionFailureSource(input.Source)
+	incidentID := strings.TrimSpace(input.IncidentID)
+	externalURL := strings.TrimSpace(input.ExternalURL)
+	sourceCaseKey := strings.TrimSpace(input.SourceCaseKey)
+
+	metadata["origin"] = "production_failure"
+	metadata["source"] = source
+	metadata["source_challenge_pack_version_id"] = input.SourceChallengePackVersionID.String()
+	metadata["source_challenge_identity_id"] = input.SourceChallengeIdentityID.String()
+	metadata["source_case_key"] = sourceCaseKey
+	metadata["source_failure_fingerprint"] = productionFailureFingerprint(input, failureClass)
+	metadata["source_failure_cluster_key"] = productionFailureClusterKey(input, failureClass)
+	if input.SourceChallengeInputSetID != nil {
+		metadata["source_challenge_input_set_id"] = input.SourceChallengeInputSetID.String()
+	}
+	if incidentID != "" {
+		metadata["production_incident_id"] = incidentID
+	}
+	if externalURL != "" {
+		metadata["production_external_url"] = externalURL
+	}
+	if input.ObservedAt != nil {
+		metadata["production_observed_at"] = input.ObservedAt.UTC().Format(time.RFC3339)
+	}
+
+	encoded, err := json.Marshal(metadata)
+	if err != nil {
+		return nil, fmt.Errorf("marshal production failure metadata: %w", err)
+	}
+	return encoded, nil
+}
+
+func productionFailureFingerprint(input CaptureProductionFailureInput, failureClass string) string {
+	incidentID := strings.TrimSpace(input.IncidentID)
+	if incidentID == "" {
+		incidentID = strings.TrimSpace(input.FailureSummary)
+	}
+	hash := sha256.Sum256([]byte(strings.Join([]string{
+		input.SourceChallengePackVersionID.String(),
+		input.SourceChallengeIdentityID.String(),
+		strings.TrimSpace(input.SourceCaseKey),
+		productionFailureSource(input.Source),
+		failureClass,
+		incidentID,
+	}, "\x00")))
+	return fmt.Sprintf("prod:%x", hash[:16])
+}
+
+func productionFailureClusterKey(input CaptureProductionFailureInput, failureClass string) string {
+	hash := sha256.Sum256([]byte(strings.Join([]string{
+		input.SourceChallengePackVersionID.String(),
+		input.SourceChallengeIdentityID.String(),
+		failureClass,
+	}, "\x00")))
+	return fmt.Sprintf("prod-cluster:%x", hash[:16])
+}
+
+func productionFailureSource(raw string) string {
+	source := strings.TrimSpace(raw)
+	if source == "" {
+		return "production"
+	}
+	return source
 }
 
 func optionalStringPtr(value string) *string {
@@ -807,6 +1016,161 @@ func listRegressionCasesHandler(logger *slog.Logger, service RegressionService) 
 	}
 }
 
+func captureProductionFailureHandler(logger *slog.Logger, service RegressionService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		caller, err := CallerFromContext(r.Context())
+		if err != nil {
+			writeAuthzError(w, err)
+			return
+		}
+		workspaceID, err := workspaceIDFromURLParam("workspaceID")(r)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_workspace_id", "workspace ID is malformed")
+			return
+		}
+		suiteID, err := regressionSuiteIDFromURLParam("suiteID")(r)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_regression_suite_id", err.Error())
+			return
+		}
+		if err := requireJSONContentType(r); err != nil {
+			writeError(w, http.StatusUnsupportedMediaType, "unsupported_media_type", err.Error())
+			return
+		}
+
+		var req struct {
+			SourceChallengePackVersionID uuid.UUID       `json:"source_challenge_pack_version_id"`
+			SourceChallengeInputSetID    *uuid.UUID      `json:"source_challenge_input_set_id,omitempty"`
+			SourceChallengeIdentityID    uuid.UUID       `json:"source_challenge_identity_id"`
+			SourceCaseKey                string          `json:"source_case_key"`
+			SourceItemKey                *string         `json:"source_item_key,omitempty"`
+			Title                        string          `json:"title"`
+			FailureSummary               string          `json:"failure_summary"`
+			FailureClass                 string          `json:"failure_class,omitempty"`
+			EvidenceTier                 string          `json:"evidence_tier,omitempty"`
+			Severity                     *string         `json:"severity,omitempty"`
+			PromotionMode                *string         `json:"promotion_mode,omitempty"`
+			PayloadSnapshot              json.RawMessage `json:"payload_snapshot"`
+			ExpectedContract             json.RawMessage `json:"expected_contract,omitempty"`
+			ValidatorOverrides           json.RawMessage `json:"validator_overrides,omitempty"`
+			Metadata                     json.RawMessage `json:"metadata,omitempty"`
+			IncidentID                   string          `json:"incident_id,omitempty"`
+			ExternalURL                  string          `json:"external_url,omitempty"`
+			Source                       string          `json:"source,omitempty"`
+			ObservedAt                   *time.Time      `json:"observed_at,omitempty"`
+		}
+		if err := decodeJSON(r, &req); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_request", "request body must be valid JSON")
+			return
+		}
+		if req.SourceChallengePackVersionID == uuid.Nil {
+			writeError(w, http.StatusBadRequest, "validation_error", "source_challenge_pack_version_id is required")
+			return
+		}
+		if req.SourceChallengeIdentityID == uuid.Nil {
+			writeError(w, http.StatusBadRequest, "validation_error", "source_challenge_identity_id is required")
+			return
+		}
+		if strings.TrimSpace(req.SourceCaseKey) == "" {
+			writeError(w, http.StatusBadRequest, "validation_error", "source_case_key is required")
+			return
+		}
+		if strings.TrimSpace(req.Title) == "" {
+			writeError(w, http.StatusBadRequest, "validation_error", "title is required")
+			return
+		}
+		if strings.TrimSpace(req.FailureSummary) == "" {
+			writeError(w, http.StatusBadRequest, "validation_error", "failure_summary is required")
+			return
+		}
+		failureClass := strings.TrimSpace(req.FailureClass)
+		if failureClass != "" {
+			parsed, parseErr := parseFailureClass(failureClass)
+			if parseErr != nil {
+				writeError(w, http.StatusBadRequest, "validation_error", parseErr.Error())
+				return
+			}
+			failureClass = string(parsed)
+		}
+		evidenceTier := strings.TrimSpace(req.EvidenceTier)
+		if evidenceTier != "" {
+			parsed, parseErr := parseEvidenceTier(evidenceTier)
+			if parseErr != nil {
+				writeError(w, http.StatusBadRequest, "validation_error", parseErr.Error())
+				return
+			}
+			evidenceTier = string(parsed)
+		}
+
+		payloadSnapshot, ok := regressionJSONObject(w, req.PayloadSnapshot, "payload_snapshot", true)
+		if !ok {
+			return
+		}
+		expectedContract, ok := regressionJSONObject(w, req.ExpectedContract, "expected_contract", false)
+		if !ok {
+			return
+		}
+		metadata, ok := regressionJSONObject(w, req.Metadata, "metadata", false)
+		if !ok {
+			return
+		}
+		validatorOverrides, err := domain.ValidatePromotionOverrides(req.ValidatorOverrides)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_promotion_overrides", err.Error())
+			return
+		}
+
+		var severity *domain.RegressionSeverity
+		if req.Severity != nil {
+			parsed, parseErr := domain.ParseRegressionSeverity(*req.Severity)
+			if parseErr != nil {
+				writeError(w, http.StatusBadRequest, "validation_error", "severity must be info, warning, or blocking")
+				return
+			}
+			severity = &parsed
+		}
+
+		var promotionMode *domain.RegressionPromotionMode
+		if req.PromotionMode != nil {
+			parsed, parseErr := domain.ParseRegressionPromotionMode(*req.PromotionMode)
+			if parseErr != nil {
+				writeError(w, http.StatusBadRequest, "validation_error", "promotion_mode must be full_executable, output_only, or manual")
+				return
+			}
+			promotionMode = &parsed
+		}
+
+		regressionCase, err := service.CaptureProductionFailure(r.Context(), caller, CaptureProductionFailureInput{
+			WorkspaceID:                  workspaceID,
+			SuiteID:                      suiteID,
+			SourceChallengePackVersionID: req.SourceChallengePackVersionID,
+			SourceChallengeInputSetID:    cloneUUIDPtr(req.SourceChallengeInputSetID),
+			SourceChallengeIdentityID:    req.SourceChallengeIdentityID,
+			SourceCaseKey:                req.SourceCaseKey,
+			SourceItemKey:                cloneStringPtr(req.SourceItemKey),
+			Title:                        req.Title,
+			FailureSummary:               req.FailureSummary,
+			FailureClass:                 failureClass,
+			EvidenceTier:                 evidenceTier,
+			Severity:                     severity,
+			PromotionMode:                promotionMode,
+			PayloadSnapshot:              payloadSnapshot,
+			ExpectedContract:             expectedContract,
+			ValidatorOverrides:           validatorOverrides,
+			Metadata:                     metadata,
+			IncidentID:                   req.IncidentID,
+			ExternalURL:                  req.ExternalURL,
+			Source:                       req.Source,
+			ObservedAt:                   req.ObservedAt,
+		})
+		if err != nil {
+			handleRegressionError(w, logger, err)
+			return
+		}
+		writeJSON(w, http.StatusCreated, buildRegressionCaseResponse(regressionCase))
+	}
+}
+
 func patchRegressionCaseHandler(logger *slog.Logger, service RegressionService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		caller, err := CallerFromContext(r.Context())
@@ -878,6 +1242,23 @@ func patchRegressionCaseHandler(logger *slog.Logger, service RegressionService) 
 		}
 		writeJSON(w, http.StatusOK, buildRegressionCaseResponse(regressionCase))
 	}
+}
+
+func regressionJSONObject(w http.ResponseWriter, raw json.RawMessage, field string, required bool) (json.RawMessage, bool) {
+	trimmed := strings.TrimSpace(string(raw))
+	if trimmed == "" || trimmed == "null" {
+		if required {
+			writeError(w, http.StatusBadRequest, "validation_error", field+" is required")
+			return nil, false
+		}
+		return nil, true
+	}
+	var value map[string]any
+	if err := json.Unmarshal([]byte(trimmed), &value); err != nil {
+		writeError(w, http.StatusBadRequest, "validation_error", field+" must be a JSON object")
+		return nil, false
+	}
+	return json.RawMessage(trimmed), true
 }
 
 func buildRegressionSuiteResponse(suite repository.RegressionSuite) regressionSuiteResponse {
@@ -1086,6 +1467,10 @@ func handleRegressionError(w http.ResponseWriter, logger *slog.Logger, err error
 		writeError(w, http.StatusNotFound, "regression_case_not_found", "regression case not found")
 	case errors.Is(err, repository.ErrRunNotFound):
 		writeError(w, http.StatusNotFound, "run_not_found", "run not found")
+	case errors.Is(err, repository.ErrChallengePackVersionNotFound):
+		writeError(w, http.StatusNotFound, "challenge_pack_version_not_found", "challenge pack version not found")
+	case errors.Is(err, repository.ErrChallengeInputSetNotFound):
+		writeError(w, http.StatusNotFound, "challenge_input_set_not_found", "challenge input set not found")
 	case errors.Is(err, ErrFailureReviewItemNotFound):
 		writeError(w, http.StatusNotFound, "failure_review_item_not_found", "failure review item not found")
 	case errors.Is(err, ErrChallengePackNotFound):
@@ -1103,7 +1488,11 @@ func handleRegressionError(w http.ResponseWriter, logger *slog.Logger, err error
 	case errors.Is(err, ErrRegressionSuiteArchived):
 		writeError(w, http.StatusBadRequest, "regression_suite_archived", "regression suite must be active to accept promotions")
 	case errors.Is(err, ErrRegressionSuitePackMismatch):
-		writeError(w, http.StatusBadRequest, "regression_suite_pack_mismatch", "regression suite source pack must match the run source pack")
+		writeError(w, http.StatusBadRequest, "regression_suite_pack_mismatch", "regression suite source pack must match the failure source pack")
+	case errors.Is(err, ErrRegressionChallengeMismatch):
+		writeError(w, http.StatusBadRequest, "challenge_identity_mismatch", "challenge identity must belong to the challenge pack version")
+	case errors.Is(err, ErrRegressionInputSetMismatch):
+		writeError(w, http.StatusBadRequest, "challenge_input_set_mismatch", "challenge input set must belong to the challenge pack version")
 	case errors.Is(err, domain.ErrInvalidPromotionOverrides):
 		writeError(w, http.StatusBadRequest, "invalid_promotion_overrides", err.Error())
 	case errors.Is(err, repository.ErrTransitionConflict):
