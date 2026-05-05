@@ -318,6 +318,27 @@ function buildApiMock(options: BuildApiMockOptions = {}) {
             created_at: "2026-04-19T00:00:00Z",
             updated_at: "2026-04-19T00:00:00Z",
           },
+          {
+            id: "case-2",
+            suite_id: "suite-1",
+            workspace_id: "ws-1",
+            title: "Unvalidated Regression",
+            description: "",
+            status: "proposed",
+            severity: "warning",
+            promotion_mode: "full_executable",
+            source_challenge_pack_version_id: "version-1",
+            source_challenge_identity_id: "challenge-2",
+            source_case_key: "case-b",
+            evidence_tier: "native_structured",
+            failure_class: "tool_argument_error",
+            failure_summary: "Mismatched tool arguments",
+            payload_snapshot: {},
+            expected_contract: {},
+            metadata: {},
+            created_at: "2026-04-19T00:00:00Z",
+            updated_at: "2026-04-19T00:00:00Z",
+          },
         ],
       };
     }
@@ -336,7 +357,7 @@ function buildApiMock(options: BuildApiMockOptions = {}) {
             status: "active",
             source_mode: "derived_only",
             default_gate_severity: "warning",
-            case_count: 1,
+            case_count: 2,
             created_by_user_id: "user-1",
             created_at: "2026-04-19T00:00:00Z",
             updated_at: "2026-04-19T00:00:00Z",
@@ -411,6 +432,7 @@ describe("CreateRunDialog", () => {
       clickElement(findCheckboxByLabel("Primary Agent"));
       clickElement(findCheckboxByLabel("Regression Suite"));
       clickElement(findCheckboxByLabel("Filesystem Regression"));
+      expect(() => findCheckboxByLabel("Unvalidated Regression")).toThrow();
 
       const officialPackModeSelect = document.querySelector(
         'select[aria-label="Official Pack Mode"]',
@@ -432,6 +454,134 @@ describe("CreateRunDialog", () => {
           regression_suite_ids: ["suite-1"],
           regression_case_ids: ["case-1"],
           official_pack_mode: "suite_only",
+          race_context: false,
+        });
+      });
+    } finally {
+      view.cleanup();
+    }
+  });
+
+  it("submits proposed regression cases only when validation runs are enabled", async () => {
+    const api = buildApiMock();
+    mockCreateApiClient.mockReturnValue(api);
+
+    const view = renderDialog();
+    try {
+      clickElement(findButton("New Run"));
+
+      await waitFor(() => {
+        expect(api.get).toHaveBeenCalledWith(
+          "/v1/workspaces/ws-1/challenge-packs",
+        );
+      });
+
+      const packSelect = document.querySelector(
+        'select[aria-label="Challenge Pack"]',
+      );
+      if (!(packSelect instanceof HTMLSelectElement)) {
+        throw new Error("Challenge Pack select not found");
+      }
+      changeSelect(packSelect, "pack-1");
+
+      await waitFor(() => {
+        expect(api.get).toHaveBeenCalledWith(
+          "/v1/workspaces/ws-1/regression-suites/suite-1/cases",
+        );
+      });
+      await waitFor(() => {
+        expect(api.get).toHaveBeenCalledWith(
+          "/v1/workspaces/ws-1/challenge-pack-versions/version-1/input-sets",
+        );
+      });
+
+      expect(() => findCheckboxByLabel("Unvalidated Regression")).toThrow();
+
+      clickElement(findCheckboxByLabel("Include proposed cases for validation"));
+      await waitFor(() => {
+        expect(findCheckboxByLabel("Unvalidated Regression")).toBeTruthy();
+      });
+
+      clickElement(findCheckboxByLabel("Primary Agent"));
+      clickElement(findCheckboxByLabel("Unvalidated Regression"));
+      clickElement(findButton("Create Run"));
+
+      await waitFor(() => {
+        expect(api.post).toHaveBeenCalledWith("/v1/runs", {
+          workspace_id: "ws-1",
+          challenge_pack_version_id: "version-1",
+          challenge_input_set_id: undefined,
+          name: undefined,
+          agent_deployment_ids: ["deploy-1"],
+          regression_suite_ids: undefined,
+          regression_case_ids: ["case-2"],
+          official_pack_mode: "full",
+          include_proposed_regressions: true,
+          race_context: false,
+        });
+      });
+    } finally {
+      view.cleanup();
+    }
+  });
+
+  it("clears proposed regression selections when validation runs are disabled", async () => {
+    const api = buildApiMock();
+    mockCreateApiClient.mockReturnValue(api);
+
+    const view = renderDialog();
+    try {
+      clickElement(findButton("New Run"));
+
+      await waitFor(() => {
+        expect(api.get).toHaveBeenCalledWith(
+          "/v1/workspaces/ws-1/challenge-packs",
+        );
+      });
+
+      const packSelect = document.querySelector(
+        'select[aria-label="Challenge Pack"]',
+      );
+      if (!(packSelect instanceof HTMLSelectElement)) {
+        throw new Error("Challenge Pack select not found");
+      }
+      changeSelect(packSelect, "pack-1");
+
+      await waitFor(() => {
+        expect(api.get).toHaveBeenCalledWith(
+          "/v1/workspaces/ws-1/regression-suites/suite-1/cases",
+        );
+      });
+      await waitFor(() => {
+        expect(api.get).toHaveBeenCalledWith(
+          "/v1/workspaces/ws-1/challenge-pack-versions/version-1/input-sets",
+        );
+      });
+
+      clickElement(findCheckboxByLabel("Include proposed cases for validation"));
+      await waitFor(() => {
+        expect(findCheckboxByLabel("Unvalidated Regression")).toBeTruthy();
+      });
+      clickElement(findCheckboxByLabel("Unvalidated Regression"));
+
+      clickElement(findCheckboxByLabel("Include proposed cases for validation"));
+      await waitFor(() => {
+        expect(() => findCheckboxByLabel("Unvalidated Regression")).toThrow();
+      });
+
+      clickElement(findCheckboxByLabel("Primary Agent"));
+      clickElement(findButton("Create Run"));
+
+      await waitFor(() => {
+        expect(api.post).toHaveBeenCalledWith("/v1/runs", {
+          workspace_id: "ws-1",
+          challenge_pack_version_id: "version-1",
+          challenge_input_set_id: undefined,
+          name: undefined,
+          agent_deployment_ids: ["deploy-1"],
+          regression_suite_ids: undefined,
+          regression_case_ids: undefined,
+          official_pack_mode: undefined,
           race_context: false,
         });
       });
