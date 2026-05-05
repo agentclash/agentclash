@@ -237,6 +237,7 @@ PY
 on_error() {
   local status="$?"
   trap - ERR
+  write_output "exit-code" "$status"
   if [[ "${comment_posted:-false}" != "true" ]]; then
     write_early_error_result
     post_pr_comment "$status" || true

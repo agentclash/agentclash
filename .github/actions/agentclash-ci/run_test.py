@@ -259,6 +259,19 @@ class RunScriptPromptEvalModeTests(unittest.TestCase):
             self.assertEqual(result.returncode, 4)
             self.assertIn('"gate_verdict":"error"', (root / "agentclash-ci-result.json").read_text())
 
+    def test_prompt_eval_validation_failure_preserves_exit_five(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            calls = root / "calls.log"
+            bin_dir = root / "bin"
+            bin_dir.mkdir()
+            self.write_prompt_eval_cli(bin_dir / "agentclash", calls, exit_code=0, verdict="pass", validate_exit=5)
+
+            result = self.run_prompt_eval_action(root, bin_dir, changed_files=".agentclash/prompt-eval.yaml\n")
+
+            self.assertEqual(result.returncode, 5)
+            self.assertIn("action_failed_before_prompt-eval_run", (root / "agentclash-ci-result.json").read_text())
+
     def run_prompt_eval_action(self, root: Path, bin_dir: Path, *, changed_files: str, pr_comment: str = "false"):
         config = root / ".agentclash" / "prompt-eval.yaml"
         config.parent.mkdir(parents=True)
@@ -307,7 +320,7 @@ class RunScriptPromptEvalModeTests(unittest.TestCase):
         )
 
     @staticmethod
-    def write_prompt_eval_cli(path: Path, calls: Path, *, exit_code: int, verdict: str):
+    def write_prompt_eval_cli(path: Path, calls: Path, *, exit_code: int, verdict: str, validate_exit: int = 0):
         path.write_text(
             textwrap.dedent(
                 f"""#!/usr/bin/env bash
@@ -318,7 +331,7 @@ class RunScriptPromptEvalModeTests(unittest.TestCase):
                 fi
                 if [[ "$1 $2" == "prompt-eval validate" ]]; then
                   [[ -f "$3" ]] || exit 12
-                  exit 0
+                  exit {validate_exit}
                 fi
                 if [[ "$1 $2" == "prompt-eval run" ]]; then
                   cat <<'JSON'
