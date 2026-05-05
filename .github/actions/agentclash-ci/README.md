@@ -1,6 +1,6 @@
 # AgentClash CI Gate Action
 
-Run a manifest-based AgentClash CI gate from GitHub Actions.
+Run a manifest-based AgentClash CI gate or prompt-eval gate from GitHub Actions.
 
 This action is a thin wrapper around the `agentclash` CLI:
 
@@ -62,7 +62,11 @@ jobs:
 
 | Input | Default | Description |
 | --- | --- | --- |
+| `mode` | `ci` | Gate mode: `ci` for manifest-based agent CI, or `prompt-eval` for prompt eval configs. |
 | `manifest` | `.agentclash/ci.yaml` | Path to the AgentClash CI manifest. |
+| `prompt-eval-config` | `.agentclash/prompt-eval.yaml` | Path to the prompt eval config when `mode: prompt-eval`. |
+| `prompt-eval-watch-paths` | `prompts/**`, `agents/**`, `tools/**`, `.agentclash/**` | Newline-separated globs that trigger prompt-eval mode in addition to the config path. |
+| `prompt-eval-threshold` | config default | Optional assertion pass-rate threshold override passed to `prompt-eval run`. |
 | `token` | `AGENTCLASH_TOKEN` | AgentClash API token. |
 | `workspace` | `AGENTCLASH_WORKSPACE` | AgentClash workspace ID. |
 | `api-url` | `https://api.agentclash.dev` | AgentClash API base URL. |
@@ -105,3 +109,47 @@ The action preserves the CLI exit code. A blocking AgentClash gate fails the job
 When `pr-comment` is enabled, the action posts a single sticky comment on pull requests. The comment summarizes the gate verdict, failure reason, candidate and baseline runs, score deltas, regression tracking outcome, and next actions. When run metadata is available, it also links directly to the AgentClash candidate run, baseline run, comparison, failures, scorecard, replay, and regression cases. If the action fails before a candidate run is created, the comment reports an errored setup state and points reviewers at the GitHub Actions log. Later pushes update the existing AgentClash comment instead of creating a new one.
 
 Commenting is best-effort. If the workflow is not running on a pull request, the token is missing, or the token lacks comment permissions, the action logs a notice and preserves the original AgentClash exit code. For GitHub-hosted PR comments, grant `pull-requests: write` in the job permissions.
+
+## Prompt Eval Mode
+
+Prompt eval mode runs `agentclash prompt-eval validate <config> --remote --ci`, checks whether the prompt eval config or watch paths changed, then runs `agentclash prompt-eval run <config> --json --follow --ci`. Gate failures exit `3`, keep the JSON result parseable, and post a sticky prompt-eval PR comment with failed assertions and AgentClash playground/experiment links.
+
+```yaml
+name: AgentClash prompt eval
+
+on:
+  pull_request:
+    paths:
+      - ".agentclash/prompt-eval.yaml"
+      - "prompts/**"
+      - "tools/**"
+
+concurrency:
+  group: agentclash-prompt-eval-${{ github.repository }}-${{ github.workflow }}-${{ vars.AGENTCLASH_WORKSPACE }}-.agentclash-prompt-eval-yaml
+  cancel-in-progress: false
+
+jobs:
+  prompt-eval:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - uses: agentclash/agentclash/.github/actions/agentclash-ci@main
+        with:
+          mode: prompt-eval
+          token: ${{ secrets.AGENTCLASH_TOKEN }}
+          workspace: ${{ vars.AGENTCLASH_WORKSPACE }}
+          prompt-eval-config: .agentclash/prompt-eval.yaml
+```
+
+The concurrency group intentionally excludes `github.ref`. Prompt eval V1 updates shared AgentClash playground resources by workspace and config path, so every PR targeting the same workspace/config should serialize instead of racing.
