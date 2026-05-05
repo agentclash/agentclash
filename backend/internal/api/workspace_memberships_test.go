@@ -129,7 +129,7 @@ func TestInviteWorkspaceMember_SendsEmail(t *testing.T) {
 		},
 	}
 
-	_, err := manager.InviteWorkspaceMember(context.Background(), caller, workspaceID, InviteWorkspaceMemberInput{
+	result, err := manager.InviteWorkspaceMember(context.Background(), caller, workspaceID, InviteWorkspaceMemberInput{
 		Email: "invitee@example.com",
 		Role:  "workspace_member",
 	})
@@ -144,14 +144,24 @@ func TestInviteWorkspaceMember_SendsEmail(t *testing.T) {
 	if sent.To != "invitee@example.com" {
 		t.Errorf("email To = %q, want invitee@example.com", sent.To)
 	}
-	if sent.WorkspaceName != "Test Workspace" {
-		t.Errorf("email WorkspaceName = %q, want Test Workspace", sent.WorkspaceName)
+	wantAcceptURL := "https://app.agentclash.dev/invites/workspace/" + result.ID.String()
+	if result.AcceptURL != wantAcceptURL {
+		t.Errorf("result AcceptURL = %q, want %q", result.AcceptURL, wantAcceptURL)
+	}
+	if sent.ResourceName != "Test Workspace" {
+		t.Errorf("email ResourceName = %q, want Test Workspace", sent.ResourceName)
+	}
+	if sent.ResourceKind != "workspace" {
+		t.Errorf("email ResourceKind = %q, want workspace", sent.ResourceKind)
 	}
 	if sent.InviterEmail != "admin@example.com" {
 		t.Errorf("email InviterEmail = %q, want admin@example.com", sent.InviterEmail)
 	}
 	if sent.Role != "workspace_member" {
 		t.Errorf("email Role = %q, want workspace_member", sent.Role)
+	}
+	if sent.AcceptURL != wantAcceptURL {
+		t.Errorf("email AcceptURL = %q, want %q", sent.AcceptURL, wantAcceptURL)
 	}
 }
 
@@ -208,5 +218,56 @@ func TestInviteWorkspaceMember_EmailFailureDoesNotBlockInvite(t *testing.T) {
 	}
 	if len(sender.calls) != 1 {
 		t.Errorf("email should have been attempted, got %d calls", len(sender.calls))
+	}
+}
+
+func TestListWorkspaceMemberships_InviteLinksOnlyForAdmins(t *testing.T) {
+	workspaceID := uuid.New()
+	orgID := uuid.New()
+	membershipID := uuid.New()
+	repo := &fakeWsMembershipRepo{
+		orgID: orgID,
+		memberships: []repository.WorkspaceMembershipFullRow{
+			{
+				ID:               membershipID,
+				WorkspaceID:      workspaceID,
+				OrganizationID:   orgID,
+				UserID:           uuid.New(),
+				Email:            "invitee@example.com",
+				Role:             "workspace_member",
+				MembershipStatus: "invited",
+			},
+		},
+		membershipCount: 1,
+	}
+	manager := NewWorkspaceMembershipManager(repo, &fakeEmailSender{}, "https://app.agentclash.dev")
+
+	memberCaller := Caller{
+		UserID: uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: "workspace_member"},
+		},
+	}
+	memberResult, err := manager.ListWorkspaceMemberships(context.Background(), memberCaller, workspaceID, 50, 0)
+	if err != nil {
+		t.Fatalf("ListWorkspaceMemberships returned error for member: %v", err)
+	}
+	if got := memberResult.Items[0].AcceptURL; got != "" {
+		t.Fatalf("member caller AcceptURL = %q, want empty", got)
+	}
+
+	adminCaller := Caller{
+		UserID: uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: "workspace_admin"},
+		},
+	}
+	adminResult, err := manager.ListWorkspaceMemberships(context.Background(), adminCaller, workspaceID, 50, 0)
+	if err != nil {
+		t.Fatalf("ListWorkspaceMemberships returned error for admin: %v", err)
+	}
+	wantAcceptURL := "https://app.agentclash.dev/invites/workspace/" + membershipID.String()
+	if got := adminResult.Items[0].AcceptURL; got != wantAcceptURL {
+		t.Fatalf("admin caller AcceptURL = %q, want %q", got, wantAcceptURL)
 	}
 }

@@ -1120,7 +1120,7 @@ paths:
               $ref: "#/components/schemas/InviteOrgMemberRequest"
       responses:
         "201":
-          description: Member invited
+          description: Member invited. Pending invitations include accept_url for copy-link fallback.
           content:
             application/json:
               schema:
@@ -1295,7 +1295,7 @@ paths:
               $ref: "#/components/schemas/InviteWorkspaceMemberRequest"
       responses:
         "201":
-          description: Member invited
+          description: Member invited. Pending invitations include accept_url for copy-link fallback.
           content:
             application/json:
               schema:
@@ -5419,6 +5419,10 @@ components:
         created_at:
           type: string
           format: date-time
+        accept_url:
+          type: string
+          format: uri
+          description: Present while the membership is invited.
 
     ListOrgMembershipsResponse:
       type: object
@@ -5486,6 +5490,10 @@ components:
         created_at:
           type: string
           format: date-time
+        accept_url:
+          type: string
+          format: uri
+          description: Present while the membership is invited.
 
     ListWorkspaceMembershipsResponse:
       type: object

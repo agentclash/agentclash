@@ -1,6 +1,10 @@
 const DEFAULT_RETURN_TO = "/dashboard";
 const DEVICE_PATH = "/auth/device";
 const GITHUB_SETUP_PATH = "/github/setup";
+const INVITE_ORG_PATH_PREFIX = "/invites/organization/";
+const INVITE_WORKSPACE_PATH_PREFIX = "/invites/workspace/";
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ALLOWED_RETURN_PATHS = new Set([
   DEFAULT_RETURN_TO,
   DEVICE_PATH,
@@ -24,6 +28,14 @@ export function sanitizeReturnTo(raw: string | null | undefined): string {
     return DEFAULT_RETURN_TO;
   }
 
+  if (parsed.pathname.startsWith(INVITE_ORG_PATH_PREFIX)) {
+    return buildInviteReturnTo("organization", parsed.pathname);
+  }
+
+  if (parsed.pathname.startsWith(INVITE_WORKSPACE_PATH_PREFIX)) {
+    return buildInviteReturnTo("workspace", parsed.pathname);
+  }
+
   if (!ALLOWED_RETURN_PATHS.has(parsed.pathname)) {
     return DEFAULT_RETURN_TO;
   }
@@ -37,6 +49,24 @@ export function sanitizeReturnTo(raw: string | null | undefined): string {
   }
 
   return DEFAULT_RETURN_TO;
+}
+
+export function buildInviteReturnTo(
+  inviteType: "organization" | "workspace",
+  pathname: string,
+): string {
+  const prefix =
+    inviteType === "organization"
+      ? INVITE_ORG_PATH_PREFIX
+      : INVITE_WORKSPACE_PATH_PREFIX;
+  if (!pathname.startsWith(prefix)) {
+    return DEFAULT_RETURN_TO;
+  }
+  const membershipId = pathname.slice(prefix.length);
+  if (!UUID_PATTERN.test(membershipId)) {
+    return DEFAULT_RETURN_TO;
+  }
+  return `${prefix}${membershipId}`;
 }
 
 export function buildGitHubSetupReturnTo(searchParams: URLSearchParams): string {

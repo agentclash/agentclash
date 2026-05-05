@@ -139,7 +139,6 @@ func main() {
 	runCreationManager.WithEntitlementGateService(billingManager)
 	orgManager := api.NewOrganizationManager(orgAuthz, repo)
 	wsManager := api.NewWorkspaceManager(orgAuthz, repo, billingManager)
-	orgMembershipManager := api.NewOrgMembershipManager(orgAuthz, repo, billingManager)
 
 	var emailSender email.Sender
 	if cfg.ResendAPIKey != "" {
@@ -149,6 +148,7 @@ func main() {
 		emailSender = email.NoopSender{}
 		logger.Info("email sender: noop (RESEND_API_KEY not set)")
 	}
+	orgMembershipManager := api.NewOrgMembershipManager(orgAuthz, repo, emailSender, cfg.FrontendURL, billingManager)
 	wsMembershipManager := api.NewWorkspaceMembershipManager(repo, emailSender, cfg.FrontendURL)
 	onboardingManager := api.NewOnboardingManager(repo)
 	infraManager := api.NewInfrastructureManager(repo)
