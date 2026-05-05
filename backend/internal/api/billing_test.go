@@ -569,6 +569,132 @@ func TestBillingManagerCreateCheckoutUsesDodoAPIWhenConfigured(t *testing.T) {
 	}
 }
 
+func TestBillingManagerCreateCheckoutIncludesDodoErrorBody(t *testing.T) {
+	workspaceID := uuid.New()
+	repo := newFakeBillingRepository(workspaceID)
+	dodoServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/checkouts" {
+			t.Fatalf("path = %s, want /checkouts", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		_, _ = w.Write([]byte(" \n {\"code\":\"INVALID_REQUEST_BODY\",\"message\":\"product_cart.quantity is invalid\"}\n "))
+	}))
+	defer dodoServer.Close()
+	manager := NewBillingManager(NewCallerOrganizationAuthorizer(), NewCallerWorkspaceAuthorizer(), repo, BillingManagerConfig{
+		DodoAPIKey:     "dodo_test_key",
+		DodoAPIBaseURL: dodoServer.URL,
+		DodoProductIDs: testDodoProductIDs(),
+		WebhookSecret:  "secret",
+	})
+	caller := Caller{
+		UserID: uuid.New(),
+		OrganizationMemberships: map[uuid.UUID]OrganizationMembership{
+			repo.orgID: {OrganizationID: repo.orgID, Role: "org_admin"},
+		},
+	}
+
+	_, err := manager.CreateCheckout(context.Background(), caller, repo.orgID, CreateBillingCheckoutInput{
+		PlanKey:       "pro",
+		BillingPeriod: "monthly",
+		SeatQuantity:  5,
+		ReturnURL:     "http://localhost:3000/billing/return",
+	})
+	if err == nil {
+		t.Fatal("expected Dodo checkout error")
+	}
+	errText := err.Error()
+	for _, want := range []string{"HTTP 422", "INVALID_REQUEST_BODY", "product_cart.quantity is invalid"} {
+		if !strings.Contains(errText, want) {
+			t.Fatalf("error = %q, want substring %q", errText, want)
+		}
+	}
+}
+
+func TestBillingManagerCreateCheckoutOmitsEmptyDodoErrorBody(t *testing.T) {
+	workspaceID := uuid.New()
+	repo := newFakeBillingRepository(workspaceID)
+	dodoServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/checkouts" {
+			t.Fatalf("path = %s, want /checkouts", r.URL.Path)
+		}
+		w.WriteHeader(http.StatusUnprocessableEntity)
+	}))
+	defer dodoServer.Close()
+	manager := NewBillingManager(NewCallerOrganizationAuthorizer(), NewCallerWorkspaceAuthorizer(), repo, BillingManagerConfig{
+		DodoAPIKey:     "dodo_test_key",
+		DodoAPIBaseURL: dodoServer.URL,
+		DodoProductIDs: testDodoProductIDs(),
+		WebhookSecret:  "secret",
+	})
+	caller := Caller{
+		UserID: uuid.New(),
+		OrganizationMemberships: map[uuid.UUID]OrganizationMembership{
+			repo.orgID: {OrganizationID: repo.orgID, Role: "org_admin"},
+		},
+	}
+
+	_, err := manager.CreateCheckout(context.Background(), caller, repo.orgID, CreateBillingCheckoutInput{
+		PlanKey:       "pro",
+		BillingPeriod: "monthly",
+		SeatQuantity:  5,
+		ReturnURL:     "http://localhost:3000/billing/return",
+	})
+	if err == nil {
+		t.Fatal("expected Dodo checkout error")
+	}
+	if err.Error() != "create dodo checkout session: dodo returned HTTP 422" {
+		t.Fatalf("error = %q, want status-only Dodo error", err.Error())
+	}
+}
+
+func TestCreateBillingCheckoutHandlerKeepsDodoErrorGeneric(t *testing.T) {
+	workspaceID := uuid.New()
+	repo := newFakeBillingRepository(workspaceID)
+	dodoServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		_, _ = w.Write([]byte(`{"code":"INVALID_REQUEST_BODY","message":"product_cart.quantity is invalid"}`))
+	}))
+	defer dodoServer.Close()
+	manager := NewBillingManager(NewCallerOrganizationAuthorizer(), NewCallerWorkspaceAuthorizer(), repo, BillingManagerConfig{
+		DodoAPIKey:     "dodo_test_key",
+		DodoAPIBaseURL: dodoServer.URL,
+		DodoProductIDs: testDodoProductIDs(),
+		WebhookSecret:  "secret",
+	})
+	caller := Caller{
+		UserID: uuid.New(),
+		OrganizationMemberships: map[uuid.UUID]OrganizationMembership{
+			repo.orgID: {OrganizationID: repo.orgID, Role: "org_admin"},
+		},
+	}
+
+	var logs bytes.Buffer
+	router := chi.NewRouter()
+	router.Post("/v1/organizations/{organizationID}/billing/checkout", createBillingCheckoutHandler(slog.New(slog.NewTextHandler(&logs, nil)), manager))
+	req := httptest.NewRequest(http.MethodPost, "/v1/organizations/"+repo.orgID.String()+"/billing/checkout", bytes.NewBufferString(`{
+		"plan_key":"pro",
+		"billing_period":"monthly",
+		"seat_quantity":5,
+		"return_url":"http://localhost:3000/billing/return"
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(context.WithValue(req.Context(), callerContextKey{}, caller))
+	rr := httptest.NewRecorder()
+
+	router.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500; body=%s", rr.Code, rr.Body.String())
+	}
+	if strings.Contains(rr.Body.String(), "INVALID_REQUEST_BODY") || strings.Contains(rr.Body.String(), "product_cart.quantity") {
+		t.Fatalf("response leaked Dodo body: %s", rr.Body.String())
+	}
+	if !strings.Contains(logs.String(), "INVALID_REQUEST_BODY") || !strings.Contains(logs.String(), "product_cart.quantity is invalid") {
+		t.Fatalf("logs = %q, want Dodo error details", logs.String())
+	}
+}
+
 func TestBillingManagerCreatePortalUsesDodoCustomerPortalSession(t *testing.T) {
 	workspaceID := uuid.New()
 	repo := newFakeBillingRepository(workspaceID)
@@ -609,6 +735,46 @@ func TestBillingManagerCreatePortalUsesDodoCustomerPortalSession(t *testing.T) {
 	}
 	if result.PortalURL != "https://customer.dodopayments.com/session/cps_test" {
 		t.Fatalf("portal URL = %q, want Dodo link", result.PortalURL)
+	}
+}
+
+func TestBillingManagerCreatePortalIncludesDodoErrorBody(t *testing.T) {
+	workspaceID := uuid.New()
+	repo := newFakeBillingRepository(workspaceID)
+	if err := repo.UpsertBillingAccount(context.Background(), repo.orgID, "cus_portal_test", "owner@example.com", "active"); err != nil {
+		t.Fatalf("seed billing account: %v", err)
+	}
+	dodoServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/customers/cus_portal_test/customer-portal/session" {
+			t.Fatalf("path = %s, want customer portal session path", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		_, _ = w.Write([]byte(`{"code":"INVALID_REQUEST_BODY","message":"customer portal unavailable"}`))
+	}))
+	defer dodoServer.Close()
+	manager := NewBillingManager(NewCallerOrganizationAuthorizer(), NewCallerWorkspaceAuthorizer(), repo, BillingManagerConfig{
+		DodoAPIKey:     "dodo_test_key",
+		DodoAPIBaseURL: dodoServer.URL,
+		DodoProductIDs: testDodoProductIDs(),
+		WebhookSecret:  "secret",
+	})
+	caller := Caller{
+		UserID: uuid.New(),
+		OrganizationMemberships: map[uuid.UUID]OrganizationMembership{
+			repo.orgID: {OrganizationID: repo.orgID, Role: "org_admin"},
+		},
+	}
+
+	_, err := manager.CreatePortal(context.Background(), caller, repo.orgID)
+	if err == nil {
+		t.Fatal("expected Dodo portal error")
+	}
+	errText := err.Error()
+	for _, want := range []string{"HTTP 422", "INVALID_REQUEST_BODY", "customer portal unavailable"} {
+		if !strings.Contains(errText, want) {
+			t.Fatalf("error = %q, want substring %q", errText, want)
+		}
 	}
 }
 
