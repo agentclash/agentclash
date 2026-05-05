@@ -86,9 +86,11 @@ export { AGENT_KINDS } from "./types";
 export { listRunFailures, type ListRunFailuresParams } from "./failure-reviews";
 export {
   buildPromotionOverrides,
+  captureProductionFailure,
   defaultPromotionSeverityForFailure,
   listRegressionSuites,
   promoteFailure,
+  type CaptureProductionFailureInput,
   type ListRegressionSuitesParams,
   type PromoteFailureInput,
   type PromoteFailureResult,

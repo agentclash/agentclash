@@ -3,6 +3,7 @@ package cmd
 import (
 	"encoding/json"
 	"net/http"
+	"os"
 	"testing"
 )
 
@@ -155,6 +156,45 @@ func TestRegressionCaseUpdatePayload(t *testing.T) {
 	}
 	if gotBody["title"] != "Policy regression" || gotBody["severity"] != "warning" {
 		t.Fatalf("unexpected body: %#v", gotBody)
+	}
+}
+
+func TestRegressionCaseCaptureProductionPayload(t *testing.T) {
+	var gotBody map[string]any
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"POST /v1/workspaces/ws-123/regression-suites/suite-1/production-failures": func(w http.ResponseWriter, r *http.Request) {
+			if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+				t.Fatalf("decode body: %v", err)
+			}
+			jsonHandler(201, map[string]any{"id": "case-1", "title": "Production incident"})(w, r)
+		},
+	})
+	defer srv.Close()
+
+	payloadPath := t.TempDir() + "/capture.json"
+	if err := os.WriteFile(payloadPath, []byte(`{"payload_snapshot":{"ticket":"example"},"expected_contract":{"validators":[]}}`), 0o600); err != nil {
+		t.Fatalf("write payload: %v", err)
+	}
+
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+	if err := executeCommand(t, []string{
+		"regression-suite", "case", "capture-production", "suite-1", "-w", "ws-123",
+		"--from-file", payloadPath,
+		"--source-challenge-pack-version-id", "version-1",
+		"--source-challenge-identity-id", "identity-1",
+		"--source-case-key", "prod-incident-123",
+		"--title", "Production incident",
+		"--failure-summary", "Agent emitted an invalid tool argument.",
+		"--failure-class", "tool_argument_error",
+		"--incident-id", "INC-123",
+	}, srv.URL); err != nil {
+		t.Fatalf("capture production error: %v", err)
+	}
+	if gotBody["source_challenge_pack_version_id"] != "version-1" || gotBody["incident_id"] != "INC-123" {
+		t.Fatalf("unexpected body: %#v", gotBody)
+	}
+	if _, ok := gotBody["payload_snapshot"].(map[string]any); !ok {
+		t.Fatalf("payload_snapshot = %#v, want object from file", gotBody["payload_snapshot"])
 	}
 }
 

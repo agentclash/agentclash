@@ -2706,6 +2706,45 @@ paths:
         "404":
           $ref: "#/components/responses/NotFoundError"
 
+  /v1/workspaces/{workspaceID}/regression-suites/{suiteID}/production-failures:
+    post:
+      operationId: captureProductionFailure
+      tags: [Regressions]
+      summary: Capture a production failure as a proposed regression case
+      description: >
+        Creates a proposed regression case from an external or production
+        incident without requiring a run-agent failure review item.
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/RegressionSuiteID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CaptureProductionFailureInput"
+      responses:
+        "201":
+          description: Production failure captured as a proposed regression case
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegressionCase"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+
   /v1/workspaces/{workspaceID}/regression-cases/{caseID}:
     patch:
       operationId: patchRegressionCase
@@ -7071,6 +7110,67 @@ components:
           $ref: "#/components/schemas/RegressionCaseStatus"
         severity:
           $ref: "#/components/schemas/RegressionSeverity"
+
+    CaptureProductionFailureInput:
+      type: object
+      required:
+        - source_challenge_pack_version_id
+        - source_challenge_identity_id
+        - source_case_key
+        - title
+        - failure_summary
+        - payload_snapshot
+      properties:
+        source_challenge_pack_version_id:
+          type: string
+          format: uuid
+        source_challenge_input_set_id:
+          type: string
+          format: uuid
+        source_challenge_identity_id:
+          type: string
+          format: uuid
+        source_case_key:
+          type: string
+          description: Stable external case, session, or incident key.
+        source_item_key:
+          type: string
+        title:
+          type: string
+        failure_summary:
+          type: string
+        failure_class:
+          $ref: "#/components/schemas/FailureReviewFailureClass"
+        evidence_tier:
+          $ref: "#/components/schemas/FailureReviewEvidenceTier"
+        severity:
+          $ref: "#/components/schemas/RegressionSeverity"
+        promotion_mode:
+          $ref: "#/components/schemas/RegressionPromotionMode"
+        payload_snapshot:
+          type: object
+          additionalProperties: true
+        expected_contract:
+          type: object
+          additionalProperties: true
+        validator_overrides:
+          anyOf:
+            - type: object
+              additionalProperties: true
+            - type: "null"
+        metadata:
+          type: object
+          additionalProperties: true
+        incident_id:
+          type: string
+        external_url:
+          type: string
+        source:
+          type: string
+          description: External production system label; defaults to production.
+        observed_at:
+          type: string
+          format: date-time
 
     PromoteFailureInput:
       type: object

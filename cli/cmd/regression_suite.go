@@ -16,6 +16,7 @@ func init() {
 	regressionSuiteCmd.AddCommand(regressionSuiteCasesCmd)
 	regressionSuiteCmd.AddCommand(regressionCaseCmd)
 	regressionCaseCmd.AddCommand(regressionCaseUpdateCmd)
+	regressionCaseCmd.AddCommand(regressionCaseCaptureProductionCmd)
 
 	regressionSuiteCreateCmd.Flags().String("from-file", "", "JSON file with regression suite create payload")
 	regressionSuiteCreateCmd.Flags().String("source-challenge-pack-id", "", "Source challenge pack ID")
@@ -34,6 +35,22 @@ func init() {
 	regressionCaseUpdateCmd.Flags().String("description", "", "Case description")
 	regressionCaseUpdateCmd.Flags().String("status", "", "Case status: proposed, active, muted, archived, or rejected")
 	regressionCaseUpdateCmd.Flags().String("severity", "", "Case severity: info, warning, or blocking")
+
+	regressionCaseCaptureProductionCmd.Flags().String("from-file", "", "JSON file with production failure capture payload")
+	regressionCaseCaptureProductionCmd.Flags().String("source-challenge-pack-version-id", "", "Source challenge pack version ID")
+	regressionCaseCaptureProductionCmd.Flags().String("source-challenge-input-set-id", "", "Source challenge input set ID")
+	regressionCaseCaptureProductionCmd.Flags().String("source-challenge-identity-id", "", "Source challenge identity ID")
+	regressionCaseCaptureProductionCmd.Flags().String("source-case-key", "", "Source production case or incident key")
+	regressionCaseCaptureProductionCmd.Flags().String("source-item-key", "", "Source item key")
+	regressionCaseCaptureProductionCmd.Flags().String("title", "", "Regression case title")
+	regressionCaseCaptureProductionCmd.Flags().String("failure-summary", "", "Failure summary")
+	regressionCaseCaptureProductionCmd.Flags().String("failure-class", "", "Failure class")
+	regressionCaseCaptureProductionCmd.Flags().String("evidence-tier", "", "Evidence tier")
+	regressionCaseCaptureProductionCmd.Flags().String("severity", "", "Case severity: info, warning, or blocking")
+	regressionCaseCaptureProductionCmd.Flags().String("promotion-mode", "", "Promotion mode: full_executable, output_only, or manual")
+	regressionCaseCaptureProductionCmd.Flags().String("incident-id", "", "Production incident ID")
+	regressionCaseCaptureProductionCmd.Flags().String("external-url", "", "Production incident URL")
+	regressionCaseCaptureProductionCmd.Flags().String("source", "", "Production source label")
 }
 
 var regressionSuiteCmd = &cobra.Command{
@@ -237,6 +254,52 @@ var regressionCaseUpdateCmd = &cobra.Command{
 			return rc.Output.PrintRaw(regressionCase)
 		}
 		rc.Output.PrintSuccess(fmt.Sprintf("Updated regression case %s", args[0]))
+		return nil
+	},
+}
+
+var regressionCaseCaptureProductionCmd = &cobra.Command{
+	Use:   "capture-production <suiteId>",
+	Short: "Capture a production failure as a proposed regression case",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		rc := GetRunContext(cmd)
+		wsID := RequireWorkspace(cmd)
+		body, err := loadBodyFromFileOrFlags(cmd)
+		if err != nil {
+			return err
+		}
+		setFlagIfChanged(cmd, body, "source-challenge-pack-version-id", "source_challenge_pack_version_id")
+		setFlagIfChanged(cmd, body, "source-challenge-input-set-id", "source_challenge_input_set_id")
+		setFlagIfChanged(cmd, body, "source-challenge-identity-id", "source_challenge_identity_id")
+		setFlagIfChanged(cmd, body, "source-case-key", "source_case_key")
+		setFlagIfChanged(cmd, body, "source-item-key", "source_item_key")
+		setFlagIfChanged(cmd, body, "title", "title")
+		setFlagIfChanged(cmd, body, "failure-summary", "failure_summary")
+		setFlagIfChanged(cmd, body, "failure-class", "failure_class")
+		setFlagIfChanged(cmd, body, "evidence-tier", "evidence_tier")
+		setFlagIfChanged(cmd, body, "severity", "severity")
+		setFlagIfChanged(cmd, body, "promotion-mode", "promotion_mode")
+		setFlagIfChanged(cmd, body, "incident-id", "incident_id")
+		setFlagIfChanged(cmd, body, "external-url", "external_url")
+		setFlagIfChanged(cmd, body, "source", "source")
+
+		resp, err := rc.Client.Post(cmd.Context(), "/v1/workspaces/"+wsID+"/regression-suites/"+args[0]+"/production-failures", body)
+		if err != nil {
+			return err
+		}
+		if apiErr := resp.ParseError(); apiErr != nil {
+			return apiErr
+		}
+
+		var regressionCase map[string]any
+		if err := resp.DecodeJSON(&regressionCase); err != nil {
+			return err
+		}
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(regressionCase)
+		}
+		rc.Output.PrintSuccess(fmt.Sprintf("Captured production failure as regression case %s", str(regressionCase["id"])))
 		return nil
 	},
 }

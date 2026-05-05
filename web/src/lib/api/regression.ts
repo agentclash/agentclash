@@ -3,6 +3,7 @@ import type {
   FailureReviewFailureClass,
   FailureReviewPromotionMode,
   RegressionCase,
+  RegressionPromotionMode,
   RegressionSeverity,
   RegressionSuite,
 } from "./types";
@@ -30,6 +31,28 @@ export interface PromoteFailureInput {
 export interface PromoteFailureResult {
   case: RegressionCase;
   created: boolean;
+}
+
+export interface CaptureProductionFailureInput {
+  source_challenge_pack_version_id: string;
+  source_challenge_input_set_id?: string;
+  source_challenge_identity_id: string;
+  source_case_key: string;
+  source_item_key?: string;
+  title: string;
+  failure_summary: string;
+  failure_class?: FailureReviewFailureClass | string;
+  evidence_tier?: string;
+  severity?: RegressionSeverity;
+  promotion_mode?: RegressionPromotionMode;
+  payload_snapshot: Record<string, unknown>;
+  expected_contract?: Record<string, unknown>;
+  validator_overrides?: Record<string, unknown> | null;
+  metadata?: Record<string, unknown>;
+  incident_id?: string;
+  external_url?: string;
+  source?: string;
+  observed_at?: string;
 }
 
 export function listRegressionSuites(
@@ -60,6 +83,18 @@ export async function promoteFailure(
     case: response.data,
     created: response.status === 201,
   };
+}
+
+export function captureProductionFailure(
+  api: ApiClient,
+  workspaceId: string,
+  suiteId: string,
+  input: CaptureProductionFailureInput,
+): Promise<RegressionCase> {
+  return api.post<RegressionCase>(
+    `/v1/workspaces/${workspaceId}/regression-suites/${suiteId}/production-failures`,
+    input,
+  );
 }
 
 export function defaultPromotionSeverityForFailure(
