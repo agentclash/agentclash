@@ -176,11 +176,33 @@ func TestPromptEvalValidateJSONEnvelopeForMissingFile(t *testing.T) {
 }
 
 func TestPromptEvalValidateRemoteRequiresWorkspace(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("AGENTCLASH_WORKSPACE", "")
 	path := writePromptEvalFixture(t, validPromptEvalYAML())
-	err := executeCommand(t, []string{"prompt-eval", "validate", path, "--remote"}, "http://unused")
+	stdout := captureStdout(t)
+	err := executeCommand(t, []string{"prompt-eval", "validate", path, "--remote", "--json"}, "http://unused")
+	out := stdout.finish()
 	var exitErr *ExitCodeError
 	if !errors.As(err, &exitErr) || exitErr.Code != promptEvalExitInvalid {
 		t.Fatalf("expected ExitCodeError{%d}, got %T %v", promptEvalExitInvalid, err, err)
+	}
+	var result promptEvalValidationResult
+	if err := json.Unmarshal([]byte(out), &result); err != nil {
+		t.Fatalf("decode json output: %v\n%s", err, out)
+	}
+	if result.Remote != nil {
+		t.Fatalf("remote payload should be absent when workspace is missing: %+v", result.Remote)
+	}
+	if !containsPromptEvalMessage(result.Errors, "no workspace specified for --remote") {
+		t.Fatalf("errors = %v", result.Errors)
+	}
+}
+
+func TestPromptEvalValidateCIRequiresRemote(t *testing.T) {
+	path := writePromptEvalFixture(t, validPromptEvalYAML())
+	result := runPromptEvalValidateJSON(t, []string{"prompt-eval", "validate", path, "--ci", "--json"}, "http://unused")
+	if result.Valid || !containsPromptEvalMessage(result.Errors, "--ci requires --remote") {
+		t.Fatalf("errors = %v", result.Errors)
 	}
 }
 
@@ -204,6 +226,20 @@ func TestPromptEvalValidateRemoteResolvesAliasesAndProviderAccounts(t *testing.T
 	}
 	if got := result.Remote.Models[0].ProviderAccountID; got != "pa-1" {
 		t.Fatalf("provider_account_id = %q, want pa-1", got)
+	}
+}
+
+func TestPromptEvalValidateRemoteFollowsPagination(t *testing.T) {
+	path := writePromptEvalFixture(t, validPromptEvalYAML())
+	srv := promptEvalRemoteFakeAPI(t, promptEvalRemoteFakeOptions{PaginateAliases: true})
+	defer srv.Close()
+
+	result := runPromptEvalRemoteValidateJSON(t, path, srv.URL, false)
+	if !result.Valid {
+		t.Fatalf("remote validate errors = %v", result.Errors)
+	}
+	if got := result.Remote.Models[0].ModelAliasID; got != "alias-1" {
+		t.Fatalf("model_alias_id = %q, want alias-1", got)
 	}
 }
 
@@ -408,6 +444,7 @@ type promptEvalRemoteFakeOptions struct {
 	Playgrounds      []map[string]any
 	TestCases        []map[string]any
 	OnWrite          func()
+	PaginateAliases  bool
 }
 
 func promptEvalRemoteFakeAPI(t *testing.T, options promptEvalRemoteFakeOptions) *httptest.Server {
@@ -429,7 +466,7 @@ func promptEvalRemoteFakeAPI(t *testing.T, options promptEvalRemoteFakeOptions) 
 		testCases = []map[string]any{}
 	}
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPost || r.Method == http.MethodPatch || r.Method == http.MethodDelete {
+		if r.Method == http.MethodPost || r.Method == http.MethodPatch || r.Method == http.MethodPut || r.Method == http.MethodDelete {
 			if options.OnWrite != nil {
 				options.OnWrite()
 			}
@@ -440,6 +477,10 @@ func promptEvalRemoteFakeAPI(t *testing.T, options promptEvalRemoteFakeOptions) 
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
 		case "/v1/workspaces/ws-1/model-aliases":
+			if options.PaginateAliases && r.URL.Query().Get("cursor") == "" {
+				json.NewEncoder(w).Encode(map[string]any{"items": []map[string]any{}, "next_cursor": "page-2"})
+				return
+			}
 			json.NewEncoder(w).Encode(map[string]any{"items": modelAliases})
 		case "/v1/workspaces/ws-1/provider-accounts":
 			json.NewEncoder(w).Encode(map[string]any{"items": providerAccounts})
@@ -460,6 +501,11 @@ func runPromptEvalRemoteValidateJSON(t *testing.T, path, apiURL string, ciMode b
 	if ciMode {
 		args = append(args, "--ci")
 	}
+	return runPromptEvalValidateJSON(t, args, apiURL)
+}
+
+func runPromptEvalValidateJSON(t *testing.T, args []string, apiURL string) promptEvalValidationResult {
+	t.Helper()
 	stdout := captureStdout(t)
 	err := executeCommand(t, args, apiURL)
 	out := stdout.finish()

@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -96,6 +97,11 @@ var promptEvalValidateCmd = &cobra.Command{
 		remote, _ := cmd.Flags().GetBool("remote")
 		ciMode, _ := cmd.Flags().GetBool("ci")
 		cfg, result := validatePromptEvalFileWithConfig(path, maxCases)
+		if result.Valid && ciMode && !remote {
+			result.Valid = false
+			result.Errors = append(result.Errors, "--ci requires --remote so CI-safe provider and workspace checks run")
+			result.ExitCode = promptEvalExitInvalid
+		}
 		if result.Valid && remote {
 			validatePromptEvalRemote(cmd, rc, cfg, ciMode, &result)
 			result.Valid = len(result.Errors) == 0
@@ -345,12 +351,12 @@ func validatePromptEvalConfig(cfg promptEvalConfig, maxCases int, result *prompt
 
 func validatePromptEvalRemote(cmd *cobra.Command, rc *RunContext, cfg promptEvalConfig, ciMode bool, result *promptEvalValidationResult) {
 	workspaceID := strings.TrimSpace(rc.Workspace)
-	remote := &promptEvalRemoteValidation{WorkspaceID: workspaceID}
-	result.Remote = remote
 	if workspaceID == "" {
 		result.Errors = append(result.Errors, "no workspace specified for --remote. Pass --workspace, set AGENTCLASH_WORKSPACE, or run agentclash link.")
 		return
 	}
+	remote := &promptEvalRemoteValidation{WorkspaceID: workspaceID}
+	result.Remote = remote
 
 	modelAliases, err := promptEvalListRemoteItems(cmd, rc, fmt.Sprintf("/v1/workspaces/%s/model-aliases", workspaceID))
 	if err != nil {
@@ -413,20 +419,34 @@ func validatePromptEvalRemote(cmd *cobra.Command, rc *RunContext, cfg promptEval
 }
 
 func promptEvalListRemoteItems(cmd *cobra.Command, rc *RunContext, path string) ([]map[string]any, error) {
-	resp, err := rc.Client.Get(cmd.Context(), path, nil)
-	if err != nil {
-		return nil, err
+	var out []map[string]any
+	var cursor string
+	for {
+		query := url.Values{}
+		if cursor != "" {
+			query.Set("cursor", cursor)
+		}
+		resp, err := rc.Client.Get(cmd.Context(), path, query)
+		if err != nil {
+			return nil, err
+		}
+		if apiErr := resp.ParseError(); apiErr != nil {
+			return nil, apiErr
+		}
+		var payload struct {
+			Items      []map[string]any `json:"items"`
+			NextCursor string           `json:"next_cursor"`
+		}
+		if err := resp.DecodeJSON(&payload); err != nil {
+			return nil, err
+		}
+		out = append(out, payload.Items...)
+		cursor = strings.TrimSpace(payload.NextCursor)
+		if cursor == "" {
+			break
+		}
 	}
-	if apiErr := resp.ParseError(); apiErr != nil {
-		return nil, apiErr
-	}
-	var payload struct {
-		Items []map[string]any `json:"items"`
-	}
-	if err := resp.DecodeJSON(&payload); err != nil {
-		return nil, err
-	}
-	return payload.Items, nil
+	return out, nil
 }
 
 func promptEvalResolveModelAlias(model promptEvalModel, aliases []map[string]any) (map[string]any, error) {
@@ -474,11 +494,9 @@ func promptEvalResolveProviderAccount(model promptEvalModel, alias map[string]an
 					return item, nil
 				}
 			}
+			return nil, fmt.Errorf("default provider account %q from model alias was not found", aliasProviderID)
 		}
-		providerKey := mapString(alias, "provider_key", "provider")
-		return promptEvalSingleProviderMatch(providers, func(item map[string]any) bool {
-			return providerKey != "" && mapString(item, "provider_key", "provider") == providerKey
-		}, "default provider account")
+		return nil, fmt.Errorf("model alias does not expose provider_account_id; set provider_account explicitly")
 	}
 	return promptEvalSingleProviderMatch(providers, func(item map[string]any) bool {
 		return mapString(item, "id") == selector ||
