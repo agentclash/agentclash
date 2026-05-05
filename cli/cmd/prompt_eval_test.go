@@ -511,6 +511,137 @@ func TestPromptEvalRunRerunNoopsExistingTestCases(t *testing.T) {
 	}
 }
 
+func TestPromptEvalRunFollowPassesGate(t *testing.T) {
+	path := writePromptEvalFixture(t, validPromptEvalYAML())
+	fake := newPromptEvalRunFake(t, nil)
+	defer fake.server.Close()
+
+	result, err := runPromptEvalRunJSONWithArgs(t, []string{"prompt-eval", "run", path, "-w", "ws-1", "--json", "--follow", "--poll-interval", "1ms"}, fake.server.URL)
+	if err != nil {
+		t.Fatalf("follow pass error: %v", err)
+	}
+	if result.GateVerdict != "pass" || result.Summary.AssertionsPassed != 1 || result.ExitCode != 0 {
+		t.Fatalf("unexpected follow result: %+v", result)
+	}
+	if got := result.Results[0].Telemetry["stability_checks"]; got == nil {
+		t.Fatalf("missing stability telemetry: %+v", result.Results[0].Telemetry)
+	}
+}
+
+func TestPromptEvalRunFollowFailsAssertionGate(t *testing.T) {
+	path := writePromptEvalFixture(t, validPromptEvalYAML())
+	fake := newPromptEvalRunFake(t, &promptEvalRunFakeState{resultVerdict: "fail"})
+	defer fake.server.Close()
+
+	result, err := runPromptEvalRunJSONWithArgs(t, []string{"prompt-eval", "run", path, "-w", "ws-1", "--json", "--follow", "--poll-interval", "1ms"}, fake.server.URL)
+	var exitErr *ExitCodeError
+	if !errors.As(err, &exitErr) || exitErr.Code != promptEvalExitGate {
+		t.Fatalf("expected gate exit, got %T %v with result %+v", err, err, result)
+	}
+	if result.GateVerdict != "fail" || result.ExitCode != promptEvalExitGate {
+		t.Fatalf("unexpected gate result: %+v", result)
+	}
+}
+
+func TestPromptEvalRunFollowUsesConfigThreshold(t *testing.T) {
+	body := strings.Replace(validPromptEvalYAML(), "assertion_pass_rate: 0.9", "assertion_pass_rate: 0.0", 1)
+	path := writePromptEvalFixture(t, body)
+	fake := newPromptEvalRunFake(t, &promptEvalRunFakeState{resultVerdict: "fail"})
+	defer fake.server.Close()
+
+	result, err := runPromptEvalRunJSONWithArgs(t, []string{"prompt-eval", "run", path, "-w", "ws-1", "--json", "--follow", "--poll-interval", "1ms"}, fake.server.URL)
+	if err != nil {
+		t.Fatalf("config threshold should allow zero pass rate: %v with result %+v", err, result)
+	}
+	if result.Results[0].Thresholds["assertion_pass_rate"] != 0 || result.GateVerdict != "pass" {
+		t.Fatalf("config threshold was not applied: %+v", result)
+	}
+}
+
+func TestPromptEvalRunFollowReportsExecutionError(t *testing.T) {
+	path := writePromptEvalFixture(t, validPromptEvalYAML())
+	fake := newPromptEvalRunFake(t, &promptEvalRunFakeState{caseStatus: "failed"})
+	defer fake.server.Close()
+
+	result, err := runPromptEvalRunJSONWithArgs(t, []string{"prompt-eval", "run", path, "-w", "ws-1", "--json", "--follow", "--poll-interval", "1ms"}, fake.server.URL)
+	var exitErr *ExitCodeError
+	if !errors.As(err, &exitErr) || exitErr.Code != promptEvalExitExecution {
+		t.Fatalf("expected execution exit, got %T %v with result %+v", err, err, result)
+	}
+	if result.Summary.ExecutionErrors != 1 {
+		t.Fatalf("execution errors = %d, want 1", result.Summary.ExecutionErrors)
+	}
+}
+
+func TestPromptEvalRunFollowTimesOutWithPartialResults(t *testing.T) {
+	path := writePromptEvalFixture(t, validPromptEvalYAML())
+	fake := newPromptEvalRunFake(t, &promptEvalRunFakeState{experimentStatus: "running"})
+	defer fake.server.Close()
+
+	result, err := runPromptEvalRunJSONWithArgs(t, []string{"prompt-eval", "run", path, "-w", "ws-1", "--json", "--follow", "--poll-interval", "1ms", "--timeout", "1ms"}, fake.server.URL)
+	var exitErr *ExitCodeError
+	if !errors.As(err, &exitErr) || exitErr.Code != promptEvalExitExecution {
+		t.Fatalf("expected timeout execution exit, got %T %v with result %+v", err, err, result)
+	}
+	if !containsPromptEvalMessage(result.Errors, "timed out") {
+		t.Fatalf("errors = %v", result.Errors)
+	}
+	if len(result.Results) != 1 || result.Results[0].Summary.TotalCases != 1 {
+		t.Fatalf("timeout did not include partial results: %+v", result)
+	}
+}
+
+func TestPromptEvalRunFollowAuthFailureDuringPoll(t *testing.T) {
+	path := writePromptEvalFixture(t, validPromptEvalYAML())
+	fake := newPromptEvalRunFake(t, &promptEvalRunFakeState{authOnExperimentGet: true})
+	defer fake.server.Close()
+
+	result, err := runPromptEvalRunJSONWithArgs(t, []string{"prompt-eval", "run", path, "-w", "ws-1", "--json", "--follow", "--poll-interval", "1ms"}, fake.server.URL)
+	var exitErr *ExitCodeError
+	if !errors.As(err, &exitErr) || exitErr.Code != promptEvalExitInvalid {
+		t.Fatalf("expected auth invalid exit, got %T %v with result %+v", err, err, result)
+	}
+}
+
+func TestPromptEvalResultsCommandPrintsStableEnvelope(t *testing.T) {
+	fake := newPromptEvalRunFake(t, nil)
+	defer fake.server.Close()
+
+	stdout := captureStdout(t)
+	err := executeCommand(t, []string{"prompt-eval", "results", "exp-1", "--json"}, fake.server.URL)
+	out := stdout.finish()
+	if err != nil {
+		t.Fatalf("results command error: %v\n%s", err, out)
+	}
+	var result promptEvalResultsEnvelope
+	if err := json.Unmarshal([]byte(out), &result); err != nil {
+		t.Fatalf("decode results json: %v\n%s", err, out)
+	}
+	if result.SchemaVersion != 1 || result.Summary.AssertionsPassed != 1 || result.GateVerdict != "pass" || result.Telemetry["row_count"] == nil {
+		t.Fatalf("unexpected results envelope: %+v", result)
+	}
+}
+
+func TestPromptEvalResultsCommandWrapsBackendErrorExit(t *testing.T) {
+	fake := newPromptEvalRunFake(t, &promptEvalRunFakeState{resultStatusCode: http.StatusBadGateway})
+	defer fake.server.Close()
+
+	stdout := captureStdout(t)
+	err := executeCommand(t, []string{"prompt-eval", "results", "exp-1", "--json"}, fake.server.URL)
+	out := stdout.finish()
+	var exitErr *ExitCodeError
+	if !errors.As(err, &exitErr) || exitErr.Code != promptEvalExitExecution {
+		t.Fatalf("expected execution exit, got %T %v\n%s", err, err, out)
+	}
+	var result promptEvalResultsEnvelope
+	if err := json.Unmarshal([]byte(out), &result); err != nil {
+		t.Fatalf("decode results json: %v\n%s", err, out)
+	}
+	if result.ExitCode != promptEvalExitExecution {
+		t.Fatalf("json exit_code = %d, want %d", result.ExitCode, promptEvalExitExecution)
+	}
+}
+
 func TestChallengePackPromptEvalTemplateMentionsPromptEvalInit(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "pack.yaml")
@@ -690,23 +821,33 @@ func runPromptEvalValidateJSON(t *testing.T, args []string, apiURL string) promp
 }
 
 type promptEvalRunFakeState struct {
-	playgrounds []map[string]any
-	testCases   []map[string]any
+	playgrounds         []map[string]any
+	testCases           []map[string]any
+	experimentStatus    string
+	caseStatus          string
+	resultVerdict       string
+	resultStatusCode    int
+	authOnExperimentGet bool
 }
 
 type promptEvalRunFake struct {
-	server            *httptest.Server
-	mu                sync.Mutex
-	playgrounds       []map[string]any
-	testCases         []map[string]any
-	playgroundCreates []map[string]any
-	playgroundUpdates []map[string]any
-	testCaseCreates   []map[string]any
-	testCaseUpdates   []map[string]any
-	experimentCreates []map[string]any
-	deleteCalled      bool
-	nextPlaygroundID  int
-	nextExperimentID  int
+	server              *httptest.Server
+	mu                  sync.Mutex
+	playgrounds         []map[string]any
+	testCases           []map[string]any
+	playgroundCreates   []map[string]any
+	playgroundUpdates   []map[string]any
+	testCaseCreates     []map[string]any
+	testCaseUpdates     []map[string]any
+	experimentCreates   []map[string]any
+	deleteCalled        bool
+	nextPlaygroundID    int
+	nextExperimentID    int
+	experimentStatus    string
+	caseStatus          string
+	resultVerdict       string
+	resultStatusCode    int
+	authOnExperimentGet bool
 }
 
 func newPromptEvalRunFake(t *testing.T, state *promptEvalRunFakeState) *promptEvalRunFake {
@@ -715,6 +856,20 @@ func newPromptEvalRunFake(t *testing.T, state *promptEvalRunFakeState) *promptEv
 	if state != nil {
 		f.playgrounds = append(f.playgrounds, state.playgrounds...)
 		f.testCases = append(f.testCases, state.testCases...)
+		f.experimentStatus = state.experimentStatus
+		f.caseStatus = state.caseStatus
+		f.resultVerdict = state.resultVerdict
+		f.resultStatusCode = state.resultStatusCode
+		f.authOnExperimentGet = state.authOnExperimentGet
+	}
+	if f.experimentStatus == "" {
+		f.experimentStatus = "completed"
+	}
+	if f.caseStatus == "" {
+		f.caseStatus = "completed"
+	}
+	if f.resultVerdict == "" {
+		f.resultVerdict = "pass"
 	}
 	f.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		f.mu.Lock()
@@ -763,6 +918,21 @@ func newPromptEvalRunFake(t *testing.T, state *promptEvalRunFakeState) *promptEv
 			id := fmt.Sprintf("exp-%d", f.nextExperimentID)
 			f.nextExperimentID++
 			json.NewEncoder(w).Encode(map[string]any{"id": id, "status": "queued", "url": "https://agentclash.dev/playground-experiments/" + id})
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/playground-experiments/") && strings.HasSuffix(r.URL.Path, "/results"):
+			if f.resultStatusCode != 0 {
+				w.WriteHeader(f.resultStatusCode)
+				json.NewEncoder(w).Encode(map[string]any{"error": map[string]any{"code": "bad_gateway", "message": "bad gateway"}})
+				return
+			}
+			json.NewEncoder(w).Encode(map[string]any{"items": []map[string]any{f.resultItem()}})
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/playground-experiments/"):
+			if f.authOnExperimentGet {
+				w.WriteHeader(http.StatusUnauthorized)
+				json.NewEncoder(w).Encode(map[string]any{"error": map[string]any{"code": "unauthorized", "message": "unauthorized"}})
+				return
+			}
+			id := strings.TrimPrefix(r.URL.Path, "/v1/playground-experiments/")
+			json.NewEncoder(w).Encode(map[string]any{"id": id, "status": f.experimentStatus})
 		case r.Method == http.MethodDelete:
 			f.deleteCalled = true
 			w.WriteHeader(http.StatusInternalServerError)
@@ -773,6 +943,30 @@ func newPromptEvalRunFake(t *testing.T, state *promptEvalRunFakeState) *promptEv
 		}
 	}))
 	return f
+}
+
+func (f *promptEvalRunFake) resultItem() map[string]any {
+	validatorVerdict := f.resultVerdict
+	score := 1.0
+	if validatorVerdict == "fail" {
+		score = 0
+	}
+	item := map[string]any{
+		"id":               "res-1",
+		"case_key":         "greeting",
+		"status":           f.caseStatus,
+		"actual_output":    "Bonjour",
+		"latency_ms":       12,
+		"total_tokens":     7,
+		"dimension_scores": map[string]any{"correctness": score},
+		"validator_results": []any{
+			map[string]any{"key": "v1", "type": "contains", "verdict": validatorVerdict, "normalized_score": score, "reason": ""},
+		},
+	}
+	if f.caseStatus == "failed" {
+		item["error_message"] = "provider failed"
+	}
+	return item
 }
 
 func decodePromptEvalRequestBody(t *testing.T, r *http.Request) map[string]any {
@@ -786,17 +980,23 @@ func decodePromptEvalRequestBody(t *testing.T, r *http.Request) map[string]any {
 
 func runPromptEvalRunJSON(t *testing.T, path, apiURL string) promptEvalRunResult {
 	t.Helper()
-	stdout := captureStdout(t)
-	err := executeCommand(t, []string{"prompt-eval", "run", path, "-w", "ws-1", "--json"}, apiURL)
-	out := stdout.finish()
+	result, err := runPromptEvalRunJSONWithArgs(t, []string{"prompt-eval", "run", path, "-w", "ws-1", "--json"}, apiURL)
 	if err != nil {
-		t.Fatalf("prompt-eval run error: %v\n%s", err, out)
+		t.Fatalf("prompt-eval run error: %v", err)
 	}
+	return result
+}
+
+func runPromptEvalRunJSONWithArgs(t *testing.T, args []string, apiURL string) (promptEvalRunResult, error) {
+	t.Helper()
+	stdout := captureStdout(t)
+	err := executeCommand(t, args, apiURL)
+	out := stdout.finish()
 	var result promptEvalRunResult
 	if err := json.Unmarshal([]byte(out), &result); err != nil {
 		t.Fatalf("decode run json: %v\n%s", err, out)
 	}
-	return result
+	return result, err
 }
 
 func promptEvalValidatorTypesContain(validators []any, want string) bool {
