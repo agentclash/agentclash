@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -112,6 +113,7 @@ func TestCreateRunEndpointPropagatesCIMetadata(t *testing.T) {
 					Workflow:          "AgentClash gate",
 					WorkflowRunURL:    "https://github.com/acme/agent/actions/runs/99",
 					EventName:         "pull_request",
+					DefaultBranch:     "main",
 				},
 				CreatedAt: time.Date(2026, 3, 13, 12, 0, 0, 0, time.UTC),
 			},
@@ -131,7 +133,8 @@ func TestCreateRunEndpointPropagatesCIMetadata(t *testing.T) {
 			"commit_sha":"abc123",
 			"workflow":"AgentClash gate",
 			"workflow_run_url":"https://github.com/acme/agent/actions/runs/99",
-			"event_name":"pull_request"
+			"event_name":"pull_request",
+			"default_branch":" main "
 		}
 	}`))
 	req.Header.Set("Content-Type", "application/json")
@@ -170,7 +173,7 @@ func TestCreateRunEndpointPropagatesCIMetadata(t *testing.T) {
 	if recorder.Code != http.StatusCreated {
 		t.Fatalf("status = %d, want %d\n%s", recorder.Code, http.StatusCreated, recorder.Body.String())
 	}
-	if service.input.CIMetadata == nil || service.input.CIMetadata.Repository != "acme/agent" || service.input.CIMetadata.Branch != "feature/gate" {
+	if service.input.CIMetadata == nil || service.input.CIMetadata.Repository != "acme/agent" || service.input.CIMetadata.Branch != "feature/gate" || service.input.CIMetadata.DefaultBranch != "main" {
 		t.Fatalf("input ci metadata = %+v, want trimmed request metadata", service.input.CIMetadata)
 	}
 	if service.input.CIMetadata.PullRequestNumber == nil || *service.input.CIMetadata.PullRequestNumber != prNumber {
@@ -181,8 +184,8 @@ func TestCreateRunEndpointPropagatesCIMetadata(t *testing.T) {
 	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
 		t.Fatalf("failed to decode response: %v", err)
 	}
-	if response.CIMetadata == nil || response.CIMetadata.WorkflowRunURL != "https://github.com/acme/agent/actions/runs/99" {
-		t.Fatalf("response ci metadata = %+v, want workflow link", response.CIMetadata)
+	if response.CIMetadata == nil || response.CIMetadata.WorkflowRunURL != "https://github.com/acme/agent/actions/runs/99" || response.CIMetadata.DefaultBranch != "main" {
+		t.Fatalf("response ci metadata = %+v, want workflow link and default branch", response.CIMetadata)
 	}
 }
 
@@ -281,6 +284,55 @@ func TestCreateRunEndpointRejectsUnsafeCIMetadataURL(t *testing.T) {
 	}
 	if !bytes.Contains(recorder.Body.Bytes(), []byte("ci_metadata.workflow_run_url must be an http or https URL")) {
 		t.Fatalf("body = %s, want workflow_run_url validation error", recorder.Body.String())
+	}
+}
+
+func TestCreateRunEndpointRejectsOverlongDefaultBranchCIMetadata(t *testing.T) {
+	workspaceID := uuid.New()
+	req := httptest.NewRequest(http.MethodPost, "/v1/runs", bytes.NewBufferString(`{
+		"workspace_id":"`+workspaceID.String()+`",
+		"challenge_pack_version_id":"`+uuid.New().String()+`",
+		"agent_deployment_ids":["`+uuid.New().String()+`"],
+		"ci_metadata":{"default_branch":"`+strings.Repeat("a", 513)+`"}
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(headerUserID, uuid.New().String())
+	req.Header.Set(headerWorkspaceMemberships, workspaceID.String()+":workspace_member")
+	recorder := httptest.NewRecorder()
+
+	newRouter("dev", nil,
+		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
+		NewDevelopmentAuthenticator(),
+		NewCallerWorkspaceAuthorizer(),
+		nil,
+		0,
+		&fakeRunCreationService{},
+		&fakeRunReadService{},
+		&fakeReplayReadService{},
+		stubHostedRunIngestionService{},
+		nil,
+		stubAgentDeploymentReadService{},
+		stubChallengePackReadService{},
+		stubAgentBuildService{},
+		noopReleaseGateService{},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+	).ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusBadRequest)
+	}
+	if !bytes.Contains(recorder.Body.Bytes(), []byte("ci_metadata.default_branch must be 512 characters or fewer")) {
+		t.Fatalf("body = %s, want default_branch validation error", recorder.Body.String())
 	}
 }
 
