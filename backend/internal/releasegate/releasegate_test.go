@@ -342,6 +342,31 @@ func TestEvaluateBlocksInvalidScorecardBeforeScorecardPassFailure(t *testing.T) 
 	}
 }
 
+func TestEvaluateScorecardValidityWinsOverGenericEvidenceMissing(t *testing.T) {
+	policy := scorecardValidityTestPolicy()
+	policy.RequireEvidenceQuality = true
+	evaluation, err := Evaluate(testSummary(t, `{
+		"status":"comparable",
+		"dimension_deltas":{
+			"correctness":{"delta":0,"better_direction":"higher","state":"available"}
+		},
+		"scorecard_pass":{"baseline":true},
+		"scorecard_validity":{
+			"baseline":{"validity":"valid"},
+			"candidate":{"validity":"invalid","validity_reason":"pack authoring error"}
+		},
+		"failure_divergence":{"candidate_failed_baseline_succeeded":false,"both_failed_differently":false},
+		"replay_summary_divergence":{"state":"available"},
+		"evidence_quality":{"missing_fields":["scorecard_pass.candidate"]}
+	}`), policy)
+	if err != nil {
+		t.Fatalf("Evaluate returned error: %v", err)
+	}
+	if evaluation.ReasonCode != "candidate_scorecard_invalid" {
+		t.Fatalf("reason code = %q, want candidate_scorecard_invalid", evaluation.ReasonCode)
+	}
+}
+
 func TestEvaluateBlocksDegradedScorecardWithDistinctReason(t *testing.T) {
 	policy := scorecardValidityTestPolicy()
 	evaluation, err := Evaluate(testSummary(t, `{

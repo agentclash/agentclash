@@ -336,17 +336,6 @@ func Evaluate(summary ComparisonSummary, policy Policy) (Evaluation, error) {
 		}, nil
 	}
 
-	if normalized.RequireEvidenceQuality && len(details.MissingFields) > 0 {
-		details.TriggeredConditions = []string{"comparison_evidence_missing"}
-		return Evaluation{
-			Verdict:        VerdictInsufficientEvidence,
-			ReasonCode:     "comparison_evidence_missing",
-			Summary:        buildInsufficientSummary("comparison evidence is incomplete", "", details.MissingFields),
-			EvidenceStatus: EvidenceStatusInsufficient,
-			Details:        details,
-		}, nil
-	}
-
 	if side, validity := blockingScorecardValidity(summary.ScorecardValidity); validity != nil {
 		reasonCode := scorecardValidityReasonCode(side, validity.Validity)
 		details.TriggeredConditions = append(details.TriggeredConditions, reasonCode)
@@ -354,6 +343,17 @@ func Evaluate(summary ComparisonSummary, policy Policy) (Evaluation, error) {
 			Verdict:        VerdictInsufficientEvidence,
 			ReasonCode:     reasonCode,
 			Summary:        scorecardValiditySummary(side, *validity),
+			EvidenceStatus: EvidenceStatusInsufficient,
+			Details:        details,
+		}, nil
+	}
+
+	if normalized.RequireEvidenceQuality && len(details.MissingFields) > 0 {
+		details.TriggeredConditions = []string{"comparison_evidence_missing"}
+		return Evaluation{
+			Verdict:        VerdictInsufficientEvidence,
+			ReasonCode:     "comparison_evidence_missing",
+			Summary:        buildInsufficientSummary("comparison evidence is incomplete", "", details.MissingFields),
 			EvidenceStatus: EvidenceStatusInsufficient,
 			Details:        details,
 		}, nil
