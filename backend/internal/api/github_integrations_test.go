@@ -259,8 +259,91 @@ func TestGitHubIntegrationManagerCreateCISetupPullRequest(t *testing.T) {
 	if len(client.createFilesInput.Files) != 2 || client.createFilesInput.Files[0].Path != ".agentclash/ci.yaml" {
 		t.Fatalf("files = %#v", client.createFilesInput.Files)
 	}
-	if result.PullRequest.Number != 42 || result.Branch != client.createFilesInput.Branch || len(result.Files) != 2 {
+	if result.PullRequest == nil || result.PullRequest.Number != 42 || result.Branch != client.createFilesInput.Branch || len(result.Files) != 2 {
 		t.Fatalf("result = %#v", result)
+	}
+}
+
+func TestGitHubIntegrationManagerCreateCISetupPullRequestReturnsConflictsBeforeCreate(t *testing.T) {
+	workspaceID := uuid.New()
+	repo := &fakeGitHubIntegrationRepo{
+		organizationID: uuid.New(),
+		githubRepo: repository.GitHubInstallationRepository{
+			GitHubInstallationID: 123,
+			GitHubRepositoryID:   456,
+			FullName:             "acme/support-agent",
+			DefaultBranch:        "main",
+		},
+	}
+	client := &fakeGitHubAppClient{
+		checkConflicts: []CISetupFileConflict{
+			{Path: ".agentclash/ci.yaml", Exists: true, SHA: "abc123"},
+		},
+	}
+	manager := NewGitHubIntegrationManager(NewCallerWorkspaceAuthorizer(), repo, GitHubIntegrationConfig{
+		AppSlug:     "agentclash-dev",
+		StateSecret: "state-secret",
+	})
+	manager.client = client
+
+	result, err := manager.CreateCISetupPullRequest(context.Background(), testAgentHarnessCaller(workspaceID), workspaceID, CreateCISetupPullRequestInput{
+		GitHubRepositoryID: 456,
+		Files: []CISetupPullRequestFile{
+			{Path: ".agentclash/ci.yaml", Content: "version: 1\n"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateCISetupPullRequest error: %v", err)
+	}
+	if result.PullRequest != nil {
+		t.Fatalf("pull request = %#v, want nil on conflict", result.PullRequest)
+	}
+	if len(result.Conflicts) != 1 || result.Conflicts[0].Path != ".agentclash/ci.yaml" {
+		t.Fatalf("conflicts = %#v", result.Conflicts)
+	}
+	if client.createFilesInput.Branch != "" {
+		t.Fatalf("create should not run when conflicts are unconfirmed: %#v", client.createFilesInput)
+	}
+}
+
+func TestGitHubIntegrationManagerCreateCISetupPullRequestOverwriteAllowsConflicts(t *testing.T) {
+	workspaceID := uuid.New()
+	repo := &fakeGitHubIntegrationRepo{
+		organizationID: uuid.New(),
+		githubRepo: repository.GitHubInstallationRepository{
+			GitHubInstallationID: 123,
+			GitHubRepositoryID:   456,
+			FullName:             "acme/support-agent",
+			DefaultBranch:        "main",
+		},
+	}
+	client := &fakeGitHubAppClient{
+		checkConflicts: []CISetupFileConflict{
+			{Path: ".agentclash/ci.yaml", Exists: true, SHA: "abc123"},
+		},
+		pullRequest: githubPullRequest{Number: 43, HTMLURL: "https://github.com/acme/support-agent/pull/43", State: "open", Draft: true},
+	}
+	manager := NewGitHubIntegrationManager(NewCallerWorkspaceAuthorizer(), repo, GitHubIntegrationConfig{
+		AppSlug:     "agentclash-dev",
+		StateSecret: "state-secret",
+	})
+	manager.client = client
+
+	result, err := manager.CreateCISetupPullRequest(context.Background(), testAgentHarnessCaller(workspaceID), workspaceID, CreateCISetupPullRequestInput{
+		GitHubRepositoryID: 456,
+		OverwriteExisting:  true,
+		Files: []CISetupPullRequestFile{
+			{Path: ".agentclash/ci.yaml", Content: "version: 1\n"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateCISetupPullRequest error: %v", err)
+	}
+	if result.PullRequest == nil || result.PullRequest.Number != 43 {
+		t.Fatalf("result = %#v", result)
+	}
+	if client.createFilesInput.Branch == "" {
+		t.Fatalf("expected create input to be populated")
 	}
 }
 
@@ -310,6 +393,40 @@ func TestGitHubIntegrationManagerCreateCISetupPullRequestRequiresAdminAction(t *
 	}
 }
 
+func TestGitHubIntegrationManagerCreatesAndListsCIProfiles(t *testing.T) {
+	workspaceID := uuid.New()
+	repo := &fakeGitHubIntegrationRepo{organizationID: uuid.New()}
+	manager := NewGitHubIntegrationManager(NewCallerWorkspaceAuthorizer(), repo, GitHubIntegrationConfig{
+		AppSlug:     "agentclash-dev",
+		StateSecret: "state-secret",
+	})
+	caller := testAgentHarnessCaller(workspaceID)
+
+	created, err := manager.CreateCIProfile(context.Background(), caller, workspaceID, SaveCIProfileInput{
+		Name:                 "Default",
+		RepositoryFullName:   "acme/support-agent",
+		GitHubRepositoryID:   ptrInt64(456),
+		GitHubInstallationID: ptrInt64(123),
+		DefaultBranch:        "main",
+		ManifestPath:         ".agentclash/ci.yaml",
+		WorkflowPath:         ".github/workflows/agentclash.yml",
+		Config:               []byte(`{"agentBuildId":"build-1"}`),
+	})
+	if err != nil {
+		t.Fatalf("CreateCIProfile error: %v", err)
+	}
+	if created.Name != "Default" || created.WorkspaceID != workspaceID {
+		t.Fatalf("created = %#v", created)
+	}
+	profiles, err := manager.ListCIProfiles(context.Background(), caller, workspaceID)
+	if err != nil {
+		t.Fatalf("ListCIProfiles error: %v", err)
+	}
+	if len(profiles) != 1 || profiles[0].Name != "Default" {
+		t.Fatalf("profiles = %#v", profiles)
+	}
+}
+
 type fakeGitHubIntegrationRepo struct {
 	organizationID         uuid.UUID
 	installations          []repository.GitHubInstallation
@@ -323,6 +440,7 @@ type fakeGitHubIntegrationRepo struct {
 	binding                repository.BindGitHubInstallationToWorkspaceParams
 	upsertRepositories     []repository.UpsertGitHubInstallationRepositoryParams
 	upsertErr              error
+	ciProfiles             []repository.WorkspaceCIProfile
 }
 
 func (f *fakeGitHubIntegrationRepo) GetOrganizationIDByWorkspaceID(context.Context, uuid.UUID) (uuid.UUID, error) {
@@ -392,9 +510,63 @@ func (f *fakeGitHubIntegrationRepo) GetWorkspaceGitHubRepository(_ context.Conte
 	return f.githubRepo, nil
 }
 
+func (f *fakeGitHubIntegrationRepo) ListWorkspaceCIProfiles(context.Context, uuid.UUID) ([]repository.WorkspaceCIProfile, error) {
+	return f.ciProfiles, nil
+}
+
+func (f *fakeGitHubIntegrationRepo) GetWorkspaceCIProfile(_ context.Context, workspaceID uuid.UUID, profileID uuid.UUID) (repository.WorkspaceCIProfile, error) {
+	for _, profile := range f.ciProfiles {
+		if profile.WorkspaceID == workspaceID && profile.ID == profileID {
+			return profile, nil
+		}
+	}
+	return repository.WorkspaceCIProfile{}, repository.ErrWorkspaceCIProfileNotFound
+}
+
+func (f *fakeGitHubIntegrationRepo) CreateWorkspaceCIProfile(_ context.Context, p repository.CreateWorkspaceCIProfileParams) (repository.WorkspaceCIProfile, error) {
+	profile := repository.WorkspaceCIProfile{
+		ID:                   uuid.New(),
+		WorkspaceID:          p.WorkspaceID,
+		Name:                 p.Name,
+		RepositoryFullName:   p.RepositoryFullName,
+		GitHubRepositoryID:   p.GitHubRepositoryID,
+		GitHubInstallationID: p.GitHubInstallationID,
+		DefaultBranch:        p.DefaultBranch,
+		ManifestPath:         p.ManifestPath,
+		WorkflowPath:         p.WorkflowPath,
+		Config:               p.Config,
+		CreatedByUserID:      p.CreatedByUserID,
+		CreatedAt:            time.Now().UTC(),
+		UpdatedAt:            time.Now().UTC(),
+	}
+	f.ciProfiles = append(f.ciProfiles, profile)
+	return profile, nil
+}
+
+func (f *fakeGitHubIntegrationRepo) UpdateWorkspaceCIProfile(_ context.Context, p repository.UpdateWorkspaceCIProfileParams) (repository.WorkspaceCIProfile, error) {
+	for index, profile := range f.ciProfiles {
+		if profile.WorkspaceID == p.WorkspaceID && profile.ID == p.ID {
+			profile.Name = p.Name
+			profile.RepositoryFullName = p.RepositoryFullName
+			profile.GitHubRepositoryID = p.GitHubRepositoryID
+			profile.GitHubInstallationID = p.GitHubInstallationID
+			profile.DefaultBranch = p.DefaultBranch
+			profile.ManifestPath = p.ManifestPath
+			profile.WorkflowPath = p.WorkflowPath
+			profile.Config = p.Config
+			profile.UpdatedAt = time.Now().UTC()
+			f.ciProfiles[index] = profile
+			return profile, nil
+		}
+	}
+	return repository.WorkspaceCIProfile{}, repository.ErrWorkspaceCIProfileNotFound
+}
+
 type fakeGitHubAppClient struct {
 	installation     githubAPIInstallation
 	repositories     []githubAPIRepository
+	checkInput       githubCheckRepositoryFilesInput
+	checkConflicts   []CISetupFileConflict
 	createFilesInput githubCreateFilesPullRequestInput
 	pullRequest      githubPullRequest
 }
@@ -407,7 +579,16 @@ func (f fakeGitHubAppClient) ListInstallationRepositories(context.Context, int64
 	return f.repositories, nil
 }
 
+func (f *fakeGitHubAppClient) CheckRepositoryFiles(_ context.Context, input githubCheckRepositoryFilesInput) ([]CISetupFileConflict, error) {
+	f.checkInput = input
+	return f.checkConflicts, nil
+}
+
 func (f *fakeGitHubAppClient) CreateRepositoryFilesPullRequest(_ context.Context, input githubCreateFilesPullRequestInput) (githubPullRequest, error) {
 	f.createFilesInput = input
 	return f.pullRequest, nil
+}
+
+func ptrInt64(value int64) *int64 {
+	return &value
 }

@@ -7,6 +7,7 @@ const {
   mockGetAccessToken,
   mockCreateApiClient,
   mockListResponse,
+  mockPatch,
   mockPost,
   mockRunsResponse,
   toast,
@@ -14,11 +15,13 @@ const {
   mockGetAccessToken: vi.fn(),
   mockCreateApiClient: vi.fn(),
   mockListResponse: vi.fn(),
+  mockPatch: vi.fn(),
   mockPost: vi.fn(),
   mockRunsResponse: vi.fn(),
   toast: Object.assign(vi.fn(), {
     success: vi.fn(),
     error: vi.fn(),
+    warning: vi.fn(),
   }),
 }));
 
@@ -38,6 +41,7 @@ vi.mock("@/lib/api/swr", async (importOriginal) => {
       data: { items: mockListResponse(path) },
       isLoading: false,
       error: null,
+      mutate: vi.fn(),
     }),
     usePaginatedApiQuery: () => ({
       data: mockRunsResponse(),
@@ -111,6 +115,7 @@ const cleanups: Array<() => void> = [];
 beforeEach(() => {
   document.body.innerHTML = "";
   mockPost.mockReset();
+  mockPatch.mockReset();
   mockGetAccessToken.mockResolvedValue("token");
   mockCreateApiClient.mockReturnValue({
     get: vi.fn(async (path: string) => {
@@ -145,6 +150,7 @@ beforeEach(() => {
       }
       return { items: [] };
     }),
+    patch: mockPatch,
     post: mockPost,
   });
   mockPost.mockResolvedValue({
@@ -160,6 +166,20 @@ beforeEach(() => {
       { path: ".agentclash/ci.yaml" },
       { path: ".github/workflows/agentclash.yml" },
     ],
+  });
+  mockPatch.mockResolvedValue({
+    id: "profile-1",
+    workspace_id: "ws-1",
+    name: "Default CI profile",
+    repository_full_name: "acme/support-agent",
+    github_repository_id: 456,
+    github_installation_id: 123,
+    default_branch: "main",
+    manifest_path: ".agentclash/ci.yaml",
+    workflow_path: ".github/workflows/agentclash.yml",
+    config: {},
+    created_at: "2026-05-05T00:00:00Z",
+    updated_at: "2026-05-05T00:00:00Z",
   });
   mockListResponse.mockImplementation(listResponse);
   mockRunsResponse.mockReturnValue({
@@ -278,6 +298,81 @@ describe("CISetupClient", () => {
     );
     expect(document.body.textContent).toContain("Setup PR #7 created");
     expect(toast.success).toHaveBeenCalledWith("Created setup PR #7");
+  });
+
+  it("shows setup PR conflicts before overwriting generated files", async () => {
+    mockPost.mockResolvedValueOnce({
+      branch: "",
+      base_branch: "main",
+      files: [{ path: ".agentclash/ci.yaml" }],
+      conflicts: [{ path: ".agentclash/ci.yaml", exists: true, sha: "abc123" }],
+    });
+
+    renderClient();
+    await flushEffects();
+
+    const button = Array.from(document.querySelectorAll("button")).find(
+      (item) => item.textContent?.includes("Open setup PR"),
+    );
+    if (!button) throw new Error("Open setup PR button not found");
+
+    await act(async () => {
+      button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(document.body.textContent).toContain("Generated files already exist");
+    expect(document.body.textContent).toContain(".agentclash/ci.yaml");
+    expect(toast.warning).toHaveBeenCalledWith(
+      "Generated files already exist. Confirm overwrite to open a setup PR.",
+    );
+  });
+
+  it("saves the current setup as a reusable CI profile", async () => {
+    mockPost.mockResolvedValueOnce({
+      id: "profile-2",
+      workspace_id: "ws-1",
+      name: "Default CI profile",
+      repository_full_name: "acme/support-agent",
+      github_repository_id: 456,
+      github_installation_id: 123,
+      default_branch: "main",
+      manifest_path: ".agentclash/ci.yaml",
+      workflow_path: ".github/workflows/agentclash.yml",
+      config: {},
+      created_at: "2026-05-05T00:00:00Z",
+      updated_at: "2026-05-05T00:00:00Z",
+    });
+
+    renderClient();
+    await flushEffects();
+
+    const button = Array.from(document.querySelectorAll("button")).find(
+      (item) => item.textContent?.includes("Save profile"),
+    );
+    if (!button) throw new Error("Save profile button not found");
+
+    await act(async () => {
+      button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mockPost).toHaveBeenCalledWith(
+      "/v1/workspaces/ws-1/ci-profiles",
+      expect.objectContaining({
+        name: "Default CI profile",
+        repository_full_name: "acme/support-agent",
+        github_repository_id: 456,
+        github_installation_id: 123,
+        config: expect.objectContaining({
+          agentBuildId: "build-1",
+          selectedPackId: "pack-1",
+        }),
+      }),
+    );
+    expect(toast.success).toHaveBeenCalledWith("CI profile saved");
   });
 
   it("disables setup PR creation for manual repositories", async () => {
@@ -420,6 +515,9 @@ function listResponse(path: string) {
         last_synced_at: "2026-05-05T00:00:00Z",
       },
     ];
+  }
+  if (path.includes("/ci-profiles")) {
+    return [];
   }
   return [];
 }

@@ -408,14 +408,22 @@ export interface CreateCISetupPullRequestRequest {
   title?: string;
   body?: string;
   draft?: boolean;
+  check_only?: boolean;
+  overwrite_existing?: boolean;
   files: Array<{
     path: string;
     content: string;
   }>;
 }
 
+export interface CISetupFileConflict {
+  path: string;
+  exists: boolean;
+  sha?: string;
+}
+
 export interface CreateCISetupPullRequestResponse {
-  pull_request: {
+  pull_request?: {
     number: number;
     html_url: string;
     state: string;
@@ -426,6 +434,34 @@ export interface CreateCISetupPullRequestResponse {
   files: Array<{
     path: string;
   }>;
+  conflicts?: CISetupFileConflict[];
+}
+
+export interface CIProfile {
+  id: string;
+  workspace_id: string;
+  name: string;
+  repository_full_name: string;
+  github_repository_id?: number;
+  github_installation_id?: number;
+  default_branch: string;
+  manifest_path: string;
+  workflow_path: string;
+  config: unknown;
+  created_by_user_id?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SaveCIProfileRequest {
+  name: string;
+  repository_full_name: string;
+  github_repository_id?: number;
+  github_installation_id?: number;
+  default_branch: string;
+  manifest_path: string;
+  workflow_path: string;
+  config: unknown;
 }
 
 export type AgentHarnessExecutionStatus =

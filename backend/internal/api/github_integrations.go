@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/repository"
+	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
 
@@ -36,6 +37,10 @@ type GitHubIntegrationRepository interface {
 	ListWorkspaceGitHubInstallations(ctx context.Context, workspaceID uuid.UUID) ([]repository.GitHubInstallation, error)
 	ListWorkspaceGitHubRepositories(ctx context.Context, p repository.ListWorkspaceGitHubRepositoriesParams) ([]repository.GitHubInstallationRepository, error)
 	GetWorkspaceGitHubRepository(ctx context.Context, workspaceID uuid.UUID, githubRepositoryID int64, githubInstallationID *int64) (repository.GitHubInstallationRepository, error)
+	ListWorkspaceCIProfiles(ctx context.Context, workspaceID uuid.UUID) ([]repository.WorkspaceCIProfile, error)
+	GetWorkspaceCIProfile(ctx context.Context, workspaceID uuid.UUID, profileID uuid.UUID) (repository.WorkspaceCIProfile, error)
+	CreateWorkspaceCIProfile(ctx context.Context, p repository.CreateWorkspaceCIProfileParams) (repository.WorkspaceCIProfile, error)
+	UpdateWorkspaceCIProfile(ctx context.Context, p repository.UpdateWorkspaceCIProfileParams) (repository.WorkspaceCIProfile, error)
 }
 
 type GitHubIntegrationService interface {
@@ -43,6 +48,9 @@ type GitHubIntegrationService interface {
 	CompleteGitHubInstallation(ctx context.Context, caller Caller, workspaceID uuid.UUID, input CompleteGitHubInstallationInput) (CompleteGitHubInstallationResult, error)
 	ListGitHubInstallations(ctx context.Context, caller Caller, workspaceID uuid.UUID) ([]repository.GitHubInstallation, error)
 	ListGitHubRepositories(ctx context.Context, caller Caller, workspaceID uuid.UUID, query string) ([]repository.GitHubInstallationRepository, error)
+	ListCIProfiles(ctx context.Context, caller Caller, workspaceID uuid.UUID) ([]repository.WorkspaceCIProfile, error)
+	CreateCIProfile(ctx context.Context, caller Caller, workspaceID uuid.UUID, input SaveCIProfileInput) (repository.WorkspaceCIProfile, error)
+	UpdateCIProfile(ctx context.Context, caller Caller, workspaceID uuid.UUID, profileID uuid.UUID, input SaveCIProfileInput) (repository.WorkspaceCIProfile, error)
 	CreateCISetupPullRequest(ctx context.Context, caller Caller, workspaceID uuid.UUID, input CreateCISetupPullRequestInput) (CreateCISetupPullRequestResult, error)
 	HandleGitHubWebhook(ctx context.Context, headers http.Header, body []byte) error
 }
@@ -90,6 +98,7 @@ type CompleteGitHubInstallationResult struct {
 type GitHubAppClient interface {
 	GetInstallation(ctx context.Context, installationID int64) (githubAPIInstallation, error)
 	ListInstallationRepositories(ctx context.Context, installationID int64) ([]githubAPIRepository, error)
+	CheckRepositoryFiles(ctx context.Context, input githubCheckRepositoryFilesInput) ([]CISetupFileConflict, error)
 	CreateRepositoryFilesPullRequest(ctx context.Context, input githubCreateFilesPullRequestInput) (githubPullRequest, error)
 }
 
@@ -100,6 +109,8 @@ type CreateCISetupPullRequestInput struct {
 	Title                string                   `json:"title,omitempty"`
 	Body                 string                   `json:"body,omitempty"`
 	Draft                *bool                    `json:"draft,omitempty"`
+	CheckOnly            bool                     `json:"check_only,omitempty"`
+	OverwriteExisting    bool                     `json:"overwrite_existing,omitempty"`
 	Files                []CISetupPullRequestFile `json:"files"`
 }
 
@@ -109,14 +120,60 @@ type CISetupPullRequestFile struct {
 }
 
 type CreateCISetupPullRequestResult struct {
-	PullRequest githubPullRequestResponse       `json:"pull_request"`
+	PullRequest *githubPullRequestResponse      `json:"pull_request,omitempty"`
 	Branch      string                          `json:"branch"`
 	BaseBranch  string                          `json:"base_branch"`
 	Files       []CISetupPullRequestFileSummary `json:"files"`
+	Conflicts   []CISetupFileConflict           `json:"conflicts,omitempty"`
 }
 
 type CISetupPullRequestFileSummary struct {
 	Path string `json:"path"`
+}
+
+type CISetupFileConflict struct {
+	Path   string `json:"path"`
+	Exists bool   `json:"exists"`
+	SHA    string `json:"sha,omitempty"`
+}
+
+type SaveCIProfileInput struct {
+	Name                 string          `json:"name"`
+	RepositoryFullName   string          `json:"repository_full_name"`
+	GitHubRepositoryID   *int64          `json:"github_repository_id,omitempty"`
+	GitHubInstallationID *int64          `json:"github_installation_id,omitempty"`
+	DefaultBranch        string          `json:"default_branch"`
+	ManifestPath         string          `json:"manifest_path"`
+	WorkflowPath         string          `json:"workflow_path"`
+	Config               json.RawMessage `json:"config"`
+}
+
+type ciProfilesResponse struct {
+	Items []ciProfileResponse `json:"items"`
+}
+
+type ciProfileResponse struct {
+	ID                   uuid.UUID       `json:"id"`
+	WorkspaceID          uuid.UUID       `json:"workspace_id"`
+	Name                 string          `json:"name"`
+	RepositoryFullName   string          `json:"repository_full_name"`
+	GitHubRepositoryID   *int64          `json:"github_repository_id,omitempty"`
+	GitHubInstallationID *int64          `json:"github_installation_id,omitempty"`
+	DefaultBranch        string          `json:"default_branch"`
+	ManifestPath         string          `json:"manifest_path"`
+	WorkflowPath         string          `json:"workflow_path"`
+	Config               json.RawMessage `json:"config"`
+	CreatedByUserID      *uuid.UUID      `json:"created_by_user_id,omitempty"`
+	CreatedAt            time.Time       `json:"created_at"`
+	UpdatedAt            time.Time       `json:"updated_at"`
+}
+
+type githubCheckRepositoryFilesInput struct {
+	InstallationID int64
+	Owner          string
+	Repo           string
+	BaseBranch     string
+	Files          []CISetupPullRequestFile
 }
 
 type githubCreateFilesPullRequestInput struct {
@@ -299,6 +356,58 @@ func (m *GitHubIntegrationManager) ListGitHubRepositories(ctx context.Context, c
 	})
 }
 
+func (m *GitHubIntegrationManager) ListCIProfiles(ctx context.Context, caller Caller, workspaceID uuid.UUID) ([]repository.WorkspaceCIProfile, error) {
+	if err := AuthorizeWorkspaceAction(ctx, m.authorizer, caller, workspaceID, ActionReadWorkspace); err != nil {
+		return nil, err
+	}
+	return m.repo.ListWorkspaceCIProfiles(ctx, workspaceID)
+}
+
+func (m *GitHubIntegrationManager) CreateCIProfile(ctx context.Context, caller Caller, workspaceID uuid.UUID, input SaveCIProfileInput) (repository.WorkspaceCIProfile, error) {
+	if err := AuthorizeWorkspaceAction(ctx, m.authorizer, caller, workspaceID, ActionManageIntegrations); err != nil {
+		return repository.WorkspaceCIProfile{}, err
+	}
+	params, err := validateSaveCIProfileInput(input)
+	if err != nil {
+		return repository.WorkspaceCIProfile{}, err
+	}
+	createdBy := caller.UserID
+	return m.repo.CreateWorkspaceCIProfile(ctx, repository.CreateWorkspaceCIProfileParams{
+		WorkspaceID:          workspaceID,
+		Name:                 params.Name,
+		RepositoryFullName:   params.RepositoryFullName,
+		GitHubRepositoryID:   params.GitHubRepositoryID,
+		GitHubInstallationID: params.GitHubInstallationID,
+		DefaultBranch:        params.DefaultBranch,
+		ManifestPath:         params.ManifestPath,
+		WorkflowPath:         params.WorkflowPath,
+		Config:               params.Config,
+		CreatedByUserID:      &createdBy,
+	})
+}
+
+func (m *GitHubIntegrationManager) UpdateCIProfile(ctx context.Context, caller Caller, workspaceID uuid.UUID, profileID uuid.UUID, input SaveCIProfileInput) (repository.WorkspaceCIProfile, error) {
+	if err := AuthorizeWorkspaceAction(ctx, m.authorizer, caller, workspaceID, ActionManageIntegrations); err != nil {
+		return repository.WorkspaceCIProfile{}, err
+	}
+	params, err := validateSaveCIProfileInput(input)
+	if err != nil {
+		return repository.WorkspaceCIProfile{}, err
+	}
+	return m.repo.UpdateWorkspaceCIProfile(ctx, repository.UpdateWorkspaceCIProfileParams{
+		ID:                   profileID,
+		WorkspaceID:          workspaceID,
+		Name:                 params.Name,
+		RepositoryFullName:   params.RepositoryFullName,
+		GitHubRepositoryID:   params.GitHubRepositoryID,
+		GitHubInstallationID: params.GitHubInstallationID,
+		DefaultBranch:        params.DefaultBranch,
+		ManifestPath:         params.ManifestPath,
+		WorkflowPath:         params.WorkflowPath,
+		Config:               params.Config,
+	})
+}
+
 func (m *GitHubIntegrationManager) CreateCISetupPullRequest(ctx context.Context, caller Caller, workspaceID uuid.UUID, input CreateCISetupPullRequestInput) (CreateCISetupPullRequestResult, error) {
 	if err := AuthorizeWorkspaceAction(ctx, m.authorizer, caller, workspaceID, ActionManageIntegrations); err != nil {
 		return CreateCISetupPullRequestResult{}, err
@@ -347,6 +456,33 @@ func (m *GitHubIntegrationManager) CreateCISetupPullRequest(ctx context.Context,
 	if input.Draft != nil {
 		draft = *input.Draft
 	}
+	summaries := make([]CISetupPullRequestFileSummary, 0, len(files))
+	for _, file := range files {
+		summaries = append(summaries, CISetupPullRequestFileSummary{Path: file.Path})
+	}
+	conflicts, err := m.client.CheckRepositoryFiles(ctx, githubCheckRepositoryFilesInput{
+		InstallationID: selected.GitHubInstallationID,
+		Owner:          owner,
+		Repo:           repoName,
+		BaseBranch:     baseBranch,
+		Files:          files,
+	})
+	if err != nil {
+		return CreateCISetupPullRequestResult{}, err
+	}
+	existingConflicts := make([]CISetupFileConflict, 0)
+	for _, conflict := range conflicts {
+		if conflict.Exists {
+			existingConflicts = append(existingConflicts, conflict)
+		}
+	}
+	if input.CheckOnly || (len(existingConflicts) > 0 && !input.OverwriteExisting) {
+		return CreateCISetupPullRequestResult{
+			BaseBranch: baseBranch,
+			Files:      summaries,
+			Conflicts:  existingConflicts,
+		}, nil
+	}
 	branch := "agentclash/ci-setup/" + uuid.NewString()[:8]
 	pr, err := m.client.CreateRepositoryFilesPullRequest(ctx, githubCreateFilesPullRequestInput{
 		InstallationID: selected.GitHubInstallationID,
@@ -362,20 +498,67 @@ func (m *GitHubIntegrationManager) CreateCISetupPullRequest(ctx context.Context,
 	if err != nil {
 		return CreateCISetupPullRequestResult{}, err
 	}
-	summaries := make([]CISetupPullRequestFileSummary, 0, len(files))
-	for _, file := range files {
-		summaries = append(summaries, CISetupPullRequestFileSummary{Path: file.Path})
+	prResponse := githubPullRequestResponse{
+		Number:  pr.Number,
+		HTMLURL: pr.HTMLURL,
+		State:   pr.State,
+		Draft:   pr.Draft,
 	}
 	return CreateCISetupPullRequestResult{
-		PullRequest: githubPullRequestResponse{
-			Number:  pr.Number,
-			HTMLURL: pr.HTMLURL,
-			State:   pr.State,
-			Draft:   pr.Draft,
-		},
-		Branch:     branch,
-		BaseBranch: baseBranch,
-		Files:      summaries,
+		PullRequest: &prResponse,
+		Branch:      branch,
+		BaseBranch:  baseBranch,
+		Files:       summaries,
+		Conflicts:   existingConflicts,
+	}, nil
+}
+
+func validateSaveCIProfileInput(input SaveCIProfileInput) (SaveCIProfileInput, error) {
+	name := strings.TrimSpace(input.Name)
+	if name == "" {
+		return SaveCIProfileInput{}, GitHubIntegrationValidationError{Code: "invalid_profile_name", Message: "profile name is required"}
+	}
+	if len(name) > 120 {
+		return SaveCIProfileInput{}, GitHubIntegrationValidationError{Code: "invalid_profile_name", Message: "profile name must be 120 characters or fewer"}
+	}
+	repositoryFullName := strings.TrimSpace(input.RepositoryFullName)
+	if repositoryFullName != "" {
+		if _, _, ok := parseGitHubFullName(repositoryFullName); !ok {
+			return SaveCIProfileInput{}, GitHubIntegrationValidationError{Code: "invalid_github_repository", Message: "repository_full_name must be owner/repo"}
+		}
+	}
+	defaultBranch := strings.TrimSpace(input.DefaultBranch)
+	if defaultBranch == "" {
+		defaultBranch = "main"
+	}
+	manifestPath := strings.TrimSpace(input.ManifestPath)
+	if !isSafeRepositoryFilePath(manifestPath) {
+		return SaveCIProfileInput{}, GitHubIntegrationValidationError{Code: "invalid_manifest_path", Message: "manifest_path must be a relative repository path without traversal"}
+	}
+	workflowPath := strings.TrimSpace(input.WorkflowPath)
+	if !isSafeRepositoryFilePath(workflowPath) {
+		return SaveCIProfileInput{}, GitHubIntegrationValidationError{Code: "invalid_workflow_path", Message: "workflow_path must be a relative repository path without traversal"}
+	}
+	config := input.Config
+	if len(config) == 0 {
+		config = json.RawMessage(`{}`)
+	}
+	if len(config) > 1<<20 {
+		return SaveCIProfileInput{}, GitHubIntegrationValidationError{Code: "profile_config_too_large", Message: "profile config must be 1 MiB or smaller"}
+	}
+	var decoded any
+	if err := json.Unmarshal(config, &decoded); err != nil {
+		return SaveCIProfileInput{}, GitHubIntegrationValidationError{Code: "invalid_profile_config", Message: "profile config must be valid JSON"}
+	}
+	return SaveCIProfileInput{
+		Name:                 name,
+		RepositoryFullName:   repositoryFullName,
+		GitHubRepositoryID:   input.GitHubRepositoryID,
+		GitHubInstallationID: input.GitHubInstallationID,
+		DefaultBranch:        defaultBranch,
+		ManifestPath:         manifestPath,
+		WorkflowPath:         workflowPath,
+		Config:               config,
 	}, nil
 }
 
@@ -757,6 +940,26 @@ func (c *githubAppHTTPClient) ListInstallationRepositories(ctx context.Context, 
 	}
 }
 
+func (c *githubAppHTTPClient) CheckRepositoryFiles(ctx context.Context, input githubCheckRepositoryFilesInput) ([]CISetupFileConflict, error) {
+	token, err := c.createInstallationToken(ctx, input.InstallationID)
+	if err != nil {
+		return nil, err
+	}
+	conflicts := make([]CISetupFileConflict, 0, len(input.Files))
+	for _, file := range input.Files {
+		sha, err := c.getRepositoryContentSHA(ctx, token, input.Owner, input.Repo, file.Path, input.BaseBranch)
+		if err != nil {
+			return nil, err
+		}
+		conflicts = append(conflicts, CISetupFileConflict{
+			Path:   file.Path,
+			Exists: sha != "",
+			SHA:    sha,
+		})
+	}
+	return conflicts, nil
+}
+
 func (c *githubAppHTTPClient) CreateRepositoryFilesPullRequest(ctx context.Context, input githubCreateFilesPullRequestInput) (githubPullRequest, error) {
 	token, err := c.createInstallationToken(ctx, input.InstallationID)
 	if err != nil {
@@ -1064,6 +1267,88 @@ func listGitHubRepositoriesHandler(logger *slog.Logger, service GitHubIntegratio
 	}
 }
 
+func listCIProfilesHandler(logger *slog.Logger, service GitHubIntegrationService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		caller, err := CallerFromContext(r.Context())
+		if err != nil {
+			writeAuthzError(w, err)
+			return
+		}
+		workspaceID, err := WorkspaceIDFromContext(r.Context())
+		if err != nil {
+			writeAuthzError(w, err)
+			return
+		}
+		profiles, err := service.ListCIProfiles(r.Context(), caller, workspaceID)
+		if err != nil {
+			writeGitHubIntegrationError(w, logger, r, err)
+			return
+		}
+		items := make([]ciProfileResponse, 0, len(profiles))
+		for _, profile := range profiles {
+			items = append(items, mapCIProfileResponse(profile))
+		}
+		writeJSON(w, http.StatusOK, ciProfilesResponse{Items: items})
+	}
+}
+
+func createCIProfileHandler(logger *slog.Logger, service GitHubIntegrationService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		caller, err := CallerFromContext(r.Context())
+		if err != nil {
+			writeAuthzError(w, err)
+			return
+		}
+		workspaceID, err := WorkspaceIDFromContext(r.Context())
+		if err != nil {
+			writeAuthzError(w, err)
+			return
+		}
+		var input SaveCIProfileInput
+		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_json", "request body must be JSON")
+			return
+		}
+		profile, err := service.CreateCIProfile(r.Context(), caller, workspaceID, input)
+		if err != nil {
+			writeGitHubIntegrationError(w, logger, r, err)
+			return
+		}
+		writeJSON(w, http.StatusCreated, mapCIProfileResponse(profile))
+	}
+}
+
+func updateCIProfileHandler(logger *slog.Logger, service GitHubIntegrationService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		caller, err := CallerFromContext(r.Context())
+		if err != nil {
+			writeAuthzError(w, err)
+			return
+		}
+		workspaceID, err := WorkspaceIDFromContext(r.Context())
+		if err != nil {
+			writeAuthzError(w, err)
+			return
+		}
+		profileID, err := uuid.Parse(chi.URLParam(r, "profileID"))
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_profile_id", "profile_id must be a valid UUID")
+			return
+		}
+		var input SaveCIProfileInput
+		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_json", "request body must be JSON")
+			return
+		}
+		profile, err := service.UpdateCIProfile(r.Context(), caller, workspaceID, profileID, input)
+		if err != nil {
+			writeGitHubIntegrationError(w, logger, r, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, mapCIProfileResponse(profile))
+	}
+}
+
 func createCISetupPullRequestHandler(logger *slog.Logger, service GitHubIntegrationService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		caller, err := CallerFromContext(r.Context())
@@ -1086,7 +1371,11 @@ func createCISetupPullRequestHandler(logger *slog.Logger, service GitHubIntegrat
 			writeGitHubIntegrationError(w, logger, r, err)
 			return
 		}
-		writeJSON(w, http.StatusCreated, result)
+		status := http.StatusCreated
+		if result.PullRequest == nil {
+			status = http.StatusOK
+		}
+		writeJSON(w, status, result)
 	}
 }
 
@@ -1121,6 +1410,28 @@ func mapGitHubRepositoryResponse(r repository.GitHubInstallationRepository) gith
 	}
 }
 
+func mapCIProfileResponse(profile repository.WorkspaceCIProfile) ciProfileResponse {
+	config := profile.Config
+	if len(config) == 0 {
+		config = json.RawMessage(`{}`)
+	}
+	return ciProfileResponse{
+		ID:                   profile.ID,
+		WorkspaceID:          profile.WorkspaceID,
+		Name:                 profile.Name,
+		RepositoryFullName:   profile.RepositoryFullName,
+		GitHubRepositoryID:   profile.GitHubRepositoryID,
+		GitHubInstallationID: profile.GitHubInstallationID,
+		DefaultBranch:        profile.DefaultBranch,
+		ManifestPath:         profile.ManifestPath,
+		WorkflowPath:         profile.WorkflowPath,
+		Config:               config,
+		CreatedByUserID:      profile.CreatedByUserID,
+		CreatedAt:            profile.CreatedAt,
+		UpdatedAt:            profile.UpdatedAt,
+	}
+}
+
 func writeGitHubIntegrationError(w http.ResponseWriter, logger *slog.Logger, r *http.Request, err error) {
 	var configErr GitHubIntegrationConfigError
 	var validationErr GitHubIntegrationValidationError
@@ -1129,6 +1440,10 @@ func writeGitHubIntegrationError(w http.ResponseWriter, logger *slog.Logger, r *
 		writeError(w, http.StatusServiceUnavailable, "github_app_not_configured", configErr.Error())
 	case errors.As(err, &validationErr):
 		writeError(w, http.StatusBadRequest, validationErr.Code, validationErr.Message)
+	case errors.Is(err, repository.ErrWorkspaceCIProfileNotFound):
+		writeError(w, http.StatusNotFound, "ci_profile_not_found", "ci profile not found")
+	case errors.Is(err, repository.ErrWorkspaceCIProfileNameConflict):
+		writeError(w, http.StatusConflict, "ci_profile_name_conflict", "a ci profile with that name already exists")
 	case errors.Is(err, ErrUnauthenticated) || errors.Is(err, ErrCallerMissing) || errors.Is(err, ErrForbidden):
 		writeAuthzError(w, err)
 	default:
@@ -1157,6 +1472,18 @@ func (noopGitHubIntegrationService) ListGitHubInstallations(context.Context, Cal
 
 func (noopGitHubIntegrationService) ListGitHubRepositories(context.Context, Caller, uuid.UUID, string) ([]repository.GitHubInstallationRepository, error) {
 	return nil, errors.New("github integration service is not configured")
+}
+
+func (noopGitHubIntegrationService) ListCIProfiles(context.Context, Caller, uuid.UUID) ([]repository.WorkspaceCIProfile, error) {
+	return nil, errors.New("github integration service is not configured")
+}
+
+func (noopGitHubIntegrationService) CreateCIProfile(context.Context, Caller, uuid.UUID, SaveCIProfileInput) (repository.WorkspaceCIProfile, error) {
+	return repository.WorkspaceCIProfile{}, errors.New("github integration service is not configured")
+}
+
+func (noopGitHubIntegrationService) UpdateCIProfile(context.Context, Caller, uuid.UUID, uuid.UUID, SaveCIProfileInput) (repository.WorkspaceCIProfile, error) {
+	return repository.WorkspaceCIProfile{}, errors.New("github integration service is not configured")
 }
 
 func (noopGitHubIntegrationService) CreateCISetupPullRequest(context.Context, Caller, uuid.UUID, CreateCISetupPullRequestInput) (CreateCISetupPullRequestResult, error) {
