@@ -5,6 +5,13 @@ export const template = Template()
   .setUser('root')
   .setWorkdir('/')
 
+  // E2B builds run through public Ubuntu mirrors; pin a mirror that reliably
+  // carries all Noble pockets and make apt retry transient archive failures.
+  .runCmd(
+    "sed -i 's|http://archive.ubuntu.com/ubuntu/|http://mirrors.edge.kernel.org/ubuntu/|g; s|http://security.ubuntu.com/ubuntu/|http://mirrors.edge.kernel.org/ubuntu/|g' /etc/apt/sources.list.d/ubuntu.sources " +
+      "&& printf '%s\\n' 'Acquire::Retries \"8\";' 'Acquire::http::Timeout \"45\";' > /etc/apt/apt.conf.d/80-agentclash-retries",
+  )
+
   // System essentials
   .runCmd(
     'apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ' +
@@ -19,8 +26,8 @@ export const template = Template()
       '&& rm -rf /var/lib/apt/lists/*',
   )
 
-  // Codex CLI for Agent Harness coding tasks
-  .runCmd('npm install -g @openai/codex')
+  // Coding-agent CLIs for Agent Harness tasks
+  .runCmd('npm install -g @openai/codex @anthropic-ai/claude-code')
 
   // Python 3, Go, C/C++ toolchain
   .runCmd(
