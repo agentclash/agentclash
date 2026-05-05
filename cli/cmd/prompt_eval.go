@@ -500,7 +500,16 @@ func executePromptEvalRun(cmd *cobra.Command, rc *RunContext, path string, maxCa
 		}
 		return nil, &ExitCodeError{Code: promptEvalExitInvalid}
 	}
-	data, _ := os.ReadFile(path)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return &promptEvalRunResult{
+			SchemaVersion: promptEvalSchemaVersion,
+			Path:          path,
+			WorkspaceID:   validation.Remote.WorkspaceID,
+			Errors:        []string{fmt.Sprintf("reading file: %v", err)},
+			ExitCode:      promptEvalExitInvalid,
+		}, &ExitCodeError{Code: promptEvalExitInvalid}
+	}
 	run := &promptEvalRunResult{
 		SchemaVersion: promptEvalSchemaVersion,
 		Path:          path,

@@ -415,6 +415,44 @@ func TestPromptEvalRunCreatesPlaygroundTestCasesAndExperiments(t *testing.T) {
 	}
 }
 
+func TestPromptEvalRunValidatorMappingCoversSupportedAssertions(t *testing.T) {
+	path := writePromptEvalFixture(t, allAssertionsPromptEvalYAML())
+	fake := newPromptEvalRunFake(t, nil)
+	defer fake.server.Close()
+
+	_ = runPromptEvalRunJSON(t, path, fake.server.URL)
+	spec := mapObject(fake.playgroundCreates[0], "evaluation_spec")
+	validators := mapSlice(spec, "validators")
+	for _, want := range []string{"exact_match", "contains", "regex_match", "json_schema", "json_path_match", "boolean_assert"} {
+		if !promptEvalValidatorTypesContain(validators, want) {
+			t.Fatalf("validators missing %s: %#v", want, validators)
+		}
+	}
+	for _, validator := range validators {
+		asMap := validator.(map[string]any)
+		if !strings.HasPrefix(str(asMap["expected_from"]), "case.expectations.prompt_eval_assertions.") {
+			t.Fatalf("validator expected_from should read prompt_eval_assertions: %#v", asMap)
+		}
+	}
+}
+
+func TestPromptEvalRunJSONEnvelope(t *testing.T) {
+	path := writePromptEvalFixture(t, validPromptEvalYAML())
+	fake := newPromptEvalRunFake(t, nil)
+	defer fake.server.Close()
+
+	result := runPromptEvalRunJSON(t, path, fake.server.URL)
+	if result.SchemaVersion != 1 || result.WorkspaceID != "ws-1" || result.ConfigHash == "" || result.ModelCount != 1 || result.TestCount != 1 || result.CaseCount != 1 {
+		t.Fatalf("unexpected envelope: %+v", result)
+	}
+	if len(result.Playgrounds) != 1 || result.Playgrounds[0].PlaygroundID == "" || result.Playgrounds[0].PlaygroundURL == "" {
+		t.Fatalf("missing playground envelope: %+v", result.Playgrounds)
+	}
+	if len(result.Playgrounds[0].Experiments) != 1 || result.Playgrounds[0].Experiments[0].ExperimentID == "" || result.Playgrounds[0].Experiments[0].ExperimentURL == "" {
+		t.Fatalf("missing experiment envelope: %+v", result.Playgrounds[0].Experiments)
+	}
+}
+
 func TestPromptEvalRunUpdatesExistingResourcesWithoutDeletingOrphans(t *testing.T) {
 	path := writePromptEvalFixture(t, validPromptEvalYAML())
 	fake := newPromptEvalRunFake(t, &promptEvalRunFakeState{
@@ -455,6 +493,21 @@ func TestPromptEvalRunGroupsByAssertionSignature(t *testing.T) {
 		if !strings.Contains(str(create["name"]), "Prompt Eval: refund-bot-v1 [") {
 			t.Fatalf("grouped playground name missing signature suffix: %#v", create["name"])
 		}
+	}
+}
+
+func TestPromptEvalRunRerunNoopsExistingTestCases(t *testing.T) {
+	path := writePromptEvalFixture(t, validPromptEvalYAML())
+	fake := newPromptEvalRunFake(t, nil)
+	defer fake.server.Close()
+
+	first := runPromptEvalRunJSON(t, path, fake.server.URL)
+	second := runPromptEvalRunJSON(t, path, fake.server.URL)
+	if first.Playgrounds[0].TestsCreated != 1 {
+		t.Fatalf("first tests_created = %d, want 1", first.Playgrounds[0].TestsCreated)
+	}
+	if second.Playgrounds[0].TestsNoop != 1 || second.Playgrounds[0].TestsCreated != 0 || second.Playgrounds[0].TestsUpdated != 0 {
+		t.Fatalf("second run should no-op existing test case: %+v", second.Playgrounds[0])
 	}
 }
 
@@ -692,7 +745,14 @@ func newPromptEvalRunFake(t *testing.T, state *promptEvalRunFakeState) *promptEv
 		case r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, "/v1/playgrounds/") && strings.HasSuffix(r.URL.Path, "/test-cases"):
 			body := decodePromptEvalRequestBody(t, r)
 			f.testCaseCreates = append(f.testCaseCreates, body)
-			json.NewEncoder(w).Encode(map[string]any{"id": fmt.Sprintf("tc-created-%d", len(f.testCaseCreates)), "case_key": body["case_key"]})
+			id := fmt.Sprintf("tc-created-%d", len(f.testCaseCreates))
+			f.testCases = append(f.testCases, map[string]any{
+				"id":           id,
+				"case_key":     body["case_key"],
+				"variables":    body["variables"],
+				"expectations": body["expectations"],
+			})
+			json.NewEncoder(w).Encode(map[string]any{"id": id, "case_key": body["case_key"]})
 		case r.Method == http.MethodPatch && strings.HasPrefix(r.URL.Path, "/v1/playground-test-cases/"):
 			body := decodePromptEvalRequestBody(t, r)
 			f.testCaseUpdates = append(f.testCaseUpdates, body)
