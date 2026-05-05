@@ -435,6 +435,22 @@ func TestCIRunPromotionFailureTaxonomyRegressionGateReasonOnly(t *testing.T) {
 	}
 }
 
+func TestCIRunPromotionFailureTaxonomyRegressionGateConditionOnly(t *testing.T) {
+	taxonomy := ciRunPromotionFailureTaxonomy(ciRunFailureReviewItem{
+		FailureClass: "policy_violation",
+		FailureState: "failed",
+	}, ciRunResult{GateVerdict: "fail"}, map[string]any{
+		"reason_code": "custom_gate_reason",
+		"evaluation_details": map[string]any{
+			"triggered_conditions": []any{"no_new_blocking_failure_vs_baseline:00000000-0000-0000-0000-000000000123"},
+		},
+	})
+
+	if taxonomy["source"] != "regression_gate" || taxonomy["failure_mode"] != "regression_case_failure" {
+		t.Fatalf("taxonomy = %+v, want regression gate condition-only classification", taxonomy)
+	}
+}
+
 func TestCIRunPromotionFailureTaxonomyScorecardDimensionFailure(t *testing.T) {
 	taxonomy := ciRunPromotionFailureTaxonomy(ciRunFailureReviewItem{
 		FailureClass: "score_regression",
