@@ -70,7 +70,7 @@ post_pr_comment() {
     --repo "${GITHUB_REPOSITORY:-}" \
     --event-path "${GITHUB_EVENT_PATH:-}" \
     --api-url "${GITHUB_API_URL:-https://api.github.com}" \
-    --app-url "${INPUT_APP_URL:-https://www.agentclash.dev}"
+    --app-url "${INPUT_APP_URL:-https://agentclash.dev}"
   local comment_status=$?
   set -e
 

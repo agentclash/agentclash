@@ -2,16 +2,16 @@
 
 ## Functional Behavior
 - AgentClash CI PR comments default to a reachable production web app origin.
-- The default app URL must be `https://www.agentclash.dev`, because live smoke testing showed `https://app.agentclash.dev` does not resolve while the same workspace routes on `www.agentclash.dev` match the deployed Next.js routes.
+- The default app URL must be `https://agentclash.dev`, because this is the deployed frontend origin; `https://api.agentclash.dev` is only the backend API origin and `https://app.agentclash.dev` is not configured.
 - Existing `app-url` overrides continue to work.
 - Generated workspace, run, comparison, failures, scorecard, replay, and regression-case paths do not change.
 
 ## Unit Tests
-- PR comment formatter tests expect default generated links on `https://www.agentclash.dev`.
+- PR comment formatter tests expect default generated links on `https://agentclash.dev`.
 - Custom `app-url` formatter test continues to prove override behavior.
 
 ## Integration / Functional Tests
-- Action metadata default for `app-url` is `https://www.agentclash.dev`.
+- Action metadata default for `app-url` is `https://agentclash.dev`.
 - The shell wrapper fallback default matches the action metadata and Python helper default.
 - README and CI/CD guide document the same default.
 
@@ -23,7 +23,7 @@
 - `git diff --check` passes.
 
 ## E2E Tests
-- Follow-up demo PR comment uses `https://www.agentclash.dev` links, and each link route returns the expected deployed Next.js matched route or auth redirect.
+- Follow-up demo PR comment uses `https://agentclash.dev` links, and each link route returns the expected deployed Next.js matched route or auth redirect.
 
 ## Manual / cURL Tests
 ```bash

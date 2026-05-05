@@ -84,17 +84,17 @@ class CommentFormattingTests(unittest.TestCase):
         self.assertIn("run-candidate", body)
         self.assertIn("run-baseline", body)
         self.assertIn("Inspect in AgentClash", body)
-        self.assertIn("https://www.agentclash.dev/workspaces/workspace-1/runs/run-candidate", body)
-        self.assertIn("https://www.agentclash.dev/workspaces/workspace-1/runs/run-baseline", body)
-        self.assertIn("https://www.agentclash.dev/workspaces/workspace-1/compare?baseline=run-baseline&candidate=run-candidate", body)
-        self.assertIn("https://www.agentclash.dev/workspaces/workspace-1/runs/run-candidate/failures", body)
-        self.assertIn("https://www.agentclash.dev/workspaces/workspace-1/runs/run-candidate/agents/agent-candidate/scorecard", body)
-        self.assertIn("https://www.agentclash.dev/workspaces/workspace-1/runs/run-candidate/agents/agent-candidate/replay", body)
+        self.assertIn("https://agentclash.dev/workspaces/workspace-1/runs/run-candidate", body)
+        self.assertIn("https://agentclash.dev/workspaces/workspace-1/runs/run-baseline", body)
+        self.assertIn("https://agentclash.dev/workspaces/workspace-1/compare?baseline=run-baseline&candidate=run-candidate", body)
+        self.assertIn("https://agentclash.dev/workspaces/workspace-1/runs/run-candidate/failures", body)
+        self.assertIn("https://agentclash.dev/workspaces/workspace-1/runs/run-candidate/agents/agent-candidate/scorecard", body)
+        self.assertIn("https://agentclash.dev/workspaces/workspace-1/runs/run-candidate/agents/agent-candidate/replay", body)
         self.assertIn("Score Deltas", body)
         self.assertIn("`correctness` | `fail` | `-1` | `0.05`", body)
         self.assertIn("Regression Tracking", body)
         self.assertIn("refund-abuse-triage", body)
-        self.assertIn("https://www.agentclash.dev/workspaces/workspace-1/regression-suites/suite-1/cases/case-1", body)
+        self.assertIn("https://agentclash.dev/workspaces/workspace-1/regression-suites/suite-1/cases/case-1", body)
         self.assertIn("Next Actions", body)
 
     def test_build_failed_comment_uses_custom_app_url(self):
@@ -121,11 +121,11 @@ class CommentFormattingTests(unittest.TestCase):
         )
 
         self.assertIn(
-            "| Candidate run | [`run-candidate`](https://www.agentclash.dev/workspaces/workspace-1/runs/run-candidate) |",
+            "| Candidate run | [`run-candidate`](https://agentclash.dev/workspaces/workspace-1/runs/run-candidate) |",
             body,
         )
         self.assertIn(
-            "| Baseline run | [`run-baseline`](https://www.agentclash.dev/workspaces/workspace-1/runs/run-baseline) |",
+            "| Baseline run | [`run-baseline`](https://agentclash.dev/workspaces/workspace-1/runs/run-baseline) |",
             body,
         )
         self.assertNotIn("https://api.example.com/runs/candidate", body)
