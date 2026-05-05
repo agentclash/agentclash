@@ -61,7 +61,7 @@ type ciRunRegressionCaseSummary struct {
 	Metadata            map[string]any `json:"metadata"`
 }
 
-func promoteCIRunRegressionFailures(cmd *cobra.Command, rc *RunContext, workspaceID string, manifest ciManifest, result ciRunResult, releaseGate map[string]any) *ciRunRegressionPromotionResult {
+func promoteCIRunRegressionFailures(cmd *cobra.Command, rc *RunContext, workspaceID string, manifest ciManifest, result ciRunResult, releaseGate map[string]any, scorecard map[string]any, comparison map[string]any) *ciRunRegressionPromotionResult {
 	policy := strings.TrimSpace(manifest.Regressions.PromoteFailures)
 	if policy == "" || result.GateVerdict != "fail" {
 		return nil
@@ -151,7 +151,7 @@ func promoteCIRunRegressionFailures(cmd *cobra.Command, rc *RunContext, workspac
 				continue
 			}
 
-			created, err := promoteCIRunFailure(cmd, rc, workspaceID, suiteID, caseStatus, promotionMode, failure, result, releaseGate, manifest)
+			created, err := promoteCIRunFailure(cmd, rc, workspaceID, suiteID, caseStatus, promotionMode, failure, result, releaseGate, scorecard, comparison, manifest)
 			if err != nil {
 				summary.Errors = append(summary.Errors, fmt.Sprintf("promote challenge %s in suite %s: %v", failure.ChallengeIdentityID, suiteID, err))
 				continue
@@ -288,7 +288,7 @@ func ciRunPreferredPromotionMode(modes []string) string {
 	return ""
 }
 
-func promoteCIRunFailure(cmd *cobra.Command, rc *RunContext, workspaceID, suiteID, caseStatus, promotionMode string, failure ciRunFailureReviewItem, result ciRunResult, releaseGate map[string]any, manifest ciManifest) (ciRunRegressionPromotionCase, error) {
+func promoteCIRunFailure(cmd *cobra.Command, rc *RunContext, workspaceID, suiteID, caseStatus, promotionMode string, failure ciRunFailureReviewItem, result ciRunResult, releaseGate map[string]any, scorecard map[string]any, comparison map[string]any, manifest ciManifest) (ciRunRegressionPromotionCase, error) {
 	body := map[string]any{
 		"run_agent_id":        failure.RunAgentID,
 		"suite_id":            suiteID,
@@ -297,7 +297,7 @@ func promoteCIRunFailure(cmd *cobra.Command, rc *RunContext, workspaceID, suiteI
 		"failure_summary":     ciRunPromotionFailureSummary(failure, result),
 		"status":              caseStatus,
 		"validator_overrides": nil,
-		"metadata":            ciRunPromotionMetadata(failure, result, releaseGate, manifest),
+		"metadata":            ciRunPromotionMetadata(failure, result, releaseGate, scorecard, comparison, manifest),
 	}
 	if severity := strings.TrimSpace(failure.Severity); severity != "" {
 		body["severity"] = severity
@@ -349,7 +349,7 @@ func ciRunPromotionFailureSummary(failure ciRunFailureReviewItem, result ciRunRe
 	return "Candidate failed the AgentClash CI release gate."
 }
 
-func ciRunPromotionMetadata(failure ciRunFailureReviewItem, result ciRunResult, releaseGate map[string]any, manifest ciManifest) map[string]any {
+func ciRunPromotionMetadata(failure ciRunFailureReviewItem, result ciRunResult, releaseGate map[string]any, scorecard map[string]any, comparison map[string]any, manifest ciManifest) map[string]any {
 	metadata := map[string]any{
 		"source":                       "agentclash_ci",
 		"manifest_path":                result.ManifestPath,
@@ -378,7 +378,35 @@ func ciRunPromotionMetadata(failure ciRunFailureReviewItem, result ciRunResult, 
 	if fingerprint := mapString(releaseGate, "policy_fingerprint"); fingerprint != "" {
 		metadata["gate_policy_fingerprint"] = fingerprint
 	}
+	if links := ciRunPromotionCurationLinks(result, releaseGate, scorecard, comparison); len(links) > 0 {
+		metadata["curation_links"] = links
+	}
 	return metadata
+}
+
+func ciRunPromotionCurationLinks(result ciRunResult, releaseGate map[string]any, scorecard map[string]any, comparison map[string]any) map[string]string {
+	links := map[string]string{}
+	add := func(key string, value string) {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			links[key] = value
+		}
+	}
+	add("candidate_run", result.Candidate.RunURL)
+	add("scorecard", ciRunFirstNonEmptyMapString(scorecard, "url", "web_url", "scorecard_url"))
+	add("replay", ciRunFirstNonEmptyMapString(scorecard, "replay_url"))
+	add("comparison", ciRunFirstNonEmptyMapString(comparison, "url", "web_url", "comparison_url"))
+	add("release_gate", ciRunFirstNonEmptyMapString(releaseGate, "url", "web_url", "release_gate_url"))
+	return links
+}
+
+func ciRunFirstNonEmptyMapString(m map[string]any, keys ...string) string {
+	for _, key := range keys {
+		if value := strings.TrimSpace(mapString(m, key)); value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func ciRunPromotionFailureTaxonomy(failure ciRunFailureReviewItem, result ciRunResult, releaseGate map[string]any) map[string]any {
