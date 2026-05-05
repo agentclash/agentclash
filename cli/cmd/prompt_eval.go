@@ -782,7 +782,7 @@ func followPromptEvalRun(cmd *cobra.Command, rc *RunContext, run *promptEvalRunR
 					allTerminal = false
 					continue
 				}
-				envelope, err := fetchPromptEvalResultsEnvelope(cmd, rc, exp.ExperimentID, options.ThresholdOverride)
+				envelope, err := fetchStablePromptEvalResultsEnvelope(cmd, rc, exp.ExperimentID, options.ThresholdOverride)
 				if err != nil {
 					run.ExitCode = promptEvalExitExecution
 					run.Errors = append(run.Errors, err.Error())
@@ -802,12 +802,63 @@ func followPromptEvalRun(cmd *cobra.Command, rc *RunContext, run *promptEvalRunR
 			return nil
 		}
 		if options.Timeout > 0 && time.Since(started) >= options.Timeout {
+			run.Results = fetchPromptEvalPartialResults(cmd, rc, run, options.ThresholdOverride)
+			run.Summary = combinePromptEvalSummaries(run.Results)
+			run.GateVerdict = promptEvalCombinedGateVerdict(run.Results)
 			run.ExitCode = promptEvalExitExecution
 			run.Errors = append(run.Errors, "timed out waiting for prompt eval experiments")
 			return &ExitCodeError{Code: promptEvalExitExecution}
 		}
 		time.Sleep(options.PollInterval)
 	}
+}
+
+func fetchStablePromptEvalResultsEnvelope(cmd *cobra.Command, rc *RunContext, experimentID string, thresholdOverride float64) (promptEvalResultsEnvelope, error) {
+	first, err := fetchPromptEvalResultsEnvelope(cmd, rc, experimentID, thresholdOverride)
+	if err != nil {
+		return first, err
+	}
+	second, err := fetchPromptEvalResultsEnvelope(cmd, rc, experimentID, thresholdOverride)
+	if err != nil {
+		return second, err
+	}
+	if promptEvalResultsStable(first, second) {
+		second.Telemetry["stability_checks"] = 2
+		return second, nil
+	}
+	third, err := fetchPromptEvalResultsEnvelope(cmd, rc, experimentID, thresholdOverride)
+	if err != nil {
+		return third, err
+	}
+	third.Telemetry["stability_checks"] = 3
+	return third, nil
+}
+
+func fetchPromptEvalPartialResults(cmd *cobra.Command, rc *RunContext, run *promptEvalRunResult, thresholdOverride float64) []promptEvalResultsEnvelope {
+	envelopes := []promptEvalResultsEnvelope{}
+	for _, playground := range run.Playgrounds {
+		for _, exp := range playground.Experiments {
+			envelope, err := fetchPromptEvalResultsEnvelope(cmd, rc, exp.ExperimentID, thresholdOverride)
+			if err != nil && envelope.ExperimentID == "" {
+				continue
+			}
+			envelopes = append(envelopes, envelope)
+		}
+	}
+	return envelopes
+}
+
+func promptEvalResultsStable(a, b promptEvalResultsEnvelope) bool {
+	return a.GateVerdict == b.GateVerdict &&
+		a.ExitCode == b.ExitCode &&
+		a.Summary.TotalCases == b.Summary.TotalCases &&
+		a.Summary.CompletedCases == b.Summary.CompletedCases &&
+		a.Summary.ExecutionErrors == b.Summary.ExecutionErrors &&
+		a.Summary.AssertionsPassed == b.Summary.AssertionsPassed &&
+		a.Summary.AssertionsFailed == b.Summary.AssertionsFailed &&
+		a.Summary.AssertionPassRate == b.Summary.AssertionPassRate &&
+		promptEvalRowsStable(a.Rows, b.Rows) &&
+		promptEvalFloatMapsStable(a.Summary.DimensionScores, b.Summary.DimensionScores)
 }
 
 func fetchPromptEvalExperimentStatus(cmd *cobra.Command, rc *RunContext, experimentID string) (string, bool, error) {
@@ -1428,6 +1479,44 @@ func promptEvalExitCodeForSummary(summary promptEvalResultsSummary, verdict stri
 		return promptEvalExitGate
 	}
 	return 0
+}
+
+func promptEvalRowsStable(a, b []promptEvalResultRow) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i].CaseKey != b[i].CaseKey ||
+			a[i].AssertionKey != b[i].AssertionKey ||
+			a[i].Assertion != b[i].Assertion ||
+			a[i].Result != b[i].Result ||
+			a[i].Actual != b[i].Actual ||
+			a[i].Expected != b[i].Expected ||
+			a[i].Error != b[i].Error ||
+			a[i].LatencyMS != b[i].LatencyMS ||
+			a[i].Tokens != b[i].Tokens {
+			return false
+		}
+		if (a[i].Score == nil) != (b[i].Score == nil) {
+			return false
+		}
+		if a[i].Score != nil && b[i].Score != nil && *a[i].Score != *b[i].Score {
+			return false
+		}
+	}
+	return true
+}
+
+func promptEvalFloatMapsStable(a, b map[string]float64) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for key, value := range a {
+		if b[key] != value {
+			return false
+		}
+	}
+	return true
 }
 
 func promptEvalFloat(value any) (float64, bool) {

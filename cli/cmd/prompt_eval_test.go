@@ -523,6 +523,9 @@ func TestPromptEvalRunFollowPassesGate(t *testing.T) {
 	if result.GateVerdict != "pass" || result.Summary.AssertionsPassed != 1 || result.ExitCode != 0 {
 		t.Fatalf("unexpected follow result: %+v", result)
 	}
+	if got := result.Results[0].Telemetry["stability_checks"]; got == nil {
+		t.Fatalf("missing stability telemetry: %+v", result.Results[0].Telemetry)
+	}
 }
 
 func TestPromptEvalRunFollowFailsAssertionGate(t *testing.T) {
@@ -567,6 +570,9 @@ func TestPromptEvalRunFollowTimesOutWithPartialResults(t *testing.T) {
 	}
 	if !containsPromptEvalMessage(result.Errors, "timed out") {
 		t.Fatalf("errors = %v", result.Errors)
+	}
+	if len(result.Results) != 1 || result.Results[0].Summary.TotalCases != 1 {
+		t.Fatalf("timeout did not include partial results: %+v", result)
 	}
 }
 
