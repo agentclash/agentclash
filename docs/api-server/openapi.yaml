@@ -6516,6 +6516,32 @@ components:
       type: string
       enum: [full_executable, output_only]
 
+    FailureReviewRemediationArea:
+      type: string
+      enum:
+        - prompt_or_model
+        - output_contract
+        - tool_or_workflow
+        - runtime_or_infra
+        - retrieval_or_data
+        - flakiness
+        - evidence_gap
+
+    FailureReviewRemediationHint:
+      type: object
+      required: [area, label, summary, evidence]
+      properties:
+        area:
+          $ref: "#/components/schemas/FailureReviewRemediationArea"
+        label:
+          type: string
+        summary:
+          type: string
+        evidence:
+          type: array
+          items:
+            type: string
+
     FailureReviewReplayStepRef:
       type: object
       required: [sequence_number, event_type, kind]
@@ -6604,6 +6630,7 @@ components:
         - headline
         - detail
         - recommended_action
+        - remediation
         - promotable
         - promotion_mode_available
         - replay_step_refs
@@ -6654,6 +6681,8 @@ components:
           type: string
         recommended_action:
           type: string
+        remediation:
+          $ref: "#/components/schemas/FailureReviewRemediationHint"
         promotable:
           type: boolean
         promotion_mode_available:
@@ -6735,6 +6764,7 @@ components:
         - run_agent_ids
         - headline
         - recommended_action
+        - remediation
       properties:
         failure_cluster_key:
           type: string
@@ -6776,6 +6806,8 @@ components:
           type: string
         recommended_action:
           type: string
+        remediation:
+          $ref: "#/components/schemas/FailureReviewRemediationHint"
         history:
           description: Present on first-page all-agent failure-cluster responses; omitted on cursor pages and agent-filtered views.
           $ref: "#/components/schemas/FailureReviewClusterHistory"

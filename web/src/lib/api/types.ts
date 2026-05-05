@@ -1639,6 +1639,15 @@ export type FailureReviewPromotionMode = "full_executable" | "output_only";
 
 export type FailureReviewSeverity = "info" | "warning" | "blocking";
 
+export type FailureReviewRemediationArea =
+  | "prompt_or_model"
+  | "output_contract"
+  | "tool_or_workflow"
+  | "runtime_or_infra"
+  | "retrieval_or_data"
+  | "flakiness"
+  | "evidence_gap";
+
 export type FailureReviewTaxonomyFamily =
   | "agent"
   | "workflow"
@@ -1650,6 +1659,13 @@ export interface FailureReviewTaxonomy {
   code: string;
   label: string;
   agent_fault: boolean;
+}
+
+export interface FailureReviewRemediationHint {
+  area: FailureReviewRemediationArea;
+  label: string;
+  summary: string;
+  evidence: string[];
 }
 
 export interface FailureReviewReplayStepRef {
@@ -1704,6 +1720,7 @@ export interface FailureReviewItem {
   headline: string;
   detail: string;
   recommended_action: string;
+  remediation: FailureReviewRemediationHint;
   promotable: boolean;
   promotion_mode_available: FailureReviewPromotionMode[];
   replay_step_refs: FailureReviewReplayStepRef[];
@@ -1745,6 +1762,7 @@ export interface FailureReviewClusterSummary {
   run_agent_ids: string[];
   headline: string;
   recommended_action: string;
+  remediation: FailureReviewRemediationHint;
   history?: FailureReviewClusterHistory;
 }
 

@@ -44,6 +44,8 @@ export type {
   FailureReviewEvidenceTier,
   FailureReviewPromotionMode,
   FailureReviewSeverity,
+  FailureReviewRemediationArea,
+  FailureReviewRemediationHint,
   FailureReviewReplayStepRef,
   FailureReviewArtifactRef,
   FailureReviewJudgeRef,

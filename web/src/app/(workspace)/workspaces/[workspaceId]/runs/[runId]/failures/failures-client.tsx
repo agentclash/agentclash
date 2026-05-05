@@ -524,6 +524,13 @@ function FailureClusterRollups({
                     <p className="truncate text-sm font-medium">
                       {cluster.headline || humanize(cluster.failure_class)}
                     </p>
+                    <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                      Likely issue area:{" "}
+                      <span className="text-foreground/80">
+                        {cluster.remediation.label}
+                      </span>{" "}
+                      · {cluster.remediation.summary}
+                    </p>
                     {cluster.recommended_action && (
                       <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
                         {cluster.recommended_action}
@@ -833,6 +840,18 @@ function FailureRow({
               {item.headline}
             </p>
           )}
+
+          <div className="mt-2 border-l-2 border-border pl-3 pr-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+                Likely issue area
+              </span>
+              <Badge variant="outline">{item.remediation.label}</Badge>
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground leading-snug line-clamp-2">
+              {item.remediation.summary}
+            </p>
+          </div>
         </button>
 
         {canPromote && (

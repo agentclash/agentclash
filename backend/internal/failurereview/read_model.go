@@ -48,6 +48,25 @@ const (
 	SeverityBlocking Severity = "blocking"
 )
 
+type RemediationArea string
+
+const (
+	RemediationAreaPromptOrModel  RemediationArea = "prompt_or_model"
+	RemediationAreaOutputContract RemediationArea = "output_contract"
+	RemediationAreaToolOrWorkflow RemediationArea = "tool_or_workflow"
+	RemediationAreaRuntimeOrInfra RemediationArea = "runtime_or_infra"
+	RemediationAreaRetrievalData  RemediationArea = "retrieval_or_data"
+	RemediationAreaFlakiness      RemediationArea = "flakiness"
+	RemediationAreaEvidenceGap    RemediationArea = "evidence_gap"
+)
+
+type RemediationHint struct {
+	Area     RemediationArea `json:"area"`
+	Label    string          `json:"label"`
+	Summary  string          `json:"summary"`
+	Evidence []string        `json:"evidence"`
+}
+
 type Item struct {
 	RunID                  uuid.UUID       `json:"run_id"`
 	RunAgentID             uuid.UUID       `json:"run_agent_id"`
@@ -65,6 +84,7 @@ type Item struct {
 	Headline               string          `json:"headline"`
 	Detail                 string          `json:"detail"`
 	RecommendedAction      string          `json:"recommended_action"`
+	Remediation            RemediationHint `json:"remediation"`
 	Promotable             bool            `json:"promotable"`
 	PromotionModeAvailable []PromotionMode `json:"promotion_mode_available"`
 	ReplayStepRefs         []ReplayStepRef `json:"replay_step_refs"`
@@ -91,6 +111,7 @@ type ClusterSummary struct {
 	RunAgentIDs                      []string        `json:"run_agent_ids"`
 	Headline                         string          `json:"headline"`
 	RecommendedAction                string          `json:"recommended_action"`
+	Remediation                      RemediationHint `json:"remediation"`
 	History                          *ClusterHistory `json:"history,omitempty"`
 }
 
@@ -402,6 +423,7 @@ func BuildClusterSummaries(items []Item) []ClusterSummary {
 					EvidenceTier:                     item.EvidenceTier,
 					Headline:                         item.Headline,
 					RecommendedAction:                item.RecommendedAction,
+					Remediation:                      item.Remediation,
 				},
 				challengeKeys: map[string]struct{}{},
 				caseKeys:      map[string]struct{}{},
@@ -413,6 +435,7 @@ func BuildClusterSummaries(items []Item) []ClusterSummary {
 			group.summary.RepresentativeFailureFingerprint = item.FailureFingerprint
 			group.summary.Headline = item.Headline
 			group.summary.RecommendedAction = item.RecommendedAction
+			group.summary.Remediation = item.Remediation
 		}
 		group.summary.Count++
 		if item.Promotable {
@@ -664,6 +687,7 @@ func finalizeGroup(group *itemGroup, input RunAgentInput, scorecard scorecardDoc
 	headline := buildHeadline(group.Case, failureClass, failedDimensions)
 	detail := buildDetail(group.Case, group.FailedChecks, evidenceTier)
 	recommendedAction := recommendedActionForClass(failureClass)
+	remediation := buildRemediationHint(failureClass, group, judgeRefs, failedDimensions, evidenceTier, input.Events)
 
 	item := Item{
 		RunID:                  input.RunID,
@@ -680,6 +704,7 @@ func finalizeGroup(group *itemGroup, input RunAgentInput, scorecard scorecardDoc
 		Headline:               headline,
 		Detail:                 detail,
 		RecommendedAction:      recommendedAction,
+		Remediation:            remediation,
 		Promotable:             promotable,
 		PromotionModeAvailable: append([]PromotionMode{}, promotionModes...),
 		ReplayStepRefs:         append([]ReplayStepRef{}, group.ReplayStepRefs...),
@@ -971,6 +996,102 @@ func buildDetail(caseCtx CaseContext, failedChecks []string, evidenceTier Eviden
 		return fmt.Sprintf("Case %s was flagged with %s evidence.", caseCtx.CaseKey, evidenceTier)
 	}
 	return fmt.Sprintf("Case %s failed checks %s with %s evidence.", caseCtx.CaseKey, strings.Join(failedChecks, ", "), evidenceTier)
+}
+
+func buildRemediationHint(class FailureClass, group *itemGroup, judgeRefs []JudgeRef, failedDimensions []string, evidenceTier EvidenceTier, events []Event) RemediationHint {
+	area, label, summary := remediationDefaults(class)
+	evidence := remediationEvidence(group, judgeRefs, failedDimensions, evidenceTier, events)
+	return RemediationHint{
+		Area:     area,
+		Label:    label,
+		Summary:  summary,
+		Evidence: evidence,
+	}
+}
+
+func remediationDefaults(class FailureClass) (RemediationArea, string, string) {
+	switch class {
+	case FailureClassMalformedOutput:
+		return RemediationAreaOutputContract, "Output contract", "The run reached scoring, but schema or final-output validation failed. Fix the agent output format or parser contract before changing challenge content."
+	case FailureClassPolicyViolation:
+		return RemediationAreaToolOrWorkflow, "Policy or workflow", "Policy evidence points at agent permissions, tool boundaries, or workflow guardrails. Tighten the policy contract before changing challenge content."
+	case FailureClassToolArgumentError, FailureClassToolSelectionError, FailureClassDependencyResolution:
+		return RemediationAreaToolOrWorkflow, "Tool or workflow", "Tool selection, arguments, or dependency evidence points at workflow wiring rather than just final-answer quality."
+	case FailureClassSandboxFailure, FailureClassTimeoutOrBudget:
+		return RemediationAreaRuntimeOrInfra, "Runtime or infrastructure", "Execution failed around runtime, sandbox, timeout, or budget limits. Check environment assumptions and run limits before tuning prompts."
+	case FailureClassRetrievalGrounding:
+		return RemediationAreaRetrievalData, "Retrieval or data", "Grounding evidence points at retrieval context, source data, or citation behavior."
+	case FailureClassFlakyNonDeterministic:
+		return RemediationAreaFlakiness, "Flakiness", "The failure shape looks nondeterministic. Re-run and compare evidence before locking it as an agent regression."
+	case FailureClassInsufficientEvidence:
+		return RemediationAreaEvidenceGap, "Evidence gap", "The run was flagged without enough structured evidence. Capture replay, judge, or scorecard signals before promoting it."
+	default:
+		return RemediationAreaPromptOrModel, "Prompt or model behavior", "The visible evidence points at agent behavior or answer quality. Review the prompt, model choice, and expected reasoning path."
+	}
+}
+
+func remediationEvidence(group *itemGroup, judgeRefs []JudgeRef, failedDimensions []string, evidenceTier EvidenceTier, events []Event) []string {
+	const maxRemediationEvidence = 5
+
+	evidence := make([]string, 0, maxRemediationEvidence)
+	appendEvidence := func(value string) {
+		if len(evidence) < maxRemediationEvidence {
+			evidence = append(evidence, value)
+		}
+	}
+	if len(failedDimensions) > 0 {
+		appendEvidence("Failed dimensions: " + compactEvidenceList(failedDimensions, 4))
+	}
+	if len(group.FailedChecks) > 0 {
+		appendEvidence("Failed checks: " + compactEvidenceList(group.FailedChecks, 4))
+	}
+	for _, ref := range judgeRefs {
+		if !isFailingJudgeRef(ref) {
+			continue
+		}
+		appendEvidence(fmt.Sprintf("Judge evidence: %s (%s)", ref.Key, firstNonEmpty(ref.Kind, "judge")))
+		if len(evidence) >= maxRemediationEvidence {
+			return evidence
+		}
+	}
+	for _, ref := range group.MetricRefs {
+		if ref.State != "error" && ref.State != "unavailable" && ref.State != "fail" {
+			continue
+		}
+		appendEvidence(fmt.Sprintf("Metric evidence: %s (%s)", ref.Key, firstNonEmpty(ref.MetricType, "metric")))
+		if len(evidence) >= maxRemediationEvidence {
+			return evidence
+		}
+	}
+	if len(group.ReplayStepRefs) > 0 {
+		ref := group.ReplayStepRefs[0]
+		appendEvidence(fmt.Sprintf("Replay step: #%d %s", ref.SequenceNumber, ref.EventType))
+	}
+	if hasTimeoutOrBudgetSignal(events) {
+		appendEvidence("Run event matched timeout or budget signal")
+	}
+	if hasSandboxFailure(events) {
+		appendEvidence("Run event matched sandbox failure signal")
+	}
+	appendEvidence("Evidence tier: " + string(evidenceTier))
+	return evidence
+}
+
+func isFailingJudgeRef(ref JudgeRef) bool {
+	switch strings.ToLower(strings.TrimSpace(ref.State)) {
+	case "fail", "error", "unavailable":
+		return true
+	}
+
+	verdict := strings.ToLower(strings.TrimSpace(ref.Verdict))
+	return verdict != "" && verdict != "pass"
+}
+
+func compactEvidenceList(values []string, maxVisible int) string {
+	if len(values) <= maxVisible {
+		return strings.Join(values, ", ")
+	}
+	return fmt.Sprintf("%s +%d", strings.Join(values[:maxVisible], ", "), len(values)-maxVisible)
 }
 
 func recommendedActionForClass(class FailureClass) string {

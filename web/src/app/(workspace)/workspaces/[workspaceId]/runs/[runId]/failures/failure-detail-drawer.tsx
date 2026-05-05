@@ -127,13 +127,41 @@ function FailureDetailBody({
           </Section>
         )}
 
-        {item.recommended_action && (
-          <Section title="Recommended action">
-            <p className="text-sm text-foreground/90 leading-relaxed whitespace-pre-wrap">
-              {item.recommended_action}
+        <Section title="Likely issue area">
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Badge variant="outline">{item.remediation.label}</Badge>
+              <span className="text-xs text-muted-foreground font-[family-name:var(--font-mono)]">
+                {item.remediation.area}
+              </span>
+            </div>
+            <p className="text-sm text-foreground/90 leading-relaxed">
+              {item.remediation.summary}
             </p>
-          </Section>
-        )}
+            {item.recommended_action && (
+              <div className="rounded-md border border-border bg-background/60 p-3">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground/80">
+                  Recommended action
+                </p>
+                <p className="mt-1 text-sm text-foreground/90 leading-relaxed whitespace-pre-wrap">
+                  {item.recommended_action}
+                </p>
+              </div>
+            )}
+            {item.remediation.evidence.length > 0 && (
+              <ul className="space-y-1.5">
+                {item.remediation.evidence.map((evidence, i) => (
+                  <li
+                    key={i}
+                    className="text-xs text-muted-foreground leading-snug"
+                  >
+                    {evidence}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </Section>
 
         {item.failed_dimensions.length > 0 && (
           <Section title="Failed dimensions">
