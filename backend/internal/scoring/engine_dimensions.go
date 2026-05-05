@@ -75,8 +75,11 @@ func averageScopedValidators(scope []string, validators []ValidatorResult) (*flo
 	}
 	var total float64
 	for _, v := range selected {
+		if v.State == OutputStateError {
+			return nil, fmt.Sprintf("validator %q errored: %s", v.Key, firstNonEmpty(v.Reason, "validator error")), OutputStateError
+		}
 		if v.State != OutputStateAvailable || v.NormalizedScore == nil {
-			return nil, "all scoped validators must be available", OutputStateUnavailable
+			return nil, fmt.Sprintf("validator %q is unavailable: %s", v.Key, firstNonEmpty(v.Reason, "missing validator evidence")), OutputStateUnavailable
 		}
 		total += *v.NormalizedScore
 	}

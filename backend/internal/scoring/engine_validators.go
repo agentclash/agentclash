@@ -134,6 +134,10 @@ func evaluateValidators(validators []ValidatorDeclaration, evidence extractedEvi
 		}, outcome.evidence))
 		results = append(results, result)
 	}
+	for i := range results {
+		results[i].OutcomeClass = classifyValidatorOutcome(results[i])
+		results[i].RawOutput = withValidatorOutcomeClass(results[i].RawOutput, results[i].OutcomeClass)
+	}
 	return results, warnings
 }
 
@@ -226,6 +230,105 @@ func validateFileExistsUnavailable(config json.RawMessage) validatorOutcome {
 		return validatorOutcome{verdict: "fail", normalizedScore: floatPtr(0), reason: "file does not exist"}
 	}
 	return validatorOutcome{verdict: "pass", normalizedScore: floatPtr(1), reason: "file correctly does not exist"}
+}
+
+func classifyValidatorOutcome(result ValidatorResult) ValidatorOutcomeClass {
+	switch result.State {
+	case OutputStateAvailable:
+		switch result.Verdict {
+		case "pass":
+			return ValidatorOutcomePass
+		case "fail":
+			return ValidatorOutcomeFail
+		case "error":
+			return ValidatorOutcomeEvaluatorError
+		default:
+			if result.NormalizedScore != nil {
+				return ValidatorOutcomeFail
+			}
+			return ValidatorOutcomeUnavailable
+		}
+	case OutputStateUnavailable:
+		return ValidatorOutcomeUnavailable
+	case OutputStateError:
+		return classifyValidatorErrorOutcome(result)
+	default:
+		return ValidatorOutcomeEvaluatorError
+	}
+}
+
+func classifyValidatorErrorOutcome(result ValidatorResult) ValidatorOutcomeClass {
+	reason := strings.ToLower(result.Reason)
+	if result.Type == ValidatorTypeCodeExecution {
+		switch {
+		case strings.HasPrefix(reason, "parse code_execution config"),
+			strings.Contains(reason, "pass_at_k requires"):
+			return ValidatorOutcomePackError
+		default:
+			return ValidatorOutcomeInfraError
+		}
+	}
+	if isPackAuthorValidatorError(reason) {
+		return ValidatorOutcomePackError
+	}
+	return ValidatorOutcomeEvaluatorError
+}
+
+func isPackAuthorValidatorError(reason string) bool {
+	switch {
+	case strings.Contains(reason, "invalid regex pattern"),
+		strings.Contains(reason, "unsupported comparator"),
+		strings.Contains(reason, "invalid ") && strings.Contains(reason, " config"),
+		strings.Contains(reason, " config is required"),
+		strings.Contains(reason, " config.") && strings.Contains(reason, " is required"),
+		strings.Contains(reason, "unsupported match_mode"),
+		strings.Contains(reason, "unsupported validator type"):
+		return true
+	}
+
+	packPrefixes := []string{
+		"parse expected boolean assertion value",
+		"parse expected numeric value",
+		"parse expected as json",
+		"parse fuzzy_match config",
+		"parse numeric_match config",
+		"parse normalized_match config",
+		"parse token_f1 config",
+		"parse math_equivalence config",
+		"parse bleu_score config",
+		"parse bleu_score references",
+		"parse rouge_score config",
+		"parse rouge_score references",
+		"parse chrf_score config",
+		"parse chrf_score references",
+		"parse json schema",
+		"resolve json schema",
+		"parse json_path_match expectation",
+		"evaluate jsonpath expression",
+		"compare jsonpath value",
+	}
+	for _, prefix := range packPrefixes {
+		if strings.HasPrefix(reason, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+func withValidatorOutcomeClass(raw json.RawMessage, class ValidatorOutcomeClass) json.RawMessage {
+	if class == "" {
+		return raw
+	}
+	decoded := map[string]any{}
+	if len(raw) > 0 {
+		if err := json.Unmarshal(raw, &decoded); err != nil || decoded == nil {
+			decoded = map[string]any{
+				"raw_output": string(raw),
+			}
+		}
+	}
+	decoded["outcome_class"] = class
+	return mustMarshalJSON(decoded)
 }
 
 func applyValidator(validator ValidatorDeclaration, actual string, expected string) validatorOutcome {
