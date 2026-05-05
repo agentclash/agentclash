@@ -46,7 +46,7 @@ inputs:
     description: Newline-separated changed files. When set, these are passed directly to ci should-run.
     required: false
   labels:
-    description: Comma-separated pull request labels that may force the gate.
+    description: Comma-separated pull request labels that may force the gate. Defaults to labels from the GitHub event payload when omitted.
     required: false
   artifact-dir:
     description: Directory for AgentClash CI JSON artifacts.
