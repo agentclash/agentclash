@@ -20,6 +20,10 @@ inputs:
     description: AgentClash API base URL.
     required: false
     default: https://api.agentclash.dev
+  app-url:
+    description: AgentClash app base URL used for links in PR comments.
+    required: false
+    default: https://app.agentclash.dev
   install-cli:
     description: Install the published agentclash npm package before running.
     required: false
@@ -112,6 +116,7 @@ runs:
         INPUT_TOKEN: ${{ inputs.token }}
         INPUT_WORKSPACE: ${{ inputs.workspace }}
         INPUT_API_URL: ${{ inputs.api-url }}
+        INPUT_APP_URL: ${{ inputs.app-url }}
         INPUT_INSTALL_CLI: ${{ inputs.install-cli }}
         INPUT_CLI_VERSION: ${{ inputs.cli-version }}
         INPUT_REMOTE_VALIDATE: ${{ inputs.remote-validate }}

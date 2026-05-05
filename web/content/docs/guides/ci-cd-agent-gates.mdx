@@ -162,8 +162,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: read
-      issues: write
+      pull-requests: write
 
     steps:
       - uses: actions/checkout@v4
@@ -192,7 +191,7 @@ jobs:
             ${{ steps.agentclash.outputs.artifact-dir }}/*.json
 ```
 
-The action installs the published `agentclash` npm package by default, runs `ci validate --remote`, runs `ci should-run`, auto-detects pull request labels from the GitHub event payload, skips unrelated changes, runs `ci run` when matched, posts or updates a sticky structured PR comment when pull request context is available, and exposes `should-run`, `skip-reason`, `run-id`, `gate-verdict`, `exit-code`, `result-file`, and `artifact-dir` outputs. It preserves the CLI exit code, so a blocking gate fails the workflow normally. Grant `issues: write` when you want GitHub-hosted PR comments; commenting is best-effort and permission failures do not override the AgentClash result. If setup fails before a candidate run is created, the sticky comment reports the errored setup state and points reviewers at the GitHub Actions log.
+The action installs the published `agentclash` npm package by default, runs `ci validate --remote`, runs `ci should-run`, auto-detects pull request labels from the GitHub event payload, skips unrelated changes, runs `ci run` when matched, posts or updates a sticky structured PR comment when pull request context is available, and exposes `should-run`, `skip-reason`, `run-id`, `gate-verdict`, `exit-code`, `result-file`, and `artifact-dir` outputs. It preserves the CLI exit code, so a blocking gate fails the workflow normally. Grant `pull-requests: write` when you want GitHub-hosted PR comments; commenting is best-effort and permission failures do not override the AgentClash result. When run metadata is available, the comment links reviewers directly to the AgentClash candidate run, baseline run, comparison, failures, scorecard, replay, and regression cases. If setup fails before a candidate run is created, the sticky comment reports the errored setup state and points reviewers at the GitHub Actions log.
 
 `agentclash ci run` exits nonzero when the gate verdict should block CI, when the candidate run times out, or when the manifest/API setup is invalid. In GitHub Actions, it automatically attaches repository, pull request, branch, default branch, commit, workflow, event, and workflow-run URL metadata to the AgentClash run. It also appends a reviewer-friendly Markdown section when the `$GITHUB_STEP_SUMMARY` environment variable is set, while the bundled action turns the same run evidence into the PR comment. Pass `--summary-file <path>` for another Markdown destination, or `--github-step-summary=false` to disable the automatic GitHub summary.
 

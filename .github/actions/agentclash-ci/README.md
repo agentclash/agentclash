@@ -28,8 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: read
-      issues: write
+      pull-requests: write
 
     steps:
       - uses: actions/checkout@v4
@@ -65,6 +64,7 @@ jobs:
 | `token` | `AGENTCLASH_TOKEN` | AgentClash API token. |
 | `workspace` | `AGENTCLASH_WORKSPACE` | AgentClash workspace ID. |
 | `api-url` | `https://api.agentclash.dev` | AgentClash API base URL. |
+| `app-url` | `https://app.agentclash.dev` | AgentClash app base URL used for PR comment links. |
 | `install-cli` | `true` | Install `agentclash` from npm before running. |
 | `cli-version` | `latest` | npm version or tag for the `agentclash` package. |
 | `remote-validate` | `true` | Validate manifest resource IDs against the API. |
@@ -98,6 +98,6 @@ The action preserves the CLI exit code. A blocking AgentClash gate fails the job
 
 ## Pull Request Comments
 
-When `pr-comment` is enabled, the action posts a single sticky comment on pull requests. The comment summarizes the gate verdict, failure reason, candidate and baseline runs, score deltas, regression tracking outcome, and next actions. If the action fails before a candidate run is created, the comment reports an errored setup state and points reviewers at the GitHub Actions log. Later pushes update the existing AgentClash comment instead of creating a new one.
+When `pr-comment` is enabled, the action posts a single sticky comment on pull requests. The comment summarizes the gate verdict, failure reason, candidate and baseline runs, score deltas, regression tracking outcome, and next actions. When run metadata is available, it also links directly to the AgentClash candidate run, baseline run, comparison, failures, scorecard, replay, and regression cases. If the action fails before a candidate run is created, the comment reports an errored setup state and points reviewers at the GitHub Actions log. Later pushes update the existing AgentClash comment instead of creating a new one.
 
-Commenting is best-effort. If the workflow is not running on a pull request, the token is missing, or the token lacks comment permissions, the action logs a notice and preserves the original AgentClash exit code. For GitHub-hosted PR comments, grant `issues: write` in the job permissions.
+Commenting is best-effort. If the workflow is not running on a pull request, the token is missing, or the token lacks comment permissions, the action logs a notice and preserves the original AgentClash exit code. For GitHub-hosted PR comments, grant `pull-requests: write` in the job permissions.

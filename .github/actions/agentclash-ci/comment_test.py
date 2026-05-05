@@ -24,11 +24,12 @@ class FakeGitHubClient:
 
 def failing_result():
     return {
+        "workspace_id": "workspace-1",
         "gate_verdict": "fail",
         "failure_reason": "threshold_fail_correctness",
         "candidate": {
             "run_id": "run-candidate",
-            "run_url": "https://app.agentclash.dev/runs/run-candidate",
+            "run_agent_id": "agent-candidate",
             "ci_metadata": {
                 "pull_request_number": 42,
                 "workflow_run_url": "https://github.com/acme/agent/actions/runs/123",
@@ -36,6 +37,7 @@ def failing_result():
         },
         "baseline": {
             "run_id": "run-baseline",
+            "run_agent_id": "agent-baseline",
         },
         "release_gate": {
             "evaluation_details": {
@@ -58,6 +60,7 @@ def failing_result():
             "case_status": "proposed",
             "created": [
                 {
+                    "suite_id": "suite-1",
                     "challenge_key": "refund-abuse-triage",
                     "case_id": "case-1",
                 },
@@ -80,11 +83,86 @@ class CommentFormattingTests(unittest.TestCase):
         self.assertIn("threshold_fail_correctness", body)
         self.assertIn("run-candidate", body)
         self.assertIn("run-baseline", body)
+        self.assertIn("Inspect in AgentClash", body)
+        self.assertIn("https://app.agentclash.dev/workspaces/workspace-1/runs/run-candidate", body)
+        self.assertIn("https://app.agentclash.dev/workspaces/workspace-1/runs/run-baseline", body)
+        self.assertIn("https://app.agentclash.dev/workspaces/workspace-1/compare?baseline=run-baseline&candidate=run-candidate", body)
+        self.assertIn("https://app.agentclash.dev/workspaces/workspace-1/runs/run-candidate/failures", body)
+        self.assertIn("https://app.agentclash.dev/workspaces/workspace-1/runs/run-candidate/agents/agent-candidate/scorecard", body)
+        self.assertIn("https://app.agentclash.dev/workspaces/workspace-1/runs/run-candidate/agents/agent-candidate/replay", body)
         self.assertIn("Score Deltas", body)
         self.assertIn("`correctness` | `fail` | `-1` | `0.05`", body)
         self.assertIn("Regression Tracking", body)
         self.assertIn("refund-abuse-triage", body)
+        self.assertIn("https://app.agentclash.dev/workspaces/workspace-1/regression-suites/suite-1/cases/case-1", body)
         self.assertIn("Next Actions", body)
+
+    def test_build_failed_comment_uses_custom_app_url(self):
+        body = comment.build_comment(
+            manifest=".agentclash/ci.yaml",
+            result=failing_result(),
+            should_run={"should_run": True},
+            exit_code=1,
+            app_url="https://agentclash.example.com/app/",
+        )
+
+        self.assertIn("https://agentclash.example.com/app/workspaces/workspace-1/runs/run-candidate", body)
+
+    def test_build_failed_comment_prefers_app_links_over_safe_api_run_urls(self):
+        result = failing_result()
+        result["candidate"]["run_url"] = "https://api.example.com/runs/candidate"
+        result["baseline"]["run_url"] = "https://api.example.com/runs/baseline"
+
+        body = comment.build_comment(
+            manifest=".agentclash/ci.yaml",
+            result=result,
+            should_run={"should_run": True},
+            exit_code=1,
+        )
+
+        self.assertIn(
+            "| Candidate run | [`run-candidate`](https://app.agentclash.dev/workspaces/workspace-1/runs/run-candidate) |",
+            body,
+        )
+        self.assertIn(
+            "| Baseline run | [`run-baseline`](https://app.agentclash.dev/workspaces/workspace-1/runs/run-baseline) |",
+            body,
+        )
+        self.assertNotIn("https://api.example.com/runs/candidate", body)
+        self.assertNotIn("https://api.example.com/runs/baseline", body)
+
+    def test_build_failed_comment_falls_back_to_safe_api_run_urls(self):
+        result = failing_result()
+        result["workspace_id"] = ""
+        result["candidate"]["run_url"] = "https://api.example.com/runs/candidate"
+        result["baseline"]["run_url"] = "https://api.example.com/runs/baseline"
+
+        body = comment.build_comment(
+            manifest=".agentclash/ci.yaml",
+            result=result,
+            should_run={"should_run": True},
+            exit_code=1,
+        )
+
+        self.assertIn("| Candidate run | [`run-candidate`](https://api.example.com/runs/candidate) |", body)
+        self.assertIn("| Baseline run | [`run-baseline`](https://api.example.com/runs/baseline) |", body)
+
+    def test_build_failed_comment_rejects_unsafe_urls(self):
+        result = failing_result()
+        result["workspace_id"] = ""
+        result["candidate"]["run_url"] = "javascript:alert(1)"
+        result["candidate"]["ci_metadata"]["workflow_run_url"] = "javascript:alert(2)"
+
+        body = comment.build_comment(
+            manifest=".agentclash/ci.yaml",
+            result=result,
+            should_run={"should_run": True},
+            exit_code=1,
+        )
+
+        self.assertIn("| Candidate run | `run-candidate` |", body)
+        self.assertNotIn("javascript:", body)
+        self.assertNotIn("Workflow run", body)
 
     def test_build_skipped_comment_explains_skip_reason(self):
         body = comment.build_comment(
