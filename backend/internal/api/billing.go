@@ -589,11 +589,14 @@ func (m *BillingManager) createDodoCheckoutSession(ctx context.Context, caller C
 	if productID == "" {
 		return "", "", validationError("invalid_billing_period", "selected plan does not have a Dodo product for this billing period")
 	}
+	// Dodo subscription line items must have quantity=1; per-seat billing is
+	// expressed via add-ons, not by multiplying the subscription quantity.
+	// See https://docs.dodopayments.com/developer-resources/seat-based-pricing.
 	requestPayload := map[string]any{
 		"product_cart": []map[string]any{
 			{
 				"product_id": productID,
-				"quantity":   input.SeatQuantity,
+				"quantity":   1,
 			},
 		},
 		"return_url": input.ReturnURL,
