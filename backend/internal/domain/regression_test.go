@@ -91,6 +91,7 @@ func TestDefaultPromotionSeverityForFailureClass(t *testing.T) {
 	}{
 		{failureClass: "policy_violation", want: RegressionSeverityBlocking},
 		{failureClass: "sandbox_failure", want: RegressionSeverityBlocking},
+		{failureClass: "dependency_resolution_failure", want: RegressionSeverityWarning},
 		{failureClass: "incorrect_final_output", want: RegressionSeverityWarning},
 	}
 

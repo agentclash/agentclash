@@ -32,6 +32,27 @@ func TestClassifyFailureClassMappings(t *testing.T) {
 			want: FailureClassToolSelectionError,
 		},
 		{
+			name: "dependency resolution validator key",
+			input: ClassificationInput{
+				FailedChecks: []string{"dependency.registry"},
+			},
+			want: FailureClassDependencyResolution,
+		},
+		{
+			name: "unresolved import runtime message",
+			input: ClassificationInput{
+				FailedChecks: []string{"Cannot find module '@fake/hallucinated-sdk'"},
+			},
+			want: FailureClassDependencyResolution,
+		},
+		{
+			name: "python missing package message",
+			input: ClassificationInput{
+				FailedChecks: []string{"No module named hallucinated_client"},
+			},
+			want: FailureClassDependencyResolution,
+		},
+		{
 			name: "timeout and budget",
 			input: ClassificationInput{
 				HasTimeoutOrBudgetSignal: true,
@@ -104,6 +125,7 @@ func TestTaxonomyForFailureClass(t *testing.T) {
 		agentFault bool
 	}{
 		{class: FailureClassToolArgumentError, family: "agent", code: "agent.tool_arguments", agentFault: true},
+		{class: FailureClassDependencyResolution, family: "workflow", code: "workflow.dependency_resolution", agentFault: true},
 		{class: FailureClassTimeoutOrBudget, family: "workflow", code: "workflow.timeout_budget", agentFault: true},
 		{class: FailureClassSandboxFailure, family: "platform", code: "platform.sandbox_failure", agentFault: false},
 		{class: FailureClassInsufficientEvidence, family: "evidence", code: "evidence.insufficient", agentFault: false},

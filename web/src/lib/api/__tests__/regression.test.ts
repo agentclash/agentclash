@@ -199,6 +199,9 @@ describe("Regression API helpers", () => {
     expect(defaultPromotionSeverityForFailure("sandbox_failure")).toBe(
       "blocking",
     );
+    expect(
+      defaultPromotionSeverityForFailure("dependency_resolution_failure"),
+    ).toBe("warning");
     expect(defaultPromotionSeverityForFailure("incorrect_final_output")).toBe(
       "warning",
     );

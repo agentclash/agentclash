@@ -76,7 +76,7 @@ Supported filters are:
 - `--cursor <NEXT_CURSOR>`
 - `--limit <COUNT>`
 
-Failure classes currently accepted by the API are `incorrect_final_output`, `tool_selection_error`, `tool_argument_error`, `retrieval_grounding_failure`, `policy_violation`, `timeout_or_budget_exhaustion`, `sandbox_failure`, `malformed_output`, `flaky_non_deterministic`, `insufficient_evidence`, and `other`.
+Failure classes currently accepted by the API are `incorrect_final_output`, `tool_selection_error`, `tool_argument_error`, `retrieval_grounding_failure`, `policy_violation`, `timeout_or_budget_exhaustion`, `sandbox_failure`, `dependency_resolution_failure`, `malformed_output`, `flaky_non_deterministic`, `insufficient_evidence`, and `other`.
 
 The fields that matter for promotion are:
 

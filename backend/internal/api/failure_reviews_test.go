@@ -116,6 +116,7 @@ func TestListRunFailuresEndpointFiltersByClassChallengeAndEvidenceTier(t *testin
 	items := []failurereview.Item{
 		mustBuildFailureItem(t, runID, uuid.New(), "ticket-a", "case-a", "policy.filesystem"),
 		mustBuildFailureItem(t, runID, uuid.New(), "ticket-b", "case-b", "tool_argument.schema"),
+		mustBuildFailureItem(t, runID, uuid.New(), "ticket-c", "case-c", "dependency.registry"),
 	}
 
 	service := NewRunReadManager(NewCallerWorkspaceAuthorizer(), &fakeRunReadRepository{
@@ -140,6 +141,17 @@ func TestListRunFailuresEndpointFiltersByClassChallengeAndEvidenceTier(t *testin
 	}
 	if response.Items[0].Severity == "" {
 		t.Fatalf("filtered item severity = %q, want non-empty severity on the wire", response.Items[0].Severity)
+	}
+
+	dependencyResponse := performListRunFailuresRequest(t, service, workspaceID, runID, url.Values{
+		"failure_class": []string{"dependency_resolution_failure"},
+		"challenge_key": []string{"ticket-c"},
+	})
+	if len(dependencyResponse.Items) != 1 {
+		t.Fatalf("dependency filtered items = %d, want 1", len(dependencyResponse.Items))
+	}
+	if dependencyResponse.Items[0].FailureClass != "dependency_resolution_failure" {
+		t.Fatalf("dependency filtered item = %#v, want dependency_resolution_failure", dependencyResponse.Items[0])
 	}
 }
 

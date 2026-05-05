@@ -949,7 +949,7 @@ func severityFor(class FailureClass, state FailureState, evidenceTier EvidenceTi
 	switch class {
 	case FailureClassPolicyViolation, FailureClassTimeoutOrBudget, FailureClassSandboxFailure, FailureClassMalformedOutput:
 		return SeverityBlocking
-	case FailureClassIncorrectFinalOutput, FailureClassToolArgumentError, FailureClassToolSelectionError, FailureClassRetrievalGrounding, FailureClassOther:
+	case FailureClassIncorrectFinalOutput, FailureClassToolArgumentError, FailureClassToolSelectionError, FailureClassRetrievalGrounding, FailureClassDependencyResolution, FailureClassOther:
 		return SeverityWarning
 	case FailureClassInsufficientEvidence:
 		return SeverityInfo
@@ -983,6 +983,8 @@ func recommendedActionForClass(class FailureClass) string {
 		return "Review runtime limits, tool-call counts, and long-running steps."
 	case FailureClassSandboxFailure:
 		return "Inspect sandbox command events and environment assumptions before retrying."
+	case FailureClassDependencyResolution:
+		return "Verify dependency declarations, import paths, and registry availability before promoting this failure."
 	case FailureClassMalformedOutput:
 		return "Validate the final-output contract and any JSON/schema formatting logic."
 	case FailureClassIncorrectFinalOutput:
