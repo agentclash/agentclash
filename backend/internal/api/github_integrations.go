@@ -460,20 +460,22 @@ func (m *GitHubIntegrationManager) CreateCISetupPullRequest(ctx context.Context,
 	for _, file := range files {
 		summaries = append(summaries, CISetupPullRequestFileSummary{Path: file.Path})
 	}
-	conflicts, err := m.client.CheckRepositoryFiles(ctx, githubCheckRepositoryFilesInput{
-		InstallationID: selected.GitHubInstallationID,
-		Owner:          owner,
-		Repo:           repoName,
-		BaseBranch:     baseBranch,
-		Files:          files,
-	})
-	if err != nil {
-		return CreateCISetupPullRequestResult{}, err
-	}
 	existingConflicts := make([]CISetupFileConflict, 0)
-	for _, conflict := range conflicts {
-		if conflict.Exists {
-			existingConflicts = append(existingConflicts, conflict)
+	if input.CheckOnly || !input.OverwriteExisting {
+		conflicts, err := m.client.CheckRepositoryFiles(ctx, githubCheckRepositoryFilesInput{
+			InstallationID: selected.GitHubInstallationID,
+			Owner:          owner,
+			Repo:           repoName,
+			BaseBranch:     baseBranch,
+			Files:          files,
+		})
+		if err != nil {
+			return CreateCISetupPullRequestResult{}, err
+		}
+		for _, conflict := range conflicts {
+			if conflict.Exists {
+				existingConflicts = append(existingConflicts, conflict)
+			}
 		}
 	}
 	if input.CheckOnly || (len(existingConflicts) > 0 && !input.OverwriteExisting) {

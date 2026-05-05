@@ -425,8 +425,6 @@ export function CISetupClient({ workspaceId }: CISetupClientProps) {
   const readiness = ciSetupReadiness(config);
   const manifest = generateAgentClashCIManifest(config);
   const workflow = generateAgentClashGitHubWorkflow(config);
-  const canCreateSetupPR =
-    readiness.ready && selectedGitHubRepository !== null && !creatingSetupPR;
   const loadingAny =
     builds.isLoading ||
     deployments.isLoading ||
@@ -438,6 +436,11 @@ export function CISetupClient({ workspaceId }: CISetupClientProps) {
     repositories.isLoading ||
     ciProfiles.isLoading ||
     runs.isLoading;
+  const canCreateSetupPR =
+    readiness.ready &&
+    selectedGitHubRepository !== null &&
+    !loadingAny &&
+    !creatingSetupPR;
   const loadError =
     builds.error ||
     deployments.error ||
@@ -704,7 +707,11 @@ export function CISetupClient({ workspaceId }: CISetupClientProps) {
                     const value = event.target.value;
                     setSelectedProfileId(value);
                     const profile = savedProfiles.find((item) => item.id === value);
-                    if (profile) setProfileName(profile.name);
+                    if (profile) {
+                      applyProfile(profile);
+                    } else {
+                      setProfileName("Default CI profile");
+                    }
                   }}
                   className={selectClass}
                 >
@@ -1521,6 +1528,7 @@ function ResourceLinks({ workspaceId }: { workspaceId: string }) {
 }
 
 type StoredCIProfileConfig = {
+  schemaVersion?: unknown;
   selectedRepositoryKey?: unknown;
   selectedPackId?: unknown;
   selectedRegressionSuiteIds?: unknown;
@@ -1578,6 +1586,7 @@ function buildProfileConfig(config: {
   regressionPromotion: CIRegressionPromotion;
 }): StoredCIProfileConfig {
   return {
+    schemaVersion: 1,
     selectedRepositoryKey: config.selectedRepositoryKey,
     selectedPackId: config.selectedPackId,
     selectedRegressionSuiteIds: config.selectedRegressionSuiteIds,

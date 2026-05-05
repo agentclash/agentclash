@@ -367,6 +367,7 @@ describe("CISetupClient", () => {
         github_repository_id: 456,
         github_installation_id: 123,
         config: expect.objectContaining({
+          schemaVersion: 1,
           agentBuildId: "build-1",
           selectedPackId: "pack-1",
         }),

@@ -427,6 +427,69 @@ func TestGitHubIntegrationManagerCreatesAndListsCIProfiles(t *testing.T) {
 	}
 }
 
+func TestGitHubIntegrationManagerUpdatesCIProfile(t *testing.T) {
+	workspaceID := uuid.New()
+	profileID := uuid.New()
+	repo := &fakeGitHubIntegrationRepo{
+		organizationID: uuid.New(),
+		ciProfiles: []repository.WorkspaceCIProfile{
+			{
+				ID:                 profileID,
+				WorkspaceID:        workspaceID,
+				Name:               "Default",
+				RepositoryFullName: "acme/support-agent",
+				DefaultBranch:      "main",
+				ManifestPath:       ".agentclash/ci.yaml",
+				WorkflowPath:       ".github/workflows/agentclash.yml",
+				Config:             []byte(`{"schemaVersion":1}`),
+			},
+		},
+	}
+	manager := NewGitHubIntegrationManager(NewCallerWorkspaceAuthorizer(), repo, GitHubIntegrationConfig{
+		AppSlug:     "agentclash-dev",
+		StateSecret: "state-secret",
+	})
+
+	updated, err := manager.UpdateCIProfile(context.Background(), testAgentHarnessCaller(workspaceID), workspaceID, profileID, SaveCIProfileInput{
+		Name:               "Release gate",
+		RepositoryFullName: "acme/support-agent",
+		DefaultBranch:      "trunk",
+		ManifestPath:       ".agentclash/release.yaml",
+		WorkflowPath:       ".github/workflows/release-agentclash.yml",
+		Config:             []byte(`{"schemaVersion":1,"agentBuildId":"build-2"}`),
+	})
+	if err != nil {
+		t.Fatalf("UpdateCIProfile error: %v", err)
+	}
+	if updated.Name != "Release gate" || updated.DefaultBranch != "trunk" || updated.ManifestPath != ".agentclash/release.yaml" {
+		t.Fatalf("updated = %#v", updated)
+	}
+}
+
+func TestGitHubIntegrationManagerUpdateCIProfileReportsNameConflict(t *testing.T) {
+	workspaceID := uuid.New()
+	repo := &fakeGitHubIntegrationRepo{
+		organizationID:     uuid.New(),
+		updateCIProfileErr: repository.ErrWorkspaceCIProfileNameConflict,
+	}
+	manager := NewGitHubIntegrationManager(NewCallerWorkspaceAuthorizer(), repo, GitHubIntegrationConfig{
+		AppSlug:     "agentclash-dev",
+		StateSecret: "state-secret",
+	})
+
+	_, err := manager.UpdateCIProfile(context.Background(), testAgentHarnessCaller(workspaceID), workspaceID, uuid.New(), SaveCIProfileInput{
+		Name:               "Default",
+		RepositoryFullName: "acme/support-agent",
+		DefaultBranch:      "main",
+		ManifestPath:       ".agentclash/ci.yaml",
+		WorkflowPath:       ".github/workflows/agentclash.yml",
+		Config:             []byte(`{"schemaVersion":1}`),
+	})
+	if !errors.Is(err, repository.ErrWorkspaceCIProfileNameConflict) {
+		t.Fatalf("error = %v, want name conflict", err)
+	}
+}
+
 type fakeGitHubIntegrationRepo struct {
 	organizationID         uuid.UUID
 	installations          []repository.GitHubInstallation
@@ -441,6 +504,7 @@ type fakeGitHubIntegrationRepo struct {
 	upsertRepositories     []repository.UpsertGitHubInstallationRepositoryParams
 	upsertErr              error
 	ciProfiles             []repository.WorkspaceCIProfile
+	updateCIProfileErr     error
 }
 
 func (f *fakeGitHubIntegrationRepo) GetOrganizationIDByWorkspaceID(context.Context, uuid.UUID) (uuid.UUID, error) {
@@ -544,6 +608,9 @@ func (f *fakeGitHubIntegrationRepo) CreateWorkspaceCIProfile(_ context.Context, 
 }
 
 func (f *fakeGitHubIntegrationRepo) UpdateWorkspaceCIProfile(_ context.Context, p repository.UpdateWorkspaceCIProfileParams) (repository.WorkspaceCIProfile, error) {
+	if f.updateCIProfileErr != nil {
+		return repository.WorkspaceCIProfile{}, f.updateCIProfileErr
+	}
 	for index, profile := range f.ciProfiles {
 		if profile.WorkspaceID == p.WorkspaceID && profile.ID == p.ID {
 			profile.Name = p.Name

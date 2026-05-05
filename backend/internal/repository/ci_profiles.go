@@ -88,9 +88,6 @@ WHERE workspace_id = $1 AND id = $2`, workspaceID, profileID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return WorkspaceCIProfile{}, ErrWorkspaceCIProfileNotFound
 	}
-	if isWorkspaceCIProfileNameConflict(err) {
-		return WorkspaceCIProfile{}, ErrWorkspaceCIProfileNameConflict
-	}
 	return profile, err
 }
 
@@ -138,6 +135,9 @@ RETURNING id, workspace_id, name, repository_full_name, github_repository_id,
 	profile, err := scanWorkspaceCIProfile(row)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return WorkspaceCIProfile{}, ErrWorkspaceCIProfileNotFound
+	}
+	if isWorkspaceCIProfileNameConflict(err) {
+		return WorkspaceCIProfile{}, ErrWorkspaceCIProfileNameConflict
 	}
 	return profile, err
 }
