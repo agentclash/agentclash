@@ -41,6 +41,7 @@ func executeCommandWithQuiet(t *testing.T, args []string, apiURL string, quiet b
 	flagYes = false
 	flagDevice = false
 	flagForceLogin = false
+	runtimeOutputJSON = false
 
 	rootCmd.SetArgs(args)
 	return rootCmd.Execute()
