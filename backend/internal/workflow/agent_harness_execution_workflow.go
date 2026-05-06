@@ -40,7 +40,15 @@ type ExecuteAgentHarnessExecutionInput struct {
 }
 
 type agentHarnessExecutionConfig struct {
-	TimeoutSeconds int `json:"timeout_seconds,omitempty"`
+	TimeoutSeconds int                        `json:"timeout_seconds,omitempty"`
+	SetupCommands  []agentHarnessSetupCommand `json:"setup_commands,omitempty"`
+}
+
+type agentHarnessSetupCommand struct {
+	Name             string `json:"name,omitempty"`
+	Command          string `json:"command"`
+	WorkingDirectory string `json:"working_directory,omitempty"`
+	TimeoutSeconds   int    `json:"timeout_seconds,omitempty"`
 }
 
 type agentHarnessEvaluationConfig struct {
@@ -198,6 +206,14 @@ func (a *Activities) ExecuteAgentHarnessExecution(ctx context.Context, input Exe
 	if err := a.recordAgentHarnessEvent(ctx, execution.ID, "sandbox.created", "worker", map[string]any{"sandbox_id": session.ID(), "template": harness.CodexTemplate}); err != nil {
 		return err
 	}
+	if err := a.recordAgentHarnessEvent(ctx, execution.ID, "setup.runtime.detected", "worker", map[string]any{
+		"template":         harness.CodexTemplate,
+		"harness_kind":     harness.HarnessKind,
+		"agent_tool":       agentHarnessToolName(harness),
+		"metadata_version": 1,
+	}); err != nil {
+		return err
+	}
 
 	workdir := agentHarnessWorkspaceDir
 	hasRepository := harness.RepositoryURL != nil && strings.TrimSpace(*harness.RepositoryURL) != ""
@@ -224,8 +240,13 @@ func (a *Activities) ExecuteAgentHarnessExecution(ctx context.Context, input Exe
 				return fmt.Errorf("repository checkout failed with exit code %d", result.ExitCode)
 			}
 		}
+		_ = a.detectAgentHarnessSetupHints(ctx, execution.ID, session, workdir, gitEnv)
 	} else {
 		workdir = "/"
+	}
+
+	if err := a.runAgentHarnessSetupCommands(ctx, execution.ID, session, execution.ExecutionConfigSnapshot, workdir, timeout, env); err != nil {
+		return err
 	}
 
 	runner, err := agentHarnessRunnerFor(harness, workdir)
@@ -428,6 +449,15 @@ func normalizeAgentHarnessKind(kind string) string {
 	return trimmed
 }
 
+func agentHarnessToolName(h agentHarnessSnapshot) string {
+	switch normalizeAgentHarnessKind(h.HarnessKind) {
+	case "claude_e2b":
+		return "claude"
+	default:
+		return "codex"
+	}
+}
+
 type agentHarnessGitChanges struct {
 	ChangedFiles       string
 	WorkingTreeChanges string
@@ -462,6 +492,42 @@ func combineGitChangeLists(lists ...string) string {
 		}
 	}
 	return strings.Join(parts, "\n")
+}
+
+func splitNonEmptyLines(raw string) []string {
+	lines := strings.Split(raw, "\n")
+	items := make([]string, 0, len(lines))
+	for _, line := range lines {
+		if trimmed := strings.TrimSpace(line); trimmed != "" {
+			items = append(items, trimmed)
+		}
+	}
+	return items
+}
+
+func agentHarnessSetupHints(paths []string) []map[string]string {
+	hints := make([]map[string]string, 0, len(paths))
+	for _, path := range paths {
+		kind := "unknown"
+		switch {
+		case path == ".devcontainer/devcontainer.json" || path == "devcontainer.json":
+			kind = "devcontainer"
+		case strings.HasPrefix(path, ".github/workflows/"):
+			kind = "github_workflow"
+		case path == "go.mod":
+			kind = "go"
+		case path == "Cargo.toml":
+			kind = "rust"
+		case path == "package.json":
+			kind = "node"
+		case path == "pyproject.toml":
+			kind = "python"
+		case path == "flake.nix":
+			kind = "nix"
+		}
+		hints = append(hints, map[string]string{"path": path, "kind": kind})
+	}
+	return hints
 }
 
 func (a *Activities) createGitHubPullRequest(ctx context.Context, executionID uuid.UUID, session sandbox.Session, harness agentHarnessSnapshot, workdir string, timeout time.Duration, gitEnv map[string]string, token string, changes agentHarnessGitChanges) error {
@@ -580,6 +646,16 @@ func (a *Activities) execHarnessCommand(ctx context.Context, executionID uuid.UU
 	return result, a.recordAgentHarnessEvent(ctx, executionID, eventType+".failed", "worker", payload)
 }
 
+func (a *Activities) execAgentHarnessShellCommand(ctx context.Context, executionID uuid.UUID, session sandbox.Session, eventType string, command string, configuredWorkdir string, timeoutSeconds int, defaultWorkdir string, defaultTimeout time.Duration, env map[string]string) (sandbox.ExecResult, string, error) {
+	workdir := agentHarnessValidatorWorkdir(defaultWorkdir, configuredWorkdir)
+	timeout := defaultTimeout
+	if timeoutSeconds > 0 {
+		timeout = time.Duration(timeoutSeconds) * time.Second
+	}
+	result, err := a.execHarnessCommand(ctx, executionID, session, eventType, []string{"bash", "-lc", command}, workdir, timeout, env)
+	return result, workdir, err
+}
+
 func (a *Activities) evaluateAgentHarnessExecution(ctx context.Context, executionID uuid.UUID, session sandbox.Session, rawConfig json.RawMessage, workdir string, defaultTimeout time.Duration, env map[string]string) error {
 	config, err := decodeAgentHarnessEvaluationConfig(rawConfig)
 	if err != nil {
@@ -624,6 +700,61 @@ func (a *Activities) evaluateAgentHarnessExecution(ctx context.Context, executio
 	return a.recordAgentHarnessEvent(ctx, executionID, "scoring.completed", "worker", map[string]any{"passed": passed, "failed": failed, "skipped": skipped, "score": agentHarnessScore(passed, failed)})
 }
 
+func (a *Activities) detectAgentHarnessSetupHints(ctx context.Context, executionID uuid.UUID, session sandbox.Session, workdir string, env map[string]string) error {
+	result, err := a.execHarnessCommand(ctx, executionID, session, "setup.hints.detect", []string{"bash", "-lc", "for f in .devcontainer/devcontainer.json devcontainer.json .github/workflows/*.yml .github/workflows/*.yaml go.mod Cargo.toml package.json pyproject.toml flake.nix; do [ -e \"$f\" ] && echo \"$f\"; done"}, workdir, 30*time.Second, env)
+	if err != nil {
+		return a.recordAgentHarnessEvent(ctx, executionID, "setup.hints.detected", "worker", map[string]any{"hints": []map[string]string{}, "error": err.Error()})
+	}
+	if result.ExitCode != 0 {
+		return a.recordAgentHarnessEvent(ctx, executionID, "setup.hints.detected", "worker", map[string]any{"hints": []map[string]string{}, "error": fmt.Sprintf("setup hint detection failed with exit code %d", result.ExitCode)})
+	}
+	hints := agentHarnessSetupHints(splitNonEmptyLines(result.Stdout))
+	return a.recordAgentHarnessEvent(ctx, executionID, "setup.hints.detected", "worker", map[string]any{"hints": hints})
+}
+
+func (a *Activities) runAgentHarnessSetupCommands(ctx context.Context, executionID uuid.UUID, session sandbox.Session, rawConfig json.RawMessage, defaultWorkdir string, defaultTimeout time.Duration, env map[string]string) error {
+	cfg := agentHarnessExecutionConfig{}
+	if len(rawConfig) > 0 && string(rawConfig) != "null" {
+		if err := json.Unmarshal(rawConfig, &cfg); err != nil {
+			_ = a.recordAgentHarnessEvent(ctx, executionID, "setup.config.failed", "worker", map[string]any{"error": err.Error()})
+			return fmt.Errorf("decode execution_config setup commands: %w", err)
+		}
+	}
+	if len(cfg.SetupCommands) == 0 {
+		return a.recordAgentHarnessEvent(ctx, executionID, "setup.skipped", "worker", map[string]any{"reason": "execution_config has no setup_commands"})
+	}
+	for index, setup := range cfg.SetupCommands {
+		command := strings.TrimSpace(setup.Command)
+		if command == "" {
+			err := fmt.Errorf("setup command %d is missing command", index)
+			_ = a.recordAgentHarnessEvent(ctx, executionID, "setup.command.failed", "worker", map[string]any{"index": index, "error": err.Error()})
+			return err
+		}
+		name := strings.TrimSpace(setup.Name)
+		if name == "" {
+			name = fmt.Sprintf("setup-%d", index+1)
+		}
+		result, workdir, err := a.execAgentHarnessShellCommand(ctx, executionID, session, "setup.command.exec", command, setup.WorkingDirectory, setup.TimeoutSeconds, defaultWorkdir, defaultTimeout, env)
+		if err != nil {
+			_ = a.recordAgentHarnessEvent(ctx, executionID, "setup.command.failed", "worker", map[string]any{"index": index, "name": name, "command": command, "error": err.Error()})
+			return err
+		}
+		payload := map[string]any{"index": index, "name": name, "command": command, "working_directory": workdir, "exit_code": result.ExitCode}
+		if result.ExitCode != 0 {
+			payload["stdout"] = result.Stdout
+			payload["stderr"] = result.Stderr
+			err := fmt.Errorf("setup command %q failed with exit code %d", name, result.ExitCode)
+			payload["error"] = err.Error()
+			_ = a.recordAgentHarnessEvent(ctx, executionID, "setup.command.failed", "worker", payload)
+			return err
+		}
+		if err := a.recordAgentHarnessEvent(ctx, executionID, "setup.command.completed", "worker", payload); err != nil {
+			return err
+		}
+	}
+	return a.recordAgentHarnessEvent(ctx, executionID, "setup.completed", "worker", map[string]any{"commands": len(cfg.SetupCommands)})
+}
+
 func (a *Activities) evaluateCommandValidator(ctx context.Context, executionID uuid.UUID, session sandbox.Session, validator agentHarnessValidatorConfig, index int, defaultWorkdir string, defaultTimeout time.Duration, env map[string]string) (bool, error) {
 	command := strings.TrimSpace(validator.Command)
 	if command == "" {
@@ -631,13 +762,7 @@ func (a *Activities) evaluateCommandValidator(ctx context.Context, executionID u
 		_ = a.recordAgentHarnessEvent(ctx, executionID, "validator.command.failed", "worker", map[string]any{"index": index, "error": err.Error()})
 		return false, err
 	}
-	workdir := agentHarnessValidatorWorkdir(defaultWorkdir, validator.WorkingDirectory)
-	timeout := defaultTimeout
-	if validator.TimeoutSeconds > 0 {
-		timeout = time.Duration(validator.TimeoutSeconds) * time.Second
-	}
-
-	result, err := a.execHarnessCommand(ctx, executionID, session, "validator.command.exec", []string{"bash", "-lc", command}, workdir, timeout, env)
+	result, workdir, err := a.execAgentHarnessShellCommand(ctx, executionID, session, "validator.command.exec", command, validator.WorkingDirectory, validator.TimeoutSeconds, defaultWorkdir, defaultTimeout, env)
 	payload := map[string]any{
 		"index":             index,
 		"command":           command,
