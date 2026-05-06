@@ -400,6 +400,7 @@ type agentHarnessExecutionResponse struct {
 	ExecutionConfigSnapshot  json.RawMessage                      `json:"execution_config_snapshot"`
 	EvaluationConfigSnapshot json.RawMessage                      `json:"evaluation_config_snapshot"`
 	ErrorMessage             *string                              `json:"error_message,omitempty"`
+	FailureStage             *string                              `json:"failure_stage,omitempty"`
 	StartedAt                *time.Time                           `json:"started_at,omitempty"`
 	CompletedAt              *time.Time                           `json:"completed_at,omitempty"`
 	CancelledAt              *time.Time                           `json:"cancelled_at,omitempty"`
@@ -568,6 +569,7 @@ func listAgentHarnessExecutionsHandler(logger *slog.Logger, service AgentHarness
 				return
 			}
 			response.Events = mapAgentHarnessExecutionEventResponses(events)
+			response.FailureStage = agentHarnessExecutionFailureStage(response.Status, events)
 			items = append(items, response)
 		}
 		writeJSON(w, http.StatusOK, listAgentHarnessExecutionsResponse{Items: items})
@@ -603,6 +605,7 @@ func getAgentHarnessExecutionHandler(logger *slog.Logger, service AgentHarnessSe
 			return
 		}
 		response.Events = mapAgentHarnessExecutionEventResponses(events)
+		response.FailureStage = agentHarnessExecutionFailureStage(response.Status, events)
 		writeJSON(w, http.StatusOK, response)
 	}
 }
@@ -678,6 +681,36 @@ func mapAgentHarnessExecutionEventResponses(events []repository.AgentHarnessExec
 		})
 	}
 	return items
+}
+
+func agentHarnessExecutionFailureStage(status string, events []repository.AgentHarnessExecutionEvent) *string {
+	if status != string(repository.AgentHarnessExecutionStatusFailed) {
+		return nil
+	}
+	for index := len(events) - 1; index >= 0; index-- {
+		eventType := events[index].EventType
+		if eventType == "github.repository_access_revoked" {
+			stage := "repository"
+			return &stage
+		}
+		if !strings.HasSuffix(eventType, ".failed") {
+			continue
+		}
+		stage := "infrastructure"
+		switch {
+		case strings.HasPrefix(eventType, "setup."):
+			stage = "setup"
+		case strings.HasPrefix(eventType, "codex.") || strings.HasPrefix(eventType, "claude."):
+			stage = "agent"
+		case strings.HasPrefix(eventType, "validator.") || strings.HasPrefix(eventType, "scoring.") || strings.HasPrefix(eventType, "llm_judges."):
+			stage = "validator"
+		case strings.HasPrefix(eventType, "repository.") || strings.HasPrefix(eventType, "github.git_auth"):
+			stage = "repository"
+		}
+		return &stage
+	}
+	stage := "infrastructure"
+	return &stage
 }
 
 func marshalAgentHarnessSnapshot(h repository.AgentHarness, input StartAgentHarnessExecutionInput) (json.RawMessage, error) {

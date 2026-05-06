@@ -495,6 +495,39 @@ describe("AgentHarnessesClient", () => {
     rendered.cleanup();
   });
 
+  it("classifies setup failures separately from agent failures", () => {
+    mockExecutions.mockReturnValue([
+      baseExecution({
+        status: "failed",
+        failure_stage: "setup",
+        error_message: "Setup command failed",
+        events: [
+          {
+            id: "event-setup-failed",
+            agent_harness_execution_id: "execution-1",
+            sequence_number: 1,
+            event_type: "setup.command.exec.failed",
+            actor_type: "worker",
+            occurred_at: "2026-05-01T00:01:05Z",
+            payload: {
+              command: ["bash", "-lc", "go mod download"],
+              working_directory: "/workspace",
+              exit_code: 1,
+            },
+          },
+        ],
+      }),
+    ]);
+    const rendered = renderClient();
+
+    expect(document.body.textContent).toContain("Setup failed");
+    expect(document.body.textContent).toContain("Setup command failed");
+    expect(document.body.textContent).toContain("Setupfailed");
+    expect(document.body.textContent).toContain("Agent workwaiting");
+
+    rendered.cleanup();
+  });
+
   it("keeps loading, error, and empty states readable", () => {
     mockHarnessQuery.mockReturnValueOnce({ isLoading: true });
     let rendered = renderClient();

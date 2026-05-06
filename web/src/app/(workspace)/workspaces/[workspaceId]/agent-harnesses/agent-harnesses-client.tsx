@@ -51,6 +51,7 @@ const statusVariant: Record<string, "default" | "secondary" | "outline"> = {
 const phaseOrder = [
   "sandbox",
   "repository",
+  "setup",
   "agent",
   "diff",
   "validation",
@@ -62,8 +63,9 @@ type HarnessPhase = (typeof phaseOrder)[number];
 type HarnessPhaseState = "waiting" | "running" | "done" | "failed";
 
 const phaseLabels: Record<HarnessPhase, string> = {
-  sandbox: "Setup",
+  sandbox: "Sandbox",
   repository: "Repository",
+  setup: "Setup",
   agent: "Agent work",
   diff: "Diff",
   validation: "Validation",
@@ -412,7 +414,10 @@ function LatestRunPanel({
 
       <div className="space-y-4 p-4">
         {execution.status === "failed" ? (
-          <FailureNotice message={failureMessage} />
+          <FailureNotice
+            message={failureMessage}
+            stage={execution.failure_stage}
+          />
         ) : null}
 
         <PhaseProgress execution={execution} />
@@ -457,14 +462,21 @@ function LatestRunPanel({
   );
 }
 
-function FailureNotice({ message }: { message: string }) {
+function FailureNotice({
+  message,
+  stage,
+}: {
+  message: string;
+  stage?: AgentHarnessExecution["failure_stage"];
+}) {
+  const title = stage ? `${failureStageLabel(stage)} failed` : "This run needs attention";
   return (
     <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-3">
       <div className="flex items-start gap-2">
         <AlertCircle className="mt-0.5 size-4 shrink-0 text-destructive" />
         <div className="min-w-0">
           <div className="text-sm font-medium text-destructive">
-            This run needs attention
+            {title}
           </div>
           <p className="mt-1 whitespace-pre-wrap break-words text-sm text-destructive/90">
             {message || "Open the summarized activity details and check the latest failed step."}
@@ -473,6 +485,21 @@ function FailureNotice({ message }: { message: string }) {
       </div>
     </div>
   );
+}
+
+function failureStageLabel(stage: NonNullable<AgentHarnessExecution["failure_stage"]>) {
+  switch (stage) {
+    case "setup":
+      return "Setup";
+    case "agent":
+      return "Agent";
+    case "validator":
+      return "Validation";
+    case "repository":
+      return "Repository";
+    case "infrastructure":
+      return "Infrastructure";
+  }
 }
 
 function PhaseProgress({ execution }: { execution: AgentHarnessExecution }) {
@@ -654,6 +681,7 @@ function phaseStates(execution: AgentHarnessExecution) {
   const states: Record<HarnessPhase, HarnessPhaseState> = {
     sandbox: "waiting",
     repository: "waiting",
+    setup: "waiting",
     agent: "waiting",
     diff: "waiting",
     validation: "waiting",
@@ -689,6 +717,7 @@ function eventPhase(eventType: string): HarnessPhase | null {
   if (eventType.startsWith("repository.") || eventType.startsWith("github.git_auth")) {
     return "repository";
   }
+  if (eventType.startsWith("setup.")) return "setup";
   if (
     eventType.startsWith("codex.") ||
     eventType.startsWith("claude.") ||

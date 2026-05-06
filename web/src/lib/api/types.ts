@@ -497,6 +497,7 @@ export interface AgentHarnessExecution {
   status: AgentHarnessExecutionStatus;
   status_reason?: string;
   error_message?: string;
+  failure_stage?: "setup" | "agent" | "validator" | "repository" | "infrastructure";
   harness_snapshot: unknown;
   execution_config_snapshot: unknown;
   evaluation_config_snapshot: unknown;

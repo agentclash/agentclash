@@ -575,6 +575,134 @@ func TestAgentHarnessExecutionRoutes(t *testing.T) {
 	}
 }
 
+func TestAgentHarnessExecutionRoutesSerializeFailureStage(t *testing.T) {
+	workspaceID := uuid.New()
+	harness := testAgentHarnessRecord(workspaceID, "Existing harness")
+	execution := testAgentHarnessExecutionRecord(workspaceID, harness.ID)
+	execution.Status = string(repository.AgentHarnessExecutionStatusFailed)
+	event := repository.AgentHarnessExecutionEvent{
+		ID:                      1,
+		AgentHarnessExecutionID: execution.ID,
+		SequenceNumber:          1,
+		EventType:               "setup.command.failed",
+		ActorType:               "worker",
+		OccurredAt:              time.Now().UTC(),
+		Payload:                 json.RawMessage(`{"error":"setup failed"}`),
+	}
+	service := &fakeAgentHarnessService{
+		executions: []repository.AgentHarnessExecution{execution},
+		events:     []repository.AgentHarnessExecutionEvent{event},
+	}
+	router := chi.NewRouter()
+	router.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := context.WithValue(r.Context(), callerContextKey{}, testAgentHarnessCaller(workspaceID))
+			ctx = context.WithValue(ctx, workspaceIDContextKey{}, workspaceID)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	})
+	router.Get("/v1/workspaces/{workspaceID}/agent-harness-executions", listAgentHarnessExecutionsHandler(slog.Default(), service))
+	router.Get("/v1/workspaces/{workspaceID}/agent-harness-executions/{executionID}", getAgentHarnessExecutionHandler(slog.Default(), service))
+
+	listReq := httptest.NewRequest(http.MethodGet, "/v1/workspaces/"+workspaceID.String()+"/agent-harness-executions", nil)
+	listRec := httptest.NewRecorder()
+	router.ServeHTTP(listRec, listReq)
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("list status = %d, body %s", listRec.Code, listRec.Body.String())
+	}
+	var listed listAgentHarnessExecutionsResponse
+	if err := json.Unmarshal(listRec.Body.Bytes(), &listed); err != nil {
+		t.Fatalf("decode listed executions: %v", err)
+	}
+	if len(listed.Items) != 1 || listed.Items[0].FailureStage == nil || *listed.Items[0].FailureStage != "setup" {
+		t.Fatalf("listed failure_stage = %#v, want setup", listed.Items)
+	}
+
+	getReq := httptest.NewRequest(http.MethodGet, "/v1/workspaces/"+workspaceID.String()+"/agent-harness-executions/"+execution.ID.String(), nil)
+	getRec := httptest.NewRecorder()
+	router.ServeHTTP(getRec, getReq)
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("get status = %d, body %s", getRec.Code, getRec.Body.String())
+	}
+	var gotExecution agentHarnessExecutionResponse
+	if err := json.Unmarshal(getRec.Body.Bytes(), &gotExecution); err != nil {
+		t.Fatalf("decode execution: %v", err)
+	}
+	if gotExecution.FailureStage == nil || *gotExecution.FailureStage != "setup" {
+		t.Fatalf("failure_stage = %#v, want setup", gotExecution.FailureStage)
+	}
+}
+
+func TestAgentHarnessExecutionFailureStage(t *testing.T) {
+	tests := []struct {
+		name   string
+		status string
+		events []repository.AgentHarnessExecutionEvent
+		want   *string
+	}{
+		{
+			name:   "setup",
+			status: string(repository.AgentHarnessExecutionStatusFailed),
+			events: []repository.AgentHarnessExecutionEvent{{
+				EventType: "setup.command.failed",
+			}},
+			want: stringPtr("setup"),
+		},
+		{
+			name:   "agent",
+			status: string(repository.AgentHarnessExecutionStatusFailed),
+			events: []repository.AgentHarnessExecutionEvent{{
+				EventType: "codex.exec.failed",
+			}},
+			want: stringPtr("agent"),
+		},
+		{
+			name:   "validator",
+			status: string(repository.AgentHarnessExecutionStatusFailed),
+			events: []repository.AgentHarnessExecutionEvent{{
+				EventType: "validator.command.failed",
+			}},
+			want: stringPtr("validator"),
+		},
+		{
+			name:   "non failed execution",
+			status: string(repository.AgentHarnessExecutionStatusRunning),
+			events: []repository.AgentHarnessExecutionEvent{{
+				EventType: "setup.command.failed",
+			}},
+			want: nil,
+		},
+		{
+			name:   "repository access revoked",
+			status: string(repository.AgentHarnessExecutionStatusFailed),
+			events: []repository.AgentHarnessExecutionEvent{{
+				EventType: "github.repository_access_revoked",
+			}},
+			want: stringPtr("repository"),
+		},
+		{
+			name:   "infrastructure fallback",
+			status: string(repository.AgentHarnessExecutionStatusFailed),
+			events: nil,
+			want:   stringPtr("infrastructure"),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := agentHarnessExecutionFailureStage(tt.status, tt.events)
+			if tt.want == nil {
+				if got != nil {
+					t.Fatalf("failure stage = %q, want nil", *got)
+				}
+				return
+			}
+			if got == nil || *got != *tt.want {
+				t.Fatalf("failure stage = %#v, want %q", got, *tt.want)
+			}
+		})
+	}
+}
+
 func testAgentHarnessCaller(workspaceID uuid.UUID) Caller {
 	return testAgentHarnessCallerWithRole(workspaceID, RoleWorkspaceAdmin)
 }
