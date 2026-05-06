@@ -292,8 +292,8 @@ func (m *WorkspaceMembershipManager) AcceptWorkspaceInvite(ctx context.Context, 
 	if err != nil {
 		return WorkspaceMembershipResult{}, err
 	}
-	if !inviteTokenCanBeAcceptedByCaller(caller, membership.Email) {
-		return WorkspaceMembershipResult{}, ErrForbidden
+	if err := inviteTokenAcceptError(caller, membership.Email); err != nil {
+		return WorkspaceMembershipResult{}, withInviteAcceptDenialContext(err, "workspace", caller.UserID, membership.ID, membership.OrganizationID, membership.WorkspaceID)
 	}
 	if wsInviteExpired(membership) {
 		return WorkspaceMembershipResult{}, repository.ErrInviteExpired
