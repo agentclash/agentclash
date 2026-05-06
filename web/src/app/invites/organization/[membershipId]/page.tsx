@@ -4,6 +4,9 @@ import { createApiClient } from "@/lib/api/client";
 import type { OrgMember, UserMeResponse } from "@/lib/api/types";
 import { InviteError } from "../../invite-error";
 
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export default async function OrganizationInvitePage({
   params,
 }: {
@@ -20,8 +23,11 @@ export default async function OrganizationInvitePage({
   const api = createApiClient(accessToken);
   let accepted: OrgMember;
   try {
+    const acceptPath = UUID_PATTERN.test(membershipId)
+      ? `/v1/organization-memberships/${membershipId}`
+      : `/v1/invites/organization/${membershipId}`;
     accepted = await api.patch<OrgMember>(
-      `/v1/organization-memberships/${membershipId}`,
+      acceptPath,
       { status: "active" },
     );
   } catch (err) {

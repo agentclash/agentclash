@@ -33,12 +33,13 @@ describe("sanitizeReturnTo", () => {
 
   it("preserves invite accept routes", () => {
     const membershipId = "018f9f2e-65cb-7d0b-9c98-0df2ce4076d8";
+    const inviteToken = "invite_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghi0123456789";
 
     expect(sanitizeReturnTo(`/invites/organization/${membershipId}`)).toBe(
       `/invites/organization/${membershipId}`,
     );
-    expect(sanitizeReturnTo(`/invites/workspace/${membershipId}`)).toBe(
-      `/invites/workspace/${membershipId}`,
+    expect(sanitizeReturnTo(`/invites/workspace/${inviteToken}`)).toBe(
+      `/invites/workspace/${inviteToken}`,
     );
   });
 
@@ -84,8 +85,13 @@ describe("invite return-to helpers", () => {
     expect(
       buildInviteReturnTo("organization", `/invites/organization/${membershipId}`),
     ).toBe(`/invites/organization/${membershipId}`);
-    expect(buildInviteReturnTo("workspace", "/invites/workspace/nope")).toBe(
-      "/dashboard",
+    expect(
+      buildInviteReturnTo(
+        "workspace",
+        "/invites/workspace/invite_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghi0123456789",
+      ),
+    ).toBe(
+      "/invites/workspace/invite_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghi0123456789",
     );
   });
 });

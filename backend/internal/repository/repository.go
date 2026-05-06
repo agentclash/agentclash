@@ -2743,53 +2743,69 @@ type UpdateWorkspaceInput struct {
 }
 
 type OrgMembershipFullRow struct {
-	ID               uuid.UUID
-	OrganizationID   uuid.UUID
-	UserID           uuid.UUID
-	Email            string
-	DisplayName      string
-	Role             string
-	MembershipStatus string
-	CreatedAt        time.Time
-	UpdatedAt        time.Time // set by DB trigger on every UPDATE
+	ID                   uuid.UUID
+	OrganizationID       uuid.UUID
+	UserID               uuid.UUID
+	Email                string
+	DisplayName          string
+	Role                 string
+	MembershipStatus     string
+	InviteToken          string
+	InviteTokenExpiresAt *time.Time
+	CreatedAt            time.Time
+	UpdatedAt            time.Time // set by DB trigger on every UPDATE
 }
 
 type CreateOrgMembershipInput struct {
-	OrganizationID  uuid.UUID
-	UserID          uuid.UUID
-	Role            string
-	EntitlementGate *OrganizationEntitlementGate
+	OrganizationID       uuid.UUID
+	UserID               uuid.UUID
+	Role                 string
+	InviteToken          string
+	InviteTokenExpiresAt time.Time
+	EntitlementGate      *OrganizationEntitlementGate
 }
 
 type UpdateOrgMembershipInput struct {
-	Role            *string
-	Status          *string
-	EntitlementGate *OrganizationEntitlementGate
+	Role                 *string
+	Status               *string
+	UserID               *uuid.UUID
+	InviteToken          *string
+	InviteTokenExpiresAt *time.Time
+	ClearInviteToken     bool
+	EntitlementGate      *OrganizationEntitlementGate
 }
 
 type WorkspaceMembershipFullRow struct {
-	ID               uuid.UUID
-	WorkspaceID      uuid.UUID
-	OrganizationID   uuid.UUID
-	UserID           uuid.UUID
-	Email            string
-	DisplayName      string
-	Role             string
-	MembershipStatus string
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	ID                   uuid.UUID
+	WorkspaceID          uuid.UUID
+	OrganizationID       uuid.UUID
+	UserID               uuid.UUID
+	Email                string
+	DisplayName          string
+	Role                 string
+	MembershipStatus     string
+	InviteToken          string
+	InviteTokenExpiresAt *time.Time
+	CreatedAt            time.Time
+	UpdatedAt            time.Time
 }
 
 type CreateWorkspaceMembershipInput struct {
-	OrganizationID uuid.UUID
-	WorkspaceID    uuid.UUID
-	UserID         uuid.UUID
-	Role           string
+	OrganizationID       uuid.UUID
+	WorkspaceID          uuid.UUID
+	UserID               uuid.UUID
+	Role                 string
+	InviteToken          string
+	InviteTokenExpiresAt time.Time
 }
 
 type UpdateWorkspaceMembershipInput struct {
-	Role   *string
-	Status *string
+	Role                 *string
+	Status               *string
+	UserID               *uuid.UUID
+	InviteToken          *string
+	InviteTokenExpiresAt *time.Time
+	ClearInviteToken     bool
 }
 
 type OnboardInput struct {
@@ -3196,7 +3212,8 @@ func (r *Repository) ListWorkspaceMemberships(ctx context.Context, workspaceID u
 	rows, err := r.db.Query(ctx, `
 		SELECT wm.id, wm.workspace_id, wm.organization_id, wm.user_id,
 		       u.email, COALESCE(u.display_name, ''),
-		       wm.role, wm.membership_status, wm.created_at, wm.updated_at
+		       wm.role, wm.membership_status, COALESCE(wm.invite_token, ''),
+		       wm.invite_token_expires_at, wm.created_at, wm.updated_at
 		FROM workspace_memberships wm
 		JOIN users u ON u.id = wm.user_id
 		WHERE wm.workspace_id = $1 AND wm.membership_status IN ('active', 'invited')
@@ -3211,10 +3228,13 @@ func (r *Repository) ListWorkspaceMemberships(ctx context.Context, workspaceID u
 	var memberships []WorkspaceMembershipFullRow
 	for rows.Next() {
 		var m WorkspaceMembershipFullRow
+		var inviteTokenExpiresAt pgtype.Timestamptz
 		if err := rows.Scan(&m.ID, &m.WorkspaceID, &m.OrganizationID, &m.UserID,
-			&m.Email, &m.DisplayName, &m.Role, &m.MembershipStatus, &m.CreatedAt, &m.UpdatedAt); err != nil {
+			&m.Email, &m.DisplayName, &m.Role, &m.MembershipStatus, &m.InviteToken,
+			&inviteTokenExpiresAt, &m.CreatedAt, &m.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scan workspace membership: %w", err)
 		}
+		m.InviteTokenExpiresAt = optionalTime(inviteTokenExpiresAt)
 		memberships = append(memberships, m)
 	}
 	if err := rows.Err(); err != nil {
@@ -3240,32 +3260,42 @@ func (r *Repository) CountWorkspaceMemberships(ctx context.Context, workspaceID 
 
 func (r *Repository) GetWorkspaceMembershipByWorkspaceAndUser(ctx context.Context, workspaceID, userID uuid.UUID) (WorkspaceMembershipFullRow, error) {
 	var m WorkspaceMembershipFullRow
+	var inviteTokenExpiresAt pgtype.Timestamptz
 	err := r.db.QueryRow(ctx, `
 		SELECT wm.id, wm.workspace_id, wm.organization_id, wm.user_id,
 		       u.email, COALESCE(u.display_name, ''),
-		       wm.role, wm.membership_status, wm.created_at, wm.updated_at
+		       wm.role, wm.membership_status, COALESCE(wm.invite_token, ''),
+		       wm.invite_token_expires_at, wm.created_at, wm.updated_at
 		FROM workspace_memberships wm
 		JOIN users u ON u.id = wm.user_id
 		WHERE wm.workspace_id = $1 AND wm.user_id = $2
 	`, workspaceID, userID).Scan(&m.ID, &m.WorkspaceID, &m.OrganizationID, &m.UserID,
-		&m.Email, &m.DisplayName, &m.Role, &m.MembershipStatus, &m.CreatedAt, &m.UpdatedAt)
+		&m.Email, &m.DisplayName, &m.Role, &m.MembershipStatus, &m.InviteToken,
+		&inviteTokenExpiresAt, &m.CreatedAt, &m.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return WorkspaceMembershipFullRow{}, ErrMembershipNotFound
 		}
 		return WorkspaceMembershipFullRow{}, fmt.Errorf("get workspace membership by workspace and user: %w", err)
 	}
+	m.InviteTokenExpiresAt = optionalTime(inviteTokenExpiresAt)
 	return m, nil
 }
 
 func (r *Repository) CreateWorkspaceMembership(ctx context.Context, input CreateWorkspaceMembershipInput) (WorkspaceMembershipFullRow, error) {
 	var m WorkspaceMembershipFullRow
+	var inviteTokenExpiresAt pgtype.Timestamptz
 	err := r.db.QueryRow(ctx, `
-		INSERT INTO workspace_memberships (id, organization_id, workspace_id, user_id, role, membership_status)
-		VALUES (gen_random_uuid(), $1, $2, $3, $4, 'invited')
-		RETURNING id, organization_id, workspace_id, user_id, role, membership_status, created_at, updated_at
-	`, input.OrganizationID, input.WorkspaceID, input.UserID, input.Role).Scan(
-		&m.ID, &m.OrganizationID, &m.WorkspaceID, &m.UserID, &m.Role, &m.MembershipStatus, &m.CreatedAt, &m.UpdatedAt,
+		INSERT INTO workspace_memberships (
+			id, organization_id, workspace_id, user_id, role, membership_status,
+			invite_token, invite_token_expires_at
+		)
+		VALUES (gen_random_uuid(), $1, $2, $3, $4, 'invited', $5, $6)
+		RETURNING id, organization_id, workspace_id, user_id, role, membership_status,
+		          COALESCE(invite_token, ''), invite_token_expires_at, created_at, updated_at
+	`, input.OrganizationID, input.WorkspaceID, input.UserID, input.Role, input.InviteToken, input.InviteTokenExpiresAt).Scan(
+		&m.ID, &m.OrganizationID, &m.WorkspaceID, &m.UserID, &m.Role, &m.MembershipStatus,
+		&m.InviteToken, &inviteTokenExpiresAt, &m.CreatedAt, &m.UpdatedAt,
 	)
 	if err != nil {
 		var pgErr *pgconn.PgError
@@ -3274,6 +3304,7 @@ func (r *Repository) CreateWorkspaceMembership(ctx context.Context, input Create
 		}
 		return WorkspaceMembershipFullRow{}, fmt.Errorf("create workspace membership: %w", err)
 	}
+	m.InviteTokenExpiresAt = optionalTime(inviteTokenExpiresAt)
 
 	var user User
 	if err = r.db.QueryRow(ctx, `SELECT email, COALESCE(display_name, '') FROM users WHERE id = $1`, input.UserID).Scan(&user.Email, &user.DisplayName); err != nil {
@@ -3287,21 +3318,49 @@ func (r *Repository) CreateWorkspaceMembership(ctx context.Context, input Create
 
 func (r *Repository) GetWorkspaceMembershipByID(ctx context.Context, membershipID uuid.UUID) (WorkspaceMembershipFullRow, error) {
 	var m WorkspaceMembershipFullRow
+	var inviteTokenExpiresAt pgtype.Timestamptz
 	err := r.db.QueryRow(ctx, `
 		SELECT wm.id, wm.workspace_id, wm.organization_id, wm.user_id,
 		       u.email, COALESCE(u.display_name, ''),
-		       wm.role, wm.membership_status, wm.created_at, wm.updated_at
+		       wm.role, wm.membership_status, COALESCE(wm.invite_token, ''),
+		       wm.invite_token_expires_at, wm.created_at, wm.updated_at
 		FROM workspace_memberships wm
 		JOIN users u ON u.id = wm.user_id
 		WHERE wm.id = $1
 	`, membershipID).Scan(&m.ID, &m.WorkspaceID, &m.OrganizationID, &m.UserID,
-		&m.Email, &m.DisplayName, &m.Role, &m.MembershipStatus, &m.CreatedAt, &m.UpdatedAt)
+		&m.Email, &m.DisplayName, &m.Role, &m.MembershipStatus, &m.InviteToken,
+		&inviteTokenExpiresAt, &m.CreatedAt, &m.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return WorkspaceMembershipFullRow{}, ErrMembershipNotFound
 		}
 		return WorkspaceMembershipFullRow{}, fmt.Errorf("get workspace membership by id: %w", err)
 	}
+	m.InviteTokenExpiresAt = optionalTime(inviteTokenExpiresAt)
+	return m, nil
+}
+
+func (r *Repository) GetWorkspaceMembershipByInviteToken(ctx context.Context, inviteToken string) (WorkspaceMembershipFullRow, error) {
+	var m WorkspaceMembershipFullRow
+	var inviteTokenExpiresAt pgtype.Timestamptz
+	err := r.db.QueryRow(ctx, `
+		SELECT wm.id, wm.workspace_id, wm.organization_id, wm.user_id,
+		       u.email, COALESCE(u.display_name, ''),
+		       wm.role, wm.membership_status, COALESCE(wm.invite_token, ''),
+		       wm.invite_token_expires_at, wm.created_at, wm.updated_at
+		FROM workspace_memberships wm
+		JOIN users u ON u.id = wm.user_id
+		WHERE wm.invite_token = $1 AND wm.membership_status = 'invited'
+	`, inviteToken).Scan(&m.ID, &m.WorkspaceID, &m.OrganizationID, &m.UserID,
+		&m.Email, &m.DisplayName, &m.Role, &m.MembershipStatus, &m.InviteToken,
+		&inviteTokenExpiresAt, &m.CreatedAt, &m.UpdatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return WorkspaceMembershipFullRow{}, ErrMembershipNotFound
+		}
+		return WorkspaceMembershipFullRow{}, fmt.Errorf("get workspace membership by invite token: %w", err)
+	}
+	m.InviteTokenExpiresAt = optionalTime(inviteTokenExpiresAt)
 	return m, nil
 }
 
@@ -3327,6 +3386,21 @@ func (r *Repository) UpdateWorkspaceMembership(ctx context.Context, membershipID
 			setClauses = append(setClauses, "archived_at = NULL")
 		}
 	}
+	if input.UserID != nil {
+		setClauses = append(setClauses, fmt.Sprintf("user_id = $%d", argIdx))
+		args = append(args, *input.UserID)
+		argIdx++
+	}
+	if input.ClearInviteToken {
+		setClauses = append(setClauses, "invite_token = NULL", "invite_token_expires_at = NULL")
+	} else if input.InviteToken != nil {
+		setClauses = append(setClauses, fmt.Sprintf("invite_token = $%d", argIdx))
+		args = append(args, *input.InviteToken)
+		argIdx++
+		setClauses = append(setClauses, fmt.Sprintf("invite_token_expires_at = $%d", argIdx))
+		args = append(args, input.InviteTokenExpiresAt)
+		argIdx++
+	}
 
 	if len(setClauses) == 0 {
 		return r.GetWorkspaceMembershipByID(ctx, membershipID)
@@ -3335,20 +3409,33 @@ func (r *Repository) UpdateWorkspaceMembership(ctx context.Context, membershipID
 	query := fmt.Sprintf(`
 		UPDATE workspace_memberships SET %s
 		WHERE id = $%d
-		RETURNING id, organization_id, workspace_id, user_id, role, membership_status, created_at, updated_at
+		RETURNING id, organization_id, workspace_id, user_id, role, membership_status,
+		          COALESCE(invite_token, ''), invite_token_expires_at, created_at, updated_at
 	`, strings.Join(setClauses, ", "), argIdx)
 	args = append(args, membershipID)
 
 	var m WorkspaceMembershipFullRow
+	var inviteTokenExpiresAt pgtype.Timestamptz
 	err := r.db.QueryRow(ctx, query, args...).Scan(
-		&m.ID, &m.OrganizationID, &m.WorkspaceID, &m.UserID, &m.Role, &m.MembershipStatus, &m.CreatedAt, &m.UpdatedAt,
+		&m.ID, &m.OrganizationID, &m.WorkspaceID, &m.UserID, &m.Role, &m.MembershipStatus,
+		&m.InviteToken, &inviteTokenExpiresAt, &m.CreatedAt, &m.UpdatedAt,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return WorkspaceMembershipFullRow{}, ErrMembershipNotFound
 		}
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) {
+			switch pgErr.Code {
+			case "23505":
+				return WorkspaceMembershipFullRow{}, ErrAlreadyMember
+			case "23503":
+				return WorkspaceMembershipFullRow{}, ErrOrgMembershipRequired
+			}
+		}
 		return WorkspaceMembershipFullRow{}, fmt.Errorf("update workspace membership: %w", err)
 	}
+	m.InviteTokenExpiresAt = optionalTime(inviteTokenExpiresAt)
 
 	var user User
 	if err = r.db.QueryRow(ctx, `SELECT email, COALESCE(display_name, '') FROM users WHERE id = $1`, m.UserID).Scan(&user.Email, &user.DisplayName); err != nil {
@@ -3392,7 +3479,8 @@ func (r *Repository) GetUserByEmail(ctx context.Context, email string) (User, er
 func (r *Repository) ListOrgMemberships(ctx context.Context, orgID uuid.UUID, limit, offset int32) ([]OrgMembershipFullRow, error) {
 	rows, err := r.db.Query(ctx, `
 		SELECT om.id, om.organization_id, om.user_id, u.email, COALESCE(u.display_name, ''),
-		       om.role, om.membership_status, om.created_at, om.updated_at
+		       om.role, om.membership_status, COALESCE(om.invite_token, ''),
+		       om.invite_token_expires_at, om.created_at, om.updated_at
 		FROM organization_memberships om
 		JOIN users u ON u.id = om.user_id
 		WHERE om.organization_id = $1 AND om.membership_status IN ('active', 'invited')
@@ -3407,10 +3495,13 @@ func (r *Repository) ListOrgMemberships(ctx context.Context, orgID uuid.UUID, li
 	var memberships []OrgMembershipFullRow
 	for rows.Next() {
 		var m OrgMembershipFullRow
+		var inviteTokenExpiresAt pgtype.Timestamptz
 		if err := rows.Scan(&m.ID, &m.OrganizationID, &m.UserID, &m.Email, &m.DisplayName,
-			&m.Role, &m.MembershipStatus, &m.CreatedAt, &m.UpdatedAt); err != nil {
+			&m.Role, &m.MembershipStatus, &m.InviteToken, &inviteTokenExpiresAt,
+			&m.CreatedAt, &m.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scan org membership: %w", err)
 		}
+		m.InviteTokenExpiresAt = optionalTime(inviteTokenExpiresAt)
 		memberships = append(memberships, m)
 	}
 	if err := rows.Err(); err != nil {
@@ -3436,20 +3527,23 @@ func (r *Repository) CountOrgMemberships(ctx context.Context, orgID uuid.UUID) (
 
 func (r *Repository) GetOrgMembershipByOrgAndUser(ctx context.Context, orgID, userID uuid.UUID) (OrgMembershipFullRow, error) {
 	var m OrgMembershipFullRow
+	var inviteTokenExpiresAt pgtype.Timestamptz
 	err := r.db.QueryRow(ctx, `
 		SELECT om.id, om.organization_id, om.user_id, u.email, COALESCE(u.display_name, ''),
-		       om.role, om.membership_status, om.created_at, om.updated_at
+		       om.role, om.membership_status, COALESCE(om.invite_token, ''),
+		       om.invite_token_expires_at, om.created_at, om.updated_at
 		FROM organization_memberships om
 		JOIN users u ON u.id = om.user_id
 		WHERE om.organization_id = $1 AND om.user_id = $2
 	`, orgID, userID).Scan(&m.ID, &m.OrganizationID, &m.UserID, &m.Email, &m.DisplayName,
-		&m.Role, &m.MembershipStatus, &m.CreatedAt, &m.UpdatedAt)
+		&m.Role, &m.MembershipStatus, &m.InviteToken, &inviteTokenExpiresAt, &m.CreatedAt, &m.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return OrgMembershipFullRow{}, ErrMembershipNotFound
 		}
 		return OrgMembershipFullRow{}, fmt.Errorf("get org membership by org and user: %w", err)
 	}
+	m.InviteTokenExpiresAt = optionalTime(inviteTokenExpiresAt)
 	return m, nil
 }
 
@@ -3465,12 +3559,18 @@ func (r *Repository) CreateOrgMembership(ctx context.Context, input CreateOrgMem
 	}
 
 	var m OrgMembershipFullRow
+	var inviteTokenExpiresAt pgtype.Timestamptz
 	err = tx.QueryRow(ctx, `
-		INSERT INTO organization_memberships (id, organization_id, user_id, role, membership_status)
-		VALUES (gen_random_uuid(), $1, $2, $3, 'invited')
-		RETURNING id, organization_id, user_id, role, membership_status, created_at, updated_at
-	`, input.OrganizationID, input.UserID, input.Role).Scan(
-		&m.ID, &m.OrganizationID, &m.UserID, &m.Role, &m.MembershipStatus, &m.CreatedAt, &m.UpdatedAt,
+		INSERT INTO organization_memberships (
+			id, organization_id, user_id, role, membership_status,
+			invite_token, invite_token_expires_at
+		)
+		VALUES (gen_random_uuid(), $1, $2, $3, 'invited', $4, $5)
+		RETURNING id, organization_id, user_id, role, membership_status,
+		          COALESCE(invite_token, ''), invite_token_expires_at, created_at, updated_at
+	`, input.OrganizationID, input.UserID, input.Role, input.InviteToken, input.InviteTokenExpiresAt).Scan(
+		&m.ID, &m.OrganizationID, &m.UserID, &m.Role, &m.MembershipStatus,
+		&m.InviteToken, &inviteTokenExpiresAt, &m.CreatedAt, &m.UpdatedAt,
 	)
 	if err != nil {
 		var pgErr *pgconn.PgError
@@ -3479,6 +3579,7 @@ func (r *Repository) CreateOrgMembership(ctx context.Context, input CreateOrgMem
 		}
 		return OrgMembershipFullRow{}, fmt.Errorf("create org membership: %w", err)
 	}
+	m.InviteTokenExpiresAt = optionalTime(inviteTokenExpiresAt)
 
 	// Fetch user details to fill the response.
 	var user User
@@ -3495,20 +3596,45 @@ func (r *Repository) CreateOrgMembership(ctx context.Context, input CreateOrgMem
 
 func (r *Repository) GetOrgMembershipByID(ctx context.Context, membershipID uuid.UUID) (OrgMembershipFullRow, error) {
 	var m OrgMembershipFullRow
+	var inviteTokenExpiresAt pgtype.Timestamptz
 	err := r.db.QueryRow(ctx, `
 		SELECT om.id, om.organization_id, om.user_id, u.email, COALESCE(u.display_name, ''),
-		       om.role, om.membership_status, om.created_at, om.updated_at
+		       om.role, om.membership_status, COALESCE(om.invite_token, ''),
+		       om.invite_token_expires_at, om.created_at, om.updated_at
 		FROM organization_memberships om
 		JOIN users u ON u.id = om.user_id
 		WHERE om.id = $1
 	`, membershipID).Scan(&m.ID, &m.OrganizationID, &m.UserID, &m.Email, &m.DisplayName,
-		&m.Role, &m.MembershipStatus, &m.CreatedAt, &m.UpdatedAt)
+		&m.Role, &m.MembershipStatus, &m.InviteToken, &inviteTokenExpiresAt, &m.CreatedAt, &m.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return OrgMembershipFullRow{}, ErrMembershipNotFound
 		}
 		return OrgMembershipFullRow{}, fmt.Errorf("get org membership by id: %w", err)
 	}
+	m.InviteTokenExpiresAt = optionalTime(inviteTokenExpiresAt)
+	return m, nil
+}
+
+func (r *Repository) GetOrgMembershipByInviteToken(ctx context.Context, inviteToken string) (OrgMembershipFullRow, error) {
+	var m OrgMembershipFullRow
+	var inviteTokenExpiresAt pgtype.Timestamptz
+	err := r.db.QueryRow(ctx, `
+		SELECT om.id, om.organization_id, om.user_id, u.email, COALESCE(u.display_name, ''),
+		       om.role, om.membership_status, COALESCE(om.invite_token, ''),
+		       om.invite_token_expires_at, om.created_at, om.updated_at
+		FROM organization_memberships om
+		JOIN users u ON u.id = om.user_id
+		WHERE om.invite_token = $1 AND om.membership_status = 'invited'
+	`, inviteToken).Scan(&m.ID, &m.OrganizationID, &m.UserID, &m.Email, &m.DisplayName,
+		&m.Role, &m.MembershipStatus, &m.InviteToken, &inviteTokenExpiresAt, &m.CreatedAt, &m.UpdatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return OrgMembershipFullRow{}, ErrMembershipNotFound
+		}
+		return OrgMembershipFullRow{}, fmt.Errorf("get org membership by invite token: %w", err)
+	}
+	m.InviteTokenExpiresAt = optionalTime(inviteTokenExpiresAt)
 	return m, nil
 }
 
@@ -3534,6 +3660,21 @@ func (r *Repository) UpdateOrgMembership(ctx context.Context, membershipID uuid.
 			setClauses = append(setClauses, "archived_at = NULL")
 		}
 	}
+	if input.UserID != nil {
+		setClauses = append(setClauses, fmt.Sprintf("user_id = $%d", argIdx))
+		args = append(args, *input.UserID)
+		argIdx++
+	}
+	if input.ClearInviteToken {
+		setClauses = append(setClauses, "invite_token = NULL", "invite_token_expires_at = NULL")
+	} else if input.InviteToken != nil {
+		setClauses = append(setClauses, fmt.Sprintf("invite_token = $%d", argIdx))
+		args = append(args, *input.InviteToken)
+		argIdx++
+		setClauses = append(setClauses, fmt.Sprintf("invite_token_expires_at = $%d", argIdx))
+		args = append(args, input.InviteTokenExpiresAt)
+		argIdx++
+	}
 
 	if len(setClauses) == 0 {
 		return r.GetOrgMembershipByID(ctx, membershipID)
@@ -3542,7 +3683,8 @@ func (r *Repository) UpdateOrgMembership(ctx context.Context, membershipID uuid.
 	query := fmt.Sprintf(`
 		UPDATE organization_memberships SET %s
 		WHERE id = $%d
-		RETURNING id, organization_id, user_id, role, membership_status, created_at, updated_at
+		RETURNING id, organization_id, user_id, role, membership_status,
+		          COALESCE(invite_token, ''), invite_token_expires_at, created_at, updated_at
 	`, strings.Join(setClauses, ", "), argIdx)
 	args = append(args, membershipID)
 
@@ -3566,15 +3708,22 @@ func (r *Repository) UpdateOrgMembership(ctx context.Context, membershipID uuid.
 	}
 
 	var m OrgMembershipFullRow
+	var inviteTokenExpiresAt pgtype.Timestamptz
 	err = tx.QueryRow(ctx, query, args...).Scan(
-		&m.ID, &m.OrganizationID, &m.UserID, &m.Role, &m.MembershipStatus, &m.CreatedAt, &m.UpdatedAt,
+		&m.ID, &m.OrganizationID, &m.UserID, &m.Role, &m.MembershipStatus,
+		&m.InviteToken, &inviteTokenExpiresAt, &m.CreatedAt, &m.UpdatedAt,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return OrgMembershipFullRow{}, ErrMembershipNotFound
 		}
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return OrgMembershipFullRow{}, ErrAlreadyMember
+		}
 		return OrgMembershipFullRow{}, fmt.Errorf("update org membership: %w", err)
 	}
+	m.InviteTokenExpiresAt = optionalTime(inviteTokenExpiresAt)
 
 	// Fetch user details.
 	var user User

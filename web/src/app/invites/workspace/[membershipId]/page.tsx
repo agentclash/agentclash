@@ -4,6 +4,9 @@ import { createApiClient } from "@/lib/api/client";
 import type { WorkspaceMember } from "@/lib/api/types";
 import { InviteError } from "../../invite-error";
 
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export default async function WorkspaceInvitePage({
   params,
 }: {
@@ -20,8 +23,11 @@ export default async function WorkspaceInvitePage({
   let redirectTarget = "/dashboard";
   try {
     const api = createApiClient(accessToken);
+    const acceptPath = UUID_PATTERN.test(membershipId)
+      ? `/v1/workspace-memberships/${membershipId}`
+      : `/v1/invites/workspace/${membershipId}`;
     const accepted = await api.patch<WorkspaceMember>(
-      `/v1/workspace-memberships/${membershipId}`,
+      acceptPath,
       { status: "active" },
     );
     redirectTarget = `/workspaces/${accepted.workspace_id}`;
