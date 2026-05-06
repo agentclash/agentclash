@@ -40,15 +40,15 @@ INSERT INTO run_agents (
     $11,
     $12
 )
-RETURNING id, organization_id, workspace_id, run_id, agent_deployment_id, agent_deployment_snapshot_id, lane_index, label, status, queued_at, started_at, finished_at, failure_reason, created_at, updated_at
+RETURNING id, organization_id, workspace_id, run_id, agent_deployment_id, agent_deployment_snapshot_id, lane_index, label, status, queued_at, started_at, finished_at, failure_reason, created_at, updated_at, source_type
 `
 
 type CreateRunAgentParams struct {
 	OrganizationID            uuid.UUID
 	WorkspaceID               uuid.UUID
 	RunID                     uuid.UUID
-	AgentDeploymentID         uuid.UUID
-	AgentDeploymentSnapshotID uuid.UUID
+	AgentDeploymentID         *uuid.UUID
+	AgentDeploymentSnapshotID *uuid.UUID
 	LaneIndex                 int32
 	Label                     string
 	Status                    string
@@ -90,12 +90,13 @@ func (q *Queries) CreateRunAgent(ctx context.Context, arg CreateRunAgentParams) 
 		&i.FailureReason,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SourceType,
 	)
 	return i, err
 }
 
 const getRunAgentByID = `-- name: GetRunAgentByID :one
-SELECT id, organization_id, workspace_id, run_id, agent_deployment_id, agent_deployment_snapshot_id, lane_index, label, status, queued_at, started_at, finished_at, failure_reason, created_at, updated_at
+SELECT id, organization_id, workspace_id, run_id, agent_deployment_id, agent_deployment_snapshot_id, lane_index, label, status, queued_at, started_at, finished_at, failure_reason, created_at, updated_at, source_type
 FROM run_agents
 WHERE id = $1
 LIMIT 1
@@ -124,6 +125,7 @@ func (q *Queries) GetRunAgentByID(ctx context.Context, arg GetRunAgentByIDParams
 		&i.FailureReason,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SourceType,
 	)
 	return i, err
 }
@@ -208,7 +210,7 @@ func (q *Queries) ListRunAgentStatusHistoryByRunAgentID(ctx context.Context, arg
 }
 
 const listRunAgentsByRunID = `-- name: ListRunAgentsByRunID :many
-SELECT id, organization_id, workspace_id, run_id, agent_deployment_id, agent_deployment_snapshot_id, lane_index, label, status, queued_at, started_at, finished_at, failure_reason, created_at, updated_at
+SELECT id, organization_id, workspace_id, run_id, agent_deployment_id, agent_deployment_snapshot_id, lane_index, label, status, queued_at, started_at, finished_at, failure_reason, created_at, updated_at, source_type
 FROM run_agents
 WHERE run_id = $1
 ORDER BY lane_index ASC
@@ -243,6 +245,7 @@ func (q *Queries) ListRunAgentsByRunID(ctx context.Context, arg ListRunAgentsByR
 			&i.FailureReason,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.SourceType,
 		); err != nil {
 			return nil, err
 		}
@@ -271,7 +274,7 @@ SET status = $1,
     END
 WHERE id = $3
   AND status = $4
-RETURNING id, organization_id, workspace_id, run_id, agent_deployment_id, agent_deployment_snapshot_id, lane_index, label, status, queued_at, started_at, finished_at, failure_reason, created_at, updated_at
+RETURNING id, organization_id, workspace_id, run_id, agent_deployment_id, agent_deployment_snapshot_id, lane_index, label, status, queued_at, started_at, finished_at, failure_reason, created_at, updated_at, source_type
 `
 
 type UpdateRunAgentStatusParams struct {
@@ -305,6 +308,7 @@ func (q *Queries) UpdateRunAgentStatus(ctx context.Context, arg UpdateRunAgentSt
 		&i.FailureReason,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SourceType,
 	)
 	return i, err
 }

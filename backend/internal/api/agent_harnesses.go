@@ -391,6 +391,9 @@ type agentHarnessExecutionResponse struct {
 	OrganizationID           uuid.UUID                            `json:"organization_id"`
 	WorkspaceID              uuid.UUID                            `json:"workspace_id"`
 	AgentHarnessID           uuid.UUID                            `json:"agent_harness_id"`
+	RunID                    *uuid.UUID                           `json:"run_id,omitempty"`
+	RunAgentID               *uuid.UUID                           `json:"run_agent_id,omitempty"`
+	EvaluationSpecID         *uuid.UUID                           `json:"evaluation_spec_id,omitempty"`
 	CreatedByUserID          *uuid.UUID                           `json:"created_by_user_id,omitempty"`
 	Status                   string                               `json:"status"`
 	HarnessSnapshot          json.RawMessage                      `json:"harness_snapshot"`
@@ -640,6 +643,9 @@ func mapAgentHarnessExecutionResponse(e repository.AgentHarnessExecution) agentH
 		OrganizationID:           e.OrganizationID,
 		WorkspaceID:              e.WorkspaceID,
 		AgentHarnessID:           e.AgentHarnessID,
+		RunID:                    e.RunID,
+		RunAgentID:               e.RunAgentID,
+		EvaluationSpecID:         e.EvaluationSpecID,
 		CreatedByUserID:          e.CreatedByUserID,
 		Status:                   e.Status,
 		HarnessSnapshot:          e.HarnessSnapshot,

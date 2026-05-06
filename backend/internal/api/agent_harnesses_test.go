@@ -489,6 +489,12 @@ func TestAgentHarnessExecutionRoutes(t *testing.T) {
 	workspaceID := uuid.New()
 	harness := testAgentHarnessRecord(workspaceID, "Existing harness")
 	execution := testAgentHarnessExecutionRecord(workspaceID, harness.ID)
+	runID := uuid.New()
+	runAgentID := uuid.New()
+	evaluationSpecID := uuid.New()
+	execution.RunID = &runID
+	execution.RunAgentID = &runAgentID
+	execution.EvaluationSpecID = &evaluationSpecID
 	event := repository.AgentHarnessExecutionEvent{
 		ID:                      1,
 		AgentHarnessExecutionID: execution.ID,
@@ -557,6 +563,15 @@ func TestAgentHarnessExecutionRoutes(t *testing.T) {
 	}
 	if len(gotExecution.Events) != 1 || gotExecution.Events[0].SequenceNumber != 1 {
 		t.Fatalf("events = %#v, want one sequenced event", gotExecution.Events)
+	}
+	if gotExecution.RunID == nil || *gotExecution.RunID != runID {
+		t.Fatalf("run_id = %#v, want %s", gotExecution.RunID, runID)
+	}
+	if gotExecution.RunAgentID == nil || *gotExecution.RunAgentID != runAgentID {
+		t.Fatalf("run_agent_id = %#v, want %s", gotExecution.RunAgentID, runAgentID)
+	}
+	if gotExecution.EvaluationSpecID == nil || *gotExecution.EvaluationSpecID != evaluationSpecID {
+		t.Fatalf("evaluation_spec_id = %#v, want %s", gotExecution.EvaluationSpecID, evaluationSpecID)
 	}
 }
 
@@ -690,6 +705,9 @@ func (f *fakeAgentHarnessRepo) CreateAgentHarnessExecution(_ context.Context, p 
 		OrganizationID:           p.OrganizationID,
 		WorkspaceID:              p.WorkspaceID,
 		AgentHarnessID:           p.AgentHarnessID,
+		RunID:                    p.RunID,
+		RunAgentID:               p.RunAgentID,
+		EvaluationSpecID:         p.EvaluationSpecID,
 		CreatedByUserID:          p.CreatedByUserID,
 		Status:                   "queued",
 		HarnessSnapshot:          p.HarnessSnapshot,

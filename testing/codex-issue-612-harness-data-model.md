@@ -8,6 +8,7 @@ Decide the canonical execution data model for Agent Harness scoring, replay, and
 
 - Document how Agent Harness executions reuse existing `runs`, `run_agents`, `run_events`, artifacts, replays, evaluation specs, judge results, metric results, scorecards, eval sessions, run comparisons, release gates, rankings, and failure review primitives.
 - Add a backwards-compatible bridge from `agent_harness_executions` to the canonical run-agent model so existing harness executions remain readable.
+- New API-started harness executions create a first-class canonical `agent_harness` run and run-agent projection instead of leaving bridge IDs empty.
 - Keep workspace and organization scoping explicit on new foreign keys.
 - Expose bridge identifiers in repository/API types so later subissues can wire replay/scoring without schema churn.
 - Do not implement parallel validator, LLM judge, pass@k, replay, ranking, or failure-review storage for harnesses.
