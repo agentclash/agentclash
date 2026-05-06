@@ -635,7 +635,7 @@ func createQueuedRunWithQueries(
 	runRow, err := queries.CreateRun(ctx, repositorysqlc.CreateRunParams{
 		OrganizationID:         params.OrganizationID,
 		WorkspaceID:            params.WorkspaceID,
-		ChallengePackVersionID: params.ChallengePackVersionID,
+		ChallengePackVersionID: cloneUUIDPtr(&params.ChallengePackVersionID),
 		ChallengeInputSetID:    cloneUUIDPtr(params.ChallengeInputSetID),
 		OfficialPackMode:       string(params.OfficialPackMode),
 		CreatedByUserID:        cloneUUIDPtr(params.CreatedByUserID),
@@ -685,8 +685,8 @@ func createQueuedRunWithQueries(
 			OrganizationID:            params.OrganizationID,
 			WorkspaceID:               params.WorkspaceID,
 			RunID:                     runRow.ID,
-			AgentDeploymentID:         runAgent.AgentDeploymentID,
-			AgentDeploymentSnapshotID: runAgent.AgentDeploymentSnapshotID,
+			AgentDeploymentID:         cloneUUIDPtr(&runAgent.AgentDeploymentID),
+			AgentDeploymentSnapshotID: cloneUUIDPtr(&runAgent.AgentDeploymentSnapshotID),
 			LaneIndex:                 runAgent.LaneIndex,
 			Label:                     runAgent.Label,
 			Status:                    string(domain.RunAgentStatusQueued),
@@ -1894,7 +1894,7 @@ func mapRun(row repositorysqlc.Run) (domain.Run, error) {
 		ID:                     row.ID,
 		OrganizationID:         row.OrganizationID,
 		WorkspaceID:            row.WorkspaceID,
-		ChallengePackVersionID: row.ChallengePackVersionID,
+		ChallengePackVersionID: derefUUID(row.ChallengePackVersionID),
 		ChallengeInputSetID:    cloneUUIDPtr(row.ChallengeInputSetID),
 		EvalSessionID:          cloneUUIDPtr(row.EvalSessionID),
 		OfficialPackMode:       officialPackMode,
@@ -2000,8 +2000,8 @@ func mapRunAgent(row repositorysqlc.RunAgent) (domain.RunAgent, error) {
 		OrganizationID:            row.OrganizationID,
 		WorkspaceID:               row.WorkspaceID,
 		RunID:                     row.RunID,
-		AgentDeploymentID:         row.AgentDeploymentID,
-		AgentDeploymentSnapshotID: row.AgentDeploymentSnapshotID,
+		AgentDeploymentID:         derefUUID(row.AgentDeploymentID),
+		AgentDeploymentSnapshotID: derefUUID(row.AgentDeploymentSnapshotID),
 		LaneIndex:                 row.LaneIndex,
 		Label:                     row.Label,
 		Status:                    status,
@@ -2353,6 +2353,13 @@ func cloneUUIDPtr(value *uuid.UUID) *uuid.UUID {
 	}
 	cloned := *value
 	return &cloned
+}
+
+func derefUUID(value *uuid.UUID) uuid.UUID {
+	if value == nil {
+		return uuid.Nil
+	}
+	return *value
 }
 
 func cloneFloat64Ptr(value *float64) *float64 {

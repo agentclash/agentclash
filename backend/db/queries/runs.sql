@@ -185,6 +185,7 @@ ORDER BY changed_at ASC, id ASC;
 SELECT *
 FROM runs
 WHERE workspace_id = @workspace_id
+  AND source_type = 'challenge_pack'
 ORDER BY created_at DESC
 LIMIT @result_limit OFFSET @result_offset;
 
@@ -217,4 +218,5 @@ LIMIT @result_limit;
 -- name: CountRunsByWorkspaceID :one
 SELECT count(*)
 FROM runs
-WHERE workspace_id = @workspace_id;
+WHERE workspace_id = @workspace_id
+  AND source_type = 'challenge_pack';

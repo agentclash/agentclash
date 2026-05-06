@@ -491,6 +491,9 @@ export interface AgentHarnessExecution {
   organization_id: string;
   workspace_id: string;
   agent_harness_id: string;
+  run_id?: string;
+  run_agent_id?: string;
+  evaluation_spec_id?: string;
   status: AgentHarnessExecutionStatus;
   status_reason?: string;
   error_message?: string;

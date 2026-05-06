@@ -237,8 +237,8 @@ type GetRunAgentExecutionContextByIDRow struct {
 	RunAgentOrganizationID                  uuid.UUID
 	RunAgentWorkspaceID                     uuid.UUID
 	RunAgentRunID                           uuid.UUID
-	RunAgentAgentDeploymentID               uuid.UUID
-	RunAgentAgentDeploymentSnapshotID       uuid.UUID
+	RunAgentAgentDeploymentID               *uuid.UUID
+	RunAgentAgentDeploymentSnapshotID       *uuid.UUID
 	RunAgentLaneIndex                       int32
 	RunAgentLabel                           string
 	RunAgentStatus                          string
@@ -251,7 +251,7 @@ type GetRunAgentExecutionContextByIDRow struct {
 	RunID                                   uuid.UUID
 	RunOrganizationID                       uuid.UUID
 	RunWorkspaceID                          uuid.UUID
-	RunChallengePackVersionID               uuid.UUID
+	RunChallengePackVersionID               *uuid.UUID
 	RunChallengeInputSetID                  *uuid.UUID
 	RunOfficialPackMode                     string
 	RunCreatedByUserID                      *uuid.UUID

@@ -18,6 +18,9 @@ type AgentHarnessExecution struct {
 	OrganizationID           uuid.UUID
 	WorkspaceID              uuid.UUID
 	AgentHarnessID           uuid.UUID
+	RunID                    *uuid.UUID
+	RunAgentID               *uuid.UUID
+	EvaluationSpecID         *uuid.UUID
 	CreatedByUserID          *uuid.UUID
 	Status                   string
 	HarnessSnapshot          json.RawMessage
@@ -116,6 +119,9 @@ type CreateAgentHarnessExecutionParams struct {
 	OrganizationID           uuid.UUID
 	WorkspaceID              uuid.UUID
 	AgentHarnessID           uuid.UUID
+	RunID                    *uuid.UUID
+	RunAgentID               *uuid.UUID
+	EvaluationSpecID         *uuid.UUID
 	CreatedByUserID          *uuid.UUID
 	HarnessSnapshot          json.RawMessage
 	ExecutionConfigSnapshot  json.RawMessage
@@ -144,21 +150,74 @@ type RecordAgentHarnessExecutionEventParams struct {
 }
 
 func (r *Repository) CreateAgentHarnessExecution(ctx context.Context, p CreateAgentHarnessExecutionParams) (AgentHarnessExecution, error) {
-	row := r.db.QueryRow(ctx, `
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return AgentHarnessExecution{}, fmt.Errorf("begin agent harness execution create transaction: %w", err)
+	}
+	defer rollback(ctx, tx)
+
+	runID := p.RunID
+	runAgentID := p.RunAgentID
+	if runID == nil || runAgentID == nil {
+		row := tx.QueryRow(ctx, `
+WITH canonical_run AS (
+    INSERT INTO runs (
+        organization_id, workspace_id, challenge_pack_version_id, challenge_input_set_id,
+        source_type, created_by_user_id, name, status, execution_mode, execution_plan
+    ) VALUES (
+        $1, $2, NULL, NULL,
+        'agent_harness', $3, 'Agent Harness Execution', 'queued', 'single_agent', '{}'::jsonb
+    )
+    RETURNING id
+),
+canonical_run_agent AS (
+    INSERT INTO run_agents (
+        organization_id, workspace_id, run_id, agent_deployment_id, agent_deployment_snapshot_id,
+        source_type, lane_index, label, status
+    )
+    SELECT
+        $1, $2, canonical_run.id, NULL, NULL,
+        'agent_harness', 0, 'Agent Harness', 'queued'
+    FROM canonical_run
+    RETURNING id, run_id
+)
+SELECT run_id, id
+FROM canonical_run_agent`, p.OrganizationID, p.WorkspaceID, p.CreatedByUserID)
+		var createdRunID uuid.UUID
+		var createdRunAgentID uuid.UUID
+		if err := row.Scan(&createdRunID, &createdRunAgentID); err != nil {
+			return AgentHarnessExecution{}, fmt.Errorf("create canonical harness run projection: %w", err)
+		}
+		runID = &createdRunID
+		runAgentID = &createdRunAgentID
+	}
+
+	row := tx.QueryRow(ctx, `
 INSERT INTO agent_harness_executions (
     organization_id, workspace_id, agent_harness_id, created_by_user_id,
+    run_id, run_agent_id, evaluation_spec_id,
     harness_snapshot, execution_config_snapshot, evaluation_config_snapshot
 ) VALUES (
     $1, $2, $3, $4,
-    $5, $6, $7
+    $5, $6, $7,
+    $8, $9, $10
 )
 RETURNING id, organization_id, workspace_id, agent_harness_id, created_by_user_id,
+    run_id, run_agent_id, evaluation_spec_id,
     status, harness_snapshot, execution_config_snapshot, evaluation_config_snapshot,
     error_message, started_at, completed_at, cancelled_at, created_at, updated_at`,
 		p.OrganizationID, p.WorkspaceID, p.AgentHarnessID, p.CreatedByUserID,
+		runID, runAgentID, p.EvaluationSpecID,
 		defaultRepositoryJSON(p.HarnessSnapshot), defaultRepositoryJSON(p.ExecutionConfigSnapshot), defaultRepositoryJSON(p.EvaluationConfigSnapshot),
 	)
-	return scanAgentHarnessExecution(row)
+	execution, err := scanAgentHarnessExecution(row)
+	if err != nil {
+		return AgentHarnessExecution{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return AgentHarnessExecution{}, fmt.Errorf("commit agent harness execution create transaction: %w", err)
+	}
+	return execution, nil
 }
 
 func (r *Repository) TransitionAgentHarnessExecutionStatus(ctx context.Context, p TransitionAgentHarnessExecutionStatusParams) (AgentHarnessExecution, error) {
@@ -174,6 +233,7 @@ func (r *Repository) TransitionAgentHarnessExecutionStatus(ctx context.Context, 
 
 	current, err := scanAgentHarnessExecution(tx.QueryRow(ctx, `
 SELECT id, organization_id, workspace_id, agent_harness_id, created_by_user_id,
+    run_id, run_agent_id, evaluation_spec_id,
     status, harness_snapshot, execution_config_snapshot, evaluation_config_snapshot,
     error_message, started_at, completed_at, cancelled_at, created_at, updated_at
 FROM agent_harness_executions
@@ -214,6 +274,7 @@ SET status = $2,
     END
 WHERE id = $1 AND status = $4
 RETURNING id, organization_id, workspace_id, agent_harness_id, created_by_user_id,
+    run_id, run_agent_id, evaluation_spec_id,
     status, harness_snapshot, execution_config_snapshot, evaluation_config_snapshot,
     error_message, started_at, completed_at, cancelled_at, created_at, updated_at`,
 		p.ExecutionID, string(p.ToStatus), p.Reason, string(currentStatus)))
@@ -246,6 +307,7 @@ INSERT INTO agent_harness_execution_status_history (
 func (r *Repository) GetAgentHarnessExecutionByID(ctx context.Context, id uuid.UUID) (AgentHarnessExecution, error) {
 	row := r.db.QueryRow(ctx, `
 SELECT id, organization_id, workspace_id, agent_harness_id, created_by_user_id,
+    run_id, run_agent_id, evaluation_spec_id,
     status, harness_snapshot, execution_config_snapshot, evaluation_config_snapshot,
     error_message, started_at, completed_at, cancelled_at, created_at, updated_at
 FROM agent_harness_executions
@@ -256,6 +318,7 @@ WHERE id = $1`, id)
 func (r *Repository) ListAgentHarnessExecutions(ctx context.Context, p ListAgentHarnessExecutionsParams) ([]AgentHarnessExecution, error) {
 	rows, err := r.db.Query(ctx, `
 SELECT id, organization_id, workspace_id, agent_harness_id, created_by_user_id,
+    run_id, run_agent_id, evaluation_spec_id,
     status, harness_snapshot, execution_config_snapshot, evaluation_config_snapshot,
     error_message, started_at, completed_at, cancelled_at, created_at, updated_at
 FROM agent_harness_executions
@@ -364,6 +427,9 @@ func scanAgentHarnessExecution(scanner agentHarnessExecutionScanner) (AgentHarne
 		&e.WorkspaceID,
 		&e.AgentHarnessID,
 		&e.CreatedByUserID,
+		&e.RunID,
+		&e.RunAgentID,
+		&e.EvaluationSpecID,
 		&e.Status,
 		&e.HarnessSnapshot,
 		&e.ExecutionConfigSnapshot,
