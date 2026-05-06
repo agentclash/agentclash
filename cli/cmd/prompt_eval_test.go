@@ -752,6 +752,38 @@ func TestPromptEvalResultsCommandPrintsStableEnvelope(t *testing.T) {
 	}
 }
 
+func TestPromptEvalResultsCommandPrintsReadableTable(t *testing.T) {
+	fake := newPromptEvalRunFake(t, &promptEvalRunFakeState{resultVerdict: "fail"})
+	defer fake.server.Close()
+
+	stdout := captureStdout(t)
+	err := executeCommand(t, []string{"prompt-eval", "results", "exp-1"}, fake.server.URL)
+	out := stdout.finish()
+	var exitErr *ExitCodeError
+	if !errors.As(err, &exitErr) || exitErr.Code != promptEvalExitGate {
+		t.Fatalf("expected gate exit, got %T %v\n%s", err, err, out)
+	}
+	for _, want := range []string{
+		"Experiment:",
+		"Gate:",
+		"fail",
+		"Status:",
+		"Pass Rate:",
+		"0% (0 passed, 1 failed, 0 errors, threshold 100%)",
+		"DIMENSION",
+		"correctness",
+		"RESULT",
+		"FAIL",
+		"contains (v1)",
+		"done",
+		"Bonjour",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("table output missing %q:\n%s", want, out)
+		}
+	}
+}
+
 func TestPromptEvalResultsCommandWrapsBackendErrorExit(t *testing.T) {
 	fake := newPromptEvalRunFake(t, &promptEvalRunFakeState{resultStatusCode: http.StatusBadGateway})
 	defer fake.server.Close()
@@ -1136,7 +1168,7 @@ func (f *promptEvalRunFake) resultItem() map[string]any {
 		"total_tokens":     7,
 		"dimension_scores": map[string]any{"correctness": score},
 		"validator_results": []any{
-			map[string]any{"key": "v1", "type": "contains", "verdict": validatorVerdict, "normalized_score": score, "reason": ""},
+			map[string]any{"key": "v1", "type": "contains", "verdict": validatorVerdict, "normalized_score": score, "expected_value": "done", "reason": ""},
 		},
 	}
 	if f.caseStatus == "failed" {
