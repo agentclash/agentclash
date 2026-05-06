@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"sort"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -245,10 +247,13 @@ func (r *Repository) GetAgentHarnessSuiteVersionByID(ctx context.Context, id uui
 SELECT id, agent_harness_suite_id, workspace_id, version_number, metadata, created_at
 FROM agent_harness_suite_versions
 WHERE id = $1
-LIMIT 1`, id)
+	LIMIT 1`, id)
 	var ref AgentHarnessSuiteVersionRef
 	if err := row.Scan(&ref.ID, &ref.SuiteID, &ref.WorkspaceID, &ref.VersionNumber, &ref.Metadata, &ref.CreatedAt); err != nil {
-		return AgentHarnessSuiteVersionRef{}, ErrAgentHarnessSuiteNotFound
+		if errors.Is(err, pgx.ErrNoRows) {
+			return AgentHarnessSuiteVersionRef{}, ErrAgentHarnessSuiteNotFound
+		}
+		return AgentHarnessSuiteVersionRef{}, fmt.Errorf("get agent harness suite version by id: %w", err)
 	}
 	return ref, nil
 }
