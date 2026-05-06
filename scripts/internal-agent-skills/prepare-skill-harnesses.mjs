@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
@@ -88,6 +89,10 @@ function validatorCommand(skillPath) {
   return `node scripts/internal-agent-skills/validate-skill-harness-output.mjs ${JSON.stringify(skillPath)} .agentclash/skill-eval-result.json`;
 }
 
+function shortSkillKey(skillPath, skillName) {
+  return createHash("sha256").update(`${skillPath}\0${skillName}`).digest("hex").slice(0, 8);
+}
+
 const skills = JSON.parse(skillsArg);
 if (!Array.isArray(skills)) {
   throw new Error("changed skills input must be a JSON array");
@@ -104,9 +109,10 @@ for (const skillPath of skills) {
   }
   const title = titleFromSkill(content);
   const slug = meta.name.replace(/[^a-z0-9-]+/gi, "-").toLowerCase();
+  const skillKey = shortSkillKey(skillPath, meta.name);
   const specPath = path.join(outDir, `${slug}.harness.json`);
   const spec = {
-    name: `skill-self-test-${safeRunLabel}-${slug}`.slice(0, 120),
+    name: `skill-self-test-${skillKey}-${safeRunLabel}-${slug}`.slice(0, 120),
     description: `Internal blind self-containment test for ${skillPath}`,
     task_prompt: taskPrompt(skillPath, meta, title),
     codex_template: "codex",
