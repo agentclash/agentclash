@@ -221,14 +221,14 @@ function baseExecution(overrides: Record<string, unknown> = {}) {
         id: "event-3",
         agent_harness_execution_id: "execution-1",
         sequence_number: 3,
-        event_type: "scoring.completed",
+        event_type: "scorecard.persisted",
         actor_type: "worker",
         occurred_at: "2026-05-01T00:01:40Z",
         payload: {
-          score: 1,
-          passed: 1,
-          failed: 0,
-          skipped: 1,
+          status: "complete",
+          overall_score: 1,
+          passed: true,
+          llm_judges: 1,
         },
       },
     ],
@@ -348,9 +348,9 @@ describe("AgentHarnessesClient", () => {
     expect(document.body.textContent).toContain("Repository");
     expect(document.body.textContent).toContain("Agent work");
     expect(document.body.textContent).toContain("Validation");
-    expect(document.body.textContent).toContain("Scoring · Completed");
-    expect(document.body.textContent).toContain("Score: 1");
-    expect(document.body.textContent).toContain("Passed: 1");
+    expect(document.body.textContent).toContain("Scorecard · Persisted");
+    expect(document.body.textContent).toContain("Overall Score: 1");
+    expect(document.body.textContent).toContain("Passed: true");
 
     rendered.cleanup();
   });

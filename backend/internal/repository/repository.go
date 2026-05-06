@@ -296,6 +296,13 @@ type CreateEvaluationSpecParams struct {
 	Definition             json.RawMessage
 }
 
+type CreateStandaloneEvaluationSpecParams struct {
+	Name          string
+	VersionNumber int32
+	JudgeMode     string
+	Definition    json.RawMessage
+}
+
 type RunEvent struct {
 	ID             int64
 	RunID          uuid.UUID
@@ -799,6 +806,57 @@ func (r *Repository) CreateEvaluationSpec(ctx context.Context, params CreateEval
 	}
 
 	return record, nil
+}
+
+func (r *Repository) CreateStandaloneEvaluationSpec(ctx context.Context, params CreateStandaloneEvaluationSpecParams) (EvaluationSpecRecord, error) {
+	normalizedDefinition, err := normalizeEvaluationSpecDefinition(params.Definition)
+	if err != nil {
+		return EvaluationSpecRecord{}, fmt.Errorf("create standalone evaluation spec: %w", err)
+	}
+	existing, getErr := r.getStandaloneEvaluationSpecByNameAndVersion(ctx, params.Name, params.VersionNumber)
+	if getErr == nil {
+		return existing, nil
+	}
+	if !errors.Is(getErr, ErrEvaluationSpecNotFound) {
+		return EvaluationSpecRecord{}, getErr
+	}
+	row, err := r.queries.CreateEvaluationSpec(ctx, repositorysqlc.CreateEvaluationSpecParams{
+		ChallengePackVersionID: nil,
+		Name:                   params.Name,
+		VersionNumber:          params.VersionNumber,
+		JudgeMode:              params.JudgeMode,
+		Definition:             normalizedDefinition,
+	})
+	if err != nil {
+		if existing, getErr := r.getStandaloneEvaluationSpecByNameAndVersion(ctx, params.Name, params.VersionNumber); getErr == nil {
+			return existing, nil
+		}
+		return EvaluationSpecRecord{}, fmt.Errorf("create standalone evaluation spec: %w", err)
+	}
+	record, err := mapEvaluationSpecRecord(row)
+	if err != nil {
+		return EvaluationSpecRecord{}, fmt.Errorf("map standalone evaluation spec: %w", err)
+	}
+	return record, nil
+}
+
+func (r *Repository) getStandaloneEvaluationSpecByNameAndVersion(ctx context.Context, name string, versionNumber int32) (EvaluationSpecRecord, error) {
+	var row repositorysqlc.EvaluationSpec
+	err := r.db.QueryRow(ctx, `
+SELECT id, challenge_pack_version_id, name, version_number, judge_mode, definition, created_at, updated_at
+FROM evaluation_specs
+WHERE challenge_pack_version_id IS NULL
+  AND name = $1
+  AND version_number = $2
+LIMIT 1
+`, name, versionNumber).Scan(&row.ID, &row.ChallengePackVersionID, &row.Name, &row.VersionNumber, &row.JudgeMode, &row.Definition, &row.CreatedAt, &row.UpdatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return EvaluationSpecRecord{}, ErrEvaluationSpecNotFound
+		}
+		return EvaluationSpecRecord{}, fmt.Errorf("get standalone evaluation spec by name and version: %w", err)
+	}
+	return mapEvaluationSpecRecord(row)
 }
 
 func (r *Repository) GetEvaluationSpecByID(ctx context.Context, id uuid.UUID) (EvaluationSpecRecord, error) {
@@ -2105,13 +2163,13 @@ func mapEvaluationSpecRecord(row repositorysqlc.EvaluationSpec) (EvaluationSpecR
 	if err != nil {
 		return EvaluationSpecRecord{}, err
 	}
-	if row.ChallengePackVersionID == nil {
-		return EvaluationSpecRecord{}, fmt.Errorf("evaluation_specs.challenge_pack_version_id is required")
+	challengePackVersionID := uuid.Nil
+	if row.ChallengePackVersionID != nil {
+		challengePackVersionID = *row.ChallengePackVersionID
 	}
-
 	return EvaluationSpecRecord{
 		ID:                     row.ID,
-		ChallengePackVersionID: *row.ChallengePackVersionID,
+		ChallengePackVersionID: challengePackVersionID,
 		Name:                   row.Name,
 		VersionNumber:          row.VersionNumber,
 		JudgeMode:              row.JudgeMode,

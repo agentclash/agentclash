@@ -1398,6 +1398,29 @@ func (r *fakeRunRepository) CreateEvaluationSpec(_ context.Context, params repos
 	return record, nil
 }
 
+func (r *fakeRunRepository) CreateStandaloneEvaluationSpec(_ context.Context, params repository.CreateStandaloneEvaluationSpecParams) (repository.EvaluationSpecRecord, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	key := evaluationSpecKey(uuid.Nil, params.Name, params.VersionNumber)
+	if existing, ok := r.evaluationSpecs[key]; ok {
+		return existing, nil
+	}
+
+	record := repository.EvaluationSpecRecord{
+		ID:            uuid.New(),
+		Name:          params.Name,
+		VersionNumber: params.VersionNumber,
+		JudgeMode:     params.JudgeMode,
+		Definition:    append([]byte(nil), params.Definition...),
+		CreatedAt:     time.Now().UTC(),
+		UpdatedAt:     time.Now().UTC(),
+	}
+	r.evaluationSpecs[key] = record
+	r.callLog = append(r.callLog, fmt.Sprintf("CreateStandaloneEvaluationSpec:%s:%d", params.Name, params.VersionNumber))
+	return record, nil
+}
+
 func (r *fakeRunRepository) GetEvaluationSpecByChallengePackVersionAndVersion(_ context.Context, challengePackVersionID uuid.UUID, name string, versionNumber int32) (repository.EvaluationSpecRecord, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -1512,6 +1535,20 @@ func (r *fakeRunRepository) GetAgentHarnessExecutionByID(_ context.Context, id u
 	if !ok {
 		return repository.AgentHarnessExecution{}, repository.ErrAgentHarnessExecutionNotFound
 	}
+	return execution, nil
+}
+
+func (r *fakeRunRepository) SetAgentHarnessExecutionEvaluationSpec(_ context.Context, params repository.SetAgentHarnessExecutionEvaluationSpecParams) (repository.AgentHarnessExecution, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.callLog = append(r.callLog, fmt.Sprintf("SetAgentHarnessExecutionEvaluationSpec:%s", params.ExecutionID))
+	execution, ok := r.agentHarnessExecutions[params.ExecutionID]
+	if !ok {
+		return repository.AgentHarnessExecution{}, repository.ErrAgentHarnessExecutionNotFound
+	}
+	evaluationSpecID := params.EvaluationSpecID
+	execution.EvaluationSpecID = &evaluationSpecID
+	r.agentHarnessExecutions[params.ExecutionID] = execution
 	return execution, nil
 }
 

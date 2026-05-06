@@ -654,6 +654,7 @@ function eventSummaryKeys(eventType: string) {
     "command",
     "tool",
     "exit_code",
+    "overall_score",
     "score",
     "passed",
     "failed",
@@ -731,6 +732,7 @@ function eventPhase(eventType: string): HarnessPhase | null {
   if (
     eventType.startsWith("validator.") ||
     eventType.startsWith("scoring.") ||
+    eventType.startsWith("scorecard.") ||
     eventType.startsWith("llm_judges.")
   ) {
     return "validation";

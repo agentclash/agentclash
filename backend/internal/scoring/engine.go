@@ -186,6 +186,14 @@ func EvaluateRunAgentWithLLMJudgeResults(input EvaluationInput, spec EvaluationS
 	return evaluateRunAgentWithResolvedJudges(input, spec, llmJudgeResults, true)
 }
 
+func EvaluateRunAgentWithPrecomputedResults(input EvaluationInput, spec EvaluationSpec, validatorResults []ValidatorResult, metricResults []MetricResult, llmJudgeResults []LLMJudgeResult) (RunAgentEvaluation, error) {
+	normalizeEvaluationSpec(&spec)
+	if err := ValidateEvaluationSpec(spec); err != nil {
+		return RunAgentEvaluation{}, err
+	}
+	return finalizeRunAgentEvaluation(input, spec, validatorResults, metricResults, llmJudgeResults, nil), nil
+}
+
 func evaluateRunAgentWithResolvedJudges(
 	input EvaluationInput,
 	spec EvaluationSpec,
@@ -210,6 +218,19 @@ func evaluateRunAgentWithResolvedJudges(
 	metricResults, metricWarnings := evaluateMetrics(spec.Metrics, evidence, validatorResults, spec)
 	warnings = append(warnings, metricWarnings...)
 
+	return finalizeRunAgentEvaluationWithEvidence(input, spec, evidence, validatorResults, metricResults, llmJudgeResults, warnings), nil
+}
+
+func finalizeRunAgentEvaluation(input EvaluationInput, spec EvaluationSpec, validatorResults []ValidatorResult, metricResults []MetricResult, llmJudgeResults []LLMJudgeResult, warnings []string) RunAgentEvaluation {
+	events := append([]Event(nil), input.Events...)
+	sort.SliceStable(events, func(i, j int) bool {
+		return events[i].OccurredAt.Before(events[j].OccurredAt)
+	})
+	evidence := buildEvidence(input.ChallengeInputs, events)
+	return finalizeRunAgentEvaluationWithEvidence(input, spec, evidence, validatorResults, metricResults, llmJudgeResults, warnings)
+}
+
+func finalizeRunAgentEvaluationWithEvidence(input EvaluationInput, spec EvaluationSpec, evidence extractedEvidence, validatorResults []ValidatorResult, metricResults []MetricResult, llmJudgeResults []LLMJudgeResult, warnings []string) RunAgentEvaluation {
 	dimensionResults := evaluateDimensions(spec, evidence, validatorResults, metricResults, llmJudgeResults)
 	warnings = append(warnings, dimensionWarnings(dimensionResults, spec.Scorecard.Dimensions)...)
 	dimensionScores := make(map[string]*float64, len(dimensionResults))
@@ -259,7 +280,7 @@ func evaluateRunAgentWithResolvedJudges(
 		ValidityReason:   validityReason,
 		Strategy:         spec.Scorecard.Strategy,
 		Warnings:         uniqueStrings(warnings),
-	}, nil
+	}
 }
 
 func cloneLLMJudgeResults(results []LLMJudgeResult) []LLMJudgeResult {

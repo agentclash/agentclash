@@ -149,6 +149,11 @@ type RecordAgentHarnessExecutionEventParams struct {
 	Payload     json.RawMessage
 }
 
+type SetAgentHarnessExecutionEvaluationSpecParams struct {
+	ExecutionID      uuid.UUID
+	EvaluationSpecID uuid.UUID
+}
+
 func (r *Repository) CreateAgentHarnessExecution(ctx context.Context, p CreateAgentHarnessExecutionParams) (AgentHarnessExecution, error) {
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
@@ -312,6 +317,21 @@ SELECT id, organization_id, workspace_id, agent_harness_id, created_by_user_id,
     error_message, started_at, completed_at, cancelled_at, created_at, updated_at
 FROM agent_harness_executions
 WHERE id = $1`, id)
+	return scanAgentHarnessExecution(row)
+}
+
+func (r *Repository) SetAgentHarnessExecutionEvaluationSpec(ctx context.Context, p SetAgentHarnessExecutionEvaluationSpecParams) (AgentHarnessExecution, error) {
+	row := r.db.QueryRow(ctx, `
+UPDATE agent_harness_executions
+SET evaluation_spec_id = $2,
+    updated_at = now()
+WHERE id = $1
+RETURNING id, organization_id, workspace_id, agent_harness_id, created_by_user_id,
+    run_id, run_agent_id, evaluation_spec_id,
+    status, harness_snapshot, execution_config_snapshot, evaluation_config_snapshot,
+    error_message, started_at, completed_at, cancelled_at, created_at, updated_at`,
+		p.ExecutionID, p.EvaluationSpecID,
+	)
 	return scanAgentHarnessExecution(row)
 }
 

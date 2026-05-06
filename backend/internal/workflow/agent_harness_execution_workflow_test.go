@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/domain"
+	"github.com/agentclash/agentclash/backend/internal/provider"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/backend/internal/sandbox"
 	"github.com/google/uuid"
@@ -33,7 +34,7 @@ func TestExecuteAgentHarnessExecutionRunsCodexAndRecordsTrace(t *testing.T) {
 		RepositoryURL:          stringPtr("https://github.com/acme/repo"),
 		BaseBranch:             stringPtr("main"),
 		ExecutionConfig:        json.RawMessage(`{"timeout_seconds":120,"setup_commands":[{"name":"deps","command":"go mod download","working_directory":"backend","timeout_seconds":30}]}`),
-		EvaluationConfig:       json.RawMessage(`{"validators":[{"type":"command","command":"go test ./...","working_directory":"backend","timeout_seconds":60}]}`),
+		EvaluationConfig:       json.RawMessage(`{"validators":[{"key":"tests","type":"command","command":"go test ./...","working_directory":"backend","timeout_seconds":60}],"llm_judges":[{"key":"autonomy","rubric":"Score whether the coding agent completed the requested task coherently."}]}`),
 	})
 	repo.setAgentHarnessExecution(repository.AgentHarnessExecution{
 		ID:                      executionID,
@@ -86,18 +87,21 @@ func TestExecuteAgentHarnessExecutionRunsCodexAndRecordsTrace(t *testing.T) {
 			return sandbox.ExecResult{}, nil
 		}
 	})
-	provider := &sandbox.FakeProvider{NextSession: session}
-	activities := NewActivities(repo, FakeWorkHooks{}).WithSandboxProvider(provider)
+	sandboxProvider := &sandbox.FakeProvider{NextSession: session}
+	judgeClient := &provider.FakeClient{
+		Response: provider.Response{OutputText: `{"score":5,"confidence":"high","reasoning":"complete"}`},
+	}
+	activities := NewActivities(repo, FakeWorkHooks{}, judgeClient).WithSandboxProvider(sandboxProvider)
 
 	err := activities.ExecuteAgentHarnessExecution(context.Background(), ExecuteAgentHarnessExecutionInput{ExecutionID: executionID})
 	if err != nil {
 		t.Fatalf("ExecuteAgentHarnessExecution error: %v", err)
 	}
 
-	if len(provider.CreateRequests) != 1 {
-		t.Fatalf("sandbox create calls = %d, want 1", len(provider.CreateRequests))
+	if len(sandboxProvider.CreateRequests) != 1 {
+		t.Fatalf("sandbox create calls = %d, want 1", len(sandboxProvider.CreateRequests))
 	}
-	createRequest := provider.CreateRequests[0]
+	createRequest := sandboxProvider.CreateRequests[0]
 	if createRequest.EnvVars["OPENAI_API_KEY"] != "sk-test" || createRequest.EnvVars["CODEX_API_KEY"] != "sk-test" {
 		t.Fatalf("env vars = %#v, want OpenAI and Codex keys", createRequest.EnvVars)
 	}
@@ -132,6 +136,8 @@ func TestExecuteAgentHarnessExecutionRunsCodexAndRecordsTrace(t *testing.T) {
 	var sawScoringCompleted bool
 	var sawSetupCompleted bool
 	var sawHints bool
+	var sawScorecardPersisted bool
+	var sawLLMJudgesSkipped bool
 	for _, event := range repo.agentHarnessEvents[executionID] {
 		switch event.EventType {
 		case "codex.exec.output":
@@ -171,6 +177,10 @@ func TestExecuteAgentHarnessExecutionRunsCodexAndRecordsTrace(t *testing.T) {
 			if payload["template"] != "codex" || payload["agent_tool"] != "codex" || payload["metadata_version"] != float64(1) {
 				t.Fatalf("runtime payload = %#v, want template/tool metadata", payload)
 			}
+		case "scorecard.persisted":
+			sawScorecardPersisted = true
+		case "llm_judges.skipped":
+			sawLLMJudgesSkipped = true
 		}
 	}
 	if !sawCodexOutput {
@@ -187,6 +197,50 @@ func TestExecuteAgentHarnessExecutionRunsCodexAndRecordsTrace(t *testing.T) {
 	}
 	if !sawHints {
 		t.Fatal("expected setup hints detected event")
+	}
+	if !sawScorecardPersisted {
+		t.Fatal("expected persisted scorecard event")
+	}
+	if sawLLMJudgesSkipped {
+		t.Fatal("did not expect llm_judges.skipped after judge wiring")
+	}
+	evaluation, ok := repo.evaluations[runAgentID]
+	if !ok {
+		t.Fatal("expected stored run-agent evaluation")
+	}
+	if len(evaluation.ValidatorResults) != 1 || evaluation.ValidatorResults[0].Key != "tests" || evaluation.ValidatorResults[0].Verdict != "pass" {
+		t.Fatalf("validator results = %#v, want passing tests validator", evaluation.ValidatorResults)
+	}
+	if len(evaluation.LLMJudgeResults) != 1 || evaluation.LLMJudgeResults[0].JudgeKey != "autonomy" {
+		t.Fatalf("llm judge results = %#v, want autonomy judge result", evaluation.LLMJudgeResults)
+	}
+	if evaluation.LLMJudgeResults[0].NormalizedScore == nil || *evaluation.LLMJudgeResults[0].NormalizedScore != 1 {
+		t.Fatalf("llm judge score = %#v, want normalized 1", evaluation.LLMJudgeResults[0].NormalizedScore)
+	}
+	if len(judgeClient.Requests) != 3 {
+		t.Fatalf("judge requests = %d, want default 3 samples", len(judgeClient.Requests))
+	}
+	if !strings.Contains(judgeClient.Requests[0].Messages[0].Content, "done") {
+		t.Fatalf("judge prompt = %q, want agent output evidence", judgeClient.Requests[0].Messages[0].Content)
+	}
+	if judgeClient.Requests[0].CredentialReference != "workspace-secret://OPENAI_API_KEY" {
+		t.Fatalf("judge credential reference = %q, want harness workspace secret", judgeClient.Requests[0].CredentialReference)
+	}
+	if evaluation.OverallScore == nil || *evaluation.OverallScore != 1 {
+		t.Fatalf("overall score = %#v, want 1 from command validator", evaluation.OverallScore)
+	}
+	if _, ok := evaluation.DimensionScores["latency"]; !ok {
+		t.Fatalf("dimension scores = %#v, want latency dimension exposed", evaluation.DimensionScores)
+	}
+	if _, ok := evaluation.DimensionScores["cost"]; !ok {
+		t.Fatalf("dimension scores = %#v, want cost dimension exposed", evaluation.DimensionScores)
+	}
+	if repo.callCountWithPrefix("CreateStandaloneEvaluationSpec:") != 1 {
+		t.Fatalf("CreateStandaloneEvaluationSpec call count = %d, want 1", repo.callCountWithPrefix("CreateStandaloneEvaluationSpec:"))
+	}
+	updatedExecution, ok := repo.agentHarnessExecutions[executionID]
+	if !ok || updatedExecution.EvaluationSpecID == nil || *updatedExecution.EvaluationSpecID != evaluation.EvaluationSpecID {
+		t.Fatalf("execution evaluation_spec_id = %#v, want %s", updatedExecution.EvaluationSpecID, evaluation.EvaluationSpecID)
 	}
 	runEvents := repo.runEvents[runAgentID]
 	if len(runEvents) == 0 {
@@ -301,6 +355,16 @@ func TestExecuteAgentHarnessExecutionFailsRequiredValidator(t *testing.T) {
 	}
 	if !sawPartialScore {
 		t.Fatal("expected partial score event")
+	}
+	evaluation, ok := repo.evaluations[runAgentID]
+	if !ok {
+		t.Fatal("expected stored scorecard evaluation for failed required validator")
+	}
+	if len(evaluation.ValidatorResults) != 2 || evaluation.ValidatorResults[1].Verdict != "fail" {
+		t.Fatalf("validator results = %#v, want failed npm validator persisted", evaluation.ValidatorResults)
+	}
+	if evaluation.Passed == nil || *evaluation.Passed {
+		t.Fatalf("scorecard passed = %#v, want false", evaluation.Passed)
 	}
 	if repo.callCountWithPrefix("BuildRunAgentReplay:"+runAgentID.String()) != 1 {
 		t.Fatalf("BuildRunAgentReplay call count = %d, want 1", repo.callCountWithPrefix("BuildRunAgentReplay:"+runAgentID.String()))

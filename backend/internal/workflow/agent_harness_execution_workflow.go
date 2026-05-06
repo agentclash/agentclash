@@ -9,10 +9,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/agentclash/agentclash/backend/internal/domain"
 	"github.com/agentclash/agentclash/backend/internal/maputil"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/backend/internal/runevents"
 	"github.com/agentclash/agentclash/backend/internal/sandbox"
+	"github.com/agentclash/agentclash/backend/internal/scoring"
 	"github.com/google/uuid"
 	sdkworkflow "go.temporal.io/sdk/workflow"
 )
@@ -54,9 +56,11 @@ type agentHarnessSetupCommand struct {
 type agentHarnessEvaluationConfig struct {
 	Validators []agentHarnessValidatorConfig `json:"validators,omitempty"`
 	LLMJudges  []json.RawMessage             `json:"llm_judges,omitempty"`
+	Scorecard  json.RawMessage               `json:"scorecard,omitempty"`
 }
 
 type agentHarnessValidatorConfig struct {
+	Key              string `json:"key,omitempty"`
 	Type             string `json:"type"`
 	Command          string `json:"command,omitempty"`
 	WorkingDirectory string `json:"working_directory,omitempty"`
@@ -315,7 +319,7 @@ func (a *Activities) ExecuteAgentHarnessExecution(ctx context.Context, input Exe
 	}); err != nil {
 		return err
 	}
-	if err := a.evaluateAgentHarnessExecution(ctx, execution.ID, session, harness.EvaluationConfig, workdir, timeout, env); err != nil {
+	if err := a.evaluateAgentHarnessExecution(ctx, execution.ID, session, harness, harness.EvaluationConfig, workdir, timeout, env); err != nil {
 		return err
 	}
 
@@ -656,7 +660,7 @@ func (a *Activities) execAgentHarnessShellCommand(ctx context.Context, execution
 	return result, workdir, err
 }
 
-func (a *Activities) evaluateAgentHarnessExecution(ctx context.Context, executionID uuid.UUID, session sandbox.Session, rawConfig json.RawMessage, workdir string, defaultTimeout time.Duration, env map[string]string) error {
+func (a *Activities) evaluateAgentHarnessExecution(ctx context.Context, executionID uuid.UUID, session sandbox.Session, harness agentHarnessSnapshot, rawConfig json.RawMessage, workdir string, defaultTimeout time.Duration, env map[string]string) error {
 	config, err := decodeAgentHarnessEvaluationConfig(rawConfig)
 	if err != nil {
 		_ = a.recordAgentHarnessEvent(ctx, executionID, "scoring.failed", "worker", map[string]any{"error": err.Error()})
@@ -669,15 +673,17 @@ func (a *Activities) evaluateAgentHarnessExecution(ctx context.Context, executio
 	passed := 0
 	failed := 0
 	skipped := 0
+	var requiredValidatorErr error
+	validatorResults := make([]scoring.ValidatorResult, 0, len(config.Validators))
 	for index, validator := range config.Validators {
 		switch strings.TrimSpace(validator.Type) {
 		case "command":
-			ok, err := a.evaluateCommandValidator(ctx, executionID, session, validator, index, workdir, defaultTimeout, env)
+			result, ok, err := a.evaluateCommandValidator(ctx, executionID, session, validator, index, workdir, defaultTimeout, env)
+			validatorResults = append(validatorResults, result)
 			if err != nil {
 				failed++
 				if validatorRequired(validator) {
-					_ = a.recordAgentHarnessEvent(ctx, executionID, "scoring.completed", "worker", map[string]any{"passed": passed, "failed": failed, "skipped": skipped, "score": agentHarnessScore(passed, failed)})
-					return err
+					requiredValidatorErr = err
 				}
 			}
 			if ok {
@@ -690,14 +696,31 @@ func (a *Activities) evaluateAgentHarnessExecution(ctx context.Context, executio
 			}
 		}
 	}
-	if len(config.LLMJudges) > 0 {
-		skipped += len(config.LLMJudges)
-		if err := a.recordAgentHarnessEvent(ctx, executionID, "llm_judges.skipped", "worker", map[string]any{"count": len(config.LLMJudges), "reason": "agent harness LLM judge scoring is not wired yet"}); err != nil {
+
+	if a.repo != nil {
+		evaluation, err := a.buildAndStoreAgentHarnessScorecard(ctx, executionID, harness, config, validatorResults, passed, failed, skipped)
+		if err != nil {
+			_ = a.recordAgentHarnessEvent(ctx, executionID, "scoring.failed", "worker", map[string]any{"error": err.Error()})
 			return err
+		}
+		if evaluation.RunAgentID != uuid.Nil {
+			if err := a.recordAgentHarnessEvent(ctx, executionID, "scorecard.persisted", "worker", map[string]any{
+				"evaluation_spec_id": evaluation.EvaluationSpecID,
+				"status":             evaluation.Status,
+				"passed":             evaluation.Passed,
+				"overall_score":      evaluation.OverallScore,
+				"llm_judges":         len(evaluation.LLMJudgeResults),
+				"dimensions":         evaluation.DimensionScores,
+			}); err != nil {
+				return err
+			}
 		}
 	}
 
-	return a.recordAgentHarnessEvent(ctx, executionID, "scoring.completed", "worker", map[string]any{"passed": passed, "failed": failed, "skipped": skipped, "score": agentHarnessScore(passed, failed)})
+	if err := a.recordAgentHarnessEvent(ctx, executionID, "scoring.completed", "worker", map[string]any{"passed": passed, "failed": failed, "skipped": skipped, "score": agentHarnessScore(passed, failed)}); err != nil {
+		return err
+	}
+	return requiredValidatorErr
 }
 
 func (a *Activities) detectAgentHarnessSetupHints(ctx context.Context, executionID uuid.UUID, session sandbox.Session, workdir string, env map[string]string) error {
@@ -755,12 +778,23 @@ func (a *Activities) runAgentHarnessSetupCommands(ctx context.Context, execution
 	return a.recordAgentHarnessEvent(ctx, executionID, "setup.completed", "worker", map[string]any{"commands": len(cfg.SetupCommands)})
 }
 
-func (a *Activities) evaluateCommandValidator(ctx context.Context, executionID uuid.UUID, session sandbox.Session, validator agentHarnessValidatorConfig, index int, defaultWorkdir string, defaultTimeout time.Duration, env map[string]string) (bool, error) {
+func (a *Activities) evaluateCommandValidator(ctx context.Context, executionID uuid.UUID, session sandbox.Session, validator agentHarnessValidatorConfig, index int, defaultWorkdir string, defaultTimeout time.Duration, env map[string]string) (scoring.ValidatorResult, bool, error) {
 	command := strings.TrimSpace(validator.Command)
+	validatorResult := scoring.ValidatorResult{
+		Key:          agentHarnessValidatorKey(validator, index),
+		Type:         scoring.ValidatorTypeBooleanAssert,
+		Target:       "agent_harness.command_validator",
+		ExpectedFrom: "exit_code_zero",
+	}
 	if command == "" {
 		err := fmt.Errorf("command validator %d is missing command", index)
 		_ = a.recordAgentHarnessEvent(ctx, executionID, "validator.command.failed", "worker", map[string]any{"index": index, "error": err.Error()})
-		return false, err
+		validatorResult.State = scoring.OutputStateError
+		validatorResult.Verdict = "error"
+		validatorResult.OutcomeClass = scoring.ValidatorOutcomePackError
+		validatorResult.Reason = err.Error()
+		validatorResult.RawOutput = mustMarshalJSON(map[string]any{"error": err.Error()})
+		return validatorResult, false, err
 	}
 	result, workdir, err := a.execAgentHarnessShellCommand(ctx, executionID, session, "validator.command.exec", command, validator.WorkingDirectory, validator.TimeoutSeconds, defaultWorkdir, defaultTimeout, env)
 	payload := map[string]any{
@@ -771,18 +805,312 @@ func (a *Activities) evaluateCommandValidator(ctx context.Context, executionID u
 	if err != nil {
 		payload["error"] = err.Error()
 		_ = a.recordAgentHarnessEvent(ctx, executionID, "validator.command.failed", "worker", payload)
-		return false, err
+		validatorResult.State = scoring.OutputStateError
+		validatorResult.Verdict = "error"
+		validatorResult.OutcomeClass = scoring.ValidatorOutcomeInfraError
+		validatorResult.Reason = err.Error()
+		validatorResult.RawOutput = mustMarshalJSON(payload)
+		return validatorResult, false, err
 	}
 	payload["exit_code"] = result.ExitCode
 	payload["stdout"] = result.Stdout
 	payload["stderr"] = result.Stderr
+	score := 0.0
+	validatorResult.State = scoring.OutputStateAvailable
+	validatorResult.RawOutput = mustMarshalJSON(payload)
 	if result.ExitCode == 0 {
-		return true, a.recordAgentHarnessEvent(ctx, executionID, "validator.command.passed", "worker", payload)
+		score = 1
+		validatorResult.Verdict = "pass"
+		validatorResult.OutcomeClass = scoring.ValidatorOutcomePass
+		validatorResult.NormalizedScore = &score
+		return validatorResult, true, a.recordAgentHarnessEvent(ctx, executionID, "validator.command.passed", "worker", payload)
 	}
 	err = fmt.Errorf("command validator %d failed with exit code %d", index, result.ExitCode)
 	payload["error"] = err.Error()
 	_ = a.recordAgentHarnessEvent(ctx, executionID, "validator.command.failed", "worker", payload)
-	return false, err
+	validatorResult.Verdict = "fail"
+	validatorResult.OutcomeClass = scoring.ValidatorOutcomeFail
+	validatorResult.NormalizedScore = &score
+	validatorResult.Reason = err.Error()
+	validatorResult.RawOutput = mustMarshalJSON(payload)
+	return validatorResult, false, err
+}
+
+func agentHarnessValidatorKey(validator agentHarnessValidatorConfig, index int) string {
+	if key := strings.TrimSpace(validator.Key); key != "" {
+		return key
+	}
+	return fmt.Sprintf("command_%d", index+1)
+}
+
+func (a *Activities) buildAndStoreAgentHarnessScorecard(ctx context.Context, executionID uuid.UUID, harness agentHarnessSnapshot, config agentHarnessEvaluationConfig, validatorResults []scoring.ValidatorResult, passed int, failed int, skipped int) (scoring.RunAgentEvaluation, error) {
+	execution, err := a.agentHarnessRepo.GetAgentHarnessExecutionByID(ctx, executionID)
+	if err != nil {
+		return scoring.RunAgentEvaluation{}, wrapActivityError(err)
+	}
+	if execution.RunID == nil || execution.RunAgentID == nil {
+		return scoring.RunAgentEvaluation{}, nil
+	}
+	spec, err := agentHarnessEvaluationSpec(executionID, config, validatorResults)
+	if err != nil {
+		return scoring.RunAgentEvaluation{}, err
+	}
+	definition, err := scoring.MarshalDefinition(spec)
+	if err != nil {
+		return scoring.RunAgentEvaluation{}, err
+	}
+	normalizedSpec, err := scoring.DecodeDefinition(definition)
+	if err != nil {
+		return scoring.RunAgentEvaluation{}, err
+	}
+	specRecord, err := a.repo.CreateStandaloneEvaluationSpec(ctx, repository.CreateStandaloneEvaluationSpecParams{
+		Name:          normalizedSpec.Name,
+		VersionNumber: normalizedSpec.VersionNumber,
+		JudgeMode:     string(normalizedSpec.JudgeMode),
+		Definition:    definition,
+	})
+	if err != nil {
+		return scoring.RunAgentEvaluation{}, err
+	}
+	if _, err := a.agentHarnessRepo.SetAgentHarnessExecutionEvaluationSpec(ctx, repository.SetAgentHarnessExecutionEvaluationSpecParams{
+		ExecutionID:      executionID,
+		EvaluationSpecID: specRecord.ID,
+	}); err != nil {
+		return scoring.RunAgentEvaluation{}, err
+	}
+	runEvents, err := a.repo.ListRunEventsByRunAgentID(ctx, *execution.RunAgentID)
+	if err != nil {
+		return scoring.RunAgentEvaluation{}, err
+	}
+	evaluationEvents := agentHarnessEvaluationEvents(runEvents)
+	input := scoring.EvaluationInput{
+		RunAgentID:       *execution.RunAgentID,
+		EvaluationSpecID: specRecord.ID,
+		Events:           evaluationEvents,
+	}
+	executionContext := repository.RunAgentExecutionContext{
+		Run: domain.Run{
+			ID:          *execution.RunID,
+			WorkspaceID: execution.WorkspaceID,
+		},
+		RunAgent: domain.RunAgent{
+			ID: *execution.RunAgentID,
+		},
+		Deployment: agentHarnessJudgeDeploymentContext(harness),
+	}
+	llmJudgeResults, judgeWarnings := evaluateLLMJudges(ctx, a.judgeClient, a.repo, executionContext, input, normalizedSpec)
+	evaluation, err := scoring.EvaluateRunAgentWithPrecomputedResults(input, normalizedSpec, validatorResults, nil, llmJudgeResults)
+	if err != nil {
+		return scoring.RunAgentEvaluation{}, err
+	}
+	evaluation.Warnings = append(evaluation.Warnings, judgeWarnings...)
+	if err := a.repo.StoreRunAgentEvaluationResults(ctx, evaluation); err != nil {
+		return scoring.RunAgentEvaluation{}, err
+	}
+	if err := recordScoringEvents(ctx, a.repo, *execution.RunID, evaluation); err != nil {
+		evaluation.Warnings = append(evaluation.Warnings, fmt.Sprintf("record scoring events: %v", err))
+	}
+	return evaluation, nil
+}
+
+func agentHarnessEvaluationSpec(executionID uuid.UUID, config agentHarnessEvaluationConfig, validatorResults []scoring.ValidatorResult) (scoring.EvaluationSpec, error) {
+	judges, err := agentHarnessLLMJudges(config.LLMJudges)
+	if err != nil {
+		return scoring.EvaluationSpec{}, err
+	}
+	spec := scoring.EvaluationSpec{
+		Name:          "agent-harness-" + executionID.String(),
+		VersionNumber: 1,
+		JudgeMode:     scoring.JudgeModeDeterministic,
+		Validators:    make([]scoring.ValidatorDeclaration, 0, len(validatorResults)),
+		LLMJudges:     judges,
+		Scorecard: scoring.ScorecardDeclaration{
+			Strategy: scoring.ScoringStrategyWeighted,
+		},
+	}
+	passThreshold := 1.0
+	spec.Scorecard.PassThreshold = &passThreshold
+	if len(judges) > 0 {
+		spec.JudgeMode = scoring.JudgeModeHybrid
+	}
+	validatorKeys := make([]string, 0, len(validatorResults))
+	for index, result := range validatorResults {
+		key := strings.TrimSpace(result.Key)
+		if key == "" {
+			key = fmt.Sprintf("command_%d", index+1)
+		}
+		validatorKeys = append(validatorKeys, key)
+		spec.Validators = append(spec.Validators, scoring.ValidatorDeclaration{
+			Key:          key,
+			Type:         scoring.ValidatorTypeBooleanAssert,
+			Target:       "literal:true",
+			ExpectedFrom: "literal:true",
+		})
+	}
+	if len(spec.Validators) == 0 {
+		spec.Validators = append(spec.Validators, scoring.ValidatorDeclaration{
+			Key:          "harness_execution",
+			Type:         scoring.ValidatorTypeBooleanAssert,
+			Target:       "literal:true",
+			ExpectedFrom: "literal:true",
+		})
+	}
+	if len(config.Scorecard) > 0 && string(config.Scorecard) != "null" {
+		if err := json.Unmarshal(config.Scorecard, &spec.Scorecard); err != nil {
+			return scoring.EvaluationSpec{}, fmt.Errorf("decode harness scorecard: %w", err)
+		}
+	} else {
+		targetLatency := 60_000.0
+		maxLatency := 30 * 60_000.0
+		targetCost := 0.0
+		maxCost := 1.0
+		spec.Scorecard.Dimensions = append(spec.Scorecard.Dimensions, scoring.DimensionDeclaration{
+			Key:             "correctness",
+			Source:          scoring.DimensionSourceValidators,
+			Validators:      validatorKeys,
+			BetterDirection: "higher",
+		})
+		spec.Scorecard.Dimensions = append(spec.Scorecard.Dimensions, scoring.DimensionDeclaration{
+			Key:             "latency",
+			Source:          scoring.DimensionSourceLatency,
+			BetterDirection: "lower",
+			Normalization:   &scoring.DimensionNormalization{Target: &targetLatency, Max: &maxLatency},
+		})
+		spec.Scorecard.Dimensions = append(spec.Scorecard.Dimensions, scoring.DimensionDeclaration{
+			Key:             "cost",
+			Source:          scoring.DimensionSourceCost,
+			BetterDirection: "lower",
+			Normalization:   &scoring.DimensionNormalization{Target: &targetCost, Max: &maxCost},
+		})
+		for _, judge := range judges {
+			spec.Scorecard.Dimensions = append(spec.Scorecard.Dimensions, scoring.DimensionDeclaration{
+				Key:             judge.Key,
+				Source:          scoring.DimensionSourceLLMJudge,
+				JudgeKey:        judge.Key,
+				BetterDirection: "higher",
+			})
+		}
+	}
+	return spec, nil
+}
+
+func agentHarnessJudgeDeploymentContext(harness agentHarnessSnapshot) repository.AgentDeploymentExecutionContext {
+	providerKey := ""
+	switch normalizeAgentHarnessKind(harness.HarnessKind) {
+	case "claude_e2b":
+		providerKey = "anthropic"
+	default:
+		providerKey = "openai"
+	}
+	secretName := strings.TrimSpace(derefString(harness.OpenAIAPIKeySecretName))
+	if secretName == "" || providerKey == "" {
+		return repository.AgentDeploymentExecutionContext{}
+	}
+	return repository.AgentDeploymentExecutionContext{
+		ProviderAccount: &repository.ProviderAccountExecutionContext{
+			ProviderKey:         providerKey,
+			CredentialReference: "workspace-secret://" + secretName,
+		},
+	}
+}
+
+func agentHarnessEvaluationEvents(runEvents []repository.RunEvent) []scoring.Event {
+	events := mapRunEvents(runEvents)
+	if len(runEvents) == 0 {
+		now := time.Now().UTC()
+		return append(events, scoring.Event{
+			Type:       "system.run.completed",
+			Source:     string(runevents.SourceAgentHarnessWorker),
+			OccurredAt: now,
+			Payload:    mustMarshalJSON(map[string]any{"final_output": "Agent Harness execution produced no canonical events."}),
+		})
+	}
+	startedAt := runEvents[0].OccurredAt
+	completedAt := runEvents[len(runEvents)-1].OccurredAt
+	finalOutput := agentHarnessJudgeTranscript(runEvents)
+	return append(events,
+		scoring.Event{
+			Type:       "system.run.started",
+			Source:     string(runevents.SourceAgentHarnessWorker),
+			OccurredAt: startedAt,
+			Payload:    mustMarshalJSON(map[string]any{}),
+		},
+		scoring.Event{
+			Type:       "system.run.completed",
+			Source:     string(runevents.SourceAgentHarnessWorker),
+			OccurredAt: completedAt,
+			Payload:    mustMarshalJSON(map[string]any{"final_output": finalOutput}),
+		},
+	)
+}
+
+func agentHarnessJudgeTranscript(runEvents []repository.RunEvent) string {
+	lines := []string{"Agent Harness execution evidence:"}
+	for _, event := range runEvents {
+		var payload map[string]any
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			continue
+		}
+		eventType, _ := payload["agent_harness_event_type"].(string)
+		if eventType == "" {
+			eventType = string(event.EventType)
+		}
+		switch {
+		case eventType == "codex.exec.output" || eventType == "claude.exec.output":
+			if preview := summaryPreview(payload, "message_summary"); preview != "" {
+				lines = append(lines, fmt.Sprintf("- %s: %s", eventType, preview))
+			}
+		case eventType == "artifact.git_diff":
+			if preview := summaryPreview(payload, "diff_summary"); preview != "" {
+				lines = append(lines, fmt.Sprintf("- git diff summary: %s", preview))
+			}
+		case eventType == "artifact.changed_files":
+			if changed, ok := payload["changed_files"].(string); ok && strings.TrimSpace(changed) != "" {
+				lines = append(lines, fmt.Sprintf("- changed files: %s", strings.TrimSpace(changed)))
+			}
+		case strings.HasPrefix(eventType, "validator."):
+			if exitCode, ok := payload["exit_code"]; ok {
+				lines = append(lines, fmt.Sprintf("- %s exit_code=%v", eventType, exitCode))
+			}
+		}
+	}
+	if len(lines) == 1 {
+		lines = append(lines, "No agent output, diff, or validator evidence was available.")
+	}
+	return strings.Join(lines, "\n")
+}
+
+func summaryPreview(payload map[string]any, key string) string {
+	summary, ok := payload[key].(map[string]any)
+	if !ok {
+		return ""
+	}
+	preview, _ := summary["preview"].(string)
+	return strings.TrimSpace(preview)
+}
+
+func agentHarnessLLMJudges(rawJudges []json.RawMessage) ([]scoring.LLMJudgeDeclaration, error) {
+	judges := make([]scoring.LLMJudgeDeclaration, 0, len(rawJudges))
+	for index, raw := range rawJudges {
+		var judge scoring.LLMJudgeDeclaration
+		if err := json.Unmarshal(raw, &judge); err != nil {
+			return nil, fmt.Errorf("decode llm_judges[%d]: %w", index, err)
+		}
+		if judge.Mode == "" {
+			judge.Mode = scoring.JudgeMethodRubric
+		}
+		if strings.TrimSpace(judge.Key) == "" {
+			judge.Key = fmt.Sprintf("llm_judge_%d", index+1)
+		}
+		if strings.TrimSpace(judge.Model) == "" && len(judge.Models) == 0 {
+			judge.Model = "gpt-4.1-mini"
+		}
+		if len(judge.ContextFrom) == 0 {
+			judge.ContextFrom = []string{"final_output"}
+		}
+		judges = append(judges, judge)
+	}
+	return judges, nil
 }
 
 func agentHarnessValidatorWorkdir(defaultWorkdir string, configured string) string {
