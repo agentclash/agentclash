@@ -59,6 +59,7 @@ func registerProtectedRoutes(
 		})
 	})
 	router.Patch("/organization-memberships/{membershipID}", updateOrgMembershipHandler(logger, orgMembershipService))
+	router.Patch("/invites/organization/{inviteToken}", acceptOrgInviteHandler(logger, orgMembershipService))
 
 	// Standalone workspace endpoints (by workspace ID).
 	router.Get("/workspaces/{workspaceID}/details", getWorkspaceHandler(logger, wsService))
@@ -66,6 +67,7 @@ func registerProtectedRoutes(
 	router.Get("/workspaces/{workspaceID}/memberships", listWorkspaceMembershipsHandler(logger, wsMembershipService))
 	router.Post("/workspaces/{workspaceID}/memberships", inviteWorkspaceMemberHandler(logger, wsMembershipService))
 	router.Patch("/workspace-memberships/{membershipID}", updateWorkspaceMembershipHandler(logger, wsMembershipService))
+	router.Patch("/invites/workspace/{inviteToken}", acceptWorkspaceInviteHandler(logger, wsMembershipService))
 	router.Get("/artifacts/{artifactID}/download", getArtifactDownloadHandler(logger, artifactService))
 	// POST /v1/runs resolves workspace access from the JSON body, so authz stays in the run-creation service
 	// instead of URL-param middleware. The run read endpoints below also resolve authz in the service layer

@@ -149,7 +149,7 @@ func main() {
 		logger.Info("email sender: noop (RESEND_API_KEY not set)")
 	}
 	orgMembershipManager := api.NewOrgMembershipManager(orgAuthz, repo, emailSender, cfg.FrontendURL, billingManager)
-	wsMembershipManager := api.NewWorkspaceMembershipManager(repo, emailSender, cfg.FrontendURL)
+	wsMembershipManager := api.NewWorkspaceMembershipManager(repo, emailSender, cfg.FrontendURL, billingManager)
 	onboardingManager := api.NewOnboardingManager(repo)
 	infraManager := api.NewInfrastructureManager(repo)
 	workspaceSecretsManager := api.NewWorkspaceSecretsManager(repo)

@@ -3,6 +3,7 @@ const DEVICE_PATH = "/auth/device";
 const GITHUB_SETUP_PATH = "/github/setup";
 const INVITE_ORG_PATH_PREFIX = "/invites/organization/";
 const INVITE_WORKSPACE_PATH_PREFIX = "/invites/workspace/";
+const INVITE_TOKEN_PATTERN = /^invite_[A-Za-z0-9_-]{32,256}$/;
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ALLOWED_RETURN_PATHS = new Set([
@@ -62,11 +63,11 @@ export function buildInviteReturnTo(
   if (!pathname.startsWith(prefix)) {
     return DEFAULT_RETURN_TO;
   }
-  const membershipId = pathname.slice(prefix.length);
-  if (!UUID_PATTERN.test(membershipId)) {
+  const inviteToken = pathname.slice(prefix.length);
+  if (!INVITE_TOKEN_PATTERN.test(inviteToken) && !UUID_PATTERN.test(inviteToken)) {
     return DEFAULT_RETURN_TO;
   }
-  return `${prefix}${membershipId}`;
+  return `${prefix}${inviteToken}`;
 }
 
 export function buildGitHubSetupReturnTo(searchParams: URLSearchParams): string {

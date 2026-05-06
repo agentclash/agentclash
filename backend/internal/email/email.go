@@ -23,6 +23,7 @@ type InviteEmail struct {
 	To           string
 	ResourceName string
 	ResourceKind string
+	InviterName  string
 	InviterEmail string
 	Role         string
 	AcceptURL    string
@@ -85,8 +86,8 @@ func buildInviteHTML(input InviteEmail) string {
 	}
 	resourceKind = html.EscapeString(resourceKind)
 	resourceName := html.EscapeString(input.ResourceName)
-	inviterEmail := html.EscapeString(input.InviterEmail)
-	role := html.EscapeString(input.Role)
+	inviterLabel := html.EscapeString(inviteInviterLabel(input))
+	role := html.EscapeString(inviteRoleLabel(input.Role))
 	acceptURL := html.EscapeString(input.AcceptURL)
 
 	return fmt.Sprintf(`<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:480px;margin:0 auto;padding:32px 0">
@@ -109,7 +110,30 @@ func buildInviteHTML(input InviteEmail) string {
   <p style="color:#999;font-size:12px;margin:24px 0 0">
     If you didn't expect this invitation, you can ignore this email.
   </p>
-</div>`, resourceName, inviterEmail, resourceKind, role, acceptURL, acceptURL, acceptURL)
+</div>`, resourceName, inviterLabel, resourceKind, role, acceptURL, acceptURL, acceptURL)
+}
+
+func inviteInviterLabel(input InviteEmail) string {
+	if name := strings.TrimSpace(input.InviterName); name != "" {
+		return name
+	}
+	if email := strings.TrimSpace(input.InviterEmail); email != "" {
+		return email
+	}
+	return "An AgentClash admin"
+}
+
+func inviteRoleLabel(role string) string {
+	switch strings.TrimSpace(role) {
+	case "org_admin", "workspace_admin":
+		return "Admin"
+	case "org_member", "workspace_member":
+		return "Member"
+	case "workspace_viewer":
+		return "Viewer"
+	default:
+		return strings.TrimSpace(role)
+	}
 }
 
 // NoopSender logs invite emails without sending them.

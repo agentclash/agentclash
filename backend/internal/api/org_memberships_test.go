@@ -2,7 +2,9 @@ package api
 
 import (
 	"context"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/google/uuid"
@@ -17,6 +19,7 @@ type fakeOrgMembershipRepo struct {
 	created         repository.OrgMembershipFullRow
 	createErr       error
 	updated         repository.OrgMembershipFullRow
+	lastUpdate      repository.UpdateOrgMembershipInput
 	updateErr       error
 	adminCount      int64
 	memberships     []repository.OrgMembershipFullRow
@@ -47,7 +50,11 @@ func (r *fakeOrgMembershipRepo) GetOrgMembershipByOrgAndUser(_ context.Context, 
 	return r.orgMembership, r.orgMemberErr
 }
 
-func (r *fakeOrgMembershipRepo) CreateOrgMembership(_ context.Context, _ repository.CreateOrgMembershipInput) (repository.OrgMembershipFullRow, error) {
+func (r *fakeOrgMembershipRepo) CreateOrgMembership(_ context.Context, input repository.CreateOrgMembershipInput) (repository.OrgMembershipFullRow, error) {
+	if r.created.InviteToken == "" {
+		r.created.InviteToken = input.InviteToken
+		r.created.InviteTokenExpiresAt = &input.InviteTokenExpiresAt
+	}
 	return r.created, r.createErr
 }
 
@@ -55,7 +62,20 @@ func (r *fakeOrgMembershipRepo) GetOrgMembershipByID(_ context.Context, _ uuid.U
 	return r.orgMembership, r.orgMemberErr
 }
 
-func (r *fakeOrgMembershipRepo) UpdateOrgMembership(_ context.Context, _ uuid.UUID, _ repository.UpdateOrgMembershipInput) (repository.OrgMembershipFullRow, error) {
+func (r *fakeOrgMembershipRepo) GetOrgMembershipByInviteToken(_ context.Context, _ string) (repository.OrgMembershipFullRow, error) {
+	return r.orgMembership, r.orgMemberErr
+}
+
+func (r *fakeOrgMembershipRepo) UpdateOrgMembership(_ context.Context, _ uuid.UUID, input repository.UpdateOrgMembershipInput) (repository.OrgMembershipFullRow, error) {
+	r.lastUpdate = input
+	if input.InviteToken != nil && r.updated.InviteToken == "" {
+		r.updated.InviteToken = *input.InviteToken
+		r.updated.InviteTokenExpiresAt = input.InviteTokenExpiresAt
+	}
+	if input.ClearInviteToken {
+		r.updated.InviteToken = ""
+		r.updated.InviteTokenExpiresAt = nil
+	}
 	return r.updated, r.updateErr
 }
 
@@ -93,8 +113,9 @@ func TestInviteOrgMember_SendsEmail(t *testing.T) {
 	manager := NewOrgMembershipManager(NewCallerOrganizationAuthorizer(), repo, sender, "https://app.agentclash.dev")
 
 	caller := Caller{
-		UserID: uuid.New(),
-		Email:  "admin@example.com",
+		UserID:      uuid.New(),
+		Email:       "admin@example.com",
+		DisplayName: "Atharva",
 		OrganizationMemberships: map[uuid.UUID]OrganizationMembership{
 			orgID: {OrganizationID: orgID, Role: "org_admin"},
 		},
@@ -108,9 +129,9 @@ func TestInviteOrgMember_SendsEmail(t *testing.T) {
 		t.Fatalf("InviteOrgMember returned error: %v", err)
 	}
 
-	wantAcceptURL := "https://app.agentclash.dev/invites/organization/" + membershipID.String()
-	if result.AcceptURL != wantAcceptURL {
-		t.Errorf("result AcceptURL = %q, want %q", result.AcceptURL, wantAcceptURL)
+	wantAcceptURLPrefix := "https://app.agentclash.dev/invites/organization/invite_"
+	if !strings.HasPrefix(result.AcceptURL, wantAcceptURLPrefix) {
+		t.Errorf("result AcceptURL = %q, want prefix %q", result.AcceptURL, wantAcceptURLPrefix)
 	}
 	if len(sender.calls) != 1 {
 		t.Fatalf("expected 1 email sent, got %d", len(sender.calls))
@@ -125,14 +146,115 @@ func TestInviteOrgMember_SendsEmail(t *testing.T) {
 	if sent.ResourceKind != "organization" {
 		t.Errorf("email ResourceKind = %q, want organization", sent.ResourceKind)
 	}
+	if sent.InviterName != "Atharva" {
+		t.Errorf("email InviterName = %q, want Atharva", sent.InviterName)
+	}
 	if sent.InviterEmail != "admin@example.com" {
 		t.Errorf("email InviterEmail = %q, want admin@example.com", sent.InviterEmail)
 	}
 	if sent.Role != "org_member" {
 		t.Errorf("email Role = %q, want org_member", sent.Role)
 	}
-	if sent.AcceptURL != wantAcceptURL {
-		t.Errorf("email AcceptURL = %q, want %q", sent.AcceptURL, wantAcceptURL)
+	if sent.AcceptURL != result.AcceptURL {
+		t.Errorf("email AcceptURL = %q, want %q", sent.AcceptURL, result.AcceptURL)
+	}
+}
+
+func TestAcceptOrgInviteLink_ReassignsPendingInviteToCaller(t *testing.T) {
+	orgID := uuid.New()
+	invitedUserID := uuid.New()
+	callerUserID := uuid.New()
+	membershipID := uuid.New()
+	now := time.Now()
+
+	repo := &fakeOrgMembershipRepo{
+		orgMembership: repository.OrgMembershipFullRow{
+			ID:               membershipID,
+			OrganizationID:   orgID,
+			UserID:           invitedUserID,
+			Email:            "friend@example.com",
+			Role:             "org_admin",
+			MembershipStatus: "invited",
+			CreatedAt:        now,
+			UpdatedAt:        now,
+		},
+		updated: repository.OrgMembershipFullRow{
+			ID:               membershipID,
+			OrganizationID:   orgID,
+			UserID:           callerUserID,
+			Email:            "friend@example.com",
+			Role:             "org_admin",
+			MembershipStatus: "active",
+			CreatedAt:        now,
+			UpdatedAt:        now,
+		},
+	}
+	manager := NewOrgMembershipManager(NewCallerOrganizationAuthorizer(), repo, &fakeEmailSender{}, "https://app.agentclash.dev")
+	status := "active"
+
+	result, err := manager.UpdateOrgMembership(context.Background(), Caller{UserID: callerUserID, Email: "friend@example.com"}, membershipID, UpdateOrgMembershipInput{
+		Status: &status,
+	})
+	if err != nil {
+		t.Fatalf("UpdateOrgMembership returned error: %v", err)
+	}
+
+	if repo.lastUpdate.UserID == nil || *repo.lastUpdate.UserID != callerUserID {
+		t.Fatalf("UpdateOrgMembership UserID = %v, want %s", repo.lastUpdate.UserID, callerUserID)
+	}
+	if result.UserID != callerUserID {
+		t.Fatalf("result UserID = %s, want %s", result.UserID, callerUserID)
+	}
+	if result.MembershipStatus != "active" {
+		t.Fatalf("result status = %q, want active", result.MembershipStatus)
+	}
+	if !repo.lastUpdate.ClearInviteToken {
+		t.Fatalf("ClearInviteToken = false, want true")
+	}
+}
+
+func TestAcceptOrgInviteToken_ReassignsPendingInviteToCaller(t *testing.T) {
+	orgID := uuid.New()
+	invitedUserID := uuid.New()
+	callerUserID := uuid.New()
+	membershipID := uuid.New()
+	expiresAt := time.Now().Add(time.Hour)
+
+	repo := &fakeOrgMembershipRepo{
+		orgMembership: repository.OrgMembershipFullRow{
+			ID:                   membershipID,
+			OrganizationID:       orgID,
+			UserID:               invitedUserID,
+			Email:                "friend@example.com",
+			Role:                 "org_member",
+			MembershipStatus:     "invited",
+			InviteToken:          "invite_testtoken",
+			InviteTokenExpiresAt: &expiresAt,
+		},
+		updated: repository.OrgMembershipFullRow{
+			ID:               membershipID,
+			OrganizationID:   orgID,
+			UserID:           callerUserID,
+			Email:            "friend@example.com",
+			Role:             "org_member",
+			MembershipStatus: "active",
+		},
+	}
+	manager := NewOrgMembershipManager(NewCallerOrganizationAuthorizer(), repo, &fakeEmailSender{}, "https://app.agentclash.dev")
+
+	result, err := manager.AcceptOrgInvite(context.Background(), Caller{UserID: callerUserID, Email: "friend@example.com"}, "invite_testtoken")
+	if err != nil {
+		t.Fatalf("AcceptOrgInvite returned error: %v", err)
+	}
+
+	if repo.lastUpdate.UserID == nil || *repo.lastUpdate.UserID != callerUserID {
+		t.Fatalf("AcceptOrgInvite UserID = %v, want %s", repo.lastUpdate.UserID, callerUserID)
+	}
+	if !repo.lastUpdate.ClearInviteToken {
+		t.Fatalf("ClearInviteToken = false, want true")
+	}
+	if result.MembershipStatus != "active" {
+		t.Fatalf("result status = %q, want active", result.MembershipStatus)
 	}
 }
 
@@ -148,6 +270,7 @@ func TestListOrgMemberships_InviteLinksOnlyForAdmins(t *testing.T) {
 				Email:            "invitee@example.com",
 				Role:             "org_member",
 				MembershipStatus: "invited",
+				InviteToken:      "invite_testtoken",
 			},
 		},
 		membershipCount: 1,
@@ -178,7 +301,7 @@ func TestListOrgMemberships_InviteLinksOnlyForAdmins(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListOrgMemberships returned error for admin: %v", err)
 	}
-	wantAcceptURL := "https://app.agentclash.dev/invites/organization/" + membershipID.String()
+	wantAcceptURL := "https://app.agentclash.dev/invites/organization/invite_testtoken"
 	if got := adminResult.Items[0].AcceptURL; got != wantAcceptURL {
 		t.Fatalf("admin caller AcceptURL = %q, want %q", got, wantAcceptURL)
 	}
