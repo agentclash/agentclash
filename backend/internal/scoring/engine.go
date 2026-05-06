@@ -103,6 +103,7 @@ type RunAgentEvaluation struct {
 	Validity         EvaluationValidity  `json:"validity,omitempty"`
 	ValidityReason   string              `json:"validity_reason,omitempty"`
 	Strategy         ScoringStrategy     `json:"strategy,omitempty"`
+	Metadata         json.RawMessage     `json:"metadata,omitempty"`
 	Warnings         []string            `json:"warnings,omitempty"`
 }
 

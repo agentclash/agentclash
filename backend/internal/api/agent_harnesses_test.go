@@ -256,6 +256,228 @@ func TestAgentHarnessManagerCreatePersistsGitHubRepositoryMetadata(t *testing.T)
 	}
 }
 
+func TestAgentHarnessManagerCreateSuitePersistsVersionedTasks(t *testing.T) {
+	workspaceID := uuid.New()
+	orgID := uuid.New()
+	repo := &fakeAgentHarnessRepo{organizationID: orgID}
+	manager := NewAgentHarnessManager(NewCallerWorkspaceAuthorizer(), repo)
+
+	suite, err := manager.CreateAgentHarnessSuite(context.Background(), testAgentHarnessCaller(workspaceID), workspaceID, CreateAgentHarnessSuiteInput{
+		Name:        "Rust repo private tasks",
+		Description: "Autonomy checks for private Rust work",
+		Metadata:    json.RawMessage(`{"suite_kind":"private_task_bank"}`),
+		Tasks: []CreateAgentHarnessSuiteTaskInput{{
+			Title:          "Fix ownership bug",
+			PublicPrompt:   "Fix a Rust compile failure.",
+			TaskPrompt:     "Fix the hidden borrow-checker failure and open a PR.",
+			SourceType:     "github_issue",
+			SourceSnapshot: json.RawMessage(`{"repository":"acme/rusty","number":17,"title":"Borrow checker failure","labels":["rust"]}`),
+			RepositoryURL:  "https://github.com/acme/rusty",
+			BaseBranch:     "main",
+			ExecutionConfig: json.RawMessage(`{
+				"setup_commands": ["cargo fetch"],
+				"timeout_seconds": 900
+			}`),
+			EvaluationConfig: json.RawMessage(`{
+				"validators": [{"type":"command","command":"cargo test --all"}],
+				"llm_judges": [{"key":"pr_quality"}],
+				"private": true
+			}`),
+			Metadata: json.RawMessage(`{"difficulty":"medium"}`),
+		}},
+	})
+	if err != nil {
+		t.Fatalf("CreateAgentHarnessSuite error: %v", err)
+	}
+
+	if suite.OrganizationID != orgID {
+		t.Fatalf("organization_id = %s, want %s", suite.OrganizationID, orgID)
+	}
+	if suite.Slug != "rust-repo-private-tasks" {
+		t.Fatalf("slug = %q", suite.Slug)
+	}
+	if suite.CurrentVersionNumber != 1 || suite.TaskCount != 1 {
+		t.Fatalf("version/task count = %d/%d, want 1/1", suite.CurrentVersionNumber, suite.TaskCount)
+	}
+	if got := repo.createdSuite.Tasks[0]; got.SourceType != "github_issue" || string(got.EvaluationConfig) == "{}" {
+		t.Fatalf("task source/eval = %q/%s, want github_issue with hidden eval config", got.SourceType, got.EvaluationConfig)
+	}
+	if string(repo.createdSuite.Tasks[0].SourceSnapshot) == "{}" {
+		t.Fatal("github issue source snapshot was not preserved")
+	}
+}
+
+func TestAgentHarnessManagerStartSuiteRunCreatesExecutionsFromTasks(t *testing.T) {
+	workspaceID := uuid.New()
+	suite := testAgentHarnessSuiteRecord(workspaceID, "Private Rust Tasks")
+	harnessA := testAgentHarnessRecord(workspaceID, "Codex Rust")
+	harnessB := testAgentHarnessRecord(workspaceID, "Claude Rust")
+	harnessB.HarnessKind = AgentHarnessKindClaudeE2B
+	harnessA.RepositoryURL = stringPtr("https://github.com/acme/rusty")
+	harnessB.RepositoryURL = stringPtr("https://github.com/acme/rusty")
+	taskA := testAgentHarnessSuiteTaskRecord(workspaceID, suite.CurrentVersionID, "Hidden borrow checker")
+	taskA.ID = uuid.New()
+	taskA.TaskPrompt = "Fix the hidden borrow checker bug and open a PR."
+	taskA.RepositoryURL = stringPtr("https://github.com/acme/rusty")
+	taskA.BaseBranch = stringPtr("trunk")
+	taskA.ExecutionConfig = json.RawMessage(`{"timeout_seconds":1200}`)
+	taskA.EvaluationConfig = json.RawMessage(`{
+		"validators": [{"type":"command","command":"cargo test --all"}],
+		"llm_judges": [{"key":"pr_quality"}],
+		"privacy": {"redact_replay": true}
+	}`)
+	taskB := testAgentHarnessSuiteTaskRecord(workspaceID, suite.CurrentVersionID, "Unselected")
+	repo := &fakeAgentHarnessRepo{
+		organizationID: harnessA.OrganizationID,
+		harnessesByID: map[uuid.UUID]repository.AgentHarness{
+			harnessA.ID: harnessA,
+			harnessB.ID: harnessB,
+		},
+		suite:      suite,
+		suiteTasks: []repository.AgentHarnessSuiteTask{taskA, taskB},
+	}
+	starter := &fakeAgentHarnessWorkflowStarter{}
+	manager := NewAgentHarnessManager(NewCallerWorkspaceAuthorizer(), repo, starter)
+
+	executions, err := manager.StartAgentHarnessSuiteRun(context.Background(), testAgentHarnessCaller(workspaceID), workspaceID, suite.ID, StartAgentHarnessSuiteRunInput{
+		HarnessIDs: []uuid.UUID{harnessA.ID, harnessB.ID},
+		TaskIDs:    []uuid.UUID{taskA.ID},
+	})
+	if err != nil {
+		t.Fatalf("StartAgentHarnessSuiteRun error: %v", err)
+	}
+
+	if len(executions) != 2 || len(repo.createdExecutions) != 2 {
+		t.Fatalf("executions = %d created = %d, want 2", len(executions), len(repo.createdExecutions))
+	}
+	for index, created := range repo.createdExecutions {
+		var snapshot agentHarnessResponse
+		if err := json.Unmarshal(created.HarnessSnapshot, &snapshot); err != nil {
+			t.Fatalf("decode harness snapshot %d: %v", index, err)
+		}
+		if snapshot.TaskPrompt != taskA.TaskPrompt {
+			t.Fatalf("snapshot task prompt = %q, want task prompt", snapshot.TaskPrompt)
+		}
+		if snapshot.RepositoryURL == nil || *snapshot.RepositoryURL != "https://github.com/acme/rusty" {
+			t.Fatalf("snapshot repository = %#v, want task repository", snapshot.RepositoryURL)
+		}
+		if snapshot.BaseBranch == nil || *snapshot.BaseBranch != "trunk" {
+			t.Fatalf("snapshot base branch = %#v, want task base branch", snapshot.BaseBranch)
+		}
+		if string(created.ExecutionConfigSnapshot) != string(taskA.ExecutionConfig) {
+			t.Fatalf("execution config = %s, want task config", created.ExecutionConfigSnapshot)
+		}
+		var eval struct {
+			Validators []map[string]any `json:"validators"`
+			LLMJudges  []map[string]any `json:"llm_judges"`
+			Privacy    struct {
+				Redact bool `json:"redact_replay"`
+			} `json:"privacy"`
+			Suite struct {
+				SuiteID        uuid.UUID       `json:"suite_id"`
+				SuiteVersionID uuid.UUID       `json:"suite_version_id"`
+				TaskID         uuid.UUID       `json:"task_id"`
+				TaskSource     string          `json:"task_source"`
+				TaskMetadata   json.RawMessage `json:"task_metadata"`
+			} `json:"suite"`
+			Result map[string]any `json:"result"`
+		}
+		if err := json.Unmarshal(created.EvaluationConfigSnapshot, &eval); err != nil {
+			t.Fatalf("decode evaluation config %d: %v", index, err)
+		}
+		if len(eval.Validators) != 1 || len(eval.LLMJudges) != 1 || !eval.Privacy.Redact {
+			t.Fatalf("eval config did not preserve validators/judges/privacy: %#v", eval)
+		}
+		if eval.Suite.SuiteID != suite.ID || eval.Suite.SuiteVersionID != suite.CurrentVersionID || eval.Suite.TaskID != taskA.ID {
+			t.Fatalf("suite metadata = %#v, want suite/task ids", eval.Suite)
+		}
+		if eval.Result["kind"] != "private_task_bank" {
+			t.Fatalf("result metadata = %#v, want private_task_bank", eval.Result)
+		}
+	}
+	if starter.startedCount != 2 || starter.timeoutSeconds != 1200 {
+		t.Fatalf("starter count/timeout = %d/%d, want 2/1200", starter.startedCount, starter.timeoutSeconds)
+	}
+}
+
+func TestAgentHarnessManagerStartSuiteRunInheritsHarnessConfigWhenTaskConfigOmitted(t *testing.T) {
+	workspaceID := uuid.New()
+	suite := testAgentHarnessSuiteRecord(workspaceID, "Private Tasks")
+	harness := testAgentHarnessRecord(workspaceID, "Codex Rust")
+	harness.ExecutionConfig = json.RawMessage(`{"timeout_seconds":600}`)
+	harness.EvaluationConfig = json.RawMessage(`{"validators":[{"type":"command","command":"go test ./..."}]}`)
+	task := testAgentHarnessSuiteTaskRecord(workspaceID, suite.CurrentVersionID, "No overrides")
+	task.ExecutionConfig = json.RawMessage(`{}`)
+	task.EvaluationConfig = json.RawMessage(`{}`)
+	repo := &fakeAgentHarnessRepo{
+		organizationID: harness.OrganizationID,
+		harness:        harness,
+		suite:          suite,
+		suiteTasks:     []repository.AgentHarnessSuiteTask{task},
+	}
+	manager := NewAgentHarnessManager(NewCallerWorkspaceAuthorizer(), repo)
+
+	_, err := manager.StartAgentHarnessSuiteRun(context.Background(), testAgentHarnessCaller(workspaceID), workspaceID, suite.ID, StartAgentHarnessSuiteRunInput{
+		HarnessIDs: []uuid.UUID{harness.ID},
+	})
+	if err != nil {
+		t.Fatalf("StartAgentHarnessSuiteRun error: %v", err)
+	}
+	if string(repo.createdExecution.ExecutionConfigSnapshot) != string(harness.ExecutionConfig) {
+		t.Fatalf("execution config = %s, want inherited harness config", repo.createdExecution.ExecutionConfigSnapshot)
+	}
+	var eval struct {
+		Validators []map[string]any `json:"validators"`
+		Suite      map[string]any   `json:"suite"`
+	}
+	if err := json.Unmarshal(repo.createdExecution.EvaluationConfigSnapshot, &eval); err != nil {
+		t.Fatalf("decode evaluation config: %v", err)
+	}
+	if len(eval.Validators) != 1 || eval.Suite == nil {
+		t.Fatalf("evaluation config = %#v, want inherited validators plus suite metadata", eval)
+	}
+}
+
+func TestMapAgentHarnessExecutionResponseRedactsPrivateSuiteSnapshots(t *testing.T) {
+	workspaceID := uuid.New()
+	harnessID := uuid.New()
+	execution := testAgentHarnessExecutionRecord(workspaceID, harnessID)
+	execution.HarnessSnapshot = json.RawMessage(`{"id":"` + harnessID.String() + `","task_prompt":"hidden private task","name":"Harness"}`)
+	execution.EvaluationConfigSnapshot = json.RawMessage(`{
+		"validators": [{"type":"command","command":"cargo test --hidden"}],
+		"llm_judges": [{"key":"secret"}],
+		"suite": {"suite_id":"` + uuid.NewString() + `","public_prompt":"Fix a Rust test."},
+		"result": {"publicity":"private"},
+		"privacy": {"redact_replay": true}
+	}`)
+
+	response := mapAgentHarnessExecutionResponse(execution)
+
+	if string(response.HarnessSnapshot) == string(execution.HarnessSnapshot) {
+		t.Fatal("harness snapshot was not redacted")
+	}
+	var snapshot map[string]any
+	if err := json.Unmarshal(response.HarnessSnapshot, &snapshot); err != nil {
+		t.Fatalf("decode redacted snapshot: %v", err)
+	}
+	if snapshot["task_prompt"] != "Fix a Rust test." {
+		t.Fatalf("task_prompt = %#v, want public prompt", snapshot["task_prompt"])
+	}
+	var evaluation map[string]any
+	if err := json.Unmarshal(response.EvaluationConfigSnapshot, &evaluation); err != nil {
+		t.Fatalf("decode redacted eval config: %v", err)
+	}
+	if _, ok := evaluation["validators"]; ok {
+		t.Fatalf("redacted evaluation leaked validators: %#v", evaluation)
+	}
+	if _, ok := evaluation["llm_judges"]; ok {
+		t.Fatalf("redacted evaluation leaked llm_judges: %#v", evaluation)
+	}
+	if evaluation["validator_count"].(float64) != 1 || evaluation["llm_judge_count"].(float64) != 1 {
+		t.Fatalf("redacted counts = %#v, want validator/judge counts", evaluation)
+	}
+}
+
 func TestAgentHarnessRoutesCreateAndList(t *testing.T) {
 	workspaceID := uuid.New()
 	service := &fakeAgentHarnessService{
@@ -336,6 +558,98 @@ func TestAgentHarnessRouteReturnsConflictOnDuplicateSlug(t *testing.T) {
 	router.ServeHTTP(rec, req)
 	if rec.Code != http.StatusConflict {
 		t.Fatalf("status = %d, want %d; body %s", rec.Code, http.StatusConflict, rec.Body.String())
+	}
+}
+
+func TestAgentHarnessSuiteRoutesCreateListAndRun(t *testing.T) {
+	workspaceID := uuid.New()
+	harnessID := uuid.New()
+	taskID := uuid.New()
+	suite := testAgentHarnessSuiteRecord(workspaceID, "Nightly private tasks")
+	service := &fakeAgentHarnessService{
+		suites:     []repository.AgentHarnessSuite{suite},
+		suiteTasks: []repository.AgentHarnessSuiteTask{testAgentHarnessSuiteTaskRecord(workspaceID, suite.CurrentVersionID, "Fix flaky Rust test")},
+	}
+	router := chi.NewRouter()
+	router.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := context.WithValue(r.Context(), callerContextKey{}, testAgentHarnessCaller(workspaceID))
+			ctx = context.WithValue(ctx, workspaceIDContextKey{}, workspaceID)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	})
+	router.Post("/v1/workspaces/{workspaceID}/agent-harness-suites", createAgentHarnessSuiteHandler(slog.Default(), service))
+	router.Get("/v1/workspaces/{workspaceID}/agent-harness-suites", listAgentHarnessSuitesHandler(slog.Default(), service))
+	router.Get("/v1/workspaces/{workspaceID}/agent-harness-suites/{suiteID}/tasks", listAgentHarnessSuiteTasksHandler(slog.Default(), service))
+	router.Post("/v1/workspaces/{workspaceID}/agent-harness-suites/{suiteID}/runs", startAgentHarnessSuiteRunHandler(slog.Default(), service))
+
+	createReq := httptest.NewRequest(http.MethodPost, "/v1/workspaces/"+workspaceID.String()+"/agent-harness-suites", bytes.NewBufferString(`{
+		"name": "Nightly private tasks",
+		"description": "Private benchmark bank",
+		"metadata": {"owner": "platform"},
+		"tasks": [{
+			"title": "Fix flaky Rust test",
+			"public_prompt": "Fix a flaky Rust test.",
+			"task_prompt": "Fix the hidden flaky Rust test and make a PR.",
+			"source_type": "github_issue",
+			"source_snapshot": {"repository": "acme/rusty", "number": 44},
+			"evaluation_config": {"validators": [{"type": "command", "command": "cargo test --all"}]}
+		}]
+	}`))
+	createRec := httptest.NewRecorder()
+	router.ServeHTTP(createRec, createReq)
+	if createRec.Code != http.StatusCreated {
+		t.Fatalf("create status = %d, body %s", createRec.Code, createRec.Body.String())
+	}
+	if service.createdSuiteInput.Tasks[0].SourceType != "github_issue" {
+		t.Fatalf("source type = %q, want github_issue", service.createdSuiteInput.Tasks[0].SourceType)
+	}
+
+	listReq := httptest.NewRequest(http.MethodGet, "/v1/workspaces/"+workspaceID.String()+"/agent-harness-suites", nil)
+	listRec := httptest.NewRecorder()
+	router.ServeHTTP(listRec, listReq)
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("list status = %d, body %s", listRec.Code, listRec.Body.String())
+	}
+	var listed listAgentHarnessSuitesResponse
+	if err := json.Unmarshal(listRec.Body.Bytes(), &listed); err != nil {
+		t.Fatalf("decode suites: %v", err)
+	}
+	if len(listed.Items) != 1 || listed.Items[0].ID != suite.ID {
+		t.Fatalf("listed suites = %#v, want suite", listed.Items)
+	}
+
+	tasksReq := httptest.NewRequest(http.MethodGet, "/v1/workspaces/"+workspaceID.String()+"/agent-harness-suites/"+suite.ID.String()+"/tasks", nil)
+	tasksRec := httptest.NewRecorder()
+	router.ServeHTTP(tasksRec, tasksReq)
+	if tasksRec.Code != http.StatusOK {
+		t.Fatalf("tasks status = %d, body %s", tasksRec.Code, tasksRec.Body.String())
+	}
+	var listedTasks listAgentHarnessSuiteTasksResponse
+	if err := json.Unmarshal(tasksRec.Body.Bytes(), &listedTasks); err != nil {
+		t.Fatalf("decode suite tasks: %v", err)
+	}
+	if len(listedTasks.Items) != 1 || listedTasks.Items[0].ID == uuid.Nil || listedTasks.Items[0].PublicPrompt == "" {
+		t.Fatalf("listed tasks = %#v, want public task with id", listedTasks.Items)
+	}
+
+	runReq := httptest.NewRequest(http.MethodPost, "/v1/workspaces/"+workspaceID.String()+"/agent-harness-suites/"+suite.ID.String()+"/runs", bytes.NewBufferString(`{
+		"harness_ids": ["`+harnessID.String()+`"],
+		"task_ids": ["`+taskID.String()+`"]
+	}`))
+	runRec := httptest.NewRecorder()
+	router.ServeHTTP(runRec, runReq)
+	if runRec.Code != http.StatusCreated {
+		t.Fatalf("run status = %d, body %s", runRec.Code, runRec.Body.String())
+	}
+	if service.startedSuiteID != suite.ID {
+		t.Fatalf("started suite = %s, want %s", service.startedSuiteID, suite.ID)
+	}
+	if len(service.startedSuiteInput.HarnessIDs) != 1 || service.startedSuiteInput.HarnessIDs[0] != harnessID {
+		t.Fatalf("started harnesses = %#v, want harness id", service.startedSuiteInput.HarnessIDs)
+	}
+	if len(service.startedSuiteInput.TaskIDs) != 1 || service.startedSuiteInput.TaskIDs[0] != taskID {
+		t.Fatalf("started tasks = %#v, want task id", service.startedSuiteInput.TaskIDs)
 	}
 }
 
@@ -754,13 +1068,58 @@ func testAgentHarnessExecutionRecord(workspaceID uuid.UUID, harnessID uuid.UUID)
 	}
 }
 
+func testAgentHarnessSuiteRecord(workspaceID uuid.UUID, name string) repository.AgentHarnessSuite {
+	now := time.Now().UTC()
+	return repository.AgentHarnessSuite{
+		ID:                   uuid.New(),
+		OrganizationID:       uuid.New(),
+		WorkspaceID:          workspaceID,
+		Name:                 name,
+		Slug:                 generateSlug(name),
+		Description:          "description",
+		Status:               "active",
+		CurrentVersionNumber: 1,
+		CurrentVersionID:     uuid.New(),
+		TaskCount:            1,
+		Metadata:             json.RawMessage(`{}`),
+		CreatedAt:            now,
+		UpdatedAt:            now,
+	}
+}
+
+func testAgentHarnessSuiteTaskRecord(workspaceID uuid.UUID, versionID uuid.UUID, title string) repository.AgentHarnessSuiteTask {
+	now := time.Now().UTC()
+	return repository.AgentHarnessSuiteTask{
+		ID:               uuid.New(),
+		OrganizationID:   uuid.New(),
+		WorkspaceID:      workspaceID,
+		SuiteVersionID:   versionID,
+		Title:            title,
+		PublicPrompt:     "Fix a public task.",
+		TaskPrompt:       "Fix the hidden task.",
+		SourceType:       "manual",
+		SourceSnapshot:   json.RawMessage(`{}`),
+		ExecutionConfig:  json.RawMessage(`{}`),
+		EvaluationConfig: json.RawMessage(`{}`),
+		Metadata:         json.RawMessage(`{}`),
+		CreatedAt:        now,
+		UpdatedAt:        now,
+	}
+}
+
 type fakeAgentHarnessRepo struct {
 	organizationID          uuid.UUID
 	created                 repository.CreateAgentHarnessParams
+	createdSuite            repository.CreateAgentHarnessSuiteParams
 	createdExecution        repository.CreateAgentHarnessExecutionParams
+	createdExecutions       []repository.CreateAgentHarnessExecutionParams
 	transitionedStatus      repository.AgentHarnessExecutionStatus
 	transitionedReason      *string
 	harness                 repository.AgentHarness
+	harnessesByID           map[uuid.UUID]repository.AgentHarness
+	suite                   repository.AgentHarnessSuite
+	suites                  []repository.AgentHarnessSuite
+	suiteTasks              []repository.AgentHarnessSuiteTask
 	execution               repository.AgentHarnessExecution
 	executions              []repository.AgentHarnessExecution
 	getByIDCalls            int
@@ -805,6 +1164,27 @@ func (f *fakeAgentHarnessRepo) CreateAgentHarness(_ context.Context, p repositor
 	}, nil
 }
 
+func (f *fakeAgentHarnessRepo) CreateAgentHarnessSuite(_ context.Context, p repository.CreateAgentHarnessSuiteParams) (repository.AgentHarnessSuite, error) {
+	f.createdSuite = p
+	now := time.Now().UTC()
+	return repository.AgentHarnessSuite{
+		ID:                   uuid.New(),
+		OrganizationID:       p.OrganizationID,
+		WorkspaceID:          p.WorkspaceID,
+		CreatedByUserID:      p.CreatedByUserID,
+		Name:                 p.Name,
+		Slug:                 p.Slug,
+		Description:          p.Description,
+		Status:               "active",
+		CurrentVersionNumber: 1,
+		CurrentVersionID:     uuid.New(),
+		TaskCount:            len(p.Tasks),
+		Metadata:             p.Metadata,
+		CreatedAt:            now,
+		UpdatedAt:            now,
+	}, nil
+}
+
 func (f *fakeAgentHarnessRepo) GetWorkspaceGitHubRepository(_ context.Context, workspaceID uuid.UUID, _ int64, _ *int64) (repository.GitHubInstallationRepository, error) {
 	f.githubLookupWorkspaceID = workspaceID
 	if f.githubRepoErr != nil {
@@ -815,6 +1195,11 @@ func (f *fakeAgentHarnessRepo) GetWorkspaceGitHubRepository(_ context.Context, w
 
 func (f *fakeAgentHarnessRepo) GetAgentHarnessByID(_ context.Context, id uuid.UUID) (repository.AgentHarness, error) {
 	f.getByIDCalls++
+	if f.harnessesByID != nil {
+		if harness, ok := f.harnessesByID[id]; ok {
+			return harness, nil
+		}
+	}
 	if f.harness.ID == id {
 		return f.harness, nil
 	}
@@ -825,8 +1210,24 @@ func (f *fakeAgentHarnessRepo) ListAgentHarnessesByWorkspaceID(context.Context, 
 	return nil, nil
 }
 
+func (f *fakeAgentHarnessRepo) GetAgentHarnessSuiteByID(_ context.Context, id uuid.UUID) (repository.AgentHarnessSuite, error) {
+	if f.suite.ID == id {
+		return f.suite, nil
+	}
+	return repository.AgentHarnessSuite{}, repository.ErrAgentHarnessSuiteNotFound
+}
+
+func (f *fakeAgentHarnessRepo) ListAgentHarnessSuitesByWorkspaceID(context.Context, uuid.UUID) ([]repository.AgentHarnessSuite, error) {
+	return f.suites, nil
+}
+
+func (f *fakeAgentHarnessRepo) ListAgentHarnessSuiteTasksByVersionID(context.Context, uuid.UUID) ([]repository.AgentHarnessSuiteTask, error) {
+	return f.suiteTasks, nil
+}
+
 func (f *fakeAgentHarnessRepo) CreateAgentHarnessExecution(_ context.Context, p repository.CreateAgentHarnessExecutionParams) (repository.AgentHarnessExecution, error) {
 	f.createdExecution = p
+	f.createdExecutions = append(f.createdExecutions, p)
 	now := time.Now().UTC()
 	return repository.AgentHarnessExecution{
 		ID:                       uuid.New(),
@@ -871,9 +1272,14 @@ func (f *fakeAgentHarnessRepo) ListAgentHarnessExecutionEvents(context.Context, 
 
 type fakeAgentHarnessService struct {
 	harnesses               []repository.AgentHarness
+	suites                  []repository.AgentHarnessSuite
+	suiteTasks              []repository.AgentHarnessSuiteTask
 	executions              []repository.AgentHarnessExecution
 	events                  []repository.AgentHarnessExecutionEvent
 	createdInput            CreateAgentHarnessInput
+	createdSuiteInput       CreateAgentHarnessSuiteInput
+	startedSuiteID          uuid.UUID
+	startedSuiteInput       StartAgentHarnessSuiteRunInput
 	startedHarnessID        uuid.UUID
 	startedInput            StartAgentHarnessExecutionInput
 	listExecutionsHarnessID *uuid.UUID
@@ -899,6 +1305,44 @@ func (f *fakeAgentHarnessService) GetAgentHarness(_ context.Context, _ Caller, _
 
 func (f *fakeAgentHarnessService) ListAgentHarnesses(context.Context, Caller, uuid.UUID) ([]repository.AgentHarness, error) {
 	return f.harnesses, nil
+}
+
+func (f *fakeAgentHarnessService) CreateAgentHarnessSuite(_ context.Context, _ Caller, workspaceID uuid.UUID, input CreateAgentHarnessSuiteInput) (repository.AgentHarnessSuite, error) {
+	f.createdSuiteInput = input
+	now := time.Now().UTC()
+	return repository.AgentHarnessSuite{
+		ID:                   uuid.New(),
+		OrganizationID:       uuid.New(),
+		WorkspaceID:          workspaceID,
+		Name:                 input.Name,
+		Slug:                 generateSlug(input.Name),
+		Description:          input.Description,
+		Status:               "active",
+		CurrentVersionNumber: 1,
+		CurrentVersionID:     uuid.New(),
+		TaskCount:            len(input.Tasks),
+		Metadata:             input.Metadata,
+		CreatedAt:            now,
+		UpdatedAt:            now,
+	}, nil
+}
+
+func (f *fakeAgentHarnessService) ListAgentHarnessSuites(context.Context, Caller, uuid.UUID) ([]repository.AgentHarnessSuite, error) {
+	return f.suites, nil
+}
+
+func (f *fakeAgentHarnessService) ListAgentHarnessSuiteTasks(context.Context, Caller, uuid.UUID, uuid.UUID) ([]repository.AgentHarnessSuiteTask, error) {
+	return f.suiteTasks, nil
+}
+
+func (f *fakeAgentHarnessService) StartAgentHarnessSuiteRun(_ context.Context, _ Caller, workspaceID uuid.UUID, suiteID uuid.UUID, input StartAgentHarnessSuiteRunInput) ([]repository.AgentHarnessExecution, error) {
+	f.startedSuiteID = suiteID
+	f.startedSuiteInput = input
+	executions := make([]repository.AgentHarnessExecution, 0, len(input.HarnessIDs))
+	for _, harnessID := range input.HarnessIDs {
+		executions = append(executions, testAgentHarnessExecutionRecord(workspaceID, harnessID))
+	}
+	return executions, nil
 }
 
 func (f *fakeAgentHarnessService) StartAgentHarnessExecution(_ context.Context, _ Caller, workspaceID uuid.UUID, harnessID uuid.UUID, input StartAgentHarnessExecutionInput) (repository.AgentHarnessExecution, error) {
@@ -927,10 +1371,12 @@ func (f *fakeAgentHarnessService) ListAgentHarnessExecutions(_ context.Context, 
 
 type fakeAgentHarnessWorkflowStarter struct {
 	err            error
+	startedCount   int
 	timeoutSeconds int
 }
 
 func (f *fakeAgentHarnessWorkflowStarter) StartAgentHarnessExecutionWorkflow(_ context.Context, _ uuid.UUID, timeoutSeconds int) error {
+	f.startedCount++
 	f.timeoutSeconds = timeoutSeconds
 	return f.err
 }
