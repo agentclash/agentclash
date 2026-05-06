@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.14.1](https://github.com/agentclash/agentclash/compare/v0.14.0...v0.14.1) (2026-05-06)
+
+
+### Bug Fixes
+
+* **cli:** polish prompt eval results table ([13d8a71](https://github.com/agentclash/agentclash/commit/13d8a7100f1fec53aa4da3d9de7d2eca3f93c3a9))
+* **cli:** polish prompt eval results table ([aed5c57](https://github.com/agentclash/agentclash/commit/aed5c57c01ad2d63240dcf7f8ee36fe71a3ea020))
+
 ## [0.14.0](https://github.com/agentclash/agentclash/compare/v0.13.0...v0.14.0) (2026-05-06)
 
 
