@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.14.0](https://github.com/agentclash/agentclash/compare/v0.13.0...v0.14.0) (2026-05-06)
+
+
+### Features
+
+* **cli:** add prompt-eval config validation ([703d03d](https://github.com/agentclash/agentclash/commit/703d03d01c4eb4fcb23e97deb01f78f0e6f4b965))
+* **cli:** add prompt-eval follow and results ([937c91b](https://github.com/agentclash/agentclash/commit/937c91b8fba9e32612e024524b9fd6dbb7e9dcb7))
+* **cli:** add prompt-eval remote preflight ([c56de13](https://github.com/agentclash/agentclash/commit/c56de139d6c6b5d7fe792fbd7d116d1119d8b6b7))
+* **cli:** add safe Promptfoo import subset ([ba69316](https://github.com/agentclash/agentclash/commit/ba693167e6dac19d40f32fafa892f5be4dcdcffc))
+* **cli:** compile and launch prompt-eval runs ([a87401e](https://github.com/agentclash/agentclash/commit/a87401ede321686bdb8767f5bbaba0671a96c9d4))
+* **cli:** step 1 add prompt eval config validation ([e092949](https://github.com/agentclash/agentclash/commit/e0929497d93bf1253de3b7474c70d16d73233619))
+* **cli:** step 1 add prompt eval follow results ([76bc642](https://github.com/agentclash/agentclash/commit/76bc642df11e3a6a0e0ec8b787087dc135673a08))
+* **cli:** step 1 add prompt eval remote preflight ([4d3e4ce](https://github.com/agentclash/agentclash/commit/4d3e4ce75ad817f8419b76070c8455ac9c5525a2))
+* **cli:** step 1 add promptfoo import subset ([881ab67](https://github.com/agentclash/agentclash/commit/881ab67b543549060810b3ef1e246cec7c1a24c7))
+* **cli:** step 1 compile prompt eval runs ([3add4a4](https://github.com/agentclash/agentclash/commit/3add4a4d10e1c58235934d3e8fb9b5402bbd0e1f))
+
+
+### Bug Fixes
+
+* **cli:** honor prompt eval thresholds in follow ([879223a](https://github.com/agentclash/agentclash/commit/879223a7aa19df8bd96a95f38d7e95c3bb3fb73b))
+* **cli:** refuse lossy promptfoo import fields ([fe4df5f](https://github.com/agentclash/agentclash/commit/fe4df5f97c14bd2928457925f5e184ad34904a9c))
+* **cli:** stabilize prompt eval follow results ([91ba78b](https://github.com/agentclash/agentclash/commit/91ba78b667dd7673265093dce54791285ac87b4c))
+* **cli:** step 2 tighten prompt eval remote preflight ([32d3f9b](https://github.com/agentclash/agentclash/commit/32d3f9ba7413e65a8b6b9162823cecf1360d457f))
+* **cli:** step 2 tighten prompt eval run coverage ([5caef8e](https://github.com/agentclash/agentclash/commit/5caef8ed0528c9c5c18ec87be7b552aa0bd0dcde))
+* **cli:** step 2 tighten prompt eval validation ([54144dc](https://github.com/agentclash/agentclash/commit/54144dcef6482adde4a4e732fa1ce8aa0154fd57))
+* **cli:** step 3 polish prompt eval validator edges ([05a4dc5](https://github.com/agentclash/agentclash/commit/05a4dc507e5d436ec4559ba2a035c6ef2c576341))
+
 ## [0.13.0](https://github.com/agentclash/agentclash/compare/v0.12.0...v0.13.0) (2026-05-05)
 
 
