@@ -11,6 +11,7 @@ import (
 
 	"github.com/agentclash/agentclash/backend/internal/maputil"
 	"github.com/agentclash/agentclash/backend/internal/repository"
+	"github.com/agentclash/agentclash/backend/internal/runevents"
 	"github.com/agentclash/agentclash/backend/internal/sandbox"
 	"github.com/google/uuid"
 	sdkworkflow "go.temporal.io/sdk/workflow"
@@ -20,6 +21,7 @@ const (
 	agentHarnessWorkspaceDir          = "/workspace"
 	agentHarnessActivityTimeoutBuffer = 2 * time.Minute
 	defaultAgentHarnessTimeoutSeconds = 1800
+	agentHarnessReplayTextPreviewMax  = 2048
 )
 
 var (
@@ -145,6 +147,7 @@ func (a *Activities) ExecuteAgentHarnessExecution(ctx context.Context, input Exe
 	if err != nil {
 		return wrapActivityError(err)
 	}
+	defer a.buildAgentHarnessReplayBestEffort(ctx, execution)
 	harness, err := a.agentHarnessSnapshot(ctx, execution)
 	if err != nil {
 		return wrapActivityError(err)
@@ -296,6 +299,15 @@ func (a *Activities) ExecuteAgentHarnessExecution(ctx context.Context, input Exe
 	}
 
 	return nil
+}
+
+func (a *Activities) buildAgentHarnessReplayBestEffort(ctx context.Context, execution repository.AgentHarnessExecution) {
+	if a.repo == nil || execution.RunAgentID == nil {
+		return
+	}
+	if _, err := a.repo.BuildRunAgentReplay(ctx, *execution.RunAgentID); err != nil {
+		_ = a.recordAgentHarnessEvent(context.Background(), execution.ID, "replay.build.failed", "worker", map[string]any{"error": err.Error()})
+	}
 }
 
 func (a *Activities) agentHarnessSnapshot(ctx context.Context, execution repository.AgentHarnessExecution) (agentHarnessSnapshot, error) {
@@ -733,7 +745,165 @@ func (a *Activities) recordAgentHarnessEvent(ctx context.Context, executionID uu
 		OccurredAt:  time.Now().UTC(),
 		Payload:     raw,
 	})
+	if err != nil {
+		return wrapActivityError(err)
+	}
+	return a.recordAgentHarnessRunEvent(ctx, executionID, eventType, actorType, raw)
+}
+
+func (a *Activities) recordAgentHarnessRunEvent(ctx context.Context, executionID uuid.UUID, eventType string, actorType string, raw json.RawMessage) error {
+	if a.repo == nil {
+		return nil
+	}
+	execution, err := a.agentHarnessRepo.GetAgentHarnessExecutionByID(ctx, executionID)
+	if err != nil {
+		return wrapActivityError(err)
+	}
+	if execution.RunID == nil || execution.RunAgentID == nil {
+		return nil
+	}
+	payload, err := agentHarnessRunEventPayload(eventType, actorType, raw)
+	if err != nil {
+		return err
+	}
+	_, err = a.repo.RecordRunEvent(ctx, repository.RecordRunEventParams{Event: runevents.Envelope{
+		EventID:       fmt.Sprintf("agent-harness:%s:%s", executionID, eventType),
+		SchemaVersion: runevents.SchemaVersionV1,
+		RunID:         *execution.RunID,
+		RunAgentID:    *execution.RunAgentID,
+		EventType:     agentHarnessRunEventType(eventType),
+		Source:        runevents.SourceAgentHarnessWorker,
+		OccurredAt:    time.Now().UTC(),
+		Payload:       payload,
+		Summary: runevents.SummaryMetadata{
+			SandboxAction: eventType,
+			EvidenceLevel: runevents.EvidenceLevelHostedStructured,
+		},
+	}})
 	return wrapActivityError(err)
+}
+
+func agentHarnessRunEventPayload(eventType string, actorType string, raw json.RawMessage) (json.RawMessage, error) {
+	var rawPayload map[string]any
+	if len(raw) > 0 {
+		if err := json.Unmarshal(raw, &rawPayload); err != nil {
+			return nil, fmt.Errorf("decode agent harness event payload for replay: %w", err)
+		}
+	}
+	payload := summarizeAgentHarnessRunEventPayload(rawPayload)
+	payload["agent_harness_event_type"] = eventType
+	payload["agent_harness_actor_type"] = actorType
+	return json.Marshal(payload)
+}
+
+func summarizeAgentHarnessRunEventPayload(raw map[string]any) map[string]any {
+	payload := map[string]any{}
+	for key, value := range raw {
+		switch key {
+		case "stdout", "stderr", "diff", "raw", "message":
+			if text, ok := value.(string); ok {
+				payload[key+"_summary"] = summarizeAgentHarnessText(text)
+			}
+		case "command":
+			payload[key] = summarizeAgentHarnessCommand(value)
+		default:
+			payload[key] = summarizeAgentHarnessValue(value)
+		}
+	}
+	return payload
+}
+
+func summarizeAgentHarnessValue(value any) any {
+	switch typed := value.(type) {
+	case string:
+		return truncateAgentHarnessText(redactAgentHarnessText(typed))
+	case []any:
+		items := make([]any, 0, len(typed))
+		for _, item := range typed {
+			items = append(items, summarizeAgentHarnessValue(item))
+		}
+		return items
+	case map[string]any:
+		return summarizeAgentHarnessRunEventPayload(typed)
+	default:
+		return value
+	}
+}
+
+func summarizeAgentHarnessCommand(value any) any {
+	items, ok := value.([]any)
+	if !ok {
+		return summarizeAgentHarnessValue(value)
+	}
+	command := make([]any, 0, len(items))
+	for _, item := range items {
+		command = append(command, summarizeAgentHarnessValue(item))
+	}
+	return command
+}
+
+func summarizeAgentHarnessText(text string) map[string]any {
+	redacted := redactAgentHarnessText(text)
+	return map[string]any{
+		"size_bytes": len(text),
+		"truncated":  len(redacted) > agentHarnessReplayTextPreviewMax,
+		"preview":    truncateAgentHarnessText(redacted),
+	}
+}
+
+func truncateAgentHarnessText(text string) string {
+	if len(text) <= agentHarnessReplayTextPreviewMax {
+		return text
+	}
+	return text[:agentHarnessReplayTextPreviewMax]
+}
+
+func redactAgentHarnessText(text string) string {
+	parts := strings.Fields(text)
+	for _, part := range parts {
+		if looksLikeSecret(part) {
+			text = strings.ReplaceAll(text, part, "[redacted]")
+		}
+	}
+	return text
+}
+
+func looksLikeSecret(value string) bool {
+	trimmed := strings.Trim(value, `"'.,;:()[]{}<>`)
+	if len(trimmed) < 16 {
+		return false
+	}
+	secretPrefixes := []string{"sk-", "ghp_", "github_pat_", "ghs_", "glpat-", "xoxb-", "xoxp-", "AKIA"}
+	for _, prefix := range secretPrefixes {
+		if strings.HasPrefix(trimmed, prefix) {
+			return true
+		}
+	}
+	return strings.Contains(strings.ToLower(trimmed), "api_key=") || strings.Contains(strings.ToLower(trimmed), "token=")
+}
+
+func agentHarnessRunEventType(eventType string) runevents.Type {
+	switch {
+	case strings.HasPrefix(eventType, "scoring."):
+		switch eventType {
+		case "scoring.started":
+			return runevents.EventTypeScoringStarted
+		case "scoring.failed":
+			return runevents.EventTypeScoringFailed
+		default:
+			return runevents.EventTypeScoringCompleted
+		}
+	case strings.HasSuffix(eventType, ".started"):
+		return runevents.EventTypeSandboxCommandStarted
+	case strings.HasSuffix(eventType, ".failed"):
+		return runevents.EventTypeSandboxCommandFailed
+	case eventType == "codex.exec.output" || eventType == "claude.exec.output":
+		return runevents.EventTypeModelOutputDelta
+	case strings.HasPrefix(eventType, "artifact."):
+		return runevents.EventTypeSandboxFileWritten
+	default:
+		return runevents.EventTypeSandboxCommandCompleted
+	}
 }
 
 func agentHarnessEnv(h agentHarnessSnapshot, secrets map[string]string) (map[string]string, error) {
