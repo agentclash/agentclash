@@ -308,8 +308,8 @@ func (m *OrgMembershipManager) AcceptOrgInvite(ctx context.Context, caller Calle
 	if err != nil {
 		return OrgMembershipResult{}, err
 	}
-	if !inviteTokenCanBeAcceptedByCaller(caller, membership.Email) {
-		return OrgMembershipResult{}, ErrForbidden
+	if err := inviteTokenAcceptError(caller, membership.Email); err != nil {
+		return OrgMembershipResult{}, withInviteAcceptDenialContext(err, "organization", caller.UserID, membership.ID, membership.OrganizationID, uuid.Nil)
 	}
 	if orgInviteExpired(membership) {
 		return OrgMembershipResult{}, repository.ErrInviteExpired
@@ -344,18 +344,65 @@ func inviteEmailMatchesCaller(caller Caller, inviteEmail string) bool {
 	return strings.EqualFold(strings.TrimSpace(caller.Email), strings.TrimSpace(inviteEmail)) && strings.TrimSpace(caller.Email) != ""
 }
 
-func inviteTokenCanBeAcceptedByCaller(caller Caller, inviteEmail string) bool {
+type inviteTokenAcceptDeniedError struct {
+	Kind               string
+	Reason             string
+	CallerUserID       uuid.UUID
+	MembershipID       uuid.UUID
+	OrganizationID     uuid.UUID
+	WorkspaceID        uuid.UUID
+	CallerEmailPresent bool
+	InviteEmailPresent bool
+	EmailMatch         bool
+}
+
+func (e *inviteTokenAcceptDeniedError) Error() string {
+	return ErrForbidden.Error() + ": invite token accept denied: " + e.Reason
+}
+
+func (e *inviteTokenAcceptDeniedError) Unwrap() error {
+	return ErrForbidden
+}
+
+func inviteTokenAcceptError(caller Caller, inviteEmail string) error {
 	inviteEmail = strings.TrimSpace(inviteEmail)
 	callerEmail := strings.TrimSpace(caller.Email)
 	if inviteEmail == "" {
-		return false
+		return &inviteTokenAcceptDeniedError{
+			Reason:             "invite_email_empty",
+			CallerEmailPresent: callerEmail != "",
+			InviteEmailPresent: false,
+			EmailMatch:         false,
+		}
 	}
 	if callerEmail == "" {
 		// The invite token is a high-entropy bearer secret. Some WorkOS session
 		// tokens do not expose email claims, so token possession is the fallback.
-		return true
+		return nil
 	}
-	return strings.EqualFold(callerEmail, inviteEmail)
+	if !strings.EqualFold(callerEmail, inviteEmail) {
+		return &inviteTokenAcceptDeniedError{
+			Reason:             "caller_email_mismatch",
+			CallerEmailPresent: true,
+			InviteEmailPresent: true,
+			EmailMatch:         false,
+		}
+	}
+	return nil
+}
+
+func withInviteAcceptDenialContext(err error, kind string, callerUserID, membershipID, organizationID, workspaceID uuid.UUID) error {
+	var denial *inviteTokenAcceptDeniedError
+	if !errors.As(err, &denial) {
+		return err
+	}
+	withContext := *denial
+	withContext.Kind = kind
+	withContext.CallerUserID = callerUserID
+	withContext.MembershipID = membershipID
+	withContext.OrganizationID = organizationID
+	withContext.WorkspaceID = workspaceID
+	return &withContext
 }
 
 func orgInviteExpired(membership repository.OrgMembershipFullRow) bool {
@@ -633,6 +680,23 @@ func handleMembershipError(w http.ResponseWriter, logger *slog.Logger, err error
 	var gateErr billingpkg.GateError
 	switch {
 	case errors.Is(err, ErrForbidden):
+		var inviteDenial *inviteTokenAcceptDeniedError
+		if errors.As(err, &inviteDenial) {
+			attrs := []any{
+				"kind", inviteDenial.Kind,
+				"reason", inviteDenial.Reason,
+				"caller_user_id", inviteDenial.CallerUserID,
+				"membership_id", inviteDenial.MembershipID,
+				"organization_id", inviteDenial.OrganizationID,
+				"caller_email_present", inviteDenial.CallerEmailPresent,
+				"invite_email_present", inviteDenial.InviteEmailPresent,
+				"email_match", inviteDenial.EmailMatch,
+			}
+			if inviteDenial.WorkspaceID != uuid.Nil {
+				attrs = append(attrs, "workspace_id", inviteDenial.WorkspaceID)
+			}
+			logger.Warn("invite accept forbidden", attrs...)
+		}
 		writeError(w, http.StatusForbidden, "forbidden", "access denied")
 	case errors.As(err, &gateErr):
 		writeBillingGateError(w, gateErr.Decision)

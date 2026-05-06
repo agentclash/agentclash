@@ -426,6 +426,13 @@ func TestAcceptWorkspaceInviteToken_RejectsMismatchedCallerEmail(t *testing.T) {
 	if !errors.Is(err, ErrForbidden) {
 		t.Fatalf("AcceptWorkspaceInvite error = %v, want ErrForbidden", err)
 	}
+	var denial *inviteTokenAcceptDeniedError
+	if !errors.As(err, &denial) {
+		t.Fatalf("AcceptWorkspaceInvite error = %T, want inviteTokenAcceptDeniedError", err)
+	}
+	if denial.Kind != "workspace" || denial.Reason != "caller_email_mismatch" || denial.MembershipID != membershipID || denial.OrganizationID != orgID || denial.WorkspaceID != workspaceID {
+		t.Fatalf("denial metadata = %+v", denial)
+	}
 	if repo.lastOrgCreate.UserID != uuid.Nil || repo.lastOrgUpdate.Status != nil || repo.lastUpdate.Status != nil {
 		t.Fatalf("membership was updated despite forbidden caller: orgCreate=%+v orgUpdate=%+v wsUpdate=%+v", repo.lastOrgCreate, repo.lastOrgUpdate, repo.lastUpdate)
 	}

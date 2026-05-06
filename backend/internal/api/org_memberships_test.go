@@ -327,8 +327,50 @@ func TestAcceptOrgInviteToken_RejectsMismatchedCallerEmail(t *testing.T) {
 	if !errors.Is(err, ErrForbidden) {
 		t.Fatalf("AcceptOrgInvite error = %v, want ErrForbidden", err)
 	}
+	var denial *inviteTokenAcceptDeniedError
+	if !errors.As(err, &denial) {
+		t.Fatalf("AcceptOrgInvite error = %T, want inviteTokenAcceptDeniedError", err)
+	}
+	if denial.Kind != "organization" || denial.Reason != "caller_email_mismatch" || denial.MembershipID != membershipID || denial.OrganizationID != orgID {
+		t.Fatalf("denial metadata = %+v", denial)
+	}
 	if repo.lastUpdate.Status != nil || repo.lastUpdate.UserID != nil || repo.lastUpdate.ClearInviteToken {
 		t.Fatalf("membership was updated despite forbidden caller: %+v", repo.lastUpdate)
+	}
+}
+
+func TestInviteTokenAcceptError_AllowsEmptyCallerEmail(t *testing.T) {
+	err := inviteTokenAcceptError(Caller{}, "friend@example.com")
+	if err != nil {
+		t.Fatalf("inviteTokenAcceptError returned error: %v", err)
+	}
+}
+
+func TestInviteTokenAcceptError_RejectsEmptyInviteEmail(t *testing.T) {
+	err := inviteTokenAcceptError(Caller{Email: "friend@example.com"}, " ")
+	if !errors.Is(err, ErrForbidden) {
+		t.Fatalf("inviteTokenAcceptError error = %v, want ErrForbidden", err)
+	}
+	var denial *inviteTokenAcceptDeniedError
+	if !errors.As(err, &denial) {
+		t.Fatalf("inviteTokenAcceptError error = %T, want inviteTokenAcceptDeniedError", err)
+	}
+	if denial.Reason != "invite_email_empty" || !denial.CallerEmailPresent || denial.InviteEmailPresent || denial.EmailMatch {
+		t.Fatalf("denial metadata = %+v", denial)
+	}
+}
+
+func TestInviteTokenAcceptError_RejectsMismatchedCallerEmail(t *testing.T) {
+	err := inviteTokenAcceptError(Caller{Email: "other@example.com"}, "friend@example.com")
+	if !errors.Is(err, ErrForbidden) {
+		t.Fatalf("inviteTokenAcceptError error = %v, want ErrForbidden", err)
+	}
+	var denial *inviteTokenAcceptDeniedError
+	if !errors.As(err, &denial) {
+		t.Fatalf("inviteTokenAcceptError error = %T, want inviteTokenAcceptDeniedError", err)
+	}
+	if denial.Reason != "caller_email_mismatch" || !denial.CallerEmailPresent || !denial.InviteEmailPresent || denial.EmailMatch {
+		t.Fatalf("denial metadata = %+v", denial)
 	}
 }
 
