@@ -1854,18 +1854,113 @@ func renderPromptEvalRun(rc *RunContext, result promptEvalRunResult) {
 }
 
 func renderPromptEvalResults(rc *RunContext, result promptEvalResultsEnvelope) {
-	if result.ExitCode != 0 {
-		rc.Output.PrintError("Prompt eval results failed")
+	switch result.GateVerdict {
+	case "pass":
+		rc.Output.PrintSuccess("Prompt eval gate passed")
+	case "fail":
+		rc.Output.PrintError("Prompt eval gate failed")
+	case "error":
+		rc.Output.PrintError("Prompt eval results errored")
+	default:
+		if result.ExitCode != 0 {
+			rc.Output.PrintError("Prompt eval results failed")
+		}
+	}
+	threshold := result.Thresholds["assertion_pass_rate"]
+	rc.Output.PrintDetail("Experiment", result.ExperimentID)
+	rc.Output.PrintDetail("Status", promptEvalStatusText(result.Status))
+	rc.Output.PrintDetail("Gate", promptEvalColoredVerdict(result.GateVerdict))
+	rc.Output.PrintDetail("Pass Rate", fmt.Sprintf("%s (%d passed, %d failed, %d errors, threshold %s)",
+		promptEvalPercent(result.Summary.AssertionPassRate),
+		result.Summary.AssertionsPassed,
+		result.Summary.AssertionsFailed,
+		result.Summary.ExecutionErrors,
+		promptEvalPercent(threshold),
+	))
+	rc.Output.PrintDetail("Cases", fmt.Sprintf("%d/%d completed", result.Summary.CompletedCases, result.Summary.TotalCases))
+	if len(result.Summary.DimensionScores) > 0 {
+		dimensionRows := make([][]string, 0, len(result.Summary.DimensionScores))
+		for _, key := range sortedPromptEvalFloatKeys(result.Summary.DimensionScores) {
+			dimensionRows = append(dimensionRows, []string{key, promptEvalPercent(result.Summary.DimensionScores[key])})
+		}
+		rc.Output.PrintTable([]output.Column{{Header: "Dimension"}, {Header: "Score"}}, dimensionRows)
 	}
 	rows := make([][]string, 0, len(result.Rows))
 	for _, row := range result.Rows {
-		score := "-"
-		if row.Score != nil {
-			score = fmt.Sprintf("%.2f", *row.Score)
-		}
-		rows = append(rows, []string{row.CaseKey, row.AssertionKey, row.Result, score, row.Error})
+		rows = append(rows, []string{
+			promptEvalColoredResult(row.Result),
+			row.CaseKey,
+			promptEvalAssertionLabel(row),
+			promptEvalScoreText(row.Score),
+			truncateRunes(row.Expected, 80),
+			truncateRunes(row.Actual, 80),
+			truncateRunes(row.Error, 80),
+		})
 	}
-	rc.Output.PrintTable([]output.Column{{Header: "Case"}, {Header: "Assertion"}, {Header: "Result"}, {Header: "Score"}, {Header: "Error"}}, rows)
+	rc.Output.PrintTable([]output.Column{{Header: "Result"}, {Header: "Case"}, {Header: "Assertion"}, {Header: "Score"}, {Header: "Expected"}, {Header: "Actual"}, {Header: "Error"}}, rows)
+}
+
+func promptEvalColoredVerdict(verdict string) string {
+	normalized := strings.ToLower(strings.TrimSpace(verdict))
+	if normalized == "" {
+		return "-"
+	}
+	return output.StatusColor(normalized)
+}
+
+func promptEvalStatusText(status string) string {
+	normalized := strings.ToLower(strings.TrimSpace(status))
+	if normalized == "" {
+		return "-"
+	}
+	return output.StatusColor(normalized)
+}
+
+func promptEvalColoredResult(result string) string {
+	normalized := strings.ToLower(strings.TrimSpace(result))
+	if normalized == "" {
+		return "-"
+	}
+	switch normalized {
+	case "pass":
+		return output.Green("PASS")
+	case "fail":
+		return output.Red("FAIL")
+	case "error":
+		return output.Red("ERROR")
+	default:
+		return output.StatusColor(strings.ToUpper(result))
+	}
+}
+
+func promptEvalAssertionLabel(row promptEvalResultRow) string {
+	if strings.TrimSpace(row.AssertionKey) == "" {
+		return strings.TrimSpace(row.Assertion)
+	}
+	if strings.TrimSpace(row.Assertion) == "" {
+		return strings.TrimSpace(row.AssertionKey)
+	}
+	return fmt.Sprintf("%s (%s)", row.Assertion, row.AssertionKey)
+}
+
+func promptEvalScoreText(score *float64) string {
+	if score == nil {
+		return "-"
+	}
+	return fmt.Sprintf("%.2f", *score)
+}
+
+func promptEvalPercent(value float64) string {
+	return fmt.Sprintf("%.0f%%", value*100)
+}
+
+func sortedPromptEvalFloatKeys(values map[string]float64) []string {
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 func renderPromptfooImportResult(rc *RunContext, result promptfooImportResult, outPath string) {
