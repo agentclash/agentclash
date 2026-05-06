@@ -250,7 +250,7 @@ evaluation_spec:
 
 Supported `judge_mode` values are `deterministic`, `llm_judge`, and `hybrid`.
 
-Supported validator types include `exact_match`, `contains`, `regex_match`, `json_schema`, `json_path_match`, `boolean_assert`, `fuzzy_match`, `numeric_match`, `normalized_match`, `token_f1`, `math_equivalence`, `bleu_score`, `rouge_score`, `chrf_score`, `file_content_match`, `file_exists`, `file_json_schema`, `directory_structure`, and `code_execution`.
+Supported validator types include `exact_match`, `contains`, `regex_match`, `json_schema`, `json_path_match`, `boolean_assert`, `fuzzy_match`, `numeric_match`, `normalized_match`, `token_f1`, `math_equivalence`, `bleu_score`, `rouge_score`, `chrf_score`, `file_content_match`, `file_exists`, `file_json_schema`, `directory_structure`, `code_execution`, `retrieval_hit`, and `retrieval_precision`.
 
 Evidence references accepted by validators and judges include `final_output`, `run.final_output`, `challenge_input`, `case.payload`, `case.payload.<path>`, `case.inputs.<path>`, `case.expectations.<path>`, `artifact.<path>`, `file:<post_execution_check_key>`, and `literal:<value>`.
 

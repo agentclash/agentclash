@@ -770,6 +770,33 @@ func validateValidatorConfig(validator ValidatorDeclaration, path string) Valida
 		if cfg.PassThreshold != nil && (*cfg.PassThreshold < 0 || *cfg.PassThreshold > 1) {
 			errs = append(errs, ValidationError{Field: configPath + ".pass_threshold", Message: "must be between 0 and 1"})
 		}
+
+	case ValidatorTypeRetrievalHit, ValidatorTypeRetrievalPrecision:
+		cfg, err := parseRetrievalValidatorConfig(validator.Config)
+		if err != nil {
+			errs = append(errs, ValidationError{Field: configPath, Message: configParseErrorMessage(err)})
+			return errs
+		}
+		if err := validateJSONPathSyntax(cfg.RetrievedChunksPath); err != nil {
+			errs = append(errs, ValidationError{Field: configPath + ".retrieved_chunks_path", Message: err.Error()})
+		}
+		if cfg.ExpectedIDsPath != "" {
+			if err := validateJSONPathSyntax(cfg.ExpectedIDsPath); err != nil {
+				errs = append(errs, ValidationError{Field: configPath + ".expected_ids_path", Message: err.Error()})
+			}
+		}
+		if cfg.K != nil && *cfg.K <= 0 {
+			errs = append(errs, ValidationError{Field: configPath + ".k", Message: "must be greater than 0"})
+		}
+		if len(cfg.idFields()) == 0 {
+			errs = append(errs, ValidationError{Field: configPath + ".id_fields", Message: "must contain at least one field"})
+		}
+		if validator.Type == ValidatorTypeRetrievalPrecision {
+			passAt := cfg.effectivePassAt()
+			if passAt <= 0 || passAt > 1 {
+				errs = append(errs, ValidationError{Field: configPath + ".pass_at", Message: "must be greater than 0 and less than or equal to 1"})
+			}
+		}
 	}
 
 	return errs

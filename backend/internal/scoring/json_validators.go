@@ -22,6 +22,7 @@ const (
 )
 
 type validatorOutcome struct {
+	state           OutputState
 	verdict         string
 	normalizedScore *float64
 	reason          string

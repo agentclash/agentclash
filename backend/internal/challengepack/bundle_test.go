@@ -97,6 +97,64 @@ tools:
 	}
 }
 
+func TestParseYAMLValidRAGRetrievalValidators(t *testing.T) {
+	bundle, err := ParseYAML([]byte(`
+pack:
+  slug: rag-support
+  name: RAG Support
+  family: support
+version:
+  number: 1
+  evaluation_spec:
+    name: rag-support-v1
+    version_number: 1
+    judge_mode: deterministic
+    validators:
+      - key: retrieval_hit
+        type: retrieval_hit
+        target: final_output
+        expected_from: case.expectations.relevant_docs
+        config:
+          k: 3
+          id_fields: [document_id]
+      - key: retrieval_precision
+        type: retrieval_precision
+        target: final_output
+        expected_from: case.expectations.relevant_docs
+        config:
+          k: 3
+          pass_at: 0.5
+    scorecard:
+      dimensions:
+        - key: retrieval
+          source: validators
+          validators: [retrieval_hit, retrieval_precision]
+challenges:
+  - key: travel-policy
+    title: Travel Policy
+    category: support
+    difficulty: medium
+input_sets:
+  - key: default
+    name: Default
+    cases:
+      - challenge_key: travel-policy
+        case_key: after-hours-rideshare
+        payload:
+          question: Can employees expense Uber after 10pm?
+        expectations:
+          - key: relevant_docs
+            kind: json
+            value: ["travel-policy"]
+`))
+	if err != nil {
+		t.Fatalf("ParseYAML returned error: %v", err)
+	}
+	if got := bundle.Version.EvaluationSpec.Validators[0].Type; got != "retrieval_hit" {
+		t.Fatalf("validator type = %q, want retrieval_hit", got)
+	}
+}
+
 func TestManifestJSONPreservesGeneralizedContract(t *testing.T) {
 	bundle := Bundle{
 		Pack: PackMetadata{
