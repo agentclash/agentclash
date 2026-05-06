@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -255,6 +256,79 @@ func TestAcceptOrgInviteToken_ReassignsPendingInviteToCaller(t *testing.T) {
 	}
 	if result.MembershipStatus != "active" {
 		t.Fatalf("result status = %q, want active", result.MembershipStatus)
+	}
+}
+
+func TestAcceptOrgInviteToken_AllowsEmptyCallerEmail(t *testing.T) {
+	orgID := uuid.New()
+	invitedUserID := uuid.New()
+	callerUserID := uuid.New()
+	membershipID := uuid.New()
+	expiresAt := time.Now().Add(time.Hour)
+
+	repo := &fakeOrgMembershipRepo{
+		orgMembership: repository.OrgMembershipFullRow{
+			ID:                   membershipID,
+			OrganizationID:       orgID,
+			UserID:               invitedUserID,
+			Email:                "friend@example.com",
+			Role:                 "org_member",
+			MembershipStatus:     "invited",
+			InviteToken:          "invite_testtoken",
+			InviteTokenExpiresAt: &expiresAt,
+		},
+		updated: repository.OrgMembershipFullRow{
+			ID:               membershipID,
+			OrganizationID:   orgID,
+			UserID:           callerUserID,
+			Email:            "friend@example.com",
+			Role:             "org_member",
+			MembershipStatus: "active",
+		},
+	}
+	manager := NewOrgMembershipManager(NewCallerOrganizationAuthorizer(), repo, &fakeEmailSender{}, "https://app.agentclash.dev")
+
+	result, err := manager.AcceptOrgInvite(context.Background(), Caller{UserID: callerUserID}, "invite_testtoken")
+	if err != nil {
+		t.Fatalf("AcceptOrgInvite returned error: %v", err)
+	}
+
+	if repo.lastUpdate.UserID == nil || *repo.lastUpdate.UserID != callerUserID {
+		t.Fatalf("AcceptOrgInvite UserID = %v, want %s", repo.lastUpdate.UserID, callerUserID)
+	}
+	if !repo.lastUpdate.ClearInviteToken {
+		t.Fatalf("ClearInviteToken = false, want true")
+	}
+	if result.MembershipStatus != "active" {
+		t.Fatalf("result status = %q, want active", result.MembershipStatus)
+	}
+}
+
+func TestAcceptOrgInviteToken_RejectsMismatchedCallerEmail(t *testing.T) {
+	orgID := uuid.New()
+	membershipID := uuid.New()
+	expiresAt := time.Now().Add(time.Hour)
+
+	repo := &fakeOrgMembershipRepo{
+		orgMembership: repository.OrgMembershipFullRow{
+			ID:                   membershipID,
+			OrganizationID:       orgID,
+			UserID:               uuid.New(),
+			Email:                "friend@example.com",
+			Role:                 "org_member",
+			MembershipStatus:     "invited",
+			InviteToken:          "invite_testtoken",
+			InviteTokenExpiresAt: &expiresAt,
+		},
+	}
+	manager := NewOrgMembershipManager(NewCallerOrganizationAuthorizer(), repo, &fakeEmailSender{}, "https://app.agentclash.dev")
+
+	_, err := manager.AcceptOrgInvite(context.Background(), Caller{UserID: uuid.New(), Email: "other@example.com"}, "invite_testtoken")
+	if !errors.Is(err, ErrForbidden) {
+		t.Fatalf("AcceptOrgInvite error = %v, want ErrForbidden", err)
+	}
+	if repo.lastUpdate.Status != nil || repo.lastUpdate.UserID != nil || repo.lastUpdate.ClearInviteToken {
+		t.Fatalf("membership was updated despite forbidden caller: %+v", repo.lastUpdate)
 	}
 }
 

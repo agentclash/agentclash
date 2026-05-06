@@ -292,7 +292,7 @@ func (m *WorkspaceMembershipManager) AcceptWorkspaceInvite(ctx context.Context, 
 	if err != nil {
 		return WorkspaceMembershipResult{}, err
 	}
-	if !inviteEmailMatchesCaller(caller, membership.Email) {
+	if !inviteTokenCanBeAcceptedByCaller(caller, membership.Email) {
 		return WorkspaceMembershipResult{}, ErrForbidden
 	}
 	if wsInviteExpired(membership) {

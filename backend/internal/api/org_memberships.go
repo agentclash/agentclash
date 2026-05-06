@@ -308,7 +308,7 @@ func (m *OrgMembershipManager) AcceptOrgInvite(ctx context.Context, caller Calle
 	if err != nil {
 		return OrgMembershipResult{}, err
 	}
-	if !inviteEmailMatchesCaller(caller, membership.Email) {
+	if !inviteTokenCanBeAcceptedByCaller(caller, membership.Email) {
 		return OrgMembershipResult{}, ErrForbidden
 	}
 	if orgInviteExpired(membership) {
@@ -342,6 +342,20 @@ func (m *OrgMembershipManager) AcceptOrgInvite(ctx context.Context, caller Calle
 
 func inviteEmailMatchesCaller(caller Caller, inviteEmail string) bool {
 	return strings.EqualFold(strings.TrimSpace(caller.Email), strings.TrimSpace(inviteEmail)) && strings.TrimSpace(caller.Email) != ""
+}
+
+func inviteTokenCanBeAcceptedByCaller(caller Caller, inviteEmail string) bool {
+	inviteEmail = strings.TrimSpace(inviteEmail)
+	callerEmail := strings.TrimSpace(caller.Email)
+	if inviteEmail == "" {
+		return false
+	}
+	if callerEmail == "" {
+		// The invite token is a high-entropy bearer secret. Some WorkOS session
+		// tokens do not expose email claims, so token possession is the fallback.
+		return true
+	}
+	return strings.EqualFold(callerEmail, inviteEmail)
 }
 
 func orgInviteExpired(membership repository.OrgMembershipFullRow) bool {
