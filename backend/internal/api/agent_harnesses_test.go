@@ -1022,6 +1022,183 @@ func TestAgentHarnessExecutionRoutes(t *testing.T) {
 	}
 }
 
+func TestAgentHarnessFailureReviewRoutes(t *testing.T) {
+	workspaceID := uuid.New()
+	executionID := uuid.New()
+	suiteID := uuid.New()
+	versionID := uuid.New()
+	now := time.Now().UTC()
+	service := &fakeAgentHarnessService{
+		failureReview: repository.AgentHarnessFailureReview{
+			ExecutionID:         executionID,
+			WorkspaceID:         workspaceID,
+			AgentHarnessID:      uuid.New(),
+			Status:              string(repository.AgentHarnessExecutionStatusFailed),
+			SuggestedClass:      repository.AgentHarnessFailureClassTestFailure,
+			SuggestedSummary:    "validator failed",
+			SuggestedSource:     "rules",
+			SuggestedConfidence: 0.84,
+			EffectiveClass:      repository.AgentHarnessFailureClassTestFailure,
+			EffectiveSummary:    "validator failed",
+			CreatedAt:           now,
+			UpdatedAt:           now,
+		},
+		failureSummary: []repository.AgentHarnessFailureSummaryGroup{{
+			GroupBy:           "repository",
+			Key:               "https://github.com/acme/repo",
+			Label:             "https://github.com/acme/repo",
+			FailureClass:      repository.AgentHarnessFailureClassTestFailure,
+			Count:             2,
+			LatestExecutionID: executionID,
+			LatestAt:          now,
+			SuiteID:           &suiteID,
+		}},
+		promoted: repository.PromoteAgentHarnessExecutionToSuiteResult{
+			Suite: repository.AgentHarnessSuite{
+				ID:                   suiteID,
+				WorkspaceID:          workspaceID,
+				Status:               "active",
+				CurrentVersionNumber: 2,
+				CurrentVersionID:     versionID,
+				TaskCount:            3,
+			},
+			Task: repository.AgentHarnessSuiteTask{
+				ID:             uuid.New(),
+				WorkspaceID:    workspaceID,
+				SuiteVersionID: versionID,
+				TaskOrder:      2,
+				Title:          "Promoted run",
+				PublicPrompt:   "Public prompt",
+				SourceType:     "prior_harness_run",
+				CreatedAt:      now,
+				UpdatedAt:      now,
+			},
+		},
+	}
+	router := chi.NewRouter()
+	router.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := context.WithValue(r.Context(), callerContextKey{}, testAgentHarnessCaller(workspaceID))
+			ctx = context.WithValue(ctx, workspaceIDContextKey{}, workspaceID)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	})
+	router.Get("/v1/workspaces/{workspaceID}/agent-harness-executions/{executionID}/failure-review", getAgentHarnessFailureReviewHandler(slog.Default(), service))
+	router.Patch("/v1/workspaces/{workspaceID}/agent-harness-executions/{executionID}/failure-review", updateAgentHarnessFailureReviewHandler(slog.Default(), service))
+	router.Get("/v1/workspaces/{workspaceID}/agent-harness-failures/summary", listAgentHarnessFailureSummaryHandler(slog.Default(), service))
+	router.Post("/v1/workspaces/{workspaceID}/agent-harness-executions/{executionID}/promote-task", promoteAgentHarnessExecutionHandler(slog.Default(), service))
+
+	getReq := httptest.NewRequest(http.MethodGet, "/v1/workspaces/"+workspaceID.String()+"/agent-harness-executions/"+executionID.String()+"/failure-review", nil)
+	getRec := httptest.NewRecorder()
+	router.ServeHTTP(getRec, getReq)
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("get failure review status = %d, body %s", getRec.Code, getRec.Body.String())
+	}
+	var review repository.AgentHarnessFailureReview
+	if err := json.Unmarshal(getRec.Body.Bytes(), &review); err != nil {
+		t.Fatalf("decode failure review: %v", err)
+	}
+	if review.EffectiveClass != repository.AgentHarnessFailureClassTestFailure {
+		t.Fatalf("effective_class = %q, want test_failure", review.EffectiveClass)
+	}
+
+	patchReq := httptest.NewRequest(http.MethodPatch, "/v1/workspaces/"+workspaceID.String()+"/agent-harness-executions/"+executionID.String()+"/failure-review", bytes.NewBufferString(`{
+		"suggested_class": "test_failure",
+		"suggested_source": "llm",
+		"suggested_confidence": 0.77,
+		"human_class": "no_pr",
+		"human_summary": "Agent never opened a PR.",
+		"human_payload": {"edited": true}
+	}`))
+	patchRec := httptest.NewRecorder()
+	router.ServeHTTP(patchRec, patchReq)
+	if patchRec.Code != http.StatusOK {
+		t.Fatalf("patch failure review status = %d, body %s", patchRec.Code, patchRec.Body.String())
+	}
+	if service.updatedFailureInput.HumanClass != repository.AgentHarnessFailureClassNoPR {
+		t.Fatalf("human_class = %q, want no_pr", service.updatedFailureInput.HumanClass)
+	}
+	if service.updatedFailureInput.SuggestedSource != "llm" {
+		t.Fatalf("suggested_source = %q, want llm", service.updatedFailureInput.SuggestedSource)
+	}
+
+	summaryReq := httptest.NewRequest(http.MethodGet, "/v1/workspaces/"+workspaceID.String()+"/agent-harness-failures/summary", nil)
+	summaryRec := httptest.NewRecorder()
+	router.ServeHTTP(summaryRec, summaryReq)
+	if summaryRec.Code != http.StatusOK {
+		t.Fatalf("summary status = %d, body %s", summaryRec.Code, summaryRec.Body.String())
+	}
+	var summary listAgentHarnessFailureSummaryResponse
+	if err := json.Unmarshal(summaryRec.Body.Bytes(), &summary); err != nil {
+		t.Fatalf("decode summary: %v", err)
+	}
+	if len(summary.Items) != 1 || summary.Items[0].GroupBy != "repository" {
+		t.Fatalf("summary = %#v, want repository group", summary.Items)
+	}
+
+	promoteReq := httptest.NewRequest(http.MethodPost, "/v1/workspaces/"+workspaceID.String()+"/agent-harness-executions/"+executionID.String()+"/promote-task", bytes.NewBufferString(`{
+		"suite_id": "`+suiteID.String()+`",
+		"title": "Promoted run",
+		"public_prompt": "Public prompt",
+		"failure_class": "no_pr",
+		"failure_summary": "Agent never opened a PR.",
+		"metadata": {"curated_by": "qa"}
+	}`))
+	promoteRec := httptest.NewRecorder()
+	router.ServeHTTP(promoteRec, promoteReq)
+	if promoteRec.Code != http.StatusCreated {
+		t.Fatalf("promote status = %d, body %s", promoteRec.Code, promoteRec.Body.String())
+	}
+	if service.promotedExecutionID != executionID || service.promotedInput.SuiteID != suiteID {
+		t.Fatalf("promotion input execution=%s suite=%s", service.promotedExecutionID, service.promotedInput.SuiteID)
+	}
+	var promoted promoteAgentHarnessExecutionResponse
+	if err := json.Unmarshal(promoteRec.Body.Bytes(), &promoted); err != nil {
+		t.Fatalf("decode promoted: %v", err)
+	}
+	if promoted.Task.SourceType != "prior_harness_run" {
+		t.Fatalf("source_type = %q, want prior_harness_run", promoted.Task.SourceType)
+	}
+}
+
+func TestAgentHarnessManagerFailureReviewPreservesHumanOverride(t *testing.T) {
+	workspaceID := uuid.New()
+	execution := testAgentHarnessExecutionRecord(workspaceID, uuid.New())
+	review := repository.AgentHarnessFailureReview{
+		ExecutionID:      execution.ID,
+		WorkspaceID:      workspaceID,
+		AgentHarnessID:   execution.AgentHarnessID,
+		HumanClass:       stringPtr(repository.AgentHarnessFailureClassNoPR),
+		EffectiveClass:   repository.AgentHarnessFailureClassNoPR,
+		EffectiveSummary: "Human says no PR.",
+	}
+	repo := &fakeAgentHarnessRepo{
+		organizationID: execution.OrganizationID,
+		execution:      execution,
+		annotation: repository.AgentHarnessFailureAnnotation{
+			AgentHarnessExecutionID: execution.ID,
+		},
+		failureReview: review,
+	}
+	manager := NewAgentHarnessManager(NewCallerWorkspaceAuthorizer(), repo)
+
+	got, err := manager.UpdateAgentHarnessFailureReview(context.Background(), testAgentHarnessCaller(workspaceID), workspaceID, execution.ID, UpdateAgentHarnessFailureReviewInput{
+		SuggestedClass:  repository.AgentHarnessFailureClassTestFailure,
+		SuggestedSource: "llm",
+		HumanClass:      repository.AgentHarnessFailureClassNoPR,
+		HumanSummary:    "Human says no PR.",
+	})
+	if err != nil {
+		t.Fatalf("UpdateAgentHarnessFailureReview error: %v", err)
+	}
+	if got.EffectiveClass != repository.AgentHarnessFailureClassNoPR {
+		t.Fatalf("effective_class = %q, want no_pr", got.EffectiveClass)
+	}
+	if repo.upsertAnnotationParams.EditedByUserID == nil {
+		t.Fatal("edited_by_user_id was not preserved on human annotation")
+	}
+}
+
 func TestAgentHarnessExecutionRoutesSerializeFailureStage(t *testing.T) {
 	workspaceID := uuid.New()
 	harness := testAgentHarnessRecord(workspaceID, "Existing harness")
@@ -1257,6 +1434,12 @@ type fakeAgentHarnessRepo struct {
 	execution               repository.AgentHarnessExecution
 	retryExecution          repository.AgentHarnessExecution
 	executions              []repository.AgentHarnessExecution
+	failureReview           repository.AgentHarnessFailureReview
+	failureReviews          []repository.AgentHarnessFailureReview
+	annotation              repository.AgentHarnessFailureAnnotation
+	promoted                repository.PromoteAgentHarnessExecutionToSuiteResult
+	upsertAnnotationParams  repository.UpsertAgentHarnessFailureAnnotationParams
+	promotionParams         repository.PromoteAgentHarnessExecutionToSuiteParams
 	activeCount             int
 	getByIDCalls            int
 	githubRepo              repository.GitHubInstallationRepository
@@ -1429,6 +1612,27 @@ func (f *fakeAgentHarnessRepo) ListAgentHarnessExecutionEvents(context.Context, 
 	return nil, nil
 }
 
+func (f *fakeAgentHarnessRepo) GetAgentHarnessFailureReview(_ context.Context, executionID uuid.UUID) (repository.AgentHarnessFailureReview, error) {
+	if f.failureReview.ExecutionID == executionID {
+		return f.failureReview, nil
+	}
+	return repository.AgentHarnessFailureReview{}, repository.ErrAgentHarnessExecutionNotFound
+}
+
+func (f *fakeAgentHarnessRepo) ListAgentHarnessFailureReviewsByWorkspaceID(context.Context, uuid.UUID) ([]repository.AgentHarnessFailureReview, error) {
+	return f.failureReviews, nil
+}
+
+func (f *fakeAgentHarnessRepo) UpsertAgentHarnessFailureAnnotation(_ context.Context, p repository.UpsertAgentHarnessFailureAnnotationParams) (repository.AgentHarnessFailureAnnotation, error) {
+	f.upsertAnnotationParams = p
+	return f.annotation, nil
+}
+
+func (f *fakeAgentHarnessRepo) PromoteAgentHarnessExecutionToSuite(_ context.Context, p repository.PromoteAgentHarnessExecutionToSuiteParams) (repository.PromoteAgentHarnessExecutionToSuiteResult, error) {
+	f.promotionParams = p
+	return f.promoted, nil
+}
+
 type fakeAgentHarnessService struct {
 	harnesses               []repository.AgentHarness
 	suites                  []repository.AgentHarnessSuite
@@ -1436,12 +1640,18 @@ type fakeAgentHarnessService struct {
 	ranking                 repository.AgentHarnessSuiteRankingRecord
 	executions              []repository.AgentHarnessExecution
 	events                  []repository.AgentHarnessExecutionEvent
+	failureReview           repository.AgentHarnessFailureReview
+	failureSummary          []repository.AgentHarnessFailureSummaryGroup
+	promoted                repository.PromoteAgentHarnessExecutionToSuiteResult
 	createdInput            CreateAgentHarnessInput
 	createdSuiteInput       CreateAgentHarnessSuiteInput
 	startedSuiteID          uuid.UUID
 	startedSuiteInput       StartAgentHarnessSuiteRunInput
 	startedHarnessID        uuid.UUID
 	startedInput            StartAgentHarnessExecutionInput
+	updatedFailureInput     UpdateAgentHarnessFailureReviewInput
+	promotedExecutionID     uuid.UUID
+	promotedInput           PromoteAgentHarnessExecutionInput
 	listExecutionsHarnessID *uuid.UUID
 	createErr               error
 }
@@ -1552,6 +1762,25 @@ func (f *fakeAgentHarnessService) ListAgentHarnessExecutionEvents(context.Contex
 func (f *fakeAgentHarnessService) ListAgentHarnessExecutions(_ context.Context, _ Caller, _ uuid.UUID, harnessID *uuid.UUID) ([]repository.AgentHarnessExecution, error) {
 	f.listExecutionsHarnessID = harnessID
 	return f.executions, nil
+}
+
+func (f *fakeAgentHarnessService) GetAgentHarnessFailureReview(context.Context, Caller, uuid.UUID, uuid.UUID) (repository.AgentHarnessFailureReview, error) {
+	return f.failureReview, nil
+}
+
+func (f *fakeAgentHarnessService) UpdateAgentHarnessFailureReview(_ context.Context, _ Caller, _ uuid.UUID, _ uuid.UUID, input UpdateAgentHarnessFailureReviewInput) (repository.AgentHarnessFailureReview, error) {
+	f.updatedFailureInput = input
+	return f.failureReview, nil
+}
+
+func (f *fakeAgentHarnessService) ListAgentHarnessFailureSummary(context.Context, Caller, uuid.UUID) ([]repository.AgentHarnessFailureSummaryGroup, error) {
+	return f.failureSummary, nil
+}
+
+func (f *fakeAgentHarnessService) PromoteAgentHarnessExecutionToSuite(_ context.Context, _ Caller, _ uuid.UUID, executionID uuid.UUID, input PromoteAgentHarnessExecutionInput) (repository.PromoteAgentHarnessExecutionToSuiteResult, error) {
+	f.promotedExecutionID = executionID
+	f.promotedInput = input
+	return f.promoted, nil
 }
 
 type fakeAgentHarnessWorkflowStarter struct {

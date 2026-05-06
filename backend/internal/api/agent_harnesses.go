@@ -44,6 +44,10 @@ type AgentHarnessRepository interface {
 	CountActiveAgentHarnessExecutionsByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) (int, error)
 	ListAgentHarnessExecutions(ctx context.Context, p repository.ListAgentHarnessExecutionsParams) ([]repository.AgentHarnessExecution, error)
 	ListAgentHarnessExecutionEvents(ctx context.Context, executionID uuid.UUID) ([]repository.AgentHarnessExecutionEvent, error)
+	GetAgentHarnessFailureReview(ctx context.Context, executionID uuid.UUID) (repository.AgentHarnessFailureReview, error)
+	ListAgentHarnessFailureReviewsByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) ([]repository.AgentHarnessFailureReview, error)
+	UpsertAgentHarnessFailureAnnotation(ctx context.Context, p repository.UpsertAgentHarnessFailureAnnotationParams) (repository.AgentHarnessFailureAnnotation, error)
+	PromoteAgentHarnessExecutionToSuite(ctx context.Context, p repository.PromoteAgentHarnessExecutionToSuiteParams) (repository.PromoteAgentHarnessExecutionToSuiteResult, error)
 }
 
 type AgentHarnessService interface {
@@ -61,6 +65,10 @@ type AgentHarnessService interface {
 	GetAgentHarnessExecution(ctx context.Context, caller Caller, workspaceID uuid.UUID, executionID uuid.UUID) (repository.AgentHarnessExecution, error)
 	ListAgentHarnessExecutions(ctx context.Context, caller Caller, workspaceID uuid.UUID, harnessID *uuid.UUID) ([]repository.AgentHarnessExecution, error)
 	ListAgentHarnessExecutionEvents(ctx context.Context, caller Caller, workspaceID uuid.UUID, executionID uuid.UUID) ([]repository.AgentHarnessExecutionEvent, error)
+	GetAgentHarnessFailureReview(ctx context.Context, caller Caller, workspaceID uuid.UUID, executionID uuid.UUID) (repository.AgentHarnessFailureReview, error)
+	UpdateAgentHarnessFailureReview(ctx context.Context, caller Caller, workspaceID uuid.UUID, executionID uuid.UUID, input UpdateAgentHarnessFailureReviewInput) (repository.AgentHarnessFailureReview, error)
+	ListAgentHarnessFailureSummary(ctx context.Context, caller Caller, workspaceID uuid.UUID) ([]repository.AgentHarnessFailureSummaryGroup, error)
+	PromoteAgentHarnessExecutionToSuite(ctx context.Context, caller Caller, workspaceID uuid.UUID, executionID uuid.UUID, input PromoteAgentHarnessExecutionInput) (repository.PromoteAgentHarnessExecutionToSuiteResult, error)
 }
 
 type AgentHarnessExecutionWorkflowStarter interface {
@@ -126,6 +134,26 @@ type StartAgentHarnessExecutionInput struct {
 
 type RetryAgentHarnessExecutionInput struct {
 	IdempotencyKey string `json:"idempotency_key"`
+}
+
+type UpdateAgentHarnessFailureReviewInput struct {
+	SuggestedClass      string          `json:"suggested_class"`
+	SuggestedSummary    string          `json:"suggested_summary"`
+	SuggestedSource     string          `json:"suggested_source"`
+	SuggestedConfidence *float64        `json:"suggested_confidence"`
+	SuggestedPayload    json.RawMessage `json:"suggested_payload"`
+	HumanClass          string          `json:"human_class"`
+	HumanSummary        string          `json:"human_summary"`
+	HumanPayload        json.RawMessage `json:"human_payload"`
+}
+
+type PromoteAgentHarnessExecutionInput struct {
+	SuiteID        uuid.UUID       `json:"suite_id"`
+	Title          string          `json:"title"`
+	PublicPrompt   string          `json:"public_prompt"`
+	FailureClass   string          `json:"failure_class"`
+	FailureSummary string          `json:"failure_summary"`
+	Metadata       json.RawMessage `json:"metadata"`
 }
 
 type CreateAgentHarnessSuiteInput struct {
@@ -639,6 +667,114 @@ func (m *AgentHarnessManager) ListAgentHarnessExecutions(ctx context.Context, ca
 	})
 }
 
+func (m *AgentHarnessManager) GetAgentHarnessFailureReview(ctx context.Context, caller Caller, workspaceID uuid.UUID, executionID uuid.UUID) (repository.AgentHarnessFailureReview, error) {
+	if err := m.authorizer.AuthorizeWorkspace(ctx, caller, workspaceID); err != nil {
+		return repository.AgentHarnessFailureReview{}, err
+	}
+	review, err := m.repo.GetAgentHarnessFailureReview(ctx, executionID)
+	if err != nil {
+		return repository.AgentHarnessFailureReview{}, err
+	}
+	if review.WorkspaceID != workspaceID {
+		return repository.AgentHarnessFailureReview{}, repository.ErrAgentHarnessExecutionNotFound
+	}
+	return review, nil
+}
+
+func (m *AgentHarnessManager) UpdateAgentHarnessFailureReview(ctx context.Context, caller Caller, workspaceID uuid.UUID, executionID uuid.UUID, input UpdateAgentHarnessFailureReviewInput) (repository.AgentHarnessFailureReview, error) {
+	if err := AuthorizeWorkspaceAction(ctx, m.authorizer, caller, workspaceID, ActionCreateRun); err != nil {
+		return repository.AgentHarnessFailureReview{}, err
+	}
+	execution, err := m.repo.GetAgentHarnessExecutionByID(ctx, executionID)
+	if err != nil {
+		return repository.AgentHarnessFailureReview{}, err
+	}
+	if execution.WorkspaceID != workspaceID {
+		return repository.AgentHarnessFailureReview{}, repository.ErrAgentHarnessExecutionNotFound
+	}
+	if err := validateRawJSONFields(map[string]json.RawMessage{
+		"suggested_payload": input.SuggestedPayload,
+		"human_payload":     input.HumanPayload,
+	}); err != nil {
+		return repository.AgentHarnessFailureReview{}, err
+	}
+	source := strings.TrimSpace(input.SuggestedSource)
+	if source == "" {
+		source = "rules"
+	}
+	if source != "rules" && source != "llm" {
+		return repository.AgentHarnessFailureReview{}, AgentHarnessValidationError{Code: "invalid_suggested_source", Message: "suggested_source must be rules or llm"}
+	}
+	if suggestedClass := strings.TrimSpace(input.SuggestedClass); suggestedClass != "" && !repository.ValidAgentHarnessFailureClass(suggestedClass) {
+		return repository.AgentHarnessFailureReview{}, AgentHarnessValidationError{Code: "invalid_suggested_class", Message: "suggested_class must be a supported agent harness failure class"}
+	}
+	if humanClass := strings.TrimSpace(input.HumanClass); humanClass != "" && !repository.ValidAgentHarnessFailureClass(humanClass) {
+		return repository.AgentHarnessFailureReview{}, AgentHarnessValidationError{Code: "invalid_human_class", Message: "human_class must be a supported agent harness failure class"}
+	}
+	_, err = m.repo.UpsertAgentHarnessFailureAnnotation(ctx, repository.UpsertAgentHarnessFailureAnnotationParams{
+		ExecutionID:         executionID,
+		SuggestedClass:      optionalHarnessString(input.SuggestedClass),
+		SuggestedSummary:    input.SuggestedSummary,
+		SuggestedSource:     source,
+		SuggestedConfidence: input.SuggestedConfidence,
+		SuggestedPayload:    defaultJSON(input.SuggestedPayload),
+		HumanClass:          optionalHarnessString(input.HumanClass),
+		HumanSummary:        input.HumanSummary,
+		HumanPayload:        defaultJSON(input.HumanPayload),
+		EditedByUserID:      &caller.UserID,
+	})
+	if err != nil {
+		return repository.AgentHarnessFailureReview{}, err
+	}
+	return m.GetAgentHarnessFailureReview(ctx, caller, workspaceID, executionID)
+}
+
+func (m *AgentHarnessManager) ListAgentHarnessFailureSummary(ctx context.Context, caller Caller, workspaceID uuid.UUID) ([]repository.AgentHarnessFailureSummaryGroup, error) {
+	if err := m.authorizer.AuthorizeWorkspace(ctx, caller, workspaceID); err != nil {
+		return nil, err
+	}
+	reviews, err := m.repo.ListAgentHarnessFailureReviewsByWorkspaceID(ctx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	return repository.BuildAgentHarnessFailureSummaryGroups(reviews), nil
+}
+
+func (m *AgentHarnessManager) PromoteAgentHarnessExecutionToSuite(ctx context.Context, caller Caller, workspaceID uuid.UUID, executionID uuid.UUID, input PromoteAgentHarnessExecutionInput) (repository.PromoteAgentHarnessExecutionToSuiteResult, error) {
+	if err := AuthorizeWorkspaceAction(ctx, m.authorizer, caller, workspaceID, ActionCreateRun); err != nil {
+		return repository.PromoteAgentHarnessExecutionToSuiteResult{}, err
+	}
+	if input.SuiteID == uuid.Nil {
+		return repository.PromoteAgentHarnessExecutionToSuiteResult{}, AgentHarnessValidationError{Code: "suite_id_required", Message: "suite_id is required"}
+	}
+	execution, err := m.repo.GetAgentHarnessExecutionByID(ctx, executionID)
+	if err != nil {
+		return repository.PromoteAgentHarnessExecutionToSuiteResult{}, err
+	}
+	if execution.WorkspaceID != workspaceID {
+		return repository.PromoteAgentHarnessExecutionToSuiteResult{}, repository.ErrAgentHarnessExecutionNotFound
+	}
+	if strings.TrimSpace(input.Title) == "" {
+		return repository.PromoteAgentHarnessExecutionToSuiteResult{}, AgentHarnessValidationError{Code: "title_required", Message: "title is required"}
+	}
+	if failureClass := strings.TrimSpace(input.FailureClass); failureClass != "" && !repository.ValidAgentHarnessFailureClass(failureClass) {
+		return repository.PromoteAgentHarnessExecutionToSuiteResult{}, AgentHarnessValidationError{Code: "invalid_failure_class", Message: "failure_class must be a supported agent harness failure class"}
+	}
+	if err := validateRawJSONFields(map[string]json.RawMessage{"metadata": input.Metadata}); err != nil {
+		return repository.PromoteAgentHarnessExecutionToSuiteResult{}, err
+	}
+	return m.repo.PromoteAgentHarnessExecutionToSuite(ctx, repository.PromoteAgentHarnessExecutionToSuiteParams{
+		ExecutionID:     executionID,
+		SuiteID:         input.SuiteID,
+		CreatedByUserID: &caller.UserID,
+		Title:           input.Title,
+		PublicPrompt:    input.PublicPrompt,
+		FailureClass:    input.FailureClass,
+		FailureSummary:  input.FailureSummary,
+		Metadata:        defaultJSON(input.Metadata),
+	})
+}
+
 func (m *AgentHarnessManager) ensureAgentHarnessExecutionCapacity(ctx context.Context, workspaceID uuid.UUID, requested int) error {
 	if requested <= 0 || m.concurrencyLimit <= 0 {
 		return nil
@@ -832,6 +968,15 @@ type listAgentHarnessSuiteTasksResponse struct {
 
 type getAgentHarnessSuiteRankingResponse struct {
 	Ranking json.RawMessage `json:"ranking"`
+}
+
+type listAgentHarnessFailureSummaryResponse struct {
+	Items []repository.AgentHarnessFailureSummaryGroup `json:"items"`
+}
+
+type promoteAgentHarnessExecutionResponse struct {
+	Suite repository.AgentHarnessSuite  `json:"suite"`
+	Task  agentHarnessSuiteTaskResponse `json:"task"`
 }
 
 type startAgentHarnessSuiteRunResponse struct {
@@ -1195,6 +1340,118 @@ func retryAgentHarnessExecutionHandler(logger *slog.Logger, service AgentHarness
 			return
 		}
 		writeJSON(w, http.StatusCreated, mapAgentHarnessExecutionResponse(execution))
+	}
+}
+
+func getAgentHarnessFailureReviewHandler(logger *slog.Logger, service AgentHarnessService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		caller, err := CallerFromContext(r.Context())
+		if err != nil {
+			writeAuthzError(w, err)
+			return
+		}
+		workspaceID, err := WorkspaceIDFromContext(r.Context())
+		if err != nil {
+			writeAuthzError(w, err)
+			return
+		}
+		executionID, err := uuid.Parse(chi.URLParam(r, "executionID"))
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_execution_id", "executionID must be a UUID")
+			return
+		}
+		review, err := service.GetAgentHarnessFailureReview(r.Context(), caller, workspaceID, executionID)
+		if err != nil {
+			writeAgentHarnessError(w, logger, r, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, review)
+	}
+}
+
+func updateAgentHarnessFailureReviewHandler(logger *slog.Logger, service AgentHarnessService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		caller, err := CallerFromContext(r.Context())
+		if err != nil {
+			writeAuthzError(w, err)
+			return
+		}
+		workspaceID, err := WorkspaceIDFromContext(r.Context())
+		if err != nil {
+			writeAuthzError(w, err)
+			return
+		}
+		executionID, err := uuid.Parse(chi.URLParam(r, "executionID"))
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_execution_id", "executionID must be a UUID")
+			return
+		}
+		var input UpdateAgentHarnessFailureReviewInput
+		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_json", "request body must be JSON")
+			return
+		}
+		review, err := service.UpdateAgentHarnessFailureReview(r.Context(), caller, workspaceID, executionID, input)
+		if err != nil {
+			writeAgentHarnessError(w, logger, r, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, review)
+	}
+}
+
+func listAgentHarnessFailureSummaryHandler(logger *slog.Logger, service AgentHarnessService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		caller, err := CallerFromContext(r.Context())
+		if err != nil {
+			writeAuthzError(w, err)
+			return
+		}
+		workspaceID, err := WorkspaceIDFromContext(r.Context())
+		if err != nil {
+			writeAuthzError(w, err)
+			return
+		}
+		items, err := service.ListAgentHarnessFailureSummary(r.Context(), caller, workspaceID)
+		if err != nil {
+			writeAgentHarnessError(w, logger, r, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, listAgentHarnessFailureSummaryResponse{Items: items})
+	}
+}
+
+func promoteAgentHarnessExecutionHandler(logger *slog.Logger, service AgentHarnessService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		caller, err := CallerFromContext(r.Context())
+		if err != nil {
+			writeAuthzError(w, err)
+			return
+		}
+		workspaceID, err := WorkspaceIDFromContext(r.Context())
+		if err != nil {
+			writeAuthzError(w, err)
+			return
+		}
+		executionID, err := uuid.Parse(chi.URLParam(r, "executionID"))
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_execution_id", "executionID must be a UUID")
+			return
+		}
+		var input PromoteAgentHarnessExecutionInput
+		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_json", "request body must be JSON")
+			return
+		}
+		result, err := service.PromoteAgentHarnessExecutionToSuite(r.Context(), caller, workspaceID, executionID, input)
+		if err != nil {
+			writeAgentHarnessError(w, logger, r, err)
+			return
+		}
+		writeJSON(w, http.StatusCreated, promoteAgentHarnessExecutionResponse{
+			Suite: result.Suite,
+			Task:  mapAgentHarnessSuiteTaskResponses([]repository.AgentHarnessSuiteTask{result.Task})[0],
+		})
 	}
 }
 
@@ -1647,4 +1904,20 @@ func (noopAgentHarnessService) ListAgentHarnessExecutionEvents(context.Context, 
 
 func (noopAgentHarnessService) ListAgentHarnessExecutions(context.Context, Caller, uuid.UUID, *uuid.UUID) ([]repository.AgentHarnessExecution, error) {
 	return nil, errors.New("agent harness service is not configured")
+}
+
+func (noopAgentHarnessService) GetAgentHarnessFailureReview(context.Context, Caller, uuid.UUID, uuid.UUID) (repository.AgentHarnessFailureReview, error) {
+	return repository.AgentHarnessFailureReview{}, errors.New("agent harness service is not configured")
+}
+
+func (noopAgentHarnessService) UpdateAgentHarnessFailureReview(context.Context, Caller, uuid.UUID, uuid.UUID, UpdateAgentHarnessFailureReviewInput) (repository.AgentHarnessFailureReview, error) {
+	return repository.AgentHarnessFailureReview{}, errors.New("agent harness service is not configured")
+}
+
+func (noopAgentHarnessService) ListAgentHarnessFailureSummary(context.Context, Caller, uuid.UUID) ([]repository.AgentHarnessFailureSummaryGroup, error) {
+	return nil, errors.New("agent harness service is not configured")
+}
+
+func (noopAgentHarnessService) PromoteAgentHarnessExecutionToSuite(context.Context, Caller, uuid.UUID, uuid.UUID, PromoteAgentHarnessExecutionInput) (repository.PromoteAgentHarnessExecutionToSuiteResult, error) {
+	return repository.PromoteAgentHarnessExecutionToSuiteResult{}, errors.New("agent harness service is not configured")
 }

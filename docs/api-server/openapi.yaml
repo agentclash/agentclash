@@ -148,6 +148,128 @@ paths:
         "500":
           $ref: "#/components/responses/InternalError"
 
+  /v1/workspaces/{workspaceID}/agent-harness-executions/{executionID}/failure-review:
+    get:
+      operationId: getAgentHarnessFailureReview
+      tags: [AgentHarnesses]
+      summary: Get an Agent Harness failure review
+      description: >
+        Returns the rule or LLM-suggested failure classification for a harness
+        execution, preserving any human-edited class and summary as the effective
+        review.
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/ExecutionID"
+      responses:
+        "200":
+          description: Failure review for the execution.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentHarnessFailureReview"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    patch:
+      operationId: updateAgentHarnessFailureReview
+      tags: [AgentHarnesses]
+      summary: Update an Agent Harness failure review
+      description: >
+        Stores LLM-assisted suggestions and human edits separately so later
+        automated suggestions do not overwrite the human-curated class.
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/ExecutionID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAgentHarnessFailureReviewRequest"
+      responses:
+        "200":
+          description: Updated failure review.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentHarnessFailureReview"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/workspaces/{workspaceID}/agent-harness-executions/{executionID}/promote-task:
+    post:
+      operationId: promoteAgentHarnessExecutionToSuite
+      tags: [AgentHarnesses]
+      summary: Promote a prior harness run into a private suite task
+      description: >
+        Creates a new immutable suite version and appends a private
+        prior_harness_run task using sanitized public prompt metadata plus the
+        frozen harness, evaluation, validator, judge, and artifact references
+        from the source execution.
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/ExecutionID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PromoteAgentHarnessExecutionRequest"
+      responses:
+        "201":
+          description: Suite version advanced and task promoted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PromoteAgentHarnessExecutionResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/workspaces/{workspaceID}/agent-harness-failures/summary:
+    get:
+      operationId: listAgentHarnessFailureSummary
+      tags: [AgentHarnesses]
+      summary: Summarize Agent Harness failure modes
+      description: >
+        Groups effective failure classes by repository, task type, harness,
+        model, E2B template, and suite for dashboard analysis.
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+      responses:
+        "200":
+          description: Failure summary groups.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListAgentHarnessFailureSummaryResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
   /v1/workspaces/{workspaceID}/agent-harness-suites/{suiteID}/rankings:
     get:
       operationId: getAgentHarnessSuiteRankings
@@ -4393,6 +4515,247 @@ components:
           type: string
           minLength: 1
           description: Idempotency key scoped to the source execution retry.
+
+    AgentHarnessFailureClass:
+      type: string
+      enum:
+        - setup
+        - auth
+        - tool_misuse
+        - incomplete_implementation
+        - no_op_diff
+        - test_failure
+        - overbroad_diff
+        - no_pr
+        - judge_failure
+        - timeout
+        - policy_privacy
+        - infrastructure
+        - none
+        - unknown
+
+    AgentHarnessFailureEventRef:
+      type: object
+      required: [sequence_number, event_type, actor_type]
+      properties:
+        sequence_number:
+          type: integer
+          format: int64
+        event_type:
+          type: string
+        actor_type:
+          type: string
+        artifact_id:
+          type: string
+          format: uuid
+        payload:
+          type: object
+          additionalProperties: true
+
+    AgentHarnessFailureReview:
+      type: object
+      required:
+        - execution_id
+        - agent_harness_id
+        - workspace_id
+        - status
+        - suggested_class
+        - suggested_source
+        - suggested_confidence
+        - effective_class
+        - taxonomy
+        - created_at
+        - updated_at
+      properties:
+        execution_id:
+          type: string
+          format: uuid
+        agent_harness_id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+          format: uuid
+        run_id:
+          type: string
+          format: uuid
+        run_agent_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+        suggested_class:
+          $ref: "#/components/schemas/AgentHarnessFailureClass"
+        suggested_summary:
+          type: string
+        suggested_source:
+          type: string
+          enum: [rules, llm]
+        suggested_confidence:
+          type: number
+        human_class:
+          $ref: "#/components/schemas/AgentHarnessFailureClass"
+        human_summary:
+          type: string
+        effective_class:
+          $ref: "#/components/schemas/AgentHarnessFailureClass"
+        effective_summary:
+          type: string
+        taxonomy:
+          $ref: "#/components/schemas/FailureReviewTaxonomy"
+        repository_url:
+          type: string
+        base_branch:
+          type: string
+        task_type:
+          type: string
+        harness_name:
+          type: string
+        harness_kind:
+          type: string
+        model:
+          type: string
+        template:
+          type: string
+        suite_id:
+          type: string
+          format: uuid
+        suite_version_id:
+          type: string
+          format: uuid
+        suite_task_id:
+          type: string
+          format: uuid
+        scorecard_passed:
+          type: boolean
+        overall_score:
+          type: number
+        event_refs:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentHarnessFailureEventRef"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    UpdateAgentHarnessFailureReviewRequest:
+      type: object
+      properties:
+        suggested_class:
+          $ref: "#/components/schemas/AgentHarnessFailureClass"
+        suggested_summary:
+          type: string
+        suggested_source:
+          type: string
+          enum: [rules, llm]
+        suggested_confidence:
+          type: number
+        suggested_payload:
+          type: object
+          additionalProperties: true
+        human_class:
+          $ref: "#/components/schemas/AgentHarnessFailureClass"
+        human_summary:
+          type: string
+        human_payload:
+          type: object
+          additionalProperties: true
+
+    AgentHarnessFailureSummaryGroup:
+      type: object
+      required: [group_by, key, label, failure_class, count, latest_execution_id, latest_at]
+      properties:
+        group_by:
+          type: string
+          enum: [repository, task_type, harness, model, template, suite]
+        key:
+          type: string
+        label:
+          type: string
+        failure_class:
+          $ref: "#/components/schemas/AgentHarnessFailureClass"
+        count:
+          type: integer
+        latest_execution_id:
+          type: string
+          format: uuid
+        latest_at:
+          type: string
+          format: date-time
+        suite_id:
+          type: string
+          format: uuid
+
+    ListAgentHarnessFailureSummaryResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentHarnessFailureSummaryGroup"
+
+    PromoteAgentHarnessExecutionRequest:
+      type: object
+      required: [suite_id, title]
+      properties:
+        suite_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+          minLength: 1
+        public_prompt:
+          type: string
+        failure_class:
+          $ref: "#/components/schemas/AgentHarnessFailureClass"
+        failure_summary:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+
+    AgentHarnessSuiteTask:
+      type: object
+      required: [id, suite_version_id, task_order, title, public_prompt, source_type, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        suite_version_id:
+          type: string
+          format: uuid
+        task_order:
+          type: integer
+        title:
+          type: string
+        public_prompt:
+          type: string
+        source_type:
+          type: string
+        repository_url:
+          type: string
+        base_branch:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    PromoteAgentHarnessExecutionResponse:
+      type: object
+      required: [suite, task]
+      properties:
+        suite:
+          type: object
+          additionalProperties: true
+        task:
+          $ref: "#/components/schemas/AgentHarnessSuiteTask"
 
     AgentHarnessSuiteRankingEnvelope:
       type: object
