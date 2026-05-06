@@ -148,6 +148,52 @@ paths:
         "500":
           $ref: "#/components/responses/InternalError"
 
+  /v1/workspaces/{workspaceID}/agent-harness-suites/{suiteID}/rankings:
+    get:
+      operationId: getAgentHarnessSuiteRankings
+      tags: [AgentHarnesses]
+      summary: Rank Agent Harness suite results
+      description: >
+        Aggregates immutable Agent Harness execution snapshots, canonical
+        run-agent scorecards, cost summaries, and execution events into suite
+        rankings with success@1, pass@k, pass^k, confidence intervals, budgets,
+        latency, cost, failure modes, and fair pairwise comparisons.
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/AgentHarnessSuiteID"
+        - name: k
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+          description: k value used for pass@k and pass^k reporting.
+        - name: version_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+          description: Immutable suite version to aggregate. Defaults to the current active version.
+      responses:
+        "200":
+          description: Ranking evidence for the active suite version.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentHarnessSuiteRankingEnvelope"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
   # ---------------------------------------------------------------------------
   # Health
   # ---------------------------------------------------------------------------
@@ -4140,6 +4186,13 @@ components:
       schema:
         type: string
         format: uuid
+    AgentHarnessSuiteID:
+      name: suiteID
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
     ArtifactID:
       name: artifactID
       in: path
@@ -4340,6 +4393,46 @@ components:
           type: string
           minLength: 1
           description: Idempotency key scoped to the source execution retry.
+
+    AgentHarnessSuiteRankingEnvelope:
+      type: object
+      required: [ranking]
+      properties:
+        ranking:
+          $ref: "#/components/schemas/AgentHarnessSuiteRanking"
+
+    AgentHarnessSuiteRanking:
+      type: object
+      required: [schema_version, suite_id, suite_version, k, computed_at, rankings, pairwise, evidence]
+      additionalProperties: true
+      properties:
+        schema_version:
+          type: string
+        suite_id:
+          type: string
+          format: uuid
+        suite_version:
+          type: object
+          additionalProperties: true
+        k:
+          type: integer
+          minimum: 1
+        computed_at:
+          type: string
+          format: date-time
+        rankings:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        pairwise:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        evidence:
+          type: object
+          additionalProperties: true
 
     AgentHarnessExecution:
       type: object

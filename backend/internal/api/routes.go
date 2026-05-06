@@ -140,6 +140,8 @@ func registerProtectedRoutes(
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Get("/workspaces/{workspaceID}/agent-harness-suites/{suiteID}/tasks", listAgentHarnessSuiteTasksHandler(logger, agentHarnessService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Get("/workspaces/{workspaceID}/agent-harness-suites/{suiteID}/rankings", getAgentHarnessSuiteRankingHandler(logger, agentHarnessService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Post("/workspaces/{workspaceID}/agent-harness-suites/{suiteID}/runs", startAgentHarnessSuiteRunHandler(logger, agentHarnessService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Post("/workspaces/{workspaceID}/agent-harnesses/{harnessID}/executions", startAgentHarnessExecutionHandler(logger, agentHarnessService))
