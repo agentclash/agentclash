@@ -18,8 +18,10 @@ func TestExecuteAgentHarnessExecutionRunsCodexAndRecordsTrace(t *testing.T) {
 	workspaceID := uuid.New()
 	harnessID := uuid.New()
 	executionID := uuid.New()
+	runID := uuid.New()
+	runAgentID := uuid.New()
 	openAISecret := "OPENAI_API_KEY"
-	repo := newFakeRunRepository(fixtureRun(uuid.New(), domain.RunStatusQueued))
+	repo := newFakeRunRepository(fixtureRun(runID, domain.RunStatusQueued), fixtureRunAgent(runID, runAgentID, 0))
 	repo.setAgentHarness(repository.AgentHarness{
 		ID:                     harnessID,
 		OrganizationID:         uuid.New(),
@@ -37,6 +39,8 @@ func TestExecuteAgentHarnessExecutionRunsCodexAndRecordsTrace(t *testing.T) {
 		ID:                      executionID,
 		WorkspaceID:             workspaceID,
 		AgentHarnessID:          harnessID,
+		RunID:                   &runID,
+		RunAgentID:              &runAgentID,
 		Status:                  string(repository.AgentHarnessExecutionStatusRunning),
 		ExecutionConfigSnapshot: json.RawMessage(`{"timeout_seconds":120}`),
 	})
@@ -140,14 +144,44 @@ func TestExecuteAgentHarnessExecutionRunsCodexAndRecordsTrace(t *testing.T) {
 	if !sawScoringCompleted {
 		t.Fatal("expected scoring completed event")
 	}
+	runEvents := repo.runEvents[runAgentID]
+	if len(runEvents) == 0 {
+		t.Fatal("expected agent harness events mirrored to canonical run_events")
+	}
+	if runEvents[0].RunID != runID {
+		t.Fatalf("mirrored run_id = %s, want %s", runEvents[0].RunID, runID)
+	}
+	var mirroredPayload map[string]any
+	if err := json.Unmarshal(runEvents[0].Payload, &mirroredPayload); err != nil {
+		t.Fatalf("decode mirrored payload: %v", err)
+	}
+	if mirroredPayload["agent_harness_event_type"] == "" {
+		t.Fatalf("mirrored payload missing harness event type: %#v", mirroredPayload)
+	}
+	for _, event := range runEvents {
+		var payload map[string]any
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			t.Fatalf("decode mirrored run event payload: %v", err)
+		}
+		for _, rawKey := range []string{"stdout", "stderr", "diff", "raw"} {
+			if _, ok := payload[rawKey]; ok {
+				t.Fatalf("mirrored run event payload leaked raw %s: %#v", rawKey, payload)
+			}
+		}
+	}
+	if repo.callCountWithPrefix("BuildRunAgentReplay:"+runAgentID.String()) != 1 {
+		t.Fatalf("BuildRunAgentReplay call count = %d, want 1", repo.callCountWithPrefix("BuildRunAgentReplay:"+runAgentID.String()))
+	}
 }
 
 func TestExecuteAgentHarnessExecutionFailsRequiredValidator(t *testing.T) {
 	workspaceID := uuid.New()
 	harnessID := uuid.New()
 	executionID := uuid.New()
+	runID := uuid.New()
+	runAgentID := uuid.New()
 	openAISecret := "OPENAI_API_KEY"
-	repo := newFakeRunRepository(fixtureRun(uuid.New(), domain.RunStatusQueued))
+	repo := newFakeRunRepository(fixtureRun(runID, domain.RunStatusQueued), fixtureRunAgent(runID, runAgentID, 0))
 	repo.setAgentHarness(repository.AgentHarness{
 		ID:                     harnessID,
 		OrganizationID:         uuid.New(),
@@ -164,6 +198,8 @@ func TestExecuteAgentHarnessExecutionFailsRequiredValidator(t *testing.T) {
 		ID:                      executionID,
 		WorkspaceID:             workspaceID,
 		AgentHarnessID:          harnessID,
+		RunID:                   &runID,
+		RunAgentID:              &runAgentID,
 		Status:                  string(repository.AgentHarnessExecutionStatusRunning),
 		ExecutionConfigSnapshot: json.RawMessage(`{"timeout_seconds":120}`),
 	})
@@ -219,6 +255,62 @@ func TestExecuteAgentHarnessExecutionFailsRequiredValidator(t *testing.T) {
 	}
 	if !sawPartialScore {
 		t.Fatal("expected partial score event")
+	}
+	if repo.callCountWithPrefix("BuildRunAgentReplay:"+runAgentID.String()) != 1 {
+		t.Fatalf("BuildRunAgentReplay call count = %d, want 1", repo.callCountWithPrefix("BuildRunAgentReplay:"+runAgentID.String()))
+	}
+}
+
+func TestExecuteAgentHarnessExecutionTreatsReplayBuildFailureAsNonFatal(t *testing.T) {
+	workspaceID := uuid.New()
+	harnessID := uuid.New()
+	executionID := uuid.New()
+	runID := uuid.New()
+	runAgentID := uuid.New()
+	openAISecret := "OPENAI_API_KEY"
+	repo := newFakeRunRepository(fixtureRun(runID, domain.RunStatusQueued), fixtureRunAgent(runID, runAgentID, 0))
+	repo.buildReplayErr = errors.New("replay index unavailable")
+	repo.setAgentHarness(repository.AgentHarness{
+		ID:                     harnessID,
+		OrganizationID:         uuid.New(),
+		WorkspaceID:            workspaceID,
+		TaskPrompt:             "write a file without a repository",
+		CodexTemplate:          "codex",
+		AuthMode:               "api_key_secret",
+		OpenAIAPIKeySecretName: &openAISecret,
+		ExecutionConfig:        json.RawMessage(`{"timeout_seconds":120}`),
+	})
+	repo.setAgentHarnessExecution(repository.AgentHarnessExecution{
+		ID:                      executionID,
+		WorkspaceID:             workspaceID,
+		AgentHarnessID:          harnessID,
+		RunID:                   &runID,
+		RunAgentID:              &runAgentID,
+		Status:                  string(repository.AgentHarnessExecutionStatusRunning),
+		ExecutionConfigSnapshot: json.RawMessage(`{"timeout_seconds":120}`),
+	})
+	repo.setWorkspaceSecrets(workspaceID, map[string]string{openAISecret: "sk-test"})
+
+	session := sandbox.NewFakeSession("sandbox-1")
+	session.SetExecFunc(func(request sandbox.ExecRequest, _ map[string][]byte) (sandbox.ExecResult, error) {
+		if len(request.Command) >= 2 && request.Command[0] == "codex" && request.Command[1] == "exec" {
+			return sandbox.ExecResult{ExitCode: 0, Stdout: `{"type":"final","message":"done"}`}, nil
+		}
+		t.Fatalf("unexpected command: %#v", request.Command)
+		return sandbox.ExecResult{}, nil
+	})
+	provider := &sandbox.FakeProvider{NextSession: session}
+	activities := NewActivities(repo, FakeWorkHooks{}).WithSandboxProvider(provider)
+
+	err := activities.ExecuteAgentHarnessExecution(context.Background(), ExecuteAgentHarnessExecutionInput{ExecutionID: executionID})
+	if err != nil {
+		t.Fatalf("ExecuteAgentHarnessExecution error = %v, want replay build failure to be non-fatal", err)
+	}
+	if repo.callCountWithPrefix("BuildRunAgentReplay:"+runAgentID.String()) != 1 {
+		t.Fatalf("BuildRunAgentReplay call count = %d, want 1", repo.callCountWithPrefix("BuildRunAgentReplay:"+runAgentID.String()))
+	}
+	if !agentHarnessEventRecorded(repo.agentHarnessEvents[executionID], "replay.build.failed") {
+		t.Fatal("expected replay.build.failed harness event")
 	}
 }
 
@@ -817,6 +909,15 @@ func TestAgentHarnessValidatorWorkdir(t *testing.T) {
 func containsString(values []string, target string) bool {
 	for _, value := range values {
 		if value == target {
+			return true
+		}
+	}
+	return false
+}
+
+func agentHarnessEventRecorded(events []repository.AgentHarnessExecutionEvent, eventType string) bool {
+	for _, event := range events {
+		if event.EventType == eventType {
 			return true
 		}
 	}
