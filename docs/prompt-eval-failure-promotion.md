@@ -151,6 +151,7 @@ This avoids a bad loop where one failing prompt eval immediately mutates future 
 
 - Backend endpoint and repository idempotency for prompt-eval failure promotion.
 - Regression case metadata/source-kind additions.
+- Confirm `prompt-eval run --follow --json` exposes or can recover all promotion provenance before implementing the CLI: metric, assertion key, prompt/test snapshot, playground test case id, model alias id, and provider account id. Add read-only lookup calls if needed; do not add promotion side effects to the run loop.
 - CLI `prompt-eval promote-failures`.
 - Web promotion review screen.
 - CI comment link to prefilled promotion view once the route exists.
