@@ -41,7 +41,7 @@ func TestTemporalAgentHarnessExecutionWorkflowStarter(t *testing.T) {
 	executionID := uuid.New()
 	client := &fakeTemporalClient{}
 
-	err := NewTemporalAgentHarnessExecutionWorkflowStarter(client).StartAgentHarnessExecutionWorkflow(context.Background(), executionID, 600)
+	ref, err := NewTemporalAgentHarnessExecutionWorkflowStarter(client).StartAgentHarnessExecutionWorkflow(context.Background(), executionID, 600)
 	if err != nil {
 		t.Fatalf("StartAgentHarnessExecutionWorkflow returned error: %v", err)
 	}
@@ -51,6 +51,9 @@ func TestTemporalAgentHarnessExecutionWorkflowStarter(t *testing.T) {
 	}
 	if client.options.ID != workflow.AgentHarnessExecutionWorkflowName+"/"+executionID.String() {
 		t.Fatalf("workflow id = %q, want %q", client.options.ID, workflow.AgentHarnessExecutionWorkflowName+"/"+executionID.String())
+	}
+	if ref.WorkflowID != client.options.ID || ref.RunID != "run-id" {
+		t.Fatalf("workflow ref = %#v", ref)
 	}
 	input, ok := client.args[0].(workflow.AgentHarnessExecutionWorkflowInput)
 	if !ok {
@@ -75,9 +78,34 @@ func (f *fakeTemporalClient) ExecuteWorkflow(_ context.Context, options temporal
 	name, _ := workflowFn.(string)
 	f.workflowName = name
 	f.args = append([]interface{}(nil), args...)
-	return nil, nil
+	return fakeWorkflowRun{id: options.ID, runID: "run-id"}, nil
 }
 
 func (f *fakeTemporalClient) SignalWorkflow(context.Context, string, string, string, interface{}) error {
+	return nil
+}
+
+func (f *fakeTemporalClient) CancelWorkflow(context.Context, string, string) error {
+	return nil
+}
+
+type fakeWorkflowRun struct {
+	id    string
+	runID string
+}
+
+func (f fakeWorkflowRun) GetID() string {
+	return f.id
+}
+
+func (f fakeWorkflowRun) GetRunID() string {
+	return f.runID
+}
+
+func (f fakeWorkflowRun) Get(context.Context, interface{}) error {
+	return nil
+}
+
+func (f fakeWorkflowRun) GetWithOptions(context.Context, interface{}, temporalsdk.WorkflowRunGetOptions) error {
 	return nil
 }

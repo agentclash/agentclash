@@ -125,6 +125,7 @@ type agentHarnessSnapshot struct {
 
 func AgentHarnessExecutionWorkflow(ctx sdkworkflow.Context, input AgentHarnessExecutionWorkflowInput) error {
 	ctx = sdkworkflow.WithActivityOptions(ctx, defaultActivityOptions)
+	defer markAgentHarnessExecutionCancelledOnWorkflowCancel(ctx, input.ExecutionID)
 
 	if err := transitionAgentHarnessExecutionStatus(ctx, input.ExecutionID, repository.AgentHarnessExecutionStatusProvisioning, nil); err != nil {
 		return err
@@ -139,6 +140,16 @@ func AgentHarnessExecutionWorkflow(ctx sdkworkflow.Context, input AgentHarnessEx
 		return markAgentHarnessExecutionFailed(ctx, input.ExecutionID, err)
 	}
 	return nil
+}
+
+func markAgentHarnessExecutionCancelledOnWorkflowCancel(ctx sdkworkflow.Context, executionID uuid.UUID) {
+	if ctx.Err() == nil {
+		return
+	}
+	disconnectedCtx, _ := sdkworkflow.NewDisconnectedContext(ctx)
+	disconnectedCtx = sdkworkflow.WithActivityOptions(disconnectedCtx, defaultActivityOptions)
+	reason := "workflow cancelled"
+	_ = transitionAgentHarnessExecutionStatus(disconnectedCtx, executionID, repository.AgentHarnessExecutionStatusCancelled, &reason)
 }
 
 func transitionAgentHarnessExecutionStatus(ctx sdkworkflow.Context, executionID uuid.UUID, status repository.AgentHarnessExecutionStatus, reason *string) error {

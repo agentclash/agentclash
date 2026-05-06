@@ -148,6 +148,10 @@ func registerProtectedRoutes(
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Get("/workspaces/{workspaceID}/agent-harness-executions/{executionID}", getAgentHarnessExecutionHandler(logger, agentHarnessService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Post("/workspaces/{workspaceID}/agent-harness-executions/{executionID}/cancel", cancelAgentHarnessExecutionHandler(logger, agentHarnessService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Post("/workspaces/{workspaceID}/agent-harness-executions/{executionID}/retry", retryAgentHarnessExecutionHandler(logger, agentHarnessService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Post("/workspaces/{workspaceID}/github/installations/start", startGitHubInstallationHandler(logger, githubIntegrationService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Post("/workspaces/{workspaceID}/github/installations/complete", completeGitHubInstallationHandler(logger, githubIntegrationService))
