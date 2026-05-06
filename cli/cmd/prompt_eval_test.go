@@ -764,17 +764,21 @@ func TestPromptEvalResultsCommandPrintsReadableTable(t *testing.T) {
 		t.Fatalf("expected gate exit, got %T %v\n%s", err, err, out)
 	}
 	for _, want := range []string{
-		"Experiment:",
-		"Gate:",
+		"EXPERIMENT",
+		"+",
+		"|",
+		"PASS RATE",
+		"PASS/FAIL/ERR",
 		"fail",
-		"Status:",
-		"Pass Rate:",
-		"0% (0 passed, 1 failed, 0 errors, threshold 100%)",
+		"0%",
+		"0/1/0",
 		"DIMENSION",
 		"correctness",
 		"RESULT",
 		"FAIL",
-		"contains (v1)",
+		"contains",
+		"v1",
+		"FAILURE CASE",
 		"done",
 		"Bonjour",
 	} {

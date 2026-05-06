@@ -1867,37 +1867,35 @@ func renderPromptEvalResults(rc *RunContext, result promptEvalResultsEnvelope) {
 		}
 	}
 	threshold := result.Thresholds["assertion_pass_rate"]
-	rc.Output.PrintDetail("Experiment", result.ExperimentID)
-	rc.Output.PrintDetail("Status", promptEvalStatusText(result.Status))
-	rc.Output.PrintDetail("Gate", promptEvalColoredVerdict(result.GateVerdict))
-	rc.Output.PrintDetail("Pass Rate", fmt.Sprintf("%s (%d passed, %d failed, %d errors, threshold %s)",
+	summaryRows := [][]string{{
+		result.ExperimentID,
+		promptEvalStatusText(result.Status),
+		promptEvalColoredVerdict(result.GateVerdict),
 		promptEvalPercent(result.Summary.AssertionPassRate),
-		result.Summary.AssertionsPassed,
-		result.Summary.AssertionsFailed,
-		result.Summary.ExecutionErrors,
+		fmt.Sprintf("%d/%d", result.Summary.CompletedCases, result.Summary.TotalCases),
+		fmt.Sprintf("%d/%d/%d", result.Summary.AssertionsPassed, result.Summary.AssertionsFailed, result.Summary.ExecutionErrors),
 		promptEvalPercent(threshold),
-	))
-	rc.Output.PrintDetail("Cases", fmt.Sprintf("%d/%d completed", result.Summary.CompletedCases, result.Summary.TotalCases))
+	}}
+	output.RenderBorderedTable(rc.Output.Writer(), []output.Column{{Header: "Experiment"}, {Header: "Status"}, {Header: "Gate"}, {Header: "Pass Rate"}, {Header: "Cases"}, {Header: "Pass/Fail/Err"}, {Header: "Threshold"}}, summaryRows)
 	if len(result.Summary.DimensionScores) > 0 {
 		dimensionRows := make([][]string, 0, len(result.Summary.DimensionScores))
 		for _, key := range sortedPromptEvalFloatKeys(result.Summary.DimensionScores) {
 			dimensionRows = append(dimensionRows, []string{key, promptEvalPercent(result.Summary.DimensionScores[key])})
 		}
-		rc.Output.PrintTable([]output.Column{{Header: "Dimension"}, {Header: "Score"}}, dimensionRows)
+		output.RenderBorderedTable(rc.Output.Writer(), []output.Column{{Header: "Dimension"}, {Header: "Score"}}, dimensionRows)
 	}
 	rows := make([][]string, 0, len(result.Rows))
 	for _, row := range result.Rows {
 		rows = append(rows, []string{
 			promptEvalColoredResult(row.Result),
 			row.CaseKey,
-			promptEvalAssertionLabel(row),
+			promptEvalAssertionKind(row),
 			promptEvalScoreText(row.Score),
-			truncateRunes(row.Expected, 80),
-			truncateRunes(row.Actual, 80),
-			truncateRunes(row.Error, 80),
+			promptEvalShortAssertionKey(row.AssertionKey),
 		})
 	}
-	rc.Output.PrintTable([]output.Column{{Header: "Result"}, {Header: "Case"}, {Header: "Assertion"}, {Header: "Score"}, {Header: "Expected"}, {Header: "Actual"}, {Header: "Error"}}, rows)
+	output.RenderBorderedTable(rc.Output.Writer(), []output.Column{{Header: "Result"}, {Header: "Case"}, {Header: "Assertion"}, {Header: "Score"}, {Header: "Key"}}, rows)
+	renderPromptEvalFailureDetails(rc, result.Rows)
 }
 
 func promptEvalColoredVerdict(verdict string) string {
@@ -1943,6 +1941,13 @@ func promptEvalAssertionLabel(row promptEvalResultRow) string {
 	return fmt.Sprintf("%s (%s)", row.Assertion, row.AssertionKey)
 }
 
+func promptEvalAssertionKind(row promptEvalResultRow) string {
+	if strings.TrimSpace(row.Assertion) != "" {
+		return strings.TrimSpace(row.Assertion)
+	}
+	return "-"
+}
+
 func promptEvalScoreText(score *float64) string {
 	if score == nil {
 		return "-"
@@ -1961,6 +1966,52 @@ func sortedPromptEvalFloatKeys(values map[string]float64) []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+func renderPromptEvalFailureDetails(rc *RunContext, rows []promptEvalResultRow) {
+	detailRows := [][]string{}
+	for _, row := range rows {
+		result := strings.ToLower(strings.TrimSpace(row.Result))
+		if result == "pass" {
+			continue
+		}
+		expected := promptEvalDetailText(row.Expected)
+		actual := promptEvalDetailText(row.Actual)
+		errText := promptEvalDetailText(row.Error)
+		if expected == "-" && actual == "-" && errText == "-" {
+			continue
+		}
+		detailRows = append(detailRows, []string{
+			row.CaseKey,
+			fmt.Sprintf("%s (%s)", promptEvalAssertionKind(row), promptEvalShortAssertionKey(row.AssertionKey)),
+			expected,
+			actual,
+			errText,
+		})
+	}
+	if len(detailRows) == 0 {
+		return
+	}
+	output.RenderBorderedTable(rc.Output.Writer(), []output.Column{{Header: "Failure Case"}, {Header: "Assertion"}, {Header: "Expected"}, {Header: "Actual"}, {Header: "Reason"}}, detailRows)
+}
+
+func promptEvalDetailText(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "-"
+	}
+	return truncateRunes(value, 56)
+}
+
+func promptEvalShortAssertionKey(key string) string {
+	key = strings.TrimSpace(key)
+	if len(key) > 13 && key[12] == '_' {
+		return key[13:]
+	}
+	if key == "" {
+		return "-"
+	}
+	return key
 }
 
 func renderPromptfooImportResult(rc *RunContext, result promptfooImportResult, outPath string) {
