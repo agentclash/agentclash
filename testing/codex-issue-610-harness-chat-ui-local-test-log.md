@@ -24,12 +24,18 @@ npm test -- --run 'src/app/(workspace)/workspaces/[workspaceId]/agent-harnesses/
 
 Result: passed.
 
-Summary:
+Latest summary:
 
 ```text
 Test Files  1 passed (1)
-Tests       17 passed (17)
+Tests       19 passed (19)
 ```
+
+Reviewer follow-up coverage added:
+
+- runner output events do not render raw `message` or `raw` payloads
+- failed POST preserves the user's prompt for retry
+- setup sidebar includes repository and base branch context
 
 ## Focused Lint
 
