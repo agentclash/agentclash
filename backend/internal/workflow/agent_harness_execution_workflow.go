@@ -58,6 +58,7 @@ type agentHarnessEvaluationConfig struct {
 	LLMJudges  []json.RawMessage             `json:"llm_judges,omitempty"`
 	Scorecard  json.RawMessage               `json:"scorecard,omitempty"`
 	Result     agentHarnessResultMetadata    `json:"result,omitempty"`
+	Suite      agentHarnessSuiteMetadata     `json:"suite,omitempty"`
 	Privacy    agentHarnessPrivacyConfig     `json:"privacy,omitempty"`
 }
 
@@ -80,6 +81,16 @@ type agentHarnessResultMetadata struct {
 	AllowedPublicContext []string `json:"allowed_public_context,omitempty"`
 	Contamination        string   `json:"contamination,omitempty"`
 	Publicity            string   `json:"publicity,omitempty"`
+}
+
+type agentHarnessSuiteMetadata struct {
+	SuiteID        uuid.UUID       `json:"suite_id,omitempty"`
+	SuiteVersion   int32           `json:"suite_version,omitempty"`
+	SuiteVersionID uuid.UUID       `json:"suite_version_id,omitempty"`
+	TaskID         uuid.UUID       `json:"task_id,omitempty"`
+	TaskSource     string          `json:"task_source,omitempty"`
+	TaskMetadata   json.RawMessage `json:"task_metadata,omitempty"`
+	PublicPrompt   string          `json:"public_prompt,omitempty"`
 }
 
 type agentHarnessPrivacyConfig struct {
@@ -821,6 +832,7 @@ func (a *Activities) evaluateAgentHarnessExecution(ctx context.Context, executio
 				"llm_judges":         len(evaluation.LLMJudgeResults),
 				"dimensions":         evaluation.DimensionScores,
 				"result":             config.Result,
+				"suite":              config.Suite,
 				"privacy":            config.Privacy,
 			}); err != nil {
 				return err
@@ -854,7 +866,7 @@ func (a *Activities) recordAgentHarnessEvaluationControls(ctx context.Context, e
 			}
 		}
 	}
-	if !agentHarnessResultMetadataEmpty(config.Result) {
+	if !agentHarnessResultMetadataEmpty(config.Result) || !agentHarnessSuiteMetadataEmpty(config.Suite) {
 		return a.recordAgentHarnessEvent(ctx, executionID, "benchmark.metadata.recorded", "worker", map[string]any{
 			"kind":                   strings.TrimSpace(config.Result.Kind),
 			"benchmark_source":       strings.TrimSpace(config.Result.BenchmarkSource),
@@ -862,6 +874,7 @@ func (a *Activities) recordAgentHarnessEvaluationControls(ctx context.Context, e
 			"allowed_public_context": config.Result.AllowedPublicContext,
 			"contamination":          strings.TrimSpace(config.Result.Contamination),
 			"publicity":              strings.TrimSpace(config.Result.Publicity),
+			"suite":                  config.Suite,
 		})
 	}
 	return nil
@@ -883,6 +896,16 @@ func agentHarnessResultMetadataEmpty(metadata agentHarnessResultMetadata) bool {
 		len(metadata.AllowedPublicContext) == 0 &&
 		strings.TrimSpace(metadata.Contamination) == "" &&
 		strings.TrimSpace(metadata.Publicity) == ""
+}
+
+func agentHarnessSuiteMetadataEmpty(metadata agentHarnessSuiteMetadata) bool {
+	return metadata.SuiteID == uuid.Nil &&
+		metadata.SuiteVersion == 0 &&
+		metadata.SuiteVersionID == uuid.Nil &&
+		metadata.TaskID == uuid.Nil &&
+		strings.TrimSpace(metadata.TaskSource) == "" &&
+		len(metadata.TaskMetadata) == 0 &&
+		strings.TrimSpace(metadata.PublicPrompt) == ""
 }
 
 func (a *Activities) detectAgentHarnessSetupHints(ctx context.Context, executionID uuid.UUID, session sandbox.Session, workdir string, env map[string]string) error {
@@ -1061,6 +1084,12 @@ func (a *Activities) buildAndStoreAgentHarnessScorecard(ctx context.Context, exe
 	evaluation, err := scoring.EvaluateRunAgentWithPrecomputedResults(input, normalizedSpec, validatorResults, nil, llmJudgeResults)
 	if err != nil {
 		return scoring.RunAgentEvaluation{}, err
+	}
+	if !agentHarnessSuiteMetadataEmpty(config.Suite) || !agentHarnessResultMetadataEmpty(config.Result) {
+		evaluation.Metadata = mustMarshalJSON(map[string]any{
+			"agent_harness_suite": config.Suite,
+			"result":              config.Result,
+		})
 	}
 	evaluation.Warnings = append(evaluation.Warnings, judgeWarnings...)
 	if err := a.repo.StoreRunAgentEvaluationResults(ctx, evaluation); err != nil {

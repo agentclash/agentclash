@@ -1123,6 +1123,7 @@ func buildRunAgentScorecardDocument(evaluation scoring.RunAgentEvaluation) (json
 		MetricSummary    map[string]int              `json:"metric_summary"`
 		MetricDetails    []metricDetail              `json:"metric_details,omitempty"`
 		LLMJudgeDetails  []llmJudgeDetail            `json:"llm_judge_details,omitempty"`
+		Metadata         json.RawMessage             `json:"metadata,omitempty"`
 	}
 
 	dimensions := make(map[string]dimensionSummary, len(evaluation.DimensionResults))
@@ -1244,6 +1245,7 @@ func buildRunAgentScorecardDocument(evaluation scoring.RunAgentEvaluation) (json
 		MetricSummary:    metricSummary,
 		MetricDetails:    metricDetails,
 		LLMJudgeDetails:  llmJudgeDetails,
+		Metadata:         cloneJSON(evaluation.Metadata),
 	}
 
 	encoded, err := json.Marshal(document)
