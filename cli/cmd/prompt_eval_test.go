@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestPromptEvalInitWritesScaffold(t *testing.T) {
@@ -174,6 +176,134 @@ func TestPromptEvalValidateJSONEnvelopeForMissingFile(t *testing.T) {
 	}
 	if result.MaxCases != 100 || result.ExitCode != promptEvalExitInvalid {
 		t.Fatalf("unexpected missing-file envelope: %+v", result)
+	}
+}
+
+func TestPromptEvalImportPromptfooBasicConversion(t *testing.T) {
+	path := writePromptEvalFixture(t, `description: refund-import
+prompts:
+  - "Reply to {{input}}"
+providers:
+  - openai:gpt-5.5
+tests:
+  - description: greeting
+    vars:
+      input: Say hello
+    assert:
+      - type: contains
+        value: hello
+      - type: equals
+        value: hello there
+`)
+	stdout := captureStdout(t)
+	err := executeCommand(t, []string{"prompt-eval", "import-promptfoo", path, "--provider-account", "ci-openai"}, "http://unused")
+	out := stdout.finish()
+	if err != nil {
+		t.Fatalf("import-promptfoo error: %v\n%s", err, out)
+	}
+	var cfg promptEvalConfig
+	if err := yaml.Unmarshal([]byte(out), &cfg); err != nil {
+		t.Fatalf("decode imported yaml: %v\n%s", err, out)
+	}
+	if cfg.Name != "refund-import" || cfg.Prompt.Template != "Reply to {{input}}" {
+		t.Fatalf("unexpected imported config: %+v", cfg)
+	}
+	if len(cfg.Models) != 1 || cfg.Models[0].Alias != "gpt-5.5" || cfg.Models[0].ProviderAccount != "ci-openai" {
+		t.Fatalf("models = %+v", cfg.Models)
+	}
+	if len(cfg.Tests) != 1 || cfg.Tests[0].Key != "greeting" || len(cfg.Tests[0].Assert) != 2 {
+		t.Fatalf("tests = %+v", cfg.Tests)
+	}
+	if result := validatePromptEvalConfigForTest(cfg); !result.Valid {
+		t.Fatalf("imported config should validate: %v", result.Errors)
+	}
+}
+
+func TestPromptEvalImportPromptfooWritesOutputWithForce(t *testing.T) {
+	path := writePromptEvalFixture(t, validPromptfooYAML())
+	outPath := filepath.Join(t.TempDir(), "prompt-eval.yaml")
+	err := executeCommand(t, []string{"prompt-eval", "import-promptfoo", path, "--out", outPath}, "http://unused")
+	if err != nil {
+		t.Fatalf("import-promptfoo --out error: %v", err)
+	}
+	if _, err := os.Stat(outPath); err != nil {
+		t.Fatalf("expected output file: %v", err)
+	}
+	err = executeCommand(t, []string{"prompt-eval", "import-promptfoo", path, "--out", outPath}, "http://unused")
+	if err == nil || !strings.Contains(err.Error(), "exit code 5") {
+		t.Fatalf("expected overwrite refusal, got %v", err)
+	}
+	err = executeCommand(t, []string{"prompt-eval", "import-promptfoo", path, "--out", outPath, "--force"}, "http://unused")
+	if err != nil {
+		t.Fatalf("import-promptfoo --force error: %v", err)
+	}
+}
+
+func TestPromptEvalImportPromptfooRejectsUnsupportedAssertions(t *testing.T) {
+	path := writePromptEvalFixture(t, strings.Replace(validPromptfooYAML(), "type: contains", "type: llm-rubric", 1))
+	result := runPromptfooImportJSON(t, path)
+	if result.Valid || !containsPromptEvalMessage(result.Errors, "llm-rubric") {
+		t.Fatalf("errors = %v", result.Errors)
+	}
+}
+
+func TestPromptEvalImportPromptfooRejectsSchemalessIsJSON(t *testing.T) {
+	path := writePromptEvalFixture(t, strings.Replace(validPromptfooYAML(), "type: contains\n        value: hello", "type: is-json", 1))
+	result := runPromptfooImportJSON(t, path)
+	if result.Valid || !containsPromptEvalMessage(result.Errors, "is-json without a JSON schema") {
+		t.Fatalf("errors = %v", result.Errors)
+	}
+}
+
+func TestPromptEvalImportPromptfooRejectsNunjucksControlFlow(t *testing.T) {
+	path := writePromptEvalFixture(t, strings.Replace(validPromptfooYAML(), "Reply to {{input}}", "{% if input %}{{input}}{% endif %}", 1))
+	result := runPromptfooImportJSON(t, path)
+	if result.Valid || !containsPromptEvalMessage(result.Errors, "Nunjucks control flow") {
+		t.Fatalf("errors = %v", result.Errors)
+	}
+}
+
+func TestPromptEvalImportPromptfooRejectsFilePrompt(t *testing.T) {
+	path := writePromptEvalFixture(t, strings.Replace(validPromptfooYAML(), `"Reply to {{input}}"`, `file://prompts/refund.txt`, 1))
+	result := runPromptfooImportJSON(t, path)
+	if result.Valid || !containsPromptEvalMessage(result.Errors, "file:// prompts") {
+		t.Fatalf("errors = %v", result.Errors)
+	}
+}
+
+func TestPromptEvalImportPromptfooRejectsPerTestUnsupportedFields(t *testing.T) {
+	path := writePromptEvalFixture(t, strings.Replace(validPromptfooYAML(), "    vars:\n      input: hello", "    provider: openai:gpt-4\n    transform: output.toUpperCase()\n    vars:\n      input: hello", 1))
+	result := runPromptfooImportJSON(t, path)
+	if result.Valid || !containsPromptEvalMessage(result.Errors, "unsupported promptfoo fields") {
+		t.Fatalf("errors = %v", result.Errors)
+	}
+	if !containsPromptEvalMessage(result.Errors, "provider") || !containsPromptEvalMessage(result.Errors, "transform") {
+		t.Fatalf("errors should name unsupported fields: %v", result.Errors)
+	}
+}
+
+func TestPromptEvalImportPromptfooRejectsIncompatibleRegex(t *testing.T) {
+	path := writePromptEvalFixture(t, strings.Replace(validPromptfooYAML(), "type: contains\n        value: hello", "type: regex\n        value: \"(?<=hello) world\"", 1))
+	result := runPromptfooImportJSON(t, path)
+	if result.Valid || !containsPromptEvalMessage(result.Errors, "not RE2-compatible") {
+		t.Fatalf("errors = %v", result.Errors)
+	}
+}
+
+func TestPromptEvalImportPromptfooIContainsLossyRules(t *testing.T) {
+	alpha := writePromptEvalFixture(t, strings.Replace(validPromptfooYAML(), "type: contains", "type: icontains", 1))
+	result := runPromptfooImportJSON(t, alpha)
+	if result.Valid || !containsPromptEvalMessage(result.Errors, "icontains") {
+		t.Fatalf("expected icontains refusal, got %+v", result)
+	}
+	result = runPromptfooImportJSONWithArgs(t, []string{"prompt-eval", "import-promptfoo", alpha, "--lossy", "--json"})
+	if result.Valid || !containsPromptEvalMessage(result.Errors, "icontains") {
+		t.Fatalf("lettered icontains should still be refused under --lossy, got %+v", result)
+	}
+	neutral := writePromptEvalFixture(t, strings.Replace(validPromptfooYAML(), "type: contains\n        value: hello", "type: icontains\n        value: \"123\"", 1))
+	result = runPromptfooImportJSONWithArgs(t, []string{"prompt-eval", "import-promptfoo", neutral, "--lossy", "--json"})
+	if !result.Valid {
+		t.Fatalf("case-neutral icontains should import under --lossy: %v", result.Errors)
 	}
 }
 
@@ -699,6 +829,52 @@ thresholds:
   dimensions:
     correctness: 0.9
 `
+}
+
+func validPromptfooYAML() string {
+	return `description: promptfoo-import
+prompts:
+  - "Reply to {{input}}"
+providers:
+  - openai:gpt-5.5
+tests:
+  - description: greeting
+    vars:
+      input: hello
+    assert:
+      - type: contains
+        value: hello
+`
+}
+
+func validatePromptEvalConfigForTest(cfg promptEvalConfig) promptEvalValidationResult {
+	result := promptEvalValidationResult{SchemaVersion: promptEvalSchemaVersion, Valid: true, AssertionSignatures: []string{}, MaxCases: 100}
+	result.ModelCount = len(cfg.Models)
+	result.TestCount = len(cfg.Tests)
+	result.CaseCount = len(cfg.Models) * len(cfg.Tests)
+	validatePromptEvalConfig(cfg, 100, &result)
+	result.Valid = len(result.Errors) == 0
+	if !result.Valid {
+		result.ExitCode = promptEvalExitInvalid
+	}
+	return result
+}
+
+func runPromptfooImportJSON(t *testing.T, path string) promptfooImportResult {
+	t.Helper()
+	return runPromptfooImportJSONWithArgs(t, []string{"prompt-eval", "import-promptfoo", path, "--json"})
+}
+
+func runPromptfooImportJSONWithArgs(t *testing.T, args []string) promptfooImportResult {
+	t.Helper()
+	stdout := captureStdout(t)
+	_ = executeCommand(t, args, "http://unused")
+	out := stdout.finish()
+	var result promptfooImportResult
+	if err := json.Unmarshal([]byte(out), &result); err != nil {
+		t.Fatalf("decode promptfoo import json: %v\n%s", err, out)
+	}
+	return result
 }
 
 func allAssertionsPromptEvalYAML() string {

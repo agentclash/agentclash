@@ -32,6 +32,7 @@ func init() {
 	promptEvalCmd.AddCommand(promptEvalValidateCmd)
 	promptEvalCmd.AddCommand(promptEvalRunCmd)
 	promptEvalCmd.AddCommand(promptEvalResultsCmd)
+	promptEvalCmd.AddCommand(promptEvalImportPromptfooCmd)
 
 	promptEvalInitCmd.Flags().Bool("force", false, "Overwrite an existing file")
 	promptEvalInitCmd.Flags().String("name", "", "Prompt eval name (defaults from the file name)")
@@ -47,6 +48,11 @@ func init() {
 	promptEvalRunCmd.Flags().Duration("timeout", 20*time.Minute, "Maximum time to wait while following experiments; 0 disables the timeout")
 	promptEvalRunCmd.Flags().Float64("threshold", -1, "Override thresholds.assertion_pass_rate for this run")
 	promptEvalResultsCmd.Flags().Float64("threshold", -1, "Override the assertion pass-rate gate for fetched results")
+	promptEvalImportPromptfooCmd.Flags().String("out", "", "Write the converted prompt eval YAML to this path instead of stdout")
+	promptEvalImportPromptfooCmd.Flags().Bool("force", false, "Overwrite --out when it already exists")
+	promptEvalImportPromptfooCmd.Flags().Bool("lossy", false, "Allow documented lossy conversions")
+	promptEvalImportPromptfooCmd.Flags().String("name", "", "Prompt eval name for the generated config")
+	promptEvalImportPromptfooCmd.Flags().String("provider-account", "default", "Provider account name or id to use for imported provider aliases")
 }
 
 var promptEvalCmd = &cobra.Command{
@@ -200,6 +206,57 @@ var promptEvalResultsCmd = &cobra.Command{
 	},
 }
 
+var promptEvalImportPromptfooCmd = &cobra.Command{
+	Use:   "import-promptfoo <file>",
+	Short: "Convert a safe Promptfoo subset into an AgentClash prompt eval config",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		rc := GetRunContext(cmd)
+		outPath, _ := cmd.Flags().GetString("out")
+		force, _ := cmd.Flags().GetBool("force")
+		lossy, _ := cmd.Flags().GetBool("lossy")
+		name, _ := cmd.Flags().GetString("name")
+		providerAccount, _ := cmd.Flags().GetString("provider-account")
+		result := importPromptfooConfig(args[0], promptfooImportOptions{Name: name, ProviderAccount: providerAccount, Lossy: lossy})
+		if result.Valid && outPath != "" {
+			if !force {
+				if _, err := os.Stat(outPath); err == nil {
+					result.Valid = false
+					result.Errors = append(result.Errors, fmt.Sprintf("%s already exists; pass --force to overwrite", outPath))
+					result.ExitCode = promptEvalExitInvalid
+				}
+			}
+			if result.Valid {
+				if dir := filepath.Dir(outPath); dir != "." && dir != "" {
+					if err := os.MkdirAll(dir, 0755); err != nil {
+						result.Valid = false
+						result.Errors = append(result.Errors, fmt.Sprintf("creating %s: %v", dir, err))
+						result.ExitCode = promptEvalExitInvalid
+					}
+				}
+			}
+			if result.Valid {
+				if err := os.WriteFile(outPath, result.YAML, 0644); err != nil {
+					result.Valid = false
+					result.Errors = append(result.Errors, fmt.Sprintf("writing %s: %v", outPath, err))
+					result.ExitCode = promptEvalExitInvalid
+				}
+			}
+		}
+		if rc.Output.IsStructured() {
+			if err := rc.Output.PrintRaw(result); err != nil {
+				return err
+			}
+		} else {
+			renderPromptfooImportResult(rc, result, outPath)
+		}
+		if !result.Valid {
+			return &ExitCodeError{Code: promptEvalExitInvalid}
+		}
+		return nil
+	},
+}
+
 type promptEvalConfig struct {
 	SchemaVersion int                  `yaml:"schemaVersion" json:"schemaVersion"`
 	Name          string               `yaml:"name" json:"name"`
@@ -239,6 +296,50 @@ type promptEvalAssertion struct {
 type promptEvalThresholds struct {
 	AssertionPassRate *float64           `yaml:"assertion_pass_rate,omitempty" json:"assertion_pass_rate,omitempty"`
 	Dimensions        map[string]float64 `yaml:"dimensions,omitempty" json:"dimensions,omitempty"`
+}
+
+type promptfooImportOptions struct {
+	Name            string
+	ProviderAccount string
+	Lossy           bool
+}
+
+type promptfooImportResult struct {
+	SchemaVersion       int                      `json:"schemaVersion" yaml:"schemaVersion"`
+	Valid               bool                     `json:"valid" yaml:"valid"`
+	SourcePath          string                   `json:"source_path" yaml:"source_path"`
+	Config              promptEvalConfig         `json:"config,omitempty" yaml:"config,omitempty"`
+	CompatibilityMatrix []promptfooImportFeature `json:"compatibility_matrix" yaml:"compatibility_matrix"`
+	Warnings            []string                 `json:"warnings,omitempty" yaml:"warnings,omitempty"`
+	Errors              []string                 `json:"errors,omitempty" yaml:"errors,omitempty"`
+	ExitCode            int                      `json:"exit_code" yaml:"exit_code"`
+	YAML                []byte                   `json:"-" yaml:"-"`
+}
+
+type promptfooImportFeature struct {
+	Feature string `json:"feature" yaml:"feature"`
+	Status  string `json:"status" yaml:"status"`
+	Notes   string `json:"notes" yaml:"notes"`
+}
+
+type promptfooConfig struct {
+	Description string              `yaml:"description"`
+	Prompts     any                 `yaml:"prompts"`
+	Providers   any                 `yaml:"providers"`
+	Tests       []promptfooTestCase `yaml:"tests"`
+}
+
+type promptfooTestCase struct {
+	Description string                 `yaml:"description"`
+	Vars        map[string]any         `yaml:"vars"`
+	Assert      []promptfooAssertion   `yaml:"assert"`
+	Options     map[string]any         `yaml:"options"`
+	Raw         map[string]interface{} `yaml:",inline"`
+}
+
+type promptfooAssertion struct {
+	Type  string `yaml:"type"`
+	Value any    `yaml:"value,omitempty"`
 }
 
 type promptEvalValidationResult struct {
@@ -430,6 +531,208 @@ func validatePromptEvalFileWithConfig(path string, maxCases int) (promptEvalConf
 		result.ExitCode = promptEvalExitInvalid
 	}
 	return cfg, result
+}
+
+func importPromptfooConfig(path string, options promptfooImportOptions) promptfooImportResult {
+	result := promptfooImportResult{
+		SchemaVersion:       promptEvalSchemaVersion,
+		Valid:               true,
+		SourcePath:          path,
+		CompatibilityMatrix: promptfooCompatibilityMatrix(options.Lossy),
+		ExitCode:            0,
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		result.Valid = false
+		result.Errors = append(result.Errors, fmt.Sprintf("reading %s: %v", path, err))
+		result.ExitCode = promptEvalExitInvalid
+		return result
+	}
+	var source promptfooConfig
+	decoder := yaml.NewDecoder(bytes.NewReader(data))
+	decoder.KnownFields(true)
+	if err := decoder.Decode(&source); err != nil {
+		result.Valid = false
+		result.Errors = append(result.Errors, fmt.Sprintf("parsing promptfoo config: %v", err))
+		result.ExitCode = promptEvalExitInvalid
+		return result
+	}
+	cfg := promptEvalConfig{
+		SchemaVersion: promptEvalSchemaVersion,
+		Name:          promptfooImportName(path, options.Name, source.Description),
+		Thresholds: promptEvalThresholds{
+			AssertionPassRate: floatPtrPromptEval(1),
+		},
+	}
+	prompt, errs := promptfooImportPrompt(source.Prompts)
+	result.Errors = append(result.Errors, errs...)
+	cfg.Prompt.Template = prompt
+	if strings.Contains(prompt, "{%") || strings.Contains(prompt, "{#") {
+		result.Errors = append(result.Errors, "promptfoo prompts use unsupported Nunjucks control flow; only simple {{var}} interpolation can be imported")
+	}
+	cfg.Models, errs = promptfooImportProviders(source.Providers, options.ProviderAccount)
+	result.Errors = append(result.Errors, errs...)
+	cfg.Tests, errs = promptfooImportTests(source.Tests, options.Lossy)
+	result.Errors = append(result.Errors, errs...)
+	result.Config = cfg
+	if len(result.Errors) == 0 {
+		validation := promptEvalValidationResult{SchemaVersion: promptEvalSchemaVersion, Path: path, Valid: true, AssertionSignatures: []string{}, MaxCases: 100}
+		validation.ModelCount = len(cfg.Models)
+		validation.TestCount = len(cfg.Tests)
+		validation.CaseCount = len(cfg.Models) * len(cfg.Tests)
+		validatePromptEvalConfig(cfg, 100, &validation)
+		if len(validation.Errors) > 0 {
+			result.Errors = append(result.Errors, validation.Errors...)
+		}
+		result.Warnings = append(result.Warnings, validation.Warnings...)
+	}
+	if len(result.Errors) > 0 {
+		result.Valid = false
+		result.ExitCode = promptEvalExitInvalid
+		return result
+	}
+	out, err := yaml.Marshal(cfg)
+	if err != nil {
+		result.Valid = false
+		result.Errors = append(result.Errors, fmt.Sprintf("serializing prompt eval config: %v", err))
+		result.ExitCode = promptEvalExitInvalid
+		return result
+	}
+	result.YAML = out
+	return result
+}
+
+func promptfooCompatibilityMatrix(lossy bool) []promptfooImportFeature {
+	lossyStatus := "refused"
+	if lossy {
+		lossyStatus = "lossy when case-neutral"
+	}
+	return []promptfooImportFeature{
+		{Feature: "prompts", Status: "supported", Notes: "exactly one inline string prompt"},
+		{Feature: "providers", Status: "supported", Notes: "inline string providers become model aliases"},
+		{Feature: "tests.vars", Status: "supported", Notes: "inline vars maps only"},
+		{Feature: "equals/is-equal", Status: "supported", Notes: "maps to exact_match"},
+		{Feature: "contains", Status: "supported", Notes: "maps to contains"},
+		{Feature: "regex", Status: "supported", Notes: "requires RE2-compatible pattern"},
+		{Feature: "is-json with schema", Status: "supported", Notes: "maps to json_schema"},
+		{Feature: "icontains", Status: lossyStatus, Notes: "case-insensitive semantics are not lossless"},
+		{Feature: "llm-rubric/model-graded", Status: "refused", Notes: "judge semantics are not represented in prompt-eval V1"},
+		{Feature: "javascript/python assertions", Status: "refused", Notes: "custom code is not imported"},
+	}
+}
+
+func promptfooImportPrompt(raw any) (string, []string) {
+	switch value := raw.(type) {
+	case string:
+		if strings.HasPrefix(strings.TrimSpace(value), "file://") {
+			return "", []string{"promptfoo file:// prompts are unsupported; inline the prompt before importing"}
+		}
+		return value, nil
+	case []any:
+		if len(value) != 1 {
+			return "", []string{"promptfoo prompts must contain exactly one inline prompt string"}
+		}
+		prompt, ok := value[0].(string)
+		if !ok {
+			return "", []string{"promptfoo prompts[0] must be an inline string"}
+		}
+		if strings.HasPrefix(strings.TrimSpace(prompt), "file://") {
+			return "", []string{"promptfoo file:// prompts are unsupported; inline the prompt before importing"}
+		}
+		return prompt, nil
+	case nil:
+		return "", []string{"promptfoo prompts is required"}
+	default:
+		return "", []string{"promptfoo prompts must be an inline string or a single-item string list"}
+	}
+}
+
+func promptfooImportProviders(raw any, providerAccount string) ([]promptEvalModel, []string) {
+	values := promptfooStringList(raw)
+	if len(values) == 0 {
+		return nil, []string{"promptfoo providers must include at least one inline string provider"}
+	}
+	models := make([]promptEvalModel, 0, len(values))
+	for i, provider := range values {
+		alias := promptfooProviderAlias(provider)
+		if alias == "" {
+			return nil, []string{fmt.Sprintf("providers[%d] must be an inline string provider", i)}
+		}
+		models = append(models, promptEvalModel{Alias: alias, ProviderAccount: strings.TrimSpace(providerAccount)})
+	}
+	return models, nil
+}
+
+func promptfooImportTests(tests []promptfooTestCase, lossy bool) ([]promptEvalTest, []string) {
+	if len(tests) == 0 {
+		return nil, []string{"promptfoo tests must include at least one inline test"}
+	}
+	out := make([]promptEvalTest, 0, len(tests))
+	errors := []string{}
+	for i, test := range tests {
+		if len(test.Raw) > 0 {
+			keys := make([]string, 0, len(test.Raw))
+			for key := range test.Raw {
+				keys = append(keys, key)
+			}
+			sort.Strings(keys)
+			errors = append(errors, fmt.Sprintf("tests[%d] contains unsupported promptfoo fields: %s", i, strings.Join(keys, ", ")))
+		}
+		if len(test.Options) > 0 {
+			errors = append(errors, fmt.Sprintf("tests[%d].options is unsupported by the importer", i))
+		}
+		if len(test.Vars) == 0 {
+			errors = append(errors, fmt.Sprintf("tests[%d].vars must be an inline map", i))
+		}
+		assertions, assertionErrs := promptfooImportAssertions(i, test.Assert, lossy)
+		errors = append(errors, assertionErrs...)
+		out = append(out, promptEvalTest{
+			Key:    promptfooTestKey(i, test.Description),
+			Vars:   test.Vars,
+			Assert: assertions,
+		})
+	}
+	return out, errors
+}
+
+func promptfooImportAssertions(testIndex int, assertions []promptfooAssertion, lossy bool) ([]promptEvalAssertion, []string) {
+	if len(assertions) == 0 {
+		return nil, []string{fmt.Sprintf("tests[%d].assert must include at least one supported assertion", testIndex)}
+	}
+	out := make([]promptEvalAssertion, 0, len(assertions))
+	errors := []string{}
+	for i, assertion := range assertions {
+		kind := strings.TrimSpace(assertion.Type)
+		switch kind {
+		case "equals", "is-equal":
+			out = append(out, promptEvalAssertion{Type: "exact_match", Value: assertion.Value, Metric: "correctness"})
+		case "contains":
+			out = append(out, promptEvalAssertion{Type: "contains", Value: assertion.Value, Metric: "correctness"})
+		case "icontains":
+			if !lossy || promptfooHasASCIILetters(promptEvalAssertionValueString(assertion.Value)) {
+				errors = append(errors, fmt.Sprintf("tests[%d].assert[%d] icontains is case-insensitive and cannot be imported losslessly", testIndex, i))
+				continue
+			}
+			out = append(out, promptEvalAssertion{Type: "contains", Value: assertion.Value, Metric: "correctness"})
+		case "regex":
+			pattern := promptEvalAssertionValueString(assertion.Value)
+			if err := promptfooValidateRegex(pattern); err != nil {
+				errors = append(errors, fmt.Sprintf("tests[%d].assert[%d] regex is not RE2-compatible: %v", testIndex, i, err))
+				continue
+			}
+			out = append(out, promptEvalAssertion{Type: "regex", Value: pattern, Metric: "correctness"})
+		case "is-json":
+			schema, ok := promptfooJSONSchemaValue(assertion.Value)
+			if !ok {
+				errors = append(errors, fmt.Sprintf("tests[%d].assert[%d] is-json without a JSON schema is unsupported; use a schema-bearing is-json assertion", testIndex, i))
+				continue
+			}
+			out = append(out, promptEvalAssertion{Type: "json_schema", Value: schema, Metric: "correctness"})
+		default:
+			errors = append(errors, fmt.Sprintf("tests[%d].assert[%d].type %q is unsupported by the promptfoo importer", testIndex, i, kind))
+		}
+	}
+	return out, errors
 }
 
 func validatePromptEvalConfig(cfg promptEvalConfig, maxCases int, result *promptEvalValidationResult) {
@@ -1342,6 +1645,121 @@ func promptEvalTemplateVars(template string) ([]string, []string) {
 	return sortedPromptEvalKeys(vars), errors
 }
 
+func promptfooImportName(path, override, description string) string {
+	if strings.TrimSpace(override) != "" {
+		return strings.TrimSpace(override)
+	}
+	if strings.TrimSpace(description) != "" {
+		return strings.TrimSpace(description)
+	}
+	name := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+	if name == "" || name == "promptfooconfig" {
+		return "imported-promptfoo"
+	}
+	return slugifyChallengePackName(name)
+}
+
+func promptfooStringList(raw any) []string {
+	switch value := raw.(type) {
+	case string:
+		if strings.TrimSpace(value) == "" {
+			return nil
+		}
+		return []string{value}
+	case []any:
+		out := make([]string, 0, len(value))
+		for _, item := range value {
+			text, ok := item.(string)
+			if !ok || strings.TrimSpace(text) == "" {
+				return nil
+			}
+			out = append(out, text)
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
+func promptfooProviderAlias(provider string) string {
+	provider = strings.TrimSpace(provider)
+	if provider == "" || strings.HasPrefix(provider, "file://") || strings.Contains(provider, "{{") {
+		return ""
+	}
+	parts := strings.Split(provider, ":")
+	alias := strings.TrimSpace(parts[len(parts)-1])
+	if alias == "" || strings.Contains(alias, "/") {
+		return ""
+	}
+	return alias
+}
+
+func promptfooTestKey(index int, description string) string {
+	base := strings.TrimSpace(description)
+	if base == "" {
+		base = fmt.Sprintf("test-%d", index+1)
+	}
+	return slugifyChallengePackName(base)
+}
+
+func promptfooValidateRegex(pattern string) error {
+	if strings.Contains(pattern, "(?<=") || strings.Contains(pattern, "(?<!") {
+		return fmt.Errorf("lookbehind is not supported by RE2")
+	}
+	if regexp.MustCompile(`\\[1-9]`).MatchString(pattern) {
+		return fmt.Errorf("backreferences are not supported by RE2")
+	}
+	_, err := regexp.Compile(pattern)
+	return err
+}
+
+func promptfooJSONSchemaValue(value any) (string, bool) {
+	if value == nil {
+		return "", false
+	}
+	var schema any
+	switch typed := value.(type) {
+	case map[string]any:
+		if nested := typed["schema"]; nested != nil {
+			schema = nested
+		} else {
+			schema = typed
+		}
+	case map[interface{}]interface{}:
+		schema = typed
+	case string:
+		text := strings.TrimSpace(typed)
+		if text == "" {
+			return "", false
+		}
+		var decoded any
+		if err := json.Unmarshal([]byte(text), &decoded); err != nil {
+			return "", false
+		}
+		schema = decoded
+	default:
+		schema = typed
+	}
+	data, err := json.Marshal(schema)
+	if err != nil || string(data) == "null" {
+		return "", false
+	}
+	var decoded any
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return "", false
+	}
+	return string(data), true
+}
+
+func promptfooHasASCIILetters(value string) bool {
+	for _, r := range value {
+		if (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') {
+			return true
+		}
+	}
+	return false
+}
+
 func promptEvalAssertionsForTest(test promptEvalTest) []promptEvalAssertion {
 	if len(test.Assert) > 0 {
 		return test.Assert
@@ -1448,6 +1866,36 @@ func renderPromptEvalResults(rc *RunContext, result promptEvalResultsEnvelope) {
 		rows = append(rows, []string{row.CaseKey, row.AssertionKey, row.Result, score, row.Error})
 	}
 	rc.Output.PrintTable([]output.Column{{Header: "Case"}, {Header: "Assertion"}, {Header: "Result"}, {Header: "Score"}, {Header: "Error"}}, rows)
+}
+
+func renderPromptfooImportResult(rc *RunContext, result promptfooImportResult, outPath string) {
+	if result.Valid {
+		if outPath != "" {
+			rc.Output.PrintSuccess(fmt.Sprintf("Converted %s to %s", result.SourcePath, outPath))
+		} else {
+			fmt.Fprint(rc.Output.Writer(), string(result.YAML))
+		}
+	} else {
+		rc.Output.PrintError("Promptfoo config could not be imported safely")
+	}
+	for _, msg := range result.Errors {
+		fmt.Fprintf(os.Stderr, "  - %s\n", msg)
+	}
+	for _, warning := range result.Warnings {
+		rc.Output.PrintWarning(warning)
+	}
+	rows := make([][]string, 0, len(result.CompatibilityMatrix))
+	for _, item := range result.CompatibilityMatrix {
+		rows = append(rows, []string{item.Feature, item.Status, item.Notes})
+	}
+	if result.Valid && outPath == "" {
+		fmt.Fprintln(os.Stderr, "Compatibility matrix:")
+		for _, item := range result.CompatibilityMatrix {
+			fmt.Fprintf(os.Stderr, "  - %s: %s (%s)\n", item.Feature, item.Status, item.Notes)
+		}
+		return
+	}
+	rc.Output.PrintTable([]output.Column{{Header: "Feature"}, {Header: "Status"}, {Header: "Notes"}}, rows)
 }
 
 func combinePromptEvalSummaries(envelopes []promptEvalResultsEnvelope) promptEvalResultsSummary {
