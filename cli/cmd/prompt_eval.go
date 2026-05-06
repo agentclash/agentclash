@@ -624,6 +624,9 @@ func promptfooCompatibilityMatrix(lossy bool) []promptfooImportFeature {
 func promptfooImportPrompt(raw any) (string, []string) {
 	switch value := raw.(type) {
 	case string:
+		if strings.HasPrefix(strings.TrimSpace(value), "file://") {
+			return "", []string{"promptfoo file:// prompts are unsupported; inline the prompt before importing"}
+		}
 		return value, nil
 	case []any:
 		if len(value) != 1 {
@@ -632,6 +635,9 @@ func promptfooImportPrompt(raw any) (string, []string) {
 		prompt, ok := value[0].(string)
 		if !ok {
 			return "", []string{"promptfoo prompts[0] must be an inline string"}
+		}
+		if strings.HasPrefix(strings.TrimSpace(prompt), "file://") {
+			return "", []string{"promptfoo file:// prompts are unsupported; inline the prompt before importing"}
 		}
 		return prompt, nil
 	case nil:
@@ -664,6 +670,14 @@ func promptfooImportTests(tests []promptfooTestCase, lossy bool) ([]promptEvalTe
 	out := make([]promptEvalTest, 0, len(tests))
 	errors := []string{}
 	for i, test := range tests {
+		if len(test.Raw) > 0 {
+			keys := make([]string, 0, len(test.Raw))
+			for key := range test.Raw {
+				keys = append(keys, key)
+			}
+			sort.Strings(keys)
+			errors = append(errors, fmt.Sprintf("tests[%d] contains unsupported promptfoo fields: %s", i, strings.Join(keys, ", ")))
+		}
 		if len(test.Options) > 0 {
 			errors = append(errors, fmt.Sprintf("tests[%d].options is unsupported by the importer", i))
 		}

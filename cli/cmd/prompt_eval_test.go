@@ -263,6 +263,25 @@ func TestPromptEvalImportPromptfooRejectsNunjucksControlFlow(t *testing.T) {
 	}
 }
 
+func TestPromptEvalImportPromptfooRejectsFilePrompt(t *testing.T) {
+	path := writePromptEvalFixture(t, strings.Replace(validPromptfooYAML(), `"Reply to {{input}}"`, `file://prompts/refund.txt`, 1))
+	result := runPromptfooImportJSON(t, path)
+	if result.Valid || !containsPromptEvalMessage(result.Errors, "file:// prompts") {
+		t.Fatalf("errors = %v", result.Errors)
+	}
+}
+
+func TestPromptEvalImportPromptfooRejectsPerTestUnsupportedFields(t *testing.T) {
+	path := writePromptEvalFixture(t, strings.Replace(validPromptfooYAML(), "    vars:\n      input: hello", "    provider: openai:gpt-4\n    transform: output.toUpperCase()\n    vars:\n      input: hello", 1))
+	result := runPromptfooImportJSON(t, path)
+	if result.Valid || !containsPromptEvalMessage(result.Errors, "unsupported promptfoo fields") {
+		t.Fatalf("errors = %v", result.Errors)
+	}
+	if !containsPromptEvalMessage(result.Errors, "provider") || !containsPromptEvalMessage(result.Errors, "transform") {
+		t.Fatalf("errors should name unsupported fields: %v", result.Errors)
+	}
+}
+
 func TestPromptEvalImportPromptfooRejectsIncompatibleRegex(t *testing.T) {
 	path := writePromptEvalFixture(t, strings.Replace(validPromptfooYAML(), "type: contains\n        value: hello", "type: regex\n        value: \"(?<=hello) world\"", 1))
 	result := runPromptfooImportJSON(t, path)
