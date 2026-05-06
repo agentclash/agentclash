@@ -581,6 +581,7 @@ func TestAgentHarnessSuiteRoutesCreateListAndRun(t *testing.T) {
 	router.Post("/v1/workspaces/{workspaceID}/agent-harness-suites", createAgentHarnessSuiteHandler(slog.Default(), service))
 	router.Get("/v1/workspaces/{workspaceID}/agent-harness-suites", listAgentHarnessSuitesHandler(slog.Default(), service))
 	router.Get("/v1/workspaces/{workspaceID}/agent-harness-suites/{suiteID}/tasks", listAgentHarnessSuiteTasksHandler(slog.Default(), service))
+	router.Get("/v1/workspaces/{workspaceID}/agent-harness-suites/{suiteID}/rankings", getAgentHarnessSuiteRankingHandler(slog.Default(), service))
 	router.Post("/v1/workspaces/{workspaceID}/agent-harness-suites/{suiteID}/runs", startAgentHarnessSuiteRunHandler(slog.Default(), service))
 
 	createReq := httptest.NewRequest(http.MethodPost, "/v1/workspaces/"+workspaceID.String()+"/agent-harness-suites", bytes.NewBufferString(`{
@@ -631,6 +632,27 @@ func TestAgentHarnessSuiteRoutesCreateListAndRun(t *testing.T) {
 	}
 	if len(listedTasks.Items) != 1 || listedTasks.Items[0].ID == uuid.Nil || listedTasks.Items[0].PublicPrompt == "" {
 		t.Fatalf("listed tasks = %#v, want public task with id", listedTasks.Items)
+	}
+
+	service.ranking = repository.AgentHarnessSuiteRankingRecord{
+		SuiteID:        suite.ID,
+		SuiteVersionID: suite.CurrentVersionID,
+		SchemaVersion:  "2026-05-06",
+		Ranking:        json.RawMessage(`{"schema_version":"2026-05-06","rankings":[{"rank":1}]}`),
+		ComputedAt:     time.Now().UTC(),
+	}
+	rankingReq := httptest.NewRequest(http.MethodGet, "/v1/workspaces/"+workspaceID.String()+"/agent-harness-suites/"+suite.ID.String()+"/rankings?k=3", nil)
+	rankingRec := httptest.NewRecorder()
+	router.ServeHTTP(rankingRec, rankingReq)
+	if rankingRec.Code != http.StatusOK {
+		t.Fatalf("ranking status = %d, body %s", rankingRec.Code, rankingRec.Body.String())
+	}
+	var ranked getAgentHarnessSuiteRankingResponse
+	if err := json.Unmarshal(rankingRec.Body.Bytes(), &ranked); err != nil {
+		t.Fatalf("decode ranking: %v", err)
+	}
+	if !bytes.Contains(ranked.Ranking, []byte(`"rankings"`)) {
+		t.Fatalf("ranking payload = %s, want raw ranking document", ranked.Ranking)
 	}
 
 	runReq := httptest.NewRequest(http.MethodPost, "/v1/workspaces/"+workspaceID.String()+"/agent-harness-suites/"+suite.ID.String()+"/runs", bytes.NewBufferString(`{
@@ -1231,6 +1253,7 @@ type fakeAgentHarnessRepo struct {
 	suite                   repository.AgentHarnessSuite
 	suites                  []repository.AgentHarnessSuite
 	suiteTasks              []repository.AgentHarnessSuiteTask
+	ranking                 repository.AgentHarnessSuiteRankingRecord
 	execution               repository.AgentHarnessExecution
 	retryExecution          repository.AgentHarnessExecution
 	executions              []repository.AgentHarnessExecution
@@ -1338,6 +1361,10 @@ func (f *fakeAgentHarnessRepo) ListAgentHarnessSuiteTasksByVersionID(context.Con
 	return f.suiteTasks, nil
 }
 
+func (f *fakeAgentHarnessRepo) BuildAgentHarnessSuiteRanking(context.Context, repository.BuildAgentHarnessSuiteRankingParams) (repository.AgentHarnessSuiteRankingRecord, error) {
+	return f.ranking, nil
+}
+
 func (f *fakeAgentHarnessRepo) CreateAgentHarnessExecution(_ context.Context, p repository.CreateAgentHarnessExecutionParams) (repository.AgentHarnessExecution, error) {
 	f.createdExecution = p
 	f.createdExecutions = append(f.createdExecutions, p)
@@ -1406,6 +1433,7 @@ type fakeAgentHarnessService struct {
 	harnesses               []repository.AgentHarness
 	suites                  []repository.AgentHarnessSuite
 	suiteTasks              []repository.AgentHarnessSuiteTask
+	ranking                 repository.AgentHarnessSuiteRankingRecord
 	executions              []repository.AgentHarnessExecution
 	events                  []repository.AgentHarnessExecutionEvent
 	createdInput            CreateAgentHarnessInput
@@ -1465,6 +1493,10 @@ func (f *fakeAgentHarnessService) ListAgentHarnessSuites(context.Context, Caller
 
 func (f *fakeAgentHarnessService) ListAgentHarnessSuiteTasks(context.Context, Caller, uuid.UUID, uuid.UUID) ([]repository.AgentHarnessSuiteTask, error) {
 	return f.suiteTasks, nil
+}
+
+func (f *fakeAgentHarnessService) GetAgentHarnessSuiteRanking(context.Context, Caller, uuid.UUID, uuid.UUID, int) (repository.AgentHarnessSuiteRankingRecord, error) {
+	return f.ranking, nil
 }
 
 func (f *fakeAgentHarnessService) StartAgentHarnessSuiteRun(_ context.Context, _ Caller, workspaceID uuid.UUID, suiteID uuid.UUID, input StartAgentHarnessSuiteRunInput) ([]repository.AgentHarnessExecution, error) {
