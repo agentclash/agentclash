@@ -493,6 +493,7 @@ export interface AgentHarnessExecution {
   agent_harness_id: string;
   status: AgentHarnessExecutionStatus;
   status_reason?: string;
+  error_message?: string;
   harness_snapshot: unknown;
   execution_config_snapshot: unknown;
   evaluation_config_snapshot: unknown;
