@@ -1,10 +1,10 @@
-# Enterprise User POV
+# Enterprise User POV — Future Vision
 
-Status: narrative product and positioning doc
+Status: **v3 vision doc — not current roadmap.** Moved from `docs/product/` on 2026-04-21 as part of the v1 refocus on engineer dev-tool positioning. See `docs/ROADMAP.md` for the v1/vNext/v3 split and what drives roadmap today vs later.
 
 Last updated: 2026-03-15
 
-Purpose: show how the best version of AgentClash should feel to a large-enterprise buyer, and why it solves a decision problem that observability-only or eval-only products leave fragmented.
+Purpose: show how the best version of AgentClash should feel to a large-enterprise buyer, and why it solves a decision problem that observability-only or eval-only products leave fragmented. **This is where AgentClash is aimed in 2–3 years once the bottom-up engineer wedge has earned pull upmarket. It is not a brief for what to build next quarter.**
 
 Note on competitor references: the positioning links in this doc were checked on 2026-03-15 and reflect how those products currently describe themselves publicly.
 
@@ -136,6 +136,8 @@ flowchart LR
 
     A --> B --> C --> D --> E --> F --> G --> H
 ```
+
+
 
 ### 4. John watches the run live
 
@@ -279,6 +281,8 @@ sequenceDiagram
     ReleaseGate->>John: Ship or block with replayable evidence
 ```
 
+
+
 ## What John Can Do Here That Point Tools Do Not Solve End To End
 
 - John can compare native and hosted agents inside one benchmark contract instead of comparing disconnected traces and eval jobs.
@@ -308,7 +312,8 @@ That is the level to build for.
 
 Current public positioning references checked on 2026-03-15:
 
-- Arize Phoenix: <https://phoenix.arize.com/>
-- Braintrust evals overview: <https://www.braintrust.dev/docs/guides/evals/overview>
-- LangSmith: <https://www.langchain.com/langsmith>
-- OpenTelemetry GenAI semantic conventions: <https://opentelemetry.io/docs/specs/semconv/gen-ai/>
+- Arize Phoenix: [https://phoenix.arize.com/](https://phoenix.arize.com/)
+- Braintrust evals overview: [https://www.braintrust.dev/docs/guides/evals/overview](https://www.braintrust.dev/docs/guides/evals/overview)
+- LangSmith: [https://www.langchain.com/langsmith](https://www.langchain.com/langsmith)
+- OpenTelemetry GenAI semantic conventions: [https://opentelemetry.io/docs/specs/semconv/gen-ai/](https://opentelemetry.io/docs/specs/semconv/gen-ai/)
+
