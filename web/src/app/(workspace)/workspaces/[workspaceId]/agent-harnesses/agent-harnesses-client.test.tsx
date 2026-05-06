@@ -169,6 +169,9 @@ function baseHarness(overrides: Record<string, unknown> = {}) {
     task_prompt: "Patch the failing test.",
     codex_template: "codex",
     auth_mode: "api_key_secret",
+    repository_full_name: "acme/repo",
+    repository_url: "https://github.com/acme/repo",
+    base_branch: "main",
     execution_config: {},
     evaluation_config: {},
     created_at: "2026-05-01T00:00:00Z",
@@ -255,8 +258,27 @@ describe("AgentHarnessesClient", () => {
     expect(document.body.textContent).toContain("Chat with a coding harness");
     expect(document.body.textContent).toContain("Active harness");
     expect(document.body.textContent).toContain("Setup context");
+    expect(document.body.textContent).toContain("acme/repo");
+    expect(document.body.textContent).toContain("Base branch");
     expect(document.body.textContent).toContain("agentclash Codex");
     expect(document.body.textContent).not.toContain("Live Activity");
+
+    rendered.cleanup();
+  });
+
+  it("preserves prompt text when starting a run fails", async () => {
+    mockPost.mockRejectedValueOnce(new Error("network failed"));
+    const rendered = renderClient();
+    const message = "retry this task";
+
+    changeTextarea(message);
+    await act(async () => {
+      clickButtonByText("Send");
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(document.body.textContent).toContain("network failed");
+    expect(document.querySelector("textarea")?.value).toBe(message);
 
     rendered.cleanup();
   });
@@ -374,6 +396,37 @@ describe("AgentHarnessesClient", () => {
 
     expect(document.body.textContent).toContain("Changed Files: M web/app.tsx");
     expect(document.body.textContent).not.toContain("SECRET DIFF BODY");
+
+    rendered.cleanup();
+  });
+
+  it("does not render raw runner output messages in the summarized timeline", () => {
+    mockExecutions.mockReturnValue([
+      baseExecution({
+        events: [
+          {
+            id: "event-output",
+            agent_harness_execution_id: "execution-1",
+            sequence_number: 1,
+            event_type: "codex.exec.output",
+            actor_type: "codex",
+            occurred_at: "2026-05-01T00:01:05Z",
+            payload: {
+              message: "RAW RUNNER STDOUT",
+              raw: "RAW JSON LINE",
+              type: "agent_message",
+            },
+          },
+        ],
+      }),
+    ]);
+    const rendered = renderClient();
+
+    clickButtonByText("Show summarized details");
+
+    expect(document.body.textContent).toContain("Type: agent_message");
+    expect(document.body.textContent).not.toContain("RAW RUNNER STDOUT");
+    expect(document.body.textContent).not.toContain("RAW JSON LINE");
 
     rendered.cleanup();
   });

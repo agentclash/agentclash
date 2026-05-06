@@ -127,16 +127,18 @@ export function AgentHarnessesClient({
       const api = createApiClient(token);
       await api.post(
         `/v1/workspaces/${workspaceId}/agent-harnesses/${harnessId}/executions`,
-        message?.trim() ? { message: message.trim() } : {},
+        message && message.trim() ? { message } : {},
       );
       await Promise.all([
         mutate(workspaceResourceKeys.agentHarnesses(workspaceId)),
         mutate(workspaceResourceKeys.agentHarnessExecutions(workspaceId)),
       ]);
+      return true;
     } catch (err) {
       setRunError(
         err instanceof Error ? err.message : "Failed to start agent harness",
       );
+      return false;
     } finally {
       setRunningHarnessId(null);
     }
@@ -145,8 +147,8 @@ export function AgentHarnessesClient({
   async function handleChatSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selectedHarness || !chatMessage.trim()) return;
-    await startHarnessExecution(selectedHarness.id, chatMessage);
-    setChatMessage("");
+    const started = await startHarnessExecution(selectedHarness.id, chatMessage);
+    if (started) setChatMessage("");
   }
 
   return (
@@ -222,6 +224,7 @@ export function AgentHarnessesClient({
                     </div>
                     <form onSubmit={handleChatSubmit} className="space-y-2">
                       <textarea
+                        aria-label="Agent harness task message"
                         value={chatMessage}
                         onChange={(event) => setChatMessage(event.target.value)}
                         spellCheck={false}
@@ -291,6 +294,14 @@ export function AgentHarnessesClient({
                   <ContextRow
                     label="Runner"
                     value={formatHarnessRunner(selectedHarness)}
+                  />
+                  <ContextRow
+                    label="Repository"
+                    value={formatHarnessRepository(selectedHarness)}
+                  />
+                  <ContextRow
+                    label="Base branch"
+                    value={selectedHarness.base_branch ?? "main"}
                   />
                   <ContextRow
                     label="Updated"
@@ -558,6 +569,14 @@ function formatHarnessRunner(harness: AgentHarness) {
     : harness.codex_template;
 }
 
+function formatHarnessRepository(harness: AgentHarness) {
+  return (
+    harness.repository_full_name ??
+    parseRepositoryName(harness.repository_url ?? "") ??
+    "Not configured"
+  );
+}
+
 function formatEventType(eventType: string) {
   return eventType
     .split(".")
@@ -568,7 +587,37 @@ function formatEventType(eventType: string) {
 
 function eventSummary(event: AgentHarnessExecutionEvent) {
   const payload = payloadObject(event.payload);
-  const preferredKeys = [
+  const preferredKeys = eventSummaryKeys(event.event_type);
+  const lines = preferredKeys
+    .flatMap((key) => {
+      if (!(key in payload)) return [];
+      return [`${formatPayloadKey(key)}: ${formatPayloadValue(payload[key])}`];
+    })
+    .filter(Boolean);
+  if (lines.length > 0) return lines.join("\n");
+  return `${event.actor_type} emitted ${event.event_type}`;
+}
+
+function eventSummaryKeys(eventType: string) {
+  if (eventType === "codex.exec.output" || eventType === "claude.exec.output") {
+    return ["type", "decision", "summary", "tool", "exit_code"];
+  }
+  if (
+    eventType.startsWith("artifact.") ||
+    eventType.startsWith("git.diff") ||
+    eventType.startsWith("validator.command.exec")
+  ) {
+    return [
+      "changed_files",
+      "working_directory",
+      "exit_code",
+      "score",
+      "passed",
+      "failed",
+      "skipped",
+    ];
+  }
+  return [
     "type",
     "message",
     "decision",
@@ -585,14 +634,6 @@ function eventSummary(event: AgentHarnessExecutionEvent) {
     "changed_files",
     "working_directory",
   ];
-  const lines = preferredKeys
-    .flatMap((key) => {
-      if (!(key in payload)) return [];
-      return [`${formatPayloadKey(key)}: ${formatPayloadValue(payload[key])}`];
-    })
-    .filter(Boolean);
-  if (lines.length > 0) return lines.join("\n");
-  return `${event.actor_type} emitted ${event.event_type}`;
 }
 
 function executionFailureMessage(execution: AgentHarnessExecution) {
@@ -719,4 +760,22 @@ function truncateText(value: string, maxLength: number) {
 
 function formatDateTime(value: string) {
   return new Date(value).toLocaleString();
+}
+
+function parseRepositoryName(repositoryURL: string) {
+  const trimmed = repositoryURL.trim().replace(/\.git$/i, "");
+  if (!trimmed) return undefined;
+  const scpPath = trimmed.match(/^[^@]+@[^:]+:(.+)$/)?.[1];
+  if (scpPath) {
+    const segments = scpPath.split("/").filter(Boolean);
+    return segments.length >= 2 ? segments.slice(-2).join("/") : undefined;
+  }
+  try {
+    const url = new URL(trimmed);
+    const segments = url.pathname.split("/").filter(Boolean);
+    return segments.length >= 2 ? segments.slice(-2).join("/") : undefined;
+  } catch {
+    const segments = trimmed.split("/").filter(Boolean);
+    return segments.length >= 2 ? segments.slice(-2).join("/") : undefined;
+  }
 }
