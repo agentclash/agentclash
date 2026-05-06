@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/repository"
+	"github.com/agentclash/agentclash/backend/internal/workflow"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
@@ -34,8 +35,11 @@ type AgentHarnessRepository interface {
 	ListAgentHarnessSuitesByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) ([]repository.AgentHarnessSuite, error)
 	ListAgentHarnessSuiteTasksByVersionID(ctx context.Context, versionID uuid.UUID) ([]repository.AgentHarnessSuiteTask, error)
 	CreateAgentHarnessExecution(ctx context.Context, p repository.CreateAgentHarnessExecutionParams) (repository.AgentHarnessExecution, error)
+	SetAgentHarnessExecutionTemporalIDs(ctx context.Context, p repository.SetAgentHarnessExecutionTemporalIDsParams) (repository.AgentHarnessExecution, error)
 	TransitionAgentHarnessExecutionStatus(ctx context.Context, p repository.TransitionAgentHarnessExecutionStatusParams) (repository.AgentHarnessExecution, error)
 	GetAgentHarnessExecutionByID(ctx context.Context, id uuid.UUID) (repository.AgentHarnessExecution, error)
+	GetAgentHarnessRetryByIdempotencyKey(ctx context.Context, workspaceID uuid.UUID, retryOfExecutionID uuid.UUID, idempotencyKey string) (repository.AgentHarnessExecution, error)
+	CountActiveAgentHarnessExecutionsByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) (int, error)
 	ListAgentHarnessExecutions(ctx context.Context, p repository.ListAgentHarnessExecutionsParams) ([]repository.AgentHarnessExecution, error)
 	ListAgentHarnessExecutionEvents(ctx context.Context, executionID uuid.UUID) ([]repository.AgentHarnessExecutionEvent, error)
 }
@@ -49,25 +53,38 @@ type AgentHarnessService interface {
 	ListAgentHarnessSuiteTasks(ctx context.Context, caller Caller, workspaceID uuid.UUID, suiteID uuid.UUID) ([]repository.AgentHarnessSuiteTask, error)
 	StartAgentHarnessSuiteRun(ctx context.Context, caller Caller, workspaceID uuid.UUID, suiteID uuid.UUID, input StartAgentHarnessSuiteRunInput) ([]repository.AgentHarnessExecution, error)
 	StartAgentHarnessExecution(ctx context.Context, caller Caller, workspaceID uuid.UUID, harnessID uuid.UUID, input StartAgentHarnessExecutionInput) (repository.AgentHarnessExecution, error)
+	CancelAgentHarnessExecution(ctx context.Context, caller Caller, workspaceID uuid.UUID, executionID uuid.UUID) (repository.AgentHarnessExecution, error)
+	RetryAgentHarnessExecution(ctx context.Context, caller Caller, workspaceID uuid.UUID, executionID uuid.UUID, input RetryAgentHarnessExecutionInput) (repository.AgentHarnessExecution, error)
 	GetAgentHarnessExecution(ctx context.Context, caller Caller, workspaceID uuid.UUID, executionID uuid.UUID) (repository.AgentHarnessExecution, error)
 	ListAgentHarnessExecutions(ctx context.Context, caller Caller, workspaceID uuid.UUID, harnessID *uuid.UUID) ([]repository.AgentHarnessExecution, error)
 	ListAgentHarnessExecutionEvents(ctx context.Context, caller Caller, workspaceID uuid.UUID, executionID uuid.UUID) ([]repository.AgentHarnessExecutionEvent, error)
 }
 
 type AgentHarnessExecutionWorkflowStarter interface {
-	StartAgentHarnessExecutionWorkflow(ctx context.Context, executionID uuid.UUID, timeoutSeconds int) error
+	StartAgentHarnessExecutionWorkflow(ctx context.Context, executionID uuid.UUID, timeoutSeconds int) (AgentHarnessExecutionWorkflowRef, error)
+}
+
+type AgentHarnessExecutionWorkflowController interface {
+	CancelAgentHarnessExecutionWorkflow(ctx context.Context, workflowID string, runID string) error
+}
+
+type AgentHarnessExecutionWorkflowRef struct {
+	WorkflowID string
+	RunID      string
 }
 
 type noopAgentHarnessExecutionWorkflowStarter struct{}
 
-func (noopAgentHarnessExecutionWorkflowStarter) StartAgentHarnessExecutionWorkflow(context.Context, uuid.UUID, int) error {
-	return nil
+func (noopAgentHarnessExecutionWorkflowStarter) StartAgentHarnessExecutionWorkflow(_ context.Context, executionID uuid.UUID, _ int) (AgentHarnessExecutionWorkflowRef, error) {
+	return AgentHarnessExecutionWorkflowRef{WorkflowID: defaultAgentHarnessExecutionWorkflowID(executionID), RunID: "noop"}, nil
 }
 
 type AgentHarnessManager struct {
-	authorizer      WorkspaceAuthorizer
-	repo            AgentHarnessRepository
-	workflowStarter AgentHarnessExecutionWorkflowStarter
+	authorizer       WorkspaceAuthorizer
+	repo             AgentHarnessRepository
+	workflowStarter  AgentHarnessExecutionWorkflowStarter
+	workflowControl  AgentHarnessExecutionWorkflowController
+	concurrencyLimit int
 }
 
 func NewAgentHarnessManager(authorizer WorkspaceAuthorizer, repo AgentHarnessRepository, starters ...AgentHarnessExecutionWorkflowStarter) *AgentHarnessManager {
@@ -75,7 +92,11 @@ func NewAgentHarnessManager(authorizer WorkspaceAuthorizer, repo AgentHarnessRep
 	if len(starters) > 0 && starters[0] != nil {
 		starter = starters[0]
 	}
-	return &AgentHarnessManager{authorizer: authorizer, repo: repo, workflowStarter: starter}
+	var controller AgentHarnessExecutionWorkflowController
+	if candidate, ok := starter.(AgentHarnessExecutionWorkflowController); ok {
+		controller = candidate
+	}
+	return &AgentHarnessManager{authorizer: authorizer, repo: repo, workflowStarter: starter, workflowControl: controller, concurrencyLimit: 3}
 }
 
 type CreateAgentHarnessInput struct {
@@ -98,6 +119,10 @@ type CreateAgentHarnessInput struct {
 
 type StartAgentHarnessExecutionInput struct {
 	Message string `json:"message"`
+}
+
+type RetryAgentHarnessExecutionInput struct {
+	IdempotencyKey string `json:"idempotency_key"`
 }
 
 type CreateAgentHarnessSuiteInput struct {
@@ -339,6 +364,9 @@ func (m *AgentHarnessManager) StartAgentHarnessSuiteRun(ctx context.Context, cal
 	if len(tasks) == 0 {
 		return nil, AgentHarnessValidationError{Code: "tasks_required", Message: "no suite tasks matched the request"}
 	}
+	if err := m.ensureAgentHarnessExecutionCapacity(ctx, workspaceID, len(input.HarnessIDs)*len(tasks)); err != nil {
+		return nil, err
+	}
 	harnesses := make([]repository.AgentHarness, 0, len(input.HarnessIDs))
 	for _, harnessID := range input.HarnessIDs {
 		harness, err := m.repo.GetAgentHarnessByID(ctx, harnessID)
@@ -386,11 +414,12 @@ func (m *AgentHarnessManager) StartAgentHarnessSuiteRun(ctx context.Context, cal
 				HarnessSnapshot:          snapshot,
 				ExecutionConfigSnapshot:  defaultJSON(executionConfig),
 				EvaluationConfigSnapshot: evaluationConfig,
+				ConcurrencyLimit:         m.concurrencyLimit,
 			})
 			if err != nil {
 				return nil, err
 			}
-			if err := m.workflowStarter.StartAgentHarnessExecutionWorkflow(ctx, execution.ID, agentHarnessExecutionTimeoutSeconds(execution.ExecutionConfigSnapshot)); err != nil {
+			if err := m.startAgentHarnessExecutionWorkflow(ctx, execution); err != nil {
 				reason := err.Error()
 				failedExecution, transitionErr := m.repo.TransitionAgentHarnessExecutionStatus(ctx, repository.TransitionAgentHarnessExecutionStatusParams{
 					ExecutionID: execution.ID,
@@ -421,6 +450,9 @@ func (m *AgentHarnessManager) StartAgentHarnessExecution(ctx context.Context, ca
 	if harness.WorkspaceID != workspaceID {
 		return repository.AgentHarnessExecution{}, repository.ErrAgentHarnessNotFound
 	}
+	if err := m.ensureAgentHarnessExecutionCapacity(ctx, workspaceID, 1); err != nil {
+		return repository.AgentHarnessExecution{}, err
+	}
 	snapshot, err := marshalAgentHarnessSnapshot(harness, input)
 	if err != nil {
 		return repository.AgentHarnessExecution{}, err
@@ -433,11 +465,12 @@ func (m *AgentHarnessManager) StartAgentHarnessExecution(ctx context.Context, ca
 		HarnessSnapshot:          snapshot,
 		ExecutionConfigSnapshot:  defaultJSON(harness.ExecutionConfig),
 		EvaluationConfigSnapshot: defaultJSON(harness.EvaluationConfig),
+		ConcurrencyLimit:         m.concurrencyLimit,
 	})
 	if err != nil {
 		return repository.AgentHarnessExecution{}, err
 	}
-	if err := m.workflowStarter.StartAgentHarnessExecutionWorkflow(ctx, execution.ID, agentHarnessExecutionTimeoutSeconds(execution.ExecutionConfigSnapshot)); err != nil {
+	if err := m.startAgentHarnessExecutionWorkflow(ctx, execution); err != nil {
 		reason := err.Error()
 		_, _ = m.repo.TransitionAgentHarnessExecutionStatus(ctx, repository.TransitionAgentHarnessExecutionStatusParams{
 			ExecutionID: execution.ID,
@@ -447,6 +480,108 @@ func (m *AgentHarnessManager) StartAgentHarnessExecution(ctx context.Context, ca
 		return repository.AgentHarnessExecution{}, err
 	}
 	return execution, nil
+}
+
+func (m *AgentHarnessManager) CancelAgentHarnessExecution(ctx context.Context, caller Caller, workspaceID uuid.UUID, executionID uuid.UUID) (repository.AgentHarnessExecution, error) {
+	if err := AuthorizeWorkspaceAction(ctx, m.authorizer, caller, workspaceID, ActionCreateRun); err != nil {
+		return repository.AgentHarnessExecution{}, err
+	}
+	execution, err := m.repo.GetAgentHarnessExecutionByID(ctx, executionID)
+	if err != nil {
+		return repository.AgentHarnessExecution{}, err
+	}
+	if execution.WorkspaceID != workspaceID {
+		return repository.AgentHarnessExecution{}, repository.ErrAgentHarnessExecutionNotFound
+	}
+	status, err := repository.ParseAgentHarnessExecutionStatus(execution.Status)
+	if err != nil {
+		return repository.AgentHarnessExecution{}, err
+	}
+	if !status.CanTransitionTo(repository.AgentHarnessExecutionStatusCancelled) {
+		return execution, nil
+	}
+	workflowID := strings.TrimSpace(derefString(execution.TemporalWorkflowID))
+	if workflowID == "" {
+		workflowID = defaultAgentHarnessExecutionWorkflowID(execution.ID)
+	}
+	if m.workflowControl != nil {
+		if err := m.workflowControl.CancelAgentHarnessExecutionWorkflow(ctx, workflowID, strings.TrimSpace(derefString(execution.TemporalRunID))); err != nil {
+			return repository.AgentHarnessExecution{}, err
+		}
+	}
+	reason := "cancelled by user"
+	cancelled, err := m.repo.TransitionAgentHarnessExecutionStatus(ctx, repository.TransitionAgentHarnessExecutionStatusParams{
+		ExecutionID:     execution.ID,
+		ToStatus:        repository.AgentHarnessExecutionStatusCancelled,
+		Reason:          &reason,
+		ChangedByUserID: &caller.UserID,
+	})
+	if err == nil {
+		return cancelled, nil
+	}
+	var invalidTransition repository.InvalidTransitionError
+	if errors.As(err, &invalidTransition) {
+		latest, latestErr := m.repo.GetAgentHarnessExecutionByID(ctx, execution.ID)
+		if latestErr == nil && latest.Status == string(repository.AgentHarnessExecutionStatusCancelled) {
+			return latest, nil
+		}
+	}
+	return repository.AgentHarnessExecution{}, err
+}
+
+func (m *AgentHarnessManager) RetryAgentHarnessExecution(ctx context.Context, caller Caller, workspaceID uuid.UUID, executionID uuid.UUID, input RetryAgentHarnessExecutionInput) (repository.AgentHarnessExecution, error) {
+	if err := AuthorizeWorkspaceAction(ctx, m.authorizer, caller, workspaceID, ActionCreateRun); err != nil {
+		return repository.AgentHarnessExecution{}, err
+	}
+	idempotencyKey := strings.TrimSpace(input.IdempotencyKey)
+	if idempotencyKey == "" {
+		return repository.AgentHarnessExecution{}, AgentHarnessValidationError{Code: "idempotency_key_required", Message: "idempotency_key is required for retry"}
+	}
+	previous, err := m.repo.GetAgentHarnessExecutionByID(ctx, executionID)
+	if err != nil {
+		return repository.AgentHarnessExecution{}, err
+	}
+	if previous.WorkspaceID != workspaceID {
+		return repository.AgentHarnessExecution{}, repository.ErrAgentHarnessExecutionNotFound
+	}
+	if agentHarnessExecutionActive(previous.Status) {
+		return repository.AgentHarnessExecution{}, AgentHarnessValidationError{Code: "execution_not_retryable", Message: "only completed, failed, or cancelled executions can be retried"}
+	}
+	existing, err := m.repo.GetAgentHarnessRetryByIdempotencyKey(ctx, workspaceID, executionID, idempotencyKey)
+	if err == nil {
+		return existing, nil
+	}
+	if !errors.Is(err, repository.ErrAgentHarnessExecutionNotFound) {
+		return repository.AgentHarnessExecution{}, err
+	}
+	if err := m.ensureAgentHarnessExecutionCapacity(ctx, workspaceID, 1); err != nil {
+		return repository.AgentHarnessExecution{}, err
+	}
+	retryExecution, err := m.repo.CreateAgentHarnessExecution(ctx, repository.CreateAgentHarnessExecutionParams{
+		OrganizationID:           previous.OrganizationID,
+		WorkspaceID:              previous.WorkspaceID,
+		AgentHarnessID:           previous.AgentHarnessID,
+		CreatedByUserID:          &caller.UserID,
+		HarnessSnapshot:          previous.HarnessSnapshot,
+		ExecutionConfigSnapshot:  previous.ExecutionConfigSnapshot,
+		EvaluationConfigSnapshot: previous.EvaluationConfigSnapshot,
+		RetryOfExecutionID:       &previous.ID,
+		RetryIdempotencyKey:      &idempotencyKey,
+		ConcurrencyLimit:         m.concurrencyLimit,
+	})
+	if err != nil {
+		return repository.AgentHarnessExecution{}, err
+	}
+	if err := m.startAgentHarnessExecutionWorkflow(ctx, retryExecution); err != nil {
+		reason := err.Error()
+		_, _ = m.repo.TransitionAgentHarnessExecutionStatus(ctx, repository.TransitionAgentHarnessExecutionStatusParams{
+			ExecutionID: retryExecution.ID,
+			ToStatus:    repository.AgentHarnessExecutionStatusFailed,
+			Reason:      &reason,
+		})
+		return repository.AgentHarnessExecution{}, err
+	}
+	return retryExecution, nil
 }
 
 func (m *AgentHarnessManager) GetAgentHarnessExecution(ctx context.Context, caller Caller, workspaceID uuid.UUID, executionID uuid.UUID) (repository.AgentHarnessExecution, error) {
@@ -487,6 +622,51 @@ func (m *AgentHarnessManager) ListAgentHarnessExecutions(ctx context.Context, ca
 		WorkspaceID:    workspaceID,
 		AgentHarnessID: harnessID,
 	})
+}
+
+func (m *AgentHarnessManager) ensureAgentHarnessExecutionCapacity(ctx context.Context, workspaceID uuid.UUID, requested int) error {
+	if requested <= 0 || m.concurrencyLimit <= 0 {
+		return nil
+	}
+	active, err := m.repo.CountActiveAgentHarnessExecutionsByWorkspaceID(ctx, workspaceID)
+	if err != nil {
+		return err
+	}
+	if active+requested > m.concurrencyLimit {
+		return AgentHarnessValidationError{Code: "concurrency_limit_exceeded", Message: "workspace agent harness execution concurrency limit exceeded"}
+	}
+	return nil
+}
+
+func agentHarnessExecutionActive(status string) bool {
+	switch repository.AgentHarnessExecutionStatus(status) {
+	case repository.AgentHarnessExecutionStatusQueued,
+		repository.AgentHarnessExecutionStatusProvisioning,
+		repository.AgentHarnessExecutionStatusRunning,
+		repository.AgentHarnessExecutionStatusScoring:
+		return true
+	default:
+		return false
+	}
+}
+
+func (m *AgentHarnessManager) startAgentHarnessExecutionWorkflow(ctx context.Context, execution repository.AgentHarnessExecution) error {
+	ref, err := m.workflowStarter.StartAgentHarnessExecutionWorkflow(ctx, execution.ID, agentHarnessExecutionTimeoutSeconds(execution.ExecutionConfigSnapshot))
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(ref.WorkflowID) == "" {
+		ref.WorkflowID = defaultAgentHarnessExecutionWorkflowID(execution.ID)
+	}
+	_, err = m.repo.SetAgentHarnessExecutionTemporalIDs(ctx, repository.SetAgentHarnessExecutionTemporalIDsParams{
+		ExecutionID:        execution.ID,
+		TemporalWorkflowID: ref.WorkflowID,
+		TemporalRunID:      ref.RunID,
+	})
+	if err != nil && m.workflowControl != nil {
+		_ = m.workflowControl.CancelAgentHarnessExecutionWorkflow(ctx, ref.WorkflowID, ref.RunID)
+	}
+	return err
 }
 
 func validateAgentHarnessInput(input CreateAgentHarnessInput) error {
@@ -578,6 +758,10 @@ func agentHarnessExecutionTimeoutSeconds(raw json.RawMessage) int {
 	return config.TimeoutSeconds
 }
 
+func defaultAgentHarnessExecutionWorkflowID(executionID uuid.UUID) string {
+	return fmt.Sprintf("%s/%s", workflow.AgentHarnessExecutionWorkflowName, executionID)
+}
+
 type agentHarnessResponse struct {
 	ID                     uuid.UUID       `json:"id"`
 	OrganizationID         uuid.UUID       `json:"organization_id"`
@@ -643,6 +827,9 @@ type agentHarnessExecutionResponse struct {
 	RunID                    *uuid.UUID                           `json:"run_id,omitempty"`
 	RunAgentID               *uuid.UUID                           `json:"run_agent_id,omitempty"`
 	EvaluationSpecID         *uuid.UUID                           `json:"evaluation_spec_id,omitempty"`
+	TemporalWorkflowID       *string                              `json:"temporal_workflow_id,omitempty"`
+	TemporalRunID            *string                              `json:"temporal_run_id,omitempty"`
+	RetryOfExecutionID       *uuid.UUID                           `json:"retry_of_execution_id,omitempty"`
 	CreatedByUserID          *uuid.UUID                           `json:"created_by_user_id,omitempty"`
 	Status                   string                               `json:"status"`
 	HarnessSnapshot          json.RawMessage                      `json:"harness_snapshot"`
@@ -891,6 +1078,63 @@ func startAgentHarnessExecutionHandler(logger *slog.Logger, service AgentHarness
 	}
 }
 
+func cancelAgentHarnessExecutionHandler(logger *slog.Logger, service AgentHarnessService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		caller, err := CallerFromContext(r.Context())
+		if err != nil {
+			writeAuthzError(w, err)
+			return
+		}
+		workspaceID, err := WorkspaceIDFromContext(r.Context())
+		if err != nil {
+			writeAuthzError(w, err)
+			return
+		}
+		executionID, err := uuid.Parse(chi.URLParam(r, "executionID"))
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_execution_id", "executionID must be a UUID")
+			return
+		}
+		execution, err := service.CancelAgentHarnessExecution(r.Context(), caller, workspaceID, executionID)
+		if err != nil {
+			writeAgentHarnessError(w, logger, r, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, mapAgentHarnessExecutionResponse(execution))
+	}
+}
+
+func retryAgentHarnessExecutionHandler(logger *slog.Logger, service AgentHarnessService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		caller, err := CallerFromContext(r.Context())
+		if err != nil {
+			writeAuthzError(w, err)
+			return
+		}
+		workspaceID, err := WorkspaceIDFromContext(r.Context())
+		if err != nil {
+			writeAuthzError(w, err)
+			return
+		}
+		executionID, err := uuid.Parse(chi.URLParam(r, "executionID"))
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_execution_id", "executionID must be a UUID")
+			return
+		}
+		var input RetryAgentHarnessExecutionInput
+		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_json", "request body must be JSON")
+			return
+		}
+		execution, err := service.RetryAgentHarnessExecution(r.Context(), caller, workspaceID, executionID, input)
+		if err != nil {
+			writeAgentHarnessError(w, logger, r, err)
+			return
+		}
+		writeJSON(w, http.StatusCreated, mapAgentHarnessExecutionResponse(execution))
+	}
+}
+
 func listAgentHarnessExecutionsHandler(logger *slog.Logger, service AgentHarnessService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		caller, err := CallerFromContext(r.Context())
@@ -1012,6 +1256,9 @@ func mapAgentHarnessExecutionResponse(e repository.AgentHarnessExecution) agentH
 		RunID:                    e.RunID,
 		RunAgentID:               e.RunAgentID,
 		EvaluationSpecID:         e.EvaluationSpecID,
+		TemporalWorkflowID:       e.TemporalWorkflowID,
+		TemporalRunID:            e.TemporalRunID,
+		RetryOfExecutionID:       e.RetryOfExecutionID,
 		CreatedByUserID:          e.CreatedByUserID,
 		Status:                   e.Status,
 		HarnessSnapshot:          harnessSnapshot,
@@ -1265,6 +1512,8 @@ func writeAgentHarnessError(w http.ResponseWriter, logger *slog.Logger, r *http.
 		writeError(w, http.StatusNotFound, "not_found", "agent harness suite not found")
 	case errors.Is(err, repository.ErrAgentHarnessExecutionNotFound):
 		writeError(w, http.StatusNotFound, "not_found", "agent harness execution not found")
+	case errors.Is(err, repository.ErrAgentHarnessConcurrencyLimitExceeded):
+		writeError(w, http.StatusTooManyRequests, "concurrency_limit_exceeded", "workspace agent harness execution concurrency limit exceeded")
 	default:
 		if errors.Is(err, ErrUnauthenticated) || errors.Is(err, ErrCallerMissing) || errors.Is(err, ErrForbidden) {
 			writeAuthzError(w, err)
@@ -1310,6 +1559,14 @@ func (noopAgentHarnessService) StartAgentHarnessSuiteRun(context.Context, Caller
 }
 
 func (noopAgentHarnessService) StartAgentHarnessExecution(context.Context, Caller, uuid.UUID, uuid.UUID, StartAgentHarnessExecutionInput) (repository.AgentHarnessExecution, error) {
+	return repository.AgentHarnessExecution{}, errors.New("agent harness service is not configured")
+}
+
+func (noopAgentHarnessService) CancelAgentHarnessExecution(context.Context, Caller, uuid.UUID, uuid.UUID) (repository.AgentHarnessExecution, error) {
+	return repository.AgentHarnessExecution{}, errors.New("agent harness service is not configured")
+}
+
+func (noopAgentHarnessService) RetryAgentHarnessExecution(context.Context, Caller, uuid.UUID, uuid.UUID, RetryAgentHarnessExecutionInput) (repository.AgentHarnessExecution, error) {
 	return repository.AgentHarnessExecution{}, errors.New("agent harness service is not configured")
 }
 

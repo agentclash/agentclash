@@ -13,6 +13,7 @@ import (
 type TemporalClient interface {
 	ExecuteWorkflow(ctx context.Context, options temporalsdk.StartWorkflowOptions, workflow interface{}, args ...interface{}) (temporalsdk.WorkflowRun, error)
 	SignalWorkflow(ctx context.Context, workflowID string, runID string, signalName string, arg interface{}) error
+	CancelWorkflow(ctx context.Context, workflowID string, runID string) error
 }
 
 type TemporalRunWorkflowStarter struct {
@@ -61,16 +62,23 @@ func NewTemporalAgentHarnessExecutionWorkflowStarter(client TemporalClient) Temp
 	return TemporalAgentHarnessExecutionWorkflowStarter{client: client}
 }
 
-func (s TemporalAgentHarnessExecutionWorkflowStarter) StartAgentHarnessExecutionWorkflow(ctx context.Context, executionID uuid.UUID, timeoutSeconds int) error {
+func (s TemporalAgentHarnessExecutionWorkflowStarter) StartAgentHarnessExecutionWorkflow(ctx context.Context, executionID uuid.UUID, timeoutSeconds int) (AgentHarnessExecutionWorkflowRef, error) {
 	workflowID := fmt.Sprintf("%s/%s", workflow.AgentHarnessExecutionWorkflowName, executionID)
-	_, err := s.client.ExecuteWorkflow(ctx, temporalsdk.StartWorkflowOptions{
+	run, err := s.client.ExecuteWorkflow(ctx, temporalsdk.StartWorkflowOptions{
 		ID:        workflowID,
 		TaskQueue: workflow.WorkflowTaskQueue,
 	}, workflow.AgentHarnessExecutionWorkflowName, workflow.AgentHarnessExecutionWorkflowInput{
 		ExecutionID:    executionID,
 		TimeoutSeconds: timeoutSeconds,
 	})
-	return err
+	if err != nil {
+		return AgentHarnessExecutionWorkflowRef{}, err
+	}
+	return AgentHarnessExecutionWorkflowRef{WorkflowID: run.GetID(), RunID: run.GetRunID()}, nil
+}
+
+func (s TemporalAgentHarnessExecutionWorkflowStarter) CancelAgentHarnessExecutionWorkflow(ctx context.Context, workflowID string, runID string) error {
+	return s.client.CancelWorkflow(ctx, workflowID, runID)
 }
 
 type TemporalPlaygroundWorkflowStarter struct {

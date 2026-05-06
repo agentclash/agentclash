@@ -46,6 +46,8 @@ tags:
     description: Agent build and version lifecycle
   - name: AgentDeployments
     description: Agent deployment management
+  - name: AgentHarnesses
+    description: Long-running coding harness configuration and execution controls
   - name: HostedRuns
     description: External hosted agent event ingestion
   - name: Playgrounds
@@ -82,6 +84,70 @@ tags:
     description: Routing and spend policy configuration
 
 paths:
+  /v1/workspaces/{workspaceID}/agent-harness-executions/{executionID}/cancel:
+    post:
+      operationId: cancelAgentHarnessExecution
+      tags: [AgentHarnesses]
+      summary: Cancel an Agent Harness execution
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/ExecutionID"
+      responses:
+        "200":
+          description: Execution cancelled, or already terminal.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentHarnessExecution"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/workspaces/{workspaceID}/agent-harness-executions/{executionID}/retry:
+    post:
+      operationId: retryAgentHarnessExecution
+      tags: [AgentHarnesses]
+      summary: Retry an Agent Harness execution
+      description: >
+        Retries a terminal harness execution using frozen snapshots from the
+        original execution. The idempotency key scopes duplicate retry requests
+        for the same source execution.
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/ExecutionID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RetryAgentHarnessExecutionRequest"
+      responses:
+        "201":
+          description: Retry execution queued or existing retry returned.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentHarnessExecution"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
   # ---------------------------------------------------------------------------
   # Health
   # ---------------------------------------------------------------------------
@@ -4067,6 +4133,13 @@ components:
       schema:
         type: string
         format: uuid
+    ExecutionID:
+      name: executionID
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
     ArtifactID:
       name: artifactID
       in: path
@@ -4215,6 +4288,12 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/ErrorEnvelope"
+    TooManyRequests:
+      description: Rate or concurrency limit exceeded
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
     GoneError:
       description: Resource expired or removed
       content:
@@ -4252,6 +4331,82 @@ components:
             upgrade_target:
               type: string
               description: Suggested plan key for resolving a billing gate failure.
+
+    RetryAgentHarnessExecutionRequest:
+      type: object
+      required: [idempotency_key]
+      properties:
+        idempotency_key:
+          type: string
+          minLength: 1
+          description: Idempotency key scoped to the source execution retry.
+
+    AgentHarnessExecution:
+      type: object
+      required: [id, organization_id, workspace_id, agent_harness_id, status, harness_snapshot, execution_config_snapshot, evaluation_config_snapshot, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        organization_id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+          format: uuid
+        agent_harness_id:
+          type: string
+          format: uuid
+        run_id:
+          type: string
+          format: uuid
+        run_agent_id:
+          type: string
+          format: uuid
+        evaluation_spec_id:
+          type: string
+          format: uuid
+        temporal_workflow_id:
+          type: string
+        temporal_run_id:
+          type: string
+        retry_of_execution_id:
+          type: string
+          format: uuid
+        created_by_user_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [queued, provisioning, running, scoring, completed, failed, cancelled]
+        harness_snapshot:
+          type: object
+          additionalProperties: true
+        execution_config_snapshot:
+          type: object
+          additionalProperties: true
+        evaluation_config_snapshot:
+          type: object
+          additionalProperties: true
+        error_message:
+          type: string
+        failure_stage:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+        cancelled_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
             limit:
               anyOf:
                 - type: integer

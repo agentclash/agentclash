@@ -787,6 +787,87 @@ func TestAgentHarnessExecutionManagerStartRequiresRunPermission(t *testing.T) {
 	}
 }
 
+func TestAgentHarnessExecutionManagerStartEnforcesConcurrencyLimit(t *testing.T) {
+	workspaceID := uuid.New()
+	harness := testAgentHarnessRecord(workspaceID, "Codex execution harness")
+	repo := &fakeAgentHarnessRepo{organizationID: harness.OrganizationID, harness: harness, activeCount: 3}
+	manager := NewAgentHarnessManager(NewCallerWorkspaceAuthorizer(), repo)
+
+	_, err := manager.StartAgentHarnessExecution(context.Background(), testAgentHarnessCaller(workspaceID), workspaceID, harness.ID, StartAgentHarnessExecutionInput{})
+	var validationErr AgentHarnessValidationError
+	if !errors.As(err, &validationErr) || validationErr.Code != "concurrency_limit_exceeded" {
+		t.Fatalf("error = %T %v, want concurrency validation", err, err)
+	}
+}
+
+func TestAgentHarnessExecutionManagerCancelIsIdempotentAndAuthorized(t *testing.T) {
+	workspaceID := uuid.New()
+	execution := testAgentHarnessExecutionRecord(workspaceID, uuid.New())
+	execution.Status = string(repository.AgentHarnessExecutionStatusRunning)
+	repo := &fakeAgentHarnessRepo{organizationID: execution.OrganizationID, execution: execution}
+	manager := NewAgentHarnessManager(NewCallerWorkspaceAuthorizer(), repo)
+
+	cancelled, err := manager.CancelAgentHarnessExecution(context.Background(), testAgentHarnessCaller(workspaceID), workspaceID, execution.ID)
+	if err != nil {
+		t.Fatalf("CancelAgentHarnessExecution error: %v", err)
+	}
+	if cancelled.Status != string(repository.AgentHarnessExecutionStatusCancelled) {
+		t.Fatalf("status = %q, want cancelled", cancelled.Status)
+	}
+	if repo.transitionedStatus != repository.AgentHarnessExecutionStatusCancelled {
+		t.Fatalf("transitioned status = %q, want cancelled", repo.transitionedStatus)
+	}
+
+	execution.Status = string(repository.AgentHarnessExecutionStatusCompleted)
+	repo.transitionedStatus = ""
+	completedRepo := &fakeAgentHarnessRepo{organizationID: execution.OrganizationID, execution: execution}
+	manager = NewAgentHarnessManager(NewCallerWorkspaceAuthorizer(), completedRepo)
+	got, err := manager.CancelAgentHarnessExecution(context.Background(), testAgentHarnessCaller(workspaceID), workspaceID, execution.ID)
+	if err != nil {
+		t.Fatalf("CancelAgentHarnessExecution terminal error: %v", err)
+	}
+	if got.Status != string(repository.AgentHarnessExecutionStatusCompleted) || completedRepo.transitionedStatus != "" {
+		t.Fatalf("terminal cancel mutated execution: status=%q transition=%q", got.Status, completedRepo.transitionedStatus)
+	}
+}
+
+func TestAgentHarnessExecutionManagerRetryIsIdempotent(t *testing.T) {
+	workspaceID := uuid.New()
+	previous := testAgentHarnessExecutionRecord(workspaceID, uuid.New())
+	previous.Status = string(repository.AgentHarnessExecutionStatusFailed)
+	retry := testAgentHarnessExecutionRecord(workspaceID, previous.AgentHarnessID)
+	retry.RetryOfExecutionID = &previous.ID
+	retryKey := "retry-1"
+	retry.RetryIdempotencyKey = &retryKey
+	repo := &fakeAgentHarnessRepo{organizationID: previous.OrganizationID, execution: previous, retryExecution: retry}
+	manager := NewAgentHarnessManager(NewCallerWorkspaceAuthorizer(), repo)
+
+	got, err := manager.RetryAgentHarnessExecution(context.Background(), testAgentHarnessCaller(workspaceID), workspaceID, previous.ID, RetryAgentHarnessExecutionInput{IdempotencyKey: retryKey})
+	if err != nil {
+		t.Fatalf("RetryAgentHarnessExecution error: %v", err)
+	}
+	if got.ID != retry.ID {
+		t.Fatalf("retry id = %s, want existing retry %s", got.ID, retry.ID)
+	}
+	if len(repo.createdExecutions) != 0 {
+		t.Fatalf("created executions = %d, want idempotent existing retry", len(repo.createdExecutions))
+	}
+}
+
+func TestAgentHarnessExecutionManagerRetryRejectsActiveExecution(t *testing.T) {
+	workspaceID := uuid.New()
+	previous := testAgentHarnessExecutionRecord(workspaceID, uuid.New())
+	previous.Status = string(repository.AgentHarnessExecutionStatusRunning)
+	repo := &fakeAgentHarnessRepo{organizationID: previous.OrganizationID, execution: previous}
+	manager := NewAgentHarnessManager(NewCallerWorkspaceAuthorizer(), repo)
+
+	_, err := manager.RetryAgentHarnessExecution(context.Background(), testAgentHarnessCaller(workspaceID), workspaceID, previous.ID, RetryAgentHarnessExecutionInput{IdempotencyKey: "retry-1"})
+	var validationErr AgentHarnessValidationError
+	if !errors.As(err, &validationErr) || validationErr.Code != "execution_not_retryable" {
+		t.Fatalf("error = %T %v, want execution_not_retryable", err, err)
+	}
+}
+
 func TestAgentHarnessExecutionManagerGetReturnsNotFoundForWorkspaceMismatch(t *testing.T) {
 	workspaceID := uuid.New()
 	execution := testAgentHarnessExecutionRecord(uuid.New(), uuid.New())
@@ -834,6 +915,8 @@ func TestAgentHarnessExecutionRoutes(t *testing.T) {
 	router.Post("/v1/workspaces/{workspaceID}/agent-harnesses/{harnessID}/executions", startAgentHarnessExecutionHandler(slog.Default(), service))
 	router.Get("/v1/workspaces/{workspaceID}/agent-harness-executions", listAgentHarnessExecutionsHandler(slog.Default(), service))
 	router.Get("/v1/workspaces/{workspaceID}/agent-harness-executions/{executionID}", getAgentHarnessExecutionHandler(slog.Default(), service))
+	router.Post("/v1/workspaces/{workspaceID}/agent-harness-executions/{executionID}/cancel", cancelAgentHarnessExecutionHandler(slog.Default(), service))
+	router.Post("/v1/workspaces/{workspaceID}/agent-harness-executions/{executionID}/retry", retryAgentHarnessExecutionHandler(slog.Default(), service))
 
 	startReq := httptest.NewRequest(http.MethodPost, "/v1/workspaces/"+workspaceID.String()+"/agent-harnesses/"+harness.ID.String()+"/executions", bytes.NewBufferString(`{"message":"Patch the failing test."}`))
 	startRec := httptest.NewRecorder()
@@ -886,6 +969,34 @@ func TestAgentHarnessExecutionRoutes(t *testing.T) {
 	}
 	if gotExecution.EvaluationSpecID == nil || *gotExecution.EvaluationSpecID != evaluationSpecID {
 		t.Fatalf("evaluation_spec_id = %#v, want %s", gotExecution.EvaluationSpecID, evaluationSpecID)
+	}
+
+	cancelReq := httptest.NewRequest(http.MethodPost, "/v1/workspaces/"+workspaceID.String()+"/agent-harness-executions/"+execution.ID.String()+"/cancel", nil)
+	cancelRec := httptest.NewRecorder()
+	router.ServeHTTP(cancelRec, cancelReq)
+	if cancelRec.Code != http.StatusOK {
+		t.Fatalf("cancel status = %d, body %s", cancelRec.Code, cancelRec.Body.String())
+	}
+	var cancelled agentHarnessExecutionResponse
+	if err := json.Unmarshal(cancelRec.Body.Bytes(), &cancelled); err != nil {
+		t.Fatalf("decode cancelled: %v", err)
+	}
+	if cancelled.Status != string(repository.AgentHarnessExecutionStatusCancelled) {
+		t.Fatalf("cancelled status = %q, want cancelled", cancelled.Status)
+	}
+
+	retryReq := httptest.NewRequest(http.MethodPost, "/v1/workspaces/"+workspaceID.String()+"/agent-harness-executions/"+execution.ID.String()+"/retry", bytes.NewBufferString(`{"idempotency_key":"retry-1"}`))
+	retryRec := httptest.NewRecorder()
+	router.ServeHTTP(retryRec, retryReq)
+	if retryRec.Code != http.StatusCreated {
+		t.Fatalf("retry status = %d, body %s", retryRec.Code, retryRec.Body.String())
+	}
+	var retried agentHarnessExecutionResponse
+	if err := json.Unmarshal(retryRec.Body.Bytes(), &retried); err != nil {
+		t.Fatalf("decode retried: %v", err)
+	}
+	if retried.RetryOfExecutionID == nil || *retried.RetryOfExecutionID != execution.ID {
+		t.Fatalf("retry_of_execution_id = %#v, want %s", retried.RetryOfExecutionID, execution.ID)
 	}
 }
 
@@ -1121,7 +1232,9 @@ type fakeAgentHarnessRepo struct {
 	suites                  []repository.AgentHarnessSuite
 	suiteTasks              []repository.AgentHarnessSuiteTask
 	execution               repository.AgentHarnessExecution
+	retryExecution          repository.AgentHarnessExecution
 	executions              []repository.AgentHarnessExecution
+	activeCount             int
 	getByIDCalls            int
 	githubRepo              repository.GitHubInstallationRepository
 	githubRepoErr           error
@@ -1237,6 +1350,8 @@ func (f *fakeAgentHarnessRepo) CreateAgentHarnessExecution(_ context.Context, p 
 		RunID:                    p.RunID,
 		RunAgentID:               p.RunAgentID,
 		EvaluationSpecID:         p.EvaluationSpecID,
+		RetryOfExecutionID:       p.RetryOfExecutionID,
+		RetryIdempotencyKey:      p.RetryIdempotencyKey,
 		CreatedByUserID:          p.CreatedByUserID,
 		Status:                   "queued",
 		HarnessSnapshot:          p.HarnessSnapshot,
@@ -1245,6 +1360,12 @@ func (f *fakeAgentHarnessRepo) CreateAgentHarnessExecution(_ context.Context, p 
 		CreatedAt:                now,
 		UpdatedAt:                now,
 	}, nil
+}
+
+func (f *fakeAgentHarnessRepo) SetAgentHarnessExecutionTemporalIDs(_ context.Context, p repository.SetAgentHarnessExecutionTemporalIDsParams) (repository.AgentHarnessExecution, error) {
+	f.execution.TemporalWorkflowID = &p.TemporalWorkflowID
+	f.execution.TemporalRunID = &p.TemporalRunID
+	return f.execution, nil
 }
 
 func (f *fakeAgentHarnessRepo) TransitionAgentHarnessExecutionStatus(_ context.Context, p repository.TransitionAgentHarnessExecutionStatusParams) (repository.AgentHarnessExecution, error) {
@@ -1260,6 +1381,17 @@ func (f *fakeAgentHarnessRepo) GetAgentHarnessExecutionByID(_ context.Context, i
 		return f.execution, nil
 	}
 	return repository.AgentHarnessExecution{}, repository.ErrAgentHarnessExecutionNotFound
+}
+
+func (f *fakeAgentHarnessRepo) GetAgentHarnessRetryByIdempotencyKey(context.Context, uuid.UUID, uuid.UUID, string) (repository.AgentHarnessExecution, error) {
+	if f.retryExecution.ID != uuid.Nil {
+		return f.retryExecution, nil
+	}
+	return repository.AgentHarnessExecution{}, repository.ErrAgentHarnessExecutionNotFound
+}
+
+func (f *fakeAgentHarnessRepo) CountActiveAgentHarnessExecutionsByWorkspaceID(context.Context, uuid.UUID) (int, error) {
+	return f.activeCount, nil
 }
 
 func (f *fakeAgentHarnessRepo) ListAgentHarnessExecutions(context.Context, repository.ListAgentHarnessExecutionsParams) ([]repository.AgentHarnessExecution, error) {
@@ -1351,6 +1483,27 @@ func (f *fakeAgentHarnessService) StartAgentHarnessExecution(_ context.Context, 
 	return testAgentHarnessExecutionRecord(workspaceID, harnessID), nil
 }
 
+func (f *fakeAgentHarnessService) CancelAgentHarnessExecution(_ context.Context, _ Caller, _ uuid.UUID, executionID uuid.UUID) (repository.AgentHarnessExecution, error) {
+	for _, execution := range f.executions {
+		if execution.ID == executionID {
+			execution.Status = string(repository.AgentHarnessExecutionStatusCancelled)
+			return execution, nil
+		}
+	}
+	return repository.AgentHarnessExecution{}, repository.ErrAgentHarnessExecutionNotFound
+}
+
+func (f *fakeAgentHarnessService) RetryAgentHarnessExecution(_ context.Context, _ Caller, workspaceID uuid.UUID, executionID uuid.UUID, _ RetryAgentHarnessExecutionInput) (repository.AgentHarnessExecution, error) {
+	for _, execution := range f.executions {
+		if execution.ID == executionID {
+			retry := testAgentHarnessExecutionRecord(workspaceID, execution.AgentHarnessID)
+			retry.RetryOfExecutionID = &executionID
+			return retry, nil
+		}
+	}
+	return repository.AgentHarnessExecution{}, repository.ErrAgentHarnessExecutionNotFound
+}
+
 func (f *fakeAgentHarnessService) GetAgentHarnessExecution(_ context.Context, _ Caller, _ uuid.UUID, id uuid.UUID) (repository.AgentHarnessExecution, error) {
 	for _, execution := range f.executions {
 		if execution.ID == id {
@@ -1375,8 +1528,11 @@ type fakeAgentHarnessWorkflowStarter struct {
 	timeoutSeconds int
 }
 
-func (f *fakeAgentHarnessWorkflowStarter) StartAgentHarnessExecutionWorkflow(_ context.Context, _ uuid.UUID, timeoutSeconds int) error {
+func (f *fakeAgentHarnessWorkflowStarter) StartAgentHarnessExecutionWorkflow(_ context.Context, executionID uuid.UUID, timeoutSeconds int) (AgentHarnessExecutionWorkflowRef, error) {
 	f.startedCount++
 	f.timeoutSeconds = timeoutSeconds
-	return f.err
+	if f.err != nil {
+		return AgentHarnessExecutionWorkflowRef{}, f.err
+	}
+	return AgentHarnessExecutionWorkflowRef{WorkflowID: defaultAgentHarnessExecutionWorkflowID(executionID), RunID: "run-id"}, nil
 }
