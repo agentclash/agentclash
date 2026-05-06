@@ -28,6 +28,8 @@ const (
 	defaultWorkOSIssuer = "https://api.workos.com"
 )
 
+var errWorkOSUserInfoUnavailable = errors.New("workos userinfo unavailable for user-management issuer")
+
 // UserRepository is the subset of repository.Repository needed for auth.
 type UserRepository interface {
 	GetUserByWorkOSID(ctx context.Context, workosUserID string) (repository.User, error)
@@ -408,6 +410,9 @@ func needsIdentityForUser(user repository.User, identity workOSIdentity) bool {
 
 func (a *WorkOSAuthenticator) lookupIdentityFromUserInfo(ctx context.Context, issuer, token string) (workOSIdentity, error) {
 	userInfoURL, err := workOSUserInfoURL(issuer)
+	if errors.Is(err, errWorkOSUserInfoUnavailable) {
+		return workOSIdentity{}, nil
+	}
 	if err != nil {
 		return workOSIdentity{}, err
 	}
@@ -503,6 +508,9 @@ func workOSUserInfoURL(issuer string) (string, error) {
 	}
 	if parsed.Scheme == "" || parsed.Host == "" {
 		return "", fmt.Errorf("issuer %q must include scheme and host", issuer)
+	}
+	if strings.EqualFold(parsed.Host, "api.workos.com") {
+		return "", errWorkOSUserInfoUnavailable
 	}
 
 	return (&url.URL{
