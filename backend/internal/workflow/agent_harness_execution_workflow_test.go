@@ -272,6 +272,108 @@ func TestExecuteAgentHarnessExecutionRunsCodexAndRecordsTrace(t *testing.T) {
 	}
 }
 
+func TestExecuteAgentHarnessExecutionRedactsHiddenValidatorsAndRecordsPrivacyControls(t *testing.T) {
+	workspaceID := uuid.New()
+	harnessID := uuid.New()
+	executionID := uuid.New()
+	runID := uuid.New()
+	runAgentID := uuid.New()
+	openAISecret := "OPENAI_API_KEY"
+	repo := newFakeRunRepository(fixtureRun(runID, domain.RunStatusQueued), fixtureRunAgent(runID, runAgentID, 0))
+	repo.setAgentHarness(repository.AgentHarness{
+		ID:                     harnessID,
+		OrganizationID:         uuid.New(),
+		WorkspaceID:            workspaceID,
+		TaskPrompt:             "fix the private regression",
+		CodexTemplate:          "codex",
+		AuthMode:               "api_key_secret",
+		OpenAIAPIKeySecretName: &openAISecret,
+		RepositoryURL:          stringPtr("https://github.com/acme/private-repo"),
+		BaseBranch:             stringPtr("main"),
+		EvaluationConfig: json.RawMessage(`{
+			"result":{"kind":"private_task_bank","benchmark_source":"customer-incident-bank","collection_date":"2026-05-01","allowed_public_context":["README.md"],"contamination":"hidden","publicity":"private"},
+			"privacy":{"redact_replay":true,"redact_artifacts":true,"retention_days":14,"audit_log":true,"provider_data_use":"zero_retention","workspace_policy_key":"strict"},
+			"validators":[{"key":"secret-tests","type":"command","command":"go test ./private/... --golden SECRET_EXPECTED","hidden":true}]
+		}`),
+	})
+	repo.setAgentHarnessExecution(repository.AgentHarnessExecution{
+		ID:             executionID,
+		WorkspaceID:    workspaceID,
+		AgentHarnessID: harnessID,
+		RunID:          &runID,
+		RunAgentID:     &runAgentID,
+		Status:         string(repository.AgentHarnessExecutionStatusRunning),
+	})
+	repo.setWorkspaceSecrets(workspaceID, map[string]string{openAISecret: "sk-test"})
+
+	session := sandbox.NewFakeSession("sandbox-1")
+	session.SetExecFunc(func(request sandbox.ExecRequest, _ map[string][]byte) (sandbox.ExecResult, error) {
+		switch {
+		case len(request.Command) >= 2 && request.Command[0] == "git" && request.Command[1] == "clone":
+			return sandbox.ExecResult{ExitCode: 0, Stdout: "cloned"}, nil
+		case len(request.Command) >= 2 && request.Command[0] == "git" && request.Command[1] == "checkout":
+			return sandbox.ExecResult{ExitCode: 0, Stdout: "checked out"}, nil
+		case len(request.Command) >= 3 && request.Command[0] == "bash" && request.Command[1] == "-lc" && strings.Contains(request.Command[2], ".devcontainer/devcontainer.json"):
+			return sandbox.ExecResult{ExitCode: 0}, nil
+		case len(request.Command) >= 2 && request.Command[0] == "codex" && request.Command[1] == "exec":
+			return sandbox.ExecResult{ExitCode: 0, Stdout: `{"type":"final","message":"PRIVATE_AGENT_OUTPUT"}`}, nil
+		case len(request.Command) >= 3 && request.Command[0] == "git" && request.Command[1] == "add" && request.Command[2] == "--intent-to-add":
+			return sandbox.ExecResult{ExitCode: 0}, nil
+		case len(request.Command) >= 2 && request.Command[0] == "git" && request.Command[1] == "diff":
+			return sandbox.ExecResult{ExitCode: 0, Stdout: "diff --git a/private b/private\n+PRIVATE_DIFF"}, nil
+		case len(request.Command) >= 2 && request.Command[0] == "git" && request.Command[1] == "status":
+			return sandbox.ExecResult{ExitCode: 0, Stdout: " M private/file.go"}, nil
+		case len(request.Command) >= 3 && request.Command[0] == "bash" && request.Command[1] == "-lc" && strings.Contains(request.Command[2], "SECRET_EXPECTED"):
+			return sandbox.ExecResult{ExitCode: 0, Stdout: "SECRET_EXPECTED passed", Stderr: "secret stderr"}, nil
+		default:
+			t.Fatalf("unexpected command: %#v", request.Command)
+			return sandbox.ExecResult{}, nil
+		}
+	})
+	activities := NewActivities(repo, FakeWorkHooks{}).WithSandboxProvider(&sandbox.FakeProvider{NextSession: session})
+	if err := activities.ExecuteAgentHarnessExecution(context.Background(), ExecuteAgentHarnessExecutionInput{ExecutionID: executionID}); err != nil {
+		t.Fatalf("ExecuteAgentHarnessExecution error: %v", err)
+	}
+
+	for _, event := range repo.agentHarnessEvents[executionID] {
+		var payload map[string]any
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			t.Fatalf("decode event payload: %v", err)
+		}
+		encoded := string(event.Payload)
+		if containsAny(encoded, "SECRET_EXPECTED", "secret stderr", "PRIVATE_AGENT_OUTPUT", "PRIVATE_DIFF", "private/file.go") {
+			t.Fatalf("event %s leaked private data: %s", event.EventType, encoded)
+		}
+		if event.EventType == "validator.command.passed" {
+			if payload["command_hidden"] != true || payload["output_redacted"] != true || payload["visibility"] != "hidden" {
+				t.Fatalf("hidden validator payload = %#v, want hidden redaction markers", payload)
+			}
+		}
+	}
+	if !agentHarnessEventRecorded(repo.agentHarnessEvents[executionID], "privacy.policy.applied") {
+		t.Fatal("expected privacy policy event")
+	}
+	if !agentHarnessEventRecorded(repo.agentHarnessEvents[executionID], "privacy.audit.recorded") {
+		t.Fatal("expected privacy audit event")
+	}
+	if !agentHarnessEventRecorded(repo.agentHarnessEvents[executionID], "benchmark.metadata.recorded") {
+		t.Fatal("expected benchmark metadata event")
+	}
+	evaluation, ok := repo.evaluations[runAgentID]
+	if !ok || len(evaluation.ValidatorResults) != 1 || evaluation.ValidatorResults[0].Verdict != "pass" {
+		t.Fatalf("evaluation = %#v, want persisted passing hidden validator", evaluation)
+	}
+	if strings.Contains(string(evaluation.ValidatorResults[0].RawOutput), "SECRET_EXPECTED") {
+		t.Fatalf("validator raw output leaked hidden command: %s", evaluation.ValidatorResults[0].RawOutput)
+	}
+	for _, event := range repo.runEvents[runAgentID] {
+		encoded := string(event.Payload)
+		if containsAny(encoded, "SECRET_EXPECTED", "PRIVATE_AGENT_OUTPUT", "PRIVATE_DIFF", "private/file.go") {
+			t.Fatalf("canonical run event leaked private data: %s", event.Payload)
+		}
+	}
+}
+
 func TestExecuteAgentHarnessExecutionFailsRequiredValidator(t *testing.T) {
 	workspaceID := uuid.New()
 	harnessID := uuid.New()
@@ -1224,6 +1326,15 @@ func containsString(values []string, target string) bool {
 func agentHarnessEventRecorded(events []repository.AgentHarnessExecutionEvent, eventType string) bool {
 	for _, event := range events {
 		if event.EventType == eventType {
+			return true
+		}
+	}
+	return false
+}
+
+func containsAny(haystack string, needles ...string) bool {
+	for _, needle := range needles {
+		if strings.Contains(haystack, needle) {
 			return true
 		}
 	}
