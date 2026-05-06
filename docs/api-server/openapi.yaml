@@ -169,6 +169,13 @@ paths:
             minimum: 1
             default: 1
           description: k value used for pass@k and pass^k reporting.
+        - name: version_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+          description: Immutable suite version to aggregate. Defaults to the current active version.
       responses:
         "200":
           description: Ranking evidence for the active suite version.

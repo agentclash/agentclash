@@ -18,17 +18,28 @@ import (
 const agentHarnessSuiteRankingSchemaVersion = "2026-05-06"
 
 type BuildAgentHarnessSuiteRankingParams struct {
-	WorkspaceID uuid.UUID
-	SuiteID     uuid.UUID
-	K           int
+	WorkspaceID    uuid.UUID
+	SuiteID        uuid.UUID
+	SuiteVersionID *uuid.UUID
+	K              int
 }
 
 type AgentHarnessSuiteRankingRecord struct {
 	SuiteID        uuid.UUID
 	SuiteVersionID uuid.UUID
+	SuiteVersion   int32
 	SchemaVersion  string
 	Ranking        json.RawMessage
 	ComputedAt     time.Time
+}
+
+type AgentHarnessSuiteVersionRef struct {
+	ID            uuid.UUID
+	SuiteID       uuid.UUID
+	WorkspaceID   uuid.UUID
+	VersionNumber int32
+	Metadata      json.RawMessage
+	CreatedAt     time.Time
 }
 
 type agentHarnessRankingAttemptRow struct {
@@ -187,15 +198,31 @@ func (r *Repository) BuildAgentHarnessSuiteRanking(ctx context.Context, p BuildA
 	if suite.WorkspaceID != p.WorkspaceID || suite.Status != "active" {
 		return AgentHarnessSuiteRankingRecord{}, ErrAgentHarnessSuiteNotFound
 	}
+	suiteVersion := AgentHarnessSuiteVersionRef{
+		ID:            suite.CurrentVersionID,
+		SuiteID:       suite.ID,
+		WorkspaceID:   suite.WorkspaceID,
+		VersionNumber: suite.CurrentVersionNumber,
+		Metadata:      suite.Metadata,
+	}
+	if p.SuiteVersionID != nil {
+		suiteVersion, err = r.GetAgentHarnessSuiteVersionByID(ctx, *p.SuiteVersionID)
+		if err != nil {
+			return AgentHarnessSuiteRankingRecord{}, err
+		}
+		if suiteVersion.WorkspaceID != p.WorkspaceID || suiteVersion.SuiteID != suite.ID {
+			return AgentHarnessSuiteRankingRecord{}, ErrAgentHarnessSuiteNotFound
+		}
+	}
 	k := p.K
 	if k <= 0 {
 		k = 1
 	}
-	rows, err := r.listAgentHarnessSuiteRankingAttemptRows(ctx, p.WorkspaceID, p.SuiteID, suite.CurrentVersionID)
+	rows, err := r.listAgentHarnessSuiteRankingAttemptRows(ctx, p.WorkspaceID, p.SuiteID, suiteVersion.ID)
 	if err != nil {
 		return AgentHarnessSuiteRankingRecord{}, err
 	}
-	document, err := buildAgentHarnessSuiteRankingDocument(suite, rows, k, time.Now().UTC())
+	document, err := buildAgentHarnessSuiteRankingDocument(suite, suiteVersion, rows, k, time.Now().UTC())
 	if err != nil {
 		return AgentHarnessSuiteRankingRecord{}, err
 	}
@@ -205,11 +232,25 @@ func (r *Repository) BuildAgentHarnessSuiteRanking(ctx context.Context, p BuildA
 	}
 	return AgentHarnessSuiteRankingRecord{
 		SuiteID:        suite.ID,
-		SuiteVersionID: suite.CurrentVersionID,
+		SuiteVersionID: suiteVersion.ID,
+		SuiteVersion:   suiteVersion.VersionNumber,
 		SchemaVersion:  agentHarnessSuiteRankingSchemaVersion,
 		Ranking:        payload,
 		ComputedAt:     document.ComputedAt,
 	}, nil
+}
+
+func (r *Repository) GetAgentHarnessSuiteVersionByID(ctx context.Context, id uuid.UUID) (AgentHarnessSuiteVersionRef, error) {
+	row := r.db.QueryRow(ctx, `
+SELECT id, agent_harness_suite_id, workspace_id, version_number, metadata, created_at
+FROM agent_harness_suite_versions
+WHERE id = $1
+LIMIT 1`, id)
+	var ref AgentHarnessSuiteVersionRef
+	if err := row.Scan(&ref.ID, &ref.SuiteID, &ref.WorkspaceID, &ref.VersionNumber, &ref.Metadata, &ref.CreatedAt); err != nil {
+		return AgentHarnessSuiteVersionRef{}, ErrAgentHarnessSuiteNotFound
+	}
+	return ref, nil
 }
 
 func (r *Repository) listAgentHarnessSuiteRankingAttemptRows(ctx context.Context, workspaceID uuid.UUID, suiteID uuid.UUID, suiteVersionID uuid.UUID) ([]agentHarnessRankingAttemptRow, error) {
@@ -290,7 +331,7 @@ ORDER BY e.created_at ASC, e.id ASC`, workspaceID, suiteID.String(), suiteVersio
 	return attempts, rows.Err()
 }
 
-func buildAgentHarnessSuiteRankingDocument(suite AgentHarnessSuite, rows []agentHarnessRankingAttemptRow, k int, computedAt time.Time) (agentHarnessRankingDocument, error) {
+func buildAgentHarnessSuiteRankingDocument(suite AgentHarnessSuite, suiteVersion AgentHarnessSuiteVersionRef, rows []agentHarnessRankingAttemptRow, k int, computedAt time.Time) (agentHarnessRankingDocument, error) {
 	attempts := make([]agentHarnessRankingAttempt, 0, len(rows))
 	warnings := make([]string, 0)
 	for _, row := range rows {
@@ -333,8 +374,8 @@ func buildAgentHarnessSuiteRankingDocument(suite AgentHarnessSuite, rows []agent
 		SchemaVersion: agentHarnessSuiteRankingSchemaVersion,
 		SuiteID:       suite.ID,
 		SuiteVersion: agentHarnessRankingSuiteVersion{
-			ID:            suite.CurrentVersionID,
-			VersionNumber: suite.CurrentVersionNumber,
+			ID:            suiteVersion.ID,
+			VersionNumber: suiteVersion.VersionNumber,
 			Source:        "agent_harness_execution_snapshot",
 		},
 		K:          k,

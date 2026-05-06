@@ -53,7 +53,7 @@ type AgentHarnessService interface {
 	CreateAgentHarnessSuite(ctx context.Context, caller Caller, workspaceID uuid.UUID, input CreateAgentHarnessSuiteInput) (repository.AgentHarnessSuite, error)
 	ListAgentHarnessSuites(ctx context.Context, caller Caller, workspaceID uuid.UUID) ([]repository.AgentHarnessSuite, error)
 	ListAgentHarnessSuiteTasks(ctx context.Context, caller Caller, workspaceID uuid.UUID, suiteID uuid.UUID) ([]repository.AgentHarnessSuiteTask, error)
-	GetAgentHarnessSuiteRanking(ctx context.Context, caller Caller, workspaceID uuid.UUID, suiteID uuid.UUID, k int) (repository.AgentHarnessSuiteRankingRecord, error)
+	GetAgentHarnessSuiteRanking(ctx context.Context, caller Caller, workspaceID uuid.UUID, suiteID uuid.UUID, suiteVersionID *uuid.UUID, k int) (repository.AgentHarnessSuiteRankingRecord, error)
 	StartAgentHarnessSuiteRun(ctx context.Context, caller Caller, workspaceID uuid.UUID, suiteID uuid.UUID, input StartAgentHarnessSuiteRunInput) ([]repository.AgentHarnessExecution, error)
 	StartAgentHarnessExecution(ctx context.Context, caller Caller, workspaceID uuid.UUID, harnessID uuid.UUID, input StartAgentHarnessExecutionInput) (repository.AgentHarnessExecution, error)
 	CancelAgentHarnessExecution(ctx context.Context, caller Caller, workspaceID uuid.UUID, executionID uuid.UUID) (repository.AgentHarnessExecution, error)
@@ -342,14 +342,15 @@ func (m *AgentHarnessManager) ListAgentHarnessSuiteTasks(ctx context.Context, ca
 	return m.repo.ListAgentHarnessSuiteTasksByVersionID(ctx, suite.CurrentVersionID)
 }
 
-func (m *AgentHarnessManager) GetAgentHarnessSuiteRanking(ctx context.Context, caller Caller, workspaceID uuid.UUID, suiteID uuid.UUID, k int) (repository.AgentHarnessSuiteRankingRecord, error) {
+func (m *AgentHarnessManager) GetAgentHarnessSuiteRanking(ctx context.Context, caller Caller, workspaceID uuid.UUID, suiteID uuid.UUID, suiteVersionID *uuid.UUID, k int) (repository.AgentHarnessSuiteRankingRecord, error) {
 	if err := m.authorizer.AuthorizeWorkspace(ctx, caller, workspaceID); err != nil {
 		return repository.AgentHarnessSuiteRankingRecord{}, err
 	}
 	return m.repo.BuildAgentHarnessSuiteRanking(ctx, repository.BuildAgentHarnessSuiteRankingParams{
-		WorkspaceID: workspaceID,
-		SuiteID:     suiteID,
-		K:           k,
+		WorkspaceID:    workspaceID,
+		SuiteID:        suiteID,
+		SuiteVersionID: suiteVersionID,
+		K:              k,
 	})
 }
 
@@ -1028,7 +1029,16 @@ func getAgentHarnessSuiteRankingHandler(logger *slog.Logger, service AgentHarnes
 			}
 			k = parsed
 		}
-		ranking, err := service.GetAgentHarnessSuiteRanking(r.Context(), caller, workspaceID, suiteID, k)
+		var suiteVersionID *uuid.UUID
+		if rawVersionID := strings.TrimSpace(r.URL.Query().Get("version_id")); rawVersionID != "" {
+			parsed, parseErr := uuid.Parse(rawVersionID)
+			if parseErr != nil {
+				writeError(w, http.StatusBadRequest, "invalid_version_id", "version_id must be a UUID")
+				return
+			}
+			suiteVersionID = &parsed
+		}
+		ranking, err := service.GetAgentHarnessSuiteRanking(r.Context(), caller, workspaceID, suiteID, suiteVersionID, k)
 		if err != nil {
 			writeAgentHarnessError(w, logger, r, err)
 			return
@@ -1607,7 +1617,7 @@ func (noopAgentHarnessService) ListAgentHarnessSuiteTasks(context.Context, Calle
 	return nil, errors.New("agent harness service is not configured")
 }
 
-func (noopAgentHarnessService) GetAgentHarnessSuiteRanking(context.Context, Caller, uuid.UUID, uuid.UUID, int) (repository.AgentHarnessSuiteRankingRecord, error) {
+func (noopAgentHarnessService) GetAgentHarnessSuiteRanking(context.Context, Caller, uuid.UUID, uuid.UUID, *uuid.UUID, int) (repository.AgentHarnessSuiteRankingRecord, error) {
 	return repository.AgentHarnessSuiteRankingRecord{}, errors.New("agent harness service is not configured")
 }
 

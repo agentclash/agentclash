@@ -19,7 +19,7 @@ func TestBuildAgentHarnessSuiteRankingDocumentAggregatesObservedPassMetrics(t *t
 		agentHarnessRankingTestRow(harnessID, suite, taskID, true, 0.8, `{"timeout_seconds":600,"max_token_spend":10000}`),
 	}
 
-	doc, err := buildAgentHarnessSuiteRankingDocument(suite, rows, 2, time.Date(2026, 5, 6, 12, 0, 0, 0, time.UTC))
+	doc, err := buildAgentHarnessSuiteRankingDocument(suite, agentHarnessRankingTestSuiteVersion(suite), rows, 2, time.Date(2026, 5, 6, 12, 0, 0, 0, time.UTC))
 	if err != nil {
 		t.Fatalf("buildAgentHarnessSuiteRankingDocument error: %v", err)
 	}
@@ -59,7 +59,7 @@ func TestBuildAgentHarnessSuiteRankingDocumentMarksPassKUnavailableWhenUnderSamp
 		agentHarnessRankingTestRow(harnessID, suite, taskID, true, 0.9, `{}`),
 	}
 
-	doc, err := buildAgentHarnessSuiteRankingDocument(suite, rows, 3, time.Now().UTC())
+	doc, err := buildAgentHarnessSuiteRankingDocument(suite, agentHarnessRankingTestSuiteVersion(suite), rows, 3, time.Now().UTC())
 	if err != nil {
 		t.Fatalf("buildAgentHarnessSuiteRankingDocument error: %v", err)
 	}
@@ -83,7 +83,7 @@ func TestBuildAgentHarnessSuiteRankingDocumentPairwiseRequiresFairnessGroupMatch
 		agentHarnessRankingTestRow(rightHarnessID, suite, taskID, false, 0.4, `{"timeout_seconds":1200}`),
 	}
 
-	doc, err := buildAgentHarnessSuiteRankingDocument(suite, rows, 1, time.Now().UTC())
+	doc, err := buildAgentHarnessSuiteRankingDocument(suite, agentHarnessRankingTestSuiteVersion(suite), rows, 1, time.Now().UTC())
 	if err != nil {
 		t.Fatalf("buildAgentHarnessSuiteRankingDocument error: %v", err)
 	}
@@ -92,7 +92,7 @@ func TestBuildAgentHarnessSuiteRankingDocumentPairwiseRequiresFairnessGroupMatch
 	}
 
 	rows[1] = agentHarnessRankingTestRow(rightHarnessID, suite, taskID, false, 0.4, `{"timeout_seconds":600}`)
-	doc, err = buildAgentHarnessSuiteRankingDocument(suite, rows, 1, time.Now().UTC())
+	doc, err = buildAgentHarnessSuiteRankingDocument(suite, agentHarnessRankingTestSuiteVersion(suite), rows, 1, time.Now().UTC())
 	if err != nil {
 		t.Fatalf("buildAgentHarnessSuiteRankingDocument error: %v", err)
 	}
@@ -117,13 +117,35 @@ func TestBuildAgentHarnessSuiteRankingDocumentUsesImmutableSnapshots(t *testing.
 		"task_prompt":"immutable prompt"
 	}`)
 
-	doc, err := buildAgentHarnessSuiteRankingDocument(suite, []agentHarnessRankingAttemptRow{row}, 1, time.Now().UTC())
+	doc, err := buildAgentHarnessSuiteRankingDocument(suite, agentHarnessRankingTestSuiteVersion(suite), []agentHarnessRankingAttemptRow{row}, 1, time.Now().UTC())
 	if err != nil {
 		t.Fatalf("buildAgentHarnessSuiteRankingDocument error: %v", err)
 	}
 	got := doc.Rankings[0]
 	if got.HarnessName != "Old Codex" || got.CodexTemplate != "codex-old" || got.CodexModel != "gpt-old" {
 		t.Fatalf("ranking harness identity = %#v, want immutable execution snapshot", got)
+	}
+}
+
+func TestBuildAgentHarnessSuiteRankingDocumentCanRepresentHistoricalSuiteVersion(t *testing.T) {
+	workspaceID := uuid.New()
+	suite := agentHarnessRankingTestSuite(workspaceID)
+	historicalVersion := agentHarnessRankingTestSuiteVersion(suite)
+	historicalVersion.ID = uuid.New()
+	historicalVersion.VersionNumber = 1
+	suite.CurrentVersionID = uuid.New()
+	suite.CurrentVersionNumber = 2
+	harnessID := uuid.New()
+	taskID := uuid.New()
+	row := agentHarnessRankingTestRow(harnessID, suite, taskID, true, 0.9, `{}`)
+	row.EvaluationConfigSnapshot = json.RawMessage(`{"suite":{"suite_id":"` + suite.ID.String() + `","suite_version_id":"` + historicalVersion.ID.String() + `","task_id":"` + taskID.String() + `"}}`)
+
+	doc, err := buildAgentHarnessSuiteRankingDocument(suite, historicalVersion, []agentHarnessRankingAttemptRow{row}, 1, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("buildAgentHarnessSuiteRankingDocument error: %v", err)
+	}
+	if doc.SuiteVersion.ID != historicalVersion.ID || doc.SuiteVersion.VersionNumber != 1 {
+		t.Fatalf("suite version = %#v, want historical immutable version", doc.SuiteVersion)
 	}
 }
 
@@ -136,6 +158,16 @@ func agentHarnessRankingTestSuite(workspaceID uuid.UUID) AgentHarnessSuite {
 		Status:               "active",
 		CurrentVersionNumber: 1,
 		CurrentVersionID:     uuid.New(),
+	}
+}
+
+func agentHarnessRankingTestSuiteVersion(suite AgentHarnessSuite) AgentHarnessSuiteVersionRef {
+	return AgentHarnessSuiteVersionRef{
+		ID:            suite.CurrentVersionID,
+		SuiteID:       suite.ID,
+		WorkspaceID:   suite.WorkspaceID,
+		VersionNumber: suite.CurrentVersionNumber,
+		Metadata:      suite.Metadata,
 	}
 }
 

@@ -1495,7 +1495,7 @@ func (f *fakeAgentHarnessService) ListAgentHarnessSuiteTasks(context.Context, Ca
 	return f.suiteTasks, nil
 }
 
-func (f *fakeAgentHarnessService) GetAgentHarnessSuiteRanking(context.Context, Caller, uuid.UUID, uuid.UUID, int) (repository.AgentHarnessSuiteRankingRecord, error) {
+func (f *fakeAgentHarnessService) GetAgentHarnessSuiteRanking(context.Context, Caller, uuid.UUID, uuid.UUID, *uuid.UUID, int) (repository.AgentHarnessSuiteRankingRecord, error) {
 	return f.ranking, nil
 }
 
