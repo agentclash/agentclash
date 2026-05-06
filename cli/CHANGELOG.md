@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.14.2](https://github.com/agentclash/agentclash/compare/v0.14.1...v0.14.2) (2026-05-06)
+
+
+### Bug Fixes
+
+* **cli:** compact prompt eval results tables ([c170ec3](https://github.com/agentclash/agentclash/commit/c170ec357c0a9fb464264a735bfab6fe82dea461))
+* **cli:** compact prompt eval results tables ([35be119](https://github.com/agentclash/agentclash/commit/35be119ce81f985355b5e9a425cb67f55f60cbc4))
+
 ## [0.14.1](https://github.com/agentclash/agentclash/compare/v0.14.0...v0.14.1) (2026-05-06)
 
 
