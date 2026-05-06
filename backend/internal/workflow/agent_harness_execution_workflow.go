@@ -57,6 +57,8 @@ type agentHarnessEvaluationConfig struct {
 	Validators []agentHarnessValidatorConfig `json:"validators,omitempty"`
 	LLMJudges  []json.RawMessage             `json:"llm_judges,omitempty"`
 	Scorecard  json.RawMessage               `json:"scorecard,omitempty"`
+	Result     agentHarnessResultMetadata    `json:"result,omitempty"`
+	Privacy    agentHarnessPrivacyConfig     `json:"privacy,omitempty"`
 }
 
 type agentHarnessValidatorConfig struct {
@@ -66,6 +68,27 @@ type agentHarnessValidatorConfig struct {
 	WorkingDirectory string `json:"working_directory,omitempty"`
 	TimeoutSeconds   int    `json:"timeout_seconds,omitempty"`
 	Required         *bool  `json:"required,omitempty"`
+	Hidden           bool   `json:"hidden,omitempty"`
+	Private          bool   `json:"private,omitempty"`
+	RedactOutput     *bool  `json:"redact_output,omitempty"`
+}
+
+type agentHarnessResultMetadata struct {
+	Kind                 string   `json:"kind,omitempty"`
+	BenchmarkSource      string   `json:"benchmark_source,omitempty"`
+	CollectionDate       string   `json:"collection_date,omitempty"`
+	AllowedPublicContext []string `json:"allowed_public_context,omitempty"`
+	Contamination        string   `json:"contamination,omitempty"`
+	Publicity            string   `json:"publicity,omitempty"`
+}
+
+type agentHarnessPrivacyConfig struct {
+	RedactReplay       *bool  `json:"redact_replay,omitempty"`
+	RedactArtifacts    *bool  `json:"redact_artifacts,omitempty"`
+	RetentionDays      *int   `json:"retention_days,omitempty"`
+	AuditLog           *bool  `json:"audit_log,omitempty"`
+	ProviderDataUse    string `json:"provider_data_use,omitempty"`
+	WorkspacePolicyKey string `json:"workspace_policy_key,omitempty"`
 }
 
 type agentHarnessSnapshot struct {
@@ -176,6 +199,12 @@ func (a *Activities) ExecuteAgentHarnessExecution(ctx context.Context, input Exe
 		return wrapActivityError(err)
 	}
 	timeout := agentHarnessTimeout(execution.ExecutionConfigSnapshot)
+	evaluationConfig, err := decodeAgentHarnessEvaluationConfig(harness.EvaluationConfig)
+	if err != nil {
+		return err
+	}
+	replayRedaction := agentHarnessReplayRedactionEnabled(evaluationConfig.Privacy)
+	artifactRedaction := agentHarnessArtifactRedactionEnabled(evaluationConfig.Privacy)
 
 	session, err := a.sandboxProvider.Create(ctx, sandbox.CreateRequest{
 		RunID:      execution.ID,
@@ -257,7 +286,7 @@ func (a *Activities) ExecuteAgentHarnessExecution(ctx context.Context, input Exe
 	if err != nil {
 		return err
 	}
-	runnerResult, err := a.execHarnessCommand(ctx, execution.ID, session, runner.EventType, runner.Command, workdir, timeout, env)
+	runnerResult, err := a.execHarnessCommandWithOptions(ctx, execution.ID, session, runner.EventType, runner.Command, workdir, timeout, env, agentHarnessCommandRecordOptions{Hidden: replayRedaction, RedactOutput: replayRedaction})
 	if err != nil {
 		return err
 	}
@@ -276,38 +305,34 @@ func (a *Activities) ExecuteAgentHarnessExecution(ctx context.Context, input Exe
 		if baseRef != "" {
 			diffCommand = append(diffCommand, baseRef)
 		}
-		if result, err := a.execHarnessCommand(ctx, execution.ID, session, "git.diff", diffCommand, workdir, 60*time.Second, env); err != nil {
+		if result, err := a.execHarnessCommandWithOptions(ctx, execution.ID, session, "git.diff", diffCommand, workdir, 60*time.Second, env, agentHarnessCommandRecordOptions{RedactOutput: artifactRedaction}); err != nil {
 			return err
 		} else {
-			_ = a.recordAgentHarnessEvent(ctx, execution.ID, "artifact.git_diff", "worker", map[string]any{"diff": result.Stdout})
+			_ = a.recordAgentHarnessEvent(ctx, execution.ID, "artifact.git_diff", "worker", agentHarnessArtifactDiffPayload(result.Stdout, artifactRedaction))
 		}
 		baseChangedFiles := ""
 		changedFilesCommand := []string{"git", "diff", "--name-status"}
 		if baseRef != "" {
 			changedFilesCommand = append(changedFilesCommand, baseRef)
 		}
-		if result, err := a.execHarnessCommand(ctx, execution.ID, session, "git.base_changed_files", changedFilesCommand, workdir, 60*time.Second, env); err != nil {
+		if result, err := a.execHarnessCommandWithOptions(ctx, execution.ID, session, "git.base_changed_files", changedFilesCommand, workdir, 60*time.Second, env, agentHarnessCommandRecordOptions{RedactOutput: artifactRedaction}); err != nil {
 			return err
 		} else {
 			baseChangedFiles = result.Stdout
 		}
 		workingTreeFiles := ""
-		if result, err := a.execHarnessCommand(ctx, execution.ID, session, "git.changed_files", []string{"git", "status", "--short"}, workdir, 60*time.Second, env); err != nil {
+		if result, err := a.execHarnessCommandWithOptions(ctx, execution.ID, session, "git.changed_files", []string{"git", "status", "--short"}, workdir, 60*time.Second, env, agentHarnessCommandRecordOptions{RedactOutput: artifactRedaction}); err != nil {
 			return err
 		} else {
 			workingTreeFiles = result.Stdout
-			_ = a.recordAgentHarnessEvent(ctx, execution.ID, "artifact.changed_files", "worker", map[string]any{
-				"changed_files":        combineGitChangeLists(baseChangedFiles, workingTreeFiles),
-				"base_changed_files":   baseChangedFiles,
-				"working_tree_changes": workingTreeFiles,
-			})
+			_ = a.recordAgentHarnessEvent(ctx, execution.ID, "artifact.changed_files", "worker", agentHarnessChangedFilesPayload(baseChangedFiles, workingTreeFiles, artifactRedaction))
 		}
 		if isStructuredGitHubHarness(harness) {
 			changes := agentHarnessGitChanges{
 				ChangedFiles:       combineGitChangeLists(baseChangedFiles, workingTreeFiles),
 				WorkingTreeChanges: workingTreeFiles,
 			}
-			if err := a.createGitHubPullRequest(ctx, execution.ID, session, harness, workdir, timeout, gitEnv, gitHubToken, changes); err != nil {
+			if err := a.createGitHubPullRequest(ctx, execution.ID, session, harness, workdir, timeout, gitEnv, gitHubToken, changes, artifactRedaction); err != nil {
 				return err
 			}
 		}
@@ -534,7 +559,7 @@ func agentHarnessSetupHints(paths []string) []map[string]string {
 	return hints
 }
 
-func (a *Activities) createGitHubPullRequest(ctx context.Context, executionID uuid.UUID, session sandbox.Session, harness agentHarnessSnapshot, workdir string, timeout time.Duration, gitEnv map[string]string, token string, changes agentHarnessGitChanges) error {
+func (a *Activities) createGitHubPullRequest(ctx context.Context, executionID uuid.UUID, session sandbox.Session, harness agentHarnessSnapshot, workdir string, timeout time.Duration, gitEnv map[string]string, token string, changes agentHarnessGitChanges, redactArtifacts bool) error {
 	if !changes.hasChanges() {
 		return a.recordAgentHarnessEvent(ctx, executionID, "github.pull_request.skipped", "worker", map[string]any{"reason": "no_changes"})
 	}
@@ -568,7 +593,7 @@ func (a *Activities) createGitHubPullRequest(ctx context.Context, executionID uu
 		if step.event == "git.push_branch" {
 			stepEnv = gitEnv
 		}
-		if result, err := a.execHarnessCommand(ctx, executionID, session, step.event, step.command, workdir, timeout, stepEnv); err != nil {
+		if result, err := a.execHarnessCommandWithOptions(ctx, executionID, session, step.event, step.command, workdir, timeout, stepEnv, agentHarnessCommandRecordOptions{RedactOutput: redactArtifacts}); err != nil {
 			return err
 		} else if result.ExitCode != 0 {
 			return fmt.Errorf("%s failed with exit code %d", step.event, result.ExitCode)
@@ -609,8 +634,17 @@ func parseGitHubFullName(fullName string) (string, string, bool) {
 	return parts[0], parts[1], true
 }
 
+type agentHarnessCommandRecordOptions struct {
+	Hidden       bool
+	RedactOutput bool
+}
+
 func (a *Activities) execHarnessCommand(ctx context.Context, executionID uuid.UUID, session sandbox.Session, eventType string, command []string, workdir string, timeout time.Duration, env map[string]string) (sandbox.ExecResult, error) {
-	if err := a.recordAgentHarnessEvent(ctx, executionID, eventType+".started", "worker", map[string]any{"command": command, "working_directory": workdir}); err != nil {
+	return a.execHarnessCommandWithOptions(ctx, executionID, session, eventType, command, workdir, timeout, env, agentHarnessCommandRecordOptions{})
+}
+
+func (a *Activities) execHarnessCommandWithOptions(ctx context.Context, executionID uuid.UUID, session sandbox.Session, eventType string, command []string, workdir string, timeout time.Duration, env map[string]string, options agentHarnessCommandRecordOptions) (sandbox.ExecResult, error) {
+	if err := a.recordAgentHarnessEvent(ctx, executionID, eventType+".started", "worker", agentHarnessCommandStartPayload(command, workdir, options)); err != nil {
 		return sandbox.ExecResult{}, err
 	}
 	stdoutRemainder := ""
@@ -619,7 +653,7 @@ func (a *Activities) execHarnessCommand(ctx context.Context, executionID uuid.UU
 		if !streamOutput {
 			return nil
 		}
-		remainder, err := a.recordAgentRunnerOutputEvents(ctx, executionID, outputEventType, outputActor, stdoutRemainder+string(chunk), false)
+		remainder, err := a.recordAgentRunnerOutputEventsWithOptions(ctx, executionID, outputEventType, outputActor, stdoutRemainder+string(chunk), false, options)
 		stdoutRemainder = remainder
 		return err
 	}
@@ -631,32 +665,104 @@ func (a *Activities) execHarnessCommand(ctx context.Context, executionID uuid.UU
 		OnStdout:         onStdout,
 	})
 	if streamOutput && stdoutRemainder != "" {
-		if _, parseErr := a.recordAgentRunnerOutputEvents(ctx, executionID, outputEventType, outputActor, stdoutRemainder, true); err == nil && parseErr != nil {
+		if _, parseErr := a.recordAgentRunnerOutputEventsWithOptions(ctx, executionID, outputEventType, outputActor, stdoutRemainder, true, options); err == nil && parseErr != nil {
 			return sandbox.ExecResult{}, parseErr
 		}
 	}
-	payload := map[string]any{"command": command, "working_directory": workdir}
+	payload := agentHarnessCommandPayload(command, workdir, result, err, options)
 	if err != nil {
-		payload["error"] = err.Error()
 		_ = a.recordAgentHarnessEvent(ctx, executionID, eventType+".failed", "worker", payload)
 		return sandbox.ExecResult{}, err
 	}
-	payload["exit_code"] = result.ExitCode
-	payload["stdout"] = result.Stdout
-	payload["stderr"] = result.Stderr
 	if result.ExitCode == 0 {
 		return result, a.recordAgentHarnessEvent(ctx, executionID, eventType+".completed", "worker", payload)
 	}
 	return result, a.recordAgentHarnessEvent(ctx, executionID, eventType+".failed", "worker", payload)
 }
 
+func agentHarnessCommandStartPayload(command []string, workdir string, options agentHarnessCommandRecordOptions) map[string]any {
+	payload := map[string]any{"working_directory": workdir}
+	if options.Hidden {
+		payload["command_hidden"] = true
+		payload["visibility"] = "hidden"
+		return payload
+	}
+	payload["command"] = command
+	return payload
+}
+
+func agentHarnessCommandPayload(command []string, workdir string, result sandbox.ExecResult, err error, options agentHarnessCommandRecordOptions) map[string]any {
+	payload := map[string]any{"working_directory": workdir}
+	if options.Hidden {
+		payload["command_hidden"] = true
+		payload["visibility"] = "hidden"
+	} else {
+		payload["command"] = command
+	}
+	if err != nil {
+		payload["error"] = err.Error()
+		return payload
+	}
+	payload["exit_code"] = result.ExitCode
+	if options.Hidden || options.RedactOutput {
+		payload["output_redacted"] = true
+		return payload
+	}
+	payload["stdout"] = result.Stdout
+	payload["stderr"] = result.Stderr
+	return payload
+}
+
+func agentHarnessReplayRedactionEnabled(config agentHarnessPrivacyConfig) bool {
+	return config.RedactReplay != nil && *config.RedactReplay
+}
+
+func agentHarnessArtifactRedactionEnabled(config agentHarnessPrivacyConfig) bool {
+	return config.RedactArtifacts != nil && *config.RedactArtifacts
+}
+
+func agentHarnessArtifactDiffPayload(diff string, redact bool) map[string]any {
+	if redact {
+		return map[string]any{
+			"artifact_redacted": true,
+			"diff_summary": map[string]any{
+				"size_bytes": len(diff),
+				"truncated":  true,
+				"preview":    "[redacted]",
+			},
+		}
+	}
+	return map[string]any{"diff": diff}
+}
+
+func agentHarnessChangedFilesPayload(baseChangedFiles string, workingTreeFiles string, redact bool) map[string]any {
+	combined := combineGitChangeLists(baseChangedFiles, workingTreeFiles)
+	if redact {
+		return map[string]any{
+			"artifact_redacted": true,
+			"changed_files_summary": map[string]any{
+				"count": len(splitNonEmptyLines(combined)),
+			},
+		}
+	}
+	return map[string]any{
+		"changed_files":        combined,
+		"base_changed_files":   baseChangedFiles,
+		"working_tree_changes": workingTreeFiles,
+	}
+}
+
 func (a *Activities) execAgentHarnessShellCommand(ctx context.Context, executionID uuid.UUID, session sandbox.Session, eventType string, command string, configuredWorkdir string, timeoutSeconds int, defaultWorkdir string, defaultTimeout time.Duration, env map[string]string) (sandbox.ExecResult, string, error) {
+	return a.execAgentHarnessShellCommandWithOptions(ctx, executionID, session, eventType, command, configuredWorkdir, timeoutSeconds, defaultWorkdir, defaultTimeout, env, agentHarnessCommandRecordOptions{})
+}
+
+func (a *Activities) execAgentHarnessShellCommandWithOptions(ctx context.Context, executionID uuid.UUID, session sandbox.Session, eventType string, command string, configuredWorkdir string, timeoutSeconds int, defaultWorkdir string, defaultTimeout time.Duration, env map[string]string, options agentHarnessCommandRecordOptions) (sandbox.ExecResult, string, error) {
 	workdir := agentHarnessValidatorWorkdir(defaultWorkdir, configuredWorkdir)
 	timeout := defaultTimeout
 	if timeoutSeconds > 0 {
 		timeout = time.Duration(timeoutSeconds) * time.Second
 	}
-	result, err := a.execHarnessCommand(ctx, executionID, session, eventType, []string{"bash", "-lc", command}, workdir, timeout, env)
+	result, err := a.execHarnessCommandWithOptions(ctx, executionID, session, eventType, []string{"bash", "-lc", command}, workdir, timeout, env, options)
 	return result, workdir, err
 }
 
@@ -668,6 +774,9 @@ func (a *Activities) evaluateAgentHarnessExecution(ctx context.Context, executio
 	}
 	if len(config.Validators) == 0 && len(config.LLMJudges) == 0 {
 		return a.recordAgentHarnessEvent(ctx, executionID, "scoring.skipped", "worker", map[string]any{"reason": "evaluation_config has no validators or llm_judges"})
+	}
+	if err := a.recordAgentHarnessEvaluationControls(ctx, executionID, config); err != nil {
+		return err
 	}
 
 	passed := 0
@@ -711,6 +820,8 @@ func (a *Activities) evaluateAgentHarnessExecution(ctx context.Context, executio
 				"overall_score":      evaluation.OverallScore,
 				"llm_judges":         len(evaluation.LLMJudgeResults),
 				"dimensions":         evaluation.DimensionScores,
+				"result":             config.Result,
+				"privacy":            config.Privacy,
 			}); err != nil {
 				return err
 			}
@@ -721,6 +832,57 @@ func (a *Activities) evaluateAgentHarnessExecution(ctx context.Context, executio
 		return err
 	}
 	return requiredValidatorErr
+}
+
+func (a *Activities) recordAgentHarnessEvaluationControls(ctx context.Context, executionID uuid.UUID, config agentHarnessEvaluationConfig) error {
+	if !agentHarnessPrivacyConfigEmpty(config.Privacy) {
+		if err := a.recordAgentHarnessEvent(ctx, executionID, "privacy.policy.applied", "worker", map[string]any{
+			"redact_replay":        config.Privacy.RedactReplay,
+			"redact_artifacts":     config.Privacy.RedactArtifacts,
+			"retention_days":       config.Privacy.RetentionDays,
+			"audit_log":            config.Privacy.AuditLog,
+			"provider_data_use":    strings.TrimSpace(config.Privacy.ProviderDataUse),
+			"workspace_policy_key": strings.TrimSpace(config.Privacy.WorkspacePolicyKey),
+		}); err != nil {
+			return err
+		}
+		if config.Privacy.AuditLog == nil || *config.Privacy.AuditLog {
+			if err := a.recordAgentHarnessEvent(ctx, executionID, "privacy.audit.recorded", "worker", map[string]any{
+				"policy_event": "privacy.policy.applied",
+			}); err != nil {
+				return err
+			}
+		}
+	}
+	if !agentHarnessResultMetadataEmpty(config.Result) {
+		return a.recordAgentHarnessEvent(ctx, executionID, "benchmark.metadata.recorded", "worker", map[string]any{
+			"kind":                   strings.TrimSpace(config.Result.Kind),
+			"benchmark_source":       strings.TrimSpace(config.Result.BenchmarkSource),
+			"collection_date":        strings.TrimSpace(config.Result.CollectionDate),
+			"allowed_public_context": config.Result.AllowedPublicContext,
+			"contamination":          strings.TrimSpace(config.Result.Contamination),
+			"publicity":              strings.TrimSpace(config.Result.Publicity),
+		})
+	}
+	return nil
+}
+
+func agentHarnessPrivacyConfigEmpty(config agentHarnessPrivacyConfig) bool {
+	return config.RedactReplay == nil &&
+		config.RedactArtifacts == nil &&
+		config.RetentionDays == nil &&
+		config.AuditLog == nil &&
+		strings.TrimSpace(config.ProviderDataUse) == "" &&
+		strings.TrimSpace(config.WorkspacePolicyKey) == ""
+}
+
+func agentHarnessResultMetadataEmpty(metadata agentHarnessResultMetadata) bool {
+	return strings.TrimSpace(metadata.Kind) == "" &&
+		strings.TrimSpace(metadata.BenchmarkSource) == "" &&
+		strings.TrimSpace(metadata.CollectionDate) == "" &&
+		len(metadata.AllowedPublicContext) == 0 &&
+		strings.TrimSpace(metadata.Contamination) == "" &&
+		strings.TrimSpace(metadata.Publicity) == ""
 }
 
 func (a *Activities) detectAgentHarnessSetupHints(ctx context.Context, executionID uuid.UUID, session sandbox.Session, workdir string, env map[string]string) error {
@@ -796,12 +958,12 @@ func (a *Activities) evaluateCommandValidator(ctx context.Context, executionID u
 		validatorResult.RawOutput = mustMarshalJSON(map[string]any{"error": err.Error()})
 		return validatorResult, false, err
 	}
-	result, workdir, err := a.execAgentHarnessShellCommand(ctx, executionID, session, "validator.command.exec", command, validator.WorkingDirectory, validator.TimeoutSeconds, defaultWorkdir, defaultTimeout, env)
-	payload := map[string]any{
-		"index":             index,
-		"command":           command,
-		"working_directory": workdir,
-	}
+	hidden := agentHarnessValidatorHidden(validator)
+	result, workdir, err := a.execAgentHarnessShellCommandWithOptions(ctx, executionID, session, "validator.command.exec", command, validator.WorkingDirectory, validator.TimeoutSeconds, defaultWorkdir, defaultTimeout, env, agentHarnessCommandRecordOptions{
+		Hidden:       hidden,
+		RedactOutput: agentHarnessValidatorRedactOutput(validator),
+	})
+	payload := agentHarnessValidatorEventPayload(validator, index, command, workdir, result, nil)
 	if err != nil {
 		payload["error"] = err.Error()
 		_ = a.recordAgentHarnessEvent(ctx, executionID, "validator.command.failed", "worker", payload)
@@ -809,15 +971,12 @@ func (a *Activities) evaluateCommandValidator(ctx context.Context, executionID u
 		validatorResult.Verdict = "error"
 		validatorResult.OutcomeClass = scoring.ValidatorOutcomeInfraError
 		validatorResult.Reason = err.Error()
-		validatorResult.RawOutput = mustMarshalJSON(payload)
+		validatorResult.RawOutput = mustMarshalJSON(agentHarnessValidatorRawOutput(payload, hidden))
 		return validatorResult, false, err
 	}
-	payload["exit_code"] = result.ExitCode
-	payload["stdout"] = result.Stdout
-	payload["stderr"] = result.Stderr
 	score := 0.0
 	validatorResult.State = scoring.OutputStateAvailable
-	validatorResult.RawOutput = mustMarshalJSON(payload)
+	validatorResult.RawOutput = mustMarshalJSON(agentHarnessValidatorRawOutput(payload, hidden))
 	if result.ExitCode == 0 {
 		score = 1
 		validatorResult.Verdict = "pass"
@@ -832,7 +991,7 @@ func (a *Activities) evaluateCommandValidator(ctx context.Context, executionID u
 	validatorResult.OutcomeClass = scoring.ValidatorOutcomeFail
 	validatorResult.NormalizedScore = &score
 	validatorResult.Reason = err.Error()
-	validatorResult.RawOutput = mustMarshalJSON(payload)
+	validatorResult.RawOutput = mustMarshalJSON(agentHarnessValidatorRawOutput(payload, hidden))
 	return validatorResult, false, err
 }
 
@@ -1139,6 +1298,62 @@ func validatorRequired(validator agentHarnessValidatorConfig) bool {
 	return validator.Required == nil || *validator.Required
 }
 
+func agentHarnessValidatorHidden(validator agentHarnessValidatorConfig) bool {
+	return validator.Hidden || validator.Private
+}
+
+func agentHarnessValidatorRedactOutput(validator agentHarnessValidatorConfig) bool {
+	if agentHarnessValidatorHidden(validator) {
+		return true
+	}
+	return validator.RedactOutput != nil && *validator.RedactOutput
+}
+
+func agentHarnessValidatorEventPayload(validator agentHarnessValidatorConfig, index int, command string, workdir string, result sandbox.ExecResult, err error) map[string]any {
+	hidden := agentHarnessValidatorHidden(validator)
+	redactOutput := agentHarnessValidatorRedactOutput(validator)
+	payload := map[string]any{
+		"index":             index,
+		"working_directory": workdir,
+		"exit_code":         result.ExitCode,
+	}
+	if hidden {
+		payload["visibility"] = "hidden"
+		payload["command_hidden"] = true
+	} else {
+		payload["command"] = command
+	}
+	if hidden || redactOutput {
+		payload["output_redacted"] = true
+	} else {
+		payload["stdout"] = result.Stdout
+		payload["stderr"] = result.Stderr
+	}
+	if err != nil {
+		payload["error"] = err.Error()
+	}
+	return payload
+}
+
+func agentHarnessValidatorRawOutput(payload map[string]any, hidden bool) map[string]any {
+	if !hidden {
+		return payload
+	}
+	redacted := map[string]any{}
+	for key, value := range payload {
+		switch key {
+		case "command", "stdout", "stderr":
+			continue
+		default:
+			redacted[key] = value
+		}
+	}
+	redacted["visibility"] = "hidden"
+	redacted["command_hidden"] = true
+	redacted["output_redacted"] = true
+	return redacted
+}
+
 func agentHarnessScore(passed int, failed int) float64 {
 	totalScored := passed + failed
 	if totalScored == 0 {
@@ -1159,6 +1374,10 @@ func agentHarnessOutputStream(eventType string) (string, string, bool) {
 }
 
 func (a *Activities) recordAgentRunnerOutputEvents(ctx context.Context, executionID uuid.UUID, eventType string, actorType string, raw string, flush bool) (string, error) {
+	return a.recordAgentRunnerOutputEventsWithOptions(ctx, executionID, eventType, actorType, raw, flush, agentHarnessCommandRecordOptions{})
+}
+
+func (a *Activities) recordAgentRunnerOutputEventsWithOptions(ctx context.Context, executionID uuid.UUID, eventType string, actorType string, raw string, flush bool, options agentHarnessCommandRecordOptions) (string, error) {
 	lines := strings.Split(raw, "\n")
 	remainder := ""
 	if !flush {
@@ -1168,6 +1387,19 @@ func (a *Activities) recordAgentRunnerOutputEvents(ctx context.Context, executio
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 		if line == "" {
+			continue
+		}
+		if options.RedactOutput {
+			if err := a.recordAgentHarnessEvent(ctx, executionID, eventType, actorType, map[string]any{
+				"stream":          "stdout",
+				"output_redacted": true,
+				"raw_summary": map[string]any{
+					"size_bytes": len(line),
+					"redacted":   true,
+				},
+			}); err != nil {
+				return remainder, err
+			}
 			continue
 		}
 		payload := map[string]any{"stream": "stdout", "raw": line}
