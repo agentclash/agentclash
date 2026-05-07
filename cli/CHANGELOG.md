@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.0](https://github.com/agentclash/agentclash/compare/v0.14.2...v0.15.0) (2026-05-07)
+
+
+### Features
+
+* **cli:** expose full agent harness workflow ([1b57b76](https://github.com/agentclash/agentclash/commit/1b57b76106260e70228d9bada8a17973c585a9da))
+
 ## [0.14.2](https://github.com/agentclash/agentclash/compare/v0.14.1...v0.14.2) (2026-05-06)
 
 
