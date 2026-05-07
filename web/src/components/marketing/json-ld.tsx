@@ -13,7 +13,7 @@ export function JsonLd({ id, data }: Props) {
   );
 }
 
-export const SITE_URL = "https://agentclash.dev";
+export const SITE_URL = "https://www.agentclash.dev";
 
 export function breadcrumbSchema(
   items: Array<{ name: string; url: string }>,
@@ -51,10 +51,14 @@ export function productSchema({
   name,
   description,
   url,
+  applicationSubCategory,
+  softwareVersion,
 }: {
   name: string;
   description: string;
   url: string;
+  applicationSubCategory?: string;
+  softwareVersion?: string;
 }): Record<string, unknown> {
   return {
     "@context": "https://schema.org",
@@ -62,9 +66,11 @@ export function productSchema({
     name,
     alternateName: "Agent Clash",
     applicationCategory: "DeveloperApplication",
+    ...(applicationSubCategory ? { applicationSubCategory } : {}),
     operatingSystem: "Web, macOS, Linux, Windows",
     description,
     url: url.startsWith("http") ? url : `${SITE_URL}${url}`,
+    ...(softwareVersion ? { softwareVersion } : {}),
     offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
   };
 }
