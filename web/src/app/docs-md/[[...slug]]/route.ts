@@ -23,6 +23,7 @@ export async function GET(_request: Request, context: Context) {
   return new Response(renderDocMarkdown(doc), {
     headers: {
       "Content-Type": "text/markdown; charset=utf-8",
+      "X-Robots-Tag": "noindex, follow",
     },
   });
 }
