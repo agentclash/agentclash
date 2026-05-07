@@ -47,6 +47,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.85,
     },
     {
+      url: `${DOCS_ORIGIN}/platform/agent-regression-testing`,
+      lastModified: new Date(),
+      changeFrequency: "monthly",
+      priority: 0.82,
+    },
+    {
       url: `${DOCS_ORIGIN}/llms.txt`,
       lastModified: new Date(),
       changeFrequency: "weekly",
