@@ -6,7 +6,7 @@
 - Page has one visible H1, route-scoped metadata, canonical URL, OpenGraph URL, BreadcrumbList JSON-LD, and FAQ JSON-LD for visible FAQ content.
 - Page explains the AgentClash wedge for regression testing: baseline versus candidate runs, replay evidence, scorecards, promoted failures, challenge packs, and pull request gates.
 - Page links to relevant docs and trial paths without changing authenticated product behavior.
-- Sitemap and public marketing navigation expose the new page.
+- Sitemap exposes the new page without changing the homepage or shared marketing footer.
 
 ## Unit Tests
 
