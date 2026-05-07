@@ -15,6 +15,7 @@ import {
   JsonLd,
   breadcrumbSchema,
   faqSchema,
+  productSchema,
 } from "@/components/marketing/json-ld";
 
 const PAGE_PATH = "/platform/agent-regression-testing";
@@ -246,6 +247,12 @@ export default function AgentRegressionTestingPage() {
             { name: "AI Agent Regression Testing", url: PAGE_PATH },
           ]),
           faqSchema(faqItems),
+          productSchema({
+            name: PAGE_TITLE,
+            description: PAGE_DESCRIPTION,
+            url: PAGE_PATH,
+            applicationSubCategory: "AI agent regression testing software",
+          }),
         ]}
       />
       <StaticHeader />
