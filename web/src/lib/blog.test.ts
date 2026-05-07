@@ -1,18 +1,24 @@
 import { describe, expect, it } from "vitest";
 import { getAllPosts, getPostBySlug } from "./blog";
 
-describe("blog content", () => {
-  it("indexes the AI agent evaluation regression testing post", () => {
-    const post = getPostBySlug("ai-agent-evaluation-regression-testing");
-    const indexedPost = getAllPosts().find(
-      (candidate) => candidate.slug === "ai-agent-evaluation-regression-testing",
-    );
+const SLUG = "ai-agent-evaluation-regression-testing";
 
+describe("blog content", () => {
+  it("loads the AI agent evaluation regression testing metadata", () => {
+    const post = getPostBySlug(SLUG);
+
+    expect(post).not.toBeNull();
     expect(post?.title).toBe(
       "AI Agent Evaluation Needs Regression Testing, Not Just Benchmarks",
     );
     expect(post?.description).toContain("AI agent evaluation");
     expect(post?.description).toContain("CI regression gates");
+  });
+
+  it("loads internal links from the AI agent evaluation post", () => {
+    const post = getPostBySlug(SLUG);
+
+    expect(post).not.toBeNull();
     expect(post?.content).toContain(
       "[AI agent evaluation platform](/platform/agent-evaluation)",
     );
@@ -25,9 +31,14 @@ describe("blog content", () => {
     expect(post?.content).toContain(
       "[CI/CD agent gates](/docs/guides/ci-cd-agent-gates)",
     );
+  });
+
+  it("indexes the AI agent evaluation post with publish metadata", () => {
+    const indexedPost = getAllPosts().find((candidate) => candidate.slug === SLUG);
+
     expect(indexedPost).toMatchObject({
-      slug: "ai-agent-evaluation-regression-testing",
-      date: "2026-05-08",
+      slug: SLUG,
+      date: "2026-05-07",
       author: "Atharva",
     });
   });
