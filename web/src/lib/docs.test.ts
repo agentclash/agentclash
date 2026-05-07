@@ -483,7 +483,7 @@ describe("agent skill docs", () => {
     }
   });
 
-  it("includes agent skills in llms.txt", () => {
+  it("includes platform pages and agent skills in llms.txt", () => {
     const index = buildLlmsIndex("https://example.test");
 
     expect(index).toContain("https://example.test/platform/agent-evaluation");
@@ -499,7 +499,7 @@ describe("agent skill docs", () => {
     );
   });
 
-  it("includes the skill catalog and skill bodies in llms-full.txt", () => {
+  it("includes platform pages, skill catalog, and skill bodies in llms-full.txt", () => {
     const bundle = buildLlmsFull("https://example.test");
 
     expect(bundle).toContain("https://example.test/platform/agent-evaluation");
