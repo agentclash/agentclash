@@ -1,0 +1,102 @@
+---
+title: "AI Agent Evaluation Needs Regression Testing, Not Just Benchmarks"
+date: "2026-05-07"
+description: "A practical guide to AI agent evaluation with real-task workloads, replay evidence, scorecards, challenge packs, and CI regression gates."
+author: "Atharva"
+---
+
+Most AI agent evaluation starts in the wrong place.
+
+A team tries a few prompts, compares a model leaderboard, watches one impressive demo, and ships the agent that looked best in a narrow test. Then the agent reaches a real workflow: messy tools, missing context, timeouts, partial files, stale APIs, and users who expect the whole task to finish.
+
+That is where benchmark-only evaluation breaks down. Agents are not just text generators. They plan, call tools, modify state, inspect results, recover from mistakes, and decide when to stop. If the eval only checks the final answer, it misses the behavior that makes an agent safe or expensive to run in production.
+
+Real AI agent evaluation needs regression testing.
+
+## What an agent eval should prove
+
+An agent eval should answer a practical release question: is this agent ready to do this job again, under the same constraints, without getting worse?
+
+That means the eval needs more than a score. It needs a repeatable workload, a fair comparison, and enough evidence for a reviewer to understand the result. A useful AI agent evaluation platform should capture:
+
+- the task definition and inputs
+- the tool and network policy
+- the agent's actions and observations
+- produced files, logs, and artifacts
+- correctness, cost, latency, and evidence quality
+- the comparison between a candidate and a baseline
+
+That is the difference between "the model looked good" and "this agent passed the release gate."
+
+AgentClash is built around that second workflow. The [AI agent evaluation platform](/platform/agent-evaluation) page explains the product surface, but the core idea is simple: run agents on the same real task with the same tools, then preserve replay evidence and scorecards so the result is reviewable.
+
+## Why static benchmarks are not enough
+
+Static benchmarks are useful for a first filter. They are not enough for shipping agents.
+
+They usually measure isolated answers, not trajectories. They rarely include your private tools, your repository shape, your data contracts, your latency budget, or your failure modes. They can also hide the most important production question: did the agent solve the task in a way your team can trust and repeat?
+
+For agents, the path matters.
+
+Two agents can produce the same final answer while behaving very differently. One might use the right tool, verify its work, attach the required artifact, and stay inside budget. Another might hallucinate a file, skip the failing test, and still land near the correct prose answer. A final-answer-only benchmark treats those runs as similar. A real agent eval should not.
+
+## Turn failures into challenge packs
+
+The repeatable unit in AgentClash is a challenge pack: a workload definition with cases, inputs, tools, scoring rules, and artifacts. Challenge packs make agent evaluation operational because they turn a vague question into something runnable:
+
+- What task should the agent perform?
+- What inputs and fixtures should it see?
+- Which tools are allowed?
+- What evidence should be captured?
+- Which validators or judges decide success?
+
+When an agent fails in production or in a release test, the failure should become a reusable case. That is how the eval suite compounds. Instead of debugging the same mistake every few weeks, you promote it into coverage and make the next candidate prove it did not regress.
+
+The docs for [writing a challenge pack](/docs/guides/write-a-challenge-pack) are the right starting point if you want to turn a real workflow into a durable eval.
+
+## Add regression gates to CI
+
+The strongest agent eval is not a dashboard someone remembers to check. It is a gate in the release loop.
+
+AI agent regression testing compares a candidate run against a known baseline. If the candidate gets worse on correctness, cost, latency, artifacts, or another scorecard dimension, the gate can block the pull request before the change reaches users.
+
+That matters because agent quality can regress in subtle ways:
+
+- a prompt edit improves one demo but breaks another workflow
+- a model switch changes tool strategy or latency
+- a sandbox image update changes installed dependencies
+- a retrieval change gives the agent stale or incomplete context
+- a tool permission change makes a previously solved task impossible
+
+The [AI agent regression testing](/platform/agent-regression-testing) page covers the product angle. The [CI/CD agent gates](/docs/guides/ci-cd-agent-gates) guide covers the implementation path.
+
+## What to look for in an agent evaluation tool
+
+If you are comparing agent evaluation tools, look past the leaderboard. The tool should help your team make a release decision, debug failures, and improve the next test suite.
+
+Useful capabilities include:
+
+- real-task execution instead of prompt-only grading
+- sandboxed runs with explicit tool and network policy
+- replay timelines for tool calls and observations
+- scorecards that separate correctness, cost, latency, and evidence
+- artifact capture for files, logs, and outputs
+- baseline versus candidate comparison
+- CI gates for regressions
+- a workflow for promoting failures into reusable tests
+
+The goal is not to collect more numbers. The goal is to shorten the path from "this agent failed" to "we understand why, we fixed it, and the failure is now covered."
+
+## The release loop
+
+The loop should look like this:
+
+1. Capture a real task as a challenge pack.
+2. Run candidate and baseline agents under the same constraints.
+3. Inspect replay evidence and scorecards.
+4. Promote important failures into regression cases.
+5. Gate future changes in CI.
+
+That is how AI agent evaluation becomes engineering infrastructure instead of a one-off experiment.
+
+Benchmarks can tell you where to look. Regression testing tells you whether the agent is safe to ship again.
