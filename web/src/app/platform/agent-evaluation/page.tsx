@@ -15,6 +15,7 @@ import {
   JsonLd,
   breadcrumbSchema,
   faqSchema,
+  productSchema,
 } from "@/components/marketing/json-ld";
 
 const PAGE_PATH = "/platform/agent-evaluation";
@@ -248,6 +249,12 @@ export default function AgentEvaluationPage() {
             { name: "AI Agent Evaluation Platform", url: PAGE_PATH },
           ]),
           faqSchema(faqItems),
+          productSchema({
+            name: PAGE_TITLE,
+            description: PAGE_DESCRIPTION,
+            url: PAGE_PATH,
+            applicationSubCategory: "AI agent evaluation platform",
+          }),
         ]}
       />
       <StaticHeader />
