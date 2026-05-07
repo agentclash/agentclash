@@ -48,33 +48,38 @@ const geistMono = Geist_Mono({
   variable: "--font-race-mono",
 });
 
-const siteUrl = "https://agentclash.dev";
+const siteUrl = "https://www.agentclash.dev";
+const siteDescription =
+  "AgentClash is an open-source AI agent evaluation platform. Race coding, research, support, and ops agents head-to-head on real tasks with sandboxed tools, live replay, scorecards, and CI regression gates.";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
-  title: "AgentClash",
-  description:
-    "Opensource head-to-head agent evals. Pit your models against each other on real tasks. Same tools, same constraints, scored live — not benchmarks, not vibes.",
+  title: "AgentClash - Open-source AI Agent Evaluation Platform",
+  description: siteDescription,
   keywords: [
-    "AI agents",
-    "LLM benchmarks",
-    "AI race",
-    "model comparison",
+    "AI agent evaluation",
+    "agent evaluation platform",
+    "open-source agent evals",
+    "AI agent regression testing",
+    "coding agent benchmark",
+    "LLM agent evaluation",
+    "agent eval CI",
+    "head-to-head AI benchmarks",
     "agent evaluation",
-    "AI competition",
-    "head-to-head AI",
     "LLM testing",
   ],
   authors: [{ name: "AgentClash" }],
   creator: "AgentClash",
+  alternates: {
+    canonical: "/",
+  },
   openGraph: {
     type: "website",
     locale: "en_US",
     url: siteUrl,
     siteName: "AgentClash",
-    title: "AgentClash",
-    description:
-      "Opensource head-to-head agent evals. Pit your models against each other on real tasks. Same tools, same constraints, scored live — not benchmarks, not vibes.",
+    title: "AgentClash - Open-source AI agent evaluation platform",
+    description: siteDescription,
     images: [
       {
         url: "/og-image.png",
@@ -86,9 +91,8 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "AgentClash",
-    description:
-      "Opensource head-to-head agent evals. Pit your models against each other on real tasks. Same tools, same constraints, scored live — not benchmarks, not vibes.",
+    title: "AgentClash - AI agent evaluation platform",
+    description: siteDescription,
     images: ["/twitter-image.png"],
   },
   robots: {

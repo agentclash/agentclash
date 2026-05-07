@@ -29,7 +29,7 @@ const CLI_CONFIG_FILE = path.join(
 );
 const BACKEND_ENV_FILE = path.join(REPO_ROOT, "backend", ".env.example");
 
-export const DOCS_ORIGIN = "https://agentclash.dev";
+export const DOCS_ORIGIN = "https://www.agentclash.dev";
 
 export type DocNavItem = {
   title: string;

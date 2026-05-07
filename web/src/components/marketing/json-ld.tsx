@@ -13,7 +13,7 @@ export function JsonLd({ id, data }: Props) {
   );
 }
 
-export const SITE_URL = "https://agentclash.dev";
+export const SITE_URL = "https://www.agentclash.dev";
 
 export function breadcrumbSchema(
   items: Array<{ name: string; url: string }>,
