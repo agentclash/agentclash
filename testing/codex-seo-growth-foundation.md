@@ -4,6 +4,7 @@
 
 - Remove the hidden `/v2` marketing route tree so production has one canonical marketing surface.
 - Remove or retarget shared marketing links that still point at `/v2` pages.
+- Redirect old `/v2` and `/v2/*` URLs to `/` so previously shared preview links do not 404.
 - Leave homepage SEO rewrites, canonical-host changes, docs-md indexing strategy, landing pages, and blog/report content for later small PRs.
 
 ## Unit Tests
@@ -31,7 +32,7 @@
 
 ```bash
 curl -I https://www.agentclash.dev/v2
-# Expected after deploy: no longer a real 200 route.
+# Expected after deploy: redirects to / instead of serving a real /v2 page.
 ```
 
 ## Follow-Up Outside Code
