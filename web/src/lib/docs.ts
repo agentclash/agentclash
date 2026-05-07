@@ -31,6 +31,21 @@ const BACKEND_ENV_FILE = path.join(REPO_ROOT, "backend", ".env.example");
 
 export const DOCS_ORIGIN = "https://www.agentclash.dev";
 
+const PUBLIC_PRODUCT_PAGES = [
+  {
+    title: "AI Agent Evaluation Platform",
+    href: "/platform/agent-evaluation",
+    description:
+      "Public page for real-task AI agent evaluation, replay evidence, scorecards, challenge packs, and CI regression gates.",
+  },
+  {
+    title: "AI Agent Regression Testing",
+    href: "/platform/agent-regression-testing",
+    description:
+      "Public page for baseline-versus-candidate agent regression testing, pull request gates, and release evidence.",
+  },
+];
+
 export type DocNavItem = {
   title: string;
   description: string;
@@ -1513,7 +1528,7 @@ export function buildLlmsIndex(origin = DOCS_ORIGIN) {
     "",
     "> AgentClash runs agents against repeatable challenge packs, captures replay evidence, and shows where a run won, failed, or drifted.",
     "",
-    "Use this index when you want the shortest machine-readable map of the public docs. Fetch `/llms-full.txt` for the bundled corpus, or use the `/docs-md/...` links below for page-level markdown exports.",
+    "Use this index when you want the shortest machine-readable map of the public docs and selected product pages. Fetch `/llms-full.txt` for the bundled corpus, or use the `/docs-md/...` links below for page-level markdown exports.",
     "",
     "## Core entrypoints",
     "",
@@ -1525,6 +1540,12 @@ export function buildLlmsIndex(origin = DOCS_ORIGIN) {
     `- [Config Reference](${origin}/docs-md/reference/config) - generated environment and precedence reference.`,
     `- [Agent Skills](${origin}/docs-md/agent-skills) - copyable AgentClash skills for coding agents.`,
     `- [Full bundle](${origin}/llms-full.txt) - all shipped docs in one file.`,
+    "",
+    "## Public product pages",
+    "",
+    ...PUBLIC_PRODUCT_PAGES.map(
+      (page) => `- [${page.title}](${origin}${page.href}) - ${page.description}`,
+    ),
     "",
   ];
 
@@ -1564,7 +1585,13 @@ export function buildLlmsFull(origin = DOCS_ORIGIN) {
     `Canonical docs home: ${origin}/docs`,
     `Machine-readable index: ${origin}/llms.txt`,
     "",
-    "This file concatenates the currently shipped AgentClash docs pages into one markdown-oriented bundle for assistants, coding agents, and local retrieval pipelines.",
+    "This file concatenates the currently shipped AgentClash docs pages and selected product page links into one markdown-oriented bundle for assistants, coding agents, and local retrieval pipelines.",
+    "",
+    "## Public product pages",
+    "",
+    ...PUBLIC_PRODUCT_PAGES.map(
+      (page) => `- [${page.title}](${origin}${page.href}) - ${page.description}`,
+    ),
   ];
 
   for (const doc of docs) {
