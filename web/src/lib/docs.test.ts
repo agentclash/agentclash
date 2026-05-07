@@ -486,6 +486,10 @@ describe("agent skill docs", () => {
   it("includes agent skills in llms.txt", () => {
     const index = buildLlmsIndex("https://example.test");
 
+    expect(index).toContain("https://example.test/platform/agent-evaluation");
+    expect(index).toContain(
+      "https://example.test/platform/agent-regression-testing",
+    );
     expect(index).toContain("https://example.test/docs-md/agent-skills");
     expect(index).toContain(
       "https://example.test/docs-md/agent-skills/agentclash-cli-setup",
@@ -498,6 +502,10 @@ describe("agent skill docs", () => {
   it("includes the skill catalog and skill bodies in llms-full.txt", () => {
     const bundle = buildLlmsFull("https://example.test");
 
+    expect(bundle).toContain("https://example.test/platform/agent-evaluation");
+    expect(bundle).toContain(
+      "https://example.test/platform/agent-regression-testing",
+    );
     expect(bundle).toContain("# Agent Skills");
     expect(bundle).toContain("name: agentclash-skill-catalog");
     expect(bundle).toContain("## Generated Docs Contract");
