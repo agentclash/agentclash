@@ -4,9 +4,12 @@ import { ArrowLeft } from "lucide-react";
 import { ClashMark } from "@/components/marketing/clash-mark";
 
 export const metadata: Metadata = {
-  title: "Why we built this",
+  title: "Why AgentClash Exists - AI Agent Evaluation for Real Tasks",
   description:
-    "Every benchmark passed. Then it failed in week one. Why AgentClash exists.",
+    "Why AgentClash exists: evaluate AI agents on your real tasks with the same tools, same constraints, replayable failures, and regression gates.",
+  alternates: {
+    canonical: "/why",
+  },
 };
 
 export default function WhyWeBuiltThisPage() {

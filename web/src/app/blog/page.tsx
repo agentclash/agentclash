@@ -3,8 +3,12 @@ import Link from "next/link";
 import { getAllPosts } from "@/lib/blog";
 
 export const metadata: Metadata = {
-  title: "Blog — AgentClash",
-  description: "Engineering notes from the AgentClash team.",
+  title: "AI Agent Evaluation Blog - AgentClash",
+  description:
+    "Engineering notes on AI agent evaluation, head-to-head agent evals, replayable failures, scorecards, and CI regression gates.",
+  alternates: {
+    canonical: "/blog",
+  },
 };
 
 export default function BlogPage() {

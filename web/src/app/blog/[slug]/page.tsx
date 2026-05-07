@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { MDXRemote } from "next-mdx-remote/rsc";
+import { JsonLd, articleSchema } from "@/components/marketing/json-ld";
 import { getAllSlugs, getPostBySlug } from "@/lib/blog";
 
 type Props = {
@@ -19,6 +20,17 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return {
     title: `${post.title} — AgentClash`,
     description: post.description,
+    alternates: {
+      canonical: `/blog/${post.slug}`,
+    },
+    openGraph: {
+      type: "article",
+      title: `${post.title} — AgentClash`,
+      description: post.description,
+      url: `/blog/${post.slug}`,
+      publishedTime: post.date,
+      authors: [post.author],
+    },
   };
 }
 
@@ -29,6 +41,16 @@ export default async function BlogPostPage({ params }: Props) {
 
   return (
     <main className="min-h-screen flex flex-col items-center px-6 py-16">
+      <JsonLd
+        id={`agentclash-blog-${post.slug}-schema`}
+        data={articleSchema({
+          headline: post.title,
+          description: post.description,
+          url: `/blog/${post.slug}`,
+          datePublished: post.date,
+          authorName: post.author,
+        })}
+      />
       <article className="w-full max-w-lg">
         <header className="mb-8">
           <p className="font-[family-name:var(--font-mono)] text-[11px] text-white/20">
