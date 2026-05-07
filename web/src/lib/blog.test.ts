@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getAllPosts, getPostBySlug } from "./blog";
+import { getAllPosts, getPostBySlug, parseBlogPost } from "./blog";
 
 const SLUG = "ai-agent-evaluation-regression-testing";
 
@@ -41,5 +41,25 @@ describe("blog content", () => {
       date: "2026-05-07",
       author: "Atharva",
     });
+  });
+
+  it("ignores malformed frontmatter when parsing a post", () => {
+    expect(parseBlogPost("broken", "---\ntitle: [\n---\ncontent")).toBeNull();
+  });
+
+  it("ignores posts missing required metadata", () => {
+    expect(
+      parseBlogPost(
+        "missing-author",
+        [
+          "---",
+          "title: Missing Author",
+          "date: 2026-05-07",
+          "description: Missing required author field.",
+          "---",
+          "content",
+        ].join("\n"),
+      ),
+    ).toBeNull();
   });
 });
