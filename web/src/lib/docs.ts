@@ -31,18 +31,29 @@ const BACKEND_ENV_FILE = path.join(REPO_ROOT, "backend", ".env.example");
 
 export const DOCS_ORIGIN = "https://www.agentclash.dev";
 
-const PUBLIC_PRODUCT_PAGES = [
+type PublicProductPage = {
+  title: string;
+  href: string;
+  description: string;
+  searchKeywords: string;
+};
+
+const PUBLIC_PRODUCT_PAGES: PublicProductPage[] = [
   {
     title: "AI Agent Evaluation Platform",
     href: "/platform/agent-evaluation",
     description:
       "Public page for real-task AI agent evaluation, replay evidence, scorecards, challenge packs, and CI regression gates.",
+    searchKeywords:
+      "AI agent evaluation agent evals real task agent benchmark coding agent evaluation LLM agent evaluation sandboxed agent workloads replay evidence scorecards challenge packs CI regression gates",
   },
   {
     title: "AI Agent Regression Testing",
     href: "/platform/agent-regression-testing",
     description:
       "Public page for baseline-versus-candidate agent regression testing, pull request gates, and release evidence.",
+    searchKeywords:
+      "AI agent regression testing agent evaluation CI gates pull request gates release gates baseline candidate comparisons replay evidence scorecards challenge packs agent eval regression suite",
   },
 ];
 
@@ -1494,7 +1505,7 @@ export function getAllDocMarkdownPaths() {
 }
 
 export function getDocsSearchIndex(): DocSearchItem[] {
-  return getAllDocSlugs()
+  const docsSearchItems = getAllDocSlugs()
     .map((slug) => getDocBySlug(slug))
     .filter((doc): doc is DocPage => Boolean(doc))
     .map((doc) => ({
@@ -1505,6 +1516,16 @@ export function getDocsSearchIndex(): DocSearchItem[] {
         .map((heading) => heading.text)
         .join(" ")} ${stripInlineMarkdown(doc.content).slice(0, 900)}`.toLowerCase(),
     }));
+
+  const productPageSearchItems = PUBLIC_PRODUCT_PAGES.map((page) => ({
+    title: page.title,
+    description: page.description,
+    href: page.href,
+    searchText:
+      `${page.title} ${page.description} ${page.href} ${page.searchKeywords}`.toLowerCase(),
+  }));
+
+  return [...productPageSearchItems, ...docsSearchItems];
 }
 
 export function renderDocMarkdown(doc: DocPage, origin = DOCS_ORIGIN) {

@@ -6,6 +6,7 @@ import {
   DOCS_NAV,
   getAllDocMarkdownPaths,
   getDocBySlug,
+  getDocsSearchIndex,
 } from "./docs";
 
 const skillSlugs = [
@@ -497,6 +498,31 @@ describe("agent skill docs", () => {
     expect(index).toContain(
       "https://example.test/docs-md/agent-skills/challenge-pack-skills/agentclash-challenge-pack-yaml-author",
     );
+  });
+
+  it("includes platform pages in docs search data", () => {
+    const index = getDocsSearchIndex();
+    const evaluation = index.find(
+      (item) => item.href === "/platform/agent-evaluation",
+    );
+    const regression = index.find(
+      (item) => item.href === "/platform/agent-regression-testing",
+    );
+
+    expect(index.slice(0, 2).map((item) => item.href)).toEqual([
+      "/platform/agent-evaluation",
+      "/platform/agent-regression-testing",
+    ]);
+    expect(evaluation?.title).toBe("AI Agent Evaluation Platform");
+    expect(evaluation?.searchText).toContain("platform/agent-evaluation");
+    expect(evaluation?.searchText).toContain("ai agent evaluation");
+    expect(evaluation?.searchText).toContain("challenge packs");
+    expect(evaluation?.searchText).toContain("ci regression gates");
+    expect(regression?.title).toBe("AI Agent Regression Testing");
+    expect(regression?.searchText).toContain("platform/agent-regression-testing");
+    expect(regression?.searchText).toContain("ai agent regression testing");
+    expect(regression?.searchText).toContain("pull request gates");
+    expect(regression?.searchText).toContain("scorecards");
   });
 
   it("includes platform pages, skill catalog, and skill bodies in llms-full.txt", () => {
