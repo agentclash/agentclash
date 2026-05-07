@@ -1,27 +1,24 @@
 import { withAuth } from "@workos-inc/authkit-nextjs";
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { JsonLd } from "@/components/marketing/json-ld";
+import { JsonLd, SITE_URL, productSchema } from "@/components/marketing/json-ld";
 import HomePage from "./landing";
 
-const SITE_URL = "https://www.agentclash.dev";
+export const metadata: Metadata = {
+  alternates: {
+    canonical: "/",
+  },
+};
 
 const softwareApplicationSchema = {
-  "@context": "https://schema.org",
-  "@type": "SoftwareApplication",
-  name: "AgentClash",
-  alternateName: "Agent Clash",
-  applicationCategory: "DeveloperApplication",
+  ...productSchema({
+    name: "AgentClash",
+    description:
+      "Open-source AI agent evaluation platform for racing agents head-to-head on real tasks with sandboxed tools, replay, scorecards, and CI regression gates.",
+    url: SITE_URL,
+  }),
   applicationSubCategory: "AI agent evaluation platform",
-  operatingSystem: "Web, macOS, Linux, Windows",
-  description:
-    "Open-source AI agent evaluation platform for racing agents head-to-head on real tasks with sandboxed tools, replay, scorecards, and CI regression gates.",
-  url: SITE_URL,
   softwareVersion: "beta",
-  offers: {
-    "@type": "Offer",
-    price: "0",
-    priceCurrency: "USD",
-  },
 };
 
 const organizationSchema = {

@@ -70,9 +70,6 @@ export const metadata: Metadata = {
   ],
   authors: [{ name: "AgentClash" }],
   creator: "AgentClash",
-  alternates: {
-    canonical: "/",
-  },
   openGraph: {
     type: "website",
     locale: "en_US",
