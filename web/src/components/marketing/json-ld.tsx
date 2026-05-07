@@ -74,3 +74,42 @@ export function productSchema({
     offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
   };
 }
+
+export function articleSchema({
+  headline,
+  description,
+  url,
+  datePublished,
+  authorName,
+}: {
+  headline: string;
+  description: string;
+  url: string;
+  datePublished: string;
+  authorName: string;
+}): Record<string, unknown> {
+  const absoluteUrl = url.startsWith("http") ? url : `${SITE_URL}${url}`;
+
+  return {
+    "@context": "https://schema.org",
+    "@type": "BlogPosting",
+    headline,
+    description,
+    url: absoluteUrl,
+    mainEntityOfPage: absoluteUrl,
+    datePublished,
+    dateModified: datePublished,
+    author: {
+      "@type": "Person",
+      name: authorName,
+    },
+    publisher: {
+      "@type": "Organization",
+      name: "AgentClash",
+      logo: {
+        "@type": "ImageObject",
+        url: `${SITE_URL}/icon.svg`,
+      },
+    },
+  };
+}

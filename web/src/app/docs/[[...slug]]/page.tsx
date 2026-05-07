@@ -27,6 +27,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return {
     title: `${doc.title} — AgentClash Docs`,
     description: doc.description,
+    alternates: {
+      canonical: doc.href,
+    },
   };
 }
 

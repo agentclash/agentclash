@@ -3,7 +3,12 @@ import Image from "next/image";
 import Link from "next/link";
 
 export const metadata: Metadata = {
-  title: "Team",
+  title: "Team - AgentClash",
+  description:
+    "Meet the engineers building AgentClash, an open-source AI agent evaluation platform for real-task races, replay, scorecards, and CI gates.",
+  alternates: {
+    canonical: "/team",
+  },
 };
 
 const TEAM = [
