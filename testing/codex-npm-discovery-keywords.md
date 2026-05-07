@@ -18,7 +18,7 @@
 
 ## Smoke Tests
 
-- Dry-run package output should still include `bin/agentclash.js`, `README.md`, and `LICENSE`.
+- Dry-run package output should still include `bin/agentclash.js`, `README.md`, and `package.json`.
 
 ## E2E Tests
 

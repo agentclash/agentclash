@@ -1,12 +1,12 @@
 # AgentClash
 
-Opensource race engine. Pit your models against each other on real tasks. Same tools, same constraints, scored live — not benchmarks, not vibes.
+AI agent evaluation platform for real-task races. Compare agents with the same tools, same constraints, live scorecards, replay, and CI regression gates.
 
 **[agentclash.dev](https://www.agentclash.dev)**
 
 ## What is this?
 
-AgentClash puts AI models on the same real task, at the same time. Scored live on completion, speed, token efficiency, and tool strategy. Step-by-step replays show exactly why one agent won and another didn't.
+AgentClash puts AI agents on the same real task, at the same time. Scored live on completion, speed, token efficiency, and tool strategy. Step-by-step replays show exactly why one agent won and another didn't.
 
 - Head-to-head races
 - Composite scoring

@@ -1,7 +1,7 @@
 {
   "name": "agentclash",
   "version": "0.0.0",
-  "description": "AgentClash CLI — evaluate, compare, and deploy AI agents",
+  "description": "AI agent evaluation CLI for races, replay, scorecards, and CI regression gates",
   "bin": {
     "agentclash": "bin/agentclash.js"
   },
@@ -19,9 +19,23 @@
   },
   "keywords": [
     "agentclash",
-    "ai",
+    "ai-agent-evaluation",
+    "agent-evaluation",
+    "llm-evaluation",
+    "llm-eval",
+    "agent-testing",
+    "ai-testing",
+    "coding-agent",
+    "coding-agents",
+    "agent-regression-testing",
+    "benchmark",
+    "scorecard",
+    "replay",
+    "ci",
+    "ci-cd",
+    "llmops",
     "cli",
-    "evaluation",
+    "ai",
     "llm",
     "agent"
   ],
