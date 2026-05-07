@@ -10,16 +10,14 @@ export const metadata: Metadata = {
   },
 };
 
-const softwareApplicationSchema = {
-  ...productSchema({
-    name: "AgentClash",
-    description:
-      "Open-source AI agent evaluation platform for racing agents head-to-head on real tasks with sandboxed tools, replay, scorecards, and CI regression gates.",
-    url: SITE_URL,
-  }),
+const softwareApplicationSchema = productSchema({
+  name: "AgentClash",
+  description:
+    "Open-source AI agent evaluation platform for racing agents head-to-head on real tasks with sandboxed tools, replay, scorecards, and CI regression gates.",
+  url: SITE_URL,
   applicationSubCategory: "AI agent evaluation platform",
   softwareVersion: "beta",
-};
+});
 
 const organizationSchema = {
   "@context": "https://schema.org",
