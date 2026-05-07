@@ -258,7 +258,7 @@ export default function AgentRegressionTestingPage() {
                   Home
                 </Link>
                 <span>/</span>
-                <span>Platform</span>
+                <span>AI Agent Regression Testing</span>
               </nav>
               <p className="mt-10 font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-normal text-emerald-200/70">
                 Release gates for agents
