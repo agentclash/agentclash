@@ -1,6 +1,11 @@
 import fs from "fs";
 import path from "path";
 import matter from "gray-matter";
+import {
+  getAllPosts,
+  getPostBySlug,
+  type BlogPostWithContent,
+} from "./blog";
 
 const CONTENT_DIR = path.join(process.cwd(), "content", "docs");
 const AGENT_SKILLS_DIR = path.join(process.cwd(), "content", "agent-skills");
@@ -1427,6 +1432,13 @@ function normalizeMarkdownForExport(content: string, origin: string) {
     .trim();
 }
 
+function normalizeBlogMarkdownForExport(content: string, origin: string) {
+  return normalizeMarkdownForExport(content, origin).replace(
+    /\]\((\/[^)\s]*)\)/g,
+    (_, href) => `](${origin}${href})`,
+  );
+}
+
 export function getDocMarkdownPath(slug: string[] = []) {
   return slug.length === 0 ? "/docs-md" : `/docs-md/${slug.join("/")}`;
 }
@@ -1543,7 +1555,27 @@ export function renderDocMarkdown(doc: DocPage, origin = DOCS_ORIGIN) {
   return lines.join("\n").trim();
 }
 
+export function renderBlogMarkdown(
+  post: BlogPostWithContent,
+  origin = DOCS_ORIGIN,
+) {
+  const lines = [
+    `# ${post.title}`,
+    "",
+    post.description,
+    "",
+    `Source: ${origin}/blog/${post.slug}`,
+    `Published: ${post.date}`,
+    `Author: ${post.author}`,
+    "",
+    normalizeBlogMarkdownForExport(post.content, origin),
+  ];
+
+  return lines.join("\n").trim();
+}
+
 export function buildLlmsIndex(origin = DOCS_ORIGIN) {
+  const blogPosts = getAllPosts();
   const lines = [
     "# AgentClash",
     "",
@@ -1566,6 +1598,12 @@ export function buildLlmsIndex(origin = DOCS_ORIGIN) {
     "",
     ...PUBLIC_PRODUCT_PAGES.map(
       (page) => `- [${page.title}](${origin}${page.href}) - ${page.description}`,
+    ),
+    "",
+    "## Blog posts",
+    "",
+    ...blogPosts.map(
+      (post) => `- [${post.title}](${origin}/blog/${post.slug}) - ${post.description}`,
     ),
     "",
   ];
@@ -1599,6 +1637,9 @@ export function buildLlmsFull(origin = DOCS_ORIGIN) {
   const docs = orderedSlugs
     .map((slug) => getDocBySlug(slug))
     .filter((doc): doc is DocPage => Boolean(doc));
+  const blogPosts = getAllPosts()
+    .map((post) => getPostBySlug(post.slug))
+    .filter((post): post is BlogPostWithContent => Boolean(post));
 
   const lines = [
     "# AgentClash Docs Bundle",
@@ -1613,7 +1654,17 @@ export function buildLlmsFull(origin = DOCS_ORIGIN) {
     ...PUBLIC_PRODUCT_PAGES.map(
       (page) => `- [${page.title}](${origin}${page.href}) - ${page.description}`,
     ),
+    "",
+    "## Blog posts",
+    "",
+    ...blogPosts.map(
+      (post) => `- [${post.title}](${origin}/blog/${post.slug}) - ${post.description}`,
+    ),
   ];
+
+  for (const post of blogPosts) {
+    lines.push("", "---", "", renderBlogMarkdown(post, origin));
+  }
 
   for (const doc of docs) {
     lines.push("", "---", "", renderDocMarkdown(doc, origin));

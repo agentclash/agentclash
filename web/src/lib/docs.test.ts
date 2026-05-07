@@ -484,12 +484,18 @@ describe("agent skill docs", () => {
     }
   });
 
-  it("includes platform pages and agent skills in llms.txt", () => {
+  it("includes platform pages, blog posts, and agent skills in llms.txt", () => {
     const index = buildLlmsIndex("https://example.test");
 
     expect(index).toContain("https://example.test/platform/agent-evaluation");
     expect(index).toContain(
       "https://example.test/platform/agent-regression-testing",
+    );
+    expect(index).toContain(
+      "https://example.test/blog/ai-agent-evaluation-regression-testing",
+    );
+    expect(index).toContain(
+      "AI Agent Evaluation Needs Regression Testing, Not Just Benchmarks",
     );
     expect(index).toContain("https://example.test/docs-md/agent-skills");
     expect(index).toContain(
@@ -525,12 +531,27 @@ describe("agent skill docs", () => {
     expect(regression?.searchText).toContain("scorecards");
   });
 
-  it("includes platform pages, skill catalog, and skill bodies in llms-full.txt", () => {
+  it("includes platform pages, blog posts, skill catalog, and skill bodies in llms-full.txt", () => {
     const bundle = buildLlmsFull("https://example.test");
 
     expect(bundle).toContain("https://example.test/platform/agent-evaluation");
     expect(bundle).toContain(
       "https://example.test/platform/agent-regression-testing",
+    );
+    expect(bundle).toContain(
+      "# AI Agent Evaluation Needs Regression Testing, Not Just Benchmarks",
+    );
+    expect(bundle).toContain(
+      "Source: https://example.test/blog/ai-agent-evaluation-regression-testing",
+    );
+    expect(bundle).toContain(
+      "[AI agent evaluation platform](https://example.test/platform/agent-evaluation)",
+    );
+    expect(bundle).toContain(
+      "[AI agent regression testing](https://example.test/platform/agent-regression-testing)",
+    );
+    expect(bundle).toContain(
+      "[CI/CD agent gates](https://example.test/docs-md/guides/ci-cd-agent-gates)",
     );
     expect(bundle).toContain("# Agent Skills");
     expect(bundle).toContain("name: agentclash-skill-catalog");
