@@ -1,6 +1,6 @@
 import type { MetadataRoute } from "next";
 import { getAllPosts } from "@/lib/blog";
-import { DOCS_ORIGIN, getAllDocMarkdownPaths, getAllDocPaths } from "@/lib/docs";
+import { DOCS_ORIGIN, getAllDocPaths } from "@/lib/docs";
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const posts = getAllPosts().map((post) => ({
@@ -15,13 +15,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
     changeFrequency: "weekly" as const,
     priority: docPath === "/docs" ? 0.85 : 0.75,
   }));
-  const markdownDocs = getAllDocMarkdownPaths().map((docPath) => ({
-    url: `${DOCS_ORIGIN}${docPath}`,
-    lastModified: new Date(),
-    changeFrequency: "weekly" as const,
-    priority: docPath === "/docs-md" ? 0.5 : 0.4,
-  }));
-
   return [
     {
       url: DOCS_ORIGIN,
@@ -60,7 +53,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.55,
     },
     ...docs,
-    ...markdownDocs,
     ...posts,
   ];
 }
