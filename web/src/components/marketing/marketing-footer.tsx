@@ -8,6 +8,7 @@ const COLUMNS: Array<{
     heading: "Product",
     links: [
       { href: "/#features", label: "Features" },
+      { href: "/platform/agent-evaluation", label: "Agent evaluation" },
       { href: "/docs", label: "Docs" },
       { href: "/docs/getting-started/quickstart", label: "Quickstart" },
       { href: "/docs/getting-started/self-host", label: "Self-host" },
