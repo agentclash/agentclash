@@ -160,7 +160,11 @@ describe("docsPageSchema", () => {
       headline: "Quickstart",
       description: "Run your first AgentClash eval.",
       url: `${SITE_URL}/docs/getting-started/quickstart`,
-      mainEntityOfPage: `${SITE_URL}/docs/getting-started/quickstart`,
+      mainEntityOfPage: {
+        "@type": "WebPage",
+        "@id": `${SITE_URL}/docs/getting-started/quickstart`,
+        url: `${SITE_URL}/docs/getting-started/quickstart`,
+      },
       author: {
         "@type": "Organization",
         name: "AgentClash",
