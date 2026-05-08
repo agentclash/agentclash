@@ -41,3 +41,50 @@ describe("blog RSS autodiscovery metadata", () => {
     });
   });
 });
+
+describe("blog post social metadata", () => {
+  it("adds explicit Open Graph image and Twitter card metadata", async () => {
+    getPostBySlugMock.mockReturnValue({
+      slug: "fixture-post",
+      title: "Fixture Post",
+      date: "2026-05-08",
+      description: "Fixture description.",
+      author: "AgentClash",
+      content: "",
+    });
+
+    const metadata = await generateMetadata({
+      params: Promise.resolve({
+        slug: "fixture-post",
+      }),
+    });
+
+    expect(metadata).toMatchObject({
+      title: "Fixture Post — AgentClash",
+      description: "Fixture description.",
+      openGraph: {
+        type: "article",
+        title: "Fixture Post — AgentClash",
+        description: "Fixture description.",
+        url: "/blog/fixture-post",
+        siteName: "AgentClash",
+        publishedTime: "2026-05-08",
+        authors: ["AgentClash"],
+        images: [
+          {
+            url: "/og-image.png",
+            width: 1200,
+            height: 630,
+            alt: "AgentClash blog for AI agent evaluation and regression testing.",
+          },
+        ],
+      },
+      twitter: {
+        card: "summary_large_image",
+        title: "Fixture Post — AgentClash",
+        description: "Fixture description.",
+        images: ["/twitter-image.png"],
+      },
+    });
+  });
+});
