@@ -133,9 +133,13 @@ file_exists
 file_json_schema
 directory_structure
 code_execution
+retrieval_hit
+retrieval_precision
 ```
 
 Do not use `has_json`, `json_equals`, `semantic_match`, `unit_test`, `shell`, or provider-specific names; the validator rejects unknown `type` values.
+
+`retrieval_hit` and `retrieval_precision` expect the agent's `final_output` to be a JSON object containing `retrieved_chunks`. They evaluate customer-owned RAG pipelines only; they do not ingest, chunk, embed, or query knowledge sources.
 
 ## Evidence References
 Validator `target` and required `expected_from` values must use supported evidence references:

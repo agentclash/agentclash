@@ -91,6 +91,65 @@ The manifest may contain a top-level `evaluation_spec` block like this:
 - `scorecard.dimensions`: score groups later surfaced to users
 - `scorecard.normalization`: dimension-specific thresholds for turning raw latency/cost into scores
 
+## RAG retrieval evaluation
+
+AgentClash evaluates customer-owned RAG pipelines; it does not ingest documents,
+chunk text, call embedding models, host vector databases, or run rerankers. A RAG
+agent can expose retrieval evidence by submitting a JSON object as `final_output`:
+
+```json
+{
+  "answer": "Employees may expense Uber after 10pm when policy conditions are met.",
+  "retrieved_chunks": [
+    {
+      "chunk_id": "travel-policy#chunk-03",
+      "document_id": "travel-policy",
+      "rank": 1,
+      "score": 0.91,
+      "text": "Rideshare after 10pm is reimbursable...",
+      "metadata": { "title": "Travel Policy" }
+    }
+  ],
+  "citations": ["travel-policy#chunk-03"]
+}
+```
+
+Array order in `retrieved_chunks` is the canonical rank. `rank` and `score` are
+descriptive metadata only.
+
+Two deterministic validators consume this envelope:
+
+```yaml
+validators:
+  - key: travel_policy_hit
+    type: retrieval_hit
+    target: final_output
+    expected_from: literal:["travel-policy"]
+    config:
+      k: 3
+      id_fields: [document_id]
+
+  - key: retrieval_precision
+    type: retrieval_precision
+    target: final_output
+    expected_from: literal:["travel-policy"]
+    config:
+      k: 3
+      pass_at: 0.5
+
+  - key: cited_chunks_were_retrieved
+    type: retrieval_hit
+    target: final_output
+    expected_from: final_output
+    config:
+      expected_ids_path: $.citations
+```
+
+`retrieval_hit` passes when any expected id appears in the considered chunks.
+`retrieval_precision` scores matched considered chunks divided by considered chunks
+after the optional top-k cutoff. Malformed JSON is an error; missing or empty
+retrieval evidence is unavailable evidence.
+
 ## Loader behavior
 
 The loader:
@@ -118,3 +177,5 @@ This preserves comparability while still allowing the benchmark to evolve throug
 - `#47`: scorecard generation
 - `#48`-`#50`: comparison and release gates
 - `#82`: failure-to-eval flywheel
+- First-class retrieval trace events, recall/MRR validators, and RAG ingestion/indexing
+  infrastructure remain out of scope for this contract.

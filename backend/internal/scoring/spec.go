@@ -37,6 +37,9 @@ const (
 	ValidatorTypeFileJSONSchema     ValidatorType = "file_json_schema"
 	ValidatorTypeDirectoryStructure ValidatorType = "directory_structure"
 	ValidatorTypeCodeExecution      ValidatorType = "code_execution"
+
+	ValidatorTypeRetrievalHit       ValidatorType = "retrieval_hit"
+	ValidatorTypeRetrievalPrecision ValidatorType = "retrieval_precision"
 )
 
 type MetricType string
@@ -336,7 +339,7 @@ func (t ValidatorType) IsValid() bool {
 		ValidatorTypeMathEquivalence, ValidatorTypeBLEUScore, ValidatorTypeROUGEScore, ValidatorTypeChrFScore,
 		ValidatorTypeFileContentMatch, ValidatorTypeFileExists,
 		ValidatorTypeFileJSONSchema, ValidatorTypeDirectoryStructure,
-		ValidatorTypeCodeExecution:
+		ValidatorTypeCodeExecution, ValidatorTypeRetrievalHit, ValidatorTypeRetrievalPrecision:
 		return true
 	default:
 		return false

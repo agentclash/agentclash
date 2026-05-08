@@ -7,6 +7,19 @@ import path from "node:path";
 
 const repo = process.cwd();
 const tmp = mkdtempSync(path.join(tmpdir(), "agentclash-skill-harness-"));
+
+function backendSlug(name) {
+  let slug = name
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  if (slug.length > 60) {
+    slug = slug.slice(0, 60).replace(/-+$/g, "");
+  }
+  return slug;
+}
+
 const detectRepo = path.join(tmp, "detect-repo");
 mkdirSync(path.join(detectRepo, "web/content/agent-skills/detect-skill"), { recursive: true });
 execFileSync("git", ["init"], { cwd: detectRepo, stdio: "ignore" });
@@ -82,7 +95,7 @@ const manifestPath = execFileSync(
 const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
 assert.equal(manifest.harnesses.length, 1);
 const spec = JSON.parse(readFileSync(manifest.harnesses[0].spec, "utf8"));
-assert.match(spec.name, /^skill-self-test-unit-agentclash-example-skill$/);
+assert.match(spec.name, /^skill-self-test-[a-f0-9]{8}-unit-agentclash-example-skill$/);
 assert.equal(spec.auth_mode, "api_key_secret");
 assert.equal(spec.openai_api_key_secret_name, "OPENAI_API_KEY");
 assert.equal(spec.repository_url, "https://github.com/agentclash/agentclash.git");
@@ -125,7 +138,46 @@ const longManifestPath = execFileSync(
 ).trim();
 const longManifest = JSON.parse(readFileSync(longManifestPath, "utf8"));
 const longSpec = JSON.parse(readFileSync(longManifest.harnesses[0].spec, "utf8"));
-assert.match(longSpec.name.slice(0, 60), /^skill-self-test-run-123456789-1-/);
+assert.match(longSpec.name.slice(0, 60), /^skill-self-test-[a-f0-9]{8}-run-123456789-1-/);
+
+const collidingNames = ["agentclash-challenge-pack-scoring-validators", "agentclash-challenge-pack-yaml-author"];
+const collidingPaths = collidingNames.map((name) => {
+  const dir = path.join(tmp, "web/content/agent-skills", name);
+  mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, "SKILL.md");
+  writeFileSync(
+    file,
+    `---
+name: ${name}
+description: Use when testing harness slug collisions.
+metadata:
+  agentclash.role: testing
+  agentclash.version: "1"
+  agentclash.requires_cli: "false"
+---
+
+# ${name}
+`,
+  );
+  return file;
+});
+const collisionOutDir = path.join(tmp, "collision-out");
+const collisionManifestPath = execFileSync(
+  "node",
+  ["scripts/internal-agent-skills/prepare-skill-harnesses.mjs", JSON.stringify(collidingPaths), collisionOutDir],
+  {
+    cwd: repo,
+    env: {
+      ...process.env,
+      RUN_LABEL: "run-25422143294-1",
+    },
+    encoding: "utf8",
+  },
+).trim();
+const collisionManifest = JSON.parse(readFileSync(collisionManifestPath, "utf8"));
+const collisionSpecs = collisionManifest.harnesses.map((entry) => JSON.parse(readFileSync(entry.spec, "utf8")));
+const collisionSlugs = collisionSpecs.map((entry) => backendSlug(entry.name));
+assert.equal(new Set(collisionSlugs).size, collisionSlugs.length);
 
 const resultPath = path.join(tmp, "result.json");
 writeFileSync(

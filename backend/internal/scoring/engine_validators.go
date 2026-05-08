@@ -117,7 +117,9 @@ func evaluateValidators(validators []ValidatorDeclaration, evidence extractedEvi
 		result.Verdict = outcome.verdict
 		result.NormalizedScore = outcome.normalizedScore
 		result.Reason = outcome.reason
-		if outcome.verdict == "error" {
+		if outcome.state != "" {
+			result.State = outcome.state
+		} else if outcome.verdict == "error" {
 			result.State = OutputStateError
 		} else {
 			result.State = OutputStateAvailable
@@ -376,6 +378,10 @@ func applyValidator(validator ValidatorDeclaration, actual string, expected stri
 		return validateROUGEScore(actual, expected, validator.Config)
 	case ValidatorTypeChrFScore:
 		return validateChrFScore(actual, expected, validator.Config)
+	case ValidatorTypeRetrievalHit:
+		return validateRetrievalHit(actual, expected, validator.Config)
+	case ValidatorTypeRetrievalPrecision:
+		return validateRetrievalPrecision(actual, expected, validator.Config)
 	case ValidatorTypeFileExists:
 		return validateFileExists(actual, validator.Config)
 	case ValidatorTypeFileContentMatch:
