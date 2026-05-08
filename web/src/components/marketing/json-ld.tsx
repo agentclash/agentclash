@@ -227,6 +227,9 @@ export function docsPageSchema({
     breadcrumbSchema(breadcrumbs),
     ...(isDocsHome && faqItems.length ? [faqSchema(faqItems)] : []),
   ];
+  if (!isDocsHome && faqItems.length) {
+    throw new Error("docsPageSchema faqItems are only supported for /docs");
+  }
   if (isDocsHome) return schema;
 
   return [

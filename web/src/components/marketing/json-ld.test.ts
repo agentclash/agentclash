@@ -232,4 +232,20 @@ describe("docsPageSchema", () => {
     });
     expect(schema.map((item) => item["@type"])).not.toContain("TechArticle");
   });
+
+  it("rejects FAQ items for non-home docs pages", () => {
+    expect(() =>
+      docsPageSchema({
+        title: "Quickstart",
+        description: "Run your first AgentClash eval.",
+        href: "/docs/getting-started/quickstart",
+        faqItems: [
+          {
+            question: "Where should I start?",
+            answer: "Start with the quickstart.",
+          },
+        ],
+      }),
+    ).toThrow("docsPageSchema faqItems are only supported for /docs");
+  });
 });
