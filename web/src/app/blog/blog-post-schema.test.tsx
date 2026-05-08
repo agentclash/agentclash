@@ -88,7 +88,25 @@ describe("blog post structured data", () => {
     expect(jsonLd[1]).toMatchObject({
       "@type": "BlogPosting",
       headline: "Fixture Post",
+      description: "Fixture description.",
       url: `${SITE_URL}/blog/fixture-post`,
+      mainEntityOfPage: `${SITE_URL}/blog/fixture-post`,
+      image: {
+        "@type": "ImageObject",
+        url: `${SITE_URL}/og-image.png`,
+        width: 1200,
+        height: 630,
+      },
+      datePublished: "2026-05-08",
+      dateModified: "2026-05-08",
+      author: {
+        "@type": "Person",
+        name: "AgentClash",
+      },
+      publisher: {
+        "@type": "Organization",
+        name: "AgentClash",
+      },
     });
   });
 });
