@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import sitemap from "./sitemap";
 
 vi.mock("@/lib/blog", () => ({
@@ -19,6 +19,10 @@ vi.mock("@/lib/docs", () => ({
 }));
 
 describe("sitemap", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it("keeps core public discovery surfaces indexed", () => {
     const entries = sitemap();
     const byUrl = new Map(entries.map((entry) => [entry.url, entry]));
