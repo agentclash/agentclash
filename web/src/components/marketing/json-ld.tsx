@@ -172,3 +172,50 @@ export function blogIndexSchema(
     },
   ];
 }
+
+export function docsPageSchema({
+  title,
+  description,
+  href,
+}: {
+  title: string;
+  description: string;
+  href: string;
+}): Record<string, unknown>[] {
+  const absoluteUrl = href.startsWith("http") ? href : `${SITE_URL}${href}`;
+  const pathname = href.replace(/^https?:\/\/[^/]+/, "").replace(/\/+$/, "");
+  const isDocsHome = pathname === "/docs";
+  const breadcrumbs =
+    isDocsHome
+      ? [
+          { name: "Home", url: "/" },
+          { name: "Docs", url: "/docs" },
+        ]
+      : [
+          { name: "Home", url: "/" },
+          { name: "Docs", url: "/docs" },
+          { name: title, url: href },
+        ];
+
+  const schema = [breadcrumbSchema(breadcrumbs)];
+  if (isDocsHome) return schema;
+
+  return [
+    ...schema,
+    {
+      "@context": "https://schema.org",
+      "@type": "TechArticle",
+      headline: title,
+      description,
+      url: absoluteUrl,
+      mainEntityOfPage: absoluteUrl,
+      author: publisherSchema(),
+      publisher: publisherSchema(),
+      isPartOf: {
+        "@type": "WebSite",
+        name: "AgentClash Docs",
+        url: `${SITE_URL}/docs`,
+      },
+    },
+  ];
+}

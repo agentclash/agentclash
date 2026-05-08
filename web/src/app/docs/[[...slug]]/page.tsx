@@ -4,12 +4,14 @@ import { notFound } from "next/navigation";
 import { MDXRemote } from "next-mdx-remote/rsc";
 import { DocsShell } from "@/components/docs/docs-shell";
 import { docsMDXComponents } from "@/components/docs/mdx-components";
+import { JsonLd, docsPageSchema } from "@/components/marketing/json-ld";
 import {
   DOCS_NAV,
   getAllDocSlugs,
   getDocBySlug,
   getDocNeighbors,
 } from "@/lib/docs";
+import { docsSchemaId } from "../docs-schema-id";
 
 type Props = {
   params: Promise<{ slug?: string[] }>;
@@ -50,6 +52,15 @@ export default async function DocsPage({ params }: Props) {
       sections={DOCS_NAV}
       headings={doc.headings}
     >
+      <JsonLd
+        id={docsSchemaId(doc.href)}
+        data={docsPageSchema({
+          title: doc.title,
+          description: doc.description,
+          href: doc.href,
+        })}
+      />
+
       <div className="prose-agentclash-docs">
         <MDXRemote source={doc.content} components={docsMDXComponents} />
       </div>
