@@ -27,7 +27,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   if (!doc) return {};
 
   const title = `${doc.title} — AgentClash Docs`;
-  const description = doc.description.trim();
+  const description =
+    typeof doc.description === "string" ? doc.description.trim() : "";
   const imageAlt = description ? `${doc.title} — ${description}` : doc.title;
 
   return {

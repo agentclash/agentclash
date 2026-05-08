@@ -94,4 +94,26 @@ describe("docs metadata", () => {
     expect(openGraph.images?.[0]?.alt).toBe("CLI");
     expect(twitter.images?.[0]?.alt).toBe("CLI");
   });
+
+  it("falls back to title-only social image alt when description is missing", async () => {
+    getDocBySlugMock.mockReturnValue({
+      href: "/docs/reference/config",
+      title: "Config",
+    });
+
+    const metadata = await generateMetadata({
+      params: Promise.resolve({
+        slug: ["reference", "config"],
+      }),
+    });
+    const openGraph = metadata.openGraph as {
+      images?: Array<{ alt?: string }>;
+    };
+    const twitter = metadata.twitter as {
+      images?: Array<{ alt?: string }>;
+    };
+
+    expect(openGraph.images?.[0]?.alt).toBe("Config");
+    expect(twitter.images?.[0]?.alt).toBe("Config");
+  });
 });
