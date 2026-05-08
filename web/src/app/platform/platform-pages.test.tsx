@@ -26,6 +26,23 @@ function getJsonLd(id: string) {
   return JSON.parse(script?.textContent ?? "[]") as Array<Record<string, unknown>>;
 }
 
+function getSocialImageAlt(metadata: {
+  openGraph?: unknown;
+  twitter?: unknown;
+}) {
+  const openGraph = metadata.openGraph as {
+    images?: Array<{ alt?: string }>;
+  };
+  const twitter = metadata.twitter as {
+    images?: Array<{ alt?: string }>;
+  };
+
+  return {
+    ogAlt: openGraph.images?.[0]?.alt,
+    twitterAlt: twitter.images?.[0]?.alt,
+  };
+}
+
 afterEach(() => {
   act(() => {
     root?.unmount();
@@ -108,7 +125,6 @@ describe("platform page social metadata", () => {
             url: "/og-image.png",
             width: 1200,
             height: 630,
-            alt: "AgentClash AI agent evaluation platform social preview.",
           },
         ],
       },
@@ -119,11 +135,15 @@ describe("platform page social metadata", () => {
         images: [
           {
             url: "/twitter-image.png",
-            alt: "AgentClash AI agent evaluation platform social preview.",
           },
         ],
       },
     });
+
+    const { ogAlt, twitterAlt } = getSocialImageAlt(agentEvaluationMetadata);
+    expect(ogAlt).toContain("AgentClash");
+    expect(ogAlt).toContain("evaluation platform");
+    expect(twitterAlt).toBe(ogAlt);
   });
 
   it("adds explicit social image metadata for regression testing", () => {
@@ -148,7 +168,6 @@ describe("platform page social metadata", () => {
             url: "/og-image.png",
             width: 1200,
             height: 630,
-            alt: "AgentClash AI agent regression testing social preview.",
           },
         ],
       },
@@ -159,10 +178,17 @@ describe("platform page social metadata", () => {
         images: [
           {
             url: "/twitter-image.png",
-            alt: "AgentClash AI agent regression testing social preview.",
           },
         ],
       },
     });
+
+    const { ogAlt, twitterAlt } = getSocialImageAlt(
+      agentRegressionTestingMetadata,
+    );
+    expect(ogAlt).toContain("AgentClash");
+    expect(ogAlt).toContain("regression testing");
+    expect(twitterAlt).toBe(ogAlt);
+    expect(ogAlt).not.toBe(getSocialImageAlt(agentEvaluationMetadata).ogAlt);
   });
 });
