@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { MDXRemote } from "next-mdx-remote/rsc";
 import { JsonLd, articleSchema } from "@/components/marketing/json-ld";
 import { getAllSlugs, getPostBySlug } from "@/lib/blog";
+import { blogRssAlternate } from "@/lib/seo";
 
 type Props = {
   params: Promise<{ slug: string }>;
@@ -22,6 +23,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     description: post.description,
     alternates: {
       canonical: `/blog/${post.slug}`,
+      types: blogRssAlternate,
     },
     openGraph: {
       type: "article",
