@@ -132,13 +132,14 @@ describe("docsPageSchema", () => {
   });
 
   it("uses a two-item breadcrumb for the docs home page", () => {
-    const [breadcrumb] = docsPageSchema({
+    const schema = docsPageSchema({
       title: "AgentClash Docs",
       description: "Documentation for AgentClash.",
-      href: "/docs",
+      href: "/docs/",
     });
 
-    expect(breadcrumb).toMatchObject({
+    expect(schema).toHaveLength(1);
+    expect(schema[0]).toMatchObject({
       "@type": "BreadcrumbList",
       itemListElement: [
         {
@@ -155,5 +156,6 @@ describe("docsPageSchema", () => {
         },
       ],
     });
+    expect(schema.map((item) => item["@type"])).not.toContain("TechArticle");
   });
 });

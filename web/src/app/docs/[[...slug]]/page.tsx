@@ -16,9 +16,17 @@ type Props = {
   params: Promise<{ slug?: string[] }>;
 };
 
-function docsSchemaId(href: string) {
+export function docsSchemaId(href: string) {
+  const pathname = href
+    .replace(/^https?:\/\/[^/]+/, "")
+    .replace(/\/+$/, "");
+  const slug = pathname
+    .replace(/^\/docs(?:\/|$)/, "")
+    .replace(/^\/+|\/+$/g, "")
+    .replace(/\//g, "-");
+
   return `agentclash-docs-${
-    href.replace(/^\/docs\/?/, "").replace(/\//g, "-") || "home"
+    slug || "home"
   }-schema`;
 }
 

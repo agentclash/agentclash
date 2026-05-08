@@ -183,8 +183,10 @@ export function docsPageSchema({
   href: string;
 }): Record<string, unknown>[] {
   const absoluteUrl = href.startsWith("http") ? href : `${SITE_URL}${href}`;
+  const pathname = href.replace(/^https?:\/\/[^/]+/, "").replace(/\/+$/, "");
+  const isDocsHome = pathname === "/docs";
   const breadcrumbs =
-    href === "/docs"
+    isDocsHome
       ? [
           { name: "Home", url: "/" },
           { name: "Docs", url: "/docs" },
@@ -195,8 +197,11 @@ export function docsPageSchema({
           { name: title, url: href },
         ];
 
+  const schema = [breadcrumbSchema(breadcrumbs)];
+  if (isDocsHome) return schema;
+
   return [
-    breadcrumbSchema(breadcrumbs),
+    ...schema,
     {
       "@context": "https://schema.org",
       "@type": "TechArticle",

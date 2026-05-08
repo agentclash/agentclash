@@ -2,7 +2,7 @@ import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SITE_URL } from "@/components/marketing/json-ld";
-import DocsPage from "./[[...slug]]/page";
+import DocsPage, { docsSchemaId } from "./[[...slug]]/page";
 
 vi.mock("next-mdx-remote/rsc", () => ({
   MDXRemote: ({ source }: { source: string }) => <div>{source}</div>,
@@ -54,6 +54,13 @@ afterEach(() => {
 });
 
 describe("docs page structured data", () => {
+  it("normalizes trailing slashes in JSON-LD script ids", () => {
+    expect(docsSchemaId("/docs/api/reference/")).toBe(
+      "agentclash-docs-api-reference-schema",
+    );
+    expect(docsSchemaId("/docs/")).toBe("agentclash-docs-home-schema");
+  });
+
   it("renders breadcrumb and TechArticle JSON-LD", async () => {
     const page = await DocsPage({
       params: Promise.resolve({ slug: ["getting-started", "quickstart"] }),
