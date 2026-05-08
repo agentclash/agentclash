@@ -16,6 +16,7 @@ export const whyMetadata: Metadata = {
     description: PAGE_DESCRIPTION,
     url: "/why",
     type: "website",
+    locale: "en_US",
     siteName: "AgentClash",
     images: [
       {

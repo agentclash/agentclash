@@ -17,6 +17,7 @@ describe("secondary public page social metadata", () => {
           "Why AgentClash exists: evaluate AI agents on your real tasks with the same tools, same constraints, replayable failures, and regression gates.",
         url: "/why",
         type: "website",
+        locale: "en_US",
         siteName: "AgentClash",
         images: [
           {
@@ -63,6 +64,7 @@ describe("secondary public page social metadata", () => {
           "Meet the engineers building AgentClash, an open-source AI agent evaluation platform for real-task races, replay, scorecards, and CI gates.",
         url: "/team",
         type: "website",
+        locale: "en_US",
         siteName: "AgentClash",
         images: [
           {

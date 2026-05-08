@@ -16,6 +16,7 @@ export const teamMetadata: Metadata = {
     description: PAGE_DESCRIPTION,
     url: "/team",
     type: "website",
+    locale: "en_US",
     siteName: "AgentClash",
     images: [
       {
