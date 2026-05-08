@@ -37,6 +37,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       title,
       description: post.description,
       url: `/blog/${post.slug}`,
+      locale: "en_US",
       siteName: "AgentClash",
       publishedTime: post.date,
       authors: [post.author],
