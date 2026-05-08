@@ -17,6 +17,24 @@ type Props = {
   params: Promise<{ slug?: string[] }>;
 };
 
+const DOCS_HOME_FAQ = [
+  {
+    question: "Where should I start with AgentClash?",
+    answer:
+      "Start with the quickstart, then write a challenge pack for one real agent workload and run it locally or against a hosted workspace.",
+  },
+  {
+    question: "Can AgentClash docs help with CI agent gates?",
+    answer:
+      "Yes. The docs cover challenge packs, scorecards, baseline comparisons, and CI/CD gates for catching AI agent regressions before release.",
+  },
+  {
+    question: "Are the docs available for coding agents?",
+    answer:
+      "Yes. AgentClash publishes llms.txt, llms-full.txt, and per-page markdown exports so coding agents can read the docs directly.",
+  },
+];
+
 export function generateStaticParams() {
   return getAllDocSlugs().map((slug) => ({ slug }));
 }
@@ -90,6 +108,7 @@ export default async function DocsPage({ params }: Props) {
           title: doc.title,
           description: doc.description,
           href: doc.href,
+          faqItems: isHome ? DOCS_HOME_FAQ : undefined,
         })}
       />
 
@@ -127,6 +146,29 @@ export default async function DocsPage({ params }: Props) {
                     </Link>
                   ))}
                 </div>
+              </section>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {isHome && (
+        <div className="mt-12 border-t border-white/[0.08] pt-8">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
+            Docs FAQ
+          </p>
+          <div className="mt-5 grid gap-4 xl:grid-cols-3">
+            {DOCS_HOME_FAQ.map((item) => (
+              <section
+                key={item.question}
+                className="rounded-[24px] border border-white/[0.08] bg-black/20 p-5"
+              >
+                <h2 className="text-sm font-semibold text-white/90">
+                  {item.question}
+                </h2>
+                <p className="mt-3 text-sm leading-6 text-white/45">
+                  {item.answer}
+                </p>
               </section>
             ))}
           </div>

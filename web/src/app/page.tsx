@@ -17,6 +17,13 @@ const softwareApplicationSchema = productSchema({
   url: SITE_URL,
   applicationSubCategory: "AI agent evaluation platform",
   softwareVersion: "beta",
+  featureList: [
+    "Head-to-head AI agent evaluation",
+    "Sandboxed real-tool execution",
+    "Replay evidence and artifacts",
+    "Scorecards for correctness, latency, and cost",
+    "CI regression gates for agent releases",
+  ],
 });
 
 const organizationSchema = {

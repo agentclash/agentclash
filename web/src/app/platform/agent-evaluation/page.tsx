@@ -277,6 +277,7 @@ export default function AgentEvaluationPage() {
             description: PAGE_DESCRIPTION,
             url: PAGE_PATH,
             applicationSubCategory: "AI agent evaluation platform",
+            featureList: proofPoints,
           }),
         ]}
       />

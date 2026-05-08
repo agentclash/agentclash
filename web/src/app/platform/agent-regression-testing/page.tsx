@@ -275,6 +275,7 @@ export default function AgentRegressionTestingPage() {
             description: PAGE_DESCRIPTION,
             url: PAGE_PATH,
             applicationSubCategory: "AI agent regression testing software",
+            featureList: gateSignals,
           }),
         ]}
       />

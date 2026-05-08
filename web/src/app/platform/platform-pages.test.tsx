@@ -73,6 +73,19 @@ describe("platform pages structured data", () => {
       url: "https://www.agentclash.dev/platform/agent-evaluation",
       applicationCategory: "DeveloperApplication",
       applicationSubCategory: "AI agent evaluation platform",
+      featureList: [
+        "Sandboxed real-tool execution",
+        "Head-to-head runs with fair constraints",
+        "Scorecards for correctness, cost, latency, and tool strategy",
+        "Replay trails for every important action",
+        "Challenge packs that turn failures into reusable tests",
+        "CI gates for baseline versus candidate decisions",
+      ],
+      offers: {
+        name: "Open-source self-hosted edition",
+        price: "0",
+        priceCurrency: "USD",
+      },
     });
   });
 
@@ -98,6 +111,19 @@ describe("platform pages structured data", () => {
       url: "https://www.agentclash.dev/platform/agent-regression-testing",
       applicationCategory: "DeveloperApplication",
       applicationSubCategory: "AI agent regression testing software",
+      featureList: [
+        "Baseline versus candidate scorecards",
+        "Replay timelines for every failed gate",
+        "Artifact checks for files, logs, and evidence",
+        "Cost and latency thresholds for production budgets",
+        "Challenge packs that make failures repeatable",
+        "Pull request gates for model, prompt, and tool changes",
+      ],
+      offers: {
+        name: "Open-source self-hosted edition",
+        price: "0",
+        priceCurrency: "USD",
+      },
     });
   });
 });
