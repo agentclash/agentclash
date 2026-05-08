@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getAllPosts } from "@/lib/blog";
+import { blogRssAlternate } from "@/lib/seo";
 
 export const metadata: Metadata = {
   title: "AI Agent Evaluation Blog - AgentClash",
@@ -8,6 +9,7 @@ export const metadata: Metadata = {
     "Engineering notes on AI agent evaluation, head-to-head agent evals, replayable failures, scorecards, and CI regression gates.",
   alternates: {
     canonical: "/blog",
+    types: blogRssAlternate,
   },
 };
 
