@@ -113,3 +113,69 @@ export function articleSchema({
     },
   };
 }
+
+type BlogIndexPost = {
+  slug: string;
+  title: string;
+  description: string;
+  date: string;
+  author: string;
+};
+
+function publisherSchema() {
+  return {
+    "@type": "Organization",
+    name: "AgentClash",
+    logo: {
+      "@type": "ImageObject",
+      url: `${SITE_URL}/icon.svg`,
+    },
+  };
+}
+
+export function blogIndexSchema(
+  posts: BlogIndexPost[],
+): Record<string, unknown>[] {
+  const blogPosts = posts.map((post) => {
+    const url = `${SITE_URL}/blog/${post.slug}`;
+
+    return {
+      id: url,
+      title: post.title,
+      description: post.description,
+      url,
+    };
+  });
+
+  return [
+    {
+      "@context": "https://schema.org",
+      "@type": "Blog",
+      name: "AgentClash Blog",
+      description:
+        "Engineering notes on AI agent evaluation, replayable failures, scorecards, and CI regression gates.",
+      url: `${SITE_URL}/blog`,
+      publisher: publisherSchema(),
+      blogPost: blogPosts.map((post) => ({
+        "@id": post.id,
+      })),
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "ItemList",
+      name: "AgentClash Blog Posts",
+      url: `${SITE_URL}/blog`,
+      numberOfItems: blogPosts.length,
+      itemListElement: blogPosts.map((post, index) => ({
+        "@type": "ListItem",
+        position: index + 1,
+        name: post.title,
+        description: post.description,
+        url: post.url,
+        item: {
+          "@id": post.id,
+        },
+      })),
+    },
+  ];
+}
