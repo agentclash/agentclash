@@ -218,7 +218,11 @@ export function docsPageSchema({
       headline: title,
       description,
       url: absoluteUrl,
-      mainEntityOfPage: absoluteUrl,
+      mainEntityOfPage: {
+        "@type": "WebPage",
+        "@id": absoluteUrl,
+        url: absoluteUrl,
+      },
       author: publisherSchema(),
       publisher: publisherSchema(),
       isPartOf: {

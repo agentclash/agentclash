@@ -109,6 +109,11 @@ describe("docs page structured data", () => {
       "@type": "TechArticle",
       headline: "Quickstart",
       url: `${SITE_URL}/docs/getting-started/quickstart`,
+      mainEntityOfPage: {
+        "@type": "WebPage",
+        "@id": `${SITE_URL}/docs/getting-started/quickstart`,
+        url: `${SITE_URL}/docs/getting-started/quickstart`,
+      },
     });
   });
 });
