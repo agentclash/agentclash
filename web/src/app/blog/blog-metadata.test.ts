@@ -75,7 +75,7 @@ describe("blog post social metadata", () => {
             url: "/og-image.png",
             width: 1200,
             height: 630,
-            alt: "AgentClash blog for AI agent evaluation and regression testing.",
+            alt: "Fixture Post — Fixture description.",
           },
         ],
       },
@@ -83,7 +83,12 @@ describe("blog post social metadata", () => {
         card: "summary_large_image",
         title: "Fixture Post — AgentClash",
         description: "Fixture description.",
-        images: ["/twitter-image.png"],
+        images: [
+          {
+            url: "/twitter-image.png",
+            alt: "Fixture Post — Fixture description.",
+          },
+        ],
       },
     });
   });
