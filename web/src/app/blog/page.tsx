@@ -22,6 +22,7 @@ export const metadata: Metadata = {
     description: PAGE_DESCRIPTION,
     url: "/blog",
     type: "website",
+    locale: "en_US",
     siteName: "AgentClash",
     images: [
       {

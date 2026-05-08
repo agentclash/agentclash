@@ -39,6 +39,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       description: doc.description,
       url: doc.href,
       type: "website",
+      locale: "en_US",
       siteName: "AgentClash",
       images: [
         {

@@ -35,6 +35,7 @@ describe("docs metadata", () => {
         description: "Run your first AgentClash eval.",
         url: "/docs/getting-started/quickstart",
         type: "website",
+        locale: "en_US",
         siteName: "AgentClash",
         images: [
           {

@@ -54,6 +54,7 @@ describe("blog index social metadata", () => {
           "Engineering notes on AI agent evaluation, head-to-head agent evals, replayable failures, scorecards, and CI regression gates.",
         url: "/blog",
         type: "website",
+        locale: "en_US",
         siteName: "AgentClash",
         images: [
           {
@@ -115,6 +116,7 @@ describe("blog post social metadata", () => {
         title: "Fixture Post — AgentClash",
         description: "Fixture description.",
         url: "/blog/fixture-post",
+        locale: "en_US",
         siteName: "AgentClash",
         publishedTime: "2026-05-08",
         authors: ["AgentClash"],

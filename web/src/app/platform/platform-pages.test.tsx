@@ -119,6 +119,7 @@ describe("platform page social metadata", () => {
         description,
         url: "/platform/agent-evaluation",
         type: "website",
+        locale: "en_US",
         siteName: "AgentClash",
         images: [
           {
@@ -162,6 +163,7 @@ describe("platform page social metadata", () => {
         description,
         url: "/platform/agent-regression-testing",
         type: "website",
+        locale: "en_US",
         siteName: "AgentClash",
         images: [
           {
