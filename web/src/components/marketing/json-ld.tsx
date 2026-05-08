@@ -53,12 +53,14 @@ export function productSchema({
   url,
   applicationSubCategory,
   softwareVersion,
+  featureList,
 }: {
   name: string;
   description: string;
   url: string;
   applicationSubCategory?: string;
   softwareVersion?: string;
+  featureList?: string[];
 }): Record<string, unknown> {
   return {
     "@context": "https://schema.org",
@@ -71,7 +73,19 @@ export function productSchema({
     description,
     url: url.startsWith("http") ? url : `${SITE_URL}${url}`,
     ...(softwareVersion ? { softwareVersion } : {}),
-    offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+    ...(featureList?.length ? { featureList } : {}),
+    sameAs: [
+      "https://github.com/agentclash/agentclash",
+      "https://www.npmjs.com/package/agentclash",
+    ],
+    offers: {
+      "@type": "Offer",
+      name: "Open-source self-hosted edition",
+      price: "0",
+      priceCurrency: "USD",
+      availability: "https://schema.org/InStock",
+      category: "Open-source software",
+    },
   };
 }
 
@@ -187,10 +201,12 @@ export function docsPageSchema({
   title,
   description,
   href,
+  faqItems = [],
 }: {
   title: string;
   description: string;
   href: string;
+  faqItems?: Array<{ question: string; answer: string }>;
 }): Record<string, unknown>[] {
   const absoluteUrl = href.startsWith("http") ? href : `${SITE_URL}${href}`;
   const pathname = href.replace(/^https?:\/\/[^/]+/, "").replace(/\/+$/, "");
@@ -207,7 +223,13 @@ export function docsPageSchema({
           { name: title, url: href },
         ];
 
-  const schema = [breadcrumbSchema(breadcrumbs)];
+  const schema = [
+    breadcrumbSchema(breadcrumbs),
+    ...(isDocsHome && faqItems.length ? [faqSchema(faqItems)] : []),
+  ];
+  if (!isDocsHome && faqItems.length) {
+    throw new Error("docsPageSchema faqItems are only supported for /docs");
+  }
   if (isDocsHome) return schema;
 
   return [

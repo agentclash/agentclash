@@ -17,6 +17,7 @@ import {
   faqSchema,
   productSchema,
 } from "@/components/marketing/json-ld";
+import { AGENT_EVALUATION_FEATURES } from "@/lib/seo-features";
 
 const PAGE_PATH = "/platform/agent-evaluation";
 const PAGE_TITLE = "AI Agent Evaluation Platform for Real Tasks - AgentClash";
@@ -66,14 +67,7 @@ const workflow = [
   },
 ];
 
-const proofPoints = [
-  "Sandboxed real-tool execution",
-  "Head-to-head runs with fair constraints",
-  "Scorecards for correctness, cost, latency, and tool strategy",
-  "Replay trails for every important action",
-  "Challenge packs that turn failures into reusable tests",
-  "CI gates for baseline versus candidate decisions",
-];
+const proofPoints = AGENT_EVALUATION_FEATURES;
 
 export const metadata: Metadata = {
   title: PAGE_TITLE,
@@ -277,6 +271,7 @@ export default function AgentEvaluationPage() {
             description: PAGE_DESCRIPTION,
             url: PAGE_PATH,
             applicationSubCategory: "AI agent evaluation platform",
+            featureList: proofPoints,
           }),
         ]}
       />

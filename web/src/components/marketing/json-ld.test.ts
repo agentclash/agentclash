@@ -15,6 +15,7 @@ describe("productSchema", () => {
         description: "Evaluate AI agents on real tasks.",
         url: "/platform/agent-evaluation",
         applicationSubCategory: "AI agent evaluation platform",
+        featureList: ["Replay evidence", "CI regression gates"],
       }),
     ).toMatchObject({
       "@context": "https://schema.org",
@@ -26,10 +27,18 @@ describe("productSchema", () => {
       operatingSystem: "Web, macOS, Linux, Windows",
       description: "Evaluate AI agents on real tasks.",
       url: `${SITE_URL}/platform/agent-evaluation`,
+      featureList: ["Replay evidence", "CI regression gates"],
+      sameAs: [
+        "https://github.com/agentclash/agentclash",
+        "https://www.npmjs.com/package/agentclash",
+      ],
       offers: {
         "@type": "Offer",
+        name: "Open-source self-hosted edition",
         price: "0",
         priceCurrency: "USD",
+        availability: "https://schema.org/InStock",
+        category: "Open-source software",
       },
     });
   });
@@ -182,9 +191,15 @@ describe("docsPageSchema", () => {
       title: "AgentClash Docs",
       description: "Documentation for AgentClash.",
       href: "/docs/",
+      faqItems: [
+        {
+          question: "Where should I start?",
+          answer: "Start with the quickstart.",
+        },
+      ],
     });
 
-    expect(schema).toHaveLength(1);
+    expect(schema).toHaveLength(2);
     expect(schema[0]).toMatchObject({
       "@type": "BreadcrumbList",
       itemListElement: [
@@ -202,6 +217,35 @@ describe("docsPageSchema", () => {
         },
       ],
     });
+    expect(schema[1]).toMatchObject({
+      "@type": "FAQPage",
+      mainEntity: [
+        {
+          "@type": "Question",
+          name: "Where should I start?",
+          acceptedAnswer: {
+            "@type": "Answer",
+            text: "Start with the quickstart.",
+          },
+        },
+      ],
+    });
     expect(schema.map((item) => item["@type"])).not.toContain("TechArticle");
+  });
+
+  it("rejects FAQ items for non-home docs pages", () => {
+    expect(() =>
+      docsPageSchema({
+        title: "Quickstart",
+        description: "Run your first AgentClash eval.",
+        href: "/docs/getting-started/quickstart",
+        faqItems: [
+          {
+            question: "Where should I start?",
+            answer: "Start with the quickstart.",
+          },
+        ],
+      }),
+    ).toThrow("docsPageSchema faqItems are only supported for /docs");
   });
 });

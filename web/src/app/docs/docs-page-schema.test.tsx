@@ -5,6 +5,8 @@ import { SITE_URL } from "@/components/marketing/json-ld";
 import DocsPage from "./[[...slug]]/page";
 import { docsSchemaId } from "./docs-schema-id";
 
+const getDocBySlugMock = vi.hoisted(() => vi.fn());
+
 vi.mock("next-mdx-remote/rsc", () => ({
   MDXRemote: ({ source }: { source: string }) => <div>{source}</div>,
 }));
@@ -20,18 +22,35 @@ vi.mock("@/components/docs/mdx-components", () => ({
 }));
 
 vi.mock("@/lib/docs", () => ({
-  DOCS_NAV: [],
+  DOCS_NAV: [
+    {
+      title: "Getting started",
+      description: "Start running AgentClash.",
+      items: [
+        {
+          title: "Quickstart",
+          description: "Run your first AgentClash eval.",
+          href: "/docs/getting-started/quickstart",
+        },
+      ],
+    },
+  ],
   getAllDocSlugs: vi.fn(() => [["getting-started", "quickstart"]]),
-  getDocBySlug: vi.fn(() => ({
+  getDocBySlug: getDocBySlugMock,
+  getDocNeighbors: vi.fn(() => ({})),
+}));
+
+function mockDoc(overrides: Record<string, unknown> = {}) {
+  getDocBySlugMock.mockReturnValue({
     href: "/docs/getting-started/quickstart",
     title: "Quickstart",
     description: "Run your first AgentClash eval.",
     sectionTitle: "Getting Started",
     headings: [],
     content: "Fixture docs content.",
-  })),
-  getDocNeighbors: vi.fn(() => ({})),
-}));
+    ...overrides,
+  });
+}
 
 let root: Root | null = null;
 let container: HTMLDivElement | null = null;
@@ -63,6 +82,8 @@ describe("docs page structured data", () => {
   });
 
   it("renders breadcrumb and TechArticle JSON-LD", async () => {
+    mockDoc();
+
     const page = await DocsPage({
       params: Promise.resolve({ slug: ["getting-started", "quickstart"] }),
     });
@@ -114,6 +135,61 @@ describe("docs page structured data", () => {
         "@id": `${SITE_URL}/docs/getting-started/quickstart`,
         url: `${SITE_URL}/docs/getting-started/quickstart`,
       },
+    });
+  });
+
+  it("renders visible docs home FAQ with matching FAQPage JSON-LD", async () => {
+    mockDoc({
+      href: "/docs",
+      title: "AgentClash Docs",
+      description: "Documentation for AgentClash.",
+      content: "Docs home content.",
+    });
+
+    const page = await DocsPage({
+      params: Promise.resolve({ slug: [] }),
+    });
+
+    render(page);
+
+    expect(container?.textContent).toContain("Docs FAQ");
+    expect(container?.textContent).toContain(
+      "Where should I start with AgentClash?",
+    );
+    expect(container?.textContent).toContain(
+      "Can AgentClash docs help with CI agent gates?",
+    );
+    expect(container?.textContent).toContain(
+      "Are the docs available for coding agents?",
+    );
+
+    const script = container?.querySelector<HTMLScriptElement>(
+      "#agentclash-docs-home-schema",
+    );
+    const jsonLd = JSON.parse(script?.textContent ?? "[]") as Array<
+      Record<string, unknown>
+    >;
+
+    expect(jsonLd.map((item) => item["@type"])).toEqual([
+      "BreadcrumbList",
+      "FAQPage",
+    ]);
+    expect(jsonLd[1]).toMatchObject({
+      "@type": "FAQPage",
+      mainEntity: [
+        {
+          "@type": "Question",
+          name: "Where should I start with AgentClash?",
+        },
+        {
+          "@type": "Question",
+          name: "Can AgentClash docs help with CI agent gates?",
+        },
+        {
+          "@type": "Question",
+          name: "Are the docs available for coding agents?",
+        },
+      ],
     });
   });
 });

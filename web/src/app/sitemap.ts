@@ -41,6 +41,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.5,
     },
     {
+      url: `${DOCS_ORIGIN}/sitemap`,
+      lastModified: new Date(),
+      changeFrequency: "weekly",
+      priority: 0.5,
+    },
+    {
       url: `${DOCS_ORIGIN}/platform/agent-evaluation`,
       lastModified: new Date(),
       changeFrequency: "monthly",
