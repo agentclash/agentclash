@@ -27,6 +27,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   if (!doc) return {};
 
   const title = `${doc.title} — AgentClash Docs`;
+  const description = doc.description.trim();
+  const imageAlt = description ? `${doc.title} — ${description}` : doc.title;
 
   return {
     title,
@@ -46,7 +48,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
           url: "/og-image.png",
           width: 1200,
           height: 630,
-          alt: "AgentClash docs for AI agent evaluation workflows.",
+          alt: imageAlt,
         },
       ],
     },
@@ -54,7 +56,12 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       card: "summary_large_image",
       title,
       description: doc.description,
-      images: ["/twitter-image.png"],
+      images: [
+        {
+          url: "/twitter-image.png",
+          alt: imageAlt,
+        },
+      ],
     },
   };
 }

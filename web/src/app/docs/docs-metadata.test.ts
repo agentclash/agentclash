@@ -42,7 +42,7 @@ describe("docs metadata", () => {
             url: "/og-image.png",
             width: 1200,
             height: 630,
-            alt: "AgentClash docs for AI agent evaluation workflows.",
+            alt: "Quickstart — Run your first AgentClash eval.",
           },
         ],
       },
@@ -50,7 +50,12 @@ describe("docs metadata", () => {
         card: "summary_large_image",
         title: "Quickstart — AgentClash Docs",
         description: "Run your first AgentClash eval.",
-        images: ["/twitter-image.png"],
+        images: [
+          {
+            url: "/twitter-image.png",
+            alt: "Quickstart — Run your first AgentClash eval.",
+          },
+        ],
       },
     });
   });
@@ -65,5 +70,28 @@ describe("docs metadata", () => {
         }),
       }),
     ).resolves.toEqual({});
+  });
+
+  it("falls back to title-only social image alt when description is empty", async () => {
+    getDocBySlugMock.mockReturnValue({
+      href: "/docs/reference/cli",
+      title: "CLI",
+      description: "",
+    });
+
+    const metadata = await generateMetadata({
+      params: Promise.resolve({
+        slug: ["reference", "cli"],
+      }),
+    });
+    const openGraph = metadata.openGraph as {
+      images?: Array<{ alt?: string }>;
+    };
+    const twitter = metadata.twitter as {
+      images?: Array<{ alt?: string }>;
+    };
+
+    expect(openGraph.images?.[0]?.alt).toBe("CLI");
+    expect(twitter.images?.[0]?.alt).toBe("CLI");
   });
 });
