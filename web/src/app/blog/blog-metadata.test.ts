@@ -42,6 +42,54 @@ describe("blog RSS autodiscovery metadata", () => {
   });
 });
 
+describe("blog index social metadata", () => {
+  it("adds explicit Open Graph image and Twitter card metadata", () => {
+    expect(blogMetadata).toMatchObject({
+      title: "AI Agent Evaluation Blog - AgentClash",
+      description:
+        "Engineering notes on AI agent evaluation, head-to-head agent evals, replayable failures, scorecards, and CI regression gates.",
+      openGraph: {
+        title: "AI Agent Evaluation Blog - AgentClash",
+        description:
+          "Engineering notes on AI agent evaluation, head-to-head agent evals, replayable failures, scorecards, and CI regression gates.",
+        url: "/blog",
+        type: "website",
+        siteName: "AgentClash",
+        images: [
+          {
+            url: "/og-image.png",
+            width: 1200,
+            height: 630,
+          },
+        ],
+      },
+      twitter: {
+        card: "summary_large_image",
+        title: "AI Agent Evaluation Blog - AgentClash",
+        description:
+          "Engineering notes on AI agent evaluation, head-to-head agent evals, replayable failures, scorecards, and CI regression gates.",
+        images: [
+          {
+            url: "/twitter-image.png",
+          },
+        ],
+      },
+    });
+
+    const openGraph = blogMetadata.openGraph as {
+      images?: Array<{ alt?: string }>;
+    };
+    const twitter = blogMetadata.twitter as {
+      images?: Array<{ alt?: string }>;
+    };
+    const ogAlt = openGraph.images?.[0]?.alt;
+
+    expect(ogAlt).toContain("AgentClash");
+    expect(ogAlt).toContain("evaluation blog");
+    expect(twitter.images?.[0]?.alt).toBe(ogAlt);
+  });
+});
+
 describe("blog post social metadata", () => {
   it("adds explicit Open Graph image and Twitter card metadata", async () => {
     getPostBySlugMock.mockReturnValue({

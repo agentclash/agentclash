@@ -4,13 +4,44 @@ import { JsonLd, blogIndexSchema } from "@/components/marketing/json-ld";
 import { getAllPosts } from "@/lib/blog";
 import { blogRssAlternate } from "@/lib/seo";
 
+const PAGE_TITLE = "AI Agent Evaluation Blog - AgentClash";
+const PAGE_DESCRIPTION =
+  "Engineering notes on AI agent evaluation, head-to-head agent evals, replayable failures, scorecards, and CI regression gates.";
+const SOCIAL_IMAGE_ALT =
+  "AgentClash AI agent evaluation blog social preview.";
+
 export const metadata: Metadata = {
-  title: "AI Agent Evaluation Blog - AgentClash",
-  description:
-    "Engineering notes on AI agent evaluation, head-to-head agent evals, replayable failures, scorecards, and CI regression gates.",
+  title: PAGE_TITLE,
+  description: PAGE_DESCRIPTION,
   alternates: {
     canonical: "/blog",
     types: blogRssAlternate,
+  },
+  openGraph: {
+    title: PAGE_TITLE,
+    description: PAGE_DESCRIPTION,
+    url: "/blog",
+    type: "website",
+    siteName: "AgentClash",
+    images: [
+      {
+        url: "/og-image.png",
+        width: 1200,
+        height: 630,
+        alt: SOCIAL_IMAGE_ALT,
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: PAGE_TITLE,
+    description: PAGE_DESCRIPTION,
+    images: [
+      {
+        url: "/twitter-image.png",
+        alt: SOCIAL_IMAGE_ALT,
+      },
+    ],
   },
 };
 
