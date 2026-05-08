@@ -107,7 +107,11 @@ export function articleSchema({
     headline,
     description,
     url: absoluteUrl,
-    mainEntityOfPage: absoluteUrl,
+    mainEntityOfPage: {
+      "@type": "WebPage",
+      "@id": absoluteUrl,
+      url: absoluteUrl,
+    },
     image: {
       "@type": "ImageObject",
       url: `${SITE_URL}/og-image.png`,

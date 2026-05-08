@@ -90,7 +90,11 @@ describe("blog post structured data", () => {
       headline: "Fixture Post",
       description: "Fixture description.",
       url: `${SITE_URL}/blog/fixture-post`,
-      mainEntityOfPage: `${SITE_URL}/blog/fixture-post`,
+      mainEntityOfPage: {
+        "@type": "WebPage",
+        "@id": `${SITE_URL}/blog/fixture-post`,
+        url: `${SITE_URL}/blog/fixture-post`,
+      },
       image: {
         "@type": "ImageObject",
         url: `${SITE_URL}/og-image.png`,
