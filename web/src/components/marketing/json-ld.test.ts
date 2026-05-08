@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { blogIndexSchema, productSchema, SITE_URL } from "./json-ld";
+import {
+  blogIndexSchema,
+  docsPageSchema,
+  productSchema,
+  SITE_URL,
+} from "./json-ld";
 
 describe("productSchema", () => {
   it("builds SoftwareApplication structured data with absolute URLs", () => {
@@ -68,6 +73,85 @@ describe("blogIndexSchema", () => {
           item: {
             "@id": `${SITE_URL}/blog/agent-evaluation`,
           },
+        },
+      ],
+    });
+  });
+});
+
+describe("docsPageSchema", () => {
+  it("builds BreadcrumbList and TechArticle structured data for docs pages", () => {
+    const schema = docsPageSchema({
+      title: "Quickstart",
+      description: "Run your first AgentClash eval.",
+      href: "/docs/getting-started/quickstart",
+    });
+
+    expect(schema).toHaveLength(2);
+    expect(schema[0]).toMatchObject({
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      itemListElement: [
+        {
+          "@type": "ListItem",
+          position: 1,
+          name: "Home",
+          item: `${SITE_URL}/`,
+        },
+        {
+          "@type": "ListItem",
+          position: 2,
+          name: "Docs",
+          item: `${SITE_URL}/docs`,
+        },
+        {
+          "@type": "ListItem",
+          position: 3,
+          name: "Quickstart",
+          item: `${SITE_URL}/docs/getting-started/quickstart`,
+        },
+      ],
+    });
+    expect(schema[1]).toMatchObject({
+      "@context": "https://schema.org",
+      "@type": "TechArticle",
+      headline: "Quickstart",
+      description: "Run your first AgentClash eval.",
+      url: `${SITE_URL}/docs/getting-started/quickstart`,
+      mainEntityOfPage: `${SITE_URL}/docs/getting-started/quickstart`,
+      author: {
+        "@type": "Organization",
+        name: "AgentClash",
+      },
+      isPartOf: {
+        "@type": "WebSite",
+        name: "AgentClash Docs",
+        url: `${SITE_URL}/docs`,
+      },
+    });
+  });
+
+  it("uses a two-item breadcrumb for the docs home page", () => {
+    const [breadcrumb] = docsPageSchema({
+      title: "AgentClash Docs",
+      description: "Documentation for AgentClash.",
+      href: "/docs",
+    });
+
+    expect(breadcrumb).toMatchObject({
+      "@type": "BreadcrumbList",
+      itemListElement: [
+        {
+          "@type": "ListItem",
+          position: 1,
+          name: "Home",
+          item: `${SITE_URL}/`,
+        },
+        {
+          "@type": "ListItem",
+          position: 2,
+          name: "Docs",
+          item: `${SITE_URL}/docs`,
         },
       ],
     });
