@@ -22,6 +22,8 @@ const PAGE_PATH = "/platform/agent-evaluation";
 const PAGE_TITLE = "AI Agent Evaluation Platform for Real Tasks - AgentClash";
 const PAGE_DESCRIPTION =
   "Evaluate AI agents on real tasks with same-tools races, sandboxed execution, replay, scorecards, challenge packs, and CI regression gates.";
+const SOCIAL_IMAGE_ALT =
+  "AgentClash AI agent evaluation platform social preview.";
 
 const faqItems = [
   {
@@ -84,6 +86,26 @@ export const metadata: Metadata = {
     description: PAGE_DESCRIPTION,
     url: PAGE_PATH,
     type: "website",
+    siteName: "AgentClash",
+    images: [
+      {
+        url: "/og-image.png",
+        width: 1200,
+        height: 630,
+        alt: SOCIAL_IMAGE_ALT,
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: PAGE_TITLE,
+    description: PAGE_DESCRIPTION,
+    images: [
+      {
+        url: "/twitter-image.png",
+        alt: SOCIAL_IMAGE_ALT,
+      },
+    ],
   },
 };
 

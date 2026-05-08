@@ -22,6 +22,8 @@ const PAGE_PATH = "/platform/agent-regression-testing";
 const PAGE_TITLE = "AI Agent Regression Testing and CI Gates - AgentClash";
 const PAGE_DESCRIPTION =
   "Catch AI agent regressions before release with baseline comparisons, repeatable challenge packs, replay evidence, scorecards, and pull request gates.";
+const SOCIAL_IMAGE_ALT =
+  "AgentClash AI agent regression testing social preview.";
 
 const faqItems = [
   {
@@ -84,6 +86,26 @@ export const metadata: Metadata = {
     description: PAGE_DESCRIPTION,
     url: PAGE_PATH,
     type: "website",
+    siteName: "AgentClash",
+    images: [
+      {
+        url: "/og-image.png",
+        width: 1200,
+        height: 630,
+        alt: SOCIAL_IMAGE_ALT,
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: PAGE_TITLE,
+    description: PAGE_DESCRIPTION,
+    images: [
+      {
+        url: "/twitter-image.png",
+        alt: SOCIAL_IMAGE_ALT,
+      },
+    ],
   },
 };
 
