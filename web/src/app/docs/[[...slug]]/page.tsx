@@ -26,11 +26,34 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const doc = getDocBySlug(slug);
   if (!doc) return {};
 
+  const title = `${doc.title} — AgentClash Docs`;
+
   return {
-    title: `${doc.title} — AgentClash Docs`,
+    title,
     description: doc.description,
     alternates: {
       canonical: doc.href,
+    },
+    openGraph: {
+      title,
+      description: doc.description,
+      url: doc.href,
+      type: "website",
+      siteName: "AgentClash",
+      images: [
+        {
+          url: "/og-image.png",
+          width: 1200,
+          height: 630,
+          alt: "AgentClash docs for AI agent evaluation workflows.",
+        },
+      ],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description: doc.description,
+      images: ["/twitter-image.png"],
     },
   };
 }
