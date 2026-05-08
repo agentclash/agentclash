@@ -2,7 +2,8 @@ import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SITE_URL } from "@/components/marketing/json-ld";
-import DocsPage, { docsSchemaId } from "./[[...slug]]/page";
+import DocsPage from "./[[...slug]]/page";
+import { docsSchemaId } from "./docs-schema-id";
 
 vi.mock("next-mdx-remote/rsc", () => ({
   MDXRemote: ({ source }: { source: string }) => <div>{source}</div>,
