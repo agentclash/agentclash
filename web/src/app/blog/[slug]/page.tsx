@@ -2,7 +2,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { MDXRemote } from "next-mdx-remote/rsc";
-import { JsonLd, articleSchema } from "@/components/marketing/json-ld";
+import {
+  JsonLd,
+  articleSchema,
+  breadcrumbSchema,
+} from "@/components/marketing/json-ld";
 import { getAllSlugs, getPostBySlug } from "@/lib/blog";
 import { blogRssAlternate } from "@/lib/seo";
 
@@ -45,13 +49,20 @@ export default async function BlogPostPage({ params }: Props) {
     <main className="min-h-screen flex flex-col items-center px-6 py-16">
       <JsonLd
         id={`agentclash-blog-${post.slug}-schema`}
-        data={articleSchema({
-          headline: post.title,
-          description: post.description,
-          url: `/blog/${post.slug}`,
-          datePublished: post.date,
-          authorName: post.author,
-        })}
+        data={[
+          breadcrumbSchema([
+            { name: "Home", url: "/" },
+            { name: "Blog", url: "/blog" },
+            { name: post.title, url: `/blog/${post.slug}` },
+          ]),
+          articleSchema({
+            headline: post.title,
+            description: post.description,
+            url: `/blog/${post.slug}`,
+            datePublished: post.date,
+            authorName: post.author,
+          }),
+        ]}
       />
       <article className="w-full max-w-lg">
         <header className="mb-8">
