@@ -22,8 +22,11 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
   const post = getPostBySlug(slug);
   if (!post) return {};
+  const title = `${post.title} — AgentClash`;
+  const imageAlt = `${post.title} — ${post.description}`;
+
   return {
-    title: `${post.title} — AgentClash`,
+    title,
     description: post.description,
     alternates: {
       canonical: `/blog/${post.slug}`,
@@ -31,11 +34,31 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     },
     openGraph: {
       type: "article",
-      title: `${post.title} — AgentClash`,
+      title,
       description: post.description,
       url: `/blog/${post.slug}`,
+      siteName: "AgentClash",
       publishedTime: post.date,
       authors: [post.author],
+      images: [
+        {
+          url: "/og-image.png",
+          width: 1200,
+          height: 630,
+          alt: imageAlt,
+        },
+      ],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description: post.description,
+      images: [
+        {
+          url: "/twitter-image.png",
+          alt: imageAlt,
+        },
+      ],
     },
   };
 }
