@@ -75,6 +75,17 @@ export function productSchema({
   };
 }
 
+export function publisherSchema(): Record<string, unknown> {
+  return {
+    "@type": "Organization",
+    name: "AgentClash",
+    logo: {
+      "@type": "ImageObject",
+      url: `${SITE_URL}/icon.svg`,
+    },
+  };
+}
+
 export function articleSchema({
   headline,
   description,
@@ -103,14 +114,7 @@ export function articleSchema({
       "@type": "Person",
       name: authorName,
     },
-    publisher: {
-      "@type": "Organization",
-      name: "AgentClash",
-      logo: {
-        "@type": "ImageObject",
-        url: `${SITE_URL}/icon.svg`,
-      },
-    },
+    publisher: publisherSchema(),
   };
 }
 
@@ -122,17 +126,6 @@ type BlogIndexPost = {
   author: string;
 };
 
-function publisherSchema() {
-  return {
-    "@type": "Organization",
-    name: "AgentClash",
-    logo: {
-      "@type": "ImageObject",
-      url: `${SITE_URL}/icon.svg`,
-    },
-  };
-}
-
 export function blogIndexSchema(
   posts: BlogIndexPost[],
 ): Record<string, unknown>[] {
@@ -140,7 +133,7 @@ export function blogIndexSchema(
     const url = `${SITE_URL}/blog/${post.slug}`;
 
     return {
-      id: url,
+      atId: url,
       title: post.title,
       description: post.description,
       url,
@@ -157,7 +150,7 @@ export function blogIndexSchema(
       url: `${SITE_URL}/blog`,
       publisher: publisherSchema(),
       blogPost: blogPosts.map((post) => ({
-        "@id": post.id,
+        "@id": post.atId,
       })),
     },
     {
@@ -173,7 +166,7 @@ export function blogIndexSchema(
         description: post.description,
         url: post.url,
         item: {
-          "@id": post.id,
+          "@id": post.atId,
         },
       })),
     },
