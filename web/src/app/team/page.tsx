@@ -1,15 +1,8 @@
-import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
+import { teamMetadata } from "./metadata";
 
-export const metadata: Metadata = {
-  title: "Team - AgentClash",
-  description:
-    "Meet the engineers building AgentClash, an open-source AI agent evaluation platform for real-task races, replay, scorecards, and CI gates.",
-  alternates: {
-    canonical: "/team",
-  },
-};
+export const metadata = teamMetadata;
 
 const TEAM = [
   { handle: "attharrva15", name: "Atharva", avatar: "https://unavatar.io/x/attharrva15", tagline: "The guy who runs on caffeine and PRs" },
