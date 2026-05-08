@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  articleSchema,
   blogIndexSchema,
   docsPageSchema,
   productSchema,
@@ -75,6 +76,47 @@ describe("blogIndexSchema", () => {
           },
         },
       ],
+    });
+  });
+});
+
+describe("articleSchema", () => {
+  it("builds BlogPosting structured data with a WebPage main entity", () => {
+    expect(
+      articleSchema({
+        headline: "Agent Evaluation",
+        description: "Evaluate agents on real tasks.",
+        url: "/blog/agent-evaluation",
+        datePublished: "2026-05-08",
+        authorName: "AgentClash",
+      }),
+    ).toMatchObject({
+      "@context": "https://schema.org",
+      "@type": "BlogPosting",
+      headline: "Agent Evaluation",
+      description: "Evaluate agents on real tasks.",
+      url: `${SITE_URL}/blog/agent-evaluation`,
+      mainEntityOfPage: {
+        "@type": "WebPage",
+        "@id": `${SITE_URL}/blog/agent-evaluation`,
+        url: `${SITE_URL}/blog/agent-evaluation`,
+      },
+      image: {
+        "@type": "ImageObject",
+        url: `${SITE_URL}/og-image.png`,
+        width: 1200,
+        height: 630,
+      },
+      datePublished: "2026-05-08",
+      dateModified: "2026-05-08",
+      author: {
+        "@type": "Person",
+        name: "AgentClash",
+      },
+      publisher: {
+        "@type": "Organization",
+        name: "AgentClash",
+      },
     });
   });
 });
