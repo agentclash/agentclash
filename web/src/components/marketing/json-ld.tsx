@@ -108,6 +108,12 @@ export function articleSchema({
     description,
     url: absoluteUrl,
     mainEntityOfPage: absoluteUrl,
+    image: {
+      "@type": "ImageObject",
+      url: `${SITE_URL}/og-image.png`,
+      width: 1200,
+      height: 630,
+    },
     datePublished,
     dateModified: datePublished,
     author: {
