@@ -322,7 +322,11 @@ func (r *Repository) AggregateEvalSession(ctx context.Context, evalSessionID uui
 				return EvalSessionAggregateRecord{}, fmt.Errorf("decode run scorecard %s: %w", run.ID, err)
 			}
 			deploymentLineup := evalSessionRunSeriesDeploymentLineup(run.ExecutionPlan)
-			participantSources, participantWarnings, err := r.buildEvalSessionAggregateParticipantSources(ctx, run.ID, document, behavior, deploymentLineup)
+			scorecardsByRunAgentID, err := r.evalSessionCostBackfillScorecards(ctx, run.ID, document)
+			if err != nil {
+				return EvalSessionAggregateRecord{}, err
+			}
+			participantSources, participantWarnings, err := r.buildEvalSessionAggregateParticipantSources(ctx, run.ID, document, behavior, deploymentLineup, scorecardsByRunAgentID)
 			if err != nil {
 				return EvalSessionAggregateRecord{}, fmt.Errorf("build eval session participant sources for run %s: %w", run.ID, err)
 			}
@@ -520,20 +524,17 @@ func (r *Repository) buildEvalSessionAggregateParticipantSources(
 	document runScorecardDocument,
 	behavior evalSessionAggregateBehavior,
 	deploymentLineup string,
+	scorecardsByRunAgentID map[uuid.UUID]RunAgentScorecard,
 ) ([]evalSessionAggregateParticipantSource, []string, error) {
 	participantSources := make([]evalSessionAggregateParticipantSource, 0, len(document.Agents))
 	warnings := make([]string, 0)
 
 	for _, agent := range document.Agents {
 		if agent.HasScorecard && agent.TotalCostUSD == nil {
-			scorecard, err := r.GetRunAgentScorecardByRunAgentID(ctx, agent.RunAgentID)
-			switch {
-			case err == nil:
+			if scorecard, ok := scorecardsByRunAgentID[agent.RunAgentID]; ok {
 				agent = evalSessionAgentWithScorecardCost(agent, scorecard.Scorecard)
-			case errors.Is(err, ErrRunAgentScorecardNotFound):
+			} else {
 				warnings = append(warnings, fmt.Sprintf("run %s participant %q (lane %d): run-agent scorecard unavailable; cost will be omitted", runID, agent.Label, agent.LaneIndex))
-			default:
-				return nil, nil, fmt.Errorf("load run-agent scorecard %s for cost aggregation: %w", agent.RunAgentID, err)
 			}
 		}
 
@@ -560,6 +561,29 @@ func (r *Repository) buildEvalSessionAggregateParticipantSources(
 	}
 
 	return participantSources, warnings, nil
+}
+
+func (r *Repository) evalSessionCostBackfillScorecards(ctx context.Context, runID uuid.UUID, document runScorecardDocument) (map[uuid.UUID]RunAgentScorecard, error) {
+	needsBackfill := false
+	for _, agent := range document.Agents {
+		if agent.HasScorecard && agent.TotalCostUSD == nil {
+			needsBackfill = true
+			break
+		}
+	}
+	if !needsBackfill {
+		return nil, nil
+	}
+
+	scorecards, err := r.ListRunAgentScorecardsByRunID(ctx, runID)
+	if err != nil {
+		return nil, fmt.Errorf("list run-agent scorecards for cost aggregation on run %s: %w", runID, err)
+	}
+	byRunAgentID := make(map[uuid.UUID]RunAgentScorecard, len(scorecards))
+	for _, scorecard := range scorecards {
+		byRunAgentID[scorecard.RunAgentID] = scorecard
+	}
+	return byRunAgentID, nil
 }
 
 func evalSessionAgentWithScorecardCost(agent runScorecardAgentSummary, scorecard json.RawMessage) runScorecardAgentSummary {
@@ -902,7 +926,9 @@ func buildEvalSessionAggregatePayload(
 		}
 		document.Participants = append(document.Participants, participant)
 	}
-	document.SeriesReport = buildEvalSessionSeriesReport(document.Participants)
+	if len(document.Participants) > 1 {
+		document.SeriesReport = buildEvalSessionSeriesReport(document.Participants)
+	}
 
 	if len(document.Participants) == 1 {
 		participant := document.Participants[0]
@@ -1458,7 +1484,10 @@ func buildEvalSessionSeriesReportRow(participant evalSessionParticipantAggregate
 }
 
 func evalSessionSeriesReportRankValue(row evalSessionSeriesReportRow, rankMetric string) (float64, bool) {
-	if rankMetric == "composite_agent_score" && row.CompositeAgentScore != nil {
+	if rankMetric == "composite_agent_score" {
+		if row.CompositeAgentScore == nil {
+			return 0, false
+		}
 		return *row.CompositeAgentScore, true
 	}
 	if row.OverallScore != nil {

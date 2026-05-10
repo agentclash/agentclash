@@ -926,6 +926,37 @@ func (r *Repository) GetRunAgentScorecardByRunAgentID(ctx context.Context, runAg
 	return scorecard, nil
 }
 
+func (r *Repository) ListRunAgentScorecardsByRunID(ctx context.Context, runID uuid.UUID) ([]RunAgentScorecard, error) {
+	rows, err := r.queries.ListRunAgentScorecardsByRunID(ctx, repositorysqlc.ListRunAgentScorecardsByRunIDParams{RunID: runID})
+	if err != nil {
+		return nil, fmt.Errorf("list run-agent scorecards by run id: %w", err)
+	}
+
+	scorecards := make([]RunAgentScorecard, 0, len(rows))
+	for _, row := range rows {
+		scorecard, err := mapRunAgentScorecardFromFields(
+			row.ID,
+			row.RunAgentID,
+			row.EvaluationSpecID,
+			row.OverallScore,
+			row.CorrectnessScore,
+			row.ReliabilityScore,
+			row.LatencyScore,
+			row.CostScore,
+			row.BehavioralScore,
+			row.ScorecardPassed,
+			row.Scorecard,
+			row.CreatedAt,
+			row.UpdatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("map run-agent scorecard %s: %w", row.RunAgentID, err)
+		}
+		scorecards = append(scorecards, scorecard)
+	}
+	return scorecards, nil
+}
+
 func (r *Repository) StoreRunAgentEvaluationResults(ctx context.Context, evaluation scoring.RunAgentEvaluation) error {
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
@@ -2218,27 +2249,59 @@ func mapRunEvent(row repositorysqlc.RunEvent) (RunEvent, error) {
 }
 
 func mapRunAgentScorecard(row repositorysqlc.GetRunAgentScorecardByRunAgentIDRow) (RunAgentScorecard, error) {
-	createdAt, err := requiredTime("run_agent_scorecards.created_at", row.CreatedAt)
+	return mapRunAgentScorecardFromFields(
+		row.ID,
+		row.RunAgentID,
+		row.EvaluationSpecID,
+		row.OverallScore,
+		row.CorrectnessScore,
+		row.ReliabilityScore,
+		row.LatencyScore,
+		row.CostScore,
+		row.BehavioralScore,
+		row.ScorecardPassed,
+		row.Scorecard,
+		row.CreatedAt,
+		row.UpdatedAt,
+	)
+}
+
+func mapRunAgentScorecardFromFields(
+	id uuid.UUID,
+	runAgentID uuid.UUID,
+	evaluationSpecID uuid.UUID,
+	overallScore pgtype.Numeric,
+	correctnessScore pgtype.Numeric,
+	reliabilityScore pgtype.Numeric,
+	latencyScore pgtype.Numeric,
+	costScore pgtype.Numeric,
+	behavioralScore pgtype.Numeric,
+	scorecardPassed *bool,
+	scorecard json.RawMessage,
+	createdAtValue pgtype.Timestamptz,
+	updatedAtValue pgtype.Timestamptz,
+) (RunAgentScorecard, error) {
+	createdAt, err := requiredTime("run_agent_scorecards.created_at", createdAtValue)
 	if err != nil {
 		return RunAgentScorecard{}, err
 	}
-	updatedAt, err := requiredTime("run_agent_scorecards.updated_at", row.UpdatedAt)
+	updatedAt, err := requiredTime("run_agent_scorecards.updated_at", updatedAtValue)
 	if err != nil {
 		return RunAgentScorecard{}, err
 	}
 
 	return RunAgentScorecard{
-		ID:               row.ID,
-		RunAgentID:       row.RunAgentID,
-		EvaluationSpecID: row.EvaluationSpecID,
-		OverallScore:     numericPtr(row.OverallScore),
-		CorrectnessScore: numericPtr(row.CorrectnessScore),
-		ReliabilityScore: numericPtr(row.ReliabilityScore),
-		LatencyScore:     numericPtr(row.LatencyScore),
-		CostScore:        numericPtr(row.CostScore),
-		BehavioralScore:  numericPtr(row.BehavioralScore),
-		Passed:           cloneBoolPtr(row.ScorecardPassed),
-		Scorecard:        cloneJSON(row.Scorecard),
+		ID:               id,
+		RunAgentID:       runAgentID,
+		EvaluationSpecID: evaluationSpecID,
+		OverallScore:     numericPtr(overallScore),
+		CorrectnessScore: numericPtr(correctnessScore),
+		ReliabilityScore: numericPtr(reliabilityScore),
+		LatencyScore:     numericPtr(latencyScore),
+		CostScore:        numericPtr(costScore),
+		BehavioralScore:  numericPtr(behavioralScore),
+		Passed:           cloneBoolPtr(scorecardPassed),
+		Scorecard:        cloneJSON(scorecard),
 		CreatedAt:        createdAt,
 		UpdatedAt:        updatedAt,
 	}, nil

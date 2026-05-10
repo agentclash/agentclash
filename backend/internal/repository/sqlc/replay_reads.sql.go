@@ -108,6 +108,81 @@ func (q *Queries) GetRunAgentScorecardByRunAgentID(ctx context.Context, arg GetR
 	return i, err
 }
 
+const listRunAgentScorecardsByRunID = `-- name: ListRunAgentScorecardsByRunID :many
+SELECT
+    sc.id,
+    sc.run_agent_id,
+    sc.evaluation_spec_id,
+    sc.overall_score,
+    sc.correctness_score,
+    sc.reliability_score,
+    sc.latency_score,
+    sc.cost_score,
+    sc.behavioral_score,
+    sc.scorecard_passed,
+    sc.scorecard,
+    sc.created_at,
+    sc.updated_at
+FROM run_agent_scorecards sc
+JOIN run_agents ra ON ra.id = sc.run_agent_id
+WHERE ra.run_id = $1
+ORDER BY ra.lane_index, ra.label, sc.run_agent_id
+`
+
+type ListRunAgentScorecardsByRunIDParams struct {
+	RunID uuid.UUID
+}
+
+type ListRunAgentScorecardsByRunIDRow struct {
+	ID               uuid.UUID
+	RunAgentID       uuid.UUID
+	EvaluationSpecID uuid.UUID
+	OverallScore     pgtype.Numeric
+	CorrectnessScore pgtype.Numeric
+	ReliabilityScore pgtype.Numeric
+	LatencyScore     pgtype.Numeric
+	CostScore        pgtype.Numeric
+	BehavioralScore  pgtype.Numeric
+	ScorecardPassed  *bool
+	Scorecard        []byte
+	CreatedAt        pgtype.Timestamptz
+	UpdatedAt        pgtype.Timestamptz
+}
+
+func (q *Queries) ListRunAgentScorecardsByRunID(ctx context.Context, arg ListRunAgentScorecardsByRunIDParams) ([]ListRunAgentScorecardsByRunIDRow, error) {
+	rows, err := q.db.Query(ctx, listRunAgentScorecardsByRunID, arg.RunID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListRunAgentScorecardsByRunIDRow
+	for rows.Next() {
+		var i ListRunAgentScorecardsByRunIDRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.RunAgentID,
+			&i.EvaluationSpecID,
+			&i.OverallScore,
+			&i.CorrectnessScore,
+			&i.ReliabilityScore,
+			&i.LatencyScore,
+			&i.CostScore,
+			&i.BehavioralScore,
+			&i.ScorecardPassed,
+			&i.Scorecard,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const upsertRunAgentReplayIndex = `-- name: UpsertRunAgentReplayIndex :one
 INSERT INTO run_agent_replays (
     run_agent_id,

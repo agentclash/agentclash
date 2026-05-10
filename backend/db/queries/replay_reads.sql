@@ -52,3 +52,23 @@ SELECT
 FROM run_agent_scorecards
 WHERE run_agent_id = @run_agent_id
 LIMIT 1;
+
+-- name: ListRunAgentScorecardsByRunID :many
+SELECT
+    sc.id,
+    sc.run_agent_id,
+    sc.evaluation_spec_id,
+    sc.overall_score,
+    sc.correctness_score,
+    sc.reliability_score,
+    sc.latency_score,
+    sc.cost_score,
+    sc.behavioral_score,
+    sc.scorecard_passed,
+    sc.scorecard,
+    sc.created_at,
+    sc.updated_at
+FROM run_agent_scorecards sc
+JOIN run_agents ra ON ra.id = sc.run_agent_id
+WHERE ra.run_id = @run_id
+ORDER BY ra.lane_index, ra.label, sc.run_agent_id;

@@ -117,6 +117,39 @@ func TestBuildEvalSessionAggregatePayloadCapturesMissingScorecardsAndPartialCove
 	}
 }
 
+func TestBuildEvalSessionAggregatePayloadOmitsSeriesReportForSingleParticipant(t *testing.T) {
+	aggregateJSON, _, _, err := buildEvalSessionAggregatePayload(
+		1,
+		[]evalSessionAggregateSource{
+			evalSessionTestSource(
+				"45454545-4545-4545-4545-454545454545",
+				evalSessionTestParticipant(
+					"dddddddd-dddd-dddd-dddd-dddddddddddd",
+					0,
+					"Primary",
+					0.88,
+					map[string]float64{"correctness": 0.88},
+					evalSessionTestTask("task-a", true),
+				),
+			),
+		},
+		nil,
+		evalSessionTestBehavior(),
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("buildEvalSessionAggregatePayload returned error: %v", err)
+	}
+
+	var aggregate evalSessionAggregateDocument
+	if err := json.Unmarshal(aggregateJSON, &aggregate); err != nil {
+		t.Fatalf("unmarshal aggregate: %v", err)
+	}
+	if aggregate.SeriesReport != nil {
+		t.Fatalf("series_report = %#v, want nil for a single participant session", aggregate.SeriesReport)
+	}
+}
+
 func TestBuildEvalSessionAggregatePayloadRejectsMissingScoredChildren(t *testing.T) {
 	_, _, _, err := buildEvalSessionAggregatePayload(2, nil, nil, evalSessionTestBehavior(), nil)
 	if !errors.Is(err, ErrEvalSessionAggregateUnavailable) {
@@ -594,6 +627,42 @@ func TestBuildEvalSessionAggregatePayloadSeriesReportIncludesScoreCostCorrectnes
 		}
 	}
 	t.Fatalf("participants = %#v, want smoke / Primary", aggregate.Participants)
+}
+
+func TestBuildEvalSessionSeriesReportKeepsMixedMetricsBelowCompositeRows(t *testing.T) {
+	report := buildEvalSessionSeriesReport([]evalSessionParticipantAggregate{
+		{
+			LaneIndex: 0,
+			Label:     "composite / Primary",
+			Overall:   &evalSessionMetricAggregate{Mean: 0.60},
+			MetricRouting: &evalSessionMetricRouting{
+				CompositeAgentScore: 0.55,
+			},
+			ObservedRuns: 2,
+		},
+		{
+			LaneIndex:    0,
+			Label:        "overall-only / Primary",
+			Overall:      &evalSessionMetricAggregate{Mean: 0.99},
+			ObservedRuns: 2,
+		},
+	})
+
+	if report == nil {
+		t.Fatal("series report = nil, want rows")
+	}
+	if report.RankMetric != "composite_agent_score" {
+		t.Fatalf("rank metric = %q, want composite_agent_score", report.RankMetric)
+	}
+	if len(report.Rows) != 2 {
+		t.Fatalf("rows = %#v, want two rows", report.Rows)
+	}
+	if report.Rows[0].Label != "composite / Primary" || report.Rows[0].Rank != 1 {
+		t.Fatalf("top row = %#v, want composite-scored row above overall-only row", report.Rows[0])
+	}
+	if report.Rows[1].Label != "overall-only / Primary" || report.Rows[1].Rank != 2 {
+		t.Fatalf("second row = %#v, want overall-only row below composite-scored row", report.Rows[1])
+	}
 }
 
 func TestEvalSessionAgentWithScorecardCostBackfillsOldRunScorecardSummary(t *testing.T) {
