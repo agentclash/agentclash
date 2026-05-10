@@ -917,6 +917,34 @@ paths:
         "500":
           $ref: "#/components/responses/InternalError"
 
+  /v1/workspaces/{workspaceID}/quota:
+    get:
+      operationId: getWorkspaceQuota
+      tags: [Billing]
+      summary: Get workspace quota usage
+      description: >
+        Returns the workspace plan and quota counters for monthly race usage,
+        active concurrent race usage, and organization seats.
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+      responses:
+        "200":
+          description: Workspace quota snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceQuotaResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
   # ---------------------------------------------------------------------------
   # User Profile
   # ---------------------------------------------------------------------------
@@ -6011,6 +6039,61 @@ components:
           $ref: "#/components/schemas/WorkspaceUsageSnapshot"
         gates:
           $ref: "#/components/schemas/WorkspaceGateSummary"
+
+    QuotaCounter:
+      type: object
+      required: [used]
+      properties:
+        used:
+          type: integer
+        limit:
+          type: integer
+        remaining:
+          type: integer
+        reset_at:
+          type: string
+          format: date-time
+
+    WorkspaceQuotaResponse:
+      type: object
+      required:
+        [
+          organization_id,
+          workspace_id,
+          plan_key,
+          billing_period,
+          status,
+          monthly_races,
+          concurrent_races,
+          seats,
+          window_start,
+          window_end,
+        ]
+      properties:
+        organization_id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+          format: uuid
+        plan_key:
+          $ref: "#/components/schemas/BillingPlanKey"
+        billing_period:
+          type: string
+        status:
+          type: string
+        monthly_races:
+          $ref: "#/components/schemas/QuotaCounter"
+        concurrent_races:
+          $ref: "#/components/schemas/QuotaCounter"
+        seats:
+          $ref: "#/components/schemas/QuotaCounter"
+        window_start:
+          type: string
+          format: date-time
+        window_end:
+          type: string
+          format: date-time
 
     ProcessDodoWebhookResponse:
       type: object
