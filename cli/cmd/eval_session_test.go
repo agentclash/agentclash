@@ -462,6 +462,95 @@ func TestRunSeriesCreateRoutesToEvalSessions(t *testing.T) {
 	}
 }
 
+func TestRunSeriesReportRendersAggregateScoreCostCorrectness(t *testing.T) {
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"GET /v1/eval-sessions/es-1": jsonHandler(200, map[string]any{
+			"eval_session": map[string]any{
+				"id":          "es-1",
+				"status":      "completed",
+				"repetitions": 4,
+			},
+			"runs": []map[string]any{},
+			"summary": map[string]any{
+				"run_counts": map[string]any{"total": 4, "completed": 4},
+			},
+			"aggregate_result": map[string]any{
+				"schema_version":     1,
+				"child_run_count":    4,
+				"scored_child_count": 4,
+				"series_report": map[string]any{
+					"rank_metric": "composite_agent_score",
+					"rows": []map[string]any{
+						{
+							"rank":                  1,
+							"lane_index":            0,
+							"label":                 "smoke / Primary",
+							"deployment_lineup":     "smoke",
+							"participant_label":     "Primary",
+							"observed_runs":         2,
+							"overall_score":         0.85,
+							"correctness_score":     0.9,
+							"success_rate":          0.75,
+							"mean_cost_usd":         0.03,
+							"total_cost_usd":        0.06,
+							"composite_agent_score": 0.91,
+						},
+						{
+							"rank":                  2,
+							"lane_index":            0,
+							"label":                 "default / Primary",
+							"deployment_lineup":     "default",
+							"participant_label":     "Primary",
+							"observed_runs":         2,
+							"overall_score":         0.95,
+							"correctness_score":     0.95,
+							"success_rate":          0.5,
+							"mean_cost_usd":         0.01,
+							"total_cost_usd":        0.02,
+							"composite_agent_score": 0.40,
+						},
+					},
+				},
+			},
+			"evidence_warnings": []string{"partial cost evidence"},
+		}),
+	})
+	defer srv.Close()
+
+	stdout := captureStdout(t)
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+	err := executeCommand(t, []string{"run", "series", "report", "es-1"}, srv.URL)
+	out := stdout.finish()
+	if err != nil {
+		t.Fatalf("run series report error: %v", err)
+	}
+	for _, snippet := range []string{
+		"Eval Session ID",
+		"Race Series Report",
+		"COMPOSITE",
+		"smoke",
+		"default",
+		"Primary",
+		"0.91",
+		"0.85",
+		"0.95",
+		"0.90",
+		"75.0%",
+		"$0.0300",
+		"$0.0600",
+		"partial cost evidence",
+	} {
+		if !strings.Contains(out, snippet) {
+			t.Fatalf("run series report output missing %q\n---\n%s", snippet, out)
+		}
+	}
+	smokeIndex := strings.Index(out, "smoke")
+	defaultIndex := strings.Index(out, "default")
+	if smokeIndex < 0 || defaultIndex < 0 || smokeIndex > defaultIndex {
+		t.Fatalf("report rows should preserve backend rank order by composite score\n---\n%s", out)
+	}
+}
+
 func TestRunSeriesCreateValidatesSeedsBeforeResolvingLineups(t *testing.T) {
 	requests := 0
 	routes := evalStartFakeRoutes(t, nil)

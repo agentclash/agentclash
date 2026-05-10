@@ -117,6 +117,39 @@ func TestBuildEvalSessionAggregatePayloadCapturesMissingScorecardsAndPartialCove
 	}
 }
 
+func TestBuildEvalSessionAggregatePayloadOmitsSeriesReportForSingleParticipant(t *testing.T) {
+	aggregateJSON, _, _, err := buildEvalSessionAggregatePayload(
+		1,
+		[]evalSessionAggregateSource{
+			evalSessionTestSource(
+				"45454545-4545-4545-4545-454545454545",
+				evalSessionTestParticipant(
+					"dddddddd-dddd-dddd-dddd-dddddddddddd",
+					0,
+					"Primary",
+					0.88,
+					map[string]float64{"correctness": 0.88},
+					evalSessionTestTask("task-a", true),
+				),
+			),
+		},
+		nil,
+		evalSessionTestBehavior(),
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("buildEvalSessionAggregatePayload returned error: %v", err)
+	}
+
+	var aggregate evalSessionAggregateDocument
+	if err := json.Unmarshal(aggregateJSON, &aggregate); err != nil {
+		t.Fatalf("unmarshal aggregate: %v", err)
+	}
+	if aggregate.SeriesReport != nil {
+		t.Fatalf("series_report = %#v, want nil for a single participant session", aggregate.SeriesReport)
+	}
+}
+
 func TestBuildEvalSessionAggregatePayloadRejectsMissingScoredChildren(t *testing.T) {
 	_, _, _, err := buildEvalSessionAggregatePayload(2, nil, nil, evalSessionTestBehavior(), nil)
 	if !errors.Is(err, ErrEvalSessionAggregateUnavailable) {
@@ -489,6 +522,209 @@ func TestBuildEvalSessionAggregatePayloadSeriesLabelsDisambiguateLineups(t *test
 	}
 }
 
+func TestBuildEvalSessionAggregatePayloadSeriesReportIncludesScoreCostCorrectness(t *testing.T) {
+	aggregateJSON, _, _, err := buildEvalSessionAggregatePayload(
+		4,
+		[]evalSessionAggregateSource{
+			evalSessionTestSource(
+				"70707070-7070-7070-7070-707070707071",
+				evalSessionTestParticipantWithCost(
+					"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa71",
+					0,
+					"default / Primary",
+					0.60,
+					map[string]float64{"correctness": 0.50},
+					[]evalSessionAggregateTaskOutcome{evalSessionTestTask("task-a", true), evalSessionTestTask("task-b", false)},
+					0.01,
+				),
+			),
+			evalSessionTestSource(
+				"70707070-7070-7070-7070-707070707072",
+				evalSessionTestParticipantWithCost(
+					"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa72",
+					0,
+					"default / Primary",
+					0.70,
+					map[string]float64{"correctness": 0.70},
+					[]evalSessionAggregateTaskOutcome{evalSessionTestTask("task-a", false), evalSessionTestTask("task-b", false)},
+					0.03,
+				),
+			),
+			evalSessionTestSource(
+				"70707070-7070-7070-7070-707070707073",
+				evalSessionTestParticipantWithCost(
+					"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa73",
+					0,
+					"smoke / Primary",
+					0.90,
+					map[string]float64{"correctness": 0.90},
+					[]evalSessionAggregateTaskOutcome{evalSessionTestTask("task-a", true), evalSessionTestTask("task-b", true)},
+					0.02,
+				),
+			),
+			evalSessionTestSource(
+				"70707070-7070-7070-7070-707070707074",
+				evalSessionTestParticipantWithCost(
+					"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa74",
+					0,
+					"smoke / Primary",
+					0.80,
+					map[string]float64{"correctness": 0.80},
+					[]evalSessionAggregateTaskOutcome{evalSessionTestTask("task-a", true), evalSessionTestTask("task-b", false)},
+					0.04,
+				),
+			),
+		},
+		nil,
+		evalSessionAggregateBehavior{KValues: []int{1, 2, 3, 5, 10}, EffectiveK: 2, SuccessThreshold: 0.8},
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("buildEvalSessionAggregatePayload returned error: %v", err)
+	}
+
+	var aggregate evalSessionAggregateDocument
+	if err := json.Unmarshal(aggregateJSON, &aggregate); err != nil {
+		t.Fatalf("unmarshal aggregate: %v", err)
+	}
+	if aggregate.SeriesReport == nil {
+		t.Fatal("series_report = nil, want aggregate report")
+	}
+	if aggregate.SeriesReport.RankMetric != "composite_agent_score" {
+		t.Fatalf("rank_metric = %q, want composite_agent_score", aggregate.SeriesReport.RankMetric)
+	}
+	if len(aggregate.SeriesReport.Rows) != 2 {
+		t.Fatalf("report rows = %#v, want two lineups", aggregate.SeriesReport.Rows)
+	}
+	top := aggregate.SeriesReport.Rows[0]
+	if top.Label != "smoke / Primary" || top.DeploymentLineup != "smoke" || top.ParticipantLabel != "Primary" {
+		t.Fatalf("top row labels = %#v, want smoke / Primary split into lineup/participant", top)
+	}
+	if top.ObservedRuns != 2 {
+		t.Fatalf("top observed runs = %d, want 2", top.ObservedRuns)
+	}
+	if top.OverallScore == nil || math.Abs(*top.OverallScore-0.85) > 1e-9 {
+		t.Fatalf("top overall = %v, want 0.85", top.OverallScore)
+	}
+	if top.CorrectnessScore == nil || math.Abs(*top.CorrectnessScore-0.85) > 1e-9 {
+		t.Fatalf("top correctness = %v, want 0.85", top.CorrectnessScore)
+	}
+	if top.SuccessRate == nil || math.Abs(*top.SuccessRate-0.75) > 1e-9 {
+		t.Fatalf("top success rate = %v, want 0.75", top.SuccessRate)
+	}
+	if top.MeanCostUSD == nil || math.Abs(*top.MeanCostUSD-0.03) > 1e-9 {
+		t.Fatalf("top mean cost = %v, want 0.03", top.MeanCostUSD)
+	}
+	if top.TotalCostUSD == nil || math.Abs(*top.TotalCostUSD-0.06) > 1e-9 {
+		t.Fatalf("top total cost = %v, want 0.06", top.TotalCostUSD)
+	}
+	for _, participant := range aggregate.Participants {
+		if participant.Label == "smoke / Primary" {
+			if participant.CostUSD == nil || math.Abs(participant.CostUSD.Total-0.06) > 1e-9 {
+				t.Fatalf("smoke participant cost = %#v, want total 0.06", participant.CostUSD)
+			}
+			return
+		}
+	}
+	t.Fatalf("participants = %#v, want smoke / Primary", aggregate.Participants)
+}
+
+func TestBuildEvalSessionSeriesReportKeepsMixedMetricsBelowCompositeRows(t *testing.T) {
+	report := buildEvalSessionSeriesReport([]evalSessionParticipantAggregate{
+		{
+			LaneIndex: 0,
+			Label:     "composite / Primary",
+			Overall:   &evalSessionMetricAggregate{Mean: 0.60},
+			MetricRouting: &evalSessionMetricRouting{
+				CompositeAgentScore: 0.55,
+			},
+			ObservedRuns: 2,
+		},
+		{
+			LaneIndex:    0,
+			Label:        "overall-only / Primary",
+			Overall:      &evalSessionMetricAggregate{Mean: 0.99},
+			ObservedRuns: 2,
+		},
+	})
+
+	if report == nil {
+		t.Fatal("series report = nil, want rows")
+	}
+	if report.RankMetric != "composite_agent_score" {
+		t.Fatalf("rank metric = %q, want composite_agent_score", report.RankMetric)
+	}
+	if len(report.Rows) != 2 {
+		t.Fatalf("rows = %#v, want two rows", report.Rows)
+	}
+	if report.Rows[0].Label != "composite / Primary" || report.Rows[0].Rank != 1 {
+		t.Fatalf("top row = %#v, want composite-scored row above overall-only row", report.Rows[0])
+	}
+	if report.Rows[1].Label != "overall-only / Primary" || report.Rows[1].Rank != 2 {
+		t.Fatalf("second row = %#v, want overall-only row below composite-scored row", report.Rows[1])
+	}
+}
+
+func TestEvalSessionParticipantSuccessRateWeightsObservedTrials(t *testing.T) {
+	successRate, ok := evalSessionParticipantSuccessRate(evalSessionParticipantAggregate{
+		TaskSuccess: []evalSessionTaskSuccess{
+			{
+				TaskKey:          "sparse-pass",
+				ObservedTrials:   1,
+				SuccessfulTrials: 1,
+				SuccessRate:      1,
+			},
+			{
+				TaskKey:          "dense-failures",
+				ObservedTrials:   9,
+				SuccessfulTrials: 0,
+				SuccessRate:      0,
+			},
+		},
+	})
+	if !ok {
+		t.Fatal("success rate unresolved, want weighted rate")
+	}
+	if math.Abs(successRate-0.1) > 1e-9 {
+		t.Fatalf("success rate = %f, want 0.1", successRate)
+	}
+}
+
+func TestEvalSessionAgentWithScorecardCostBackfillsOldRunScorecardSummary(t *testing.T) {
+	agent := evalSessionAgentWithScorecardCost(runScorecardAgentSummary{
+		RunAgentID:   uuid.New(),
+		LaneIndex:    0,
+		Label:        "Primary",
+		HasScorecard: true,
+	}, json.RawMessage(`{
+		"metric_details": [
+			{"collector": "run_model_cost_usd", "numeric_value": 0.044}
+		]
+	}`))
+	if agent.TotalCostUSD == nil || *agent.TotalCostUSD != 0.044 {
+		t.Fatalf("total cost = %v, want 0.044", agent.TotalCostUSD)
+	}
+
+	existing := 0.12
+	agent = evalSessionAgentWithScorecardCost(runScorecardAgentSummary{
+		RunAgentID:       uuid.New(),
+		LaneIndex:        0,
+		Label:            "Primary",
+		HasScorecard:     true,
+		TotalCostUSD:     &existing,
+		OverallScore:     float64Ptr(0.9),
+		CostScore:        float64Ptr(0.8),
+		CorrectnessScore: float64Ptr(0.7),
+	}, json.RawMessage(`{
+		"metric_details": [
+			{"collector": "run_model_cost_usd", "numeric_value": 0.01}
+		]
+	}`))
+	if agent.TotalCostUSD == nil || *agent.TotalCostUSD != existing {
+		t.Fatalf("total cost = %v, want existing value %f", agent.TotalCostUSD, existing)
+	}
+}
+
 func TestEvalSessionSeriesParticipantLabelAvoidsDuplicateLineup(t *testing.T) {
 	if got := evalSessionSeriesParticipantLabel("smoke", "smoke"); got != "smoke" {
 		t.Fatalf("label = %q, want smoke", got)
@@ -709,6 +945,20 @@ func evalSessionTestParticipant(
 		Agent:        agent,
 		TaskOutcomes: tasks,
 	}
+}
+
+func evalSessionTestParticipantWithCost(
+	runAgentID string,
+	laneIndex int32,
+	label string,
+	overall float64,
+	dimensions map[string]float64,
+	tasks []evalSessionAggregateTaskOutcome,
+	costUSD float64,
+) evalSessionAggregateParticipantSource {
+	participant := evalSessionTestParticipant(runAgentID, laneIndex, label, overall, dimensions, tasks...)
+	participant.Agent.TotalCostUSD = float64Ptr(costUSD)
+	return participant
 }
 
 func evalSessionTestTask(taskKey string, success bool) evalSessionAggregateTaskOutcome {

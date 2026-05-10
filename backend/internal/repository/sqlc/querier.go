@@ -99,6 +99,7 @@ type Querier interface {
 	ListRegressionCasesBySuiteID(ctx context.Context, arg ListRegressionCasesBySuiteIDParams) ([]ListRegressionCasesBySuiteIDRow, error)
 	ListRegressionCasesByWorkspaceID(ctx context.Context, arg ListRegressionCasesByWorkspaceIDParams) ([]ListRegressionCasesByWorkspaceIDRow, error)
 	ListRegressionSuitesByWorkspaceID(ctx context.Context, arg ListRegressionSuitesByWorkspaceIDParams) ([]WorkspaceRegressionSuite, error)
+	ListRunAgentScorecardsByRunID(ctx context.Context, arg ListRunAgentScorecardsByRunIDParams) ([]ListRunAgentScorecardsByRunIDRow, error)
 	ListRunAgentStatusHistoryByRunAgentID(ctx context.Context, arg ListRunAgentStatusHistoryByRunAgentIDParams) ([]RunAgentStatusHistory, error)
 	ListRunAgentsByRunID(ctx context.Context, arg ListRunAgentsByRunIDParams) ([]RunAgent, error)
 	ListRunCaseSelectionsByRunID(ctx context.Context, arg ListRunCaseSelectionsByRunIDParams) ([]RunCaseSelection, error)

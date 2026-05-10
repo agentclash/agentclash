@@ -28,6 +28,7 @@ func init() {
 	runCmd.AddCommand(runPromoteFailureCmd)
 	runCmd.AddCommand(runSeriesCmd)
 	runSeriesCmd.AddCommand(runSeriesCreateCmd)
+	runSeriesCmd.AddCommand(runSeriesReportCmd)
 
 	runCreateCmd.Flags().String("challenge-pack-version", "", "Challenge pack version ID (optional in a TTY; prompted when omitted)")
 	runCreateCmd.Flags().StringSlice("deployments", nil, "Agent deployment IDs (optional in a TTY; prompted when omitted)")
@@ -111,6 +112,35 @@ var runSeriesCreateCmd = &cobra.Command{
 	},
 }
 
+var runSeriesReportCmd = &cobra.Command{
+	Use:   "report <eval-session-id>",
+	Short: "Show aggregate score, correctness, and cost for a race series",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		rc := GetRunContext(cmd)
+
+		resp, err := rc.Client.Get(cmd.Context(), "/v1/eval-sessions/"+args[0], nil)
+		if err != nil {
+			return err
+		}
+		if apiErr := resp.ParseError(); apiErr != nil {
+			return apiErr
+		}
+
+		var result map[string]any
+		if err := resp.DecodeJSON(&result); err != nil {
+			return err
+		}
+
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(result)
+		}
+
+		renderRunSeriesReport(rc, result)
+		return nil
+	},
+}
+
 var runListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List runs in the workspace",
@@ -155,6 +185,94 @@ var runListCmd = &cobra.Command{
 		rc.Output.PrintTable(cols, rows)
 		return nil
 	},
+}
+
+func renderRunSeriesReport(rc *RunContext, result map[string]any) {
+	session := mapObject(result, "eval_session")
+	if id := mapString(session, "id"); id != "" {
+		rc.Output.PrintDetail("Eval Session ID", id)
+	}
+	if status := mapString(session, "status"); status != "" {
+		rc.Output.PrintDetail("Status", output.StatusColor(status))
+	}
+	if repetitions := mapValue(session, "repetitions"); repetitions != nil {
+		rc.Output.PrintDetail("Repetitions", str(repetitions))
+	}
+
+	summary := mapObject(result, "summary")
+	if runCounts := mapObject(summary, "run_counts"); runCounts != nil {
+		rc.Output.PrintDetail("Runs", fmt.Sprintf("%s total, %s completed", str(runCounts["total"]), str(runCounts["completed"])))
+	}
+
+	aggregate := mapObject(result, "aggregate_result")
+	if aggregate == nil {
+		rc.Output.PrintWarning("Aggregate result is not available yet.")
+		renderEvalSessionEvidenceWarnings(rc, result)
+		return
+	}
+
+	report := mapObject(aggregate, "series_report")
+	rowsRaw := mapSlice(report, "rows")
+	if len(rowsRaw) == 0 {
+		rc.Output.PrintWarning("Aggregate result does not include a race series report.")
+		renderEvalSessionEvidenceWarnings(rc, result)
+		return
+	}
+
+	fmt.Fprintf(rc.Output.Writer(), "\n%s\n", output.Bold("Race Series Report"))
+	reportUsesComposite := mapString(report, "rank_metric") == "composite_agent_score"
+	cols := []output.Column{
+		{Header: "Rank"},
+		{Header: "Lineup"},
+		{Header: "Participant"},
+		{Header: "Runs"},
+	}
+	if reportUsesComposite {
+		cols = append(cols, output.Column{Header: "Composite"})
+	}
+	cols = append(cols,
+		output.Column{Header: "Score"},
+		output.Column{Header: "Correctness"},
+		output.Column{Header: "Success"},
+		output.Column{Header: "Mean Cost"},
+		output.Column{Header: "Total Cost"},
+	)
+	rows := make([][]string, 0, len(rowsRaw))
+	for _, raw := range rowsRaw {
+		row, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		rows = append(rows, []string{
+			str(row["rank"]),
+			mapString(row, "deployment_lineup"),
+			mapString(row, "participant_label", "label"),
+			str(row["observed_runs"]),
+		})
+		if reportUsesComposite {
+			rows[len(rows)-1] = append(rows[len(rows)-1], fmtScore(mapValue(row, "composite_agent_score")))
+		}
+		rows[len(rows)-1] = append(rows[len(rows)-1],
+			fmtScore(mapValue(row, "overall_score")),
+			fmtScore(mapValue(row, "correctness_score")),
+			fmtPercent(mapValue(row, "success_rate")),
+			fmtUSD(mapValue(row, "mean_cost_usd")),
+			fmtUSD(mapValue(row, "total_cost_usd")),
+		)
+	}
+	rc.Output.PrintTable(cols, rows)
+	renderEvalSessionEvidenceWarnings(rc, result)
+}
+
+func renderEvalSessionEvidenceWarnings(rc *RunContext, result map[string]any) {
+	warnings := mapStringSlice(result, "evidence_warnings")
+	if len(warnings) == 0 {
+		return
+	}
+	fmt.Fprintf(rc.Output.Writer(), "\n%s\n", output.Bold("Evidence Warnings"))
+	for _, warning := range warnings {
+		fmt.Fprintf(rc.Output.Writer(), "  - %s\n", output.SanitizeLine(warning))
+	}
 }
 
 var runGetCmd = &cobra.Command{
@@ -693,6 +811,16 @@ func fmtScore(v any) string {
 	}
 	if f, ok := v.(float64); ok {
 		return fmt.Sprintf("%.2f", f)
+	}
+	return fmt.Sprint(v)
+}
+
+func fmtPercent(v any) string {
+	if v == nil {
+		return "-"
+	}
+	if f, ok := v.(float64); ok {
+		return fmt.Sprintf("%.1f%%", f*100)
 	}
 	return fmt.Sprint(v)
 }
