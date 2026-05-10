@@ -156,14 +156,14 @@ func executeEvalSessionRuns(ctx sdkworkflow.Context, runs []domain.Run) error {
 		selector.Select(ctx)
 	}
 
-	actionableErrors, cancelledChildren, err := classifyEvalSessionChildErrors(ctx, childErrors)
+	actionableErrors, cancelledChildren, terminalChildren, err := classifyEvalSessionChildErrors(ctx, childErrors)
 	if err != nil {
 		return err
 	}
 	if startedChildren > 0 && cancelledChildren == startedChildren {
 		return errEvalSessionChildrenCancelled
 	}
-	successfulChildren := startedChildren - len(childErrors)
+	successfulChildren := startedChildren - len(childErrors) + terminalChildren
 	if startedChildren > 0 && successfulChildren == 0 && len(actionableErrors) > 0 {
 		return actionableErrors[0]
 	}
@@ -171,28 +171,32 @@ func executeEvalSessionRuns(ctx sdkworkflow.Context, runs []domain.Run) error {
 	return nil
 }
 
-func classifyEvalSessionChildErrors(ctx sdkworkflow.Context, childErrors map[uuid.UUID]error) ([]error, int, error) {
+func classifyEvalSessionChildErrors(ctx sdkworkflow.Context, childErrors map[uuid.UUID]error) ([]error, int, int, error) {
 	runIDs := sortedUUIDKeys(childErrors)
 	actionableErrors := make([]error, 0, len(childErrors))
 	cancelledChildren := 0
+	terminalChildren := 0
 	for _, runID := range runIDs {
 		childErr := childErrors[runID]
-		if childRunMayAlreadyBeTerminal(childErr) || isWorkflowCanceled(childErr) {
+		mayAlreadyBeTerminal := childRunMayAlreadyBeTerminal(childErr)
+		workflowCanceled := isWorkflowCanceled(childErr)
+		if mayAlreadyBeTerminal || workflowCanceled {
 			latest, loadErr := loadRun(ctx, runID)
 			if loadErr != nil {
-				return nil, 0, loadErr
+				return nil, 0, 0, loadErr
 			}
 			if latest.Status == domain.RunStatusCancelled {
 				cancelledChildren++
 				continue
 			}
-			if childRunMayAlreadyBeTerminal(childErr) && !latest.Status.CanTransitionTo(domain.RunStatusCancelled) {
+			if !latest.Status.CanTransitionTo(domain.RunStatusCancelled) {
+				terminalChildren++
 				continue
 			}
 		}
 		actionableErrors = append(actionableErrors, childErr)
 	}
-	return actionableErrors, cancelledChildren, nil
+	return actionableErrors, cancelledChildren, terminalChildren, nil
 }
 
 func sortedUUIDKeys(values map[uuid.UUID]error) []uuid.UUID {

@@ -248,6 +248,37 @@ func TestEvalSessionWorkflowMixedCancelledAndFailedChildrenMarksSessionFailed(t 
 	}
 }
 
+func TestEvalSessionWorkflowLateCancelAfterCompletedChildStillAggregates(t *testing.T) {
+	sessionID := uuid.New()
+	completedRunID := uuid.MustParse("00000000-0000-0000-0000-000000000001")
+	failedRunID := uuid.MustParse("00000000-0000-0000-0000-000000000002")
+	repo := newFakeRunRepository(fixtureRun(uuid.New(), domain.RunStatusQueued))
+	repo.setEvalSession(
+		fixtureEvalSession(sessionID, domain.EvalSessionStatusQueued),
+		fixtureChildRun(completedRunID, sessionID),
+		fixtureChildRun(failedRunID, sessionID),
+	)
+
+	env := newEvalSessionWorkflowTestEnvironment(repo, nil, func(ctx sdkworkflow.Context, input RunWorkflowInput) error {
+		if input.RunID == completedRunID {
+			repo.forceEvalSessionRunStatus(sessionID, input.RunID, domain.RunStatusCompleted)
+			return temporal.NewCanceledError("late cancel after completion")
+		}
+		return errors.New("real child failure")
+	})
+	env.ExecuteWorkflow(EvalSessionWorkflow, EvalSessionWorkflowInput{EvalSessionID: sessionID})
+
+	if err := env.GetWorkflowError(); err != nil {
+		t.Fatalf("EvalSessionWorkflow returned error: %v", err)
+	}
+	if got := repo.currentEvalSession(sessionID).Status; got != domain.EvalSessionStatusCompleted {
+		t.Fatalf("eval session status = %s, want %s", got, domain.EvalSessionStatusCompleted)
+	}
+	if repo.callCountWithPrefix("AggregateEvalSession:") != 1 {
+		t.Fatalf("AggregateEvalSession call count = %d, want 1", repo.callCountWithPrefix("AggregateEvalSession:"))
+	}
+}
+
 func TestEvalSessionWorkflowAggregationFailureMarksSessionFailed(t *testing.T) {
 	sessionID := uuid.New()
 	runID := uuid.New()
