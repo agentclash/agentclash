@@ -569,7 +569,11 @@ var runEventsCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		rc := GetRunContext(cmd)
 		filters, _ := cmd.Flags().GetStringSlice("filter")
-		return streamRunEvents(cmd, rc, args[0], filters)
+		patterns, err := normalizeRunEventFilters(filters)
+		if err != nil {
+			return err
+		}
+		return streamRunEvents(cmd, rc, args[0], patterns)
 	},
 }
 
@@ -750,7 +754,7 @@ var runPromoteFailureCmd = &cobra.Command{
 	},
 }
 
-func streamRunEvents(cmd *cobra.Command, rc *RunContext, runID string, filters []string) error {
+func streamRunEvents(cmd *cobra.Command, rc *RunContext, runID string, patterns []string) error {
 	ch, err := rc.Client.StreamSSE(cmd.Context(), "/v1/runs/"+runID+"/events/stream", nil)
 	if err != nil {
 		return fmt.Errorf("connecting to event stream: %w", err)
@@ -761,7 +765,7 @@ func streamRunEvents(cmd *cobra.Command, rc *RunContext, runID string, filters [
 	}
 
 	for event := range ch {
-		if !runEventMatchesFilters(event.Event, event.Data, filters) {
+		if !runEventMatchesFilters(event.Event, event.Data, patterns) {
 			continue
 		}
 		switch {
@@ -811,8 +815,7 @@ func streamRunEvents(cmd *cobra.Command, rc *RunContext, runID string, filters [
 	return nil
 }
 
-func runEventMatchesFilters(sseEvent string, data []byte, filters []string) bool {
-	patterns := normalizeRunEventFilters(filters)
+func runEventMatchesFilters(sseEvent string, data []byte, patterns []string) bool {
 	if len(patterns) == 0 {
 		return true
 	}
@@ -834,17 +837,21 @@ func runEventMatchesFilters(sseEvent string, data []byte, filters []string) bool
 	return false
 }
 
-func normalizeRunEventFilters(filters []string) []string {
+func normalizeRunEventFilters(filters []string) ([]string, error) {
 	var patterns []string
 	for _, filter := range filters {
 		for _, part := range strings.Split(filter, ",") {
 			part = strings.TrimSpace(part)
-			if part != "" {
-				patterns = append(patterns, part)
+			if part == "" {
+				continue
 			}
+			if _, err := path.Match(part, ""); err != nil {
+				return nil, fmt.Errorf("invalid event filter pattern %q: %w", part, err)
+			}
+			patterns = append(patterns, part)
 		}
 	}
-	return patterns
+	return patterns, nil
 }
 
 func eventTypeFromPayload(payload map[string]any) string {

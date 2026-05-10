@@ -193,6 +193,31 @@ func TestRunEventsFilterGlobPattern(t *testing.T) {
 	}
 }
 
+func TestRunEventsFilterRejectsInvalidGlobPattern(t *testing.T) {
+	called := false
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"GET /v1/runs/run-x/events/stream": func(w http.ResponseWriter, r *http.Request) {
+			called = true
+			w.WriteHeader(http.StatusOK)
+		},
+	})
+	defer srv.Close()
+
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+	err := executeCommand(t, []string{
+		"run", "events", "run-x", "--filter", "model.[",
+	}, srv.URL)
+	if err == nil {
+		t.Fatal("run events --filter invalid glob error = nil, want error")
+	}
+	if !strings.Contains(err.Error(), "invalid event filter pattern") {
+		t.Fatalf("error = %v, want invalid event filter pattern", err)
+	}
+	if called {
+		t.Fatal("stream endpoint should not be called when filter pattern is invalid")
+	}
+}
+
 func TestRunEventsExportPrintsJSONL(t *testing.T) {
 	jsonl := strings.Join([]string{
 		`{"event_id":"persisted:agent-1:1","sequence_number":1}`,
