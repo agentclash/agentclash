@@ -496,6 +496,173 @@ func TestInfraProviderAccountListCallsCorrectEndpoint(t *testing.T) {
 	}
 }
 
+func TestInfraModelAliasCreateBuildsRequestBodyFromFlags(t *testing.T) {
+	var called bool
+	var gotBody map[string]any
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"POST /v1/workspaces/ws-1/model-aliases": func(w http.ResponseWriter, r *http.Request) {
+			called = true
+			if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+				t.Fatalf("decode request body: %v", err)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			json.NewEncoder(w).Encode(map[string]any{
+				"id":           "alias-1",
+				"alias_key":    "gpt-5.5",
+				"display_name": "GPT 5.5",
+				"status":       "active",
+			})
+		},
+	})
+	defer srv.Close()
+
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+	err := executeCommand(t, []string{
+		"infra", "model-alias", "create",
+		"-w", "ws-1",
+		"--alias-key", "gpt-5.5",
+		"--display-name", "GPT 5.5",
+		"--model-catalog-entry-id", "model-1",
+		"--provider-account-id", "provider-1",
+	}, srv.URL)
+	if err != nil {
+		t.Fatalf("infra model-alias create error: %v", err)
+	}
+	if !called {
+		t.Fatal("POST /v1/workspaces/ws-1/model-aliases was not called")
+	}
+	want := map[string]string{
+		"alias_key":              "gpt-5.5",
+		"display_name":           "GPT 5.5",
+		"model_catalog_entry_id": "model-1",
+		"provider_account_id":    "provider-1",
+	}
+	for key, value := range want {
+		if gotBody[key] != value {
+			t.Fatalf("request body %s = %#v, want %q; body=%#v", key, gotBody[key], value, gotBody)
+		}
+	}
+}
+
+func TestInfraModelAliasCreateMergesFromFileAndFlagOverrides(t *testing.T) {
+	specPath := t.TempDir() + "/model-alias.json"
+	if err := os.WriteFile(specPath, []byte(`{
+		"alias_key": "from-file",
+		"display_name": "From File",
+		"model_catalog_entry_id": "model-file",
+		"provider_account_id": "provider-file"
+	}`), 0o600); err != nil {
+		t.Fatalf("write spec: %v", err)
+	}
+
+	var gotBody map[string]any
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"POST /v1/workspaces/ws-1/model-aliases": func(w http.ResponseWriter, r *http.Request) {
+			if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+				t.Fatalf("decode request body: %v", err)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			json.NewEncoder(w).Encode(map[string]any{
+				"id":           "alias-1",
+				"alias_key":    "from-flag",
+				"display_name": "From File",
+				"status":       "active",
+			})
+		},
+	})
+	defer srv.Close()
+
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+	err := executeCommand(t, []string{
+		"infra", "model-alias", "create",
+		"-w", "ws-1",
+		"--from-file", specPath,
+		"--alias-key", "from-flag",
+		"--provider-account-id", "provider-flag",
+	}, srv.URL)
+	if err != nil {
+		t.Fatalf("infra model-alias create error: %v", err)
+	}
+
+	want := map[string]string{
+		"alias_key":              "from-flag",
+		"display_name":           "From File",
+		"model_catalog_entry_id": "model-file",
+		"provider_account_id":    "provider-flag",
+	}
+	for key, value := range want {
+		if gotBody[key] != value {
+			t.Fatalf("request body %s = %#v, want %q; body=%#v", key, gotBody[key], value, gotBody)
+		}
+	}
+}
+
+func TestInfraModelAliasCreateAllowsOmittingProviderAccount(t *testing.T) {
+	var gotBody map[string]any
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"POST /v1/workspaces/ws-1/model-aliases": func(w http.ResponseWriter, r *http.Request) {
+			if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+				t.Fatalf("decode request body: %v", err)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			json.NewEncoder(w).Encode(map[string]any{
+				"id":           "alias-1",
+				"alias_key":    "gpt-5.5",
+				"display_name": "GPT 5.5",
+				"status":       "active",
+			})
+		},
+	})
+	defer srv.Close()
+
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+	err := executeCommand(t, []string{
+		"infra", "model-alias", "create",
+		"-w", "ws-1",
+		"--alias-key", "gpt-5.5",
+		"--display-name", "GPT 5.5",
+		"--model-catalog-entry-id", "model-1",
+	}, srv.URL)
+	if err != nil {
+		t.Fatalf("infra model-alias create error: %v", err)
+	}
+	if _, ok := gotBody["provider_account_id"]; ok {
+		t.Fatalf("provider_account_id should be omitted when not supplied; body=%#v", gotBody)
+	}
+}
+
+func TestInfraModelAliasCreateValidatesRequiredFields(t *testing.T) {
+	var called bool
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"POST /v1/workspaces/ws-1/model-aliases": func(w http.ResponseWriter, r *http.Request) {
+			called = true
+			t.Fatal("request should not be sent when required fields are missing")
+		},
+	})
+	defer srv.Close()
+
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+	err := executeCommand(t, []string{
+		"infra", "model-alias", "create",
+		"-w", "ws-1",
+		"--alias-key", "gpt-5.5",
+	}, srv.URL)
+	if err == nil {
+		t.Fatal("expected required field validation error")
+	}
+	for _, want := range []string{"--display-name", "--model-catalog-entry-id"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error %q should mention %s", err.Error(), want)
+		}
+	}
+	if called {
+		t.Fatal("request was sent despite validation error")
+	}
+}
+
 func TestAPIErrorPropagates(t *testing.T) {
 	srv := fakeAPI(t, map[string]http.HandlerFunc{
 		"GET /v1/organizations": jsonHandler(401, map[string]any{

@@ -3,6 +3,8 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
+	"strings"
 
 	"github.com/agentclash/agentclash/cli/internal/output"
 	"github.com/spf13/cobra"
@@ -10,15 +12,15 @@ import (
 
 // infraResource describes a workspace-scoped infrastructure resource for the command factory.
 type infraResource struct {
-	Name       string // e.g. "runtime-profile"
-	Plural     string // e.g. "runtime-profiles"
-	ListPath   string // e.g. "/v1/workspaces/%s/runtime-profiles"
-	CreatePath string // same as ListPath for POST
-	GetPath    string // e.g. "/v1/runtime-profiles/%s" (empty = no get command)
-	DeletePath string // e.g. "/v1/runtime-profiles/%s" (empty = no delete command)
+	Name        string // e.g. "runtime-profile"
+	Plural      string // e.g. "runtime-profiles"
+	ListPath    string // e.g. "/v1/workspaces/%s/runtime-profiles"
+	CreatePath  string // same as ListPath for POST
+	GetPath     string // e.g. "/v1/runtime-profiles/%s" (empty = no get command)
+	DeletePath  string // e.g. "/v1/runtime-profiles/%s" (empty = no delete command)
 	ArchivePath string // e.g. "/v1/runtime-profiles/%s/archive" (empty = no archive command)
-	Columns    []output.Column
-	RowMapper  func(map[string]any) []string
+	Columns     []output.Column
+	RowMapper   func(map[string]any) []string
 }
 
 var infraResources = []infraResource{
@@ -162,6 +164,10 @@ func newInfraResourceCmd(res infraResource) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			applyInfraCreateFlags(cmd, res.Name, body)
+			if err := validateInfraCreateBody(res.Name, body); err != nil {
+				return err
+			}
 
 			resp, err := rc.Client.Post(cmd.Context(), path, body)
 			if err != nil {
@@ -184,6 +190,7 @@ func newInfraResourceCmd(res infraResource) *cobra.Command {
 		},
 	}
 	createCmd.Flags().String("from-file", "", "JSON file with resource spec")
+	addInfraCreateFlags(createCmd, res.Name)
 	parent.AddCommand(createCmd)
 
 	// get (if path provided)
@@ -266,6 +273,53 @@ func newInfraResourceCmd(res infraResource) *cobra.Command {
 	}
 
 	return parent
+}
+
+func addInfraCreateFlags(cmd *cobra.Command, resourceName string) {
+	switch resourceName {
+	case "model-alias":
+		cmd.Flags().String("alias-key", "", "Alias key")
+		cmd.Flags().String("display-name", "", "Display name")
+		cmd.Flags().String("model-catalog-entry-id", "", "Model catalog entry ID")
+		cmd.Flags().String("provider-account-id", "", "Optional provider account ID")
+	}
+}
+
+func applyInfraCreateFlags(cmd *cobra.Command, resourceName string, body map[string]any) {
+	switch resourceName {
+	case "model-alias":
+		setFlagIfChanged(cmd, body, "alias-key", "alias_key")
+		setFlagIfChanged(cmd, body, "display-name", "display_name")
+		setFlagIfChanged(cmd, body, "model-catalog-entry-id", "model_catalog_entry_id")
+		setFlagIfChanged(cmd, body, "provider-account-id", "provider_account_id")
+	}
+}
+
+func validateInfraCreateBody(resourceName string, body map[string]any) error {
+	switch resourceName {
+	case "model-alias":
+		missing := missingStringFields(body, map[string]string{
+			"alias_key":              "--alias-key",
+			"display_name":           "--display-name",
+			"model_catalog_entry_id": "--model-catalog-entry-id",
+		})
+		if len(missing) > 0 {
+			return fmt.Errorf("missing required model-alias fields: %s (set flags or provide them in --from-file)", strings.Join(missing, ", "))
+		}
+	}
+	return nil
+}
+
+func missingStringFields(body map[string]any, fieldFlags map[string]string) []string {
+	missing := make([]string, 0, len(fieldFlags))
+	for field, flagName := range fieldFlags {
+		value, ok := body[field].(string)
+		if !ok || strings.TrimSpace(value) == "" {
+			missing = append(missing, flagName)
+		}
+	}
+	sort.Strings(missing)
+	return missing
 }
 
 // --- Model Catalog (global, not workspace-scoped) ---
