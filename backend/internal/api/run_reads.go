@@ -16,8 +16,10 @@ import (
 	"github.com/agentclash/agentclash/backend/internal/failurereview"
 	"github.com/agentclash/agentclash/backend/internal/provider"
 	"github.com/agentclash/agentclash/backend/internal/repository"
+	"github.com/agentclash/agentclash/backend/internal/workflow"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"go.temporal.io/api/serviceerror"
 )
 
 type RunReadRepository interface {
@@ -218,19 +220,27 @@ func (m *RunReadManager) CancelRun(ctx context.Context, caller Caller, runID uui
 		return CancelRunResult{Run: run}, nil
 	}
 
-	workflowID := strings.TrimSpace(derefString(run.TemporalWorkflowID))
-	if workflowID != "" {
-		if m.workflowControl == nil {
-			return CancelRunResult{}, RunCancellationWorkflowError{
-				Run:   run,
-				Cause: errors.New("run workflow control is not configured"),
-			}
+	persistedWorkflowID := strings.TrimSpace(derefString(run.TemporalWorkflowID))
+	workflowID := persistedWorkflowID
+	if workflowID == "" {
+		workflowID = fmt.Sprintf("%s/%s", workflow.RunWorkflowName, run.ID)
+	}
+	if m.workflowControl == nil {
+		return CancelRunResult{}, RunCancellationWorkflowError{
+			Run:   run,
+			Cause: errors.New("run workflow control is not configured"),
 		}
-		if err := m.workflowControl.CancelRunWorkflow(ctx, workflowID, strings.TrimSpace(derefString(run.TemporalRunID))); err != nil {
-			latest, latestErr := m.repo.GetRunByID(ctx, run.ID)
-			if latestErr == nil && !latest.Status.CanTransitionTo(domain.RunStatusCancelled) {
-				return CancelRunResult{Run: latest}, nil
-			}
+	}
+	if err := m.workflowControl.CancelRunWorkflow(ctx, workflowID, strings.TrimSpace(derefString(run.TemporalRunID))); err != nil {
+		latest, latestErr := m.repo.GetRunByID(ctx, run.ID)
+		if latestErr == nil && !latest.Status.CanTransitionTo(domain.RunStatusCancelled) {
+			return CancelRunResult{Run: latest}, nil
+		}
+		if persistedWorkflowID == "" && isTemporalNotFound(err) {
+			// The workflow ID is deterministic, but there is a startup window before
+			// it is persisted. NotFound in that window means the workflow never
+			// started or already disappeared, so the DB transition remains safe.
+		} else {
 			return CancelRunResult{}, RunCancellationWorkflowError{Run: run, Cause: err}
 		}
 	}
@@ -252,6 +262,11 @@ func (m *RunReadManager) CancelRun(ctx context.Context, caller Caller, runID uui
 		}
 	}
 	return CancelRunResult{}, err
+}
+
+func isTemporalNotFound(err error) bool {
+	var notFound *serviceerror.NotFound
+	return errors.As(err, &notFound)
 }
 
 func (m *RunReadManager) ListRuns(ctx context.Context, caller Caller, input ListRunsInput) (ListRunsResult, error) {

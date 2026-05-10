@@ -14,8 +14,10 @@ import (
 	"github.com/agentclash/agentclash/backend/internal/domain"
 	"github.com/agentclash/agentclash/backend/internal/failurereview"
 	"github.com/agentclash/agentclash/backend/internal/repository"
+	"github.com/agentclash/agentclash/backend/internal/workflow"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"go.temporal.io/api/serviceerror"
 )
 
 func TestRunReadManagerReturnsRunForAuthorizedCaller(t *testing.T) {
@@ -173,6 +175,68 @@ func TestRunReadManagerCancelRunReturnsTemporalFailure(t *testing.T) {
 	}
 	if repo.transitionRunStatusCalls != 0 {
 		t.Fatalf("transition calls = %d, want 0", repo.transitionRunStatusCalls)
+	}
+}
+
+func TestRunReadManagerCancelRunUsesDeterministicWorkflowIDWhenNotPersisted(t *testing.T) {
+	workspaceID := uuid.New()
+	userID := uuid.New()
+	runID := uuid.New()
+	repo := &fakeRunReadRepository{
+		run: domain.Run{
+			ID:          runID,
+			WorkspaceID: workspaceID,
+			Status:      domain.RunStatusQueued,
+		},
+	}
+	control := &fakeRunWorkflowControl{}
+	manager := NewRunReadManager(NewCallerWorkspaceAuthorizer(), repo).WithRunWorkflowControl(control)
+
+	_, err := manager.CancelRun(context.Background(), Caller{
+		UserID: userID,
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: RoleWorkspaceMember},
+		},
+	}, runID)
+	if err != nil {
+		t.Fatalf("CancelRun returned error: %v", err)
+	}
+
+	wantWorkflowID := workflow.RunWorkflowName + "/" + runID.String()
+	if control.workflowID != wantWorkflowID || control.runID != "" {
+		t.Fatalf("temporal cancel = (%q, %q), want (%q, \"\")", control.workflowID, control.runID, wantWorkflowID)
+	}
+	if repo.transitionRunStatusCalls != 1 {
+		t.Fatalf("transition calls = %d, want 1", repo.transitionRunStatusCalls)
+	}
+}
+
+func TestRunReadManagerCancelRunTransitionsWhenUnpersistedWorkflowIsNotFound(t *testing.T) {
+	workspaceID := uuid.New()
+	runID := uuid.New()
+	repo := &fakeRunReadRepository{
+		run: domain.Run{
+			ID:          runID,
+			WorkspaceID: workspaceID,
+			Status:      domain.RunStatusQueued,
+		},
+	}
+	manager := NewRunReadManager(NewCallerWorkspaceAuthorizer(), repo).WithRunWorkflowControl(&fakeRunWorkflowControl{err: serviceerror.NewNotFound("workflow not found")})
+
+	result, err := manager.CancelRun(context.Background(), Caller{
+		UserID: uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: RoleWorkspaceMember},
+		},
+	}, runID)
+	if err != nil {
+		t.Fatalf("CancelRun returned error: %v", err)
+	}
+	if result.Run.Status != domain.RunStatusCancelled {
+		t.Fatalf("status = %s, want cancelled", result.Run.Status)
+	}
+	if repo.transitionRunStatusCalls != 1 {
+		t.Fatalf("transition calls = %d, want 1", repo.transitionRunStatusCalls)
 	}
 }
 
