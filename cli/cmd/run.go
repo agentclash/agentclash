@@ -23,6 +23,7 @@ func init() {
 	runCmd.AddCommand(runRankingCmd)
 	runCmd.AddCommand(runAgentsCmd)
 	runCmd.AddCommand(runEventsCmd)
+	runCmd.AddCommand(runTranscriptCmd)
 	runEventsCmd.AddCommand(runEventsExportCmd)
 	runCmd.AddCommand(runScorecardCmd)
 	runCmd.AddCommand(runFailuresCmd)
