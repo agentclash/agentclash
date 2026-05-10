@@ -46,7 +46,7 @@ func init() {
 	runCreateCmd.Flags().Int("race-context-cadence", 0, "Override race-context cadence; minimum steps between standings injections, [1, 10]. 0 uses the backend default.")
 	runCreateCmd.Flags().Int("max-iter", 0, "Override max iterations for this run (1-1000). 0 uses the pack/runtime default.")
 	runCreateCmd.Flags().Int("seeds", 0, "Create a seeded eval session with N child runs, one per seed (1-100). 0 creates a single run.")
-	runEventsCmd.Flags().StringSlice("filter", nil, "Filter streamed events by event type pattern (exact, comma-separated, or glob, e.g. 'model.*'; repeatable)")
+	runEventsCmd.Flags().StringSlice("filter", nil, "Filter streamed events by event type pattern (exact, comma-separated, or glob; '*' matches any non-slash chars, so 'model.*' matches 'model.call.started'; repeatable)")
 
 	runRankingCmd.Flags().String("sort-by", "", "Sort by: composite, correctness, reliability, latency, cost")
 	runFailuresCmd.Flags().String("agent", "", "Filter by run agent ID")
