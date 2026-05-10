@@ -100,7 +100,12 @@ func TestLoadEvaluationSpec(t *testing.T) {
 		{
 			name:     "non-positive max iterations",
 			manifest: `{"evaluation_spec":{"name":"spec","version_number":1,"judge_mode":"deterministic","validators":[{"key":"v1","type":"exact_match","target":"final_output","expected_from":"challenge_input"}],"runtime_limits":{"max_iterations":0},"scorecard":{"dimensions":["correctness"]}}}`,
-			needle:   "evaluation_spec.runtime_limits.max_iterations must be greater than 0",
+			needle:   "evaluation_spec.runtime_limits.max_iterations must be between 1 and 1000",
+		},
+		{
+			name:     "too-large max iterations",
+			manifest: `{"evaluation_spec":{"name":"spec","version_number":1,"judge_mode":"deterministic","validators":[{"key":"v1","type":"exact_match","target":"final_output","expected_from":"challenge_input"}],"runtime_limits":{"max_iterations":1001},"scorecard":{"dimensions":["correctness"]}}}`,
+			needle:   "evaluation_spec.runtime_limits.max_iterations must be between 1 and 1000",
 		},
 		{
 			name:     "invalid judge mode",

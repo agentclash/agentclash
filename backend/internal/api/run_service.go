@@ -527,10 +527,10 @@ func challengePackDefaultMaxIterations(manifest json.RawMessage) *int32 {
 	if err := json.Unmarshal(manifest, &document); err != nil {
 		return nil
 	}
-	if value := validMaxIterationsDefault(document.RuntimeLimits.MaxIterations); value != nil {
+	if value := validMaxIterationsDefault(document.EvaluationSpec.RuntimeLimits.MaxIterations); value != nil {
 		return value
 	}
-	return validMaxIterationsDefault(document.EvaluationSpec.RuntimeLimits.MaxIterations)
+	return validMaxIterationsDefault(document.RuntimeLimits.MaxIterations)
 }
 
 func validMaxIterationsDefault(candidate *int32) *int32 {

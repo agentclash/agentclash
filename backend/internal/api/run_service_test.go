@@ -197,6 +197,52 @@ func TestRunCreationManagerUsesChallengePackMaxIterationsDefault(t *testing.T) {
 	}
 }
 
+func TestRunCreationManagerPrefersEvaluationSpecMaxIterationsDefault(t *testing.T) {
+	workspaceID := uuid.New()
+	challengePackVersionID := uuid.New()
+	deploymentID := uuid.New()
+	caller := Caller{
+		UserID: uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: "workspace_member"},
+		},
+	}
+
+	repo := &fakeRunCreationRepository{
+		challengePackVersion: repository.RunnableChallengePackVersion{
+			ID: challengePackVersionID,
+			Manifest: json.RawMessage(`{
+				"runtime_limits":{"max_iterations":4},
+				"evaluation_spec":{"runtime_limits":{"max_iterations":6}}
+			}`),
+		},
+		deployments: []repository.RunnableDeployment{
+			{
+				ID:                        deploymentID,
+				OrganizationID:            uuid.New(),
+				WorkspaceID:               workspaceID,
+				Name:                      "Support Agent Deployment",
+				AgentDeploymentSnapshotID: uuid.New(),
+			},
+		},
+		createResult: repository.CreateQueuedRunResult{Run: domain.Run{ID: uuid.New(), WorkspaceID: workspaceID}},
+	}
+	manager := NewRunCreationManager(NewCallerWorkspaceAuthorizer(), repo, &fakeRunWorkflowStarter{}, nil)
+
+	_, err := manager.CreateRun(context.Background(), caller, CreateRunInput{
+		WorkspaceID:            workspaceID,
+		ChallengePackVersionID: challengePackVersionID,
+		AgentDeploymentIDs:     []uuid.UUID{deploymentID},
+	})
+	if err != nil {
+		t.Fatalf("CreateRun returned error: %v", err)
+	}
+
+	if got := executionPlanTestMaxIterations(t, repo.createParams.ExecutionPlan); got != 6 {
+		t.Fatalf("execution plan max_iterations = %d, want 6", got)
+	}
+}
+
 func TestRunCreationManagerExplicitMaxIterationsWinsOverChallengePackDefault(t *testing.T) {
 	workspaceID := uuid.New()
 	challengePackVersionID := uuid.New()
