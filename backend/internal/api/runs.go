@@ -64,6 +64,7 @@ type CreateRunInput struct {
 	RaceContext                bool
 	RaceContextMinStepGap      *int32
 	MaxIterations              *int32
+	Seed                       *int64
 	CIMetadata                 *domain.RunCIMetadata
 }
 

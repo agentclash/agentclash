@@ -11,6 +11,7 @@ import (
 )
 
 const maxRunCreateMaxIter = 1000
+const maxRunCreateSeeds = 100
 
 type runCreateRequest struct {
 	ChallengePackVersionID     string
@@ -24,6 +25,7 @@ type runCreateRequest struct {
 	RaceContext                bool
 	RaceContextCadence         int
 	MaxIterations              int
+	Seeds                      int
 	CIMetadata                 map[string]any
 }
 
@@ -61,6 +63,9 @@ func runCreateRequestFromFlags(cmd *cobra.Command, base runCreateRequest) (runCr
 	maxIterations, _ := cmd.Flags().GetInt("max-iter")
 	request.MaxIterations = maxIterations
 
+	seeds, _ := cmd.Flags().GetInt("seeds")
+	request.Seeds = seeds
+
 	return request, nil
 }
 
@@ -79,6 +84,9 @@ func buildRunCreateBody(workspaceID string, request runCreateRequest) (map[strin
 	}
 	if request.MaxIterations < 0 || request.MaxIterations > maxRunCreateMaxIter {
 		return nil, fmt.Errorf("--max-iter must be 0 (pack/runtime default) or between 1 and %d, got %d", maxRunCreateMaxIter, request.MaxIterations)
+	}
+	if request.Seeds < 0 || request.Seeds > maxRunCreateSeeds {
+		return nil, fmt.Errorf("--seeds must be 0 (single run) or between 1 and %d, got %d", maxRunCreateSeeds, request.Seeds)
 	}
 
 	body := map[string]any{
@@ -113,6 +121,43 @@ func buildRunCreateBody(workspaceID string, request runCreateRequest) (map[strin
 	}
 	if len(request.CIMetadata) > 0 {
 		body["ci_metadata"] = request.CIMetadata
+	}
+	return body, nil
+}
+
+func buildSeededEvalSessionBody(workspaceID string, request runCreateRequest) (map[string]any, error) {
+	if request.Seeds < 1 || request.Seeds > maxRunCreateSeeds {
+		return nil, fmt.Errorf("--seeds must be between 1 and %d, got %d", maxRunCreateSeeds, request.Seeds)
+	}
+	if request.RaceContextCadence < 0 || request.RaceContextCadence > 10 {
+		return nil, fmt.Errorf("--race-context-cadence must be 0 (backend default) or between 1 and 10, got %d", request.RaceContextCadence)
+	}
+	if request.MaxIterations < 0 || request.MaxIterations > maxRunCreateMaxIter {
+		return nil, fmt.Errorf("--max-iter must be 0 (pack/runtime default) or between 1 and %d, got %d", maxRunCreateMaxIter, request.MaxIterations)
+	}
+	if len(request.RegressionSuiteIDs) > 0 || len(request.RegressionCaseIDs) > 0 || request.OfficialPackMode == "suite_only" {
+		return nil, fmt.Errorf("--scope suite_only / --suite / --case are not supported with --seeds")
+	}
+	if request.RaceContext || request.RaceContextCadence > 0 {
+		return nil, fmt.Errorf("--race-context flags are not supported with --seeds")
+	}
+	sessionRequest := request
+	sessionRequest.MaxIterations = 0
+	body, err := buildEvalSessionBody(workspaceID, sessionRequest, request.Seeds)
+	if err != nil {
+		return nil, err
+	}
+	if request.MaxIterations > 0 {
+		body["max_iterations"] = request.MaxIterations
+	}
+	session := body["eval_session"].(map[string]any)
+	seeds := make([]int64, 0, request.Seeds)
+	for seed := 1; seed <= request.Seeds; seed++ {
+		seeds = append(seeds, int64(seed))
+	}
+	session["seed_fanout"] = map[string]any{
+		"strategy": "explicit",
+		"seeds":    seeds,
 	}
 	return body, nil
 }

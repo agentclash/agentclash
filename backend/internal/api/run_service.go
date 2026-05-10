@@ -479,6 +479,7 @@ func buildExecutionPlan(input CreateRunInput, runAgents []repository.CreateQueue
 		OfficialPackMode       domain.OfficialPackMode     `json:"official_pack_mode"`
 		Participants           []executionPlanRunAgent     `json:"participants"`
 		RuntimeLimits          *executionPlanRuntimeLimits `json:"runtime_limits,omitempty"`
+		Seed                   *int64                      `json:"seed,omitempty"`
 	}
 
 	participants := make([]executionPlanRunAgent, 0, len(runAgents))
@@ -497,6 +498,7 @@ func buildExecutionPlan(input CreateRunInput, runAgents []repository.CreateQueue
 		ChallengeInputSetID:    input.ChallengeInputSetID,
 		OfficialPackMode:       input.OfficialPackMode,
 		Participants:           participants,
+		Seed:                   cloneInt64Ptr(input.Seed),
 	}
 	if input.MaxIterations != nil {
 		plan.RuntimeLimits = &executionPlanRuntimeLimits{MaxIterations: cloneInt32Ptr(input.MaxIterations)}

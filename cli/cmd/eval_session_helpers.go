@@ -48,7 +48,7 @@ func buildEvalSessionBody(workspaceID string, request runCreateRequest, repetiti
 
 	executionMode := "single_agent"
 	if len(request.DeploymentIDs) > 1 {
-		executionMode = "multi_agent"
+		executionMode = "comparison"
 	}
 
 	participants := make([]map[string]any, 0, len(request.DeploymentIDs))
@@ -132,7 +132,22 @@ func presentCreatedEvalSession(rc *RunContext, result map[string]any) error {
 
 	runIDs, _ := result["run_ids"].([]any)
 	rc.Output.PrintDetail("Run IDs", fmt.Sprintf("%d", len(runIDs)))
+	seedByRunID := map[string]string{}
+	if seededRuns, ok := result["seeded_runs"].([]any); ok {
+		for _, raw := range seededRuns {
+			item, ok := raw.(map[string]any)
+			if !ok {
+				continue
+			}
+			seedByRunID[str(item["run_id"])] = str(item["seed"])
+		}
+	}
 	for _, id := range runIDs {
+		runID := str(id)
+		if seed := seedByRunID[runID]; seed != "" {
+			fmt.Fprintf(rc.Output.Writer(), "  - %s (seed %s)\n", runID, seed)
+			continue
+		}
 		fmt.Fprintf(rc.Output.Writer(), "  - %s\n", str(id))
 	}
 	return nil

@@ -727,6 +727,9 @@ func TestCreateEvalSessionEndpointReturnsCreated(t *testing.T) {
 				UpdatedAt:              time.Date(2026, 4, 20, 12, 0, 0, 0, time.UTC),
 			},
 			RunIDs: []uuid.UUID{runID, uuid.New()},
+			SeededRuns: []EvalSessionSeededRun{
+				{RunID: runID, Seed: 1},
+			},
 		},
 	}
 
@@ -735,10 +738,12 @@ func TestCreateEvalSessionEndpointReturnsCreated(t *testing.T) {
 		"challenge_pack_version_id":"`+uuid.New().String()+`",
 		"participants":[{"agent_deployment_id":"`+uuid.New().String()+`","label":"Primary"}],
 		"execution_mode":"single_agent",
+		"max_iterations":7,
 		"eval_session":{
 			"repetitions":2,
 			"aggregation":{"method":"mean","report_variance":true,"confidence_interval":0.95},
 			"routing_task_snapshot":{"routing":{"mode":"single_agent"},"task":{"pack_version":"v1"}},
+			"seed_fanout":{"strategy":"explicit","seeds":[1,2]},
 			"schema_version":1
 		}
 	}`))
@@ -789,11 +794,62 @@ func TestCreateEvalSessionEndpointReturnsCreated(t *testing.T) {
 	if len(response.RunIDs) != 2 || response.RunIDs[0] != runID {
 		t.Fatalf("run ids = %v, want first id %s", response.RunIDs, runID)
 	}
+	if len(response.SeededRuns) != 1 || response.SeededRuns[0].RunID != runID || response.SeededRuns[0].Seed != 1 {
+		t.Fatalf("seeded runs = %+v, want first run seed", response.SeededRuns)
+	}
 	if service.evalSessionInput.WorkspaceID != workspaceID {
 		t.Fatalf("workspace id = %s, want %s", service.evalSessionInput.WorkspaceID, workspaceID)
 	}
+	if service.evalSessionInput.MaxIterations == nil || *service.evalSessionInput.MaxIterations != 7 {
+		t.Fatalf("max iterations = %v, want 7", service.evalSessionInput.MaxIterations)
+	}
 	if len(service.evalSessionInput.Participants) != 1 || service.evalSessionInput.Participants[0].AgentDeploymentID == nil {
 		t.Fatalf("participants = %+v, want one participant deployment id", service.evalSessionInput.Participants)
+	}
+	if got := service.evalSessionInput.EvalSession.SeedFanout; len(got) != 2 || got[0] != 1 || got[1] != 2 {
+		t.Fatalf("seed fanout = %v, want [1 2]", got)
+	}
+}
+
+func TestDecodeEvalSessionConfigRejectsInvalidSeedFanout(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+		code string
+	}{
+		{
+			name: "length_mismatch",
+			body: `{"strategy":"explicit","seeds":[1]}`,
+			code: "eval_session.seed_fanout.seeds.length_mismatch",
+		},
+		{
+			name: "duplicate",
+			body: `{"strategy":"explicit","seeds":[1,1]}`,
+			code: "eval_session.seed_fanout.seeds.duplicate",
+		},
+		{
+			name: "non_positive",
+			body: `{"strategy":"explicit","seeds":[1,0]}`,
+			code: "eval_session.seed_fanout.seeds.invalid",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := decodeEvalSessionConfig(json.RawMessage(`{
+				"repetitions":2,
+				"aggregation":{"method":"mean","report_variance":true,"confidence_interval":0.95},
+				"routing_task_snapshot":{"routing":{"mode":"single_agent"},"task":{"pack_version":"v1"}},
+				"seed_fanout":` + tc.body + `,
+				"schema_version":1
+			}`))
+			var validationErr evalSessionValidationError
+			if !errors.As(err, &validationErr) {
+				t.Fatalf("error = %v, want evalSessionValidationError", err)
+			}
+			if len(validationErr.Errors) == 0 || validationErr.Errors[0].Code != tc.code {
+				t.Fatalf("validation errors = %+v, want first code %s", validationErr.Errors, tc.code)
+			}
+		})
 	}
 }
 
