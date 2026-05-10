@@ -8894,6 +8894,9 @@ components:
         cost_score:
           type: number
           format: double
+        cost_per_correct_usd:
+          type: number
+          format: double
         dimensions:
           type: object
           additionalProperties:
@@ -9031,6 +9034,10 @@ components:
           type: number
           format: double
           description: Total model cost in USD for this run agent, derived from stored scorecard cost metrics.
+        cost_per_correct_usd:
+          type: number
+          format: double
+          description: Total model cost divided by correct validator outcomes for this run agent.
         behavioral_score:
           type: number
           format: double
@@ -9128,7 +9135,34 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/MetricDetail"
+        side_metrics:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/SideMetricDetail"
       additionalProperties: true
+
+    SideMetricDetail:
+      type: object
+      required: [state]
+      properties:
+        state:
+          type: string
+          description: Whether the side metric could be computed.
+        value:
+          type: number
+          format: double
+          description: Numeric metric value when state is available.
+        unit:
+          type: string
+        numerator:
+          type: number
+          format: double
+        denominator:
+          type: number
+          format: double
+        reason:
+          type: string
+          description: Explanation when state is unavailable.
 
     ValidatorDetail:
       type: object

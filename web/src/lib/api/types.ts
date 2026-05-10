@@ -1071,6 +1071,7 @@ export interface RankingItem {
   reliability_score?: number;
   latency_score?: number;
   cost_score?: number;
+  cost_per_correct_usd?: number;
   dimensions?: Record<
     string,
     { state: string; score?: number; better_direction?: string }
@@ -1243,6 +1244,8 @@ export interface ScorecardResponse {
   reliability_score?: number;
   latency_score?: number;
   cost_score?: number;
+  total_cost_usd?: number;
+  cost_per_correct_usd?: number;
   behavioral_score?: number;
   llm_judge_results: LLMJudgeResult[];
   scorecard: ScorecardDocument;
@@ -1264,6 +1267,16 @@ export interface ScorecardDocument {
   validator_details?: ValidatorDetail[];
   metric_summary: Record<string, number>;
   metric_details?: MetricDetail[];
+  side_metrics?: Record<string, SideMetricDetail>;
+}
+
+export interface SideMetricDetail {
+  state: string;
+  value?: number;
+  unit?: string;
+  numerator?: number;
+  denominator?: number;
+  reason?: string;
 }
 
 export interface ValidatorDetail {

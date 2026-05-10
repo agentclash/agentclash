@@ -176,7 +176,7 @@ func TestReplayReadManagerReturnsLLMJudgeResultsWithScorecard(t *testing.T) {
 			ID:               uuid.New(),
 			RunAgentID:       runAgentID,
 			EvaluationSpecID: evaluationSpecID,
-			Scorecard:        []byte(`{"passed":true,"dimensions":{"correctness":{"state":"available","score":0.84}},"metric_details":[{"key":"model_cost","collector":"run_model_cost_usd","state":"available","numeric_value":0.0123}]}`),
+			Scorecard:        []byte(`{"passed":true,"dimensions":{"correctness":{"state":"available","score":0.84}},"metric_details":[{"key":"model_cost","collector":"run_model_cost_usd","state":"available","numeric_value":0.0123}],"side_metrics":{"cost_per_correct_usd":{"state":"available","value":0.0246,"unit":"usd","numerator":0.0123,"denominator":0.5}}}`),
 		},
 		evaluationSpec: repository.EvaluationSpecRecord{
 			ID:         evaluationSpecID,
@@ -219,6 +219,9 @@ func TestReplayReadManagerReturnsLLMJudgeResultsWithScorecard(t *testing.T) {
 	}
 	if result.TotalCostUSD == nil || *result.TotalCostUSD != 0.0123 {
 		t.Fatalf("total_cost_usd = %v, want 0.0123", result.TotalCostUSD)
+	}
+	if result.CostPerCorrectUSD == nil || *result.CostPerCorrectUSD != 0.0246 {
+		t.Fatalf("cost_per_correct_usd = %v, want 0.0246", result.CostPerCorrectUSD)
 	}
 
 	document := decodeReplayPayload(t, result.Scorecard.Scorecard)
@@ -825,7 +828,8 @@ func TestGetRunAgentScorecardEndpointReturnsScorecard(t *testing.T) {
 					CreatedAt:        time.Date(2026, 3, 13, 12, 0, 0, 0, time.UTC),
 					UpdatedAt:        time.Date(2026, 3, 13, 12, 1, 0, 0, time.UTC),
 				},
-				TotalCostUSD: float64Ptr(0.0123),
+				TotalCostUSD:      float64Ptr(0.0123),
+				CostPerCorrectUSD: float64Ptr(0.0246),
 				LLMJudgeResults: []repository.LLMJudgeResultRecord{
 					{
 						ID:               uuid.New(),
@@ -881,6 +885,9 @@ func TestGetRunAgentScorecardEndpointReturnsScorecard(t *testing.T) {
 	}
 	if response.TotalCostUSD == nil || *response.TotalCostUSD != 0.0123 {
 		t.Fatalf("total_cost_usd = %v, want 0.0123", response.TotalCostUSD)
+	}
+	if response.CostPerCorrectUSD == nil || *response.CostPerCorrectUSD != 0.0246 {
+		t.Fatalf("cost_per_correct_usd = %v, want 0.0246", response.CostPerCorrectUSD)
 	}
 	if len(response.LLMJudgeResults) != 1 {
 		t.Fatalf("llm_judge_results length = %d, want 1", len(response.LLMJudgeResults))
