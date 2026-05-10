@@ -1,16 +1,19 @@
 package worker
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
 	"log/slog"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/domain"
 	"github.com/agentclash/agentclash/backend/internal/repository"
+	"github.com/google/uuid"
 )
 
 func TestRepositoryOrphanRunReaperRunsOnTickAndStops(t *testing.T) {
@@ -92,11 +95,31 @@ func TestRepositoryOrphanRunReaperDrainsBoundedBatches(t *testing.T) {
 	}
 }
 
+func TestRepositoryOrphanRunReaperLogsRunIDSample(t *testing.T) {
+	runIDOne := uuid.MustParse("00000000-0000-0000-0000-000000000001")
+	runIDTwo := uuid.MustParse("00000000-0000-0000-0000-000000000002")
+	repo := &fakeOrphanRunReaperRepo{runIDs: []uuid.UUID{runIDOne, runIDTwo}}
+	var logBuffer bytes.Buffer
+	reaper := NewRepositoryOrphanRunReaper(repo, time.Minute, 15*time.Minute, slog.New(slog.NewTextHandler(&logBuffer, nil)))
+	reaper.now = func() time.Time { return time.Date(2026, 5, 9, 20, 0, 0, 0, time.UTC) }
+
+	reaper.reapOnce(context.Background())
+
+	logLine := logBuffer.String()
+	if !strings.Contains(logLine, runIDOne.String()) || !strings.Contains(logLine, runIDTwo.String()) {
+		t.Fatalf("log line = %q, want sampled run ids", logLine)
+	}
+	if !strings.Contains(logLine, "run_ids_truncated=false") {
+		t.Fatalf("log line = %q, want run_ids_truncated=false", logLine)
+	}
+}
+
 type fakeOrphanRunReaperRepo struct {
 	calls      atomic.Int32
 	lastCutoff time.Time
 	lastLimit  int
 	batchSizes []int
+	runIDs     []uuid.UUID
 	err        error
 }
 
@@ -106,6 +129,13 @@ func (f *fakeOrphanRunReaperRepo) ReapOrphanedRuns(_ context.Context, params rep
 	f.lastLimit = params.Limit
 	if f.err != nil {
 		return nil, f.err
+	}
+	if len(f.runIDs) > 0 {
+		runs := make([]domain.Run, len(f.runIDs))
+		for i, runID := range f.runIDs {
+			runs[i] = domain.Run{ID: runID, Status: domain.RunStatusFailed}
+		}
+		return runs, nil
 	}
 	size := 1
 	if call <= len(f.batchSizes) {
