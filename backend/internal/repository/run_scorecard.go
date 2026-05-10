@@ -212,7 +212,7 @@ func buildRunScorecardDocument(
 			summary.LatencyScore = cloneFloat64Ptr(participant.scorecard.LatencyScore)
 			summary.CostScore = cloneFloat64Ptr(participant.scorecard.CostScore)
 			summary.TotalCostUSD = totalCostUSDFromRunAgentScorecardDocument(participant.scorecard.Scorecard)
-			summary.CostPerCorrectUSD = costPerCorrectUSDFromRunAgentScorecardDocument(participant.scorecard.Scorecard)
+			summary.CostPerCorrectUSD = CostPerCorrectUSDFromScorecardDocument(participant.scorecard.Scorecard)
 			summary.BehavioralScore = cloneFloat64Ptr(participant.scorecard.BehavioralScore)
 			summary.Dimensions = cloneRunScorecardDimensions(participant.document.Dimensions)
 			scoredAgents = append(scoredAgents, scoredRunAgent{
@@ -275,7 +275,8 @@ func totalCostUSDFromRunAgentScorecardDocument(payload json.RawMessage) *float64
 	return nil
 }
 
-func costPerCorrectUSDFromRunAgentScorecardDocument(payload json.RawMessage) *float64 {
+// CostPerCorrectUSDFromScorecardDocument extracts the available cost-per-correct side metric from a scorecard document.
+func CostPerCorrectUSDFromScorecardDocument(payload json.RawMessage) *float64 {
 	var document struct {
 		SideMetrics map[string]struct {
 			State string   `json:"state"`

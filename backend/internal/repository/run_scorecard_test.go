@@ -249,8 +249,8 @@ func TestTotalCostUSDFromRunAgentScorecardDocument(t *testing.T) {
 	}
 }
 
-func TestCostPerCorrectUSDFromRunAgentScorecardDocument(t *testing.T) {
-	got := costPerCorrectUSDFromRunAgentScorecardDocument(json.RawMessage(`{
+func TestCostPerCorrectUSDFromScorecardDocument(t *testing.T) {
+	got := CostPerCorrectUSDFromScorecardDocument(json.RawMessage(`{
 		"side_metrics": {
 			"cost_per_correct_usd": {"state": "available", "value": 0.25}
 		}
@@ -259,7 +259,7 @@ func TestCostPerCorrectUSDFromRunAgentScorecardDocument(t *testing.T) {
 		t.Fatalf("cost_per_correct_usd = %v, want 0.25", got)
 	}
 
-	if got := costPerCorrectUSDFromRunAgentScorecardDocument(json.RawMessage(`{
+	if got := CostPerCorrectUSDFromScorecardDocument(json.RawMessage(`{
 		"side_metrics": {
 			"cost_per_correct_usd": {"state": "unavailable", "reason": "no correct validator outcomes"}
 		}

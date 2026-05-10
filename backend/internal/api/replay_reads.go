@@ -172,7 +172,7 @@ func (m *ReplayReadManager) GetRunAgentScorecard(ctx context.Context, caller Cal
 		State:             ReplayStateReady,
 		Scorecard:         &scorecard,
 		TotalCostUSD:      totalCostUSDFromScorecardDocument(scorecard.Scorecard),
-		CostPerCorrectUSD: costPerCorrectUSDFromScorecardDocument(scorecard.Scorecard),
+		CostPerCorrectUSD: repository.CostPerCorrectUSDFromScorecardDocument(scorecard.Scorecard),
 		LLMJudgeResults:   judgeResults,
 	}, nil
 }
@@ -407,24 +407,6 @@ func totalCostUSDFromScorecardDocument(payload json.RawMessage) *float64 {
 		}
 	}
 	return nil
-}
-
-func costPerCorrectUSDFromScorecardDocument(payload json.RawMessage) *float64 {
-	var document struct {
-		SideMetrics map[string]struct {
-			State string   `json:"state"`
-			Value *float64 `json:"value"`
-		} `json:"side_metrics"`
-	}
-	if err := json.Unmarshal(payload, &document); err != nil {
-		return nil
-	}
-	metric, ok := document.SideMetrics["cost_per_correct_usd"]
-	if !ok || metric.State != "available" || metric.Value == nil {
-		return nil
-	}
-	value := *metric.Value
-	return &value
 }
 
 func buildRunAgentLLMJudgePayloads(records []repository.LLMJudgeResultRecord) []runAgentLLMJudgePayload {
