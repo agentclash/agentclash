@@ -26,10 +26,13 @@ func init() {
 	runCmd.AddCommand(runScorecardCmd)
 	runCmd.AddCommand(runFailuresCmd)
 	runCmd.AddCommand(runPromoteFailureCmd)
+	runCmd.AddCommand(runSeriesCmd)
+	runSeriesCmd.AddCommand(runSeriesCreateCmd)
 
 	runCreateCmd.Flags().String("challenge-pack-version", "", "Challenge pack version ID (optional in a TTY; prompted when omitted)")
 	runCreateCmd.Flags().StringSlice("deployments", nil, "Agent deployment IDs (optional in a TTY; prompted when omitted)")
 	runCreateCmd.Flags().String("deployment-lineup", "", "Challenge pack deployment lineup to use when --deployments is omitted (default: default)")
+	runCreateCmd.Flags().StringSlice("deployment-lineups", nil, "Challenge pack deployment lineups to cross with --seeds for a race series")
 	runCreateCmd.Flags().String("name", "", "Run name (optional)")
 	runCreateCmd.Flags().String("input-set", "", "Challenge input set ID (optional)")
 	runCreateCmd.Flags().Bool("follow", false, "Follow run events after creation")
@@ -58,11 +61,54 @@ func init() {
 	runPromoteFailureCmd.Flags().String("title", "", "Regression case title")
 	runPromoteFailureCmd.Flags().String("failure-summary", "", "Failure summary")
 	runPromoteFailureCmd.Flags().String("severity", "", "Case severity: info, warning, or blocking")
+
+	runSeriesCreateCmd.Flags().String("challenge-pack-version", "", "Challenge pack version ID")
+	runSeriesCreateCmd.Flags().String("input-set", "", "Challenge input set ID (optional)")
+	runSeriesCreateCmd.Flags().StringSlice("deployment-lineups", nil, "Challenge pack deployment lineups to cross with --seeds")
+	runSeriesCreateCmd.Flags().Int("seeds", 0, "Number of seeds to cross with each deployment lineup (1-100)")
+	runSeriesCreateCmd.Flags().String("name", "", "Series name (optional)")
+	runSeriesCreateCmd.Flags().Int("max-iter", 0, "Override max iterations for each child run (1-1000). 0 uses the pack/runtime default.")
 }
 
 var runCmd = &cobra.Command{
 	Use:   "run",
 	Short: "Manage evaluation runs",
+}
+
+var runSeriesCmd = &cobra.Command{
+	Use:   "series",
+	Short: "Manage durable race series",
+}
+
+var runSeriesCreateCmd = &cobra.Command{
+	Use:   "create",
+	Short: "Create a race series from deployment lineups and seeds",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		rc := GetRunContext(cmd)
+		wsID := RequireWorkspace(cmd)
+
+		request, err := runCreateRequestFromFlags(cmd, runCreateRequest{})
+		if err != nil {
+			return err
+		}
+		if err := validateSeriesSeedCount(request.Seeds); err != nil {
+			return err
+		}
+		lineups, err := resolveRunCreateDeploymentLineups(cmd, rc, wsID, request.ChallengePackVersionID, request.DeploymentLineups)
+		if err != nil {
+			return err
+		}
+		request.ResolvedDeploymentLineups = lineups
+		body, err := buildSeriesEvalSessionBody(wsID, request)
+		if err != nil {
+			return err
+		}
+		result, err := createEvalSession(cmd, rc, body)
+		if err != nil {
+			return err
+		}
+		return presentCreatedEvalSession(rc, result)
+	},
 }
 
 var runListCmd = &cobra.Command{
@@ -214,6 +260,30 @@ For CI and other non-interactive use, keep passing explicit IDs via flags.`,
 			return err
 		}
 
+		follow, _ := cmd.Flags().GetBool("follow")
+		if len(request.DeploymentLineups) > 0 {
+			if follow {
+				return fmt.Errorf("--follow is not supported with --deployment-lineups; tail individual runs with 'agentclash run events <run-id> --follow' instead")
+			}
+			if err := validateSeriesSeedCount(request.Seeds); err != nil {
+				return err
+			}
+			lineups, err := resolveRunCreateDeploymentLineups(cmd, rc, wsID, request.ChallengePackVersionID, request.DeploymentLineups)
+			if err != nil {
+				return err
+			}
+			request.ResolvedDeploymentLineups = lineups
+			body, err := buildSeriesEvalSessionBody(wsID, request)
+			if err != nil {
+				return err
+			}
+			result, err := createEvalSession(cmd, rc, body)
+			if err != nil {
+				return err
+			}
+			return presentCreatedEvalSession(rc, result)
+		}
+
 		selections, err := resolveRunCreateSelections(cmd, rc, wsID)
 		if err != nil {
 			return err
@@ -222,7 +292,6 @@ For CI and other non-interactive use, keep passing explicit IDs via flags.`,
 		request.ChallengeInputSetID = selections.challengeInputSetID
 		request.DeploymentIDs = selections.deploymentIDs
 
-		follow, _ := cmd.Flags().GetBool("follow")
 		if request.Seeds > 0 {
 			if follow {
 				return fmt.Errorf("--follow is not supported with --seeds; tail individual runs with 'agentclash run events <run-id> --follow' instead")

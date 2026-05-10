@@ -65,6 +65,8 @@ type CreateRunInput struct {
 	RaceContextMinStepGap      *int32
 	MaxIterations              *int32
 	Seed                       *int64
+	SeriesMatrixKey            string
+	SeriesDeploymentLineup     string
 	CIMetadata                 *domain.RunCIMetadata
 }
 

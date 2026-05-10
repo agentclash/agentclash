@@ -308,7 +308,7 @@ func TestGetEvalSessionEndpointReturnsDetail(t *testing.T) {
 						Name:             "Repeated Eval [1/2]",
 						Status:           domain.RunStatusQueued,
 						ExecutionMode:    "single_agent",
-						ExecutionPlan:    json.RawMessage(`{"seed":42}`),
+						ExecutionPlan:    json.RawMessage(`{"seed":42,"series":{"matrix_key":"default:seed-42","deployment_lineup":"default"}}`),
 						CreatedAt:        time.Date(2026, 4, 20, 12, 0, 0, 0, time.UTC),
 						UpdatedAt:        time.Date(2026, 4, 20, 12, 1, 0, 0, time.UTC),
 					},
@@ -355,6 +355,9 @@ func TestGetEvalSessionEndpointReturnsDetail(t *testing.T) {
 	}
 	if response.Runs[0].Seed == nil || *response.Runs[0].Seed != 42 {
 		t.Fatalf("run seed = %v, want 42", response.Runs[0].Seed)
+	}
+	if response.Runs[0].MatrixKey != "default:seed-42" || response.Runs[0].DeploymentLineup != "default" {
+		t.Fatalf("run series metadata = %q/%q, want persisted matrix metadata", response.Runs[0].MatrixKey, response.Runs[0].DeploymentLineup)
 	}
 	if response.Summary.RunCounts.Queued != 1 {
 		t.Fatalf("queued run count = %d, want 1", response.Summary.RunCounts.Queued)

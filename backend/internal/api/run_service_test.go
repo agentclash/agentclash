@@ -746,6 +746,146 @@ func TestRunCreationManagerCreateEvalSessionPersistsSeedFanout(t *testing.T) {
 	}
 }
 
+func TestRunCreationManagerCreateEvalSessionExpandsRunMatrix(t *testing.T) {
+	workspaceID := uuid.New()
+	challengePackVersionID := uuid.New()
+	challengeInputSetID := uuid.New()
+	defaultDeploymentID := uuid.New()
+	smokeDeploymentID := uuid.New()
+	sessionID := uuid.New()
+	defaultRunID := uuid.New()
+	smokeRunID := uuid.New()
+	maxIterations := int32(5)
+	caller := Caller{
+		UserID: uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: "workspace_member"},
+		},
+	}
+
+	repo := &fakeRunCreationRepository{
+		challengePackVersion: repository.RunnableChallengePackVersion{ID: challengePackVersionID},
+		challengeInputSets: []repository.ChallengeInputSetSummary{
+			{ID: challengeInputSetID, ChallengePackVersionID: challengePackVersionID},
+		},
+		challengeIdentityIDs: []uuid.UUID{uuid.New()},
+		deployments: []repository.RunnableDeployment{
+			{
+				ID:                        defaultDeploymentID,
+				OrganizationID:            uuid.MustParse("00000000-0000-0000-0000-000000000111"),
+				WorkspaceID:               workspaceID,
+				Name:                      "Default Agent",
+				AgentDeploymentSnapshotID: uuid.New(),
+			},
+			{
+				ID:                        smokeDeploymentID,
+				OrganizationID:            uuid.MustParse("00000000-0000-0000-0000-000000000111"),
+				WorkspaceID:               workspaceID,
+				Name:                      "Smoke Agent",
+				AgentDeploymentSnapshotID: uuid.New(),
+			},
+		},
+		createEvalSessionWithRunsResult: repository.CreateEvalSessionWithQueuedRunsResult{
+			Session: domain.EvalSession{ID: sessionID, Status: domain.EvalSessionStatusQueued, Repetitions: 2, SchemaVersion: 1},
+			Runs: []domain.Run{
+				{ID: smokeRunID, EvalSessionID: &sessionID, ExecutionPlan: json.RawMessage(`{"seed":1,"series":{"matrix_key":"smoke:seed-1","deployment_lineup":"smoke"}}`)},
+				{ID: defaultRunID, EvalSessionID: &sessionID, ExecutionPlan: json.RawMessage(`{"seed":1,"series":{"matrix_key":"default:seed-1","deployment_lineup":"default"}}`)},
+			},
+		},
+	}
+	manager := NewRunCreationManager(NewCallerWorkspaceAuthorizer(), repo, &fakeRunWorkflowStarter{}, nil)
+
+	result, err := manager.CreateEvalSession(context.Background(), caller, CreateEvalSessionInput{
+		WorkspaceID:            workspaceID,
+		ChallengePackVersionID: challengePackVersionID,
+		ExecutionMode:          "single_agent",
+		Name:                   "Lineup race",
+		MaxIterations:          &maxIterations,
+		EvalSession: CreateEvalSessionConfigInput{
+			Repetitions: 2,
+			Aggregation: EvalSessionAggregationInput{
+				Method:             "mean",
+				ReportVariance:     true,
+				ConfidenceInterval: 0.95,
+			},
+			RoutingTaskSnapshot: EvalSessionRoutingTaskSnapshotInput{
+				Routing: json.RawMessage(`{"mode":"series"}`),
+				Task:    json.RawMessage(`{"pack_version":"v1"}`),
+			},
+			RunMatrix: []EvalSessionRunMatrixEntryInput{
+				{
+					Key:              "default:seed-1",
+					DeploymentLineup: "default",
+					Seed:             int64Ptr(1),
+					Participants: []EvalSessionParticipantInput{
+						{AgentDeploymentID: &defaultDeploymentID, Label: "Primary"},
+					},
+				},
+				{
+					Key:              "smoke:seed-1",
+					DeploymentLineup: "smoke",
+					Seed:             int64Ptr(1),
+					Participants: []EvalSessionParticipantInput{
+						{AgentDeploymentID: &smokeDeploymentID, Label: "Primary"},
+					},
+				},
+			},
+			SchemaVersion: 1,
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateEvalSession returned error: %v", err)
+	}
+
+	if len(repo.createEvalSessionWithRunsParams.Runs) != 2 {
+		t.Fatalf("queued run count = %d, want 2", len(repo.createEvalSessionWithRunsParams.Runs))
+	}
+	firstRun := repo.createEvalSessionWithRunsParams.Runs[0]
+	secondRun := repo.createEvalSessionWithRunsParams.Runs[1]
+	if firstRun.RunAgents[0].AgentDeploymentID != defaultDeploymentID || secondRun.RunAgents[0].AgentDeploymentID != smokeDeploymentID {
+		t.Fatalf("run matrix deployments = %s/%s, want %s/%s", firstRun.RunAgents[0].AgentDeploymentID, secondRun.RunAgents[0].AgentDeploymentID, defaultDeploymentID, smokeDeploymentID)
+	}
+	if firstRun.Name != "Lineup race [1/2]" || secondRun.Name != "Lineup race [2/2]" {
+		t.Fatalf("child names = %q/%q, want suffixed names", firstRun.Name, secondRun.Name)
+	}
+	if got := executionPlanTestSeed(t, firstRun.ExecutionPlan); got != 1 {
+		t.Fatalf("first execution plan seed = %d, want 1", got)
+	}
+	if got := executionPlanTestMaxIterations(t, secondRun.ExecutionPlan); got != 5 {
+		t.Fatalf("second execution plan max_iterations = %d, want 5", got)
+	}
+	matrixKey, lineup := executionPlanTestSeries(t, firstRun.ExecutionPlan)
+	if matrixKey != "default:seed-1" || lineup != "default" {
+		t.Fatalf("first execution plan series = %q/%q, want default metadata", matrixKey, lineup)
+	}
+	matrixKey, lineup = executionPlanTestSeries(t, secondRun.ExecutionPlan)
+	if matrixKey != "smoke:seed-1" || lineup != "smoke" {
+		t.Fatalf("second execution plan series = %q/%q, want smoke metadata", matrixKey, lineup)
+	}
+	if len(result.SeriesRuns) != 2 ||
+		result.SeriesRuns[0].RunID != smokeRunID ||
+		result.SeriesRuns[0].DeploymentLineup != "smoke" ||
+		result.SeriesRuns[0].MatrixKey != "smoke:seed-1" ||
+		result.SeriesRuns[1].RunID != defaultRunID ||
+		result.SeriesRuns[1].DeploymentLineup != "default" ||
+		result.SeriesRuns[1].MatrixKey != "default:seed-1" {
+		t.Fatalf("series runs = %+v, want metadata from each run execution plan", result.SeriesRuns)
+	}
+	var routingSnapshot struct {
+		RunMatrix []struct {
+			Key              string `json:"key"`
+			DeploymentLineup string `json:"deployment_lineup"`
+			Seed             int64  `json:"seed"`
+		} `json:"run_matrix"`
+	}
+	if err := json.Unmarshal(repo.createEvalSessionWithRunsParams.Session.RoutingTaskSnapshot, &routingSnapshot); err != nil {
+		t.Fatalf("decode routing task snapshot: %v", err)
+	}
+	if len(routingSnapshot.RunMatrix) != 2 || routingSnapshot.RunMatrix[1].DeploymentLineup != "smoke" {
+		t.Fatalf("routing run_matrix = %+v, want matrix metadata persisted", routingSnapshot.RunMatrix)
+	}
+}
+
 func TestRunCreationManagerCreateEvalSessionStartsEvalSessionWorkflow(t *testing.T) {
 	workspaceID := uuid.New()
 	challengePackVersionID := uuid.New()
@@ -1948,6 +2088,20 @@ func executionPlanTestSeed(t *testing.T, payload json.RawMessage) int64 {
 		t.Fatalf("decode execution plan: %v", err)
 	}
 	return plan.Seed
+}
+
+func executionPlanTestSeries(t *testing.T, payload json.RawMessage) (string, string) {
+	t.Helper()
+	var plan struct {
+		Series struct {
+			MatrixKey        string `json:"matrix_key"`
+			DeploymentLineup string `json:"deployment_lineup"`
+		} `json:"series"`
+	}
+	if err := json.Unmarshal(payload, &plan); err != nil {
+		t.Fatalf("decode execution plan: %v", err)
+	}
+	return plan.Series.MatrixKey, plan.Series.DeploymentLineup
 }
 
 func (f *fakeRunCreationRepository) GetRunnableChallengePackVersionByID(_ context.Context, _ uuid.UUID) (repository.RunnableChallengePackVersion, error) {

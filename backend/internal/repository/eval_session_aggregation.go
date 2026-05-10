@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -70,6 +71,7 @@ type evalSessionParticipantAggregate struct {
 	PassAtK       *evalSessionPassMetricSeries          `json:"pass_at_k,omitempty"`
 	PassPowK      *evalSessionPassMetricSeries          `json:"pass_pow_k,omitempty"`
 	MetricRouting *evalSessionMetricRouting             `json:"metric_routing,omitempty"`
+	ObservedRuns  int                                   `json:"-"`
 }
 
 type evalSessionTaskSuccess struct {
@@ -143,6 +145,7 @@ type evalSessionAggregateEvidence struct {
 type evalSessionAggregateSource struct {
 	RunID              uuid.UUID
 	Document           runScorecardDocument
+	DeploymentLineup   string
 	ParticipantSources []evalSessionAggregateParticipantSource
 }
 
@@ -287,7 +290,8 @@ func (r *Repository) AggregateEvalSession(ctx context.Context, evalSessionID uui
 			if err := json.Unmarshal(scorecard.Scorecard, &document); err != nil {
 				return EvalSessionAggregateRecord{}, fmt.Errorf("decode run scorecard %s: %w", run.ID, err)
 			}
-			participantSources, participantWarnings, err := r.buildEvalSessionAggregateParticipantSources(ctx, run.ID, document, behavior)
+			deploymentLineup := evalSessionRunSeriesDeploymentLineup(run.ExecutionPlan)
+			participantSources, participantWarnings, err := r.buildEvalSessionAggregateParticipantSources(ctx, run.ID, document, behavior, deploymentLineup)
 			if err != nil {
 				return EvalSessionAggregateRecord{}, fmt.Errorf("build eval session participant sources for run %s: %w", run.ID, err)
 			}
@@ -295,6 +299,7 @@ func (r *Repository) AggregateEvalSession(ctx context.Context, evalSessionID uui
 			sources = append(sources, evalSessionAggregateSource{
 				RunID:              run.ID,
 				Document:           document,
+				DeploymentLineup:   deploymentLineup,
 				ParticipantSources: participantSources,
 			})
 		case errors.Is(scorecardErr, ErrRunScorecardNotFound):
@@ -398,6 +403,51 @@ func evalSessionKValues(repetitions int) []int {
 	return values
 }
 
+func evalSessionKValuesWithEffectiveK(values []int, effectiveK int) []int {
+	set := map[int]struct{}{}
+	for _, value := range values {
+		if value > 0 {
+			set[value] = struct{}{}
+		}
+	}
+	if effectiveK > 0 {
+		set[effectiveK] = struct{}{}
+	}
+	result := make([]int, 0, len(set))
+	for value := range set {
+		result = append(result, value)
+	}
+	sort.Ints(result)
+	return result
+}
+
+func evalSessionRunSeriesDeploymentLineup(executionPlan json.RawMessage) string {
+	if len(bytes.TrimSpace(executionPlan)) == 0 {
+		return ""
+	}
+	var document struct {
+		Series struct {
+			DeploymentLineup string `json:"deployment_lineup"`
+		} `json:"series"`
+	}
+	if err := json.Unmarshal(executionPlan, &document); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(document.Series.DeploymentLineup)
+}
+
+func evalSessionSeriesParticipantLabel(deploymentLineup string, label string) string {
+	trimmedLabel := strings.TrimSpace(label)
+	trimmedLineup := strings.TrimSpace(deploymentLineup)
+	if trimmedLineup == "" || trimmedLabel == "" || strings.HasPrefix(trimmedLabel, trimmedLineup+" / ") {
+		return trimmedLabel
+	}
+	if trimmedLabel == trimmedLineup {
+		return trimmedLineup
+	}
+	return trimmedLineup + " / " + trimmedLabel
+}
+
 func mapValue(value any) (map[string]any, bool) {
 	result, ok := value.(map[string]any)
 	return result, ok
@@ -438,6 +488,7 @@ func (r *Repository) buildEvalSessionAggregateParticipantSources(
 	runID uuid.UUID,
 	document runScorecardDocument,
 	behavior evalSessionAggregateBehavior,
+	deploymentLineup string,
 ) ([]evalSessionAggregateParticipantSource, []string, error) {
 	participantSources := make([]evalSessionAggregateParticipantSource, 0, len(document.Agents))
 	warnings := make([]string, 0)
@@ -446,7 +497,7 @@ func (r *Repository) buildEvalSessionAggregateParticipantSources(
 		participantSource := evalSessionAggregateParticipantSource{
 			Key: evalSessionParticipantKey{
 				LaneIndex: agent.LaneIndex,
-				Label:     agent.Label,
+				Label:     evalSessionSeriesParticipantLabel(deploymentLineup, agent.Label),
 			},
 			Agent: agent,
 		}
@@ -718,6 +769,11 @@ func buildEvalSessionAggregatePayload(
 		}
 	}
 
+	aggregateBehavior := behavior
+	aggregateBehavior.EffectiveK = evalSessionAggregateEffectiveK(participantAccumulators, behavior.EffectiveK)
+	aggregateBehavior.KValues = evalSessionKValuesWithEffectiveK(behavior.KValues, aggregateBehavior.EffectiveK)
+	expectedParticipantRuns := aggregateBehavior.EffectiveK
+
 	evidence := evalSessionAggregateEvidence{
 		MissingScorecardRunIDs: append([]uuid.UUID(nil), missingScorecardRunIDs...),
 	}
@@ -745,14 +801,15 @@ func buildEvalSessionAggregatePayload(
 	for _, key := range participantKeys {
 		accumulator := participantAccumulators[key]
 		participant := evalSessionParticipantAggregate{
-			LaneIndex: key.LaneIndex,
-			Label:     key.Label,
+			LaneIndex:    key.LaneIndex,
+			Label:        key.Label,
+			ObservedRuns: evalSessionParticipantObservedRuns(accumulator),
 		}
 		if len(accumulator.Overall) > 0 {
 			overall := buildEvalSessionMetricAggregate(accumulator.Overall)
 			participant.Overall = &overall
-			if len(accumulator.Overall) < len(sources) {
-				warnings = append(warnings, fmt.Sprintf("participant %q (lane %d) overall aggregate uses %d of %d scored child runs", key.Label, key.LaneIndex, len(accumulator.Overall), len(sources)))
+			if len(accumulator.Overall) < expectedParticipantRuns {
+				warnings = append(warnings, fmt.Sprintf("participant %q (lane %d) overall aggregate uses %d of %d expected scored child runs", key.Label, key.LaneIndex, len(accumulator.Overall), expectedParticipantRuns))
 			}
 			if len(accumulator.Overall) < 2 {
 				insufficientEvidence = true
@@ -763,8 +820,8 @@ func buildEvalSessionAggregatePayload(
 			for _, dimKey := range sortedMetricKeys(accumulator.Dimensions) {
 				values := accumulator.Dimensions[dimKey]
 				participant.Dimensions[dimKey] = buildEvalSessionMetricAggregate(values)
-				if len(values) < len(sources) {
-					warnings = append(warnings, fmt.Sprintf("participant %q (lane %d) dimension %q aggregate uses %d of %d scored child runs", key.Label, key.LaneIndex, dimKey, len(values), len(sources)))
+				if len(values) < expectedParticipantRuns {
+					warnings = append(warnings, fmt.Sprintf("participant %q (lane %d) dimension %q aggregate uses %d of %d expected scored child runs", key.Label, key.LaneIndex, dimKey, len(values), expectedParticipantRuns))
 				}
 				if len(values) < 2 {
 					insufficientEvidence = true
@@ -772,13 +829,13 @@ func buildEvalSessionAggregatePayload(
 			}
 		}
 		if len(accumulator.TaskOutcomes) > 0 {
-			participant.TaskSuccess = buildEvalSessionTaskSuccess(accumulator.TaskOutcomes, behavior.KValues)
-			participant.PassAtK = buildEvalSessionPassMetricSeries(participant.TaskSuccess, behavior.KValues, behavior.EffectiveK, "pass_at_k")
-			participant.PassPowK = buildEvalSessionPassMetricSeries(participant.TaskSuccess, behavior.KValues, behavior.EffectiveK, "pass_pow_k")
-			participant.MetricRouting = buildEvalSessionMetricRouting(behavior, participant.PassAtK, participant.PassPowK)
+			participant.TaskSuccess = buildEvalSessionTaskSuccess(accumulator.TaskOutcomes, aggregateBehavior.KValues)
+			participant.PassAtK = buildEvalSessionPassMetricSeries(participant.TaskSuccess, aggregateBehavior.KValues, aggregateBehavior.EffectiveK, "pass_at_k")
+			participant.PassPowK = buildEvalSessionPassMetricSeries(participant.TaskSuccess, aggregateBehavior.KValues, aggregateBehavior.EffectiveK, "pass_pow_k")
+			participant.MetricRouting = buildEvalSessionMetricRouting(aggregateBehavior, participant.PassAtK, participant.PassPowK)
 			for _, task := range participant.TaskSuccess {
-				if task.ObservedTrials < len(sources) {
-					warnings = append(warnings, fmt.Sprintf("participant %q (lane %d) task %q uses %d of %d scored child runs", key.Label, key.LaneIndex, task.TaskKey, task.ObservedTrials, len(sources)))
+				if task.ObservedTrials < expectedParticipantRuns {
+					warnings = append(warnings, fmt.Sprintf("participant %q (lane %d) task %q uses %d of %d expected scored child runs", key.Label, key.LaneIndex, task.TaskKey, task.ObservedTrials, expectedParticipantRuns))
 				}
 			}
 		}
@@ -795,9 +852,9 @@ func buildEvalSessionAggregatePayload(
 		document.PassPowK = participant.PassPowK
 		document.MetricRouting = participant.MetricRouting
 	} else if len(document.Participants) > 1 {
-		document.Comparison = buildEvalSessionRepeatedComparison(document.Participants, behavior.EffectiveK, len(sources))
+		document.Comparison = buildEvalSessionRepeatedComparison(document.Participants, aggregateBehavior.EffectiveK, evalSessionComparisonEvidenceCount(document.Participants, len(sources)))
 		if document.Comparison != nil && document.Comparison.Status == "clear_winner" && document.Comparison.WinnerLaneIndex != nil {
-			if winner, ok := evalSessionParticipantByLane(document.Participants, *document.Comparison.WinnerLaneIndex); ok {
+			if winner, ok := evalSessionParticipantByComparisonWinner(document.Participants, document.Comparison); ok {
 				document.TopLevelSource = "repeated_clear_winner"
 				document.Overall = winner.Overall
 				document.Dimensions = winner.Dimensions
@@ -834,12 +891,63 @@ func defaultEvalSessionParticipantSources(source evalSessionAggregateSource) []e
 		participants = append(participants, evalSessionAggregateParticipantSource{
 			Key: evalSessionParticipantKey{
 				LaneIndex: agent.LaneIndex,
-				Label:     agent.Label,
+				Label:     evalSessionSeriesParticipantLabel(source.DeploymentLineup, agent.Label),
 			},
 			Agent: agent,
 		})
 	}
 	return participants
+}
+
+func evalSessionAggregateEffectiveK(
+	participantAccumulators map[evalSessionParticipantKey]*evalSessionParticipantAccumulator,
+	defaultEffectiveK int,
+) int {
+	effectiveK := defaultEffectiveK
+	if effectiveK < 1 {
+		effectiveK = 1
+	}
+	for _, accumulator := range participantAccumulators {
+		observedRuns := evalSessionParticipantObservedRuns(accumulator)
+		if observedRuns == 0 {
+			continue
+		}
+		if observedRuns < effectiveK {
+			effectiveK = observedRuns
+		}
+	}
+	return effectiveK
+}
+
+func evalSessionParticipantObservedRuns(accumulator *evalSessionParticipantAccumulator) int {
+	if accumulator == nil {
+		return 0
+	}
+	observedRuns := len(accumulator.Overall)
+	for _, values := range accumulator.Dimensions {
+		if len(values) > observedRuns {
+			observedRuns = len(values)
+		}
+	}
+	for _, taskOutcome := range accumulator.TaskOutcomes {
+		if taskOutcome != nil && len(taskOutcome.Outcomes) > observedRuns {
+			observedRuns = len(taskOutcome.Outcomes)
+		}
+	}
+	return observedRuns
+}
+
+func evalSessionComparisonEvidenceCount(participants []evalSessionParticipantAggregate, fallback int) int {
+	evidenceCount := fallback
+	for _, participant := range participants {
+		if participant.ObservedRuns == 0 {
+			continue
+		}
+		if evidenceCount == 0 || participant.ObservedRuns < evidenceCount {
+			evidenceCount = participant.ObservedRuns
+		}
+	}
+	return evidenceCount
 }
 
 func buildEvalSessionTaskSuccess(
@@ -1119,10 +1227,22 @@ func evalSessionComparisonMetric(
 	return participant.PassAtK, participant.PassAtK.Mean
 }
 
-func evalSessionParticipantByLane(
+func evalSessionParticipantByComparisonWinner(
 	participants []evalSessionParticipantAggregate,
-	laneIndex int32,
+	comparison *evalSessionRepeatedComparison,
 ) (evalSessionParticipantAggregate, bool) {
+	if comparison == nil || comparison.WinnerLaneIndex == nil {
+		return evalSessionParticipantAggregate{}, false
+	}
+	laneIndex := *comparison.WinnerLaneIndex
+	if comparison.WinnerLabel != "" {
+		for _, participant := range participants {
+			if participant.LaneIndex == laneIndex && participant.Label == comparison.WinnerLabel {
+				return participant, true
+			}
+		}
+		return evalSessionParticipantAggregate{}, false
+	}
 	for _, participant := range participants {
 		if participant.LaneIndex == laneIndex {
 			return participant, true

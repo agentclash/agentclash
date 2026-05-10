@@ -6867,7 +6867,7 @@ components:
 
     CreateEvalSessionRequest:
       type: object
-      required: [workspace_id, challenge_pack_version_id, participants, eval_session]
+      required: [workspace_id, challenge_pack_version_id, eval_session]
       properties:
         workspace_id:
           type: string
@@ -6886,6 +6886,9 @@ components:
         participants:
           type: array
           minItems: 1
+          description: >
+            Uniform participants used for every child run. May be omitted when
+            `eval_session.run_matrix` supplies participants per child run.
           items:
             $ref: "#/components/schemas/CreateEvalSessionParticipant"
         execution_mode:
@@ -6947,9 +6950,40 @@ components:
           description: Optional. Explicit `null` is treated the same as omission.
         seed_fanout:
           $ref: "#/components/schemas/EvalSessionSeedFanoutConfig"
+        run_matrix:
+          type: array
+          minItems: 1
+          maxItems: 100
+          description: >
+            Explicit child-run matrix for race series. Length must equal
+            `repetitions`. Cannot be combined with `seed_fanout`.
+          items:
+            $ref: "#/components/schemas/EvalSessionRunMatrixEntry"
         schema_version:
           type: integer
           minimum: 1
+
+    EvalSessionRunMatrixEntry:
+      type: object
+      required: [key, participants]
+      properties:
+        key:
+          type: string
+          minLength: 1
+          description: Stable client-generated key for this matrix cell.
+        deployment_lineup:
+          type: string
+          minLength: 1
+          description: Optional challenge-pack lineup name used for this child run.
+        seed:
+          type: integer
+          minimum: 1
+          description: Optional deterministic seed assigned to this child run.
+        participants:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/CreateEvalSessionParticipant"
 
     EvalSessionAggregationConfig:
       type: object
@@ -7057,6 +7091,10 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/EvalSessionSeededRun"
+        series_runs:
+          type: array
+          items:
+            $ref: "#/components/schemas/EvalSessionSeriesRun"
 
     EvalSessionSeededRun:
       type: object
@@ -7065,6 +7103,21 @@ components:
         run_id:
           type: string
           format: uuid
+        seed:
+          type: integer
+          minimum: 1
+
+    EvalSessionSeriesRun:
+      type: object
+      required: [run_id]
+      properties:
+        run_id:
+          type: string
+          format: uuid
+        matrix_key:
+          type: string
+        deployment_lineup:
+          type: string
         seed:
           type: integer
           minimum: 1
@@ -7454,6 +7507,12 @@ components:
           type: integer
           minimum: 1
           description: Seed assigned to this child run when the eval session was created via seeded fanout.
+        matrix_key:
+          type: string
+          description: Stable series matrix key persisted on this child run, when created from `run_matrix`.
+        deployment_lineup:
+          type: string
+          description: Deployment lineup name persisted on this child run, when created from `run_matrix`.
         queued_at:
           type: string
           format: date-time

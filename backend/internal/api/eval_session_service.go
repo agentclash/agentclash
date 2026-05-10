@@ -14,9 +14,9 @@ import (
 )
 
 type EvalSessionParticipantInput struct {
-	AgentDeploymentID   *uuid.UUID
-	AgentBuildVersionID *uuid.UUID
-	Label               string
+	AgentDeploymentID   *uuid.UUID `json:"agent_deployment_id,omitempty"`
+	AgentBuildVersionID *uuid.UUID `json:"agent_build_version_id,omitempty"`
+	Label               string     `json:"label"`
 }
 
 type EvalSessionAggregationInput struct {
@@ -54,6 +54,7 @@ type CreateEvalSessionConfigInput struct {
 	RoutingTaskSnapshot EvalSessionRoutingTaskSnapshotInput
 	ReliabilityWeights  *EvalSessionReliabilityWeightsInput
 	SeedFanout          []int64
+	RunMatrix           []EvalSessionRunMatrixEntryInput
 	SchemaVersion       int32
 }
 
@@ -68,15 +69,30 @@ type CreateEvalSessionInput struct {
 	EvalSession            CreateEvalSessionConfigInput
 }
 
+type EvalSessionRunMatrixEntryInput struct {
+	Key              string                        `json:"key"`
+	DeploymentLineup string                        `json:"deployment_lineup,omitempty"`
+	Seed             *int64                        `json:"seed,omitempty"`
+	Participants     []EvalSessionParticipantInput `json:"participants"`
+}
+
 type EvalSessionSeededRun struct {
 	RunID uuid.UUID `json:"run_id"`
 	Seed  int64     `json:"seed"`
+}
+
+type EvalSessionSeriesRun struct {
+	RunID            uuid.UUID `json:"run_id"`
+	MatrixKey        string    `json:"matrix_key,omitempty"`
+	DeploymentLineup string    `json:"deployment_lineup,omitempty"`
+	Seed             *int64    `json:"seed,omitempty"`
 }
 
 type CreateEvalSessionResult struct {
 	Session    domain.EvalSession
 	RunIDs     []uuid.UUID
 	SeededRuns []EvalSessionSeededRun
+	SeriesRuns []EvalSessionSeriesRun
 }
 
 func (m *RunCreationManager) CreateEvalSession(ctx context.Context, caller Caller, input CreateEvalSessionInput) (CreateEvalSessionResult, error) {
@@ -84,7 +100,20 @@ func (m *RunCreationManager) CreateEvalSession(ctx context.Context, caller Calle
 		return CreateEvalSessionResult{}, err
 	}
 
-	if len(input.Participants) == 0 {
+	hasRunMatrix := len(input.EvalSession.RunMatrix) > 0
+	if input.EvalSession.Repetitions < 1 {
+		return CreateEvalSessionResult{}, RunCreationValidationError{
+			Code:    "invalid_eval_session",
+			Message: "eval_session.repetitions must be at least 1",
+		}
+	}
+	if hasRunMatrix && int32(len(input.EvalSession.RunMatrix)) != input.EvalSession.Repetitions {
+		return CreateEvalSessionResult{}, RunCreationValidationError{
+			Code:    "invalid_eval_session",
+			Message: "eval_session.run_matrix length must match repetitions",
+		}
+	}
+	if len(input.Participants) == 0 && !hasRunMatrix {
 		return CreateEvalSessionResult{}, RunCreationValidationError{
 			Code:    "invalid_participants",
 			Message: "at least one participant is required",
@@ -92,29 +121,10 @@ func (m *RunCreationManager) CreateEvalSession(ctx context.Context, caller Calle
 	}
 
 	executionMode := strings.TrimSpace(input.ExecutionMode)
-	if executionMode == "" {
-		if len(input.Participants) == 1 {
-			executionMode = "single_agent"
-		} else {
-			executionMode = "comparison"
-		}
-	}
-	if executionMode != "single_agent" && executionMode != "comparison" {
+	if executionMode != "" && executionMode != "single_agent" && executionMode != "comparison" {
 		return CreateEvalSessionResult{}, RunCreationValidationError{
 			Code:    "invalid_execution_mode",
 			Message: "execution_mode must be either single_agent or comparison",
-		}
-	}
-	if len(input.Participants) == 1 && executionMode != "single_agent" {
-		return CreateEvalSessionResult{}, RunCreationValidationError{
-			Code:    "invalid_execution_mode",
-			Message: "single-participant eval sessions must use execution_mode single_agent",
-		}
-	}
-	if len(input.Participants) > 1 && executionMode != "comparison" {
-		return CreateEvalSessionResult{}, RunCreationValidationError{
-			Code:    "invalid_execution_mode",
-			Message: "multi-participant eval sessions must use execution_mode comparison",
 		}
 	}
 
@@ -172,11 +182,15 @@ func (m *RunCreationManager) CreateEvalSession(ctx context.Context, caller Calle
 		}
 	}
 
-	uniqueDeploymentIDs := make([]uuid.UUID, 0, len(input.Participants))
-	seenDeploymentIDs := make(map[uuid.UUID]struct{}, len(input.Participants))
-	uniqueBuildVersionIDs := make([]uuid.UUID, 0, len(input.Participants))
-	seenBuildVersionIDs := make(map[uuid.UUID]struct{}, len(input.Participants))
-	for _, participant := range input.Participants {
+	allParticipants := append([]EvalSessionParticipantInput(nil), input.Participants...)
+	for _, entry := range input.EvalSession.RunMatrix {
+		allParticipants = append(allParticipants, entry.Participants...)
+	}
+	uniqueDeploymentIDs := make([]uuid.UUID, 0, len(allParticipants))
+	seenDeploymentIDs := make(map[uuid.UUID]struct{}, len(allParticipants))
+	uniqueBuildVersionIDs := make([]uuid.UUID, 0, len(allParticipants))
+	seenBuildVersionIDs := make(map[uuid.UUID]struct{}, len(allParticipants))
+	for _, participant := range allParticipants {
 		if participant.AgentDeploymentID != nil {
 			if _, ok := seenDeploymentIDs[*participant.AgentDeploymentID]; ok {
 				continue
@@ -216,47 +230,89 @@ func (m *RunCreationManager) CreateEvalSession(ctx context.Context, caller Calle
 		}
 	}
 
-	participantDetails := make([]evalSessionValidationDetail, 0)
-	participantDeployments := make([]repository.RunnableDeployment, 0, len(input.Participants))
-	for idx, participant := range input.Participants {
-		if participant.AgentDeploymentID != nil {
-			deployment, ok := deploymentsByID[*participant.AgentDeploymentID]
-			if !ok {
-				participantDetails = append(participantDetails, evalSessionValidationDetail{
-					Field:   fmt.Sprintf("participants[%d].agent_deployment_id", idx),
-					Code:    "participants.agent_deployment_id.unresolved",
-					Message: "agent_deployment_id must reference an active deployment with a snapshot in the selected workspace",
+	resolveParticipants := func(participants []EvalSessionParticipantInput, fieldPrefix string) ([]repository.RunnableDeployment, []evalSessionValidationDetail) {
+		details := make([]evalSessionValidationDetail, 0)
+		resolved := make([]repository.RunnableDeployment, 0, len(participants))
+		for idx, participant := range participants {
+			field := fmt.Sprintf("%s[%d]", fieldPrefix, idx)
+			if participant.AgentDeploymentID != nil {
+				deployment, ok := deploymentsByID[*participant.AgentDeploymentID]
+				if !ok {
+					details = append(details, evalSessionValidationDetail{
+						Field:   field + ".agent_deployment_id",
+						Code:    "participants.agent_deployment_id.unresolved",
+						Message: "agent_deployment_id must reference an active deployment with a snapshot in the selected workspace",
+					})
+					continue
+				}
+				resolved = append(resolved, deployment)
+				continue
+			}
+
+			if participant.AgentBuildVersionID == nil {
+				details = append(details, evalSessionValidationDetail{
+					Field:   field,
+					Code:    "invalid_participants",
+					Message: "participants must include agent_deployment_id",
 				})
 				continue
 			}
-			participantDeployments = append(participantDeployments, deployment)
-			continue
-		}
 
-		if participant.AgentBuildVersionID == nil {
-			participantDetails = append(participantDetails, evalSessionValidationDetail{
-				Field:   fmt.Sprintf("participants[%d]", idx),
-				Code:    "invalid_participants",
-				Message: "participants must include agent_deployment_id",
-			})
-			continue
+			candidates := groupedDeployments[*participant.AgentBuildVersionID]
+			switch len(candidates) {
+			case 0:
+				details = append(details, evalSessionValidationDetail{
+					Field:   field + ".agent_build_version_id",
+					Code:    "participants.agent_build_version_id.unresolved",
+					Message: "agent_build_version_id must resolve to exactly one active deployment in the selected workspace",
+				})
+			case 1:
+				resolved = append(resolved, candidates[0])
+			default:
+				details = append(details, evalSessionValidationDetail{
+					Field:   field + ".agent_build_version_id",
+					Code:    "participants.agent_build_version_id.ambiguous",
+					Message: "agent_build_version_id resolved to multiple active deployments in the selected workspace",
+				})
+			}
 		}
+		return resolved, details
+	}
 
-		candidates := groupedDeployments[*participant.AgentBuildVersionID]
-		switch len(candidates) {
-		case 0:
-			participantDetails = append(participantDetails, evalSessionValidationDetail{
-				Field:   fmt.Sprintf("participants[%d].agent_build_version_id", idx),
-				Code:    "participants.agent_build_version_id.unresolved",
-				Message: "agent_build_version_id must resolve to exactly one active deployment in the selected workspace",
+	type childRunSpec struct {
+		MatrixKey        string
+		DeploymentLineup string
+		Seed             *int64
+		Participants     []EvalSessionParticipantInput
+		Deployments      []repository.RunnableDeployment
+	}
+
+	childSpecs := make([]childRunSpec, 0, input.EvalSession.Repetitions)
+	participantDetails := make([]evalSessionValidationDetail, 0)
+	if hasRunMatrix {
+		for idx, entry := range input.EvalSession.RunMatrix {
+			deployments, details := resolveParticipants(entry.Participants, fmt.Sprintf("eval_session.run_matrix[%d].participants", idx))
+			participantDetails = append(participantDetails, details...)
+			childSpecs = append(childSpecs, childRunSpec{
+				MatrixKey:        entry.Key,
+				DeploymentLineup: entry.DeploymentLineup,
+				Seed:             cloneInt64Ptr(entry.Seed),
+				Participants:     entry.Participants,
+				Deployments:      deployments,
 			})
-		case 1:
-			participantDeployments = append(participantDeployments, candidates[0])
-		default:
-			participantDetails = append(participantDetails, evalSessionValidationDetail{
-				Field:   fmt.Sprintf("participants[%d].agent_build_version_id", idx),
-				Code:    "participants.agent_build_version_id.ambiguous",
-				Message: "agent_build_version_id resolved to multiple active deployments in the selected workspace",
+		}
+	} else {
+		deployments, details := resolveParticipants(input.Participants, "participants")
+		participantDetails = append(participantDetails, details...)
+		for repetition := int32(0); repetition < input.EvalSession.Repetitions; repetition++ {
+			var seed *int64
+			if int(repetition) < len(input.EvalSession.SeedFanout) {
+				seed = &input.EvalSession.SeedFanout[repetition]
+			}
+			childSpecs = append(childSpecs, childRunSpec{
+				Seed:         cloneInt64Ptr(seed),
+				Participants: input.Participants,
+				Deployments:  deployments,
 			})
 		}
 	}
@@ -264,15 +320,49 @@ func (m *RunCreationManager) CreateEvalSession(ctx context.Context, caller Calle
 		return CreateEvalSessionResult{}, evalSessionValidationError{Errors: participantDetails}
 	}
 
-	organizationID := participantDeployments[0].OrganizationID
-	for _, deployment := range participantDeployments[1:] {
+	if executionMode == "" {
+		participantCount := len(childSpecs[0].Participants)
+		if participantCount == 1 {
+			executionMode = "single_agent"
+		} else {
+			executionMode = "comparison"
+		}
+	}
+	for _, spec := range childSpecs {
+		if len(spec.Deployments) == 0 {
+			return CreateEvalSessionResult{}, RunCreationValidationError{
+				Code:    "invalid_participants",
+				Message: "each eval session child run requires at least one participant",
+			}
+		}
+		if len(spec.Participants) == 1 && executionMode != "single_agent" {
+			return CreateEvalSessionResult{}, RunCreationValidationError{
+				Code:    "invalid_execution_mode",
+				Message: "single-participant eval sessions must use execution_mode single_agent",
+			}
+		}
+		if len(spec.Participants) > 1 && executionMode != "comparison" {
+			return CreateEvalSessionResult{}, RunCreationValidationError{
+				Code:    "invalid_execution_mode",
+				Message: "multi-participant eval sessions must use execution_mode comparison",
+			}
+		}
+	}
+
+	firstDeployment := childSpecs[0].Deployments[0]
+	organizationID := firstDeployment.OrganizationID
+	allResolvedDeployments := make([]repository.RunnableDeployment, 0, len(allParticipants))
+	for _, spec := range childSpecs {
+		allResolvedDeployments = append(allResolvedDeployments, spec.Deployments...)
+	}
+	for _, deployment := range allResolvedDeployments {
 		if deployment.OrganizationID != organizationID {
 			return CreateEvalSessionResult{}, fmt.Errorf("participant deployments in workspace %s resolved to multiple organizations", input.WorkspaceID)
 		}
 	}
 
 	checkedPolicies := make(map[uuid.UUID]struct{})
-	for _, deployment := range participantDeployments {
+	for _, deployment := range allResolvedDeployments {
 		if deployment.SpendPolicyID == nil {
 			continue
 		}
@@ -300,14 +390,32 @@ func (m *RunCreationManager) CreateEvalSession(ctx context.Context, caller Calle
 		}
 	}
 
-	runAgents := make([]repository.CreateQueuedRunAgentParams, 0, len(participantDeployments))
-	for laneIndex, deployment := range participantDeployments {
-		runAgents = append(runAgents, repository.CreateQueuedRunAgentParams{
-			AgentDeploymentID:         deployment.ID,
-			AgentDeploymentSnapshotID: deployment.AgentDeploymentSnapshotID,
-			LaneIndex:                 int32(laneIndex),
-			Label:                     input.Participants[laneIndex].Label,
-		})
+	buildRunAgents := func(spec childRunSpec) []repository.CreateQueuedRunAgentParams {
+		runAgents := make([]repository.CreateQueuedRunAgentParams, 0, len(spec.Deployments))
+		for laneIndex, deployment := range spec.Deployments {
+			label := spec.Participants[laneIndex].Label
+			if strings.TrimSpace(label) == "" {
+				label = deployment.Name
+			}
+			runAgents = append(runAgents, repository.CreateQueuedRunAgentParams{
+				AgentDeploymentID:         deployment.ID,
+				AgentDeploymentSnapshotID: deployment.AgentDeploymentSnapshotID,
+				LaneIndex:                 int32(laneIndex),
+				Label:                     label,
+			})
+		}
+		return runAgents
+	}
+
+	maxParticipantCount := 0
+	for _, spec := range childSpecs {
+		if len(spec.Participants) > maxParticipantCount {
+			maxParticipantCount = len(spec.Participants)
+		}
+	}
+	baseRunAgents := buildRunAgents(childSpecs[0])
+	if !hasRunMatrix {
+		maxParticipantCount = len(baseRunAgents)
 	}
 
 	challengeIdentityIDs, err := m.repo.ListChallengeIdentityIDsByPackVersionID(ctx, input.ChallengePackVersionID)
@@ -329,19 +437,23 @@ func (m *RunCreationManager) CreateEvalSession(ctx context.Context, caller Calle
 		baseName = defaultEvalSessionRunName(m.now().UTC())
 	}
 
-	childRuns := make([]repository.CreateQueuedRunParams, 0, input.EvalSession.Repetitions)
-	for repetition := int32(0); repetition < input.EvalSession.Repetitions; repetition++ {
+	childRuns := make([]repository.CreateQueuedRunParams, 0, len(childSpecs))
+	for repetition, spec := range childSpecs {
+		specRunAgents := baseRunAgents
+		if hasRunMatrix {
+			specRunAgents = buildRunAgents(spec)
+		}
 		runInput := CreateRunInput{
 			WorkspaceID:            input.WorkspaceID,
 			ChallengePackVersionID: input.ChallengePackVersionID,
 			ChallengeInputSetID:    input.ChallengeInputSetID,
 			OfficialPackMode:       domain.OfficialPackModeFull,
 			MaxIterations:          input.MaxIterations,
+			SeriesMatrixKey:        spec.MatrixKey,
+			SeriesDeploymentLineup: spec.DeploymentLineup,
 		}
-		if int(repetition) < len(input.EvalSession.SeedFanout) {
-			runInput.Seed = &input.EvalSession.SeedFanout[repetition]
-		}
-		executionPlan, err := buildExecutionPlan(runInput, runAgents)
+		runInput.Seed = cloneInt64Ptr(spec.Seed)
+		executionPlan, err := buildExecutionPlan(runInput, specRunAgents)
 		if err != nil {
 			return CreateEvalSessionResult{}, fmt.Errorf("build execution plan: %w", err)
 		}
@@ -352,17 +464,17 @@ func (m *RunCreationManager) CreateEvalSession(ctx context.Context, caller Calle
 			ChallengeInputSetID:    input.ChallengeInputSetID,
 			OfficialPackMode:       domain.OfficialPackModeFull,
 			CreatedByUserID:        &caller.UserID,
-			Name:                   evalSessionRunName(baseName, repetition, input.EvalSession.Repetitions),
+			Name:                   evalSessionRunName(baseName, int32(repetition), input.EvalSession.Repetitions),
 			ExecutionMode:          executionMode,
 			ExecutionPlan:          executionPlan,
-			RunAgents:              runAgents,
+			RunAgents:              specRunAgents,
 			CaseSelections:         caseSelections,
 		})
 	}
 
 	var entitlementGate *repository.RunEntitlementGate
 	if m.entitlementGate != nil {
-		entitlementGate, err = m.entitlementGate.BuildRunGate(ctx, input.WorkspaceID, len(runAgents), len(childRuns))
+		entitlementGate, err = m.entitlementGate.BuildRunGate(ctx, input.WorkspaceID, maxParticipantCount, len(childRuns))
 		if err != nil {
 			return CreateEvalSessionResult{}, err
 		}
@@ -388,6 +500,7 @@ func (m *RunCreationManager) CreateEvalSession(ctx context.Context, caller Calle
 
 	runIDs := make([]uuid.UUID, 0, len(createResult.Runs))
 	seededRuns := make([]EvalSessionSeededRun, 0, len(input.EvalSession.SeedFanout))
+	seriesRuns := make([]EvalSessionSeriesRun, 0, len(input.EvalSession.RunMatrix))
 	for _, run := range createResult.Runs {
 		runIDs = append(runIDs, run.ID)
 		if seed := evalSessionChildRunSeed(run.ExecutionPlan); seed != nil {
@@ -397,11 +510,23 @@ func (m *RunCreationManager) CreateEvalSession(ctx context.Context, caller Calle
 			})
 		}
 	}
+	if hasRunMatrix {
+		for _, run := range createResult.Runs {
+			series := evalSessionChildRunSeries(run.ExecutionPlan)
+			seriesRuns = append(seriesRuns, EvalSessionSeriesRun{
+				RunID:            run.ID,
+				MatrixKey:        series.MatrixKey,
+				DeploymentLineup: series.DeploymentLineup,
+				Seed:             evalSessionChildRunSeed(run.ExecutionPlan),
+			})
+		}
+	}
 
 	return CreateEvalSessionResult{
 		Session:    createResult.Session,
 		RunIDs:     runIDs,
 		SeededRuns: seededRuns,
+		SeriesRuns: seriesRuns,
 	}, nil
 }
 
@@ -463,6 +588,23 @@ func buildRoutingTaskSnapshot(input CreateEvalSessionConfigInput) json.RawMessag
 			"strategy": "explicit",
 			"seeds":    input.SeedFanout,
 		}
+	}
+	if len(input.RunMatrix) > 0 {
+		matrix := make([]map[string]any, 0, len(input.RunMatrix))
+		for _, entry := range input.RunMatrix {
+			item := map[string]any{
+				"key":          entry.Key,
+				"participants": entry.Participants,
+			}
+			if entry.DeploymentLineup != "" {
+				item["deployment_lineup"] = entry.DeploymentLineup
+			}
+			if entry.Seed != nil {
+				item["seed"] = *entry.Seed
+			}
+			matrix = append(matrix, item)
+		}
+		payload["run_matrix"] = matrix
 	}
 	return mustMarshalEvalSessionJSON(payload)
 }

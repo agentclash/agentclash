@@ -99,6 +99,69 @@ func TestBuildSeededEvalSessionBody(t *testing.T) {
 	}
 }
 
+func TestBuildSeriesEvalSessionBodyCrossesLineupsAndSeeds(t *testing.T) {
+	body, err := buildSeriesEvalSessionBody("ws-1", runCreateRequest{
+		ChallengePackVersionID: "pv-1",
+		ChallengeInputSetID:    "is-1",
+		Name:                   "lineup-series",
+		OfficialPackMode:       "full",
+		MaxIterations:          4,
+		Seeds:                  2,
+		ResolvedDeploymentLineups: []runCreateDeploymentLineup{
+			{Name: "default", DeploymentIDs: []string{"dep-default"}},
+			{Name: "smoke", DeploymentIDs: []string{"dep-smoke"}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := body["execution_mode"]; got != "single_agent" {
+		t.Fatalf("execution_mode = %v, want single_agent", got)
+	}
+	if got := body["max_iterations"]; got != 4 {
+		t.Fatalf("max_iterations = %v, want 4", got)
+	}
+	session := body["eval_session"].(map[string]any)
+	if got := session["repetitions"]; got != 4 {
+		t.Fatalf("repetitions = %v, want 4", got)
+	}
+	matrix := session["run_matrix"].([]map[string]any)
+	if len(matrix) != 4 {
+		t.Fatalf("run_matrix length = %d, want 4", len(matrix))
+	}
+	if matrix[0]["key"] != "default:seed-1" || matrix[0]["deployment_lineup"] != "default" || matrix[0]["seed"] != 1 {
+		t.Fatalf("first matrix entry = %#v, want default seed 1", matrix[0])
+	}
+	if matrix[3]["key"] != "smoke:seed-2" {
+		t.Fatalf("last matrix key = %v, want smoke:seed-2", matrix[3]["key"])
+	}
+	participants := matrix[2]["participants"].([]map[string]any)
+	if len(participants) != 1 || participants[0]["agent_deployment_id"] != "dep-smoke" {
+		t.Fatalf("third matrix participants = %#v, want dep-smoke", participants)
+	}
+	if participants[0]["label"] != "smoke" {
+		t.Fatalf("third matrix participant label = %v, want smoke", participants[0]["label"])
+	}
+}
+
+func TestBuildSeriesEvalSessionBodyRejectsMatrixOverflow(t *testing.T) {
+	_, err := buildSeriesEvalSessionBody("ws-1", runCreateRequest{
+		ChallengePackVersionID: "pv-1",
+		OfficialPackMode:       "full",
+		Seeds:                  51,
+		ResolvedDeploymentLineups: []runCreateDeploymentLineup{
+			{Name: "default", DeploymentIDs: []string{"dep-default"}},
+			{Name: "smoke", DeploymentIDs: []string{"dep-smoke"}},
+		},
+	})
+	if err == nil {
+		t.Fatal("expected matrix overflow error")
+	}
+	if !strings.Contains(err.Error(), "at most 100 child runs") {
+		t.Fatalf("err = %v, want total child-run limit guidance", err)
+	}
+}
+
 func TestBuildEvalSessionBody_MultiDeployment_LabelsAndMode(t *testing.T) {
 	body, err := buildEvalSessionBody("ws-1", runCreateRequest{
 		ChallengePackVersionID: "pv-1",
@@ -323,6 +386,126 @@ func TestRunCreateSeedsRoutesToEvalSessions(t *testing.T) {
 	seeds, ok := seedFanout["seeds"].([]any)
 	if !ok || len(seeds) != 3 || seeds[0] != float64(1) || seeds[2] != float64(3) {
 		t.Fatalf("seeds = %#v, want [1 2 3]", seedFanout["seeds"])
+	}
+}
+
+func TestRunSeriesCreateRoutesToEvalSessions(t *testing.T) {
+	captured := map[string]any{}
+	routes := evalStartFakeRoutes(t, &captured)
+	routes["GET /v1/workspaces/ws-1/challenge-packs"] = jsonHandler(200, map[string]any{
+		"items": []map[string]any{
+			{
+				"id":   "pack-1",
+				"name": "Test Pack",
+				"slug": "test-pack",
+				"versions": []map[string]any{
+					{
+						"id":               "pv-1",
+						"version_number":   1,
+						"lifecycle_status": "ready",
+						"deployment_defaults": map[string]any{
+							"lineups": map[string]any{
+								"default": []string{"claude-sonnet"},
+								"smoke":   []string{"smoke-agent"},
+							},
+						},
+					},
+				},
+			},
+		},
+	})
+	routes["GET /v1/workspaces/ws-1/agent-deployments"] = jsonHandler(200, map[string]any{
+		"items": []map[string]any{
+			{"id": "dep-1", "name": "claude-sonnet", "status": "ready", "created_at": "now"},
+			{"id": "dep-2", "name": "smoke-agent", "status": "ready", "created_at": "now"},
+		},
+	})
+	srv := fakeAPI(t, routes)
+	defer srv.Close()
+
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+	if err := executeCommand(t, []string{
+		"run", "series", "create", "-w", "ws-1",
+		"--challenge-pack-version", "pv-1",
+		"--deployment-lineups", "default,smoke",
+		"--seeds", "2",
+	}, srv.URL); err != nil {
+		t.Fatalf("run series create error: %v", err)
+	}
+
+	if _, hit := captured["__hit_runs"]; hit {
+		t.Fatal("POST /v1/runs was called; expected POST /v1/eval-sessions")
+	}
+	session, ok := captured["eval_session"].(map[string]any)
+	if !ok {
+		t.Fatalf("eval_session missing in body: %#v", captured["eval_session"])
+	}
+	if r, ok := session["repetitions"].(float64); !ok || int(r) != 4 {
+		t.Fatalf("repetitions = %v, want 4", session["repetitions"])
+	}
+	matrix, ok := session["run_matrix"].([]any)
+	if !ok || len(matrix) != 4 {
+		t.Fatalf("run_matrix = %#v, want four entries", session["run_matrix"])
+	}
+	first := matrix[0].(map[string]any)
+	if first["key"] != "default:seed-1" || first["deployment_lineup"] != "default" || first["seed"] != float64(1) {
+		t.Fatalf("first matrix entry = %#v, want default seed 1", first)
+	}
+	third := matrix[2].(map[string]any)
+	participants := third["participants"].([]any)
+	participant := participants[0].(map[string]any)
+	if third["deployment_lineup"] != "smoke" || participant["agent_deployment_id"] != "dep-2" {
+		t.Fatalf("third matrix entry = %#v, want smoke dep-2", third)
+	}
+	if participant["label"] != "smoke" {
+		t.Fatalf("third matrix participant label = %v, want smoke", participant["label"])
+	}
+}
+
+func TestRunSeriesCreateValidatesSeedsBeforeResolvingLineups(t *testing.T) {
+	requests := 0
+	routes := evalStartFakeRoutes(t, nil)
+	routes["GET /v1/workspaces/ws-1/challenge-packs"] = func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		jsonHandler(200, map[string]any{"items": []map[string]any{}})(w, r)
+	}
+	srv := fakeAPI(t, routes)
+	defer srv.Close()
+
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+	err := executeCommand(t, []string{
+		"run", "series", "create", "-w", "ws-1",
+		"--challenge-pack-version", "pv-1",
+		"--deployment-lineups", "default,smoke",
+	}, srv.URL)
+	if err == nil {
+		t.Fatal("expected missing seeds error")
+	}
+	if !strings.Contains(err.Error(), "--seeds must be between 1 and 100") {
+		t.Fatalf("err = %v, want local seeds validation", err)
+	}
+	if requests != 0 {
+		t.Fatalf("challenge pack resolver was called %d times, want local validation first", requests)
+	}
+}
+
+func TestBuildSeriesEvalSessionBodyQualifiesMultiParticipantLabelsByLineup(t *testing.T) {
+	body, err := buildSeriesEvalSessionBody("ws-1", runCreateRequest{
+		ChallengePackVersionID: "pv-1",
+		OfficialPackMode:       "full",
+		Seeds:                  1,
+		ResolvedDeploymentLineups: []runCreateDeploymentLineup{
+			{Name: "premium", DeploymentIDs: []string{"dep-a", "dep-b"}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	session := body["eval_session"].(map[string]any)
+	matrix := session["run_matrix"].([]map[string]any)
+	participants := matrix[0]["participants"].([]map[string]any)
+	if participants[0]["label"] != "premium / Primary" || participants[1]["label"] != "premium / Participant 2" {
+		t.Fatalf("participants = %#v, want lineup-qualified labels", participants)
 	}
 }
 
