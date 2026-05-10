@@ -22,6 +22,7 @@ func init() {
 	runCmd.AddCommand(runRankingCmd)
 	runCmd.AddCommand(runAgentsCmd)
 	runCmd.AddCommand(runEventsCmd)
+	runEventsCmd.AddCommand(runEventsExportCmd)
 	runCmd.AddCommand(runScorecardCmd)
 	runCmd.AddCommand(runFailuresCmd)
 	runCmd.AddCommand(runPromoteFailureCmd)
@@ -361,6 +362,25 @@ var runEventsCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		rc := GetRunContext(cmd)
 		return streamRunEvents(cmd, rc, args[0])
+	},
+}
+
+var runEventsExportCmd = &cobra.Command{
+	Use:   "export <runId>",
+	Short: "Export persisted run events as JSONL",
+	Long:  "Export the full ordered persisted run-agent event stream for a run as JSONL.",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		rc := GetRunContext(cmd)
+		resp, err := rc.Client.Get(cmd.Context(), "/v1/runs/"+args[0]+"/events/export", nil)
+		if err != nil {
+			return err
+		}
+		if apiErr := resp.ParseError(); apiErr != nil {
+			return apiErr
+		}
+		_, err = rc.Output.Writer().Write(resp.Body)
+		return err
 	},
 }
 

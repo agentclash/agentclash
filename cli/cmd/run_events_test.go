@@ -115,6 +115,37 @@ func TestRunEventsEmitsNDJSONForJSON(t *testing.T) {
 	}
 }
 
+func TestRunEventsExportPrintsJSONL(t *testing.T) {
+	jsonl := strings.Join([]string{
+		`{"event_id":"persisted:agent-1:1","sequence_number":1}`,
+		`{"event_id":"persisted:agent-1:2","sequence_number":2}`,
+		"",
+	}, "\n")
+	called := false
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"GET /v1/runs/run-x/events/export": func(w http.ResponseWriter, r *http.Request) {
+			called = true
+			w.Header().Set("Content-Type", "application/x-ndjson")
+			w.WriteHeader(http.StatusOK)
+			fmt.Fprint(w, jsonl)
+		},
+	})
+	defer srv.Close()
+
+	stdout := captureStdout(t)
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+	if err := executeCommand(t, []string{"run", "events", "export", "run-x"}, srv.URL); err != nil {
+		t.Fatalf("run events export: %v", err)
+	}
+
+	if !called {
+		t.Fatal("export endpoint was not called")
+	}
+	if out := stdout.finish(); out != jsonl {
+		t.Fatalf("export output mismatch\nwant:\n%s\ngot:\n%s", jsonl, out)
+	}
+}
+
 func TestRunCreateFollowJSONStreamsCreatedRunAndEvents(t *testing.T) {
 	sseBody := "event: step\n" +
 		"data: {\"EventType\":\"run.started\"}\n" +
