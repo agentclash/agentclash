@@ -23,6 +23,10 @@ func evaluateValidators(validators []ValidatorDeclaration, evidence extractedEvi
 			results = append(results, evaluateCodeExecutionValidator(result, validator, evidence))
 			continue
 		}
+		if validator.Type == ValidatorTypeToolCallAssertion {
+			results = append(results, evaluateToolCallAssertionValidator(result, validator, evidence))
+			continue
+		}
 
 		// Resolve the target (actual) evidence.
 		actualValue, actualChallengeID, actualReason, actualErr := resolveEvidenceValue(validator.Target, evidence)
@@ -301,6 +305,7 @@ func isPackAuthorValidatorError(reason string) bool {
 		"parse rouge_score references",
 		"parse chrf_score config",
 		"parse chrf_score references",
+		"parse tool_call_assertion config",
 		"parse json schema",
 		"resolve json schema",
 		"parse json_path_match expectation",

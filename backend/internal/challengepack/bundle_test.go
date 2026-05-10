@@ -290,6 +290,52 @@ func TestManifestJSONPreservesGeneralizedContract(t *testing.T) {
 	}
 }
 
+func TestParseYAMLAcceptsToolCallAssertionValidator(t *testing.T) {
+	bundle, err := ParseYAML([]byte(`
+pack:
+  slug: tool-eval
+  name: Tool Eval
+  family: support
+version:
+  number: 1
+  evaluation_spec:
+    name: tool-v1
+    version_number: 1
+    judge_mode: deterministic
+    validators:
+      - key: submitted
+        type: tool_call_assertion
+        target: tool_calls
+        config:
+          tool_name: submit
+          arguments_contain:
+            answer: "42"
+    scorecard:
+      dimensions: [correctness]
+challenges:
+  - key: ticket-1
+    title: Ticket One
+    category: support
+    difficulty: easy
+input_sets:
+  - key: default
+    name: Default
+    cases:
+      - challenge_key: ticket-1
+        case_key: sample-1
+`))
+	if err != nil {
+		t.Fatalf("ParseYAML returned error: %v", err)
+	}
+	validator := bundle.Version.EvaluationSpec.Validators[0]
+	if validator.Type != scoring.ValidatorTypeToolCallAssertion {
+		t.Fatalf("validator type = %q, want %q", validator.Type, scoring.ValidatorTypeToolCallAssertion)
+	}
+	if validator.ExpectedFrom != "" {
+		t.Fatalf("expected_from = %q, want empty", validator.ExpectedFrom)
+	}
+}
+
 func TestParseYAMLRejectsInvalidBundle(t *testing.T) {
 	_, err := ParseYAML([]byte(`
 pack:

@@ -82,7 +82,7 @@ const manifestPath = execFileSync(
 const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
 assert.equal(manifest.harnesses.length, 1);
 const spec = JSON.parse(readFileSync(manifest.harnesses[0].spec, "utf8"));
-assert.match(spec.name, /^skill-self-test-unit-agentclash-example-skill$/);
+assert.match(spec.name, /^skill-self-test-unit-e3a05841-agentclash-example-skill$/);
 assert.equal(spec.auth_mode, "api_key_secret");
 assert.equal(spec.openai_api_key_secret_name, "OPENAI_API_KEY");
 assert.equal(spec.repository_url, "https://github.com/agentclash/agentclash.git");
@@ -125,7 +125,7 @@ const longManifestPath = execFileSync(
 ).trim();
 const longManifest = JSON.parse(readFileSync(longManifestPath, "utf8"));
 const longSpec = JSON.parse(readFileSync(longManifest.harnesses[0].spec, "utf8"));
-assert.match(longSpec.name.slice(0, 60), /^skill-self-test-run-123456789-1-/);
+assert.match(longSpec.name.slice(0, 60), /^skill-self-test-run-123456789-1-34cd64be-/);
 
 const resultPath = path.join(tmp, "result.json");
 writeFileSync(
