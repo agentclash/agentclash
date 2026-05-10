@@ -1302,6 +1302,7 @@ export type ValidatorEvidence =
   | ValidatorRegexEvidence
   | ValidatorJSONSchemaEvidence
   | ValidatorJSONPathEvidence
+  | ValidatorToolCallAssertionEvidence
   | ValidatorCustomEvidence;
 
 export interface ValidatorTextCompareEvidence {
@@ -1335,6 +1336,24 @@ export interface ValidatorJSONPathEvidence {
   expected?: unknown;
   exists?: boolean;
   source_field?: string;
+}
+
+export interface ValidatorToolCallAssertionEvidence {
+  kind: "tool_call_assertion";
+  source_field?: string;
+  tool_name?: string;
+  observed_count?: number;
+  failed_count?: number;
+  matched_count?: number;
+  matched_indices?: number[];
+  observed_tool_names?: string[];
+  expected_count?: number;
+  expected_min_count?: number;
+  expected_max_count?: number;
+  expected_order?: string[];
+  expected_order_mode?: string;
+  arguments_contain_set?: boolean;
+  matched?: boolean;
 }
 
 export interface ValidatorCustomEvidence {

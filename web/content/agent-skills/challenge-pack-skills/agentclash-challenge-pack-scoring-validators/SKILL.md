@@ -105,7 +105,7 @@ Fields:
 - `key`: required, trimmed, and unique.
 - `type`: required and must be one of the supported validator types below.
 - `target`: required supported evidence reference.
-- `expected_from`: required for most validators; omitted for `file_exists`, `file_json_schema`, `directory_structure`, and `code_execution`.
+- `expected_from`: required for most validators; omitted for `file_exists`, `file_json_schema`, `directory_structure`, `code_execution`, and `tool_call_assertion`.
 - `config`: optional JSON/YAML object interpreted by the validator type.
 
 There is no validator-level `failure_message`, `pass_message`, or custom result text field. Results emit `state`, `verdict`, `normalized_score`, `reason`, `raw_output`, `target`, `expected_from`, `actual_value`, and `expected_value`; the reason text is produced by the scorer.
@@ -133,6 +133,7 @@ file_exists
 file_json_schema
 directory_structure
 code_execution
+tool_call_assertion
 ```
 
 Do not use `has_json`, `json_equals`, `semantic_match`, `unit_test`, `shell`, or provider-specific names; the validator rejects unknown `type` values.
@@ -150,6 +151,24 @@ Validator `target` and required `expected_from` values must use supported eviden
 - `artifact.<artifact_key>[.<field>]`
 - `file:<post_execution_check_key>`
 - `literal:<value>`
+- `tool_calls` (only for `tool_call_assertion`)
+
+## Tool Call Assertions
+Use `tool_call_assertion` to score executed tool-call traces without asking the final answer to self-report behavior. It must use `target: tool_calls` and does not use `expected_from`.
+
+```yaml
+validators:
+  - key: submitted_answer
+    type: tool_call_assertion
+    target: tool_calls
+    config:
+      tool_name: submit
+      must_call: true
+      arguments_contain:
+        answer: "42"
+```
+
+Config supports `tool_name`, `must_call`, `count`, `min_count`, `max_count`, `arguments_contain`, `ordered_tools`, and `order_mode`. `order_mode` is `subsequence` by default and can be `exact`. Scorecard evidence includes counts, matched indices, and tool names, but not raw tool arguments.
 
 Use `literal:` for inline expected values. Use `case.expectations.<key>` or `artifact.<artifact_key>.path` when the expected value should come from case evidence rather than the skill text.
 

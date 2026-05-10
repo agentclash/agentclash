@@ -1392,6 +1392,8 @@ func buildValidatorDetailEvidence(result scoring.ValidatorResult) any {
 		return buildValidatorJSONSchemaEvidence(result, raw)
 	case scoring.ValidatorTypeJSONPathMatch:
 		return buildValidatorJSONPathEvidence(result, raw)
+	case scoring.ValidatorTypeToolCallAssertion:
+		return buildValidatorToolCallAssertionEvidence(result, raw)
 	default:
 		return buildValidatorCustomEvidence(raw)
 	}
@@ -1478,6 +1480,37 @@ func buildValidatorJSONPathEvidence(result scoring.ValidatorResult, raw map[stri
 	}
 	if len(evidence) == 1 {
 		return buildValidatorCustomEvidence(raw)
+	}
+	return evidence
+}
+
+func buildValidatorToolCallAssertionEvidence(result scoring.ValidatorResult, raw map[string]any) any {
+	evidence := map[string]any{
+		"kind": "tool_call_assertion",
+	}
+	if sourceField := strings.TrimSpace(result.Target); sourceField != "" {
+		evidence["source_field"] = sourceField
+	}
+	for _, key := range []string{
+		"tool_name",
+		"observed_count",
+		"failed_count",
+		"matched_count",
+		"matched_indices",
+		"observed_tool_names",
+		"expected_count",
+		"expected_min_count",
+		"expected_max_count",
+		"expected_order",
+		"expected_order_mode",
+		"arguments_contain_set",
+	} {
+		if value, ok := raw[key]; ok {
+			evidence[key] = value
+		}
+	}
+	if result.Verdict == "pass" || result.Verdict == "fail" {
+		evidence["matched"] = result.Verdict == "pass"
 	}
 	return evidence
 }

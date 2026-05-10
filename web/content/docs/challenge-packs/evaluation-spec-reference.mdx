@@ -33,11 +33,13 @@ Each entry is a `ValidatorDeclaration`:
 
 From `ValidatorType*` constants:
 
-`exact_match`, `contains`, `regex_match`, `json_schema`, `json_path_match`, `boolean_assert`, `fuzzy_match`, `numeric_match`, `normalized_match`, `token_f1`, `math_equivalence`, `bleu_score`, `rouge_score`, `chrf_score`, `file_content_match`, `file_exists`, `file_json_schema`, `directory_structure`, `code_execution`
+`exact_match`, `contains`, `regex_match`, `json_schema`, `json_path_match`, `boolean_assert`, `fuzzy_match`, `numeric_match`, `normalized_match`, `token_f1`, `math_equivalence`, `bleu_score`, `rouge_score`, `chrf_score`, `file_content_match`, `file_exists`, `file_json_schema`, `directory_structure`, `code_execution`, `tool_call_assertion`
 
 File-ish validators gate on sandbox artifacts (see **File validators**: `IsFileValidator()` distinguishes these).
 
-Always check `requires_expected_from`: e.g., `file_exists`, `directory_structure`, and `code_execution` can rely on config/paths without `expected_from`.
+Always check `requires_expected_from`: e.g., `file_exists`, `directory_structure`, `code_execution`, and `tool_call_assertion` can rely on config/paths without `expected_from`.
+
+`tool_call_assertion` uses `target: tool_calls` and strict config to assert executed tool-call evidence. It supports `tool_name`, `must_call`, `count`, `min_count`, `max_count`, `arguments_contain` JSON fragments, `ordered_tools`, and `order_mode` (`subsequence` or `exact`). Raw tool arguments are not copied into scorecard evidence.
 
 ## Metrics (`metrics[]`)
 

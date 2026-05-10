@@ -3,6 +3,7 @@ package repository
 import (
 	"encoding/json"
 	"math"
+	"strings"
 	"testing"
 	"time"
 
@@ -616,6 +617,63 @@ func TestBuildRunAgentScorecardDocumentFallsBackToCustomEvidence(t *testing.T) {
 	raw := evidence["raw"].(map[string]any)
 	if raw["stdout"] != "ok" {
 		t.Fatalf("raw evidence = %#v, want stdout", raw)
+	}
+}
+
+func TestBuildRunAgentScorecardDocumentIncludesToolCallAssertionEvidence(t *testing.T) {
+	evaluation := scoring.RunAgentEvaluation{
+		RunAgentID:       uuid.New(),
+		EvaluationSpecID: uuid.New(),
+		Status:           scoring.EvaluationStatusComplete,
+		DimensionResults: []scoring.DimensionResult{
+			{Dimension: "correctness", State: scoring.OutputStateAvailable, Score: float64Ptr(1)},
+		},
+		ValidatorResults: []scoring.ValidatorResult{
+			{
+				Key:             "submitted",
+				Type:            scoring.ValidatorTypeToolCallAssertion,
+				State:           scoring.OutputStateAvailable,
+				Verdict:         "pass",
+				NormalizedScore: float64Ptr(1),
+				Target:          "tool_calls",
+				RawOutput: []byte(`{
+					"state":"available",
+					"verdict":"pass",
+						"tool_name":"submit",
+						"observed_count":2,
+						"failed_count":1,
+						"matched_count":1,
+						"matched_indices":[1],
+						"observed_tool_names":["search","submit"],
+					"arguments_contain_set":true,
+					"tool_arguments":{"secret":"SHOULD_NOT_LEAK"}
+				}`),
+			},
+		},
+	}
+
+	document, err := buildRunAgentScorecardDocument(evaluation)
+	if err != nil {
+		t.Fatalf("buildRunAgentScorecardDocument returned error: %v", err)
+	}
+	if strings.Contains(string(document), "SHOULD_NOT_LEAK") {
+		t.Fatalf("scorecard document leaked tool arguments: %s", document)
+	}
+
+	decoded := decodeRunScorecardJSON(t, document)
+	validators := decoded["validator_details"].([]any)
+	evidence := validators[0].(map[string]any)["evidence"].(map[string]any)
+	if evidence["kind"] != "tool_call_assertion" {
+		t.Fatalf("evidence kind = %#v, want %q", evidence["kind"], "tool_call_assertion")
+	}
+	if evidence["source_field"] != "tool_calls" || evidence["matched"] != true {
+		t.Fatalf("evidence = %#v, want tool_calls source and matched=true", evidence)
+	}
+	if evidence["observed_count"] != float64(2) || evidence["failed_count"] != float64(1) || evidence["matched_count"] != float64(1) {
+		t.Fatalf("evidence counts = %#v, want observed=2 failed=1 matched=1", evidence)
+	}
+	if _, ok := evidence["tool_arguments"]; ok {
+		t.Fatalf("evidence included raw tool arguments: %#v", evidence)
 	}
 }
 

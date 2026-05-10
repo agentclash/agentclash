@@ -209,10 +209,7 @@ func evaluateRunAgentWithResolvedJudges(
 		return RunAgentEvaluation{}, errJudgeModeUnsupported
 	}
 
-	events := append([]Event(nil), input.Events...)
-	sort.SliceStable(events, func(i, j int) bool {
-		return events[i].OccurredAt.Before(events[j].OccurredAt)
-	})
+	events := orderedEvaluationEvents(input.Events)
 
 	evidence := buildEvidence(input.ChallengeInputs, events)
 	validatorResults, warnings := evaluateValidators(spec.Validators, evidence)
@@ -223,12 +220,30 @@ func evaluateRunAgentWithResolvedJudges(
 }
 
 func finalizeRunAgentEvaluation(input EvaluationInput, spec EvaluationSpec, validatorResults []ValidatorResult, metricResults []MetricResult, llmJudgeResults []LLMJudgeResult, warnings []string) RunAgentEvaluation {
-	events := append([]Event(nil), input.Events...)
-	sort.SliceStable(events, func(i, j int) bool {
-		return events[i].OccurredAt.Before(events[j].OccurredAt)
-	})
+	events := orderedEvaluationEvents(input.Events)
 	evidence := buildEvidence(input.ChallengeInputs, events)
 	return finalizeRunAgentEvaluationWithEvidence(input, spec, evidence, validatorResults, metricResults, llmJudgeResults, warnings)
+}
+
+func orderedEvaluationEvents(events []Event) []Event {
+	ordered := append([]Event(nil), events...)
+	sort.SliceStable(ordered, func(i, j int) bool {
+		left := ordered[i]
+		right := ordered[j]
+		leftHasSequence := left.SequenceNumber > 0
+		rightHasSequence := right.SequenceNumber > 0
+		if leftHasSequence != rightHasSequence {
+			return leftHasSequence
+		}
+		if leftHasSequence && left.SequenceNumber != right.SequenceNumber {
+			return left.SequenceNumber < right.SequenceNumber
+		}
+		if !left.OccurredAt.Equal(right.OccurredAt) {
+			return left.OccurredAt.Before(right.OccurredAt)
+		}
+		return left.Type < right.Type
+	})
+	return ordered
 }
 
 func finalizeRunAgentEvaluationWithEvidence(input EvaluationInput, spec EvaluationSpec, evidence extractedEvidence, validatorResults []ValidatorResult, metricResults []MetricResult, llmJudgeResults []LLMJudgeResult, warnings []string) RunAgentEvaluation {
