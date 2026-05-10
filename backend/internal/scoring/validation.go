@@ -68,6 +68,9 @@ func ValidateEvaluationSpec(spec EvaluationSpec) error {
 	if spec.RuntimeLimits.MaxDurationMS != nil && *spec.RuntimeLimits.MaxDurationMS <= 0 {
 		errs = append(errs, ValidationError{Field: "evaluation_spec.runtime_limits.max_duration_ms", Message: "must be greater than 0"})
 	}
+	if spec.RuntimeLimits.MaxIterations != nil && *spec.RuntimeLimits.MaxIterations <= 0 {
+		errs = append(errs, ValidationError{Field: "evaluation_spec.runtime_limits.max_iterations", Message: "must be greater than 0"})
+	}
 
 	validatorKeys := map[string]struct{}{}
 	for i, validator := range spec.Validators {

@@ -6867,6 +6867,15 @@ components:
             Optional. Overrides the default cadence (minimum steps between
             standings injections). Null / omitted uses the backend default.
             Only meaningful when `race_context` is true.
+        max_iterations:
+          type: integer
+          minimum: 1
+          maximum: 1000
+          description: >
+            Optional. Overrides the max native-agent iteration budget for this
+            run. If omitted, AgentClash uses the challenge pack
+            `evaluation_spec.runtime_limits.max_iterations` default when
+            present, otherwise the selected runtime profile default.
         ci_metadata:
           $ref: "#/components/schemas/RunCIMetadata"
           description: >

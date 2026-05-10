@@ -146,6 +146,11 @@ func TestBuildEvalSessionBody_RejectsUnsupportedFlags(t *testing.T) {
 			mutate:  func(r *runCreateRequest) { r.RaceContextCadence = 5 },
 			wantErr: "race-context",
 		},
+		{
+			name:    "max_iterations",
+			mutate:  func(r *runCreateRequest) { r.MaxIterations = 7 },
+			wantErr: "max-iter",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

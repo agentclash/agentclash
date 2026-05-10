@@ -19,7 +19,10 @@ import (
 	"github.com/google/uuid"
 )
 
-const maxCreateRunRequestBytes = 1 << 20
+const (
+	maxCreateRunRequestBytes = 1 << 20
+	maxRunMaxIterations      = 1000
+)
 
 type RunCreationService interface {
 	CreateRun(ctx context.Context, caller Caller, input CreateRunInput) (CreateRunResult, error)
@@ -44,6 +47,7 @@ type createRunRequest struct {
 	// RaceContextMinStepGap overrides the default cadence threshold. When
 	// omitted, the executor uses the backend default. Valid range [1, 10].
 	RaceContextMinStepGap *int                  `json:"race_context_min_step_gap,omitempty"`
+	MaxIterations         *int                  `json:"max_iterations,omitempty"`
 	CIMetadata            *domain.RunCIMetadata `json:"ci_metadata,omitempty"`
 }
 
@@ -59,6 +63,7 @@ type CreateRunInput struct {
 	IncludeProposedRegressions bool
 	RaceContext                bool
 	RaceContextMinStepGap      *int32
+	MaxIterations              *int32
 	CIMetadata                 *domain.RunCIMetadata
 }
 
@@ -368,6 +373,19 @@ func decodeCreateRunRequest(r *http.Request) (CreateRunInput, error) {
 		gap32 := int32(gap)
 		raceContextMinStepGap = &gap32
 	}
+
+	var maxIterations *int32
+	if body.MaxIterations != nil {
+		value := *body.MaxIterations
+		if value < 1 || value > maxRunMaxIterations {
+			return CreateRunInput{}, RunCreationValidationError{
+				Code:    "invalid_max_iterations",
+				Message: fmt.Sprintf("max_iterations must be between 1 and %d", maxRunMaxIterations),
+			}
+		}
+		value32 := int32(value)
+		maxIterations = &value32
+	}
 	ciMetadata, err := normalizeCreateRunCIMetadata(body.CIMetadata)
 	if err != nil {
 		return CreateRunInput{}, err
@@ -385,6 +403,7 @@ func decodeCreateRunRequest(r *http.Request) (CreateRunInput, error) {
 		IncludeProposedRegressions: body.IncludeProposedRegressions,
 		RaceContext:                body.RaceContext,
 		RaceContextMinStepGap:      raceContextMinStepGap,
+		MaxIterations:              maxIterations,
 		CIMetadata:                 ciMetadata,
 	}, nil
 }

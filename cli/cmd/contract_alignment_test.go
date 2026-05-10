@@ -72,6 +72,7 @@ func TestRunCreateUsesRegressionSelectorsAndOfficialPackMode(t *testing.T) {
 		"--suite", "suite-1",
 		"--case", "case-1",
 		"--include-proposed-regressions",
+		"--max-iter", "7",
 	}, srv.URL)
 	if err != nil {
 		t.Fatalf("run create error: %v", err)
@@ -88,6 +89,9 @@ func TestRunCreateUsesRegressionSelectorsAndOfficialPackMode(t *testing.T) {
 	}
 	if gotBody["include_proposed_regressions"] != true {
 		t.Fatalf("include_proposed_regressions = %v, want true", gotBody["include_proposed_regressions"])
+	}
+	if gotBody["max_iterations"] != float64(7) {
+		t.Fatalf("max_iterations = %v, want 7", gotBody["max_iterations"])
 	}
 }
 

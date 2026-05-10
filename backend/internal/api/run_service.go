@@ -148,6 +148,9 @@ func (m *RunCreationManager) CreateRun(ctx context.Context, caller Caller, input
 			Message: "challenge_pack_version_id must be visible to the selected workspace",
 		}
 	}
+	if input.MaxIterations == nil {
+		input.MaxIterations = challengePackDefaultMaxIterations(challengePackVersion.Manifest)
+	}
 
 	if input.ChallengeInputSetID != nil {
 		challengeInputSet, err := m.repo.GetChallengeInputSetByID(ctx, *input.ChallengeInputSetID)
@@ -465,12 +468,17 @@ func buildExecutionPlan(input CreateRunInput, runAgents []repository.CreateQueue
 		Label                     string    `json:"label"`
 	}
 
+	type executionPlanRuntimeLimits struct {
+		MaxIterations *int32 `json:"max_iterations,omitempty"`
+	}
+
 	type executionPlan struct {
-		WorkspaceID            uuid.UUID               `json:"workspace_id"`
-		ChallengePackVersionID uuid.UUID               `json:"challenge_pack_version_id"`
-		ChallengeInputSetID    *uuid.UUID              `json:"challenge_input_set_id,omitempty"`
-		OfficialPackMode       domain.OfficialPackMode `json:"official_pack_mode"`
-		Participants           []executionPlanRunAgent `json:"participants"`
+		WorkspaceID            uuid.UUID                   `json:"workspace_id"`
+		ChallengePackVersionID uuid.UUID                   `json:"challenge_pack_version_id"`
+		ChallengeInputSetID    *uuid.UUID                  `json:"challenge_input_set_id,omitempty"`
+		OfficialPackMode       domain.OfficialPackMode     `json:"official_pack_mode"`
+		Participants           []executionPlanRunAgent     `json:"participants"`
+		RuntimeLimits          *executionPlanRuntimeLimits `json:"runtime_limits,omitempty"`
 	}
 
 	participants := make([]executionPlanRunAgent, 0, len(runAgents))
@@ -483,18 +491,57 @@ func buildExecutionPlan(input CreateRunInput, runAgents []repository.CreateQueue
 		})
 	}
 
-	payload, err := json.Marshal(executionPlan{
+	plan := executionPlan{
 		WorkspaceID:            input.WorkspaceID,
 		ChallengePackVersionID: input.ChallengePackVersionID,
 		ChallengeInputSetID:    input.ChallengeInputSetID,
 		OfficialPackMode:       input.OfficialPackMode,
 		Participants:           participants,
-	})
+	}
+	if input.MaxIterations != nil {
+		plan.RuntimeLimits = &executionPlanRuntimeLimits{MaxIterations: cloneInt32Ptr(input.MaxIterations)}
+	}
+
+	payload, err := json.Marshal(plan)
 	if err != nil {
 		return nil, err
 	}
 
 	return payload, nil
+}
+
+func challengePackDefaultMaxIterations(manifest json.RawMessage) *int32 {
+	var document struct {
+		RuntimeLimits struct {
+			MaxIterations *int32 `json:"max_iterations"`
+		} `json:"runtime_limits"`
+		EvaluationSpec struct {
+			RuntimeLimits struct {
+				MaxIterations *int32 `json:"max_iterations"`
+			} `json:"runtime_limits"`
+		} `json:"evaluation_spec"`
+	}
+	if len(manifest) == 0 {
+		return nil
+	}
+	if err := json.Unmarshal(manifest, &document); err != nil {
+		return nil
+	}
+	if value := validMaxIterationsDefault(document.RuntimeLimits.MaxIterations); value != nil {
+		return value
+	}
+	return validMaxIterationsDefault(document.EvaluationSpec.RuntimeLimits.MaxIterations)
+}
+
+func validMaxIterationsDefault(candidate *int32) *int32 {
+	if candidate == nil {
+		return nil
+	}
+	value := *candidate
+	if value < 1 || value > maxRunMaxIterations {
+		return nil
+	}
+	return &value
 }
 
 func defaultRunName(now time.Time) string {
