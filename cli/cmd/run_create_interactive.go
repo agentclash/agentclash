@@ -49,9 +49,13 @@ func resolveRunCreateSelections(cmd *cobra.Command, rc *RunContext, workspaceID 
 	cpvID, _ := cmd.Flags().GetString("challenge-pack-version")
 	deployments, _ := cmd.Flags().GetStringSlice("deployments")
 	lineup, _ := cmd.Flags().GetString("deployment-lineup")
+	lineups, _ := cmd.Flags().GetStringSlice("deployment-lineups")
 	inputSetID, _ := cmd.Flags().GetString("input-set")
 	if len(deployments) > 0 && strings.TrimSpace(lineup) != "" {
 		return runCreateSelections{}, fmt.Errorf("--deployment-lineup cannot be combined with --deployments")
+	}
+	if len(compactNonEmptyStrings(lineups)) > 0 {
+		return runCreateSelections{}, fmt.Errorf("--deployment-lineups must be used with --seeds and cannot use guided deployment selection")
 	}
 
 	selections := runCreateSelections{
@@ -283,6 +287,40 @@ func resolveDefaultDeploymentLineup(cmd *cobra.Command, rc *RunContext, workspac
 		return nil, false, err
 	}
 	return ids, true, nil
+}
+
+func resolveRunCreateDeploymentLineups(cmd *cobra.Command, rc *RunContext, workspaceID, challengePackVersionID string, lineups []string) ([]runCreateDeploymentLineup, error) {
+	if strings.TrimSpace(challengePackVersionID) == "" {
+		return nil, fmt.Errorf("--challenge-pack-version is required with --deployment-lineups")
+	}
+	names := compactNonEmptyStrings(lineups)
+	if len(names) == 0 {
+		return nil, fmt.Errorf("at least one deployment lineup is required")
+	}
+	singleLineup, _ := cmd.Flags().GetString("deployment-lineup")
+	deployments, _ := cmd.Flags().GetStringSlice("deployments")
+	if strings.TrimSpace(singleLineup) != "" {
+		return nil, fmt.Errorf("--deployment-lineups cannot be combined with --deployment-lineup")
+	}
+	if len(compactNonEmptyStrings(deployments)) > 0 {
+		return nil, fmt.Errorf("--deployment-lineups cannot be combined with --deployments")
+	}
+
+	resolved := make([]runCreateDeploymentLineup, 0, len(names))
+	for _, name := range names {
+		ids, ok, err := resolveDefaultDeploymentLineup(cmd, rc, workspaceID, challengePackVersionID, name)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			return nil, fmt.Errorf("challenge pack version %s was not found while resolving deployment lineups", challengePackVersionID)
+		}
+		resolved = append(resolved, runCreateDeploymentLineup{
+			Name:          name,
+			DeploymentIDs: ids,
+		})
+	}
+	return resolved, nil
 }
 
 func findChallengePackVersion(cmd *cobra.Command, rc *RunContext, workspaceID, challengePackVersionID string) (challengePackVersionBrief, bool, error) {

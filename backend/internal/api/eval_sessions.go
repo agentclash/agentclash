@@ -38,11 +38,19 @@ type createEvalSessionResponse struct {
 	EvalSession evalSessionResponse            `json:"eval_session"`
 	RunIDs      []uuid.UUID                    `json:"run_ids"`
 	SeededRuns  []evalSessionSeededRunResponse `json:"seeded_runs,omitempty"`
+	SeriesRuns  []evalSessionSeriesRunResponse `json:"series_runs,omitempty"`
 }
 
 type evalSessionSeededRunResponse struct {
 	RunID uuid.UUID `json:"run_id"`
 	Seed  int64     `json:"seed"`
+}
+
+type evalSessionSeriesRunResponse struct {
+	RunID            uuid.UUID `json:"run_id"`
+	MatrixKey        string    `json:"matrix_key,omitempty"`
+	DeploymentLineup string    `json:"deployment_lineup,omitempty"`
+	Seed             *int64    `json:"seed,omitempty"`
 }
 
 type evalSessionResponse struct {
@@ -111,6 +119,7 @@ func createEvalSessionHandler(logger *slog.Logger, service RunCreationService) h
 			EvalSession: buildEvalSessionResponse(result.Session),
 			RunIDs:      append([]uuid.UUID(nil), result.RunIDs...),
 			SeededRuns:  buildEvalSessionSeededRunResponse(result.SeededRuns),
+			SeriesRuns:  buildEvalSessionSeriesRunResponse(result.SeriesRuns),
 		})
 	}
 }
@@ -175,6 +184,22 @@ func buildEvalSessionSeededRunResponse(items []EvalSessionSeededRun) []evalSessi
 		out = append(out, evalSessionSeededRunResponse{
 			RunID: item.RunID,
 			Seed:  item.Seed,
+		})
+	}
+	return out
+}
+
+func buildEvalSessionSeriesRunResponse(items []EvalSessionSeriesRun) []evalSessionSeriesRunResponse {
+	if len(items) == 0 {
+		return nil
+	}
+	out := make([]evalSessionSeriesRunResponse, 0, len(items))
+	for _, item := range items {
+		out = append(out, evalSessionSeriesRunResponse{
+			RunID:            item.RunID,
+			MatrixKey:        item.MatrixKey,
+			DeploymentLineup: item.DeploymentLineup,
+			Seed:             cloneInt64Ptr(item.Seed),
 		})
 	}
 	return out
@@ -255,48 +280,11 @@ func decodeCreateEvalSessionRequest(_ context.Context, r *http.Request) (CreateE
 
 	participants := make([]EvalSessionParticipantInput, 0, len(body.Participants))
 	for _, participant := range body.Participants {
-		var deploymentID *uuid.UUID
-		if strings.TrimSpace(participant.AgentDeploymentID) != "" {
-			parsedDeploymentID, parseErr := parseRequiredUUID(participant.AgentDeploymentID, "participants.agent_deployment_id", "invalid_participants")
-			if parseErr != nil {
-				return CreateEvalSessionInput{}, RunCreationValidationError{
-					Code:    "invalid_participants",
-					Message: "participants must contain valid agent_deployment_id values",
-				}
-			}
-			deploymentID = &parsedDeploymentID
+		parsed, parseErr := decodeEvalSessionParticipant(participant, "participants")
+		if parseErr != nil {
+			return CreateEvalSessionInput{}, parseErr
 		}
-
-		var buildVersionID *uuid.UUID
-		if deploymentID == nil && strings.TrimSpace(participant.AgentBuildVersionID) != "" {
-			parsedBuildVersionID, parseErr := parseRequiredUUID(participant.AgentBuildVersionID, "participants.agent_build_version_id", "invalid_participants")
-			if parseErr != nil {
-				return CreateEvalSessionInput{}, RunCreationValidationError{
-					Code:    "invalid_participants",
-					Message: "participants must contain valid agent_deployment_id values",
-				}
-			}
-			buildVersionID = &parsedBuildVersionID
-		}
-		if deploymentID == nil && buildVersionID == nil {
-			return CreateEvalSessionInput{}, RunCreationValidationError{
-				Code:    "invalid_participants",
-				Message: "participants must contain valid agent_deployment_id values",
-			}
-		}
-
-		label := strings.TrimSpace(participant.Label)
-		if label == "" {
-			return CreateEvalSessionInput{}, RunCreationValidationError{
-				Code:    "invalid_participants",
-				Message: "participants must contain non-empty labels",
-			}
-		}
-		participants = append(participants, EvalSessionParticipantInput{
-			AgentDeploymentID:   deploymentID,
-			AgentBuildVersionID: buildVersionID,
-			Label:               label,
-		})
+		participants = append(participants, parsed)
 	}
 
 	config, err := decodeEvalSessionConfig(body.EvalSession)
@@ -325,6 +313,7 @@ func decodeEvalSessionConfig(raw json.RawMessage) (CreateEvalSessionConfigInput,
 		ReliabilityWeights  json.RawMessage `json:"reliability_weights"`
 		SeedFanout          json.RawMessage `json:"seed_fanout"`
 		SchemaVersion       json.RawMessage `json:"schema_version"`
+		RunMatrix           json.RawMessage `json:"run_matrix"`
 	}
 
 	var body evalSessionConfigRequest
@@ -376,6 +365,15 @@ func decodeEvalSessionConfig(raw json.RawMessage) (CreateEvalSessionConfigInput,
 	details = append(details, reliabilityDetails...)
 	seedFanout, seedFanoutDetails := decodeEvalSessionSeedFanout(body.SeedFanout, repetitions)
 	details = append(details, seedFanoutDetails...)
+	runMatrix, runMatrixDetails := decodeEvalSessionRunMatrix(body.RunMatrix, repetitions)
+	details = append(details, runMatrixDetails...)
+	if len(seedFanout) > 0 && len(runMatrix) > 0 {
+		details = append(details, evalSessionValidationDetail{
+			Field:   "eval_session.run_matrix",
+			Code:    "eval_session.run_matrix.seed_fanout_conflict",
+			Message: "run_matrix cannot be combined with seed_fanout",
+		})
+	}
 
 	if aggregation.Method == "weighted_mean" && reliabilityWeights == nil {
 		details = append(details, evalSessionValidationDetail{
@@ -396,8 +394,162 @@ func decodeEvalSessionConfig(raw json.RawMessage) (CreateEvalSessionConfigInput,
 		RoutingTaskSnapshot: routingTaskSnapshot,
 		ReliabilityWeights:  reliabilityWeights,
 		SeedFanout:          seedFanout,
+		RunMatrix:           runMatrix,
 		SchemaVersion:       schemaVersion,
 	}, nil
+}
+
+func decodeEvalSessionParticipant(participant createEvalSessionParticipant, fieldPrefix string) (EvalSessionParticipantInput, error) {
+	var deploymentID *uuid.UUID
+	if strings.TrimSpace(participant.AgentDeploymentID) != "" {
+		parsedDeploymentID, parseErr := parseRequiredUUID(participant.AgentDeploymentID, fieldPrefix+".agent_deployment_id", "invalid_participants")
+		if parseErr != nil {
+			return EvalSessionParticipantInput{}, RunCreationValidationError{
+				Code:    "invalid_participants",
+				Message: "participants must contain valid agent_deployment_id values",
+			}
+		}
+		deploymentID = &parsedDeploymentID
+	}
+
+	var buildVersionID *uuid.UUID
+	if deploymentID == nil && strings.TrimSpace(participant.AgentBuildVersionID) != "" {
+		parsedBuildVersionID, parseErr := parseRequiredUUID(participant.AgentBuildVersionID, fieldPrefix+".agent_build_version_id", "invalid_participants")
+		if parseErr != nil {
+			return EvalSessionParticipantInput{}, RunCreationValidationError{
+				Code:    "invalid_participants",
+				Message: "participants must contain valid agent_deployment_id values",
+			}
+		}
+		buildVersionID = &parsedBuildVersionID
+	}
+	if deploymentID == nil && buildVersionID == nil {
+		return EvalSessionParticipantInput{}, RunCreationValidationError{
+			Code:    "invalid_participants",
+			Message: "participants must contain valid agent_deployment_id values",
+		}
+	}
+
+	label := strings.TrimSpace(participant.Label)
+	if label == "" {
+		return EvalSessionParticipantInput{}, RunCreationValidationError{
+			Code:    "invalid_participants",
+			Message: "participants must contain non-empty labels",
+		}
+	}
+	return EvalSessionParticipantInput{
+		AgentDeploymentID:   deploymentID,
+		AgentBuildVersionID: buildVersionID,
+		Label:               label,
+	}, nil
+}
+
+func decodeEvalSessionRunMatrix(raw json.RawMessage, repetitions int32) ([]EvalSessionRunMatrixEntryInput, []evalSessionValidationDetail) {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
+		return nil, nil
+	}
+	type runMatrixEntryRequest struct {
+		Key              json.RawMessage                `json:"key"`
+		DeploymentLineup json.RawMessage                `json:"deployment_lineup"`
+		Seed             json.RawMessage                `json:"seed"`
+		Participants     []createEvalSessionParticipant `json:"participants"`
+	}
+	var rawEntries []runMatrixEntryRequest
+	if err := json.Unmarshal(raw, &rawEntries); err != nil {
+		return nil, []evalSessionValidationDetail{{
+			Field:   "eval_session.run_matrix",
+			Code:    "eval_session.run_matrix.invalid",
+			Message: "run_matrix must be an array of child run entries",
+		}}
+	}
+	details := make([]evalSessionValidationDetail, 0)
+	if int32(len(rawEntries)) != repetitions {
+		details = append(details, evalSessionValidationDetail{
+			Field:   "eval_session.run_matrix",
+			Code:    "eval_session.run_matrix.length_mismatch",
+			Message: "run_matrix length must match repetitions",
+		})
+	}
+	entries := make([]EvalSessionRunMatrixEntryInput, 0, len(rawEntries))
+	seenKeys := make(map[string]struct{}, len(rawEntries))
+	for idx, rawEntry := range rawEntries {
+		field := fmt.Sprintf("eval_session.run_matrix[%d]", idx)
+		key, ok := decodeRequiredString(rawEntry.Key)
+		if !ok {
+			details = append(details, evalSessionValidationDetail{
+				Field:   field + ".key",
+				Code:    "eval_session.run_matrix.key.invalid",
+				Message: "run_matrix entries must include a non-empty key",
+			})
+		}
+		if _, exists := seenKeys[key]; key != "" && exists {
+			details = append(details, evalSessionValidationDetail{
+				Field:   field + ".key",
+				Code:    "eval_session.run_matrix.key.duplicate",
+				Message: "run_matrix entry keys must be unique",
+			})
+		}
+		seenKeys[key] = struct{}{}
+
+		deploymentLineup := ""
+		if len(bytes.TrimSpace(rawEntry.DeploymentLineup)) > 0 {
+			lineup, lineupOK := decodeRequiredString(rawEntry.DeploymentLineup)
+			if !lineupOK {
+				details = append(details, evalSessionValidationDetail{
+					Field:   field + ".deployment_lineup",
+					Code:    "eval_session.run_matrix.deployment_lineup.invalid",
+					Message: "deployment_lineup must be a non-empty string when provided",
+				})
+			}
+			deploymentLineup = lineup
+		}
+
+		var seed *int64
+		if len(bytes.TrimSpace(rawEntry.Seed)) > 0 {
+			var parsedSeed int64
+			if err := json.Unmarshal(rawEntry.Seed, &parsedSeed); err != nil || parsedSeed < 1 {
+				details = append(details, evalSessionValidationDetail{
+					Field:   field + ".seed",
+					Code:    "eval_session.run_matrix.seed.invalid",
+					Message: "run_matrix seed must be a positive integer when provided",
+				})
+			} else {
+				seed = &parsedSeed
+			}
+		}
+
+		if len(rawEntry.Participants) == 0 {
+			details = append(details, evalSessionValidationDetail{
+				Field:   field + ".participants",
+				Code:    "eval_session.run_matrix.participants.required",
+				Message: "run_matrix entries must include at least one participant",
+			})
+		}
+		participants := make([]EvalSessionParticipantInput, 0, len(rawEntry.Participants))
+		for participantIdx, participant := range rawEntry.Participants {
+			parsed, parseErr := decodeEvalSessionParticipant(participant, fmt.Sprintf("%s.participants[%d]", field, participantIdx))
+			if parseErr != nil {
+				details = append(details, evalSessionValidationDetail{
+					Field:   fmt.Sprintf("%s.participants[%d]", field, participantIdx),
+					Code:    "eval_session.run_matrix.participants.invalid",
+					Message: "run_matrix participants must contain valid deployment or build version IDs and labels",
+				})
+				continue
+			}
+			participants = append(participants, parsed)
+		}
+		entries = append(entries, EvalSessionRunMatrixEntryInput{
+			Key:              key,
+			DeploymentLineup: deploymentLineup,
+			Seed:             seed,
+			Participants:     participants,
+		})
+	}
+	if len(details) > 0 {
+		return nil, details
+	}
+	return entries, nil
 }
 
 func decodeEvalSessionSeedFanout(raw json.RawMessage, repetitions int32) ([]int64, []evalSessionValidationDetail) {

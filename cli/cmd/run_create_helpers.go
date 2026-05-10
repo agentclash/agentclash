@@ -17,6 +17,8 @@ type runCreateRequest struct {
 	ChallengePackVersionID     string
 	ChallengeInputSetID        string
 	DeploymentIDs              []string
+	DeploymentLineups          []string
+	ResolvedDeploymentLineups  []runCreateDeploymentLineup
 	Name                       string
 	OfficialPackMode           string
 	RegressionSuiteIDs         []string
@@ -29,8 +31,41 @@ type runCreateRequest struct {
 	CIMetadata                 map[string]any
 }
 
+type runCreateDeploymentLineup struct {
+	Name          string
+	DeploymentIDs []string
+}
+
 func runCreateRequestFromFlags(cmd *cobra.Command, base runCreateRequest) (runCreateRequest, error) {
 	request := base
+
+	if cmd.Flags().Lookup("challenge-pack-version") != nil {
+		challengePackVersionID, _ := cmd.Flags().GetString("challenge-pack-version")
+		if trimmed := strings.TrimSpace(challengePackVersionID); trimmed != "" {
+			request.ChallengePackVersionID = trimmed
+		}
+	}
+
+	if cmd.Flags().Lookup("input-set") != nil {
+		inputSetID, _ := cmd.Flags().GetString("input-set")
+		if trimmed := strings.TrimSpace(inputSetID); trimmed != "" {
+			request.ChallengeInputSetID = trimmed
+		}
+	}
+
+	if cmd.Flags().Lookup("deployments") != nil {
+		deploymentIDs, _ := cmd.Flags().GetStringSlice("deployments")
+		if compacted := compactNonEmptyStrings(deploymentIDs); len(compacted) > 0 {
+			request.DeploymentIDs = compacted
+		}
+	}
+
+	if cmd.Flags().Lookup("deployment-lineups") != nil {
+		deploymentLineups, _ := cmd.Flags().GetStringSlice("deployment-lineups")
+		if compacted := compactNonEmptyStrings(deploymentLineups); len(compacted) > 0 {
+			request.DeploymentLineups = compacted
+		}
+	}
 
 	name, _ := cmd.Flags().GetString("name")
 	request.Name = name
@@ -160,6 +195,107 @@ func buildSeededEvalSessionBody(workspaceID string, request runCreateRequest) (m
 		"seeds":    seeds,
 	}
 	return body, nil
+}
+
+func buildSeriesEvalSessionBody(workspaceID string, request runCreateRequest) (map[string]any, error) {
+	if request.ChallengePackVersionID == "" {
+		return nil, fmt.Errorf("challenge pack version is required")
+	}
+	if request.Seeds < 1 || request.Seeds > maxRunCreateSeeds {
+		return nil, fmt.Errorf("--seeds must be between 1 and %d when using --deployment-lineups, got %d", maxRunCreateSeeds, request.Seeds)
+	}
+	if len(request.DeploymentIDs) > 0 {
+		return nil, fmt.Errorf("--deployment-lineups cannot be combined with --deployments")
+	}
+	if len(request.ResolvedDeploymentLineups) == 0 {
+		return nil, fmt.Errorf("at least one deployment lineup is required")
+	}
+	if request.RaceContextCadence < 0 || request.RaceContextCadence > 10 {
+		return nil, fmt.Errorf("--race-context-cadence must be 0 (backend default) or between 1 and 10, got %d", request.RaceContextCadence)
+	}
+	if request.MaxIterations < 0 || request.MaxIterations > maxRunCreateMaxIter {
+		return nil, fmt.Errorf("--max-iter must be 0 (pack/runtime default) or between 1 and %d, got %d", maxRunCreateMaxIter, request.MaxIterations)
+	}
+	if len(request.RegressionSuiteIDs) > 0 || len(request.RegressionCaseIDs) > 0 || request.OfficialPackMode == "suite_only" {
+		return nil, fmt.Errorf("--scope suite_only / --suite / --case are not supported with --deployment-lineups")
+	}
+	if request.RaceContext || request.RaceContextCadence > 0 {
+		return nil, fmt.Errorf("--race-context flags are not supported with --deployment-lineups")
+	}
+
+	executionMode := "single_agent"
+	if len(request.ResolvedDeploymentLineups[0].DeploymentIDs) > 1 {
+		executionMode = "comparison"
+	}
+
+	repetitions := len(request.ResolvedDeploymentLineups) * request.Seeds
+	body := map[string]any{
+		"workspace_id":              workspaceID,
+		"challenge_pack_version_id": request.ChallengePackVersionID,
+		"execution_mode":            executionMode,
+		"eval_session": map[string]any{
+			"repetitions": repetitions,
+			"aggregation": map[string]any{
+				"method":              "mean",
+				"report_variance":     true,
+				"confidence_interval": 0.95,
+			},
+			"routing_task_snapshot": map[string]any{
+				"routing": map[string]any{"mode": "series", "child_execution_mode": executionMode},
+				"task":    map[string]any{"pack_version": "v1"},
+			},
+			"schema_version": 1,
+		},
+	}
+	if request.Name != "" {
+		body["name"] = request.Name
+	}
+	if request.ChallengeInputSetID != "" {
+		body["challenge_input_set_id"] = request.ChallengeInputSetID
+	}
+	if request.MaxIterations > 0 {
+		body["max_iterations"] = request.MaxIterations
+	}
+
+	matrix := make([]map[string]any, 0, repetitions)
+	for _, lineup := range request.ResolvedDeploymentLineups {
+		if len(lineup.DeploymentIDs) == 0 {
+			return nil, fmt.Errorf("deployment lineup %q resolved to no deployments", lineup.Name)
+		}
+		lineupMode := "single_agent"
+		if len(lineup.DeploymentIDs) > 1 {
+			lineupMode = "comparison"
+		}
+		if lineupMode != executionMode {
+			return nil, fmt.Errorf("deployment lineup %q has %d deployment(s), but all lineups in a series must use the same execution mode", lineup.Name, len(lineup.DeploymentIDs))
+		}
+		for seed := 1; seed <= request.Seeds; seed++ {
+			matrix = append(matrix, map[string]any{
+				"key":               fmt.Sprintf("%s:seed-%d", lineup.Name, seed),
+				"deployment_lineup": lineup.Name,
+				"seed":              seed,
+				"participants":      deploymentIDsToEvalSessionParticipants(lineup.DeploymentIDs),
+			})
+		}
+	}
+	session := body["eval_session"].(map[string]any)
+	session["run_matrix"] = matrix
+	return body, nil
+}
+
+func deploymentIDsToEvalSessionParticipants(deploymentIDs []string) []map[string]any {
+	participants := make([]map[string]any, 0, len(deploymentIDs))
+	for i, deploymentID := range deploymentIDs {
+		label := "Primary"
+		if i > 0 {
+			label = fmt.Sprintf("Participant %d", i+1)
+		}
+		participants = append(participants, map[string]any{
+			"agent_deployment_id": deploymentID,
+			"label":               label,
+		})
+	}
+	return participants
 }
 
 func createRun(cmd *cobra.Command, rc *RunContext, body map[string]any) (map[string]any, error) {

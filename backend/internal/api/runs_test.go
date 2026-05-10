@@ -730,6 +730,9 @@ func TestCreateEvalSessionEndpointReturnsCreated(t *testing.T) {
 			SeededRuns: []EvalSessionSeededRun{
 				{RunID: runID, Seed: 1},
 			},
+			SeriesRuns: []EvalSessionSeriesRun{
+				{RunID: runID, MatrixKey: "default:seed-1", DeploymentLineup: "default", Seed: int64Ptr(1)},
+			},
 		},
 	}
 
@@ -797,6 +800,9 @@ func TestCreateEvalSessionEndpointReturnsCreated(t *testing.T) {
 	if len(response.SeededRuns) != 1 || response.SeededRuns[0].RunID != runID || response.SeededRuns[0].Seed != 1 {
 		t.Fatalf("seeded runs = %+v, want first run seed", response.SeededRuns)
 	}
+	if len(response.SeriesRuns) != 1 || response.SeriesRuns[0].RunID != runID || response.SeriesRuns[0].DeploymentLineup != "default" || response.SeriesRuns[0].Seed == nil || *response.SeriesRuns[0].Seed != 1 {
+		t.Fatalf("series runs = %+v, want first run metadata", response.SeriesRuns)
+	}
 	if service.evalSessionInput.WorkspaceID != workspaceID {
 		t.Fatalf("workspace id = %s, want %s", service.evalSessionInput.WorkspaceID, workspaceID)
 	}
@@ -808,6 +814,91 @@ func TestCreateEvalSessionEndpointReturnsCreated(t *testing.T) {
 	}
 	if got := service.evalSessionInput.EvalSession.SeedFanout; len(got) != 2 || got[0] != 1 || got[1] != 2 {
 		t.Fatalf("seed fanout = %v, want [1 2]", got)
+	}
+}
+
+func TestCreateEvalSessionEndpointAcceptsRunMatrix(t *testing.T) {
+	userID := uuid.New()
+	workspaceID := uuid.New()
+	firstDeploymentID := uuid.New()
+	secondDeploymentID := uuid.New()
+	service := &fakeRunCreationService{
+		evalSessionResult: CreateEvalSessionResult{
+			Session: domain.EvalSession{
+				ID:                     uuid.New(),
+				Status:                 domain.EvalSessionStatusQueued,
+				Repetitions:            2,
+				AggregationConfig:      domain.EvalSessionSnapshot{Document: []byte(`{"schema_version":1,"method":"mean","report_variance":true,"confidence_interval":0.95}`)},
+				SuccessThresholdConfig: domain.EvalSessionSnapshot{Document: []byte(`{"schema_version":1}`)},
+				RoutingTaskSnapshot:    domain.EvalSessionSnapshot{Document: []byte(`{"schema_version":1,"routing":{"mode":"series"},"task":{"pack_version":"v1"}}`)},
+				SchemaVersion:          1,
+				CreatedAt:              time.Date(2026, 4, 20, 12, 0, 0, 0, time.UTC),
+				UpdatedAt:              time.Date(2026, 4, 20, 12, 0, 0, 0, time.UTC),
+			},
+			RunIDs: []uuid.UUID{uuid.New(), uuid.New()},
+		},
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/eval-sessions", bytes.NewBufferString(`{
+		"workspace_id":"`+workspaceID.String()+`",
+		"challenge_pack_version_id":"`+uuid.New().String()+`",
+		"execution_mode":"single_agent",
+		"eval_session":{
+			"repetitions":2,
+			"aggregation":{"method":"mean","report_variance":true,"confidence_interval":0.95},
+			"routing_task_snapshot":{"routing":{"mode":"series"},"task":{"pack_version":"v1"}},
+			"run_matrix":[
+				{"key":"default:seed-1","deployment_lineup":"default","seed":1,"participants":[{"agent_deployment_id":"`+firstDeploymentID.String()+`","label":"Primary"}]},
+				{"key":"smoke:seed-1","deployment_lineup":"smoke","seed":1,"participants":[{"agent_deployment_id":"`+secondDeploymentID.String()+`","label":"Primary"}]}
+			],
+			"schema_version":1
+		}
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(headerUserID, userID.String())
+	req.Header.Set(headerWorkspaceMemberships, workspaceID.String()+":workspace_member")
+	recorder := httptest.NewRecorder()
+
+	newRouter("dev", nil,
+		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
+		NewDevelopmentAuthenticator(),
+		NewCallerWorkspaceAuthorizer(),
+		nil,
+		0,
+		service,
+		&fakeRunReadService{},
+		&fakeReplayReadService{},
+		stubHostedRunIngestionService{},
+		nil,
+		stubAgentDeploymentReadService{},
+		stubChallengePackReadService{},
+		stubAgentBuildService{},
+		noopReleaseGateService{},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+	).ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d (body: %s)", recorder.Code, http.StatusCreated, recorder.Body.String())
+	}
+	matrix := service.evalSessionInput.EvalSession.RunMatrix
+	if len(matrix) != 2 || matrix[0].Key != "default:seed-1" || matrix[1].DeploymentLineup != "smoke" {
+		t.Fatalf("run matrix = %+v, want two entries", matrix)
+	}
+	if matrix[0].Seed == nil || *matrix[0].Seed != 1 {
+		t.Fatalf("run matrix seed = %v, want 1", matrix[0].Seed)
+	}
+	if len(matrix[1].Participants) != 1 || matrix[1].Participants[0].AgentDeploymentID == nil || *matrix[1].Participants[0].AgentDeploymentID != secondDeploymentID {
+		t.Fatalf("second matrix participants = %+v, want second deployment", matrix[1].Participants)
 	}
 }
 
@@ -849,6 +940,58 @@ func TestDecodeEvalSessionConfigRejectsInvalidSeedFanout(t *testing.T) {
 			if len(validationErr.Errors) == 0 || validationErr.Errors[0].Code != tc.code {
 				t.Fatalf("validation errors = %+v, want first code %s", validationErr.Errors, tc.code)
 			}
+		})
+	}
+}
+
+func TestDecodeEvalSessionConfigRejectsInvalidRunMatrix(t *testing.T) {
+	cases := []struct {
+		name     string
+		matrix   string
+		extra    string
+		wantCode string
+	}{
+		{
+			name:     "length_mismatch",
+			matrix:   `[{"key":"default:seed-1","seed":1,"participants":[{"agent_deployment_id":"` + uuid.New().String() + `","label":"Primary"}]}]`,
+			wantCode: "eval_session.run_matrix.length_mismatch",
+		},
+		{
+			name:     "duplicate_key",
+			matrix:   `[{"key":"dup","seed":1,"participants":[{"agent_deployment_id":"` + uuid.New().String() + `","label":"Primary"}]},{"key":"dup","seed":2,"participants":[{"agent_deployment_id":"` + uuid.New().String() + `","label":"Primary"}]}]`,
+			wantCode: "eval_session.run_matrix.key.duplicate",
+		},
+		{
+			name:     "non_positive_seed",
+			matrix:   `[{"key":"default:seed-1","seed":0,"participants":[{"agent_deployment_id":"` + uuid.New().String() + `","label":"Primary"}]},{"key":"default:seed-2","seed":2,"participants":[{"agent_deployment_id":"` + uuid.New().String() + `","label":"Primary"}]}]`,
+			wantCode: "eval_session.run_matrix.seed.invalid",
+		},
+		{
+			name:     "seed_fanout_conflict",
+			matrix:   `[{"key":"default:seed-1","seed":1,"participants":[{"agent_deployment_id":"` + uuid.New().String() + `","label":"Primary"}]},{"key":"default:seed-2","seed":2,"participants":[{"agent_deployment_id":"` + uuid.New().String() + `","label":"Primary"}]}]`,
+			extra:    `,"seed_fanout":{"strategy":"explicit","seeds":[1,2]}`,
+			wantCode: "eval_session.run_matrix.seed_fanout_conflict",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := decodeEvalSessionConfig(json.RawMessage(`{
+				"repetitions":2,
+				"aggregation":{"method":"mean","report_variance":true,"confidence_interval":0.95},
+				"routing_task_snapshot":{"routing":{"mode":"single_agent"},"task":{"pack_version":"v1"}},
+				"run_matrix":` + tc.matrix + tc.extra + `,
+				"schema_version":1
+			}`))
+			var validationErr evalSessionValidationError
+			if !errors.As(err, &validationErr) {
+				t.Fatalf("error = %v, want evalSessionValidationError", err)
+			}
+			for _, detail := range validationErr.Errors {
+				if detail.Code == tc.wantCode {
+					return
+				}
+			}
+			t.Fatalf("validation errors = %+v, want code %s", validationErr.Errors, tc.wantCode)
 		})
 	}
 }

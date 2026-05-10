@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/agentclash/agentclash/cli/internal/output"
 	"github.com/spf13/cobra"
@@ -142,8 +143,35 @@ func presentCreatedEvalSession(rc *RunContext, result map[string]any) error {
 			seedByRunID[str(item["run_id"])] = str(item["seed"])
 		}
 	}
+	seriesByRunID := map[string]string{}
+	if seriesRuns, ok := result["series_runs"].([]any); ok {
+		for _, raw := range seriesRuns {
+			item, ok := raw.(map[string]any)
+			if !ok {
+				continue
+			}
+			runID := str(item["run_id"])
+			parts := make([]string, 0, 3)
+			if lineup := str(item["deployment_lineup"]); lineup != "" {
+				parts = append(parts, "lineup "+lineup)
+			}
+			if seed := str(item["seed"]); seed != "" {
+				parts = append(parts, "seed "+seed)
+			}
+			if key := str(item["matrix_key"]); key != "" {
+				parts = append(parts, key)
+			}
+			if len(parts) > 0 {
+				seriesByRunID[runID] = strings.Join(parts, ", ")
+			}
+		}
+	}
 	for _, id := range runIDs {
 		runID := str(id)
+		if metadata := seriesByRunID[runID]; metadata != "" {
+			fmt.Fprintf(rc.Output.Writer(), "  - %s (%s)\n", runID, metadata)
+			continue
+		}
 		if seed := seedByRunID[runID]; seed != "" {
 			fmt.Fprintf(rc.Output.Writer(), "  - %s (seed %s)\n", runID, seed)
 			continue
