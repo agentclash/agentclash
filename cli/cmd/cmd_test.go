@@ -247,6 +247,25 @@ func TestRunGetCallsCorrectEndpoint(t *testing.T) {
 	}
 }
 
+func TestRunCancelCallsCorrectEndpoint(t *testing.T) {
+	var called bool
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"POST /v1/runs/run-456/cancel": captureHandler(t, &called, 200, map[string]any{
+			"id": "run-456", "name": "Test", "status": "cancelled",
+		}),
+	})
+	defer srv.Close()
+
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+	err := executeCommand(t, []string{"run", "cancel", "run-456"}, srv.URL)
+	if err != nil {
+		t.Fatalf("run cancel error: %v", err)
+	}
+	if !called {
+		t.Fatal("POST /v1/runs/run-456/cancel was not called")
+	}
+}
+
 func TestRunEventsUsesAuthorizationHeaderWithoutQueryToken(t *testing.T) {
 	var called bool
 	var gotAuth string

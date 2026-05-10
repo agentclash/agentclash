@@ -17,6 +17,7 @@ func init() {
 	rootCmd.AddCommand(runCmd)
 	runCmd.AddCommand(runListCmd)
 	runCmd.AddCommand(runGetCmd)
+	runCmd.AddCommand(runCancelCmd)
 	runCmd.AddCommand(runCreateCmd)
 	runCmd.AddCommand(runRankingCmd)
 	runCmd.AddCommand(runAgentsCmd)
@@ -141,6 +142,36 @@ var runGetCmd = &cobra.Command{
 		if finished := mapString(run, "finished_at", "completed_at"); finished != "" {
 			rc.Output.PrintDetail("Completed", finished)
 		}
+		return nil
+	},
+}
+
+var runCancelCmd = &cobra.Command{
+	Use:   "cancel <id>",
+	Short: "Cancel an active run",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		rc := GetRunContext(cmd)
+
+		resp, err := rc.Client.Post(cmd.Context(), "/v1/runs/"+args[0]+"/cancel", map[string]any{})
+		if err != nil {
+			return err
+		}
+		if apiErr := resp.ParseError(); apiErr != nil {
+			return apiErr
+		}
+
+		var run map[string]any
+		if err := resp.DecodeJSON(&run); err != nil {
+			return err
+		}
+
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(run)
+		}
+
+		rc.Output.PrintSuccess(fmt.Sprintf("Cancelled run %s", args[0]))
+		rc.Output.PrintDetail("Status", output.StatusColor(str(run["status"])))
 		return nil
 	},
 }

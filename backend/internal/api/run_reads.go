@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/budget"
@@ -41,6 +42,7 @@ type RunReadRepository interface {
 
 type RunReadService interface {
 	GetRun(ctx context.Context, caller Caller, runID uuid.UUID) (GetRunResult, error)
+	CancelRun(ctx context.Context, caller Caller, runID uuid.UUID) (CancelRunResult, error)
 	GetEvalSession(ctx context.Context, caller Caller, evalSessionID uuid.UUID) (GetEvalSessionResult, error)
 	GetRunRanking(ctx context.Context, caller Caller, runID uuid.UUID, input GetRunRankingInput) (GetRunRankingResult, error)
 	GenerateRunRankingInsights(ctx context.Context, caller Caller, runID uuid.UUID, input GenerateRunRankingInsightsInput) (GenerateRunRankingInsightsResult, error)
@@ -68,6 +70,31 @@ type ListRunsResult struct {
 type GetRunResult struct {
 	Run                domain.Run
 	RegressionCoverage *RunRegressionCoverage
+}
+
+type CancelRunResult struct {
+	Run domain.Run
+}
+
+type RunWorkflowControl interface {
+	CancelRunWorkflow(ctx context.Context, workflowID string, runID string) error
+}
+
+type runCancellationRepository interface {
+	TransitionRunStatus(ctx context.Context, params repository.TransitionRunStatusParams) (domain.Run, error)
+}
+
+type RunCancellationWorkflowError struct {
+	Run   domain.Run
+	Cause error
+}
+
+func (e RunCancellationWorkflowError) Error() string {
+	return fmt.Sprintf("cancel run workflow for run %s: %v", e.Run.ID, e.Cause)
+}
+
+func (e RunCancellationWorkflowError) Unwrap() error {
+	return e.Cause
 }
 
 type RunRegressionCoverage struct {
@@ -110,6 +137,7 @@ type RunReadManager struct {
 	budgetChecker   budget.BudgetChecker
 	insightsLimiter WorkspaceRateLimiter
 	insightsTimeout time.Duration
+	workflowControl RunWorkflowControl
 	now             func() time.Time
 }
 
@@ -150,6 +178,11 @@ func (m *RunReadManager) WithInsightsTimeout(timeout time.Duration) *RunReadMana
 	return m
 }
 
+func (m *RunReadManager) WithRunWorkflowControl(control RunWorkflowControl) *RunReadManager {
+	m.workflowControl = control
+	return m
+}
+
 func (m *RunReadManager) InsightsConfigured() bool {
 	return m.insightsClient != nil
 }
@@ -173,6 +206,50 @@ func (m *RunReadManager) GetRun(ctx context.Context, caller Caller, runID uuid.U
 		Run:                run,
 		RegressionCoverage: &coverage,
 	}, nil
+}
+
+func (m *RunReadManager) CancelRun(ctx context.Context, caller Caller, runID uuid.UUID) (CancelRunResult, error) {
+	run, err := m.repo.GetRunByID(ctx, runID)
+	if err != nil {
+		return CancelRunResult{}, err
+	}
+	if err := AuthorizeWorkspaceAction(ctx, m.authorizer, caller, run.WorkspaceID, ActionCreateRun); err != nil {
+		return CancelRunResult{}, err
+	}
+
+	if !run.Status.CanTransitionTo(domain.RunStatusCancelled) {
+		return CancelRunResult{Run: run}, nil
+	}
+
+	workflowID := strings.TrimSpace(derefString(run.TemporalWorkflowID))
+	if workflowID != "" && m.workflowControl != nil {
+		if err := m.workflowControl.CancelRunWorkflow(ctx, workflowID, strings.TrimSpace(derefString(run.TemporalRunID))); err != nil {
+			return CancelRunResult{}, RunCancellationWorkflowError{Run: run, Cause: err}
+		}
+	}
+
+	transitionRepo, ok := m.repo.(runCancellationRepository)
+	if !ok {
+		return CancelRunResult{}, errors.New("run cancellation repository is not configured")
+	}
+
+	reason := "cancelled by user"
+	cancelled, err := transitionRepo.TransitionRunStatus(ctx, repository.TransitionRunStatusParams{
+		RunID:           run.ID,
+		ToStatus:        domain.RunStatusCancelled,
+		Reason:          &reason,
+		ChangedByUserID: &caller.UserID,
+	})
+	if err == nil {
+		return CancelRunResult{Run: cancelled}, nil
+	}
+	if errors.Is(err, repository.ErrInvalidTransition) || errors.Is(err, repository.ErrTransitionConflict) {
+		latest, latestErr := m.repo.GetRunByID(ctx, run.ID)
+		if latestErr == nil && !latest.Status.CanTransitionTo(domain.RunStatusCancelled) {
+			return CancelRunResult{Run: latest}, nil
+		}
+	}
+	return CancelRunResult{}, err
 }
 
 func (m *RunReadManager) ListRuns(ctx context.Context, caller Caller, input ListRunsInput) (ListRunsResult, error) {

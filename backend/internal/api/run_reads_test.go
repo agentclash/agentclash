@@ -14,6 +14,7 @@ import (
 	"github.com/agentclash/agentclash/backend/internal/domain"
 	"github.com/agentclash/agentclash/backend/internal/failurereview"
 	"github.com/agentclash/agentclash/backend/internal/repository"
+	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
 
@@ -69,6 +70,167 @@ func TestRunReadManagerReturnsRunForAuthorizedCaller(t *testing.T) {
 	}
 	if result.RegressionCoverage.Suites[1].FailCount != 1 {
 		t.Fatalf("second suite fail_count = %d, want 1", result.RegressionCoverage.Suites[1].FailCount)
+	}
+}
+
+func TestRunReadManagerCancelRunTransitionsActiveRunAndCancelsTemporal(t *testing.T) {
+	workspaceID := uuid.New()
+	userID := uuid.New()
+	runID := uuid.New()
+	workflowID := "RunWorkflow/" + runID.String()
+	temporalRunID := "temporal-run-1"
+	cancelled := domain.Run{ID: runID, WorkspaceID: workspaceID, Status: domain.RunStatusCancelled}
+	repo := &fakeRunReadRepository{
+		run: domain.Run{
+			ID:                 runID,
+			WorkspaceID:        workspaceID,
+			Status:             domain.RunStatusRunning,
+			TemporalWorkflowID: &workflowID,
+			TemporalRunID:      &temporalRunID,
+		},
+		transitionedRun: cancelled,
+	}
+	control := &fakeRunWorkflowControl{}
+	manager := NewRunReadManager(NewCallerWorkspaceAuthorizer(), repo).WithRunWorkflowControl(control)
+
+	result, err := manager.CancelRun(context.Background(), Caller{
+		UserID: userID,
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: RoleWorkspaceMember},
+		},
+	}, runID)
+	if err != nil {
+		t.Fatalf("CancelRun returned error: %v", err)
+	}
+
+	if result.Run.Status != domain.RunStatusCancelled {
+		t.Fatalf("status = %s, want cancelled", result.Run.Status)
+	}
+	if control.workflowID != workflowID || control.runID != temporalRunID {
+		t.Fatalf("temporal cancel = (%q, %q), want (%q, %q)", control.workflowID, control.runID, workflowID, temporalRunID)
+	}
+	if repo.transitionRunStatusCalls != 1 || repo.transitionRunStatus != domain.RunStatusCancelled {
+		t.Fatalf("transition calls/status = %d/%s, want 1/cancelled", repo.transitionRunStatusCalls, repo.transitionRunStatus)
+	}
+	if repo.transitionChangedBy == nil || *repo.transitionChangedBy != userID {
+		t.Fatalf("changed by = %v, want %s", repo.transitionChangedBy, userID)
+	}
+	if repo.transitionReason == nil || *repo.transitionReason != "cancelled by user" {
+		t.Fatalf("reason = %v, want cancelled by user", repo.transitionReason)
+	}
+}
+
+func TestRunReadManagerCancelRunIsIdempotentForTerminalRun(t *testing.T) {
+	workspaceID := uuid.New()
+	runID := uuid.New()
+	repo := &fakeRunReadRepository{
+		run: domain.Run{ID: runID, WorkspaceID: workspaceID, Status: domain.RunStatusCompleted},
+	}
+	control := &fakeRunWorkflowControl{}
+	manager := NewRunReadManager(NewCallerWorkspaceAuthorizer(), repo).WithRunWorkflowControl(control)
+
+	result, err := manager.CancelRun(context.Background(), Caller{
+		UserID: uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: RoleWorkspaceMember},
+		},
+	}, runID)
+	if err != nil {
+		t.Fatalf("CancelRun returned error: %v", err)
+	}
+
+	if result.Run.Status != domain.RunStatusCompleted {
+		t.Fatalf("status = %s, want completed", result.Run.Status)
+	}
+	if control.cancelCalls != 0 || repo.transitionRunStatusCalls != 0 {
+		t.Fatalf("cancel/transition calls = %d/%d, want 0/0", control.cancelCalls, repo.transitionRunStatusCalls)
+	}
+}
+
+func TestRunReadManagerCancelRunReturnsTemporalFailure(t *testing.T) {
+	workspaceID := uuid.New()
+	runID := uuid.New()
+	workflowID := "RunWorkflow/" + runID.String()
+	temporalErr := errors.New("temporal unavailable")
+	repo := &fakeRunReadRepository{
+		run: domain.Run{
+			ID:                 runID,
+			WorkspaceID:        workspaceID,
+			Status:             domain.RunStatusRunning,
+			TemporalWorkflowID: &workflowID,
+		},
+	}
+	manager := NewRunReadManager(NewCallerWorkspaceAuthorizer(), repo).WithRunWorkflowControl(&fakeRunWorkflowControl{err: temporalErr})
+
+	_, err := manager.CancelRun(context.Background(), Caller{
+		UserID: uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: RoleWorkspaceMember},
+		},
+	}, runID)
+	if !errors.Is(err, temporalErr) {
+		t.Fatalf("CancelRun error = %v, want temporal error", err)
+	}
+	if repo.transitionRunStatusCalls != 0 {
+		t.Fatalf("transition calls = %d, want 0", repo.transitionRunStatusCalls)
+	}
+}
+
+func TestCancelRunHandlerReturnsCancelledRun(t *testing.T) {
+	runID := uuid.New()
+	workspaceID := uuid.New()
+	service := &fakeRunReadService{
+		cancelRunResult: CancelRunResult{
+			Run: domain.Run{ID: runID, WorkspaceID: workspaceID, Status: domain.RunStatusCancelled},
+		},
+	}
+	router := chi.NewRouter()
+	router.Post("/v1/runs/{runID}/cancel", cancelRunHandler(slog.Default(), service))
+	req := httptest.NewRequest(http.MethodPost, "/v1/runs/"+runID.String()+"/cancel", nil)
+	req = req.WithContext(context.WithValue(req.Context(), callerContextKey{}, Caller{UserID: uuid.New()}))
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body %s", rec.Code, rec.Body.String())
+	}
+	var response getRunResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response.ID != runID || response.Status != domain.RunStatusCancelled {
+		t.Fatalf("response = %+v, want cancelled run %s", response, runID)
+	}
+}
+
+func TestCancelRunHandlerReturnsTemporalFailure(t *testing.T) {
+	runID := uuid.New()
+	workspaceID := uuid.New()
+	workflowErr := errors.New("temporal unavailable")
+	service := &fakeRunReadService{
+		cancelRunErr: RunCancellationWorkflowError{
+			Run:   domain.Run{ID: runID, WorkspaceID: workspaceID, Status: domain.RunStatusRunning},
+			Cause: workflowErr,
+		},
+	}
+	router := chi.NewRouter()
+	router.Post("/v1/runs/{runID}/cancel", cancelRunHandler(slog.Default(), service))
+	req := httptest.NewRequest(http.MethodPost, "/v1/runs/"+runID.String()+"/cancel", nil)
+	req = req.WithContext(context.WithValue(req.Context(), callerContextKey{}, Caller{UserID: uuid.New()}))
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, body %s", rec.Code, rec.Body.String())
+	}
+	var response createRunErrorResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response.Error.Code != "workflow_cancel_failed" || response.Run.ID != runID {
+		t.Fatalf("response = %+v, want workflow_cancel_failed for %s", response, runID)
 	}
 }
 
@@ -419,6 +581,7 @@ func TestListRunAgentsEndpointReturnsForbidden(t *testing.T) {
 
 type fakeRunReadRepository struct {
 	run                      domain.Run
+	transitionedRun          domain.Run
 	evalSession              repository.EvalSessionWithRuns
 	evalSessions             []domain.EvalSession
 	evalSessionRuns          map[uuid.UUID][]domain.Run
@@ -449,10 +612,31 @@ type fakeRunReadRepository struct {
 	getModelCatalogErr       error
 	listSpendPoliciesErr     error
 	loadWorkspaceSecretsErr  error
+	transitionRunStatusErr   error
+	transitionRunStatusCalls int
+	transitionRunStatus      domain.RunStatus
+	transitionReason         *string
+	transitionChangedBy      *uuid.UUID
 }
 
 func (f *fakeRunReadRepository) GetRunByID(_ context.Context, _ uuid.UUID) (domain.Run, error) {
 	return f.run, f.getRunErr
+}
+
+func (f *fakeRunReadRepository) TransitionRunStatus(_ context.Context, params repository.TransitionRunStatusParams) (domain.Run, error) {
+	f.transitionRunStatusCalls++
+	f.transitionRunStatus = params.ToStatus
+	f.transitionReason = params.Reason
+	f.transitionChangedBy = params.ChangedByUserID
+	if f.transitionRunStatusErr != nil {
+		return domain.Run{}, f.transitionRunStatusErr
+	}
+	if f.transitionedRun.ID != uuid.Nil {
+		return f.transitionedRun, nil
+	}
+	run := f.run
+	run.Status = params.ToStatus
+	return run, nil
 }
 
 func (f *fakeRunReadRepository) GetEvalSessionWithRuns(_ context.Context, _ uuid.UUID) (repository.EvalSessionWithRuns, error) {
@@ -541,6 +725,8 @@ func (f *fakeRunReadRepository) LoadWorkspaceSecrets(_ context.Context, _ uuid.U
 type fakeRunReadService struct {
 	getRunResult           GetRunResult
 	getRunErr              error
+	cancelRunResult        CancelRunResult
+	cancelRunErr           error
 	getEvalSessionResult   GetEvalSessionResult
 	getEvalSessionErr      error
 	getRunRankingResult    GetRunRankingResult
@@ -557,6 +743,10 @@ type fakeRunReadService struct {
 
 func (f *fakeRunReadService) GetRun(_ context.Context, _ Caller, _ uuid.UUID) (GetRunResult, error) {
 	return f.getRunResult, f.getRunErr
+}
+
+func (f *fakeRunReadService) CancelRun(_ context.Context, _ Caller, _ uuid.UUID) (CancelRunResult, error) {
+	return f.cancelRunResult, f.cancelRunErr
 }
 
 func (f *fakeRunReadService) GetEvalSession(_ context.Context, _ Caller, _ uuid.UUID) (GetEvalSessionResult, error) {
@@ -585,6 +775,20 @@ func (f *fakeRunReadService) ListRunFailures(_ context.Context, _ Caller, _ List
 
 func (f *fakeRunReadService) ListRuns(_ context.Context, _ Caller, _ ListRunsInput) (ListRunsResult, error) {
 	return ListRunsResult{}, nil
+}
+
+type fakeRunWorkflowControl struct {
+	workflowID  string
+	runID       string
+	cancelCalls int
+	err         error
+}
+
+func (f *fakeRunWorkflowControl) CancelRunWorkflow(_ context.Context, workflowID string, runID string) error {
+	f.cancelCalls++
+	f.workflowID = workflowID
+	f.runID = runID
+	return f.err
 }
 
 func uuidPtr(value uuid.UUID) *uuid.UUID {

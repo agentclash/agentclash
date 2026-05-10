@@ -30,6 +30,10 @@ func (stubRunReadService) GetRun(_ context.Context, _ Caller, _ uuid.UUID) (GetR
 	return GetRunResult{}, errors.New("not implemented")
 }
 
+func (stubRunReadService) CancelRun(_ context.Context, _ Caller, _ uuid.UUID) (CancelRunResult, error) {
+	return CancelRunResult{}, errors.New("not implemented")
+}
+
 func (stubRunReadService) GetEvalSession(_ context.Context, _ Caller, _ uuid.UUID) (GetEvalSessionResult, error) {
 	return GetEvalSessionResult{}, errors.New("not implemented")
 }
