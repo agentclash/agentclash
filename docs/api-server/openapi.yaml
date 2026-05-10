@@ -6912,6 +6912,13 @@ components:
             `comparison` for multiple participants.
         name:
           type: string
+        max_iterations:
+          type: integer
+          minimum: 1
+          maximum: 1000
+          description: >
+            Optional. Applies the same native-agent iteration budget override
+            to every child run in the eval session.
         eval_session:
           $ref: "#/components/schemas/CreateEvalSessionConfig"
 
@@ -6954,6 +6961,8 @@ components:
             - $ref: "#/components/schemas/EvalSessionReliabilityWeightsConfig"
             - type: "null"
           description: Optional. Explicit `null` is treated the same as omission.
+        seed_fanout:
+          $ref: "#/components/schemas/EvalSessionSeedFanoutConfig"
         schema_version:
           type: integer
           minimum: 1
@@ -7032,6 +7041,23 @@ components:
           type: object
           additionalProperties: true
 
+    EvalSessionSeedFanoutConfig:
+      type: object
+      required: [strategy, seeds]
+      properties:
+        strategy:
+          type: string
+          enum: [explicit]
+        seeds:
+          type: array
+          minItems: 1
+          maxItems: 100
+          uniqueItems: true
+          items:
+            type: integer
+            minimum: 1
+          description: Must contain exactly one seed per requested repetition.
+
     CreateEvalSessionResponse:
       type: object
       required: [eval_session, run_ids]
@@ -7043,6 +7069,21 @@ components:
           items:
             type: string
             format: uuid
+        seeded_runs:
+          type: array
+          items:
+            $ref: "#/components/schemas/EvalSessionSeededRun"
+
+    EvalSessionSeededRun:
+      type: object
+      required: [run_id, seed]
+      properties:
+        run_id:
+          type: string
+          format: uuid
+        seed:
+          type: integer
+          minimum: 1
 
     EvalSessionResponse:
       type: object
@@ -7425,6 +7466,10 @@ components:
           $ref: "#/components/schemas/RunStatus"
         execution_mode:
           type: string
+        seed:
+          type: integer
+          minimum: 1
+          description: Seed assigned to this child run when the eval session was created via seeded fanout.
         queued_at:
           type: string
           format: date-time

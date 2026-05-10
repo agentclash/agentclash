@@ -61,6 +61,7 @@ type evalSessionChildRunResponse struct {
 	Name                   string           `json:"name"`
 	Status                 domain.RunStatus `json:"status"`
 	ExecutionMode          string           `json:"execution_mode"`
+	Seed                   *int64           `json:"seed,omitempty"`
 	QueuedAt               *time.Time       `json:"queued_at,omitempty"`
 	StartedAt              *time.Time       `json:"started_at,omitempty"`
 	FinishedAt             *time.Time       `json:"finished_at,omitempty"`
@@ -411,6 +412,7 @@ func buildEvalSessionChildRunResponse(run domain.Run) evalSessionChildRunRespons
 		Name:                   run.Name,
 		Status:                 run.Status,
 		ExecutionMode:          run.ExecutionMode,
+		Seed:                   evalSessionChildRunSeed(run.ExecutionPlan),
 		QueuedAt:               run.QueuedAt,
 		StartedAt:              run.StartedAt,
 		FinishedAt:             run.FinishedAt,
@@ -420,4 +422,18 @@ func buildEvalSessionChildRunResponse(run domain.Run) evalSessionChildRunRespons
 		UpdatedAt:              run.UpdatedAt,
 		Links:                  buildRunLinks(run.ID),
 	}
+}
+
+func evalSessionChildRunSeed(executionPlan json.RawMessage) *int64 {
+	if len(executionPlan) == 0 {
+		return nil
+	}
+	var plan struct {
+		Seed *int64 `json:"seed"`
+	}
+	if err := json.Unmarshal(executionPlan, &plan); err != nil || plan.Seed == nil || *plan.Seed < 1 {
+		return nil
+	}
+	seed := *plan.Seed
+	return &seed
 }

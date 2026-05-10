@@ -53,6 +53,7 @@ type CreateEvalSessionConfigInput struct {
 	SuccessThreshold    *EvalSessionSuccessThresholdInput
 	RoutingTaskSnapshot EvalSessionRoutingTaskSnapshotInput
 	ReliabilityWeights  *EvalSessionReliabilityWeightsInput
+	SeedFanout          []int64
 	SchemaVersion       int32
 }
 
@@ -63,12 +64,19 @@ type CreateEvalSessionInput struct {
 	Participants           []EvalSessionParticipantInput
 	ExecutionMode          string
 	Name                   string
+	MaxIterations          *int32
 	EvalSession            CreateEvalSessionConfigInput
 }
 
+type EvalSessionSeededRun struct {
+	RunID uuid.UUID `json:"run_id"`
+	Seed  int64     `json:"seed"`
+}
+
 type CreateEvalSessionResult struct {
-	Session domain.EvalSession
-	RunIDs  []uuid.UUID
+	Session    domain.EvalSession
+	RunIDs     []uuid.UUID
+	SeededRuns []EvalSessionSeededRun
 }
 
 func (m *RunCreationManager) CreateEvalSession(ctx context.Context, caller Caller, input CreateEvalSessionInput) (CreateEvalSessionResult, error) {
@@ -125,6 +133,9 @@ func (m *RunCreationManager) CreateEvalSession(ctx context.Context, caller Calle
 			Code:    "invalid_challenge_pack_version_id",
 			Message: "challenge_pack_version_id must be visible to the selected workspace",
 		}
+	}
+	if input.MaxIterations == nil {
+		input.MaxIterations = challengePackDefaultMaxIterations(challengePackVersion.Manifest)
 	}
 
 	if input.ChallengeInputSetID != nil {
@@ -299,16 +310,6 @@ func (m *RunCreationManager) CreateEvalSession(ctx context.Context, caller Calle
 		})
 	}
 
-	executionPlan, err := buildExecutionPlan(CreateRunInput{
-		WorkspaceID:            input.WorkspaceID,
-		ChallengePackVersionID: input.ChallengePackVersionID,
-		ChallengeInputSetID:    input.ChallengeInputSetID,
-		OfficialPackMode:       domain.OfficialPackModeFull,
-	}, runAgents)
-	if err != nil {
-		return CreateEvalSessionResult{}, fmt.Errorf("build execution plan: %w", err)
-	}
-
 	challengeIdentityIDs, err := m.repo.ListChallengeIdentityIDsByPackVersionID(ctx, input.ChallengePackVersionID)
 	if err != nil {
 		return CreateEvalSessionResult{}, fmt.Errorf("list official challenge identities: %w", err)
@@ -330,6 +331,20 @@ func (m *RunCreationManager) CreateEvalSession(ctx context.Context, caller Calle
 
 	childRuns := make([]repository.CreateQueuedRunParams, 0, input.EvalSession.Repetitions)
 	for repetition := int32(0); repetition < input.EvalSession.Repetitions; repetition++ {
+		runInput := CreateRunInput{
+			WorkspaceID:            input.WorkspaceID,
+			ChallengePackVersionID: input.ChallengePackVersionID,
+			ChallengeInputSetID:    input.ChallengeInputSetID,
+			OfficialPackMode:       domain.OfficialPackModeFull,
+			MaxIterations:          input.MaxIterations,
+		}
+		if int(repetition) < len(input.EvalSession.SeedFanout) {
+			runInput.Seed = &input.EvalSession.SeedFanout[repetition]
+		}
+		executionPlan, err := buildExecutionPlan(runInput, runAgents)
+		if err != nil {
+			return CreateEvalSessionResult{}, fmt.Errorf("build execution plan: %w", err)
+		}
 		childRuns = append(childRuns, repository.CreateQueuedRunParams{
 			OrganizationID:         organizationID,
 			WorkspaceID:            input.WorkspaceID,
@@ -372,13 +387,21 @@ func (m *RunCreationManager) CreateEvalSession(ctx context.Context, caller Calle
 	}
 
 	runIDs := make([]uuid.UUID, 0, len(createResult.Runs))
+	seededRuns := make([]EvalSessionSeededRun, 0, len(input.EvalSession.SeedFanout))
 	for _, run := range createResult.Runs {
 		runIDs = append(runIDs, run.ID)
+		if seed := evalSessionChildRunSeed(run.ExecutionPlan); seed != nil {
+			seededRuns = append(seededRuns, EvalSessionSeededRun{
+				RunID: run.ID,
+				Seed:  *seed,
+			})
+		}
 	}
 
 	return CreateEvalSessionResult{
-		Session: createResult.Session,
-		RunIDs:  runIDs,
+		Session:    createResult.Session,
+		RunIDs:     runIDs,
+		SeededRuns: seededRuns,
 	}, nil
 }
 
@@ -434,6 +457,12 @@ func buildRoutingTaskSnapshot(input CreateEvalSessionConfigInput) json.RawMessag
 		"schema_version": input.SchemaVersion,
 		"routing":        json.RawMessage(input.RoutingTaskSnapshot.Routing),
 		"task":           json.RawMessage(input.RoutingTaskSnapshot.Task),
+	}
+	if len(input.SeedFanout) > 0 {
+		payload["seed_fanout"] = map[string]any{
+			"strategy": "explicit",
+			"seeds":    input.SeedFanout,
+		}
 	}
 	return mustMarshalEvalSessionJSON(payload)
 }

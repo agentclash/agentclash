@@ -69,6 +69,36 @@ func TestBuildEvalSessionBody_HappyPath_SingleDeployment(t *testing.T) {
 	}
 }
 
+func TestBuildSeededEvalSessionBody(t *testing.T) {
+	body, err := buildSeededEvalSessionBody("ws-1", runCreateRequest{
+		ChallengePackVersionID: "pv-1",
+		ChallengeInputSetID:    "is-1",
+		DeploymentIDs:          []string{"dep-1"},
+		Name:                   "seeded-boardroom",
+		OfficialPackMode:       "full",
+		MaxIterations:          7,
+		Seeds:                  3,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := body["max_iterations"]; got != 7 {
+		t.Fatalf("max_iterations = %v, want 7", got)
+	}
+	session := body["eval_session"].(map[string]any)
+	if got := session["repetitions"]; got != 3 {
+		t.Fatalf("repetitions = %v, want 3", got)
+	}
+	seedFanout := session["seed_fanout"].(map[string]any)
+	if seedFanout["strategy"] != "explicit" {
+		t.Fatalf("seed_fanout.strategy = %v, want explicit", seedFanout["strategy"])
+	}
+	seeds := seedFanout["seeds"].([]int64)
+	if len(seeds) != 3 || seeds[0] != 1 || seeds[2] != 3 {
+		t.Fatalf("seeds = %v, want [1 2 3]", seeds)
+	}
+}
+
 func TestBuildEvalSessionBody_MultiDeployment_LabelsAndMode(t *testing.T) {
 	body, err := buildEvalSessionBody("ws-1", runCreateRequest{
 		ChallengePackVersionID: "pv-1",
@@ -77,8 +107,8 @@ func TestBuildEvalSessionBody_MultiDeployment_LabelsAndMode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if got := body["execution_mode"]; got != "multi_agent" {
-		t.Errorf("execution_mode = %v, want multi_agent", got)
+	if got := body["execution_mode"]; got != "comparison" {
+		t.Errorf("execution_mode = %v, want comparison", got)
 	}
 	participants := body["participants"].([]map[string]any)
 	if len(participants) != 3 {
@@ -254,6 +284,120 @@ func TestEvalStart_Repetitions_RoutesToEvalSessions(t *testing.T) {
 	aggregation, _ := session["aggregation"].(map[string]any)
 	if aggregation["method"] != "mean" {
 		t.Errorf("aggregation.method = %v, want mean", aggregation["method"])
+	}
+}
+
+func TestRunCreateSeedsRoutesToEvalSessions(t *testing.T) {
+	captured := map[string]any{}
+	srv := fakeAPI(t, evalStartFakeRoutes(t, &captured))
+	defer srv.Close()
+
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+	if err := executeCommand(t, []string{
+		"run", "create", "-w", "ws-1",
+		"--challenge-pack-version", "pv-1",
+		"--deployments", "dep-1",
+		"--seeds", "3",
+		"--max-iter", "7",
+	}, srv.URL); err != nil {
+		t.Fatalf("run create --seeds error: %v", err)
+	}
+
+	if _, hit := captured["__hit_runs"]; hit {
+		t.Fatal("POST /v1/runs was called; expected POST /v1/eval-sessions")
+	}
+	if captured["max_iterations"] != float64(7) {
+		t.Fatalf("max_iterations = %v, want 7", captured["max_iterations"])
+	}
+	session, ok := captured["eval_session"].(map[string]any)
+	if !ok {
+		t.Fatalf("eval_session missing in body: %#v", captured["eval_session"])
+	}
+	if r, ok := session["repetitions"].(float64); !ok || int(r) != 3 {
+		t.Fatalf("repetitions = %v, want 3", session["repetitions"])
+	}
+	seedFanout, ok := session["seed_fanout"].(map[string]any)
+	if !ok {
+		t.Fatalf("seed_fanout missing in body: %#v", session)
+	}
+	seeds, ok := seedFanout["seeds"].([]any)
+	if !ok || len(seeds) != 3 || seeds[0] != float64(1) || seeds[2] != float64(3) {
+		t.Fatalf("seeds = %#v, want [1 2 3]", seedFanout["seeds"])
+	}
+}
+
+func TestRunCreateSeedsRejectsFollow(t *testing.T) {
+	srv := fakeAPI(t, evalStartFakeRoutes(t, nil))
+	defer srv.Close()
+
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+	err := executeCommand(t, []string{
+		"run", "create", "-w", "ws-1",
+		"--challenge-pack-version", "pv-1",
+		"--deployments", "dep-1",
+		"--seeds", "3",
+		"--follow",
+	}, srv.URL)
+	if err == nil {
+		t.Fatal("expected error when combining --seeds and --follow")
+	}
+	if !strings.Contains(err.Error(), "--follow is not supported with --seeds") {
+		t.Errorf("err = %v, want --follow/--seeds guidance", err)
+	}
+}
+
+func TestBuildSeededEvalSessionBodyRejectsUnsupportedScope(t *testing.T) {
+	_, err := buildSeededEvalSessionBody("ws-1", runCreateRequest{
+		ChallengePackVersionID: "pv-1",
+		DeploymentIDs:          []string{"dep-1"},
+		OfficialPackMode:       "suite_only",
+		Seeds:                  2,
+	})
+	if err == nil {
+		t.Fatal("expected error for suite_only with --seeds")
+	}
+	if !strings.Contains(err.Error(), "not supported with --seeds") {
+		t.Errorf("err = %v, want --seeds unsupported scope guidance", err)
+	}
+}
+
+func TestBuildSeededEvalSessionBodyRejectsInvalidFlagRanges(t *testing.T) {
+	cases := []struct {
+		name    string
+		request runCreateRequest
+		want    string
+	}{
+		{
+			name: "negative_max_iter",
+			request: runCreateRequest{
+				ChallengePackVersionID: "pv-1",
+				DeploymentIDs:          []string{"dep-1"},
+				MaxIterations:          -1,
+				Seeds:                  2,
+			},
+			want: "--max-iter",
+		},
+		{
+			name: "negative_race_context_cadence",
+			request: runCreateRequest{
+				ChallengePackVersionID: "pv-1",
+				DeploymentIDs:          []string{"dep-1"},
+				RaceContextCadence:     -1,
+				Seeds:                  2,
+			},
+			want: "--race-context-cadence",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := buildSeededEvalSessionBody("ws-1", tc.request)
+			if err == nil {
+				t.Fatal("expected range validation error")
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("err = %v, want %s guidance", err, tc.want)
+			}
+		})
 	}
 }
 

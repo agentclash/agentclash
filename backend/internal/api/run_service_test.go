@@ -651,6 +651,101 @@ func TestRunCreationManagerCreateEvalSessionCreatesQueuedRuns(t *testing.T) {
 	}
 }
 
+func TestRunCreationManagerCreateEvalSessionPersistsSeedFanout(t *testing.T) {
+	workspaceID := uuid.New()
+	challengePackVersionID := uuid.New()
+	challengeInputSetID := uuid.New()
+	deploymentID := uuid.New()
+	sessionID := uuid.New()
+	firstRunID := uuid.New()
+	secondRunID := uuid.New()
+	maxIterations := int32(3)
+	caller := Caller{
+		UserID: uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: "workspace_member"},
+		},
+	}
+
+	repo := &fakeRunCreationRepository{
+		challengePackVersion: repository.RunnableChallengePackVersion{ID: challengePackVersionID},
+		challengeInputSets: []repository.ChallengeInputSetSummary{
+			{ID: challengeInputSetID, ChallengePackVersionID: challengePackVersionID},
+		},
+		challengeIdentityIDs: []uuid.UUID{uuid.New()},
+		deployments: []repository.RunnableDeployment{
+			{
+				ID:                        deploymentID,
+				OrganizationID:            uuid.New(),
+				WorkspaceID:               workspaceID,
+				Name:                      "Support Agent Deployment",
+				AgentDeploymentSnapshotID: uuid.New(),
+			},
+		},
+		createEvalSessionWithRunsResult: repository.CreateEvalSessionWithQueuedRunsResult{
+			Session: domain.EvalSession{ID: sessionID, Status: domain.EvalSessionStatusQueued, Repetitions: 2, SchemaVersion: 1},
+			Runs: []domain.Run{
+				{ID: secondRunID, EvalSessionID: &sessionID, ExecutionPlan: json.RawMessage(`{"seed":2}`)},
+				{ID: firstRunID, EvalSessionID: &sessionID, ExecutionPlan: json.RawMessage(`{"seed":1}`)},
+			},
+		},
+	}
+	manager := NewRunCreationManager(NewCallerWorkspaceAuthorizer(), repo, &fakeRunWorkflowStarter{}, nil)
+
+	result, err := manager.CreateEvalSession(context.Background(), caller, CreateEvalSessionInput{
+		WorkspaceID:            workspaceID,
+		ChallengePackVersionID: challengePackVersionID,
+		Participants: []EvalSessionParticipantInput{
+			{AgentDeploymentID: &deploymentID, Label: "Primary"},
+		},
+		ExecutionMode: "single_agent",
+		Name:          "Seeded eval",
+		MaxIterations: &maxIterations,
+		EvalSession: CreateEvalSessionConfigInput{
+			Repetitions: 2,
+			Aggregation: EvalSessionAggregationInput{
+				Method:             "mean",
+				ReportVariance:     true,
+				ConfidenceInterval: 0.95,
+			},
+			RoutingTaskSnapshot: EvalSessionRoutingTaskSnapshotInput{
+				Routing: json.RawMessage(`{"mode":"single_agent"}`),
+				Task:    json.RawMessage(`{"pack_version":"v1"}`),
+			},
+			SeedFanout:    []int64{1, 2},
+			SchemaVersion: 1,
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateEvalSession returned error: %v", err)
+	}
+
+	if len(result.SeededRuns) != 2 || result.SeededRuns[0].RunID != secondRunID || result.SeededRuns[0].Seed != 2 || result.SeededRuns[1].RunID != firstRunID || result.SeededRuns[1].Seed != 1 {
+		t.Fatalf("seeded runs = %+v, want run/seed pairs extracted from execution plans", result.SeededRuns)
+	}
+	if got := executionPlanTestSeed(t, repo.createEvalSessionWithRunsParams.Runs[0].ExecutionPlan); got != 1 {
+		t.Fatalf("first execution plan seed = %d, want 1", got)
+	}
+	if got := executionPlanTestSeed(t, repo.createEvalSessionWithRunsParams.Runs[1].ExecutionPlan); got != 2 {
+		t.Fatalf("second execution plan seed = %d, want 2", got)
+	}
+	if got := executionPlanTestMaxIterations(t, repo.createEvalSessionWithRunsParams.Runs[0].ExecutionPlan); got != 3 {
+		t.Fatalf("execution plan max_iterations = %d, want 3", got)
+	}
+	var routingSnapshot struct {
+		SeedFanout struct {
+			Strategy string  `json:"strategy"`
+			Seeds    []int64 `json:"seeds"`
+		} `json:"seed_fanout"`
+	}
+	if err := json.Unmarshal(repo.createEvalSessionWithRunsParams.Session.RoutingTaskSnapshot, &routingSnapshot); err != nil {
+		t.Fatalf("decode routing task snapshot: %v", err)
+	}
+	if routingSnapshot.SeedFanout.Strategy != "explicit" || len(routingSnapshot.SeedFanout.Seeds) != 2 || routingSnapshot.SeedFanout.Seeds[1] != 2 {
+		t.Fatalf("seed fanout snapshot = %+v, want explicit [1 2]", routingSnapshot.SeedFanout)
+	}
+}
+
 func TestRunCreationManagerCreateEvalSessionStartsEvalSessionWorkflow(t *testing.T) {
 	workspaceID := uuid.New()
 	challengePackVersionID := uuid.New()
@@ -1842,6 +1937,17 @@ func executionPlanTestMaxIterations(t *testing.T, payload json.RawMessage) int32
 		t.Fatalf("decode execution plan: %v", err)
 	}
 	return plan.RuntimeLimits.MaxIterations
+}
+
+func executionPlanTestSeed(t *testing.T, payload json.RawMessage) int64 {
+	t.Helper()
+	var plan struct {
+		Seed int64 `json:"seed"`
+	}
+	if err := json.Unmarshal(payload, &plan); err != nil {
+		t.Fatalf("decode execution plan: %v", err)
+	}
+	return plan.Seed
 }
 
 func (f *fakeRunCreationRepository) GetRunnableChallengePackVersionByID(_ context.Context, _ uuid.UUID) (repository.RunnableChallengePackVersion, error) {

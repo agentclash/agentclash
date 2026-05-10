@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -23,6 +24,7 @@ type createEvalSessionRequest struct {
 	Participants           []createEvalSessionParticipant `json:"participants"`
 	ExecutionMode          string                         `json:"execution_mode"`
 	Name                   string                         `json:"name,omitempty"`
+	MaxIterations          *int                           `json:"max_iterations,omitempty"`
 	EvalSession            json.RawMessage                `json:"eval_session"`
 }
 
@@ -33,8 +35,14 @@ type createEvalSessionParticipant struct {
 }
 
 type createEvalSessionResponse struct {
-	EvalSession evalSessionResponse `json:"eval_session"`
-	RunIDs      []uuid.UUID         `json:"run_ids"`
+	EvalSession evalSessionResponse            `json:"eval_session"`
+	RunIDs      []uuid.UUID                    `json:"run_ids"`
+	SeededRuns  []evalSessionSeededRunResponse `json:"seeded_runs,omitempty"`
+}
+
+type evalSessionSeededRunResponse struct {
+	RunID uuid.UUID `json:"run_id"`
+	Seed  int64     `json:"seed"`
 }
 
 type evalSessionResponse struct {
@@ -102,6 +110,7 @@ func createEvalSessionHandler(logger *slog.Logger, service RunCreationService) h
 		writeJSON(w, http.StatusCreated, createEvalSessionResponse{
 			EvalSession: buildEvalSessionResponse(result.Session),
 			RunIDs:      append([]uuid.UUID(nil), result.RunIDs...),
+			SeededRuns:  buildEvalSessionSeededRunResponse(result.SeededRuns),
 		})
 	}
 }
@@ -155,6 +164,20 @@ func buildEvalSessionResponse(session domain.EvalSession) evalSessionResponse {
 		FinishedAt:             cloneTimePtr(session.FinishedAt),
 		UpdatedAt:              session.UpdatedAt,
 	}
+}
+
+func buildEvalSessionSeededRunResponse(items []EvalSessionSeededRun) []evalSessionSeededRunResponse {
+	if len(items) == 0 {
+		return nil
+	}
+	out := make([]evalSessionSeededRunResponse, 0, len(items))
+	for _, item := range items {
+		out = append(out, evalSessionSeededRunResponse{
+			RunID: item.RunID,
+			Seed:  item.Seed,
+		})
+	}
+	return out
 }
 
 func cloneTimePtr(value *time.Time) *time.Time {
@@ -217,6 +240,19 @@ func decodeCreateEvalSessionRequest(_ context.Context, r *http.Request) (CreateE
 		}
 	}
 
+	var maxIterations *int32
+	if body.MaxIterations != nil {
+		value := *body.MaxIterations
+		if value < 1 || value > maxRunMaxIterations {
+			return CreateEvalSessionInput{}, RunCreationValidationError{
+				Code:    "invalid_max_iterations",
+				Message: fmt.Sprintf("max_iterations must be between 1 and %d", maxRunMaxIterations),
+			}
+		}
+		value32 := int32(value)
+		maxIterations = &value32
+	}
+
 	participants := make([]EvalSessionParticipantInput, 0, len(body.Participants))
 	for _, participant := range body.Participants {
 		var deploymentID *uuid.UUID
@@ -275,6 +311,7 @@ func decodeCreateEvalSessionRequest(_ context.Context, r *http.Request) (CreateE
 		Participants:           participants,
 		ExecutionMode:          strings.TrimSpace(body.ExecutionMode),
 		Name:                   strings.TrimSpace(body.Name),
+		MaxIterations:          maxIterations,
 		EvalSession:            config,
 	}, nil
 }
@@ -286,6 +323,7 @@ func decodeEvalSessionConfig(raw json.RawMessage) (CreateEvalSessionConfigInput,
 		SuccessThreshold    json.RawMessage `json:"success_threshold"`
 		RoutingTaskSnapshot json.RawMessage `json:"routing_task_snapshot"`
 		ReliabilityWeights  json.RawMessage `json:"reliability_weights"`
+		SeedFanout          json.RawMessage `json:"seed_fanout"`
 		SchemaVersion       json.RawMessage `json:"schema_version"`
 	}
 
@@ -336,6 +374,8 @@ func decodeEvalSessionConfig(raw json.RawMessage) (CreateEvalSessionConfigInput,
 
 	reliabilityWeights, reliabilityDetails := decodeEvalSessionReliabilityWeights(body.ReliabilityWeights)
 	details = append(details, reliabilityDetails...)
+	seedFanout, seedFanoutDetails := decodeEvalSessionSeedFanout(body.SeedFanout, repetitions)
+	details = append(details, seedFanoutDetails...)
 
 	if aggregation.Method == "weighted_mean" && reliabilityWeights == nil {
 		details = append(details, evalSessionValidationDetail{
@@ -355,8 +395,76 @@ func decodeEvalSessionConfig(raw json.RawMessage) (CreateEvalSessionConfigInput,
 		SuccessThreshold:    successThreshold,
 		RoutingTaskSnapshot: routingTaskSnapshot,
 		ReliabilityWeights:  reliabilityWeights,
+		SeedFanout:          seedFanout,
 		SchemaVersion:       schemaVersion,
 	}, nil
+}
+
+func decodeEvalSessionSeedFanout(raw json.RawMessage, repetitions int32) ([]int64, []evalSessionValidationDetail) {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
+		return nil, nil
+	}
+	type seedFanoutRequest struct {
+		Strategy json.RawMessage `json:"strategy"`
+		Seeds    json.RawMessage `json:"seeds"`
+	}
+	var body seedFanoutRequest
+	if !decodeJSONObject(raw, &body) {
+		return nil, []evalSessionValidationDetail{{
+			Field:   "eval_session.seed_fanout",
+			Code:    "eval_session.seed_fanout.invalid",
+			Message: "seed_fanout must be an object with strategy and seeds",
+		}}
+	}
+	strategy, ok := decodeRequiredString(body.Strategy)
+	if !ok || strategy != "explicit" {
+		return nil, []evalSessionValidationDetail{{
+			Field:   "eval_session.seed_fanout.strategy",
+			Code:    "eval_session.seed_fanout.strategy.unsupported",
+			Message: "seed_fanout.strategy must be explicit",
+		}}
+	}
+	var seeds []int64
+	if err := json.Unmarshal(body.Seeds, &seeds); err != nil {
+		return nil, []evalSessionValidationDetail{{
+			Field:   "eval_session.seed_fanout.seeds",
+			Code:    "eval_session.seed_fanout.seeds.invalid",
+			Message: "seed_fanout.seeds must be an array of positive integers",
+		}}
+	}
+	details := make([]evalSessionValidationDetail, 0)
+	if int32(len(seeds)) != repetitions {
+		details = append(details, evalSessionValidationDetail{
+			Field:   "eval_session.seed_fanout.seeds",
+			Code:    "eval_session.seed_fanout.seeds.length_mismatch",
+			Message: "seed_fanout.seeds length must match repetitions",
+		})
+	}
+	seen := make(map[int64]struct{}, len(seeds))
+	for _, seed := range seeds {
+		if seed < 1 {
+			details = append(details, evalSessionValidationDetail{
+				Field:   "eval_session.seed_fanout.seeds",
+				Code:    "eval_session.seed_fanout.seeds.invalid",
+				Message: "seed_fanout.seeds must be an array of positive integers",
+			})
+			break
+		}
+		if _, exists := seen[seed]; exists {
+			details = append(details, evalSessionValidationDetail{
+				Field:   "eval_session.seed_fanout.seeds",
+				Code:    "eval_session.seed_fanout.seeds.duplicate",
+				Message: "seed_fanout.seeds must not contain duplicates",
+			})
+			break
+		}
+		seen[seed] = struct{}{}
+	}
+	if len(details) > 0 {
+		return nil, details
+	}
+	return seeds, nil
 }
 
 func decodeEvalSessionAggregation(raw json.RawMessage) (EvalSessionAggregationInput, []evalSessionValidationDetail) {

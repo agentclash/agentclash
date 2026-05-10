@@ -39,6 +39,7 @@ func init() {
 	runCreateCmd.Flags().Bool("race-context", false, "Enable live peer-standings injection during the run (requires 2+ agents)")
 	runCreateCmd.Flags().Int("race-context-cadence", 0, "Override race-context cadence; minimum steps between standings injections, [1, 10]. 0 uses the backend default.")
 	runCreateCmd.Flags().Int("max-iter", 0, "Override max iterations for this run (1-1000). 0 uses the pack/runtime default.")
+	runCreateCmd.Flags().Int("seeds", 0, "Create a seeded eval session with N child runs, one per seed (1-100). 0 creates a single run.")
 
 	runRankingCmd.Flags().String("sort-by", "", "Sort by: composite, correctness, reliability, latency, cost")
 	runFailuresCmd.Flags().String("agent", "", "Filter by run agent ID")
@@ -220,6 +221,22 @@ For CI and other non-interactive use, keep passing explicit IDs via flags.`,
 		request.ChallengeInputSetID = selections.challengeInputSetID
 		request.DeploymentIDs = selections.deploymentIDs
 
+		follow, _ := cmd.Flags().GetBool("follow")
+		if request.Seeds > 0 {
+			if follow {
+				return fmt.Errorf("--follow is not supported with --seeds; tail individual runs with 'agentclash run events <run-id> --follow' instead")
+			}
+			body, err := buildSeededEvalSessionBody(wsID, request)
+			if err != nil {
+				return err
+			}
+			result, err := createEvalSession(cmd, rc, body)
+			if err != nil {
+				return err
+			}
+			return presentCreatedEvalSession(rc, result)
+		}
+
 		body, err := buildRunCreateBody(wsID, request)
 		if err != nil {
 			return err
@@ -230,7 +247,6 @@ For CI and other non-interactive use, keep passing explicit IDs via flags.`,
 			return err
 		}
 
-		follow, _ := cmd.Flags().GetBool("follow")
 		return presentCreatedRun(cmd, rc, run, follow, nil)
 	},
 }
