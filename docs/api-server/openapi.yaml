@@ -2619,7 +2619,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/CreateRunErrorResponse"
+                $ref: "#/components/schemas/RunWorkflowErrorResponse"
         "500":
           $ref: "#/components/responses/InternalServerError"
 
@@ -7382,6 +7382,24 @@ components:
               type: string
         run:
           $ref: "#/components/schemas/CreateRunResponse"
+
+    RunWorkflowErrorResponse:
+      type: object
+      required: [error, run]
+      description: >
+        Returned when a run workflow operation could not be completed in
+        Temporal (HTTP 502).
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+        run:
+          $ref: "#/components/schemas/RunDetail"
 
     RunDetail:
       type: object

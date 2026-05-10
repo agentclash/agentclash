@@ -176,6 +176,42 @@ func TestRunReadManagerCancelRunReturnsTemporalFailure(t *testing.T) {
 	}
 }
 
+func TestRunReadManagerCancelRunReturnsLatestTerminalRunAfterTemporalFailure(t *testing.T) {
+	workspaceID := uuid.New()
+	runID := uuid.New()
+	workflowID := "RunWorkflow/" + runID.String()
+	repo := &fakeRunReadRepository{
+		run: domain.Run{
+			ID:                 runID,
+			WorkspaceID:        workspaceID,
+			Status:             domain.RunStatusRunning,
+			TemporalWorkflowID: &workflowID,
+		},
+		latestRun: domain.Run{
+			ID:          runID,
+			WorkspaceID: workspaceID,
+			Status:      domain.RunStatusCompleted,
+		},
+	}
+	manager := NewRunReadManager(NewCallerWorkspaceAuthorizer(), repo).WithRunWorkflowControl(&fakeRunWorkflowControl{err: errors.New("workflow not found")})
+
+	result, err := manager.CancelRun(context.Background(), Caller{
+		UserID: uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: RoleWorkspaceMember},
+		},
+	}, runID)
+	if err != nil {
+		t.Fatalf("CancelRun returned error: %v", err)
+	}
+	if result.Run.Status != domain.RunStatusCompleted {
+		t.Fatalf("status = %s, want completed", result.Run.Status)
+	}
+	if repo.transitionRunStatusCalls != 0 {
+		t.Fatalf("transition calls = %d, want 0", repo.transitionRunStatusCalls)
+	}
+}
+
 func TestRunReadManagerCancelRunRequiresWorkflowControlForTemporalRun(t *testing.T) {
 	workspaceID := uuid.New()
 	runID := uuid.New()
@@ -254,7 +290,7 @@ func TestCancelRunHandlerReturnsTemporalFailure(t *testing.T) {
 	if rec.Code != http.StatusBadGateway {
 		t.Fatalf("status = %d, body %s", rec.Code, rec.Body.String())
 	}
-	var response createRunErrorResponse
+	var response runWorkflowErrorResponse
 	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
@@ -610,6 +646,7 @@ func TestListRunAgentsEndpointReturnsForbidden(t *testing.T) {
 
 type fakeRunReadRepository struct {
 	run                      domain.Run
+	latestRun                domain.Run
 	transitionedRun          domain.Run
 	evalSession              repository.EvalSessionWithRuns
 	evalSessions             []domain.EvalSession
@@ -646,9 +683,14 @@ type fakeRunReadRepository struct {
 	transitionRunStatus      domain.RunStatus
 	transitionReason         *string
 	transitionChangedBy      *uuid.UUID
+	getRunByIDCalls          int
 }
 
 func (f *fakeRunReadRepository) GetRunByID(_ context.Context, _ uuid.UUID) (domain.Run, error) {
+	f.getRunByIDCalls++
+	if f.getRunByIDCalls > 1 && f.latestRun.ID != uuid.Nil {
+		return f.latestRun, f.getRunErr
+	}
 	return f.run, f.getRunErr
 }
 

@@ -295,6 +295,16 @@ func markRunCancelled(ctx sdkworkflow.Context, runID uuid.UUID, workflowErr erro
 		Reason:   &reason,
 	}).Get(disconnectedCtx, &run)
 	if activityErr != nil {
+		if hasApplicationErrorType(activityErr, repositoryInvalidTransitionType) ||
+			hasApplicationErrorType(activityErr, repositoryTransitionConflictType) {
+			latest, loadErr := loadRun(disconnectedCtx, runID)
+			if loadErr == nil && latest.Status == domain.RunStatusCancelled {
+				return workflowErr
+			}
+			if loadErr != nil {
+				return fmt.Errorf("run workflow cancelled: %v; additionally failed to mark run cancelled: %w; additionally failed to load latest run: %v", workflowErr, activityErr, loadErr)
+			}
+		}
 		return fmt.Errorf("run workflow cancelled: %v; additionally failed to mark run cancelled: %w", workflowErr, activityErr)
 	}
 

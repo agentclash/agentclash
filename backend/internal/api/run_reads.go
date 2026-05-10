@@ -227,6 +227,10 @@ func (m *RunReadManager) CancelRun(ctx context.Context, caller Caller, runID uui
 			}
 		}
 		if err := m.workflowControl.CancelRunWorkflow(ctx, workflowID, strings.TrimSpace(derefString(run.TemporalRunID))); err != nil {
+			latest, latestErr := m.repo.GetRunByID(ctx, run.ID)
+			if latestErr == nil && !latest.Status.CanTransitionTo(domain.RunStatusCancelled) {
+				return CancelRunResult{Run: latest}, nil
+			}
 			return CancelRunResult{}, RunCancellationWorkflowError{Run: run, Cause: err}
 		}
 	}

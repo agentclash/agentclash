@@ -193,6 +193,11 @@ type createRunErrorResponse struct {
 	Run   createRunResponse `json:"run"`
 }
 
+type runWorkflowErrorResponse struct {
+	Error apiError       `json:"error"`
+	Run   getRunResponse `json:"run"`
+}
+
 func buildCreateRunResponse(run domain.Run) createRunResponse {
 	return createRunResponse{
 		ID:                     run.ID,
@@ -242,12 +247,12 @@ func cancelRunHandler(logger *slog.Logger, service RunReadService) http.HandlerF
 			default:
 				var workflowErr RunCancellationWorkflowError
 				if errors.As(err, &workflowErr) {
-					writeJSON(w, http.StatusBadGateway, createRunErrorResponse{
+					writeJSON(w, http.StatusBadGateway, runWorkflowErrorResponse{
 						Error: apiError{
 							Code:    "workflow_cancel_failed",
 							Message: "run could not be cancelled in Temporal",
 						},
-						Run: buildCreateRunResponse(workflowErr.Run),
+						Run: buildGetRunResponse(workflowErr.Run, nil),
 					})
 					return
 				}
