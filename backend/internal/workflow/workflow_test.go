@@ -162,6 +162,31 @@ func TestEvalSessionWorkflowAllCancelledChildRunsMarksSessionCancelled(t *testin
 	}
 }
 
+func TestEvalSessionWorkflowDefaultVersionSkipsChildRefresh(t *testing.T) {
+	sessionID := uuid.New()
+	runID := uuid.New()
+	repo := newFakeRunRepository(fixtureRun(uuid.New(), domain.RunStatusQueued))
+	repo.setEvalSession(
+		fixtureEvalSession(sessionID, domain.EvalSessionStatusQueued),
+		fixtureChildRun(runID, sessionID),
+	)
+
+	env := newEvalSessionWorkflowTestEnvironment(repo, nil, nil)
+	env.OnGetVersion(
+		evalSessionRefreshChildRunsVersionChangeID,
+		sdkworkflow.DefaultVersion,
+		sdkworkflow.Version(1),
+	).Return(sdkworkflow.DefaultVersion)
+	env.ExecuteWorkflow(EvalSessionWorkflow, EvalSessionWorkflowInput{EvalSessionID: sessionID})
+
+	if err := env.GetWorkflowError(); err != nil {
+		t.Fatalf("EvalSessionWorkflow returned error: %v", err)
+	}
+	if repo.callCountWithPrefix("GetRunByID") != 0 {
+		t.Fatalf("GetRunByID call count = %d, want 0 for default version replay path", repo.callCountWithPrefix("GetRunByID"))
+	}
+}
+
 func TestEvalSessionWorkflowMarksSessionCancelledWhenStartedChildWasCancelled(t *testing.T) {
 	sessionID := uuid.New()
 	runID := uuid.New()
@@ -194,8 +219,8 @@ func TestEvalSessionWorkflowMarksSessionCancelledWhenStartedChildWasCancelled(t 
 
 func TestEvalSessionWorkflowMixedCancelledAndFailedChildrenMarksSessionFailed(t *testing.T) {
 	sessionID := uuid.New()
-	cancelledRunID := uuid.New()
-	failedRunID := uuid.New()
+	cancelledRunID := uuid.MustParse("00000000-0000-0000-0000-000000000001")
+	failedRunID := uuid.MustParse("00000000-0000-0000-0000-000000000002")
 	repo := newFakeRunRepository(fixtureRun(uuid.New(), domain.RunStatusQueued))
 	repo.setEvalSession(
 		fixtureEvalSession(sessionID, domain.EvalSessionStatusQueued),
@@ -206,11 +231,7 @@ func TestEvalSessionWorkflowMixedCancelledAndFailedChildrenMarksSessionFailed(t 
 	env := newEvalSessionWorkflowTestEnvironment(repo, nil, func(ctx sdkworkflow.Context, input RunWorkflowInput) error {
 		if input.RunID == cancelledRunID {
 			repo.forceEvalSessionRunStatus(sessionID, input.RunID, domain.RunStatusCancelled)
-			return temporal.NewNonRetryableApplicationError(
-				ErrRunMustBeQueued.Error(),
-				runMustBeQueuedErrorType,
-				ErrRunMustBeQueued,
-			)
+			return temporal.NewCanceledError("child cancelled")
 		}
 		return errors.New("real child failure")
 	})

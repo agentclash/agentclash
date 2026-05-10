@@ -15,6 +15,8 @@ import (
 var ErrEvalSessionHasNoRuns = errors.New("eval session must have at least one run")
 var errEvalSessionChildrenCancelled = errors.New("eval session child runs cancelled")
 
+const evalSessionRefreshChildRunsVersionChangeID = "eval-session-refresh-child-runs"
+
 func EvalSessionWorkflow(ctx sdkworkflow.Context, input EvalSessionWorkflowInput) error {
 	ctx = sdkworkflow.WithActivityOptions(ctx, defaultActivityOptions)
 
@@ -53,12 +55,14 @@ func runEvalSessionWorkflow(ctx sdkworkflow.Context, input EvalSessionWorkflowIn
 	if len(runs) == 0 {
 		return fmt.Errorf("%w: eval session %s", ErrEvalSessionHasNoRuns, input.EvalSessionID)
 	}
-	runs, err = loadLatestEvalSessionRuns(ctx, runs)
-	if err != nil {
-		return err
-	}
-	if allRunsCancelled(runs) {
-		return transitionEvalSessionStatus(ctx, input.EvalSessionID, domain.EvalSessionStatusCancelled)
+	if sdkworkflow.GetVersion(ctx, evalSessionRefreshChildRunsVersionChangeID, sdkworkflow.DefaultVersion, 1) != sdkworkflow.DefaultVersion {
+		runs, err = loadLatestEvalSessionRuns(ctx, runs)
+		if err != nil {
+			return err
+		}
+		if allRunsCancelled(runs) {
+			return transitionEvalSessionStatus(ctx, input.EvalSessionID, domain.EvalSessionStatusCancelled)
+		}
 	}
 
 	if err := executeEvalSessionRuns(ctx, runs); err != nil {
@@ -173,15 +177,16 @@ func classifyEvalSessionChildErrors(ctx sdkworkflow.Context, childErrors map[uui
 	cancelledChildren := 0
 	for _, runID := range runIDs {
 		childErr := childErrors[runID]
-		if childRunMayAlreadyBeTerminal(childErr) {
+		if childRunMayAlreadyBeTerminal(childErr) || isWorkflowCanceled(childErr) {
 			latest, loadErr := loadRun(ctx, runID)
 			if loadErr != nil {
 				return nil, 0, loadErr
 			}
-			if !latest.Status.CanTransitionTo(domain.RunStatusCancelled) {
-				if latest.Status == domain.RunStatusCancelled {
-					cancelledChildren++
-				}
+			if latest.Status == domain.RunStatusCancelled {
+				cancelledChildren++
+				continue
+			}
+			if childRunMayAlreadyBeTerminal(childErr) && !latest.Status.CanTransitionTo(domain.RunStatusCancelled) {
 				continue
 			}
 		}
