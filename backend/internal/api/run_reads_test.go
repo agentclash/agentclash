@@ -14,6 +14,7 @@ import (
 	"github.com/agentclash/agentclash/backend/internal/domain"
 	"github.com/agentclash/agentclash/backend/internal/failurereview"
 	"github.com/agentclash/agentclash/backend/internal/repository"
+	"github.com/agentclash/agentclash/backend/internal/runevents"
 	"github.com/agentclash/agentclash/backend/internal/workflow"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -708,6 +709,53 @@ func TestListRunAgentsEndpointReturnsForbidden(t *testing.T) {
 	}
 }
 
+func TestRunReadManagerListsRunEventStreamInTracePackOrder(t *testing.T) {
+	workspaceID := uuid.New()
+	runID := uuid.New()
+	agentLaneOne := uuid.New()
+	agentLaneZero := uuid.New()
+	occurredAt := time.Date(2026, 4, 22, 10, 0, 0, 0, time.UTC)
+	caller := Caller{
+		UserID: uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: RoleWorkspaceMember},
+		},
+	}
+	manager := NewRunReadManager(NewCallerWorkspaceAuthorizer(), &fakeRunReadRepository{
+		run: domain.Run{ID: runID, WorkspaceID: workspaceID},
+		runAgents: []domain.RunAgent{
+			{ID: agentLaneOne, RunID: runID, LaneIndex: 1},
+			{ID: agentLaneZero, RunID: runID, LaneIndex: 0},
+		},
+		runEvents: map[uuid.UUID][]repository.RunEvent{
+			agentLaneOne: {
+				{ID: 30, RunID: runID, RunAgentID: agentLaneOne, SequenceNumber: 2, EventType: runevents.EventTypeSystemStepCompleted, Source: runevents.SourceNativeEngine, OccurredAt: occurredAt, Payload: []byte(`{"label":"lane-one-seq-two"}`)},
+				{ID: 20, RunID: runID, RunAgentID: agentLaneOne, SequenceNumber: 1, EventType: runevents.EventTypeSystemStepStarted, Source: runevents.SourceNativeEngine, OccurredAt: occurredAt, Payload: []byte(`{"label":"lane-one-seq-one"}`)},
+			},
+			agentLaneZero: {
+				{ID: 10, RunID: runID, RunAgentID: agentLaneZero, SequenceNumber: 1, EventType: runevents.EventTypeSystemRunStarted, Source: runevents.SourceNativeEngine, OccurredAt: occurredAt.Add(time.Second), Payload: []byte(`{"label":"later"}`)},
+				{ID: 40, RunID: runID, RunAgentID: agentLaneZero, SequenceNumber: 2, EventType: runevents.EventTypeSystemStepStarted, Source: runevents.SourceNativeEngine, OccurredAt: occurredAt, Payload: []byte(`{"label":"lane-zero"}`)},
+			},
+		},
+	})
+
+	result, err := manager.ListRunEventStream(context.Background(), caller, runID)
+	if err != nil {
+		t.Fatalf("ListRunEventStream returned error: %v", err)
+	}
+
+	if len(result.Events) != 4 {
+		t.Fatalf("event count = %d, want 4", len(result.Events))
+	}
+	got := []int64{result.Events[0].ID, result.Events[1].ID, result.Events[2].ID, result.Events[3].ID}
+	want := []int64{40, 20, 30, 10}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("event order = %v, want %v", got, want)
+		}
+	}
+}
+
 type fakeRunReadRepository struct {
 	run                      domain.Run
 	latestRun                domain.Run
@@ -719,6 +767,7 @@ type fakeRunReadRepository struct {
 	runScorecard             repository.RunScorecard
 	regressionCoverageCases  []repository.RunRegressionCoverageCase
 	runAgents                []domain.RunAgent
+	runEvents                map[uuid.UUID][]repository.RunEvent
 	failureItems             []failurereview.Item
 	failureItemsByRunID      map[uuid.UUID][]failurereview.Item
 	recentComparableRuns     []domain.Run
@@ -809,6 +858,10 @@ func (f *fakeRunReadRepository) ListRunRegressionCoverageCasesByRunID(_ context.
 
 func (f *fakeRunReadRepository) ListRunAgentsByRunID(_ context.Context, _ uuid.UUID) ([]domain.RunAgent, error) {
 	return f.runAgents, f.listRunAgentsErr
+}
+
+func (f *fakeRunReadRepository) ListRunEventsByRunAgentID(_ context.Context, runAgentID uuid.UUID) ([]repository.RunEvent, error) {
+	return append([]repository.RunEvent(nil), f.runEvents[runAgentID]...), nil
 }
 
 func (f *fakeRunReadRepository) ListRunFailureReviewItems(_ context.Context, runID uuid.UUID, _ *uuid.UUID) ([]failurereview.Item, error) {

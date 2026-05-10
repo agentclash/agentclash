@@ -2941,6 +2941,42 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /v1/runs/{runID}/events/export:
+    get:
+      operationId: exportRunEventsJSONL
+      tags: [Runs]
+      summary: Export run events as JSONL
+      description: >
+        Exports the full persisted run-agent event stream for a run as JSONL.
+        Events are ordered by occurrence time, run-agent lane, per-agent
+        sequence number, and stable database id so trace packs are deterministic.
+      parameters:
+        - $ref: "#/components/parameters/RunID"
+      responses:
+        "200":
+          description: Ordered run-event JSONL export
+          headers:
+            Content-Disposition:
+              description: Suggested trace-pack filename.
+              schema:
+                type: string
+          content:
+            application/x-ndjson:
+              schema:
+                type: string
+                description: >
+                  One JSON run-event envelope per line. Each envelope includes
+                  event_id, schema_version, run_id, run_agent_id,
+                  sequence_number, event_type, source, occurred_at, and payload.
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
   /v1/workspaces/{workspaceID}/runs:
     get:
       operationId: listRuns
