@@ -43,6 +43,9 @@ func renderRunAgentScorecard(rc *RunContext, scorecard map[string]any) {
 	if totalCost := mapValue(scorecard, "total_cost_usd"); totalCost != nil {
 		rc.Output.PrintDetail("Total Cost", fmtUSD(totalCost))
 	}
+	if costPerCorrect := mapValue(scorecard, "cost_per_correct_usd"); costPerCorrect != nil {
+		rc.Output.PrintDetail("Cost / Correct", fmtUSD(costPerCorrect))
+	}
 
 	scoreLabels := []struct {
 		Key   string

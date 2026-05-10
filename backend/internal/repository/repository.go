@@ -1160,6 +1160,7 @@ func buildRunAgentScorecardDocument(evaluation scoring.RunAgentEvaluation) (json
 		ValidatorDetails []validatorDetail           `json:"validator_details,omitempty"`
 		MetricSummary    map[string]int              `json:"metric_summary"`
 		MetricDetails    []metricDetail              `json:"metric_details,omitempty"`
+		SideMetrics      map[string]sideMetricDetail `json:"side_metrics,omitempty"`
 		LLMJudgeDetails  []llmJudgeDetail            `json:"llm_judge_details,omitempty"`
 		Metadata         json.RawMessage             `json:"metadata,omitempty"`
 	}
@@ -1282,6 +1283,7 @@ func buildRunAgentScorecardDocument(evaluation scoring.RunAgentEvaluation) (json
 		ValidatorDetails: validatorDetails,
 		MetricSummary:    metricSummary,
 		MetricDetails:    metricDetails,
+		SideMetrics:      buildScorecardSideMetrics(evaluation),
 		LLMJudgeDetails:  llmJudgeDetails,
 		Metadata:         cloneJSON(evaluation.Metadata),
 	}
@@ -1291,6 +1293,81 @@ func buildRunAgentScorecardDocument(evaluation scoring.RunAgentEvaluation) (json
 		return nil, err
 	}
 	return encoded, nil
+}
+
+type sideMetricDetail struct {
+	State       string   `json:"state"`
+	Value       *float64 `json:"value,omitempty"`
+	Unit        string   `json:"unit,omitempty"`
+	Numerator   *float64 `json:"numerator,omitempty"`
+	Denominator *float64 `json:"denominator,omitempty"`
+	Reason      string   `json:"reason,omitempty"`
+}
+
+func buildScorecardSideMetrics(evaluation scoring.RunAgentEvaluation) map[string]sideMetricDetail {
+	return map[string]sideMetricDetail{
+		"cost_per_correct_usd": buildCostPerCorrectSideMetric(evaluation),
+	}
+}
+
+func buildCostPerCorrectSideMetric(evaluation scoring.RunAgentEvaluation) sideMetricDetail {
+	cost := runModelCostUSD(evaluation.MetricResults)
+	if cost == nil {
+		return sideMetricDetail{
+			State:  string(scoring.OutputStateUnavailable),
+			Unit:   "usd",
+			Reason: "total model cost is unavailable",
+		}
+	}
+
+	denominator, reason, ok := correctOutcomeDenominator(evaluation.ValidatorResults)
+	if !ok {
+		return sideMetricDetail{
+			State:     string(scoring.OutputStateUnavailable),
+			Unit:      "usd",
+			Numerator: cloneFloat64Ptr(cost),
+			Reason:    reason,
+		}
+	}
+
+	value := *cost / denominator
+	return sideMetricDetail{
+		State:       string(scoring.OutputStateAvailable),
+		Value:       &value,
+		Unit:        "usd",
+		Numerator:   cloneFloat64Ptr(cost),
+		Denominator: &denominator,
+	}
+}
+
+func runModelCostUSD(metrics []scoring.MetricResult) *float64 {
+	for _, metric := range metrics {
+		if metric.Collector == "run_model_cost_usd" && metric.State == scoring.OutputStateAvailable && metric.NumericValue != nil {
+			return cloneFloat64Ptr(metric.NumericValue)
+		}
+	}
+	return nil
+}
+
+func correctOutcomeDenominator(validators []scoring.ValidatorResult) (float64, string, bool) {
+	available := 0
+	denominator := 0.0
+	for _, validator := range validators {
+		if validator.State != scoring.OutputStateAvailable {
+			continue
+		}
+		available++
+		if strings.EqualFold(validator.Verdict, "pass") {
+			denominator++
+		}
+	}
+	if available == 0 {
+		return 0, "correctness denominator is unavailable", false
+	}
+	if denominator <= 0 {
+		return 0, "no correct validator outcomes", false
+	}
+	return denominator, "", true
 }
 
 func buildValidatorDetailEvidence(result scoring.ValidatorResult) any {

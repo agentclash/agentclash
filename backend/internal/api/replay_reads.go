@@ -66,12 +66,13 @@ type GetRunAgentReplayResult struct {
 }
 
 type GetRunAgentScorecardResult struct {
-	RunAgent        domain.RunAgent
-	State           ReplayState
-	Message         string
-	Scorecard       *repository.RunAgentScorecard
-	TotalCostUSD    *float64
-	LLMJudgeResults []repository.LLMJudgeResultRecord
+	RunAgent          domain.RunAgent
+	State             ReplayState
+	Message           string
+	Scorecard         *repository.RunAgentScorecard
+	TotalCostUSD      *float64
+	CostPerCorrectUSD *float64
+	LLMJudgeResults   []repository.LLMJudgeResultRecord
 }
 
 type ReplayReadManager struct {
@@ -167,11 +168,12 @@ func (m *ReplayReadManager) GetRunAgentScorecard(ctx context.Context, caller Cal
 	}
 
 	return GetRunAgentScorecardResult{
-		RunAgent:        runAgent,
-		State:           ReplayStateReady,
-		Scorecard:       &scorecard,
-		TotalCostUSD:    totalCostUSDFromScorecardDocument(scorecard.Scorecard),
-		LLMJudgeResults: judgeResults,
+		RunAgent:          runAgent,
+		State:             ReplayStateReady,
+		Scorecard:         &scorecard,
+		TotalCostUSD:      totalCostUSDFromScorecardDocument(scorecard.Scorecard),
+		CostPerCorrectUSD: costPerCorrectUSDFromScorecardDocument(scorecard.Scorecard),
+		LLMJudgeResults:   judgeResults,
 	}, nil
 }
 
@@ -204,24 +206,25 @@ type replayStepPaginationReply struct {
 }
 
 type getRunAgentScorecardResponse struct {
-	State            ReplayState               `json:"state"`
-	Message          string                    `json:"message,omitempty"`
-	RunAgentStatus   domain.RunAgentStatus     `json:"run_agent_status"`
-	ID               uuid.UUID                 `json:"id"`
-	RunAgentID       uuid.UUID                 `json:"run_agent_id"`
-	RunID            uuid.UUID                 `json:"run_id"`
-	EvaluationSpecID uuid.UUID                 `json:"evaluation_spec_id"`
-	OverallScore     *float64                  `json:"overall_score,omitempty"`
-	CorrectnessScore *float64                  `json:"correctness_score,omitempty"`
-	ReliabilityScore *float64                  `json:"reliability_score,omitempty"`
-	LatencyScore     *float64                  `json:"latency_score,omitempty"`
-	CostScore        *float64                  `json:"cost_score,omitempty"`
-	TotalCostUSD     *float64                  `json:"total_cost_usd,omitempty"`
-	BehavioralScore  *float64                  `json:"behavioral_score,omitempty"`
-	LLMJudgeResults  []runAgentLLMJudgePayload `json:"llm_judge_results"`
-	Scorecard        json.RawMessage           `json:"scorecard"`
-	CreatedAt        time.Time                 `json:"created_at"`
-	UpdatedAt        time.Time                 `json:"updated_at"`
+	State             ReplayState               `json:"state"`
+	Message           string                    `json:"message,omitempty"`
+	RunAgentStatus    domain.RunAgentStatus     `json:"run_agent_status"`
+	ID                uuid.UUID                 `json:"id"`
+	RunAgentID        uuid.UUID                 `json:"run_agent_id"`
+	RunID             uuid.UUID                 `json:"run_id"`
+	EvaluationSpecID  uuid.UUID                 `json:"evaluation_spec_id"`
+	OverallScore      *float64                  `json:"overall_score,omitempty"`
+	CorrectnessScore  *float64                  `json:"correctness_score,omitempty"`
+	ReliabilityScore  *float64                  `json:"reliability_score,omitempty"`
+	LatencyScore      *float64                  `json:"latency_score,omitempty"`
+	CostScore         *float64                  `json:"cost_score,omitempty"`
+	TotalCostUSD      *float64                  `json:"total_cost_usd,omitempty"`
+	CostPerCorrectUSD *float64                  `json:"cost_per_correct_usd,omitempty"`
+	BehavioralScore   *float64                  `json:"behavioral_score,omitempty"`
+	LLMJudgeResults   []runAgentLLMJudgePayload `json:"llm_judge_results"`
+	Scorecard         json.RawMessage           `json:"scorecard"`
+	CreatedAt         time.Time                 `json:"created_at"`
+	UpdatedAt         time.Time                 `json:"updated_at"`
 }
 
 type runAgentLLMJudgePayload struct {
@@ -378,6 +381,7 @@ func buildRunAgentScorecardResponse(result GetRunAgentScorecardResult) getRunAge
 		response.LatencyScore = result.Scorecard.LatencyScore
 		response.CostScore = result.Scorecard.CostScore
 		response.TotalCostUSD = result.TotalCostUSD
+		response.CostPerCorrectUSD = result.CostPerCorrectUSD
 		response.BehavioralScore = result.Scorecard.BehavioralScore
 		response.Scorecard = result.Scorecard.Scorecard
 		response.CreatedAt = result.Scorecard.CreatedAt
@@ -403,6 +407,24 @@ func totalCostUSDFromScorecardDocument(payload json.RawMessage) *float64 {
 		}
 	}
 	return nil
+}
+
+func costPerCorrectUSDFromScorecardDocument(payload json.RawMessage) *float64 {
+	var document struct {
+		SideMetrics map[string]struct {
+			State string   `json:"state"`
+			Value *float64 `json:"value"`
+		} `json:"side_metrics"`
+	}
+	if err := json.Unmarshal(payload, &document); err != nil {
+		return nil
+	}
+	metric, ok := document.SideMetrics["cost_per_correct_usd"]
+	if !ok || metric.State != "available" || metric.Value == nil {
+		return nil
+	}
+	value := *metric.Value
+	return &value
 }
 
 func buildRunAgentLLMJudgePayloads(records []repository.LLMJudgeResultRecord) []runAgentLLMJudgePayload {

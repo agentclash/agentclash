@@ -107,6 +107,132 @@ func TestBuildRunAgentScorecardDocumentIncludesRegressionCaseIDs(t *testing.T) {
 	}
 }
 
+func TestBuildRunAgentScorecardDocumentIncludesCostPerCorrectSideMetric(t *testing.T) {
+	document, err := buildRunAgentScorecardDocument(scoring.RunAgentEvaluation{
+		RunAgentID:       uuid.New(),
+		EvaluationSpecID: uuid.New(),
+		Status:           scoring.EvaluationStatusComplete,
+		ValidatorResults: []scoring.ValidatorResult{
+			{
+				Key:             "exact",
+				Type:            scoring.ValidatorTypeExactMatch,
+				State:           scoring.OutputStateAvailable,
+				Verdict:         "pass",
+				NormalizedScore: float64Ptr(1),
+			},
+			{
+				Key:             "partial",
+				Type:            scoring.ValidatorTypeFuzzyMatch,
+				State:           scoring.OutputStateAvailable,
+				Verdict:         "pass",
+				NormalizedScore: float64Ptr(0.5),
+			},
+			{
+				Key:             "wrong",
+				Type:            scoring.ValidatorTypeExactMatch,
+				State:           scoring.OutputStateAvailable,
+				Verdict:         "fail",
+				NormalizedScore: float64Ptr(0),
+			},
+		},
+		MetricResults: []scoring.MetricResult{
+			{
+				Key:          "model_cost",
+				Collector:    "run_model_cost_usd",
+				State:        scoring.OutputStateAvailable,
+				NumericValue: float64Ptr(0.03),
+			},
+		},
+		DimensionResults: []scoring.DimensionResult{
+			{Dimension: "correctness", State: scoring.OutputStateAvailable, Score: float64Ptr(0.5)},
+		},
+	})
+	if err != nil {
+		t.Fatalf("buildRunAgentScorecardDocument returned error: %v", err)
+	}
+
+	decoded := decodeRunScorecardJSON(t, document)
+	sideMetrics := decoded["side_metrics"].(map[string]any)
+	metric := sideMetrics["cost_per_correct_usd"].(map[string]any)
+	if metric["state"] != "available" {
+		t.Fatalf("state = %v, want available", metric["state"])
+	}
+	if math.Abs(metric["value"].(float64)-0.015) > 1e-9 {
+		t.Fatalf("value = %v, want 0.015", metric["value"])
+	}
+	if metric["unit"] != "usd" {
+		t.Fatalf("unit = %v, want usd", metric["unit"])
+	}
+	if metric["denominator"].(float64) != 2 {
+		t.Fatalf("denominator = %v, want 2", metric["denominator"])
+	}
+}
+
+func TestBuildRunAgentScorecardDocumentMarksCostPerCorrectUnavailable(t *testing.T) {
+	tests := []struct {
+		name       string
+		validators []scoring.ValidatorResult
+		metrics    []scoring.MetricResult
+		wantReason string
+	}{
+		{
+			name: "fail denominator",
+			validators: []scoring.ValidatorResult{
+				{Key: "exact", State: scoring.OutputStateAvailable, Verdict: "fail", NormalizedScore: float64Ptr(0)},
+			},
+			metrics: []scoring.MetricResult{
+				{Key: "model_cost", Collector: "run_model_cost_usd", State: scoring.OutputStateAvailable, NumericValue: float64Ptr(0.03)},
+			},
+			wantReason: "no correct validator outcomes",
+		},
+		{
+			name: "unavailable denominator",
+			validators: []scoring.ValidatorResult{
+				{Key: "exact", State: scoring.OutputStateUnavailable, Reason: "missing final output"},
+			},
+			metrics: []scoring.MetricResult{
+				{Key: "model_cost", Collector: "run_model_cost_usd", State: scoring.OutputStateAvailable, NumericValue: float64Ptr(0.03)},
+			},
+			wantReason: "correctness denominator is unavailable",
+		},
+		{
+			name: "missing cost",
+			validators: []scoring.ValidatorResult{
+				{Key: "exact", State: scoring.OutputStateAvailable, Verdict: "pass", NormalizedScore: float64Ptr(1)},
+			},
+			wantReason: "total model cost is unavailable",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			document, err := buildRunAgentScorecardDocument(scoring.RunAgentEvaluation{
+				RunAgentID:       uuid.New(),
+				EvaluationSpecID: uuid.New(),
+				Status:           scoring.EvaluationStatusComplete,
+				ValidatorResults: tc.validators,
+				MetricResults:    tc.metrics,
+			})
+			if err != nil {
+				t.Fatalf("buildRunAgentScorecardDocument returned error: %v", err)
+			}
+
+			decoded := decodeRunScorecardJSON(t, document)
+			sideMetrics := decoded["side_metrics"].(map[string]any)
+			metric := sideMetrics["cost_per_correct_usd"].(map[string]any)
+			if metric["state"] != "unavailable" {
+				t.Fatalf("state = %v, want unavailable", metric["state"])
+			}
+			if _, ok := metric["value"]; ok {
+				t.Fatalf("value should be omitted for unavailable metric: %#v", metric)
+			}
+			if metric["reason"] != tc.wantReason {
+				t.Fatalf("reason = %v, want %q", metric["reason"], tc.wantReason)
+			}
+		})
+	}
+}
+
 func TestTotalCostUSDFromRunAgentScorecardDocument(t *testing.T) {
 	cost := totalCostUSDFromRunAgentScorecardDocument(json.RawMessage(`{
 		"metric_details": [
@@ -120,6 +246,25 @@ func TestTotalCostUSDFromRunAgentScorecardDocument(t *testing.T) {
 
 	if got := totalCostUSDFromRunAgentScorecardDocument(json.RawMessage(`{"metric_details":[]}`)); got != nil {
 		t.Fatalf("cost = %v, want nil without run_model_cost_usd metric", got)
+	}
+}
+
+func TestCostPerCorrectUSDFromRunAgentScorecardDocument(t *testing.T) {
+	got := costPerCorrectUSDFromRunAgentScorecardDocument(json.RawMessage(`{
+		"side_metrics": {
+			"cost_per_correct_usd": {"state": "available", "value": 0.25}
+		}
+	}`))
+	if got == nil || *got != 0.25 {
+		t.Fatalf("cost_per_correct_usd = %v, want 0.25", got)
+	}
+
+	if got := costPerCorrectUSDFromRunAgentScorecardDocument(json.RawMessage(`{
+		"side_metrics": {
+			"cost_per_correct_usd": {"state": "unavailable", "reason": "no correct validator outcomes"}
+		}
+	}`)); got != nil {
+		t.Fatalf("cost_per_correct_usd = %v, want nil for unavailable metric", got)
 	}
 }
 
@@ -264,14 +409,16 @@ func scorecardParticipantFixture(
 }
 
 type runAgentScorecardFixture struct {
-	RunAgentID       uuid.UUID
-	EvaluationSpecID uuid.UUID
-	OverallScore     *float64
-	CorrectnessScore *float64
-	ReliabilityScore *float64
-	LatencyScore     *float64
-	CostScore        *float64
-	BehavioralScore  *float64
+	RunAgentID        uuid.UUID
+	EvaluationSpecID  uuid.UUID
+	OverallScore      *float64
+	CorrectnessScore  *float64
+	ReliabilityScore  *float64
+	LatencyScore      *float64
+	CostScore         *float64
+	TotalCostUSD      *float64
+	CostPerCorrectUSD *float64
+	BehavioralScore   *float64
 }
 
 func (f runAgentScorecardFixture) document() []byte {
@@ -284,14 +431,71 @@ func (f runAgentScorecardFixture) document() []byte {
 	if f.BehavioralScore != nil {
 		dimensions["behavioral"] = map[string]any{"state": scorecardState(f.BehavioralScore), "score": f.BehavioralScore}
 	}
+	metricDetails := []any{}
+	if f.TotalCostUSD != nil {
+		metricDetails = append(metricDetails, map[string]any{
+			"key":           "model_cost",
+			"collector":     "run_model_cost_usd",
+			"state":         "available",
+			"numeric_value": *f.TotalCostUSD,
+		})
+	}
+	sideMetrics := map[string]any{}
+	if f.CostPerCorrectUSD != nil {
+		sideMetrics["cost_per_correct_usd"] = map[string]any{
+			"state": "available",
+			"value": *f.CostPerCorrectUSD,
+			"unit":  "usd",
+		}
+	}
 	payload, err := json.Marshal(map[string]any{
-		"status":     "complete",
-		"dimensions": dimensions,
+		"status":         "complete",
+		"dimensions":     dimensions,
+		"metric_details": metricDetails,
+		"side_metrics":   sideMetrics,
 	})
 	if err != nil {
 		panic(err)
 	}
 	return payload
+}
+
+func TestBuildRunScorecardDocumentCopiesCostPerCorrectIntoAgentSummaries(t *testing.T) {
+	runID := uuid.New()
+	evaluationSpecID := uuid.New()
+
+	document, _, err := buildRunScorecardDocument(runID, evaluationSpecID, []runScorecardParticipant{
+		scorecardParticipantFixture(0, "baseline", domain.RunAgentStatusCompleted, runAgentScorecardFixture{
+			RunAgentID:        uuid.New(),
+			EvaluationSpecID:  evaluationSpecID,
+			CorrectnessScore:  float64Ptr(1),
+			TotalCostUSD:      float64Ptr(0.03),
+			CostPerCorrectUSD: float64Ptr(0.015),
+		}),
+		scorecardParticipantFixture(1, "candidate", domain.RunAgentStatusCompleted, runAgentScorecardFixture{
+			RunAgentID:       uuid.New(),
+			EvaluationSpecID: evaluationSpecID,
+			CorrectnessScore: float64Ptr(0.5),
+			TotalCostUSD:     float64Ptr(0.02),
+		}),
+	}, nil)
+	if err != nil {
+		t.Fatalf("buildRunScorecardDocument returned error: %v", err)
+	}
+
+	var decoded runScorecardDocument
+	if err := json.Unmarshal(document, &decoded); err != nil {
+		t.Fatalf("unmarshal run scorecard document: %v", err)
+	}
+	if decoded.Agents[0].TotalCostUSD == nil || *decoded.Agents[0].TotalCostUSD != 0.03 {
+		t.Fatalf("agent total_cost_usd = %v, want 0.03", decoded.Agents[0].TotalCostUSD)
+	}
+	if decoded.Agents[0].CostPerCorrectUSD == nil || *decoded.Agents[0].CostPerCorrectUSD != 0.015 {
+		t.Fatalf("agent cost_per_correct_usd = %v, want 0.015", decoded.Agents[0].CostPerCorrectUSD)
+	}
+	if decoded.Agents[1].CostPerCorrectUSD != nil {
+		t.Fatalf("candidate cost_per_correct_usd = %v, want nil for unavailable side metric", decoded.Agents[1].CostPerCorrectUSD)
+	}
 }
 
 func scorecardState(score *float64) string {

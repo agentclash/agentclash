@@ -50,23 +50,24 @@ type runScorecardWinnerSummary struct {
 }
 
 type runScorecardAgentSummary struct {
-	RunAgentID       uuid.UUID                                   `json:"run_agent_id"`
-	LaneIndex        int32                                       `json:"lane_index"`
-	Label            string                                      `json:"label"`
-	Status           domain.RunAgentStatus                       `json:"status"`
-	HasScorecard     bool                                        `json:"has_scorecard"`
-	EvaluationStatus string                                      `json:"evaluation_status,omitempty"`
-	Strategy         string                                      `json:"strategy,omitempty"`
-	OverallScore     *float64                                    `json:"overall_score,omitempty"`
-	Passed           *bool                                       `json:"passed,omitempty"`
-	OverallReason    string                                      `json:"overall_reason,omitempty"`
-	CorrectnessScore *float64                                    `json:"correctness_score,omitempty"`
-	ReliabilityScore *float64                                    `json:"reliability_score,omitempty"`
-	LatencyScore     *float64                                    `json:"latency_score,omitempty"`
-	CostScore        *float64                                    `json:"cost_score,omitempty"`
-	TotalCostUSD     *float64                                    `json:"total_cost_usd,omitempty"`
-	BehavioralScore  *float64                                    `json:"behavioral_score,omitempty"`
-	Dimensions       map[string]comparisonScorecardDimensionInfo `json:"dimensions,omitempty"`
+	RunAgentID        uuid.UUID                                   `json:"run_agent_id"`
+	LaneIndex         int32                                       `json:"lane_index"`
+	Label             string                                      `json:"label"`
+	Status            domain.RunAgentStatus                       `json:"status"`
+	HasScorecard      bool                                        `json:"has_scorecard"`
+	EvaluationStatus  string                                      `json:"evaluation_status,omitempty"`
+	Strategy          string                                      `json:"strategy,omitempty"`
+	OverallScore      *float64                                    `json:"overall_score,omitempty"`
+	Passed            *bool                                       `json:"passed,omitempty"`
+	OverallReason     string                                      `json:"overall_reason,omitempty"`
+	CorrectnessScore  *float64                                    `json:"correctness_score,omitempty"`
+	ReliabilityScore  *float64                                    `json:"reliability_score,omitempty"`
+	LatencyScore      *float64                                    `json:"latency_score,omitempty"`
+	CostScore         *float64                                    `json:"cost_score,omitempty"`
+	TotalCostUSD      *float64                                    `json:"total_cost_usd,omitempty"`
+	CostPerCorrectUSD *float64                                    `json:"cost_per_correct_usd,omitempty"`
+	BehavioralScore   *float64                                    `json:"behavioral_score,omitempty"`
+	Dimensions        map[string]comparisonScorecardDimensionInfo `json:"dimensions,omitempty"`
 }
 
 type runScorecardDelta struct {
@@ -211,6 +212,7 @@ func buildRunScorecardDocument(
 			summary.LatencyScore = cloneFloat64Ptr(participant.scorecard.LatencyScore)
 			summary.CostScore = cloneFloat64Ptr(participant.scorecard.CostScore)
 			summary.TotalCostUSD = totalCostUSDFromRunAgentScorecardDocument(participant.scorecard.Scorecard)
+			summary.CostPerCorrectUSD = costPerCorrectUSDFromRunAgentScorecardDocument(participant.scorecard.Scorecard)
 			summary.BehavioralScore = cloneFloat64Ptr(participant.scorecard.BehavioralScore)
 			summary.Dimensions = cloneRunScorecardDimensions(participant.document.Dimensions)
 			scoredAgents = append(scoredAgents, scoredRunAgent{
@@ -271,6 +273,24 @@ func totalCostUSDFromRunAgentScorecardDocument(payload json.RawMessage) *float64
 		}
 	}
 	return nil
+}
+
+func costPerCorrectUSDFromRunAgentScorecardDocument(payload json.RawMessage) *float64 {
+	var document struct {
+		SideMetrics map[string]struct {
+			State string   `json:"state"`
+			Value *float64 `json:"value"`
+		} `json:"side_metrics"`
+	}
+	if err := json.Unmarshal(payload, &document); err != nil {
+		return nil
+	}
+	metric, ok := document.SideMetrics["cost_per_correct_usd"]
+	if !ok || metric.State != "available" || metric.Value == nil {
+		return nil
+	}
+	value := *metric.Value
+	return &value
 }
 
 func determineRunWinner(participants []runScorecardParticipant, scoredAgents []scoredRunAgent) (*uuid.UUID, runScorecardWinnerSummary) {
