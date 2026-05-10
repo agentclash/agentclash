@@ -138,6 +138,45 @@ func TestRunReturnsShutdownTimeout(t *testing.T) {
 	}
 }
 
+func TestRunWithReaperReturnsShutdownTimeoutWhenReaperBlocks(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	fakeWorker := &fakeTemporalWorker{
+		stopCh: make(chan struct{}),
+	}
+	reaper := &fakeWorkerReaper{
+		doneCh:    make(chan struct{}),
+		blockDone: true,
+	}
+
+	resultCh := make(chan error, 1)
+	go func() {
+		resultCh <- RunWithReaper(ctx, Config{
+			TaskQueue:       "RunWorkflow",
+			Identity:        "worker-test",
+			TemporalAddress: "localhost:7233",
+			ShutdownTimeout: 10 * time.Millisecond,
+		}, fakeWorker, reaper, logger)
+	}()
+
+	waitForCondition(t, time.Second, func() bool {
+		return fakeWorker.startCalls.Load() == 1 && reaper.startCalls.Load() == 1
+	})
+
+	cancel()
+
+	err := <-resultCh
+	if err == nil {
+		t.Fatalf("RunWithReaper returned nil error")
+	}
+	close(reaper.doneCh)
+	if got := err.Error(); got != "worker shutdown timed out after 10ms" {
+		t.Fatalf("error = %q, want shutdown timeout", got)
+	}
+}
+
 type fakeTemporalWorker struct {
 	startErr   error
 	stopCh     chan struct{}
@@ -149,11 +188,16 @@ type fakeTemporalWorker struct {
 type fakeWorkerReaper struct {
 	startCalls atomic.Int32
 	doneCh     chan struct{}
+	blockDone  bool
 }
 
 func (f *fakeWorkerReaper) Start(ctx context.Context) {
 	f.startCalls.Add(1)
 	<-ctx.Done()
+	if f.blockDone {
+		<-f.doneCh
+		return
+	}
 	close(f.doneCh)
 }
 

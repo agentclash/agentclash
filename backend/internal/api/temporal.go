@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/agentclash/agentclash/backend/internal/domain"
 	"github.com/agentclash/agentclash/backend/internal/hostedruns"
+	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/backend/internal/workflow"
 	"github.com/google/uuid"
 	temporalsdk "go.temporal.io/sdk/client"
@@ -18,19 +20,35 @@ type TemporalClient interface {
 
 type TemporalRunWorkflowStarter struct {
 	client TemporalClient
+	repo   RunTemporalIDRepository
 }
 
-func NewTemporalRunWorkflowStarter(client TemporalClient) TemporalRunWorkflowStarter {
-	return TemporalRunWorkflowStarter{client: client}
+type RunTemporalIDRepository interface {
+	SetRunTemporalIDs(ctx context.Context, params repository.SetRunTemporalIDsParams) (domain.Run, error)
+}
+
+func NewTemporalRunWorkflowStarter(client TemporalClient, repo RunTemporalIDRepository) TemporalRunWorkflowStarter {
+	return TemporalRunWorkflowStarter{client: client, repo: repo}
 }
 
 func (s TemporalRunWorkflowStarter) StartRunWorkflow(ctx context.Context, runID uuid.UUID) error {
 	workflowID := fmt.Sprintf("%s/%s", workflow.RunWorkflowName, runID)
-	_, err := s.client.ExecuteWorkflow(ctx, temporalsdk.StartWorkflowOptions{
+	run, err := s.client.ExecuteWorkflow(ctx, temporalsdk.StartWorkflowOptions{
 		ID:        workflowID,
 		TaskQueue: workflow.WorkflowTaskQueue,
 	}, workflow.RunWorkflowName, workflow.RunWorkflowInput{
 		RunID: runID,
+	})
+	if err != nil {
+		return err
+	}
+	if s.repo == nil {
+		return nil
+	}
+	_, err = s.repo.SetRunTemporalIDs(ctx, repository.SetRunTemporalIDsParams{
+		RunID:              runID,
+		TemporalWorkflowID: run.GetID(),
+		TemporalRunID:      run.GetRunID(),
 	})
 	return err
 }

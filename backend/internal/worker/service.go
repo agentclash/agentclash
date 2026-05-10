@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"sync"
 	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/provider"
@@ -64,13 +63,14 @@ func RunWithReaper(ctx context.Context, cfg Config, temporalWorker TemporalWorke
 		return fmt.Errorf("start temporal worker: %w", err)
 	}
 
-	var wg sync.WaitGroup
+	reaperDoneCh := make(chan struct{})
 	if reaper != nil {
-		wg.Add(1)
 		go func() {
-			defer wg.Done()
+			defer close(reaperDoneCh)
 			reaper.Start(ctx)
 		}()
+	} else {
+		close(reaperDoneCh)
 	}
 
 	<-ctx.Done()
@@ -86,11 +86,19 @@ func RunWithReaper(ctx context.Context, cfg Config, temporalWorker TemporalWorke
 	timer := time.NewTimer(cfg.ShutdownTimeout)
 	defer timer.Stop()
 
-	select {
-	case <-stoppedCh:
-		wg.Wait()
-		return nil
-	case <-timer.C:
-		return fmt.Errorf("worker shutdown timed out after %s", cfg.ShutdownTimeout)
+	workerStopped := false
+	reaperStopped := false
+	for !workerStopped || !reaperStopped {
+		select {
+		case <-stoppedCh:
+			workerStopped = true
+			stoppedCh = nil
+		case <-reaperDoneCh:
+			reaperStopped = true
+			reaperDoneCh = nil
+		case <-timer.C:
+			return fmt.Errorf("worker shutdown timed out after %s", cfg.ShutdownTimeout)
+		}
 	}
+	return nil
 }

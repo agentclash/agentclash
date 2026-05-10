@@ -1379,6 +1379,43 @@ func TestRepositorySetRunTemporalIDsRejectsReassignment(t *testing.T) {
 	}
 }
 
+func TestRepositorySetRunTemporalIDsRejectsTerminalRun(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	if _, err := db.Exec(ctx, `
+		UPDATE runs
+		SET status = 'failed',
+		    failed_at = now(),
+		    finished_at = now()
+		WHERE id = $1
+	`, fixture.runID); err != nil {
+		t.Fatalf("mark run failed returned error: %v", err)
+	}
+
+	_, err := repo.SetRunTemporalIDs(ctx, repository.SetRunTemporalIDsParams{
+		RunID:              fixture.runID,
+		TemporalWorkflowID: "run-workflow-123",
+		TemporalRunID:      "temporal-run-456",
+	})
+	if err == nil {
+		t.Fatalf("SetRunTemporalIDs returned nil error for terminal run")
+	}
+	if !errors.Is(err, repository.ErrTemporalIDConflict) {
+		t.Fatalf("SetRunTemporalIDs error = %v, want ErrTemporalIDConflict", err)
+	}
+
+	persisted, err := repo.GetRunByID(ctx, fixture.runID)
+	if err != nil {
+		t.Fatalf("GetRunByID after terminal temporal id rejection returned error: %v", err)
+	}
+	if persisted.TemporalWorkflowID != nil || persisted.TemporalRunID != nil {
+		t.Fatalf("persisted temporal ids = (%v, %v), want nil", persisted.TemporalWorkflowID, persisted.TemporalRunID)
+	}
+}
+
 func TestRepositoryTransitionRunStatusWritesCurrentStateAndHistory(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)

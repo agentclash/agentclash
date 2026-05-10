@@ -73,17 +73,47 @@ func TestRepositoryOrphanRunReaperSwallowsRepositoryError(t *testing.T) {
 	<-done
 }
 
+func TestRepositoryOrphanRunReaperDrainsBoundedBatches(t *testing.T) {
+	repo := &fakeOrphanRunReaperRepo{batchSizes: []int{
+		orphanRunReaperBatchLimit,
+		orphanRunReaperBatchLimit,
+		5,
+	}}
+	reaper := NewRepositoryOrphanRunReaper(repo, time.Minute, 15*time.Minute, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	reaper.now = func() time.Time { return time.Date(2026, 5, 9, 20, 0, 0, 0, time.UTC) }
+
+	reaper.reapOnce(context.Background())
+
+	if got := int(repo.calls.Load()); got != 3 {
+		t.Fatalf("calls = %d, want 3", got)
+	}
+	if repo.lastLimit != orphanRunReaperBatchLimit {
+		t.Fatalf("limit = %d, want %d", repo.lastLimit, orphanRunReaperBatchLimit)
+	}
+}
+
 type fakeOrphanRunReaperRepo struct {
 	calls      atomic.Int32
 	lastCutoff time.Time
+	lastLimit  int
+	batchSizes []int
 	err        error
 }
 
 func (f *fakeOrphanRunReaperRepo) ReapOrphanedRuns(_ context.Context, params repository.ReapOrphanedRunsParams) ([]domain.Run, error) {
-	f.calls.Add(1)
+	call := int(f.calls.Add(1))
 	f.lastCutoff = params.Cutoff
+	f.lastLimit = params.Limit
 	if f.err != nil {
 		return nil, f.err
 	}
-	return []domain.Run{{Status: domain.RunStatusFailed}}, nil
+	size := 1
+	if call <= len(f.batchSizes) {
+		size = f.batchSizes[call-1]
+	}
+	runs := make([]domain.Run, size)
+	for i := range runs {
+		runs[i] = domain.Run{Status: domain.RunStatusFailed}
+	}
+	return runs, nil
 }

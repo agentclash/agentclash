@@ -130,6 +130,7 @@ SET temporal_workflow_id = @temporal_workflow_id,
 WHERE id = @id
   AND temporal_workflow_id IS NULL
   AND temporal_run_id IS NULL
+  AND status NOT IN ('completed', 'failed', 'cancelled')
 RETURNING *;
 
 -- name: UpdateRunStatus :one

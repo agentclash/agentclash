@@ -2,12 +2,61 @@ package api
 
 import (
 	"context"
+	"errors"
 	"testing"
 
+	"github.com/agentclash/agentclash/backend/internal/domain"
+	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/backend/internal/workflow"
 	"github.com/google/uuid"
 	temporalsdk "go.temporal.io/sdk/client"
 )
+
+func TestTemporalRunWorkflowStarterStartRunWorkflowPersistsTemporalIDs(t *testing.T) {
+	runID := uuid.New()
+	client := &fakeTemporalClient{}
+	repo := &fakeRunTemporalIDRepository{}
+
+	err := NewTemporalRunWorkflowStarter(client, repo).StartRunWorkflow(context.Background(), runID)
+	if err != nil {
+		t.Fatalf("StartRunWorkflow returned error: %v", err)
+	}
+
+	if client.workflowName != workflow.RunWorkflowName {
+		t.Fatalf("workflow name = %q, want %q", client.workflowName, workflow.RunWorkflowName)
+	}
+	if client.options.ID != workflow.RunWorkflowName+"/"+runID.String() {
+		t.Fatalf("workflow id = %q, want %q", client.options.ID, workflow.RunWorkflowName+"/"+runID.String())
+	}
+	if client.options.TaskQueue != workflow.WorkflowTaskQueue {
+		t.Fatalf("task queue = %q, want %q", client.options.TaskQueue, workflow.WorkflowTaskQueue)
+	}
+
+	input, ok := client.args[0].(workflow.RunWorkflowInput)
+	if !ok {
+		t.Fatalf("workflow input type = %T, want workflow.RunWorkflowInput", client.args[0])
+	}
+	if input.RunID != runID {
+		t.Fatalf("run id = %s, want %s", input.RunID, runID)
+	}
+	if repo.params.RunID != runID {
+		t.Fatalf("persisted run id = %s, want %s", repo.params.RunID, runID)
+	}
+	if repo.params.TemporalWorkflowID != client.options.ID || repo.params.TemporalRunID != "run-id" {
+		t.Fatalf("persisted temporal ids = %#v", repo.params)
+	}
+}
+
+func TestTemporalRunWorkflowStarterReturnsTemporalIDPersistenceError(t *testing.T) {
+	runID := uuid.New()
+	persistErr := errors.New("db down")
+
+	err := NewTemporalRunWorkflowStarter(&fakeTemporalClient{}, &fakeRunTemporalIDRepository{err: persistErr}).
+		StartRunWorkflow(context.Background(), runID)
+	if !errors.Is(err, persistErr) {
+		t.Fatalf("StartRunWorkflow error = %v, want %v", err, persistErr)
+	}
+}
 
 func TestTemporalEvalSessionWorkflowStarterStartEvalSessionWorkflow(t *testing.T) {
 	sessionID := uuid.New()
@@ -108,4 +157,14 @@ func (f fakeWorkflowRun) Get(context.Context, interface{}) error {
 
 func (f fakeWorkflowRun) GetWithOptions(context.Context, interface{}, temporalsdk.WorkflowRunGetOptions) error {
 	return nil
+}
+
+type fakeRunTemporalIDRepository struct {
+	params repository.SetRunTemporalIDsParams
+	err    error
+}
+
+func (f *fakeRunTemporalIDRepository) SetRunTemporalIDs(_ context.Context, params repository.SetRunTemporalIDsParams) (domain.Run, error) {
+	f.params = params
+	return domain.Run{ID: params.RunID}, f.err
 }

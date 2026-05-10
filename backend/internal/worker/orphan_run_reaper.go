@@ -13,6 +13,11 @@ type OrphanRunReaperRepository interface {
 	ReapOrphanedRuns(ctx context.Context, params repository.ReapOrphanedRunsParams) ([]domain.Run, error)
 }
 
+const (
+	orphanRunReaperBatchLimit = 500
+	orphanRunReaperMaxBatches = 20
+)
+
 type RepositoryOrphanRunReaper struct {
 	repo      OrphanRunReaperRepository
 	interval  time.Duration
@@ -57,15 +62,23 @@ func (r *RepositoryOrphanRunReaper) Start(ctx context.Context) {
 
 func (r *RepositoryOrphanRunReaper) reapOnce(ctx context.Context) {
 	cutoff := r.now().UTC().Add(-r.threshold)
-	cleaned, err := r.repo.ReapOrphanedRuns(ctx, repository.ReapOrphanedRunsParams{
-		Cutoff: cutoff,
-		Reason: "orphaned run reaper: no temporal workflow id after threshold",
-	})
-	if err != nil {
-		r.logger.Error("orphaned run reaper failed", "error", err)
-		return
+	totalCleaned := 0
+	for batch := 0; batch < orphanRunReaperMaxBatches; batch++ {
+		cleaned, err := r.repo.ReapOrphanedRuns(ctx, repository.ReapOrphanedRunsParams{
+			Cutoff: cutoff,
+			Limit:  orphanRunReaperBatchLimit,
+			Reason: "orphaned run reaper: no temporal workflow id after threshold",
+		})
+		if err != nil {
+			r.logger.Error("orphaned run reaper failed", "error", err)
+			return
+		}
+		totalCleaned += len(cleaned)
+		if len(cleaned) < orphanRunReaperBatchLimit {
+			break
+		}
 	}
-	if len(cleaned) > 0 {
-		r.logger.Warn("orphaned run reaper marked runs failed", "count", len(cleaned), "cutoff", cutoff)
+	if totalCleaned > 0 {
+		r.logger.Warn("orphaned run reaper marked runs failed", "count", totalCleaned, "cutoff", cutoff)
 	}
 }

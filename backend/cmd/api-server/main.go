@@ -82,7 +82,7 @@ func main() {
 	runCreationManager := api.NewRunCreationManager(
 		authorizer,
 		repo,
-		api.NewTemporalRunWorkflowStarter(temporalClient),
+		api.NewTemporalRunWorkflowStarter(temporalClient, repo),
 		budgetChecker,
 	).WithEvalSessionWorkflowStarter(api.NewTemporalEvalSessionWorkflowStarter(temporalClient))
 	providerRouter := provider.NewDefaultRouter(nil, provider.EnvCredentialResolver{})
