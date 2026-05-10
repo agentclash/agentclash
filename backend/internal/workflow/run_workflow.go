@@ -37,6 +37,9 @@ func RunWorkflow(ctx sdkworkflow.Context, input RunWorkflowInput) error {
 	if isWorkflowCanceled(err) {
 		return markRunCancelled(ctx, input.RunID, err)
 	}
+	if errors.Is(err, ErrRunMustBeQueued) {
+		return temporal.NewNonRetryableApplicationError(err.Error(), runMustBeQueuedErrorType, err)
+	}
 	if shouldSkipRunFailureTransition(err) {
 		return err
 	}
@@ -123,12 +126,25 @@ func executeRunAgents(ctx sdkworkflow.Context, runAgents []domain.RunAgent) erro
 	}
 
 	if len(childErrors) == len(runAgents) {
-		for _, err := range childErrors {
-			return err
-		}
+		return selectRunAgentChildError(childErrors)
 	}
 
 	return nil
+}
+
+func selectRunAgentChildError(childErrors map[uuid.UUID]error) error {
+	runAgentIDs := sortedUUIDKeys(childErrors)
+	var firstActionable error
+	for _, runAgentID := range runAgentIDs {
+		err := childErrors[runAgentID]
+		if isWorkflowCanceled(err) {
+			return err
+		}
+		if firstActionable == nil {
+			firstActionable = err
+		}
+	}
+	return firstActionable
 }
 
 func scoreEvaluatingRunAgents(ctx sdkworkflow.Context, runAgents []domain.RunAgent) (string, error) {

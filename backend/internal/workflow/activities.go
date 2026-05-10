@@ -53,6 +53,7 @@ const (
 	repositoryIllegalSessionTransitionType        = "repository.ErrIllegalSessionTransition"
 	repositoryInvalidTransitionType               = "repository.ErrInvalidTransition"
 	repositoryTransitionConflictType              = "repository.ErrTransitionConflict"
+	runMustBeQueuedErrorType                      = "workflow.ErrRunMustBeQueued"
 	engineFailureErrorTypePrefix                  = "engine."
 	providerFailureErrorTypePrefix                = "provider."
 )

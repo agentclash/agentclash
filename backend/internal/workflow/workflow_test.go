@@ -173,7 +173,11 @@ func TestEvalSessionWorkflowMarksSessionCancelledWhenStartedChildWasCancelled(t 
 
 	env := newEvalSessionWorkflowTestEnvironment(repo, nil, func(ctx sdkworkflow.Context, input RunWorkflowInput) error {
 		repo.forceEvalSessionRunStatus(sessionID, input.RunID, domain.RunStatusCancelled)
-		return ErrRunMustBeQueued
+		return temporal.NewNonRetryableApplicationError(
+			ErrRunMustBeQueued.Error(),
+			runMustBeQueuedErrorType,
+			ErrRunMustBeQueued,
+		)
 	})
 	env.ExecuteWorkflow(EvalSessionWorkflow, EvalSessionWorkflowInput{EvalSessionID: sessionID})
 
@@ -182,6 +186,41 @@ func TestEvalSessionWorkflowMarksSessionCancelledWhenStartedChildWasCancelled(t 
 	}
 	if got := repo.currentEvalSession(sessionID).Status; got != domain.EvalSessionStatusCancelled {
 		t.Fatalf("eval session status = %s, want %s", got, domain.EvalSessionStatusCancelled)
+	}
+	if repo.callCountWithPrefix("AggregateEvalSession:") != 0 {
+		t.Fatalf("AggregateEvalSession call count = %d, want 0", repo.callCountWithPrefix("AggregateEvalSession:"))
+	}
+}
+
+func TestEvalSessionWorkflowMixedCancelledAndFailedChildrenMarksSessionFailed(t *testing.T) {
+	sessionID := uuid.New()
+	cancelledRunID := uuid.New()
+	failedRunID := uuid.New()
+	repo := newFakeRunRepository(fixtureRun(uuid.New(), domain.RunStatusQueued))
+	repo.setEvalSession(
+		fixtureEvalSession(sessionID, domain.EvalSessionStatusQueued),
+		fixtureChildRun(cancelledRunID, sessionID),
+		fixtureChildRun(failedRunID, sessionID),
+	)
+
+	env := newEvalSessionWorkflowTestEnvironment(repo, nil, func(ctx sdkworkflow.Context, input RunWorkflowInput) error {
+		if input.RunID == cancelledRunID {
+			repo.forceEvalSessionRunStatus(sessionID, input.RunID, domain.RunStatusCancelled)
+			return temporal.NewNonRetryableApplicationError(
+				ErrRunMustBeQueued.Error(),
+				runMustBeQueuedErrorType,
+				ErrRunMustBeQueued,
+			)
+		}
+		return errors.New("real child failure")
+	})
+	env.ExecuteWorkflow(EvalSessionWorkflow, EvalSessionWorkflowInput{EvalSessionID: sessionID})
+
+	if err := env.GetWorkflowError(); err == nil {
+		t.Fatalf("expected workflow failure")
+	}
+	if got := repo.currentEvalSession(sessionID).Status; got != domain.EvalSessionStatusFailed {
+		t.Fatalf("eval session status = %s, want %s", got, domain.EvalSessionStatusFailed)
 	}
 	if repo.callCountWithPrefix("AggregateEvalSession:") != 0 {
 		t.Fatalf("AggregateEvalSession call count = %d, want 0", repo.callCountWithPrefix("AggregateEvalSession:"))
@@ -1162,6 +1201,19 @@ func TestRunWorkflowChildFailureReturnsOriginalErrorWhenReplayBuildFails(t *test
 	}
 	if got := repo.currentRunAgent(runAgentID).Status; got != domain.RunAgentStatusFailed {
 		t.Fatalf("run agent status = %s, want %s", got, domain.RunAgentStatusFailed)
+	}
+}
+
+func TestSelectRunAgentChildErrorPrefersCancellationDeterministically(t *testing.T) {
+	cancelledRunAgentID := uuid.MustParse("00000000-0000-0000-0000-000000000002")
+	failedRunAgentID := uuid.MustParse("00000000-0000-0000-0000-000000000001")
+	selected := selectRunAgentChildError(map[uuid.UUID]error{
+		failedRunAgentID:    errors.New("child failed"),
+		cancelledRunAgentID: temporal.NewCanceledError("child cancelled"),
+	})
+
+	if !isWorkflowCanceled(selected) {
+		t.Fatalf("selected error = %v, want cancellation to win over child failure", selected)
 	}
 }
 

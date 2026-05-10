@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"sort"
-	"strings"
 
 	"github.com/agentclash/agentclash/backend/internal/domain"
 	"github.com/agentclash/agentclash/backend/internal/repository"
@@ -160,7 +159,8 @@ func executeEvalSessionRuns(ctx sdkworkflow.Context, runs []domain.Run) error {
 	if startedChildren > 0 && cancelledChildren == startedChildren {
 		return errEvalSessionChildrenCancelled
 	}
-	if startedChildren > 0 && len(actionableErrors) == startedChildren {
+	successfulChildren := startedChildren - len(childErrors)
+	if startedChildren > 0 && successfulChildren == 0 && len(actionableErrors) > 0 {
 		return actionableErrors[0]
 	}
 
@@ -203,7 +203,7 @@ func sortedUUIDKeys(values map[uuid.UUID]error) []uuid.UUID {
 
 func childRunMayAlreadyBeTerminal(err error) bool {
 	return errors.Is(err, ErrRunMustBeQueued) ||
-		strings.Contains(err.Error(), ErrRunMustBeQueued.Error()) ||
+		hasApplicationErrorType(err, runMustBeQueuedErrorType) ||
 		hasApplicationErrorType(err, repositoryInvalidTransitionType) ||
 		hasApplicationErrorType(err, repositoryTransitionConflictType)
 }
