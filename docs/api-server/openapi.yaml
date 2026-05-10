@@ -7507,6 +7507,12 @@ components:
           type: integer
           minimum: 1
           description: Seed assigned to this child run when the eval session was created via seeded fanout.
+        matrix_key:
+          type: string
+          description: Stable series matrix key persisted on this child run, when created from `run_matrix`.
+        deployment_lineup:
+          type: string
+          description: Deployment lineup name persisted on this child run, when created from `run_matrix`.
         queued_at:
           type: string
           format: date-time

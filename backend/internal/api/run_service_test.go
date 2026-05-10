@@ -788,8 +788,8 @@ func TestRunCreationManagerCreateEvalSessionExpandsRunMatrix(t *testing.T) {
 		createEvalSessionWithRunsResult: repository.CreateEvalSessionWithQueuedRunsResult{
 			Session: domain.EvalSession{ID: sessionID, Status: domain.EvalSessionStatusQueued, Repetitions: 2, SchemaVersion: 1},
 			Runs: []domain.Run{
-				{ID: defaultRunID, EvalSessionID: &sessionID, ExecutionPlan: json.RawMessage(`{"seed":1}`)},
-				{ID: smokeRunID, EvalSessionID: &sessionID, ExecutionPlan: json.RawMessage(`{"seed":1}`)},
+				{ID: smokeRunID, EvalSessionID: &sessionID, ExecutionPlan: json.RawMessage(`{"seed":1,"series":{"matrix_key":"smoke:seed-1","deployment_lineup":"smoke"}}`)},
+				{ID: defaultRunID, EvalSessionID: &sessionID, ExecutionPlan: json.RawMessage(`{"seed":1,"series":{"matrix_key":"default:seed-1","deployment_lineup":"default"}}`)},
 			},
 		},
 	}
@@ -854,8 +854,22 @@ func TestRunCreationManagerCreateEvalSessionExpandsRunMatrix(t *testing.T) {
 	if got := executionPlanTestMaxIterations(t, secondRun.ExecutionPlan); got != 5 {
 		t.Fatalf("second execution plan max_iterations = %d, want 5", got)
 	}
-	if len(result.SeriesRuns) != 2 || result.SeriesRuns[0].RunID != defaultRunID || result.SeriesRuns[0].DeploymentLineup != "default" || result.SeriesRuns[1].MatrixKey != "smoke:seed-1" {
-		t.Fatalf("series runs = %+v, want child metadata in order", result.SeriesRuns)
+	matrixKey, lineup := executionPlanTestSeries(t, firstRun.ExecutionPlan)
+	if matrixKey != "default:seed-1" || lineup != "default" {
+		t.Fatalf("first execution plan series = %q/%q, want default metadata", matrixKey, lineup)
+	}
+	matrixKey, lineup = executionPlanTestSeries(t, secondRun.ExecutionPlan)
+	if matrixKey != "smoke:seed-1" || lineup != "smoke" {
+		t.Fatalf("second execution plan series = %q/%q, want smoke metadata", matrixKey, lineup)
+	}
+	if len(result.SeriesRuns) != 2 ||
+		result.SeriesRuns[0].RunID != smokeRunID ||
+		result.SeriesRuns[0].DeploymentLineup != "smoke" ||
+		result.SeriesRuns[0].MatrixKey != "smoke:seed-1" ||
+		result.SeriesRuns[1].RunID != defaultRunID ||
+		result.SeriesRuns[1].DeploymentLineup != "default" ||
+		result.SeriesRuns[1].MatrixKey != "default:seed-1" {
+		t.Fatalf("series runs = %+v, want metadata from each run execution plan", result.SeriesRuns)
 	}
 	var routingSnapshot struct {
 		RunMatrix []struct {
@@ -2074,6 +2088,20 @@ func executionPlanTestSeed(t *testing.T, payload json.RawMessage) int64 {
 		t.Fatalf("decode execution plan: %v", err)
 	}
 	return plan.Seed
+}
+
+func executionPlanTestSeries(t *testing.T, payload json.RawMessage) (string, string) {
+	t.Helper()
+	var plan struct {
+		Series struct {
+			MatrixKey        string `json:"matrix_key"`
+			DeploymentLineup string `json:"deployment_lineup"`
+		} `json:"series"`
+	}
+	if err := json.Unmarshal(payload, &plan); err != nil {
+		t.Fatalf("decode execution plan: %v", err)
+	}
+	return plan.Series.MatrixKey, plan.Series.DeploymentLineup
 }
 
 func (f *fakeRunCreationRepository) GetRunnableChallengePackVersionByID(_ context.Context, _ uuid.UUID) (repository.RunnableChallengePackVersion, error) {

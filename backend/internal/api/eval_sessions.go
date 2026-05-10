@@ -291,6 +291,13 @@ func decodeCreateEvalSessionRequest(_ context.Context, r *http.Request) (CreateE
 	if err != nil {
 		return CreateEvalSessionInput{}, err
 	}
+	if len(participants) > 0 && len(config.RunMatrix) > 0 {
+		return CreateEvalSessionInput{}, evalSessionValidationError{Errors: []evalSessionValidationDetail{{
+			Field:   "participants",
+			Code:    "participants.run_matrix_conflict",
+			Message: "participants cannot be combined with eval_session.run_matrix; put participants on each matrix entry",
+		}}}
+	}
 
 	return CreateEvalSessionInput{
 		WorkspaceID:            workspaceID,
@@ -528,10 +535,20 @@ func decodeEvalSessionRunMatrix(raw json.RawMessage, repetitions int32) ([]EvalS
 		}
 		participants := make([]EvalSessionParticipantInput, 0, len(rawEntry.Participants))
 		for participantIdx, participant := range rawEntry.Participants {
-			parsed, parseErr := decodeEvalSessionParticipant(participant, fmt.Sprintf("%s.participants[%d]", field, participantIdx))
+			participantField := fmt.Sprintf("%s.participants[%d]", field, participantIdx)
+			parsed, parseErr := decodeEvalSessionParticipant(participant, participantField)
 			if parseErr != nil {
+				var validationErr RunCreationValidationError
+				if errors.As(parseErr, &validationErr) {
+					details = append(details, evalSessionValidationDetail{
+						Field:   participantField,
+						Code:    validationErr.Code,
+						Message: validationErr.Message,
+					})
+					continue
+				}
 				details = append(details, evalSessionValidationDetail{
-					Field:   fmt.Sprintf("%s.participants[%d]", field, participantIdx),
+					Field:   participantField,
 					Code:    "eval_session.run_matrix.participants.invalid",
 					Message: "run_matrix participants must contain valid deployment or build version IDs and labels",
 				})

@@ -48,7 +48,7 @@ func runCreateRequestFromFlags(cmd *cobra.Command, base runCreateRequest) (runCr
 
 	if cmd.Flags().Lookup("input-set") != nil {
 		inputSetID, _ := cmd.Flags().GetString("input-set")
-		if trimmed := strings.TrimSpace(inputSetID); trimmed != "" {
+		if trimmed := strings.TrimSpace(inputSetID); trimmed != "" && strings.TrimSpace(request.ChallengeInputSetID) == "" {
 			request.ChallengeInputSetID = trimmed
 		}
 	}
@@ -201,14 +201,18 @@ func buildSeriesEvalSessionBody(workspaceID string, request runCreateRequest) (m
 	if request.ChallengePackVersionID == "" {
 		return nil, fmt.Errorf("challenge pack version is required")
 	}
-	if request.Seeds < 1 || request.Seeds > maxRunCreateSeeds {
-		return nil, fmt.Errorf("--seeds must be between 1 and %d when using --deployment-lineups, got %d", maxRunCreateSeeds, request.Seeds)
+	if err := validateSeriesSeedCount(request.Seeds); err != nil {
+		return nil, err
 	}
 	if len(request.DeploymentIDs) > 0 {
 		return nil, fmt.Errorf("--deployment-lineups cannot be combined with --deployments")
 	}
 	if len(request.ResolvedDeploymentLineups) == 0 {
 		return nil, fmt.Errorf("at least one deployment lineup is required")
+	}
+	repetitions := len(request.ResolvedDeploymentLineups) * request.Seeds
+	if repetitions > evalSessionMaxRepetitions {
+		return nil, fmt.Errorf("--deployment-lineups × --seeds must create at most %d child runs, got %d", evalSessionMaxRepetitions, repetitions)
 	}
 	if request.RaceContextCadence < 0 || request.RaceContextCadence > 10 {
 		return nil, fmt.Errorf("--race-context-cadence must be 0 (backend default) or between 1 and 10, got %d", request.RaceContextCadence)
@@ -228,7 +232,6 @@ func buildSeriesEvalSessionBody(workspaceID string, request runCreateRequest) (m
 		executionMode = "comparison"
 	}
 
-	repetitions := len(request.ResolvedDeploymentLineups) * request.Seeds
 	body := map[string]any{
 		"workspace_id":              workspaceID,
 		"challenge_pack_version_id": request.ChallengePackVersionID,
@@ -274,7 +277,7 @@ func buildSeriesEvalSessionBody(workspaceID string, request runCreateRequest) (m
 				"key":               fmt.Sprintf("%s:seed-%d", lineup.Name, seed),
 				"deployment_lineup": lineup.Name,
 				"seed":              seed,
-				"participants":      deploymentIDsToEvalSessionParticipants(lineup.DeploymentIDs),
+				"participants":      deploymentIDsToEvalSessionParticipants(lineup.Name, lineup.DeploymentIDs),
 			})
 		}
 	}
@@ -283,19 +286,37 @@ func buildSeriesEvalSessionBody(workspaceID string, request runCreateRequest) (m
 	return body, nil
 }
 
-func deploymentIDsToEvalSessionParticipants(deploymentIDs []string) []map[string]any {
+func validateSeriesSeedCount(seeds int) error {
+	if seeds < 1 || seeds > maxRunCreateSeeds {
+		return fmt.Errorf("--seeds must be between 1 and %d when using --deployment-lineups, got %d", maxRunCreateSeeds, seeds)
+	}
+	return nil
+}
+
+func deploymentIDsToEvalSessionParticipants(lineupName string, deploymentIDs []string) []map[string]any {
 	participants := make([]map[string]any, 0, len(deploymentIDs))
 	for i, deploymentID := range deploymentIDs {
-		label := "Primary"
-		if i > 0 {
-			label = fmt.Sprintf("Participant %d", i+1)
-		}
+		label := seriesParticipantLabel(lineupName, i, len(deploymentIDs))
 		participants = append(participants, map[string]any{
 			"agent_deployment_id": deploymentID,
 			"label":               label,
 		})
 	}
 	return participants
+}
+
+func seriesParticipantLabel(lineupName string, index int, total int) string {
+	lineupName = strings.TrimSpace(lineupName)
+	if lineupName == "" {
+		lineupName = "lineup"
+	}
+	if total <= 1 {
+		return lineupName
+	}
+	if index == 0 {
+		return lineupName + " / Primary"
+	}
+	return fmt.Sprintf("%s / Participant %d", lineupName, index+1)
 }
 
 func createRun(cmd *cobra.Command, rc *RunContext, body map[string]any) (map[string]any, error) {

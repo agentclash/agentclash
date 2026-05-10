@@ -472,6 +472,11 @@ func buildExecutionPlan(input CreateRunInput, runAgents []repository.CreateQueue
 		MaxIterations *int32 `json:"max_iterations,omitempty"`
 	}
 
+	type executionPlanSeries struct {
+		MatrixKey        string `json:"matrix_key,omitempty"`
+		DeploymentLineup string `json:"deployment_lineup,omitempty"`
+	}
+
 	type executionPlan struct {
 		WorkspaceID            uuid.UUID                   `json:"workspace_id"`
 		ChallengePackVersionID uuid.UUID                   `json:"challenge_pack_version_id"`
@@ -480,6 +485,7 @@ func buildExecutionPlan(input CreateRunInput, runAgents []repository.CreateQueue
 		Participants           []executionPlanRunAgent     `json:"participants"`
 		RuntimeLimits          *executionPlanRuntimeLimits `json:"runtime_limits,omitempty"`
 		Seed                   *int64                      `json:"seed,omitempty"`
+		Series                 *executionPlanSeries        `json:"series,omitempty"`
 	}
 
 	participants := make([]executionPlanRunAgent, 0, len(runAgents))
@@ -502,6 +508,12 @@ func buildExecutionPlan(input CreateRunInput, runAgents []repository.CreateQueue
 	}
 	if input.MaxIterations != nil {
 		plan.RuntimeLimits = &executionPlanRuntimeLimits{MaxIterations: cloneInt32Ptr(input.MaxIterations)}
+	}
+	if input.SeriesMatrixKey != "" || input.SeriesDeploymentLineup != "" {
+		plan.Series = &executionPlanSeries{
+			MatrixKey:        input.SeriesMatrixKey,
+			DeploymentLineup: input.SeriesDeploymentLineup,
+		}
 	}
 
 	payload, err := json.Marshal(plan)

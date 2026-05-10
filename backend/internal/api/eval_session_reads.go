@@ -62,6 +62,8 @@ type evalSessionChildRunResponse struct {
 	Status                 domain.RunStatus `json:"status"`
 	ExecutionMode          string           `json:"execution_mode"`
 	Seed                   *int64           `json:"seed,omitempty"`
+	MatrixKey              string           `json:"matrix_key,omitempty"`
+	DeploymentLineup       string           `json:"deployment_lineup,omitempty"`
 	QueuedAt               *time.Time       `json:"queued_at,omitempty"`
 	StartedAt              *time.Time       `json:"started_at,omitempty"`
 	FinishedAt             *time.Time       `json:"finished_at,omitempty"`
@@ -402,6 +404,7 @@ func buildEvalSessionListItemResponse(result GetEvalSessionResult) evalSessionLi
 }
 
 func buildEvalSessionChildRunResponse(run domain.Run) evalSessionChildRunResponse {
+	series := evalSessionChildRunSeries(run.ExecutionPlan)
 	return evalSessionChildRunResponse{
 		ID:                     run.ID,
 		WorkspaceID:            run.WorkspaceID,
@@ -413,6 +416,8 @@ func buildEvalSessionChildRunResponse(run domain.Run) evalSessionChildRunRespons
 		Status:                 run.Status,
 		ExecutionMode:          run.ExecutionMode,
 		Seed:                   evalSessionChildRunSeed(run.ExecutionPlan),
+		MatrixKey:              series.MatrixKey,
+		DeploymentLineup:       series.DeploymentLineup,
 		QueuedAt:               run.QueuedAt,
 		StartedAt:              run.StartedAt,
 		FinishedAt:             run.FinishedAt,
@@ -421,6 +426,30 @@ func buildEvalSessionChildRunResponse(run domain.Run) evalSessionChildRunRespons
 		CreatedAt:              run.CreatedAt,
 		UpdatedAt:              run.UpdatedAt,
 		Links:                  buildRunLinks(run.ID),
+	}
+}
+
+type evalSessionChildRunSeriesMetadata struct {
+	MatrixKey        string
+	DeploymentLineup string
+}
+
+func evalSessionChildRunSeries(executionPlan json.RawMessage) evalSessionChildRunSeriesMetadata {
+	if len(executionPlan) == 0 {
+		return evalSessionChildRunSeriesMetadata{}
+	}
+	var plan struct {
+		Series struct {
+			MatrixKey        string `json:"matrix_key"`
+			DeploymentLineup string `json:"deployment_lineup"`
+		} `json:"series"`
+	}
+	if err := json.Unmarshal(executionPlan, &plan); err != nil {
+		return evalSessionChildRunSeriesMetadata{}
+	}
+	return evalSessionChildRunSeriesMetadata{
+		MatrixKey:        plan.Series.MatrixKey,
+		DeploymentLineup: plan.Series.DeploymentLineup,
 	}
 }
 

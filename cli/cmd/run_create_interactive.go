@@ -308,12 +308,9 @@ func resolveRunCreateDeploymentLineups(cmd *cobra.Command, rc *RunContext, works
 
 	resolved := make([]runCreateDeploymentLineup, 0, len(names))
 	for _, name := range names {
-		ids, ok, err := resolveDefaultDeploymentLineup(cmd, rc, workspaceID, challengePackVersionID, name)
+		ids, _, err := resolveDefaultDeploymentLineup(cmd, rc, workspaceID, challengePackVersionID, name)
 		if err != nil {
 			return nil, err
-		}
-		if !ok {
-			return nil, fmt.Errorf("challenge pack version %s was not found while resolving deployment lineups", challengePackVersionID)
 		}
 		resolved = append(resolved, runCreateDeploymentLineup{
 			Name:          name,

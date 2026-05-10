@@ -121,35 +121,10 @@ func (m *RunCreationManager) CreateEvalSession(ctx context.Context, caller Calle
 	}
 
 	executionMode := strings.TrimSpace(input.ExecutionMode)
-	if executionMode == "" {
-		participantCount := len(input.Participants)
-		if hasRunMatrix {
-			participantCount = len(input.EvalSession.RunMatrix[0].Participants)
-		}
-		if participantCount == 1 {
-			executionMode = "single_agent"
-		} else {
-			executionMode = "comparison"
-		}
-	}
-	if executionMode != "single_agent" && executionMode != "comparison" {
+	if executionMode != "" && executionMode != "single_agent" && executionMode != "comparison" {
 		return CreateEvalSessionResult{}, RunCreationValidationError{
 			Code:    "invalid_execution_mode",
 			Message: "execution_mode must be either single_agent or comparison",
-		}
-	}
-	if !hasRunMatrix {
-		if len(input.Participants) == 1 && executionMode != "single_agent" {
-			return CreateEvalSessionResult{}, RunCreationValidationError{
-				Code:    "invalid_execution_mode",
-				Message: "single-participant eval sessions must use execution_mode single_agent",
-			}
-		}
-		if len(input.Participants) > 1 && executionMode != "comparison" {
-			return CreateEvalSessionResult{}, RunCreationValidationError{
-				Code:    "invalid_execution_mode",
-				Message: "multi-participant eval sessions must use execution_mode comparison",
-			}
 		}
 	}
 
@@ -345,6 +320,14 @@ func (m *RunCreationManager) CreateEvalSession(ctx context.Context, caller Calle
 		return CreateEvalSessionResult{}, evalSessionValidationError{Errors: participantDetails}
 	}
 
+	if executionMode == "" {
+		participantCount := len(childSpecs[0].Participants)
+		if participantCount == 1 {
+			executionMode = "single_agent"
+		} else {
+			executionMode = "comparison"
+		}
+	}
 	for _, spec := range childSpecs {
 		if len(spec.Deployments) == 0 {
 			return CreateEvalSessionResult{}, RunCreationValidationError{
@@ -466,6 +449,8 @@ func (m *RunCreationManager) CreateEvalSession(ctx context.Context, caller Calle
 			ChallengeInputSetID:    input.ChallengeInputSetID,
 			OfficialPackMode:       domain.OfficialPackModeFull,
 			MaxIterations:          input.MaxIterations,
+			SeriesMatrixKey:        spec.MatrixKey,
+			SeriesDeploymentLineup: spec.DeploymentLineup,
 		}
 		runInput.Seed = cloneInt64Ptr(spec.Seed)
 		executionPlan, err := buildExecutionPlan(runInput, specRunAgents)
@@ -526,16 +511,13 @@ func (m *RunCreationManager) CreateEvalSession(ctx context.Context, caller Calle
 		}
 	}
 	if hasRunMatrix {
-		for idx, run := range createResult.Runs {
-			if idx >= len(input.EvalSession.RunMatrix) {
-				break
-			}
-			entry := input.EvalSession.RunMatrix[idx]
+		for _, run := range createResult.Runs {
+			series := evalSessionChildRunSeries(run.ExecutionPlan)
 			seriesRuns = append(seriesRuns, EvalSessionSeriesRun{
 				RunID:            run.ID,
-				MatrixKey:        entry.Key,
-				DeploymentLineup: entry.DeploymentLineup,
-				Seed:             cloneInt64Ptr(entry.Seed),
+				MatrixKey:        series.MatrixKey,
+				DeploymentLineup: series.DeploymentLineup,
+				Seed:             evalSessionChildRunSeed(run.ExecutionPlan),
 			})
 		}
 	}

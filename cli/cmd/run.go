@@ -91,6 +91,9 @@ var runSeriesCreateCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		if err := validateSeriesSeedCount(request.Seeds); err != nil {
+			return err
+		}
 		lineups, err := resolveRunCreateDeploymentLineups(cmd, rc, wsID, request.ChallengePackVersionID, request.DeploymentLineups)
 		if err != nil {
 			return err
@@ -261,6 +264,9 @@ For CI and other non-interactive use, keep passing explicit IDs via flags.`,
 		if len(request.DeploymentLineups) > 0 {
 			if follow {
 				return fmt.Errorf("--follow is not supported with --deployment-lineups; tail individual runs with 'agentclash run events <run-id> --follow' instead")
+			}
+			if err := validateSeriesSeedCount(request.Seeds); err != nil {
+				return err
 			}
 			lineups, err := resolveRunCreateDeploymentLineups(cmd, rc, wsID, request.ChallengePackVersionID, request.DeploymentLineups)
 			if err != nil {

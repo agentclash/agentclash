@@ -139,6 +139,27 @@ func TestBuildSeriesEvalSessionBodyCrossesLineupsAndSeeds(t *testing.T) {
 	if len(participants) != 1 || participants[0]["agent_deployment_id"] != "dep-smoke" {
 		t.Fatalf("third matrix participants = %#v, want dep-smoke", participants)
 	}
+	if participants[0]["label"] != "smoke" {
+		t.Fatalf("third matrix participant label = %v, want smoke", participants[0]["label"])
+	}
+}
+
+func TestBuildSeriesEvalSessionBodyRejectsMatrixOverflow(t *testing.T) {
+	_, err := buildSeriesEvalSessionBody("ws-1", runCreateRequest{
+		ChallengePackVersionID: "pv-1",
+		OfficialPackMode:       "full",
+		Seeds:                  51,
+		ResolvedDeploymentLineups: []runCreateDeploymentLineup{
+			{Name: "default", DeploymentIDs: []string{"dep-default"}},
+			{Name: "smoke", DeploymentIDs: []string{"dep-smoke"}},
+		},
+	})
+	if err == nil {
+		t.Fatal("expected matrix overflow error")
+	}
+	if !strings.Contains(err.Error(), "at most 100 child runs") {
+		t.Fatalf("err = %v, want total child-run limit guidance", err)
+	}
 }
 
 func TestBuildEvalSessionBody_MultiDeployment_LabelsAndMode(t *testing.T) {
@@ -435,6 +456,56 @@ func TestRunSeriesCreateRoutesToEvalSessions(t *testing.T) {
 	participant := participants[0].(map[string]any)
 	if third["deployment_lineup"] != "smoke" || participant["agent_deployment_id"] != "dep-2" {
 		t.Fatalf("third matrix entry = %#v, want smoke dep-2", third)
+	}
+	if participant["label"] != "smoke" {
+		t.Fatalf("third matrix participant label = %v, want smoke", participant["label"])
+	}
+}
+
+func TestRunSeriesCreateValidatesSeedsBeforeResolvingLineups(t *testing.T) {
+	requests := 0
+	routes := evalStartFakeRoutes(t, nil)
+	routes["GET /v1/workspaces/ws-1/challenge-packs"] = func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		jsonHandler(200, map[string]any{"items": []map[string]any{}})(w, r)
+	}
+	srv := fakeAPI(t, routes)
+	defer srv.Close()
+
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+	err := executeCommand(t, []string{
+		"run", "series", "create", "-w", "ws-1",
+		"--challenge-pack-version", "pv-1",
+		"--deployment-lineups", "default,smoke",
+	}, srv.URL)
+	if err == nil {
+		t.Fatal("expected missing seeds error")
+	}
+	if !strings.Contains(err.Error(), "--seeds must be between 1 and 100") {
+		t.Fatalf("err = %v, want local seeds validation", err)
+	}
+	if requests != 0 {
+		t.Fatalf("challenge pack resolver was called %d times, want local validation first", requests)
+	}
+}
+
+func TestBuildSeriesEvalSessionBodyQualifiesMultiParticipantLabelsByLineup(t *testing.T) {
+	body, err := buildSeriesEvalSessionBody("ws-1", runCreateRequest{
+		ChallengePackVersionID: "pv-1",
+		OfficialPackMode:       "full",
+		Seeds:                  1,
+		ResolvedDeploymentLineups: []runCreateDeploymentLineup{
+			{Name: "premium", DeploymentIDs: []string{"dep-a", "dep-b"}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	session := body["eval_session"].(map[string]any)
+	matrix := session["run_matrix"].([]map[string]any)
+	participants := matrix[0]["participants"].([]map[string]any)
+	if participants[0]["label"] != "premium / Primary" || participants[1]["label"] != "premium / Participant 2" {
+		t.Fatalf("participants = %#v, want lineup-qualified labels", participants)
 	}
 }
 

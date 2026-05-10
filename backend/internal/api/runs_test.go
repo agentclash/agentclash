@@ -902,6 +902,34 @@ func TestCreateEvalSessionEndpointAcceptsRunMatrix(t *testing.T) {
 	}
 }
 
+func TestCreateEvalSessionEndpointRejectsParticipantsWithRunMatrix(t *testing.T) {
+	workspaceID := uuid.New()
+	deploymentID := uuid.New()
+	req := httptest.NewRequest(http.MethodPost, "/v1/eval-sessions", bytes.NewBufferString(`{
+		"workspace_id":"`+workspaceID.String()+`",
+		"challenge_pack_version_id":"`+uuid.New().String()+`",
+		"participants":[{"agent_deployment_id":"`+deploymentID.String()+`","label":"Primary"}],
+		"execution_mode":"single_agent",
+		"eval_session":{
+			"repetitions":1,
+			"aggregation":{"method":"mean","report_variance":true,"confidence_interval":0.95},
+			"routing_task_snapshot":{"routing":{"mode":"series"},"task":{"pack_version":"v1"}},
+			"run_matrix":[
+				{"key":"default:seed-1","deployment_lineup":"default","seed":1,"participants":[{"agent_deployment_id":"`+deploymentID.String()+`","label":"default"}]}
+			],
+			"schema_version":1
+		}
+	}`))
+	_, err := decodeCreateEvalSessionRequest(req.Context(), req)
+	var validationErr evalSessionValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("error = %v, want evalSessionValidationError", err)
+	}
+	if len(validationErr.Errors) != 1 || validationErr.Errors[0].Code != "participants.run_matrix_conflict" {
+		t.Fatalf("validation errors = %+v, want participants/run_matrix conflict", validationErr.Errors)
+	}
+}
+
 func TestDecodeEvalSessionConfigRejectsInvalidSeedFanout(t *testing.T) {
 	cases := []struct {
 		name string
@@ -941,6 +969,28 @@ func TestDecodeEvalSessionConfigRejectsInvalidSeedFanout(t *testing.T) {
 				t.Fatalf("validation errors = %+v, want first code %s", validationErr.Errors, tc.code)
 			}
 		})
+	}
+}
+
+func TestDecodeEvalSessionConfigPreservesMatrixParticipantErrorCode(t *testing.T) {
+	_, err := decodeEvalSessionConfig(json.RawMessage(`{
+		"repetitions":1,
+		"aggregation":{"method":"mean","report_variance":true,"confidence_interval":0.95},
+		"routing_task_snapshot":{"routing":{"mode":"single_agent"},"task":{"pack_version":"v1"}},
+		"run_matrix":[
+			{"key":"default:seed-1","seed":1,"participants":[{"agent_deployment_id":"not-a-uuid","label":"Primary"}]}
+		],
+		"schema_version":1
+	}`))
+	var validationErr evalSessionValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("error = %v, want evalSessionValidationError", err)
+	}
+	if len(validationErr.Errors) != 1 {
+		t.Fatalf("validation errors = %+v, want one participant error", validationErr.Errors)
+	}
+	if validationErr.Errors[0].Field != "eval_session.run_matrix[0].participants[0]" || validationErr.Errors[0].Code != "invalid_participants" {
+		t.Fatalf("validation error = %+v, want field path and invalid_participants code", validationErr.Errors[0])
 	}
 }
 
