@@ -100,6 +100,68 @@ func TestEvalSessionWorkflowPartialChildFailureStillAggregates(t *testing.T) {
 	}
 }
 
+func TestEvalSessionWorkflowSkipsAlreadyCancelledChildRuns(t *testing.T) {
+	sessionID := uuid.New()
+	cancelledRunID := uuid.New()
+	queuedRunID := uuid.New()
+	cancelledRun := fixtureChildRun(cancelledRunID, sessionID)
+	cancelledRun.Status = domain.RunStatusCancelled
+	repo := newFakeRunRepository(fixtureRun(uuid.New(), domain.RunStatusQueued))
+	repo.setEvalSession(
+		fixtureEvalSession(sessionID, domain.EvalSessionStatusQueued),
+		cancelledRun,
+		fixtureChildRun(queuedRunID, sessionID),
+	)
+
+	var started []uuid.UUID
+	var startedMu sync.Mutex
+	env := newEvalSessionWorkflowTestEnvironment(repo, nil, func(ctx sdkworkflow.Context, input RunWorkflowInput) error {
+		startedMu.Lock()
+		started = append(started, input.RunID)
+		startedMu.Unlock()
+		return nil
+	})
+	env.ExecuteWorkflow(EvalSessionWorkflow, EvalSessionWorkflowInput{EvalSessionID: sessionID})
+
+	if err := env.GetWorkflowError(); err != nil {
+		t.Fatalf("EvalSessionWorkflow returned error: %v", err)
+	}
+	if got := repo.currentEvalSession(sessionID).Status; got != domain.EvalSessionStatusCompleted {
+		t.Fatalf("eval session status = %s, want %s", got, domain.EvalSessionStatusCompleted)
+	}
+	if fmt.Sprint(started) != fmt.Sprint([]uuid.UUID{queuedRunID}) {
+		t.Fatalf("started child runs = %v, want [%s]", started, queuedRunID)
+	}
+}
+
+func TestEvalSessionWorkflowAllCancelledChildRunsMarksSessionCancelled(t *testing.T) {
+	sessionID := uuid.New()
+	runID := uuid.New()
+	cancelledRun := fixtureChildRun(runID, sessionID)
+	cancelledRun.Status = domain.RunStatusCancelled
+	repo := newFakeRunRepository(fixtureRun(uuid.New(), domain.RunStatusQueued))
+	repo.setEvalSession(
+		fixtureEvalSession(sessionID, domain.EvalSessionStatusQueued),
+		cancelledRun,
+	)
+
+	env := newEvalSessionWorkflowTestEnvironment(repo, nil, func(ctx sdkworkflow.Context, input RunWorkflowInput) error {
+		t.Fatalf("cancelled run %s should not be started", input.RunID)
+		return nil
+	})
+	env.ExecuteWorkflow(EvalSessionWorkflow, EvalSessionWorkflowInput{EvalSessionID: sessionID})
+
+	if err := env.GetWorkflowError(); err != nil {
+		t.Fatalf("EvalSessionWorkflow returned error: %v", err)
+	}
+	if got := repo.currentEvalSession(sessionID).Status; got != domain.EvalSessionStatusCancelled {
+		t.Fatalf("eval session status = %s, want %s", got, domain.EvalSessionStatusCancelled)
+	}
+	if repo.callCountWithPrefix("AggregateEvalSession:") != 0 {
+		t.Fatalf("AggregateEvalSession call count = %d, want 0", repo.callCountWithPrefix("AggregateEvalSession:"))
+	}
+}
+
 func TestEvalSessionWorkflowAggregationFailureMarksSessionFailed(t *testing.T) {
 	sessionID := uuid.New()
 	runID := uuid.New()
@@ -1145,6 +1207,7 @@ func newEvalSessionWorkflowTestEnvironment(
 	env.RegisterWorkflowWithOptions(EvalSessionWorkflow, sdkworkflow.RegisterOptions{Name: EvalSessionWorkflowName})
 	env.RegisterActivityWithOptions(activities.LoadEvalSession, sdkactivity.RegisterOptions{Name: loadEvalSessionActivityName})
 	env.RegisterActivityWithOptions(activities.ListEvalSessionRuns, sdkactivity.RegisterOptions{Name: listEvalSessionRunsActivityName})
+	env.RegisterActivityWithOptions(activities.LoadRun, sdkactivity.RegisterOptions{Name: loadRunActivityName})
 	env.RegisterActivityWithOptions(activities.TransitionEvalSessionStatus, sdkactivity.RegisterOptions{Name: transitionEvalSessionStatusActivityName})
 	env.RegisterActivityWithOptions(activities.AggregateEvalSession, sdkactivity.RegisterOptions{Name: aggregateEvalSessionActivityName})
 	if childWorkflow == nil {
@@ -1321,6 +1384,14 @@ func (r *fakeRunRepository) GetRunByID(_ context.Context, id uuid.UUID) (domain.
 	defer r.mu.Unlock()
 
 	if r.run.ID != id {
+		for _, runs := range r.evalSessionRuns {
+			for _, run := range runs {
+				if run.ID == id {
+					r.callLog = append(r.callLog, "GetRunByID")
+					return cloneRun(run), nil
+				}
+			}
+		}
 		return domain.Run{}, repository.ErrRunNotFound
 	}
 	r.callLog = append(r.callLog, "GetRunByID")

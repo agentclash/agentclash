@@ -51,6 +51,13 @@ func runEvalSessionWorkflow(ctx sdkworkflow.Context, input EvalSessionWorkflowIn
 	if len(runs) == 0 {
 		return fmt.Errorf("%w: eval session %s", ErrEvalSessionHasNoRuns, input.EvalSessionID)
 	}
+	runs, err = loadLatestEvalSessionRuns(ctx, runs)
+	if err != nil {
+		return err
+	}
+	if allRunsCancelled(runs) {
+		return transitionEvalSessionStatus(ctx, input.EvalSessionID, domain.EvalSessionStatusCancelled)
+	}
 
 	if err := executeEvalSessionRuns(ctx, runs); err != nil {
 		return err
@@ -82,6 +89,18 @@ func listEvalSessionRuns(ctx sdkworkflow.Context, evalSessionID uuid.UUID) ([]do
 	return runs, err
 }
 
+func loadLatestEvalSessionRuns(ctx sdkworkflow.Context, runs []domain.Run) ([]domain.Run, error) {
+	latestRuns := make([]domain.Run, 0, len(runs))
+	for _, run := range runs {
+		latest, err := loadRun(ctx, run.ID)
+		if err != nil {
+			return nil, err
+		}
+		latestRuns = append(latestRuns, latest)
+	}
+	return latestRuns, nil
+}
+
 func transitionEvalSessionStatus(ctx sdkworkflow.Context, evalSessionID uuid.UUID, toStatus domain.EvalSessionStatus) error {
 	var session domain.EvalSession
 	return sdkworkflow.ExecuteActivity(ctx, transitionEvalSessionStatusActivityName, TransitionEvalSessionStatusInput{
@@ -100,10 +119,14 @@ func aggregateEvalSession(ctx sdkworkflow.Context, evalSessionID uuid.UUID) erro
 func executeEvalSessionRuns(ctx sdkworkflow.Context, runs []domain.Run) error {
 	selector := sdkworkflow.NewSelector(ctx)
 	completedChildren := 0
+	startedChildren := 0
 	childErrors := make(map[uuid.UUID]error, len(runs))
 
 	for _, run := range runs {
 		run := run
+		if run.Status != domain.RunStatusQueued {
+			continue
+		}
 		childCtx := sdkworkflow.WithChildOptions(ctx, sdkworkflow.ChildWorkflowOptions{
 			WorkflowID:        fmt.Sprintf("%s/%s", RunWorkflowName, run.ID),
 			ParentClosePolicy: enumspb.PARENT_CLOSE_POLICY_REQUEST_CANCEL,
@@ -111,6 +134,7 @@ func executeEvalSessionRuns(ctx sdkworkflow.Context, runs []domain.Run) error {
 		future := sdkworkflow.ExecuteChildWorkflow(childCtx, RunWorkflowName, RunWorkflowInput{
 			RunID: run.ID,
 		})
+		startedChildren++
 		selector.AddFuture(future, func(f sdkworkflow.Future) {
 			completedChildren++
 			if err := f.Get(ctx, nil); err != nil {
@@ -119,17 +143,29 @@ func executeEvalSessionRuns(ctx sdkworkflow.Context, runs []domain.Run) error {
 		})
 	}
 
-	for completedChildren < len(runs) {
+	for completedChildren < startedChildren {
 		selector.Select(ctx)
 	}
 
-	if len(childErrors) == len(runs) {
+	if startedChildren > 0 && len(childErrors) == startedChildren {
 		for _, err := range childErrors {
 			return err
 		}
 	}
 
 	return nil
+}
+
+func allRunsCancelled(runs []domain.Run) bool {
+	if len(runs) == 0 {
+		return false
+	}
+	for _, run := range runs {
+		if run.Status != domain.RunStatusCancelled {
+			return false
+		}
+	}
+	return true
 }
 
 func markEvalSessionFailed(ctx sdkworkflow.Context, evalSessionID uuid.UUID, workflowErr error) error {
