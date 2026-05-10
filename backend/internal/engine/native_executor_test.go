@@ -572,6 +572,36 @@ func TestNativeExecutorFailsOnStepLimit(t *testing.T) {
 	}
 }
 
+func TestMaxIterationsLimitPrefersRunExecutionPlanOverride(t *testing.T) {
+	executionContext := nativeExecutionContext()
+	executionContext.Deployment.RuntimeProfile.MaxIterations = 9
+	executionContext.Run.ExecutionPlan = []byte(`{"runtime_limits":{"max_iterations":2}}`)
+
+	if got := maxIterationsLimit(executionContext); got != 2 {
+		t.Fatalf("maxIterationsLimit = %d, want 2", got)
+	}
+}
+
+func TestMaxIterationsLimitFallsBackToRuntimeProfile(t *testing.T) {
+	executionContext := nativeExecutionContext()
+	executionContext.Deployment.RuntimeProfile.MaxIterations = 9
+	executionContext.Run.ExecutionPlan = []byte(`{"runtime_limits":{"max_iterations":0}}`)
+
+	if got := maxIterationsLimit(executionContext); got != 9 {
+		t.Fatalf("maxIterationsLimit = %d, want 9", got)
+	}
+}
+
+func TestMaxIterationsLimitFallsBackWhenExecutionPlanOverrideIsTooLarge(t *testing.T) {
+	executionContext := nativeExecutionContext()
+	executionContext.Deployment.RuntimeProfile.MaxIterations = 9
+	executionContext.Run.ExecutionPlan = []byte(`{"runtime_limits":{"max_iterations":1001}}`)
+
+	if got := maxIterationsLimit(executionContext); got != 9 {
+		t.Fatalf("maxIterationsLimit = %d, want 9", got)
+	}
+}
+
 func TestNativeExecutorFailsWhenSandboxSetupFails(t *testing.T) {
 	executor := NewNativeExecutor(&scriptedProviderClient{t: t}, &sandbox.FakeProvider{
 		CreateErr: errors.New("sandbox unavailable"),

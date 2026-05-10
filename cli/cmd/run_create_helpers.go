@@ -10,6 +10,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const maxRunCreateMaxIter = 1000
+
 type runCreateRequest struct {
 	ChallengePackVersionID     string
 	ChallengeInputSetID        string
@@ -21,6 +23,7 @@ type runCreateRequest struct {
 	IncludeProposedRegressions bool
 	RaceContext                bool
 	RaceContextCadence         int
+	MaxIterations              int
 	CIMetadata                 map[string]any
 }
 
@@ -55,6 +58,9 @@ func runCreateRequestFromFlags(cmd *cobra.Command, base runCreateRequest) (runCr
 	cadence, _ := cmd.Flags().GetInt("race-context-cadence")
 	request.RaceContextCadence = cadence
 
+	maxIterations, _ := cmd.Flags().GetInt("max-iter")
+	request.MaxIterations = maxIterations
+
 	return request, nil
 }
 
@@ -70,6 +76,9 @@ func buildRunCreateBody(workspaceID string, request runCreateRequest) (map[strin
 	}
 	if request.RaceContextCadence < 0 || request.RaceContextCadence > 10 {
 		return nil, fmt.Errorf("--race-context-cadence must be 0 (backend default) or between 1 and 10, got %d", request.RaceContextCadence)
+	}
+	if request.MaxIterations < 0 || request.MaxIterations > maxRunCreateMaxIter {
+		return nil, fmt.Errorf("--max-iter must be 0 (pack/runtime default) or between 1 and %d, got %d", maxRunCreateMaxIter, request.MaxIterations)
 	}
 
 	body := map[string]any{
@@ -98,6 +107,9 @@ func buildRunCreateBody(workspaceID string, request runCreateRequest) (map[strin
 	}
 	if request.RaceContextCadence > 0 {
 		body["race_context_min_step_gap"] = request.RaceContextCadence
+	}
+	if request.MaxIterations > 0 {
+		body["max_iterations"] = request.MaxIterations
 	}
 	if len(request.CIMetadata) > 0 {
 		body["ci_metadata"] = request.CIMetadata

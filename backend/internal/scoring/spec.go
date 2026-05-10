@@ -288,6 +288,7 @@ type RuntimeLimits struct {
 	MaxTotalTokens *int64   `json:"max_total_tokens,omitempty"`
 	MaxCostUSD     *float64 `json:"max_cost_usd,omitempty"`
 	MaxDurationMS  *int64   `json:"max_duration_ms,omitempty"`
+	MaxIterations  *int32   `json:"max_iterations,omitempty"`
 }
 
 type PricingConfig struct {

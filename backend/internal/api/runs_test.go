@@ -620,6 +620,43 @@ func TestCreateRunEndpointPropagatesRaceContext(t *testing.T) {
 	}
 }
 
+func TestDecodeCreateRunRequestAcceptsMaxIterations(t *testing.T) {
+	workspaceID := uuid.New()
+	req := httptest.NewRequest(http.MethodPost, "/v1/runs", bytes.NewBufferString(`{
+		"workspace_id":"`+workspaceID.String()+`",
+		"challenge_pack_version_id":"`+uuid.New().String()+`",
+		"agent_deployment_ids":["`+uuid.New().String()+`"],
+		"max_iterations":7
+	}`))
+
+	input, err := decodeCreateRunRequest(req)
+	if err != nil {
+		t.Fatalf("decodeCreateRunRequest returned error: %v", err)
+	}
+	if input.MaxIterations == nil || *input.MaxIterations != 7 {
+		t.Fatalf("MaxIterations = %v, want 7", input.MaxIterations)
+	}
+}
+
+func TestDecodeCreateRunRequestRejectsInvalidMaxIterations(t *testing.T) {
+	workspaceID := uuid.New()
+	req := httptest.NewRequest(http.MethodPost, "/v1/runs", bytes.NewBufferString(`{
+		"workspace_id":"`+workspaceID.String()+`",
+		"challenge_pack_version_id":"`+uuid.New().String()+`",
+		"agent_deployment_ids":["`+uuid.New().String()+`"],
+		"max_iterations":0
+	}`))
+
+	_, err := decodeCreateRunRequest(req)
+	var validationErr RunCreationValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("error = %v, want RunCreationValidationError", err)
+	}
+	if validationErr.Code != "invalid_max_iterations" {
+		t.Fatalf("code = %q, want invalid_max_iterations", validationErr.Code)
+	}
+}
+
 func TestCreateRunEndpointRejectsRaceContextCadenceOutOfRange(t *testing.T) {
 	workspaceID := uuid.New()
 	// 11 is out of range (valid is [1, 10]).

@@ -31,7 +31,8 @@ func TestLoadEvaluationSpec(t *testing.T) {
 				],
 				"runtime_limits": {
 					"max_duration_ms": 60000,
-					"max_cost_usd": 20
+					"max_cost_usd": 20,
+					"max_iterations": 6
 				},
 				"pricing": {
 					"models": [
@@ -68,6 +69,9 @@ func TestLoadEvaluationSpec(t *testing.T) {
 		if spec.RuntimeLimits.MaxDurationMS == nil || *spec.RuntimeLimits.MaxDurationMS != 60000 {
 			t.Fatalf("max duration = %v, want 60000", spec.RuntimeLimits.MaxDurationMS)
 		}
+		if spec.RuntimeLimits.MaxIterations == nil || *spec.RuntimeLimits.MaxIterations != 6 {
+			t.Fatalf("max iterations = %v, want 6", spec.RuntimeLimits.MaxIterations)
+		}
 		if len(spec.Pricing.Models) != 1 || spec.Pricing.Models[0].ProviderKey != "openai" {
 			t.Fatalf("pricing models = %#v, want openai pricing", spec.Pricing.Models)
 		}
@@ -92,6 +96,16 @@ func TestLoadEvaluationSpec(t *testing.T) {
 			name:     "non-positive version",
 			manifest: `{"evaluation_spec":{"name":"spec","version_number":0,"judge_mode":"deterministic","validators":[{"key":"v1","type":"exact_match","target":"final_output","expected_from":"challenge_input"}],"scorecard":{"dimensions":["correctness"]}}}`,
 			needle:   "evaluation_spec.version_number must be greater than 0",
+		},
+		{
+			name:     "non-positive max iterations",
+			manifest: `{"evaluation_spec":{"name":"spec","version_number":1,"judge_mode":"deterministic","validators":[{"key":"v1","type":"exact_match","target":"final_output","expected_from":"challenge_input"}],"runtime_limits":{"max_iterations":0},"scorecard":{"dimensions":["correctness"]}}}`,
+			needle:   "evaluation_spec.runtime_limits.max_iterations must be between 1 and 1000",
+		},
+		{
+			name:     "too-large max iterations",
+			manifest: `{"evaluation_spec":{"name":"spec","version_number":1,"judge_mode":"deterministic","validators":[{"key":"v1","type":"exact_match","target":"final_output","expected_from":"challenge_input"}],"runtime_limits":{"max_iterations":1001},"scorecard":{"dimensions":["correctness"]}}}`,
+			needle:   "evaluation_spec.runtime_limits.max_iterations must be between 1 and 1000",
 		},
 		{
 			name:     "invalid judge mode",

@@ -38,6 +38,7 @@ func init() {
 	runCreateCmd.Flags().Bool("include-proposed-regressions", false, "Include proposed regression cases for validation runs")
 	runCreateCmd.Flags().Bool("race-context", false, "Enable live peer-standings injection during the run (requires 2+ agents)")
 	runCreateCmd.Flags().Int("race-context-cadence", 0, "Override race-context cadence; minimum steps between standings injections, [1, 10]. 0 uses the backend default.")
+	runCreateCmd.Flags().Int("max-iter", 0, "Override max iterations for this run (1-1000). 0 uses the pack/runtime default.")
 
 	runRankingCmd.Flags().String("sort-by", "", "Sort by: composite, correctness, reliability, latency, cost")
 	runFailuresCmd.Flags().String("agent", "", "Filter by run agent ID")

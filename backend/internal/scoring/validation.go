@@ -5,6 +5,8 @@ import (
 	"strings"
 )
 
+const maxEvaluationSpecMaxIterations = 1000
+
 type ValidationError struct {
 	Field   string
 	Message string
@@ -67,6 +69,9 @@ func ValidateEvaluationSpec(spec EvaluationSpec) error {
 	}
 	if spec.RuntimeLimits.MaxDurationMS != nil && *spec.RuntimeLimits.MaxDurationMS <= 0 {
 		errs = append(errs, ValidationError{Field: "evaluation_spec.runtime_limits.max_duration_ms", Message: "must be greater than 0"})
+	}
+	if spec.RuntimeLimits.MaxIterations != nil && (*spec.RuntimeLimits.MaxIterations <= 0 || *spec.RuntimeLimits.MaxIterations > maxEvaluationSpecMaxIterations) {
+		errs = append(errs, ValidationError{Field: "evaluation_spec.runtime_limits.max_iterations", Message: fmt.Sprintf("must be between 1 and %d", maxEvaluationSpecMaxIterations)})
 	}
 
 	validatorKeys := map[string]struct{}{}

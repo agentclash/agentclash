@@ -42,6 +42,9 @@ func buildEvalSessionBody(workspaceID string, request runCreateRequest, repetiti
 	if request.RaceContext || request.RaceContextCadence > 0 {
 		return nil, fmt.Errorf("--race-context flags are not supported with --repetitions >= 2")
 	}
+	if request.MaxIterations > 0 {
+		return nil, fmt.Errorf("--max-iter is not supported with --repetitions >= 2")
+	}
 
 	executionMode := "single_agent"
 	if len(request.DeploymentIDs) > 1 {
