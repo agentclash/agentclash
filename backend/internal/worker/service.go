@@ -19,6 +19,10 @@ type TemporalWorker interface {
 	Stop()
 }
 
+type OrphanRunReaper interface {
+	Start(ctx context.Context)
+}
+
 // executionHooks is the temporary extension seam for later hosted and native
 // execution work without reshaping worker bootstrap.
 func NewTemporalWorker(
@@ -44,6 +48,10 @@ func NewTemporalWorker(
 }
 
 func Run(ctx context.Context, cfg Config, temporalWorker TemporalWorker, logger *slog.Logger) error {
+	return RunWithReaper(ctx, cfg, temporalWorker, nil, logger)
+}
+
+func RunWithReaper(ctx context.Context, cfg Config, temporalWorker TemporalWorker, reaper OrphanRunReaper, logger *slog.Logger) error {
 	logger.Info("starting worker",
 		"task_queue", cfg.TaskQueue,
 		"identity", cfg.Identity,
@@ -53,6 +61,16 @@ func Run(ctx context.Context, cfg Config, temporalWorker TemporalWorker, logger 
 
 	if err := temporalWorker.Start(); err != nil {
 		return fmt.Errorf("start temporal worker: %w", err)
+	}
+
+	reaperDoneCh := make(chan struct{})
+	if reaper != nil {
+		go func() {
+			defer close(reaperDoneCh)
+			reaper.Start(ctx)
+		}()
+	} else {
+		close(reaperDoneCh)
 	}
 
 	<-ctx.Done()
@@ -68,10 +86,19 @@ func Run(ctx context.Context, cfg Config, temporalWorker TemporalWorker, logger 
 	timer := time.NewTimer(cfg.ShutdownTimeout)
 	defer timer.Stop()
 
-	select {
-	case <-stoppedCh:
-		return nil
-	case <-timer.C:
-		return fmt.Errorf("worker shutdown timed out after %s", cfg.ShutdownTimeout)
+	workerStopped := false
+	reaperStopped := false
+	for !workerStopped || !reaperStopped {
+		select {
+		case <-stoppedCh:
+			workerStopped = true
+			stoppedCh = nil
+		case <-reaperDoneCh:
+			reaperStopped = true
+			reaperDoneCh = nil
+		case <-timer.C:
+			return fmt.Errorf("worker shutdown timed out after %s", cfg.ShutdownTimeout)
+		}
 	}
+	return nil
 }

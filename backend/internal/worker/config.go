@@ -16,35 +16,39 @@ import (
 )
 
 const (
-	defaultDatabaseURL            = "postgres://agentclash:agentclash@localhost:5432/agentclash?sslmode=disable"
-	defaultTemporalTarget         = "localhost:7233"
-	defaultNamespace              = "default"
-	defaultAppEnvironment         = "development"
-	defaultShutdownTime           = 10 * time.Second
-	defaultHostedCallbackBaseURL  = "http://localhost:8080"
-	defaultHostedCallbackSecret   = "agentclash-dev-hosted-callback-secret"
-	defaultArtifactStorageBackend = "filesystem"
-	defaultArtifactStorageBucket  = "agentclash-dev-artifacts"
-	defaultArtifactMaxAssetBytes  = 100 << 20
+	defaultDatabaseURL              = "postgres://agentclash:agentclash@localhost:5432/agentclash?sslmode=disable"
+	defaultTemporalTarget           = "localhost:7233"
+	defaultNamespace                = "default"
+	defaultAppEnvironment           = "development"
+	defaultShutdownTime             = 10 * time.Second
+	defaultHostedCallbackBaseURL    = "http://localhost:8080"
+	defaultHostedCallbackSecret     = "agentclash-dev-hosted-callback-secret"
+	defaultArtifactStorageBackend   = "filesystem"
+	defaultArtifactStorageBucket    = "agentclash-dev-artifacts"
+	defaultArtifactMaxAssetBytes    = 100 << 20
+	defaultOrphanRunReaperInterval  = 5 * time.Minute
+	defaultOrphanRunReaperThreshold = 15 * time.Minute
 )
 
 var ErrInvalidConfig = errors.New("invalid worker config")
 
 type Config struct {
-	AppEnvironment        string
-	DatabaseURL           string
-	TemporalAddress       string
-	TemporalNamespace     string
-	Identity              string
-	TaskQueue             string
-	HostedCallbackBaseURL string
-	HostedCallbackSecret  string
-	GitHubAppID           int64
-	GitHubAppPrivateKey   string
-	ShutdownTimeout       time.Duration
-	ArtifactStorage       ArtifactStorageConfig
-	Sandbox               SandboxConfig
-	SecretsCipher         *secrets.AESGCMCipher
+	AppEnvironment           string
+	DatabaseURL              string
+	TemporalAddress          string
+	TemporalNamespace        string
+	Identity                 string
+	TaskQueue                string
+	HostedCallbackBaseURL    string
+	HostedCallbackSecret     string
+	GitHubAppID              int64
+	GitHubAppPrivateKey      string
+	ShutdownTimeout          time.Duration
+	OrphanRunReaperInterval  time.Duration
+	OrphanRunReaperThreshold time.Duration
+	ArtifactStorage          ArtifactStorageConfig
+	Sandbox                  SandboxConfig
+	SecretsCipher            *secrets.AESGCMCipher
 }
 
 type ArtifactStorageConfig struct {
@@ -108,6 +112,14 @@ func LoadConfigFromEnv() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	orphanRunReaperInterval, err := durationEnvOrDefaultAllowZero("WORKER_ORPHAN_RUN_REAPER_INTERVAL", defaultOrphanRunReaperInterval)
+	if err != nil {
+		return Config{}, err
+	}
+	orphanRunReaperThreshold, err := durationEnvOrDefault("WORKER_ORPHAN_RUN_REAPER_THRESHOLD", defaultOrphanRunReaperThreshold)
+	if err != nil {
+		return Config{}, err
+	}
 	sandboxProvider, err := envOrDefault("SANDBOX_PROVIDER", "unconfigured")
 	if err != nil {
 		return Config{}, err
@@ -163,17 +175,19 @@ func LoadConfigFromEnv() (Config, error) {
 	}
 
 	return Config{
-		AppEnvironment:        appEnvironment,
-		DatabaseURL:           databaseURL,
-		TemporalAddress:       temporalAddress,
-		TemporalNamespace:     temporalNamespace,
-		Identity:              identity,
-		TaskQueue:             workflow.WorkflowTaskQueue,
-		HostedCallbackBaseURL: hostedCallbackBaseURL,
-		HostedCallbackSecret:  hostedCallbackSecret,
-		GitHubAppID:           githubAppID,
-		GitHubAppPrivateKey:   normalizePEMEnv(os.Getenv("GITHUB_APP_PRIVATE_KEY")),
-		ShutdownTimeout:       shutdownTimeout,
+		AppEnvironment:           appEnvironment,
+		DatabaseURL:              databaseURL,
+		TemporalAddress:          temporalAddress,
+		TemporalNamespace:        temporalNamespace,
+		Identity:                 identity,
+		TaskQueue:                workflow.WorkflowTaskQueue,
+		HostedCallbackBaseURL:    hostedCallbackBaseURL,
+		HostedCallbackSecret:     hostedCallbackSecret,
+		GitHubAppID:              githubAppID,
+		GitHubAppPrivateKey:      normalizePEMEnv(os.Getenv("GITHUB_APP_PRIVATE_KEY")),
+		ShutdownTimeout:          shutdownTimeout,
+		OrphanRunReaperInterval:  orphanRunReaperInterval,
+		OrphanRunReaperThreshold: orphanRunReaperThreshold,
 		ArtifactStorage: ArtifactStorageConfig{
 			Backend:          artifactStorageBackend,
 			Bucket:           artifactStorageBucket,
@@ -320,6 +334,26 @@ func durationEnvOrDefault(key string, fallback time.Duration) (time.Duration, er
 	}
 	if duration <= 0 {
 		return 0, fmt.Errorf("%w: %s must be greater than zero", ErrInvalidConfig, key)
+	}
+
+	return duration, nil
+}
+
+func durationEnvOrDefaultAllowZero(key string, fallback time.Duration) (time.Duration, error) {
+	value, ok := os.LookupEnv(key)
+	if !ok {
+		return fallback, nil
+	}
+	if value == "" {
+		return 0, fmt.Errorf("%w: %s cannot be empty", ErrInvalidConfig, key)
+	}
+
+	duration, err := time.ParseDuration(value)
+	if err != nil {
+		return 0, fmt.Errorf("%w: %s must be a valid duration: %v", ErrInvalidConfig, key, err)
+	}
+	if duration < 0 {
+		return 0, fmt.Errorf("%w: %s must be zero or greater", ErrInvalidConfig, key)
 	}
 
 	return duration, nil
