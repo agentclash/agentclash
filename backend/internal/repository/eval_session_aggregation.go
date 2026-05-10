@@ -60,6 +60,7 @@ type evalSessionAggregateDocument struct {
 	MetricRouting    *evalSessionMetricRouting             `json:"metric_routing,omitempty"`
 	Participants     []evalSessionParticipantAggregate     `json:"participants,omitempty"`
 	Comparison       *evalSessionRepeatedComparison        `json:"comparison,omitempty"`
+	SeriesReport     *evalSessionSeriesReport              `json:"series_report,omitempty"`
 }
 
 type evalSessionParticipantAggregate struct {
@@ -71,7 +72,36 @@ type evalSessionParticipantAggregate struct {
 	PassAtK       *evalSessionPassMetricSeries          `json:"pass_at_k,omitempty"`
 	PassPowK      *evalSessionPassMetricSeries          `json:"pass_pow_k,omitempty"`
 	MetricRouting *evalSessionMetricRouting             `json:"metric_routing,omitempty"`
+	CostUSD       *evalSessionCostAggregate             `json:"cost_usd,omitempty"`
 	ObservedRuns  int                                   `json:"-"`
+}
+
+type evalSessionSeriesReport struct {
+	RankMetric string                       `json:"rank_metric"`
+	Rows       []evalSessionSeriesReportRow `json:"rows"`
+}
+
+type evalSessionSeriesReportRow struct {
+	Rank                int      `json:"rank"`
+	LaneIndex           int32    `json:"lane_index"`
+	Label               string   `json:"label"`
+	DeploymentLineup    string   `json:"deployment_lineup,omitempty"`
+	ParticipantLabel    string   `json:"participant_label,omitempty"`
+	ObservedRuns        int      `json:"observed_runs"`
+	OverallScore        *float64 `json:"overall_score,omitempty"`
+	CorrectnessScore    *float64 `json:"correctness_score,omitempty"`
+	SuccessRate         *float64 `json:"success_rate,omitempty"`
+	CompositeAgentScore *float64 `json:"composite_agent_score,omitempty"`
+	MeanCostUSD         *float64 `json:"mean_cost_usd,omitempty"`
+	TotalCostUSD        *float64 `json:"total_cost_usd,omitempty"`
+}
+
+type evalSessionCostAggregate struct {
+	N     int     `json:"n"`
+	Total float64 `json:"total"`
+	Mean  float64 `json:"mean"`
+	Min   float64 `json:"min"`
+	Max   float64 `json:"max"`
 }
 
 type evalSessionTaskSuccess struct {
@@ -173,6 +203,7 @@ type evalSessionParticipantAccumulator struct {
 	Key          evalSessionParticipantKey
 	Overall      []float64
 	Dimensions   map[string][]float64
+	TotalCostUSD []float64
 	TaskOutcomes map[string]*evalSessionTaskOutcomeAccumulator
 }
 
@@ -494,6 +525,18 @@ func (r *Repository) buildEvalSessionAggregateParticipantSources(
 	warnings := make([]string, 0)
 
 	for _, agent := range document.Agents {
+		if agent.HasScorecard && agent.TotalCostUSD == nil {
+			scorecard, err := r.GetRunAgentScorecardByRunAgentID(ctx, agent.RunAgentID)
+			switch {
+			case err == nil:
+				agent = evalSessionAgentWithScorecardCost(agent, scorecard.Scorecard)
+			case errors.Is(err, ErrRunAgentScorecardNotFound):
+				warnings = append(warnings, fmt.Sprintf("run %s participant %q (lane %d): run-agent scorecard unavailable; cost will be omitted", runID, agent.Label, agent.LaneIndex))
+			default:
+				return nil, nil, fmt.Errorf("load run-agent scorecard %s for cost aggregation: %w", agent.RunAgentID, err)
+			}
+		}
+
 		participantSource := evalSessionAggregateParticipantSource{
 			Key: evalSessionParticipantKey{
 				LaneIndex: agent.LaneIndex,
@@ -517,6 +560,14 @@ func (r *Repository) buildEvalSessionAggregateParticipantSources(
 	}
 
 	return participantSources, warnings, nil
+}
+
+func evalSessionAgentWithScorecardCost(agent runScorecardAgentSummary, scorecard json.RawMessage) runScorecardAgentSummary {
+	if agent.TotalCostUSD != nil {
+		return agent
+	}
+	agent.TotalCostUSD = totalCostUSDFromRunAgentScorecardDocument(scorecard)
+	return agent
 }
 
 func (r *Repository) loadEvalSessionParticipantTaskOutcomes(
@@ -727,6 +778,9 @@ func buildEvalSessionAggregatePayload(
 			if agent.OverallScore != nil {
 				accumulator.Overall = append(accumulator.Overall, *agent.OverallScore)
 			}
+			if agent.TotalCostUSD != nil {
+				accumulator.TotalCostUSD = append(accumulator.TotalCostUSD, *agent.TotalCostUSD)
+			}
 			for dimKey, value := range evalSessionAggregateDimensions(agent) {
 				accumulator.Dimensions[dimKey] = append(accumulator.Dimensions[dimKey], value)
 			}
@@ -828,6 +882,13 @@ func buildEvalSessionAggregatePayload(
 				}
 			}
 		}
+		if len(accumulator.TotalCostUSD) > 0 {
+			costUSD := buildEvalSessionCostAggregate(accumulator.TotalCostUSD)
+			participant.CostUSD = &costUSD
+			if len(accumulator.TotalCostUSD) < expectedParticipantRuns {
+				warnings = append(warnings, fmt.Sprintf("participant %q (lane %d) cost aggregate uses %d of %d expected scored child runs", key.Label, key.LaneIndex, len(accumulator.TotalCostUSD), expectedParticipantRuns))
+			}
+		}
 		if len(accumulator.TaskOutcomes) > 0 {
 			participant.TaskSuccess = buildEvalSessionTaskSuccess(accumulator.TaskOutcomes, aggregateBehavior.KValues)
 			participant.PassAtK = buildEvalSessionPassMetricSeries(participant.TaskSuccess, aggregateBehavior.KValues, aggregateBehavior.EffectiveK, "pass_at_k")
@@ -841,6 +902,7 @@ func buildEvalSessionAggregatePayload(
 		}
 		document.Participants = append(document.Participants, participant)
 	}
+	document.SeriesReport = buildEvalSessionSeriesReport(document.Participants)
 
 	if len(document.Participants) == 1 {
 		participant := document.Participants[0]
@@ -928,6 +990,9 @@ func evalSessionParticipantObservedRuns(accumulator *evalSessionParticipantAccum
 		if len(values) > observedRuns {
 			observedRuns = len(values)
 		}
+	}
+	if len(accumulator.TotalCostUSD) > observedRuns {
+		observedRuns = len(accumulator.TotalCostUSD)
 	}
 	for _, taskOutcome := range accumulator.TaskOutcomes {
 		if taskOutcome != nil && len(taskOutcome.Outcomes) > observedRuns {
@@ -1317,6 +1382,129 @@ func appendBuiltInEvalSessionDimension(target map[string]float64, key string, va
 	target[key] = *value
 }
 
+func buildEvalSessionSeriesReport(participants []evalSessionParticipantAggregate) *evalSessionSeriesReport {
+	if len(participants) == 0 {
+		return nil
+	}
+
+	rows := make([]evalSessionSeriesReportRow, 0, len(participants))
+	rankMetric := "overall_score"
+	for _, participant := range participants {
+		row := buildEvalSessionSeriesReportRow(participant)
+		if row.CompositeAgentScore != nil {
+			rankMetric = "composite_agent_score"
+		}
+		rows = append(rows, row)
+	}
+
+	sort.SliceStable(rows, func(i, j int) bool {
+		left, leftOK := evalSessionSeriesReportRankValue(rows[i], rankMetric)
+		right, rightOK := evalSessionSeriesReportRankValue(rows[j], rankMetric)
+		if leftOK != rightOK {
+			return leftOK
+		}
+		if leftOK && math.Abs(left-right) > 1e-12 {
+			return left > right
+		}
+		if rows[i].MeanCostUSD != nil && rows[j].MeanCostUSD != nil && math.Abs(*rows[i].MeanCostUSD-*rows[j].MeanCostUSD) > 1e-12 {
+			return *rows[i].MeanCostUSD < *rows[j].MeanCostUSD
+		}
+		if rows[i].LaneIndex != rows[j].LaneIndex {
+			return rows[i].LaneIndex < rows[j].LaneIndex
+		}
+		return rows[i].Label < rows[j].Label
+	})
+
+	for i := range rows {
+		rows[i].Rank = i + 1
+	}
+	return &evalSessionSeriesReport{
+		RankMetric: rankMetric,
+		Rows:       rows,
+	}
+}
+
+func buildEvalSessionSeriesReportRow(participant evalSessionParticipantAggregate) evalSessionSeriesReportRow {
+	deploymentLineup, participantLabel := evalSessionSeriesReportLabelParts(participant.Label)
+	row := evalSessionSeriesReportRow{
+		LaneIndex:        participant.LaneIndex,
+		Label:            participant.Label,
+		DeploymentLineup: deploymentLineup,
+		ParticipantLabel: participantLabel,
+		ObservedRuns:     participant.ObservedRuns,
+	}
+	if participant.Overall != nil {
+		value := participant.Overall.Mean
+		row.OverallScore = &value
+	}
+	if correctness, ok := participant.Dimensions["correctness"]; ok {
+		value := correctness.Mean
+		row.CorrectnessScore = &value
+	}
+	if successRate, ok := evalSessionParticipantSuccessRate(participant); ok {
+		row.SuccessRate = &successRate
+	}
+	if participant.MetricRouting != nil {
+		value := participant.MetricRouting.CompositeAgentScore
+		row.CompositeAgentScore = &value
+	}
+	if participant.CostUSD != nil {
+		mean := participant.CostUSD.Mean
+		total := participant.CostUSD.Total
+		row.MeanCostUSD = &mean
+		row.TotalCostUSD = &total
+	}
+	return row
+}
+
+func evalSessionSeriesReportRankValue(row evalSessionSeriesReportRow, rankMetric string) (float64, bool) {
+	if rankMetric == "composite_agent_score" && row.CompositeAgentScore != nil {
+		return *row.CompositeAgentScore, true
+	}
+	if row.OverallScore != nil {
+		return *row.OverallScore, true
+	}
+	return 0, false
+}
+
+func evalSessionSeriesReportLabelParts(label string) (string, string) {
+	trimmed := strings.TrimSpace(label)
+	if trimmed == "" {
+		return "", ""
+	}
+	if lineup, participant, ok := strings.Cut(trimmed, " / "); ok {
+		return strings.TrimSpace(lineup), strings.TrimSpace(participant)
+	}
+	return trimmed, ""
+}
+
+func evalSessionParticipantSuccessRate(participant evalSessionParticipantAggregate) (float64, bool) {
+	if len(participant.TaskSuccess) == 0 {
+		return 0, false
+	}
+	values := make([]float64, 0, len(participant.TaskSuccess))
+	for _, task := range participant.TaskSuccess {
+		values = append(values, task.SuccessRate)
+	}
+	return kahanMean(values), true
+}
+
+func buildEvalSessionCostAggregate(values []float64) evalSessionCostAggregate {
+	if len(values) == 0 {
+		return evalSessionCostAggregate{}
+	}
+	sortedValues := append([]float64(nil), values...)
+	sort.Float64s(sortedValues)
+	total := kahanSum(sortedValues)
+	return evalSessionCostAggregate{
+		N:     len(sortedValues),
+		Total: total,
+		Mean:  total / float64(len(sortedValues)),
+		Min:   sortedValues[0],
+		Max:   sortedValues[len(sortedValues)-1],
+	}
+}
+
 func buildEvalSessionMetricAggregate(values []float64) evalSessionMetricAggregate {
 	if len(values) == 0 {
 		return evalSessionMetricAggregate{}
@@ -1377,6 +1565,10 @@ func kahanMean(values []float64) float64 {
 	if len(values) == 0 {
 		return 0
 	}
+	return kahanSum(values) / float64(len(values))
+}
+
+func kahanSum(values []float64) float64 {
 	sum := 0.0
 	compensation := 0.0
 	for _, value := range values {
@@ -1385,7 +1577,7 @@ func kahanMean(values []float64) float64 {
 		compensation = (t - sum) - y
 		sum = t
 	}
-	return sum / float64(len(values))
+	return sum
 }
 
 func median(values []float64) float64 {

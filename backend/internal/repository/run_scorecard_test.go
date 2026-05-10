@@ -107,6 +107,22 @@ func TestBuildRunAgentScorecardDocumentIncludesRegressionCaseIDs(t *testing.T) {
 	}
 }
 
+func TestTotalCostUSDFromRunAgentScorecardDocument(t *testing.T) {
+	cost := totalCostUSDFromRunAgentScorecardDocument(json.RawMessage(`{
+		"metric_details": [
+			{"collector": "tool_call_count", "numeric_value": 7},
+			{"collector": "run_model_cost_usd", "numeric_value": 0.0125}
+		]
+	}`))
+	if cost == nil || *cost != 0.0125 {
+		t.Fatalf("cost = %v, want 0.0125", cost)
+	}
+
+	if got := totalCostUSDFromRunAgentScorecardDocument(json.RawMessage(`{"metric_details":[]}`)); got != nil {
+		t.Fatalf("cost = %v, want nil without run_model_cost_usd metric", got)
+	}
+}
+
 func TestBuildRunAgentScorecardDocumentIncludesValidityAndValidatorOutcomeClass(t *testing.T) {
 	document, err := buildRunAgentScorecardDocument(scoring.RunAgentEvaluation{
 		RunAgentID:       uuid.New(),

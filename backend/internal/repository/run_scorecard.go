@@ -64,6 +64,7 @@ type runScorecardAgentSummary struct {
 	ReliabilityScore *float64                                    `json:"reliability_score,omitempty"`
 	LatencyScore     *float64                                    `json:"latency_score,omitempty"`
 	CostScore        *float64                                    `json:"cost_score,omitempty"`
+	TotalCostUSD     *float64                                    `json:"total_cost_usd,omitempty"`
 	BehavioralScore  *float64                                    `json:"behavioral_score,omitempty"`
 	Dimensions       map[string]comparisonScorecardDimensionInfo `json:"dimensions,omitempty"`
 }
@@ -209,6 +210,7 @@ func buildRunScorecardDocument(
 			summary.ReliabilityScore = cloneFloat64Ptr(participant.scorecard.ReliabilityScore)
 			summary.LatencyScore = cloneFloat64Ptr(participant.scorecard.LatencyScore)
 			summary.CostScore = cloneFloat64Ptr(participant.scorecard.CostScore)
+			summary.TotalCostUSD = totalCostUSDFromRunAgentScorecardDocument(participant.scorecard.Scorecard)
 			summary.BehavioralScore = cloneFloat64Ptr(participant.scorecard.BehavioralScore)
 			summary.Dimensions = cloneRunScorecardDimensions(participant.document.Dimensions)
 			scoredAgents = append(scoredAgents, scoredRunAgent{
@@ -250,6 +252,25 @@ func buildRunScorecardDocument(
 		return nil, nil, fmt.Errorf("marshal run scorecard: %w", err)
 	}
 	return encoded, winningRunAgentID, nil
+}
+
+func totalCostUSDFromRunAgentScorecardDocument(payload json.RawMessage) *float64 {
+	var document struct {
+		MetricDetails []struct {
+			Collector    string   `json:"collector"`
+			NumericValue *float64 `json:"numeric_value"`
+		} `json:"metric_details"`
+	}
+	if err := json.Unmarshal(payload, &document); err != nil {
+		return nil
+	}
+	for _, metric := range document.MetricDetails {
+		if metric.Collector == "run_model_cost_usd" && metric.NumericValue != nil {
+			cost := *metric.NumericValue
+			return &cost
+		}
+	}
+	return nil
 }
 
 func determineRunWinner(participants []runScorecardParticipant, scoredAgents []scoredRunAgent) (*uuid.UUID, runScorecardWinnerSummary) {

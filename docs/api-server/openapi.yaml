@@ -7320,6 +7320,8 @@ components:
             $ref: "#/components/schemas/EvalSessionParticipantAggregate"
         comparison:
           $ref: "#/components/schemas/EvalSessionRepeatedComparison"
+        series_report:
+          $ref: "#/components/schemas/EvalSessionSeriesReport"
 
     EvalSessionParticipantAggregate:
       type: object
@@ -7345,6 +7347,64 @@ components:
           $ref: "#/components/schemas/EvalSessionPassMetricSeries"
         metric_routing:
           $ref: "#/components/schemas/EvalSessionMetricRouting"
+        cost_usd:
+          $ref: "#/components/schemas/EvalSessionCostAggregate"
+
+    EvalSessionSeriesReport:
+      type: object
+      required: [rank_metric, rows]
+      properties:
+        rank_metric:
+          type: string
+          enum: [overall_score, composite_agent_score]
+        rows:
+          type: array
+          items:
+            $ref: "#/components/schemas/EvalSessionSeriesReportRow"
+
+    EvalSessionSeriesReportRow:
+      type: object
+      required: [rank, lane_index, label, observed_runs]
+      properties:
+        rank:
+          type: integer
+        lane_index:
+          type: integer
+        label:
+          type: string
+        deployment_lineup:
+          type: string
+        participant_label:
+          type: string
+        observed_runs:
+          type: integer
+        overall_score:
+          type: number
+        correctness_score:
+          type: number
+        success_rate:
+          type: number
+        composite_agent_score:
+          type: number
+        mean_cost_usd:
+          type: number
+        total_cost_usd:
+          type: number
+
+    EvalSessionCostAggregate:
+      type: object
+      required: [n, total, mean, min, max]
+      properties:
+        n:
+          type: integer
+        total:
+          type: number
+        mean:
+          type: number
+        min:
+          type: number
+        max:
+          type: number
 
     EvalSessionTaskSuccess:
       type: object
