@@ -115,6 +115,84 @@ func TestRunEventsEmitsNDJSONForJSON(t *testing.T) {
 	}
 }
 
+func TestRunEventsFilterExactEventType(t *testing.T) {
+	sseBody := "event: step\n" +
+		"data: {\"event_type\":\"model.call.started\"}\n" +
+		"\n" +
+		"event: step\n" +
+		"data: {\"event_type\":\"model.call.completed\"}\n" +
+		"\n" +
+		"event: step\n" +
+		"data: {\"event_type\":\"tool.call.completed\"}\n" +
+		"\n"
+
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"GET /v1/runs/run-x/events/stream": sseHandler([]string{sseBody}),
+	})
+	defer srv.Close()
+
+	stdout := captureStdout(t)
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+	if err := executeCommand(t, []string{
+		"run", "events", "run-x", "--json", "--filter", "model.call.completed",
+	}, srv.URL); err != nil {
+		t.Fatalf("run events --filter exact: %v", err)
+	}
+	out := stdout.finish()
+
+	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+	if len(lines) != 1 {
+		t.Fatalf("expected 1 filtered event, got %d\n---\n%s", len(lines), out)
+	}
+	var event map[string]any
+	if err := json.Unmarshal([]byte(lines[0]), &event); err != nil {
+		t.Fatalf("filtered line is not JSON: %v\n%s", err, lines[0])
+	}
+	if event["event_type"] != "model.call.completed" {
+		t.Fatalf("event_type = %v, want model.call.completed", event["event_type"])
+	}
+}
+
+func TestRunEventsFilterGlobPattern(t *testing.T) {
+	sseBody := "event: step\n" +
+		"data: {\"EventType\":\"model.call.started\"}\n" +
+		"\n" +
+		"event: step\n" +
+		"data: {\"EventType\":\"model.output.delta\"}\n" +
+		"\n" +
+		"event: step\n" +
+		"data: {\"EventType\":\"tool.call.completed\"}\n" +
+		"\n"
+
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"GET /v1/runs/run-x/events/stream": sseHandler([]string{sseBody}),
+	})
+	defer srv.Close()
+
+	stdout := captureStdout(t)
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+	if err := executeCommand(t, []string{
+		"run", "events", "run-x", "--json", "--filter", "model.*",
+	}, srv.URL); err != nil {
+		t.Fatalf("run events --filter glob: %v", err)
+	}
+	out := stdout.finish()
+
+	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("expected 2 filtered events, got %d\n---\n%s", len(lines), out)
+	}
+	for i, line := range lines {
+		var event map[string]any
+		if err := json.Unmarshal([]byte(line), &event); err != nil {
+			t.Fatalf("filtered line %d is not JSON: %v\n%s", i, err, line)
+		}
+		if !strings.HasPrefix(event["EventType"].(string), "model.") {
+			t.Fatalf("line %d EventType = %v, want model.*", i, event["EventType"])
+		}
+	}
+}
+
 func TestRunEventsExportPrintsJSONL(t *testing.T) {
 	jsonl := strings.Join([]string{
 		`{"event_id":"persisted:agent-1:1","sequence_number":1}`,
