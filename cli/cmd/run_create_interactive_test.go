@@ -272,7 +272,220 @@ func TestRunCreateNonInteractiveRequiresExplicitFlags(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected non-interactive validation error")
 	}
-	if got := err.Error(); got != "challenge pack version and deployment selection required in non-interactive mode; pass --challenge-pack-version and --deployments or rerun `agentclash run create` in a TTY for guided selection" {
+	if got := err.Error(); got != "challenge pack version and deployment selection required in non-interactive mode; pass --challenge-pack-version and --deployments or --deployment-lineup or rerun `agentclash run create` in a TTY for guided selection" {
+		t.Fatalf("error = %q", got)
+	}
+}
+
+func TestRunCreateNonInteractiveUsesChallengePackDefaultDeploymentLineup(t *testing.T) {
+	oldInteractive := isInteractiveTerminal
+	isInteractiveTerminal = func(*RunContext) bool { return false }
+	t.Cleanup(func() { isInteractiveTerminal = oldInteractive })
+
+	var gotBody map[string]any
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"GET /v1/workspaces/ws-1/challenge-packs": jsonHandler(200, map[string]any{
+			"items": []map[string]any{
+				{
+					"id":   "pack-1",
+					"name": "Support Eval",
+					"versions": []map[string]any{
+						{
+							"id":               "cpv-defaults",
+							"version_number":   1,
+							"lifecycle_status": "runnable",
+							"deployment_defaults": map[string]any{
+								"aliases": map[string]any{
+									"candidate": "Candidate Agent",
+								},
+								"lineups": map[string]any{
+									"default": []any{"candidate", "dep-baseline"},
+								},
+							},
+						},
+					},
+				},
+			},
+		}),
+		"GET /v1/workspaces/ws-1/agent-deployments": jsonHandler(200, map[string]any{
+			"items": []map[string]any{
+				{"id": "dep-candidate", "name": "Candidate Agent", "status": "active"},
+				{"id": "dep-baseline", "name": "Baseline Agent", "status": "active"},
+			},
+		}),
+		"POST /v1/runs": func(w http.ResponseWriter, r *http.Request) {
+			if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+				t.Fatalf("decode request body: %v", err)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": "run-1", "status": "queued"})
+		},
+	})
+	defer srv.Close()
+
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+	if err := executeCommand(t, []string{
+		"run", "create",
+		"-w", "ws-1",
+		"--challenge-pack-version", "cpv-defaults",
+		"--input-set", "input-default",
+	}, srv.URL); err != nil {
+		t.Fatalf("run create error: %v", err)
+	}
+
+	deploymentIDs, ok := gotBody["agent_deployment_ids"].([]any)
+	if !ok {
+		t.Fatalf("agent_deployment_ids type = %T, want []any", gotBody["agent_deployment_ids"])
+	}
+	if len(deploymentIDs) != 2 || deploymentIDs[0] != "dep-candidate" || deploymentIDs[1] != "dep-baseline" {
+		t.Fatalf("agent_deployment_ids = %#v, want [dep-candidate dep-baseline]", deploymentIDs)
+	}
+}
+
+func TestRunCreateUsesNamedDeploymentLineup(t *testing.T) {
+	oldInteractive := isInteractiveTerminal
+	isInteractiveTerminal = func(*RunContext) bool { return false }
+	t.Cleanup(func() { isInteractiveTerminal = oldInteractive })
+
+	var gotBody map[string]any
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"GET /v1/workspaces/ws-1/challenge-packs": jsonHandler(200, map[string]any{
+			"items": []map[string]any{
+				{
+					"id":   "pack-1",
+					"name": "Support Eval",
+					"versions": []map[string]any{
+						{
+							"id":               "cpv-defaults",
+							"version_number":   1,
+							"lifecycle_status": "runnable",
+							"deployment_defaults": map[string]any{
+								"lineups": map[string]any{
+									"default": []any{"dep-baseline"},
+									"smoke":   []any{"Candidate Agent"},
+								},
+							},
+						},
+					},
+				},
+			},
+		}),
+		"GET /v1/workspaces/ws-1/agent-deployments": jsonHandler(200, map[string]any{
+			"items": []map[string]any{
+				{"id": "dep-candidate", "name": "Candidate Agent", "status": "active"},
+				{"id": "dep-baseline", "name": "Baseline Agent", "status": "active"},
+			},
+		}),
+		"POST /v1/runs": func(w http.ResponseWriter, r *http.Request) {
+			if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+				t.Fatalf("decode request body: %v", err)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": "run-1", "status": "queued"})
+		},
+	})
+	defer srv.Close()
+
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+	if err := executeCommand(t, []string{
+		"run", "create",
+		"-w", "ws-1",
+		"--challenge-pack-version", "cpv-defaults",
+		"--input-set", "input-default",
+		"--deployment-lineup", "smoke",
+	}, srv.URL); err != nil {
+		t.Fatalf("run create error: %v", err)
+	}
+
+	deploymentIDs := gotBody["agent_deployment_ids"].([]any)
+	if len(deploymentIDs) != 1 || deploymentIDs[0] != "dep-candidate" {
+		t.Fatalf("agent_deployment_ids = %#v, want [dep-candidate]", deploymentIDs)
+	}
+}
+
+func TestRunCreateInteractiveExplicitVersionLooksUpDefaultsOnce(t *testing.T) {
+	picker := &fakePicker{selectIndices: []int{0}}
+	oldInteractive := isInteractiveTerminal
+	oldPickerFactory := newInteractivePicker
+	isInteractiveTerminal = func(*RunContext) bool { return true }
+	newInteractivePicker = func() interactivePicker { return picker }
+	t.Cleanup(func() {
+		isInteractiveTerminal = oldInteractive
+		newInteractivePicker = oldPickerFactory
+	})
+
+	challengePacksCalls := 0
+	var gotBody map[string]any
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"GET /v1/workspaces/ws-1/challenge-pack-versions/cpv-explicit/input-sets": jsonHandler(200, map[string]any{
+			"items": []map[string]any{
+				{"id": "input-1", "name": "Small", "input_key": "small"},
+			},
+		}),
+		"GET /v1/workspaces/ws-1/challenge-packs": func(w http.ResponseWriter, r *http.Request) {
+			challengePacksCalls++
+			jsonHandler(200, map[string]any{
+				"items": []map[string]any{
+					{
+						"id":   "pack-1",
+						"name": "Support Eval",
+						"versions": []map[string]any{
+							{"id": "cpv-explicit", "version_number": 1, "lifecycle_status": "runnable"},
+						},
+					},
+				},
+			})(w, r)
+		},
+		"GET /v1/workspaces/ws-1/agent-deployments": jsonHandler(200, map[string]any{
+			"items": []map[string]any{
+				{"id": "dep-only", "name": "Only Agent", "status": "active"},
+			},
+		}),
+		"POST /v1/runs": func(w http.ResponseWriter, r *http.Request) {
+			if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+				t.Fatalf("decode request body: %v", err)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": "run-1", "status": "queued"})
+		},
+	})
+	defer srv.Close()
+
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+	if err := executeCommand(t, []string{
+		"run", "create",
+		"-w", "ws-1",
+		"--challenge-pack-version", "cpv-explicit",
+	}, srv.URL); err != nil {
+		t.Fatalf("run create error: %v", err)
+	}
+
+	if challengePacksCalls != 1 {
+		t.Fatalf("challenge-packs calls = %d, want 1", challengePacksCalls)
+	}
+	deploymentIDs := gotBody["agent_deployment_ids"].([]any)
+	if len(deploymentIDs) != 1 || deploymentIDs[0] != "dep-only" {
+		t.Fatalf("agent_deployment_ids = %#v, want [dep-only]", deploymentIDs)
+	}
+}
+
+func TestRunCreateRejectsDeploymentLineupWithExplicitDeployments(t *testing.T) {
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+	err := executeCommand(t, []string{
+		"run", "create",
+		"-w", "ws-1",
+		"--challenge-pack-version", "cpv-explicit",
+		"--input-set", "input-explicit",
+		"--deployments", "dep-a",
+		"--deployment-lineup", "smoke",
+	}, "http://unused")
+	if err == nil {
+		t.Fatal("expected --deployment-lineup/--deployments conflict")
+	}
+	if got := err.Error(); got != "--deployment-lineup cannot be combined with --deployments" {
 		t.Fatalf("error = %q", got)
 	}
 }

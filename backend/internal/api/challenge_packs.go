@@ -255,12 +255,13 @@ type challengePackResponse struct {
 }
 
 type challengePackVersionResponse struct {
-	ID              uuid.UUID `json:"id"`
-	ChallengePackID uuid.UUID `json:"challenge_pack_id"`
-	VersionNumber   int32     `json:"version_number"`
-	LifecycleStatus string    `json:"lifecycle_status"`
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
+	ID                 uuid.UUID       `json:"id"`
+	ChallengePackID    uuid.UUID       `json:"challenge_pack_id"`
+	VersionNumber      int32           `json:"version_number"`
+	LifecycleStatus    string          `json:"lifecycle_status"`
+	DeploymentDefaults json.RawMessage `json:"deployment_defaults,omitempty"`
+	CreatedAt          time.Time       `json:"created_at"`
+	UpdatedAt          time.Time       `json:"updated_at"`
 }
 
 type listChallengePacksResponse struct {
@@ -296,12 +297,13 @@ func listChallengePacksHandler(logger *slog.Logger, service ChallengePackReadSer
 			versions := make([]challengePackVersionResponse, 0, len(packWithVersions.Versions))
 			for _, v := range packWithVersions.Versions {
 				versions = append(versions, challengePackVersionResponse{
-					ID:              v.ID,
-					ChallengePackID: v.ChallengePackID,
-					VersionNumber:   v.VersionNumber,
-					LifecycleStatus: v.LifecycleStatus,
-					CreatedAt:       v.CreatedAt,
-					UpdatedAt:       v.UpdatedAt,
+					ID:                 v.ID,
+					ChallengePackID:    v.ChallengePackID,
+					VersionNumber:      v.VersionNumber,
+					LifecycleStatus:    v.LifecycleStatus,
+					DeploymentDefaults: v.DeploymentDefaults,
+					CreatedAt:          v.CreatedAt,
+					UpdatedAt:          v.UpdatedAt,
 				})
 			}
 

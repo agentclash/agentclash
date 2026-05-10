@@ -4963,22 +4963,6 @@ components:
         updated_at:
           type: string
           format: date-time
-            limit:
-              anyOf:
-                - type: integer
-                - type: "null"
-            used:
-              type: integer
-            remaining:
-              anyOf:
-                - type: integer
-                - type: "null"
-            reset_at:
-              type: string
-              format: date-time
-            expires_at:
-              type: string
-              format: date-time
 
     EmptyObject:
       type: object
@@ -9691,6 +9675,20 @@ components:
           format: int32
         lifecycle_status:
           type: string
+        deployment_defaults:
+          type: object
+          description: Default deployment aliases and lineups declared by the challenge pack version.
+          properties:
+            aliases:
+              type: object
+              additionalProperties:
+                type: string
+            lineups:
+              type: object
+              additionalProperties:
+                type: array
+                items:
+                  type: string
         created_at:
           type: string
           format: date-time

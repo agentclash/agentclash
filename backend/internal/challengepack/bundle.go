@@ -27,13 +27,14 @@ type PackMetadata struct {
 }
 
 type VersionMetadata struct {
-	Number         int32                  `yaml:"number" json:"number"`
-	ExecutionMode  string                 `yaml:"execution_mode,omitempty" json:"execution_mode,omitempty"`
-	ToolPolicy     map[string]any         `yaml:"tool_policy,omitempty" json:"tool_policy,omitempty"`
-	Filesystem     map[string]any         `yaml:"filesystem,omitempty" json:"filesystem,omitempty"`
-	Sandbox        *SandboxConfig         `yaml:"sandbox,omitempty" json:"sandbox,omitempty"`
-	EvaluationSpec scoring.EvaluationSpec `yaml:"evaluation_spec" json:"evaluation_spec"`
-	Assets         []AssetReference       `yaml:"assets,omitempty" json:"assets,omitempty"`
+	Number             int32                  `yaml:"number" json:"number"`
+	ExecutionMode      string                 `yaml:"execution_mode,omitempty" json:"execution_mode,omitempty"`
+	ToolPolicy         map[string]any         `yaml:"tool_policy,omitempty" json:"tool_policy,omitempty"`
+	Filesystem         map[string]any         `yaml:"filesystem,omitempty" json:"filesystem,omitempty"`
+	Sandbox            *SandboxConfig         `yaml:"sandbox,omitempty" json:"sandbox,omitempty"`
+	DeploymentDefaults *DeploymentDefaults    `yaml:"deployment_defaults,omitempty" json:"deployment_defaults,omitempty"`
+	EvaluationSpec     scoring.EvaluationSpec `yaml:"evaluation_spec" json:"evaluation_spec"`
+	Assets             []AssetReference       `yaml:"assets,omitempty" json:"assets,omitempty"`
 }
 
 const (
@@ -47,6 +48,11 @@ type SandboxConfig struct {
 	EnvVars            map[string]string `yaml:"env_vars,omitempty" json:"env_vars,omitempty"`
 	AdditionalPackages []string          `yaml:"additional_packages,omitempty" json:"additional_packages,omitempty"`
 	SandboxTemplateID  string            `yaml:"sandbox_template_id,omitempty" json:"sandbox_template_id,omitempty"`
+}
+
+type DeploymentDefaults struct {
+	Aliases map[string]string   `yaml:"aliases,omitempty" json:"aliases,omitempty"`
+	Lineups map[string][]string `yaml:"lineups,omitempty" json:"lineups,omitempty"`
 }
 
 type ChallengeDefinition struct {
@@ -132,13 +138,14 @@ func ParseYAML(data []byte) (Bundle, error) {
 	}
 
 	type rawVersionMetadata struct {
-		Number         int32            `yaml:"number"`
-		ExecutionMode  string           `yaml:"execution_mode,omitempty"`
-		ToolPolicy     map[string]any   `yaml:"tool_policy,omitempty"`
-		Filesystem     map[string]any   `yaml:"filesystem,omitempty"`
-		Sandbox        *SandboxConfig   `yaml:"sandbox,omitempty"`
-		EvaluationSpec map[string]any   `yaml:"evaluation_spec"`
-		Assets         []AssetReference `yaml:"assets,omitempty"`
+		Number             int32               `yaml:"number"`
+		ExecutionMode      string              `yaml:"execution_mode,omitempty"`
+		ToolPolicy         map[string]any      `yaml:"tool_policy,omitempty"`
+		Filesystem         map[string]any      `yaml:"filesystem,omitempty"`
+		Sandbox            *SandboxConfig      `yaml:"sandbox,omitempty"`
+		DeploymentDefaults *DeploymentDefaults `yaml:"deployment_defaults,omitempty"`
+		EvaluationSpec     map[string]any      `yaml:"evaluation_spec"`
+		Assets             []AssetReference    `yaml:"assets,omitempty"`
 	}
 	type rawBundle struct {
 		Pack       PackMetadata          `yaml:"pack"`
@@ -171,13 +178,14 @@ func ParseYAML(data []byte) (Bundle, error) {
 	bundle := Bundle{
 		Pack: raw.Pack,
 		Version: VersionMetadata{
-			Number:         raw.Version.Number,
-			ExecutionMode:  raw.Version.ExecutionMode,
-			ToolPolicy:     raw.Version.ToolPolicy,
-			Filesystem:     raw.Version.Filesystem,
-			Sandbox:        raw.Version.Sandbox,
-			EvaluationSpec: evaluationSpec,
-			Assets:         raw.Version.Assets,
+			Number:             raw.Version.Number,
+			ExecutionMode:      raw.Version.ExecutionMode,
+			ToolPolicy:         raw.Version.ToolPolicy,
+			Filesystem:         raw.Version.Filesystem,
+			Sandbox:            raw.Version.Sandbox,
+			DeploymentDefaults: raw.Version.DeploymentDefaults,
+			EvaluationSpec:     evaluationSpec,
+			Assets:             raw.Version.Assets,
 		},
 		Tools:      raw.Tools,
 		Challenges: raw.Challenges,
@@ -205,6 +213,9 @@ func ManifestJSON(bundle Bundle) (json.RawMessage, error) {
 	}
 	if normalized.Version.Sandbox != nil {
 		versionMap["sandbox_template_id"] = normalized.Version.Sandbox.SandboxTemplateID
+	}
+	if normalized.Version.DeploymentDefaults != nil {
+		versionMap["deployment_defaults"] = normalized.Version.DeploymentDefaults
 	}
 
 	manifest := map[string]any{
@@ -237,6 +248,7 @@ func normalizeBundle(bundle *Bundle) {
 	bundle.Pack.Name = strings.TrimSpace(bundle.Pack.Name)
 	bundle.Pack.Family = strings.TrimSpace(bundle.Pack.Family)
 	bundle.Version.ExecutionMode = strings.TrimSpace(bundle.Version.ExecutionMode)
+	bundle.Version.DeploymentDefaults = normalizeDeploymentDefaults(bundle.Version.DeploymentDefaults)
 	bundle.Challenges = append([]ChallengeDefinition(nil), bundle.Challenges...)
 	bundle.InputSets = append([]InputSetDefinition(nil), bundle.InputSets...)
 	bundle.Version.Assets = append([]AssetReference(nil), bundle.Version.Assets...)
@@ -297,6 +309,34 @@ func normalizeBundle(bundle *Bundle) {
 	}
 
 	bundle.Version.Assets = normalizeAssets(bundle.Version.Assets)
+}
+
+func normalizeDeploymentDefaults(defaults *DeploymentDefaults) *DeploymentDefaults {
+	if defaults == nil {
+		return nil
+	}
+
+	normalized := &DeploymentDefaults{}
+	if len(defaults.Aliases) > 0 {
+		normalized.Aliases = make(map[string]string, len(defaults.Aliases))
+		for key, value := range defaults.Aliases {
+			normalized.Aliases[strings.TrimSpace(key)] = strings.TrimSpace(value)
+		}
+	}
+	if len(defaults.Lineups) > 0 {
+		normalized.Lineups = make(map[string][]string, len(defaults.Lineups))
+		for key, values := range defaults.Lineups {
+			lineup := make([]string, 0, len(values))
+			for _, value := range values {
+				lineup = append(lineup, strings.TrimSpace(value))
+			}
+			normalized.Lineups[strings.TrimSpace(key)] = lineup
+		}
+	}
+	if len(normalized.Aliases) == 0 && len(normalized.Lineups) == 0 {
+		return nil
+	}
+	return normalized
 }
 
 func normalizeAssets(assets []AssetReference) []AssetReference {
