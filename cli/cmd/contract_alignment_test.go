@@ -229,6 +229,7 @@ func TestRunScorecardHandlesCurrentAPIShape(t *testing.T) {
 			"reliability_score": 0.90,
 			"latency_score":     0.88,
 			"cost_score":        0.85,
+			"total_cost_usd":    0.0123,
 			"scorecard": map[string]any{
 				"passed":   true,
 				"strategy": "weighted",
@@ -253,6 +254,8 @@ func TestRunScorecardHandlesCurrentAPIShape(t *testing.T) {
 		"State:",
 		"ready",
 		"Run Agent Status:",
+		"Total Cost",
+		"$0.0123",
 		"Overall Score",
 		"0.91",
 		"Correctness",

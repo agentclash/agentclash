@@ -40,6 +40,9 @@ func renderRunAgentScorecard(rc *RunContext, scorecard map[string]any) {
 	if runAgentStatus := mapString(scorecard, "run_agent_status"); runAgentStatus != "" {
 		rc.Output.PrintDetail("Run Agent Status", output.StatusColor(runAgentStatus))
 	}
+	if totalCost := mapValue(scorecard, "total_cost_usd"); totalCost != nil {
+		rc.Output.PrintDetail("Total Cost", fmtUSD(totalCost))
+	}
 
 	scoreLabels := []struct {
 		Key   string

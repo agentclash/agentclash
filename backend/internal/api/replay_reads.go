@@ -70,6 +70,7 @@ type GetRunAgentScorecardResult struct {
 	State           ReplayState
 	Message         string
 	Scorecard       *repository.RunAgentScorecard
+	TotalCostUSD    *float64
 	LLMJudgeResults []repository.LLMJudgeResultRecord
 }
 
@@ -169,6 +170,7 @@ func (m *ReplayReadManager) GetRunAgentScorecard(ctx context.Context, caller Cal
 		RunAgent:        runAgent,
 		State:           ReplayStateReady,
 		Scorecard:       &scorecard,
+		TotalCostUSD:    totalCostUSDFromScorecardDocument(scorecard.Scorecard),
 		LLMJudgeResults: judgeResults,
 	}, nil
 }
@@ -214,6 +216,7 @@ type getRunAgentScorecardResponse struct {
 	ReliabilityScore *float64                  `json:"reliability_score,omitempty"`
 	LatencyScore     *float64                  `json:"latency_score,omitempty"`
 	CostScore        *float64                  `json:"cost_score,omitempty"`
+	TotalCostUSD     *float64                  `json:"total_cost_usd,omitempty"`
 	BehavioralScore  *float64                  `json:"behavioral_score,omitempty"`
 	LLMJudgeResults  []runAgentLLMJudgePayload `json:"llm_judge_results"`
 	Scorecard        json.RawMessage           `json:"scorecard"`
@@ -374,12 +377,32 @@ func buildRunAgentScorecardResponse(result GetRunAgentScorecardResult) getRunAge
 		response.ReliabilityScore = result.Scorecard.ReliabilityScore
 		response.LatencyScore = result.Scorecard.LatencyScore
 		response.CostScore = result.Scorecard.CostScore
+		response.TotalCostUSD = result.TotalCostUSD
 		response.BehavioralScore = result.Scorecard.BehavioralScore
 		response.Scorecard = result.Scorecard.Scorecard
 		response.CreatedAt = result.Scorecard.CreatedAt
 		response.UpdatedAt = result.Scorecard.UpdatedAt
 	}
 	return response
+}
+
+func totalCostUSDFromScorecardDocument(payload json.RawMessage) *float64 {
+	var document struct {
+		MetricDetails []struct {
+			Collector    string   `json:"collector"`
+			NumericValue *float64 `json:"numeric_value"`
+		} `json:"metric_details"`
+	}
+	if err := json.Unmarshal(payload, &document); err != nil {
+		return nil
+	}
+	for _, metric := range document.MetricDetails {
+		if metric.Collector == "run_model_cost_usd" && metric.NumericValue != nil {
+			cost := *metric.NumericValue
+			return &cost
+		}
+	}
+	return nil
 }
 
 func buildRunAgentLLMJudgePayloads(records []repository.LLMJudgeResultRecord) []runAgentLLMJudgePayload {
