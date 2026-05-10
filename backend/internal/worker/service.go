@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/provider"
@@ -17,6 +18,10 @@ import (
 type TemporalWorker interface {
 	Start() error
 	Stop()
+}
+
+type OrphanRunReaper interface {
+	Start(ctx context.Context)
 }
 
 // executionHooks is the temporary extension seam for later hosted and native
@@ -44,6 +49,10 @@ func NewTemporalWorker(
 }
 
 func Run(ctx context.Context, cfg Config, temporalWorker TemporalWorker, logger *slog.Logger) error {
+	return RunWithReaper(ctx, cfg, temporalWorker, nil, logger)
+}
+
+func RunWithReaper(ctx context.Context, cfg Config, temporalWorker TemporalWorker, reaper OrphanRunReaper, logger *slog.Logger) error {
 	logger.Info("starting worker",
 		"task_queue", cfg.TaskQueue,
 		"identity", cfg.Identity,
@@ -53,6 +62,15 @@ func Run(ctx context.Context, cfg Config, temporalWorker TemporalWorker, logger 
 
 	if err := temporalWorker.Start(); err != nil {
 		return fmt.Errorf("start temporal worker: %w", err)
+	}
+
+	var wg sync.WaitGroup
+	if reaper != nil {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			reaper.Start(ctx)
+		}()
 	}
 
 	<-ctx.Done()
@@ -70,6 +88,7 @@ func Run(ctx context.Context, cfg Config, temporalWorker TemporalWorker, logger 
 
 	select {
 	case <-stoppedCh:
+		wg.Wait()
 		return nil
 	case <-timer.C:
 		return fmt.Errorf("worker shutdown timed out after %s", cfg.ShutdownTimeout)

@@ -51,6 +51,12 @@ type TransitionRunAgentStatusParams struct {
 	FailureReason *string
 }
 
+type ReapOrphanedRunsParams struct {
+	Cutoff time.Time
+	Reason string
+	Limit  int
+}
+
 type InsertRunStatusHistoryParams struct {
 	RunID           uuid.UUID
 	FromStatus      *domain.RunStatus
@@ -1775,6 +1781,87 @@ func (r *Repository) TransitionRunStatus(ctx context.Context, params TransitionR
 	}
 
 	return run, nil
+}
+
+func (r *Repository) ReapOrphanedRuns(ctx context.Context, params ReapOrphanedRunsParams) ([]domain.Run, error) {
+	if params.Cutoff.IsZero() {
+		return nil, fmt.Errorf("orphaned run cleanup cutoff is required")
+	}
+	reason := strings.TrimSpace(params.Reason)
+	if reason == "" {
+		reason = "orphaned run reaper: no temporal workflow id after threshold"
+	}
+	limit := params.Limit
+	if limit <= 0 {
+		limit = 100
+	}
+
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin orphaned run cleanup transaction: %w", err)
+	}
+	defer rollback(ctx, tx)
+
+	rows, err := tx.Query(ctx, `
+		SELECT *
+		FROM runs
+		WHERE status IN ('queued', 'provisioning')
+		  AND temporal_workflow_id IS NULL
+		  AND temporal_run_id IS NULL
+		  AND created_at < $1
+		ORDER BY created_at ASC, id ASC
+		LIMIT $2
+		FOR UPDATE SKIP LOCKED
+	`, params.Cutoff.UTC(), limit)
+	if err != nil {
+		return nil, fmt.Errorf("select orphaned runs for cleanup: %w", err)
+	}
+	selectedRows, err := pgx.CollectRows(rows, pgx.RowToStructByName[repositorysqlc.Run])
+	if err != nil {
+		return nil, fmt.Errorf("collect orphaned runs for cleanup: %w", err)
+	}
+	if len(selectedRows) == 0 {
+		if err := tx.Commit(ctx); err != nil {
+			return nil, fmt.Errorf("commit empty orphaned run cleanup: %w", err)
+		}
+		return nil, nil
+	}
+
+	queries := r.queries.WithTx(tx)
+	cleaned := make([]domain.Run, 0, len(selectedRows))
+	for _, row := range selectedRows {
+		currentStatus, err := domain.ParseRunStatus(row.Status)
+		if err != nil {
+			return nil, fmt.Errorf("parse orphaned run %s status: %w", row.ID, err)
+		}
+		updatedRow, err := queries.UpdateRunStatus(ctx, repositorysqlc.UpdateRunStatusParams{
+			ID:         row.ID,
+			FromStatus: string(currentStatus),
+			ToStatus:   string(domain.RunStatusFailed),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("mark orphaned run %s failed: %w", row.ID, err)
+		}
+		_, err = queries.InsertRunStatusHistory(ctx, repositorysqlc.InsertRunStatusHistoryParams{
+			RunID:      row.ID,
+			FromStatus: stringPtr(string(currentStatus)),
+			ToStatus:   string(domain.RunStatusFailed),
+			Reason:     stringPtr(reason),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("insert orphaned run %s status history: %w", row.ID, err)
+		}
+		run, err := mapRun(updatedRow)
+		if err != nil {
+			return nil, fmt.Errorf("map orphaned run %s: %w", row.ID, err)
+		}
+		cleaned = append(cleaned, run)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("commit orphaned run cleanup: %w", err)
+	}
+	return cleaned, nil
 }
 
 func (r *Repository) TransitionRunAgentStatus(ctx context.Context, params TransitionRunAgentStatusParams) (domain.RunAgent, error) {

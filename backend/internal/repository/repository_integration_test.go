@@ -1538,6 +1538,77 @@ func TestRepositoryCreateQueuedRunWritesRunRunAgentsAndInitialHistory(t *testing
 	}
 }
 
+func TestRepositoryReapOrphanedRunsMarksOnlyOldQueuedAndProvisioningNullTemporalRunsFailed(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+	queries := repositorysqlc.New(db)
+
+	now := time.Date(2026, 5, 9, 20, 0, 0, 0, time.UTC)
+	oldAt := now.Add(-2 * time.Hour)
+	freshAt := now.Add(-5 * time.Minute)
+	cutoff := now.Add(-15 * time.Minute)
+
+	oldQueued, _ := createTestRun(t, ctx, repo, fixture, 1, "old-queued-orphan")
+	oldProvisioning, _ := createTestRun(t, ctx, repo, fixture, 1, "old-provisioning-orphan")
+	freshQueued, _ := createTestRun(t, ctx, repo, fixture, 1, "fresh-queued-orphan")
+	withWorkflowID, _ := createTestRun(t, ctx, repo, fixture, 1, "old-queued-workflow-id")
+	withRunID, _ := createTestRun(t, ctx, repo, fixture, 1, "old-queued-run-id")
+	oldRunning, _ := createTestRun(t, ctx, repo, fixture, 1, "old-running-null-temporal")
+	oldScoring, _ := createTestRun(t, ctx, repo, fixture, 1, "old-scoring-null-temporal")
+
+	setRunForOrphanReaperTest(t, ctx, db, oldQueued.ID, domain.RunStatusQueued, oldAt, nil, nil)
+	setRunForOrphanReaperTest(t, ctx, db, oldProvisioning.ID, domain.RunStatusProvisioning, oldAt, nil, nil)
+	setRunForOrphanReaperTest(t, ctx, db, freshQueued.ID, domain.RunStatusQueued, freshAt, nil, nil)
+	workflowID := "RunWorkflow/" + withWorkflowID.ID.String()
+	setRunForOrphanReaperTest(t, ctx, db, withWorkflowID.ID, domain.RunStatusQueued, oldAt, &workflowID, nil)
+	temporalRunID := "temporal-run-id"
+	setRunForOrphanReaperTest(t, ctx, db, withRunID.ID, domain.RunStatusQueued, oldAt, nil, &temporalRunID)
+	setRunForOrphanReaperTest(t, ctx, db, oldRunning.ID, domain.RunStatusRunning, oldAt, nil, nil)
+	setRunForOrphanReaperTest(t, ctx, db, oldScoring.ID, domain.RunStatusScoring, oldAt, nil, nil)
+
+	cleaned, err := repo.ReapOrphanedRuns(ctx, repository.ReapOrphanedRunsParams{
+		Cutoff: cutoff,
+		Reason: "test orphan cleanup",
+	})
+	if err != nil {
+		t.Fatalf("ReapOrphanedRuns returned error: %v", err)
+	}
+	if len(cleaned) != 2 {
+		t.Fatalf("cleaned count = %d, want 2: %+v", len(cleaned), cleaned)
+	}
+	cleanedIDs := map[uuid.UUID]bool{}
+	for _, run := range cleaned {
+		cleanedIDs[run.ID] = true
+		if run.Status != domain.RunStatusFailed {
+			t.Fatalf("cleaned run %s status = %s, want failed", run.ID, run.Status)
+		}
+		if run.FinishedAt == nil || run.FailedAt == nil {
+			t.Fatalf("cleaned run %s terminal timestamps missing: finished=%v failed=%v", run.ID, run.FinishedAt, run.FailedAt)
+		}
+	}
+	for _, runID := range []uuid.UUID{oldQueued.ID, oldProvisioning.ID} {
+		if !cleanedIDs[runID] {
+			t.Fatalf("run %s was not cleaned", runID)
+		}
+		historyRows, err := queries.ListRunStatusHistoryByRunID(ctx, repositorysqlc.ListRunStatusHistoryByRunIDParams{RunID: runID})
+		if err != nil {
+			t.Fatalf("ListRunStatusHistoryByRunID(%s) returned error: %v", runID, err)
+		}
+		last := historyRows[len(historyRows)-1]
+		if last.ToStatus != string(domain.RunStatusFailed) || last.Reason == nil || *last.Reason != "test orphan cleanup" {
+			t.Fatalf("last history for %s = %+v, want failed with cleanup reason", runID, last)
+		}
+	}
+
+	assertRunStatus(t, ctx, repo, freshQueued.ID, domain.RunStatusQueued)
+	assertRunStatus(t, ctx, repo, withWorkflowID.ID, domain.RunStatusQueued)
+	assertRunStatus(t, ctx, repo, withRunID.ID, domain.RunStatusQueued)
+	assertRunStatus(t, ctx, repo, oldRunning.ID, domain.RunStatusRunning)
+	assertRunStatus(t, ctx, repo, oldScoring.ID, domain.RunStatusScoring)
+}
+
 func TestRepositoryGetRunAgentReplayByRunAgentID(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)
@@ -4008,6 +4079,51 @@ func setRunForClusterTrendTest(t *testing.T, ctx context.Context, db *pgxpool.Po
 		WHERE id = $1
 	`, runID, string(status), observedAt, finishedAt); err != nil {
 		t.Fatalf("set run %s for cluster trend test returned error: %v", runID, err)
+	}
+}
+
+func setRunForOrphanReaperTest(
+	t *testing.T,
+	ctx context.Context,
+	db *pgxpool.Pool,
+	runID uuid.UUID,
+	status domain.RunStatus,
+	createdAt time.Time,
+	temporalWorkflowID *string,
+	temporalRunID *string,
+) {
+	t.Helper()
+
+	var startedAt *time.Time
+	if status == domain.RunStatusProvisioning || status == domain.RunStatusRunning || status == domain.RunStatusScoring {
+		startedAt = &createdAt
+	}
+	if _, err := db.Exec(ctx, `
+		UPDATE runs
+		SET status = $2,
+		    temporal_workflow_id = $3,
+		    temporal_run_id = $4,
+		    created_at = $5,
+		    queued_at = $5,
+		    started_at = $6,
+		    finished_at = NULL,
+		    failed_at = NULL,
+		    cancelled_at = NULL
+		WHERE id = $1
+	`, runID, string(status), temporalWorkflowID, temporalRunID, createdAt, startedAt); err != nil {
+		t.Fatalf("set run %s for orphan reaper test returned error: %v", runID, err)
+	}
+}
+
+func assertRunStatus(t *testing.T, ctx context.Context, repo *repository.Repository, runID uuid.UUID, want domain.RunStatus) {
+	t.Helper()
+
+	run, err := repo.GetRunByID(ctx, runID)
+	if err != nil {
+		t.Fatalf("GetRunByID(%s) returned error: %v", runID, err)
+	}
+	if run.Status != want {
+		t.Fatalf("run %s status = %s, want %s", runID, run.Status, want)
 	}
 }
 

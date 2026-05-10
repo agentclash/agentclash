@@ -44,6 +44,43 @@ func TestRunStartsAndStopsWorker(t *testing.T) {
 	}
 }
 
+func TestRunWithReaperStartsAndStopsReaper(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	fakeWorker := &fakeTemporalWorker{
+		stopCh: make(chan struct{}),
+	}
+	reaper := &fakeWorkerReaper{
+		doneCh: make(chan struct{}),
+	}
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	resultCh := make(chan error, 1)
+	go func() {
+		resultCh <- RunWithReaper(ctx, Config{
+			TaskQueue:       "RunWorkflow",
+			Identity:        "worker-test",
+			TemporalAddress: "localhost:7233",
+			ShutdownTimeout: time.Second,
+		}, fakeWorker, reaper, logger)
+	}()
+
+	waitForCondition(t, time.Second, func() bool {
+		return fakeWorker.startCalls.Load() == 1 && reaper.startCalls.Load() == 1
+	})
+
+	cancel()
+
+	err := <-resultCh
+	if err != nil {
+		t.Fatalf("RunWithReaper returned error: %v", err)
+	}
+	if fakeWorker.stopCalls.Load() != 1 {
+		t.Fatalf("stop calls = %d, want 1", fakeWorker.stopCalls.Load())
+	}
+}
+
 func TestRunReturnsStartError(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	startErr := errors.New("temporal unavailable")
@@ -107,6 +144,17 @@ type fakeTemporalWorker struct {
 	blockStop  bool
 	startCalls atomic.Int32
 	stopCalls  atomic.Int32
+}
+
+type fakeWorkerReaper struct {
+	startCalls atomic.Int32
+	doneCh     chan struct{}
+}
+
+func (f *fakeWorkerReaper) Start(ctx context.Context) {
+	f.startCalls.Add(1)
+	<-ctx.Done()
+	close(f.doneCh)
 }
 
 func (f *fakeTemporalWorker) Start() error {
