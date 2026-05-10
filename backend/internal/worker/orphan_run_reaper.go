@@ -16,6 +16,7 @@ type OrphanRunReaperRepository interface {
 const (
 	orphanRunReaperBatchLimit = 500
 	orphanRunReaperMaxBatches = 20
+	orphanRunReaperLogIDLimit = 25
 )
 
 type RepositoryOrphanRunReaper struct {
@@ -63,6 +64,7 @@ func (r *RepositoryOrphanRunReaper) Start(ctx context.Context) {
 func (r *RepositoryOrphanRunReaper) reapOnce(ctx context.Context) {
 	cutoff := r.now().UTC().Add(-r.threshold)
 	totalCleaned := 0
+	runIDSample := make([]string, 0, orphanRunReaperLogIDLimit)
 	for batch := 0; batch < orphanRunReaperMaxBatches; batch++ {
 		cleaned, err := r.repo.ReapOrphanedRuns(ctx, repository.ReapOrphanedRunsParams{
 			Cutoff: cutoff,
@@ -74,11 +76,23 @@ func (r *RepositoryOrphanRunReaper) reapOnce(ctx context.Context) {
 			return
 		}
 		totalCleaned += len(cleaned)
+		for _, run := range cleaned {
+			if len(runIDSample) >= orphanRunReaperLogIDLimit {
+				break
+			}
+			runIDSample = append(runIDSample, run.ID.String())
+		}
 		if len(cleaned) < orphanRunReaperBatchLimit {
 			break
 		}
 	}
 	if totalCleaned > 0 {
-		r.logger.Warn("orphaned run reaper marked runs failed", "count", totalCleaned, "cutoff", cutoff)
+		r.logger.Warn(
+			"orphaned run reaper marked runs failed",
+			"count", totalCleaned,
+			"cutoff", cutoff,
+			"run_ids", runIDSample,
+			"run_ids_truncated", totalCleaned > len(runIDSample),
+		)
 	}
 }
