@@ -21,6 +21,7 @@ const (
 	ActionMarkAgentBuildReady         Action = "mark_agent_build_ready"
 	ActionCreateAgentDeployment       Action = "create_agent_deployment"
 	ActionCreateRun                   Action = "create_run"
+	ActionCancelRun                   Action = "cancel_run"
 	ActionManagePlaygrounds           Action = "manage_playgrounds"
 	ActionManageRegressions           Action = "manage_regressions"
 	ActionSelectIntegrationRepository Action = "select_integration_repository"
@@ -55,6 +56,7 @@ var permissionMatrix = map[string]map[Action]bool{
 		ActionMarkAgentBuildReady:         true,
 		ActionCreateAgentDeployment:       true,
 		ActionCreateRun:                   true,
+		ActionCancelRun:                   true,
 		ActionManagePlaygrounds:           true,
 		ActionManageRegressions:           true,
 		ActionSelectIntegrationRepository: true,
@@ -72,6 +74,7 @@ var permissionMatrix = map[string]map[Action]bool{
 		ActionMarkAgentBuildReady:         true,
 		ActionCreateAgentDeployment:       true,
 		ActionCreateRun:                   true,
+		ActionCancelRun:                   true,
 		ActionManagePlaygrounds:           true,
 		ActionManageRegressions:           true,
 		ActionSelectIntegrationRepository: true,

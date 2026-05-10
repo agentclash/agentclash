@@ -298,7 +298,7 @@ func markRunCancelled(ctx sdkworkflow.Context, runID uuid.UUID, workflowErr erro
 		if hasApplicationErrorType(activityErr, repositoryInvalidTransitionType) ||
 			hasApplicationErrorType(activityErr, repositoryTransitionConflictType) {
 			latest, loadErr := loadRun(disconnectedCtx, runID)
-			if loadErr == nil && latest.Status == domain.RunStatusCancelled {
+			if loadErr == nil && !latest.Status.CanTransitionTo(domain.RunStatusCancelled) {
 				return workflowErr
 			}
 			if loadErr != nil {

@@ -212,7 +212,7 @@ func (m *RunReadManager) CancelRun(ctx context.Context, caller Caller, runID uui
 	if err != nil {
 		return CancelRunResult{}, err
 	}
-	if err := AuthorizeWorkspaceAction(ctx, m.authorizer, caller, run.WorkspaceID, ActionCreateRun); err != nil {
+	if err := AuthorizeWorkspaceAction(ctx, m.authorizer, caller, run.WorkspaceID, ActionCancelRun); err != nil {
 		return CancelRunResult{}, err
 	}
 

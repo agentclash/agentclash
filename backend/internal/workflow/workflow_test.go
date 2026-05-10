@@ -931,6 +931,38 @@ func TestRunWorkflowCancellationIsIdempotentWhenRunAlreadyCancelled(t *testing.T
 	}
 }
 
+func TestRunWorkflowCancellationIsIdempotentWhenRunAlreadyTerminal(t *testing.T) {
+	runID := uuid.New()
+	runAgentID := uuid.New()
+	repo := newFakeRunRepository(
+		fixtureRun(runID, domain.RunStatusQueued),
+		fixtureRunAgent(runID, runAgentID, 0),
+	)
+
+	env := newTestWorkflowEnvironment(repo, FakeWorkHooks{
+		PrepareExecutionLane: func(ctx context.Context, input RunAgentWorkflowInput) error {
+			<-ctx.Done()
+			return ctx.Err()
+		},
+	})
+	env.RegisterDelayedCallback(func() {
+		repo.forceRunStatus(domain.RunStatusCompleted)
+		env.CancelWorkflow()
+	}, fakeStageDelay/2)
+	env.ExecuteWorkflow(RunWorkflow, RunWorkflowInput{RunID: runID})
+
+	err := env.GetWorkflowError()
+	if err == nil {
+		t.Fatalf("expected cancellation error")
+	}
+	if !temporal.IsCanceledError(err) {
+		t.Fatalf("workflow error = %v, want canceled error", err)
+	}
+	if run := repo.currentRun(); run.Status != domain.RunStatusCompleted {
+		t.Fatalf("run status = %s, want %s", run.Status, domain.RunStatusCompleted)
+	}
+}
+
 func TestRunWorkflowPartialChildFailureDoesNotCancelOtherAgents(t *testing.T) {
 	runID := uuid.New()
 	successAgentID := uuid.New()
