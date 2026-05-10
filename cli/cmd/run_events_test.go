@@ -193,6 +193,37 @@ func TestRunEventsFilterGlobPattern(t *testing.T) {
 	}
 }
 
+func TestRunEventsFilterFallsBackToSSEEventName(t *testing.T) {
+	sseBody := "event: model.delta\n" +
+		"data: {\"delta\":\"hello\"}\n" +
+		"\n" +
+		"event: tool.result\n" +
+		"data: {\"result\":\"ok\"}\n" +
+		"\n"
+
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"GET /v1/runs/run-x/events/stream": sseHandler([]string{sseBody}),
+	})
+	defer srv.Close()
+
+	stdout := captureStdout(t)
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+	if err := executeCommand(t, []string{
+		"run", "events", "run-x", "--json", "--filter", "model.*",
+	}, srv.URL); err != nil {
+		t.Fatalf("run events --filter SSE event name: %v", err)
+	}
+	out := stdout.finish()
+
+	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+	if len(lines) != 1 {
+		t.Fatalf("expected 1 filtered event, got %d\n---\n%s", len(lines), out)
+	}
+	if !strings.Contains(lines[0], `"delta":"hello"`) {
+		t.Fatalf("filtered output = %q, want model.delta payload", lines[0])
+	}
+}
+
 func TestRunEventsFilterRejectsInvalidGlobPattern(t *testing.T) {
 	called := false
 	srv := fakeAPI(t, map[string]http.HandlerFunc{
