@@ -170,7 +170,7 @@ var runCancelCmd = &cobra.Command{
 			return rc.Output.PrintRaw(run)
 		}
 
-		rc.Output.PrintSuccess(fmt.Sprintf("Cancelled run %s", args[0]))
+		rc.Output.PrintSuccess(fmt.Sprintf("Run %s status updated", args[0]))
 		rc.Output.PrintDetail("Status", output.StatusColor(str(run["status"])))
 		return nil
 	},

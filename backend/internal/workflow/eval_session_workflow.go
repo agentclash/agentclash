@@ -3,6 +3,7 @@ package workflow
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/agentclash/agentclash/backend/internal/domain"
@@ -160,18 +161,18 @@ func executeEvalSessionRuns(ctx sdkworkflow.Context, runs []domain.Run) error {
 		return errEvalSessionChildrenCancelled
 	}
 	if startedChildren > 0 && len(actionableErrors) == startedChildren {
-		for _, err := range actionableErrors {
-			return err
-		}
+		return actionableErrors[0]
 	}
 
 	return nil
 }
 
-func classifyEvalSessionChildErrors(ctx sdkworkflow.Context, childErrors map[uuid.UUID]error) (map[uuid.UUID]error, int, error) {
-	actionableErrors := make(map[uuid.UUID]error, len(childErrors))
+func classifyEvalSessionChildErrors(ctx sdkworkflow.Context, childErrors map[uuid.UUID]error) ([]error, int, error) {
+	runIDs := sortedUUIDKeys(childErrors)
+	actionableErrors := make([]error, 0, len(childErrors))
 	cancelledChildren := 0
-	for runID, childErr := range childErrors {
+	for _, runID := range runIDs {
+		childErr := childErrors[runID]
 		if childRunMayAlreadyBeTerminal(childErr) {
 			latest, loadErr := loadRun(ctx, runID)
 			if loadErr != nil {
@@ -184,9 +185,20 @@ func classifyEvalSessionChildErrors(ctx sdkworkflow.Context, childErrors map[uui
 				continue
 			}
 		}
-		actionableErrors[runID] = childErr
+		actionableErrors = append(actionableErrors, childErr)
 	}
 	return actionableErrors, cancelledChildren, nil
+}
+
+func sortedUUIDKeys(values map[uuid.UUID]error) []uuid.UUID {
+	keys := make([]uuid.UUID, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		return keys[i].String() < keys[j].String()
+	})
+	return keys
 }
 
 func childRunMayAlreadyBeTerminal(err error) bool {
