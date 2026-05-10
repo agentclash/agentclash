@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"strings"
@@ -96,9 +97,8 @@ func TestRepositoryOrphanRunReaperDrainsBoundedBatches(t *testing.T) {
 }
 
 func TestRepositoryOrphanRunReaperLogsRunIDSample(t *testing.T) {
-	runIDOne := uuid.MustParse("00000000-0000-0000-0000-000000000001")
-	runIDTwo := uuid.MustParse("00000000-0000-0000-0000-000000000002")
-	repo := &fakeOrphanRunReaperRepo{runIDs: []uuid.UUID{runIDOne, runIDTwo}}
+	runIDs := sequentialRunIDs(2)
+	repo := &fakeOrphanRunReaperRepo{runIDs: runIDs}
 	var logBuffer bytes.Buffer
 	reaper := NewRepositoryOrphanRunReaper(repo, time.Minute, 15*time.Minute, slog.New(slog.NewTextHandler(&logBuffer, nil)))
 	reaper.now = func() time.Time { return time.Date(2026, 5, 9, 20, 0, 0, 0, time.UTC) }
@@ -106,12 +106,41 @@ func TestRepositoryOrphanRunReaperLogsRunIDSample(t *testing.T) {
 	reaper.reapOnce(context.Background())
 
 	logLine := logBuffer.String()
-	if !strings.Contains(logLine, runIDOne.String()) || !strings.Contains(logLine, runIDTwo.String()) {
+	if !strings.Contains(logLine, runIDs[0].String()) || !strings.Contains(logLine, runIDs[1].String()) {
 		t.Fatalf("log line = %q, want sampled run ids", logLine)
 	}
 	if !strings.Contains(logLine, "run_ids_truncated=false") {
 		t.Fatalf("log line = %q, want run_ids_truncated=false", logLine)
 	}
+}
+
+func TestRepositoryOrphanRunReaperLogsTruncatedRunIDSample(t *testing.T) {
+	runIDs := sequentialRunIDs(orphanRunReaperLogIDLimit + 1)
+	repo := &fakeOrphanRunReaperRepo{runIDs: runIDs}
+	var logBuffer bytes.Buffer
+	reaper := NewRepositoryOrphanRunReaper(repo, time.Minute, 15*time.Minute, slog.New(slog.NewTextHandler(&logBuffer, nil)))
+	reaper.now = func() time.Time { return time.Date(2026, 5, 9, 20, 0, 0, 0, time.UTC) }
+
+	reaper.reapOnce(context.Background())
+
+	logLine := logBuffer.String()
+	if !strings.Contains(logLine, "run_ids_truncated=true") {
+		t.Fatalf("log line = %q, want run_ids_truncated=true", logLine)
+	}
+	if got := strings.Count(logLine, "00000000-0000-0000-0000-"); got != orphanRunReaperLogIDLimit {
+		t.Fatalf("logged run id count = %d, want %d in %q", got, orphanRunReaperLogIDLimit, logLine)
+	}
+	if strings.Contains(logLine, runIDs[orphanRunReaperLogIDLimit].String()) {
+		t.Fatalf("log line = %q, did not want run ID beyond sample limit", logLine)
+	}
+}
+
+func sequentialRunIDs(count int) []uuid.UUID {
+	ids := make([]uuid.UUID, count)
+	for i := range ids {
+		ids[i] = uuid.MustParse(fmt.Sprintf("00000000-0000-0000-0000-%012d", i+1))
+	}
+	return ids
 }
 
 type fakeOrphanRunReaperRepo struct {
@@ -131,6 +160,9 @@ func (f *fakeOrphanRunReaperRepo) ReapOrphanedRuns(_ context.Context, params rep
 		return nil, f.err
 	}
 	if len(f.runIDs) > 0 {
+		if call > 1 {
+			return nil, nil
+		}
 		runs := make([]domain.Run, len(f.runIDs))
 		for i, runID := range f.runIDs {
 			runs[i] = domain.Run{ID: runID, Status: domain.RunStatusFailed}
