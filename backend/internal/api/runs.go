@@ -15,6 +15,7 @@ import (
 
 	"github.com/agentclash/agentclash/backend/internal/billing"
 	"github.com/agentclash/agentclash/backend/internal/domain"
+	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/google/uuid"
 )
 
@@ -192,6 +193,11 @@ type createRunErrorResponse struct {
 	Run   createRunResponse `json:"run"`
 }
 
+type runWorkflowErrorResponse struct {
+	Error apiError       `json:"error"`
+	Run   getRunResponse `json:"run"`
+}
+
 func buildCreateRunResponse(run domain.Run) createRunResponse {
 	return createRunResponse{
 		ID:                     run.ID,
@@ -214,6 +220,55 @@ func buildRunLinks(runID uuid.UUID) runLinksResponse {
 	return runLinksResponse{
 		Self:   fmt.Sprintf("/v1/runs/%s", runID),
 		Agents: fmt.Sprintf("/v1/runs/%s/agents", runID),
+	}
+}
+
+func cancelRunHandler(logger *slog.Logger, service RunReadService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		caller, err := CallerFromContext(r.Context())
+		if err != nil {
+			writeAuthzError(w, err)
+			return
+		}
+
+		runID, err := runIDFromURLParam("runID")(r)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_run_id", err.Error())
+			return
+		}
+
+		result, err := service.CancelRun(r.Context(), caller, runID)
+		if err != nil {
+			switch {
+			case errors.Is(err, repository.ErrRunNotFound):
+				writeError(w, http.StatusNotFound, "run_not_found", "run not found")
+			case errors.Is(err, ErrForbidden):
+				writeAuthzError(w, err)
+			default:
+				var workflowErr RunCancellationWorkflowError
+				if errors.As(err, &workflowErr) {
+					writeJSON(w, http.StatusBadGateway, runWorkflowErrorResponse{
+						Error: apiError{
+							Code:    "workflow_cancel_failed",
+							Message: "run could not be cancelled in Temporal",
+						},
+						Run: buildGetRunResponse(workflowErr.Run, nil),
+					})
+					return
+				}
+
+				logger.Error("cancel run request failed",
+					"method", r.Method,
+					"path", r.URL.Path,
+					"run_id", runID,
+					"error", err,
+				)
+				writeError(w, http.StatusInternalServerError, "internal_error", "internal server error")
+			}
+			return
+		}
+
+		writeJSON(w, http.StatusOK, buildGetRunResponse(result.Run, nil))
 	}
 }
 

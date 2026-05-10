@@ -247,6 +247,43 @@ func TestRunGetCallsCorrectEndpoint(t *testing.T) {
 	}
 }
 
+func TestRunCancelCallsCorrectEndpoint(t *testing.T) {
+	var called bool
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"POST /v1/runs/run-456/cancel": captureHandler(t, &called, 200, map[string]any{
+			"id": "run-456", "name": "Test", "status": "cancelled",
+		}),
+	})
+	defer srv.Close()
+
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+	err := executeCommand(t, []string{"run", "cancel", "run-456"}, srv.URL)
+	if err != nil {
+		t.Fatalf("run cancel error: %v", err)
+	}
+	if !called {
+		t.Fatal("POST /v1/runs/run-456/cancel was not called")
+	}
+}
+
+func TestRunCancelSuccessMessageDistinguishesNoop(t *testing.T) {
+	tests := []struct {
+		status string
+		want   string
+	}{
+		{status: "cancelled", want: "Run run-456 cancelled"},
+		{status: "completed", want: "Run run-456 is already completed; no cancellation performed"},
+		{status: "failed", want: "Run run-456 is already failed; no cancellation performed"},
+		{status: "running", want: "Run run-456 status is running"},
+	}
+
+	for _, tc := range tests {
+		if got := runCancelSuccessMessage("run-456", tc.status); got != tc.want {
+			t.Fatalf("runCancelSuccessMessage(%q) = %q, want %q", tc.status, got, tc.want)
+		}
+	}
+}
+
 func TestRunEventsUsesAuthorizationHeaderWithoutQueryToken(t *testing.T) {
 	var called bool
 	var gotAuth string

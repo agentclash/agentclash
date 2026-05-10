@@ -2587,6 +2587,42 @@ paths:
         "404":
           $ref: "#/components/responses/NotFoundError"
 
+  /v1/runs/{runID}/cancel:
+    post:
+      operationId: cancelRun
+      tags: [Runs]
+      summary: Cancel a run
+      description: >
+        Cancels an active run. If the run has already reached a terminal status,
+        the endpoint returns the current run details without changing it.
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/RunID"
+      responses:
+        "200":
+          description: Run cancelled or already terminal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunDetail"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "502":
+          description: Run workflow could not be cancelled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunWorkflowErrorResponse"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
   /v1/runs/{runID}/ranking:
     get:
       operationId: getRunRanking
@@ -7346,6 +7382,24 @@ components:
               type: string
         run:
           $ref: "#/components/schemas/CreateRunResponse"
+
+    RunWorkflowErrorResponse:
+      type: object
+      required: [error, run]
+      description: >
+        Returned when a run workflow operation could not be completed in
+        Temporal (HTTP 502).
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+        run:
+          $ref: "#/components/schemas/RunDetail"
 
     RunDetail:
       type: object

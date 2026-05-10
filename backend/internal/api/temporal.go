@@ -53,6 +53,18 @@ func (s TemporalRunWorkflowStarter) StartRunWorkflow(ctx context.Context, runID 
 	return err
 }
 
+type TemporalRunWorkflowCanceller struct {
+	client TemporalClient
+}
+
+func NewTemporalRunWorkflowCanceller(client TemporalClient) TemporalRunWorkflowCanceller {
+	return TemporalRunWorkflowCanceller{client: client}
+}
+
+func (c TemporalRunWorkflowCanceller) CancelRunWorkflow(ctx context.Context, workflowID string, runID string) error {
+	return c.client.CancelWorkflow(ctx, workflowID, runID)
+}
+
 type TemporalEvalSessionWorkflowStarter struct {
 	client TemporalClient
 }

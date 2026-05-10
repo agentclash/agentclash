@@ -304,6 +304,10 @@ func (f *fakeSSERunReadService) GetRun(context.Context, Caller, uuid.UUID) (GetR
 	return GetRunResult{}, nil
 }
 
+func (f *fakeSSERunReadService) CancelRun(context.Context, Caller, uuid.UUID) (CancelRunResult, error) {
+	return CancelRunResult{}, nil
+}
+
 func (f *fakeSSERunReadService) GetEvalSession(context.Context, Caller, uuid.UUID) (GetEvalSessionResult, error) {
 	return GetEvalSessionResult{}, nil
 }

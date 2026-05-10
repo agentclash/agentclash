@@ -77,6 +77,7 @@ func registerProtectedRoutes(
 	router.Get("/eval-sessions/{evalSessionID}", getEvalSessionHandler(logger, runReadService))
 	router.Post("/runs", createRunHandler(logger, runCreationService))
 	router.Get("/runs/{runID}", getRunHandler(logger, runReadService))
+	router.Post("/runs/{runID}/cancel", cancelRunHandler(logger, runReadService))
 	router.Get("/runs/{runID}/ranking", getRunRankingHandler(logger, runReadService))
 	router.Post("/runs/{runID}/ranking-insights", createRunRankingInsightsHandler(logger, runReadService))
 	router.Get("/runs/{runID}/agents", listRunAgentsHandler(logger, runReadService))

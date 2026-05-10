@@ -97,7 +97,8 @@ func main() {
 	runReadManager := api.NewRunReadManager(authorizer, repo).
 		WithInsightsClient(providerRouter).
 		WithBudgetChecker(budgetChecker).
-		WithInsightsRateLimiter(insightsLimiter)
+		WithInsightsRateLimiter(insightsLimiter).
+		WithRunWorkflowControl(api.NewTemporalRunWorkflowCanceller(temporalClient))
 	if !runReadManager.InsightsConfigured() {
 		logger.Error("run ranking insights client is not configured")
 		os.Exit(1)

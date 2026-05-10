@@ -17,6 +17,7 @@ func init() {
 	rootCmd.AddCommand(runCmd)
 	runCmd.AddCommand(runListCmd)
 	runCmd.AddCommand(runGetCmd)
+	runCmd.AddCommand(runCancelCmd)
 	runCmd.AddCommand(runCreateCmd)
 	runCmd.AddCommand(runRankingCmd)
 	runCmd.AddCommand(runAgentsCmd)
@@ -143,6 +144,48 @@ var runGetCmd = &cobra.Command{
 		}
 		return nil
 	},
+}
+
+var runCancelCmd = &cobra.Command{
+	Use:   "cancel <id>",
+	Short: "Cancel an active run",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		rc := GetRunContext(cmd)
+
+		resp, err := rc.Client.Post(cmd.Context(), "/v1/runs/"+args[0]+"/cancel", map[string]any{})
+		if err != nil {
+			return err
+		}
+		if apiErr := resp.ParseError(); apiErr != nil {
+			return apiErr
+		}
+
+		var run map[string]any
+		if err := resp.DecodeJSON(&run); err != nil {
+			return err
+		}
+
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(run)
+		}
+
+		status := str(run["status"])
+		rc.Output.PrintSuccess(runCancelSuccessMessage(args[0], status))
+		rc.Output.PrintDetail("Status", output.StatusColor(status))
+		return nil
+	},
+}
+
+func runCancelSuccessMessage(runID, status string) string {
+	switch status {
+	case "cancelled":
+		return fmt.Sprintf("Run %s cancelled", runID)
+	case "completed", "failed":
+		return fmt.Sprintf("Run %s is already %s; no cancellation performed", runID, status)
+	default:
+		return fmt.Sprintf("Run %s status is %s", runID, status)
+	}
 }
 
 var runCreateCmd = &cobra.Command{
