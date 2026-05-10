@@ -99,6 +99,49 @@ func TestBillingManagerBuildRunGateRejectsExpiredTrial(t *testing.T) {
 	}
 }
 
+func TestBillingManagerGetWorkspaceQuotaSeparatesRaceAndConcurrencyUsage(t *testing.T) {
+	workspaceID := uuid.New()
+	repo := newFakeBillingRepository(workspaceID)
+	repo.entitlements = billingpkg.MaterializeEntitlements(
+		billingpkg.MustPlan(billingpkg.PlanPro),
+		billingpkg.PeriodMonthly,
+		5,
+		billingpkg.EntitlementStatusActive,
+	)
+	repo.usage.RaceCount = 47
+	repo.usage.ActiveRuns = 2
+	repo.activeMembers = 3
+	now := time.Date(2026, 5, 10, 9, 0, 0, 0, time.UTC)
+	manager := NewBillingManager(NewCallerOrganizationAuthorizer(), NewCallerWorkspaceAuthorizer(), repo, BillingManagerConfig{
+		WebhookSecret: "secret",
+	})
+	manager.now = func() time.Time { return now }
+	caller := Caller{
+		UserID: uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: RoleWorkspaceViewer},
+		},
+	}
+
+	result, err := manager.GetWorkspaceQuota(context.Background(), caller, workspaceID)
+	if err != nil {
+		t.Fatalf("GetWorkspaceQuota returned error: %v", err)
+	}
+	if result.PlanKey != billingpkg.PlanPro {
+		t.Fatalf("plan key = %q, want pro", result.PlanKey)
+	}
+	assertQuotaCounter(t, "monthly races", result.MonthlyRaces, 47, 2500, 2453)
+	assertQuotaCounter(t, "concurrent races", result.ConcurrentRaces, 2, 3, 1)
+	assertQuotaCounter(t, "seats", result.Seats, 3, 25, 22)
+	assertTimePtr(t, "monthly races reset_at", result.MonthlyRaces.ResetAt, time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
+	if !result.WindowStart.Equal(time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)) {
+		t.Fatalf("window start = %s, want 2026-05-01", result.WindowStart)
+	}
+	if !result.WindowEnd.Equal(time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)) {
+		t.Fatalf("window end = %s, want 2026-06-01", result.WindowEnd)
+	}
+}
+
 func TestBillingGateHTTPStatus(t *testing.T) {
 	entitlements := billingpkg.DefaultEntitlements()
 	featureDecision := billingpkg.CheckFeature(entitlements, billingpkg.FeaturePrivateChallengePacks)
@@ -813,6 +856,7 @@ type fakeBillingRepository struct {
 	workspaceID   uuid.UUID
 	entitlements  billingpkg.EffectiveEntitlements
 	usage         repository.WorkspaceUsageSnapshot
+	activeMembers int
 	webhookIDs    map[string]bool
 	subscription  repository.BillingSubscription
 	account       repository.BillingAccount
@@ -823,9 +867,10 @@ type fakeBillingRepository struct {
 func newFakeBillingRepository(workspaceID uuid.UUID) *fakeBillingRepository {
 	windowStart, windowEnd := usageWindow(time.Date(2026, 4, 29, 0, 0, 0, 0, time.UTC))
 	return &fakeBillingRepository{
-		orgID:        uuid.New(),
-		workspaceID:  workspaceID,
-		entitlements: billingpkg.DefaultEntitlements(),
+		orgID:         uuid.New(),
+		workspaceID:   workspaceID,
+		entitlements:  billingpkg.DefaultEntitlements(),
+		activeMembers: 1,
 		usage: repository.WorkspaceUsageSnapshot{
 			WorkspaceID: workspaceID,
 			WindowStart: windowStart,
@@ -861,7 +906,7 @@ func (f *fakeBillingRepository) UpsertOrganizationEntitlements(_ context.Context
 }
 
 func (f *fakeBillingRepository) CountActiveOrgMembers(context.Context, uuid.UUID) (int, error) {
-	return 1, nil
+	return f.activeMembers, nil
 }
 
 func (f *fakeBillingRepository) CountActiveWorkspaces(context.Context, uuid.UUID) (int, error) {
@@ -1021,5 +1066,24 @@ func assertIntPtr(t *testing.T, label string, got *int, want int) {
 	}
 	if *got != want {
 		t.Fatalf("%s = %d, want %d", label, *got, want)
+	}
+}
+
+func assertQuotaCounter(t *testing.T, label string, got QuotaCounter, wantUsed int, wantLimit int, wantRemaining int) {
+	t.Helper()
+	if got.Used != wantUsed {
+		t.Fatalf("%s used = %d, want %d", label, got.Used, wantUsed)
+	}
+	assertIntPtr(t, label+" limit", got.Limit, wantLimit)
+	assertIntPtr(t, label+" remaining", got.Remaining, wantRemaining)
+}
+
+func assertTimePtr(t *testing.T, label string, got *time.Time, want time.Time) {
+	t.Helper()
+	if got == nil {
+		t.Fatalf("%s = nil, want %s", label, want)
+	}
+	if !got.Equal(want) {
+		t.Fatalf("%s = %s, want %s", label, got, want)
 	}
 }

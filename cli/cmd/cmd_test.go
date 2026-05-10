@@ -284,6 +284,72 @@ func TestRunCancelSuccessMessageDistinguishesNoop(t *testing.T) {
 	}
 }
 
+func TestQuotaCallsWorkspaceQuotaEndpoint(t *testing.T) {
+	var called bool
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"GET /v1/workspaces/ws-123/quota": captureHandler(t, &called, http.StatusOK, map[string]any{
+			"workspace_id": "ws-123",
+			"plan_key":     "pro",
+			"status":       "active",
+			"monthly_races": map[string]any{
+				"used":      47,
+				"limit":     2500,
+				"remaining": 2453,
+			},
+			"concurrent_races": map[string]any{
+				"used":      2,
+				"limit":     3,
+				"remaining": 1,
+			},
+		}),
+	})
+	defer srv.Close()
+
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+	stdout := captureStdout(t)
+	err := executeCommand(t, []string{"--workspace", "ws-123", "--json", "quota"}, srv.URL)
+	out := stdout.finish()
+	if err != nil {
+		t.Fatalf("quota error: %v", err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(out), &payload); err != nil {
+		t.Fatalf("quota json output was not valid JSON: %v", err)
+	}
+	if !called {
+		t.Fatal("GET /v1/workspaces/ws-123/quota was not called")
+	}
+	if payload["plan_key"] != "pro" {
+		t.Fatalf("plan_key = %v, want pro", payload["plan_key"])
+	}
+	if got := quotaCounterLine(mapObject(payload, "monthly_races")); got != "47 / 2500 used (2453 remaining)" {
+		t.Fatalf("monthly_races = %q", got)
+	}
+	if got := quotaCounterLine(mapObject(payload, "concurrent_races")); got != "2 / 3 used (1 remaining)" {
+		t.Fatalf("concurrent_races = %q", got)
+	}
+}
+
+func TestQuotaCounterLineSeparatesMonthlyAndConcurrencyUsage(t *testing.T) {
+	monthly := quotaCounterLine(map[string]any{
+		"used":      47,
+		"limit":     2500,
+		"remaining": 2453,
+	})
+	if monthly != "47 / 2500 used (2453 remaining)" {
+		t.Fatalf("monthly quota line = %q", monthly)
+	}
+
+	concurrent := quotaCounterLine(map[string]any{
+		"used":      2,
+		"limit":     3,
+		"remaining": 1,
+	})
+	if concurrent != "2 / 3 used (1 remaining)" {
+		t.Fatalf("concurrency quota line = %q", concurrent)
+	}
+}
+
 func TestRunEventsUsesAuthorizationHeaderWithoutQueryToken(t *testing.T) {
 	var called bool
 	var gotAuth string

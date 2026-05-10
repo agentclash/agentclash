@@ -30,6 +30,7 @@ type BillingService interface {
 	CreateCheckout(ctx context.Context, caller Caller, orgID uuid.UUID, input CreateBillingCheckoutInput) (CreateBillingCheckoutResult, error)
 	CreatePortal(ctx context.Context, caller Caller, orgID uuid.UUID) (CreateBillingPortalResult, error)
 	GetWorkspaceEntitlements(ctx context.Context, caller Caller, workspaceID uuid.UUID) (WorkspaceEntitlementsResult, error)
+	GetWorkspaceQuota(ctx context.Context, caller Caller, workspaceID uuid.UUID) (WorkspaceQuotaResult, error)
 	ProcessDodoWebhook(ctx context.Context, headers DodoWebhookHeaders, rawBody []byte) (ProcessDodoWebhookResult, error)
 }
 
@@ -139,6 +140,26 @@ type WorkspaceEntitlementsResult struct {
 
 type WorkspaceGateSummary struct {
 	Run billingpkg.GateDecision `json:"run"`
+}
+
+type WorkspaceQuotaResult struct {
+	OrganizationID  uuid.UUID    `json:"organization_id"`
+	WorkspaceID     uuid.UUID    `json:"workspace_id"`
+	PlanKey         string       `json:"plan_key"`
+	BillingPeriod   string       `json:"billing_period"`
+	Status          string       `json:"status"`
+	MonthlyRaces    QuotaCounter `json:"monthly_races"`
+	ConcurrentRaces QuotaCounter `json:"concurrent_races"`
+	Seats           QuotaCounter `json:"seats"`
+	WindowStart     time.Time    `json:"window_start"`
+	WindowEnd       time.Time    `json:"window_end"`
+}
+
+type QuotaCounter struct {
+	Used      int        `json:"used"`
+	Limit     *int       `json:"limit,omitempty"`
+	Remaining *int       `json:"remaining,omitempty"`
+	ResetAt   *time.Time `json:"reset_at,omitempty"`
 }
 
 type DodoWebhookHeaders struct {
@@ -332,6 +353,37 @@ func (m *BillingManager) GetWorkspaceEntitlements(ctx context.Context, caller Ca
 		Gates: WorkspaceGateSummary{
 			Run: runDecision,
 		},
+	}, nil
+}
+
+func (m *BillingManager) GetWorkspaceQuota(ctx context.Context, caller Caller, workspaceID uuid.UUID) (WorkspaceQuotaResult, error) {
+	result, err := m.GetWorkspaceEntitlements(ctx, caller, workspaceID)
+	if err != nil {
+		return WorkspaceQuotaResult{}, err
+	}
+	activeSeats, err := m.repo.CountActiveOrgMembers(ctx, result.OrganizationID)
+	if err != nil {
+		return WorkspaceQuotaResult{}, err
+	}
+	return WorkspaceQuotaResult{
+		OrganizationID: result.OrganizationID,
+		WorkspaceID:    result.WorkspaceID,
+		PlanKey:        result.Entitlements.PlanKey,
+		BillingPeriod:  result.Entitlements.BillingPeriod,
+		Status:         result.Entitlements.Status,
+		MonthlyRaces: quotaCounter(
+			result.Usage.RaceCount,
+			result.Entitlements.RacesPerWorkspaceMonth,
+			&result.Usage.WindowEnd,
+		),
+		ConcurrentRaces: quotaCounter(
+			result.Usage.ActiveRuns,
+			result.Entitlements.ConcurrentRaces,
+			nil,
+		),
+		Seats:       quotaCounter(activeSeats, result.Entitlements.SeatsLimit, nil),
+		WindowStart: result.Usage.WindowStart,
+		WindowEnd:   result.Usage.WindowEnd,
 	}, nil
 }
 
@@ -1088,6 +1140,7 @@ func registerBillingRoutes(router chi.Router, logger *slog.Logger, service Billi
 	router.Post("/organizations/{organizationID}/billing/checkout", createBillingCheckoutHandler(logger, service))
 	router.Post("/organizations/{organizationID}/billing/portal", createBillingPortalHandler(logger, service))
 	router.Get("/workspaces/{workspaceID}/entitlements", getWorkspaceEntitlementsHandler(logger, service))
+	router.Get("/workspaces/{workspaceID}/quota", getWorkspaceQuotaHandler(logger, service))
 }
 
 func listBillingPlansHandler(logger *slog.Logger, service BillingService) http.HandlerFunc {
@@ -1226,6 +1279,27 @@ func getWorkspaceEntitlementsHandler(logger *slog.Logger, service BillingService
 	}
 }
 
+func getWorkspaceQuotaHandler(logger *slog.Logger, service BillingService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		caller, err := CallerFromContext(r.Context())
+		if err != nil {
+			writeAuthzError(w, err)
+			return
+		}
+		workspaceID, err := uuid.Parse(chi.URLParam(r, "workspaceID"))
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_workspace_id", "workspace ID is malformed")
+			return
+		}
+		result, err := service.GetWorkspaceQuota(r.Context(), caller, workspaceID)
+		if err != nil {
+			writeBillingServiceError(w, logger, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, result)
+	}
+}
+
 func writeBillingServiceError(w http.ResponseWriter, logger *slog.Logger, err error) {
 	var validationErr validationErrorEnvelope
 	var gateErr billingpkg.GateError
@@ -1262,6 +1336,29 @@ func (noopBillingService) CreatePortal(context.Context, Caller, uuid.UUID) (Crea
 func (noopBillingService) GetWorkspaceEntitlements(context.Context, Caller, uuid.UUID) (WorkspaceEntitlementsResult, error) {
 	return WorkspaceEntitlementsResult{}, errors.New("billing service is not configured")
 }
+func (noopBillingService) GetWorkspaceQuota(context.Context, Caller, uuid.UUID) (WorkspaceQuotaResult, error) {
+	return WorkspaceQuotaResult{}, errors.New("billing service is not configured")
+}
 func (noopBillingService) ProcessDodoWebhook(context.Context, DodoWebhookHeaders, []byte) (ProcessDodoWebhookResult, error) {
 	return ProcessDodoWebhookResult{}, errors.New("billing service is not configured")
+}
+
+func quotaCounter(used int, limit *int, resetAt *time.Time) QuotaCounter {
+	counter := QuotaCounter{
+		Used: used,
+	}
+	if limit != nil {
+		copiedLimit := *limit
+		counter.Limit = &copiedLimit
+		remaining := *limit - used
+		if remaining < 0 {
+			remaining = 0
+		}
+		counter.Remaining = &remaining
+	}
+	if resetAt != nil {
+		reset := resetAt.UTC()
+		counter.ResetAt = &reset
+	}
+	return counter
 }
