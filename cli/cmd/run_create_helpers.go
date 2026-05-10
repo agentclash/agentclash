@@ -348,7 +348,7 @@ func presentCreatedRun(cmd *cobra.Command, rc *RunContext, run map[string]any, f
 		if err := printStructuredRunCreated(rc, run); err != nil {
 			return err
 		}
-		return streamRunEvents(cmd, rc, str(run["id"]))
+		return streamRunEvents(cmd, rc, str(run["id"]), nil)
 	}
 
 	runID := str(run["id"])
@@ -357,7 +357,7 @@ func presentCreatedRun(cmd *cobra.Command, rc *RunContext, run map[string]any, f
 
 	if follow {
 		fmt.Fprintln(os.Stderr)
-		if err := streamRunEvents(cmd, rc, runID); err != nil {
+		if err := streamRunEvents(cmd, rc, runID, nil); err != nil {
 			return err
 		}
 		if afterFollow != nil {

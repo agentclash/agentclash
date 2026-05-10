@@ -241,7 +241,7 @@ func executeCIRun(cmd *cobra.Command, rc *RunContext) (ciRunResult, error) {
 
 	if follow && !rc.Output.IsStructured() {
 		fmt.Fprintln(os.Stderr)
-		if err := streamRunEvents(cmd, rc, result.Candidate.RunID); err != nil {
+		if err := streamRunEvents(cmd, rc, result.Candidate.RunID, nil); err != nil {
 			result.ExitCode = ciRunExitAPI
 			result.Errors = append(result.Errors, err.Error())
 			return finishWithReports(err, run, nil, nil, nil, nil)

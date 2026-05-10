@@ -6,6 +6,7 @@ import (
 	"gopkg.in/yaml.v3"
 	"net/url"
 	"os"
+	"path"
 	"strings"
 	"time"
 
@@ -45,6 +46,7 @@ func init() {
 	runCreateCmd.Flags().Int("race-context-cadence", 0, "Override race-context cadence; minimum steps between standings injections, [1, 10]. 0 uses the backend default.")
 	runCreateCmd.Flags().Int("max-iter", 0, "Override max iterations for this run (1-1000). 0 uses the pack/runtime default.")
 	runCreateCmd.Flags().Int("seeds", 0, "Create a seeded eval session with N child runs, one per seed (1-100). 0 creates a single run.")
+	runEventsCmd.Flags().StringSlice("filter", nil, "Filter streamed events by event type pattern (exact, comma-separated, or glob; '*' matches any non-slash chars, so 'model.*' matches 'model.call.started'; repeatable)")
 
 	runRankingCmd.Flags().String("sort-by", "", "Sort by: composite, correctness, reliability, latency, cost")
 	runFailuresCmd.Flags().String("agent", "", "Filter by run agent ID")
@@ -566,7 +568,12 @@ var runEventsCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		rc := GetRunContext(cmd)
-		return streamRunEvents(cmd, rc, args[0])
+		filters, _ := cmd.Flags().GetStringSlice("filter")
+		patterns, err := normalizeRunEventFilters(filters)
+		if err != nil {
+			return err
+		}
+		return streamRunEvents(cmd, rc, args[0], patterns)
 	},
 }
 
@@ -747,7 +754,7 @@ var runPromoteFailureCmd = &cobra.Command{
 	},
 }
 
-func streamRunEvents(cmd *cobra.Command, rc *RunContext, runID string) error {
+func streamRunEvents(cmd *cobra.Command, rc *RunContext, runID string, patterns []string) error {
 	ch, err := rc.Client.StreamSSE(cmd.Context(), "/v1/runs/"+runID+"/events/stream", nil)
 	if err != nil {
 		return fmt.Errorf("connecting to event stream: %w", err)
@@ -758,6 +765,9 @@ func streamRunEvents(cmd *cobra.Command, rc *RunContext, runID string) error {
 	}
 
 	for event := range ch {
+		if !runEventMatchesFilters(event.Event, event.Data, patterns) {
+			continue
+		}
 		switch {
 		case rc.Output.IsYAML():
 			// Emit a YAML document per event, separated by `---`, which is a
@@ -787,7 +797,7 @@ func streamRunEvents(cmd *cobra.Command, rc *RunContext, runID string) error {
 			var parsed map[string]any
 			summary := string(event.Data)
 			if json.Unmarshal(event.Data, &parsed) == nil {
-				if et, ok := parsed["EventType"].(string); ok {
+				if et := eventTypeFromPayload(parsed); et != "" {
 					summary = et
 				}
 			}
@@ -803,6 +813,51 @@ func streamRunEvents(cmd *cobra.Command, rc *RunContext, runID string) error {
 		fmt.Fprintf(os.Stderr, "%s Stream ended\n", output.Faint("▸"))
 	}
 	return nil
+}
+
+func runEventMatchesFilters(sseEvent string, data []byte, patterns []string) bool {
+	if len(patterns) == 0 {
+		return true
+	}
+	eventType := sseEvent
+	var parsed map[string]any
+	if json.Unmarshal(data, &parsed) == nil {
+		if extracted := eventTypeFromPayload(parsed); extracted != "" {
+			eventType = extracted
+		}
+	}
+	for _, pattern := range patterns {
+		if matched, err := path.Match(pattern, eventType); err == nil && matched {
+			return true
+		}
+	}
+	return false
+}
+
+func normalizeRunEventFilters(filters []string) ([]string, error) {
+	var patterns []string
+	for _, filter := range filters {
+		for _, part := range strings.Split(filter, ",") {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			if _, err := path.Match(part, ""); err != nil {
+				return nil, fmt.Errorf("invalid event filter pattern %q: %w", part, err)
+			}
+			patterns = append(patterns, part)
+		}
+	}
+	return patterns, nil
+}
+
+func eventTypeFromPayload(payload map[string]any) string {
+	for _, key := range []string{"event_type", "EventType"} {
+		if eventType, ok := payload[key].(string); ok && eventType != "" {
+			return eventType
+		}
+	}
+	return ""
 }
 
 func fmtScore(v any) string {
