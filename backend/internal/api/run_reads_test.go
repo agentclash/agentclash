@@ -176,6 +176,35 @@ func TestRunReadManagerCancelRunReturnsTemporalFailure(t *testing.T) {
 	}
 }
 
+func TestRunReadManagerCancelRunRequiresWorkflowControlForTemporalRun(t *testing.T) {
+	workspaceID := uuid.New()
+	runID := uuid.New()
+	workflowID := "RunWorkflow/" + runID.String()
+	repo := &fakeRunReadRepository{
+		run: domain.Run{
+			ID:                 runID,
+			WorkspaceID:        workspaceID,
+			Status:             domain.RunStatusRunning,
+			TemporalWorkflowID: &workflowID,
+		},
+	}
+	manager := NewRunReadManager(NewCallerWorkspaceAuthorizer(), repo)
+
+	_, err := manager.CancelRun(context.Background(), Caller{
+		UserID: uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: RoleWorkspaceMember},
+		},
+	}, runID)
+	var workflowErr RunCancellationWorkflowError
+	if !errors.As(err, &workflowErr) {
+		t.Fatalf("CancelRun error = %v, want RunCancellationWorkflowError", err)
+	}
+	if repo.transitionRunStatusCalls != 0 {
+		t.Fatalf("transition calls = %d, want 0", repo.transitionRunStatusCalls)
+	}
+}
+
 func TestCancelRunHandlerReturnsCancelledRun(t *testing.T) {
 	runID := uuid.New()
 	workspaceID := uuid.New()

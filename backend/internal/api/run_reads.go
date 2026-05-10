@@ -33,6 +33,7 @@ type RunReadRepository interface {
 	ListEvalSessionsByWorkspaceID(ctx context.Context, workspaceID uuid.UUID, limit int32, offset int32) ([]domain.EvalSession, error)
 	ListRunsByWorkspaceID(ctx context.Context, workspaceID uuid.UUID, limit int32, offset int32) ([]domain.Run, error)
 	CountRunsByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) (int64, error)
+	TransitionRunStatus(ctx context.Context, params repository.TransitionRunStatusParams) (domain.Run, error)
 	GetProviderAccountByID(ctx context.Context, id uuid.UUID) (repository.ProviderAccountRow, error)
 	GetModelAliasByID(ctx context.Context, id uuid.UUID) (repository.ModelAliasRow, error)
 	GetModelCatalogEntryByID(ctx context.Context, id uuid.UUID) (repository.ModelCatalogEntryRow, error)
@@ -78,10 +79,6 @@ type CancelRunResult struct {
 
 type RunWorkflowControl interface {
 	CancelRunWorkflow(ctx context.Context, workflowID string, runID string) error
-}
-
-type runCancellationRepository interface {
-	TransitionRunStatus(ctx context.Context, params repository.TransitionRunStatusParams) (domain.Run, error)
 }
 
 type RunCancellationWorkflowError struct {
@@ -222,19 +219,20 @@ func (m *RunReadManager) CancelRun(ctx context.Context, caller Caller, runID uui
 	}
 
 	workflowID := strings.TrimSpace(derefString(run.TemporalWorkflowID))
-	if workflowID != "" && m.workflowControl != nil {
+	if workflowID != "" {
+		if m.workflowControl == nil {
+			return CancelRunResult{}, RunCancellationWorkflowError{
+				Run:   run,
+				Cause: errors.New("run workflow control is not configured"),
+			}
+		}
 		if err := m.workflowControl.CancelRunWorkflow(ctx, workflowID, strings.TrimSpace(derefString(run.TemporalRunID))); err != nil {
 			return CancelRunResult{}, RunCancellationWorkflowError{Run: run, Cause: err}
 		}
 	}
 
-	transitionRepo, ok := m.repo.(runCancellationRepository)
-	if !ok {
-		return CancelRunResult{}, errors.New("run cancellation repository is not configured")
-	}
-
 	reason := "cancelled by user"
-	cancelled, err := transitionRepo.TransitionRunStatus(ctx, repository.TransitionRunStatusParams{
+	cancelled, err := m.repo.TransitionRunStatus(ctx, repository.TransitionRunStatusParams{
 		RunID:           run.ID,
 		ToStatus:        domain.RunStatusCancelled,
 		Reason:          &reason,
