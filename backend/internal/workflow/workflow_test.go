@@ -162,6 +162,32 @@ func TestEvalSessionWorkflowAllCancelledChildRunsMarksSessionCancelled(t *testin
 	}
 }
 
+func TestEvalSessionWorkflowMarksSessionCancelledWhenStartedChildWasCancelled(t *testing.T) {
+	sessionID := uuid.New()
+	runID := uuid.New()
+	repo := newFakeRunRepository(fixtureRun(uuid.New(), domain.RunStatusQueued))
+	repo.setEvalSession(
+		fixtureEvalSession(sessionID, domain.EvalSessionStatusQueued),
+		fixtureChildRun(runID, sessionID),
+	)
+
+	env := newEvalSessionWorkflowTestEnvironment(repo, nil, func(ctx sdkworkflow.Context, input RunWorkflowInput) error {
+		repo.forceEvalSessionRunStatus(sessionID, input.RunID, domain.RunStatusCancelled)
+		return ErrRunMustBeQueued
+	})
+	env.ExecuteWorkflow(EvalSessionWorkflow, EvalSessionWorkflowInput{EvalSessionID: sessionID})
+
+	if err := env.GetWorkflowError(); err != nil {
+		t.Fatalf("EvalSessionWorkflow returned error: %v", err)
+	}
+	if got := repo.currentEvalSession(sessionID).Status; got != domain.EvalSessionStatusCancelled {
+		t.Fatalf("eval session status = %s, want %s", got, domain.EvalSessionStatusCancelled)
+	}
+	if repo.callCountWithPrefix("AggregateEvalSession:") != 0 {
+		t.Fatalf("AggregateEvalSession call count = %d, want 0", repo.callCountWithPrefix("AggregateEvalSession:"))
+	}
+}
+
 func TestEvalSessionWorkflowAggregationFailureMarksSessionFailed(t *testing.T) {
 	sessionID := uuid.New()
 	runID := uuid.New()
@@ -1930,6 +1956,21 @@ func (r *fakeRunRepository) forceRunStatus(status domain.RunStatus) {
 	defer r.mu.Unlock()
 
 	r.run.Status = status
+}
+
+func (r *fakeRunRepository) forceEvalSessionRunStatus(evalSessionID uuid.UUID, runID uuid.UUID, status domain.RunStatus) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	runs := r.evalSessionRuns[evalSessionID]
+	for index, run := range runs {
+		if run.ID == runID {
+			run.Status = status
+			runs[index] = run
+			r.evalSessionRuns[evalSessionID] = runs
+			return
+		}
+	}
 }
 
 func (r *fakeRunRepository) currentEvalSession(id uuid.UUID) domain.EvalSession {

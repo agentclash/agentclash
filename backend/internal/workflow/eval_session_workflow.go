@@ -3,6 +3,7 @@ package workflow
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/agentclash/agentclash/backend/internal/domain"
 	"github.com/agentclash/agentclash/backend/internal/repository"
@@ -12,6 +13,7 @@ import (
 )
 
 var ErrEvalSessionHasNoRuns = errors.New("eval session must have at least one run")
+var errEvalSessionChildrenCancelled = errors.New("eval session child runs cancelled")
 
 func EvalSessionWorkflow(ctx sdkworkflow.Context, input EvalSessionWorkflowInput) error {
 	ctx = sdkworkflow.WithActivityOptions(ctx, defaultActivityOptions)
@@ -60,6 +62,9 @@ func runEvalSessionWorkflow(ctx sdkworkflow.Context, input EvalSessionWorkflowIn
 	}
 
 	if err := executeEvalSessionRuns(ctx, runs); err != nil {
+		if errors.Is(err, errEvalSessionChildrenCancelled) {
+			return transitionEvalSessionStatus(ctx, input.EvalSessionID, domain.EvalSessionStatusCancelled)
+		}
 		return err
 	}
 
@@ -147,13 +152,48 @@ func executeEvalSessionRuns(ctx sdkworkflow.Context, runs []domain.Run) error {
 		selector.Select(ctx)
 	}
 
-	if startedChildren > 0 && len(childErrors) == startedChildren {
-		for _, err := range childErrors {
+	actionableErrors, cancelledChildren, err := classifyEvalSessionChildErrors(ctx, childErrors)
+	if err != nil {
+		return err
+	}
+	if startedChildren > 0 && cancelledChildren == startedChildren {
+		return errEvalSessionChildrenCancelled
+	}
+	if startedChildren > 0 && len(actionableErrors) == startedChildren {
+		for _, err := range actionableErrors {
 			return err
 		}
 	}
 
 	return nil
+}
+
+func classifyEvalSessionChildErrors(ctx sdkworkflow.Context, childErrors map[uuid.UUID]error) (map[uuid.UUID]error, int, error) {
+	actionableErrors := make(map[uuid.UUID]error, len(childErrors))
+	cancelledChildren := 0
+	for runID, childErr := range childErrors {
+		if childRunMayAlreadyBeTerminal(childErr) {
+			latest, loadErr := loadRun(ctx, runID)
+			if loadErr != nil {
+				return nil, 0, loadErr
+			}
+			if !latest.Status.CanTransitionTo(domain.RunStatusCancelled) {
+				if latest.Status == domain.RunStatusCancelled {
+					cancelledChildren++
+				}
+				continue
+			}
+		}
+		actionableErrors[runID] = childErr
+	}
+	return actionableErrors, cancelledChildren, nil
+}
+
+func childRunMayAlreadyBeTerminal(err error) bool {
+	return errors.Is(err, ErrRunMustBeQueued) ||
+		strings.Contains(err.Error(), ErrRunMustBeQueued.Error()) ||
+		hasApplicationErrorType(err, repositoryInvalidTransitionType) ||
+		hasApplicationErrorType(err, repositoryTransitionConflictType)
 }
 
 func allRunsCancelled(runs []domain.Run) bool {
