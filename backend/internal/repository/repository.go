@@ -2718,12 +2718,13 @@ type ChallengePackSummary struct {
 }
 
 type ChallengePackVersionSummary struct {
-	ID              uuid.UUID
-	ChallengePackID uuid.UUID
-	VersionNumber   int32
-	LifecycleStatus string
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	ID                 uuid.UUID
+	ChallengePackID    uuid.UUID
+	VersionNumber      int32
+	LifecycleStatus    string
+	DeploymentDefaults json.RawMessage
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
 }
 
 func (r *Repository) ListChallengePacks(ctx context.Context) ([]ChallengePackSummary, error) {
@@ -2774,17 +2775,42 @@ func (r *Repository) ListRunnableChallengePVersionsByPackID(ctx context.Context,
 			return nil, err
 		}
 
+		deploymentDefaults, err := challengePackDeploymentDefaults(row.Manifest)
+		if err != nil {
+			return nil, fmt.Errorf("extract deployment defaults for challenge pack version %s: %w", row.ID, err)
+		}
+
 		versions = append(versions, ChallengePackVersionSummary{
-			ID:              row.ID,
-			ChallengePackID: row.ChallengePackID,
-			VersionNumber:   row.VersionNumber,
-			LifecycleStatus: row.LifecycleStatus,
-			CreatedAt:       createdAt,
-			UpdatedAt:       updatedAt,
+			ID:                 row.ID,
+			ChallengePackID:    row.ChallengePackID,
+			VersionNumber:      row.VersionNumber,
+			LifecycleStatus:    row.LifecycleStatus,
+			DeploymentDefaults: deploymentDefaults,
+			CreatedAt:          createdAt,
+			UpdatedAt:          updatedAt,
 		})
 	}
 
 	return versions, nil
+}
+
+func challengePackDeploymentDefaults(manifest json.RawMessage) (json.RawMessage, error) {
+	if len(manifest) == 0 {
+		return nil, nil
+	}
+
+	var decoded struct {
+		Version struct {
+			DeploymentDefaults json.RawMessage `json:"deployment_defaults"`
+		} `json:"version"`
+	}
+	if err := json.Unmarshal(manifest, &decoded); err != nil {
+		return nil, fmt.Errorf("decode challenge pack manifest: %w", err)
+	}
+	if len(decoded.Version.DeploymentDefaults) == 0 || string(decoded.Version.DeploymentDefaults) == "null" {
+		return nil, nil
+	}
+	return cloneJSON(decoded.Version.DeploymentDefaults), nil
 }
 
 var (

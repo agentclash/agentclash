@@ -22,6 +22,7 @@ type fakeChallengePackReadRepository struct {
 	lastWorkspaceID uuid.UUID
 	runnableVersion repository.RunnableChallengePackVersion
 	inputSets       []repository.ChallengeInputSetSummary
+	versionDefaults json.RawMessage
 }
 
 func (f *fakeChallengePackReadRepository) ListVisibleChallengePacks(_ context.Context, workspaceID uuid.UUID) ([]repository.ChallengePackSummary, error) {
@@ -40,12 +41,13 @@ func (f *fakeChallengePackReadRepository) ListVisibleChallengePacks(_ context.Co
 func (f *fakeChallengePackReadRepository) ListRunnableChallengePVersionsByPackID(_ context.Context, challengePackID uuid.UUID) ([]repository.ChallengePackVersionSummary, error) {
 	return []repository.ChallengePackVersionSummary{
 		{
-			ID:              uuid.New(),
-			ChallengePackID: challengePackID,
-			VersionNumber:   1,
-			LifecycleStatus: "runnable",
-			CreatedAt:       time.Now().UTC(),
-			UpdatedAt:       time.Now().UTC(),
+			ID:                 uuid.New(),
+			ChallengePackID:    challengePackID,
+			VersionNumber:      1,
+			LifecycleStatus:    "runnable",
+			DeploymentDefaults: f.versionDefaults,
+			CreatedAt:          time.Now().UTC(),
+			UpdatedAt:          time.Now().UTC(),
 		},
 	}, nil
 }
@@ -177,6 +179,45 @@ func TestListChallengePacksHandlerIncludesSlug(t *testing.T) {
 	}
 	if response.Items[0].Slug != "workspace-pack" {
 		t.Fatalf("slug = %q, want workspace-pack", response.Items[0].Slug)
+	}
+}
+
+func TestListChallengePacksHandlerIncludesDeploymentDefaults(t *testing.T) {
+	workspaceID := uuid.New()
+	manager := NewChallengePackReadManager(&fakeChallengePackReadRepository{
+		versionDefaults: json.RawMessage(`{"aliases":{"candidate":"Candidate Agent"},"lineups":{"default":["candidate"]}}`),
+	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	handler := listChallengePacksHandler(logger, manager)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/workspaces/"+workspaceID.String()+"/challenge-packs", nil)
+	req = req.WithContext(context.WithValue(req.Context(), workspaceIDContextKey{}, workspaceID))
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body = %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	var response listChallengePacksResponse
+	if err := json.NewDecoder(rec.Body).Decode(&response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(response.Items) != 1 || len(response.Items[0].Versions) != 1 {
+		t.Fatalf("versions = %+v, want one version", response.Items)
+	}
+	var defaults struct {
+		Aliases map[string]string   `json:"aliases"`
+		Lineups map[string][]string `json:"lineups"`
+	}
+	if err := json.Unmarshal(response.Items[0].Versions[0].DeploymentDefaults, &defaults); err != nil {
+		t.Fatalf("decode deployment defaults: %v", err)
+	}
+	if defaults.Aliases["candidate"] != "Candidate Agent" {
+		t.Fatalf("candidate alias = %q, want Candidate Agent", defaults.Aliases["candidate"])
+	}
+	if got := defaults.Lineups["default"]; len(got) != 1 || got[0] != "candidate" {
+		t.Fatalf("default lineup = %#v, want [candidate]", got)
 	}
 }
 

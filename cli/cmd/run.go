@@ -29,6 +29,7 @@ func init() {
 
 	runCreateCmd.Flags().String("challenge-pack-version", "", "Challenge pack version ID (optional in a TTY; prompted when omitted)")
 	runCreateCmd.Flags().StringSlice("deployments", nil, "Agent deployment IDs (optional in a TTY; prompted when omitted)")
+	runCreateCmd.Flags().String("deployment-lineup", "", "Challenge pack deployment lineup to use when --deployments is omitted (default: default)")
 	runCreateCmd.Flags().String("name", "", "Run name (optional)")
 	runCreateCmd.Flags().String("input-set", "", "Challenge input set ID (optional)")
 	runCreateCmd.Flags().Bool("follow", false, "Follow run events after creation")
