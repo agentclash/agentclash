@@ -220,14 +220,7 @@ func renderRunSeriesReport(rc *RunContext, result map[string]any) {
 	}
 
 	fmt.Fprintf(rc.Output.Writer(), "\n%s\n", output.Bold("Race Series Report"))
-	reportUsesComposite := false
-	for _, raw := range rowsRaw {
-		row, ok := raw.(map[string]any)
-		if ok && mapValue(row, "composite_agent_score") != nil {
-			reportUsesComposite = true
-			break
-		}
-	}
+	reportUsesComposite := mapString(report, "rank_metric") == "composite_agent_score"
 	cols := []output.Column{
 		{Header: "Rank"},
 		{Header: "Lineup"},
