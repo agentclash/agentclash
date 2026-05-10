@@ -39,9 +39,10 @@ func cloneToolCalls(toolCalls []provider.ToolCall) []provider.ToolCall {
 	cloned := make([]provider.ToolCall, 0, len(toolCalls))
 	for _, toolCall := range toolCalls {
 		cloned = append(cloned, provider.ToolCall{
-			ID:        toolCall.ID,
-			Name:      toolCall.Name,
-			Arguments: cloneJSON(toolCall.Arguments),
+			ID:               toolCall.ID,
+			Name:             toolCall.Name,
+			Arguments:        cloneJSON(toolCall.Arguments),
+			ThoughtSignature: toolCall.ThoughtSignature,
 		})
 	}
 	return cloned

@@ -36,9 +36,10 @@ func TestNativeExecutorHappyPathWritesFileThenSubmits(t *testing.T) {
 					FinishReason:    "tool_calls",
 					ToolCalls: []provider.ToolCall{
 						{
-							ID:        "call-write",
-							Name:      writeFileToolName,
-							Arguments: []byte(`{"path":"/workspace/result.txt","content":"done"}`),
+							ID:               "call-write",
+							Name:             writeFileToolName,
+							Arguments:        []byte(`{"path":"/workspace/result.txt","content":"done"}`),
+							ThoughtSignature: "sig-write",
 						},
 					},
 				},
@@ -54,6 +55,10 @@ func TestNativeExecutorHappyPathWritesFileThenSubmits(t *testing.T) {
 					}
 					if last.IsError {
 						t.Fatalf("tool result unexpectedly marked as error")
+					}
+					assistant := request.Messages[len(request.Messages)-2]
+					if len(assistant.ToolCalls) != 1 || assistant.ToolCalls[0].ThoughtSignature != "sig-write" {
+						t.Fatalf("assistant tool calls = %#v, want preserved thought signature", assistant.ToolCalls)
 					}
 				},
 				response: provider.Response{
