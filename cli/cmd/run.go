@@ -590,6 +590,16 @@ func fmtScore(v any) string {
 	return fmt.Sprint(v)
 }
 
+func fmtUSD(v any) string {
+	if v == nil {
+		return "-"
+	}
+	if f, ok := v.(float64); ok {
+		return fmt.Sprintf("$%.4f", f)
+	}
+	return fmt.Sprint(v)
+}
+
 func formatDimensionSummary(v any) string {
 	dimension, ok := v.(map[string]any)
 	if !ok {

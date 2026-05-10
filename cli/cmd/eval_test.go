@@ -111,6 +111,7 @@ func TestEvalScorecardJSONEnvelopeIncludesBaselineComparisonAndGate(t *testing.T
 			"run_agent_id":     "agent-candidate",
 			"run_agent_status": "completed",
 			"overall_score":    0.91,
+			"total_cost_usd":   0.0123,
 		}),
 		"GET /v1/compare": jsonHandler(200, map[string]any{
 			"state":      "comparable",
@@ -142,6 +143,10 @@ func TestEvalScorecardJSONEnvelopeIncludesBaselineComparisonAndGate(t *testing.T
 
 	if payload["candidate"] == nil || payload["baseline"] == nil || payload["comparison"] == nil || payload["release_gate"] == nil {
 		t.Fatalf("eval scorecard payload missing workflow envelope fields: %#v", payload)
+	}
+	scorecard := mapObject(payload, "scorecard")
+	if got := scorecard["total_cost_usd"]; got != 0.0123 {
+		t.Fatalf("total_cost_usd = %v, want 0.0123", got)
 	}
 }
 

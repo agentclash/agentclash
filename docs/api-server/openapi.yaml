@@ -8834,6 +8834,10 @@ components:
         cost_score:
           type: number
           format: double
+        total_cost_usd:
+          type: number
+          format: double
+          description: Total model cost in USD for this run agent, derived from stored scorecard cost metrics.
         behavioral_score:
           type: number
           format: double
