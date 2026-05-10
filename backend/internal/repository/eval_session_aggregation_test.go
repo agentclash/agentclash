@@ -665,6 +665,31 @@ func TestBuildEvalSessionSeriesReportKeepsMixedMetricsBelowCompositeRows(t *test
 	}
 }
 
+func TestEvalSessionParticipantSuccessRateWeightsObservedTrials(t *testing.T) {
+	successRate, ok := evalSessionParticipantSuccessRate(evalSessionParticipantAggregate{
+		TaskSuccess: []evalSessionTaskSuccess{
+			{
+				TaskKey:          "sparse-pass",
+				ObservedTrials:   1,
+				SuccessfulTrials: 1,
+				SuccessRate:      1,
+			},
+			{
+				TaskKey:          "dense-failures",
+				ObservedTrials:   9,
+				SuccessfulTrials: 0,
+				SuccessRate:      0,
+			},
+		},
+	})
+	if !ok {
+		t.Fatal("success rate unresolved, want weighted rate")
+	}
+	if math.Abs(successRate-0.1) > 1e-9 {
+		t.Fatalf("success rate = %f, want 0.1", successRate)
+	}
+}
+
 func TestEvalSessionAgentWithScorecardCostBackfillsOldRunScorecardSummary(t *testing.T) {
 	agent := evalSessionAgentWithScorecardCost(runScorecardAgentSummary{
 		RunAgentID:   uuid.New(),

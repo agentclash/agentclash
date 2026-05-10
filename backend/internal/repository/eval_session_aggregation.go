@@ -1511,11 +1511,16 @@ func evalSessionParticipantSuccessRate(participant evalSessionParticipantAggrega
 	if len(participant.TaskSuccess) == 0 {
 		return 0, false
 	}
-	values := make([]float64, 0, len(participant.TaskSuccess))
+	successfulTrials := 0
+	observedTrials := 0
 	for _, task := range participant.TaskSuccess {
-		values = append(values, task.SuccessRate)
+		successfulTrials += task.SuccessfulTrials
+		observedTrials += task.ObservedTrials
 	}
-	return kahanMean(values), true
+	if observedTrials == 0 {
+		return 0, false
+	}
+	return float64(successfulTrials) / float64(observedTrials), true
 }
 
 func buildEvalSessionCostAggregate(values []float64) evalSessionCostAggregate {

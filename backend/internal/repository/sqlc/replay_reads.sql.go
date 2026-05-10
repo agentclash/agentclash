@@ -64,6 +64,7 @@ SELECT
     updated_at
 FROM run_agent_scorecards
 WHERE run_agent_id = $1
+ORDER BY updated_at DESC, id DESC
 LIMIT 1
 `
 
@@ -109,7 +110,7 @@ func (q *Queries) GetRunAgentScorecardByRunAgentID(ctx context.Context, arg GetR
 }
 
 const listRunAgentScorecardsByRunID = `-- name: ListRunAgentScorecardsByRunID :many
-SELECT
+SELECT DISTINCT ON (sc.run_agent_id)
     sc.id,
     sc.run_agent_id,
     sc.evaluation_spec_id,
@@ -126,7 +127,7 @@ SELECT
 FROM run_agent_scorecards sc
 JOIN run_agents ra ON ra.id = sc.run_agent_id
 WHERE ra.run_id = $1
-ORDER BY ra.lane_index, ra.label, sc.run_agent_id
+ORDER BY sc.run_agent_id, sc.updated_at DESC, sc.id DESC
 `
 
 type ListRunAgentScorecardsByRunIDParams struct {
