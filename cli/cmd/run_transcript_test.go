@@ -281,6 +281,99 @@ func TestRunTranscriptStructuredOutputWrapsMarkdown(t *testing.T) {
 	}
 }
 
+func TestRunTranscriptSortsEventsBySequence(t *testing.T) {
+	jsonl := transcriptJSONL(t,
+		map[string]any{
+			"event_id":        "event-2",
+			"run_id":          "run-1",
+			"run_agent_id":    "agent-1",
+			"sequence_number": 2,
+			"event_type":      "system.run.completed",
+			"occurred_at":     "2026-05-10T10:00:02Z",
+			"payload":         map[string]any{},
+		},
+		map[string]any{
+			"event_id":        "event-1",
+			"run_id":          "run-1",
+			"run_agent_id":    "agent-1",
+			"sequence_number": 1,
+			"event_type":      "system.run.started",
+			"occurred_at":     "2026-05-10T10:00:01Z",
+			"payload":         map[string]any{},
+		},
+	)
+
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"GET /v1/runs/run-1/agents": jsonHandler(http.StatusOK, map[string]any{
+			"items": []map[string]any{{"id": "agent-1", "label": "candidate"}},
+		}),
+		"GET /v1/runs/run-1/events/export": func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			fmt.Fprint(w, jsonl)
+		},
+	})
+	defer srv.Close()
+
+	stdout := captureStdout(t)
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+	if err := executeCommand(t, []string{"run", "transcript", "run-1"}, srv.URL); err != nil {
+		t.Fatalf("run transcript error: %v", err)
+	}
+	out := stdout.finish()
+
+	started := strings.Index(out, "### Run started")
+	completed := strings.Index(out, "### Run completed")
+	if started == -1 || completed == -1 || started > completed {
+		t.Fatalf("transcript should sort events by sequence\n---\n%s", out)
+	}
+}
+
+func TestRunTranscriptEscapesInlineHTML(t *testing.T) {
+	jsonl := transcriptJSONL(t,
+		map[string]any{
+			"event_id":        "event-1",
+			"run_id":          "run-1",
+			"run_agent_id":    "agent-1",
+			"sequence_number": 1,
+			"event_type":      "tool.call.failed",
+			"occurred_at":     "2026-05-10T10:00:00Z",
+			"payload": map[string]any{
+				"tool_name":  "<script>",
+				"error_code": "<timeout>",
+			},
+		},
+	)
+
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"GET /v1/runs/run-1/agents": jsonHandler(http.StatusOK, map[string]any{
+			"items": []map[string]any{{"id": "agent-1", "label": "<b>winner</b>"}},
+		}),
+		"GET /v1/runs/run-1/events/export": func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			fmt.Fprint(w, jsonl)
+		},
+	})
+	defer srv.Close()
+
+	stdout := captureStdout(t)
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+	if err := executeCommand(t, []string{"run", "transcript", "run-1"}, srv.URL); err != nil {
+		t.Fatalf("run transcript error: %v", err)
+	}
+	out := stdout.finish()
+
+	for _, raw := range []string{"<b>winner</b>", "<script>", "<timeout>"} {
+		if strings.Contains(out, raw) {
+			t.Fatalf("transcript should escape raw inline HTML %q\n---\n%s", raw, out)
+		}
+	}
+	for _, escaped := range []string{"&lt;b&gt;winner&lt;/b&gt;", "&lt;script&gt;", "&lt;timeout&gt;"} {
+		if !strings.Contains(out, escaped) {
+			t.Fatalf("transcript missing escaped inline HTML %q\n---\n%s", escaped, out)
+		}
+	}
+}
+
 func transcriptJSONL(t *testing.T, events ...map[string]any) string {
 	t.Helper()
 	var b strings.Builder

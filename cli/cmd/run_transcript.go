@@ -63,6 +63,7 @@ func buildRunMarkdownTranscript(cmd *cobra.Command, rc *RunContext, runID string
 	if err != nil {
 		return "", err
 	}
+	sortTranscriptEvents(events)
 	return renderRunMarkdownTranscript(runID, agents, events), nil
 }
 
@@ -119,6 +120,23 @@ func fetchTranscriptEvents(cmd *cobra.Command, rc *RunContext, runID string) ([]
 		events = append(events, event)
 	}
 	return events, nil
+}
+
+func sortTranscriptEvents(events []transcriptEvent) {
+	sort.SliceStable(events, func(i, j int) bool {
+		left := events[i]
+		right := events[j]
+		if left.SequenceNumber != right.SequenceNumber {
+			return left.SequenceNumber < right.SequenceNumber
+		}
+		if left.OccurredAt != right.OccurredAt {
+			return left.OccurredAt < right.OccurredAt
+		}
+		if left.RunAgentID != right.RunAgentID {
+			return left.RunAgentID < right.RunAgentID
+		}
+		return left.EventID < right.EventID
+	})
 }
 
 func renderRunMarkdownTranscript(runID string, agents map[string]transcriptAgent, events []transcriptEvent) string {
@@ -387,6 +405,8 @@ func markdownInline(value string) string {
 		")", "\\)",
 		"|", "\\|",
 		"#", "\\#",
+		"<", "&lt;",
+		">", "&gt;",
 	)
 	return replacer.Replace(value)
 }
