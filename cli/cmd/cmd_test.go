@@ -266,6 +266,24 @@ func TestRunCancelCallsCorrectEndpoint(t *testing.T) {
 	}
 }
 
+func TestRunCancelSuccessMessageDistinguishesNoop(t *testing.T) {
+	tests := []struct {
+		status string
+		want   string
+	}{
+		{status: "cancelled", want: "Run run-456 cancelled"},
+		{status: "completed", want: "Run run-456 is already completed; no cancellation performed"},
+		{status: "failed", want: "Run run-456 is already failed; no cancellation performed"},
+		{status: "running", want: "Run run-456 status is running"},
+	}
+
+	for _, tc := range tests {
+		if got := runCancelSuccessMessage("run-456", tc.status); got != tc.want {
+			t.Fatalf("runCancelSuccessMessage(%q) = %q, want %q", tc.status, got, tc.want)
+		}
+	}
+}
+
 func TestRunEventsUsesAuthorizationHeaderWithoutQueryToken(t *testing.T) {
 	var called bool
 	var gotAuth string

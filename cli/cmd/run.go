@@ -170,10 +170,22 @@ var runCancelCmd = &cobra.Command{
 			return rc.Output.PrintRaw(run)
 		}
 
-		rc.Output.PrintSuccess(fmt.Sprintf("Run %s status updated", args[0]))
-		rc.Output.PrintDetail("Status", output.StatusColor(str(run["status"])))
+		status := str(run["status"])
+		rc.Output.PrintSuccess(runCancelSuccessMessage(args[0], status))
+		rc.Output.PrintDetail("Status", output.StatusColor(status))
 		return nil
 	},
+}
+
+func runCancelSuccessMessage(runID, status string) string {
+	switch status {
+	case "cancelled":
+		return fmt.Sprintf("Run %s cancelled", runID)
+	case "completed", "failed":
+		return fmt.Sprintf("Run %s is already %s; no cancellation performed", runID, status)
+	default:
+		return fmt.Sprintf("Run %s status is %s", runID, status)
+	}
 }
 
 var runCreateCmd = &cobra.Command{
