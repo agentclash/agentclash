@@ -685,8 +685,8 @@ func TestRunCreationManagerCreateEvalSessionPersistsSeedFanout(t *testing.T) {
 		createEvalSessionWithRunsResult: repository.CreateEvalSessionWithQueuedRunsResult{
 			Session: domain.EvalSession{ID: sessionID, Status: domain.EvalSessionStatusQueued, Repetitions: 2, SchemaVersion: 1},
 			Runs: []domain.Run{
-				{ID: firstRunID, EvalSessionID: &sessionID},
-				{ID: secondRunID, EvalSessionID: &sessionID},
+				{ID: secondRunID, EvalSessionID: &sessionID, ExecutionPlan: json.RawMessage(`{"seed":2}`)},
+				{ID: firstRunID, EvalSessionID: &sessionID, ExecutionPlan: json.RawMessage(`{"seed":1}`)},
 			},
 		},
 	}
@@ -720,8 +720,8 @@ func TestRunCreationManagerCreateEvalSessionPersistsSeedFanout(t *testing.T) {
 		t.Fatalf("CreateEvalSession returned error: %v", err)
 	}
 
-	if len(result.SeededRuns) != 2 || result.SeededRuns[0].RunID != firstRunID || result.SeededRuns[0].Seed != 1 || result.SeededRuns[1].RunID != secondRunID || result.SeededRuns[1].Seed != 2 {
-		t.Fatalf("seeded runs = %+v, want run/seed pairs", result.SeededRuns)
+	if len(result.SeededRuns) != 2 || result.SeededRuns[0].RunID != secondRunID || result.SeededRuns[0].Seed != 2 || result.SeededRuns[1].RunID != firstRunID || result.SeededRuns[1].Seed != 1 {
+		t.Fatalf("seeded runs = %+v, want run/seed pairs extracted from execution plans", result.SeededRuns)
 	}
 	if got := executionPlanTestSeed(t, repo.createEvalSessionWithRunsParams.Runs[0].ExecutionPlan); got != 1 {
 		t.Fatalf("first execution plan seed = %d, want 1", got)

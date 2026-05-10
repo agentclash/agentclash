@@ -388,12 +388,12 @@ func (m *RunCreationManager) CreateEvalSession(ctx context.Context, caller Calle
 
 	runIDs := make([]uuid.UUID, 0, len(createResult.Runs))
 	seededRuns := make([]EvalSessionSeededRun, 0, len(input.EvalSession.SeedFanout))
-	for index, run := range createResult.Runs {
+	for _, run := range createResult.Runs {
 		runIDs = append(runIDs, run.ID)
-		if index < len(input.EvalSession.SeedFanout) {
+		if seed := evalSessionChildRunSeed(run.ExecutionPlan); seed != nil {
 			seededRuns = append(seededRuns, EvalSessionSeededRun{
 				RunID: run.ID,
-				Seed:  input.EvalSession.SeedFanout[index],
+				Seed:  *seed,
 			})
 		}
 	}
