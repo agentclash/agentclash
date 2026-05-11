@@ -59,6 +59,7 @@ type CreateAgentBuildInput struct {
 }
 
 type CreateAgentBuildVersionInput struct {
+	Template         string
 	AgentKind        string
 	InterfaceSpec    json.RawMessage
 	PolicySpec       json.RawMessage
@@ -136,6 +137,10 @@ func (m *AgentBuildManager) ListVersions(ctx context.Context, agentBuildID uuid.
 
 func (m *AgentBuildManager) CreateVersion(ctx context.Context, caller Caller, agentBuildID uuid.UUID, input CreateAgentBuildVersionInput) (repository.AgentBuildVersion, error) {
 	_, err := m.repo.GetAgentBuildByID(ctx, agentBuildID)
+	if err != nil {
+		return repository.AgentBuildVersion{}, err
+	}
+	input, err = applyAgentBuildVersionTemplate(input)
 	if err != nil {
 		return repository.AgentBuildVersion{}, err
 	}
@@ -362,6 +367,7 @@ type createAgentBuildRequest struct {
 }
 
 type createAgentBuildVersionRequest struct {
+	Template         string                          `json:"template,omitempty"`
 	AgentKind        string                          `json:"agent_kind"`
 	InterfaceSpec    json.RawMessage                 `json:"interface_spec"`
 	PolicySpec       json.RawMessage                 `json:"policy_spec"`
@@ -453,6 +459,10 @@ type knowledgeSourceBindingResponse struct {
 
 type listAgentBuildsResponse struct {
 	Items []agentBuildResponse `json:"items"`
+}
+
+type listAgentBuildVersionTemplatesResponse struct {
+	Items []agentBuildVersionTemplateResponse `json:"items"`
 }
 
 type validationErrorDetail struct {
@@ -562,6 +572,14 @@ func listAgentBuildsHandler(logger *slog.Logger, service AgentBuildService) http
 		}
 
 		writeJSON(w, http.StatusOK, listAgentBuildsResponse{Items: items})
+	}
+}
+
+func listAgentBuildVersionTemplatesHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, listAgentBuildVersionTemplatesResponse{
+			Items: listAgentBuildVersionTemplateResponses(),
+		})
 	}
 }
 
@@ -1084,6 +1102,7 @@ func decodeCreateAgentBuildVersionInput(body createAgentBuildVersionRequest) (Cr
 	}
 
 	return CreateAgentBuildVersionInput{
+		Template:         body.Template,
 		AgentKind:        body.AgentKind,
 		InterfaceSpec:    body.InterfaceSpec,
 		PolicySpec:       body.PolicySpec,
