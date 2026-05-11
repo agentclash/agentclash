@@ -109,8 +109,8 @@ func ValidateEvaluationSpec(spec EvaluationSpec) error {
 			} else if !isSupportedEvidenceReference(validator.ExpectedFrom) {
 				errs = append(errs, ValidationError{Field: path + ".expected_from", Message: "must be a supported evidence reference"})
 			}
-		} else if validator.Type == ValidatorTypeToolCallAssertion && strings.TrimSpace(validator.ExpectedFrom) != "" {
-			errs = append(errs, ValidationError{Field: path + ".expected_from", Message: "must be omitted for tool_call_assertion validators"})
+		} else if (validator.Type == ValidatorTypeToolCallAssertion || validator.Type == ValidatorTypePostcondition) && strings.TrimSpace(validator.ExpectedFrom) != "" {
+			errs = append(errs, ValidationError{Field: path + ".expected_from", Message: fmt.Sprintf("must be omitted for %s validators", validator.Type)})
 		}
 		if validator.Type.IsFileValidator() {
 			if strings.TrimSpace(validator.Target) != "" && !strings.HasPrefix(validator.Target, "file:") {
@@ -125,6 +125,12 @@ func ValidateEvaluationSpec(spec EvaluationSpec) error {
 				errs = append(errs, ValidationError{Field: path + ".target", Message: fmt.Sprintf("references unknown post_execution_check key %q", refKey)})
 			case check.Type != PostExecutionCheckTypeFileCapture:
 				errs = append(errs, ValidationError{Field: path + ".target", Message: fmt.Sprintf("must reference a %s post_execution_check", PostExecutionCheckTypeFileCapture)})
+			}
+		}
+		if validator.Type == ValidatorTypePostcondition {
+			refKey := strings.TrimPrefix(validator.Target, "file:")
+			if _, exists := findPostExecutionCheck(spec.PostExecutionChecks, refKey); !exists {
+				errs = append(errs, ValidationError{Field: path + ".target", Message: fmt.Sprintf("references unknown post_execution_check key %q", refKey)})
 			}
 		}
 	}
@@ -635,12 +641,14 @@ func isSupportedEvidenceReference(value string) bool {
 }
 
 func validateValidatorConfig(validator ValidatorDeclaration, path string) ValidationErrors {
-	if len(validator.Config) == 0 && validator.Type != ValidatorTypeToolCallAssertion {
-		return nil
-	}
-
 	var errs ValidationErrors
 	configPath := path + ".config"
+	if len(validator.Config) == 0 && validator.Type != ValidatorTypeToolCallAssertion {
+		if validator.Type == ValidatorTypePostcondition {
+			return append(errs, ValidationError{Field: configPath, Message: "is required"})
+		}
+		return nil
+	}
 
 	switch validator.Type {
 	case ValidatorTypeFuzzyMatch:
@@ -788,6 +796,13 @@ func validateValidatorConfig(validator ValidatorDeclaration, path string) Valida
 			return errs
 		}
 		errs = append(errs, validateToolCallAssertionConfig(cfg, configPath)...)
+	case ValidatorTypePostcondition:
+		cfg, err := ParsePostconditionConfig(validator.Config)
+		if err != nil {
+			errs = append(errs, ValidationError{Field: configPath, Message: configParseErrorMessage(err)})
+			return errs
+		}
+		errs = append(errs, validatePostconditionConfig(cfg, configPath)...)
 	}
 
 	return errs

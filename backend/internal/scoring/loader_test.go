@@ -724,6 +724,41 @@ func TestLoadEvaluationSpecAcceptsCodeExecutionValidator(t *testing.T) {
 	}
 }
 
+func TestLoadEvaluationSpecAcceptsPostconditionValidator(t *testing.T) {
+	spec, err := LoadEvaluationSpec(json.RawMessage(`{
+		"evaluation_spec": {
+			"name": "postcondition",
+			"version_number": 1,
+			"judge_mode": "deterministic",
+			"validators": [
+				{
+					"key": "output_ok",
+					"type": "postcondition",
+					"target": "file:output_file",
+					"config": {
+						"condition": "json_path_match",
+						"json_path": "$.status",
+						"value": "ok"
+					}
+				}
+			],
+			"post_execution_checks": [
+				{"key": "output_file", "type": "file_capture", "path": "/workspace/output.json"}
+			],
+			"scorecard": {
+				"dimensions": ["correctness"]
+			}
+		}
+	}`))
+	if err != nil {
+		t.Fatalf("LoadEvaluationSpec returned error: %v", err)
+	}
+
+	if spec.Validators[0].Type != ValidatorTypePostcondition {
+		t.Fatalf("validator type = %s, want %s", spec.Validators[0].Type, ValidatorTypePostcondition)
+	}
+}
+
 func TestLoadEvaluationSpecRejectsPassAtKCodeExecution(t *testing.T) {
 	_, err := LoadEvaluationSpec(json.RawMessage(`{
 		"evaluation_spec": {

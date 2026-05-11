@@ -38,6 +38,7 @@ const (
 	ValidatorTypeDirectoryStructure ValidatorType = "directory_structure"
 	ValidatorTypeCodeExecution      ValidatorType = "code_execution"
 	ValidatorTypeToolCallAssertion  ValidatorType = "tool_call_assertion"
+	ValidatorTypePostcondition      ValidatorType = "postcondition"
 )
 
 type MetricType string
@@ -338,7 +339,7 @@ func (t ValidatorType) IsValid() bool {
 		ValidatorTypeMathEquivalence, ValidatorTypeBLEUScore, ValidatorTypeROUGEScore, ValidatorTypeChrFScore,
 		ValidatorTypeFileContentMatch, ValidatorTypeFileExists,
 		ValidatorTypeFileJSONSchema, ValidatorTypeDirectoryStructure,
-		ValidatorTypeCodeExecution, ValidatorTypeToolCallAssertion:
+		ValidatorTypeCodeExecution, ValidatorTypeToolCallAssertion, ValidatorTypePostcondition:
 		return true
 	default:
 		return false
@@ -351,7 +352,7 @@ func (t ValidatorType) IsFileValidator() bool {
 	switch t {
 	case ValidatorTypeFileContentMatch, ValidatorTypeFileExists,
 		ValidatorTypeFileJSONSchema, ValidatorTypeDirectoryStructure,
-		ValidatorTypeCodeExecution:
+		ValidatorTypeCodeExecution, ValidatorTypePostcondition:
 		return true
 	default:
 		return false
@@ -363,7 +364,7 @@ func (t ValidatorType) IsFileValidator() bool {
 // (file_exists, file_json_schema, directory_structure) return false.
 func (t ValidatorType) RequiresExpectedFrom() bool {
 	switch t {
-	case ValidatorTypeFileExists, ValidatorTypeFileJSONSchema, ValidatorTypeDirectoryStructure, ValidatorTypeCodeExecution, ValidatorTypeToolCallAssertion:
+	case ValidatorTypeFileExists, ValidatorTypeFileJSONSchema, ValidatorTypeDirectoryStructure, ValidatorTypeCodeExecution, ValidatorTypeToolCallAssertion, ValidatorTypePostcondition:
 		return false
 	default:
 		return true
