@@ -67,6 +67,17 @@ func (f *Formatter) Writer() io.Writer {
 	return f.writer
 }
 
+// SetWriters overrides output streams. It is primarily useful for focused
+// command rendering tests that should not mutate process-wide stdout/stderr.
+func (f *Formatter) SetWriters(writer, errw io.Writer) {
+	if writer != nil {
+		f.writer = writer
+	}
+	if errw != nil {
+		f.errw = errw
+	}
+}
+
 // PrintTable renders a table to stdout.
 func (f *Formatter) PrintTable(columns []Column, rows [][]string) {
 	if len(rows) == 0 {

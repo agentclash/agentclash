@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/agentclash/agentclash/cli/internal/auth"
+	"github.com/agentclash/agentclash/cli/internal/output"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -726,6 +728,39 @@ func TestInfraModelAliasCreateValidatesRequiredFields(t *testing.T) {
 	}
 	if called {
 		t.Fatal("request was sent despite validation error")
+	}
+}
+
+func TestPrintModelAliasDetailsPrintsPricingAndDriftWarning(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	formatter := output.NewFormatter(output.FormatTable, false, false)
+	formatter.SetWriters(&stdout, &stderr)
+
+	printModelAliasDetails(formatter, map[string]any{
+		"id":                                     "alias-1",
+		"alias_key":                              "fast-model",
+		"display_name":                           "Fast Model",
+		"status":                                 "active",
+		"provider_key":                           "openai",
+		"provider_model_id":                      "gpt-4.1-mini",
+		"model_display_name":                     "GPT 4.1 Mini",
+		"model_catalog_entry_id":                 "model-1",
+		"provider_account_id":                    "provider-1",
+		"input_cost_per_million_tokens":          0.4,
+		"output_cost_per_million_tokens":         1.6,
+		"catalog_input_cost_per_million_tokens":  0.5,
+		"catalog_output_cost_per_million_tokens": 2.0,
+		"pricing_drift_warning":                  "alias pricing differs from current catalog pricing",
+	})
+
+	for _, want := range []string{"Input / 1M", "0.4", "Catalog Output / 1M", "2"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("stdout missing %q:\n%s", want, stdout.String())
+		}
+	}
+	if !strings.Contains(stderr.String(), "alias pricing differs from current catalog pricing") {
+		t.Fatalf("stderr missing drift warning:\n%s", stderr.String())
 	}
 }
 
