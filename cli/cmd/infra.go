@@ -46,9 +46,17 @@ var infraResources = []infraResource{
 		Name: "model-alias", Plural: "model-aliases",
 		ListPath: "/v1/workspaces/%s/model-aliases", CreatePath: "/v1/workspaces/%s/model-aliases",
 		GetPath: "/v1/model-aliases/%s", DeletePath: "/v1/model-aliases/%s",
-		Columns: []output.Column{{Header: "ID"}, {Header: "Alias Key"}, {Header: "Display Name"}, {Header: "Status"}, {Header: "Created"}},
+		Columns: []output.Column{{Header: "ID"}, {Header: "Alias Key"}, {Header: "Model"}, {Header: "Input/M"}, {Header: "Output/M"}, {Header: "Status"}, {Header: "Created"}},
 		RowMapper: func(item map[string]any) []string {
-			return []string{str(item["id"]), str(item["alias_key"]), str(item["display_name"]), output.StatusColor(str(item["status"])), str(item["created_at"])}
+			return []string{
+				str(item["id"]),
+				str(item["alias_key"]),
+				modelAliasModelLabel(item),
+				fmtPricingRate(item["input_cost_per_million_tokens"]),
+				fmtPricingRate(item["output_cost_per_million_tokens"]),
+				output.StatusColor(str(item["status"])),
+				str(item["created_at"]),
+			}
 		},
 	},
 	{
@@ -216,6 +224,10 @@ func newInfraResourceCmd(res infraResource) *cobra.Command {
 					return err
 				}
 
+				if !rc.Output.IsStructured() && res.Name == "model-alias" {
+					printModelAliasDetails(rc.Output, item)
+					return nil
+				}
 				return rc.Output.PrintRaw(item)
 			},
 		}
@@ -348,6 +360,49 @@ func printProviderAccountTestResult(formatter *output.Formatter, result map[stri
 	}
 }
 
+func printModelAliasDetails(formatter *output.Formatter, alias map[string]any) {
+	formatter.PrintDetail("ID", str(alias["id"]))
+	formatter.PrintDetail("Alias Key", str(alias["alias_key"]))
+	formatter.PrintDetail("Display Name", str(alias["display_name"]))
+	formatter.PrintDetail("Status", output.StatusColor(str(alias["status"])))
+	formatter.PrintDetail("Provider", str(alias["provider_key"]))
+	formatter.PrintDetail("Model", str(alias["provider_model_id"]))
+	formatter.PrintDetail("Model Name", str(alias["model_display_name"]))
+	formatter.PrintDetail("Model Catalog", str(alias["model_catalog_entry_id"]))
+	if providerAccountID := str(alias["provider_account_id"]); providerAccountID != "" {
+		formatter.PrintDetail("Provider Account", providerAccountID)
+	}
+	formatter.PrintDetail("Input / 1M", fmtPricingRate(alias["input_cost_per_million_tokens"]))
+	formatter.PrintDetail("Output / 1M", fmtPricingRate(alias["output_cost_per_million_tokens"]))
+	formatter.PrintDetail("Catalog Input / 1M", fmtPricingRate(alias["catalog_input_cost_per_million_tokens"]))
+	formatter.PrintDetail("Catalog Output / 1M", fmtPricingRate(alias["catalog_output_cost_per_million_tokens"]))
+	if warning := str(alias["pricing_drift_warning"]); warning != "" {
+		formatter.PrintWarning(warning)
+	}
+}
+
+func modelAliasModelLabel(item map[string]any) string {
+	provider := str(item["provider_key"])
+	model := str(item["provider_model_id"])
+	if provider == "" {
+		return model
+	}
+	if model == "" {
+		return provider
+	}
+	return provider + "/" + model
+}
+
+func fmtPricingRate(v any) string {
+	if v == nil {
+		return "-"
+	}
+	if f, ok := v.(float64); ok {
+		return strings.TrimRight(strings.TrimRight(fmt.Sprintf("%.6f", f), "0"), ".")
+	}
+	return str(v)
+}
+
 func addInfraCreateFlags(cmd *cobra.Command, resourceName string) {
 	switch resourceName {
 	case "model-alias":
@@ -475,6 +530,8 @@ var modelCatalogGetCmd = &cobra.Command{
 		rc.Output.PrintDetail("Family", str(entry["model_family"]))
 		rc.Output.PrintDetail("Modality", str(entry["modality"]))
 		rc.Output.PrintDetail("Status", output.StatusColor(str(entry["lifecycle_status"])))
+		rc.Output.PrintDetail("Input / 1M", fmtPricingRate(entry["input_cost_per_million_tokens"]))
+		rc.Output.PrintDetail("Output / 1M", fmtPricingRate(entry["output_cost_per_million_tokens"]))
 
 		if md, ok := entry["metadata"]; ok && md != nil {
 			mdJSON, _ := json.MarshalIndent(md, "", "  ")

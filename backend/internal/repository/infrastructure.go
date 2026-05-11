@@ -273,18 +273,18 @@ func (r *Repository) ArchiveProviderAccount(ctx context.Context, id uuid.UUID) e
 // --------------------------------------------------------------------------
 
 type ModelCatalogEntryRow struct {
-	ID                          uuid.UUID
-	ProviderKey                 string
-	ProviderModelID             string
-	DisplayName                 string
-	ModelFamily                 string
-	Modality                    string
-	LifecycleStatus             string
-	Metadata                    json.RawMessage
-	InputCostPerMillionTokens   float64
-	OutputCostPerMillionTokens  float64
-	CreatedAt                   time.Time
-	UpdatedAt                   time.Time
+	ID                         uuid.UUID
+	ProviderKey                string
+	ProviderModelID            string
+	DisplayName                string
+	ModelFamily                string
+	Modality                   string
+	LifecycleStatus            string
+	Metadata                   json.RawMessage
+	InputCostPerMillionTokens  float64
+	OutputCostPerMillionTokens float64
+	CreatedAt                  time.Time
+	UpdatedAt                  time.Time
 }
 
 func (r *Repository) GetModelCatalogEntryByID(ctx context.Context, id uuid.UUID) (ModelCatalogEntryRow, error) {
@@ -315,9 +315,11 @@ func (r *Repository) UpsertModelCatalogEntry(ctx context.Context, providerKey, p
 		INSERT INTO model_catalog_entries (provider_key, provider_model_id, display_name, model_family, modality)
 		VALUES ($1, $2, $2, $2, 'text')
 		ON CONFLICT (provider_key, provider_model_id) DO UPDATE SET updated_at = now()
-		RETURNING id, provider_key, provider_model_id, display_name, model_family, modality, lifecycle_status, metadata, created_at, updated_at
+		RETURNING id, provider_key, provider_model_id, display_name, model_family, modality, lifecycle_status, metadata,
+			input_cost_per_million_tokens, output_cost_per_million_tokens, created_at, updated_at
 	`, providerKey, providerModelID).Scan(&row.ID, &row.ProviderKey, &row.ProviderModelID, &row.DisplayName, &row.ModelFamily,
-		&row.Modality, &row.LifecycleStatus, &row.Metadata, &createdAt, &updatedAt)
+		&row.Modality, &row.LifecycleStatus, &row.Metadata,
+		&row.InputCostPerMillionTokens, &row.OutputCostPerMillionTokens, &createdAt, &updatedAt)
 	if err != nil {
 		return ModelCatalogEntryRow{}, fmt.Errorf("upsert model catalog entry: %w", err)
 	}
@@ -330,10 +332,12 @@ func (r *Repository) GetModelCatalogEntryByProviderModel(ctx context.Context, pr
 	var row ModelCatalogEntryRow
 	var createdAt, updatedAt pgtype.Timestamptz
 	err := r.db.QueryRow(ctx, `
-		SELECT id, provider_key, provider_model_id, display_name, model_family, modality, lifecycle_status, metadata, created_at, updated_at
+		SELECT id, provider_key, provider_model_id, display_name, model_family, modality, lifecycle_status, metadata,
+			input_cost_per_million_tokens, output_cost_per_million_tokens, created_at, updated_at
 		FROM model_catalog_entries WHERE provider_key = $1 AND provider_model_id = $2
 	`, providerKey, providerModelID).Scan(&row.ID, &row.ProviderKey, &row.ProviderModelID, &row.DisplayName, &row.ModelFamily,
-		&row.Modality, &row.LifecycleStatus, &row.Metadata, &createdAt, &updatedAt)
+		&row.Modality, &row.LifecycleStatus, &row.Metadata,
+		&row.InputCostPerMillionTokens, &row.OutputCostPerMillionTokens, &createdAt, &updatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ModelCatalogEntryRow{}, ErrModelCatalogNotFound
@@ -385,16 +389,23 @@ func (r *Repository) ListModelCatalogEntries(ctx context.Context) ([]ModelCatalo
 // --------------------------------------------------------------------------
 
 type ModelAliasRow struct {
-	ID                  uuid.UUID
-	OrganizationID      uuid.UUID
-	WorkspaceID         *uuid.UUID
-	ProviderAccountID   *uuid.UUID
-	ModelCatalogEntryID uuid.UUID
-	AliasKey            string
-	DisplayName         string
-	Status              string
-	CreatedAt           time.Time
-	UpdatedAt           time.Time
+	ID                                uuid.UUID
+	OrganizationID                    uuid.UUID
+	WorkspaceID                       *uuid.UUID
+	ProviderAccountID                 *uuid.UUID
+	ModelCatalogEntryID               uuid.UUID
+	AliasKey                          string
+	DisplayName                       string
+	Status                            string
+	InputCostPerMillionTokens         float64
+	OutputCostPerMillionTokens        float64
+	CatalogProviderKey                string
+	CatalogProviderModelID            string
+	CatalogDisplayName                string
+	CatalogInputCostPerMillionTokens  float64
+	CatalogOutputCostPerMillionTokens float64
+	CreatedAt                         time.Time
+	UpdatedAt                         time.Time
 }
 
 type CreateModelAliasParams struct {
@@ -410,28 +421,50 @@ func (r *Repository) CreateModelAlias(ctx context.Context, p CreateModelAliasPar
 	var row ModelAliasRow
 	var createdAt, updatedAt pgtype.Timestamptz
 	err := r.db.QueryRow(ctx, `
-		INSERT INTO model_aliases (organization_id, workspace_id, provider_account_id, model_catalog_entry_id, alias_key, display_name)
-		VALUES ($1, $2, $3, $4, $5, $6)
-		RETURNING id, organization_id, workspace_id, provider_account_id, model_catalog_entry_id, alias_key, display_name, status, created_at, updated_at
+		INSERT INTO model_aliases (
+			organization_id, workspace_id, provider_account_id, model_catalog_entry_id, alias_key, display_name,
+			input_cost_per_million_tokens, output_cost_per_million_tokens
+		)
+		SELECT $1, $2, $3, mce.id, $5, $6,
+			mce.input_cost_per_million_tokens, mce.output_cost_per_million_tokens
+		FROM model_catalog_entries mce
+		WHERE mce.id = $4
+		RETURNING id, organization_id, workspace_id, provider_account_id, model_catalog_entry_id, alias_key, display_name,
+			status, input_cost_per_million_tokens, output_cost_per_million_tokens, created_at, updated_at
 	`, p.OrganizationID, p.WorkspaceID, p.ProviderAccountID, p.ModelCatalogEntryID, p.AliasKey, p.DisplayName,
 	).Scan(&row.ID, &row.OrganizationID, &row.WorkspaceID, &row.ProviderAccountID, &row.ModelCatalogEntryID,
-		&row.AliasKey, &row.DisplayName, &row.Status, &createdAt, &updatedAt)
+		&row.AliasKey, &row.DisplayName, &row.Status,
+		&row.InputCostPerMillionTokens, &row.OutputCostPerMillionTokens, &createdAt, &updatedAt)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ModelAliasRow{}, ErrModelCatalogNotFound
+		}
 		return ModelAliasRow{}, fmt.Errorf("create model alias: %w", err)
 	}
 	row.CreatedAt = createdAt.Time
 	row.UpdatedAt = updatedAt.Time
-	return row, nil
+	return r.GetModelAliasByID(ctx, row.ID)
 }
 
 func (r *Repository) GetModelAliasByID(ctx context.Context, id uuid.UUID) (ModelAliasRow, error) {
 	var row ModelAliasRow
 	var createdAt, updatedAt pgtype.Timestamptz
 	err := r.db.QueryRow(ctx, `
-		SELECT id, organization_id, workspace_id, provider_account_id, model_catalog_entry_id, alias_key, display_name, status, created_at, updated_at
-		FROM model_aliases WHERE id = $1 AND archived_at IS NULL
+		SELECT ma.id, ma.organization_id, ma.workspace_id, ma.provider_account_id, ma.model_catalog_entry_id,
+			ma.alias_key, ma.display_name, ma.status,
+			ma.input_cost_per_million_tokens, ma.output_cost_per_million_tokens,
+			mce.provider_key, mce.provider_model_id, mce.display_name,
+			mce.input_cost_per_million_tokens, mce.output_cost_per_million_tokens,
+			ma.created_at, ma.updated_at
+		FROM model_aliases ma
+		JOIN model_catalog_entries mce ON mce.id = ma.model_catalog_entry_id
+		WHERE ma.id = $1 AND ma.archived_at IS NULL
 	`, id).Scan(&row.ID, &row.OrganizationID, &row.WorkspaceID, &row.ProviderAccountID, &row.ModelCatalogEntryID,
-		&row.AliasKey, &row.DisplayName, &row.Status, &createdAt, &updatedAt)
+		&row.AliasKey, &row.DisplayName, &row.Status,
+		&row.InputCostPerMillionTokens, &row.OutputCostPerMillionTokens,
+		&row.CatalogProviderKey, &row.CatalogProviderModelID, &row.CatalogDisplayName,
+		&row.CatalogInputCostPerMillionTokens, &row.CatalogOutputCostPerMillionTokens,
+		&createdAt, &updatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ModelAliasRow{}, ErrModelAliasNotFound
@@ -445,10 +478,16 @@ func (r *Repository) GetModelAliasByID(ctx context.Context, id uuid.UUID) (Model
 
 func (r *Repository) ListModelAliasesByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) ([]ModelAliasRow, error) {
 	rows, err := r.db.Query(ctx, `
-		SELECT id, organization_id, workspace_id, provider_account_id, model_catalog_entry_id, alias_key, display_name, status, created_at, updated_at
-		FROM model_aliases
-		WHERE workspace_id = $1 AND archived_at IS NULL
-		ORDER BY display_name
+		SELECT ma.id, ma.organization_id, ma.workspace_id, ma.provider_account_id, ma.model_catalog_entry_id,
+			ma.alias_key, ma.display_name, ma.status,
+			ma.input_cost_per_million_tokens, ma.output_cost_per_million_tokens,
+			mce.provider_key, mce.provider_model_id, mce.display_name,
+			mce.input_cost_per_million_tokens, mce.output_cost_per_million_tokens,
+			ma.created_at, ma.updated_at
+		FROM model_aliases ma
+		JOIN model_catalog_entries mce ON mce.id = ma.model_catalog_entry_id
+		WHERE ma.workspace_id = $1 AND ma.archived_at IS NULL
+		ORDER BY ma.display_name
 	`, workspaceID)
 	if err != nil {
 		return nil, fmt.Errorf("list model aliases: %w", err)
@@ -460,7 +499,11 @@ func (r *Repository) ListModelAliasesByWorkspaceID(ctx context.Context, workspac
 		var row ModelAliasRow
 		var createdAt, updatedAt pgtype.Timestamptz
 		if err := rows.Scan(&row.ID, &row.OrganizationID, &row.WorkspaceID, &row.ProviderAccountID, &row.ModelCatalogEntryID,
-			&row.AliasKey, &row.DisplayName, &row.Status, &createdAt, &updatedAt); err != nil {
+			&row.AliasKey, &row.DisplayName, &row.Status,
+			&row.InputCostPerMillionTokens, &row.OutputCostPerMillionTokens,
+			&row.CatalogProviderKey, &row.CatalogProviderModelID, &row.CatalogDisplayName,
+			&row.CatalogInputCostPerMillionTokens, &row.CatalogOutputCostPerMillionTokens,
+			&createdAt, &updatedAt); err != nil {
 			return nil, fmt.Errorf("scan model alias: %w", err)
 		}
 		row.CreatedAt = createdAt.Time
@@ -482,12 +525,17 @@ func (r *Repository) UnarchiveModelAliasByKey(ctx context.Context, workspaceID u
 	err := r.db.QueryRow(ctx, `
 		UPDATE model_aliases
 		SET status = 'active', archived_at = NULL, updated_at = now(),
-			provider_account_id = $3, model_catalog_entry_id = $4
-		WHERE workspace_id = $1 AND alias_key = $2 AND archived_at IS NOT NULL
-		RETURNING id, organization_id, workspace_id, provider_account_id, model_catalog_entry_id, alias_key, display_name, status, created_at, updated_at
+			provider_account_id = $3, model_catalog_entry_id = mce.id,
+			input_cost_per_million_tokens = mce.input_cost_per_million_tokens,
+			output_cost_per_million_tokens = mce.output_cost_per_million_tokens
+		FROM model_catalog_entries mce
+		WHERE workspace_id = $1 AND alias_key = $2 AND archived_at IS NOT NULL AND mce.id = $4
+		RETURNING model_aliases.id, organization_id, workspace_id, provider_account_id, model_catalog_entry_id, alias_key, display_name,
+			status, input_cost_per_million_tokens, output_cost_per_million_tokens, created_at, updated_at
 	`, workspaceID, aliasKey, providerAccountID, catalogEntryID,
 	).Scan(&row.ID, &row.OrganizationID, &row.WorkspaceID, &row.ProviderAccountID, &row.ModelCatalogEntryID,
-		&row.AliasKey, &row.DisplayName, &row.Status, &createdAt, &updatedAt)
+		&row.AliasKey, &row.DisplayName, &row.Status,
+		&row.InputCostPerMillionTokens, &row.OutputCostPerMillionTokens, &createdAt, &updatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ModelAliasRow{}, ErrModelAliasNotFound
@@ -496,7 +544,7 @@ func (r *Repository) UnarchiveModelAliasByKey(ctx context.Context, workspaceID u
 	}
 	row.CreatedAt = createdAt.Time
 	row.UpdatedAt = updatedAt.Time
-	return row, nil
+	return r.GetModelAliasByID(ctx, row.ID)
 }
 
 func (r *Repository) ArchiveModelAlias(ctx context.Context, id uuid.UUID) error {
@@ -914,10 +962,10 @@ func isDuplicateSlug(err error) bool {
 
 // GetWorkspaceID methods implement WorkspaceOwned for authorization checks.
 func (r RuntimeProfileRow) GetWorkspaceID() *uuid.UUID  { return r.WorkspaceID }
-func (r ProviderAccountRow) GetWorkspaceID() *uuid.UUID  { return r.WorkspaceID }
-func (r ModelAliasRow) GetWorkspaceID() *uuid.UUID       { return r.WorkspaceID }
-func (r ToolRow) GetWorkspaceID() *uuid.UUID             { return r.WorkspaceID }
-func (r KnowledgeSourceRow) GetWorkspaceID() *uuid.UUID  { return r.WorkspaceID }
+func (r ProviderAccountRow) GetWorkspaceID() *uuid.UUID { return r.WorkspaceID }
+func (r ModelAliasRow) GetWorkspaceID() *uuid.UUID      { return r.WorkspaceID }
+func (r ToolRow) GetWorkspaceID() *uuid.UUID            { return r.WorkspaceID }
+func (r KnowledgeSourceRow) GetWorkspaceID() *uuid.UUID { return r.WorkspaceID }
 
 func defaultStr(v, fallback string) string {
 	if v == "" {

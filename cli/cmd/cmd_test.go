@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -729,6 +730,42 @@ func TestInfraModelAliasCreateValidatesRequiredFields(t *testing.T) {
 	}
 }
 
+func TestInfraModelAliasGetPrintsPricingAndDriftWarning(t *testing.T) {
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"GET /v1/model-aliases/alias-1": jsonHandler(200, map[string]any{
+			"id":                                     "alias-1",
+			"alias_key":                              "fast-model",
+			"display_name":                           "Fast Model",
+			"status":                                 "active",
+			"provider_key":                           "openai",
+			"provider_model_id":                      "gpt-4.1-mini",
+			"model_display_name":                     "GPT 4.1 Mini",
+			"model_catalog_entry_id":                 "model-1",
+			"provider_account_id":                    "provider-1",
+			"input_cost_per_million_tokens":          0.4,
+			"output_cost_per_million_tokens":         1.6,
+			"catalog_input_cost_per_million_tokens":  0.5,
+			"catalog_output_cost_per_million_tokens": 2.0,
+			"pricing_drift_warning":                  "alias pricing differs from current catalog pricing",
+		}),
+	})
+	defer srv.Close()
+
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+	stdout, stderr, err := captureCommandOutput(t, []string{"infra", "model-alias", "get", "alias-1"}, srv.URL)
+	if err != nil {
+		t.Fatalf("infra model-alias get error: %v", err)
+	}
+	for _, want := range []string{"Input / 1M", "0.4", "Catalog Output / 1M", "2"} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("stdout missing %q:\n%s", want, stdout)
+		}
+	}
+	if !strings.Contains(stderr, "alias pricing differs from current catalog pricing") {
+		t.Fatalf("stderr missing drift warning:\n%s", stderr)
+	}
+}
+
 func TestAPIErrorPropagates(t *testing.T) {
 	srv := fakeAPI(t, map[string]http.HandlerFunc{
 		"GET /v1/organizations": jsonHandler(401, map[string]any{
@@ -745,6 +782,40 @@ func TestAPIErrorPropagates(t *testing.T) {
 	if !strings.Contains(err.Error(), "unauthorized") {
 		t.Fatalf("error should contain 'unauthorized', got: %v", err)
 	}
+}
+
+func captureCommandOutput(t *testing.T, args []string, apiURL string) (string, string, error) {
+	t.Helper()
+
+	oldStdout := os.Stdout
+	oldStderr := os.Stderr
+	stdoutReader, stdoutWriter, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("stdout pipe: %v", err)
+	}
+	stderrReader, stderrWriter, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("stderr pipe: %v", err)
+	}
+	os.Stdout = stdoutWriter
+	os.Stderr = stderrWriter
+	defer func() {
+		os.Stdout = oldStdout
+		os.Stderr = oldStderr
+	}()
+
+	cmdErr := executeCommandWithQuiet(t, args, apiURL, false)
+	_ = stdoutWriter.Close()
+	_ = stderrWriter.Close()
+	stdoutBytes, readStdoutErr := io.ReadAll(stdoutReader)
+	stderrBytes, readStderrErr := io.ReadAll(stderrReader)
+	if readStdoutErr != nil {
+		t.Fatalf("read stdout: %v", readStdoutErr)
+	}
+	if readStderrErr != nil {
+		t.Fatalf("read stderr: %v", readStderrErr)
+	}
+	return string(stdoutBytes), string(stderrBytes), cmdErr
 }
 
 func TestAuthHeaderSentToAPI(t *testing.T) {

@@ -561,9 +561,17 @@ export interface ModelAlias {
   workspace_id?: string;
   provider_account_id?: string;
   model_catalog_entry_id: string;
+  provider_key: string;
+  provider_model_id: string;
+  model_display_name: string;
   alias_key: string;
   display_name: string;
   status: string;
+  input_cost_per_million_tokens: number;
+  output_cost_per_million_tokens: number;
+  catalog_input_cost_per_million_tokens: number;
+  catalog_output_cost_per_million_tokens: number;
+  pricing_drift_warning?: string;
   created_at: string;
   updated_at: string;
 }
