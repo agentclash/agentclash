@@ -76,7 +76,7 @@ func (r *Repository) WorkspacePublicPacksEnabled(ctx context.Context, workspaceI
 	err := r.db.QueryRow(ctx, `
 		SELECT public_packs
 		FROM workspaces
-		WHERE id = $1 AND status = 'active'
+		WHERE id = $1
 	`, workspaceID).Scan(&enabled)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

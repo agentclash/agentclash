@@ -41,7 +41,10 @@ export function WsGeneralSettings({ workspace: initialWs }: WsGeneralSettingsPro
     setSaving(true);
     try {
       const token = await getAccessToken();
-      if (!token) return;
+      if (!token) {
+        toast.error("Sign in again to update the workspace name");
+        return;
+      }
       const api = createApiClient(token);
       const updated = await api.patch<WorkspaceDetail>(
         `/v1/workspaces/${ws.id}/details`,
@@ -62,7 +65,10 @@ export function WsGeneralSettings({ workspace: initialWs }: WsGeneralSettingsPro
     setSavingPublicPacks(true);
     try {
       const token = await getAccessToken();
-      if (!token) return;
+      if (!token) {
+        toast.error("Sign in again to update challenge pack access");
+        return;
+      }
       const api = createApiClient(token);
       const updated = await api.patch<WorkspaceDetail>(
         `/v1/workspaces/${ws.id}/details`,
