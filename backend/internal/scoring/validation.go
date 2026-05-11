@@ -129,7 +129,7 @@ func ValidateEvaluationSpec(spec EvaluationSpec) error {
 		}
 		if validator.Type == ValidatorTypePostcondition {
 			refKey := strings.TrimPrefix(validator.Target, "file:")
-			if _, exists := findPostExecutionCheck(spec.PostExecutionChecks, refKey); !exists {
+			if strings.HasPrefix(validator.Target, "file:") && len(spec.PostExecutionChecks) == 0 {
 				errs = append(errs, ValidationError{Field: path + ".target", Message: fmt.Sprintf("references unknown post_execution_check key %q", refKey)})
 			}
 		}

@@ -120,6 +120,17 @@ func evaluatePostconditionValidator(result ValidatorResult, validator ValidatorD
 		result.ActualValue = stringPtr(*actualValue)
 	}
 
+	if actualValue == nil && postconditionMissingEvidenceUnavailable(actualReason) {
+		result.State = OutputStateUnavailable
+		result.Reason = firstNonEmpty(actualReason, "postcondition target evidence is unavailable")
+		result.RawOutput = mustMarshalJSON(map[string]any{
+			"state":     result.State,
+			"reason":    result.Reason,
+			"target":    validator.Target,
+			"condition": cfg.Condition,
+		})
+		return result
+	}
 	if actualValue == nil && !postconditionCanEvaluateMissing(cfg.Condition) {
 		result.State = OutputStateUnavailable
 		result.Reason = firstNonEmpty(actualReason, "postcondition target evidence is unavailable")
@@ -263,4 +274,8 @@ func decodePostconditionValue(value json.RawMessage) (any, error) {
 
 func postconditionCanEvaluateMissing(condition PostconditionCondition) bool {
 	return condition == PostconditionConditionExists || condition == PostconditionConditionNotExists
+}
+
+func postconditionMissingEvidenceUnavailable(reason string) bool {
+	return strings.Contains(reason, "unavailable")
 }

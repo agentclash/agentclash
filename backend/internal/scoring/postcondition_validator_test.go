@@ -2,6 +2,7 @@ package scoring
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -55,8 +56,8 @@ func TestEvaluateRunAgent_PostconditionPassFailAndError(t *testing.T) {
 
 func TestEvaluateRunAgent_PostconditionNotExistsCanPassOnMissingCapture(t *testing.T) {
 	capturePayload, _ := json.Marshal(FileCaptureResult{
-		Key:    "forbidden_file",
-		Path:   "/workspace/forbidden.txt",
+		Key:    "output_file",
+		Path:   "/workspace/output.json",
 		Exists: false,
 	})
 
@@ -68,6 +69,20 @@ func TestEvaluateRunAgent_PostconditionNotExistsCanPassOnMissingCapture(t *testi
 	result := evaluation.ValidatorResults[0]
 	if result.State != OutputStateAvailable || result.Verdict != "pass" {
 		t.Fatalf("result = %#v, want available pass", result)
+	}
+}
+
+func TestEvaluateRunAgent_PostconditionNotExistsUnavailableWhenCaptureMissing(t *testing.T) {
+	evaluation := evaluatePostconditionEvents(t, json.RawMessage(`{"condition":"not_exists"}`), []Event{
+		{Type: "system.run.completed", OccurredAt: time.Date(2026, 5, 11, 0, 0, 2, 0, time.UTC), Payload: []byte(`{"final_output":"done"}`)},
+	})
+
+	result := evaluation.ValidatorResults[0]
+	if result.State != OutputStateUnavailable {
+		t.Fatalf("state = %q, want %q; result=%#v", result.State, OutputStateUnavailable, result)
+	}
+	if result.Verdict != "" {
+		t.Fatalf("verdict = %q, want empty verdict for unavailable evidence", result.Verdict)
 	}
 }
 
@@ -84,6 +99,21 @@ func TestValidateEvaluationSpec_PostconditionRequiresPostExecutionCheck(t *testi
 	spec.PostExecutionChecks = nil
 	if err := ValidateEvaluationSpec(spec); err == nil {
 		t.Fatal("ValidateEvaluationSpec() error = nil, want post_execution_check reference rejection")
+	}
+}
+
+func TestValidateEvaluationSpec_PostconditionUnknownTargetReportedOnce(t *testing.T) {
+	spec := postconditionSpec(json.RawMessage(`{"condition":"exists"}`))
+	spec.Validators[0].Target = "file:missing_key"
+
+	err := ValidateEvaluationSpec(spec)
+	if err == nil {
+		t.Fatal("ValidateEvaluationSpec() error = nil, want post_execution_check reference rejection")
+	}
+	got := err.Error()
+	want := `references unknown post_execution_check key "missing_key"`
+	if count := strings.Count(got, want); count != 1 {
+		t.Fatalf("reference error count = %d, want 1; error=%q", count, got)
 	}
 }
 
