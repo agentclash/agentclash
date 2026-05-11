@@ -105,7 +105,7 @@ Fields:
 - `key`: required, trimmed, and unique.
 - `type`: required and must be one of the supported validator types below.
 - `target`: required supported evidence reference.
-- `expected_from`: required for most validators; omitted for `file_exists`, `file_json_schema`, `directory_structure`, `code_execution`, and `tool_call_assertion`.
+- `expected_from`: required for most validators; omitted for `file_exists`, `file_json_schema`, `directory_structure`, `code_execution`, `tool_call_assertion`, and `postcondition`.
 - `config`: optional JSON/YAML object interpreted by the validator type.
 
 There is no validator-level `failure_message`, `pass_message`, or custom result text field. Results emit `state`, `verdict`, `normalized_score`, `reason`, `raw_output`, `target`, `expected_from`, `actual_value`, and `expected_value`; the reason text is produced by the scorer.
@@ -134,6 +134,7 @@ file_json_schema
 directory_structure
 code_execution
 tool_call_assertion
+postcondition
 ```
 
 Do not use `has_json`, `json_equals`, `semantic_match`, `unit_test`, `shell`, or provider-specific names; the validator rejects unknown `type` values.
@@ -152,6 +153,9 @@ Validator `target` and required `expected_from` values must use supported eviden
 - `file:<post_execution_check_key>`
 - `literal:<value>`
 - `tool_calls` (only for `tool_call_assertion`)
+
+## Postconditions
+Use `postcondition` to score post-run captured files or directory listings without shelling out through `code_execution`. It must use `target: file:<post_execution_check_key>` and omit `expected_from`. Its strict `config.condition` supports `exists`, `not_exists`, `contains`, `not_contains`, `regex_match`, `json_path_match`, and `equals`.
 
 ## Tool Call Assertions
 Use `tool_call_assertion` to score executed tool-call traces without asking the final answer to self-report behavior. It must use `target: tool_calls` and does not use `expected_from`.

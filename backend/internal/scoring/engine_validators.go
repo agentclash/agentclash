@@ -27,6 +27,10 @@ func evaluateValidators(validators []ValidatorDeclaration, evidence extractedEvi
 			results = append(results, evaluateToolCallAssertionValidator(result, validator, evidence))
 			continue
 		}
+		if validator.Type == ValidatorTypePostcondition {
+			results = append(results, evaluatePostconditionValidator(result, validator, evidence))
+			continue
+		}
 
 		// Resolve the target (actual) evidence.
 		actualValue, actualChallengeID, actualReason, actualErr := resolveEvidenceValue(validator.Target, evidence)
