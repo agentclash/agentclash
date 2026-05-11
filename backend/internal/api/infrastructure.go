@@ -351,6 +351,10 @@ func infraCreateHandler[Input any, Row any, Resp any](
 				writeError(w, http.StatusConflict, "slug_taken", "a resource with that name already exists")
 				return
 			}
+			if errors.Is(err, repository.ErrModelCatalogNotFound) {
+				writeError(w, http.StatusBadRequest, "validation_error", "model_catalog_entry_id must reference an existing model catalog entry")
+				return
+			}
 			logger.Error("create failed", "error", err)
 			writeError(w, http.StatusInternalServerError, "internal_error", "failed to create resource")
 			return
