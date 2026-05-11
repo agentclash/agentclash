@@ -412,6 +412,10 @@ input_sets:
 	if check.Metadata == nil || !ok || len(lineups) != 1 {
 		t.Fatalf("lineups metadata = %#v, want object map", check.Metadata["lineups"])
 	}
+	smoke, ok := lineups["smoke"].([]any)
+	if !ok || len(smoke) != 1 || smoke[0] != "prod" {
+		t.Fatalf("lineups[smoke] = %#v, want [prod]", lineups["smoke"])
+	}
 }
 
 type doctorPayload struct {
