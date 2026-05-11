@@ -849,23 +849,65 @@ func TestWorkOSAuthenticator_UserInfoFailureDoesNotBlockExistingUserAuth(t *test
 	}
 }
 
+func TestWorkOSAuthenticator_UserManagementIssuerSkipsUserInfoFallback(t *testing.T) {
+	privKey, jwksServer := testJWKS(t)
+
+	var backfillCalls int
+	repo := stubUserRepo{
+		user: repository.User{
+			ID:           uuid.New(),
+			WorkOSUserID: "user_01ABC",
+			Email:        "",
+			DisplayName:  "Test User",
+		},
+		backfillCallCount: &backfillCalls,
+	}
+
+	auth, err := newWorkOSAuthenticator(jwksServer.URL, "test-client", "https://api.workos.com", repo, authTestLogger)
+	if err != nil {
+		t.Fatalf("create authenticator: %v", err)
+	}
+
+	token := signTestJWT(t, privKey, map[string]interface{}{
+		"sub": "user_01ABC",
+		"iss": "https://api.workos.com",
+		"iat": time.Now().Unix(),
+		"exp": time.Now().Add(5 * time.Minute).Unix(),
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/auth/session", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	caller, err := auth.Authenticate(req)
+	if err != nil {
+		t.Fatalf("authenticate: %v", err)
+	}
+	if caller.Email != "" {
+		t.Fatalf("Email = %q, want empty string", caller.Email)
+	}
+	if backfillCalls != 0 {
+		t.Fatalf("backfill calls = %d, want 0", backfillCalls)
+	}
+}
+
 func TestWorkOSUserInfoURL(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name   string
-		issuer string
-		want   string
+		name    string
+		issuer  string
+		want    string
+		wantErr error
 	}{
 		{
-			name:   "root issuer",
-			issuer: "https://api.workos.com",
-			want:   "https://api.workos.com/oauth2/userinfo",
+			name:    "root issuer",
+			issuer:  "https://api.workos.com",
+			wantErr: errWorkOSUserInfoUnavailable,
 		},
 		{
-			name:   "issuer with user management path",
-			issuer: "https://api.workos.com/user_management/client_123",
-			want:   "https://api.workos.com/oauth2/userinfo",
+			name:    "issuer with user management path",
+			issuer:  "https://api.workos.com/user_management/client_123",
+			wantErr: errWorkOSUserInfoUnavailable,
 		},
 		{
 			name:   "custom auth domain",
@@ -877,6 +919,12 @@ func TestWorkOSUserInfoURL(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := workOSUserInfoURL(tt.issuer)
+			if tt.wantErr != nil {
+				if !errors.Is(err, tt.wantErr) {
+					t.Fatalf("workOSUserInfoURL() error = %v, want %v", err, tt.wantErr)
+				}
+				return
+			}
 			if err != nil {
 				t.Fatalf("workOSUserInfoURL() error = %v", err)
 			}

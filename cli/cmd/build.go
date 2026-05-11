@@ -20,6 +20,7 @@ func init() {
 	buildVersionCmd.AddCommand(buildVersionUpdateCmd)
 	buildVersionCmd.AddCommand(buildVersionValidateCmd)
 	buildVersionCmd.AddCommand(buildVersionReadyCmd)
+	buildVersionCmd.AddCommand(buildVersionTemplatesCmd)
 
 	buildCreateCmd.Flags().String("name", "", "Build name (required)")
 	buildCreateCmd.Flags().String("description", "", "Build description")
@@ -27,6 +28,7 @@ func init() {
 
 	buildVersionCreateCmd.Flags().String("agent-kind", "", "Agent kind: llm_agent, workflow_agent, programmatic_agent, multi_agent_system, hosted_external")
 	buildVersionCreateCmd.Flags().String("spec-file", "", "JSON file with version spec fields")
+	buildVersionCreateCmd.Flags().String("template", "", "Template key to scaffold this version (for example: honest-agent, code-reviewer)")
 
 	buildVersionUpdateCmd.Flags().String("spec-file", "", "JSON file with updated version spec fields")
 }
@@ -339,6 +341,46 @@ var buildVersionReadyCmd = &cobra.Command{
 	},
 }
 
+var buildVersionTemplatesCmd = &cobra.Command{
+	Use:   "templates",
+	Short: "List built-in build version templates",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		rc := GetRunContext(cmd)
+
+		resp, err := rc.Client.Get(cmd.Context(), "/v1/agent-build-version-templates", nil)
+		if err != nil {
+			return err
+		}
+		if apiErr := resp.ParseError(); apiErr != nil {
+			return apiErr
+		}
+
+		var result struct {
+			Items []map[string]any `json:"items"`
+		}
+		if err := resp.DecodeJSON(&result); err != nil {
+			return err
+		}
+
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(result)
+		}
+
+		cols := []output.Column{{Header: "Key"}, {Header: "Name"}, {Header: "Kind"}, {Header: "Description"}}
+		rows := make([][]string, len(result.Items))
+		for i, item := range result.Items {
+			rows[i] = []string{
+				str(item["key"]),
+				str(item["name"]),
+				str(item["agent_kind"]),
+				str(item["description"]),
+			}
+		}
+		rc.Output.PrintTable(cols, rows)
+		return nil
+	},
+}
+
 func loadSpecBody(cmd *cobra.Command) (map[string]any, error) {
 	body := make(map[string]any)
 
@@ -355,6 +397,10 @@ func loadSpecBody(cmd *cobra.Command) (map[string]any, error) {
 	if cmd.Flags().Changed("agent-kind") {
 		v, _ := cmd.Flags().GetString("agent-kind")
 		body["agent_kind"] = v
+	}
+	if flag := cmd.Flags().Lookup("template"); flag != nil && cmd.Flags().Changed("template") {
+		v, _ := cmd.Flags().GetString("template")
+		body["template"] = v
 	}
 
 	return body, nil

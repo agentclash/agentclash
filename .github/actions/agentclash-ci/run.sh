@@ -39,6 +39,11 @@ for part in sys.argv[2].split("."):
         continue
     if isinstance(value, dict):
         value = value.get(part)
+    elif isinstance(value, list):
+        try:
+            value = value[int(part)]
+        except (ValueError, IndexError):
+            value = None
     else:
         value = None
     if value is None:
@@ -64,15 +69,37 @@ agentclash_supports_ci_commands() {
     [[ "$run_help" == *"Flags:"* ]]
 }
 
+agentclash_supports_prompt_eval_commands() {
+  local validate_help
+  local run_help
+  validate_help="$("$@" prompt-eval validate --help 2>&1)" &&
+    run_help="$("$@" prompt-eval run --help 2>&1)" &&
+    [[ "$validate_help" == *"agentclash prompt-eval validate"* ]] &&
+    [[ "$validate_help" == *"Flags:"* ]] &&
+    [[ "$run_help" == *"agentclash prompt-eval run"* ]] &&
+    [[ "$run_help" == *"Flags:"* ]]
+}
+
+agentclash_supports_required_commands() {
+  case "$mode" in
+    ci) agentclash_supports_ci_commands "$@" ;;
+    prompt-eval) agentclash_supports_prompt_eval_commands "$@" ;;
+    *)
+      echo "::error::Unsupported AgentClash CI action mode '${mode}'. Use 'ci' or 'prompt-eval'."
+      return 1
+      ;;
+  esac
+}
+
 resolve_agentclash_cli() {
   agentclash_cmd=(agentclash)
 
   if command -v agentclash >/dev/null 2>&1; then
-    if agentclash_supports_ci_commands agentclash; then
+    if agentclash_supports_required_commands agentclash; then
       echo "Using installed agentclash CLI"
       return 0
     fi
-    echo "::notice::Installed agentclash CLI does not expose ci should-run/run; checking source fallback"
+    echo "::notice::Installed agentclash CLI does not expose required ${mode} commands; checking source fallback"
   fi
 
   if bool_true "${INPUT_SOURCE_FALLBACK:-true}"; then
@@ -82,12 +109,12 @@ resolve_agentclash_cli() {
     if [[ -d "$source_dir" ]] && command -v go >/dev/null 2>&1; then
       fallback_bin="${RUNNER_TEMP:-/tmp}/agentclash-source-cli"
       if go -C "$source_dir" build -o "$fallback_bin" .; then
-        if agentclash_supports_ci_commands "$fallback_bin"; then
+        if agentclash_supports_required_commands "$fallback_bin"; then
           agentclash_cmd=("$fallback_bin")
           echo "Using AgentClash CLI source fallback from ${source_dir}"
           return 0
         fi
-        echo "::notice::AgentClash CLI source fallback exists but does not expose ci should-run/run"
+        echo "::notice::AgentClash CLI source fallback exists but does not expose required ${mode} commands"
       else
         echo "::notice::AgentClash CLI source fallback failed to build"
       fi
@@ -98,12 +125,16 @@ resolve_agentclash_cli() {
     fi
   fi
 
-  echo "::error::AgentClash CI requires an agentclash CLI with 'ci should-run' and 'ci run'. Publish a newer npm CLI, set cli-version to a compatible version, or keep source-fallback enabled with Go available."
+  echo "::error::AgentClash CI requires an agentclash CLI with the required ${mode} commands. Publish a newer npm CLI, set cli-version to a compatible version, or keep source-fallback enabled with Go available."
   return 1
 }
 
 post_pr_comment() {
   local status="$1"
+  local comment_manifest="$manifest"
+  if [[ "$mode" == "prompt-eval" ]]; then
+    comment_manifest="$prompt_eval_config"
+  fi
   if ! bool_true "${INPUT_PR_COMMENT:-true}"; then
     comment_posted=true
     return 0
@@ -111,7 +142,8 @@ post_pr_comment() {
 
   set +e
   python3 "${ACTION_PATH}/comment.py" \
-    --manifest "$manifest" \
+    --manifest "$comment_manifest" \
+    --mode "$mode" \
     --result-file "$result_file" \
     --should-run-file "$should_run_file" \
     --exit-code "$status" \
@@ -134,12 +166,78 @@ write_early_error_result() {
     return 0
   fi
   mkdir -p "$(dirname "$result_file")"
-  printf '%s\n' '{"gate_verdict":"error","failure_reason":"action_failed_before_ci_run","errors":["AgentClash action failed before ci run completed. Inspect the GitHub Actions log for the failing command."]}' >"$result_file"
+  printf '{"gate_verdict":"error","failure_reason":"action_failed_before_%s_run","errors":["AgentClash action failed before %s run completed. Inspect the GitHub Actions log for the failing command."]}\n' "$mode" "$mode" >"$result_file"
+}
+
+write_should_run_json() {
+  local should_run="$1"
+  local reason="$2"
+  mkdir -p "$(dirname "$should_run_file")"
+  SHOULD_RUN="$should_run" REASON="$reason" python3 - "$should_run_file" <<'PY'
+import json
+import os
+import sys
+
+with open(sys.argv[1], "w", encoding="utf-8") as handle:
+    json.dump({"should_run": os.environ["SHOULD_RUN"] == "true", "reason": os.environ["REASON"]}, handle)
+    handle.write("\n")
+PY
+}
+
+collect_changed_files() {
+  if [[ -n "${INPUT_CHANGED_FILES:-}" ]]; then
+    printf '%s\n' "${INPUT_CHANGED_FILES}"
+    return 0
+  fi
+  local base="${INPUT_BASE:-}"
+  local head="${INPUT_HEAD:-}"
+  if [[ -z "$base" && -n "${GITHUB_BASE_REF:-}" ]]; then
+    base="origin/${GITHUB_BASE_REF}"
+  fi
+  if [[ -z "$head" ]]; then
+    head="HEAD"
+  fi
+  if [[ -n "$base" ]]; then
+    git diff --name-only "$base" "$head"
+  fi
+}
+
+prompt_eval_should_run() {
+  local changed
+  changed="$(collect_changed_files || true)"
+  if [[ -z "$changed" ]]; then
+    write_should_run_json "true" "no change set was available; running prompt eval conservatively"
+    return 0
+  fi
+  CHANGED_FILES="$changed" PROMPT_EVAL_CONFIG="$prompt_eval_config" PROMPT_EVAL_WATCH_PATHS="${INPUT_PROMPT_EVAL_WATCH_PATHS:-}" python3 - "$should_run_file" <<'PY'
+import fnmatch
+import json
+import os
+import sys
+
+changed = [line.strip() for line in os.environ.get("CHANGED_FILES", "").splitlines() if line.strip()]
+config = os.environ.get("PROMPT_EVAL_CONFIG", ".agentclash/prompt-eval.yaml").strip()
+patterns = [config]
+patterns.extend(line.strip() for line in os.environ.get("PROMPT_EVAL_WATCH_PATHS", "").splitlines() if line.strip())
+matched = []
+for path in changed:
+    if any(path == pattern or fnmatch.fnmatch(path, pattern) for pattern in patterns):
+        matched.append(path)
+result = {
+    "should_run": bool(matched),
+    "reason": "matched prompt eval paths" if matched else "changed files did not match prompt eval paths",
+    "matched_paths": matched,
+}
+with open(sys.argv[1], "w", encoding="utf-8") as handle:
+    json.dump(result, handle)
+    handle.write("\n")
+PY
 }
 
 on_error() {
   local status="$?"
   trap - ERR
+  write_output "exit-code" "$status"
   if [[ "${comment_posted:-false}" != "true" ]]; then
     write_early_error_result
     post_pr_comment "$status" || true
@@ -147,7 +245,9 @@ on_error() {
   exit "$status"
 }
 
+mode="${INPUT_MODE:-ci}"
 manifest="${INPUT_MANIFEST:-.agentclash/ci.yaml}"
+prompt_eval_config="${INPUT_PROMPT_EVAL_CONFIG:-.agentclash/prompt-eval.yaml}"
 artifact_dir="${INPUT_ARTIFACT_DIR:-agentclash-artifacts}"
 result_file="${INPUT_RESULT_FILE:-agentclash-ci-result.json}"
 should_run_file="${RUNNER_TEMP:-/tmp}/agentclash-should-run.json"
@@ -171,36 +271,45 @@ fi
 
 resolve_agentclash_cli
 
-if bool_true "${INPUT_REMOTE_VALIDATE:-true}"; then
-  "${agentclash_cmd[@]}" ci validate "$manifest" --remote
+if [[ "$mode" == "prompt-eval" ]]; then
+  if bool_true "${INPUT_REMOTE_VALIDATE:-true}"; then
+    "${agentclash_cmd[@]}" prompt-eval validate "$prompt_eval_config" --remote --ci
+  else
+    "${agentclash_cmd[@]}" prompt-eval validate "$prompt_eval_config" --ci
+  fi
+  prompt_eval_should_run
 else
-  "${agentclash_cmd[@]}" ci validate "$manifest"
-fi
+  if bool_true "${INPUT_REMOTE_VALIDATE:-true}"; then
+    "${agentclash_cmd[@]}" ci validate "$manifest" --remote
+  else
+    "${agentclash_cmd[@]}" ci validate "$manifest"
+  fi
 
-should_args=(ci should-run --manifest "$manifest" --json)
-if [[ -n "${INPUT_CHANGED_FILES:-}" ]]; then
-  while IFS= read -r changed_file; do
-    [[ -z "$changed_file" ]] && continue
-    should_args+=(--changed-file "$changed_file")
-  done <<<"${INPUT_CHANGED_FILES}"
-else
-  base="${INPUT_BASE:-}"
-  head="${INPUT_HEAD:-}"
-  if [[ -z "$base" && -n "${GITHUB_BASE_REF:-}" ]]; then
-    base="origin/${GITHUB_BASE_REF}"
+  should_args=(ci should-run --manifest "$manifest" --json)
+  if [[ -n "${INPUT_CHANGED_FILES:-}" ]]; then
+    while IFS= read -r changed_file; do
+      [[ -z "$changed_file" ]] && continue
+      should_args+=(--changed-file "$changed_file")
+    done <<<"${INPUT_CHANGED_FILES}"
+  else
+    base="${INPUT_BASE:-}"
+    head="${INPUT_HEAD:-}"
+    if [[ -z "$base" && -n "${GITHUB_BASE_REF:-}" ]]; then
+      base="origin/${GITHUB_BASE_REF}"
+    fi
+    if [[ -z "$head" ]]; then
+      head="HEAD"
+    fi
+    if [[ -n "$base" ]]; then
+      should_args+=(--base "$base" --head "$head")
+    fi
   fi
-  if [[ -z "$head" ]]; then
-    head="HEAD"
+  if [[ -n "${INPUT_LABELS:-}" ]]; then
+    should_args+=(--labels "${INPUT_LABELS}")
   fi
-  if [[ -n "$base" ]]; then
-    should_args+=(--base "$base" --head "$head")
-  fi
-fi
-if [[ -n "${INPUT_LABELS:-}" ]]; then
-  should_args+=(--labels "${INPUT_LABELS}")
-fi
 
-"${agentclash_cmd[@]}" "${should_args[@]}" >"$should_run_file"
+  "${agentclash_cmd[@]}" "${should_args[@]}" >"$should_run_file"
+fi
 should_run="$(json_get "$should_run_file" should_run)"
 skip_reason="$(json_get "$should_run_file" reason)"
 write_output "should-run" "$should_run"
@@ -213,25 +322,32 @@ fi
 
 if [[ "$should_run" != "true" && "$skip_if_unmatched" == "true" ]]; then
   write_output "exit-code" "0"
-  append_summary "## AgentClash CI"
+  append_summary "## AgentClash ${mode}"
   append_summary ""
-  append_summary "Skipped: ${skip_reason:-manifest trigger did not match this change set}"
+  append_summary "Skipped: ${skip_reason:-trigger did not match this change set}"
   post_pr_comment "0"
   exit 0
 fi
 
-run_args=(ci run --manifest "$manifest" --json --artifact-dir "$artifact_dir")
+if [[ "$mode" == "prompt-eval" ]]; then
+  run_args=(prompt-eval run "$prompt_eval_config" --json --follow --ci)
+else
+  run_args=(ci run --manifest "$manifest" --json --artifact-dir "$artifact_dir")
+fi
 if [[ -n "${INPUT_TIMEOUT:-}" ]]; then
   run_args+=(--timeout "${INPUT_TIMEOUT}")
 fi
 if [[ -n "${INPUT_POLL_INTERVAL:-}" ]]; then
   run_args+=(--poll-interval "${INPUT_POLL_INTERVAL}")
 fi
-if bool_true "${INPUT_FOLLOW:-false}"; then
+if [[ "$mode" == "ci" ]] && bool_true "${INPUT_FOLLOW:-false}"; then
   run_args+=(--follow)
 fi
-if [[ -n "${INPUT_DEFAULT_BRANCH:-}" ]]; then
+if [[ "$mode" == "ci" && -n "${INPUT_DEFAULT_BRANCH:-}" ]]; then
   run_args+=(--ci-default-branch "${INPUT_DEFAULT_BRANCH}")
+fi
+if [[ "$mode" == "prompt-eval" && -n "${INPUT_PROMPT_EVAL_THRESHOLD:-}" ]]; then
+  run_args+=(--threshold "${INPUT_PROMPT_EVAL_THRESHOLD}")
 fi
 
 set +e
@@ -242,7 +358,11 @@ set -e
 write_output "exit-code" "$status"
 if [[ -s "$result_file" ]]; then
   cat "$result_file"
-  write_output "run-id" "$(json_get "$result_file" candidate.run_id)"
+  if [[ "$mode" == "prompt-eval" ]]; then
+    write_output "run-id" "$(json_get "$result_file" playgrounds.0.experiments.0.experiment_id)"
+  else
+    write_output "run-id" "$(json_get "$result_file" candidate.run_id)"
+  fi
   write_output "gate-verdict" "$(json_get "$result_file" gate_verdict)"
 else
   write_output "run-id" ""

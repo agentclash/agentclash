@@ -72,6 +72,7 @@ func TestRunCreateUsesRegressionSelectorsAndOfficialPackMode(t *testing.T) {
 		"--suite", "suite-1",
 		"--case", "case-1",
 		"--include-proposed-regressions",
+		"--max-iter", "7",
 	}, srv.URL)
 	if err != nil {
 		t.Fatalf("run create error: %v", err)
@@ -88,6 +89,9 @@ func TestRunCreateUsesRegressionSelectorsAndOfficialPackMode(t *testing.T) {
 	}
 	if gotBody["include_proposed_regressions"] != true {
 		t.Fatalf("include_proposed_regressions = %v, want true", gotBody["include_proposed_regressions"])
+	}
+	if gotBody["max_iterations"] != float64(7) {
+		t.Fatalf("max_iterations = %v, want 7", gotBody["max_iterations"])
 	}
 }
 
@@ -221,14 +225,16 @@ func TestRunRankingHandlesPendingOrErroredStates(t *testing.T) {
 func TestRunScorecardHandlesCurrentAPIShape(t *testing.T) {
 	srv := fakeAPI(t, map[string]http.HandlerFunc{
 		"GET /v1/scorecards/agent-1": jsonHandler(200, map[string]any{
-			"state":             "ready",
-			"run_agent_status":  "completed",
-			"run_agent_id":      "agent-1",
-			"overall_score":     0.91,
-			"correctness_score": 0.95,
-			"reliability_score": 0.90,
-			"latency_score":     0.88,
-			"cost_score":        0.85,
+			"state":                "ready",
+			"run_agent_status":     "completed",
+			"run_agent_id":         "agent-1",
+			"overall_score":        0.91,
+			"correctness_score":    0.95,
+			"reliability_score":    0.90,
+			"latency_score":        0.88,
+			"cost_score":           0.85,
+			"total_cost_usd":       0.0123,
+			"cost_per_correct_usd": 0.0246,
 			"scorecard": map[string]any{
 				"passed":   true,
 				"strategy": "weighted",
@@ -253,6 +259,10 @@ func TestRunScorecardHandlesCurrentAPIShape(t *testing.T) {
 		"State:",
 		"ready",
 		"Run Agent Status:",
+		"Total Cost",
+		"$0.0123",
+		"Cost / Correct",
+		"$0.0246",
 		"Overall Score",
 		"0.91",
 		"Correctness",

@@ -249,6 +249,96 @@ func TestRunEventsStreamPollsPersistedEventsWhenNoLiveMessagesArrive(t *testing.
 	}
 }
 
+func TestExportRunEventsJSONLEmitsPersistedEnvelopes(t *testing.T) {
+	runID := uuid.New()
+	runAgentID := uuid.New()
+	service := &fakeSSERunReadService{
+		streamResults: []ListRunEventStreamResult{
+			{
+				Run: persistedStreamRun(runID, domain.RunStatusCompleted),
+				Events: []repository.RunEvent{
+					persistedTestRunEvent(runID, runAgentID, 1, time.Date(2026, 4, 22, 10, 0, 0, 0, time.UTC)),
+					persistedTestRunEvent(runID, runAgentID, 2, time.Date(2026, 4, 22, 10, 0, 1, 0, time.UTC)),
+				},
+			},
+		},
+	}
+
+	router := chi.NewRouter()
+	router.Get("/v1/runs/{runID}/events/export", exportRunEventsJSONLHandler(slog.New(slog.NewTextHandler(io.Discard, nil)), service))
+	req := httptest.NewRequest(http.MethodGet, "/v1/runs/"+runID.String()+"/events/export", nil)
+	req = req.WithContext(context.WithValue(req.Context(), callerContextKey{}, Caller{UserID: uuid.New()}))
+	recorder := httptest.NewRecorder()
+
+	router.ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+	if got := recorder.Header().Get("Content-Type"); got != "application/x-ndjson" {
+		t.Fatalf("content-type = %q, want application/x-ndjson", got)
+	}
+	if got := recorder.Header().Get("Content-Length"); got == "" {
+		t.Fatal("Content-Length header is empty")
+	}
+
+	lines := strings.Split(strings.TrimRight(recorder.Body.String(), "\n"), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("line count = %d, want 2; body=%s", len(lines), recorder.Body.String())
+	}
+	var first map[string]any
+	if err := json.Unmarshal([]byte(lines[0]), &first); err != nil {
+		t.Fatalf("decode first JSONL line: %v", err)
+	}
+	if first["event_id"] != persistedStreamEventID(runAgentID, 1) {
+		t.Fatalf("first event_id = %v, want %s", first["event_id"], persistedStreamEventID(runAgentID, 1))
+	}
+	if first["schema_version"] != runevents.SchemaVersionV1 {
+		t.Fatalf("schema_version = %v, want %s", first["schema_version"], runevents.SchemaVersionV1)
+	}
+	if first["run_id"] != runID.String() || first["run_agent_id"] != runAgentID.String() {
+		t.Fatalf("run identifiers = %#v", first)
+	}
+}
+
+func TestExportRunEventsJSONLReturnsErrorBeforeCommittingInvalidPayload(t *testing.T) {
+	runID := uuid.New()
+	runAgentID := uuid.New()
+	service := &fakeSSERunReadService{
+		streamResults: []ListRunEventStreamResult{
+			{
+				Run: persistedStreamRun(runID, domain.RunStatusCompleted),
+				Events: []repository.RunEvent{
+					{
+						RunID:          runID,
+						RunAgentID:     runAgentID,
+						SequenceNumber: 1,
+						EventType:      runevents.EventTypeSystemRunStarted,
+						Source:         runevents.SourceNativeEngine,
+						OccurredAt:     time.Date(2026, 4, 22, 10, 0, 0, 0, time.UTC),
+						Payload:        []byte(`{"unterminated"`),
+					},
+				},
+			},
+		},
+	}
+
+	router := chi.NewRouter()
+	router.Get("/v1/runs/{runID}/events/export", exportRunEventsJSONLHandler(slog.New(slog.NewTextHandler(io.Discard, nil)), service))
+	req := httptest.NewRequest(http.MethodGet, "/v1/runs/"+runID.String()+"/events/export", nil)
+	req = req.WithContext(context.WithValue(req.Context(), callerContextKey{}, Caller{UserID: uuid.New()}))
+	recorder := httptest.NewRecorder()
+
+	router.ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d; body=%s", recorder.Code, http.StatusInternalServerError, recorder.Body.String())
+	}
+	if strings.Contains(recorder.Body.String(), "unterminated") {
+		t.Fatalf("error response leaked partial JSONL body: %s", recorder.Body.String())
+	}
+}
+
 func serveRunEventsSSE(
 	t *testing.T,
 	auth Authenticator,
@@ -302,6 +392,10 @@ func (f *fakeSSERunReadService) GetRun(context.Context, Caller, uuid.UUID) (GetR
 		return GetRunResult{}, f.err
 	}
 	return GetRunResult{}, nil
+}
+
+func (f *fakeSSERunReadService) CancelRun(context.Context, Caller, uuid.UUID) (CancelRunResult, error) {
+	return CancelRunResult{}, nil
 }
 
 func (f *fakeSSERunReadService) GetEvalSession(context.Context, Caller, uuid.UUID) (GetEvalSessionResult, error) {

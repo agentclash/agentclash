@@ -127,11 +127,12 @@ func main() {
 		NativeModelInvoker: nativeModelInvoker,
 		PromptEvalInvoker:  promptEvalInvoker,
 	})
+	orphanRunReaper := workerapp.NewRepositoryOrphanRunReaper(repo, cfg.OrphanRunReaperInterval, cfg.OrphanRunReaperThreshold, logger)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	if err := workerapp.Run(ctx, cfg, temporalWorker, logger); err != nil {
+	if err := workerapp.RunWithReaper(ctx, cfg, temporalWorker, orphanRunReaper, logger); err != nil {
 		logger.Error("worker stopped with error", "error", err)
 		os.Exit(1)
 	}

@@ -174,6 +174,7 @@ func ValidateBundle(bundle Bundle) error {
 	if bundle.Version.Sandbox != nil {
 		errs = append(errs, validateSandboxConfig("version.sandbox", bundle.Version.Sandbox)...)
 	}
+	errs = append(errs, validateDeploymentDefaults("version.deployment_defaults", bundle.Version.DeploymentDefaults)...)
 
 	if err := scoring.ValidateEvaluationSpec(bundle.Version.EvaluationSpec); err != nil {
 		if scoringErrs, ok := err.(scoring.ValidationErrors); ok {
@@ -190,6 +191,66 @@ func ValidateBundle(bundle Bundle) error {
 		return errs
 	}
 	return nil
+}
+
+func validateDeploymentDefaults(path string, defaults *DeploymentDefaults) ValidationErrors {
+	if defaults == nil {
+		return nil
+	}
+
+	var errs ValidationErrors
+	seenAliasKeys := map[string]struct{}{}
+	for key, value := range defaults.Aliases {
+		field := fmt.Sprintf("%s.aliases[%q]", path, key)
+		if strings.TrimSpace(key) == "" {
+			errs = append(errs, ValidationError{Field: field, Message: "key is required"})
+			continue
+		}
+		normalizedKey := strings.TrimSpace(key)
+		if _, exists := seenAliasKeys[normalizedKey]; exists {
+			errs = append(errs, ValidationError{Field: field, Message: "key must be unique after trimming whitespace"})
+		}
+		seenAliasKeys[normalizedKey] = struct{}{}
+		if strings.TrimSpace(value) == "" {
+			errs = append(errs, ValidationError{Field: field, Message: "selector is required"})
+		}
+	}
+
+	if len(defaults.Lineups) == 0 {
+		errs = append(errs, ValidationError{Field: path + ".lineups", Message: "must include at least a default lineup"})
+		return errs
+	}
+	if _, ok := defaults.Lineups["default"]; !ok {
+		errs = append(errs, ValidationError{Field: path + ".lineups.default", Message: "is required"})
+	}
+
+	seenLineupKeys := map[string]struct{}{}
+	for key, values := range defaults.Lineups {
+		field := fmt.Sprintf("%s.lineups[%q]", path, key)
+		if strings.TrimSpace(key) == "" {
+			errs = append(errs, ValidationError{Field: field, Message: "key is required"})
+			continue
+		}
+		normalizedKey := strings.TrimSpace(key)
+		if _, exists := seenLineupKeys[normalizedKey]; exists {
+			errs = append(errs, ValidationError{Field: field, Message: "key must be unique after trimming whitespace"})
+		}
+		seenLineupKeys[normalizedKey] = struct{}{}
+		if len(values) == 0 {
+			errs = append(errs, ValidationError{Field: field, Message: "must include at least one deployment selector"})
+			continue
+		}
+		for i, value := range values {
+			if strings.TrimSpace(value) == "" {
+				errs = append(errs, ValidationError{
+					Field:   fmt.Sprintf("%s[%d]", field, i),
+					Message: "selector is required",
+				})
+			}
+		}
+	}
+
+	return errs
 }
 
 func validateToolPolicyConfig(path string, policy map[string]any) ValidationErrors {

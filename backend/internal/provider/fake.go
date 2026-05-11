@@ -42,9 +42,10 @@ func cloneResponse(response Response) Response {
 	cloned.ToolCalls = make([]ToolCall, 0, len(response.ToolCalls))
 	for _, toolCall := range response.ToolCalls {
 		cloned.ToolCalls = append(cloned.ToolCalls, ToolCall{
-			ID:        toolCall.ID,
-			Name:      toolCall.Name,
-			Arguments: cloneJSON(toolCall.Arguments),
+			ID:               toolCall.ID,
+			Name:             toolCall.Name,
+			Arguments:        cloneJSON(toolCall.Arguments),
+			ThoughtSignature: toolCall.ThoughtSignature,
 		})
 	}
 	cloned.RawResponse = cloneJSON(response.RawResponse)
@@ -86,9 +87,10 @@ func cloneMessage(message Message) Message {
 	cloned.ToolCalls = make([]ToolCall, 0, len(message.ToolCalls))
 	for _, toolCall := range message.ToolCalls {
 		cloned.ToolCalls = append(cloned.ToolCalls, ToolCall{
-			ID:        toolCall.ID,
-			Name:      toolCall.Name,
-			Arguments: cloneJSON(toolCall.Arguments),
+			ID:               toolCall.ID,
+			Name:             toolCall.Name,
+			Arguments:        cloneJSON(toolCall.Arguments),
+			ThoughtSignature: toolCall.ThoughtSignature,
 		})
 	}
 	return cloned

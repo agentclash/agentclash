@@ -28,8 +28,9 @@ type CreateWorkspaceInput struct {
 }
 
 type UpdateWorkspaceInput struct {
-	Name   *string
-	Status *string
+	Name        *string
+	Status      *string
+	PublicPacks *bool
 }
 
 type WorkspaceResult struct {
@@ -38,6 +39,7 @@ type WorkspaceResult struct {
 	Name           string    `json:"name"`
 	Slug           string    `json:"slug"`
 	Status         string    `json:"status"`
+	PublicPacks    bool      `json:"public_packs"`
 	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`
 }
@@ -183,8 +185,9 @@ func (m *WorkspaceManager) UpdateWorkspace(ctx context.Context, caller Caller, w
 	}
 
 	ws, err := m.repo.UpdateWorkspace(ctx, workspaceID, repository.UpdateWorkspaceInput{
-		Name:   input.Name,
-		Status: input.Status,
+		Name:        input.Name,
+		Status:      input.Status,
+		PublicPacks: input.PublicPacks,
 	})
 	if err != nil {
 		return WorkspaceResult{}, err
@@ -231,6 +234,7 @@ func wsRowToResult(ws repository.WorkspaceRow) WorkspaceResult {
 		Name:           ws.Name,
 		Slug:           ws.Slug,
 		Status:         ws.Status,
+		PublicPacks:    ws.PublicPacks,
 		CreatedAt:      ws.CreatedAt,
 		UpdatedAt:      ws.UpdatedAt,
 	}
@@ -367,15 +371,16 @@ func updateWorkspaceHandler(logger *slog.Logger, service WorkspaceService) http.
 		}
 
 		var req struct {
-			Name   *string `json:"name,omitempty"`
-			Status *string `json:"status,omitempty"`
+			Name        *string `json:"name,omitempty"`
+			Status      *string `json:"status,omitempty"`
+			PublicPacks *bool   `json:"public_packs,omitempty"`
 		}
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&req); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid_request", "invalid JSON body")
 			return
 		}
-		if req.Name == nil && req.Status == nil {
-			writeError(w, http.StatusBadRequest, "validation_error", "at least one of name or status is required")
+		if req.Name == nil && req.Status == nil && req.PublicPacks == nil {
+			writeError(w, http.StatusBadRequest, "validation_error", "at least one of name, status, or public_packs is required")
 			return
 		}
 		if req.Status != nil && *req.Status != "active" && *req.Status != "archived" {
@@ -384,8 +389,9 @@ func updateWorkspaceHandler(logger *slog.Logger, service WorkspaceService) http.
 		}
 
 		result, err := service.UpdateWorkspace(r.Context(), caller, workspaceID, UpdateWorkspaceInput{
-			Name:   req.Name,
-			Status: req.Status,
+			Name:        req.Name,
+			Status:      req.Status,
+			PublicPacks: req.PublicPacks,
 		})
 		if err != nil {
 			handleWorkspaceError(w, logger, err)

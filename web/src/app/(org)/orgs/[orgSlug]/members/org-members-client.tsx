@@ -74,9 +74,14 @@ function getMemberActions(
   isLastAdmin: boolean,
   onChangeRole: (role: OrgRole) => void,
   onChangeStatus: (status: OrgMembershipStatus) => void,
+  onCopyInviteLink: () => void,
 ): MemberAction[] {
   const actions: MemberAction[] = [];
   const isArchived = member.membership_status === "archived";
+
+  if (member.membership_status === "invited" && member.accept_url) {
+    actions.push({ label: "Copy Invite Link", onClick: onCopyInviteLink });
+  }
 
   // Role changes
   if (!isArchived) {
@@ -208,6 +213,16 @@ export function OrgMembersClient({
     }
   }
 
+  async function handleCopyInviteLink(member: OrgMember) {
+    if (!member.accept_url) return;
+    try {
+      await navigator.clipboard.writeText(member.accept_url);
+      toast.success(`Copied invite link for ${member.email}`);
+    } catch {
+      toast.error("Failed to copy invite link");
+    }
+  }
+
   function canManageMember(member: OrgMember): boolean {
     if (!isAdmin) return false;
     if (member.user_id === currentUserId) return false;
@@ -268,6 +283,7 @@ export function OrgMembersClient({
                       isLastAdmin,
                       (role) => handleChangeRole(member, role),
                       (status) => handleChangeStatus(member, status),
+                      () => handleCopyInviteLink(member),
                     )
                   : [];
 

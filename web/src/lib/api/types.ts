@@ -109,6 +109,7 @@ export interface OrgMember {
   membership_status: OrgMembershipStatus;
   created_at: string;
   updated_at?: string;
+  accept_url?: string;
 }
 
 /** POST /v1/organizations/{id}/memberships request */
@@ -130,6 +131,7 @@ export interface OrgWorkspace {
   name: string;
   slug: string;
   status: string; // "active" | "archived"
+  public_packs: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -148,6 +150,7 @@ export interface WorkspaceDetail {
   name: string;
   slug: string;
   status: string; // "active" | "archived"
+  public_packs: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -164,6 +167,7 @@ export interface WorkspaceMember {
   membership_status: OrgMembershipStatus; // same enum: invited/active/suspended/archived
   created_at: string;
   updated_at?: string;
+  accept_url?: string;
 }
 
 // --- Agent Builds ---
@@ -489,8 +493,13 @@ export interface AgentHarnessExecution {
   organization_id: string;
   workspace_id: string;
   agent_harness_id: string;
+  run_id?: string;
+  run_agent_id?: string;
+  evaluation_spec_id?: string;
   status: AgentHarnessExecutionStatus;
   status_reason?: string;
+  error_message?: string;
+  failure_stage?: "setup" | "agent" | "validator" | "repository" | "infrastructure";
   harness_snapshot: unknown;
   execution_config_snapshot: unknown;
   evaluation_config_snapshot: unknown;
@@ -554,9 +563,17 @@ export interface ModelAlias {
   workspace_id?: string;
   provider_account_id?: string;
   model_catalog_entry_id: string;
+  provider_key: string;
+  provider_model_id: string;
+  model_display_name: string;
   alias_key: string;
   display_name: string;
   status: string;
+  input_cost_per_million_tokens: number;
+  output_cost_per_million_tokens: number;
+  catalog_input_cost_per_million_tokens: number;
+  catalog_output_cost_per_million_tokens: number;
+  pricing_drift_warning?: string;
   created_at: string;
   updated_at: string;
 }
@@ -1064,6 +1081,7 @@ export interface RankingItem {
   reliability_score?: number;
   latency_score?: number;
   cost_score?: number;
+  cost_per_correct_usd?: number;
   dimensions?: Record<
     string,
     { state: string; score?: number; better_direction?: string }
@@ -1236,6 +1254,8 @@ export interface ScorecardResponse {
   reliability_score?: number;
   latency_score?: number;
   cost_score?: number;
+  total_cost_usd?: number;
+  cost_per_correct_usd?: number;
   behavioral_score?: number;
   llm_judge_results: LLMJudgeResult[];
   scorecard: ScorecardDocument;
@@ -1257,6 +1277,16 @@ export interface ScorecardDocument {
   validator_details?: ValidatorDetail[];
   metric_summary: Record<string, number>;
   metric_details?: MetricDetail[];
+  side_metrics?: Record<string, SideMetricDetail>;
+}
+
+export interface SideMetricDetail {
+  state: string;
+  value?: number;
+  unit?: string;
+  numerator?: number;
+  denominator?: number;
+  reason?: string;
 }
 
 export interface ValidatorDetail {
@@ -1282,6 +1312,7 @@ export type ValidatorEvidence =
   | ValidatorRegexEvidence
   | ValidatorJSONSchemaEvidence
   | ValidatorJSONPathEvidence
+  | ValidatorToolCallAssertionEvidence
   | ValidatorCustomEvidence;
 
 export interface ValidatorTextCompareEvidence {
@@ -1315,6 +1346,24 @@ export interface ValidatorJSONPathEvidence {
   expected?: unknown;
   exists?: boolean;
   source_field?: string;
+}
+
+export interface ValidatorToolCallAssertionEvidence {
+  kind: "tool_call_assertion";
+  source_field?: string;
+  tool_name?: string;
+  observed_count?: number;
+  failed_count?: number;
+  matched_count?: number;
+  matched_indices?: number[];
+  observed_tool_names?: string[];
+  expected_count?: number;
+  expected_min_count?: number;
+  expected_max_count?: number;
+  expected_order?: string[];
+  expected_order_mode?: string;
+  arguments_contain_set?: boolean;
+  matched?: boolean;
 }
 
 export interface ValidatorCustomEvidence {

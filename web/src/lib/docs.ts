@@ -1,6 +1,11 @@
 import fs from "fs";
 import path from "path";
 import matter from "gray-matter";
+import {
+  getAllPosts,
+  getPostBySlug,
+  type BlogPostWithContent,
+} from "./blog";
 
 const CONTENT_DIR = path.join(process.cwd(), "content", "docs");
 const AGENT_SKILLS_DIR = path.join(process.cwd(), "content", "agent-skills");
@@ -29,7 +34,33 @@ const CLI_CONFIG_FILE = path.join(
 );
 const BACKEND_ENV_FILE = path.join(REPO_ROOT, "backend", ".env.example");
 
-export const DOCS_ORIGIN = "https://agentclash.dev";
+export const DOCS_ORIGIN = "https://www.agentclash.dev";
+
+type PublicProductPage = {
+  title: string;
+  href: string;
+  description: string;
+  searchKeywords: string;
+};
+
+const PUBLIC_PRODUCT_PAGES: PublicProductPage[] = [
+  {
+    title: "AI Agent Evaluation Platform",
+    href: "/platform/agent-evaluation",
+    description:
+      "Public page for real-task AI agent evaluation, replay evidence, scorecards, challenge packs, and CI regression gates.",
+    searchKeywords:
+      "AI agent evaluation agent evals real task agent benchmark coding agent evaluation LLM agent evaluation sandboxed agent workloads replay evidence scorecards challenge packs CI regression gates",
+  },
+  {
+    title: "AI Agent Regression Testing",
+    href: "/platform/agent-regression-testing",
+    description:
+      "Public page for baseline-versus-candidate agent regression testing, pull request gates, and release evidence.",
+    searchKeywords:
+      "AI agent regression testing agent evaluation CI gates pull request gates release gates baseline candidate comparisons replay evidence scorecards challenge packs agent eval regression suite",
+  },
+];
 
 export type DocNavItem = {
   title: string;
@@ -1401,6 +1432,13 @@ function normalizeMarkdownForExport(content: string, origin: string) {
     .trim();
 }
 
+function normalizeBlogMarkdownForExport(content: string, origin: string) {
+  return normalizeMarkdownForExport(content, origin).replace(
+    /\]\((\/[^)\s]*)\)/g,
+    (_, href) => `](${origin}${href})`,
+  );
+}
+
 export function getDocMarkdownPath(slug: string[] = []) {
   return slug.length === 0 ? "/docs-md" : `/docs-md/${slug.join("/")}`;
 }
@@ -1479,7 +1517,7 @@ export function getAllDocMarkdownPaths() {
 }
 
 export function getDocsSearchIndex(): DocSearchItem[] {
-  return getAllDocSlugs()
+  const docsSearchItems = getAllDocSlugs()
     .map((slug) => getDocBySlug(slug))
     .filter((doc): doc is DocPage => Boolean(doc))
     .map((doc) => ({
@@ -1490,6 +1528,16 @@ export function getDocsSearchIndex(): DocSearchItem[] {
         .map((heading) => heading.text)
         .join(" ")} ${stripInlineMarkdown(doc.content).slice(0, 900)}`.toLowerCase(),
     }));
+
+  const productPageSearchItems = PUBLIC_PRODUCT_PAGES.map((page) => ({
+    title: page.title,
+    description: page.description,
+    href: page.href,
+    searchText:
+      `${page.title} ${page.description} ${page.href} ${page.searchKeywords}`.toLowerCase(),
+  }));
+
+  return [...productPageSearchItems, ...docsSearchItems];
 }
 
 export function renderDocMarkdown(doc: DocPage, origin = DOCS_ORIGIN) {
@@ -1507,13 +1555,33 @@ export function renderDocMarkdown(doc: DocPage, origin = DOCS_ORIGIN) {
   return lines.join("\n").trim();
 }
 
+export function renderBlogMarkdown(
+  post: BlogPostWithContent,
+  origin = DOCS_ORIGIN,
+) {
+  const lines = [
+    `# ${post.title}`,
+    "",
+    post.description,
+    "",
+    `Source: ${origin}/blog/${post.slug}`,
+    `Published: ${post.date}`,
+    `Author: ${post.author}`,
+    "",
+    normalizeBlogMarkdownForExport(post.content, origin),
+  ];
+
+  return lines.join("\n").trim();
+}
+
 export function buildLlmsIndex(origin = DOCS_ORIGIN) {
+  const blogPosts = getAllPosts();
   const lines = [
     "# AgentClash",
     "",
     "> AgentClash runs agents against repeatable challenge packs, captures replay evidence, and shows where a run won, failed, or drifted.",
     "",
-    "Use this index when you want the shortest machine-readable map of the public docs. Fetch `/llms-full.txt` for the bundled corpus, or use the `/docs-md/...` links below for page-level markdown exports.",
+    "Use this index when you want the shortest machine-readable map of the public docs and selected product pages. Fetch `/llms-full.txt` for the bundled corpus, or use the `/docs-md/...` links below for page-level markdown exports.",
     "",
     "## Core entrypoints",
     "",
@@ -1525,6 +1593,18 @@ export function buildLlmsIndex(origin = DOCS_ORIGIN) {
     `- [Config Reference](${origin}/docs-md/reference/config) - generated environment and precedence reference.`,
     `- [Agent Skills](${origin}/docs-md/agent-skills) - copyable AgentClash skills for coding agents.`,
     `- [Full bundle](${origin}/llms-full.txt) - all shipped docs in one file.`,
+    "",
+    "## Public product pages",
+    "",
+    ...PUBLIC_PRODUCT_PAGES.map(
+      (page) => `- [${page.title}](${origin}${page.href}) - ${page.description}`,
+    ),
+    "",
+    "## Blog posts",
+    "",
+    ...blogPosts.map(
+      (post) => `- [${post.title}](${origin}/blog/${post.slug}) - ${post.description}`,
+    ),
     "",
   ];
 
@@ -1557,6 +1637,9 @@ export function buildLlmsFull(origin = DOCS_ORIGIN) {
   const docs = orderedSlugs
     .map((slug) => getDocBySlug(slug))
     .filter((doc): doc is DocPage => Boolean(doc));
+  const blogPosts = getAllPosts()
+    .map((post) => getPostBySlug(post.slug))
+    .filter((post): post is BlogPostWithContent => Boolean(post));
 
   const lines = [
     "# AgentClash Docs Bundle",
@@ -1564,8 +1647,24 @@ export function buildLlmsFull(origin = DOCS_ORIGIN) {
     `Canonical docs home: ${origin}/docs`,
     `Machine-readable index: ${origin}/llms.txt`,
     "",
-    "This file concatenates the currently shipped AgentClash docs pages into one markdown-oriented bundle for assistants, coding agents, and local retrieval pipelines.",
+    "This file concatenates the currently shipped AgentClash docs pages and selected product page links into one markdown-oriented bundle for assistants, coding agents, and local retrieval pipelines.",
+    "",
+    "## Public product pages",
+    "",
+    ...PUBLIC_PRODUCT_PAGES.map(
+      (page) => `- [${page.title}](${origin}${page.href}) - ${page.description}`,
+    ),
+    "",
+    "## Blog posts",
+    "",
+    ...blogPosts.map(
+      (post) => `- [${post.title}](${origin}/blog/${post.slug}) - ${post.description}`,
+    ),
   ];
+
+  for (const post of blogPosts) {
+    lines.push("", "---", "", renderBlogMarkdown(post, origin));
+  }
 
   for (const doc of docs) {
     lines.push("", "---", "", renderDocMarkdown(doc, origin));

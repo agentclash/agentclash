@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -14,9 +15,15 @@ type challengePackSummary struct {
 }
 
 type challengePackVersionBrief struct {
-	ID              string `json:"id"`
-	VersionNumber   int    `json:"version_number"`
-	LifecycleStatus string `json:"lifecycle_status"`
+	ID                 string              `json:"id"`
+	VersionNumber      int                 `json:"version_number"`
+	LifecycleStatus    string              `json:"lifecycle_status"`
+	DeploymentDefaults *deploymentDefaults `json:"deployment_defaults,omitempty"`
+}
+
+type deploymentDefaults struct {
+	Aliases map[string]string   `json:"aliases,omitempty"`
+	Lineups map[string][]string `json:"lineups,omitempty"`
 }
 
 type challengeInputSetSummary struct {
@@ -41,7 +48,15 @@ type runCreateSelections struct {
 func resolveRunCreateSelections(cmd *cobra.Command, rc *RunContext, workspaceID string) (runCreateSelections, error) {
 	cpvID, _ := cmd.Flags().GetString("challenge-pack-version")
 	deployments, _ := cmd.Flags().GetStringSlice("deployments")
+	lineup, _ := cmd.Flags().GetString("deployment-lineup")
+	lineups, _ := cmd.Flags().GetStringSlice("deployment-lineups")
 	inputSetID, _ := cmd.Flags().GetString("input-set")
+	if len(deployments) > 0 && strings.TrimSpace(lineup) != "" {
+		return runCreateSelections{}, fmt.Errorf("--deployment-lineup cannot be combined with --deployments")
+	}
+	if len(compactNonEmptyStrings(lineups)) > 0 {
+		return runCreateSelections{}, fmt.Errorf("--deployment-lineups must be used with --seeds and cannot use guided deployment selection")
+	}
 
 	selections := runCreateSelections{
 		challengePackVersionID: cpvID,
@@ -49,7 +64,18 @@ func resolveRunCreateSelections(cmd *cobra.Command, rc *RunContext, workspaceID 
 		deploymentIDs:          deployments,
 	}
 
-	if !isInteractiveTerminal(rc) {
+	interactive := isInteractiveTerminal(rc)
+	if selections.challengePackVersionID != "" && len(selections.deploymentIDs) == 0 && !interactive {
+		resolved, ok, err := resolveDefaultDeploymentLineup(cmd, rc, workspaceID, selections.challengePackVersionID, lineup)
+		if err != nil {
+			return runCreateSelections{}, err
+		}
+		if ok {
+			selections.deploymentIDs = resolved
+		}
+	}
+
+	if !interactive {
 		missing := missingRunCreateInputs(selections)
 		if len(missing) > 0 {
 			return runCreateSelections{}, fmt.Errorf(
@@ -84,6 +110,14 @@ func resolveRunCreateSelections(cmd *cobra.Command, rc *RunContext, workspaceID 
 	}
 
 	if len(selections.deploymentIDs) == 0 {
+		resolved, ok, err := resolveDefaultDeploymentLineup(cmd, rc, workspaceID, selections.challengePackVersionID, lineup)
+		if err != nil {
+			return runCreateSelections{}, err
+		}
+		if ok {
+			selections.deploymentIDs = resolved
+			return selections, nil
+		}
 		selectedDeployments, err := promptForDeployments(cmd, rc, workspaceID, picker)
 		if err != nil {
 			return runCreateSelections{}, err
@@ -111,7 +145,7 @@ func missingRunCreateFlags(selections runCreateSelections) []string {
 		missing = append(missing, "--challenge-pack-version")
 	}
 	if len(selections.deploymentIDs) == 0 {
-		missing = append(missing, "--deployments")
+		missing = append(missing, "--deployments or --deployment-lineup")
 	}
 	return missing
 }
@@ -224,6 +258,150 @@ func promptForDeployments(cmd *cobra.Command, rc *RunContext, workspaceID string
 		ids = append(ids, deployment.Value)
 	}
 	return ids, nil
+}
+
+func resolveDefaultDeploymentLineup(cmd *cobra.Command, rc *RunContext, workspaceID, challengePackVersionID, lineup string) ([]string, bool, error) {
+	version, ok, err := findChallengePackVersion(cmd, rc, workspaceID, challengePackVersionID)
+	if err != nil {
+		return nil, false, err
+	}
+	if !ok {
+		if strings.TrimSpace(lineup) != "" {
+			return nil, false, fmt.Errorf("challenge pack version %s was not found while resolving deployment lineup", challengePackVersionID)
+		}
+		return nil, false, nil
+	}
+	if version.DeploymentDefaults == nil {
+		if strings.TrimSpace(lineup) != "" {
+			return nil, false, fmt.Errorf("challenge pack version %s does not declare deployment defaults", challengePackVersionID)
+		}
+		return nil, false, nil
+	}
+
+	selectors, err := deploymentSelectorsForLineup(version.DeploymentDefaults, lineup)
+	if err != nil {
+		return nil, false, err
+	}
+	ids, err := resolveRunCreateDeploymentSelectors(cmd, rc, workspaceID, selectors)
+	if err != nil {
+		return nil, false, err
+	}
+	return ids, true, nil
+}
+
+func resolveRunCreateDeploymentLineups(cmd *cobra.Command, rc *RunContext, workspaceID, challengePackVersionID string, lineups []string) ([]runCreateDeploymentLineup, error) {
+	if strings.TrimSpace(challengePackVersionID) == "" {
+		return nil, fmt.Errorf("--challenge-pack-version is required with --deployment-lineups")
+	}
+	names := compactNonEmptyStrings(lineups)
+	if len(names) == 0 {
+		return nil, fmt.Errorf("at least one deployment lineup is required")
+	}
+	singleLineup, _ := cmd.Flags().GetString("deployment-lineup")
+	deployments, _ := cmd.Flags().GetStringSlice("deployments")
+	if strings.TrimSpace(singleLineup) != "" {
+		return nil, fmt.Errorf("--deployment-lineups cannot be combined with --deployment-lineup")
+	}
+	if len(compactNonEmptyStrings(deployments)) > 0 {
+		return nil, fmt.Errorf("--deployment-lineups cannot be combined with --deployments")
+	}
+
+	resolved := make([]runCreateDeploymentLineup, 0, len(names))
+	for _, name := range names {
+		ids, _, err := resolveDefaultDeploymentLineup(cmd, rc, workspaceID, challengePackVersionID, name)
+		if err != nil {
+			return nil, err
+		}
+		resolved = append(resolved, runCreateDeploymentLineup{
+			Name:          name,
+			DeploymentIDs: ids,
+		})
+	}
+	return resolved, nil
+}
+
+func findChallengePackVersion(cmd *cobra.Command, rc *RunContext, workspaceID, challengePackVersionID string) (challengePackVersionBrief, bool, error) {
+	packs, err := listChallengePacks(cmd, rc, workspaceID)
+	if err != nil {
+		return challengePackVersionBrief{}, false, err
+	}
+	for _, pack := range packs {
+		for _, version := range pack.Versions {
+			if version.ID == challengePackVersionID {
+				return version, true, nil
+			}
+		}
+	}
+	return challengePackVersionBrief{}, false, nil
+}
+
+func deploymentSelectorsForLineup(defaults *deploymentDefaults, lineup string) ([]string, error) {
+	lineupName := strings.TrimSpace(lineup)
+	if lineupName == "" {
+		lineupName = "default"
+	}
+	selectors, ok := defaults.Lineups[lineupName]
+	if !ok {
+		return nil, fmt.Errorf("deployment lineup %q is not declared by the challenge pack version", lineupName)
+	}
+	if len(selectors) == 0 {
+		return nil, fmt.Errorf("deployment lineup %q does not include any deployment selectors", lineupName)
+	}
+
+	resolved := make([]string, 0, len(selectors))
+	for i, selector := range selectors {
+		trimmed := strings.TrimSpace(selector)
+		if trimmed == "" {
+			return nil, fmt.Errorf("deployment lineup %q entry %d is empty", lineupName, i)
+		}
+		if alias, ok := defaults.Aliases[trimmed]; ok {
+			trimmed = strings.TrimSpace(alias)
+		}
+		if trimmed == "" {
+			return nil, fmt.Errorf("deployment lineup %q entry %d resolves to an empty selector", lineupName, i)
+		}
+		resolved = append(resolved, trimmed)
+	}
+	return resolved, nil
+}
+
+func resolveRunCreateDeploymentSelectors(cmd *cobra.Command, rc *RunContext, workspaceID string, selectors []string) ([]string, error) {
+	deployments, err := listDeployments(cmd, rc, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+
+	ids := make([]string, 0, len(selectors))
+	seen := map[string]struct{}{}
+	for _, selector := range selectors {
+		matched, err := matchRunCreateDeployment(selector, deployments)
+		if err != nil {
+			return nil, err
+		}
+		if _, exists := seen[matched.ID]; exists {
+			continue
+		}
+		seen[matched.ID] = struct{}{}
+		ids = append(ids, matched.ID)
+	}
+	return ids, nil
+}
+
+func matchRunCreateDeployment(selector string, deployments []deploymentSummary) (deploymentSummary, error) {
+	var matches []deploymentSummary
+	for _, deployment := range deployments {
+		if selectorMatches(selector, deployment.ID, deployment.Name) {
+			matches = append(matches, deployment)
+		}
+	}
+	switch len(matches) {
+	case 0:
+		return deploymentSummary{}, fmt.Errorf("no deployment matched %q", selector)
+	case 1:
+		return matches[0], nil
+	default:
+		return deploymentSummary{}, fmt.Errorf("deployment selector %q matched multiple deployments; use the deployment id", selector)
+	}
 }
 
 func selectOneOrAuto(picker interactivePicker, prompt string, options []pickerOption) (pickerOption, error) {

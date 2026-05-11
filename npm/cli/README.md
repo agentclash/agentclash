@@ -1,7 +1,8 @@
 # agentclash
 
-Command-line interface for the [AgentClash](https://www.agentclash.dev) race
-engine — evaluate, compare, and deploy AI agents.
+Command-line interface for [AgentClash](https://www.agentclash.dev), an AI
+agent evaluation platform for real-task races, replay, scorecards, and CI
+regression gates.
 
 ## Install
 

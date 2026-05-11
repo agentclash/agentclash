@@ -97,6 +97,122 @@ tools:
 	}
 }
 
+func TestParseYAMLDeploymentDefaultsRoundTrip(t *testing.T) {
+	bundle, err := ParseYAML([]byte(`
+pack:
+  slug: support-eval
+  name: Support Eval
+  family: support
+version:
+  number: 1
+  deployment_defaults:
+    aliases:
+      candidate: " Candidate Agent "
+      baseline: Baseline Agent
+    lineups:
+      default: ["candidate", "baseline"]
+      smoke: ["candidate"]
+  evaluation_spec:
+    name: support-v1
+    version_number: 1
+    judge_mode: deterministic
+    validators:
+      - key: exact
+        type: exact_match
+        target: final_output
+        expected_from: challenge_input
+    scorecard:
+      dimensions: [correctness]
+challenges:
+  - key: ticket-1
+    title: Ticket One
+    category: support
+    difficulty: medium
+input_sets:
+  - key: default
+    name: Default Inputs
+    cases:
+      - challenge_key: ticket-1
+        case_key: sample-1
+        inputs:
+          - key: prompt
+            kind: text
+            value: hello
+        expectations:
+          - key: answer
+            kind: text
+            source: input:prompt
+`))
+	if err != nil {
+		t.Fatalf("ParseYAML returned error: %v", err)
+	}
+	if bundle.Version.DeploymentDefaults == nil {
+		t.Fatal("deployment defaults missing")
+	}
+	if got := bundle.Version.DeploymentDefaults.Aliases["candidate"]; got != "Candidate Agent" {
+		t.Fatalf("candidate alias = %q, want Candidate Agent", got)
+	}
+
+	manifest, err := ManifestJSON(bundle)
+	if err != nil {
+		t.Fatalf("ManifestJSON returned error: %v", err)
+	}
+	var decoded struct {
+		Version struct {
+			DeploymentDefaults DeploymentDefaults `json:"deployment_defaults"`
+		} `json:"version"`
+	}
+	if err := json.Unmarshal(manifest, &decoded); err != nil {
+		t.Fatalf("unmarshal manifest: %v", err)
+	}
+	if got := decoded.Version.DeploymentDefaults.Lineups["default"]; len(got) != 2 || got[0] != "candidate" || got[1] != "baseline" {
+		t.Fatalf("default lineup = %#v, want [candidate baseline]", got)
+	}
+}
+
+func TestValidateBundleRejectsDeploymentDefaultsWithoutDefaultLineup(t *testing.T) {
+	bundle := minimalBundle()
+	bundle.Version.DeploymentDefaults = &DeploymentDefaults{
+		Aliases: map[string]string{"candidate": "Candidate Agent"},
+		Lineups: map[string][]string{"smoke": []string{"candidate"}},
+	}
+
+	err := ValidateBundle(bundle)
+	if err == nil {
+		t.Fatal("ValidateBundle returned nil error")
+	}
+	errs, ok := err.(ValidationErrors)
+	if !ok {
+		t.Fatalf("error type = %T, want ValidationErrors", err)
+	}
+	if !containsField(errs, "version.deployment_defaults.lineups.default") {
+		t.Fatalf("validation errors = %+v, want default lineup error", errs)
+	}
+}
+
+func TestValidateBundleRejectsEmptyDeploymentDefaultSelectors(t *testing.T) {
+	bundle := minimalBundle()
+	bundle.Version.DeploymentDefaults = &DeploymentDefaults{
+		Aliases: map[string]string{"candidate": ""},
+		Lineups: map[string][]string{"default": []string{""}},
+	}
+
+	err := ValidateBundle(bundle)
+	if err == nil {
+		t.Fatal("ValidateBundle returned nil error")
+	}
+	errs, ok := err.(ValidationErrors)
+	if !ok {
+		t.Fatalf("error type = %T, want ValidationErrors", err)
+	}
+	if !containsField(errs, "version.deployment_defaults.aliases[\"candidate\"]") {
+		t.Fatalf("validation errors = %+v, want empty alias error", errs)
+	}
+	if !containsField(errs, "version.deployment_defaults.lineups[\"default\"][0]") {
+		t.Fatalf("validation errors = %+v, want empty lineup selector error", errs)
+	}
+}
+
 func TestManifestJSONPreservesGeneralizedContract(t *testing.T) {
 	bundle := Bundle{
 		Pack: PackMetadata{
@@ -171,6 +287,52 @@ func TestManifestJSONPreservesGeneralizedContract(t *testing.T) {
 	}
 	if len(decoded.InputSets[0].Cases[0].Expectations) != 1 {
 		t.Fatalf("expectations count = %d, want 1", len(decoded.InputSets[0].Cases[0].Expectations))
+	}
+}
+
+func TestParseYAMLAcceptsToolCallAssertionValidator(t *testing.T) {
+	bundle, err := ParseYAML([]byte(`
+pack:
+  slug: tool-eval
+  name: Tool Eval
+  family: support
+version:
+  number: 1
+  evaluation_spec:
+    name: tool-v1
+    version_number: 1
+    judge_mode: deterministic
+    validators:
+      - key: submitted
+        type: tool_call_assertion
+        target: tool_calls
+        config:
+          tool_name: submit
+          arguments_contain:
+            answer: "42"
+    scorecard:
+      dimensions: [correctness]
+challenges:
+  - key: ticket-1
+    title: Ticket One
+    category: support
+    difficulty: easy
+input_sets:
+  - key: default
+    name: Default
+    cases:
+      - challenge_key: ticket-1
+        case_key: sample-1
+`))
+	if err != nil {
+		t.Fatalf("ParseYAML returned error: %v", err)
+	}
+	validator := bundle.Version.EvaluationSpec.Validators[0]
+	if validator.Type != scoring.ValidatorTypeToolCallAssertion {
+		t.Fatalf("validator type = %q, want %q", validator.Type, scoring.ValidatorTypeToolCallAssertion)
+	}
+	if validator.ExpectedFrom != "" {
+		t.Fatalf("expected_from = %q, want empty", validator.ExpectedFrom)
 	}
 }
 
@@ -773,6 +935,46 @@ func minimalSpec() scoring.EvaluationSpec {
 		},
 		Scorecard: scoring.ScorecardDeclaration{
 			Dimensions: []scoring.DimensionDeclaration{{Key: "correctness"}},
+		},
+	}
+}
+
+func minimalBundle() Bundle {
+	return Bundle{
+		Pack: PackMetadata{
+			Slug:   "support-eval",
+			Name:   "Support Eval",
+			Family: "support",
+		},
+		Version: VersionMetadata{
+			Number:         1,
+			EvaluationSpec: minimalSpec(),
+		},
+		Challenges: []ChallengeDefinition{
+			{
+				Key:        "ticket-1",
+				Title:      "Ticket One",
+				Category:   "support",
+				Difficulty: "easy",
+			},
+		},
+		InputSets: []InputSetDefinition{
+			{
+				Key:  "default",
+				Name: "Default",
+				Cases: []CaseDefinition{
+					{
+						ChallengeKey: "ticket-1",
+						CaseKey:      "case-1",
+						Inputs: []CaseInput{
+							{Key: "prompt", Kind: "text", Value: "hello"},
+						},
+						Expectations: []CaseExpectation{
+							{Key: "answer", Kind: "text", Source: "input:prompt"},
+						},
+					},
+				},
+			},
 		},
 	}
 }

@@ -46,6 +46,8 @@ tags:
     description: Agent build and version lifecycle
   - name: AgentDeployments
     description: Agent deployment management
+  - name: AgentHarnesses
+    description: Long-running coding harness configuration and execution controls
   - name: HostedRuns
     description: External hosted agent event ingestion
   - name: Playgrounds
@@ -82,6 +84,238 @@ tags:
     description: Routing and spend policy configuration
 
 paths:
+  /v1/workspaces/{workspaceID}/agent-harness-executions/{executionID}/cancel:
+    post:
+      operationId: cancelAgentHarnessExecution
+      tags: [AgentHarnesses]
+      summary: Cancel an Agent Harness execution
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/ExecutionID"
+      responses:
+        "200":
+          description: Execution cancelled, or already terminal.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentHarnessExecution"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/workspaces/{workspaceID}/agent-harness-executions/{executionID}/retry:
+    post:
+      operationId: retryAgentHarnessExecution
+      tags: [AgentHarnesses]
+      summary: Retry an Agent Harness execution
+      description: >
+        Retries a terminal harness execution using frozen snapshots from the
+        original execution. The idempotency key scopes duplicate retry requests
+        for the same source execution.
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/ExecutionID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RetryAgentHarnessExecutionRequest"
+      responses:
+        "201":
+          description: Retry execution queued or existing retry returned.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentHarnessExecution"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/workspaces/{workspaceID}/agent-harness-executions/{executionID}/failure-review:
+    get:
+      operationId: getAgentHarnessFailureReview
+      tags: [AgentHarnesses]
+      summary: Get an Agent Harness failure review
+      description: >
+        Returns the rule or LLM-suggested failure classification for a harness
+        execution, preserving any human-edited class and summary as the effective
+        review.
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/ExecutionID"
+      responses:
+        "200":
+          description: Failure review for the execution.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentHarnessFailureReview"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    patch:
+      operationId: updateAgentHarnessFailureReview
+      tags: [AgentHarnesses]
+      summary: Update an Agent Harness failure review
+      description: >
+        Stores LLM-assisted suggestions and human edits separately so later
+        automated suggestions do not overwrite the human-curated class.
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/ExecutionID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAgentHarnessFailureReviewRequest"
+      responses:
+        "200":
+          description: Updated failure review.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentHarnessFailureReview"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/workspaces/{workspaceID}/agent-harness-executions/{executionID}/promote-task:
+    post:
+      operationId: promoteAgentHarnessExecutionToSuite
+      tags: [AgentHarnesses]
+      summary: Promote a prior harness run into a private suite task
+      description: >
+        Creates a new immutable suite version and appends a private
+        prior_harness_run task using sanitized public prompt metadata plus the
+        frozen harness, evaluation, validator, judge, and artifact references
+        from the source execution.
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/ExecutionID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PromoteAgentHarnessExecutionRequest"
+      responses:
+        "201":
+          description: Suite version advanced and task promoted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PromoteAgentHarnessExecutionResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/workspaces/{workspaceID}/agent-harness-failures/summary:
+    get:
+      operationId: listAgentHarnessFailureSummary
+      tags: [AgentHarnesses]
+      summary: Summarize Agent Harness failure modes
+      description: >
+        Groups effective failure classes by repository, task type, harness,
+        model, E2B template, and suite for dashboard analysis.
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+      responses:
+        "200":
+          description: Failure summary groups.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListAgentHarnessFailureSummaryResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/workspaces/{workspaceID}/agent-harness-suites/{suiteID}/rankings:
+    get:
+      operationId: getAgentHarnessSuiteRankings
+      tags: [AgentHarnesses]
+      summary: Rank Agent Harness suite results
+      description: >
+        Aggregates immutable Agent Harness execution snapshots, canonical
+        run-agent scorecards, cost summaries, and execution events into suite
+        rankings with success@1, pass@k, pass^k, confidence intervals, budgets,
+        latency, cost, failure modes, and fair pairwise comparisons.
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/AgentHarnessSuiteID"
+        - name: k
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+          description: k value used for pass@k and pass^k reporting.
+        - name: version_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+          description: Immutable suite version to aggregate. Defaults to the current active version.
+      responses:
+        "200":
+          description: Ranking evidence for the active suite version.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentHarnessSuiteRankingEnvelope"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
   # ---------------------------------------------------------------------------
   # Health
   # ---------------------------------------------------------------------------
@@ -683,6 +917,34 @@ paths:
         "500":
           $ref: "#/components/responses/InternalError"
 
+  /v1/workspaces/{workspaceID}/quota:
+    get:
+      operationId: getWorkspaceQuota
+      tags: [Billing]
+      summary: Get workspace quota usage
+      description: >
+        Returns the workspace plan and quota counters for monthly race usage,
+        active concurrent race usage, and organization seats.
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+      responses:
+        "200":
+          description: Workspace quota snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceQuotaResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
   # ---------------------------------------------------------------------------
   # User Profile
   # ---------------------------------------------------------------------------
@@ -1120,7 +1382,7 @@ paths:
               $ref: "#/components/schemas/InviteOrgMemberRequest"
       responses:
         "201":
-          description: Member invited
+          description: Member invited. Pending invitations include accept_url for copy-link fallback.
           content:
             application/json:
               schema:
@@ -1295,7 +1557,7 @@ paths:
               $ref: "#/components/schemas/InviteWorkspaceMemberRequest"
       responses:
         "201":
-          description: Member invited
+          description: Member invited. Pending invitations include accept_url for copy-link fallback.
           content:
             application/json:
               schema:
@@ -2353,6 +2615,42 @@ paths:
         "404":
           $ref: "#/components/responses/NotFoundError"
 
+  /v1/runs/{runID}/cancel:
+    post:
+      operationId: cancelRun
+      tags: [Runs]
+      summary: Cancel a run
+      description: >
+        Cancels an active run. If the run has already reached a terminal status,
+        the endpoint returns the current run details without changing it.
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/RunID"
+      responses:
+        "200":
+          description: Run cancelled or already terminal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunDetail"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "502":
+          description: Run workflow could not be cancelled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunWorkflowErrorResponse"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
   /v1/runs/{runID}/ranking:
     get:
       operationId: getRunRanking
@@ -2642,6 +2940,42 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/runs/{runID}/events/export:
+    get:
+      operationId: exportRunEventsJSONL
+      tags: [Runs]
+      summary: Export run events as JSONL
+      description: >
+        Exports the full persisted run-agent event stream for a run as JSONL.
+        Events are ordered by occurrence time, run-agent lane, per-agent
+        sequence number, and stable database id so trace packs are deterministic.
+      parameters:
+        - $ref: "#/components/parameters/RunID"
+      responses:
+        "200":
+          description: Ordered run-event JSONL export
+          headers:
+            Content-Disposition:
+              description: Suggested trace-pack filename.
+              schema:
+                type: string
+          content:
+            application/x-ndjson:
+              schema:
+                type: string
+                description: >
+                  One JSON run-event envelope per line. Each envelope includes
+                  event_id, schema_version, run_id, run_agent_id,
+                  sequence_number, event_type, source, occurred_at, and payload.
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
 
   /v1/workspaces/{workspaceID}/runs:
     get:
@@ -4067,6 +4401,20 @@ components:
       schema:
         type: string
         format: uuid
+    ExecutionID:
+      name: executionID
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    AgentHarnessSuiteID:
+      name: suiteID
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
     ArtifactID:
       name: artifactID
       in: path
@@ -4215,6 +4563,12 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/ErrorEnvelope"
+    TooManyRequests:
+      description: Rate or concurrency limit exceeded
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
     GoneError:
       description: Resource expired or removed
       content:
@@ -4252,22 +4606,363 @@ components:
             upgrade_target:
               type: string
               description: Suggested plan key for resolving a billing gate failure.
-            limit:
-              anyOf:
-                - type: integer
-                - type: "null"
-            used:
-              type: integer
-            remaining:
-              anyOf:
-                - type: integer
-                - type: "null"
-            reset_at:
-              type: string
-              format: date-time
-            expires_at:
-              type: string
-              format: date-time
+
+    RetryAgentHarnessExecutionRequest:
+      type: object
+      required: [idempotency_key]
+      properties:
+        idempotency_key:
+          type: string
+          minLength: 1
+          description: Idempotency key scoped to the source execution retry.
+
+    AgentHarnessFailureClass:
+      type: string
+      enum:
+        - setup
+        - auth
+        - tool_misuse
+        - incomplete_implementation
+        - no_op_diff
+        - test_failure
+        - overbroad_diff
+        - no_pr
+        - judge_failure
+        - timeout
+        - policy_privacy
+        - infrastructure
+        - none
+        - unknown
+
+    AgentHarnessFailureEventRef:
+      type: object
+      required: [sequence_number, event_type, actor_type]
+      properties:
+        sequence_number:
+          type: integer
+          format: int64
+        event_type:
+          type: string
+        actor_type:
+          type: string
+        artifact_id:
+          type: string
+          format: uuid
+        payload:
+          type: object
+          additionalProperties: true
+
+    AgentHarnessFailureReview:
+      type: object
+      required:
+        - execution_id
+        - agent_harness_id
+        - workspace_id
+        - status
+        - suggested_class
+        - suggested_source
+        - suggested_confidence
+        - effective_class
+        - taxonomy
+        - created_at
+        - updated_at
+      properties:
+        execution_id:
+          type: string
+          format: uuid
+        agent_harness_id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+          format: uuid
+        run_id:
+          type: string
+          format: uuid
+        run_agent_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+        suggested_class:
+          $ref: "#/components/schemas/AgentHarnessFailureClass"
+        suggested_summary:
+          type: string
+        suggested_source:
+          type: string
+          enum: [rules, llm]
+        suggested_confidence:
+          type: number
+        human_class:
+          $ref: "#/components/schemas/AgentHarnessFailureClass"
+        human_summary:
+          type: string
+        effective_class:
+          $ref: "#/components/schemas/AgentHarnessFailureClass"
+        effective_summary:
+          type: string
+        taxonomy:
+          $ref: "#/components/schemas/FailureReviewTaxonomy"
+        repository_url:
+          type: string
+        base_branch:
+          type: string
+        task_type:
+          type: string
+        harness_name:
+          type: string
+        harness_kind:
+          type: string
+        model:
+          type: string
+        template:
+          type: string
+        suite_id:
+          type: string
+          format: uuid
+        suite_version_id:
+          type: string
+          format: uuid
+        suite_task_id:
+          type: string
+          format: uuid
+        scorecard_passed:
+          type: boolean
+        overall_score:
+          type: number
+        event_refs:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentHarnessFailureEventRef"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    UpdateAgentHarnessFailureReviewRequest:
+      type: object
+      properties:
+        suggested_class:
+          $ref: "#/components/schemas/AgentHarnessFailureClass"
+        suggested_summary:
+          type: string
+        suggested_source:
+          type: string
+          enum: [rules, llm]
+        suggested_confidence:
+          type: number
+        suggested_payload:
+          type: object
+          additionalProperties: true
+        human_class:
+          $ref: "#/components/schemas/AgentHarnessFailureClass"
+        human_summary:
+          type: string
+        human_payload:
+          type: object
+          additionalProperties: true
+
+    AgentHarnessFailureSummaryGroup:
+      type: object
+      required: [group_by, key, label, failure_class, count, latest_execution_id, latest_at]
+      properties:
+        group_by:
+          type: string
+          enum: [repository, task_type, harness, model, template, suite]
+        key:
+          type: string
+        label:
+          type: string
+        failure_class:
+          $ref: "#/components/schemas/AgentHarnessFailureClass"
+        count:
+          type: integer
+        latest_execution_id:
+          type: string
+          format: uuid
+        latest_at:
+          type: string
+          format: date-time
+        suite_id:
+          type: string
+          format: uuid
+
+    ListAgentHarnessFailureSummaryResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentHarnessFailureSummaryGroup"
+
+    PromoteAgentHarnessExecutionRequest:
+      type: object
+      required: [suite_id, title]
+      properties:
+        suite_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+          minLength: 1
+        public_prompt:
+          type: string
+        failure_class:
+          $ref: "#/components/schemas/AgentHarnessFailureClass"
+        failure_summary:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+
+    AgentHarnessSuiteTask:
+      type: object
+      required: [id, suite_version_id, task_order, title, public_prompt, source_type, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        suite_version_id:
+          type: string
+          format: uuid
+        task_order:
+          type: integer
+        title:
+          type: string
+        public_prompt:
+          type: string
+        source_type:
+          type: string
+        repository_url:
+          type: string
+        base_branch:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    PromoteAgentHarnessExecutionResponse:
+      type: object
+      required: [suite, task]
+      properties:
+        suite:
+          type: object
+          additionalProperties: true
+        task:
+          $ref: "#/components/schemas/AgentHarnessSuiteTask"
+
+    AgentHarnessSuiteRankingEnvelope:
+      type: object
+      required: [ranking]
+      properties:
+        ranking:
+          $ref: "#/components/schemas/AgentHarnessSuiteRanking"
+
+    AgentHarnessSuiteRanking:
+      type: object
+      required: [schema_version, suite_id, suite_version, k, computed_at, rankings, pairwise, evidence]
+      additionalProperties: true
+      properties:
+        schema_version:
+          type: string
+        suite_id:
+          type: string
+          format: uuid
+        suite_version:
+          type: object
+          additionalProperties: true
+        k:
+          type: integer
+          minimum: 1
+        computed_at:
+          type: string
+          format: date-time
+        rankings:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        pairwise:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        evidence:
+          type: object
+          additionalProperties: true
+
+    AgentHarnessExecution:
+      type: object
+      required: [id, organization_id, workspace_id, agent_harness_id, status, harness_snapshot, execution_config_snapshot, evaluation_config_snapshot, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        organization_id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+          format: uuid
+        agent_harness_id:
+          type: string
+          format: uuid
+        run_id:
+          type: string
+          format: uuid
+        run_agent_id:
+          type: string
+          format: uuid
+        evaluation_spec_id:
+          type: string
+          format: uuid
+        temporal_workflow_id:
+          type: string
+        temporal_run_id:
+          type: string
+        retry_of_execution_id:
+          type: string
+          format: uuid
+        created_by_user_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [queued, provisioning, running, scoring, completed, failed, cancelled]
+        harness_snapshot:
+          type: object
+          additionalProperties: true
+        execution_config_snapshot:
+          type: object
+          additionalProperties: true
+        evaluation_config_snapshot:
+          type: object
+          additionalProperties: true
+        error_message:
+          type: string
+        failure_stage:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+        cancelled_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
 
     EmptyObject:
       type: object
@@ -4861,10 +5556,12 @@ components:
         status:
           type: string
           enum: [active, archived]
+        public_packs:
+          type: boolean
 
     WorkspaceDetailResponse:
       type: object
-      required: [id, organization_id, name, slug, status, created_at, updated_at]
+      required: [id, organization_id, name, slug, status, public_packs, created_at, updated_at]
       properties:
         id:
           type: string
@@ -4878,6 +5575,8 @@ components:
           type: string
         status:
           type: string
+        public_packs:
+          type: boolean
         created_at:
           type: string
           format: date-time
@@ -5365,6 +6064,61 @@ components:
         gates:
           $ref: "#/components/schemas/WorkspaceGateSummary"
 
+    QuotaCounter:
+      type: object
+      required: [used]
+      properties:
+        used:
+          type: integer
+        limit:
+          type: integer
+        remaining:
+          type: integer
+        reset_at:
+          type: string
+          format: date-time
+
+    WorkspaceQuotaResponse:
+      type: object
+      required:
+        [
+          organization_id,
+          workspace_id,
+          plan_key,
+          billing_period,
+          status,
+          monthly_races,
+          concurrent_races,
+          seats,
+          window_start,
+          window_end,
+        ]
+      properties:
+        organization_id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+          format: uuid
+        plan_key:
+          $ref: "#/components/schemas/BillingPlanKey"
+        billing_period:
+          type: string
+        status:
+          type: string
+        monthly_races:
+          $ref: "#/components/schemas/QuotaCounter"
+        concurrent_races:
+          $ref: "#/components/schemas/QuotaCounter"
+        seats:
+          $ref: "#/components/schemas/QuotaCounter"
+        window_start:
+          type: string
+          format: date-time
+        window_end:
+          type: string
+          format: date-time
+
     ProcessDodoWebhookResponse:
       type: object
       required: [duplicate, event_type]
@@ -5419,6 +6173,10 @@ components:
         created_at:
           type: string
           format: date-time
+        accept_url:
+          type: string
+          format: uri
+          description: Present while the membership is invited.
 
     ListOrgMembershipsResponse:
       type: object
@@ -5486,6 +6244,10 @@ components:
         created_at:
           type: string
           format: date-time
+        accept_url:
+          type: string
+          format: uri
+          description: Present while the membership is invited.
 
     ListWorkspaceMembershipsResponse:
       type: object
@@ -5678,7 +6440,7 @@ components:
 
     ModelCatalogEntryResponse:
       type: object
-      required: [id, provider_key, provider_model_id, display_name, model_family, modality, lifecycle_status, metadata, created_at, updated_at]
+      required: [id, provider_key, provider_model_id, display_name, model_family, modality, lifecycle_status, metadata, input_cost_per_million_tokens, output_cost_per_million_tokens, created_at, updated_at]
       properties:
         id:
           type: string
@@ -5698,6 +6460,12 @@ components:
         metadata:
           type: object
           additionalProperties: true
+        input_cost_per_million_tokens:
+          type: number
+          format: double
+        output_cost_per_million_tokens:
+          type: number
+          format: double
         created_at:
           type: string
           format: date-time
@@ -5731,7 +6499,7 @@ components:
 
     ModelAliasResponse:
       type: object
-      required: [id, model_catalog_entry_id, alias_key, display_name, status, created_at, updated_at]
+      required: [id, model_catalog_entry_id, provider_key, provider_model_id, model_display_name, alias_key, display_name, status, input_cost_per_million_tokens, output_cost_per_million_tokens, catalog_input_cost_per_million_tokens, catalog_output_cost_per_million_tokens, created_at, updated_at]
       properties:
         id:
           type: string
@@ -5745,11 +6513,31 @@ components:
         model_catalog_entry_id:
           type: string
           format: uuid
+        provider_key:
+          type: string
+        provider_model_id:
+          type: string
+        model_display_name:
+          type: string
         alias_key:
           type: string
         display_name:
           type: string
         status:
+          type: string
+        input_cost_per_million_tokens:
+          type: number
+          format: double
+        output_cost_per_million_tokens:
+          type: number
+          format: double
+        catalog_input_cost_per_million_tokens:
+          type: number
+          format: double
+        catalog_output_cost_per_million_tokens:
+          type: number
+          format: double
+        pricing_drift_warning:
           type: string
         created_at:
           type: string
@@ -6093,6 +6881,15 @@ components:
             Optional. Overrides the default cadence (minimum steps between
             standings injections). Null / omitted uses the backend default.
             Only meaningful when `race_context` is true.
+        max_iterations:
+          type: integer
+          minimum: 1
+          maximum: 1000
+          description: >
+            Optional. Overrides the max native-agent iteration budget for this
+            run. If omitted, AgentClash uses the challenge pack
+            `evaluation_spec.runtime_limits.max_iterations` default when
+            present, otherwise the selected runtime profile default.
         ci_metadata:
           $ref: "#/components/schemas/RunCIMetadata"
           description: >
@@ -6100,7 +6897,7 @@ components:
 
     CreateEvalSessionRequest:
       type: object
-      required: [workspace_id, challenge_pack_version_id, participants, eval_session]
+      required: [workspace_id, challenge_pack_version_id, eval_session]
       properties:
         workspace_id:
           type: string
@@ -6119,6 +6916,9 @@ components:
         participants:
           type: array
           minItems: 1
+          description: >
+            Uniform participants used for every child run. May be omitted when
+            `eval_session.run_matrix` supplies participants per child run.
           items:
             $ref: "#/components/schemas/CreateEvalSessionParticipant"
         execution_mode:
@@ -6129,6 +6929,13 @@ components:
             `comparison` for multiple participants.
         name:
           type: string
+        max_iterations:
+          type: integer
+          minimum: 1
+          maximum: 1000
+          description: >
+            Optional. Applies the same native-agent iteration budget override
+            to every child run in the eval session.
         eval_session:
           $ref: "#/components/schemas/CreateEvalSessionConfig"
 
@@ -6171,9 +6978,42 @@ components:
             - $ref: "#/components/schemas/EvalSessionReliabilityWeightsConfig"
             - type: "null"
           description: Optional. Explicit `null` is treated the same as omission.
+        seed_fanout:
+          $ref: "#/components/schemas/EvalSessionSeedFanoutConfig"
+        run_matrix:
+          type: array
+          minItems: 1
+          maxItems: 100
+          description: >
+            Explicit child-run matrix for race series. Length must equal
+            `repetitions`. Cannot be combined with `seed_fanout`.
+          items:
+            $ref: "#/components/schemas/EvalSessionRunMatrixEntry"
         schema_version:
           type: integer
           minimum: 1
+
+    EvalSessionRunMatrixEntry:
+      type: object
+      required: [key, participants]
+      properties:
+        key:
+          type: string
+          minLength: 1
+          description: Stable client-generated key for this matrix cell.
+        deployment_lineup:
+          type: string
+          minLength: 1
+          description: Optional challenge-pack lineup name used for this child run.
+        seed:
+          type: integer
+          minimum: 1
+          description: Optional deterministic seed assigned to this child run.
+        participants:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/CreateEvalSessionParticipant"
 
     EvalSessionAggregationConfig:
       type: object
@@ -6249,6 +7089,23 @@ components:
           type: object
           additionalProperties: true
 
+    EvalSessionSeedFanoutConfig:
+      type: object
+      required: [strategy, seeds]
+      properties:
+        strategy:
+          type: string
+          enum: [explicit]
+        seeds:
+          type: array
+          minItems: 1
+          maxItems: 100
+          uniqueItems: true
+          items:
+            type: integer
+            minimum: 1
+          description: Must contain exactly one seed per requested repetition.
+
     CreateEvalSessionResponse:
       type: object
       required: [eval_session, run_ids]
@@ -6260,6 +7117,40 @@ components:
           items:
             type: string
             format: uuid
+        seeded_runs:
+          type: array
+          items:
+            $ref: "#/components/schemas/EvalSessionSeededRun"
+        series_runs:
+          type: array
+          items:
+            $ref: "#/components/schemas/EvalSessionSeriesRun"
+
+    EvalSessionSeededRun:
+      type: object
+      required: [run_id, seed]
+      properties:
+        run_id:
+          type: string
+          format: uuid
+        seed:
+          type: integer
+          minimum: 1
+
+    EvalSessionSeriesRun:
+      type: object
+      required: [run_id]
+      properties:
+        run_id:
+          type: string
+          format: uuid
+        matrix_key:
+          type: string
+        deployment_lineup:
+          type: string
+        seed:
+          type: integer
+          minimum: 1
 
     EvalSessionResponse:
       type: object
@@ -6459,6 +7350,8 @@ components:
             $ref: "#/components/schemas/EvalSessionParticipantAggregate"
         comparison:
           $ref: "#/components/schemas/EvalSessionRepeatedComparison"
+        series_report:
+          $ref: "#/components/schemas/EvalSessionSeriesReport"
 
     EvalSessionParticipantAggregate:
       type: object
@@ -6484,6 +7377,64 @@ components:
           $ref: "#/components/schemas/EvalSessionPassMetricSeries"
         metric_routing:
           $ref: "#/components/schemas/EvalSessionMetricRouting"
+        cost_usd:
+          $ref: "#/components/schemas/EvalSessionCostAggregate"
+
+    EvalSessionSeriesReport:
+      type: object
+      required: [rank_metric, rows]
+      properties:
+        rank_metric:
+          type: string
+          enum: [overall_score, composite_agent_score]
+        rows:
+          type: array
+          items:
+            $ref: "#/components/schemas/EvalSessionSeriesReportRow"
+
+    EvalSessionSeriesReportRow:
+      type: object
+      required: [rank, lane_index, label, observed_runs]
+      properties:
+        rank:
+          type: integer
+        lane_index:
+          type: integer
+        label:
+          type: string
+        deployment_lineup:
+          type: string
+        participant_label:
+          type: string
+        observed_runs:
+          type: integer
+        overall_score:
+          type: number
+        correctness_score:
+          type: number
+        success_rate:
+          type: number
+        composite_agent_score:
+          type: number
+        mean_cost_usd:
+          type: number
+        total_cost_usd:
+          type: number
+
+    EvalSessionCostAggregate:
+      type: object
+      required: [n, total, mean, min, max]
+      properties:
+        n:
+          type: integer
+        total:
+          type: number
+        mean:
+          type: number
+        min:
+          type: number
+        max:
+          type: number
 
     EvalSessionTaskSuccess:
       type: object
@@ -6642,6 +7593,16 @@ components:
           $ref: "#/components/schemas/RunStatus"
         execution_mode:
           type: string
+        seed:
+          type: integer
+          minimum: 1
+          description: Seed assigned to this child run when the eval session was created via seeded fanout.
+        matrix_key:
+          type: string
+          description: Stable series matrix key persisted on this child run, when created from `run_matrix`.
+        deployment_lineup:
+          type: string
+          description: Deployment lineup name persisted on this child run, when created from `run_matrix`.
         queued_at:
           type: string
           format: date-time
@@ -6727,6 +7688,24 @@ components:
               type: string
         run:
           $ref: "#/components/schemas/CreateRunResponse"
+
+    RunWorkflowErrorResponse:
+      type: object
+      required: [error, run]
+      description: >
+        Returned when a run workflow operation could not be completed in
+        Temporal (HTTP 502).
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+        run:
+          $ref: "#/components/schemas/RunDetail"
 
     RunDetail:
       type: object
@@ -7945,6 +8924,9 @@ components:
         cost_score:
           type: number
           format: double
+        cost_per_correct_usd:
+          type: number
+          format: double
         dimensions:
           type: object
           additionalProperties:
@@ -8078,6 +9060,14 @@ components:
         cost_score:
           type: number
           format: double
+        total_cost_usd:
+          type: number
+          format: double
+          description: Total model cost in USD for this run agent, derived from stored scorecard cost metrics.
+        cost_per_correct_usd:
+          type: number
+          format: double
+          description: Total model cost divided by correct validator outcomes for this run agent.
         behavioral_score:
           type: number
           format: double
@@ -8175,7 +9165,34 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/MetricDetail"
+        side_metrics:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/SideMetricDetail"
       additionalProperties: true
+
+    SideMetricDetail:
+      type: object
+      required: [state]
+      properties:
+        state:
+          type: string
+          description: Whether the side metric could be computed.
+        value:
+          type: number
+          format: double
+          description: Numeric metric value when state is available.
+        unit:
+          type: string
+        numerator:
+          type: number
+          format: double
+        denominator:
+          type: number
+          format: double
+        reason:
+          type: string
+          description: Explanation when state is unavailable.
 
     ValidatorDetail:
       type: object
@@ -8841,6 +9858,20 @@ components:
           format: int32
         lifecycle_status:
           type: string
+        deployment_defaults:
+          type: object
+          description: Default deployment aliases and lineups declared by the challenge pack version.
+          properties:
+            aliases:
+              type: object
+              additionalProperties:
+                type: string
+            lineups:
+              type: object
+              additionalProperties:
+                type: array
+                items:
+                  type: string
         created_at:
           type: string
           format: date-time

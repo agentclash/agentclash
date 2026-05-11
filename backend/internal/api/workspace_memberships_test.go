@@ -3,7 +3,9 @@ package api
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/email"
 	"github.com/agentclash/agentclash/backend/internal/repository"
@@ -17,11 +19,16 @@ type fakeWsMembershipRepo struct {
 	userErr         error
 	orgMembership   repository.OrgMembershipFullRow
 	orgMemberErr    error
+	orgCreated      repository.OrgMembershipFullRow
+	orgUpdated      repository.OrgMembershipFullRow
+	lastOrgCreate   repository.CreateOrgMembershipInput
+	lastOrgUpdate   repository.UpdateOrgMembershipInput
 	wsMembership    repository.WorkspaceMembershipFullRow
 	wsMemberErr     error
 	created         repository.WorkspaceMembershipFullRow
 	createErr       error
 	updated         repository.WorkspaceMembershipFullRow
+	lastUpdate      repository.UpdateWorkspaceMembershipInput
 	updateErr       error
 	adminCount      int64
 	memberships     []repository.WorkspaceMembershipFullRow
@@ -56,11 +63,48 @@ func (r *fakeWsMembershipRepo) GetOrgMembershipByOrgAndUser(_ context.Context, _
 	return r.orgMembership, r.orgMemberErr
 }
 
+func (r *fakeWsMembershipRepo) CreateOrgMembership(_ context.Context, input repository.CreateOrgMembershipInput) (repository.OrgMembershipFullRow, error) {
+	r.lastOrgCreate = input
+	if r.orgCreated.ID == uuid.Nil {
+		r.orgCreated = repository.OrgMembershipFullRow{
+			ID:                   uuid.New(),
+			OrganizationID:       input.OrganizationID,
+			UserID:               input.UserID,
+			Email:                r.user.Email,
+			Role:                 input.Role,
+			MembershipStatus:     "invited",
+			InviteToken:          input.InviteToken,
+			InviteTokenExpiresAt: &input.InviteTokenExpiresAt,
+		}
+	}
+	return r.orgCreated, nil
+}
+
+func (r *fakeWsMembershipRepo) UpdateOrgMembership(_ context.Context, _ uuid.UUID, input repository.UpdateOrgMembershipInput) (repository.OrgMembershipFullRow, error) {
+	r.lastOrgUpdate = input
+	if r.orgUpdated.ID != uuid.Nil {
+		return r.orgUpdated, nil
+	}
+	result := r.orgMembership
+	if input.Status != nil {
+		result.MembershipStatus = *input.Status
+	}
+	if input.ClearInviteToken {
+		result.InviteToken = ""
+		result.InviteTokenExpiresAt = nil
+	}
+	return result, nil
+}
+
 func (r *fakeWsMembershipRepo) GetWorkspaceMembershipByWorkspaceAndUser(_ context.Context, _, _ uuid.UUID) (repository.WorkspaceMembershipFullRow, error) {
 	return r.wsMembership, r.wsMemberErr
 }
 
-func (r *fakeWsMembershipRepo) CreateWorkspaceMembership(_ context.Context, _ repository.CreateWorkspaceMembershipInput) (repository.WorkspaceMembershipFullRow, error) {
+func (r *fakeWsMembershipRepo) CreateWorkspaceMembership(_ context.Context, input repository.CreateWorkspaceMembershipInput) (repository.WorkspaceMembershipFullRow, error) {
+	if r.created.InviteToken == "" {
+		r.created.InviteToken = input.InviteToken
+		r.created.InviteTokenExpiresAt = &input.InviteTokenExpiresAt
+	}
 	return r.created, r.createErr
 }
 
@@ -68,7 +112,20 @@ func (r *fakeWsMembershipRepo) GetWorkspaceMembershipByID(_ context.Context, _ u
 	return r.wsMembership, r.wsMemberErr
 }
 
-func (r *fakeWsMembershipRepo) UpdateWorkspaceMembership(_ context.Context, _ uuid.UUID, _ repository.UpdateWorkspaceMembershipInput) (repository.WorkspaceMembershipFullRow, error) {
+func (r *fakeWsMembershipRepo) GetWorkspaceMembershipByInviteToken(_ context.Context, _ string) (repository.WorkspaceMembershipFullRow, error) {
+	return r.wsMembership, r.wsMemberErr
+}
+
+func (r *fakeWsMembershipRepo) UpdateWorkspaceMembership(_ context.Context, _ uuid.UUID, input repository.UpdateWorkspaceMembershipInput) (repository.WorkspaceMembershipFullRow, error) {
+	r.lastUpdate = input
+	if input.InviteToken != nil && r.updated.InviteToken == "" {
+		r.updated.InviteToken = *input.InviteToken
+		r.updated.InviteTokenExpiresAt = input.InviteTokenExpiresAt
+	}
+	if input.ClearInviteToken {
+		r.updated.InviteToken = ""
+		r.updated.InviteTokenExpiresAt = nil
+	}
 	return r.updated, r.updateErr
 }
 
@@ -122,14 +179,15 @@ func TestInviteWorkspaceMember_SendsEmail(t *testing.T) {
 	manager := NewWorkspaceMembershipManager(repo, sender, "https://app.agentclash.dev")
 
 	caller := Caller{
-		UserID: uuid.New(),
-		Email:  "admin@example.com",
+		UserID:      uuid.New(),
+		Email:       "admin@example.com",
+		DisplayName: "Atharva",
 		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
 			workspaceID: {WorkspaceID: workspaceID, Role: "workspace_admin"},
 		},
 	}
 
-	_, err := manager.InviteWorkspaceMember(context.Background(), caller, workspaceID, InviteWorkspaceMemberInput{
+	result, err := manager.InviteWorkspaceMember(context.Background(), caller, workspaceID, InviteWorkspaceMemberInput{
 		Email: "invitee@example.com",
 		Role:  "workspace_member",
 	})
@@ -144,14 +202,287 @@ func TestInviteWorkspaceMember_SendsEmail(t *testing.T) {
 	if sent.To != "invitee@example.com" {
 		t.Errorf("email To = %q, want invitee@example.com", sent.To)
 	}
-	if sent.WorkspaceName != "Test Workspace" {
-		t.Errorf("email WorkspaceName = %q, want Test Workspace", sent.WorkspaceName)
+	wantAcceptURLPrefix := "https://app.agentclash.dev/invites/workspace/invite_"
+	if !strings.HasPrefix(result.AcceptURL, wantAcceptURLPrefix) {
+		t.Errorf("result AcceptURL = %q, want prefix %q", result.AcceptURL, wantAcceptURLPrefix)
+	}
+	if sent.ResourceName != "Test Workspace" {
+		t.Errorf("email ResourceName = %q, want Test Workspace", sent.ResourceName)
+	}
+	if sent.ResourceKind != "workspace" {
+		t.Errorf("email ResourceKind = %q, want workspace", sent.ResourceKind)
+	}
+	if sent.InviterName != "Atharva" {
+		t.Errorf("email InviterName = %q, want Atharva", sent.InviterName)
 	}
 	if sent.InviterEmail != "admin@example.com" {
 		t.Errorf("email InviterEmail = %q, want admin@example.com", sent.InviterEmail)
 	}
 	if sent.Role != "workspace_member" {
 		t.Errorf("email Role = %q, want workspace_member", sent.Role)
+	}
+	if sent.AcceptURL != result.AcceptURL {
+		t.Errorf("email AcceptURL = %q, want %q", sent.AcceptURL, result.AcceptURL)
+	}
+}
+
+func TestAcceptWorkspaceInviteLink_ReassignsPendingInviteToCaller(t *testing.T) {
+	workspaceID := uuid.New()
+	orgID := uuid.New()
+	invitedUserID := uuid.New()
+	callerUserID := uuid.New()
+	membershipID := uuid.New()
+	now := time.Now()
+
+	repo := &fakeWsMembershipRepo{
+		orgID: orgID,
+		wsMembership: repository.WorkspaceMembershipFullRow{
+			ID:               membershipID,
+			WorkspaceID:      workspaceID,
+			OrganizationID:   orgID,
+			UserID:           invitedUserID,
+			Email:            "friend@example.com",
+			Role:             "workspace_member",
+			MembershipStatus: "invited",
+			CreatedAt:        now,
+			UpdatedAt:        now,
+		},
+		updated: repository.WorkspaceMembershipFullRow{
+			ID:               membershipID,
+			WorkspaceID:      workspaceID,
+			OrganizationID:   orgID,
+			UserID:           callerUserID,
+			Email:            "friend@example.com",
+			Role:             "workspace_member",
+			MembershipStatus: "active",
+			CreatedAt:        now,
+			UpdatedAt:        now,
+		},
+	}
+	manager := NewWorkspaceMembershipManager(repo, &fakeEmailSender{}, "https://app.agentclash.dev")
+	status := "active"
+
+	result, err := manager.UpdateWorkspaceMembership(context.Background(), Caller{UserID: callerUserID, Email: "friend@example.com"}, membershipID, UpdateWorkspaceMembershipInput{
+		Status: &status,
+	})
+	if err != nil {
+		t.Fatalf("UpdateWorkspaceMembership returned error: %v", err)
+	}
+
+	if repo.lastUpdate.UserID == nil || *repo.lastUpdate.UserID != callerUserID {
+		t.Fatalf("UpdateWorkspaceMembership UserID = %v, want %s", repo.lastUpdate.UserID, callerUserID)
+	}
+	if result.UserID != callerUserID {
+		t.Fatalf("result UserID = %s, want %s", result.UserID, callerUserID)
+	}
+	if result.MembershipStatus != "active" {
+		t.Fatalf("result status = %q, want active", result.MembershipStatus)
+	}
+	if !repo.lastUpdate.ClearInviteToken {
+		t.Fatalf("ClearInviteToken = false, want true")
+	}
+}
+
+func TestAcceptWorkspaceInviteToken_ActivatesOrgAndWorkspaceMemberships(t *testing.T) {
+	workspaceID := uuid.New()
+	orgID := uuid.New()
+	userID := uuid.New()
+	membershipID := uuid.New()
+	orgMembershipID := uuid.New()
+	expiresAt := time.Now().Add(time.Hour)
+
+	repo := &fakeWsMembershipRepo{
+		orgID: orgID,
+		orgMembership: repository.OrgMembershipFullRow{
+			ID:               orgMembershipID,
+			OrganizationID:   orgID,
+			UserID:           userID,
+			Email:            "friend@example.com",
+			Role:             "org_member",
+			MembershipStatus: "invited",
+		},
+		wsMembership: repository.WorkspaceMembershipFullRow{
+			ID:                   membershipID,
+			WorkspaceID:          workspaceID,
+			OrganizationID:       orgID,
+			UserID:               userID,
+			Email:                "friend@example.com",
+			Role:                 "workspace_member",
+			MembershipStatus:     "invited",
+			InviteToken:          "invite_testtoken",
+			InviteTokenExpiresAt: &expiresAt,
+		},
+		updated: repository.WorkspaceMembershipFullRow{
+			ID:               membershipID,
+			WorkspaceID:      workspaceID,
+			OrganizationID:   orgID,
+			UserID:           userID,
+			Email:            "friend@example.com",
+			Role:             "workspace_member",
+			MembershipStatus: "active",
+		},
+	}
+	manager := NewWorkspaceMembershipManager(repo, &fakeEmailSender{}, "https://app.agentclash.dev")
+
+	result, err := manager.AcceptWorkspaceInvite(context.Background(), Caller{UserID: userID, Email: "friend@example.com"}, "invite_testtoken")
+	if err != nil {
+		t.Fatalf("AcceptWorkspaceInvite returned error: %v", err)
+	}
+
+	if repo.lastOrgUpdate.Status == nil || *repo.lastOrgUpdate.Status != "active" {
+		t.Fatalf("org update status = %v, want active", repo.lastOrgUpdate.Status)
+	}
+	if !repo.lastOrgUpdate.ClearInviteToken {
+		t.Fatalf("org ClearInviteToken = false, want true")
+	}
+	if !repo.lastUpdate.ClearInviteToken {
+		t.Fatalf("workspace ClearInviteToken = false, want true")
+	}
+	if result.MembershipStatus != "active" {
+		t.Fatalf("result status = %q, want active", result.MembershipStatus)
+	}
+}
+
+func TestAcceptWorkspaceInviteToken_AllowsEmptyCallerEmail(t *testing.T) {
+	workspaceID := uuid.New()
+	orgID := uuid.New()
+	invitedUserID := uuid.New()
+	callerUserID := uuid.New()
+	membershipID := uuid.New()
+	expiresAt := time.Now().Add(time.Hour)
+
+	repo := &fakeWsMembershipRepo{
+		orgID:        orgID,
+		user:         repository.User{ID: callerUserID, Email: ""},
+		orgMemberErr: repository.ErrMembershipNotFound,
+		wsMembership: repository.WorkspaceMembershipFullRow{
+			ID:                   membershipID,
+			WorkspaceID:          workspaceID,
+			OrganizationID:       orgID,
+			UserID:               invitedUserID,
+			Email:                "friend@example.com",
+			Role:                 "workspace_member",
+			MembershipStatus:     "invited",
+			InviteToken:          "invite_testtoken",
+			InviteTokenExpiresAt: &expiresAt,
+		},
+		updated: repository.WorkspaceMembershipFullRow{
+			ID:               membershipID,
+			WorkspaceID:      workspaceID,
+			OrganizationID:   orgID,
+			UserID:           callerUserID,
+			Email:            "friend@example.com",
+			Role:             "workspace_member",
+			MembershipStatus: "active",
+		},
+	}
+	manager := NewWorkspaceMembershipManager(repo, &fakeEmailSender{}, "https://app.agentclash.dev")
+
+	result, err := manager.AcceptWorkspaceInvite(context.Background(), Caller{UserID: callerUserID}, "invite_testtoken")
+	if err != nil {
+		t.Fatalf("AcceptWorkspaceInvite returned error: %v", err)
+	}
+
+	if repo.lastOrgCreate.UserID != callerUserID {
+		t.Fatalf("org membership created for %s, want %s", repo.lastOrgCreate.UserID, callerUserID)
+	}
+	if repo.lastOrgUpdate.Status == nil || *repo.lastOrgUpdate.Status != "active" {
+		t.Fatalf("org update status = %v, want active", repo.lastOrgUpdate.Status)
+	}
+	if repo.lastUpdate.UserID == nil || *repo.lastUpdate.UserID != callerUserID {
+		t.Fatalf("workspace update user = %v, want %s", repo.lastUpdate.UserID, callerUserID)
+	}
+	if !repo.lastUpdate.ClearInviteToken {
+		t.Fatalf("workspace ClearInviteToken = false, want true")
+	}
+	if result.MembershipStatus != "active" {
+		t.Fatalf("result status = %q, want active", result.MembershipStatus)
+	}
+}
+
+func TestAcceptWorkspaceInviteToken_RejectsMismatchedCallerEmail(t *testing.T) {
+	workspaceID := uuid.New()
+	orgID := uuid.New()
+	membershipID := uuid.New()
+	expiresAt := time.Now().Add(time.Hour)
+
+	repo := &fakeWsMembershipRepo{
+		orgID: orgID,
+		wsMembership: repository.WorkspaceMembershipFullRow{
+			ID:                   membershipID,
+			WorkspaceID:          workspaceID,
+			OrganizationID:       orgID,
+			UserID:               uuid.New(),
+			Email:                "friend@example.com",
+			Role:                 "workspace_member",
+			MembershipStatus:     "invited",
+			InviteToken:          "invite_testtoken",
+			InviteTokenExpiresAt: &expiresAt,
+		},
+	}
+	manager := NewWorkspaceMembershipManager(repo, &fakeEmailSender{}, "https://app.agentclash.dev")
+
+	_, err := manager.AcceptWorkspaceInvite(context.Background(), Caller{UserID: uuid.New(), Email: "other@example.com"}, "invite_testtoken")
+	if !errors.Is(err, ErrForbidden) {
+		t.Fatalf("AcceptWorkspaceInvite error = %v, want ErrForbidden", err)
+	}
+	var denial *inviteTokenAcceptDeniedError
+	if !errors.As(err, &denial) {
+		t.Fatalf("AcceptWorkspaceInvite error = %T, want inviteTokenAcceptDeniedError", err)
+	}
+	if denial.Kind != "workspace" || denial.Reason != "caller_email_mismatch" || denial.MembershipID != membershipID || denial.OrganizationID != orgID || denial.WorkspaceID != workspaceID {
+		t.Fatalf("denial metadata = %+v", denial)
+	}
+	if repo.lastOrgCreate.UserID != uuid.Nil || repo.lastOrgUpdate.Status != nil || repo.lastUpdate.Status != nil {
+		t.Fatalf("membership was updated despite forbidden caller: orgCreate=%+v orgUpdate=%+v wsUpdate=%+v", repo.lastOrgCreate, repo.lastOrgUpdate, repo.lastUpdate)
+	}
+}
+
+func TestInviteWorkspaceMember_CreatesMissingOrgInvite(t *testing.T) {
+	workspaceID := uuid.New()
+	userID := uuid.New()
+	orgID := uuid.New()
+
+	repo := &fakeWsMembershipRepo{
+		orgID:        orgID,
+		workspace:    repository.WorkspaceRow{ID: workspaceID, Name: "Test Workspace"},
+		user:         repository.User{ID: userID, Email: "invitee@example.com"},
+		orgMemberErr: repository.ErrMembershipNotFound,
+		wsMemberErr:  repository.ErrMembershipNotFound,
+		created: repository.WorkspaceMembershipFullRow{
+			ID:               uuid.New(),
+			WorkspaceID:      workspaceID,
+			OrganizationID:   orgID,
+			UserID:           userID,
+			Email:            "invitee@example.com",
+			Role:             "workspace_member",
+			MembershipStatus: "invited",
+		},
+	}
+	manager := NewWorkspaceMembershipManager(repo, &fakeEmailSender{}, "https://app.agentclash.dev")
+	caller := Caller{
+		UserID: uuid.New(),
+		Email:  "admin@example.com",
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: "workspace_admin"},
+		},
+	}
+
+	_, err := manager.InviteWorkspaceMember(context.Background(), caller, workspaceID, InviteWorkspaceMemberInput{
+		Email: "invitee@example.com",
+		Role:  "workspace_member",
+	})
+	if err != nil {
+		t.Fatalf("InviteWorkspaceMember returned error: %v", err)
+	}
+	if repo.lastOrgCreate.UserID != userID {
+		t.Fatalf("org invite user = %s, want %s", repo.lastOrgCreate.UserID, userID)
+	}
+	if repo.lastOrgCreate.Role != "org_member" {
+		t.Fatalf("org invite role = %q, want org_member", repo.lastOrgCreate.Role)
+	}
+	if !strings.HasPrefix(repo.lastOrgCreate.InviteToken, "invite_") {
+		t.Fatalf("org invite token = %q, want invite_ prefix", repo.lastOrgCreate.InviteToken)
 	}
 }
 
@@ -208,5 +539,57 @@ func TestInviteWorkspaceMember_EmailFailureDoesNotBlockInvite(t *testing.T) {
 	}
 	if len(sender.calls) != 1 {
 		t.Errorf("email should have been attempted, got %d calls", len(sender.calls))
+	}
+}
+
+func TestListWorkspaceMemberships_InviteLinksOnlyForAdmins(t *testing.T) {
+	workspaceID := uuid.New()
+	orgID := uuid.New()
+	membershipID := uuid.New()
+	repo := &fakeWsMembershipRepo{
+		orgID: orgID,
+		memberships: []repository.WorkspaceMembershipFullRow{
+			{
+				ID:               membershipID,
+				WorkspaceID:      workspaceID,
+				OrganizationID:   orgID,
+				UserID:           uuid.New(),
+				Email:            "invitee@example.com",
+				Role:             "workspace_member",
+				MembershipStatus: "invited",
+				InviteToken:      "invite_testtoken",
+			},
+		},
+		membershipCount: 1,
+	}
+	manager := NewWorkspaceMembershipManager(repo, &fakeEmailSender{}, "https://app.agentclash.dev")
+
+	memberCaller := Caller{
+		UserID: uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: "workspace_member"},
+		},
+	}
+	memberResult, err := manager.ListWorkspaceMemberships(context.Background(), memberCaller, workspaceID, 50, 0)
+	if err != nil {
+		t.Fatalf("ListWorkspaceMemberships returned error for member: %v", err)
+	}
+	if got := memberResult.Items[0].AcceptURL; got != "" {
+		t.Fatalf("member caller AcceptURL = %q, want empty", got)
+	}
+
+	adminCaller := Caller{
+		UserID: uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: "workspace_admin"},
+		},
+	}
+	adminResult, err := manager.ListWorkspaceMemberships(context.Background(), adminCaller, workspaceID, 50, 0)
+	if err != nil {
+		t.Fatalf("ListWorkspaceMemberships returned error for admin: %v", err)
+	}
+	wantAcceptURL := "https://app.agentclash.dev/invites/workspace/invite_testtoken"
+	if got := adminResult.Items[0].AcceptURL; got != wantAcceptURL {
+		t.Fatalf("admin caller AcceptURL = %q, want %q", got, wantAcceptURL)
 	}
 }

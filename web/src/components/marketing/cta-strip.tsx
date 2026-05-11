@@ -73,7 +73,7 @@ export function CTAStrip({
 
 export function CLIInstallStrip({
   command = "npm i -g agentclash",
-  learnMoreHref = "/v2/oss",
+  learnMoreHref = "/docs/getting-started/self-host",
   learnMoreLabel = "self-host",
 }: {
   command?: string;

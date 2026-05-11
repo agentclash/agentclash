@@ -179,7 +179,7 @@ func buildEvidence(challengeInputs []EvidenceInput, events []Event) extractedEvi
 			evidence.completedSuccessfully = &completed
 			evidence.failureCount++
 		case "tool.call.completed", "tool.call.failed":
-			if entry, ok := buildToolCallTraceEntry(payload, event.Type); ok {
+			if entry, ok := buildToolCallTraceEntry(event, payload); ok {
 				evidence.toolCallTrace = append(evidence.toolCallTrace, entry)
 				if entry.Failed {
 					evidence.failureCount++

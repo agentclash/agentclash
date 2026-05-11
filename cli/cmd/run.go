@@ -6,6 +6,7 @@ import (
 	"gopkg.in/yaml.v3"
 	"net/url"
 	"os"
+	"path"
 	"strings"
 	"time"
 
@@ -17,16 +18,24 @@ func init() {
 	rootCmd.AddCommand(runCmd)
 	runCmd.AddCommand(runListCmd)
 	runCmd.AddCommand(runGetCmd)
+	runCmd.AddCommand(runCancelCmd)
 	runCmd.AddCommand(runCreateCmd)
 	runCmd.AddCommand(runRankingCmd)
 	runCmd.AddCommand(runAgentsCmd)
 	runCmd.AddCommand(runEventsCmd)
+	runCmd.AddCommand(runTranscriptCmd)
+	runEventsCmd.AddCommand(runEventsExportCmd)
 	runCmd.AddCommand(runScorecardCmd)
 	runCmd.AddCommand(runFailuresCmd)
 	runCmd.AddCommand(runPromoteFailureCmd)
+	runCmd.AddCommand(runSeriesCmd)
+	runSeriesCmd.AddCommand(runSeriesCreateCmd)
+	runSeriesCmd.AddCommand(runSeriesReportCmd)
 
 	runCreateCmd.Flags().String("challenge-pack-version", "", "Challenge pack version ID (optional in a TTY; prompted when omitted)")
 	runCreateCmd.Flags().StringSlice("deployments", nil, "Agent deployment IDs (optional in a TTY; prompted when omitted)")
+	runCreateCmd.Flags().String("deployment-lineup", "", "Challenge pack deployment lineup to use when --deployments is omitted (default: default)")
+	runCreateCmd.Flags().StringSlice("deployment-lineups", nil, "Challenge pack deployment lineups to cross with --seeds for a race series")
 	runCreateCmd.Flags().String("name", "", "Run name (optional)")
 	runCreateCmd.Flags().String("input-set", "", "Challenge input set ID (optional)")
 	runCreateCmd.Flags().Bool("follow", false, "Follow run events after creation")
@@ -36,6 +45,9 @@ func init() {
 	runCreateCmd.Flags().Bool("include-proposed-regressions", false, "Include proposed regression cases for validation runs")
 	runCreateCmd.Flags().Bool("race-context", false, "Enable live peer-standings injection during the run (requires 2+ agents)")
 	runCreateCmd.Flags().Int("race-context-cadence", 0, "Override race-context cadence; minimum steps between standings injections, [1, 10]. 0 uses the backend default.")
+	runCreateCmd.Flags().Int("max-iter", 0, "Override max iterations for this run (1-1000). 0 uses the pack/runtime default.")
+	runCreateCmd.Flags().Int("seeds", 0, "Create a seeded eval session with N child runs, one per seed (1-100). 0 creates a single run.")
+	runEventsCmd.Flags().StringSlice("filter", nil, "Filter streamed events by event type pattern (exact, comma-separated, or glob; '*' matches any non-slash chars, so 'model.*' matches 'model.call.started'; repeatable)")
 
 	runRankingCmd.Flags().String("sort-by", "", "Sort by: composite, correctness, reliability, latency, cost")
 	runFailuresCmd.Flags().String("agent", "", "Filter by run agent ID")
@@ -53,11 +65,83 @@ func init() {
 	runPromoteFailureCmd.Flags().String("title", "", "Regression case title")
 	runPromoteFailureCmd.Flags().String("failure-summary", "", "Failure summary")
 	runPromoteFailureCmd.Flags().String("severity", "", "Case severity: info, warning, or blocking")
+
+	runSeriesCreateCmd.Flags().String("challenge-pack-version", "", "Challenge pack version ID")
+	runSeriesCreateCmd.Flags().String("input-set", "", "Challenge input set ID (optional)")
+	runSeriesCreateCmd.Flags().StringSlice("deployment-lineups", nil, "Challenge pack deployment lineups to cross with --seeds")
+	runSeriesCreateCmd.Flags().Int("seeds", 0, "Number of seeds to cross with each deployment lineup (1-100)")
+	runSeriesCreateCmd.Flags().String("name", "", "Series name (optional)")
+	runSeriesCreateCmd.Flags().Int("max-iter", 0, "Override max iterations for each child run (1-1000). 0 uses the pack/runtime default.")
 }
 
 var runCmd = &cobra.Command{
 	Use:   "run",
 	Short: "Manage evaluation runs",
+}
+
+var runSeriesCmd = &cobra.Command{
+	Use:   "series",
+	Short: "Manage durable race series",
+}
+
+var runSeriesCreateCmd = &cobra.Command{
+	Use:   "create",
+	Short: "Create a race series from deployment lineups and seeds",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		rc := GetRunContext(cmd)
+		wsID := RequireWorkspace(cmd)
+
+		request, err := runCreateRequestFromFlags(cmd, runCreateRequest{})
+		if err != nil {
+			return err
+		}
+		if err := validateSeriesSeedCount(request.Seeds); err != nil {
+			return err
+		}
+		lineups, err := resolveRunCreateDeploymentLineups(cmd, rc, wsID, request.ChallengePackVersionID, request.DeploymentLineups)
+		if err != nil {
+			return err
+		}
+		request.ResolvedDeploymentLineups = lineups
+		body, err := buildSeriesEvalSessionBody(wsID, request)
+		if err != nil {
+			return err
+		}
+		result, err := createEvalSession(cmd, rc, body)
+		if err != nil {
+			return err
+		}
+		return presentCreatedEvalSession(rc, result)
+	},
+}
+
+var runSeriesReportCmd = &cobra.Command{
+	Use:   "report <eval-session-id>",
+	Short: "Show aggregate score, correctness, and cost for a race series",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		rc := GetRunContext(cmd)
+
+		resp, err := rc.Client.Get(cmd.Context(), "/v1/eval-sessions/"+args[0], nil)
+		if err != nil {
+			return err
+		}
+		if apiErr := resp.ParseError(); apiErr != nil {
+			return apiErr
+		}
+
+		var result map[string]any
+		if err := resp.DecodeJSON(&result); err != nil {
+			return err
+		}
+
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(result)
+		}
+
+		renderRunSeriesReport(rc, result)
+		return nil
+	},
 }
 
 var runListCmd = &cobra.Command{
@@ -106,6 +190,94 @@ var runListCmd = &cobra.Command{
 	},
 }
 
+func renderRunSeriesReport(rc *RunContext, result map[string]any) {
+	session := mapObject(result, "eval_session")
+	if id := mapString(session, "id"); id != "" {
+		rc.Output.PrintDetail("Eval Session ID", id)
+	}
+	if status := mapString(session, "status"); status != "" {
+		rc.Output.PrintDetail("Status", output.StatusColor(status))
+	}
+	if repetitions := mapValue(session, "repetitions"); repetitions != nil {
+		rc.Output.PrintDetail("Repetitions", str(repetitions))
+	}
+
+	summary := mapObject(result, "summary")
+	if runCounts := mapObject(summary, "run_counts"); runCounts != nil {
+		rc.Output.PrintDetail("Runs", fmt.Sprintf("%s total, %s completed", str(runCounts["total"]), str(runCounts["completed"])))
+	}
+
+	aggregate := mapObject(result, "aggregate_result")
+	if aggregate == nil {
+		rc.Output.PrintWarning("Aggregate result is not available yet.")
+		renderEvalSessionEvidenceWarnings(rc, result)
+		return
+	}
+
+	report := mapObject(aggregate, "series_report")
+	rowsRaw := mapSlice(report, "rows")
+	if len(rowsRaw) == 0 {
+		rc.Output.PrintWarning("Aggregate result does not include a race series report.")
+		renderEvalSessionEvidenceWarnings(rc, result)
+		return
+	}
+
+	fmt.Fprintf(rc.Output.Writer(), "\n%s\n", output.Bold("Race Series Report"))
+	reportUsesComposite := mapString(report, "rank_metric") == "composite_agent_score"
+	cols := []output.Column{
+		{Header: "Rank"},
+		{Header: "Lineup"},
+		{Header: "Participant"},
+		{Header: "Runs"},
+	}
+	if reportUsesComposite {
+		cols = append(cols, output.Column{Header: "Composite"})
+	}
+	cols = append(cols,
+		output.Column{Header: "Score"},
+		output.Column{Header: "Correctness"},
+		output.Column{Header: "Success"},
+		output.Column{Header: "Mean Cost"},
+		output.Column{Header: "Total Cost"},
+	)
+	rows := make([][]string, 0, len(rowsRaw))
+	for _, raw := range rowsRaw {
+		row, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		rows = append(rows, []string{
+			str(row["rank"]),
+			mapString(row, "deployment_lineup"),
+			mapString(row, "participant_label", "label"),
+			str(row["observed_runs"]),
+		})
+		if reportUsesComposite {
+			rows[len(rows)-1] = append(rows[len(rows)-1], fmtScore(mapValue(row, "composite_agent_score")))
+		}
+		rows[len(rows)-1] = append(rows[len(rows)-1],
+			fmtScore(mapValue(row, "overall_score")),
+			fmtScore(mapValue(row, "correctness_score")),
+			fmtPercent(mapValue(row, "success_rate")),
+			fmtUSD(mapValue(row, "mean_cost_usd")),
+			fmtUSD(mapValue(row, "total_cost_usd")),
+		)
+	}
+	rc.Output.PrintTable(cols, rows)
+	renderEvalSessionEvidenceWarnings(rc, result)
+}
+
+func renderEvalSessionEvidenceWarnings(rc *RunContext, result map[string]any) {
+	warnings := mapStringSlice(result, "evidence_warnings")
+	if len(warnings) == 0 {
+		return
+	}
+	fmt.Fprintf(rc.Output.Writer(), "\n%s\n", output.Bold("Evidence Warnings"))
+	for _, warning := range warnings {
+		fmt.Fprintf(rc.Output.Writer(), "  - %s\n", output.SanitizeLine(warning))
+	}
+}
+
 var runGetCmd = &cobra.Command{
 	Use:   "get <id>",
 	Short: "Get run details",
@@ -145,6 +317,48 @@ var runGetCmd = &cobra.Command{
 	},
 }
 
+var runCancelCmd = &cobra.Command{
+	Use:   "cancel <id>",
+	Short: "Cancel an active run",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		rc := GetRunContext(cmd)
+
+		resp, err := rc.Client.Post(cmd.Context(), "/v1/runs/"+args[0]+"/cancel", map[string]any{})
+		if err != nil {
+			return err
+		}
+		if apiErr := resp.ParseError(); apiErr != nil {
+			return apiErr
+		}
+
+		var run map[string]any
+		if err := resp.DecodeJSON(&run); err != nil {
+			return err
+		}
+
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(run)
+		}
+
+		status := str(run["status"])
+		rc.Output.PrintSuccess(runCancelSuccessMessage(args[0], status))
+		rc.Output.PrintDetail("Status", output.StatusColor(status))
+		return nil
+	},
+}
+
+func runCancelSuccessMessage(runID, status string) string {
+	switch status {
+	case "cancelled":
+		return fmt.Sprintf("Run %s cancelled", runID)
+	case "completed", "failed":
+		return fmt.Sprintf("Run %s is already %s; no cancellation performed", runID, status)
+	default:
+		return fmt.Sprintf("Run %s status is %s", runID, status)
+	}
+}
+
 var runCreateCmd = &cobra.Command{
 	Use:   "create",
 	Short: "Create and submit an evaluation run",
@@ -167,6 +381,30 @@ For CI and other non-interactive use, keep passing explicit IDs via flags.`,
 			return err
 		}
 
+		follow, _ := cmd.Flags().GetBool("follow")
+		if len(request.DeploymentLineups) > 0 {
+			if follow {
+				return fmt.Errorf("--follow is not supported with --deployment-lineups; tail individual runs with 'agentclash run events <run-id> --follow' instead")
+			}
+			if err := validateSeriesSeedCount(request.Seeds); err != nil {
+				return err
+			}
+			lineups, err := resolveRunCreateDeploymentLineups(cmd, rc, wsID, request.ChallengePackVersionID, request.DeploymentLineups)
+			if err != nil {
+				return err
+			}
+			request.ResolvedDeploymentLineups = lineups
+			body, err := buildSeriesEvalSessionBody(wsID, request)
+			if err != nil {
+				return err
+			}
+			result, err := createEvalSession(cmd, rc, body)
+			if err != nil {
+				return err
+			}
+			return presentCreatedEvalSession(rc, result)
+		}
+
 		selections, err := resolveRunCreateSelections(cmd, rc, wsID)
 		if err != nil {
 			return err
@@ -174,6 +412,21 @@ For CI and other non-interactive use, keep passing explicit IDs via flags.`,
 		request.ChallengePackVersionID = selections.challengePackVersionID
 		request.ChallengeInputSetID = selections.challengeInputSetID
 		request.DeploymentIDs = selections.deploymentIDs
+
+		if request.Seeds > 0 {
+			if follow {
+				return fmt.Errorf("--follow is not supported with --seeds; tail individual runs with 'agentclash run events <run-id> --follow' instead")
+			}
+			body, err := buildSeededEvalSessionBody(wsID, request)
+			if err != nil {
+				return err
+			}
+			result, err := createEvalSession(cmd, rc, body)
+			if err != nil {
+				return err
+			}
+			return presentCreatedEvalSession(rc, result)
+		}
 
 		body, err := buildRunCreateBody(wsID, request)
 		if err != nil {
@@ -185,7 +438,6 @@ For CI and other non-interactive use, keep passing explicit IDs via flags.`,
 			return err
 		}
 
-		follow, _ := cmd.Flags().GetBool("follow")
 		return presentCreatedRun(cmd, rc, run, follow, nil)
 	},
 }
@@ -317,7 +569,31 @@ var runEventsCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		rc := GetRunContext(cmd)
-		return streamRunEvents(cmd, rc, args[0])
+		filters, _ := cmd.Flags().GetStringSlice("filter")
+		patterns, err := normalizeRunEventFilters(filters)
+		if err != nil {
+			return err
+		}
+		return streamRunEvents(cmd, rc, args[0], patterns)
+	},
+}
+
+var runEventsExportCmd = &cobra.Command{
+	Use:   "export <runId>",
+	Short: "Export persisted run events as JSONL",
+	Long:  "Export the full ordered persisted run-agent event stream for a run as JSONL.",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		rc := GetRunContext(cmd)
+		resp, err := rc.Client.Get(cmd.Context(), "/v1/runs/"+args[0]+"/events/export", nil)
+		if err != nil {
+			return err
+		}
+		if apiErr := resp.ParseError(); apiErr != nil {
+			return apiErr
+		}
+		_, err = rc.Output.Writer().Write(resp.Body)
+		return err
 	},
 }
 
@@ -479,7 +755,7 @@ var runPromoteFailureCmd = &cobra.Command{
 	},
 }
 
-func streamRunEvents(cmd *cobra.Command, rc *RunContext, runID string) error {
+func streamRunEvents(cmd *cobra.Command, rc *RunContext, runID string, patterns []string) error {
 	ch, err := rc.Client.StreamSSE(cmd.Context(), "/v1/runs/"+runID+"/events/stream", nil)
 	if err != nil {
 		return fmt.Errorf("connecting to event stream: %w", err)
@@ -490,6 +766,9 @@ func streamRunEvents(cmd *cobra.Command, rc *RunContext, runID string) error {
 	}
 
 	for event := range ch {
+		if !runEventMatchesFilters(event.Event, event.Data, patterns) {
+			continue
+		}
 		switch {
 		case rc.Output.IsYAML():
 			// Emit a YAML document per event, separated by `---`, which is a
@@ -519,7 +798,7 @@ func streamRunEvents(cmd *cobra.Command, rc *RunContext, runID string) error {
 			var parsed map[string]any
 			summary := string(event.Data)
 			if json.Unmarshal(event.Data, &parsed) == nil {
-				if et, ok := parsed["EventType"].(string); ok {
+				if et := eventTypeFromPayload(parsed); et != "" {
 					summary = et
 				}
 			}
@@ -537,12 +816,77 @@ func streamRunEvents(cmd *cobra.Command, rc *RunContext, runID string) error {
 	return nil
 }
 
+func runEventMatchesFilters(sseEvent string, data []byte, patterns []string) bool {
+	if len(patterns) == 0 {
+		return true
+	}
+	eventType := sseEvent
+	var parsed map[string]any
+	if json.Unmarshal(data, &parsed) == nil {
+		if extracted := eventTypeFromPayload(parsed); extracted != "" {
+			eventType = extracted
+		}
+	}
+	for _, pattern := range patterns {
+		if matched, err := path.Match(pattern, eventType); err == nil && matched {
+			return true
+		}
+	}
+	return false
+}
+
+func normalizeRunEventFilters(filters []string) ([]string, error) {
+	var patterns []string
+	for _, filter := range filters {
+		for _, part := range strings.Split(filter, ",") {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			if _, err := path.Match(part, ""); err != nil {
+				return nil, fmt.Errorf("invalid event filter pattern %q: %w", part, err)
+			}
+			patterns = append(patterns, part)
+		}
+	}
+	return patterns, nil
+}
+
+func eventTypeFromPayload(payload map[string]any) string {
+	for _, key := range []string{"event_type", "EventType"} {
+		if eventType, ok := payload[key].(string); ok && eventType != "" {
+			return eventType
+		}
+	}
+	return ""
+}
+
 func fmtScore(v any) string {
 	if v == nil {
 		return "-"
 	}
 	if f, ok := v.(float64); ok {
 		return fmt.Sprintf("%.2f", f)
+	}
+	return fmt.Sprint(v)
+}
+
+func fmtPercent(v any) string {
+	if v == nil {
+		return "-"
+	}
+	if f, ok := v.(float64); ok {
+		return fmt.Sprintf("%.1f%%", f*100)
+	}
+	return fmt.Sprint(v)
+}
+
+func fmtUSD(v any) string {
+	if v == nil {
+		return "-"
+	}
+	if f, ok := v.(float64); ok {
+		return fmt.Sprintf("$%.4f", f)
 	}
 	return fmt.Sprint(v)
 }

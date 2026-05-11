@@ -36,9 +36,10 @@ func TestNativeExecutorHappyPathWritesFileThenSubmits(t *testing.T) {
 					FinishReason:    "tool_calls",
 					ToolCalls: []provider.ToolCall{
 						{
-							ID:        "call-write",
-							Name:      writeFileToolName,
-							Arguments: []byte(`{"path":"/workspace/result.txt","content":"done"}`),
+							ID:               "call-write",
+							Name:             writeFileToolName,
+							Arguments:        []byte(`{"path":"/workspace/result.txt","content":"done"}`),
+							ThoughtSignature: "sig-write",
 						},
 					},
 				},
@@ -54,6 +55,10 @@ func TestNativeExecutorHappyPathWritesFileThenSubmits(t *testing.T) {
 					}
 					if last.IsError {
 						t.Fatalf("tool result unexpectedly marked as error")
+					}
+					assistant := request.Messages[len(request.Messages)-2]
+					if len(assistant.ToolCalls) != 1 || assistant.ToolCalls[0].ThoughtSignature != "sig-write" {
+						t.Fatalf("assistant tool calls = %#v, want preserved thought signature", assistant.ToolCalls)
 					}
 				},
 				response: provider.Response{
@@ -569,6 +574,36 @@ func TestNativeExecutorFailsOnStepLimit(t *testing.T) {
 	}
 	if failure.StopReason != StopReasonStepLimit {
 		t.Fatalf("stop reason = %s, want step_limit", failure.StopReason)
+	}
+}
+
+func TestMaxIterationsLimitPrefersRunExecutionPlanOverride(t *testing.T) {
+	executionContext := nativeExecutionContext()
+	executionContext.Deployment.RuntimeProfile.MaxIterations = 9
+	executionContext.Run.ExecutionPlan = []byte(`{"runtime_limits":{"max_iterations":2}}`)
+
+	if got := maxIterationsLimit(executionContext); got != 2 {
+		t.Fatalf("maxIterationsLimit = %d, want 2", got)
+	}
+}
+
+func TestMaxIterationsLimitFallsBackToRuntimeProfile(t *testing.T) {
+	executionContext := nativeExecutionContext()
+	executionContext.Deployment.RuntimeProfile.MaxIterations = 9
+	executionContext.Run.ExecutionPlan = []byte(`{"runtime_limits":{"max_iterations":0}}`)
+
+	if got := maxIterationsLimit(executionContext); got != 9 {
+		t.Fatalf("maxIterationsLimit = %d, want 9", got)
+	}
+}
+
+func TestMaxIterationsLimitFallsBackWhenExecutionPlanOverrideIsTooLarge(t *testing.T) {
+	executionContext := nativeExecutionContext()
+	executionContext.Deployment.RuntimeProfile.MaxIterations = 9
+	executionContext.Run.ExecutionPlan = []byte(`{"runtime_limits":{"max_iterations":1001}}`)
+
+	if got := maxIterationsLimit(executionContext); got != 9 {
+		t.Fatalf("maxIterationsLimit = %d, want 9", got)
 	}
 }
 

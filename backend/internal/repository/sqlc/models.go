@@ -290,7 +290,7 @@ type Run struct {
 	ID                     uuid.UUID
 	OrganizationID         uuid.UUID
 	WorkspaceID            uuid.UUID
-	ChallengePackVersionID uuid.UUID
+	ChallengePackVersionID *uuid.UUID
 	ChallengeInputSetID    *uuid.UUID
 	CreatedByUserID        *uuid.UUID
 	Name                   string
@@ -311,6 +311,7 @@ type Run struct {
 	RaceContext            bool
 	RaceContextMinStepGap  *int32
 	CiMetadata             []byte
+	SourceType             string
 }
 
 type RunAgent struct {
@@ -318,8 +319,8 @@ type RunAgent struct {
 	OrganizationID            uuid.UUID
 	WorkspaceID               uuid.UUID
 	RunID                     uuid.UUID
-	AgentDeploymentID         uuid.UUID
-	AgentDeploymentSnapshotID uuid.UUID
+	AgentDeploymentID         *uuid.UUID
+	AgentDeploymentSnapshotID *uuid.UUID
 	LaneIndex                 int32
 	Label                     string
 	Status                    string
@@ -329,6 +330,7 @@ type RunAgent struct {
 	FailureReason             *string
 	CreatedAt                 pgtype.Timestamptz
 	UpdatedAt                 pgtype.Timestamptz
+	SourceType                string
 }
 
 type RunAgentReplay struct {

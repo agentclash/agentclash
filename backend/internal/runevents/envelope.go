@@ -56,6 +56,7 @@ const (
 	SourcePromptEvalEngine   Source = "prompt_eval_engine"
 	SourceHostedExternal     Source = "hosted_external"
 	SourceHostedCallback     Source = "hosted_callback"
+	SourceAgentHarnessWorker Source = "agent_harness_worker"
 	SourceWorkerScoring      Source = "worker_scoring"
 	SourceGraderVerification Source = "grader_verification"
 )
@@ -182,7 +183,7 @@ func isValidType(eventType Type) bool {
 
 func isValidSource(source Source) bool {
 	switch source {
-	case SourceNativeEngine, SourcePromptEvalEngine, SourceHostedExternal, SourceHostedCallback, SourceWorkerScoring, SourceGraderVerification:
+	case SourceNativeEngine, SourcePromptEvalEngine, SourceHostedExternal, SourceHostedCallback, SourceAgentHarnessWorker, SourceWorkerScoring, SourceGraderVerification:
 		return true
 	default:
 		return false

@@ -82,7 +82,7 @@ func main() {
 	runCreationManager := api.NewRunCreationManager(
 		authorizer,
 		repo,
-		api.NewTemporalRunWorkflowStarter(temporalClient),
+		api.NewTemporalRunWorkflowStarter(temporalClient, repo),
 		budgetChecker,
 	).WithEvalSessionWorkflowStarter(api.NewTemporalEvalSessionWorkflowStarter(temporalClient))
 	providerRouter := provider.NewDefaultRouter(nil, provider.EnvCredentialResolver{})
@@ -97,7 +97,8 @@ func main() {
 	runReadManager := api.NewRunReadManager(authorizer, repo).
 		WithInsightsClient(providerRouter).
 		WithBudgetChecker(budgetChecker).
-		WithInsightsRateLimiter(insightsLimiter)
+		WithInsightsRateLimiter(insightsLimiter).
+		WithRunWorkflowControl(api.NewTemporalRunWorkflowCanceller(temporalClient))
 	if !runReadManager.InsightsConfigured() {
 		logger.Error("run ranking insights client is not configured")
 		os.Exit(1)
@@ -139,7 +140,6 @@ func main() {
 	runCreationManager.WithEntitlementGateService(billingManager)
 	orgManager := api.NewOrganizationManager(orgAuthz, repo)
 	wsManager := api.NewWorkspaceManager(orgAuthz, repo, billingManager)
-	orgMembershipManager := api.NewOrgMembershipManager(orgAuthz, repo, billingManager)
 
 	var emailSender email.Sender
 	if cfg.ResendAPIKey != "" {
@@ -149,9 +149,10 @@ func main() {
 		emailSender = email.NoopSender{}
 		logger.Info("email sender: noop (RESEND_API_KEY not set)")
 	}
-	wsMembershipManager := api.NewWorkspaceMembershipManager(repo, emailSender, cfg.FrontendURL)
+	orgMembershipManager := api.NewOrgMembershipManager(orgAuthz, repo, emailSender, cfg.FrontendURL, billingManager)
+	wsMembershipManager := api.NewWorkspaceMembershipManager(repo, emailSender, cfg.FrontendURL, billingManager)
 	onboardingManager := api.NewOnboardingManager(repo)
-	infraManager := api.NewInfrastructureManager(repo)
+	infraManager := api.NewInfrastructureManager(repo).WithProviderClient(providerRouter)
 	workspaceSecretsManager := api.NewWorkspaceSecretsManager(repo)
 	cliAuthManager := api.NewCLIAuthManager(repo, logger, cfg.FrontendURL)
 	cliTokenAuth := api.NewCLITokenAuthenticator(repo, logger)

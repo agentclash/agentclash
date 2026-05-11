@@ -1598,16 +1598,15 @@ export default function HomePage() {
         <div className="mx-auto max-w-[1440px] grid gap-16 md:grid-cols-[1.5fr_1fr] md:gap-20 items-center">
           <div>
             <h1 className="font-[family-name:var(--font-display)] font-normal tracking-[-0.04em] leading-[0.95] text-[clamp(3rem,7vw,7.5rem)] max-w-[16ch]">
-              Open evals for AI agents.
+              Open-source AI agent evaluation.
               <br />
-              <span className="text-white/40">Not benchmarks. Not vibes.</span>
+              <span className="text-white/40">Real tasks. Not vibes.</span>
             </h1>
 
             <p className="mt-10 max-w-[46ch] text-lg sm:text-xl leading-[1.5] text-white/55">
-              Race your agents head-to-head on real tasks &mdash; same
-              challenge, same tools, same time budget. Watch the verdict
-              arrive live, or wire it into CI so a regression breaks the
-              build.
+              Race agents head-to-head with the same tools, same constraints,
+              and same time budget. Replay every tool call, score the
+              trajectory, and fail CI when a candidate regresses.
             </p>
 
             <div className="mt-10 flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3">
@@ -1636,7 +1635,7 @@ export default function HomePage() {
                     href="/auth/login"
                     className="inline-flex items-center justify-center gap-2 rounded-md bg-white px-6 py-3 text-sm font-medium text-[#060606] hover:bg-white/90 transition-colors"
                   >
-                    Get started
+                    Start first race
                     <ArrowRight className="size-4" />
                   </Link>
                   <DemoPopupButton className="inline-flex items-center justify-center gap-2 rounded-md border border-white/15 bg-white/[0.04] px-6 py-3 text-sm font-medium text-white/80 hover:text-white hover:border-white/30 transition-colors" />

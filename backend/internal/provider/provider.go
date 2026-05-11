@@ -45,9 +45,10 @@ type ToolDefinition struct {
 }
 
 type ToolCall struct {
-	ID        string          `json:"id"`
-	Name      string          `json:"name"`
-	Arguments json.RawMessage `json:"arguments,omitempty"`
+	ID               string          `json:"id"`
+	Name             string          `json:"name"`
+	Arguments        json.RawMessage `json:"arguments,omitempty"`
+	ThoughtSignature string          `json:"thought_signature,omitempty"`
 }
 
 type ToolResult struct {

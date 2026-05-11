@@ -100,6 +100,185 @@ func TestEvalSessionWorkflowPartialChildFailureStillAggregates(t *testing.T) {
 	}
 }
 
+func TestEvalSessionWorkflowSkipsAlreadyCancelledChildRuns(t *testing.T) {
+	sessionID := uuid.New()
+	cancelledRunID := uuid.New()
+	queuedRunID := uuid.New()
+	cancelledRun := fixtureChildRun(cancelledRunID, sessionID)
+	cancelledRun.Status = domain.RunStatusCancelled
+	repo := newFakeRunRepository(fixtureRun(uuid.New(), domain.RunStatusQueued))
+	repo.setEvalSession(
+		fixtureEvalSession(sessionID, domain.EvalSessionStatusQueued),
+		cancelledRun,
+		fixtureChildRun(queuedRunID, sessionID),
+	)
+
+	var started []uuid.UUID
+	var startedMu sync.Mutex
+	env := newEvalSessionWorkflowTestEnvironment(repo, nil, func(ctx sdkworkflow.Context, input RunWorkflowInput) error {
+		startedMu.Lock()
+		started = append(started, input.RunID)
+		startedMu.Unlock()
+		return nil
+	})
+	env.ExecuteWorkflow(EvalSessionWorkflow, EvalSessionWorkflowInput{EvalSessionID: sessionID})
+
+	if err := env.GetWorkflowError(); err != nil {
+		t.Fatalf("EvalSessionWorkflow returned error: %v", err)
+	}
+	if got := repo.currentEvalSession(sessionID).Status; got != domain.EvalSessionStatusCompleted {
+		t.Fatalf("eval session status = %s, want %s", got, domain.EvalSessionStatusCompleted)
+	}
+	if fmt.Sprint(started) != fmt.Sprint([]uuid.UUID{queuedRunID}) {
+		t.Fatalf("started child runs = %v, want [%s]", started, queuedRunID)
+	}
+}
+
+func TestEvalSessionWorkflowAllCancelledChildRunsMarksSessionCancelled(t *testing.T) {
+	sessionID := uuid.New()
+	runID := uuid.New()
+	cancelledRun := fixtureChildRun(runID, sessionID)
+	cancelledRun.Status = domain.RunStatusCancelled
+	repo := newFakeRunRepository(fixtureRun(uuid.New(), domain.RunStatusQueued))
+	repo.setEvalSession(
+		fixtureEvalSession(sessionID, domain.EvalSessionStatusQueued),
+		cancelledRun,
+	)
+
+	env := newEvalSessionWorkflowTestEnvironment(repo, nil, func(ctx sdkworkflow.Context, input RunWorkflowInput) error {
+		t.Fatalf("cancelled run %s should not be started", input.RunID)
+		return nil
+	})
+	env.ExecuteWorkflow(EvalSessionWorkflow, EvalSessionWorkflowInput{EvalSessionID: sessionID})
+
+	if err := env.GetWorkflowError(); err != nil {
+		t.Fatalf("EvalSessionWorkflow returned error: %v", err)
+	}
+	if got := repo.currentEvalSession(sessionID).Status; got != domain.EvalSessionStatusCancelled {
+		t.Fatalf("eval session status = %s, want %s", got, domain.EvalSessionStatusCancelled)
+	}
+	if repo.callCountWithPrefix("AggregateEvalSession:") != 0 {
+		t.Fatalf("AggregateEvalSession call count = %d, want 0", repo.callCountWithPrefix("AggregateEvalSession:"))
+	}
+}
+
+func TestEvalSessionWorkflowDefaultVersionSkipsChildRefresh(t *testing.T) {
+	sessionID := uuid.New()
+	runID := uuid.New()
+	repo := newFakeRunRepository(fixtureRun(uuid.New(), domain.RunStatusQueued))
+	repo.setEvalSession(
+		fixtureEvalSession(sessionID, domain.EvalSessionStatusQueued),
+		fixtureChildRun(runID, sessionID),
+	)
+
+	env := newEvalSessionWorkflowTestEnvironment(repo, nil, nil)
+	env.OnGetVersion(
+		evalSessionRefreshChildRunsVersionChangeID,
+		sdkworkflow.DefaultVersion,
+		sdkworkflow.Version(1),
+	).Return(sdkworkflow.DefaultVersion)
+	env.ExecuteWorkflow(EvalSessionWorkflow, EvalSessionWorkflowInput{EvalSessionID: sessionID})
+
+	if err := env.GetWorkflowError(); err != nil {
+		t.Fatalf("EvalSessionWorkflow returned error: %v", err)
+	}
+	if repo.callCountWithPrefix("GetRunByID") != 0 {
+		t.Fatalf("GetRunByID call count = %d, want 0 for default version replay path", repo.callCountWithPrefix("GetRunByID"))
+	}
+}
+
+func TestEvalSessionWorkflowMarksSessionCancelledWhenStartedChildWasCancelled(t *testing.T) {
+	sessionID := uuid.New()
+	runID := uuid.New()
+	repo := newFakeRunRepository(fixtureRun(uuid.New(), domain.RunStatusQueued))
+	repo.setEvalSession(
+		fixtureEvalSession(sessionID, domain.EvalSessionStatusQueued),
+		fixtureChildRun(runID, sessionID),
+	)
+
+	env := newEvalSessionWorkflowTestEnvironment(repo, nil, func(ctx sdkworkflow.Context, input RunWorkflowInput) error {
+		repo.forceEvalSessionRunStatus(sessionID, input.RunID, domain.RunStatusCancelled)
+		return temporal.NewNonRetryableApplicationError(
+			ErrRunMustBeQueued.Error(),
+			runMustBeQueuedErrorType,
+			ErrRunMustBeQueued,
+		)
+	})
+	env.ExecuteWorkflow(EvalSessionWorkflow, EvalSessionWorkflowInput{EvalSessionID: sessionID})
+
+	if err := env.GetWorkflowError(); err != nil {
+		t.Fatalf("EvalSessionWorkflow returned error: %v", err)
+	}
+	if got := repo.currentEvalSession(sessionID).Status; got != domain.EvalSessionStatusCancelled {
+		t.Fatalf("eval session status = %s, want %s", got, domain.EvalSessionStatusCancelled)
+	}
+	if repo.callCountWithPrefix("AggregateEvalSession:") != 0 {
+		t.Fatalf("AggregateEvalSession call count = %d, want 0", repo.callCountWithPrefix("AggregateEvalSession:"))
+	}
+}
+
+func TestEvalSessionWorkflowMixedCancelledAndFailedChildrenMarksSessionFailed(t *testing.T) {
+	sessionID := uuid.New()
+	cancelledRunID := uuid.MustParse("00000000-0000-0000-0000-000000000001")
+	failedRunID := uuid.MustParse("00000000-0000-0000-0000-000000000002")
+	repo := newFakeRunRepository(fixtureRun(uuid.New(), domain.RunStatusQueued))
+	repo.setEvalSession(
+		fixtureEvalSession(sessionID, domain.EvalSessionStatusQueued),
+		fixtureChildRun(cancelledRunID, sessionID),
+		fixtureChildRun(failedRunID, sessionID),
+	)
+
+	env := newEvalSessionWorkflowTestEnvironment(repo, nil, func(ctx sdkworkflow.Context, input RunWorkflowInput) error {
+		if input.RunID == cancelledRunID {
+			repo.forceEvalSessionRunStatus(sessionID, input.RunID, domain.RunStatusCancelled)
+			return temporal.NewCanceledError("child cancelled")
+		}
+		return errors.New("real child failure")
+	})
+	env.ExecuteWorkflow(EvalSessionWorkflow, EvalSessionWorkflowInput{EvalSessionID: sessionID})
+
+	if err := env.GetWorkflowError(); err == nil {
+		t.Fatalf("expected workflow failure")
+	}
+	if got := repo.currentEvalSession(sessionID).Status; got != domain.EvalSessionStatusFailed {
+		t.Fatalf("eval session status = %s, want %s", got, domain.EvalSessionStatusFailed)
+	}
+	if repo.callCountWithPrefix("AggregateEvalSession:") != 0 {
+		t.Fatalf("AggregateEvalSession call count = %d, want 0", repo.callCountWithPrefix("AggregateEvalSession:"))
+	}
+}
+
+func TestEvalSessionWorkflowLateCancelAfterCompletedChildStillAggregates(t *testing.T) {
+	sessionID := uuid.New()
+	completedRunID := uuid.MustParse("00000000-0000-0000-0000-000000000001")
+	failedRunID := uuid.MustParse("00000000-0000-0000-0000-000000000002")
+	repo := newFakeRunRepository(fixtureRun(uuid.New(), domain.RunStatusQueued))
+	repo.setEvalSession(
+		fixtureEvalSession(sessionID, domain.EvalSessionStatusQueued),
+		fixtureChildRun(completedRunID, sessionID),
+		fixtureChildRun(failedRunID, sessionID),
+	)
+
+	env := newEvalSessionWorkflowTestEnvironment(repo, nil, func(ctx sdkworkflow.Context, input RunWorkflowInput) error {
+		if input.RunID == completedRunID {
+			repo.forceEvalSessionRunStatus(sessionID, input.RunID, domain.RunStatusCompleted)
+			return temporal.NewCanceledError("late cancel after completion")
+		}
+		return errors.New("real child failure")
+	})
+	env.ExecuteWorkflow(EvalSessionWorkflow, EvalSessionWorkflowInput{EvalSessionID: sessionID})
+
+	if err := env.GetWorkflowError(); err != nil {
+		t.Fatalf("EvalSessionWorkflow returned error: %v", err)
+	}
+	if got := repo.currentEvalSession(sessionID).Status; got != domain.EvalSessionStatusCompleted {
+		t.Fatalf("eval session status = %s, want %s", got, domain.EvalSessionStatusCompleted)
+	}
+	if repo.callCountWithPrefix("AggregateEvalSession:") != 1 {
+		t.Fatalf("AggregateEvalSession call count = %d, want 1", repo.callCountWithPrefix("AggregateEvalSession:"))
+	}
+}
+
 func TestEvalSessionWorkflowAggregationFailureMarksSessionFailed(t *testing.T) {
 	sessionID := uuid.New()
 	runID := uuid.New()
@@ -899,6 +1078,70 @@ func TestRunWorkflowCancellationMarksRunCancelled(t *testing.T) {
 	}
 }
 
+func TestRunWorkflowCancellationIsIdempotentWhenRunAlreadyCancelled(t *testing.T) {
+	runID := uuid.New()
+	runAgentID := uuid.New()
+	repo := newFakeRunRepository(
+		fixtureRun(runID, domain.RunStatusQueued),
+		fixtureRunAgent(runID, runAgentID, 0),
+	)
+
+	env := newTestWorkflowEnvironment(repo, FakeWorkHooks{
+		PrepareExecutionLane: func(ctx context.Context, input RunAgentWorkflowInput) error {
+			<-ctx.Done()
+			return ctx.Err()
+		},
+	})
+	env.RegisterDelayedCallback(func() {
+		repo.forceRunStatus(domain.RunStatusCancelled)
+		env.CancelWorkflow()
+	}, fakeStageDelay/2)
+	env.ExecuteWorkflow(RunWorkflow, RunWorkflowInput{RunID: runID})
+
+	err := env.GetWorkflowError()
+	if err == nil {
+		t.Fatalf("expected cancellation error")
+	}
+	if !temporal.IsCanceledError(err) {
+		t.Fatalf("workflow error = %v, want canceled error", err)
+	}
+	if run := repo.currentRun(); run.Status != domain.RunStatusCancelled {
+		t.Fatalf("run status = %s, want %s", run.Status, domain.RunStatusCancelled)
+	}
+}
+
+func TestRunWorkflowCancellationIsIdempotentWhenRunAlreadyTerminal(t *testing.T) {
+	runID := uuid.New()
+	runAgentID := uuid.New()
+	repo := newFakeRunRepository(
+		fixtureRun(runID, domain.RunStatusQueued),
+		fixtureRunAgent(runID, runAgentID, 0),
+	)
+
+	env := newTestWorkflowEnvironment(repo, FakeWorkHooks{
+		PrepareExecutionLane: func(ctx context.Context, input RunAgentWorkflowInput) error {
+			<-ctx.Done()
+			return ctx.Err()
+		},
+	})
+	env.RegisterDelayedCallback(func() {
+		repo.forceRunStatus(domain.RunStatusCompleted)
+		env.CancelWorkflow()
+	}, fakeStageDelay/2)
+	env.ExecuteWorkflow(RunWorkflow, RunWorkflowInput{RunID: runID})
+
+	err := env.GetWorkflowError()
+	if err == nil {
+		t.Fatalf("expected cancellation error")
+	}
+	if !temporal.IsCanceledError(err) {
+		t.Fatalf("workflow error = %v, want canceled error", err)
+	}
+	if run := repo.currentRun(); run.Status != domain.RunStatusCompleted {
+		t.Fatalf("run status = %s, want %s", run.Status, domain.RunStatusCompleted)
+	}
+}
+
 func TestRunWorkflowPartialChildFailureDoesNotCancelOtherAgents(t *testing.T) {
 	runID := uuid.New()
 	successAgentID := uuid.New()
@@ -1013,6 +1256,19 @@ func TestRunWorkflowChildFailureReturnsOriginalErrorWhenReplayBuildFails(t *test
 	}
 }
 
+func TestSelectRunAgentChildErrorPrefersCancellationDeterministically(t *testing.T) {
+	cancelledRunAgentID := uuid.MustParse("00000000-0000-0000-0000-000000000002")
+	failedRunAgentID := uuid.MustParse("00000000-0000-0000-0000-000000000001")
+	selected := selectRunAgentChildError(map[uuid.UUID]error{
+		failedRunAgentID:    errors.New("child failed"),
+		cancelledRunAgentID: temporal.NewCanceledError("child cancelled"),
+	})
+
+	if !isWorkflowCanceled(selected) {
+		t.Fatalf("selected error = %v, want cancellation to win over child failure", selected)
+	}
+}
+
 func TestRunWorkflowTemporalIDConflictDoesNotRebindOrAdvanceStatus(t *testing.T) {
 	runID := uuid.New()
 	runAgentID := uuid.New()
@@ -1081,6 +1337,7 @@ func newEvalSessionWorkflowTestEnvironment(
 	env.RegisterWorkflowWithOptions(EvalSessionWorkflow, sdkworkflow.RegisterOptions{Name: EvalSessionWorkflowName})
 	env.RegisterActivityWithOptions(activities.LoadEvalSession, sdkactivity.RegisterOptions{Name: loadEvalSessionActivityName})
 	env.RegisterActivityWithOptions(activities.ListEvalSessionRuns, sdkactivity.RegisterOptions{Name: listEvalSessionRunsActivityName})
+	env.RegisterActivityWithOptions(activities.LoadRun, sdkactivity.RegisterOptions{Name: loadRunActivityName})
 	env.RegisterActivityWithOptions(activities.TransitionEvalSessionStatus, sdkactivity.RegisterOptions{Name: transitionEvalSessionStatusActivityName})
 	env.RegisterActivityWithOptions(activities.AggregateEvalSession, sdkactivity.RegisterOptions{Name: aggregateEvalSessionActivityName})
 	if childWorkflow == nil {
@@ -1257,6 +1514,14 @@ func (r *fakeRunRepository) GetRunByID(_ context.Context, id uuid.UUID) (domain.
 	defer r.mu.Unlock()
 
 	if r.run.ID != id {
+		for _, runs := range r.evalSessionRuns {
+			for _, run := range runs {
+				if run.ID == id {
+					r.callLog = append(r.callLog, "GetRunByID")
+					return cloneRun(run), nil
+				}
+			}
+		}
 		return domain.Run{}, repository.ErrRunNotFound
 	}
 	r.callLog = append(r.callLog, "GetRunByID")
@@ -1398,6 +1663,29 @@ func (r *fakeRunRepository) CreateEvaluationSpec(_ context.Context, params repos
 	return record, nil
 }
 
+func (r *fakeRunRepository) CreateStandaloneEvaluationSpec(_ context.Context, params repository.CreateStandaloneEvaluationSpecParams) (repository.EvaluationSpecRecord, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	key := evaluationSpecKey(uuid.Nil, params.Name, params.VersionNumber)
+	if existing, ok := r.evaluationSpecs[key]; ok {
+		return existing, nil
+	}
+
+	record := repository.EvaluationSpecRecord{
+		ID:            uuid.New(),
+		Name:          params.Name,
+		VersionNumber: params.VersionNumber,
+		JudgeMode:     params.JudgeMode,
+		Definition:    append([]byte(nil), params.Definition...),
+		CreatedAt:     time.Now().UTC(),
+		UpdatedAt:     time.Now().UTC(),
+	}
+	r.evaluationSpecs[key] = record
+	r.callLog = append(r.callLog, fmt.Sprintf("CreateStandaloneEvaluationSpec:%s:%d", params.Name, params.VersionNumber))
+	return record, nil
+}
+
 func (r *fakeRunRepository) GetEvaluationSpecByChallengePackVersionAndVersion(_ context.Context, challengePackVersionID uuid.UUID, name string, versionNumber int32) (repository.EvaluationSpecRecord, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -1512,6 +1800,20 @@ func (r *fakeRunRepository) GetAgentHarnessExecutionByID(_ context.Context, id u
 	if !ok {
 		return repository.AgentHarnessExecution{}, repository.ErrAgentHarnessExecutionNotFound
 	}
+	return execution, nil
+}
+
+func (r *fakeRunRepository) SetAgentHarnessExecutionEvaluationSpec(_ context.Context, params repository.SetAgentHarnessExecutionEvaluationSpecParams) (repository.AgentHarnessExecution, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.callLog = append(r.callLog, fmt.Sprintf("SetAgentHarnessExecutionEvaluationSpec:%s", params.ExecutionID))
+	execution, ok := r.agentHarnessExecutions[params.ExecutionID]
+	if !ok {
+		return repository.AgentHarnessExecution{}, repository.ErrAgentHarnessExecutionNotFound
+	}
+	evaluationSpecID := params.EvaluationSpecID
+	execution.EvaluationSpecID = &evaluationSpecID
+	r.agentHarnessExecutions[params.ExecutionID] = execution
 	return execution, nil
 }
 
@@ -1751,6 +2053,28 @@ func (r *fakeRunRepository) currentRun() domain.Run {
 	defer r.mu.Unlock()
 
 	return cloneRun(r.run)
+}
+
+func (r *fakeRunRepository) forceRunStatus(status domain.RunStatus) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.run.Status = status
+}
+
+func (r *fakeRunRepository) forceEvalSessionRunStatus(evalSessionID uuid.UUID, runID uuid.UUID, status domain.RunStatus) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	runs := r.evalSessionRuns[evalSessionID]
+	for index, run := range runs {
+		if run.ID == runID {
+			run.Status = status
+			runs[index] = run
+			r.evalSessionRuns[evalSessionID] = runs
+			return
+		}
+	}
 }
 
 func (r *fakeRunRepository) currentEvalSession(id uuid.UUID) domain.EvalSession {

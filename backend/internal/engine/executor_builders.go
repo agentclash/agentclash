@@ -25,6 +25,8 @@ const (
 	runTestsToolName    = "run_tests"
 	buildToolName       = "build"
 	execToolName        = "exec"
+
+	maxExecutionPlanMaxIterations = 1000
 )
 
 func toolMessage(result provider.ToolResult) provider.Message {
@@ -164,6 +166,35 @@ func runTimeout(executionContext repository.RunAgentExecutionContext) time.Durat
 		return 0
 	}
 	return time.Duration(executionContext.Deployment.RuntimeProfile.RunTimeoutSeconds) * time.Second
+}
+
+func maxIterationsLimit(executionContext repository.RunAgentExecutionContext) int {
+	if override := executionPlanMaxIterations(executionContext.Run.ExecutionPlan); override != nil {
+		return int(*override)
+	}
+	return int(executionContext.Deployment.RuntimeProfile.MaxIterations)
+}
+
+func executionPlanMaxIterations(executionPlan json.RawMessage) *int32 {
+	var document struct {
+		RuntimeLimits struct {
+			MaxIterations *int32 `json:"max_iterations"`
+		} `json:"runtime_limits"`
+	}
+	if len(executionPlan) == 0 {
+		return nil
+	}
+	if err := json.Unmarshal(executionPlan, &document); err != nil {
+		return nil
+	}
+	if document.RuntimeLimits.MaxIterations == nil {
+		return nil
+	}
+	value := *document.RuntimeLimits.MaxIterations
+	if value <= 0 || value > maxExecutionPlanMaxIterations {
+		return nil
+	}
+	return &value
 }
 
 func extractPolicyInstructions(policySpec json.RawMessage) string {

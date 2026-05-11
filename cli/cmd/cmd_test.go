@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/agentclash/agentclash/cli/internal/auth"
+	"github.com/agentclash/agentclash/cli/internal/output"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -247,6 +249,109 @@ func TestRunGetCallsCorrectEndpoint(t *testing.T) {
 	}
 }
 
+func TestRunCancelCallsCorrectEndpoint(t *testing.T) {
+	var called bool
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"POST /v1/runs/run-456/cancel": captureHandler(t, &called, 200, map[string]any{
+			"id": "run-456", "name": "Test", "status": "cancelled",
+		}),
+	})
+	defer srv.Close()
+
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+	err := executeCommand(t, []string{"run", "cancel", "run-456"}, srv.URL)
+	if err != nil {
+		t.Fatalf("run cancel error: %v", err)
+	}
+	if !called {
+		t.Fatal("POST /v1/runs/run-456/cancel was not called")
+	}
+}
+
+func TestRunCancelSuccessMessageDistinguishesNoop(t *testing.T) {
+	tests := []struct {
+		status string
+		want   string
+	}{
+		{status: "cancelled", want: "Run run-456 cancelled"},
+		{status: "completed", want: "Run run-456 is already completed; no cancellation performed"},
+		{status: "failed", want: "Run run-456 is already failed; no cancellation performed"},
+		{status: "running", want: "Run run-456 status is running"},
+	}
+
+	for _, tc := range tests {
+		if got := runCancelSuccessMessage("run-456", tc.status); got != tc.want {
+			t.Fatalf("runCancelSuccessMessage(%q) = %q, want %q", tc.status, got, tc.want)
+		}
+	}
+}
+
+func TestQuotaCallsWorkspaceQuotaEndpoint(t *testing.T) {
+	var called bool
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"GET /v1/workspaces/ws-123/quota": captureHandler(t, &called, http.StatusOK, map[string]any{
+			"workspace_id": "ws-123",
+			"plan_key":     "pro",
+			"status":       "active",
+			"monthly_races": map[string]any{
+				"used":      47,
+				"limit":     2500,
+				"remaining": 2453,
+			},
+			"concurrent_races": map[string]any{
+				"used":      2,
+				"limit":     3,
+				"remaining": 1,
+			},
+		}),
+	})
+	defer srv.Close()
+
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+	stdout := captureStdout(t)
+	err := executeCommand(t, []string{"--workspace", "ws-123", "--json", "quota"}, srv.URL)
+	out := stdout.finish()
+	if err != nil {
+		t.Fatalf("quota error: %v", err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(out), &payload); err != nil {
+		t.Fatalf("quota json output was not valid JSON: %v", err)
+	}
+	if !called {
+		t.Fatal("GET /v1/workspaces/ws-123/quota was not called")
+	}
+	if payload["plan_key"] != "pro" {
+		t.Fatalf("plan_key = %v, want pro", payload["plan_key"])
+	}
+	if got := quotaCounterLine(mapObject(payload, "monthly_races")); got != "47 / 2500 used (2453 remaining)" {
+		t.Fatalf("monthly_races = %q", got)
+	}
+	if got := quotaCounterLine(mapObject(payload, "concurrent_races")); got != "2 / 3 used (1 remaining)" {
+		t.Fatalf("concurrent_races = %q", got)
+	}
+}
+
+func TestQuotaCounterLineSeparatesMonthlyAndConcurrencyUsage(t *testing.T) {
+	monthly := quotaCounterLine(map[string]any{
+		"used":      47,
+		"limit":     2500,
+		"remaining": 2453,
+	})
+	if monthly != "47 / 2500 used (2453 remaining)" {
+		t.Fatalf("monthly quota line = %q", monthly)
+	}
+
+	concurrent := quotaCounterLine(map[string]any{
+		"used":      2,
+		"limit":     3,
+		"remaining": 1,
+	})
+	if concurrent != "2 / 3 used (1 remaining)" {
+		t.Fatalf("concurrency quota line = %q", concurrent)
+	}
+}
+
 func TestRunEventsUsesAuthorizationHeaderWithoutQueryToken(t *testing.T) {
 	var called bool
 	var gotAuth string
@@ -355,6 +460,41 @@ func TestChallengePackListCallsCorrectEndpoint(t *testing.T) {
 	}
 }
 
+func TestWorkspaceUpdateSendsPublicPacks(t *testing.T) {
+	var called bool
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"PATCH /v1/workspaces/ws-1/details": func(w http.ResponseWriter, r *http.Request) {
+			called = true
+			var body map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode body: %v", err)
+			}
+			if body["public_packs"] != true {
+				t.Fatalf("public_packs = %#v, want true", body["public_packs"])
+			}
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id":              "ws-1",
+				"name":            "Workspace",
+				"slug":            "workspace",
+				"organization_id": "org-1",
+				"status":          "active",
+				"public_packs":    true,
+			})
+		},
+	})
+	defer srv.Close()
+
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+	err := executeCommand(t, []string{"workspace", "update", "ws-1", "--public-packs"}, srv.URL)
+	if err != nil {
+		t.Fatalf("workspace update error: %v", err)
+	}
+	if !called {
+		t.Fatal("PATCH /v1/workspaces/ws-1/details was not called")
+	}
+}
+
 func TestInfraModelCatalogListCallsCorrectEndpoint(t *testing.T) {
 	var called bool
 	srv := fakeAPI(t, map[string]http.HandlerFunc{
@@ -390,6 +530,272 @@ func TestInfraProviderAccountListCallsCorrectEndpoint(t *testing.T) {
 	}
 	if !called {
 		t.Fatal("endpoint was not called")
+	}
+}
+
+func TestInfraProviderAccountTestCallsSmokeEndpoint(t *testing.T) {
+	var called bool
+	var gotBody map[string]any
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"POST /v1/provider-accounts/pa-1/test": func(w http.ResponseWriter, r *http.Request) {
+			called = true
+			if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+				t.Fatalf("decode request body: %v", err)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"account_id":        "pa-1",
+				"provider_key":      "openai",
+				"model":             "gpt-4.1-mini",
+				"provider_model_id": "gpt-4.1-mini",
+				"passed":            true,
+				"status":            "passed",
+				"message":           "provider account smoke test passed",
+				"duration_ms":       12,
+			})
+		},
+	})
+	defer srv.Close()
+
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+	err := executeCommand(t, []string{
+		"infra", "provider-account", "test", "pa-1",
+		"--model", "gpt-4.1-mini",
+		"--timeout-seconds", "7",
+	}, srv.URL)
+	if err != nil {
+		t.Fatalf("infra provider-account test error: %v", err)
+	}
+	if !called {
+		t.Fatal("POST /v1/provider-accounts/pa-1/test was not called")
+	}
+	if gotBody["model"] != "gpt-4.1-mini" || gotBody["step_timeout_seconds"] != float64(7) {
+		t.Fatalf("request body = %#v", gotBody)
+	}
+}
+
+func TestInfraProviderAccountTestReturnsErrorOnFailedSmoke(t *testing.T) {
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"POST /v1/provider-accounts/pa-1/test": jsonHandler(200, map[string]any{
+			"account_id":   "pa-1",
+			"provider_key": "openai",
+			"model":        "gpt-4.1-mini",
+			"passed":       false,
+			"status":       "failed",
+			"code":         "auth",
+			"message":      "bad key [redacted]",
+			"duration_ms":  12,
+		}),
+	})
+	defer srv.Close()
+
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+	err := executeCommand(t, []string{"infra", "provider-account", "test", "pa-1"}, srv.URL)
+	if err == nil {
+		t.Fatal("expected error for failed provider account test")
+	}
+	if !strings.Contains(err.Error(), "bad key [redacted]") {
+		t.Fatalf("error = %q, want sanitized failure message", err.Error())
+	}
+}
+
+func TestInfraModelAliasCreateBuildsRequestBodyFromFlags(t *testing.T) {
+	var called bool
+	var gotBody map[string]any
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"POST /v1/workspaces/ws-1/model-aliases": func(w http.ResponseWriter, r *http.Request) {
+			called = true
+			if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+				t.Fatalf("decode request body: %v", err)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			json.NewEncoder(w).Encode(map[string]any{
+				"id":           "alias-1",
+				"alias_key":    "gpt-5.5",
+				"display_name": "GPT 5.5",
+				"status":       "active",
+			})
+		},
+	})
+	defer srv.Close()
+
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+	err := executeCommand(t, []string{
+		"infra", "model-alias", "create",
+		"-w", "ws-1",
+		"--alias-key", "gpt-5.5",
+		"--display-name", "GPT 5.5",
+		"--model-catalog-entry-id", "model-1",
+		"--provider-account-id", "provider-1",
+	}, srv.URL)
+	if err != nil {
+		t.Fatalf("infra model-alias create error: %v", err)
+	}
+	if !called {
+		t.Fatal("POST /v1/workspaces/ws-1/model-aliases was not called")
+	}
+	want := map[string]string{
+		"alias_key":              "gpt-5.5",
+		"display_name":           "GPT 5.5",
+		"model_catalog_entry_id": "model-1",
+		"provider_account_id":    "provider-1",
+	}
+	for key, value := range want {
+		if gotBody[key] != value {
+			t.Fatalf("request body %s = %#v, want %q; body=%#v", key, gotBody[key], value, gotBody)
+		}
+	}
+}
+
+func TestInfraModelAliasCreateMergesFromFileAndFlagOverrides(t *testing.T) {
+	specPath := t.TempDir() + "/model-alias.json"
+	if err := os.WriteFile(specPath, []byte(`{
+		"alias_key": "from-file",
+		"display_name": "From File",
+		"model_catalog_entry_id": "model-file",
+		"provider_account_id": "provider-file"
+	}`), 0o600); err != nil {
+		t.Fatalf("write spec: %v", err)
+	}
+
+	var gotBody map[string]any
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"POST /v1/workspaces/ws-1/model-aliases": func(w http.ResponseWriter, r *http.Request) {
+			if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+				t.Fatalf("decode request body: %v", err)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			json.NewEncoder(w).Encode(map[string]any{
+				"id":           "alias-1",
+				"alias_key":    "from-flag",
+				"display_name": "From File",
+				"status":       "active",
+			})
+		},
+	})
+	defer srv.Close()
+
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+	err := executeCommand(t, []string{
+		"infra", "model-alias", "create",
+		"-w", "ws-1",
+		"--from-file", specPath,
+		"--alias-key", "from-flag",
+		"--provider-account-id", "provider-flag",
+	}, srv.URL)
+	if err != nil {
+		t.Fatalf("infra model-alias create error: %v", err)
+	}
+
+	want := map[string]string{
+		"alias_key":              "from-flag",
+		"display_name":           "From File",
+		"model_catalog_entry_id": "model-file",
+		"provider_account_id":    "provider-flag",
+	}
+	for key, value := range want {
+		if gotBody[key] != value {
+			t.Fatalf("request body %s = %#v, want %q; body=%#v", key, gotBody[key], value, gotBody)
+		}
+	}
+}
+
+func TestInfraModelAliasCreateAllowsOmittingProviderAccount(t *testing.T) {
+	var gotBody map[string]any
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"POST /v1/workspaces/ws-1/model-aliases": func(w http.ResponseWriter, r *http.Request) {
+			if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+				t.Fatalf("decode request body: %v", err)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			json.NewEncoder(w).Encode(map[string]any{
+				"id":           "alias-1",
+				"alias_key":    "gpt-5.5",
+				"display_name": "GPT 5.5",
+				"status":       "active",
+			})
+		},
+	})
+	defer srv.Close()
+
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+	err := executeCommand(t, []string{
+		"infra", "model-alias", "create",
+		"-w", "ws-1",
+		"--alias-key", "gpt-5.5",
+		"--display-name", "GPT 5.5",
+		"--model-catalog-entry-id", "model-1",
+	}, srv.URL)
+	if err != nil {
+		t.Fatalf("infra model-alias create error: %v", err)
+	}
+	if _, ok := gotBody["provider_account_id"]; ok {
+		t.Fatalf("provider_account_id should be omitted when not supplied; body=%#v", gotBody)
+	}
+}
+
+func TestInfraModelAliasCreateValidatesRequiredFields(t *testing.T) {
+	var called bool
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"POST /v1/workspaces/ws-1/model-aliases": func(w http.ResponseWriter, r *http.Request) {
+			called = true
+			t.Fatal("request should not be sent when required fields are missing")
+		},
+	})
+	defer srv.Close()
+
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+	err := executeCommand(t, []string{
+		"infra", "model-alias", "create",
+		"-w", "ws-1",
+		"--alias-key", "gpt-5.5",
+	}, srv.URL)
+	if err == nil {
+		t.Fatal("expected required field validation error")
+	}
+	for _, want := range []string{"--display-name", "--model-catalog-entry-id"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error %q should mention %s", err.Error(), want)
+		}
+	}
+	if called {
+		t.Fatal("request was sent despite validation error")
+	}
+}
+
+func TestPrintModelAliasDetailsPrintsPricingAndDriftWarning(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	formatter := output.NewFormatter(output.FormatTable, false, false)
+	formatter.SetWriters(&stdout, &stderr)
+
+	printModelAliasDetails(formatter, map[string]any{
+		"id":                                     "alias-1",
+		"alias_key":                              "fast-model",
+		"display_name":                           "Fast Model",
+		"status":                                 "active",
+		"provider_key":                           "openai",
+		"provider_model_id":                      "gpt-4.1-mini",
+		"model_display_name":                     "GPT 4.1 Mini",
+		"model_catalog_entry_id":                 "model-1",
+		"provider_account_id":                    "provider-1",
+		"input_cost_per_million_tokens":          0.4,
+		"output_cost_per_million_tokens":         1.6,
+		"catalog_input_cost_per_million_tokens":  0.5,
+		"catalog_output_cost_per_million_tokens": 2.0,
+		"pricing_drift_warning":                  "alias pricing differs from current catalog pricing",
+	})
+
+	for _, want := range []string{"Input / 1M", "0.4", "Catalog Output / 1M", "2"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("stdout missing %q:\n%s", want, stdout.String())
+		}
+	}
+	if !strings.Contains(stderr.String(), "alias pricing differs from current catalog pricing") {
+		t.Fatalf("stderr missing drift warning:\n%s", stderr.String())
 	}
 }
 

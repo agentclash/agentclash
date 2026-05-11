@@ -331,7 +331,7 @@ func (e NativeExecutor) Execute(ctx context.Context, executionContext repository
 			}
 			return Result{}, NewFailure(StopReasonTimeout, fmt.Sprintf("native execution exceeded runtime budget after %s", time.Since(state.startedAt).Round(time.Millisecond)), loopErr)
 		}
-		if limit := int(executionContext.Deployment.RuntimeProfile.MaxIterations); limit > 0 && state.stepCount >= limit {
+		if limit := maxIterationsLimit(executionContext); limit > 0 && state.stepCount >= limit {
 			return Result{}, NewFailure(StopReasonStepLimit, fmt.Sprintf("native execution exhausted step budget after %d steps", state.stepCount), nil)
 		}
 

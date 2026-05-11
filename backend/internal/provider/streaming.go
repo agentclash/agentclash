@@ -43,6 +43,7 @@ type ToolCallFragment struct {
 	IDFragment        string
 	NameFragment      string
 	ArgumentsFragment string
+	ThoughtSignature  string
 }
 
 type StreamTerminal struct {
@@ -68,9 +69,10 @@ type StreamAccumulator struct {
 }
 
 type toolCallAccumulator struct {
-	id        string
-	name      string
-	arguments string
+	id               string
+	name             string
+	arguments        string
+	thoughtSignature string
 }
 
 func NewStreamAccumulator(providerKey string, startedAt time.Time) *StreamAccumulator {
@@ -107,6 +109,9 @@ func (a *StreamAccumulator) Consume(delta StreamDelta) error {
 		target.id += fragment.IDFragment
 		target.name += fragment.NameFragment
 		target.arguments += fragment.ArgumentsFragment
+		if fragment.ThoughtSignature != "" {
+			target.thoughtSignature = fragment.ThoughtSignature
+		}
 	case StreamDeltaKindTerminal:
 		a.streamed = true
 		if delta.Terminal.ProviderModelID != "" {
@@ -165,9 +170,10 @@ func (a *StreamAccumulator) Finalize(completedAt time.Time) (Response, error) {
 		}
 
 		toolCalls = append(toolCalls, ToolCall{
-			ID:        accumulated.id,
-			Name:      accumulated.name,
-			Arguments: cloneJSON(rawArguments),
+			ID:               accumulated.id,
+			Name:             accumulated.name,
+			Arguments:        cloneJSON(rawArguments),
+			ThoughtSignature: accumulated.thoughtSignature,
 		})
 	}
 
