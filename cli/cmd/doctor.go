@@ -102,6 +102,8 @@ be set after the first eval run completes.`,
 		packPath, _ := cmd.Flags().GetString("pack")
 
 		checks := make([]doctorCheck, 0, 10)
+		var cachedDeployments []deploymentWorkflowSummary
+		cachedDeploymentsOK := false
 		appendCheck := func(check doctorCheck) {
 			checks = append(checks, check)
 		}
@@ -146,7 +148,7 @@ be set after the first eval run completes.`,
 				Detail:   "Workspace check skipped until authentication succeeds.",
 				NextStep: "Run `agentclash auth login`, then `agentclash link`.",
 			})
-			appendDoctorPackChecks(cmd, rc, packPath, "", false, appendCheck)
+			appendDoctorPackChecks(cmd, rc, packPath, "", false, nil, false, appendCheck)
 			return printDoctorResult(rc, checks)
 		}
 
@@ -179,7 +181,7 @@ be set after the first eval run completes.`,
 				Detail:   "Baseline check skipped until a workspace is linked.",
 				NextStep: "Run `agentclash link`.",
 			})
-			appendDoctorPackChecks(cmd, rc, packPath, "", false, appendCheck)
+			appendDoctorPackChecks(cmd, rc, packPath, "", false, nil, false, appendCheck)
 			return printDoctorResult(rc, checks)
 		}
 
@@ -208,7 +210,7 @@ be set after the first eval run completes.`,
 				Status: "warn",
 				Detail: "Baseline check skipped until workspace is relinked.",
 			})
-			appendDoctorPackChecks(cmd, rc, packPath, workspaceID, false, appendCheck)
+			appendDoctorPackChecks(cmd, rc, packPath, workspaceID, false, nil, false, appendCheck)
 			return printDoctorResult(rc, checks)
 		}
 		if apiErr := resp.ParseError(); apiErr != nil {
@@ -235,7 +237,7 @@ be set after the first eval run completes.`,
 				Status: "warn",
 				Detail: "Baseline check skipped until workspace is relinked.",
 			})
-			appendDoctorPackChecks(cmd, rc, packPath, workspaceID, false, appendCheck)
+			appendDoctorPackChecks(cmd, rc, packPath, workspaceID, false, nil, false, appendCheck)
 			return printDoctorResult(rc, checks)
 		}
 
@@ -288,14 +290,18 @@ be set after the first eval run completes.`,
 				Detail:   fmt.Sprintf("Could not list deployments: %v", deploymentErr),
 				NextStep: "Check workspace access or API connectivity.",
 			})
-		} else if len(deployments) == 0 {
+		} else {
+			cachedDeployments = deployments
+			cachedDeploymentsOK = true
+		}
+		if deploymentErr == nil && len(deployments) == 0 {
 			appendCheck(doctorCheck{
 				Name:     "deployments",
 				Status:   "warn",
 				Detail:   "No deployments are available in this workspace.",
 				NextStep: "Create or deploy an agent before starting an eval.",
 			})
-		} else {
+		} else if deploymentErr == nil {
 			appendCheck(doctorCheck{
 				Name:   "deployments",
 				Status: "ok",
@@ -325,12 +331,12 @@ be set after the first eval run completes.`,
 			})
 		}
 
-		appendDoctorPackChecks(cmd, rc, packPath, workspaceID, true, appendCheck)
+		appendDoctorPackChecks(cmd, rc, packPath, workspaceID, true, cachedDeployments, cachedDeploymentsOK, appendCheck)
 		return printDoctorResult(rc, checks)
 	},
 }
 
-func appendDoctorPackChecks(cmd *cobra.Command, rc *RunContext, packPath, workspaceID string, remoteReady bool, appendCheck func(doctorCheck)) {
+func appendDoctorPackChecks(cmd *cobra.Command, rc *RunContext, packPath, workspaceID string, remoteReady bool, cachedDeployments []deploymentWorkflowSummary, cachedDeploymentsOK bool, appendCheck func(doctorCheck)) {
 	packPath = strings.TrimSpace(packPath)
 	if packPath == "" {
 		return
@@ -385,8 +391,8 @@ func appendDoctorPackChecks(cmd *cobra.Command, rc *RunContext, packPath, worksp
 	})
 
 	appendDoctorPackInputSetCheck(bundle, appendCheck)
-	appendDoctorPackSecretCheck(cmd, rc, bundle, data, workspaceID, remoteReady, appendCheck)
-	appendDoctorPackDeploymentCheck(cmd, rc, bundle, workspaceID, remoteReady, appendCheck)
+	appendDoctorPackSecretCheck(cmd, rc, data, workspaceID, remoteReady, appendCheck)
+	appendDoctorPackDeploymentCheck(cmd, rc, bundle, workspaceID, remoteReady, cachedDeployments, cachedDeploymentsOK, appendCheck)
 }
 
 func doctorPackManifestIssues(bundle doctorPackBundle) []string {
@@ -453,8 +459,8 @@ func appendDoctorPackInputSetCheck(bundle doctorPackBundle, appendCheck func(doc
 	})
 }
 
-func appendDoctorPackSecretCheck(cmd *cobra.Command, rc *RunContext, bundle doctorPackBundle, data []byte, workspaceID string, remoteReady bool, appendCheck func(doctorCheck)) {
-	refs := collectDoctorPackSecretRefs(bundle, data)
+func appendDoctorPackSecretCheck(cmd *cobra.Command, rc *RunContext, data []byte, workspaceID string, remoteReady bool, appendCheck func(doctorCheck)) {
+	refs := collectDoctorPackSecretRefs(data)
 	if len(refs) == 0 {
 		appendCheck(doctorCheck{
 			Name:   "pack_secrets",
@@ -512,7 +518,7 @@ func appendDoctorPackSecretCheck(cmd *cobra.Command, rc *RunContext, bundle doct
 	})
 }
 
-func collectDoctorPackSecretRefs(bundle doctorPackBundle, data []byte) []string {
+func collectDoctorPackSecretRefs(data []byte) []string {
 	seen := map[string]struct{}{}
 	for _, matches := range doctorTemplateSecretPattern.FindAllSubmatch(data, -1) {
 		if len(matches) == 2 {
@@ -522,15 +528,6 @@ func collectDoctorPackSecretRefs(bundle doctorPackBundle, data []byte) []string 
 	for _, matches := range doctorWorkspaceSecretRefPattern.FindAllSubmatch(data, -1) {
 		if len(matches) == 2 {
 			seen[string(matches[1])] = struct{}{}
-		}
-	}
-	if bundle.Version.Sandbox != nil {
-		for _, value := range bundle.Version.Sandbox.EnvVars {
-			for _, matches := range doctorTemplateSecretPattern.FindAllStringSubmatch(value, -1) {
-				if len(matches) == 2 {
-					seen[matches[1]] = struct{}{}
-				}
-			}
 		}
 	}
 	return sortedKeys(seen)
@@ -562,7 +559,7 @@ func listDoctorWorkspaceSecretKeys(cmd *cobra.Command, rc *RunContext, workspace
 	return keys, nil
 }
 
-func appendDoctorPackDeploymentCheck(cmd *cobra.Command, rc *RunContext, bundle doctorPackBundle, workspaceID string, remoteReady bool, appendCheck func(doctorCheck)) {
+func appendDoctorPackDeploymentCheck(cmd *cobra.Command, rc *RunContext, bundle doctorPackBundle, workspaceID string, remoteReady bool, cachedDeployments []deploymentWorkflowSummary, cachedDeploymentsOK bool, appendCheck func(doctorCheck)) {
 	defaults := bundle.Version.DeploymentDefaults
 	if defaults == nil || len(defaults.Lineups) == 0 {
 		appendCheck(doctorCheck{
@@ -591,7 +588,7 @@ func appendDoctorPackDeploymentCheck(cmd *cobra.Command, rc *RunContext, bundle 
 			Status:   "warn",
 			Detail:   "Deployment defaults do not define a `default` lineup.",
 			NextStep: "Add `version.deployment_defaults.lineups.default` for guided run creation.",
-			Metadata: map[string]any{"lineups": sortedKeysFromSlices(lineupSelectors)},
+			Metadata: map[string]any{"lineups": lineupSelectors},
 		})
 		return
 	}
@@ -608,16 +605,20 @@ func appendDoctorPackDeploymentCheck(cmd *cobra.Command, rc *RunContext, bundle 
 		return
 	}
 
-	deployments, err := listDeploymentsForWorkflow(cmd, rc, workspaceID)
-	if err != nil {
-		appendCheck(doctorCheck{
-			Name:     "pack_deployments",
-			Status:   "warn",
-			Detail:   fmt.Sprintf("Could not list deployments for pack readiness: %v", err),
-			NextStep: "Check workspace access or API connectivity.",
-			Metadata: map[string]any{"lineups": lineupSelectors},
-		})
-		return
+	deployments := cachedDeployments
+	if !cachedDeploymentsOK {
+		var err error
+		deployments, err = listDeploymentsForWorkflow(cmd, rc, workspaceID)
+		if err != nil {
+			appendCheck(doctorCheck{
+				Name:     "pack_deployments",
+				Status:   "warn",
+				Detail:   fmt.Sprintf("Could not list deployments for pack readiness: %v", err),
+				NextStep: "Check workspace access or API connectivity.",
+				Metadata: map[string]any{"lineups": lineupSelectors},
+			})
+			return
+		}
 	}
 
 	missing, unhealthy := doctorPackDeploymentGaps(lineupSelectors, deployments)
@@ -723,15 +724,6 @@ func countLineupSelectors(lineups map[string][]string) int {
 }
 
 func sortedKeys(values map[string]struct{}) []string {
-	keys := make([]string, 0, len(values))
-	for key := range values {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	return keys
-}
-
-func sortedKeysFromSlices(values map[string][]string) []string {
 	keys := make([]string, 0, len(values))
 	for key := range values {
 		keys = append(keys, key)
