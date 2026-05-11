@@ -16,6 +16,7 @@ import (
 
 type RunCreationRepository interface {
 	GetRunnableChallengePackVersionByID(ctx context.Context, id uuid.UUID) (repository.RunnableChallengePackVersion, error)
+	WorkspacePublicPacksEnabled(ctx context.Context, workspaceID uuid.UUID) (bool, error)
 	GetChallengeInputSetByID(ctx context.Context, id uuid.UUID) (repository.ChallengeInputSet, error)
 	ListChallengeInputSetsByVersionID(ctx context.Context, challengePackVersionID uuid.UUID) ([]repository.ChallengeInputSetSummary, error)
 	ListChallengeIdentityIDsByPackVersionID(ctx context.Context, challengePackVersionID uuid.UUID) ([]uuid.UUID, error)
@@ -146,6 +147,18 @@ func (m *RunCreationManager) CreateRun(ctx context.Context, caller Caller, input
 		return CreateRunResult{}, RunCreationValidationError{
 			Code:    "invalid_challenge_pack_version_id",
 			Message: "challenge_pack_version_id must be visible to the selected workspace",
+		}
+	}
+	if challengePackVersion.WorkspaceID == nil {
+		publicPacks, accessErr := m.repo.WorkspacePublicPacksEnabled(ctx, input.WorkspaceID)
+		if accessErr != nil {
+			return CreateRunResult{}, fmt.Errorf("load workspace public pack access: %w", accessErr)
+		}
+		if !publicPacks {
+			return CreateRunResult{}, RunCreationValidationError{
+				Code:    "invalid_challenge_pack_version_id",
+				Message: "challenge_pack_version_id must be visible to the selected workspace",
+			}
 		}
 	}
 	if input.MaxIterations == nil {

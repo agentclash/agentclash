@@ -22,6 +22,7 @@ import (
 
 type ChallengePackReadRepository interface {
 	ListVisibleChallengePacks(ctx context.Context, workspaceID uuid.UUID) ([]repository.ChallengePackSummary, error)
+	WorkspacePublicPacksEnabled(ctx context.Context, workspaceID uuid.UUID) (bool, error)
 	ListRunnableChallengePVersionsByPackID(ctx context.Context, challengePackID uuid.UUID) ([]repository.ChallengePackVersionSummary, error)
 	GetRunnableChallengePackVersionByID(ctx context.Context, id uuid.UUID) (repository.RunnableChallengePackVersion, error)
 	ListChallengeInputSetsByVersionID(ctx context.Context, challengePackVersionID uuid.UUID) ([]repository.ChallengeInputSetSummary, error)
@@ -96,6 +97,15 @@ func (m *ChallengePackReadManager) ListChallengeInputSets(ctx context.Context, c
 	}
 	if version.WorkspaceID != nil && *version.WorkspaceID != workspaceID {
 		return ListChallengeInputSetsResult{}, repository.ErrChallengePackVersionNotFound
+	}
+	if version.WorkspaceID == nil {
+		enabled, accessErr := m.repo.WorkspacePublicPacksEnabled(ctx, workspaceID)
+		if accessErr != nil {
+			return ListChallengeInputSetsResult{}, accessErr
+		}
+		if !enabled {
+			return ListChallengeInputSetsResult{}, repository.ErrChallengePackVersionNotFound
+		}
 	}
 
 	inputSets, err := m.repo.ListChallengeInputSetsByVersionID(ctx, challengePackVersionID)

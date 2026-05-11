@@ -460,6 +460,41 @@ func TestChallengePackListCallsCorrectEndpoint(t *testing.T) {
 	}
 }
 
+func TestWorkspaceUpdateSendsPublicPacks(t *testing.T) {
+	var called bool
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"PATCH /v1/workspaces/ws-1/details": func(w http.ResponseWriter, r *http.Request) {
+			called = true
+			var body map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode body: %v", err)
+			}
+			if body["public_packs"] != true {
+				t.Fatalf("public_packs = %#v, want true", body["public_packs"])
+			}
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id":              "ws-1",
+				"name":            "Workspace",
+				"slug":            "workspace",
+				"organization_id": "org-1",
+				"status":          "active",
+				"public_packs":    true,
+			})
+		},
+	})
+	defer srv.Close()
+
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+	err := executeCommand(t, []string{"workspace", "update", "ws-1", "--public-packs"}, srv.URL)
+	if err != nil {
+		t.Fatalf("workspace update error: %v", err)
+	}
+	if !called {
+		t.Fatal("PATCH /v1/workspaces/ws-1/details was not called")
+	}
+}
+
 func TestInfraModelCatalogListCallsCorrectEndpoint(t *testing.T) {
 	var called bool
 	srv := fakeAPI(t, map[string]http.HandlerFunc{

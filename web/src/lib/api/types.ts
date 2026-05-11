@@ -131,6 +131,7 @@ export interface OrgWorkspace {
   name: string;
   slug: string;
   status: string; // "active" | "archived"
+  public_packs: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -149,6 +150,7 @@ export interface WorkspaceDetail {
   name: string;
   slug: string;
   status: string; // "active" | "archived"
+  public_packs: boolean;
   created_at: string;
   updated_at: string;
 }

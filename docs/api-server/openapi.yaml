@@ -5556,10 +5556,12 @@ components:
         status:
           type: string
           enum: [active, archived]
+        public_packs:
+          type: boolean
 
     WorkspaceDetailResponse:
       type: object
-      required: [id, organization_id, name, slug, status, created_at, updated_at]
+      required: [id, organization_id, name, slug, status, public_packs, created_at, updated_at]
       properties:
         id:
           type: string
@@ -5573,6 +5575,8 @@ components:
           type: string
         status:
           type: string
+        public_packs:
+          type: boolean
         created_at:
           type: string
           format: date-time

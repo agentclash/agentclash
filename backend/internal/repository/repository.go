@@ -3079,6 +3079,7 @@ type WorkspaceRow struct {
 	Name           string
 	Slug           string
 	Status         string
+	PublicPacks    bool
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
 }
@@ -3092,8 +3093,9 @@ type CreateWorkspaceWithAdminInput struct {
 }
 
 type UpdateWorkspaceInput struct {
-	Name   *string
-	Status *string
+	Name        *string
+	Status      *string
+	PublicPacks *bool
 }
 
 type OrgMembershipFullRow struct {
@@ -3520,9 +3522,9 @@ func (r *Repository) Onboard(ctx context.Context, input OnboardInput) (OnboardRe
 	err = tx.QueryRow(ctx, `
 		INSERT INTO workspaces (id, organization_id, name, slug, status)
 		VALUES (gen_random_uuid(), $1, $2, $3, 'active')
-		RETURNING id, organization_id, name, slug, status, created_at, updated_at
+		RETURNING id, organization_id, name, slug, status, public_packs, created_at, updated_at
 	`, org.ID, input.WorkspaceName, input.WorkspaceSlug).Scan(
-		&ws.ID, &ws.OrganizationID, &ws.Name, &ws.Slug, &ws.Status, &ws.CreatedAt, &ws.UpdatedAt,
+		&ws.ID, &ws.OrganizationID, &ws.Name, &ws.Slug, &ws.Status, &ws.PublicPacks, &ws.CreatedAt, &ws.UpdatedAt,
 	)
 	if err != nil {
 		var pgErr *pgconn.PgError
@@ -4134,9 +4136,9 @@ func (r *Repository) CreateWorkspaceWithAdmin(ctx context.Context, input CreateW
 	err = tx.QueryRow(ctx, `
 		INSERT INTO workspaces (id, organization_id, name, slug, status)
 		VALUES (gen_random_uuid(), $1, $2, $3, 'active')
-		RETURNING id, organization_id, name, slug, status, created_at, updated_at
+		RETURNING id, organization_id, name, slug, status, public_packs, created_at, updated_at
 	`, input.OrganizationID, input.Name, input.Slug).Scan(
-		&ws.ID, &ws.OrganizationID, &ws.Name, &ws.Slug, &ws.Status, &ws.CreatedAt, &ws.UpdatedAt,
+		&ws.ID, &ws.OrganizationID, &ws.Name, &ws.Slug, &ws.Status, &ws.PublicPacks, &ws.CreatedAt, &ws.UpdatedAt,
 	)
 	if err != nil {
 		var pgErr *pgconn.PgError
@@ -4163,9 +4165,9 @@ func (r *Repository) CreateWorkspaceWithAdmin(ctx context.Context, input CreateW
 func (r *Repository) GetWorkspaceByID(ctx context.Context, workspaceID uuid.UUID) (WorkspaceRow, error) {
 	var ws WorkspaceRow
 	err := r.db.QueryRow(ctx, `
-		SELECT id, organization_id, name, slug, status, created_at, updated_at
+		SELECT id, organization_id, name, slug, status, public_packs, created_at, updated_at
 		FROM workspaces WHERE id = $1
-	`, workspaceID).Scan(&ws.ID, &ws.OrganizationID, &ws.Name, &ws.Slug, &ws.Status, &ws.CreatedAt, &ws.UpdatedAt)
+	`, workspaceID).Scan(&ws.ID, &ws.OrganizationID, &ws.Name, &ws.Slug, &ws.Status, &ws.PublicPacks, &ws.CreatedAt, &ws.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return WorkspaceRow{}, ErrWorkspaceNotFound
@@ -4177,7 +4179,7 @@ func (r *Repository) GetWorkspaceByID(ctx context.Context, workspaceID uuid.UUID
 
 func (r *Repository) ListWorkspacesByOrgID(ctx context.Context, orgID uuid.UUID, limit, offset int32) ([]WorkspaceRow, error) {
 	rows, err := r.db.Query(ctx, `
-		SELECT id, organization_id, name, slug, status, created_at, updated_at
+		SELECT id, organization_id, name, slug, status, public_packs, created_at, updated_at
 		FROM workspaces
 		WHERE organization_id = $1 AND status = 'active'
 		ORDER BY name
@@ -4204,7 +4206,7 @@ func (r *Repository) CountWorkspacesByOrgID(ctx context.Context, orgID uuid.UUID
 
 func (r *Repository) ListWorkspacesByOrgIDForMember(ctx context.Context, orgID, userID uuid.UUID, limit, offset int32) ([]WorkspaceRow, error) {
 	rows, err := r.db.Query(ctx, `
-		SELECT w.id, w.organization_id, w.name, w.slug, w.status, w.created_at, w.updated_at
+		SELECT w.id, w.organization_id, w.name, w.slug, w.status, w.public_packs, w.created_at, w.updated_at
 		FROM workspaces w
 		JOIN workspace_memberships wm ON wm.workspace_id = w.id
 		WHERE w.organization_id = $1 AND wm.user_id = $2 AND wm.membership_status = 'active'
@@ -4257,6 +4259,11 @@ func (r *Repository) UpdateWorkspace(ctx context.Context, workspaceID uuid.UUID,
 			setClauses = append(setClauses, "archived_at = NULL")
 		}
 	}
+	if input.PublicPacks != nil {
+		setClauses = append(setClauses, fmt.Sprintf("public_packs = $%d", argIdx))
+		args = append(args, *input.PublicPacks)
+		argIdx++
+	}
 
 	if len(setClauses) == 0 {
 		return r.GetWorkspaceByID(ctx, workspaceID)
@@ -4265,13 +4272,13 @@ func (r *Repository) UpdateWorkspace(ctx context.Context, workspaceID uuid.UUID,
 	query := fmt.Sprintf(`
 		UPDATE workspaces SET %s
 		WHERE id = $%d
-		RETURNING id, organization_id, name, slug, status, created_at, updated_at
+		RETURNING id, organization_id, name, slug, status, public_packs, created_at, updated_at
 	`, strings.Join(setClauses, ", "), argIdx)
 	args = append(args, workspaceID)
 
 	var ws WorkspaceRow
 	err := r.db.QueryRow(ctx, query, args...).Scan(
-		&ws.ID, &ws.OrganizationID, &ws.Name, &ws.Slug, &ws.Status, &ws.CreatedAt, &ws.UpdatedAt,
+		&ws.ID, &ws.OrganizationID, &ws.Name, &ws.Slug, &ws.Status, &ws.PublicPacks, &ws.CreatedAt, &ws.UpdatedAt,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -4305,9 +4312,9 @@ func (r *Repository) ArchiveWorkspaceCascade(ctx context.Context, workspaceID uu
 		UPDATE workspaces
 		SET status = 'archived', archived_at = $2
 		WHERE id = $1
-		RETURNING id, organization_id, name, slug, status, created_at, updated_at
+		RETURNING id, organization_id, name, slug, status, public_packs, created_at, updated_at
 	`, workspaceID, now).Scan(
-		&ws.ID, &ws.OrganizationID, &ws.Name, &ws.Slug, &ws.Status, &ws.CreatedAt, &ws.UpdatedAt,
+		&ws.ID, &ws.OrganizationID, &ws.Name, &ws.Slug, &ws.Status, &ws.PublicPacks, &ws.CreatedAt, &ws.UpdatedAt,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -4326,7 +4333,7 @@ func scanWorkspaceRows(rows pgx.Rows) ([]WorkspaceRow, error) {
 	var workspaces []WorkspaceRow
 	for rows.Next() {
 		var ws WorkspaceRow
-		if err := rows.Scan(&ws.ID, &ws.OrganizationID, &ws.Name, &ws.Slug, &ws.Status, &ws.CreatedAt, &ws.UpdatedAt); err != nil {
+		if err := rows.Scan(&ws.ID, &ws.OrganizationID, &ws.Name, &ws.Slug, &ws.Status, &ws.PublicPacks, &ws.CreatedAt, &ws.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scan workspace: %w", err)
 		}
 		workspaces = append(workspaces, ws)
