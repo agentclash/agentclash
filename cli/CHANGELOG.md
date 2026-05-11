@@ -1,5 +1,63 @@
 # Changelog
 
+## [0.16.0](https://github.com/agentclash/agentclash/compare/v0.15.0...v0.16.0) (2026-05-11)
+
+
+### Features
+
+* add agent build version templates ([5b77d84](https://github.com/agentclash/agentclash/commit/5b77d84d8d4d530b31eef8f3e5611a3f7757fb0e))
+* add agent build version templates ([636e239](https://github.com/agentclash/agentclash/commit/636e239ab7457668b91a85ae2f4c87e313a5ac82))
+* add challenge pack deployment lineups ([5eb2fc6](https://github.com/agentclash/agentclash/commit/5eb2fc6d985a7ca688e9e2fc4504dd43ea95eecd))
+* add challenge pack deployment lineups ([bac868d](https://github.com/agentclash/agentclash/commit/bac868d1a61e02ce74d0ed2b61092cd0b5aaf90a))
+* add cost per correct scorecard metric ([054942c](https://github.com/agentclash/agentclash/commit/054942c721d61109b20f267526d6ce7d58d567d3))
+* add cost-per-correct scorecard metric ([748482f](https://github.com/agentclash/agentclash/commit/748482f6ec73a6cb64464ffd3a74e18a9b713212))
+* add model alias create flags ([83b35ca](https://github.com/agentclash/agentclash/commit/83b35caa9f5bea504607a61a66b1b8ac1b74eb7b))
+* add model alias create flags ([a2d059d](https://github.com/agentclash/agentclash/commit/a2d059dcb1b61cfe3dce542bd93cecf4e2a08eea))
+* add pack readiness doctor checks ([d93522d](https://github.com/agentclash/agentclash/commit/d93522d04c553e3946a93b32ffa92b2bf2204adf))
+* add pack readiness doctor checks ([453b5d0](https://github.com/agentclash/agentclash/commit/453b5d070f2043f3f41b40b6330f822a47f73d56))
+* add provider account smoke test ([a5e4f5b](https://github.com/agentclash/agentclash/commit/a5e4f5ba55bfa1598a9d5ec89a98d3b31d2266ad))
+* add provider account smoke test ([05e86ad](https://github.com/agentclash/agentclash/commit/05e86add1c84f39ad66043b910d01bd916d99d2e))
+* add race series aggregate reports ([5347042](https://github.com/agentclash/agentclash/commit/53470428d7a7160f2ffd5297d2d11ddc607cbfe0))
+* add race series aggregate reports ([91ac749](https://github.com/agentclash/agentclash/commit/91ac7494f40b9572172ddb8f8e8fe0cf36fe8167))
+* add race series creation ([f33ba26](https://github.com/agentclash/agentclash/commit/f33ba26674e19155c661e1c7dfb33c54e76113c6))
+* add race series creation ([dfd1136](https://github.com/agentclash/agentclash/commit/dfd11366c5e707f1bc3026e1a01dbcd58f9651af))
+* add run cancellation ([49abf93](https://github.com/agentclash/agentclash/commit/49abf93c2fca3e460a611522480ba7e8f632c560))
+* add run cancellation ([0b292c0](https://github.com/agentclash/agentclash/commit/0b292c07da2c6e808be48af897e6b0559e7661d4))
+* add run max iteration overrides ([c3990ac](https://github.com/agentclash/agentclash/commit/c3990ac9d971055d1de6f3ed4c46780f968c9284))
+* add run max-iteration overrides ([eef4008](https://github.com/agentclash/agentclash/commit/eef4008474aaeb8876dd7670617e407d8ab74ff6))
+* add seeded run creation ([d24dd6b](https://github.com/agentclash/agentclash/commit/d24dd6b68cca8ae58f98b779c22fe17a0873ad22))
+* add seeded run creation ([3b1b53f](https://github.com/agentclash/agentclash/commit/3b1b53faa4e3d0368dae1a18bbe8cd03560db51f))
+* add workspace public pack opt-in ([3257ca4](https://github.com/agentclash/agentclash/commit/3257ca4624352fa4a115910f7ed32a30207a4c04))
+* add workspace public pack opt-in ([fc6517b](https://github.com/agentclash/agentclash/commit/fc6517b2972cb42f856ccb14edff07677379e87c))
+* add workspace quota visibility ([6acd592](https://github.com/agentclash/agentclash/commit/6acd592d0fcdea16a697f943678198696f5c3b03))
+* add workspace quota visibility ([ad2052d](https://github.com/agentclash/agentclash/commit/ad2052d820294fdb232c46e6766a407949b72e35))
+* **cli:** add run replay and compare commands ([3436b81](https://github.com/agentclash/agentclash/commit/3436b812ec5459c57b08fcb02ed5cdede3eee90e))
+* **cli:** add run replay and compare commands ([70edd04](https://github.com/agentclash/agentclash/commit/70edd04e9b79ba3f43135d6464844d740e7702f4))
+* **cli:** add workflow phase 1 commands ([2a91587](https://github.com/agentclash/agentclash/commit/2a915874754eb5c6133ccce0f78ec82567d88945))
+* export markdown run transcripts ([a7aea11](https://github.com/agentclash/agentclash/commit/a7aea1194a9585b676d4c9fb1c3e375447d44f16))
+* export markdown run transcripts ([81e0d50](https://github.com/agentclash/agentclash/commit/81e0d504af044f7d42d6f2d4fb2c3057d4e0c785))
+* export run events as jsonl ([7fe1d76](https://github.com/agentclash/agentclash/commit/7fe1d7621605e5e37a0d2ddd000410f2a9b7a6aa))
+* export run events as JSONL ([d6c864e](https://github.com/agentclash/agentclash/commit/d6c864e81ee80f74f556b027f6abc781c8711dea))
+* filter streamed run events ([fa05d76](https://github.com/agentclash/agentclash/commit/fa05d7643346cf0321d016734e015ae49b1f55f3))
+* filter streamed run events ([4a084bc](https://github.com/agentclash/agentclash/commit/4a084bca33f91f028282531cb4fbc416d25d2f2c))
+* surface model alias pricing drift ([f347983](https://github.com/agentclash/agentclash/commit/f347983c05e8eaab4db0a00be75b116d5212dcc8))
+* surface model alias pricing drift ([748d231](https://github.com/agentclash/agentclash/commit/748d2315c5f1d714a69ace57d07e1d37cfa5b996))
+* surface scorecard total cost ([602ddad](https://github.com/agentclash/agentclash/commit/602ddad658a4099adfafdc63448e108cb2bb309e))
+* surface scorecard total cost ([b0ce9b2](https://github.com/agentclash/agentclash/commit/b0ce9b23aceeafbb29b9bfefb1c7eca26916e4c6))
+
+
+### Bug Fixes
+
+* address doctor pack review feedback ([397174e](https://github.com/agentclash/agentclash/commit/397174e3ece1d6631c26c3caaee5b32250046b2f))
+* address doctor pack review feedback ([9ee9559](https://github.com/agentclash/agentclash/commit/9ee95599e6c06c236c85e0c8d6b98e543713c362))
+* align series report CLI with rank metric ([6e7e15a](https://github.com/agentclash/agentclash/commit/6e7e15ab44266faa1a7f1a37e0d4257a972cf0af))
+* clarify run cancel no-op output ([39d08ab](https://github.com/agentclash/agentclash/commit/39d08ab27bf75156890dc1df8af55e24f81e6847))
+* handle model alias pricing edge cases ([cb10512](https://github.com/agentclash/agentclash/commit/cb10512d37f2450ef3b272e684d689e6279a27f0))
+* harden transcript markdown rendering ([33ecbd6](https://github.com/agentclash/agentclash/commit/33ecbd64fd2005d78d94eaf274ee9079cd4a8f00))
+* make eval child error handling deterministic ([933e072](https://github.com/agentclash/agentclash/commit/933e072708458f0764c0ba162f734bcec11e616a))
+* persist race series child metadata ([1ad1fcc](https://github.com/agentclash/agentclash/commit/1ad1fcc6f93a305b0b1793b7591979f2e59abcf8))
+* validate run event filter globs ([45eb301](https://github.com/agentclash/agentclash/commit/45eb301a2232ddc25188db9a74b909a7c80f9b23))
+
 ## [0.15.0](https://github.com/agentclash/agentclash/compare/v0.14.2...v0.15.0) (2026-05-07)
 
 
