@@ -566,6 +566,13 @@ func (r *Repository) UnarchiveModelAliasByKey(ctx context.Context, workspaceID u
 		&createdAt, &updatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
+			catalogExists, existsErr := r.modelCatalogEntryExists(ctx, catalogEntryID)
+			if existsErr != nil {
+				return ModelAliasRow{}, fmt.Errorf("check model catalog entry: %w", existsErr)
+			}
+			if !catalogExists {
+				return ModelAliasRow{}, ErrModelCatalogNotFound
+			}
 			return ModelAliasRow{}, ErrModelAliasNotFound
 		}
 		return ModelAliasRow{}, fmt.Errorf("unarchive model alias: %w", err)
@@ -573,6 +580,14 @@ func (r *Repository) UnarchiveModelAliasByKey(ctx context.Context, workspaceID u
 	row.CreatedAt = createdAt.Time
 	row.UpdatedAt = updatedAt.Time
 	return row, nil
+}
+
+func (r *Repository) modelCatalogEntryExists(ctx context.Context, id uuid.UUID) (bool, error) {
+	var exists bool
+	if err := r.db.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM model_catalog_entries WHERE id = $1)`, id).Scan(&exists); err != nil {
+		return false, err
+	}
+	return exists, nil
 }
 
 func (r *Repository) ArchiveModelAlias(ctx context.Context, id uuid.UUID) error {

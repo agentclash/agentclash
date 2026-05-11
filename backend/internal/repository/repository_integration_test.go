@@ -49,6 +49,22 @@ func TestRepositoryGetRunByID(t *testing.T) {
 	}
 }
 
+func TestRepositoryUnarchiveModelAliasByKeyInvalidCatalogEntry(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	if err := repo.ArchiveModelAlias(ctx, fixture.modelAliasID); err != nil {
+		t.Fatalf("ArchiveModelAlias returned error: %v", err)
+	}
+
+	_, err := repo.UnarchiveModelAliasByKey(ctx, fixture.workspaceID, "primary-model", &fixture.providerAccountID, uuid.New())
+	if !errors.Is(err, repository.ErrModelCatalogNotFound) {
+		t.Fatalf("UnarchiveModelAliasByKey error = %v, want ErrModelCatalogNotFound", err)
+	}
+}
+
 func TestRepositoryListRecentComparableScoredRunsBeforeRunID(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)
