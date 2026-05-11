@@ -196,6 +196,7 @@ func registerProtectedRoutes(
 		Post("/workspaces/{workspaceID}/agent-builds", createAgentBuildHandler(logger, agentBuildService, authorizer))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Get("/workspaces/{workspaceID}/agent-builds", listAgentBuildsHandler(logger, agentBuildService))
+	router.Get("/agent-build-version-templates", listAgentBuildVersionTemplatesHandler())
 
 	router.Get("/agent-builds/{agentBuildID}", getAgentBuildHandler(logger, agentBuildService, authorizer))
 	router.Post("/agent-builds/{agentBuildID}/versions", createAgentBuildVersionHandler(logger, agentBuildService, authorizer))
