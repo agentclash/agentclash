@@ -152,7 +152,7 @@ func main() {
 	orgMembershipManager := api.NewOrgMembershipManager(orgAuthz, repo, emailSender, cfg.FrontendURL, billingManager)
 	wsMembershipManager := api.NewWorkspaceMembershipManager(repo, emailSender, cfg.FrontendURL, billingManager)
 	onboardingManager := api.NewOnboardingManager(repo)
-	infraManager := api.NewInfrastructureManager(repo)
+	infraManager := api.NewInfrastructureManager(repo).WithProviderClient(providerRouter)
 	workspaceSecretsManager := api.NewWorkspaceSecretsManager(repo)
 	cliAuthManager := api.NewCLIAuthManager(repo, logger, cfg.FrontendURL)
 	cliTokenAuth := api.NewCLITokenAuthenticator(repo, logger)

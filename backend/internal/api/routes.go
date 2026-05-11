@@ -243,6 +243,7 @@ func registerProtectedRoutes(
 	router.Method("GET", "/workspaces/{workspaceID}/provider-accounts", wsMiddleware(infraListHandler(logger, infraService.ListProviderAccounts, mapProviderAccount)))
 	router.Get("/provider-accounts/{accountID}", infraGetHandler(logger, authorizer, "accountID", infraService.GetProviderAccount, mapProviderAccount, "provider account"))
 	router.Delete("/provider-accounts/{accountID}", infraDeleteHandler(logger, authorizer, "accountID", infraService.GetProviderAccount, infraService.DeleteProviderAccount, "provider account"))
+	router.Post("/provider-accounts/{accountID}/test", testProviderAccountHandler(logger, authorizer, infraService))
 
 	// Model Catalog (global, no workspace scope)
 	router.Get("/model-catalog", listModelCatalogHandler(logger, infraService))
