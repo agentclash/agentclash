@@ -1390,6 +1390,7 @@ func TestRegressionSuitePatchReturnsConflictOnTransitionConflict(t *testing.T) {
 type fakeRegressionRepository struct {
 	challengePacks          []repository.ChallengePackSummary
 	challengePacksErr       error
+	publicPacksDisabled     bool
 	suite                   repository.RegressionSuite
 	suiteErr                error
 	regressionCase          repository.RegressionCase
@@ -1430,6 +1431,10 @@ type fakeRegressionRepository struct {
 
 func (f *fakeRegressionRepository) ListVisibleChallengePacks(_ context.Context, _ uuid.UUID) ([]repository.ChallengePackSummary, error) {
 	return f.challengePacks, f.challengePacksErr
+}
+
+func (f *fakeRegressionRepository) WorkspacePublicPacksEnabled(context.Context, uuid.UUID) (bool, error) {
+	return !f.publicPacksDisabled, nil
 }
 
 func (f *fakeRegressionRepository) CreateRegressionSuite(_ context.Context, params repository.CreateRegressionSuiteParams) (repository.RegressionSuite, error) {

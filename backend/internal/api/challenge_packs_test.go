@@ -23,6 +23,7 @@ type fakeChallengePackReadRepository struct {
 	runnableVersion repository.RunnableChallengePackVersion
 	inputSets       []repository.ChallengeInputSetSummary
 	versionDefaults json.RawMessage
+	publicPacks     bool
 }
 
 func (f *fakeChallengePackReadRepository) ListVisibleChallengePacks(_ context.Context, workspaceID uuid.UUID) ([]repository.ChallengePackSummary, error) {
@@ -36,6 +37,11 @@ func (f *fakeChallengePackReadRepository) ListVisibleChallengePacks(_ context.Co
 			UpdatedAt: time.Now().UTC(),
 		},
 	}, nil
+}
+
+func (f *fakeChallengePackReadRepository) WorkspacePublicPacksEnabled(_ context.Context, workspaceID uuid.UUID) (bool, error) {
+	f.lastWorkspaceID = workspaceID
+	return f.publicPacks, nil
 }
 
 func (f *fakeChallengePackReadRepository) ListRunnableChallengePVersionsByPackID(_ context.Context, challengePackID uuid.UUID) ([]repository.ChallengePackVersionSummary, error) {
@@ -285,6 +291,55 @@ func TestChallengePackReadManagerHidesInputSetsForOtherWorkspace(t *testing.T) {
 	_, err := manager.ListChallengeInputSets(ctx, versionID)
 	if !errors.Is(err, repository.ErrChallengePackVersionNotFound) {
 		t.Fatalf("error = %v, want challenge pack version not found", err)
+	}
+}
+
+func TestChallengePackReadManagerHidesGlobalInputSetsWhenPublicPacksDisabled(t *testing.T) {
+	workspaceID := uuid.New()
+	versionID := uuid.New()
+	repo := &fakeChallengePackReadRepository{
+		runnableVersion: repository.RunnableChallengePackVersion{
+			ID:          versionID,
+			WorkspaceID: nil,
+		},
+		publicPacks: false,
+	}
+	manager := NewChallengePackReadManager(repo)
+
+	ctx := context.WithValue(context.Background(), workspaceIDContextKey{}, workspaceID)
+	_, err := manager.ListChallengeInputSets(ctx, versionID)
+	if !errors.Is(err, repository.ErrChallengePackVersionNotFound) {
+		t.Fatalf("error = %v, want challenge pack version not found", err)
+	}
+}
+
+func TestChallengePackReadManagerListsGlobalInputSetsWhenPublicPacksEnabled(t *testing.T) {
+	workspaceID := uuid.New()
+	versionID := uuid.New()
+	repo := &fakeChallengePackReadRepository{
+		runnableVersion: repository.RunnableChallengePackVersion{
+			ID:          versionID,
+			WorkspaceID: nil,
+		},
+		inputSets: []repository.ChallengeInputSetSummary{
+			{
+				ID:                     uuid.New(),
+				ChallengePackVersionID: versionID,
+				InputKey:               "public-default",
+				Name:                   "Public Default",
+			},
+		},
+		publicPacks: true,
+	}
+	manager := NewChallengePackReadManager(repo)
+
+	ctx := context.WithValue(context.Background(), workspaceIDContextKey{}, workspaceID)
+	result, err := manager.ListChallengeInputSets(ctx, versionID)
+	if err != nil {
+		t.Fatalf("ListChallengeInputSets returned error: %v", err)
+	}
+	if len(result.InputSets) != 1 || result.InputSets[0].InputKey != "public-default" {
+		t.Fatalf("input sets = %#v, want public-default", result.InputSets)
 	}
 }
 

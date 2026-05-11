@@ -554,6 +554,40 @@ func TestRunCreationManagerRejectsChallengePackVersionNotFound(t *testing.T) {
 	}
 }
 
+func TestRunCreationManagerRejectsGlobalChallengePackWhenPublicPacksDisabled(t *testing.T) {
+	workspaceID := uuid.New()
+	deploymentID := uuid.New()
+	manager := NewRunCreationManager(NewCallerWorkspaceAuthorizer(), &fakeRunCreationRepository{
+		challengePackVersion: repository.RunnableChallengePackVersion{
+			ID:          uuid.New(),
+			WorkspaceID: nil,
+		},
+		publicPacksDisabled: true,
+	}, &fakeRunWorkflowStarter{}, nil)
+
+	_, err := manager.CreateRun(context.Background(), Caller{
+		UserID: uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: "workspace_member"},
+		},
+	}, CreateRunInput{
+		WorkspaceID:            workspaceID,
+		ChallengePackVersionID: uuid.New(),
+		AgentDeploymentIDs:     []uuid.UUID{deploymentID},
+	})
+	if err == nil {
+		t.Fatalf("expected validation error")
+	}
+
+	var validationErr RunCreationValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("error = %v, want RunCreationValidationError", err)
+	}
+	if validationErr.Code != "invalid_challenge_pack_version_id" {
+		t.Fatalf("validation code = %q, want invalid_challenge_pack_version_id", validationErr.Code)
+	}
+}
+
 func TestRunCreationManagerCreateEvalSessionCreatesQueuedRuns(t *testing.T) {
 	workspaceID := uuid.New()
 	challengePackVersionID := uuid.New()
@@ -2051,6 +2085,7 @@ func TestRunCreationManagerIncludesProposedRegressionCasesForValidationRuns(t *t
 type fakeRunCreationRepository struct {
 	challengePackVersion            repository.RunnableChallengePackVersion
 	challengePackVersionErr         error
+	publicPacksDisabled             bool
 	challengeInputSet               repository.ChallengeInputSet
 	challengeInputSetErr            error
 	challengeInputSets              []repository.ChallengeInputSetSummary
@@ -2106,6 +2141,10 @@ func executionPlanTestSeries(t *testing.T, payload json.RawMessage) (string, str
 
 func (f *fakeRunCreationRepository) GetRunnableChallengePackVersionByID(_ context.Context, _ uuid.UUID) (repository.RunnableChallengePackVersion, error) {
 	return f.challengePackVersion, f.challengePackVersionErr
+}
+
+func (f *fakeRunCreationRepository) WorkspacePublicPacksEnabled(context.Context, uuid.UUID) (bool, error) {
+	return !f.publicPacksDisabled, nil
 }
 
 func (f *fakeRunCreationRepository) GetChallengeInputSetByID(_ context.Context, _ uuid.UUID) (repository.ChallengeInputSet, error) {

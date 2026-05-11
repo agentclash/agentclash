@@ -65,6 +65,50 @@ func TestRepositoryUnarchiveModelAliasByKeyInvalidCatalogEntry(t *testing.T) {
 	}
 }
 
+func TestRepositoryListVisibleChallengePacksRespectsPublicPacksOptIn(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	if _, err := db.Exec(ctx, `
+		INSERT INTO challenge_packs (id, workspace_id, slug, name, family)
+		VALUES ($1, $2, $3, $4, $5)
+	`, uuid.New(), fixture.workspaceID, "workspace-only", "Workspace Only", "support"); err != nil {
+		t.Fatalf("insert workspace challenge pack returned error: %v", err)
+	}
+
+	packs, err := repo.ListVisibleChallengePacks(ctx, fixture.workspaceID)
+	if err != nil {
+		t.Fatalf("ListVisibleChallengePacks returned error: %v", err)
+	}
+	if challengePackSlugs(packs)["benchmark-pack"] {
+		t.Fatalf("global pack was visible before public_packs opt-in: %#v", challengePackSlugs(packs))
+	}
+	if !challengePackSlugs(packs)["workspace-only"] {
+		t.Fatalf("workspace pack was not visible: %#v", challengePackSlugs(packs))
+	}
+
+	if _, err := db.Exec(ctx, `UPDATE workspaces SET public_packs = true WHERE id = $1`, fixture.workspaceID); err != nil {
+		t.Fatalf("enable public packs returned error: %v", err)
+	}
+	packs, err = repo.ListVisibleChallengePacks(ctx, fixture.workspaceID)
+	if err != nil {
+		t.Fatalf("ListVisibleChallengePacks after opt-in returned error: %v", err)
+	}
+	if !challengePackSlugs(packs)["benchmark-pack"] {
+		t.Fatalf("global pack was not visible after public_packs opt-in: %#v", challengePackSlugs(packs))
+	}
+}
+
+func challengePackSlugs(packs []repository.ChallengePackSummary) map[string]bool {
+	slugs := make(map[string]bool, len(packs))
+	for _, pack := range packs {
+		slugs[pack.Slug] = true
+	}
+	return slugs
+}
+
 func TestRepositoryListRecentComparableScoredRunsBeforeRunID(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)

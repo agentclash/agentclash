@@ -35,7 +35,17 @@ func (r *Repository) ListVisibleChallengePacks(ctx context.Context, workspaceID 
 		SELECT id, name, slug, description, created_at, updated_at
 		FROM challenge_packs
 		WHERE archived_at IS NULL
-		  AND (workspace_id IS NULL OR workspace_id = $1)
+		  AND (
+			workspace_id = $1
+			OR (
+				workspace_id IS NULL
+				AND EXISTS (
+					SELECT 1
+					FROM workspaces
+					WHERE id = $1 AND public_packs
+				)
+			)
+		  )
 		ORDER BY name ASC
 	`, workspaceID)
 	if err != nil {
@@ -59,6 +69,22 @@ func (r *Repository) ListVisibleChallengePacks(ctx context.Context, workspaceID 
 	}
 
 	return packs, nil
+}
+
+func (r *Repository) WorkspacePublicPacksEnabled(ctx context.Context, workspaceID uuid.UUID) (bool, error) {
+	var enabled bool
+	err := r.db.QueryRow(ctx, `
+		SELECT public_packs
+		FROM workspaces
+		WHERE id = $1 AND status = 'active'
+	`, workspaceID).Scan(&enabled)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return false, ErrWorkspaceNotFound
+		}
+		return false, fmt.Errorf("get workspace public pack access: %w", err)
+	}
+	return enabled, nil
 }
 
 func (r *Repository) PublishChallengePackBundle(ctx context.Context, params PublishChallengePackBundleParams) (PublishedChallengePack, error) {

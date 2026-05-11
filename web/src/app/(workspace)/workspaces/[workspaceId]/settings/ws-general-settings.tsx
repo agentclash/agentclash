@@ -31,6 +31,7 @@ export function WsGeneralSettings({ workspace: initialWs }: WsGeneralSettingsPro
   const [ws, setWs] = useState(initialWs);
   const [name, setName] = useState(ws.name);
   const [saving, setSaving] = useState(false);
+  const [savingPublicPacks, setSavingPublicPacks] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [archiveConfirm, setArchiveConfirm] = useState("");
   const [archiving, setArchiving] = useState(false);
@@ -57,6 +58,29 @@ export function WsGeneralSettings({ workspace: initialWs }: WsGeneralSettingsPro
     }
   }
 
+  async function handlePublicPacksChange(publicPacks: boolean) {
+    setSavingPublicPacks(true);
+    try {
+      const token = await getAccessToken();
+      if (!token) return;
+      const api = createApiClient(token);
+      const updated = await api.patch<WorkspaceDetail>(
+        `/v1/workspaces/${ws.id}/details`,
+        { public_packs: publicPacks },
+      );
+      toast.success("Challenge pack access updated");
+      setWs(updated);
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError
+          ? err.message
+          : "Failed to update challenge pack access",
+      );
+    } finally {
+      setSavingPublicPacks(false);
+    }
+  }
+
   async function handleArchive() {
     setArchiving(true);
     try {
@@ -75,6 +99,11 @@ export function WsGeneralSettings({ workspace: initialWs }: WsGeneralSettingsPro
     } finally {
       setArchiving(false);
     }
+  }
+
+  function publicPacksStateLabel() {
+    if (savingPublicPacks) return "Saving";
+    return ws.public_packs ? "Enabled" : "Disabled";
   }
 
   return (
@@ -112,6 +141,29 @@ export function WsGeneralSettings({ workspace: initialWs }: WsGeneralSettingsPro
             {ws.slug}
           </code>
         </p>
+      </div>
+
+      <div className="rounded-lg border border-border p-4">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <h3 className="text-sm font-medium">Public Challenge Packs</h3>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Allow this workspace to use the shared challenge pack catalog.
+            </p>
+          </div>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={ws.public_packs}
+              disabled={savingPublicPacks}
+              onChange={(event) =>
+                handlePublicPacksChange(event.currentTarget.checked)
+              }
+              className="size-4 accent-primary"
+            />
+            {publicPacksStateLabel()}
+          </label>
+        </div>
       </div>
 
       {/* Workspace ID (for API/CLI) */}

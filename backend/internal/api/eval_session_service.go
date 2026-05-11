@@ -144,6 +144,18 @@ func (m *RunCreationManager) CreateEvalSession(ctx context.Context, caller Calle
 			Message: "challenge_pack_version_id must be visible to the selected workspace",
 		}
 	}
+	if challengePackVersion.WorkspaceID == nil {
+		publicPacks, accessErr := m.repo.WorkspacePublicPacksEnabled(ctx, input.WorkspaceID)
+		if accessErr != nil {
+			return CreateEvalSessionResult{}, fmt.Errorf("load workspace public pack access: %w", accessErr)
+		}
+		if !publicPacks {
+			return CreateEvalSessionResult{}, RunCreationValidationError{
+				Code:    "invalid_challenge_pack_version_id",
+				Message: "challenge_pack_version_id must be visible to the selected workspace",
+			}
+		}
+	}
 	if input.MaxIterations == nil {
 		input.MaxIterations = challengePackDefaultMaxIterations(challengePackVersion.Manifest)
 	}
