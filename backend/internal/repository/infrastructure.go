@@ -421,20 +421,33 @@ func (r *Repository) CreateModelAlias(ctx context.Context, p CreateModelAliasPar
 	var row ModelAliasRow
 	var createdAt, updatedAt pgtype.Timestamptz
 	err := r.db.QueryRow(ctx, `
-		INSERT INTO model_aliases (
-			organization_id, workspace_id, provider_account_id, model_catalog_entry_id, alias_key, display_name,
-			input_cost_per_million_tokens, output_cost_per_million_tokens
+		WITH inserted AS (
+			INSERT INTO model_aliases (
+				organization_id, workspace_id, provider_account_id, model_catalog_entry_id, alias_key, display_name,
+				input_cost_per_million_tokens, output_cost_per_million_tokens
+			)
+			SELECT $1, $2, $3, mce.id, $5, $6,
+				mce.input_cost_per_million_tokens, mce.output_cost_per_million_tokens
+			FROM model_catalog_entries mce
+			WHERE mce.id = $4
+			RETURNING id, organization_id, workspace_id, provider_account_id, model_catalog_entry_id, alias_key, display_name,
+				status, input_cost_per_million_tokens, output_cost_per_million_tokens, created_at, updated_at
 		)
-		SELECT $1, $2, $3, mce.id, $5, $6,
-			mce.input_cost_per_million_tokens, mce.output_cost_per_million_tokens
-		FROM model_catalog_entries mce
-		WHERE mce.id = $4
-		RETURNING id, organization_id, workspace_id, provider_account_id, model_catalog_entry_id, alias_key, display_name,
-			status, input_cost_per_million_tokens, output_cost_per_million_tokens, created_at, updated_at
+		SELECT inserted.id, inserted.organization_id, inserted.workspace_id, inserted.provider_account_id, inserted.model_catalog_entry_id,
+			inserted.alias_key, inserted.display_name, inserted.status,
+			inserted.input_cost_per_million_tokens, inserted.output_cost_per_million_tokens,
+			mce.provider_key, mce.provider_model_id, mce.display_name,
+			mce.input_cost_per_million_tokens, mce.output_cost_per_million_tokens,
+			inserted.created_at, inserted.updated_at
+		FROM inserted
+		JOIN model_catalog_entries mce ON mce.id = inserted.model_catalog_entry_id
 	`, p.OrganizationID, p.WorkspaceID, p.ProviderAccountID, p.ModelCatalogEntryID, p.AliasKey, p.DisplayName,
 	).Scan(&row.ID, &row.OrganizationID, &row.WorkspaceID, &row.ProviderAccountID, &row.ModelCatalogEntryID,
 		&row.AliasKey, &row.DisplayName, &row.Status,
-		&row.InputCostPerMillionTokens, &row.OutputCostPerMillionTokens, &createdAt, &updatedAt)
+		&row.InputCostPerMillionTokens, &row.OutputCostPerMillionTokens,
+		&row.CatalogProviderKey, &row.CatalogProviderModelID, &row.CatalogDisplayName,
+		&row.CatalogInputCostPerMillionTokens, &row.CatalogOutputCostPerMillionTokens,
+		&createdAt, &updatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ModelAliasRow{}, ErrModelCatalogNotFound
@@ -443,7 +456,7 @@ func (r *Repository) CreateModelAlias(ctx context.Context, p CreateModelAliasPar
 	}
 	row.CreatedAt = createdAt.Time
 	row.UpdatedAt = updatedAt.Time
-	return r.GetModelAliasByID(ctx, row.ID)
+	return row, nil
 }
 
 func (r *Repository) GetModelAliasByID(ctx context.Context, id uuid.UUID) (ModelAliasRow, error) {
@@ -523,19 +536,34 @@ func (r *Repository) UnarchiveModelAliasByKey(ctx context.Context, workspaceID u
 	var row ModelAliasRow
 	var createdAt, updatedAt pgtype.Timestamptz
 	err := r.db.QueryRow(ctx, `
-		UPDATE model_aliases
-		SET status = 'active', archived_at = NULL, updated_at = now(),
-			provider_account_id = $3, model_catalog_entry_id = mce.id,
-			input_cost_per_million_tokens = mce.input_cost_per_million_tokens,
-			output_cost_per_million_tokens = mce.output_cost_per_million_tokens
-		FROM model_catalog_entries mce
-		WHERE workspace_id = $1 AND alias_key = $2 AND archived_at IS NOT NULL AND mce.id = $4
-		RETURNING model_aliases.id, organization_id, workspace_id, provider_account_id, model_catalog_entry_id, alias_key, display_name,
-			status, input_cost_per_million_tokens, output_cost_per_million_tokens, created_at, updated_at
+		WITH updated AS (
+			UPDATE model_aliases ma
+			SET status = 'active', archived_at = NULL, updated_at = now(),
+				provider_account_id = $3, model_catalog_entry_id = mce.id,
+				input_cost_per_million_tokens = mce.input_cost_per_million_tokens,
+				output_cost_per_million_tokens = mce.output_cost_per_million_tokens
+			FROM model_catalog_entries mce
+			WHERE ma.workspace_id = $1 AND ma.alias_key = $2 AND ma.archived_at IS NOT NULL AND mce.id = $4
+			RETURNING ma.id, ma.organization_id, ma.workspace_id, ma.provider_account_id, ma.model_catalog_entry_id,
+				ma.alias_key, ma.display_name, ma.status,
+				ma.input_cost_per_million_tokens, ma.output_cost_per_million_tokens,
+				ma.created_at, ma.updated_at
+		)
+		SELECT updated.id, updated.organization_id, updated.workspace_id, updated.provider_account_id, updated.model_catalog_entry_id,
+			updated.alias_key, updated.display_name, updated.status,
+			updated.input_cost_per_million_tokens, updated.output_cost_per_million_tokens,
+			mce.provider_key, mce.provider_model_id, mce.display_name,
+			mce.input_cost_per_million_tokens, mce.output_cost_per_million_tokens,
+			updated.created_at, updated.updated_at
+		FROM updated
+		JOIN model_catalog_entries mce ON mce.id = updated.model_catalog_entry_id
 	`, workspaceID, aliasKey, providerAccountID, catalogEntryID,
 	).Scan(&row.ID, &row.OrganizationID, &row.WorkspaceID, &row.ProviderAccountID, &row.ModelCatalogEntryID,
 		&row.AliasKey, &row.DisplayName, &row.Status,
-		&row.InputCostPerMillionTokens, &row.OutputCostPerMillionTokens, &createdAt, &updatedAt)
+		&row.InputCostPerMillionTokens, &row.OutputCostPerMillionTokens,
+		&row.CatalogProviderKey, &row.CatalogProviderModelID, &row.CatalogDisplayName,
+		&row.CatalogInputCostPerMillionTokens, &row.CatalogOutputCostPerMillionTokens,
+		&createdAt, &updatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ModelAliasRow{}, ErrModelAliasNotFound
@@ -544,7 +572,7 @@ func (r *Repository) UnarchiveModelAliasByKey(ctx context.Context, workspaceID u
 	}
 	row.CreatedAt = createdAt.Time
 	row.UpdatedAt = updatedAt.Time
-	return r.GetModelAliasByID(ctx, row.ID)
+	return row, nil
 }
 
 func (r *Repository) ArchiveModelAlias(ctx context.Context, id uuid.UUID) error {

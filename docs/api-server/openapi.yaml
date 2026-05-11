@@ -6436,7 +6436,7 @@ components:
 
     ModelCatalogEntryResponse:
       type: object
-      required: [id, provider_key, provider_model_id, display_name, model_family, modality, lifecycle_status, metadata, created_at, updated_at]
+      required: [id, provider_key, provider_model_id, display_name, model_family, modality, lifecycle_status, metadata, input_cost_per_million_tokens, output_cost_per_million_tokens, created_at, updated_at]
       properties:
         id:
           type: string
@@ -6456,6 +6456,12 @@ components:
         metadata:
           type: object
           additionalProperties: true
+        input_cost_per_million_tokens:
+          type: number
+          format: double
+        output_cost_per_million_tokens:
+          type: number
+          format: double
         created_at:
           type: string
           format: date-time
@@ -6489,7 +6495,7 @@ components:
 
     ModelAliasResponse:
       type: object
-      required: [id, model_catalog_entry_id, alias_key, display_name, status, created_at, updated_at]
+      required: [id, model_catalog_entry_id, provider_key, provider_model_id, model_display_name, alias_key, display_name, status, input_cost_per_million_tokens, output_cost_per_million_tokens, catalog_input_cost_per_million_tokens, catalog_output_cost_per_million_tokens, created_at, updated_at]
       properties:
         id:
           type: string
@@ -6503,11 +6509,31 @@ components:
         model_catalog_entry_id:
           type: string
           format: uuid
+        provider_key:
+          type: string
+        provider_model_id:
+          type: string
+        model_display_name:
+          type: string
         alias_key:
           type: string
         display_name:
           type: string
         status:
+          type: string
+        input_cost_per_million_tokens:
+          type: number
+          format: double
+        output_cost_per_million_tokens:
+          type: number
+          format: double
+        catalog_input_cost_per_million_tokens:
+          type: number
+          format: double
+        catalog_output_cost_per_million_tokens:
+          type: number
+          format: double
+        pricing_drift_warning:
           type: string
         created_at:
           type: string
