@@ -206,6 +206,7 @@ func TestDoctorPackReportsMissingDeploymentDefaults(t *testing.T) {
 	if err := config.Save(config.UserConfig{DefaultWorkspace: "ws-1"}); err != nil {
 		t.Fatalf("Save() error: %v", err)
 	}
+	deploymentCalls := 0
 	packPath := writeDoctorPack(t, `
 pack:
   slug: support-eval
@@ -230,9 +231,12 @@ input_sets:
 `)
 
 	srv := healthyDoctorWorkspaceAPI(t, map[string]http.HandlerFunc{
-		"GET /v1/workspaces/ws-1/agent-deployments": jsonHandler(200, map[string]any{
-			"items": []map[string]any{{"id": "dep-1", "name": "prod", "status": "ready"}},
-		}),
+		"GET /v1/workspaces/ws-1/agent-deployments": func(w http.ResponseWriter, r *http.Request) {
+			deploymentCalls++
+			jsonHandler(200, map[string]any{
+				"items": []map[string]any{{"id": "dep-1", "name": "prod", "status": "ready"}},
+			})(w, r)
+		},
 	})
 	defer srv.Close()
 
@@ -250,6 +254,9 @@ input_sets:
 	}
 	if missing, ok := check.Metadata["missing"].([]any); check.Metadata == nil || !ok || len(missing) == 0 {
 		t.Fatalf("pack_deployments missing metadata not populated: %#v", check.Metadata)
+	}
+	if deploymentCalls != 1 {
+		t.Fatalf("deployment endpoint called %d times, want 1", deploymentCalls)
 	}
 }
 
@@ -352,6 +359,58 @@ input_sets:
 	check := findDoctorCheck(t, payload.Checks, "pack_input_sets")
 	if check.Status != "warn" {
 		t.Fatalf("pack_input_sets status = %q, want warn; check=%#v", check.Status, check)
+	}
+}
+
+func TestDoctorPackNoDefaultLineupUsesLineupsMapMetadata(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+
+	if err := config.Save(config.UserConfig{DefaultWorkspace: "ws-1"}); err != nil {
+		t.Fatalf("Save() error: %v", err)
+	}
+	packPath := writeDoctorPack(t, `
+pack:
+  slug: support-eval
+  name: Support Eval
+  family: support
+version:
+  number: 1
+  deployment_defaults:
+    lineups:
+      smoke: [prod]
+challenges:
+  - key: ticket-1
+    title: Ticket One
+    category: support
+    difficulty: medium
+input_sets:
+  - key: default
+    name: Default
+    cases:
+      - challenge_key: ticket-1
+        case_key: case-1
+`)
+
+	srv := healthyDoctorWorkspaceAPI(t, nil)
+	defer srv.Close()
+
+	stdout := captureStdout(t)
+	err := executeCommand(t, []string{"doctor", "--json", "--pack", packPath}, srv.URL)
+	var exitErr *ExitCodeError
+	if !errors.As(err, &exitErr) || exitErr.Code != 1 {
+		t.Fatalf("doctor error = %T (%v), want exit code 1", err, err)
+	}
+
+	payload := decodeDoctorPayload(t, stdout.finish())
+	check := findDoctorCheck(t, payload.Checks, "pack_deployments")
+	if check.Status != "warn" {
+		t.Fatalf("pack_deployments status = %q, want warn; check=%#v", check.Status, check)
+	}
+	lineups, ok := check.Metadata["lineups"].(map[string]any)
+	if check.Metadata == nil || !ok || len(lineups) != 1 {
+		t.Fatalf("lineups metadata = %#v, want object map", check.Metadata["lineups"])
 	}
 }
 
