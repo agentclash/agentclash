@@ -2,9 +2,12 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
+	"time"
 
+	"github.com/agentclash/agentclash/backend/internal/provider"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/google/uuid"
 )
@@ -24,6 +27,7 @@ type InfrastructureRepository interface {
 
 	// Workspace Secrets
 	UpsertWorkspaceSecret(ctx context.Context, params repository.UpsertWorkspaceSecretParams) error
+	LoadWorkspaceSecrets(ctx context.Context, workspaceID uuid.UUID) (map[string]string, error)
 
 	// Model Catalog
 	ListModelCatalogEntries(ctx context.Context) ([]repository.ModelCatalogEntryRow, error)
@@ -58,11 +62,17 @@ type InfrastructureRepository interface {
 }
 
 type InfrastructureManager struct {
-	repo InfrastructureRepository
+	repo           InfrastructureRepository
+	providerClient provider.Client
 }
 
 func NewInfrastructureManager(repo InfrastructureRepository) *InfrastructureManager {
 	return &InfrastructureManager{repo: repo}
+}
+
+func (m *InfrastructureManager) WithProviderClient(client provider.Client) *InfrastructureManager {
+	m.providerClient = client
+	return m
 }
 
 func (m *InfrastructureManager) resolveOrgID(ctx context.Context, workspaceID uuid.UUID) (uuid.UUID, error) {
@@ -153,6 +163,151 @@ func (m *InfrastructureManager) GetProviderAccount(ctx context.Context, id uuid.
 
 func (m *InfrastructureManager) DeleteProviderAccount(ctx context.Context, id uuid.UUID) error {
 	return m.repo.ArchiveProviderAccount(ctx, id)
+}
+
+func (m *InfrastructureManager) TestProviderAccount(ctx context.Context, account repository.ProviderAccountRow, input ProviderAccountTestInput) (ProviderAccountTestResult, error) {
+	model := strings.TrimSpace(input.Model)
+	if model == "" {
+		model = defaultProviderAccountSmokeModel(account.ProviderKey)
+	}
+	result := ProviderAccountTestResult{
+		AccountID:   account.ID,
+		ProviderKey: account.ProviderKey,
+		Model:       model,
+		Passed:      false,
+		Status:      "failed",
+	}
+	startedAt := time.Now()
+
+	if m.providerClient == nil {
+		result.Code = string(provider.FailureCodeUnsupportedProvider)
+		result.Message = "provider smoke test client is not configured"
+		return result, nil
+	}
+	if model == "" {
+		result.Code = string(provider.FailureCodeUnsupportedProvider)
+		result.Message = fmt.Sprintf("no default smoke-test model is configured for provider %q; pass --model", account.ProviderKey)
+		return result, nil
+	}
+	if account.WorkspaceID == nil {
+		result.Code = "invalid_provider_account"
+		result.Message = "provider account is not attached to a workspace"
+		return result, nil
+	}
+	if account.Status != "" && account.Status != "active" {
+		result.Code = "inactive_provider_account"
+		result.Message = fmt.Sprintf("provider account status is %q", account.Status)
+		return result, nil
+	}
+
+	timeout := providerAccountTestTimeout(input.StepTimeoutSeconds)
+	runCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	secrets := map[string]string{}
+	if strings.HasPrefix(account.CredentialReference, "workspace-secret://") {
+		loaded, err := m.repo.LoadWorkspaceSecrets(ctx, *account.WorkspaceID)
+		if err != nil {
+			return ProviderAccountTestResult{}, fmt.Errorf("load workspace secrets: %w", err)
+		}
+		secrets = loaded
+	}
+	runCtx = provider.WithWorkspaceSecrets(runCtx, secrets)
+	redactionValues := providerAccountRedactionValues(runCtx, secrets, account.CredentialReference)
+
+	response, err := m.providerClient.InvokeModel(runCtx, provider.Request{
+		ProviderKey:         account.ProviderKey,
+		ProviderAccountID:   account.ID.String(),
+		CredentialReference: account.CredentialReference,
+		Model:               model,
+		TraceMode:           "optional",
+		StepTimeout:         timeout,
+		Messages: []provider.Message{
+			{Role: "user", Content: "Reply with exactly: agentclash-smoke-ok"},
+		},
+	})
+	result.DurationMS = time.Since(startedAt).Milliseconds()
+	if err != nil {
+		return providerAccountFailureResult(result, err, redactionValues, account.CredentialReference), nil
+	}
+
+	result.Passed = true
+	result.Status = "passed"
+	result.ProviderModelID = response.ProviderModelID
+	result.Message = "provider account smoke test passed"
+	return result, nil
+}
+
+func providerAccountTestTimeout(seconds int32) time.Duration {
+	if seconds <= 0 {
+		return 20 * time.Second
+	}
+	if seconds > 30 {
+		return 30 * time.Second
+	}
+	return time.Duration(seconds) * time.Second
+}
+
+func defaultProviderAccountSmokeModel(providerKey string) string {
+	switch strings.TrimSpace(providerKey) {
+	case "openai":
+		return "gpt-4.1-mini"
+	case "anthropic":
+		return "claude-haiku-4-5-20251001"
+	case "gemini":
+		return "gemini-2.0-flash"
+	case "xai":
+		return "grok-4-1-fast-reasoning"
+	case "openrouter":
+		return "openai/gpt-4.1-mini"
+	case "mistral":
+		return "mistral-small-latest"
+	default:
+		return ""
+	}
+}
+
+func providerAccountFailureResult(result ProviderAccountTestResult, err error, redactionValues []string, credentialReference string) ProviderAccountTestResult {
+	result.Passed = false
+	result.Status = "failed"
+	if errors.Is(err, context.DeadlineExceeded) {
+		result.Code = string(provider.FailureCodeTimeout)
+		result.Message = "provider account smoke test timed out"
+		return result
+	}
+	if failure, ok := provider.AsFailure(err); ok {
+		result.Code = string(failure.Code)
+		result.Message = sanitizeProviderAccountTestMessage(failure.Message, redactionValues, credentialReference)
+		result.Retryable = failure.Retryable
+		return result
+	}
+	result.Code = string(provider.FailureCodeUnknown)
+	result.Message = sanitizeProviderAccountTestMessage(err.Error(), redactionValues, credentialReference)
+	return result
+}
+
+func providerAccountRedactionValues(ctx context.Context, secrets map[string]string, credentialReference string) []string {
+	values := make([]string, 0, len(secrets)+1)
+	for _, value := range secrets {
+		if value != "" {
+			values = append(values, value)
+		}
+	}
+	if resolved, err := (provider.EnvCredentialResolver{}).Resolve(ctx, credentialReference); err == nil && resolved != "" {
+		values = append(values, resolved)
+	}
+	return values
+}
+
+func sanitizeProviderAccountTestMessage(message string, redactionValues []string, credentialReference string) string {
+	sanitized := message
+	for _, value := range redactionValues {
+		sanitized = strings.ReplaceAll(sanitized, value, "[redacted]")
+	}
+	if credentialReference != "" {
+		sanitized = strings.ReplaceAll(sanitized, credentialReference, "[credential-reference]")
+	}
+	return sanitized
 }
 
 // --------------------------------------------------------------------------

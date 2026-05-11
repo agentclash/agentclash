@@ -496,6 +496,72 @@ func TestInfraProviderAccountListCallsCorrectEndpoint(t *testing.T) {
 	}
 }
 
+func TestInfraProviderAccountTestCallsSmokeEndpoint(t *testing.T) {
+	var called bool
+	var gotBody map[string]any
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"POST /v1/provider-accounts/pa-1/test": func(w http.ResponseWriter, r *http.Request) {
+			called = true
+			if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+				t.Fatalf("decode request body: %v", err)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"account_id":        "pa-1",
+				"provider_key":      "openai",
+				"model":             "gpt-4.1-mini",
+				"provider_model_id": "gpt-4.1-mini",
+				"passed":            true,
+				"status":            "passed",
+				"message":           "provider account smoke test passed",
+				"duration_ms":       12,
+			})
+		},
+	})
+	defer srv.Close()
+
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+	err := executeCommand(t, []string{
+		"infra", "provider-account", "test", "pa-1",
+		"--model", "gpt-4.1-mini",
+		"--timeout-seconds", "7",
+	}, srv.URL)
+	if err != nil {
+		t.Fatalf("infra provider-account test error: %v", err)
+	}
+	if !called {
+		t.Fatal("POST /v1/provider-accounts/pa-1/test was not called")
+	}
+	if gotBody["model"] != "gpt-4.1-mini" || gotBody["step_timeout_seconds"] != float64(7) {
+		t.Fatalf("request body = %#v", gotBody)
+	}
+}
+
+func TestInfraProviderAccountTestReturnsErrorOnFailedSmoke(t *testing.T) {
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"POST /v1/provider-accounts/pa-1/test": jsonHandler(200, map[string]any{
+			"account_id":   "pa-1",
+			"provider_key": "openai",
+			"model":        "gpt-4.1-mini",
+			"passed":       false,
+			"status":       "failed",
+			"code":         "auth",
+			"message":      "bad key [redacted]",
+			"duration_ms":  12,
+		}),
+	})
+	defer srv.Close()
+
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+	err := executeCommand(t, []string{"infra", "provider-account", "test", "pa-1"}, srv.URL)
+	if err == nil {
+		t.Fatal("expected error for failed provider account test")
+	}
+	if !strings.Contains(err.Error(), "bad key [redacted]") {
+		t.Fatalf("error = %q, want sanitized failure message", err.Error())
+	}
+}
+
 func TestInfraModelAliasCreateBuildsRequestBodyFromFlags(t *testing.T) {
 	var called bool
 	var gotBody map[string]any

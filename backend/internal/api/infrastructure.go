@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -31,6 +32,7 @@ type InfrastructureService interface {
 	ListProviderAccounts(ctx context.Context, workspaceID uuid.UUID) ([]repository.ProviderAccountRow, error)
 	GetProviderAccount(ctx context.Context, id uuid.UUID) (repository.ProviderAccountRow, error)
 	DeleteProviderAccount(ctx context.Context, id uuid.UUID) error
+	TestProviderAccount(ctx context.Context, account repository.ProviderAccountRow, input ProviderAccountTestInput) (ProviderAccountTestResult, error)
 
 	// Model Catalog (global, read-only)
 	ListModelCatalog(ctx context.Context) ([]repository.ModelCatalogEntryRow, error)
@@ -86,6 +88,11 @@ type CreateProviderAccountInput struct {
 	CredentialReference string          `json:"credential_reference"`
 	APIKey              string          `json:"api_key"`
 	LimitsConfig        json.RawMessage `json:"limits_config,omitempty"`
+}
+
+type ProviderAccountTestInput struct {
+	Model              string `json:"model,omitempty"`
+	StepTimeoutSeconds int32  `json:"step_timeout_seconds,omitempty"`
 }
 
 func (i *CreateProviderAccountInput) Validate() error {
@@ -193,6 +200,21 @@ type providerAccountResponse struct {
 	CreatedAt           time.Time       `json:"created_at"`
 	UpdatedAt           time.Time       `json:"updated_at"`
 }
+
+type providerAccountTestResponse struct {
+	AccountID       uuid.UUID `json:"account_id"`
+	ProviderKey     string    `json:"provider_key"`
+	Model           string    `json:"model"`
+	ProviderModelID string    `json:"provider_model_id,omitempty"`
+	Passed          bool      `json:"passed"`
+	Status          string    `json:"status"`
+	Code            string    `json:"code,omitempty"`
+	Message         string    `json:"message,omitempty"`
+	Retryable       bool      `json:"retryable,omitempty"`
+	DurationMS      int64     `json:"duration_ms"`
+}
+
+type ProviderAccountTestResult = providerAccountTestResponse
 
 type modelCatalogResponse struct {
 	ID              uuid.UUID       `json:"id"`
@@ -451,6 +473,61 @@ func infraDeleteHandler[Row WorkspaceOwned](
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+func testProviderAccountHandler(logger *slog.Logger, authorizer WorkspaceAuthorizer, svc InfrastructureService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		caller, err := CallerFromContext(r.Context())
+		if err != nil {
+			writeError(w, http.StatusUnauthorized, "unauthorized", "authentication required")
+			return
+		}
+
+		accountID, err := uuid.Parse(chi.URLParam(r, "accountID"))
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_request", "invalid ID")
+			return
+		}
+		account, err := svc.GetProviderAccount(r.Context(), accountID)
+		if err != nil {
+			if isInfraNotFoundErr(err) {
+				writeError(w, http.StatusNotFound, "not_found", "provider account not found")
+				return
+			}
+			logger.Error("get provider account for smoke test failed", "error", err)
+			writeError(w, http.StatusInternalServerError, "internal_error", "failed to get provider account")
+			return
+		}
+		if account.WorkspaceID != nil {
+			if err := AuthorizeWorkspaceAction(r.Context(), authorizer, caller, *account.WorkspaceID, ActionManageInfrastructure); err != nil {
+				writeAuthzError(w, err)
+				return
+			}
+		} else {
+			writeError(w, http.StatusNotFound, "not_found", "provider account not found")
+			return
+		}
+
+		var input ProviderAccountTestInput
+		if r.Body != nil && r.ContentLength != 0 {
+			if err := requireJSONContentType(r); err != nil {
+				writeError(w, http.StatusUnsupportedMediaType, "unsupported_media_type", err.Error())
+				return
+			}
+			if err := json.NewDecoder(r.Body).Decode(&input); err != nil && !errors.Is(err, io.EOF) {
+				writeError(w, http.StatusBadRequest, "invalid_request", "invalid JSON body")
+				return
+			}
+		}
+
+		result, err := svc.TestProviderAccount(r.Context(), account, input)
+		if err != nil {
+			logger.Error("provider account smoke test failed internally", "error", err)
+			writeError(w, http.StatusInternalServerError, "internal_error", "failed to test provider account")
+			return
+		}
+		writeJSON(w, http.StatusOK, result)
 	}
 }
 

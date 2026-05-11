@@ -246,6 +246,7 @@ func newInfraResourceCmd(res infraResource) *cobra.Command {
 		}
 		parent.AddCommand(deleteCmd)
 	}
+	addInfraResourceExtraCommands(parent, res.Name)
 
 	// archive (if path provided)
 	if res.ArchivePath != "" {
@@ -273,6 +274,78 @@ func newInfraResourceCmd(res infraResource) *cobra.Command {
 	}
 
 	return parent
+}
+
+func addInfraResourceExtraCommands(parent *cobra.Command, resourceName string) {
+	switch resourceName {
+	case "provider-account":
+		parent.AddCommand(providerAccountTestCmd())
+	}
+}
+
+func providerAccountTestCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "test <id>",
+		Short: "Smoke test provider account credentials",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			rc := GetRunContext(cmd)
+			body := map[string]any{}
+			if cmd.Flags().Changed("model") {
+				model, _ := cmd.Flags().GetString("model")
+				body["model"] = model
+			}
+			if cmd.Flags().Changed("timeout-seconds") {
+				timeoutSeconds, _ := cmd.Flags().GetInt32("timeout-seconds")
+				body["step_timeout_seconds"] = timeoutSeconds
+			}
+
+			resp, err := rc.Client.Post(cmd.Context(), "/v1/provider-accounts/"+args[0]+"/test", body)
+			if err != nil {
+				return err
+			}
+			if apiErr := resp.ParseError(); apiErr != nil {
+				return apiErr
+			}
+
+			var result map[string]any
+			if err := resp.DecodeJSON(&result); err != nil {
+				return err
+			}
+			if rc.Output.IsStructured() {
+				if err := rc.Output.PrintRaw(result); err != nil {
+					return err
+				}
+			} else {
+				printProviderAccountTestResult(rc.Output, result)
+			}
+			if passed, _ := result["passed"].(bool); !passed {
+				return fmt.Errorf("provider account test failed: %s", str(result["message"]))
+			}
+			return nil
+		},
+	}
+	cmd.Flags().String("model", "", "Provider model ID to use for the smoke test")
+	cmd.Flags().Int32("timeout-seconds", 20, "Provider call timeout in seconds, capped by the API")
+	return cmd
+}
+
+func printProviderAccountTestResult(formatter *output.Formatter, result map[string]any) {
+	formatter.PrintDetail("Status", output.StatusColor(str(result["status"])))
+	formatter.PrintDetail("Provider", str(result["provider_key"]))
+	formatter.PrintDetail("Model", str(result["model"]))
+	if providerModel := str(result["provider_model_id"]); providerModel != "" {
+		formatter.PrintDetail("Provider Model", providerModel)
+	}
+	if code := str(result["code"]); code != "" {
+		formatter.PrintDetail("Code", code)
+	}
+	if message := str(result["message"]); message != "" {
+		formatter.PrintDetail("Message", message)
+	}
+	if duration := fmtScore(result["duration_ms"]); duration != "" {
+		formatter.PrintDetail("Duration MS", duration)
+	}
 }
 
 func addInfraCreateFlags(cmd *cobra.Command, resourceName string) {
