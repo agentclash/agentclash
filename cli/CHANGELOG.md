@@ -6,7 +6,6 @@
 ### Features
 
 * **cli:** add voice eval CLI parity ([6e537d9](https://github.com/agentclash/agentclash/commit/6e537d9cb426015fa57e59bd4840d91a21467d3d))
-* **cli:** add voice eval CLI parity ([a9aa495](https://github.com/agentclash/agentclash/commit/a9aa4958b2d6072c9d8da1511b342e6c6e2404da))
 * **voice:** add run mode selection ([271cf67](https://github.com/agentclash/agentclash/commit/271cf67993ae443516e2e88e811af9e44f4f0bc4))
 
 ## [0.16.0](https://github.com/agentclash/agentclash/compare/v0.15.0...v0.16.0) (2026-05-11)
