@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -78,6 +79,8 @@ func TestVoiceArtifactManifestRoundTripsStably(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
+	assertArtifactsSortedByKey(t, manifest.Artifacts)
+
 	stable, err := manifest.StableJSON()
 	if err != nil {
 		t.Fatalf("StableJSON returned error: %v", err)
@@ -113,6 +116,15 @@ func TestVoiceArtifactManifestAcceptsObjectStorageReference(t *testing.T) {
 	}
 }
 
+func TestVoiceArtifactManifestRejectsObjectStorageReferenceWithoutBucket(t *testing.T) {
+	manifest := validObjectStorageManifest()
+	manifest.Artifacts[0].Bucket = ""
+
+	if err := manifest.Validate(); err == nil || !strings.Contains(err.Error(), "object_storage artifacts must set bucket") {
+		t.Fatalf("Validate error = %v, want missing object storage bucket", err)
+	}
+}
+
 func validObjectStorageManifest() Manifest {
 	return Manifest{
 		SchemaVersion:  SchemaVersionV1,
@@ -140,6 +152,15 @@ func objectArtifact(key string, kind ArtifactKind) ArtifactRef {
 		ContentType:    "application/octet-stream",
 		SizeBytes:      1,
 		ChecksumSHA256: "1111111111111111111111111111111111111111111111111111111111111111",
+	}
+}
+
+func assertArtifactsSortedByKey(t *testing.T, artifacts []ArtifactRef) {
+	t.Helper()
+	for idx := 1; idx < len(artifacts); idx++ {
+		if artifacts[idx-1].Key > artifacts[idx].Key {
+			t.Fatalf("fixture artifacts must be sorted by key for StableJSON golden comparison: %q before %q", artifacts[idx-1].Key, artifacts[idx].Key)
+		}
 	}
 }
 

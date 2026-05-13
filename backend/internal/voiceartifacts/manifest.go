@@ -149,6 +149,9 @@ func (a ArtifactRef) Validate() error {
 		if strings.TrimSpace(a.ObjectKey) == "" {
 			return errArtifactReferenceRequired
 		}
+		if strings.TrimSpace(a.Bucket) == "" {
+			return errors.New("object_storage artifacts must set bucket")
+		}
 		if a.Path != "" {
 			return errors.New("object_storage artifacts must not set path")
 		}
@@ -194,7 +197,7 @@ func (m Manifest) VerifyLocalChecksums(root string) error {
 			return fmt.Errorf("%w: artifacts[%d] %s got %s want %s", ErrArtifactChecksumMismatch, idx, artifact.Key, checksum, artifact.ChecksumSHA256)
 		}
 		if artifact.SizeBytes > 0 && artifact.SizeBytes != size {
-			return fmt.Errorf("artifacts[%d]: size_bytes = %d, want %d", idx, size, artifact.SizeBytes)
+			return fmt.Errorf("artifacts[%d]: %s size mismatch: got %d bytes, manifest declares %d", idx, artifact.Key, size, artifact.SizeBytes)
 		}
 	}
 	return nil

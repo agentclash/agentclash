@@ -65,7 +65,7 @@
       "path": "artifacts/transcript.json",
       "content_type": "application/json",
       "size_bytes": 328,
-      "checksum_sha256": "c551fe1daf1c3f2efa2b94ca39d66b43e82cbdb220edbf84243766a6772b63f9"
+      "checksum_sha256": "6f380a999d74c02d7dd29d1c85eb0c697762abddff18215f6c424cdf167aee73"
     },
     {
       "key": "waveform_timeline",
