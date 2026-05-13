@@ -252,13 +252,10 @@ func LoadSupportBillingFixture() (SupportBillingFixture, error) {
 	return fixture, nil
 }
 
-func RunSupportBillingScenario(seed int64) (ScenarioRun, error) {
+func RunSupportBillingScenario() (ScenarioRun, error) {
 	fixture, err := LoadSupportBillingFixture()
 	if err != nil {
 		return ScenarioRun{}, err
-	}
-	if seed != SupportBillingSeed {
-		return ScenarioRun{}, fmt.Errorf("unsupported support billing fixture seed %d", seed)
 	}
 
 	var turns []ScriptedUserTurn
@@ -301,7 +298,9 @@ func RunSupportBillingScenario(seed int64) (ScenarioRun, error) {
 	}
 
 	userFrame := media.ReceiveUserAudio(turn, clock.AtOffset(time.Duration(turn.OccurredAtOffsetMS)*time.Millisecond))
+	agentTextOccurredAt := clock.AtOffset(5 * time.Second)
 	agentFrame := media.SendAgentAudio(response, clock.AtOffset(6*time.Second))
+	endOfSpeechToAgentTextMS := durationMillis(agentTextOccurredAt.Sub(userFrame.OccurredAt.Add(time.Duration(userFrame.DurationMS) * time.Millisecond)))
 	confidence := 1.0
 	trace := multimodaltrace.Trace{
 		TraceID:       "trace-support-billing-seed-42",
@@ -364,7 +363,7 @@ func RunSupportBillingScenario(seed int64) (ScenarioRun, error) {
 				SequenceNumber: 5,
 				Kind:           multimodaltrace.SegmentKindTextOutput,
 				Actor:          multimodaltrace.ActorAgent,
-				OccurredAt:     clock.AtOffset(5 * time.Second),
+				OccurredAt:     agentTextOccurredAt,
 				Text: &multimodaltrace.TextPayload{
 					Text:     response.TextOutput,
 					Language: response.Language,
@@ -402,7 +401,7 @@ func RunSupportBillingScenario(seed int64) (ScenarioRun, error) {
 				OccurredAt:     clock.AtOffset(7 * time.Second),
 				TimingMarker: &multimodaltrace.TimingMarkerPayload{
 					Key:     "end_of_speech_to_first_agent_text",
-					ValueMS: 3200,
+					ValueMS: endOfSpeechToAgentTextMS,
 				},
 			},
 		},
@@ -415,7 +414,7 @@ func RunSupportBillingScenario(seed int64) (ScenarioRun, error) {
 	if err != nil {
 		return ScenarioRun{}, err
 	}
-	scorecardJSON, err := marshalGolden(supportBillingScorecard(seed))
+	scorecardJSON, err := marshalGolden(supportBillingScorecard(endOfSpeechToAgentTextMS))
 	if err != nil {
 		return ScenarioRun{}, err
 	}
@@ -473,11 +472,11 @@ type supportBillingScoreMetric struct {
 	Unit  string `json:"unit"`
 }
 
-func supportBillingScorecard(seed int64) supportBillingScorecardFixture {
+func supportBillingScorecard(endOfSpeechToAgentTextMS int64) supportBillingScorecardFixture {
 	return supportBillingScorecardFixture{
 		SchemaVersion: 1,
 		ScenarioKey:   SupportBillingScenarioKey,
-		Seed:          seed,
+		Seed:          SupportBillingSeed,
 		Passed:        true,
 		OverallScore:  1,
 		Checks: []supportBillingScoreCheck{
@@ -487,9 +486,13 @@ func supportBillingScorecard(seed int64) supportBillingScorecardFixture {
 		},
 		Metrics: []supportBillingScoreMetric{
 			{Key: "turn_count", Value: 1, Unit: "turn"},
-			{Key: "end_of_speech_to_first_agent_text_ms", Value: 3200, Unit: "ms"},
+			{Key: "end_of_speech_to_first_agent_text_ms", Value: endOfSpeechToAgentTextMS, Unit: "ms"},
 		},
 	}
+}
+
+func durationMillis(duration time.Duration) int64 {
+	return int64(duration / time.Millisecond)
 }
 
 func decodeCanonical(data []byte, out any) error {
