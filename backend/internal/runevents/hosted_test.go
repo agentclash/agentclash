@@ -189,6 +189,66 @@ func TestNormalizeHostedTraceEventsExtractsStructuredTraceFragments(t *testing.T
 	}
 }
 
+func TestNormalizeHostedTraceEventsPreservesVoiceSummaryFields(t *testing.T) {
+	runID := uuid.New()
+	runAgentID := uuid.New()
+	occurredAt := time.Date(2026, 5, 13, 11, 33, 0, 0, time.UTC)
+	event := hostedruns.Event{
+		RunAgentID:    runAgentID,
+		ExternalRunID: "ext-voice-trace",
+		EventType:     hostedruns.EventTypeFinalAnswer,
+		OccurredAt:    occurredAt,
+		Metadata: json.RawMessage(`{
+			"trace_events": [
+				{
+					"event_id": "voice-trace-1",
+					"event_type": "transcript.final",
+					"source": "voice_adapter",
+					"occurred_at": "2026-05-13T11:32:59Z",
+					"payload": {"text": "I can help with that."},
+					"summary": {
+						"turn_index": 4,
+						"speaker": "assistant",
+						"channel": "outbound",
+						"metric_key": "final_transcript_chars",
+						"evidence_level": "voice_structured"
+					}
+				}
+			]
+		}`),
+	}
+
+	envelopes, err := NormalizeHostedTraceEvents(runID, event)
+	if err != nil {
+		t.Fatalf("NormalizeHostedTraceEvents returned error: %v", err)
+	}
+	if len(envelopes) != 1 {
+		t.Fatalf("trace envelope count = %d, want 1", len(envelopes))
+	}
+	envelope := envelopes[0]
+	if envelope.EventType != EventTypeTranscriptFinal {
+		t.Fatalf("event type = %q, want %q", envelope.EventType, EventTypeTranscriptFinal)
+	}
+	if envelope.Source != SourceVoiceAdapter {
+		t.Fatalf("source = %q, want %q", envelope.Source, SourceVoiceAdapter)
+	}
+	if envelope.Summary.TurnIndex != 4 {
+		t.Fatalf("turn index = %d, want 4", envelope.Summary.TurnIndex)
+	}
+	if envelope.Summary.Speaker != "assistant" {
+		t.Fatalf("speaker = %q, want assistant", envelope.Summary.Speaker)
+	}
+	if envelope.Summary.Channel != "outbound" {
+		t.Fatalf("channel = %q, want outbound", envelope.Summary.Channel)
+	}
+	if envelope.Summary.MetricKey != "final_transcript_chars" {
+		t.Fatalf("metric key = %q, want final_transcript_chars", envelope.Summary.MetricKey)
+	}
+	if envelope.Summary.EvidenceLevel != EvidenceLevelVoiceStructured {
+		t.Fatalf("evidence level = %q, want %q", envelope.Summary.EvidenceLevel, EvidenceLevelVoiceStructured)
+	}
+}
+
 func TestEnvelopeValidatePersistedRequiresPositiveSequenceNumber(t *testing.T) {
 	envelope := Envelope{
 		EventID:       "evt-1",
