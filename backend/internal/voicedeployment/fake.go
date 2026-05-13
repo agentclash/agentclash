@@ -13,9 +13,10 @@ import (
 )
 
 var (
-	ErrInvalidScript   = errors.New("invalid fake voice deployment script")
-	ErrTurnNotFound    = errors.New("fake voice deployment turn not found")
-	ErrUnexpectedInput = errors.New("unexpected fake voice deployment input")
+	ErrInvalidScript     = errors.New("invalid fake voice deployment script")
+	ErrInvalidInvocation = errors.New("invalid fake voice deployment invocation")
+	ErrTurnNotFound      = errors.New("fake voice deployment turn not found")
+	ErrUnexpectedInput   = errors.New("unexpected fake voice deployment input")
 )
 
 type Deployment interface {
@@ -253,13 +254,13 @@ func (d *FakeDeployment) Invoke(ctx context.Context, input Invocation) (Result, 
 		return Result{}, err
 	}
 	if strings.TrimSpace(input.TraceID) == "" {
-		return Result{}, fmt.Errorf("%w: trace_id is required", ErrInvalidScript)
+		return Result{}, fmt.Errorf("%w: trace_id is required", ErrInvalidInvocation)
 	}
 	if input.RunID == uuid.Nil {
-		return Result{}, fmt.Errorf("%w: run_id is required", ErrInvalidScript)
+		return Result{}, fmt.Errorf("%w: run_id is required", ErrInvalidInvocation)
 	}
 	if input.RunAgentID == uuid.Nil {
-		return Result{}, fmt.Errorf("%w: run_agent_id is required", ErrInvalidScript)
+		return Result{}, fmt.Errorf("%w: run_agent_id is required", ErrInvalidInvocation)
 	}
 	turn, ok := d.turns[input.TurnID]
 	if !ok {
@@ -404,7 +405,7 @@ func validateInputSegments(segments []multimodaltrace.Segment) error {
 		Segments:      segments,
 	}
 	if err := trace.Validate(); err != nil {
-		return fmt.Errorf("%w: input_segments: %w", ErrInvalidScript, err)
+		return fmt.Errorf("%w: input_segments: %w", ErrInvalidInvocation, err)
 	}
 	return nil
 }

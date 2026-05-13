@@ -142,10 +142,32 @@ func TestFakeDeploymentCanProduceFailingTrace(t *testing.T) {
 	if result.Outcome != OutcomeFail {
 		t.Fatalf("outcome = %q, want fail", result.Outcome)
 	}
+	assertSegmentKinds(t, result.Segments, []multimodaltrace.SegmentKind{
+		multimodaltrace.SegmentKindToolCall,
+		multimodaltrace.SegmentKindTextOutput,
+		multimodaltrace.SegmentKindAudioOutput,
+		multimodaltrace.SegmentKindTranscriptFinal,
+		multimodaltrace.SegmentKindStructuredOutput,
+		multimodaltrace.SegmentKindTimingMarker,
+	})
 	if result.Segments[1].Text.Text != "I cannot find a duplicate charge." {
 		t.Fatalf("failing text response = %q", result.Segments[1].Text.Text)
 	}
 	assertJSONEqual(t, "failing structured output", json.RawMessage(`{"resolution":"not_found"}`), result.Segments[4].StructuredOutput.Output)
+}
+
+func TestFakeDeploymentRejectsInvalidInvocationSeparatelyFromInvalidScript(t *testing.T) {
+	deployment := newTestDeployment(t, OutcomePass)
+	invocation := testInvocation("I was charged twice for my last invoice.")
+	invocation.TraceID = ""
+
+	_, err := deployment.Invoke(context.Background(), invocation)
+	if !errors.Is(err, ErrInvalidInvocation) {
+		t.Fatalf("Invoke error = %v, want ErrInvalidInvocation", err)
+	}
+	if errors.Is(err, ErrInvalidScript) {
+		t.Fatalf("Invoke error = %v, should not match ErrInvalidScript", err)
+	}
 }
 
 func TestFakeDeploymentRejectsInvalidScript(t *testing.T) {
