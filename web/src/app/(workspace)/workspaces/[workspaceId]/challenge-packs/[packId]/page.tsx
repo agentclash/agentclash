@@ -6,6 +6,7 @@ import type { ChallengePack } from "@/lib/api/types";
 import { Badge } from "@/components/ui/badge";
 import { CreatePublicShareButton } from "@/components/share/create-public-share-button";
 import { EmptyState } from "@/components/ui/empty-state";
+import { VoiceModeBadges } from "@/components/voice/voice-mode-badges";
 import {
   Table,
   TableBody,
@@ -118,6 +119,7 @@ export default async function PackDetailPage({
               <TableRow>
                 <TableHead>Version</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead>Modality</TableHead>
                 <TableHead>Created</TableHead>
                 <TableHead className="text-right">Share</TableHead>
               </TableRow>
@@ -136,6 +138,18 @@ export default async function PackDetailPage({
                     >
                       {v.lifecycle_status}
                     </Badge>
+                  </TableCell>
+                  <TableCell>
+                    {v.modality ? (
+                      <VoiceModeBadges
+                        modality={v.modality}
+                        transports={v.interface_transports}
+                      />
+                    ) : (
+                      <span className="text-sm text-muted-foreground">
+                        {"\u2014"}
+                      </span>
+                    )}
                   </TableCell>
                   <TableCell className="text-muted-foreground">
                     {new Date(v.created_at).toLocaleDateString()}
