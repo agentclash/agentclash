@@ -1,0 +1,1 @@
+I found the duplicate charge and created refund rf_123 for $42.00.

@@ -1,0 +1,51 @@
+modality: voice
+interface_spec:
+  transports: [text_sim]
+  channel_profile: deterministic_text
+  supports_barge_in: false
+scenario:
+  persona: billing_customer
+  language: en-US
+  max_turns: 6
+  max_duration_ms: 120000
+pack:
+  slug: voice-support-billing-fixture
+  name: Voice Support Billing Fixture
+  family: support
+version:
+  number: 1
+  evaluation_spec:
+    name: voice-support-billing-fixture-v1
+    version_number: 1
+    judge_mode: deterministic
+    validators:
+      - key: refund_created
+        type: exact_match
+        target: final_output
+        expected_from: challenge_input
+    metrics:
+      - key: total_latency_ms
+        type: numeric
+        collector: run_total_latency_ms
+        unit: ms
+    scorecard:
+      dimensions: [correctness]
+challenges:
+  - key: duplicate-charge-refund
+    title: Refund a duplicate card charge
+    category: billing
+    difficulty: easy
+input_sets:
+  - key: default
+    name: Default Billing Voice Cases
+    cases:
+      - challenge_key: duplicate-charge-refund
+        case_key: duplicate-charge
+        inputs:
+          - key: prompt
+            kind: text
+            value: Please refund the duplicate charge on my card.
+        expectations:
+          - key: answer
+            kind: text
+            value: refund_created
