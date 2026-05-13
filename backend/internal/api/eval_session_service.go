@@ -465,7 +465,7 @@ func (m *RunCreationManager) CreateEvalSession(ctx context.Context, caller Calle
 			SeriesDeploymentLineup: spec.DeploymentLineup,
 		}
 		runInput.Seed = cloneInt64Ptr(spec.Seed)
-		executionPlan, err := buildExecutionPlan(runInput, specRunAgents)
+		executionPlan, err := buildExecutionPlan(runInput, specRunAgents, nil)
 		if err != nil {
 			return CreateEvalSessionResult{}, fmt.Errorf("build execution plan: %w", err)
 		}

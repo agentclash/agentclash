@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -151,6 +152,149 @@ func TestRunCreationManagerAddsMaxIterationsToExecutionPlan(t *testing.T) {
 
 	if got := executionPlanTestMaxIterations(t, repo.createParams.ExecutionPlan); got != 7 {
 		t.Fatalf("execution plan max_iterations = %d, want 7", got)
+	}
+}
+
+func TestRunCreationManagerAcceptsTextSimForVoicePack(t *testing.T) {
+	workspaceID := uuid.New()
+	challengePackVersionID := uuid.New()
+	deploymentID := uuid.New()
+	caller := Caller{
+		UserID: uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: "workspace_member"},
+		},
+	}
+	repo := &fakeRunCreationRepository{
+		challengePackVersion: repository.RunnableChallengePackVersion{
+			ID:       challengePackVersionID,
+			Manifest: json.RawMessage(`{"modality":"voice","interface_spec":{"transports":["text_sim","sip"]}}`),
+		},
+		deployments: []repository.RunnableDeployment{
+			{
+				ID:                        deploymentID,
+				OrganizationID:            uuid.New(),
+				WorkspaceID:               workspaceID,
+				Name:                      "Voice Agent",
+				AgentDeploymentSnapshotID: uuid.New(),
+			},
+		},
+		createResult: repository.CreateQueuedRunResult{Run: domain.Run{ID: uuid.New(), WorkspaceID: workspaceID}},
+	}
+	manager := NewRunCreationManager(NewCallerWorkspaceAuthorizer(), repo, &fakeRunWorkflowStarter{}, nil)
+
+	_, err := manager.CreateRun(context.Background(), caller, CreateRunInput{
+		WorkspaceID:            workspaceID,
+		ChallengePackVersionID: challengePackVersionID,
+		AgentDeploymentIDs:     []uuid.UUID{deploymentID},
+		Mode:                   "text-sim",
+	})
+	if err != nil {
+		t.Fatalf("CreateRun returned error: %v", err)
+	}
+
+	mode, modality, voice := executionPlanTestVoiceMetadata(t, repo.createParams.ExecutionPlan)
+	if mode != "text-sim" || modality != "voice" {
+		t.Fatalf("execution plan mode/modality = %q/%q, want text-sim/voice", mode, modality)
+	}
+	if voice == nil || voice.Mode != "text-sim" || voice.Transport != "text_sim" {
+		t.Fatalf("execution plan voice = %+v, want text-sim/text_sim", voice)
+	}
+}
+
+func TestRunCreationManagerRejectsFutureVoiceMode(t *testing.T) {
+	workspaceID := uuid.New()
+	repo := &fakeRunCreationRepository{}
+	manager := NewRunCreationManager(NewCallerWorkspaceAuthorizer(), repo, &fakeRunWorkflowStarter{}, nil)
+
+	_, err := manager.CreateRun(context.Background(), Caller{
+		UserID: uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: "workspace_member"},
+		},
+	}, CreateRunInput{
+		WorkspaceID:            workspaceID,
+		ChallengePackVersionID: uuid.New(),
+		AgentDeploymentIDs:     []uuid.UUID{uuid.New()},
+		Mode:                   "live-call",
+	})
+	var validationErr RunCreationValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("error = %v, want RunCreationValidationError", err)
+	}
+	if validationErr.Code != "unsupported_mode" || !strings.Contains(validationErr.Message, "future voice eval support") {
+		t.Fatalf("validation error = %+v, want unsupported future mode", validationErr)
+	}
+	if repo.createParams != nil {
+		t.Fatalf("CreateQueuedRun was called for unsupported mode")
+	}
+}
+
+func TestRunCreationManagerRejectsTextSimForNonVoicePack(t *testing.T) {
+	workspaceID := uuid.New()
+	challengePackVersionID := uuid.New()
+	repo := &fakeRunCreationRepository{
+		challengePackVersion: repository.RunnableChallengePackVersion{
+			ID:       challengePackVersionID,
+			Manifest: json.RawMessage(`{"pack":{"slug":"text-pack"}}`),
+		},
+	}
+	manager := NewRunCreationManager(NewCallerWorkspaceAuthorizer(), repo, &fakeRunWorkflowStarter{}, nil)
+
+	_, err := manager.CreateRun(context.Background(), Caller{
+		UserID: uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: "workspace_member"},
+		},
+	}, CreateRunInput{
+		WorkspaceID:            workspaceID,
+		ChallengePackVersionID: challengePackVersionID,
+		AgentDeploymentIDs:     []uuid.UUID{uuid.New()},
+		Mode:                   "text-sim",
+	})
+	var validationErr RunCreationValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("error = %v, want RunCreationValidationError", err)
+	}
+	if validationErr.Code != "incompatible_mode" || !strings.Contains(validationErr.Message, "requires a voice challenge pack") {
+		t.Fatalf("validation error = %+v, want non-voice incompatibility", validationErr)
+	}
+	if repo.createParams != nil {
+		t.Fatalf("CreateQueuedRun was called for incompatible non-voice pack")
+	}
+}
+
+func TestRunCreationManagerRejectsTextSimWithoutTransport(t *testing.T) {
+	workspaceID := uuid.New()
+	challengePackVersionID := uuid.New()
+	repo := &fakeRunCreationRepository{
+		challengePackVersion: repository.RunnableChallengePackVersion{
+			ID:       challengePackVersionID,
+			Manifest: json.RawMessage(`{"modality":"voice","interface_spec":{"transports":["sip"]}}`),
+		},
+	}
+	manager := NewRunCreationManager(NewCallerWorkspaceAuthorizer(), repo, &fakeRunWorkflowStarter{}, nil)
+
+	_, err := manager.CreateRun(context.Background(), Caller{
+		UserID: uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: "workspace_member"},
+		},
+	}, CreateRunInput{
+		WorkspaceID:            workspaceID,
+		ChallengePackVersionID: challengePackVersionID,
+		AgentDeploymentIDs:     []uuid.UUID{uuid.New()},
+		Mode:                   "text-sim",
+	})
+	var validationErr RunCreationValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("error = %v, want RunCreationValidationError", err)
+	}
+	if validationErr.Code != "incompatible_mode" || !strings.Contains(validationErr.Message, "requires voice transport text_sim") {
+		t.Fatalf("validation error = %+v, want missing transport incompatibility", validationErr)
+	}
+	if repo.createParams != nil {
+		t.Fatalf("CreateQueuedRun was called for voice pack without text_sim transport")
 	}
 }
 
@@ -2137,6 +2281,19 @@ func executionPlanTestSeries(t *testing.T, payload json.RawMessage) (string, str
 		t.Fatalf("decode execution plan: %v", err)
 	}
 	return plan.Series.MatrixKey, plan.Series.DeploymentLineup
+}
+
+func executionPlanTestVoiceMetadata(t *testing.T, payload json.RawMessage) (string, string, *runVoiceMetadataResponse) {
+	t.Helper()
+	var plan struct {
+		Mode     string                    `json:"mode"`
+		Modality string                    `json:"modality"`
+		Voice    *runVoiceMetadataResponse `json:"voice"`
+	}
+	if err := json.Unmarshal(payload, &plan); err != nil {
+		t.Fatalf("decode execution plan: %v", err)
+	}
+	return plan.Mode, plan.Modality, plan.Voice
 }
 
 func (f *fakeRunCreationRepository) GetRunnableChallengePackVersionByID(_ context.Context, _ uuid.UUID) (repository.RunnableChallengePackVersion, error) {
