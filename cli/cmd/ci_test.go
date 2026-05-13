@@ -102,6 +102,30 @@ func TestCIValidateJSONOutput(t *testing.T) {
 	}
 }
 
+func TestCIValidateAcceptsTextSimEvaluationMode(t *testing.T) {
+	target := writeCIManifest(t, strings.Replace(
+		sampleCIManifestYAML,
+		"  input_set_id: 00000000-0000-0000-0000-000000000006\n",
+		"  input_set_id: 00000000-0000-0000-0000-000000000006\n  mode: text-sim\n",
+		1,
+	))
+	stdout := captureStdout(t)
+
+	err := executeCommand(t, []string{"ci", "validate", target, "--json"}, "http://unused")
+	out := stdout.finish()
+	if err != nil {
+		t.Fatalf("ci validate --json error: %v", err)
+	}
+
+	var result ciManifestValidationResult
+	if err := json.Unmarshal([]byte(out), &result); err != nil {
+		t.Fatalf("json output parse error: %v\n---\n%s", err, out)
+	}
+	if !result.Valid || result.Manifest == nil || result.Manifest.Evaluation.Mode != "text-sim" {
+		t.Fatalf("validation result = %+v, want text-sim mode preserved", result)
+	}
+}
+
 func TestCIValidateRejectsInvalidManifests(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -193,6 +217,30 @@ regressions:
   promote_failures: proposed
 `,
 			want: "evaluation.challenge_pack_version_id",
+		},
+		{
+			name: "unsupported evaluation mode",
+			manifest: `version: 1
+trigger:
+  paths:
+    - .agentclash/agent.json
+candidate:
+  build:
+    agent_build_id: build-1
+    spec_file: .agentclash/agent.json
+  deployment:
+    runtime_profile_id: runtime-1
+evaluation:
+  challenge_pack_version_id: pack-version-1
+  mode: live-call
+baseline:
+  run_id: run-1
+gate:
+  fail_on: regression
+regressions:
+  promote_failures: proposed
+`,
+			want: "evaluation.mode",
 		},
 		{
 			name: "missing baseline",

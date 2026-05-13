@@ -171,7 +171,7 @@ var runListCmd = &cobra.Command{
 			return rc.Output.PrintRaw(result)
 		}
 
-		cols := []output.Column{{Header: "ID"}, {Header: "Name"}, {Header: "Status"}, {Header: "Agents"}, {Header: "Created"}}
+		cols := []output.Column{{Header: "ID"}, {Header: "Name"}, {Header: "Status"}, {Header: "Mode"}, {Header: "Agents"}, {Header: "Created"}}
 		rows := make([][]string, len(result.Items))
 		for i, item := range result.Items {
 			agentCount := "-"
@@ -182,6 +182,7 @@ var runListCmd = &cobra.Command{
 				str(item["id"]),
 				str(item["name"]),
 				output.StatusColor(str(item["status"])),
+				runModeSummary(item),
 				agentCount,
 				str(item["created_at"]),
 			}
@@ -307,6 +308,15 @@ var runGetCmd = &cobra.Command{
 		rc.Output.PrintDetail("Name", str(run["name"]))
 		rc.Output.PrintDetail("Status", output.StatusColor(str(run["status"])))
 		rc.Output.PrintDetail("Workspace", str(run["workspace_id"]))
+		if executionMode := mapString(run, "execution_mode"); executionMode != "" {
+			rc.Output.PrintDetail("Execution Mode", executionMode)
+		}
+		if mode := voiceRunMode(run); mode != "" {
+			rc.Output.PrintDetail("Mode", humanVoiceMode(mode))
+		}
+		if voiceSummary := voiceRunSummary(run); voiceSummary != "" {
+			rc.Output.PrintDetail("Voice", voiceSummary)
+		}
 		rc.Output.PrintDetail("Created", str(run["created_at"]))
 		if str(run["started_at"]) != "" {
 			rc.Output.PrintDetail("Started", str(run["started_at"]))
@@ -413,6 +423,9 @@ For CI and other non-interactive use, keep passing explicit IDs via flags.`,
 		request.ChallengePackVersionID = selections.challengePackVersionID
 		request.ChallengeInputSetID = selections.challengeInputSetID
 		request.DeploymentIDs = selections.deploymentIDs
+		if request.Mode == "" {
+			request.Mode = selections.mode
+		}
 
 		if request.Seeds > 0 {
 			if follow {

@@ -59,7 +59,7 @@ var cpListCmd = &cobra.Command{
 			return rc.Output.PrintRaw(result)
 		}
 
-		cols := []output.Column{{Header: "ID"}, {Header: "Name"}, {Header: "Slug"}, {Header: "Status"}, {Header: "Versions"}}
+		cols := []output.Column{{Header: "ID"}, {Header: "Name"}, {Header: "Slug"}, {Header: "Status"}, {Header: "Modality"}, {Header: "Versions"}}
 		rows := make([][]string, len(result.Items))
 		for i, item := range result.Items {
 			versionCount := "0"
@@ -71,6 +71,7 @@ var cpListCmd = &cobra.Command{
 				str(item["name"]),
 				str(item["slug"]),
 				output.StatusColor(str(item["lifecycle_status"])),
+				challengePackMapModalitySummary(item),
 				versionCount,
 			}
 		}

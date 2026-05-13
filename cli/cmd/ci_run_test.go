@@ -55,6 +55,32 @@ func TestCIRunCreatesCandidateRunAndEvaluatesPassingGate(t *testing.T) {
 	}
 }
 
+func TestCIRunPropagatesTextSimEvaluationMode(t *testing.T) {
+	target := writeCIRunManifestWith(t, func(manifest string) string {
+		return strings.Replace(
+			manifest,
+			"  input_set_id: 00000000-0000-0000-0000-000000000006\n",
+			"  input_set_id: 00000000-0000-0000-0000-000000000006\n  mode: text-sim\n",
+			1,
+		)
+	})
+	captures := &ciRunRouteCaptures{}
+	srv := fakeAPI(t, ciRunRoutes(t, captures, nil))
+	defer srv.Close()
+	t.Setenv("AGENTCLASH_TOKEN", "test-token")
+
+	result, err, _ := runCIRunJSON(t, []string{"ci", "run", "--manifest", target, "-w", "ws-1", "--json", "--poll-interval", "1ms", "--timeout", "1s"}, srv.URL)
+	if err != nil {
+		t.Fatalf("ci run error: %v", err)
+	}
+	if result.ExitCode != 0 {
+		t.Fatalf("exit code = %d, want 0", result.ExitCode)
+	}
+	if captures.RunBody["mode"] != "text-sim" {
+		t.Fatalf("run body mode = %v, want text-sim", captures.RunBody["mode"])
+	}
+}
+
 func TestCIRunWritesSummaryAndArtifacts(t *testing.T) {
 	target := writeCIRunManifest(t)
 	captures := &ciRunRouteCaptures{}

@@ -122,6 +122,14 @@ func runCreateRequestFromFlags(cmd *cobra.Command, base runCreateRequest) (runCr
 }
 
 func normalizeRunCreateMode(raw string) (string, error) {
+	return normalizeVoiceEvalMode(raw, "--mode")
+}
+
+func normalizeCIManifestEvaluationMode(raw string) (string, error) {
+	return normalizeVoiceEvalMode(raw, "evaluation.mode")
+}
+
+func normalizeVoiceEvalMode(raw, field string) (string, error) {
 	mode := strings.ToLower(strings.TrimSpace(raw))
 	switch mode {
 	case "":
@@ -129,9 +137,9 @@ func normalizeRunCreateMode(raw string) (string, error) {
 	case runCreateModeTextSim:
 		return mode, nil
 	case runCreateModeAudioSim, runCreateModeLiveCall, runCreateModeReplayImport:
-		return "", fmt.Errorf("--mode %q is reserved for future voice eval support; supported mode: %s", mode, runCreateModeTextSim)
+		return "", fmt.Errorf("%s %q is reserved for future voice eval support; supported mode: %s", field, mode, runCreateModeTextSim)
 	default:
-		return "", fmt.Errorf("unsupported --mode %q (supported mode: %s)", raw, runCreateModeTextSim)
+		return "", fmt.Errorf("unsupported %s %q (supported mode: %s)", field, raw, runCreateModeTextSim)
 	}
 }
 
