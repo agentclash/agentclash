@@ -232,8 +232,8 @@ func TestNormalizeHostedTraceEventsPreservesVoiceSummaryFields(t *testing.T) {
 	if envelope.Source != SourceVoiceAdapter {
 		t.Fatalf("source = %q, want %q", envelope.Source, SourceVoiceAdapter)
 	}
-	if envelope.Summary.TurnIndex != 4 {
-		t.Fatalf("turn index = %d, want 4", envelope.Summary.TurnIndex)
+	if envelope.Summary.TurnIndex == nil || *envelope.Summary.TurnIndex != 4 {
+		t.Fatalf("turn index = %v, want 4", envelope.Summary.TurnIndex)
 	}
 	if envelope.Summary.Speaker != "assistant" {
 		t.Fatalf("speaker = %q, want assistant", envelope.Summary.Speaker)

@@ -43,7 +43,7 @@ func TestVoiceMediaEventTypesAreValid(t *testing.T) {
 				OccurredAt:    time.Date(2026, 5, 13, 11, 30, 0, 0, time.UTC),
 				Payload:       json.RawMessage(`{"fixture":true}`),
 				Summary: SummaryMetadata{
-					TurnIndex:     2,
+					TurnIndex:     intPtr(2),
 					Speaker:       "caller",
 					Channel:       "input",
 					MetricKey:     "latency_ms",
@@ -90,7 +90,7 @@ func TestNormalizeVoiceAdapterEventMapsRawEventToCanonicalEnvelope(t *testing.T)
 		OccurredAt:   occurredAt,
 		Payload:      payload,
 		Summary: SummaryMetadata{
-			TurnIndex:     3,
+			TurnIndex:     intPtr(3),
 			Speaker:       "caller",
 			Channel:       "inbound",
 			MetricKey:     "input_audio_ms",
@@ -122,7 +122,7 @@ func TestNormalizeVoiceAdapterEventMapsRawEventToCanonicalEnvelope(t *testing.T)
 	if string(envelope.Payload) != string(payload) {
 		t.Fatalf("payload = %s, want %s", envelope.Payload, payload)
 	}
-	if envelope.Summary.TurnIndex != 3 || envelope.Summary.Speaker != "caller" || envelope.Summary.Channel != "inbound" {
+	if envelope.Summary.TurnIndex == nil || *envelope.Summary.TurnIndex != 3 || envelope.Summary.Speaker != "caller" || envelope.Summary.Channel != "inbound" {
 		t.Fatalf("summary voice fields not preserved: %+v", envelope.Summary)
 	}
 	if envelope.Summary.MetricKey != "input_audio_ms" {
@@ -184,9 +184,34 @@ func voiceAdapterEventForSequence(runID uuid.UUID, runAgentID uuid.UUID, eventID
 		OccurredAt:   occurredAt,
 		Payload:      json.RawMessage(`{"fixture":true}`),
 		Summary: SummaryMetadata{
-			TurnIndex: 1,
+			TurnIndex: intPtr(1),
 			Speaker:   "assistant",
 			Channel:   "outbound",
 		},
 	}
+}
+
+func TestSummaryMetadataPreservesExplicitZeroTurnIndex(t *testing.T) {
+	encoded, err := json.Marshal(SummaryMetadata{
+		TurnIndex: intPtr(0),
+		Speaker:   "caller",
+	})
+	if err != nil {
+		t.Fatalf("marshal summary: %v", err)
+	}
+	if !strings.Contains(string(encoded), `"turn_index":0`) {
+		t.Fatalf("encoded summary = %s, want explicit zero turn_index", encoded)
+	}
+
+	encoded, err = json.Marshal(SummaryMetadata{Speaker: "caller"})
+	if err != nil {
+		t.Fatalf("marshal summary without turn index: %v", err)
+	}
+	if strings.Contains(string(encoded), "turn_index") {
+		t.Fatalf("encoded summary = %s, want omitted turn_index when nil", encoded)
+	}
+}
+
+func intPtr(value int) *int {
+	return &value
 }

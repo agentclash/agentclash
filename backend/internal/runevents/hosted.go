@@ -34,7 +34,7 @@ type hostedTraceSummaryDocument struct {
 	ToolCategory    string `json:"tool_category,omitempty"`
 	SandboxAction   string `json:"sandbox_action,omitempty"`
 	MetricKey       string `json:"metric_key,omitempty"`
-	TurnIndex       int    `json:"turn_index,omitempty"`
+	TurnIndex       *int   `json:"turn_index,omitempty"`
 	Speaker         string `json:"speaker,omitempty"`
 	Channel         string `json:"channel,omitempty"`
 	ExternalRunID   string `json:"external_run_id,omitempty"`

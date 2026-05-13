@@ -57,6 +57,7 @@ const (
 	EventTypeTurnCompleted       Type = "turn.completed"
 	EventTypeAgentAudioStarted   Type = "agent.audio.started"
 	EventTypeAgentAudioCompleted Type = "agent.audio.completed"
+	// Barge-in is specified as one domain term in #758, so the canonical value intentionally keeps the underscore.
 	EventTypeBargeInDetected     Type = "barge_in.detected"
 	EventTypeAudioBufferCleared  Type = "audio.buffer.cleared"
 	EventTypeDTMFReceived        Type = "dtmf.received"
@@ -106,7 +107,7 @@ type SummaryMetadata struct {
 	ToolCategory    string        `json:"tool_category,omitempty"`
 	SandboxAction   string        `json:"sandbox_action,omitempty"`
 	MetricKey       string        `json:"metric_key,omitempty"`
-	TurnIndex       int           `json:"turn_index,omitempty"`
+	TurnIndex       *int          `json:"turn_index,omitempty"`
 	Speaker         string        `json:"speaker,omitempty"`
 	Channel         string        `json:"channel,omitempty"`
 	ExternalRunID   string        `json:"external_run_id,omitempty"`
