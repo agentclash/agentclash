@@ -73,6 +73,66 @@ func TestFakeDeploymentRejectsUnexpectedInputText(t *testing.T) {
 	}
 }
 
+func TestFakeDeploymentRejectsWrongCurrentTurnEvenWhenPriorSegmentMatches(t *testing.T) {
+	deployment, err := NewFake(Script{
+		ScenarioKey: "support_billing_duplicate_charge",
+		Turns: []Turn{
+			{
+				TurnID:            "turn-002",
+				ExpectedInputText: "Please refund the duplicate invoice.",
+				Response:          minimalResponseScript("Refund created."),
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewFake returned error: %v", err)
+	}
+
+	invocation := Invocation{
+		TraceID:    "trace-support-billing-seed-42",
+		RunID:      uuid.MustParse("33333333-3333-3333-3333-333333333333"),
+		RunAgentID: uuid.MustParse("44444444-4444-4444-4444-444444444444"),
+		TurnID:     "turn-002",
+		InputSegments: []multimodaltrace.Segment{
+			{
+				SegmentID:      "turn-001:user-text",
+				SequenceNumber: 1,
+				Kind:           multimodaltrace.SegmentKindTextInput,
+				Actor:          multimodaltrace.ActorUser,
+				OccurredAt:     time.Date(2026, 5, 13, 10, 0, 1, 0, time.UTC),
+				Text: &multimodaltrace.TextPayload{
+					Text: "Please refund the duplicate invoice.",
+				},
+			},
+			{
+				SegmentID:      "turn-001:agent-text",
+				SequenceNumber: 2,
+				Kind:           multimodaltrace.SegmentKindTextOutput,
+				Actor:          multimodaltrace.ActorAgent,
+				OccurredAt:     time.Date(2026, 5, 13, 10, 0, 2, 0, time.UTC),
+				Text: &multimodaltrace.TextPayload{
+					Text: "Please refund the duplicate invoice.",
+				},
+			},
+			{
+				SegmentID:      "turn-002:user-text",
+				SequenceNumber: 3,
+				Kind:           multimodaltrace.SegmentKindTextInput,
+				Actor:          multimodaltrace.ActorUser,
+				OccurredAt:     time.Date(2026, 5, 13, 10, 0, 3, 0, time.UTC),
+				Text: &multimodaltrace.TextPayload{
+					Text: "Actually, I need to change my email.",
+				},
+			},
+		},
+	}
+
+	_, err = deployment.Invoke(context.Background(), invocation)
+	if !errors.Is(err, ErrUnexpectedInput) {
+		t.Fatalf("Invoke error = %v, want ErrUnexpectedInput", err)
+	}
+}
+
 func TestFakeDeploymentCanProduceFailingTrace(t *testing.T) {
 	deployment := newTestDeployment(t, OutcomeFail)
 	result, err := deployment.Invoke(context.Background(), testInvocation("I was charged twice for my last invoice."))
@@ -160,6 +220,16 @@ func validScript(outcome Outcome) Script {
 					},
 				},
 			},
+		},
+	}
+}
+
+func minimalResponseScript(text string) ResponseScript {
+	return ResponseScript{
+		TextResponse: &TextResponse{
+			Text:     text,
+			Language: "en-US",
+			OffsetMS: 1000,
 		},
 	}
 }

@@ -268,7 +268,7 @@ func (d *FakeDeployment) Invoke(ctx context.Context, input Invocation) (Result, 
 	if err := validateInputSegments(input.InputSegments); err != nil {
 		return Result{}, err
 	}
-	if !inputContainsText(input.InputSegments, turn.ExpectedInputText) {
+	if !currentTurnInputMatches(input.InputSegments, input.TurnID, turn.ExpectedInputText) {
 		return Result{}, fmt.Errorf("%w: turn_id=%s expected text %q", ErrUnexpectedInput, input.TurnID, turn.ExpectedInputText)
 	}
 
@@ -409,12 +409,15 @@ func validateInputSegments(segments []multimodaltrace.Segment) error {
 	return nil
 }
 
-func inputContainsText(segments []multimodaltrace.Segment, expected string) bool {
+func currentTurnInputMatches(segments []multimodaltrace.Segment, turnID string, expected string) bool {
 	for _, segment := range segments {
-		if segment.Text != nil && segment.Text.Text == expected {
+		if segment.Actor != multimodaltrace.ActorUser || !strings.HasPrefix(segment.SegmentID, turnID+":") {
+			continue
+		}
+		if segment.Kind == multimodaltrace.SegmentKindTextInput && segment.Text != nil && segment.Text.Text == expected {
 			return true
 		}
-		if segment.Transcript != nil && segment.Transcript.Text == expected {
+		if segment.Kind == multimodaltrace.SegmentKindTranscriptFinal && segment.Transcript != nil && segment.Transcript.Text == expected {
 			return true
 		}
 	}
