@@ -10,12 +10,14 @@ import { UploadArtifactDialog } from "@/components/artifacts/upload-artifact-dia
 import { CreatePublicShareButton } from "@/components/share/create-public-share-button";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { VoiceModeBadges } from "@/components/voice/voice-mode-badges";
 import { useAgentArena, EMPTY_LANE } from "@/hooks/use-agent-arena";
 import { useAgentCommentary } from "@/hooks/use-agent-commentary";
 import { useArenaMode } from "@/hooks/use-arena-mode";
 import { useRunEvents, type RunEvent } from "@/hooks/use-run-events";
 import { createApiClient } from "@/lib/api/client";
 import { scorePercent } from "@/lib/scores";
+import { isVoiceRun, voiceRunMode, voiceRunTransport } from "@/lib/voice-evals";
 import type {
   Run,
   RunStatus,
@@ -340,6 +342,7 @@ export function RunDetailClient({
   const ciMetadata = run.ci_metadata;
   const ciCommit = shortCommit(ciMetadata?.commit_sha);
   const ciWorkflowURL = safeHTTPURL(ciMetadata?.workflow_run_url);
+  const voiceRun = isVoiceRun(run);
 
   return (
     <div className="space-y-8">
@@ -373,6 +376,13 @@ export function RunDetailClient({
                 ? "Comparison"
                 : "Single Agent"}
             </Badge>
+            {voiceRun && (
+              <VoiceModeBadges
+                modality={run.voice?.modality ?? run.modality}
+                mode={voiceRunMode(run)}
+                transport={voiceRunTransport(run)}
+              />
+            )}
           </div>
           
           <div className="flex items-center gap-2">
@@ -451,6 +461,15 @@ export function RunDetailClient({
             <span>Agents:</span>
             <span className="font-[family-name:var(--font-mono)] normal-case tracking-normal text-white/70">{agents.length}</span>
           </div>
+          {voiceRun && (
+            <div className="flex items-center gap-2">
+              <span>Voice:</span>
+              <span className="font-[family-name:var(--font-mono)] normal-case tracking-normal text-white/70">
+                {voiceRunMode(run) || "voice"}
+                {voiceRunTransport(run) ? ` / ${voiceRunTransport(run)}` : ""}
+              </span>
+            </div>
+          )}
           <div className="flex items-center gap-2">
             <span>Run ID:</span>
             <code className="font-[family-name:var(--font-mono)] normal-case tracking-normal text-white/70">

@@ -6,6 +6,8 @@ import { useApiListQuery } from "@/lib/api/swr";
 import { WorkspaceListLoading } from "@/components/app-shell/workspace-loading";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
+import { VoiceModeBadges } from "@/components/voice/voice-mode-badges";
+import { latestChallengePackVersion } from "@/lib/voice-evals";
 import {
   Table,
   TableBody,
@@ -64,6 +66,7 @@ export function ChallengePacksClient({ workspaceId }: { workspaceId: string }) {
             <TableHeader>
               <TableRow>
                 <TableHead>Name</TableHead>
+                <TableHead>Modality</TableHead>
                 <TableHead>Description</TableHead>
                 <TableHead>Versions</TableHead>
                 <TableHead>Latest Status</TableHead>
@@ -72,12 +75,7 @@ export function ChallengePacksClient({ workspaceId }: { workspaceId: string }) {
             </TableHeader>
             <TableBody>
               {packs.map((pack) => {
-                const latestVersion =
-                  pack.versions.length > 0
-                    ? pack.versions.reduce((left, right) =>
-                        left.version_number > right.version_number ? left : right,
-                      )
-                    : null;
+                const latestVersion = latestChallengePackVersion(pack);
 
                 return (
                   <TableRow key={pack.id}>
@@ -88,6 +86,18 @@ export function ChallengePacksClient({ workspaceId }: { workspaceId: string }) {
                       >
                         {pack.name}
                       </Link>
+                    </TableCell>
+                    <TableCell>
+                      {latestVersion?.modality ? (
+                        <VoiceModeBadges
+                          modality={latestVersion.modality}
+                          transports={latestVersion.interface_transports}
+                        />
+                      ) : (
+                        <span className="text-sm text-muted-foreground">
+                          {"\u2014"}
+                        </span>
+                      )}
                     </TableCell>
                     <TableCell className="max-w-xs truncate text-sm text-muted-foreground">
                       {pack.description ?? "\u2014"}

@@ -128,6 +128,7 @@ vi.mock("@/components/ui/dialog", async () => {
 });
 
 vi.mock("lucide-react", () => ({
+  Headphones: () => React.createElement("span", null, "headphones"),
   Loader2: () => React.createElement("span", null, "loader"),
   Plus: () => React.createElement("span", null, "plus"),
 }));
@@ -243,6 +244,8 @@ interface BuildApiMockOptions {
     id: string;
     version_number: number;
     lifecycle_status?: string;
+    modality?: string;
+    interface_transports?: string[];
   }>;
   inputSetsByVersionId?: Record<
     string,
@@ -456,6 +459,79 @@ describe("CreateRunDialog", () => {
           official_pack_mode: "suite_only",
           include_proposed_regressions: false,
           race_context: false,
+        });
+      });
+    } finally {
+      view.cleanup();
+    }
+  });
+
+  it("submits text-sim mode when a voice challenge pack version is selected", async () => {
+    const api = buildApiMock({
+      versions: [
+        {
+          id: "version-voice",
+          version_number: 1,
+          lifecycle_status: "runnable",
+          modality: "voice",
+          interface_transports: ["text_sim"],
+        },
+      ],
+      inputSetsByVersionId: {
+        "version-voice": [],
+      },
+    });
+    mockCreateApiClient.mockReturnValue(api);
+
+    const view = renderDialog();
+    try {
+      clickElement(findButton("New Run"));
+
+      await waitFor(() => {
+        expect(api.get).toHaveBeenCalledWith(
+          "/v1/workspaces/ws-1/challenge-packs",
+        );
+      });
+
+      const packSelect = document.querySelector(
+        'select[aria-label="Challenge Pack"]',
+      );
+      if (!(packSelect instanceof HTMLSelectElement)) {
+        throw new Error("Challenge Pack select not found");
+      }
+      changeSelect(packSelect, "pack-1");
+
+      await waitFor(() => {
+        expect(api.get).toHaveBeenCalledWith(
+          "/v1/workspaces/ws-1/challenge-pack-versions/version-voice/input-sets",
+        );
+      });
+
+      const voiceModeSelect = document.querySelector(
+        'select[aria-label="Voice Execution Mode"]',
+      );
+      if (!(voiceModeSelect instanceof HTMLSelectElement)) {
+        throw new Error("Voice Execution Mode select not found");
+      }
+      expect(voiceModeSelect.value).toBe("text-sim");
+      expect(voiceModeSelect.disabled).toBe(false);
+
+      clickElement(findCheckboxByLabel("Primary Agent"));
+      expect(document.body.textContent).toContain("using Text simulation");
+      clickElement(findButton("Create Run"));
+
+      await waitFor(() => {
+        expect(api.post).toHaveBeenCalledWith("/v1/runs", {
+          workspace_id: "ws-1",
+          challenge_pack_version_id: "version-voice",
+          challenge_input_set_id: undefined,
+          name: undefined,
+          agent_deployment_ids: ["deploy-1"],
+          regression_suite_ids: undefined,
+          regression_case_ids: undefined,
+          official_pack_mode: undefined,
+          race_context: false,
+          mode: "text-sim",
         });
       });
     } finally {

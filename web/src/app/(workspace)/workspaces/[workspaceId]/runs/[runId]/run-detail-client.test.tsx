@@ -97,6 +97,12 @@ function renderClient(options?: { workflowRunURL?: string }) {
           name: "Live Arena Run",
           status: "running",
           execution_mode: "comparison",
+          mode: "text-sim",
+          voice: {
+            mode: "text-sim",
+            modality: "voice",
+            transport: "text_sim",
+          },
           ci_metadata: {
             provider: "github_actions",
             repository: "acme/agent",
@@ -171,6 +177,9 @@ describe("RunDetailClient", () => {
     expect(container.textContent).toContain("PR #42");
     expect(container.textContent).toContain("abc1234");
     expect(container.textContent).toContain("AgentClash gate");
+    expect(container.textContent).toContain("Voice");
+    expect(container.textContent).toContain("Text simulation");
+    expect(container.textContent).toContain("text_sim");
     expect(
       container.querySelector(
         'a[href="https://github.com/acme/agent/actions/runs/99"]',

@@ -596,6 +596,9 @@ export interface ChallengePackVersion {
   challenge_pack_id: string;
   version_number: number;
   lifecycle_status: string; // "draft" | "runnable" | "deprecated" | "archived"
+  deployment_defaults?: unknown;
+  modality?: string;
+  interface_transports?: string[];
   created_at: string;
   updated_at: string;
 }
@@ -668,6 +671,9 @@ export interface Run {
   name: string;
   status: RunStatus;
   execution_mode: string; // "single_agent" | "comparison"
+  mode?: string;
+  modality?: string;
+  voice?: RunVoiceMetadata;
   race_context: boolean;
   race_context_min_step_gap?: number;
   ci_metadata?: RunCIMetadata;
@@ -700,6 +706,12 @@ export interface RunCIMetadata {
   workflow_run_url?: string;
   event_name?: string;
   default_branch?: string;
+}
+
+export interface RunVoiceMetadata {
+  mode: string;
+  modality: string;
+  transport?: string;
 }
 
 export interface RunRegressionCoverage {
@@ -739,6 +751,7 @@ export interface CreateRunRequest {
   challenge_pack_version_id: string;
   challenge_input_set_id?: string;
   name?: string;
+  mode?: string;
   agent_deployment_ids: string[];
   regression_suite_ids?: string[];
   regression_case_ids?: string[];
@@ -758,6 +771,9 @@ export interface CreateRunResponse {
   official_pack_mode: OfficialPackMode;
   status: RunStatus;
   execution_mode: string;
+  mode?: string;
+  modality?: string;
+  voice?: RunVoiceMetadata;
   created_at: string;
   queued_at?: string;
   ci_metadata?: RunCIMetadata;

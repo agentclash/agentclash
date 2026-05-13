@@ -8,6 +8,14 @@ import { useApiMutator } from "@/lib/api/swr";
 import { ApiError } from "@/lib/api/errors";
 import { billingGateToastMessage } from "@/lib/billing";
 import { workspaceMutationKeys, workspaceResourceKeys } from "@/lib/workspace-resource";
+import { VoiceModeBadges } from "@/components/voice/voice-mode-badges";
+import {
+  hasVoiceVersion,
+  humanVoiceMode,
+  isVoiceVersion,
+  versionSupportsTextSim,
+  VOICE_MODE_TEXT_SIM,
+} from "@/lib/voice-evals";
 import type {
   AgentDeployment,
   ChallengePack,
@@ -46,6 +54,7 @@ export function CreateRunDialog({ workspaceId }: CreateRunDialogProps) {
   const [name, setName] = useState("");
   const [selectedPackId, setSelectedPackId] = useState("");
   const [selectedVersionId, setSelectedVersionId] = useState("");
+  const [selectedMode, setSelectedMode] = useState("");
   const [inputSetId, setInputSetId] = useState("");
   const [selectedDeploymentIds, setSelectedDeploymentIds] = useState<string[]>(
     [],
@@ -129,6 +138,7 @@ export function CreateRunDialog({ workspaceId }: CreateRunDialogProps) {
   function handlePackChange(packId: string) {
     setSelectedPackId(packId);
     setSelectedVersionId("");
+    setSelectedMode("");
     setInputSetId("");
     setInputSets([]);
     setSelectedRegressionSuiteIds([]);
@@ -142,10 +152,21 @@ export function CreateRunDialog({ workspaceId }: CreateRunDialogProps) {
         (v) => v.lifecycle_status === "runnable",
       );
       setRunnableVersions(runnable);
-      if (runnable.length === 1) setSelectedVersionId(runnable[0].id);
+      if (runnable.length === 1) {
+        setSelectedVersionId(runnable[0].id);
+        setSelectedMode(
+          versionSupportsTextSim(runnable[0]) ? VOICE_MODE_TEXT_SIM : "",
+        );
+      }
     } else {
       setRunnableVersions([]);
     }
+  }
+
+  function handleVersionChange(versionId: string) {
+    setSelectedVersionId(versionId);
+    const version = runnableVersions.find((candidate) => candidate.id === versionId);
+    setSelectedMode(versionSupportsTextSim(version) ? VOICE_MODE_TEXT_SIM : "");
   }
 
   function toggleDeployment(id: string) {
@@ -339,6 +360,7 @@ export function CreateRunDialog({ workspaceId }: CreateRunDialogProps) {
           ? includeProposedRegressions
           : undefined,
         race_context: raceContext,
+        ...(selectedMode ? { mode: selectedMode } : {}),
       };
       const result = await api.post<CreateRunResponse>("/v1/runs", request);
       toast.success("Run created");
@@ -364,6 +386,7 @@ export function CreateRunDialog({ workspaceId }: CreateRunDialogProps) {
     setName("");
     setSelectedPackId("");
     setSelectedVersionId("");
+    setSelectedMode("");
     setInputSetId("");
     setInputSets([]);
     setSelectedDeploymentIds([]);
@@ -378,10 +401,16 @@ export function CreateRunDialog({ workspaceId }: CreateRunDialogProps) {
 
   const executionMode =
     selectedDeploymentIds.length > 1 ? "comparison" : "single_agent";
+  const selectedVersion = runnableVersions.find(
+    (version) => version.id === selectedVersionId,
+  );
+  const selectedVersionIsVoice = isVoiceVersion(selectedVersion);
+  const selectedVersionSupportsTextSim = versionSupportsTextSim(selectedVersion);
   const requiresInputSetSelection = inputSets.length > 1;
   const canSubmit =
     Boolean(selectedVersionId) &&
     selectedDeploymentIds.length > 0 &&
+    (!selectedVersionIsVoice || Boolean(selectedMode)) &&
     !loadingInputSets &&
     (!requiresInputSetSelection || Boolean(inputSetId));
   const eligibleRegressionSuites = regressionSuites.filter(
@@ -443,6 +472,7 @@ export function CreateRunDialog({ workspaceId }: CreateRunDialogProps) {
               {packs.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name}
+                  {hasVoiceVersion(p) ? " (voice)" : ""}
                 </option>
               ))}
             </select>
@@ -459,7 +489,7 @@ export function CreateRunDialog({ workspaceId }: CreateRunDialogProps) {
             <select
               aria-label="Challenge Pack Version"
               value={selectedVersionId}
-              onChange={(e) => setSelectedVersionId(e.target.value)}
+              onChange={(e) => handleVersionChange(e.target.value)}
               disabled={!selectedPackId}
               className={selectClass}
             >
@@ -475,6 +505,40 @@ export function CreateRunDialog({ workspaceId }: CreateRunDialogProps) {
               ))}
             </select>
           </div>
+
+          {selectedVersionIsVoice && selectedVersion && (
+            <div className="space-y-2 rounded-lg border border-border bg-muted/20 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <label className="text-sm font-medium">
+                  Voice Mode
+                </label>
+                <VoiceModeBadges
+                  modality={selectedVersion.modality}
+                  mode={selectedMode || undefined}
+                  transports={selectedVersion.interface_transports}
+                />
+              </div>
+              <select
+                aria-label="Voice Execution Mode"
+                value={selectedMode}
+                onChange={(e) => setSelectedMode(e.target.value)}
+                disabled={!selectedVersionSupportsTextSim}
+                className={selectClass}
+              >
+                {selectedVersionSupportsTextSim ? (
+                  <option value={VOICE_MODE_TEXT_SIM}>Text simulation</option>
+                ) : (
+                  <option value="">No supported voice mode</option>
+                )}
+                <option disabled value="audio-sim">
+                  Audio simulation
+                </option>
+                <option disabled value="live-call">
+                  Live call
+                </option>
+              </select>
+            </div>
+          )}
 
           {/* Input Set */}
           <div>
@@ -736,6 +800,14 @@ export function CreateRunDialog({ workspaceId }: CreateRunDialogProps) {
                   : "single-agent"}{" "}
                 mode
               </span>
+              {selectedMode && (
+                <>
+                  {" "}using{" "}
+                  <span className="text-foreground font-medium">
+                    {humanVoiceMode(selectedMode)}
+                  </span>
+                </>
+              )}
               {regressionSelectionCount > 0 && (
                 <>
                   {" "}with{" "}
