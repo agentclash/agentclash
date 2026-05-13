@@ -1,0 +1,19 @@
+{
+  "schema_version": "2026-05-13",
+  "trace_id": "trace-support-billing-scripted-sim",
+  "run_id": "33333333-3333-3333-3333-333333333333",
+  "run_agent_id": "44444444-4444-4444-4444-444444444444",
+  "scenario_key": "support_billing_duplicate_charge",
+  "max_turns": 2,
+  "base_time": "2026-05-13T10:00:00Z",
+  "steps": [
+    {
+      "turn_id": "turn-001",
+      "user_text": "I was charged twice for my last invoice.",
+      "language": "en-US",
+      "occurred_at_offset_ms": 1000,
+      "expected_agent_text": "I found the duplicate charge and created refund rf_123.",
+      "max_response_latency_ms": 3000
+    }
+  ]
+}
