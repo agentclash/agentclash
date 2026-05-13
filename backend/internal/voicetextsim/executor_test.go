@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"flag"
+	"os"
 	"strings"
 	"testing"
 
@@ -15,6 +17,8 @@ import (
 	"github.com/agentclash/agentclash/backend/internal/voicefixtures"
 	"github.com/agentclash/agentclash/backend/internal/voicesim"
 )
+
+var updateGoldens = flag.Bool("update", false, "update generated text-sim golden files")
 
 func TestTextSimRunsSupportBillingFixtureDeterministically(t *testing.T) {
 	input := supportBillingInput(t, voicedeployment.OutcomePass)
@@ -40,6 +44,14 @@ func TestTextSimRunsSupportBillingFixtureDeterministically(t *testing.T) {
 	if err := first.Trace.Validate(); err != nil {
 		t.Fatalf("trace validation failed: %v", err)
 	}
+	for idx, event := range first.Events {
+		if event.SequenceNumber != int64(idx+1) {
+			t.Fatalf("events[%d].SequenceNumber = %d, want %d", idx, event.SequenceNumber, idx+1)
+		}
+		if idx > 0 && event.OccurredAt.Before(first.Events[idx-1].OccurredAt) {
+			t.Fatalf("events[%d].OccurredAt = %s before previous event time %s", idx, event.OccurredAt, first.Events[idx-1].OccurredAt)
+		}
+	}
 	assertSegmentKinds(t, first.Trace.Segments, []multimodaltrace.SegmentKind{
 		multimodaltrace.SegmentKindTextInput,
 		multimodaltrace.SegmentKindToolCall,
@@ -54,12 +66,18 @@ func TestTextSimRunsSupportBillingFixtureDeterministically(t *testing.T) {
 		runevents.EventTypeTranscriptFinal,
 		runevents.EventTypeToolCallStarted,
 		runevents.EventTypeAgentAudioStarted,
-		runevents.EventTypeAgentAudioCompleted,
 		runevents.EventTypeTranscriptFinal,
-		runevents.EventTypeVoiceMetricRecorded,
 		runevents.EventTypeTurnCompleted,
+		runevents.EventTypeVoiceMetricRecorded,
+		runevents.EventTypeAgentAudioCompleted,
 		runevents.EventTypeSystemRunCompleted,
 	})
+	if *updateGoldens {
+		writeGolden(t, "testdata/support_billing_expected_trace.json", first.TraceJSON)
+		writeGolden(t, "testdata/support_billing_expected_events.json", first.EventsJSON)
+	}
+	assertGolden(t, "trace golden", "testdata/support_billing_expected_trace.json", first.TraceJSON)
+	assertGolden(t, "events golden", "testdata/support_billing_expected_events.json", first.EventsJSON)
 	if got := first.Trace.Segments[2].Text.Text; got != "I found the duplicate charge and created refund rf_123." {
 		t.Fatalf("agent text = %q", got)
 	}
@@ -220,5 +238,23 @@ func assertEventTypes(t *testing.T, events []runevents.Envelope, want []runevent
 		if events[idx].EventType != eventType {
 			t.Fatalf("events[%d].EventType = %q, want %q", idx, events[idx].EventType, eventType)
 		}
+	}
+}
+
+func assertGolden(t *testing.T, label string, path string, got []byte) {
+	t.Helper()
+	want, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	if !bytes.Equal(want, got) {
+		t.Fatalf("%s mismatch\nwant:\n%s\n got:\n%s", label, want, got)
+	}
+}
+
+func writeGolden(t *testing.T, path string, data []byte) {
+	t.Helper()
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatalf("write %s: %v", path, err)
 	}
 }

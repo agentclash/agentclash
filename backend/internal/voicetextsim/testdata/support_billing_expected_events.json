@@ -1,0 +1,210 @@
+[
+  {
+    "event_id": "voice-text-sim:44444444-4444-4444-4444-444444444444:001",
+    "schema_version": "2026-03-15",
+    "run_id": "33333333-3333-3333-3333-333333333333",
+    "run_agent_id": "44444444-4444-4444-4444-444444444444",
+    "sequence_number": 1,
+    "event_type": "media.session.started",
+    "source": "voice_adapter",
+    "occurred_at": "2026-05-13T10:00:00Z",
+    "payload": {
+      "mode": "text-sim",
+      "pack_slug": "voice-support-billing-fixture",
+      "scenario_key": "support_billing_duplicate_charge",
+      "voice_session_id": "trace-support-billing-scripted-sim"
+    },
+    "summary": {
+      "status": "completed",
+      "evidence_level": "voice_structured",
+      "idempotency_key": "trace-support-billing-scripted-sim:text-sim:session-started"
+    }
+  },
+  {
+    "event_id": "voice-text-sim:44444444-4444-4444-4444-444444444444:002",
+    "schema_version": "2026-03-15",
+    "run_id": "33333333-3333-3333-3333-333333333333",
+    "run_agent_id": "44444444-4444-4444-4444-444444444444",
+    "sequence_number": 2,
+    "event_type": "transcript.final",
+    "source": "voice_adapter",
+    "occurred_at": "2026-05-13T10:00:01Z",
+    "payload": {
+      "language": "en-US",
+      "segment_id": "turn-001:user-text",
+      "text": "I was charged twice for my last invoice.",
+      "turn_id": "turn-001"
+    },
+    "summary": {
+      "turn_index": 1,
+      "speaker": "caller",
+      "channel": "text",
+      "evidence_level": "voice_structured",
+      "idempotency_key": "trace-support-billing-scripted-sim:text-sim:transcript.final:2026-05-13T10:00:01Z"
+    }
+  },
+  {
+    "event_id": "voice-text-sim:44444444-4444-4444-4444-444444444444:003",
+    "schema_version": "2026-03-15",
+    "run_id": "33333333-3333-3333-3333-333333333333",
+    "run_agent_id": "44444444-4444-4444-4444-444444444444",
+    "sequence_number": 3,
+    "event_type": "tool.call.started",
+    "source": "voice_adapter",
+    "occurred_at": "2026-05-13T10:00:01.7Z",
+    "payload": {
+      "arguments": {
+        "account_id": "acct_123",
+        "amount_cents": 4200,
+        "currency": "USD",
+        "idempotency_key": "voice-fixture-42-refund",
+        "reason": "duplicate_charge"
+      },
+      "call_id": "call-refund-001",
+      "segment_id": "turn-001:tool-call",
+      "tool_name": "refund_api",
+      "turn_id": "turn-001"
+    },
+    "summary": {
+      "tool_name": "refund_api",
+      "turn_index": 1,
+      "speaker": "agent",
+      "channel": "tool",
+      "evidence_level": "voice_structured",
+      "idempotency_key": "trace-support-billing-scripted-sim:text-sim:tool.call.started:2026-05-13T10:00:01.7Z"
+    }
+  },
+  {
+    "event_id": "voice-text-sim:44444444-4444-4444-4444-444444444444:004",
+    "schema_version": "2026-03-15",
+    "run_id": "33333333-3333-3333-3333-333333333333",
+    "run_agent_id": "44444444-4444-4444-4444-444444444444",
+    "sequence_number": 4,
+    "event_type": "agent.audio.started",
+    "source": "voice_adapter",
+    "occurred_at": "2026-05-13T10:00:02.6Z",
+    "payload": {
+      "artifact_ref": "voice://artifacts/agent-turn-001.wav",
+      "segment_id": "turn-001:agent-audio",
+      "turn_id": "turn-001"
+    },
+    "summary": {
+      "turn_index": 1,
+      "speaker": "agent",
+      "channel": "audio",
+      "evidence_level": "voice_structured",
+      "idempotency_key": "trace-support-billing-scripted-sim:text-sim:agent.audio.started:2026-05-13T10:00:02.6Z"
+    }
+  },
+  {
+    "event_id": "voice-text-sim:44444444-4444-4444-4444-444444444444:005",
+    "schema_version": "2026-03-15",
+    "run_id": "33333333-3333-3333-3333-333333333333",
+    "run_agent_id": "44444444-4444-4444-4444-444444444444",
+    "sequence_number": 5,
+    "event_type": "transcript.final",
+    "source": "voice_adapter",
+    "occurred_at": "2026-05-13T10:00:02.7Z",
+    "payload": {
+      "language": "en-US",
+      "segment_id": "turn-001:agent-transcript",
+      "text": "I found the duplicate charge and created refund rf_123.",
+      "turn_id": "turn-001"
+    },
+    "summary": {
+      "turn_index": 1,
+      "speaker": "agent",
+      "channel": "text",
+      "evidence_level": "voice_structured",
+      "idempotency_key": "trace-support-billing-scripted-sim:text-sim:transcript.final:2026-05-13T10:00:02.7Z"
+    }
+  },
+  {
+    "event_id": "voice-text-sim:44444444-4444-4444-4444-444444444444:006",
+    "schema_version": "2026-03-15",
+    "run_id": "33333333-3333-3333-3333-333333333333",
+    "run_agent_id": "44444444-4444-4444-4444-444444444444",
+    "sequence_number": 6,
+    "event_type": "turn.completed",
+    "source": "voice_adapter",
+    "occurred_at": "2026-05-13T10:00:02.8Z",
+    "payload": {
+      "segment_count": 7,
+      "turn_id": "turn-001",
+      "user_segment_id": "turn-001:user-text"
+    },
+    "summary": {
+      "turn_index": 1,
+      "speaker": "agent",
+      "channel": "text",
+      "evidence_level": "voice_structured",
+      "idempotency_key": "trace-support-billing-scripted-sim:text-sim:turn.completed:2026-05-13T10:00:02.8Z"
+    }
+  },
+  {
+    "event_id": "voice-text-sim:44444444-4444-4444-4444-444444444444:007",
+    "schema_version": "2026-03-15",
+    "run_id": "33333333-3333-3333-3333-333333333333",
+    "run_agent_id": "44444444-4444-4444-4444-444444444444",
+    "sequence_number": 7,
+    "event_type": "voice.metric.recorded",
+    "source": "voice_adapter",
+    "occurred_at": "2026-05-13T10:00:02.8Z",
+    "payload": {
+      "metric_key": "end_of_user_text_to_first_agent_text",
+      "turn_id": "turn-001",
+      "value_ms": 1200
+    },
+    "summary": {
+      "metric_key": "end_of_user_text_to_first_agent_text",
+      "turn_index": 1,
+      "speaker": "evaluator",
+      "channel": "metric",
+      "evidence_level": "voice_structured",
+      "idempotency_key": "trace-support-billing-scripted-sim:text-sim:voice.metric.recorded:2026-05-13T10:00:02.8Z"
+    }
+  },
+  {
+    "event_id": "voice-text-sim:44444444-4444-4444-4444-444444444444:008",
+    "schema_version": "2026-03-15",
+    "run_id": "33333333-3333-3333-3333-333333333333",
+    "run_agent_id": "44444444-4444-4444-4444-444444444444",
+    "sequence_number": 8,
+    "event_type": "agent.audio.completed",
+    "source": "voice_adapter",
+    "occurred_at": "2026-05-13T10:00:05Z",
+    "payload": {
+      "artifact_ref": "voice://artifacts/agent-turn-001.wav",
+      "duration_ms": 2400,
+      "segment_id": "turn-001:agent-audio",
+      "turn_id": "turn-001"
+    },
+    "summary": {
+      "turn_index": 1,
+      "speaker": "agent",
+      "channel": "audio",
+      "evidence_level": "voice_structured",
+      "idempotency_key": "trace-support-billing-scripted-sim:text-sim:agent.audio.completed:2026-05-13T10:00:05Z"
+    }
+  },
+  {
+    "event_id": "voice-text-sim:44444444-4444-4444-4444-444444444444:009",
+    "schema_version": "2026-03-15",
+    "run_id": "33333333-3333-3333-3333-333333333333",
+    "run_agent_id": "44444444-4444-4444-4444-444444444444",
+    "sequence_number": 9,
+    "event_type": "system.run.completed",
+    "source": "voice_adapter",
+    "occurred_at": "2026-05-13T10:00:05Z",
+    "payload": {
+      "mode": "text-sim",
+      "scenario_key": "support_billing_duplicate_charge",
+      "turn_count": 1
+    },
+    "summary": {
+      "status": "completed",
+      "evidence_level": "voice_structured",
+      "idempotency_key": "trace-support-billing-scripted-sim:text-sim:completed"
+    }
+  }
+]

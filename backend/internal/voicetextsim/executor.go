@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -48,9 +49,7 @@ func Run(ctx context.Context, input Input) (Result, error) {
 	}
 	segments := make([]multimodaltrace.Segment, 0, len(input.Script.Steps)*8)
 	events := make([]runevents.Envelope, 0, len(input.Script.Steps)*8+2)
-	eventSeq := int64(0)
 	appendEvent := func(eventType runevents.Type, occurredAt time.Time, payload any, summary runevents.SummaryMetadata) error {
-		eventSeq++
 		rawPayload, err := json.Marshal(payload)
 		if err != nil {
 			return fmt.Errorf("marshal event payload: %w", err)
@@ -59,21 +58,20 @@ func Run(ctx context.Context, input Input) (Result, error) {
 			summary.EvidenceLevel = runevents.EvidenceLevelVoiceStructured
 		}
 		if summary.IdempotencyKey == "" {
-			summary.IdempotencyKey = fmt.Sprintf("%s:text-sim:event:%03d", input.Script.TraceID, eventSeq)
+			summary.IdempotencyKey = fmt.Sprintf("%s:text-sim:%s:%s", input.Script.TraceID, eventType, occurredAt.UTC().Format(time.RFC3339Nano))
 		}
 		envelope := runevents.Envelope{
-			EventID:        fmt.Sprintf("voice-text-sim:%s:%03d", input.Script.TraceID, eventSeq),
-			SchemaVersion:  runevents.SchemaVersionV1,
-			RunID:          input.Script.RunID,
-			RunAgentID:     input.Script.RunAgentID,
-			SequenceNumber: eventSeq,
-			EventType:      eventType,
-			Source:         runevents.SourceVoiceAdapter,
-			OccurredAt:     occurredAt.UTC(),
-			Payload:        rawPayload,
-			Summary:        summary,
+			EventID:       summary.IdempotencyKey,
+			SchemaVersion: runevents.SchemaVersionV1,
+			RunID:         input.Script.RunID,
+			RunAgentID:    input.Script.RunAgentID,
+			EventType:     eventType,
+			Source:        runevents.SourceVoiceAdapter,
+			OccurredAt:    occurredAt.UTC(),
+			Payload:       rawPayload,
+			Summary:       summary,
 		}
-		if err := envelope.ValidatePersisted(); err != nil {
+		if err := envelope.ValidatePending(); err != nil {
 			return err
 		}
 		events = append(events, envelope)
@@ -152,7 +150,7 @@ func Run(ctx context.Context, input Input) (Result, error) {
 		}
 		if deploymentResult.Outcome == voicedeployment.OutcomeFail {
 			failureReason := fmt.Sprintf("turn_id=%s deployment outcome failed", step.TurnID)
-			if err := appendEvent(runevents.EventTypeSystemRunFailed, latestSegmentTime(deploymentResult.Segments, userOccurredAt), map[string]any{
+			if err := appendEvent(runevents.EventTypeSystemRunFailed, latestEventTime(events, userOccurredAt), map[string]any{
 				"turn_id": step.TurnID,
 				"reason":  failureReason,
 			}, runevents.SummaryMetadata{
@@ -167,7 +165,7 @@ func Run(ctx context.Context, input Input) (Result, error) {
 			}
 			return result, nil
 		}
-		if err := appendEvent(runevents.EventTypeTurnCompleted, latestSegmentTime(deploymentResult.Segments, userOccurredAt), map[string]any{
+		if err := appendEvent(runevents.EventTypeTurnCompleted, latestResponseTime(deploymentResult.Segments, userOccurredAt), map[string]any{
 			"turn_id":         step.TurnID,
 			"user_segment_id": userSegmentID,
 			"segment_count":   len(deploymentResult.Segments) + 1,
@@ -176,10 +174,7 @@ func Run(ctx context.Context, input Input) (Result, error) {
 		}
 	}
 
-	completedAt := input.Script.BaseTime
-	if len(segments) > 0 {
-		completedAt = segments[len(segments)-1].OccurredAt
-	}
+	completedAt := latestEventTime(events, input.Script.BaseTime)
 	if err := appendEvent(runevents.EventTypeSystemRunCompleted, completedAt, map[string]any{
 		"mode":         "text-sim",
 		"scenario_key": input.Script.ScenarioKey,
@@ -275,7 +270,11 @@ func buildResult(input Input, status Status, failureReason string, segments []mu
 	if err != nil {
 		return Result{}, err
 	}
-	eventsJSON, err := marshalStable(events)
+	finalEvents, err := finalizeEvents(events)
+	if err != nil {
+		return Result{}, err
+	}
+	eventsJSON, err := marshalStable(finalEvents)
 	if err != nil {
 		return Result{}, err
 	}
@@ -283,7 +282,7 @@ func buildResult(input Input, status Status, failureReason string, segments []mu
 		Status:        status,
 		FailureReason: failureReason,
 		Trace:         trace,
-		Events:        events,
+		Events:        finalEvents,
 		TraceJSON:     traceJSON,
 		EventsJSON:    eventsJSON,
 	}, nil
@@ -310,14 +309,51 @@ func metricSummary(turnIndex int, metricKey string) runevents.SummaryMetadata {
 	return summary
 }
 
-func latestSegmentTime(segments []multimodaltrace.Segment, fallback time.Time) time.Time {
+func latestResponseTime(segments []multimodaltrace.Segment, fallback time.Time) time.Time {
 	latest := fallback
 	for _, segment := range segments {
+		if segment.Kind == multimodaltrace.SegmentKindAudioOutput {
+			continue
+		}
 		if segment.OccurredAt.After(latest) {
 			latest = segment.OccurredAt
 		}
 	}
 	return latest.UTC()
+}
+
+func latestEventTime(events []runevents.Envelope, fallback time.Time) time.Time {
+	latest := fallback
+	for _, event := range events {
+		if event.OccurredAt.After(latest) {
+			latest = event.OccurredAt
+		}
+	}
+	return latest.UTC()
+}
+
+func finalizeEvents(events []runevents.Envelope) ([]runevents.Envelope, error) {
+	finalEvents := append([]runevents.Envelope(nil), events...)
+	sort.SliceStable(finalEvents, func(i, j int) bool {
+		if !finalEvents[i].OccurredAt.Equal(finalEvents[j].OccurredAt) {
+			return finalEvents[i].OccurredAt.Before(finalEvents[j].OccurredAt)
+		}
+		if finalEvents[i].EventType != finalEvents[j].EventType {
+			return finalEvents[i].EventType < finalEvents[j].EventType
+		}
+		if finalEvents[i].Summary.IdempotencyKey != finalEvents[j].Summary.IdempotencyKey {
+			return finalEvents[i].Summary.IdempotencyKey < finalEvents[j].Summary.IdempotencyKey
+		}
+		return string(finalEvents[i].Payload) < string(finalEvents[j].Payload)
+	})
+	for idx := range finalEvents {
+		finalEvents[idx].SequenceNumber = int64(idx + 1)
+		finalEvents[idx].EventID = fmt.Sprintf("voice-text-sim:%s:%03d", finalEvents[idx].RunAgentID, idx+1)
+		if err := finalEvents[idx].ValidatePersisted(); err != nil {
+			return nil, fmt.Errorf("validate finalized event[%d]: %w", idx, err)
+		}
+	}
+	return finalEvents, nil
 }
 
 func marshalStable(value any) ([]byte, error) {
