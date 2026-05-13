@@ -34,6 +34,7 @@ type createRunRequest struct {
 	ChallengePackVersionID string   `json:"challenge_pack_version_id"`
 	ChallengeInputSetID    *string  `json:"challenge_input_set_id,omitempty"`
 	Name                   string   `json:"name,omitempty"`
+	Mode                   string   `json:"mode,omitempty"`
 	AgentDeploymentIDs     []string `json:"agent_deployment_ids"`
 	RegressionSuiteIDs     []string `json:"regression_suite_ids,omitempty"`
 	RegressionCaseIDs      []string `json:"regression_case_ids,omitempty"`
@@ -57,6 +58,7 @@ type CreateRunInput struct {
 	ChallengeInputSetID        *uuid.UUID
 	OfficialPackMode           domain.OfficialPackMode
 	Name                       string
+	Mode                       string
 	AgentDeploymentIDs         []uuid.UUID
 	RegressionSuiteIDs         []uuid.UUID
 	RegressionCaseIDs          []uuid.UUID
@@ -75,19 +77,22 @@ type CreateRunResult struct {
 }
 
 type createRunResponse struct {
-	ID                     uuid.UUID             `json:"id"`
-	WorkspaceID            uuid.UUID             `json:"workspace_id"`
-	ChallengePackVersionID uuid.UUID             `json:"challenge_pack_version_id"`
-	ChallengeInputSetID    *uuid.UUID            `json:"challenge_input_set_id,omitempty"`
-	OfficialPackMode       string                `json:"official_pack_mode"`
-	Status                 domain.RunStatus      `json:"status"`
-	ExecutionMode          string                `json:"execution_mode"`
-	CreatedAt              time.Time             `json:"created_at"`
-	QueuedAt               *time.Time            `json:"queued_at,omitempty"`
-	RaceContext            bool                  `json:"race_context"`
-	RaceContextMinStepGap  *int32                `json:"race_context_min_step_gap,omitempty"`
-	CIMetadata             *domain.RunCIMetadata `json:"ci_metadata,omitempty"`
-	Links                  runLinksResponse      `json:"links"`
+	ID                     uuid.UUID                 `json:"id"`
+	WorkspaceID            uuid.UUID                 `json:"workspace_id"`
+	ChallengePackVersionID uuid.UUID                 `json:"challenge_pack_version_id"`
+	ChallengeInputSetID    *uuid.UUID                `json:"challenge_input_set_id,omitempty"`
+	OfficialPackMode       string                    `json:"official_pack_mode"`
+	Status                 domain.RunStatus          `json:"status"`
+	ExecutionMode          string                    `json:"execution_mode"`
+	Mode                   string                    `json:"mode,omitempty"`
+	Modality               string                    `json:"modality,omitempty"`
+	Voice                  *runVoiceMetadataResponse `json:"voice,omitempty"`
+	CreatedAt              time.Time                 `json:"created_at"`
+	QueuedAt               *time.Time                `json:"queued_at,omitempty"`
+	RaceContext            bool                      `json:"race_context"`
+	RaceContextMinStepGap  *int32                    `json:"race_context_min_step_gap,omitempty"`
+	CIMetadata             *domain.RunCIMetadata     `json:"ci_metadata,omitempty"`
+	Links                  runLinksResponse          `json:"links"`
 }
 
 type runLinksResponse struct {
@@ -207,6 +212,7 @@ type runWorkflowErrorResponse struct {
 }
 
 func buildCreateRunResponse(run domain.Run) createRunResponse {
+	mode, modality, voice := runMetadataFromExecutionPlan(run.ExecutionPlan)
 	return createRunResponse{
 		ID:                     run.ID,
 		WorkspaceID:            run.WorkspaceID,
@@ -215,6 +221,9 @@ func buildCreateRunResponse(run domain.Run) createRunResponse {
 		OfficialPackMode:       string(run.OfficialPackMode),
 		Status:                 run.Status,
 		ExecutionMode:          run.ExecutionMode,
+		Mode:                   mode,
+		Modality:               modality,
+		Voice:                  voice,
 		CreatedAt:              run.CreatedAt,
 		QueuedAt:               run.QueuedAt,
 		RaceContext:            run.RaceContext,
@@ -393,6 +402,7 @@ func decodeCreateRunRequest(r *http.Request) (CreateRunInput, error) {
 	if err != nil {
 		return CreateRunInput{}, err
 	}
+	mode := normalizeRunMode(body.Mode)
 
 	return CreateRunInput{
 		WorkspaceID:                workspaceID,
@@ -400,6 +410,7 @@ func decodeCreateRunRequest(r *http.Request) (CreateRunInput, error) {
 		ChallengeInputSetID:        challengeInputSetID,
 		OfficialPackMode:           officialPackMode,
 		Name:                       strings.TrimSpace(body.Name),
+		Mode:                       mode,
 		AgentDeploymentIDs:         deploymentIDs,
 		RegressionSuiteIDs:         regressionSuiteIDs,
 		RegressionCaseIDs:          regressionCaseIDs,

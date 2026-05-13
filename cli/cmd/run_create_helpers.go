@@ -13,6 +13,13 @@ import (
 const maxRunCreateMaxIter = 1000
 const maxRunCreateSeeds = 100
 
+const (
+	runCreateModeTextSim      = "text-sim"
+	runCreateModeAudioSim     = "audio-sim"
+	runCreateModeLiveCall     = "live-call"
+	runCreateModeReplayImport = "replay-import"
+)
+
 type runCreateRequest struct {
 	ChallengePackVersionID     string
 	ChallengeInputSetID        string
@@ -28,6 +35,7 @@ type runCreateRequest struct {
 	RaceContextCadence         int
 	MaxIterations              int
 	Seeds                      int
+	Mode                       string
 	CIMetadata                 map[string]any
 }
 
@@ -101,7 +109,30 @@ func runCreateRequestFromFlags(cmd *cobra.Command, base runCreateRequest) (runCr
 	seeds, _ := cmd.Flags().GetInt("seeds")
 	request.Seeds = seeds
 
+	if cmd.Flags().Lookup("mode") != nil {
+		mode, _ := cmd.Flags().GetString("mode")
+		normalizedMode, err := normalizeRunCreateMode(mode)
+		if err != nil {
+			return runCreateRequest{}, err
+		}
+		request.Mode = normalizedMode
+	}
+
 	return request, nil
+}
+
+func normalizeRunCreateMode(raw string) (string, error) {
+	mode := strings.ToLower(strings.TrimSpace(raw))
+	switch mode {
+	case "":
+		return "", nil
+	case runCreateModeTextSim:
+		return mode, nil
+	case runCreateModeAudioSim, runCreateModeLiveCall, runCreateModeReplayImport:
+		return "", fmt.Errorf("--mode %q is reserved for future voice eval support; supported mode: %s", mode, runCreateModeTextSim)
+	default:
+		return "", fmt.Errorf("unsupported --mode %q (supported mode: %s)", raw, runCreateModeTextSim)
+	}
 }
 
 func buildRunCreateBody(workspaceID string, request runCreateRequest) (map[string]any, error) {
@@ -153,6 +184,9 @@ func buildRunCreateBody(workspaceID string, request runCreateRequest) (map[strin
 	}
 	if request.MaxIterations > 0 {
 		body["max_iterations"] = request.MaxIterations
+	}
+	if request.Mode != "" {
+		body["mode"] = request.Mode
 	}
 	if len(request.CIMetadata) > 0 {
 		body["ci_metadata"] = request.CIMetadata
@@ -225,6 +259,9 @@ func buildSeriesEvalSessionBody(workspaceID string, request runCreateRequest) (m
 	}
 	if request.RaceContext || request.RaceContextCadence > 0 {
 		return nil, fmt.Errorf("--race-context flags are not supported with --deployment-lineups")
+	}
+	if request.Mode != "" {
+		return nil, fmt.Errorf("--mode is not supported with --deployment-lineups")
 	}
 
 	executionMode := "single_agent"

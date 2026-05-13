@@ -189,6 +189,82 @@ func TestCreateRunEndpointPropagatesCIMetadata(t *testing.T) {
 	}
 }
 
+func TestCreateRunEndpointPropagatesModeAndReturnsVoiceMetadata(t *testing.T) {
+	userID := uuid.New()
+	workspaceID := uuid.New()
+	runID := uuid.New()
+	service := &fakeRunCreationService{
+		result: CreateRunResult{
+			Run: domain.Run{
+				ID:                     runID,
+				WorkspaceID:            workspaceID,
+				ChallengePackVersionID: uuid.New(),
+				Status:                 domain.RunStatusQueued,
+				ExecutionMode:          "single_agent",
+				ExecutionPlan:          json.RawMessage(`{"mode":"text-sim","modality":"voice","voice":{"mode":"text-sim","modality":"voice","transport":"text_sim"}}`),
+				CreatedAt:              time.Date(2026, 5, 13, 12, 0, 0, 0, time.UTC),
+			},
+		},
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/runs", bytes.NewBufferString(`{
+		"workspace_id":"`+workspaceID.String()+`",
+		"challenge_pack_version_id":"`+uuid.New().String()+`",
+		"agent_deployment_ids":["`+uuid.New().String()+`"],
+		"mode":" text-sim "
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(headerUserID, userID.String())
+	req.Header.Set(headerWorkspaceMemberships, workspaceID.String()+":workspace_member")
+	recorder := httptest.NewRecorder()
+
+	newRouter("dev", nil,
+		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
+		NewDevelopmentAuthenticator(),
+		NewCallerWorkspaceAuthorizer(),
+		nil,
+		0,
+		service,
+		&fakeRunReadService{},
+		&fakeReplayReadService{},
+		stubHostedRunIngestionService{},
+		nil,
+		stubAgentDeploymentReadService{},
+		stubChallengePackReadService{},
+		stubAgentBuildService{},
+		noopReleaseGateService{},
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+	).ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d\n%s", recorder.Code, http.StatusCreated, recorder.Body.String())
+	}
+	if service.input.Mode != "text-sim" {
+		t.Fatalf("service input mode = %q, want text-sim", service.input.Mode)
+	}
+
+	var response createRunResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if response.Mode != "text-sim" || response.Modality != "voice" {
+		t.Fatalf("response mode/modality = %q/%q, want text-sim/voice", response.Mode, response.Modality)
+	}
+	if response.Voice == nil || response.Voice.Mode != "text-sim" || response.Voice.Transport != "text_sim" {
+		t.Fatalf("response voice = %+v, want text-sim/text_sim", response.Voice)
+	}
+}
+
 func TestCreateRunEndpointRejectsInvalidCIMetadata(t *testing.T) {
 	workspaceID := uuid.New()
 	req := httptest.NewRequest(http.MethodPost, "/v1/runs", bytes.NewBufferString(`{
@@ -635,6 +711,24 @@ func TestDecodeCreateRunRequestAcceptsMaxIterations(t *testing.T) {
 	}
 	if input.MaxIterations == nil || *input.MaxIterations != 7 {
 		t.Fatalf("MaxIterations = %v, want 7", input.MaxIterations)
+	}
+}
+
+func TestDecodeCreateRunRequestAcceptsMode(t *testing.T) {
+	workspaceID := uuid.New()
+	req := httptest.NewRequest(http.MethodPost, "/v1/runs", bytes.NewBufferString(`{
+		"workspace_id":"`+workspaceID.String()+`",
+		"challenge_pack_version_id":"`+uuid.New().String()+`",
+		"agent_deployment_ids":["`+uuid.New().String()+`"],
+		"mode":" TEXT-SIM "
+	}`))
+
+	input, err := decodeCreateRunRequest(req)
+	if err != nil {
+		t.Fatalf("decodeCreateRunRequest returned error: %v", err)
+	}
+	if input.Mode != "text-sim" {
+		t.Fatalf("Mode = %q, want text-sim", input.Mode)
 	}
 }
 

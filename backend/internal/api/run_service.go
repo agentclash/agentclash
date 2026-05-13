@@ -113,6 +113,10 @@ func (m *RunCreationManager) CreateRun(ctx context.Context, caller Caller, input
 			Message: "official_pack_mode must be either full or suite_only",
 		}
 	}
+	input.Mode = normalizeRunMode(input.Mode)
+	if err := validateRequestedRunMode(input.Mode); err != nil {
+		return CreateRunResult{}, err
+	}
 	if input.OfficialPackMode == domain.OfficialPackModeSuiteOnly &&
 		len(input.RegressionSuiteIDs) == 0 &&
 		len(input.RegressionCaseIDs) == 0 {
@@ -163,6 +167,10 @@ func (m *RunCreationManager) CreateRun(ctx context.Context, caller Caller, input
 	}
 	if input.MaxIterations == nil {
 		input.MaxIterations = challengePackDefaultMaxIterations(challengePackVersion.Manifest)
+	}
+	voiceMode, err := resolveRunVoiceMode(input.Mode, challengePackVersion.Manifest)
+	if err != nil {
+		return CreateRunResult{}, err
 	}
 
 	if input.ChallengeInputSetID != nil {
@@ -279,7 +287,7 @@ func (m *RunCreationManager) CreateRun(ctx context.Context, caller Caller, input
 		executionMode = "single_agent"
 	}
 
-	executionPlan, err := buildExecutionPlan(input, runAgents)
+	executionPlan, err := buildExecutionPlan(input, runAgents, voiceMode)
 	if err != nil {
 		return CreateRunResult{}, fmt.Errorf("build execution plan: %w", err)
 	}
@@ -473,7 +481,7 @@ func regressionCaseSelectableForRun(status domain.RegressionCaseStatus, includeP
 		(includeProposed && status == domain.RegressionCaseStatusProposed)
 }
 
-func buildExecutionPlan(input CreateRunInput, runAgents []repository.CreateQueuedRunAgentParams) (json.RawMessage, error) {
+func buildExecutionPlan(input CreateRunInput, runAgents []repository.CreateQueuedRunAgentParams, voiceMode *runVoiceMode) (json.RawMessage, error) {
 	type executionPlanRunAgent struct {
 		LaneIndex                 int32     `json:"lane_index"`
 		AgentDeploymentID         uuid.UUID `json:"agent_deployment_id"`
@@ -495,6 +503,9 @@ func buildExecutionPlan(input CreateRunInput, runAgents []repository.CreateQueue
 		ChallengePackVersionID uuid.UUID                   `json:"challenge_pack_version_id"`
 		ChallengeInputSetID    *uuid.UUID                  `json:"challenge_input_set_id,omitempty"`
 		OfficialPackMode       domain.OfficialPackMode     `json:"official_pack_mode"`
+		Mode                   string                      `json:"mode,omitempty"`
+		Modality               string                      `json:"modality,omitempty"`
+		Voice                  *runVoiceMetadataResponse   `json:"voice,omitempty"`
 		Participants           []executionPlanRunAgent     `json:"participants"`
 		RuntimeLimits          *executionPlanRuntimeLimits `json:"runtime_limits,omitempty"`
 		Seed                   *int64                      `json:"seed,omitempty"`
@@ -526,6 +537,15 @@ func buildExecutionPlan(input CreateRunInput, runAgents []repository.CreateQueue
 		plan.Series = &executionPlanSeries{
 			MatrixKey:        input.SeriesMatrixKey,
 			DeploymentLineup: input.SeriesDeploymentLineup,
+		}
+	}
+	if voiceMode != nil {
+		plan.Mode = voiceMode.Mode
+		plan.Modality = voiceMode.Modality
+		plan.Voice = &runVoiceMetadataResponse{
+			Mode:      voiceMode.Mode,
+			Modality:  voiceMode.Modality,
+			Transport: voiceMode.Transport,
 		}
 	}
 

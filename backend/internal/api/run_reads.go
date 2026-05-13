@@ -372,6 +372,9 @@ type getRunResponse struct {
 	Name                   string                         `json:"name"`
 	Status                 domain.RunStatus               `json:"status"`
 	ExecutionMode          string                         `json:"execution_mode"`
+	Mode                   string                         `json:"mode,omitempty"`
+	Modality               string                         `json:"modality,omitempty"`
+	Voice                  *runVoiceMetadataResponse      `json:"voice,omitempty"`
 	TemporalWorkflowID     *string                        `json:"temporal_workflow_id,omitempty"`
 	TemporalRunID          *string                        `json:"temporal_run_id,omitempty"`
 	QueuedAt               *time.Time                     `json:"queued_at,omitempty"`
@@ -582,6 +585,7 @@ func listRunsHandler(logger *slog.Logger, service RunReadService) http.HandlerFu
 }
 
 func buildGetRunResponse(run domain.Run, regressionCoverage *RunRegressionCoverage) getRunResponse {
+	mode, modality, voice := runMetadataFromExecutionPlan(run.ExecutionPlan)
 	response := getRunResponse{
 		ID:                     run.ID,
 		WorkspaceID:            run.WorkspaceID,
@@ -591,6 +595,9 @@ func buildGetRunResponse(run domain.Run, regressionCoverage *RunRegressionCovera
 		Name:                   run.Name,
 		Status:                 run.Status,
 		ExecutionMode:          run.ExecutionMode,
+		Mode:                   mode,
+		Modality:               modality,
+		Voice:                  voice,
 		TemporalWorkflowID:     run.TemporalWorkflowID,
 		TemporalRunID:          run.TemporalRunID,
 		QueuedAt:               run.QueuedAt,
