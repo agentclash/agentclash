@@ -3,6 +3,7 @@ package multimodaltrace
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -166,6 +167,87 @@ func TestTraceValidateSegmentOrdering(t *testing.T) {
 }
 
 func TestTraceValidateReferences(t *testing.T) {
+	traceTests := []struct {
+		name    string
+		mutate  func(*Trace)
+		wantErr string
+	}{
+		{
+			name: "transcript_source_segment_missing",
+			mutate: func(trace *Trace) {
+				trace.Segments[1].Transcript.SourceSegmentID = "missing-segment"
+			},
+			wantErr: `transcript.source_segment_id "missing-segment" does not reference a prior segment`,
+		},
+		{
+			name: "transcript_source_segment_must_be_audio",
+			mutate: func(trace *Trace) {
+				textSegment := validSegment(SegmentKindTextInput)
+				textSegment.SegmentID = trace.Segments[0].SegmentID
+				textSegment.SequenceNumber = trace.Segments[0].SequenceNumber
+				textSegment.OccurredAt = trace.Segments[0].OccurredAt
+				trace.Segments[0] = textSegment
+			},
+			wantErr: `transcript.source_segment_id "seg-001" must reference an audio segment`,
+		},
+		{
+			name: "media_control_target_missing",
+			mutate: func(trace *Trace) {
+				trace.Segments[5].MediaControl.TargetSegmentID = "missing-segment"
+			},
+			wantErr: `media_control.target_segment_id "missing-segment" does not reference a prior segment`,
+		},
+		{
+			name: "tool_result_call_missing",
+			mutate: func(trace *Trace) {
+				trace.Segments[3].ToolResult.CallID = "missing-call"
+			},
+			wantErr: `tool_result.call_id "missing-call" does not reference a prior tool_call`,
+		},
+		{
+			name: "tool_result_tool_name_mismatch",
+			mutate: func(trace *Trace) {
+				trace.Segments[3].ToolResult.ToolName = "different_tool"
+			},
+			wantErr: `tool_result.tool_name "different_tool" does not match prior tool_call.tool_name "refund_api"`,
+		},
+		{
+			name: "duplicate_segment_id",
+			mutate: func(trace *Trace) {
+				trace.Segments[1].SegmentID = trace.Segments[0].SegmentID
+			},
+			wantErr: `duplicate segment_id "seg-001"`,
+		},
+		{
+			name: "duplicate_tool_call_id",
+			mutate: func(trace *Trace) {
+				duplicateCall := validSegment(SegmentKindToolCall)
+				duplicateCall.SegmentID = "seg-007"
+				duplicateCall.SequenceNumber = 7
+				duplicateCall.ToolCall.CallID = trace.Segments[2].ToolCall.CallID
+				trace.Segments = append(trace.Segments, duplicateCall)
+			},
+			wantErr: `duplicate tool_call.call_id "call-refund-1"`,
+		},
+	}
+
+	for _, tt := range traceTests {
+		t.Run(tt.name, func(t *testing.T) {
+			trace := validReferenceTrace()
+			tt.mutate(&trace)
+			err := trace.Validate()
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("Validate() error = %v, want containing %q", err, tt.wantErr)
+			}
+		})
+	}
+
+	t.Run("valid_cross_references", func(t *testing.T) {
+		if err := validReferenceTrace().Validate(); err != nil {
+			t.Fatalf("Validate() error = %v", err)
+		}
+	})
+
 	tests := []struct {
 		name    string
 		segment Segment
@@ -243,6 +325,31 @@ func validTrace() Trace {
 			validSegment(SegmentKindTextInput),
 		},
 	}
+}
+
+func validReferenceTrace() Trace {
+	trace := validTrace()
+	trace.TraceID = "trace-reference-test"
+	trace.Segments = []Segment{
+		validSegment(SegmentKindAudioInput),
+		validSegment(SegmentKindTranscriptFinal),
+		validSegment(SegmentKindToolCall),
+		validSegment(SegmentKindToolResult),
+		validSegment(SegmentKindTextOutput),
+		validSegment(SegmentKindMediaControl),
+	}
+	for i := range trace.Segments {
+		trace.Segments[i].SegmentID = fmt.Sprintf("seg-%03d", i+1)
+		trace.Segments[i].SequenceNumber = int64(i + 1)
+		trace.Segments[i].OccurredAt = mustParseTime(fmt.Sprintf("2026-05-13T09:00:0%dZ", i))
+	}
+	trace.Segments[1].Transcript.SourceSegmentID = trace.Segments[0].SegmentID
+	trace.Segments[2].ToolCall.CallID = "call-refund-1"
+	trace.Segments[2].ToolCall.ToolName = "refund_api"
+	trace.Segments[3].ToolResult.CallID = "call-refund-1"
+	trace.Segments[3].ToolResult.ToolName = "refund_api"
+	trace.Segments[5].MediaControl.TargetSegmentID = trace.Segments[0].SegmentID
+	return trace
 }
 
 func validSegment(kind SegmentKind) Segment {

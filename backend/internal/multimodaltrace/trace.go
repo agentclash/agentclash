@@ -128,10 +128,15 @@ func (t Trace) Validate() error {
 		return errors.New("run_agent_id is required")
 	}
 	seenSequences := make(map[int64]struct{}, len(t.Segments))
+	seenSegmentIDs := make(map[string]Segment, len(t.Segments))
+	seenToolCalls := make(map[string]ToolCallPayload)
 	var previousSequence int64
 	for i, segment := range t.Segments {
 		if err := segment.Validate(); err != nil {
 			return fmt.Errorf("segments[%d]: %w", i, err)
+		}
+		if _, ok := seenSegmentIDs[segment.SegmentID]; ok {
+			return fmt.Errorf("segments[%d]: duplicate segment_id %q", i, segment.SegmentID)
 		}
 		if _, ok := seenSequences[segment.SequenceNumber]; ok {
 			return fmt.Errorf("segments[%d]: duplicate sequence_number %d", i, segment.SequenceNumber)
@@ -139,7 +144,17 @@ func (t Trace) Validate() error {
 		if previousSequence > 0 && segment.SequenceNumber <= previousSequence {
 			return fmt.Errorf("segments[%d]: sequence_number must increase monotonically", i)
 		}
+		if err := validateSegmentReferences(i, segment, seenSegmentIDs, seenToolCalls); err != nil {
+			return err
+		}
 		seenSequences[segment.SequenceNumber] = struct{}{}
+		seenSegmentIDs[segment.SegmentID] = segment
+		if segment.ToolCall != nil {
+			if _, ok := seenToolCalls[segment.ToolCall.CallID]; ok {
+				return fmt.Errorf("segments[%d]: duplicate tool_call.call_id %q", i, segment.ToolCall.CallID)
+			}
+			seenToolCalls[segment.ToolCall.CallID] = *segment.ToolCall
+		}
 		previousSequence = segment.SequenceNumber
 	}
 	return nil
@@ -193,6 +208,33 @@ func (a Actor) IsValid() bool {
 	default:
 		return false
 	}
+}
+
+func validateSegmentReferences(index int, segment Segment, priorSegments map[string]Segment, priorToolCalls map[string]ToolCallPayload) error {
+	if segment.Transcript != nil && segment.Transcript.SourceSegmentID != "" {
+		source, ok := priorSegments[segment.Transcript.SourceSegmentID]
+		if !ok {
+			return fmt.Errorf("segments[%d]: transcript.source_segment_id %q does not reference a prior segment", index, segment.Transcript.SourceSegmentID)
+		}
+		if source.Kind != SegmentKindAudioInput && source.Kind != SegmentKindAudioOutput {
+			return fmt.Errorf("segments[%d]: transcript.source_segment_id %q must reference an audio segment", index, segment.Transcript.SourceSegmentID)
+		}
+	}
+	if segment.MediaControl != nil && segment.MediaControl.TargetSegmentID != "" {
+		if _, ok := priorSegments[segment.MediaControl.TargetSegmentID]; !ok {
+			return fmt.Errorf("segments[%d]: media_control.target_segment_id %q does not reference a prior segment", index, segment.MediaControl.TargetSegmentID)
+		}
+	}
+	if segment.ToolResult != nil {
+		call, ok := priorToolCalls[segment.ToolResult.CallID]
+		if !ok {
+			return fmt.Errorf("segments[%d]: tool_result.call_id %q does not reference a prior tool_call", index, segment.ToolResult.CallID)
+		}
+		if call.ToolName != segment.ToolResult.ToolName {
+			return fmt.Errorf("segments[%d]: tool_result.tool_name %q does not match prior tool_call.tool_name %q", index, segment.ToolResult.ToolName, call.ToolName)
+		}
+	}
+	return nil
 }
 
 func (s Segment) payloadCount() int {
