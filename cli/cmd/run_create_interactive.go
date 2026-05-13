@@ -15,10 +15,12 @@ type challengePackSummary struct {
 }
 
 type challengePackVersionBrief struct {
-	ID                 string              `json:"id"`
-	VersionNumber      int                 `json:"version_number"`
-	LifecycleStatus    string              `json:"lifecycle_status"`
-	DeploymentDefaults *deploymentDefaults `json:"deployment_defaults,omitempty"`
+	ID                  string              `json:"id"`
+	VersionNumber       int                 `json:"version_number"`
+	LifecycleStatus     string              `json:"lifecycle_status"`
+	Modality            string              `json:"modality,omitempty"`
+	InterfaceTransports []string            `json:"interface_transports,omitempty"`
+	DeploymentDefaults  *deploymentDefaults `json:"deployment_defaults,omitempty"`
 }
 
 type deploymentDefaults struct {
@@ -43,6 +45,7 @@ type runCreateSelections struct {
 	challengePackVersionID string
 	challengeInputSetID    string
 	deploymentIDs          []string
+	mode                   string
 }
 
 func resolveRunCreateSelections(cmd *cobra.Command, rc *RunContext, workspaceID string) (runCreateSelections, error) {
@@ -93,7 +96,8 @@ func resolveRunCreateSelections(cmd *cobra.Command, rc *RunContext, workspaceID 
 		if err != nil {
 			return runCreateSelections{}, err
 		}
-		selections.challengePackVersionID = selectedVersion
+		selections.challengePackVersionID = selectedVersion.ID
+		selections.mode = suggestedRunModeForVersion(selectedVersion)
 	}
 
 	// Always offer the input-set picker when --input-set was omitted in a
@@ -150,10 +154,10 @@ func missingRunCreateFlags(selections runCreateSelections) []string {
 	return missing
 }
 
-func promptForChallengePackVersion(cmd *cobra.Command, rc *RunContext, workspaceID string, picker interactivePicker) (string, error) {
+func promptForChallengePackVersion(cmd *cobra.Command, rc *RunContext, workspaceID string, picker interactivePicker) (challengePackVersionBrief, error) {
 	packs, err := listChallengePacks(cmd, rc, workspaceID)
 	if err != nil {
-		return "", err
+		return challengePackVersionBrief{}, err
 	}
 
 	options := make([]pickerOption, 0, len(packs))
@@ -162,15 +166,15 @@ func promptForChallengePackVersion(cmd *cobra.Command, rc *RunContext, workspace
 			continue
 		}
 		options = append(options, pickerOption{
-			Label:       pack.Name,
-			Description: fmt.Sprintf("%d runnable version(s) • %s", len(pack.Versions), pack.ID),
+			Label:       challengePackPickerLabel(pack),
+			Description: challengePackPickerDescription(pack),
 			Value:       pack.ID,
 		})
 	}
 
 	selectedPack, err := selectOneOrAuto(picker, "Choose a challenge pack", options)
 	if err != nil {
-		return "", err
+		return challengePackVersionBrief{}, err
 	}
 
 	var versions []challengePackVersionBrief
@@ -187,17 +191,22 @@ func promptForChallengePackVersion(cmd *cobra.Command, rc *RunContext, workspace
 	versionOptions := make([]pickerOption, 0, len(versions))
 	for _, version := range versions {
 		versionOptions = append(versionOptions, pickerOption{
-			Label:       fmt.Sprintf("v%d", version.VersionNumber),
-			Description: fmt.Sprintf("status: %s • %s", version.LifecycleStatus, version.ID),
+			Label:       challengePackVersionPickerLabel(version),
+			Description: challengePackVersionPickerDescription(version),
 			Value:       version.ID,
 		})
 	}
 
 	selectedVersion, err := selectOneOrAuto(picker, "Choose a challenge pack version", versionOptions)
 	if err != nil {
-		return "", err
+		return challengePackVersionBrief{}, err
 	}
-	return selectedVersion.Value, nil
+	for _, version := range versions {
+		if version.ID == selectedVersion.Value {
+			return version, nil
+		}
+	}
+	return challengePackVersionBrief{}, fmt.Errorf("selected challenge pack version %s was not found", selectedVersion.Value)
 }
 
 func maybePromptForChallengeInputSet(cmd *cobra.Command, rc *RunContext, workspaceID, challengePackVersionID string, picker interactivePicker) (string, error) {

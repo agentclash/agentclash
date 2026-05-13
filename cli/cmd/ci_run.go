@@ -430,6 +430,10 @@ func ciRunDeploymentName(manifest ciManifest) string {
 }
 
 func createCIRun(cmd *cobra.Command, rc *RunContext, workspaceID string, manifest ciManifest, deploymentID string, ciMetadata map[string]any) (map[string]any, error) {
+	mode, err := normalizeCIManifestEvaluationMode(manifest.Evaluation.Mode)
+	if err != nil {
+		return nil, err
+	}
 	request := runCreateRequest{
 		ChallengePackVersionID: manifest.Evaluation.ChallengePackVersionID,
 		ChallengeInputSetID:    manifest.Evaluation.InputSetID,
@@ -437,6 +441,7 @@ func createCIRun(cmd *cobra.Command, rc *RunContext, workspaceID string, manifes
 		OfficialPackMode:       "full",
 		RegressionSuiteIDs:     manifest.Evaluation.RegressionSuites,
 		RegressionCaseIDs:      manifest.Evaluation.RegressionCases,
+		Mode:                   mode,
 		Name:                   ciRunName(manifest),
 		CIMetadata:             ciMetadata,
 	}
