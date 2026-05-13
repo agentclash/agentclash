@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/agentclash/agentclash/backend/internal/challengepack"
+	"github.com/agentclash/agentclash/backend/internal/multimodaltrace"
 	"github.com/agentclash/agentclash/backend/internal/releasegate"
 	"github.com/agentclash/agentclash/backend/internal/runevents"
 	"github.com/agentclash/agentclash/backend/internal/voiceartifacts"
@@ -22,6 +24,7 @@ import (
 // Smoke command: go test ./internal/voicee2e -run TestSupportAgentVoiceEvalLoopSmoke -count=1
 func TestSupportAgentVoiceEvalLoopSmoke(t *testing.T) {
 	fixture := loadSupportFixture(t)
+	assertSupportFixtureGoldens(t, fixture)
 	bundle := parseSupportPack(t, fixture)
 	manifest := loadSupportManifest(t)
 	if err := manifest.VerifyLocalChecksums("../voiceartifacts/testdata/support_billing"); err != nil {
@@ -36,6 +39,7 @@ func TestSupportAgentVoiceEvalLoopSmoke(t *testing.T) {
 	if !bytes.Equal(baseline.EventsJSON, candidate.EventsJSON) {
 		t.Fatalf("happy path events JSON is not deterministic")
 	}
+	assertAgentTextOutput(t, baseline.Trace.Segments, strings.TrimSpace(string(fixture.ExpectedAgentTextOutput)))
 	assertCanonicalVoiceEvents(t, baseline.Events)
 
 	projection, err := voicereplay.Build(baseline.Events, manifest)
@@ -86,6 +90,29 @@ func loadSupportFixture(t *testing.T) voicefixtures.SupportBillingFixture {
 		t.Fatalf("LoadSupportBillingFixture returned error: %v", err)
 	}
 	return fixture
+}
+
+func assertSupportFixtureGoldens(t *testing.T, fixture voicefixtures.SupportBillingFixture) {
+	t.Helper()
+	run, err := voicefixtures.RunSupportBillingScenario()
+	if err != nil {
+		t.Fatalf("RunSupportBillingScenario returned error: %v", err)
+	}
+	assertBytesEqual(t, "fixture tool result golden", fixture.ExpectedToolResultJSON, run.ToolResultJSON)
+	assertBytesEqual(t, "fixture agent text output golden", fixture.ExpectedAgentTextOutput, run.AgentTextOutput)
+	assertBytesEqual(t, "fixture trace golden", fixture.ExpectedTraceJSON, run.TraceJSON)
+	assertBytesEqual(t, "fixture scorecard golden", fixture.ExpectedScorecardJSON, run.ScorecardJSON)
+
+	var turns []voicefixtures.ScriptedUserTurn
+	if err := json.Unmarshal(fixture.ScriptedUserTurnsJSON, &turns); err != nil {
+		t.Fatalf("decode scripted user turns: %v", err)
+	}
+	if len(turns) != 1 {
+		t.Fatalf("scripted user turns = %d, want 1", len(turns))
+	}
+	if strings.TrimSpace(turns[0].Text) == "" || strings.TrimSpace(turns[0].AudioArtifactRef) == "" {
+		t.Fatalf("scripted user turn missing text/audio artifact: %+v", turns[0])
+	}
 }
 
 func parseSupportPack(t *testing.T, fixture voicefixtures.SupportBillingFixture) challengepack.Bundle {
@@ -151,7 +178,10 @@ func fakeDeploymentScript(t *testing.T, script voicesim.Script, fixture voicefix
 		t.Fatalf("decode structured output: %v", err)
 	}
 
-	text := script.Steps[0].ExpectedAgentText
+	text := strings.TrimSpace(string(fixture.ExpectedAgentTextOutput))
+	if text == "" {
+		t.Fatalf("expected agent text output fixture is empty")
+	}
 	structuredOutput := structured.Output
 	if outcome == voicedeployment.OutcomeFail {
 		text = "I cannot find a duplicate charge."
@@ -276,9 +306,33 @@ func assertCanonicalVoiceEvents(t *testing.T, events []runevents.Envelope) {
 	}
 }
 
+func assertAgentTextOutput(t *testing.T, segments []multimodaltrace.Segment, want string) {
+	t.Helper()
+	for _, segment := range segments {
+		if segment.Kind != multimodaltrace.SegmentKindTextOutput {
+			continue
+		}
+		if segment.Text == nil {
+			t.Fatalf("text output segment %q has nil payload", segment.SegmentID)
+		}
+		if segment.Text.Text != want {
+			t.Fatalf("agent text output = %q, want %q", segment.Text.Text, want)
+		}
+		return
+	}
+	t.Fatalf("text output segment not found")
+}
+
+func assertBytesEqual(t *testing.T, label string, want []byte, got []byte) {
+	t.Helper()
+	if !bytes.Equal(want, got) {
+		t.Fatalf("%s mismatch\nwant:\n%s\n got:\n%s", label, string(want), string(got))
+	}
+}
+
 func contains(values []string, want string) bool {
 	for _, value := range values {
-		if value == want {
+		if strings.TrimSpace(value) == want {
 			return true
 		}
 	}
