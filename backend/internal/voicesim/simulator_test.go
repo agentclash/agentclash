@@ -2,6 +2,7 @@ package voicesim
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -74,7 +75,7 @@ func TestScriptedSimulatorRejectsUnexpectedAgentResponse(t *testing.T) {
 	script := loadTestScript(t, "testdata/support_billing_script.json")
 	simulator := newTestSimulator(t, script)
 
-	_, err := simulator.Run(fakeAgent{
+	result, err := simulator.Run(fakeAgent{
 		"turn-001": {
 			Text:      "I cannot help with that.",
 			Language:  "en-US",
@@ -83,6 +84,33 @@ func TestScriptedSimulatorRejectsUnexpectedAgentResponse(t *testing.T) {
 	})
 	if !errors.Is(err, ErrUnexpectedAgentResponse) {
 		t.Fatalf("Run error = %v, want ErrUnexpectedAgentResponse", err)
+	}
+	assertEventTypes(t, result.Events, []runevents.Type{
+		runevents.EventTypeMediaSessionStarted,
+		runevents.EventTypeTranscriptFinal,
+		runevents.EventTypeSystemRunFailed,
+	})
+	if result.Trace.Segments[0].Text.Text != "I was charged twice for my last invoice." {
+		t.Fatalf("failure result user text = %q", result.Trace.Segments[0].Text.Text)
+	}
+	wantFailureTime := time.Date(2026, 5, 13, 10, 0, 2, 200_000_000, time.UTC)
+	failureEvent := result.Events[2]
+	if !failureEvent.OccurredAt.Equal(wantFailureTime) {
+		t.Fatalf("failure occurred_at = %s, want %s", failureEvent.OccurredAt, wantFailureTime)
+	}
+	var payload struct {
+		TurnID   string `json:"turn_id"`
+		Expected string `json:"expected"`
+		Actual   string `json:"actual"`
+	}
+	if err := json.Unmarshal(failureEvent.Payload, &payload); err != nil {
+		t.Fatalf("decode failure payload: %v", err)
+	}
+	if payload.TurnID != "turn-001" || payload.Expected != "I found the duplicate charge and created refund rf_123." || payload.Actual != "I cannot help with that." {
+		t.Fatalf("failure payload = %+v", payload)
+	}
+	if !bytes.Contains(result.EventsJSON, []byte(`"event_type": "system.run.failed"`)) {
+		t.Fatalf("EventsJSON missing system.run.failed:\n%s", result.EventsJSON)
 	}
 }
 

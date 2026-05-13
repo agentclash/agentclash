@@ -258,7 +258,11 @@ func (s *Simulator) Run(agent Agent) (Result, error) {
 			}); err != nil {
 				return Result{}, err
 			}
-			return Result{}, fmt.Errorf("%w: turn_id=%s expected %q got %q", ErrUnexpectedAgentResponse, step.TurnID, step.ExpectedAgentText, response.Text)
+			result, err := s.buildResult(segments, events)
+			if err != nil {
+				return Result{}, err
+			}
+			return result, fmt.Errorf("%w: turn_id=%s expected %q got %q", ErrUnexpectedAgentResponse, step.TurnID, step.ExpectedAgentText, response.Text)
 		}
 
 		agentSegmentID := fmt.Sprintf("%s:agent-text", step.TurnID)
@@ -359,6 +363,10 @@ func (s *Simulator) Run(agent Agent) (Result, error) {
 		return Result{}, err
 	}
 
+	return s.buildResult(segments, events)
+}
+
+func (s *Simulator) buildResult(segments []multimodaltrace.Segment, events []runevents.Envelope) (Result, error) {
 	trace := multimodaltrace.Trace{
 		TraceID:       s.script.TraceID,
 		SchemaVersion: multimodaltrace.SchemaVersionV1,
