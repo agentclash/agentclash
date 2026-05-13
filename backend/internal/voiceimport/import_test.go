@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -81,16 +82,35 @@ func TestApprovedFixtureProducesDeterministicChallengeCase(t *testing.T) {
 	}
 	assertCaseShape(t, got)
 
+	freshFixture := decodeFixture(t, validFixture(RedactionStatusApprovedForRegression))
+	gotAgain, err := freshFixture.PromoteToChallengeCase()
+	if err != nil {
+		t.Fatalf("second PromoteToChallengeCase returned error: %v", err)
+	}
 	encoded, err := json.Marshal(got)
 	if err != nil {
 		t.Fatalf("marshal promoted case: %v", err)
 	}
-	encodedAgain, err := json.Marshal(got)
+	encodedAgain, err := json.Marshal(gotAgain)
 	if err != nil {
 		t.Fatalf("marshal promoted case again: %v", err)
 	}
 	if string(encoded) != string(encodedAgain) {
 		t.Fatalf("promoted case JSON is not deterministic:\n%s\n---\n%s", encoded, encodedAgain)
+	}
+}
+
+func TestImportRejectsDuplicateSegmentIDsBeforeTraceConversion(t *testing.T) {
+	fixture := validFixture(RedactionStatusRedacted)
+	fixture.Transcript[1].SegmentID = fixture.Transcript[0].Audio.SegmentID
+
+	data, err := json.Marshal(fixture)
+	if err != nil {
+		t.Fatalf("marshal fixture: %v", err)
+	}
+	_, err = Decode(data)
+	if err == nil || !strings.Contains(err.Error(), "duplicates") {
+		t.Fatalf("Decode error = %v, want duplicate segment ID error", err)
 	}
 }
 

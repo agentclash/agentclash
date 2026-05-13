@@ -153,9 +153,18 @@ func (f Fixture) Validate() error {
 	if err != nil {
 		return err
 	}
+	seenSegmentIDs := make(map[string]string, len(f.Transcript)*2)
 	for idx, entry := range f.Transcript {
 		if err := entry.Validate(artifactKeys); err != nil {
 			return fmt.Errorf("transcript[%d]: %w", idx, err)
+		}
+		if err := recordSegmentID(seenSegmentIDs, strings.TrimSpace(entry.SegmentID), fmt.Sprintf("transcript[%d].segment_id", idx)); err != nil {
+			return err
+		}
+		if entry.Audio != nil {
+			if err := recordSegmentID(seenSegmentIDs, strings.TrimSpace(entry.Audio.SegmentID), fmt.Sprintf("transcript[%d].audio.segment_id", idx)); err != nil {
+				return err
+			}
 		}
 	}
 	if len(f.ProviderEvents) == 0 {
@@ -193,6 +202,10 @@ func (f Fixture) ToTrace() (multimodaltrace.Trace, error) {
 	if err := f.Validate(); err != nil {
 		return multimodaltrace.Trace{}, err
 	}
+	return f.toTraceUnchecked()
+}
+
+func (f Fixture) toTraceUnchecked() (multimodaltrace.Trace, error) {
 	trace := multimodaltrace.Trace{
 		TraceID:       strings.TrimSpace(f.TraceID),
 		SchemaVersion: multimodaltrace.SchemaVersionV1,
@@ -248,9 +261,13 @@ func (f Fixture) ToArtifactManifest() (voiceartifacts.Manifest, error) {
 	if err := f.Validate(); err != nil {
 		return voiceartifacts.Manifest{}, err
 	}
+	return f.toArtifactManifestUnchecked(), nil
+}
+
+func (f Fixture) toArtifactManifestUnchecked() voiceartifacts.Manifest {
 	manifest := f.ArtifactManifest
 	manifest.Artifacts = append([]voiceartifacts.ArtifactRef(nil), f.ArtifactManifest.Artifacts...)
-	return manifest, nil
+	return manifest
 }
 
 func (f Fixture) PromoteToChallengeCase() (challengepack.CaseDefinition, error) {
@@ -260,14 +277,11 @@ func (f Fixture) PromoteToChallengeCase() (challengepack.CaseDefinition, error) 
 	if f.Redaction.Status != RedactionStatusApprovedForRegression {
 		return challengepack.CaseDefinition{}, fmt.Errorf("%w: status %q", ErrPromotionNotApproved, f.Redaction.Status)
 	}
-	trace, err := f.ToTrace()
+	trace, err := f.toTraceUnchecked()
 	if err != nil {
 		return challengepack.CaseDefinition{}, err
 	}
-	manifest, err := f.ToArtifactManifest()
-	if err != nil {
-		return challengepack.CaseDefinition{}, err
-	}
+	manifest := f.toArtifactManifestUnchecked()
 	labels := append([]ReviewerLabel(nil), f.ReviewerLabels...)
 	sort.SliceStable(labels, func(i, j int) bool {
 		if labels[i].Key == labels[j].Key {
@@ -329,6 +343,17 @@ func (f Fixture) validateArtifactManifest() (map[string]voiceartifacts.ArtifactR
 		return nil, errors.New("artifact_manifest must include redaction_metadata_json artifact")
 	}
 	return artifactKeys, nil
+}
+
+func recordSegmentID(seen map[string]string, segmentID string, field string) error {
+	if segmentID == "" {
+		return nil
+	}
+	if previousField, ok := seen[segmentID]; ok {
+		return fmt.Errorf("%s duplicates %s %q", field, previousField, segmentID)
+	}
+	seen[segmentID] = field
+	return nil
 }
 
 func (s SourceMetadata) Validate() error {
