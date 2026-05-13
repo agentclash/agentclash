@@ -127,6 +127,9 @@ func (t Trace) Validate() error {
 	if t.RunAgentID == uuid.Nil {
 		return errors.New("run_agent_id is required")
 	}
+	if len(t.Segments) == 0 {
+		return errors.New("segments must contain at least one segment")
+	}
 	seenSequences := make(map[int64]struct{}, len(t.Segments))
 	seenSegmentIDs := make(map[string]Segment, len(t.Segments))
 	seenToolCalls := make(map[string]ToolCallPayload)
@@ -183,22 +186,8 @@ func (s Segment) Validate() error {
 }
 
 func (k SegmentKind) IsValid() bool {
-	switch k {
-	case SegmentKindAudioInput,
-		SegmentKindAudioOutput,
-		SegmentKindTextInput,
-		SegmentKindTextOutput,
-		SegmentKindTranscriptPartial,
-		SegmentKindTranscriptFinal,
-		SegmentKindToolCall,
-		SegmentKindToolResult,
-		SegmentKindStructuredOutput,
-		SegmentKindTimingMarker,
-		SegmentKindMediaControl:
-		return true
-	default:
-		return false
-	}
+	_, ok := segmentPayloadValidators[k]
+	return ok
 }
 
 func (a Actor) IsValid() bool {
@@ -267,50 +256,81 @@ func (s Segment) payloadCount() int {
 }
 
 func (s Segment) validatePayloadForKind() error {
-	switch s.Kind {
-	case SegmentKindAudioInput, SegmentKindAudioOutput:
-		if s.Audio == nil {
-			return errors.New("audio payload is required")
-		}
-		return s.Audio.Validate()
-	case SegmentKindTextInput, SegmentKindTextOutput:
-		if s.Text == nil {
-			return errors.New("text payload is required")
-		}
-		return s.Text.Validate()
-	case SegmentKindTranscriptPartial, SegmentKindTranscriptFinal:
-		if s.Transcript == nil {
-			return errors.New("transcript payload is required")
-		}
-		return s.Transcript.Validate()
-	case SegmentKindToolCall:
-		if s.ToolCall == nil {
-			return errors.New("tool_call payload is required")
-		}
-		return s.ToolCall.Validate()
-	case SegmentKindToolResult:
-		if s.ToolResult == nil {
-			return errors.New("tool_result payload is required")
-		}
-		return s.ToolResult.Validate()
-	case SegmentKindStructuredOutput:
-		if s.StructuredOutput == nil {
-			return errors.New("structured_output payload is required")
-		}
-		return s.StructuredOutput.Validate()
-	case SegmentKindTimingMarker:
-		if s.TimingMarker == nil {
-			return errors.New("timing_marker payload is required")
-		}
-		return s.TimingMarker.Validate()
-	case SegmentKindMediaControl:
-		if s.MediaControl == nil {
-			return errors.New("media_control payload is required")
-		}
-		return s.MediaControl.Validate()
-	default:
+	validator, ok := segmentPayloadValidators[s.Kind]
+	if !ok {
 		return fmt.Errorf("%w: %q", ErrInvalidSegmentKind, s.Kind)
 	}
+	return validator(s)
+}
+
+var segmentPayloadValidators = map[SegmentKind]func(Segment) error{
+	SegmentKindAudioInput:        validateAudioSegment,
+	SegmentKindAudioOutput:       validateAudioSegment,
+	SegmentKindTextInput:         validateTextSegment,
+	SegmentKindTextOutput:        validateTextSegment,
+	SegmentKindTranscriptPartial: validateTranscriptSegment,
+	SegmentKindTranscriptFinal:   validateTranscriptSegment,
+	SegmentKindToolCall:          validateToolCallSegment,
+	SegmentKindToolResult:        validateToolResultSegment,
+	SegmentKindStructuredOutput:  validateStructuredOutputSegment,
+	SegmentKindTimingMarker:      validateTimingMarkerSegment,
+	SegmentKindMediaControl:      validateMediaControlSegment,
+}
+
+func validateAudioSegment(s Segment) error {
+	if s.Audio == nil {
+		return errors.New("audio payload is required")
+	}
+	return s.Audio.Validate()
+}
+
+func validateTextSegment(s Segment) error {
+	if s.Text == nil {
+		return errors.New("text payload is required")
+	}
+	return s.Text.Validate()
+}
+
+func validateTranscriptSegment(s Segment) error {
+	if s.Transcript == nil {
+		return errors.New("transcript payload is required")
+	}
+	return s.Transcript.Validate()
+}
+
+func validateToolCallSegment(s Segment) error {
+	if s.ToolCall == nil {
+		return errors.New("tool_call payload is required")
+	}
+	return s.ToolCall.Validate()
+}
+
+func validateToolResultSegment(s Segment) error {
+	if s.ToolResult == nil {
+		return errors.New("tool_result payload is required")
+	}
+	return s.ToolResult.Validate()
+}
+
+func validateStructuredOutputSegment(s Segment) error {
+	if s.StructuredOutput == nil {
+		return errors.New("structured_output payload is required")
+	}
+	return s.StructuredOutput.Validate()
+}
+
+func validateTimingMarkerSegment(s Segment) error {
+	if s.TimingMarker == nil {
+		return errors.New("timing_marker payload is required")
+	}
+	return s.TimingMarker.Validate()
+}
+
+func validateMediaControlSegment(s Segment) error {
+	if s.MediaControl == nil {
+		return errors.New("media_control payload is required")
+	}
+	return s.MediaControl.Validate()
 }
 
 func (p TextPayload) Validate() error {
@@ -365,6 +385,9 @@ func (p ToolResultPayload) Validate() error {
 	}
 	if p.ToolName == "" {
 		return errors.New("tool_result.tool_name is required")
+	}
+	if len(p.Result) == 0 && p.Error == "" {
+		return errors.New("tool_result must contain at least one of result or error")
 	}
 	if len(p.Result) > 0 && !json.Valid(p.Result) {
 		return errors.New("tool_result.result must be valid JSON")

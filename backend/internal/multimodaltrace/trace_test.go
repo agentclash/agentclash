@@ -84,6 +84,13 @@ func TestTraceValidateRequiresCoreFields(t *testing.T) {
 			},
 			wantErr: "segment_id is required",
 		},
+		{
+			name: "segments",
+			mutate: func(trace *Trace) {
+				trace.Segments = nil
+			},
+			wantErr: "segments must contain at least one segment",
+		},
 	}
 
 	for _, tt := range tests {
@@ -129,6 +136,34 @@ func TestTraceValidateSegmentKinds(t *testing.T) {
 	err := segment.Validate()
 	if !errors.Is(err, ErrInvalidSegmentKind) {
 		t.Fatalf("Validate() error = %v, want ErrInvalidSegmentKind", err)
+	}
+}
+
+func TestSegmentKindPayloadValidatorsStayInSync(t *testing.T) {
+	kinds := []SegmentKind{
+		SegmentKindAudioInput,
+		SegmentKindAudioOutput,
+		SegmentKindTextInput,
+		SegmentKindTextOutput,
+		SegmentKindTranscriptPartial,
+		SegmentKindTranscriptFinal,
+		SegmentKindToolCall,
+		SegmentKindToolResult,
+		SegmentKindStructuredOutput,
+		SegmentKindTimingMarker,
+		SegmentKindMediaControl,
+	}
+
+	if len(segmentPayloadValidators) != len(kinds) {
+		t.Fatalf("segmentPayloadValidators has %d entries, want %d", len(segmentPayloadValidators), len(kinds))
+	}
+	for _, kind := range kinds {
+		if !kind.IsValid() {
+			t.Fatalf("%q IsValid() = false, want true", kind)
+		}
+		if _, ok := segmentPayloadValidators[kind]; !ok {
+			t.Fatalf("%q missing payload validator", kind)
+		}
 	}
 }
 
@@ -268,6 +303,14 @@ func TestTraceValidateReferences(t *testing.T) {
 				segment.ToolCall = &ToolCallPayload{CallID: "call-1", ToolName: "refund_api", Arguments: json.RawMessage(`{bad`)}
 			}),
 			wantErr: "tool_call.arguments must be valid JSON",
+		},
+		{
+			name: "tool_result_requires_result_or_error",
+			segment: segmentWith(func(segment *Segment) {
+				segment.Kind = SegmentKindToolResult
+				segment.ToolResult = &ToolResultPayload{CallID: "call-1", ToolName: "refund_api"}
+			}),
+			wantErr: "tool_result must contain at least one of result or error",
 		},
 		{
 			name: "structured_output_must_be_json",
