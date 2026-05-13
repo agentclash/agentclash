@@ -28,9 +28,9 @@ type Expectations struct {
 	RequireInterruption bool
 	RequireMediaPolicy  bool
 
-	MinDialogueRetentionRatio      float64
-	MinBackgroundPreservationRatio float64
-	MaxSpeechDropRisk              float64
+	MinDialogueRetentionRatio      *float64
+	MinBackgroundPreservationRatio *float64
+	MaxSpeechDropRisk              *float64
 }
 
 type Scorecard struct {
@@ -395,9 +395,9 @@ func ptrFloat64(value float64) *float64 {
 	return &value
 }
 
-func ratioOrDefault(value float64, fallback float64) float64 {
-	if value > 0 {
-		return value
+func ratioOrDefault(value *float64, fallback float64) float64 {
+	if value != nil {
+		return *value
 	}
 	return fallback
 }

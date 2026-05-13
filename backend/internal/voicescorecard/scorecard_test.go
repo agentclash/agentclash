@@ -112,9 +112,9 @@ func TestGenerateScorecardMediaPolicyCases(t *testing.T) {
 	input := withMediaPolicyMetrics(loadGoldenInput(t), 0.94, 0.91, 0.04)
 	expectations := defaultExpectations()
 	expectations.RequireMediaPolicy = true
-	expectations.MinDialogueRetentionRatio = 0.9
-	expectations.MinBackgroundPreservationRatio = 0.85
-	expectations.MaxSpeechDropRisk = 0.1
+	expectations.MinDialogueRetentionRatio = ptrFloat64(0.9)
+	expectations.MinBackgroundPreservationRatio = ptrFloat64(0.85)
+	expectations.MaxSpeechDropRisk = ptrFloat64(0.1)
 
 	scorecard := generateScorecard(t, input, expectations)
 	if !scorecard.Passed {
@@ -142,6 +142,13 @@ func TestGenerateScorecardMediaPolicyCases(t *testing.T) {
 	}
 	if !contains(degraded.DegradedKeys, voiceeval.KeyBackgroundPreservationRatio) {
 		t.Fatalf("degraded keys = %v, want background preservation key", degraded.DegradedKeys)
+	}
+
+	strict := expectations
+	strict.MaxSpeechDropRisk = ptrFloat64(0)
+	strictScorecard := generateScorecard(t, input, strict)
+	if !strictScorecard.HardGateFailed {
+		t.Fatalf("strict zero MaxSpeechDropRisk should hard-fail when speech drop risk is non-zero")
 	}
 }
 
