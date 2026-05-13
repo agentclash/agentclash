@@ -98,7 +98,6 @@ function renderClient(options?: { workflowRunURL?: string }) {
           status: "running",
           execution_mode: "comparison",
           mode: "text-sim",
-          modality: "voice",
           voice: {
             mode: "text-sim",
             modality: "voice",

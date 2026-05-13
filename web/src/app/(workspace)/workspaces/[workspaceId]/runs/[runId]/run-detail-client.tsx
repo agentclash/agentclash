@@ -378,7 +378,7 @@ export function RunDetailClient({
             </Badge>
             {voiceRun && (
               <VoiceModeBadges
-                modality={run.modality}
+                modality={run.voice?.modality ?? run.modality}
                 mode={voiceRunMode(run)}
                 transport={voiceRunTransport(run)}
               />

@@ -517,6 +517,7 @@ describe("CreateRunDialog", () => {
       expect(voiceModeSelect.disabled).toBe(false);
 
       clickElement(findCheckboxByLabel("Primary Agent"));
+      expect(document.body.textContent).toContain("using Text simulation");
       clickElement(findButton("Create Run"));
 
       await waitFor(() => {

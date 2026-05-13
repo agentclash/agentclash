@@ -11,6 +11,7 @@ import { workspaceMutationKeys, workspaceResourceKeys } from "@/lib/workspace-re
 import { VoiceModeBadges } from "@/components/voice/voice-mode-badges";
 import {
   hasVoiceVersion,
+  humanVoiceMode,
   isVoiceVersion,
   versionSupportsTextSim,
   VOICE_MODE_TEXT_SIM,
@@ -803,7 +804,7 @@ export function CreateRunDialog({ workspaceId }: CreateRunDialogProps) {
                 <>
                   {" "}using{" "}
                   <span className="text-foreground font-medium">
-                    text simulation
+                    {humanVoiceMode(selectedMode)}
                   </span>
                 </>
               )}

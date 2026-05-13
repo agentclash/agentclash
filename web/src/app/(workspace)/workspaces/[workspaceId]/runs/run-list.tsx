@@ -185,7 +185,7 @@ export function RunList({ workspaceId }: { workspaceId: string }) {
                     </div>
                     {isVoiceRun(run) && (
                       <VoiceModeBadges
-                        modality={run.modality}
+                        modality={run.voice?.modality ?? run.modality}
                         mode={voiceRunMode(run)}
                         transport={voiceRunTransport(run)}
                       />

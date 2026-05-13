@@ -26,7 +26,7 @@ const LEGACY_DIM_META: Record<
   cost: { label: "CST", icon: DollarSign },
   task_business_success: { label: "TASK", icon: Target },
   interaction_quality: { label: "IQ", icon: MessageCircle },
-  robustness: { label: "ROB", icon: Shield },
+  robustness: { label: "ROB", icon: Wrench },
   tool_data_correctness: { label: "TOOL", icon: Wrench },
 };
 
