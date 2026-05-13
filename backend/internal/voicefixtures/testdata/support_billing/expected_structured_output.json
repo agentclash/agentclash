@@ -1,0 +1,9 @@
+{
+  "schema_ref": "voice.support.resolution.v1",
+  "output": {
+    "final_message": "I found the duplicate charge and created refund rf_123 for $42.00.",
+    "refund_id": "rf_123",
+    "requires_human_transfer": false,
+    "resolution": "refund_created"
+  }
+}
