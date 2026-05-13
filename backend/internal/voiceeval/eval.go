@@ -197,18 +197,7 @@ func MetricEndOfUserTurnToFirstAgentOutput(input Input, key string) MetricResult
 			return MetricResult{Key: key, State: StatePassed, ValueMS: segment.TimingMarker.ValueMS}
 		}
 	}
-	userAt, ok := firstUserInputTime(input.Trace)
-	if !ok {
-		return unavailableMetric(key, "user input timestamp not found")
-	}
-	agentAt, ok := firstAgentOutputTime(input.Trace)
-	if !ok {
-		return unavailableMetric(key, "agent output timestamp not found")
-	}
-	if agentAt.Before(userAt) {
-		return unavailableMetric(key, "agent output occurs before user input")
-	}
-	return MetricResult{Key: key, State: StatePassed, ValueMS: millis(agentAt.Sub(userAt))}
+	return unavailableMetric(key, "explicit end-of-user-turn latency evidence not found")
 }
 
 func ValidateInput(input Input) error {
@@ -269,18 +258,18 @@ func metricRecordedValue(events []runevents.Envelope, key string) (int64, bool, 
 			continue
 		}
 		var payload struct {
-			ValueMS int64 `json:"value_ms"`
+			ValueMS *int64 `json:"value_ms"`
 		}
-		if err := json.Unmarshal(event.Payload, &payload); err != nil || payload.ValueMS < 0 {
+		if err := json.Unmarshal(event.Payload, &payload); err != nil || payload.ValueMS == nil || *payload.ValueMS < 0 {
 			return 0, true, false
 		}
-		return payload.ValueMS, true, true
+		return *payload.ValueMS, true, true
 	}
 	return 0, false, false
 }
 
 func orderedEventBounds(events []runevents.Envelope) (time.Time, time.Time, bool) {
-	if len(events) == 0 {
+	if len(events) < 2 {
 		return time.Time{}, time.Time{}, false
 	}
 	first, last := events[0].OccurredAt, events[0].OccurredAt
@@ -294,7 +283,7 @@ func orderedEventBounds(events []runevents.Envelope) (time.Time, time.Time, bool
 }
 
 func orderedSegmentBounds(segments []multimodaltrace.Segment) (time.Time, time.Time, bool) {
-	if len(segments) == 0 {
+	if len(segments) < 2 {
 		return time.Time{}, time.Time{}, false
 	}
 	first, last := segments[0].OccurredAt, segments[0].OccurredAt
@@ -305,24 +294,6 @@ func orderedSegmentBounds(segments []multimodaltrace.Segment) (time.Time, time.T
 		last = segment.OccurredAt
 	}
 	return first, last, true
-}
-
-func firstUserInputTime(trace multimodaltrace.Trace) (time.Time, bool) {
-	for _, segment := range trace.Segments {
-		if segment.Actor == multimodaltrace.ActorUser && (segment.Kind == multimodaltrace.SegmentKindTextInput || segment.Kind == multimodaltrace.SegmentKindAudioInput) {
-			return segment.OccurredAt, true
-		}
-	}
-	return time.Time{}, false
-}
-
-func firstAgentOutputTime(trace multimodaltrace.Trace) (time.Time, bool) {
-	for _, segment := range trace.Segments {
-		if segment.Actor == multimodaltrace.ActorAgent && (segment.Kind == multimodaltrace.SegmentKindTextOutput || segment.Kind == multimodaltrace.SegmentKindAudioOutput) {
-			return segment.OccurredAt, true
-		}
-	}
-	return time.Time{}, false
 }
 
 func segmentTurnID(segmentID string) string {

@@ -65,8 +65,12 @@ func TestVoiceMetricsAgainstTextSimGolden(t *testing.T) {
 		{"total duration degraded event order", MetricTotalDuration(withBackwardsEventTime(input), KeyTotalDurationMS), StateUnavailable, 0, false},
 		{"latency from voice metric event", MetricEndOfUserTurnToFirstAgentOutput(input, KeyEndOfUserTurnToFirstAgentOutputMS), StatePassed, 1200, true},
 		{"latency degraded metric event", MetricEndOfUserTurnToFirstAgentOutput(withInvalidVoiceMetric(input), KeyEndOfUserTurnToFirstAgentOutputMS), StateUnavailable, 0, false},
+		{"latency missing metric value", MetricEndOfUserTurnToFirstAgentOutput(withMissingVoiceMetricValue(input), KeyEndOfUserTurnToFirstAgentOutputMS), StateUnavailable, 0, false},
 		{"latency unavailable without user input", MetricEndOfUserTurnToFirstAgentOutput(withoutUserTurns(withoutTimingMarkers(withoutVoiceMetric(input))), KeyEndOfUserTurnToFirstAgentOutputMS), StateUnavailable, 0, false},
 		{"latency unavailable when agent precedes user", MetricEndOfUserTurnToFirstAgentOutput(agentBeforeUser(withoutTimingMarkers(withoutVoiceMetric(input))), KeyEndOfUserTurnToFirstAgentOutputMS), StateUnavailable, 0, false},
+		{"latency unavailable without explicit evidence", MetricEndOfUserTurnToFirstAgentOutput(withoutTimingMarkers(withoutVoiceMetric(input)), KeyEndOfUserTurnToFirstAgentOutputMS), StateUnavailable, 0, false},
+		{"total duration unavailable with one event", MetricTotalDuration(withOnlyOneEvent(input), KeyTotalDurationMS), StateUnavailable, 0, false},
+		{"total duration unavailable with one segment", MetricTotalDuration(withOnlyOneSegment(withoutEvents(input)), KeyTotalDurationMS), StateUnavailable, 0, false},
 	}
 
 	for _, tc := range metrics {
@@ -91,19 +95,29 @@ func TestValidateInputRejectsMalformedEvidence(t *testing.T) {
 }
 
 func TestStableKeys(t *testing.T) {
-	keys := []string{
-		KeyTaskSuccess,
-		KeyToolCallName,
-		KeyToolCallArguments,
-		KeyNoForbiddenPhrase,
-		KeyMaxTurns,
-		KeyInterruptionHandled,
-		KeyTotalDurationMS,
-		KeyEndOfUserTurnToFirstAgentOutputMS,
+	keys := map[string]string{
+		"task success":                  KeyTaskSuccess,
+		"tool call name":                KeyToolCallName,
+		"tool call arguments":           KeyToolCallArguments,
+		"no forbidden phrase":           KeyNoForbiddenPhrase,
+		"max turns":                     KeyMaxTurns,
+		"interruption handled":          KeyInterruptionHandled,
+		"total duration ms":             KeyTotalDurationMS,
+		"end user turn to agent output": KeyEndOfUserTurnToFirstAgentOutputMS,
 	}
-	for _, key := range keys {
-		if key == "" {
-			t.Fatalf("stable key must not be empty")
+	want := map[string]string{
+		"task success":                  "task_success",
+		"tool call name":                "tool_call_name",
+		"tool call arguments":           "tool_call_arguments",
+		"no forbidden phrase":           "no_forbidden_phrase",
+		"max turns":                     "max_turns",
+		"interruption handled":          "interruption_handled",
+		"total duration ms":             "total_duration_ms",
+		"end user turn to agent output": "end_of_user_turn_to_first_agent_output_ms",
+	}
+	for name, key := range keys {
+		if key != want[name] {
+			t.Fatalf("%s key = %q, want %q", name, key, want[name])
 		}
 	}
 }
@@ -169,6 +183,27 @@ func withInvalidVoiceMetric(input Input) Input {
 			return input
 		}
 	}
+	return input
+}
+
+func withMissingVoiceMetricValue(input Input) Input {
+	input.Events = append([]runevents.Envelope(nil), input.Events...)
+	for idx := range input.Events {
+		if input.Events[idx].EventType == runevents.EventTypeVoiceMetricRecorded {
+			input.Events[idx].Payload = json.RawMessage(`{"metric_key":"end_of_user_text_to_first_agent_text"}`)
+			return input
+		}
+	}
+	return input
+}
+
+func withOnlyOneEvent(input Input) Input {
+	input.Events = input.Events[:1]
+	return input
+}
+
+func withOnlyOneSegment(input Input) Input {
+	input.Trace.Segments = input.Trace.Segments[:1]
 	return input
 }
 
