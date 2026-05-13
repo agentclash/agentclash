@@ -65,7 +65,7 @@ func BuildVoiceComparisonSummary(baseline, candidate voicescorecard.Scorecard, c
 			VoiceDimensionInteractionQuality:  voiceDimensionDelta(baseline, candidate, VoiceDimensionInteractionQuality, "higher"),
 			VoiceDimensionToolDataCorrectness: voiceDimensionDelta(baseline, candidate, VoiceDimensionToolDataCorrectness, "higher"),
 			VoiceDimensionLatencyMS:           voiceMetricDelta(baseline, candidate, "latency", "end_of_user_turn_to_first_agent_output_ms", "lower"),
-			VoiceDimensionMissingEvidence:     voiceDelta(float64(len(baseline.DegradedKeys)), float64(len(candidate.DegradedKeys)), "lower"),
+			VoiceDimensionMissingEvidence:     voiceDelta(0, float64(newCandidateDegradedKeyCount(baseline.DegradedKeys, candidate.DegradedKeys)), "lower"),
 		},
 		ScorecardPass: &ScorecardPassSummary{
 			Baseline:  boolPtr(!baseline.HardGateFailed),
@@ -80,6 +80,25 @@ func BuildVoiceComparisonSummary(baseline, candidate voicescorecard.Scorecard, c
 			Warnings: warnings,
 		},
 	}
+}
+
+func newCandidateDegradedKeyCount(baselineKeys []string, candidateKeys []string) int {
+	baselineSet := make(map[string]struct{}, len(baselineKeys))
+	for _, key := range baselineKeys {
+		baselineSet[strings.TrimSpace(key)] = struct{}{}
+	}
+	count := 0
+	for _, key := range candidateKeys {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		if _, ok := baselineSet[key]; ok {
+			continue
+		}
+		count++
+	}
+	return count
 }
 
 func voiceDimensionDelta(baseline, candidate voicescorecard.Scorecard, key string, direction string) DimensionDelta {

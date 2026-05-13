@@ -88,6 +88,30 @@ func TestEvaluateVoiceComparisonMissingMetricCanFailOrWarnByPolicy(t *testing.T)
 	}
 }
 
+func TestEvaluateVoiceComparisonMissingEvidenceKeySwapFails(t *testing.T) {
+	baseline := voiceScorecard()
+	baseline.Passed = false
+	baseline.DegradedKeys = []string{"transcript_available"}
+
+	candidate := voiceScorecard()
+	candidate.Passed = false
+	candidate.DegradedKeys = []string{"end_of_user_turn_to_first_agent_output_ms"}
+	removeVoiceLatencyMetric(&candidate)
+
+	evaluation := evaluateVoice(t, baseline, candidate, VoiceComparisonConfig{MissingEvidenceOutcome: VerdictFail})
+
+	if evaluation.Verdict != VerdictFail {
+		t.Fatalf("verdict = %q, want %q", evaluation.Verdict, VerdictFail)
+	}
+	if evaluation.ReasonCode != "threshold_fail_voice_missing_evidence" {
+		t.Fatalf("reason code = %q, want threshold_fail_voice_missing_evidence", evaluation.ReasonCode)
+	}
+	result := evaluation.Details.DimensionResults[VoiceDimensionMissingEvidence]
+	if result.ObservedDelta == nil || *result.ObservedDelta != 1 {
+		t.Fatalf("missing evidence delta = %v, want 1", result.ObservedDelta)
+	}
+}
+
 func TestExistingNonVoiceCompareFixtureStillPasses(t *testing.T) {
 	evaluation, err := Evaluate(testSummary(t, `{
 		"status":"comparable",
