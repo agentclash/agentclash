@@ -47,6 +47,25 @@ const (
 	EventTypeScoringFailed         Type = "scoring.failed"
 
 	EventTypeRaceStandingsInjected Type = "race.standings.injected"
+
+	EventTypeMediaSessionStarted Type = "media.session.started"
+	EventTypeMediaFrameReceived  Type = "media.frame.received"
+	EventTypeSpeechStarted       Type = "speech.started"
+	EventTypeSpeechStopped       Type = "speech.stopped"
+	EventTypeTranscriptPartial   Type = "transcript.partial"
+	EventTypeTranscriptFinal     Type = "transcript.final"
+	EventTypeTurnCompleted       Type = "turn.completed"
+	EventTypeAgentAudioStarted   Type = "agent.audio.started"
+	EventTypeAgentAudioCompleted Type = "agent.audio.completed"
+	// Barge-in is specified as one domain term in #758, so the canonical value intentionally keeps the underscore.
+	EventTypeBargeInDetected     Type = "barge_in.detected"
+	EventTypeAudioBufferCleared  Type = "audio.buffer.cleared"
+	EventTypeDTMFReceived        Type = "dtmf.received"
+	EventTypeTelephonyAnswered   Type = "telephony.answered"
+	EventTypeTelephonyVoicemail  Type = "telephony.voicemail"
+	EventTypeTransferStarted     Type = "transfer.started"
+	EventTypeTransferBridged     Type = "transfer.bridged"
+	EventTypeVoiceMetricRecorded Type = "voice.metric.recorded"
 )
 
 type Source string
@@ -59,6 +78,8 @@ const (
 	SourceAgentHarnessWorker Source = "agent_harness_worker"
 	SourceWorkerScoring      Source = "worker_scoring"
 	SourceGraderVerification Source = "grader_verification"
+	SourceVoiceAdapter       Source = "voice_adapter"
+	SourceMediaGateway       Source = "media_gateway"
 )
 
 type EvidenceLevel string
@@ -68,6 +89,7 @@ const (
 	EvidenceLevelHostedStructured EvidenceLevel = "hosted_structured"
 	EvidenceLevelHostedBlackBox   EvidenceLevel = "hosted_black_box"
 	EvidenceLevelDerivedSummary   EvidenceLevel = "derived_summary"
+	EvidenceLevelVoiceStructured  EvidenceLevel = "voice_structured"
 )
 
 var (
@@ -85,6 +107,9 @@ type SummaryMetadata struct {
 	ToolCategory    string        `json:"tool_category,omitempty"`
 	SandboxAction   string        `json:"sandbox_action,omitempty"`
 	MetricKey       string        `json:"metric_key,omitempty"`
+	TurnIndex       *int          `json:"turn_index,omitempty"`
+	Speaker         string        `json:"speaker,omitempty"`
+	Channel         string        `json:"channel,omitempty"`
 	ExternalRunID   string        `json:"external_run_id,omitempty"`
 	EvidenceLevel   EvidenceLevel `json:"evidence_level,omitempty"`
 	IdempotencyKey  string        `json:"idempotency_key,omitempty"`
@@ -174,7 +199,24 @@ func isValidType(eventType Type) bool {
 		EventTypeScoringMetricRecorded,
 		EventTypeScoringCompleted,
 		EventTypeScoringFailed,
-		EventTypeRaceStandingsInjected:
+		EventTypeRaceStandingsInjected,
+		EventTypeMediaSessionStarted,
+		EventTypeMediaFrameReceived,
+		EventTypeSpeechStarted,
+		EventTypeSpeechStopped,
+		EventTypeTranscriptPartial,
+		EventTypeTranscriptFinal,
+		EventTypeTurnCompleted,
+		EventTypeAgentAudioStarted,
+		EventTypeAgentAudioCompleted,
+		EventTypeBargeInDetected,
+		EventTypeAudioBufferCleared,
+		EventTypeDTMFReceived,
+		EventTypeTelephonyAnswered,
+		EventTypeTelephonyVoicemail,
+		EventTypeTransferStarted,
+		EventTypeTransferBridged,
+		EventTypeVoiceMetricRecorded:
 		return true
 	default:
 		return false
@@ -183,7 +225,15 @@ func isValidType(eventType Type) bool {
 
 func isValidSource(source Source) bool {
 	switch source {
-	case SourceNativeEngine, SourcePromptEvalEngine, SourceHostedExternal, SourceHostedCallback, SourceAgentHarnessWorker, SourceWorkerScoring, SourceGraderVerification:
+	case SourceNativeEngine,
+		SourcePromptEvalEngine,
+		SourceHostedExternal,
+		SourceHostedCallback,
+		SourceAgentHarnessWorker,
+		SourceWorkerScoring,
+		SourceGraderVerification,
+		SourceVoiceAdapter,
+		SourceMediaGateway:
 		return true
 	default:
 		return false
