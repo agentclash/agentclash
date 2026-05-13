@@ -25,6 +25,14 @@ var supportedToolKinds = map[string]struct{}{
 	"network": {},
 }
 
+var supportedVoiceTransports = map[string]struct{}{
+	"text_sim":  {},
+	"webrtc":    {},
+	"sip":       {},
+	"pstn":      {},
+	"websocket": {},
+}
+
 type ValidationError struct {
 	Field   string
 	Message string
@@ -59,6 +67,7 @@ func ValidateBundle(bundle Bundle) error {
 	if bundle.Version.Number <= 0 {
 		errs = append(errs, ValidationError{Field: "version.number", Message: "must be greater than 0"})
 	}
+	errs = append(errs, validateModalityConfig(bundle)...)
 	switch bundle.Version.ExecutionMode {
 	case "", ExecutionModeNative, ExecutionModePromptEval:
 	default:
@@ -191,6 +200,79 @@ func ValidateBundle(bundle Bundle) error {
 		return errs
 	}
 	return nil
+}
+
+func validateModalityConfig(bundle Bundle) ValidationErrors {
+	var errs ValidationErrors
+	switch strings.TrimSpace(bundle.Modality) {
+	case "":
+		if bundle.InterfaceSpec != nil {
+			errs = append(errs, ValidationError{Field: "modality", Message: "is required when interface_spec is set"})
+		}
+		if bundle.Scenario != nil {
+			errs = append(errs, ValidationError{Field: "modality", Message: "is required when scenario is set"})
+		}
+		return errs
+	case ModalityVoice:
+		errs = append(errs, validateVoiceInterfaceSpec("interface_spec", bundle.InterfaceSpec)...)
+		errs = append(errs, validateVoiceScenarioSpec("scenario", bundle.Scenario)...)
+	default:
+		errs = append(errs, ValidationError{Field: "modality", Message: `must be "voice" when specified`})
+	}
+	return errs
+}
+
+func validateVoiceInterfaceSpec(path string, spec *InterfaceSpec) ValidationErrors {
+	if spec == nil {
+		return ValidationErrors{{Field: path, Message: "is required when modality is voice"}}
+	}
+
+	var errs ValidationErrors
+	if len(spec.Transports) == 0 {
+		errs = append(errs, ValidationError{Field: path + ".transports", Message: "must contain at least one transport"})
+	}
+	seen := map[string]struct{}{}
+	for i, transport := range spec.Transports {
+		field := fmt.Sprintf("%s.transports[%d]", path, i)
+		normalized := strings.TrimSpace(transport)
+		if normalized == "" {
+			errs = append(errs, ValidationError{Field: field, Message: "must be one of text_sim, webrtc, sip, pstn, websocket"})
+			continue
+		}
+		if _, exists := seen[normalized]; exists {
+			errs = append(errs, ValidationError{Field: field, Message: "must be unique"})
+			continue
+		}
+		seen[normalized] = struct{}{}
+		if _, ok := supportedVoiceTransports[normalized]; !ok {
+			errs = append(errs, ValidationError{Field: field, Message: "must be one of text_sim, webrtc, sip, pstn, websocket"})
+		}
+	}
+	if strings.TrimSpace(spec.ChannelProfile) == "" {
+		errs = append(errs, ValidationError{Field: path + ".channel_profile", Message: "is required when modality is voice"})
+	}
+	return errs
+}
+
+func validateVoiceScenarioSpec(path string, spec *ScenarioSpec) ValidationErrors {
+	if spec == nil {
+		return ValidationErrors{{Field: path, Message: "is required when modality is voice"}}
+	}
+
+	var errs ValidationErrors
+	if strings.TrimSpace(spec.Persona) == "" {
+		errs = append(errs, ValidationError{Field: path + ".persona", Message: "is required when modality is voice"})
+	}
+	if strings.TrimSpace(spec.Language) == "" {
+		errs = append(errs, ValidationError{Field: path + ".language", Message: "is required when modality is voice"})
+	}
+	if spec.MaxTurns <= 0 {
+		errs = append(errs, ValidationError{Field: path + ".max_turns", Message: "must be greater than 0 when modality is voice"})
+	}
+	if spec.MaxDurationMS <= 0 {
+		errs = append(errs, ValidationError{Field: path + ".max_duration_ms", Message: "must be greater than 0 when modality is voice"})
+	}
+	return errs
 }
 
 func validateDeploymentDefaults(path string, defaults *DeploymentDefaults) ValidationErrors {
