@@ -351,13 +351,14 @@ func normalizeInterfaceSpec(spec *InterfaceSpec) *InterfaceSpec {
 	if spec == nil {
 		return nil
 	}
+	var transports []string
+	for _, transport := range spec.Transports {
+		transports = append(transports, strings.TrimSpace(transport))
+	}
 	normalized := &InterfaceSpec{
-		Transports:      make([]string, 0, len(spec.Transports)),
+		Transports:      transports,
 		ChannelProfile:  strings.TrimSpace(spec.ChannelProfile),
 		SupportsBargeIn: spec.SupportsBargeIn,
-	}
-	for _, transport := range spec.Transports {
-		normalized.Transports = append(normalized.Transports, strings.TrimSpace(transport))
 	}
 	return normalized
 }

@@ -327,6 +327,22 @@ func TestValidateBundleVoiceModalityCases(t *testing.T) {
 			wantFields: []string{"scenario.language"},
 		},
 		{
+			name: "missing scenario persona",
+			mutate: func(bundle *Bundle) {
+				*bundle = minimalVoiceBundle()
+				bundle.Scenario.Persona = ""
+			},
+			wantFields: []string{"scenario.persona"},
+		},
+		{
+			name: "missing scenario max_duration_ms",
+			mutate: func(bundle *Bundle) {
+				*bundle = minimalVoiceBundle()
+				bundle.Scenario.MaxDurationMS = 0
+			},
+			wantFields: []string{"scenario.max_duration_ms"},
+		},
+		{
 			name: "duplicate metric keys",
 			mutate: func(bundle *Bundle) {
 				bundle.Version.EvaluationSpec.Metrics = []scoring.MetricDeclaration{
@@ -385,6 +401,21 @@ func TestValidateBundleVoiceModalityCases(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestNormalizeInterfaceSpecOmitsEmptyVoiceTransports(t *testing.T) {
+	normalized := normalizeInterfaceSpec(&InterfaceSpec{ChannelProfile: "deterministic_text"})
+	encoded, err := json.Marshal(normalized)
+	if err != nil {
+		t.Fatalf("marshal normalized interface spec: %v", err)
+	}
+	var decoded map[string]json.RawMessage
+	if err := json.Unmarshal(encoded, &decoded); err != nil {
+		t.Fatalf("unmarshal normalized interface spec: %v", err)
+	}
+	if _, ok := decoded["transports"]; ok {
+		t.Fatalf("normalized transports present, want omitted")
 	}
 }
 
