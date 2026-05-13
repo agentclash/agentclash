@@ -223,14 +223,18 @@ func (s *fakeSession) ReceiveTranscript(ctx context.Context, segment TranscriptS
 		eventType = runevents.EventTypeTranscriptFinal
 	}
 	s.ensureArtifact(voiceartifacts.ArtifactKindTranscriptJSON)
-	return s.appendEvent(eventType, segment.OccurredAt, map[string]any{
+	payload := map[string]any{
 		"voice_session_id": s.voiceSessionID,
 		"turn_id":          strings.TrimSpace(segment.TurnID),
 		"segment_id":       firstNonEmpty(segment.SegmentID, segment.TurnID+":transcript"),
 		"text":             segment.Text,
 		"language":         strings.TrimSpace(segment.Language),
 		"final":            segment.Final,
-	}, turnSummary(segment.TurnID, "caller", "transcript"))
+	}
+	if segment.Confidence != nil {
+		payload["confidence"] = *segment.Confidence
+	}
+	return s.appendEvent(eventType, segment.OccurredAt, payload, turnSummary(segment.TurnID, "caller", "transcript"))
 }
 
 func (s *fakeSession) SendOutboundMediaFrame(ctx context.Context, frame MediaFrame) error {
@@ -519,7 +523,7 @@ func parseTurnIndex(turnID string) (int, bool) {
 		return 0, false
 	}
 	var index int
-	if _, err := fmt.Sscanf(trimmed, "turn-%d", &index); err == nil && index > 0 {
+	if _, err := fmt.Sscanf(trimmed, "turn-%d", &index); err == nil && index >= 0 {
 		return index, true
 	}
 	return 0, false
@@ -636,10 +640,20 @@ func (t *FakeTransport) Run(ctx context.Context, script Script) (Result, error) 
 	if result.Status == "" {
 		result.Status = StatusCompleted
 	}
-	if err := result.Manifest.Validate(); err != nil {
+	if err := validateResultManifest(result.Manifest, runErr); err != nil {
 		return Result{}, err
 	}
 	return result, runErr
+}
+
+func validateResultManifest(manifest voiceartifacts.Manifest, runErr error) error {
+	if err := manifest.Validate(); err != nil {
+		if runErr != nil {
+			return fmt.Errorf("%w; original run error: %v", err, runErr)
+		}
+		return err
+	}
+	return nil
 }
 
 func runAction(ctx context.Context, session Session, action ScriptAction, occurredAt time.Time) error {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -169,6 +170,54 @@ func TestFakeTransportRejectsMissingMediaFrame(t *testing.T) {
 		t.Fatalf("failure payload = %#v, want missing_media_frame code", payload)
 	}
 	assertManifest(t, result.Manifest, expectedManifestArtifacts())
+}
+
+func TestFakeTransportPreservesTranscriptConfidenceAndZeroTurnIndex(t *testing.T) {
+	confidence := 0.93
+	script := baseScript("voice-session-transcript-confidence")
+	script.Actions = []ScriptAction{
+		{
+			OffsetMS: 100,
+			Kind:     ActionInboundTranscript,
+			Transcript: &TranscriptSegment{
+				SegmentID:  "turn-0:caller-transcript",
+				TurnID:     "turn-0",
+				Text:       "My flight was cancelled.",
+				Language:   "en",
+				Confidence: &confidence,
+				Final:      true,
+			},
+		},
+	}
+
+	result, err := NewFakeTransport("").Run(context.Background(), script)
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	assertEventTypes(t, result.Events,
+		runevents.EventTypeMediaSessionStarted,
+		runevents.EventTypeTranscriptFinal,
+		runevents.EventTypeSystemRunCompleted,
+	)
+	payload := eventPayload(t, result.Events[1])
+	if payload["confidence"] != confidence {
+		t.Fatalf("transcript confidence = %#v, want %v", payload["confidence"], confidence)
+	}
+	if result.Events[1].Summary.TurnIndex == nil || *result.Events[1].Summary.TurnIndex != 0 {
+		t.Fatalf("transcript turn index = %#v, want 0", result.Events[1].Summary.TurnIndex)
+	}
+	assertManifest(t, result.Manifest, expectedManifestArtifacts())
+}
+
+func TestValidateResultManifestPreservesRunError(t *testing.T) {
+	runErr := errors.New("script action failed")
+	err := validateResultManifest(voiceartifacts.Manifest{}, runErr)
+	if !errors.Is(err, voiceartifacts.ErrInvalidSchemaVersion) {
+		t.Fatalf("error = %v, want invalid schema version", err)
+	}
+	if !strings.Contains(err.Error(), runErr.Error()) {
+		t.Fatalf("error = %v, want original run error text", err)
+	}
 }
 
 func normalScript() Script {
