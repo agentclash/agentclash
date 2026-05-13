@@ -86,6 +86,39 @@ func TestScriptedSimulatorRejectsUnexpectedAgentResponse(t *testing.T) {
 	}
 }
 
+func TestScriptedSimulatorRejectsDuplicateTurnID(t *testing.T) {
+	script := loadTestScript(t, "testdata/support_billing_script.json")
+	script.MaxTurns = 2
+	script.Steps = append(script.Steps, Step{
+		TurnID:             "turn-001",
+		UserText:           "Thanks.",
+		Language:           "en-US",
+		OccurredAtOffsetMS: 5000,
+		ExpectedAgentText:  "You're welcome.",
+	})
+
+	if _, err := New(script); err == nil || !errors.Is(err, ErrInvalidScript) {
+		t.Fatalf("New error = %v, want ErrInvalidScript for duplicate turn_id", err)
+	}
+}
+
+func TestScriptedSimulatorRejectsInterruptionBeforeAgentResponse(t *testing.T) {
+	script := loadTestScript(t, "testdata/interruption_script.json")
+	script.Steps[0].Interruption.OccurredAtOffsetMS = 1500
+	simulator := newTestSimulator(t, script)
+
+	_, err := simulator.Run(fakeAgent{
+		"turn-001": {
+			Text:      "Sure, tell me the invoice date.",
+			Language:  "en-US",
+			LatencyMS: 900,
+		},
+	})
+	if err == nil || !errors.Is(err, ErrInvalidScript) {
+		t.Fatalf("Run error = %v, want ErrInvalidScript for interruption before agent response", err)
+	}
+}
+
 func TestScriptedSimulatorEmitsScriptedInterruption(t *testing.T) {
 	script := loadTestScript(t, "testdata/interruption_script.json")
 	result := runTestScript(t, script, fakeAgent{

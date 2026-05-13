@@ -120,10 +120,15 @@ func (s Script) Validate() error {
 		return fmt.Errorf("%w: steps=%d max_turns=%d", ErrMaxTurnsExceeded, len(s.Steps), s.MaxTurns)
 	}
 	var previousOffset int64 = -1
+	seenTurnIDs := make(map[string]struct{}, len(s.Steps))
 	for idx, step := range s.Steps {
 		if err := step.Validate(); err != nil {
 			return fmt.Errorf("steps[%d]: %w", idx, err)
 		}
+		if _, dup := seenTurnIDs[step.TurnID]; dup {
+			return fmt.Errorf("steps[%d]: %w: duplicate turn_id %q", idx, ErrInvalidScript, step.TurnID)
+		}
+		seenTurnIDs[step.TurnID] = struct{}{}
 		if step.OccurredAtOffsetMS <= previousOffset {
 			return fmt.Errorf("steps[%d]: %w: occurred_at_offset_ms must increase", idx, ErrInvalidScript)
 		}
@@ -241,8 +246,9 @@ func (s *Simulator) Run(agent Agent) (Result, error) {
 		if step.MaxResponseLatencyMS > 0 && response.LatencyMS > step.MaxResponseLatencyMS {
 			return Result{}, fmt.Errorf("%w: turn_id=%s latency_ms=%d max_response_latency_ms=%d", ErrResponseLatencyExceeded, step.TurnID, response.LatencyMS, step.MaxResponseLatencyMS)
 		}
+		agentOccurredAt := userOccurredAt.Add(time.Duration(response.LatencyMS) * time.Millisecond).UTC()
 		if response.Text != step.ExpectedAgentText {
-			if err := appendEvent(runevents.EventTypeSystemRunFailed, userOccurredAt, map[string]any{
+			if err := appendEvent(runevents.EventTypeSystemRunFailed, agentOccurredAt, map[string]any{
 				"turn_id":  step.TurnID,
 				"expected": step.ExpectedAgentText,
 				"actual":   response.Text,
@@ -255,7 +261,6 @@ func (s *Simulator) Run(agent Agent) (Result, error) {
 			return Result{}, fmt.Errorf("%w: turn_id=%s expected %q got %q", ErrUnexpectedAgentResponse, step.TurnID, step.ExpectedAgentText, response.Text)
 		}
 
-		agentOccurredAt := userOccurredAt.Add(time.Duration(response.LatencyMS) * time.Millisecond).UTC()
 		agentSegmentID := fmt.Sprintf("%s:agent-text", step.TurnID)
 		responseLanguage := firstNonEmpty(response.Language, step.Language)
 		segments = append(segments, multimodaltrace.Segment{
@@ -302,6 +307,14 @@ func (s *Simulator) Run(agent Agent) (Result, error) {
 
 		if step.Interruption != nil {
 			interruptionOccurredAt := s.script.BaseTime.Add(time.Duration(step.Interruption.OccurredAtOffsetMS) * time.Millisecond).UTC()
+			if !interruptionOccurredAt.After(agentOccurredAt) {
+				return Result{}, fmt.Errorf("%w: turn_id=%s interruption_at=%s must be after agent response at=%s",
+					ErrInvalidScript,
+					step.TurnID,
+					interruptionOccurredAt.Format(time.RFC3339Nano),
+					agentOccurredAt.Format(time.RFC3339Nano),
+				)
+			}
 			controlSegmentID := fmt.Sprintf("%s:interruption", step.TurnID)
 			segments = append(segments, multimodaltrace.Segment{
 				SegmentID:      controlSegmentID,
