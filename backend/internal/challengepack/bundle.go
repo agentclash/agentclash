@@ -12,11 +12,29 @@ import (
 )
 
 type Bundle struct {
-	Pack       PackMetadata          `yaml:"pack" json:"pack"`
-	Version    VersionMetadata       `yaml:"version" json:"version"`
-	Tools      map[string]any        `yaml:"tools,omitempty" json:"tools,omitempty"`
-	Challenges []ChallengeDefinition `yaml:"challenges" json:"challenges"`
-	InputSets  []InputSetDefinition  `yaml:"input_sets" json:"input_sets"`
+	Modality      string                `yaml:"modality,omitempty" json:"modality,omitempty"`
+	InterfaceSpec *InterfaceSpec        `yaml:"interface_spec,omitempty" json:"interface_spec,omitempty"`
+	Scenario      *ScenarioSpec         `yaml:"scenario,omitempty" json:"scenario,omitempty"`
+	Pack          PackMetadata          `yaml:"pack" json:"pack"`
+	Version       VersionMetadata       `yaml:"version" json:"version"`
+	Tools         map[string]any        `yaml:"tools,omitempty" json:"tools,omitempty"`
+	Challenges    []ChallengeDefinition `yaml:"challenges" json:"challenges"`
+	InputSets     []InputSetDefinition  `yaml:"input_sets" json:"input_sets"`
+}
+
+const ModalityVoice = "voice"
+
+type InterfaceSpec struct {
+	Transports      []string `yaml:"transports,omitempty" json:"transports,omitempty"`
+	ChannelProfile  string   `yaml:"channel_profile,omitempty" json:"channel_profile,omitempty"`
+	SupportsBargeIn bool     `yaml:"supports_barge_in,omitempty" json:"supports_barge_in,omitempty"`
+}
+
+type ScenarioSpec struct {
+	Persona       string `yaml:"persona,omitempty" json:"persona,omitempty"`
+	Language      string `yaml:"language,omitempty" json:"language,omitempty"`
+	MaxTurns      int32  `yaml:"max_turns,omitempty" json:"max_turns,omitempty"`
+	MaxDurationMS int64  `yaml:"max_duration_ms,omitempty" json:"max_duration_ms,omitempty"`
 }
 
 type PackMetadata struct {
@@ -148,11 +166,14 @@ func ParseYAML(data []byte) (Bundle, error) {
 		Assets             []AssetReference    `yaml:"assets,omitempty"`
 	}
 	type rawBundle struct {
-		Pack       PackMetadata          `yaml:"pack"`
-		Version    rawVersionMetadata    `yaml:"version"`
-		Tools      map[string]any        `yaml:"tools,omitempty"`
-		Challenges []ChallengeDefinition `yaml:"challenges"`
-		InputSets  []InputSetDefinition  `yaml:"input_sets"`
+		Modality      string                `yaml:"modality,omitempty"`
+		InterfaceSpec *InterfaceSpec        `yaml:"interface_spec,omitempty"`
+		Scenario      *ScenarioSpec         `yaml:"scenario,omitempty"`
+		Pack          PackMetadata          `yaml:"pack"`
+		Version       rawVersionMetadata    `yaml:"version"`
+		Tools         map[string]any        `yaml:"tools,omitempty"`
+		Challenges    []ChallengeDefinition `yaml:"challenges"`
+		InputSets     []InputSetDefinition  `yaml:"input_sets"`
 	}
 
 	var raw rawBundle
@@ -176,7 +197,10 @@ func ParseYAML(data []byte) (Bundle, error) {
 	}
 
 	bundle := Bundle{
-		Pack: raw.Pack,
+		Modality:      raw.Modality,
+		InterfaceSpec: raw.InterfaceSpec,
+		Scenario:      raw.Scenario,
+		Pack:          raw.Pack,
 		Version: VersionMetadata{
 			Number:             raw.Version.Number,
 			ExecutionMode:      raw.Version.ExecutionMode,
@@ -228,6 +252,15 @@ func ManifestJSON(bundle Bundle) (json.RawMessage, error) {
 		"challenges":      normalized.Challenges,
 		"input_sets":      normalized.InputSets,
 	}
+	if normalized.Modality != "" {
+		manifest["modality"] = normalized.Modality
+	}
+	if normalized.InterfaceSpec != nil {
+		manifest["interface_spec"] = normalized.InterfaceSpec
+	}
+	if normalized.Scenario != nil {
+		manifest["scenario"] = normalized.Scenario
+	}
 	if normalized.Tools != nil {
 		manifest["tools"] = normalized.Tools
 	}
@@ -244,6 +277,9 @@ func ManifestJSON(bundle Bundle) (json.RawMessage, error) {
 }
 
 func normalizeBundle(bundle *Bundle) {
+	bundle.Modality = strings.TrimSpace(bundle.Modality)
+	bundle.InterfaceSpec = normalizeInterfaceSpec(bundle.InterfaceSpec)
+	bundle.Scenario = normalizeScenarioSpec(bundle.Scenario)
 	bundle.Pack.Slug = strings.TrimSpace(bundle.Pack.Slug)
 	bundle.Pack.Name = strings.TrimSpace(bundle.Pack.Name)
 	bundle.Pack.Family = strings.TrimSpace(bundle.Pack.Family)
@@ -309,6 +345,34 @@ func normalizeBundle(bundle *Bundle) {
 	}
 
 	bundle.Version.Assets = normalizeAssets(bundle.Version.Assets)
+}
+
+func normalizeInterfaceSpec(spec *InterfaceSpec) *InterfaceSpec {
+	if spec == nil {
+		return nil
+	}
+	var transports []string
+	for _, transport := range spec.Transports {
+		transports = append(transports, strings.TrimSpace(transport))
+	}
+	normalized := &InterfaceSpec{
+		Transports:      transports,
+		ChannelProfile:  strings.TrimSpace(spec.ChannelProfile),
+		SupportsBargeIn: spec.SupportsBargeIn,
+	}
+	return normalized
+}
+
+func normalizeScenarioSpec(spec *ScenarioSpec) *ScenarioSpec {
+	if spec == nil {
+		return nil
+	}
+	return &ScenarioSpec{
+		Persona:       strings.TrimSpace(spec.Persona),
+		Language:      strings.TrimSpace(spec.Language),
+		MaxTurns:      spec.MaxTurns,
+		MaxDurationMS: spec.MaxDurationMS,
+	}
 }
 
 func normalizeDeploymentDefaults(defaults *DeploymentDefaults) *DeploymentDefaults {
