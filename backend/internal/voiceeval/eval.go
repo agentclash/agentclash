@@ -37,6 +37,9 @@ const (
 	KeyTotalDurationMS                     = "total_duration_ms"
 	KeyEndOfUserTurnToFirstAgentOutputMS   = "end_of_user_turn_to_first_agent_output_ms"
 	KeyEndOfUserTextToFirstAgentTextLegacy = "end_of_user_text_to_first_agent_text"
+	KeyDialogueRetentionRatio              = "dialogue_retention_ratio"
+	KeyBackgroundPreservationRatio         = "background_preservation_ratio"
+	KeySpeechDropRisk                      = "speech_drop_risk"
 )
 
 type CheckResult struct {
@@ -49,6 +52,13 @@ type MetricResult struct {
 	Key     string
 	State   State
 	ValueMS int64
+	Message string
+}
+
+type RatioMetricResult struct {
+	Key     string
+	State   State
+	Value   float64
 	Message string
 }
 
@@ -200,6 +210,16 @@ func MetricEndOfUserTurnToFirstAgentOutput(input Input, key string) MetricResult
 	return unavailableMetric(key, "explicit end-of-user-turn latency evidence not found")
 }
 
+func MetricRecordedRatio(input Input, key string) RatioMetricResult {
+	if value, found, valid := ratioMetricRecordedValue(input.Events, key); found {
+		if !valid {
+			return unavailableRatioMetric(key, "voice ratio metric event is invalid")
+		}
+		return RatioMetricResult{Key: key, State: StatePassed, Value: value}
+	}
+	return unavailableRatioMetric(key, "voice ratio metric evidence not found")
+}
+
 func ValidateInput(input Input) error {
 	if err := input.Trace.Validate(); err != nil {
 		return fmt.Errorf("%w: trace: %w", ErrInvalidInput, err)
@@ -266,6 +286,37 @@ func metricRecordedValue(events []runevents.Envelope, key string) (int64, bool, 
 		return *payload.ValueMS, true, true
 	}
 	return 0, false, false
+}
+
+func ratioMetricRecordedValue(events []runevents.Envelope, key string) (float64, bool, bool) {
+	for _, event := range events {
+		if event.EventType != runevents.EventTypeVoiceMetricRecorded || event.Summary.MetricKey != key {
+			continue
+		}
+		var payload struct {
+			Value      *float64 `json:"value"`
+			ValueRatio *float64 `json:"value_ratio"`
+			Ratio      *float64 `json:"ratio"`
+		}
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			return 0, true, false
+		}
+		value := firstFloat(payload.Value, payload.ValueRatio, payload.Ratio)
+		if value == nil || *value < 0 || *value > 1 {
+			return 0, true, false
+		}
+		return *value, true, true
+	}
+	return 0, false, false
+}
+
+func firstFloat(values ...*float64) *float64 {
+	for _, value := range values {
+		if value != nil {
+			return value
+		}
+	}
+	return nil
 }
 
 func orderedEventBounds(events []runevents.Envelope) (time.Time, time.Time, bool) {
@@ -342,6 +393,10 @@ func unavailableCheck(key string, message string) CheckResult {
 
 func unavailableMetric(key string, message string) MetricResult {
 	return MetricResult{Key: key, State: StateUnavailable, Message: message}
+}
+
+func unavailableRatioMetric(key string, message string) RatioMetricResult {
+	return RatioMetricResult{Key: key, State: StateUnavailable, Message: message}
 }
 
 func millis(duration time.Duration) int64 {

@@ -9,12 +9,15 @@ import (
 )
 
 const (
-	VoiceDimensionOverallScore        = "voice_overall_score"
-	VoiceDimensionTaskBusinessSuccess = "task_business_success"
-	VoiceDimensionInteractionQuality  = "interaction_quality"
-	VoiceDimensionToolDataCorrectness = "tool_data_correctness"
-	VoiceDimensionLatencyMS           = "latency_ms"
-	VoiceDimensionMissingEvidence     = "voice_missing_evidence"
+	VoiceDimensionOverallScore                = "voice_overall_score"
+	VoiceDimensionTaskBusinessSuccess         = "task_business_success"
+	VoiceDimensionInteractionQuality          = "interaction_quality"
+	VoiceDimensionToolDataCorrectness         = "tool_data_correctness"
+	VoiceDimensionLatencyMS                   = "latency_ms"
+	VoiceDimensionMediaPolicy                 = "media_policy"
+	VoiceDimensionBackgroundPreservationRatio = "background_preservation_ratio"
+	VoiceDimensionSpeechDropRisk              = "speech_drop_risk"
+	VoiceDimensionMissingEvidence             = "voice_missing_evidence"
 )
 
 type VoiceComparisonConfig struct {
@@ -44,12 +47,15 @@ func VoicePolicy(config VoiceComparisonConfig) Policy {
 			VoiceDimensionToolDataCorrectness,
 		},
 		Dimensions: map[string]DimensionThreshold{
-			VoiceDimensionOverallScore:        {WarnDelta: floatPtr(0.02), FailDelta: floatPtr(0.05)},
-			VoiceDimensionTaskBusinessSuccess: {FailDelta: floatPtr(0.01)},
-			VoiceDimensionInteractionQuality:  {FailDelta: floatPtr(0.01)},
-			VoiceDimensionToolDataCorrectness: {FailDelta: floatPtr(0.01)},
-			VoiceDimensionLatencyMS:           {WarnDelta: floatPtr(100), FailDelta: floatPtr(250)},
-			VoiceDimensionMissingEvidence:     missingThreshold,
+			VoiceDimensionOverallScore:                {WarnDelta: floatPtr(0.02), FailDelta: floatPtr(0.05)},
+			VoiceDimensionTaskBusinessSuccess:         {FailDelta: floatPtr(0.01)},
+			VoiceDimensionInteractionQuality:          {FailDelta: floatPtr(0.01)},
+			VoiceDimensionToolDataCorrectness:         {FailDelta: floatPtr(0.01)},
+			VoiceDimensionLatencyMS:                   {WarnDelta: floatPtr(100), FailDelta: floatPtr(250)},
+			VoiceDimensionMediaPolicy:                 {FailDelta: floatPtr(0.01)},
+			VoiceDimensionBackgroundPreservationRatio: {WarnDelta: floatPtr(0.02), FailDelta: floatPtr(0.05)},
+			VoiceDimensionSpeechDropRisk:              {WarnDelta: floatPtr(0.02), FailDelta: floatPtr(0.05)},
+			VoiceDimensionMissingEvidence:             missingThreshold,
 		},
 	}
 }
@@ -60,12 +66,15 @@ func BuildVoiceComparisonSummary(baseline, candidate voicescorecard.Scorecard, c
 		SchemaVersion: "2026-05-13",
 		Status:        "comparable",
 		DimensionDeltas: map[string]DimensionDelta{
-			VoiceDimensionOverallScore:        voiceDelta(baseline.OverallScore, candidate.OverallScore, "higher"),
-			VoiceDimensionTaskBusinessSuccess: voiceDimensionDelta(baseline, candidate, VoiceDimensionTaskBusinessSuccess, "higher"),
-			VoiceDimensionInteractionQuality:  voiceDimensionDelta(baseline, candidate, VoiceDimensionInteractionQuality, "higher"),
-			VoiceDimensionToolDataCorrectness: voiceDimensionDelta(baseline, candidate, VoiceDimensionToolDataCorrectness, "higher"),
-			VoiceDimensionLatencyMS:           voiceMetricDelta(baseline, candidate, "latency", "end_of_user_turn_to_first_agent_output_ms", "lower"),
-			VoiceDimensionMissingEvidence:     voiceDelta(0, float64(newCandidateDegradedKeyCount(baseline.DegradedKeys, candidate.DegradedKeys)), "lower"),
+			VoiceDimensionOverallScore:                voiceDelta(baseline.OverallScore, candidate.OverallScore, "higher"),
+			VoiceDimensionTaskBusinessSuccess:         voiceDimensionDelta(baseline, candidate, VoiceDimensionTaskBusinessSuccess, "higher"),
+			VoiceDimensionInteractionQuality:          voiceDimensionDelta(baseline, candidate, VoiceDimensionInteractionQuality, "higher"),
+			VoiceDimensionToolDataCorrectness:         voiceDimensionDelta(baseline, candidate, VoiceDimensionToolDataCorrectness, "higher"),
+			VoiceDimensionLatencyMS:                   voiceMetricDelta(baseline, candidate, "latency", "end_of_user_turn_to_first_agent_output_ms", "lower"),
+			VoiceDimensionMediaPolicy:                 voiceDimensionDelta(baseline, candidate, VoiceDimensionMediaPolicy, "higher"),
+			VoiceDimensionBackgroundPreservationRatio: voiceMetricRatioDelta(baseline, candidate, VoiceDimensionMediaPolicy, VoiceDimensionBackgroundPreservationRatio, "higher"),
+			VoiceDimensionSpeechDropRisk:              voiceMetricRatioDelta(baseline, candidate, VoiceDimensionMediaPolicy, VoiceDimensionSpeechDropRisk, "lower"),
+			VoiceDimensionMissingEvidence:             voiceDelta(0, float64(newCandidateDegradedKeyCount(baseline.DegradedKeys, candidate.DegradedKeys)), "lower"),
 		},
 		ScorecardPass: &ScorecardPassSummary{
 			Baseline:  boolPtr(!baseline.HardGateFailed),
@@ -119,6 +128,15 @@ func voiceMetricDelta(baseline, candidate voicescorecard.Scorecard, dimensionKey
 	return voiceDelta(float64(baselineValue), float64(candidateValue), direction)
 }
 
+func voiceMetricRatioDelta(baseline, candidate voicescorecard.Scorecard, dimensionKey string, metricKey string, direction string) DimensionDelta {
+	baselineValue, baselineOK := voiceMetricValue(baseline, dimensionKey, metricKey)
+	candidateValue, candidateOK := voiceMetricValue(candidate, dimensionKey, metricKey)
+	if !baselineOK || !candidateOK {
+		return DimensionDelta{BetterDirection: direction, State: "unavailable"}
+	}
+	return voiceDelta(baselineValue, candidateValue, direction)
+}
+
 func voiceDelta(baseline float64, candidate float64, direction string) DimensionDelta {
 	delta := candidate - baseline
 	return DimensionDelta{
@@ -147,6 +165,20 @@ func voiceMetricValueMS(scorecard voicescorecard.Scorecard, dimensionKey string,
 		for _, metric := range dimension.Metrics {
 			if metric.Key == metricKey && metric.ValueMS != nil {
 				return *metric.ValueMS, true
+			}
+		}
+	}
+	return 0, false
+}
+
+func voiceMetricValue(scorecard voicescorecard.Scorecard, dimensionKey string, metricKey string) (float64, bool) {
+	for _, dimension := range scorecard.Dimensions {
+		if dimension.Key != dimensionKey {
+			continue
+		}
+		for _, metric := range dimension.Metrics {
+			if metric.Key == metricKey && metric.Value != nil {
+				return *metric.Value, true
 			}
 		}
 	}

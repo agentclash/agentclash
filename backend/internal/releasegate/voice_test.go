@@ -46,6 +46,34 @@ func TestEvaluateVoiceComparisonTaskSuccessRegressionFails(t *testing.T) {
 	}
 }
 
+func TestEvaluateVoiceComparisonBackgroundPreservationRegressionFails(t *testing.T) {
+	baseline := withVoiceMediaPolicy(voiceScorecard(), 0.96, 0.94, 0.02)
+	candidate := withVoiceMediaPolicy(voiceScorecard(), 0.96, 0.84, 0.02)
+
+	evaluation := evaluateVoice(t, baseline, candidate, DefaultVoiceComparisonConfig())
+
+	if evaluation.Verdict != VerdictFail {
+		t.Fatalf("verdict = %q, want %q", evaluation.Verdict, VerdictFail)
+	}
+	if evaluation.ReasonCode != "threshold_fail_background_preservation_ratio" {
+		t.Fatalf("reason code = %q, want threshold_fail_background_preservation_ratio", evaluation.ReasonCode)
+	}
+}
+
+func TestEvaluateVoiceComparisonSpeechDropRegressionFails(t *testing.T) {
+	baseline := withVoiceMediaPolicy(voiceScorecard(), 0.96, 0.94, 0.02)
+	candidate := withVoiceMediaPolicy(voiceScorecard(), 0.96, 0.94, 0.1)
+
+	evaluation := evaluateVoice(t, baseline, candidate, DefaultVoiceComparisonConfig())
+
+	if evaluation.Verdict != VerdictFail {
+		t.Fatalf("verdict = %q, want %q", evaluation.Verdict, VerdictFail)
+	}
+	if evaluation.ReasonCode != "threshold_fail_speech_drop_risk" {
+		t.Fatalf("reason code = %q, want threshold_fail_speech_drop_risk", evaluation.ReasonCode)
+	}
+}
+
 func TestEvaluateVoiceComparisonPolicyHardGateFails(t *testing.T) {
 	candidate := voiceScorecard()
 	candidate.Passed = false
@@ -183,6 +211,34 @@ func voiceDimension(key string, score float64, state voiceeval.State, hardGate b
 	}
 }
 
+func withVoiceMediaPolicy(scorecard voicescorecard.Scorecard, dialogueRetention float64, backgroundPreservation float64, speechDropRisk float64) voicescorecard.Scorecard {
+	scorecard.Dimensions = append(scorecard.Dimensions, voicescorecard.Dimension{
+		Key:      VoiceDimensionMediaPolicy,
+		Name:     "Media policy",
+		Score:    1,
+		State:    voiceeval.StatePassed,
+		HardGate: true,
+		Metrics: []voicescorecard.MetricDetail{
+			{
+				Key:   voiceeval.KeyDialogueRetentionRatio,
+				State: voiceeval.StatePassed,
+				Value: float64PtrForVoiceTest(dialogueRetention),
+			},
+			{
+				Key:   voiceeval.KeyBackgroundPreservationRatio,
+				State: voiceeval.StatePassed,
+				Value: float64PtrForVoiceTest(backgroundPreservation),
+			},
+			{
+				Key:   voiceeval.KeySpeechDropRisk,
+				State: voiceeval.StatePassed,
+				Value: float64PtrForVoiceTest(speechDropRisk),
+			},
+		},
+	})
+	return scorecard
+}
+
 func setVoiceLatencyMS(scorecard *voicescorecard.Scorecard, value int64) {
 	for dimIdx := range scorecard.Dimensions {
 		if scorecard.Dimensions[dimIdx].Key != "latency" {
@@ -227,5 +283,9 @@ func setVoiceDimensionState(scorecard *voicescorecard.Scorecard, key string, sta
 }
 
 func int64PtrForVoiceTest(value int64) *int64 {
+	return &value
+}
+
+func float64PtrForVoiceTest(value float64) *float64 {
 	return &value
 }

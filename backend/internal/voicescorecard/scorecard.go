@@ -26,6 +26,11 @@ type Expectations struct {
 	LatencyMaxMS        int64
 	CostUSD             float64
 	RequireInterruption bool
+	RequireMediaPolicy  bool
+
+	MinDialogueRetentionRatio      *float64
+	MinBackgroundPreservationRatio *float64
+	MaxSpeechDropRisk              *float64
 }
 
 type Scorecard struct {
@@ -57,9 +62,12 @@ type CheckDetail struct {
 type MetricDetail struct {
 	Key      string          `json:"key"`
 	State    voiceeval.State `json:"state"`
+	Value    *float64        `json:"value,omitempty"`
 	ValueMS  *int64          `json:"value_ms,omitempty"`
 	TargetMS *int64          `json:"target_ms,omitempty"`
 	MaxMS    *int64          `json:"max_ms,omitempty"`
+	Min      *float64        `json:"min,omitempty"`
+	Max      *float64        `json:"max,omitempty"`
 	ValueUSD *float64        `json:"value_usd,omitempty"`
 	Message  string          `json:"message,omitempty"`
 }
@@ -87,8 +95,11 @@ func Generate(input voiceeval.Input, expectations Expectations) (Scorecard, erro
 		latencyDimension(input, expectations),
 		robustnessDimension(input, expectations),
 		toolDataCorrectnessDimension(input, expectations),
-		costDimension(expectations),
 	}
+	if expectations.RequireMediaPolicy {
+		dimensions = append(dimensions, mediaPolicyDimension(input, expectations))
+	}
+	dimensions = append(dimensions, costDimension(expectations))
 	scorecard := Scorecard{
 		SchemaVersion: SchemaVersionV1,
 		Type:          "voice",
@@ -186,6 +197,69 @@ func toolDataCorrectnessDimension(input voiceeval.Input, expectations Expectatio
 	return checkDimension("tool_data_correctness", "Tool / data correctness", true, checks)
 }
 
+func mediaPolicyDimension(input voiceeval.Input, expectations Expectations) Dimension {
+	minDialogueRetention := ratioOrDefault(expectations.MinDialogueRetentionRatio, 0.85)
+	minBackgroundPreservation := ratioOrDefault(expectations.MinBackgroundPreservationRatio, 0.75)
+	maxSpeechDropRisk := ratioOrDefault(expectations.MaxSpeechDropRisk, 0.15)
+
+	dialogueRetention := ratioMetricDetail(voiceeval.MetricRecordedRatio(input, voiceeval.KeyDialogueRetentionRatio))
+	dialogueRetention.Min = ptrFloat64(minDialogueRetention)
+	backgroundPreservation := ratioMetricDetail(voiceeval.MetricRecordedRatio(input, voiceeval.KeyBackgroundPreservationRatio))
+	backgroundPreservation.Min = ptrFloat64(minBackgroundPreservation)
+	speechDropRisk := ratioMetricDetail(voiceeval.MetricRecordedRatio(input, voiceeval.KeySpeechDropRisk))
+	speechDropRisk.Max = ptrFloat64(maxSpeechDropRisk)
+
+	metrics := []MetricDetail{dialogueRetention, backgroundPreservation, speechDropRisk}
+	state := voiceeval.StatePassed
+	score := 1.0
+	for idx := range metrics {
+		metric := &metrics[idx]
+		switch metric.State {
+		case voiceeval.StateUnavailable:
+			if state != voiceeval.StateFailed {
+				state = voiceeval.StateUnavailable
+				score = math.Min(score, 0.5)
+			}
+		case voiceeval.StatePassed:
+			if metric.Value == nil {
+				continue
+			}
+			switch metric.Key {
+			case voiceeval.KeyDialogueRetentionRatio:
+				if *metric.Value < minDialogueRetention {
+					metric.State = voiceeval.StateFailed
+					metric.Message = fmt.Sprintf("value = %.4f, min = %.4f", *metric.Value, minDialogueRetention)
+					state = voiceeval.StateFailed
+					score = 0
+				}
+			case voiceeval.KeyBackgroundPreservationRatio:
+				if *metric.Value < minBackgroundPreservation {
+					metric.State = voiceeval.StateFailed
+					metric.Message = fmt.Sprintf("value = %.4f, min = %.4f", *metric.Value, minBackgroundPreservation)
+					state = voiceeval.StateFailed
+					score = 0
+				}
+			case voiceeval.KeySpeechDropRisk:
+				if *metric.Value > maxSpeechDropRisk {
+					metric.State = voiceeval.StateFailed
+					metric.Message = fmt.Sprintf("value = %.4f, max = %.4f", *metric.Value, maxSpeechDropRisk)
+					state = voiceeval.StateFailed
+					score = 0
+				}
+			}
+		}
+	}
+
+	return Dimension{
+		Key:      "media_policy",
+		Name:     "Media policy",
+		Score:    score,
+		State:    state,
+		HardGate: true,
+		Metrics:  metrics,
+	}
+}
+
 func costDimension(expectations Expectations) Dimension {
 	cost := expectations.CostUSD
 	return Dimension{
@@ -257,6 +331,18 @@ func metricDetail(result voiceeval.MetricResult) MetricDetail {
 	return detail
 }
 
+func ratioMetricDetail(result voiceeval.RatioMetricResult) MetricDetail {
+	detail := MetricDetail{
+		Key:     result.Key,
+		State:   result.State,
+		Message: result.Message,
+	}
+	if result.State == voiceeval.StatePassed {
+		detail.Value = ptrFloat64(result.Value)
+	}
+	return detail
+}
+
 func degradedKeys(dimensions []Dimension) []string {
 	var keys []string
 	for _, dimension := range dimensions {
@@ -303,4 +389,15 @@ func roundScore(score float64) float64 {
 
 func ptrInt64(value int64) *int64 {
 	return &value
+}
+
+func ptrFloat64(value float64) *float64 {
+	return &value
+}
+
+func ratioOrDefault(value *float64, fallback float64) float64 {
+	if value != nil {
+		return *value
+	}
+	return fallback
 }

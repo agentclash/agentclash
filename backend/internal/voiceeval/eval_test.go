@@ -85,6 +85,34 @@ func TestVoiceMetricsAgainstTextSimGolden(t *testing.T) {
 	}
 }
 
+func TestVoiceRatioMetricsAgainstRecordedEvents(t *testing.T) {
+	input := withRatioMetric(loadGoldenInput(t), KeyBackgroundPreservationRatio, `{"value":0.92}`)
+
+	result := MetricRecordedRatio(input, KeyBackgroundPreservationRatio)
+	if result.State != StatePassed {
+		t.Fatalf("state = %q, want %q; result=%+v", result.State, StatePassed, result)
+	}
+	if result.Value != 0.92 {
+		t.Fatalf("value = %.2f, want 0.92", result.Value)
+	}
+
+	aliasInput := withRatioMetric(loadGoldenInput(t), KeyDialogueRetentionRatio, `{"value_ratio":0.88}`)
+	aliasResult := MetricRecordedRatio(aliasInput, KeyDialogueRetentionRatio)
+	if aliasResult.State != StatePassed || aliasResult.Value != 0.88 {
+		t.Fatalf("alias result = %+v, want passed 0.88", aliasResult)
+	}
+}
+
+func TestVoiceRatioMetricsRejectInvalidOrMissingEvidence(t *testing.T) {
+	invalid := withRatioMetric(loadGoldenInput(t), KeySpeechDropRisk, `{"value":1.2}`)
+	if got := MetricRecordedRatio(invalid, KeySpeechDropRisk); got.State != StateUnavailable {
+		t.Fatalf("invalid state = %q, want unavailable", got.State)
+	}
+	if got := MetricRecordedRatio(loadGoldenInput(t), KeyBackgroundPreservationRatio); got.State != StateUnavailable {
+		t.Fatalf("missing state = %q, want unavailable", got.State)
+	}
+}
+
 func TestValidateInputRejectsMalformedEvidence(t *testing.T) {
 	input := loadGoldenInput(t)
 	input.Trace.Segments[0].SegmentID = ""
@@ -194,6 +222,28 @@ func withMissingVoiceMetricValue(input Input) Input {
 			return input
 		}
 	}
+	return input
+}
+
+func withRatioMetric(input Input, key string, payload string) Input {
+	input.Events = append([]runevents.Envelope(nil), input.Events...)
+	last := input.Events[len(input.Events)-1]
+	metric := runevents.Envelope{
+		EventID:        "voice-test:" + key,
+		SchemaVersion:  runevents.SchemaVersionV1,
+		RunID:          last.RunID,
+		RunAgentID:     last.RunAgentID,
+		SequenceNumber: int64(len(input.Events) + 1),
+		EventType:      runevents.EventTypeVoiceMetricRecorded,
+		Source:         runevents.SourceVoiceAdapter,
+		OccurredAt:     last.OccurredAt.Add(time.Millisecond),
+		Payload:        json.RawMessage(payload),
+		Summary: runevents.SummaryMetadata{
+			MetricKey:     key,
+			EvidenceLevel: runevents.EvidenceLevelVoiceStructured,
+		},
+	}
+	input.Events = append(input.Events, metric)
 	return input
 }
 

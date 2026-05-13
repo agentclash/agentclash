@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/multimodaltrace"
 	"github.com/agentclash/agentclash/backend/internal/runevents"
@@ -104,6 +105,50 @@ func TestGenerateScorecardFailureAndDegradationCases(t *testing.T) {
 				t.Fatalf("degraded keys = %v, want containing %q", scorecard.DegradedKeys, tc.wantDegradedContains)
 			}
 		})
+	}
+}
+
+func TestGenerateScorecardMediaPolicyCases(t *testing.T) {
+	input := withMediaPolicyMetrics(loadGoldenInput(t), 0.94, 0.91, 0.04)
+	expectations := defaultExpectations()
+	expectations.RequireMediaPolicy = true
+	expectations.MinDialogueRetentionRatio = ptrFloat64(0.9)
+	expectations.MinBackgroundPreservationRatio = ptrFloat64(0.85)
+	expectations.MaxSpeechDropRisk = ptrFloat64(0.1)
+
+	scorecard := generateScorecard(t, input, expectations)
+	if !scorecard.Passed {
+		t.Fatalf("Passed = false, want true; scorecard=%+v", scorecard)
+	}
+	mediaPolicy := findDimension(t, scorecard, "media_policy")
+	if mediaPolicy.State != voiceeval.StatePassed {
+		t.Fatalf("media_policy state = %q, want passed", mediaPolicy.State)
+	}
+
+	failing := generateScorecard(t, withMediaPolicyMetrics(loadGoldenInput(t), 0.94, 0.4, 0.04), expectations)
+	if !failing.HardGateFailed {
+		t.Fatalf("HardGateFailed = false, want true")
+	}
+	if got := findDimension(t, failing, "media_policy"); got.State != voiceeval.StateFailed {
+		t.Fatalf("media_policy state = %q, want failed", got.State)
+	}
+
+	degraded := generateScorecard(t, loadGoldenInput(t), expectations)
+	if degraded.Passed {
+		t.Fatalf("degraded Passed = true, want false")
+	}
+	if got := findDimension(t, degraded, "media_policy"); got.State != voiceeval.StateUnavailable {
+		t.Fatalf("media_policy state = %q, want unavailable", got.State)
+	}
+	if !contains(degraded.DegradedKeys, voiceeval.KeyBackgroundPreservationRatio) {
+		t.Fatalf("degraded keys = %v, want background preservation key", degraded.DegradedKeys)
+	}
+
+	strict := expectations
+	strict.MaxSpeechDropRisk = ptrFloat64(0)
+	strictScorecard := generateScorecard(t, input, strict)
+	if !strictScorecard.HardGateFailed {
+		t.Fatalf("strict zero MaxSpeechDropRisk should hard-fail when speech drop risk is non-zero")
 	}
 }
 
@@ -239,6 +284,35 @@ func withoutTranscriptEvidence(input voiceeval.Input) voiceeval.Input {
 	input = cloneInput(input)
 	input.Trace.Segments = filterSegments(input.Trace.Segments, func(segment multimodaltrace.Segment) bool {
 		return segment.Kind != multimodaltrace.SegmentKindTranscriptFinal && segment.Kind != multimodaltrace.SegmentKindTranscriptPartial
+	})
+	return input
+}
+
+func withMediaPolicyMetrics(input voiceeval.Input, dialogueRetention float64, backgroundPreservation float64, speechDropRisk float64) voiceeval.Input {
+	input = withRatioMetric(input, voiceeval.KeyDialogueRetentionRatio, dialogueRetention)
+	input = withRatioMetric(input, voiceeval.KeyBackgroundPreservationRatio, backgroundPreservation)
+	input = withRatioMetric(input, voiceeval.KeySpeechDropRisk, speechDropRisk)
+	return input
+}
+
+func withRatioMetric(input voiceeval.Input, key string, value float64) voiceeval.Input {
+	input = cloneInput(input)
+	last := input.Events[len(input.Events)-1]
+	payload, _ := json.Marshal(map[string]float64{"value": value})
+	input.Events = append(input.Events, runevents.Envelope{
+		EventID:        "voice-scorecard-test:" + key,
+		SchemaVersion:  runevents.SchemaVersionV1,
+		RunID:          last.RunID,
+		RunAgentID:     last.RunAgentID,
+		SequenceNumber: int64(len(input.Events) + 1),
+		EventType:      runevents.EventTypeVoiceMetricRecorded,
+		Source:         runevents.SourceVoiceAdapter,
+		OccurredAt:     last.OccurredAt.Add(time.Millisecond),
+		Payload:        payload,
+		Summary: runevents.SummaryMetadata{
+			MetricKey:     key,
+			EvidenceLevel: runevents.EvidenceLevelVoiceStructured,
+		},
 	})
 	return input
 }
