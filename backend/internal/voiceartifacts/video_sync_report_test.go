@@ -280,6 +280,29 @@ func TestVideoSyncReportRejectsExtraTranslationCountMismatch(t *testing.T) {
 	}
 }
 
+func TestVideoSyncReportRejectsExtraTranslationCountWithoutTranslatedSegments(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "report.json")
+	writeVideoSyncReport(t, path, map[string]any{
+		"summary": map[string]any{
+			"status":                       "fail",
+			"interpretation":               "zero translated segments means zero extras",
+			"missing_translation_segments": 1,
+			"extra_translation_segments":   5,
+		},
+		"source_segments": []map[string]any{
+			{"start_ms": 0, "end_ms": 100},
+		},
+		"pairs": []map[string]any{
+			{"source_index": 0, "status": "missing_translation"},
+		},
+	})
+
+	if _, err := LoadVideoSyncReport(path); err == nil {
+		t.Fatal("expected validation error")
+	}
+}
+
 func TestVideoSyncArtifactKindIsValid(t *testing.T) {
 	if !ArtifactKindVideoSyncReport.IsValid() {
 		t.Fatal("video sync report artifact kind should be valid")

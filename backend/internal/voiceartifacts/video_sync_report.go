@@ -189,11 +189,9 @@ func (r VideoSyncReport) validateSummaryAgainstPairs() error {
 	if err := requireCountMatch("summary.missing_translation_segments", r.Summary.MissingTranslationSegments, missing); err != nil {
 		return err
 	}
-	if len(r.TranslatedSegments) > 0 {
-		extra := len(r.TranslatedSegments) - len(pairedTranslated)
-		if err := requireCountMatch("summary.extra_translation_segments", r.Summary.ExtraTranslationSegments, extra); err != nil {
-			return err
-		}
+	extra := len(r.TranslatedSegments) - len(pairedTranslated)
+	if err := requireCountMatch("summary.extra_translation_segments", r.Summary.ExtraTranslationSegments, extra); err != nil {
+		return err
 	}
 	if len(r.SourceSegments) > 0 && r.Summary.SegmentCoverageRatio != nil {
 		expected := float64(paired) / float64(len(r.SourceSegments))
@@ -345,7 +343,7 @@ func requireCountMatch(name string, value *float64, expected int) error {
 		return nil
 	}
 	if int(*value) != expected {
-		return fmt.Errorf("%s must match pair rows", name)
+		return fmt.Errorf("%s must match pair rows: got %d, want %d", name, int(*value), expected)
 	}
 	return nil
 }
