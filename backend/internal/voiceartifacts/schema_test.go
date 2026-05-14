@@ -224,6 +224,115 @@ func TestVoiceReportSchemasRejectInvalidExamples(t *testing.T) {
 	}
 }
 
+func TestVoiceArtifactManifestSchemaAcceptsExamples(t *testing.T) {
+	schema := loadVoiceReportSchema(t, filepath.Join("..", "..", "..", "docs", "schemas", "voice-artifact-manifest.schema.json"))
+
+	for _, tt := range []struct {
+		name     string
+		manifest map[string]any
+	}{
+		{
+			name:     "minimal local path manifest",
+			manifest: validManifestSchemaExample("local_path"),
+		},
+		{
+			name:     "richer object storage manifest",
+			manifest: validManifestSchemaExample("object_storage"),
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := schema.Validate(asJSONDocument(t, tt.manifest)); err != nil {
+				t.Fatalf("schema rejected manifest: %v", err)
+			}
+		})
+	}
+}
+
+func TestVoiceArtifactManifestSchemaRejectsInvalidExamples(t *testing.T) {
+	schema := loadVoiceReportSchema(t, filepath.Join("..", "..", "..", "docs", "schemas", "voice-artifact-manifest.schema.json"))
+
+	tests := []struct {
+		name     string
+		mutate   func(map[string]any)
+		validate func(t *testing.T, manifest map[string]any)
+	}{
+		{
+			name: "invalid schema version",
+			mutate: func(manifest map[string]any) {
+				manifest["schema_version"] = "2026-01-01"
+			},
+		},
+		{
+			name: "invalid run id",
+			mutate: func(manifest map[string]any) {
+				manifest["run_id"] = "not-a-uuid"
+			},
+		},
+		{
+			name: "nil run agent id",
+			mutate: func(manifest map[string]any) {
+				manifest["run_agent_id"] = "00000000-0000-0000-0000-000000000000"
+			},
+		},
+		{
+			name: "missing required artifact kind",
+			mutate: func(manifest map[string]any) {
+				manifest["artifacts"] = filterManifestSchemaArtifacts(manifest["artifacts"].([]map[string]any), "caller_audio")
+			},
+		},
+		{
+			name: "exact duplicate artifact entry",
+			mutate: func(manifest map[string]any) {
+				artifacts := manifest["artifacts"].([]map[string]any)
+				manifest["artifacts"] = append(artifacts, cloneJSONMap(t, artifacts[0]))
+			},
+		},
+		{
+			name: "invalid checksum",
+			mutate: func(manifest map[string]any) {
+				manifest["artifacts"].([]map[string]any)[0]["checksum_sha256"] = strings.Repeat("A", 64)
+			},
+		},
+		{
+			name: "unsafe local path",
+			mutate: func(manifest map[string]any) {
+				manifest["artifacts"].([]map[string]any)[0]["path"] = "../caller.wav"
+			},
+		},
+		{
+			name: "local path must not set bucket",
+			mutate: func(manifest map[string]any) {
+				manifest["artifacts"].([]map[string]any)[0]["bucket"] = "voice-artifacts"
+			},
+		},
+		{
+			name: "object storage requires bucket",
+			mutate: func(manifest map[string]any) {
+				manifest["artifacts"].([]map[string]any)[0]["location"] = "object_storage"
+				delete(manifest["artifacts"].([]map[string]any)[0], "path")
+				manifest["artifacts"].([]map[string]any)[0]["object_key"] = "voice/sessions/session-001/caller.wav"
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			manifest := validManifestSchemaExample("local_path")
+			tt.mutate(manifest)
+			if tt.validate != nil {
+				tt.validate(t, manifest)
+			}
+			err := schema.Validate(asJSONDocument(t, manifest))
+			if err == nil {
+				t.Fatal("expected schema validation error")
+			}
+			if !strings.Contains(err.Error(), "voice-artifact-manifest.schema.json") {
+				t.Fatalf("error %q does not mention manifest schema", err)
+			}
+		})
+	}
+}
+
 func loadVoiceReportSchema(t *testing.T, path string) *jsonschema.Resolved {
 	t.Helper()
 
@@ -268,4 +377,83 @@ func cloneJSONMap(t *testing.T, value any) map[string]any {
 		t.Fatal(err)
 	}
 	return cloned
+}
+
+func validManifestSchemaExample(location string) map[string]any {
+	artifacts := []map[string]any{
+		manifestSchemaArtifact("caller", "caller_audio", location),
+		manifestSchemaArtifact("agent", "agent_audio", location),
+		manifestSchemaArtifact("transcript", "transcript_json", location),
+		manifestSchemaArtifact("timeline", "waveform_timeline_json", location),
+		manifestSchemaArtifact("structured-output", "structured_output_json", location),
+	}
+	if location == "object_storage" {
+		artifacts = append(artifacts,
+			manifestSchemaArtifact("raw-provider-trace", "raw_provider_trace_json", location),
+			manifestSchemaArtifact("video-sync", "video_sync_report_json", location),
+		)
+	}
+
+	manifest := map[string]any{
+		"schema_version":   SchemaVersionV1,
+		"run_id":           "33333333-3333-3333-3333-333333333333",
+		"run_agent_id":     "44444444-4444-4444-4444-444444444444",
+		"voice_session_id": "voice-session-generic-001",
+		"artifacts":        artifacts,
+	}
+	if location == "object_storage" {
+		manifest["metadata"] = map[string]any{
+			"provider":        "example-provider",
+			"model":           "example-realtime-model",
+			"input_language":  "hi-IN",
+			"output_language": "en-US",
+			"transport":       "desktop_audio",
+			"streaming_mode":  "streaming",
+		}
+	}
+	return manifest
+}
+
+func manifestSchemaArtifact(key string, kind string, location string) map[string]any {
+	artifact := map[string]any{
+		"key":             key,
+		"kind":            kind,
+		"location":        location,
+		"content_type":    "application/octet-stream",
+		"size_bytes":      1,
+		"checksum_sha256": strings.Repeat("1", 64),
+	}
+	switch location {
+	case "local_path":
+		artifact["path"] = "artifacts/" + key
+	case "object_storage":
+		artifact["bucket"] = "agentclash-voice-artifacts"
+		artifact["object_key"] = "voice/sessions/voice-session-generic-001/" + key
+	}
+	return artifact
+}
+
+func filterManifestSchemaArtifacts(artifacts []map[string]any, withoutKind string) []map[string]any {
+	filtered := make([]map[string]any, 0, len(artifacts))
+	for _, artifact := range artifacts {
+		if artifact["kind"] == withoutKind {
+			continue
+		}
+		filtered = append(filtered, artifact)
+	}
+	return filtered
+}
+
+func asJSONDocument(t *testing.T, value any) any {
+	t.Helper()
+
+	data, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document any
+	if err := json.Unmarshal(data, &document); err != nil {
+		t.Fatal(err)
+	}
+	return document
 }

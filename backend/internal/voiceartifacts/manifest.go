@@ -51,11 +51,12 @@ var (
 )
 
 type Manifest struct {
-	SchemaVersion  string        `json:"schema_version"`
-	RunID          uuid.UUID     `json:"run_id"`
-	RunAgentID     uuid.UUID     `json:"run_agent_id"`
-	VoiceSessionID string        `json:"voice_session_id"`
-	Artifacts      []ArtifactRef `json:"artifacts"`
+	SchemaVersion  string         `json:"schema_version"`
+	RunID          uuid.UUID      `json:"run_id"`
+	RunAgentID     uuid.UUID      `json:"run_agent_id"`
+	VoiceSessionID string         `json:"voice_session_id"`
+	Artifacts      []ArtifactRef  `json:"artifacts"`
+	Metadata       map[string]any `json:"metadata,omitempty"`
 }
 
 type ArtifactRef struct {
