@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -108,6 +109,28 @@ func TestArtifactValidateVoiceReportRequiresSchemaForUnknownType(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "unsupported voice report type") {
 		t.Fatalf("error = %q, want unsupported type", err)
+	}
+}
+
+func TestEmbeddedVoiceSchemasMatchDocsSchemas(t *testing.T) {
+	for _, schemaFile := range []string{
+		voiceSchemaLiveContinuityFile,
+		voiceSchemaVideoSyncFile,
+		voiceSchemaSourceSeparationFile,
+	} {
+		t.Run(schemaFile, func(t *testing.T) {
+			embedded, err := embeddedVoiceSchemas.ReadFile(filepath.ToSlash(filepath.Join("voice_schemas", schemaFile)))
+			if err != nil {
+				t.Fatal(err)
+			}
+			docs, err := os.ReadFile(filepath.Join("..", "..", "docs", "schemas", schemaFile))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(embedded, docs) {
+				t.Fatalf("embedded schema %s differs from docs/schemas copy", schemaFile)
+			}
+		})
 	}
 }
 
