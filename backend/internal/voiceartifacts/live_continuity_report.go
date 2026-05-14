@@ -44,6 +44,7 @@ type LiveContinuityEvidence struct {
 	MedianFirstAudioMS           *float64 `json:"median_first_audio_ms,omitempty"`
 	P90FirstAudioMS              *float64 `json:"p90_first_audio_ms,omitempty"`
 	MaxOutputGapMS               *float64 `json:"max_output_gap_ms,omitempty"`
+	MedianOutputGapMS            *float64 `json:"median_output_gap_ms,omitempty"`
 	SpeechNoOutputRatio          *float64 `json:"speech_no_output_ratio,omitempty"`
 	SpeechStartDuringOutputCount *float64 `json:"speech_start_during_output_count,omitempty"`
 	Caveats                      []string `json:"caveats,omitempty"`
@@ -101,20 +102,24 @@ func (r LiveContinuityReport) Validate() error {
 		value *float64
 		min   float64
 		max   float64
+		count bool
 	}{
 		{name: "metrics.speech_no_output_ratio", value: r.Metrics.SpeechNoOutputRatio, min: 0, max: 1},
-		{name: "metrics.speech_start_count", value: r.Metrics.SpeechStartCount, min: 0, max: math.Inf(1)},
-		{name: "metrics.speech_stop_count", value: r.Metrics.SpeechStopCount, min: 0, max: math.Inf(1)},
-		{name: "metrics.output_event_count", value: r.Metrics.OutputEventCount, min: 0, max: math.Inf(1)},
+		{name: "metrics.speech_start_count", value: r.Metrics.SpeechStartCount, min: 0, max: math.Inf(1), count: true},
+		{name: "metrics.speech_stop_count", value: r.Metrics.SpeechStopCount, min: 0, max: math.Inf(1), count: true},
+		{name: "metrics.output_event_count", value: r.Metrics.OutputEventCount, min: 0, max: math.Inf(1), count: true},
 		{name: "metrics.max_output_gap_ms", value: r.Metrics.MaxOutputGapMS, min: 0, max: math.Inf(1)},
 		{name: "metrics.median_output_gap_ms", value: r.Metrics.MedianOutputGapMS, min: 0, max: math.Inf(1)},
 		{name: "metrics.median_first_audio_ms", value: r.Metrics.MedianFirstAudioMS, min: 0, max: math.Inf(1)},
 		{name: "metrics.p90_first_audio_ms", value: r.Metrics.P90FirstAudioMS, min: 0, max: math.Inf(1)},
-		{name: "metrics.speech_no_output_count", value: r.Metrics.SpeechNoOutputCount, min: 0, max: math.Inf(1)},
-		{name: "metrics.speech_start_during_output_count", value: r.Metrics.SpeechStartDuringOutputCount, min: 0, max: math.Inf(1)},
+		{name: "metrics.speech_no_output_count", value: r.Metrics.SpeechNoOutputCount, min: 0, max: math.Inf(1), count: true},
+		{name: "metrics.speech_start_during_output_count", value: r.Metrics.SpeechStartDuringOutputCount, min: 0, max: math.Inf(1), count: true},
 	} {
 		if metric.value != nil && (*metric.value < metric.min || *metric.value > metric.max) {
 			return fmt.Errorf("%s must be between %v and %v", metric.name, metric.min, metric.max)
+		}
+		if metric.value != nil && metric.count && math.Trunc(*metric.value) != *metric.value {
+			return fmt.Errorf("%s must be a whole number", metric.name)
 		}
 	}
 	return nil
@@ -128,6 +133,7 @@ func (r LiveContinuityReport) TimingEvidence() LiveContinuityEvidence {
 		MedianFirstAudioMS:           cloneFloat64(r.Metrics.MedianFirstAudioMS),
 		P90FirstAudioMS:              cloneFloat64(r.Metrics.P90FirstAudioMS),
 		MaxOutputGapMS:               cloneFloat64(r.Metrics.MaxOutputGapMS),
+		MedianOutputGapMS:            cloneFloat64(r.Metrics.MedianOutputGapMS),
 		SpeechNoOutputRatio:          cloneFloat64(r.Metrics.SpeechNoOutputRatio),
 		SpeechStartDuringOutputCount: cloneFloat64(r.Metrics.SpeechStartDuringOutputCount),
 		Caveats:                      append([]string(nil), r.Caveats...),

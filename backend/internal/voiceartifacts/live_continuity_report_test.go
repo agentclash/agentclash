@@ -23,9 +23,16 @@ func TestLoadLiveContinuityReport(t *testing.T) {
 	if evidence.SpeechNoOutputRatio == nil || *evidence.SpeechNoOutputRatio != 0 {
 		t.Fatalf("speech no output ratio = %#v", evidence.SpeechNoOutputRatio)
 	}
+	if evidence.MedianOutputGapMS == nil || *evidence.MedianOutputGapMS != 400 {
+		t.Fatalf("median output gap = %#v", evidence.MedianOutputGapMS)
+	}
 	*evidence.MedianFirstAudioMS = 1
+	*evidence.MedianOutputGapMS = 1
 	if *report.Metrics.MedianFirstAudioMS != 850 {
 		t.Fatal("evidence metric mutation should not mutate source report")
+	}
+	if *report.Metrics.MedianOutputGapMS != 400 {
+		t.Fatal("evidence gap mutation should not mutate source report")
 	}
 }
 
@@ -62,6 +69,31 @@ func TestLiveContinuityReportAcceptsDegradedEvidence(t *testing.T) {
 
 	if _, err := LoadLiveContinuityReport(path); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestLiveContinuityReportAcceptsWarnStatus(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "report.json")
+	writeLiveContinuityReport(t, path, map[string]any{
+		"schema_version": "2026-05-14",
+		"type":           LiveContinuityReportType,
+		"status":         "warn",
+		"passed":         false,
+		"metrics": map[string]any{
+			"evidence_status":        "available",
+			"speech_start_count":     2,
+			"output_event_count":     2,
+			"speech_no_output_ratio": 0,
+		},
+	})
+
+	report, err := LoadLiveContinuityReport(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Passed {
+		t.Fatal("warn report should not be marked passed")
 	}
 }
 
@@ -131,6 +163,25 @@ func TestLiveContinuityReportRejectsNegativeCount(t *testing.T) {
 		"metrics": map[string]any{
 			"evidence_status":        "available",
 			"speech_no_output_count": -1,
+		},
+	})
+
+	if _, err := LoadLiveContinuityReport(path); err == nil {
+		t.Fatal("expected validation error")
+	}
+}
+
+func TestLiveContinuityReportRejectsFractionalCount(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "report.json")
+	writeLiveContinuityReport(t, path, map[string]any{
+		"schema_version": "2026-05-14",
+		"type":           LiveContinuityReportType,
+		"status":         "failed",
+		"passed":         false,
+		"metrics": map[string]any{
+			"evidence_status":    "available",
+			"speech_start_count": 1.5,
 		},
 	})
 
