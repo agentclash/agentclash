@@ -1,0 +1,261 @@
+---
+title: Voice Artifact Contracts
+description: Standard artifact and report contracts for evaluating voice agents across providers, transports, and media pipelines.
+---
+
+Voice evals need evidence that text-only evals never see: audio files, timing traces, transcripts, provider logs, source-separation diagnostics, and synchronization reports. AgentClash treats those files as generic voice artifacts so any producer can emit comparable evidence.
+
+The contract is intentionally producer-neutral. A browser voice agent, telephony agent, meeting translator, local speech model, or hosted realtime model should all describe evidence with the same artifact kinds and report types.
+
+## Manifest shape
+
+A voice artifact bundle starts with a manifest using schema version `2026-05-13`.
+
+```json
+{
+  "schema_version": "2026-05-13",
+  "run_id": "11111111-1111-1111-1111-111111111111",
+  "run_agent_id": "22222222-2222-2222-2222-222222222222",
+  "voice_session_id": "session-001",
+  "artifacts": [
+    {
+      "key": "caller-turns",
+      "kind": "caller_audio",
+      "location": "local_path",
+      "path": "artifacts/caller.wav",
+      "content_type": "audio/wav",
+      "checksum_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    },
+    {
+      "key": "agent-turns",
+      "kind": "agent_audio",
+      "location": "local_path",
+      "path": "artifacts/agent.wav",
+      "content_type": "audio/wav",
+      "checksum_sha256": "1123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    },
+    {
+      "key": "transcript",
+      "kind": "transcript_json",
+      "location": "local_path",
+      "path": "artifacts/transcript.json",
+      "content_type": "application/json",
+      "checksum_sha256": "2123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    },
+    {
+      "key": "timeline",
+      "kind": "waveform_timeline_json",
+      "location": "local_path",
+      "path": "artifacts/waveform_timeline.json",
+      "content_type": "application/json",
+      "checksum_sha256": "3123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    },
+    {
+      "key": "structured-output",
+      "kind": "structured_output_json",
+      "location": "local_path",
+      "path": "artifacts/structured_output.json",
+      "content_type": "application/json",
+      "checksum_sha256": "4123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    }
+  ]
+}
+```
+
+Each artifact key must be unique. `checksum_sha256` must be 64 lowercase hex characters. `local_path` entries must use relative paths that do not traverse outside the bundle. `object_storage` entries must use `bucket` and `object_key` instead of `path`. If `size_bytes` is present, it must be non-negative.
+
+## Required artifacts
+
+Every voice artifact manifest currently requires these kinds:
+
+- `caller_audio` - the user, caller, source speaker, or source media speech channel.
+- `agent_audio` - the generated agent or translated output audio.
+- `transcript_json` - timestamped text evidence for the conversation or media stream.
+- `waveform_timeline_json` - timing evidence for speech starts, stops, output starts, output gaps, or segment boundaries.
+- `structured_output_json` - normalized scoring output or task-level result data.
+
+These required kinds make a run auditable even when optional diagnostics are absent.
+
+## Optional diagnostics
+
+Optional artifact kinds add depth when the eval needs it:
+
+- `mixed_audio` - rendered session audio, useful when judging what a listener actually heard.
+- `live_continuity_report_json` - latency, interruption, and output-gap evidence.
+- `video_sync_report_json` - subtitle, dubbing, or lip-sync timing evidence.
+- `media_policy_report_json` - source separation, background preservation, and speech drop evidence.
+- `raw_provider_trace_json` - raw model/provider events for debugging.
+- `redaction_metadata_json` - what was removed before publishing or scoring artifacts.
+
+Optional does not mean unimportant. It means the platform can ingest a minimal voice run first, then layer specialized evidence as the evaluation matures.
+
+`media_policy_report_json` currently carries the `agentclash.voice.source_separation_eval.v1` report. The artifact kind is broader because future media-policy reports may evaluate other speech plus non-speech behavior, but the current validator expects the source-separation report shape documented below.
+
+## Generic report types
+
+Specialized reports should identify themselves with AgentClash-owned `type` values:
+
+- `agentclash.voice.live_continuity_eval.v1`
+- `agentclash.voice.video_sync_eval.v1`
+- `agentclash.voice.source_separation_eval.v1`
+
+Legacy producer aliases may still ingest for backward compatibility, but new producers should use the generic AgentClash types.
+
+Accepted legacy aliases are:
+
+- `voicey.live_continuity_eval`
+- `voicey.video_sync_eval`
+- `voicey.source_separation_eval`
+
+Status vocabularies are report-specific. Live continuity uses `passed`, `warn`, `failed`, or `degraded`. Source separation uses `passed`, `failed`, or `degraded`. Video sync summary uses `pass`, `warn`, or `fail`.
+
+## Live continuity report
+
+Use live continuity reports to evaluate whether a voice agent feels realtime: first-audio latency, long output gaps, missing responses, and user speech that arrives while output is already playing.
+
+```json
+{
+  "schema_version": "2026-05-13",
+  "type": "agentclash.voice.live_continuity_eval.v1",
+  "status": "warn",
+  "passed": false,
+  "metrics": {
+    "speech_start_count": 8,
+    "speech_stop_count": 8,
+    "output_event_count": 7,
+    "evidence_status": "available",
+    "median_first_audio_ms": 820,
+    "p90_first_audio_ms": 1450,
+    "max_output_gap_ms": 1150,
+    "median_output_gap_ms": 240,
+    "speech_no_output_count": 1,
+    "speech_no_output_ratio": 0.125,
+    "speech_start_during_output_count": 2
+  },
+  "caveats": ["No speaker diarization was available."]
+}
+```
+
+Good live continuity evidence is not only a pass/fail. It should expose where the experience broke: silence after speech, output that started too early, output that kept talking over the user, or degraded evidence because provider timing events were missing.
+
+Validation details:
+
+- `passed` must be exactly equivalent to `status == "passed"`.
+- `metrics.evidence_status` must be `available` or `degraded`.
+- `status` cannot be `passed` when `metrics.evidence_status` is `degraded`.
+- Count fields must be whole numbers when present.
+
+## Video sync report
+
+Use video sync reports for dubbed media, live meetings with video, translated playback, subtitles, or any output where timing alignment changes perceived quality.
+
+```json
+{
+  "schema_version": "2026-05-13",
+  "type": "agentclash.voice.video_sync_eval.v1",
+  "summary": {
+    "status": "warn",
+    "status_basis_ms": 640,
+    "first_onset_lag_ms": 420,
+    "median_onset_lag_ms": 510,
+    "p90_onset_lag_ms": 900,
+    "tail_lag_ms": 980,
+    "paired_segments": 3,
+    "missing_translation_segments": 0,
+    "extra_translation_segments": 0,
+    "segment_coverage_ratio": 1,
+    "duration_fit_score": 0.82,
+    "median_duration_ratio": 1.12,
+    "source_span_ms": 5400,
+    "translated_span_ms": 6050,
+    "span_duration_ratio": 1.12,
+    "warn_threshold_ms": 500,
+    "fail_threshold_ms": 1200,
+    "interpretation": "The translation is understandable but visibly late on longer turns."
+  },
+  "provider_log_metrics": {
+    "first_audio_byte_ms": 760,
+    "playback_start_ms": 930
+  },
+  "mouth_motion_metrics": {
+    "mouth_open_overlap_ratio": 0.71
+  }
+}
+```
+
+`provider_log_metrics` is intentionally generic. It can contain realtime model events, telephony media timestamps, browser playback timings, or local inference timings. AgentClash should not require a producer-specific key to preserve those details.
+
+Validation details:
+
+- `summary.interpretation` is required.
+- `summary.status` uses `pass`, `warn`, or `fail`.
+- Count fields such as `paired_segments`, `missing_translation_segments`, and `extra_translation_segments` must be whole numbers when present.
+- If `pairs` are present, summary counts must agree with the pair rows.
+- `schema_version` is recommended for consistency, but current video-sync ingestion does not reject an omitted value.
+- `type` should use `agentclash.voice.video_sync_eval.v1`; current ingestion also tolerates an empty value for older producers.
+
+## Source separation report
+
+Use source separation reports when the input or output can contain speech plus non-speech audio. This matters for video, meetings, games, films, hold music, or any agent that should preserve background audio while transforming speech.
+
+```json
+{
+  "schema_version": "2026-05-13",
+  "type": "agentclash.voice.source_separation_eval.v1",
+  "status": "degraded",
+  "passed": false,
+  "metrics": {
+    "dialogue_retention_ratio": 0.91,
+    "background_preservation_ratio": 0.54,
+    "speech_drop_risk": 0.18,
+    "background_leakage_in_dialogue_ratio": 0.22,
+    "dialogue_leakage_in_background_ratio": 0.07
+  },
+  "agentclash_notes": [
+    "Background music was partially removed along with speech."
+  ]
+}
+```
+
+This report should be about media behavior, not a specific source-separation implementation. A producer may derive it from model stems, reference audio, classifier windows, or human-labeled segments.
+
+Validation details:
+
+- `passed` must be exactly equivalent to `status == "passed"`.
+- `status` uses `passed`, `failed`, or `degraded`; there is no `warn` status for source separation.
+- `dialogue_retention_ratio`, `background_preservation_ratio`, and `speech_drop_risk` are required.
+- Ratio metrics must be between 0 and 1 when present.
+
+Use `caveats` for evidence limitations a scorer should know about. Use `agentclash_notes` for platform or harness notes that explain how the evidence was produced.
+
+## Producer metadata
+
+Put producer-specific details in report fields that are explicitly generic, artifact metadata, or raw provider traces. Useful metadata includes:
+
+- provider and model names
+- input and output languages
+- transport, such as `webrtc`, `telephony`, `file`, `desktop_audio`, or `browser_media`
+- whether the run was streaming, batched, or hybrid
+- whether background audio was preserved, ducked, discarded, or unavailable
+- whether speaker diarization, mouth-motion detection, or provider timing events were available
+
+Avoid naming product-specific concepts in shared AgentClash schema fields. Product names belong in metadata, producer names, raw traces, or documentation outside the generic contract.
+
+## Evaluation dimensions
+
+Voice-agent evals should usually combine multiple artifacts rather than overloading a single score:
+
+- semantic correctness from transcript and structured output
+- latency and interruption behavior from live continuity
+- timing fit from video sync
+- media preservation from source separation
+- provider reliability from raw traces
+- privacy and publishability from redaction metadata
+
+That is the platform wedge: preserve enough evidence that different model stacks, transports, and media pipelines can be compared without forcing every voice system into one implementation shape.
+
+## See also
+
+- [Artifacts](../concepts/artifacts)
+- [Replay and Scorecards](../concepts/replay-and-scorecards)
+- [Evaluation Spec Reference](../challenge-packs/evaluation-spec-reference)

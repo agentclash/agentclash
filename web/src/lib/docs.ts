@@ -214,6 +214,13 @@ export const DOCS_NAV: DocNavSection[] = [
         slug: ["concepts", "artifacts"],
         href: "/docs/concepts/artifacts",
       },
+      {
+        title: "Voice Artifact Contracts",
+        description:
+          "Use generic audio, timing, sync, and media reports to evaluate voice agents across providers.",
+        slug: ["concepts", "voice-artifact-contracts"],
+        href: "/docs/concepts/voice-artifact-contracts",
+      },
     ],
   },
   {
