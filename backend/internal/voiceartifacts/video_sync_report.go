@@ -30,17 +30,18 @@ type VideoSyncReport struct {
 
 func (r *VideoSyncReport) UnmarshalJSON(data []byte) error {
 	type reportAlias VideoSyncReport
-	aux := struct {
-		*reportAlias
-		LegacyVoiceyLogMetrics map[string]any `json:"voicey_log_metrics,omitempty"`
-	}{
-		reportAlias: (*reportAlias)(r),
-	}
-	if err := json.Unmarshal(data, &aux); err != nil {
+	legacy := struct {
+		ProviderLogMetrics     json.RawMessage `json:"provider_log_metrics"`
+		LegacyVoiceyLogMetrics map[string]any  `json:"voicey_log_metrics,omitempty"`
+	}{}
+	if err := json.Unmarshal(data, (*reportAlias)(r)); err != nil {
 		return err
 	}
-	if r.ProviderLogMetrics == nil && aux.LegacyVoiceyLogMetrics != nil {
-		r.ProviderLogMetrics = aux.LegacyVoiceyLogMetrics
+	if err := json.Unmarshal(data, &legacy); err != nil {
+		return err
+	}
+	if len(legacy.ProviderLogMetrics) == 0 && legacy.LegacyVoiceyLogMetrics != nil {
+		r.ProviderLogMetrics = legacy.LegacyVoiceyLogMetrics
 	}
 	return nil
 }

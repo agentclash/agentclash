@@ -158,6 +158,40 @@ func TestVideoSyncReportProviderLogMetricsWinsOverLegacy(t *testing.T) {
 	if loaded.ProviderLogMetrics["source"] != "generic" {
 		t.Fatalf("provider log metrics = %#v", loaded.ProviderLogMetrics)
 	}
+	encoded, err := json.Marshal(loaded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), "voicey_log_metrics") {
+		t.Fatalf("marshal should not emit legacy voicey_log_metrics: %s", encoded)
+	}
+	if !strings.Contains(string(encoded), "provider_log_metrics") {
+		t.Fatalf("marshal should emit provider_log_metrics: %s", encoded)
+	}
+}
+
+func TestVideoSyncReportProviderLogMetricsNullWinsOverLegacy(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "report.json")
+	report := validVideoSyncReport(VideoSyncReportType)
+	report["provider_log_metrics"] = nil
+	report["voicey_log_metrics"] = map[string]any{"source": "legacy"}
+	writeVideoSyncReport(t, path, report)
+
+	loaded, err := LoadVideoSyncReport(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.ProviderLogMetrics != nil {
+		t.Fatalf("provider log metrics should honor explicit null: %#v", loaded.ProviderLogMetrics)
+	}
+	encoded, err := json.Marshal(loaded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), "voicey_log_metrics") {
+		t.Fatalf("marshal should not emit legacy voicey_log_metrics: %s", encoded)
+	}
 }
 
 func TestVideoSyncReportRejectsInvalidStatus(t *testing.T) {
