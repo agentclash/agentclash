@@ -20,15 +20,16 @@ const SchemaVersionV1 = "2026-05-13"
 type ArtifactKind string
 
 const (
-	ArtifactKindCallerAudio       ArtifactKind = "caller_audio"
-	ArtifactKindAgentAudio        ArtifactKind = "agent_audio"
-	ArtifactKindMixedAudio        ArtifactKind = "mixed_audio"
-	ArtifactKindTranscriptJSON    ArtifactKind = "transcript_json"
-	ArtifactKindWaveformTimeline  ArtifactKind = "waveform_timeline_json"
-	ArtifactKindMediaPolicyReport ArtifactKind = "media_policy_report_json"
-	ArtifactKindRawProviderTrace  ArtifactKind = "raw_provider_trace_json"
-	ArtifactKindStructuredOutput  ArtifactKind = "structured_output_json"
-	ArtifactKindRedactionMetadata ArtifactKind = "redaction_metadata_json"
+	ArtifactKindCallerAudio          ArtifactKind = "caller_audio"
+	ArtifactKindAgentAudio           ArtifactKind = "agent_audio"
+	ArtifactKindMixedAudio           ArtifactKind = "mixed_audio"
+	ArtifactKindTranscriptJSON       ArtifactKind = "transcript_json"
+	ArtifactKindWaveformTimeline     ArtifactKind = "waveform_timeline_json"
+	ArtifactKindMediaPolicyReport    ArtifactKind = "media_policy_report_json"
+	ArtifactKindLiveContinuityReport ArtifactKind = "live_continuity_report_json"
+	ArtifactKindRawProviderTrace     ArtifactKind = "raw_provider_trace_json"
+	ArtifactKindStructuredOutput     ArtifactKind = "structured_output_json"
+	ArtifactKindRedactionMetadata    ArtifactKind = "redaction_metadata_json"
 )
 
 type ArtifactLocationType string
@@ -173,6 +174,7 @@ func (k ArtifactKind) IsValid() bool {
 		ArtifactKindTranscriptJSON,
 		ArtifactKindWaveformTimeline,
 		ArtifactKindMediaPolicyReport,
+		ArtifactKindLiveContinuityReport,
 		ArtifactKindRawProviderTrace,
 		ArtifactKindStructuredOutput,
 		ArtifactKindRedactionMetadata:
