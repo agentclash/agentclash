@@ -109,6 +109,18 @@ Accepted legacy aliases are:
 
 Status vocabularies are report-specific. Live continuity uses `passed`, `warn`, `failed`, or `degraded`. Source separation uses `passed`, `failed`, or `degraded`. Video sync summary uses `pass`, `warn`, or `fail`.
 
+## JSON Schemas
+
+Producers can validate reports before upload with the machine-readable schemas in `docs/schemas`:
+
+- `voice-live-continuity-report.schema.json`
+- `voice-video-sync-report.schema.json`
+- `voice-source-separation-report.schema.json`
+
+The schemas encode the common producer mistakes that are easy to miss in prose: report-specific status values, `passed`/`status` coupling, integer count fields, bounded ratios, and required interpretation text.
+
+The schemas are a producer-side preflight, not a replacement for AgentClash ingestion. The Go validators still enforce cross-field and cross-row checks such as segment end times, pair index bounds, video-sync summary counts versus pair rows, and duration-range ordering.
+
 ## Live continuity report
 
 Use live continuity reports to evaluate whether a voice agent feels realtime: first-audio latency, long output gaps, missing responses, and user speech that arrives while output is already playing.
