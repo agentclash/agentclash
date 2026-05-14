@@ -81,13 +81,15 @@ These required kinds make a run auditable even when optional diagnostics are abs
 Optional artifact kinds add depth when the eval needs it:
 
 - `mixed_audio` - rendered session audio, useful when judging what a listener actually heard.
-- `media_policy_report_json` - source separation, background preservation, and speech drop evidence.
 - `live_continuity_report_json` - latency, interruption, and output-gap evidence.
 - `video_sync_report_json` - subtitle, dubbing, or lip-sync timing evidence.
+- `media_policy_report_json` - source separation, background preservation, and speech drop evidence.
 - `raw_provider_trace_json` - raw model/provider events for debugging.
 - `redaction_metadata_json` - what was removed before publishing or scoring artifacts.
 
 Optional does not mean unimportant. It means the platform can ingest a minimal voice run first, then layer specialized evidence as the evaluation matures.
+
+`media_policy_report_json` currently carries the `agentclash.voice.source_separation_eval.v1` report. The artifact kind is broader because future media-policy reports may evaluate other speech plus non-speech behavior, but the current validator expects the source-separation report shape documented below.
 
 ## Generic report types
 
@@ -138,7 +140,7 @@ Good live continuity evidence is not only a pass/fail. It should expose where th
 
 Validation details:
 
-- `passed` must be true only when `status` is `passed`.
+- `passed` must be exactly equivalent to `status == "passed"`.
 - `metrics.evidence_status` must be `available` or `degraded`.
 - `status` cannot be `passed` when `metrics.evidence_status` is `degraded`.
 - Count fields must be whole numbers when present.
@@ -219,7 +221,7 @@ This report should be about media behavior, not a specific source-separation imp
 
 Validation details:
 
-- `passed` must be true only when `status` is `passed`.
+- `passed` must be exactly equivalent to `status == "passed"`.
 - `status` uses `passed`, `failed`, or `degraded`; there is no `warn` status for source separation.
 - `dialogue_retention_ratio`, `background_preservation_ratio`, and `speech_drop_risk` are required.
 - Ratio metrics must be between 0 and 1 when present.
