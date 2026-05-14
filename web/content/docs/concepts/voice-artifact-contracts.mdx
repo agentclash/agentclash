@@ -64,7 +64,15 @@ A voice artifact bundle starts with a manifest using schema version `2026-05-13`
 
 Each artifact key must be unique. `checksum_sha256` must be 64 lowercase hex characters. `local_path` entries must use relative paths that do not traverse outside the bundle. `object_storage` entries must use `bucket` and `object_key` instead of `path`. If `size_bytes` is present, it must be non-negative.
 
+Some checksum tools print uppercase hex. Normalize those values to lowercase before writing the manifest so schema preflight and AgentClash ingestion agree.
+
 Producers can validate the manifest shape with `docs/schemas/voice-artifact-manifest.schema.json`. The schema covers required artifact kinds, supported artifact kinds, artifact locations, checksums, UUID fields, and common reference mistakes before upload.
+
+The CLI can run the same preflight without requiring a repository checkout:
+
+```bash
+agentclash artifact validate-voice-manifest ./voice_artifact_manifest.json
+```
 
 ## Required artifacts
 
