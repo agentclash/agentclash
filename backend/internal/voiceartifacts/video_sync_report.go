@@ -292,7 +292,7 @@ func validateIndex(name string, value *float64, count int) error {
 	if err := validateVideoSyncMetric(name, value, 0, math.Inf(1), true); err != nil {
 		return err
 	}
-	if count > 0 && int(*value) >= count {
+	if count == 0 || int(*value) >= count {
 		return fmt.Errorf("%s is out of range", name)
 	}
 	return nil
