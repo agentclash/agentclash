@@ -65,6 +65,7 @@ func TestVoiceReportSchemasRejectInvalidExamples(t *testing.T) {
 		{
 			name:       "live continuity cannot pass with degraded evidence",
 			schemaPath: filepath.Join("..", "..", "..", "docs", "schemas", "voice-live-continuity-report.schema.json"),
+			errSubstr:  "voice-live-continuity-report.schema.json",
 			report: map[string]any{
 				"schema_version": "2026-05-13",
 				"type":           LiveContinuityReportType,
@@ -78,6 +79,7 @@ func TestVoiceReportSchemasRejectInvalidExamples(t *testing.T) {
 		{
 			name:       "live continuity counts must be integers",
 			schemaPath: filepath.Join("..", "..", "..", "docs", "schemas", "voice-live-continuity-report.schema.json"),
+			errSubstr:  "voice-live-continuity-report.schema.json",
 			report: map[string]any{
 				"schema_version": "2026-05-13",
 				"type":           LiveContinuityReportType,
@@ -92,6 +94,7 @@ func TestVoiceReportSchemasRejectInvalidExamples(t *testing.T) {
 		{
 			name:       "source separation passed mirrors status",
 			schemaPath: filepath.Join("..", "..", "..", "docs", "schemas", "voice-source-separation-report.schema.json"),
+			errSubstr:  "voice-source-separation-report.schema.json",
 			report: map[string]any{
 				"schema_version": "2026-05-13",
 				"type":           SourceSeparationReportType,
@@ -107,6 +110,7 @@ func TestVoiceReportSchemasRejectInvalidExamples(t *testing.T) {
 		{
 			name:       "source separation ratios stay bounded",
 			schemaPath: filepath.Join("..", "..", "..", "docs", "schemas", "voice-source-separation-report.schema.json"),
+			errSubstr:  "voice-source-separation-report.schema.json",
 			report: map[string]any{
 				"schema_version": "2026-05-13",
 				"type":           SourceSeparationReportType,
@@ -122,6 +126,7 @@ func TestVoiceReportSchemasRejectInvalidExamples(t *testing.T) {
 		{
 			name:       "video sync requires interpretation",
 			schemaPath: filepath.Join("..", "..", "..", "docs", "schemas", "voice-video-sync-report.schema.json"),
+			errSubstr:  "voice-video-sync-report.schema.json",
 			report: map[string]any{
 				"type": VideoSyncReportType,
 				"summary": map[string]any{
@@ -132,6 +137,7 @@ func TestVoiceReportSchemasRejectInvalidExamples(t *testing.T) {
 		{
 			name:       "video sync counts must be integers",
 			schemaPath: filepath.Join("..", "..", "..", "docs", "schemas", "voice-video-sync-report.schema.json"),
+			errSubstr:  "voice-video-sync-report.schema.json",
 			report: map[string]any{
 				"type": VideoSyncReportType,
 				"summary": map[string]any{
@@ -144,6 +150,7 @@ func TestVoiceReportSchemasRejectInvalidExamples(t *testing.T) {
 		{
 			name:       "video sync rejects unsupported pair status",
 			schemaPath: filepath.Join("..", "..", "..", "docs", "schemas", "voice-video-sync-report.schema.json"),
+			errSubstr:  "voice-video-sync-report.schema.json",
 			report: map[string]any{
 				"type": VideoSyncReportType,
 				"summary": map[string]any{
@@ -156,8 +163,21 @@ func TestVoiceReportSchemasRejectInvalidExamples(t *testing.T) {
 			},
 		},
 		{
+			name:       "video sync rejects empty type when present",
+			schemaPath: filepath.Join("..", "..", "..", "docs", "schemas", "voice-video-sync-report.schema.json"),
+			errSubstr:  "voice-video-sync-report.schema.json",
+			report: map[string]any{
+				"type": "",
+				"summary": map[string]any{
+					"status":         "fail",
+					"interpretation": "empty type should be omitted rather than emitted",
+				},
+			},
+		},
+		{
 			name:       "video sync paired rows reject null required fields",
 			schemaPath: filepath.Join("..", "..", "..", "docs", "schemas", "voice-video-sync-report.schema.json"),
+			errSubstr:  "voice-video-sync-report.schema.json",
 			report: map[string]any{
 				"type": VideoSyncReportType,
 				"summary": map[string]any{

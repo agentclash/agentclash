@@ -11,7 +11,7 @@
     },
     "type": {
       "type": "string",
-      "pattern": "^\\s*(agentclash\\.voice\\.video_sync_eval\\.v1|voicey\\.video_sync_eval)?\\s*$"
+      "pattern": "^\\s*(agentclash\\.voice\\.video_sync_eval\\.v1|voicey\\.video_sync_eval)\\s*$"
     },
     "inputs": {
       "type": "object",
