@@ -1,10 +1,11 @@
 package cmd
 
 import (
-	"bytes"
 	"encoding/json"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -113,25 +114,59 @@ func TestArtifactValidateVoiceReportRequiresSchemaForUnknownType(t *testing.T) {
 }
 
 func TestEmbeddedVoiceSchemasMatchDocsSchemas(t *testing.T) {
-	for _, schemaFile := range []string{
-		voiceSchemaLiveContinuityFile,
-		voiceSchemaVideoSyncFile,
-		voiceSchemaSourceSeparationFile,
-	} {
+	entries, err := fs.ReadDir(embeddedVoiceSchemas, "voice_schemas")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) == 0 {
+		t.Fatal("expected at least one embedded voice schema")
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		schemaFile := entry.Name()
+		if !strings.HasSuffix(schemaFile, ".schema.json") {
+			continue
+		}
 		t.Run(schemaFile, func(t *testing.T) {
-			embedded, err := embeddedVoiceSchemas.ReadFile(filepath.ToSlash(filepath.Join("voice_schemas", schemaFile)))
-			if err != nil {
-				t.Fatal(err)
-			}
-			docs, err := os.ReadFile(filepath.Join("..", "..", "docs", "schemas", schemaFile))
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !bytes.Equal(embedded, docs) {
+			embedded := readEmbeddedSchemaObject(t, schemaFile)
+			docs := readDocsSchemaObject(t, schemaFile)
+			if !reflect.DeepEqual(embedded, docs) {
 				t.Fatalf("embedded schema %s differs from docs/schemas copy", schemaFile)
 			}
 		})
 	}
+}
+
+func readEmbeddedSchemaObject(t *testing.T, schemaFile string) any {
+	t.Helper()
+
+	data, err := embeddedVoiceSchemas.ReadFile(filepath.ToSlash(filepath.Join("voice_schemas", schemaFile)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return decodeSchemaObject(t, "embedded", schemaFile, data)
+}
+
+func readDocsSchemaObject(t *testing.T, schemaFile string) any {
+	t.Helper()
+
+	data, err := os.ReadFile(filepath.Join("..", "..", "docs", "schemas", schemaFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return decodeSchemaObject(t, "docs", schemaFile, data)
+}
+
+func decodeSchemaObject(t *testing.T, source, schemaFile string, data []byte) any {
+	t.Helper()
+
+	var schema any
+	if err := json.Unmarshal(data, &schema); err != nil {
+		t.Fatalf("%s schema %s is not valid JSON: %v", source, schemaFile, err)
+	}
+	return schema
 }
 
 func writeVoiceReportTestFile(t *testing.T, value map[string]any) string {
