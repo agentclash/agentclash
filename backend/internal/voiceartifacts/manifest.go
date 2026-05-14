@@ -27,6 +27,7 @@ const (
 	ArtifactKindWaveformTimeline     ArtifactKind = "waveform_timeline_json"
 	ArtifactKindMediaPolicyReport    ArtifactKind = "media_policy_report_json"
 	ArtifactKindLiveContinuityReport ArtifactKind = "live_continuity_report_json"
+	ArtifactKindVideoSyncReport      ArtifactKind = "video_sync_report_json"
 	ArtifactKindRawProviderTrace     ArtifactKind = "raw_provider_trace_json"
 	ArtifactKindStructuredOutput     ArtifactKind = "structured_output_json"
 	ArtifactKindRedactionMetadata    ArtifactKind = "redaction_metadata_json"
@@ -175,6 +176,7 @@ func (k ArtifactKind) IsValid() bool {
 		ArtifactKindWaveformTimeline,
 		ArtifactKindMediaPolicyReport,
 		ArtifactKindLiveContinuityReport,
+		ArtifactKindVideoSyncReport,
 		ArtifactKindRawProviderTrace,
 		ArtifactKindStructuredOutput,
 		ArtifactKindRedactionMetadata:
