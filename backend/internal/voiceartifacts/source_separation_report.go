@@ -65,10 +65,11 @@ func IngestSourceSeparationReport(data []byte) (SourceSeparationReport, error) {
 	return report, nil
 }
 
-func (r SourceSeparationReport) Validate() error {
+func (r *SourceSeparationReport) Validate() error {
 	if strings.TrimSpace(r.SchemaVersion) == "" {
 		return errors.New("schema_version is required")
 	}
+	r.Type = normalizeReportType(r.Type)
 	if !isAcceptedReportType(r.Type, SourceSeparationReportType, VoiceySourceSeparationReportType) {
 		return fmt.Errorf("type must be %q or %q", SourceSeparationReportType, VoiceySourceSeparationReportType)
 	}
@@ -131,11 +132,15 @@ func cloneFloat64(value *float64) *float64 {
 }
 
 func isAcceptedReportType(value string, accepted ...string) bool {
-	value = strings.TrimSpace(value)
+	value = normalizeReportType(value)
 	for _, candidate := range accepted {
 		if value == candidate {
 			return true
 		}
 	}
 	return false
+}
+
+func normalizeReportType(value string) string {
+	return strings.TrimSpace(value)
 }

@@ -60,6 +60,20 @@ func TestSourceSeparationReportAcceptsGenericType(t *testing.T) {
 	}
 }
 
+func TestSourceSeparationReportNormalizesType(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "report.json")
+	writeReport(t, path, validSourceSeparationReport(" "+SourceSeparationReportType+" "))
+
+	report, err := LoadSourceSeparationReport(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Type != SourceSeparationReportType {
+		t.Fatalf("type was not normalized: %q", report.Type)
+	}
+}
+
 func TestSourceSeparationReportAcceptsLegacyVoiceyType(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "report.json")

@@ -56,6 +56,20 @@ func TestVideoSyncReportAcceptsGenericType(t *testing.T) {
 	}
 }
 
+func TestVideoSyncReportNormalizesType(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "report.json")
+	writeVideoSyncReport(t, path, validVideoSyncReport(" "+VideoSyncReportType+" "))
+
+	report, err := LoadVideoSyncReport(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Type != VideoSyncReportType {
+		t.Fatalf("type was not normalized: %q", report.Type)
+	}
+}
+
 func TestVideoSyncReportAcceptsLegacyVoiceyType(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "report.json")

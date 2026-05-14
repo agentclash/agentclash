@@ -74,10 +74,11 @@ func IngestLiveContinuityReport(data []byte) (LiveContinuityReport, error) {
 	return report, nil
 }
 
-func (r LiveContinuityReport) Validate() error {
+func (r *LiveContinuityReport) Validate() error {
 	if strings.TrimSpace(r.SchemaVersion) == "" {
 		return errors.New("schema_version is required")
 	}
+	r.Type = normalizeReportType(r.Type)
 	if !isAcceptedReportType(r.Type, LiveContinuityReportType, VoiceyLiveContinuityReportType) {
 		return fmt.Errorf("type must be %q or %q", LiveContinuityReportType, VoiceyLiveContinuityReportType)
 	}

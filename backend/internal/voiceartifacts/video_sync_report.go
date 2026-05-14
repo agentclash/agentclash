@@ -106,7 +106,8 @@ func IngestVideoSyncReport(data []byte) (VideoSyncReport, error) {
 	return report, nil
 }
 
-func (r VideoSyncReport) Validate() error {
+func (r *VideoSyncReport) Validate() error {
+	r.Type = normalizeReportType(r.Type)
 	if strings.TrimSpace(r.Type) != "" && !isAcceptedReportType(r.Type, VideoSyncReportType, VoiceyVideoSyncReportType) {
 		return fmt.Errorf("type must be %q or %q", VideoSyncReportType, VoiceyVideoSyncReportType)
 	}

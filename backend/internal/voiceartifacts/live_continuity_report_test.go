@@ -60,6 +60,20 @@ func TestLiveContinuityReportAcceptsGenericType(t *testing.T) {
 	}
 }
 
+func TestLiveContinuityReportNormalizesType(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "report.json")
+	writeLiveContinuityReport(t, path, validLiveContinuityReport(" "+LiveContinuityReportType+" "))
+
+	report, err := LoadLiveContinuityReport(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Type != LiveContinuityReportType {
+		t.Fatalf("type was not normalized: %q", report.Type)
+	}
+}
+
 func TestLiveContinuityReportAcceptsLegacyVoiceyType(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "report.json")
