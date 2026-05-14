@@ -64,6 +64,8 @@ A voice artifact bundle starts with a manifest using schema version `2026-05-13`
 
 Each artifact key must be unique. `checksum_sha256` must be 64 lowercase hex characters. `local_path` entries must use relative paths that do not traverse outside the bundle. `object_storage` entries must use `bucket` and `object_key` instead of `path`. If `size_bytes` is present, it must be non-negative.
 
+Producers can validate the manifest shape with `docs/schemas/voice-artifact-manifest.schema.json`. The schema covers required artifact kinds, supported artifact kinds, artifact locations, checksums, UUID fields, and common reference mistakes before upload.
+
 ## Required artifacts
 
 Every voice artifact manifest currently requires these kinds:
@@ -113,13 +115,14 @@ Status vocabularies are report-specific. Live continuity uses `passed`, `warn`, 
 
 Producers can validate reports before upload with the machine-readable schemas in `docs/schemas`:
 
+- `voice-artifact-manifest.schema.json`
 - `voice-live-continuity-report.schema.json`
 - `voice-video-sync-report.schema.json`
 - `voice-source-separation-report.schema.json`
 
-The schemas encode the common producer mistakes that are easy to miss in prose: report-specific status values, `passed`/`status` coupling, integer count fields, bounded ratios, and required interpretation text.
+The schemas encode the common producer mistakes that are easy to miss in prose: required manifest artifacts, artifact reference shape, report-specific status values, `passed`/`status` coupling, integer count fields, bounded ratios, and required interpretation text.
 
-The schemas are a producer-side preflight, not a replacement for AgentClash ingestion. The Go validators still enforce cross-field and cross-row checks such as segment end times, pair index bounds, video-sync summary counts versus pair rows, and duration-range ordering.
+The schemas are a producer-side preflight, not a replacement for AgentClash ingestion. The Go validators still enforce cross-field and cross-row checks such as unique manifest artifact keys, segment end times, pair index bounds, video-sync summary counts versus pair rows, and duration-range ordering.
 
 ## Live continuity report
 
