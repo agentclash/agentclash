@@ -165,6 +165,144 @@ func TestVideoSyncReportRejectsPairIndexWithoutSegments(t *testing.T) {
 	}
 }
 
+func TestVideoSyncReportRejectsSummaryCountMismatch(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "report.json")
+	writeVideoSyncReport(t, path, map[string]any{
+		"summary": map[string]any{
+			"status":                       "fail",
+			"interpretation":               "summary counts must match pairs",
+			"paired_segments":              2,
+			"missing_translation_segments": 0,
+			"segment_coverage_ratio":       1,
+		},
+		"source_segments": []map[string]any{
+			{"start_ms": 0, "end_ms": 100},
+		},
+		"translated_segments": []map[string]any{
+			{"start_ms": 10, "end_ms": 110},
+		},
+		"pairs": []map[string]any{
+			{
+				"source_index":        0,
+				"translated_index":    0,
+				"source_start_ms":     0,
+				"source_end_ms":       100,
+				"translated_start_ms": 10,
+				"translated_end_ms":   110,
+				"onset_lag_ms":        10,
+				"duration_ratio":      1,
+				"status":              "paired",
+			},
+		},
+	})
+
+	if _, err := LoadVideoSyncReport(path); err == nil {
+		t.Fatal("expected validation error")
+	}
+}
+
+func TestVideoSyncReportRejectsCoverageMismatch(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "report.json")
+	writeVideoSyncReport(t, path, map[string]any{
+		"summary": map[string]any{
+			"status":                       "fail",
+			"interpretation":               "coverage must match pair counts",
+			"paired_segments":              1,
+			"missing_translation_segments": 1,
+			"segment_coverage_ratio":       1,
+		},
+		"source_segments": []map[string]any{
+			{"start_ms": 0, "end_ms": 100},
+			{"start_ms": 200, "end_ms": 300},
+		},
+		"translated_segments": []map[string]any{
+			{"start_ms": 10, "end_ms": 110},
+		},
+		"pairs": []map[string]any{
+			{
+				"source_index":        0,
+				"translated_index":    0,
+				"source_start_ms":     0,
+				"source_end_ms":       100,
+				"translated_start_ms": 10,
+				"translated_end_ms":   110,
+				"onset_lag_ms":        10,
+				"duration_ratio":      1,
+				"status":              "paired",
+			},
+			{"source_index": 1, "status": "missing_translation"},
+		},
+	})
+
+	if _, err := LoadVideoSyncReport(path); err == nil {
+		t.Fatal("expected validation error")
+	}
+}
+
+func TestVideoSyncReportRejectsExtraTranslationCountMismatch(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "report.json")
+	writeVideoSyncReport(t, path, map[string]any{
+		"summary": map[string]any{
+			"status":                       "fail",
+			"interpretation":               "extra count must match unpaired translated segments",
+			"paired_segments":              1,
+			"missing_translation_segments": 0,
+			"extra_translation_segments":   0,
+			"segment_coverage_ratio":       1,
+		},
+		"source_segments": []map[string]any{
+			{"start_ms": 0, "end_ms": 100},
+		},
+		"translated_segments": []map[string]any{
+			{"start_ms": 10, "end_ms": 110},
+			{"start_ms": 200, "end_ms": 300},
+		},
+		"pairs": []map[string]any{
+			{
+				"source_index":        0,
+				"translated_index":    0,
+				"source_start_ms":     0,
+				"source_end_ms":       100,
+				"translated_start_ms": 10,
+				"translated_end_ms":   110,
+				"onset_lag_ms":        10,
+				"duration_ratio":      1,
+				"status":              "paired",
+			},
+		},
+	})
+
+	if _, err := LoadVideoSyncReport(path); err == nil {
+		t.Fatal("expected validation error")
+	}
+}
+
+func TestVideoSyncReportRejectsExtraTranslationCountWithoutTranslatedSegments(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "report.json")
+	writeVideoSyncReport(t, path, map[string]any{
+		"summary": map[string]any{
+			"status":                       "fail",
+			"interpretation":               "zero translated segments means zero extras",
+			"missing_translation_segments": 1,
+			"extra_translation_segments":   5,
+		},
+		"source_segments": []map[string]any{
+			{"start_ms": 0, "end_ms": 100},
+		},
+		"pairs": []map[string]any{
+			{"source_index": 0, "status": "missing_translation"},
+		},
+	})
+
+	if _, err := LoadVideoSyncReport(path); err == nil {
+		t.Fatal("expected validation error")
+	}
+}
+
 func TestVideoSyncArtifactKindIsValid(t *testing.T) {
 	if !ArtifactKindVideoSyncReport.IsValid() {
 		t.Fatal("video sync report artifact kind should be valid")
