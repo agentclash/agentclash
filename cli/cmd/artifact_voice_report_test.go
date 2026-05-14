@@ -9,12 +9,22 @@ import (
 )
 
 func TestArtifactValidateVoiceReportAutoDetectsLiveContinuity(t *testing.T) {
+	reportPath := writeVoiceReportTestFile(t, map[string]any{
+		"schema_version": "2026-05-13",
+		"type":           "agentclash.voice.live_continuity_eval.v1",
+		"status":         "passed",
+		"passed":         true,
+		"metrics": map[string]any{
+			"evidence_status": "available",
+		},
+	})
+
 	stdout := captureStdout(t)
 	err := executeCommand(t, []string{
 		"--json",
 		"artifact",
 		"validate-voice-report",
-		filepath.Join("..", "..", "backend", "internal", "voiceartifacts", "testdata", "voicey_live_continuity_report.json"),
+		reportPath,
 	}, "http://unused")
 	if err != nil {
 		t.Fatalf("validate voice report error: %v", err)
@@ -33,12 +43,20 @@ func TestArtifactValidateVoiceReportAutoDetectsLiveContinuity(t *testing.T) {
 }
 
 func TestArtifactValidateVoiceReportAcceptsExplicitSchemaForOmittedType(t *testing.T) {
+	reportPath := writeVoiceReportTestFile(t, map[string]any{
+		"summary": map[string]any{
+			"status":         "fail",
+			"interpretation": "valid omitted-type video sync report",
+		},
+	})
+	schemaPath := writeEmbeddedVoiceSchema(t, voiceSchemaVideoSyncFile)
+
 	err := executeCommand(t, []string{
 		"artifact",
 		"validate-voice-report",
-		filepath.Join("..", "..", "backend", "internal", "voiceartifacts", "testdata", "voicey_video_sync_report.json"),
+		reportPath,
 		"--schema",
-		filepath.Join("..", "..", "docs", "schemas", voiceSchemaVideoSyncFile),
+		schemaPath,
 	}, "http://unused")
 	if err != nil {
 		t.Fatalf("validate voice report with explicit schema error: %v", err)
@@ -58,12 +76,24 @@ func TestArtifactValidateVoiceReportRejectsInvalidReport(t *testing.T) {
 		},
 	})
 
-	err := executeCommand(t, []string{"artifact", "validate-voice-report", path}, "http://unused")
+	stdout := captureStdout(t)
+	err := executeCommand(t, []string{"--json", "artifact", "validate-voice-report", path}, "http://unused")
 	if err == nil {
 		t.Fatal("expected invalid report error")
 	}
 	if !strings.Contains(err.Error(), "voice report schema validation failed") {
 		t.Fatalf("error = %q, want schema validation failure", err)
+	}
+	var payload map[string]any
+	if decodeErr := json.Unmarshal([]byte(stdout.finish()), &payload); decodeErr != nil {
+		t.Fatalf("failure output is not JSON: %v", decodeErr)
+	}
+	if payload["valid"] != false {
+		t.Fatalf("valid = %v, want false", payload["valid"])
+	}
+	errors, ok := payload["errors"].([]any)
+	if !ok || len(errors) == 0 {
+		t.Fatalf("errors = %#v, want at least one structured error", payload["errors"])
 	}
 }
 
@@ -89,6 +119,20 @@ func writeVoiceReportTestFile(t *testing.T, value map[string]any) string {
 		t.Fatal(err)
 	}
 	path := filepath.Join(t.TempDir(), "report.json")
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func writeEmbeddedVoiceSchema(t *testing.T, schemaFile string) string {
+	t.Helper()
+
+	data, err := embeddedVoiceSchemas.ReadFile(filepath.ToSlash(filepath.Join("voice_schemas", schemaFile)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), schemaFile)
 	if err := os.WriteFile(path, data, 0o644); err != nil {
 		t.Fatal(err)
 	}

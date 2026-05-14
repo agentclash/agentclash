@@ -35,11 +35,16 @@ var artifactValidateVoiceReportCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		result, err := validateVoiceReportFile(args[0], artifactValidateVoiceReportSchema)
+		rc := GetRunContext(cmd)
 		if err != nil {
+			if rc.Output.IsStructured() {
+				if printErr := rc.Output.PrintRaw(result); printErr != nil {
+					return printErr
+				}
+			}
 			return err
 		}
 
-		rc := GetRunContext(cmd)
 		if rc.Output.IsStructured() {
 			return rc.Output.PrintRaw(result)
 		}
@@ -51,15 +56,19 @@ var artifactValidateVoiceReportCmd = &cobra.Command{
 }
 
 type voiceReportValidationResult struct {
-	Path   string `json:"path"`
-	Schema string `json:"schema"`
-	Valid  bool   `json:"valid"`
+	Path   string   `json:"path"`
+	Schema string   `json:"schema,omitempty"`
+	Valid  bool     `json:"valid"`
+	Errors []string `json:"errors,omitempty"`
 }
 
 func validateVoiceReportFile(reportPath, schemaOverride string) (voiceReportValidationResult, error) {
+	result := voiceReportValidationResult{Path: reportPath}
 	report, err := readJSONDocument(reportPath)
 	if err != nil {
-		return voiceReportValidationResult{}, fmt.Errorf("read report: %w", err)
+		err = fmt.Errorf("read report: %w", err)
+		result.Errors = []string{err.Error()}
+		return result, err
 	}
 
 	schemaPath := strings.TrimSpace(schemaOverride)
@@ -67,24 +76,27 @@ func validateVoiceReportFile(reportPath, schemaOverride string) (voiceReportVali
 	if schemaPath == "" {
 		schemaPath, err = schemaPathForVoiceReport(report)
 		if err != nil {
-			return voiceReportValidationResult{}, err
+			result.Errors = []string{err.Error()}
+			return result, err
 		}
 		embeddedSchema = true
 	}
+	result.Schema = schemaPath
 
 	schema, err := readJSONSchema(schemaPath, embeddedSchema)
 	if err != nil {
-		return voiceReportValidationResult{}, fmt.Errorf("read schema: %w", err)
+		err = fmt.Errorf("read schema: %w", err)
+		result.Errors = []string{err.Error()}
+		return result, err
 	}
 	if err := schema.Validate(report); err != nil {
-		return voiceReportValidationResult{}, fmt.Errorf("voice report schema validation failed: %w", err)
+		err = fmt.Errorf("voice report schema validation failed: %w", err)
+		result.Errors = []string{err.Error()}
+		return result, err
 	}
 
-	return voiceReportValidationResult{
-		Path:   reportPath,
-		Schema: schemaPath,
-		Valid:  true,
-	}, nil
+	result.Valid = true
+	return result, nil
 }
 
 func schemaPathForVoiceReport(report any) (string, error) {
