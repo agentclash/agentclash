@@ -23,9 +23,26 @@ type VideoSyncReport struct {
 	TranslatedSegments []VideoSyncSegment `json:"translated_segments,omitempty"`
 	Pairs              []VideoSyncPair    `json:"pairs,omitempty"`
 	VideoSyncNote      string             `json:"video_sync_note,omitempty"`
-	VoiceyLogMetrics   map[string]any     `json:"voicey_log_metrics,omitempty"`
+	ProviderLogMetrics map[string]any     `json:"provider_log_metrics,omitempty"`
 	MouthMotionMetrics map[string]any     `json:"mouth_motion_metrics,omitempty"`
 	Raw                json.RawMessage    `json:"-"`
+}
+
+func (r *VideoSyncReport) UnmarshalJSON(data []byte) error {
+	type reportAlias VideoSyncReport
+	aux := struct {
+		*reportAlias
+		LegacyVoiceyLogMetrics map[string]any `json:"voicey_log_metrics,omitempty"`
+	}{
+		reportAlias: (*reportAlias)(r),
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	if r.ProviderLogMetrics == nil && aux.LegacyVoiceyLogMetrics != nil {
+		r.ProviderLogMetrics = aux.LegacyVoiceyLogMetrics
+	}
+	return nil
 }
 
 type VideoSyncSummary struct {
