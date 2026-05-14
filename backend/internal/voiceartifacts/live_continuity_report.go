@@ -9,7 +9,10 @@ import (
 	"strings"
 )
 
-const LiveContinuityReportType = "voicey.live_continuity_eval"
+const (
+	LiveContinuityReportType       = "agentclash.voice.live_continuity_eval.v1"
+	VoiceyLiveContinuityReportType = "voicey.live_continuity_eval"
+)
 
 type LiveContinuityReport struct {
 	SchemaVersion string                `json:"schema_version"`
@@ -71,12 +74,13 @@ func IngestLiveContinuityReport(data []byte) (LiveContinuityReport, error) {
 	return report, nil
 }
 
-func (r LiveContinuityReport) Validate() error {
+func (r *LiveContinuityReport) Validate() error {
 	if strings.TrimSpace(r.SchemaVersion) == "" {
 		return errors.New("schema_version is required")
 	}
-	if r.Type != LiveContinuityReportType {
-		return fmt.Errorf("type must be %q", LiveContinuityReportType)
+	r.Type = normalizeReportType(r.Type)
+	if !isAcceptedReportType(r.Type, LiveContinuityReportType, VoiceyLiveContinuityReportType) {
+		return fmt.Errorf("type must be %q or %q", LiveContinuityReportType, VoiceyLiveContinuityReportType)
 	}
 	switch r.Status {
 	case "passed", "warn", "failed", "degraded":

@@ -9,7 +9,14 @@ import (
 	"strings"
 )
 
+const (
+	VideoSyncReportType       = "agentclash.voice.video_sync_eval.v1"
+	VoiceyVideoSyncReportType = "voicey.video_sync_eval"
+)
+
 type VideoSyncReport struct {
+	SchemaVersion      string             `json:"schema_version,omitempty"`
+	Type               string             `json:"type,omitempty"`
 	Inputs             map[string]any     `json:"inputs,omitempty"`
 	Summary            VideoSyncSummary   `json:"summary"`
 	SourceSegments     []VideoSyncSegment `json:"source_segments,omitempty"`
@@ -99,7 +106,11 @@ func IngestVideoSyncReport(data []byte) (VideoSyncReport, error) {
 	return report, nil
 }
 
-func (r VideoSyncReport) Validate() error {
+func (r *VideoSyncReport) Validate() error {
+	r.Type = normalizeReportType(r.Type)
+	if strings.TrimSpace(r.Type) != "" && !isAcceptedReportType(r.Type, VideoSyncReportType, VoiceyVideoSyncReportType) {
+		return fmt.Errorf("type must be %q or %q", VideoSyncReportType, VoiceyVideoSyncReportType)
+	}
 	switch r.Summary.Status {
 	case "pass", "warn", "fail":
 	default:

@@ -8,7 +8,10 @@ import (
 	"strings"
 )
 
-const SourceSeparationReportType = "voicey.source_separation_eval"
+const (
+	SourceSeparationReportType       = "agentclash.voice.source_separation_eval.v1"
+	VoiceySourceSeparationReportType = "voicey.source_separation_eval"
+)
 
 type SourceSeparationReport struct {
 	SchemaVersion string            `json:"schema_version"`
@@ -62,12 +65,13 @@ func IngestSourceSeparationReport(data []byte) (SourceSeparationReport, error) {
 	return report, nil
 }
 
-func (r SourceSeparationReport) Validate() error {
+func (r *SourceSeparationReport) Validate() error {
 	if strings.TrimSpace(r.SchemaVersion) == "" {
 		return errors.New("schema_version is required")
 	}
-	if r.Type != SourceSeparationReportType {
-		return fmt.Errorf("type must be %q", SourceSeparationReportType)
+	r.Type = normalizeReportType(r.Type)
+	if !isAcceptedReportType(r.Type, SourceSeparationReportType, VoiceySourceSeparationReportType) {
+		return fmt.Errorf("type must be %q or %q", SourceSeparationReportType, VoiceySourceSeparationReportType)
 	}
 	switch r.Status {
 	case "passed", "failed", "degraded":
@@ -125,4 +129,18 @@ func cloneFloat64(value *float64) *float64 {
 	}
 	clone := *value
 	return &clone
+}
+
+func isAcceptedReportType(value string, accepted ...string) bool {
+	value = normalizeReportType(value)
+	for _, candidate := range accepted {
+		if value == candidate {
+			return true
+		}
+	}
+	return false
+}
+
+func normalizeReportType(value string) string {
+	return strings.TrimSpace(value)
 }

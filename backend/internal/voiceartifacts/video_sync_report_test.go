@@ -46,6 +46,50 @@ func TestIngestVideoSyncReport(t *testing.T) {
 	}
 }
 
+func TestVideoSyncReportAcceptsGenericType(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "report.json")
+	writeVideoSyncReport(t, path, validVideoSyncReport(VideoSyncReportType))
+
+	if _, err := LoadVideoSyncReport(path); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestVideoSyncReportNormalizesType(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "report.json")
+	writeVideoSyncReport(t, path, validVideoSyncReport(" "+VideoSyncReportType+" "))
+
+	report, err := LoadVideoSyncReport(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Type != VideoSyncReportType {
+		t.Fatalf("type was not normalized: %q", report.Type)
+	}
+}
+
+func TestVideoSyncReportAcceptsLegacyVoiceyType(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "report.json")
+	writeVideoSyncReport(t, path, validVideoSyncReport(VoiceyVideoSyncReportType))
+
+	if _, err := LoadVideoSyncReport(path); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestVideoSyncReportRejectsWrongType(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "report.json")
+	writeVideoSyncReport(t, path, validVideoSyncReport("other.video_sync_eval"))
+
+	if _, err := LoadVideoSyncReport(path); err == nil {
+		t.Fatal("expected validation error")
+	}
+}
+
 func TestVideoSyncReportRejectsInvalidStatus(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "report.json")
@@ -306,6 +350,38 @@ func TestVideoSyncReportRejectsExtraTranslationCountWithoutTranslatedSegments(t 
 func TestVideoSyncArtifactKindIsValid(t *testing.T) {
 	if !ArtifactKindVideoSyncReport.IsValid() {
 		t.Fatal("video sync report artifact kind should be valid")
+	}
+}
+
+func validVideoSyncReport(reportType string) map[string]any {
+	return map[string]any{
+		"schema_version": "2026-05-14",
+		"type":           reportType,
+		"summary": map[string]any{
+			"status":                 "pass",
+			"interpretation":         "generic video sync report",
+			"paired_segments":        1,
+			"segment_coverage_ratio": 1,
+		},
+		"source_segments": []map[string]any{
+			{"start_ms": 0, "end_ms": 100},
+		},
+		"translated_segments": []map[string]any{
+			{"start_ms": 10, "end_ms": 110},
+		},
+		"pairs": []map[string]any{
+			{
+				"source_index":        0,
+				"translated_index":    0,
+				"source_start_ms":     0,
+				"source_end_ms":       100,
+				"translated_start_ms": 10,
+				"translated_end_ms":   110,
+				"onset_lag_ms":        10,
+				"duration_ratio":      1,
+				"status":              "paired",
+			},
+		},
 	}
 }
 

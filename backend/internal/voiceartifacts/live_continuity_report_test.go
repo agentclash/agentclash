@@ -13,7 +13,7 @@ func TestLoadLiveContinuityReport(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if report.Type != LiveContinuityReportType {
+	if report.Type != VoiceyLiveContinuityReportType {
 		t.Fatalf("type = %q", report.Type)
 	}
 	evidence := report.TimingEvidence()
@@ -47,6 +47,50 @@ func TestIngestLiveContinuityReport(t *testing.T) {
 	}
 	if len(report.Raw) == 0 {
 		t.Fatal("expected raw report copy")
+	}
+}
+
+func TestLiveContinuityReportAcceptsGenericType(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "report.json")
+	writeLiveContinuityReport(t, path, validLiveContinuityReport(LiveContinuityReportType))
+
+	if _, err := LoadLiveContinuityReport(path); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestLiveContinuityReportNormalizesType(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "report.json")
+	writeLiveContinuityReport(t, path, validLiveContinuityReport(" "+LiveContinuityReportType+" "))
+
+	report, err := LoadLiveContinuityReport(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Type != LiveContinuityReportType {
+		t.Fatalf("type was not normalized: %q", report.Type)
+	}
+}
+
+func TestLiveContinuityReportAcceptsLegacyVoiceyType(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "report.json")
+	writeLiveContinuityReport(t, path, validLiveContinuityReport(VoiceyLiveContinuityReportType))
+
+	if _, err := LoadLiveContinuityReport(path); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestLiveContinuityReportRejectsWrongType(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "report.json")
+	writeLiveContinuityReport(t, path, validLiveContinuityReport("other.live_continuity_eval"))
+
+	if _, err := LoadLiveContinuityReport(path); err == nil {
+		t.Fatal("expected validation error")
 	}
 }
 
@@ -193,6 +237,21 @@ func TestLiveContinuityReportRejectsFractionalCount(t *testing.T) {
 func TestLiveContinuityArtifactKindIsValid(t *testing.T) {
 	if !ArtifactKindLiveContinuityReport.IsValid() {
 		t.Fatal("live continuity report artifact kind should be valid")
+	}
+}
+
+func validLiveContinuityReport(reportType string) map[string]any {
+	return map[string]any{
+		"schema_version": "2026-05-14",
+		"type":           reportType,
+		"status":         "passed",
+		"passed":         true,
+		"metrics": map[string]any{
+			"evidence_status":        "available",
+			"speech_start_count":     1,
+			"output_event_count":     1,
+			"speech_no_output_ratio": 0,
+		},
 	}
 }
 

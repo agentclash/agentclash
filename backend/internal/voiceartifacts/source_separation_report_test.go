@@ -14,7 +14,7 @@ func TestLoadSourceSeparationReport(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if report.Type != SourceSeparationReportType {
+	if report.Type != VoiceySourceSeparationReportType {
 		t.Fatalf("type = %q", report.Type)
 	}
 	evidence := report.MediaPolicyEvidence()
@@ -47,6 +47,40 @@ func TestIngestSourceSeparationReport(t *testing.T) {
 	}
 	if len(report.Raw) == 0 {
 		t.Fatal("expected raw report copy")
+	}
+}
+
+func TestSourceSeparationReportAcceptsGenericType(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "report.json")
+	writeReport(t, path, validSourceSeparationReport(SourceSeparationReportType))
+
+	if _, err := LoadSourceSeparationReport(path); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSourceSeparationReportNormalizesType(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "report.json")
+	writeReport(t, path, validSourceSeparationReport(" "+SourceSeparationReportType+" "))
+
+	report, err := LoadSourceSeparationReport(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Type != SourceSeparationReportType {
+		t.Fatalf("type was not normalized: %q", report.Type)
+	}
+}
+
+func TestSourceSeparationReportAcceptsLegacyVoiceyType(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "report.json")
+	writeReport(t, path, validSourceSeparationReport(VoiceySourceSeparationReportType))
+
+	if _, err := LoadSourceSeparationReport(path); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -152,6 +186,20 @@ func TestSourceSeparationReportAcceptsDegradedStatus(t *testing.T) {
 func TestMediaPolicyArtifactKindIsValid(t *testing.T) {
 	if !ArtifactKindMediaPolicyReport.IsValid() {
 		t.Fatal("media policy report artifact kind should be valid")
+	}
+}
+
+func validSourceSeparationReport(reportType string) map[string]any {
+	return map[string]any{
+		"schema_version": "2026-05-14",
+		"type":           reportType,
+		"status":         "passed",
+		"passed":         true,
+		"metrics": map[string]any{
+			"dialogue_retention_ratio":      0.9,
+			"background_preservation_ratio": 0.9,
+			"speech_drop_risk":              0.1,
+		},
 	}
 }
 
