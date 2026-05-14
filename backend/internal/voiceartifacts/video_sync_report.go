@@ -159,6 +159,48 @@ func (r VideoSyncReport) Validate() error {
 			return err
 		}
 	}
+	if err := r.validateSummaryAgainstPairs(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (r VideoSyncReport) validateSummaryAgainstPairs() error {
+	if len(r.Pairs) == 0 {
+		return nil
+	}
+	paired := 0
+	missing := 0
+	pairedTranslated := make(map[int]struct{})
+	for _, pair := range r.Pairs {
+		switch pair.Status {
+		case "paired":
+			paired++
+			if pair.TranslatedIndex != nil {
+				pairedTranslated[int(*pair.TranslatedIndex)] = struct{}{}
+			}
+		case "missing_translation":
+			missing++
+		}
+	}
+	if err := requireCountMatch("summary.paired_segments", r.Summary.PairedSegments, paired); err != nil {
+		return err
+	}
+	if err := requireCountMatch("summary.missing_translation_segments", r.Summary.MissingTranslationSegments, missing); err != nil {
+		return err
+	}
+	if len(r.TranslatedSegments) > 0 {
+		extra := len(r.TranslatedSegments) - len(pairedTranslated)
+		if err := requireCountMatch("summary.extra_translation_segments", r.Summary.ExtraTranslationSegments, extra); err != nil {
+			return err
+		}
+	}
+	if len(r.SourceSegments) > 0 && r.Summary.SegmentCoverageRatio != nil {
+		expected := float64(paired) / float64(len(r.SourceSegments))
+		if math.Abs(*r.Summary.SegmentCoverageRatio-expected) > 0.001 {
+			return fmt.Errorf("summary.segment_coverage_ratio must match paired/source segment counts")
+		}
+	}
 	return nil
 }
 
@@ -294,6 +336,16 @@ func validateIndex(name string, value *float64, count int) error {
 	}
 	if count == 0 || int(*value) >= count {
 		return fmt.Errorf("%s is out of range", name)
+	}
+	return nil
+}
+
+func requireCountMatch(name string, value *float64, expected int) error {
+	if value == nil {
+		return nil
+	}
+	if int(*value) != expected {
+		return fmt.Errorf("%s must match pair rows", name)
 	}
 	return nil
 }
