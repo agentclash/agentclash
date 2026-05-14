@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.18.0](https://github.com/agentclash/agentclash/compare/v0.17.0...v0.18.0) (2026-05-14)
+
+
+### Features
+
+* add voice report schema preflight ([96b613a](https://github.com/agentclash/agentclash/commit/96b613aafd6c12aa9d38846ee189e0d5378c21b6))
+* add voice report schema preflight CLI ([8ecc2d9](https://github.com/agentclash/agentclash/commit/8ecc2d9cae47e9fdcdd1976fec00e376e1b48c49))
+* validate voice artifact manifests in cli ([4bddb0e](https://github.com/agentclash/agentclash/commit/4bddb0eb97bd8de328bf7ab1c25b68038632ecb3))
+
+
+### Bug Fixes
+
+* return structured voice schema failures ([8e3b47d](https://github.com/agentclash/agentclash/commit/8e3b47d8e54ab89e86e2d192bf11b9bcf7bde344))
+
 ## [0.17.0](https://github.com/agentclash/agentclash/compare/v0.16.0...v0.17.0) (2026-05-13)
 
 
