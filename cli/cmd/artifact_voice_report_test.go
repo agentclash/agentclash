@@ -140,28 +140,50 @@ func TestArtifactValidateVoiceManifestAcceptsValidManifest(t *testing.T) {
 }
 
 func TestArtifactValidateVoiceManifestRejectsInvalidManifest(t *testing.T) {
-	manifest := validVoiceManifestTestDocument()
-	manifest["run_id"] = "00000000-0000-0000-0000-000000000000"
-	path := writeVoiceReportTestFile(t, manifest)
+	tests := []struct {
+		name   string
+		mutate func(map[string]any)
+	}{
+		{
+			name: "nil run id",
+			mutate: func(manifest map[string]any) {
+				manifest["run_id"] = "00000000-0000-0000-0000-000000000000"
+			},
+		},
+		{
+			name: "missing required caller audio artifact",
+			mutate: func(manifest map[string]any) {
+				manifest["artifacts"] = filterVoiceManifestArtifacts(manifest["artifacts"].([]map[string]any), "caller_audio")
+			},
+		},
+	}
 
-	stdout := captureStdout(t)
-	err := executeCommand(t, []string{"--json", "artifact", "validate-voice-manifest", path}, "http://unused")
-	if err == nil {
-		t.Fatal("expected invalid manifest error")
-	}
-	if !strings.Contains(err.Error(), "voice manifest schema validation failed") {
-		t.Fatalf("error = %q, want manifest schema validation failure", err)
-	}
-	var payload map[string]any
-	if decodeErr := json.Unmarshal([]byte(stdout.finish()), &payload); decodeErr != nil {
-		t.Fatalf("failure output is not JSON: %v", decodeErr)
-	}
-	if payload["valid"] != false {
-		t.Fatalf("valid = %v, want false", payload["valid"])
-	}
-	errors, ok := payload["errors"].([]any)
-	if !ok || len(errors) == 0 {
-		t.Fatalf("errors = %#v, want at least one structured error", payload["errors"])
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			manifest := validVoiceManifestTestDocument()
+			tt.mutate(manifest)
+			path := writeVoiceReportTestFile(t, manifest)
+
+			stdout := captureStdout(t)
+			err := executeCommand(t, []string{"--json", "artifact", "validate-voice-manifest", path}, "http://unused")
+			if err == nil {
+				t.Fatal("expected invalid manifest error")
+			}
+			if !strings.Contains(err.Error(), "voice manifest schema validation failed") {
+				t.Fatalf("error = %q, want manifest schema validation failure", err)
+			}
+			var payload map[string]any
+			if decodeErr := json.Unmarshal([]byte(stdout.finish()), &payload); decodeErr != nil {
+				t.Fatalf("failure output is not JSON: %v", decodeErr)
+			}
+			if payload["valid"] != false {
+				t.Fatalf("valid = %v, want false", payload["valid"])
+			}
+			errors, ok := payload["errors"].([]any)
+			if !ok || len(errors) == 0 {
+				t.Fatalf("errors = %#v, want at least one structured error", payload["errors"])
+			}
+		})
 	}
 }
 
@@ -251,6 +273,17 @@ func voiceManifestArtifact(key string, kind string) map[string]any {
 		"size_bytes":      1,
 		"checksum_sha256": strings.Repeat("1", 64),
 	}
+}
+
+func filterVoiceManifestArtifacts(artifacts []map[string]any, withoutKind string) []map[string]any {
+	filtered := make([]map[string]any, 0, len(artifacts))
+	for _, artifact := range artifacts {
+		if artifact["kind"] == withoutKind {
+			continue
+		}
+		filtered = append(filtered, artifact)
+	}
+	return filtered
 }
 
 func writeVoiceReportTestFile(t *testing.T, value map[string]any) string {
