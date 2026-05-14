@@ -14,6 +14,7 @@ import (
 )
 
 const (
+	voiceSchemaManifestFile         = "voice-artifact-manifest.schema.json"
 	voiceSchemaLiveContinuityFile   = "voice-live-continuity-report.schema.json"
 	voiceSchemaVideoSyncFile        = "voice-video-sync-report.schema.json"
 	voiceSchemaSourceSeparationFile = "voice-source-separation-report.schema.json"
@@ -26,6 +27,7 @@ var artifactValidateVoiceReportSchema string
 
 func init() {
 	artifactCmd.AddCommand(artifactValidateVoiceReportCmd)
+	artifactCmd.AddCommand(artifactValidateVoiceManifestCmd)
 	artifactValidateVoiceReportCmd.Flags().StringVar(&artifactValidateVoiceReportSchema, "schema", "", "JSON Schema path (required when report type cannot be auto-detected)")
 }
 
@@ -55,11 +57,65 @@ var artifactValidateVoiceReportCmd = &cobra.Command{
 	},
 }
 
+var artifactValidateVoiceManifestCmd = &cobra.Command{
+	Use:   "validate-voice-manifest <file>",
+	Short: "Validate a voice artifact manifest JSON file against the AgentClash schema",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		result, err := validateVoiceManifestFile(args[0])
+		rc := GetRunContext(cmd)
+		if err != nil {
+			if rc.Output.IsStructured() {
+				if printErr := rc.Output.PrintRaw(result); printErr != nil {
+					return printErr
+				}
+			}
+			return err
+		}
+
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(result)
+		}
+		rc.Output.PrintDetail("Manifest", result.Path)
+		rc.Output.PrintDetail("Schema", result.Schema)
+		rc.Output.PrintDetail("Valid", fmt.Sprintf("%t", result.Valid))
+		return nil
+	},
+}
+
 type voiceReportValidationResult struct {
 	Path   string   `json:"path"`
 	Schema string   `json:"schema,omitempty"`
 	Valid  bool     `json:"valid"`
 	Errors []string `json:"errors,omitempty"`
+}
+
+func validateVoiceManifestFile(manifestPath string) (voiceReportValidationResult, error) {
+	result := voiceReportValidationResult{
+		Path:   manifestPath,
+		Schema: voiceSchemaManifestFile,
+	}
+	manifest, err := readJSONDocument(manifestPath)
+	if err != nil {
+		err = fmt.Errorf("read manifest: %w", err)
+		result.Errors = []string{err.Error()}
+		return result, err
+	}
+
+	schema, err := readJSONSchema(voiceSchemaManifestFile, true)
+	if err != nil {
+		err = fmt.Errorf("read schema: %w", err)
+		result.Errors = []string{err.Error()}
+		return result, err
+	}
+	if err := schema.Validate(manifest); err != nil {
+		err = fmt.Errorf("voice manifest schema validation failed: %w", err)
+		result.Errors = []string{err.Error()}
+		return result, err
+	}
+
+	result.Valid = true
+	return result, nil
 }
 
 func validateVoiceReportFile(reportPath, schemaOverride string) (voiceReportValidationResult, error) {

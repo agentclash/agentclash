@@ -66,6 +66,12 @@ Each artifact key must be unique. `checksum_sha256` must be 64 lowercase hex cha
 
 Producers can validate the manifest shape with `docs/schemas/voice-artifact-manifest.schema.json`. The schema covers required artifact kinds, supported artifact kinds, artifact locations, checksums, UUID fields, and common reference mistakes before upload.
 
+The CLI can run the same preflight without requiring a repository checkout:
+
+```bash
+agentclash artifact validate-voice-manifest ./voice_artifact_manifest.json
+```
+
 ## Required artifacts
 
 Every voice artifact manifest currently requires these kinds:
