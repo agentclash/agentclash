@@ -47,6 +47,10 @@ func LoadSourceSeparationReport(path string) (SourceSeparationReport, error) {
 	if err != nil {
 		return SourceSeparationReport{}, err
 	}
+	return IngestSourceSeparationReport(data)
+}
+
+func IngestSourceSeparationReport(data []byte) (SourceSeparationReport, error) {
 	var report SourceSeparationReport
 	if err := json.Unmarshal(data, &report); err != nil {
 		return SourceSeparationReport{}, fmt.Errorf("decode source separation report: %w", err)
@@ -82,13 +86,18 @@ func (r SourceSeparationReport) Validate() error {
 	if r.Metrics.SpeechDropRisk == nil {
 		return errors.New("metrics.speech_drop_risk is required")
 	}
-	for name, value := range map[string]*float64{
-		"metrics.dialogue_retention_ratio":             r.Metrics.DialogueRetentionRatio,
-		"metrics.background_preservation_ratio":        r.Metrics.BackgroundPreservationRatio,
-		"metrics.speech_drop_risk":                     r.Metrics.SpeechDropRisk,
-		"metrics.background_leakage_in_dialogue_ratio": r.Metrics.BackgroundLeakageInDialogueRatio,
-		"metrics.dialogue_leakage_in_background_ratio": r.Metrics.DialogueLeakageInBackgroundRatio,
+	for _, metric := range []struct {
+		name  string
+		value *float64
+	}{
+		{name: "metrics.dialogue_retention_ratio", value: r.Metrics.DialogueRetentionRatio},
+		{name: "metrics.background_preservation_ratio", value: r.Metrics.BackgroundPreservationRatio},
+		{name: "metrics.speech_drop_risk", value: r.Metrics.SpeechDropRisk},
+		{name: "metrics.background_leakage_in_dialogue_ratio", value: r.Metrics.BackgroundLeakageInDialogueRatio},
+		{name: "metrics.dialogue_leakage_in_background_ratio", value: r.Metrics.DialogueLeakageInBackgroundRatio},
 	} {
+		name := metric.name
+		value := metric.value
 		if value != nil && (*value < 0 || *value > 1) {
 			return fmt.Errorf("%s must be between 0 and 1", name)
 		}
@@ -100,12 +109,20 @@ func (r SourceSeparationReport) MediaPolicyEvidence() MediaPolicyEvidence {
 	return MediaPolicyEvidence{
 		Status:                           r.Status,
 		Passed:                           r.Passed,
-		DialogueRetentionRatio:           r.Metrics.DialogueRetentionRatio,
-		BackgroundPreservationRatio:      r.Metrics.BackgroundPreservationRatio,
-		SpeechDropRisk:                   r.Metrics.SpeechDropRisk,
-		BackgroundLeakageInDialogueRatio: r.Metrics.BackgroundLeakageInDialogueRatio,
-		DialogueLeakageInBackgroundRatio: r.Metrics.DialogueLeakageInBackgroundRatio,
+		DialogueRetentionRatio:           cloneFloat64(r.Metrics.DialogueRetentionRatio),
+		BackgroundPreservationRatio:      cloneFloat64(r.Metrics.BackgroundPreservationRatio),
+		SpeechDropRisk:                   cloneFloat64(r.Metrics.SpeechDropRisk),
+		BackgroundLeakageInDialogueRatio: cloneFloat64(r.Metrics.BackgroundLeakageInDialogueRatio),
+		DialogueLeakageInBackgroundRatio: cloneFloat64(r.Metrics.DialogueLeakageInBackgroundRatio),
 		Caveats:                          append([]string(nil), r.Caveats...),
 		AgentNotes:                       append([]string(nil), r.AgentNotes...),
 	}
+}
+
+func cloneFloat64(value *float64) *float64 {
+	if value == nil {
+		return nil
+	}
+	clone := *value
+	return &clone
 }
