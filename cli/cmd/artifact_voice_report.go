@@ -83,15 +83,15 @@ var artifactValidateVoiceManifestCmd = &cobra.Command{
 	},
 }
 
-type voiceReportValidationResult struct {
+type voiceSchemaValidationResult struct {
 	Path   string   `json:"path"`
 	Schema string   `json:"schema,omitempty"`
 	Valid  bool     `json:"valid"`
 	Errors []string `json:"errors,omitempty"`
 }
 
-func validateVoiceManifestFile(manifestPath string) (voiceReportValidationResult, error) {
-	result := voiceReportValidationResult{
+func validateVoiceManifestFile(manifestPath string) (voiceSchemaValidationResult, error) {
+	result := voiceSchemaValidationResult{
 		Path:   manifestPath,
 		Schema: voiceSchemaManifestFile,
 	}
@@ -118,8 +118,8 @@ func validateVoiceManifestFile(manifestPath string) (voiceReportValidationResult
 	return result, nil
 }
 
-func validateVoiceReportFile(reportPath, schemaOverride string) (voiceReportValidationResult, error) {
-	result := voiceReportValidationResult{Path: reportPath}
+func validateVoiceReportFile(reportPath, schemaOverride string) (voiceSchemaValidationResult, error) {
+	result := voiceSchemaValidationResult{Path: reportPath}
 	report, err := readJSONDocument(reportPath)
 	if err != nil {
 		err = fmt.Errorf("read report: %w", err)
