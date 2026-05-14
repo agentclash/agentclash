@@ -269,6 +269,12 @@ func TestVoiceArtifactManifestSchemaRejectsInvalidExamples(t *testing.T) {
 			},
 		},
 		{
+			name: "nil run agent id",
+			mutate: func(manifest map[string]any) {
+				manifest["run_agent_id"] = "00000000-0000-0000-0000-000000000000"
+			},
+		},
+		{
 			name: "missing required artifact kind",
 			mutate: func(manifest map[string]any) {
 				manifest["artifacts"] = filterManifestSchemaArtifacts(manifest["artifacts"].([]map[string]any), "caller_audio")

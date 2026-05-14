@@ -116,6 +116,27 @@ func TestVoiceArtifactManifestAcceptsObjectStorageReference(t *testing.T) {
 	}
 }
 
+func TestVoiceArtifactManifestPreservesGenericMetadata(t *testing.T) {
+	manifest := validObjectStorageManifest()
+	manifest.Metadata = map[string]any{
+		"provider":  "example-provider",
+		"model":     "example-realtime-model",
+		"transport": "desktop_audio",
+	}
+
+	stable, err := manifest.StableJSON()
+	if err != nil {
+		t.Fatalf("StableJSON returned error: %v", err)
+	}
+	var decoded Manifest
+	if err := json.Unmarshal(stable, &decoded); err != nil {
+		t.Fatalf("unmarshal stable manifest: %v", err)
+	}
+	if decoded.Metadata["provider"] != "example-provider" || decoded.Metadata["transport"] != "desktop_audio" {
+		t.Fatalf("metadata = %#v, want generic provider and transport metadata preserved", decoded.Metadata)
+	}
+}
+
 func TestVoiceArtifactManifestRejectsObjectStorageReferenceWithoutBucket(t *testing.T) {
 	manifest := validObjectStorageManifest()
 	manifest.Artifacts[0].Bucket = ""
