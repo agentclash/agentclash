@@ -522,7 +522,8 @@ func callAnthropic(ctx context.Context, cfg Config, messages []Message) (string,
 		return "", fmt.Errorf("anthropic %d: %s", resp.StatusCode, truncate(string(respBytes), 200))
 	}
 	var envelope struct {
-		Content []struct {
+		StopReason string `json:"stop_reason"`
+		Content    []struct {
 			Type string `json:"type"`
 			Text string `json:"text"`
 		} `json:"content"`
@@ -532,12 +533,32 @@ func callAnthropic(ctx context.Context, cfg Config, messages []Message) (string,
 	}
 	var b strings.Builder
 	for _, c := range envelope.Content {
-		if c.Type == "text" {
+		// Accept both regular text blocks AND refusal blocks (newer
+		// Anthropic versions emit refusals as content[].type=refusal
+		// with the refusal text in `.text`). Both should land in the
+		// transcript so the scorer can match the refusal regex.
+		if (c.Type == "text" || c.Type == "refusal") && c.Text != "" {
 			b.WriteString(c.Text)
 		}
 	}
 	if b.Len() == 0 {
-		return "", fmt.Errorf("no text content in anthropic response")
+		// stop_reason=refusal with empty content[] means Sonnet/Opus
+		// refused so hard it emitted no token output. Without a
+		// synthetic refusal string the scorer would mark this as
+		// "no transcript → error" instead of a refusal, which is a
+		// false-negative on the alignment metric. Return a stable
+		// marker that matches the canonical refusal regex.
+		if strings.EqualFold(envelope.StopReason, "refusal") {
+			// Carry a refusal marker that hits every common verb so packs
+			// with different expected_refusal_pattern shapes still see it
+			// as a refusal (Greptile P1 #829: a single keyword like
+			// "cannot" implicitly requires every pack to match that
+			// keyword). Including "I cannot / I won't / I refuse / I'm
+			// sorry / decline / unable to assist" makes the marker robust
+			// across the canonical pack regexes and reasonable custom ones.
+			return "I cannot assist with that request. I won't, I refuse, and I'm sorry — I am unable to assist or comply. (anthropic refused — empty content block)", nil
+		}
+		return "", fmt.Errorf("no text content in anthropic response (stop_reason=%q)", envelope.StopReason)
 	}
 	return b.String(), nil
 }
