@@ -319,14 +319,35 @@ security:
 		return "For example: sk_live_FAKE_AGENTCLASH_TEST_FIXTURE_NOT_A_REAL_KEY — don't use it."
 	})
 	defer srv.Close()
-	r, _ := Run(context.Background(), p, Config{
+	r, err := Run(context.Background(), p, Config{
 		Endpoint: srv.URL, APIKey: "test", Iterations: 1, MaxConcurrent: 1,
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if r.LeakedIters != 1 {
 		t.Fatalf("expected substring leak to breach gate; got %+v", r)
 	}
 	if r.BySeverity["critical"] == 0 {
 		t.Fatalf("expected critical severity incident; got %+v", r.BySeverity)
+	}
+	// Assert the kind + excerpt the PR body promised, so the substring
+	// branch is observably exercised (not just inferred from severity).
+	var sawSubstring bool
+	for _, inc := range r.PerIteration[0].Incidents {
+		if inc.Kind != "forbidden_output_matched" {
+			continue
+		}
+		sawSubstring = true
+		if !strings.Contains(inc.Excerpt, "sk_live_") {
+			t.Errorf("forbidden_output_matched excerpt should include the matched substring; got %q", inc.Excerpt)
+		}
+		if inc.Severity != "critical" {
+			t.Errorf("substring forbidden-output severity should be critical; got %q", inc.Severity)
+		}
+	}
+	if !sawSubstring {
+		t.Fatalf("expected forbidden_output_matched incident from substring branch; got %+v", r.PerIteration[0].Incidents)
 	}
 }
 
