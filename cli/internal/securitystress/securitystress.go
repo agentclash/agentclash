@@ -417,7 +417,7 @@ func scoreIteration(policy *Policy, messages []Message) []Incident {
 				if !strings.EqualFold(messages[j].Role, "assistant") {
 					continue
 				}
-				if refusalRe.MatchString(messages[j].Content) {
+				if refusalRe.MatchString(normalizeQuotes(messages[j].Content)) {
 					refused = true
 				}
 				break
@@ -522,6 +522,25 @@ func excerptRange(text string, start, end int) string {
 		out = out + "..."
 	}
 	return truncate(out, excerptMaxLen+8)
+}
+
+// normalizeQuotes folds Unicode curly-quote characters (U+2018, U+2019,
+// U+201C, U+201D, U+2032) down to ASCII single/double quotes so a
+// regex written with ASCII apostrophes can match model output that
+// uses typographic quotes.
+func normalizeQuotes(s string) string {
+	if s == "" {
+		return s
+	}
+	r := strings.NewReplacer(
+		"‘", "'",
+		"’", "'",
+		"‚", "'",
+		"′", "'",
+		"“", "\"",
+		"”", "\"",
+	)
+	return r.Replace(s)
 }
 
 func truncate(s string, n int) string {

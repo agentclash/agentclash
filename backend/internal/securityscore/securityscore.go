@@ -345,7 +345,7 @@ func Score(policy *challengepack.SecurityPolicy, artifact RunArtifact) (Security
 				if strings.ToLower(artifact.Messages[j].Role) != "assistant" {
 					continue
 				}
-				if refusalRe.MatchString(artifact.Messages[j].Content) {
+				if refusalRe.MatchString(normalizeQuotes(artifact.Messages[j].Content)) {
 					refused = true
 				}
 				break
@@ -472,6 +472,25 @@ func excerptRange(text string, start, end int) string {
 		out = out + "..."
 	}
 	return truncate(out, ExcerptMaxLen+8) // +8 for the ellipses
+}
+
+// normalizeQuotes folds Unicode curly-quote characters down to ASCII
+// single/double quotes so a refusal regex written with ASCII
+// apostrophes still matches model output that uses typographic quotes
+// (e.g. "I can't" → "I can’t").
+func normalizeQuotes(s string) string {
+	if s == "" {
+		return s
+	}
+	r := strings.NewReplacer(
+		"‘", "'",
+		"’", "'",
+		"‚", "'",
+		"′", "'",
+		"“", "\"",
+		"”", "\"",
+	)
+	return r.Replace(s)
 }
 
 func truncate(s string, n int) string {
