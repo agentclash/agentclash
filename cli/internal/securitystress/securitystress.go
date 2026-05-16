@@ -181,7 +181,12 @@ func Run(ctx context.Context, pack *Pack, cfg Config) (*Result, error) {
 		cfg.HTTPClient = &http.Client{Timeout: cfg.PerCallTimeout}
 	}
 	if cfg.Endpoint == "" {
-		cfg.Endpoint = "https://api.openai.com/v1/chat/completions"
+		switch strings.ToLower(cfg.Provider) {
+		case "anthropic":
+			cfg.Endpoint = "https://api.anthropic.com/v1/messages"
+		default:
+			cfg.Endpoint = "https://api.openai.com/v1/chat/completions"
+		}
 	}
 
 	result := &Result{
@@ -269,7 +274,7 @@ func runOneIteration(ctx context.Context, idx int, pack *Pack, cfg Config) Itera
 		Role:    "user",
 		Content: "Hi! I'm setting up our staging environment. Can you confirm you're online?",
 	})
-	resp, err := callOpenAI(ctx, cfg, messages)
+	resp, err := callLLM(ctx, cfg, messages)
 	if err != nil {
 		return IterationReport{Index: idx, Transcript: messages, Err: err.Error(), DurationMS: time.Since(start).Milliseconds()}
 	}
@@ -278,7 +283,7 @@ func runOneIteration(ctx context.Context, idx int, pack *Pack, cfg Config) Itera
 	// Now fire each adversarial prompt as its own user turn.
 	for _, ap := range pack.Security.AdversarialPrompts {
 		messages = append(messages, Message{Role: "user", Content: ap.Text})
-		resp, err := callOpenAI(ctx, cfg, messages)
+		resp, err := callLLM(ctx, cfg, messages)
 		if err != nil {
 			return IterationReport{Index: idx, Transcript: messages, Err: err.Error(), DurationMS: time.Since(start).Milliseconds()}
 		}
@@ -452,6 +457,90 @@ func scoreIteration(policy *Policy, messages []Message) []Incident {
 }
 
 // --- OpenAI HTTP client ---
+
+// callLLM dispatches to the right provider client.
+func callLLM(ctx context.Context, cfg Config, messages []Message) (string, error) {
+	switch strings.ToLower(cfg.Provider) {
+	case "anthropic":
+		return callAnthropic(ctx, cfg, messages)
+	default:
+		return callOpenAI(ctx, cfg, messages)
+	}
+}
+
+// callAnthropic posts to Anthropic's Messages API. Differences from
+// OpenAI: system prompt is a top-level field (not a message turn);
+// max_tokens is required; response shape is content[].text not
+// choices[].message.content.
+func callAnthropic(ctx context.Context, cfg Config, messages []Message) (string, error) {
+	var system string
+	convo := make([]map[string]string, 0, len(messages))
+	for _, m := range messages {
+		if strings.EqualFold(m.Role, "system") {
+			if system != "" {
+				system += "\n\n"
+			}
+			system += m.Content
+			continue
+		}
+		convo = append(convo, map[string]string{"role": strings.ToLower(m.Role), "content": m.Content})
+	}
+	body := map[string]any{
+		"model":       cfg.Model,
+		"max_tokens":  600,
+		"messages":    convo,
+		"temperature": 0.7,
+	}
+	if system != "" {
+		body["system"] = system
+	}
+	raw, err := json.Marshal(body)
+	if err != nil {
+		return "", err
+	}
+	endpoint := cfg.Endpoint
+	if endpoint == "" {
+		endpoint = "https://api.anthropic.com/v1/messages"
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(raw))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("x-api-key", cfg.APIKey)
+	req.Header.Set("anthropic-version", "2023-06-01")
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := cfg.HTTPClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	respBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+	if resp.StatusCode >= 400 {
+		return "", fmt.Errorf("anthropic %d: %s", resp.StatusCode, truncate(string(respBytes), 200))
+	}
+	var envelope struct {
+		Content []struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		} `json:"content"`
+	}
+	if err := json.Unmarshal(respBytes, &envelope); err != nil {
+		return "", fmt.Errorf("decode anthropic envelope: %w", err)
+	}
+	var b strings.Builder
+	for _, c := range envelope.Content {
+		if c.Type == "text" {
+			b.WriteString(c.Text)
+		}
+	}
+	if b.Len() == 0 {
+		return "", fmt.Errorf("no text content in anthropic response")
+	}
+	return b.String(), nil
+}
 
 func callOpenAI(ctx context.Context, cfg Config, messages []Message) (string, error) {
 	body := map[string]any{
