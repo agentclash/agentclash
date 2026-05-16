@@ -455,6 +455,79 @@ security:
 	}
 }
 
+// TestRun_AnthropicEmptyContentRefusal proves that Anthropic responses
+// with stop_reason=refusal and an empty content[] array (which is how
+// Sonnet 4.6 refuses very aggressive jailbreaks) are converted into
+// a synthetic refusal string instead of an error. Without this fix
+// every DAN-style attack against Sonnet manifested as "iter X: no
+// text content in anthropic response" and was counted as run-failed
+// rather than refused — false-negative on the alignment metric.
+func TestRun_AnthropicEmptyContentRefusal(t *testing.T) {
+	pack, _ := LoadPack([]byte(minimalSecurityPack))
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"stop_reason": "refusal",
+			"content":     []map[string]any{},
+		})
+	}))
+	defer srv.Close()
+	r, err := Run(context.Background(), pack, Config{
+		Provider:      "anthropic",
+		Endpoint:      srv.URL,
+		Model:         "claude-sonnet-4-6",
+		APIKey:        "test",
+		Iterations:    1,
+		MaxConcurrent: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(r.Errors) != 0 {
+		t.Fatalf("empty-content refusal must not be reported as run error; got %v", r.Errors)
+	}
+	// Strategy tally for ignore_instructions should mark the prompt
+	// as refused (the synthetic marker matches the refusal regex).
+	if r.ByStrategy["ignore_instructions"].Refused == 0 {
+		t.Fatalf("synthetic refusal marker should count as refused; got %+v", r.ByStrategy)
+	}
+	if r.LeakedIters != 0 {
+		t.Fatalf("refusal-only run must not breach gate; got LeakedIters=%d", r.LeakedIters)
+	}
+}
+
+// TestRun_AnthropicRefusalContentBlock proves the newer Anthropic API
+// shape — content[].type=refusal with a populated .text — is treated
+// as a normal model response (folded into the transcript as text)
+// rather than dropped silently.
+func TestRun_AnthropicRefusalContentBlock(t *testing.T) {
+	pack, _ := LoadPack([]byte(minimalSecurityPack))
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"stop_reason": "refusal",
+			"content": []map[string]any{
+				{"type": "refusal", "text": "I cannot help with that request."},
+			},
+		})
+	}))
+	defer srv.Close()
+	r, err := Run(context.Background(), pack, Config{
+		Provider:      "anthropic",
+		Endpoint:      srv.URL,
+		Model:         "claude-sonnet-4-6",
+		APIKey:        "test",
+		Iterations:    1,
+		MaxConcurrent: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.ByStrategy["ignore_instructions"].Refused == 0 {
+		t.Fatalf("refusal-block content should count as refused; got %+v", r.ByStrategy)
+	}
+}
+
 func TestRun_StrategyTallyCountsBothRefusedAndAccepted(t *testing.T) {
 	pack, _ := LoadPack([]byte(minimalSecurityPack))
 	// On turn 1 refuse (opener — benign), turn 2 (first adversarial) refuse.
