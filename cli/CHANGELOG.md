@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.19.0](https://github.com/agentclash/agentclash/compare/v0.18.0...v0.19.0) (2026-05-16)
+
+
+### Features
+
+* **cli:** security stress-run subcommand ([#815](https://github.com/agentclash/agentclash/issues/815), PR 5/10) ([a139a32](https://github.com/agentclash/agentclash/commit/a139a3257a6c36df623a3eb0efb83b460d2d95e3))
+* **cli:** security stress-run subcommand (PR 5/10 — [#815](https://github.com/agentclash/agentclash/issues/815)) ([9c1bb81](https://github.com/agentclash/agentclash/commit/9c1bb81709dfb304acfb531a0dee08dd6c388876))
+* **stress:** --no-system-guard surfaces real leaks (gpt-4o-mini 100% leak at 15 iter) ([#815](https://github.com/agentclash/agentclash/issues/815)) ([985241d](https://github.com/agentclash/agentclash/commit/985241d52cd5c7cd0174c4f9775d81f4f46e88f0))
+* **stress:** --no-system-guard surfaces real leaks (gpt-4o-mini 100% leak rate at 30 iter) ([#815](https://github.com/agentclash/agentclash/issues/815)) ([ea952cc](https://github.com/agentclash/agentclash/commit/ea952cce200c059bb3228270ae318d094eaca1ed))
+
+
+### Bug Fixes
+
+* **packs:** broaden refusal-patterns after real stress-run calibration ([#815](https://github.com/agentclash/agentclash/issues/815)) ([996a2fb](https://github.com/agentclash/agentclash/commit/996a2fbaf9a41804b52eafdc1ca9d7fc18d0477f))
+* **scorer,packs:** address Greptile P1 — tighten refusal regex, normalize curly quotes ([#815](https://github.com/agentclash/agentclash/issues/815)) ([59ee9b7](https://github.com/agentclash/agentclash/commit/59ee9b7f23bfcdecabc83259b6d890db02f09f90))
+* **test:** address Greptile P1 — handle Run error + assert kind/excerpt/severity in TestRun_SubstringForbiddenLeak ([#815](https://github.com/agentclash/agentclash/issues/815)) ([f9c6f28](https://github.com/agentclash/agentclash/commit/f9c6f280599da5273070c9cc22937542049965c9))
+
 ## [0.18.0](https://github.com/agentclash/agentclash/compare/v0.17.0...v0.18.0) (2026-05-14)
 
 
