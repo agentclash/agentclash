@@ -20,6 +20,10 @@ type Bundle struct {
 	Tools         map[string]any        `yaml:"tools,omitempty" json:"tools,omitempty"`
 	Challenges    []ChallengeDefinition `yaml:"challenges" json:"challenges"`
 	InputSets     []InputSetDefinition  `yaml:"input_sets" json:"input_sets"`
+	// Security declares red-team / leak-detection extensions. Required
+	// for packs with family == "security"; optional otherwise. See
+	// security.go for the SecurityPolicy schema.
+	Security *SecurityPolicy `yaml:"security,omitempty" json:"security,omitempty"`
 }
 
 const ModalityVoice = "voice"

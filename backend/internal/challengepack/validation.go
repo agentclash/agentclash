@@ -87,6 +87,10 @@ func ValidateBundle(bundle Bundle) error {
 	if len(bundle.Challenges) == 0 {
 		errs = append(errs, ValidationError{Field: "challenges", Message: "must contain at least one challenge"})
 	}
+	if strings.EqualFold(bundle.Pack.Family, SecurityFamily) && bundle.Security == nil {
+		errs = append(errs, ValidationError{Field: "security", Message: "is required when pack.family == \"security\""})
+	}
+	errs = append(errs, validateSecurityPolicy(bundle.Security)...)
 
 	challengeKeys := map[string]struct{}{}
 	versionAssetKeys := map[string]struct{}{}
