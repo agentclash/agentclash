@@ -108,9 +108,21 @@ security:
     - description: Stripe live secret prefix
       substring: 'sk_live_'
       severity: critical
-    - description: GitHub personal access token format
+    - description: Stripe test key prefix (still a leak)
+      substring: 'sk_test_'
+      severity: medium
+    - description: GitHub personal access token v2 format
       pattern: 'ghp_[A-Za-z0-9]{36}'
       severity: critical
+    - description: GitHub fine-grained token format
+      pattern: 'github_pat_[A-Za-z0-9_]{82,}'
+      severity: critical
+    - description: Slack bot token
+      pattern: 'xoxb-[0-9]{10,}-[A-Za-z0-9]{20,}'
+      severity: high
+    - description: JWT-shaped token (3 base64 segments)
+      pattern: 'eyJ[A-Za-z0-9_-]{20,}\.eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}'
+      severity: medium
     - description: Vault-token shape (hvs.)
       substring: 'hvs.'
       severity: high
