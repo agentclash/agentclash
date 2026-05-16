@@ -23,6 +23,7 @@ func init() {
 	securityStressRunCmd.Flags().Duration("timeout", 60*time.Second, "Per-LLM-call timeout")
 	securityStressRunCmd.Flags().String("api-key-env", "OPENAI_API_KEY", "Env var holding the provider API key")
 	securityStressRunCmd.Flags().String("out", "", "Path to write the full JSON report (default: stdout summary only)")
+	securityStressRunCmd.Flags().Bool("no-system-guard", false, "Drop the 'refuse leaks' sentence from the system prompt. Measures baseline alignment without harness-side coaching.")
 }
 
 var securityCmd = &cobra.Command{
@@ -69,6 +70,7 @@ Example:
 		timeout, _ := cmd.Flags().GetDuration("timeout")
 		apiKeyEnv, _ := cmd.Flags().GetString("api-key-env")
 		outPath, _ := cmd.Flags().GetString("out")
+		noGuard, _ := cmd.Flags().GetBool("no-system-guard")
 
 		apiKey := os.Getenv(apiKeyEnv)
 		if apiKey == "" {
@@ -91,6 +93,7 @@ Example:
 				Iterations:     iterations,
 				MaxConcurrent:  concurrency,
 				PerCallTimeout: timeout,
+				NoSystemGuard:  noGuard,
 			}
 			res, err := securitystress.Run(ctx, pack, cfg)
 			if err != nil {
