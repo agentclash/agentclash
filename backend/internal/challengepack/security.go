@@ -117,6 +117,44 @@ type AdversarialPrompt struct {
 // SecurityFamily is the canonical Family value for security-focused packs.
 const SecurityFamily = "security"
 
+// normalizeSecurityPolicy trims whitespace and lowercases enum-ish fields
+// so duplicate-detection and validation see canonical forms. Returns the
+// same pointer (mutated in place) or nil when policy is nil.
+func normalizeSecurityPolicy(policy *SecurityPolicy) *SecurityPolicy {
+	if policy == nil {
+		return nil
+	}
+	policy.DefaultSeverity = strings.ToLower(strings.TrimSpace(policy.DefaultSeverity))
+	for i := range policy.PlantedSecrets {
+		policy.PlantedSecrets[i].Name = strings.TrimSpace(policy.PlantedSecrets[i].Name)
+		policy.PlantedSecrets[i].Value = strings.TrimSpace(policy.PlantedSecrets[i].Value)
+		policy.PlantedSecrets[i].Location = strings.ToLower(strings.TrimSpace(policy.PlantedSecrets[i].Location))
+		policy.PlantedSecrets[i].FilePath = strings.TrimSpace(policy.PlantedSecrets[i].FilePath)
+		policy.PlantedSecrets[i].Severity = strings.ToLower(strings.TrimSpace(policy.PlantedSecrets[i].Severity))
+	}
+	for i := range policy.ForbiddenOutputs {
+		policy.ForbiddenOutputs[i].Description = strings.TrimSpace(policy.ForbiddenOutputs[i].Description)
+		policy.ForbiddenOutputs[i].Pattern = strings.TrimSpace(policy.ForbiddenOutputs[i].Pattern)
+		policy.ForbiddenOutputs[i].Substring = strings.TrimSpace(policy.ForbiddenOutputs[i].Substring)
+		policy.ForbiddenOutputs[i].Severity = strings.ToLower(strings.TrimSpace(policy.ForbiddenOutputs[i].Severity))
+	}
+	for i := range policy.ForbiddenEgress {
+		policy.ForbiddenEgress[i].Description = strings.TrimSpace(policy.ForbiddenEgress[i].Description)
+		policy.ForbiddenEgress[i].Host = strings.ToLower(strings.TrimSpace(policy.ForbiddenEgress[i].Host))
+		policy.ForbiddenEgress[i].Severity = strings.ToLower(strings.TrimSpace(policy.ForbiddenEgress[i].Severity))
+		for j := range policy.ForbiddenEgress[i].Allow {
+			policy.ForbiddenEgress[i].Allow[j] = strings.ToLower(strings.TrimSpace(policy.ForbiddenEgress[i].Allow[j]))
+		}
+	}
+	for i := range policy.AdversarialPrompts {
+		policy.AdversarialPrompts[i].Name = strings.TrimSpace(policy.AdversarialPrompts[i].Name)
+		// Don't lowercase Text — it's adversarial input, case-sensitive.
+		policy.AdversarialPrompts[i].Strategy = strings.ToLower(strings.TrimSpace(policy.AdversarialPrompts[i].Strategy))
+		policy.AdversarialPrompts[i].ExpectedRefusalPattern = strings.TrimSpace(policy.AdversarialPrompts[i].ExpectedRefusalPattern)
+	}
+	return policy
+}
+
 // IsSecurityPack reports whether the pack should run the security scorer.
 // True when family == "security" OR a SecurityPolicy is attached.
 func (b Bundle) IsSecurityPack() bool {

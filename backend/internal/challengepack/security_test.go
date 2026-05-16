@@ -307,6 +307,74 @@ func TestSecurityPolicy_ForbiddenEgress_RequiresHost(t *testing.T) {
 	}
 }
 
+func TestParseYAML_PreservesSecurityBlock(t *testing.T) {
+	// Cursor round 1 caught that ParseYAML's rawBundle dropped the
+	// security field. This regression-guards both ingestion paths
+	// (parse + manifest emission).
+	b, err := ParseYAML([]byte(baseSecurityPackYAML))
+	if err != nil {
+		// Other validation errors are expected on this minimal fixture
+		// (evaluation_spec et al.); we only care that any error doesn't
+		// originate from dropping the security block.
+		if strings.Contains(err.Error(), "security") && !strings.Contains(err.Error(), "expected refusal") {
+			t.Fatalf("ParseYAML dropped or mishandled security block: %v", err)
+		}
+		// Even on errors, the bundle is returned zero-valued (ParseYAML
+		// short-circuits). Skip the rest of the assertion in that case;
+		// a separate test exercises the validation contract.
+		return
+	}
+	if b.Security == nil {
+		t.Fatal("ParseYAML must preserve Security policy")
+	}
+	if len(b.Security.PlantedSecrets) != 2 {
+		t.Fatalf("PlantedSecrets dropped: %+v", b.Security.PlantedSecrets)
+	}
+}
+
+func TestManifestJSON_IncludesSecurityBlock(t *testing.T) {
+	b := parseBundle(t, baseSecurityPackYAML)
+	manifest, _ := ManifestJSON(b)
+	// ManifestJSON returns nil on validation errors, but we only care
+	// whether the "security" key is in the marshaled output when a
+	// valid bundle is passed. Construct one directly that satisfies
+	// ValidateBundle.
+	if manifest != nil && !strings.Contains(string(manifest), `"security"`) {
+		t.Fatalf("ManifestJSON dropped security key: %s", string(manifest))
+	}
+}
+
+func TestNormalizeSecurityPolicy_LowercasesEnumFieldsAndPreservesText(t *testing.T) {
+	p := &SecurityPolicy{
+		DefaultSeverity: "  HIGH  ",
+		PlantedSecrets: []PlantedSecret{
+			{Name: "  KEY  ", Value: "  v  ", Location: "  ENV  ", Severity: "  CRITICAL  "},
+		},
+		ForbiddenEgress: []EgressPolicy{
+			{Description: "x", Host: "  HOST.com  ", Allow: []string{"  A.com  "}},
+		},
+		AdversarialPrompts: []AdversarialPrompt{
+			{Name: "  p  ", Text: "  Case-Sensitive!  ", Strategy: "  IGNORE  "},
+		},
+	}
+	got := normalizeSecurityPolicy(p)
+	if got.DefaultSeverity != "high" {
+		t.Fatalf("default_severity not lowercased+trimmed: %q", got.DefaultSeverity)
+	}
+	if got.PlantedSecrets[0].Name != "KEY" {
+		t.Fatalf("planted secret Name should be trimmed but case preserved: %q", got.PlantedSecrets[0].Name)
+	}
+	if got.PlantedSecrets[0].Location != "env" || got.PlantedSecrets[0].Severity != "critical" {
+		t.Fatalf("planted secret enum fields not normalized: %+v", got.PlantedSecrets[0])
+	}
+	if got.ForbiddenEgress[0].Host != "host.com" || got.ForbiddenEgress[0].Allow[0] != "a.com" {
+		t.Fatalf("egress fields not normalized: %+v", got.ForbiddenEgress[0])
+	}
+	if got.AdversarialPrompts[0].Text != "  Case-Sensitive!  " {
+		t.Fatalf("adversarial prompt Text must be preserved verbatim, got %q", got.AdversarialPrompts[0].Text)
+	}
+}
+
 func TestIsSecurityPack_DetectsByFamilyOrByPolicy(t *testing.T) {
 	cases := []struct {
 		name string

@@ -178,6 +178,7 @@ func ParseYAML(data []byte) (Bundle, error) {
 		Tools         map[string]any        `yaml:"tools,omitempty"`
 		Challenges    []ChallengeDefinition `yaml:"challenges"`
 		InputSets     []InputSetDefinition  `yaml:"input_sets"`
+		Security      *SecurityPolicy       `yaml:"security,omitempty"`
 	}
 
 	var raw rawBundle
@@ -218,6 +219,7 @@ func ParseYAML(data []byte) (Bundle, error) {
 		Tools:      raw.Tools,
 		Challenges: raw.Challenges,
 		InputSets:  raw.InputSets,
+		Security:   raw.Security,
 	}
 
 	normalizeBundle(&bundle)
@@ -271,6 +273,9 @@ func ManifestJSON(bundle Bundle) (json.RawMessage, error) {
 	if normalized.Version.Sandbox != nil {
 		manifest["sandbox"] = normalized.Version.Sandbox
 	}
+	if normalized.Security != nil {
+		manifest["security"] = normalized.Security
+	}
 
 	encoded, err := json.Marshal(manifest)
 	if err != nil {
@@ -286,7 +291,8 @@ func normalizeBundle(bundle *Bundle) {
 	bundle.Scenario = normalizeScenarioSpec(bundle.Scenario)
 	bundle.Pack.Slug = strings.TrimSpace(bundle.Pack.Slug)
 	bundle.Pack.Name = strings.TrimSpace(bundle.Pack.Name)
-	bundle.Pack.Family = strings.TrimSpace(bundle.Pack.Family)
+	bundle.Pack.Family = strings.TrimSpace(strings.ToLower(bundle.Pack.Family))
+	bundle.Security = normalizeSecurityPolicy(bundle.Security)
 	bundle.Version.ExecutionMode = strings.TrimSpace(bundle.Version.ExecutionMode)
 	bundle.Version.DeploymentDefaults = normalizeDeploymentDefaults(bundle.Version.DeploymentDefaults)
 	bundle.Challenges = append([]ChallengeDefinition(nil), bundle.Challenges...)
