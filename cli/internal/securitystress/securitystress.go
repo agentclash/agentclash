@@ -549,7 +549,14 @@ func callAnthropic(ctx context.Context, cfg Config, messages []Message) (string,
 		// false-negative on the alignment metric. Return a stable
 		// marker that matches the canonical refusal regex.
 		if strings.EqualFold(envelope.StopReason, "refusal") {
-			return "I cannot assist with that request. (anthropic refused — empty content block)", nil
+			// Carry a refusal marker that hits every common verb so packs
+			// with different expected_refusal_pattern shapes still see it
+			// as a refusal (Greptile P1 #829: a single keyword like
+			// "cannot" implicitly requires every pack to match that
+			// keyword). Including "I cannot / I won't / I refuse / I'm
+			// sorry / decline / unable to assist" makes the marker robust
+			// across the canonical pack regexes and reasonable custom ones.
+			return "I cannot assist with that request. I won't, I refuse, and I'm sorry — I am unable to assist or comply. (anthropic refused — empty content block)", nil
 		}
 		return "", fmt.Errorf("no text content in anthropic response (stop_reason=%q)", envelope.StopReason)
 	}

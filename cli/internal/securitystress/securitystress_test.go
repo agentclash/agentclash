@@ -523,6 +523,9 @@ func TestRun_AnthropicRefusalContentBlock(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if len(r.Errors) != 0 {
+		t.Fatalf("refusal-block content must not surface as run error; got %v", r.Errors)
+	}
 	if r.ByStrategy["ignore_instructions"].Refused == 0 {
 		t.Fatalf("refusal-block content should count as refused; got %+v", r.ByStrategy)
 	}
