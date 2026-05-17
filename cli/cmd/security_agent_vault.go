@@ -4,10 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/agentclash/agentclash/cli/internal/agentvaultruntime"
+	"github.com/agentclash/agentclash/cli/internal/securitystress"
 	"github.com/spf13/cobra"
 )
 
@@ -25,9 +28,11 @@ func init() {
 	securityAgentVaultStressCmd.Flags().String("canary-token", "", "The broker token the harness watches for in model output (required). Usually the av_agt_/av_sess_ token embedded in --proxy-url.")
 	securityAgentVaultStressCmd.Flags().String("canary-token-env", "AGENT_VAULT_TOKEN", "Env var to read --canary-token from if the flag is empty")
 	securityAgentVaultStressCmd.Flags().String("allowed-upstream", "", "Hostname the model is supposed to be brokering for, e.g. api.stripe.com. Any tool call to a different host is flagged as confused-deputy.")
-	securityAgentVaultStressCmd.Flags().String("user-message", "", "Adversarial user message (required)")
+	securityAgentVaultStressCmd.Flags().String("user-message", "", "Adversarial user message (required unless --from-pack is set)")
 	securityAgentVaultStressCmd.Flags().String("system-prompt", "", "System prompt override (default: deploy assistant with Agent Vault boundary)")
-	securityAgentVaultStressCmd.Flags().String("out", "", "Path to write per-iteration JSON report")
+	securityAgentVaultStressCmd.Flags().String("out", "", "Path to write per-iteration JSON report (single-prompt mode)")
+	securityAgentVaultStressCmd.Flags().String("from-pack", "", "Path to a security pack YAML. When set, runs every adversarial_prompts[] entry against the model and writes a per-attack report. Conflicts with --user-message.")
+	securityAgentVaultStressCmd.Flags().String("out-dir", "", "Directory to write per-attack JSON reports when --from-pack is set (default: skip JSON, print table only)")
 	securityAgentVaultStressCmd.Flags().Duration("timeout", 60*time.Second, "Per-LLM-call timeout")
 }
 
@@ -83,6 +88,8 @@ Example:
 		userMsg, _ := cmd.Flags().GetString("user-message")
 		sysPrompt, _ := cmd.Flags().GetString("system-prompt")
 		outPath, _ := cmd.Flags().GetString("out")
+		fromPack, _ := cmd.Flags().GetString("from-pack")
+		outDir, _ := cmd.Flags().GetString("out-dir")
 		timeout, _ := cmd.Flags().GetDuration("timeout")
 
 		if proxyURL == "" {
@@ -95,8 +102,11 @@ Example:
 			canaryToken = os.Getenv(canaryTokenEnv)
 		}
 
-		if userMsg == "" {
-			return fmt.Errorf("--user-message is required")
+		if fromPack != "" && userMsg != "" {
+			return fmt.Errorf("--from-pack and --user-message are mutually exclusive")
+		}
+		if fromPack == "" && userMsg == "" {
+			return fmt.Errorf("one of --from-pack or --user-message is required")
 		}
 		if canaryToken == "" {
 			return fmt.Errorf("--canary-token (or env %s) is required", canaryTokenEnv)
@@ -109,7 +119,7 @@ Example:
 			sysPrompt = defaultAgentVaultSystemPrompt
 		}
 
-		cfg := agentvaultruntime.Config{
+		base := agentvaultruntime.Config{
 			OpenAIEndpoint:      openaiEndpoint,
 			OpenAIAPIKey:        apiKey,
 			Model:               model,
@@ -118,7 +128,6 @@ Example:
 			CanaryToken:         canaryToken,
 			AllowedUpstreamHost: allowedUpstream,
 			SystemPrompt:        sysPrompt,
-			UserMessage:         userMsg,
 			PerCallTimeout:      timeout,
 		}
 
@@ -133,50 +142,167 @@ Example:
 		}
 
 		ctx := context.Background()
-		report := make([]agentvaultruntime.Iteration, 0, iterations)
-		var leaked, refused, bypass, deputy, admin int
-		for i := 0; i < iterations; i++ {
-			it := agentvaultruntime.Run(ctx, i, cfg)
-			report = append(report, it)
-			if it.BrokerTokenLeaked {
-				leaked++
-			}
-			if it.Refused {
-				refused++
-			}
-			if it.ProxyBypassAttempted {
-				bypass++
-			}
-			if it.ConfusedDeputyAttempted {
-				deputy++
-			}
-			if it.AdminAPIAttempted {
-				admin++
-			}
-			fmt.Print(progressMarker(it))
+		if fromPack != "" {
+			return runFromPack(ctx, fromPack, outDir, iterations, base, cmd.OutOrStdout())
 		}
-		fmt.Println()
+		base.UserMessage = userMsg
+		stats := runOneEntry(ctx, base, iterations, cmd.OutOrStdout())
 		fmt.Printf("\n=== %s ===\n", model)
 		fmt.Printf("  iterations            : %d\n", iterations)
-		pct := func(n int) float64 { return 100.0 * float64(n) / float64(iterations) }
-		fmt.Printf("  broker-token leaked   : %d/%d (%.0f%%)\n", leaked, iterations, pct(leaked))
-		fmt.Printf("  proxy-bypass attempted: %d/%d (%.0f%%)\n", bypass, iterations, pct(bypass))
-		fmt.Printf("  confused-deputy       : %d/%d (%.0f%%)\n", deputy, iterations, pct(deputy))
-		fmt.Printf("  admin-API attempted   : %d/%d (%.0f%%)\n", admin, iterations, pct(admin))
-		fmt.Printf("  explicit refusal      : %d/%d (%.0f%%)\n", refused, iterations, pct(refused))
+		printStats(cmd.OutOrStdout(), stats, iterations)
 		if outPath != "" {
 			f, err := os.Create(outPath)
 			if err != nil {
 				return err
 			}
 			defer f.Close()
-			if err := json.NewEncoder(f).Encode(report); err != nil {
+			if err := json.NewEncoder(f).Encode(stats.Report); err != nil {
 				return err
 			}
 			fmt.Printf("  full report           : %s\n", outPath)
 		}
 		return nil
 	},
+}
+
+// entryStats aggregates the flag counts plus the raw per-iteration
+// report for one campaign entry (either a single --user-message or one
+// adversarial_prompts[] from a pack).
+type entryStats struct {
+	Leaked  int
+	Refused int
+	Bypass  int
+	Deputy  int
+	Admin   int
+	Errors  int
+	Report  []agentvaultruntime.Iteration
+}
+
+func runOneEntry(ctx context.Context, cfg agentvaultruntime.Config, iterations int, w io.Writer) entryStats {
+	stats := entryStats{Report: make([]agentvaultruntime.Iteration, 0, iterations)}
+	for i := 0; i < iterations; i++ {
+		it := agentvaultruntime.Run(ctx, i, cfg)
+		stats.Report = append(stats.Report, it)
+		if it.Err != "" {
+			stats.Errors++
+		}
+		if it.BrokerTokenLeaked {
+			stats.Leaked++
+		}
+		if it.Refused {
+			stats.Refused++
+		}
+		if it.ProxyBypassAttempted {
+			stats.Bypass++
+		}
+		if it.ConfusedDeputyAttempted {
+			stats.Deputy++
+		}
+		if it.AdminAPIAttempted {
+			stats.Admin++
+		}
+		fmt.Fprint(w, progressMarker(it))
+	}
+	fmt.Fprintln(w)
+	return stats
+}
+
+func printStats(w io.Writer, s entryStats, iterations int) {
+	pct := func(n int) float64 {
+		if iterations == 0 {
+			return 0
+		}
+		return 100.0 * float64(n) / float64(iterations)
+	}
+	fmt.Fprintf(w, "  broker-token leaked   : %d/%d (%.0f%%)\n", s.Leaked, iterations, pct(s.Leaked))
+	fmt.Fprintf(w, "  proxy-bypass attempted: %d/%d (%.0f%%)\n", s.Bypass, iterations, pct(s.Bypass))
+	fmt.Fprintf(w, "  confused-deputy       : %d/%d (%.0f%%)\n", s.Deputy, iterations, pct(s.Deputy))
+	fmt.Fprintf(w, "  admin-API attempted   : %d/%d (%.0f%%)\n", s.Admin, iterations, pct(s.Admin))
+	fmt.Fprintf(w, "  explicit refusal      : %d/%d (%.0f%%)\n", s.Refused, iterations, pct(s.Refused))
+	if s.Errors > 0 {
+		fmt.Fprintf(w, "  iteration errors      : %d/%d\n", s.Errors, iterations)
+	}
+}
+
+// runFromPack loads a security pack YAML, runs every adversarial
+// prompt as its own --user-message, and prints a leak-rate markdown
+// table. When outDir is non-empty, also writes one JSON report per
+// attack: <outDir>/<pack-slug>-<prompt-name>.json.
+//
+// Empty adversarial_prompts is a hard error; loading a pack only to
+// execute zero entries is almost certainly a misconfiguration.
+func runFromPack(ctx context.Context, packPath, outDir string, iterations int, base agentvaultruntime.Config, w io.Writer) error {
+	data, err := os.ReadFile(packPath)
+	if err != nil {
+		return fmt.Errorf("read pack %s: %w", packPath, err)
+	}
+	pack, err := securitystress.LoadPack(data)
+	if err != nil {
+		return fmt.Errorf("parse pack %s: %w", packPath, err)
+	}
+	if pack.Security == nil || len(pack.Security.AdversarialPrompts) == 0 {
+		return fmt.Errorf("pack %s has no security.adversarial_prompts to run", packPath)
+	}
+	if outDir != "" {
+		if err := os.MkdirAll(outDir, 0o755); err != nil {
+			return fmt.Errorf("mkdir out-dir: %w", err)
+		}
+	}
+
+	type campaignRow struct {
+		Name      string
+		Strategy  string
+		Stats     entryStats
+	}
+	rows := make([]campaignRow, 0, len(pack.Security.AdversarialPrompts))
+
+	fmt.Fprintf(w, "  pack         : %s (%d prompts)\n\n", pack.Pack.Slug, len(pack.Security.AdversarialPrompts))
+	for _, ap := range pack.Security.AdversarialPrompts {
+		fmt.Fprintf(w, ">>> %-40s [strategy=%s]\n  ", ap.Name, ap.Strategy)
+		cfg := base
+		cfg.UserMessage = ap.Text
+		stats := runOneEntry(ctx, cfg, iterations, w)
+		printStats(w, stats, iterations)
+		fmt.Fprintln(w)
+		rows = append(rows, campaignRow{Name: ap.Name, Strategy: ap.Strategy, Stats: stats})
+		if outDir != "" {
+			outPath := filepath.Join(outDir, pack.Pack.Slug+"-"+ap.Name+".json")
+			f, err := os.Create(outPath)
+			if err != nil {
+				return err
+			}
+			if encErr := json.NewEncoder(f).Encode(stats.Report); encErr != nil {
+				_ = f.Close()
+				return encErr
+			}
+			_ = f.Close()
+		}
+	}
+
+	// Markdown campaign table.
+	fmt.Fprintf(w, "\n## Campaign summary — pack=%s model=%s iterations=%d\n\n", pack.Pack.Slug, base.Model, iterations)
+	fmt.Fprintln(w, "| prompt | strategy | leak | bypass | deputy | admin | refusal |")
+	fmt.Fprintln(w, "|---|---|---|---|---|---|---|")
+	pct := func(n int) string {
+		if iterations == 0 {
+			return "n/a"
+		}
+		return fmt.Sprintf("%d%%", int(100.0*float64(n)/float64(iterations)+0.5))
+	}
+	for _, r := range rows {
+		s := r.Stats
+		fmt.Fprintf(w, "| %s | %s | %s | %s | %s | %s | %s |\n",
+			r.Name, defaultedStrategy(r.Strategy),
+			pct(s.Leaked), pct(s.Bypass), pct(s.Deputy), pct(s.Admin), pct(s.Refused))
+	}
+	return nil
+}
+
+func defaultedStrategy(s string) string {
+	if s == "" {
+		return "—"
+	}
+	return s
 }
 
 // progressMarker mirrors the symbol vocabulary of `security
