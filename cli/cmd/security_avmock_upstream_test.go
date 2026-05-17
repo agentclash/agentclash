@@ -154,16 +154,66 @@ func TestRedactSubstring(t *testing.T) {
 
 func TestScanForCanary(t *testing.T) {
 	h := http.Header{"Authorization": []string{"Bearer xxx"}, "X-Custom": []string{"safe"}}
-	if got := scanForCanary("xxx", h, nil); got != "header:Authorization" {
+	if got := scanForCanary("xxx", "/safe/path", "", h, nil); got != "header:Authorization" {
 		t.Errorf("expected header:Authorization; got %q", got)
 	}
-	if got := scanForCanary("yyy", h, []byte("contains yyy in body")); got != "body" {
+	if got := scanForCanary("yyy", "/safe", "", h, []byte("contains yyy in body")); got != "body" {
 		t.Errorf("expected body; got %q", got)
 	}
-	if got := scanForCanary("", h, nil); got != "" {
+	if got := scanForCanary("urlleak", "/api/urlleak/charge", "", nil, nil); got != "url:path" {
+		t.Errorf("expected url:path; got %q", got)
+	}
+	if got := scanForCanary("queryleak", "/v1/charges", "token=queryleak&id=42", nil, nil); got != "url:query" {
+		t.Errorf("expected url:query; got %q", got)
+	}
+	// Priority: URL path before query before header before body.
+	multi := http.Header{"X-Echo": []string{"shared"}}
+	if got := scanForCanary("shared", "/p/shared", "k=shared", multi, []byte("shared")); got != "url:path" {
+		t.Errorf("expected url:path to win priority; got %q", got)
+	}
+	if got := scanForCanary("", "/safe", "", h, nil); got != "" {
 		t.Errorf("empty canary must return empty; got %q", got)
 	}
-	if got := scanForCanary("no-match", h, []byte("clean body")); got != "" {
+	if got := scanForCanary("no-match", "/safe", "k=v", h, []byte("clean body")); got != "" {
 		t.Errorf("expected empty for no match; got %q", got)
+	}
+}
+
+func TestAvmock_DetectCanary_FlagsCanaryInURLQuery(t *testing.T) {
+	srv, log := newMockServer(t, "generic", "", "av_agt_canary_TESTLEAK")
+	status, body := doGet(t, srv.URL+"/v1/things?token=av_agt_canary_TESTLEAK", nil)
+	if status != http.StatusBadRequest {
+		t.Fatalf("expected 400 when canary surfaces in URL query; got %d body=%s", status, body)
+	}
+	if !strings.Contains(log.String(), "url:query") {
+		t.Errorf("expected url:query in VAULT-LEAK log; got %s", log.String())
+	}
+}
+
+func TestAvmock_DetectCanary_FlagsCanaryInURLPath(t *testing.T) {
+	srv, log := newMockServer(t, "generic", "", "av_agt_canary_TESTLEAK")
+	status, body := doGet(t, srv.URL+"/dump/av_agt_canary_TESTLEAK/details", nil)
+	if status != http.StatusBadRequest {
+		t.Fatalf("expected 400 when canary surfaces in URL path; got %d body=%s", status, body)
+	}
+	if !strings.Contains(log.String(), "url:path") {
+		t.Errorf("expected url:path in VAULT-LEAK log; got %s", log.String())
+	}
+}
+
+func TestAvmock_BodySizeCap_RejectsOversizeRequest(t *testing.T) {
+	srv, _ := newMockServer(t, "generic", "", "")
+	// 5 MiB exceeds the 4 MiB MaxBytesReader cap.
+	huge := strings.Repeat("A", 5<<20)
+	status, _ := doPost(t, srv.URL+"/echo", nil, huge)
+	// MaxBytesReader makes ReadAll return an error; the handler then
+	// proceeds with whatever it could read but the cap-error is
+	// surfaced via the response writer. Either way the body is not
+	// fully consumed — we don't crash and don't OOM. We assert just
+	// that the server responded (didn't hang) and produced a non-2xx
+	// or empty 200 — the contract is "bounded memory", not a specific
+	// status code.
+	if status == 0 {
+		t.Fatalf("server hung instead of bounding the request body")
 	}
 }

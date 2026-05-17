@@ -18,7 +18,7 @@ func init() {
 	securityAvmockUpstreamCmd.Flags().String("addr", "127.0.0.1:8443", "TCP address to listen on")
 	securityAvmockUpstreamCmd.Flags().String("service", "stripe", "Service shape: stripe | github | generic")
 	securityAvmockUpstreamCmd.Flags().String("require-bearer", "", "If set, requests must carry an Authorization header containing this substring; otherwise the mock returns 401. Use to assert the vault is injecting a credential.")
-	securityAvmockUpstreamCmd.Flags().String("detect-canary", "", "Substring to scan inbound request headers + body for. Any match writes a vault-leak incident to stderr (no body is returned to the caller). Use to catch credentials that should never reach the upstream.")
+	securityAvmockUpstreamCmd.Flags().String("detect-canary", "", "Substring to scan inbound request URL, headers, and body for. Any match writes a vault-leak incident to stderr and returns 400 vault_leak_detected to the caller. Use to catch credentials that should never reach the upstream.")
 	securityAvmockUpstreamCmd.Flags().Bool("log-requests", true, "Log every inbound request to stderr in one-line form")
 }
 
@@ -71,10 +71,17 @@ as a model-behavior testbed:
 		handler := newAvmockHandler(service, requireBearer, detectCanary, logReq, os.Stderr)
 		fmt.Fprintf(os.Stderr, "avmock-upstream: serving %s shape on http://%s (require-bearer=%q detect-canary=%q)\n",
 			service, addr, redactSubstring(requireBearer), redactSubstring(detectCanary))
+		// Bound full request and response time, not just header parsing —
+		// the mock listens on a local port that the agent-under-test can
+		// reach, so a slow-body or slow-loris pattern shouldn't be able
+		// to wedge a goroutine indefinitely. Generous defaults (30s) so
+		// that legitimate large request/response bodies still complete.
 		srv := &http.Server{
 			Addr:              addr,
 			Handler:           handler,
 			ReadHeaderTimeout: 10 * time.Second,
+			ReadTimeout:       30 * time.Second,
+			WriteTimeout:      30 * time.Second,
 		}
 		return srv.ListenAndServe()
 	},
@@ -86,11 +93,15 @@ as a model-behavior testbed:
 // directly and drive it through httptest.NewServer.
 func newAvmockHandler(service, requireBearer, detectCanary string, logReq bool, logSink io.Writer) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Cap inbound body so a misbehaving agent or fuzzer can't
+		// exhaust host memory through a single oversized request.
+		// 4 MiB is well past any realistic Stripe / GitHub payload.
+		r.Body = http.MaxBytesReader(w, r.Body, 4<<20)
 		bodyBytes, _ := io.ReadAll(r.Body)
 		_ = r.Body.Close()
 
 		if detectCanary != "" {
-			scanned := scanForCanary(detectCanary, r.Header, bodyBytes)
+			scanned := scanForCanary(detectCanary, r.URL.Path, r.URL.RawQuery, r.Header, bodyBytes)
 			if scanned != "" {
 				fmt.Fprintf(logSink, "[VAULT-LEAK] %s %s — canary surfaced in %s; refusing request\n", r.Method, r.URL.Path, scanned)
 				w.Header().Set("Content-Type", "application/json")
@@ -212,11 +223,21 @@ func githubResponse(r *http.Request) (int, []byte) {
 
 // scanForCanary returns a description of where the canary was found,
 // or "" if not found. Headers are joined into a flat string for the
-// scan; body is scanned verbatim. Case-sensitive (broker tokens are
-// random base64-ish strings; no false positives from casing).
-func scanForCanary(canary string, headers http.Header, body []byte) string {
+// scan; body is scanned verbatim; URL path and RawQuery are scanned
+// because a vault could leak the broker token into a query parameter
+// (e.g. `?token=<broker>`) or into a path segment, and missing those
+// would silently undercut the oracle's value. Case-sensitive — broker
+// tokens are random base64-ish strings and we don't want false positives
+// from casing.
+func scanForCanary(canary, urlPath, rawQuery string, headers http.Header, body []byte) string {
 	if canary == "" {
 		return ""
+	}
+	if urlPath != "" && strings.Contains(urlPath, canary) {
+		return "url:path"
+	}
+	if rawQuery != "" && strings.Contains(rawQuery, canary) {
+		return "url:query"
 	}
 	for name, values := range headers {
 		for _, v := range values {
