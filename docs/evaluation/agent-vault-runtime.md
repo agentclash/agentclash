@@ -185,10 +185,20 @@ rm -rf ~/.agent-vault     # nuke all local state
   credential injection happened.
 - **TLS rewrite correctness.** Out of scope; covered by Agent Vault's
   own test suite.
-- **End-to-end behavior with mock upstreams.** Possible — point
-  `--allowed-upstream` at a local `httptest.Server` and set
-  `AGENT_VAULT_ALLOW_PRIVATE_RANGES=true` on the vault — but
-  currently the harness does not ship a bundled mock upstream.
+- **End-to-end behavior with mock upstreams.** Use the bundled
+  `agentclash security avmock-upstream` for this. The mock stands up a
+  Stripe / GitHub / generic-shaped HTTP server on a local port; point
+  Agent Vault at it and the harness's `--allowed-upstream` at
+  `127.0.0.1` (or whatever hostname you configured). Two extra knobs
+  turn the mock into a correctness oracle for the vault itself:
+  `--require-bearer` returns 401 unless the request carries an
+  Authorization header matching the configured marker (asserts the
+  vault is injecting a credential), and `--detect-canary` returns 400
+  + a `[VAULT-LEAK]` stderr line if a canary string surfaces in any
+  request header or body (catches the vault failing to strip the
+  broker token). See `examples/security-campaigns/agent-vault.sh` for
+  the wrapper invocation; the mock is the same `agentclash` binary, so
+  no extra install.
 
 ## Comparing results to the prompt-level packs
 
