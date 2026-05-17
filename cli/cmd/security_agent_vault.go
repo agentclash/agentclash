@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/agentclash/agentclash/cli/internal/agentvaultruntime"
@@ -266,16 +267,21 @@ func runFromPack(ctx context.Context, packPath, outDir string, iterations int, b
 		fmt.Fprintln(w)
 		rows = append(rows, campaignRow{Name: ap.Name, Strategy: ap.Strategy, Stats: stats})
 		if outDir != "" {
-			outPath := filepath.Join(outDir, pack.Pack.Slug+"-"+ap.Name+".json")
-			f, err := os.Create(outPath)
-			if err != nil {
-				return err
-			}
-			if encErr := json.NewEncoder(f).Encode(stats.Report); encErr != nil {
+			outPath, perr := safeReportPath(outDir, pack.Pack.Slug, ap.Name)
+			if perr != nil {
+				fmt.Fprintf(w, "  warning: skipping report for %q: %v\n", ap.Name, perr)
+			} else if f, err := os.Create(outPath); err != nil {
+				// Don't return early: the whole point of the campaign
+				// is the aggregate table at the end. A single write
+				// failure (full disk, perms, etc.) shouldn't shadow
+				// hours of model spend.
+				fmt.Fprintf(w, "  warning: could not write report %s: %v\n", outPath, err)
+			} else {
+				if encErr := json.NewEncoder(f).Encode(stats.Report); encErr != nil {
+					fmt.Fprintf(w, "  warning: could not encode report %s: %v\n", outPath, encErr)
+				}
 				_ = f.Close()
-				return encErr
 			}
-			_ = f.Close()
 		}
 	}
 
@@ -303,6 +309,35 @@ func defaultedStrategy(s string) string {
 		return "—"
 	}
 	return s
+}
+
+// safeReportPath joins outDir with a filename derived from the pack
+// slug + prompt name and refuses to return anything that escapes
+// outDir. Both inputs come verbatim from third-party YAML; a hostile
+// pack could set ap.Name to "../../etc/cron.d/evil" and have
+// filepath.Join normalize the .. components out of the prefix, writing
+// the JSON report wherever the process user has permission. We resolve
+// outDir + the joined path through filepath.Abs so the check is robust
+// to relative inputs, and require the absolute result to start with
+// the absolute outDir plus a separator.
+func safeReportPath(outDir, slug, name string) (string, error) {
+	if strings.ContainsAny(slug, `/\`) || strings.ContainsAny(name, `/\`) || slug == ".." || name == ".." {
+		return "", fmt.Errorf("slug %q / name %q must not contain path separators or be \"..\"", slug, name)
+	}
+	joined := filepath.Join(outDir, slug+"-"+name+".json")
+	absOut, err := filepath.Abs(outDir)
+	if err != nil {
+		return "", err
+	}
+	absPath, err := filepath.Abs(joined)
+	if err != nil {
+		return "", err
+	}
+	prefix := absOut + string(os.PathSeparator)
+	if absPath != absOut && !strings.HasPrefix(absPath, prefix) {
+		return "", fmt.Errorf("report path %q escapes out-dir %q", joined, outDir)
+	}
+	return joined, nil
 }
 
 // progressMarker mirrors the symbol vocabulary of `security
