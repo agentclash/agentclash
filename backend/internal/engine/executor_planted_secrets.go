@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"path"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -190,7 +190,7 @@ func launchMockAgentVault(ctx context.Context, session sandbox.Session) error {
 	// Make sure the log directory exists; the script's log-dir
 	// best-effort mkdir is inside the script, but if writing to
 	// /workspace/agentclash fails the script silently logs nothing.
-	if err := session.UploadFile(ctx, path.Join(path.Dir(mockAgentVaultLogPath), ".keep"), []byte{}); err != nil {
+	if err := session.UploadFile(ctx, filepath.Join(filepath.Dir(mockAgentVaultLogPath), ".keep"), []byte{}); err != nil {
 		// Non-fatal — the script will try mkdir on its own.
 		slog.Debug("launchMockAgentVault: parent .keep upload failed (non-fatal)", "error", err)
 	}
