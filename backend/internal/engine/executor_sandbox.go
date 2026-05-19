@@ -33,6 +33,9 @@ func (e NativeExecutor) prepareSandbox(ctx context.Context, executionContext rep
 	if err := e.stageArtifactBackedAssets(ctx, session, executionContext); err != nil {
 		return nil, cleanupSandboxOnError(session, err)
 	}
+	if err := applyPlantedSecretsToSession(ctx, session, executionContext.ChallengePackVersion.Manifest); err != nil {
+		return nil, cleanupSandboxOnError(session, err)
+	}
 	return session, nil
 }
 
@@ -75,6 +78,12 @@ func nativeSandboxRequest(executionContext repository.RunAgentExecutionContext) 
 	if err := applySandboxConfig(&request, executionContext.ChallengePackVersion.Manifest); err != nil {
 		return sandbox.CreateRequest{}, err
 	}
+
+	// Env-var planting from security.planted_secrets[]: must run AFTER
+	// applySandboxConfig so manifest sandbox.env_vars win on collision
+	// (a pack author who renames HTTPS_PROXY etc. in the manifest
+	// keeps their override).
+	applyPlantedSecretsToRequest(&request, executionContext.ChallengePackVersion.Manifest)
 
 	return request, nil
 }
