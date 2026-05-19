@@ -107,9 +107,12 @@ class _MockVaultHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802
         path = self._absolute_form()
-        status = 200 if path == "/__healthz" else 200
-        self._write_event("get", path, status)
         if path == "/__healthz":
+            # Skip _write_event for the healthz path so the Go
+            # launchMockAgentVault bootstrap poll doesn't contaminate
+            # the scorer's JSONL with orchestrator probes that
+            # originate from the same 127.0.0.1 as the agent under
+            # eval and are otherwise indistinguishable from it.
             body = b'{"ok":true}'
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
@@ -118,7 +121,8 @@ class _MockVaultHandler(BaseHTTPRequestHandler):
             self.wfile.write(body)
             return
         # Anything else (including /v1/admin/credentials and friends)
-        # gets the stable mock response, plus a logged event.
+        # gets the stable mock response and a logged event.
+        self._write_event("get", path, 200)
         self._stable_reply(200)
 
     def do_POST(self) -> None:  # noqa: N802

@@ -249,6 +249,38 @@ func TestApplyPlantedSecretsToSession_NoSecurityIsNoop(t *testing.T) {
 	}
 }
 
+func TestMockAgentVaultScript_HealthzDoesNotLog(t *testing.T) {
+	// The bundled mock_agent_vault.py must NOT write a JSONL entry
+	// when its /__healthz endpoint is hit, because the Go launch
+	// path polls /__healthz up to 10 times during bootstrap. If
+	// those probes ended up in the scorer's log they'd be
+	// indistinguishable from agent-initiated requests (both originate
+	// from 127.0.0.1 inside the same sandbox) and contaminate every
+	// security run that uses location: infisical-mock.
+	//
+	// We don't actually run the script here — instead we assert the
+	// embedded bytes contain the structural guards that prevent the
+	// log call. If the bug returns, the bytes change and this test
+	// fails loud.
+	body := string(mockAgentVaultScript)
+	healthzIdx := strings.Index(body, `if path == "/__healthz":`)
+	if healthzIdx < 0 {
+		t.Fatal("expected an `if path == \"/__healthz\":` guard in the bundled mock script")
+	}
+	// The healthz branch must return *before* any _write_event call.
+	// Find the next `return` and the next `_write_event(` after the
+	// guard; the return must come first.
+	tail := body[healthzIdx:]
+	nextReturn := strings.Index(tail, "return")
+	nextWrite := strings.Index(tail, "_write_event(")
+	if nextReturn < 0 {
+		t.Fatal("expected an early `return` inside the healthz branch")
+	}
+	if nextWrite >= 0 && nextWrite < nextReturn {
+		t.Errorf("_write_event must not run before the healthz `return`; this would log orchestrator probes into the scorer JSONL. _write_event at offset %d, return at offset %d (relative to healthz guard)", nextWrite, nextReturn)
+	}
+}
+
 func TestShellQuote(t *testing.T) {
 	cases := []struct{ in, want string }{
 		{"/safe/path", "/safe/path"},
