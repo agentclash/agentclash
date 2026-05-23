@@ -199,7 +199,7 @@ func ValidateBundle(bundle Bundle) error {
 		}
 	}
 	errs = append(errs, validateBundleCaseTemplates(bundle)...)
-	errs = append(errs, validateBundleUserSimulators(bundle)...)
+	errs = append(errs, validateBundleUserSimulators(bundle, versionAssetKeys)...)
 	errs = append(errs, validateAssets("version.assets", bundle.Version.Assets)...)
 
 	if len(errs) > 0 {

@@ -5,16 +5,9 @@ import (
 	"strings"
 )
 
-func validateBundleUserSimulators(bundle Bundle) ValidationErrors {
+func validateBundleUserSimulators(bundle Bundle, versionAssetKeys map[string]struct{}) ValidationErrors {
 	var errs ValidationErrors
 	isMultiTurn := bundle.Version.ExecutionMode == ExecutionModeMultiTurn
-
-	versionAssetKeys := map[string]struct{}{}
-	for _, asset := range bundle.Version.Assets {
-		if asset.Key != "" {
-			versionAssetKeys[asset.Key] = struct{}{}
-		}
-	}
 
 	for inputSetIndex, inputSet := range bundle.InputSets {
 		for caseIndex, caseDef := range inputSet.Cases {
@@ -155,8 +148,8 @@ func validateUserSimulatorCalibration(path string, calibration UserSimulatorCali
 	if !calibration.Enabled {
 		return errs
 	}
-	if calibration.SampleRate < 0 || calibration.SampleRate > 1 {
-		errs = append(errs, ValidationError{Field: path + ".sample_rate", Message: "must be between 0 and 1 when calibration is enabled"})
+	if calibration.SampleRate <= 0 || calibration.SampleRate > 1 {
+		errs = append(errs, ValidationError{Field: path + ".sample_rate", Message: "must be greater than 0 and at most 1 when calibration is enabled"})
 	}
 	return errs
 }

@@ -74,6 +74,35 @@ func TestValidateUserSimulator_LLMPhaseRequiresPersona(t *testing.T) {
 	}
 }
 
+func TestValidateUserSimulator_CalibrationRequiresPositiveSampleRate(t *testing.T) {
+	spec := validUserSimulatorSpec()
+	spec.Calibration = &UserSimulatorCalibration{Enabled: true}
+	errs := validateUserSimulatorSpec("user_simulator", spec, CaseDefinition{}, nil)
+	if len(errs) == 0 {
+		t.Fatal("expected validation errors")
+	}
+	if !strings.Contains(errs.Error(), "sample_rate") {
+		t.Fatalf("error = %v, want sample_rate validation", errs)
+	}
+}
+
+func TestValidateUserSimulator_RejectsDuplicatePhaseIDs(t *testing.T) {
+	spec := validUserSimulatorSpec()
+	spec.Phases = append(spec.Phases, UserSimulatorPhase{
+		ID:      "open",
+		Actor:   UserSimulatorActorScripted,
+		Trigger: UserSimulatorTriggerOnAssistantMismatch,
+		Turns:   []UserSimulatorTurn{{Message: "Again"}},
+	})
+	errs := validateUserSimulatorSpec("user_simulator", spec, CaseDefinition{}, nil)
+	if len(errs) == 0 {
+		t.Fatal("expected validation errors")
+	}
+	if !strings.Contains(errs.Error(), "must be unique") {
+		t.Fatalf("error = %v, want unique phase id error", errs)
+	}
+}
+
 func TestValidateBundle_MultiTurnRequiresUserSimulatorOnCases(t *testing.T) {
 	bundle := multiTurnTestBundle(nil)
 	err := ValidateBundle(bundle)
