@@ -260,14 +260,14 @@ export function AgentOutputRenderer({ text }: AgentOutputRendererProps) {
   }, [text]);
 
   const tokens = useMemo(() => {
-    if (isPureJson) return [];
+    if (parsedJson) return [];
     return tokenize(text);
-  }, [text, isPureJson]);
+  }, [text, parsedJson]);
 
-  if (isPureJson) {
+  if (parsedJson) {
     return (
       <CodeBlock
-        code={JSON.stringify(JSON.parse(text.trim()), null, 2)}
+        code={JSON.stringify(parsedJson, null, 2)}
         language="json"
         showLineNumbers={false}
       />
