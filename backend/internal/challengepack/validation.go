@@ -198,6 +198,7 @@ func ValidateBundle(bundle Bundle) error {
 			errs = append(errs, ValidationError{Field: "version.evaluation_spec", Message: err.Error()})
 		}
 	}
+	errs = append(errs, validateBundleCaseTemplates(bundle)...)
 	errs = append(errs, validateAssets("version.assets", bundle.Version.Assets)...)
 
 	if len(errs) > 0 {
