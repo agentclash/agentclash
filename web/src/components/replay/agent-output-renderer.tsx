@@ -52,9 +52,13 @@ export function CodeBlock({ code, language = "text", showLineNumbers = true }: C
   const normalizedLang = normalizeLanguage(language);
 
   const handleCopy = async () => {
-    await navigator.clipboard.writeText(code);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // clipboard unavailable (non-HTTPS or permission denied) — fail silently
+    }
   };
 
   return (
