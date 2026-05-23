@@ -247,17 +247,16 @@ interface AgentOutputRendererProps {
 
 export function AgentOutputRenderer({ text }: AgentOutputRendererProps) {
   // If the entire text looks like JSON, render it as a single JSON code block
-  const isPureJson = useMemo(() => {
+  const parsedJson = useMemo(() => {
     const trimmed = text.trim();
     if ((trimmed.startsWith("{") && trimmed.endsWith("}")) || (trimmed.startsWith("[") && trimmed.endsWith("]"))) {
       try {
-        JSON.parse(trimmed);
-        return true;
+        return JSON.parse(trimmed);
       } catch {
-        return false;
+        return null;
       }
     }
-    return false;
+    return null;
   }, [text]);
 
   const tokens = useMemo(() => {
