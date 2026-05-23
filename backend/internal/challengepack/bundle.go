@@ -62,6 +62,7 @@ type VersionMetadata struct {
 const (
 	ExecutionModeNative     = "native"
 	ExecutionModePromptEval = "prompt_eval"
+	ExecutionModeMultiTurn  = "multi_turn"
 )
 
 type SandboxConfig struct {
@@ -97,14 +98,15 @@ type InputSetDefinition struct {
 }
 
 type CaseDefinition struct {
-	ChallengeKey string            `yaml:"challenge_key" json:"challenge_key"`
-	CaseKey      string            `yaml:"case_key,omitempty" json:"case_key,omitempty"`
-	ItemKey      string            `yaml:"item_key,omitempty" json:"item_key,omitempty"`
-	Payload      map[string]any    `yaml:"payload,omitempty" json:"payload,omitempty"`
-	Inputs       []CaseInput       `yaml:"inputs,omitempty" json:"inputs,omitempty"`
-	Expectations []CaseExpectation `yaml:"expectations,omitempty" json:"expectations,omitempty"`
-	Artifacts    []ArtifactRef     `yaml:"artifacts,omitempty" json:"artifacts,omitempty"`
-	Assets       []AssetReference  `yaml:"assets,omitempty" json:"assets,omitempty"`
+	ChallengeKey  string             `yaml:"challenge_key" json:"challenge_key"`
+	CaseKey       string             `yaml:"case_key,omitempty" json:"case_key,omitempty"`
+	ItemKey       string             `yaml:"item_key,omitempty" json:"item_key,omitempty"`
+	Payload       map[string]any     `yaml:"payload,omitempty" json:"payload,omitempty"`
+	Inputs        []CaseInput        `yaml:"inputs,omitempty" json:"inputs,omitempty"`
+	Expectations  []CaseExpectation  `yaml:"expectations,omitempty" json:"expectations,omitempty"`
+	UserSimulator *UserSimulatorSpec `yaml:"user_simulator,omitempty" json:"user_simulator,omitempty"`
+	Artifacts     []ArtifactRef      `yaml:"artifacts,omitempty" json:"artifacts,omitempty"`
+	Assets        []AssetReference   `yaml:"assets,omitempty" json:"assets,omitempty"`
 }
 
 type AssetReference struct {
