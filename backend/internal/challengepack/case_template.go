@@ -45,7 +45,10 @@ func decodeCaseTemplatePayload(payload json.RawMessage) (map[string]any, error) 
 	}
 
 	var stored StoredCaseDocument
-	if err := json.Unmarshal(payload, &stored); err == nil && (stored.SchemaVersion > 0 || len(stored.Inputs) > 0 || len(stored.Expectations) > 0) {
+	if err := json.Unmarshal(payload, &stored); err == nil && stored.SchemaVersion != 0 {
+		if stored.Payload == nil {
+			return map[string]any{}, nil
+		}
 		return cloneObject(stored.Payload), nil
 	}
 
@@ -135,15 +138,19 @@ func RenderCaseTemplateLenient(template string, ctx CaseTemplateContext) string 
 
 // ValidateCaseTemplate ensures every placeholder in template resolves in ctx.
 func ValidateCaseTemplate(template string, ctx CaseTemplateContext, fieldPath string) error {
+	var errs ValidationErrors
 	for _, placeholder := range ExtractCaseTemplatePlaceholders(template) {
 		if _, ok, err := resolveCaseTemplatePath(placeholder, ctx); err != nil {
-			return ValidationError{Field: fieldPath, Message: err.Error()}
+			errs = append(errs, ValidationError{Field: fieldPath, Message: err.Error()})
 		} else if !ok {
-			return ValidationError{
+			errs = append(errs, ValidationError{
 				Field:   fieldPath,
 				Message: fmt.Sprintf("unresolved placeholder {{%s}} for case template context", placeholder),
-			}
+			})
 		}
+	}
+	if len(errs) > 0 {
+		return errs
 	}
 	return nil
 }

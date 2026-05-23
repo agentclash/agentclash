@@ -122,6 +122,41 @@ func TestBuildCaseTemplateContextFromPayload_StoredCaseDocument(t *testing.T) {
 	}
 }
 
+func TestBuildCaseTemplateContextFromPayload_PlainPayloadWithInputsKey(t *testing.T) {
+	payload, err := json.Marshal(map[string]any{
+		"inputs":   []any{"raw-input-list"},
+		"order_id": "123",
+	})
+	if err != nil {
+		t.Fatalf("marshal payload: %v", err)
+	}
+	ctx, err := BuildCaseTemplateContextFromPayload(payload, nil)
+	if err != nil {
+		t.Fatalf("BuildCaseTemplateContextFromPayload returned error: %v", err)
+	}
+	rendered, err := RenderCaseTemplate("pytest tests/test_{{order_id}}.py", ctx)
+	if err != nil {
+		t.Fatalf("RenderCaseTemplate returned error: %v", err)
+	}
+	if rendered != "pytest tests/test_123.py" {
+		t.Fatalf("rendered = %q, want pytest tests/test_123.py", rendered)
+	}
+}
+
+func TestValidateCaseTemplate_ReportsAllUnresolvedPlaceholders(t *testing.T) {
+	err := ValidateCaseTemplate("echo {{missing_a}} {{missing_b}}", CaseTemplateContext{}, "test_command")
+	if err == nil {
+		t.Fatal("expected validation errors")
+	}
+	errs, ok := err.(ValidationErrors)
+	if !ok {
+		t.Fatalf("error type = %T, want ValidationErrors", err)
+	}
+	if len(errs) != 2 {
+		t.Fatalf("error count = %d, want 2", len(errs))
+	}
+}
+
 func caseTemplateTestBundle(testCommand string) Bundle {
 	bundle := Bundle{
 		Pack: PackMetadata{Slug: "demo", Name: "Demo", Family: "demo"},

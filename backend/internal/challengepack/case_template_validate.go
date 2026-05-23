@@ -44,8 +44,11 @@ func validateBundleCaseTemplates(bundle Bundle) ValidationErrors {
 			for _, command := range commands {
 				fieldPath := command.fieldPath + " (" + casePath + ")"
 				if err := ValidateCaseTemplate(command.testCommand, ctx, fieldPath); err != nil {
-					if validationErr, ok := err.(ValidationError); ok {
-						errs = append(errs, validationErr)
+					switch typed := err.(type) {
+					case ValidationError:
+						errs = append(errs, typed)
+					case ValidationErrors:
+						errs = append(errs, typed...)
 					}
 				}
 			}
