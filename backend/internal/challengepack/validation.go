@@ -69,9 +69,9 @@ func ValidateBundle(bundle Bundle) error {
 	}
 	errs = append(errs, validateModalityConfig(bundle)...)
 	switch bundle.Version.ExecutionMode {
-	case "", ExecutionModeNative, ExecutionModePromptEval:
+	case "", ExecutionModeNative, ExecutionModePromptEval, ExecutionModeMultiTurn:
 	default:
-		errs = append(errs, ValidationError{Field: "version.execution_mode", Message: fmt.Sprintf("must be one of %q, %q", ExecutionModeNative, ExecutionModePromptEval)})
+		errs = append(errs, ValidationError{Field: "version.execution_mode", Message: fmt.Sprintf("must be one of %q, %q, %q", ExecutionModeNative, ExecutionModePromptEval, ExecutionModeMultiTurn)})
 	}
 	if bundle.Version.ExecutionMode == ExecutionModePromptEval {
 		if len(bundle.Tools) > 0 {
@@ -199,6 +199,7 @@ func ValidateBundle(bundle Bundle) error {
 		}
 	}
 	errs = append(errs, validateBundleCaseTemplates(bundle)...)
+	errs = append(errs, validateBundleUserSimulators(bundle)...)
 	errs = append(errs, validateAssets("version.assets", bundle.Version.Assets)...)
 
 	if len(errs) > 0 {
