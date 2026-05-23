@@ -39,21 +39,15 @@ type turnStateCapturedPayload struct {
 	SnapshotRef string `json:"snapshot_ref"`
 }
 
-type conversationCompletedPayload struct {
-	StopReason string `json:"stop_reason,omitempty"`
-	TurnCount  int    `json:"turn_count,omitempty"`
-}
-
 func IsMultiTurnConversationEventType(eventType Type) bool {
 	switch eventType {
 	case EventTypeTurnUserMessage,
 		EventTypeTurnUserSimulated,
 		EventTypeTurnAssistantMessage,
+		EventTypeTurnCompleted,
 		EventTypeTurnAwaitingHuman,
 		EventTypeTurnStateCaptured,
 		EventTypeConversationCompleted:
-		return true
-	case EventTypeTurnCompleted:
 		return true
 	default:
 		return false
@@ -185,16 +179,23 @@ func validateTurnAwaitingHuman(envelope Envelope) error {
 	if err := validateTurnIndex(envelope.Summary); err != nil {
 		return err
 	}
-	var payload turnAwaitingHumanPayload
-	if err := json.Unmarshal(envelope.Payload, &payload); err != nil {
-		return fmt.Errorf("decode turn.awaiting_human payload: %w", err)
+	payloadPhaseID := ""
+	if len(envelope.Payload) > 0 {
+		var payload turnAwaitingHumanPayload
+		if err := json.Unmarshal(envelope.Payload, &payload); err != nil {
+			return fmt.Errorf("decode turn.awaiting_human payload: %w", err)
+		}
+		payloadPhaseID = payload.PhaseID
 	}
-	return validatePhaseID(envelope.Summary, payload.PhaseID)
+	return validatePhaseID(envelope.Summary, payloadPhaseID)
 }
 
 func validateTurnStateCaptured(envelope Envelope) error {
 	if envelope.Summary.TurnIndex != nil && *envelope.Summary.TurnIndex < 0 {
 		return fmt.Errorf("turn_index must be >= 0")
+	}
+	if len(envelope.Payload) == 0 {
+		return fmt.Errorf("%w: payload", ErrMultiTurnPayloadRequired)
 	}
 	var payload turnStateCapturedPayload
 	if err := json.Unmarshal(envelope.Payload, &payload); err != nil {

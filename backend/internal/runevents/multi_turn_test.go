@@ -31,8 +31,18 @@ func TestMultiTurnEventTypesAreValid(t *testing.T) {
 }
 
 func TestValidateMultiTurnEventRequiredFields(t *testing.T) {
-	t.Run("turn.user.message requires turn_index and content", func(t *testing.T) {
+	t.Run("turn.user.message requires turn_index", func(t *testing.T) {
+		envelope := baseMultiTurnEnvelope(EventTypeTurnUserMessage, json.RawMessage(`{"content":"Hi","actor":"scripted","phase_id":"open"}`))
+		if err := ValidateMultiTurnEvent(envelope); err == nil {
+			t.Fatal("expected validation error for missing turn_index")
+		}
+	})
+
+	t.Run("turn.user.message requires content", func(t *testing.T) {
 		envelope := baseMultiTurnEnvelope(EventTypeTurnUserMessage, json.RawMessage(`{"content":"","actor":"scripted","phase_id":"open"}`))
+		envelope.Summary.TurnIndex = intPtr(0)
+		envelope.Summary.PhaseID = "open"
+		envelope.Summary.Actor = ConversationActorScripted
 		if err := ValidateMultiTurnEvent(envelope); err == nil {
 			t.Fatal("expected validation error for empty content")
 		}
@@ -160,6 +170,15 @@ func TestTranscriptFromEventsPreservesMismatch(t *testing.T) {
 	}
 	if !strings.Contains(string(encoded), `"mismatch":true`) {
 		t.Fatalf("encoded summary = %s, want explicit mismatch true", encoded)
+	}
+}
+
+func TestValidateTurnAwaitingHumanAcceptsSummaryOnlyPhaseID(t *testing.T) {
+	envelope := baseMultiTurnEnvelope(EventTypeTurnAwaitingHuman, nil)
+	envelope.Summary.TurnIndex = intPtr(2)
+	envelope.Summary.PhaseID = "human"
+	if err := ValidateMultiTurnEvent(envelope); err != nil {
+		t.Fatalf("ValidateMultiTurnEvent() error = %v", err)
 	}
 }
 

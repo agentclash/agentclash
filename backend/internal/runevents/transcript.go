@@ -33,18 +33,15 @@ func TranscriptFromEvents(events []Envelope) ([]TranscriptTurn, error) {
 
 	sorted := append([]Envelope(nil), events...)
 	sort.SliceStable(sorted, func(i, j int) bool {
-		left := sorted[i].SequenceNumber
-		right := sorted[j].SequenceNumber
-		if left == 0 && right == 0 {
-			return sorted[i].OccurredAt.Before(sorted[j].OccurredAt)
+		left := sorted[i]
+		right := sorted[j]
+		if left.SequenceNumber > 0 && right.SequenceNumber > 0 {
+			return left.SequenceNumber < right.SequenceNumber
 		}
-		if left == 0 {
-			return true
+		if !left.OccurredAt.Equal(right.OccurredAt) {
+			return left.OccurredAt.Before(right.OccurredAt)
 		}
-		if right == 0 {
-			return false
-		}
-		return left < right
+		return left.EventID < right.EventID
 	})
 
 	byIndex := make(map[int]*TranscriptTurn)
