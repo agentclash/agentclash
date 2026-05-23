@@ -11,11 +11,11 @@ const (
 	UserSimulatorActorHuman    = "human"
 
 	UserSimulatorTriggerAlways              = "always"
-	UserSimulatorTriggerOnAssistantMismatch   = "on_assistant_mismatch"
+	UserSimulatorTriggerOnAssistantMismatch = "on_assistant_mismatch"
 	UserSimulatorTriggerOnValidatorFail     = "on_validator_fail"
 	UserSimulatorTriggerOnJudgeBelow        = "on_judge_below"
 	UserSimulatorTriggerOnAgentLoop         = "on_agent_loop"
-	UserSimulatorTriggerOnMaxLLMTurns        = "on_max_llm_turns"
+	UserSimulatorTriggerOnMaxLLMTurns       = "on_max_llm_turns"
 	UserSimulatorTriggerManual              = "manual"
 	UserSimulatorTriggerNever               = "never"
 
@@ -24,12 +24,12 @@ const (
 
 // UserSimulatorSpec defines the per-case hybrid user actor manifest for multi_turn packs.
 type UserSimulatorSpec struct {
-	SchemaVersion int32                      `yaml:"schema_version" json:"schema_version"`
-	Kind          string                     `yaml:"kind" json:"kind"`
-	MaxTurns      int32                      `yaml:"max_turns,omitempty" json:"max_turns,omitempty"`
-	Phases        []UserSimulatorPhase       `yaml:"phases" json:"phases"`
-	Calibration   *UserSimulatorCalibration  `yaml:"calibration,omitempty" json:"calibration,omitempty"`
-	PostRun       *UserSimulatorPostRun      `yaml:"post_run,omitempty" json:"post_run,omitempty"`
+	SchemaVersion int32                     `yaml:"schema_version" json:"schema_version"`
+	Kind          string                    `yaml:"kind" json:"kind"`
+	MaxTurns      int32                     `yaml:"max_turns,omitempty" json:"max_turns,omitempty"`
+	Phases        []UserSimulatorPhase      `yaml:"phases" json:"phases"`
+	Calibration   *UserSimulatorCalibration `yaml:"calibration,omitempty" json:"calibration,omitempty"`
+	PostRun       *UserSimulatorPostRun     `yaml:"post_run,omitempty" json:"post_run,omitempty"`
 }
 
 type UserSimulatorPhase struct {
@@ -44,8 +44,8 @@ type UserSimulatorPhase struct {
 }
 
 type UserSimulatorTurn struct {
-	Message  string            `yaml:"message" json:"message"`
-	Expects  []CaseExpectation `yaml:"expects,omitempty" json:"expects,omitempty"`
+	Message string            `yaml:"message" json:"message"`
+	Expects []CaseExpectation `yaml:"expects,omitempty" json:"expects,omitempty"`
 }
 
 type UserSimulatorCalibration struct {
@@ -69,14 +69,14 @@ var supportedUserSimulatorActors = map[string]struct{}{
 }
 
 var supportedUserSimulatorTriggers = map[string]struct{}{
-	UserSimulatorTriggerAlways:            {},
+	UserSimulatorTriggerAlways:              {},
 	UserSimulatorTriggerOnAssistantMismatch: {},
-	UserSimulatorTriggerOnValidatorFail:   {},
-	UserSimulatorTriggerOnJudgeBelow:      {},
-	UserSimulatorTriggerOnAgentLoop:       {},
-	UserSimulatorTriggerOnMaxLLMTurns:     {},
-	UserSimulatorTriggerManual:            {},
-	UserSimulatorTriggerNever:             {},
+	UserSimulatorTriggerOnValidatorFail:     {},
+	UserSimulatorTriggerOnJudgeBelow:        {},
+	UserSimulatorTriggerOnAgentLoop:         {},
+	UserSimulatorTriggerOnMaxLLMTurns:       {},
+	UserSimulatorTriggerManual:              {},
+	UserSimulatorTriggerNever:               {},
 }
 
 var supportedUserSimulatorArenaComparisons = map[string]struct{}{

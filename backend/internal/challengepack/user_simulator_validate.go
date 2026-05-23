@@ -99,11 +99,10 @@ func validateUserSimulatorPhase(path string, phase UserSimulatorPhase, isFirst b
 			Message: `first phase trigger must be empty or "always"`,
 		})
 	}
-	if !isFirst && trigger == UserSimulatorTriggerAlways && strings.TrimSpace(phase.Trigger) == "" {
-		// empty trigger normalizes to always — only first phase may use always implicitly.
+	if !isFirst && trigger == UserSimulatorTriggerAlways {
 		errs = append(errs, ValidationError{
 			Field:   path + ".trigger",
-			Message: "is required for non-first phases",
+			Message: `only the first phase may use "always"`,
 		})
 	}
 
