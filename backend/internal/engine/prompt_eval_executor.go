@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"regexp"
 	"strings"
 
 	"github.com/agentclash/agentclash/backend/internal/challengepack"
@@ -194,9 +193,9 @@ func buildPromptEvalMessages(executionContext repository.RunAgentExecutionContex
 		return nil, fmt.Errorf("challenge %q is missing instructions required for prompt_eval", challenge.ChallengeKey)
 	}
 
-	vars := promptEvalVariables(executionContext)
-	rendered := renderPromptTemplate(instructions, vars)
-	if leftovers := promptEvalTemplatePattern.FindAllString(rendered, -1); len(leftovers) > 0 {
+	vars := caseTemplateContextForExecution(executionContext)
+	rendered := challengepack.RenderCaseTemplateLenient(instructions, vars)
+	if leftovers := challengepack.FindUnresolvedCaseTemplateLiterals(rendered); len(leftovers) > 0 {
 		slog.Default().Warn(
 			"prompt_eval executor rendered prompt with unresolved template tokens",
 			"run_agent_id", executionContext.RunAgent.ID.String(),
@@ -241,70 +240,10 @@ func extractChallengeInstructions(definition json.RawMessage) (string, error) {
 	return decoded.Instructions, nil
 }
 
-func promptEvalVariables(executionContext repository.RunAgentExecutionContext) map[string]string {
-	vars := map[string]string{}
-	if executionContext.ChallengeInputSet == nil || len(executionContext.ChallengeInputSet.Cases) == 0 {
-		return vars
-	}
-	if n := len(executionContext.ChallengeInputSet.Cases); n > 1 {
-		slog.Default().Warn(
-			"prompt_eval executor using first case only; additional cases ignored",
-			"run_agent_id", executionContext.RunAgent.ID.String(),
-			"case_count", n,
-		)
-	}
-	first := executionContext.ChallengeInputSet.Cases[0]
-	for _, input := range first.Inputs {
-		if input.Key == "" {
-			continue
-		}
-		if rendered, ok := promptEvalRenderInputValue(input); ok {
-			vars[input.Key] = rendered
-		}
-	}
-	return vars
-}
-
-func promptEvalRenderInputValue(input challengepack.CaseInput) (string, bool) {
-	if input.Value == nil {
-		return "", false
-	}
-	switch typed := input.Value.(type) {
-	case string:
-		return typed, true
-	case bool:
-		if typed {
-			return "true", true
-		}
-		return "false", true
-	case int:
-		return fmt.Sprintf("%d", typed), true
-	case float64:
-		return strings.TrimRight(strings.TrimRight(fmt.Sprintf("%f", typed), "0"), "."), true
-	default:
-		encoded, err := json.Marshal(typed)
-		if err != nil {
-			return "", false
-		}
-		return string(encoded), true
-	}
-}
-
-var promptEvalTemplatePattern = regexp.MustCompile(`\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}`)
-
-func renderPromptTemplate(template string, vars map[string]string) string {
-	return promptEvalTemplatePattern.ReplaceAllStringFunc(template, func(match string) string {
-		groups := promptEvalTemplatePattern.FindStringSubmatch(match)
-		if len(groups) != 2 {
-			return match
-		}
-		if value, ok := vars[groups[1]]; ok {
-			return value
-		}
-		return match
-	})
-}
-
 func RenderPromptTemplate(template string, vars map[string]string) string {
-	return renderPromptTemplate(template, vars)
+	ctx := challengepack.CaseTemplateContext{}
+	for key, value := range vars {
+		ctx[key] = value
+	}
+	return challengepack.RenderCaseTemplateLenient(template, ctx)
 }

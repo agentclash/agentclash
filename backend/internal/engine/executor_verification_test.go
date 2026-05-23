@@ -236,7 +236,7 @@ func TestExecuteCodeExecutionCheck_ParsesPytestCounts(t *testing.T) {
 		},
 	}
 
-	result := executeCodeExecutionCheck(context.Background(), session, codeExecutionCheck{
+	result := executeCodeExecutionCheck(context.Background(), session, repository.RunAgentExecutionContext{}, codeExecutionCheck{
 		ValidatorKey: "tests_pass",
 		Target:       "file:generated_code",
 		TargetPath:   "/workspace/app.py",
@@ -260,10 +260,42 @@ func TestExecuteCodeExecutionCheck_ParsesPytestCounts(t *testing.T) {
 	}
 }
 
+func TestExecuteCodeExecutionCheck_RendersTestCommand(t *testing.T) {
+	session := &fakeSandboxSession{
+		execResult: sandbox.ExecResult{ExitCode: 0, Stdout: "1 passed in 0.01s"},
+	}
+	payload, err := json.Marshal(map[string]any{"order_id": "case-42"})
+	if err != nil {
+		t.Fatalf("marshal payload: %v", err)
+	}
+	executionContext := repository.RunAgentExecutionContext{
+		ChallengeInputSet: &repository.ChallengeInputSetExecutionContext{
+			Cases: []repository.ChallengeCaseExecutionContext{
+				{Payload: payload},
+			},
+		},
+	}
+
+	result := executeCodeExecutionCheck(context.Background(), session, executionContext, codeExecutionCheck{
+		ValidatorKey: "tests_pass",
+		Target:       "file:generated_code",
+		TargetPath:   "/workspace/app.py",
+		Config: scoring.CodeExecutionConfig{
+			TestCommand: "pytest tests/test_{{order_id}}.py -q",
+			Scoring:     scoring.CodeExecutionScoringAllOrNothing,
+		},
+	})
+
+	want := "pytest tests/test_case-42.py -q"
+	if result.TestCommand != want {
+		t.Fatalf("TestCommand = %q, want %q", result.TestCommand, want)
+	}
+}
+
 func TestExecuteCodeExecutionCheck_Timeout(t *testing.T) {
 	session := &fakeSandboxSession{execErr: context.DeadlineExceeded}
 
-	result := executeCodeExecutionCheck(context.Background(), session, codeExecutionCheck{
+	result := executeCodeExecutionCheck(context.Background(), session, repository.RunAgentExecutionContext{}, codeExecutionCheck{
 		ValidatorKey: "tests_pass",
 		Target:       "file:generated_code",
 		TargetPath:   "/workspace/app.py",

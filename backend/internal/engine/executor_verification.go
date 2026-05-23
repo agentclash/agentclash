@@ -41,7 +41,7 @@ func collectPostExecutionVerification(
 ) []PostExecutionVerificationResult {
 	results := []PostExecutionVerificationResult{}
 	if checks := extractCodeExecutionChecks(executionContext); len(checks) > 0 {
-		results = append(results, executeCodeExecutionChecks(ctx, session, checks)...)
+		results = append(results, executeCodeExecutionChecks(ctx, session, executionContext, checks)...)
 	}
 	if checks := extractPostExecutionChecks(executionContext); len(checks) > 0 {
 		results = append(results, executePostExecutionChecks(ctx, session, checks)...)
@@ -135,11 +135,12 @@ func executePostExecutionChecks(
 func executeCodeExecutionChecks(
 	ctx context.Context,
 	session sandbox.Session,
+	executionContext repository.RunAgentExecutionContext,
 	checks []codeExecutionCheck,
 ) []PostExecutionVerificationResult {
 	results := make([]PostExecutionVerificationResult, 0, len(checks))
 	for _, check := range checks {
-		payload, err := json.Marshal(executeCodeExecutionCheck(ctx, session, check))
+		payload, err := json.Marshal(executeCodeExecutionCheck(ctx, session, executionContext, check))
 		if err != nil {
 			slog.Default().Warn("marshal code execution result", "validator_key", check.ValidatorKey, "error", err)
 			continue
@@ -230,13 +231,15 @@ func executeDirectoryListingCheck(
 func executeCodeExecutionCheck(
 	ctx context.Context,
 	session sandbox.Session,
+	executionContext repository.RunAgentExecutionContext,
 	check codeExecutionCheck,
 ) scoring.CodeExecutionResult {
+	testCommand := renderCaseTemplateCommand(check.Config.TestCommand, executionContext)
 	result := scoring.CodeExecutionResult{
 		ValidatorKey:  check.ValidatorKey,
 		Target:        check.Target,
 		TargetPath:    check.TargetPath,
-		TestCommand:   check.Config.TestCommand,
+		TestCommand:   testCommand,
 		TimeoutMS:     check.Config.EffectiveTimeoutMS(),
 		Scoring:       string(check.Config.Scoring),
 		PassThreshold: check.Config.PassThreshold,
@@ -247,7 +250,7 @@ func executeCodeExecutionCheck(
 		// can supply normal test commands (pipelines, env var expansion, `cd`,
 		// etc.). This is safe here because the command executes inside the same
 		// isolated ephemeral sandbox as the generated code under evaluation.
-		Command:          []string{"sh", "-lc", check.Config.TestCommand},
+		Command:          []string{"sh", "-lc", testCommand},
 		WorkingDirectory: defaultCodeExecutionWorkingDirectory(check.TargetPath),
 		Timeout:          check.Config.EffectiveTimeout(),
 	})
