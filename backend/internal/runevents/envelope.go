@@ -48,15 +48,21 @@ const (
 
 	EventTypeRaceStandingsInjected Type = "race.standings.injected"
 
-	EventTypeMediaSessionStarted Type = "media.session.started"
-	EventTypeMediaFrameReceived  Type = "media.frame.received"
-	EventTypeSpeechStarted       Type = "speech.started"
-	EventTypeSpeechStopped       Type = "speech.stopped"
-	EventTypeTranscriptPartial   Type = "transcript.partial"
-	EventTypeTranscriptFinal     Type = "transcript.final"
-	EventTypeTurnCompleted       Type = "turn.completed"
-	EventTypeAgentAudioStarted   Type = "agent.audio.started"
-	EventTypeAgentAudioCompleted Type = "agent.audio.completed"
+	EventTypeMediaSessionStarted   Type = "media.session.started"
+	EventTypeMediaFrameReceived    Type = "media.frame.received"
+	EventTypeSpeechStarted         Type = "speech.started"
+	EventTypeSpeechStopped         Type = "speech.stopped"
+	EventTypeTranscriptPartial     Type = "transcript.partial"
+	EventTypeTranscriptFinal       Type = "transcript.final"
+	EventTypeTurnUserMessage       Type = "turn.user.message"
+	EventTypeTurnUserSimulated     Type = "turn.user.simulated"
+	EventTypeTurnAssistantMessage  Type = "turn.assistant.message"
+	EventTypeTurnCompleted         Type = "turn.completed"
+	EventTypeTurnAwaitingHuman     Type = "turn.awaiting_human"
+	EventTypeTurnStateCaptured     Type = "turn.state.captured"
+	EventTypeConversationCompleted Type = "conversation.completed"
+	EventTypeAgentAudioStarted     Type = "agent.audio.started"
+	EventTypeAgentAudioCompleted   Type = "agent.audio.completed"
 	// Barge-in is specified as one domain term in #758, so the canonical value intentionally keeps the underscore.
 	EventTypeBargeInDetected     Type = "barge_in.detected"
 	EventTypeAudioBufferCleared  Type = "audio.buffer.cleared"
@@ -108,6 +114,9 @@ type SummaryMetadata struct {
 	SandboxAction   string        `json:"sandbox_action,omitempty"`
 	MetricKey       string        `json:"metric_key,omitempty"`
 	TurnIndex       *int          `json:"turn_index,omitempty"`
+	PhaseID         string        `json:"phase_id,omitempty"`
+	Actor           string        `json:"actor,omitempty"`
+	Mismatch        *bool         `json:"mismatch,omitempty"`
 	Speaker         string        `json:"speaker,omitempty"`
 	Channel         string        `json:"channel,omitempty"`
 	ExternalRunID   string        `json:"external_run_id,omitempty"`
@@ -206,7 +215,13 @@ func isValidType(eventType Type) bool {
 		EventTypeSpeechStopped,
 		EventTypeTranscriptPartial,
 		EventTypeTranscriptFinal,
+		EventTypeTurnUserMessage,
+		EventTypeTurnUserSimulated,
+		EventTypeTurnAssistantMessage,
 		EventTypeTurnCompleted,
+		EventTypeTurnAwaitingHuman,
+		EventTypeTurnStateCaptured,
+		EventTypeConversationCompleted,
 		EventTypeAgentAudioStarted,
 		EventTypeAgentAudioCompleted,
 		EventTypeBargeInDetected,
