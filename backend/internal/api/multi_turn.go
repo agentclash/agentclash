@@ -297,6 +297,10 @@ func writeMultiTurnError(w http.ResponseWriter, logger *slog.Logger, r *http.Req
 		writeError(w, http.StatusConflict, "not_awaiting_human", err.Error())
 		return
 	}
+	if errors.Is(err, repository.ErrInvalidArenaVoteWinner) {
+		writeError(w, http.StatusBadRequest, "invalid_arena_vote", err.Error())
+		return
+	}
 	logger.Error("multi_turn request failed",
 		"method", r.Method,
 		"path", r.URL.Path,
@@ -307,6 +311,10 @@ func writeMultiTurnError(w http.ResponseWriter, logger *slog.Logger, r *http.Req
 
 func createCalibrationReviewHandler(logger *slog.Logger, service MultiTurnService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if err := requireJSONContentType(r); err != nil {
+			writeError(w, http.StatusUnsupportedMediaType, "unsupported_media_type", err.Error())
+			return
+		}
 		caller, err := CallerFromContext(r.Context())
 		if err != nil {
 			writeError(w, http.StatusUnauthorized, "unauthorized", err.Error())
@@ -374,6 +382,10 @@ func listArenaTasksHandler(logger *slog.Logger, service MultiTurnService) http.H
 
 func submitArenaVoteHandler(logger *slog.Logger, service MultiTurnService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if err := requireJSONContentType(r); err != nil {
+			writeError(w, http.StatusUnsupportedMediaType, "unsupported_media_type", err.Error())
+			return
+		}
 		caller, err := CallerFromContext(r.Context())
 		if err != nil {
 			writeError(w, http.StatusUnauthorized, "unauthorized", err.Error())

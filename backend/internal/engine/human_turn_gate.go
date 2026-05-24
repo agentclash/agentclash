@@ -82,7 +82,9 @@ func (g PollHumanTurnGate) WaitForHumanTurn(ctx context.Context, req HumanTurnRe
 		select {
 		case <-ctx.Done():
 			if req.Timeout > 0 {
-				_ = g.store.MarkHumanTurnExpired(ctx, req.RunAgentID, req.TurnIndex)
+				cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				_ = g.store.MarkHumanTurnExpired(cleanupCtx, req.RunAgentID, req.TurnIndex)
+				cancel()
 				return "", ErrHumanTurnTimeout
 			}
 			return "", ctx.Err()

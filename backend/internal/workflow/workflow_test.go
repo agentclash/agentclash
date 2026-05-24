@@ -2494,6 +2494,8 @@ func TestNativeModelActivityOptionsNonRetryableTypes(t *testing.T) {
 		engineFailureErrorTypePrefix + string(engine.StopReasonToolLimit),
 		engineFailureErrorTypePrefix + string(engine.StopReasonTimeout),
 		engineFailureErrorTypePrefix + string(engine.StopReasonMaxTurns),
+		engineFailureErrorTypePrefix + string(engine.StopReasonHumanTurnTimeout),
+		engineFailureErrorTypePrefix + string(engine.StopReasonSimulatorError),
 		engineFailureErrorTypePrefix + string(engine.StopReasonProviderError),
 		engineFailureErrorTypePrefix + string(engine.StopReasonObserverError),
 		providerFailureErrorTypePrefix + string(provider.FailureCodeAuth),

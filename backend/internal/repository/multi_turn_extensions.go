@@ -125,13 +125,20 @@ func (r *Repository) SubmitArenaVote(ctx context.Context, params SubmitArenaVote
 	defer tx.Rollback(ctx)
 
 	var workspaceID uuid.UUID
+	var leftRunAgentID uuid.UUID
+	var rightRunAgentID uuid.UUID
 	if err := tx.QueryRow(ctx, `
-SELECT workspace_id FROM workspace_arena_tasks WHERE id = $1 AND status = 'pending'
-`, params.TaskID).Scan(&workspaceID); err != nil {
+SELECT workspace_id, left_run_agent_id, right_run_agent_id
+FROM workspace_arena_tasks
+WHERE id = $1 AND status = 'pending'
+`, params.TaskID).Scan(&workspaceID, &leftRunAgentID, &rightRunAgentID); err != nil {
 		return err
 	}
 	if workspaceID != params.WorkspaceID {
 		return ErrRunNotFound
+	}
+	if params.WinnerRunAgentID != leftRunAgentID && params.WinnerRunAgentID != rightRunAgentID {
+		return ErrInvalidArenaVoteWinner
 	}
 
 	_, err = tx.Exec(ctx, `
