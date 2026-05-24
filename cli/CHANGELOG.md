@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.20.0](https://github.com/agentclash/agentclash/compare/v0.19.0...v0.20.0) (2026-05-24)
+
+
+### Features
+
+* **multi-turn:** hybrid eval executor, human takeover, calibration, arena ([#839](https://github.com/agentclash/agentclash/issues/839)) ([08f3ac7](https://github.com/agentclash/agentclash/commit/08f3ac77d42eddaa00948d20a1c060e84261857d))
+* **multi-turn:** hybrid eval executor, human takeover, calibration, arena ([#839](https://github.com/agentclash/agentclash/issues/839)) ([af860aa](https://github.com/agentclash/agentclash/commit/af860aa17f476f97adb23d0fc5d5ddff32c2c0f2))
+* **security:** --from-pack campaign mode for agent-vault-stress ([#833](https://github.com/agentclash/agentclash/issues/833)) ([71f9349](https://github.com/agentclash/agentclash/commit/71f9349ff926db05f96d2d42e7852d6427165507))
+* **security:** avmock-upstream — bundled HTTP mock for agent-vault-stress ([#833](https://github.com/agentclash/agentclash/issues/833)) ([f420f1f](https://github.com/agentclash/agentclash/commit/f420f1fa2d0d3d2acf0f1e4e1eca76779da6981f))
+* **security:** real-Agent-Vault stress harness — agent-vault-stress CLI ([c1e9337](https://github.com/agentclash/agentclash/commit/c1e9337e783d4966ee5e9ae7e1a445703a60e327))
+* **security:** runtime-stress harness — real Vault SDK + function calling ([#815](https://github.com/agentclash/agentclash/issues/815)) ([bb7b7f2](https://github.com/agentclash/agentclash/commit/bb7b7f23f9e2b7539b9df2ad3beb5d2516bf03a4))
+* **security:** runtime-stress harness — real Vault SDK + function calling ([#815](https://github.com/agentclash/agentclash/issues/815)) ([678b0a2](https://github.com/agentclash/agentclash/commit/678b0a27ff380a379165180239c92dae545e84c6))
+* **stress:** Anthropic Messages API provider + frontier-model leak data ([#815](https://github.com/agentclash/agentclash/issues/815)) ([d11cbe8](https://github.com/agentclash/agentclash/commit/d11cbe84dfde5adf787e65de2d2a784021c481e4))
+* **stress:** Anthropic Messages API provider for stress-run ([#815](https://github.com/agentclash/agentclash/issues/815)) ([4092e0d](https://github.com/agentclash/agentclash/commit/4092e0d279bd42c5f2d81f92fdcd62a28225cd62))
+
+
+### Bug Fixes
+
+* **security:** close avmock-upstream gaps (Greptile [#836](https://github.com/agentclash/agentclash/issues/836)) ([d50f111](https://github.com/agentclash/agentclash/commit/d50f11198082aaab836966b8f4b718cb09078bf3))
+* **security:** harden --from-pack output writes (Greptile [#835](https://github.com/agentclash/agentclash/issues/835)) ([fa8ffbb](https://github.com/agentclash/agentclash/commit/fa8ffbb64a1c3d3a5f598dcd3da3707af814806a))
+* **stress:** Anthropic empty-content refusal → synthetic refusal marker ([#815](https://github.com/agentclash/agentclash/issues/815)) ([c569a0c](https://github.com/agentclash/agentclash/commit/c569a0cc71f9fdf9e10b83d7141b410bf888618c))
+* **stress:** Anthropic empty-content refusal → synthetic refusal marker ([#815](https://github.com/agentclash/agentclash/issues/815)) ([0379479](https://github.com/agentclash/agentclash/commit/0379479e98e984c7be0c5f80694faaa708bace87))
+* **stress:** broaden Anthropic synthetic refusal marker + add Errors assertion (Greptile P1+P2 [#829](https://github.com/agentclash/agentclash/issues/829)) ([d5c32df](https://github.com/agentclash/agentclash/commit/d5c32dff2f0ca7d2a673c74988b15b7493947e4c))
+
 ## [0.19.0](https://github.com/agentclash/agentclash/compare/v0.18.0...v0.19.0) (2026-05-16)
 
 
