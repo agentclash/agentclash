@@ -13,6 +13,7 @@ import type {
   ReplayResponse,
   ReplayStep,
 } from "@/lib/api/types";
+import { isAgentAwaitingHumanInput, isRunActive } from "@/lib/run-status";
 import { Badge } from "@/components/ui/badge";
 import { ReplayTimeline } from "@/components/replay/replay-timeline";
 import { AwaitingHumanBanner } from "@/components/replay/awaiting-human-banner";
@@ -30,6 +31,7 @@ import {
 } from "lucide-react";
 
 const POLL_MS = 5000;
+const HUMAN_TURN_POLL_MS = 3000;
 
 const agentStatusVariant: Record<
   RunAgentStatus,
@@ -60,6 +62,8 @@ export function ReplayViewerClient({
   const [replayData, setReplayData] = useState<ReplayResponse>(initialReplay);
   const [steps, setSteps] = useState<ReplayStep[]>(initialReplay.steps);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [liveAgent, setLiveAgent] = useState<RunAgent>(agent);
+  const [liveRunStatus, setLiveRunStatus] = useState<Run["status"]>(run.status);
 
   // When the inspector sheet deep-links in with ?step=<sequence>, the timeline
   // highlights + auto-scrolls to that step. NaN is filtered by the consumer.
@@ -74,8 +78,31 @@ export function ReplayViewerClient({
   const isPending = replayData.state === "pending";
   const isErrored = replayData.state === "errored";
   const isReady = replayData.state === "ready";
-  const awaitingHumanEnabled =
-    agent.status === "executing" || agent.status === "evaluating";
+  const isRunActiveStatus = isRunActive(liveRunStatus);
+  const awaitingHumanEnabled = isAgentAwaitingHumanInput(liveAgent.status);
+
+  // Keep agent/run status fresh while the run is active so the human-input banner can appear.
+  useEffect(() => {
+    if (!isRunActiveStatus) return;
+    const refreshLiveStatus = async () => {
+      try {
+        const token = await getAccessToken();
+        const api = createApiClient(token);
+        const [runRes, agentsRes] = await Promise.all([
+          api.get<Run>(`/v1/runs/${run.id}`),
+          api.get<{ items: RunAgent[] }>(`/v1/runs/${run.id}/agents`),
+        ]);
+        setLiveRunStatus(runRes.status);
+        const nextAgent = agentsRes.items.find((item) => item.id === agent.id);
+        if (nextAgent) setLiveAgent(nextAgent);
+      } catch {
+        // Ignore polling errors; replay page stays usable.
+      }
+    };
+    void refreshLiveStatus();
+    const interval = setInterval(() => void refreshLiveStatus(), HUMAN_TURN_POLL_MS);
+    return () => clearInterval(interval);
+  }, [isRunActiveStatus, getAccessToken, run.id, agent.id]);
 
   // Auto-poll when pending
   useEffect(() => {
@@ -132,15 +159,15 @@ export function ReplayViewerClient({
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
               <h1 className="font-[family-name:var(--font-display)] text-2xl leading-none tracking-[-0.01em] text-white/95">
-                {agent.label}
+                {liveAgent.label}
               </h1>
               <Badge
                 variant={
-                  agentStatusVariant[agent.status as RunAgentStatus] ?? "outline"
+                  agentStatusVariant[liveAgent.status as RunAgentStatus] ?? "outline"
                 }
                 className="bg-white/5 text-white/80 border-white/10 hover:bg-white/10"
               >
-                {agent.status}
+                {liveAgent.status}
               </Badge>
             </div>
             {isReady && (

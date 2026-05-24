@@ -17,6 +17,11 @@ import { useArenaMode } from "@/hooks/use-arena-mode";
 import { useRunEvents, type RunEvent } from "@/hooks/use-run-events";
 import { createApiClient } from "@/lib/api/client";
 import { scorePercent } from "@/lib/scores";
+import {
+  ACTIVE_AGENT_STATUSES,
+  isAgentAwaitingHumanInput,
+  isRunActive,
+} from "@/lib/run-status";
 import { isVoiceRun, voiceRunMode, voiceRunTransport } from "@/lib/voice-evals";
 import type {
   Run,
@@ -56,6 +61,7 @@ import { CompareRunPicker } from "./compare-run-picker";
 import { Panel } from "./agents/[runAgentId]/scorecard/components/panel";
 import { RunRankingInsightsCard } from "./run-ranking-insights-card";
 import { ScorecardSummaryCard } from "./scorecard-summary-card";
+import { AwaitingHumanBanner } from "@/components/replay/awaiting-human-banner";
 
 // --- Status variant maps ---
 
@@ -73,18 +79,6 @@ const runStatusVariant: Record<
   cancelled: "secondary",
 };
 
-const ACTIVE_RUN_STATUSES: RunStatus[] = [
-  "queued",
-  "provisioning",
-  "running",
-  "scoring",
-];
-const ACTIVE_AGENT_STATUSES: RunAgentStatus[] = [
-  "queued",
-  "ready",
-  "executing",
-  "evaluating",
-];
 const POLL_MS = 5000;
 
 const LEGACY_SORT_OPTIONS = [
@@ -188,7 +182,7 @@ export function RunDetailClient({
   const [arenaMode, setArenaMode] = useArenaMode();
 
   const isActive =
-    ACTIVE_RUN_STATUSES.includes(run.status) ||
+    isRunActive(run.status) ||
     agents.some((a) => ACTIVE_AGENT_STATUSES.includes(a.status));
 
   const fetchAll = useCallback(async () => {
@@ -527,6 +521,20 @@ export function RunDetailClient({
           )}
         </div>
       </Panel>
+
+      {isActive &&
+        sortedAgents
+          .filter((a) => isAgentAwaitingHumanInput(a.status))
+          .map((a) => (
+            <AwaitingHumanBanner
+              key={a.id}
+              getAccessToken={getAccessToken}
+              workspaceId={workspaceId}
+              runId={run.id}
+              runAgentId={a.id}
+              enabled
+            />
+          ))}
 
       {/* === Agent Lanes === */}
       <div>

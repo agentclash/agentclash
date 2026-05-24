@@ -492,6 +492,7 @@ func TestNativeExecutorDoesNotDuplicateCompletedErrorToolMessages(t *testing.T) 
 			ID:   "call-completed-error",
 			Name: "fail_complete",
 		}},
+		false,
 	)
 	if err != nil {
 		t.Fatalf("executeToolCalls returned error: %v", err)
