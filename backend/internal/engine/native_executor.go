@@ -351,6 +351,7 @@ func (e NativeExecutor) runAgentLoop(
 	metadata json.RawMessage,
 	state *loopState,
 ) (Result, error) {
+	preserveSubmitToolMessage := executionModeFromManifest(executionContext.ChallengePackVersion.Manifest) == challengepack.ExecutionModeMultiTurn
 	for {
 		if loopErr := runCtx.Err(); loopErr != nil {
 			if errors.Is(loopErr, context.Canceled) {
@@ -423,7 +424,6 @@ func (e NativeExecutor) runAgentLoop(
 			return Result{}, NewFailure(StopReasonProviderError, "assistant response did not contain a tool call or submit action", nil)
 		}
 
-		preserveSubmitToolMessage := executionModeFromManifest(executionContext.ChallengePackVersion.Manifest) == challengepack.ExecutionModeMultiTurn
 		toolMessages, finalOutput, completed, toolCallCount, toolErr := e.executeToolCalls(runCtx, session, registry, sandboxRequest.ToolPolicy, sandboxRequest.NetworkAllowlist, state.toolCallCount, response.ToolCalls, preserveSubmitToolMessage)
 		state.toolCallCount += toolCallCount
 		if toolErr != nil {

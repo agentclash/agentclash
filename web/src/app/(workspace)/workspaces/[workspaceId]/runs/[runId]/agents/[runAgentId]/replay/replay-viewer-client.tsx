@@ -10,10 +10,10 @@ import type {
   Run,
   RunAgent,
   RunAgentStatus,
-  RunStatus,
   ReplayResponse,
   ReplayStep,
 } from "@/lib/api/types";
+import { isAgentAwaitingHumanInput, isRunActive } from "@/lib/run-status";
 import { Badge } from "@/components/ui/badge";
 import { ReplayTimeline } from "@/components/replay/replay-timeline";
 import { AwaitingHumanBanner } from "@/components/replay/awaiting-human-banner";
@@ -32,13 +32,6 @@ import {
 
 const POLL_MS = 5000;
 const HUMAN_TURN_POLL_MS = 3000;
-
-const ACTIVE_RUN_STATUSES: RunStatus[] = [
-  "queued",
-  "provisioning",
-  "running",
-  "scoring",
-];
 
 const agentStatusVariant: Record<
   RunAgentStatus,
@@ -85,15 +78,12 @@ export function ReplayViewerClient({
   const isPending = replayData.state === "pending";
   const isErrored = replayData.state === "errored";
   const isReady = replayData.state === "ready";
-  const isRunActive = ACTIVE_RUN_STATUSES.includes(liveRunStatus);
-  const awaitingHumanEnabled =
-    isRunActive ||
-    liveAgent.status === "executing" ||
-    liveAgent.status === "evaluating";
+  const isRunActiveStatus = isRunActive(liveRunStatus);
+  const awaitingHumanEnabled = isAgentAwaitingHumanInput(liveAgent.status);
 
   // Keep agent/run status fresh while the run is active so the human-input banner can appear.
   useEffect(() => {
-    if (!isRunActive) return;
+    if (!isRunActiveStatus) return;
     const refreshLiveStatus = async () => {
       try {
         const token = await getAccessToken();
@@ -112,7 +102,7 @@ export function ReplayViewerClient({
     void refreshLiveStatus();
     const interval = setInterval(() => void refreshLiveStatus(), HUMAN_TURN_POLL_MS);
     return () => clearInterval(interval);
-  }, [isRunActive, getAccessToken, run.id, agent.id]);
+  }, [isRunActiveStatus, getAccessToken, run.id, agent.id]);
 
   // Auto-poll when pending
   useEffect(() => {
