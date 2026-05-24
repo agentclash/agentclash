@@ -1,0 +1,226 @@
+name: pr-review-bot
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths-ignore:
+      - "*.md"
+      - "docs/**"
+
+# Prevent multiple review runs from stacking on the same PR
+concurrency:
+  group: pr-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  select-model:
+    name: Select review model
+    runs-on: ubuntu-latest
+    outputs:
+      model: ${{ steps.select.outputs.model }}
+      reason: ${{ steps.select.outputs.reason }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - id: select
+        name: Select best model for this PR
+        run: |
+          chmod +x scripts/pr-review/select-review-model.sh
+          MODEL=$(scripts/pr-review/select-review-model.sh)
+          echo "model=${MODEL}" >> "$GITHUB_OUTPUT"
+
+          # Determine reason for model selection
+          case "$MODEL" in
+            *glm-5.1*)
+              REASON="Large or Go code changes → GLM-5.1 for deep analysis"
+              ;;
+            *qwen3.6*)
+              REASON="Frontend changes → Qwen3.6 Plus for fast, thorough review"
+              ;;
+            *deepseek-v4-flash*)
+              REASON="Config/CI only → DeepSeek V4 Flash for quick review"
+              ;;
+            *)
+              REASON="Standard changes → Qwen3.6 Plus"
+              ;;
+          esac
+          echo "reason=${REASON}" >> "$GITHUB_OUTPUT"
+
+          echo "Selected: ${MODEL} (${REASON})"
+
+  review:
+    name: OpenCode PR Review
+    needs: select-model
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: read
+    env:
+      OPENCODE_CONFIG: .opencode/opencode.json
+      OPENCODE_GO_API_KEY: ${{ secrets.OPENCODE_GO_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install opencode
+        run: |
+          curl -fsSL https://opencode.ai/install | bash
+
+      - name: Gather PR context
+        id: context
+        run: |
+          PR_NUM="${{ github.event.pull_request.number }}"
+          PR_TITLE="${{ github.event.pull_request.title }}"
+          PR_BODY="${{ github.event.pull_request.body }}"
+          BASE_REF="${{ github.event.pull_request.base.ref }}"
+          HEAD_REF="${{ github.event.pull_request.head.ref }}"
+
+          # Get the diff
+          git fetch origin "${BASE_REF}"
+          DIFF=$(git diff "origin/${BASE_REF}"...HEAD -- . ':!*.md' ':!docs/' 2>/dev/null || echo "No diff available")
+          DIFF_LINES=$(echo "$DIFF" | wc -l)
+
+          # Truncate diff if too large (opencode can read files directly)
+          if [[ "$DIFF_LINES" -gt 3000 ]]; then
+            DIFF=$(echo "$DIFF" | head -3000)
+            DIFF_TRUNCATED="true"
+          else
+            DIFF_TRUNCATED="false"
+          fi
+
+          # Get changed files summary
+          CHANGED_FILES=$(git diff --name-only "origin/${BASE_REF}"...HEAD 2>/dev/null || echo "")
+
+          echo "pr_num=${PR_NUM}" >> "$GITHUB_OUTPUT"
+          echo "diff_truncated=${DIFF_TRUNCATED}" >> "$GITHUB_OUTPUT"
+
+          # Write context to a temp file for opencode
+          cat > /tmp/pr-context.md << EOF
+          # PR #${PR_NUM}: ${PR_TITLE}
+
+          ## Description
+          ${PR_BODY}
+
+          ## Changed Files
+          ${CHANGED_FILES}
+
+          ## Diff
+          \`\`\`diff
+          ${DIFF}
+          \`\`\`
+          EOF
+
+          echo "Context gathered (${DIFF_LINES} diff lines, truncated: ${DIFF_TRUNCATED})"
+
+      - name: Run opencode review
+        id: review
+        run: |
+          MODEL="${{ needs.select-model.outputs.model }}"
+          PR_NUM="${{ steps.context.outputs.pr_num }}"
+          DIFF_TRUNCATED="${{ steps.context.outputs.diff_truncated }}"
+
+          # Build the review prompt
+          PROMPT="Review PR #${PR_NUM} for the AgentClash project.
+
+          You are reviewing a pull request for AgentClash, an open-source multi-agent evaluation platform.
+
+          **Repo conventions you must enforce:**
+          - Two separate Go modules: backend/ and cli/ (never mix imports between them incorrectly)
+          - All DB queries MUST use SQLC — no raw SQL outside the repository layer
+          - All dependencies are constructor-injected — no global state
+          - Optional services default to noop implementations
+          - Goose-format migrations only (-- +goose Up/Down)
+          - Events are immutable, schema-versioned envelopes
+          - CLI uses Cobra framework, follows path-based command organization
+          - GoReleaser for binary distribution, Release Please for versioning
+          - Conventional commits: fix: = patch, feat: = minor, feat!: = major
+
+          **Review checklist:**
+          1. **Correctness**: Does the code work as intended? Any bugs or logic errors?
+          2. **Convention violations**: Does it break repo conventions listed above?
+          3. **Security**: Any exposed secrets, injection risks, trust boundary violations?
+          4. **Performance**: Any obvious performance regressions?
+          5. **Testing**: Are tests adequate for the changes? Do existing tests still pass?
+          6. **Edge cases**: What could go wrong that isn't handled?
+
+          **Output format:**
+          - Start with a one-line summary (LGTM / Minor issues / Blocking issues)
+          - Group findings by severity
+          - For each finding: file path, line number (if applicable), what's wrong, suggested fix
+          - End with a brief verdict
+
+          ${DIFF_TRUNCATED:+Note: The diff was truncated. Read the full changed files directly for complete analysis.}
+
+          Review the changed files and diff in this PR."
+
+          # Run opencode review
+          REVIEW=$(opencode run \
+            --model "$MODEL" \
+            --agent pr-reviewer \
+            --format default \
+            --dangerously-skip-permissions \
+            "$PROMPT" 2>&1) || true
+
+          # Save review output
+          echo "$REVIEW" > /tmp/review-output.txt
+
+          # Post as PR comment
+          REVIEW_BODY=$(cat /tmp/review-output.txt)
+
+          # Add model info header
+          HEADER="**OpenCode PR Review** — model: \`${{ needs.select-model.outputs.model }}\` (${{ needs.select-model.outputs.reason }})
+
+          ---
+
+          "
+
+          # Post the comment using gh CLI
+          echo "${HEADER}${REVIEW_BODY}" | gh pr comment "$PR_NUM" --body-file -
+
+          echo "Review posted as PR comment"
+
+      - name: Run language-specific checks
+        if: always()
+        run: |
+          BASE_REF="${{ github.event.pull_request.base.ref }}"
+          git fetch origin "${BASE_REF}"
+
+          # Check if Go files changed in backend
+          if git diff --name-only "origin/${BASE_REF}"...HEAD | grep -q '^backend/.*\.go$'; then
+            echo "::group::Backend Go checks"
+            cd backend
+            go build ./... || echo "::warning::Backend build failed"
+            go vet ./... || echo "::warning::Backend vet found issues"
+            go test -short -race -count=1 ./... || echo "::warning::Backend tests failed"
+            cd ..
+            echo "::endgroup::"
+          fi
+
+          # Check if Go files changed in cli
+          if git diff --name-only "origin/${BASE_REF}"...HEAD | grep -q '^cli/.*\.go$'; then
+            echo "::group::CLI Go checks"
+            cd cli
+            go build ./... || echo "::warning::CLI build failed"
+            go vet ./... || echo "::warning::CLI vet found issues"
+            go test -short -race -count=1 ./... || echo "::warning::CLI tests failed"
+            cd ..
+            echo "::endgroup::"
+          fi
+
+          # Check if frontend files changed
+          if git diff --name-only "origin/${BASE_REF}"...HEAD | grep -q '^web/'; then
+            echo "::group::Frontend checks"
+            cd web
+            npm ci --ignore-scripts 2>/dev/null || npm install --ignore-scripts
+            npx tsc --noEmit || echo "::warning::Frontend typecheck found issues"
+            npx eslint . --max-warnings=0 || echo "::warning::Frontend lint found issues"
+            cd ..
+            echo "::endgroup::"
+          fi

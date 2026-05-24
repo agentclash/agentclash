@@ -1,0 +1,53 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "opencode-go/qwen3.6-plus",
+  "provider": {
+    "opencode-go": {
+      "models": {
+        "glm-5.1": {
+          "options": {
+            "reasoningEffort": "high",
+            "textVerbosity": "low"
+          }
+        },
+        "deepseek-v4-pro": {
+          "options": {
+            "reasoningEffort": "high",
+            "textVerbosity": "low"
+          }
+        },
+        "qwen3.6-plus": {
+          "options": {
+            "reasoningEffort": "medium",
+            "textVerbosity": "low"
+          }
+        },
+        "deepseek-v4-flash": {
+          "options": {
+            "textVerbosity": "low"
+          }
+        }
+      }
+    }
+  },
+  "agents": {
+    "pr-reviewer": {
+      "mode": "primary",
+      "description": "Autonomous PR review bot that knows the AgentClash codebase conventions and flags problems on every PR.",
+      "prompt": "You are the AgentClash PR review bot. You have deep knowledge of this codebase from AGENTS.md and CLAUDE.md.\n\nWhen reviewing a PR:\n1. Read the diff and understand what changed\n2. Check against repo conventions (Go module separation, SQLC-only queries, constructor injection, no global state, etc.)\n3. Flag real problems — not style nits\n4. Prioritize: correctness > security > performance > readability\n5. If no issues found, say so briefly\n\nBe specific: cite file paths and line numbers. Suggest concrete fixes, not vague advice.",
+      "permissions": {
+        "bash": ["git diff*", "git log*", "go build*", "go vet*", "go test*", "grep*", "rg*"],
+        "read": true,
+        "edit": false,
+        "glob": true,
+        "grep": true,
+        "webfetch": false,
+        "task": true,
+        "todowrite": false,
+        "websearch": false,
+        "lsp": false,
+        "skill": false
+      }
+    }
+  }
+}
