@@ -4,7 +4,7 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
     paths-ignore:
-      - "*.md"
+      - "**/*.md"
       - "docs/**"
 
 # Prevent multiple review runs from stacking on the same PR
@@ -33,7 +33,6 @@ jobs:
           MODEL=$(scripts/pr-review/select-review-model.sh)
           echo "model=${MODEL}" >> "$GITHUB_OUTPUT"
 
-          # Determine reason for model selection
           case "$MODEL" in
             *glm-5.1*)
               REASON="Large or Go code changes → GLM-5.1 for deep analysis"
@@ -64,6 +63,13 @@ jobs:
     env:
       OPENCODE_CONFIG: .opencode/opencode.json
       OPENCODE_GO_API_KEY: ${{ secrets.OPENCODE_GO_API_KEY }}
+      PR_NUM: ${{ github.event.pull_request.number }}
+      PR_TITLE: ${{ github.event.pull_request.title }}
+      PR_BODY: ${{ github.event.pull_request.body }}
+      BASE_REF: ${{ github.event.pull_request.base.ref }}
+      HEAD_REF: ${{ github.event.pull_request.head.ref }}
+      REVIEW_MODEL: ${{ needs.select-model.outputs.model }}
+      REVIEW_REASON: ${{ needs.select-model.outputs.reason }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -71,23 +77,15 @@ jobs:
 
       - name: Install opencode
         run: |
-          curl -fsSL https://opencode.ai/install | bash
+          npm install -g opencode-ai
 
       - name: Gather PR context
         id: context
         run: |
-          PR_NUM="${{ github.event.pull_request.number }}"
-          PR_TITLE="${{ github.event.pull_request.title }}"
-          PR_BODY="${{ github.event.pull_request.body }}"
-          BASE_REF="${{ github.event.pull_request.base.ref }}"
-          HEAD_REF="${{ github.event.pull_request.head.ref }}"
-
-          # Get the diff
           git fetch origin "${BASE_REF}"
           DIFF=$(git diff "origin/${BASE_REF}"...HEAD -- . ':!*.md' ':!docs/' 2>/dev/null || echo "No diff available")
           DIFF_LINES=$(echo "$DIFF" | wc -l)
 
-          # Truncate diff if too large (opencode can read files directly)
           if [[ "$DIFF_LINES" -gt 3000 ]]; then
             DIFF=$(echo "$DIFF" | head -3000)
             DIFF_TRUNCATED="true"
@@ -95,13 +93,11 @@ jobs:
             DIFF_TRUNCATED="false"
           fi
 
-          # Get changed files summary
           CHANGED_FILES=$(git diff --name-only "origin/${BASE_REF}"...HEAD 2>/dev/null || echo "")
 
           echo "pr_num=${PR_NUM}" >> "$GITHUB_OUTPUT"
           echo "diff_truncated=${DIFF_TRUNCATED}" >> "$GITHUB_OUTPUT"
 
-          # Write context to a temp file for opencode
           cat > /tmp/pr-context.md << EOF
           # PR #${PR_NUM}: ${PR_TITLE}
 
@@ -122,11 +118,8 @@ jobs:
       - name: Run opencode review
         id: review
         run: |
-          MODEL="${{ needs.select-model.outputs.model }}"
-          PR_NUM="${{ steps.context.outputs.pr_num }}"
           DIFF_TRUNCATED="${{ steps.context.outputs.diff_truncated }}"
 
-          # Build the review prompt
           PROMPT="Review PR #${PR_NUM} for the AgentClash project.
 
           You are reviewing a pull request for AgentClash, an open-source multi-agent evaluation platform.
@@ -160,28 +153,24 @@ jobs:
 
           Review the changed files and diff in this PR."
 
-          # Run opencode review
-          REVIEW=$(opencode run \
-            --model "$MODEL" \
+          if ! REVIEW=$(opencode run \
+            --model "$REVIEW_MODEL" \
             --agent pr-reviewer \
             --format default \
-            --dangerously-skip-permissions \
-            "$PROMPT" 2>&1) || true
+            "$PROMPT" 2>&1); then
+            echo "::warning::opencode review failed — skipping comment"
+            exit 0
+          fi
 
-          # Save review output
           echo "$REVIEW" > /tmp/review-output.txt
-
-          # Post as PR comment
           REVIEW_BODY=$(cat /tmp/review-output.txt)
 
-          # Add model info header
-          HEADER="**OpenCode PR Review** — model: \`${{ needs.select-model.outputs.model }}\` (${{ needs.select-model.outputs.reason }})
+          HEADER="**OpenCode PR Review** — model: \`${REVIEW_MODEL}\` (${REVIEW_REASON})
 
           ---
 
           "
 
-          # Post the comment using gh CLI
           echo "${HEADER}${REVIEW_BODY}" | gh pr comment "$PR_NUM" --body-file -
 
           echo "Review posted as PR comment"
@@ -189,10 +178,8 @@ jobs:
       - name: Run language-specific checks
         if: always()
         run: |
-          BASE_REF="${{ github.event.pull_request.base.ref }}"
           git fetch origin "${BASE_REF}"
 
-          # Check if Go files changed in backend
           if git diff --name-only "origin/${BASE_REF}"...HEAD | grep -q '^backend/.*\.go$'; then
             echo "::group::Backend Go checks"
             cd backend
@@ -203,7 +190,6 @@ jobs:
             echo "::endgroup::"
           fi
 
-          # Check if Go files changed in cli
           if git diff --name-only "origin/${BASE_REF}"...HEAD | grep -q '^cli/.*\.go$'; then
             echo "::group::CLI Go checks"
             cd cli
@@ -214,7 +200,6 @@ jobs:
             echo "::endgroup::"
           fi
 
-          # Check if frontend files changed
           if git diff --name-only "origin/${BASE_REF}"...HEAD | grep -q '^web/'; then
             echo "::group::Frontend checks"
             cd web

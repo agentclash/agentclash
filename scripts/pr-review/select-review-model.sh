@@ -83,8 +83,8 @@ while IFS= read -r file; do
   esac
 done <<< "$CHANGED_FILES"
 
-# Count distinct major areas touched
-AREAS_TOUCHED=$((GO_BACKEND + GO_CLI + FRONTEND + CI_WORKFLOWS))
+# Count distinct major code areas touched (CI/config changes are not "cross-cutting code areas")
+AREAS_TOUCHED=$((GO_BACKEND + GO_CLI + FRONTEND))
 
 # Decision logic
 # 1. Large diff or cross-cutting → glm-5.1 for deep analysis
