@@ -124,7 +124,7 @@ func cloneChallengeInputSet(inputSet *repository.ChallengeInputSetExecutionConte
 			ItemKey:             item.ItemKey,
 			Payload:             cloneJSON(item.Payload),
 			Inputs:              append([]challengepack.CaseInput(nil), item.Inputs...),
-			Expectations:        append([]challengepack.CaseExpectation(nil), item.Expectations...),
+			Expectations:        nil,
 			UserSimulator:       challengepack.CloneUserSimulatorSpec(item.UserSimulator),
 			Artifacts:           append([]challengepack.ArtifactRef(nil), item.Artifacts...),
 			Assets:              append([]challengepack.AssetReference(nil), item.Assets...),
