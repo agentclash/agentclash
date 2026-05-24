@@ -138,13 +138,14 @@ type CaseExpectation struct {
 }
 
 type StoredCaseDocument struct {
-	SchemaVersion int32             `json:"schema_version,omitempty"`
-	CaseKey       string            `json:"case_key,omitempty"`
-	Payload       map[string]any    `json:"payload,omitempty"`
-	Inputs        []CaseInput       `json:"inputs,omitempty"`
-	Expectations  []CaseExpectation `json:"expectations,omitempty"`
-	Artifacts     []ArtifactRef     `json:"artifacts,omitempty"`
-	Assets        []AssetReference  `json:"assets,omitempty"`
+	SchemaVersion int32              `json:"schema_version,omitempty"`
+	CaseKey       string             `json:"case_key,omitempty"`
+	Payload       map[string]any     `json:"payload,omitempty"`
+	Inputs        []CaseInput        `json:"inputs,omitempty"`
+	Expectations  []CaseExpectation  `json:"expectations,omitempty"`
+	UserSimulator *UserSimulatorSpec `json:"user_simulator,omitempty"`
+	Artifacts     []ArtifactRef      `json:"artifacts,omitempty"`
+	Assets        []AssetReference   `json:"assets,omitempty"`
 }
 
 type LegacyItemDefinition struct {
@@ -497,7 +498,7 @@ func (c CaseDefinition) IsLegacyPayloadOnly() bool {
 	// Legacy packs only used raw payload blobs keyed by item_key. We keep that
 	// storage shape for backward compatibility when no generalized case fields
 	// are present.
-	return len(c.Inputs) == 0 && len(c.Expectations) == 0 && len(c.Artifacts) == 0 && len(c.Assets) == 0
+	return len(c.Inputs) == 0 && len(c.Expectations) == 0 && c.UserSimulator == nil && len(c.Artifacts) == 0 && len(c.Assets) == 0
 }
 
 func (c CaseDefinition) StoredPayload() (json.RawMessage, error) {
@@ -514,6 +515,7 @@ func (c CaseDefinition) StoredPayload() (json.RawMessage, error) {
 		Payload:       cloneObject(c.Payload),
 		Inputs:        append([]CaseInput(nil), c.Inputs...),
 		Expectations:  append([]CaseExpectation(nil), c.Expectations...),
+		UserSimulator: cloneUserSimulatorSpec(c.UserSimulator),
 		Artifacts:     append([]ArtifactRef(nil), c.Artifacts...),
 		Assets:        normalizeAssets(c.Assets),
 	})

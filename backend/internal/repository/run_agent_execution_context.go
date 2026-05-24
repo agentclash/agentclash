@@ -65,6 +65,7 @@ type ChallengeCaseExecutionContext struct {
 	Payload             json.RawMessage                 `json:"payload,omitempty"`
 	Inputs              []challengepack.CaseInput       `json:"inputs,omitempty"`
 	Expectations        []challengepack.CaseExpectation `json:"expectations,omitempty"`
+	UserSimulator       *challengepack.UserSimulatorSpec `json:"user_simulator,omitempty"`
 	Artifacts           []challengepack.ArtifactRef     `json:"artifacts,omitempty"`
 	Assets              []challengepack.AssetReference  `json:"assets,omitempty"`
 }
@@ -448,6 +449,7 @@ func decodeChallengeCases(items []ChallengeInputItemExecutionContext) ([]Challen
 			Payload:             payload,
 			Inputs:              append([]challengepack.CaseInput(nil), caseDoc.Inputs...),
 			Expectations:        append([]challengepack.CaseExpectation(nil), caseDoc.Expectations...),
+			UserSimulator:       challengepack.CloneUserSimulatorSpec(caseDoc.UserSimulator),
 			Artifacts:           append([]challengepack.ArtifactRef(nil), caseDoc.Artifacts...),
 			Assets:              append([]challengepack.AssetReference(nil), caseDoc.Assets...),
 		})

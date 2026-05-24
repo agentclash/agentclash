@@ -83,6 +83,7 @@ const (
 	DimensionSourceCost        DimensionSource = "cost"
 	DimensionSourceBehavioral  DimensionSource = "behavioral"
 	DimensionSourceLLMJudge    DimensionSource = "llm_judge"
+	DimensionSourceHumanPreference DimensionSource = "human_preference"
 )
 
 type BehavioralSignalKey string
@@ -382,7 +383,7 @@ func (t MetricType) IsValid() bool {
 
 func (s DimensionSource) IsValid() bool {
 	switch s {
-	case DimensionSourceValidators, DimensionSourceMetric, DimensionSourceReliability, DimensionSourceLatency, DimensionSourceCost, DimensionSourceBehavioral, DimensionSourceLLMJudge:
+	case DimensionSourceValidators, DimensionSourceMetric, DimensionSourceReliability, DimensionSourceLatency, DimensionSourceCost, DimensionSourceBehavioral, DimensionSourceLLMJudge, DimensionSourceHumanPreference:
 		return true
 	default:
 		return false

@@ -34,6 +34,8 @@ const (
 	markHostedRunTimedOutActivityName                 = "workflow.mark_hosted_run_timed_out"
 	executeNativeModelStepActivityName                = "workflow.execute_native_model_step"
 	executePromptEvalStepActivityName                 = "workflow.execute_prompt_eval_step"
+	executeMultiTurnStepActivityName                  = "workflow.execute_multi_turn_step"
+	finalizeMultiTurnPostRunActivityName              = "workflow.finalize_multi_turn_post_run"
 	scoreRunAgentActivityName                         = "workflow.score_run_agent"
 	buildRunScorecardActivityName                     = "workflow.build_run_scorecard"
 	buildRunAgentReplayActivityName                   = "workflow.build_run_agent_replay"
@@ -65,6 +67,7 @@ type FakeWorkHooks struct {
 	HostedRunStarter     HostedRunStarter
 	NativeModelInvoker   NativeModelInvoker
 	PromptEvalInvoker    PromptEvalInvoker
+	MultiTurnInvoker     MultiTurnInvoker
 }
 
 type NativeModelInvoker interface {
@@ -73,6 +76,10 @@ type NativeModelInvoker interface {
 
 type PromptEvalInvoker interface {
 	InvokePromptEval(ctx context.Context, executionContext repository.RunAgentExecutionContext) (engine.Result, error)
+}
+
+type MultiTurnInvoker interface {
+	InvokeMultiTurn(ctx context.Context, executionContext repository.RunAgentExecutionContext) (engine.Result, error)
 }
 
 type Activities struct {
@@ -424,6 +431,33 @@ func (a *Activities) ExecutePromptEvalStep(ctx context.Context, input RunAgentWo
 	}
 
 	_, err = a.hooks.PromptEvalInvoker.InvokePromptEval(ctx, executionContext)
+	return wrapActivityError(err)
+}
+
+func (a *Activities) ExecuteMultiTurnStep(ctx context.Context, input RunAgentWorkflowInput) error {
+	if a.hooks.MultiTurnInvoker == nil {
+		return temporal.NewNonRetryableApplicationError(
+			"multi_turn invoker not configured",
+			"workflow.multi_turn_invoker_missing",
+			nil,
+		)
+	}
+
+	executionContext, err := a.repo.GetRunAgentExecutionContextByID(ctx, input.RunAgentID)
+	if err != nil {
+		return wrapActivityError(err)
+	}
+
+	if err := a.repo.UpsertMultiTurnRunAgentFlagsFromExecution(ctx, executionContext); err != nil {
+		return wrapActivityError(err)
+	}
+
+	_, err = a.hooks.MultiTurnInvoker.InvokeMultiTurn(ctx, executionContext)
+	return wrapActivityError(err)
+}
+
+func (a *Activities) FinalizeMultiTurnPostRun(ctx context.Context, input RunWorkflowInput) error {
+	_, err := a.repo.FinalizeMultiTurnPostRunForRun(ctx, input.RunID)
 	return wrapActivityError(err)
 }
 

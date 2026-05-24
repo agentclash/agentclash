@@ -539,6 +539,9 @@ func TestRunWorkflowHappyPath(t *testing.T) {
 	if repo.callCountWithPrefix("BuildRunScorecard:") != 1 {
 		t.Fatalf("BuildRunScorecard call count = %d, want 1", repo.callCountWithPrefix("BuildRunScorecard:"))
 	}
+	if repo.callCountWithPrefix("FinalizeMultiTurnPostRunForRun:") != 1 {
+		t.Fatalf("FinalizeMultiTurnPostRunForRun call count = %d, want 1", repo.callCountWithPrefix("FinalizeMultiTurnPostRunForRun:"))
+	}
 }
 
 func TestRunWorkflowStartsOneChildPerRunAgent(t *testing.T) {
@@ -1743,6 +1746,21 @@ func (r *fakeRunRepository) StoreRunAgentEvaluationResults(_ context.Context, ev
 	return nil
 }
 
+func (r *fakeRunRepository) HumanPreferenceScore(_ context.Context, _ uuid.UUID) (*float64, error) {
+	return nil, nil
+}
+
+func (r *fakeRunRepository) UpsertMultiTurnRunAgentFlagsFromExecution(_ context.Context, _ repository.RunAgentExecutionContext) error {
+	return nil
+}
+
+func (r *fakeRunRepository) FinalizeMultiTurnPostRunForRun(_ context.Context, runID uuid.UUID) (int, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.callLog = append(r.callLog, fmt.Sprintf("FinalizeMultiTurnPostRunForRun:%s", runID))
+	return 0, nil
+}
+
 func (r *fakeRunRepository) BuildRunScorecard(_ context.Context, runID uuid.UUID) (repository.RunScorecard, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -2475,6 +2493,7 @@ func TestNativeModelActivityOptionsNonRetryableTypes(t *testing.T) {
 		engineFailureErrorTypePrefix + string(engine.StopReasonStepLimit),
 		engineFailureErrorTypePrefix + string(engine.StopReasonToolLimit),
 		engineFailureErrorTypePrefix + string(engine.StopReasonTimeout),
+		engineFailureErrorTypePrefix + string(engine.StopReasonMaxTurns),
 		engineFailureErrorTypePrefix + string(engine.StopReasonProviderError),
 		engineFailureErrorTypePrefix + string(engine.StopReasonObserverError),
 		providerFailureErrorTypePrefix + string(provider.FailureCodeAuth),

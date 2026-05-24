@@ -2,6 +2,7 @@ package scoring
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -635,6 +636,12 @@ func isSupportedEvidenceReference(value string) bool {
 		return strings.TrimSpace(remainder) != ""
 	case strings.HasPrefix(value, "literal:"):
 		return true
+	case value == "transcript.full", value == "transcript.from_mismatch", value == "turn.expectations":
+		return true
+	case strings.HasPrefix(value, "transcript.last_n:"):
+		nRaw := strings.TrimPrefix(value, "transcript.last_n:")
+		n, err := strconv.Atoi(strings.TrimSpace(nRaw))
+		return err == nil && n > 0
 	default:
 		return false
 	}

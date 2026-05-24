@@ -15,6 +15,7 @@ import type {
 } from "@/lib/api/types";
 import { Badge } from "@/components/ui/badge";
 import { ReplayTimeline } from "@/components/replay/replay-timeline";
+import { AwaitingHumanBanner } from "@/components/replay/awaiting-human-banner";
 import { Panel } from "../scorecard/components/panel";
 import { toast } from "sonner";
 import {
@@ -73,6 +74,8 @@ export function ReplayViewerClient({
   const isPending = replayData.state === "pending";
   const isErrored = replayData.state === "errored";
   const isReady = replayData.state === "ready";
+  const awaitingHumanEnabled =
+    agent.status === "executing" || agent.status === "evaluating";
 
   // Auto-poll when pending
   useEffect(() => {
@@ -190,6 +193,14 @@ export function ReplayViewerClient({
           )}
         </Panel>
       )}
+
+      <AwaitingHumanBanner
+        getAccessToken={getAccessToken}
+        workspaceId={workspaceId}
+        runId={run.id}
+        runAgentId={agent.id}
+        enabled={awaitingHumanEnabled}
+      />
 
       {/* Summary stats */}
       {isReady && counts && (

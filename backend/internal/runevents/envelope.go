@@ -79,6 +79,7 @@ type Source string
 const (
 	SourceNativeEngine       Source = "native_engine"
 	SourcePromptEvalEngine   Source = "prompt_eval_engine"
+	SourceMultiTurnEngine    Source = "multi_turn_engine"
 	SourceHostedExternal     Source = "hosted_external"
 	SourceHostedCallback     Source = "hosted_callback"
 	SourceAgentHarnessWorker Source = "agent_harness_worker"
@@ -242,6 +243,7 @@ func isValidSource(source Source) bool {
 	switch source {
 	case SourceNativeEngine,
 		SourcePromptEvalEngine,
+		SourceMultiTurnEngine,
 		SourceHostedExternal,
 		SourceHostedCallback,
 		SourceAgentHarnessWorker,

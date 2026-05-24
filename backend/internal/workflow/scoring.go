@@ -65,11 +65,14 @@ func (a *Activities) executeRunAgentEvaluation(ctx context.Context, runAgentID u
 		return scoring.RunAgentEvaluation{}, fmt.Errorf("map challenge inputs: %w", err)
 	}
 
+	humanPref, _ := a.repo.HumanPreferenceScore(ctx, runAgentID)
+
 	evaluationInput := scoring.EvaluationInput{
-		RunAgentID:       runAgentID,
-		EvaluationSpecID: specRecord.ID,
-		ChallengeInputs:  challengeInputs,
-		Events:           mapRunEvents(events),
+		RunAgentID:           runAgentID,
+		EvaluationSpecID:     specRecord.ID,
+		ChallengeInputs:      challengeInputs,
+		Events:               mapRunEvents(events),
+		HumanPreferenceScore: humanPref,
 	}
 
 	var evaluation scoring.RunAgentEvaluation

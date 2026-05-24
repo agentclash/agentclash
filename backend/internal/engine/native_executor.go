@@ -324,6 +324,32 @@ func (e NativeExecutor) Execute(ctx context.Context, executionContext repository
 		startedAt: time.Now().UTC(),
 	}
 
+	result, loopErr := e.runAgentLoop(runCtx, executionContext, session, registry, sandboxRequest, metadata, &state)
+	if loopErr != nil {
+		return Result{}, loopErr
+	}
+
+	if verificationResults := collectPostExecutionVerification(runCtx, session, executionContext); len(verificationResults) > 0 {
+		if observerErr := e.observer.OnPostExecutionVerification(runCtx, verificationResults); observerErr != nil {
+			slog.Default().Warn("post-execution verification observer error",
+				"run_id", executionContext.Run.ID,
+				"run_agent_id", executionContext.RunAgent.ID,
+				"error", observerErr,
+			)
+		}
+	}
+	return result, nil
+}
+
+func (e NativeExecutor) runAgentLoop(
+	runCtx context.Context,
+	executionContext repository.RunAgentExecutionContext,
+	session sandbox.Session,
+	registry *Registry,
+	sandboxRequest sandbox.CreateRequest,
+	metadata json.RawMessage,
+	state *loopState,
+) (Result, error) {
 	for {
 		if loopErr := runCtx.Err(); loopErr != nil {
 			if errors.Is(loopErr, context.Canceled) {
@@ -339,9 +365,9 @@ func (e NativeExecutor) Execute(ctx context.Context, executionContext repository
 		if observerErr := e.observer.OnStepStart(runCtx, state.stepCount); observerErr != nil {
 			return Result{}, NewFailure(StopReasonObserverError, "record native step start event", observerErr)
 		}
-		e.syncRaceContextStepStart(runCtx, executionContext, &state)
+		e.syncRaceContextStepStart(runCtx, executionContext, state)
 
-		if injectErr := e.maybeInjectRaceStandings(runCtx, executionContext, &state); injectErr != nil {
+		if injectErr := e.maybeInjectRaceStandings(runCtx, executionContext, state); injectErr != nil {
 			return Result{}, NewFailure(StopReasonObserverError, "record race-context standings injection", injectErr)
 		}
 
@@ -407,17 +433,6 @@ func (e NativeExecutor) Execute(ctx context.Context, executionContext repository
 		}
 
 		if completed {
-			// Post-execution verification must finish before sandbox teardown so
-			// validators and file captures see the live workspace state.
-			if verificationResults := collectPostExecutionVerification(runCtx, session, executionContext); len(verificationResults) > 0 {
-				if observerErr := e.observer.OnPostExecutionVerification(runCtx, verificationResults); observerErr != nil {
-					slog.Default().Warn("post-execution verification observer error",
-						"run_id", executionContext.Run.ID,
-						"run_agent_id", executionContext.RunAgent.ID,
-						"error", observerErr,
-					)
-				}
-			}
 			return Result{
 				FinalOutput:   finalOutput,
 				StopReason:    StopReasonCompleted,

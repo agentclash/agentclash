@@ -38,6 +38,7 @@ func registerProtectedRoutes(
 	cliAuthService CLIAuthService,
 	publicShareService PublicShareService,
 	billingService BillingService,
+	multiTurnService MultiTurnService,
 ) {
 	entitlementGate := entitlementGateFromBillingService(billingService)
 
@@ -86,6 +87,18 @@ func registerProtectedRoutes(
 	// so cross-workspace requests return 404 instead of leaking run existence via middleware.
 	router.Get("/workspaces/{workspaceID}/runs/{runID}/failures", listRunFailuresHandler(logger, runReadService))
 	router.Post("/workspaces/{workspaceID}/runs/{runID}/failures/{challengeIdentityID}/promote", promoteFailureHandler(logger, regressionService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Post("/workspaces/{workspaceID}/runs/{runID}/run-agents/{runAgentID}/turns", submitMultiTurnHumanTurnHandler(logger, multiTurnService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Get("/workspaces/{workspaceID}/runs/{runID}/run-agents/{runAgentID}/turns/status", getMultiTurnHumanTurnStatusHandler(logger, multiTurnService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Post("/workspaces/{workspaceID}/calibration-reviews", createCalibrationReviewHandler(logger, multiTurnService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Get("/workspaces/{workspaceID}/calibration-reviews", listCalibrationReviewsHandler(logger, multiTurnService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Get("/workspaces/{workspaceID}/arena/tasks", listArenaTasksHandler(logger, multiTurnService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Post("/workspaces/{workspaceID}/arena/votes", submitArenaVoteHandler(logger, multiTurnService))
 	router.Get("/compare", getRunComparisonHandler(logger, compareReadService))
 	router.Get("/compare/viewer", getRunComparisonViewerHandler(logger))
 	router.Get("/release-gates", listReleaseGatesHandler(logger, releaseGateService))

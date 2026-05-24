@@ -60,6 +60,8 @@ type extractedEvidence struct {
 	codeExecutionResults      map[string]CodeExecutionResult
 	codeExecutionSources      map[string]eventRef
 	toolCallTrace             []toolCallTraceEntry
+	transcriptTurns           []transcriptTurnEvidence
+	humanPreferenceScore      *float64
 	warnings                  []string
 }
 
@@ -328,6 +330,7 @@ func buildEvidence(challengeInputs []EvidenceInput, events []Event) extractedEvi
 	if evidence.completedSuccessfully == nil {
 		evidence.warnings = append(evidence.warnings, "terminal run evidence is unavailable")
 	}
+	evidence.transcriptTurns = buildTranscriptFromEvents(events)
 
 	return evidence
 }

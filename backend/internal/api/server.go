@@ -55,6 +55,7 @@ type routerOptions struct {
 	billingService             BillingService
 	eventSubscriber            pubsub.EventSubscriber
 	cliAuthServices            []CLIAuthService
+	multiTurnService           MultiTurnService
 }
 
 func NewServer(
@@ -88,6 +89,7 @@ func NewServer(
 	publicShareService PublicShareService,
 	billingService BillingService,
 	eventSubscriber pubsub.EventSubscriber,
+	multiTurnService MultiTurnService,
 	cliAuthServices ...CLIAuthService,
 ) *Server {
 	router := buildRouter(routerOptions{
@@ -123,6 +125,7 @@ func NewServer(
 		publicShareService:         publicShareService,
 		billingService:             billingService,
 		eventSubscriber:            eventSubscriber,
+		multiTurnService:           multiTurnService,
 		cliAuthServices:            cliAuthServices,
 	})
 
@@ -267,6 +270,7 @@ func buildRouter(opts routerOptions) http.Handler {
 	workspaceSecretsService := opts.workspaceSecretsService
 	publicShareService := opts.publicShareService
 	billingService := opts.billingService
+	multiTurnService := opts.multiTurnService
 	eventSubscriber := opts.eventSubscriber
 	var cliAuthService CLIAuthService
 	if len(opts.cliAuthServices) > 0 {
@@ -312,6 +316,9 @@ func buildRouter(opts routerOptions) http.Handler {
 	}
 	if billingService == nil {
 		billingService = noopBillingService{}
+	}
+	if multiTurnService == nil {
+		multiTurnService = noopMultiTurnService{}
 	}
 
 	router := chi.NewRouter()
@@ -364,7 +371,7 @@ func buildRouter(opts routerOptions) http.Handler {
 	router.Route("/v1", func(r chi.Router) {
 		r.Use(authenticateRequest(logger, authenticator))
 		r.Use(rateLimiter.Middleware("default", extractWorkspaceID))
-		registerProtectedRoutes(r, logger, authorizer, playgroundService, artifactService, artifactMaxUploadBytes, runCreationService, runReadService, replayReadService, compareReadService, releaseGateService, regressionService, agentDeploymentReadService, agentHarnessService, githubIntegrationService, challengePackReadService, challengePackAuthoringService, agentBuildService, userService, orgService, wsService, orgMembershipService, wsMembershipService, onboardingService, infraService, workspaceSecretsService, cliAuthService, publicShareService, billingService)
+		registerProtectedRoutes(r, logger, authorizer, playgroundService, artifactService, artifactMaxUploadBytes, runCreationService, runReadService, replayReadService, compareReadService, releaseGateService, regressionService, agentDeploymentReadService, agentHarnessService, githubIntegrationService, challengePackReadService, challengePackAuthoringService, agentBuildService, userService, orgService, wsService, orgMembershipService, wsMembershipService, onboardingService, infraService, workspaceSecretsService, cliAuthService, publicShareService, billingService, multiTurnService)
 	})
 
 	return router

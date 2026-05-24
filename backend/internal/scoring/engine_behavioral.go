@@ -30,7 +30,7 @@ func behavioralDimensionScore(spec EvaluationSpec, evidence extractedEvidence, v
 	)
 
 	for _, signal := range spec.Behavioral.Signals {
-		score, reason, state := behavioralSignalScore(signal.Key, evidence.toolCallTrace, validators)
+		score, reason, state := behavioralSignalScore(signal.Key, evidence.toolCallTrace, evidence.transcriptTurns, validators)
 		if state != OutputStateAvailable || score == nil {
 			return nil, fmt.Sprintf("behavioral signal %q is unavailable: %s", signal.Key, firstNonEmpty(reason, "signal is unavailable")), OutputStateUnavailable
 		}
@@ -53,9 +53,12 @@ func behavioralDimensionScore(spec EvaluationSpec, evidence extractedEvidence, v
 	return &score, "", OutputStateAvailable
 }
 
-func behavioralSignalScore(key BehavioralSignalKey, trace []toolCallTraceEntry, validators []ValidatorResult) (*float64, string, OutputState) {
+func behavioralSignalScore(key BehavioralSignalKey, trace []toolCallTraceEntry, transcript []transcriptTurnEvidence, validators []ValidatorResult) (*float64, string, OutputState) {
 	switch key {
 	case BehavioralSignalRecoveryBehavior:
+		if len(transcript) > 0 {
+			return multiTurnRecoveryScore(transcript, validators)
+		}
 		return recoveryBehaviorScore(trace)
 	case BehavioralSignalExplorationEfficiency:
 		return explorationEfficiencyScore(trace)

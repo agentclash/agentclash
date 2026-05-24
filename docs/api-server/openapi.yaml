@@ -2898,6 +2898,170 @@ paths:
         "404":
           $ref: "#/components/responses/NotFoundError"
 
+  /v1/workspaces/{workspaceID}/runs/{runID}/run-agents/{runAgentID}/turns:
+    post:
+      operationId: submitMultiTurnHumanTurn
+      tags: [Runs, MultiTurn]
+      summary: Submit a human user message for an awaiting multi-turn phase
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/RunID"
+        - $ref: "#/components/parameters/RunAgentID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubmitHumanTurnRequest"
+      responses:
+        "202":
+          description: Human message accepted for the active turn
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubmitHumanTurnResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          description: Run agent is not awaiting human input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+
+  /v1/workspaces/{workspaceID}/runs/{runID}/run-agents/{runAgentID}/turns/status:
+    get:
+      operationId: getMultiTurnHumanTurnStatus
+      tags: [Runs, MultiTurn]
+      summary: Poll whether a run agent is awaiting human input
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/RunID"
+        - $ref: "#/components/parameters/RunAgentID"
+      responses:
+        "200":
+          description: Current human-turn gate state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HumanTurnStatusResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /v1/workspaces/{workspaceID}/calibration-reviews:
+    post:
+      operationId: createCalibrationReview
+      tags: [MultiTurn]
+      summary: Record a human calibration score for a multi-turn turn
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CalibrationReviewRequest"
+      responses:
+        "201":
+          description: Calibration review recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MultiTurnStatusResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+    get:
+      operationId: listCalibrationReviews
+      tags: [MultiTurn]
+      summary: List recent calibration reviews for a workspace
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+      responses:
+        "200":
+          description: Calibration reviews
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListCalibrationReviewsResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+
+  /v1/workspaces/{workspaceID}/arena/tasks:
+    get:
+      operationId: listArenaTasks
+      tags: [MultiTurn]
+      summary: List pending pairwise arena comparison tasks
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+      responses:
+        "200":
+          description: Pending arena tasks
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListArenaTasksResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+
+  /v1/workspaces/{workspaceID}/arena/votes:
+    post:
+      operationId: submitArenaVote
+      tags: [MultiTurn]
+      summary: Submit a human preference vote for an arena task
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ArenaVoteRequest"
+      responses:
+        "201":
+          description: Arena vote recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MultiTurnStatusResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+
   /v1/runs/{runID}/events/stream:
     get:
       operationId: streamRunEvents
@@ -8953,6 +9117,140 @@ components:
           type: array
           items:
             type: string
+
+    # --- Multi-turn ---
+
+    SubmitHumanTurnRequest:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+          minLength: 1
+
+    SubmitHumanTurnResponse:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [submitted]
+
+    HumanTurnStatusResponse:
+      type: object
+      required: [awaiting_human]
+      properties:
+        awaiting_human:
+          type: boolean
+        turn_index:
+          type: integer
+          minimum: 0
+        phase_id:
+          type: string
+        prompt_hint:
+          type: string
+
+    CalibrationReviewRequest:
+      type: object
+      required: [run_agent_id, turn_index, score]
+      properties:
+        run_agent_id:
+          type: string
+          format: uuid
+        turn_index:
+          type: integer
+          minimum: 0
+        score:
+          type: number
+          minimum: 1
+          maximum: 5
+        rubric_key:
+          type: string
+        notes:
+          type: string
+
+    CalibrationReview:
+      type: object
+      required: [id, run_agent_id, turn_index, score, reviewer_user_id, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        run_agent_id:
+          type: string
+          format: uuid
+        turn_index:
+          type: integer
+        score:
+          type: number
+        rubric_key:
+          type: string
+        notes:
+          type: string
+        reviewer_user_id:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+
+    ListCalibrationReviewsResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/CalibrationReview"
+
+    ArenaTask:
+      type: object
+      required: [id, case_key, left_run_agent_id, right_run_agent_id, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        case_key:
+          type: string
+        left_run_agent_id:
+          type: string
+          format: uuid
+        right_run_agent_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+
+    ListArenaTasksResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ArenaTask"
+
+    ArenaVoteRequest:
+      type: object
+      required: [task_id, winner_run_agent_id]
+      properties:
+        task_id:
+          type: string
+          format: uuid
+        winner_run_agent_id:
+          type: string
+          format: uuid
+        rubric_scores:
+          type: object
+          additionalProperties:
+            type: number
+
+    MultiTurnStatusResponse:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
 
     # --- Replays ---
 

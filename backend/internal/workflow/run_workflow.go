@@ -86,7 +86,7 @@ func runWorkflow(ctx sdkworkflow.Context, input RunWorkflowInput) error {
 	if err != nil {
 		return err
 	}
-	scoreSummary, err := scoreEvaluatingRunAgents(ctx, updatedRunAgents)
+	scoreSummary, err := scoreEvaluatingRunAgents(ctx, input.RunID, updatedRunAgents)
 	if err != nil {
 		return err
 	}
@@ -147,7 +147,7 @@ func selectRunAgentChildError(childErrors map[uuid.UUID]error) error {
 	return firstActionable
 }
 
-func scoreEvaluatingRunAgents(ctx sdkworkflow.Context, runAgents []domain.RunAgent) (string, error) {
+func scoreEvaluatingRunAgents(ctx sdkworkflow.Context, runID uuid.UUID, runAgents []domain.RunAgent) (string, error) {
 	outcomes := make(map[uuid.UUID]string, len(runAgents))
 	completedRunAgents := make([]domain.RunAgent, 0, len(runAgents))
 	for _, runAgent := range runAgents {
@@ -212,6 +212,10 @@ func scoreEvaluatingRunAgents(ctx sdkworkflow.Context, runAgents []domain.RunAge
 		if err := buildRunScorecard(ctx, runAgents[0].RunID); err != nil {
 			return "", err
 		}
+	}
+
+	if err := sdkworkflow.ExecuteActivity(ctx, finalizeMultiTurnPostRunActivityName, RunWorkflowInput{RunID: runID}).Get(ctx, nil); err != nil {
+		sdkworkflow.GetLogger(ctx).Warn("multi_turn post-run finalization failed", "run_id", runID.String(), "error", err)
 	}
 
 	return summarizeScoreOutcomes(outcomes), nil
