@@ -58,6 +58,8 @@ type runAgentReplayStepDocument struct {
 	EventTypes        []runevents.Type `json:"event_types"`
 	ArtifactIDs       []uuid.UUID      `json:"artifact_ids,omitempty"`
 	StepIndex         *int             `json:"step_index,omitempty"`
+	TurnIndex         *int             `json:"turn_index,omitempty"`
+	Mismatch          bool             `json:"mismatch,omitempty"`
 	ProviderKey       string           `json:"provider_key,omitempty"`
 	ProviderModelID   string           `json:"provider_model_id,omitempty"`
 	ToolName          string           `json:"tool_name,omitempty"`
@@ -232,6 +234,12 @@ func newReplayStepDocument(event RunEvent, payload map[string]any, stepType stri
 func enrichReplayStep(step *runAgentReplayStepDocument, payload map[string]any) {
 	if stepIndex, ok := replayInt(payload, "step_index"); ok {
 		step.StepIndex = &stepIndex
+	}
+	if turnIndex, ok := replayInt(payload, "turn_index"); ok {
+		step.TurnIndex = &turnIndex
+	}
+	if mismatch, ok := payload["mismatch"].(bool); ok && mismatch {
+		step.Mismatch = true
 	}
 	if providerKey := replayString(payload, "provider_key"); providerKey != "" {
 		step.ProviderKey = providerKey

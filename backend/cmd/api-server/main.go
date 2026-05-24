@@ -99,6 +99,7 @@ func main() {
 		WithBudgetChecker(budgetChecker).
 		WithInsightsRateLimiter(insightsLimiter).
 		WithRunWorkflowControl(api.NewTemporalRunWorkflowCanceller(temporalClient))
+	multiTurnManager := api.NewMultiTurnManager(authorizer, repo, repository.NewMultiTurnHumanTurnStore(db))
 	if !runReadManager.InsightsConfigured() {
 		logger.Error("run ranking insights client is not configured")
 		os.Exit(1)
@@ -206,6 +207,7 @@ func main() {
 		publicShareManager,
 		billingManager,
 		eventSubscriber,
+		multiTurnManager,
 		cliAuthManager,
 	)
 

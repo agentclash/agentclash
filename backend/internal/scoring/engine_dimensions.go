@@ -24,9 +24,11 @@ func evaluateDimensions(spec EvaluationSpec, evidence extractedEvidence, validat
 			score, reason, state = behavioralDimensionScore(spec, evidence, validators)
 		case DimensionSourceMetric:
 			score, reason, state = metricDimensionScore(dim, metrics)
-		case DimensionSourceLLMJudge:
-			score, reason, state = llmJudgeDimensionScore(dim, llmJudges)
-		default:
+	case DimensionSourceLLMJudge:
+		score, reason, state = llmJudgeDimensionScore(dim, llmJudges)
+	case DimensionSourceHumanPreference:
+		score, reason, state = humanPreferenceDimensionScore(dim, evidence)
+	default:
 			state = OutputStateError
 			reason = fmt.Sprintf("unsupported dimension source %q", dim.Source)
 		}

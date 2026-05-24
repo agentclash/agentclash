@@ -122,10 +122,19 @@ func main() {
 		providerRouter,
 		workerapp.NewBufferedPromptEvalObserverFactory(eventRecorder),
 	).WithSecretsLookup(repo)
+	multiTurnInvoker := workerapp.NewMultiTurnInvokerWithObserverFactory(
+		providerRouter,
+		sandboxProvider,
+		workerapp.NewBufferedMultiTurnObserverFactory(eventRecorder),
+	).WithSecretsLookup(repo).
+		WithAssetLoader(workerapp.NewArtifactAssetLoader(repo, artifactStore).WithMaxBytes(cfg.ArtifactStorage.MaxDownloadBytes)).
+		WithStandingsStore(standingsStore).
+		WithHumanTurnStore(repository.NewMultiTurnHumanTurnStore(db))
 	temporalWorker := workerapp.NewTemporalWorker(temporalClient, cfg, repo, providerRouter, sandboxProvider, githubClient, workflowpkg.FakeWorkHooks{
 		HostedRunStarter:   hostedRunClient,
 		NativeModelInvoker: nativeModelInvoker,
 		PromptEvalInvoker:  promptEvalInvoker,
+		MultiTurnInvoker:   multiTurnInvoker,
 	})
 	orphanRunReaper := workerapp.NewRepositoryOrphanRunReaper(repo, cfg.OrphanRunReaperInterval, cfg.OrphanRunReaperThreshold, logger)
 

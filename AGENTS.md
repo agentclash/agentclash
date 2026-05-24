@@ -23,6 +23,10 @@ go run . run list
 go run . run create --help
 # When the workspace already has challenge packs and deployments:
 go run . run create --follow
+
+# Multi-turn human takeover (while a run agent awaits operator input):
+go run . run turn status <runAgentId> --run <runId>
+go run . run turn submit <runAgentId> --run <runId> --message "Your message here"
 ```
 
 Resolution order for the API base URL is:

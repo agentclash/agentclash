@@ -20,6 +20,9 @@ const (
 	UserSimulatorTriggerNever               = "never"
 
 	UserSimulatorArenaComparisonPairwise = "pairwise"
+
+	UserSimulatorHumanOnTimeoutStop = "stop"
+	UserSimulatorHumanOnTimeoutFail = "fail"
 )
 
 // UserSimulatorSpec defines the per-case hybrid user actor manifest for multi_turn packs.
@@ -41,6 +44,7 @@ type UserSimulatorPhase struct {
 	MaxTurns  int32               `yaml:"max_turns,omitempty" json:"max_turns,omitempty"`
 	Until     []string            `yaml:"until,omitempty" json:"until,omitempty"`
 	TimeoutMS int64               `yaml:"timeout_ms,omitempty" json:"timeout_ms,omitempty"`
+	OnTimeout string              `yaml:"on_timeout,omitempty" json:"on_timeout,omitempty"`
 }
 
 type UserSimulatorTurn struct {
@@ -89,4 +93,39 @@ func normalizeUserSimulatorTrigger(trigger string) string {
 		return UserSimulatorTriggerAlways
 	}
 	return trigger
+}
+
+func CloneUserSimulatorSpec(spec *UserSimulatorSpec) *UserSimulatorSpec {
+	return cloneUserSimulatorSpec(spec)
+}
+
+func cloneUserSimulatorSpec(spec *UserSimulatorSpec) *UserSimulatorSpec {
+	if spec == nil {
+		return nil
+	}
+	cloned := *spec
+	if len(spec.Phases) > 0 {
+		cloned.Phases = append([]UserSimulatorPhase(nil), spec.Phases...)
+		for i, phase := range spec.Phases {
+			if len(phase.Turns) > 0 {
+				cloned.Phases[i].Turns = append([]UserSimulatorTurn(nil), phase.Turns...)
+			}
+			if len(phase.Until) > 0 {
+				cloned.Phases[i].Until = append([]string(nil), phase.Until...)
+			}
+		}
+	}
+	if spec.Calibration != nil {
+		calibration := *spec.Calibration
+		cloned.Calibration = &calibration
+	}
+	if spec.PostRun != nil {
+		postRun := *spec.PostRun
+		if spec.PostRun.Arena != nil {
+			arena := *spec.PostRun.Arena
+			postRun.Arena = &arena
+		}
+		cloned.PostRun = &postRun
+	}
+	return &cloned
 }

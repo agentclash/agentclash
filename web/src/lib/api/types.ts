@@ -1187,6 +1187,8 @@ export interface ReplayStep {
   event_types: string[];
   artifact_ids?: string[];
   step_index?: number;
+  turn_index?: number;
+  mismatch?: boolean;
   provider_key?: string;
   provider_model_id?: string;
   tool_name?: string;

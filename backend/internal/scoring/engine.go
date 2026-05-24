@@ -82,10 +82,11 @@ type Event struct {
 }
 
 type EvaluationInput struct {
-	RunAgentID       uuid.UUID       `json:"run_agent_id"`
-	EvaluationSpecID uuid.UUID       `json:"evaluation_spec_id"`
-	ChallengeInputs  []EvidenceInput `json:"challenge_inputs"`
-	Events           []Event         `json:"events"`
+	RunAgentID            uuid.UUID       `json:"run_agent_id"`
+	EvaluationSpecID      uuid.UUID       `json:"evaluation_spec_id"`
+	ChallengeInputs       []EvidenceInput `json:"challenge_inputs"`
+	Events                []Event         `json:"events"`
+	HumanPreferenceScore  *float64        `json:"human_preference_score,omitempty"`
 }
 
 type RunAgentEvaluation struct {
@@ -212,6 +213,9 @@ func evaluateRunAgentWithResolvedJudges(
 	events := orderedEvaluationEvents(input.Events)
 
 	evidence := buildEvidence(input.ChallengeInputs, events)
+	if input.HumanPreferenceScore != nil {
+		evidence.humanPreferenceScore = input.HumanPreferenceScore
+	}
 	validatorResults, warnings := evaluateValidators(spec.Validators, evidence)
 	metricResults, metricWarnings := evaluateMetrics(spec.Metrics, evidence, validatorResults, spec)
 	warnings = append(warnings, metricWarnings...)
@@ -222,6 +226,9 @@ func evaluateRunAgentWithResolvedJudges(
 func finalizeRunAgentEvaluation(input EvaluationInput, spec EvaluationSpec, validatorResults []ValidatorResult, metricResults []MetricResult, llmJudgeResults []LLMJudgeResult, warnings []string) RunAgentEvaluation {
 	events := orderedEvaluationEvents(input.Events)
 	evidence := buildEvidence(input.ChallengeInputs, events)
+	if input.HumanPreferenceScore != nil {
+		evidence.humanPreferenceScore = input.HumanPreferenceScore
+	}
 	return finalizeRunAgentEvaluationWithEvidence(input, spec, evidence, validatorResults, metricResults, llmJudgeResults, warnings)
 }
 

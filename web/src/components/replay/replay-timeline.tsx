@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReplayStep } from "@/lib/api/types";
 import { ReplayStepCard } from "./replay-step-card";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Panel } from "@/app/(workspace)/workspaces/[workspaceId]/runs/[runId]/agents/[runAgentId]/scorecard/components/panel";
+import { Badge } from "@/components/ui/badge";
 import { Loader2, ListTree } from "lucide-react";
 import { findHighlightIndex } from "./replay-highlight";
 
@@ -14,12 +15,32 @@ interface ReplayTimelineProps {
   hasMore: boolean;
   isLoadingMore: boolean;
   onLoadMore: () => void;
-  /**
-   * When set, the step whose sequence range contains this value is visually
-   * highlighted and scrolled into view on mount. Used by the scorecard
-   * Inspector Sheet's "View in replay" deep link.
-   */
   highlightSequence?: number;
+}
+
+type TurnGroup = {
+  turnIndex: number | null;
+  steps: ReplayStep[];
+  hasMismatch: boolean;
+};
+
+function groupStepsByTurn(steps: ReplayStep[]): TurnGroup[] {
+  const groups: TurnGroup[] = [];
+  for (const step of steps) {
+    const turnIndex = step.turn_index ?? null;
+    const last = groups[groups.length - 1];
+    if (last && last.turnIndex === turnIndex) {
+      last.steps.push(step);
+      if (step.mismatch) last.hasMismatch = true;
+      continue;
+    }
+    groups.push({
+      turnIndex,
+      steps: [step],
+      hasMismatch: Boolean(step.mismatch),
+    });
+  }
+  return groups;
 }
 
 export function ReplayTimeline({
@@ -33,6 +54,15 @@ export function ReplayTimeline({
     if (highlightSequence == null) return -1;
     return findHighlightIndex(steps, highlightSequence);
   }, [steps, highlightSequence]);
+
+  const flatIndexByStep = useMemo(() => {
+    const map = new Map<ReplayStep, number>();
+    steps.forEach((step, index) => map.set(step, index));
+    return map;
+  }, [steps]);
+
+  const groups = useMemo(() => groupStepsByTurn(steps), [steps]);
+  const hasTurnGroups = groups.some((g) => g.turnIndex != null);
 
   const highlightRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -52,23 +82,38 @@ export function ReplayTimeline({
 
   return (
     <div>
-      {/* Timeline */}
       <Panel className="overflow-hidden">
-        {steps.map((step, i) => (
-          <div
-            key={`${step.started_sequence}-${i}`}
-            ref={i === highlightedIndex ? highlightRef : undefined}
-          >
-            <ReplayStepCard
-              step={step}
-              index={i}
-              highlighted={i === highlightedIndex}
-            />
+        {groups.map((group, groupIndex) => (
+          <div key={`turn-${group.turnIndex ?? "none"}-${groupIndex}`}>
+            {hasTurnGroups && group.turnIndex != null && (
+              <div className="flex items-center gap-2 border-b bg-muted/30 px-4 py-2 text-sm font-medium">
+                <span>Turn {group.turnIndex}</span>
+                {group.hasMismatch && (
+                  <Badge variant="destructive" className="text-xs">
+                    mismatch
+                  </Badge>
+                )}
+              </div>
+            )}
+            {group.steps.map((step) => {
+              const flatIndex = flatIndexByStep.get(step) ?? -1;
+              return (
+                <div
+                  key={`${step.started_sequence}-${flatIndex}`}
+                  ref={flatIndex === highlightedIndex ? highlightRef : undefined}
+                >
+                  <ReplayStepCard
+                    step={step}
+                    index={flatIndex}
+                    highlighted={flatIndex === highlightedIndex}
+                  />
+                </div>
+              );
+            })}
           </div>
         ))}
       </Panel>
 
-      {/* Load more */}
       {hasMore && (
         <div className="mt-4 flex justify-center">
           <Button
