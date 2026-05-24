@@ -231,6 +231,7 @@ func (e NativeExecutor) executeToolCalls(
 	networkAllowlist []string,
 	toolCallsUsedSoFar int,
 	toolCalls []provider.ToolCall,
+	preserveSubmitToolMessage bool,
 ) ([]provider.Message, string, bool, int, error) {
 	toolMessages := make([]provider.Message, 0, len(toolCalls))
 	toolCallsUsed := 0
@@ -305,6 +306,9 @@ func (e NativeExecutor) executeToolCalls(
 		if executionResult.Completed {
 			if executionResult.IsError {
 				return toolMessages, "", false, toolCallsUsed, nil
+			}
+			if preserveSubmitToolMessage {
+				return toolMessages, executionResult.FinalOutput, true, toolCallsUsed, nil
 			}
 			return toolMessages[:len(toolMessages)-1], executionResult.FinalOutput, true, toolCallsUsed, nil
 		}

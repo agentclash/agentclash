@@ -56,6 +56,7 @@ import { CompareRunPicker } from "./compare-run-picker";
 import { Panel } from "./agents/[runAgentId]/scorecard/components/panel";
 import { RunRankingInsightsCard } from "./run-ranking-insights-card";
 import { ScorecardSummaryCard } from "./scorecard-summary-card";
+import { AwaitingHumanBanner } from "@/components/replay/awaiting-human-banner";
 
 // --- Status variant maps ---
 
@@ -527,6 +528,22 @@ export function RunDetailClient({
           )}
         </div>
       </Panel>
+
+      {isActive &&
+        sortedAgents
+          .filter(
+            (a) => a.status === "executing" || a.status === "evaluating",
+          )
+          .map((a) => (
+            <AwaitingHumanBanner
+              key={a.id}
+              getAccessToken={getAccessToken}
+              workspaceId={workspaceId}
+              runId={run.id}
+              runAgentId={a.id}
+              enabled
+            />
+          ))}
 
       {/* === Agent Lanes === */}
       <div>
