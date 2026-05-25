@@ -32,9 +32,17 @@ AgentClash gives you a workspace for the full evaluation loop:
 | Compare and release gates | Decide whether a candidate is safe to ship against a baseline. |
 | CI setup | Run AgentClash from GitHub Actions or another CI provider. |
 
-> Screenshot placeholder: add a workspace dashboard or runs list screenshot here.
+ <img width="1920" height="994" alt="image" src="https://github.com/user-attachments/assets/b280c4be-3382-4151-af98-bb8000eba3c5" />
 
-> Screenshot placeholder: add a scorecard/replay screenshot here.
+
+ <img width="1774" height="887" alt="image" src="https://github.com/user-attachments/assets/ad6e435a-b0fb-4684-b421-40cefec1667f" />
+ <img width="1774" height="887" alt="image" src="https://github.com/user-attachments/assets/a254d88a-e10f-4e9c-9c93-4169a06b35c4" />
+ <img width="1774" height="887" alt="image" src="https://github.com/user-attachments/assets/6f7f79e6-bea5-49e0-a651-3af5f474596f" />
+ <img width="1774" height="887" alt="image" src="https://github.com/user-attachments/assets/a8578daa-6a1e-4268-b1c9-5fef542d8ad7" />
+
+
+
+
 
 ## Quickstart
 
