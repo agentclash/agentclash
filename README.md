@@ -2,23 +2,43 @@
 
 # AgentClash
 
-Open-source AI agent evaluation for real tasks. AgentClash lets you run multiple agents against the same challenge, under the same constraints, then compare what happened with scorecards, transcripts, replays, and regression gates.
+Open-source AI agent evaluation for real tasks. AgentClash lets you race agents against the same workload, capture what they did, score the outcome, and turn failures into repeatable regression gates.
 
-[agentclash.dev](https://www.agentclash.dev)
+[Website](https://www.agentclash.dev) · [Docs](https://www.agentclash.dev/docs) · [CLI Distribution](docs/cli-distribution.md) · [Challenge Packs](docs/evaluation/challenge-pack-v0.md) · [CI Gates](web/content/docs/guides/ci-cd-agent-gates.mdx)
 
-## Why Teams Use It
+## What AgentClash Does
 
-AgentClash is for teams building agents that need evidence, not vibes.
+AgentClash is built for teams shipping agents, not leaderboard demos. It evaluates the whole run: the final answer, the tool choices, the artifacts, the latency, the cost, and the evidence trail that explains why one agent passed while another failed.
 
-- Compare agents on real work: coding tasks, support workflows, tool-use tasks, recovery scenarios, and domain-specific evaluations.
-- Replay every run: inspect tool calls, model turns, failures, costs, latency, and final outputs.
-- Promote failures into regression cases: turn bad runs into repeatable tests.
-- Gate releases in CI: compare a candidate agent against a baseline before shipping.
-- Run from the CLI: create challenge packs, start evaluations, inspect runs, and publish results without leaving your terminal.
+- Race multiple agents on the same task with the same tools and constraints.
+- Define repeatable workloads with challenge packs.
+- Watch runs live, then inspect transcripts, artifacts, replays, failures, and scorecards.
+- Compare candidates against a saved baseline before release.
+- Promote escaped failures into regression cases.
+- Gate pull requests with the same evaluation workload you use during development.
 
-## Install
+## Product Surface
 
-Install the CLI from npm:
+AgentClash gives you a workspace for the full evaluation loop:
+
+| Area | What you use it for |
+| --- | --- |
+| Runs | Start and follow agent races across challenge packs and deployments. |
+| Scorecards | Compare correctness, reliability, latency, cost, evidence, and pass/fail verdicts. |
+| Replays | Review the step-by-step trajectory that produced the outcome. |
+| Failures | Triage run failures and promote important ones into regression coverage. |
+| Challenge packs | Package real tasks, inputs, validators, artifacts, and scoring rules. |
+| Regression suites | Keep important failures covered across future model, prompt, and tool changes. |
+| Compare and release gates | Decide whether a candidate is safe to ship against a baseline. |
+| CI setup | Run AgentClash from GitHub Actions or another CI provider. |
+
+> Screenshot placeholder: add a workspace dashboard or runs list screenshot here.
+
+> Screenshot placeholder: add a scorecard/replay screenshot here.
+
+## Quickstart
+
+Install the CLI:
 
 ```bash
 npm i -g agentclash
@@ -31,11 +51,7 @@ Or run it without installing:
 npx agentclash --help
 ```
 
-Direct release binaries and installer scripts are available in [GitHub Releases](https://github.com/agentclash/agentclash/releases). More distribution details are in [CLI Distribution](docs/cli-distribution.md).
-
-## Connect To AgentClash
-
-Use the hosted API unless you intentionally run your own backend:
+Log in and choose a workspace:
 
 ```bash
 export AGENTCLASH_API_URL="https://api.agentclash.dev"
@@ -43,40 +59,42 @@ agentclash auth login
 agentclash link
 ```
 
-`agentclash link` saves your default workspace. You can also use:
-
-```bash
-export AGENTCLASH_TOKEN="..."
-export AGENTCLASH_WORKSPACE="workspace-id"
-```
-
-The API URL resolves in this order:
-
-```text
---api-url > AGENTCLASH_API_URL > saved user config > default
-```
-
-## Start An Evaluation
-
-If your workspace already has challenge packs and deployments:
+If your workspace already has challenge packs and deployments, start your first evaluation:
 
 ```bash
 agentclash eval start --follow
-agentclash run list
 agentclash eval scorecard
 ```
 
-For lower-level control:
+## Run Your First Agent Race
+
+AgentClash can guide you through available packs and deployments:
+
+```bash
+agentclash eval start --follow
+```
+
+For lower-level control, create a run directly:
 
 ```bash
 agentclash run create --follow
+agentclash run list
 agentclash run transcript <run-id>
 agentclash run scorecard <run-id>
 ```
 
-## Create A Challenge Pack
+For multi-turn human takeover while an agent waits for operator input:
 
-Challenge packs describe the tasks agents compete on. Start with a scaffold, edit it for your workload, then publish it to your workspace:
+```bash
+agentclash run turn status <run-agent-id> --run <run-id>
+agentclash run turn submit <run-agent-id> --run <run-id> --message "Your message here"
+```
+
+## Define A Challenge Pack
+
+Challenge packs are how AgentClash turns real work into repeatable evals. A pack can describe the task, inputs, tools, expected artifacts, hidden grading rules, validators, and regression cases.
+
+Create and publish a pack:
 
 ```bash
 agentclash challenge-pack init support-eval.yaml
@@ -84,36 +102,48 @@ agentclash challenge-pack validate support-eval.yaml
 agentclash challenge-pack publish support-eval.yaml
 ```
 
-Then run it:
+Run it:
 
 ```bash
 agentclash eval start --pack support-eval --follow
 ```
 
-Challenge packs can model multi-turn work, hidden grading criteria, scripted validators, tool access, input sets, and failure promotion. See [Challenge Pack v0](docs/evaluation/challenge-pack-v0.md) and the examples in [docs/challenge-packs](docs/challenge-packs).
+Learn more in [Challenge Pack v0](docs/evaluation/challenge-pack-v0.md) and the examples in [docs/challenge-packs](docs/challenge-packs).
 
-## Compare Against A Baseline
+## Turn Failures Into Regression Tests
 
-Once you have a trusted run, save it as the workspace baseline:
+When an agent fails, AgentClash keeps the evidence around the failure: transcript, replay steps, artifacts, scorecard dimensions, and failure review metadata. Useful failures can become regression cases so the same mistake is tested again before the next release.
 
-```bash
-agentclash baseline set <run-id>
-agentclash eval scorecard <candidate-run-id>
-```
+Typical workflow:
 
-AgentClash will show the candidate scorecard and the comparison against the bookmarked baseline.
+1. Run a pack against one or more candidate agents.
+2. Inspect scorecards, replays, and failure details.
+3. Promote important failures into a regression suite.
+4. Re-run the suite whenever prompts, models, tools, or agent code changes.
 
-## Use It In CI
+> Screenshot placeholder: add a failure review or regression suite screenshot here.
 
-AgentClash can gate an agent change before it ships:
+## Gate Agent Changes In CI
+
+AgentClash can compare a candidate run against a baseline and fail CI when the candidate regresses.
+
+Create and validate a CI manifest:
 
 ```bash
 agentclash ci init .agentclash/ci.yaml
 agentclash ci validate .agentclash/ci.yaml --remote
-agentclash ci run --manifest .agentclash/ci.yaml --json --artifact-dir agentclash-artifacts
 ```
 
-In GitHub Actions, use the bundled action:
+Run the gate and write artifacts:
+
+```bash
+agentclash ci run \
+  --manifest .agentclash/ci.yaml \
+  --json \
+  --artifact-dir agentclash-artifacts
+```
+
+Use the bundled GitHub Action:
 
 ```yaml
 - id: agentclash
@@ -125,16 +155,7 @@ In GitHub Actions, use the bundled action:
 
 See [CI/CD Agent Gates](web/content/docs/guides/ci-cd-agent-gates.mdx) and [AgentClash CI for GitHub](docs/agentclash-ci-github.md).
 
-## Human Takeover
-
-When a run pauses for operator input, inspect the turn and submit a response:
-
-```bash
-agentclash run turn status <run-agent-id> --run <run-id>
-agentclash run turn submit <run-agent-id> --run <run-id> --message "Your message here"
-```
-
-## Useful Commands
+## Common Commands
 
 ```bash
 agentclash quickstart
@@ -142,32 +163,46 @@ agentclash workspace list
 agentclash workspace use <workspace-id>
 agentclash challenge-pack list
 agentclash deployment list
+agentclash eval start --follow
 agentclash run list
 agentclash run get <run-id>
 agentclash run events <run-id>
 agentclash run transcript <run-id>
+agentclash run scorecard <run-id>
 agentclash eval scorecard <run-id>
 agentclash baseline set <run-id>
 ```
 
 Run `agentclash --help` or `agentclash <command> --help` for the full command reference.
 
-## Local CLI Development
+## Configuration
 
-The CLI lives in `cli/`:
+Use the hosted API unless you intentionally run your own backend:
 
 ```bash
+export AGENTCLASH_API_URL="https://api.agentclash.dev"
+export AGENTCLASH_TOKEN="..."
+export AGENTCLASH_WORKSPACE="workspace-id"
+```
+
+API URL resolution order:
+
+```text
+--api-url > AGENTCLASH_API_URL > saved user config > default
+```
+
+## Local CLI Development
+
+The CLI lives in `cli/` and can run against the hosted API:
+
+```bash
+export AGENTCLASH_API_URL="https://api.agentclash.dev"
+
 cd cli
 go run . auth login --device
 go run . workspace list
 go run . workspace use <workspace-id>
 go run . eval start --follow
-```
-
-Point a local CLI build at the hosted API:
-
-```bash
-export AGENTCLASH_API_URL="https://api.agentclash.dev"
 ```
 
 Before shipping CLI changes:
