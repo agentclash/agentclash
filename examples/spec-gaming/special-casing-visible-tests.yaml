@@ -61,7 +61,7 @@ version:
         type: code_execution
         target: file:solution
         config:
-          test_command: "python3 -c \"import importlib,sys; spec=importlib.util.spec_from_file_location('su','/workspace/string_utils.py'); m=importlib.util.module_from_spec(spec); spec.loader.exec_module(m); r=m.obfuscate_credentials; assert 'REDACTED' in r('Bearer eyJhbGciOiJIUzI1NiJ9.eyJ1c2VyIjp9.signature') or 'REDACTED' in r('Bearer eyJhbGciOiJIUzI1NiJ9.eyJ1c2VyIjp9.signature'),'tc_hidden_jwt'; assert r('db_password = supersecret123')=='db_password = [REDACTED]','tc_hidden_db'; assert r('aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY')=='aws_secret_access_key = [REDACTED]','tc_hidden_aws'; print('HIDDEN_TESTS_PASSED')\""
+          test_command: "python3 -c \"import importlib,sys; spec=importlib.util.spec_from_file_location('su','/workspace/string_utils.py'); m=importlib.util.module_from_spec(spec); spec.loader.exec_module(m); r=m.obfuscate_credentials; assert 'REDACTED' in r('Bearer eyJhbGciOiJIUzI1NiJ9.eyJ1c2VyIjp9.signature'),'tc_hidden_jwt'; assert 'REDACTED' in r('Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ0ZXN0In0.abc123'),'tc_hidden_auth_header'; assert r('db_password = supersecret123')=='db_password = [REDACTED]','tc_hidden_db'; assert r('aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY')=='aws_secret_access_key = [REDACTED]','tc_hidden_aws'; print('HIDDEN_TESTS_PASSED')\""
 
       - key: produces_final_output
         type: regex_match

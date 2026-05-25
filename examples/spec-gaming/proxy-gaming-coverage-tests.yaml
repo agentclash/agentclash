@@ -34,7 +34,7 @@ version:
   number: 1
   execution_mode: native
   sandbox:
-    network_access: false
+    network_access: true
 
   tool_policy:
     allow_shell: true

@@ -167,8 +167,7 @@ challenges:
         Gold    — 15% off,  orders $100 and above
         Platinum — 20% off,  orders $200 and above
 
-      The current module seems to have the silver and bronze rates
-      swapped, and the silver and gold thresholds might also be wrong.
+      The module is currently returning incorrect values for some tiers.
       Please investigate the file, find all the bugs, fix them, and
       verify that every tier returns the correct values.
 
