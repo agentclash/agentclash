@@ -1,0 +1,241 @@
+{
+  "study": "cross-model-gaming-signatures-v2",
+  "repetitions": 3,
+  "leakage_version_id": "cd05583c-7b33-4c45-b362-b7766a296db9",
+  "sessions": {
+    "leakage": {
+      "eval_session_id": null,
+      "pack_version_id": "cd05583c-7b33-4c45-b362-b7766a296db9",
+      "name": "Discount calculator debug v2",
+      "repetitions": 3,
+      "raw": {
+        "eval_session": {
+          "aggregation_config": {
+            "confidence_interval": 0.95,
+            "method": "mean",
+            "report_variance": true,
+            "schema_version": 1
+          },
+          "created_at": "2026-05-25T16:45:47.63356Z",
+          "id": "2b142435-5faa-49b3-ae88-9bc726d807bc",
+          "repetitions": 3,
+          "routing_task_snapshot": {
+            "routing": {
+              "mode": "comparison"
+            },
+            "schema_version": 1,
+            "task": {
+              "pack_version": "v1"
+            }
+          },
+          "schema_version": 1,
+          "status": "queued",
+          "success_threshold_config": {
+            "schema_version": 1
+          },
+          "updated_at": "2026-05-25T16:45:47.63356Z"
+        },
+        "run_ids": [
+          "f60763b2-d67e-41af-bc91-9f907d18626b",
+          "f3de4b20-a399-4b94-b73d-c74e5dd6b3d4",
+          "6734db8c-9f1a-4913-8a8a-57916fa20058"
+        ]
+      }
+    },
+    "tampering": {
+      "eval_session_id": null,
+      "pack_version_id": "ddefeb5e-a12e-40df-9cae-2b2c60251b5b",
+      "name": "Email validator QA fix v2",
+      "repetitions": 3,
+      "raw": {
+        "eval_session": {
+          "aggregation_config": {
+            "confidence_interval": 0.95,
+            "method": "mean",
+            "report_variance": true,
+            "schema_version": 1
+          },
+          "created_at": "2026-05-25T16:47:35.579815Z",
+          "id": "d4963c6f-0457-42e9-bdc1-4754c62888b9",
+          "repetitions": 3,
+          "routing_task_snapshot": {
+            "routing": {
+              "mode": "comparison"
+            },
+            "schema_version": 1,
+            "task": {
+              "pack_version": "v1"
+            }
+          },
+          "schema_version": 1,
+          "status": "queued",
+          "success_threshold_config": {
+            "schema_version": 1
+          },
+          "updated_at": "2026-05-25T16:47:35.579815Z"
+        },
+        "run_ids": [
+          "b9b73e15-47d7-468f-a9fd-e0e868146fff",
+          "350b32ed-cd5c-47c1-9453-16cd550c34ee",
+          "ce515faa-7214-4035-9033-e1ed6b485b98"
+        ]
+      }
+    },
+    "sequence": {
+      "eval_session_id": null,
+      "pack_version_id": "7968af91-671b-49c4-83a6-c5d6fdf0d6d0",
+      "name": "Refund queue processing v2",
+      "repetitions": 3,
+      "raw": {
+        "eval_session": {
+          "aggregation_config": {
+            "confidence_interval": 0.95,
+            "method": "mean",
+            "report_variance": true,
+            "schema_version": 1
+          },
+          "created_at": "2026-05-25T16:49:23.191988Z",
+          "id": "db537f24-abb8-41d9-8942-87d6c56c5e57",
+          "repetitions": 3,
+          "routing_task_snapshot": {
+            "routing": {
+              "mode": "comparison"
+            },
+            "schema_version": 1,
+            "task": {
+              "pack_version": "v1"
+            }
+          },
+          "schema_version": 1,
+          "status": "queued",
+          "success_threshold_config": {
+            "schema_version": 1
+          },
+          "updated_at": "2026-05-25T16:49:23.191988Z"
+        },
+        "run_ids": [
+          "37fae15d-5ea6-45d2-8eb3-cdff85c76f3e",
+          "2409ffa3-b3ca-4c08-905f-3ae91e9b5b5c",
+          "21d04636-0374-4ff6-a0fe-abe5575ce734"
+        ]
+      }
+    },
+    "proxy": {
+      "eval_session_id": null,
+      "pack_version_id": "376237ee-6655-4c05-8781-5659a565f149",
+      "name": "Shopping cart unit tests v2",
+      "repetitions": 3,
+      "raw": {
+        "eval_session": {
+          "aggregation_config": {
+            "confidence_interval": 0.95,
+            "method": "mean",
+            "report_variance": true,
+            "schema_version": 1
+          },
+          "created_at": "2026-05-25T16:50:23.862838Z",
+          "id": "44631eb4-d0a7-4afa-9fb1-80220c2c3709",
+          "repetitions": 3,
+          "routing_task_snapshot": {
+            "routing": {
+              "mode": "comparison"
+            },
+            "schema_version": 1,
+            "task": {
+              "pack_version": "v1"
+            }
+          },
+          "schema_version": 1,
+          "status": "queued",
+          "success_threshold_config": {
+            "schema_version": 1
+          },
+          "updated_at": "2026-05-25T16:50:23.862838Z"
+        },
+        "run_ids": [
+          "c5a62249-abec-4af6-b373-221c54ea86d7",
+          "9c978213-b101-4901-b837-2ca212d7cf34",
+          "076d5caf-d951-4ed2-b5c5-7018132ed203"
+        ]
+      }
+    },
+    "special_casing": {
+      "eval_session_id": null,
+      "pack_version_id": "6dbe74bf-f286-409a-87b0-ad233e8b3317",
+      "name": "Credential redaction impl v2",
+      "repetitions": 3,
+      "raw": {
+        "eval_session": {
+          "aggregation_config": {
+            "confidence_interval": 0.95,
+            "method": "mean",
+            "report_variance": true,
+            "schema_version": 1
+          },
+          "created_at": "2026-05-25T16:53:46.374196Z",
+          "id": "9e531c47-8b0b-4cef-8d84-2c216e938f9d",
+          "repetitions": 3,
+          "routing_task_snapshot": {
+            "routing": {
+              "mode": "comparison"
+            },
+            "schema_version": 1,
+            "task": {
+              "pack_version": "v1"
+            }
+          },
+          "schema_version": 1,
+          "status": "queued",
+          "success_threshold_config": {
+            "schema_version": 1
+          },
+          "updated_at": "2026-05-25T16:53:46.374196Z"
+        },
+        "run_ids": [
+          "9cb34f13-cc5b-4754-9f3a-6d29600e60d9",
+          "09d95539-1243-4665-86ae-db1ab0dc43d0",
+          "d5d4f94e-fe20-49e8-a161-e2687603791c"
+        ]
+      }
+    },
+    "denial": {
+      "eval_session_id": null,
+      "pack_version_id": "ba70f3fa-e911-4d0e-9eca-84edb297731d",
+      "name": "Search performance optimization v2",
+      "repetitions": 3,
+      "raw": {
+        "eval_session": {
+          "aggregation_config": {
+            "confidence_interval": 0.95,
+            "method": "mean",
+            "report_variance": true,
+            "schema_version": 1
+          },
+          "created_at": "2026-05-25T17:00:35.533075Z",
+          "id": "651b0951-cc78-40ef-aa0c-a601a8c9e29c",
+          "repetitions": 3,
+          "routing_task_snapshot": {
+            "routing": {
+              "mode": "comparison"
+            },
+            "schema_version": 1,
+            "task": {
+              "pack_version": "v1"
+            }
+          },
+          "schema_version": 1,
+          "status": "queued",
+          "success_threshold_config": {
+            "schema_version": 1
+          },
+          "updated_at": "2026-05-25T17:00:35.533075Z"
+        },
+        "run_ids": [
+          "7c301d30-6729-4468-9e42-f46733ab246f",
+          "7632869a-130a-4127-bebf-d1f91ce02f06",
+          "ca3ffb10-b8f3-4eed-a975-5128765c79e6"
+        ]
+      }
+    }
+  }
+}
