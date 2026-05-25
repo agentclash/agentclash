@@ -258,12 +258,6 @@ Recommended next phase:
 
 ## Test / Release Notes
 
-Review checkpoint contract:
-
-```text
-testing/codex-cli-phase2-workflows.md
-```
-
 Verified from `cli/` after merging latest `main` on May 12, 2026:
 
 ```bash
