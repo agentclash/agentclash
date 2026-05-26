@@ -47,10 +47,20 @@ export function ConversationTranscript({
     return (
       <Panel className="overflow-hidden">
         <PanelHeader title="Conversation" icon={<MessagesSquare className="size-4" />} trailing={trailing} />
+        {notice && (
+          <div className="flex items-center gap-2 border-b border-amber-500/20 bg-amber-500/[0.05] px-4 py-2.5 text-xs text-amber-400/90">
+            <AlertTriangle className="size-3.5 shrink-0" />
+            <span>{notice}</span>
+          </div>
+        )}
         <EmptyState
           icon={<MessagesSquare className="size-10 text-muted-foreground" />}
           title="No conversation turns"
-          description="This run did not record a multi-turn conversation."
+          description={
+            notice
+              ? "The run ended before any conversation turns were recorded."
+              : "This run did not record a multi-turn conversation."
+          }
         />
       </Panel>
     );

@@ -9,7 +9,11 @@ import type {
   RunAgent,
   RunRankingResponse,
   ScorecardResponse,
+  TranscriptResponse,
 } from "@/lib/api/types";
+import { getRunAgentTranscript } from "@/lib/api/multi-turn";
+import { ConversationTranscript } from "@/components/replay/conversation-transcript";
+import { DownloadTranscriptButton } from "@/components/replay/download-transcript-button";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Loader2, AlertTriangle } from "lucide-react";
 
@@ -44,6 +48,7 @@ export function ScorecardClient({
   const [scorecard, setScorecard] = useState<ScorecardResponse>(initialScorecard);
   const [ranking, setRanking] = useState<RunRankingResponse | null>(null);
   const [inspected, setInspected] = useState<InspectorTarget | null>(null);
+  const [transcript, setTranscript] = useState<TranscriptResponse | null>(null);
 
   const isPending = scorecard.state === "pending";
   const isErrored = scorecard.state === "errored";
@@ -93,6 +98,26 @@ export function ScorecardClient({
     };
   }, [isReady, getAccessToken, run.id]);
 
+  // Fetch the multi-turn transcript once scoring has settled. Single-turn
+  // runs return zero turns and the section stays hidden.
+  useEffect(() => {
+    if (!isReady) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = await getAccessToken();
+        const api = createApiClient(token);
+        const res = await getRunAgentTranscript(api, agent.id);
+        if (!cancelled) setTranscript(res);
+      } catch {
+        // Transcript is supplementary; ignore errors.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isReady, getAccessToken, agent.id]);
+
   const doc = scorecard.scorecard;
   const validators = doc?.validator_details ?? [];
   const metrics = doc?.metric_details ?? [];
@@ -136,6 +161,28 @@ export function ScorecardClient({
             />
             <MetricsPanel metrics={metrics} onInspect={setInspected} />
             <JudgesPanel judges={judges} onInspect={setInspected} />
+
+            {transcript &&
+              (transcript.turns.length > 0 ||
+                transcript.state === "errored") && (
+              <ConversationTranscript
+                turns={transcript.turns}
+                notice={
+                  transcript.state === "errored" ? transcript.message : undefined
+                }
+                trailing={
+                  <DownloadTranscriptButton
+                    turns={transcript.turns}
+                    meta={{
+                      agentLabel: agent.label,
+                      runName: run.name,
+                      runId: run.id,
+                      runAgentId: agent.id,
+                    }}
+                  />
+                }
+              />
+            )}
           </>
         )}
 
