@@ -1256,6 +1256,33 @@ export interface ReplayResponse {
   pagination: ReplayPagination;
 }
 
+// --- Multi-turn transcript ---
+
+/** One reconstructed user↔assistant turn. Mirrors transcriptTurnPayload in Go. */
+export interface TranscriptTurn {
+  turn_index: number;
+  phase_id?: string;
+  actor?: string; // "scripted" | "llm" | "human"
+  user_message?: string;
+  assistant_message?: string;
+  mismatch: boolean;
+  completed: boolean;
+  awaiting_human: boolean;
+  awaiting_human_hint?: string;
+  user_simulated: boolean;
+}
+
+/** GET /v1/replays/{runAgentID}/transcript — mirrors getRunAgentTranscriptResponse in Go. */
+export interface TranscriptResponse {
+  state: ReplayState; // "ready" | "pending" | "errored"
+  message?: string;
+  run_agent_id: string;
+  run_id: string;
+  run_agent_status: RunAgentStatus;
+  turn_count: number;
+  turns: TranscriptTurn[];
+}
+
 // --- Scorecards ---
 
 /** GET /v1/scorecards/{runAgentID} — mirrors getRunAgentScorecardResponse in Go. */

@@ -1,4 +1,19 @@
 import type { ApiClient } from "./client";
+import type { TranscriptResponse } from "./types";
+
+/**
+ * Fetch the reconstructed multi-turn conversation transcript for a run-agent.
+ * Allows 409 so a failed run's partial transcript is still readable from the
+ * response body.
+ */
+export async function getRunAgentTranscript(
+  api: ApiClient,
+  runAgentId: string,
+): Promise<TranscriptResponse> {
+  return api.get<TranscriptResponse>(`/v1/replays/${runAgentId}/transcript`, {
+    allowedStatuses: [202, 409],
+  });
+}
 
 export interface HumanTurnStatus {
   awaiting_human: boolean;
