@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.21.0](https://github.com/agentclash/agentclash/compare/v0.20.0...v0.21.0) (2026-05-26)
+
+
+### Features
+
+* add OpenAI Responses API as a first-class execution mode ([f0b3029](https://github.com/agentclash/agentclash/commit/f0b3029829aa3452226ec653851cef68e2f3294d))
+* OpenAI Responses API execution mode ([0005cc3](https://github.com/agentclash/agentclash/commit/0005cc37007a5afbbf1b5a309e833ceb0f94e9bb))
+
 ## [0.20.0](https://github.com/agentclash/agentclash/compare/v0.19.0...v0.20.0) (2026-05-24)
 
 
