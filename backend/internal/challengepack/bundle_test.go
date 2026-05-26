@@ -1078,6 +1078,56 @@ func TestValidateBundleRejectsPromptEvalWithTools(t *testing.T) {
 	}
 }
 
+func TestValidateBundleAllowsResponsesWithSandboxAndToolPolicy(t *testing.T) {
+	err := ValidateBundle(Bundle{
+		Pack: PackMetadata{Slug: "research", Name: "Research", Family: "eval"},
+		Version: VersionMetadata{
+			Number:         1,
+			ExecutionMode:  ExecutionModeResponses,
+			EvaluationSpec: minimalSpec(),
+			Sandbox:        &SandboxConfig{NetworkAccess: true},
+			ToolPolicy:     map[string]any{"allow_shell": true, "allowed_tool_kinds": []any{"file", "network"}},
+		},
+		Challenges: []ChallengeDefinition{
+			{Key: "c1", Title: "C1", Category: "cat", Difficulty: "easy"},
+		},
+		InputSets: []InputSetDefinition{
+			{Key: "default", Name: "Default", Cases: []CaseDefinition{{ChallengeKey: "c1", CaseKey: "k"}}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("ValidateBundle returned error: %v", err)
+	}
+}
+
+func TestValidateBundleRejectsResponsesWithPackTools(t *testing.T) {
+	err := ValidateBundle(Bundle{
+		Pack: PackMetadata{Slug: "research", Name: "Research", Family: "eval"},
+		Version: VersionMetadata{
+			Number:         1,
+			ExecutionMode:  ExecutionModeResponses,
+			EvaluationSpec: minimalSpec(),
+		},
+		Tools: map[string]any{"custom": []any{}},
+		Challenges: []ChallengeDefinition{
+			{Key: "c1", Title: "C1", Category: "cat", Difficulty: "easy"},
+		},
+		InputSets: []InputSetDefinition{
+			{Key: "default", Name: "Default", Cases: []CaseDefinition{{ChallengeKey: "c1", CaseKey: "k"}}},
+		},
+	})
+	if err == nil {
+		t.Fatal("expected validation error for responses pack with tools")
+	}
+	errs, ok := err.(ValidationErrors)
+	if !ok {
+		t.Fatalf("expected ValidationErrors, got %T", err)
+	}
+	if !containsField(errs, "tools") {
+		t.Fatalf("expected tools validation error; got %v", errs)
+	}
+}
+
 func TestValidateBundleAllowsBrowserToolKind(t *testing.T) {
 	err := ValidateBundle(Bundle{
 		Pack: PackMetadata{Slug: "browser", Name: "Browser", Family: "browser"},

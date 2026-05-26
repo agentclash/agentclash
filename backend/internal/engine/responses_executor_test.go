@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/agentclash/agentclash/backend/internal/provider"
+	"github.com/agentclash/agentclash/backend/internal/sandbox"
 )
 
 func TestResponsesExecutorSingleResearchCall(t *testing.T) {
@@ -62,5 +63,56 @@ func TestResponsesExecutorRejectsNonOpenAIProvider(t *testing.T) {
 	failure, ok := provider.AsFailure(err)
 	if !ok || failure.Code != provider.FailureCodeUnsupportedCapability {
 		t.Fatalf("failure = %#v, want unsupported_capability", failure)
+	}
+}
+
+func TestResponsesExecutorProvisionsSandboxWhenConfigured(t *testing.T) {
+	client := &provider.FakeResearchClient{
+		FakeClient: provider.FakeClient{
+			Response: provider.Response{
+				ProviderKey:  "openai",
+				FinishReason: "completed",
+				OutputText:   `{"ok":true}`,
+			},
+		},
+	}
+	fakeSandbox := &sandbox.FakeProvider{}
+	executor := NewResponsesExecutor(client, &recordingObserver{}).WithSandboxProvider(fakeSandbox)
+
+	ctx := promptEvalExecutionContext()
+	ctx.ChallengePackVersion.Manifest = []byte(`{"version":{"execution_mode":"responses"},"sandbox":{"network_access":true}}`)
+
+	if _, err := executor.Execute(context.Background(), ctx); err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if len(fakeSandbox.CreateRequests) != 1 {
+		t.Fatalf("sandbox create requests = %d, want 1", len(fakeSandbox.CreateRequests))
+	}
+	if !fakeSandbox.CreateRequests[0].ToolPolicy.AllowNetwork {
+		t.Fatal("expected sandbox network access from manifest")
+	}
+}
+
+func TestResponsesExecutorSkipsSandboxWithoutManifestConfig(t *testing.T) {
+	client := &provider.FakeResearchClient{
+		FakeClient: provider.FakeClient{
+			Response: provider.Response{
+				ProviderKey:  "openai",
+				FinishReason: "completed",
+				OutputText:   `{"ok":true}`,
+			},
+		},
+	}
+	fakeSandbox := &sandbox.FakeProvider{}
+	executor := NewResponsesExecutor(client, &recordingObserver{}).WithSandboxProvider(fakeSandbox)
+
+	ctx := promptEvalExecutionContext()
+	ctx.ChallengePackVersion.Manifest = []byte(`{"version":{"execution_mode":"responses"}}`)
+
+	if _, err := executor.Execute(context.Background(), ctx); err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if len(fakeSandbox.CreateRequests) != 0 {
+		t.Fatalf("sandbox create requests = %d, want 0", len(fakeSandbox.CreateRequests))
 	}
 }

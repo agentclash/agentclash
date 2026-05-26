@@ -4,19 +4,24 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/agentclash/agentclash/backend/internal/provider"
 	"github.com/agentclash/agentclash/backend/internal/repository"
+	"github.com/agentclash/agentclash/backend/internal/sandbox"
 	"github.com/google/uuid"
 )
 
 // ResponsesExecutor runs a single OpenAI Responses API call (deep research with
-// web_search_preview). No sandbox or tool loop — same Result shape as prompt_eval.
+// web_search_preview). When the pack declares sandbox or tool_policy settings,
+// it provisions E2B to stage inputs/assets before the model call.
 type ResponsesExecutor struct {
-	researchClient provider.ResearchClient
-	observer       Observer
-	secretsLookup  SecretsLookup
+	researchClient  provider.ResearchClient
+	sandboxProvider sandbox.Provider
+	observer        Observer
+	secretsLookup   SecretsLookup
+	assetLoader     AssetLoader
 }
 
 func NewResponsesExecutor(researchClient provider.ResearchClient, observer Observer) ResponsesExecutor {
@@ -27,6 +32,16 @@ func NewResponsesExecutor(researchClient provider.ResearchClient, observer Obser
 		researchClient: researchClient,
 		observer:       observer,
 	}
+}
+
+func (e ResponsesExecutor) WithSandboxProvider(provider sandbox.Provider) ResponsesExecutor {
+	e.sandboxProvider = provider
+	return e
+}
+
+func (e ResponsesExecutor) WithAssetLoader(loader AssetLoader) ResponsesExecutor {
+	e.assetLoader = loader
+	return e
 }
 
 func (e ResponsesExecutor) WithSecretsLookup(lookup SecretsLookup) ResponsesExecutor {
@@ -94,6 +109,39 @@ func (e ResponsesExecutor) Execute(ctx context.Context, executionContext reposit
 	if err != nil {
 		return Result{}, NewFailure(StopReasonSandboxError, fmt.Sprintf("load workspace secrets: %v", err), err)
 	}
+
+	if manifestUsesE2BSandbox(executionContext.ChallengePackVersion.Manifest) {
+		if e.sandboxProvider == nil {
+			return Result{}, NewFailure(StopReasonSandboxError, sandbox.ErrProviderNotConfigured.Error(), sandbox.ErrProviderNotConfigured)
+		}
+		sandboxRequest, buildErr := nativeSandboxRequest(executionContext)
+		if buildErr != nil {
+			return Result{}, NewFailure(StopReasonSandboxError, "build responses sandbox request", buildErr)
+		}
+		session, prepErr := prepareRunSandbox(ctx, e.sandboxProvider, e.assetLoader, executionContext, sandboxRequest)
+		if prepErr != nil {
+			return Result{}, prepErr
+		}
+		defer func() {
+			if session == nil {
+				return
+			}
+			if destroyErr := destroySandbox(session); destroyErr != nil {
+				wrapped := NewFailure(StopReasonSandboxError, "destroy responses sandbox", destroyErr)
+				if err != nil {
+					err = errors.Join(err, wrapped)
+					return
+				}
+				slog.Default().Warn(
+					"sandbox destroy failed after successful responses execution",
+					"run_id", executionContext.Run.ID,
+					"run_agent_id", executionContext.RunAgent.ID,
+					"error", destroyErr,
+				)
+			}
+		}()
+	}
+
 	runCtx := provider.WithWorkspaceSecrets(ctx, workspaceSecrets)
 	cancel := func() {}
 	if timeout := runTimeout(executionContext); timeout > 0 {

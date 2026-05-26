@@ -125,7 +125,9 @@ func main() {
 	responsesInvoker := workerapp.NewResponsesInvokerWithObserverFactory(
 		providerRouter,
 		workerapp.NewBufferedResponsesObserverFactory(eventRecorder),
-	).WithSecretsLookup(repo)
+	).WithSecretsLookup(repo).
+		WithSandboxProvider(sandboxProvider).
+		WithAssetLoader(workerapp.NewArtifactAssetLoader(repo, artifactStore).WithMaxBytes(cfg.ArtifactStorage.MaxDownloadBytes))
 	multiTurnInvoker := workerapp.NewMultiTurnInvokerWithObserverFactory(
 		providerRouter,
 		sandboxProvider,
