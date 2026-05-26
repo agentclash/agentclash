@@ -114,6 +114,15 @@ func transcriptSummaryFromPayload(payload json.RawMessage) runevents.SummaryMeta
 
 func transcriptState(status domain.RunAgentStatus, turnCount int) (ReplayState, string) {
 	switch status {
+	case domain.RunAgentStatusCompleted:
+		return ReplayStateReady, ""
+	case domain.RunAgentStatusFailed:
+		// Mirror the replay/scorecard endpoints: a failed run-agent surfaces
+		// `errored` (HTTP 409) so a consumer checking `state == "ready"`
+		// never mistakes an interrupted conversation for a clean finish. The
+		// reconstructed turns are still returned in the body, so callers that
+		// opt in (allowedStatuses: [409]) can render the partial transcript.
+		return ReplayStateErrored, "the run-agent failed; the transcript may be partial"
 	case domain.RunAgentStatusQueued,
 		domain.RunAgentStatusReady,
 		domain.RunAgentStatusExecuting,
@@ -124,7 +133,7 @@ func transcriptState(status domain.RunAgentStatus, turnCount int) (ReplayState, 
 		}
 		return ReplayStatePending, "transcript is being recorded"
 	default:
-		return ReplayStateReady, ""
+		return ReplayStatePending, "transcript is being recorded"
 	}
 }
 

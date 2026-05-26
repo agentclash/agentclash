@@ -131,6 +131,48 @@ func TestReplayReadManager_GetRunAgentTranscript_SingleTurnHasNoTurns(t *testing
 	}
 }
 
+func TestReplayReadManager_GetRunAgentTranscript_FailedRunIsErroredButKeepsPartialTurns(t *testing.T) {
+	workspaceID := uuid.New()
+	runAgentID := uuid.New()
+
+	// A run that recorded one turn then failed: the transcript must surface
+	// `errored` (so callers don't mistake it for a clean finish) while still
+	// returning the partial conversation in the body.
+	events := []repository.RunEvent{
+		turnEvent(1, runevents.EventTypeTurnUserMessage, map[string]any{
+			"turn_index": 0, "actor": "llm", "content": "Hi",
+		}),
+		turnEvent(2, runevents.EventTypeTurnAssistantMessage, map[string]any{
+			"turn_index": 0, "content": "Hello — what's your goal?",
+		}),
+	}
+
+	manager := NewReplayReadManager(NewCallerWorkspaceAuthorizer(), &fakeReplayReadRepository{
+		runAgent: domain.RunAgent{
+			ID:          runAgentID,
+			RunID:       uuid.New(),
+			WorkspaceID: workspaceID,
+			Status:      domain.RunAgentStatusFailed,
+		},
+		runEvents: events,
+	})
+
+	result, err := manager.GetRunAgentTranscript(
+		context.Background(),
+		callerForWorkspace(workspaceID),
+		runAgentID,
+	)
+	if err != nil {
+		t.Fatalf("GetRunAgentTranscript: %v", err)
+	}
+	if result.State != ReplayStateErrored {
+		t.Fatalf("state = %q, want errored for a failed run", result.State)
+	}
+	if len(result.Turns) != 1 {
+		t.Fatalf("turn count = %d, want 1 partial turn retained", len(result.Turns))
+	}
+}
+
 func TestReplayReadManager_GetRunAgentTranscript_DeniesOtherWorkspace(t *testing.T) {
 	manager := NewReplayReadManager(NewCallerWorkspaceAuthorizer(), &fakeReplayReadRepository{
 		runAgent: domain.RunAgent{
