@@ -39,11 +39,34 @@ input_sets:
 
 ## Actors
 
-| Actor | Required fields |
-| --- | --- |
-| `scripted` | `turns[].message` |
-| `llm` | `persona` |
-| `human` | optional `timeout_ms` |
+| Actor | Required fields | Optional fields |
+| --- | --- | --- |
+| `scripted` | `turns[].message` | — |
+| `llm` | `persona` | `model` (override the inherited simulator model — see below) |
+| `human` | — | `timeout_ms` |
+
+### LLM phase `model` override
+
+`actor: llm` phases inherit provider, credentials, and **model** from the
+agent deployment by default. If the deployment runs on a model that only
+supports `/v1/responses` (e.g. `o3`, `o4-mini`, `o4-mini-deep-research`),
+inheritance fails because the simulator's provider client uses
+`/v1/chat/completions`. Pin a chat-compatible model id with `model:` to
+avoid the mismatch:
+
+```yaml
+phases:
+  - id: dynamic
+    actor: llm
+    trigger: on_assistant_mismatch
+    persona: "Frustrated customer"
+    model: "gpt-4o-mini"   # overrides the inherited reasoning-model id
+```
+
+The override only applies to `actor: llm` phases — setting `model:` on
+`scripted` or `human` phases is rejected at pack validation time. Provider
+and credentials are still inherited from the deployment, so the override
+must name a model the deployment's provider serves.
 
 ## Triggers
 
