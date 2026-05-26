@@ -45,6 +45,15 @@ type UserSimulatorPhase struct {
 	Until     []string            `yaml:"until,omitempty" json:"until,omitempty"`
 	TimeoutMS int64               `yaml:"timeout_ms,omitempty" json:"timeout_ms,omitempty"`
 	OnTimeout string              `yaml:"on_timeout,omitempty" json:"on_timeout,omitempty"`
+	// Model optionally overrides the simulator's LLM model id for `actor: llm`
+	// phases. When empty, the simulator inherits the deployment's model — but
+	// some deployments use models that only support /v1/responses (e.g.
+	// o4-mini, o3, o4-mini-deep-research) while the simulator's provider
+	// client uses /v1/chat/completions. Setting Model to a chat-compatible
+	// id (e.g. gpt-4o-mini, claude-haiku-4-5-20251001) avoids that mismatch.
+	// Provider and credentials are still inherited from the deployment, so
+	// the override must name a model that the deployment's provider serves.
+	Model string `yaml:"model,omitempty" json:"model,omitempty"`
 }
 
 type UserSimulatorTurn struct {

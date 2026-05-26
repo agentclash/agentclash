@@ -139,6 +139,16 @@ func validateUserSimulatorPhase(path string, phase UserSimulatorPhase, isFirst b
 		}
 	}
 
+	// Model is optional and only applies to llm-actor phases. Reject if set
+	// on a non-llm actor so pack authors get an early signal rather than a
+	// silent ignore.
+	if strings.TrimSpace(phase.Model) != "" && actor != UserSimulatorActorLLM {
+		errs = append(errs, ValidationError{
+			Field:   path + ".model",
+			Message: "is only valid on phases with actor: llm",
+		})
+	}
+
 	return errs
 }
 

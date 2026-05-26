@@ -74,6 +74,56 @@ func TestValidateUserSimulator_LLMPhaseRequiresPersona(t *testing.T) {
 	}
 }
 
+func TestValidateUserSimulator_AcceptsModelOverrideOnLLMPhase(t *testing.T) {
+	spec := validUserSimulatorSpec()
+	spec.Phases = append(spec.Phases, UserSimulatorPhase{
+		ID:       "dynamic",
+		Actor:    UserSimulatorActorLLM,
+		Trigger:  UserSimulatorTriggerOnAssistantMismatch,
+		Persona:  "Frustrated customer",
+		MaxTurns: 3,
+		Model:    "gpt-4o-mini",
+	})
+	errs := validateUserSimulatorSpec("user_simulator", spec, CaseDefinition{
+		Payload: map[string]any{"order_id": "123"},
+	}, nil)
+	if len(errs) > 0 {
+		t.Fatalf("validateUserSimulatorSpec rejected a valid llm phase with model override: %v", errs)
+	}
+}
+
+func TestValidateUserSimulator_RejectsModelOverrideOnNonLLMPhase(t *testing.T) {
+	cases := []struct {
+		name  string
+		actor string
+		turns []UserSimulatorTurn
+	}{
+		{name: "scripted", actor: UserSimulatorActorScripted, turns: []UserSimulatorTurn{{Message: "hi"}}},
+		{name: "human", actor: UserSimulatorActorHuman, turns: nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			spec := validUserSimulatorSpec()
+			spec.Phases = append(spec.Phases, UserSimulatorPhase{
+				ID:      "extra",
+				Actor:   tc.actor,
+				Trigger: UserSimulatorTriggerOnAssistantMismatch,
+				Turns:   tc.turns,
+				Model:   "gpt-4o-mini",
+			})
+			errs := validateUserSimulatorSpec("user_simulator", spec, CaseDefinition{
+				Payload: map[string]any{"order_id": "123"},
+			}, nil)
+			if len(errs) == 0 {
+				t.Fatal("expected validation error for model on non-llm phase")
+			}
+			if !strings.Contains(errs.Error(), "model") {
+				t.Fatalf("error = %v, want a .model field error", errs)
+			}
+		})
+	}
+}
+
 func TestValidateUserSimulator_CalibrationRequiresPositiveSampleRate(t *testing.T) {
 	spec := validUserSimulatorSpec()
 	spec.Calibration = &UserSimulatorCalibration{Enabled: true}

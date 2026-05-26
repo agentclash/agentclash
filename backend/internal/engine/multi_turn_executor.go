@@ -262,6 +262,14 @@ func (e MultiTurnExecutor) runLLMPhase(
 	if err != nil {
 		return err
 	}
+	// Pack-author override: an LLM phase may pin a chat-compatible model id
+	// when the deployment runs on a model that only supports /v1/responses
+	// (e.g. o-series reasoning models). Provider and credentials still come
+	// from the deployment, so the override must name a model the deployment's
+	// provider serves.
+	if override := strings.TrimSpace(phase.Model); override != "" {
+		model = override
+	}
 
 	phaseMax := int(phase.MaxTurns)
 	if phaseMax <= 0 {
