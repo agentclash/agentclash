@@ -16,11 +16,11 @@ const (
 )
 
 type openAIResponsesCreateRequest struct {
-	Model     string                   `json:"model"`
-	Input     []openAIResponsesMessage   `json:"input"`
-	Tools     []openAIResponsesTool      `json:"tools,omitempty"`
-	Background bool                    `json:"background,omitempty"`
-	Reasoning *openAIResponsesReasoning  `json:"reasoning,omitempty"`
+	Model      string                    `json:"model"`
+	Input      []openAIResponsesMessage  `json:"input"`
+	Tools      []openAIResponsesTool     `json:"tools,omitempty"`
+	Background bool                      `json:"background,omitempty"`
+	Reasoning  *openAIResponsesReasoning `json:"reasoning,omitempty"`
 }
 
 type openAIResponsesReasoning struct {
@@ -28,7 +28,7 @@ type openAIResponsesReasoning struct {
 }
 
 type openAIResponsesMessage struct {
-	Role    string                      `json:"role"`
+	Role    string                        `json:"role"`
 	Content []openAIResponsesContentBlock `json:"content"`
 }
 
@@ -58,8 +58,8 @@ type openAIResponsesResponse struct {
 }
 
 type openAIResponsesOutputItem struct {
-	Type    string                      `json:"type"`
-	Role    string                      `json:"role,omitempty"`
+	Type    string                        `json:"type"`
+	Role    string                        `json:"role,omitempty"`
 	Content []openAIResponsesContentBlock `json:"content,omitempty"`
 }
 
@@ -97,17 +97,12 @@ func (c OpenAICompatibleClient) InvokeResearch(ctx context.Context, request Rese
 		},
 	})
 
-	background := request.Background
-	if !background {
-		background = true
-	}
-
 	body := openAIResponsesCreateRequest{
-		Model: request.Model,
-		Input: input,
-		Tools: []openAIResponsesTool{{Type: "web_search_preview"}},
-		Background: background,
-		Reasoning: &openAIResponsesReasoning{Summary: "auto"},
+		Model:      request.Model,
+		Input:      input,
+		Tools:      []openAIResponsesTool{{Type: "web_search_preview"}},
+		Background: true,
+		Reasoning:  &openAIResponsesReasoning{Summary: "auto"},
 	}
 
 	payload, err := json.Marshal(body)
@@ -130,14 +125,14 @@ func (c OpenAICompatibleClient) InvokeResearch(ctx context.Context, request Rese
 
 	finalResp := createResp
 	finalRaw := rawCreate
-	if background && createResp.Status != "completed" && createResp.Status != "failed" && createResp.Status != "cancelled" {
+	if createResp.Status != "completed" && createResp.Status != "failed" && createResp.Status != "cancelled" && createResp.Status != "incomplete" {
 		finalResp, finalRaw, err = c.pollResponsesUntilDone(callCtx, apiKey, createResp.ID)
 		if err != nil {
 			return Response{}, err
 		}
 	}
 
-	if finalResp.Status == "failed" || finalResp.Status == "cancelled" {
+	if finalResp.Status == "failed" || finalResp.Status == "cancelled" || finalResp.Status == "incomplete" {
 		message := fmt.Sprintf("responses job ended with status %q", finalResp.Status)
 		if finalResp.Error != nil && strings.TrimSpace(finalResp.Error.Message) != "" {
 			message = finalResp.Error.Message
@@ -172,11 +167,11 @@ func (c OpenAICompatibleClient) InvokeResearch(ctx context.Context, request Rese
 		OutputText:      outputText,
 		Usage:           usage,
 		Timing: Timing{
-			StartedAt:     startedAt,
-			FirstTokenAt:  startedAt,
-			CompletedAt:   completedAt,
-			TTFT:          0,
-			TotalLatency:  completedAt.Sub(startedAt),
+			StartedAt:    startedAt,
+			FirstTokenAt: startedAt,
+			CompletedAt:  completedAt,
+			TTFT:         0,
+			TotalLatency: completedAt.Sub(startedAt),
 		},
 		RawResponse: finalRaw,
 	}, nil

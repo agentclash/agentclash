@@ -86,6 +86,37 @@ func TestOpenAICompatibleClientInvokeResearchUsesOutputTextField(t *testing.T) {
 	}
 }
 
+func TestOpenAICompatibleClientInvokeResearchRejectsIncompleteStatus(t *testing.T) {
+	httpClient := &http.Client{
+		Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			return jsonResponse(http.StatusOK, `{
+				"id":"resp_inc",
+				"status":"incomplete",
+				"model":"o4-mini-deep-research",
+				"output_text":"partial answer"
+			}`), nil
+		}),
+	}
+
+	client := NewOpenAICompatibleClient(httpClient, "https://example.com/v1", staticCredentialResolver{value: "test-key"})
+	_, err := client.InvokeResearch(context.Background(), ResearchRequest{
+		ProviderKey:         "openai",
+		CredentialReference: "env://OPENAI_API_KEY",
+		Model:               "o4-mini-deep-research",
+		Input:               "hello",
+	})
+	if err == nil {
+		t.Fatal("expected error for incomplete status")
+	}
+	failure, ok := AsFailure(err)
+	if !ok || failure.Code != FailureCodeUnavailable {
+		t.Fatalf("failure = %#v, want unavailable", failure)
+	}
+	if !strings.Contains(failure.Message, "incomplete") {
+		t.Fatalf("failure message = %q, want incomplete status", failure.Message)
+	}
+}
+
 func TestRouterInvokeResearchRejectsUnsupportedProvider(t *testing.T) {
 	router := NewRouter(map[string]Client{
 		"anthropic": NewAnthropicClient(&http.Client{}, "", "", staticCredentialResolver{value: "key"}),
