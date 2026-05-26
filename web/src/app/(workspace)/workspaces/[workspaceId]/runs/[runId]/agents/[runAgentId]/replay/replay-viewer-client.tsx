@@ -123,11 +123,15 @@ export function ReplayViewerClient({
       }
     };
     void fetchTranscript();
-    if (!isRunActiveStatus) return;
-    const interval = setInterval(() => void fetchTranscript(), HUMAN_TURN_POLL_MS);
+    // Always return a cleanup that flips `cancelled`, even on the inactive
+    // path. Otherwise a still-in-flight fetch from a prior render can resolve
+    // after a newer one and clobber the transcript with stale data.
+    const interval = isRunActiveStatus
+      ? setInterval(() => void fetchTranscript(), HUMAN_TURN_POLL_MS)
+      : undefined;
     return () => {
       cancelled = true;
-      clearInterval(interval);
+      if (interval !== undefined) clearInterval(interval);
     };
   }, [getAccessToken, agent.id, isRunActiveStatus]);
 
