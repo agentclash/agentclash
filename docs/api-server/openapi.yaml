@@ -3512,6 +3512,42 @@ paths:
               schema:
                 $ref: "#/components/schemas/ReplayResponse"
 
+  /v1/replays/{runAgentID}/transcript:
+    get:
+      operationId: getReplayTranscript
+      tags: [Replays]
+      summary: Get multi-turn conversation transcript
+      description: >
+        Returns the reconstructed multi-turn conversation transcript for an
+        agent — ordered user/assistant turns with phase, actor, and mismatch
+        metadata. Single-turn (native) runs return an empty turns array.
+        Returns 202 while the transcript is still being recorded.
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/RunAgentID"
+      responses:
+        "200":
+          description: Transcript ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TranscriptResponse"
+        "202":
+          description: Transcript recording pending
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TranscriptResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
   /v1/replays/{runAgentID}/viewer:
     get:
       operationId: getReplayViewer
@@ -9281,6 +9317,55 @@ components:
             additionalProperties: true
         pagination:
           $ref: "#/components/schemas/ReplayPagination"
+
+    TranscriptResponse:
+      type: object
+      required: [state, run_agent_id, run_id, run_agent_status, turn_count, turns]
+      properties:
+        state:
+          $ref: "#/components/schemas/ReplayState"
+        message:
+          type: string
+        run_agent_id:
+          type: string
+          format: uuid
+        run_id:
+          type: string
+          format: uuid
+        run_agent_status:
+          $ref: "#/components/schemas/RunAgentStatus"
+        turn_count:
+          type: integer
+        turns:
+          type: array
+          items:
+            $ref: "#/components/schemas/TranscriptTurn"
+
+    TranscriptTurn:
+      type: object
+      required: [turn_index, mismatch, completed, awaiting_human, user_simulated]
+      properties:
+        turn_index:
+          type: integer
+        phase_id:
+          type: string
+        actor:
+          type: string
+          description: scripted, llm, or human
+        user_message:
+          type: string
+        assistant_message:
+          type: string
+        mismatch:
+          type: boolean
+        completed:
+          type: boolean
+        awaiting_human:
+          type: boolean
+        awaiting_human_hint:
+          type: string
+        user_simulated:
+          type: boolean
 
     ReplayPayload:
       type: object

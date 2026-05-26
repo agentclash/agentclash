@@ -88,6 +88,10 @@ func (stubReplayReadService) GetRunAgentScorecard(_ context.Context, _ Caller, _
 	return GetRunAgentScorecardResult{}, errors.New("not implemented")
 }
 
+func (stubReplayReadService) GetRunAgentTranscript(_ context.Context, _ Caller, _ uuid.UUID) (GetRunAgentTranscriptResult, error) {
+	return GetRunAgentTranscriptResult{}, errors.New("not implemented")
+}
+
 func TestHealthzReturnsJSONSuccessPayload(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	recorder := httptest.NewRecorder()

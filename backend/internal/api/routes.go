@@ -116,6 +116,7 @@ func registerProtectedRoutes(
 	router.Patch("/workspaces/{workspaceID}/regression-cases/{caseID}", patchRegressionCaseHandler(logger, regressionService))
 	router.Get("/replays/{runAgentID}/viewer", getRunAgentReplayViewerHandler(logger))
 	router.Get("/replays/{runAgentID}", getRunAgentReplayHandler(logger, replayReadService))
+	router.Get("/replays/{runAgentID}/transcript", getRunAgentTranscriptHandler(logger, replayReadService))
 	router.Get("/scorecards/{runAgentID}", getRunAgentScorecardHandler(logger, replayReadService))
 	router.Post("/share-links", createShareLinkHandler(logger, publicShareService))
 	router.Delete("/share-links/{shareID}", revokeShareLinkHandler(logger, publicShareService))
