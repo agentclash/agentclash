@@ -269,8 +269,15 @@ func (e MultiTurnExecutor) runLLMPhase(
 	}
 	phaseTurns := 0
 
+	// The simulator issues its own provider call (separate from the agent
+	// loop in conversation.RunTurn) and therefore needs the conversation's
+	// run context — which has workspace secrets injected. The outer ctx
+	// here does NOT carry those secrets, so passing it would cause
+	// workspace-secret:// credential references to fail to resolve.
+	simulatorCtx := conversation.Context()
+
 	for phaseTurns < phaseMax && state.turnIndex < maxTurns {
-		message, metadata, err := e.simulator.GenerateUserMessage(ctx, simulator.Input{
+		message, metadata, err := e.simulator.GenerateUserMessage(simulatorCtx, simulator.Input{
 			Persona:           phase.Persona,
 			Transcript:        append([]simulator.TranscriptTurn(nil), state.transcript...),
 			CasePayload:       casePayloadMap(executionContext),

@@ -145,6 +145,16 @@ func (e NativeExecutor) BeginConversation(ctx context.Context, executionContext 
 	return conversation, cleanup, nil
 }
 
+// Context returns the run context that BeginConversation prepared for this
+// conversation. The returned context already has workspace secrets injected
+// (see provider.WithWorkspaceSecrets) and any run-level timeout applied. Use
+// it whenever you need to invoke a provider on behalf of this conversation
+// from outside RunTurn — notably the multi_turn user simulator, which lives
+// alongside the conversation but issues its own provider calls.
+func (c *NativeConversation) Context() context.Context {
+	return c.runCtx
+}
+
 func (c *NativeConversation) RunTurn(_ context.Context, userMessage string) (TurnResult, error) {
 	if strings.TrimSpace(userMessage) == "" {
 		return TurnResult{}, provider.NewFailure(
