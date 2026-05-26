@@ -154,7 +154,13 @@ export function TranscriptPdfDocument({
       subject={`Multi-turn transcript for ${meta.runName}`}
     >
       <Page size="A4" style={styles.page}>
-        <View style={styles.header} fixed>
+        {/* Not `fixed`: a fixed header in @react-pdf repeats at the same
+            y-offset on every page without pushing content down, so on
+            continuation pages turns would render on top of it. Rendering it
+            in normal flow puts the full metadata header on page 1 only;
+            continuation pages are identified by the fixed footer's page
+            numbers. */}
+        <View style={styles.header}>
           <Text style={styles.title}>Conversation Transcript</Text>
           <Text style={styles.subtitle}>
             {meta.agentLabel} — {meta.runName}

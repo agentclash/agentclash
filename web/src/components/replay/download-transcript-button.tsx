@@ -45,8 +45,10 @@ export function DownloadTranscriptButton({
       document.body.appendChild(link);
       link.click();
       link.remove();
-      URL.revokeObjectURL(url);
-    } catch {
+      // Delay revocation so a busy download queue has fetched the blob first.
+      setTimeout(() => URL.revokeObjectURL(url), 100);
+    } catch (err) {
+      console.error("transcript PDF generation failed", err);
       toast.error("Failed to generate transcript PDF");
     } finally {
       setGenerating(false);
