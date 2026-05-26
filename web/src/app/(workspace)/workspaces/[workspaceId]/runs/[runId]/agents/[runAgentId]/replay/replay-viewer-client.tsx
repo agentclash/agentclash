@@ -19,6 +19,7 @@ import { getRunAgentTranscript } from "@/lib/api/multi-turn";
 import { Badge } from "@/components/ui/badge";
 import { ReplayTimeline } from "@/components/replay/replay-timeline";
 import { ConversationTranscript } from "@/components/replay/conversation-transcript";
+import { DownloadTranscriptButton } from "@/components/replay/download-transcript-button";
 import { AwaitingHumanBanner } from "@/components/replay/awaiting-human-banner";
 import { Panel } from "../scorecard/components/panel";
 import { toast } from "sonner";
@@ -310,6 +311,17 @@ export function ReplayViewerClient({
           turns={transcript.turns}
           notice={
             transcript.state === "errored" ? transcript.message : undefined
+          }
+          trailing={
+            <DownloadTranscriptButton
+              turns={transcript.turns}
+              meta={{
+                agentLabel: liveAgent.label,
+                runName: run.name,
+                runId: run.id,
+                runAgentId: agent.id,
+              }}
+            />
           }
         />
       )}

@@ -15,6 +15,7 @@
     "@calcom/embed-react": "^1.5.3",
     "@lobehub/icons": "^5.5.4",
     "@monaco-editor/react": "^4.7.0",
+    "@react-pdf/renderer": "^4.5.1",
     "@react-three/fiber": "^9.6.0",
     "@vercel/analytics": "^2.0.1",
     "@vercel/blob": "^2.3.1",
