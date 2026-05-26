@@ -308,3 +308,17 @@ func NewBufferedPromptEvalObserverFactory(recorder RunEventRecorder) PromptEvalO
 		return NewBufferedObserver(inner), nil
 	}
 }
+
+func NewBufferedResponsesObserverFactory(recorder RunEventRecorder) ResponsesObserverFactory {
+	innerFactory := NewResponsesRunEventObserverFactory(recorder)
+	return func(executionContext repository.RunAgentExecutionContext) (engine.Observer, error) {
+		inner, err := innerFactory(executionContext)
+		if err != nil {
+			return nil, err
+		}
+		if _, ok := inner.(engine.NoopObserver); ok {
+			return inner, nil
+		}
+		return NewBufferedObserver(inner), nil
+	}
+}

@@ -36,6 +36,34 @@ func TestChallengePackInitWritesStarterTemplate(t *testing.T) {
 	}
 }
 
+func TestChallengePackInitWritesResponsesTemplate(t *testing.T) {
+	target := filepath.Join(t.TempDir(), "deep-research.yaml")
+
+	if err := executeCommand(t, []string{
+		"challenge-pack", "init", target,
+		"--template", "responses",
+		"--name", "Deep Research Eval",
+	}, "http://unused"); err != nil {
+		t.Fatalf("challenge-pack init error: %v", err)
+	}
+
+	data, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatalf("ReadFile() error: %v", err)
+	}
+
+	text := string(data)
+	for _, snippet := range []string{
+		"slug: deep-research-eval",
+		"name: Deep Research Eval",
+		"execution_mode: responses",
+	} {
+		if !strings.Contains(text, snippet) {
+			t.Fatalf("challenge-pack init output missing %q\n---\n%s", snippet, text)
+		}
+	}
+}
+
 func TestChallengePackInitRequiresForceToOverwrite(t *testing.T) {
 	target := filepath.Join(t.TempDir(), "support-eval.yaml")
 	if err := os.WriteFile(target, []byte("existing"), 0o644); err != nil {

@@ -11,6 +11,7 @@ func TestExecutionModeFromManifest(t *testing.T) {
 		{"empty", "", ""},
 		{"native default", `{"version":{"number":1}}`, ""},
 		{"prompt_eval", `{"version":{"execution_mode":"prompt_eval"}}`, "prompt_eval"},
+		{"responses", `{"version":{"execution_mode":"responses"}}`, "responses"},
 		{"native explicit", `{"version":{"execution_mode":"native"}}`, "native"},
 		{"invalid json", `not json`, ""},
 		{"trimmed", `{"version":{"execution_mode":"  prompt_eval  "}}`, "prompt_eval"},

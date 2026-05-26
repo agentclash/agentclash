@@ -1,0 +1,66 @@
+package engine
+
+import (
+	"context"
+	"strings"
+	"testing"
+
+	"github.com/agentclash/agentclash/backend/internal/provider"
+)
+
+func TestResponsesExecutorSingleResearchCall(t *testing.T) {
+	client := &provider.FakeResearchClient{
+		FakeClient: provider.FakeClient{
+			Response: provider.Response{
+				ProviderKey:     "openai",
+				ProviderModelID: "o4-mini-deep-research",
+				FinishReason:    "completed",
+				OutputText:      `{"title":"CS224N"}`,
+				Usage:           provider.Usage{InputTokens: 100, OutputTokens: 200, TotalTokens: 300},
+			},
+		},
+	}
+	observer := &recordingObserver{}
+	executor := NewResponsesExecutor(client, observer)
+
+	ctx := promptEvalExecutionContext()
+	ctx.ChallengePackVersion.Manifest = []byte(`{"version":{"execution_mode":"responses"}}`)
+
+	result, err := executor.Execute(context.Background(), ctx)
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if result.FinalOutput != `{"title":"CS224N"}` {
+		t.Fatalf("final output = %q", result.FinalOutput)
+	}
+	if len(client.ResearchRequests) != 1 {
+		t.Fatalf("research call count = %d, want 1", len(client.ResearchRequests))
+	}
+	req := client.ResearchRequests[0]
+	if !strings.Contains(req.Input, "French") {
+		t.Fatalf("research input missing rendered template vars: %q", req.Input)
+	}
+	if !strings.Contains(req.Instructions, "precise translator") {
+		t.Fatalf("research instructions missing policy text: %q", req.Instructions)
+	}
+	if !req.Background {
+		t.Fatalf("expected background research request")
+	}
+}
+
+func TestResponsesExecutorRejectsNonOpenAIProvider(t *testing.T) {
+	client := &provider.FakeResearchClient{}
+	executor := NewResponsesExecutor(client, &recordingObserver{})
+
+	ctx := promptEvalExecutionContext()
+	ctx.Deployment.ProviderAccount.ProviderKey = "anthropic"
+
+	_, err := executor.Execute(context.Background(), ctx)
+	if err == nil {
+		t.Fatal("expected error for non-openai provider")
+	}
+	failure, ok := provider.AsFailure(err)
+	if !ok || failure.Code != provider.FailureCodeUnsupportedCapability {
+		t.Fatalf("failure = %#v, want unsupported_capability", failure)
+	}
+}

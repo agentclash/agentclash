@@ -874,6 +874,36 @@ func TestExecutePromptEvalStepFailsWhenInvokerNotConfigured(t *testing.T) {
 	}
 }
 
+func TestExecuteResponsesStepFailsWhenInvokerNotConfigured(t *testing.T) {
+	runID := uuid.New()
+	runAgentID := uuid.New()
+	repo := newFakeRunRepository(
+		fixtureRun(runID, domain.RunStatusRunning),
+		fixtureRunAgent(runID, runAgentID, 0),
+	)
+
+	activities := NewActivities(repo, FakeWorkHooks{})
+
+	err := activities.ExecuteResponsesStep(context.Background(), RunAgentWorkflowInput{
+		RunID:      runID,
+		RunAgentID: runAgentID,
+	})
+	if err == nil {
+		t.Fatalf("expected error")
+	}
+
+	var appErr *temporal.ApplicationError
+	if !errors.As(err, &appErr) {
+		t.Fatalf("expected temporal application error, got %T", err)
+	}
+	if !appErr.NonRetryable() {
+		t.Fatalf("application error should be non-retryable, got %v", appErr)
+	}
+	if appErr.Type() != "workflow.responses_invoker_missing" {
+		t.Fatalf("application error type = %q, want workflow.responses_invoker_missing", appErr.Type())
+	}
+}
+
 func TestExecuteNativeModelStepWrapsNonRetryableProviderFailures(t *testing.T) {
 	runAgentID := uuid.New()
 	executionContext := nativeExecutionContext(uuid.New(), runAgentID)

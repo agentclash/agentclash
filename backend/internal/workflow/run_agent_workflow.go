@@ -66,6 +66,10 @@ func runAgentWorkflow(ctx sdkworkflow.Context, input RunAgentWorkflowInput) erro
 		return runPromptEvalRunAgent(ctx, input, executionContext)
 	}
 
+	if executionModeFromManifest(executionContext.ChallengePackVersion.Manifest) == challengepack.ExecutionModeResponses {
+		return runResponsesRunAgent(ctx, input, executionContext)
+	}
+
 	if executionModeFromManifest(executionContext.ChallengePackVersion.Manifest) == challengepack.ExecutionModeMultiTurn {
 		return runMultiTurnRunAgent(ctx, input, executionContext)
 	}
@@ -97,6 +101,20 @@ func runPromptEvalRunAgent(ctx sdkworkflow.Context, input RunAgentWorkflowInput,
 	return nil
 }
 
+func runResponsesRunAgent(ctx sdkworkflow.Context, input RunAgentWorkflowInput, executionContext repository.RunAgentExecutionContext) error {
+	if err := transitionRunAgentStatus(ctx, input.RunAgentID, domain.RunAgentStatusExecuting, stringPtr("responses execution started"), nil); err != nil {
+		return err
+	}
+	if err := executeResponsesStep(ctx, input, executionContext).Get(ctx, nil); err != nil {
+		return err
+	}
+	if err := transitionRunAgentStatus(ctx, input.RunAgentID, domain.RunAgentStatusEvaluating, stringPtr("responses execution completed; parent scoring pending"), nil); err != nil {
+		return err
+	}
+	warnOnReplayBuildFailure(ctx, input.RunAgentID, "successful responses execution")
+	return nil
+}
+
 func runMultiTurnRunAgent(ctx sdkworkflow.Context, input RunAgentWorkflowInput, executionContext repository.RunAgentExecutionContext) error {
 	if err := transitionRunAgentStatus(ctx, input.RunAgentID, domain.RunAgentStatusExecuting, stringPtr("multi_turn execution started"), nil); err != nil {
 		return err
@@ -123,6 +141,14 @@ func executePromptEvalStep(ctx sdkworkflow.Context, input RunAgentWorkflowInput,
 	return sdkworkflow.ExecuteActivity(
 		sdkworkflow.WithActivityOptions(ctx, nativeModelActivityOptions(executionContext)),
 		executePromptEvalStepActivityName,
+		input,
+	)
+}
+
+func executeResponsesStep(ctx sdkworkflow.Context, input RunAgentWorkflowInput, executionContext repository.RunAgentExecutionContext) sdkworkflow.Future {
+	return sdkworkflow.ExecuteActivity(
+		sdkworkflow.WithActivityOptions(ctx, nativeModelActivityOptions(executionContext)),
+		executeResponsesStepActivityName,
 		input,
 	)
 }

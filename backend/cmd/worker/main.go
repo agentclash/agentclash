@@ -122,6 +122,10 @@ func main() {
 		providerRouter,
 		workerapp.NewBufferedPromptEvalObserverFactory(eventRecorder),
 	).WithSecretsLookup(repo)
+	responsesInvoker := workerapp.NewResponsesInvokerWithObserverFactory(
+		providerRouter,
+		workerapp.NewBufferedResponsesObserverFactory(eventRecorder),
+	).WithSecretsLookup(repo)
 	multiTurnInvoker := workerapp.NewMultiTurnInvokerWithObserverFactory(
 		providerRouter,
 		sandboxProvider,
@@ -134,6 +138,7 @@ func main() {
 		HostedRunStarter:   hostedRunClient,
 		NativeModelInvoker: nativeModelInvoker,
 		PromptEvalInvoker:  promptEvalInvoker,
+		ResponsesInvoker:   responsesInvoker,
 		MultiTurnInvoker:   multiTurnInvoker,
 	})
 	orphanRunReaper := workerapp.NewRepositoryOrphanRunReaper(repo, cfg.OrphanRunReaperInterval, cfg.OrphanRunReaperThreshold, logger)
