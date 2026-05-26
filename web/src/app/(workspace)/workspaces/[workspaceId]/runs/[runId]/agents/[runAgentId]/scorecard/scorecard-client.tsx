@@ -162,7 +162,9 @@ export function ScorecardClient({
             <MetricsPanel metrics={metrics} onInspect={setInspected} />
             <JudgesPanel judges={judges} onInspect={setInspected} />
 
-            {transcript && transcript.turns.length > 0 && (
+            {transcript &&
+              (transcript.turns.length > 0 ||
+                transcript.state === "errored") && (
               <ConversationTranscript
                 turns={transcript.turns}
                 notice={
