@@ -124,6 +124,43 @@ func TestValidateUserSimulator_RejectsModelOverrideOnNonLLMPhase(t *testing.T) {
 	}
 }
 
+func TestValidateUserSimulator_EmptyActorDoesNotEmitSpuriousModelError(t *testing.T) {
+	// Regression for greptile P2 on PR #863: when actor is omitted, the
+	// "actor is required" error must fire WITHOUT a misleading second
+	// "model is only valid on phases with actor: llm" error. The second
+	// hint implies adding `actor: llm` would fix the problem when the real
+	// issue is the missing actor field.
+	spec := validUserSimulatorSpec()
+	spec.Phases = append(spec.Phases, UserSimulatorPhase{
+		ID:      "extra",
+		Actor:   "",
+		Trigger: UserSimulatorTriggerOnAssistantMismatch,
+		Model:   "gpt-4o-mini",
+	})
+	errs := validateUserSimulatorSpec("user_simulator", spec, CaseDefinition{
+		Payload: map[string]any{"order_id": "123"},
+	}, nil)
+	if len(errs) == 0 {
+		t.Fatal("expected validation errors for the empty-actor phase")
+	}
+
+	var hasActorRequired, hasModelHint bool
+	for _, e := range errs {
+		if strings.Contains(e.Field, "phases[1].actor") && strings.Contains(e.Message, "required") {
+			hasActorRequired = true
+		}
+		if strings.Contains(e.Field, "phases[1].model") {
+			hasModelHint = true
+		}
+	}
+	if !hasActorRequired {
+		t.Fatalf("expected an actor-required error; got %v", errs)
+	}
+	if hasModelHint {
+		t.Fatalf("did not expect a model-field error when actor is empty (it misleads the author); got %v", errs)
+	}
+}
+
 func TestValidateUserSimulator_CalibrationRequiresPositiveSampleRate(t *testing.T) {
 	spec := validUserSimulatorSpec()
 	spec.Calibration = &UserSimulatorCalibration{Enabled: true}
