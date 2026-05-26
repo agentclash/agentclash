@@ -62,6 +62,7 @@ type VersionMetadata struct {
 const (
 	ExecutionModeNative     = "native"
 	ExecutionModePromptEval = "prompt_eval"
+	ExecutionModeResponses  = "responses"
 	ExecutionModeMultiTurn  = "multi_turn"
 )
 

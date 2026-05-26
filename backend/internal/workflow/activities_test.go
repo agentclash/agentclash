@@ -631,6 +631,60 @@ func TestExecutePromptEvalStep(t *testing.T) {
 	})
 }
 
+func TestExecuteResponsesStep(t *testing.T) {
+	t.Run("nil invoker returns non-retryable error", func(t *testing.T) {
+		runID := uuid.New()
+		runAgentID := uuid.New()
+		repo := newFakeRunRepository(
+			fixtureRun(runID, domain.RunStatusRunning),
+			fixtureRunAgent(runID, runAgentID, 0),
+		)
+		activities := NewActivities(repo, FakeWorkHooks{})
+
+		err := activities.ExecuteResponsesStep(context.Background(), RunAgentWorkflowInput{
+			RunID:      runID,
+			RunAgentID: runAgentID,
+		})
+		if err == nil {
+			t.Fatalf("expected error")
+		}
+		var appErr *temporal.ApplicationError
+		if !errors.As(err, &appErr) {
+			t.Fatalf("expected ApplicationError, got %T", err)
+		}
+		if !appErr.NonRetryable() {
+			t.Fatalf("nil invoker error should be non-retryable")
+		}
+		if appErr.Type() != "workflow.responses_invoker_missing" {
+			t.Fatalf("type = %q, want workflow.responses_invoker_missing", appErr.Type())
+		}
+	})
+
+	t.Run("success", func(t *testing.T) {
+		runID := uuid.New()
+		runAgentID := uuid.New()
+		repo := newFakeRunRepository(
+			fixtureRun(runID, domain.RunStatusRunning),
+			fixtureRunAgent(runID, runAgentID, 0),
+		)
+		repo.setExecutionContext(runAgentID, nativeExecutionContext(runID, runAgentID))
+
+		activities := NewActivities(repo, FakeWorkHooks{
+			ResponsesInvoker: &fakeResponsesInvoker{
+				result: engine.Result{FinalOutput: `{"ok":true}`, StopReason: engine.StopReasonCompleted},
+			},
+		})
+
+		err := activities.ExecuteResponsesStep(context.Background(), RunAgentWorkflowInput{
+			RunID:      runID,
+			RunAgentID: runAgentID,
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+}
+
 func TestPrepareExecutionLane(t *testing.T) {
 	input := RunAgentWorkflowInput{RunID: uuid.New(), RunAgentID: uuid.New()}
 
@@ -866,6 +920,18 @@ type fakePromptEvalInvoker struct {
 }
 
 func (f *fakePromptEvalInvoker) InvokePromptEval(_ context.Context, _ repository.RunAgentExecutionContext) (engine.Result, error) {
+	if f.err != nil {
+		return engine.Result{}, f.err
+	}
+	return f.result, nil
+}
+
+type fakeResponsesInvoker struct {
+	result engine.Result
+	err    error
+}
+
+func (f *fakeResponsesInvoker) InvokeResponses(_ context.Context, _ repository.RunAgentExecutionContext) (engine.Result, error) {
 	if f.err != nil {
 		return engine.Result{}, f.err
 	}

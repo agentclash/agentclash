@@ -22,21 +22,44 @@ const (
 )
 
 func (e NativeExecutor) prepareSandbox(ctx context.Context, executionContext repository.RunAgentExecutionContext, request sandbox.CreateRequest) (sandbox.Session, error) {
-	session, err := e.sandboxProvider.Create(ctx, request)
+	return prepareRunSandbox(ctx, e.sandboxProvider, e.assetLoader, executionContext, request)
+}
+
+func prepareRunSandbox(ctx context.Context, sandboxProvider sandbox.Provider, assetLoader AssetLoader, executionContext repository.RunAgentExecutionContext, request sandbox.CreateRequest) (sandbox.Session, error) {
+	session, err := sandboxProvider.Create(ctx, request)
 	if err != nil {
-		return nil, NewFailure(StopReasonSandboxError, "create native sandbox", err)
+		return nil, NewFailure(StopReasonSandboxError, "create sandbox", err)
 	}
 
 	if err := stageSandboxInputs(ctx, session, executionContext); err != nil {
 		return nil, cleanupSandboxOnError(session, err)
 	}
-	if err := e.stageArtifactBackedAssets(ctx, session, executionContext); err != nil {
+	if err := stageArtifactBackedAssets(ctx, assetLoader, session, executionContext); err != nil {
 		return nil, cleanupSandboxOnError(session, err)
 	}
 	if err := applyPlantedSecretsToSession(ctx, session, executionContext.ChallengePackVersion.Manifest); err != nil {
 		return nil, cleanupSandboxOnError(session, err)
 	}
 	return session, nil
+}
+
+func manifestUsesE2BSandbox(manifest json.RawMessage) bool {
+	type manifestShape struct {
+		Sandbox    json.RawMessage `json:"sandbox"`
+		ToolPolicy json.RawMessage `json:"tool_policy"`
+	}
+
+	var decoded manifestShape
+	if err := json.Unmarshal(manifest, &decoded); err != nil {
+		return false
+	}
+	if len(decoded.Sandbox) > 0 && string(decoded.Sandbox) != "null" {
+		return true
+	}
+	if len(decoded.ToolPolicy) > 0 && string(decoded.ToolPolicy) != "null" && string(decoded.ToolPolicy) != "{}" {
+		return true
+	}
+	return false
 }
 
 func cleanupSandboxOnError(session sandbox.Session, originalErr error) error {

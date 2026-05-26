@@ -69,19 +69,24 @@ func ValidateBundle(bundle Bundle) error {
 	}
 	errs = append(errs, validateModalityConfig(bundle)...)
 	switch bundle.Version.ExecutionMode {
-	case "", ExecutionModeNative, ExecutionModePromptEval, ExecutionModeMultiTurn:
+	case "", ExecutionModeNative, ExecutionModePromptEval, ExecutionModeResponses, ExecutionModeMultiTurn:
 	default:
-		errs = append(errs, ValidationError{Field: "version.execution_mode", Message: fmt.Sprintf("must be one of %q, %q, %q", ExecutionModeNative, ExecutionModePromptEval, ExecutionModeMultiTurn)})
+		errs = append(errs, ValidationError{Field: "version.execution_mode", Message: fmt.Sprintf("must be one of %q, %q, %q, %q", ExecutionModeNative, ExecutionModePromptEval, ExecutionModeResponses, ExecutionModeMultiTurn)})
 	}
 	if bundle.Version.ExecutionMode == ExecutionModePromptEval {
 		if len(bundle.Tools) > 0 {
-			errs = append(errs, ValidationError{Field: "tools", Message: "must be empty when version.execution_mode is prompt_eval"})
+			errs = append(errs, ValidationError{Field: "tools", Message: fmt.Sprintf("must be empty when version.execution_mode is %s", bundle.Version.ExecutionMode)})
 		}
 		if bundle.Version.Sandbox != nil {
-			errs = append(errs, ValidationError{Field: "version.sandbox", Message: "must be omitted when version.execution_mode is prompt_eval"})
+			errs = append(errs, ValidationError{Field: "version.sandbox", Message: fmt.Sprintf("must be omitted when version.execution_mode is %s", bundle.Version.ExecutionMode)})
 		}
 		if len(bundle.Version.ToolPolicy) > 0 {
-			errs = append(errs, ValidationError{Field: "version.tool_policy", Message: "must be empty when version.execution_mode is prompt_eval"})
+			errs = append(errs, ValidationError{Field: "version.tool_policy", Message: fmt.Sprintf("must be empty when version.execution_mode is %s", bundle.Version.ExecutionMode)})
+		}
+	}
+	if bundle.Version.ExecutionMode == ExecutionModeResponses {
+		if len(bundle.Tools) > 0 {
+			errs = append(errs, ValidationError{Field: "tools", Message: "must be empty when version.execution_mode is responses (use OpenAI Responses tools, not pack-defined tools)"})
 		}
 	}
 	if len(bundle.Challenges) == 0 {

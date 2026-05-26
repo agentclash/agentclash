@@ -34,6 +34,7 @@ const (
 	markHostedRunTimedOutActivityName                 = "workflow.mark_hosted_run_timed_out"
 	executeNativeModelStepActivityName                = "workflow.execute_native_model_step"
 	executePromptEvalStepActivityName                 = "workflow.execute_prompt_eval_step"
+	executeResponsesStepActivityName                  = "workflow.execute_responses_step"
 	executeMultiTurnStepActivityName                  = "workflow.execute_multi_turn_step"
 	finalizeMultiTurnPostRunActivityName              = "workflow.finalize_multi_turn_post_run"
 	scoreRunAgentActivityName                         = "workflow.score_run_agent"
@@ -67,7 +68,12 @@ type FakeWorkHooks struct {
 	HostedRunStarter     HostedRunStarter
 	NativeModelInvoker   NativeModelInvoker
 	PromptEvalInvoker    PromptEvalInvoker
+	ResponsesInvoker     ResponsesInvoker
 	MultiTurnInvoker     MultiTurnInvoker
+}
+
+type ResponsesInvoker interface {
+	InvokeResponses(ctx context.Context, executionContext repository.RunAgentExecutionContext) (engine.Result, error)
 }
 
 type NativeModelInvoker interface {
@@ -431,6 +437,24 @@ func (a *Activities) ExecutePromptEvalStep(ctx context.Context, input RunAgentWo
 	}
 
 	_, err = a.hooks.PromptEvalInvoker.InvokePromptEval(ctx, executionContext)
+	return wrapActivityError(err)
+}
+
+func (a *Activities) ExecuteResponsesStep(ctx context.Context, input RunAgentWorkflowInput) error {
+	if a.hooks.ResponsesInvoker == nil {
+		return temporal.NewNonRetryableApplicationError(
+			"responses invoker not configured",
+			"workflow.responses_invoker_missing",
+			nil,
+		)
+	}
+
+	executionContext, err := a.repo.GetRunAgentExecutionContextByID(ctx, input.RunAgentID)
+	if err != nil {
+		return wrapActivityError(err)
+	}
+
+	_, err = a.hooks.ResponsesInvoker.InvokeResponses(ctx, executionContext)
 	return wrapActivityError(err)
 }
 

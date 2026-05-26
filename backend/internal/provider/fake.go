@@ -19,6 +19,19 @@ func (f *FakeClient) InvokeModel(_ context.Context, request Request) (Response, 
 	return cloneResponse(f.Response), nil
 }
 
+type FakeResearchClient struct {
+	FakeClient
+	ResearchRequests []ResearchRequest
+}
+
+func (f *FakeResearchClient) InvokeResearch(_ context.Context, request ResearchRequest) (Response, error) {
+	f.ResearchRequests = append(f.ResearchRequests, request)
+	if f.Err != nil {
+		return Response{}, f.Err
+	}
+	return cloneResponse(f.Response), nil
+}
+
 func cloneRequest(request Request) Request {
 	cloned := request
 	cloned.Messages = make([]Message, 0, len(request.Messages))

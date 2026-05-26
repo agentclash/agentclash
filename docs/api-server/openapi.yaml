@@ -6478,6 +6478,7 @@ components:
           type: string
         execution_target:
           type: string
+          enum: [native, hosted_external, prompt_eval, responses, multi_turn]
         trace_mode:
           type: string
         max_iterations:
@@ -6512,6 +6513,7 @@ components:
           type: string
         execution_target:
           type: string
+          enum: [native, hosted_external, prompt_eval, responses, multi_turn]
         trace_mode:
           type: string
         max_iterations:

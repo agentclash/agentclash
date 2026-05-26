@@ -31,6 +31,7 @@ func Register(registrar Registrar, activities *Activities) {
 	registrar.RegisterActivityWithOptions(activities.MarkHostedRunTimedOut, sdkactivity.RegisterOptions{Name: markHostedRunTimedOutActivityName})
 	registrar.RegisterActivityWithOptions(activities.ExecuteNativeModelStep, sdkactivity.RegisterOptions{Name: executeNativeModelStepActivityName})
 	registrar.RegisterActivityWithOptions(activities.ExecutePromptEvalStep, sdkactivity.RegisterOptions{Name: executePromptEvalStepActivityName})
+	registrar.RegisterActivityWithOptions(activities.ExecuteResponsesStep, sdkactivity.RegisterOptions{Name: executeResponsesStepActivityName})
 	registrar.RegisterActivityWithOptions(activities.ExecuteMultiTurnStep, sdkactivity.RegisterOptions{Name: executeMultiTurnStepActivityName})
 	registrar.RegisterActivityWithOptions(activities.FinalizeMultiTurnPostRun, sdkactivity.RegisterOptions{Name: finalizeMultiTurnPostRunActivityName})
 	registrar.RegisterActivityWithOptions(activities.ScoreRunAgent, sdkactivity.RegisterOptions{Name: scoreRunAgentActivityName})

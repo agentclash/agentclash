@@ -240,13 +240,22 @@ func mapRunAgentExecutionContext(row repositorysqlc.GetRunAgentExecutionContextB
 			Reason:     "snapshot model catalog entry reference is missing",
 		}
 	}
-	if row.SnapshotDeploymentType != row.RuntimeProfileExecutionTarget {
+	if row.SnapshotDeploymentType == "hosted_external" {
+		if row.RuntimeProfileExecutionTarget != "hosted_external" {
+			return RunAgentExecutionContext{}, FrozenExecutionContextError{
+				RunAgentID: row.RunAgentID,
+				Reason: fmt.Sprintf(
+					"hosted deployment snapshot requires runtime execution_target=hosted_external, got %q",
+					row.RuntimeProfileExecutionTarget,
+				),
+			}
+		}
+	} else if row.RuntimeProfileExecutionTarget == "hosted_external" {
 		return RunAgentExecutionContext{}, FrozenExecutionContextError{
 			RunAgentID: row.RunAgentID,
 			Reason: fmt.Sprintf(
-				"snapshot deployment_type=%q does not match runtime execution_target=%q",
+				"runtime execution_target=hosted_external requires hosted deployment snapshot, got %q",
 				row.SnapshotDeploymentType,
-				row.RuntimeProfileExecutionTarget,
 			),
 		}
 	}
