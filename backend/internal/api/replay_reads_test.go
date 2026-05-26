@@ -1100,10 +1100,16 @@ type fakeReplayReadRepository struct {
 	evaluationSpecErr  error
 	llmJudgeResults    []repository.LLMJudgeResultRecord
 	llmJudgeResultsErr error
+	runEvents          []repository.RunEvent
+	runEventsErr       error
 }
 
 func (f *fakeReplayReadRepository) GetRunAgentByID(_ context.Context, _ uuid.UUID) (domain.RunAgent, error) {
 	return f.runAgent, f.runAgentErr
+}
+
+func (f *fakeReplayReadRepository) ListRunEventsByRunAgentID(_ context.Context, _ uuid.UUID) ([]repository.RunEvent, error) {
+	return f.runEvents, f.runEventsErr
 }
 
 func (f *fakeReplayReadRepository) GetRunAgentReplayByRunAgentID(_ context.Context, _ uuid.UUID) (repository.RunAgentReplay, error) {
@@ -1127,6 +1133,8 @@ type fakeReplayReadService struct {
 	replayErr       error
 	scorecardResult GetRunAgentScorecardResult
 	scorecardErr    error
+	transcriptResult GetRunAgentTranscriptResult
+	transcriptErr    error
 }
 
 func (f *fakeReplayReadService) GetRunAgentReplay(_ context.Context, _ Caller, _ uuid.UUID, _ ReplayStepPageParams) (GetRunAgentReplayResult, error) {
@@ -1135,6 +1143,10 @@ func (f *fakeReplayReadService) GetRunAgentReplay(_ context.Context, _ Caller, _
 
 func (f *fakeReplayReadService) GetRunAgentScorecard(_ context.Context, _ Caller, _ uuid.UUID) (GetRunAgentScorecardResult, error) {
 	return f.scorecardResult, f.scorecardErr
+}
+
+func (f *fakeReplayReadService) GetRunAgentTranscript(_ context.Context, _ Caller, _ uuid.UUID) (GetRunAgentTranscriptResult, error) {
+	return f.transcriptResult, f.transcriptErr
 }
 
 func decodeReplayPayload(t *testing.T, payload []byte) map[string]any {

@@ -28,11 +28,13 @@ type ReplayReadRepository interface {
 	GetRunAgentScorecardByRunAgentID(ctx context.Context, runAgentID uuid.UUID) (repository.RunAgentScorecard, error)
 	GetEvaluationSpecByID(ctx context.Context, id uuid.UUID) (repository.EvaluationSpecRecord, error)
 	ListLLMJudgeResultsByRunAgentAndEvaluationSpec(ctx context.Context, runAgentID uuid.UUID, evaluationSpecID uuid.UUID) ([]repository.LLMJudgeResultRecord, error)
+	ListRunEventsByRunAgentID(ctx context.Context, runAgentID uuid.UUID) ([]repository.RunEvent, error)
 }
 
 type ReplayReadService interface {
 	GetRunAgentReplay(ctx context.Context, caller Caller, runAgentID uuid.UUID, page ReplayStepPageParams) (GetRunAgentReplayResult, error)
 	GetRunAgentScorecard(ctx context.Context, caller Caller, runAgentID uuid.UUID) (GetRunAgentScorecardResult, error)
+	GetRunAgentTranscript(ctx context.Context, caller Caller, runAgentID uuid.UUID) (GetRunAgentTranscriptResult, error)
 }
 
 type ReplayState string
