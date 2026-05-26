@@ -12,10 +12,13 @@ import type {
   RunAgentStatus,
   ReplayResponse,
   ReplayStep,
+  TranscriptResponse,
 } from "@/lib/api/types";
 import { isAgentAwaitingHumanInput, isRunActive } from "@/lib/run-status";
+import { getRunAgentTranscript } from "@/lib/api/multi-turn";
 import { Badge } from "@/components/ui/badge";
 import { ReplayTimeline } from "@/components/replay/replay-timeline";
+import { ConversationTranscript } from "@/components/replay/conversation-transcript";
 import { AwaitingHumanBanner } from "@/components/replay/awaiting-human-banner";
 import { Panel } from "../scorecard/components/panel";
 import { toast } from "sonner";
@@ -64,6 +67,7 @@ export function ReplayViewerClient({
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [liveAgent, setLiveAgent] = useState<RunAgent>(agent);
   const [liveRunStatus, setLiveRunStatus] = useState<Run["status"]>(run.status);
+  const [transcript, setTranscript] = useState<TranscriptResponse | null>(null);
 
   // When the inspector sheet deep-links in with ?step=<sequence>, the timeline
   // highlights + auto-scrolls to that step. NaN is filtered by the consumer.
@@ -103,6 +107,29 @@ export function ReplayViewerClient({
     const interval = setInterval(() => void refreshLiveStatus(), HUMAN_TURN_POLL_MS);
     return () => clearInterval(interval);
   }, [isRunActiveStatus, getAccessToken, run.id, agent.id]);
+
+  // Fetch the multi-turn transcript. Re-fetch while the run is active so the
+  // conversation grows live; single-turn runs simply return zero turns.
+  useEffect(() => {
+    let cancelled = false;
+    const fetchTranscript = async () => {
+      try {
+        const token = await getAccessToken();
+        const api = createApiClient(token);
+        const res = await getRunAgentTranscript(api, agent.id);
+        if (!cancelled) setTranscript(res);
+      } catch {
+        // Transcript is supplementary; ignore errors so the replay stays usable.
+      }
+    };
+    void fetchTranscript();
+    if (!isRunActiveStatus) return;
+    const interval = setInterval(() => void fetchTranscript(), HUMAN_TURN_POLL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [getAccessToken, agent.id, isRunActiveStatus]);
 
   // Auto-poll when pending
   useEffect(() => {
@@ -271,6 +298,16 @@ export function ReplayViewerClient({
             </span>
           )}
         </Panel>
+      )}
+
+      {/* Multi-turn conversation transcript (only present for multi_turn runs) */}
+      {transcript && transcript.turns.length > 0 && (
+        <ConversationTranscript
+          turns={transcript.turns}
+          notice={
+            transcript.state === "errored" ? transcript.message : undefined
+          }
+        />
       )}
 
       {/* Timeline */}
