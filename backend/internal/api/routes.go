@@ -39,6 +39,7 @@ func registerProtectedRoutes(
 	publicShareService PublicShareService,
 	billingService BillingService,
 	multiTurnService MultiTurnService,
+	vibeEvalService VibeEvalService,
 ) {
 	entitlementGate := entitlementGateFromBillingService(billingService)
 
@@ -201,6 +202,20 @@ func registerProtectedRoutes(
 		Post("/workspaces/{workspaceID}/challenge-packs", publishChallengePackHandler(logger, challengePackAuthoringService, authorizer, entitlementGate))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Post("/workspaces/{workspaceID}/challenge-packs/validate", validateChallengePackHandler(logger, challengePackAuthoringService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Post("/workspaces/{workspaceID}/vibe-eval/conversations", createVibeEvalConversationHandler(logger, vibeEvalService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Get("/workspaces/{workspaceID}/vibe-eval/conversations", listVibeEvalConversationsHandler(logger, vibeEvalService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Get("/workspaces/{workspaceID}/vibe-eval/conversations/{conversationID}", getVibeEvalConversationHandler(logger, vibeEvalService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Post("/workspaces/{workspaceID}/vibe-eval/conversations/{conversationID}/drafts", createVibeEvalDraftHandler(logger, vibeEvalService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Get("/workspaces/{workspaceID}/vibe-eval/conversations/{conversationID}/drafts", listVibeEvalDraftsHandler(logger, vibeEvalService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Get("/workspaces/{workspaceID}/vibe-eval/drafts/{draftID}", getVibeEvalDraftHandler(logger, vibeEvalService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Patch("/workspaces/{workspaceID}/vibe-eval/drafts/{draftID}", updateVibeEvalDraftHandler(logger, vibeEvalService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Get("/workspaces/{workspaceID}/artifacts", listWorkspaceArtifactsHandler(logger, artifactService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).

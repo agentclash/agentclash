@@ -39,6 +39,8 @@ type Querier interface {
 	CreateRun(ctx context.Context, arg CreateRunParams) (Run, error)
 	CreateRunAgent(ctx context.Context, arg CreateRunAgentParams) (RunAgent, error)
 	CreateRunCaseSelection(ctx context.Context, arg CreateRunCaseSelectionParams) (RunCaseSelection, error)
+	CreateVibeEvalConversation(ctx context.Context, arg CreateVibeEvalConversationParams) (VibeEvalConversation, error)
+	CreateVibeEvalDraft(ctx context.Context, arg CreateVibeEvalDraftParams) (VibeEvalDraft, error)
 	DeletePlayground(ctx context.Context, arg DeletePlaygroundParams) error
 	DeletePlaygroundTestCase(ctx context.Context, arg DeletePlaygroundTestCaseParams) error
 	FindOrganizationByDodoSubscriptionOrCustomer(ctx context.Context, arg FindOrganizationByDodoSubscriptionOrCustomerParams) (uuid.UUID, error)
@@ -73,6 +75,8 @@ type Querier interface {
 	GetRunComparisonByRunIDs(ctx context.Context, arg GetRunComparisonByRunIDsParams) (RunComparison, error)
 	GetRunScorecardByRunID(ctx context.Context, arg GetRunScorecardByRunIDParams) (RunScorecard, error)
 	GetRunnableChallengePackVersionByID(ctx context.Context, arg GetRunnableChallengePackVersionByIDParams) (ChallengePackVersion, error)
+	GetVibeEvalConversationByID(ctx context.Context, arg GetVibeEvalConversationByIDParams) (VibeEvalConversation, error)
+	GetVibeEvalDraftByID(ctx context.Context, arg GetVibeEvalDraftByIDParams) (VibeEvalDraft, error)
 	GetWorkspaceUsageWindowRaceCount(ctx context.Context, arg GetWorkspaceUsageWindowRaceCountParams) (int32, error)
 	InsertRunAgentStatusHistory(ctx context.Context, arg InsertRunAgentStatusHistoryParams) (RunAgentStatusHistory, error)
 	InsertRunEvent(ctx context.Context, arg InsertRunEventParams) (RunEvent, error)
@@ -110,6 +114,8 @@ type Querier interface {
 	ListRunnableDeploymentsWithLatestSnapshot(ctx context.Context, arg ListRunnableDeploymentsWithLatestSnapshotParams) ([]ListRunnableDeploymentsWithLatestSnapshotRow, error)
 	ListRunsByEvalSessionID(ctx context.Context, arg ListRunsByEvalSessionIDParams) ([]Run, error)
 	ListRunsByWorkspaceID(ctx context.Context, arg ListRunsByWorkspaceIDParams) ([]Run, error)
+	ListVibeEvalConversationsByWorkspaceID(ctx context.Context, arg ListVibeEvalConversationsByWorkspaceIDParams) ([]VibeEvalConversation, error)
+	ListVibeEvalDraftsByConversationID(ctx context.Context, arg ListVibeEvalDraftsByConversationIDParams) ([]VibeEvalDraft, error)
 	MarkAgentBuildVersionReady(ctx context.Context, arg MarkAgentBuildVersionReadyParams) error
 	MarkBillingCheckoutIntentCompleted(ctx context.Context, arg MarkBillingCheckoutIntentCompletedParams) (int64, error)
 	MarkHostedRunExecutionAccepted(ctx context.Context, arg MarkHostedRunExecutionAcceptedParams) (HostedRunExecution, error)
@@ -120,6 +126,7 @@ type Querier interface {
 	ResolveWorkspaceOrganization(ctx context.Context, arg ResolveWorkspaceOrganizationParams) (uuid.UUID, error)
 	SetPlaygroundExperimentTemporalIDs(ctx context.Context, arg SetPlaygroundExperimentTemporalIDsParams) (PlaygroundExperiment, error)
 	SetRunTemporalIDs(ctx context.Context, arg SetRunTemporalIDsParams) (Run, error)
+	SetVibeEvalConversationActiveDraft(ctx context.Context, arg SetVibeEvalConversationActiveDraftParams) (VibeEvalConversation, error)
 	UpdateAgentBuildVersionDraft(ctx context.Context, arg UpdateAgentBuildVersionDraftParams) error
 	UpdateEvalSessionStatus(ctx context.Context, arg UpdateEvalSessionStatusParams) (EvalSession, error)
 	UpdatePlayground(ctx context.Context, arg UpdatePlaygroundParams) (Playground, error)
@@ -127,6 +134,7 @@ type Querier interface {
 	UpdatePlaygroundTestCase(ctx context.Context, arg UpdatePlaygroundTestCaseParams) (PlaygroundTestCase, error)
 	UpdateRunAgentStatus(ctx context.Context, arg UpdateRunAgentStatusParams) (RunAgent, error)
 	UpdateRunStatus(ctx context.Context, arg UpdateRunStatusParams) (Run, error)
+	UpdateVibeEvalDraft(ctx context.Context, arg UpdateVibeEvalDraftParams) (VibeEvalDraft, error)
 	UpsertBillingAccount(ctx context.Context, arg UpsertBillingAccountParams) error
 	UpsertBillingSubscription(ctx context.Context, arg UpsertBillingSubscriptionParams) (BillingSubscription, error)
 	UpsertCrossRunComparison(ctx context.Context, arg UpsertCrossRunComparisonParams) (RunComparison, error)

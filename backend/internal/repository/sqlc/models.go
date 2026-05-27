@@ -409,6 +409,37 @@ type RunStatusHistory struct {
 	ChangedAt       pgtype.Timestamptz
 }
 
+type VibeEvalConversation struct {
+	ID              uuid.UUID
+	OrganizationID  uuid.UUID
+	WorkspaceID     uuid.UUID
+	CreatedByUserID uuid.UUID
+	Title           string
+	Phase           string
+	Status          string
+	ActiveDraftID   *uuid.UUID
+	CreatedAt       pgtype.Timestamptz
+	UpdatedAt       pgtype.Timestamptz
+	ArchivedAt      pgtype.Timestamptz
+}
+
+type VibeEvalDraft struct {
+	ID                              uuid.UUID
+	OrganizationID                  uuid.UUID
+	WorkspaceID                     uuid.UUID
+	ConversationID                  uuid.UUID
+	DraftKind                       string
+	Content                         []byte
+	ValidationState                 string
+	ValidationErrors                []byte
+	PublishedChallengePackID        *uuid.UUID
+	PublishedChallengePackVersionID *uuid.UUID
+	CreatedByUserID                 uuid.UUID
+	UpdatedByUserID                 uuid.UUID
+	CreatedAt                       pgtype.Timestamptz
+	UpdatedAt                       pgtype.Timestamptz
+}
+
 type WorkspaceRegressionCase struct {
 	ID                           uuid.UUID
 	SuiteID                      uuid.UUID
