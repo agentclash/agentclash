@@ -83,3 +83,47 @@ SET
     updated_by_user_id = @updated_by_user_id
 WHERE id = @id
 RETURNING *;
+
+-- name: MarkVibeEvalDraftValidation :one
+UPDATE vibe_eval_drafts
+SET
+    validation_state = @validation_state,
+    validation_errors = @validation_errors,
+    updated_by_user_id = @updated_by_user_id
+WHERE id = @id
+RETURNING *;
+
+-- name: MarkVibeEvalDraftPublished :one
+UPDATE vibe_eval_drafts
+SET
+    validation_state = 'valid',
+    validation_errors = '[]'::jsonb,
+    published_challenge_pack_id = @published_challenge_pack_id,
+    published_challenge_pack_version_id = @published_challenge_pack_version_id,
+    updated_by_user_id = @updated_by_user_id
+WHERE id = @id
+RETURNING *;
+
+-- name: CreateVibeEvalDraftEvent :exec
+INSERT INTO vibe_eval_draft_events (
+    organization_id,
+    workspace_id,
+    conversation_id,
+    draft_id,
+    actor_user_id,
+    action,
+    payload_hash,
+    request_payload,
+    result_payload
+)
+VALUES (
+    @organization_id,
+    @workspace_id,
+    @conversation_id,
+    @draft_id,
+    @actor_user_id,
+    @action,
+    @payload_hash,
+    @request_payload,
+    @result_payload
+);

@@ -2,6 +2,8 @@ package api
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -26,6 +28,9 @@ type VibeEvalRepository interface {
 	ListVibeEvalDraftsByConversationID(ctx context.Context, conversationID uuid.UUID) ([]repository.VibeEvalDraft, error)
 	GetVibeEvalDraftByID(ctx context.Context, id uuid.UUID) (repository.VibeEvalDraft, error)
 	UpdateVibeEvalDraft(ctx context.Context, params repository.UpdateVibeEvalDraftParams) (repository.VibeEvalDraft, error)
+	MarkVibeEvalDraftValidation(ctx context.Context, params repository.MarkVibeEvalDraftValidationParams) (repository.VibeEvalDraft, error)
+	MarkVibeEvalDraftPublished(ctx context.Context, params repository.MarkVibeEvalDraftPublishedParams) (repository.VibeEvalDraft, error)
+	CreateVibeEvalDraftEvent(ctx context.Context, params repository.CreateVibeEvalDraftEventParams) error
 }
 
 type VibeEvalService interface {
@@ -36,15 +41,18 @@ type VibeEvalService interface {
 	ListDrafts(ctx context.Context, caller Caller, input ListVibeEvalDraftsInput) ([]repository.VibeEvalDraft, error)
 	GetDraft(ctx context.Context, caller Caller, input GetVibeEvalDraftInput) (repository.VibeEvalDraft, error)
 	UpdateDraft(ctx context.Context, caller Caller, input UpdateVibeEvalDraftInput) (repository.VibeEvalDraft, error)
+	ValidateDraft(ctx context.Context, caller Caller, input ValidateVibeEvalDraftInput) (ValidateVibeEvalDraftResult, error)
+	PublishDraft(ctx context.Context, caller Caller, input PublishVibeEvalDraftInput) (PublishVibeEvalDraftResult, error)
 }
 
 type VibeEvalManager struct {
-	authorizer WorkspaceAuthorizer
-	repo       VibeEvalRepository
+	authorizer             WorkspaceAuthorizer
+	repo                   VibeEvalRepository
+	challengePackAuthoring ChallengePackAuthoringService
 }
 
-func NewVibeEvalManager(authorizer WorkspaceAuthorizer, repo VibeEvalRepository) *VibeEvalManager {
-	return &VibeEvalManager{authorizer: authorizer, repo: repo}
+func NewVibeEvalManager(authorizer WorkspaceAuthorizer, repo VibeEvalRepository, challengePackAuthoring ChallengePackAuthoringService) *VibeEvalManager {
+	return &VibeEvalManager{authorizer: authorizer, repo: repo, challengePackAuthoring: challengePackAuthoring}
 }
 
 type VibeEvalValidationError struct {
@@ -53,6 +61,13 @@ type VibeEvalValidationError struct {
 }
 
 func (e VibeEvalValidationError) Error() string { return e.Message }
+
+type VibeEvalConfirmationRequiredError struct {
+	PayloadHash string
+	Summary     string
+}
+
+func (e VibeEvalConfirmationRequiredError) Error() string { return "confirmation required" }
 
 type CreateVibeEvalConversationInput struct {
 	WorkspaceID uuid.UUID
@@ -90,6 +105,34 @@ type UpdateVibeEvalDraftInput struct {
 	Content          json.RawMessage
 	ValidationState  string
 	ValidationErrors json.RawMessage
+}
+
+type ValidateVibeEvalDraftInput struct {
+	WorkspaceID uuid.UUID
+	DraftID     uuid.UUID
+}
+
+type PublishVibeEvalDraftInput struct {
+	WorkspaceID       uuid.UUID
+	DraftID           uuid.UUID
+	ConfirmationToken string
+}
+
+type ValidateVibeEvalDraftResult struct {
+	Draft       repository.VibeEvalDraft
+	Valid       bool
+	Errors      []validationErrorDetail
+	PayloadHash string
+}
+
+type PublishVibeEvalDraftResult struct {
+	Draft                  repository.VibeEvalDraft
+	ChallengePackID        uuid.UUID
+	ChallengePackVersionID uuid.UUID
+	EvaluationSpecID       uuid.UUID
+	InputSetIDs            []uuid.UUID
+	BundleArtifactID       *uuid.UUID
+	PayloadHash            string
 }
 
 func (m *VibeEvalManager) CreateConversation(ctx context.Context, caller Caller, input CreateVibeEvalConversationInput) (repository.VibeEvalConversation, error) {
@@ -220,6 +263,139 @@ func (m *VibeEvalManager) UpdateDraft(ctx context.Context, caller Caller, input 
 	})
 }
 
+func (m *VibeEvalManager) ValidateDraft(ctx context.Context, caller Caller, input ValidateVibeEvalDraftInput) (ValidateVibeEvalDraftResult, error) {
+	draft, err := m.GetDraft(ctx, caller, GetVibeEvalDraftInput{WorkspaceID: input.WorkspaceID, DraftID: input.DraftID})
+	if err != nil {
+		return ValidateVibeEvalDraftResult{}, err
+	}
+	if err := AuthorizeWorkspaceAction(ctx, m.authorizer, caller, draft.WorkspaceID, ActionManageVibeEvalDrafts); err != nil {
+		return ValidateVibeEvalDraftResult{}, err
+	}
+	if draft.DraftKind != "challenge_pack" {
+		return ValidateVibeEvalDraftResult{}, VibeEvalValidationError{Code: "validation_error", Message: "draft must be a challenge_pack draft"}
+	}
+	if m.challengePackAuthoring == nil {
+		return ValidateVibeEvalDraftResult{}, errors.New("challenge pack authoring service is not configured")
+	}
+	bundleYAML, err := vibeEvalDraftBundleYAML(draft)
+	if err != nil {
+		return ValidateVibeEvalDraftResult{}, err
+	}
+	payloadHash := vibeEvalPayloadHash(bundleYAML)
+	validation, err := m.challengePackAuthoring.ValidateBundle(ctx, draft.WorkspaceID, bundleYAML)
+	if err != nil {
+		return ValidateVibeEvalDraftResult{}, err
+	}
+	validationErrors, err := json.Marshal(validation.Errors)
+	if err != nil {
+		return ValidateVibeEvalDraftResult{}, fmt.Errorf("marshal validation errors: %w", err)
+	}
+	state := "invalid"
+	if validation.Valid {
+		state = "valid"
+		validationErrors = []byte("[]")
+	}
+	updated, err := m.repo.MarkVibeEvalDraftValidation(ctx, repository.MarkVibeEvalDraftValidationParams{
+		ID:               draft.ID,
+		ValidationState:  state,
+		ValidationErrors: validationErrors,
+		UpdatedByUserID:  caller.UserID,
+	})
+	if err != nil {
+		return ValidateVibeEvalDraftResult{}, err
+	}
+	if err := m.auditVibeEvalDraftEvent(ctx, caller, updated, "validate_challenge_pack", payloadHash, map[string]any{
+		"draft_kind": draft.DraftKind,
+	}, map[string]any{
+		"valid":  validation.Valid,
+		"errors": validation.Errors,
+	}); err != nil {
+		return ValidateVibeEvalDraftResult{}, err
+	}
+	return ValidateVibeEvalDraftResult{
+		Draft:       updated,
+		Valid:       validation.Valid,
+		Errors:      validation.Errors,
+		PayloadHash: payloadHash,
+	}, nil
+}
+
+func (m *VibeEvalManager) PublishDraft(ctx context.Context, caller Caller, input PublishVibeEvalDraftInput) (PublishVibeEvalDraftResult, error) {
+	draft, err := m.GetDraft(ctx, caller, GetVibeEvalDraftInput{WorkspaceID: input.WorkspaceID, DraftID: input.DraftID})
+	if err != nil {
+		return PublishVibeEvalDraftResult{}, err
+	}
+	if err := AuthorizeWorkspaceAction(ctx, m.authorizer, caller, draft.WorkspaceID, ActionPublishChallengePack); err != nil {
+		return PublishVibeEvalDraftResult{}, err
+	}
+	if draft.DraftKind != "challenge_pack" {
+		return PublishVibeEvalDraftResult{}, VibeEvalValidationError{Code: "validation_error", Message: "draft must be a challenge_pack draft"}
+	}
+	if draft.ValidationState != "valid" {
+		return PublishVibeEvalDraftResult{}, VibeEvalValidationError{Code: "validation_error", Message: "draft must validate before publish"}
+	}
+	if m.challengePackAuthoring == nil {
+		return PublishVibeEvalDraftResult{}, errors.New("challenge pack authoring service is not configured")
+	}
+	bundleYAML, err := vibeEvalDraftBundleYAML(draft)
+	if err != nil {
+		return PublishVibeEvalDraftResult{}, err
+	}
+	payloadHash := vibeEvalPayloadHash(bundleYAML)
+	if strings.TrimSpace(input.ConfirmationToken) != payloadHash {
+		return PublishVibeEvalDraftResult{}, VibeEvalConfirmationRequiredError{
+			PayloadHash: payloadHash,
+			Summary:     "Publish this validated Vibe Eval draft as a runnable challenge pack.",
+		}
+	}
+	published, err := m.challengePackAuthoring.PublishBundle(ctx, draft.WorkspaceID, bundleYAML)
+	if err != nil {
+		var validationErr ChallengePackAuthoringValidationError
+		if errors.As(err, &validationErr) {
+			validationErrors, marshalErr := json.Marshal(validationErr.Errors)
+			if marshalErr != nil {
+				return PublishVibeEvalDraftResult{}, fmt.Errorf("marshal validation errors: %w", marshalErr)
+			}
+			_, _ = m.repo.MarkVibeEvalDraftValidation(ctx, repository.MarkVibeEvalDraftValidationParams{
+				ID:               draft.ID,
+				ValidationState:  "invalid",
+				ValidationErrors: validationErrors,
+				UpdatedByUserID:  caller.UserID,
+			})
+		}
+		return PublishVibeEvalDraftResult{}, err
+	}
+	updated, err := m.repo.MarkVibeEvalDraftPublished(ctx, repository.MarkVibeEvalDraftPublishedParams{
+		ID:                              draft.ID,
+		PublishedChallengePackID:        published.ChallengePackID,
+		PublishedChallengePackVersionID: published.ChallengePackVersionID,
+		UpdatedByUserID:                 caller.UserID,
+	})
+	if err != nil {
+		return PublishVibeEvalDraftResult{}, err
+	}
+	if err := m.auditVibeEvalDraftEvent(ctx, caller, updated, "publish_challenge_pack", payloadHash, map[string]any{
+		"confirmation_token": payloadHash,
+	}, map[string]any{
+		"challenge_pack_id":         published.ChallengePackID,
+		"challenge_pack_version_id": published.ChallengePackVersionID,
+		"evaluation_spec_id":        published.EvaluationSpecID,
+		"input_set_ids":             published.InputSetIDs,
+		"bundle_artifact_id":        published.BundleArtifactID,
+	}); err != nil {
+		return PublishVibeEvalDraftResult{}, err
+	}
+	return PublishVibeEvalDraftResult{
+		Draft:                  updated,
+		ChallengePackID:        published.ChallengePackID,
+		ChallengePackVersionID: published.ChallengePackVersionID,
+		EvaluationSpecID:       published.EvaluationSpecID,
+		InputSetIDs:            published.InputSetIDs,
+		BundleArtifactID:       published.BundleArtifactID,
+		PayloadHash:            payloadHash,
+	}, nil
+}
+
 func validVibeEvalPhase(phase string) bool {
 	switch phase {
 	case "plan", "author", "validate", "publish", "run", "analyze", "regress", "admin":
@@ -286,6 +462,58 @@ func normalizeArrayJSON(raw json.RawMessage) json.RawMessage {
 	return append(json.RawMessage(nil), raw...)
 }
 
+func vibeEvalDraftBundleYAML(draft repository.VibeEvalDraft) ([]byte, error) {
+	var content struct {
+		BundleYAML   string `json:"bundle_yaml"`
+		YAML         string `json:"yaml"`
+		ManifestYAML string `json:"manifest_yaml"`
+	}
+	if err := json.Unmarshal(draft.Content, &content); err != nil {
+		return nil, VibeEvalValidationError{Code: "validation_error", Message: "draft content must be a JSON object"}
+	}
+	bundleYAML := strings.TrimSpace(content.BundleYAML)
+	if bundleYAML == "" {
+		bundleYAML = strings.TrimSpace(content.YAML)
+	}
+	if bundleYAML == "" {
+		bundleYAML = strings.TrimSpace(content.ManifestYAML)
+	}
+	if bundleYAML == "" {
+		return nil, VibeEvalValidationError{Code: "validation_error", Message: "challenge_pack draft content must include bundle_yaml"}
+	}
+	return []byte(bundleYAML), nil
+}
+
+func vibeEvalPayloadHash(payload []byte) string {
+	sum := sha256.Sum256(payload)
+	return "sha256:" + hex.EncodeToString(sum[:])
+}
+
+func marshalVibeEvalEventPayload(payload map[string]any) json.RawMessage {
+	if len(payload) == 0 {
+		return json.RawMessage(`{}`)
+	}
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return json.RawMessage(`{"error":"payload_marshal_failed"}`)
+	}
+	return encoded
+}
+
+func (m *VibeEvalManager) auditVibeEvalDraftEvent(ctx context.Context, caller Caller, draft repository.VibeEvalDraft, action string, payloadHash string, request map[string]any, result map[string]any) error {
+	return m.repo.CreateVibeEvalDraftEvent(ctx, repository.CreateVibeEvalDraftEventParams{
+		OrganizationID: draft.OrganizationID,
+		WorkspaceID:    draft.WorkspaceID,
+		ConversationID: draft.ConversationID,
+		DraftID:        draft.ID,
+		ActorUserID:    caller.UserID,
+		Action:         action,
+		PayloadHash:    payloadHash,
+		RequestPayload: marshalVibeEvalEventPayload(request),
+		ResultPayload:  marshalVibeEvalEventPayload(result),
+	})
+}
+
 type vibeEvalConversationResponse struct {
 	ID              uuid.UUID  `json:"id"`
 	OrganizationID  uuid.UUID  `json:"organization_id"`
@@ -314,6 +542,23 @@ type vibeEvalDraftResponse struct {
 	UpdatedByUserID                 uuid.UUID       `json:"updated_by_user_id"`
 	CreatedAt                       string          `json:"created_at"`
 	UpdatedAt                       string          `json:"updated_at"`
+}
+
+type validateVibeEvalDraftResponse struct {
+	Draft       vibeEvalDraftResponse   `json:"draft"`
+	Valid       bool                    `json:"valid"`
+	Errors      []validationErrorDetail `json:"errors"`
+	PayloadHash string                  `json:"payload_hash"`
+}
+
+type publishVibeEvalDraftResponse struct {
+	Draft                  vibeEvalDraftResponse `json:"draft"`
+	ChallengePackID        uuid.UUID             `json:"challenge_pack_id"`
+	ChallengePackVersionID uuid.UUID             `json:"challenge_pack_version_id"`
+	EvaluationSpecID       uuid.UUID             `json:"evaluation_spec_id"`
+	InputSetIDs            []uuid.UUID           `json:"input_set_ids"`
+	BundleArtifactID       *uuid.UUID            `json:"bundle_artifact_id,omitempty"`
+	PayloadHash            string                `json:"payload_hash"`
 }
 
 func createVibeEvalConversationHandler(logger *slog.Logger, service VibeEvalService) http.HandlerFunc {
@@ -490,6 +735,67 @@ func updateVibeEvalDraftHandler(logger *slog.Logger, service VibeEvalService) ht
 	}
 }
 
+func validateVibeEvalDraftHandler(logger *slog.Logger, service VibeEvalService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		caller, workspaceID, ok := vibeEvalCallerAndWorkspace(w, r)
+		if !ok {
+			return
+		}
+		draftID, ok := parseVibeEvalURLUUID(w, "draftID", "invalid_draft_id", r)
+		if !ok {
+			return
+		}
+		result, err := service.ValidateDraft(r.Context(), caller, ValidateVibeEvalDraftInput{WorkspaceID: workspaceID, DraftID: draftID})
+		if err != nil {
+			handleVibeEvalError(w, logger, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, validateVibeEvalDraftResponse{
+			Draft:       mapVibeEvalDraftResponse(result.Draft),
+			Valid:       result.Valid,
+			Errors:      result.Errors,
+			PayloadHash: result.PayloadHash,
+		})
+	}
+}
+
+func publishVibeEvalDraftHandler(logger *slog.Logger, service VibeEvalService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		caller, workspaceID, ok := vibeEvalCallerAndWorkspace(w, r)
+		if !ok {
+			return
+		}
+		draftID, ok := parseVibeEvalURLUUID(w, "draftID", "invalid_draft_id", r)
+		if !ok {
+			return
+		}
+		var req struct {
+			ConfirmationToken string `json:"confirmation_token"`
+		}
+		if !decodeVibeEvalJSON(w, r, &req) {
+			return
+		}
+		result, err := service.PublishDraft(r.Context(), caller, PublishVibeEvalDraftInput{
+			WorkspaceID:       workspaceID,
+			DraftID:           draftID,
+			ConfirmationToken: req.ConfirmationToken,
+		})
+		if err != nil {
+			handleVibeEvalError(w, logger, err)
+			return
+		}
+		writeJSON(w, http.StatusCreated, publishVibeEvalDraftResponse{
+			Draft:                  mapVibeEvalDraftResponse(result.Draft),
+			ChallengePackID:        result.ChallengePackID,
+			ChallengePackVersionID: result.ChallengePackVersionID,
+			EvaluationSpecID:       result.EvaluationSpecID,
+			InputSetIDs:            result.InputSetIDs,
+			BundleArtifactID:       result.BundleArtifactID,
+			PayloadHash:            result.PayloadHash,
+		})
+	}
+}
+
 func vibeEvalCallerAndWorkspace(w http.ResponseWriter, r *http.Request) (Caller, uuid.UUID, bool) {
 	caller, err := CallerFromContext(r.Context())
 	if err != nil {
@@ -526,13 +832,29 @@ func decodeVibeEvalJSON(w http.ResponseWriter, r *http.Request, dest any) bool {
 
 func handleVibeEvalError(w http.ResponseWriter, logger *slog.Logger, err error) {
 	var validationErr VibeEvalValidationError
+	var confirmationErr VibeEvalConfirmationRequiredError
+	var challengePackValidationErr ChallengePackAuthoringValidationError
 	switch {
 	case errors.As(err, &validationErr):
 		writeError(w, http.StatusBadRequest, validationErr.Code, validationErr.Message)
+	case errors.As(err, &confirmationErr):
+		writeJSON(w, http.StatusConflict, map[string]any{
+			"error": map[string]any{
+				"code":         "confirmation_required",
+				"message":      confirmationErr.Summary,
+				"payload_hash": confirmationErr.PayloadHash,
+			},
+		})
+	case errors.As(err, &challengePackValidationErr):
+		writeJSON(w, http.StatusBadRequest, ValidateChallengePackResponse{Valid: false, Errors: challengePackValidationErr.Errors})
 	case errors.Is(err, repository.ErrVibeEvalConversationNotFound):
 		writeError(w, http.StatusNotFound, "conversation_not_found", "vibe eval conversation not found")
 	case errors.Is(err, repository.ErrVibeEvalDraftNotFound):
 		writeError(w, http.StatusNotFound, "draft_not_found", "vibe eval draft not found")
+	case errors.Is(err, repository.ErrChallengePackVersionExists):
+		writeError(w, http.StatusConflict, "challenge_pack_version_exists", err.Error())
+	case errors.Is(err, repository.ErrChallengePackMetadataConflict):
+		writeError(w, http.StatusConflict, "challenge_pack_metadata_conflict", err.Error())
 	case errors.Is(err, ErrForbidden):
 		writeAuthzError(w, err)
 	default:

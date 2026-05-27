@@ -76,6 +76,32 @@ type UpdateVibeEvalDraftParams struct {
 	UpdatedByUserID  uuid.UUID
 }
 
+type MarkVibeEvalDraftValidationParams struct {
+	ID               uuid.UUID
+	ValidationState  string
+	ValidationErrors json.RawMessage
+	UpdatedByUserID  uuid.UUID
+}
+
+type MarkVibeEvalDraftPublishedParams struct {
+	ID                              uuid.UUID
+	PublishedChallengePackID        uuid.UUID
+	PublishedChallengePackVersionID uuid.UUID
+	UpdatedByUserID                 uuid.UUID
+}
+
+type CreateVibeEvalDraftEventParams struct {
+	OrganizationID uuid.UUID
+	WorkspaceID    uuid.UUID
+	ConversationID uuid.UUID
+	DraftID        uuid.UUID
+	ActorUserID    uuid.UUID
+	Action         string
+	PayloadHash    string
+	RequestPayload json.RawMessage
+	ResultPayload  json.RawMessage
+}
+
 func (r *Repository) CreateVibeEvalConversation(ctx context.Context, params CreateVibeEvalConversationParams) (VibeEvalConversation, error) {
 	row, err := r.queries.CreateVibeEvalConversation(ctx, repositorysqlc.CreateVibeEvalConversationParams{
 		OrganizationID:  params.OrganizationID,
@@ -189,6 +215,52 @@ func (r *Repository) UpdateVibeEvalDraft(ctx context.Context, params UpdateVibeE
 		return VibeEvalDraft{}, err
 	}
 	return mapVibeEvalDraft(row)
+}
+
+func (r *Repository) MarkVibeEvalDraftValidation(ctx context.Context, params MarkVibeEvalDraftValidationParams) (VibeEvalDraft, error) {
+	row, err := r.queries.MarkVibeEvalDraftValidation(ctx, repositorysqlc.MarkVibeEvalDraftValidationParams{
+		ID:               params.ID,
+		ValidationState:  params.ValidationState,
+		ValidationErrors: params.ValidationErrors,
+		UpdatedByUserID:  params.UpdatedByUserID,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return VibeEvalDraft{}, ErrVibeEvalDraftNotFound
+		}
+		return VibeEvalDraft{}, err
+	}
+	return mapVibeEvalDraft(row)
+}
+
+func (r *Repository) MarkVibeEvalDraftPublished(ctx context.Context, params MarkVibeEvalDraftPublishedParams) (VibeEvalDraft, error) {
+	row, err := r.queries.MarkVibeEvalDraftPublished(ctx, repositorysqlc.MarkVibeEvalDraftPublishedParams{
+		ID:                              params.ID,
+		PublishedChallengePackID:        &params.PublishedChallengePackID,
+		PublishedChallengePackVersionID: &params.PublishedChallengePackVersionID,
+		UpdatedByUserID:                 params.UpdatedByUserID,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return VibeEvalDraft{}, ErrVibeEvalDraftNotFound
+		}
+		return VibeEvalDraft{}, err
+	}
+	return mapVibeEvalDraft(row)
+}
+
+func (r *Repository) CreateVibeEvalDraftEvent(ctx context.Context, params CreateVibeEvalDraftEventParams) error {
+	return r.queries.CreateVibeEvalDraftEvent(ctx, repositorysqlc.CreateVibeEvalDraftEventParams{
+		OrganizationID: params.OrganizationID,
+		WorkspaceID:    params.WorkspaceID,
+		ConversationID: params.ConversationID,
+		DraftID:        params.DraftID,
+		ActorUserID:    params.ActorUserID,
+		Action:         params.Action,
+		PayloadHash:    params.PayloadHash,
+		RequestPayload: []byte(params.RequestPayload),
+		ResultPayload:  []byte(params.ResultPayload),
+	})
 }
 
 func mapVibeEvalConversation(row repositorysqlc.VibeEvalConversation) (VibeEvalConversation, error) {

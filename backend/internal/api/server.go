@@ -421,6 +421,12 @@ func (noopVibeEvalService) GetDraft(context.Context, Caller, GetVibeEvalDraftInp
 func (noopVibeEvalService) UpdateDraft(context.Context, Caller, UpdateVibeEvalDraftInput) (repository.VibeEvalDraft, error) {
 	return repository.VibeEvalDraft{}, errors.New("vibe eval service is not configured")
 }
+func (noopVibeEvalService) ValidateDraft(context.Context, Caller, ValidateVibeEvalDraftInput) (ValidateVibeEvalDraftResult, error) {
+	return ValidateVibeEvalDraftResult{}, errors.New("vibe eval service is not configured")
+}
+func (noopVibeEvalService) PublishDraft(context.Context, Caller, PublishVibeEvalDraftInput) (PublishVibeEvalDraftResult, error) {
+	return PublishVibeEvalDraftResult{}, errors.New("vibe eval service is not configured")
+}
 
 type noopCompareReadService struct{}
 

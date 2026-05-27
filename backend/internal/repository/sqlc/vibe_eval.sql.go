@@ -136,6 +136,58 @@ func (q *Queries) CreateVibeEvalDraft(ctx context.Context, arg CreateVibeEvalDra
 	return i, err
 }
 
+const createVibeEvalDraftEvent = `-- name: CreateVibeEvalDraftEvent :exec
+INSERT INTO vibe_eval_draft_events (
+    organization_id,
+    workspace_id,
+    conversation_id,
+    draft_id,
+    actor_user_id,
+    action,
+    payload_hash,
+    request_payload,
+    result_payload
+)
+VALUES (
+    $1,
+    $2,
+    $3,
+    $4,
+    $5,
+    $6,
+    $7,
+    $8,
+    $9
+)
+`
+
+type CreateVibeEvalDraftEventParams struct {
+	OrganizationID uuid.UUID
+	WorkspaceID    uuid.UUID
+	ConversationID uuid.UUID
+	DraftID        uuid.UUID
+	ActorUserID    uuid.UUID
+	Action         string
+	PayloadHash    string
+	RequestPayload []byte
+	ResultPayload  []byte
+}
+
+func (q *Queries) CreateVibeEvalDraftEvent(ctx context.Context, arg CreateVibeEvalDraftEventParams) error {
+	_, err := q.db.Exec(ctx, createVibeEvalDraftEvent,
+		arg.OrganizationID,
+		arg.WorkspaceID,
+		arg.ConversationID,
+		arg.DraftID,
+		arg.ActorUserID,
+		arg.Action,
+		arg.PayloadHash,
+		arg.RequestPayload,
+		arg.ResultPayload,
+	)
+	return err
+}
+
 const getVibeEvalConversationByID = `-- name: GetVibeEvalConversationByID :one
 SELECT id, organization_id, workspace_id, created_by_user_id, title, phase, status, active_draft_id, created_at, updated_at, archived_at
 FROM vibe_eval_conversations
@@ -288,6 +340,96 @@ func (q *Queries) ListVibeEvalDraftsByConversationID(ctx context.Context, arg Li
 		return nil, err
 	}
 	return items, nil
+}
+
+const markVibeEvalDraftPublished = `-- name: MarkVibeEvalDraftPublished :one
+UPDATE vibe_eval_drafts
+SET
+    validation_state = 'valid',
+    validation_errors = '[]'::jsonb,
+    published_challenge_pack_id = $1,
+    published_challenge_pack_version_id = $2,
+    updated_by_user_id = $3
+WHERE id = $4
+RETURNING id, organization_id, workspace_id, conversation_id, draft_kind, content, validation_state, validation_errors, published_challenge_pack_id, published_challenge_pack_version_id, created_by_user_id, updated_by_user_id, created_at, updated_at
+`
+
+type MarkVibeEvalDraftPublishedParams struct {
+	PublishedChallengePackID        *uuid.UUID
+	PublishedChallengePackVersionID *uuid.UUID
+	UpdatedByUserID                 uuid.UUID
+	ID                              uuid.UUID
+}
+
+func (q *Queries) MarkVibeEvalDraftPublished(ctx context.Context, arg MarkVibeEvalDraftPublishedParams) (VibeEvalDraft, error) {
+	row := q.db.QueryRow(ctx, markVibeEvalDraftPublished,
+		arg.PublishedChallengePackID,
+		arg.PublishedChallengePackVersionID,
+		arg.UpdatedByUserID,
+		arg.ID,
+	)
+	var i VibeEvalDraft
+	err := row.Scan(
+		&i.ID,
+		&i.OrganizationID,
+		&i.WorkspaceID,
+		&i.ConversationID,
+		&i.DraftKind,
+		&i.Content,
+		&i.ValidationState,
+		&i.ValidationErrors,
+		&i.PublishedChallengePackID,
+		&i.PublishedChallengePackVersionID,
+		&i.CreatedByUserID,
+		&i.UpdatedByUserID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const markVibeEvalDraftValidation = `-- name: MarkVibeEvalDraftValidation :one
+UPDATE vibe_eval_drafts
+SET
+    validation_state = $1,
+    validation_errors = $2,
+    updated_by_user_id = $3
+WHERE id = $4
+RETURNING id, organization_id, workspace_id, conversation_id, draft_kind, content, validation_state, validation_errors, published_challenge_pack_id, published_challenge_pack_version_id, created_by_user_id, updated_by_user_id, created_at, updated_at
+`
+
+type MarkVibeEvalDraftValidationParams struct {
+	ValidationState  string
+	ValidationErrors []byte
+	UpdatedByUserID  uuid.UUID
+	ID               uuid.UUID
+}
+
+func (q *Queries) MarkVibeEvalDraftValidation(ctx context.Context, arg MarkVibeEvalDraftValidationParams) (VibeEvalDraft, error) {
+	row := q.db.QueryRow(ctx, markVibeEvalDraftValidation,
+		arg.ValidationState,
+		arg.ValidationErrors,
+		arg.UpdatedByUserID,
+		arg.ID,
+	)
+	var i VibeEvalDraft
+	err := row.Scan(
+		&i.ID,
+		&i.OrganizationID,
+		&i.WorkspaceID,
+		&i.ConversationID,
+		&i.DraftKind,
+		&i.Content,
+		&i.ValidationState,
+		&i.ValidationErrors,
+		&i.PublishedChallengePackID,
+		&i.PublishedChallengePackVersionID,
+		&i.CreatedByUserID,
+		&i.UpdatedByUserID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const setVibeEvalConversationActiveDraft = `-- name: SetVibeEvalConversationActiveDraft :one

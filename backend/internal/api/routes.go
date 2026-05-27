@@ -217,6 +217,10 @@ func registerProtectedRoutes(
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Patch("/workspaces/{workspaceID}/vibe-eval/drafts/{draftID}", updateVibeEvalDraftHandler(logger, vibeEvalService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Post("/workspaces/{workspaceID}/vibe-eval/drafts/{draftID}/validate", validateVibeEvalDraftHandler(logger, vibeEvalService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Post("/workspaces/{workspaceID}/vibe-eval/drafts/{draftID}/publish", publishVibeEvalDraftHandler(logger, vibeEvalService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Get("/workspaces/{workspaceID}/artifacts", listWorkspaceArtifactsHandler(logger, artifactService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Post("/workspaces/{workspaceID}/artifacts", uploadArtifactHandler(logger, artifactService, artifactMaxUploadBytes))
