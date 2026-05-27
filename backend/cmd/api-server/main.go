@@ -155,7 +155,7 @@ func main() {
 	onboardingManager := api.NewOnboardingManager(repo)
 	infraManager := api.NewInfrastructureManager(repo).WithProviderClient(providerRouter)
 	workspaceSecretsManager := api.NewWorkspaceSecretsManager(repo)
-	vibeEvalManager := api.NewVibeEvalManager(authorizer, repo)
+	vibeEvalManager := api.NewVibeEvalManager(authorizer, repo, challengePackAuthoringManager)
 	cliAuthManager := api.NewCLIAuthManager(repo, logger, cfg.FrontendURL)
 	cliTokenAuth := api.NewCLITokenAuthenticator(repo, logger)
 

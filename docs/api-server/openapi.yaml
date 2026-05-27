@@ -4369,6 +4369,66 @@ paths:
         "404":
           $ref: "#/components/responses/NotFoundError"
 
+  /v1/workspaces/{workspaceID}/vibe-eval/drafts/{draftID}/validate:
+    post:
+      operationId: validateVibeEvalDraft
+      summary: Validate a Vibe Eval challenge-pack draft
+      tags: [VibeEvals]
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/VibeEvalDraftID"
+      responses:
+        "200":
+          description: Vibe Eval draft validation result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidateVibeEvalDraftResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /v1/workspaces/{workspaceID}/vibe-eval/drafts/{draftID}/publish:
+    post:
+      operationId: publishVibeEvalDraft
+      summary: Publish a validated Vibe Eval challenge-pack draft
+      tags: [VibeEvals]
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/VibeEvalDraftID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PublishVibeEvalDraftRequest"
+      responses:
+        "201":
+          description: Vibe Eval draft published
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublishVibeEvalDraftResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+
   /v1/workspaces/{workspaceID}/playgrounds:
     post:
       operationId: createPlayground
@@ -11007,6 +11067,53 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/VibeEvalDraftResponse"
+
+    ValidateVibeEvalDraftResponse:
+      type: object
+      required: [draft, valid, errors, payload_hash]
+      properties:
+        draft:
+          $ref: "#/components/schemas/VibeEvalDraftResponse"
+        valid:
+          type: boolean
+        errors:
+          type: array
+          items:
+            $ref: "#/components/schemas/ValidationErrorDetail"
+        payload_hash:
+          type: string
+
+    PublishVibeEvalDraftRequest:
+      type: object
+      properties:
+        confirmation_token:
+          type: string
+
+    PublishVibeEvalDraftResponse:
+      type: object
+      required: [draft, challenge_pack_id, challenge_pack_version_id, evaluation_spec_id, input_set_ids, payload_hash]
+      properties:
+        draft:
+          $ref: "#/components/schemas/VibeEvalDraftResponse"
+        challenge_pack_id:
+          type: string
+          format: uuid
+        challenge_pack_version_id:
+          type: string
+          format: uuid
+        evaluation_spec_id:
+          type: string
+          format: uuid
+        input_set_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        bundle_artifact_id:
+          type: string
+          format: uuid
+        payload_hash:
+          type: string
 
     # --- Playgrounds ---
 

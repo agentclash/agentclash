@@ -41,6 +41,7 @@ type Querier interface {
 	CreateRunCaseSelection(ctx context.Context, arg CreateRunCaseSelectionParams) (RunCaseSelection, error)
 	CreateVibeEvalConversation(ctx context.Context, arg CreateVibeEvalConversationParams) (VibeEvalConversation, error)
 	CreateVibeEvalDraft(ctx context.Context, arg CreateVibeEvalDraftParams) (VibeEvalDraft, error)
+	CreateVibeEvalDraftEvent(ctx context.Context, arg CreateVibeEvalDraftEventParams) error
 	DeletePlayground(ctx context.Context, arg DeletePlaygroundParams) error
 	DeletePlaygroundTestCase(ctx context.Context, arg DeletePlaygroundTestCaseParams) error
 	FindOrganizationByDodoSubscriptionOrCustomer(ctx context.Context, arg FindOrganizationByDodoSubscriptionOrCustomerParams) (uuid.UUID, error)
@@ -121,6 +122,8 @@ type Querier interface {
 	MarkHostedRunExecutionAccepted(ctx context.Context, arg MarkHostedRunExecutionAcceptedParams) (HostedRunExecution, error)
 	MarkHostedRunExecutionFailed(ctx context.Context, arg MarkHostedRunExecutionFailedParams) (HostedRunExecution, error)
 	MarkHostedRunExecutionTimedOut(ctx context.Context, arg MarkHostedRunExecutionTimedOutParams) (HostedRunExecution, error)
+	MarkVibeEvalDraftPublished(ctx context.Context, arg MarkVibeEvalDraftPublishedParams) (VibeEvalDraft, error)
+	MarkVibeEvalDraftValidation(ctx context.Context, arg MarkVibeEvalDraftValidationParams) (VibeEvalDraft, error)
 	PatchRegressionCase(ctx context.Context, arg PatchRegressionCaseParams) (WorkspaceRegressionCase, error)
 	PatchRegressionSuite(ctx context.Context, arg PatchRegressionSuiteParams) (WorkspaceRegressionSuite, error)
 	ResolveWorkspaceOrganization(ctx context.Context, arg ResolveWorkspaceOrganizationParams) (uuid.UUID, error)
