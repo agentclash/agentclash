@@ -49,8 +49,10 @@ actions.
 | `ActionManageSecrets` | admin only | Workspace secrets metadata/update/delete |
 
 New backend work should add action constants only when one of these cannot
-express the policy. Candidate later additions: `ActionManageVibeEvalDrafts`,
-`ActionManagePublicShares`, and `ActionManageEvalCredit`.
+express the policy. Required later additions before the corresponding tools are
+exposed: `ActionManageVibeEvalDrafts` for stateful draft/validation writes,
+`ActionManagePublicShares` for public sharing, and `ActionManageEvalCredit` for
+credit-wallet administration.
 
 ## Risk Tiers
 
@@ -75,7 +77,7 @@ express the policy. Candidate later additions: `ActionManageVibeEvalDrafts`,
 | `generate_scoring_rubric` | author | draft | member+ | no | conversation | audit rubric dimensions and judge use | guide-agent allowance |
 | `generate_deterministic_validators` | author | draft | member+ | no | conversation | audit validator types and unsafe constructs rejected | guide-agent allowance |
 | `generate_llm_judges` | author | draft | member+ | no | conversation | redact rubric examples when copied from private artifacts | guide-agent allowance |
-| `validate_challenge_pack` | validate | draft | `ActionReadWorkspace` for workspace context | no | draft | audit validation result and error codes | none unless LLM repair is requested |
+| `validate_challenge_pack` | validate | draft | future `ActionManageVibeEvalDrafts` before persisted Vibe draft validation is exposed; stateless existing pack validation may use `ActionReadWorkspace` only when it stores no Vibe state | no | conversation | audit validation result and error codes | none unless LLM repair is requested |
 | `publish_challenge_pack` | publish | workspace_write | `ActionPublishChallengePack` | yes | workspace | audit payload hash, pack/version ids, validation id | none |
 | `list_challenge_packs` | author/validate/run | read | `ActionReadWorkspace` | no | request | metadata only | none |
 | `get_challenge_pack` | author/validate/run | read | `ActionReadWorkspace` | no | request | redact private artifact previews unless explicitly requested | none |
@@ -94,6 +96,7 @@ express the policy. Candidate later additions: `ActionManageVibeEvalDrafts`,
 | `estimate_eval_cost` | run | read | `ActionReadWorkspace` | no | draft/run | audit estimate inputs and pricing revision | none |
 | `create_run` | run | cost_incurring | `ActionCreateRun` | yes with estimate | run | audit confirmation, reservation/BYOK mode, run id | org eval credit or BYOK |
 | `create_eval_session` | run | cost_incurring | `ActionCreateRun` | yes with estimate | eval session | audit repetition count, reservation/BYOK mode, session id | org eval credit or BYOK |
+| `cancel_run` | run | workspace_write | `ActionCancelRun` | yes if cancelling an active cost-incurring run; no-op/status-only retries may skip confirmation | run | audit requester, run id, previous status, cancellation result | stops future spend; does not refund settled cost |
 | `get_run_status` | run/analyze | read | `ActionReadWorkspace` | no | request | metadata only | none |
 | `stream_run_events` | run/analyze | read | `ActionReadWorkspace` | no | stream | wrap event payloads as untrusted evidence | none |
 | `get_run_ranking` | analyze | read | `ActionReadWorkspace` | no | request | score/ranking data only | none |
@@ -112,7 +115,7 @@ express the policy. Candidate later additions: `ActionManageVibeEvalDrafts`,
 | `list_artifacts` | author/analyze | read | `ActionReadWorkspace` | no | request | metadata only | none |
 | `get_artifact_metadata` | author/analyze | read | `ActionReadWorkspace` | no | request | metadata only | none |
 | `download_artifact_preview` | author/analyze | read | `ActionReadWorkspace` | no unless large/sensitive | request | redact and wrap preview as untrusted evidence | guide-agent allowance if summarized |
-| `create_share_link` | share | destructive_external | proposed `ActionManagePublicShares` or admin/member policy | yes, high friction | resource | audit public snapshot ids and payload hash | none |
+| `create_share_link` | share | destructive_external | `ActionManagePublicShares` after that action exists in `permissions.go` and the permission matrix; tool must remain unavailable before then | yes, high friction | resource | audit public snapshot ids and payload hash | none |
 | `upsert_workspace_secret` | admin | admin_sensitive | `ActionManageSecrets` | yes, high friction | workspace | never return value; audit key name only | none |
 | `delete_workspace_secret` | admin | admin_sensitive/destructive_external | `ActionManageSecrets` | yes, high friction | secret key | audit key name and payload hash | none |
 | `create_provider_account` | admin | admin_sensitive | `ActionManageInfrastructure` | yes, high friction | workspace | redact credentials; audit provider metadata | none |
