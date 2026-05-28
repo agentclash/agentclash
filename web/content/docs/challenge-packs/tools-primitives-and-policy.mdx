@@ -22,7 +22,7 @@ Only (2)+(3) are pack-controlled.
 
 Validated set (`supportedToolKinds` in `challengepack/validation.go`):
 
-`browser`, `build`, `data`, `file`, `network`
+`browser`, `build`, `data`, `file`, `network`, `terminal`
 
 **Shell is not a kind**—enable it with `allow_shell: true`.
 
@@ -48,6 +48,8 @@ Declared in `executor_builders.go`, registered in `nativePrimitiveTools`:
 | `exec` | `allow_shell` |
 
 Browser tooling exists in policy (`toolKindBrowser`)—ensure your template + worker build includes whatever browser bridge your pack expects before relying on it in production.
+
+**`terminal`** marks packs that pair with [Try CLI](../concepts/try-cli) — interactive disposable terminal demos for README badges and human try-before-install flows. Eval runs still use standard primitives like `exec` inside the sandbox.
 
 ## Composed tools (`tools.custom[]`)
 

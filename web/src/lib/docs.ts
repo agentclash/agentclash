@@ -215,6 +215,13 @@ export const DOCS_NAV: DocNavSection[] = [
         href: "/docs/concepts/artifacts",
       },
       {
+        title: "Try CLI",
+        description:
+          "Interactive disposable terminal demos for README badges — try CLIs before install.",
+        slug: ["concepts", "try-cli"],
+        href: "/docs/concepts/try-cli",
+      },
+      {
         title: "Voice Artifact Contracts",
         description:
           "Use generic audio, timing, sync, and media reports to evaluate voice agents across providers.",

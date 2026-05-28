@@ -5,5 +5,15 @@
       "main": true,
       "*": false
     }
-  }
+  },
+  "env": {
+    "NEXT_PUBLIC_TRY_CLI_API_URL": "/api/try",
+    "NEXT_PUBLIC_TRY_CLI_PUBLIC_URL": "https://www.agentclash.dev/try"
+  },
+  "rewrites": [
+    {
+      "source": "/try-api/:path*",
+      "destination": "https://try-api.agentclash.dev/:path*"
+    }
+  ]
 }

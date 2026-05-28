@@ -15,6 +15,16 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  async rewrites() {
+    return [
+      // Optional: try.agentclash.dev subdomain → /try routes
+      {
+        source: "/:path*",
+        has: [{ type: "host", value: "try.agentclash.dev" }],
+        destination: "/try/:path*",
+      },
+    ];
+  },
 };
 
 export default nextConfig;

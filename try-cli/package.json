@@ -1,0 +1,15 @@
+{
+  "name": "try-cli",
+  "private": true,
+  "workspaces": ["packages/*", "apps/*"],
+  "scripts": {
+    "dev": "bun run --filter @try-cli/web dev",
+    "dev:web": "cd apps/web && bun run vite",
+    "build": "bun run --filter @try-cli/web build",
+    "cli": "bun run packages/cli/src/index.ts",
+    "start": "NODE_ENV=production bun run --filter @try-cli/web start"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3"
+  }
+}

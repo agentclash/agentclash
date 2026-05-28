@@ -3,6 +3,8 @@ backend/e2b-template/node_modules/
 backend/e2b-template/*.old
 web/.data/
 web/.env.local
+try-cli/**/node_modules/
+services/try-cli/node_modules/
 cli/agentclash
 cli/dist/
 cli/cmd/ci-run-spec-*/

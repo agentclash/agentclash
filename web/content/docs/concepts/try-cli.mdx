@@ -1,0 +1,74 @@
+---
+title: Try CLI — interactive terminal demos
+description: AgentClash primitive for one-click disposable terminal demos. README badges, E2B sandboxes, xterm.js.
+---
+
+**Try CLI** is an AgentClash platform primitive: interactive, disposable terminal demos for CLI and TUI tools.
+
+> Let users try your CLI before they install it — not a cloud IDE, not “run any repo.”
+
+## Where it lives
+
+| Surface | URL |
+| --- | --- |
+| Demo hub | [agentclash.dev/try](https://www.agentclash.dev/try) |
+| Per-tool demo | `https://www.agentclash.dev/try/{slug}` (e.g. `/try/bun`) |
+| README badge | `https://www.agentclash.dev/api/try/badge/{slug}.svg` |
+| WebSocket API | `try-api.agentclash.dev` (Fly.io service) |
+
+The browser UI ships on **Vercel** with the AgentClash web app. PTY sessions run on a **long-lived Bun service** backed by **E2B** sandboxes (WebSockets cannot run on Vercel serverless).
+
+## Maintainer workflow
+
+Add `.trycli.yml` to your repo:
+
+```yaml
+name: "my-cool-cli"
+install:
+  - "curl -fsSL https://example.com/install.sh | bash"
+welcome: |
+  my-cool-cli is ready. Try: mycool --help
+commands:
+  - label: "Show help"
+    run: "mycool --help"
+sessionMinutes: 10
+```
+
+Publish a badge:
+
+```bash
+npx @agentclash/try-cli init
+npx @agentclash/try-cli publish
+```
+
+```markdown
+[![Try on AgentClash](https://www.agentclash.dev/api/try/badge/mycool.svg)](https://www.agentclash.dev/try/mycool)
+```
+
+## Challenge packs & `terminal` tool kind
+
+Challenge pack `tool_policy.allowed_tool_kinds` now accepts **`terminal`**. This marks packs that expect interactive terminal / Try CLI surfaces alongside standard sandbox primitives (`file`, `exec`, etc.).
+
+Use **`exec`** inside the sandbox to validate CLI behavior in eval runs; use **Try CLI** for human-facing README demos.
+
+## Architecture
+
+```
+web (Next.js / Vercel)     →  /try, /api/try/* proxy
+services/try-cli (Bun/Fly) →  E2B PTY ↔ WebSocket
+try-cli/packages/core      →  .trycli.yml schema + badges
+try-cli/demos              →  Curated demos (bun, uv, ruff, …)
+```
+
+## Session limits (MVP)
+
+- 10 minute sessions (configurable per demo)
+- 3 sessions per IP per hour
+- Sandboxes destroyed on expiry
+- No auth for anonymous public demos
+
+## See also
+
+- [Sandbox & E2B](../challenge-packs/sandbox-and-e2b)
+- [Tools, primitives & policy](../challenge-packs/tools-primitives-and-policy)
+- Repo: `try-cli/` and `services/try-cli/`
