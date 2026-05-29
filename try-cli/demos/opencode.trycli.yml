@@ -1,0 +1,30 @@
+name: "OpenCode"
+slug: opencode
+tagline: "Open-source AI coding agent by SST"
+category: "AI coding agents"
+template: agentclash-trycli
+docs: "https://opencode.ai/docs/"
+github: "https://github.com/sst/opencode"
+
+auth:
+  provider: "any model provider"
+  summary: "Add an API key for the provider you want (Anthropic, OpenAI, xAI, and 75+ more). Subscription OAuth isn't supported — use a key."
+  steps:
+    - "Run: opencode auth login"
+    - "Pick a provider, then choose 'Manually enter API key'"
+    - "Paste your key, then run: opencode"
+  signupUrl: "https://models.dev/"
+
+welcome: |
+  OpenCode is installed. Add a provider key from the panel on the left
+  (opencode auth login), then run `opencode`.
+
+commands:
+  - label: "Show version"
+    run: "opencode --version"
+  - label: "Sign in (add a key)"
+    run: "opencode auth login"
+  - label: "Start OpenCode"
+    run: "opencode"
+
+sessionMinutes: 10

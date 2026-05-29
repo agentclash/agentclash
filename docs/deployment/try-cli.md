@@ -26,6 +26,21 @@ Deploy via existing Vercel Git integration on `main` after merge.
 
 Optional DNS: `try.agentclash.dev` → Vercel (rewrite to `/try` is in `next.config.ts`).
 
+## E2B template (prerequisite)
+
+Demos boot from a shared E2B template (`agentclash-trycli`) with every CLI
+pre-installed, so sandboxes start in ~1–2s instead of installing on each visit.
+Build it (runs in E2B's cloud — no local Docker) before the first deploy and
+again whenever the tool set changes:
+
+```bash
+cd services/try-cli
+E2B_API_KEY=... bun run scripts/build-template.ts
+```
+
+The same `E2B_API_KEY` must be set on the Try CLI service so it can launch the
+template at runtime (`Sandbox.create("agentclash-trycli", …)`).
+
 ## Try CLI service (Railway recommended)
 
 Deploy `services/try-cli/` as a **separate Railway service** in the same project as the backend:

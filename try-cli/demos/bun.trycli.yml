@@ -1,11 +1,10 @@
 name: "Bun"
 slug: bun
+tagline: "Ultra-fast JavaScript runtime & toolkit"
+category: "Developer tools"
+template: agentclash-trycli
 docs: "https://bun.sh/docs"
 github: "https://github.com/oven-sh/bun"
-
-install:
-  - "curl -fsSL https://bun.sh/install | bash"
-  - "export BUN_INSTALL=\"$HOME/.bun\" && export PATH=\"$BUN_INSTALL/bin:$PATH\" && echo 'export BUN_INSTALL=\"$HOME/.bun\"' >> ~/.bashrc && echo 'export PATH=\"$BUN_INSTALL/bin:$PATH\"' >> ~/.bashrc"
 
 welcome: |
   Bun is ready! Ultra-fast JavaScript runtime & toolkit.

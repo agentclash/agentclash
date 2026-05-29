@@ -1,10 +1,10 @@
 name: "ripgrep"
 slug: ripgrep
+tagline: "Recursively search code with regex, fast"
+category: "Developer tools"
+template: agentclash-trycli
 docs: "https://github.com/BurntSushi/ripgrep"
 github: "https://github.com/BurntSushi/ripgrep"
-
-install:
-  - "apt-get update -qq && apt-get install -y -qq ripgrep"
 
 welcome: |
   ripgrep (rg) is ready! Recursively search directories for regex patterns.
@@ -16,7 +16,7 @@ welcome: |
 commands:
   - label: "Show version"
     run: "rg --version"
-  - label: "Search in home"
+  - label: "Search a file"
     run: "rg --line-number 'root' /etc/passwd"
   - label: "Create & search files"
     run: "mkdir src && echo 'fn main() {}' > src/main.rs && echo 'struct Foo;' > src/lib.rs && rg 'fn|struct' src/"

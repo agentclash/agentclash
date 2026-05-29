@@ -3,7 +3,7 @@ title: Try CLI — interactive terminal demos
 description: AgentClash primitive for one-click disposable terminal demos. README badges, E2B sandboxes, xterm.js.
 ---
 
-**Try CLI** is an AgentClash platform primitive: interactive, disposable terminal demos for CLI and TUI tools.
+**Try CLI** is an AgentClash platform primitive: interactive, disposable terminal demos for CLI and TUI tools — including AI coding agents.
 
 > Let users try your CLI before they install it — not a cloud IDE, not “run any repo.”
 
@@ -14,9 +14,34 @@ description: AgentClash primitive for one-click disposable terminal demos. READM
 | Demo hub | [agentclash.dev/try](https://www.agentclash.dev/try) |
 | Per-tool demo | `https://www.agentclash.dev/try/{slug}` (e.g. `/try/bun`) |
 | README badge | `https://www.agentclash.dev/api/try/badge/{slug}.svg` |
-| WebSocket API | `try-api.agentclash.dev` (Fly.io service) |
+| WebSocket API | Railway service (`NEXT_PUBLIC_TRY_CLI_WS_URL`) |
 
-The browser UI ships on **Vercel** with the AgentClash web app. PTY sessions run on a **long-lived Bun service** backed by **E2B** sandboxes (WebSockets cannot run on Vercel serverless).
+The browser UI ships on **Vercel** with the AgentClash web app. PTY sessions run on a **long-lived Bun service** (Railway) backed by **E2B** sandboxes (WebSockets cannot run on Vercel serverless).
+
+## Demos
+
+**AI coding agents** — Claude Code, Codex CLI, OpenCode, Grok CLI.
+**Developer tools** — bun, uv, ruff, biome, ripgrep.
+
+Every tool is pre-installed in a shared E2B template (`agentclash-trycli`), so sandboxes boot ready in ~1–2s instead of installing on each visit. Rebuild the template after changing tools:
+
+```bash
+cd services/try-cli
+E2B_API_KEY=... bun run scripts/build-template.ts
+```
+
+The build runs in E2B's cloud (Build System 2.0 — no local Docker). The demo's `template:` field references the alias.
+
+## Bring-your-own credentials (AI agents)
+
+AI agent demos need a provider account. We **never inject our keys** into the sandbox (that would violate provider terms and expose the key to anyone in the shell). Instead each demo's `auth:` block shows the visitor how to sign in with their **own** credentials inside the disposable sandbox:
+
+- **Claude Code** — `claude` → `/login` (paste-code) or `ANTHROPIC_API_KEY`
+- **Codex** — `codex login --device-auth` or an `OPENAI_API_KEY`
+- **OpenCode** — `opencode auth login` (paste a provider key)
+- **Grok** — `export XAI_API_KEY=…`
+
+Credentials live only in that sandbox and are wiped when it expires.
 
 ## Maintainer workflow
 
@@ -54,18 +79,19 @@ Use **`exec`** inside the sandbox to validate CLI behavior in eval runs; use **T
 ## Architecture
 
 ```
-web (Next.js / Vercel)     →  /try, /api/try/* proxy
-services/try-cli (Bun/Fly) →  E2B PTY ↔ WebSocket
-try-cli/packages/core      →  .trycli.yml schema + badges
-try-cli/demos              →  Curated demos (bun, uv, ruff, …)
+web (Next.js / Vercel)        →  /try, /api/try/* proxy
+services/try-cli (Bun/Railway)→  E2B PTY ↔ WebSocket
+services/try-cli/scripts      →  build-template.ts (E2B template build)
+try-cli/packages/core         →  .trycli.yml schema + badges
+try-cli/demos                 →  Curated demos (AI agents + dev tools)
 ```
 
 ## Session limits (MVP)
 
 - 10 minute sessions (configurable per demo)
-- 3 sessions per IP per hour
-- Sandboxes destroyed on expiry
-- No auth for anonymous public demos
+- Max 3 concurrent sessions per IP (freed when a session ends)
+- Sandboxes destroyed on expiry — credentials wiped with them
+- Anonymous; AI agent demos use the visitor's own provider credentials (BYO)
 
 ## See also
 

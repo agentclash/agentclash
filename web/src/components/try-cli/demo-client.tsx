@@ -2,7 +2,15 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ExternalLink, RotateCcw } from "lucide-react";
+import {
+  ArrowLeft,
+  Check,
+  Copy,
+  ExternalLink,
+  KeyRound,
+  RotateCcw,
+  TimerReset,
+} from "lucide-react";
 import { TryCliTerminal } from "@/components/try-cli/terminal";
 import { getTryCliApiBase, tryCliPublicOrigin } from "@/lib/try-cli/config";
 import type { DemoMeta, TrySession } from "@/lib/try-cli/types";
@@ -149,11 +157,16 @@ export function TryCliDemoClient({ slug, initialDemo = null }: Props) {
 
   if (error && !demo) {
     return (
-      <div className="mx-auto max-w-lg px-6 py-24 text-center">
-        <h1 className="text-xl font-semibold">Demo not found</h1>
-        <p className="mt-2 text-muted-foreground">{error}</p>
-        <Link href="/try" className="mt-6 inline-block text-sm underline">
-          ← All demos
+      <div className="mx-auto max-w-lg px-6 py-32 text-center">
+        <h1 className="font-[family-name:var(--font-display)] text-3xl tracking-[-0.02em]">
+          Demo not found
+        </h1>
+        <p className="mt-3 text-white/50">{error}</p>
+        <Link
+          href="/try"
+          className="mt-8 inline-flex items-center gap-1.5 text-sm text-white/70 underline-offset-4 hover:text-white hover:underline"
+        >
+          <ArrowLeft className="size-3.5" /> All demos
         </Link>
       </div>
     );
@@ -161,68 +174,158 @@ export function TryCliDemoClient({ slug, initialDemo = null }: Props) {
 
   return (
     <div className="flex h-[calc(100vh-4rem)] flex-col">
-      <header className="flex shrink-0 items-center justify-between border-b border-border px-4 py-3">
+      {/* Demo toolbar */}
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-white/[0.06] px-5 py-3 sm:px-8">
         <div className="flex items-center gap-3">
-          <Link href="/try" className="text-sm font-medium text-muted-foreground hover:text-foreground">
-            AgentClash Try
+          <Link
+            href="/try"
+            className="text-white/40 transition-colors hover:text-white/80"
+            aria-label="All demos"
+          >
+            <ArrowLeft className="size-4" />
           </Link>
-          <span className="text-muted-foreground">/</span>
-          <h1 className="text-sm font-semibold">{demo?.name ?? slug}</h1>
-          {demo?.github && (
-            <a href={demo.github} target="_blank" rel="noreferrer" className="text-xs text-muted-foreground hover:text-foreground">
-              GitHub <ExternalLink className="inline size-3" />
-            </a>
+          <h1 className="font-[family-name:var(--font-display)] text-xl tracking-[-0.01em]">
+            {demo?.name ?? slug}
+          </h1>
+          {demo?.tagline && (
+            <span className="hidden text-sm text-white/40 lg:inline">{demo.tagline}</span>
           )}
-          {demo?.docs && (
-            <a href={demo.docs} target="_blank" rel="noreferrer" className="text-xs text-muted-foreground hover:text-foreground">
-              Docs <ExternalLink className="inline size-3" />
-            </a>
-          )}
+          <div className="flex items-center gap-3 pl-1">
+            {demo?.github && (
+              <a
+                href={demo.github}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 text-xs text-white/40 hover:text-white/80"
+              >
+                GitHub <ExternalLink className="size-3" />
+              </a>
+            )}
+            {demo?.docs && (
+              <a
+                href={demo.docs}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 text-xs text-white/40 hover:text-white/80"
+              >
+                Docs <ExternalLink className="size-3" />
+              </a>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-3">
-          <span className="font-mono text-xs text-muted-foreground">⏱ {remaining || "—"}</span>
+          <span className="inline-flex items-center gap-1.5 font-[family-name:var(--font-mono)] text-xs text-white/45">
+            <TimerReset className="size-3.5" />
+            {remaining || "—"}
+          </span>
           <button
             type="button"
             onClick={() => void reset()}
-            className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-muted"
+            className="inline-flex items-center gap-1.5 rounded-md border border-white/[0.1] bg-white/[0.03] px-2.5 py-1.5 text-xs text-white/70 transition-colors hover:border-white/20 hover:text-white"
           >
             <RotateCcw className="size-3" />
             Reset
           </button>
         </div>
-      </header>
+      </div>
 
       {error && (
-        <div className="bg-destructive/10 px-4 py-2 text-sm text-destructive">{error}</div>
+        <div className="border-b border-red-500/20 bg-red-500/10 px-5 py-2 text-sm text-red-300 sm:px-8">
+          {error}
+        </div>
       )}
 
       <div className="flex min-h-0 flex-1 flex-col md:flex-row">
-        <aside className="w-full shrink-0 overflow-y-auto border-b border-border p-4 md:w-72 md:border-b-0 md:border-r">
-          <h2 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Suggested commands
-          </h2>
-          <p className="mt-1 text-xs text-muted-foreground">Click to copy, paste in terminal</p>
-          <ul className="mt-3 space-y-2">
-            {demo?.commands.map((c) => (
-              <li key={c.run}>
-                <button
-                  type="button"
-                  onClick={() => copyCmd(c.run)}
-                  className="w-full rounded-md border border-border bg-muted/30 px-3 py-2 text-left text-sm hover:border-foreground/20"
+        <aside className="w-full shrink-0 space-y-7 overflow-y-auto border-b border-white/[0.06] p-5 md:w-80 md:border-b-0 md:border-r">
+          {/* BYO auth panel */}
+          {demo?.auth && (
+            <div className="rounded-lg border border-white/[0.1] bg-white/[0.02] p-4">
+              <div className="flex items-center gap-2">
+                <KeyRound className="size-3.5 text-white/70" />
+                <h2 className="text-xs font-medium uppercase tracking-wide text-white/70">
+                  Sign in {demo.auth.provider ? `· ${demo.auth.provider}` : ""}
+                </h2>
+              </div>
+              <p className="mt-2 text-xs leading-relaxed text-white/50">{demo.auth.summary}</p>
+              {demo.auth.steps.length > 0 && (
+                <ol className="mt-3 space-y-2">
+                  {demo.auth.steps.map((step, i) => (
+                    <li key={step} className="flex gap-2.5 text-xs text-white/70">
+                      <span className="font-[family-name:var(--font-mono)] text-white/30">
+                        {String(i + 1).padStart(2, "0")}
+                      </span>
+                      <span className="leading-relaxed">{step}</span>
+                    </li>
+                  ))}
+                </ol>
+              )}
+              {demo.auth.signupUrl && (
+                <a
+                  href={demo.auth.signupUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-3 inline-flex items-center gap-1 text-xs text-white/70 underline-offset-4 hover:text-white hover:underline"
                 >
-                  <span className="font-medium">{c.label}</span>
-                  <code className="mt-1 block text-xs text-muted-foreground">{c.run}</code>
-                  {copied === c.run && <span className="text-xs text-green-500">Copied</span>}
-                </button>
-              </li>
-            ))}
-          </ul>
-          <div className="mt-6 border-t border-border pt-4">
-            <h3 className="text-xs font-medium uppercase text-muted-foreground">README badge</h3>
-            <code className="mt-2 block break-all rounded bg-muted/50 p-2 text-[10px]">{badgeMd}</code>
+                  Get a key <ExternalLink className="size-3" />
+                </a>
+              )}
+            </div>
+          )}
+
+          {/* Suggested commands */}
+          <div>
+            <h2 className="text-xs font-medium uppercase tracking-wide text-white/40">
+              Suggested commands
+            </h2>
+            <p className="mt-1 text-xs text-white/30">Click to copy · paste in the terminal</p>
+            <ul className="mt-3 space-y-2">
+              {demo?.commands.map((c) => (
+                <li key={c.run}>
+                  <button
+                    type="button"
+                    onClick={() => copyCmd(c.run)}
+                    className="group w-full rounded-lg border border-white/[0.08] bg-white/[0.02] px-3 py-2.5 text-left transition-colors hover:border-white/20 hover:bg-white/[0.04]"
+                  >
+                    <span className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-white/85">{c.label}</span>
+                      {copied === c.run ? (
+                        <Check className="size-3.5 text-emerald-400" />
+                      ) : (
+                        <Copy className="size-3.5 text-white/25 transition-colors group-hover:text-white/60" />
+                      )}
+                    </span>
+                    <code className="mt-1 block truncate font-[family-name:var(--font-mono)] text-xs text-white/40">
+                      {c.run}
+                    </code>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* Badge */}
+          <div className="border-t border-white/[0.06] pt-5">
+            <button
+              type="button"
+              onClick={() => copyCmd(badgeMd)}
+              className="group flex w-full items-center justify-between text-left"
+            >
+              <h3 className="text-xs font-medium uppercase tracking-wide text-white/40">
+                README badge
+              </h3>
+              {copied === badgeMd ? (
+                <Check className="size-3.5 text-emerald-400" />
+              ) : (
+                <Copy className="size-3.5 text-white/25 transition-colors group-hover:text-white/60" />
+              )}
+            </button>
+            <code className="mt-2 block break-all rounded-md bg-white/[0.03] p-2.5 font-[family-name:var(--font-mono)] text-[10px] leading-relaxed text-white/45">
+              {badgeMd}
+            </code>
           </div>
         </aside>
-        <main className="min-h-0 flex-1 p-4">
+
+        <main className="min-h-0 flex-1 p-4 sm:p-5">
           <TryCliTerminal sessionId={sessionId} status={status} />
         </main>
       </div>

@@ -78,10 +78,11 @@ export class SessionManager {
     const { demo } = session;
     const timeoutMs = (demo.sessionMinutes ?? 10) * 60 * 1000;
 
-    const sandbox = await Sandbox.create({
-      timeoutMs,
-      ...(demo.template ? { template: demo.template } : {}),
-    });
+    // e2b v2 takes the template alias as a positional arg — passing it inside
+    // the options object is silently ignored and falls back to the base image.
+    const sandbox = demo.template
+      ? await Sandbox.create(demo.template, { timeoutMs })
+      : await Sandbox.create({ timeoutMs });
     session.sandbox = sandbox;
 
     for (const cmd of demo.install ?? []) {
