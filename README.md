@@ -239,4 +239,4 @@ go test -short -race -count=1 ./...
 
 ## License
 
-AgentClash is released under [FSL-1.1-MIT](https://fsl.software), the Functional Source License with an MIT Future License clause. See [LICENSE](LICENSE) for the full text.
+AgentClash is released under the [MIT License](LICENSE).

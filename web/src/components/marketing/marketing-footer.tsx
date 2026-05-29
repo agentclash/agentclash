@@ -78,7 +78,7 @@ export function MarketingFooter() {
         <div className="mt-16 flex flex-wrap items-center justify-between gap-4 border-t border-white/[0.06] pt-8 text-[11px] font-[family-name:var(--font-mono)] text-white/35">
           <div className="flex items-center gap-6">
             <span className="font-medium text-white/55">AgentClash</span>
-            <span className="text-white/40">Beta · FSL-1.1-MIT</span>
+            <span className="text-white/40">Beta · MIT</span>
           </div>
           <div className="flex items-center gap-5">
             <Link href="/docs" className="hover:text-white/70 transition-colors">

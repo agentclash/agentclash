@@ -88,8 +88,4 @@ The full maintainer playbook, including the one-time npm Trusted Publishing boot
 
 ## License
 
-[FSL-1.1-MIT](https://fsl.software) — see `LICENSE`.
-
-Short version: use and modify it for anything except running a competing
-commercial eval-engine service; each version auto-converts to MIT two years
-after release.
+[MIT](https://opensource.org/licenses/MIT) — see `LICENSE`.

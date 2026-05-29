@@ -6,7 +6,7 @@ info:
     B2B AI agent evaluation platform. Pits agent deployments against challenge
     packs, with replay inspection, scoring, comparison, and release gating.
   license:
-    name: FSL-1.1-MIT
+    name: MIT
     url: https://github.com/agentclash/agentclash/blob/main/LICENSE
   contact:
     url: https://github.com/agentclash/agentclash
