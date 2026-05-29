@@ -1,0 +1,31 @@
+name: "Grok CLI"
+slug: grok
+tagline: "xAI's Grok, agentic in your terminal"
+category: "AI coding agents"
+template: agentclash-trycli
+docs: "https://docs.vibekit.sh/agents/grok"
+github: "https://github.com/superagent-ai/grok-cli"
+
+auth:
+  provider: "xAI"
+  summary: "Grok CLI is fully key-based — paste your own xAI API key. It stays in this disposable sandbox."
+  steps:
+    - "Grab a key from console.x.ai"
+    - "Run: export XAI_API_KEY=xai-..."
+    - "Then start it: grok"
+  envKey: "XAI_API_KEY"
+  signupUrl: "https://console.x.ai/"
+
+welcome: |
+  Grok CLI is installed. Add your xAI API key from the panel on the left
+  (export XAI_API_KEY=...), then run `grok`.
+
+commands:
+  - label: "Show version"
+    run: "grok --version"
+  - label: "Set your key"
+    run: "export XAI_API_KEY=YOUR_KEY_HERE"
+  - label: "Start Grok"
+    run: "grok"
+
+sessionMinutes: 10

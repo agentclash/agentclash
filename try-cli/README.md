@@ -1,6 +1,6 @@
 # AgentClash Try CLI
 
-Interactive README demos for developer tools — an AgentClash platform primitive.
+Interactive README demos for developer tools **and AI coding agents** — an AgentClash platform primitive. Run Claude Code, Codex, OpenCode, Grok, bun, uv, ruff, biome, or ripgrep in a disposable cloud terminal, no install.
 
 **Live:** [agentclash.dev/try](https://www.agentclash.dev/try)
 
@@ -10,10 +10,18 @@ Interactive README demos for developer tools — an AgentClash platform primitiv
 try-cli/
   packages/core/    # .trycli.yml schema, badge SVG
   packages/cli/     # npx @agentclash/try-cli
-  demos/            # Curated demo configs
+  demos/            # Curated demo configs (AI agents + dev tools)
 
-services/try-cli/   # Bun + E2B PTY WebSocket service (deploy to Fly)
-web/src/app/try/    # Next.js UI (deploy to Vercel)
+services/try-cli/         # Bun + E2B PTY WebSocket service (deploy to Railway)
+services/try-cli/scripts/ # build-template.ts — builds the prebaked E2B template
+web/src/app/try/          # Next.js UI (deploy to Vercel)
+```
+
+All demo tools are pre-installed in a shared E2B template (`agentclash-trycli`)
+so sandboxes boot ready. Rebuild it after changing tools:
+
+```bash
+cd services/try-cli && E2B_API_KEY=... bun run scripts/build-template.ts
 ```
 
 ## Local development
