@@ -37,19 +37,33 @@ export interface TerminalSession {
 const ANON_MAX_MINUTES = Number(process.env.GW_ANON_MINUTES ?? 7);
 const AUTH_MAX_MINUTES = Number(process.env.GW_AUTH_MINUTES ?? 20);
 const ANON_BUDGET_USD = Number(process.env.GW_SESSION_BUDGET_USD ?? 0.3);
+const SANDBOX_WORKDIR = "/home/user/project";
 
 // Demos whose free trial routes through the gateway, and the provider they use.
 // Demos not listed are bring-your-own-credentials only (no anon trial).
-const TRIAL_PROVIDER: Record<string, "anthropic" | "openai" | "xai" | undefined> = {
+const TRIAL_PROVIDER: Record<
+  string,
+  "anthropic" | "openai" | "xai" | "openrouter" | undefined
+> = {
   "claude-code": "anthropic",
   codex: "openai",
   grok: "xai",
+  // Each runs its OWN dedicated CLI pointed at OpenRouter through the gateway.
+  "kimi-k2": "openrouter", // kimi-cli
+  "qwen3-coder": "openrouter", // @qwen-code/qwen-code
 };
 
 const PROVIDER_ENV_KEY: Record<string, string> = {
   anthropic: "ANTHROPIC_API_KEY",
   openai: "OPENAI_API_KEY",
   xai: "XAI_API_KEY",
+  openrouter: "OPENROUTER_API_KEY",
+};
+
+// OpenRouter model id per demo slug.
+const OPENROUTER_MODEL: Record<string, string> = {
+  "kimi-k2": "moonshotai/kimi-k2",
+  "qwen3-coder": "qwen/qwen3-coder",
 };
 
 export class SessionManager {
@@ -145,6 +159,14 @@ export class SessionManager {
       }
     }
 
+    // Start the user in a project dir, not $HOME — some agent CLIs (e.g. Qwen
+    // Code) refuse to run in the home directory.
+    try {
+      await session.sandbox.commands.run(`mkdir -p ${SANDBOX_WORKDIR}`);
+    } catch {
+      /* non-fatal */
+    }
+
     await this.wireGatewayTrial(session);
     session.status = "ready";
 
@@ -161,6 +183,17 @@ export class SessionManager {
    */
   private async wireGatewayTrial(session: TerminalSession) {
     if (session.tier !== "anonymous") return;
+
+    // opencode runs on opencode's own hosted "Zen" models with the operator's
+    // Zen key injected directly (its own account, not routed through our gateway).
+    if (session.slug === "opencode") {
+      const zen = process.env.OPENCODE_ZEN_API_KEY;
+      if (!zen) return;
+      session.ptyEnv = { OPENCODE_API_KEY: zen };
+      session.trialWired = true;
+      return;
+    }
+
     const provider = TRIAL_PROVIDER[session.slug];
     if (!provider) return;
     if (!process.env[PROVIDER_ENV_KEY[provider]]) return;
@@ -195,6 +228,39 @@ export class SessionManager {
       env.GROK_BASE_URL = `${base}/gw/xai/v1`;
       env.XAI_API_KEY = token;
       env.GROK_API_KEY = token;
+    } else if (provider === "openrouter") {
+      const model = OPENROUTER_MODEL[session.slug];
+      if (!model) return;
+      const orBase = `${base}/gw/openrouter/api/v1`;
+
+      if (session.slug === "qwen3-coder") {
+        // Qwen Code reads OPENAI_* env vars first-class.
+        env.OPENAI_API_KEY = token;
+        env.OPENAI_BASE_URL = orBase;
+        env.OPENAI_MODEL = model;
+      } else if (session.slug === "kimi-k2") {
+        // Kimi CLI: an `openai_legacy` provider whose key comes from OPENAI_API_KEY.
+        env.OPENAI_API_KEY = token;
+        // Kimi CLI schema: provider block + a top-level [models.<id>] entry that
+        // default_model references by id (not the raw model name).
+        const cfg =
+          `[providers.trycli]\n` +
+          `type = "openai_legacy"\n` +
+          `base_url = "${orBase}"\n` +
+          `api_key = "${token}"\n\n` +
+          `[models.trycli-default]\n` +
+          `provider = "trycli"\n` +
+          `model = "${model}"\n` +
+          `max_context_size = 131072\n\n` +
+          `default_provider = "trycli"\n` +
+          `default_model = "trycli-default"\n`;
+        try {
+          await session.sandbox.commands.run("mkdir -p /home/user/.kimi");
+          await session.sandbox.files.write("/home/user/.kimi/config.toml", cfg);
+        } catch (err) {
+          console.error(`[session ${session.id}] kimi config write failed:`, err);
+        }
+      }
     }
 
     session.ptyEnv = env;
@@ -231,6 +297,7 @@ export class SessionManager {
     const handle = await sandbox.pty.create({
       cols: 80,
       rows: 24,
+      cwd: SANDBOX_WORKDIR,
       timeoutMs: 0,
       onData: (data) => {
         if (ws.readyState === WebSocket.OPEN) {

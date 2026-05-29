@@ -30,6 +30,7 @@ const template = Template()
       "@openai/codex",
       "opencode-ai",
       "grok-dev",
+      "@qwen-code/qwen-code",
     ],
     { g: true },
   )
@@ -37,6 +38,8 @@ const template = Template()
   // user, so these install into ~/.local/bin (/home/user/.local/bin).
   .runCmd("curl -LsSf https://astral.sh/uv/install.sh | sh")
   .runCmd("curl -LsSf https://astral.sh/ruff/install.sh | sh")
+  // Kimi CLI (Moonshot) — Python; install via uv into ~/.local/bin.
+  .runCmd("/home/user/.local/bin/uv tool install kimi-cli")
   .setEnvs({
     PATH: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/home/user/.local/bin",
   });
