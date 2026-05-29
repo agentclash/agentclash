@@ -200,6 +200,6 @@ const server = Bun.serve<{ sessionId: string }>({
 console.log(`AgentClash Try CLI service on http://localhost:${PORT}`);
 console.log(`  Demos: ${registry.list().map((d) => d.slug).join(", ")}`);
 console.log(`  E2B: ${process.env.E2B_API_KEY ? "enabled" : "mock mode"}`);
-console.log(`  Dev frontend: run 'bun run vite' in apps/web for hot reload`);
+console.log(`  Dev frontend: run 'pnpm dev' in web/ (Next.js) for hot reload`);
 
 export { server };

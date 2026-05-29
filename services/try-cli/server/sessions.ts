@@ -6,6 +6,7 @@ export interface TerminalSession {
   id: string;
   slug: string;
   demo: Demo;
+  ip: string;
   sandbox: Sandbox | null;
   ptyPid: number | null;
   ws: ServerWebSocket<unknown> | null;
@@ -15,11 +16,11 @@ export interface TerminalSession {
   mock: boolean;
 }
 
-const SESSION_TTL_MS = 10 * 60 * 1000;
-
 export class SessionManager {
   private sessions = new Map<string, TerminalSession>();
-  private ipCounts = new Map<string, { count: number; resetAt: number }>();
+  // Live (not yet destroyed) session count per IP. Incremented on create,
+  // decremented on destroy, so a user who finishes/resets a session frees the slot.
+  private liveSessionsPerIp = new Map<string, number>();
   private readonly maxSessionsPerIp = 3;
   private readonly useE2B: boolean;
 
@@ -31,16 +32,8 @@ export class SessionManager {
     setInterval(() => this.cleanup(), 30_000);
   }
 
-  checkRateLimit(ip: string): boolean {
-    const now = Date.now();
-    const entry = this.ipCounts.get(ip);
-    if (!entry || now > entry.resetAt) {
-      this.ipCounts.set(ip, { count: 1, resetAt: now + 60 * 60 * 1000 });
-      return true;
-    }
-    if (entry.count >= this.maxSessionsPerIp) return false;
-    entry.count++;
-    return true;
+  private hasCapacity(ip: string): boolean {
+    return (this.liveSessionsPerIp.get(ip) ?? 0) < this.maxSessionsPerIp;
   }
 
   get(id: string): TerminalSession | undefined {
@@ -48,7 +41,7 @@ export class SessionManager {
   }
 
   async create(slug: string, demo: Demo, ip: string): Promise<TerminalSession> {
-    if (!this.checkRateLimit(ip)) {
+    if (!this.hasCapacity(ip)) {
       throw new Error("Rate limit exceeded. Try again later.");
     }
 
@@ -57,6 +50,7 @@ export class SessionManager {
       id,
       slug,
       demo,
+      ip,
       sandbox: null,
       ptyPid: null,
       ws: null,
@@ -65,6 +59,7 @@ export class SessionManager {
       mock: !this.useE2B,
     };
     this.sessions.set(id, session);
+    this.liveSessionsPerIp.set(ip, (this.liveSessionsPerIp.get(ip) ?? 0) + 1);
 
     if (this.useE2B) {
       this.bootstrapE2B(session).catch((err) => {
@@ -114,9 +109,6 @@ export class SessionManager {
     if (!session.sandbox || session.status !== "ready") return;
 
     const { demo, sandbox } = session;
-    const welcomeScript = demo.welcome
-      ? `clear; echo ${JSON.stringify(demo.welcome)}; echo`
-      : "clear";
 
     const handle = await sandbox.pty.create({
       cols: 80,
@@ -135,8 +127,12 @@ export class SessionManager {
 
     session.ptyPid = handle.pid;
 
-    if (welcomeScript) {
-      await sandbox.pty.sendInput(handle.pid, new TextEncoder().encode(`${welcomeScript}\n`));
+    // Render the welcome text directly to the terminal output instead of running
+    // it through the shell — passing `demo.welcome` into a shell command would let
+    // a `$(...)`/backtick payload in a demo config execute inside the sandbox.
+    if (demo.welcome && ws.readyState === WebSocket.OPEN) {
+      const text = demo.welcome.replace(/\r?\n/g, "\r\n");
+      ws.send(new TextEncoder().encode(`${text}\r\n`));
     }
   }
 
@@ -196,12 +192,23 @@ export class SessionManager {
 
   async reset(session: TerminalSession): Promise<TerminalSession> {
     await this.destroy(session.id);
-    return this.create(session.slug, session.demo, "reset");
+    // Reuse the original client IP so a reset (destroy + create) nets to the same
+    // live-session count for that IP rather than charging a shared bucket.
+    return this.create(session.slug, session.demo, session.ip);
   }
 
   async destroy(id: string) {
     const session = this.sessions.get(id);
     if (!session) return;
+
+    // Remove from the maps first so concurrent/double destroys can't double-count.
+    this.sessions.delete(id);
+    const live = (this.liveSessionsPerIp.get(session.ip) ?? 0) - 1;
+    if (live > 0) {
+      this.liveSessionsPerIp.set(session.ip, live);
+    } else {
+      this.liveSessionsPerIp.delete(session.ip);
+    }
 
     if (session.ptyPid && session.sandbox) {
       try {
@@ -217,7 +224,6 @@ export class SessionManager {
         /* ignore */
       }
     }
-    this.sessions.delete(id);
   }
 
   sendInput(session: TerminalSession, ws: ServerWebSocket<{ sessionId: string }>, data: Uint8Array) {
@@ -238,11 +244,16 @@ export class SessionManager {
 
   private cleanup() {
     const now = Date.now();
+    // Collect first — destroy() mutates the sessions Map, so we must not delete
+    // from it while iterating.
+    const expired: string[] = [];
     for (const [id, session] of this.sessions) {
-      if (now > session.expiresAt) {
-        session.status = "expired";
-        this.destroy(id);
-      }
+      if (now > session.expiresAt) expired.push(id);
+    }
+    for (const id of expired) {
+      const session = this.sessions.get(id);
+      if (session) session.status = "expired";
+      void this.destroy(id);
     }
   }
 }

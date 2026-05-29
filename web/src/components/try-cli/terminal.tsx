@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useCallback } from "react";
+import "@xterm/xterm/css/xterm.css";
 import { getTryCliWsBase } from "@/lib/try-cli/config";
 
 interface Props {
@@ -11,7 +12,7 @@ interface Props {
 
 export function TryCliTerminal({ sessionId, status, onReady }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const termRef = useRef<import("xterm").Terminal | null>(null);
+  const termRef = useRef<import("@xterm/xterm").Terminal | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const fitRef = useRef<import("@xterm/addon-fit").FitAddon | null>(null);
 
@@ -51,14 +52,14 @@ export function TryCliTerminal({ sessionId, status, onReady }: Props) {
 
   useEffect(() => {
     let disposed = false;
+    let removeResizeListener: (() => void) | undefined;
 
     async function init() {
       const [{ Terminal }, { FitAddon }, { WebLinksAddon }] = await Promise.all([
-        import("xterm"),
+        import("@xterm/xterm"),
         import("@xterm/addon-fit"),
         import("@xterm/addon-web-links"),
       ]);
-      await import("xterm/css/xterm.css");
 
       if (disposed || !containerRef.current) return;
 
@@ -89,16 +90,20 @@ export function TryCliTerminal({ sessionId, status, onReady }: Props) {
 
       const onResize = () => fit.fit();
       window.addEventListener("resize", onResize);
-      return () => window.removeEventListener("resize", onResize);
+      removeResizeListener = () => window.removeEventListener("resize", onResize);
+
+      // The effect may have been torn down while the dynamic imports were in
+      // flight; if so, unregister immediately rather than leaking the listener.
+      if (disposed) removeResizeListener();
     }
 
-    const cleanupResize = init();
+    void init();
 
     return () => {
       disposed = true;
+      removeResizeListener?.();
       wsRef.current?.close();
       termRef.current?.dispose();
-      void cleanupResize;
     };
   }, []);
 

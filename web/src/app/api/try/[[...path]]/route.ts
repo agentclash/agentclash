@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const TRY_CLI_SERVICE =
-  process.env.TRY_CLI_API_URL ?? process.env.NEXT_PUBLIC_TRY_CLI_API_URL ?? "http://localhost:3001";
+// Server-side backend URL for the Try CLI service. Do NOT fall back to
+// NEXT_PUBLIC_TRY_CLI_API_URL — that is the public proxy path (`/api/try`), so
+// using it here would make this route proxy back to itself in a request loop.
+const TRY_CLI_SERVICE = process.env.TRY_CLI_API_URL ?? "http://localhost:3001";
 
 async function proxy(req: NextRequest, pathSegments: string[]): Promise<NextResponse> {
   const path = pathSegments.join("/");

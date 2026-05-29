@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ExternalLink, RotateCcw } from "lucide-react";
 import { TryCliTerminal } from "@/components/try-cli/terminal";
@@ -22,19 +22,56 @@ export function TryCliDemoClient({ slug, initialDemo = null }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
 
+  // Track the in-flight poll timer so it can be cancelled on unmount / re-poll.
+  const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearPoll = useCallback(() => {
+    if (pollTimeoutRef.current) {
+      clearTimeout(pollTimeoutRef.current);
+      pollTimeoutRef.current = null;
+    }
+  }, []);
+
   const pollSession = useCallback(
-    async (id: string) => {
+    (id: string) => {
+      // ~60s of polling at 1.5s intervals before giving up on a stuck sandbox.
+      const MAX_ATTEMPTS = 40;
+      clearPoll();
+      let attempts = 0;
+
       const poll = async () => {
-        const res = await fetch(`${apiBase}/sessions/${id}`);
-        const data = (await res.json()) as TrySession & { error?: string };
-        setStatus(data.status);
-        if (data.status === "starting") setTimeout(poll, 1500);
-        if (data.status === "error") setError(data.error ?? "Sandbox failed");
+        pollTimeoutRef.current = null;
+        try {
+          const res = await fetch(`${apiBase}/sessions/${id}`);
+          const data = (await res.json()) as TrySession & { error?: string };
+          setStatus(data.status);
+          if (data.status === "error") {
+            setError(data.error ?? "Sandbox failed");
+            return;
+          }
+          if (data.status === "starting") {
+            if (++attempts >= MAX_ATTEMPTS) {
+              setStatus("error");
+              setError("Sandbox timed out while starting. Try again.");
+              return;
+            }
+            pollTimeoutRef.current = setTimeout(poll, 1500);
+          }
+        } catch {
+          if (++attempts >= MAX_ATTEMPTS) {
+            setStatus("error");
+            setError("Lost connection to the sandbox service.");
+            return;
+          }
+          pollTimeoutRef.current = setTimeout(poll, 1500);
+        }
       };
-      poll();
+      void poll();
     },
-    [apiBase],
+    [apiBase, clearPoll],
   );
+
+  useEffect(() => clearPoll, [clearPoll]);
 
   const createSession = useCallback(async () => {
     setStatus("starting");

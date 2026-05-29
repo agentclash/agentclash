@@ -2,10 +2,10 @@ FROM oven/bun:1.3 AS deps
 WORKDIR /app
 COPY try-cli/packages/core/package.json try-cli/packages/core/
 COPY try-cli/packages/core/src try-cli/packages/core/src
-COPY services/try-cli/package.json services/try-cli/
+COPY services/try-cli/package.json services/try-cli/bun.lock services/try-cli/
 COPY services/try-cli/server services/try-cli/server
 WORKDIR /app/services/try-cli
-RUN bun install --production
+RUN bun install --production --frozen-lockfile
 
 FROM oven/bun:1.3
 WORKDIR /app/services/try-cli
