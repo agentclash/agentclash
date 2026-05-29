@@ -31,7 +31,17 @@ function providers(): Record<string, ProviderConfig | undefined> {
   const anthropicKey = process.env.ANTHROPIC_API_KEY;
   const openaiKey = process.env.OPENAI_API_KEY;
   const xaiKey = process.env.XAI_API_KEY;
+  const openrouterKey = process.env.OPENROUTER_API_KEY;
   return {
+    openrouter: openrouterKey
+      ? {
+          base: "https://openrouter.ai",
+          applyAuth: (h) => h.set("authorization", `Bearer ${openrouterKey}`),
+          clampBody: (b, max) => {
+            if (typeof b.max_tokens === "number" && b.max_tokens > max) b.max_tokens = max;
+          },
+        }
+      : undefined,
     anthropic: anthropicKey
       ? {
           base: "https://api.anthropic.com",
@@ -155,7 +165,7 @@ export async function handleGatewayRequest(
   url: URL,
   deps: GatewayDeps,
 ): Promise<Response> {
-  const m = url.pathname.match(/^\/gw\/(anthropic|openai|xai)(\/.*)?$/);
+  const m = url.pathname.match(/^\/gw\/(anthropic|openai|xai|openrouter)(\/.*)?$/);
   if (!m) return json({ error: "unknown gateway route" }, 404);
   const providerName = m[1]!;
   const provider = providers()[providerName];

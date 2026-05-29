@@ -6,6 +6,7 @@ import { sessions } from "./sessions.ts";
 import { demoToMeta } from "./types.ts";
 import { handleGatewayRequest } from "./gateway.ts";
 import { createDailyLedger } from "./daily-ledger.ts";
+import { createTrialGate } from "./trial-gate.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT ?? 3001);
@@ -13,6 +14,7 @@ const isProd = process.env.NODE_ENV === "production";
 const DIST = join(__dirname, "../dist");
 
 const gatewayDeps = { sessions, daily: createDailyLedger() };
+const trialGate = createTrialGate();
 // Shared secret the Vercel proxy adds when forwarding an authenticated user, so
 // the public service can't be tricked into granting the (BYO) authed tier.
 const PROXY_SECRET = process.env.TRY_CLI_PROXY_SECRET;
@@ -132,7 +134,21 @@ const server = Bun.serve<{ sessionId: string }>({
         const demo = registry.get(slug);
         if (!demo) return json({ error: "Demo not found" }, 404, req);
         const ip = getClientIp(req);
-        const session = await sessions.create(slug, demo, ip, sessionTier(req));
+        const tier = sessionTier(req);
+        // One free trial per anonymous IP — a reload after that prompts sign-in.
+        if (tier === "anonymous" && (await trialGate.isUsed(ip))) {
+          return json(
+            {
+              error: "free_trial_used",
+              trialUsed: true,
+              message: "You've used your free trial. Sign in to keep going.",
+            },
+            403,
+            req,
+          );
+        }
+        const session = await sessions.create(slug, demo, ip, tier);
+        if (tier === "anonymous") await trialGate.markUsed(ip);
         return json({
           id: session.id,
           slug: session.slug,

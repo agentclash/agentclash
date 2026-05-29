@@ -42,6 +42,8 @@ Set on the **Railway Try CLI service**:
 ANTHROPIC_API_KEY=sk-ant-...
 OPENAI_API_KEY=sk-...
 XAI_API_KEY=xai-...            # enables the Grok free trial
+OPENROUTER_API_KEY=sk-or-v1-... # enables Kimi K2 (kimi-cli) + Qwen3-Coder (qwen-code)
+OPENCODE_ZEN_API_KEY=sk-...      # enables the opencode demo on opencode Zen models
 # Where the sandbox CLIs reach the gateway (this service's own public URL)
 TRY_CLI_GATEWAY_URL=https://try-cli-production.up.railway.app
 # Durable daily spend ceiling (THE backstop) — reference the project's Redis

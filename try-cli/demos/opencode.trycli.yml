@@ -7,24 +7,23 @@ docs: "https://opencode.ai/docs/"
 github: "https://github.com/sst/opencode"
 
 auth:
-  provider: "any model provider"
-  summary: "Add an API key for the provider you want (Anthropic, OpenAI, xAI, and 75+ more). Subscription OAuth isn't supported — use a key."
+  provider: "opencode Zen"
+  summary: "Free trial runs opencode on its hosted Zen models, on AgentClash credentials — no key needed. To use your own provider, run opencode auth login."
   steps:
-    - "Run: opencode auth login"
-    - "Pick a provider, then choose 'Manually enter API key'"
-    - "Paste your key, then run: opencode"
-  signupUrl: "https://models.dev/"
+    - "Free trial: just run `opencode`"
+    - "Your own key: opencode auth login → pick a provider → paste your key"
+  signupUrl: "https://opencode.ai/auth"
 
 welcome: |
-  OpenCode is installed. Add a provider key from the panel on the left
-  (opencode auth login), then run `opencode`.
+  opencode is ready (opencode Zen). On the free trial, just run:
+    opencode
 
 commands:
-  - label: "Show version"
-    run: "opencode --version"
-  - label: "Sign in (add a key)"
-    run: "opencode auth login"
-  - label: "Start OpenCode"
+  - label: "Start opencode"
     run: "opencode"
+  - label: "Version"
+    run: "opencode --version"
+  - label: "Use your own provider"
+    run: "opencode auth login"
 
 sessionMinutes: 10

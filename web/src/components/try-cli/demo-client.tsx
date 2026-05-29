@@ -8,7 +8,9 @@ import {
   Copy,
   ExternalLink,
   KeyRound,
+  LogIn,
   RotateCcw,
+  Sparkles,
   TimerReset,
 } from "lucide-react";
 import { TryCliTerminal } from "@/components/try-cli/terminal";
@@ -27,10 +29,29 @@ export function TryCliDemoClient({ slug, initialDemo = null }: Props) {
   const [status, setStatus] = useState("loading");
   const [expiresAt, setExpiresAt] = useState(0);
   const [remaining, setRemaining] = useState("");
+  const [low, setLow] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const [tier, setTier] = useState<"anonymous" | "authenticated">("anonymous");
   const [trial, setTrial] = useState(false);
+  const [trialUsed, setTrialUsed] = useState(false);
+
+  const loginHref = `/auth/login?returnPathname=/try/${slug}`;
+  const SESSION_KEY = "trycli:session";
+  const saveSession = (id: string, exp: number) => {
+    try {
+      localStorage.setItem(SESSION_KEY, JSON.stringify({ id, slug, expiresAt: exp }));
+    } catch {
+      /* ignore */
+    }
+  };
+  const clearSaved = () => {
+    try {
+      localStorage.removeItem(SESSION_KEY);
+    } catch {
+      /* ignore */
+    }
+  };
 
   // Track the in-flight poll timer so it can be cancelled on unmount / re-poll.
   const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -94,6 +115,12 @@ export function TryCliDemoClient({ slug, initialDemo = null }: Props) {
       body: JSON.stringify({ slug }),
     });
     const data = await res.json();
+    if (res.status === 403 && data.trialUsed) {
+      setTrialUsed(true);
+      setStatus("trial_used");
+      clearSaved();
+      return;
+    }
     if (!res.ok) {
       setError(data.error ?? "Failed to start session");
       setStatus("error");
@@ -102,7 +129,9 @@ export function TryCliDemoClient({ slug, initialDemo = null }: Props) {
     setSessionId(data.id);
     setExpiresAt(data.expiresAt);
     if (data.tier) setTier(data.tier);
+    saveSession(data.id, data.expiresAt);
     pollSession(data.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug, apiBase, pollSession]);
 
   useEffect(() => {
@@ -117,11 +146,41 @@ export function TryCliDemoClient({ slug, initialDemo = null }: Props) {
         return;
       }
       setDemo(d);
+
+      // Resume an existing live session for this demo on reload (so a refresh
+      // doesn't burn the one free trial); otherwise start a fresh one.
+      let saved: { id: string; slug: string; expiresAt: number } | null = null;
+      try {
+        const raw = localStorage.getItem(SESSION_KEY);
+        if (raw) saved = JSON.parse(raw);
+      } catch {
+        /* ignore */
+      }
+      if (saved && saved.slug === slug && saved.expiresAt > Date.now()) {
+        const r = await fetch(`${apiBase}/sessions/${saved.id}`);
+        if (!cancelled && r.ok) {
+          const s = (await r.json()) as TrySession;
+          if (
+            (s.status === "ready" || s.status === "starting") &&
+            (s.expiresAt ?? 0) > Date.now()
+          ) {
+            setSessionId(saved.id);
+            setExpiresAt(s.expiresAt);
+            setStatus(s.status);
+            if (s.tier) setTier(s.tier);
+            if (typeof s.trial === "boolean") setTrial(s.trial);
+            if (s.status === "starting") pollSession(saved.id);
+            return;
+          }
+        }
+        if (cancelled) return;
+      }
       await createSession();
     })();
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug, apiBase, createSession]);
 
   useEffect(() => {
@@ -130,16 +189,23 @@ export function TryCliDemoClient({ slug, initialDemo = null }: Props) {
       const ms = expiresAt - Date.now();
       if (ms <= 0) {
         setRemaining("Expired");
+        // Anonymous trial is over — gate to sign-in instead of a dead terminal.
+        if (tier === "anonymous") {
+          setTrialUsed(true);
+          setStatus("trial_used");
+          clearSaved();
+        }
         return;
       }
       const m = Math.floor(ms / 60000);
       const s = Math.floor((ms % 60000) / 1000);
       setRemaining(`${m}:${s.toString().padStart(2, "0")}`);
+      setLow(ms < 120000);
     };
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
-  }, [expiresAt]);
+  }, [expiresAt, tier]);
 
   const reset = async () => {
     if (!sessionId) return;
@@ -148,6 +214,7 @@ export function TryCliDemoClient({ slug, initialDemo = null }: Props) {
     setSessionId(data.id);
     setExpiresAt(data.expiresAt);
     setStatus(data.status);
+    saveSession(data.id, data.expiresAt);
     if (data.status === "starting") pollSession(data.id);
   };
 
@@ -159,6 +226,44 @@ export function TryCliDemoClient({ slug, initialDemo = null }: Props) {
 
   const publicOrigin = tryCliPublicOrigin().replace(/\/$/, "");
   const badgeMd = `[![Try on AgentClash](${publicOrigin}/api/try/badge/${slug}.svg)](${publicOrigin}/try/${slug})`;
+
+  if (trialUsed) {
+    return (
+      <div className="relative flex min-h-[calc(100vh-4rem)] items-center justify-center px-6 py-20">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute left-1/2 top-1/3 -z-10 h-[420px] w-[420px] -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(255,255,255,0.10),transparent_70%)] blur-2xl"
+        />
+        <div className="w-full max-w-md text-center">
+          <div className="mx-auto mb-6 inline-flex size-12 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04]">
+            <Sparkles className="size-5 text-white/80" />
+          </div>
+          <h1 className="font-[family-name:var(--font-display)] text-[clamp(2rem,4vw,3rem)] font-normal leading-[1.05] tracking-[-0.03em]">
+            That&apos;s your free trial.
+          </h1>
+          <p className="mx-auto mt-4 max-w-sm text-white/55">
+            Hope {demo?.name ?? "it"} felt good. Sign in with AgentClash to keep going —
+            longer sessions, your own account, no limits.
+          </p>
+          <div className="mt-8 flex flex-col items-center gap-3">
+            <a
+              href={loginHref}
+              className="inline-flex w-full max-w-xs items-center justify-center gap-2 rounded-md bg-white px-6 py-3 text-sm font-medium text-[#060606] transition-colors hover:bg-white/90"
+            >
+              <LogIn className="size-4" />
+              Sign in to continue
+            </a>
+            <Link
+              href="/try"
+              className="inline-flex items-center gap-1.5 text-sm text-white/50 underline-offset-4 transition-colors hover:text-white/80 hover:underline"
+            >
+              <ArrowLeft className="size-3.5" /> Back to all demos
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (error && !demo) {
     return (
@@ -219,20 +324,34 @@ export function TryCliDemoClient({ slug, initialDemo = null }: Props) {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          {trial && (
-            <span className="hidden items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-medium text-emerald-300 sm:inline-flex">
-              Free trial
+          {tier === "anonymous" ? (
+            <span
+              className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 font-[family-name:var(--font-mono)] text-[11px] transition-colors ${
+                low
+                  ? "border-amber-500/40 bg-amber-500/10 text-amber-300"
+                  : "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+              }`}
+            >
+              <span className="relative flex size-1.5">
+                <span
+                  className={`absolute inline-flex size-full animate-ping rounded-full opacity-75 ${
+                    low ? "bg-amber-400" : "bg-emerald-400"
+                  }`}
+                />
+                <span
+                  className={`relative inline-flex size-1.5 rounded-full ${
+                    low ? "bg-amber-400" : "bg-emerald-400"
+                  }`}
+                />
+              </span>
+              Free trial · {remaining || "—"}
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 font-[family-name:var(--font-mono)] text-xs text-white/45">
+              <TimerReset className="size-3.5" />
+              {remaining || "—"}
             </span>
           )}
-          {tier === "authenticated" && (
-            <span className="hidden items-center gap-1.5 rounded-full border border-white/15 bg-white/[0.04] px-2.5 py-1 text-[11px] text-white/60 sm:inline-flex">
-              Your account
-            </span>
-          )}
-          <span className="inline-flex items-center gap-1.5 font-[family-name:var(--font-mono)] text-xs text-white/45">
-            <TimerReset className="size-3.5" />
-            {remaining || "—"}
-          </span>
           <button
             type="button"
             onClick={() => void reset()}
