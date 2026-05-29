@@ -120,6 +120,9 @@ export function TryCliTerminal({ sessionId, status, onReady }: Props) {
         ws.close();
       }
       termRef.current?.dispose();
+      // Allow a remount to reconnect to the same session id (refs survive an
+      // effect cleanup, e.g. React strict-mode mount→cleanup→remount).
+      connectedIdRef.current = null;
     };
   }, []);
 

@@ -23,8 +23,8 @@ welcome: |
 commands:
   - label: "Show version"
     run: "grok --version"
-  - label: "Set your key"
-    run: "export XAI_API_KEY=YOUR_KEY_HERE"
+  - label: "Set your key (prompts you)"
+    run: "read -rsp 'Paste your xAI API key: ' XAI_API_KEY && export XAI_API_KEY && echo ' ✓ key set'"
   - label: "Start Grok"
     run: "grok"
 

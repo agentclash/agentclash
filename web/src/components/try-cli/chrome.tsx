@@ -16,16 +16,12 @@ export function GridBackdrop({ className = "" }: { className?: string }) {
 }
 
 export function ClashMark({ className = "" }: { className?: string }) {
+  // Solid fills with per-triangle opacity — no gradient <defs>/id, so the mark
+  // is safe to render more than once on a page without id collisions.
   return (
     <svg viewBox="0 0 512 512" className={className} role="img" aria-label="AgentClash">
-      <defs>
-        <linearGradient id="trycli-clash" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#fff" stopOpacity="0.85" />
-          <stop offset="100%" stopColor="#fff" stopOpacity="0.45" />
-        </linearGradient>
-      </defs>
-      <path d="M232 256 96 136v240z" fill="url(#trycli-clash)" />
-      <path d="M280 256 416 136v240z" fill="url(#trycli-clash)" />
+      <path d="M232 256 96 136v240z" fill="#fff" fillOpacity="0.85" />
+      <path d="M280 256 416 136v240z" fill="#fff" fillOpacity="0.5" />
     </svg>
   );
 }
