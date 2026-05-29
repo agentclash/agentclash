@@ -29,6 +29,8 @@ export function TryCliDemoClient({ slug, initialDemo = null }: Props) {
   const [remaining, setRemaining] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
+  const [tier, setTier] = useState<"anonymous" | "authenticated">("anonymous");
+  const [trial, setTrial] = useState(false);
 
   // Track the in-flight poll timer so it can be cancelled on unmount / re-poll.
   const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -53,6 +55,8 @@ export function TryCliDemoClient({ slug, initialDemo = null }: Props) {
           const res = await fetch(`${apiBase}/sessions/${id}`);
           const data = (await res.json()) as TrySession & { error?: string };
           setStatus(data.status);
+          if (data.tier) setTier(data.tier);
+          if (typeof data.trial === "boolean") setTrial(data.trial);
           if (data.status === "error") {
             setError(data.error ?? "Sandbox failed");
             return;
@@ -97,6 +101,7 @@ export function TryCliDemoClient({ slug, initialDemo = null }: Props) {
     }
     setSessionId(data.id);
     setExpiresAt(data.expiresAt);
+    if (data.tier) setTier(data.tier);
     pollSession(data.id);
   }, [slug, apiBase, pollSession]);
 
@@ -214,6 +219,16 @@ export function TryCliDemoClient({ slug, initialDemo = null }: Props) {
           </div>
         </div>
         <div className="flex items-center gap-3">
+          {trial && (
+            <span className="hidden items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-medium text-emerald-300 sm:inline-flex">
+              Free trial
+            </span>
+          )}
+          {tier === "authenticated" && (
+            <span className="hidden items-center gap-1.5 rounded-full border border-white/15 bg-white/[0.04] px-2.5 py-1 text-[11px] text-white/60 sm:inline-flex">
+              Your account
+            </span>
+          )}
           <span className="inline-flex items-center gap-1.5 font-[family-name:var(--font-mono)] text-xs text-white/45">
             <TimerReset className="size-3.5" />
             {remaining || "—"}
@@ -237,13 +252,34 @@ export function TryCliDemoClient({ slug, initialDemo = null }: Props) {
 
       <div className="flex min-h-0 flex-1 flex-col md:flex-row">
         <aside className="w-full shrink-0 space-y-7 overflow-y-auto border-b border-white/[0.06] p-5 md:w-80 md:border-b-0 md:border-r">
+          {/* Free-trial card (anonymous, gateway-backed) */}
+          {trial && (
+            <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/[0.06] p-4">
+              <h2 className="text-xs font-medium uppercase tracking-wide text-emerald-300">
+                Free trial · no key needed
+              </h2>
+              <p className="mt-2 text-xs leading-relaxed text-white/60">
+                Running on AgentClash credentials for a few minutes — just run the commands
+                below, no sign-in or API key. When it ends, sign in to keep going with your
+                own account.
+              </p>
+              <a
+                href={`/auth/login?returnPathname=/try/${slug}`}
+                className="mt-3 inline-flex items-center gap-1.5 rounded-md bg-white px-3 py-1.5 text-xs font-medium text-[#060606] transition-colors hover:bg-white/90"
+              >
+                Sign in to continue
+              </a>
+            </div>
+          )}
+
           {/* BYO auth panel */}
           {demo?.auth && (
             <div className="rounded-lg border border-white/[0.1] bg-white/[0.02] p-4">
               <div className="flex items-center gap-2">
                 <KeyRound className="size-3.5 text-white/70" />
                 <h2 className="text-xs font-medium uppercase tracking-wide text-white/70">
-                  Sign in {demo.auth.provider ? `· ${demo.auth.provider}` : ""}
+                  {trial ? "Use your own account" : "Sign in"}
+                  {demo.auth.provider ? ` · ${demo.auth.provider}` : ""}
                 </h2>
               </div>
               <p className="mt-2 text-xs leading-relaxed text-white/50">{demo.auth.summary}</p>

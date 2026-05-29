@@ -4,11 +4,30 @@ import { badgeSvg } from "@try-cli/core";
 import { registry } from "./registry.ts";
 import { sessions } from "./sessions.ts";
 import { demoToMeta } from "./types.ts";
+import { handleGatewayRequest } from "./gateway.ts";
+import { createDailyLedger } from "./daily-ledger.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT ?? 3001);
 const isProd = process.env.NODE_ENV === "production";
 const DIST = join(__dirname, "../dist");
+
+const gatewayDeps = { sessions, daily: createDailyLedger() };
+// Shared secret the Vercel proxy adds when forwarding an authenticated user, so
+// the public service can't be tricked into granting the (BYO) authed tier.
+const PROXY_SECRET = process.env.TRY_CLI_PROXY_SECRET;
+
+function sessionTier(req: Request): "anonymous" | "authenticated" {
+  const user = req.headers.get("x-agentclash-user");
+  if (!user) return "anonymous";
+  // Require the secret to be BOTH configured and matching. If it's unset, fall
+  // back to anonymous so a misconfigured deploy never auto-grants the authed
+  // tier to anyone who knows the header name.
+  if (!PROXY_SECRET || req.headers.get("x-agentclash-proxy-secret") !== PROXY_SECRET) {
+    return "anonymous";
+  }
+  return "authenticated";
+}
 
 const CORS_ORIGINS = (process.env.TRY_CLI_CORS_ORIGINS ?? "http://localhost:3000,https://www.agentclash.dev,https://agentclash.dev,https://try.agentclash.dev")
   .split(",")
@@ -75,6 +94,12 @@ const server = Bun.serve<{ sessionId: string }>({
       return new Response(null, { status: 204, headers: corsHeaders(req) });
     }
 
+    // Metered LLM gateway for the anonymous free trial. Called by the sandbox
+    // CLIs (not the browser), so no CORS handling needed.
+    if (pathname.startsWith("/gw/")) {
+      return handleGatewayRequest(req, url, gatewayDeps);
+    }
+
     if (pathname.startsWith("/ws")) {
       const sessionId = url.searchParams.get("sessionId");
       if (!sessionId) return new Response("Missing sessionId", { status: 400 });
@@ -107,13 +132,14 @@ const server = Bun.serve<{ sessionId: string }>({
         const demo = registry.get(slug);
         if (!demo) return json({ error: "Demo not found" }, 404, req);
         const ip = getClientIp(req);
-        const session = await sessions.create(slug, demo, ip);
+        const session = await sessions.create(slug, demo, ip, sessionTier(req));
         return json({
           id: session.id,
           slug: session.slug,
           expiresAt: session.expiresAt,
           status: session.status,
           mock: session.mock,
+          tier: session.tier,
         }, 200, req);
       } catch (err) {
         return json({ error: err instanceof Error ? err.message : String(err) }, 429, req);
@@ -133,6 +159,10 @@ const server = Bun.serve<{ sessionId: string }>({
           status: session.status,
           error: session.error,
           mock: session.mock,
+          tier: session.tier,
+          trial: session.trialWired,
+          budgetUsd: session.gatewayBudgetUsd,
+          spentUsd: Math.round(session.gatewaySpentUsd * 1000) / 1000,
         }, 200, req);
       }
 
@@ -149,6 +179,7 @@ const server = Bun.serve<{ sessionId: string }>({
           expiresAt: newSession.expiresAt,
           status: newSession.status,
           mock: newSession.mock,
+          tier: newSession.tier,
         }, 200, req);
       }
     }

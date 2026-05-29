@@ -1,9 +1,13 @@
+import { withAuth } from "@workos-inc/authkit-nextjs";
 import { NextRequest, NextResponse } from "next/server";
 
 // Server-side backend URL for the Try CLI service. Do NOT fall back to
 // NEXT_PUBLIC_TRY_CLI_API_URL — that is the public proxy path (`/api/try`), so
 // using it here would make this route proxy back to itself in a request loop.
 const TRY_CLI_SERVICE = process.env.TRY_CLI_API_URL ?? "http://localhost:3001";
+// Shared secret so the service can trust the forwarded user identity. Only sent
+// when configured — never forward an unsigned identity header.
+const PROXY_SECRET = process.env.TRY_CLI_PROXY_SECRET;
 
 async function proxy(req: NextRequest, pathSegments: string[]): Promise<NextResponse> {
   const path = pathSegments.join("/");
@@ -15,6 +19,21 @@ async function proxy(req: NextRequest, pathSegments: string[]): Promise<NextResp
   if (contentType) headers.set("content-type", contentType);
   const forwarded = req.headers.get("x-forwarded-for");
   if (forwarded) headers.set("x-forwarded-for", forwarded);
+
+  // Tell the service when the request is from a signed-in AgentClash user so it
+  // grants the longer (bring-your-own-credentials) tier. Gated on the shared
+  // secret so the public service can't be spoofed into the authed tier.
+  if (PROXY_SECRET) {
+    try {
+      const { user } = await withAuth();
+      if (user) {
+        headers.set("x-agentclash-user", user.id);
+        headers.set("x-agentclash-proxy-secret", PROXY_SECRET);
+      }
+    } catch {
+      /* not signed in — anonymous tier */
+    }
+  }
 
   const init: RequestInit = {
     method: req.method,

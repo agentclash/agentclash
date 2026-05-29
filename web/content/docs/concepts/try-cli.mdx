@@ -32,9 +32,11 @@ E2B_API_KEY=... bun run scripts/build-template.ts
 
 The build runs in E2B's cloud (Build System 2.0 — no local Docker). The demo's `template:` field references the alias.
 
-## Bring-your-own credentials (AI agents)
+## Auth: free trial, then bring-your-own
 
-AI agent demos need a provider account. We **never inject our keys** into the sandbox (that would violate provider terms and expose the key to anyone in the shell). Instead each demo's `auth:` block shows the visitor how to sign in with their **own** credentials inside the disposable sandbox:
+**Anonymous free trial.** Visitors can try the AI agents for a few minutes with **no login and no key**. The CLI is wired to a metered server-side gateway that holds AgentClash's provider keys, mints a short-lived spend-capped token per session, and never lets the real key into the sandbox. A durable Redis-backed daily ceiling is the hard backstop.
+
+**Then sign in.** When the trial ends, signing in with AgentClash gives a longer session where you authenticate the CLI with your **own** account/key (running on your quota, not ours). We **never inject our keys** into the sandbox — that would violate provider terms and expose the key to anyone in the shell. Each demo's `auth:` block shows how to sign in with your own credentials:
 
 - **Claude Code** — `claude` → `/login` (paste-code) or `ANTHROPIC_API_KEY`
 - **Codex** — `codex login --device-auth` or an `OPENAI_API_KEY`
