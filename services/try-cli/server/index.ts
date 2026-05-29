@@ -20,8 +20,11 @@ const PROXY_SECRET = process.env.TRY_CLI_PROXY_SECRET;
 function sessionTier(req: Request): "anonymous" | "authenticated" {
   const user = req.headers.get("x-agentclash-user");
   if (!user) return "anonymous";
-  if (PROXY_SECRET && req.headers.get("x-agentclash-proxy-secret") !== PROXY_SECRET) {
-    return "anonymous"; // header present but unsigned — don't trust it
+  // Require the secret to be BOTH configured and matching. If it's unset, fall
+  // back to anonymous so a misconfigured deploy never auto-grants the authed
+  // tier to anyone who knows the header name.
+  if (!PROXY_SECRET || req.headers.get("x-agentclash-proxy-secret") !== PROXY_SECRET) {
+    return "anonymous";
   }
   return "authenticated";
 }

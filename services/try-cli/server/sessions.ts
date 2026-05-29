@@ -16,6 +16,9 @@ export interface TerminalSession {
   /** Free-trial spend cap (USD) and running total, enforced by the gateway. */
   gatewayBudgetUsd: number;
   gatewaySpentUsd: number;
+  /** Estimated spend for in-flight gateway requests, so concurrent requests
+   *  can't all pass the budget check before any of them finishes metering. */
+  gatewayReservedUsd: number;
   /** Whether this session's CLI is wired to the metered gateway (anon trial). */
   trialWired: boolean;
   /** Extra env injected into the PTY (gateway base URLs + proxy token). */
@@ -97,6 +100,7 @@ export class SessionManager {
       proxyToken: `tct_${crypto.randomUUID().replace(/-/g, "")}${crypto.randomUUID().replace(/-/g, "")}`,
       gatewayBudgetUsd: ANON_BUDGET_USD,
       gatewaySpentUsd: 0,
+      gatewayReservedUsd: 0,
       trialWired: false,
       ptyEnv: {},
       sandbox: null,

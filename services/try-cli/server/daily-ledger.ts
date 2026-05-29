@@ -43,12 +43,14 @@ export function createDailyLedger(): DailyLedger {
         }, Number.POSITIVE_INFINITY);
       },
       async add(usd) {
+        // Fail closed on error (Infinity), matching get(), so an intermittent
+        // Redis failure can't silently under-count the daily total.
         return safe(async () => {
           const key = todayKey();
           const total = await client.send("INCRBYFLOAT", [key, String(usd)]);
           await client.send("EXPIRE", [key, "172800"]); // 48h
           return parseFloat(String(total));
-        }, 0);
+        }, Number.POSITIVE_INFINITY);
       },
     };
   }

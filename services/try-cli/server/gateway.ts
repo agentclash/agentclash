@@ -24,6 +24,8 @@ interface ProviderConfig {
 
 const MAX_OUTPUT_TOKENS = Number(process.env.GW_MAX_OUTPUT_TOKENS ?? 2048);
 const MAX_REQUEST_BYTES = Number(process.env.GW_MAX_REQUEST_BYTES ?? 256 * 1024);
+// Conservative spend held per in-flight request until real usage is metered.
+const REQUEST_RESERVE_USD = Number(process.env.GW_REQUEST_RESERVE_USD ?? 0.05);
 
 function providers(): Record<string, ProviderConfig | undefined> {
   const anthropicKey = process.env.ANTHROPIC_API_KEY;
@@ -167,8 +169,10 @@ export async function handleGatewayRequest(
   const session = deps.sessions.validateGatewayToken(token);
   if (!session) return json({ error: "invalid or expired trial token" }, 401);
 
-  // Per-session budget.
-  if (session.gatewaySpentUsd >= session.gatewayBudgetUsd) {
+  // Per-session budget. Count in-flight reservations so concurrent requests
+  // can't all pass while a prior request is still streaming (metering only
+  // updates spend once the response completes).
+  if (session.gatewaySpentUsd + session.gatewayReservedUsd >= session.gatewayBudgetUsd) {
     return json(
       { error: "Free trial budget reached. Sign in with your own account to continue." },
       402,
@@ -205,6 +209,12 @@ export async function handleGatewayRequest(
   provider.applyAuth(headers);
   if (bodyInit !== undefined) headers.set("content-length", String(Buffer.byteLength(bodyInit as string)));
 
+  // Reserve estimated spend for this in-flight request; released once metered.
+  session.gatewayReservedUsd += REQUEST_RESERVE_USD;
+  const release = () => {
+    session.gatewayReservedUsd = Math.max(0, session.gatewayReservedUsd - REQUEST_RESERVE_USD);
+  };
+
   const target = `${provider.base}${m[2] ?? ""}${url.search}`;
   let upstream: Response;
   try {
@@ -216,17 +226,19 @@ export async function handleGatewayRequest(
       duplex: "half",
     });
   } catch (err) {
+    release();
     console.error(`[gw] upstream error ${providerName}:`, err);
     return json({ error: "upstream request failed" }, 502);
   }
 
   if (!upstream.body) {
+    release();
     return new Response(null, { status: upstream.status, headers: upstream.headers });
   }
 
   // Tee: one branch streams to the CLI, the other is drained to meter usage.
   const [toClient, toMeter] = upstream.body.tee();
-  void meter(toMeter, providerName, session, deps).catch(() => {});
+  void meter(toMeter, providerName, session, deps, release).catch(() => release());
 
   return new Response(toClient, {
     status: upstream.status,
@@ -239,23 +251,29 @@ async function meter(
   providerName: string,
   session: TerminalSession,
   deps: GatewayDeps,
+  release: () => void,
 ): Promise<void> {
-  const reader = stream.getReader();
-  const decoder = new TextDecoder();
-  let text = "";
-  // Cap accumulation so a runaway stream can't balloon memory.
-  const CAP = 8 * 1024 * 1024;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    if (text.length < CAP) text += decoder.decode(value, { stream: true });
+  try {
+    const reader = stream.getReader();
+    const decoder = new TextDecoder();
+    let text = "";
+    // Cap accumulation so a runaway stream can't balloon memory.
+    const CAP = 8 * 1024 * 1024;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (text.length < CAP) text += decoder.decode(value, { stream: true });
+    }
+    const usage = parseUsage(text);
+    if (!usage) return;
+    const usd = priceUsd(usage.model || defaultModel(providerName), usage.inTok, usage.outTok);
+    if (usd <= 0) return;
+    deps.sessions.addGatewaySpend(session.id, usd);
+    await deps.daily.add(usd);
+  } finally {
+    // Always release the in-flight reservation, even if parsing/metering failed.
+    release();
   }
-  const usage = parseUsage(text);
-  if (!usage) return;
-  const usd = priceUsd(usage.model || defaultModel(providerName), usage.inTok, usage.outTok);
-  if (usd <= 0) return;
-  deps.sessions.addGatewaySpend(session.id, usd);
-  await deps.daily.add(usd);
 }
 
 function defaultModel(provider: string): string {
