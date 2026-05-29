@@ -2,11 +2,24 @@ import { Sandbox } from "e2b";
 import type { Demo } from "@try-cli/core";
 import type { ServerWebSocket } from "bun";
 
+export type SessionTier = "anonymous" | "authenticated";
+
 export interface TerminalSession {
   id: string;
   slug: string;
   demo: Demo;
   ip: string;
+  tier: SessionTier;
+  /** High-entropy credential the sandbox CLIs send to the gateway (NOT the
+   *  session id, which travels in loggable URLs/WS params). */
+  proxyToken: string;
+  /** Free-trial spend cap (USD) and running total, enforced by the gateway. */
+  gatewayBudgetUsd: number;
+  gatewaySpentUsd: number;
+  /** Whether this session's CLI is wired to the metered gateway (anon trial). */
+  trialWired: boolean;
+  /** Extra env injected into the PTY (gateway base URLs + proxy token). */
+  ptyEnv: Record<string, string>;
   sandbox: Sandbox | null;
   ptyPid: number | null;
   ws: ServerWebSocket<unknown> | null;
@@ -16,8 +29,30 @@ export interface TerminalSession {
   mock: boolean;
 }
 
+// Per-tier session length (minutes). Anonymous trials are short and run on our
+// keys; signed-in users get longer and bring their own credentials.
+const ANON_MAX_MINUTES = Number(process.env.GW_ANON_MINUTES ?? 7);
+const AUTH_MAX_MINUTES = Number(process.env.GW_AUTH_MINUTES ?? 20);
+const ANON_BUDGET_USD = Number(process.env.GW_SESSION_BUDGET_USD ?? 0.3);
+
+// Demos whose free trial routes through the gateway, and the provider they use.
+// Demos not listed are bring-your-own-credentials only (no anon trial).
+const TRIAL_PROVIDER: Record<string, "anthropic" | "openai" | "xai" | undefined> = {
+  "claude-code": "anthropic",
+  codex: "openai",
+  grok: "xai",
+};
+
+const PROVIDER_ENV_KEY: Record<string, string> = {
+  anthropic: "ANTHROPIC_API_KEY",
+  openai: "OPENAI_API_KEY",
+  xai: "XAI_API_KEY",
+};
+
 export class SessionManager {
   private sessions = new Map<string, TerminalSession>();
+  // Reverse index: gateway proxy token -> session, for O(1) gateway auth.
+  private byProxyToken = new Map<string, TerminalSession>();
   // Live (not yet destroyed) session count per IP. Incremented on create,
   // decremented on destroy, so a user who finishes/resets a session frees the slot.
   private liveSessionsPerIp = new Map<string, number>();
@@ -40,25 +75,39 @@ export class SessionManager {
     return this.sessions.get(id);
   }
 
-  async create(slug: string, demo: Demo, ip: string): Promise<TerminalSession> {
+  async create(
+    slug: string,
+    demo: Demo,
+    ip: string,
+    tier: SessionTier = "anonymous",
+  ): Promise<TerminalSession> {
     if (!this.hasCapacity(ip)) {
       throw new Error("Rate limit exceeded. Try again later.");
     }
 
     const id = crypto.randomUUID();
+    const maxMinutes = tier === "authenticated" ? AUTH_MAX_MINUTES : ANON_MAX_MINUTES;
+    const minutes = Math.min(demo.sessionMinutes ?? 10, maxMinutes);
     const session: TerminalSession = {
       id,
       slug,
       demo,
       ip,
+      tier,
+      proxyToken: `tct_${crypto.randomUUID().replace(/-/g, "")}${crypto.randomUUID().replace(/-/g, "")}`,
+      gatewayBudgetUsd: ANON_BUDGET_USD,
+      gatewaySpentUsd: 0,
+      trialWired: false,
+      ptyEnv: {},
       sandbox: null,
       ptyPid: null,
       ws: null,
-      expiresAt: Date.now() + (demo.sessionMinutes ?? 10) * 60 * 1000,
+      expiresAt: Date.now() + minutes * 60 * 1000,
       status: "starting",
       mock: !this.useE2B,
     };
     this.sessions.set(id, session);
+    this.byProxyToken.set(session.proxyToken, session);
     this.liveSessionsPerIp.set(ip, (this.liveSessionsPerIp.get(ip) ?? 0) + 1);
 
     if (this.useE2B) {
@@ -92,11 +141,75 @@ export class SessionManager {
       }
     }
 
+    await this.wireGatewayTrial(session);
     session.status = "ready";
 
     if (session.ws) {
       await this.attachPty(session, session.ws as ServerWebSocket<{ sessionId: string }>);
     }
+  }
+
+  /**
+   * For an anonymous trial of a supported AI CLI, point the CLI at the metered
+   * gateway with the session's proxy token. The real provider key never enters
+   * the sandbox. No-op for authenticated (BYO) sessions, non-AI demos, providers
+   * whose key isn't configured on the service, or when no gateway URL is set.
+   */
+  private async wireGatewayTrial(session: TerminalSession) {
+    if (session.tier !== "anonymous") return;
+    const provider = TRIAL_PROVIDER[session.slug];
+    if (!provider) return;
+    if (!process.env[PROVIDER_ENV_KEY[provider]]) return;
+    const gw = process.env.TRY_CLI_GATEWAY_URL;
+    if (!gw || !session.sandbox) return;
+    const base = gw.replace(/\/$/, "");
+    const token = session.proxyToken;
+    const env: Record<string, string> = {};
+
+    if (provider === "anthropic") {
+      // ANTHROPIC_AUTH_TOKEN (Bearer) is the gateway path and skips the
+      // first-use API-key approval prompt that ANTHROPIC_API_KEY triggers.
+      env.ANTHROPIC_BASE_URL = `${base}/gw/anthropic`;
+      env.ANTHROPIC_AUTH_TOKEN = token;
+    } else if (provider === "openai") {
+      env.OPENAI_API_KEY = token;
+      const model = process.env.GW_CODEX_MODEL ?? "gpt-5-codex";
+      const cfg =
+        `model = "${model}"\n` +
+        `model_provider = "trycli"\n` +
+        `[model_providers.trycli]\n` +
+        `name = "trycli"\n` +
+        `base_url = "${base}/gw/openai/v1"\n` +
+        `env_key = "OPENAI_API_KEY"\n` +
+        `wire_api = "responses"\n`;
+      try {
+        await session.sandbox.files.write("/home/user/.codex/config.toml", cfg);
+      } catch (err) {
+        console.error(`[session ${session.id}] codex config write failed:`, err);
+      }
+    } else if (provider === "xai") {
+      env.GROK_BASE_URL = `${base}/gw/xai/v1`;
+      env.XAI_API_KEY = token;
+      env.GROK_API_KEY = token;
+    }
+
+    session.ptyEnv = env;
+    session.trialWired = true;
+  }
+
+  /** Resolve + authorize a gateway proxy token. Returns the live anon session
+   *  that is still within its time window, or undefined. */
+  validateGatewayToken(token: string): TerminalSession | undefined {
+    if (!token) return undefined;
+    const s = this.byProxyToken.get(token);
+    if (!s || s.tier !== "anonymous" || !s.trialWired) return undefined;
+    if (s.status === "expired" || Date.now() > s.expiresAt) return undefined;
+    return s;
+  }
+
+  addGatewaySpend(id: string, usd: number) {
+    const s = this.sessions.get(id);
+    if (s) s.gatewaySpentUsd += usd;
   }
 
   async attachPty(session: TerminalSession, ws: ServerWebSocket<{ sessionId: string }>) {
@@ -123,6 +236,7 @@ export class SessionManager {
       envs: {
         TERM: "xterm-256color",
         PS1: "\\[\\033[01;32m\\]\\u@try-cli\\[\\033[00m\\]:\\[\\033[01;34m\\]\\w\\[\\033[00m\\]$ ",
+        ...session.ptyEnv,
       },
     });
 
@@ -131,9 +245,18 @@ export class SessionManager {
     // Render the welcome text directly to the terminal output instead of running
     // it through the shell — passing `demo.welcome` into a shell command would let
     // a `$(...)`/backtick payload in a demo config execute inside the sandbox.
+    const enc = new TextEncoder();
+    if (session.trialWired && ws.readyState === WebSocket.OPEN) {
+      ws.send(
+        enc.encode(
+          `\x1b[32m✓ Free trial active\x1b[0m — running on AgentClash credentials, no key needed. ` +
+            `Just run the command. Sign in to continue with your own account.\r\n\r\n`,
+        ),
+      );
+    }
     if (demo.welcome && ws.readyState === WebSocket.OPEN) {
       const text = demo.welcome.replace(/\r?\n/g, "\r\n");
-      ws.send(new TextEncoder().encode(`${text}\r\n`));
+      ws.send(enc.encode(`${text}\r\n`));
     }
   }
 
@@ -195,7 +318,7 @@ export class SessionManager {
     await this.destroy(session.id);
     // Reuse the original client IP so a reset (destroy + create) nets to the same
     // live-session count for that IP rather than charging a shared bucket.
-    return this.create(session.slug, session.demo, session.ip);
+    return this.create(session.slug, session.demo, session.ip, session.tier);
   }
 
   async destroy(id: string) {
@@ -204,6 +327,7 @@ export class SessionManager {
 
     // Remove from the maps first so concurrent/double destroys can't double-count.
     this.sessions.delete(id);
+    this.byProxyToken.delete(session.proxyToken);
     const live = (this.liveSessionsPerIp.get(session.ip) ?? 0) - 1;
     if (live > 0) {
       this.liveSessionsPerIp.set(session.ip, live);

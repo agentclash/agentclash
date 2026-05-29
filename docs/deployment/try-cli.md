@@ -26,6 +26,44 @@ Deploy via existing Vercel Git integration on `main` after merge.
 
 Optional DNS: `try.agentclash.dev` → Vercel (rewrite to `/try` is in `next.config.ts`).
 
+## Free-trial gateway (anonymous AI demos)
+
+Anonymous visitors can try the AI coding agents with **no login and no API key**
+for a few minutes. This is served by a metered gateway built into the Try CLI
+service: the real provider keys live only on the service, each session gets a
+short-lived spend-capped proxy token, and the sandbox CLIs point their base URL
+at `/gw/<provider>`. Signed-in users instead bring their own credentials and get
+a longer session (so they cost us nothing).
+
+Set on the **Railway Try CLI service**:
+
+```env
+# Provider keys (server-side only — never sent to the sandbox)
+ANTHROPIC_API_KEY=sk-ant-...
+OPENAI_API_KEY=sk-...
+XAI_API_KEY=xai-...            # enables the Grok free trial
+# Where the sandbox CLIs reach the gateway (this service's own public URL)
+TRY_CLI_GATEWAY_URL=https://try-cli-production.up.railway.app
+# Durable daily spend ceiling (THE backstop) — reference the project's Redis
+REDIS_URL=${{Redis.REDIS_URL}}
+# Shared secret so the Vercel proxy can grant the signed-in (BYO) tier
+TRY_CLI_PROXY_SECRET=<random-string>
+# Caps (optional; shown with defaults)
+GW_DAILY_CEILING_USD=5
+GW_SESSION_BUDGET_USD=0.30
+GW_ANON_MINUTES=7
+GW_AUTH_MINUTES=20
+GW_MAX_OUTPUT_TOKENS=2048
+```
+
+On **Vercel** (web), set the matching `TRY_CLI_PROXY_SECRET` so the proxy attaches
+the signed-in user id. Without it, everyone is treated as anonymous (safe default).
+
+> The daily ceiling is Redis-backed so it survives restarts and multiple
+> instances — it's the hard cap on what an abuser can spend. The per-session
+> budget is the per-visitor comfort cap. If Redis is unreachable the gateway
+> fails **closed** (reports the ceiling as reached).
+
 ## E2B template (prerequisite)
 
 Demos boot from a shared E2B template (`agentclash-trycli`) with every CLI

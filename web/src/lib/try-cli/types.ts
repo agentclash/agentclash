@@ -26,4 +26,8 @@ export interface TrySession {
   status: string;
   mock?: boolean;
   error?: string;
+  tier?: "anonymous" | "authenticated";
+  trial?: boolean;
+  budgetUsd?: number;
+  spentUsd?: number;
 }
