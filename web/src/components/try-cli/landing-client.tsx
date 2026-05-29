@@ -38,7 +38,11 @@ export function TryCliLandingClient() {
   return (
     <main className="mx-auto max-w-[1400px] px-5 pb-28 sm:px-8">
       {/* Hero */}
-      <section className="pt-20 sm:pt-28">
+      <section className="relative pt-20 sm:pt-28">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -top-10 left-0 -z-10 h-[340px] w-[680px] max-w-full rounded-full bg-[radial-gradient(ellipse_at_left,rgba(255,255,255,0.08),transparent_70%)] blur-2xl"
+        />
         <div className="inline-flex items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.03] px-3 py-1 text-xs text-white/55">
           <Terminal className="size-3.5" />
           AgentClash primitive · live E2B sandboxes
@@ -97,7 +101,7 @@ export function TryCliLandingClient() {
                   <Link
                     key={d.slug}
                     href={`/try/${d.slug}`}
-                    className="group relative flex min-h-[132px] flex-col justify-between bg-[#0a0a0a] p-5 transition-colors hover:bg-white/[0.02]"
+                    className="group relative flex min-h-[132px] flex-col justify-between bg-[#0a0a0a] p-5 transition-all duration-200 hover:bg-white/[0.03] hover:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.12)]"
                   >
                     <div>
                       <div className="flex items-center justify-between">

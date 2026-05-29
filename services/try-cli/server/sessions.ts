@@ -38,6 +38,9 @@ const ANON_MAX_MINUTES = Number(process.env.GW_ANON_MINUTES ?? 7);
 const AUTH_MAX_MINUTES = Number(process.env.GW_AUTH_MINUTES ?? 20);
 const ANON_BUDGET_USD = Number(process.env.GW_SESSION_BUDGET_USD ?? 0.3);
 const SANDBOX_WORKDIR = "/home/user/project";
+// Global cap on concurrent live sandboxes, to stay under E2B's per-team
+// concurrency/rate limits (cost isn't the concern — rate limiting is).
+const MAX_CONCURRENT_SANDBOXES = Number(process.env.TRY_CLI_MAX_CONCURRENT_SANDBOXES ?? 40);
 
 // Demos whose free trial routes through the gateway, and the provider they use.
 // Demos not listed are bring-your-own-credentials only (no anon trial).
@@ -74,6 +77,8 @@ export class SessionManager {
   // decremented on destroy, so a user who finishes/resets a session frees the slot.
   private liveSessionsPerIp = new Map<string, number>();
   private readonly maxSessionsPerIp = 3;
+  // Count of live sandboxes we've reserved capacity for (E2B sessions).
+  private activeSandboxes = 0;
   private readonly useE2B: boolean;
 
   constructor() {
@@ -100,6 +105,9 @@ export class SessionManager {
   ): Promise<TerminalSession> {
     if (!this.hasCapacity(ip)) {
       throw new Error("Rate limit exceeded. Try again later.");
+    }
+    if (this.useE2B && this.activeSandboxes >= MAX_CONCURRENT_SANDBOXES) {
+      throw new Error("Try CLI is at capacity right now — please try again in a moment.");
     }
 
     const id = crypto.randomUUID();
@@ -129,6 +137,7 @@ export class SessionManager {
     this.liveSessionsPerIp.set(ip, (this.liveSessionsPerIp.get(ip) ?? 0) + 1);
 
     if (this.useE2B) {
+      this.activeSandboxes++; // reserve a concurrency slot (released in destroy)
       this.bootstrapE2B(session).catch((err) => {
         session.status = "error";
         session.error = err instanceof Error ? err.message : String(err);
@@ -141,15 +150,31 @@ export class SessionManager {
     return session;
   }
 
+  // e2b v2 takes the template alias as a positional arg — passing it inside the
+  // options object is silently ignored. Retries on transient E2B rate limits.
+  private async createSandboxWithRetry(template: string | undefined, timeoutMs: number) {
+    let lastErr: unknown;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      try {
+        return template
+          ? await Sandbox.create(template, { timeoutMs })
+          : await Sandbox.create({ timeoutMs });
+      } catch (err) {
+        lastErr = err;
+        const msg = err instanceof Error ? err.message : String(err);
+        const rateLimited = /rate.?limit|429|too many requests/i.test(msg);
+        if (!rateLimited || attempt === 3) throw err;
+        await new Promise((r) => setTimeout(r, 500 * 2 ** attempt));
+      }
+    }
+    throw lastErr;
+  }
+
   private async bootstrapE2B(session: TerminalSession) {
     const { demo } = session;
     const timeoutMs = (demo.sessionMinutes ?? 10) * 60 * 1000;
 
-    // e2b v2 takes the template alias as a positional arg — passing it inside
-    // the options object is silently ignored and falls back to the base image.
-    const sandbox = demo.template
-      ? await Sandbox.create(demo.template, { timeoutMs })
-      : await Sandbox.create({ timeoutMs });
+    const sandbox = await this.createSandboxWithRetry(demo.template, timeoutMs);
     session.sandbox = sandbox;
 
     for (const cmd of demo.install ?? []) {
@@ -243,7 +268,11 @@ export class SessionManager {
         env.OPENAI_API_KEY = token;
         // Kimi CLI schema: provider block + a top-level [models.<id>] entry that
         // default_model references by id (not the raw model name).
+        // Top-level keys MUST precede any [section] in TOML, or they get parsed
+        // into the preceding table — so default_provider/default_model come first.
         const cfg =
+          `default_provider = "trycli"\n` +
+          `default_model = "trycli-default"\n\n` +
           `[providers.trycli]\n` +
           `type = "openai_legacy"\n` +
           `base_url = "${orBase}"\n` +
@@ -251,9 +280,7 @@ export class SessionManager {
           `[models.trycli-default]\n` +
           `provider = "trycli"\n` +
           `model = "${model}"\n` +
-          `max_context_size = 131072\n\n` +
-          `default_provider = "trycli"\n` +
-          `default_model = "trycli-default"\n`;
+          `max_context_size = 131072\n`;
         try {
           await session.sandbox.commands.run("mkdir -p /home/user/.kimi");
           await session.sandbox.files.write("/home/user/.kimi/config.toml", cfg);
@@ -386,10 +413,16 @@ export class SessionManager {
   }
 
   async reset(session: TerminalSession): Promise<TerminalSession> {
+    const originalExpiry = session.expiresAt;
+    const tier = session.tier;
     await this.destroy(session.id);
     // Reuse the original client IP so a reset (destroy + create) nets to the same
     // live-session count for that IP rather than charging a shared bucket.
-    return this.create(session.slug, session.demo, session.ip, session.tier);
+    const next = await this.create(session.slug, session.demo, session.ip, tier);
+    // A reset must not extend an anonymous trial past its original deadline —
+    // carry over the original expiry so the free window stays hard-capped.
+    if (tier === "anonymous") next.expiresAt = originalExpiry;
+    return next;
   }
 
   async destroy(id: string) {
@@ -399,6 +432,7 @@ export class SessionManager {
     // Remove from the maps first so concurrent/double destroys can't double-count.
     this.sessions.delete(id);
     this.byProxyToken.delete(session.proxyToken);
+    if (!session.mock) this.activeSandboxes = Math.max(0, this.activeSandboxes - 1);
     const live = (this.liveSessionsPerIp.get(session.ip) ?? 0) - 1;
     if (live > 0) {
       this.liveSessionsPerIp.set(session.ip, live);
