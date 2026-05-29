@@ -31,6 +31,7 @@ AgentClash gives you a workspace for the full evaluation loop:
 | Regression suites | Keep important failures covered across future model, prompt, and tool changes. |
 | Compare and release gates | Decide whether a candidate is safe to ship against a baseline. |
 | CI setup | Run AgentClash from GitHub Actions or another CI provider. |
+| **Try CLI** | [Interactive terminal demos](https://www.agentclash.dev/try) — README badges, disposable E2B sandboxes for CLI/TUI tools. |
 
 <img width="1920" height="994" alt="AgentClash runs list showing completed benchmark runs" src="https://github.com/user-attachments/assets/b280c4be-3382-4151-af98-bb8000eba3c5" />
 

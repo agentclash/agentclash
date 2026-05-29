@@ -1,0 +1,27 @@
+name: "Ruff"
+slug: ruff
+docs: "https://docs.astral.sh/ruff/"
+github: "https://github.com/astral-sh/ruff"
+
+install:
+  - "curl -LsSf https://astral.sh/ruff/install.sh | sh"
+  - "echo 'export PATH=\"$HOME/.local/bin:$PATH\"' >> ~/.bashrc && export PATH=\"$HOME/.local/bin:$PATH\""
+
+welcome: |
+  Ruff is ready! Extremely fast Python linter & formatter.
+  Try:
+    ruff --version
+    ruff check .
+    ruff format --help
+
+commands:
+  - label: "Show version"
+    run: "ruff --version"
+  - label: "Lint sample code"
+    run: "echo 'import os,sys\nx=1+2\nprint(x)' > bad.py && ruff check bad.py"
+  - label: "Auto-fix issues"
+    run: "ruff check bad.py --fix && cat bad.py"
+  - label: "Format code"
+    run: "ruff format bad.py && cat bad.py"
+
+sessionMinutes: 10

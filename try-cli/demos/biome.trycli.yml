@@ -1,0 +1,28 @@
+name: "Biome"
+slug: biome
+docs: "https://biomejs.dev/"
+github: "https://github.com/biomejs/biome"
+
+install:
+  - "curl -fsSL https://bun.sh/install | bash"
+  - "export BUN_INSTALL=\"$HOME/.bun\" && export PATH=\"$BUN_INSTALL/bin:$PATH\""
+  - "bun add -g @biomejs/biome"
+
+welcome: |
+  Biome is ready! Fast formatter and linter for JS/TS.
+  Try:
+    biome --version
+    biome init
+    biome check .
+
+commands:
+  - label: "Show version"
+    run: "biome --version"
+  - label: "Init config"
+    run: "mkdir demo && cd demo && biome init"
+  - label: "Check sample file"
+    run: "echo 'const  x=1+2;console.log(x)' > demo/app.js && biome check demo/app.js"
+  - label: "Format file"
+    run: "biome format --write demo/app.js && cat demo/app.js"
+
+sessionMinutes: 10

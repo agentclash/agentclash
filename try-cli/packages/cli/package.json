@@ -1,0 +1,12 @@
+{
+  "name": "@agentclash/try-cli",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "try-cli": "./src/index.ts",
+    "agentclash-try-cli": "./src/index.ts"
+  },
+  "dependencies": {
+    "@try-cli/core": "workspace:*"
+  }
+}

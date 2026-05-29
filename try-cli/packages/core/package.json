@@ -1,0 +1,13 @@
+{
+  "name": "@try-cli/core",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "yaml": "^2.8.0",
+    "zod": "^3.25.76"
+  }
+}
