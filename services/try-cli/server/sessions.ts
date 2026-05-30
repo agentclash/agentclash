@@ -48,7 +48,10 @@ const TRIAL_PROVIDER: Record<
   string,
   "anthropic" | "openai" | "xai" | "openrouter" | undefined
 > = {
-  "claude-code": "anthropic",
+  // Claude Code free trial DISABLED — metering under-counted its agentic usage
+  // and it ran up a large bill. Claude Code is bring-your-own-key only until the
+  // gateway metering is fixed. (See GW_DAILY_CEILING_USD brake.)
+  // "claude-code": "anthropic",
   codex: "openai",
   grok: "xai",
   // Each runs its OWN dedicated CLI pointed at OpenRouter through the gateway.
