@@ -3,8 +3,11 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
+	"os"
 	"strings"
 
+	api "github.com/agentclash/agentclash/cli/internal/api"
 	"github.com/agentclash/agentclash/cli/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -15,6 +18,8 @@ func init() {
 	datasetCmd.AddCommand(datasetCreateCmd)
 	datasetCmd.AddCommand(datasetViewCmd)
 	datasetCmd.AddCommand(datasetDeleteCmd)
+	datasetCmd.AddCommand(datasetImportCmd)
+	datasetCmd.AddCommand(datasetExportCmd)
 	datasetCmd.AddCommand(datasetEvalCmd)
 	datasetCmd.AddCommand(datasetExampleCmd)
 	datasetExampleCmd.AddCommand(datasetExampleAddCmd)
@@ -50,6 +55,14 @@ func init() {
 	datasetExampleEditCmd.Flags().String("source", "", "Example source: manual, import, trace, synthetic, or promotion")
 
 	datasetVersionCreateCmd.Flags().String("label", "", "Optional dataset version label")
+
+	datasetImportCmd.Flags().String("format", "", "Import format: openai, braintrust, langsmith, phoenix, jsonl, or csv")
+	datasetImportCmd.Flags().String("mode", "add", "Import mode: add or replace")
+	datasetImportCmd.Flags().Bool("dry-run", false, "Preview normalized examples without mutating the dataset")
+	datasetImportCmd.Flags().String("mapping", "", "JSON mapping for generic JSONL/CSV imports")
+	datasetImportCmd.Flags().StringArray("map", nil, "Mapping entry key=value (repeatable); values may be comma-separated for input_keys/output_keys/metadata_keys")
+	datasetExportCmd.Flags().String("format", "jsonl", "Export format: openai, braintrust, langsmith, phoenix, jsonl, or csv")
+	datasetExportCmd.Flags().String("version", "", "Dataset version ID to export")
 	datasetEvalCmd.Flags().String("version", "", "Dataset version ID to run")
 	datasetEvalCmd.Flags().String("pack", "", "Challenge pack version ID")
 	datasetEvalCmd.Flags().String("challenge", "", "Challenge key to bind examples to")
@@ -172,6 +185,85 @@ var datasetDeleteCmd = &cobra.Command{
 		}
 		rc.Output.PrintSuccess("Archived dataset " + args[0])
 		return nil
+	},
+}
+
+var datasetImportCmd = &cobra.Command{
+	Use:   "import <datasetId> <file>",
+	Short: "Import examples into a dataset",
+	Args:  cobra.ExactArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		rc := GetRunContext(cmd)
+		wsID := RequireWorkspace(cmd)
+		file, err := os.Open(args[1])
+		if err != nil {
+			return err
+		}
+		defer file.Close()
+		fields := map[string]string{}
+		setStringFieldFromFlag(cmd, fields, "format")
+		setStringFieldFromFlag(cmd, fields, "mode")
+		if dryRun, _ := cmd.Flags().GetBool("dry-run"); dryRun {
+			fields["dry_run"] = "true"
+		}
+		mapping, err := datasetImportMappingFromFlags(cmd)
+		if err != nil {
+			return err
+		}
+		if mapping != "" {
+			fields["mapping"] = mapping
+		}
+		resp, err := rc.Client.PostMultipart(cmd.Context(), "/v1/workspaces/"+wsID+"/datasets/"+args[0]+"/import", fields, map[string]api.FileUpload{
+			"file": {Filename: args[1], Reader: file},
+		})
+		if err != nil {
+			return err
+		}
+		if apiErr := resp.ParseError(); apiErr != nil {
+			return apiErr
+		}
+		var result map[string]any
+		if err := resp.DecodeJSON(&result); err != nil {
+			return err
+		}
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(result)
+		}
+		if errorsValue, ok := result["errors"].([]any); ok && len(errorsValue) > 0 {
+			rc.Output.PrintWarning(fmt.Sprintf("Import reported %d row errors", len(errorsValue)))
+		}
+		if dryRun, _ := result["dry_run"].(bool); dryRun {
+			rc.Output.PrintSuccess(fmt.Sprintf("Previewed %d examples", len(arrayValue(result["preview"]))))
+			return nil
+		}
+		rc.Output.PrintSuccess(fmt.Sprintf("Imported %s examples", str(result["imported_count"])))
+		return nil
+	},
+}
+
+var datasetExportCmd = &cobra.Command{
+	Use:   "export <datasetId>",
+	Short: "Export dataset examples",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		rc := GetRunContext(cmd)
+		wsID := RequireWorkspace(cmd)
+		query := url.Values{}
+		if format, _ := cmd.Flags().GetString("format"); format != "" {
+			query.Set("format", format)
+		}
+		if version, _ := cmd.Flags().GetString("version"); version != "" {
+			query.Set("version_id", version)
+		}
+		resp, err := rc.Client.Get(cmd.Context(), "/v1/workspaces/"+wsID+"/datasets/"+args[0]+"/export", query)
+		if err != nil {
+			return err
+		}
+		if apiErr := resp.ParseError(); apiErr != nil {
+			return apiErr
+		}
+		_, err = rc.Output.Writer().Write(resp.Body)
+		return err
 	},
 }
 
@@ -460,6 +552,64 @@ func setJSONFlagIfChanged(cmd *cobra.Command, body map[string]any, flagName, key
 		return
 	}
 	body[key] = value
+}
+
+func setStringFieldFromFlag(cmd *cobra.Command, fields map[string]string, flagName string) {
+	if !cmd.Flags().Changed(flagName) {
+		return
+	}
+	value, _ := cmd.Flags().GetString(flagName)
+	if strings.TrimSpace(value) != "" {
+		fields[flagName] = strings.TrimSpace(value)
+	}
+}
+
+func datasetImportMappingFromFlags(cmd *cobra.Command) (string, error) {
+	if raw, _ := cmd.Flags().GetString("mapping"); strings.TrimSpace(raw) != "" {
+		return raw, nil
+	}
+	entries, _ := cmd.Flags().GetStringArray("map")
+	if len(entries) == 0 {
+		return "", nil
+	}
+	mapping := map[string]any{}
+	for _, entry := range entries {
+		key, value, ok := strings.Cut(entry, "=")
+		if !ok || strings.TrimSpace(key) == "" {
+			return "", fmt.Errorf("--map entries must be key=value")
+		}
+		key = strings.TrimSpace(key)
+		value = strings.TrimSpace(value)
+		switch key {
+		case "input_keys", "output_keys", "metadata_keys":
+			mapping[key] = splitCSVFlag(value)
+		case "tags_key", "id_key", "example_id_key":
+			mapping[key] = value
+		default:
+			return "", fmt.Errorf("unsupported mapping key %q", key)
+		}
+	}
+	data, err := json.Marshal(mapping)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+func splitCSVFlag(value string) []string {
+	parts := strings.Split(value, ",")
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if trimmed := strings.TrimSpace(part); trimmed != "" {
+			out = append(out, trimmed)
+		}
+	}
+	return out
+}
+
+func arrayValue(value any) []any {
+	items, _ := value.([]any)
+	return items
 }
 
 func renderDatasetsTable(rc *RunContext, items []map[string]any) {

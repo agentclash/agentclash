@@ -15,7 +15,10 @@ func TestBuildDatasetMaterializedExamplesStableOrderAndPayload(t *testing.T) {
 		{ID: uuid.New(), ExternalID: &secondID, Input: json.RawMessage(`{"question":"a"}`), Expected: json.RawMessage(`{"answer":"A"}`), Metadata: json.RawMessage(`{}`)},
 	}
 
-	items := buildDatasetMaterializedExamples(examples)
+	items, err := buildDatasetMaterializedExamples(examples)
+	if err != nil {
+		t.Fatalf("buildDatasetMaterializedExamples() error = %v", err)
+	}
 	if len(items) != 2 {
 		t.Fatalf("len(items) = %d, want 2", len(items))
 	}
@@ -55,9 +58,12 @@ func TestBuildDatasetMaterializedExamplesStableOrderAndPayload(t *testing.T) {
 
 func TestDatasetEvalInputChecksumChangesWithVersion(t *testing.T) {
 	exampleID := "case-1"
-	items := buildDatasetMaterializedExamples([]DatasetExample{{
+	items, err := buildDatasetMaterializedExamples([]DatasetExample{{
 		ID: uuid.New(), ExternalID: &exampleID, Input: json.RawMessage(`{"question":"x"}`), Metadata: json.RawMessage(`{}`),
 	}})
+	if err != nil {
+		t.Fatalf("buildDatasetMaterializedExamples() error = %v", err)
+	}
 	params := MaterializeDatasetVersionInputSetParams{DatasetVersionID: uuid.New(), ChallengePackVersionID: uuid.New(), ChallengeKey: "support"}
 
 	v1 := DatasetVersion{ManifestChecksum: "one"}

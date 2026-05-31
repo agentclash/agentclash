@@ -5,6 +5,7 @@ import { AuthKitProvider, useAccessToken } from "@workos-inc/authkit-nextjs/comp
 import type { NoUserInfo, UserInfo } from "@workos-inc/authkit-nextjs";
 import { SWRConfig } from "swr";
 import { createSWRApiFetcher } from "@/lib/api/swr";
+import { PostHogProvider } from "@/components/posthog-provider";
 
 export type InitialAuth = Omit<UserInfo | NoUserInfo, "accessToken">;
 
@@ -28,7 +29,11 @@ function WorkspaceDataProvider({ children }: { children: ReactNode }) {
 }
 
 export function AppProviders({ children }: { children: ReactNode }) {
-  return <AuthKitProvider>{children}</AuthKitProvider>;
+  return (
+    <AuthKitProvider>
+      <PostHogProvider>{children}</PostHogProvider>
+    </AuthKitProvider>
+  );
 }
 
 export function AuthenticatedAppProviders({
@@ -40,7 +45,9 @@ export function AuthenticatedAppProviders({
 }) {
   return (
     <AuthKitProvider initialAuth={initialAuth}>
-      <WorkspaceDataProvider>{children}</WorkspaceDataProvider>
+      <PostHogProvider>
+        <WorkspaceDataProvider>{children}</WorkspaceDataProvider>
+      </PostHogProvider>
     </AuthKitProvider>
   );
 }

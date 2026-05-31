@@ -82,6 +82,34 @@ type RecordRunEventParams struct {
 	Event runevents.Envelope
 }
 
+// RunAnalyticsMetadata is the minimal run attribution used by worker-side
+// analytics (PostHog run-lifecycle events). CreatedByUserID is nil when the
+// creating user has been deleted (runs.created_by_user_id ON DELETE SET NULL).
+type RunAnalyticsMetadata struct {
+	RunID           uuid.UUID
+	WorkspaceID     uuid.UUID
+	OrganizationID  uuid.UUID
+	CreatedByUserID *uuid.UUID
+}
+
+// GetRunAnalyticsMetadata resolves the workspace/org/creator for a run by id.
+// A fast primary-key lookup used opportunistically to enrich analytics events.
+func (r *Repository) GetRunAnalyticsMetadata(ctx context.Context, runID uuid.UUID) (RunAnalyticsMetadata, error) {
+	meta := RunAnalyticsMetadata{RunID: runID}
+	err := r.db.QueryRow(ctx, `
+		SELECT workspace_id, organization_id, created_by_user_id
+		FROM runs
+		WHERE id = $1
+	`, runID).Scan(&meta.WorkspaceID, &meta.OrganizationID, &meta.CreatedByUserID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return RunAnalyticsMetadata{}, fmt.Errorf("run %s not found: %w", runID, err)
+		}
+		return RunAnalyticsMetadata{}, fmt.Errorf("get run analytics metadata: %w", err)
+	}
+	return meta, nil
+}
+
 type RunnableChallengePackVersion struct {
 	ID              uuid.UUID
 	ChallengePackID uuid.UUID
@@ -173,6 +201,7 @@ type CreateQueuedRunParams struct {
 	RaceContext            bool
 	RaceContextMinStepGap  *int32
 	EntitlementGate        *RunEntitlementGate
+	DatasetEvalRun         *RecordDatasetEvalRunParams
 }
 
 type CreateQueuedRunResult struct {
@@ -664,6 +693,17 @@ func createQueuedRunWithQueries(
 	})
 	if err != nil {
 		return CreateQueuedRunResult{}, fmt.Errorf("create run: %w", err)
+	}
+
+	if params.DatasetEvalRun != nil {
+		if _, err := queries.RecordDatasetEvalRun(ctx, repositorysqlc.RecordDatasetEvalRunParams{
+			DatasetID:                params.DatasetEvalRun.DatasetID,
+			DatasetVersionID:         params.DatasetEvalRun.DatasetVersionID,
+			DatasetVersionInputSetID: params.DatasetEvalRun.DatasetVersionInputSetID,
+			RunID:                    runRow.ID,
+		}); err != nil {
+			return CreateQueuedRunResult{}, fmt.Errorf("record dataset eval run: %w", err)
+		}
 	}
 
 	_, err = queries.InsertRunStatusHistory(ctx, repositorysqlc.InsertRunStatusHistoryParams{

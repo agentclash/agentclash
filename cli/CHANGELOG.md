@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.22.0](https://github.com/agentclash/agentclash/compare/v0.21.0...v0.22.0) (2026-05-31)
+
+
+### Features
+
+* add datasets foundation ([c005d06](https://github.com/agentclash/agentclash/commit/c005d062683f5d44a248e495bb134ab5555e839b))
+* add datasets foundation ([393371a](https://github.com/agentclash/agentclash/commit/393371aaa3cf40659e5e8c30e872a863c7de2594))
+
 ## [0.21.0](https://github.com/agentclash/agentclash/compare/v0.20.0...v0.21.0) (2026-05-26)
 
 

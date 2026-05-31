@@ -67,6 +67,13 @@ type DatasetEvalResult struct {
 	JudgedAt            *time.Time `json:"judged_at,omitempty"`
 }
 
+type ListDatasetEvalResultsResult struct {
+	Items  []DatasetEvalResult `json:"items"`
+	Total  int64               `json:"total"`
+	Limit  int32               `json:"limit"`
+	Offset int32               `json:"offset"`
+}
+
 func (r *Repository) MaterializeDatasetVersionInputSet(ctx context.Context, params MaterializeDatasetVersionInputSetParams) (DatasetVersionInputSet, error) {
 	version, err := r.GetDatasetVersionByID(ctx, params.DatasetVersionID)
 	if err != nil {
@@ -81,7 +88,7 @@ func (r *Repository) MaterializeDatasetVersionInputSet(ctx context.Context, para
 	}
 	challengeKey := strings.TrimSpace(params.ChallengeKey)
 	if challengeKey == "" {
-		return DatasetVersionInputSet{}, ErrChallengePackVersionNotFound
+		return DatasetVersionInputSet{}, fmt.Errorf("%w: challenge key is required", ErrInvalidDatasetEvalInput)
 	}
 	challengeIdentityID, err := r.queries.GetChallengeIdentityForDatasetEval(ctx, repositorysqlc.GetChallengeIdentityForDatasetEvalParams{
 		ChallengePackVersionID: params.ChallengePackVersionID,
@@ -94,7 +101,10 @@ func (r *Repository) MaterializeDatasetVersionInputSet(ctx context.Context, para
 		return DatasetVersionInputSet{}, fmt.Errorf("get dataset eval challenge identity: %w", err)
 	}
 
-	materialized := buildDatasetMaterializedExamples(examples)
+	materialized, err := buildDatasetMaterializedExamples(examples)
+	if err != nil {
+		return DatasetVersionInputSet{}, err
+	}
 	inputChecksum := datasetEvalInputChecksum(version, params, materialized)
 	inputKey := datasetEvalInputKey(params.DatasetVersionID, challengeKey, inputChecksum)
 	description := fmt.Sprintf("Materialized from dataset version %s for challenge %s.", params.DatasetVersionID, challengeKey)
@@ -166,7 +176,7 @@ type datasetMaterializedExample struct {
 	Payload          json.RawMessage
 }
 
-func buildDatasetMaterializedExamples(examples []DatasetExample) []datasetMaterializedExample {
+func buildDatasetMaterializedExamples(examples []DatasetExample) ([]datasetMaterializedExample, error) {
 	sorted := append([]DatasetExample(nil), examples...)
 	sort.Slice(sorted, func(i, j int) bool {
 		return datasetExampleStableKey(sorted[i]) < datasetExampleStableKey(sorted[j])
@@ -174,13 +184,17 @@ func buildDatasetMaterializedExamples(examples []DatasetExample) []datasetMateri
 	out := make([]datasetMaterializedExample, 0, len(sorted))
 	for _, example := range sorted {
 		itemKey := datasetExampleStableKey(example)
+		payload, err := datasetExampleCaseDocument(example, itemKey)
+		if err != nil {
+			return nil, err
+		}
 		out = append(out, datasetMaterializedExample{
 			DatasetExampleID: example.ID,
 			ItemKey:          itemKey,
-			Payload:          datasetExampleCaseDocument(example, itemKey),
+			Payload:          payload,
 		})
 	}
-	return out
+	return out, nil
 }
 
 func datasetExampleStableKey(example DatasetExample) string {
@@ -190,7 +204,7 @@ func datasetExampleStableKey(example DatasetExample) string {
 	return example.ID.String()
 }
 
-func datasetExampleCaseDocument(example DatasetExample, itemKey string) json.RawMessage {
+func datasetExampleCaseDocument(example DatasetExample, itemKey string) (json.RawMessage, error) {
 	input := decodeRawForCaseDocument(example.Input)
 	expected := decodeRawForCaseDocument(example.Expected)
 	metadata := decodeRawForCaseDocument(example.Metadata)
@@ -213,8 +227,11 @@ func datasetExampleCaseDocument(example DatasetExample, itemKey string) json.Raw
 			Source: "dataset",
 		}}
 	}
-	encoded, _ := json.Marshal(doc)
-	return encoded
+	encoded, err := json.Marshal(doc)
+	if err != nil {
+		return nil, fmt.Errorf("marshal case document for %q: %w", itemKey, err)
+	}
+	return encoded, nil
 }
 
 func decodeRawForCaseDocument(raw json.RawMessage) any {
@@ -262,10 +279,16 @@ func (r *Repository) RecordDatasetEvalRun(ctx context.Context, params RecordData
 	return mapDatasetEvalRun(row)
 }
 
-func (r *Repository) ListDatasetEvalResults(ctx context.Context, datasetID uuid.UUID, versionID *uuid.UUID) ([]DatasetEvalResult, error) {
-	rows, err := r.queries.ListDatasetEvalResults(ctx, repositorysqlc.ListDatasetEvalResultsParams{DatasetID: datasetID, DatasetVersionID: versionID})
+func (r *Repository) ListDatasetEvalResults(ctx context.Context, datasetID uuid.UUID, versionID *uuid.UUID, limit, offset int32) (ListDatasetEvalResultsResult, error) {
+	rows, err := r.queries.ListDatasetEvalResults(ctx, repositorysqlc.ListDatasetEvalResultsParams{
+		DatasetID: datasetID, DatasetVersionID: versionID, ResultLimit: limit, ResultOffset: offset,
+	})
 	if err != nil {
-		return nil, fmt.Errorf("list dataset eval results: %w", err)
+		return ListDatasetEvalResultsResult{}, fmt.Errorf("list dataset eval results: %w", err)
+	}
+	total, err := r.queries.CountDatasetEvalResults(ctx, repositorysqlc.CountDatasetEvalResultsParams{DatasetID: datasetID, DatasetVersionID: versionID})
+	if err != nil {
+		return ListDatasetEvalResultsResult{}, fmt.Errorf("count dataset eval results: %w", err)
 	}
 	out := make([]DatasetEvalResult, 0, len(rows))
 	for _, row := range rows {
@@ -280,7 +303,7 @@ func (r *Repository) ListDatasetEvalResults(ctx context.Context, datasetID uuid.
 			JudgedAt:            optionalTime(row.JudgedAt),
 		})
 	}
-	return out, nil
+	return ListDatasetEvalResultsResult{Items: out, Total: total, Limit: limit, Offset: offset}, nil
 }
 
 func mapDatasetVersionInputSet(row repositorysqlc.DatasetVersionInputSet) (DatasetVersionInputSet, error) {

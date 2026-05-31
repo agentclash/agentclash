@@ -49,8 +49,13 @@ func TestDatasetManagerStartDatasetEvalMaterializesAndCreatesRun(t *testing.T) {
 	if len(runCreator.input.AgentDeploymentIDs) != 1 || runCreator.input.AgentDeploymentIDs[0] != deploymentID {
 		t.Fatalf("run deployments = %+v, want %s", runCreator.input.AgentDeploymentIDs, deploymentID)
 	}
-	if repo.recordedRun.RunID != runID {
-		t.Fatalf("recorded run = %+v, want run %s", repo.recordedRun, runID)
+	if runCreator.input.DatasetEvalRun == nil {
+		t.Fatal("dataset eval run linkage was not passed into run creation")
+	}
+	if runCreator.input.DatasetEvalRun.DatasetID != datasetID ||
+		runCreator.input.DatasetEvalRun.DatasetVersionID != versionID ||
+		runCreator.input.DatasetEvalRun.DatasetVersionInputSetID != repo.materialized.ID {
+		t.Fatalf("dataset eval linkage = %+v", runCreator.input.DatasetEvalRun)
 	}
 }
 
@@ -83,7 +88,11 @@ func TestDatasetManagerListDatasetResults(t *testing.T) {
 	repo := &datasetEvalFakeRepo{
 		dataset: repository.Dataset{ID: datasetID, WorkspaceID: workspaceID, CreatedAt: time.Now(), UpdatedAt: time.Now()},
 		version: repository.DatasetVersion{ID: versionID, DatasetID: datasetID, VersionNumber: 1, CreatedAt: time.Now()},
-		results: []repository.DatasetEvalResult{{DatasetExampleID: uuid.New(), DatasetVersionID: versionID, RunID: &runID}},
+		results: repository.ListDatasetEvalResultsResult{
+			Items: []repository.DatasetEvalResult{{DatasetExampleID: uuid.New(), DatasetVersionID: versionID, RunID: &runID}},
+			Total: 1,
+			Limit: 50,
+		},
 	}
 	manager := NewDatasetManager(datasetEvalAllowAuthorizer{}, repo)
 
@@ -91,7 +100,7 @@ func TestDatasetManagerListDatasetResults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListDatasetResults() error = %v", err)
 	}
-	if len(results) != 1 || results[0].RunID == nil || *results[0].RunID != runID {
+	if len(results.Items) != 1 || results.Items[0].RunID == nil || *results.Items[0].RunID != runID {
 		t.Fatalf("results = %+v, want linked run %s", results, runID)
 	}
 }
@@ -123,9 +132,8 @@ type datasetEvalFakeRepo struct {
 	dataset           repository.Dataset
 	version           repository.DatasetVersion
 	materialized      repository.DatasetVersionInputSet
-	results           []repository.DatasetEvalResult
+	results           repository.ListDatasetEvalResultsResult
 	materializeParams repository.MaterializeDatasetVersionInputSetParams
-	recordedRun       repository.RecordDatasetEvalRunParams
 	materializeCalled bool
 }
 
@@ -179,11 +187,7 @@ func (f *datasetEvalFakeRepo) MaterializeDatasetVersionInputSet(_ context.Contex
 	f.materializeParams = params
 	return f.materialized, nil
 }
-func (f *datasetEvalFakeRepo) RecordDatasetEvalRun(_ context.Context, params repository.RecordDatasetEvalRunParams) (repository.DatasetEvalRun, error) {
-	f.recordedRun = params
-	return repository.DatasetEvalRun{ID: uuid.New(), DatasetID: params.DatasetID, DatasetVersionID: params.DatasetVersionID, DatasetVersionInputSetID: params.DatasetVersionInputSetID, RunID: params.RunID, CreatedAt: time.Now()}, nil
-}
-func (f *datasetEvalFakeRepo) ListDatasetEvalResults(context.Context, uuid.UUID, *uuid.UUID) ([]repository.DatasetEvalResult, error) {
+func (f *datasetEvalFakeRepo) ListDatasetEvalResults(context.Context, uuid.UUID, *uuid.UUID, int32, int32) (repository.ListDatasetEvalResultsResult, error) {
 	return f.results, nil
 }
 

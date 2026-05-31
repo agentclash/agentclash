@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
 
+	datasetadapters "github.com/agentclash/agentclash/backend/internal/datasets/adapters"
 	"github.com/agentclash/agentclash/backend/internal/domain"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/go-chi/chi/v5"
@@ -32,8 +34,7 @@ type DatasetRepository interface {
 	GetDatasetVersionByID(context.Context, uuid.UUID) (repository.DatasetVersion, error)
 	ListDatasetVersionExamples(context.Context, uuid.UUID) ([]repository.DatasetExample, error)
 	MaterializeDatasetVersionInputSet(context.Context, repository.MaterializeDatasetVersionInputSetParams) (repository.DatasetVersionInputSet, error)
-	RecordDatasetEvalRun(context.Context, repository.RecordDatasetEvalRunParams) (repository.DatasetEvalRun, error)
-	ListDatasetEvalResults(context.Context, uuid.UUID, *uuid.UUID) ([]repository.DatasetEvalResult, error)
+	ListDatasetEvalResults(context.Context, uuid.UUID, *uuid.UUID, int32, int32) (repository.ListDatasetEvalResultsResult, error)
 }
 
 type DatasetService interface {
@@ -49,8 +50,10 @@ type DatasetService interface {
 	CreateDatasetVersion(context.Context, Caller, CreateDatasetVersionInput) (repository.DatasetVersion, error)
 	ListDatasetVersions(context.Context, Caller, GetDatasetInput) ([]repository.DatasetVersion, error)
 	GetDatasetVersion(context.Context, Caller, GetDatasetVersionInput) (repository.DatasetVersion, []repository.DatasetExample, error)
+	ImportDataset(context.Context, Caller, DatasetImportInput) (DatasetImportResult, error)
+	ExportDataset(context.Context, Caller, DatasetExportInput) (DatasetExportResult, error)
 	StartDatasetEval(context.Context, Caller, StartDatasetEvalInput) (StartDatasetEvalResult, error)
-	ListDatasetResults(context.Context, Caller, ListDatasetResultsInput) ([]repository.DatasetEvalResult, error)
+	ListDatasetResults(context.Context, Caller, ListDatasetResultsInput) (repository.ListDatasetEvalResultsResult, error)
 }
 
 type DatasetManager struct {
@@ -166,6 +169,50 @@ type GetDatasetVersionInput struct {
 	VersionID   uuid.UUID
 }
 
+type DatasetImportMode string
+
+const (
+	DatasetImportModeAdd     DatasetImportMode = "add"
+	DatasetImportModeReplace DatasetImportMode = "replace"
+)
+
+var ErrInvalidDatasetImportMode = errors.New("invalid dataset import mode")
+
+type DatasetImportInput struct {
+	WorkspaceID uuid.UUID
+	DatasetID   uuid.UUID
+	Format      string
+	Mode        DatasetImportMode
+	Mapping     datasetadapters.Mapping
+	DryRun      bool
+	Data        []byte
+}
+
+type DatasetImportResult struct {
+	Format        datasetadapters.Format      `json:"format"`
+	DryRun        bool                        `json:"dry_run"`
+	Mode          DatasetImportMode           `json:"mode"`
+	Preview       []datasetadapters.Example   `json:"preview,omitempty"`
+	Errors        []datasetadapters.RowError  `json:"errors,omitempty"`
+	ImportedCount int                         `json:"imported_count"`
+	Version       *repository.DatasetVersion  `json:"version,omitempty"`
+	Examples      []repository.DatasetExample `json:"examples,omitempty"`
+}
+
+type DatasetExportInput struct {
+	WorkspaceID uuid.UUID
+	DatasetID   uuid.UUID
+	VersionID   *uuid.UUID
+	Format      string
+}
+
+type DatasetExportResult struct {
+	Format      datasetadapters.Format `json:"format"`
+	ContentType string                 `json:"content_type"`
+	Filename    string                 `json:"filename"`
+	Data        []byte                 `json:"-"`
+}
+
 type StartDatasetEvalInput struct {
 	WorkspaceID            uuid.UUID
 	DatasetID              uuid.UUID
@@ -186,6 +233,8 @@ type ListDatasetResultsInput struct {
 	WorkspaceID uuid.UUID
 	DatasetID   uuid.UUID
 	VersionID   *uuid.UUID
+	Limit       int32
+	Offset      int32
 }
 
 func (m *DatasetManager) CreateDataset(ctx context.Context, caller Caller, input CreateDatasetInput) (repository.Dataset, error) {
@@ -389,35 +438,159 @@ func (m *DatasetManager) StartDatasetEval(ctx context.Context, caller Caller, in
 		OfficialPackMode:       domain.OfficialPackModeFull,
 		Name:                   input.Name,
 		AgentDeploymentIDs:     input.AgentDeploymentIDs,
+		DatasetEvalRun: &repository.RecordDatasetEvalRunParams{
+			DatasetID:                input.DatasetID,
+			DatasetVersionID:         input.VersionID,
+			DatasetVersionInputSetID: materialized.ID,
+		},
 	})
 	if err != nil {
-		return StartDatasetEvalResult{}, err
-	}
-	if _, err := m.repo.RecordDatasetEvalRun(ctx, repository.RecordDatasetEvalRunParams{
-		DatasetID:                input.DatasetID,
-		DatasetVersionID:         input.VersionID,
-		DatasetVersionInputSetID: materialized.ID,
-		RunID:                    runResult.Run.ID,
-	}); err != nil {
 		return StartDatasetEvalResult{}, err
 	}
 	return StartDatasetEvalResult{Run: runResult.Run, DatasetVersionInputSet: materialized}, nil
 }
 
-func (m *DatasetManager) ListDatasetResults(ctx context.Context, caller Caller, input ListDatasetResultsInput) ([]repository.DatasetEvalResult, error) {
+func (m *DatasetManager) ListDatasetResults(ctx context.Context, caller Caller, input ListDatasetResultsInput) (repository.ListDatasetEvalResultsResult, error) {
 	if _, err := m.GetDataset(ctx, caller, GetDatasetInput{WorkspaceID: input.WorkspaceID, DatasetID: input.DatasetID}); err != nil {
-		return nil, err
+		return repository.ListDatasetEvalResultsResult{}, err
 	}
 	if input.VersionID != nil {
 		version, err := m.repo.GetDatasetVersionByID(ctx, *input.VersionID)
 		if err != nil {
-			return nil, err
+			return repository.ListDatasetEvalResultsResult{}, err
 		}
 		if version.DatasetID != input.DatasetID {
-			return nil, repository.ErrDatasetVersionNotFound
+			return repository.ListDatasetEvalResultsResult{}, repository.ErrDatasetVersionNotFound
 		}
 	}
-	return m.repo.ListDatasetEvalResults(ctx, input.DatasetID, input.VersionID)
+	return m.repo.ListDatasetEvalResults(ctx, input.DatasetID, input.VersionID, input.Limit, input.Offset)
+}
+
+func (m *DatasetManager) ImportDataset(ctx context.Context, caller Caller, input DatasetImportInput) (DatasetImportResult, error) {
+	if input.Mode == "" {
+		input.Mode = DatasetImportModeAdd
+	}
+	if input.Mode != DatasetImportModeAdd && input.Mode != DatasetImportModeReplace {
+		return DatasetImportResult{}, ErrInvalidDatasetImportMode
+	}
+	dataset, err := m.GetDataset(ctx, caller, GetDatasetInput{WorkspaceID: input.WorkspaceID, DatasetID: input.DatasetID})
+	if err != nil {
+		return DatasetImportResult{}, err
+	}
+	normalized, err := datasetadapters.Import(input.Format, input.Data, input.Mapping)
+	if err != nil {
+		return DatasetImportResult{}, err
+	}
+	result := DatasetImportResult{Format: normalized.Format, DryRun: input.DryRun, Mode: input.Mode, Preview: normalized.Examples, Errors: normalized.Errors}
+	for i, example := range normalized.Examples {
+		if dataset.InputSchemaEnforced {
+			if err := domain.ValidateDatasetInputAgainstSchema(dataset.InputSchema, example.Input); err != nil {
+				result.Errors = append(result.Errors, datasetadapters.RowError{Row: i + 1, Field: "input", Message: err.Error()})
+			}
+		}
+	}
+	if len(result.Errors) > 0 || input.DryRun {
+		return result, nil
+	}
+	if input.Mode == DatasetImportModeReplace {
+		if err := m.archiveExamplesMissingFromImport(ctx, caller, input, normalized.Examples); err != nil {
+			return DatasetImportResult{}, err
+		}
+	}
+	imported := make([]repository.DatasetExample, 0, len(normalized.Examples))
+	source := domain.DatasetExampleSourceImport
+	for _, example := range normalized.Examples {
+		upserted, err := m.repo.UpsertDatasetExample(ctx, repository.UpsertDatasetExampleParams{
+			DatasetID: input.DatasetID, ExternalID: example.ExternalID, Input: example.Input, Expected: example.Expected, Metadata: example.Metadata,
+			Tags: example.Tags, Status: domain.DatasetExampleStatusActive, Source: source, Actor: caller.UserID,
+		})
+		if err != nil {
+			return DatasetImportResult{}, err
+		}
+		imported = append(imported, upserted)
+	}
+	version, err := m.repo.CreateDatasetVersion(ctx, repository.CreateDatasetVersionParams{
+		DatasetID: input.DatasetID,
+		Label:     datasetStringPtr("import:" + string(normalized.Format)),
+		Actor:     caller.UserID,
+	})
+	if err != nil {
+		return DatasetImportResult{}, err
+	}
+	result.ImportedCount = len(imported)
+	result.Version = &version
+	result.Examples = imported
+	return result, nil
+}
+
+func (m *DatasetManager) archiveExamplesMissingFromImport(ctx context.Context, caller Caller, input DatasetImportInput, examples []datasetadapters.Example) error {
+	incoming := make(map[string]struct{})
+	for _, example := range examples {
+		if example.ExternalID != nil && strings.TrimSpace(*example.ExternalID) != "" {
+			incoming[strings.TrimSpace(*example.ExternalID)] = struct{}{}
+		}
+	}
+	active := domain.DatasetExampleStatusActive
+	existing, err := m.repo.ListDatasetExamplesByDatasetID(ctx, repository.ListDatasetExamplesParams{DatasetID: input.DatasetID, Status: &active, Limit: 100000, Offset: 0})
+	if err != nil {
+		return err
+	}
+	archived := domain.DatasetExampleStatusArchived
+	for _, example := range existing {
+		if example.ExternalID != nil {
+			if _, keep := incoming[strings.TrimSpace(*example.ExternalID)]; keep {
+				continue
+			}
+		}
+		if _, err := m.repo.PatchDatasetExample(ctx, repository.PatchDatasetExampleParams{ID: example.ID, Status: &archived, Actor: caller.UserID}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (m *DatasetManager) ExportDataset(ctx context.Context, caller Caller, input DatasetExportInput) (DatasetExportResult, error) {
+	if _, err := m.GetDataset(ctx, caller, GetDatasetInput{WorkspaceID: input.WorkspaceID, DatasetID: input.DatasetID}); err != nil {
+		return DatasetExportResult{}, err
+	}
+	var examples []repository.DatasetExample
+	if input.VersionID != nil {
+		version, versionExamples, err := m.GetDatasetVersion(ctx, caller, GetDatasetVersionInput{WorkspaceID: input.WorkspaceID, DatasetID: input.DatasetID, VersionID: *input.VersionID})
+		if err != nil {
+			return DatasetExportResult{}, err
+		}
+		if version.DatasetID != input.DatasetID {
+			return DatasetExportResult{}, ErrForbidden
+		}
+		examples = versionExamples
+	} else {
+		active := domain.DatasetExampleStatusActive
+		current, err := m.repo.ListDatasetExamplesByDatasetID(ctx, repository.ListDatasetExamplesParams{DatasetID: input.DatasetID, Status: &active, Limit: 100000, Offset: 0})
+		if err != nil {
+			return DatasetExportResult{}, err
+		}
+		examples = current
+	}
+	exportExamples := make([]datasetadapters.Example, 0, len(examples))
+	for _, example := range examples {
+		exportExamples = append(exportExamples, datasetadapters.Example{
+			ExternalID: example.ExternalID,
+			Input:      example.Input,
+			Expected:   example.Expected,
+			Metadata:   example.Metadata,
+			Tags:       example.Tags,
+		})
+	}
+	data, contentType, err := datasetadapters.Export(input.Format, exportExamples)
+	if err != nil {
+		return DatasetExportResult{}, err
+	}
+	format, _ := datasetadapters.Import(input.Format, nil, datasetadapters.Mapping{})
+	ext := "jsonl"
+	if strings.Contains(contentType, "csv") {
+		ext = "csv"
+	}
+	return DatasetExportResult{Format: format.Format, ContentType: contentType, Filename: "dataset-" + input.DatasetID.String() + "." + ext, Data: data}, nil
 }
 
 type datasetListResponse struct {
@@ -742,7 +915,7 @@ func listDatasetResultsHandler(logger *slog.Logger, service DatasetService) http
 			return
 		}
 		var versionID *uuid.UUID
-		if raw := r.URL.Query().Get("version_id"); raw != "" {
+		if raw := firstQueryValue(r, "version_id", "version"); raw != "" {
 			parsed, err := uuid.Parse(raw)
 			if err != nil {
 				writeError(w, http.StatusBadRequest, "invalid_version_id", "version ID is malformed")
@@ -750,13 +923,146 @@ func listDatasetResultsHandler(logger *slog.Logger, service DatasetService) http
 			}
 			versionID = &parsed
 		}
-		results, err := service.ListDatasetResults(r.Context(), caller, ListDatasetResultsInput{WorkspaceID: workspaceID, DatasetID: datasetID, VersionID: versionID})
+		limit, offset, ok := paginationFromRequest(w, r)
+		if !ok {
+			return
+		}
+		results, err := service.ListDatasetResults(r.Context(), caller, ListDatasetResultsInput{WorkspaceID: workspaceID, DatasetID: datasetID, VersionID: versionID, Limit: limit, Offset: offset})
 		if err != nil {
 			handleDatasetError(w, logger, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"items": results})
+		writeJSON(w, http.StatusOK, results)
 	}
+}
+
+func importDatasetHandler(logger *slog.Logger, service DatasetService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		caller, workspaceID, datasetID, ok := datasetPathContext(w, r)
+		if !ok {
+			return
+		}
+		req, ok := decodeDatasetImportRequest(w, r)
+		if !ok {
+			return
+		}
+		result, err := service.ImportDataset(r.Context(), caller, DatasetImportInput{
+			WorkspaceID: workspaceID, DatasetID: datasetID, Format: req.Format, Mode: req.Mode, Mapping: req.Mapping, DryRun: req.DryRun, Data: req.Data,
+		})
+		if err != nil {
+			handleDatasetError(w, logger, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, result)
+	}
+}
+
+func exportDatasetHandler(logger *slog.Logger, service DatasetService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		caller, workspaceID, datasetID, ok := datasetPathContext(w, r)
+		if !ok {
+			return
+		}
+		var versionID *uuid.UUID
+		if raw := firstQueryValue(r, "version_id", "version"); raw != "" {
+			parsed, err := uuid.Parse(raw)
+			if err != nil {
+				writeError(w, http.StatusBadRequest, "invalid_version_id", "version ID is malformed")
+				return
+			}
+			versionID = &parsed
+		}
+		result, err := service.ExportDataset(r.Context(), caller, DatasetExportInput{
+			WorkspaceID: workspaceID, DatasetID: datasetID, VersionID: versionID, Format: firstQueryValue(r, "format"),
+		})
+		if err != nil {
+			handleDatasetError(w, logger, err)
+			return
+		}
+		w.Header().Set("Content-Type", result.ContentType)
+		w.Header().Set("Content-Disposition", `attachment; filename="`+result.Filename+`"`)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(result.Data)
+	}
+}
+
+type datasetImportRequest struct {
+	Format  string
+	Mode    DatasetImportMode
+	Mapping datasetadapters.Mapping
+	DryRun  bool
+	Data    []byte
+}
+
+const maxDatasetImportBytes = 32 << 20
+
+func datasetImportTooLarge(w http.ResponseWriter, err error) bool {
+	var maxErr *http.MaxBytesError
+	if errors.As(err, &maxErr) {
+		writeError(w, http.StatusRequestEntityTooLarge, "payload_too_large", "import payload exceeds the 32 MB limit")
+		return true
+	}
+	return false
+}
+
+func decodeDatasetImportRequest(w http.ResponseWriter, r *http.Request) (datasetImportRequest, bool) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxDatasetImportBytes)
+	req := datasetImportRequest{
+		Format: firstQueryValue(r, "format"),
+		Mode:   DatasetImportMode(firstQueryValue(r, "mode")),
+		DryRun: parseBoolQuery(r, "dry_run"),
+	}
+	if req.Mode == "" {
+		req.Mode = DatasetImportModeAdd
+	}
+	contentType := r.Header.Get("Content-Type")
+	if strings.HasPrefix(contentType, "multipart/form-data") {
+		if err := r.ParseMultipartForm(maxDatasetImportBytes); err != nil {
+			if datasetImportTooLarge(w, err) {
+				return req, false
+			}
+			writeError(w, http.StatusBadRequest, "invalid_request", "multipart body is invalid")
+			return req, false
+		}
+		req.Format = datasetFirstNonEmpty(req.Format, r.FormValue("format"))
+		req.Mode = DatasetImportMode(datasetFirstNonEmpty(string(req.Mode), r.FormValue("mode")))
+		req.DryRun = req.DryRun || parseBoolString(r.FormValue("dry_run"))
+		if raw := datasetFirstNonEmpty(r.FormValue("mapping"), r.FormValue("map")); raw != "" {
+			if err := json.Unmarshal([]byte(raw), &req.Mapping); err != nil {
+				writeError(w, http.StatusBadRequest, "invalid_mapping", "mapping must be valid JSON")
+				return req, false
+			}
+		}
+		file, _, err := r.FormFile("file")
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "missing_file", "multipart form must include file")
+			return req, false
+		}
+		defer file.Close()
+		data, err := io.ReadAll(file)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_file", "could not read upload")
+			return req, false
+		}
+		req.Data = data
+		return req, true
+	}
+	if raw := firstQueryValue(r, "mapping", "map"); raw != "" {
+		if err := json.Unmarshal([]byte(raw), &req.Mapping); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_mapping", "mapping must be valid JSON")
+			return req, false
+		}
+	}
+	data, err := io.ReadAll(r.Body)
+	if err != nil {
+		if datasetImportTooLarge(w, err) {
+			return req, false
+		}
+		writeError(w, http.StatusBadRequest, "invalid_request", "could not read request body")
+		return req, false
+	}
+	req.Data = data
+	return req, true
 }
 
 type datasetExampleRequest struct {
@@ -902,7 +1208,9 @@ func handleDatasetError(w http.ResponseWriter, logger *slog.Logger, err error) {
 		writeError(w, http.StatusNotFound, "not_found", "dataset resource not found")
 	case errors.Is(err, repository.ErrDatasetSlugConflict):
 		writeError(w, http.StatusConflict, "slug_conflict", "dataset slug already exists in this workspace")
-	case errors.Is(err, repository.ErrChallengePackVersionNotFound), errors.Is(err, repository.ErrChallengeInputSetNotFound):
+	case errors.Is(err, ErrInvalidDatasetImportMode):
+		writeError(w, http.StatusBadRequest, "validation_error", "mode must be add or replace")
+	case errors.Is(err, repository.ErrChallengePackVersionNotFound), errors.Is(err, repository.ErrChallengeInputSetNotFound), errors.Is(err, repository.ErrInvalidDatasetEvalInput):
 		writeError(w, http.StatusBadRequest, "validation_error", err.Error())
 	case errors.As(err, &runValidationErr):
 		writeError(w, http.StatusBadRequest, runValidationErr.Code, runValidationErr.Message)
@@ -912,6 +1220,41 @@ func handleDatasetError(w http.ResponseWriter, logger *slog.Logger, err error) {
 		logger.Error("dataset request failed", "error", err)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal server error")
 	}
+}
+
+func firstQueryValue(r *http.Request, names ...string) string {
+	for _, name := range names {
+		if value := strings.TrimSpace(r.URL.Query().Get(name)); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func datasetFirstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
+}
+
+func parseBoolQuery(r *http.Request, name string) bool {
+	return parseBoolString(r.URL.Query().Get(name))
+}
+
+func parseBoolString(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "1", "true", "yes", "y":
+		return true
+	default:
+		return false
+	}
+}
+
+func datasetStringPtr(value string) *string {
+	return &value
 }
 
 type noopDatasetService struct{}
@@ -952,9 +1295,15 @@ func (noopDatasetService) ListDatasetVersions(context.Context, Caller, GetDatase
 func (noopDatasetService) GetDatasetVersion(context.Context, Caller, GetDatasetVersionInput) (repository.DatasetVersion, []repository.DatasetExample, error) {
 	return repository.DatasetVersion{}, nil, errors.New("dataset service is not configured")
 }
+func (noopDatasetService) ImportDataset(context.Context, Caller, DatasetImportInput) (DatasetImportResult, error) {
+	return DatasetImportResult{}, errors.New("dataset service is not configured")
+}
+func (noopDatasetService) ExportDataset(context.Context, Caller, DatasetExportInput) (DatasetExportResult, error) {
+	return DatasetExportResult{}, errors.New("dataset service is not configured")
+}
 func (noopDatasetService) StartDatasetEval(context.Context, Caller, StartDatasetEvalInput) (StartDatasetEvalResult, error) {
 	return StartDatasetEvalResult{}, errors.New("dataset service is not configured")
 }
-func (noopDatasetService) ListDatasetResults(context.Context, Caller, ListDatasetResultsInput) ([]repository.DatasetEvalResult, error) {
-	return nil, errors.New("dataset service is not configured")
+func (noopDatasetService) ListDatasetResults(context.Context, Caller, ListDatasetResultsInput) (repository.ListDatasetEvalResultsResult, error) {
+	return repository.ListDatasetEvalResultsResult{}, errors.New("dataset service is not configured")
 }

@@ -9,6 +9,7 @@ import (
 
 	"strings"
 
+	"github.com/agentclash/agentclash/backend/internal/posthog"
 	"github.com/agentclash/agentclash/backend/internal/pubsub"
 	"github.com/agentclash/agentclash/backend/internal/ratelimit"
 	"github.com/agentclash/agentclash/backend/internal/repository"
@@ -58,6 +59,7 @@ type routerOptions struct {
 	cliAuthServices            []CLIAuthService
 	multiTurnService           MultiTurnService
 	vibeEvalService            VibeEvalService
+	posthogClient              posthog.Client
 }
 
 func NewServer(
@@ -94,6 +96,7 @@ func NewServer(
 	eventSubscriber pubsub.EventSubscriber,
 	multiTurnService MultiTurnService,
 	vibeEvalService VibeEvalService,
+	posthogClient posthog.Client,
 	cliAuthServices ...CLIAuthService,
 ) *Server {
 	router := buildRouter(routerOptions{
@@ -132,6 +135,7 @@ func NewServer(
 		eventSubscriber:            eventSubscriber,
 		multiTurnService:           multiTurnService,
 		vibeEvalService:            vibeEvalService,
+		posthogClient:              posthogClient,
 		cliAuthServices:            cliAuthServices,
 	})
 
@@ -336,6 +340,7 @@ func buildRouter(opts routerOptions) http.Handler {
 	}
 
 	router := chi.NewRouter()
+	router.Use(requestIDMiddleware())
 	router.Use(recoverer(logger))
 	router.Use(requestLogger(logger))
 	router.Use(newCORSMiddleware(authMode, corsAllowedOrigins))
@@ -384,6 +389,7 @@ func buildRouter(opts routerOptions) http.Handler {
 
 	router.Route("/v1", func(r chi.Router) {
 		r.Use(authenticateRequest(logger, authenticator))
+		r.Use(trackUsage(logger, opts.posthogClient))
 		r.Use(rateLimiter.Middleware("default", extractWorkspaceID))
 		registerProtectedRoutes(r, logger, authorizer, playgroundService, artifactService, artifactMaxUploadBytes, runCreationService, runReadService, replayReadService, compareReadService, releaseGateService, regressionService, datasetService, agentDeploymentReadService, agentHarnessService, githubIntegrationService, challengePackReadService, challengePackAuthoringService, agentBuildService, userService, orgService, wsService, orgMembershipService, wsMembershipService, onboardingService, infraService, workspaceSecretsService, cliAuthService, publicShareService, billingService, multiTurnService, vibeEvalService)
 	})

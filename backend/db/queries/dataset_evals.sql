@@ -149,4 +149,20 @@ LEFT JOIN judge_results jr
  AND jr.challenge_identity_id = dvis.challenge_identity_id
 WHERE dvis.dataset_id = @dataset_id
   AND (sqlc.narg('dataset_version_id')::uuid IS NULL OR dvis.dataset_version_id = sqlc.narg('dataset_version_id')::uuid)
-ORDER BY der.created_at DESC NULLS LAST, dil.item_key ASC, ra.lane_index ASC, jr.created_at DESC NULLS LAST;
+ORDER BY der.created_at DESC NULLS LAST, dil.item_key ASC, ra.lane_index ASC, jr.created_at DESC NULLS LAST
+LIMIT @result_limit OFFSET @result_offset;
+
+-- name: CountDatasetEvalResults :one
+SELECT count(*)
+FROM dataset_version_input_sets dvis
+JOIN dataset_input_item_links dil
+  ON dil.dataset_version_input_set_id = dvis.id
+LEFT JOIN dataset_eval_runs der
+  ON der.dataset_version_input_set_id = dvis.id
+LEFT JOIN run_agents ra
+  ON ra.run_id = der.run_id
+LEFT JOIN judge_results jr
+  ON jr.run_agent_id = ra.id
+ AND jr.challenge_identity_id = dvis.challenge_identity_id
+WHERE dvis.dataset_id = @dataset_id
+  AND (sqlc.narg('dataset_version_id')::uuid IS NULL OR dvis.dataset_version_id = sqlc.narg('dataset_version_id')::uuid);

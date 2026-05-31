@@ -12,6 +12,34 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countDatasetEvalResults = `-- name: CountDatasetEvalResults :one
+SELECT count(*)
+FROM dataset_version_input_sets dvis
+JOIN dataset_input_item_links dil
+  ON dil.dataset_version_input_set_id = dvis.id
+LEFT JOIN dataset_eval_runs der
+  ON der.dataset_version_input_set_id = dvis.id
+LEFT JOIN run_agents ra
+  ON ra.run_id = der.run_id
+LEFT JOIN judge_results jr
+  ON jr.run_agent_id = ra.id
+ AND jr.challenge_identity_id = dvis.challenge_identity_id
+WHERE dvis.dataset_id = $1
+  AND ($2::uuid IS NULL OR dvis.dataset_version_id = $2::uuid)
+`
+
+type CountDatasetEvalResultsParams struct {
+	DatasetID        uuid.UUID
+	DatasetVersionID *uuid.UUID
+}
+
+func (q *Queries) CountDatasetEvalResults(ctx context.Context, arg CountDatasetEvalResultsParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countDatasetEvalResults, arg.DatasetID, arg.DatasetVersionID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createDatasetEvalChallengeInputSet = `-- name: CreateDatasetEvalChallengeInputSet :one
 INSERT INTO challenge_input_sets (
     challenge_pack_version_id,
@@ -221,11 +249,14 @@ LEFT JOIN judge_results jr
 WHERE dvis.dataset_id = $1
   AND ($2::uuid IS NULL OR dvis.dataset_version_id = $2::uuid)
 ORDER BY der.created_at DESC NULLS LAST, dil.item_key ASC, ra.lane_index ASC, jr.created_at DESC NULLS LAST
+LIMIT $4 OFFSET $3
 `
 
 type ListDatasetEvalResultsParams struct {
 	DatasetID        uuid.UUID
 	DatasetVersionID *uuid.UUID
+	ResultOffset     int32
+	ResultLimit      int32
 }
 
 type ListDatasetEvalResultsRow struct {
@@ -240,7 +271,12 @@ type ListDatasetEvalResultsRow struct {
 }
 
 func (q *Queries) ListDatasetEvalResults(ctx context.Context, arg ListDatasetEvalResultsParams) ([]ListDatasetEvalResultsRow, error) {
-	rows, err := q.db.Query(ctx, listDatasetEvalResults, arg.DatasetID, arg.DatasetVersionID)
+	rows, err := q.db.Query(ctx, listDatasetEvalResults,
+		arg.DatasetID,
+		arg.DatasetVersionID,
+		arg.ResultOffset,
+		arg.ResultLimit,
+	)
 	if err != nil {
 		return nil, err
 	}

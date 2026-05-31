@@ -18,6 +18,7 @@ type Querier interface {
 	CountActiveOrgMembers(ctx context.Context, arg CountActiveOrgMembersParams) (int32, error)
 	CountActiveWorkspaceRuns(ctx context.Context, arg CountActiveWorkspaceRunsParams) (int32, error)
 	CountActiveWorkspaces(ctx context.Context, arg CountActiveWorkspacesParams) (int32, error)
+	CountDatasetEvalResults(ctx context.Context, arg CountDatasetEvalResultsParams) (int64, error)
 	CountDatasetExamplesByDatasetID(ctx context.Context, arg CountDatasetExamplesByDatasetIDParams) (int64, error)
 	CountDatasetsByWorkspaceID(ctx context.Context, arg CountDatasetsByWorkspaceIDParams) (int64, error)
 	CountRegressionCasesBySuiteID(ctx context.Context, arg CountRegressionCasesBySuiteIDParams) (int64, error)
