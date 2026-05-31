@@ -110,6 +110,10 @@ Get started:
 		// Build client options.
 		var opts []api.Option
 		opts = append(opts, api.WithVerbose(flagVerbose))
+		// User-Agent carries the dotted command path only when pointed at
+		// the hosted backend (api.agentclash.dev). Self-hosted backends and
+		// localhost see the neutral form — no command leaks to a third party.
+		opts = append(opts, api.WithUserAgent(api.BuildUserAgent(mgr.APIURL(), cliVersion, cmd.CommandPath())))
 
 		if devUser := mgr.DevUserID(); devUser != "" {
 			opts = append(opts, api.WithDevMode(devUser, mgr.DevOrgMemberships(), mgr.DevWorkspaceMemberships()))

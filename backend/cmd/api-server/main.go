@@ -10,6 +10,7 @@ import (
 	"github.com/agentclash/agentclash/backend/internal/api"
 	"github.com/agentclash/agentclash/backend/internal/budget"
 	"github.com/agentclash/agentclash/backend/internal/email"
+	"github.com/agentclash/agentclash/backend/internal/posthog"
 	"github.com/agentclash/agentclash/backend/internal/provider"
 	"github.com/agentclash/agentclash/backend/internal/pubsub"
 	"github.com/agentclash/agentclash/backend/internal/ratelimit"
@@ -159,6 +160,26 @@ func main() {
 	cliAuthManager := api.NewCLIAuthManager(repo, logger, cfg.FrontendURL)
 	cliTokenAuth := api.NewCLITokenAuthenticator(repo, logger)
 
+	// PostHog client (optional service). When POSTHOG_API_KEY is unset, returns
+	// a noop that satisfies the Client interface and does nothing on Capture.
+	var posthogClient posthog.Client = posthog.Noop{}
+	if posthogCfg, ok := posthog.LoadConfigFromEnv(); ok {
+		client, perr := posthog.NewClient(posthogCfg, logger)
+		if perr != nil {
+			logger.Error("failed to initialize posthog client", "error", perr)
+			os.Exit(1)
+		}
+		posthogClient = client
+		logger.Info("posthog analytics: enabled")
+		defer func() {
+			if err := posthogClient.Close(); err != nil {
+				logger.Warn("posthog close failed", "error", err)
+			}
+		}()
+	} else {
+		logger.Info("posthog analytics: disabled (POSTHOG_API_KEY not set)")
+	}
+
 	var authenticator api.Authenticator
 	switch cfg.AuthMode {
 	case "workos":
@@ -210,6 +231,7 @@ func main() {
 		eventSubscriber,
 		multiTurnManager,
 		vibeEvalManager,
+		posthogClient,
 		cliAuthManager,
 	)
 
