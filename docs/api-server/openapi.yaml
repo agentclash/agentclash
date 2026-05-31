@@ -15,6 +15,9 @@ servers:
   - url: http://localhost:8080
     description: Local development
 
+security:
+  - bearerJWT: []
+
 tags:
   - name: Health
     description: Liveness and readiness probes
@@ -2653,7 +2656,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/RunWorkflowErrorResponse"
         "500":
-          $ref: "#/components/responses/InternalServerError"
+          $ref: "#/components/responses/InternalError"
 
   /v1/runs/{runID}/ranking:
     get:
@@ -2939,7 +2942,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/ErrorEnvelope"
         "415":
           $ref: "#/components/responses/UnsupportedMediaType"
 
@@ -5488,22 +5491,6 @@ components:
     DatasetInteropFormat:
       type: string
       enum: [openai, braintrust, langsmith, phoenix, jsonl, csv]
-
-    DatasetImportMapping:
-      type: object
-      properties:
-        input_keys:
-          type: array
-          items: { type: string }
-        output_keys:
-          type: array
-          items: { type: string }
-        metadata_keys:
-          type: array
-          items: { type: string }
-        tags_key: { type: string }
-        id_key: { type: string }
-        example_id_key: { type: string }
 
     DatasetImportMultipartRequest:
       type: object
