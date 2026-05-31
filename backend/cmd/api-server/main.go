@@ -108,7 +108,7 @@ func main() {
 	compareReadManager := api.NewCompareReadManager(authorizer, repo)
 	releaseGateManager := api.NewReleaseGateManager(authorizer, repo)
 	regressionManager := api.NewRegressionManager(authorizer, repo)
-	datasetManager := api.NewDatasetManager(authorizer, repo)
+	datasetManager := api.NewDatasetManager(authorizer, repo).WithRunCreationService(runCreationManager)
 	hostedRunIngestionManager := api.NewHostedRunIngestionManager(
 		repo,
 		cfg.HostedRunCallbackSecret,

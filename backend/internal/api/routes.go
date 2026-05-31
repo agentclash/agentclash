@@ -121,6 +121,8 @@ func registerProtectedRoutes(
 	router.Get("/workspaces/{workspaceID}/datasets/{datasetID}", getDatasetHandler(logger, datasetService))
 	router.Patch("/workspaces/{workspaceID}/datasets/{datasetID}", patchDatasetHandler(logger, datasetService))
 	router.Delete("/workspaces/{workspaceID}/datasets/{datasetID}", deleteDatasetHandler(logger, datasetService))
+	router.Post("/workspaces/{workspaceID}/datasets/{datasetID}/evals", startDatasetEvalHandler(logger, datasetService))
+	router.Get("/workspaces/{workspaceID}/datasets/{datasetID}/results", listDatasetResultsHandler(logger, datasetService))
 	router.Post("/workspaces/{workspaceID}/datasets/{datasetID}/examples", addDatasetExampleHandler(logger, datasetService))
 	router.Get("/workspaces/{workspaceID}/datasets/{datasetID}/examples", listDatasetExamplesHandler(logger, datasetService))
 	router.Patch("/workspaces/{workspaceID}/datasets/{datasetID}/examples/{exampleID}", patchDatasetExampleHandler(logger, datasetService))

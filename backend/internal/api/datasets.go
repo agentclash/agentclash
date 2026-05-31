@@ -31,6 +31,9 @@ type DatasetRepository interface {
 	ListDatasetVersionsByDatasetID(context.Context, uuid.UUID) ([]repository.DatasetVersion, error)
 	GetDatasetVersionByID(context.Context, uuid.UUID) (repository.DatasetVersion, error)
 	ListDatasetVersionExamples(context.Context, uuid.UUID) ([]repository.DatasetExample, error)
+	MaterializeDatasetVersionInputSet(context.Context, repository.MaterializeDatasetVersionInputSetParams) (repository.DatasetVersionInputSet, error)
+	RecordDatasetEvalRun(context.Context, repository.RecordDatasetEvalRunParams) (repository.DatasetEvalRun, error)
+	ListDatasetEvalResults(context.Context, uuid.UUID, *uuid.UUID) ([]repository.DatasetEvalResult, error)
 }
 
 type DatasetService interface {
@@ -46,15 +49,23 @@ type DatasetService interface {
 	CreateDatasetVersion(context.Context, Caller, CreateDatasetVersionInput) (repository.DatasetVersion, error)
 	ListDatasetVersions(context.Context, Caller, GetDatasetInput) ([]repository.DatasetVersion, error)
 	GetDatasetVersion(context.Context, Caller, GetDatasetVersionInput) (repository.DatasetVersion, []repository.DatasetExample, error)
+	StartDatasetEval(context.Context, Caller, StartDatasetEvalInput) (StartDatasetEvalResult, error)
+	ListDatasetResults(context.Context, Caller, ListDatasetResultsInput) ([]repository.DatasetEvalResult, error)
 }
 
 type DatasetManager struct {
-	authorizer WorkspaceAuthorizer
-	repo       DatasetRepository
+	authorizer         WorkspaceAuthorizer
+	repo               DatasetRepository
+	runCreationService RunCreationService
 }
 
 func NewDatasetManager(authorizer WorkspaceAuthorizer, repo DatasetRepository) *DatasetManager {
 	return &DatasetManager{authorizer: authorizer, repo: repo}
+}
+
+func (m *DatasetManager) WithRunCreationService(service RunCreationService) *DatasetManager {
+	m.runCreationService = service
+	return m
 }
 
 type CreateDatasetInput struct {
@@ -153,6 +164,28 @@ type GetDatasetVersionInput struct {
 	WorkspaceID uuid.UUID
 	DatasetID   uuid.UUID
 	VersionID   uuid.UUID
+}
+
+type StartDatasetEvalInput struct {
+	WorkspaceID            uuid.UUID
+	DatasetID              uuid.UUID
+	VersionID              uuid.UUID
+	ChallengePackVersionID uuid.UUID
+	ChallengeID            string
+	Mapping                json.RawMessage
+	AgentDeploymentIDs     []uuid.UUID
+	Name                   string
+}
+
+type StartDatasetEvalResult struct {
+	Run                    domain.Run                        `json:"run"`
+	DatasetVersionInputSet repository.DatasetVersionInputSet `json:"dataset_version_input_set"`
+}
+
+type ListDatasetResultsInput struct {
+	WorkspaceID uuid.UUID
+	DatasetID   uuid.UUID
+	VersionID   *uuid.UUID
 }
 
 func (m *DatasetManager) CreateDataset(ctx context.Context, caller Caller, input CreateDatasetInput) (repository.Dataset, error) {
@@ -322,6 +355,69 @@ func (m *DatasetManager) GetDatasetVersion(ctx context.Context, caller Caller, i
 	}
 	examples, err := m.repo.ListDatasetVersionExamples(ctx, input.VersionID)
 	return version, examples, err
+}
+
+func (m *DatasetManager) StartDatasetEval(ctx context.Context, caller Caller, input StartDatasetEvalInput) (StartDatasetEvalResult, error) {
+	if m.runCreationService == nil {
+		return StartDatasetEvalResult{}, errors.New("run creation service is not configured")
+	}
+	dataset, err := m.GetDataset(ctx, caller, GetDatasetInput{WorkspaceID: input.WorkspaceID, DatasetID: input.DatasetID})
+	if err != nil {
+		return StartDatasetEvalResult{}, err
+	}
+	version, err := m.repo.GetDatasetVersionByID(ctx, input.VersionID)
+	if err != nil {
+		return StartDatasetEvalResult{}, err
+	}
+	if version.DatasetID != dataset.ID {
+		return StartDatasetEvalResult{}, repository.ErrDatasetVersionNotFound
+	}
+	materialized, err := m.repo.MaterializeDatasetVersionInputSet(ctx, repository.MaterializeDatasetVersionInputSetParams{
+		DatasetID:              input.DatasetID,
+		DatasetVersionID:       input.VersionID,
+		ChallengePackVersionID: input.ChallengePackVersionID,
+		ChallengeKey:           input.ChallengeID,
+		Mapping:                input.Mapping,
+	})
+	if err != nil {
+		return StartDatasetEvalResult{}, err
+	}
+	runResult, err := m.runCreationService.CreateRun(ctx, caller, CreateRunInput{
+		WorkspaceID:            input.WorkspaceID,
+		ChallengePackVersionID: input.ChallengePackVersionID,
+		ChallengeInputSetID:    &materialized.ChallengeInputSetID,
+		OfficialPackMode:       domain.OfficialPackModeFull,
+		Name:                   input.Name,
+		AgentDeploymentIDs:     input.AgentDeploymentIDs,
+	})
+	if err != nil {
+		return StartDatasetEvalResult{}, err
+	}
+	if _, err := m.repo.RecordDatasetEvalRun(ctx, repository.RecordDatasetEvalRunParams{
+		DatasetID:                input.DatasetID,
+		DatasetVersionID:         input.VersionID,
+		DatasetVersionInputSetID: materialized.ID,
+		RunID:                    runResult.Run.ID,
+	}); err != nil {
+		return StartDatasetEvalResult{}, err
+	}
+	return StartDatasetEvalResult{Run: runResult.Run, DatasetVersionInputSet: materialized}, nil
+}
+
+func (m *DatasetManager) ListDatasetResults(ctx context.Context, caller Caller, input ListDatasetResultsInput) ([]repository.DatasetEvalResult, error) {
+	if _, err := m.GetDataset(ctx, caller, GetDatasetInput{WorkspaceID: input.WorkspaceID, DatasetID: input.DatasetID}); err != nil {
+		return nil, err
+	}
+	if input.VersionID != nil {
+		version, err := m.repo.GetDatasetVersionByID(ctx, *input.VersionID)
+		if err != nil {
+			return nil, err
+		}
+		if version.DatasetID != input.DatasetID {
+			return nil, repository.ErrDatasetVersionNotFound
+		}
+	}
+	return m.repo.ListDatasetEvalResults(ctx, input.DatasetID, input.VersionID)
 }
 
 type datasetListResponse struct {
@@ -599,6 +695,70 @@ func getDatasetVersionHandler(logger *slog.Logger, service DatasetService) http.
 	}
 }
 
+func startDatasetEvalHandler(logger *slog.Logger, service DatasetService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		caller, workspaceID, datasetID, ok := datasetPathContext(w, r)
+		if !ok {
+			return
+		}
+		if err := requireJSONContentType(r); err != nil {
+			writeError(w, http.StatusUnsupportedMediaType, "unsupported_media_type", err.Error())
+			return
+		}
+		var req struct {
+			VersionID              uuid.UUID       `json:"version_id"`
+			ChallengePackVersionID uuid.UUID       `json:"challenge_pack_version_id"`
+			ChallengeID            string          `json:"challenge_id"`
+			ChallengeKey           string          `json:"challenge_key"`
+			Mapping                json.RawMessage `json:"mapping"`
+			AgentDeploymentIDs     []uuid.UUID     `json:"agent_deployment_ids"`
+			Name                   string          `json:"name"`
+		}
+		if err := decodeJSON(r, &req); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_request", "request body must be valid JSON")
+			return
+		}
+		challengeID := firstNonEmpty(req.ChallengeID, req.ChallengeKey)
+		if req.VersionID == uuid.Nil || req.ChallengePackVersionID == uuid.Nil || strings.TrimSpace(challengeID) == "" || len(req.AgentDeploymentIDs) == 0 {
+			writeError(w, http.StatusBadRequest, "validation_error", "version_id, challenge_pack_version_id, challenge_id, and agent_deployment_ids are required")
+			return
+		}
+		result, err := service.StartDatasetEval(r.Context(), caller, StartDatasetEvalInput{
+			WorkspaceID: workspaceID, DatasetID: datasetID, VersionID: req.VersionID, ChallengePackVersionID: req.ChallengePackVersionID,
+			ChallengeID: challengeID, Mapping: req.Mapping, AgentDeploymentIDs: req.AgentDeploymentIDs, Name: req.Name,
+		})
+		if err != nil {
+			handleDatasetError(w, logger, err)
+			return
+		}
+		writeJSON(w, http.StatusCreated, result)
+	}
+}
+
+func listDatasetResultsHandler(logger *slog.Logger, service DatasetService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		caller, workspaceID, datasetID, ok := datasetPathContext(w, r)
+		if !ok {
+			return
+		}
+		var versionID *uuid.UUID
+		if raw := r.URL.Query().Get("version_id"); raw != "" {
+			parsed, err := uuid.Parse(raw)
+			if err != nil {
+				writeError(w, http.StatusBadRequest, "invalid_version_id", "version ID is malformed")
+				return
+			}
+			versionID = &parsed
+		}
+		results, err := service.ListDatasetResults(r.Context(), caller, ListDatasetResultsInput{WorkspaceID: workspaceID, DatasetID: datasetID, VersionID: versionID})
+		if err != nil {
+			handleDatasetError(w, logger, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"items": results})
+	}
+}
+
 type datasetExampleRequest struct {
 	ExternalID     *string         `json:"external_id"`
 	Input          json.RawMessage `json:"input"`
@@ -732,6 +892,7 @@ func paginationFromRequest(w http.ResponseWriter, r *http.Request) (int32, int32
 }
 
 func handleDatasetError(w http.ResponseWriter, logger *slog.Logger, err error) {
+	var runValidationErr RunCreationValidationError
 	switch {
 	case errors.Is(err, ErrUnauthenticated):
 		writeAuthzError(w, err)
@@ -741,6 +902,10 @@ func handleDatasetError(w http.ResponseWriter, logger *slog.Logger, err error) {
 		writeError(w, http.StatusNotFound, "not_found", "dataset resource not found")
 	case errors.Is(err, repository.ErrDatasetSlugConflict):
 		writeError(w, http.StatusConflict, "slug_conflict", "dataset slug already exists in this workspace")
+	case errors.Is(err, repository.ErrChallengePackVersionNotFound), errors.Is(err, repository.ErrChallengeInputSetNotFound):
+		writeError(w, http.StatusBadRequest, "validation_error", err.Error())
+	case errors.As(err, &runValidationErr):
+		writeError(w, http.StatusBadRequest, runValidationErr.Code, runValidationErr.Message)
 	case errors.Is(err, domain.ErrInvalidDatasetExampleStatus), errors.Is(err, domain.ErrInvalidDatasetExampleSource), errors.Is(err, domain.ErrInvalidDatasetInputSchema), errors.Is(err, domain.ErrDatasetInputSchemaViolation):
 		writeError(w, http.StatusBadRequest, "validation_error", err.Error())
 	default:
@@ -786,4 +951,10 @@ func (noopDatasetService) ListDatasetVersions(context.Context, Caller, GetDatase
 }
 func (noopDatasetService) GetDatasetVersion(context.Context, Caller, GetDatasetVersionInput) (repository.DatasetVersion, []repository.DatasetExample, error) {
 	return repository.DatasetVersion{}, nil, errors.New("dataset service is not configured")
+}
+func (noopDatasetService) StartDatasetEval(context.Context, Caller, StartDatasetEvalInput) (StartDatasetEvalResult, error) {
+	return StartDatasetEvalResult{}, errors.New("dataset service is not configured")
+}
+func (noopDatasetService) ListDatasetResults(context.Context, Caller, ListDatasetResultsInput) ([]repository.DatasetEvalResult, error) {
+	return nil, errors.New("dataset service is not configured")
 }
