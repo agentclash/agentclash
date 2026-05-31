@@ -361,10 +361,6 @@ func exportCSV(examples []Example) ([]byte, error) {
 	return buf.Bytes(), writer.Error()
 }
 
-func hasMapping(mapping Mapping) bool {
-	return len(mapping.InputKeys) > 0 || len(mapping.OutputKeys) > 0 || len(mapping.MetadataKeys) > 0 || mapping.TagsKey != "" || mapping.IDKey != "" || mapping.ExampleIDKey != ""
-}
-
 func hasFieldMapping(mapping Mapping) bool {
 	return len(mapping.InputKeys) > 0 || len(mapping.OutputKeys) > 0 || len(mapping.MetadataKeys) > 0 || mapping.TagsKey != "" || mapping.IDKey != ""
 }

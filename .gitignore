@@ -21,6 +21,5 @@ npm/**/*.tgz
 testing/codex-issue-324-promote-failure-dialog.md
 
 # Local agent checkpoint/test contracts. Existing tracked files remain tracked.
-testing/*
+testing/
 !testing/feat-case-templating-840.md
-!testing/feat-dataset-interop-adapters-888.md

@@ -832,7 +832,19 @@ type datasetImportRequest struct {
 	Data    []byte
 }
 
+const maxDatasetImportBytes = 32 << 20
+
+func datasetImportTooLarge(w http.ResponseWriter, err error) bool {
+	var maxErr *http.MaxBytesError
+	if errors.As(err, &maxErr) {
+		writeError(w, http.StatusRequestEntityTooLarge, "payload_too_large", "import payload exceeds the 32 MB limit")
+		return true
+	}
+	return false
+}
+
 func decodeDatasetImportRequest(w http.ResponseWriter, r *http.Request) (datasetImportRequest, bool) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxDatasetImportBytes)
 	req := datasetImportRequest{
 		Format: firstQueryValue(r, "format"),
 		Mode:   DatasetImportMode(firstQueryValue(r, "mode")),
@@ -843,7 +855,10 @@ func decodeDatasetImportRequest(w http.ResponseWriter, r *http.Request) (dataset
 	}
 	contentType := r.Header.Get("Content-Type")
 	if strings.HasPrefix(contentType, "multipart/form-data") {
-		if err := r.ParseMultipartForm(32 << 20); err != nil {
+		if err := r.ParseMultipartForm(maxDatasetImportBytes); err != nil {
+			if datasetImportTooLarge(w, err) {
+				return req, false
+			}
 			writeError(w, http.StatusBadRequest, "invalid_request", "multipart body is invalid")
 			return req, false
 		}
@@ -878,6 +893,9 @@ func decodeDatasetImportRequest(w http.ResponseWriter, r *http.Request) (dataset
 	}
 	data, err := io.ReadAll(r.Body)
 	if err != nil {
+		if datasetImportTooLarge(w, err) {
+			return req, false
+		}
 		writeError(w, http.StatusBadRequest, "invalid_request", "could not read request body")
 		return req, false
 	}
