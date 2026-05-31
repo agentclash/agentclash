@@ -112,6 +112,16 @@ type BillingTrialGrant struct {
 	UpdatedAt       pgtype.Timestamptz
 }
 
+type ChallengeInputItem struct {
+	ID                     uuid.UUID
+	ChallengeInputSetID    uuid.UUID
+	ChallengePackVersionID uuid.UUID
+	ChallengeIdentityID    uuid.UUID
+	ItemKey                string
+	Payload                []byte
+	CreatedAt              pgtype.Timestamptz
+}
+
 type ChallengeInputSet struct {
 	ID                     uuid.UUID
 	ChallengePackVersionID uuid.UUID
@@ -154,6 +164,15 @@ type Dataset struct {
 	ArchivedAt                    pgtype.Timestamptz
 }
 
+type DatasetEvalRun struct {
+	ID                       uuid.UUID
+	DatasetID                uuid.UUID
+	DatasetVersionID         uuid.UUID
+	DatasetVersionInputSetID uuid.UUID
+	RunID                    uuid.UUID
+	CreatedAt                pgtype.Timestamptz
+}
+
 type DatasetExample struct {
 	ID             uuid.UUID
 	DatasetID      uuid.UUID
@@ -185,6 +204,15 @@ type DatasetExampleRevision struct {
 	CreatedAt pgtype.Timestamptz
 }
 
+type DatasetInputItemLink struct {
+	ID                       uuid.UUID
+	DatasetVersionInputSetID uuid.UUID
+	DatasetExampleID         uuid.UUID
+	ChallengeInputItemID     uuid.UUID
+	ItemKey                  string
+	CreatedAt                pgtype.Timestamptz
+}
+
 type DatasetVersion struct {
 	ID               uuid.UUID
 	DatasetID        uuid.UUID
@@ -194,6 +222,21 @@ type DatasetVersion struct {
 	ManifestChecksum string
 	CreatedBy        uuid.UUID
 	CreatedAt        pgtype.Timestamptz
+}
+
+type DatasetVersionInputSet struct {
+	ID                     uuid.UUID
+	DatasetID              uuid.UUID
+	DatasetVersionID       uuid.UUID
+	ChallengePackVersionID uuid.UUID
+	ChallengeIdentityID    uuid.UUID
+	ChallengeKey           string
+	ChallengeInputSetID    uuid.UUID
+	InputKey               string
+	InputChecksum          string
+	Mapping                []byte
+	CreatedAt              pgtype.Timestamptz
+	UpdatedAt              pgtype.Timestamptz
 }
 
 type EvalSession struct {
