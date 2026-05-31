@@ -18,11 +18,12 @@ var (
 )
 
 var supportedToolKinds = map[string]struct{}{
-	"browser": {},
-	"build":   {},
-	"data":    {},
-	"file":    {},
-	"network": {},
+	"browser":  {},
+	"build":    {},
+	"data":     {},
+	"file":     {},
+	"network":  {},
+	"terminal": {}, // AgentClash Try CLI — interactive disposable terminal demos (E2B PTY)
 }
 
 var supportedVoiceTransports = map[string]struct{}{

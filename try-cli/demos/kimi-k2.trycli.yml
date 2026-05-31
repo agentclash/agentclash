@@ -1,0 +1,29 @@
+name: "Kimi K2"
+slug: kimi-k2
+tagline: "Moonshot's agentic coding model"
+category: "AI coding agents"
+template: agentclash-trycli
+docs: "https://moonshotai.github.io/kimi-cli/"
+github: "https://github.com/MoonshotAI/kimi-cli"
+
+auth:
+  provider: "OpenRouter / Moonshot"
+  summary: "Free trial runs Kimi K2 via the Kimi CLI on AgentClash credentials — no key needed. To use your own, point Kimi CLI at Moonshot or OpenRouter with your key."
+  steps:
+    - "Free trial: just run `kimi` (preconfigured for Kimi K2)"
+    - "Your own key: edit ~/.kimi/config.toml with your provider + key"
+  signupUrl: "https://platform.moonshot.ai/"
+
+welcome: |
+  Kimi K2 is ready via the Kimi CLI. On the free trial, just run:
+    kimi
+
+commands:
+  - label: "Start Kimi CLI"
+    run: "kimi"
+  - label: "Version"
+    run: "kimi --version"
+  - label: "Make a file to work on"
+    run: "echo 'def add(a, b): return a + b' > math.py && cat math.py"
+
+sessionMinutes: 10

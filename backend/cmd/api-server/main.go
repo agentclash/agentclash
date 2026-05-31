@@ -109,6 +109,7 @@ func main() {
 	compareReadManager := api.NewCompareReadManager(authorizer, repo)
 	releaseGateManager := api.NewReleaseGateManager(authorizer, repo)
 	regressionManager := api.NewRegressionManager(authorizer, repo)
+	datasetManager := api.NewDatasetManager(authorizer, repo)
 	hostedRunIngestionManager := api.NewHostedRunIngestionManager(
 		repo,
 		cfg.HostedRunCallbackSecret,
@@ -211,6 +212,7 @@ func main() {
 		compareReadManager,
 		releaseGateManager,
 		regressionManager,
+		datasetManager,
 		hostedRunIngestionManager,
 		agentDeploymentReadManager,
 		agentHarnessManager,

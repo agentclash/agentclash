@@ -61,6 +61,11 @@ export const navSections: NavSection[] = [
         icon: PackageOpen,
       },
       {
+        label: "Datasets",
+        href: (id) => `/workspaces/${id}/datasets`,
+        icon: Database,
+      },
+      {
         label: "Runs",
         href: (id) => `/workspaces/${id}/runs`,
         icon: Play,

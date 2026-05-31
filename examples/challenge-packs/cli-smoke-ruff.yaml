@@ -1,0 +1,34 @@
+version: challenge_pack/v0
+name: cli-smoke-ruff
+description: Smoke-test Ruff CLI install and lint inside the sandbox (Try CLI companion pack).
+
+version:
+  inputs:
+    - id: sample_py
+      type: inline_text
+      content: |
+        import os,sys
+        x=1+2
+        print(x)
+
+  tool_policy:
+    allowed_tool_kinds:
+      - file
+      - terminal
+    allow_shell: true
+
+tasks:
+  - id: install_and_lint
+    prompt: |
+      Install ruff via: curl -LsSf https://astral.sh/ruff/install.sh | sh
+      Then lint the sample Python file at /workspace/sample.py (write it from the input).
+      Submit the ruff check output as your answer.
+    tools:
+      custom: []
+
+scoring:
+  judges:
+    - id: output_contains_ruff
+      type: contains
+      target: answer
+      value: ruff

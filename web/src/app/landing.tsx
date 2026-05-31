@@ -18,6 +18,7 @@ import { LuminousGrid } from "@/components/marketing/luminous-grid";
 import { PricingBlock } from "@/components/marketing/pricing-block";
 import { ExpandedCardsBlock } from "@/components/marketing/expanded-cards-block";
 import { TrackBox } from "@/components/marketing/track-box";
+import { TryCliBanner } from "@/components/marketing/try-cli-banner";
 
 const DEMO_LINK = "atharva-kanherkar-epgztu/agentclash-demo";
 const DEMO_BUTTON_CONFIG = JSON.stringify({ layout: "month_view" });
@@ -1503,6 +1504,9 @@ export default function HomePage() {
 
   return (
     <main className="main min-h-screen flex flex-col">
+      {/* ── Try CLI promo bar ───────────────────────────────────── */}
+      <TryCliBanner />
+
       {/* ── Header ──────────────────────────────────────────────── */}
       <header className="px-5 sm:px-12 py-5 sm:py-6 border-b border-white/[0.06]">
         <div className="mx-auto flex max-w-[1440px] items-center justify-between">

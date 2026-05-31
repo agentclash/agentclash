@@ -2075,6 +2075,64 @@ export interface ListWorkspaceRegressionCasesResponse {
   offset: number;
 }
 
+// --- Datasets ---
+
+export type DatasetExampleStatus = "active" | "archived" | "muted";
+export type DatasetExampleSource =
+  | "manual"
+  | "import"
+  | "trace"
+  | "synthetic"
+  | "promotion";
+
+export interface Dataset {
+  id: string;
+  organization_id: string;
+  workspace_id: string;
+  slug: string;
+  name: string;
+  description: string;
+  input_schema?: Record<string, unknown>;
+  input_schema_enforced: boolean;
+  default_challenge_pack_version_id?: string;
+  active_example_count: number;
+  version_count: number;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  archived_at?: string;
+}
+
+export interface DatasetExample {
+  id: string;
+  dataset_id: string;
+  external_id?: string;
+  input: unknown;
+  expected?: unknown;
+  metadata: Record<string, unknown>;
+  tags: string[];
+  status: DatasetExampleStatus;
+  source: DatasetExampleSource;
+  source_run_id?: string;
+  source_trace_id?: string;
+  source_platform?: string;
+  artifact_id?: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DatasetVersion {
+  id: string;
+  dataset_id: string;
+  version_number: number;
+  label?: string;
+  example_count: number;
+  manifest_checksum: string;
+  created_by: string;
+  created_at: string;
+}
+
 // --- Billing ---
 
 export type BillingPlanKey = "free" | "pro" | "team" | "enterprise";

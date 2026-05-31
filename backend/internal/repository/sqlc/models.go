@@ -138,6 +138,64 @@ type ChallengePackVersion struct {
 	ArchivedAt       pgtype.Timestamptz
 }
 
+type Dataset struct {
+	ID                            uuid.UUID
+	OrganizationID                uuid.UUID
+	WorkspaceID                   uuid.UUID
+	Slug                          string
+	Name                          string
+	Description                   string
+	InputSchema                   []byte
+	InputSchemaEnforced           bool
+	DefaultChallengePackVersionID *uuid.UUID
+	CreatedBy                     uuid.UUID
+	CreatedAt                     pgtype.Timestamptz
+	UpdatedAt                     pgtype.Timestamptz
+	ArchivedAt                    pgtype.Timestamptz
+}
+
+type DatasetExample struct {
+	ID             uuid.UUID
+	DatasetID      uuid.UUID
+	ExternalID     *string
+	Input          []byte
+	Expected       []byte
+	Metadata       []byte
+	Tags           []string
+	Status         string
+	Source         string
+	SourceRunID    *uuid.UUID
+	SourceTraceID  *string
+	SourcePlatform *string
+	ArtifactID     *uuid.UUID
+	CreatedBy      uuid.UUID
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+}
+
+type DatasetExampleRevision struct {
+	ID        uuid.UUID
+	DatasetID uuid.UUID
+	ExampleID *uuid.UUID
+	VersionID *uuid.UUID
+	Operation string
+	Before    []byte
+	After     []byte
+	Actor     uuid.UUID
+	CreatedAt pgtype.Timestamptz
+}
+
+type DatasetVersion struct {
+	ID               uuid.UUID
+	DatasetID        uuid.UUID
+	VersionNumber    int32
+	Label            *string
+	ExampleCount     int32
+	ManifestChecksum string
+	CreatedBy        uuid.UUID
+	CreatedAt        pgtype.Timestamptz
+}
+
 type EvalSession struct {
 	ID                     uuid.UUID
 	Status                 string

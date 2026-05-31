@@ -21,6 +21,7 @@ func registerProtectedRoutes(
 	compareReadService CompareReadService,
 	releaseGateService ReleaseGateService,
 	regressionService RegressionService,
+	datasetService DatasetService,
 	agentDeploymentReadService AgentDeploymentReadService,
 	agentHarnessService AgentHarnessService,
 	githubIntegrationService GitHubIntegrationService,
@@ -115,6 +116,20 @@ func registerProtectedRoutes(
 	router.Post("/workspaces/{workspaceID}/regression-suites/{suiteID}/production-failures", captureProductionFailureHandler(logger, regressionService))
 	router.Get("/workspaces/{workspaceID}/regression-cases", listWorkspaceRegressionCasesHandler(logger, regressionService))
 	router.Patch("/workspaces/{workspaceID}/regression-cases/{caseID}", patchRegressionCaseHandler(logger, regressionService))
+	router.Post("/workspaces/{workspaceID}/datasets", createDatasetHandler(logger, datasetService))
+	router.Get("/workspaces/{workspaceID}/datasets", listDatasetsHandler(logger, datasetService))
+	router.Get("/workspaces/{workspaceID}/datasets/{datasetID}", getDatasetHandler(logger, datasetService))
+	router.Patch("/workspaces/{workspaceID}/datasets/{datasetID}", patchDatasetHandler(logger, datasetService))
+	router.Delete("/workspaces/{workspaceID}/datasets/{datasetID}", deleteDatasetHandler(logger, datasetService))
+	router.Post("/workspaces/{workspaceID}/datasets/{datasetID}/import", importDatasetHandler(logger, datasetService))
+	router.Get("/workspaces/{workspaceID}/datasets/{datasetID}/export", exportDatasetHandler(logger, datasetService))
+	router.Post("/workspaces/{workspaceID}/datasets/{datasetID}/examples", addDatasetExampleHandler(logger, datasetService))
+	router.Get("/workspaces/{workspaceID}/datasets/{datasetID}/examples", listDatasetExamplesHandler(logger, datasetService))
+	router.Patch("/workspaces/{workspaceID}/datasets/{datasetID}/examples/{exampleID}", patchDatasetExampleHandler(logger, datasetService))
+	router.Delete("/workspaces/{workspaceID}/datasets/{datasetID}/examples/{exampleID}", deleteDatasetExampleHandler(logger, datasetService))
+	router.Post("/workspaces/{workspaceID}/datasets/{datasetID}/versions", createDatasetVersionHandler(logger, datasetService))
+	router.Get("/workspaces/{workspaceID}/datasets/{datasetID}/versions", listDatasetVersionsHandler(logger, datasetService))
+	router.Get("/workspaces/{workspaceID}/datasets/{datasetID}/versions/{versionID}", getDatasetVersionHandler(logger, datasetService))
 	router.Get("/replays/{runAgentID}/viewer", getRunAgentReplayViewerHandler(logger))
 	router.Get("/replays/{runAgentID}", getRunAgentReplayHandler(logger, replayReadService))
 	router.Get("/replays/{runAgentID}/transcript", getRunAgentTranscriptHandler(logger, replayReadService))

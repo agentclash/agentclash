@@ -26,6 +26,8 @@ const nextConfig: NextConfig = {
   // (see web/src/lib/analytics/posthog-client.ts and docs/analytics.md).
   async rewrites() {
     return [
+      // PostHog proxy first — must precede the try.agentclash.dev catch-all so
+      // analytics still proxies correctly on that subdomain.
       {
         source: "/ingest/static/:path*",
         destination: `${POSTHOG_ASSETS}/static/:path*`,
@@ -33,6 +35,12 @@ const nextConfig: NextConfig = {
       {
         source: "/ingest/:path*",
         destination: `${POSTHOG_INGEST}/:path*`,
+      },
+      // Optional: try.agentclash.dev subdomain → /try routes
+      {
+        source: "/:path*",
+        has: [{ type: "host", value: "try.agentclash.dev" }],
+        destination: "/try/:path*",
       },
     ];
   },

@@ -83,6 +83,11 @@ export type {
   BillingGateDecision,
   WorkspaceUsageSnapshot,
   WorkspaceEntitlementsResponse,
+  Dataset,
+  DatasetExample,
+  DatasetExampleSource,
+  DatasetExampleStatus,
+  DatasetVersion,
 } from "./types";
 export { AGENT_KINDS } from "./types";
 export { listRunFailures, type ListRunFailuresParams } from "./failure-reviews";
@@ -98,6 +103,12 @@ export {
   type PromoteFailureResult,
   type PromotionOverridesInput,
 } from "./regression";
+export {
+  getDataset,
+  listDatasetExamples,
+  listDatasets,
+  listDatasetVersions,
+} from "./datasets";
 export {
   EMPTY_REGRESSION_GATE_RULES_DRAFT,
   REGRESSION_BLOCKING_RULES,
