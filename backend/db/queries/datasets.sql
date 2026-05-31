@@ -30,6 +30,13 @@ FROM datasets
 WHERE id = @id
 LIMIT 1;
 
+-- name: LockActiveDatasetForVersion :one
+SELECT id
+FROM datasets
+WHERE id = @id
+  AND archived_at IS NULL
+FOR UPDATE;
+
 -- name: ListDatasetsByWorkspaceID :many
 SELECT
     d.*,

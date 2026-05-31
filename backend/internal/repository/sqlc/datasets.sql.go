@@ -764,6 +764,25 @@ func (q *Queries) ListLatestDatasetExampleRevisions(ctx context.Context, arg Lis
 	return items, nil
 }
 
+const lockActiveDatasetForVersion = `-- name: LockActiveDatasetForVersion :one
+SELECT id
+FROM datasets
+WHERE id = $1
+  AND archived_at IS NULL
+FOR UPDATE
+`
+
+type LockActiveDatasetForVersionParams struct {
+	ID uuid.UUID
+}
+
+func (q *Queries) LockActiveDatasetForVersion(ctx context.Context, arg LockActiveDatasetForVersionParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, lockActiveDatasetForVersion, arg.ID)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
 const nextDatasetVersionNumber = `-- name: NextDatasetVersionNumber :one
 SELECT COALESCE(max(version_number), 0)::int + 1
 FROM dataset_versions

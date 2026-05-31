@@ -156,7 +156,7 @@ type GetDatasetVersionInput struct {
 }
 
 func (m *DatasetManager) CreateDataset(ctx context.Context, caller Caller, input CreateDatasetInput) (repository.Dataset, error) {
-	if err := AuthorizeWorkspaceAction(ctx, m.authorizer, caller, input.WorkspaceID, ActionReadWorkspace); err != nil {
+	if err := AuthorizeWorkspaceAction(ctx, m.authorizer, caller, input.WorkspaceID, ActionManageDatasets); err != nil {
 		return repository.Dataset{}, err
 	}
 	return m.repo.CreateDataset(ctx, repository.CreateDatasetParams{
@@ -192,10 +192,16 @@ func (m *DatasetManager) GetDataset(ctx context.Context, caller Caller, input Ge
 	if dataset.WorkspaceID != input.WorkspaceID {
 		return repository.Dataset{}, ErrForbidden
 	}
+	if dataset.ArchivedAt != nil {
+		return repository.Dataset{}, repository.ErrDatasetNotFound
+	}
 	return dataset, nil
 }
 
 func (m *DatasetManager) PatchDataset(ctx context.Context, caller Caller, input PatchDatasetInput) (repository.Dataset, error) {
+	if err := AuthorizeWorkspaceAction(ctx, m.authorizer, caller, input.WorkspaceID, ActionManageDatasets); err != nil {
+		return repository.Dataset{}, err
+	}
 	if _, err := m.GetDataset(ctx, caller, GetDatasetInput{WorkspaceID: input.WorkspaceID, DatasetID: input.DatasetID}); err != nil {
 		return repository.Dataset{}, err
 	}
@@ -206,6 +212,9 @@ func (m *DatasetManager) PatchDataset(ctx context.Context, caller Caller, input 
 }
 
 func (m *DatasetManager) DeleteDataset(ctx context.Context, caller Caller, input GetDatasetInput) error {
+	if err := AuthorizeWorkspaceAction(ctx, m.authorizer, caller, input.WorkspaceID, ActionManageDatasets); err != nil {
+		return err
+	}
 	if _, err := m.GetDataset(ctx, caller, input); err != nil {
 		return err
 	}
@@ -214,6 +223,9 @@ func (m *DatasetManager) DeleteDataset(ctx context.Context, caller Caller, input
 }
 
 func (m *DatasetManager) AddDatasetExample(ctx context.Context, caller Caller, input UpsertDatasetExampleInput) (repository.DatasetExample, error) {
+	if err := AuthorizeWorkspaceAction(ctx, m.authorizer, caller, input.WorkspaceID, ActionManageDatasets); err != nil {
+		return repository.DatasetExample{}, err
+	}
 	dataset, err := m.GetDataset(ctx, caller, GetDatasetInput{WorkspaceID: input.WorkspaceID, DatasetID: input.DatasetID})
 	if err != nil {
 		return repository.DatasetExample{}, err
@@ -248,6 +260,9 @@ func (m *DatasetManager) ListDatasetExamples(ctx context.Context, caller Caller,
 }
 
 func (m *DatasetManager) PatchDatasetExample(ctx context.Context, caller Caller, input PatchDatasetExampleInput) (repository.DatasetExample, error) {
+	if err := AuthorizeWorkspaceAction(ctx, m.authorizer, caller, input.WorkspaceID, ActionManageDatasets); err != nil {
+		return repository.DatasetExample{}, err
+	}
 	dataset, err := m.GetDataset(ctx, caller, GetDatasetInput{WorkspaceID: input.WorkspaceID, DatasetID: input.DatasetID})
 	if err != nil {
 		return repository.DatasetExample{}, err
@@ -278,6 +293,9 @@ func (m *DatasetManager) DeleteDatasetExample(ctx context.Context, caller Caller
 }
 
 func (m *DatasetManager) CreateDatasetVersion(ctx context.Context, caller Caller, input CreateDatasetVersionInput) (repository.DatasetVersion, error) {
+	if err := AuthorizeWorkspaceAction(ctx, m.authorizer, caller, input.WorkspaceID, ActionManageDatasets); err != nil {
+		return repository.DatasetVersion{}, err
+	}
 	if _, err := m.GetDataset(ctx, caller, GetDatasetInput{WorkspaceID: input.WorkspaceID, DatasetID: input.DatasetID}); err != nil {
 		return repository.DatasetVersion{}, err
 	}
@@ -437,7 +455,7 @@ func deleteDatasetHandler(logger *slog.Logger, service DatasetService) http.Hand
 			handleDatasetError(w, logger, err)
 			return
 		}
-		writeJSON(w, http.StatusNoContent, nil)
+		w.WriteHeader(http.StatusNoContent)
 	}
 }
 

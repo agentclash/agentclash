@@ -133,6 +133,7 @@ type Querier interface {
 	ListRunsByWorkspaceID(ctx context.Context, arg ListRunsByWorkspaceIDParams) ([]Run, error)
 	ListVibeEvalConversationsByWorkspaceID(ctx context.Context, arg ListVibeEvalConversationsByWorkspaceIDParams) ([]VibeEvalConversation, error)
 	ListVibeEvalDraftsByConversationID(ctx context.Context, arg ListVibeEvalDraftsByConversationIDParams) ([]VibeEvalDraft, error)
+	LockActiveDatasetForVersion(ctx context.Context, arg LockActiveDatasetForVersionParams) (uuid.UUID, error)
 	MarkAgentBuildVersionReady(ctx context.Context, arg MarkAgentBuildVersionReadyParams) error
 	MarkBillingCheckoutIntentCompleted(ctx context.Context, arg MarkBillingCheckoutIntentCompletedParams) (int64, error)
 	MarkHostedRunExecutionAccepted(ctx context.Context, arg MarkHostedRunExecutionAcceptedParams) (HostedRunExecution, error)

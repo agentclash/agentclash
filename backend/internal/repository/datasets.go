@@ -396,6 +396,13 @@ func (r *Repository) CreateDatasetVersion(ctx context.Context, params CreateData
 	defer tx.Rollback(ctx)
 	q := r.queries.WithTx(tx)
 
+	if _, err := q.LockActiveDatasetForVersion(ctx, repositorysqlc.LockActiveDatasetForVersionParams{ID: params.DatasetID}); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return DatasetVersion{}, ErrDatasetNotFound
+		}
+		return DatasetVersion{}, fmt.Errorf("lock active dataset for version: %w", err)
+	}
+
 	revisions, err := q.ListLatestDatasetExampleRevisions(ctx, repositorysqlc.ListLatestDatasetExampleRevisionsParams{DatasetID: params.DatasetID})
 	if err != nil {
 		return DatasetVersion{}, fmt.Errorf("list latest dataset example revisions: %w", err)
