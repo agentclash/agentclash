@@ -36,6 +36,8 @@ tags:
     description: Release gate policy evaluation
   - name: Regressions
     description: Workspace regression suite and case management
+  - name: Datasets
+    description: Workspace eval datasets and versioned examples
   - name: Artifacts
     description: File upload, download, and content delivery
   - name: Billing
@@ -3456,6 +3458,260 @@ paths:
         "415":
           $ref: "#/components/responses/UnsupportedMediaType"
 
+  /v1/workspaces/{workspaceID}/datasets:
+    get:
+      operationId: listDatasets
+      tags: [Datasets]
+      summary: List datasets
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+      responses:
+        "200":
+          description: Paginated datasets
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListDatasetsResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+    post:
+      operationId: createDataset
+      tags: [Datasets]
+      summary: Create a dataset
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDatasetInput"
+      responses:
+        "201":
+          description: Dataset created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Dataset"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+
+  /v1/workspaces/{workspaceID}/datasets/{datasetID}:
+    get:
+      operationId: getDataset
+      tags: [Datasets]
+      summary: Get a dataset
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/DatasetID"
+      responses:
+        "200":
+          description: Dataset
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Dataset"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+    patch:
+      operationId: patchDataset
+      tags: [Datasets]
+      summary: Patch a dataset
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/DatasetID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PatchDatasetInput"
+      responses:
+        "200":
+          description: Dataset updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Dataset"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+    delete:
+      operationId: deleteDataset
+      tags: [Datasets]
+      summary: Archive a dataset
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/DatasetID"
+      responses:
+        "204":
+          description: Dataset archived
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /v1/workspaces/{workspaceID}/datasets/{datasetID}/examples:
+    get:
+      operationId: listDatasetExamples
+      tags: [Datasets]
+      summary: List dataset examples
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/DatasetID"
+      responses:
+        "200":
+          description: Paginated dataset examples
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListDatasetExamplesResponse"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+    post:
+      operationId: addDatasetExample
+      tags: [Datasets]
+      summary: Add or upsert a dataset example
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/DatasetID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpsertDatasetExampleInput"
+      responses:
+        "201":
+          description: Dataset example
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DatasetExample"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+
+  /v1/workspaces/{workspaceID}/datasets/{datasetID}/examples/{exampleID}:
+    patch:
+      operationId: patchDatasetExample
+      tags: [Datasets]
+      summary: Patch a dataset example
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/DatasetID"
+        - $ref: "#/components/parameters/DatasetExampleID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PatchDatasetExampleInput"
+      responses:
+        "200":
+          description: Dataset example updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DatasetExample"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+    delete:
+      operationId: deleteDatasetExample
+      tags: [Datasets]
+      summary: Archive a dataset example
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/DatasetID"
+        - $ref: "#/components/parameters/DatasetExampleID"
+      responses:
+        "200":
+          description: Dataset example archived
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DatasetExample"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /v1/workspaces/{workspaceID}/datasets/{datasetID}/versions:
+    get:
+      operationId: listDatasetVersions
+      tags: [Datasets]
+      summary: List dataset versions
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/DatasetID"
+      responses:
+        "200":
+          description: Dataset versions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListDatasetVersionsResponse"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+    post:
+      operationId: createDatasetVersion
+      tags: [Datasets]
+      summary: Snapshot dataset examples
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/DatasetID"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDatasetVersionInput"
+      responses:
+        "201":
+          description: Dataset version
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DatasetVersion"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /v1/workspaces/{workspaceID}/datasets/{datasetID}/versions/{versionID}:
+    get:
+      operationId: getDatasetVersion
+      tags: [Datasets]
+      summary: Get dataset version examples
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/DatasetID"
+        - $ref: "#/components/parameters/DatasetVersionID"
+      responses:
+        "200":
+          description: Dataset version detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DatasetVersionDetail"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
   # ---------------------------------------------------------------------------
   # Replays
   # ---------------------------------------------------------------------------
@@ -4839,6 +5095,27 @@ components:
       schema:
         type: string
         format: uuid
+    DatasetID:
+      name: datasetID
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    DatasetExampleID:
+      name: exampleID
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    DatasetVersionID:
+      name: versionID
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
     OrganizationID:
       name: organizationID
       in: path
@@ -4983,6 +5260,190 @@ components:
   # ---------------------------------------------------------------------------
   schemas:
     # --- Shared ---
+
+    Dataset:
+      type: object
+      required: [id, organization_id, workspace_id, slug, name, description, input_schema_enforced, active_example_count, version_count, created_by, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        organization_id: { type: string, format: uuid }
+        workspace_id: { type: string, format: uuid }
+        slug: { type: string }
+        name: { type: string }
+        description: { type: string }
+        input_schema:
+          type: object
+          additionalProperties: true
+        input_schema_enforced: { type: boolean }
+        default_challenge_pack_version_id: { type: string, format: uuid }
+        active_example_count: { type: integer }
+        version_count: { type: integer }
+        created_by: { type: string, format: uuid }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        archived_at: { type: string, format: date-time }
+
+    DatasetExample:
+      type: object
+      required: [id, dataset_id, input, metadata, tags, status, source, created_by, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        dataset_id: { type: string, format: uuid }
+        external_id: { type: string }
+        input: {}
+        expected: {}
+        metadata:
+          type: object
+          additionalProperties: true
+        tags:
+          type: array
+          items: { type: string }
+        status:
+          type: string
+          enum: [active, archived, muted]
+        source:
+          type: string
+          enum: [manual, import, trace, synthetic, promotion]
+        source_run_id: { type: string, format: uuid }
+        source_trace_id: { type: string }
+        source_platform: { type: string }
+        artifact_id: { type: string, format: uuid }
+        created_by: { type: string, format: uuid }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    DatasetVersion:
+      type: object
+      required: [id, dataset_id, version_number, example_count, manifest_checksum, created_by, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        dataset_id: { type: string, format: uuid }
+        version_number: { type: integer }
+        label: { type: string }
+        example_count: { type: integer }
+        manifest_checksum: { type: string }
+        created_by: { type: string, format: uuid }
+        created_at: { type: string, format: date-time }
+
+    CreateDatasetInput:
+      type: object
+      required: [slug, name]
+      properties:
+        slug: { type: string }
+        name: { type: string }
+        description: { type: string }
+        input_schema:
+          type: object
+          additionalProperties: true
+        input_schema_enforced: { type: boolean }
+        default_challenge_pack_version_id: { type: string, format: uuid }
+
+    PatchDatasetInput:
+      type: object
+      properties:
+        slug: { type: string }
+        name: { type: string }
+        description: { type: string }
+        input_schema:
+          type: object
+          additionalProperties: true
+        input_schema_enforced: { type: boolean }
+        default_challenge_pack_version_id: { type: string, format: uuid }
+
+    UpsertDatasetExampleInput:
+      type: object
+      required: [input]
+      properties:
+        external_id: { type: string }
+        input: {}
+        expected: {}
+        metadata:
+          type: object
+          additionalProperties: true
+        tags:
+          type: array
+          items: { type: string }
+        status:
+          type: string
+          enum: [active, archived, muted]
+        source:
+          type: string
+          enum: [manual, import, trace, synthetic, promotion]
+        source_run_id: { type: string, format: uuid }
+        source_trace_id: { type: string }
+        source_platform: { type: string }
+        artifact_id: { type: string, format: uuid }
+
+    PatchDatasetExampleInput:
+      type: object
+      properties:
+        input: {}
+        expected: {}
+        metadata:
+          type: object
+          additionalProperties: true
+        tags:
+          type: array
+          items: { type: string }
+        status:
+          type: string
+          enum: [active, archived, muted]
+        source:
+          type: string
+          enum: [manual, import, trace, synthetic, promotion]
+        source_run_id: { type: string, format: uuid }
+        source_trace_id: { type: string }
+        source_platform: { type: string }
+        artifact_id: { type: string, format: uuid }
+
+    CreateDatasetVersionInput:
+      type: object
+      properties:
+        label: { type: string }
+
+    ListDatasetsResponse:
+      type: object
+      required: [items, total, limit, offset]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Dataset"
+        total: { type: integer, format: int64 }
+        limit: { type: integer, format: int32 }
+        offset: { type: integer, format: int32 }
+
+    ListDatasetExamplesResponse:
+      type: object
+      required: [items, total, limit, offset]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/DatasetExample"
+        total: { type: integer, format: int64 }
+        limit: { type: integer, format: int32 }
+        offset: { type: integer, format: int32 }
+
+    ListDatasetVersionsResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/DatasetVersion"
+
+    DatasetVersionDetail:
+      type: object
+      required: [version, examples]
+      properties:
+        version:
+          $ref: "#/components/schemas/DatasetVersion"
+        examples:
+          type: array
+          items:
+            $ref: "#/components/schemas/DatasetExample"
 
     ErrorEnvelope:
       type: object

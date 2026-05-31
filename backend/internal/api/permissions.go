@@ -24,6 +24,7 @@ const (
 	ActionCancelRun                   Action = "cancel_run"
 	ActionManagePlaygrounds           Action = "manage_playgrounds"
 	ActionManageRegressions           Action = "manage_regressions"
+	ActionManageDatasets              Action = "manage_datasets"
 	ActionManageVibeEvalDrafts        Action = "manage_vibe_eval_drafts"
 	ActionSelectIntegrationRepository Action = "select_integration_repository"
 	ActionPublishChallengePack        Action = "publish_challenge_pack"
@@ -60,6 +61,7 @@ var permissionMatrix = map[string]map[Action]bool{
 		ActionCancelRun:                   true,
 		ActionManagePlaygrounds:           true,
 		ActionManageRegressions:           true,
+		ActionManageDatasets:              true,
 		ActionManageVibeEvalDrafts:        true,
 		ActionSelectIntegrationRepository: true,
 		ActionPublishChallengePack:        true,
@@ -79,6 +81,7 @@ var permissionMatrix = map[string]map[Action]bool{
 		ActionCancelRun:                   true,
 		ActionManagePlaygrounds:           true,
 		ActionManageRegressions:           true,
+		ActionManageDatasets:              true,
 		ActionManageVibeEvalDrafts:        true,
 		ActionSelectIntegrationRepository: true,
 		ActionPublishChallengePack:        true,
