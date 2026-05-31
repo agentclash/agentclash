@@ -15,6 +15,9 @@ servers:
   - url: http://localhost:8080
     description: Local development
 
+security:
+  - bearerJWT: []
+
 tags:
   - name: Health
     description: Liveness and readiness probes
@@ -2653,7 +2656,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/RunWorkflowErrorResponse"
         "500":
-          $ref: "#/components/responses/InternalServerError"
+          $ref: "#/components/responses/InternalError"
 
   /v1/runs/{runID}/ranking:
     get:
@@ -2939,7 +2942,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/ErrorEnvelope"
         "415":
           $ref: "#/components/responses/UnsupportedMediaType"
 
@@ -3555,6 +3558,90 @@ paths:
       responses:
         "204":
           description: Dataset archived
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /v1/workspaces/{workspaceID}/datasets/{datasetID}/import:
+    post:
+      operationId: importDataset
+      tags: [Datasets]
+      summary: Import dataset examples from an external format
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/DatasetID"
+        - name: format
+          in: query
+          schema:
+            $ref: "#/components/schemas/DatasetInteropFormat"
+        - name: mode
+          in: query
+          schema:
+            type: string
+            enum: [add, replace]
+            default: add
+        - name: dry_run
+          in: query
+          schema:
+            type: boolean
+            default: false
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/DatasetImportMultipartRequest"
+          application/x-ndjson:
+            schema:
+              type: string
+          text/csv:
+            schema:
+              type: string
+      responses:
+        "200":
+          description: Import preview or completed import result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DatasetImportResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /v1/workspaces/{workspaceID}/datasets/{datasetID}/export:
+    get:
+      operationId: exportDataset
+      tags: [Datasets]
+      summary: Export dataset examples in an external format
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/DatasetID"
+        - name: format
+          in: query
+          schema:
+            $ref: "#/components/schemas/DatasetInteropFormat"
+        - name: version_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+          description: Optional immutable dataset version to export. Defaults to active examples.
+      responses:
+        "200":
+          description: Dataset export stream
+          content:
+            application/x-ndjson:
+              schema:
+                type: string
+            text/csv:
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/ValidationError"
         "404":
           $ref: "#/components/responses/NotFoundError"
 
@@ -5400,6 +5487,81 @@ components:
       type: object
       properties:
         label: { type: string }
+
+    DatasetInteropFormat:
+      type: string
+      enum: [openai, braintrust, langsmith, phoenix, jsonl, csv]
+
+    DatasetImportMultipartRequest:
+      type: object
+      required: [file]
+      properties:
+        file:
+          type: string
+          format: binary
+        format:
+          $ref: "#/components/schemas/DatasetInteropFormat"
+        mode:
+          type: string
+          enum: [add, replace]
+          default: add
+        dry_run:
+          type: boolean
+          default: false
+        mapping:
+          description: JSON-encoded DatasetImportMapping.
+          type: string
+        map:
+          description: Alias for mapping.
+          type: string
+
+    DatasetImportPreviewExample:
+      type: object
+      required: [input, metadata]
+      properties:
+        external_id: { type: string }
+        input: {}
+        expected: {}
+        metadata:
+          type: object
+          additionalProperties: true
+        tags:
+          type: array
+          items: { type: string }
+
+    DatasetImportRowError:
+      type: object
+      required: [row, message]
+      properties:
+        row: { type: integer }
+        field: { type: string }
+        message: { type: string }
+
+    DatasetImportResponse:
+      type: object
+      required: [format, dry_run, mode, imported_count]
+      properties:
+        format:
+          $ref: "#/components/schemas/DatasetInteropFormat"
+        dry_run: { type: boolean }
+        mode:
+          type: string
+          enum: [add, replace]
+        preview:
+          type: array
+          items:
+            $ref: "#/components/schemas/DatasetImportPreviewExample"
+        errors:
+          type: array
+          items:
+            $ref: "#/components/schemas/DatasetImportRowError"
+        imported_count: { type: integer }
+        version:
+          $ref: "#/components/schemas/DatasetVersion"
+        examples:
+          type: array
+          items:
+            $ref: "#/components/schemas/DatasetExample"
 
     ListDatasetsResponse:
       type: object
