@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.23.0](https://github.com/agentclash/agentclash/compare/v0.22.0...v0.23.0) (2026-05-31)
+
+
+### Features
+
+* **analytics:** PostHog usage tracking (backend, CLI, web) ([5d92357](https://github.com/agentclash/agentclash/commit/5d9235760dcb258d1ea38d350328723b04026a7e))
+* **analytics:** PostHog usage tracking across backend, CLI, and web ([604c8d5](https://github.com/agentclash/agentclash/commit/604c8d5a7a661e1e1f5568383a50a6d941382dbe))
+* **cli:** step 3 — add dataset eval command ([b0ad786](https://github.com/agentclash/agentclash/commit/b0ad78666054687b2a6ca4299201294b563212a7))
+* **cli:** step 3 — add dataset import export commands ([55fcc45](https://github.com/agentclash/agentclash/commit/55fcc45c47b1a37bb4173b51322b46ad2c3e37b9))
+* **datasets:** add dataset import/export interop ([fc2af48](https://github.com/agentclash/agentclash/commit/fc2af48c65b41cd15e9ef9a1030d6960a1a98ee0))
+* **datasets:** run evals from pinned dataset versions ([a820373](https://github.com/agentclash/agentclash/commit/a82037343e4cca6970f0749883881150a1ce2c0b))
+
 ## [0.22.0](https://github.com/agentclash/agentclash/compare/v0.21.0...v0.22.0) (2026-05-31)
 
 
