@@ -22,6 +22,7 @@ type Client struct {
 	devUserID  string
 	devOrgMem  string
 	devWSMem   string
+	userAgent  string
 	httpClient *http.Client
 	verbose    bool
 	logger     *slog.Logger
@@ -42,6 +43,13 @@ func WithDevMode(userID, orgMemberships, wsMemberships string) Option {
 // WithVerbose enables debug logging.
 func WithVerbose(v bool) Option {
 	return func(c *Client) { c.verbose = v }
+}
+
+// WithUserAgent sets the User-Agent header on every outbound request.
+// Use BuildUserAgent to compose a value gated by the resolved API host —
+// self-hosted backends only receive the neutral form (no command name leak).
+func WithUserAgent(ua string) Option {
+	return func(c *Client) { c.userAgent = ua }
 }
 
 // NewClient creates an API client.
@@ -434,6 +442,9 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 }
 
 func (c *Client) setAuth(req *http.Request) {
+	if c.userAgent != "" {
+		req.Header.Set("User-Agent", c.userAgent)
+	}
 	if c.devUserID != "" {
 		req.Header.Set("X-Agentclash-User-Id", c.devUserID)
 		if c.devOrgMem != "" {

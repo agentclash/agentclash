@@ -7,6 +7,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/agentclash/agentclash/backend/internal/posthog"
 	"github.com/agentclash/agentclash/backend/internal/provider"
 	"github.com/agentclash/agentclash/backend/internal/pubsub"
 	"github.com/agentclash/agentclash/backend/internal/repository"
@@ -43,6 +44,28 @@ func main() {
 	defer temporalClient.Close()
 
 	repo := repository.New(db).WithCipher(cfg.SecretsCipher)
+
+	// PostHog analytics (optional). Noop when POSTHOG_API_KEY is unset, matching
+	// the api-server's posture. Used to emit run-lifecycle outcome events.
+	var posthogClient posthog.Client = posthog.Noop{}
+	posthogEnabled := false
+	if posthogCfg, ok := posthog.LoadConfigFromEnv(); ok {
+		client, perr := posthog.NewClient(posthogCfg, logger)
+		if perr != nil {
+			logger.Error("failed to initialize posthog client", "error", perr)
+			os.Exit(1)
+		}
+		posthogClient = client
+		posthogEnabled = true
+		logger.Info("posthog analytics: enabled")
+		defer func() {
+			if cerr := posthogClient.Close(); cerr != nil {
+				logger.Warn("posthog close failed", "error", cerr)
+			}
+		}()
+	} else {
+		logger.Info("posthog analytics: disabled (POSTHOG_API_KEY not set)")
+	}
 
 	artifactStore, err := storage.NewStore(context.Background(), storage.Config{
 		Backend:          cfg.ArtifactStorage.Backend,
@@ -85,6 +108,11 @@ func main() {
 	}
 	if _, isNoop := standingsStore.(pubsub.NoopStandingsStore); !isNoop {
 		eventRecorder = pubsub.NewStandingsRecorder(eventRecorder, standingsStore, logger)
+	}
+	// PostHog run-lifecycle analytics, wrapped outermost so it observes the
+	// fully-decorated event stream. Emits run.started/completed/failed.
+	if posthogEnabled {
+		eventRecorder = workerapp.NewPostHogRecorder(eventRecorder, posthogClient, repo, logger)
 	}
 
 	httpClient := provider.NewDefaultHTTPClient()
