@@ -3,6 +3,7 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/agentclash/agentclash/cli/internal/output"
 	"github.com/spf13/cobra"
@@ -14,6 +15,7 @@ func init() {
 	datasetCmd.AddCommand(datasetCreateCmd)
 	datasetCmd.AddCommand(datasetViewCmd)
 	datasetCmd.AddCommand(datasetDeleteCmd)
+	datasetCmd.AddCommand(datasetEvalCmd)
 	datasetCmd.AddCommand(datasetExampleCmd)
 	datasetExampleCmd.AddCommand(datasetExampleAddCmd)
 	datasetExampleCmd.AddCommand(datasetExampleListCmd)
@@ -48,6 +50,13 @@ func init() {
 	datasetExampleEditCmd.Flags().String("source", "", "Example source: manual, import, trace, synthetic, or promotion")
 
 	datasetVersionCreateCmd.Flags().String("label", "", "Optional dataset version label")
+	datasetEvalCmd.Flags().String("version", "", "Dataset version ID to run")
+	datasetEvalCmd.Flags().String("pack", "", "Challenge pack version ID")
+	datasetEvalCmd.Flags().String("challenge", "", "Challenge key to bind examples to")
+	datasetEvalCmd.Flags().StringSlice("deployment", nil, "Agent deployment ID (repeatable)")
+	datasetEvalCmd.Flags().String("name", "", "Optional run name")
+	datasetEvalCmd.Flags().String("mapping", "", "Optional JSON mapping for dataset example fields")
+	datasetEvalCmd.Flags().Bool("follow", false, "Follow run events after creation")
 }
 
 var datasetCmd = &cobra.Command{
@@ -163,6 +172,40 @@ var datasetDeleteCmd = &cobra.Command{
 		}
 		rc.Output.PrintSuccess("Archived dataset " + args[0])
 		return nil
+	},
+}
+
+var datasetEvalCmd = &cobra.Command{
+	Use:   "eval <datasetId>",
+	Short: "Run an eval over a dataset version",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		rc := GetRunContext(cmd)
+		wsID := RequireWorkspace(cmd)
+		body, err := datasetEvalBody(cmd)
+		if err != nil {
+			return err
+		}
+		resp, err := rc.Client.Post(cmd.Context(), "/v1/workspaces/"+wsID+"/datasets/"+args[0]+"/evals", body)
+		if err != nil {
+			return err
+		}
+		if apiErr := resp.ParseError(); apiErr != nil {
+			return apiErr
+		}
+		var result map[string]any
+		if err := resp.DecodeJSON(&result); err != nil {
+			return err
+		}
+		follow, _ := cmd.Flags().GetBool("follow")
+		run := mapObject(result, "run")
+		if run == nil {
+			return fmt.Errorf("dataset eval response missing run")
+		}
+		if rc.Output.IsStructured() && !follow {
+			return rc.Output.PrintRaw(result)
+		}
+		return presentCreatedRun(cmd, rc, run, follow, nil)
 	},
 }
 
@@ -355,6 +398,55 @@ func datasetExampleBody(cmd *cobra.Command) (map[string]any, error) {
 	setFlagIfChanged(cmd, body, "status", "status")
 	setFlagIfChanged(cmd, body, "source", "source")
 	return body, nil
+}
+
+func datasetEvalBody(cmd *cobra.Command) (map[string]any, error) {
+	body := map[string]any{}
+	setRequiredFlag(cmd, body, "version", "version_id")
+	setRequiredFlag(cmd, body, "pack", "challenge_pack_version_id")
+	setRequiredFlag(cmd, body, "challenge", "challenge_id")
+	setFlagIfChanged(cmd, body, "name", "name")
+	if deployments, _ := cmd.Flags().GetStringSlice("deployment"); len(compactDatasetFlagValues(deployments)) > 0 {
+		body["agent_deployment_ids"] = compactDatasetFlagValues(deployments)
+	}
+	if raw, _ := cmd.Flags().GetString("mapping"); strings.TrimSpace(raw) != "" {
+		var mapping any
+		if err := json.Unmarshal([]byte(raw), &mapping); err != nil {
+			return nil, fmt.Errorf("mapping must be valid JSON: %w", err)
+		}
+		body["mapping"] = mapping
+	}
+	if missing := missingDatasetEvalFields(body); len(missing) > 0 {
+		return nil, fmt.Errorf("missing required flags: %s", strings.Join(missing, ", "))
+	}
+	return body, nil
+}
+
+func setRequiredFlag(cmd *cobra.Command, body map[string]any, flagName, key string) {
+	value, _ := cmd.Flags().GetString(flagName)
+	if strings.TrimSpace(value) != "" {
+		body[key] = strings.TrimSpace(value)
+	}
+}
+
+func missingDatasetEvalFields(body map[string]any) []string {
+	var missing []string
+	for _, key := range []string{"version_id", "challenge_pack_version_id", "challenge_id", "agent_deployment_ids"} {
+		if _, ok := body[key]; !ok {
+			missing = append(missing, key)
+		}
+	}
+	return missing
+}
+
+func compactDatasetFlagValues(values []string) []string {
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			out = append(out, trimmed)
+		}
+	}
+	return out
 }
 
 func setJSONFlagIfChanged(cmd *cobra.Command, body map[string]any, flagName, key string) {
