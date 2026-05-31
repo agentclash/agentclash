@@ -201,6 +201,7 @@ type CreateQueuedRunParams struct {
 	RaceContext            bool
 	RaceContextMinStepGap  *int32
 	EntitlementGate        *RunEntitlementGate
+	DatasetEvalRun         *RecordDatasetEvalRunParams
 }
 
 type CreateQueuedRunResult struct {
@@ -692,6 +693,17 @@ func createQueuedRunWithQueries(
 	})
 	if err != nil {
 		return CreateQueuedRunResult{}, fmt.Errorf("create run: %w", err)
+	}
+
+	if params.DatasetEvalRun != nil {
+		if _, err := queries.RecordDatasetEvalRun(ctx, repositorysqlc.RecordDatasetEvalRunParams{
+			DatasetID:                params.DatasetEvalRun.DatasetID,
+			DatasetVersionID:         params.DatasetEvalRun.DatasetVersionID,
+			DatasetVersionInputSetID: params.DatasetEvalRun.DatasetVersionInputSetID,
+			RunID:                    runRow.ID,
+		}); err != nil {
+			return CreateQueuedRunResult{}, fmt.Errorf("record dataset eval run: %w", err)
+		}
 	}
 
 	_, err = queries.InsertRunStatusHistory(ctx, repositorysqlc.InsertRunStatusHistoryParams{

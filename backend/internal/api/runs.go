@@ -70,6 +70,7 @@ type CreateRunInput struct {
 	SeriesMatrixKey            string
 	SeriesDeploymentLineup     string
 	CIMetadata                 *domain.RunCIMetadata
+	DatasetEvalRun            *repository.RecordDatasetEvalRunParams
 }
 
 type CreateRunResult struct {

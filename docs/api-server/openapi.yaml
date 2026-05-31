@@ -3645,6 +3645,75 @@ paths:
         "404":
           $ref: "#/components/responses/NotFoundError"
 
+  /v1/workspaces/{workspaceID}/datasets/{datasetID}/evals:
+    post:
+      operationId: startDatasetEval
+      tags: [Datasets]
+      summary: Run an eval over a pinned dataset version
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/DatasetID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StartDatasetEvalInput"
+      responses:
+        "201":
+          description: Dataset eval run queued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StartDatasetEvalResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /v1/workspaces/{workspaceID}/datasets/{datasetID}/results:
+    get:
+      operationId: listDatasetResults
+      tags: [Datasets]
+      summary: List per-example dataset eval results
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/DatasetID"
+        - name: version_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+          description: Optional dataset version filter.
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+            minimum: 1
+            maximum: 100
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+      responses:
+        "200":
+          description: Paginated dataset eval results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListDatasetResultsResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
   /v1/workspaces/{workspaceID}/datasets/{datasetID}/examples:
     get:
       operationId: listDatasetExamples
@@ -5562,6 +5631,80 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/DatasetExample"
+
+    StartDatasetEvalInput:
+      type: object
+      required: [version_id, challenge_pack_version_id, agent_deployment_ids]
+      properties:
+        version_id: { type: string, format: uuid }
+        challenge_pack_version_id: { type: string, format: uuid }
+        challenge_id:
+          type: string
+          description: Challenge key to bind dataset examples to.
+        challenge_key:
+          type: string
+          description: Alias for challenge_id.
+        mapping:
+          type: object
+          additionalProperties: true
+        agent_deployment_ids:
+          type: array
+          minItems: 1
+          items: { type: string, format: uuid }
+        name: { type: string }
+
+    DatasetVersionInputSet:
+      type: object
+      required: [id, dataset_id, dataset_version_id, challenge_pack_version_id, challenge_identity_id, challenge_key, challenge_input_set_id, input_key, input_checksum, mapping, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        dataset_id: { type: string, format: uuid }
+        dataset_version_id: { type: string, format: uuid }
+        challenge_pack_version_id: { type: string, format: uuid }
+        challenge_identity_id: { type: string, format: uuid }
+        challenge_key: { type: string }
+        challenge_input_set_id: { type: string, format: uuid }
+        input_key: { type: string }
+        input_checksum: { type: string }
+        mapping:
+          type: object
+          additionalProperties: true
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    StartDatasetEvalResponse:
+      type: object
+      required: [run, dataset_version_input_set]
+      properties:
+        run:
+          $ref: "#/components/schemas/CreateRunResponse"
+        dataset_version_input_set:
+          $ref: "#/components/schemas/DatasetVersionInputSet"
+
+    DatasetEvalResult:
+      type: object
+      required: [dataset_example_id, dataset_version_id, challenge_input_set_id]
+      properties:
+        dataset_example_id: { type: string, format: uuid }
+        dataset_version_id: { type: string, format: uuid }
+        challenge_input_set_id: { type: string, format: uuid }
+        run_id: { type: string, format: uuid }
+        run_agent_id: { type: string, format: uuid }
+        verdict: { type: string }
+        normalized_score: { type: number }
+        judged_at: { type: string, format: date-time }
+
+    ListDatasetResultsResponse:
+      type: object
+      required: [items, total, limit, offset]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/DatasetEvalResult"
+        total: { type: integer, format: int64 }
+        limit: { type: integer, format: int32 }
+        offset: { type: integer, format: int32 }
 
     ListDatasetsResponse:
       type: object

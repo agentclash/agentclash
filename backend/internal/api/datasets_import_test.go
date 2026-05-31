@@ -256,6 +256,12 @@ func (r *datasetImportFakeRepo) GetDatasetVersionByID(context.Context, uuid.UUID
 func (r *datasetImportFakeRepo) ListDatasetVersionExamples(context.Context, uuid.UUID) ([]repository.DatasetExample, error) {
 	return nil, nil
 }
+func (r *datasetImportFakeRepo) MaterializeDatasetVersionInputSet(context.Context, repository.MaterializeDatasetVersionInputSetParams) (repository.DatasetVersionInputSet, error) {
+	return repository.DatasetVersionInputSet{}, nil
+}
+func (r *datasetImportFakeRepo) ListDatasetEvalResults(context.Context, uuid.UUID, *uuid.UUID, int32, int32) (repository.ListDatasetEvalResultsResult, error) {
+	return repository.ListDatasetEvalResultsResult{}, nil
+}
 
 func datasetImportCaller(workspaceID uuid.UUID) Caller {
 	return Caller{

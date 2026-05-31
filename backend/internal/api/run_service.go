@@ -321,6 +321,7 @@ func (m *RunCreationManager) CreateRun(ctx context.Context, caller Caller, input
 		RaceContext:            input.RaceContext,
 		RaceContextMinStepGap:  input.RaceContextMinStepGap,
 		EntitlementGate:        entitlementGate,
+		DatasetEvalRun:         input.DatasetEvalRun,
 	})
 	if err != nil {
 		return CreateRunResult{}, fmt.Errorf("create queued run: %w", err)
