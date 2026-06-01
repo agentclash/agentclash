@@ -5,7 +5,9 @@ import { Database } from "lucide-react";
 
 import type { Dataset } from "@/lib/api/types";
 import { usePaginatedApiQuery } from "@/lib/api/swr";
+import { workspaceResourceKeys } from "@/lib/workspace-resource";
 import { WorkspaceListLoading } from "@/components/app-shell/workspace-loading";
+import { CreateResourceDialog } from "@/components/infra/create-resource-dialog";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import {
@@ -31,6 +33,37 @@ export function DatasetsClient({ workspaceId }: { workspaceId: string }) {
     <div>
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-lg font-semibold tracking-tight">Datasets</h1>
+        <CreateResourceDialog
+          title="New dataset"
+          description="Create a workspace dataset for eval examples and CI baselines."
+          endpoint={`/v1/workspaces/${workspaceId}/datasets`}
+          buttonLabel="New dataset"
+          invalidateKeys={[workspaceResourceKeys.datasets(workspaceId)]}
+          fields={[
+            {
+              key: "slug",
+              label: "Slug",
+              placeholder: "refund-recovery-v1",
+              required: true,
+            },
+            {
+              key: "name",
+              label: "Name",
+              placeholder: "Refund recovery v1",
+              required: true,
+            },
+            {
+              key: "description",
+              label: "Description",
+              placeholder: "Optional description",
+            },
+            {
+              key: "input_schema",
+              label: "Input schema (JSON)",
+              type: "json",
+            },
+          ]}
+        />
       </div>
 
       {error ? (
@@ -41,7 +74,7 @@ export function DatasetsClient({ workspaceId }: { workspaceId: string }) {
         <EmptyState
           icon={<Database className="size-10" />}
           title="No datasets"
-          description="Create datasets from the CLI or API to reuse examples across evals."
+          description="Create a dataset to reuse examples across evals, imports, and CI gates."
         />
       ) : (
         <div className="rounded-lg border border-border">
@@ -77,7 +110,11 @@ export function DatasetsClient({ workspaceId }: { workspaceId: string }) {
                     {dataset.version_count}
                   </TableCell>
                   <TableCell>
-                    <Badge variant={dataset.input_schema_enforced ? "default" : "secondary"}>
+                    <Badge
+                      variant={
+                        dataset.input_schema_enforced ? "default" : "secondary"
+                      }
+                    >
                       {dataset.input_schema_enforced ? "enforced" : "optional"}
                     </Badge>
                   </TableCell>
