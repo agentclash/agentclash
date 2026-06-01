@@ -1664,10 +1664,6 @@ export function buildLlmsIndex(origin = DOCS_ORIGIN) {
       (page) => `- [${page.title}](${origin}${page.href}) - ${page.description}`,
     ),
     "",
-    "## Changelog",
-    "",
-    `- [Product Changelog](${origin}/changelog) - release notes grouped every ten days since April 15, 2026.`,
-    "",
     "## Blog posts",
     "",
     ...blogPosts.map(

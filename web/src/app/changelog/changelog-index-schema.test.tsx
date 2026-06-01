@@ -2,6 +2,10 @@ import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
 import { SITE_URL } from "@/components/marketing/json-ld";
+import {
+  getChangelogLatestModified,
+  getChangelogPeriods,
+} from "@/lib/changelog";
 import ChangelogPage from "./page";
 
 let root: Root | null = null;
@@ -27,6 +31,9 @@ afterEach(() => {
 
 describe("changelog index structured data", () => {
   it("renders breadcrumb, WebPage, ItemList, and FAQ JSON-LD", () => {
+    const periods = getChangelogPeriods();
+    const latestPeriod = periods[0];
+
     render(<ChangelogPage />);
 
     const script = container?.querySelector<HTMLScriptElement>(
@@ -48,18 +55,18 @@ describe("changelog index structured data", () => {
       "@type": "WebPage",
       name: "AgentClash Changelog",
       url: `${SITE_URL}/changelog`,
-      dateModified: "2026-06-01",
+      dateModified: getChangelogLatestModified(),
     });
     expect(jsonLd[2]).toMatchObject({
       "@type": "ItemList",
-      numberOfItems: 5,
+      numberOfItems: periods.length,
     });
     expect(
       (jsonLd[2]?.itemListElement as Array<Record<string, unknown>>)[0],
     ).toMatchObject({
       "@type": "ListItem",
       position: 1,
-      url: `${SITE_URL}/changelog#2026-05-25`,
+      url: `${SITE_URL}/changelog#${latestPeriod?.id}`,
     });
     expect(jsonLd[3]).toMatchObject({
       "@type": "FAQPage",

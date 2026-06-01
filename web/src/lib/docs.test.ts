@@ -495,7 +495,7 @@ describe("agent skill docs", () => {
       "https://example.test/blog/ai-agent-evaluation-regression-testing",
     );
     expect(index).toContain("https://example.test/changelog");
-    expect(index).toContain("## Changelog");
+    expect(index.match(/https:\/\/example\.test\/changelog/g)?.length).toBe(1);
     expect(index).toContain(
       "AI Agent Evaluation Needs Regression Testing, Not Just Benchmarks",
     );

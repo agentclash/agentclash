@@ -14,6 +14,13 @@ export interface ChangelogPeriod {
   entries: ChangelogEntry[];
 }
 
+export const CHANGELOG_CATEGORY_LABELS: Record<ChangelogCategory, string> = {
+  added: "Added",
+  improved: "Improved",
+  fixed: "Fixed",
+  security: "Security",
+};
+
 export const CHANGELOG_PERIODS: ChangelogPeriod[] = [
   {
     id: "2026-04-15",
@@ -330,10 +337,3 @@ export function renderChangelogMarkdown(origin = "https://www.agentclash.dev"): 
 
   return lines.join("\n").trim();
 }
-
-export const CHANGELOG_CATEGORY_LABELS: Record<ChangelogCategory, string> = {
-  added: "Added",
-  improved: "Improved",
-  fixed: "Fixed",
-  security: "Security",
-};
