@@ -202,9 +202,15 @@ func (q *Queries) CreateDatasetVersion(ctx context.Context, arg CreateDatasetVer
 }
 
 const getDatasetByID = `-- name: GetDatasetByID :one
-SELECT id, organization_id, workspace_id, slug, name, description, input_schema, input_schema_enforced, default_challenge_pack_version_id, created_by, created_at, updated_at, archived_at
-FROM datasets
-WHERE id = $1
+SELECT
+    d.id, d.organization_id, d.workspace_id, d.slug, d.name, d.description, d.input_schema, d.input_schema_enforced, d.default_challenge_pack_version_id, d.created_by, d.created_at, d.updated_at, d.archived_at,
+    count(DISTINCT e.id) FILTER (WHERE e.status = 'active')::bigint AS active_example_count,
+    count(DISTINCT v.id)::bigint AS version_count
+FROM datasets d
+LEFT JOIN dataset_examples e ON e.dataset_id = d.id
+LEFT JOIN dataset_versions v ON v.dataset_id = d.id
+WHERE d.id = $1
+GROUP BY d.id
 LIMIT 1
 `
 
@@ -212,9 +218,27 @@ type GetDatasetByIDParams struct {
 	ID uuid.UUID
 }
 
-func (q *Queries) GetDatasetByID(ctx context.Context, arg GetDatasetByIDParams) (Dataset, error) {
+type GetDatasetByIDRow struct {
+	ID                            uuid.UUID
+	OrganizationID                uuid.UUID
+	WorkspaceID                   uuid.UUID
+	Slug                          string
+	Name                          string
+	Description                   string
+	InputSchema                   []byte
+	InputSchemaEnforced           bool
+	DefaultChallengePackVersionID *uuid.UUID
+	CreatedBy                     uuid.UUID
+	CreatedAt                     pgtype.Timestamptz
+	UpdatedAt                     pgtype.Timestamptz
+	ArchivedAt                    pgtype.Timestamptz
+	ActiveExampleCount            int64
+	VersionCount                  int64
+}
+
+func (q *Queries) GetDatasetByID(ctx context.Context, arg GetDatasetByIDParams) (GetDatasetByIDRow, error) {
 	row := q.db.QueryRow(ctx, getDatasetByID, arg.ID)
-	var i Dataset
+	var i GetDatasetByIDRow
 	err := row.Scan(
 		&i.ID,
 		&i.OrganizationID,
@@ -229,6 +253,8 @@ func (q *Queries) GetDatasetByID(ctx context.Context, arg GetDatasetByIDParams) 
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ArchivedAt,
+		&i.ActiveExampleCount,
+		&i.VersionCount,
 	)
 	return i, err
 }

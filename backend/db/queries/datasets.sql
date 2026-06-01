@@ -25,9 +25,15 @@ WHERE w.id = @workspace_id
 RETURNING *;
 
 -- name: GetDatasetByID :one
-SELECT *
-FROM datasets
-WHERE id = @id
+SELECT
+    d.id, d.organization_id, d.workspace_id, d.slug, d.name, d.description, d.input_schema, d.input_schema_enforced, d.default_challenge_pack_version_id, d.created_by, d.created_at, d.updated_at, d.archived_at,
+    count(DISTINCT e.id) FILTER (WHERE e.status = 'active')::bigint AS active_example_count,
+    count(DISTINCT v.id)::bigint AS version_count
+FROM datasets d
+LEFT JOIN dataset_examples e ON e.dataset_id = d.id
+LEFT JOIN dataset_versions v ON v.dataset_id = d.id
+WHERE d.id = @id
+GROUP BY d.id
 LIMIT 1;
 
 -- name: LockActiveDatasetForVersion :one

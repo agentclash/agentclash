@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/agentclash/agentclash/backend/internal/domain"
@@ -85,6 +86,31 @@ func TestStartDatasetGenerationRequiresManageDatasets(t *testing.T) {
 	}
 }
 
+func TestStartDatasetGenerationRejectsProviderMismatch(t *testing.T) {
+	wsID := uuid.New()
+	datasetID := uuid.New()
+	providerID := uuid.New()
+	modelAliasID := uuid.New()
+	repo := &datasetGenerationFakeRepo{
+		datasetImportFakeRepo: newDatasetImportFakeRepo(wsID, datasetID),
+		providerAccount:       repository.ProviderAccountRow{ID: providerID, WorkspaceID: &wsID, ProviderKey: "openai"},
+		modelAlias: repository.ModelAliasRow{
+			ID: modelAliasID, WorkspaceID: &wsID, ProviderAccountID: &providerID, CatalogProviderKey: "google",
+		},
+	}
+	repo.examples = []repository.DatasetExample{{
+		ID: uuid.New(), DatasetID: datasetID, Input: json.RawMessage(`{"q":"seed"}`), Status: domain.DatasetExampleStatusActive,
+	}}
+	manager := NewDatasetManager(allowWorkspaceAuthorizer{}, repo).WithGenerationWorkflowStarter(datasetGenerationFakeStarter{})
+	_, err := manager.StartDatasetGeneration(context.Background(), Caller{UserID: uuid.New()}, StartDatasetGenerationInput{
+		WorkspaceID: wsID, DatasetID: datasetID, Strategy: "self_instruct", TargetCount: 1,
+		ProviderAccountID: providerID, ModelAliasID: modelAliasID,
+	})
+	if err == nil || !strings.Contains(err.Error(), "provider") {
+		t.Fatalf("expected provider mismatch error, got %v", err)
+	}
+}
+
 func TestStartDatasetGenerationCreatesJob(t *testing.T) {
 	wsID := uuid.New()
 	datasetID := uuid.New()
@@ -93,7 +119,9 @@ func TestStartDatasetGenerationCreatesJob(t *testing.T) {
 	repo := &datasetGenerationFakeRepo{
 		datasetImportFakeRepo: newDatasetImportFakeRepo(wsID, datasetID),
 		providerAccount:       repository.ProviderAccountRow{ID: providerID, WorkspaceID: &wsID, ProviderKey: "openai"},
-		modelAlias:            repository.ModelAliasRow{ID: modelAliasID, WorkspaceID: &wsID},
+		modelAlias: repository.ModelAliasRow{
+			ID: modelAliasID, WorkspaceID: &wsID, ProviderAccountID: &providerID, CatalogProviderKey: "openai",
+		},
 	}
 	repo.examples = []repository.DatasetExample{{
 		ID:        uuid.New(),

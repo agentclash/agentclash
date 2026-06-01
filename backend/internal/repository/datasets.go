@@ -163,7 +163,7 @@ func (r *Repository) GetDatasetByID(ctx context.Context, id uuid.UUID) (Dataset,
 		}
 		return Dataset{}, fmt.Errorf("get dataset by id: %w", err)
 	}
-	return mapDataset(row)
+	return mapDatasetDetailRow(row)
 }
 
 func (r *Repository) ListDatasetsByWorkspaceID(ctx context.Context, workspaceID uuid.UUID, limit, offset int32) ([]Dataset, error) {
@@ -248,7 +248,15 @@ func (r *Repository) UpsertDatasetExample(ctx context.Context, params UpsertData
 	return mapDatasetExample(row)
 }
 
+func datasetExampleTags(tags []string) []string {
+	if tags == nil {
+		return []string{}
+	}
+	return tags
+}
+
 func upsertDatasetExampleWithQueries(ctx context.Context, q *repositorysqlc.Queries, params UpsertDatasetExampleParams) (repositorysqlc.DatasetExample, error) {
+	tags := datasetExampleTags(params.Tags)
 	var before *repositorysqlc.DatasetExample
 	if params.ExternalID != nil && strings.TrimSpace(*params.ExternalID) != "" {
 		row, err := q.GetDatasetExampleByExternalID(ctx, repositorysqlc.GetDatasetExampleByExternalIDParams{
@@ -271,13 +279,13 @@ func upsertDatasetExampleWithQueries(ctx context.Context, q *repositorysqlc.Quer
 		beforeJSON = datasetExampleRevisionJSON(*before)
 		row, err = q.UpdateDatasetExample(ctx, repositorysqlc.UpdateDatasetExampleParams{
 			ID: before.ID, Input: params.Input, Expected: nullableJSON(params.Expected), Metadata: datasetDefaultJSONObject(params.Metadata),
-			Tags: params.Tags, Status: string(params.Status), Source: string(params.Source), SourceRunID: params.SourceRunID,
+			Tags: tags, Status: string(params.Status), Source: string(params.Source), SourceRunID: params.SourceRunID,
 			SourceTraceID: params.SourceTraceID, SourcePlatform: params.SourcePlatform, ArtifactID: params.ArtifactID,
 		})
 	} else {
 		row, err = q.InsertDatasetExample(ctx, repositorysqlc.InsertDatasetExampleParams{
 			DatasetID: params.DatasetID, ExternalID: cleanStringPtr(params.ExternalID), Input: params.Input, Expected: nullableJSON(params.Expected),
-			Metadata: datasetDefaultJSONObject(params.Metadata), Tags: params.Tags, Status: string(params.Status), Source: string(params.Source),
+			Metadata: datasetDefaultJSONObject(params.Metadata), Tags: tags, Status: string(params.Status), Source: string(params.Source),
 			SourceRunID: params.SourceRunID, SourceTraceID: params.SourceTraceID, SourcePlatform: params.SourcePlatform,
 			ArtifactID: params.ArtifactID, CreatedBy: params.Actor,
 		})
@@ -508,6 +516,15 @@ func mapDataset(row repositorysqlc.Dataset) (Dataset, error) {
 }
 
 func mapDatasetListRow(row repositorysqlc.ListDatasetsByWorkspaceIDRow) (Dataset, error) {
+	return mapDatasetDetailRow(repositorysqlc.GetDatasetByIDRow{
+		ID: row.ID, OrganizationID: row.OrganizationID, WorkspaceID: row.WorkspaceID, Slug: row.Slug, Name: row.Name,
+		Description: row.Description, InputSchema: row.InputSchema, InputSchemaEnforced: row.InputSchemaEnforced,
+		DefaultChallengePackVersionID: row.DefaultChallengePackVersionID, CreatedBy: row.CreatedBy, CreatedAt: row.CreatedAt,
+		UpdatedAt: row.UpdatedAt, ArchivedAt: row.ArchivedAt, ActiveExampleCount: row.ActiveExampleCount, VersionCount: row.VersionCount,
+	})
+}
+
+func mapDatasetDetailRow(row repositorysqlc.GetDatasetByIDRow) (Dataset, error) {
 	dataset, err := mapDataset(repositorysqlc.Dataset{
 		ID: row.ID, OrganizationID: row.OrganizationID, WorkspaceID: row.WorkspaceID, Slug: row.Slug, Name: row.Name,
 		Description: row.Description, InputSchema: row.InputSchema, InputSchemaEnforced: row.InputSchemaEnforced,
