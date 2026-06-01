@@ -6,6 +6,8 @@
     "build:codex:prod": "tsx build.codex.prod.ts",
     "build:claude:dev": "tsx build.claude.dev.ts",
     "build:claude:prod": "tsx build.claude.prod.ts",
+    "build:hermes:dev": "tsx build.hermes.dev.ts",
+    "build:hermes:prod": "tsx build.hermes.prod.ts",
     "build:openclaw:dev": "tsx build.openclaw.dev.ts",
     "build:openclaw:prod": "tsx build.openclaw.prod.ts"
   },

@@ -180,6 +180,46 @@ func TestAgentHarnessCreateBuildsOpenClawE2BPayload(t *testing.T) {
 	}
 }
 
+func TestAgentHarnessCreateBuildsHermesE2BPayload(t *testing.T) {
+	var gotBody map[string]any
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"POST /v1/workspaces/ws-123/agent-harnesses": func(w http.ResponseWriter, r *http.Request) {
+			if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+				t.Fatalf("decode request: %v", err)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			json.NewEncoder(w).Encode(map[string]any{
+				"id": "harness-1", "name": gotBody["name"], "harness_kind": gotBody["harness_kind"], "auth_mode": gotBody["auth_mode"], "codex_template": gotBody["codex_template"],
+			})
+		},
+	})
+	defer srv.Close()
+
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+	err := executeCommand(t, []string{
+		"--workspace", "ws-123",
+		"agent-harness", "create",
+		"--name", "Hermes long runner",
+		"--harness-kind", "hermes_e2b",
+		"--task", "Implement the feature and run tests.",
+		"--auth-mode", "api_key_secret",
+		"--api-key-secret", "OPENROUTER_API_KEY",
+	}, srv.URL)
+	if err != nil {
+		t.Fatalf("agent-harness create error: %v", err)
+	}
+	if gotBody["harness_kind"] != "hermes_e2b" {
+		t.Fatalf("harness_kind = %v", gotBody["harness_kind"])
+	}
+	if gotBody["openai_api_key_secret_name"] != "OPENROUTER_API_KEY" {
+		t.Fatalf("openai_api_key_secret_name = %v", gotBody["openai_api_key_secret_name"])
+	}
+	if gotBody["codex_template"] != "agentclash-hermes-fullstack" {
+		t.Fatalf("codex_template = %v", gotBody["codex_template"])
+	}
+}
+
 func TestAgentHarnessCreateRequiresOpenAISecretForAPIKeyMode(t *testing.T) {
 	err := executeCommand(t, []string{
 		"--workspace", "ws-123",

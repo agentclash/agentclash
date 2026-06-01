@@ -41,7 +41,7 @@ func init() {
 	agentHarnessCreateCmd.Flags().String("name", "", "Harness name")
 	agentHarnessCreateCmd.Flags().String("description", "", "Harness description")
 	agentHarnessCreateCmd.Flags().String("task", "", "Task prompt for the coding harness")
-	agentHarnessCreateCmd.Flags().String("harness-kind", "codex_e2b", "Harness runner kind: codex_e2b, claude_e2b, or openclaw_e2b")
+	agentHarnessCreateCmd.Flags().String("harness-kind", "codex_e2b", "Harness runner kind: codex_e2b, claude_e2b, hermes_e2b, or openclaw_e2b")
 	agentHarnessCreateCmd.Flags().String("codex-template", "", "E2B template override for the harness runner")
 	agentHarnessCreateCmd.Flags().String("codex-model", "", "Runner model override")
 	agentHarnessCreateCmd.Flags().String("auth-mode", "api_key_secret", "Harness auth mode: api_key_secret")
@@ -997,6 +997,8 @@ func defaultAgentHarnessTemplateForKind(kind string) string {
 	switch strings.TrimSpace(kind) {
 	case "claude_e2b":
 		return "agentclash-claude-fullstack"
+	case "hermes_e2b":
+		return "agentclash-hermes-fullstack"
 	case "openclaw_e2b":
 		return "agentclash-openclaw-fullstack"
 	default:

@@ -21,10 +21,12 @@ import (
 const (
 	AgentHarnessKindCodexE2B         = domain.AgentHarnessKindCodexE2B
 	AgentHarnessKindClaudeE2B        = domain.AgentHarnessKindClaudeE2B
+	AgentHarnessKindHermesE2B        = domain.AgentHarnessKindHermesE2B
 	AgentHarnessKindOpenClawE2B      = domain.AgentHarnessKindOpenClawE2B
 	AgentHarnessAuthModeAPIKeySecret = "api_key_secret"
 	defaultCodexE2BTemplate          = "codex"
 	defaultClaudeE2BTemplate         = "agentclash-claude-fullstack"
+	defaultHermesE2BTemplate         = "agentclash-hermes-fullstack"
 	defaultOpenClawE2BTemplate       = "agentclash-openclaw-fullstack"
 )
 
@@ -831,9 +833,9 @@ func validateAgentHarnessInput(input CreateAgentHarnessInput) error {
 		return AgentHarnessValidationError{Code: "invalid_task_prompt", Message: "task_prompt is required"}
 	}
 	switch domain.NormalizeAgentHarnessKind(input.HarnessKind) {
-	case AgentHarnessKindCodexE2B, AgentHarnessKindClaudeE2B, AgentHarnessKindOpenClawE2B:
+	case AgentHarnessKindCodexE2B, AgentHarnessKindClaudeE2B, AgentHarnessKindHermesE2B, AgentHarnessKindOpenClawE2B:
 	default:
-		return AgentHarnessValidationError{Code: "invalid_harness_kind", Message: "harness_kind must be codex_e2b, claude_e2b, or openclaw_e2b"}
+		return AgentHarnessValidationError{Code: "invalid_harness_kind", Message: "harness_kind must be codex_e2b, claude_e2b, hermes_e2b, or openclaw_e2b"}
 	}
 	switch strings.TrimSpace(input.AuthMode) {
 	case AgentHarnessAuthModeAPIKeySecret:
@@ -876,6 +878,8 @@ func defaultAgentHarnessTemplate(kind string) string {
 	switch kind {
 	case AgentHarnessKindClaudeE2B:
 		return defaultClaudeE2BTemplate
+	case AgentHarnessKindHermesE2B:
+		return defaultHermesE2BTemplate
 	case AgentHarnessKindOpenClawE2B:
 		return defaultOpenClawE2BTemplate
 	default:

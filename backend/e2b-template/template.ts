@@ -28,6 +28,14 @@ export const template = Template()
 
   // Coding-agent CLIs for Agent Harness tasks
   .runCmd('npm install -g @openai/codex @anthropic-ai/claude-code openclaw@latest')
+  // Hermes installs as root on Linux using the FHS layout, which already places
+  // the `hermes` shim at /usr/local/bin/hermes. We pass --skip-setup so the
+  // installer never asks for interactive provider config. Provider credentials
+  // are injected at run time via env vars and `hermes setup model --non-interactive`.
+  .runCmd(
+    'curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash -s -- --skip-setup ' +
+      '&& command -v hermes >/dev/null',
+  )
   // Claude Code refuses bypass-permissions mode as root. Keep the sandbox root
   // user for git/auth setup, but make the claude entrypoint drop to E2B's
   // unprivileged user and make the cloned repo writable before Claude edits it.

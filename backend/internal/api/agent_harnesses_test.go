@@ -191,6 +191,34 @@ func TestAgentHarnessManagerCreatePersistsOpenClawHarnessDefaults(t *testing.T) 
 	}
 }
 
+func TestAgentHarnessManagerCreatePersistsHermesHarnessDefaults(t *testing.T) {
+	workspaceID := uuid.New()
+	orgID := uuid.New()
+	repo := &fakeAgentHarnessRepo{organizationID: orgID}
+	manager := NewAgentHarnessManager(NewCallerWorkspaceAuthorizer(), repo)
+
+	harness, err := manager.CreateAgentHarness(context.Background(), testAgentHarnessCaller(workspaceID), workspaceID, CreateAgentHarnessInput{
+		Name:                   "Hermes Long Runner",
+		HarnessKind:            AgentHarnessKindHermesE2B,
+		TaskPrompt:             "implement the requested change",
+		AuthMode:               AgentHarnessAuthModeAPIKeySecret,
+		OpenAIAPIKeySecretName: "OPENROUTER_API_KEY",
+	})
+	if err != nil {
+		t.Fatalf("CreateAgentHarness error: %v", err)
+	}
+
+	if harness.HarnessKind != AgentHarnessKindHermesE2B {
+		t.Fatalf("harness_kind = %q, want hermes_e2b", harness.HarnessKind)
+	}
+	if harness.CodexTemplate != defaultHermesE2BTemplate {
+		t.Fatalf("codex_template = %q, want %q", harness.CodexTemplate, defaultHermesE2BTemplate)
+	}
+	if repo.created.HarnessKind != AgentHarnessKindHermesE2B {
+		t.Fatalf("created harness_kind = %q", repo.created.HarnessKind)
+	}
+}
+
 func TestAgentHarnessManagerCreateRequiresRunPermission(t *testing.T) {
 	workspaceID := uuid.New()
 	manager := NewAgentHarnessManager(NewCallerWorkspaceAuthorizer(), &fakeAgentHarnessRepo{

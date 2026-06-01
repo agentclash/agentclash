@@ -29,7 +29,7 @@ import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { GitBranch, Github, Loader2, Plus } from "lucide-react";
 
-type HarnessKind = "codex_e2b" | "claude_e2b" | "openclaw_e2b";
+type HarnessKind = "codex_e2b" | "claude_e2b" | "hermes_e2b" | "openclaw_e2b";
 
 const harnessOptions: Record<
   HarnessKind,
@@ -48,6 +48,11 @@ const harnessOptions: Record<
     label: "Claude",
     template: "agentclash-claude-fullstack",
     secretCandidates: ["ANTHROPIC_API_KEY"],
+  },
+  hermes_e2b: {
+    label: "Hermes",
+    template: "agentclash-hermes-fullstack",
+    secretCandidates: ["OPENROUTER_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY"],
   },
   openclaw_e2b: {
     label: "OpenClaw",
