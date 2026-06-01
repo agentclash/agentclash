@@ -283,7 +283,7 @@ func upsertDatasetExampleWithQueries(ctx context.Context, q *repositorysqlc.Quer
 		})
 	}
 	if err != nil {
-		return repositorysqlc.DatasetExample{}, fmt.Errorf("upsert dataset example: %w", err)
+		return repositorysqlc.DatasetExample{}, mapDatasetExampleUpsertError(params.Source, err)
 	}
 	_, err = q.InsertDatasetExampleRevision(ctx, repositorysqlc.InsertDatasetExampleRevisionParams{
 		DatasetID: params.DatasetID, ExampleID: &row.ID, Operation: operation, Before: beforeJSON,
@@ -578,6 +578,19 @@ func datasetManifestChecksum(revisions []repositorysqlc.DatasetExampleRevision) 
 		h.Write(revision.After)
 	}
 	return "sha256:" + hex.EncodeToString(h.Sum(nil))
+}
+
+func mapDatasetExampleUpsertError(source domain.DatasetExampleSource, err error) error {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23514" {
+		switch {
+		case strings.Contains(pgErr.ConstraintName, "source"):
+			return fmt.Errorf("%w: %q", domain.ErrInvalidDatasetExampleSource, source)
+		case strings.Contains(pgErr.ConstraintName, "status"):
+			return fmt.Errorf("%w: invalid status", domain.ErrInvalidDatasetExampleStatus)
+		}
+	}
+	return fmt.Errorf("upsert dataset example: %w", err)
 }
 
 func nullableJSON(raw json.RawMessage) []byte {
