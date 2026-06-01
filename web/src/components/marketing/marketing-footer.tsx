@@ -31,6 +31,7 @@ const COLUMNS: Array<{
     heading: "Company",
     links: [
       { href: "/blog", label: "Blog" },
+      { href: "/changelog", label: "Changelog" },
       { href: "/team", label: "Team" },
       { href: "https://github.com/agentclash/agentclash", label: "GitHub", external: true },
     ],

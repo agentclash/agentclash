@@ -9,6 +9,7 @@ const DEFAULT_NAV: NavLink[] = [
   { href: "/#features", label: "Features" },
   { href: "/docs", label: "Docs" },
   { href: "/blog", label: "Blog" },
+  { href: "/changelog", label: "Changelog" },
 ];
 
 type Props = {

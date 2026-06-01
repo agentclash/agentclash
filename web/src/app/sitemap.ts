@@ -1,5 +1,6 @@
 import type { MetadataRoute } from "next";
 import { getAllPosts } from "@/lib/blog";
+import { getChangelogLatestModified } from "@/lib/changelog";
 import { COMPETITORS } from "@/lib/comparison-data";
 import { DOCS_ORIGIN, getAllDocPaths } from "@/lib/docs";
 
@@ -42,6 +43,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
       lastModified: new Date(),
       changeFrequency: "weekly",
       priority: 0.8,
+    },
+    {
+      url: `${DOCS_ORIGIN}/changelog`,
+      lastModified: new Date(getChangelogLatestModified()),
+      changeFrequency: "weekly",
+      priority: 0.75,
     },
     {
       url: `${DOCS_ORIGIN}/why`,
