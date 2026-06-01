@@ -130,6 +130,25 @@ func (s TemporalPlaygroundWorkflowStarter) StartPlaygroundExperimentWorkflow(ctx
 	return err
 }
 
+type TemporalSyntheticDatasetGenerationWorkflowStarter struct {
+	client TemporalClient
+}
+
+func NewTemporalSyntheticDatasetGenerationWorkflowStarter(client TemporalClient) TemporalSyntheticDatasetGenerationWorkflowStarter {
+	return TemporalSyntheticDatasetGenerationWorkflowStarter{client: client}
+}
+
+func (s TemporalSyntheticDatasetGenerationWorkflowStarter) StartSyntheticDatasetGenerationWorkflow(ctx context.Context, jobID uuid.UUID) error {
+	workflowID := fmt.Sprintf("%s/%s", workflow.SyntheticDatasetGenerationWorkflowName, jobID)
+	_, err := s.client.ExecuteWorkflow(ctx, temporalsdk.StartWorkflowOptions{
+		ID:        workflowID,
+		TaskQueue: workflow.WorkflowTaskQueue,
+	}, workflow.SyntheticDatasetGenerationWorkflowName, workflow.SyntheticDatasetGenerationWorkflowInput{
+		JobID: jobID,
+	})
+	return err
+}
+
 type TemporalHostedRunWorkflowSignaler struct {
 	client TemporalClient
 }

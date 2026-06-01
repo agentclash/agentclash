@@ -24,6 +24,7 @@ sql:
       - "db/queries/dataset_evals.sql"
       - "db/queries/dataset_traces.sql"
       - "db/queries/dataset_gates.sql"
+      - "db/queries/dataset_generations.sql"
       - "db/queries/billing.sql"
       - "db/queries/vibe_eval.sql"
     gen:
