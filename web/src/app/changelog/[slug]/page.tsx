@@ -113,7 +113,7 @@ export default async function ChangelogPeriodPage({ params }: Props) {
         ]}
       />
       <ChangelogShell>
-        <ChangelogPeriodDetail period={period} />
+        <ChangelogPeriodDetail period={period} pullRequests={pullRequests} />
       </ChangelogShell>
     </>
   );

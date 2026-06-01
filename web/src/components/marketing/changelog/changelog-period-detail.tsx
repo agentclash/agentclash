@@ -1,10 +1,10 @@
 import Link from "next/link";
 import {
   CHANGELOG_CATEGORY_LABELS,
-  getChangelogPeriodPullRequests,
   getChangelogPullRequestUrl,
   type ChangelogCategory,
   type ChangelogPeriod,
+  type ChangelogPullRequest,
 } from "@/lib/changelog";
 
 const CATEGORY_ORDER: ChangelogCategory[] = [
@@ -28,8 +28,13 @@ function groupEntriesByCategory(period: ChangelogPeriod) {
   })).filter((group) => group.entries.length > 0);
 }
 
-export function ChangelogPeriodDetail({ period }: { period: ChangelogPeriod }) {
-  const pullRequests = getChangelogPeriodPullRequests(period.id);
+export function ChangelogPeriodDetail({
+  period,
+  pullRequests,
+}: {
+  period: ChangelogPeriod;
+  pullRequests: ChangelogPullRequest[];
+}) {
   const groups = groupEntriesByCategory(period);
 
   return (

@@ -1,15 +1,17 @@
 import Link from "next/link";
-import {
-  getChangelogPeriodHref,
-  getChangelogPeriodPullRequests,
-  type ChangelogPeriod,
-} from "@/lib/changelog";
+import { getChangelogPeriodHref, type ChangelogPeriod } from "@/lib/changelog";
 
-export function ChangelogIndexList({ periods }: { periods: ChangelogPeriod[] }) {
+export function ChangelogIndexList({
+  periods,
+  pullRequestCounts,
+}: {
+  periods: ChangelogPeriod[];
+  pullRequestCounts: Record<string, number>;
+}) {
   return (
     <ol className="mt-10 divide-y divide-white/[0.08] overflow-hidden rounded-lg border border-white/[0.08] bg-white/[0.02]">
       {periods.map((period, index) => {
-        const pullRequestCount = getChangelogPeriodPullRequests(period.id).length;
+        const pullRequestCount = pullRequestCounts[period.id] ?? 0;
 
         return (
           <li key={period.id}>

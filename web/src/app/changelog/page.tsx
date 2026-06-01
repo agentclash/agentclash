@@ -1,13 +1,19 @@
 import { ChangelogIndexList } from "@/components/marketing/changelog/changelog-index-list";
 import { ChangelogShell } from "@/components/marketing/changelog/changelog-shell";
 import { JsonLd, changelogIndexSchema } from "@/components/marketing/json-ld";
-import { CHANGELOG_FAQ, getChangelogPeriods } from "@/lib/changelog";
+import { CHANGELOG_FAQ, getChangelogPeriodPullRequests, getChangelogPeriods } from "@/lib/changelog";
 import { changelogMetadata } from "./metadata";
 
 export const metadata = changelogMetadata;
 
 export default function ChangelogPage() {
   const periods = getChangelogPeriods();
+  const pullRequestCounts = Object.fromEntries(
+    periods.map((period) => [
+      period.id,
+      getChangelogPeriodPullRequests(period.id).length,
+    ]),
+  );
 
   return (
     <>
@@ -36,7 +42,10 @@ export default function ChangelogPage() {
           full breakdown and merged pull requests.
         </p>
 
-        <ChangelogIndexList periods={periods} />
+        <ChangelogIndexList
+          periods={periods}
+          pullRequestCounts={pullRequestCounts}
+        />
       </ChangelogShell>
     </>
   );
