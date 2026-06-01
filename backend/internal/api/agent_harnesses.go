@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/agentclash/agentclash/backend/internal/domain"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/backend/internal/workflow"
 	"github.com/go-chi/chi/v5"
@@ -18,9 +19,9 @@ import (
 )
 
 const (
-	AgentHarnessKindCodexE2B         = "codex_e2b"
-	AgentHarnessKindClaudeE2B        = "claude_e2b"
-	AgentHarnessKindOpenClawE2B      = "openclaw_e2b"
+	AgentHarnessKindCodexE2B         = domain.AgentHarnessKindCodexE2B
+	AgentHarnessKindClaudeE2B        = domain.AgentHarnessKindClaudeE2B
+	AgentHarnessKindOpenClawE2B      = domain.AgentHarnessKindOpenClawE2B
 	AgentHarnessAuthModeAPIKeySecret = "api_key_secret"
 	defaultCodexE2BTemplate          = "codex"
 	defaultClaudeE2BTemplate         = "agentclash-claude-fullstack"
@@ -205,7 +206,7 @@ func (m *AgentHarnessManager) CreateAgentHarness(ctx context.Context, caller Cal
 		return repository.AgentHarness{}, err
 	}
 
-	harnessKind := normalizeAgentHarnessKind(input.HarnessKind)
+	harnessKind := domain.NormalizeAgentHarnessKind(input.HarnessKind)
 	codexTemplate := strings.TrimSpace(input.CodexTemplate)
 	if codexTemplate == "" {
 		codexTemplate = defaultAgentHarnessTemplate(harnessKind)
@@ -829,7 +830,7 @@ func validateAgentHarnessInput(input CreateAgentHarnessInput) error {
 	if strings.TrimSpace(input.TaskPrompt) == "" {
 		return AgentHarnessValidationError{Code: "invalid_task_prompt", Message: "task_prompt is required"}
 	}
-	switch normalizeAgentHarnessKind(input.HarnessKind) {
+	switch domain.NormalizeAgentHarnessKind(input.HarnessKind) {
 	case AgentHarnessKindCodexE2B, AgentHarnessKindClaudeE2B, AgentHarnessKindOpenClawE2B:
 	default:
 		return AgentHarnessValidationError{Code: "invalid_harness_kind", Message: "harness_kind must be codex_e2b, claude_e2b, or openclaw_e2b"}
@@ -869,14 +870,6 @@ func validateRawJSONFields(fields map[string]json.RawMessage) error {
 		}
 	}
 	return nil
-}
-
-func normalizeAgentHarnessKind(kind string) string {
-	trimmed := strings.TrimSpace(kind)
-	if trimmed == "" {
-		return AgentHarnessKindCodexE2B
-	}
-	return trimmed
 }
 
 func defaultAgentHarnessTemplate(kind string) string {

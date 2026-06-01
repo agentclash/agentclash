@@ -398,13 +398,8 @@ function inferRunnerSecret(
     const exact = secrets.find((secret) => secret.key === candidate);
     if (exact) return exact.key;
   }
-  return secrets.find((secret) => {
-    const key = secret.key.toUpperCase();
-    return candidates.some((candidate) => {
-      const provider = candidate.split("_")[0];
-      return key.includes(provider) && key.includes("KEY");
-    });
-  })?.key;
+  const canonical = new Set(candidates.map((candidate) => candidate.toUpperCase()));
+  return secrets.find((secret) => canonical.has(secret.key.toUpperCase()))?.key;
 }
 
 function buildHarnessName(
