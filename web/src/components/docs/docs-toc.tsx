@@ -6,15 +6,15 @@ export function DocsToc({ headings }: { headings: DocHeading[] }) {
   return (
     <aside className="hidden xl:block">
       <div className="sticky top-24 pt-8">
-        <p className="mb-4 text-xs font-semibold text-zinc-100">
+        <p className="mb-4 text-[11px] font-semibold uppercase tracking-[0.16em] text-white/35">
           On this page
         </p>
-        <div className="space-y-3 border-l border-zinc-800/60 pl-4">
+        <div className="space-y-3 border-l border-white/[0.08] pl-4">
           {headings.map((heading) => (
             <a
               key={heading.id}
               href={`#${heading.id}`}
-              className={`block text-sm text-zinc-400 transition-colors hover:text-zinc-100 ${
+              className={`block text-sm text-white/45 transition-colors hover:text-white/80 ${
                 heading.level === 3 ? "pl-3" : ""
               }`}
             >
