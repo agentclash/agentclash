@@ -36,11 +36,7 @@ func RedactCandidate(candidate Candidate, cfg RedactionConfig) (Candidate, error
 		metadata[key] = hashValue(value)
 	}
 	for _, path := range cfg.DropMetadataPaths {
-		path = strings.TrimSpace(path)
-		if path == "" {
-			continue
-		}
-		delete(metadata, path)
+		deleteMetadataPath(metadata, strings.TrimSpace(path))
 	}
 	encoded, err := json.Marshal(metadata)
 	if err != nil {
@@ -48,6 +44,26 @@ func RedactCandidate(candidate Candidate, cfg RedactionConfig) (Candidate, error
 	}
 	candidate.Metadata = encoded
 	return candidate, nil
+}
+
+func deleteMetadataPath(metadata map[string]any, path string) {
+	if path == "" {
+		return
+	}
+	parts := strings.Split(path, ".")
+	if len(parts) == 1 {
+		delete(metadata, parts[0])
+		return
+	}
+	current := metadata
+	for i := 0; i < len(parts)-1; i++ {
+		next, ok := current[parts[i]].(map[string]any)
+		if !ok {
+			return
+		}
+		current = next
+	}
+	delete(current, parts[len(parts)-1])
 }
 
 func hashValue(value any) string {

@@ -271,12 +271,14 @@ func (r *Repository) PromoteDatasetTraceCandidate(ctx context.Context, params Pr
 	if len(tags) == 0 {
 		tags = candidate.Tags
 	}
-	source := domain.DatasetExampleSourceTrace
-	if candidate.SourcePlatform == "promotion" {
-		source = domain.DatasetExampleSourcePromotion
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return PromoteDatasetTraceCandidateResult{}, fmt.Errorf("begin dataset trace promote transaction: %w", err)
 	}
+	defer rollback(ctx, tx)
+	q := r.queries.WithTx(tx)
 
-	example, err := r.UpsertDatasetExample(ctx, UpsertDatasetExampleParams{
+	exampleRow, err := upsertDatasetExampleWithQueries(ctx, q, UpsertDatasetExampleParams{
 		DatasetID:      params.DatasetID,
 		ExternalID:     candidate.ExternalID,
 		Input:          candidate.Input,
@@ -284,7 +286,7 @@ func (r *Repository) PromoteDatasetTraceCandidate(ctx context.Context, params Pr
 		Metadata:       candidate.Metadata,
 		Tags:           tags,
 		Status:         domain.DatasetExampleStatusActive,
-		Source:         source,
+		Source:         domain.DatasetExampleSourceTrace,
 		SourceRunID:    candidate.SourceRunID,
 		SourceTraceID:  candidate.SourceTraceID,
 		SourcePlatform: stringPtr(candidate.SourcePlatform),
@@ -294,9 +296,9 @@ func (r *Repository) PromoteDatasetTraceCandidate(ctx context.Context, params Pr
 		return PromoteDatasetTraceCandidateResult{}, err
 	}
 
-	updatedRow, err := r.queries.UpdateDatasetTraceCandidatePromotion(ctx, repositorysqlc.UpdateDatasetTraceCandidatePromotionParams{
+	updatedRow, err := q.UpdateDatasetTraceCandidatePromotion(ctx, repositorysqlc.UpdateDatasetTraceCandidatePromotionParams{
 		ID:                params.CandidateID,
-		PromotedExampleID: &example.ID,
+		PromotedExampleID: &exampleRow.ID,
 		Expected:          expected,
 	})
 	if err != nil {
@@ -306,7 +308,7 @@ func (r *Repository) PromoteDatasetTraceCandidate(ctx context.Context, params Pr
 		return PromoteDatasetTraceCandidateResult{}, fmt.Errorf("mark dataset trace candidate promoted: %w", err)
 	}
 
-	version, err := r.CreateDatasetVersion(ctx, CreateDatasetVersionParams{
+	versionRow, err := createDatasetVersionWithQueries(ctx, q, CreateDatasetVersionParams{
 		DatasetID: params.DatasetID,
 		Label:     stringPtr("promote:" + candidate.ID.String()),
 		Actor:     params.Actor,
@@ -315,6 +317,18 @@ func (r *Repository) PromoteDatasetTraceCandidate(ctx context.Context, params Pr
 		return PromoteDatasetTraceCandidateResult{}, err
 	}
 
+	if err := tx.Commit(ctx); err != nil {
+		return PromoteDatasetTraceCandidateResult{}, fmt.Errorf("commit dataset trace promote transaction: %w", err)
+	}
+
+	example, err := mapDatasetExample(exampleRow)
+	if err != nil {
+		return PromoteDatasetTraceCandidateResult{}, err
+	}
+	version, err := mapDatasetVersion(versionRow)
+	if err != nil {
+		return PromoteDatasetTraceCandidateResult{}, err
+	}
 	promotedCandidate, err := mapDatasetTraceCandidate(updatedRow)
 	if err != nil {
 		return PromoteDatasetTraceCandidateResult{}, err

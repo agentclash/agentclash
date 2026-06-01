@@ -110,11 +110,8 @@ func (m *DatasetManager) ImportDatasetTraces(ctx context.Context, caller Caller,
 	switch platform {
 	case datasettraces.SourceAgentClash:
 		runAgentID := input.RunAgentID
-		if runAgentID == nil && input.RunID != nil {
-			return repository.ImportDatasetTracesResult{}, fmt.Errorf("run_agent_id is required for agentclash trace import")
-		}
 		if runAgentID == nil {
-			return repository.ImportDatasetTracesResult{}, fmt.Errorf("run_agent_id or run_id is required for agentclash trace import")
+			return repository.ImportDatasetTracesResult{}, fmt.Errorf("run_agent_id is required for agentclash trace import")
 		}
 		runAgent, getErr := traceRepo.GetRunAgentByID(ctx, *runAgentID)
 		if getErr != nil {

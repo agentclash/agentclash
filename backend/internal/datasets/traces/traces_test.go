@@ -83,6 +83,29 @@ func TestRedactCandidateMetadata(t *testing.T) {
 	}
 }
 
+func TestRedactCandidateMetadataNestedPath(t *testing.T) {
+	candidate := datasettraces.Candidate{
+		Metadata: json.RawMessage(`{"user":{"email":"secret@example.com"},"model":"gpt-4"}`),
+	}
+	redacted, err := datasettraces.RedactCandidate(candidate, datasettraces.RedactionConfig{
+		DropMetadataPaths: []string{"user.email"},
+	})
+	if err != nil {
+		t.Fatalf("RedactCandidate() error = %v", err)
+	}
+	var metadata map[string]any
+	if err := json.Unmarshal(redacted.Metadata, &metadata); err != nil {
+		t.Fatalf("Unmarshal metadata: %v", err)
+	}
+	user, ok := metadata["user"].(map[string]any)
+	if !ok {
+		t.Fatalf("user metadata missing")
+	}
+	if _, ok := user["email"]; ok {
+		t.Fatalf("nested email should be dropped")
+	}
+}
+
 func TestCandidatesFromRunEventsTranscript(t *testing.T) {
 	runID := uuid.New()
 	runAgentID := uuid.New()

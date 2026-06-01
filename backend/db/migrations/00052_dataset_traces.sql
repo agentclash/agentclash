@@ -27,7 +27,7 @@ CREATE TABLE dataset_trace_candidates (
     expected jsonb,
     metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
     tags text[] NOT NULL DEFAULT '{}'::text[],
-    status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'promoted', 'dismissed')),
+    status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'promoted', 'rejected')),
     promoted_example_id uuid REFERENCES dataset_examples (id) ON DELETE SET NULL,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now()
