@@ -3883,6 +3883,12 @@ paths:
           $ref: "#/components/responses/ForbiddenError"
         "404":
           $ref: "#/components/responses/NotFoundError"
+        "409":
+          description: Run is not completed or has no eval outcomes yet
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /v1/workspaces/{workspaceID}/datasets/{datasetID}/gate:
     post:
@@ -3920,7 +3926,7 @@ paths:
         "404":
           $ref: "#/components/responses/NotFoundError"
         "409":
-          description: Candidate run is not completed yet
+          description: Candidate run is not completed, has no eval outcomes, or uses a different dataset input set than the baseline
           content:
             application/json:
               schema:

@@ -73,6 +73,28 @@ func TestEvaluateFailsOnEmptyCandidate(t *testing.T) {
 	}
 }
 
+func TestEvaluateFailsOnMissingBaselineExample(t *testing.T) {
+	exampleA := uuid.New()
+	exampleB := uuid.New()
+	pass := "pass"
+	baseline := []ExampleOutcome{
+		{DatasetExampleID: exampleA, Verdict: &pass},
+		{DatasetExampleID: exampleB, Verdict: &pass},
+	}
+	candidate := []ExampleOutcome{{DatasetExampleID: exampleA, Verdict: &pass}}
+
+	result := Evaluate(baseline, candidate, Thresholds{})
+	if result.Pass {
+		t.Fatal("Pass = true, want false")
+	}
+	if len(result.Regressions) != 1 || result.Regressions[0].Reason != "missing_example" {
+		t.Fatalf("regressions = %#v", result.Regressions)
+	}
+	if result.Regressions[0].DatasetExampleID != exampleB {
+		t.Fatalf("missing example = %v, want %v", result.Regressions[0].DatasetExampleID, exampleB)
+	}
+}
+
 func TestEvaluateIgnoresScoreRegressionOnAlreadyFailingBaseline(t *testing.T) {
 	exampleID := uuid.New()
 	fail := "fail"

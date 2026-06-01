@@ -108,14 +108,23 @@ var datasetTestCmd = &cobra.Command{
 		}
 		format, _ := cmd.Flags().GetString("format")
 		if format == "json" {
-			if apiErr := resp.ParseError(); apiErr != nil {
-				return apiErr
-			}
 			var result map[string]any
 			if err := resp.DecodeJSON(&result); err != nil {
 				return err
 			}
-			return rc.Output.PrintRaw(result)
+			if err := rc.Output.PrintRaw(result); err != nil {
+				return err
+			}
+			if resp.StatusCode == 422 {
+				os.Exit(1)
+			}
+			if resp.StatusCode >= 400 {
+				if apiErr := resp.ParseError(); apiErr != nil {
+					return apiErr
+				}
+				return fmt.Errorf("dataset gate request failed with status %d", resp.StatusCode)
+			}
+			return nil
 		}
 
 		if resp.StatusCode == 422 {

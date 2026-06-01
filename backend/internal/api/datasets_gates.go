@@ -74,6 +74,9 @@ func (m *DatasetManager) CreateDatasetBaseline(ctx context.Context, caller Calle
 	if run.WorkspaceID != input.WorkspaceID {
 		return repository.DatasetBaseline{}, ErrForbidden
 	}
+	if run.Status != domain.RunStatusCompleted {
+		return repository.DatasetBaseline{}, repository.ErrDatasetGateRunNotReady
+	}
 	return gateRepo.CreateDatasetBaseline(ctx, repository.CreateDatasetBaselineParams{
 		DatasetID:         input.DatasetID,
 		RunID:             input.RunID,
@@ -130,6 +133,9 @@ func (m *DatasetManager) EvaluateDatasetGate(ctx context.Context, caller Caller,
 	if evalRun.DatasetID != input.DatasetID {
 		return EvaluateDatasetGateResult{}, ErrForbidden
 	}
+	if !datasetGateInputSetMatches(baseline, evalRun) {
+		return EvaluateDatasetGateResult{}, repository.ErrDatasetGateInputSetMismatch
+	}
 	deploymentID := input.AgentDeploymentID
 	if deploymentID == nil {
 		deploymentID = baseline.AgentDeploymentID
@@ -151,6 +157,13 @@ func (m *DatasetManager) EvaluateDatasetGate(ctx context.Context, caller Caller,
 		CandidateRunID: input.RunID,
 		Gate:           gateResult,
 	}, nil
+}
+
+func datasetGateInputSetMatches(baseline repository.DatasetBaseline, evalRun repository.DatasetEvalRun) bool {
+	if baseline.DatasetVersionInputSetID != nil {
+		return evalRun.DatasetVersionInputSetID == *baseline.DatasetVersionInputSetID
+	}
+	return baseline.DatasetVersionID == evalRun.DatasetVersionID
 }
 
 func createDatasetBaselineHandler(logger *slog.Logger, service DatasetService) http.HandlerFunc {
@@ -250,6 +263,10 @@ func handleDatasetGateError(w http.ResponseWriter, logger *slog.Logger, err erro
 		writeError(w, http.StatusNotFound, "run_not_found", "run not found")
 	case errors.Is(err, repository.ErrDatasetGateRunNotReady):
 		writeError(w, http.StatusConflict, "run_not_ready", "run must be completed before evaluating the gate")
+	case errors.Is(err, repository.ErrDatasetGateInputSetMismatch):
+		writeError(w, http.StatusConflict, "gate_input_set_mismatch", "candidate run must use the same dataset input set as the baseline")
+	case errors.Is(err, repository.ErrDatasetGateNoOutcomes):
+		writeError(w, http.StatusConflict, "run_not_ready", "run must have eval outcomes before creating a baseline or gate")
 	default:
 		handleDatasetError(w, logger, err)
 	}

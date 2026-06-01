@@ -66,6 +66,55 @@ func TestEvaluateDatasetGateRejectsIncompleteRun(t *testing.T) {
 	}
 }
 
+func TestEvaluateDatasetGateRejectsInputSetMismatch(t *testing.T) {
+	workspaceID := uuid.New()
+	datasetID := uuid.New()
+	baselineID := uuid.New()
+	baselineInputSetID := uuid.New()
+	candidateInputSetID := uuid.New()
+	versionID := uuid.New()
+	pass := "pass"
+	exampleID := uuid.New()
+	repo := &datasetGateFakeRepo{
+		dataset: repository.Dataset{ID: datasetID, WorkspaceID: workspaceID},
+		baseline: repository.DatasetBaseline{
+			ID: baselineID, DatasetID: datasetID, DatasetVersionID: versionID,
+			DatasetVersionInputSetID: &baselineInputSetID,
+			ExampleOutcomes: gateTestJSON([]datasetgate.ExampleOutcome{{DatasetExampleID: exampleID, Verdict: &pass}}),
+		},
+		candidateOutcomes: []datasetgate.ExampleOutcome{{DatasetExampleID: exampleID, Verdict: &pass}},
+		run:               domain.Run{ID: uuid.New(), WorkspaceID: workspaceID, Status: domain.RunStatusCompleted},
+		evalRun: repository.DatasetEvalRun{
+			DatasetID: datasetID, DatasetVersionID: versionID, DatasetVersionInputSetID: candidateInputSetID,
+		},
+	}
+	manager := NewDatasetManager(allowWorkspaceAuthorizer{}, repo)
+
+	_, err := manager.EvaluateDatasetGate(context.Background(), datasetEvalCaller(workspaceID), EvaluateDatasetGateInput{
+		WorkspaceID: workspaceID, DatasetID: datasetID, BaselineID: baselineID, RunID: repo.run.ID,
+	})
+	if !errors.Is(err, repository.ErrDatasetGateInputSetMismatch) {
+		t.Fatalf("EvaluateDatasetGate() error = %v, want ErrDatasetGateInputSetMismatch", err)
+	}
+}
+
+func TestCreateDatasetBaselineRejectsIncompleteRun(t *testing.T) {
+	workspaceID := uuid.New()
+	datasetID := uuid.New()
+	repo := &datasetGateFakeRepo{
+		dataset: repository.Dataset{ID: datasetID, WorkspaceID: workspaceID},
+		run:     domain.Run{ID: uuid.New(), WorkspaceID: workspaceID, Status: domain.RunStatusRunning},
+	}
+	manager := NewDatasetManager(allowWorkspaceAuthorizer{}, repo)
+
+	_, err := manager.CreateDatasetBaseline(context.Background(), datasetEvalCaller(workspaceID), CreateDatasetBaselineInput{
+		WorkspaceID: workspaceID, DatasetID: datasetID, RunID: repo.run.ID,
+	})
+	if !errors.Is(err, repository.ErrDatasetGateRunNotReady) {
+		t.Fatalf("CreateDatasetBaseline() error = %v, want ErrDatasetGateRunNotReady", err)
+	}
+}
+
 func TestCreateDatasetBaselineRejectsForeignWorkspaceRun(t *testing.T) {
 	workspaceID := uuid.New()
 	datasetID := uuid.New()

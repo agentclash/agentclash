@@ -16,6 +16,8 @@ import (
 
 var ErrDatasetBaselineNotFound = errors.New("dataset baseline not found")
 var ErrDatasetGateRunNotReady = errors.New("dataset gate run is not completed")
+var ErrDatasetGateInputSetMismatch = errors.New("dataset gate candidate input set does not match baseline")
+var ErrDatasetGateNoOutcomes = errors.New("dataset gate run has no eval outcomes")
 
 type DatasetBaseline struct {
 	ID                       uuid.UUID       `json:"id"`
@@ -73,6 +75,9 @@ func (r *Repository) CreateDatasetBaseline(ctx context.Context, params CreateDat
 	outcomes, err := r.listDatasetEvalOutcomesForRun(ctx, params.RunID, params.AgentDeploymentID)
 	if err != nil {
 		return DatasetBaseline{}, err
+	}
+	if len(outcomes) == 0 {
+		return DatasetBaseline{}, ErrDatasetGateNoOutcomes
 	}
 	passRate := datasetgate.RoundPassRate(datasetgate.PassRate(outcomes))
 	outcomesJSON, err := json.Marshal(outcomes)

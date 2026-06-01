@@ -101,6 +101,22 @@ func Evaluate(baseline, candidate []ExampleOutcome, thresholds Thresholds) Resul
 		}
 	}
 
+	candidateByExample := make(map[uuid.UUID]struct{}, len(candidate))
+	for _, item := range candidate {
+		candidateByExample[item.DatasetExampleID] = struct{}{}
+	}
+	for _, base := range baseline {
+		if _, ok := candidateByExample[base.DatasetExampleID]; ok {
+			continue
+		}
+		regressions = append(regressions, Regression{
+			DatasetExampleID: base.DatasetExampleID,
+			Reason:           "missing_example",
+			BaselineVerdict:  base.Verdict,
+			BaselineScore:    base.NormalizedScore,
+		})
+	}
+
 	if len(candidate) == 0 {
 		return Result{
 			Pass:              false,
