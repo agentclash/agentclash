@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { getChangelogLatestModified } from "@/lib/changelog";
+import { getChangelogLatestModified, getChangelogPeriods } from "@/lib/changelog";
 import sitemap from "./sitemap";
 
 vi.mock("@/lib/blog", () => ({
@@ -41,6 +41,15 @@ describe("sitemap", () => {
       priority: 0.75,
       lastModified: new Date(getChangelogLatestModified()),
     });
+    for (const period of getChangelogPeriods()) {
+      expect(
+        byUrl.get(`https://www.agentclash.dev/changelog/${period.id}`),
+      ).toMatchObject({
+        changeFrequency: "monthly",
+        priority: 0.65,
+        lastModified: new Date(period.endDate),
+      });
+    }
     expect(byUrl.get("https://www.agentclash.dev/why")).toMatchObject({
       changeFrequency: "monthly",
       priority: 0.7,

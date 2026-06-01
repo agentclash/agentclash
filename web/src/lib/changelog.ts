@@ -1,8 +1,17 @@
+import { CHANGELOG_PULL_REQUESTS } from "./changelog-pull-requests";
+
 export type ChangelogCategory = "added" | "improved" | "fixed" | "security";
+
+export interface ChangelogPullRequest {
+  number: number;
+  title: string;
+}
 
 export interface ChangelogEntry {
   category: ChangelogCategory;
   text: string;
+  detail?: string;
+  href?: string;
 }
 
 export interface ChangelogPeriod {
@@ -11,8 +20,12 @@ export interface ChangelogPeriod {
   endDate: string;
   label: string;
   headline: string;
+  summary: string;
+  themes: string[];
   entries: ChangelogEntry[];
 }
+
+export const CHANGELOG_REPO = "agentclash/agentclash" as const;
 
 export const CHANGELOG_CATEGORY_LABELS: Record<ChangelogCategory, string> = {
   added: "Added",
@@ -28,6 +41,14 @@ export const CHANGELOG_PERIODS: ChangelogPeriod[] = [
     endDate: "2026-04-24",
     label: "Apr 15 – Apr 24, 2026",
     headline: "Scoring depth, failure review, and the first regression suite UI",
+    summary:
+      "The evaluation engine gained deterministic validators, LLM judge dimensions, and behavioral scoring. Failure review and regression suites landed in the workspace UI, alongside CLI distribution hardening and the xAI provider adapter.",
+    themes: [
+      "Scoring & validators",
+      "Failure review",
+      "Regression suites",
+      "CLI distribution",
+    ],
     entries: [
       {
         category: "added",
@@ -85,6 +106,14 @@ export const CHANGELOG_PERIODS: ChangelogPeriod[] = [
     endDate: "2026-05-04",
     label: "Apr 25 – May 04, 2026",
     headline: "Race context, CLI distribution, and a redesigned public site",
+    summary:
+      "Live race standings injected into running agents, the CLI shipped through npm with production defaults, and the marketing site got a full redesign — /why, pricing, docs foundation, and arena-style run views.",
+    themes: [
+      "Race context",
+      "CLI & npm",
+      "Public site redesign",
+      "Docs foundation",
+    ],
     entries: [
       {
         category: "added",
@@ -130,6 +159,14 @@ export const CHANGELOG_PERIODS: ChangelogPeriod[] = [
     endDate: "2026-05-14",
     label: "May 05 – May 14, 2026",
     headline: "CI intelligence, prompt eval, and GitHub-native workflows",
+    summary:
+      "Failure clusters, regression provenance, and CI setup generators connected the eval loop to GitHub. Prompt eval CLI commands, the PR comment bot, and E2B harness runners closed the gap between local runs and production gates.",
+    themes: [
+      "CI & GitHub integration",
+      "Failure taxonomy",
+      "Prompt eval CLI",
+      "Harness runners",
+    ],
     entries: [
       {
         category: "added",
@@ -179,6 +216,14 @@ export const CHANGELOG_PERIODS: ChangelogPeriod[] = [
     endDate: "2026-05-24",
     label: "May 15 – May 24, 2026",
     headline: "Security packs, multi-turn eval, and replay polish",
+    summary:
+      "Security-family challenge packs, stress-run CLI, and vault boundary harnesses established AgentClash as a security eval surface. Multi-turn evaluation with human takeover and case templating extended the engine beyond single-shot runs.",
+    themes: [
+      "Security eval",
+      "Multi-turn eval",
+      "Case templating",
+      "Replay polish",
+    ],
     entries: [
       {
         category: "security",
@@ -228,6 +273,14 @@ export const CHANGELOG_PERIODS: ChangelogPeriod[] = [
     endDate: "2026-06-01",
     label: "May 25 – Jun 01, 2026",
     headline: "Datasets, /try demos, multi-turn transcripts, and Hermes harness",
+    summary:
+      "The datasets platform shipped end-to-end — import, generation, trace ingest, eval gates, and full workspace UI. /try CLI demos, multi-turn transcript exports, Hermes harness support, and PostHog analytics rounded out the release window.",
+    themes: [
+      "Datasets platform",
+      "/try CLI demos",
+      "Multi-turn transcripts",
+      "Agent harnesses",
+    ],
     entries: [
       {
         category: "added",
@@ -291,6 +344,24 @@ export function getChangelogPeriods(): ChangelogPeriod[] {
   );
 }
 
+export function getAllChangelogPeriodSlugs(): string[] {
+  return CHANGELOG_PERIODS.map((period) => period.id);
+}
+
+export function getChangelogPeriodBySlug(
+  slug: string,
+): ChangelogPeriod | undefined {
+  return CHANGELOG_PERIODS.find((period) => period.id === slug);
+}
+
+export function getChangelogPeriodHref(periodId: string): string {
+  return `/changelog/${periodId}`;
+}
+
+export function getChangelogPullRequestUrl(number: number): string {
+  return `https://github.com/${CHANGELOG_REPO}/pull/${number}`;
+}
+
 export function getChangelogLatestModified(): string {
   const [latest] = getChangelogPeriods();
   return latest?.endDate ?? CHANGELOG_PERIODS[0]?.startDate ?? "2026-04-15";
@@ -314,6 +385,12 @@ export const CHANGELOG_FAQ = [
   },
 ] as const;
 
+export function getChangelogPeriodPullRequests(
+  periodId: string,
+): ChangelogPullRequest[] {
+  return CHANGELOG_PULL_REQUESTS[periodId] ?? [];
+}
+
 export function renderChangelogMarkdown(origin = "https://www.agentclash.dev"): string {
   const periods = getChangelogPeriods();
   const lines = [
@@ -326,7 +403,16 @@ export function renderChangelogMarkdown(origin = "https://www.agentclash.dev"): 
   ];
 
   for (const period of periods) {
-    lines.push(`## ${period.label}`, "", period.headline, "");
+    lines.push(
+      `## ${period.label}`,
+      "",
+      period.headline,
+      "",
+      period.summary,
+      "",
+      `Period page: ${origin}${getChangelogPeriodHref(period.id)}`,
+      "",
+    );
     for (const entry of period.entries) {
       lines.push(
         `- **${CHANGELOG_CATEGORY_LABELS[entry.category]}**: ${entry.text}`,
