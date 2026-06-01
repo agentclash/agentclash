@@ -24,10 +24,23 @@ export const COMPARISON_COLUMNS: ComparisonColumn[] = [
   { name: "OpenAI Evals", tag: "prompt eval" },
 ];
 
+// One cell per COMPARISON_COLUMNS entry. Fixed-length tuple so a row with the
+// wrong number of cells fails to compile (keep the length in sync with the
+// number of columns if a competitor is ever added or removed).
+export type Cells = readonly [
+  MarkKind,
+  MarkKind,
+  MarkKind,
+  MarkKind,
+  MarkKind,
+  MarkKind,
+  MarkKind,
+];
+
 export type ComparisonRow = {
   label: string;
   sub: string;
-  cells: readonly MarkKind[];
+  cells: Cells;
 };
 
 export const COMPARISON_ROWS: ComparisonRow[] = [

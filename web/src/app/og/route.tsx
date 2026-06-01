@@ -11,6 +11,11 @@ export const runtime = "nodejs";
 // Handler, so it must not be exported here.
 const SIZE = { width: 1200, height: 630 } as const;
 
+// The image is fully determined by its query params, so cache it hard — social
+// unfurlers (Slack, Telegram, crawlers) request these repeatedly, and
+// stale-while-revalidate still lets a template change propagate.
+const CACHE_CONTROL = "public, max-age=86400, stale-while-revalidate=604800";
+
 export function GET(request: Request): Response {
   try {
     const { searchParams } = new URL(request.url);
@@ -111,7 +116,7 @@ export function GET(request: Request): Response {
           </div>
         </div>
       ),
-      SIZE,
+      { ...SIZE, headers: { "Cache-Control": CACHE_CONTROL } },
     );
   } catch {
     return new Response("Failed to generate the image", { status: 500 });
