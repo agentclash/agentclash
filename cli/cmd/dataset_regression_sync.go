@@ -61,6 +61,9 @@ var datasetSyncRegressionSuiteCmd = &cobra.Command{
 		}
 		format, _ := cmd.Flags().GetString("format")
 		if format == "json" {
+			if apiErr := resp.ParseError(); apiErr != nil {
+				return apiErr
+			}
 			var result map[string]any
 			if err := resp.DecodeJSON(&result); err != nil {
 				return err

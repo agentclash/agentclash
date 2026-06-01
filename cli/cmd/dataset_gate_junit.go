@@ -41,10 +41,7 @@ func printDatasetGateJUnit(result map[string]any, exitCode int) error {
 	regressions := mapSlice(gate, "regressions")
 	failedThresholds := mapSlice(gate, "failed_thresholds")
 	failures := len(regressions) + len(failedThresholds)
-	tests := len(regressions)
-	if tests == 0 && len(failedThresholds) > 0 {
-		tests = len(failedThresholds)
-	}
+	tests := len(regressions) + len(failedThresholds)
 	if tests == 0 {
 		tests = 1
 	}

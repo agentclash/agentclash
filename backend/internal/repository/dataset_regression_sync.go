@@ -265,8 +265,11 @@ func (r *Repository) getRegressionSuiteByWorkspaceAndName(
 	}
 	trimmed := strings.TrimSpace(name)
 	for _, row := range rows {
-		if strings.TrimSpace(row.Name) != trimmed || row.SourceChallengePackID != challengePackID {
+		if strings.TrimSpace(row.Name) != trimmed {
 			continue
+		}
+		if row.SourceChallengePackID != challengePackID {
+			return RegressionSuite{}, ErrRegressionSuiteNameConflict
 		}
 		suite, mapErr := mapRegressionSuite(row)
 		if mapErr != nil {

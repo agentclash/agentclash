@@ -177,6 +177,32 @@ func TestGetDatasetRegressionSuiteLinkNotFound(t *testing.T) {
 	}
 }
 
+func TestSyncDatasetRegressionSuiteRequiresManageRegressions(t *testing.T) {
+	workspaceID := uuid.New()
+	datasetID := uuid.New()
+	repo := &datasetGateFakeRepo{
+		dataset: repository.Dataset{ID: datasetID, WorkspaceID: workspaceID},
+	}
+	manager := NewDatasetManager(allowWorkspaceAuthorizer{}, repo)
+	caller := Caller{
+		UserID: uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: RoleWorkspaceViewer},
+		},
+	}
+
+	_, err := manager.SyncDatasetRegressionSuite(context.Background(), caller, SyncDatasetRegressionSuiteInput{
+		WorkspaceID:            workspaceID,
+		DatasetID:              datasetID,
+		VersionID:              uuid.New(),
+		ChallengePackVersionID: uuid.New(),
+		ChallengeKey:           "case-1",
+	})
+	if !errors.Is(err, ErrForbidden) {
+		t.Fatalf("SyncDatasetRegressionSuite() error = %v, want ErrForbidden", err)
+	}
+}
+
 type datasetGateFakeRepo struct {
 	dataset           repository.Dataset
 	baseline          repository.DatasetBaseline

@@ -38,6 +38,9 @@ func (m *DatasetManager) GetDatasetRegressionSuiteLink(ctx context.Context, call
 }
 
 func (m *DatasetManager) SyncDatasetRegressionSuite(ctx context.Context, caller Caller, input SyncDatasetRegressionSuiteInput) (repository.SyncDatasetRegressionSuiteResult, error) {
+	if err := AuthorizeWorkspaceAction(ctx, m.authorizer, caller, input.WorkspaceID, ActionManageRegressions); err != nil {
+		return repository.SyncDatasetRegressionSuiteResult{}, err
+	}
 	if _, err := m.GetDataset(ctx, caller, GetDatasetInput{WorkspaceID: input.WorkspaceID, DatasetID: input.DatasetID}); err != nil {
 		return repository.SyncDatasetRegressionSuiteResult{}, err
 	}
