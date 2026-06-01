@@ -67,7 +67,7 @@ type Querier interface {
 	GetChallengeIdentityForDatasetEval(ctx context.Context, arg GetChallengeIdentityForDatasetEvalParams) (uuid.UUID, error)
 	GetChallengeInputSetByID(ctx context.Context, arg GetChallengeInputSetByIDParams) (ChallengeInputSet, error)
 	GetDatasetBaselineByID(ctx context.Context, arg GetDatasetBaselineByIDParams) (DatasetBaseline, error)
-	GetDatasetByID(ctx context.Context, arg GetDatasetByIDParams) (Dataset, error)
+	GetDatasetByID(ctx context.Context, arg GetDatasetByIDParams) (GetDatasetByIDRow, error)
 	GetDatasetEvalRunByRunID(ctx context.Context, arg GetDatasetEvalRunByRunIDParams) (DatasetEvalRun, error)
 	GetDatasetExampleByExternalID(ctx context.Context, arg GetDatasetExampleByExternalIDParams) (DatasetExample, error)
 	GetDatasetExampleByID(ctx context.Context, arg GetDatasetExampleByIDParams) (DatasetExample, error)

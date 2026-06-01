@@ -98,6 +98,12 @@ func (m *DatasetManager) StartDatasetGeneration(ctx context.Context, caller Call
 	if modelAlias.WorkspaceID == nil || *modelAlias.WorkspaceID != input.WorkspaceID {
 		return repository.DatasetGenerationJob{}, ErrForbidden
 	}
+	if !strings.EqualFold(providerAccount.ProviderKey, modelAlias.CatalogProviderKey) {
+		return repository.DatasetGenerationJob{}, errors.New("provider_account provider does not match model alias provider")
+	}
+	if modelAlias.ProviderAccountID != nil && *modelAlias.ProviderAccountID != input.ProviderAccountID {
+		return repository.DatasetGenerationJob{}, errors.New("provider_account_id does not match model alias provider account")
+	}
 
 	active := domain.DatasetExampleStatusActive
 	examples, err := genRepo.ListDatasetExamplesByDatasetID(ctx, repository.ListDatasetExamplesParams{
