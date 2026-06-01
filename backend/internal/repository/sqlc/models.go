@@ -69,6 +69,59 @@ type AgentDeployment struct {
 	ArchivedAt            pgtype.Timestamptz
 }
 
+type BillingAccount struct {
+	ID             uuid.UUID
+	OrganizationID uuid.UUID
+	DodoCustomerID *string
+	BillingEmail   *string
+	Status         string
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+}
+
+type BillingSubscription struct {
+	ID                      uuid.UUID
+	OrganizationID          uuid.UUID
+	DodoSubscriptionID      string
+	DodoCustomerID          *string
+	DodoProductID           string
+	PlanKey                 string
+	BillingPeriod           string
+	Status                  string
+	NextBillingDate         pgtype.Timestamptz
+	CancelAtNextBillingDate bool
+	CancelledAt             pgtype.Timestamptz
+	ExpiresAt               pgtype.Timestamptz
+	TrialPeriodDays         *int32
+	SeatQuantity            int32
+	AddonQuantities         []byte
+	LatestDodoEventAt       pgtype.Timestamptz
+	CreatedAt               pgtype.Timestamptz
+	UpdatedAt               pgtype.Timestamptz
+}
+
+type BillingTrialGrant struct {
+	ID              uuid.UUID
+	OrganizationID  uuid.UUID
+	PlanKey         string
+	BillingPeriod   string
+	StartedByUserID *uuid.UUID
+	StartedAt       pgtype.Timestamptz
+	ExpiresAt       pgtype.Timestamptz
+	CreatedAt       pgtype.Timestamptz
+	UpdatedAt       pgtype.Timestamptz
+}
+
+type ChallengeInputItem struct {
+	ID                     uuid.UUID
+	ChallengeInputSetID    uuid.UUID
+	ChallengePackVersionID uuid.UUID
+	ChallengeIdentityID    uuid.UUID
+	ItemKey                string
+	Payload                []byte
+	CreatedAt              pgtype.Timestamptz
+}
+
 type ChallengeInputSet struct {
 	ID                     uuid.UUID
 	ChallengePackVersionID uuid.UUID
@@ -93,6 +146,153 @@ type ChallengePackVersion struct {
 	CreatedAt        pgtype.Timestamptz
 	UpdatedAt        pgtype.Timestamptz
 	ArchivedAt       pgtype.Timestamptz
+}
+
+type Dataset struct {
+	ID                            uuid.UUID
+	OrganizationID                uuid.UUID
+	WorkspaceID                   uuid.UUID
+	Slug                          string
+	Name                          string
+	Description                   string
+	InputSchema                   []byte
+	InputSchemaEnforced           bool
+	DefaultChallengePackVersionID *uuid.UUID
+	CreatedBy                     uuid.UUID
+	CreatedAt                     pgtype.Timestamptz
+	UpdatedAt                     pgtype.Timestamptz
+	ArchivedAt                    pgtype.Timestamptz
+}
+
+type DatasetBaseline struct {
+	ID                       uuid.UUID
+	DatasetID                uuid.UUID
+	DatasetVersionID         uuid.UUID
+	DatasetVersionInputSetID *uuid.UUID
+	ChallengePackVersionID   uuid.UUID
+	ChallengeKey             string
+	AgentDeploymentID        *uuid.UUID
+	RunID                    uuid.UUID
+	PassRate                 pgtype.Numeric
+	Metrics                  []byte
+	ExampleOutcomes          []byte
+	Label                    *string
+	CreatedByUserID          uuid.UUID
+	CreatedAt                pgtype.Timestamptz
+}
+
+type DatasetEvalRun struct {
+	ID                       uuid.UUID
+	DatasetID                uuid.UUID
+	DatasetVersionID         uuid.UUID
+	DatasetVersionInputSetID uuid.UUID
+	RunID                    uuid.UUID
+	CreatedAt                pgtype.Timestamptz
+}
+
+type DatasetExample struct {
+	ID             uuid.UUID
+	DatasetID      uuid.UUID
+	ExternalID     *string
+	Input          []byte
+	Expected       []byte
+	Metadata       []byte
+	Tags           []string
+	Status         string
+	Source         string
+	SourceRunID    *uuid.UUID
+	SourceTraceID  *string
+	SourcePlatform *string
+	ArtifactID     *uuid.UUID
+	CreatedBy      uuid.UUID
+	CreatedAt      pgtype.Timestamptz
+	UpdatedAt      pgtype.Timestamptz
+}
+
+type DatasetExampleRevision struct {
+	ID        uuid.UUID
+	DatasetID uuid.UUID
+	ExampleID *uuid.UUID
+	VersionID *uuid.UUID
+	Operation string
+	Before    []byte
+	After     []byte
+	Actor     uuid.UUID
+	CreatedAt pgtype.Timestamptz
+}
+
+type DatasetInputItemLink struct {
+	ID                       uuid.UUID
+	DatasetVersionInputSetID uuid.UUID
+	DatasetExampleID         uuid.UUID
+	ChallengeInputItemID     uuid.UUID
+	ItemKey                  string
+	CreatedAt                pgtype.Timestamptz
+}
+
+type DatasetRegressionSuiteLink struct {
+	DatasetID         uuid.UUID
+	RegressionSuiteID uuid.UUID
+	SyncedVersionID   *uuid.UUID
+	CreatedAt         pgtype.Timestamptz
+	UpdatedAt         pgtype.Timestamptz
+}
+
+type DatasetTraceCandidate struct {
+	ID                uuid.UUID
+	DatasetID         uuid.UUID
+	ImportID          uuid.UUID
+	SourcePlatform    string
+	SourceTraceID     *string
+	SourceRunID       *uuid.UUID
+	SourceRunAgentID  *uuid.UUID
+	ExternalID        *string
+	Input             []byte
+	Output            []byte
+	Expected          []byte
+	Metadata          []byte
+	Tags              []string
+	Status            string
+	PromotedExampleID *uuid.UUID
+	CreatedAt         pgtype.Timestamptz
+	UpdatedAt         pgtype.Timestamptz
+}
+
+type DatasetTraceImport struct {
+	ID             uuid.UUID
+	DatasetID      uuid.UUID
+	SourcePlatform string
+	ArtifactID     *uuid.UUID
+	CandidateCount int32
+	Status         string
+	CreatedBy      uuid.UUID
+	CreatedAt      pgtype.Timestamptz
+}
+
+type DatasetVersion struct {
+	ID               uuid.UUID
+	DatasetID        uuid.UUID
+	VersionNumber    int32
+	Label            *string
+	ExampleCount     int32
+	ManifestChecksum string
+	CreatedBy        uuid.UUID
+	CreatedAt        pgtype.Timestamptz
+}
+
+type DatasetVersionInputSet struct {
+	ID                     uuid.UUID
+	DatasetID              uuid.UUID
+	DatasetVersionID       uuid.UUID
+	ChallengePackVersionID uuid.UUID
+	ChallengeIdentityID    uuid.UUID
+	ChallengeKey           string
+	ChallengeInputSetID    uuid.UUID
+	InputKey               string
+	InputChecksum          string
+	Mapping                []byte
+	CreatedAt              pgtype.Timestamptz
+	UpdatedAt              pgtype.Timestamptz
 }
 
 type EvalSession struct {
@@ -247,7 +447,7 @@ type Run struct {
 	ID                     uuid.UUID
 	OrganizationID         uuid.UUID
 	WorkspaceID            uuid.UUID
-	ChallengePackVersionID uuid.UUID
+	ChallengePackVersionID *uuid.UUID
 	ChallengeInputSetID    *uuid.UUID
 	CreatedByUserID        *uuid.UUID
 	Name                   string
@@ -268,6 +468,7 @@ type Run struct {
 	RaceContext            bool
 	RaceContextMinStepGap  *int32
 	CiMetadata             []byte
+	SourceType             string
 }
 
 type RunAgent struct {
@@ -275,8 +476,8 @@ type RunAgent struct {
 	OrganizationID            uuid.UUID
 	WorkspaceID               uuid.UUID
 	RunID                     uuid.UUID
-	AgentDeploymentID         uuid.UUID
-	AgentDeploymentSnapshotID uuid.UUID
+	AgentDeploymentID         *uuid.UUID
+	AgentDeploymentSnapshotID *uuid.UUID
 	LaneIndex                 int32
 	Label                     string
 	Status                    string
@@ -286,6 +487,7 @@ type RunAgent struct {
 	FailureReason             *string
 	CreatedAt                 pgtype.Timestamptz
 	UpdatedAt                 pgtype.Timestamptz
+	SourceType                string
 }
 
 type RunAgentReplay struct {
@@ -362,6 +564,37 @@ type RunStatusHistory struct {
 	Reason          *string
 	ChangedByUserID *uuid.UUID
 	ChangedAt       pgtype.Timestamptz
+}
+
+type VibeEvalConversation struct {
+	ID              uuid.UUID
+	OrganizationID  uuid.UUID
+	WorkspaceID     uuid.UUID
+	CreatedByUserID uuid.UUID
+	Title           string
+	Phase           string
+	Status          string
+	ActiveDraftID   *uuid.UUID
+	CreatedAt       pgtype.Timestamptz
+	UpdatedAt       pgtype.Timestamptz
+	ArchivedAt      pgtype.Timestamptz
+}
+
+type VibeEvalDraft struct {
+	ID                              uuid.UUID
+	OrganizationID                  uuid.UUID
+	WorkspaceID                     uuid.UUID
+	ConversationID                  uuid.UUID
+	DraftKind                       string
+	Content                         []byte
+	ValidationState                 string
+	ValidationErrors                []byte
+	PublishedChallengePackID        *uuid.UUID
+	PublishedChallengePackVersionID *uuid.UUID
+	CreatedByUserID                 uuid.UUID
+	UpdatedByUserID                 uuid.UUID
+	CreatedAt                       pgtype.Timestamptz
+	UpdatedAt                       pgtype.Timestamptz
 }
 
 type WorkspaceRegressionCase struct {

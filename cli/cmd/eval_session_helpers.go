@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/agentclash/agentclash/cli/internal/output"
 	"github.com/spf13/cobra"
@@ -42,10 +43,16 @@ func buildEvalSessionBody(workspaceID string, request runCreateRequest, repetiti
 	if request.RaceContext || request.RaceContextCadence > 0 {
 		return nil, fmt.Errorf("--race-context flags are not supported with --repetitions >= 2")
 	}
+	if request.Mode != "" {
+		return nil, fmt.Errorf("--mode is not supported with --repetitions >= 2 or --seeds")
+	}
+	if request.MaxIterations > 0 {
+		return nil, fmt.Errorf("--max-iter is not supported with --repetitions >= 2")
+	}
 
 	executionMode := "single_agent"
 	if len(request.DeploymentIDs) > 1 {
-		executionMode = "multi_agent"
+		executionMode = "comparison"
 	}
 
 	participants := make([]map[string]any, 0, len(request.DeploymentIDs))
@@ -129,8 +136,55 @@ func presentCreatedEvalSession(rc *RunContext, result map[string]any) error {
 
 	runIDs, _ := result["run_ids"].([]any)
 	rc.Output.PrintDetail("Run IDs", fmt.Sprintf("%d", len(runIDs)))
+	seedByRunID := map[string]string{}
+	if seededRuns, ok := result["seeded_runs"].([]any); ok {
+		for _, raw := range seededRuns {
+			item, ok := raw.(map[string]any)
+			if !ok {
+				continue
+			}
+			seedByRunID[str(item["run_id"])] = str(item["seed"])
+		}
+	}
+	seriesByRunID := map[string]string{}
+	if seriesRuns, ok := result["series_runs"].([]any); ok {
+		for _, raw := range seriesRuns {
+			item, ok := raw.(map[string]any)
+			if !ok {
+				continue
+			}
+			runID := str(item["run_id"])
+			parts := make([]string, 0, 3)
+			if lineup := str(item["deployment_lineup"]); lineup != "" {
+				parts = append(parts, "lineup "+lineup)
+			}
+			if seed := str(item["seed"]); seed != "" {
+				parts = append(parts, "seed "+seed)
+			}
+			if key := str(item["matrix_key"]); key != "" {
+				parts = append(parts, key)
+			}
+			if len(parts) > 0 {
+				seriesByRunID[runID] = strings.Join(parts, ", ")
+			}
+		}
+	}
 	for _, id := range runIDs {
+		runID := str(id)
+		if metadata := seriesByRunID[runID]; metadata != "" {
+			fmt.Fprintf(rc.Output.Writer(), "  - %s (%s)\n", runID, metadata)
+			continue
+		}
+		if seed := seedByRunID[runID]; seed != "" {
+			fmt.Fprintf(rc.Output.Writer(), "  - %s (seed %s)\n", runID, seed)
+			continue
+		}
 		fmt.Fprintf(rc.Output.Writer(), "  - %s\n", str(id))
+	}
+	if id := str(session["id"]); id != "" {
+		fmt.Fprintln(rc.Output.Writer())
+		fmt.Fprintf(rc.Output.Writer(), "Next: agentclash eval session follow %s\n", id)
+		fmt.Fprintf(rc.Output.Writer(), "Then: agentclash eval session get %s\n", id)
 	}
 	return nil
 }

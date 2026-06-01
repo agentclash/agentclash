@@ -2,8 +2,11 @@ package scoring
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 )
+
+const maxEvaluationSpecMaxIterations = 1000
 
 type ValidationError struct {
 	Field   string
@@ -68,6 +71,9 @@ func ValidateEvaluationSpec(spec EvaluationSpec) error {
 	if spec.RuntimeLimits.MaxDurationMS != nil && *spec.RuntimeLimits.MaxDurationMS <= 0 {
 		errs = append(errs, ValidationError{Field: "evaluation_spec.runtime_limits.max_duration_ms", Message: "must be greater than 0"})
 	}
+	if spec.RuntimeLimits.MaxIterations != nil && (*spec.RuntimeLimits.MaxIterations <= 0 || *spec.RuntimeLimits.MaxIterations > maxEvaluationSpecMaxIterations) {
+		errs = append(errs, ValidationError{Field: "evaluation_spec.runtime_limits.max_iterations", Message: fmt.Sprintf("must be between 1 and %d", maxEvaluationSpecMaxIterations)})
+	}
 
 	validatorKeys := map[string]struct{}{}
 	for i, validator := range spec.Validators {
@@ -91,6 +97,10 @@ func ValidateEvaluationSpec(spec EvaluationSpec) error {
 		}
 		if strings.TrimSpace(validator.Target) == "" {
 			errs = append(errs, ValidationError{Field: path + ".target", Message: "is required"})
+		} else if validator.Type == ValidatorTypeToolCallAssertion {
+			if strings.TrimSpace(validator.Target) != "tool_calls" {
+				errs = append(errs, ValidationError{Field: path + ".target", Message: `must be "tool_calls" for tool_call_assertion validators`})
+			}
 		} else if !isSupportedEvidenceReference(validator.Target) {
 			errs = append(errs, ValidationError{Field: path + ".target", Message: "must be a supported evidence reference"})
 		}
@@ -100,6 +110,8 @@ func ValidateEvaluationSpec(spec EvaluationSpec) error {
 			} else if !isSupportedEvidenceReference(validator.ExpectedFrom) {
 				errs = append(errs, ValidationError{Field: path + ".expected_from", Message: "must be a supported evidence reference"})
 			}
+		} else if (validator.Type == ValidatorTypeToolCallAssertion || validator.Type == ValidatorTypePostcondition) && strings.TrimSpace(validator.ExpectedFrom) != "" {
+			errs = append(errs, ValidationError{Field: path + ".expected_from", Message: fmt.Sprintf("must be omitted for %s validators", validator.Type)})
 		}
 		if validator.Type.IsFileValidator() {
 			if strings.TrimSpace(validator.Target) != "" && !strings.HasPrefix(validator.Target, "file:") {
@@ -114,6 +126,12 @@ func ValidateEvaluationSpec(spec EvaluationSpec) error {
 				errs = append(errs, ValidationError{Field: path + ".target", Message: fmt.Sprintf("references unknown post_execution_check key %q", refKey)})
 			case check.Type != PostExecutionCheckTypeFileCapture:
 				errs = append(errs, ValidationError{Field: path + ".target", Message: fmt.Sprintf("must reference a %s post_execution_check", PostExecutionCheckTypeFileCapture)})
+			}
+		}
+		if validator.Type == ValidatorTypePostcondition {
+			refKey := strings.TrimPrefix(validator.Target, "file:")
+			if strings.HasPrefix(validator.Target, "file:") && len(spec.PostExecutionChecks) == 0 {
+				errs = append(errs, ValidationError{Field: path + ".target", Message: fmt.Sprintf("references unknown post_execution_check key %q", refKey)})
 			}
 		}
 	}
@@ -618,18 +636,26 @@ func isSupportedEvidenceReference(value string) bool {
 		return strings.TrimSpace(remainder) != ""
 	case strings.HasPrefix(value, "literal:"):
 		return true
+	case value == "transcript.full", value == "transcript.from_mismatch", value == "turn.expectations":
+		return true
+	case strings.HasPrefix(value, "transcript.last_n:"):
+		nRaw := strings.TrimPrefix(value, "transcript.last_n:")
+		n, err := strconv.Atoi(strings.TrimSpace(nRaw))
+		return err == nil && n > 0
 	default:
 		return false
 	}
 }
 
 func validateValidatorConfig(validator ValidatorDeclaration, path string) ValidationErrors {
-	if len(validator.Config) == 0 {
-		return nil
-	}
-
 	var errs ValidationErrors
 	configPath := path + ".config"
+	if len(validator.Config) == 0 && validator.Type != ValidatorTypeToolCallAssertion {
+		if validator.Type == ValidatorTypePostcondition {
+			return append(errs, ValidationError{Field: configPath, Message: "is required"})
+		}
+		return nil
+	}
 
 	switch validator.Type {
 	case ValidatorTypeFuzzyMatch:
@@ -770,6 +796,20 @@ func validateValidatorConfig(validator ValidatorDeclaration, path string) Valida
 		if cfg.PassThreshold != nil && (*cfg.PassThreshold < 0 || *cfg.PassThreshold > 1) {
 			errs = append(errs, ValidationError{Field: configPath + ".pass_threshold", Message: "must be between 0 and 1"})
 		}
+	case ValidatorTypeToolCallAssertion:
+		cfg, err := ParseToolCallAssertionConfig(validator.Config)
+		if err != nil {
+			errs = append(errs, ValidationError{Field: configPath, Message: configParseErrorMessage(err)})
+			return errs
+		}
+		errs = append(errs, validateToolCallAssertionConfig(cfg, configPath)...)
+	case ValidatorTypePostcondition:
+		cfg, err := ParsePostconditionConfig(validator.Config)
+		if err != nil {
+			errs = append(errs, ValidationError{Field: configPath, Message: configParseErrorMessage(err)})
+			return errs
+		}
+		errs = append(errs, validatePostconditionConfig(cfg, configPath)...)
 	}
 
 	return errs

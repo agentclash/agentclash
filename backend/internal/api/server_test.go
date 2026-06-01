@@ -30,6 +30,10 @@ func (stubRunReadService) GetRun(_ context.Context, _ Caller, _ uuid.UUID) (GetR
 	return GetRunResult{}, errors.New("not implemented")
 }
 
+func (stubRunReadService) CancelRun(_ context.Context, _ Caller, _ uuid.UUID) (CancelRunResult, error) {
+	return CancelRunResult{}, errors.New("not implemented")
+}
+
 func (stubRunReadService) GetEvalSession(_ context.Context, _ Caller, _ uuid.UUID) (GetEvalSessionResult, error) {
 	return GetEvalSessionResult{}, errors.New("not implemented")
 }
@@ -82,6 +86,10 @@ func (stubReplayReadService) GetRunAgentReplay(_ context.Context, _ Caller, _ uu
 
 func (stubReplayReadService) GetRunAgentScorecard(_ context.Context, _ Caller, _ uuid.UUID) (GetRunAgentScorecardResult, error) {
 	return GetRunAgentScorecardResult{}, errors.New("not implemented")
+}
+
+func (stubReplayReadService) GetRunAgentTranscript(_ context.Context, _ Caller, _ uuid.UUID) (GetRunAgentTranscriptResult, error) {
+	return GetRunAgentTranscriptResult{}, errors.New("not implemented")
 }
 
 func TestHealthzReturnsJSONSuccessPayload(t *testing.T) {

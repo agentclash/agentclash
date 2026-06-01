@@ -47,13 +47,13 @@ type GetRunRankingResult struct {
 }
 
 type runScorecardRankingDocument struct {
-	RunID               uuid.UUID                    `json:"run_id"`
-	EvaluationSpecID    uuid.UUID                    `json:"evaluation_spec_id"`
-	WinningRunAgentID   *uuid.UUID                   `json:"winning_run_agent_id,omitempty"`
-	WinnerDetermination runRankingWinnerSummary      `json:"winner_determination"`
-	Agents              []runRankingAgentDocument    `json:"agents"`
-	DimensionDeltas     map[string]runRankingDelta   `json:"dimension_deltas,omitempty"`
-	EvidenceQuality     runRankingEvidenceQuality    `json:"evidence_quality"`
+	RunID               uuid.UUID                  `json:"run_id"`
+	EvaluationSpecID    uuid.UUID                  `json:"evaluation_spec_id"`
+	WinningRunAgentID   *uuid.UUID                 `json:"winning_run_agent_id,omitempty"`
+	WinnerDetermination runRankingWinnerSummary    `json:"winner_determination"`
+	Agents              []runRankingAgentDocument  `json:"agents"`
+	DimensionDeltas     map[string]runRankingDelta `json:"dimension_deltas,omitempty"`
+	EvidenceQuality     runRankingEvidenceQuality  `json:"evidence_quality"`
 }
 
 type runRankingDelta struct {
@@ -68,21 +68,22 @@ type runRankingWinnerSummary struct {
 }
 
 type runRankingAgentDocument struct {
-	RunAgentID       uuid.UUID                                  `json:"run_agent_id"`
-	LaneIndex        int32                                      `json:"lane_index"`
-	Label            string                                     `json:"label"`
-	Status           domain.RunAgentStatus                      `json:"status"`
-	HasScorecard     bool                                       `json:"has_scorecard"`
-	EvaluationStatus string                                     `json:"evaluation_status,omitempty"`
-	Strategy         string                                     `json:"strategy,omitempty"`
-	OverallScore     *float64                                   `json:"overall_score,omitempty"`
-	Passed           *bool                                      `json:"passed,omitempty"`
-	OverallReason    string                                     `json:"overall_reason,omitempty"`
-	CorrectnessScore *float64                                   `json:"correctness_score,omitempty"`
-	ReliabilityScore *float64                                   `json:"reliability_score,omitempty"`
-	LatencyScore     *float64                                   `json:"latency_score,omitempty"`
-	CostScore        *float64                                   `json:"cost_score,omitempty"`
-	Dimensions       map[string]runRankingDimensionScorePayload `json:"dimensions,omitempty"`
+	RunAgentID        uuid.UUID                                  `json:"run_agent_id"`
+	LaneIndex         int32                                      `json:"lane_index"`
+	Label             string                                     `json:"label"`
+	Status            domain.RunAgentStatus                      `json:"status"`
+	HasScorecard      bool                                       `json:"has_scorecard"`
+	EvaluationStatus  string                                     `json:"evaluation_status,omitempty"`
+	Strategy          string                                     `json:"strategy,omitempty"`
+	OverallScore      *float64                                   `json:"overall_score,omitempty"`
+	Passed            *bool                                      `json:"passed,omitempty"`
+	OverallReason     string                                     `json:"overall_reason,omitempty"`
+	CorrectnessScore  *float64                                   `json:"correctness_score,omitempty"`
+	ReliabilityScore  *float64                                   `json:"reliability_score,omitempty"`
+	LatencyScore      *float64                                   `json:"latency_score,omitempty"`
+	CostScore         *float64                                   `json:"cost_score,omitempty"`
+	CostPerCorrectUSD *float64                                   `json:"cost_per_correct_usd,omitempty"`
+	Dimensions        map[string]runRankingDimensionScorePayload `json:"dimensions,omitempty"`
 }
 
 type runRankingDimensionScorePayload struct {
@@ -119,26 +120,27 @@ type runRankingWinnerResponse struct {
 }
 
 type runRankingItemResponse struct {
-	Rank             *int                                       `json:"rank,omitempty"`
-	RunAgentID       uuid.UUID                                  `json:"run_agent_id"`
-	LaneIndex        int32                                      `json:"lane_index"`
-	Label            string                                     `json:"label"`
-	Status           domain.RunAgentStatus                      `json:"status"`
-	HasScorecard     bool                                       `json:"has_scorecard"`
-	EvaluationStatus string                                     `json:"evaluation_status,omitempty"`
-	SortValue        *float64                                   `json:"sort_value,omitempty"`
-	DeltaFromTop     *float64                                   `json:"delta_from_top,omitempty"`
-	SortState        string                                     `json:"sort_state"`
-	Strategy         string                                     `json:"strategy,omitempty"`
-	Passed           *bool                                      `json:"passed,omitempty"`
-	OverallReason    string                                     `json:"overall_reason,omitempty"`
-	CompositeScore   *float64                                   `json:"composite_score,omitempty"`
-	OverallScore     *float64                                   `json:"overall_score,omitempty"`
-	CorrectnessScore *float64                                   `json:"correctness_score,omitempty"`
-	ReliabilityScore *float64                                   `json:"reliability_score,omitempty"`
-	LatencyScore     *float64                                   `json:"latency_score,omitempty"`
-	CostScore        *float64                                   `json:"cost_score,omitempty"`
-	Dimensions       map[string]runRankingDimensionScorePayload `json:"dimensions,omitempty"`
+	Rank              *int                                       `json:"rank,omitempty"`
+	RunAgentID        uuid.UUID                                  `json:"run_agent_id"`
+	LaneIndex         int32                                      `json:"lane_index"`
+	Label             string                                     `json:"label"`
+	Status            domain.RunAgentStatus                      `json:"status"`
+	HasScorecard      bool                                       `json:"has_scorecard"`
+	EvaluationStatus  string                                     `json:"evaluation_status,omitempty"`
+	SortValue         *float64                                   `json:"sort_value,omitempty"`
+	DeltaFromTop      *float64                                   `json:"delta_from_top,omitempty"`
+	SortState         string                                     `json:"sort_state"`
+	Strategy          string                                     `json:"strategy,omitempty"`
+	Passed            *bool                                      `json:"passed,omitempty"`
+	OverallReason     string                                     `json:"overall_reason,omitempty"`
+	CompositeScore    *float64                                   `json:"composite_score,omitempty"`
+	OverallScore      *float64                                   `json:"overall_score,omitempty"`
+	CorrectnessScore  *float64                                   `json:"correctness_score,omitempty"`
+	ReliabilityScore  *float64                                   `json:"reliability_score,omitempty"`
+	LatencyScore      *float64                                   `json:"latency_score,omitempty"`
+	CostScore         *float64                                   `json:"cost_score,omitempty"`
+	CostPerCorrectUSD *float64                                   `json:"cost_per_correct_usd,omitempty"`
+	Dimensions        map[string]runRankingDimensionScorePayload `json:"dimensions,omitempty"`
 }
 
 type getRunRankingResponse struct {
@@ -295,24 +297,25 @@ func buildRunRankingPayload(document runScorecardRankingDocument, sortBy RunRank
 		compositeScore := computeRunRankingCompositeScore(agent)
 		sortValue, sortState := rankingSortValue(agent, sortBy)
 		items = append(items, runRankingItemResponse{
-			RunAgentID:       agent.RunAgentID,
-			LaneIndex:        agent.LaneIndex,
-			Label:            agent.Label,
-			Status:           agent.Status,
-			HasScorecard:     agent.HasScorecard,
-			EvaluationStatus: agent.EvaluationStatus,
-			SortValue:        cloneFloat64Ptr(sortValue),
-			SortState:        sortState,
-			Strategy:         agent.Strategy,
-			Passed:           cloneBoolPtrAPI(agent.Passed),
-			OverallReason:    agent.OverallReason,
-			CompositeScore:   cloneFloat64Ptr(compositeScore),
-			OverallScore:     chooseRunRankingOverallScore(agent.OverallScore, compositeScore),
-			CorrectnessScore: cloneFloat64Ptr(agent.CorrectnessScore),
-			ReliabilityScore: cloneFloat64Ptr(agent.ReliabilityScore),
-			LatencyScore:     cloneFloat64Ptr(agent.LatencyScore),
-			CostScore:        cloneFloat64Ptr(agent.CostScore),
-			Dimensions:       cloneRunRankingDimensions(agent.Dimensions),
+			RunAgentID:        agent.RunAgentID,
+			LaneIndex:         agent.LaneIndex,
+			Label:             agent.Label,
+			Status:            agent.Status,
+			HasScorecard:      agent.HasScorecard,
+			EvaluationStatus:  agent.EvaluationStatus,
+			SortValue:         cloneFloat64Ptr(sortValue),
+			SortState:         sortState,
+			Strategy:          agent.Strategy,
+			Passed:            cloneBoolPtrAPI(agent.Passed),
+			OverallReason:     agent.OverallReason,
+			CompositeScore:    cloneFloat64Ptr(compositeScore),
+			OverallScore:      chooseRunRankingOverallScore(agent.OverallScore, compositeScore),
+			CorrectnessScore:  cloneFloat64Ptr(agent.CorrectnessScore),
+			ReliabilityScore:  cloneFloat64Ptr(agent.ReliabilityScore),
+			LatencyScore:      cloneFloat64Ptr(agent.LatencyScore),
+			CostScore:         cloneFloat64Ptr(agent.CostScore),
+			CostPerCorrectUSD: cloneFloat64Ptr(agent.CostPerCorrectUSD),
+			Dimensions:        cloneRunRankingDimensions(agent.Dimensions),
 		})
 	}
 

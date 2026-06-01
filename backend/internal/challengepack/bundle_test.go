@@ -97,6 +97,351 @@ tools:
 	}
 }
 
+func TestParseYAMLDeploymentDefaultsRoundTrip(t *testing.T) {
+	bundle, err := ParseYAML([]byte(`
+pack:
+  slug: support-eval
+  name: Support Eval
+  family: support
+version:
+  number: 1
+  deployment_defaults:
+    aliases:
+      candidate: " Candidate Agent "
+      baseline: Baseline Agent
+    lineups:
+      default: ["candidate", "baseline"]
+      smoke: ["candidate"]
+  evaluation_spec:
+    name: support-v1
+    version_number: 1
+    judge_mode: deterministic
+    validators:
+      - key: exact
+        type: exact_match
+        target: final_output
+        expected_from: challenge_input
+    scorecard:
+      dimensions: [correctness]
+challenges:
+  - key: ticket-1
+    title: Ticket One
+    category: support
+    difficulty: medium
+input_sets:
+  - key: default
+    name: Default Inputs
+    cases:
+      - challenge_key: ticket-1
+        case_key: sample-1
+        inputs:
+          - key: prompt
+            kind: text
+            value: hello
+        expectations:
+          - key: answer
+            kind: text
+            source: input:prompt
+`))
+	if err != nil {
+		t.Fatalf("ParseYAML returned error: %v", err)
+	}
+	if bundle.Version.DeploymentDefaults == nil {
+		t.Fatal("deployment defaults missing")
+	}
+	if got := bundle.Version.DeploymentDefaults.Aliases["candidate"]; got != "Candidate Agent" {
+		t.Fatalf("candidate alias = %q, want Candidate Agent", got)
+	}
+
+	manifest, err := ManifestJSON(bundle)
+	if err != nil {
+		t.Fatalf("ManifestJSON returned error: %v", err)
+	}
+	var decoded struct {
+		Version struct {
+			DeploymentDefaults DeploymentDefaults `json:"deployment_defaults"`
+		} `json:"version"`
+	}
+	if err := json.Unmarshal(manifest, &decoded); err != nil {
+		t.Fatalf("unmarshal manifest: %v", err)
+	}
+	if got := decoded.Version.DeploymentDefaults.Lineups["default"]; len(got) != 2 || got[0] != "candidate" || got[1] != "baseline" {
+		t.Fatalf("default lineup = %#v, want [candidate baseline]", got)
+	}
+}
+
+func TestValidateBundleRejectsDeploymentDefaultsWithoutDefaultLineup(t *testing.T) {
+	bundle := minimalBundle()
+	bundle.Version.DeploymentDefaults = &DeploymentDefaults{
+		Aliases: map[string]string{"candidate": "Candidate Agent"},
+		Lineups: map[string][]string{"smoke": []string{"candidate"}},
+	}
+
+	err := ValidateBundle(bundle)
+	if err == nil {
+		t.Fatal("ValidateBundle returned nil error")
+	}
+	errs, ok := err.(ValidationErrors)
+	if !ok {
+		t.Fatalf("error type = %T, want ValidationErrors", err)
+	}
+	if !containsField(errs, "version.deployment_defaults.lineups.default") {
+		t.Fatalf("validation errors = %+v, want default lineup error", errs)
+	}
+}
+
+func TestParseYAMLAcceptsVoiceModalityBundle(t *testing.T) {
+	bundle, err := ParseYAML([]byte(`
+modality: voice
+interface_spec:
+  transports: [text_sim, webrtc]
+  channel_profile: deterministic_text
+  supports_barge_in: true
+scenario:
+  persona: billing_customer
+  language: en-US
+  max_turns: 6
+  max_duration_ms: 120000
+pack:
+  slug: voice-support-eval
+  name: Voice Support Eval
+  family: support
+version:
+  number: 1
+  evaluation_spec:
+    name: voice-support-v1
+    version_number: 1
+    judge_mode: deterministic
+    validators:
+      - key: exact
+        type: exact_match
+        target: final_output
+        expected_from: challenge_input
+    metrics:
+      - key: voice_latency_ms
+        type: numeric
+        collector: run_total_latency_ms
+        unit: ms
+    scorecard:
+      dimensions: [correctness]
+challenges:
+  - key: billing-refund
+    title: Billing Refund
+    category: support
+    difficulty: easy
+input_sets:
+  - key: default
+    name: Default Voice Inputs
+    cases:
+      - challenge_key: billing-refund
+        case_key: duplicate-charge
+        inputs:
+          - key: prompt
+            kind: text
+            value: Please refund the duplicate charge.
+        expectations:
+          - key: answer
+            kind: text
+            source: input:prompt
+`))
+	if err != nil {
+		t.Fatalf("ParseYAML returned error: %v", err)
+	}
+	if bundle.Modality != ModalityVoice {
+		t.Fatalf("modality = %q, want voice", bundle.Modality)
+	}
+	if bundle.InterfaceSpec == nil || len(bundle.InterfaceSpec.Transports) != 2 || bundle.InterfaceSpec.Transports[0] != "text_sim" {
+		t.Fatalf("interface spec = %#v, want normalized voice transports", bundle.InterfaceSpec)
+	}
+	if bundle.Scenario == nil || bundle.Scenario.Language != "en-US" || bundle.Scenario.MaxTurns != 6 {
+		t.Fatalf("scenario = %#v, want normalized voice scenario", bundle.Scenario)
+	}
+
+	manifest, err := ManifestJSON(bundle)
+	if err != nil {
+		t.Fatalf("ManifestJSON returned error: %v", err)
+	}
+	var decoded struct {
+		Modality      string        `json:"modality"`
+		InterfaceSpec InterfaceSpec `json:"interface_spec"`
+		Scenario      ScenarioSpec  `json:"scenario"`
+	}
+	if err := json.Unmarshal(manifest, &decoded); err != nil {
+		t.Fatalf("unmarshal manifest: %v", err)
+	}
+	if decoded.Modality != ModalityVoice {
+		t.Fatalf("manifest modality = %q, want voice", decoded.Modality)
+	}
+	if decoded.InterfaceSpec.ChannelProfile != "deterministic_text" {
+		t.Fatalf("manifest channel profile = %q, want deterministic_text", decoded.InterfaceSpec.ChannelProfile)
+	}
+	if decoded.Scenario.MaxDurationMS != 120000 {
+		t.Fatalf("manifest max_duration_ms = %d, want 120000", decoded.Scenario.MaxDurationMS)
+	}
+}
+
+func TestValidateBundleVoiceModalityCases(t *testing.T) {
+	cases := []struct {
+		name       string
+		mutate     func(*Bundle)
+		wantFields []string
+	}{
+		{
+			name: "valid existing pack",
+		},
+		{
+			name: "valid minimal voice pack",
+			mutate: func(bundle *Bundle) {
+				*bundle = minimalVoiceBundle()
+			},
+		},
+		{
+			name: "invalid modality",
+			mutate: func(bundle *Bundle) {
+				bundle.Modality = "video"
+			},
+			wantFields: []string{"modality"},
+		},
+		{
+			name: "invalid interface_spec transports",
+			mutate: func(bundle *Bundle) {
+				*bundle = minimalVoiceBundle()
+				bundle.InterfaceSpec.Transports = []string{"text_sim", "satellite"}
+			},
+			wantFields: []string{"interface_spec.transports[1]"},
+		},
+		{
+			name: "missing scenario max_turns",
+			mutate: func(bundle *Bundle) {
+				*bundle = minimalVoiceBundle()
+				bundle.Scenario.MaxTurns = 0
+			},
+			wantFields: []string{"scenario.max_turns"},
+		},
+		{
+			name: "missing scenario language",
+			mutate: func(bundle *Bundle) {
+				*bundle = minimalVoiceBundle()
+				bundle.Scenario.Language = ""
+			},
+			wantFields: []string{"scenario.language"},
+		},
+		{
+			name: "missing scenario persona",
+			mutate: func(bundle *Bundle) {
+				*bundle = minimalVoiceBundle()
+				bundle.Scenario.Persona = ""
+			},
+			wantFields: []string{"scenario.persona"},
+		},
+		{
+			name: "missing scenario max_duration_ms",
+			mutate: func(bundle *Bundle) {
+				*bundle = minimalVoiceBundle()
+				bundle.Scenario.MaxDurationMS = 0
+			},
+			wantFields: []string{"scenario.max_duration_ms"},
+		},
+		{
+			name: "duplicate metric keys",
+			mutate: func(bundle *Bundle) {
+				bundle.Version.EvaluationSpec.Metrics = []scoring.MetricDeclaration{
+					{Key: "latency", Type: scoring.MetricTypeNumeric, Collector: "run_total_latency_ms"},
+					{Key: "latency", Type: scoring.MetricTypeNumeric, Collector: "run_ttft_ms"},
+				}
+			},
+			wantFields: []string{"version.evaluation_spec.metrics[1].key"},
+		},
+		{
+			name: "duplicate validator keys",
+			mutate: func(bundle *Bundle) {
+				bundle.Version.EvaluationSpec.Validators = append(bundle.Version.EvaluationSpec.Validators, scoring.ValidatorDeclaration{
+					Key:          "exact",
+					Type:         scoring.ValidatorTypeContains,
+					Target:       "final_output",
+					ExpectedFrom: "challenge_input",
+				})
+			},
+			wantFields: []string{"version.evaluation_spec.validators[1].key"},
+		},
+		{
+			name: "voice blocks without modality",
+			mutate: func(bundle *Bundle) {
+				bundle.InterfaceSpec = &InterfaceSpec{Transports: []string{"text_sim"}, ChannelProfile: "deterministic_text"}
+				bundle.Scenario = &ScenarioSpec{Persona: "billing_customer", Language: "en-US", MaxTurns: 6, MaxDurationMS: 120000}
+			},
+			wantFields: []string{"modality"},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			bundle := minimalBundle()
+			if tc.mutate != nil {
+				tc.mutate(&bundle)
+			}
+
+			err := ValidateBundle(bundle)
+			if len(tc.wantFields) == 0 {
+				if err != nil {
+					t.Fatalf("ValidateBundle returned error: %v", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatal("ValidateBundle returned nil error")
+			}
+			errs, ok := err.(ValidationErrors)
+			if !ok {
+				t.Fatalf("error type = %T, want ValidationErrors", err)
+			}
+			for _, field := range tc.wantFields {
+				if !containsField(errs, field) {
+					t.Fatalf("validation errors = %+v, want field %q", errs, field)
+				}
+			}
+		})
+	}
+}
+
+func TestNormalizeInterfaceSpecOmitsEmptyVoiceTransports(t *testing.T) {
+	normalized := normalizeInterfaceSpec(&InterfaceSpec{ChannelProfile: "deterministic_text"})
+	encoded, err := json.Marshal(normalized)
+	if err != nil {
+		t.Fatalf("marshal normalized interface spec: %v", err)
+	}
+	var decoded map[string]json.RawMessage
+	if err := json.Unmarshal(encoded, &decoded); err != nil {
+		t.Fatalf("unmarshal normalized interface spec: %v", err)
+	}
+	if _, ok := decoded["transports"]; ok {
+		t.Fatalf("normalized transports present, want omitted")
+	}
+}
+
+func TestValidateBundleRejectsEmptyDeploymentDefaultSelectors(t *testing.T) {
+	bundle := minimalBundle()
+	bundle.Version.DeploymentDefaults = &DeploymentDefaults{
+		Aliases: map[string]string{"candidate": ""},
+		Lineups: map[string][]string{"default": []string{""}},
+	}
+
+	err := ValidateBundle(bundle)
+	if err == nil {
+		t.Fatal("ValidateBundle returned nil error")
+	}
+	errs, ok := err.(ValidationErrors)
+	if !ok {
+		t.Fatalf("error type = %T, want ValidationErrors", err)
+	}
+	if !containsField(errs, "version.deployment_defaults.aliases[\"candidate\"]") {
+		t.Fatalf("validation errors = %+v, want empty alias error", errs)
+	}
+	if !containsField(errs, "version.deployment_defaults.lineups[\"default\"][0]") {
+		t.Fatalf("validation errors = %+v, want empty lineup selector error", errs)
+	}
+}
+
 func TestManifestJSONPreservesGeneralizedContract(t *testing.T) {
 	bundle := Bundle{
 		Pack: PackMetadata{
@@ -171,6 +516,52 @@ func TestManifestJSONPreservesGeneralizedContract(t *testing.T) {
 	}
 	if len(decoded.InputSets[0].Cases[0].Expectations) != 1 {
 		t.Fatalf("expectations count = %d, want 1", len(decoded.InputSets[0].Cases[0].Expectations))
+	}
+}
+
+func TestParseYAMLAcceptsToolCallAssertionValidator(t *testing.T) {
+	bundle, err := ParseYAML([]byte(`
+pack:
+  slug: tool-eval
+  name: Tool Eval
+  family: support
+version:
+  number: 1
+  evaluation_spec:
+    name: tool-v1
+    version_number: 1
+    judge_mode: deterministic
+    validators:
+      - key: submitted
+        type: tool_call_assertion
+        target: tool_calls
+        config:
+          tool_name: submit
+          arguments_contain:
+            answer: "42"
+    scorecard:
+      dimensions: [correctness]
+challenges:
+  - key: ticket-1
+    title: Ticket One
+    category: support
+    difficulty: easy
+input_sets:
+  - key: default
+    name: Default
+    cases:
+      - challenge_key: ticket-1
+        case_key: sample-1
+`))
+	if err != nil {
+		t.Fatalf("ParseYAML returned error: %v", err)
+	}
+	validator := bundle.Version.EvaluationSpec.Validators[0]
+	if validator.Type != scoring.ValidatorTypeToolCallAssertion {
+		t.Fatalf("validator type = %q, want %q", validator.Type, scoring.ValidatorTypeToolCallAssertion)
+	}
+	if validator.ExpectedFrom != "" {
+		t.Fatalf("expected_from = %q, want empty", validator.ExpectedFrom)
 	}
 }
 
@@ -687,6 +1078,56 @@ func TestValidateBundleRejectsPromptEvalWithTools(t *testing.T) {
 	}
 }
 
+func TestValidateBundleAllowsResponsesWithSandboxAndToolPolicy(t *testing.T) {
+	err := ValidateBundle(Bundle{
+		Pack: PackMetadata{Slug: "research", Name: "Research", Family: "eval"},
+		Version: VersionMetadata{
+			Number:         1,
+			ExecutionMode:  ExecutionModeResponses,
+			EvaluationSpec: minimalSpec(),
+			Sandbox:        &SandboxConfig{NetworkAccess: true},
+			ToolPolicy:     map[string]any{"allow_shell": true, "allowed_tool_kinds": []any{"file", "network"}},
+		},
+		Challenges: []ChallengeDefinition{
+			{Key: "c1", Title: "C1", Category: "cat", Difficulty: "easy"},
+		},
+		InputSets: []InputSetDefinition{
+			{Key: "default", Name: "Default", Cases: []CaseDefinition{{ChallengeKey: "c1", CaseKey: "k"}}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("ValidateBundle returned error: %v", err)
+	}
+}
+
+func TestValidateBundleRejectsResponsesWithPackTools(t *testing.T) {
+	err := ValidateBundle(Bundle{
+		Pack: PackMetadata{Slug: "research", Name: "Research", Family: "eval"},
+		Version: VersionMetadata{
+			Number:         1,
+			ExecutionMode:  ExecutionModeResponses,
+			EvaluationSpec: minimalSpec(),
+		},
+		Tools: map[string]any{"custom": []any{}},
+		Challenges: []ChallengeDefinition{
+			{Key: "c1", Title: "C1", Category: "cat", Difficulty: "easy"},
+		},
+		InputSets: []InputSetDefinition{
+			{Key: "default", Name: "Default", Cases: []CaseDefinition{{ChallengeKey: "c1", CaseKey: "k"}}},
+		},
+	})
+	if err == nil {
+		t.Fatal("expected validation error for responses pack with tools")
+	}
+	errs, ok := err.(ValidationErrors)
+	if !ok {
+		t.Fatalf("expected ValidationErrors, got %T", err)
+	}
+	if !containsField(errs, "tools") {
+		t.Fatalf("expected tools validation error; got %v", errs)
+	}
+}
+
 func TestValidateBundleAllowsBrowserToolKind(t *testing.T) {
 	err := ValidateBundle(Bundle{
 		Pack: PackMetadata{Slug: "browser", Name: "Browser", Family: "browser"},
@@ -775,6 +1216,63 @@ func minimalSpec() scoring.EvaluationSpec {
 			Dimensions: []scoring.DimensionDeclaration{{Key: "correctness"}},
 		},
 	}
+}
+
+func minimalBundle() Bundle {
+	return Bundle{
+		Pack: PackMetadata{
+			Slug:   "support-eval",
+			Name:   "Support Eval",
+			Family: "support",
+		},
+		Version: VersionMetadata{
+			Number:         1,
+			EvaluationSpec: minimalSpec(),
+		},
+		Challenges: []ChallengeDefinition{
+			{
+				Key:        "ticket-1",
+				Title:      "Ticket One",
+				Category:   "support",
+				Difficulty: "easy",
+			},
+		},
+		InputSets: []InputSetDefinition{
+			{
+				Key:  "default",
+				Name: "Default",
+				Cases: []CaseDefinition{
+					{
+						ChallengeKey: "ticket-1",
+						CaseKey:      "case-1",
+						Inputs: []CaseInput{
+							{Key: "prompt", Kind: "text", Value: "hello"},
+						},
+						Expectations: []CaseExpectation{
+							{Key: "answer", Kind: "text", Source: "input:prompt"},
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+func minimalVoiceBundle() Bundle {
+	bundle := minimalBundle()
+	bundle.Modality = ModalityVoice
+	bundle.InterfaceSpec = &InterfaceSpec{
+		Transports:      []string{"text_sim"},
+		ChannelProfile:  "deterministic_text",
+		SupportsBargeIn: false,
+	}
+	bundle.Scenario = &ScenarioSpec{
+		Persona:       "billing_customer",
+		Language:      "en-US",
+		MaxTurns:      6,
+		MaxDurationMS: 120000,
+	}
+	return bundle
 }
 
 func containsField(errs ValidationErrors, field string) bool {

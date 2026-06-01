@@ -3,7 +3,9 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -18,14 +20,28 @@ func init() {
 	agentHarnessCmd.AddCommand(agentHarnessGetCmd)
 	agentHarnessCmd.AddCommand(agentHarnessRunCmd)
 	agentHarnessCmd.AddCommand(agentHarnessExecutionsCmd)
+	agentHarnessCmd.AddCommand(agentHarnessSuiteCmd)
+	agentHarnessCmd.AddCommand(agentHarnessFailuresCmd)
 	agentHarnessCmd.AddCommand(agentHarnessExecutionCmd)
 	agentHarnessExecutionCmd.AddCommand(agentHarnessExecutionGetCmd)
+	agentHarnessExecutionCmd.AddCommand(agentHarnessExecutionCancelCmd)
+	agentHarnessExecutionCmd.AddCommand(agentHarnessExecutionRetryCmd)
+	agentHarnessExecutionCmd.AddCommand(agentHarnessExecutionPromoteTaskCmd)
+	agentHarnessExecutionCmd.AddCommand(agentHarnessExecutionFailureReviewCmd)
+	agentHarnessExecutionFailureReviewCmd.AddCommand(agentHarnessExecutionFailureReviewGetCmd)
+	agentHarnessExecutionFailureReviewCmd.AddCommand(agentHarnessExecutionFailureReviewUpdateCmd)
+	agentHarnessSuiteCmd.AddCommand(agentHarnessSuiteListCmd)
+	agentHarnessSuiteCmd.AddCommand(agentHarnessSuiteCreateCmd)
+	agentHarnessSuiteCmd.AddCommand(agentHarnessSuiteTasksCmd)
+	agentHarnessSuiteCmd.AddCommand(agentHarnessSuiteRankingsCmd)
+	agentHarnessSuiteCmd.AddCommand(agentHarnessSuiteRunCmd)
+	agentHarnessFailuresCmd.AddCommand(agentHarnessFailuresSummaryCmd)
 
 	agentHarnessCreateCmd.Flags().String("from-file", "", "JSON file with agent harness spec")
 	agentHarnessCreateCmd.Flags().String("name", "", "Harness name")
 	agentHarnessCreateCmd.Flags().String("description", "", "Harness description")
 	agentHarnessCreateCmd.Flags().String("task", "", "Task prompt for the coding harness")
-	agentHarnessCreateCmd.Flags().String("harness-kind", "codex_e2b", "Harness runner kind: codex_e2b or hermes_e2b")
+	agentHarnessCreateCmd.Flags().String("harness-kind", "codex_e2b", "Harness runner kind: codex_e2b, claude_e2b, hermes_e2b, or openclaw_e2b")
 	agentHarnessCreateCmd.Flags().String("codex-template", "", "E2B template override for the harness runner")
 	agentHarnessCreateCmd.Flags().String("codex-model", "", "Runner model override")
 	agentHarnessCreateCmd.Flags().String("auth-mode", "api_key_secret", "Harness auth mode: api_key_secret")
@@ -39,6 +55,32 @@ func init() {
 	agentHarnessRunCmd.Flags().String("message", "", "Override the harness task prompt for this execution")
 	agentHarnessRunCmd.Flags().Bool("follow", false, "Poll until the harness execution reaches a terminal status")
 	agentHarnessRunCmd.Flags().Duration("poll-interval", 2*time.Second, "Polling interval for --follow")
+	agentHarnessSuiteCreateCmd.Flags().String("from-file", "", "JSON file with agent harness suite spec")
+	agentHarnessSuiteCreateCmd.Flags().String("name", "", "Suite name")
+	agentHarnessSuiteCreateCmd.Flags().String("description", "", "Suite description")
+	agentHarnessSuiteCreateCmd.Flags().String("metadata", "", "Inline JSON suite metadata")
+	agentHarnessSuiteCreateCmd.Flags().StringArray("task-json", nil, "Suite task JSON object; may be repeated")
+	agentHarnessSuiteRunCmd.Flags().StringSlice("harness", nil, "Harness ID to run; may be repeated or comma-separated")
+	agentHarnessSuiteRunCmd.Flags().StringSlice("task", nil, "Suite task ID filter; may be repeated or comma-separated")
+	agentHarnessSuiteRankingsCmd.Flags().Int("k", 1, "k value for pass@k and pass^k")
+	agentHarnessSuiteRankingsCmd.Flags().String("version-id", "", "Immutable suite version ID")
+	agentHarnessExecutionRetryCmd.Flags().String("idempotency-key", "", "Retry idempotency key")
+	agentHarnessExecutionPromoteTaskCmd.Flags().String("from-file", "", "JSON file with promotion payload")
+	agentHarnessExecutionPromoteTaskCmd.Flags().String("suite", "", "Target Agent Harness suite ID")
+	agentHarnessExecutionPromoteTaskCmd.Flags().String("title", "", "Promoted private task title")
+	agentHarnessExecutionPromoteTaskCmd.Flags().String("public-prompt", "", "Sanitized public prompt")
+	agentHarnessExecutionPromoteTaskCmd.Flags().String("failure-class", "", "Failure class to store with promotion metadata")
+	agentHarnessExecutionPromoteTaskCmd.Flags().String("failure-summary", "", "Failure summary to store with promotion metadata")
+	agentHarnessExecutionPromoteTaskCmd.Flags().String("metadata", "", "Inline JSON promotion metadata")
+	agentHarnessExecutionFailureReviewUpdateCmd.Flags().String("from-file", "", "JSON file with failure review update payload")
+	agentHarnessExecutionFailureReviewUpdateCmd.Flags().String("suggested-class", "", "Suggested failure class")
+	agentHarnessExecutionFailureReviewUpdateCmd.Flags().String("suggested-summary", "", "Suggested failure summary")
+	agentHarnessExecutionFailureReviewUpdateCmd.Flags().String("suggested-source", "", "Suggested source: rules or llm")
+	agentHarnessExecutionFailureReviewUpdateCmd.Flags().String("suggested-confidence", "", "Suggested confidence as a decimal")
+	agentHarnessExecutionFailureReviewUpdateCmd.Flags().String("suggested-payload", "", "Inline JSON suggested payload")
+	agentHarnessExecutionFailureReviewUpdateCmd.Flags().String("human-class", "", "Human-curated failure class")
+	agentHarnessExecutionFailureReviewUpdateCmd.Flags().String("human-summary", "", "Human-curated failure summary")
+	agentHarnessExecutionFailureReviewUpdateCmd.Flags().String("human-payload", "", "Inline JSON human payload")
 }
 
 var agentHarnessCmd = &cobra.Command{
@@ -296,6 +338,250 @@ var agentHarnessExecutionsCmd = &cobra.Command{
 	},
 }
 
+var agentHarnessSuiteCmd = &cobra.Command{
+	Use:   "suite",
+	Short: "Manage Agent Harness suites and private task banks",
+}
+
+var agentHarnessSuiteListCmd = &cobra.Command{
+	Use:   "list",
+	Short: "List Agent Harness suites",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		rc := GetRunContext(cmd)
+		wsID := RequireWorkspace(cmd)
+
+		resp, err := rc.Client.Get(cmd.Context(), "/v1/workspaces/"+wsID+"/agent-harness-suites", nil)
+		if err != nil {
+			return err
+		}
+		if apiErr := resp.ParseError(); apiErr != nil {
+			return apiErr
+		}
+		var result struct {
+			Items []map[string]any `json:"items"`
+		}
+		if err := resp.DecodeJSON(&result); err != nil {
+			return err
+		}
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(result)
+		}
+		cols := []output.Column{{Header: "ID"}, {Header: "Name"}, {Header: "Status"}, {Header: "Version"}, {Header: "Tasks"}, {Header: "Updated"}}
+		rows := make([][]string, len(result.Items))
+		for i, item := range result.Items {
+			rows[i] = []string{
+				str(item["id"]),
+				str(item["name"]),
+				output.StatusColor(str(item["status"])),
+				str(item["current_version_number"]),
+				str(item["task_count"]),
+				str(item["updated_at"]),
+			}
+		}
+		rc.Output.PrintTable(cols, rows)
+		return nil
+	},
+}
+
+var agentHarnessSuiteCreateCmd = &cobra.Command{
+	Use:   "create",
+	Short: "Create an Agent Harness suite/private task bank",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		rc := GetRunContext(cmd)
+		wsID := RequireWorkspace(cmd)
+
+		body, err := buildAgentHarnessSuiteCreateBody(cmd)
+		if err != nil {
+			return err
+		}
+		resp, err := rc.Client.Post(cmd.Context(), "/v1/workspaces/"+wsID+"/agent-harness-suites", body)
+		if err != nil {
+			return err
+		}
+		if apiErr := resp.ParseError(); apiErr != nil {
+			return apiErr
+		}
+		var suite map[string]any
+		if err := resp.DecodeJSON(&suite); err != nil {
+			return err
+		}
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(suite)
+		}
+		rc.Output.PrintSuccess(fmt.Sprintf("Created Agent Harness suite %s (%s)", str(suite["name"]), str(suite["id"])))
+		rc.Output.PrintDetail("Version", str(suite["current_version_number"]))
+		rc.Output.PrintDetail("Tasks", str(suite["task_count"]))
+		return nil
+	},
+}
+
+var agentHarnessSuiteTasksCmd = &cobra.Command{
+	Use:   "tasks <suite-id>",
+	Short: "List public tasks for an Agent Harness suite",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		rc := GetRunContext(cmd)
+		wsID := RequireWorkspace(cmd)
+
+		resp, err := rc.Client.Get(cmd.Context(), "/v1/workspaces/"+wsID+"/agent-harness-suites/"+args[0]+"/tasks", nil)
+		if err != nil {
+			return err
+		}
+		if apiErr := resp.ParseError(); apiErr != nil {
+			return apiErr
+		}
+		var result struct {
+			Items []map[string]any `json:"items"`
+		}
+		if err := resp.DecodeJSON(&result); err != nil {
+			return err
+		}
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(result)
+		}
+		cols := []output.Column{{Header: "ID"}, {Header: "Order"}, {Header: "Title"}, {Header: "Source"}, {Header: "Repository"}}
+		rows := make([][]string, len(result.Items))
+		for i, item := range result.Items {
+			rows[i] = []string{
+				str(item["id"]),
+				str(item["task_order"]),
+				str(item["title"]),
+				str(item["source_type"]),
+				str(item["repository_url"]),
+			}
+		}
+		rc.Output.PrintTable(cols, rows)
+		return nil
+	},
+}
+
+var agentHarnessSuiteRankingsCmd = &cobra.Command{
+	Use:   "rankings <suite-id>",
+	Short: "Get Agent Harness suite rankings",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		rc := GetRunContext(cmd)
+		wsID := RequireWorkspace(cmd)
+		q := url.Values{}
+		if k, _ := cmd.Flags().GetInt("k"); k > 0 {
+			q.Set("k", strconv.Itoa(k))
+		}
+		if versionID, _ := cmd.Flags().GetString("version-id"); strings.TrimSpace(versionID) != "" {
+			q.Set("version_id", strings.TrimSpace(versionID))
+		}
+
+		resp, err := rc.Client.Get(cmd.Context(), "/v1/workspaces/"+wsID+"/agent-harness-suites/"+args[0]+"/rankings", q)
+		if err != nil {
+			return err
+		}
+		if apiErr := resp.ParseError(); apiErr != nil {
+			return apiErr
+		}
+		var result map[string]any
+		if err := resp.DecodeJSON(&result); err != nil {
+			return err
+		}
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(result)
+		}
+		ranking := mapObject(result, "ranking")
+		rows := agentHarnessRankingRows(ranking)
+		if len(rows) == 0 {
+			return rc.Output.PrintRaw(result)
+		}
+		cols := []output.Column{{Header: "Rank"}, {Header: "Harness"}, {Header: "Model"}, {Header: "Success@1"}, {Header: "Pass@k"}, {Header: "Cost"}, {Header: "Latency"}}
+		rc.Output.PrintTable(cols, rows)
+		return nil
+	},
+}
+
+var agentHarnessSuiteRunCmd = &cobra.Command{
+	Use:   "run <suite-id>",
+	Short: "Start suite runs across one or more harnesses",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		rc := GetRunContext(cmd)
+		wsID := RequireWorkspace(cmd)
+		body := map[string]any{}
+		harnessIDs, _ := cmd.Flags().GetStringSlice("harness")
+		taskIDs, _ := cmd.Flags().GetStringSlice("task")
+		if len(harnessIDs) == 0 {
+			return fmt.Errorf("at least one --harness is required")
+		}
+		body["harness_ids"] = harnessIDs
+		if len(taskIDs) > 0 {
+			body["task_ids"] = taskIDs
+		}
+		resp, err := rc.Client.Post(cmd.Context(), "/v1/workspaces/"+wsID+"/agent-harness-suites/"+args[0]+"/runs", body)
+		if err != nil {
+			return err
+		}
+		if apiErr := resp.ParseError(); apiErr != nil {
+			return apiErr
+		}
+		var result struct {
+			Executions []map[string]any `json:"executions"`
+		}
+		if err := resp.DecodeJSON(&result); err != nil {
+			return err
+		}
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(result)
+		}
+		cols := []output.Column{{Header: "ID"}, {Header: "Harness"}, {Header: "Status"}, {Header: "Created"}}
+		rows := make([][]string, len(result.Executions))
+		for i, item := range result.Executions {
+			rows[i] = []string{str(item["id"]), str(item["agent_harness_id"]), output.StatusColor(str(item["status"])), str(item["created_at"])}
+		}
+		rc.Output.PrintTable(cols, rows)
+		return nil
+	},
+}
+
+var agentHarnessFailuresCmd = &cobra.Command{
+	Use:   "failures",
+	Short: "Inspect Agent Harness failure summaries",
+}
+
+var agentHarnessFailuresSummaryCmd = &cobra.Command{
+	Use:   "summary",
+	Short: "Summarize Agent Harness failure modes",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		rc := GetRunContext(cmd)
+		wsID := RequireWorkspace(cmd)
+
+		resp, err := rc.Client.Get(cmd.Context(), "/v1/workspaces/"+wsID+"/agent-harness-failures/summary", nil)
+		if err != nil {
+			return err
+		}
+		if apiErr := resp.ParseError(); apiErr != nil {
+			return apiErr
+		}
+		var result struct {
+			Items []map[string]any `json:"items"`
+		}
+		if err := resp.DecodeJSON(&result); err != nil {
+			return err
+		}
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(result)
+		}
+		cols := []output.Column{{Header: "Group"}, {Header: "Key"}, {Header: "Class"}, {Header: "Count"}, {Header: "Latest"}}
+		rows := make([][]string, len(result.Items))
+		for i, item := range result.Items {
+			rows[i] = []string{
+				str(item["group_by"]),
+				str(item["label"]),
+				str(item["failure_class"]),
+				str(item["count"]),
+				str(item["latest_at"]),
+			}
+		}
+		rc.Output.PrintTable(cols, rows)
+		return nil
+	},
+}
+
 var agentHarnessExecutionCmd = &cobra.Command{
 	Use:   "execution",
 	Short: "Inspect agent harness executions",
@@ -334,17 +620,173 @@ var agentHarnessExecutionGetCmd = &cobra.Command{
 	},
 }
 
+var agentHarnessExecutionCancelCmd = &cobra.Command{
+	Use:   "cancel <execution-id>",
+	Short: "Cancel an Agent Harness execution",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		rc := GetRunContext(cmd)
+		wsID := RequireWorkspace(cmd)
+
+		resp, err := rc.Client.Post(cmd.Context(), "/v1/workspaces/"+wsID+"/agent-harness-executions/"+args[0]+"/cancel", map[string]any{})
+		if err != nil {
+			return err
+		}
+		if apiErr := resp.ParseError(); apiErr != nil {
+			return apiErr
+		}
+		var execution map[string]any
+		if err := resp.DecodeJSON(&execution); err != nil {
+			return err
+		}
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(execution)
+		}
+		rc.Output.PrintSuccess(fmt.Sprintf("Cancelled Agent Harness execution %s", args[0]))
+		rc.Output.PrintDetail("Status", output.StatusColor(str(execution["status"])))
+		return nil
+	},
+}
+
+var agentHarnessExecutionRetryCmd = &cobra.Command{
+	Use:   "retry <execution-id>",
+	Short: "Retry a terminal Agent Harness execution",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		rc := GetRunContext(cmd)
+		wsID := RequireWorkspace(cmd)
+		key, _ := cmd.Flags().GetString("idempotency-key")
+		key = strings.TrimSpace(key)
+		if key == "" {
+			key = "cli-" + time.Now().UTC().Format("20060102T150405.000000000Z")
+		}
+		resp, err := rc.Client.Post(cmd.Context(), "/v1/workspaces/"+wsID+"/agent-harness-executions/"+args[0]+"/retry", map[string]any{"idempotency_key": key})
+		if err != nil {
+			return err
+		}
+		if apiErr := resp.ParseError(); apiErr != nil {
+			return apiErr
+		}
+		var execution map[string]any
+		if err := resp.DecodeJSON(&execution); err != nil {
+			return err
+		}
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(execution)
+		}
+		rc.Output.PrintSuccess(fmt.Sprintf("Retried Agent Harness execution %s", args[0]))
+		rc.Output.PrintDetail("Retry", str(execution["id"]))
+		rc.Output.PrintDetail("Status", output.StatusColor(str(execution["status"])))
+		return nil
+	},
+}
+
+var agentHarnessExecutionPromoteTaskCmd = &cobra.Command{
+	Use:   "promote-task <execution-id>",
+	Short: "Promote a prior harness run into a private suite task",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		rc := GetRunContext(cmd)
+		wsID := RequireWorkspace(cmd)
+		body, err := buildAgentHarnessPromoteTaskBody(cmd)
+		if err != nil {
+			return err
+		}
+		resp, err := rc.Client.Post(cmd.Context(), "/v1/workspaces/"+wsID+"/agent-harness-executions/"+args[0]+"/promote-task", body)
+		if err != nil {
+			return err
+		}
+		if apiErr := resp.ParseError(); apiErr != nil {
+			return apiErr
+		}
+		var result map[string]any
+		if err := resp.DecodeJSON(&result); err != nil {
+			return err
+		}
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(result)
+		}
+		task := mapObject(result, "task")
+		suite := mapObject(result, "suite")
+		rc.Output.PrintSuccess(fmt.Sprintf("Promoted execution %s into Agent Harness suite", args[0]))
+		rc.Output.PrintDetail("Suite", mapString(suite, "id"))
+		rc.Output.PrintDetail("Task", mapString(task, "id"))
+		rc.Output.PrintDetail("Source", mapString(task, "source_type"))
+		return nil
+	},
+}
+
+var agentHarnessExecutionFailureReviewCmd = &cobra.Command{
+	Use:   "failure-review",
+	Short: "Inspect or edit Agent Harness failure classifications",
+}
+
+var agentHarnessExecutionFailureReviewGetCmd = &cobra.Command{
+	Use:   "get <execution-id>",
+	Short: "Get Agent Harness failure review",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		rc := GetRunContext(cmd)
+		wsID := RequireWorkspace(cmd)
+
+		resp, err := rc.Client.Get(cmd.Context(), "/v1/workspaces/"+wsID+"/agent-harness-executions/"+args[0]+"/failure-review", nil)
+		if err != nil {
+			return err
+		}
+		if apiErr := resp.ParseError(); apiErr != nil {
+			return apiErr
+		}
+		var review map[string]any
+		if err := resp.DecodeJSON(&review); err != nil {
+			return err
+		}
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(review)
+		}
+		rc.Output.PrintDetail("Execution", str(review["execution_id"]))
+		rc.Output.PrintDetail("Status", output.StatusColor(str(review["status"])))
+		rc.Output.PrintDetail("Suggested", str(review["suggested_class"]))
+		rc.Output.PrintDetail("Effective", str(review["effective_class"]))
+		rc.Output.PrintDetail("Summary", str(review["effective_summary"]))
+		return nil
+	},
+}
+
+var agentHarnessExecutionFailureReviewUpdateCmd = &cobra.Command{
+	Use:   "update <execution-id>",
+	Short: "Update Agent Harness failure review annotations",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		rc := GetRunContext(cmd)
+		wsID := RequireWorkspace(cmd)
+		body, err := buildAgentHarnessFailureReviewUpdateBody(cmd)
+		if err != nil {
+			return err
+		}
+		resp, err := rc.Client.Patch(cmd.Context(), "/v1/workspaces/"+wsID+"/agent-harness-executions/"+args[0]+"/failure-review", body)
+		if err != nil {
+			return err
+		}
+		if apiErr := resp.ParseError(); apiErr != nil {
+			return apiErr
+		}
+		var review map[string]any
+		if err := resp.DecodeJSON(&review); err != nil {
+			return err
+		}
+		if rc.Output.IsStructured() {
+			return rc.Output.PrintRaw(review)
+		}
+		rc.Output.PrintSuccess(fmt.Sprintf("Updated failure review for %s", args[0]))
+		rc.Output.PrintDetail("Effective", str(review["effective_class"]))
+		rc.Output.PrintDetail("Summary", str(review["effective_summary"]))
+		return nil
+	},
+}
+
 func buildAgentHarnessCreateBody(cmd *cobra.Command) (map[string]any, error) {
 	if fromFile, _ := cmd.Flags().GetString("from-file"); fromFile != "" {
-		data, err := os.ReadFile(fromFile)
-		if err != nil {
-			return nil, fmt.Errorf("reading file: %w", err)
-		}
-		var body map[string]any
-		if err := json.Unmarshal(data, &body); err != nil {
-			return nil, fmt.Errorf("parsing file: %w", err)
-		}
-		return body, nil
+		return readJSONObjectFile(fromFile)
 	}
 
 	missing := requiredAgentHarnessCreateFlags(cmd)
@@ -392,6 +834,148 @@ func buildAgentHarnessCreateBody(cmd *cobra.Command) (map[string]any, error) {
 	return body, nil
 }
 
+func buildAgentHarnessSuiteCreateBody(cmd *cobra.Command) (map[string]any, error) {
+	if fromFile, _ := cmd.Flags().GetString("from-file"); fromFile != "" {
+		return readJSONObjectFile(fromFile)
+	}
+
+	name, _ := cmd.Flags().GetString("name")
+	if strings.TrimSpace(name) == "" {
+		return nil, fmt.Errorf("missing required flag when --from-file is not used: --name")
+	}
+	tasksJSON, _ := cmd.Flags().GetStringArray("task-json")
+	if len(tasksJSON) == 0 {
+		return nil, fmt.Errorf("at least one --task-json is required when --from-file is not used")
+	}
+	body := map[string]any{"name": strings.TrimSpace(name)}
+	setFlagIfChanged(cmd, body, "description", "description")
+	if err := setJSONFlag(cmd, body, "metadata", "metadata"); err != nil {
+		return nil, err
+	}
+	tasks := make([]any, 0, len(tasksJSON))
+	for _, raw := range tasksJSON {
+		var task map[string]any
+		if err := json.Unmarshal([]byte(raw), &task); err != nil {
+			return nil, fmt.Errorf("--task-json must be valid JSON object: %w", err)
+		}
+		tasks = append(tasks, task)
+	}
+	body["tasks"] = tasks
+	return body, nil
+}
+
+func buildAgentHarnessPromoteTaskBody(cmd *cobra.Command) (map[string]any, error) {
+	if fromFile, _ := cmd.Flags().GetString("from-file"); fromFile != "" {
+		return readJSONObjectFile(fromFile)
+	}
+	suiteID, _ := cmd.Flags().GetString("suite")
+	title, _ := cmd.Flags().GetString("title")
+	if strings.TrimSpace(suiteID) == "" || strings.TrimSpace(title) == "" {
+		return nil, fmt.Errorf("missing required flags when --from-file is not used: --suite, --title")
+	}
+	body := map[string]any{
+		"suite_id": strings.TrimSpace(suiteID),
+		"title":    strings.TrimSpace(title),
+	}
+	setFlagIfChanged(cmd, body, "public-prompt", "public_prompt")
+	setFlagIfChanged(cmd, body, "failure-class", "failure_class")
+	setFlagIfChanged(cmd, body, "failure-summary", "failure_summary")
+	if err := setJSONFlag(cmd, body, "metadata", "metadata"); err != nil {
+		return nil, err
+	}
+	return body, nil
+}
+
+func buildAgentHarnessFailureReviewUpdateBody(cmd *cobra.Command) (map[string]any, error) {
+	if fromFile, _ := cmd.Flags().GetString("from-file"); fromFile != "" {
+		return readJSONObjectFile(fromFile)
+	}
+	body := map[string]any{}
+	setFlagIfChanged(cmd, body, "suggested-class", "suggested_class")
+	setFlagIfChanged(cmd, body, "suggested-summary", "suggested_summary")
+	setFlagIfChanged(cmd, body, "suggested-source", "suggested_source")
+	setFlagIfChanged(cmd, body, "human-class", "human_class")
+	setFlagIfChanged(cmd, body, "human-summary", "human_summary")
+	if confidence, _ := cmd.Flags().GetString("suggested-confidence"); strings.TrimSpace(confidence) != "" {
+		parsed, err := strconv.ParseFloat(strings.TrimSpace(confidence), 64)
+		if err != nil {
+			return nil, fmt.Errorf("--suggested-confidence must be a number: %w", err)
+		}
+		body["suggested_confidence"] = parsed
+	}
+	if err := setJSONFlag(cmd, body, "suggested-payload", "suggested_payload"); err != nil {
+		return nil, err
+	}
+	if err := setJSONFlag(cmd, body, "human-payload", "human_payload"); err != nil {
+		return nil, err
+	}
+	if len(body) == 0 {
+		return nil, fmt.Errorf("at least one failure-review update flag is required")
+	}
+	return body, nil
+}
+
+func agentHarnessRankingRows(ranking map[string]any) [][]string {
+	entries := mapSlice(ranking, "rankings")
+	rows := make([][]string, 0, len(entries))
+	for _, raw := range entries {
+		entry, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		rows = append(rows, []string{
+			str(entry["rank"]),
+			mapString(entry, "harness_name", "harness_id"),
+			str(entry["codex_model"]),
+			agentHarnessMetricValue(entry["success_at_1"]),
+			agentHarnessMetricValue(entry["pass_at_k"]),
+			agentHarnessCostValue(entry["cost"]),
+			agentHarnessLatencyValue(entry["latency"]),
+		})
+	}
+	return rows
+}
+
+func agentHarnessMetricValue(raw any) string {
+	metric, ok := raw.(map[string]any)
+	if !ok {
+		return ""
+	}
+	if available, ok := metric["available"].(bool); ok && !available {
+		return mapString(metric, "unavailable_reason")
+	}
+	return fmt.Sprintf("%.3f", floatValue(metric["value"]))
+}
+
+func agentHarnessCostValue(raw any) string {
+	cost, ok := raw.(map[string]any)
+	if !ok {
+		return ""
+	}
+	return fmt.Sprintf("$%.4f", floatValue(cost["mean_usd"]))
+}
+
+func agentHarnessLatencyValue(raw any) string {
+	latency, ok := raw.(map[string]any)
+	if !ok {
+		return ""
+	}
+	return fmt.Sprintf("%.1fs", floatValue(latency["mean_seconds"]))
+}
+
+func floatValue(raw any) float64 {
+	switch value := raw.(type) {
+	case float64:
+		return value
+	case float32:
+		return float64(value)
+	case int:
+		return float64(value)
+	default:
+		return 0
+	}
+}
+
 func requiredAgentHarnessCreateFlags(cmd *cobra.Command) []string {
 	required := []string{"name", "task", "auth-mode"}
 	missing := make([]string, 0, len(required))
@@ -411,8 +995,12 @@ func requiredAgentHarnessCreateFlags(cmd *cobra.Command) []string {
 
 func defaultAgentHarnessTemplateForKind(kind string) string {
 	switch strings.TrimSpace(kind) {
+	case "claude_e2b":
+		return "agentclash-claude-fullstack"
 	case "hermes_e2b":
 		return "agentclash-hermes-fullstack"
+	case "openclaw_e2b":
+		return "agentclash-openclaw-fullstack"
 	default:
 		return "codex"
 	}
@@ -441,4 +1029,16 @@ func readJSONFile(path string) (any, error) {
 		return nil, fmt.Errorf("parsing file: %w", err)
 	}
 	return value, nil
+}
+
+func readJSONObjectFile(path string) (map[string]any, error) {
+	value, err := readJSONFile(path)
+	if err != nil {
+		return nil, err
+	}
+	body, ok := value.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("parsing file: expected JSON object")
+	}
+	return body, nil
 }

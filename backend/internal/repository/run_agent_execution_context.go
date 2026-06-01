@@ -65,6 +65,7 @@ type ChallengeCaseExecutionContext struct {
 	Payload             json.RawMessage                 `json:"payload,omitempty"`
 	Inputs              []challengepack.CaseInput       `json:"inputs,omitempty"`
 	Expectations        []challengepack.CaseExpectation `json:"expectations,omitempty"`
+	UserSimulator       *challengepack.UserSimulatorSpec `json:"user_simulator,omitempty"`
 	Artifacts           []challengepack.ArtifactRef     `json:"artifacts,omitempty"`
 	Assets              []challengepack.AssetReference  `json:"assets,omitempty"`
 }
@@ -239,13 +240,22 @@ func mapRunAgentExecutionContext(row repositorysqlc.GetRunAgentExecutionContextB
 			Reason:     "snapshot model catalog entry reference is missing",
 		}
 	}
-	if row.SnapshotDeploymentType != row.RuntimeProfileExecutionTarget {
+	if row.SnapshotDeploymentType == "hosted_external" {
+		if row.RuntimeProfileExecutionTarget != "hosted_external" {
+			return RunAgentExecutionContext{}, FrozenExecutionContextError{
+				RunAgentID: row.RunAgentID,
+				Reason: fmt.Sprintf(
+					"hosted deployment snapshot requires runtime execution_target=hosted_external, got %q",
+					row.RuntimeProfileExecutionTarget,
+				),
+			}
+		}
+	} else if row.RuntimeProfileExecutionTarget == "hosted_external" {
 		return RunAgentExecutionContext{}, FrozenExecutionContextError{
 			RunAgentID: row.RunAgentID,
 			Reason: fmt.Sprintf(
-				"snapshot deployment_type=%q does not match runtime execution_target=%q",
+				"runtime execution_target=hosted_external requires hosted deployment snapshot, got %q",
 				row.SnapshotDeploymentType,
-				row.RuntimeProfileExecutionTarget,
 			),
 		}
 	}
@@ -299,7 +309,7 @@ func mapRunAgentExecutionContext(row repositorysqlc.GetRunAgentExecutionContextB
 			ID:                     row.RunID,
 			OrganizationID:         row.RunOrganizationID,
 			WorkspaceID:            row.RunWorkspaceID,
-			ChallengePackVersionID: row.RunChallengePackVersionID,
+			ChallengePackVersionID: derefUUID(row.RunChallengePackVersionID),
 			ChallengeInputSetID:    cloneUUIDPtr(row.RunChallengeInputSetID),
 			OfficialPackMode:       officialPackMode,
 			CreatedByUserID:        cloneUUIDPtr(row.RunCreatedByUserID),
@@ -324,8 +334,8 @@ func mapRunAgentExecutionContext(row repositorysqlc.GetRunAgentExecutionContextB
 			OrganizationID:            row.RunAgentOrganizationID,
 			WorkspaceID:               row.RunAgentWorkspaceID,
 			RunID:                     row.RunAgentRunID,
-			AgentDeploymentID:         row.RunAgentAgentDeploymentID,
-			AgentDeploymentSnapshotID: row.RunAgentAgentDeploymentSnapshotID,
+			AgentDeploymentID:         derefUUID(row.RunAgentAgentDeploymentID),
+			AgentDeploymentSnapshotID: derefUUID(row.RunAgentAgentDeploymentSnapshotID),
 			LaneIndex:                 row.RunAgentLaneIndex,
 			Label:                     row.RunAgentLabel,
 			Status:                    runAgentStatus,
@@ -448,6 +458,7 @@ func decodeChallengeCases(items []ChallengeInputItemExecutionContext) ([]Challen
 			Payload:             payload,
 			Inputs:              append([]challengepack.CaseInput(nil), caseDoc.Inputs...),
 			Expectations:        append([]challengepack.CaseExpectation(nil), caseDoc.Expectations...),
+			UserSimulator:       challengepack.CloneUserSimulatorSpec(caseDoc.UserSimulator),
 			Artifacts:           append([]challengepack.ArtifactRef(nil), caseDoc.Artifacts...),
 			Assets:              append([]challengepack.AssetReference(nil), caseDoc.Assets...),
 		})

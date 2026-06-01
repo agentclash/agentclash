@@ -16,43 +16,73 @@ export type BlogPostWithContent = BlogPost & {
   content: string;
 };
 
+function requiredText(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+export function parseBlogPost(slug: string, raw: string): BlogPostWithContent | null {
+  try {
+    const { data, content } = matter(raw);
+    const title = requiredText(data.title);
+    const date = requiredText(data.date);
+    const description = requiredText(data.description);
+    const author = requiredText(data.author);
+
+    if (!title || !date || !description || !author) {
+      return null;
+    }
+
+    return {
+      slug,
+      title,
+      date,
+      description,
+      author,
+      content,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function readPostBySlug(slug: string): BlogPostWithContent | null {
+  const filePath = path.join(CONTENT_DIR, `${slug}.mdx`);
+
+  if (!fs.existsSync(filePath)) return null;
+
+  try {
+    return parseBlogPost(slug, fs.readFileSync(filePath, "utf-8"));
+  } catch {
+    return null;
+  }
+}
+
 export function getAllPosts(): BlogPost[] {
   if (!fs.existsSync(CONTENT_DIR)) return [];
   const files = fs.readdirSync(CONTENT_DIR).filter((f) => f.endsWith(".mdx"));
-  const posts = files.map((filename) => {
-    const slug = filename.replace(/\.mdx$/, "");
-    const raw = fs.readFileSync(path.join(CONTENT_DIR, filename), "utf-8");
-    const { data } = matter(raw);
-    return {
-      slug,
-      title: data.title as string,
-      date: data.date as string,
-      description: data.description as string,
-      author: data.author as string,
-    };
-  });
+  const posts: BlogPost[] = [];
+
+  for (const filename of files) {
+    const post = readPostBySlug(filename.replace(/\.mdx$/, ""));
+
+    if (!post) continue;
+
+    posts.push({
+      slug: post.slug,
+      title: post.title,
+      date: post.date,
+      description: post.description,
+      author: post.author,
+    });
+  }
+
   return posts.sort((a, b) => (a.date > b.date ? -1 : 1));
 }
 
 export function getPostBySlug(slug: string): BlogPostWithContent | null {
-  const filePath = path.join(CONTENT_DIR, `${slug}.mdx`);
-  if (!fs.existsSync(filePath)) return null;
-  const raw = fs.readFileSync(filePath, "utf-8");
-  const { data, content } = matter(raw);
-  return {
-    slug,
-    title: data.title as string,
-    date: data.date as string,
-    description: data.description as string,
-    author: data.author as string,
-    content,
-  };
+  return readPostBySlug(slug);
 }
 
 export function getAllSlugs(): string[] {
-  if (!fs.existsSync(CONTENT_DIR)) return [];
-  return fs
-    .readdirSync(CONTENT_DIR)
-    .filter((f) => f.endsWith(".mdx"))
-    .map((f) => f.replace(/\.mdx$/, ""));
+  return getAllPosts().map((post) => post.slug);
 }

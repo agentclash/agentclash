@@ -10,19 +10,20 @@ import (
 	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/billing"
+	repositorysqlc "github.com/agentclash/agentclash/backend/internal/repository/sqlc"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
-var ErrBillingWebhookAlreadyProcessed = errors.New("billing webhook already processed")
-
-type repositoryExecutor interface {
-	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
-	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
-}
+var (
+	ErrBillingWebhookAlreadyProcessed = errors.New("billing webhook already processed")
+	ErrBillingTrialAlreadyUsed        = errors.New("billing trial already used")
+)
 
 type BillingCheckoutIntentInput struct {
+	ID               uuid.UUID
 	OrganizationID   uuid.UUID
 	CreatedByUserID  uuid.UUID
 	RequestedPlanKey string
@@ -47,6 +48,37 @@ type BillingCheckoutIntent struct {
 	Metadata         json.RawMessage `json:"metadata"`
 	CreatedAt        time.Time       `json:"created_at"`
 	UpdatedAt        time.Time       `json:"updated_at"`
+}
+
+type BillingAccount struct {
+	ID             uuid.UUID `json:"id"`
+	OrganizationID uuid.UUID `json:"organization_id"`
+	DodoCustomerID *string   `json:"dodo_customer_id,omitempty"`
+	BillingEmail   *string   `json:"billing_email,omitempty"`
+	Status         string    `json:"status"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
+}
+
+type BillingTrialGrantInput struct {
+	OrganizationID  uuid.UUID
+	PlanKey         string
+	BillingPeriod   string
+	StartedByUserID uuid.UUID
+	StartedAt       time.Time
+	ExpiresAt       time.Time
+}
+
+type BillingTrialGrant struct {
+	ID              uuid.UUID  `json:"id"`
+	OrganizationID  uuid.UUID  `json:"organization_id"`
+	PlanKey         string     `json:"plan_key"`
+	BillingPeriod   string     `json:"billing_period"`
+	StartedByUserID *uuid.UUID `json:"started_by_user_id,omitempty"`
+	StartedAt       time.Time  `json:"started_at"`
+	ExpiresAt       time.Time  `json:"expires_at"`
+	CreatedAt       time.Time  `json:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at"`
 }
 
 type BillingSubscriptionInput struct {
@@ -114,14 +146,17 @@ type BillingWebhookEntitlementsInput struct {
 }
 
 type BillingWebhookApplication struct {
-	Account      *BillingAccountInput
-	Subscription *BillingSubscriptionInput
-	Entitlements *BillingWebhookEntitlementsInput
+	Account          *BillingAccountInput
+	Subscription     *BillingSubscriptionInput
+	Entitlements     *BillingWebhookEntitlementsInput
+	CheckoutIntentID *uuid.UUID
 }
 
 type BillingOverview struct {
-	Entitlements billing.EffectiveEntitlements `json:"entitlements"`
-	Subscription *BillingSubscription          `json:"subscription,omitempty"`
+	Entitlements         billing.EffectiveEntitlements `json:"entitlements"`
+	Account              *BillingAccount               `json:"account,omitempty"`
+	Subscription         *BillingSubscription          `json:"subscription,omitempty"`
+	LatestCheckoutIntent *BillingCheckoutIntent        `json:"latest_checkout_intent,omitempty"`
 }
 
 type WorkspaceUsageSnapshot struct {
@@ -146,8 +181,7 @@ type OrganizationEntitlementGate struct {
 }
 
 func (r *Repository) ResolveWorkspaceEntitlements(ctx context.Context, workspaceID uuid.UUID) (uuid.UUID, billing.EffectiveEntitlements, error) {
-	var orgID uuid.UUID
-	err := r.db.QueryRow(ctx, `SELECT organization_id FROM workspaces WHERE id = $1 AND status = 'active'`, workspaceID).Scan(&orgID)
+	orgID, err := r.queries.ResolveWorkspaceOrganization(ctx, repositorysqlc.ResolveWorkspaceOrganizationParams{WorkspaceID: workspaceID})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return uuid.Nil, billing.EffectiveEntitlements{}, ErrWorkspaceNotFound
@@ -169,60 +203,22 @@ func (r *Repository) ResolveWorkspaceEntitlements(ctx context.Context, workspace
 }
 
 func (r *Repository) GetOrganizationEntitlements(ctx context.Context, orgID uuid.UUID) (billing.EffectiveEntitlements, error) {
-	var entitlements billing.EffectiveEntitlements
-	var featureFlags []byte
-	err := r.db.QueryRow(ctx, `
-		SELECT
-			plan_key,
-			billing_period,
-			status,
-			seat_quantity,
-			seats_limit,
-			workspaces_limit,
-			races_per_workspace_month,
-			max_models_per_race,
-			replay_retention_days,
-			concurrency_limit,
-			feature_flags,
-			expires_at
-		FROM organization_entitlements
-		WHERE organization_id = $1
-	`, orgID).Scan(
-		&entitlements.PlanKey,
-		&entitlements.BillingPeriod,
-		&entitlements.Status,
-		&entitlements.SeatQuantity,
-		&entitlements.SeatsLimit,
-		&entitlements.WorkspacesLimit,
-		&entitlements.RacesPerWorkspaceMonth,
-		&entitlements.MaxModelsPerRace,
-		&entitlements.ReplayRetentionDays,
-		&entitlements.ConcurrentRaces,
-		&featureFlags,
-		&entitlements.ExpiresAt,
-	)
+	row, err := r.queries.GetOrganizationEntitlements(ctx, repositorysqlc.GetOrganizationEntitlementsParams{OrganizationID: orgID})
 	if err != nil {
 		return billing.EffectiveEntitlements{}, err
 	}
-	if len(featureFlags) > 0 {
-		if err := json.Unmarshal(featureFlags, &entitlements.FeatureFlags); err != nil {
-			return billing.EffectiveEntitlements{}, fmt.Errorf("decode feature flags: %w", err)
-		}
-	}
-	if entitlements.FeatureFlags == nil {
-		entitlements.FeatureFlags = map[string]bool{}
-	}
-	if plan, ok := billing.PlanByKey(entitlements.PlanKey); ok {
-		entitlements.UpgradeTarget = plan.UpgradeTarget
+	entitlements, err := mapEffectiveEntitlements(row)
+	if err != nil {
+		return billing.EffectiveEntitlements{}, err
 	}
 	return entitlements.WithComputedStatus(time.Now().UTC()), nil
 }
 
 func (r *Repository) UpsertOrganizationEntitlements(ctx context.Context, orgID uuid.UUID, entitlements billing.EffectiveEntitlements, sourceSubscriptionID *uuid.UUID, expiresAt *time.Time) error {
-	return upsertOrganizationEntitlements(ctx, r.db, orgID, entitlements, sourceSubscriptionID, expiresAt)
+	return upsertOrganizationEntitlements(ctx, r.queries, orgID, entitlements, sourceSubscriptionID, expiresAt)
 }
 
-func upsertOrganizationEntitlements(ctx context.Context, exec repositoryExecutor, orgID uuid.UUID, entitlements billing.EffectiveEntitlements, sourceSubscriptionID *uuid.UUID, expiresAt *time.Time) error {
+func upsertOrganizationEntitlements(ctx context.Context, queries *repositorysqlc.Queries, orgID uuid.UUID, entitlements billing.EffectiveEntitlements, sourceSubscriptionID *uuid.UUID, expiresAt *time.Time) error {
 	if expiresAt == nil && entitlements.ExpiresAt != nil {
 		expiresAt = entitlements.ExpiresAt
 	}
@@ -230,42 +226,22 @@ func upsertOrganizationEntitlements(ctx context.Context, exec repositoryExecutor
 	if err != nil {
 		return fmt.Errorf("marshal feature flags: %w", err)
 	}
-	_, err = exec.Exec(ctx, `
-		INSERT INTO organization_entitlements (
-			organization_id,
-			plan_key,
-			billing_period,
-			status,
-			seat_quantity,
-			seats_limit,
-			workspaces_limit,
-			races_per_workspace_month,
-			max_models_per_race,
-			replay_retention_days,
-			concurrency_limit,
-			feature_flags,
-			source_subscription_id,
-			effective_at,
-			expires_at
-		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13, now(), $14)
-		ON CONFLICT (organization_id) DO UPDATE SET
-			plan_key = EXCLUDED.plan_key,
-			billing_period = EXCLUDED.billing_period,
-			status = EXCLUDED.status,
-			seat_quantity = EXCLUDED.seat_quantity,
-			seats_limit = EXCLUDED.seats_limit,
-			workspaces_limit = EXCLUDED.workspaces_limit,
-			races_per_workspace_month = EXCLUDED.races_per_workspace_month,
-			max_models_per_race = EXCLUDED.max_models_per_race,
-			replay_retention_days = EXCLUDED.replay_retention_days,
-			concurrency_limit = EXCLUDED.concurrency_limit,
-			feature_flags = EXCLUDED.feature_flags,
-			source_subscription_id = EXCLUDED.source_subscription_id,
-			effective_at = EXCLUDED.effective_at,
-			expires_at = EXCLUDED.expires_at
-	`, orgID, entitlements.PlanKey, entitlements.BillingPeriod, entitlements.Status, entitlements.SeatQuantity, entitlements.SeatsLimit, entitlements.WorkspacesLimit, entitlements.RacesPerWorkspaceMonth, entitlements.MaxModelsPerRace, entitlements.ReplayRetentionDays, entitlements.ConcurrentRaces, featureFlags, sourceSubscriptionID, expiresAt)
-	if err != nil {
+	if err := queries.UpsertOrganizationEntitlements(ctx, repositorysqlc.UpsertOrganizationEntitlementsParams{
+		OrganizationID:         orgID,
+		PlanKey:                entitlements.PlanKey,
+		BillingPeriod:          entitlements.BillingPeriod,
+		Status:                 entitlements.Status,
+		SeatQuantity:           int32(entitlements.SeatQuantity),
+		SeatsLimit:             int32Ptr(entitlements.SeatsLimit),
+		WorkspacesLimit:        int32Ptr(entitlements.WorkspacesLimit),
+		RacesPerWorkspaceMonth: int32Ptr(entitlements.RacesPerWorkspaceMonth),
+		MaxModelsPerRace:       int32Ptr(entitlements.MaxModelsPerRace),
+		ReplayRetentionDays:    int32Ptr(entitlements.ReplayRetentionDays),
+		ConcurrencyLimit:       int32Ptr(entitlements.ConcurrentRaces),
+		FeatureFlags:           featureFlags,
+		SourceSubscriptionID:   sourceSubscriptionID,
+		ExpiresAt:              toPGTimestamp(expiresAt),
+	}); err != nil {
 		return fmt.Errorf("upsert organization entitlements: %w", err)
 	}
 	return nil
@@ -277,50 +253,34 @@ func (r *Repository) ensureDefaultOrganizationEntitlements(ctx context.Context, 
 }
 
 func (r *Repository) CountActiveOrgMembers(ctx context.Context, orgID uuid.UUID) (int, error) {
-	var count int
-	err := r.db.QueryRow(ctx, `
-		SELECT count(*)
-		FROM organization_memberships
-		WHERE organization_id = $1
-		  AND membership_status = 'active'
-	`, orgID).Scan(&count)
+	count, err := r.queries.CountActiveOrgMembers(ctx, repositorysqlc.CountActiveOrgMembersParams{OrganizationID: orgID})
 	if err != nil {
 		return 0, fmt.Errorf("count active org members: %w", err)
 	}
-	return count, nil
+	return int(count), nil
 }
 
 func (r *Repository) CountActiveWorkspaces(ctx context.Context, orgID uuid.UUID) (int, error) {
-	var count int
-	err := r.db.QueryRow(ctx, `
-		SELECT count(*)
-		FROM workspaces
-		WHERE organization_id = $1
-		  AND status = 'active'
-	`, orgID).Scan(&count)
+	count, err := r.queries.CountActiveWorkspaces(ctx, repositorysqlc.CountActiveWorkspacesParams{OrganizationID: orgID})
 	if err != nil {
 		return 0, fmt.Errorf("count active workspaces: %w", err)
 	}
-	return count, nil
+	return int(count), nil
 }
 
 func (r *Repository) CountActiveWorkspaceRuns(ctx context.Context, workspaceID uuid.UUID) (int, error) {
-	var count int
-	err := r.db.QueryRow(ctx, activeWorkspaceRunsSQL, workspaceID).Scan(&count)
+	count, err := r.queries.CountActiveWorkspaceRuns(ctx, repositorysqlc.CountActiveWorkspaceRunsParams{WorkspaceID: workspaceID})
 	if err != nil {
 		return 0, fmt.Errorf("count active workspace runs: %w", err)
 	}
-	return count, nil
+	return int(count), nil
 }
 
 func (r *Repository) GetWorkspaceUsageSnapshot(ctx context.Context, workspaceID uuid.UUID, windowStart, windowEnd time.Time) (WorkspaceUsageSnapshot, error) {
-	var count int
-	err := r.db.QueryRow(ctx, `
-		SELECT race_count
-		FROM workspace_usage_windows
-		WHERE workspace_id = $1
-		  AND window_start = $2
-	`, workspaceID, windowStart).Scan(&count)
+	count, err := r.queries.GetWorkspaceUsageWindowRaceCount(ctx, repositorysqlc.GetWorkspaceUsageWindowRaceCountParams{
+		WorkspaceID: workspaceID,
+		WindowStart: pgtype.Timestamptz{Time: windowStart.UTC(), Valid: true},
+	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		count = 0
 	} else if err != nil {
@@ -332,7 +292,7 @@ func (r *Repository) GetWorkspaceUsageSnapshot(ctx context.Context, workspaceID 
 	}
 	return WorkspaceUsageSnapshot{
 		WorkspaceID: workspaceID,
-		RaceCount:   count,
+		RaceCount:   int(count),
 		ActiveRuns:  activeRuns,
 		WindowStart: windowStart,
 		WindowEnd:   windowEnd,
@@ -341,44 +301,34 @@ func (r *Repository) GetWorkspaceUsageSnapshot(ctx context.Context, workspaceID 
 
 func (r *Repository) CreateBillingCheckoutIntent(ctx context.Context, input BillingCheckoutIntentInput) (BillingCheckoutIntent, error) {
 	metadata := normalizeJSON(input.Metadata)
-	var intent BillingCheckoutIntent
-	err := r.db.QueryRow(ctx, `
-		INSERT INTO billing_checkout_intents (
-			organization_id,
-			created_by_user_id,
-			requested_plan_key,
-			billing_period,
-			seat_quantity,
-			return_url,
-			dodo_checkout_session_id,
-			checkout_url,
-			status,
-			metadata
-		)
-		VALUES ($1, $2, $3, $4, $5, $6, NULLIF($7, ''), $8, 'created', $9::jsonb)
-		RETURNING id, organization_id, requested_plan_key, billing_period, seat_quantity, return_url, checkout_url, dodo_checkout_session_id, status, metadata, created_at, updated_at
-	`, input.OrganizationID, input.CreatedByUserID, input.RequestedPlanKey, input.BillingPeriod, input.SeatQuantity, input.ReturnURL, input.DodoCheckoutID, input.CheckoutURL, metadata).Scan(
-		&intent.ID,
-		&intent.OrganizationID,
-		&intent.RequestedPlanKey,
-		&intent.BillingPeriod,
-		&intent.SeatQuantity,
-		&intent.ReturnURL,
-		&intent.CheckoutURL,
-		&intent.DodoCheckoutID,
-		&intent.Status,
-		&intent.Metadata,
-		&intent.CreatedAt,
-		&intent.UpdatedAt,
-	)
+	intentID := input.ID
+	if intentID == uuid.Nil {
+		intentID = uuid.New()
+	}
+	createdBy := &input.CreatedByUserID
+	if input.CreatedByUserID == uuid.Nil {
+		createdBy = nil
+	}
+	row, err := r.queries.CreateBillingCheckoutIntent(ctx, repositorysqlc.CreateBillingCheckoutIntentParams{
+		ID:                    intentID,
+		OrganizationID:        input.OrganizationID,
+		CreatedByUserID:       createdBy,
+		RequestedPlanKey:      input.RequestedPlanKey,
+		BillingPeriod:         input.BillingPeriod,
+		SeatQuantity:          int32(input.SeatQuantity),
+		ReturnUrl:             input.ReturnURL,
+		DodoCheckoutSessionID: input.DodoCheckoutID,
+		CheckoutUrl:           input.CheckoutURL,
+		Metadata:              metadata,
+	})
 	if err != nil {
 		return BillingCheckoutIntent{}, fmt.Errorf("create billing checkout intent: %w", err)
 	}
-	return intent, nil
+	return mapBillingCheckoutIntent(row)
 }
 
 func (r *Repository) UpsertBillingAccount(ctx context.Context, orgID uuid.UUID, dodoCustomerID string, billingEmail string, status string) error {
-	return upsertBillingAccount(ctx, r.db, BillingAccountInput{
+	return upsertBillingAccount(ctx, r.queries, BillingAccountInput{
 		OrganizationID: orgID,
 		DodoCustomerID: dodoCustomerID,
 		BillingEmail:   billingEmail,
@@ -386,77 +336,56 @@ func (r *Repository) UpsertBillingAccount(ctx context.Context, orgID uuid.UUID, 
 	})
 }
 
-func upsertBillingAccount(ctx context.Context, exec repositoryExecutor, input BillingAccountInput) error {
+func upsertBillingAccount(ctx context.Context, queries *repositorysqlc.Queries, input BillingAccountInput) error {
 	status := input.Status
 	if status == "" {
 		status = "active"
 	}
-	_, err := exec.Exec(ctx, `
-		INSERT INTO billing_accounts (organization_id, dodo_customer_id, billing_email, status)
-		VALUES ($1, NULLIF($2, ''), NULLIF($3, ''), $4)
-		ON CONFLICT (organization_id) DO UPDATE SET
-			dodo_customer_id = COALESCE(EXCLUDED.dodo_customer_id, billing_accounts.dodo_customer_id),
-			billing_email = COALESCE(EXCLUDED.billing_email, billing_accounts.billing_email),
-			status = EXCLUDED.status
-	`, input.OrganizationID, input.DodoCustomerID, input.BillingEmail, status)
-	if err != nil {
+	if err := queries.UpsertBillingAccount(ctx, repositorysqlc.UpsertBillingAccountParams{
+		OrganizationID: input.OrganizationID,
+		DodoCustomerID: input.DodoCustomerID,
+		BillingEmail:   input.BillingEmail,
+		Status:         status,
+	}); err != nil {
 		return fmt.Errorf("upsert billing account: %w", err)
 	}
 	return nil
 }
 
+func (r *Repository) GetBillingAccount(ctx context.Context, orgID uuid.UUID) (BillingAccount, error) {
+	row, err := r.queries.GetBillingAccountByOrganizationID(ctx, repositorysqlc.GetBillingAccountByOrganizationIDParams{OrganizationID: orgID})
+	if err != nil {
+		return BillingAccount{}, err
+	}
+	return mapBillingAccount(row)
+}
+
 func (r *Repository) UpsertBillingSubscription(ctx context.Context, input BillingSubscriptionInput) (BillingSubscription, error) {
-	subscription, _, err := upsertBillingSubscription(ctx, r.db, input)
+	subscription, _, err := upsertBillingSubscription(ctx, r.queries, input)
 	return subscription, err
 }
 
-func upsertBillingSubscription(ctx context.Context, exec repositoryExecutor, input BillingSubscriptionInput) (BillingSubscription, bool, error) {
+func upsertBillingSubscription(ctx context.Context, queries *repositorysqlc.Queries, input BillingSubscriptionInput) (BillingSubscription, bool, error) {
 	addons := normalizeJSON(input.AddonQuantities)
-	subscription, err := scanBillingSubscription(exec.QueryRow(ctx, `
-		INSERT INTO billing_subscriptions (
-			organization_id,
-			dodo_subscription_id,
-			dodo_customer_id,
-			dodo_product_id,
-			plan_key,
-			billing_period,
-			status,
-			next_billing_date,
-			cancel_at_next_billing_date,
-			cancelled_at,
-			expires_at,
-			trial_period_days,
-			seat_quantity,
-			addon_quantities,
-			latest_dodo_event_at
-		)
-		VALUES ($1, $2, NULLIF($3, ''), $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::jsonb, $15)
-		ON CONFLICT (dodo_subscription_id) DO UPDATE SET
-			organization_id = EXCLUDED.organization_id,
-			dodo_customer_id = COALESCE(EXCLUDED.dodo_customer_id, billing_subscriptions.dodo_customer_id),
-			dodo_product_id = EXCLUDED.dodo_product_id,
-			plan_key = EXCLUDED.plan_key,
-			billing_period = EXCLUDED.billing_period,
-			status = EXCLUDED.status,
-			next_billing_date = EXCLUDED.next_billing_date,
-			cancel_at_next_billing_date = EXCLUDED.cancel_at_next_billing_date,
-			cancelled_at = EXCLUDED.cancelled_at,
-			expires_at = EXCLUDED.expires_at,
-			trial_period_days = EXCLUDED.trial_period_days,
-			seat_quantity = EXCLUDED.seat_quantity,
-			addon_quantities = EXCLUDED.addon_quantities,
-			latest_dodo_event_at = COALESCE(
-				GREATEST(billing_subscriptions.latest_dodo_event_at, EXCLUDED.latest_dodo_event_at),
-				billing_subscriptions.latest_dodo_event_at,
-				EXCLUDED.latest_dodo_event_at
-			)
-		WHERE billing_subscriptions.latest_dodo_event_at IS NULL
-		   OR EXCLUDED.latest_dodo_event_at IS NULL
-		   OR EXCLUDED.latest_dodo_event_at >= billing_subscriptions.latest_dodo_event_at
-		RETURNING id, organization_id, dodo_subscription_id, dodo_customer_id, dodo_product_id, plan_key, billing_period, status, next_billing_date, cancel_at_next_billing_date, cancelled_at, expires_at, trial_period_days, seat_quantity, addon_quantities, latest_dodo_event_at, created_at, updated_at
-	`, input.OrganizationID, input.DodoSubscriptionID, input.DodoCustomerID, input.DodoProductID, input.PlanKey, input.BillingPeriod, input.Status, input.NextBillingDate, input.CancelAtNextBillingDate, input.CancelledAt, input.ExpiresAt, input.TrialPeriodDays, input.SeatQuantity, addons, input.LatestDodoEventAt))
+	subscriptionRow, err := queries.UpsertBillingSubscription(ctx, repositorysqlc.UpsertBillingSubscriptionParams{
+		OrganizationID:          input.OrganizationID,
+		DodoSubscriptionID:      input.DodoSubscriptionID,
+		DodoCustomerID:          input.DodoCustomerID,
+		DodoProductID:           input.DodoProductID,
+		PlanKey:                 input.PlanKey,
+		BillingPeriod:           input.BillingPeriod,
+		Status:                  input.Status,
+		NextBillingDate:         toPGTimestamp(input.NextBillingDate),
+		CancelAtNextBillingDate: input.CancelAtNextBillingDate,
+		CancelledAt:             toPGTimestamp(input.CancelledAt),
+		ExpiresAt:               toPGTimestamp(input.ExpiresAt),
+		TrialPeriodDays:         int32Ptr(input.TrialPeriodDays),
+		SeatQuantity:            int32(input.SeatQuantity),
+		AddonQuantities:         addons,
+		LatestDodoEventAt:       toPGTimestamp(input.LatestDodoEventAt),
+	})
 	if errors.Is(err, pgx.ErrNoRows) {
-		subscription, selectErr := getBillingSubscriptionByDodoID(ctx, exec, input.DodoSubscriptionID)
+		subscription, selectErr := getBillingSubscriptionByDodoID(ctx, queries, input.DodoSubscriptionID)
 		if selectErr != nil {
 			return BillingSubscription{}, false, selectErr
 		}
@@ -464,6 +393,10 @@ func upsertBillingSubscription(ctx context.Context, exec repositoryExecutor, inp
 	}
 	if err != nil {
 		return BillingSubscription{}, false, fmt.Errorf("upsert billing subscription: %w", err)
+	}
+	subscription, err := mapBillingSubscription(subscriptionRow)
+	if err != nil {
+		return BillingSubscription{}, false, err
 	}
 	return subscription, true, nil
 }
@@ -480,31 +413,35 @@ func (r *Repository) GetBillingOverview(ctx context.Context, orgID uuid.UUID) (B
 		return BillingOverview{}, err
 	}
 
-	subscription, err := r.getLatestBillingSubscription(ctx, orgID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return BillingOverview{Entitlements: entitlements}, nil
-	}
-	if err != nil {
+	overview := BillingOverview{Entitlements: entitlements}
+	account, err := r.GetBillingAccount(ctx, orgID)
+	if err == nil {
+		overview.Account = &account
+	} else if !errors.Is(err, pgx.ErrNoRows) {
 		return BillingOverview{}, err
 	}
-	return BillingOverview{Entitlements: entitlements, Subscription: &subscription}, nil
+
+	subscription, err := r.getLatestBillingSubscription(ctx, orgID)
+	if err == nil {
+		overview.Subscription = &subscription
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return BillingOverview{}, err
+	}
+
+	intent, err := r.getLatestBillingCheckoutIntent(ctx, orgID)
+	if err == nil {
+		overview.LatestCheckoutIntent = &intent
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return BillingOverview{}, err
+	}
+	return overview, nil
 }
 
 func (r *Repository) FindOrganizationByDodoSubscriptionOrCustomer(ctx context.Context, subscriptionID string, customerID string) (uuid.UUID, error) {
-	var orgID uuid.UUID
-	err := r.db.QueryRow(ctx, `
-		SELECT organization_id FROM (
-			SELECT organization_id, 1 AS priority, latest_dodo_event_at AS event_at
-			FROM billing_subscriptions
-			WHERE dodo_subscription_id = $1
-			UNION ALL
-			SELECT organization_id, 2 AS priority, updated_at AS event_at
-			FROM billing_accounts
-			WHERE dodo_customer_id = NULLIF($2, '')
-		) candidates
-		ORDER BY priority, event_at DESC NULLS LAST
-		LIMIT 1
-	`, subscriptionID, customerID).Scan(&orgID)
+	orgID, err := r.queries.FindOrganizationByDodoSubscriptionOrCustomer(ctx, repositorysqlc.FindOrganizationByDodoSubscriptionOrCustomerParams{
+		DodoSubscriptionID: subscriptionID,
+		DodoCustomerID:     customerID,
+	})
 	if err != nil {
 		return uuid.Nil, err
 	}
@@ -521,17 +458,18 @@ func (r *Repository) ApplyBillingWebhookEvent(ctx context.Context, event Billing
 	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1::text, 435))`, event.WebhookID); err != nil {
 		return false, fmt.Errorf("lock billing webhook event: %w", err)
 	}
+	queries := r.queries.WithTx(tx)
 
-	duplicate, err := beginBillingWebhookEvent(ctx, tx, event)
+	duplicate, err := beginBillingWebhookEvent(ctx, queries, event)
 	if err != nil || duplicate {
 		return duplicate, err
 	}
 
-	if err := applyBillingWebhookApplication(ctx, tx, application); err != nil {
+	if err := applyBillingWebhookApplication(ctx, queries, application); err != nil {
 		return false, err
 	}
 
-	if err := finishBillingWebhookEvent(ctx, tx, event.WebhookID, "processed", ""); err != nil {
+	if err := finishBillingWebhookEvent(ctx, queries, event.WebhookID, "processed", ""); err != nil {
 		return false, err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -540,37 +478,18 @@ func (r *Repository) ApplyBillingWebhookEvent(ctx context.Context, event Billing
 	return false, nil
 }
 
-func beginBillingWebhookEvent(ctx context.Context, exec repositoryExecutor, input BillingWebhookEventInput) (bool, error) {
+func beginBillingWebhookEvent(ctx context.Context, queries *repositorysqlc.Queries, input BillingWebhookEventInput) (bool, error) {
 	payload := normalizeJSON(input.Payload)
 	hash := sha256.Sum256(payload)
-	var status string
-	err := exec.QueryRow(ctx, `
-		INSERT INTO billing_webhook_events (
-			webhook_id,
-			event_type,
-			dodo_business_id,
-			payload_type,
-			event_timestamp,
-			processed_at,
-			payload_hash,
-			status,
-			error,
-			payload
-		)
-		VALUES ($1, $2, $3, $4, $5, NULL, $6, 'failed', NULL, $7::jsonb)
-		ON CONFLICT (webhook_id) DO UPDATE SET
-			event_type = EXCLUDED.event_type,
-			dodo_business_id = EXCLUDED.dodo_business_id,
-			payload_type = EXCLUDED.payload_type,
-			event_timestamp = EXCLUDED.event_timestamp,
-			processed_at = NULL,
-			payload_hash = EXCLUDED.payload_hash,
-			status = 'failed',
-			error = NULL,
-			payload = EXCLUDED.payload
-		WHERE billing_webhook_events.status = 'failed'
-		RETURNING status
-	`, input.WebhookID, input.EventType, input.DodoBusinessID, input.PayloadType, input.EventTimestamp, hex.EncodeToString(hash[:]), payload).Scan(&status)
+	_, err := queries.BeginBillingWebhookEvent(ctx, repositorysqlc.BeginBillingWebhookEventParams{
+		WebhookID:      input.WebhookID,
+		EventType:      input.EventType,
+		DodoBusinessID: input.DodoBusinessID,
+		PayloadType:    input.PayloadType,
+		EventTimestamp: toPGTimestamp(input.EventTimestamp),
+		PayloadHash:    hex.EncodeToString(hash[:]),
+		Payload:        payload,
+	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return true, nil
 	}
@@ -580,31 +499,29 @@ func beginBillingWebhookEvent(ctx context.Context, exec repositoryExecutor, inpu
 	return false, nil
 }
 
-func finishBillingWebhookEvent(ctx context.Context, exec repositoryExecutor, webhookID string, status string, message string) error {
+func finishBillingWebhookEvent(ctx context.Context, queries *repositorysqlc.Queries, webhookID string, status string, message string) error {
 	var errorMessage *string
 	if message != "" {
 		errorMessage = &message
 	}
-	tag, err := exec.Exec(ctx, `
-		UPDATE billing_webhook_events
-		SET status = $2,
-		    error = $3,
-		    processed_at = now()
-		WHERE webhook_id = $1
-	`, webhookID, status, errorMessage)
+	rows, err := queries.FinishBillingWebhookEvent(ctx, repositorysqlc.FinishBillingWebhookEventParams{
+		WebhookID: webhookID,
+		Status:    status,
+		Error:     errorMessage,
+	})
 	if err != nil {
 		return fmt.Errorf("finish billing webhook event: %w", err)
 	}
-	if tag.RowsAffected() == 0 {
+	if rows == 0 {
 		return ErrBillingWebhookAlreadyProcessed
 	}
 	return nil
 }
 
-func applyBillingWebhookApplication(ctx context.Context, exec repositoryExecutor, application BillingWebhookApplication) error {
+func applyBillingWebhookApplication(ctx context.Context, queries *repositorysqlc.Queries, application BillingWebhookApplication) error {
 	var subscriptionID *uuid.UUID
 	if application.Subscription != nil {
-		subscription, applied, err := upsertBillingSubscription(ctx, exec, *application.Subscription)
+		subscription, applied, err := upsertBillingSubscription(ctx, queries, *application.Subscription)
 		if err != nil {
 			return err
 		}
@@ -614,8 +531,13 @@ func applyBillingWebhookApplication(ctx context.Context, exec repositoryExecutor
 		subscriptionID = &subscription.ID
 	}
 	if application.Account != nil {
-		if err := upsertBillingAccount(ctx, exec, *application.Account); err != nil {
+		if err := upsertBillingAccount(ctx, queries, *application.Account); err != nil {
 			return err
+		}
+	}
+	if application.CheckoutIntentID != nil {
+		if _, err := queries.MarkBillingCheckoutIntentCompleted(ctx, repositorysqlc.MarkBillingCheckoutIntentCompletedParams{ID: *application.CheckoutIntentID}); err != nil {
+			return fmt.Errorf("mark billing checkout intent completed: %w", err)
 		}
 	}
 	if application.Entitlements != nil {
@@ -623,7 +545,7 @@ func applyBillingWebhookApplication(ctx context.Context, exec repositoryExecutor
 		if application.Entitlements.UseSubscriptionAsSource {
 			sourceSubscriptionID = subscriptionID
 		}
-		if err := upsertOrganizationEntitlements(ctx, exec, application.Entitlements.OrganizationID, application.Entitlements.Entitlements, sourceSubscriptionID, application.Entitlements.ExpiresAt); err != nil {
+		if err := upsertOrganizationEntitlements(ctx, queries, application.Entitlements.OrganizationID, application.Entitlements.Entitlements, sourceSubscriptionID, application.Entitlements.ExpiresAt); err != nil {
 			return err
 		}
 	}
@@ -631,49 +553,234 @@ func applyBillingWebhookApplication(ctx context.Context, exec repositoryExecutor
 }
 
 func (r *Repository) getLatestBillingSubscription(ctx context.Context, orgID uuid.UUID) (BillingSubscription, error) {
-	return scanBillingSubscription(r.db.QueryRow(ctx, `
-		SELECT id, organization_id, dodo_subscription_id, dodo_customer_id, dodo_product_id, plan_key, billing_period, status, next_billing_date, cancel_at_next_billing_date, cancelled_at, expires_at, trial_period_days, seat_quantity, addon_quantities, latest_dodo_event_at, created_at, updated_at
-		FROM billing_subscriptions
-		WHERE organization_id = $1
-		ORDER BY latest_dodo_event_at DESC NULLS LAST, updated_at DESC
-		LIMIT 1
-	`, orgID))
-}
-
-func getBillingSubscriptionByDodoID(ctx context.Context, exec repositoryExecutor, subscriptionID string) (BillingSubscription, error) {
-	return scanBillingSubscription(exec.QueryRow(ctx, `
-		SELECT id, organization_id, dodo_subscription_id, dodo_customer_id, dodo_product_id, plan_key, billing_period, status, next_billing_date, cancel_at_next_billing_date, cancelled_at, expires_at, trial_period_days, seat_quantity, addon_quantities, latest_dodo_event_at, created_at, updated_at
-		FROM billing_subscriptions
-		WHERE dodo_subscription_id = $1
-	`, subscriptionID))
-}
-
-func scanBillingSubscription(row pgx.Row) (BillingSubscription, error) {
-	var subscription BillingSubscription
-	err := row.Scan(
-		&subscription.ID,
-		&subscription.OrganizationID,
-		&subscription.DodoSubscriptionID,
-		&subscription.DodoCustomerID,
-		&subscription.DodoProductID,
-		&subscription.PlanKey,
-		&subscription.BillingPeriod,
-		&subscription.Status,
-		&subscription.NextBillingDate,
-		&subscription.CancelAtNextBillingDate,
-		&subscription.CancelledAt,
-		&subscription.ExpiresAt,
-		&subscription.TrialPeriodDays,
-		&subscription.SeatQuantity,
-		&subscription.AddonQuantities,
-		&subscription.LatestDodoEventAt,
-		&subscription.CreatedAt,
-		&subscription.UpdatedAt,
-	)
+	row, err := r.queries.GetLatestBillingSubscriptionByOrganizationID(ctx, repositorysqlc.GetLatestBillingSubscriptionByOrganizationIDParams{OrganizationID: orgID})
 	if err != nil {
 		return BillingSubscription{}, err
 	}
-	return subscription, nil
+	return mapBillingSubscription(row)
+}
+
+func (r *Repository) getLatestBillingCheckoutIntent(ctx context.Context, orgID uuid.UUID) (BillingCheckoutIntent, error) {
+	row, err := r.queries.GetLatestBillingCheckoutIntentByOrganizationID(ctx, repositorysqlc.GetLatestBillingCheckoutIntentByOrganizationIDParams{OrganizationID: orgID})
+	if err != nil {
+		return BillingCheckoutIntent{}, err
+	}
+	return mapBillingCheckoutIntent(row)
+}
+
+func getBillingSubscriptionByDodoID(ctx context.Context, queries *repositorysqlc.Queries, subscriptionID string) (BillingSubscription, error) {
+	row, err := queries.GetBillingSubscriptionByDodoID(ctx, repositorysqlc.GetBillingSubscriptionByDodoIDParams{DodoSubscriptionID: subscriptionID})
+	if err != nil {
+		return BillingSubscription{}, err
+	}
+	return mapBillingSubscription(row)
+}
+
+func (r *Repository) CreateBillingTrialGrant(ctx context.Context, input BillingTrialGrantInput) (BillingTrialGrant, error) {
+	startedBy := &input.StartedByUserID
+	if input.StartedByUserID == uuid.Nil {
+		startedBy = nil
+	}
+	row, err := r.queries.CreateBillingTrialGrant(ctx, repositorysqlc.CreateBillingTrialGrantParams{
+		OrganizationID:  input.OrganizationID,
+		PlanKey:         input.PlanKey,
+		BillingPeriod:   input.BillingPeriod,
+		StartedByUserID: startedBy,
+		StartedAt:       pgtype.Timestamptz{Time: input.StartedAt.UTC(), Valid: true},
+		ExpiresAt:       pgtype.Timestamptz{Time: input.ExpiresAt.UTC(), Valid: true},
+	})
+	if err != nil {
+		if isUniqueViolation(err) {
+			return BillingTrialGrant{}, ErrBillingTrialAlreadyUsed
+		}
+		return BillingTrialGrant{}, fmt.Errorf("create billing trial grant: %w", err)
+	}
+	return mapBillingTrialGrant(row)
+}
+
+func mapEffectiveEntitlements(row repositorysqlc.GetOrganizationEntitlementsRow) (billing.EffectiveEntitlements, error) {
+	var featureFlags map[string]bool
+	if len(row.FeatureFlags) > 0 {
+		if err := json.Unmarshal(row.FeatureFlags, &featureFlags); err != nil {
+			return billing.EffectiveEntitlements{}, fmt.Errorf("decode feature flags: %w", err)
+		}
+	}
+	if featureFlags == nil {
+		featureFlags = map[string]bool{}
+	}
+	entitlements := billing.EffectiveEntitlements{
+		PlanKey:                row.PlanKey,
+		BillingPeriod:          row.BillingPeriod,
+		Status:                 row.Status,
+		SeatQuantity:           int(row.SeatQuantity),
+		SeatsLimit:             intPtrFromInt32(row.SeatsLimit),
+		WorkspacesLimit:        intPtrFromInt32(row.WorkspacesLimit),
+		RacesPerWorkspaceMonth: intPtrFromInt32(row.RacesPerWorkspaceMonth),
+		MaxModelsPerRace:       intPtrFromInt32(row.MaxModelsPerRace),
+		ReplayRetentionDays:    intPtrFromInt32(row.ReplayRetentionDays),
+		ConcurrentRaces:        intPtrFromInt32(row.ConcurrencyLimit),
+		FeatureFlags:           featureFlags,
+		ExpiresAt:              optionalTime(row.ExpiresAt),
+	}
+	if plan, ok := billing.PlanByKey(entitlements.PlanKey); ok {
+		entitlements.UpgradeTarget = plan.UpgradeTarget
+	}
+	return entitlements, nil
+}
+
+func mapBillingCheckoutIntent(row any) (BillingCheckoutIntent, error) {
+	switch typed := row.(type) {
+	case repositorysqlc.CreateBillingCheckoutIntentRow:
+		createdAt, err := requiredTime("billing_checkout_intents.created_at", typed.CreatedAt)
+		if err != nil {
+			return BillingCheckoutIntent{}, err
+		}
+		updatedAt, err := requiredTime("billing_checkout_intents.updated_at", typed.UpdatedAt)
+		if err != nil {
+			return BillingCheckoutIntent{}, err
+		}
+		return BillingCheckoutIntent{
+			ID:               typed.ID,
+			OrganizationID:   typed.OrganizationID,
+			RequestedPlanKey: typed.RequestedPlanKey,
+			BillingPeriod:    typed.BillingPeriod,
+			SeatQuantity:     int(typed.SeatQuantity),
+			ReturnURL:        typed.ReturnUrl,
+			CheckoutURL:      typed.CheckoutUrl,
+			DodoCheckoutID:   typed.DodoCheckoutSessionID,
+			Status:           typed.Status,
+			Metadata:         cloneJSON(typed.Metadata),
+			CreatedAt:        createdAt,
+			UpdatedAt:        updatedAt,
+		}, nil
+	case repositorysqlc.GetLatestBillingCheckoutIntentByOrganizationIDRow:
+		createdAt, err := requiredTime("billing_checkout_intents.created_at", typed.CreatedAt)
+		if err != nil {
+			return BillingCheckoutIntent{}, err
+		}
+		updatedAt, err := requiredTime("billing_checkout_intents.updated_at", typed.UpdatedAt)
+		if err != nil {
+			return BillingCheckoutIntent{}, err
+		}
+		return BillingCheckoutIntent{
+			ID:               typed.ID,
+			OrganizationID:   typed.OrganizationID,
+			RequestedPlanKey: typed.RequestedPlanKey,
+			BillingPeriod:    typed.BillingPeriod,
+			SeatQuantity:     int(typed.SeatQuantity),
+			ReturnURL:        typed.ReturnUrl,
+			CheckoutURL:      typed.CheckoutUrl,
+			DodoCheckoutID:   typed.DodoCheckoutSessionID,
+			Status:           typed.Status,
+			Metadata:         cloneJSON(typed.Metadata),
+			CreatedAt:        createdAt,
+			UpdatedAt:        updatedAt,
+		}, nil
+	default:
+		return BillingCheckoutIntent{}, fmt.Errorf("unsupported billing checkout intent row %T", row)
+	}
+}
+
+func mapBillingAccount(row repositorysqlc.BillingAccount) (BillingAccount, error) {
+	createdAt, err := requiredTime("billing_accounts.created_at", row.CreatedAt)
+	if err != nil {
+		return BillingAccount{}, err
+	}
+	updatedAt, err := requiredTime("billing_accounts.updated_at", row.UpdatedAt)
+	if err != nil {
+		return BillingAccount{}, err
+	}
+	return BillingAccount{
+		ID:             row.ID,
+		OrganizationID: row.OrganizationID,
+		DodoCustomerID: row.DodoCustomerID,
+		BillingEmail:   row.BillingEmail,
+		Status:         row.Status,
+		CreatedAt:      createdAt,
+		UpdatedAt:      updatedAt,
+	}, nil
+}
+
+func mapBillingSubscription(row repositorysqlc.BillingSubscription) (BillingSubscription, error) {
+	createdAt, err := requiredTime("billing_subscriptions.created_at", row.CreatedAt)
+	if err != nil {
+		return BillingSubscription{}, err
+	}
+	updatedAt, err := requiredTime("billing_subscriptions.updated_at", row.UpdatedAt)
+	if err != nil {
+		return BillingSubscription{}, err
+	}
+	return BillingSubscription{
+		ID:                      row.ID,
+		OrganizationID:          row.OrganizationID,
+		DodoSubscriptionID:      row.DodoSubscriptionID,
+		DodoCustomerID:          row.DodoCustomerID,
+		DodoProductID:           row.DodoProductID,
+		PlanKey:                 row.PlanKey,
+		BillingPeriod:           row.BillingPeriod,
+		Status:                  row.Status,
+		NextBillingDate:         optionalTime(row.NextBillingDate),
+		CancelAtNextBillingDate: row.CancelAtNextBillingDate,
+		CancelledAt:             optionalTime(row.CancelledAt),
+		ExpiresAt:               optionalTime(row.ExpiresAt),
+		TrialPeriodDays:         intPtrFromInt32(row.TrialPeriodDays),
+		SeatQuantity:            int(row.SeatQuantity),
+		AddonQuantities:         cloneJSON(row.AddonQuantities),
+		LatestDodoEventAt:       optionalTime(row.LatestDodoEventAt),
+		CreatedAt:               createdAt,
+		UpdatedAt:               updatedAt,
+	}, nil
+}
+
+func mapBillingTrialGrant(row repositorysqlc.BillingTrialGrant) (BillingTrialGrant, error) {
+	startedAt, err := requiredTime("billing_trial_grants.started_at", row.StartedAt)
+	if err != nil {
+		return BillingTrialGrant{}, err
+	}
+	expiresAt, err := requiredTime("billing_trial_grants.expires_at", row.ExpiresAt)
+	if err != nil {
+		return BillingTrialGrant{}, err
+	}
+	createdAt, err := requiredTime("billing_trial_grants.created_at", row.CreatedAt)
+	if err != nil {
+		return BillingTrialGrant{}, err
+	}
+	updatedAt, err := requiredTime("billing_trial_grants.updated_at", row.UpdatedAt)
+	if err != nil {
+		return BillingTrialGrant{}, err
+	}
+	return BillingTrialGrant{
+		ID:              row.ID,
+		OrganizationID:  row.OrganizationID,
+		PlanKey:         row.PlanKey,
+		BillingPeriod:   row.BillingPeriod,
+		StartedByUserID: row.StartedByUserID,
+		StartedAt:       startedAt,
+		ExpiresAt:       expiresAt,
+		CreatedAt:       createdAt,
+		UpdatedAt:       updatedAt,
+	}, nil
+}
+
+func int32Ptr(value *int) *int32 {
+	if value == nil {
+		return nil
+	}
+	converted := int32(*value)
+	return &converted
+}
+
+func intPtrFromInt32(value *int32) *int {
+	if value == nil {
+		return nil
+	}
+	converted := int(*value)
+	return &converted
+}
+
+func isUniqueViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }
 
 const activeWorkspaceRunsSQL = `

@@ -51,6 +51,12 @@ type TransitionRunAgentStatusParams struct {
 	FailureReason *string
 }
 
+type ReapOrphanedRunsParams struct {
+	Cutoff time.Time
+	Reason string
+	Limit  int
+}
+
 type InsertRunStatusHistoryParams struct {
 	RunID           uuid.UUID
 	FromStatus      *domain.RunStatus
@@ -76,10 +82,39 @@ type RecordRunEventParams struct {
 	Event runevents.Envelope
 }
 
+// RunAnalyticsMetadata is the minimal run attribution used by worker-side
+// analytics (PostHog run-lifecycle events). CreatedByUserID is nil when the
+// creating user has been deleted (runs.created_by_user_id ON DELETE SET NULL).
+type RunAnalyticsMetadata struct {
+	RunID           uuid.UUID
+	WorkspaceID     uuid.UUID
+	OrganizationID  uuid.UUID
+	CreatedByUserID *uuid.UUID
+}
+
+// GetRunAnalyticsMetadata resolves the workspace/org/creator for a run by id.
+// A fast primary-key lookup used opportunistically to enrich analytics events.
+func (r *Repository) GetRunAnalyticsMetadata(ctx context.Context, runID uuid.UUID) (RunAnalyticsMetadata, error) {
+	meta := RunAnalyticsMetadata{RunID: runID}
+	err := r.db.QueryRow(ctx, `
+		SELECT workspace_id, organization_id, created_by_user_id
+		FROM runs
+		WHERE id = $1
+	`, runID).Scan(&meta.WorkspaceID, &meta.OrganizationID, &meta.CreatedByUserID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return RunAnalyticsMetadata{}, fmt.Errorf("run %s not found: %w", runID, err)
+		}
+		return RunAnalyticsMetadata{}, fmt.Errorf("get run analytics metadata: %w", err)
+	}
+	return meta, nil
+}
+
 type RunnableChallengePackVersion struct {
 	ID              uuid.UUID
 	ChallengePackID uuid.UUID
 	WorkspaceID     *uuid.UUID
+	Manifest        json.RawMessage
 }
 
 type ChallengeInputSet struct {
@@ -166,6 +201,7 @@ type CreateQueuedRunParams struct {
 	RaceContext            bool
 	RaceContextMinStepGap  *int32
 	EntitlementGate        *RunEntitlementGate
+	DatasetEvalRun         *RecordDatasetEvalRunParams
 }
 
 type CreateQueuedRunResult struct {
@@ -296,6 +332,13 @@ type CreateEvaluationSpecParams struct {
 	Definition             json.RawMessage
 }
 
+type CreateStandaloneEvaluationSpecParams struct {
+	Name          string
+	VersionNumber int32
+	JudgeMode     string
+	Definition    json.RawMessage
+}
+
 type RunEvent struct {
 	ID             int64
 	RunID          uuid.UUID
@@ -342,7 +385,7 @@ func (r *Repository) GetRunByID(ctx context.Context, id uuid.UUID) (domain.Run, 
 
 func (r *Repository) GetRunnableChallengePackVersionByID(ctx context.Context, id uuid.UUID) (RunnableChallengePackVersion, error) {
 	row := r.db.QueryRow(ctx, `
-		SELECT cpv.id, cpv.challenge_pack_id, cp.workspace_id
+		SELECT cpv.id, cpv.challenge_pack_id, cp.workspace_id, cpv.manifest
 		FROM challenge_pack_versions cpv
 		JOIN challenge_packs cp ON cp.id = cpv.challenge_pack_id
 		WHERE cpv.id = $1
@@ -353,7 +396,7 @@ func (r *Repository) GetRunnableChallengePackVersionByID(ctx context.Context, id
 	`, id)
 
 	var version RunnableChallengePackVersion
-	if err := row.Scan(&version.ID, &version.ChallengePackID, &version.WorkspaceID); err != nil {
+	if err := row.Scan(&version.ID, &version.ChallengePackID, &version.WorkspaceID, &version.Manifest); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return RunnableChallengePackVersion{}, ErrChallengePackVersionNotFound
 		}
@@ -635,7 +678,7 @@ func createQueuedRunWithQueries(
 	runRow, err := queries.CreateRun(ctx, repositorysqlc.CreateRunParams{
 		OrganizationID:         params.OrganizationID,
 		WorkspaceID:            params.WorkspaceID,
-		ChallengePackVersionID: params.ChallengePackVersionID,
+		ChallengePackVersionID: cloneUUIDPtr(&params.ChallengePackVersionID),
 		ChallengeInputSetID:    cloneUUIDPtr(params.ChallengeInputSetID),
 		OfficialPackMode:       string(params.OfficialPackMode),
 		CreatedByUserID:        cloneUUIDPtr(params.CreatedByUserID),
@@ -650,6 +693,17 @@ func createQueuedRunWithQueries(
 	})
 	if err != nil {
 		return CreateQueuedRunResult{}, fmt.Errorf("create run: %w", err)
+	}
+
+	if params.DatasetEvalRun != nil {
+		if _, err := queries.RecordDatasetEvalRun(ctx, repositorysqlc.RecordDatasetEvalRunParams{
+			DatasetID:                params.DatasetEvalRun.DatasetID,
+			DatasetVersionID:         params.DatasetEvalRun.DatasetVersionID,
+			DatasetVersionInputSetID: params.DatasetEvalRun.DatasetVersionInputSetID,
+			RunID:                    runRow.ID,
+		}); err != nil {
+			return CreateQueuedRunResult{}, fmt.Errorf("record dataset eval run: %w", err)
+		}
 	}
 
 	_, err = queries.InsertRunStatusHistory(ctx, repositorysqlc.InsertRunStatusHistoryParams{
@@ -685,8 +739,8 @@ func createQueuedRunWithQueries(
 			OrganizationID:            params.OrganizationID,
 			WorkspaceID:               params.WorkspaceID,
 			RunID:                     runRow.ID,
-			AgentDeploymentID:         runAgent.AgentDeploymentID,
-			AgentDeploymentSnapshotID: runAgent.AgentDeploymentSnapshotID,
+			AgentDeploymentID:         cloneUUIDPtr(&runAgent.AgentDeploymentID),
+			AgentDeploymentSnapshotID: cloneUUIDPtr(&runAgent.AgentDeploymentSnapshotID),
 			LaneIndex:                 runAgent.LaneIndex,
 			Label:                     runAgent.Label,
 			Status:                    string(domain.RunAgentStatusQueued),
@@ -801,6 +855,57 @@ func (r *Repository) CreateEvaluationSpec(ctx context.Context, params CreateEval
 	return record, nil
 }
 
+func (r *Repository) CreateStandaloneEvaluationSpec(ctx context.Context, params CreateStandaloneEvaluationSpecParams) (EvaluationSpecRecord, error) {
+	normalizedDefinition, err := normalizeEvaluationSpecDefinition(params.Definition)
+	if err != nil {
+		return EvaluationSpecRecord{}, fmt.Errorf("create standalone evaluation spec: %w", err)
+	}
+	existing, getErr := r.getStandaloneEvaluationSpecByNameAndVersion(ctx, params.Name, params.VersionNumber)
+	if getErr == nil {
+		return existing, nil
+	}
+	if !errors.Is(getErr, ErrEvaluationSpecNotFound) {
+		return EvaluationSpecRecord{}, getErr
+	}
+	row, err := r.queries.CreateEvaluationSpec(ctx, repositorysqlc.CreateEvaluationSpecParams{
+		ChallengePackVersionID: nil,
+		Name:                   params.Name,
+		VersionNumber:          params.VersionNumber,
+		JudgeMode:              params.JudgeMode,
+		Definition:             normalizedDefinition,
+	})
+	if err != nil {
+		if existing, getErr := r.getStandaloneEvaluationSpecByNameAndVersion(ctx, params.Name, params.VersionNumber); getErr == nil {
+			return existing, nil
+		}
+		return EvaluationSpecRecord{}, fmt.Errorf("create standalone evaluation spec: %w", err)
+	}
+	record, err := mapEvaluationSpecRecord(row)
+	if err != nil {
+		return EvaluationSpecRecord{}, fmt.Errorf("map standalone evaluation spec: %w", err)
+	}
+	return record, nil
+}
+
+func (r *Repository) getStandaloneEvaluationSpecByNameAndVersion(ctx context.Context, name string, versionNumber int32) (EvaluationSpecRecord, error) {
+	var row repositorysqlc.EvaluationSpec
+	err := r.db.QueryRow(ctx, `
+SELECT id, challenge_pack_version_id, name, version_number, judge_mode, definition, created_at, updated_at
+FROM evaluation_specs
+WHERE challenge_pack_version_id IS NULL
+  AND name = $1
+  AND version_number = $2
+LIMIT 1
+`, name, versionNumber).Scan(&row.ID, &row.ChallengePackVersionID, &row.Name, &row.VersionNumber, &row.JudgeMode, &row.Definition, &row.CreatedAt, &row.UpdatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return EvaluationSpecRecord{}, ErrEvaluationSpecNotFound
+		}
+		return EvaluationSpecRecord{}, fmt.Errorf("get standalone evaluation spec by name and version: %w", err)
+	}
+	return mapEvaluationSpecRecord(row)
+}
+
 func (r *Repository) GetEvaluationSpecByID(ctx context.Context, id uuid.UUID) (EvaluationSpecRecord, error) {
 	row, err := r.queries.GetEvaluationSpecByID(ctx, repositorysqlc.GetEvaluationSpecByIDParams{ID: id})
 	if err != nil {
@@ -859,6 +964,37 @@ func (r *Repository) GetRunAgentScorecardByRunAgentID(ctx context.Context, runAg
 	}
 
 	return scorecard, nil
+}
+
+func (r *Repository) ListRunAgentScorecardsByRunID(ctx context.Context, runID uuid.UUID) ([]RunAgentScorecard, error) {
+	rows, err := r.queries.ListRunAgentScorecardsByRunID(ctx, repositorysqlc.ListRunAgentScorecardsByRunIDParams{RunID: runID})
+	if err != nil {
+		return nil, fmt.Errorf("list run-agent scorecards by run id: %w", err)
+	}
+
+	scorecards := make([]RunAgentScorecard, 0, len(rows))
+	for _, row := range rows {
+		scorecard, err := mapRunAgentScorecardFromFields(
+			row.ID,
+			row.RunAgentID,
+			row.EvaluationSpecID,
+			row.OverallScore,
+			row.CorrectnessScore,
+			row.ReliabilityScore,
+			row.LatencyScore,
+			row.CostScore,
+			row.BehavioralScore,
+			row.ScorecardPassed,
+			row.Scorecard,
+			row.CreatedAt,
+			row.UpdatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("map run-agent scorecard %s: %w", row.RunAgentID, err)
+		}
+		scorecards = append(scorecards, scorecard)
+	}
+	return scorecards, nil
 }
 
 func (r *Repository) StoreRunAgentEvaluationResults(ctx context.Context, evaluation scoring.RunAgentEvaluation) error {
@@ -1064,7 +1200,9 @@ func buildRunAgentScorecardDocument(evaluation scoring.RunAgentEvaluation) (json
 		ValidatorDetails []validatorDetail           `json:"validator_details,omitempty"`
 		MetricSummary    map[string]int              `json:"metric_summary"`
 		MetricDetails    []metricDetail              `json:"metric_details,omitempty"`
+		SideMetrics      map[string]sideMetricDetail `json:"side_metrics,omitempty"`
 		LLMJudgeDetails  []llmJudgeDetail            `json:"llm_judge_details,omitempty"`
+		Metadata         json.RawMessage             `json:"metadata,omitempty"`
 	}
 
 	dimensions := make(map[string]dimensionSummary, len(evaluation.DimensionResults))
@@ -1185,7 +1323,9 @@ func buildRunAgentScorecardDocument(evaluation scoring.RunAgentEvaluation) (json
 		ValidatorDetails: validatorDetails,
 		MetricSummary:    metricSummary,
 		MetricDetails:    metricDetails,
+		SideMetrics:      buildScorecardSideMetrics(evaluation),
 		LLMJudgeDetails:  llmJudgeDetails,
+		Metadata:         cloneJSON(evaluation.Metadata),
 	}
 
 	encoded, err := json.Marshal(document)
@@ -1193,6 +1333,81 @@ func buildRunAgentScorecardDocument(evaluation scoring.RunAgentEvaluation) (json
 		return nil, err
 	}
 	return encoded, nil
+}
+
+type sideMetricDetail struct {
+	State       string   `json:"state"`
+	Value       *float64 `json:"value,omitempty"`
+	Unit        string   `json:"unit,omitempty"`
+	Numerator   *float64 `json:"numerator,omitempty"`
+	Denominator *float64 `json:"denominator,omitempty"`
+	Reason      string   `json:"reason,omitempty"`
+}
+
+func buildScorecardSideMetrics(evaluation scoring.RunAgentEvaluation) map[string]sideMetricDetail {
+	return map[string]sideMetricDetail{
+		"cost_per_correct_usd": buildCostPerCorrectSideMetric(evaluation),
+	}
+}
+
+func buildCostPerCorrectSideMetric(evaluation scoring.RunAgentEvaluation) sideMetricDetail {
+	cost := runModelCostUSD(evaluation.MetricResults)
+	if cost == nil {
+		return sideMetricDetail{
+			State:  string(scoring.OutputStateUnavailable),
+			Unit:   "usd",
+			Reason: "total model cost is unavailable",
+		}
+	}
+
+	denominator, reason, ok := correctOutcomeDenominator(evaluation.ValidatorResults)
+	if !ok {
+		return sideMetricDetail{
+			State:     string(scoring.OutputStateUnavailable),
+			Unit:      "usd",
+			Numerator: cloneFloat64Ptr(cost),
+			Reason:    reason,
+		}
+	}
+
+	value := *cost / denominator
+	return sideMetricDetail{
+		State:       string(scoring.OutputStateAvailable),
+		Value:       &value,
+		Unit:        "usd",
+		Numerator:   cloneFloat64Ptr(cost),
+		Denominator: &denominator,
+	}
+}
+
+func runModelCostUSD(metrics []scoring.MetricResult) *float64 {
+	for _, metric := range metrics {
+		if metric.Collector == "run_model_cost_usd" && metric.State == scoring.OutputStateAvailable && metric.NumericValue != nil {
+			return cloneFloat64Ptr(metric.NumericValue)
+		}
+	}
+	return nil
+}
+
+func correctOutcomeDenominator(validators []scoring.ValidatorResult) (float64, string, bool) {
+	available := 0
+	denominator := 0.0
+	for _, validator := range validators {
+		if validator.State != scoring.OutputStateAvailable {
+			continue
+		}
+		available++
+		if strings.EqualFold(validator.Verdict, "pass") {
+			denominator++
+		}
+	}
+	if available == 0 {
+		return 0, "correctness denominator is unavailable", false
+	}
+	if denominator <= 0 {
+		return 0, "no correct validator outcomes", false
+	}
+	return denominator, "", true
 }
 
 func buildValidatorDetailEvidence(result scoring.ValidatorResult) any {
@@ -1217,6 +1432,8 @@ func buildValidatorDetailEvidence(result scoring.ValidatorResult) any {
 		return buildValidatorJSONSchemaEvidence(result, raw)
 	case scoring.ValidatorTypeJSONPathMatch:
 		return buildValidatorJSONPathEvidence(result, raw)
+	case scoring.ValidatorTypeToolCallAssertion:
+		return buildValidatorToolCallAssertionEvidence(result, raw)
 	default:
 		return buildValidatorCustomEvidence(raw)
 	}
@@ -1303,6 +1520,37 @@ func buildValidatorJSONPathEvidence(result scoring.ValidatorResult, raw map[stri
 	}
 	if len(evidence) == 1 {
 		return buildValidatorCustomEvidence(raw)
+	}
+	return evidence
+}
+
+func buildValidatorToolCallAssertionEvidence(result scoring.ValidatorResult, raw map[string]any) any {
+	evidence := map[string]any{
+		"kind": "tool_call_assertion",
+	}
+	if sourceField := strings.TrimSpace(result.Target); sourceField != "" {
+		evidence["source_field"] = sourceField
+	}
+	for _, key := range []string{
+		"tool_name",
+		"observed_count",
+		"failed_count",
+		"matched_count",
+		"matched_indices",
+		"observed_tool_names",
+		"expected_count",
+		"expected_min_count",
+		"expected_max_count",
+		"expected_order",
+		"expected_order_mode",
+		"arguments_contain_set",
+	} {
+		if value, ok := raw[key]; ok {
+			evidence[key] = value
+		}
+	}
+	if result.Verdict == "pass" || result.Verdict == "fail" {
+		evidence["matched"] = result.Verdict == "pass"
 	}
 	return evidence
 }
@@ -1717,6 +1965,87 @@ func (r *Repository) TransitionRunStatus(ctx context.Context, params TransitionR
 	return run, nil
 }
 
+func (r *Repository) ReapOrphanedRuns(ctx context.Context, params ReapOrphanedRunsParams) ([]domain.Run, error) {
+	if params.Cutoff.IsZero() {
+		return nil, fmt.Errorf("orphaned run cleanup cutoff is required")
+	}
+	reason := strings.TrimSpace(params.Reason)
+	if reason == "" {
+		reason = "orphaned run reaper: no temporal workflow id after threshold"
+	}
+	limit := params.Limit
+	if limit <= 0 {
+		limit = 100
+	}
+
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin orphaned run cleanup transaction: %w", err)
+	}
+	defer rollback(ctx, tx)
+
+	rows, err := tx.Query(ctx, `
+		SELECT *
+		FROM runs
+		WHERE status IN ('queued', 'provisioning')
+		  AND temporal_workflow_id IS NULL
+		  AND temporal_run_id IS NULL
+		  AND created_at < $1
+		ORDER BY created_at ASC, id ASC
+		LIMIT $2
+		FOR UPDATE SKIP LOCKED
+	`, params.Cutoff.UTC(), limit)
+	if err != nil {
+		return nil, fmt.Errorf("select orphaned runs for cleanup: %w", err)
+	}
+	selectedRows, err := pgx.CollectRows(rows, pgx.RowToStructByName[repositorysqlc.Run])
+	if err != nil {
+		return nil, fmt.Errorf("collect orphaned runs for cleanup: %w", err)
+	}
+	if len(selectedRows) == 0 {
+		if err := tx.Commit(ctx); err != nil {
+			return nil, fmt.Errorf("commit empty orphaned run cleanup: %w", err)
+		}
+		return nil, nil
+	}
+
+	queries := r.queries.WithTx(tx)
+	cleaned := make([]domain.Run, 0, len(selectedRows))
+	for _, row := range selectedRows {
+		currentStatus, err := domain.ParseRunStatus(row.Status)
+		if err != nil {
+			return nil, fmt.Errorf("parse orphaned run %s status: %w", row.ID, err)
+		}
+		updatedRow, err := queries.UpdateRunStatus(ctx, repositorysqlc.UpdateRunStatusParams{
+			ID:         row.ID,
+			FromStatus: string(currentStatus),
+			ToStatus:   string(domain.RunStatusFailed),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("mark orphaned run %s failed: %w", row.ID, err)
+		}
+		_, err = queries.InsertRunStatusHistory(ctx, repositorysqlc.InsertRunStatusHistoryParams{
+			RunID:      row.ID,
+			FromStatus: stringPtr(string(currentStatus)),
+			ToStatus:   string(domain.RunStatusFailed),
+			Reason:     stringPtr(reason),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("insert orphaned run %s status history: %w", row.ID, err)
+		}
+		run, err := mapRun(updatedRow)
+		if err != nil {
+			return nil, fmt.Errorf("map orphaned run %s: %w", row.ID, err)
+		}
+		cleaned = append(cleaned, run)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("commit orphaned run cleanup: %w", err)
+	}
+	return cleaned, nil
+}
+
 func (r *Repository) TransitionRunAgentStatus(ctx context.Context, params TransitionRunAgentStatusParams) (domain.RunAgent, error) {
 	if !params.ToStatus.Valid() {
 		return domain.RunAgent{}, fmt.Errorf("%w: %q", domain.ErrInvalidRunAgentStatus, params.ToStatus)
@@ -1894,7 +2223,7 @@ func mapRun(row repositorysqlc.Run) (domain.Run, error) {
 		ID:                     row.ID,
 		OrganizationID:         row.OrganizationID,
 		WorkspaceID:            row.WorkspaceID,
-		ChallengePackVersionID: row.ChallengePackVersionID,
+		ChallengePackVersionID: derefUUID(row.ChallengePackVersionID),
 		ChallengeInputSetID:    cloneUUIDPtr(row.ChallengeInputSetID),
 		EvalSessionID:          cloneUUIDPtr(row.EvalSessionID),
 		OfficialPackMode:       officialPackMode,
@@ -2000,8 +2329,8 @@ func mapRunAgent(row repositorysqlc.RunAgent) (domain.RunAgent, error) {
 		OrganizationID:            row.OrganizationID,
 		WorkspaceID:               row.WorkspaceID,
 		RunID:                     row.RunID,
-		AgentDeploymentID:         row.AgentDeploymentID,
-		AgentDeploymentSnapshotID: row.AgentDeploymentSnapshotID,
+		AgentDeploymentID:         derefUUID(row.AgentDeploymentID),
+		AgentDeploymentSnapshotID: derefUUID(row.AgentDeploymentSnapshotID),
 		LaneIndex:                 row.LaneIndex,
 		Label:                     row.Label,
 		Status:                    status,
@@ -2070,27 +2399,59 @@ func mapRunEvent(row repositorysqlc.RunEvent) (RunEvent, error) {
 }
 
 func mapRunAgentScorecard(row repositorysqlc.GetRunAgentScorecardByRunAgentIDRow) (RunAgentScorecard, error) {
-	createdAt, err := requiredTime("run_agent_scorecards.created_at", row.CreatedAt)
+	return mapRunAgentScorecardFromFields(
+		row.ID,
+		row.RunAgentID,
+		row.EvaluationSpecID,
+		row.OverallScore,
+		row.CorrectnessScore,
+		row.ReliabilityScore,
+		row.LatencyScore,
+		row.CostScore,
+		row.BehavioralScore,
+		row.ScorecardPassed,
+		row.Scorecard,
+		row.CreatedAt,
+		row.UpdatedAt,
+	)
+}
+
+func mapRunAgentScorecardFromFields(
+	id uuid.UUID,
+	runAgentID uuid.UUID,
+	evaluationSpecID uuid.UUID,
+	overallScore pgtype.Numeric,
+	correctnessScore pgtype.Numeric,
+	reliabilityScore pgtype.Numeric,
+	latencyScore pgtype.Numeric,
+	costScore pgtype.Numeric,
+	behavioralScore pgtype.Numeric,
+	scorecardPassed *bool,
+	scorecard json.RawMessage,
+	createdAtValue pgtype.Timestamptz,
+	updatedAtValue pgtype.Timestamptz,
+) (RunAgentScorecard, error) {
+	createdAt, err := requiredTime("run_agent_scorecards.created_at", createdAtValue)
 	if err != nil {
 		return RunAgentScorecard{}, err
 	}
-	updatedAt, err := requiredTime("run_agent_scorecards.updated_at", row.UpdatedAt)
+	updatedAt, err := requiredTime("run_agent_scorecards.updated_at", updatedAtValue)
 	if err != nil {
 		return RunAgentScorecard{}, err
 	}
 
 	return RunAgentScorecard{
-		ID:               row.ID,
-		RunAgentID:       row.RunAgentID,
-		EvaluationSpecID: row.EvaluationSpecID,
-		OverallScore:     numericPtr(row.OverallScore),
-		CorrectnessScore: numericPtr(row.CorrectnessScore),
-		ReliabilityScore: numericPtr(row.ReliabilityScore),
-		LatencyScore:     numericPtr(row.LatencyScore),
-		CostScore:        numericPtr(row.CostScore),
-		BehavioralScore:  numericPtr(row.BehavioralScore),
-		Passed:           cloneBoolPtr(row.ScorecardPassed),
-		Scorecard:        cloneJSON(row.Scorecard),
+		ID:               id,
+		RunAgentID:       runAgentID,
+		EvaluationSpecID: evaluationSpecID,
+		OverallScore:     numericPtr(overallScore),
+		CorrectnessScore: numericPtr(correctnessScore),
+		ReliabilityScore: numericPtr(reliabilityScore),
+		LatencyScore:     numericPtr(latencyScore),
+		CostScore:        numericPtr(costScore),
+		BehavioralScore:  numericPtr(behavioralScore),
+		Passed:           cloneBoolPtr(scorecardPassed),
+		Scorecard:        cloneJSON(scorecard),
 		CreatedAt:        createdAt,
 		UpdatedAt:        updatedAt,
 	}, nil
@@ -2105,13 +2466,13 @@ func mapEvaluationSpecRecord(row repositorysqlc.EvaluationSpec) (EvaluationSpecR
 	if err != nil {
 		return EvaluationSpecRecord{}, err
 	}
-	if row.ChallengePackVersionID == nil {
-		return EvaluationSpecRecord{}, fmt.Errorf("evaluation_specs.challenge_pack_version_id is required")
+	challengePackVersionID := uuid.Nil
+	if row.ChallengePackVersionID != nil {
+		challengePackVersionID = *row.ChallengePackVersionID
 	}
-
 	return EvaluationSpecRecord{
 		ID:                     row.ID,
-		ChallengePackVersionID: *row.ChallengePackVersionID,
+		ChallengePackVersionID: challengePackVersionID,
 		Name:                   row.Name,
 		VersionNumber:          row.VersionNumber,
 		JudgeMode:              row.JudgeMode,
@@ -2355,6 +2716,13 @@ func cloneUUIDPtr(value *uuid.UUID) *uuid.UUID {
 	return &cloned
 }
 
+func derefUUID(value *uuid.UUID) uuid.UUID {
+	if value == nil {
+		return uuid.Nil
+	}
+	return *value
+}
+
 func cloneFloat64Ptr(value *float64) *float64 {
 	if value == nil {
 		return nil
@@ -2563,12 +2931,15 @@ type ChallengePackSummary struct {
 }
 
 type ChallengePackVersionSummary struct {
-	ID              uuid.UUID
-	ChallengePackID uuid.UUID
-	VersionNumber   int32
-	LifecycleStatus string
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	ID                  uuid.UUID
+	ChallengePackID     uuid.UUID
+	VersionNumber       int32
+	LifecycleStatus     string
+	DeploymentDefaults  json.RawMessage
+	Modality            string
+	InterfaceTransports []string
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
 }
 
 func (r *Repository) ListChallengePacks(ctx context.Context) ([]ChallengePackSummary, error) {
@@ -2619,17 +2990,70 @@ func (r *Repository) ListRunnableChallengePVersionsByPackID(ctx context.Context,
 			return nil, err
 		}
 
+		metadata, err := challengePackVersionMetadata(row.Manifest)
+		if err != nil {
+			return nil, fmt.Errorf("extract metadata for challenge pack version %s: %w", row.ID, err)
+		}
+
 		versions = append(versions, ChallengePackVersionSummary{
-			ID:              row.ID,
-			ChallengePackID: row.ChallengePackID,
-			VersionNumber:   row.VersionNumber,
-			LifecycleStatus: row.LifecycleStatus,
-			CreatedAt:       createdAt,
-			UpdatedAt:       updatedAt,
+			ID:                  row.ID,
+			ChallengePackID:     row.ChallengePackID,
+			VersionNumber:       row.VersionNumber,
+			LifecycleStatus:     row.LifecycleStatus,
+			DeploymentDefaults:  metadata.DeploymentDefaults,
+			Modality:            metadata.Modality,
+			InterfaceTransports: metadata.InterfaceTransports,
+			CreatedAt:           createdAt,
+			UpdatedAt:           updatedAt,
 		})
 	}
 
 	return versions, nil
+}
+
+type challengePackVersionMetadataResult struct {
+	DeploymentDefaults  json.RawMessage
+	Modality            string
+	InterfaceTransports []string
+}
+
+func challengePackDeploymentDefaults(manifest json.RawMessage) (json.RawMessage, error) {
+	metadata, err := challengePackVersionMetadata(manifest)
+	if err != nil {
+		return nil, err
+	}
+	return metadata.DeploymentDefaults, nil
+}
+
+func challengePackVersionMetadata(manifest json.RawMessage) (challengePackVersionMetadataResult, error) {
+	if len(manifest) == 0 {
+		return challengePackVersionMetadataResult{}, nil
+	}
+
+	var decoded struct {
+		Modality      string `json:"modality"`
+		InterfaceSpec struct {
+			Transports []string `json:"transports"`
+		} `json:"interface_spec"`
+		Version struct {
+			DeploymentDefaults json.RawMessage `json:"deployment_defaults"`
+		} `json:"version"`
+	}
+	if err := json.Unmarshal(manifest, &decoded); err != nil {
+		return challengePackVersionMetadataResult{}, fmt.Errorf("decode challenge pack manifest: %w", err)
+	}
+	result := challengePackVersionMetadataResult{
+		Modality: strings.TrimSpace(decoded.Modality),
+	}
+	for _, transport := range decoded.InterfaceSpec.Transports {
+		if trimmed := strings.TrimSpace(transport); trimmed != "" {
+			result.InterfaceTransports = append(result.InterfaceTransports, trimmed)
+		}
+	}
+	if len(decoded.Version.DeploymentDefaults) > 0 && string(decoded.Version.DeploymentDefaults) != "null" {
+		result.DeploymentDefaults = cloneJSON(decoded.Version.DeploymentDefaults)
+	}
+	return result, nil
 }
 
 var (
@@ -2725,6 +3149,7 @@ type WorkspaceRow struct {
 	Name           string
 	Slug           string
 	Status         string
+	PublicPacks    bool
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
 }
@@ -2738,58 +3163,75 @@ type CreateWorkspaceWithAdminInput struct {
 }
 
 type UpdateWorkspaceInput struct {
-	Name   *string
-	Status *string
+	Name        *string
+	Status      *string
+	PublicPacks *bool
 }
 
 type OrgMembershipFullRow struct {
-	ID               uuid.UUID
-	OrganizationID   uuid.UUID
-	UserID           uuid.UUID
-	Email            string
-	DisplayName      string
-	Role             string
-	MembershipStatus string
-	CreatedAt        time.Time
-	UpdatedAt        time.Time // set by DB trigger on every UPDATE
+	ID                   uuid.UUID
+	OrganizationID       uuid.UUID
+	UserID               uuid.UUID
+	Email                string
+	DisplayName          string
+	Role                 string
+	MembershipStatus     string
+	InviteToken          string
+	InviteTokenExpiresAt *time.Time
+	CreatedAt            time.Time
+	UpdatedAt            time.Time // set by DB trigger on every UPDATE
 }
 
 type CreateOrgMembershipInput struct {
-	OrganizationID  uuid.UUID
-	UserID          uuid.UUID
-	Role            string
-	EntitlementGate *OrganizationEntitlementGate
+	OrganizationID       uuid.UUID
+	UserID               uuid.UUID
+	Role                 string
+	InviteToken          string
+	InviteTokenExpiresAt time.Time
+	EntitlementGate      *OrganizationEntitlementGate
 }
 
 type UpdateOrgMembershipInput struct {
-	Role            *string
-	Status          *string
-	EntitlementGate *OrganizationEntitlementGate
+	Role                 *string
+	Status               *string
+	UserID               *uuid.UUID
+	InviteToken          *string
+	InviteTokenExpiresAt *time.Time
+	ClearInviteToken     bool
+	EntitlementGate      *OrganizationEntitlementGate
 }
 
 type WorkspaceMembershipFullRow struct {
-	ID               uuid.UUID
-	WorkspaceID      uuid.UUID
-	OrganizationID   uuid.UUID
-	UserID           uuid.UUID
-	Email            string
-	DisplayName      string
-	Role             string
-	MembershipStatus string
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	ID                   uuid.UUID
+	WorkspaceID          uuid.UUID
+	OrganizationID       uuid.UUID
+	UserID               uuid.UUID
+	Email                string
+	DisplayName          string
+	Role                 string
+	MembershipStatus     string
+	InviteToken          string
+	InviteTokenExpiresAt *time.Time
+	CreatedAt            time.Time
+	UpdatedAt            time.Time
 }
 
 type CreateWorkspaceMembershipInput struct {
-	OrganizationID uuid.UUID
-	WorkspaceID    uuid.UUID
-	UserID         uuid.UUID
-	Role           string
+	OrganizationID       uuid.UUID
+	WorkspaceID          uuid.UUID
+	UserID               uuid.UUID
+	Role                 string
+	InviteToken          string
+	InviteTokenExpiresAt time.Time
 }
 
 type UpdateWorkspaceMembershipInput struct {
-	Role   *string
-	Status *string
+	Role                 *string
+	Status               *string
+	UserID               *uuid.UUID
+	InviteToken          *string
+	InviteTokenExpiresAt *time.Time
+	ClearInviteToken     bool
 }
 
 type OnboardInput struct {
@@ -3150,9 +3592,9 @@ func (r *Repository) Onboard(ctx context.Context, input OnboardInput) (OnboardRe
 	err = tx.QueryRow(ctx, `
 		INSERT INTO workspaces (id, organization_id, name, slug, status)
 		VALUES (gen_random_uuid(), $1, $2, $3, 'active')
-		RETURNING id, organization_id, name, slug, status, created_at, updated_at
+		RETURNING id, organization_id, name, slug, status, public_packs, created_at, updated_at
 	`, org.ID, input.WorkspaceName, input.WorkspaceSlug).Scan(
-		&ws.ID, &ws.OrganizationID, &ws.Name, &ws.Slug, &ws.Status, &ws.CreatedAt, &ws.UpdatedAt,
+		&ws.ID, &ws.OrganizationID, &ws.Name, &ws.Slug, &ws.Status, &ws.PublicPacks, &ws.CreatedAt, &ws.UpdatedAt,
 	)
 	if err != nil {
 		var pgErr *pgconn.PgError
@@ -3196,7 +3638,8 @@ func (r *Repository) ListWorkspaceMemberships(ctx context.Context, workspaceID u
 	rows, err := r.db.Query(ctx, `
 		SELECT wm.id, wm.workspace_id, wm.organization_id, wm.user_id,
 		       u.email, COALESCE(u.display_name, ''),
-		       wm.role, wm.membership_status, wm.created_at, wm.updated_at
+		       wm.role, wm.membership_status, COALESCE(wm.invite_token, ''),
+		       wm.invite_token_expires_at, wm.created_at, wm.updated_at
 		FROM workspace_memberships wm
 		JOIN users u ON u.id = wm.user_id
 		WHERE wm.workspace_id = $1 AND wm.membership_status IN ('active', 'invited')
@@ -3211,10 +3654,13 @@ func (r *Repository) ListWorkspaceMemberships(ctx context.Context, workspaceID u
 	var memberships []WorkspaceMembershipFullRow
 	for rows.Next() {
 		var m WorkspaceMembershipFullRow
+		var inviteTokenExpiresAt pgtype.Timestamptz
 		if err := rows.Scan(&m.ID, &m.WorkspaceID, &m.OrganizationID, &m.UserID,
-			&m.Email, &m.DisplayName, &m.Role, &m.MembershipStatus, &m.CreatedAt, &m.UpdatedAt); err != nil {
+			&m.Email, &m.DisplayName, &m.Role, &m.MembershipStatus, &m.InviteToken,
+			&inviteTokenExpiresAt, &m.CreatedAt, &m.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scan workspace membership: %w", err)
 		}
+		m.InviteTokenExpiresAt = optionalTime(inviteTokenExpiresAt)
 		memberships = append(memberships, m)
 	}
 	if err := rows.Err(); err != nil {
@@ -3240,32 +3686,42 @@ func (r *Repository) CountWorkspaceMemberships(ctx context.Context, workspaceID 
 
 func (r *Repository) GetWorkspaceMembershipByWorkspaceAndUser(ctx context.Context, workspaceID, userID uuid.UUID) (WorkspaceMembershipFullRow, error) {
 	var m WorkspaceMembershipFullRow
+	var inviteTokenExpiresAt pgtype.Timestamptz
 	err := r.db.QueryRow(ctx, `
 		SELECT wm.id, wm.workspace_id, wm.organization_id, wm.user_id,
 		       u.email, COALESCE(u.display_name, ''),
-		       wm.role, wm.membership_status, wm.created_at, wm.updated_at
+		       wm.role, wm.membership_status, COALESCE(wm.invite_token, ''),
+		       wm.invite_token_expires_at, wm.created_at, wm.updated_at
 		FROM workspace_memberships wm
 		JOIN users u ON u.id = wm.user_id
 		WHERE wm.workspace_id = $1 AND wm.user_id = $2
 	`, workspaceID, userID).Scan(&m.ID, &m.WorkspaceID, &m.OrganizationID, &m.UserID,
-		&m.Email, &m.DisplayName, &m.Role, &m.MembershipStatus, &m.CreatedAt, &m.UpdatedAt)
+		&m.Email, &m.DisplayName, &m.Role, &m.MembershipStatus, &m.InviteToken,
+		&inviteTokenExpiresAt, &m.CreatedAt, &m.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return WorkspaceMembershipFullRow{}, ErrMembershipNotFound
 		}
 		return WorkspaceMembershipFullRow{}, fmt.Errorf("get workspace membership by workspace and user: %w", err)
 	}
+	m.InviteTokenExpiresAt = optionalTime(inviteTokenExpiresAt)
 	return m, nil
 }
 
 func (r *Repository) CreateWorkspaceMembership(ctx context.Context, input CreateWorkspaceMembershipInput) (WorkspaceMembershipFullRow, error) {
 	var m WorkspaceMembershipFullRow
+	var inviteTokenExpiresAt pgtype.Timestamptz
 	err := r.db.QueryRow(ctx, `
-		INSERT INTO workspace_memberships (id, organization_id, workspace_id, user_id, role, membership_status)
-		VALUES (gen_random_uuid(), $1, $2, $3, $4, 'invited')
-		RETURNING id, organization_id, workspace_id, user_id, role, membership_status, created_at, updated_at
-	`, input.OrganizationID, input.WorkspaceID, input.UserID, input.Role).Scan(
-		&m.ID, &m.OrganizationID, &m.WorkspaceID, &m.UserID, &m.Role, &m.MembershipStatus, &m.CreatedAt, &m.UpdatedAt,
+		INSERT INTO workspace_memberships (
+			id, organization_id, workspace_id, user_id, role, membership_status,
+			invite_token, invite_token_expires_at
+		)
+		VALUES (gen_random_uuid(), $1, $2, $3, $4, 'invited', $5, $6)
+		RETURNING id, organization_id, workspace_id, user_id, role, membership_status,
+		          COALESCE(invite_token, ''), invite_token_expires_at, created_at, updated_at
+	`, input.OrganizationID, input.WorkspaceID, input.UserID, input.Role, input.InviteToken, input.InviteTokenExpiresAt).Scan(
+		&m.ID, &m.OrganizationID, &m.WorkspaceID, &m.UserID, &m.Role, &m.MembershipStatus,
+		&m.InviteToken, &inviteTokenExpiresAt, &m.CreatedAt, &m.UpdatedAt,
 	)
 	if err != nil {
 		var pgErr *pgconn.PgError
@@ -3274,6 +3730,7 @@ func (r *Repository) CreateWorkspaceMembership(ctx context.Context, input Create
 		}
 		return WorkspaceMembershipFullRow{}, fmt.Errorf("create workspace membership: %w", err)
 	}
+	m.InviteTokenExpiresAt = optionalTime(inviteTokenExpiresAt)
 
 	var user User
 	if err = r.db.QueryRow(ctx, `SELECT email, COALESCE(display_name, '') FROM users WHERE id = $1`, input.UserID).Scan(&user.Email, &user.DisplayName); err != nil {
@@ -3287,21 +3744,49 @@ func (r *Repository) CreateWorkspaceMembership(ctx context.Context, input Create
 
 func (r *Repository) GetWorkspaceMembershipByID(ctx context.Context, membershipID uuid.UUID) (WorkspaceMembershipFullRow, error) {
 	var m WorkspaceMembershipFullRow
+	var inviteTokenExpiresAt pgtype.Timestamptz
 	err := r.db.QueryRow(ctx, `
 		SELECT wm.id, wm.workspace_id, wm.organization_id, wm.user_id,
 		       u.email, COALESCE(u.display_name, ''),
-		       wm.role, wm.membership_status, wm.created_at, wm.updated_at
+		       wm.role, wm.membership_status, COALESCE(wm.invite_token, ''),
+		       wm.invite_token_expires_at, wm.created_at, wm.updated_at
 		FROM workspace_memberships wm
 		JOIN users u ON u.id = wm.user_id
 		WHERE wm.id = $1
 	`, membershipID).Scan(&m.ID, &m.WorkspaceID, &m.OrganizationID, &m.UserID,
-		&m.Email, &m.DisplayName, &m.Role, &m.MembershipStatus, &m.CreatedAt, &m.UpdatedAt)
+		&m.Email, &m.DisplayName, &m.Role, &m.MembershipStatus, &m.InviteToken,
+		&inviteTokenExpiresAt, &m.CreatedAt, &m.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return WorkspaceMembershipFullRow{}, ErrMembershipNotFound
 		}
 		return WorkspaceMembershipFullRow{}, fmt.Errorf("get workspace membership by id: %w", err)
 	}
+	m.InviteTokenExpiresAt = optionalTime(inviteTokenExpiresAt)
+	return m, nil
+}
+
+func (r *Repository) GetWorkspaceMembershipByInviteToken(ctx context.Context, inviteToken string) (WorkspaceMembershipFullRow, error) {
+	var m WorkspaceMembershipFullRow
+	var inviteTokenExpiresAt pgtype.Timestamptz
+	err := r.db.QueryRow(ctx, `
+		SELECT wm.id, wm.workspace_id, wm.organization_id, wm.user_id,
+		       u.email, COALESCE(u.display_name, ''),
+		       wm.role, wm.membership_status, COALESCE(wm.invite_token, ''),
+		       wm.invite_token_expires_at, wm.created_at, wm.updated_at
+		FROM workspace_memberships wm
+		JOIN users u ON u.id = wm.user_id
+		WHERE wm.invite_token = $1 AND wm.membership_status = 'invited'
+	`, inviteToken).Scan(&m.ID, &m.WorkspaceID, &m.OrganizationID, &m.UserID,
+		&m.Email, &m.DisplayName, &m.Role, &m.MembershipStatus, &m.InviteToken,
+		&inviteTokenExpiresAt, &m.CreatedAt, &m.UpdatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return WorkspaceMembershipFullRow{}, ErrMembershipNotFound
+		}
+		return WorkspaceMembershipFullRow{}, fmt.Errorf("get workspace membership by invite token: %w", err)
+	}
+	m.InviteTokenExpiresAt = optionalTime(inviteTokenExpiresAt)
 	return m, nil
 }
 
@@ -3327,6 +3812,21 @@ func (r *Repository) UpdateWorkspaceMembership(ctx context.Context, membershipID
 			setClauses = append(setClauses, "archived_at = NULL")
 		}
 	}
+	if input.UserID != nil {
+		setClauses = append(setClauses, fmt.Sprintf("user_id = $%d", argIdx))
+		args = append(args, *input.UserID)
+		argIdx++
+	}
+	if input.ClearInviteToken {
+		setClauses = append(setClauses, "invite_token = NULL", "invite_token_expires_at = NULL")
+	} else if input.InviteToken != nil {
+		setClauses = append(setClauses, fmt.Sprintf("invite_token = $%d", argIdx))
+		args = append(args, *input.InviteToken)
+		argIdx++
+		setClauses = append(setClauses, fmt.Sprintf("invite_token_expires_at = $%d", argIdx))
+		args = append(args, input.InviteTokenExpiresAt)
+		argIdx++
+	}
 
 	if len(setClauses) == 0 {
 		return r.GetWorkspaceMembershipByID(ctx, membershipID)
@@ -3335,20 +3835,33 @@ func (r *Repository) UpdateWorkspaceMembership(ctx context.Context, membershipID
 	query := fmt.Sprintf(`
 		UPDATE workspace_memberships SET %s
 		WHERE id = $%d
-		RETURNING id, organization_id, workspace_id, user_id, role, membership_status, created_at, updated_at
+		RETURNING id, organization_id, workspace_id, user_id, role, membership_status,
+		          COALESCE(invite_token, ''), invite_token_expires_at, created_at, updated_at
 	`, strings.Join(setClauses, ", "), argIdx)
 	args = append(args, membershipID)
 
 	var m WorkspaceMembershipFullRow
+	var inviteTokenExpiresAt pgtype.Timestamptz
 	err := r.db.QueryRow(ctx, query, args...).Scan(
-		&m.ID, &m.OrganizationID, &m.WorkspaceID, &m.UserID, &m.Role, &m.MembershipStatus, &m.CreatedAt, &m.UpdatedAt,
+		&m.ID, &m.OrganizationID, &m.WorkspaceID, &m.UserID, &m.Role, &m.MembershipStatus,
+		&m.InviteToken, &inviteTokenExpiresAt, &m.CreatedAt, &m.UpdatedAt,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return WorkspaceMembershipFullRow{}, ErrMembershipNotFound
 		}
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) {
+			switch pgErr.Code {
+			case "23505":
+				return WorkspaceMembershipFullRow{}, ErrAlreadyMember
+			case "23503":
+				return WorkspaceMembershipFullRow{}, ErrOrgMembershipRequired
+			}
+		}
 		return WorkspaceMembershipFullRow{}, fmt.Errorf("update workspace membership: %w", err)
 	}
+	m.InviteTokenExpiresAt = optionalTime(inviteTokenExpiresAt)
 
 	var user User
 	if err = r.db.QueryRow(ctx, `SELECT email, COALESCE(display_name, '') FROM users WHERE id = $1`, m.UserID).Scan(&user.Email, &user.DisplayName); err != nil {
@@ -3392,7 +3905,8 @@ func (r *Repository) GetUserByEmail(ctx context.Context, email string) (User, er
 func (r *Repository) ListOrgMemberships(ctx context.Context, orgID uuid.UUID, limit, offset int32) ([]OrgMembershipFullRow, error) {
 	rows, err := r.db.Query(ctx, `
 		SELECT om.id, om.organization_id, om.user_id, u.email, COALESCE(u.display_name, ''),
-		       om.role, om.membership_status, om.created_at, om.updated_at
+		       om.role, om.membership_status, COALESCE(om.invite_token, ''),
+		       om.invite_token_expires_at, om.created_at, om.updated_at
 		FROM organization_memberships om
 		JOIN users u ON u.id = om.user_id
 		WHERE om.organization_id = $1 AND om.membership_status IN ('active', 'invited')
@@ -3407,10 +3921,13 @@ func (r *Repository) ListOrgMemberships(ctx context.Context, orgID uuid.UUID, li
 	var memberships []OrgMembershipFullRow
 	for rows.Next() {
 		var m OrgMembershipFullRow
+		var inviteTokenExpiresAt pgtype.Timestamptz
 		if err := rows.Scan(&m.ID, &m.OrganizationID, &m.UserID, &m.Email, &m.DisplayName,
-			&m.Role, &m.MembershipStatus, &m.CreatedAt, &m.UpdatedAt); err != nil {
+			&m.Role, &m.MembershipStatus, &m.InviteToken, &inviteTokenExpiresAt,
+			&m.CreatedAt, &m.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scan org membership: %w", err)
 		}
+		m.InviteTokenExpiresAt = optionalTime(inviteTokenExpiresAt)
 		memberships = append(memberships, m)
 	}
 	if err := rows.Err(); err != nil {
@@ -3436,20 +3953,23 @@ func (r *Repository) CountOrgMemberships(ctx context.Context, orgID uuid.UUID) (
 
 func (r *Repository) GetOrgMembershipByOrgAndUser(ctx context.Context, orgID, userID uuid.UUID) (OrgMembershipFullRow, error) {
 	var m OrgMembershipFullRow
+	var inviteTokenExpiresAt pgtype.Timestamptz
 	err := r.db.QueryRow(ctx, `
 		SELECT om.id, om.organization_id, om.user_id, u.email, COALESCE(u.display_name, ''),
-		       om.role, om.membership_status, om.created_at, om.updated_at
+		       om.role, om.membership_status, COALESCE(om.invite_token, ''),
+		       om.invite_token_expires_at, om.created_at, om.updated_at
 		FROM organization_memberships om
 		JOIN users u ON u.id = om.user_id
 		WHERE om.organization_id = $1 AND om.user_id = $2
 	`, orgID, userID).Scan(&m.ID, &m.OrganizationID, &m.UserID, &m.Email, &m.DisplayName,
-		&m.Role, &m.MembershipStatus, &m.CreatedAt, &m.UpdatedAt)
+		&m.Role, &m.MembershipStatus, &m.InviteToken, &inviteTokenExpiresAt, &m.CreatedAt, &m.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return OrgMembershipFullRow{}, ErrMembershipNotFound
 		}
 		return OrgMembershipFullRow{}, fmt.Errorf("get org membership by org and user: %w", err)
 	}
+	m.InviteTokenExpiresAt = optionalTime(inviteTokenExpiresAt)
 	return m, nil
 }
 
@@ -3465,12 +3985,18 @@ func (r *Repository) CreateOrgMembership(ctx context.Context, input CreateOrgMem
 	}
 
 	var m OrgMembershipFullRow
+	var inviteTokenExpiresAt pgtype.Timestamptz
 	err = tx.QueryRow(ctx, `
-		INSERT INTO organization_memberships (id, organization_id, user_id, role, membership_status)
-		VALUES (gen_random_uuid(), $1, $2, $3, 'invited')
-		RETURNING id, organization_id, user_id, role, membership_status, created_at, updated_at
-	`, input.OrganizationID, input.UserID, input.Role).Scan(
-		&m.ID, &m.OrganizationID, &m.UserID, &m.Role, &m.MembershipStatus, &m.CreatedAt, &m.UpdatedAt,
+		INSERT INTO organization_memberships (
+			id, organization_id, user_id, role, membership_status,
+			invite_token, invite_token_expires_at
+		)
+		VALUES (gen_random_uuid(), $1, $2, $3, 'invited', $4, $5)
+		RETURNING id, organization_id, user_id, role, membership_status,
+		          COALESCE(invite_token, ''), invite_token_expires_at, created_at, updated_at
+	`, input.OrganizationID, input.UserID, input.Role, input.InviteToken, input.InviteTokenExpiresAt).Scan(
+		&m.ID, &m.OrganizationID, &m.UserID, &m.Role, &m.MembershipStatus,
+		&m.InviteToken, &inviteTokenExpiresAt, &m.CreatedAt, &m.UpdatedAt,
 	)
 	if err != nil {
 		var pgErr *pgconn.PgError
@@ -3479,6 +4005,7 @@ func (r *Repository) CreateOrgMembership(ctx context.Context, input CreateOrgMem
 		}
 		return OrgMembershipFullRow{}, fmt.Errorf("create org membership: %w", err)
 	}
+	m.InviteTokenExpiresAt = optionalTime(inviteTokenExpiresAt)
 
 	// Fetch user details to fill the response.
 	var user User
@@ -3495,20 +4022,45 @@ func (r *Repository) CreateOrgMembership(ctx context.Context, input CreateOrgMem
 
 func (r *Repository) GetOrgMembershipByID(ctx context.Context, membershipID uuid.UUID) (OrgMembershipFullRow, error) {
 	var m OrgMembershipFullRow
+	var inviteTokenExpiresAt pgtype.Timestamptz
 	err := r.db.QueryRow(ctx, `
 		SELECT om.id, om.organization_id, om.user_id, u.email, COALESCE(u.display_name, ''),
-		       om.role, om.membership_status, om.created_at, om.updated_at
+		       om.role, om.membership_status, COALESCE(om.invite_token, ''),
+		       om.invite_token_expires_at, om.created_at, om.updated_at
 		FROM organization_memberships om
 		JOIN users u ON u.id = om.user_id
 		WHERE om.id = $1
 	`, membershipID).Scan(&m.ID, &m.OrganizationID, &m.UserID, &m.Email, &m.DisplayName,
-		&m.Role, &m.MembershipStatus, &m.CreatedAt)
+		&m.Role, &m.MembershipStatus, &m.InviteToken, &inviteTokenExpiresAt, &m.CreatedAt, &m.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return OrgMembershipFullRow{}, ErrMembershipNotFound
 		}
 		return OrgMembershipFullRow{}, fmt.Errorf("get org membership by id: %w", err)
 	}
+	m.InviteTokenExpiresAt = optionalTime(inviteTokenExpiresAt)
+	return m, nil
+}
+
+func (r *Repository) GetOrgMembershipByInviteToken(ctx context.Context, inviteToken string) (OrgMembershipFullRow, error) {
+	var m OrgMembershipFullRow
+	var inviteTokenExpiresAt pgtype.Timestamptz
+	err := r.db.QueryRow(ctx, `
+		SELECT om.id, om.organization_id, om.user_id, u.email, COALESCE(u.display_name, ''),
+		       om.role, om.membership_status, COALESCE(om.invite_token, ''),
+		       om.invite_token_expires_at, om.created_at, om.updated_at
+		FROM organization_memberships om
+		JOIN users u ON u.id = om.user_id
+		WHERE om.invite_token = $1 AND om.membership_status = 'invited'
+	`, inviteToken).Scan(&m.ID, &m.OrganizationID, &m.UserID, &m.Email, &m.DisplayName,
+		&m.Role, &m.MembershipStatus, &m.InviteToken, &inviteTokenExpiresAt, &m.CreatedAt, &m.UpdatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return OrgMembershipFullRow{}, ErrMembershipNotFound
+		}
+		return OrgMembershipFullRow{}, fmt.Errorf("get org membership by invite token: %w", err)
+	}
+	m.InviteTokenExpiresAt = optionalTime(inviteTokenExpiresAt)
 	return m, nil
 }
 
@@ -3534,6 +4086,21 @@ func (r *Repository) UpdateOrgMembership(ctx context.Context, membershipID uuid.
 			setClauses = append(setClauses, "archived_at = NULL")
 		}
 	}
+	if input.UserID != nil {
+		setClauses = append(setClauses, fmt.Sprintf("user_id = $%d", argIdx))
+		args = append(args, *input.UserID)
+		argIdx++
+	}
+	if input.ClearInviteToken {
+		setClauses = append(setClauses, "invite_token = NULL", "invite_token_expires_at = NULL")
+	} else if input.InviteToken != nil {
+		setClauses = append(setClauses, fmt.Sprintf("invite_token = $%d", argIdx))
+		args = append(args, *input.InviteToken)
+		argIdx++
+		setClauses = append(setClauses, fmt.Sprintf("invite_token_expires_at = $%d", argIdx))
+		args = append(args, input.InviteTokenExpiresAt)
+		argIdx++
+	}
 
 	if len(setClauses) == 0 {
 		return r.GetOrgMembershipByID(ctx, membershipID)
@@ -3542,7 +4109,8 @@ func (r *Repository) UpdateOrgMembership(ctx context.Context, membershipID uuid.
 	query := fmt.Sprintf(`
 		UPDATE organization_memberships SET %s
 		WHERE id = $%d
-		RETURNING id, organization_id, user_id, role, membership_status, created_at, updated_at
+		RETURNING id, organization_id, user_id, role, membership_status,
+		          COALESCE(invite_token, ''), invite_token_expires_at, created_at, updated_at
 	`, strings.Join(setClauses, ", "), argIdx)
 	args = append(args, membershipID)
 
@@ -3566,15 +4134,22 @@ func (r *Repository) UpdateOrgMembership(ctx context.Context, membershipID uuid.
 	}
 
 	var m OrgMembershipFullRow
+	var inviteTokenExpiresAt pgtype.Timestamptz
 	err = tx.QueryRow(ctx, query, args...).Scan(
-		&m.ID, &m.OrganizationID, &m.UserID, &m.Role, &m.MembershipStatus, &m.CreatedAt, &m.UpdatedAt,
+		&m.ID, &m.OrganizationID, &m.UserID, &m.Role, &m.MembershipStatus,
+		&m.InviteToken, &inviteTokenExpiresAt, &m.CreatedAt, &m.UpdatedAt,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return OrgMembershipFullRow{}, ErrMembershipNotFound
 		}
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return OrgMembershipFullRow{}, ErrAlreadyMember
+		}
 		return OrgMembershipFullRow{}, fmt.Errorf("update org membership: %w", err)
 	}
+	m.InviteTokenExpiresAt = optionalTime(inviteTokenExpiresAt)
 
 	// Fetch user details.
 	var user User
@@ -3631,9 +4206,9 @@ func (r *Repository) CreateWorkspaceWithAdmin(ctx context.Context, input CreateW
 	err = tx.QueryRow(ctx, `
 		INSERT INTO workspaces (id, organization_id, name, slug, status)
 		VALUES (gen_random_uuid(), $1, $2, $3, 'active')
-		RETURNING id, organization_id, name, slug, status, created_at, updated_at
+		RETURNING id, organization_id, name, slug, status, public_packs, created_at, updated_at
 	`, input.OrganizationID, input.Name, input.Slug).Scan(
-		&ws.ID, &ws.OrganizationID, &ws.Name, &ws.Slug, &ws.Status, &ws.CreatedAt, &ws.UpdatedAt,
+		&ws.ID, &ws.OrganizationID, &ws.Name, &ws.Slug, &ws.Status, &ws.PublicPacks, &ws.CreatedAt, &ws.UpdatedAt,
 	)
 	if err != nil {
 		var pgErr *pgconn.PgError
@@ -3660,9 +4235,9 @@ func (r *Repository) CreateWorkspaceWithAdmin(ctx context.Context, input CreateW
 func (r *Repository) GetWorkspaceByID(ctx context.Context, workspaceID uuid.UUID) (WorkspaceRow, error) {
 	var ws WorkspaceRow
 	err := r.db.QueryRow(ctx, `
-		SELECT id, organization_id, name, slug, status, created_at, updated_at
+		SELECT id, organization_id, name, slug, status, public_packs, created_at, updated_at
 		FROM workspaces WHERE id = $1
-	`, workspaceID).Scan(&ws.ID, &ws.OrganizationID, &ws.Name, &ws.Slug, &ws.Status, &ws.CreatedAt, &ws.UpdatedAt)
+	`, workspaceID).Scan(&ws.ID, &ws.OrganizationID, &ws.Name, &ws.Slug, &ws.Status, &ws.PublicPacks, &ws.CreatedAt, &ws.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return WorkspaceRow{}, ErrWorkspaceNotFound
@@ -3674,7 +4249,7 @@ func (r *Repository) GetWorkspaceByID(ctx context.Context, workspaceID uuid.UUID
 
 func (r *Repository) ListWorkspacesByOrgID(ctx context.Context, orgID uuid.UUID, limit, offset int32) ([]WorkspaceRow, error) {
 	rows, err := r.db.Query(ctx, `
-		SELECT id, organization_id, name, slug, status, created_at, updated_at
+		SELECT id, organization_id, name, slug, status, public_packs, created_at, updated_at
 		FROM workspaces
 		WHERE organization_id = $1 AND status = 'active'
 		ORDER BY name
@@ -3701,7 +4276,7 @@ func (r *Repository) CountWorkspacesByOrgID(ctx context.Context, orgID uuid.UUID
 
 func (r *Repository) ListWorkspacesByOrgIDForMember(ctx context.Context, orgID, userID uuid.UUID, limit, offset int32) ([]WorkspaceRow, error) {
 	rows, err := r.db.Query(ctx, `
-		SELECT w.id, w.organization_id, w.name, w.slug, w.status, w.created_at, w.updated_at
+		SELECT w.id, w.organization_id, w.name, w.slug, w.status, w.public_packs, w.created_at, w.updated_at
 		FROM workspaces w
 		JOIN workspace_memberships wm ON wm.workspace_id = w.id
 		WHERE w.organization_id = $1 AND wm.user_id = $2 AND wm.membership_status = 'active'
@@ -3754,6 +4329,11 @@ func (r *Repository) UpdateWorkspace(ctx context.Context, workspaceID uuid.UUID,
 			setClauses = append(setClauses, "archived_at = NULL")
 		}
 	}
+	if input.PublicPacks != nil {
+		setClauses = append(setClauses, fmt.Sprintf("public_packs = $%d", argIdx))
+		args = append(args, *input.PublicPacks)
+		argIdx++
+	}
 
 	if len(setClauses) == 0 {
 		return r.GetWorkspaceByID(ctx, workspaceID)
@@ -3762,13 +4342,13 @@ func (r *Repository) UpdateWorkspace(ctx context.Context, workspaceID uuid.UUID,
 	query := fmt.Sprintf(`
 		UPDATE workspaces SET %s
 		WHERE id = $%d
-		RETURNING id, organization_id, name, slug, status, created_at, updated_at
+		RETURNING id, organization_id, name, slug, status, public_packs, created_at, updated_at
 	`, strings.Join(setClauses, ", "), argIdx)
 	args = append(args, workspaceID)
 
 	var ws WorkspaceRow
 	err := r.db.QueryRow(ctx, query, args...).Scan(
-		&ws.ID, &ws.OrganizationID, &ws.Name, &ws.Slug, &ws.Status, &ws.CreatedAt, &ws.UpdatedAt,
+		&ws.ID, &ws.OrganizationID, &ws.Name, &ws.Slug, &ws.Status, &ws.PublicPacks, &ws.CreatedAt, &ws.UpdatedAt,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -3802,9 +4382,9 @@ func (r *Repository) ArchiveWorkspaceCascade(ctx context.Context, workspaceID uu
 		UPDATE workspaces
 		SET status = 'archived', archived_at = $2
 		WHERE id = $1
-		RETURNING id, organization_id, name, slug, status, created_at, updated_at
+		RETURNING id, organization_id, name, slug, status, public_packs, created_at, updated_at
 	`, workspaceID, now).Scan(
-		&ws.ID, &ws.OrganizationID, &ws.Name, &ws.Slug, &ws.Status, &ws.CreatedAt, &ws.UpdatedAt,
+		&ws.ID, &ws.OrganizationID, &ws.Name, &ws.Slug, &ws.Status, &ws.PublicPacks, &ws.CreatedAt, &ws.UpdatedAt,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -3823,7 +4403,7 @@ func scanWorkspaceRows(rows pgx.Rows) ([]WorkspaceRow, error) {
 	var workspaces []WorkspaceRow
 	for rows.Next() {
 		var ws WorkspaceRow
-		if err := rows.Scan(&ws.ID, &ws.OrganizationID, &ws.Name, &ws.Slug, &ws.Status, &ws.CreatedAt, &ws.UpdatedAt); err != nil {
+		if err := rows.Scan(&ws.ID, &ws.OrganizationID, &ws.Name, &ws.Slug, &ws.Status, &ws.PublicPacks, &ws.CreatedAt, &ws.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scan workspace: %w", err)
 		}
 		workspaces = append(workspaces, ws)

@@ -3,6 +3,8 @@ backend/e2b-template/node_modules/
 backend/e2b-template/*.old
 web/.data/
 web/.env.local
+try-cli/**/node_modules/
+services/try-cli/node_modules/
 cli/agentclash
 cli/dist/
 cli/cmd/ci-run-spec-*/
@@ -19,4 +21,7 @@ npm/**/*.tgz
 testing/codex-issue-324-promote-failure-dialog.md
 
 # Local agent checkpoint/test contracts. Existing tracked files remain tracked.
-testing/
+testing/*
+!testing/feat-case-templating-840.md
+!testing/feat-dataset-evals-889.md
+!testing/feat-dataset-trace-ingest-890.md

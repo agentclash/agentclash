@@ -6,7 +6,7 @@ info:
     B2B AI agent evaluation platform. Pits agent deployments against challenge
     packs, with replay inspection, scoring, comparison, and release gating.
   license:
-    name: FSL-1.1-MIT
+    name: MIT
     url: https://github.com/agentclash/agentclash/blob/main/LICENSE
   contact:
     url: https://github.com/agentclash/agentclash
@@ -14,6 +14,9 @@ info:
 servers:
   - url: http://localhost:8080
     description: Local development
+
+security:
+  - bearerJWT: []
 
 tags:
   - name: Health
@@ -36,6 +39,8 @@ tags:
     description: Release gate policy evaluation
   - name: Regressions
     description: Workspace regression suite and case management
+  - name: Datasets
+    description: Workspace eval datasets and versioned examples
   - name: Artifacts
     description: File upload, download, and content delivery
   - name: Billing
@@ -46,10 +51,14 @@ tags:
     description: Agent build and version lifecycle
   - name: AgentDeployments
     description: Agent deployment management
+  - name: AgentHarnesses
+    description: Long-running coding harness configuration and execution controls
   - name: HostedRuns
     description: External hosted agent event ingestion
   - name: Playgrounds
     description: Prompt playground experimentation and comparison
+  - name: VibeEvals
+    description: Draft-only Vibe Eval conversation and artifact authoring
   - name: UserProfile
     description: Current user profile with org/workspace hierarchy
   - name: Onboarding
@@ -64,6 +73,8 @@ tags:
     description: Workspace membership invitations and updates
   - name: WorkspaceSecrets
     description: Encrypted workspace secret management
+  - name: GitHubIntegrations
+    description: GitHub App installation, repository selection, and CI setup
   - name: RuntimeProfiles
     description: Execution runtime profile configuration
   - name: ProviderAccounts
@@ -80,6 +91,238 @@ tags:
     description: Routing and spend policy configuration
 
 paths:
+  /v1/workspaces/{workspaceID}/agent-harness-executions/{executionID}/cancel:
+    post:
+      operationId: cancelAgentHarnessExecution
+      tags: [AgentHarnesses]
+      summary: Cancel an Agent Harness execution
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/ExecutionID"
+      responses:
+        "200":
+          description: Execution cancelled, or already terminal.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentHarnessExecution"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/workspaces/{workspaceID}/agent-harness-executions/{executionID}/retry:
+    post:
+      operationId: retryAgentHarnessExecution
+      tags: [AgentHarnesses]
+      summary: Retry an Agent Harness execution
+      description: >
+        Retries a terminal harness execution using frozen snapshots from the
+        original execution. The idempotency key scopes duplicate retry requests
+        for the same source execution.
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/ExecutionID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RetryAgentHarnessExecutionRequest"
+      responses:
+        "201":
+          description: Retry execution queued or existing retry returned.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentHarnessExecution"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/workspaces/{workspaceID}/agent-harness-executions/{executionID}/failure-review:
+    get:
+      operationId: getAgentHarnessFailureReview
+      tags: [AgentHarnesses]
+      summary: Get an Agent Harness failure review
+      description: >
+        Returns the rule or LLM-suggested failure classification for a harness
+        execution, preserving any human-edited class and summary as the effective
+        review.
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/ExecutionID"
+      responses:
+        "200":
+          description: Failure review for the execution.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentHarnessFailureReview"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    patch:
+      operationId: updateAgentHarnessFailureReview
+      tags: [AgentHarnesses]
+      summary: Update an Agent Harness failure review
+      description: >
+        Stores LLM-assisted suggestions and human edits separately so later
+        automated suggestions do not overwrite the human-curated class.
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/ExecutionID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAgentHarnessFailureReviewRequest"
+      responses:
+        "200":
+          description: Updated failure review.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentHarnessFailureReview"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/workspaces/{workspaceID}/agent-harness-executions/{executionID}/promote-task:
+    post:
+      operationId: promoteAgentHarnessExecutionToSuite
+      tags: [AgentHarnesses]
+      summary: Promote a prior harness run into a private suite task
+      description: >
+        Creates a new immutable suite version and appends a private
+        prior_harness_run task using sanitized public prompt metadata plus the
+        frozen harness, evaluation, validator, judge, and artifact references
+        from the source execution.
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/ExecutionID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PromoteAgentHarnessExecutionRequest"
+      responses:
+        "201":
+          description: Suite version advanced and task promoted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PromoteAgentHarnessExecutionResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/workspaces/{workspaceID}/agent-harness-failures/summary:
+    get:
+      operationId: listAgentHarnessFailureSummary
+      tags: [AgentHarnesses]
+      summary: Summarize Agent Harness failure modes
+      description: >
+        Groups effective failure classes by repository, task type, harness,
+        model, E2B template, and suite for dashboard analysis.
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+      responses:
+        "200":
+          description: Failure summary groups.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListAgentHarnessFailureSummaryResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/workspaces/{workspaceID}/agent-harness-suites/{suiteID}/rankings:
+    get:
+      operationId: getAgentHarnessSuiteRankings
+      tags: [AgentHarnesses]
+      summary: Rank Agent Harness suite results
+      description: >
+        Aggregates immutable Agent Harness execution snapshots, canonical
+        run-agent scorecards, cost summaries, and execution events into suite
+        rankings with success@1, pass@k, pass^k, confidence intervals, budgets,
+        latency, cost, failure modes, and fair pairwise comparisons.
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/AgentHarnessSuiteID"
+        - name: k
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+          description: k value used for pass@k and pass^k reporting.
+        - name: version_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+          description: Immutable suite version to aggregate. Defaults to the current active version.
+      responses:
+        "200":
+          description: Ranking evidence for the active suite version.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentHarnessSuiteRankingEnvelope"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
   # ---------------------------------------------------------------------------
   # Health
   # ---------------------------------------------------------------------------
@@ -502,6 +745,134 @@ paths:
         "403":
           $ref: "#/components/responses/ForbiddenError"
 
+  /v1/workspaces/{workspaceID}/ci-profiles:
+    get:
+      operationId: listCIProfiles
+      tags: [GitHubIntegrations]
+      summary: List saved CI profiles
+      description: Lists reusable AgentClash CI setup profiles for a workspace.
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+      responses:
+        "200":
+          description: Saved CI profiles
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CIProfilesResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+    post:
+      operationId: createCIProfile
+      tags: [GitHubIntegrations]
+      summary: Create a saved CI profile
+      description: Saves a complete CI setup profile for later reuse in the workspace UI.
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SaveCIProfileRequest"
+      responses:
+        "201":
+          description: CI profile created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CIProfile"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+
+  /v1/workspaces/{workspaceID}/ci-profiles/{profileID}:
+    patch:
+      operationId: updateCIProfile
+      tags: [GitHubIntegrations]
+      summary: Update a saved CI profile
+      description: Replaces the saved CI setup profile snapshot with the supplied values.
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/ProfileID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SaveCIProfileRequest"
+      responses:
+        "200":
+          description: CI profile updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CIProfile"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+
+  /v1/workspaces/{workspaceID}/github/ci-setup-pull-request:
+    post:
+      operationId: createCISetupPullRequest
+      tags: [GitHubIntegrations]
+      summary: Open a GitHub setup PR for AgentClash CI
+      description: >
+        Creates a draft pull request containing generated AgentClash CI files.
+        If target files already exist and overwrite_existing is false, returns a
+        conflict preflight response without creating a pull request.
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCISetupPullRequestRequest"
+      responses:
+        "201":
+          description: Setup pull request created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateCISetupPullRequestResponse"
+        "200":
+          description: Conflict preflight completed without creating a pull request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateCISetupPullRequestResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "503":
+          $ref: "#/components/responses/InternalError"
+
   # ---------------------------------------------------------------------------
   # Billing
   # ---------------------------------------------------------------------------
@@ -510,7 +881,7 @@ paths:
       operationId: listBillingPlans
       tags: [Billing]
       summary: List billing plans
-      description: Returns the public billing plan catalog and Dodo product mappings.
+      description: Returns the public billing plan catalog. Dodo product mappings are present only when paid checkout is configured.
       security:
         - bearerJWT: []
       responses:
@@ -544,6 +915,34 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/WorkspaceEntitlementsResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/workspaces/{workspaceID}/quota:
+    get:
+      operationId: getWorkspaceQuota
+      tags: [Billing]
+      summary: Get workspace quota usage
+      description: >
+        Returns the workspace plan and quota counters for monthly race usage,
+        active concurrent race usage, and organization seats.
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+      responses:
+        "200":
+          description: Workspace quota snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceQuotaResponse"
         "400":
           $ref: "#/components/responses/ValidationError"
         "401":
@@ -773,7 +1172,7 @@ paths:
       operationId: startBillingTrial
       tags: [Billing]
       summary: Start a 45-day billing trial
-      description: Requires org_admin role. Only Free organizations can start a trial.
+      description: Requires org_admin role. Only Free organizations can start one self-serve trial per organization.
       security:
         - bearerJWT: []
       parameters:
@@ -841,7 +1240,7 @@ paths:
       operationId: createBillingPortal
       tags: [Billing]
       summary: Create a billing portal link
-      description: Requires org_admin role.
+      description: Requires org_admin role and an existing Dodo customer for the organization.
       security:
         - bearerJWT: []
       parameters:
@@ -990,7 +1389,7 @@ paths:
               $ref: "#/components/schemas/InviteOrgMemberRequest"
       responses:
         "201":
-          description: Member invited
+          description: Member invited. Pending invitations include accept_url for copy-link fallback.
           content:
             application/json:
               schema:
@@ -1165,7 +1564,7 @@ paths:
               $ref: "#/components/schemas/InviteWorkspaceMemberRequest"
       responses:
         "201":
-          description: Member invited
+          description: Member invited. Pending invitations include accept_url for copy-link fallback.
           content:
             application/json:
               schema:
@@ -2223,6 +2622,42 @@ paths:
         "404":
           $ref: "#/components/responses/NotFoundError"
 
+  /v1/runs/{runID}/cancel:
+    post:
+      operationId: cancelRun
+      tags: [Runs]
+      summary: Cancel a run
+      description: >
+        Cancels an active run. If the run has already reached a terminal status,
+        the endpoint returns the current run details without changing it.
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/RunID"
+      responses:
+        "200":
+          description: Run cancelled or already terminal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunDetail"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "502":
+          description: Run workflow could not be cancelled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunWorkflowErrorResponse"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
   /v1/runs/{runID}/ranking:
     get:
       operationId: getRunRanking
@@ -2470,6 +2905,170 @@ paths:
         "404":
           $ref: "#/components/responses/NotFoundError"
 
+  /v1/workspaces/{workspaceID}/runs/{runID}/run-agents/{runAgentID}/turns:
+    post:
+      operationId: submitMultiTurnHumanTurn
+      tags: [Runs, MultiTurn]
+      summary: Submit a human user message for an awaiting multi-turn phase
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/RunID"
+        - $ref: "#/components/parameters/RunAgentID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubmitHumanTurnRequest"
+      responses:
+        "202":
+          description: Human message accepted for the active turn
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubmitHumanTurnResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          description: Run agent is not awaiting human input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+
+  /v1/workspaces/{workspaceID}/runs/{runID}/run-agents/{runAgentID}/turns/status:
+    get:
+      operationId: getMultiTurnHumanTurnStatus
+      tags: [Runs, MultiTurn]
+      summary: Poll whether a run agent is awaiting human input
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/RunID"
+        - $ref: "#/components/parameters/RunAgentID"
+      responses:
+        "200":
+          description: Current human-turn gate state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HumanTurnStatusResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /v1/workspaces/{workspaceID}/calibration-reviews:
+    post:
+      operationId: createCalibrationReview
+      tags: [MultiTurn]
+      summary: Record a human calibration score for a multi-turn turn
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CalibrationReviewRequest"
+      responses:
+        "201":
+          description: Calibration review recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MultiTurnStatusResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+    get:
+      operationId: listCalibrationReviews
+      tags: [MultiTurn]
+      summary: List recent calibration reviews for a workspace
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+      responses:
+        "200":
+          description: Calibration reviews
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListCalibrationReviewsResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+
+  /v1/workspaces/{workspaceID}/arena/tasks:
+    get:
+      operationId: listArenaTasks
+      tags: [MultiTurn]
+      summary: List pending pairwise arena comparison tasks
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+      responses:
+        "200":
+          description: Pending arena tasks
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListArenaTasksResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+
+  /v1/workspaces/{workspaceID}/arena/votes:
+    post:
+      operationId: submitArenaVote
+      tags: [MultiTurn]
+      summary: Submit a human preference vote for an arena task
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ArenaVoteRequest"
+      responses:
+        "201":
+          description: Arena vote recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MultiTurnStatusResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+
   /v1/runs/{runID}/events/stream:
     get:
       operationId: streamRunEvents
@@ -2512,6 +3111,42 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/runs/{runID}/events/export:
+    get:
+      operationId: exportRunEventsJSONL
+      tags: [Runs]
+      summary: Export run events as JSONL
+      description: >
+        Exports the full persisted run-agent event stream for a run as JSONL.
+        Events are ordered by occurrence time, run-agent lane, per-agent
+        sequence number, and stable database id so trace packs are deterministic.
+      parameters:
+        - $ref: "#/components/parameters/RunID"
+      responses:
+        "200":
+          description: Ordered run-event JSONL export
+          headers:
+            Content-Disposition:
+              description: Suggested trace-pack filename.
+              schema:
+                type: string
+          content:
+            application/x-ndjson:
+              schema:
+                type: string
+                description: >
+                  One JSON run-event envelope per line. Each envelope includes
+                  event_id, schema_version, run_id, run_agent_id,
+                  sequence_number, event_type, source, occurred_at, and payload.
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
 
   /v1/workspaces/{workspaceID}/runs:
     get:
@@ -2826,6 +3461,693 @@ paths:
         "415":
           $ref: "#/components/responses/UnsupportedMediaType"
 
+  /v1/workspaces/{workspaceID}/datasets:
+    get:
+      operationId: listDatasets
+      tags: [Datasets]
+      summary: List datasets
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+      responses:
+        "200":
+          description: Paginated datasets
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListDatasetsResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+    post:
+      operationId: createDataset
+      tags: [Datasets]
+      summary: Create a dataset
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDatasetInput"
+      responses:
+        "201":
+          description: Dataset created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Dataset"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+
+  /v1/workspaces/{workspaceID}/datasets/{datasetID}:
+    get:
+      operationId: getDataset
+      tags: [Datasets]
+      summary: Get a dataset
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/DatasetID"
+      responses:
+        "200":
+          description: Dataset
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Dataset"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+    patch:
+      operationId: patchDataset
+      tags: [Datasets]
+      summary: Patch a dataset
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/DatasetID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PatchDatasetInput"
+      responses:
+        "200":
+          description: Dataset updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Dataset"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+    delete:
+      operationId: deleteDataset
+      tags: [Datasets]
+      summary: Archive a dataset
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/DatasetID"
+      responses:
+        "204":
+          description: Dataset archived
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /v1/workspaces/{workspaceID}/datasets/{datasetID}/import:
+    post:
+      operationId: importDataset
+      tags: [Datasets]
+      summary: Import dataset examples from an external format
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/DatasetID"
+        - name: format
+          in: query
+          schema:
+            $ref: "#/components/schemas/DatasetInteropFormat"
+        - name: mode
+          in: query
+          schema:
+            type: string
+            enum: [add, replace]
+            default: add
+        - name: dry_run
+          in: query
+          schema:
+            type: boolean
+            default: false
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/DatasetImportMultipartRequest"
+          application/x-ndjson:
+            schema:
+              type: string
+          text/csv:
+            schema:
+              type: string
+      responses:
+        "200":
+          description: Import preview or completed import result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DatasetImportResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /v1/workspaces/{workspaceID}/datasets/{datasetID}/export:
+    get:
+      operationId: exportDataset
+      tags: [Datasets]
+      summary: Export dataset examples in an external format
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/DatasetID"
+        - name: format
+          in: query
+          schema:
+            $ref: "#/components/schemas/DatasetInteropFormat"
+        - name: version_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+          description: Optional immutable dataset version to export. Defaults to active examples.
+      responses:
+        "200":
+          description: Dataset export stream
+          content:
+            application/x-ndjson:
+              schema:
+                type: string
+            text/csv:
+              schema:
+                type: string
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /v1/workspaces/{workspaceID}/datasets/{datasetID}/evals:
+    post:
+      operationId: startDatasetEval
+      tags: [Datasets]
+      summary: Run an eval over a pinned dataset version
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/DatasetID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StartDatasetEvalInput"
+      responses:
+        "201":
+          description: Dataset eval run queued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StartDatasetEvalResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /v1/workspaces/{workspaceID}/datasets/{datasetID}/results:
+    get:
+      operationId: listDatasetResults
+      tags: [Datasets]
+      summary: List per-example dataset eval results
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/DatasetID"
+        - name: version_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+          description: Optional dataset version filter.
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+            minimum: 1
+            maximum: 100
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+      responses:
+        "200":
+          description: Paginated dataset eval results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListDatasetResultsResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /v1/workspaces/{workspaceID}/datasets/{datasetID}/traces/import:
+    post:
+      operationId: importDatasetTraces
+      tags: [Datasets]
+      summary: Import production traces as reviewable dataset candidates
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/DatasetID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ImportDatasetTracesInput"
+      responses:
+        "201":
+          description: Trace import batch and staged candidates
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportDatasetTracesResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /v1/workspaces/{workspaceID}/datasets/{datasetID}/trace-candidates:
+    get:
+      operationId: listDatasetTraceCandidates
+      tags: [Datasets]
+      summary: List trace candidates awaiting promotion
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/DatasetID"
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, promoted, rejected]
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+            minimum: 1
+            maximum: 100
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+      responses:
+        "200":
+          description: Paginated trace candidates
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListDatasetTraceCandidatesResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /v1/workspaces/{workspaceID}/datasets/{datasetID}/trace-candidates/{candidateID}/promote:
+    post:
+      operationId: promoteDatasetTraceCandidate
+      tags: [Datasets]
+      summary: Promote a trace candidate into a dataset example
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/DatasetID"
+        - name: candidateID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PromoteDatasetTraceCandidateInput"
+      responses:
+        "200":
+          description: Existing promoted example returned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PromoteDatasetTraceCandidateResponse"
+        "201":
+          description: Candidate promoted to a new dataset example and version
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PromoteDatasetTraceCandidateResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          $ref: "#/components/responses/ValidationError"
+
+  /v1/workspaces/{workspaceID}/datasets/{datasetID}/baselines:
+    get:
+      operationId: listDatasetBaselines
+      tags: [Datasets]
+      summary: List dataset eval baselines
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/DatasetID"
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+            minimum: 1
+            maximum: 100
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+      responses:
+        "200":
+          description: Paginated dataset baselines
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListDatasetBaselinesResponse"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+    post:
+      operationId: createDatasetBaseline
+      tags: [Datasets]
+      summary: Record a baseline from a completed dataset eval run
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/DatasetID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDatasetBaselineInput"
+      responses:
+        "201":
+          description: Baseline recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DatasetBaseline"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          description: Run is not completed or has no eval outcomes yet
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/workspaces/{workspaceID}/datasets/{datasetID}/regression-suite:
+    get:
+      operationId: getDatasetRegressionSuiteLink
+      tags: [Datasets]
+      summary: Get the regression suite linked to a dataset
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/DatasetID"
+      responses:
+        "200":
+          description: Dataset regression suite link
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DatasetRegressionSuiteLink"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          description: Dataset or regression suite link not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/workspaces/{workspaceID}/datasets/{datasetID}/regression-suite/sync:
+    post:
+      operationId: syncDatasetRegressionSuite
+      tags: [Datasets]
+      summary: Promote dataset examples into a linked regression suite
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/DatasetID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SyncDatasetRegressionSuiteInput"
+      responses:
+        "200":
+          description: Regression suite synced
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SyncDatasetRegressionSuiteResult"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          description: Regression suite name conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/workspaces/{workspaceID}/datasets/{datasetID}/gate:
+    post:
+      operationId: evaluateDatasetGate
+      tags: [Datasets]
+      summary: Compare a candidate dataset eval run against a baseline
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/DatasetID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EvaluateDatasetGateInput"
+      responses:
+        "200":
+          description: Gate passed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EvaluateDatasetGateResponse"
+        "422":
+          description: Gate failed (regressions or threshold violation)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EvaluateDatasetGateResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          description: Candidate run is not completed, has no eval outcomes, or uses a different dataset input set than the baseline
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/workspaces/{workspaceID}/datasets/{datasetID}/examples:
+    get:
+      operationId: listDatasetExamples
+      tags: [Datasets]
+      summary: List dataset examples
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/DatasetID"
+      responses:
+        "200":
+          description: Paginated dataset examples
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListDatasetExamplesResponse"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+    post:
+      operationId: addDatasetExample
+      tags: [Datasets]
+      summary: Add or upsert a dataset example
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/DatasetID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpsertDatasetExampleInput"
+      responses:
+        "201":
+          description: Dataset example
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DatasetExample"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+
+  /v1/workspaces/{workspaceID}/datasets/{datasetID}/examples/{exampleID}:
+    patch:
+      operationId: patchDatasetExample
+      tags: [Datasets]
+      summary: Patch a dataset example
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/DatasetID"
+        - $ref: "#/components/parameters/DatasetExampleID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PatchDatasetExampleInput"
+      responses:
+        "200":
+          description: Dataset example updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DatasetExample"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+    delete:
+      operationId: deleteDatasetExample
+      tags: [Datasets]
+      summary: Archive a dataset example
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/DatasetID"
+        - $ref: "#/components/parameters/DatasetExampleID"
+      responses:
+        "200":
+          description: Dataset example archived
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DatasetExample"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /v1/workspaces/{workspaceID}/datasets/{datasetID}/versions:
+    get:
+      operationId: listDatasetVersions
+      tags: [Datasets]
+      summary: List dataset versions
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/DatasetID"
+      responses:
+        "200":
+          description: Dataset versions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListDatasetVersionsResponse"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+    post:
+      operationId: createDatasetVersion
+      tags: [Datasets]
+      summary: Snapshot dataset examples
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/DatasetID"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDatasetVersionInput"
+      responses:
+        "201":
+          description: Dataset version
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DatasetVersion"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /v1/workspaces/{workspaceID}/datasets/{datasetID}/versions/{versionID}:
+    get:
+      operationId: getDatasetVersion
+      tags: [Datasets]
+      summary: Get dataset version examples
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/DatasetID"
+        - $ref: "#/components/parameters/DatasetVersionID"
+      responses:
+        "200":
+          description: Dataset version detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DatasetVersionDetail"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
   # ---------------------------------------------------------------------------
   # Replays
   # ---------------------------------------------------------------------------
@@ -2883,6 +4205,42 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ReplayResponse"
+
+  /v1/replays/{runAgentID}/transcript:
+    get:
+      operationId: getReplayTranscript
+      tags: [Replays]
+      summary: Get multi-turn conversation transcript
+      description: >
+        Returns the reconstructed multi-turn conversation transcript for an
+        agent — ordered user/assistant turns with phase, actor, and mismatch
+        metadata. Single-turn (native) runs return an empty turns array.
+        Returns 202 while the transcript is still being recorded.
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/RunAgentID"
+      responses:
+        "200":
+          description: Transcript ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TranscriptResponse"
+        "202":
+          description: Transcript recording pending
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TranscriptResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
 
   /v1/replays/{runAgentID}/viewer:
     get:
@@ -3523,6 +4881,186 @@ paths:
   # ---------------------------------------------------------------------------
   # Playgrounds
   # ---------------------------------------------------------------------------
+  /v1/workspaces/{workspaceID}/vibe-eval/conversations:
+    post:
+      operationId: createVibeEvalConversation
+      summary: Create a Vibe Eval conversation
+      tags: [VibeEvals]
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateVibeEvalConversationRequest"
+      responses:
+        "201":
+          description: Vibe Eval conversation created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VibeEvalConversationResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+    get:
+      operationId: listVibeEvalConversations
+      summary: List Vibe Eval conversations in a workspace
+      tags: [VibeEvals]
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+      responses:
+        "200":
+          description: List of Vibe Eval conversations
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListVibeEvalConversationsResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+
+  /v1/workspaces/{workspaceID}/vibe-eval/conversations/{conversationID}:
+    get:
+      operationId: getVibeEvalConversation
+      summary: Get a Vibe Eval conversation
+      tags: [VibeEvals]
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/VibeEvalConversationID"
+      responses:
+        "200":
+          description: Vibe Eval conversation detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VibeEvalConversationResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /v1/workspaces/{workspaceID}/vibe-eval/conversations/{conversationID}/drafts:
+    post:
+      operationId: createVibeEvalDraft
+      summary: Create a Vibe Eval draft
+      tags: [VibeEvals]
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/VibeEvalConversationID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateVibeEvalDraftRequest"
+      responses:
+        "201":
+          description: Vibe Eval draft created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VibeEvalDraftResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+    get:
+      operationId: listVibeEvalDrafts
+      summary: List Vibe Eval drafts for a conversation
+      tags: [VibeEvals]
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/VibeEvalConversationID"
+      responses:
+        "200":
+          description: List of Vibe Eval drafts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListVibeEvalDraftsResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /v1/workspaces/{workspaceID}/vibe-eval/drafts/{draftID}:
+    get:
+      operationId: getVibeEvalDraft
+      summary: Get a Vibe Eval draft
+      tags: [VibeEvals]
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/VibeEvalDraftID"
+      responses:
+        "200":
+          description: Vibe Eval draft detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VibeEvalDraftResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+    patch:
+      operationId: updateVibeEvalDraft
+      summary: Update a Vibe Eval draft
+      tags: [VibeEvals]
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/VibeEvalDraftID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateVibeEvalDraftRequest"
+      responses:
+        "200":
+          description: Vibe Eval draft updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VibeEvalDraftResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
   /v1/workspaces/{workspaceID}/playgrounds:
     post:
       operationId: createPlayground
@@ -3937,6 +5475,20 @@ components:
       schema:
         type: string
         format: uuid
+    ExecutionID:
+      name: executionID
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    AgentHarnessSuiteID:
+      name: suiteID
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
     ArtifactID:
       name: artifactID
       in: path
@@ -3974,6 +5526,27 @@ components:
         format: uuid
     RegressionCaseID:
       name: caseID
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    DatasetID:
+      name: datasetID
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    DatasetExampleID:
+      name: exampleID
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    DatasetVersionID:
+      name: versionID
       in: path
       required: true
       schema:
@@ -4044,6 +5617,20 @@ components:
         pattern: "^[A-Za-z_][A-Za-z0-9_]*$"
         minLength: 1
         maxLength: 128
+    VibeEvalConversationID:
+      name: conversationID
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    VibeEvalDraftID:
+      name: draftID
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
 
   # ---------------------------------------------------------------------------
   # Responses
@@ -4085,6 +5672,12 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/ErrorEnvelope"
+    TooManyRequests:
+      description: Rate or concurrency limit exceeded
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
     GoneError:
       description: Resource expired or removed
       content:
@@ -4104,6 +5697,574 @@ components:
   schemas:
     # --- Shared ---
 
+    Dataset:
+      type: object
+      required: [id, organization_id, workspace_id, slug, name, description, input_schema_enforced, active_example_count, version_count, created_by, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        organization_id: { type: string, format: uuid }
+        workspace_id: { type: string, format: uuid }
+        slug: { type: string }
+        name: { type: string }
+        description: { type: string }
+        input_schema:
+          type: object
+          additionalProperties: true
+        input_schema_enforced: { type: boolean }
+        default_challenge_pack_version_id: { type: string, format: uuid }
+        active_example_count: { type: integer }
+        version_count: { type: integer }
+        created_by: { type: string, format: uuid }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        archived_at: { type: string, format: date-time }
+
+    DatasetExample:
+      type: object
+      required: [id, dataset_id, input, metadata, tags, status, source, created_by, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        dataset_id: { type: string, format: uuid }
+        external_id: { type: string }
+        input: {}
+        expected: {}
+        metadata:
+          type: object
+          additionalProperties: true
+        tags:
+          type: array
+          items: { type: string }
+        status:
+          type: string
+          enum: [active, archived, muted]
+        source:
+          type: string
+          enum: [manual, import, trace, synthetic, promotion]
+        source_run_id: { type: string, format: uuid }
+        source_trace_id: { type: string }
+        source_platform: { type: string }
+        artifact_id: { type: string, format: uuid }
+        created_by: { type: string, format: uuid }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    DatasetVersion:
+      type: object
+      required: [id, dataset_id, version_number, example_count, manifest_checksum, created_by, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        dataset_id: { type: string, format: uuid }
+        version_number: { type: integer }
+        label: { type: string }
+        example_count: { type: integer }
+        manifest_checksum: { type: string }
+        created_by: { type: string, format: uuid }
+        created_at: { type: string, format: date-time }
+
+    CreateDatasetInput:
+      type: object
+      required: [slug, name]
+      properties:
+        slug: { type: string }
+        name: { type: string }
+        description: { type: string }
+        input_schema:
+          type: object
+          additionalProperties: true
+        input_schema_enforced: { type: boolean }
+        default_challenge_pack_version_id: { type: string, format: uuid }
+
+    PatchDatasetInput:
+      type: object
+      properties:
+        slug: { type: string }
+        name: { type: string }
+        description: { type: string }
+        input_schema:
+          type: object
+          additionalProperties: true
+        input_schema_enforced: { type: boolean }
+        default_challenge_pack_version_id: { type: string, format: uuid }
+
+    UpsertDatasetExampleInput:
+      type: object
+      required: [input]
+      properties:
+        external_id: { type: string }
+        input: {}
+        expected: {}
+        metadata:
+          type: object
+          additionalProperties: true
+        tags:
+          type: array
+          items: { type: string }
+        status:
+          type: string
+          enum: [active, archived, muted]
+        source:
+          type: string
+          enum: [manual, import, trace, synthetic, promotion]
+        source_run_id: { type: string, format: uuid }
+        source_trace_id: { type: string }
+        source_platform: { type: string }
+        artifact_id: { type: string, format: uuid }
+
+    PatchDatasetExampleInput:
+      type: object
+      properties:
+        input: {}
+        expected: {}
+        metadata:
+          type: object
+          additionalProperties: true
+        tags:
+          type: array
+          items: { type: string }
+        status:
+          type: string
+          enum: [active, archived, muted]
+        source:
+          type: string
+          enum: [manual, import, trace, synthetic, promotion]
+        source_run_id: { type: string, format: uuid }
+        source_trace_id: { type: string }
+        source_platform: { type: string }
+        artifact_id: { type: string, format: uuid }
+
+    CreateDatasetVersionInput:
+      type: object
+      properties:
+        label: { type: string }
+
+    DatasetInteropFormat:
+      type: string
+      enum: [openai, braintrust, langsmith, phoenix, jsonl, csv]
+
+    DatasetImportMultipartRequest:
+      type: object
+      required: [file]
+      properties:
+        file:
+          type: string
+          format: binary
+        format:
+          $ref: "#/components/schemas/DatasetInteropFormat"
+        mode:
+          type: string
+          enum: [add, replace]
+          default: add
+        dry_run:
+          type: boolean
+          default: false
+        mapping:
+          description: JSON-encoded DatasetImportMapping.
+          type: string
+        map:
+          description: Alias for mapping.
+          type: string
+
+    DatasetImportPreviewExample:
+      type: object
+      required: [input, metadata]
+      properties:
+        external_id: { type: string }
+        input: {}
+        expected: {}
+        metadata:
+          type: object
+          additionalProperties: true
+        tags:
+          type: array
+          items: { type: string }
+
+    DatasetImportRowError:
+      type: object
+      required: [row, message]
+      properties:
+        row: { type: integer }
+        field: { type: string }
+        message: { type: string }
+
+    DatasetImportResponse:
+      type: object
+      required: [format, dry_run, mode, imported_count]
+      properties:
+        format:
+          $ref: "#/components/schemas/DatasetInteropFormat"
+        dry_run: { type: boolean }
+        mode:
+          type: string
+          enum: [add, replace]
+        preview:
+          type: array
+          items:
+            $ref: "#/components/schemas/DatasetImportPreviewExample"
+        errors:
+          type: array
+          items:
+            $ref: "#/components/schemas/DatasetImportRowError"
+        imported_count: { type: integer }
+        version:
+          $ref: "#/components/schemas/DatasetVersion"
+        examples:
+          type: array
+          items:
+            $ref: "#/components/schemas/DatasetExample"
+
+    StartDatasetEvalInput:
+      type: object
+      required: [version_id, challenge_pack_version_id, agent_deployment_ids]
+      properties:
+        version_id: { type: string, format: uuid }
+        challenge_pack_version_id: { type: string, format: uuid }
+        challenge_id:
+          type: string
+          description: Challenge key to bind dataset examples to.
+        challenge_key:
+          type: string
+          description: Alias for challenge_id.
+        mapping:
+          type: object
+          additionalProperties: true
+        agent_deployment_ids:
+          type: array
+          minItems: 1
+          items: { type: string, format: uuid }
+        name: { type: string }
+
+    DatasetVersionInputSet:
+      type: object
+      required: [id, dataset_id, dataset_version_id, challenge_pack_version_id, challenge_identity_id, challenge_key, challenge_input_set_id, input_key, input_checksum, mapping, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        dataset_id: { type: string, format: uuid }
+        dataset_version_id: { type: string, format: uuid }
+        challenge_pack_version_id: { type: string, format: uuid }
+        challenge_identity_id: { type: string, format: uuid }
+        challenge_key: { type: string }
+        challenge_input_set_id: { type: string, format: uuid }
+        input_key: { type: string }
+        input_checksum: { type: string }
+        mapping:
+          type: object
+          additionalProperties: true
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    StartDatasetEvalResponse:
+      type: object
+      required: [run, dataset_version_input_set]
+      properties:
+        run:
+          $ref: "#/components/schemas/CreateRunResponse"
+        dataset_version_input_set:
+          $ref: "#/components/schemas/DatasetVersionInputSet"
+
+    DatasetEvalResult:
+      type: object
+      required: [dataset_example_id, dataset_version_id, challenge_input_set_id]
+      properties:
+        dataset_example_id: { type: string, format: uuid }
+        dataset_version_id: { type: string, format: uuid }
+        challenge_input_set_id: { type: string, format: uuid }
+        run_id: { type: string, format: uuid }
+        run_agent_id: { type: string, format: uuid }
+        verdict: { type: string }
+        normalized_score: { type: number }
+        judged_at: { type: string, format: date-time }
+
+    ListDatasetResultsResponse:
+      type: object
+      required: [items, total, limit, offset]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/DatasetEvalResult"
+        total: { type: integer, format: int64 }
+        limit: { type: integer, format: int32 }
+        offset: { type: integer, format: int32 }
+
+    CreateDatasetBaselineInput:
+      type: object
+      required: [run_id]
+      properties:
+        run_id: { type: string, format: uuid }
+        agent_deployment_id: { type: string, format: uuid }
+        label: { type: string }
+
+    DatasetBaseline:
+      type: object
+      required:
+        [id, dataset_id, dataset_version_id, challenge_pack_version_id, challenge_key, run_id, metrics, example_outcomes, created_by, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        dataset_id: { type: string, format: uuid }
+        dataset_version_id: { type: string, format: uuid }
+        dataset_version_input_set_id: { type: string, format: uuid }
+        challenge_pack_version_id: { type: string, format: uuid }
+        challenge_key: { type: string }
+        agent_deployment_id: { type: string, format: uuid }
+        run_id: { type: string, format: uuid }
+        pass_rate: { type: number }
+        metrics:
+          type: object
+          additionalProperties: true
+        example_outcomes:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        label: { type: string }
+        created_by: { type: string, format: uuid }
+        created_at: { type: string, format: date-time }
+
+    ListDatasetBaselinesResponse:
+      type: object
+      required: [items, total, limit, offset]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/DatasetBaseline"
+        total: { type: integer, format: int64 }
+        limit: { type: integer, format: int32 }
+        offset: { type: integer, format: int32 }
+
+    DatasetRegressionSuiteLink:
+      type: object
+      required: [dataset_id, regression_suite_id, created_at, updated_at]
+      properties:
+        dataset_id: { type: string, format: uuid }
+        regression_suite_id: { type: string, format: uuid }
+        synced_version_id: { type: string, format: uuid }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    SyncDatasetRegressionSuiteInput:
+      type: object
+      required: [version_id, challenge_pack_version_id, challenge_key]
+      properties:
+        version_id: { type: string, format: uuid }
+        challenge_pack_version_id: { type: string, format: uuid }
+        challenge_key: { type: string }
+        regression_suite_id: { type: string, format: uuid }
+        suite_name: { type: string }
+
+    SyncDatasetRegressionSuiteResult:
+      type: object
+      required: [link, suite, created_cases, skipped_cases, total_examples]
+      properties:
+        link:
+          $ref: "#/components/schemas/DatasetRegressionSuiteLink"
+        suite:
+          $ref: "#/components/schemas/RegressionSuite"
+        created_cases: { type: integer }
+        skipped_cases: { type: integer }
+        total_examples: { type: integer }
+
+    EvaluateDatasetGateInput:
+      type: object
+      required: [baseline_id, run_id]
+      properties:
+        baseline_id: { type: string, format: uuid }
+        run_id: { type: string, format: uuid }
+        agent_deployment_id: { type: string, format: uuid }
+        min_pass_rate: { type: number, minimum: 0, maximum: 1 }
+        max_regressions: { type: integer, minimum: 0 }
+
+    DatasetGateRegression:
+      type: object
+      required: [dataset_example_id, reason]
+      properties:
+        dataset_example_id: { type: string, format: uuid }
+        reason: { type: string }
+        baseline_verdict: { type: string }
+        candidate_verdict: { type: string }
+        baseline_score: { type: number }
+        candidate_score: { type: number }
+
+    DatasetGateResult:
+      type: object
+      required: [pass, pass_rate, baseline_pass_rate, regression_count, regressions, evaluated_examples]
+      properties:
+        pass: { type: boolean }
+        pass_rate: { type: number }
+        baseline_pass_rate: { type: number }
+        regression_count: { type: integer }
+        regressions:
+          type: array
+          items:
+            $ref: "#/components/schemas/DatasetGateRegression"
+        evaluated_examples: { type: integer }
+        failed_thresholds:
+          type: array
+          items: { type: string }
+
+    EvaluateDatasetGateResponse:
+      type: object
+      required: [baseline, candidate_run_id, gate]
+      properties:
+        baseline:
+          $ref: "#/components/schemas/DatasetBaseline"
+        candidate_run_id: { type: string, format: uuid }
+        gate:
+          $ref: "#/components/schemas/DatasetGateResult"
+
+    DatasetTraceImport:
+      type: object
+      required: [id, dataset_id, source_platform, candidate_count, status, created_by, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        dataset_id: { type: string, format: uuid }
+        source_platform: { type: string }
+        artifact_id: { type: string, format: uuid }
+        candidate_count: { type: integer, format: int32 }
+        status: { type: string }
+        created_by: { type: string, format: uuid }
+        created_at: { type: string, format: date-time }
+
+    DatasetTraceCandidate:
+      type: object
+      required: [id, dataset_id, import_id, source_platform, input, metadata, tags, status, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        dataset_id: { type: string, format: uuid }
+        import_id: { type: string, format: uuid }
+        source_platform: { type: string }
+        source_trace_id: { type: string }
+        source_run_id: { type: string, format: uuid }
+        source_run_agent_id: { type: string, format: uuid }
+        external_id: { type: string }
+        input: {}
+        output: {}
+        expected: {}
+        metadata:
+          type: object
+          additionalProperties: true
+        tags:
+          type: array
+          items: { type: string }
+        status:
+          type: string
+          enum: [pending, promoted, rejected]
+        promoted_example_id: { type: string, format: uuid }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    DatasetTraceRedactionConfig:
+      type: object
+      properties:
+        drop_metadata_keys:
+          type: array
+          items: { type: string }
+        hash_metadata_keys:
+          type: array
+          items: { type: string }
+        drop_metadata_paths:
+          type: array
+          items: { type: string }
+
+    ImportDatasetTracesInput:
+      type: object
+      required: [source_platform]
+      properties:
+        source_platform:
+          type: string
+          enum: [otel, braintrust, langsmith, phoenix, agentclash]
+        payload: {}
+        run_id: { type: string, format: uuid }
+        run_agent_id: { type: string, format: uuid }
+        artifact_id: { type: string, format: uuid }
+        redaction:
+          $ref: "#/components/schemas/DatasetTraceRedactionConfig"
+
+    ImportDatasetTracesResponse:
+      type: object
+      required: [import, candidates]
+      properties:
+        import:
+          $ref: "#/components/schemas/DatasetTraceImport"
+        candidates:
+          type: array
+          items:
+            $ref: "#/components/schemas/DatasetTraceCandidate"
+
+    ListDatasetTraceCandidatesResponse:
+      type: object
+      required: [candidates, total]
+      properties:
+        candidates:
+          type: array
+          items:
+            $ref: "#/components/schemas/DatasetTraceCandidate"
+        total: { type: integer, format: int64 }
+
+    PromoteDatasetTraceCandidateInput:
+      type: object
+      properties:
+        expected: {}
+        tags:
+          type: array
+          items: { type: string }
+
+    PromoteDatasetTraceCandidateResponse:
+      type: object
+      required: [candidate, example, version, created]
+      properties:
+        candidate:
+          $ref: "#/components/schemas/DatasetTraceCandidate"
+        example:
+          $ref: "#/components/schemas/DatasetExample"
+        version:
+          $ref: "#/components/schemas/DatasetVersion"
+        created: { type: boolean }
+
+    ListDatasetsResponse:
+      type: object
+      required: [items, total, limit, offset]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Dataset"
+        total: { type: integer, format: int64 }
+        limit: { type: integer, format: int32 }
+        offset: { type: integer, format: int32 }
+
+    ListDatasetExamplesResponse:
+      type: object
+      required: [items, total, limit, offset]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/DatasetExample"
+        total: { type: integer, format: int64 }
+        limit: { type: integer, format: int32 }
+        offset: { type: integer, format: int32 }
+
+    ListDatasetVersionsResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/DatasetVersion"
+
+    DatasetVersionDetail:
+      type: object
+      required: [version, examples]
+      properties:
+        version:
+          $ref: "#/components/schemas/DatasetVersion"
+        examples:
+          type: array
+          items:
+            $ref: "#/components/schemas/DatasetExample"
+
     ErrorEnvelope:
       type: object
       required: [error]
@@ -4122,26 +6283,552 @@ components:
             upgrade_target:
               type: string
               description: Suggested plan key for resolving a billing gate failure.
-            limit:
-              anyOf:
-                - type: integer
-                - type: "null"
-            used:
-              type: integer
-            remaining:
-              anyOf:
-                - type: integer
-                - type: "null"
-            reset_at:
-              type: string
-              format: date-time
-            expires_at:
-              type: string
-              format: date-time
+
+    RetryAgentHarnessExecutionRequest:
+      type: object
+      required: [idempotency_key]
+      properties:
+        idempotency_key:
+          type: string
+          minLength: 1
+          description: Idempotency key scoped to the source execution retry.
+
+    AgentHarnessFailureClass:
+      type: string
+      enum:
+        - setup
+        - auth
+        - tool_misuse
+        - incomplete_implementation
+        - no_op_diff
+        - test_failure
+        - overbroad_diff
+        - no_pr
+        - judge_failure
+        - timeout
+        - policy_privacy
+        - infrastructure
+        - none
+        - unknown
+
+    AgentHarnessFailureEventRef:
+      type: object
+      required: [sequence_number, event_type, actor_type]
+      properties:
+        sequence_number:
+          type: integer
+          format: int64
+        event_type:
+          type: string
+        actor_type:
+          type: string
+        artifact_id:
+          type: string
+          format: uuid
+        payload:
+          type: object
+          additionalProperties: true
+
+    AgentHarnessFailureReview:
+      type: object
+      required:
+        - execution_id
+        - agent_harness_id
+        - workspace_id
+        - status
+        - suggested_class
+        - suggested_source
+        - suggested_confidence
+        - effective_class
+        - taxonomy
+        - created_at
+        - updated_at
+      properties:
+        execution_id:
+          type: string
+          format: uuid
+        agent_harness_id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+          format: uuid
+        run_id:
+          type: string
+          format: uuid
+        run_agent_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+        suggested_class:
+          $ref: "#/components/schemas/AgentHarnessFailureClass"
+        suggested_summary:
+          type: string
+        suggested_source:
+          type: string
+          enum: [rules, llm]
+        suggested_confidence:
+          type: number
+        human_class:
+          $ref: "#/components/schemas/AgentHarnessFailureClass"
+        human_summary:
+          type: string
+        effective_class:
+          $ref: "#/components/schemas/AgentHarnessFailureClass"
+        effective_summary:
+          type: string
+        taxonomy:
+          $ref: "#/components/schemas/FailureReviewTaxonomy"
+        repository_url:
+          type: string
+        base_branch:
+          type: string
+        task_type:
+          type: string
+        harness_name:
+          type: string
+        harness_kind:
+          type: string
+        model:
+          type: string
+        template:
+          type: string
+        suite_id:
+          type: string
+          format: uuid
+        suite_version_id:
+          type: string
+          format: uuid
+        suite_task_id:
+          type: string
+          format: uuid
+        scorecard_passed:
+          type: boolean
+        overall_score:
+          type: number
+        event_refs:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentHarnessFailureEventRef"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    UpdateAgentHarnessFailureReviewRequest:
+      type: object
+      properties:
+        suggested_class:
+          $ref: "#/components/schemas/AgentHarnessFailureClass"
+        suggested_summary:
+          type: string
+        suggested_source:
+          type: string
+          enum: [rules, llm]
+        suggested_confidence:
+          type: number
+        suggested_payload:
+          type: object
+          additionalProperties: true
+        human_class:
+          $ref: "#/components/schemas/AgentHarnessFailureClass"
+        human_summary:
+          type: string
+        human_payload:
+          type: object
+          additionalProperties: true
+
+    AgentHarnessFailureSummaryGroup:
+      type: object
+      required: [group_by, key, label, failure_class, count, latest_execution_id, latest_at]
+      properties:
+        group_by:
+          type: string
+          enum: [repository, task_type, harness, model, template, suite]
+        key:
+          type: string
+        label:
+          type: string
+        failure_class:
+          $ref: "#/components/schemas/AgentHarnessFailureClass"
+        count:
+          type: integer
+        latest_execution_id:
+          type: string
+          format: uuid
+        latest_at:
+          type: string
+          format: date-time
+        suite_id:
+          type: string
+          format: uuid
+
+    ListAgentHarnessFailureSummaryResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentHarnessFailureSummaryGroup"
+
+    PromoteAgentHarnessExecutionRequest:
+      type: object
+      required: [suite_id, title]
+      properties:
+        suite_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+          minLength: 1
+        public_prompt:
+          type: string
+        failure_class:
+          $ref: "#/components/schemas/AgentHarnessFailureClass"
+        failure_summary:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+
+    AgentHarnessSuiteTask:
+      type: object
+      required: [id, suite_version_id, task_order, title, public_prompt, source_type, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        suite_version_id:
+          type: string
+          format: uuid
+        task_order:
+          type: integer
+        title:
+          type: string
+        public_prompt:
+          type: string
+        source_type:
+          type: string
+        repository_url:
+          type: string
+        base_branch:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    PromoteAgentHarnessExecutionResponse:
+      type: object
+      required: [suite, task]
+      properties:
+        suite:
+          type: object
+          additionalProperties: true
+        task:
+          $ref: "#/components/schemas/AgentHarnessSuiteTask"
+
+    AgentHarnessSuiteRankingEnvelope:
+      type: object
+      required: [ranking]
+      properties:
+        ranking:
+          $ref: "#/components/schemas/AgentHarnessSuiteRanking"
+
+    AgentHarnessSuiteRanking:
+      type: object
+      required: [schema_version, suite_id, suite_version, k, computed_at, rankings, pairwise, evidence]
+      additionalProperties: true
+      properties:
+        schema_version:
+          type: string
+        suite_id:
+          type: string
+          format: uuid
+        suite_version:
+          type: object
+          additionalProperties: true
+        k:
+          type: integer
+          minimum: 1
+        computed_at:
+          type: string
+          format: date-time
+        rankings:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        pairwise:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        evidence:
+          type: object
+          additionalProperties: true
+
+    AgentHarnessExecution:
+      type: object
+      required: [id, organization_id, workspace_id, agent_harness_id, status, harness_snapshot, execution_config_snapshot, evaluation_config_snapshot, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        organization_id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+          format: uuid
+        agent_harness_id:
+          type: string
+          format: uuid
+        run_id:
+          type: string
+          format: uuid
+        run_agent_id:
+          type: string
+          format: uuid
+        evaluation_spec_id:
+          type: string
+          format: uuid
+        temporal_workflow_id:
+          type: string
+        temporal_run_id:
+          type: string
+        retry_of_execution_id:
+          type: string
+          format: uuid
+        created_by_user_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [queued, provisioning, running, scoring, completed, failed, cancelled]
+        harness_snapshot:
+          type: object
+          additionalProperties: true
+        execution_config_snapshot:
+          type: object
+          additionalProperties: true
+        evaluation_config_snapshot:
+          type: object
+          additionalProperties: true
+        error_message:
+          type: string
+        failure_stage:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+        cancelled_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
 
     EmptyObject:
       type: object
       additionalProperties: false
+
+    CIProfilesResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/CIProfile"
+
+    CIProfile:
+      type: object
+      required:
+        - id
+        - workspace_id
+        - name
+        - repository_full_name
+        - default_branch
+        - manifest_path
+        - workflow_path
+        - config
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        repository_full_name:
+          type: string
+          example: acme/support-agent
+        github_repository_id:
+          type: integer
+          format: int64
+        github_installation_id:
+          type: integer
+          format: int64
+        default_branch:
+          type: string
+          example: main
+        manifest_path:
+          type: string
+          example: .agentclash/ci.yaml
+        workflow_path:
+          type: string
+          example: .github/workflows/agentclash.yml
+        config:
+          type: object
+          additionalProperties: true
+          description: UI profile snapshot. Includes schemaVersion for forward-compatible migrations.
+        created_by_user_id:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    SaveCIProfileRequest:
+      type: object
+      required: [name, repository_full_name, default_branch, manifest_path, workflow_path, config]
+      properties:
+        name:
+          type: string
+          maxLength: 120
+        repository_full_name:
+          type: string
+          example: acme/support-agent
+        github_repository_id:
+          type: integer
+          format: int64
+        github_installation_id:
+          type: integer
+          format: int64
+        default_branch:
+          type: string
+          example: main
+        manifest_path:
+          type: string
+          example: .agentclash/ci.yaml
+        workflow_path:
+          type: string
+          example: .github/workflows/agentclash.yml
+        config:
+          type: object
+          additionalProperties: true
+
+    CreateCISetupPullRequestRequest:
+      type: object
+      required: [github_repository_id, base_branch, files]
+      properties:
+        github_repository_id:
+          type: integer
+          format: int64
+        github_installation_id:
+          type: integer
+          format: int64
+        base_branch:
+          type: string
+          example: main
+        title:
+          type: string
+        body:
+          type: string
+        draft:
+          type: boolean
+        check_only:
+          type: boolean
+          description: Return target-file conflicts without creating a PR.
+        overwrite_existing:
+          type: boolean
+          description: Allow generated files to replace existing target paths in the setup PR branch.
+        files:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/CISetupPullRequestFile"
+
+    CreateCISetupPullRequestResponse:
+      type: object
+      required: [base_branch, files]
+      properties:
+        pull_request:
+          $ref: "#/components/schemas/GitHubPullRequest"
+        branch:
+          type: string
+          description: Created branch name. Empty when no pull request was created.
+        base_branch:
+          type: string
+        files:
+          type: array
+          items:
+            $ref: "#/components/schemas/CISetupPullRequestFileSummary"
+        conflicts:
+          type: array
+          items:
+            $ref: "#/components/schemas/CISetupFileConflict"
+
+    CISetupPullRequestFile:
+      type: object
+      required: [path, content]
+      properties:
+        path:
+          type: string
+          example: .agentclash/ci.yaml
+        content:
+          type: string
+
+    CISetupPullRequestFileSummary:
+      type: object
+      required: [path]
+      properties:
+        path:
+          type: string
+
+    CISetupFileConflict:
+      type: object
+      required: [path, exists]
+      properties:
+        path:
+          type: string
+        exists:
+          type: boolean
+        sha:
+          type: string
+
+    GitHubPullRequest:
+      type: object
+      required: [number, html_url, state, draft]
+      properties:
+        number:
+          type: integer
+        html_url:
+          type: string
+          format: uri
+        state:
+          type: string
+        draft:
+          type: boolean
 
     ValidationResult:
       type: object
@@ -4546,10 +7233,12 @@ components:
         status:
           type: string
           enum: [active, archived]
+        public_packs:
+          type: boolean
 
     WorkspaceDetailResponse:
       type: object
-      required: [id, organization_id, name, slug, status, created_at, updated_at]
+      required: [id, organization_id, name, slug, status, public_packs, created_at, updated_at]
       properties:
         id:
           type: string
@@ -4563,6 +7252,8 @@ components:
           type: string
         status:
           type: string
+        public_packs:
+          type: boolean
         created_at:
           type: string
           format: date-time
@@ -4812,14 +7503,96 @@ components:
           type: string
           format: date-time
 
+    BillingAccountResponse:
+      type: object
+      required: [id, organization_id, status, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        organization_id:
+          type: string
+          format: uuid
+        dodo_customer_id:
+          type: string
+        billing_email:
+          type: string
+          format: email
+        status:
+          type: string
+          enum: [active, inactive]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    BillingCheckoutIntentResponse:
+      type: object
+      required:
+        [
+          id,
+          organization_id,
+          requested_plan_key,
+          billing_period,
+          seat_quantity,
+          return_url,
+          checkout_url,
+          status,
+          metadata,
+          created_at,
+          updated_at,
+        ]
+      properties:
+        id:
+          type: string
+          format: uuid
+        organization_id:
+          type: string
+          format: uuid
+        requested_plan_key:
+          type: string
+          enum: [pro, team]
+        billing_period:
+          type: string
+          enum: [monthly, yearly]
+        seat_quantity:
+          type: integer
+          minimum: 1
+        return_url:
+          type: string
+          format: uri
+        checkout_url:
+          type: string
+          format: uri
+        dodo_checkout_session_id:
+          type: string
+        status:
+          type: string
+          enum: [created, pending, completed, cancelled, expired]
+        metadata:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
     BillingOverviewResponse:
       type: object
       required: [entitlements]
       properties:
         entitlements:
           $ref: "#/components/schemas/BillingEntitlements"
+        account:
+          $ref: "#/components/schemas/BillingAccountResponse"
         subscription:
           $ref: "#/components/schemas/BillingSubscriptionResponse"
+        latest_checkout_intent:
+          $ref: "#/components/schemas/BillingCheckoutIntentResponse"
 
     StartBillingTrialRequest:
       type: object
@@ -4839,10 +7612,10 @@ components:
       properties:
         plan_key:
           type: string
-          enum: [pro, team, enterprise]
+          enum: [pro, team]
         billing_period:
           type: string
-          enum: [monthly, yearly, custom]
+          enum: [monthly, yearly]
         seat_quantity:
           type: integer
           minimum: 1
@@ -4869,10 +7642,10 @@ components:
           format: uri
         plan_key:
           type: string
-          enum: [pro, team, enterprise]
+          enum: [pro, team]
         billing_period:
           type: string
-          enum: [monthly, yearly, custom]
+          enum: [monthly, yearly]
         seat_quantity:
           type: integer
           minimum: 1
@@ -4968,6 +7741,61 @@ components:
         gates:
           $ref: "#/components/schemas/WorkspaceGateSummary"
 
+    QuotaCounter:
+      type: object
+      required: [used]
+      properties:
+        used:
+          type: integer
+        limit:
+          type: integer
+        remaining:
+          type: integer
+        reset_at:
+          type: string
+          format: date-time
+
+    WorkspaceQuotaResponse:
+      type: object
+      required:
+        [
+          organization_id,
+          workspace_id,
+          plan_key,
+          billing_period,
+          status,
+          monthly_races,
+          concurrent_races,
+          seats,
+          window_start,
+          window_end,
+        ]
+      properties:
+        organization_id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+          format: uuid
+        plan_key:
+          $ref: "#/components/schemas/BillingPlanKey"
+        billing_period:
+          type: string
+        status:
+          type: string
+        monthly_races:
+          $ref: "#/components/schemas/QuotaCounter"
+        concurrent_races:
+          $ref: "#/components/schemas/QuotaCounter"
+        seats:
+          $ref: "#/components/schemas/QuotaCounter"
+        window_start:
+          type: string
+          format: date-time
+        window_end:
+          type: string
+          format: date-time
+
     ProcessDodoWebhookResponse:
       type: object
       required: [duplicate, event_type]
@@ -5022,6 +7850,10 @@ components:
         created_at:
           type: string
           format: date-time
+        accept_url:
+          type: string
+          format: uri
+          description: Present while the membership is invited.
 
     ListOrgMembershipsResponse:
       type: object
@@ -5089,6 +7921,10 @@ components:
         created_at:
           type: string
           format: date-time
+        accept_url:
+          type: string
+          format: uri
+          description: Present while the membership is invited.
 
     ListWorkspaceMembershipsResponse:
       type: object
@@ -5155,6 +7991,7 @@ components:
           type: string
         execution_target:
           type: string
+          enum: [native, hosted_external, prompt_eval, responses, multi_turn]
         trace_mode:
           type: string
         max_iterations:
@@ -5189,6 +8026,7 @@ components:
           type: string
         execution_target:
           type: string
+          enum: [native, hosted_external, prompt_eval, responses, multi_turn]
         trace_mode:
           type: string
         max_iterations:
@@ -5281,7 +8119,7 @@ components:
 
     ModelCatalogEntryResponse:
       type: object
-      required: [id, provider_key, provider_model_id, display_name, model_family, modality, lifecycle_status, metadata, created_at, updated_at]
+      required: [id, provider_key, provider_model_id, display_name, model_family, modality, lifecycle_status, metadata, input_cost_per_million_tokens, output_cost_per_million_tokens, created_at, updated_at]
       properties:
         id:
           type: string
@@ -5301,6 +8139,12 @@ components:
         metadata:
           type: object
           additionalProperties: true
+        input_cost_per_million_tokens:
+          type: number
+          format: double
+        output_cost_per_million_tokens:
+          type: number
+          format: double
         created_at:
           type: string
           format: date-time
@@ -5334,7 +8178,7 @@ components:
 
     ModelAliasResponse:
       type: object
-      required: [id, model_catalog_entry_id, alias_key, display_name, status, created_at, updated_at]
+      required: [id, model_catalog_entry_id, provider_key, provider_model_id, model_display_name, alias_key, display_name, status, input_cost_per_million_tokens, output_cost_per_million_tokens, catalog_input_cost_per_million_tokens, catalog_output_cost_per_million_tokens, created_at, updated_at]
       properties:
         id:
           type: string
@@ -5348,11 +8192,31 @@ components:
         model_catalog_entry_id:
           type: string
           format: uuid
+        provider_key:
+          type: string
+        provider_model_id:
+          type: string
+        model_display_name:
+          type: string
         alias_key:
           type: string
         display_name:
           type: string
         status:
+          type: string
+        input_cost_per_million_tokens:
+          type: number
+          format: double
+        output_cost_per_million_tokens:
+          type: number
+          format: double
+        catalog_input_cost_per_million_tokens:
+          type: number
+          format: double
+        catalog_output_cost_per_million_tokens:
+          type: number
+          format: double
+        pricing_drift_warning:
           type: string
         created_at:
           type: string
@@ -5627,6 +8491,8 @@ components:
           format: uri
         event_name:
           type: string
+        default_branch:
+          type: string
 
     CreateRunRequest:
       type: object
@@ -5694,6 +8560,15 @@ components:
             Optional. Overrides the default cadence (minimum steps between
             standings injections). Null / omitted uses the backend default.
             Only meaningful when `race_context` is true.
+        max_iterations:
+          type: integer
+          minimum: 1
+          maximum: 1000
+          description: >
+            Optional. Overrides the max native-agent iteration budget for this
+            run. If omitted, AgentClash uses the challenge pack
+            `evaluation_spec.runtime_limits.max_iterations` default when
+            present, otherwise the selected runtime profile default.
         ci_metadata:
           $ref: "#/components/schemas/RunCIMetadata"
           description: >
@@ -5701,7 +8576,7 @@ components:
 
     CreateEvalSessionRequest:
       type: object
-      required: [workspace_id, challenge_pack_version_id, participants, eval_session]
+      required: [workspace_id, challenge_pack_version_id, eval_session]
       properties:
         workspace_id:
           type: string
@@ -5720,6 +8595,9 @@ components:
         participants:
           type: array
           minItems: 1
+          description: >
+            Uniform participants used for every child run. May be omitted when
+            `eval_session.run_matrix` supplies participants per child run.
           items:
             $ref: "#/components/schemas/CreateEvalSessionParticipant"
         execution_mode:
@@ -5730,6 +8608,13 @@ components:
             `comparison` for multiple participants.
         name:
           type: string
+        max_iterations:
+          type: integer
+          minimum: 1
+          maximum: 1000
+          description: >
+            Optional. Applies the same native-agent iteration budget override
+            to every child run in the eval session.
         eval_session:
           $ref: "#/components/schemas/CreateEvalSessionConfig"
 
@@ -5772,9 +8657,42 @@ components:
             - $ref: "#/components/schemas/EvalSessionReliabilityWeightsConfig"
             - type: "null"
           description: Optional. Explicit `null` is treated the same as omission.
+        seed_fanout:
+          $ref: "#/components/schemas/EvalSessionSeedFanoutConfig"
+        run_matrix:
+          type: array
+          minItems: 1
+          maxItems: 100
+          description: >
+            Explicit child-run matrix for race series. Length must equal
+            `repetitions`. Cannot be combined with `seed_fanout`.
+          items:
+            $ref: "#/components/schemas/EvalSessionRunMatrixEntry"
         schema_version:
           type: integer
           minimum: 1
+
+    EvalSessionRunMatrixEntry:
+      type: object
+      required: [key, participants]
+      properties:
+        key:
+          type: string
+          minLength: 1
+          description: Stable client-generated key for this matrix cell.
+        deployment_lineup:
+          type: string
+          minLength: 1
+          description: Optional challenge-pack lineup name used for this child run.
+        seed:
+          type: integer
+          minimum: 1
+          description: Optional deterministic seed assigned to this child run.
+        participants:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/CreateEvalSessionParticipant"
 
     EvalSessionAggregationConfig:
       type: object
@@ -5850,6 +8768,23 @@ components:
           type: object
           additionalProperties: true
 
+    EvalSessionSeedFanoutConfig:
+      type: object
+      required: [strategy, seeds]
+      properties:
+        strategy:
+          type: string
+          enum: [explicit]
+        seeds:
+          type: array
+          minItems: 1
+          maxItems: 100
+          uniqueItems: true
+          items:
+            type: integer
+            minimum: 1
+          description: Must contain exactly one seed per requested repetition.
+
     CreateEvalSessionResponse:
       type: object
       required: [eval_session, run_ids]
@@ -5861,6 +8796,40 @@ components:
           items:
             type: string
             format: uuid
+        seeded_runs:
+          type: array
+          items:
+            $ref: "#/components/schemas/EvalSessionSeededRun"
+        series_runs:
+          type: array
+          items:
+            $ref: "#/components/schemas/EvalSessionSeriesRun"
+
+    EvalSessionSeededRun:
+      type: object
+      required: [run_id, seed]
+      properties:
+        run_id:
+          type: string
+          format: uuid
+        seed:
+          type: integer
+          minimum: 1
+
+    EvalSessionSeriesRun:
+      type: object
+      required: [run_id]
+      properties:
+        run_id:
+          type: string
+          format: uuid
+        matrix_key:
+          type: string
+        deployment_lineup:
+          type: string
+        seed:
+          type: integer
+          minimum: 1
 
     EvalSessionResponse:
       type: object
@@ -6060,6 +9029,8 @@ components:
             $ref: "#/components/schemas/EvalSessionParticipantAggregate"
         comparison:
           $ref: "#/components/schemas/EvalSessionRepeatedComparison"
+        series_report:
+          $ref: "#/components/schemas/EvalSessionSeriesReport"
 
     EvalSessionParticipantAggregate:
       type: object
@@ -6085,6 +9056,64 @@ components:
           $ref: "#/components/schemas/EvalSessionPassMetricSeries"
         metric_routing:
           $ref: "#/components/schemas/EvalSessionMetricRouting"
+        cost_usd:
+          $ref: "#/components/schemas/EvalSessionCostAggregate"
+
+    EvalSessionSeriesReport:
+      type: object
+      required: [rank_metric, rows]
+      properties:
+        rank_metric:
+          type: string
+          enum: [overall_score, composite_agent_score]
+        rows:
+          type: array
+          items:
+            $ref: "#/components/schemas/EvalSessionSeriesReportRow"
+
+    EvalSessionSeriesReportRow:
+      type: object
+      required: [rank, lane_index, label, observed_runs]
+      properties:
+        rank:
+          type: integer
+        lane_index:
+          type: integer
+        label:
+          type: string
+        deployment_lineup:
+          type: string
+        participant_label:
+          type: string
+        observed_runs:
+          type: integer
+        overall_score:
+          type: number
+        correctness_score:
+          type: number
+        success_rate:
+          type: number
+        composite_agent_score:
+          type: number
+        mean_cost_usd:
+          type: number
+        total_cost_usd:
+          type: number
+
+    EvalSessionCostAggregate:
+      type: object
+      required: [n, total, mean, min, max]
+      properties:
+        n:
+          type: integer
+        total:
+          type: number
+        mean:
+          type: number
+        min:
+          type: number
+        max:
+          type: number
 
     EvalSessionTaskSuccess:
       type: object
@@ -6243,6 +9272,16 @@ components:
           $ref: "#/components/schemas/RunStatus"
         execution_mode:
           type: string
+        seed:
+          type: integer
+          minimum: 1
+          description: Seed assigned to this child run when the eval session was created via seeded fanout.
+        matrix_key:
+          type: string
+          description: Stable series matrix key persisted on this child run, when created from `run_matrix`.
+        deployment_lineup:
+          type: string
+          description: Deployment lineup name persisted on this child run, when created from `run_matrix`.
         queued_at:
           type: string
           format: date-time
@@ -6328,6 +9367,24 @@ components:
               type: string
         run:
           $ref: "#/components/schemas/CreateRunResponse"
+
+    RunWorkflowErrorResponse:
+      type: object
+      required: [error, run]
+      description: >
+        Returned when a run workflow operation could not be completed in
+        Temporal (HTTP 502).
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+        run:
+          $ref: "#/components/schemas/RunDetail"
 
     RunDetail:
       type: object
@@ -7546,6 +10603,9 @@ components:
         cost_score:
           type: number
           format: double
+        cost_per_correct_usd:
+          type: number
+          format: double
         dimensions:
           type: object
           additionalProperties:
@@ -7572,6 +10632,140 @@ components:
           type: array
           items:
             type: string
+
+    # --- Multi-turn ---
+
+    SubmitHumanTurnRequest:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+          minLength: 1
+
+    SubmitHumanTurnResponse:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [submitted]
+
+    HumanTurnStatusResponse:
+      type: object
+      required: [awaiting_human]
+      properties:
+        awaiting_human:
+          type: boolean
+        turn_index:
+          type: integer
+          minimum: 0
+        phase_id:
+          type: string
+        prompt_hint:
+          type: string
+
+    CalibrationReviewRequest:
+      type: object
+      required: [run_agent_id, turn_index, score]
+      properties:
+        run_agent_id:
+          type: string
+          format: uuid
+        turn_index:
+          type: integer
+          minimum: 0
+        score:
+          type: number
+          minimum: 1
+          maximum: 5
+        rubric_key:
+          type: string
+        notes:
+          type: string
+
+    CalibrationReview:
+      type: object
+      required: [id, run_agent_id, turn_index, score, reviewer_user_id, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        run_agent_id:
+          type: string
+          format: uuid
+        turn_index:
+          type: integer
+        score:
+          type: number
+        rubric_key:
+          type: string
+        notes:
+          type: string
+        reviewer_user_id:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+
+    ListCalibrationReviewsResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/CalibrationReview"
+
+    ArenaTask:
+      type: object
+      required: [id, case_key, left_run_agent_id, right_run_agent_id, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        case_key:
+          type: string
+        left_run_agent_id:
+          type: string
+          format: uuid
+        right_run_agent_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+
+    ListArenaTasksResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ArenaTask"
+
+    ArenaVoteRequest:
+      type: object
+      required: [task_id, winner_run_agent_id]
+      properties:
+        task_id:
+          type: string
+          format: uuid
+        winner_run_agent_id:
+          type: string
+          format: uuid
+        rubric_scores:
+          type: object
+          additionalProperties:
+            type: number
+
+    MultiTurnStatusResponse:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
 
     # --- Replays ---
 
@@ -7600,6 +10794,55 @@ components:
             additionalProperties: true
         pagination:
           $ref: "#/components/schemas/ReplayPagination"
+
+    TranscriptResponse:
+      type: object
+      required: [state, run_agent_id, run_id, run_agent_status, turn_count, turns]
+      properties:
+        state:
+          $ref: "#/components/schemas/ReplayState"
+        message:
+          type: string
+        run_agent_id:
+          type: string
+          format: uuid
+        run_id:
+          type: string
+          format: uuid
+        run_agent_status:
+          $ref: "#/components/schemas/RunAgentStatus"
+        turn_count:
+          type: integer
+        turns:
+          type: array
+          items:
+            $ref: "#/components/schemas/TranscriptTurn"
+
+    TranscriptTurn:
+      type: object
+      required: [turn_index, mismatch, completed, awaiting_human, user_simulated]
+      properties:
+        turn_index:
+          type: integer
+        phase_id:
+          type: string
+        actor:
+          type: string
+          description: scripted, llm, or human
+        user_message:
+          type: string
+        assistant_message:
+          type: string
+        mismatch:
+          type: boolean
+        completed:
+          type: boolean
+        awaiting_human:
+          type: boolean
+        awaiting_human_hint:
+          type: string
+        user_simulated:
+          type: boolean
 
     ReplayPayload:
       type: object
@@ -7679,6 +10922,14 @@ components:
         cost_score:
           type: number
           format: double
+        total_cost_usd:
+          type: number
+          format: double
+          description: Total model cost in USD for this run agent, derived from stored scorecard cost metrics.
+        cost_per_correct_usd:
+          type: number
+          format: double
+          description: Total model cost divided by correct validator outcomes for this run agent.
         behavioral_score:
           type: number
           format: double
@@ -7776,7 +11027,34 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/MetricDetail"
+        side_metrics:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/SideMetricDetail"
       additionalProperties: true
+
+    SideMetricDetail:
+      type: object
+      required: [state]
+      properties:
+        state:
+          type: string
+          description: Whether the side metric could be computed.
+        value:
+          type: number
+          format: double
+          description: Numeric metric value when state is available.
+        unit:
+          type: string
+        numerator:
+          type: number
+          format: double
+        denominator:
+          type: number
+          format: double
+        reason:
+          type: string
+          description: Explanation when state is unavailable.
 
     ValidatorDetail:
       type: object
@@ -8442,6 +11720,20 @@ components:
           format: int32
         lifecycle_status:
           type: string
+        deployment_defaults:
+          type: object
+          description: Default deployment aliases and lineups declared by the challenge pack version.
+          properties:
+            aliases:
+              type: object
+              additionalProperties:
+                type: string
+            lineups:
+              type: object
+              additionalProperties:
+                type: array
+                items:
+                  type: string
         created_at:
           type: string
           format: date-time
@@ -8848,6 +12140,154 @@ components:
             `metadata.events`) is present, AgentClash ingests each entry as an
             additional canonical replay event so hosted runs can surface
             structured internal subagent/model/tool steps in replay and UI.
+
+    # --- Vibe Evals ---
+
+    CreateVibeEvalConversationRequest:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+        phase:
+          type: string
+          enum: [plan, author, validate, publish, run, analyze, regress, admin]
+
+    VibeEvalConversationResponse:
+      type: object
+      required: [id, organization_id, workspace_id, created_by_user_id, title, phase, status, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        organization_id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+          format: uuid
+        created_by_user_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        phase:
+          type: string
+          enum: [plan, author, validate, publish, run, analyze, regress, admin]
+        status:
+          type: string
+          enum: [active, archived]
+        active_draft_id:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ListVibeEvalConversationsResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/VibeEvalConversationResponse"
+
+    CreateVibeEvalDraftRequest:
+      type: object
+      required: [draft_kind, content]
+      properties:
+        draft_kind:
+          type: string
+          enum: [eval_plan, challenge_pack, input_cases, scoring, runtime]
+        content:
+          type: object
+          additionalProperties: true
+        validation_state:
+          type: string
+          enum: [unknown, valid, invalid]
+        validation_errors:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+
+    UpdateVibeEvalDraftRequest:
+      type: object
+      required: [content]
+      properties:
+        content:
+          type: object
+          additionalProperties: true
+        validation_state:
+          type: string
+          enum: [unknown, valid, invalid]
+        validation_errors:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+
+    VibeEvalDraftResponse:
+      type: object
+      required: [id, organization_id, workspace_id, conversation_id, draft_kind, content, validation_state, validation_errors, created_by_user_id, updated_by_user_id, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        organization_id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+          format: uuid
+        conversation_id:
+          type: string
+          format: uuid
+        draft_kind:
+          type: string
+          enum: [eval_plan, challenge_pack, input_cases, scoring, runtime]
+        content:
+          type: object
+          additionalProperties: true
+        validation_state:
+          type: string
+          enum: [unknown, valid, invalid]
+        validation_errors:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        published_challenge_pack_id:
+          type: string
+          format: uuid
+        published_challenge_pack_version_id:
+          type: string
+          format: uuid
+        created_by_user_id:
+          type: string
+          format: uuid
+        updated_by_user_id:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ListVibeEvalDraftsResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/VibeEvalDraftResponse"
 
     # --- Playgrounds ---
 

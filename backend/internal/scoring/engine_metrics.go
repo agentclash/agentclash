@@ -169,7 +169,7 @@ func collectMetric(metric MetricDeclaration, evidence extractedEvidence, validat
 }
 
 func behavioralMetricResult(metric MetricDeclaration, key BehavioralSignalKey, evidence extractedEvidence, validators []ValidatorResult) (OutputState, *float64, *string, *bool, string, json.RawMessage) {
-	score, reason, state := behavioralSignalScore(key, evidence.toolCallTrace, validators)
+	score, reason, state := behavioralSignalScore(key, evidence.toolCallTrace, evidence.transcriptTurns, validators)
 	if state != OutputStateAvailable || score == nil {
 		return unavailableMetric(firstNonEmpty(reason, fmt.Sprintf("behavioral signal %q is unavailable", key)), metric)
 	}

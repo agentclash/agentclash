@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { createHash } from "node:crypto";
 
 const skillsArg = process.env.CHANGED_SKILLS_JSON || process.argv[2] || "[]";
 const outDir = process.env.OUT_DIR || process.argv[3] || ".agentclash/skill-harnesses";
@@ -104,9 +105,10 @@ for (const skillPath of skills) {
   }
   const title = titleFromSkill(content);
   const slug = meta.name.replace(/[^a-z0-9-]+/gi, "-").toLowerCase();
+  const slugHash = createHash("sha256").update(slug).digest("hex").slice(0, 8);
   const specPath = path.join(outDir, `${slug}.harness.json`);
   const spec = {
-    name: `skill-self-test-${safeRunLabel}-${slug}`.slice(0, 120),
+    name: `skill-self-test-${safeRunLabel}-${slugHash}-${slug}`.slice(0, 120),
     description: `Internal blind self-containment test for ${skillPath}`,
     task_prompt: taskPrompt(skillPath, meta, title),
     codex_template: "codex",

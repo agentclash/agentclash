@@ -16,6 +16,7 @@ import (
 
 type RunCreationRepository interface {
 	GetRunnableChallengePackVersionByID(ctx context.Context, id uuid.UUID) (repository.RunnableChallengePackVersion, error)
+	WorkspacePublicPacksEnabled(ctx context.Context, workspaceID uuid.UUID) (bool, error)
 	GetChallengeInputSetByID(ctx context.Context, id uuid.UUID) (repository.ChallengeInputSet, error)
 	ListChallengeInputSetsByVersionID(ctx context.Context, challengePackVersionID uuid.UUID) ([]repository.ChallengeInputSetSummary, error)
 	ListChallengeIdentityIDsByPackVersionID(ctx context.Context, challengePackVersionID uuid.UUID) ([]uuid.UUID, error)
@@ -112,6 +113,10 @@ func (m *RunCreationManager) CreateRun(ctx context.Context, caller Caller, input
 			Message: "official_pack_mode must be either full or suite_only",
 		}
 	}
+	input.Mode = normalizeRunMode(input.Mode)
+	if err := validateRequestedRunMode(input.Mode); err != nil {
+		return CreateRunResult{}, err
+	}
 	if input.OfficialPackMode == domain.OfficialPackModeSuiteOnly &&
 		len(input.RegressionSuiteIDs) == 0 &&
 		len(input.RegressionCaseIDs) == 0 {
@@ -147,6 +152,25 @@ func (m *RunCreationManager) CreateRun(ctx context.Context, caller Caller, input
 			Code:    "invalid_challenge_pack_version_id",
 			Message: "challenge_pack_version_id must be visible to the selected workspace",
 		}
+	}
+	if challengePackVersion.WorkspaceID == nil {
+		publicPacks, accessErr := m.repo.WorkspacePublicPacksEnabled(ctx, input.WorkspaceID)
+		if accessErr != nil {
+			return CreateRunResult{}, fmt.Errorf("load workspace public pack access: %w", accessErr)
+		}
+		if !publicPacks {
+			return CreateRunResult{}, RunCreationValidationError{
+				Code:    "invalid_challenge_pack_version_id",
+				Message: "challenge_pack_version_id must be visible to the selected workspace",
+			}
+		}
+	}
+	if input.MaxIterations == nil {
+		input.MaxIterations = challengePackDefaultMaxIterations(challengePackVersion.Manifest)
+	}
+	voiceMode, err := resolveRunVoiceMode(input.Mode, challengePackVersion.Manifest)
+	if err != nil {
+		return CreateRunResult{}, err
 	}
 
 	if input.ChallengeInputSetID != nil {
@@ -263,7 +287,7 @@ func (m *RunCreationManager) CreateRun(ctx context.Context, caller Caller, input
 		executionMode = "single_agent"
 	}
 
-	executionPlan, err := buildExecutionPlan(input, runAgents)
+	executionPlan, err := buildExecutionPlan(input, runAgents, voiceMode)
 	if err != nil {
 		return CreateRunResult{}, fmt.Errorf("build execution plan: %w", err)
 	}
@@ -297,6 +321,7 @@ func (m *RunCreationManager) CreateRun(ctx context.Context, caller Caller, input
 		RaceContext:            input.RaceContext,
 		RaceContextMinStepGap:  input.RaceContextMinStepGap,
 		EntitlementGate:        entitlementGate,
+		DatasetEvalRun:         input.DatasetEvalRun,
 	})
 	if err != nil {
 		return CreateRunResult{}, fmt.Errorf("create queued run: %w", err)
@@ -457,7 +482,7 @@ func regressionCaseSelectableForRun(status domain.RegressionCaseStatus, includeP
 		(includeProposed && status == domain.RegressionCaseStatusProposed)
 }
 
-func buildExecutionPlan(input CreateRunInput, runAgents []repository.CreateQueuedRunAgentParams) (json.RawMessage, error) {
+func buildExecutionPlan(input CreateRunInput, runAgents []repository.CreateQueuedRunAgentParams, voiceMode *runVoiceMode) (json.RawMessage, error) {
 	type executionPlanRunAgent struct {
 		LaneIndex                 int32     `json:"lane_index"`
 		AgentDeploymentID         uuid.UUID `json:"agent_deployment_id"`
@@ -465,12 +490,27 @@ func buildExecutionPlan(input CreateRunInput, runAgents []repository.CreateQueue
 		Label                     string    `json:"label"`
 	}
 
+	type executionPlanRuntimeLimits struct {
+		MaxIterations *int32 `json:"max_iterations,omitempty"`
+	}
+
+	type executionPlanSeries struct {
+		MatrixKey        string `json:"matrix_key,omitempty"`
+		DeploymentLineup string `json:"deployment_lineup,omitempty"`
+	}
+
 	type executionPlan struct {
-		WorkspaceID            uuid.UUID               `json:"workspace_id"`
-		ChallengePackVersionID uuid.UUID               `json:"challenge_pack_version_id"`
-		ChallengeInputSetID    *uuid.UUID              `json:"challenge_input_set_id,omitempty"`
-		OfficialPackMode       domain.OfficialPackMode `json:"official_pack_mode"`
-		Participants           []executionPlanRunAgent `json:"participants"`
+		WorkspaceID            uuid.UUID                   `json:"workspace_id"`
+		ChallengePackVersionID uuid.UUID                   `json:"challenge_pack_version_id"`
+		ChallengeInputSetID    *uuid.UUID                  `json:"challenge_input_set_id,omitempty"`
+		OfficialPackMode       domain.OfficialPackMode     `json:"official_pack_mode"`
+		Mode                   string                      `json:"mode,omitempty"`
+		Modality               string                      `json:"modality,omitempty"`
+		Voice                  *runVoiceMetadataResponse   `json:"voice,omitempty"`
+		Participants           []executionPlanRunAgent     `json:"participants"`
+		RuntimeLimits          *executionPlanRuntimeLimits `json:"runtime_limits,omitempty"`
+		Seed                   *int64                      `json:"seed,omitempty"`
+		Series                 *executionPlanSeries        `json:"series,omitempty"`
 	}
 
 	participants := make([]executionPlanRunAgent, 0, len(runAgents))
@@ -483,18 +523,73 @@ func buildExecutionPlan(input CreateRunInput, runAgents []repository.CreateQueue
 		})
 	}
 
-	payload, err := json.Marshal(executionPlan{
+	plan := executionPlan{
 		WorkspaceID:            input.WorkspaceID,
 		ChallengePackVersionID: input.ChallengePackVersionID,
 		ChallengeInputSetID:    input.ChallengeInputSetID,
 		OfficialPackMode:       input.OfficialPackMode,
 		Participants:           participants,
-	})
+		Seed:                   cloneInt64Ptr(input.Seed),
+	}
+	if input.MaxIterations != nil {
+		plan.RuntimeLimits = &executionPlanRuntimeLimits{MaxIterations: cloneInt32Ptr(input.MaxIterations)}
+	}
+	if input.SeriesMatrixKey != "" || input.SeriesDeploymentLineup != "" {
+		plan.Series = &executionPlanSeries{
+			MatrixKey:        input.SeriesMatrixKey,
+			DeploymentLineup: input.SeriesDeploymentLineup,
+		}
+	}
+	if voiceMode != nil {
+		plan.Mode = voiceMode.Mode
+		plan.Modality = voiceMode.Modality
+		plan.Voice = &runVoiceMetadataResponse{
+			Mode:      voiceMode.Mode,
+			Modality:  voiceMode.Modality,
+			Transport: voiceMode.Transport,
+		}
+	}
+
+	payload, err := json.Marshal(plan)
 	if err != nil {
 		return nil, err
 	}
 
 	return payload, nil
+}
+
+func challengePackDefaultMaxIterations(manifest json.RawMessage) *int32 {
+	var document struct {
+		RuntimeLimits struct {
+			MaxIterations *int32 `json:"max_iterations"`
+		} `json:"runtime_limits"`
+		EvaluationSpec struct {
+			RuntimeLimits struct {
+				MaxIterations *int32 `json:"max_iterations"`
+			} `json:"runtime_limits"`
+		} `json:"evaluation_spec"`
+	}
+	if len(manifest) == 0 {
+		return nil
+	}
+	if err := json.Unmarshal(manifest, &document); err != nil {
+		return nil
+	}
+	if value := validMaxIterationsDefault(document.EvaluationSpec.RuntimeLimits.MaxIterations); value != nil {
+		return value
+	}
+	return validMaxIterationsDefault(document.RuntimeLimits.MaxIterations)
+}
+
+func validMaxIterationsDefault(candidate *int32) *int32 {
+	if candidate == nil {
+		return nil
+	}
+	value := *candidate
+	if value < 1 || value > maxRunMaxIterations {
+		return nil
+	}
+	return &value
 }
 
 func defaultRunName(now time.Time) string {

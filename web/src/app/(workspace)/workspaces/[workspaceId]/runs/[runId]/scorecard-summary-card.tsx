@@ -11,6 +11,8 @@ import {
   CheckCircle2,
   XCircle,
   BarChart3,
+  MessageCircle,
+  Wrench,
 } from "lucide-react";
 import { scorePercent, scoreColor } from "@/lib/scores";
 
@@ -22,6 +24,10 @@ const LEGACY_DIM_META: Record<
   reliability: { label: "REL", icon: Shield },
   latency: { label: "LAT", icon: Zap },
   cost: { label: "CST", icon: DollarSign },
+  task_business_success: { label: "TASK", icon: Target },
+  interaction_quality: { label: "IQ", icon: MessageCircle },
+  robustness: { label: "ROB", icon: Wrench },
+  tool_data_correctness: { label: "TOOL", icon: Wrench },
 };
 
 interface ScorecardSummaryCardProps {
@@ -64,7 +70,16 @@ export function ScorecardSummaryCard({
   const dimensions = scorecard.scorecard?.dimensions ?? {};
   const dimKeys = Object.keys(dimensions).sort((a, b) => {
     // Legacy dims first in canonical order, then custom dims alphabetically.
-    const order = ["correctness", "reliability", "latency", "cost"];
+    const order = [
+      "correctness",
+      "task_business_success",
+      "reliability",
+      "interaction_quality",
+      "latency",
+      "robustness",
+      "tool_data_correctness",
+      "cost",
+    ];
     const ai = order.indexOf(a);
     const bi = order.indexOf(b);
     if (ai !== -1 && bi !== -1) return ai - bi;

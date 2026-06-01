@@ -1,6 +1,11 @@
 import fs from "fs";
 import path from "path";
 import matter from "gray-matter";
+import {
+  getAllPosts,
+  getPostBySlug,
+  type BlogPostWithContent,
+} from "./blog";
 
 const CONTENT_DIR = path.join(process.cwd(), "content", "docs");
 const AGENT_SKILLS_DIR = path.join(process.cwd(), "content", "agent-skills");
@@ -29,7 +34,47 @@ const CLI_CONFIG_FILE = path.join(
 );
 const BACKEND_ENV_FILE = path.join(REPO_ROOT, "backend", ".env.example");
 
-export const DOCS_ORIGIN = "https://agentclash.dev";
+export const DOCS_ORIGIN = "https://www.agentclash.dev";
+
+// Build/generation timestamp. Used as an honest `dateModified` fallback for docs
+// that carry no frontmatter date — these pages (including generated CLI/config
+// references and agent-skill pages) are regenerated from source on each build,
+// so "last generated" is a truthful freshness signal for answer engines.
+export const SITE_GENERATED_AT = new Date().toISOString();
+
+type PublicProductPage = {
+  title: string;
+  href: string;
+  description: string;
+  searchKeywords: string;
+};
+
+const PUBLIC_PRODUCT_PAGES: PublicProductPage[] = [
+  {
+    title: "AI Agent Evaluation Platform",
+    href: "/platform/agent-evaluation",
+    description:
+      "Public page for real-task AI agent evaluation, replay evidence, scorecards, challenge packs, and CI regression gates.",
+    searchKeywords:
+      "AI agent evaluation agent evals real task agent benchmark coding agent evaluation LLM agent evaluation sandboxed agent workloads replay evidence scorecards challenge packs CI regression gates",
+  },
+  {
+    title: "AI Agent Regression Testing",
+    href: "/platform/agent-regression-testing",
+    description:
+      "Public page for baseline-versus-candidate agent regression testing, pull request gates, and release evidence.",
+    searchKeywords:
+      "AI agent regression testing agent evaluation CI gates pull request gates release gates baseline candidate comparisons replay evidence scorecards challenge packs agent eval regression suite",
+  },
+  {
+    title: "AgentClash vs prompt-eval tools",
+    href: "/compare",
+    description:
+      "Compare AgentClash with Braintrust, LangSmith, Promptfoo, Langfuse, Arize Phoenix, and OpenAI Evals — agent evaluation versus prompt evaluation.",
+    searchKeywords:
+      "compare comparison alternative alternatives AgentClash vs Braintrust LangSmith Promptfoo Langfuse Arize Phoenix OpenAI Evals agent evaluation prompt evaluation best AI agent eval tools",
+  },
+];
 
 export type DocNavItem = {
   title: string;
@@ -64,6 +109,8 @@ export type DocPage = {
   description: string;
   content: string;
   sectionTitle?: string;
+  datePublished?: string;
+  dateModified?: string;
   headings: DocHeading[];
 };
 
@@ -183,6 +230,20 @@ export const DOCS_NAV: DocNavSection[] = [
         slug: ["concepts", "artifacts"],
         href: "/docs/concepts/artifacts",
       },
+      {
+        title: "Try CLI",
+        description:
+          "Interactive disposable terminal demos for README badges — try CLIs before install.",
+        slug: ["concepts", "try-cli"],
+        href: "/docs/concepts/try-cli",
+      },
+      {
+        title: "Voice Artifact Contracts",
+        description:
+          "Use generic audio, timing, sync, and media reports to evaluate voice agents across providers.",
+        slug: ["concepts", "voice-artifact-contracts"],
+        href: "/docs/concepts/voice-artifact-contracts",
+      },
     ],
   },
   {
@@ -280,6 +341,13 @@ export const DOCS_NAV: DocNavSection[] = [
           "Define the agent revision, workload, baseline, and release gate a pull request should run.",
         slug: ["guides", "ci-cd-agent-gates"],
         href: "/docs/guides/ci-cd-agent-gates",
+      },
+      {
+        title: "Dataset CI Gates",
+        description:
+          "Record dataset eval baselines, sync examples into regression suites, and gate CI with agentclash dataset test.",
+        slug: ["guides", "dataset-ci-gates"],
+        href: "/docs/guides/dataset-ci-gates",
       },
       {
         title: "CI/CD Workload Recipes",
@@ -845,6 +913,7 @@ function createDocPage(
   description: string,
   content: string,
   sectionTitle?: string,
+  dates?: { datePublished?: string; dateModified?: string },
 ): DocPage {
   return {
     slug,
@@ -853,6 +922,9 @@ function createDocPage(
     description,
     content,
     sectionTitle,
+    datePublished: dates?.datePublished,
+    dateModified:
+      dates?.dateModified ?? dates?.datePublished ?? SITE_GENERATED_AT,
     headings: extractHeadings(content),
   };
 }
@@ -865,12 +937,17 @@ function getFileDocBySlug(slug: string[]) {
   const { data, content } = matter(raw);
   const href = slugToHref(slug);
 
+  const datePublished = typeof data.date === "string" ? data.date : undefined;
+  const dateModified =
+    typeof data.updated === "string" ? data.updated : datePublished;
+
   return createDocPage(
     slug,
     data.title as string,
     data.description as string,
     content,
     findSectionTitle(href),
+    { datePublished, dateModified },
   );
 }
 
@@ -1401,6 +1478,13 @@ function normalizeMarkdownForExport(content: string, origin: string) {
     .trim();
 }
 
+function normalizeBlogMarkdownForExport(content: string, origin: string) {
+  return normalizeMarkdownForExport(content, origin).replace(
+    /\]\((\/[^)\s]*)\)/g,
+    (_, href) => `](${origin}${href})`,
+  );
+}
+
 export function getDocMarkdownPath(slug: string[] = []) {
   return slug.length === 0 ? "/docs-md" : `/docs-md/${slug.join("/")}`;
 }
@@ -1479,7 +1563,7 @@ export function getAllDocMarkdownPaths() {
 }
 
 export function getDocsSearchIndex(): DocSearchItem[] {
-  return getAllDocSlugs()
+  const docsSearchItems = getAllDocSlugs()
     .map((slug) => getDocBySlug(slug))
     .filter((doc): doc is DocPage => Boolean(doc))
     .map((doc) => ({
@@ -1490,6 +1574,16 @@ export function getDocsSearchIndex(): DocSearchItem[] {
         .map((heading) => heading.text)
         .join(" ")} ${stripInlineMarkdown(doc.content).slice(0, 900)}`.toLowerCase(),
     }));
+
+  const productPageSearchItems = PUBLIC_PRODUCT_PAGES.map((page) => ({
+    title: page.title,
+    description: page.description,
+    href: page.href,
+    searchText:
+      `${page.title} ${page.description} ${page.href} ${page.searchKeywords}`.toLowerCase(),
+  }));
+
+  return [...productPageSearchItems, ...docsSearchItems];
 }
 
 export function renderDocMarkdown(doc: DocPage, origin = DOCS_ORIGIN) {
@@ -1507,13 +1601,42 @@ export function renderDocMarkdown(doc: DocPage, origin = DOCS_ORIGIN) {
   return lines.join("\n").trim();
 }
 
+export function renderBlogMarkdown(
+  post: BlogPostWithContent,
+  origin = DOCS_ORIGIN,
+) {
+  const lines = [
+    `# ${post.title}`,
+    "",
+    post.description,
+    "",
+    `Source: ${origin}/blog/${post.slug}`,
+    `Published: ${post.date}`,
+    `Author: ${post.author}`,
+    "",
+    normalizeBlogMarkdownForExport(post.content, origin),
+  ];
+
+  return lines.join("\n").trim();
+}
+
 export function buildLlmsIndex(origin = DOCS_ORIGIN) {
+  const blogPosts = getAllPosts();
   const lines = [
     "# AgentClash",
     "",
     "> AgentClash runs agents against repeatable challenge packs, captures replay evidence, and shows where a run won, failed, or drifted.",
     "",
-    "Use this index when you want the shortest machine-readable map of the public docs. Fetch `/llms-full.txt` for the bundled corpus, or use the `/docs-md/...` links below for page-level markdown exports.",
+    "Use this index when you want the shortest machine-readable map of the public docs and selected product pages. Fetch `/llms-full.txt` for the bundled corpus, or use the `/docs-md/...` links below for page-level markdown exports.",
+    "",
+    "## Highlights",
+    "",
+    "- Open-source (MIT), self-hostable AI agent evaluation platform; CLI on npm as `agentclash`.",
+    "- Races agents head-to-head on the same task, tools, and time budget in a fresh per-agent sandbox (microVM).",
+    "- 300+ models via OpenRouter, plus first-class OpenAI, Anthropic, Gemini, xAI, Mistral, and OpenRouter providers.",
+    "- Scores the whole trajectory — correctness, cost, latency, and tool strategy — with replay evidence and scorecards.",
+    "- Promotes failures into reusable regression tests and gates CI on baseline-versus-candidate comparisons.",
+    `- Agent evaluation, not prompt evaluation — compare AgentClash with Braintrust, LangSmith, Promptfoo, Langfuse, Arize Phoenix, and OpenAI Evals at ${origin}/compare.`,
     "",
     "## Core entrypoints",
     "",
@@ -1525,6 +1648,18 @@ export function buildLlmsIndex(origin = DOCS_ORIGIN) {
     `- [Config Reference](${origin}/docs-md/reference/config) - generated environment and precedence reference.`,
     `- [Agent Skills](${origin}/docs-md/agent-skills) - copyable AgentClash skills for coding agents.`,
     `- [Full bundle](${origin}/llms-full.txt) - all shipped docs in one file.`,
+    "",
+    "## Public product pages",
+    "",
+    ...PUBLIC_PRODUCT_PAGES.map(
+      (page) => `- [${page.title}](${origin}${page.href}) - ${page.description}`,
+    ),
+    "",
+    "## Blog posts",
+    "",
+    ...blogPosts.map(
+      (post) => `- [${post.title}](${origin}/blog/${post.slug}) - ${post.description}`,
+    ),
     "",
   ];
 
@@ -1557,6 +1692,9 @@ export function buildLlmsFull(origin = DOCS_ORIGIN) {
   const docs = orderedSlugs
     .map((slug) => getDocBySlug(slug))
     .filter((doc): doc is DocPage => Boolean(doc));
+  const blogPosts = getAllPosts()
+    .map((post) => getPostBySlug(post.slug))
+    .filter((post): post is BlogPostWithContent => Boolean(post));
 
   const lines = [
     "# AgentClash Docs Bundle",
@@ -1564,8 +1702,26 @@ export function buildLlmsFull(origin = DOCS_ORIGIN) {
     `Canonical docs home: ${origin}/docs`,
     `Machine-readable index: ${origin}/llms.txt`,
     "",
-    "This file concatenates the currently shipped AgentClash docs pages into one markdown-oriented bundle for assistants, coding agents, and local retrieval pipelines.",
+    "This file concatenates the currently shipped AgentClash docs pages and selected product page links into one markdown-oriented bundle for assistants, coding agents, and local retrieval pipelines.",
+    "",
+    "AgentClash is an open-source (MIT) AI agent evaluation platform: it races agents head-to-head on the same task, tools, and time budget in a fresh per-agent sandbox, scores the whole trajectory, and gates CI on regressions. It is agent evaluation, not prompt evaluation.",
+    "",
+    "## Public product pages",
+    "",
+    ...PUBLIC_PRODUCT_PAGES.map(
+      (page) => `- [${page.title}](${origin}${page.href}) - ${page.description}`,
+    ),
+    "",
+    "## Blog posts",
+    "",
+    ...blogPosts.map(
+      (post) => `- [${post.title}](${origin}/blog/${post.slug}) - ${post.description}`,
+    ),
   ];
+
+  for (const post of blogPosts) {
+    lines.push("", "---", "", renderBlogMarkdown(post, origin));
+  }
 
   for (const doc of docs) {
     lines.push("", "---", "", renderDocMarkdown(doc, origin));

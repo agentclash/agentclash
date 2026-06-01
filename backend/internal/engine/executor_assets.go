@@ -16,7 +16,7 @@ type sandboxAssetLocation struct {
 	Asset challengepack.AssetReference
 }
 
-func (e NativeExecutor) stageArtifactBackedAssets(ctx context.Context, session sandbox.Session, executionContext repository.RunAgentExecutionContext) error {
+func stageArtifactBackedAssets(ctx context.Context, loader AssetLoader, session sandbox.Session, executionContext repository.RunAgentExecutionContext) error {
 	assets, err := collectSandboxAssetLocations(executionContext)
 	if err != nil {
 		return NewFailure(StopReasonSandboxError, "decode challenge pack asset references", err)
@@ -24,7 +24,7 @@ func (e NativeExecutor) stageArtifactBackedAssets(ctx context.Context, session s
 	if len(assets) == 0 {
 		return nil
 	}
-	if e.assetLoader == nil {
+	if loader == nil {
 		return NewFailure(StopReasonSandboxError, "artifact-backed challenge pack assets require an artifact loader", nil)
 	}
 
@@ -37,7 +37,7 @@ func (e NativeExecutor) stageArtifactBackedAssets(ctx context.Context, session s
 			return NewFailure(StopReasonSandboxError, fmt.Sprintf("%s.path is required", item.Field), nil)
 		}
 
-		content, err := e.assetLoader.LoadAsset(ctx, workspaceID, *item.Asset.ArtifactID)
+		content, err := loader.LoadAsset(ctx, workspaceID, *item.Asset.ArtifactID)
 		if err != nil {
 			return NewFailure(StopReasonSandboxError, fmt.Sprintf("load challenge pack asset %s", item.Field), err)
 		}

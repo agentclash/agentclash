@@ -77,6 +77,57 @@ func TestEvalStartResolvesSelectorsAndCreatesRun(t *testing.T) {
 	}
 }
 
+func TestEvalStartKeepsResolvedInputSetSelector(t *testing.T) {
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+
+	var gotBody map[string]any
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"GET /v1/workspaces/ws-1/challenge-packs": jsonHandler(200, map[string]any{
+			"items": []map[string]any{
+				{
+					"id":   "pack-1",
+					"name": "Support Eval",
+					"slug": "support-eval",
+					"versions": []map[string]any{
+						{"id": "ver-1", "version_number": 1, "lifecycle_status": "active"},
+					},
+				},
+			},
+		}),
+		"GET /v1/workspaces/ws-1/challenge-pack-versions/ver-1/input-sets": jsonHandler(200, map[string]any{
+			"items": []map[string]any{
+				{"id": "input-1", "input_key": "default", "name": "Default Inputs"},
+			},
+		}),
+		"GET /v1/workspaces/ws-1/agent-deployments": jsonHandler(200, map[string]any{
+			"items": []map[string]any{
+				{"id": "dep-1", "name": "prod", "status": "ready"},
+			},
+		}),
+		"POST /v1/runs": func(w http.ResponseWriter, r *http.Request) {
+			if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+				t.Fatalf("Decode() error: %v", err)
+			}
+			jsonHandler(201, map[string]any{"id": "run-1", "status": "queued"})(w, r)
+		},
+	})
+	defer srv.Close()
+
+	if err := executeCommand(t, []string{
+		"eval", "start",
+		"-w", "ws-1",
+		"--pack", "support-eval",
+		"--input-set", "default",
+		"--deployment", "prod",
+	}, srv.URL); err != nil {
+		t.Fatalf("eval start error: %v", err)
+	}
+
+	if gotBody["challenge_input_set_id"] != "input-1" {
+		t.Fatalf("challenge_input_set_id = %v, want resolved id input-1", gotBody["challenge_input_set_id"])
+	}
+}
+
 func TestEvalScorecardJSONEnvelopeIncludesBaselineComparisonAndGate(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", tmpDir)
@@ -111,6 +162,7 @@ func TestEvalScorecardJSONEnvelopeIncludesBaselineComparisonAndGate(t *testing.T
 			"run_agent_id":     "agent-candidate",
 			"run_agent_status": "completed",
 			"overall_score":    0.91,
+			"total_cost_usd":   0.0123,
 		}),
 		"GET /v1/compare": jsonHandler(200, map[string]any{
 			"state":      "comparable",
@@ -142,6 +194,10 @@ func TestEvalScorecardJSONEnvelopeIncludesBaselineComparisonAndGate(t *testing.T
 
 	if payload["candidate"] == nil || payload["baseline"] == nil || payload["comparison"] == nil || payload["release_gate"] == nil {
 		t.Fatalf("eval scorecard payload missing workflow envelope fields: %#v", payload)
+	}
+	scorecard := mapObject(payload, "scorecard")
+	if got := scorecard["total_cost_usd"]; got != 0.0123 {
+		t.Fatalf("total_cost_usd = %v, want 0.0123", got)
 	}
 }
 

@@ -130,6 +130,7 @@ SET temporal_workflow_id = @temporal_workflow_id,
 WHERE id = @id
   AND temporal_workflow_id IS NULL
   AND temporal_run_id IS NULL
+  AND status NOT IN ('completed', 'failed', 'cancelled')
 RETURNING *;
 
 -- name: UpdateRunStatus :one
@@ -185,6 +186,7 @@ ORDER BY changed_at ASC, id ASC;
 SELECT *
 FROM runs
 WHERE workspace_id = @workspace_id
+  AND source_type = 'challenge_pack'
 ORDER BY created_at DESC
 LIMIT @result_limit OFFSET @result_offset;
 
@@ -217,4 +219,5 @@ LIMIT @result_limit;
 -- name: CountRunsByWorkspaceID :one
 SELECT count(*)
 FROM runs
-WHERE workspace_id = @workspace_id;
+WHERE workspace_id = @workspace_id
+  AND source_type = 'challenge_pack';

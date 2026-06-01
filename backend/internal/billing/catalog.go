@@ -29,6 +29,7 @@ var (
 	ErrUnknownPlan            = errors.New("unknown billing plan")
 	ErrInvalidBillingPeriod   = errors.New("invalid billing period")
 	ErrSeatQuantityBelowLimit = errors.New("seat quantity is below the plan minimum")
+	ErrMissingDodoProductIDs  = errors.New("missing dodo product ids")
 )
 
 type Limit struct {
@@ -59,6 +60,28 @@ type Plan struct {
 	DodoProductIDs map[string]string `json:"dodo_product_ids,omitempty"`
 }
 
+type DodoProductIDs struct {
+	ProMonthly  string
+	ProYearly   string
+	TeamMonthly string
+	TeamYearly  string
+}
+
+func (ids DodoProductIDs) IsZero() bool {
+	return ids.ProMonthly == "" && ids.ProYearly == "" && ids.TeamMonthly == "" && ids.TeamYearly == ""
+}
+
+func (ids DodoProductIDs) IsComplete() bool {
+	return ids.ProMonthly != "" && ids.ProYearly != "" && ids.TeamMonthly != "" && ids.TeamYearly != ""
+}
+
+func (ids DodoProductIDs) Validate() error {
+	if ids.IsZero() || ids.IsComplete() {
+		return nil
+	}
+	return ErrMissingDodoProductIDs
+}
+
 type EffectiveEntitlements struct {
 	PlanKey                string          `json:"plan_key"`
 	BillingPeriod          string          `json:"billing_period"`
@@ -76,6 +99,10 @@ type EffectiveEntitlements struct {
 }
 
 func Catalog() []Plan {
+	return CatalogWithDodoProductIDs(DodoProductIDs{})
+}
+
+func CatalogWithDodoProductIDs(productIDs DodoProductIDs) []Plan {
 	plans := []Plan{
 		{
 			Key:            PlanFree,
@@ -121,10 +148,6 @@ func Catalog() []Plan {
 				"email_support":              true,
 			},
 			UpgradeTarget: PlanTeam,
-			DodoProductIDs: map[string]string{
-				PeriodMonthly: "agentclash_pro_monthly",
-				PeriodYearly:  "agentclash_pro_yearly",
-			},
 		},
 		{
 			Key:            PlanTeam,
@@ -151,10 +174,6 @@ func Catalog() []Plan {
 				"priority_support":           true,
 			},
 			UpgradeTarget: PlanEnterprise,
-			DodoProductIDs: map[string]string{
-				PeriodMonthly: "agentclash_team_monthly",
-				PeriodYearly:  "agentclash_team_yearly",
-			},
 		},
 		{
 			Key:            PlanEnterprise,
@@ -187,6 +206,7 @@ func Catalog() []Plan {
 			},
 		},
 	}
+	attachDodoProductIDs(plans, productIDs)
 
 	for i := range plans {
 		plans[i].FeatureFlags = cloneFlags(plans[i].FeatureFlags)
@@ -194,6 +214,26 @@ func Catalog() []Plan {
 		plans[i].DodoProductIDs = cloneStringMap(plans[i].DodoProductIDs)
 	}
 	return plans
+}
+
+func attachDodoProductIDs(plans []Plan, productIDs DodoProductIDs) {
+	if productIDs.IsZero() {
+		return
+	}
+	for i := range plans {
+		switch plans[i].Key {
+		case PlanPro:
+			plans[i].DodoProductIDs = map[string]string{
+				PeriodMonthly: productIDs.ProMonthly,
+				PeriodYearly:  productIDs.ProYearly,
+			}
+		case PlanTeam:
+			plans[i].DodoProductIDs = map[string]string{
+				PeriodMonthly: productIDs.TeamMonthly,
+				PeriodYearly:  productIDs.TeamYearly,
+			}
+		}
+	}
 }
 
 func PlanByKey(key string) (Plan, bool) {

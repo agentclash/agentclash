@@ -46,6 +46,9 @@ func (r *Repository) EvaluateRunAgent(ctx context.Context, params EvaluateRunAge
 	if err != nil {
 		return scoring.RunAgentEvaluation{}, fmt.Errorf("map evaluation input: %w", err)
 	}
+	if humanPref, prefErr := r.HumanPreferenceScore(ctx, params.RunAgentID); prefErr == nil {
+		evaluationInput.HumanPreferenceScore = humanPref
+	}
 
 	evaluation, err := scoring.EvaluateRunAgent(evaluationInput, spec)
 	if err != nil {

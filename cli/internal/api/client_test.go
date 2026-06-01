@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"sync/atomic"
 	"testing"
 )
@@ -132,6 +133,52 @@ func TestResponseParseErrorExtractsEnvelope(t *testing.T) {
 	}
 	if apiErr.StatusCode != 404 {
 		t.Fatalf("status = %d, want %d", apiErr.StatusCode, 404)
+	}
+}
+
+func TestResponseParseErrorExtractsBillingMetadata(t *testing.T) {
+	body := `{"error":{"code":"quota_exceeded","message":"free workspace race quota is exhausted","plan_key":"free","upgrade_target":"pro","limit":25,"used":25,"remaining":0,"reset_at":"2026-06-01T00:00:00Z","expires_at":"2026-05-30T00:00:00Z"}}`
+	resp := &Response{StatusCode: http.StatusPaymentRequired, Body: []byte(body)}
+	apiErr := resp.ParseError()
+	if apiErr == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !apiErr.IsBillingGate() {
+		t.Fatalf("IsBillingGate = false, want true")
+	}
+	if apiErr.PlanKey != "free" || apiErr.UpgradeTarget != "pro" {
+		t.Fatalf("plan fields = %q/%q, want free/pro", apiErr.PlanKey, apiErr.UpgradeTarget)
+	}
+	if apiErr.Limit == nil || *apiErr.Limit != 25 || apiErr.Used == nil || *apiErr.Used != 25 || apiErr.Remaining == nil || *apiErr.Remaining != 0 {
+		t.Fatalf("limit fields = limit:%v used:%v remaining:%v", apiErr.Limit, apiErr.Used, apiErr.Remaining)
+	}
+	if apiErr.ResetAt == nil || apiErr.ResetAt.Format("2006-01-02") != "2026-06-01" {
+		t.Fatalf("reset_at = %v, want 2026-06-01", apiErr.ResetAt)
+	}
+}
+
+func TestAPIErrorBillingMessageIsActionable(t *testing.T) {
+	limit := 25
+	used := 25
+	apiErr := &APIError{
+		StatusCode:    http.StatusPaymentRequired,
+		Code:          "quota_exceeded",
+		Message:       "free workspace race quota is exhausted",
+		PlanKey:       "free",
+		UpgradeTarget: "pro",
+		Limit:         &limit,
+		Used:          &used,
+	}
+	message := apiErr.Error()
+	for _, want := range []string{
+		"Free monthly run quota is exhausted",
+		"Used 25 of 25",
+		"organization billing page",
+		"start a trial or upgrade",
+	} {
+		if !strings.Contains(message, want) {
+			t.Fatalf("message = %q, want %q", message, want)
+		}
 	}
 }
 

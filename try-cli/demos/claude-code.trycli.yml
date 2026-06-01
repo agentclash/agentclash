@@ -1,0 +1,32 @@
+name: "Claude Code"
+slug: claude-code
+tagline: "Anthropic's agentic coding CLI"
+category: "AI coding agents"
+template: agentclash-trycli
+docs: "https://code.claude.com/docs"
+github: "https://github.com/anthropics/claude-code"
+
+auth:
+  provider: "Anthropic"
+  summary: "Sign in with your own Claude account (Pro/Max) or an Anthropic API key. Credentials live only in this disposable sandbox and are wiped when it ends."
+  steps:
+    - "Run: claude"
+    - "At the prompt, type /login"
+    - "Open the printed URL on your own machine, approve, and paste the code back"
+    - "Prefer a key? export ANTHROPIC_API_KEY=sk-ant-... then run claude"
+  envKey: "ANTHROPIC_API_KEY"
+  signupUrl: "https://console.anthropic.com/"
+
+welcome: |
+  Claude Code is installed. Sign in using the panel on the left
+  (run `claude`, then type /login), then start building.
+
+commands:
+  - label: "Show version"
+    run: "claude --version"
+  - label: "Start Claude Code"
+    run: "claude"
+  - label: "Make a file to work on"
+    run: "printf 'def add(a, b):\\n    return a + b\\n' > math.py && cat math.py"
+
+sessionMinutes: 10

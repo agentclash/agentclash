@@ -7,9 +7,11 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	billingpkg "github.com/agentclash/agentclash/backend/internal/billing"
+	"github.com/agentclash/agentclash/backend/internal/email"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -19,6 +21,7 @@ type OrgMembershipService interface {
 	ListOrgMemberships(ctx context.Context, caller Caller, orgID uuid.UUID, limit, offset int32) (ListOrgMembershipsResult, error)
 	InviteOrgMember(ctx context.Context, caller Caller, orgID uuid.UUID, input InviteOrgMemberInput) (OrgMembershipResult, error)
 	UpdateOrgMembership(ctx context.Context, caller Caller, membershipID uuid.UUID, input UpdateOrgMembershipInput) (OrgMembershipResult, error)
+	AcceptOrgInvite(ctx context.Context, caller Caller, inviteToken string) (OrgMembershipResult, error)
 }
 
 type InviteOrgMemberInput struct {
@@ -40,6 +43,7 @@ type OrgMembershipResult struct {
 	Role             string    `json:"role"`
 	MembershipStatus string    `json:"membership_status"`
 	CreatedAt        time.Time `json:"created_at"`
+	AcceptURL        string    `json:"accept_url,omitempty"`
 }
 
 type ListOrgMembershipsResult struct {
@@ -54,9 +58,11 @@ type OrgMembershipRepository interface {
 	CountOrgMemberships(ctx context.Context, orgID uuid.UUID) (int64, error)
 	GetUserByEmail(ctx context.Context, email string) (repository.User, error)
 	CreateUser(ctx context.Context, input repository.CreateUserInput) (repository.User, error)
+	GetOrganizationByID(ctx context.Context, orgID uuid.UUID) (repository.OrganizationRow, error)
 	GetOrgMembershipByOrgAndUser(ctx context.Context, orgID, userID uuid.UUID) (repository.OrgMembershipFullRow, error)
 	CreateOrgMembership(ctx context.Context, input repository.CreateOrgMembershipInput) (repository.OrgMembershipFullRow, error)
 	GetOrgMembershipByID(ctx context.Context, membershipID uuid.UUID) (repository.OrgMembershipFullRow, error)
+	GetOrgMembershipByInviteToken(ctx context.Context, inviteToken string) (repository.OrgMembershipFullRow, error)
 	UpdateOrgMembership(ctx context.Context, membershipID uuid.UUID, input repository.UpdateOrgMembershipInput) (repository.OrgMembershipFullRow, error)
 	CountActiveOrgAdmins(ctx context.Context, orgID uuid.UUID) (int64, error)
 	CascadeOrgMembershipStatusToWorkspaces(ctx context.Context, orgID, userID uuid.UUID, status string) error
@@ -67,15 +73,20 @@ const inviteExpiryDays = 7
 type OrgMembershipManager struct {
 	orgAuthz        OrganizationAuthorizer
 	repo            OrgMembershipRepository
+	emailSender     email.Sender
+	frontendURL     string
 	entitlementGate EntitlementGateService
 }
 
-func NewOrgMembershipManager(orgAuthz OrganizationAuthorizer, repo OrgMembershipRepository, entitlementGate ...EntitlementGateService) *OrgMembershipManager {
+func NewOrgMembershipManager(orgAuthz OrganizationAuthorizer, repo OrgMembershipRepository, emailSender email.Sender, frontendURL string, entitlementGate ...EntitlementGateService) *OrgMembershipManager {
 	var gate EntitlementGateService
 	if len(entitlementGate) > 0 {
 		gate = entitlementGate[0]
 	}
-	return &OrgMembershipManager{orgAuthz: orgAuthz, repo: repo, entitlementGate: gate}
+	if emailSender == nil {
+		emailSender = email.NoopSender{}
+	}
+	return &OrgMembershipManager{orgAuthz: orgAuthz, repo: repo, emailSender: emailSender, frontendURL: frontendURL, entitlementGate: gate}
 }
 
 func (m *OrgMembershipManager) ListOrgMemberships(ctx context.Context, caller Caller, orgID uuid.UUID, limit, offset int32) (ListOrgMembershipsResult, error) {
@@ -94,8 +105,12 @@ func (m *OrgMembershipManager) ListOrgMemberships(ctx context.Context, caller Ca
 	}
 
 	items := make([]OrgMembershipResult, 0, len(memberships))
+	includeInviteLinks := false
+	if membership, ok := caller.OrganizationMemberships[orgID]; ok && membership.Role == "org_admin" {
+		includeInviteLinks = true
+	}
 	for _, row := range memberships {
-		items = append(items, orgMembershipRowToResult(row))
+		items = append(items, m.orgMembershipRowToResult(row, includeInviteLinks))
 	}
 
 	return ListOrgMembershipsResult{
@@ -138,6 +153,10 @@ func (m *OrgMembershipManager) InviteOrgMember(ctx context.Context, caller Calle
 		if existing.MembershipStatus == "active" || existing.MembershipStatus == "invited" {
 			return OrgMembershipResult{}, repository.ErrAlreadyMember
 		}
+		inviteToken, inviteTokenExpiresAt, err := newMembershipInviteToken()
+		if err != nil {
+			return OrgMembershipResult{}, err
+		}
 		var entitlementGate *repository.OrganizationEntitlementGate
 		if m.entitlementGate != nil {
 			entitlementGate, err = m.entitlementGate.BuildSeatGate(ctx, orgID, false)
@@ -147,14 +166,18 @@ func (m *OrgMembershipManager) InviteOrgMember(ctx context.Context, caller Calle
 		}
 		// Previously archived — allow re-invite by updating status.
 		result, err := m.repo.UpdateOrgMembership(ctx, existing.ID, repository.UpdateOrgMembershipInput{
-			Role:            &input.Role,
-			Status:          strPtr("invited"),
-			EntitlementGate: entitlementGate,
+			Role:                 &input.Role,
+			Status:               strPtr("invited"),
+			InviteToken:          &inviteToken,
+			InviteTokenExpiresAt: &inviteTokenExpiresAt,
+			EntitlementGate:      entitlementGate,
 		})
 		if err != nil {
 			return OrgMembershipResult{}, err
 		}
-		return orgMembershipRowToResult(result), nil
+		acceptURL := organizationInviteAcceptURL(m.frontendURL, result.InviteToken)
+		m.sendInviteEmail(ctx, caller, orgID, input.Email, input.Role, acceptURL)
+		return m.orgMembershipRowToResult(result, true), nil
 	}
 	if !errors.Is(err, repository.ErrMembershipNotFound) {
 		return OrgMembershipResult{}, err
@@ -167,19 +190,25 @@ func (m *OrgMembershipManager) InviteOrgMember(ctx context.Context, caller Calle
 		}
 	}
 
+	inviteToken, inviteTokenExpiresAt, err := newMembershipInviteToken()
+	if err != nil {
+		return OrgMembershipResult{}, err
+	}
 	result, err := m.repo.CreateOrgMembership(ctx, repository.CreateOrgMembershipInput{
-		OrganizationID:  orgID,
-		UserID:          user.ID,
-		Role:            input.Role,
-		EntitlementGate: entitlementGate,
+		OrganizationID:       orgID,
+		UserID:               user.ID,
+		Role:                 input.Role,
+		InviteToken:          inviteToken,
+		InviteTokenExpiresAt: inviteTokenExpiresAt,
+		EntitlementGate:      entitlementGate,
 	})
 	if err != nil {
 		return OrgMembershipResult{}, err
 	}
 
-	// TODO: Send invitation email notification (stubbed for now).
-
-	return orgMembershipRowToResult(result), nil
+	acceptURL := organizationInviteAcceptURL(m.frontendURL, result.InviteToken)
+	m.sendInviteEmail(ctx, caller, orgID, input.Email, input.Role, acceptURL)
+	return m.orgMembershipRowToResult(result, true), nil
 }
 
 func (m *OrgMembershipManager) UpdateOrgMembership(ctx context.Context, caller Caller, membershipID uuid.UUID, input UpdateOrgMembershipInput) (OrgMembershipResult, error) {
@@ -193,24 +222,21 @@ func (m *OrgMembershipManager) UpdateOrgMembership(ctx context.Context, caller C
 	if m, ok := caller.OrganizationMemberships[membership.OrganizationID]; ok && m.Role == "org_admin" {
 		isAdmin = true
 	}
-	isInvitedUser := membership.UserID == caller.UserID && membership.MembershipStatus == "invited"
+	isLegacyInviteLink := membership.InviteToken == ""
+	isInvitedUser := isLegacyInviteLink && membership.UserID == caller.UserID && membership.MembershipStatus == "invited"
+	isInviteAcceptance := input.Role == nil && input.Status != nil && *input.Status == "active" && membership.MembershipStatus == "invited"
+	isInviteLinkHolder := isLegacyInviteLink && !isAdmin && !isInvitedUser && isInviteAcceptance && inviteEmailMatchesCaller(caller, membership.Email)
 
-	if !isAdmin && !isInvitedUser {
+	if !isAdmin && !isInvitedUser && !isInviteLinkHolder {
 		return OrgMembershipResult{}, ErrForbidden
 	}
 
-	// Invited user can only accept (invited -> active).
-	if isInvitedUser && !isAdmin {
-		if input.Status == nil || *input.Status != "active" {
+	// Non-admins can only accept a pending invite link.
+	if (isInvitedUser || isInviteLinkHolder) && !isAdmin {
+		if !isInviteAcceptance {
 			return OrgMembershipResult{}, ErrForbidden
 		}
-		// Check invite expiry. Use UpdatedAt because re-invites refresh it
-		// via the DB trigger, while CreatedAt is the original row creation.
-		invitedAt := membership.UpdatedAt
-		if invitedAt.IsZero() {
-			invitedAt = membership.CreatedAt
-		}
-		if time.Since(invitedAt) > inviteExpiryDays*24*time.Hour {
+		if orgInviteExpired(membership) {
 			return OrgMembershipResult{}, repository.ErrInviteExpired
 		}
 	}
@@ -245,11 +271,19 @@ func (m *OrgMembershipManager) UpdateOrgMembership(ctx context.Context, caller C
 		}
 	}
 
-	result, err := m.repo.UpdateOrgMembership(ctx, membershipID, repository.UpdateOrgMembershipInput{
+	updateInput := repository.UpdateOrgMembershipInput{
 		Role:            input.Role,
 		Status:          input.Status,
 		EntitlementGate: entitlementGate,
-	})
+	}
+	if isInviteLinkHolder {
+		updateInput.UserID = &caller.UserID
+	}
+	if input.Status != nil && (*input.Status == "active" || *input.Status == "archived") && membership.MembershipStatus == "invited" {
+		updateInput.ClearInviteToken = true
+	}
+
+	result, err := m.repo.UpdateOrgMembership(ctx, membershipID, updateInput)
 	if err != nil {
 		return OrgMembershipResult{}, err
 	}
@@ -262,7 +296,149 @@ func (m *OrgMembershipManager) UpdateOrgMembership(ctx context.Context, caller C
 		}
 	}
 
-	return orgMembershipRowToResult(result), nil
+	return m.orgMembershipRowToResult(result, isAdmin), nil
+}
+
+func (m *OrgMembershipManager) AcceptOrgInvite(ctx context.Context, caller Caller, inviteToken string) (OrgMembershipResult, error) {
+	if !validInviteToken(inviteToken) {
+		return OrgMembershipResult{}, repository.ErrMembershipNotFound
+	}
+
+	membership, err := m.repo.GetOrgMembershipByInviteToken(ctx, inviteToken)
+	if err != nil {
+		return OrgMembershipResult{}, err
+	}
+	if err := inviteTokenAcceptError(caller, membership.Email); err != nil {
+		return OrgMembershipResult{}, withInviteAcceptDenialContext(err, "organization", caller.UserID, membership.ID, membership.OrganizationID, uuid.Nil)
+	}
+	if orgInviteExpired(membership) {
+		return OrgMembershipResult{}, repository.ErrInviteExpired
+	}
+
+	var entitlementGate *repository.OrganizationEntitlementGate
+	if m.entitlementGate != nil {
+		entitlementGate, err = m.entitlementGate.BuildSeatGate(ctx, membership.OrganizationID, false)
+		if err != nil {
+			return OrgMembershipResult{}, err
+		}
+	}
+
+	status := "active"
+	updateInput := repository.UpdateOrgMembershipInput{
+		Status:           &status,
+		ClearInviteToken: true,
+		EntitlementGate:  entitlementGate,
+	}
+	if membership.UserID != caller.UserID {
+		updateInput.UserID = &caller.UserID
+	}
+
+	result, err := m.repo.UpdateOrgMembership(ctx, membership.ID, updateInput)
+	if err != nil {
+		return OrgMembershipResult{}, err
+	}
+	return m.orgMembershipRowToResult(result, false), nil
+}
+
+func inviteEmailMatchesCaller(caller Caller, inviteEmail string) bool {
+	return strings.EqualFold(strings.TrimSpace(caller.Email), strings.TrimSpace(inviteEmail)) && strings.TrimSpace(caller.Email) != ""
+}
+
+type inviteTokenAcceptDeniedError struct {
+	Kind               string
+	Reason             string
+	CallerUserID       uuid.UUID
+	MembershipID       uuid.UUID
+	OrganizationID     uuid.UUID
+	WorkspaceID        uuid.UUID
+	CallerEmailPresent bool
+	InviteEmailPresent bool
+	EmailMatch         bool
+}
+
+func (e *inviteTokenAcceptDeniedError) Error() string {
+	return ErrForbidden.Error() + ": invite token accept denied: " + e.Reason
+}
+
+func (e *inviteTokenAcceptDeniedError) Unwrap() error {
+	return ErrForbidden
+}
+
+func inviteTokenAcceptError(caller Caller, inviteEmail string) error {
+	inviteEmail = strings.TrimSpace(inviteEmail)
+	callerEmail := strings.TrimSpace(caller.Email)
+	if inviteEmail == "" {
+		return &inviteTokenAcceptDeniedError{
+			Reason:             "invite_email_empty",
+			CallerEmailPresent: callerEmail != "",
+			InviteEmailPresent: false,
+			EmailMatch:         false,
+		}
+	}
+	if callerEmail == "" {
+		// The invite token is a high-entropy bearer secret. Some WorkOS session
+		// tokens do not expose email claims, so token possession is the fallback.
+		return nil
+	}
+	if !strings.EqualFold(callerEmail, inviteEmail) {
+		return &inviteTokenAcceptDeniedError{
+			Reason:             "caller_email_mismatch",
+			CallerEmailPresent: true,
+			InviteEmailPresent: true,
+			EmailMatch:         false,
+		}
+	}
+	return nil
+}
+
+func withInviteAcceptDenialContext(err error, kind string, callerUserID, membershipID, organizationID, workspaceID uuid.UUID) error {
+	var denial *inviteTokenAcceptDeniedError
+	if !errors.As(err, &denial) {
+		return err
+	}
+	withContext := *denial
+	withContext.Kind = kind
+	withContext.CallerUserID = callerUserID
+	withContext.MembershipID = membershipID
+	withContext.OrganizationID = organizationID
+	withContext.WorkspaceID = workspaceID
+	return &withContext
+}
+
+func orgInviteExpired(membership repository.OrgMembershipFullRow) bool {
+	if membership.InviteTokenExpiresAt != nil {
+		return time.Now().After(*membership.InviteTokenExpiresAt)
+	}
+	invitedAt := membership.UpdatedAt
+	if invitedAt.IsZero() {
+		invitedAt = membership.CreatedAt
+	}
+	if invitedAt.IsZero() {
+		return false
+	}
+	return time.Since(invitedAt) > inviteExpiryDays*24*time.Hour
+}
+
+func (m *OrgMembershipManager) sendInviteEmail(ctx context.Context, caller Caller, orgID uuid.UUID, inviteeEmail, role, acceptURL string) {
+	org, err := m.repo.GetOrganizationByID(ctx, orgID)
+	if err != nil {
+		slog.Default().Warn("failed to load organization for invite email", "organization_id", orgID, "error", err)
+		return
+	}
+
+	inviterEmail := caller.Email
+
+	if err := m.emailSender.SendInvite(ctx, email.InviteEmail{
+		To:           inviteeEmail,
+		ResourceName: org.Name,
+		ResourceKind: "organization",
+		InviterName:  caller.DisplayName,
+		InviterEmail: inviterEmail,
+		Role:         role,
+		AcceptURL:    acceptURL,
+	}); err != nil {
+		slog.Default().Warn("failed to send invite email", "to", inviteeEmail, "organization_id", orgID, "error", err)
+	}
 }
 
 func isRemovingAdmin(membership repository.OrgMembershipFullRow, input UpdateOrgMembershipInput) bool {
@@ -296,8 +472,8 @@ func validateOrgMembershipTransition(from, to string) error {
 
 var ErrInvalidTransition = errors.New("invalid status transition")
 
-func orgMembershipRowToResult(row repository.OrgMembershipFullRow) OrgMembershipResult {
-	return OrgMembershipResult{
+func (m *OrgMembershipManager) orgMembershipRowToResult(row repository.OrgMembershipFullRow, includeInviteLink bool) OrgMembershipResult {
+	result := OrgMembershipResult{
 		ID:               row.ID,
 		OrganizationID:   row.OrganizationID,
 		UserID:           row.UserID,
@@ -307,6 +483,14 @@ func orgMembershipRowToResult(row repository.OrgMembershipFullRow) OrgMembership
 		MembershipStatus: row.MembershipStatus,
 		CreatedAt:        row.CreatedAt,
 	}
+	if includeInviteLink && row.MembershipStatus == "invited" && !orgInviteExpired(row) {
+		inviteToken := row.InviteToken
+		if inviteToken == "" {
+			inviteToken = row.ID.String()
+		}
+		result.AcceptURL = organizationInviteAcceptURL(m.frontendURL, inviteToken)
+	}
+	return result
 }
 
 func strPtr(s string) *string { return &s }
@@ -451,10 +635,68 @@ func updateOrgMembershipHandler(logger *slog.Logger, service OrgMembershipServic
 	}
 }
 
+func acceptOrgInviteHandler(logger *slog.Logger, service OrgMembershipService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		caller, err := CallerFromContext(r.Context())
+		if err != nil {
+			writeAuthzError(w, err)
+			return
+		}
+
+		inviteToken := chi.URLParam(r, "inviteToken")
+		if !validInviteToken(inviteToken) {
+			writeError(w, http.StatusBadRequest, "invalid_invite_token", "invite token is malformed")
+			return
+		}
+
+		if err := requireJSONContentType(r); err != nil {
+			writeError(w, http.StatusUnsupportedMediaType, "unsupported_media_type", err.Error())
+			return
+		}
+
+		var req struct {
+			Status *string `json:"status,omitempty"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_request", "invalid JSON body")
+			return
+		}
+		if req.Status == nil || *req.Status != "active" {
+			writeError(w, http.StatusBadRequest, "validation_error", "status must be active")
+			return
+		}
+
+		result, err := service.AcceptOrgInvite(r.Context(), caller, inviteToken)
+		if err != nil {
+			handleMembershipError(w, logger, err)
+			return
+		}
+
+		writeJSON(w, http.StatusOK, result)
+	}
+}
+
 func handleMembershipError(w http.ResponseWriter, logger *slog.Logger, err error) {
 	var gateErr billingpkg.GateError
 	switch {
 	case errors.Is(err, ErrForbidden):
+		var inviteDenial *inviteTokenAcceptDeniedError
+		if errors.As(err, &inviteDenial) {
+			attrs := []any{
+				"kind", inviteDenial.Kind,
+				"reason", inviteDenial.Reason,
+				"caller_user_id", inviteDenial.CallerUserID,
+				"membership_id", inviteDenial.MembershipID,
+				"organization_id", inviteDenial.OrganizationID,
+				"caller_email_present", inviteDenial.CallerEmailPresent,
+				"invite_email_present", inviteDenial.InviteEmailPresent,
+				"email_match", inviteDenial.EmailMatch,
+			}
+			if inviteDenial.WorkspaceID != uuid.Nil {
+				attrs = append(attrs, "workspace_id", inviteDenial.WorkspaceID)
+			}
+			logger.Warn("invite accept forbidden", attrs...)
+		}
 		writeError(w, http.StatusForbidden, "forbidden", "access denied")
 	case errors.As(err, &gateErr):
 		writeBillingGateError(w, gateErr.Decision)

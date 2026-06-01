@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/budget"
@@ -15,8 +16,10 @@ import (
 	"github.com/agentclash/agentclash/backend/internal/failurereview"
 	"github.com/agentclash/agentclash/backend/internal/provider"
 	"github.com/agentclash/agentclash/backend/internal/repository"
+	"github.com/agentclash/agentclash/backend/internal/workflow"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"go.temporal.io/api/serviceerror"
 )
 
 type RunReadRepository interface {
@@ -32,6 +35,7 @@ type RunReadRepository interface {
 	ListEvalSessionsByWorkspaceID(ctx context.Context, workspaceID uuid.UUID, limit int32, offset int32) ([]domain.EvalSession, error)
 	ListRunsByWorkspaceID(ctx context.Context, workspaceID uuid.UUID, limit int32, offset int32) ([]domain.Run, error)
 	CountRunsByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) (int64, error)
+	TransitionRunStatus(ctx context.Context, params repository.TransitionRunStatusParams) (domain.Run, error)
 	GetProviderAccountByID(ctx context.Context, id uuid.UUID) (repository.ProviderAccountRow, error)
 	GetModelAliasByID(ctx context.Context, id uuid.UUID) (repository.ModelAliasRow, error)
 	GetModelCatalogEntryByID(ctx context.Context, id uuid.UUID) (repository.ModelCatalogEntryRow, error)
@@ -41,6 +45,7 @@ type RunReadRepository interface {
 
 type RunReadService interface {
 	GetRun(ctx context.Context, caller Caller, runID uuid.UUID) (GetRunResult, error)
+	CancelRun(ctx context.Context, caller Caller, runID uuid.UUID) (CancelRunResult, error)
 	GetEvalSession(ctx context.Context, caller Caller, evalSessionID uuid.UUID) (GetEvalSessionResult, error)
 	GetRunRanking(ctx context.Context, caller Caller, runID uuid.UUID, input GetRunRankingInput) (GetRunRankingResult, error)
 	GenerateRunRankingInsights(ctx context.Context, caller Caller, runID uuid.UUID, input GenerateRunRankingInsightsInput) (GenerateRunRankingInsightsResult, error)
@@ -68,6 +73,27 @@ type ListRunsResult struct {
 type GetRunResult struct {
 	Run                domain.Run
 	RegressionCoverage *RunRegressionCoverage
+}
+
+type CancelRunResult struct {
+	Run domain.Run
+}
+
+type RunWorkflowControl interface {
+	CancelRunWorkflow(ctx context.Context, workflowID string, runID string) error
+}
+
+type RunCancellationWorkflowError struct {
+	Run   domain.Run
+	Cause error
+}
+
+func (e RunCancellationWorkflowError) Error() string {
+	return fmt.Sprintf("cancel run workflow for run %s: %v", e.Run.ID, e.Cause)
+}
+
+func (e RunCancellationWorkflowError) Unwrap() error {
+	return e.Cause
 }
 
 type RunRegressionCoverage struct {
@@ -110,6 +136,7 @@ type RunReadManager struct {
 	budgetChecker   budget.BudgetChecker
 	insightsLimiter WorkspaceRateLimiter
 	insightsTimeout time.Duration
+	workflowControl RunWorkflowControl
 	now             func() time.Time
 }
 
@@ -150,6 +177,11 @@ func (m *RunReadManager) WithInsightsTimeout(timeout time.Duration) *RunReadMana
 	return m
 }
 
+func (m *RunReadManager) WithRunWorkflowControl(control RunWorkflowControl) *RunReadManager {
+	m.workflowControl = control
+	return m
+}
+
 func (m *RunReadManager) InsightsConfigured() bool {
 	return m.insightsClient != nil
 }
@@ -173,6 +205,68 @@ func (m *RunReadManager) GetRun(ctx context.Context, caller Caller, runID uuid.U
 		Run:                run,
 		RegressionCoverage: &coverage,
 	}, nil
+}
+
+func (m *RunReadManager) CancelRun(ctx context.Context, caller Caller, runID uuid.UUID) (CancelRunResult, error) {
+	run, err := m.repo.GetRunByID(ctx, runID)
+	if err != nil {
+		return CancelRunResult{}, err
+	}
+	if err := AuthorizeWorkspaceAction(ctx, m.authorizer, caller, run.WorkspaceID, ActionCancelRun); err != nil {
+		return CancelRunResult{}, err
+	}
+
+	if !run.Status.CanTransitionTo(domain.RunStatusCancelled) {
+		return CancelRunResult{Run: run}, nil
+	}
+
+	persistedWorkflowID := strings.TrimSpace(derefString(run.TemporalWorkflowID))
+	workflowID := persistedWorkflowID
+	if workflowID == "" {
+		workflowID = fmt.Sprintf("%s/%s", workflow.RunWorkflowName, run.ID)
+	}
+	if m.workflowControl == nil {
+		return CancelRunResult{}, RunCancellationWorkflowError{
+			Run:   run,
+			Cause: errors.New("run workflow control is not configured"),
+		}
+	}
+	if err := m.workflowControl.CancelRunWorkflow(ctx, workflowID, strings.TrimSpace(derefString(run.TemporalRunID))); err != nil {
+		latest, latestErr := m.repo.GetRunByID(ctx, run.ID)
+		if latestErr == nil && !latest.Status.CanTransitionTo(domain.RunStatusCancelled) {
+			return CancelRunResult{Run: latest}, nil
+		}
+		if persistedWorkflowID == "" && isTemporalNotFound(err) {
+			// The workflow ID is deterministic, but there is a startup window before
+			// it is persisted. NotFound in that window means the workflow never
+			// started or already disappeared, so the DB transition remains safe.
+		} else {
+			return CancelRunResult{}, RunCancellationWorkflowError{Run: run, Cause: err}
+		}
+	}
+
+	reason := "cancelled by user"
+	cancelled, err := m.repo.TransitionRunStatus(ctx, repository.TransitionRunStatusParams{
+		RunID:           run.ID,
+		ToStatus:        domain.RunStatusCancelled,
+		Reason:          &reason,
+		ChangedByUserID: &caller.UserID,
+	})
+	if err == nil {
+		return CancelRunResult{Run: cancelled}, nil
+	}
+	if errors.Is(err, repository.ErrInvalidTransition) || errors.Is(err, repository.ErrTransitionConflict) {
+		latest, latestErr := m.repo.GetRunByID(ctx, run.ID)
+		if latestErr == nil && !latest.Status.CanTransitionTo(domain.RunStatusCancelled) {
+			return CancelRunResult{Run: latest}, nil
+		}
+	}
+	return CancelRunResult{}, err
+}
+
+func isTemporalNotFound(err error) bool {
+	var notFound *serviceerror.NotFound
+	return errors.As(err, &notFound)
 }
 
 func (m *RunReadManager) ListRuns(ctx context.Context, caller Caller, input ListRunsInput) (ListRunsResult, error) {
@@ -278,6 +372,9 @@ type getRunResponse struct {
 	Name                   string                         `json:"name"`
 	Status                 domain.RunStatus               `json:"status"`
 	ExecutionMode          string                         `json:"execution_mode"`
+	Mode                   string                         `json:"mode,omitempty"`
+	Modality               string                         `json:"modality,omitempty"`
+	Voice                  *runVoiceMetadataResponse      `json:"voice,omitempty"`
 	TemporalWorkflowID     *string                        `json:"temporal_workflow_id,omitempty"`
 	TemporalRunID          *string                        `json:"temporal_run_id,omitempty"`
 	QueuedAt               *time.Time                     `json:"queued_at,omitempty"`
@@ -488,6 +585,7 @@ func listRunsHandler(logger *slog.Logger, service RunReadService) http.HandlerFu
 }
 
 func buildGetRunResponse(run domain.Run, regressionCoverage *RunRegressionCoverage) getRunResponse {
+	mode, modality, voice := runMetadataFromExecutionPlan(run.ExecutionPlan)
 	response := getRunResponse{
 		ID:                     run.ID,
 		WorkspaceID:            run.WorkspaceID,
@@ -497,6 +595,9 @@ func buildGetRunResponse(run domain.Run, regressionCoverage *RunRegressionCovera
 		Name:                   run.Name,
 		Status:                 run.Status,
 		ExecutionMode:          run.ExecutionMode,
+		Mode:                   mode,
+		Modality:               modality,
+		Voice:                  voice,
 		TemporalWorkflowID:     run.TemporalWorkflowID,
 		TemporalRunID:          run.TemporalRunID,
 		QueuedAt:               run.QueuedAt,

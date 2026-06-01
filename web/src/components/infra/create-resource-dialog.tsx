@@ -36,6 +36,8 @@ interface CreateResourceDialogProps {
   buttonLabel?: string;
   children?: ReactNode;
   invalidateKeys?: ApiQueryKey[];
+  /** Called after a successful create. Receives the request body that was POSTed. */
+  onSuccess?: (body: Record<string, unknown>) => void;
 }
 
 export function CreateResourceDialog({
@@ -45,6 +47,7 @@ export function CreateResourceDialog({
   fields,
   buttonLabel = "Create",
   invalidateKeys,
+  onSuccess,
 }: CreateResourceDialogProps) {
   const router = useRouter();
   const { getAccessToken } = useAccessToken();
@@ -93,6 +96,7 @@ export function CreateResourceDialog({
       const token = await getAccessToken();
       const api = createApiClient(token);
       await api.post(endpoint, body);
+      onSuccess?.(body);
       toast.success("Created successfully");
       setOpen(false);
       setValues({});

@@ -8,6 +8,7 @@ import {
   ClipboardCheck,
   GitCompare,
   ShieldCheck,
+  Workflow,
   Settings2,
   Key,
   Tag,
@@ -60,6 +61,11 @@ export const navSections: NavSection[] = [
         icon: PackageOpen,
       },
       {
+        label: "Datasets",
+        href: (id) => `/workspaces/${id}/datasets`,
+        icon: Database,
+      },
+      {
         label: "Runs",
         href: (id) => `/workspaces/${id}/runs`,
         icon: Play,
@@ -88,6 +94,11 @@ export const navSections: NavSection[] = [
         label: "Release Gates",
         href: (id) => `/workspaces/${id}/release-gates`,
         icon: ShieldCheck,
+      },
+      {
+        label: "CI Setup",
+        href: (id) => `/workspaces/${id}/ci-setup`,
+        icon: Workflow,
       },
     ],
   },

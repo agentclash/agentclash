@@ -1,0 +1,25 @@
+{
+  "schema_version": "2026-05-14",
+  "type": "voicey.live_continuity_eval",
+  "status": "passed",
+  "passed": true,
+  "input": "runs/live-continuity-fixture.jsonl",
+  "metrics": {
+    "speech_start_count": 2,
+    "speech_stop_count": 0,
+    "output_event_count": 3,
+    "evidence_status": "available",
+    "median_first_audio_ms": 850,
+    "p90_first_audio_ms": 900,
+    "max_output_gap_ms": 400,
+    "median_output_gap_ms": 400,
+    "speech_no_output_count": 0,
+    "speech_no_output_ratio": 0,
+    "speech_start_during_output_count": 0
+  },
+  "caveats": [],
+  "agentclash_notes": [
+    "Use median_first_audio_ms and p90_first_audio_ms as live interpretation latency gates.",
+    "Use max_output_gap_ms to catch dead-air regressions that transcript-only evals miss."
+  ]
+}

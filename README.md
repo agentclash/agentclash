@@ -1,149 +1,165 @@
+![AgentClash banner](docs/assets/agentclash-readme-banner.png)
+
 # AgentClash
 
-Opensource race engine. Pit your models against each other on real tasks. Same tools, same constraints, scored live — not benchmarks, not vibes.
+Open-source AI agent evaluation for real tasks. AgentClash lets you race agents against the same workload, capture what they did, score the outcome, and turn failures into repeatable regression gates.
 
-**[agentclash.dev](https://www.agentclash.dev)**
+[Website](https://www.agentclash.dev) · [Docs](https://www.agentclash.dev/docs) · [CLI Distribution](docs/cli-distribution.md) · [Challenge Packs](docs/evaluation/challenge-pack-v0.md) · [CI Gates](web/content/docs/guides/ci-cd-agent-gates.mdx)
 
-## What is this?
+## What AgentClash Does
 
-AgentClash puts AI models on the same real task, at the same time. Scored live on completion, speed, token efficiency, and tool strategy. Step-by-step replays show exactly why one agent won and another didn't.
+AgentClash is built for teams shipping agents, not leaderboard demos. It evaluates the whole run: the final answer, the tool choices, the artifacts, the latency, the cost, and the evidence trail that explains why one agent passed while another failed.
 
-- Head-to-head races
-- Composite scoring
-- Full replays
-- Failure-to-eval flywheel
+- Race multiple agents on the same task with the same tools and constraints.
+- Define repeatable workloads with challenge packs.
+- Watch runs live, then inspect transcripts, artifacts, replays, failures, and scorecards.
+- Compare candidates against a saved baseline before release.
+- Promote escaped failures into regression cases.
+- Gate pull requests with the same evaluation workload you use during development.
 
-## How it works
+## Product Surface
 
-1. Define a challenge (broken code, a build task, etc.)
-2. Drop in your models (OpenAI, Anthropic, Gemini, OpenRouter, Mistral)
-3. Run the race — same tools, same constraints
-4. See scored results with full step-by-step replays
+AgentClash gives you a workspace for the full evaluation loop:
 
-## Architecture
+| Area | What you use it for |
+| --- | --- |
+| Runs | Start and follow agent races across challenge packs and deployments. |
+| Scorecards | Compare correctness, reliability, latency, cost, evidence, and pass/fail verdicts. |
+| Replays | Review the step-by-step trajectory that produced the outcome. |
+| Failures | Triage run failures and promote important ones into regression coverage. |
+| Challenge packs | Package real tasks, inputs, validators, artifacts, and scoring rules. |
+| Regression suites | Keep important failures covered across future model, prompt, and tool changes. |
+| Compare and release gates | Decide whether a candidate is safe to ship against a baseline. |
+| CI setup | Run AgentClash from GitHub Actions or another CI provider. |
+| **Try CLI** | [Interactive terminal demos](https://www.agentclash.dev/try) — README badges, disposable E2B sandboxes for CLI/TUI tools. |
 
-AgentClash is a monorepo with three main components:
+<img width="1920" height="994" alt="AgentClash runs list showing completed benchmark runs" src="https://github.com/user-attachments/assets/b280c4be-3382-4151-af98-bb8000eba3c5" />
 
-| Component | Tech | Location |
-|-----------|------|----------|
-| **API Server** | Go / chi | `backend/cmd/api-server` |
-| **Worker** | Go / Temporal SDK | `backend/cmd/worker` |
-| **CLI** | Go / Cobra | `cli/` |
-| **Web** | Next.js 16 / React 19 | `web/` |
 
-Infrastructure dependencies:
+## Quickstart
 
-| Service | Purpose |
-|---------|---------|
-| **PostgreSQL 17** | Source of truth for all state |
-| **Temporal** | Durable workflow orchestration for run execution |
-| **Redis** (optional) | WebSocket fanout, rate limiting |
-| **E2B** (optional) | Sandboxed code execution for native agent runs |
-| **S3-compatible storage** (optional) | Artifact storage (filesystem fallback for dev) |
-
-## CLI
-
-The `agentclash` CLI lets you manage everything from your terminal — runs, builds, deployments, comparisons, and infrastructure.
-
-### Install
-
-Fastest for JavaScript-ecosystem users — grabs the right prebuilt binary for your platform from npm, no postinstall downloads:
+Install the CLI:
 
 ```bash
 npm i -g agentclash
-# or: npx agentclash --help
+agentclash --help
 ```
 
-macOS or Linux with Homebrew, after the tap is populated by a release:
+Or run it without installing:
 
 ```bash
-brew install --cask agentclash/tap/agentclash
+npx agentclash --help
 ```
 
-Linux/macOS fallback script:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/agentclash/agentclash/main/scripts/install/install.sh | sh
-```
-
-Windows PowerShell fallback script:
-
-```powershell
-irm https://raw.githubusercontent.com/agentclash/agentclash/main/scripts/install/install.ps1 | iex
-```
-
-Direct downloads are available from [GitHub Releases](https://github.com/agentclash/agentclash/releases). The installer scripts verify `checksums.txt` before installing.
-
-More install, uninstall, and release-channel details are in [CLI Distribution](docs/cli-distribution.md).
-
-Uninstall script-installed binaries:
-
-```bash
-rm -f /usr/local/bin/agentclash ~/.local/bin/agentclash
-```
-
-```powershell
-Remove-Item "$env:LOCALAPPDATA\agentclash\bin\agentclash.exe"
-```
-
-Build from source:
-
-```bash
-cd cli && make build
-```
-
-### Use a local CLI build against the hosted backend
-
-If you're only changing the CLI, you do not need to run the API server or worker locally. Point the local binary at a hosted API with `AGENTCLASH_API_URL` or `--api-url`.
+Log in and choose a workspace:
 
 ```bash
 export AGENTCLASH_API_URL="https://api.agentclash.dev"
-
-cd cli
-go run . auth login --device
-go run . link
-go run . run list
-go run . eval start --help
-# When the workspace already has challenge packs and deployments:
-go run . eval start --follow
+agentclash auth login
+agentclash link
 ```
 
-Resolution order is `--api-url` > `AGENTCLASH_API_URL` > saved user config > default. Source builds (`go run .`, `make build`) default to `http://localhost:8080`; released binaries default to `https://api.agentclash.dev`.
-
-### Quick start
+If your workspace already has challenge packs and deployments, start your first evaluation:
 
 ```bash
-agentclash auth login                           # Authenticate
-agentclash link                                 # Pick and save your default workspace
+agentclash eval start --follow
+agentclash eval scorecard
+```
+
+## Run Your First Agent Race
+
+AgentClash can guide you through available packs and deployments:
+
+```bash
+agentclash eval start --follow
+```
+
+For lower-level control, create a run directly:
+
+```bash
+agentclash run create --follow
+agentclash run list
+agentclash run transcript <run-id>
+agentclash run scorecard <run-id>
+```
+
+<img width="1774" height="887" alt="AgentClash run detail with agent lanes and ranking insights" src="https://github.com/user-attachments/assets/6f7f79e6-bea5-49e0-a651-3af5f474596f" />
+
+For repeated evaluations, AgentClash summarizes child runs into session-level results:
+
+<img width="1774" height="887" alt="AgentClash eval session aggregate result with pass@k metrics" src="https://github.com/user-attachments/assets/ad6e435a-b0fb-4684-b421-40cefec1667f" />
+
+For multi-turn human takeover while an agent waits for operator input:
+
+```bash
+agentclash run turn status <run-agent-id> --run <run-id>
+agentclash run turn submit <run-agent-id> --run <run-id> --message "Your message here"
+```
+
+## Review Scorecards And Replays
+
+Scorecards show whether each agent passed, how it ranked against peers, and which dimensions drove the verdict.
+
+<img width="1774" height="887" alt="AgentClash scorecard with overall score, comparison ranking, dimensions, and validators" src="https://github.com/user-attachments/assets/a8578daa-6a1e-4268-b1c9-5fef542d8ad7" />
+
+Replays keep the evidence behind the scorecard: model calls, tool calls, sandbox commands, scoring events, and final outputs.
+
+<img width="1774" height="887" alt="AgentClash replay timeline showing run steps and JSON evidence" src="https://github.com/user-attachments/assets/a254d88a-e10f-4e9c-9c93-4169a06b35c4" />
+
+## Define A Challenge Pack
+
+Challenge packs are how AgentClash turns real work into repeatable evals. A pack can describe the task, inputs, tools, expected artifacts, hidden grading rules, validators, and regression cases.
+
+Create and publish a pack:
+
+```bash
 agentclash challenge-pack init support-eval.yaml
 agentclash challenge-pack validate support-eval.yaml
 agentclash challenge-pack publish support-eval.yaml
-agentclash eval start --follow                  # Start an evaluation with guided selection
-agentclash baseline set                         # Bookmark a baseline run
-agentclash eval scorecard                       # View scorecard + regression verdict
 ```
 
-If your workspace is already seeded with challenge packs and deployments, you can skip the authoring commands and start at `agentclash eval start --follow`.
+Run it:
 
-### CI/CD
+```bash
+agentclash eval start --pack support-eval --follow
+```
 
-AgentClash CI/CD gates the candidate agent revision against a repeatable workload. Start by committing an explicit manifest that maps repo changes to the candidate build, deployment settings, challenge pack, baseline, and release gate:
+Learn more in [Challenge Pack v0](docs/evaluation/challenge-pack-v0.md) and the examples in [docs/challenge-packs](docs/challenge-packs).
+
+## Turn Failures Into Regression Tests
+
+When an agent fails, AgentClash keeps the evidence around the failure: transcript, replay steps, artifacts, scorecard dimensions, and failure review metadata. Useful failures can become regression cases so the same mistake is tested again before the next release.
+
+Typical workflow:
+
+1. Run a pack against one or more candidate agents.
+2. Inspect scorecards, replays, and failure details.
+3. Promote important failures into a regression suite.
+4. Re-run the suite whenever prompts, models, tools, or agent code changes.
+
+> Screenshot placeholder: add a failure review or regression suite screenshot here.
+
+## Gate Agent Changes In CI
+
+AgentClash can compare a candidate run against a baseline and fail CI when the candidate regresses.
+
+Create and validate a CI manifest:
 
 ```bash
 agentclash ci init .agentclash/ci.yaml
-agentclash ci validate .agentclash/ci.yaml
-export AGENTCLASH_WORKSPACE="your-workspace-id" # or pass -w
-agentclash ci validate .agentclash/ci.yaml --remote --json
-agentclash ci run --manifest .agentclash/ci.yaml --json --artifact-dir agentclash-artifacts
-agentclash ci baseline --manifest .agentclash/ci.yaml --json
-agentclash ci should-run --changed-file prompts/system.md --json
+agentclash ci validate .agentclash/ci.yaml --remote
 ```
 
-The current CLI validates that manifest locally by default, can optionally check referenced resource IDs against the selected workspace with `--remote`, runs the manifest workflow with `ci run`, and resolves the exact baseline run that the gate will compare against. In GitHub Actions, `ci run` attaches repository, pull request, branch, default branch, commit, workflow, and run URL metadata automatically and appends a Markdown gate summary when `$GITHUB_STEP_SUMMARY` is set. Use `--artifact-dir` to write uploadable `result.json`, `run.json`, `scorecard.json`, `comparison.json`, and `gate.json` files; use the `--ci-*` flags when another CI provider needs explicit source metadata. For pull request gates, prefer a locked `baseline.run_id`; update it only after a successful mainline run in a reviewed, auditable change.
+Run the gate and write artifacts:
 
-Set `regressions.promote_failures: proposed` when failing CI gates should create reviewable regression candidates in the manifest's `evaluation.regression_suites`. The CLI deduplicates against existing non-archived/non-rejected cases and reports created, existing, skipped, blocked, and error outcomes in JSON and GitHub summaries. Use `disabled` to report only, or `auto_on_main` for protected default-branch workflows that may create active cases after refusing pull request and non-default-branch events.
+```bash
+agentclash ci run \
+  --manifest .agentclash/ci.yaml \
+  --json \
+  --artifact-dir agentclash-artifacts
+```
 
-For GitHub Actions, use the reusable [`agentclash-ci`](.github/actions/agentclash-ci) action to install the CLI, validate the manifest, skip unrelated changes, run the gate, and expose artifact paths:
+Use the bundled GitHub Action:
 
 ```yaml
 - id: agentclash
@@ -153,379 +169,75 @@ For GitHub Actions, use the reusable [`agentclash-ci`](.github/actions/agentclas
     workspace: ${{ secrets.AGENTCLASH_WORKSPACE }}
 ```
 
-Existing commands also work non-interactively with environment variables and explicit IDs:
+See [CI/CD Agent Gates](web/content/docs/guides/ci-cd-agent-gates.mdx) and [AgentClash CI for GitHub](docs/agentclash-ci-github.md).
+
+## Common Commands
+
+```bash
+agentclash quickstart
+agentclash workspace list
+agentclash workspace use <workspace-id>
+agentclash challenge-pack list
+agentclash deployment list
+agentclash eval start --follow
+agentclash run list
+agentclash run get <run-id>
+agentclash run events <run-id>
+agentclash run transcript <run-id>
+agentclash run scorecard <run-id>
+agentclash eval scorecard <run-id>
+agentclash baseline set <run-id>
+```
+
+Run `agentclash --help` or `agentclash <command> --help` for the full command reference.
+
+## Configuration
+
+Use the hosted API unless you intentionally run your own backend:
 
 ```bash
 export AGENTCLASH_API_URL="https://api.agentclash.dev"
-export AGENTCLASH_TOKEN="your-token"
-export AGENTCLASH_WORKSPACE="your-workspace-id"
-agentclash run create \
-  --challenge-pack-version <id> \
-  --deployments <id1>,<id2>
-agentclash run list --json
-agentclash compare gate --baseline $BASE --candidate $CAND  # exit 1 = regression
+export AGENTCLASH_TOKEN="..."
+export AGENTCLASH_WORKSPACE="workspace-id"
 ```
 
-See [CI/CD Agent Gates](web/content/docs/guides/ci-cd-agent-gates.mdx) for the GitHub Actions sketch and manifest contract, and [CI/CD Workload Recipes](web/content/docs/guides/ci-cd-workload-recipes.mdx) for realistic agent workload patterns.
+API URL resolution order:
 
-Run `agentclash --help` for the full command reference.
+```text
+--api-url > AGENTCLASH_API_URL > saved user config > default
+```
 
-### Test the CLI before release
+## Local CLI Development
 
-Start with the fast local checks:
+The CLI lives in `cli/` and can run against the hosted API:
+
+```bash
+export AGENTCLASH_API_URL="https://api.agentclash.dev"
+
+cd cli
+go run . auth login --device
+go run . workspace list
+go run . workspace use <workspace-id>
+go run . eval start --follow
+```
+
+Before shipping CLI changes:
 
 ```bash
 cd cli
 go build ./...
 go vet ./...
 go test -short -race -count=1 ./...
-go run github.com/goreleaser/goreleaser/v2@latest check
-go run github.com/goreleaser/goreleaser/v2@latest release --snapshot --clean
-cd ../web && pnpm build
-cd ..
-bash testing/cli-e2e-suite.sh --help
 ```
 
-If you changed packaging or install behavior, rehearse the npm packages locally from the snapshot artifacts:
-
-```bash
-node scripts/publish-npm/assemble.mjs v0.0.0-rehearse cli/dist
-for p in npm-out/platforms/*/ npm-out/cli; do
-  (cd "$p" && npm pack --dry-run)
-done
-```
-
-For a real local install smoke test, pack the platform package for your host plus the root wrapper, then install both into a scratch directory:
-
-```bash
-(cd npm-out/platforms/<triple> && npm pack --pack-destination /tmp)
-(cd npm-out/cli && npm pack --pack-destination /tmp)
-mkdir -p /tmp/agentclash-smoke && cd /tmp/agentclash-smoke
-npm init -y
-npm i /tmp/agentclash-cli-<triple>-*.tgz /tmp/agentclash-*.tgz
-./node_modules/.bin/agentclash version
-```
-
-Typical triples are `darwin-arm64`, `darwin-x64`, `linux-arm64`, `linux-x64`, `win32-arm64`, and `win32-x64`.
-
-### Release the CLI to npm
-
-Routine CLI releases should go through Release Please rather than manual `npm publish`.
-
-1. Make a releasable CLI change under `cli/` and validate it locally.
-2. Use a conventional commit that matches the desired version bump: `fix:` for patch, `feat:` for minor, `feat!:` for major.
-3. Merge to `main`.
-4. Release Please opens `chore(main): release x.y.z` when releasable `fix:`, `feat:`, or `feat!:` commits have touched `cli/`.
-5. Merge that release PR.
-6. The tag-triggered `.github/workflows/release-cli.yml` workflow builds GitHub release assets, publishes npm, and runs smoke installs on Ubuntu, macOS, and Windows.
-
-The one-time npm Trusted Publishing bootstrap is already documented in [CLI Distribution](docs/cli-distribution.md). Normal day-to-day releases should not need manual npm website work.
-
-## Local development
-
-### Prerequisites
-
-- **Go 1.25+** — [go.dev/dl](https://go.dev/dl/)
-- **Docker** — for PostgreSQL
-- **Temporal CLI** — `brew install temporal` or [docs.temporal.io/cli](https://docs.temporal.io/cli)
-- **Node.js 20+** and **pnpm** — for the web frontend (optional)
-- **psql** — PostgreSQL client for running migrations
-
-### 1. Start everything (one command)
-
-The quickest way to get the full stack running locally:
-
-```bash
-./scripts/dev/start-local-stack.sh
-```
-
-This starts PostgreSQL, applies migrations, launches the Temporal dev server, API server, and worker. Logs are written to `/tmp/agentclash-local-stack/`.
-
-### 2. Start services individually
-
-If you prefer more control, start each component separately:
-
-#### Database
-
-```bash
-# Start PostgreSQL (Docker)
-make db-up
-
-# Apply schema migrations
-make db-migrate
-
-# (Optional) Seed development data
-make db-seed
-```
-
-The default connection string is `postgres://agentclash:agentclash@localhost:5432/agentclash?sslmode=disable`. Override it with the `DATABASE_URL` environment variable.
-
-#### Temporal
-
-Start the Temporal dev server on the default port:
-
-```bash
-temporal server start-dev --namespace default
-```
-
-The API server and worker connect to `localhost:7233` by default. Override with `TEMPORAL_HOST_PORT`.
-
-#### API Server
-
-```bash
-make api-server
-```
-
-The server starts on `:8080`. Verify with:
-
-```bash
-curl http://localhost:8080/healthz
-```
-
-#### Worker
-
-```bash
-make worker
-```
-
-The worker connects to both PostgreSQL and Temporal to execute run workflows.
-
-### 3. Web frontend (optional)
-
-```bash
-cd web
-pnpm install
-pnpm dev
-```
-
-The dev server starts at `http://localhost:3000`.
-
-### Environment variables
-
-Copy the example and fill in any keys you need:
-
-```bash
-cp backend/.env.example backend/.env
-```
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `DATABASE_URL` | `postgres://agentclash:agentclash@localhost:5432/agentclash?sslmode=disable` | PostgreSQL connection string |
-| `API_SERVER_BIND_ADDRESS` | `:8080` | API server listen address |
-| `TEMPORAL_HOST_PORT` | `localhost:7233` | Temporal server address |
-| `TEMPORAL_NAMESPACE` | `default` | Temporal namespace |
-| `HOSTED_RUN_CALLBACK_BASE_URL` | `http://localhost:8080` | Base URL for hosted agent callbacks |
-| `HOSTED_RUN_CALLBACK_SECRET` | dev default | Secret for callback auth |
-| `WORKER_IDENTITY` | hostname-based | Worker instance identifier |
-| `SANDBOX_PROVIDER` | `unconfigured` | `unconfigured` or `e2b` |
-| `E2B_API_KEY` | — | Required if `SANDBOX_PROVIDER=e2b` |
-| `E2B_TEMPLATE_ID` | — | Required if `SANDBOX_PROVIDER=e2b` |
-| `ARTIFACT_STORAGE_BACKEND` | `filesystem` | `filesystem` or `s3` |
-| `ARTIFACT_SIGNING_SECRET` | auto-generated in dev | Required in production (min 32 bytes) |
-| `APP_ENV` | `development` | `development` or `production` |
-
-Provider API keys (set whichever you need):
-
-| Variable | Provider |
-|----------|----------|
-| `OPENAI_API_KEY` | OpenAI |
-| `ANTHROPIC_API_KEY` | Anthropic |
-| `GEMINI_API_KEY` | Google Gemini |
-| `XAI_API_KEY` | xAI |
-| `OPENROUTER_API_KEY` | OpenRouter |
-| `MISTRAL_API_KEY` | Mistral |
-
-### Smoke tests
-
-After the local stack is running:
-
-```bash
-# Seed fixture data for a test run
-./scripts/dev/seed-local-run-fixture.sh
-
-# Create a run via curl
-./scripts/dev/curl-create-run.sh
-```
-
-> **Note:** Without a real sandbox provider (e.g. E2B), native runs will be queued but won't execute the model-backed path.
-
-## Deploying to Railway
-
-AgentClash uses a multi-service Railway project for production services.
-
-### Services overview
-
-You need to deploy these Railway services:
-
-| Railway Service | What it runs | Build arg |
-|-----------------|--------------|-----------|
-| **api-server** | REST API + WebSocket | `TARGET=api-server` |
-| **worker** | Temporal worker | `TARGET=worker` |
-| **PostgreSQL** | Database (Railway plugin) | — |
-
-External services (not on Railway):
-
-| Service | Notes |
-|---------|-------|
-| **Temporal Cloud** | Use [cloud.temporal.io](https://cloud.temporal.io) for production orchestration. Self-hosting Temporal on Railway is not recommended for production. |
-| **Vercel** | Deploy the `web/` frontend on Vercel. |
-| **E2B** | Sign up at [e2b.dev](https://e2b.dev) if you need sandboxed execution. |
-| **S3** | Any S3-compatible provider (AWS S3, Cloudflare R2, etc.) for artifact storage. |
-
-### Step-by-step setup
-
-#### 1. Create the Railway project
-
-```bash
-# Install the Railway CLI
-brew install railwayapp/tap/railway
-
-# Login
-railway login
-
-# Create a new project
-railway init
-```
-
-#### 2. Create the production environment
-
-In the Railway dashboard, create or select the **production** environment for your project.
-
-#### 3. Add PostgreSQL
-
-In the Railway dashboard, click **+ New** → **Database** → **PostgreSQL**. Railway provisions the database and exposes a `DATABASE_URL` variable automatically.
-
-#### 4. Deploy the API server
-
-Create a new service in Railway:
-
-- **Source:** your GitHub repo
-- **Root directory:** `backend`
-- **Build:** Dockerfile
-- **Build args:** `TARGET=api-server`
-
-Set these environment variables:
-
-```
-APP_ENV=production
-DATABASE_URL=${{Postgres.DATABASE_URL}}  # Railway variable reference
-TEMPORAL_HOST_PORT=<your-temporal-cloud-host>:7233
-TEMPORAL_NAMESPACE=<your-namespace>
-ARTIFACT_SIGNING_SECRET=<random-64-char-hex>
-ARTIFACT_STORAGE_BACKEND=s3
-ARTIFACT_STORAGE_BUCKET=<your-bucket>
-ARTIFACT_STORAGE_S3_REGION=<region>
-ARTIFACT_STORAGE_S3_ACCESS_KEY_ID=<key>
-ARTIFACT_STORAGE_S3_SECRET_ACCESS_KEY=<secret>
-HOSTED_RUN_CALLBACK_BASE_URL=https://<your-api-domain>
-HOSTED_RUN_CALLBACK_SECRET=<random-secret>
-```
-
-Set the deploy command to run migrations before starting:
-
-```
-/migrate.sh && /app
-```
-
-Or set it as the **Start command** in the Railway service settings.
-
-#### 5. Deploy the Worker
-
-Create another service in Railway from the same repo:
-
-- **Root directory:** `backend`
-- **Build args:** `TARGET=worker`
-
-Set environment variables:
-
-```
-DATABASE_URL=${{Postgres.DATABASE_URL}}
-TEMPORAL_HOST_PORT=<your-temporal-cloud-host>:7233
-TEMPORAL_NAMESPACE=<your-namespace>
-HOSTED_RUN_CALLBACK_BASE_URL=https://<your-api-domain>
-HOSTED_RUN_CALLBACK_SECRET=<same-secret-as-api>
-SANDBOX_PROVIDER=e2b                     # or "unconfigured"
-E2B_API_KEY=<your-e2b-key>
-E2B_TEMPLATE_ID=<your-template>
-OPENAI_API_KEY=<key>
-ANTHROPIC_API_KEY=<key>
-GEMINI_API_KEY=<key>
-```
-
-#### 6. Deploy the Web frontend
-
-The Next.js frontend (`web/`) is best deployed on **Vercel**:
-
-```bash
-cd web
-vercel --prod
-```
-
-Set `NEXT_PUBLIC_API_URL` to point to your Railway API server domain.
-
-### Production Deployment
-
-| Concern | Production |
-|---------|------------|
-| `APP_ENV` | `production` |
-| Temporal | Temporal Cloud production namespace |
-| Artifacts | S3 production bucket |
-| Sandbox | `e2b` |
-| Domain | `api.agentclash.dev` |
-| Signing secret | Unique per environment |
-
-### Running migrations
-
-Migrations run automatically if you set the start command to `/migrate.sh && /app` on the api-server service. To run them manually:
-
-```bash
-railway run --service api-server -- /migrate.sh
-```
-
-## Project structure
-
-```
-backend/
-  cmd/
-    api-server/          — HTTP API entrypoint
-    worker/              — Temporal worker entrypoint
-  db/
-    migrations/          — SQL schema migrations
-    queries/             — sqlc query definitions
-  internal/
-    api/                 — HTTP handlers, managers, auth
-    repository/          — Database access (sqlc generated)
-    provider/            — LLM provider adapters
-    engine/              — Execution loop, tool orchestration
-    workflow/            — Temporal workflows and activities
-    sandbox/             — Sandbox abstraction (E2B)
-    storage/             — Artifact storage (S3/filesystem)
-    domain/              — Core domain models
-    scoring/             — Scorecard generation
-    runevents/           — Event normalization, replay assembly
-    worker/              — Worker runtime and config
-web/                     — Next.js frontend
-scripts/
-  db/                    — Database migration scripts
-  dev/                   — Local development helpers
-  smoke/                 — Smoke test scripts
-```
+## Docs
+
+- [CLI Distribution](docs/cli-distribution.md)
+- [Challenge Pack v0](docs/evaluation/challenge-pack-v0.md)
+- [Agent Harnesses on Codex + E2B](docs/agent-harnesses-codex-e2b.md)
+- [CI/CD Agent Gates](web/content/docs/guides/ci-cd-agent-gates.mdx)
+- [Local API Development](docs/api-server/local-development.md)
 
 ## License
 
-AgentClash is released under [FSL-1.1-MIT](https://fsl.software) — the
-Functional Source License with an MIT Future License clause. See
-[`LICENSE`](./LICENSE) for the full text.
-
-The short version:
-
-- You can use, modify, fork, self-host, and embed AgentClash for essentially
-  any purpose — internal use, commercial product development, consulting,
-  research, education — with one exception:
-- You can't offer AgentClash (or something "substantially similar") as a
-  commercial product or service that competes with agentclash.dev.
-- Every released version auto-converts to **MIT** on its second anniversary,
-  so anything released 2+ years ago is fully permissive open source.
-
-If you want to do something this license doesn't obviously cover, email us
-before you build.
+AgentClash is released under the [MIT License](LICENSE).

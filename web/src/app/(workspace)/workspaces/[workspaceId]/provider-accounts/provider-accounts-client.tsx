@@ -10,6 +10,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { CreateResourceDialog } from "@/components/infra/create-resource-dialog";
 import { DeleteResourceButton } from "@/components/infra/delete-resource-button";
 import { Key } from "lucide-react";
+import { captureWebEvent } from "@/lib/analytics/posthog-client";
+import { WEB_EVENTS } from "@/lib/analytics/events";
 
 const statusVariant: Record<string, "default" | "secondary" | "outline" | "destructive"> = {
   active: "default",
@@ -57,6 +59,12 @@ export function ProviderAccountsClient({ workspaceId }: { workspaceId: string })
             { key: "limits_config", label: "Limits Config", type: "json", placeholder: "{}" },
           ]}
           invalidateKeys={[workspaceResourceKeys.providerAccounts(workspaceId)]}
+          onSuccess={(body) =>
+            captureWebEvent(WEB_EVENTS.PROVIDER_ACCOUNT_ADDED, {
+              workspace_id: workspaceId,
+              provider: typeof body.provider_key === "string" ? body.provider_key : "unknown",
+            })
+          }
         />
       </div>
 

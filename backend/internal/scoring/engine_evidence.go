@@ -60,6 +60,8 @@ type extractedEvidence struct {
 	codeExecutionResults      map[string]CodeExecutionResult
 	codeExecutionSources      map[string]eventRef
 	toolCallTrace             []toolCallTraceEntry
+	transcriptTurns           []transcriptTurnEvidence
+	humanPreferenceScore      *float64
 	warnings                  []string
 }
 
@@ -179,7 +181,7 @@ func buildEvidence(challengeInputs []EvidenceInput, events []Event) extractedEvi
 			evidence.completedSuccessfully = &completed
 			evidence.failureCount++
 		case "tool.call.completed", "tool.call.failed":
-			if entry, ok := buildToolCallTraceEntry(payload, event.Type); ok {
+			if entry, ok := buildToolCallTraceEntry(event, payload); ok {
 				evidence.toolCallTrace = append(evidence.toolCallTrace, entry)
 				if entry.Failed {
 					evidence.failureCount++
@@ -328,6 +330,7 @@ func buildEvidence(challengeInputs []EvidenceInput, events []Event) extractedEvi
 	if evidence.completedSuccessfully == nil {
 		evidence.warnings = append(evidence.warnings, "terminal run evidence is unavailable")
 	}
+	evidence.transcriptTurns = buildTranscriptFromEvents(events)
 
 	return evidence
 }

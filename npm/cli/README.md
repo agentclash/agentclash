@@ -1,7 +1,8 @@
 # agentclash
 
-Command-line interface for the [AgentClash](https://www.agentclash.dev) race
-engine — evaluate, compare, and deploy AI agents.
+Command-line interface for [AgentClash](https://www.agentclash.dev), an AI
+agent evaluation platform for real-task races, replay, scorecards, and CI
+regression gates.
 
 ## Install
 
@@ -87,8 +88,4 @@ The full maintainer playbook, including the one-time npm Trusted Publishing boot
 
 ## License
 
-[FSL-1.1-MIT](https://fsl.software) — see `LICENSE`.
-
-Short version: use and modify it for anything except running a competing
-commercial eval-engine service; each version auto-converts to MIT two years
-after release.
+[MIT](https://opensource.org/licenses/MIT) — see `LICENSE`.

@@ -28,11 +28,13 @@ type ReplayReadRepository interface {
 	GetRunAgentScorecardByRunAgentID(ctx context.Context, runAgentID uuid.UUID) (repository.RunAgentScorecard, error)
 	GetEvaluationSpecByID(ctx context.Context, id uuid.UUID) (repository.EvaluationSpecRecord, error)
 	ListLLMJudgeResultsByRunAgentAndEvaluationSpec(ctx context.Context, runAgentID uuid.UUID, evaluationSpecID uuid.UUID) ([]repository.LLMJudgeResultRecord, error)
+	ListRunEventsByRunAgentID(ctx context.Context, runAgentID uuid.UUID) ([]repository.RunEvent, error)
 }
 
 type ReplayReadService interface {
 	GetRunAgentReplay(ctx context.Context, caller Caller, runAgentID uuid.UUID, page ReplayStepPageParams) (GetRunAgentReplayResult, error)
 	GetRunAgentScorecard(ctx context.Context, caller Caller, runAgentID uuid.UUID) (GetRunAgentScorecardResult, error)
+	GetRunAgentTranscript(ctx context.Context, caller Caller, runAgentID uuid.UUID) (GetRunAgentTranscriptResult, error)
 }
 
 type ReplayState string
@@ -66,11 +68,13 @@ type GetRunAgentReplayResult struct {
 }
 
 type GetRunAgentScorecardResult struct {
-	RunAgent        domain.RunAgent
-	State           ReplayState
-	Message         string
-	Scorecard       *repository.RunAgentScorecard
-	LLMJudgeResults []repository.LLMJudgeResultRecord
+	RunAgent          domain.RunAgent
+	State             ReplayState
+	Message           string
+	Scorecard         *repository.RunAgentScorecard
+	TotalCostUSD      *float64
+	CostPerCorrectUSD *float64
+	LLMJudgeResults   []repository.LLMJudgeResultRecord
 }
 
 type ReplayReadManager struct {
@@ -166,10 +170,12 @@ func (m *ReplayReadManager) GetRunAgentScorecard(ctx context.Context, caller Cal
 	}
 
 	return GetRunAgentScorecardResult{
-		RunAgent:        runAgent,
-		State:           ReplayStateReady,
-		Scorecard:       &scorecard,
-		LLMJudgeResults: judgeResults,
+		RunAgent:          runAgent,
+		State:             ReplayStateReady,
+		Scorecard:         &scorecard,
+		TotalCostUSD:      totalCostUSDFromScorecardDocument(scorecard.Scorecard),
+		CostPerCorrectUSD: repository.CostPerCorrectUSDFromScorecardDocument(scorecard.Scorecard),
+		LLMJudgeResults:   judgeResults,
 	}, nil
 }
 
@@ -202,23 +208,25 @@ type replayStepPaginationReply struct {
 }
 
 type getRunAgentScorecardResponse struct {
-	State            ReplayState               `json:"state"`
-	Message          string                    `json:"message,omitempty"`
-	RunAgentStatus   domain.RunAgentStatus     `json:"run_agent_status"`
-	ID               uuid.UUID                 `json:"id"`
-	RunAgentID       uuid.UUID                 `json:"run_agent_id"`
-	RunID            uuid.UUID                 `json:"run_id"`
-	EvaluationSpecID uuid.UUID                 `json:"evaluation_spec_id"`
-	OverallScore     *float64                  `json:"overall_score,omitempty"`
-	CorrectnessScore *float64                  `json:"correctness_score,omitempty"`
-	ReliabilityScore *float64                  `json:"reliability_score,omitempty"`
-	LatencyScore     *float64                  `json:"latency_score,omitempty"`
-	CostScore        *float64                  `json:"cost_score,omitempty"`
-	BehavioralScore  *float64                  `json:"behavioral_score,omitempty"`
-	LLMJudgeResults  []runAgentLLMJudgePayload `json:"llm_judge_results"`
-	Scorecard        json.RawMessage           `json:"scorecard"`
-	CreatedAt        time.Time                 `json:"created_at"`
-	UpdatedAt        time.Time                 `json:"updated_at"`
+	State             ReplayState               `json:"state"`
+	Message           string                    `json:"message,omitempty"`
+	RunAgentStatus    domain.RunAgentStatus     `json:"run_agent_status"`
+	ID                uuid.UUID                 `json:"id"`
+	RunAgentID        uuid.UUID                 `json:"run_agent_id"`
+	RunID             uuid.UUID                 `json:"run_id"`
+	EvaluationSpecID  uuid.UUID                 `json:"evaluation_spec_id"`
+	OverallScore      *float64                  `json:"overall_score,omitempty"`
+	CorrectnessScore  *float64                  `json:"correctness_score,omitempty"`
+	ReliabilityScore  *float64                  `json:"reliability_score,omitempty"`
+	LatencyScore      *float64                  `json:"latency_score,omitempty"`
+	CostScore         *float64                  `json:"cost_score,omitempty"`
+	TotalCostUSD      *float64                  `json:"total_cost_usd,omitempty"`
+	CostPerCorrectUSD *float64                  `json:"cost_per_correct_usd,omitempty"`
+	BehavioralScore   *float64                  `json:"behavioral_score,omitempty"`
+	LLMJudgeResults   []runAgentLLMJudgePayload `json:"llm_judge_results"`
+	Scorecard         json.RawMessage           `json:"scorecard"`
+	CreatedAt         time.Time                 `json:"created_at"`
+	UpdatedAt         time.Time                 `json:"updated_at"`
 }
 
 type runAgentLLMJudgePayload struct {
@@ -374,12 +382,33 @@ func buildRunAgentScorecardResponse(result GetRunAgentScorecardResult) getRunAge
 		response.ReliabilityScore = result.Scorecard.ReliabilityScore
 		response.LatencyScore = result.Scorecard.LatencyScore
 		response.CostScore = result.Scorecard.CostScore
+		response.TotalCostUSD = result.TotalCostUSD
+		response.CostPerCorrectUSD = result.CostPerCorrectUSD
 		response.BehavioralScore = result.Scorecard.BehavioralScore
 		response.Scorecard = result.Scorecard.Scorecard
 		response.CreatedAt = result.Scorecard.CreatedAt
 		response.UpdatedAt = result.Scorecard.UpdatedAt
 	}
 	return response
+}
+
+func totalCostUSDFromScorecardDocument(payload json.RawMessage) *float64 {
+	var document struct {
+		MetricDetails []struct {
+			Collector    string   `json:"collector"`
+			NumericValue *float64 `json:"numeric_value"`
+		} `json:"metric_details"`
+	}
+	if err := json.Unmarshal(payload, &document); err != nil {
+		return nil
+	}
+	for _, metric := range document.MetricDetails {
+		if metric.Collector == "run_model_cost_usd" && metric.NumericValue != nil {
+			cost := *metric.NumericValue
+			return &cost
+		}
+	}
+	return nil
 }
 
 func buildRunAgentLLMJudgePayloads(records []repository.LLMJudgeResultRecord) []runAgentLLMJudgePayload {

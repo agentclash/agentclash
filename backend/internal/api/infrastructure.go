@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
+	"math"
 	"net/http"
 	"strings"
 	"time"
@@ -31,6 +33,7 @@ type InfrastructureService interface {
 	ListProviderAccounts(ctx context.Context, workspaceID uuid.UUID) ([]repository.ProviderAccountRow, error)
 	GetProviderAccount(ctx context.Context, id uuid.UUID) (repository.ProviderAccountRow, error)
 	DeleteProviderAccount(ctx context.Context, id uuid.UUID) error
+	TestProviderAccount(ctx context.Context, account repository.ProviderAccountRow, input ProviderAccountTestInput) (ProviderAccountTestResult, error)
 
 	// Model Catalog (global, read-only)
 	ListModelCatalog(ctx context.Context) ([]repository.ModelCatalogEntryRow, error)
@@ -86,6 +89,11 @@ type CreateProviderAccountInput struct {
 	CredentialReference string          `json:"credential_reference"`
 	APIKey              string          `json:"api_key"`
 	LimitsConfig        json.RawMessage `json:"limits_config,omitempty"`
+}
+
+type ProviderAccountTestInput struct {
+	Model              string `json:"model,omitempty"`
+	StepTimeoutSeconds int32  `json:"step_timeout_seconds,omitempty"`
 }
 
 func (i *CreateProviderAccountInput) Validate() error {
@@ -194,29 +202,54 @@ type providerAccountResponse struct {
 	UpdatedAt           time.Time       `json:"updated_at"`
 }
 
+type providerAccountTestResponse struct {
+	AccountID       uuid.UUID `json:"account_id"`
+	ProviderKey     string    `json:"provider_key"`
+	Model           string    `json:"model"`
+	ProviderModelID string    `json:"provider_model_id,omitempty"`
+	Passed          bool      `json:"passed"`
+	Status          string    `json:"status"`
+	Code            string    `json:"code,omitempty"`
+	Message         string    `json:"message,omitempty"`
+	Retryable       bool      `json:"retryable,omitempty"`
+	DurationMS      int64     `json:"duration_ms"`
+}
+
+type ProviderAccountTestResult = providerAccountTestResponse
+
 type modelCatalogResponse struct {
-	ID              uuid.UUID       `json:"id"`
-	ProviderKey     string          `json:"provider_key"`
-	ProviderModelID string          `json:"provider_model_id"`
-	DisplayName     string          `json:"display_name"`
-	ModelFamily     string          `json:"model_family"`
-	Modality        string          `json:"modality"`
-	LifecycleStatus string          `json:"lifecycle_status"`
-	Metadata        json.RawMessage `json:"metadata"`
-	CreatedAt       time.Time       `json:"created_at"`
-	UpdatedAt       time.Time       `json:"updated_at"`
+	ID                         uuid.UUID       `json:"id"`
+	ProviderKey                string          `json:"provider_key"`
+	ProviderModelID            string          `json:"provider_model_id"`
+	DisplayName                string          `json:"display_name"`
+	ModelFamily                string          `json:"model_family"`
+	Modality                   string          `json:"modality"`
+	LifecycleStatus            string          `json:"lifecycle_status"`
+	Metadata                   json.RawMessage `json:"metadata"`
+	InputCostPerMillionTokens  float64         `json:"input_cost_per_million_tokens"`
+	OutputCostPerMillionTokens float64         `json:"output_cost_per_million_tokens"`
+	CreatedAt                  time.Time       `json:"created_at"`
+	UpdatedAt                  time.Time       `json:"updated_at"`
 }
 
 type modelAliasResponse struct {
-	ID                  uuid.UUID  `json:"id"`
-	WorkspaceID         *uuid.UUID `json:"workspace_id,omitempty"`
-	ProviderAccountID   *uuid.UUID `json:"provider_account_id,omitempty"`
-	ModelCatalogEntryID uuid.UUID  `json:"model_catalog_entry_id"`
-	AliasKey            string     `json:"alias_key"`
-	DisplayName         string     `json:"display_name"`
-	Status              string     `json:"status"`
-	CreatedAt           time.Time  `json:"created_at"`
-	UpdatedAt           time.Time  `json:"updated_at"`
+	ID                                uuid.UUID  `json:"id"`
+	WorkspaceID                       *uuid.UUID `json:"workspace_id,omitempty"`
+	ProviderAccountID                 *uuid.UUID `json:"provider_account_id,omitempty"`
+	ModelCatalogEntryID               uuid.UUID  `json:"model_catalog_entry_id"`
+	ProviderKey                       string     `json:"provider_key"`
+	ProviderModelID                   string     `json:"provider_model_id"`
+	ModelDisplayName                  string     `json:"model_display_name"`
+	AliasKey                          string     `json:"alias_key"`
+	DisplayName                       string     `json:"display_name"`
+	Status                            string     `json:"status"`
+	InputCostPerMillionTokens         float64    `json:"input_cost_per_million_tokens"`
+	OutputCostPerMillionTokens        float64    `json:"output_cost_per_million_tokens"`
+	CatalogInputCostPerMillionTokens  float64    `json:"catalog_input_cost_per_million_tokens"`
+	CatalogOutputCostPerMillionTokens float64    `json:"catalog_output_cost_per_million_tokens"`
+	PricingDriftWarning               string     `json:"pricing_drift_warning,omitempty"`
+	CreatedAt                         time.Time  `json:"created_at"`
+	UpdatedAt                         time.Time  `json:"updated_at"`
 }
 
 type toolResponse struct {
@@ -316,6 +349,10 @@ func infraCreateHandler[Input any, Row any, Resp any](
 		if err != nil {
 			if errors.Is(err, repository.ErrSlugTaken) {
 				writeError(w, http.StatusConflict, "slug_taken", "a resource with that name already exists")
+				return
+			}
+			if errors.Is(err, repository.ErrModelCatalogNotFound) {
+				writeError(w, http.StatusBadRequest, "validation_error", "model_catalog_entry_id must reference an existing model catalog entry")
 				return
 			}
 			logger.Error("create failed", "error", err)
@@ -454,6 +491,61 @@ func infraDeleteHandler[Row WorkspaceOwned](
 	}
 }
 
+func testProviderAccountHandler(logger *slog.Logger, authorizer WorkspaceAuthorizer, svc InfrastructureService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		caller, err := CallerFromContext(r.Context())
+		if err != nil {
+			writeError(w, http.StatusUnauthorized, "unauthorized", "authentication required")
+			return
+		}
+
+		accountID, err := uuid.Parse(chi.URLParam(r, "accountID"))
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_request", "invalid ID")
+			return
+		}
+		account, err := svc.GetProviderAccount(r.Context(), accountID)
+		if err != nil {
+			if isInfraNotFoundErr(err) {
+				writeError(w, http.StatusNotFound, "not_found", "provider account not found")
+				return
+			}
+			logger.Error("get provider account for smoke test failed", "error", err)
+			writeError(w, http.StatusInternalServerError, "internal_error", "failed to get provider account")
+			return
+		}
+		if account.WorkspaceID != nil {
+			if err := AuthorizeWorkspaceAction(r.Context(), authorizer, caller, *account.WorkspaceID, ActionManageInfrastructure); err != nil {
+				writeAuthzError(w, err)
+				return
+			}
+		} else {
+			writeError(w, http.StatusNotFound, "not_found", "provider account not found")
+			return
+		}
+
+		var input ProviderAccountTestInput
+		if r.Body != nil && r.ContentLength != 0 {
+			if err := requireJSONContentType(r); err != nil {
+				writeError(w, http.StatusUnsupportedMediaType, "unsupported_media_type", err.Error())
+				return
+			}
+			if err := json.NewDecoder(r.Body).Decode(&input); err != nil && !errors.Is(err, io.EOF) {
+				writeError(w, http.StatusBadRequest, "invalid_request", "invalid JSON body")
+				return
+			}
+		}
+
+		result, err := svc.TestProviderAccount(r.Context(), account, input)
+		if err != nil {
+			logger.Error("provider account smoke test failed internally", "error", err)
+			writeError(w, http.StatusInternalServerError, "internal_error", "failed to test provider account")
+			return
+		}
+		writeJSON(w, http.StatusOK, result)
+	}
+}
+
 func isInfraNotFoundErr(err error) bool {
 	return errors.Is(err, repository.ErrRuntimeProfileNotFound) ||
 		errors.Is(err, repository.ErrProviderAccountNotFound) ||
@@ -492,16 +584,43 @@ func mapModelCatalog(r repository.ModelCatalogEntryRow) modelCatalogResponse {
 		ID: r.ID, ProviderKey: r.ProviderKey, ProviderModelID: r.ProviderModelID,
 		DisplayName: r.DisplayName, ModelFamily: r.ModelFamily, Modality: r.Modality,
 		LifecycleStatus: r.LifecycleStatus, Metadata: r.Metadata,
-		CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+		InputCostPerMillionTokens:  r.InputCostPerMillionTokens,
+		OutputCostPerMillionTokens: r.OutputCostPerMillionTokens,
+		CreatedAt:                  r.CreatedAt, UpdatedAt: r.UpdatedAt,
 	}
 }
 
 func mapModelAlias(r repository.ModelAliasRow) modelAliasResponse {
 	return modelAliasResponse{
 		ID: r.ID, WorkspaceID: r.WorkspaceID, ProviderAccountID: r.ProviderAccountID,
-		ModelCatalogEntryID: r.ModelCatalogEntryID, AliasKey: r.AliasKey, DisplayName: r.DisplayName,
+		ModelCatalogEntryID: r.ModelCatalogEntryID,
+		ProviderKey:         r.CatalogProviderKey, ProviderModelID: r.CatalogProviderModelID, ModelDisplayName: r.CatalogDisplayName,
+		AliasKey: r.AliasKey, DisplayName: r.DisplayName,
 		Status: r.Status, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+		InputCostPerMillionTokens:         r.InputCostPerMillionTokens,
+		OutputCostPerMillionTokens:        r.OutputCostPerMillionTokens,
+		CatalogInputCostPerMillionTokens:  r.CatalogInputCostPerMillionTokens,
+		CatalogOutputCostPerMillionTokens: r.CatalogOutputCostPerMillionTokens,
+		PricingDriftWarning:               modelAliasPricingDriftWarning(r),
 	}
+}
+
+func modelAliasPricingDriftWarning(r repository.ModelAliasRow) string {
+	const epsilon = 1e-9
+	inputDrift := math.Abs(r.InputCostPerMillionTokens-r.CatalogInputCostPerMillionTokens) > epsilon
+	outputDrift := math.Abs(r.OutputCostPerMillionTokens-r.CatalogOutputCostPerMillionTokens) > epsilon
+	if !inputDrift && !outputDrift {
+		return ""
+	}
+	return fmt.Sprintf(
+		"alias pricing differs from current catalog pricing for %s/%s: alias input/output %.6f/%.6f, catalog input/output %.6f/%.6f per 1M tokens",
+		r.CatalogProviderKey,
+		r.CatalogProviderModelID,
+		r.InputCostPerMillionTokens,
+		r.OutputCostPerMillionTokens,
+		r.CatalogInputCostPerMillionTokens,
+		r.CatalogOutputCostPerMillionTokens,
+	)
 }
 
 func mapTool(r repository.ToolRow) toolResponse {

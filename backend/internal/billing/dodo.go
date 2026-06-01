@@ -33,9 +33,9 @@ type DodoProductMapping struct {
 	BillingPeriod string
 }
 
-func MapDodoProduct(productID string) (DodoProductMapping, error) {
+func MapDodoProductFromCatalog(productID string, plans []Plan) (DodoProductMapping, error) {
 	productID = strings.TrimSpace(productID)
-	for _, plan := range Catalog() {
+	for _, plan := range plans {
 		for period, id := range plan.DodoProductIDs {
 			if id == productID {
 				return DodoProductMapping{
@@ -49,8 +49,8 @@ func MapDodoProduct(productID string) (DodoProductMapping, error) {
 	return DodoProductMapping{}, fmt.Errorf("%w: %s", ErrUnknownDodoProduct, productID)
 }
 
-func SubscriptionEntitlements(input DodoSubscriptionInput) (EffectiveEntitlements, error) {
-	mapping, err := MapDodoProduct(input.ProductID)
+func SubscriptionEntitlementsFromCatalog(input DodoSubscriptionInput, plans []Plan) (EffectiveEntitlements, error) {
+	mapping, err := MapDodoProductFromCatalog(input.ProductID, plans)
 	if err != nil {
 		return EffectiveEntitlements{}, err
 	}
@@ -88,7 +88,9 @@ func DodoStatusFromEvent(eventType string, payloadStatus string) string {
 		return "active"
 	case "subscription.on_hold":
 		return "on_hold"
-	case "subscription.failed", "payment.failed", "dunning.failed":
+	case "payment.succeeded", "dunning.succeeded", "dunning.recovered":
+		return "active"
+	case "subscription.failed", "payment.failed", "dunning.failed", "dunning.exhausted":
 		return "failed"
 	case "subscription.cancelled":
 		return "cancelled"

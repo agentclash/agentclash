@@ -24,6 +24,7 @@ type RegressionRepository interface {
 	CreateRegressionSuite(ctx context.Context, params repository.CreateRegressionSuiteParams) (repository.RegressionSuite, error)
 	GetRegressionSuiteByID(ctx context.Context, id uuid.UUID) (repository.RegressionSuite, error)
 	ListVisibleChallengePacks(ctx context.Context, workspaceID uuid.UUID) ([]repository.ChallengePackSummary, error)
+	WorkspacePublicPacksEnabled(ctx context.Context, workspaceID uuid.UUID) (bool, error)
 	ListRegressionSuitesByWorkspaceID(ctx context.Context, workspaceID uuid.UUID, limit, offset int32) ([]repository.RegressionSuite, error)
 	CountRegressionSuitesByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) (int64, error)
 	PatchRegressionSuite(ctx context.Context, params repository.PatchRegressionSuiteParams) (repository.RegressionSuite, error)
@@ -458,6 +459,15 @@ func (m *RegressionManager) CaptureProductionFailure(ctx context.Context, caller
 	}
 	if version.WorkspaceID != nil && *version.WorkspaceID != input.WorkspaceID {
 		return repository.RegressionCase{}, repository.ErrChallengePackVersionNotFound
+	}
+	if version.WorkspaceID == nil {
+		publicPacks, accessErr := m.repo.WorkspacePublicPacksEnabled(ctx, input.WorkspaceID)
+		if accessErr != nil {
+			return repository.RegressionCase{}, accessErr
+		}
+		if !publicPacks {
+			return repository.RegressionCase{}, repository.ErrChallengePackVersionNotFound
+		}
 	}
 	if version.ChallengePackID != suite.SourceChallengePackID {
 		return repository.RegressionCase{}, ErrRegressionSuitePackMismatch

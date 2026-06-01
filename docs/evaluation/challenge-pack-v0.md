@@ -52,7 +52,8 @@ The manifest may contain a top-level `evaluation_spec` block like this:
     "runtime_limits": {
       "max_total_tokens": 50000,
       "max_cost_usd": 20,
-      "max_duration_ms": 1800000
+      "max_duration_ms": 1800000,
+      "max_iterations": 12
     },
     "pricing": {
       "models": [
@@ -86,7 +87,7 @@ The manifest may contain a top-level `evaluation_spec` block like this:
 - `evaluation_spec.judge_mode`: one of `deterministic`, `llm_judge`, `hybrid`
 - `validators`: declared checks that later validator execution can implement
 - `metrics`: declared collectors that later metric execution can implement
-- `runtime_limits`: pack-level hard ceilings and normalization fallbacks
+- `runtime_limits`: pack-level hard ceilings and normalization fallbacks, including the optional default native-agent `max_iterations` budget for runs created from the pack
 - `pricing.models`: configurable provider/model pricing rows used for cost scoring
 - `scorecard.dimensions`: score groups later surfaced to users
 - `scorecard.normalization`: dimension-specific thresholds for turning raw latency/cost into scores

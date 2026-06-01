@@ -1,0 +1,180 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentclash.dev/schemas/voice-video-sync-report.schema.json",
+  "title": "AgentClash Voice Video Sync Report",
+  "type": "object",
+  "required": ["summary"],
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": {
+      "type": "string"
+    },
+    "type": {
+      "type": "string",
+      "pattern": "^\\s*(agentclash\\.voice\\.video_sync_eval\\.v1|voicey\\.video_sync_eval)\\s*$"
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "summary": {
+      "type": "object",
+      "required": ["status", "interpretation"],
+      "additionalProperties": true,
+      "properties": {
+        "status": { "enum": ["pass", "warn", "fail"] },
+        "status_reasons": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "status_basis_ms": { "type": "number", "minimum": 0 },
+        "first_onset_lag_ms": { "type": "number" },
+        "median_onset_lag_ms": { "type": "number" },
+        "p90_onset_lag_ms": { "type": "number" },
+        "tail_lag_ms": { "type": "number" },
+        "paired_segments": { "type": "integer", "minimum": 0 },
+        "missing_translation_segments": { "type": "integer", "minimum": 0 },
+        "extra_translation_segments": { "type": "integer", "minimum": 0 },
+        "segment_coverage_ratio": { "type": "number", "minimum": 0, "maximum": 1 },
+        "duration_fit_score": { "type": "number", "minimum": 0, "maximum": 1 },
+        "median_duration_ratio": { "type": "number", "minimum": 0 },
+        "min_duration_ratio": { "type": "number", "minimum": 0 },
+        "max_duration_ratio": { "type": "number", "minimum": 0 },
+        "source_span_ms": { "type": "number", "minimum": 0 },
+        "translated_span_ms": { "type": "number", "minimum": 0 },
+        "span_duration_ratio": { "type": "number", "minimum": 0 },
+        "warn_threshold_ms": { "type": "number", "minimum": 0 },
+        "fail_threshold_ms": { "type": "number", "minimum": 0 },
+        "warn_duration_ratio_range": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": { "type": "number", "minimum": 0 }
+        },
+        "fail_duration_ratio_range": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": { "type": "number", "minimum": 0 }
+        },
+        "interpretation": { "type": "string", "minLength": 1 }
+      }
+    },
+    "source_segments": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/segment" }
+    },
+    "translated_segments": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/segment" }
+    },
+    "pairs": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/pair" }
+    },
+    "video_sync_note": {
+      "type": "string"
+    },
+    "provider_log_metrics": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "voicey_log_metrics": {
+      "type": "object",
+      "additionalProperties": true,
+      "deprecated": true
+    },
+    "mouth_motion_metrics": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "$defs": {
+    "segment": {
+      "type": "object",
+      "required": ["start_ms", "end_ms"],
+      "additionalProperties": true,
+      "properties": {
+        "start_ms": { "type": "number", "minimum": 0 },
+        "end_ms": { "type": "number", "minimum": 0 }
+      }
+    },
+    "nullableInteger": {
+      "oneOf": [
+        { "type": "integer", "minimum": 0 },
+        { "type": "null" }
+      ]
+    },
+    "nullableNumber": {
+      "oneOf": [
+        { "type": "number" },
+        { "type": "null" }
+      ]
+    },
+    "nullableNonNegativeNumber": {
+      "oneOf": [
+        { "type": "number", "minimum": 0 },
+        { "type": "null" }
+      ]
+    },
+    "pair": {
+      "type": "object",
+      "required": ["status"],
+      "additionalProperties": true,
+      "$comment": "Cross-field ordering checks such as source_end_ms >= source_start_ms are enforced by AgentClash ingestion.",
+      "properties": {
+        "source_index": { "$ref": "#/$defs/nullableInteger" },
+        "translated_index": { "$ref": "#/$defs/nullableInteger" },
+        "source_start_ms": { "$ref": "#/$defs/nullableNonNegativeNumber" },
+        "source_end_ms": { "$ref": "#/$defs/nullableNonNegativeNumber" },
+        "translated_start_ms": { "$ref": "#/$defs/nullableNonNegativeNumber" },
+        "translated_end_ms": { "$ref": "#/$defs/nullableNonNegativeNumber" },
+        "onset_lag_ms": { "$ref": "#/$defs/nullableNumber" },
+        "duration_ratio": { "$ref": "#/$defs/nullableNonNegativeNumber" },
+        "status": { "enum": ["paired", "missing_translation"] }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "status": { "const": "paired" } },
+            "required": ["status"]
+          },
+          "then": {
+            "required": [
+              "source_index",
+              "translated_index",
+              "source_start_ms",
+              "source_end_ms",
+              "translated_start_ms",
+              "translated_end_ms",
+              "onset_lag_ms",
+              "duration_ratio"
+            ],
+            "properties": {
+              "source_index": { "type": "integer", "minimum": 0 },
+              "translated_index": { "type": "integer", "minimum": 0 },
+              "source_start_ms": { "type": "number", "minimum": 0 },
+              "source_end_ms": { "type": "number", "minimum": 0 },
+              "translated_start_ms": { "type": "number", "minimum": 0 },
+              "translated_end_ms": { "type": "number", "minimum": 0 },
+              "onset_lag_ms": { "type": "number" },
+              "duration_ratio": { "type": "number", "minimum": 0 }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "status": { "const": "missing_translation" } },
+            "required": ["status"]
+          },
+          "then": {
+            "required": ["source_index"],
+            "properties": {
+              "source_index": { "type": "integer", "minimum": 0 }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

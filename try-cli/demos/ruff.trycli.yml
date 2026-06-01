@@ -1,0 +1,26 @@
+name: "Ruff"
+slug: ruff
+tagline: "Extremely fast Python linter & formatter"
+category: "Developer tools"
+template: agentclash-trycli
+docs: "https://docs.astral.sh/ruff/"
+github: "https://github.com/astral-sh/ruff"
+
+welcome: |
+  Ruff is ready! Extremely fast Python linter & formatter.
+  Try:
+    ruff --version
+    ruff check .
+    ruff format --help
+
+commands:
+  - label: "Show version"
+    run: "ruff --version"
+  - label: "Lint sample code"
+    run: "printf 'import os,sys\\nx=1+2\\nprint(x)\\n' > bad.py && ruff check bad.py"
+  - label: "Auto-fix issues"
+    run: "ruff check bad.py --fix && cat bad.py"
+  - label: "Format code"
+    run: "ruff format bad.py && cat bad.py"
+
+sessionMinutes: 10

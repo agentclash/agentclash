@@ -163,11 +163,12 @@ func TestReplayReadManagerRejectsNegativeCursorOutsideHTTPHandler(t *testing.T) 
 func TestReplayReadManagerReturnsLLMJudgeResultsWithScorecard(t *testing.T) {
 	workspaceID := uuid.New()
 	runAgentID := uuid.New()
+	runID := uuid.New()
 	evaluationSpecID := uuid.New()
 	manager := NewReplayReadManager(NewCallerWorkspaceAuthorizer(), &fakeReplayReadRepository{
 		runAgent: domain.RunAgent{
 			ID:          runAgentID,
-			RunID:       uuid.New(),
+			RunID:       runID,
 			WorkspaceID: workspaceID,
 			Status:      domain.RunAgentStatusCompleted,
 		},
@@ -175,7 +176,7 @@ func TestReplayReadManagerReturnsLLMJudgeResultsWithScorecard(t *testing.T) {
 			ID:               uuid.New(),
 			RunAgentID:       runAgentID,
 			EvaluationSpecID: evaluationSpecID,
-			Scorecard:        []byte(`{"passed":true,"dimensions":{"correctness":{"state":"available","score":0.84}}}`),
+			Scorecard:        []byte(`{"passed":true,"dimensions":{"correctness":{"state":"available","score":0.84}},"metric_details":[{"key":"model_cost","collector":"run_model_cost_usd","state":"available","numeric_value":0.0123}],"side_metrics":{"cost_per_correct_usd":{"state":"available","value":0.0246,"unit":"usd","numerator":0.0123,"denominator":0.5}}}`),
 		},
 		evaluationSpec: repository.EvaluationSpecRecord{
 			ID:         evaluationSpecID,
@@ -215,6 +216,12 @@ func TestReplayReadManagerReturnsLLMJudgeResultsWithScorecard(t *testing.T) {
 	}
 	if result.LLMJudgeResults[0].JudgeKey != "handoff_quality" {
 		t.Fatalf("judge_key = %q, want handoff_quality", result.LLMJudgeResults[0].JudgeKey)
+	}
+	if result.TotalCostUSD == nil || *result.TotalCostUSD != 0.0123 {
+		t.Fatalf("total_cost_usd = %v, want 0.0123", result.TotalCostUSD)
+	}
+	if result.CostPerCorrectUSD == nil || *result.CostPerCorrectUSD != 0.0246 {
+		t.Fatalf("cost_per_correct_usd = %v, want 0.0246", result.CostPerCorrectUSD)
 	}
 
 	document := decodeReplayPayload(t, result.Scorecard.Scorecard)
@@ -273,6 +280,48 @@ func TestReplayReadManagerFallsBackToStoredScorecardWhenEvaluationSpecMissing(t 
 	}
 	if string(result.Scorecard.Scorecard) != string(originalScorecard) {
 		t.Fatalf("scorecard = %s, want original payload %s", result.Scorecard.Scorecard, originalScorecard)
+	}
+}
+
+func TestTotalCostUSDFromScorecardDocument(t *testing.T) {
+	tests := []struct {
+		name    string
+		payload []byte
+		want    *float64
+	}{
+		{
+			name:    "absent metric",
+			payload: []byte(`{"metric_details":[{"collector":"run_total_tokens","numeric_value":123}]}`),
+		},
+		{
+			name:    "nil numeric value",
+			payload: []byte(`{"metric_details":[{"collector":"run_model_cost_usd"}]}`),
+		},
+		{
+			name:    "zero cost is present",
+			payload: []byte(`{"metric_details":[{"collector":"run_model_cost_usd","numeric_value":0}]}`),
+			want:    float64Ptr(0),
+		},
+		{
+			name:    "positive cost",
+			payload: []byte(`{"metric_details":[{"collector":"run_model_cost_usd","numeric_value":0.0123}]}`),
+			want:    float64Ptr(0.0123),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := totalCostUSDFromScorecardDocument(tt.payload)
+			if tt.want == nil {
+				if got != nil {
+					t.Fatalf("totalCostUSDFromScorecardDocument() = %v, want nil", *got)
+				}
+				return
+			}
+			if got == nil || *got != *tt.want {
+				t.Fatalf("totalCostUSDFromScorecardDocument() = %v, want %v", got, *tt.want)
+			}
+		})
 	}
 }
 
@@ -779,6 +828,8 @@ func TestGetRunAgentScorecardEndpointReturnsScorecard(t *testing.T) {
 					CreatedAt:        time.Date(2026, 3, 13, 12, 0, 0, 0, time.UTC),
 					UpdatedAt:        time.Date(2026, 3, 13, 12, 1, 0, 0, time.UTC),
 				},
+				TotalCostUSD:      float64Ptr(0.0123),
+				CostPerCorrectUSD: float64Ptr(0.0246),
 				LLMJudgeResults: []repository.LLMJudgeResultRecord{
 					{
 						ID:               uuid.New(),
@@ -831,6 +882,12 @@ func TestGetRunAgentScorecardEndpointReturnsScorecard(t *testing.T) {
 	}
 	if response.BehavioralScore == nil || *response.BehavioralScore != 0.73 {
 		t.Fatalf("behavioral_score = %v, want 0.73", response.BehavioralScore)
+	}
+	if response.TotalCostUSD == nil || *response.TotalCostUSD != 0.0123 {
+		t.Fatalf("total_cost_usd = %v, want 0.0123", response.TotalCostUSD)
+	}
+	if response.CostPerCorrectUSD == nil || *response.CostPerCorrectUSD != 0.0246 {
+		t.Fatalf("cost_per_correct_usd = %v, want 0.0246", response.CostPerCorrectUSD)
 	}
 	if len(response.LLMJudgeResults) != 1 {
 		t.Fatalf("llm_judge_results length = %d, want 1", len(response.LLMJudgeResults))
@@ -1043,10 +1100,16 @@ type fakeReplayReadRepository struct {
 	evaluationSpecErr  error
 	llmJudgeResults    []repository.LLMJudgeResultRecord
 	llmJudgeResultsErr error
+	runEvents          []repository.RunEvent
+	runEventsErr       error
 }
 
 func (f *fakeReplayReadRepository) GetRunAgentByID(_ context.Context, _ uuid.UUID) (domain.RunAgent, error) {
 	return f.runAgent, f.runAgentErr
+}
+
+func (f *fakeReplayReadRepository) ListRunEventsByRunAgentID(_ context.Context, _ uuid.UUID) ([]repository.RunEvent, error) {
+	return f.runEvents, f.runEventsErr
 }
 
 func (f *fakeReplayReadRepository) GetRunAgentReplayByRunAgentID(_ context.Context, _ uuid.UUID) (repository.RunAgentReplay, error) {
@@ -1070,6 +1133,8 @@ type fakeReplayReadService struct {
 	replayErr       error
 	scorecardResult GetRunAgentScorecardResult
 	scorecardErr    error
+	transcriptResult GetRunAgentTranscriptResult
+	transcriptErr    error
 }
 
 func (f *fakeReplayReadService) GetRunAgentReplay(_ context.Context, _ Caller, _ uuid.UUID, _ ReplayStepPageParams) (GetRunAgentReplayResult, error) {
@@ -1078,6 +1143,10 @@ func (f *fakeReplayReadService) GetRunAgentReplay(_ context.Context, _ Caller, _
 
 func (f *fakeReplayReadService) GetRunAgentScorecard(_ context.Context, _ Caller, _ uuid.UUID) (GetRunAgentScorecardResult, error) {
 	return f.scorecardResult, f.scorecardErr
+}
+
+func (f *fakeReplayReadService) GetRunAgentTranscript(_ context.Context, _ Caller, _ uuid.UUID) (GetRunAgentTranscriptResult, error) {
+	return f.transcriptResult, f.transcriptErr
 }
 
 func decodeReplayPayload(t *testing.T, payload []byte) map[string]any {

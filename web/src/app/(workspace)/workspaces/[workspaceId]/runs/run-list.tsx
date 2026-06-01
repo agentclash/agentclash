@@ -18,6 +18,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
+import { VoiceModeBadges } from "@/components/voice/voice-mode-badges";
+import { isVoiceRun, voiceRunMode, voiceRunTransport } from "@/lib/voice-evals";
 import { Play, ChevronLeft, ChevronRight, GitCompare } from "lucide-react";
 import { runStatusVariant } from "./status-variant";
 
@@ -175,9 +177,20 @@ export function RunList({ workspaceId }: { workspaceId: string }) {
                   </Badge>
                 </TableCell>
                 <TableCell className="text-muted-foreground text-sm">
-                  {run.execution_mode === "comparison"
-                    ? "Comparison"
-                    : "Single Agent"}
+                  <div className="space-y-1">
+                    <div>
+                      {run.execution_mode === "comparison"
+                        ? "Comparison"
+                        : "Single Agent"}
+                    </div>
+                    {isVoiceRun(run) && (
+                      <VoiceModeBadges
+                        modality={run.voice?.modality ?? run.modality}
+                        mode={voiceRunMode(run)}
+                        transport={voiceRunTransport(run)}
+                      />
+                    )}
+                  </div>
                 </TableCell>
                 <TableCell className="text-muted-foreground text-sm">
                   {new Date(run.created_at).toLocaleDateString()}

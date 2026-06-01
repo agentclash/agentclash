@@ -6,6 +6,7 @@ import type { UserMeResponse, SessionResponse } from "@/lib/api/types";
 import { OrgSettingsSidebar } from "./org-settings-sidebar";
 import { OrgProvider } from "./org-context";
 import { TrialUpgradePrompt } from "@/components/billing/trial-upgrade-prompt";
+import { PostHogIdentify } from "@/components/posthog-identify";
 
 export default async function OrgLayout({
   children,
@@ -39,6 +40,7 @@ export default async function OrgLayout({
 
   return (
     <AuthenticatedAppProviders initialAuth={initialAuth}>
+      <PostHogIdentify session={session} />
       <OrgProvider
         value={{
           orgId: org.id,

@@ -1,0 +1,102 @@
+---
+title: Try CLI — interactive terminal demos
+description: AgentClash primitive for one-click disposable terminal demos. README badges, E2B sandboxes, xterm.js.
+---
+
+**Try CLI** is an AgentClash platform primitive: interactive, disposable terminal demos for CLI and TUI tools — including AI coding agents.
+
+> Let users try your CLI before they install it — not a cloud IDE, not “run any repo.”
+
+## Where it lives
+
+| Surface | URL |
+| --- | --- |
+| Demo hub | [agentclash.dev/try](https://www.agentclash.dev/try) |
+| Per-tool demo | `https://www.agentclash.dev/try/{slug}` (e.g. `/try/bun`) |
+| README badge | `https://www.agentclash.dev/api/try/badge/{slug}.svg` |
+| WebSocket API | Railway service (`NEXT_PUBLIC_TRY_CLI_WS_URL`) |
+
+The browser UI ships on **Vercel** with the AgentClash web app. PTY sessions run on a **long-lived Bun service** (Railway) backed by **E2B** sandboxes (WebSockets cannot run on Vercel serverless).
+
+## Demos
+
+**AI coding agents** — Claude Code, Codex CLI, OpenCode, Grok CLI.
+**Developer tools** — bun, uv, ruff, biome, ripgrep.
+
+Every tool is pre-installed in a shared E2B template (`agentclash-trycli`), so sandboxes boot ready in ~1–2s instead of installing on each visit. Rebuild the template after changing tools:
+
+```bash
+cd services/try-cli
+E2B_API_KEY=... bun run scripts/build-template.ts
+```
+
+The build runs in E2B's cloud (Build System 2.0 — no local Docker). The demo's `template:` field references the alias.
+
+## Auth: free trial, then bring-your-own
+
+**Anonymous free trial.** Visitors can try the AI agents for a few minutes with **no login and no key**. The CLI is wired to a metered server-side gateway that holds AgentClash's provider keys, mints a short-lived spend-capped token per session, and never lets the real key into the sandbox. A durable Redis-backed daily ceiling is the hard backstop.
+
+**Then sign in.** When the trial ends, signing in with AgentClash gives a longer session where you authenticate the CLI with your **own** account/key (running on your quota, not ours). We **never inject our keys** into the sandbox — that would violate provider terms and expose the key to anyone in the shell. Each demo's `auth:` block shows how to sign in with your own credentials:
+
+- **Claude Code** — `claude` → `/login` (paste-code) or `ANTHROPIC_API_KEY`
+- **Codex** — `codex login --device-auth` or an `OPENAI_API_KEY`
+- **OpenCode** — `opencode auth login` (paste a provider key)
+- **Grok** — `export XAI_API_KEY=…`
+
+Credentials live only in that sandbox and are wiped when it expires.
+
+## Maintainer workflow
+
+Add `.trycli.yml` to your repo:
+
+```yaml
+name: "my-cool-cli"
+install:
+  - "curl -fsSL https://example.com/install.sh | bash"
+welcome: |
+  my-cool-cli is ready. Try: mycool --help
+commands:
+  - label: "Show help"
+    run: "mycool --help"
+sessionMinutes: 10
+```
+
+Publish a badge:
+
+```bash
+npx @agentclash/try-cli init
+npx @agentclash/try-cli publish
+```
+
+```markdown
+[![Try on AgentClash](https://www.agentclash.dev/api/try/badge/mycool.svg)](https://www.agentclash.dev/try/mycool)
+```
+
+## Challenge packs & `terminal` tool kind
+
+Challenge pack `tool_policy.allowed_tool_kinds` now accepts **`terminal`**. This marks packs that expect interactive terminal / Try CLI surfaces alongside standard sandbox primitives (`file`, `exec`, etc.).
+
+Use **`exec`** inside the sandbox to validate CLI behavior in eval runs; use **Try CLI** for human-facing README demos.
+
+## Architecture
+
+```
+web (Next.js / Vercel)        →  /try, /api/try/* proxy
+services/try-cli (Bun/Railway)→  E2B PTY ↔ WebSocket
+services/try-cli/scripts      →  build-template.ts (E2B template build)
+try-cli/packages/core         →  .trycli.yml schema + badges
+try-cli/demos                 →  Curated demos (AI agents + dev tools)
+```
+
+## Session limits (MVP)
+
+- 10 minute sessions (configurable per demo)
+- Max 3 concurrent sessions per IP (freed when a session ends)
+- Sandboxes destroyed on expiry — credentials wiped with them
+- Anonymous; AI agent demos use the visitor's own provider credentials (BYO)
+
+## See also
+
+- [Sandbox & E2B](../challenge-packs/sandbox-and-e2b)
+- [Tools, primitives & policy](../challenge-packs/tools-primitives-and-policy)
+- Repo: `try-cli/` and `services/try-cli/`

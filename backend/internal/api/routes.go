@@ -21,6 +21,7 @@ func registerProtectedRoutes(
 	compareReadService CompareReadService,
 	releaseGateService ReleaseGateService,
 	regressionService RegressionService,
+	datasetService DatasetService,
 	agentDeploymentReadService AgentDeploymentReadService,
 	agentHarnessService AgentHarnessService,
 	githubIntegrationService GitHubIntegrationService,
@@ -38,6 +39,8 @@ func registerProtectedRoutes(
 	cliAuthService CLIAuthService,
 	publicShareService PublicShareService,
 	billingService BillingService,
+	multiTurnService MultiTurnService,
+	vibeEvalService VibeEvalService,
 ) {
 	entitlementGate := entitlementGateFromBillingService(billingService)
 
@@ -59,6 +62,7 @@ func registerProtectedRoutes(
 		})
 	})
 	router.Patch("/organization-memberships/{membershipID}", updateOrgMembershipHandler(logger, orgMembershipService))
+	router.Patch("/invites/organization/{inviteToken}", acceptOrgInviteHandler(logger, orgMembershipService))
 
 	// Standalone workspace endpoints (by workspace ID).
 	router.Get("/workspaces/{workspaceID}/details", getWorkspaceHandler(logger, wsService))
@@ -66,6 +70,7 @@ func registerProtectedRoutes(
 	router.Get("/workspaces/{workspaceID}/memberships", listWorkspaceMembershipsHandler(logger, wsMembershipService))
 	router.Post("/workspaces/{workspaceID}/memberships", inviteWorkspaceMemberHandler(logger, wsMembershipService))
 	router.Patch("/workspace-memberships/{membershipID}", updateWorkspaceMembershipHandler(logger, wsMembershipService))
+	router.Patch("/invites/workspace/{inviteToken}", acceptWorkspaceInviteHandler(logger, wsMembershipService))
 	router.Get("/artifacts/{artifactID}/download", getArtifactDownloadHandler(logger, artifactService))
 	// POST /v1/runs resolves workspace access from the JSON body, so authz stays in the run-creation service
 	// instead of URL-param middleware. The run read endpoints below also resolve authz in the service layer
@@ -75,13 +80,27 @@ func registerProtectedRoutes(
 	router.Get("/eval-sessions/{evalSessionID}", getEvalSessionHandler(logger, runReadService))
 	router.Post("/runs", createRunHandler(logger, runCreationService))
 	router.Get("/runs/{runID}", getRunHandler(logger, runReadService))
+	router.Post("/runs/{runID}/cancel", cancelRunHandler(logger, runReadService))
 	router.Get("/runs/{runID}/ranking", getRunRankingHandler(logger, runReadService))
 	router.Post("/runs/{runID}/ranking-insights", createRunRankingInsightsHandler(logger, runReadService))
 	router.Get("/runs/{runID}/agents", listRunAgentsHandler(logger, runReadService))
+	router.Get("/runs/{runID}/events/export", exportRunEventsJSONLHandler(logger, runReadService))
 	// This workspace-scoped URL also resolves authz in the manager after loading the run
 	// so cross-workspace requests return 404 instead of leaking run existence via middleware.
 	router.Get("/workspaces/{workspaceID}/runs/{runID}/failures", listRunFailuresHandler(logger, runReadService))
 	router.Post("/workspaces/{workspaceID}/runs/{runID}/failures/{challengeIdentityID}/promote", promoteFailureHandler(logger, regressionService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Post("/workspaces/{workspaceID}/runs/{runID}/run-agents/{runAgentID}/turns", submitMultiTurnHumanTurnHandler(logger, multiTurnService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Get("/workspaces/{workspaceID}/runs/{runID}/run-agents/{runAgentID}/turns/status", getMultiTurnHumanTurnStatusHandler(logger, multiTurnService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Post("/workspaces/{workspaceID}/calibration-reviews", createCalibrationReviewHandler(logger, multiTurnService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Get("/workspaces/{workspaceID}/calibration-reviews", listCalibrationReviewsHandler(logger, multiTurnService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Get("/workspaces/{workspaceID}/arena/tasks", listArenaTasksHandler(logger, multiTurnService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Post("/workspaces/{workspaceID}/arena/votes", submitArenaVoteHandler(logger, multiTurnService))
 	router.Get("/compare", getRunComparisonHandler(logger, compareReadService))
 	router.Get("/compare/viewer", getRunComparisonViewerHandler(logger))
 	router.Get("/release-gates", listReleaseGatesHandler(logger, releaseGateService))
@@ -97,8 +116,33 @@ func registerProtectedRoutes(
 	router.Post("/workspaces/{workspaceID}/regression-suites/{suiteID}/production-failures", captureProductionFailureHandler(logger, regressionService))
 	router.Get("/workspaces/{workspaceID}/regression-cases", listWorkspaceRegressionCasesHandler(logger, regressionService))
 	router.Patch("/workspaces/{workspaceID}/regression-cases/{caseID}", patchRegressionCaseHandler(logger, regressionService))
+	router.Post("/workspaces/{workspaceID}/datasets", createDatasetHandler(logger, datasetService))
+	router.Get("/workspaces/{workspaceID}/datasets", listDatasetsHandler(logger, datasetService))
+	router.Get("/workspaces/{workspaceID}/datasets/{datasetID}", getDatasetHandler(logger, datasetService))
+	router.Patch("/workspaces/{workspaceID}/datasets/{datasetID}", patchDatasetHandler(logger, datasetService))
+	router.Delete("/workspaces/{workspaceID}/datasets/{datasetID}", deleteDatasetHandler(logger, datasetService))
+	router.Post("/workspaces/{workspaceID}/datasets/{datasetID}/import", importDatasetHandler(logger, datasetService))
+	router.Get("/workspaces/{workspaceID}/datasets/{datasetID}/export", exportDatasetHandler(logger, datasetService))
+	router.Post("/workspaces/{workspaceID}/datasets/{datasetID}/evals", startDatasetEvalHandler(logger, datasetService))
+	router.Get("/workspaces/{workspaceID}/datasets/{datasetID}/results", listDatasetResultsHandler(logger, datasetService))
+	router.Post("/workspaces/{workspaceID}/datasets/{datasetID}/traces/import", importDatasetTracesHandler(logger, datasetService))
+	router.Get("/workspaces/{workspaceID}/datasets/{datasetID}/trace-candidates", listDatasetTraceCandidatesHandler(logger, datasetService))
+	router.Post("/workspaces/{workspaceID}/datasets/{datasetID}/trace-candidates/{candidateID}/promote", promoteDatasetTraceCandidateHandler(logger, datasetService))
+	router.Post("/workspaces/{workspaceID}/datasets/{datasetID}/baselines", createDatasetBaselineHandler(logger, datasetService))
+	router.Get("/workspaces/{workspaceID}/datasets/{datasetID}/baselines", listDatasetBaselinesHandler(logger, datasetService))
+	router.Post("/workspaces/{workspaceID}/datasets/{datasetID}/gate", evaluateDatasetGateHandler(logger, datasetService))
+	router.Get("/workspaces/{workspaceID}/datasets/{datasetID}/regression-suite", getDatasetRegressionSuiteLinkHandler(logger, datasetService))
+	router.Post("/workspaces/{workspaceID}/datasets/{datasetID}/regression-suite/sync", syncDatasetRegressionSuiteHandler(logger, datasetService))
+	router.Post("/workspaces/{workspaceID}/datasets/{datasetID}/examples", addDatasetExampleHandler(logger, datasetService))
+	router.Get("/workspaces/{workspaceID}/datasets/{datasetID}/examples", listDatasetExamplesHandler(logger, datasetService))
+	router.Patch("/workspaces/{workspaceID}/datasets/{datasetID}/examples/{exampleID}", patchDatasetExampleHandler(logger, datasetService))
+	router.Delete("/workspaces/{workspaceID}/datasets/{datasetID}/examples/{exampleID}", deleteDatasetExampleHandler(logger, datasetService))
+	router.Post("/workspaces/{workspaceID}/datasets/{datasetID}/versions", createDatasetVersionHandler(logger, datasetService))
+	router.Get("/workspaces/{workspaceID}/datasets/{datasetID}/versions", listDatasetVersionsHandler(logger, datasetService))
+	router.Get("/workspaces/{workspaceID}/datasets/{datasetID}/versions/{versionID}", getDatasetVersionHandler(logger, datasetService))
 	router.Get("/replays/{runAgentID}/viewer", getRunAgentReplayViewerHandler(logger))
 	router.Get("/replays/{runAgentID}", getRunAgentReplayHandler(logger, replayReadService))
+	router.Get("/replays/{runAgentID}/transcript", getRunAgentTranscriptHandler(logger, replayReadService))
 	router.Get("/scorecards/{runAgentID}", getRunAgentScorecardHandler(logger, replayReadService))
 	router.Post("/share-links", createShareLinkHandler(logger, publicShareService))
 	router.Delete("/share-links/{shareID}", revokeShareLinkHandler(logger, publicShareService))
@@ -132,11 +176,33 @@ func registerProtectedRoutes(
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Get("/workspaces/{workspaceID}/agent-harnesses/{harnessID}", getAgentHarnessHandler(logger, agentHarnessService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Post("/workspaces/{workspaceID}/agent-harness-suites", createAgentHarnessSuiteHandler(logger, agentHarnessService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Get("/workspaces/{workspaceID}/agent-harness-suites", listAgentHarnessSuitesHandler(logger, agentHarnessService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Get("/workspaces/{workspaceID}/agent-harness-suites/{suiteID}/tasks", listAgentHarnessSuiteTasksHandler(logger, agentHarnessService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Get("/workspaces/{workspaceID}/agent-harness-suites/{suiteID}/rankings", getAgentHarnessSuiteRankingHandler(logger, agentHarnessService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Post("/workspaces/{workspaceID}/agent-harness-suites/{suiteID}/runs", startAgentHarnessSuiteRunHandler(logger, agentHarnessService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Post("/workspaces/{workspaceID}/agent-harnesses/{harnessID}/executions", startAgentHarnessExecutionHandler(logger, agentHarnessService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Get("/workspaces/{workspaceID}/agent-harness-executions", listAgentHarnessExecutionsHandler(logger, agentHarnessService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Get("/workspaces/{workspaceID}/agent-harness-failures/summary", listAgentHarnessFailureSummaryHandler(logger, agentHarnessService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Get("/workspaces/{workspaceID}/agent-harness-executions/{executionID}", getAgentHarnessExecutionHandler(logger, agentHarnessService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Get("/workspaces/{workspaceID}/agent-harness-executions/{executionID}/failure-review", getAgentHarnessFailureReviewHandler(logger, agentHarnessService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Patch("/workspaces/{workspaceID}/agent-harness-executions/{executionID}/failure-review", updateAgentHarnessFailureReviewHandler(logger, agentHarnessService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Post("/workspaces/{workspaceID}/agent-harness-executions/{executionID}/promote-task", promoteAgentHarnessExecutionHandler(logger, agentHarnessService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Post("/workspaces/{workspaceID}/agent-harness-executions/{executionID}/cancel", cancelAgentHarnessExecutionHandler(logger, agentHarnessService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Post("/workspaces/{workspaceID}/agent-harness-executions/{executionID}/retry", retryAgentHarnessExecutionHandler(logger, agentHarnessService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Post("/workspaces/{workspaceID}/github/installations/start", startGitHubInstallationHandler(logger, githubIntegrationService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
@@ -146,6 +212,14 @@ func registerProtectedRoutes(
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Get("/workspaces/{workspaceID}/github/repositories", listGitHubRepositoriesHandler(logger, githubIntegrationService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Get("/workspaces/{workspaceID}/ci-profiles", listCIProfilesHandler(logger, githubIntegrationService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Post("/workspaces/{workspaceID}/ci-profiles", createCIProfileHandler(logger, githubIntegrationService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Patch("/workspaces/{workspaceID}/ci-profiles/{profileID}", updateCIProfileHandler(logger, githubIntegrationService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Post("/workspaces/{workspaceID}/github/ci-setup-pull-request", createCISetupPullRequestHandler(logger, githubIntegrationService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Get("/workspaces/{workspaceID}/challenge-packs", listChallengePacksHandler(logger, challengePackReadService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Get("/workspaces/{workspaceID}/challenge-pack-versions/{versionID}/input-sets", listChallengeInputSetsHandler(logger, challengePackReadService))
@@ -153,6 +227,20 @@ func registerProtectedRoutes(
 		Post("/workspaces/{workspaceID}/challenge-packs", publishChallengePackHandler(logger, challengePackAuthoringService, authorizer, entitlementGate))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Post("/workspaces/{workspaceID}/challenge-packs/validate", validateChallengePackHandler(logger, challengePackAuthoringService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Post("/workspaces/{workspaceID}/vibe-eval/conversations", createVibeEvalConversationHandler(logger, vibeEvalService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Get("/workspaces/{workspaceID}/vibe-eval/conversations", listVibeEvalConversationsHandler(logger, vibeEvalService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Get("/workspaces/{workspaceID}/vibe-eval/conversations/{conversationID}", getVibeEvalConversationHandler(logger, vibeEvalService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Post("/workspaces/{workspaceID}/vibe-eval/conversations/{conversationID}/drafts", createVibeEvalDraftHandler(logger, vibeEvalService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Get("/workspaces/{workspaceID}/vibe-eval/conversations/{conversationID}/drafts", listVibeEvalDraftsHandler(logger, vibeEvalService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Get("/workspaces/{workspaceID}/vibe-eval/drafts/{draftID}", getVibeEvalDraftHandler(logger, vibeEvalService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Patch("/workspaces/{workspaceID}/vibe-eval/drafts/{draftID}", updateVibeEvalDraftHandler(logger, vibeEvalService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Get("/workspaces/{workspaceID}/artifacts", listWorkspaceArtifactsHandler(logger, artifactService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
@@ -162,6 +250,7 @@ func registerProtectedRoutes(
 		Post("/workspaces/{workspaceID}/agent-builds", createAgentBuildHandler(logger, agentBuildService, authorizer))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Get("/workspaces/{workspaceID}/agent-builds", listAgentBuildsHandler(logger, agentBuildService))
+	router.Get("/agent-build-version-templates", listAgentBuildVersionTemplatesHandler())
 
 	router.Get("/agent-builds/{agentBuildID}", getAgentBuildHandler(logger, agentBuildService, authorizer))
 	router.Post("/agent-builds/{agentBuildID}/versions", createAgentBuildVersionHandler(logger, agentBuildService, authorizer))
@@ -209,6 +298,7 @@ func registerProtectedRoutes(
 	router.Method("GET", "/workspaces/{workspaceID}/provider-accounts", wsMiddleware(infraListHandler(logger, infraService.ListProviderAccounts, mapProviderAccount)))
 	router.Get("/provider-accounts/{accountID}", infraGetHandler(logger, authorizer, "accountID", infraService.GetProviderAccount, mapProviderAccount, "provider account"))
 	router.Delete("/provider-accounts/{accountID}", infraDeleteHandler(logger, authorizer, "accountID", infraService.GetProviderAccount, infraService.DeleteProviderAccount, "provider account"))
+	router.Post("/provider-accounts/{accountID}/test", testProviderAccountHandler(logger, authorizer, infraService))
 
 	// Model Catalog (global, no workspace scope)
 	router.Get("/model-catalog", listModelCatalogHandler(logger, infraService))

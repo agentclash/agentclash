@@ -118,6 +118,88 @@ func TestGeminiClientStreamModelEmitsToolCallDeltas(t *testing.T) {
 	}
 }
 
+func TestGeminiClientPreservesThoughtSignatureOnFunctionCallParts(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		fieldName string
+	}{
+		{name: "camelCase", fieldName: "thoughtSignature"},
+		{name: "snake_case", fieldName: "thought_signature"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			const thoughtSignature = "sig-gemini-step-1"
+			requestCount := 0
+			httpClient := &http.Client{
+				Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+					requestCount++
+					body, err := io.ReadAll(r.Body)
+					if err != nil {
+						t.Fatalf("read request body: %v", err)
+					}
+					if requestCount == 2 {
+						var payload geminiRequest
+						if err := json.Unmarshal(body, &payload); err != nil {
+							t.Fatalf("unmarshal second request body: %v", err)
+						}
+						if len(payload.Contents) < 2 {
+							t.Fatalf("contents = %d, want assistant function call history", len(payload.Contents))
+						}
+						parts := payload.Contents[1].Parts
+						if len(parts) != 1 || parts[0].FunctionCall == nil {
+							t.Fatalf("assistant history parts = %#v, want one function call", parts)
+						}
+						if parts[0].ThoughtSignature != thoughtSignature {
+							t.Fatalf("thoughtSignature = %q, want %q", parts[0].ThoughtSignature, thoughtSignature)
+						}
+					}
+					return sseResponse(http.StatusOK, strings.Join([]string{
+						`data: {"candidates":[{"content":{"parts":[{"functionCall":{"name":"read_file","args":{"path":"/workspace/app.go"}},"` + tc.fieldName + `":"` + thoughtSignature + `"}]},"finishReason":"STOP"}],"modelVersion":"gemini-3-pro-preview","usageMetadata":{"promptTokenCount":21,"candidatesTokenCount":9,"totalTokenCount":30}}`,
+						``,
+					}, "\n")), nil
+				}),
+			}
+
+			client := NewGeminiClient(httpClient, "https://example.com", staticCredentialResolver{value: "test-key"})
+
+			firstResponse, err := client.InvokeModel(context.Background(), Request{
+				ProviderKey:         "gemini",
+				CredentialReference: "env://GEMINI_API_KEY",
+				Model:               "gemini-3-pro-preview",
+				Messages:            []Message{{Role: "user", Content: "inspect workspace"}},
+				Tools: []ToolDefinition{
+					{Name: "read_file", Parameters: json.RawMessage(`{"type":"object","properties":{"path":{"type":"string"}}}`)},
+				},
+			})
+			if err != nil {
+				t.Fatalf("first InvokeModel returned error: %v", err)
+			}
+			if len(firstResponse.ToolCalls) != 1 {
+				t.Fatalf("tool calls = %d, want 1", len(firstResponse.ToolCalls))
+			}
+			if firstResponse.ToolCalls[0].ThoughtSignature != thoughtSignature {
+				t.Fatalf("captured thought signature = %q, want %q", firstResponse.ToolCalls[0].ThoughtSignature, thoughtSignature)
+			}
+
+			_, err = client.InvokeModel(context.Background(), Request{
+				ProviderKey:         "gemini",
+				CredentialReference: "env://GEMINI_API_KEY",
+				Model:               "gemini-3-pro-preview",
+				Messages: []Message{
+					{Role: "user", Content: "inspect workspace"},
+					{Role: "assistant", ToolCalls: firstResponse.ToolCalls},
+					{Role: "tool", ToolCallID: "read_file", Content: "package main"},
+				},
+				Tools: []ToolDefinition{
+					{Name: "read_file", Parameters: json.RawMessage(`{"type":"object","properties":{"path":{"type":"string"}}}`)},
+				},
+			})
+			if err != nil {
+				t.Fatalf("second InvokeModel returned error: %v", err)
+			}
+		})
+	}
+}
+
 func TestGeminiClientNormalizesRateLimitFailure(t *testing.T) {
 	httpClient := &http.Client{
 		Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {

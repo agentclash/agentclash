@@ -31,7 +31,8 @@ type ValidatorType =
   | "regex_match"
   | "json_schema"
   | "json_path_match"
-  | "boolean_assert";
+  | "boolean_assert"
+  | "tool_call_assertion";
 
 type MetricType = "numeric" | "text" | "boolean";
 
@@ -45,7 +46,8 @@ interface ValidatorDeclaration {
   key: string;
   type: ValidatorType;
   target: string;
-  expected_from: string;
+  expected_from?: string;
+  config?: Record<string, unknown>;
 }
 
 interface MetricDeclaration {
@@ -95,11 +97,20 @@ const VALIDATOR_TYPES: { value: ValidatorType; label: string }[] = [
   { value: "json_schema", label: "JSON Schema" },
   { value: "json_path_match", label: "JSON Path Match" },
   { value: "boolean_assert", label: "Boolean Assert" },
+  { value: "tool_call_assertion", label: "Tool Call Assertion" },
 ];
+
+const DEFAULT_TOOL_CALL_ASSERTION_CONFIG = {
+  tool_name: "submit",
+  must_call: true,
+};
+
+function defaultToolCallAssertionConfig(): Record<string, unknown> {
+  return { ...DEFAULT_TOOL_CALL_ASSERTION_CONFIG };
+}
 
 const TARGET_OPTIONS = [
   { value: "final_output", label: "final_output" },
-  { value: "tool_calls", label: "tool_calls" },
   { value: "intermediate_steps", label: "intermediate_steps" },
 ];
 
@@ -298,10 +309,24 @@ function formToSpec(state: FormState): EvaluationSpec {
     name: state.specName,
     version_number: 1,
     judge_mode: "deterministic",
-    validators: state.validators,
+    validators: state.validators.map(normalizeValidatorForSpec),
     metrics: state.metrics,
     scorecard,
   };
+}
+
+function normalizeValidatorForSpec(validator: ValidatorDeclaration): ValidatorDeclaration {
+  const normalized = { ...validator };
+  if (normalized.type === "tool_call_assertion") {
+    normalized.target = "tool_calls";
+    normalized.config = normalized.config ?? defaultToolCallAssertionConfig();
+    delete normalized.expected_from;
+  }
+  return normalized;
+}
+
+function validatorConfigText(validator: ValidatorDeclaration): string {
+  return JSON.stringify(validator.config ?? defaultToolCallAssertionConfig(), null, 2);
 }
 
 // ---------------------------------------------------------------------------
@@ -317,10 +342,14 @@ export function EvalSpecBuilder({ value, onChange }: EvalSpecBuilderProps) {
   const [form, setForm] = useState<FormState>(() => parseIncoming(value));
   const [preset, setPreset] = useState<PresetKey>("custom");
   const [showJson, setShowJson] = useState(false);
+  const [validatorConfigDrafts, setValidatorConfigDrafts] = useState<Record<string, string>>({});
+  const [validatorConfigErrors, setValidatorConfigErrors] = useState<Record<string, string>>({});
 
   // Reparse if the external value changes identity (e.g. server refresh)
   useEffect(() => {
     setForm(parseIncoming(value));
+    setValidatorConfigDrafts({});
+    setValidatorConfigErrors({});
   }, [value]);
 
   // Propagate changes upstream
@@ -371,23 +400,96 @@ export function EvalSpecBuilder({ value, onChange }: EvalSpecBuilderProps) {
   }
 
   function updateValidator(index: number, patch: Partial<ValidatorDeclaration>) {
+    const previousKey = form.validators[index]?.key;
     const validators = form.validators.map((v, i) => {
       if (i !== index) return v;
       const updated = { ...v, ...patch };
       // Auto-generate key from type + (index+1)
       if (patch.type) {
         updated.key = `${patch.type}-${i + 1}`;
+        if (patch.type === "tool_call_assertion") {
+          updated.target = "tool_calls";
+          updated.config = v.type === "tool_call_assertion" && v.config
+            ? v.config
+            : defaultToolCallAssertionConfig();
+          delete updated.expected_from;
+        } else if (v.type === "tool_call_assertion") {
+          updated.target = "final_output";
+          updated.expected_from = "case.expectations.expected_output";
+          delete updated.config;
+        }
       }
       return updated;
     });
+    if (patch.type && previousKey) {
+      clearValidatorConfigState(previousKey);
+    }
     setPreset("custom");
     emit({ ...form, validators });
   }
 
   function removeValidator(index: number) {
+    const removedKey = form.validators[index]?.key;
     const validators = form.validators.filter((_, i) => i !== index);
+    if (removedKey) {
+      clearValidatorConfigState(removedKey);
+    }
     setPreset("custom");
     emit({ ...form, validators });
+  }
+
+  function commitValidatorConfigText(index: number, key: string, text: string) {
+    try {
+      const parsed = JSON.parse(text);
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        setValidatorConfigErrors((errors) => ({
+          ...errors,
+          [key]: "Config must be a JSON object.",
+        }));
+        return;
+      }
+      updateValidator(index, { config: parsed as Record<string, unknown> });
+      setValidatorConfigDrafts((drafts) => {
+        const next = { ...drafts };
+        delete next[key];
+        return next;
+      });
+      setValidatorConfigErrors((errors) => {
+        const next = { ...errors };
+        delete next[key];
+        return next;
+      });
+    } catch (err) {
+      setValidatorConfigErrors((errors) => ({
+        ...errors,
+        [key]: err instanceof Error ? err.message : "Config must be valid JSON.",
+      }));
+      return;
+    }
+  }
+
+  function updateValidatorConfigDraft(key: string, text: string) {
+    setValidatorConfigDrafts((drafts) => ({ ...drafts, [key]: text }));
+    setValidatorConfigErrors((errors) => {
+      const next = { ...errors };
+      delete next[key];
+      return next;
+    });
+  }
+
+  function clearValidatorConfigState(key: string) {
+    setValidatorConfigDrafts((drafts) => {
+      if (!(key in drafts)) return drafts;
+      const next = { ...drafts };
+      delete next[key];
+      return next;
+    });
+    setValidatorConfigErrors((errors) => {
+      if (!(key in errors)) return errors;
+      const next = { ...errors };
+      delete next[key];
+      return next;
+    });
   }
 
   // ---- Metric helpers ----
@@ -467,7 +569,9 @@ export function EvalSpecBuilder({ value, onChange }: EvalSpecBuilderProps) {
         </div>
         <div className="space-y-2">
           <label className="text-sm font-medium">Preset Template</label>
-          <Select value={preset} onValueChange={(v) => v && applyPreset(v as PresetKey)}>
+          <Select value={preset} onValueChange={(v: string | null) => {
+            if (v) applyPreset(v as PresetKey);
+          }}>
             <SelectTrigger className="w-full sm:w-44">
               <SelectValue />
             </SelectTrigger>
@@ -547,7 +651,9 @@ export function EvalSpecBuilder({ value, onChange }: EvalSpecBuilderProps) {
 
                 <Select
                   value={v.type}
-                  onValueChange={(val) => val && updateValidator(i, { type: val as ValidatorType })}
+                  onValueChange={(val: string | null) => {
+                    if (val) updateValidator(i, { type: val as ValidatorType });
+                  }}
                 >
                   <SelectTrigger className="w-full sm:w-40">
                     <SelectValue />
@@ -561,33 +667,61 @@ export function EvalSpecBuilder({ value, onChange }: EvalSpecBuilderProps) {
                   </SelectContent>
                 </Select>
 
-                <Select
-                  value={v.target}
-                  onValueChange={(val) => val && updateValidator(i, { target: val })}
-                >
-                  <SelectTrigger className="w-full sm:w-40">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {TARGET_OPTIONS.map((t) => (
-                      <SelectItem key={t.value} value={t.value}>
-                        {t.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                {v.type === "tool_call_assertion" ? (
+                  <Badge variant="secondary" className="shrink-0">
+                    tool_calls
+                  </Badge>
+                ) : (
+                  <Select
+                    value={v.target}
+                    onValueChange={(val: string | null) => {
+                      if (val) updateValidator(i, { target: val });
+                    }}
+                  >
+                    <SelectTrigger className="w-full sm:w-40">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {TARGET_OPTIONS.map((t) => (
+                        <SelectItem key={t.value} value={t.value}>
+                          {t.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
 
-                <div className="flex-1">
-                  <Input
-                    value={v.expected_from}
-                    onChange={(e) => updateValidator(i, { expected_from: e.target.value })}
-                    placeholder="case.expectations.expected_output"
-                    className="text-xs"
-                  />
-                  <p className="mt-1 text-[10px] text-muted-foreground">
-                    Path to expected value in your test case, e.g. <code className="font-mono">case.expectations.your_field</code>
-                  </p>
-                </div>
+                {v.type === "tool_call_assertion" ? (
+                  <div className="flex-1">
+                    <textarea
+                      value={validatorConfigDrafts[v.key] ?? validatorConfigText(v)}
+                      onChange={(e) => updateValidatorConfigDraft(v.key, e.target.value)}
+                      onBlur={(e) => commitValidatorConfigText(i, v.key, e.target.value)}
+                      aria-invalid={Boolean(validatorConfigErrors[v.key])}
+                      className="min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring aria-invalid:border-destructive aria-invalid:ring-destructive/30"
+                    />
+                    {validatorConfigErrors[v.key] && (
+                      <p className="mt-1 text-[10px] text-destructive">
+                        {validatorConfigErrors[v.key]}
+                      </p>
+                    )}
+                    <p className="mt-1 text-[10px] text-muted-foreground">
+                      JSON config for tool_name, must_call, count, min_count, max_count, arguments_contain, ordered_tools, and order_mode.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="flex-1">
+                    <Input
+                      value={v.expected_from ?? ""}
+                      onChange={(e) => updateValidator(i, { expected_from: e.target.value })}
+                      placeholder="case.expectations.expected_output"
+                      className="text-xs"
+                    />
+                    <p className="mt-1 text-[10px] text-muted-foreground">
+                      Path to expected value in your test case, e.g. <code className="font-mono">case.expectations.your_field</code>
+                    </p>
+                  </div>
+                )}
               </div>
 
               <Button
@@ -637,7 +771,9 @@ export function EvalSpecBuilder({ value, onChange }: EvalSpecBuilderProps) {
 
                 <Select
                   value={m.collector}
-                  onValueChange={(val) => val && updateMetricCollector(i, val)}
+                  onValueChange={(val: string | null) => {
+                    if (val) updateMetricCollector(i, val);
+                  }}
                 >
                   <SelectTrigger className="w-full sm:w-48">
                     <SelectValue />

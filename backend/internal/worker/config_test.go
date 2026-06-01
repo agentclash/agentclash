@@ -16,6 +16,8 @@ func TestLoadConfigFromEnvUsesDefaultsWhenUnset(t *testing.T) {
 	unsetEnv(t, "TEMPORAL_NAMESPACE")
 	unsetEnv(t, "WORKER_IDENTITY")
 	unsetEnv(t, "WORKER_SHUTDOWN_TIMEOUT")
+	unsetEnv(t, "WORKER_ORPHAN_RUN_REAPER_INTERVAL")
+	unsetEnv(t, "WORKER_ORPHAN_RUN_REAPER_THRESHOLD")
 	unsetEnv(t, "SANDBOX_PROVIDER")
 	unsetEnv(t, "E2B_API_KEY")
 	unsetEnv(t, "E2B_TEMPLATE_ID")
@@ -56,6 +58,12 @@ func TestLoadConfigFromEnvUsesDefaultsWhenUnset(t *testing.T) {
 	}
 	if cfg.ShutdownTimeout != defaultShutdownTime {
 		t.Fatalf("ShutdownTimeout = %s, want %s", cfg.ShutdownTimeout, defaultShutdownTime)
+	}
+	if cfg.OrphanRunReaperInterval != defaultOrphanRunReaperInterval {
+		t.Fatalf("OrphanRunReaperInterval = %s, want %s", cfg.OrphanRunReaperInterval, defaultOrphanRunReaperInterval)
+	}
+	if cfg.OrphanRunReaperThreshold != defaultOrphanRunReaperThreshold {
+		t.Fatalf("OrphanRunReaperThreshold = %s, want %s", cfg.OrphanRunReaperThreshold, defaultOrphanRunReaperThreshold)
 	}
 	if cfg.Sandbox.Provider != "unconfigured" {
 		t.Fatalf("Sandbox.Provider = %q, want unconfigured", cfg.Sandbox.Provider)
@@ -115,6 +123,8 @@ func TestLoadConfigFromEnvOverrides(t *testing.T) {
 	t.Setenv("TEMPORAL_NAMESPACE", "agentclash-dev")
 	t.Setenv("WORKER_IDENTITY", "worker-dev-1")
 	t.Setenv("WORKER_SHUTDOWN_TIMEOUT", "30s")
+	t.Setenv("WORKER_ORPHAN_RUN_REAPER_INTERVAL", "0s")
+	t.Setenv("WORKER_ORPHAN_RUN_REAPER_THRESHOLD", "1h")
 	t.Setenv("SANDBOX_PROVIDER", "e2b")
 	t.Setenv("E2B_API_KEY", "key")
 	t.Setenv("E2B_TEMPLATE_ID", "tmpl")
@@ -151,6 +161,12 @@ func TestLoadConfigFromEnvOverrides(t *testing.T) {
 	}
 	if cfg.ShutdownTimeout != 30*time.Second {
 		t.Fatalf("ShutdownTimeout = %s, want %s", cfg.ShutdownTimeout, 30*time.Second)
+	}
+	if cfg.OrphanRunReaperInterval != 0 {
+		t.Fatalf("OrphanRunReaperInterval = %s, want disabled interval 0", cfg.OrphanRunReaperInterval)
+	}
+	if cfg.OrphanRunReaperThreshold != time.Hour {
+		t.Fatalf("OrphanRunReaperThreshold = %s, want 1h", cfg.OrphanRunReaperThreshold)
 	}
 	if cfg.Sandbox.Provider != "e2b" {
 		t.Fatalf("Sandbox.Provider = %q, want e2b", cfg.Sandbox.Provider)

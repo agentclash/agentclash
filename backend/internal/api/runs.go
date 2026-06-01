@@ -15,10 +15,14 @@ import (
 
 	"github.com/agentclash/agentclash/backend/internal/billing"
 	"github.com/agentclash/agentclash/backend/internal/domain"
+	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/google/uuid"
 )
 
-const maxCreateRunRequestBytes = 1 << 20
+const (
+	maxCreateRunRequestBytes = 1 << 20
+	maxRunMaxIterations      = 1000
+)
 
 type RunCreationService interface {
 	CreateRun(ctx context.Context, caller Caller, input CreateRunInput) (CreateRunResult, error)
@@ -30,6 +34,7 @@ type createRunRequest struct {
 	ChallengePackVersionID string   `json:"challenge_pack_version_id"`
 	ChallengeInputSetID    *string  `json:"challenge_input_set_id,omitempty"`
 	Name                   string   `json:"name,omitempty"`
+	Mode                   string   `json:"mode,omitempty"`
 	AgentDeploymentIDs     []string `json:"agent_deployment_ids"`
 	RegressionSuiteIDs     []string `json:"regression_suite_ids,omitempty"`
 	RegressionCaseIDs      []string `json:"regression_case_ids,omitempty"`
@@ -43,6 +48,7 @@ type createRunRequest struct {
 	// RaceContextMinStepGap overrides the default cadence threshold. When
 	// omitted, the executor uses the backend default. Valid range [1, 10].
 	RaceContextMinStepGap *int                  `json:"race_context_min_step_gap,omitempty"`
+	MaxIterations         *int                  `json:"max_iterations,omitempty"`
 	CIMetadata            *domain.RunCIMetadata `json:"ci_metadata,omitempty"`
 }
 
@@ -52,13 +58,19 @@ type CreateRunInput struct {
 	ChallengeInputSetID        *uuid.UUID
 	OfficialPackMode           domain.OfficialPackMode
 	Name                       string
+	Mode                       string
 	AgentDeploymentIDs         []uuid.UUID
 	RegressionSuiteIDs         []uuid.UUID
 	RegressionCaseIDs          []uuid.UUID
 	IncludeProposedRegressions bool
 	RaceContext                bool
 	RaceContextMinStepGap      *int32
+	MaxIterations              *int32
+	Seed                       *int64
+	SeriesMatrixKey            string
+	SeriesDeploymentLineup     string
 	CIMetadata                 *domain.RunCIMetadata
+	DatasetEvalRun            *repository.RecordDatasetEvalRunParams
 }
 
 type CreateRunResult struct {
@@ -66,19 +78,22 @@ type CreateRunResult struct {
 }
 
 type createRunResponse struct {
-	ID                     uuid.UUID             `json:"id"`
-	WorkspaceID            uuid.UUID             `json:"workspace_id"`
-	ChallengePackVersionID uuid.UUID             `json:"challenge_pack_version_id"`
-	ChallengeInputSetID    *uuid.UUID            `json:"challenge_input_set_id,omitempty"`
-	OfficialPackMode       string                `json:"official_pack_mode"`
-	Status                 domain.RunStatus      `json:"status"`
-	ExecutionMode          string                `json:"execution_mode"`
-	CreatedAt              time.Time             `json:"created_at"`
-	QueuedAt               *time.Time            `json:"queued_at,omitempty"`
-	RaceContext            bool                  `json:"race_context"`
-	RaceContextMinStepGap  *int32                `json:"race_context_min_step_gap,omitempty"`
-	CIMetadata             *domain.RunCIMetadata `json:"ci_metadata,omitempty"`
-	Links                  runLinksResponse      `json:"links"`
+	ID                     uuid.UUID                 `json:"id"`
+	WorkspaceID            uuid.UUID                 `json:"workspace_id"`
+	ChallengePackVersionID uuid.UUID                 `json:"challenge_pack_version_id"`
+	ChallengeInputSetID    *uuid.UUID                `json:"challenge_input_set_id,omitempty"`
+	OfficialPackMode       string                    `json:"official_pack_mode"`
+	Status                 domain.RunStatus          `json:"status"`
+	ExecutionMode          string                    `json:"execution_mode"`
+	Mode                   string                    `json:"mode,omitempty"`
+	Modality               string                    `json:"modality,omitempty"`
+	Voice                  *runVoiceMetadataResponse `json:"voice,omitempty"`
+	CreatedAt              time.Time                 `json:"created_at"`
+	QueuedAt               *time.Time                `json:"queued_at,omitempty"`
+	RaceContext            bool                      `json:"race_context"`
+	RaceContextMinStepGap  *int32                    `json:"race_context_min_step_gap,omitempty"`
+	CIMetadata             *domain.RunCIMetadata     `json:"ci_metadata,omitempty"`
+	Links                  runLinksResponse          `json:"links"`
 }
 
 type runLinksResponse struct {
@@ -192,7 +207,13 @@ type createRunErrorResponse struct {
 	Run   createRunResponse `json:"run"`
 }
 
+type runWorkflowErrorResponse struct {
+	Error apiError       `json:"error"`
+	Run   getRunResponse `json:"run"`
+}
+
 func buildCreateRunResponse(run domain.Run) createRunResponse {
+	mode, modality, voice := runMetadataFromExecutionPlan(run.ExecutionPlan)
 	return createRunResponse{
 		ID:                     run.ID,
 		WorkspaceID:            run.WorkspaceID,
@@ -201,6 +222,9 @@ func buildCreateRunResponse(run domain.Run) createRunResponse {
 		OfficialPackMode:       string(run.OfficialPackMode),
 		Status:                 run.Status,
 		ExecutionMode:          run.ExecutionMode,
+		Mode:                   mode,
+		Modality:               modality,
+		Voice:                  voice,
 		CreatedAt:              run.CreatedAt,
 		QueuedAt:               run.QueuedAt,
 		RaceContext:            run.RaceContext,
@@ -214,6 +238,55 @@ func buildRunLinks(runID uuid.UUID) runLinksResponse {
 	return runLinksResponse{
 		Self:   fmt.Sprintf("/v1/runs/%s", runID),
 		Agents: fmt.Sprintf("/v1/runs/%s/agents", runID),
+	}
+}
+
+func cancelRunHandler(logger *slog.Logger, service RunReadService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		caller, err := CallerFromContext(r.Context())
+		if err != nil {
+			writeAuthzError(w, err)
+			return
+		}
+
+		runID, err := runIDFromURLParam("runID")(r)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_run_id", err.Error())
+			return
+		}
+
+		result, err := service.CancelRun(r.Context(), caller, runID)
+		if err != nil {
+			switch {
+			case errors.Is(err, repository.ErrRunNotFound):
+				writeError(w, http.StatusNotFound, "run_not_found", "run not found")
+			case errors.Is(err, ErrForbidden):
+				writeAuthzError(w, err)
+			default:
+				var workflowErr RunCancellationWorkflowError
+				if errors.As(err, &workflowErr) {
+					writeJSON(w, http.StatusBadGateway, runWorkflowErrorResponse{
+						Error: apiError{
+							Code:    "workflow_cancel_failed",
+							Message: "run could not be cancelled in Temporal",
+						},
+						Run: buildGetRunResponse(workflowErr.Run, nil),
+					})
+					return
+				}
+
+				logger.Error("cancel run request failed",
+					"method", r.Method,
+					"path", r.URL.Path,
+					"run_id", runID,
+					"error", err,
+				)
+				writeError(w, http.StatusInternalServerError, "internal_error", "internal server error")
+			}
+			return
+		}
+
+		writeJSON(w, http.StatusOK, buildGetRunResponse(result.Run, nil))
 	}
 }
 
@@ -313,10 +386,24 @@ func decodeCreateRunRequest(r *http.Request) (CreateRunInput, error) {
 		gap32 := int32(gap)
 		raceContextMinStepGap = &gap32
 	}
+
+	var maxIterations *int32
+	if body.MaxIterations != nil {
+		value := *body.MaxIterations
+		if value < 1 || value > maxRunMaxIterations {
+			return CreateRunInput{}, RunCreationValidationError{
+				Code:    "invalid_max_iterations",
+				Message: fmt.Sprintf("max_iterations must be between 1 and %d", maxRunMaxIterations),
+			}
+		}
+		value32 := int32(value)
+		maxIterations = &value32
+	}
 	ciMetadata, err := normalizeCreateRunCIMetadata(body.CIMetadata)
 	if err != nil {
 		return CreateRunInput{}, err
 	}
+	mode := normalizeRunMode(body.Mode)
 
 	return CreateRunInput{
 		WorkspaceID:                workspaceID,
@@ -324,12 +411,14 @@ func decodeCreateRunRequest(r *http.Request) (CreateRunInput, error) {
 		ChallengeInputSetID:        challengeInputSetID,
 		OfficialPackMode:           officialPackMode,
 		Name:                       strings.TrimSpace(body.Name),
+		Mode:                       mode,
 		AgentDeploymentIDs:         deploymentIDs,
 		RegressionSuiteIDs:         regressionSuiteIDs,
 		RegressionCaseIDs:          regressionCaseIDs,
 		IncludeProposedRegressions: body.IncludeProposedRegressions,
 		RaceContext:                body.RaceContext,
 		RaceContextMinStepGap:      raceContextMinStepGap,
+		MaxIterations:              maxIterations,
 		CIMetadata:                 ciMetadata,
 	}, nil
 }
@@ -356,6 +445,7 @@ func normalizeCreateRunCIMetadata(metadata *domain.RunCIMetadata) (*domain.RunCI
 		WorkflowRunAttempt: strings.TrimSpace(metadata.WorkflowRunAttempt),
 		WorkflowRunURL:     strings.TrimSpace(metadata.WorkflowRunURL),
 		EventName:          strings.TrimSpace(metadata.EventName),
+		DefaultBranch:      strings.TrimSpace(metadata.DefaultBranch),
 	}
 	if normalized.Empty() {
 		return nil, nil
@@ -370,6 +460,7 @@ func normalizeCreateRunCIMetadata(metadata *domain.RunCIMetadata) (*domain.RunCI
 		"ci_metadata.workflow_run_id":      normalized.WorkflowRunID,
 		"ci_metadata.workflow_run_attempt": normalized.WorkflowRunAttempt,
 		"ci_metadata.event_name":           normalized.EventName,
+		"ci_metadata.default_branch":       normalized.DefaultBranch,
 	} {
 		if len(value) > 512 {
 			return nil, RunCreationValidationError{Code: "invalid_ci_metadata", Message: field + " must be 512 characters or fewer"}
@@ -416,6 +507,7 @@ func cloneRunCIMetadata(metadata *domain.RunCIMetadata) *domain.RunCIMetadata {
 		WorkflowRunAttempt: metadata.WorkflowRunAttempt,
 		WorkflowRunURL:     metadata.WorkflowRunURL,
 		EventName:          metadata.EventName,
+		DefaultBranch:      metadata.DefaultBranch,
 	}
 }
 

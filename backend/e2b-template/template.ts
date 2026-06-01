@@ -19,22 +19,43 @@ export const template = Template()
       '&& rm -rf /var/lib/apt/lists/*',
   )
 
-  // Node.js 20 LTS via NodeSource
+  // Node.js 24 via NodeSource. OpenClaw requires Node 22.14+.
   .runCmd(
-    'curl -fsSL https://deb.nodesource.com/setup_20.x | bash - ' +
+    'curl -fsSL https://deb.nodesource.com/setup_24.x | bash - ' +
       '&& apt-get install -y nodejs ' +
       '&& rm -rf /var/lib/apt/lists/*',
   )
 
   // Coding-agent CLIs for Agent Harness tasks
-  .runCmd('npm install -g @openai/codex')
+  .runCmd('npm install -g @openai/codex @anthropic-ai/claude-code openclaw@latest')
   // Hermes installs as root on Linux using the FHS layout, which already places
   // the `hermes` shim at /usr/local/bin/hermes. We pass --skip-setup so the
   // installer never asks for interactive provider config. Provider credentials
-  // are injected at run time via env vars (HERMES_INFERENCE_PROVIDER + *_API_KEY).
+  // are injected at run time via env vars and `hermes setup model --non-interactive`.
   .runCmd(
     'curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash -s -- --skip-setup ' +
       '&& command -v hermes >/dev/null',
+  )
+  // Claude Code refuses bypass-permissions mode as root. Keep the sandbox root
+  // user for git/auth setup, but make the claude entrypoint drop to E2B's
+  // unprivileged user and make the cloned repo writable before Claude edits it.
+  .runCmd(
+    "set -e\n" +
+      'id user >/dev/null\n' +
+      'claude_bin="$(command -v claude)"\n' +
+      'mv "$claude_bin" "${claude_bin}.real"\n' +
+      'cat > "$claude_bin" <<\'EOF\'\n' +
+      '#!/bin/sh\n' +
+      'set -eu\n' +
+      'if [ "$(id -u)" = "0" ]; then\n' +
+      '  mkdir -p /home/user/.claude\n' +
+      '  chown -R user:user /home/user/.claude 2>/dev/null || true\n' +
+      '  if [ -d "${PWD:-/workspace}" ]; then chown -R user:user "${PWD:-/workspace}" 2>/dev/null || true; fi\n' +
+      '  exec runuser -u user --preserve-environment -- env HOME=/home/user USER=user LOGNAME=user "$0.real" "$@"\n' +
+      'fi\n' +
+      'exec "$0.real" "$@"\n' +
+      'EOF\n' +
+      'chmod 755 "$claude_bin"',
   )
 
   // Python 3, Go, C/C++ toolchain
@@ -82,6 +103,8 @@ export const template = Template()
   .copy('tools/', '/tools/', { user: 'root', mode: 0o755 })
 
   // Workspace setup
-  .runCmd('mkdir -p /workspace')
+  // Claude's root-dropping wrapper makes the cloned repo user-owned, while
+  // AgentClash post-run git artifact/PR collection still runs as root.
+  .runCmd('mkdir -p /workspace && git config --global --add safe.directory /workspace')
   .setWorkdir('/workspace')
   .setStartCmd('sleep infinity', 'sleep 20')

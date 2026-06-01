@@ -13,13 +13,11 @@ func init() {
 	rootCmd.AddCommand(compareCmd)
 	compareCmd.AddCommand(compareRunsCmd)
 	compareCmd.AddCommand(compareGateCmd)
+	compareCmd.AddCommand(compareLatestCmd)
+	runCmd.AddCommand(runCompareCmd)
 
-	compareRunsCmd.Flags().String("baseline", "", "Baseline run ID (required)")
-	compareRunsCmd.Flags().String("candidate", "", "Candidate run ID (required)")
-	compareRunsCmd.Flags().String("baseline-agent", "", "Baseline run agent ID (optional)")
-	compareRunsCmd.Flags().String("candidate-agent", "", "Candidate run agent ID (optional)")
-	compareRunsCmd.MarkFlagRequired("baseline")
-	compareRunsCmd.MarkFlagRequired("candidate")
+	addRunComparisonFlags(compareRunsCmd)
+	addRunComparisonFlags(runCompareCmd)
 
 	compareGateCmd.Flags().String("baseline", "", "Baseline run ID (required)")
 	compareGateCmd.Flags().String("candidate", "", "Candidate run ID (required)")
@@ -27,6 +25,11 @@ func init() {
 	compareGateCmd.Flags().String("candidate-agent", "", "Candidate run agent ID (optional)")
 	compareGateCmd.MarkFlagRequired("baseline")
 	compareGateCmd.MarkFlagRequired("candidate")
+
+	compareLatestCmd.Flags().String("agent", "", "Run agent ID or label to use for both runs when possible")
+	compareLatestCmd.Flags().String("baseline-agent", "", "Baseline run agent ID or label (defaults to the saved baseline agent)")
+	compareLatestCmd.Flags().String("candidate-agent", "", "Candidate run agent ID or label")
+	compareLatestCmd.Flags().Bool("gate", false, "Also evaluate the release gate and return a nonzero exit code for non-pass verdicts")
 }
 
 var compareCmd = &cobra.Command{
@@ -38,104 +41,157 @@ var compareRunsCmd = &cobra.Command{
 	Use:   "runs",
 	Short: "Compare baseline vs candidate runs",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		return executeCompareRuns(cmd)
+	},
+}
+
+var compareLatestCmd = &cobra.Command{
+	Use:   "latest",
+	Short: "Compare the saved baseline against the latest non-baseline run",
+	RunE: func(cmd *cobra.Command, args []string) error {
 		rc := GetRunContext(cmd)
-		baseline, _ := cmd.Flags().GetString("baseline")
-		candidate, _ := cmd.Flags().GetString("candidate")
+		workspaceID := RequireWorkspace(cmd)
 
-		q := url.Values{}
-		q.Set("baseline_run_id", baseline)
-		q.Set("candidate_run_id", candidate)
-		if v, _ := cmd.Flags().GetString("baseline-agent"); v != "" {
-			q.Set("baseline_run_agent_id", v)
-		}
-		if v, _ := cmd.Flags().GetString("candidate-agent"); v != "" {
-			q.Set("candidate_run_agent_id", v)
-		}
-
-		resp, err := rc.Client.Get(cmd.Context(), "/v1/compare", q)
+		envelope, err := buildCompareLatestEnvelope(cmd, rc, workspaceID)
 		if err != nil {
 			return err
 		}
-		if apiErr := resp.ParseError(); apiErr != nil {
-			return apiErr
-		}
-
-		var result map[string]any
-		if err := resp.DecodeJSON(&result); err != nil {
-			return err
-		}
-
 		if rc.Output.IsStructured() {
-			return rc.Output.PrintRaw(result)
+			if err := rc.Output.PrintRaw(envelope); err != nil {
+				return err
+			}
+		} else {
+			renderCompareLatestHuman(rc, envelope)
 		}
 
-		fmt.Fprintln(rc.Output.Writer(), output.Bold("Run Comparison"))
-		fmt.Fprintf(rc.Output.Writer(), "  Baseline:  %s\n", baseline)
-		fmt.Fprintf(rc.Output.Writer(), "  Candidate: %s\n\n", candidate)
-		rc.Output.PrintDetail("State", mapString(result, "state"))
-		rc.Output.PrintDetail("Status", output.StatusColor(mapString(result, "status")))
-		if reason := mapString(result, "reason_code"); reason != "" {
-			rc.Output.PrintDetail("Reason", reason)
-		}
-		if generated := mapString(result, "generated_at"); generated != "" {
-			rc.Output.PrintDetail("Generated", generated)
-		}
-		fmt.Fprintln(rc.Output.Writer())
-
-		if deltas := mapSlice(result, "key_deltas"); len(deltas) > 0 {
-			cols := []output.Column{{Header: "Metric"}, {Header: "Baseline"}, {Header: "Candidate"}, {Header: "Delta"}, {Header: "Outcome"}}
-			rows := make([][]string, len(deltas))
-			for i, d := range deltas {
-				delta := d.(map[string]any)
-				rows[i] = []string{
-					mapString(delta, "metric"),
-					fmtScore(mapValue(delta, "baseline_value")),
-					fmtScore(mapValue(delta, "candidate_value")),
-					fmtDelta(mapValue(delta, "delta")),
-					mapString(delta, "outcome", "state"),
-				}
-			}
-			rc.Output.PrintTable(cols, rows)
-		} else if dimensions := mapSlice(result, "dimensions"); len(dimensions) > 0 {
-			cols := []output.Column{{Header: "Dimension"}, {Header: "Baseline"}, {Header: "Candidate"}, {Header: "Delta"}}
-			rows := make([][]string, len(dimensions))
-			for i, d := range dimensions {
-				dim := d.(map[string]any)
-				delta := fmtDelta(dim["delta"])
-				rows[i] = []string{
-					str(dim["name"]),
-					fmtScore(dim["baseline_score"]),
-					fmtScore(dim["candidate_score"]),
-					delta,
-				}
-			}
-			rc.Output.PrintTable(cols, rows)
-		}
-		if reasons := mapSlice(result, "regression_reasons"); len(reasons) > 0 {
-			fmt.Fprintln(rc.Output.Writer())
-			fmt.Fprintln(rc.Output.Writer(), output.Bold("Regression Reasons"))
-			for _, reason := range reasons {
-				fmt.Fprintf(rc.Output.Writer(), "  - %s\n", str(reason))
-			}
-		}
-		if evidence := mapObject(result, "evidence_quality"); evidence != nil {
-			if warnings := mapSlice(evidence, "warnings"); len(warnings) > 0 {
-				fmt.Fprintln(rc.Output.Writer())
-				fmt.Fprintln(rc.Output.Writer(), output.Bold("Evidence Warnings"))
-				for _, warning := range warnings {
-					fmt.Fprintf(rc.Output.Writer(), "  - %s\n", str(warning))
-				}
-			}
-			if missing := mapSlice(evidence, "missing_fields"); len(missing) > 0 {
-				fmt.Fprintln(rc.Output.Writer())
-				fmt.Fprintln(rc.Output.Writer(), output.Bold("Missing Evidence"))
-				for _, field := range missing {
-					fmt.Fprintf(rc.Output.Writer(), "  - %s\n", str(field))
-				}
-			}
+		if gate := mapObject(envelope, "release_gate"); gate != nil {
+			return releaseGateExitError(gate)
 		}
 		return nil
 	},
+}
+
+var runCompareCmd = &cobra.Command{
+	Use:   "compare",
+	Short: "Compare a baseline run against a candidate run",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return executeCompareRuns(cmd)
+	},
+}
+
+func addRunComparisonFlags(cmd *cobra.Command) {
+	cmd.Flags().String("baseline", "", "Baseline run ID (required)")
+	cmd.Flags().String("candidate", "", "Candidate run ID (required)")
+	cmd.Flags().String("baseline-agent", "", "Baseline run agent ID (optional)")
+	cmd.Flags().String("candidate-agent", "", "Candidate run agent ID (optional)")
+	_ = cmd.MarkFlagRequired("baseline")
+	_ = cmd.MarkFlagRequired("candidate")
+}
+
+func executeCompareRuns(cmd *cobra.Command) error {
+	rc := GetRunContext(cmd)
+	baseline, _ := cmd.Flags().GetString("baseline")
+	candidate, _ := cmd.Flags().GetString("candidate")
+
+	q := url.Values{}
+	q.Set("baseline_run_id", baseline)
+	q.Set("candidate_run_id", candidate)
+	if v, _ := cmd.Flags().GetString("baseline-agent"); v != "" {
+		q.Set("baseline_run_agent_id", v)
+	}
+	if v, _ := cmd.Flags().GetString("candidate-agent"); v != "" {
+		q.Set("candidate_run_agent_id", v)
+	}
+
+	resp, err := rc.Client.Get(cmd.Context(), "/v1/compare", q)
+	if err != nil {
+		return err
+	}
+	if apiErr := resp.ParseError(); apiErr != nil {
+		return apiErr
+	}
+
+	var result map[string]any
+	if err := resp.DecodeJSON(&result); err != nil {
+		return err
+	}
+
+	if rc.Output.IsStructured() {
+		return rc.Output.PrintRaw(result)
+	}
+
+	fmt.Fprintln(rc.Output.Writer(), output.Bold("Run Comparison"))
+	fmt.Fprintf(rc.Output.Writer(), "  Baseline:  %s\n", baseline)
+	fmt.Fprintf(rc.Output.Writer(), "  Candidate: %s\n\n", candidate)
+	rc.Output.PrintDetail("State", output.SanitizeLine(mapString(result, "state")))
+	rc.Output.PrintDetail("Status", output.StatusColor(output.SanitizeLine(mapString(result, "status"))))
+	if reason := mapString(result, "reason_code"); reason != "" {
+		rc.Output.PrintDetail("Reason", output.SanitizeLine(reason))
+	}
+	if generated := mapString(result, "generated_at"); generated != "" {
+		rc.Output.PrintDetail("Generated", output.SanitizeLine(generated))
+	}
+	fmt.Fprintln(rc.Output.Writer())
+
+	if deltas := mapSlice(result, "key_deltas"); len(deltas) > 0 {
+		cols := []output.Column{{Header: "Metric"}, {Header: "Baseline"}, {Header: "Candidate"}, {Header: "Delta"}, {Header: "Outcome"}}
+		rows := make([][]string, 0, len(deltas))
+		for _, d := range deltas {
+			delta, ok := d.(map[string]any)
+			if !ok {
+				continue
+			}
+			rows = append(rows, []string{
+				output.SanitizeLine(mapString(delta, "metric")),
+				fmtScore(mapValue(delta, "baseline_value")),
+				fmtScore(mapValue(delta, "candidate_value")),
+				fmtDelta(mapValue(delta, "delta")),
+				output.SanitizeLine(mapString(delta, "outcome", "state")),
+			})
+		}
+		rc.Output.PrintTable(cols, rows)
+	} else if dimensions := mapSlice(result, "dimensions"); len(dimensions) > 0 {
+		cols := []output.Column{{Header: "Dimension"}, {Header: "Baseline"}, {Header: "Candidate"}, {Header: "Delta"}}
+		rows := make([][]string, 0, len(dimensions))
+		for _, d := range dimensions {
+			dim, ok := d.(map[string]any)
+			if !ok {
+				continue
+			}
+			delta := fmtDelta(dim["delta"])
+			rows = append(rows, []string{
+				output.SanitizeLine(str(dim["name"])),
+				fmtScore(dim["baseline_score"]),
+				fmtScore(dim["candidate_score"]),
+				delta,
+			})
+		}
+		rc.Output.PrintTable(cols, rows)
+	}
+	if reasons := mapSlice(result, "regression_reasons"); len(reasons) > 0 {
+		fmt.Fprintln(rc.Output.Writer())
+		fmt.Fprintln(rc.Output.Writer(), output.Bold("Regression Reasons"))
+		for _, reason := range reasons {
+			fmt.Fprintf(rc.Output.Writer(), "  - %s\n", output.SanitizeLine(str(reason)))
+		}
+	}
+	if evidence := mapObject(result, "evidence_quality"); evidence != nil {
+		if warnings := mapSlice(evidence, "warnings"); len(warnings) > 0 {
+			fmt.Fprintln(rc.Output.Writer())
+			fmt.Fprintln(rc.Output.Writer(), output.Bold("Evidence Warnings"))
+			for _, warning := range warnings {
+				fmt.Fprintf(rc.Output.Writer(), "  - %s\n", output.SanitizeLine(str(warning)))
+			}
+		}
+		if missing := mapSlice(evidence, "missing_fields"); len(missing) > 0 {
+			fmt.Fprintln(rc.Output.Writer())
+			fmt.Fprintln(rc.Output.Writer(), output.Bold("Missing Evidence"))
+			for _, field := range missing {
+				fmt.Fprintf(rc.Output.Writer(), "  - %s\n", output.SanitizeLine(str(field)))
+			}
+		}
+	}
+	return nil
 }
 
 // Exit codes for `agentclash compare gate`. Documented in the command's Long

@@ -109,6 +109,7 @@ export interface OrgMember {
   membership_status: OrgMembershipStatus;
   created_at: string;
   updated_at?: string;
+  accept_url?: string;
 }
 
 /** POST /v1/organizations/{id}/memberships request */
@@ -130,6 +131,7 @@ export interface OrgWorkspace {
   name: string;
   slug: string;
   status: string; // "active" | "archived"
+  public_packs: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -148,6 +150,7 @@ export interface WorkspaceDetail {
   name: string;
   slug: string;
   status: string; // "active" | "archived"
+  public_packs: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -164,6 +167,7 @@ export interface WorkspaceMember {
   membership_status: OrgMembershipStatus; // same enum: invited/active/suspended/archived
   created_at: string;
   updated_at?: string;
+  accept_url?: string;
 }
 
 // --- Agent Builds ---
@@ -320,7 +324,7 @@ export interface AgentHarness {
   slug: string;
   description: string;
   status: string;
-  harness_kind: "codex_e2b" | "hermes_e2b";
+  harness_kind: "codex_e2b" | "claude_e2b" | "hermes_e2b" | "openclaw_e2b";
   task_prompt: string;
   codex_template: string;
   codex_model?: string;
@@ -343,7 +347,7 @@ export interface AgentHarness {
 export interface CreateAgentHarnessRequest {
   name: string;
   description?: string;
-  harness_kind?: "codex_e2b" | "hermes_e2b";
+  harness_kind?: "codex_e2b" | "claude_e2b" | "hermes_e2b" | "openclaw_e2b";
   task_prompt: string;
   codex_template?: string;
   codex_model?: string;
@@ -401,6 +405,69 @@ export interface GitHubRepository {
   last_synced_at: string;
 }
 
+export interface CreateCISetupPullRequestRequest {
+  github_repository_id: number;
+  github_installation_id?: number;
+  base_branch: string;
+  title?: string;
+  body?: string;
+  draft?: boolean;
+  check_only?: boolean;
+  overwrite_existing?: boolean;
+  files: Array<{
+    path: string;
+    content: string;
+  }>;
+}
+
+export interface CISetupFileConflict {
+  path: string;
+  exists: boolean;
+  sha?: string;
+}
+
+export interface CreateCISetupPullRequestResponse {
+  pull_request?: {
+    number: number;
+    html_url: string;
+    state: string;
+    draft: boolean;
+  };
+  branch: string;
+  base_branch: string;
+  files: Array<{
+    path: string;
+  }>;
+  conflicts?: CISetupFileConflict[];
+}
+
+export interface CIProfile {
+  id: string;
+  workspace_id: string;
+  name: string;
+  repository_full_name: string;
+  github_repository_id?: number;
+  github_installation_id?: number;
+  default_branch: string;
+  manifest_path: string;
+  workflow_path: string;
+  config: unknown;
+  created_by_user_id?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SaveCIProfileRequest {
+  name: string;
+  repository_full_name: string;
+  github_repository_id?: number;
+  github_installation_id?: number;
+  default_branch: string;
+  manifest_path: string;
+  workflow_path: string;
+  config: unknown;
+}
+
 export type AgentHarnessExecutionStatus =
   | "queued"
   | "provisioning"
@@ -426,8 +493,13 @@ export interface AgentHarnessExecution {
   organization_id: string;
   workspace_id: string;
   agent_harness_id: string;
+  run_id?: string;
+  run_agent_id?: string;
+  evaluation_spec_id?: string;
   status: AgentHarnessExecutionStatus;
   status_reason?: string;
+  error_message?: string;
+  failure_stage?: "setup" | "agent" | "validator" | "repository" | "infrastructure";
   harness_snapshot: unknown;
   execution_config_snapshot: unknown;
   evaluation_config_snapshot: unknown;
@@ -491,9 +563,17 @@ export interface ModelAlias {
   workspace_id?: string;
   provider_account_id?: string;
   model_catalog_entry_id: string;
+  provider_key: string;
+  provider_model_id: string;
+  model_display_name: string;
   alias_key: string;
   display_name: string;
   status: string;
+  input_cost_per_million_tokens: number;
+  output_cost_per_million_tokens: number;
+  catalog_input_cost_per_million_tokens: number;
+  catalog_output_cost_per_million_tokens: number;
+  pricing_drift_warning?: string;
   created_at: string;
   updated_at: string;
 }
@@ -516,6 +596,9 @@ export interface ChallengePackVersion {
   challenge_pack_id: string;
   version_number: number;
   lifecycle_status: string; // "draft" | "runnable" | "deprecated" | "archived"
+  deployment_defaults?: unknown;
+  modality?: string;
+  interface_transports?: string[];
   created_at: string;
   updated_at: string;
 }
@@ -588,6 +671,9 @@ export interface Run {
   name: string;
   status: RunStatus;
   execution_mode: string; // "single_agent" | "comparison"
+  mode?: string;
+  modality?: string;
+  voice?: RunVoiceMetadata;
   race_context: boolean;
   race_context_min_step_gap?: number;
   ci_metadata?: RunCIMetadata;
@@ -619,6 +705,13 @@ export interface RunCIMetadata {
   workflow_run_attempt?: string;
   workflow_run_url?: string;
   event_name?: string;
+  default_branch?: string;
+}
+
+export interface RunVoiceMetadata {
+  mode: string;
+  modality: string;
+  transport?: string;
 }
 
 export interface RunRegressionCoverage {
@@ -658,6 +751,7 @@ export interface CreateRunRequest {
   challenge_pack_version_id: string;
   challenge_input_set_id?: string;
   name?: string;
+  mode?: string;
   agent_deployment_ids: string[];
   regression_suite_ids?: string[];
   regression_case_ids?: string[];
@@ -677,6 +771,9 @@ export interface CreateRunResponse {
   official_pack_mode: OfficialPackMode;
   status: RunStatus;
   execution_mode: string;
+  mode?: string;
+  modality?: string;
+  voice?: RunVoiceMetadata;
   created_at: string;
   queued_at?: string;
   ci_metadata?: RunCIMetadata;
@@ -1000,6 +1097,7 @@ export interface RankingItem {
   reliability_score?: number;
   latency_score?: number;
   cost_score?: number;
+  cost_per_correct_usd?: number;
   dimensions?: Record<
     string,
     { state: string; score?: number; better_direction?: string }
@@ -1089,6 +1187,8 @@ export interface ReplayStep {
   event_types: string[];
   artifact_ids?: string[];
   step_index?: number;
+  turn_index?: number;
+  mismatch?: boolean;
   provider_key?: string;
   provider_model_id?: string;
   tool_name?: string;
@@ -1156,6 +1256,33 @@ export interface ReplayResponse {
   pagination: ReplayPagination;
 }
 
+// --- Multi-turn transcript ---
+
+/** One reconstructed user↔assistant turn. Mirrors transcriptTurnPayload in Go. */
+export interface TranscriptTurn {
+  turn_index: number;
+  phase_id?: string;
+  actor?: string; // "scripted" | "llm" | "human"
+  user_message?: string;
+  assistant_message?: string;
+  mismatch: boolean;
+  completed: boolean;
+  awaiting_human: boolean;
+  awaiting_human_hint?: string;
+  user_simulated: boolean;
+}
+
+/** GET /v1/replays/{runAgentID}/transcript — mirrors getRunAgentTranscriptResponse in Go. */
+export interface TranscriptResponse {
+  state: ReplayState; // "ready" | "pending" | "errored"
+  message?: string;
+  run_agent_id: string;
+  run_id: string;
+  run_agent_status: RunAgentStatus;
+  turn_count: number;
+  turns: TranscriptTurn[];
+}
+
 // --- Scorecards ---
 
 /** GET /v1/scorecards/{runAgentID} — mirrors getRunAgentScorecardResponse in Go. */
@@ -1172,6 +1299,8 @@ export interface ScorecardResponse {
   reliability_score?: number;
   latency_score?: number;
   cost_score?: number;
+  total_cost_usd?: number;
+  cost_per_correct_usd?: number;
   behavioral_score?: number;
   llm_judge_results: LLMJudgeResult[];
   scorecard: ScorecardDocument;
@@ -1193,6 +1322,16 @@ export interface ScorecardDocument {
   validator_details?: ValidatorDetail[];
   metric_summary: Record<string, number>;
   metric_details?: MetricDetail[];
+  side_metrics?: Record<string, SideMetricDetail>;
+}
+
+export interface SideMetricDetail {
+  state: string;
+  value?: number;
+  unit?: string;
+  numerator?: number;
+  denominator?: number;
+  reason?: string;
 }
 
 export interface ValidatorDetail {
@@ -1218,6 +1357,7 @@ export type ValidatorEvidence =
   | ValidatorRegexEvidence
   | ValidatorJSONSchemaEvidence
   | ValidatorJSONPathEvidence
+  | ValidatorToolCallAssertionEvidence
   | ValidatorCustomEvidence;
 
 export interface ValidatorTextCompareEvidence {
@@ -1251,6 +1391,24 @@ export interface ValidatorJSONPathEvidence {
   expected?: unknown;
   exists?: boolean;
   source_field?: string;
+}
+
+export interface ValidatorToolCallAssertionEvidence {
+  kind: "tool_call_assertion";
+  source_field?: string;
+  tool_name?: string;
+  observed_count?: number;
+  failed_count?: number;
+  matched_count?: number;
+  matched_indices?: number[];
+  observed_tool_names?: string[];
+  expected_count?: number;
+  expected_min_count?: number;
+  expected_max_count?: number;
+  expected_order?: string[];
+  expected_order_mode?: string;
+  arguments_contain_set?: boolean;
+  matched?: boolean;
 }
 
 export interface ValidatorCustomEvidence {
@@ -1917,6 +2075,96 @@ export interface ListWorkspaceRegressionCasesResponse {
   offset: number;
 }
 
+// --- Datasets ---
+
+export type DatasetExampleStatus = "active" | "archived" | "muted";
+export type DatasetExampleSource =
+  | "manual"
+  | "import"
+  | "trace"
+  | "synthetic"
+  | "promotion";
+
+export interface Dataset {
+  id: string;
+  organization_id: string;
+  workspace_id: string;
+  slug: string;
+  name: string;
+  description: string;
+  input_schema?: Record<string, unknown>;
+  input_schema_enforced: boolean;
+  default_challenge_pack_version_id?: string;
+  active_example_count: number;
+  version_count: number;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  archived_at?: string;
+}
+
+export interface DatasetExample {
+  id: string;
+  dataset_id: string;
+  external_id?: string;
+  input: unknown;
+  expected?: unknown;
+  metadata: Record<string, unknown>;
+  tags: string[];
+  status: DatasetExampleStatus;
+  source: DatasetExampleSource;
+  source_run_id?: string;
+  source_trace_id?: string;
+  source_platform?: string;
+  artifact_id?: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DatasetVersion {
+  id: string;
+  dataset_id: string;
+  version_number: number;
+  label?: string;
+  example_count: number;
+  manifest_checksum: string;
+  created_by: string;
+  created_at: string;
+}
+
+export interface DatasetBaseline {
+  id: string;
+  dataset_id: string;
+  dataset_version_id: string;
+  dataset_version_input_set_id?: string;
+  challenge_pack_version_id: string;
+  challenge_key: string;
+  agent_deployment_id?: string;
+  run_id: string;
+  pass_rate?: number;
+  metrics: Record<string, unknown>;
+  example_outcomes: Record<string, unknown>[];
+  label?: string;
+  created_by: string;
+  created_at: string;
+}
+
+export interface ListDatasetBaselinesResponse {
+  items: DatasetBaseline[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface DatasetRegressionSuiteLink {
+  dataset_id: string;
+  regression_suite_id: string;
+  synced_version_id?: string;
+  created_at: string;
+  updated_at: string;
+}
+
 // --- Billing ---
 
 export type BillingPlanKey = "free" | "pro" | "team" | "enterprise";
@@ -1992,9 +2240,36 @@ export interface BillingSubscription {
   updated_at: string;
 }
 
+export interface BillingAccount {
+  id: string;
+  organization_id: string;
+  dodo_customer_id?: string;
+  billing_email?: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BillingCheckoutIntent {
+  id: string;
+  organization_id: string;
+  requested_plan_key: "pro" | "team";
+  billing_period: "monthly" | "yearly";
+  seat_quantity: number;
+  return_url: string;
+  checkout_url: string;
+  dodo_checkout_session_id?: string;
+  status: string;
+  metadata: unknown;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface BillingOverviewResponse {
   entitlements: EffectiveEntitlements;
+  account?: BillingAccount;
   subscription?: BillingSubscription;
+  latest_checkout_intent?: BillingCheckoutIntent;
 }
 
 export interface StartBillingTrialRequest {
@@ -2003,8 +2278,8 @@ export interface StartBillingTrialRequest {
 }
 
 export interface CreateBillingCheckoutRequest {
-  plan_key: "pro" | "team" | "enterprise";
-  billing_period: BillingPeriod;
+  plan_key: "pro" | "team";
+  billing_period: "monthly" | "yearly";
   seat_quantity: number;
   return_url: string;
 }
@@ -2012,8 +2287,8 @@ export interface CreateBillingCheckoutRequest {
 export interface CreateBillingCheckoutResponse {
   checkout_intent_id: string;
   checkout_url: string;
-  plan_key: BillingPlanKey;
-  billing_period: BillingPeriod;
+  plan_key: "pro" | "team";
+  billing_period: "monthly" | "yearly";
   seat_quantity: number;
 }
 

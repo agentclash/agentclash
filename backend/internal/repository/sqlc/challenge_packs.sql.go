@@ -54,7 +54,7 @@ func (q *Queries) ListChallengePacks(ctx context.Context) ([]ListChallengePacksR
 }
 
 const listRunnableChallengePVersionsByPackID = `-- name: ListRunnableChallengePVersionsByPackID :many
-SELECT id, challenge_pack_id, version_number, lifecycle_status, created_at, updated_at
+SELECT id, challenge_pack_id, version_number, lifecycle_status, manifest, created_at, updated_at
 FROM challenge_pack_versions
 WHERE challenge_pack_id = $1
   AND lifecycle_status = 'runnable'
@@ -71,6 +71,7 @@ type ListRunnableChallengePVersionsByPackIDRow struct {
 	ChallengePackID uuid.UUID
 	VersionNumber   int32
 	LifecycleStatus string
+	Manifest        []byte
 	CreatedAt       pgtype.Timestamptz
 	UpdatedAt       pgtype.Timestamptz
 }
@@ -89,6 +90,7 @@ func (q *Queries) ListRunnableChallengePVersionsByPackID(ctx context.Context, ar
 			&i.ChallengePackID,
 			&i.VersionNumber,
 			&i.LifecycleStatus,
+			&i.Manifest,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {

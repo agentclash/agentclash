@@ -28,6 +28,7 @@ func init() {
 
 	wsUpdateCmd.Flags().String("name", "", "New workspace name")
 	wsUpdateCmd.Flags().String("status", "", "New status (active, archived)")
+	wsUpdateCmd.Flags().Bool("public-packs", false, "Allow this workspace to use public challenge packs")
 
 	wsMembersInviteCmd.Flags().String("email", "", "Email address to invite (required)")
 	wsMembersInviteCmd.Flags().String("role", "workspace_member", "Role: workspace_admin, workspace_member, workspace_viewer")
@@ -118,6 +119,7 @@ var wsGetCmd = &cobra.Command{
 		rc.Output.PrintDetail("Slug", str(ws["slug"]))
 		rc.Output.PrintDetail("Org ID", str(ws["organization_id"]))
 		rc.Output.PrintDetail("Status", output.StatusColor(str(ws["status"])))
+		rc.Output.PrintDetail("Public Packs", boolLabel(ws["public_packs"]))
 		rc.Output.PrintDetail("Created", str(ws["created_at"]))
 		return nil
 	},
@@ -182,8 +184,12 @@ var wsUpdateCmd = &cobra.Command{
 			v, _ := cmd.Flags().GetString("status")
 			body["status"] = v
 		}
+		if cmd.Flags().Changed("public-packs") {
+			v, _ := cmd.Flags().GetBool("public-packs")
+			body["public_packs"] = v
+		}
 		if len(body) == 0 {
-			return fmt.Errorf("no fields to update; use --name or --status")
+			return fmt.Errorf("no fields to update; use --name, --status, or --public-packs")
 		}
 
 		resp, err := rc.Client.Patch(cmd.Context(), "/v1/workspaces/"+args[0]+"/details", body)
@@ -206,6 +212,13 @@ var wsUpdateCmd = &cobra.Command{
 		rc.Output.PrintSuccess(fmt.Sprintf("Updated workspace %s", args[0]))
 		return nil
 	},
+}
+
+func boolLabel(value any) string {
+	if b, ok := value.(bool); ok && b {
+		return "enabled"
+	}
+	return "disabled"
 }
 
 var wsUseCmd = &cobra.Command{

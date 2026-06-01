@@ -69,6 +69,7 @@ challenge packs, playgrounds, and infrastructure — all from your terminal.
 Get started:
   agentclash auth login                   Log in to your account
   agentclash link                         Choose and save your default workspace
+  agentclash quickstart                   Check readiness and show the next command
   agentclash challenge-pack init <file>   Scaffold a challenge pack
   agentclash eval start --follow          Create and follow an evaluation run
   agentclash baseline set                 Bookmark a baseline run
@@ -109,6 +110,10 @@ Get started:
 		// Build client options.
 		var opts []api.Option
 		opts = append(opts, api.WithVerbose(flagVerbose))
+		// User-Agent carries the dotted command path only when pointed at
+		// the hosted backend (api.agentclash.dev). Self-hosted backends and
+		// localhost see the neutral form — no command leaks to a third party.
+		opts = append(opts, api.WithUserAgent(api.BuildUserAgent(mgr.APIURL(), cliVersion, cmd.CommandPath())))
 
 		if devUser := mgr.DevUserID(); devUser != "" {
 			opts = append(opts, api.WithDevMode(devUser, mgr.DevOrgMemberships(), mgr.DevWorkspaceMemberships()))

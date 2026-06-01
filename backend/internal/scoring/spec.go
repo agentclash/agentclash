@@ -37,6 +37,8 @@ const (
 	ValidatorTypeFileJSONSchema     ValidatorType = "file_json_schema"
 	ValidatorTypeDirectoryStructure ValidatorType = "directory_structure"
 	ValidatorTypeCodeExecution      ValidatorType = "code_execution"
+	ValidatorTypeToolCallAssertion  ValidatorType = "tool_call_assertion"
+	ValidatorTypePostcondition      ValidatorType = "postcondition"
 )
 
 type MetricType string
@@ -81,6 +83,7 @@ const (
 	DimensionSourceCost        DimensionSource = "cost"
 	DimensionSourceBehavioral  DimensionSource = "behavioral"
 	DimensionSourceLLMJudge    DimensionSource = "llm_judge"
+	DimensionSourceHumanPreference DimensionSource = "human_preference"
 )
 
 type BehavioralSignalKey string
@@ -288,6 +291,7 @@ type RuntimeLimits struct {
 	MaxTotalTokens *int64   `json:"max_total_tokens,omitempty"`
 	MaxCostUSD     *float64 `json:"max_cost_usd,omitempty"`
 	MaxDurationMS  *int64   `json:"max_duration_ms,omitempty"`
+	MaxIterations  *int32   `json:"max_iterations,omitempty"`
 }
 
 type PricingConfig struct {
@@ -336,7 +340,7 @@ func (t ValidatorType) IsValid() bool {
 		ValidatorTypeMathEquivalence, ValidatorTypeBLEUScore, ValidatorTypeROUGEScore, ValidatorTypeChrFScore,
 		ValidatorTypeFileContentMatch, ValidatorTypeFileExists,
 		ValidatorTypeFileJSONSchema, ValidatorTypeDirectoryStructure,
-		ValidatorTypeCodeExecution:
+		ValidatorTypeCodeExecution, ValidatorTypeToolCallAssertion, ValidatorTypePostcondition:
 		return true
 	default:
 		return false
@@ -349,7 +353,7 @@ func (t ValidatorType) IsFileValidator() bool {
 	switch t {
 	case ValidatorTypeFileContentMatch, ValidatorTypeFileExists,
 		ValidatorTypeFileJSONSchema, ValidatorTypeDirectoryStructure,
-		ValidatorTypeCodeExecution:
+		ValidatorTypeCodeExecution, ValidatorTypePostcondition:
 		return true
 	default:
 		return false
@@ -361,7 +365,7 @@ func (t ValidatorType) IsFileValidator() bool {
 // (file_exists, file_json_schema, directory_structure) return false.
 func (t ValidatorType) RequiresExpectedFrom() bool {
 	switch t {
-	case ValidatorTypeFileExists, ValidatorTypeFileJSONSchema, ValidatorTypeDirectoryStructure, ValidatorTypeCodeExecution:
+	case ValidatorTypeFileExists, ValidatorTypeFileJSONSchema, ValidatorTypeDirectoryStructure, ValidatorTypeCodeExecution, ValidatorTypeToolCallAssertion, ValidatorTypePostcondition:
 		return false
 	default:
 		return true
@@ -379,7 +383,7 @@ func (t MetricType) IsValid() bool {
 
 func (s DimensionSource) IsValid() bool {
 	switch s {
-	case DimensionSourceValidators, DimensionSourceMetric, DimensionSourceReliability, DimensionSourceLatency, DimensionSourceCost, DimensionSourceBehavioral, DimensionSourceLLMJudge:
+	case DimensionSourceValidators, DimensionSourceMetric, DimensionSourceReliability, DimensionSourceLatency, DimensionSourceCost, DimensionSourceBehavioral, DimensionSourceLLMJudge, DimensionSourceHumanPreference:
 		return true
 	default:
 		return false

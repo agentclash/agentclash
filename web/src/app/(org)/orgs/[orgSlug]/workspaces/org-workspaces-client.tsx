@@ -29,6 +29,8 @@ import { PaginationControls } from "@/components/ui/pagination-controls";
 import { Plus, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
+import { captureWebEvent } from "@/lib/analytics/posthog-client";
+import { WEB_EVENTS } from "@/lib/analytics/events";
 
 const PAGE_SIZE = 50;
 
@@ -83,8 +85,13 @@ export function OrgWorkspacesClient({
       const token = await getAccessToken();
       if (!token) return;
       const api = createApiClient(token);
-      await api.post(`/v1/organizations/${orgId}/workspaces`, {
-        name: newName.trim(),
+      const created = await api.post<OrgWorkspace>(
+        `/v1/organizations/${orgId}/workspaces`,
+        { name: newName.trim() },
+      );
+      captureWebEvent(WEB_EVENTS.WORKSPACE_CREATED, {
+        workspace_id: created.id,
+        organization_id: created.organization_id,
       });
       toast.success(`Created workspace "${newName.trim()}"`);
       setCreateOpen(false);

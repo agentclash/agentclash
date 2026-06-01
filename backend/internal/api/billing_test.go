@@ -99,6 +99,49 @@ func TestBillingManagerBuildRunGateRejectsExpiredTrial(t *testing.T) {
 	}
 }
 
+func TestBillingManagerGetWorkspaceQuotaSeparatesRaceAndConcurrencyUsage(t *testing.T) {
+	workspaceID := uuid.New()
+	repo := newFakeBillingRepository(workspaceID)
+	repo.entitlements = billingpkg.MaterializeEntitlements(
+		billingpkg.MustPlan(billingpkg.PlanPro),
+		billingpkg.PeriodMonthly,
+		5,
+		billingpkg.EntitlementStatusActive,
+	)
+	repo.usage.RaceCount = 47
+	repo.usage.ActiveRuns = 2
+	repo.activeMembers = 3
+	now := time.Date(2026, 5, 10, 9, 0, 0, 0, time.UTC)
+	manager := NewBillingManager(NewCallerOrganizationAuthorizer(), NewCallerWorkspaceAuthorizer(), repo, BillingManagerConfig{
+		WebhookSecret: "secret",
+	})
+	manager.now = func() time.Time { return now }
+	caller := Caller{
+		UserID: uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: RoleWorkspaceViewer},
+		},
+	}
+
+	result, err := manager.GetWorkspaceQuota(context.Background(), caller, workspaceID)
+	if err != nil {
+		t.Fatalf("GetWorkspaceQuota returned error: %v", err)
+	}
+	if result.PlanKey != billingpkg.PlanPro {
+		t.Fatalf("plan key = %q, want pro", result.PlanKey)
+	}
+	assertQuotaCounter(t, "monthly races", result.MonthlyRaces, 47, 2500, 2453)
+	assertQuotaCounter(t, "concurrent races", result.ConcurrentRaces, 2, 3, 1)
+	assertQuotaCounter(t, "seats", result.Seats, 3, 25, 22)
+	assertTimePtr(t, "monthly races reset_at", result.MonthlyRaces.ResetAt, time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
+	if !result.WindowStart.Equal(time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)) {
+		t.Fatalf("window start = %s, want 2026-05-01", result.WindowStart)
+	}
+	if !result.WindowEnd.Equal(time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)) {
+		t.Fatalf("window end = %s, want 2026-06-01", result.WindowEnd)
+	}
+}
+
 func TestBillingGateHTTPStatus(t *testing.T) {
 	entitlements := billingpkg.DefaultEntitlements()
 	featureDecision := billingpkg.CheckFeature(entitlements, billingpkg.FeaturePrivateChallengePacks)
@@ -117,7 +160,8 @@ func TestBillingManagerProcessesSignedDodoWebhook(t *testing.T) {
 	repo := newFakeBillingRepository(workspaceID)
 	secret := dodoTestWebhookSecret()
 	manager := NewBillingManager(NewCallerOrganizationAuthorizer(), NewCallerWorkspaceAuthorizer(), repo, BillingManagerConfig{
-		WebhookSecret: secret,
+		WebhookSecret:  secret,
+		DodoProductIDs: testDodoProductIDs(),
 	})
 	manager.now = func() time.Time { return time.Unix(1777420800, 0).UTC() }
 
@@ -156,7 +200,8 @@ func TestBillingManagerProcessesTrialingDodoWebhookWithExpiry(t *testing.T) {
 	repo := newFakeBillingRepository(workspaceID)
 	secret := dodoTestWebhookSecret()
 	manager := NewBillingManager(NewCallerOrganizationAuthorizer(), NewCallerWorkspaceAuthorizer(), repo, BillingManagerConfig{
-		WebhookSecret: secret,
+		WebhookSecret:  secret,
+		DodoProductIDs: testDodoProductIDs(),
 	})
 	manager.now = func() time.Time { return time.Unix(1777420800, 0).UTC() }
 
@@ -177,6 +222,81 @@ func TestBillingManagerProcessesTrialingDodoWebhookWithExpiry(t *testing.T) {
 	}
 	assertIntPtr(t, "team trial quota", repo.entitlements.RacesPerWorkspaceMonth, 4000)
 	assertIntPtr(t, "team trial models", repo.entitlements.MaxModelsPerRace, 12)
+}
+
+func TestBillingManagerProcessesOnHoldWebhookAsInactivePaidPlan(t *testing.T) {
+	workspaceID := uuid.New()
+	repo := newFakeBillingRepository(workspaceID)
+	secret := dodoTestWebhookSecret()
+	manager := NewBillingManager(NewCallerOrganizationAuthorizer(), NewCallerWorkspaceAuthorizer(), repo, BillingManagerConfig{
+		WebhookSecret:  secret,
+		DodoProductIDs: testDodoProductIDs(),
+	})
+	manager.now = func() time.Time { return time.Unix(1777420800, 0).UTC() }
+
+	body := `{"business_id":"biz_test","type":"subscription.on_hold","timestamp":"2026-04-29T00:00:00Z","data":{"payload_type":"Subscription","subscription_id":"sub_hold","customer_id":"cus_hold","product_id":"agentclash_pro_monthly","status":"on_hold","quantity":5,"metadata":{"organization_id":"` + repo.orgID.String() + `"}}}`
+	headers := signedDodoHeaders(secret, "wh_test_hold_432", "1777420800", body)
+
+	if _, err := manager.ProcessDodoWebhook(context.Background(), headers, []byte(body)); err != nil {
+		t.Fatalf("ProcessDodoWebhook returned error: %v", err)
+	}
+	if repo.entitlements.PlanKey != billingpkg.PlanPro {
+		t.Fatalf("materialized plan = %q, want pro", repo.entitlements.PlanKey)
+	}
+	if repo.entitlements.Status != billingpkg.EntitlementStatusInactive {
+		t.Fatalf("materialized status = %q, want inactive", repo.entitlements.Status)
+	}
+}
+
+func TestBillingManagerProcessesPaymentSucceededWithoutSubscriptionID(t *testing.T) {
+	workspaceID := uuid.New()
+	repo := newFakeBillingRepository(workspaceID)
+	secret := dodoTestWebhookSecret()
+	manager := NewBillingManager(NewCallerOrganizationAuthorizer(), NewCallerWorkspaceAuthorizer(), repo, BillingManagerConfig{
+		WebhookSecret:  secret,
+		DodoProductIDs: testDodoProductIDs(),
+	})
+	manager.now = func() time.Time { return time.Unix(1777420800, 0).UTC() }
+
+	body := `{"business_id":"biz_test","type":"payment.succeeded","timestamp":"2026-04-29T00:00:00Z","data":{"payload_type":"Payment","customer_id":"cus_pay","product_id":"agentclash_pro_monthly","quantity":5,"metadata":{"organization_id":"` + repo.orgID.String() + `"}}}`
+	headers := signedDodoHeaders(secret, "wh_payment_no_sub", "1777420800", body)
+
+	if _, err := manager.ProcessDodoWebhook(context.Background(), headers, []byte(body)); err != nil {
+		t.Fatalf("ProcessDodoWebhook returned error: %v", err)
+	}
+	if repo.subscription.DodoSubscriptionID != "" {
+		t.Fatalf("subscription upserted with empty dodo_subscription_id = %q, want no upsert", repo.subscription.DodoSubscriptionID)
+	}
+	if repo.entitlements.PlanKey != billingpkg.PlanPro {
+		t.Fatalf("materialized plan = %q, want pro", repo.entitlements.PlanKey)
+	}
+	if repo.entitlements.Status != billingpkg.EntitlementStatusActive {
+		t.Fatalf("materialized status = %q, want active", repo.entitlements.Status)
+	}
+}
+
+func TestBillingManagerProcessesOnHoldWebhookWithMissingQuantity(t *testing.T) {
+	workspaceID := uuid.New()
+	repo := newFakeBillingRepository(workspaceID)
+	secret := dodoTestWebhookSecret()
+	manager := NewBillingManager(NewCallerOrganizationAuthorizer(), NewCallerWorkspaceAuthorizer(), repo, BillingManagerConfig{
+		WebhookSecret:  secret,
+		DodoProductIDs: testDodoProductIDs(),
+	})
+	manager.now = func() time.Time { return time.Unix(1777420800, 0).UTC() }
+
+	body := `{"business_id":"biz_test","type":"subscription.on_hold","timestamp":"2026-04-29T00:00:00Z","data":{"payload_type":"Subscription","subscription_id":"sub_hold","customer_id":"cus_hold","product_id":"agentclash_pro_monthly","status":"on_hold","metadata":{"organization_id":"` + repo.orgID.String() + `"}}}`
+	headers := signedDodoHeaders(secret, "wh_test_hold_missing_qty", "1777420800", body)
+
+	if _, err := manager.ProcessDodoWebhook(context.Background(), headers, []byte(body)); err != nil {
+		t.Fatalf("ProcessDodoWebhook returned error: %v", err)
+	}
+	if repo.entitlements.PlanKey != billingpkg.PlanPro {
+		t.Fatalf("materialized plan = %q, want pro", repo.entitlements.PlanKey)
+	}
+	if repo.entitlements.Status != billingpkg.EntitlementStatusInactive {
+		t.Fatalf("materialized status = %q, want inactive", repo.entitlements.Status)
+	}
 }
 
 func TestBillingManagerRejectsInvalidDodoWebhookSignature(t *testing.T) {
@@ -276,8 +396,21 @@ func TestListBillingPlansHandler(t *testing.T) {
 func TestCreateBillingCheckoutHandlerDecodesSnakeCaseJSON(t *testing.T) {
 	workspaceID := uuid.New()
 	repo := newFakeBillingRepository(workspaceID)
+	dodoServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/checkouts" {
+			t.Fatalf("path = %s, want /checkouts", r.URL.Path)
+		}
+		writeJSON(w, http.StatusOK, map[string]string{
+			"session_id":   "cks_handler_test",
+			"checkout_url": "https://test.checkout.dodopayments.com/session/cks_handler_test",
+		})
+	}))
+	defer dodoServer.Close()
 	manager := NewBillingManager(NewCallerOrganizationAuthorizer(), NewCallerWorkspaceAuthorizer(), repo, BillingManagerConfig{
-		WebhookSecret: "secret",
+		DodoAPIKey:     "dodo_test_key",
+		DodoAPIBaseURL: dodoServer.URL,
+		DodoProductIDs: testDodoProductIDs(),
+		WebhookSecret:  "secret",
 	})
 	caller := Caller{
 		UserID: uuid.New(),
@@ -372,6 +505,33 @@ func TestBillingManagerStartTrialRejectsExistingPaidPlan(t *testing.T) {
 	}
 }
 
+func TestBillingManagerStartTrialRejectsRepeatAfterReturnToFree(t *testing.T) {
+	workspaceID := uuid.New()
+	repo := newFakeBillingRepository(workspaceID)
+	manager := NewBillingManager(NewCallerOrganizationAuthorizer(), NewCallerWorkspaceAuthorizer(), repo, BillingManagerConfig{
+		WebhookSecret: "secret",
+	})
+	caller := Caller{
+		UserID: uuid.New(),
+		OrganizationMemberships: map[uuid.UUID]OrganizationMembership{
+			repo.orgID: {OrganizationID: repo.orgID, Role: "org_admin"},
+		},
+	}
+
+	if _, err := manager.StartTrial(context.Background(), caller, repo.orgID, StartBillingTrialInput{PlanKey: billingpkg.PlanPro}); err != nil {
+		t.Fatalf("first StartTrial returned error: %v", err)
+	}
+	repo.entitlements = billingpkg.DefaultEntitlements()
+	_, err := manager.StartTrial(context.Background(), caller, repo.orgID, StartBillingTrialInput{PlanKey: billingpkg.PlanTeam})
+	var validationErr validationErrorEnvelope
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("error = %v, want validation error", err)
+	}
+	if validationErr.Code != "trial_not_available" {
+		t.Fatalf("code = %q, want trial_not_available", validationErr.Code)
+	}
+}
+
 func TestBillingManagerCreateCheckoutUsesDodoAPIWhenConfigured(t *testing.T) {
 	workspaceID := uuid.New()
 	repo := newFakeBillingRepository(workspaceID)
@@ -395,6 +555,7 @@ func TestBillingManagerCreateCheckoutUsesDodoAPIWhenConfigured(t *testing.T) {
 	manager := NewBillingManager(NewCallerOrganizationAuthorizer(), NewCallerWorkspaceAuthorizer(), repo, BillingManagerConfig{
 		DodoAPIKey:     "dodo_test_key",
 		DodoAPIBaseURL: dodoServer.URL,
+		DodoProductIDs: testDodoProductIDs(),
 		WebhookSecret:  "secret",
 	})
 	caller := Caller{
@@ -424,6 +585,9 @@ func TestBillingManagerCreateCheckoutUsesDodoAPIWhenConfigured(t *testing.T) {
 	if repo.checkoutInput.DodoCheckoutID != "cks_test_123" {
 		t.Fatalf("stored Dodo checkout id = %q, want cks_test_123", repo.checkoutInput.DodoCheckoutID)
 	}
+	if repo.checkoutInput.ID != result.CheckoutIntentID {
+		t.Fatalf("checkout intent id = %s, stored %s", result.CheckoutIntentID, repo.checkoutInput.ID)
+	}
 	productCart, ok := capturedPayload["product_cart"].([]any)
 	if !ok || len(productCart) != 1 {
 		t.Fatalf("product_cart = %#v, want one item", capturedPayload["product_cart"])
@@ -432,8 +596,231 @@ func TestBillingManagerCreateCheckoutUsesDodoAPIWhenConfigured(t *testing.T) {
 	if !ok {
 		t.Fatalf("product cart item = %#v, want object", productCart[0])
 	}
-	if item["product_id"] != "agentclash_pro_monthly" || item["quantity"] != float64(5) {
-		t.Fatalf("product cart item = %#v, want pro monthly quantity 5", item)
+	if item["product_id"] != "agentclash_pro_monthly" || item["quantity"] != float64(1) {
+		t.Fatalf("product cart item = %#v, want pro monthly quantity 1", item)
+	}
+	metadata, ok := capturedPayload["metadata"].(map[string]any)
+	if !ok {
+		t.Fatalf("metadata = %#v, want object", capturedPayload["metadata"])
+	}
+	if metadata["organization_id"] != repo.orgID.String() || metadata["checkout_intent_id"] != result.CheckoutIntentID.String() || metadata["plan_key"] != "pro" {
+		t.Fatalf("metadata = %#v, want org/intent/plan", metadata)
+	}
+	if metadata["seat_quantity"] != "5" {
+		t.Fatalf("metadata seat_quantity = %#v, want string 5", metadata["seat_quantity"])
+	}
+	returnURL, ok := capturedPayload["return_url"].(string)
+	if !ok || !strings.Contains(returnURL, "checkout=pending") || !strings.Contains(returnURL, "checkout_intent_id="+result.CheckoutIntentID.String()) {
+		t.Fatalf("return_url = %#v, want checkout pending params", capturedPayload["return_url"])
+	}
+}
+
+func TestBillingManagerCreateCheckoutIncludesDodoErrorBody(t *testing.T) {
+	workspaceID := uuid.New()
+	repo := newFakeBillingRepository(workspaceID)
+	dodoServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/checkouts" {
+			t.Fatalf("path = %s, want /checkouts", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		_, _ = w.Write([]byte(" \n {\"code\":\"INVALID_REQUEST_BODY\",\"message\":\"product_cart.quantity is invalid\"}\n "))
+	}))
+	defer dodoServer.Close()
+	manager := NewBillingManager(NewCallerOrganizationAuthorizer(), NewCallerWorkspaceAuthorizer(), repo, BillingManagerConfig{
+		DodoAPIKey:     "dodo_test_key",
+		DodoAPIBaseURL: dodoServer.URL,
+		DodoProductIDs: testDodoProductIDs(),
+		WebhookSecret:  "secret",
+	})
+	caller := Caller{
+		UserID: uuid.New(),
+		OrganizationMemberships: map[uuid.UUID]OrganizationMembership{
+			repo.orgID: {OrganizationID: repo.orgID, Role: "org_admin"},
+		},
+	}
+
+	_, err := manager.CreateCheckout(context.Background(), caller, repo.orgID, CreateBillingCheckoutInput{
+		PlanKey:       "pro",
+		BillingPeriod: "monthly",
+		SeatQuantity:  5,
+		ReturnURL:     "http://localhost:3000/billing/return",
+	})
+	if err == nil {
+		t.Fatal("expected Dodo checkout error")
+	}
+	errText := err.Error()
+	for _, want := range []string{"HTTP 422", "INVALID_REQUEST_BODY", "product_cart.quantity is invalid"} {
+		if !strings.Contains(errText, want) {
+			t.Fatalf("error = %q, want substring %q", errText, want)
+		}
+	}
+}
+
+func TestBillingManagerCreateCheckoutOmitsEmptyDodoErrorBody(t *testing.T) {
+	workspaceID := uuid.New()
+	repo := newFakeBillingRepository(workspaceID)
+	dodoServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/checkouts" {
+			t.Fatalf("path = %s, want /checkouts", r.URL.Path)
+		}
+		w.WriteHeader(http.StatusUnprocessableEntity)
+	}))
+	defer dodoServer.Close()
+	manager := NewBillingManager(NewCallerOrganizationAuthorizer(), NewCallerWorkspaceAuthorizer(), repo, BillingManagerConfig{
+		DodoAPIKey:     "dodo_test_key",
+		DodoAPIBaseURL: dodoServer.URL,
+		DodoProductIDs: testDodoProductIDs(),
+		WebhookSecret:  "secret",
+	})
+	caller := Caller{
+		UserID: uuid.New(),
+		OrganizationMemberships: map[uuid.UUID]OrganizationMembership{
+			repo.orgID: {OrganizationID: repo.orgID, Role: "org_admin"},
+		},
+	}
+
+	_, err := manager.CreateCheckout(context.Background(), caller, repo.orgID, CreateBillingCheckoutInput{
+		PlanKey:       "pro",
+		BillingPeriod: "monthly",
+		SeatQuantity:  5,
+		ReturnURL:     "http://localhost:3000/billing/return",
+	})
+	if err == nil {
+		t.Fatal("expected Dodo checkout error")
+	}
+	if err.Error() != "create dodo checkout session: dodo returned HTTP 422" {
+		t.Fatalf("error = %q, want status-only Dodo error", err.Error())
+	}
+}
+
+func TestCreateBillingCheckoutHandlerKeepsDodoErrorGeneric(t *testing.T) {
+	workspaceID := uuid.New()
+	repo := newFakeBillingRepository(workspaceID)
+	dodoServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		_, _ = w.Write([]byte(`{"code":"INVALID_REQUEST_BODY","message":"product_cart.quantity is invalid"}`))
+	}))
+	defer dodoServer.Close()
+	manager := NewBillingManager(NewCallerOrganizationAuthorizer(), NewCallerWorkspaceAuthorizer(), repo, BillingManagerConfig{
+		DodoAPIKey:     "dodo_test_key",
+		DodoAPIBaseURL: dodoServer.URL,
+		DodoProductIDs: testDodoProductIDs(),
+		WebhookSecret:  "secret",
+	})
+	caller := Caller{
+		UserID: uuid.New(),
+		OrganizationMemberships: map[uuid.UUID]OrganizationMembership{
+			repo.orgID: {OrganizationID: repo.orgID, Role: "org_admin"},
+		},
+	}
+
+	var logs bytes.Buffer
+	router := chi.NewRouter()
+	router.Post("/v1/organizations/{organizationID}/billing/checkout", createBillingCheckoutHandler(slog.New(slog.NewTextHandler(&logs, nil)), manager))
+	req := httptest.NewRequest(http.MethodPost, "/v1/organizations/"+repo.orgID.String()+"/billing/checkout", bytes.NewBufferString(`{
+		"plan_key":"pro",
+		"billing_period":"monthly",
+		"seat_quantity":5,
+		"return_url":"http://localhost:3000/billing/return"
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(context.WithValue(req.Context(), callerContextKey{}, caller))
+	rr := httptest.NewRecorder()
+
+	router.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500; body=%s", rr.Code, rr.Body.String())
+	}
+	if strings.Contains(rr.Body.String(), "INVALID_REQUEST_BODY") || strings.Contains(rr.Body.String(), "product_cart.quantity") {
+		t.Fatalf("response leaked Dodo body: %s", rr.Body.String())
+	}
+	if !strings.Contains(logs.String(), "INVALID_REQUEST_BODY") || !strings.Contains(logs.String(), "product_cart.quantity is invalid") {
+		t.Fatalf("logs = %q, want Dodo error details", logs.String())
+	}
+}
+
+func TestBillingManagerCreatePortalUsesDodoCustomerPortalSession(t *testing.T) {
+	workspaceID := uuid.New()
+	repo := newFakeBillingRepository(workspaceID)
+	if err := repo.UpsertBillingAccount(context.Background(), repo.orgID, "cus_portal_test", "owner@example.com", "active"); err != nil {
+		t.Fatalf("seed billing account: %v", err)
+	}
+	var capturedAuth string
+	dodoServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedAuth = r.Header.Get("Authorization")
+		if r.URL.Path != "/customers/cus_portal_test/customer-portal/session" {
+			t.Fatalf("path = %s, want customer portal session path", r.URL.Path)
+		}
+		if r.URL.Query().Get("send_email") != "false" {
+			t.Fatalf("send_email = %q, want false", r.URL.Query().Get("send_email"))
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"link": "https://customer.dodopayments.com/session/cps_test"})
+	}))
+	defer dodoServer.Close()
+	manager := NewBillingManager(NewCallerOrganizationAuthorizer(), NewCallerWorkspaceAuthorizer(), repo, BillingManagerConfig{
+		DodoAPIKey:     "dodo_test_key",
+		DodoAPIBaseURL: dodoServer.URL,
+		DodoProductIDs: testDodoProductIDs(),
+		WebhookSecret:  "secret",
+	})
+	caller := Caller{
+		UserID: uuid.New(),
+		OrganizationMemberships: map[uuid.UUID]OrganizationMembership{
+			repo.orgID: {OrganizationID: repo.orgID, Role: "org_admin"},
+		},
+	}
+
+	result, err := manager.CreatePortal(context.Background(), caller, repo.orgID)
+	if err != nil {
+		t.Fatalf("CreatePortal returned error: %v", err)
+	}
+	if capturedAuth != "Bearer dodo_test_key" {
+		t.Fatalf("authorization = %q, want bearer token", capturedAuth)
+	}
+	if result.PortalURL != "https://customer.dodopayments.com/session/cps_test" {
+		t.Fatalf("portal URL = %q, want Dodo link", result.PortalURL)
+	}
+}
+
+func TestBillingManagerCreatePortalIncludesDodoErrorBody(t *testing.T) {
+	workspaceID := uuid.New()
+	repo := newFakeBillingRepository(workspaceID)
+	if err := repo.UpsertBillingAccount(context.Background(), repo.orgID, "cus_portal_test", "owner@example.com", "active"); err != nil {
+		t.Fatalf("seed billing account: %v", err)
+	}
+	dodoServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/customers/cus_portal_test/customer-portal/session" {
+			t.Fatalf("path = %s, want customer portal session path", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		_, _ = w.Write([]byte(`{"code":"INVALID_REQUEST_BODY","message":"customer portal unavailable"}`))
+	}))
+	defer dodoServer.Close()
+	manager := NewBillingManager(NewCallerOrganizationAuthorizer(), NewCallerWorkspaceAuthorizer(), repo, BillingManagerConfig{
+		DodoAPIKey:     "dodo_test_key",
+		DodoAPIBaseURL: dodoServer.URL,
+		DodoProductIDs: testDodoProductIDs(),
+		WebhookSecret:  "secret",
+	})
+	caller := Caller{
+		UserID: uuid.New(),
+		OrganizationMemberships: map[uuid.UUID]OrganizationMembership{
+			repo.orgID: {OrganizationID: repo.orgID, Role: "org_admin"},
+		},
+	}
+
+	_, err := manager.CreatePortal(context.Background(), caller, repo.orgID)
+	if err == nil {
+		t.Fatal("expected Dodo portal error")
+	}
+	errText := err.Error()
+	for _, want := range []string{"HTTP 422", "INVALID_REQUEST_BODY", "customer portal unavailable"} {
+		if !strings.Contains(errText, want) {
+			t.Fatalf("error = %q, want substring %q", errText, want)
+		}
 	}
 }
 
@@ -455,22 +842,35 @@ func dodoTestWebhookSecret() string {
 	return "whsec_" + base64.StdEncoding.EncodeToString([]byte("agentclash-test-webhook-secret"))
 }
 
+func testDodoProductIDs() billingpkg.DodoProductIDs {
+	return billingpkg.DodoProductIDs{
+		ProMonthly:  "agentclash_pro_monthly",
+		ProYearly:   "agentclash_pro_yearly",
+		TeamMonthly: "agentclash_team_monthly",
+		TeamYearly:  "agentclash_team_yearly",
+	}
+}
+
 type fakeBillingRepository struct {
 	orgID         uuid.UUID
 	workspaceID   uuid.UUID
 	entitlements  billingpkg.EffectiveEntitlements
 	usage         repository.WorkspaceUsageSnapshot
+	activeMembers int
 	webhookIDs    map[string]bool
 	subscription  repository.BillingSubscription
+	account       repository.BillingAccount
 	checkoutInput repository.BillingCheckoutIntentInput
+	trialUsed     bool
 }
 
 func newFakeBillingRepository(workspaceID uuid.UUID) *fakeBillingRepository {
 	windowStart, windowEnd := usageWindow(time.Date(2026, 4, 29, 0, 0, 0, 0, time.UTC))
 	return &fakeBillingRepository{
-		orgID:        uuid.New(),
-		workspaceID:  workspaceID,
-		entitlements: billingpkg.DefaultEntitlements(),
+		orgID:         uuid.New(),
+		workspaceID:   workspaceID,
+		entitlements:  billingpkg.DefaultEntitlements(),
+		activeMembers: 1,
 		usage: repository.WorkspaceUsageSnapshot{
 			WorkspaceID: workspaceID,
 			WindowStart: windowStart,
@@ -506,7 +906,7 @@ func (f *fakeBillingRepository) UpsertOrganizationEntitlements(_ context.Context
 }
 
 func (f *fakeBillingRepository) CountActiveOrgMembers(context.Context, uuid.UUID) (int, error) {
-	return 1, nil
+	return f.activeMembers, nil
 }
 
 func (f *fakeBillingRepository) CountActiveWorkspaces(context.Context, uuid.UUID) (int, error) {
@@ -526,8 +926,12 @@ func (f *fakeBillingRepository) GetWorkspaceUsageSnapshot(_ context.Context, _ u
 
 func (f *fakeBillingRepository) CreateBillingCheckoutIntent(_ context.Context, input repository.BillingCheckoutIntentInput) (repository.BillingCheckoutIntent, error) {
 	f.checkoutInput = input
+	intentID := input.ID
+	if intentID == uuid.Nil {
+		intentID = uuid.New()
+	}
 	return repository.BillingCheckoutIntent{
-		ID:               uuid.New(),
+		ID:               intentID,
 		OrganizationID:   input.OrganizationID,
 		RequestedPlanKey: input.RequestedPlanKey,
 		BillingPeriod:    input.BillingPeriod,
@@ -539,8 +943,30 @@ func (f *fakeBillingRepository) CreateBillingCheckoutIntent(_ context.Context, i
 	}, nil
 }
 
-func (f *fakeBillingRepository) UpsertBillingAccount(context.Context, uuid.UUID, string, string, string) error {
+func (f *fakeBillingRepository) UpsertBillingAccount(_ context.Context, orgID uuid.UUID, dodoCustomerID string, billingEmail string, status string) error {
+	if orgID != f.orgID {
+		return pgx.ErrNoRows
+	}
+	if status == "" {
+		status = "active"
+	}
+	f.account = repository.BillingAccount{
+		ID:             uuid.New(),
+		OrganizationID: orgID,
+		DodoCustomerID: optionalString(dodoCustomerID),
+		BillingEmail:   optionalString(billingEmail),
+		Status:         status,
+		CreatedAt:      time.Now().UTC(),
+		UpdatedAt:      time.Now().UTC(),
+	}
 	return nil
+}
+
+func (f *fakeBillingRepository) GetBillingAccount(_ context.Context, orgID uuid.UUID) (repository.BillingAccount, error) {
+	if orgID != f.orgID || f.account.ID == uuid.Nil {
+		return repository.BillingAccount{}, pgx.ErrNoRows
+	}
+	return f.account, nil
 }
 
 func (f *fakeBillingRepository) UpsertBillingSubscription(_ context.Context, input repository.BillingSubscriptionInput) (repository.BillingSubscription, error) {
@@ -565,8 +991,18 @@ func (f *fakeBillingRepository) UpsertBillingSubscription(_ context.Context, inp
 	return f.subscription, nil
 }
 
-func (f *fakeBillingRepository) GetBillingOverview(context.Context, uuid.UUID) (repository.BillingOverview, error) {
-	return repository.BillingOverview{Entitlements: f.entitlements}, nil
+func (f *fakeBillingRepository) GetBillingOverview(_ context.Context, orgID uuid.UUID) (repository.BillingOverview, error) {
+	if orgID != f.orgID {
+		return repository.BillingOverview{}, pgx.ErrNoRows
+	}
+	overview := repository.BillingOverview{Entitlements: f.entitlements}
+	if f.account.ID != uuid.Nil {
+		overview.Account = &f.account
+	}
+	if f.subscription.ID != uuid.Nil {
+		overview.Subscription = &f.subscription
+	}
+	return overview, nil
 }
 
 func (f *fakeBillingRepository) FindOrganizationByDodoSubscriptionOrCustomer(context.Context, string, string) (uuid.UUID, error) {
@@ -602,6 +1038,27 @@ func (f *fakeBillingRepository) ApplyBillingWebhookEvent(ctx context.Context, ev
 	return false, nil
 }
 
+func (f *fakeBillingRepository) CreateBillingTrialGrant(_ context.Context, input repository.BillingTrialGrantInput) (repository.BillingTrialGrant, error) {
+	if input.OrganizationID != f.orgID {
+		return repository.BillingTrialGrant{}, pgx.ErrNoRows
+	}
+	if f.trialUsed {
+		return repository.BillingTrialGrant{}, repository.ErrBillingTrialAlreadyUsed
+	}
+	f.trialUsed = true
+	return repository.BillingTrialGrant{
+		ID:              uuid.New(),
+		OrganizationID:  input.OrganizationID,
+		PlanKey:         input.PlanKey,
+		BillingPeriod:   input.BillingPeriod,
+		StartedByUserID: &input.StartedByUserID,
+		StartedAt:       input.StartedAt,
+		ExpiresAt:       input.ExpiresAt,
+		CreatedAt:       input.StartedAt,
+		UpdatedAt:       input.StartedAt,
+	}, nil
+}
+
 func assertIntPtr(t *testing.T, label string, got *int, want int) {
 	t.Helper()
 	if got == nil {
@@ -609,5 +1066,24 @@ func assertIntPtr(t *testing.T, label string, got *int, want int) {
 	}
 	if *got != want {
 		t.Fatalf("%s = %d, want %d", label, *got, want)
+	}
+}
+
+func assertQuotaCounter(t *testing.T, label string, got QuotaCounter, wantUsed int, wantLimit int, wantRemaining int) {
+	t.Helper()
+	if got.Used != wantUsed {
+		t.Fatalf("%s used = %d, want %d", label, got.Used, wantUsed)
+	}
+	assertIntPtr(t, label+" limit", got.Limit, wantLimit)
+	assertIntPtr(t, label+" remaining", got.Remaining, wantRemaining)
+}
+
+func assertTimePtr(t *testing.T, label string, got *time.Time, want time.Time) {
+	t.Helper()
+	if got == nil {
+		t.Fatalf("%s = nil, want %s", label, want)
+	}
+	if !got.Equal(want) {
+		t.Fatalf("%s = %s, want %s", label, got, want)
 	}
 }

@@ -1,0 +1,32 @@
+name: "Codex CLI"
+slug: codex
+tagline: "OpenAI's coding agent in your terminal"
+category: "AI coding agents"
+template: agentclash-trycli
+docs: "https://developers.openai.com/codex/cli"
+github: "https://github.com/openai/codex"
+
+auth:
+  provider: "OpenAI"
+  summary: "Sign in with your ChatGPT account via device code, or use an OpenAI API key. Everything stays in this disposable sandbox."
+  steps:
+    - "Run: codex login --device-auth"
+    - "Open the URL on your own machine and enter the one-time code"
+    - "Prefer a key? Run: codex login --with-api-key (then paste your key)"
+    - "Then start it: codex"
+  envKey: "OPENAI_API_KEY"
+  signupUrl: "https://platform.openai.com/api-keys"
+
+welcome: |
+  Codex CLI is installed. Sign in using the panel on the left
+  (codex login --device-auth), then run `codex` to start.
+
+commands:
+  - label: "Show version"
+    run: "codex --version"
+  - label: "Sign in (device code)"
+    run: "codex login --device-auth"
+  - label: "Start Codex"
+    run: "codex"
+
+sessionMinutes: 10

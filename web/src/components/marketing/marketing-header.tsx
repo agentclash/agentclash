@@ -6,9 +6,7 @@ import { ClashMark } from "./clash-mark";
 type NavLink = { href: string; label: string; external?: boolean };
 
 const DEFAULT_NAV: NavLink[] = [
-  { href: "/v2/platform/agent-evaluation", label: "Platform" },
-  { href: "/v2/use-cases/coding-agents", label: "Use cases" },
-  { href: "/v2/oss", label: "Open source" },
+  { href: "/#features", label: "Features" },
   { href: "/docs", label: "Docs" },
   { href: "/blog", label: "Blog" },
 ];
@@ -24,7 +22,7 @@ export async function MarketingHeader({ nav = DEFAULT_NAV }: Props) {
     <header className="px-5 sm:px-12 py-5 sm:py-6 border-b border-white/[0.06]">
       <div className="mx-auto flex max-w-[1440px] items-center justify-between">
         <Link
-          href="/v2"
+          href="/"
           className="inline-flex items-center gap-2.5 text-white/90"
         >
           <ClashMark className="size-6" />

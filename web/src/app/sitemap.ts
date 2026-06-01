@@ -1,6 +1,7 @@
 import type { MetadataRoute } from "next";
 import { getAllPosts } from "@/lib/blog";
-import { DOCS_ORIGIN, getAllDocMarkdownPaths, getAllDocPaths } from "@/lib/docs";
+import { COMPETITORS } from "@/lib/comparison-data";
+import { DOCS_ORIGIN, getAllDocPaths } from "@/lib/docs";
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const posts = getAllPosts().map((post) => ({
@@ -15,13 +16,20 @@ export default function sitemap(): MetadataRoute.Sitemap {
     changeFrequency: "weekly" as const,
     priority: docPath === "/docs" ? 0.85 : 0.75,
   }));
-  const markdownDocs = getAllDocMarkdownPaths().map((docPath) => ({
-    url: `${DOCS_ORIGIN}${docPath}`,
-    lastModified: new Date(),
-    changeFrequency: "weekly" as const,
-    priority: docPath === "/docs-md" ? 0.5 : 0.4,
-  }));
-
+  const compare = [
+    {
+      url: `${DOCS_ORIGIN}/compare`,
+      lastModified: new Date(),
+      changeFrequency: "monthly" as const,
+      priority: 0.8,
+    },
+    ...COMPETITORS.map((competitor) => ({
+      url: `${DOCS_ORIGIN}/compare/${competitor.slug}`,
+      lastModified: new Date(),
+      changeFrequency: "monthly" as const,
+      priority: 0.75,
+    })),
+  ];
   return [
     {
       url: DOCS_ORIGIN,
@@ -36,6 +44,42 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.8,
     },
     {
+      url: `${DOCS_ORIGIN}/why`,
+      lastModified: new Date(),
+      changeFrequency: "monthly",
+      priority: 0.7,
+    },
+    {
+      url: `${DOCS_ORIGIN}/team`,
+      lastModified: new Date(),
+      changeFrequency: "monthly",
+      priority: 0.5,
+    },
+    {
+      url: `${DOCS_ORIGIN}/sitemap`,
+      lastModified: new Date(),
+      changeFrequency: "weekly",
+      priority: 0.5,
+    },
+    {
+      url: `${DOCS_ORIGIN}/platform/agent-evaluation`,
+      lastModified: new Date(),
+      changeFrequency: "monthly",
+      priority: 0.85,
+    },
+    {
+      url: `${DOCS_ORIGIN}/platform/agent-regression-testing`,
+      lastModified: new Date(),
+      changeFrequency: "monthly",
+      priority: 0.82,
+    },
+    {
+      url: `${DOCS_ORIGIN}/try`,
+      lastModified: new Date(),
+      changeFrequency: "weekly",
+      priority: 0.88,
+    },
+    {
       url: `${DOCS_ORIGIN}/llms.txt`,
       lastModified: new Date(),
       changeFrequency: "weekly",
@@ -47,8 +91,8 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: "weekly",
       priority: 0.55,
     },
+    ...compare,
     ...docs,
-    ...markdownDocs,
     ...posts,
   ];
 }

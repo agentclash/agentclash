@@ -10,6 +10,7 @@ import (
 	"github.com/agentclash/agentclash/backend/internal/engine"
 	"github.com/agentclash/agentclash/backend/internal/provider"
 	"github.com/agentclash/agentclash/backend/internal/repository"
+	"github.com/agentclash/agentclash/backend/internal/simulator"
 )
 
 type observerCall struct {
@@ -169,6 +170,111 @@ func (b *BufferedObserver) OnRunFailure(ctx context.Context, runErr error) error
 	return err
 }
 
+// --- MultiTurnEventRecorder forwarding ---
+//
+// BufferedObserver wraps an arbitrary engine.Observer. When the inner observer
+// also implements engine.MultiTurnEventRecorder (i.e. it is the multi_turn
+// observer), the wrapper must expose those methods too — otherwise the type
+// assertion in engine.multiTurnRecorder() fails and the multi_turn executor
+// silently falls back to the noop recorder, dropping every turn.* event and
+// breaking transcript-based scoring.
+//
+// These forwarders buffer turn lifecycle events through the same queue as the
+// rest of the observer stream so per-step events and per-turn events stay in
+// write order. If the inner observer is not a MultiTurnEventRecorder (single-
+// turn execution path), the calls are silent no-ops — single-turn observers
+// have nothing to do with turn lifecycle events.
+
+func (b *BufferedObserver) RecordTurnUserMessage(ctx context.Context, turnIndex int, phaseID, actor, content string) error {
+	inner, ok := b.inner.(engine.MultiTurnEventRecorder)
+	if !ok {
+		return nil
+	}
+	if err := b.checkBgError(); err != nil {
+		return err
+	}
+	bgCtx := context.WithoutCancel(ctx)
+	b.enqueue(func() error {
+		return inner.RecordTurnUserMessage(bgCtx, turnIndex, phaseID, actor, content)
+	})
+	return nil
+}
+
+func (b *BufferedObserver) RecordTurnUserSimulated(ctx context.Context, turnIndex int, phaseID string, metadata simulator.Metadata) error {
+	inner, ok := b.inner.(engine.MultiTurnEventRecorder)
+	if !ok {
+		return nil
+	}
+	if err := b.checkBgError(); err != nil {
+		return err
+	}
+	bgCtx := context.WithoutCancel(ctx)
+	b.enqueue(func() error {
+		return inner.RecordTurnUserSimulated(bgCtx, turnIndex, phaseID, metadata)
+	})
+	return nil
+}
+
+func (b *BufferedObserver) RecordTurnAssistantMessage(ctx context.Context, turnIndex int, phaseID, content string) error {
+	inner, ok := b.inner.(engine.MultiTurnEventRecorder)
+	if !ok {
+		return nil
+	}
+	if err := b.checkBgError(); err != nil {
+		return err
+	}
+	bgCtx := context.WithoutCancel(ctx)
+	b.enqueue(func() error {
+		return inner.RecordTurnAssistantMessage(bgCtx, turnIndex, phaseID, content)
+	})
+	return nil
+}
+
+func (b *BufferedObserver) RecordTurnCompleted(ctx context.Context, turnIndex int, phaseID, actor string, mismatch bool) error {
+	inner, ok := b.inner.(engine.MultiTurnEventRecorder)
+	if !ok {
+		return nil
+	}
+	if err := b.checkBgError(); err != nil {
+		return err
+	}
+	bgCtx := context.WithoutCancel(ctx)
+	b.enqueue(func() error {
+		return inner.RecordTurnCompleted(bgCtx, turnIndex, phaseID, actor, mismatch)
+	})
+	return nil
+}
+
+func (b *BufferedObserver) RecordTurnAwaitingHuman(ctx context.Context, turnIndex int, phaseID, promptHint string) error {
+	inner, ok := b.inner.(engine.MultiTurnEventRecorder)
+	if !ok {
+		return nil
+	}
+	if err := b.checkBgError(); err != nil {
+		return err
+	}
+	bgCtx := context.WithoutCancel(ctx)
+	b.enqueue(func() error {
+		return inner.RecordTurnAwaitingHuman(bgCtx, turnIndex, phaseID, promptHint)
+	})
+	return nil
+}
+
+func (b *BufferedObserver) RecordConversationCompleted(ctx context.Context, summary engine.MultiTurnConversationSummary) error {
+	inner, ok := b.inner.(engine.MultiTurnEventRecorder)
+	if !ok {
+		return nil
+	}
+	if err := b.checkBgError(); err != nil {
+		return err
+	}
+	bgCtx := context.WithoutCancel(ctx)
+	b.enqueue(func() error {
+		return inner.RecordConversationCompleted(bgCtx, summary)
+	})
+	return nil
+}
+
 // --- Internal machinery ---
 
 var errFlusherDead = errors.New("event observer flusher terminated unexpectedly")
@@ -297,6 +403,20 @@ func NewBufferedNativeObserverFactory(recorder RunEventRecorder) NativeObserverF
 // executor.
 func NewBufferedPromptEvalObserverFactory(recorder RunEventRecorder) PromptEvalObserverFactory {
 	innerFactory := NewPromptEvalRunEventObserverFactory(recorder)
+	return func(executionContext repository.RunAgentExecutionContext) (engine.Observer, error) {
+		inner, err := innerFactory(executionContext)
+		if err != nil {
+			return nil, err
+		}
+		if _, ok := inner.(engine.NoopObserver); ok {
+			return inner, nil
+		}
+		return NewBufferedObserver(inner), nil
+	}
+}
+
+func NewBufferedResponsesObserverFactory(recorder RunEventRecorder) ResponsesObserverFactory {
+	innerFactory := NewResponsesRunEventObserverFactory(recorder)
 	return func(executionContext repository.RunAgentExecutionContext) (engine.Observer, error) {
 		inner, err := innerFactory(executionContext)
 		if err != nil {

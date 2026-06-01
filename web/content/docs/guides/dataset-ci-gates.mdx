@@ -1,0 +1,135 @@
+---
+title: Dataset CI Gates
+description: Record dataset eval baselines, sync examples into regression suites, and fail CI when a candidate run regresses.
+---
+
+Dataset CI gates close the loop between pinned dataset evals and release safety. After you run a dataset eval ([#886.3](/docs)), record a baseline from the green run, optionally sync the pinned version into a regression suite, and gate every subsequent change with `agentclash dataset test`.
+
+## Record a baseline
+
+Baselines capture per-example outcomes from a **completed** dataset eval run. Record one through the API (or the web app once baseline creation UI ships):
+
+```bash
+export AGENTCLASH_API_URL="https://api.agentclash.dev"
+export AGENTCLASH_TOKEN="<token>"
+export AGENTCLASH_WORKSPACE="<workspace-id>"
+
+curl -sS -X POST "$AGENTCLASH_API_URL/v1/workspaces/$AGENTCLASH_WORKSPACE/datasets/<datasetId>/baselines" \
+  -H "Authorization: Bearer $AGENTCLASH_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"run_id":"<completed-eval-run-id>","label":"main baseline"}'
+```
+
+List baselines from the API or the dataset detail **Regression / CI** tab in the web app.
+
+## Sync into a regression suite
+
+Promote the pinned dataset version into `workspace_regression_cases` while preserving provenance (`dataset_example_id`, trace metadata, curation links):
+
+```bash
+agentclash dataset sync-regression-suite <datasetId> \
+  --version <dataset-version-id> \
+  --pack <challenge-pack-version-id> \
+  --challenge support \
+  --suite-name "Support dataset regression"
+```
+
+Re-running sync is idempotent: existing cases keyed by `metadata.dataset_example_id` are skipped; new examples are appended. The dataset keeps a single link row pointing at the suite and last synced version.
+
+Wire the linked suite into `.agentclash/ci.yaml` under `evaluation.regression_suites` when you also want manifest-based release gates.
+
+## Gate a candidate run
+
+Compare a candidate eval run against a baseline:
+
+```bash
+# Use an existing candidate run
+agentclash dataset test <datasetId> \
+  --baseline <baseline-id> \
+  --run <candidate-run-id> \
+  --max-regressions 0
+
+# Or start a fresh eval and wait for completion
+agentclash dataset test <datasetId> \
+  --baseline <baseline-id> \
+  --eval \
+  --version <dataset-version-id> \
+  --pack <challenge-pack-version-id> \
+  --challenge support \
+  --deployment <deployment-id>
+```
+
+Output formats:
+
+- `--format text` (default) prints a human summary and exits `1` on regression.
+- `--format json` prints the full gate payload (including on HTTP 422) and exits `1` on failure.
+- `--format junit` emits JUnit XML for CI parsers and exits `1` on failure.
+
+Threshold flags:
+
+- `--min-pass-rate 0.95` fails when candidate pass rate drops below 95%.
+- `--max-regressions 0` fails on any newly failing or missing baseline example.
+
+## GitHub Actions recipe
+
+Minimal workflow step that runs a dataset gate on pull requests:
+
+```yaml
+name: dataset-gate
+
+on:
+  pull_request:
+    paths:
+      - prompts/**
+      - tools/**
+      - .agentclash/**
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install AgentClash CLI
+        run: npm install -g agentclash
+
+      - name: Run dataset gate
+        env:
+          AGENTCLASH_API_URL: https://api.agentclash.dev
+          AGENTCLASH_TOKEN: ${{ secrets.AGENTCLASH_TOKEN }}
+          AGENTCLASH_WORKSPACE: ${{ vars.AGENTCLASH_WORKSPACE }}
+          DATASET_ID: ${{ vars.AGENTCLASH_DATASET_ID }}
+          BASELINE_ID: ${{ vars.AGENTCLASH_DATASET_BASELINE_ID }}
+          PACK_VERSION_ID: ${{ vars.AGENTCLASH_PACK_VERSION_ID }}
+          DEPLOYMENT_ID: ${{ vars.AGENTCLASH_DEPLOYMENT_ID }}
+        run: |
+          agentclash dataset test "$DATASET_ID" \
+            --baseline "$BASELINE_ID" \
+            --eval \
+            --version "${{ vars.AGENTCLASH_DATASET_VERSION_ID }}" \
+            --pack "$PACK_VERSION_ID" \
+            --challenge support \
+            --deployment "$DEPLOYMENT_ID" \
+            --max-regressions 0 \
+            --format junit > dataset-gate.xml
+
+      - name: Publish JUnit report
+        if: always()
+        uses: mikepenz/action-junit-report@v5
+        with:
+          report_paths: dataset-gate.xml
+```
+
+For full agent release gates (build spec, deployment, regression suites, and release-gate policy), combine this with the manifest flow in [CI/CD Agent Gates](/docs/guides/ci-cd-agent-gates).
+
+## API surface
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `POST` | `/v1/workspaces/{workspaceID}/datasets/{datasetID}/baselines` | Record baseline from completed eval run |
+| `GET` | `/v1/workspaces/{workspaceID}/datasets/{datasetID}/baselines` | List baselines |
+| `POST` | `/v1/workspaces/{workspaceID}/datasets/{datasetID}/gate` | Compare candidate run vs baseline (`422` on regression) |
+| `GET` | `/v1/workspaces/{workspaceID}/datasets/{datasetID}/regression-suite` | Fetch dataset ⇄ suite link |
+| `POST` | `/v1/workspaces/{workspaceID}/datasets/{datasetID}/regression-suite/sync` | Promote version examples into regression cases |
+
+See the [OpenAPI spec](/docs/reference/openapi) for request and response schemas.

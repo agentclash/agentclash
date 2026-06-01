@@ -39,13 +39,12 @@ If the change affects human-facing CLI output, also add assertions for:
 
 When the change is more than a one-line fix, lock the contract before you start coding.
 
-The review-checkpoint workflow is simple:
+The checkpoint workflow is simple:
 
-1. create `testing/<branch-or-task>.md`
-2. write the scope, functional expectations, tests, manual verification, and non-goals
-3. treat that contract as fixed until requirements explicitly change
-4. after each implementation step, update `/tmp/reviewcheckpoint.json`
-5. run the scoped verification listed in the contract before you declare the work ready
+1. write the scope, functional expectations, tests, manual verification, and non-goals in the issue, PR description, or a local scratchpad outside the repo
+2. treat that contract as fixed until requirements explicitly change
+3. after each implementation step, update any local checkpoint notes you are using
+4. run the scoped verification listed in the contract before you declare the work ready
 
 This does two things well:
 

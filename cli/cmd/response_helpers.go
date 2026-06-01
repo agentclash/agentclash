@@ -36,6 +36,20 @@ func mapSlice(m map[string]any, keys ...string) []any {
 	if out, ok := value.([]any); ok {
 		return out
 	}
+	if values, ok := value.([]string); ok {
+		out := make([]any, 0, len(values))
+		for _, value := range values {
+			out = append(out, value)
+		}
+		return out
+	}
+	if objects, ok := value.([]map[string]any); ok {
+		out := make([]any, 0, len(objects))
+		for _, value := range objects {
+			out = append(out, value)
+		}
+		return out
+	}
 	return nil
 }
 
