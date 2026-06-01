@@ -60,3 +60,30 @@ func TestEvaluateHonorsMinPassRate(t *testing.T) {
 }
 
 func intPtr(value int) *int { return &value }
+
+func TestEvaluateFailsOnEmptyCandidate(t *testing.T) {
+	pass := "pass"
+	baseline := []ExampleOutcome{{DatasetExampleID: uuid.New(), Verdict: &pass}}
+	result := Evaluate(baseline, nil, Thresholds{})
+	if result.Pass {
+		t.Fatal("Pass = true, want false")
+	}
+	if len(result.FailedThresholds) != 1 || result.FailedThresholds[0] != "no_candidate_outcomes" {
+		t.Fatalf("FailedThresholds = %#v", result.FailedThresholds)
+	}
+}
+
+func TestEvaluateIgnoresScoreRegressionOnAlreadyFailingBaseline(t *testing.T) {
+	exampleID := uuid.New()
+	fail := "fail"
+	baseline := []ExampleOutcome{{DatasetExampleID: exampleID, Verdict: &fail, NormalizedScore: f64Ptr(0.5)}}
+	candidate := []ExampleOutcome{{DatasetExampleID: exampleID, Verdict: &fail, NormalizedScore: f64Ptr(0.1)}}
+
+	result := Evaluate(baseline, candidate, Thresholds{})
+	if !result.Pass {
+		t.Fatal("Pass = false, want true")
+	}
+	if len(result.Regressions) != 0 {
+		t.Fatalf("regressions = %#v", result.Regressions)
+	}
+}

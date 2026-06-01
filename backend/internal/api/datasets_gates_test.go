@@ -26,7 +26,7 @@ func TestEvaluateDatasetGateFailsOnRegression(t *testing.T) {
 			ExampleOutcomes: gateTestJSON([]datasetgate.ExampleOutcome{{DatasetExampleID: exampleID, Verdict: &pass}}),
 		},
 		candidateOutcomes: []datasetgate.ExampleOutcome{{DatasetExampleID: exampleID, Verdict: &fail}},
-		run:               domain.Run{ID: uuid.New(), WorkspaceID: workspaceID},
+		run:               domain.Run{ID: uuid.New(), WorkspaceID: workspaceID, Status: domain.RunStatusCompleted},
 		evalRun:           repository.DatasetEvalRun{DatasetID: datasetID},
 	}
 	manager := NewDatasetManager(allowWorkspaceAuthorizer{}, repo)
@@ -40,6 +40,29 @@ func TestEvaluateDatasetGateFailsOnRegression(t *testing.T) {
 	}
 	if result.Gate.Pass {
 		t.Fatal("Gate.Pass = true, want false")
+	}
+}
+
+func TestEvaluateDatasetGateRejectsIncompleteRun(t *testing.T) {
+	workspaceID := uuid.New()
+	datasetID := uuid.New()
+	baselineID := uuid.New()
+	repo := &datasetGateFakeRepo{
+		dataset: repository.Dataset{ID: datasetID, WorkspaceID: workspaceID},
+		baseline: repository.DatasetBaseline{
+			ID: baselineID, DatasetID: datasetID,
+			ExampleOutcomes: gateTestJSON([]datasetgate.ExampleOutcome{}),
+		},
+		run:     domain.Run{ID: uuid.New(), WorkspaceID: workspaceID, Status: domain.RunStatusRunning},
+		evalRun: repository.DatasetEvalRun{DatasetID: datasetID},
+	}
+	manager := NewDatasetManager(allowWorkspaceAuthorizer{}, repo)
+
+	_, err := manager.EvaluateDatasetGate(context.Background(), datasetEvalCaller(workspaceID), EvaluateDatasetGateInput{
+		WorkspaceID: workspaceID, DatasetID: datasetID, BaselineID: baselineID, RunID: repo.run.ID,
+	})
+	if !errors.Is(err, repository.ErrDatasetGateRunNotReady) {
+		t.Fatalf("EvaluateDatasetGate() error = %v, want ErrDatasetGateRunNotReady", err)
 	}
 }
 

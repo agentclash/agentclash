@@ -86,6 +86,9 @@ func Evaluate(baseline, candidate []ExampleOutcome, thresholds Thresholds) Resul
 			})
 			continue
 		}
+		if !IsPassing(base.Verdict) {
+			continue
+		}
 		if base.NormalizedScore != nil && item.NormalizedScore != nil && *item.NormalizedScore+1e-9 < *base.NormalizedScore {
 			regressions = append(regressions, Regression{
 				DatasetExampleID: item.DatasetExampleID,
@@ -95,6 +98,14 @@ func Evaluate(baseline, candidate []ExampleOutcome, thresholds Thresholds) Resul
 				BaselineScore:    base.NormalizedScore,
 				CandidateScore:   item.NormalizedScore,
 			})
+		}
+	}
+
+	if len(candidate) == 0 {
+		return Result{
+			Pass:              false,
+			BaselinePassRate:  PassRate(baseline),
+			FailedThresholds:  []string{"no_candidate_outcomes"},
 		}
 	}
 

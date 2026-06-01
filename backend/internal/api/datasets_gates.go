@@ -120,6 +120,9 @@ func (m *DatasetManager) EvaluateDatasetGate(ctx context.Context, caller Caller,
 	if run.WorkspaceID != input.WorkspaceID {
 		return EvaluateDatasetGateResult{}, ErrForbidden
 	}
+	if run.Status != domain.RunStatusCompleted {
+		return EvaluateDatasetGateResult{}, repository.ErrDatasetGateRunNotReady
+	}
 	evalRun, err := gateRepo.GetDatasetEvalRunByRunID(ctx, input.RunID)
 	if err != nil {
 		return EvaluateDatasetGateResult{}, err
@@ -245,6 +248,8 @@ func handleDatasetGateError(w http.ResponseWriter, logger *slog.Logger, err erro
 		writeError(w, http.StatusNotFound, "dataset_baseline_not_found", "dataset baseline not found")
 	case errors.Is(err, repository.ErrRunNotFound):
 		writeError(w, http.StatusNotFound, "run_not_found", "run not found")
+	case errors.Is(err, repository.ErrDatasetGateRunNotReady):
+		writeError(w, http.StatusConflict, "run_not_ready", "run must be completed before evaluating the gate")
 	default:
 		handleDatasetError(w, logger, err)
 	}

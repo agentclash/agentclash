@@ -15,6 +15,7 @@ import (
 )
 
 var ErrDatasetBaselineNotFound = errors.New("dataset baseline not found")
+var ErrDatasetGateRunNotReady = errors.New("dataset gate run is not completed")
 
 type DatasetBaseline struct {
 	ID                       uuid.UUID       `json:"id"`

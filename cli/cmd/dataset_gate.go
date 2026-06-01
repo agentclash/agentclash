@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/spf13/cobra"
 )
@@ -19,6 +20,8 @@ func init() {
 	datasetTestCmd.Flags().Float64("min-pass-rate", 0, "Minimum pass rate required to pass the gate")
 	datasetTestCmd.Flags().Int("max-regressions", -1, "Maximum allowed regressions versus baseline")
 	datasetTestCmd.Flags().String("format", "text", "Output format: text or json")
+	datasetTestCmd.Flags().Duration("timeout", 30*time.Minute, "Maximum time to wait for an eval run started with --eval")
+	datasetTestCmd.Flags().Duration("poll-interval", 5*time.Second, "Polling interval while waiting for eval completion")
 }
 
 var datasetTestCmd = &cobra.Command{
@@ -64,6 +67,17 @@ var datasetTestCmd = &cobra.Command{
 			runID = str(run["id"])
 			if runID == "" {
 				return fmt.Errorf("dataset eval response missing run id")
+			}
+			timeout, err := cmd.Flags().GetDuration("timeout")
+			if err != nil {
+				return err
+			}
+			pollInterval, err := cmd.Flags().GetDuration("poll-interval")
+			if err != nil {
+				return err
+			}
+			if _, err := waitForCIRunCompletion(cmd, rc, runID, timeout, pollInterval); err != nil {
+				return err
 			}
 		}
 
