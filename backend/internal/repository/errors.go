@@ -23,6 +23,7 @@ var (
 	ErrRegressionSuiteNotFound               = errors.New("regression suite not found")
 	ErrRegressionCaseNotFound                = errors.New("regression case not found")
 	ErrRegressionSuiteNameConflict           = errors.New("regression suite name already exists in workspace")
+	ErrRegressionSuitePackMismatch           = errors.New("regression suite source pack mismatch")
 	ErrDatasetNotFound                       = errors.New("dataset not found")
 	ErrDatasetExampleNotFound                = errors.New("dataset example not found")
 	ErrDatasetVersionNotFound                = errors.New("dataset version not found")

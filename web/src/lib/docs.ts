@@ -343,6 +343,13 @@ export const DOCS_NAV: DocNavSection[] = [
         href: "/docs/guides/ci-cd-agent-gates",
       },
       {
+        title: "Dataset CI Gates",
+        description:
+          "Record dataset eval baselines, sync examples into regression suites, and gate CI with agentclash dataset test.",
+        slug: ["guides", "dataset-ci-gates"],
+        href: "/docs/guides/dataset-ci-gates",
+      },
+      {
         title: "CI/CD Workload Recipes",
         description:
           "Pick realistic agent CI workloads for coding, research, support, ops, and long-horizon agents.",
