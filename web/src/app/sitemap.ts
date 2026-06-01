@@ -1,5 +1,6 @@
 import type { MetadataRoute } from "next";
 import { getAllPosts } from "@/lib/blog";
+import { COMPETITORS } from "@/lib/comparison-data";
 import { DOCS_ORIGIN, getAllDocPaths } from "@/lib/docs";
 
 export default function sitemap(): MetadataRoute.Sitemap {
@@ -15,6 +16,20 @@ export default function sitemap(): MetadataRoute.Sitemap {
     changeFrequency: "weekly" as const,
     priority: docPath === "/docs" ? 0.85 : 0.75,
   }));
+  const compare = [
+    {
+      url: `${DOCS_ORIGIN}/compare`,
+      lastModified: new Date(),
+      changeFrequency: "monthly" as const,
+      priority: 0.8,
+    },
+    ...COMPETITORS.map((competitor) => ({
+      url: `${DOCS_ORIGIN}/compare/${competitor.slug}`,
+      lastModified: new Date(),
+      changeFrequency: "monthly" as const,
+      priority: 0.75,
+    })),
+  ];
   return [
     {
       url: DOCS_ORIGIN,
@@ -76,6 +91,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: "weekly",
       priority: 0.55,
     },
+    ...compare,
     ...docs,
     ...posts,
   ];

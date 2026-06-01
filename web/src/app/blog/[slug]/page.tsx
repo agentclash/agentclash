@@ -8,7 +8,7 @@ import {
   breadcrumbSchema,
 } from "@/components/marketing/json-ld";
 import { getAllSlugs, getPostBySlug } from "@/lib/blog";
-import { blogRssAlternate } from "@/lib/seo";
+import { blogRssAlternate, ogImageUrl } from "@/lib/seo";
 
 type Props = {
   params: Promise<{ slug: string }>;
@@ -24,6 +24,11 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   if (!post) return {};
   const title = `${post.title} — AgentClash`;
   const imageAlt = `${post.title} — ${post.description}`;
+  const ogImage = ogImageUrl({
+    title: post.title,
+    subtitle: post.description,
+    kind: "Blog",
+  });
 
   return {
     title,
@@ -43,7 +48,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       authors: [post.author],
       images: [
         {
-          url: "/og-image.png",
+          url: ogImage,
           width: 1200,
           height: 630,
           alt: imageAlt,
@@ -56,7 +61,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       description: post.description,
       images: [
         {
-          url: "/twitter-image.png",
+          url: ogImage,
           alt: imageAlt,
         },
       ],

@@ -1,7 +1,15 @@
 import { withAuth } from "@workos-inc/authkit-nextjs";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { JsonLd, SITE_URL, productSchema } from "@/components/marketing/json-ld";
+import {
+  JsonLd,
+  SITE_URL,
+  faqSchema,
+  organizationSchema,
+  productSchema,
+  websiteSchema,
+} from "@/components/marketing/json-ld";
+import { HOME_FAQ } from "@/lib/home-faq";
 import { AGENT_EVALUATION_FEATURES } from "@/lib/seo-features";
 import HomePage from "./landing";
 
@@ -21,19 +29,6 @@ const softwareApplicationSchema = productSchema({
   featureList: AGENT_EVALUATION_FEATURES,
 });
 
-const organizationSchema = {
-  "@context": "https://schema.org",
-  "@type": "Organization",
-  name: "AgentClash",
-  alternateName: "Agent Clash",
-  url: SITE_URL,
-  logo: `${SITE_URL}/icon.svg`,
-  sameAs: [
-    "https://github.com/agentclash/agentclash",
-    "https://www.npmjs.com/package/agentclash",
-  ],
-};
-
 export default async function RootPage() {
   const { user } = await withAuth();
   if (user) redirect("/dashboard");
@@ -41,7 +36,12 @@ export default async function RootPage() {
     <>
       <JsonLd
         id="agentclash-homepage-schema"
-        data={[softwareApplicationSchema, organizationSchema]}
+        data={[
+          softwareApplicationSchema,
+          organizationSchema(),
+          websiteSchema(),
+          faqSchema(HOME_FAQ),
+        ]}
       />
       <HomePage />
     </>

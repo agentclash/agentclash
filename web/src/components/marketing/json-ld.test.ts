@@ -3,8 +3,10 @@ import {
   articleSchema,
   blogIndexSchema,
   docsPageSchema,
+  organizationSchema,
   productSchema,
   SITE_URL,
+  websiteSchema,
 } from "./json-ld";
 
 describe("productSchema", () => {
@@ -247,5 +249,65 @@ describe("docsPageSchema", () => {
         ],
       }),
     ).toThrow("docsPageSchema faqItems are only supported for /docs");
+  });
+});
+
+describe("organizationSchema", () => {
+  it("builds a rich Organization node with site URL and social profiles", () => {
+    expect(organizationSchema()).toMatchObject({
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      name: "AgentClash",
+      url: SITE_URL,
+      sameAs: [
+        "https://github.com/agentclash/agentclash",
+        "https://www.npmjs.com/package/agentclash",
+      ],
+    });
+  });
+});
+
+describe("websiteSchema", () => {
+  it("builds a WebSite entity without a non-functional SearchAction", () => {
+    const schema = websiteSchema();
+
+    expect(schema).toMatchObject({
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      name: "AgentClash",
+      url: SITE_URL,
+      publisher: { "@type": "Organization", name: "AgentClash" },
+    });
+    expect(schema.potentialAction).toBeUndefined();
+  });
+});
+
+describe("docsPageSchema freshness dates", () => {
+  it("emits datePublished and dateModified on the TechArticle when provided", () => {
+    const schema = docsPageSchema({
+      title: "Quickstart",
+      description: "Run your first AgentClash eval.",
+      href: "/docs/getting-started/quickstart",
+      datePublished: "2026-01-01",
+      dateModified: "2026-05-01",
+    });
+    const techArticle = schema.find((node) => node["@type"] === "TechArticle");
+
+    expect(techArticle).toMatchObject({
+      datePublished: "2026-01-01",
+      dateModified: "2026-05-01",
+    });
+  });
+
+  it("omits dates when none are provided", () => {
+    const schema = docsPageSchema({
+      title: "Quickstart",
+      description: "Run your first AgentClash eval.",
+      href: "/docs/getting-started/quickstart",
+    });
+    const techArticle = schema.find((node) => node["@type"] === "TechArticle");
+
+    expect(techArticle?.datePublished).toBeUndefined();
+    expect(techArticle?.dateModified).toBeUndefined();
   });
 });

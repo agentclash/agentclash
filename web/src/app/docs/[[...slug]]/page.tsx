@@ -11,6 +11,7 @@ import {
   getDocBySlug,
   getDocNeighbors,
 } from "@/lib/docs";
+import { ogImageUrl } from "@/lib/seo";
 import { docsSchemaId } from "../docs-schema-id";
 
 type Props = {
@@ -48,6 +49,11 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const description =
     typeof doc.description === "string" ? doc.description.trim() : "";
   const imageAlt = description ? `${doc.title} — ${description}` : doc.title;
+  const ogImage = ogImageUrl({
+    title: doc.title,
+    subtitle: description || undefined,
+    kind: "Docs",
+  });
 
   return {
     title,
@@ -64,7 +70,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       siteName: "AgentClash",
       images: [
         {
-          url: "/og-image.png",
+          url: ogImage,
           width: 1200,
           height: 630,
           alt: imageAlt,
@@ -77,7 +83,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       description: doc.description,
       images: [
         {
-          url: "/twitter-image.png",
+          url: ogImage,
           alt: imageAlt,
         },
       ],
@@ -109,6 +115,8 @@ export default async function DocsPage({ params }: Props) {
           description: doc.description,
           href: doc.href,
           faqItems: isHome ? DOCS_HOME_FAQ : undefined,
+          datePublished: doc.datePublished,
+          dateModified: doc.dateModified,
         })}
       />
 

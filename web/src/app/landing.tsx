@@ -19,6 +19,8 @@ import { PricingBlock } from "@/components/marketing/pricing-block";
 import { ExpandedCardsBlock } from "@/components/marketing/expanded-cards-block";
 import { TrackBox } from "@/components/marketing/track-box";
 import { TryCliBanner } from "@/components/marketing/try-cli-banner";
+import { COMPARISON_COLUMNS, COMPARISON_ROWS } from "@/lib/comparison-data";
+import { HOME_FAQ } from "@/lib/home-faq";
 
 const DEMO_LINK = "atharva-kanherkar-epgztu/agentclash-demo";
 const DEMO_BUTTON_CONFIG = JSON.stringify({ layout: "month_view" });
@@ -1429,63 +1431,8 @@ const LANDING_FEATURES: Array<{
   },
 ];
 
-type MarkKind = "yes" | "partial" | "no";
-
-const COMPARISON_COLUMNS: Array<{
-  name: string;
-  tag: string;
-  highlight?: boolean;
-}> = [
-  { name: "AgentClash", tag: "agent eval", highlight: true },
-  { name: "Braintrust", tag: "prompt eval" },
-  { name: "LangSmith", tag: "prompt eval" },
-  { name: "Promptfoo", tag: "prompt eval" },
-  { name: "Langfuse", tag: "prompt eval" },
-  { name: "Arize Phoenix", tag: "prompt eval" },
-  { name: "OpenAI Evals", tag: "prompt eval" },
-];
-
-const COMPARISON_ROWS: Array<{
-  label: string;
-  sub: string;
-  cells: readonly MarkKind[];
-}> = [
-  {
-    label: "Multi-turn agent loops",
-    sub: "Think → tool → observe → repeat, for minutes, with a fresh environment. Not one prompt → one response.",
-    cells: ["yes", "partial", "partial", "no", "partial", "partial", "partial"],
-  },
-  {
-    label: "Sandboxed tool execution",
-    sub: "A fresh microVM per agent — real files, real shell, real network, real side effects.",
-    cells: ["yes", "no", "no", "no", "no", "no", "no"],
-  },
-  {
-    label: "Head-to-head concurrent race",
-    sub: "Every model runs the same task at the same time, on the same budget. No staggered runs, no warm caches.",
-    cells: ["yes", "no", "no", "no", "no", "no", "no"],
-  },
-  {
-    label: "Trajectory scoring",
-    sub: "Judges the path, not just the final answer — tool-choice efficiency, recovery from error, scope discipline.",
-    cells: ["yes", "partial", "partial", "no", "partial", "partial", "no"],
-  },
-  {
-    label: "Cross-provider tool-call normalisation",
-    sub: "One schema across OpenAI, Anthropic, Gemini, xAI, Mistral, OpenRouter. Errors classified, retries sane.",
-    cells: ["yes", "partial", "partial", "partial", "partial", "partial", "no"],
-  },
-  {
-    label: "Four-vantage composite verdict",
-    sub: "Deterministic + mathematic + behavioural + LLM, with consensus aggregation and weights you control.",
-    cells: ["yes", "partial", "partial", "partial", "partial", "partial", "partial"],
-  },
-  {
-    label: "Failures auto-promote to regression",
-    sub: "Flunked traces freeze into permanent tests and replay in every future race, by default.",
-    cells: ["yes", "partial", "partial", "partial", "partial", "partial", "no"],
-  },
-];
+// COMPARISON_COLUMNS and COMPARISON_ROWS now live in @/lib/comparison-data,
+// shared with the /compare pages so the matrix never drifts between surfaces.
 
 export default function HomePage() {
   const { user, loading: authLoading } = useAuth();
@@ -2169,6 +2116,16 @@ export default function HomePage() {
             <span className="text-white/30">—</span>&nbsp;&nbsp;not a core
             capability
           </p>
+
+          <p className="mt-8 text-sm">
+            <Link
+              href="/compare"
+              className="text-white/65 underline-offset-4 transition-colors hover:text-white hover:underline"
+            >
+              See the full comparison — AgentClash vs Braintrust, LangSmith,
+              Promptfoo, Langfuse, Arize Phoenix &amp; OpenAI Evals →
+            </Link>
+          </p>
         </div>
       </section>
 
@@ -2377,6 +2334,27 @@ export default function HomePage() {
             {/* Was <TransparentFrame /> (flat 2D SVG, still defined above). */}
             {/* To revert if the 3D version doesn't land, swap this line.   */}
             <TrackBox />
+          </div>
+        </div>
+      </section>
+
+      {/* ── FAQ ─────────────────────────────────────────────────── */}
+      <section className="border-t border-white/[0.06] px-8 sm:px-12 py-32 sm:py-44">
+        <div className="mx-auto max-w-[920px]">
+          <h2 className="font-[family-name:var(--font-display)] font-normal tracking-[-0.03em] leading-[1.05] text-[clamp(2.25rem,5vw,4rem)]">
+            Questions, answered.
+          </h2>
+          <div className="mt-12 divide-y divide-white/[0.08] border-y border-white/[0.08]">
+            {HOME_FAQ.map((item) => (
+              <div key={item.question} className="py-7">
+                <h3 className="text-lg font-medium leading-snug text-white/90">
+                  {item.question}
+                </h3>
+                <p className="mt-3 text-[15px] leading-[1.7] text-white/55">
+                  {item.answer}
+                </p>
+              </div>
+            ))}
           </div>
         </div>
       </section>

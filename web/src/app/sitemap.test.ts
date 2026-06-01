@@ -97,4 +97,14 @@ describe("sitemap", () => {
       priority: 0.7,
     });
   });
+
+  it("includes the comparison hub and per-competitor pages", () => {
+    const entries = sitemap();
+    const urls = new Set(entries.map((entry) => entry.url));
+
+    expect(urls.has("https://www.agentclash.dev/compare")).toBe(true);
+    expect(
+      urls.has("https://www.agentclash.dev/compare/agentclash-vs-langsmith"),
+    ).toBe(true);
+  });
 });

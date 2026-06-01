@@ -563,4 +563,20 @@ describe("agent skill docs", () => {
     expect(bundle).toContain("name: agentclash-runtime-resources-setup");
     expect(bundle).toContain("credential_reference: \"workspace-secret://KEY\"");
   });
+
+  it("includes a Highlights block and the comparison page in llms.txt", () => {
+    const index = buildLlmsIndex("https://example.test");
+
+    expect(index).toContain("## Highlights");
+    expect(index).toContain("Agent evaluation, not prompt evaluation");
+    expect(index).toContain("https://example.test/compare");
+  });
+
+  it("lists the comparison hub as a public product page in search data", () => {
+    const index = getDocsSearchIndex();
+    const compare = index.find((item) => item.href === "/compare");
+
+    expect(compare?.title).toBe("AgentClash vs prompt-eval tools");
+    expect(compare?.searchText).toContain("alternative");
+  });
 });

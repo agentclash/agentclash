@@ -36,6 +36,12 @@ const BACKEND_ENV_FILE = path.join(REPO_ROOT, "backend", ".env.example");
 
 export const DOCS_ORIGIN = "https://www.agentclash.dev";
 
+// Build/generation timestamp. Used as an honest `dateModified` fallback for docs
+// that carry no frontmatter date — these pages (including generated CLI/config
+// references and agent-skill pages) are regenerated from source on each build,
+// so "last generated" is a truthful freshness signal for answer engines.
+export const SITE_GENERATED_AT = new Date().toISOString();
+
 type PublicProductPage = {
   title: string;
   href: string;
@@ -59,6 +65,14 @@ const PUBLIC_PRODUCT_PAGES: PublicProductPage[] = [
       "Public page for baseline-versus-candidate agent regression testing, pull request gates, and release evidence.",
     searchKeywords:
       "AI agent regression testing agent evaluation CI gates pull request gates release gates baseline candidate comparisons replay evidence scorecards challenge packs agent eval regression suite",
+  },
+  {
+    title: "AgentClash vs prompt-eval tools",
+    href: "/compare",
+    description:
+      "Compare AgentClash with Braintrust, LangSmith, Promptfoo, Langfuse, Arize Phoenix, and OpenAI Evals — agent evaluation versus prompt evaluation.",
+    searchKeywords:
+      "compare comparison alternative alternatives AgentClash vs Braintrust LangSmith Promptfoo Langfuse Arize Phoenix OpenAI Evals agent evaluation prompt evaluation best AI agent eval tools",
   },
 ];
 
@@ -95,6 +109,8 @@ export type DocPage = {
   description: string;
   content: string;
   sectionTitle?: string;
+  datePublished?: string;
+  dateModified?: string;
   headings: DocHeading[];
 };
 
@@ -890,6 +906,7 @@ function createDocPage(
   description: string,
   content: string,
   sectionTitle?: string,
+  dates?: { datePublished?: string; dateModified?: string },
 ): DocPage {
   return {
     slug,
@@ -898,6 +915,9 @@ function createDocPage(
     description,
     content,
     sectionTitle,
+    datePublished: dates?.datePublished,
+    dateModified:
+      dates?.dateModified ?? dates?.datePublished ?? SITE_GENERATED_AT,
     headings: extractHeadings(content),
   };
 }
@@ -910,12 +930,17 @@ function getFileDocBySlug(slug: string[]) {
   const { data, content } = matter(raw);
   const href = slugToHref(slug);
 
+  const datePublished = typeof data.date === "string" ? data.date : undefined;
+  const dateModified =
+    typeof data.updated === "string" ? data.updated : datePublished;
+
   return createDocPage(
     slug,
     data.title as string,
     data.description as string,
     content,
     findSectionTitle(href),
+    { datePublished, dateModified },
   );
 }
 
@@ -1597,6 +1622,15 @@ export function buildLlmsIndex(origin = DOCS_ORIGIN) {
     "",
     "Use this index when you want the shortest machine-readable map of the public docs and selected product pages. Fetch `/llms-full.txt` for the bundled corpus, or use the `/docs-md/...` links below for page-level markdown exports.",
     "",
+    "## Highlights",
+    "",
+    "- Open-source (MIT), self-hostable AI agent evaluation platform; CLI on npm as `agentclash`.",
+    "- Races agents head-to-head on the same task, tools, and time budget in a fresh per-agent sandbox (microVM).",
+    "- 300+ models via OpenRouter, plus first-class OpenAI, Anthropic, Gemini, xAI, Mistral, and OpenRouter providers.",
+    "- Scores the whole trajectory — correctness, cost, latency, and tool strategy — with replay evidence and scorecards.",
+    "- Promotes failures into reusable regression tests and gates CI on baseline-versus-candidate comparisons.",
+    `- Agent evaluation, not prompt evaluation — compare AgentClash with Braintrust, LangSmith, Promptfoo, Langfuse, Arize Phoenix, and OpenAI Evals at ${origin}/compare.`,
+    "",
     "## Core entrypoints",
     "",
     `- [Docs home](${origin}/docs-md) - overview, navigation, and starting points.`,
@@ -1662,6 +1696,8 @@ export function buildLlmsFull(origin = DOCS_ORIGIN) {
     `Machine-readable index: ${origin}/llms.txt`,
     "",
     "This file concatenates the currently shipped AgentClash docs pages and selected product page links into one markdown-oriented bundle for assistants, coding agents, and local retrieval pipelines.",
+    "",
+    "AgentClash is an open-source (MIT) AI agent evaluation platform: it races agents head-to-head on the same task, tools, and time budget in a fresh per-agent sandbox, scores the whole trajectory, and gates CI on regressions. It is agent evaluation, not prompt evaluation.",
     "",
     "## Public product pages",
     "",
