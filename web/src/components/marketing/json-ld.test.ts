@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   articleSchema,
   blogIndexSchema,
+  changelogIndexSchema,
   docsPageSchema,
   organizationSchema,
   productSchema,
@@ -87,6 +88,66 @@ describe("blogIndexSchema", () => {
           },
         },
       ],
+    });
+  });
+});
+
+describe("changelogIndexSchema", () => {
+  it("builds breadcrumb, WebPage, ItemList, and FAQ structured data", () => {
+    const schema = changelogIndexSchema(
+      [
+        {
+          id: "2026-05-25",
+          label: "May 25 – Jun 01, 2026",
+          headline: "Datasets and /try demos",
+          endDate: "2026-06-01",
+          entryCount: 12,
+        },
+      ],
+      [
+        {
+          question: "What is the AgentClash changelog?",
+          answer: "Release notes grouped every ten days.",
+        },
+      ],
+    );
+
+    expect(schema).toHaveLength(4);
+    expect(schema[0]).toMatchObject({
+      "@type": "BreadcrumbList",
+    });
+    expect(schema[0].itemListElement).toEqual([
+      {
+        "@type": "ListItem",
+        position: 1,
+        name: "Home",
+        item: `${SITE_URL}/`,
+      },
+      {
+        "@type": "ListItem",
+        position: 2,
+        name: "Changelog",
+        item: `${SITE_URL}/changelog`,
+      },
+    ]);
+    expect(schema[1]).toMatchObject({
+      "@type": "WebPage",
+      url: `${SITE_URL}/changelog`,
+      dateModified: "2026-06-01",
+    });
+    expect(schema[2]).toMatchObject({
+      "@type": "ItemList",
+      numberOfItems: 1,
+      itemListElement: [
+        {
+          "@type": "ListItem",
+          position: 1,
+          url: `${SITE_URL}/changelog#2026-05-25`,
+        },
+      ],
+    });
+    expect(schema[3]).toMatchObject({
+      "@type": "FAQPage",
     });
   });
 });
