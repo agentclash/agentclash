@@ -2239,6 +2239,11 @@ export interface CreateDatasetVersionInput {
   label?: string;
 }
 
+export interface DatasetVersionDetail {
+  version: DatasetVersion;
+  examples: DatasetExample[];
+}
+
 export interface DatasetImportRowError {
   row: number;
   field?: string;

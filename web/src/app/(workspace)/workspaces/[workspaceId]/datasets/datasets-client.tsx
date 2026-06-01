@@ -5,9 +5,7 @@ import { Database } from "lucide-react";
 
 import type { Dataset } from "@/lib/api/types";
 import { usePaginatedApiQuery } from "@/lib/api/swr";
-import { workspaceResourceKeys } from "@/lib/workspace-resource";
 import { WorkspaceListLoading } from "@/components/app-shell/workspace-loading";
-import { CreateResourceDialog } from "@/components/infra/create-resource-dialog";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import {
@@ -18,6 +16,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { CreateDatasetDialog } from "./create-dataset-dialog";
 
 export function DatasetsClient({ workspaceId }: { workspaceId: string }) {
   const { data, error, isLoading } = usePaginatedApiQuery<Dataset>(
@@ -33,37 +32,7 @@ export function DatasetsClient({ workspaceId }: { workspaceId: string }) {
     <div>
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-lg font-semibold tracking-tight">Datasets</h1>
-        <CreateResourceDialog
-          title="New dataset"
-          description="Create a workspace dataset for eval examples and CI baselines."
-          endpoint={`/v1/workspaces/${workspaceId}/datasets`}
-          buttonLabel="New dataset"
-          invalidateKeys={[workspaceResourceKeys.datasets(workspaceId)]}
-          fields={[
-            {
-              key: "slug",
-              label: "Slug",
-              placeholder: "refund-recovery-v1",
-              required: true,
-            },
-            {
-              key: "name",
-              label: "Name",
-              placeholder: "Refund recovery v1",
-              required: true,
-            },
-            {
-              key: "description",
-              label: "Description",
-              placeholder: "Optional description",
-            },
-            {
-              key: "input_schema",
-              label: "Input schema (JSON)",
-              type: "json",
-            },
-          ]}
-        />
+        <CreateDatasetDialog workspaceId={workspaceId} />
       </div>
 
       {error ? (

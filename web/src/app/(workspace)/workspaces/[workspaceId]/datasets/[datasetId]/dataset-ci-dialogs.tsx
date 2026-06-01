@@ -4,23 +4,29 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
 import { toast } from "sonner";
-import { Flag, Link2, Loader2, RefreshCw } from "lucide-react";
+import { Flag, FlaskConical, Link2, Loader2, RefreshCw } from "lucide-react";
 
 import {
   createDatasetBaseline,
   evaluateDatasetGate,
+  startDatasetEval,
   syncDatasetRegressionSuite,
 } from "@/lib/api/datasets";
 import { createApiClient } from "@/lib/api/client";
 import { ApiError } from "@/lib/api/errors";
+import { downloadDatasetGateJUnit } from "@/lib/datasets/gate-junit";
+import { waitForRunCompletion } from "@/lib/datasets/wait-for-run";
 import type {
+  AgentDeployment,
   ChallengePack,
   ChallengePackVersion,
+  CreateRunResponse,
   DatasetBaseline,
   DatasetRegressionSuiteLink,
   DatasetVersion,
+  EvaluateDatasetGateResponse,
+  Run,
 } from "@/lib/api/types";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -31,6 +37,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { JsonField } from "@/components/ui/json-field";
+import { GateResultPanel } from "../dataset-ui-shared";
 
 const inputClass =
   "block w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/50";
@@ -79,6 +87,10 @@ export function SyncRegressionDialog({
         if (versions.length > 0) {
           setVersionId(versions[versions.length - 1].id);
         }
+      } catch (err) {
+        toast.error(
+          err instanceof ApiError ? err.message : "Failed to load challenge packs",
+        );
       } finally {
         setLoading(false);
       }
@@ -283,11 +295,8 @@ export function EvaluateGateDialog({
   const [minPassRate, setMinPassRate] = useState("");
   const [maxRegressions, setMaxRegressions] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [result, setResult] = useState<{
-    pass: boolean;
-    pass_rate: number;
-    regression_count: number;
-  } | null>(null);
+  const [gateResponse, setGateResponse] =
+    useState<EvaluateDatasetGateResponse | null>(null);
 
   useEffect(() => {
     if (open && baselines.length > 0 && !baselineId) {
@@ -301,7 +310,7 @@ export function EvaluateGateDialog({
       return;
     }
     setSubmitting(true);
-    setResult(null);
+    setGateResponse(null);
     try {
       const token = await getAccessToken();
       const api = createApiClient(token);
@@ -311,7 +320,7 @@ export function EvaluateGateDialog({
         min_pass_rate: minPassRate ? Number(minPassRate) : undefined,
         max_regressions: maxRegressions ? Number(maxRegressions) : undefined,
       });
-      setResult(res.gate);
+      setGateResponse(res);
       toast.success(res.gate.pass ? "Gate passed" : "Gate failed");
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Gate evaluation failed");
@@ -326,14 +335,14 @@ export function EvaluateGateDialog({
         <Flag data-icon="inline-start" className="size-4" />
         Evaluate gate
       </DialogTrigger>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Evaluate CI gate</DialogTitle>
           <DialogDescription>
             Compare a candidate run against a recorded baseline.
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-3">
+        <div className="space-y-3 max-h-[70vh] overflow-y-auto">
           <FieldSelect
             label="Baseline"
             value={baselineId}
@@ -356,21 +365,14 @@ export function EvaluateGateDialog({
             onChange={setMaxRegressions}
             optional
           />
-          {result && (
-            <div className="rounded-md border border-border p-3 text-sm space-y-1">
-              <div className="flex items-center gap-2">
-                <Badge variant={result.pass ? "default" : "destructive"}>
-                  {result.pass ? "PASS" : "FAIL"}
-                </Badge>
-                <span className="text-muted-foreground">
-                  Pass rate {(result.pass_rate * 100).toFixed(1)}%
-                </span>
-              </div>
-              <p className="text-muted-foreground">
-                {result.regression_count} regressions
-              </p>
-            </div>
-          )}
+          {gateResponse ? (
+            <GateResultPanel
+              gate={gateResponse.gate}
+              onDownloadJUnit={() =>
+                downloadDatasetGateJUnit(gateResponse, datasetId)
+              }
+            />
+          ) : null}
         </div>
         <DialogFooter>
           <Button onClick={handleEvaluate} disabled={submitting}>
@@ -378,6 +380,344 @@ export function EvaluateGateDialog({
               <Loader2 data-icon="inline-start" className="size-4 animate-spin" />
             )}
             Evaluate
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+export function DatasetTestDialog({
+  workspaceId,
+  datasetId,
+  versions,
+  baselines,
+}: Pick<
+  DatasetCiDialogsProps,
+  "workspaceId" | "datasetId" | "versions" | "baselines"
+>) {
+  const router = useRouter();
+  const { getAccessToken } = useAccessToken();
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [packs, setPacks] = useState<ChallengePack[]>([]);
+  const [packVersions, setPackVersions] = useState<ChallengePackVersion[]>([]);
+  const [deployments, setDeployments] = useState<AgentDeployment[]>([]);
+  const [versionId, setVersionId] = useState("");
+  const [packId, setPackId] = useState("");
+  const [packVersionId, setPackVersionId] = useState("");
+  const [challengeKey, setChallengeKey] = useState("");
+  const [deploymentIds, setDeploymentIds] = useState<string[]>([]);
+  const [runName, setRunName] = useState("");
+  const [mappingJson, setMappingJson] = useState("");
+  const [mappingError, setMappingError] = useState<string>();
+  const [baselineId, setBaselineId] = useState("");
+  const [candidateRunId, setCandidateRunId] = useState("");
+  const [minPassRate, setMinPassRate] = useState("");
+  const [maxRegressions, setMaxRegressions] = useState("");
+  const [runExistingCandidate, setRunExistingCandidate] = useState(false);
+  const [phase, setPhase] = useState<
+    "config" | "eval" | "gate" | "done"
+  >("config");
+  const [activeRun, setActiveRun] = useState<Run | CreateRunResponse | null>(
+    null,
+  );
+  const [gateResponse, setGateResponse] =
+    useState<EvaluateDatasetGateResponse | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    setPhase("config");
+    setActiveRun(null);
+    setGateResponse(null);
+    setCandidateRunId("");
+    setRunExistingCandidate(false);
+    void (async () => {
+      setLoading(true);
+      try {
+        const token = await getAccessToken();
+        const api = createApiClient(token);
+        const [packsRes, deploymentsRes] = await Promise.all([
+          api.get<{ items: ChallengePack[] }>(
+            `/v1/workspaces/${workspaceId}/challenge-packs`,
+          ),
+          api.get<{ items: AgentDeployment[] }>(
+            `/v1/workspaces/${workspaceId}/agent-deployments`,
+          ),
+        ]);
+        setPacks(packsRes.items);
+        setDeployments(
+          deploymentsRes.items.filter((item) => item.status === "active"),
+        );
+        if (versions.length > 0) {
+          setVersionId(versions[versions.length - 1].id);
+        }
+        if (baselines.length > 0) {
+          setBaselineId(baselines[0].id);
+        }
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [baselines, getAccessToken, open, versions, workspaceId]);
+
+  useEffect(() => {
+    if (!packId) return;
+    const pack = packs.find((item) => item.id === packId);
+    const runnable = (pack?.versions ?? []).filter(
+      (item) => item.lifecycle_status === "runnable",
+    );
+    setPackVersions(runnable);
+    setPackVersionId(runnable[runnable.length - 1]?.id ?? "");
+  }, [packId, packs]);
+
+  function toggleDeployment(id: string) {
+    setDeploymentIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id],
+    );
+  }
+
+  async function handleRunTest() {
+    if (!baselineId) {
+      toast.error("Select a baseline");
+      return;
+    }
+    if (runExistingCandidate) {
+      if (!candidateRunId.trim()) {
+        toast.error("Enter a candidate run ID");
+        return;
+      }
+    } else if (
+      !versionId ||
+      !packVersionId ||
+      !challengeKey.trim() ||
+      deploymentIds.length === 0
+    ) {
+      toast.error("Fill in eval version, pack, challenge key, and deployments");
+      return;
+    }
+
+    let mapping: Record<string, unknown> | undefined;
+    if (!runExistingCandidate && mappingJson.trim()) {
+      try {
+        const parsed = JSON.parse(mappingJson) as unknown;
+        if (
+          parsed == null ||
+          typeof parsed !== "object" ||
+          Array.isArray(parsed)
+        ) {
+          setMappingError("Mapping must be a JSON object");
+          return;
+        }
+        mapping = parsed as Record<string, unknown>;
+      } catch {
+        setMappingError("Invalid JSON");
+        return;
+      }
+    }
+
+    setSubmitting(true);
+    setGateResponse(null);
+    try {
+      const token = await getAccessToken();
+      const api = createApiClient(token);
+      let runId = candidateRunId.trim();
+
+      if (!runExistingCandidate) {
+        setPhase("eval");
+        const evalResult = await startDatasetEval(api, workspaceId, datasetId, {
+          version_id: versionId,
+          challenge_pack_version_id: packVersionId,
+          challenge_key: challengeKey.trim(),
+          agent_deployment_ids: deploymentIds,
+          name: runName.trim() || undefined,
+          mapping,
+        });
+        setActiveRun(evalResult.run);
+        const finished = await waitForRunCompletion(api, evalResult.run.id, {
+          onStatus: setActiveRun,
+        });
+        setActiveRun(finished);
+        if (finished.status !== "completed") {
+          toast.error(`Eval run ended with status ${finished.status}`);
+          return;
+        }
+        runId = finished.id;
+      }
+
+      setPhase("gate");
+      const gateResult = await evaluateDatasetGate(api, workspaceId, datasetId, {
+        baseline_id: baselineId,
+        run_id: runId,
+        min_pass_rate: minPassRate ? Number(minPassRate) : undefined,
+        max_regressions: maxRegressions ? Number(maxRegressions) : undefined,
+      });
+      setGateResponse(gateResult);
+      setPhase("done");
+      toast.success(gateResult.gate.pass ? "Dataset test passed" : "Dataset test failed");
+      router.refresh();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Dataset test failed");
+      setPhase("config");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger render={<Button size="sm" variant="outline" />}>
+        <FlaskConical data-icon="inline-start" className="size-4" />
+        Run CI test
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Run dataset CI test</DialogTitle>
+          <DialogDescription>
+            Start an eval, wait for completion, then evaluate the gate and export
+            JUnit if needed.
+          </DialogDescription>
+        </DialogHeader>
+        {loading ? (
+          <div className="flex justify-center py-8">
+            <Loader2 className="size-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : (
+          <div className="space-y-4 max-h-[70vh] overflow-y-auto">
+            <FieldSelect
+              label="Baseline"
+              value={baselineId}
+              onChange={setBaselineId}
+              options={baselines.map((baseline) => ({
+                value: baseline.id,
+                label: baseline.label ?? baseline.id.slice(0, 8),
+              }))}
+            />
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={runExistingCandidate}
+                onChange={(e) => setRunExistingCandidate(e.target.checked)}
+              />
+              Use an existing candidate run instead of starting a new eval
+            </label>
+            {runExistingCandidate ? (
+              <TextField
+                label="Candidate run ID"
+                value={candidateRunId}
+                onChange={setCandidateRunId}
+              />
+            ) : (
+              <>
+                <FieldSelect
+                  label="Dataset version"
+                  value={versionId}
+                  onChange={setVersionId}
+                  options={versions.map((version) => ({
+                    value: version.id,
+                    label: `v${version.version_number}${version.label ? ` — ${version.label}` : ""}`,
+                  }))}
+                />
+                <FieldSelect
+                  label="Challenge pack"
+                  value={packId}
+                  onChange={setPackId}
+                  options={packs.map((pack) => ({
+                    value: pack.id,
+                    label: pack.name,
+                  }))}
+                />
+                <FieldSelect
+                  label="Pack version"
+                  value={packVersionId}
+                  onChange={setPackVersionId}
+                  disabled={!packId}
+                  options={packVersions.map((version) => ({
+                    value: version.id,
+                    label: `v${version.version_number}`,
+                  }))}
+                />
+                <TextField
+                  label="Challenge key"
+                  value={challengeKey}
+                  onChange={setChallengeKey}
+                />
+                <TextField
+                  label="Run name"
+                  value={runName}
+                  onChange={setRunName}
+                  optional
+                />
+                <JsonField
+                  label="Field mapping"
+                  value={mappingJson}
+                  onChange={setMappingJson}
+                  error={mappingError}
+                  rows={4}
+                />
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium">
+                    Agent deployments
+                  </label>
+                  <div className="max-h-28 space-y-2 overflow-y-auto rounded-lg border border-border p-2">
+                    {deployments.map((deployment) => (
+                      <label
+                        key={deployment.id}
+                        className="flex items-center gap-2 text-sm"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={deploymentIds.includes(deployment.id)}
+                          onChange={() => toggleDeployment(deployment.id)}
+                        />
+                        {deployment.name}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
+            <TextField
+              label="Min pass rate (0–1)"
+              value={minPassRate}
+              onChange={setMinPassRate}
+              optional
+            />
+            <TextField
+              label="Max regressions"
+              value={maxRegressions}
+              onChange={setMaxRegressions}
+              optional
+            />
+            {phase !== "config" && activeRun ? (
+              <div className="rounded-lg border border-border p-3 text-sm">
+                <p className="font-medium">Eval run {activeRun.id.slice(0, 8)}</p>
+                <p className="mt-1 text-muted-foreground">
+                  Status: {activeRun.status}
+                </p>
+              </div>
+            ) : null}
+            {gateResponse ? (
+              <GateResultPanel
+                gate={gateResponse.gate}
+                onDownloadJUnit={() =>
+                  downloadDatasetGateJUnit(gateResponse, datasetId)
+                }
+              />
+            ) : null}
+          </div>
+        )}
+        <DialogFooter>
+          <Button onClick={handleRunTest} disabled={submitting || loading}>
+            {submitting && (
+              <Loader2 data-icon="inline-start" className="size-4 animate-spin" />
+            )}
+            {phase === "eval"
+              ? "Running eval…"
+              : phase === "gate"
+                ? "Evaluating gate…"
+                : "Run test"}
           </Button>
         </DialogFooter>
       </DialogContent>

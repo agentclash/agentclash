@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
 import { toast } from "sonner";
+import { Loader2 } from "lucide-react";
 
 import type {
   Dataset,
@@ -17,6 +19,14 @@ import { createApiClient } from "@/lib/api/client";
 import { ApiError } from "@/lib/api/errors";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
 import {
@@ -32,6 +42,7 @@ import { DeleteResourceButton } from "@/components/infra/delete-resource-button"
 
 import {
   CreateBaselineDialog,
+  DatasetTestDialog,
   EvaluateGateDialog,
   SyncRegressionDialog,
 } from "./dataset-ci-dialogs";
@@ -45,6 +56,7 @@ import { ImportTracesDialog } from "./import-traces-dialog";
 import { StartEvalDialog } from "./start-eval-dialog";
 import { StartGenerationDialog } from "./start-generation-dialog";
 import { TraceCandidatesPanel } from "./trace-candidates-panel";
+import { VersionDetailTrigger } from "./version-detail-sheet";
 
 export function DatasetDetailClient({
   dataset,
@@ -61,30 +73,7 @@ export function DatasetDetailClient({
   regressionLink?: DatasetRegressionSuiteLink;
   workspaceId: string;
 }) {
-  const router = useRouter();
-  const { getAccessToken } = useAccessToken();
   const datasetEndpoint = `/v1/workspaces/${workspaceId}/datasets/${dataset.id}`;
-
-  async function handleArchiveDataset() {
-    if (
-      !confirm(
-        `Archive dataset "${dataset.name}"? It will no longer appear in lists.`,
-      )
-    ) {
-      return;
-    }
-    try {
-      const token = await getAccessToken();
-      const api = createApiClient(token);
-      await deleteDataset(api, workspaceId, dataset.id);
-      toast.success("Dataset archived");
-      router.push(`/workspaces/${workspaceId}/datasets`);
-    } catch (err) {
-      toast.error(
-        err instanceof ApiError ? err.message : "Failed to archive dataset",
-      );
-    }
-  }
 
   return (
     <div className="space-y-6">
@@ -118,9 +107,11 @@ export function DatasetDetailClient({
               datasetId={dataset.id}
               versions={versions}
             />
-            <Button size="sm" variant="ghost" onClick={handleArchiveDataset}>
-              Archive
-            </Button>
+            <ArchiveDatasetButton
+              workspaceId={workspaceId}
+              datasetId={dataset.id}
+              datasetName={dataset.name}
+            />
           </div>
         }
       />
@@ -144,6 +135,13 @@ export function DatasetDetailClient({
               {dataset.input_schema_enforced ? "enforced" : "optional"}
             </Badge>
           </MetaRow>
+          {dataset.default_challenge_pack_version_id ? (
+            <MetaRow label="Default pack version">
+              <code className="text-xs font-[family-name:var(--font-mono)]">
+                {dataset.default_challenge_pack_version_id.slice(0, 8)}
+              </code>
+            </MetaRow>
+          ) : null}
         </dl>
       </div>
 
@@ -213,6 +211,12 @@ export function DatasetDetailClient({
                             workspaceId={workspaceId}
                             datasetId={dataset.id}
                             example={example}
+                            trigger="view"
+                          />
+                          <ExampleFormDialog
+                            workspaceId={workspaceId}
+                            datasetId={dataset.id}
+                            example={example}
                             trigger="edit"
                           />
                           {example.status === "active" && (
@@ -253,6 +257,7 @@ export function DatasetDetailClient({
                     <TableHead>Examples</TableHead>
                     <TableHead>Checksum</TableHead>
                     <TableHead>Created</TableHead>
+                    <TableHead className="w-12" />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -272,6 +277,13 @@ export function DatasetDetailClient({
                       </TableCell>
                       <TableCell className="text-muted-foreground">
                         {new Date(version.created_at).toLocaleDateString()}
+                      </TableCell>
+                      <TableCell>
+                        <VersionDetailTrigger
+                          workspaceId={workspaceId}
+                          datasetId={dataset.id}
+                          version={version}
+                        />
                       </TableCell>
                     </TableRow>
                   ))}
@@ -317,6 +329,12 @@ export function DatasetDetailClient({
             <EvaluateGateDialog
               workspaceId={workspaceId}
               datasetId={dataset.id}
+              baselines={baselines}
+            />
+            <DatasetTestDialog
+              workspaceId={workspaceId}
+              datasetId={dataset.id}
+              versions={versions}
               baselines={baselines}
             />
           </div>
@@ -411,6 +429,77 @@ export function DatasetDetailClient({
         </TabsContent>
       </Tabs>
     </div>
+  );
+}
+
+function ArchiveDatasetButton({
+  workspaceId,
+  datasetId,
+  datasetName,
+}: {
+  workspaceId: string;
+  datasetId: string;
+  datasetName: string;
+}) {
+  const router = useRouter();
+  const { getAccessToken } = useAccessToken();
+  const [open, setOpen] = useState(false);
+  const [archiving, setArchiving] = useState(false);
+
+  async function handleArchive() {
+    setArchiving(true);
+    try {
+      const token = await getAccessToken();
+      const api = createApiClient(token);
+      await deleteDataset(api, workspaceId, datasetId);
+      toast.success("Dataset archived");
+      setOpen(false);
+      router.push(`/workspaces/${workspaceId}/datasets`);
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError ? err.message : "Failed to archive dataset",
+      );
+    } finally {
+      setArchiving(false);
+    }
+  }
+
+  return (
+    <>
+      <Button size="sm" variant="ghost" onClick={() => setOpen(true)}>
+        Archive
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Archive dataset</DialogTitle>
+            <DialogDescription>
+              Archive &ldquo;{datasetName}&rdquo;? It will no longer appear in
+              lists or be usable in new runs.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setOpen(false)}
+              disabled={archiving}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleArchive}
+              disabled={archiving}
+            >
+              {archiving ? (
+                <Loader2 data-icon="inline-start" className="size-4 animate-spin" />
+              ) : null}
+              Archive
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 

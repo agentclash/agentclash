@@ -114,6 +114,7 @@ export {
   exportDatasetBlob,
   getDataset,
   getDatasetGenerationJob,
+  getDatasetVersion,
   getDatasetRegressionSuiteLink,
   importDataset,
   importDatasetTraces,

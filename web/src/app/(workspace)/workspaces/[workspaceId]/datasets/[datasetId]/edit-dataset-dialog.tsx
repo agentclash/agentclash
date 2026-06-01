@@ -9,7 +9,7 @@ import { Loader2, Pencil } from "lucide-react";
 import { patchDataset } from "@/lib/api/datasets";
 import { createApiClient } from "@/lib/api/client";
 import { ApiError } from "@/lib/api/errors";
-import type { Dataset, PatchDatasetInput } from "@/lib/api/types";
+import type { ChallengePack, ChallengePackVersion, Dataset, PatchDatasetInput } from "@/lib/api/types";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -48,6 +48,57 @@ export function EditDatasetDialog({
   );
   const [schemaError, setSchemaError] = useState<string>();
   const [submitting, setSubmitting] = useState(false);
+  const [loadingPacks, setLoadingPacks] = useState(false);
+  const [packs, setPacks] = useState<ChallengePack[]>([]);
+  const [packId, setPackId] = useState("");
+  const [packVersions, setPackVersions] = useState<ChallengePackVersion[]>([]);
+  const [packVersionId, setPackVersionId] = useState(
+    dataset.default_challenge_pack_version_id ?? "",
+  );
+
+  useEffect(() => {
+    if (!open) return;
+    void (async () => {
+      setLoadingPacks(true);
+      try {
+        const token = await getAccessToken();
+        const api = createApiClient(token);
+        const res = await api.get<{ items: ChallengePack[] }>(
+          `/v1/workspaces/${workspaceId}/challenge-packs`,
+        );
+        setPacks(res.items);
+        const currentPack = res.items.find((pack) =>
+          (pack.versions ?? []).some(
+            (version) =>
+              version.id === dataset.default_challenge_pack_version_id,
+          ),
+        );
+        if (currentPack) {
+          setPackId(currentPack.id);
+        }
+      } finally {
+        setLoadingPacks(false);
+      }
+    })();
+  }, [dataset.default_challenge_pack_version_id, getAccessToken, open, workspaceId]);
+
+  useEffect(() => {
+    if (!packId) {
+      setPackVersions([]);
+      return;
+    }
+    const pack = packs.find((item) => item.id === packId);
+    const runnable = (pack?.versions ?? []).filter(
+      (version) => version.lifecycle_status === "runnable",
+    );
+    setPackVersions(runnable);
+    if (
+      packVersionId &&
+      !runnable.some((version) => version.id === packVersionId)
+    ) {
+      setPackVersionId(runnable[runnable.length - 1]?.id ?? "");
+    }
+  }, [packId, packVersionId, packs]);
 
   useEffect(() => {
     if (open) {
@@ -58,6 +109,7 @@ export function EditDatasetDialog({
       setInputSchemaJson(
         dataset.input_schema ? JSON.stringify(dataset.input_schema, null, 2) : "",
       );
+      setPackVersionId(dataset.default_challenge_pack_version_id ?? "");
       setSchemaError(undefined);
     }
   }, [open, dataset]);
@@ -74,6 +126,12 @@ export function EditDatasetDialog({
     if (description !== dataset.description) patch.description = description;
     if (schemaEnforced !== dataset.input_schema_enforced) {
       patch.input_schema_enforced = schemaEnforced;
+    }
+    const nextDefaultPackVersionId = packVersionId || undefined;
+    if (
+      nextDefaultPackVersionId !== dataset.default_challenge_pack_version_id
+    ) {
+      patch.default_challenge_pack_version_id = nextDefaultPackVersionId;
     }
 
     if (inputSchemaJson.trim()) {
@@ -170,6 +228,49 @@ export function EditDatasetDialog({
               error={schemaError}
               rows={4}
             />
+            <div>
+              <label className="mb-1.5 block text-sm font-medium">
+                Default challenge pack{" "}
+                <span className="font-normal text-muted-foreground">
+                  (optional)
+                </span>
+              </label>
+              <select
+                value={packId}
+                onChange={(e) => {
+                  setPackId(e.target.value);
+                  if (!e.target.value) setPackVersionId("");
+                }}
+                disabled={loadingPacks}
+                className={inputClass}
+              >
+                <option value="">None</option>
+                {packs.map((pack) => (
+                  <option key={pack.id} value={pack.id}>
+                    {pack.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {packId ? (
+              <div>
+                <label className="mb-1.5 block text-sm font-medium">
+                  Default pack version
+                </label>
+                <select
+                  value={packVersionId}
+                  onChange={(e) => setPackVersionId(e.target.value)}
+                  className={inputClass}
+                >
+                  <option value="">Select version...</option>
+                  {packVersions.map((version) => (
+                    <option key={version.id} value={version.id}>
+                      v{version.version_number}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
           </div>
           <DialogFooter>
             <Button

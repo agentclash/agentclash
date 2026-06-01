@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
 import { toast } from "sonner";
@@ -116,7 +117,16 @@ export function DatasetResultsPanel({
                       : "—"}
                   </TableCell>
                   <TableCell className="text-muted-foreground">
-                    {result.run_id ? result.run_id.slice(0, 8) : "—"}
+                    {result.run_id ? (
+                      <Link
+                        className="underline-offset-4 hover:underline"
+                        href={`/workspaces/${workspaceId}/runs/${result.run_id}`}
+                      >
+                        {result.run_id.slice(0, 8)}
+                      </Link>
+                    ) : (
+                      "—"
+                    )}
                   </TableCell>
                   <TableCell className="text-muted-foreground">
                     {result.judged_at

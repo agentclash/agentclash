@@ -20,6 +20,10 @@ import type {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
+  readStoredGenerationJobIds,
+  storeGenerationJobId,
+} from "../dataset-ui-shared";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -58,6 +62,8 @@ export function StartGenerationDialog({
   const [createVersion, setCreateVersion] = useState(true);
   const [versionLabel, setVersionLabel] = useState("");
   const [job, setJob] = useState<DatasetGenerationJob | null>(null);
+  const [recentJobs, setRecentJobs] = useState<DatasetGenerationJob[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
   const stopPolling = useCallback(() => {
     if (pollRef.current) {
@@ -94,15 +100,48 @@ export function StartGenerationDialog({
     }
   }, [getAccessToken, workspaceId]);
 
+  const loadRecentJobs = useCallback(async () => {
+    const ids = readStoredGenerationJobIds(datasetId);
+    if (ids.length === 0) {
+      setRecentJobs([]);
+      return;
+    }
+    setLoadingHistory(true);
+    try {
+      const token = await getAccessToken();
+      const api = createApiClient(token);
+      const jobs = await Promise.all(
+        ids.map(async (jobId) => {
+          try {
+            return await getDatasetGenerationJob(
+              api,
+              workspaceId,
+              datasetId,
+              jobId,
+            );
+          } catch {
+            return null;
+          }
+        }),
+      );
+      setRecentJobs(
+        jobs.filter((item): item is DatasetGenerationJob => item != null),
+      );
+    } finally {
+      setLoadingHistory(false);
+    }
+  }, [datasetId, getAccessToken, workspaceId]);
+
   useEffect(() => {
     if (open) {
       void loadOptions();
+      void loadRecentJobs();
       setJob(null);
     } else {
       stopPolling();
     }
     return stopPolling;
-  }, [open, loadOptions, stopPolling]);
+  }, [loadOptions, loadRecentJobs, open, stopPolling]);
 
   function startPolling(jobId: string) {
     stopPolling();
@@ -164,6 +203,8 @@ export function StartGenerationDialog({
         },
       );
       setJob(queued);
+      storeGenerationJobId(datasetId, queued.id);
+      void loadRecentJobs();
       startPolling(queued.id);
       toast.success("Generation job queued");
     } catch (err) {
@@ -223,6 +264,36 @@ export function StartGenerationDialog({
           </div>
         ) : (
           <div className="space-y-4">
+            {recentJobs.length > 0 ? (
+              <div className="rounded-lg border border-border p-3">
+                <p className="text-sm font-medium">Recent jobs</p>
+                <div className="mt-2 space-y-2">
+                  {loadingHistory ? (
+                    <Loader2 className="size-4 animate-spin text-muted-foreground" />
+                  ) : (
+                    recentJobs.map((recentJob) => (
+                      <button
+                        key={recentJob.id}
+                        type="button"
+                        onClick={() => {
+                          setJob(recentJob);
+                          if (
+                            recentJob.status === "queued" ||
+                            recentJob.status === "running"
+                          ) {
+                            startPolling(recentJob.id);
+                          }
+                        }}
+                        className="flex w-full items-center justify-between rounded-md border border-border/70 px-3 py-2 text-left text-sm hover:bg-muted/30"
+                      >
+                        <span>{recentJob.id.slice(0, 8)}</span>
+                        <Badge variant="secondary">{recentJob.status}</Badge>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+            ) : null}
             <div>
               <label className="mb-1.5 block text-sm font-medium">
                 Provider account

@@ -13,6 +13,7 @@ import type {
   DatasetInteropFormat,
   DatasetRegressionSuiteLink,
   DatasetVersion,
+  DatasetVersionDetail,
   EvaluateDatasetGateInput,
   EvaluateDatasetGateResponse,
   ImportDatasetTracesInput,
@@ -154,6 +155,17 @@ export function createDatasetVersion(
   return api.post<DatasetVersion>(
     `${datasetBase(workspaceId, datasetId)}/versions`,
     body,
+  );
+}
+
+export function getDatasetVersion(
+  api: ApiClient,
+  workspaceId: string,
+  datasetId: string,
+  versionId: string,
+): Promise<DatasetVersionDetail> {
+  return api.get<DatasetVersionDetail>(
+    `${datasetBase(workspaceId, datasetId)}/versions/${versionId}`,
   );
 }
 

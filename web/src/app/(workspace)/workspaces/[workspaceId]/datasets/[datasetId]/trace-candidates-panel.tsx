@@ -8,22 +8,35 @@ import { Loader2 } from "lucide-react";
 
 import {
   listDatasetTraceCandidates,
-  promoteDatasetTraceCandidate,
 } from "@/lib/api/datasets";
 import { createApiClient } from "@/lib/api/client";
 import { ApiError } from "@/lib/api/errors";
-import type { DatasetTraceCandidate } from "@/lib/api/types";
+import type {
+  DatasetTraceCandidate,
+  DatasetTraceCandidateStatus,
+} from "@/lib/api/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+  CollapsibleSection,
+  ExamplePayloadPreview,
+  TagBadges,
+} from "../dataset-ui-shared";
+import { PromoteTraceDialog } from "./promote-trace-dialog";
+
+const STATUS_FILTERS: Array<{
+  value: "" | DatasetTraceCandidateStatus;
+  label: string;
+}> = [
+  { value: "", label: "All statuses" },
+  { value: "pending", label: "Pending" },
+  { value: "promoted", label: "Promoted" },
+  { value: "rejected", label: "Rejected" },
+];
+
+const inputClass =
+  "rounded-lg border border-input bg-transparent px-3 py-1.5 text-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/50";
 
 interface TraceCandidatesPanelProps {
   workspaceId: string;
@@ -38,7 +51,12 @@ export function TraceCandidatesPanel({
   const { getAccessToken } = useAccessToken();
   const [candidates, setCandidates] = useState<DatasetTraceCandidate[]>([]);
   const [loading, setLoading] = useState(true);
-  const [promotingId, setPromotingId] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<
+    "" | DatasetTraceCandidateStatus
+  >("pending");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [promoteCandidate, setPromoteCandidate] =
+    useState<DatasetTraceCandidate | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -49,7 +67,10 @@ export function TraceCandidatesPanel({
         api,
         workspaceId,
         datasetId,
-        { limit: 100 },
+        {
+          status: statusFilter || undefined,
+          limit: 100,
+        },
       );
       setCandidates(res.candidates);
     } catch (err) {
@@ -59,32 +80,11 @@ export function TraceCandidatesPanel({
     } finally {
       setLoading(false);
     }
-  }, [datasetId, getAccessToken, workspaceId]);
+  }, [datasetId, getAccessToken, statusFilter, workspaceId]);
 
   useEffect(() => {
     void load();
   }, [load]);
-
-  async function handlePromote(candidateId: string) {
-    setPromotingId(candidateId);
-    try {
-      const token = await getAccessToken();
-      const api = createApiClient(token);
-      await promoteDatasetTraceCandidate(
-        api,
-        workspaceId,
-        datasetId,
-        candidateId,
-      );
-      toast.success("Candidate promoted to example");
-      await load();
-      router.refresh();
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Promotion failed");
-    } finally {
-      setPromotingId(null);
-    }
-  }
 
   if (loading) {
     return (
@@ -94,72 +94,109 @@ export function TraceCandidatesPanel({
     );
   }
 
-  if (candidates.length === 0) {
-    return (
-      <EmptyState
-        title="No trace candidates"
-        description="Import traces to review and promote them into dataset examples."
-      />
-    );
-  }
-
   return (
-    <div className="rounded-lg border border-border">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Platform</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead>External ID</TableHead>
-            <TableHead>Tags</TableHead>
-            <TableHead>Created</TableHead>
-            <TableHead className="w-24" />
-          </TableRow>
-        </TableHeader>
-        <TableBody>
+    <div className="space-y-4">
+      <div className="flex items-center gap-3">
+        <label className="text-sm text-muted-foreground">Status</label>
+        <select
+          value={statusFilter}
+          onChange={(e) =>
+            setStatusFilter(e.target.value as "" | DatasetTraceCandidateStatus)
+          }
+          className={inputClass}
+        >
+          {STATUS_FILTERS.map((option) => (
+            <option key={option.label} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {candidates.length === 0 ? (
+        <EmptyState
+          title="No trace candidates"
+          description="Import traces to review and promote them into dataset examples."
+        />
+      ) : (
+        <div className="space-y-3">
           {candidates.map((candidate) => (
-            <TableRow key={candidate.id}>
-              <TableCell className="text-muted-foreground">
-                {candidate.source_platform}
-              </TableCell>
-              <TableCell>
-                <Badge
-                  variant={
-                    candidate.status === "promoted" ? "default" : "secondary"
+            <div
+              key={candidate.id}
+              className="rounded-lg border border-border bg-card/20"
+            >
+              <div className="flex flex-wrap items-center gap-3 px-4 py-3">
+                <button
+                  type="button"
+                  className="min-w-0 flex-1 text-left"
+                  onClick={() =>
+                    setExpandedId((prev) =>
+                      prev === candidate.id ? null : candidate.id,
+                    )
                   }
                 >
-                  {candidate.status}
-                </Badge>
-              </TableCell>
-              <TableCell className="font-medium">
-                {candidate.external_id ?? candidate.id.slice(0, 8)}
-              </TableCell>
-              <TableCell className="text-muted-foreground">
-                {candidate.tags.length > 0 ? candidate.tags.join(", ") : "—"}
-              </TableCell>
-              <TableCell className="text-muted-foreground">
-                {new Date(candidate.created_at).toLocaleDateString()}
-              </TableCell>
-              <TableCell>
-                {candidate.status === "pending" && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-medium">
+                      {candidate.external_id ?? candidate.id.slice(0, 8)}
+                    </span>
+                    <Badge variant="outline">{candidate.source_platform}</Badge>
+                    <Badge
+                      variant={
+                        candidate.status === "promoted"
+                          ? "default"
+                          : "secondary"
+                      }
+                    >
+                      {candidate.status}
+                    </Badge>
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Created {new Date(candidate.created_at).toLocaleString()}
+                  </p>
+                </button>
+                <TagBadges tags={candidate.tags} />
+                {candidate.status === "pending" ? (
                   <Button
                     size="sm"
                     variant="outline"
-                    disabled={promotingId === candidate.id}
-                    onClick={() => handlePromote(candidate.id)}
+                    onClick={() => setPromoteCandidate(candidate)}
                   >
-                    {promotingId === candidate.id ? (
-                      <Loader2 className="size-3.5 animate-spin" />
-                    ) : (
-                      "Promote"
-                    )}
+                    Promote
                   </Button>
-                )}
-              </TableCell>
-            </TableRow>
+                ) : null}
+              </div>
+              {expandedId === candidate.id ? (
+                <div className="border-t border-border px-4 py-3">
+                  <CollapsibleSection title="Trace payload" defaultOpen>
+                    <ExamplePayloadPreview
+                      input={candidate.input}
+                      expected={candidate.output ?? candidate.expected}
+                      metadata={candidate.metadata}
+                    />
+                  </CollapsibleSection>
+                </div>
+              ) : null}
+            </div>
           ))}
-        </TableBody>
-      </Table>
+        </div>
+      )}
+
+      {promoteCandidate ? (
+        <PromoteTraceDialog
+          workspaceId={workspaceId}
+          datasetId={datasetId}
+          candidate={promoteCandidate}
+          open={Boolean(promoteCandidate)}
+          onOpenChange={(open) => {
+            if (!open) setPromoteCandidate(null);
+          }}
+          onPromoted={() => {
+            setPromoteCandidate(null);
+            void load();
+            router.refresh();
+          }}
+        />
+      ) : null}
     </div>
   );
 }

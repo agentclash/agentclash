@@ -23,6 +23,13 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  EMPTY_MAPPING_FIELDS,
+  ImportPreviewPanel,
+  MappingEditor,
+  parseMappingInput,
+  type MappingFieldState,
+} from "../dataset-ui-shared";
 
 const FORMATS: { value: DatasetInteropFormat; label: string }[] = [
   { value: "jsonl", label: "JSONL" },
@@ -55,6 +62,13 @@ export function ImportDatasetDialog({
   const [dryRun, setDryRun] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [preview, setPreview] = useState<DatasetImportResponse | null>(null);
+  const [mappingMode, setMappingMode] = useState<"simple" | "advanced">(
+    "simple",
+  );
+  const [mappingFields, setMappingFields] =
+    useState<MappingFieldState>(EMPTY_MAPPING_FIELDS);
+  const [mappingJson, setMappingJson] = useState("");
+  const [mappingError, setMappingError] = useState<string>();
 
   function reset() {
     setFile(null);
@@ -62,6 +76,10 @@ export function ImportDatasetDialog({
     setMode("add");
     setDryRun(false);
     setPreview(null);
+    setMappingMode("simple");
+    setMappingFields(EMPTY_MAPPING_FIELDS);
+    setMappingJson("");
+    setMappingError(undefined);
   }
 
   function handleOpenChange(next: boolean) {
@@ -71,6 +89,18 @@ export function ImportDatasetDialog({
 
   async function handleImport() {
     if (!file) return;
+
+    const { mapping, error } = parseMappingInput(
+      mappingMode,
+      mappingFields,
+      mappingJson,
+    );
+    if (error) {
+      setMappingError(error);
+      return;
+    }
+    setMappingError(undefined);
+
     setSubmitting(true);
     try {
       const token = await getAccessToken();
@@ -83,6 +113,7 @@ export function ImportDatasetDialog({
         format,
         mode,
         dryRun,
+        mapping,
       });
       if (dryRun) {
         setPreview(result);
@@ -105,14 +136,14 @@ export function ImportDatasetDialog({
         <Upload data-icon="inline-start" className="size-4" />
         Import
       </DialogTrigger>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Import examples</DialogTitle>
           <DialogDescription>
             Upload a file in a supported eval dataset format.
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-4">
+        <div className="space-y-4 max-h-[70vh] overflow-y-auto">
           <div>
             <label className="mb-1.5 block text-sm font-medium">File</label>
             <input
@@ -139,9 +170,9 @@ export function ImportDatasetDialog({
               }
               className={inputClass}
             >
-              {FORMATS.map((f) => (
-                <option key={f.value} value={f.value}>
-                  {f.label}
+              {FORMATS.map((item) => (
+                <option key={item.value} value={item.value}>
+                  {item.label}
                 </option>
               ))}
             </select>
@@ -157,6 +188,15 @@ export function ImportDatasetDialog({
               <option value="replace">Replace active examples</option>
             </select>
           </div>
+          <MappingEditor
+            mode={mappingMode}
+            onModeChange={setMappingMode}
+            fields={mappingFields}
+            onFieldsChange={setMappingFields}
+            json={mappingJson}
+            onJsonChange={setMappingJson}
+            jsonError={mappingError}
+          />
           <label className="flex items-center gap-2 text-sm">
             <input
               type="checkbox"
@@ -165,24 +205,16 @@ export function ImportDatasetDialog({
             />
             Dry run (preview only)
           </label>
-          {preview && (
-            <div className="rounded-md border border-border bg-muted/30 p-3 text-xs">
-              <p className="font-medium">
-                Preview: {preview.imported_count} rows
-              </p>
-              {preview.errors && preview.errors.length > 0 && (
-                <p className="mt-1 text-destructive">
-                  {preview.errors.length} row errors
-                </p>
-              )}
-            </div>
-          )}
+          {preview ? (
+            <ImportPreviewPanel
+              importedCount={preview.imported_count}
+              preview={preview.preview}
+              errors={preview.errors}
+            />
+          ) : null}
         </div>
         <DialogFooter>
-          <Button
-            onClick={handleImport}
-            disabled={!file || submitting}
-          >
+          <Button onClick={handleImport} disabled={!file || submitting}>
             {submitting && (
               <Loader2 data-icon="inline-start" className="size-4 animate-spin" />
             )}
