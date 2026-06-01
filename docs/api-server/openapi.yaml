@@ -3952,6 +3952,68 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /v1/workspaces/{workspaceID}/datasets/{datasetID}/generate:
+    post:
+      operationId: startDatasetGeneration
+      tags: [Datasets]
+      summary: Start in-house synthetic dataset generation
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/DatasetID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StartDatasetGenerationInput"
+      responses:
+        "202":
+          description: Generation job accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DatasetGenerationJob"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /v1/workspaces/{workspaceID}/datasets/{datasetID}/generations/{jobID}:
+    get:
+      operationId: getDatasetGenerationJob
+      tags: [Datasets]
+      summary: Get a synthetic dataset generation job
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/DatasetID"
+        - name: jobID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Generation job detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DatasetGenerationJob"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          description: Dataset or generation job not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /v1/workspaces/{workspaceID}/datasets/{datasetID}/gate:
     post:
       operationId: evaluateDatasetGate
@@ -6063,6 +6125,73 @@ components:
         created_cases: { type: integer }
         skipped_cases: { type: integer }
         total_examples: { type: integer }
+
+    StartDatasetGenerationInput:
+      type: object
+      required: [strategy, target_count, provider_account_id, model_alias_id]
+      properties:
+        strategy:
+          type: string
+          enum: [self_instruct, self-instruct]
+        target_count:
+          type: integer
+          minimum: 1
+          maximum: 100
+        provider_account_id: { type: string, format: uuid }
+        model_alias_id: { type: string, format: uuid }
+        seeds_tag: { type: string }
+        create_version: { type: boolean }
+        version_label: { type: string }
+
+    DatasetGenerationJob:
+      type: object
+      required:
+        - id
+        - dataset_id
+        - workspace_id
+        - strategy
+        - status
+        - config
+        - summary
+        - target_count
+        - generated_count
+        - accepted_count
+        - rejected_count
+        - total_input_tokens
+        - total_output_tokens
+        - total_cost_usd
+        - created_by
+        - queued_at
+        - created_at
+        - updated_at
+      properties:
+        id: { type: string, format: uuid }
+        dataset_id: { type: string, format: uuid }
+        workspace_id: { type: string, format: uuid }
+        strategy: { type: string }
+        status:
+          type: string
+          enum: [queued, running, completed, failed]
+        config: { type: object, additionalProperties: true }
+        summary: { type: object, additionalProperties: true }
+        target_count: { type: integer }
+        generated_count: { type: integer }
+        accepted_count: { type: integer }
+        rejected_count: { type: integer }
+        total_input_tokens: { type: integer, format: int64 }
+        total_output_tokens: { type: integer, format: int64 }
+        total_cost_usd: { type: number, format: double }
+        version_id: { type: string, format: uuid }
+        temporal_workflow_id: { type: string }
+        temporal_run_id: { type: string }
+        error_message: { type: string }
+        created_by: { type: string, format: uuid }
+        queued_at: { type: string, format: date-time }
+        started_at: { type: string, format: date-time }
+        finished_at: { type: string, format: date-time }
+        failed_at: { type: string, format: date-time }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
 
     EvaluateDatasetGateInput:
       type: object

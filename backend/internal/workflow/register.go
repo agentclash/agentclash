@@ -51,3 +51,11 @@ func RegisterPlayground(registrar Registrar, activities *PlaygroundActivities) {
 	registrar.RegisterActivityWithOptions(activities.ExecutePlaygroundTestCase, sdkactivity.RegisterOptions{Name: executePlaygroundTestCaseActivityName})
 	registrar.RegisterActivityWithOptions(activities.FinalizePlaygroundExperiment, sdkactivity.RegisterOptions{Name: finalizePlaygroundExperimentActivityName})
 }
+
+func RegisterDatasetGeneration(registrar Registrar, activities *DatasetGenerationActivities) {
+	registrar.RegisterWorkflowWithOptions(SyntheticDatasetGenerationWorkflow, sdkworkflow.RegisterOptions{Name: SyntheticDatasetGenerationWorkflowName})
+	registrar.RegisterActivityWithOptions(activities.LoadDatasetGenerationExecutionContext, sdkactivity.RegisterOptions{Name: loadDatasetGenerationExecutionContextActivityName})
+	registrar.RegisterActivityWithOptions(activities.SetDatasetGenerationJobTemporalIDs, sdkactivity.RegisterOptions{Name: setDatasetGenerationJobTemporalIDsActivityName})
+	registrar.RegisterActivityWithOptions(activities.UpdateDatasetGenerationJobStatus, sdkactivity.RegisterOptions{Name: updateDatasetGenerationJobStatusActivityName})
+	registrar.RegisterActivityWithOptions(activities.ExecuteSyntheticDatasetGeneration, sdkactivity.RegisterOptions{Name: executeSyntheticDatasetGenerationActivityName})
+}

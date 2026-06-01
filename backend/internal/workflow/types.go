@@ -6,9 +6,10 @@ const (
 	EvalSessionWorkflowName           = "EvalSessionWorkflow"
 	RunWorkflowName                   = "RunWorkflow"
 	RunAgentWorkflowName              = "RunAgentWorkflow"
-	AgentHarnessExecutionWorkflowName = "AgentHarnessExecutionWorkflow"
-	PlaygroundExperimentWorkflowName  = "PlaygroundExperimentWorkflow"
-	HostedRunEventSignal              = "hosted_run_event"
+	AgentHarnessExecutionWorkflowName     = "AgentHarnessExecutionWorkflow"
+	PlaygroundExperimentWorkflowName      = "PlaygroundExperimentWorkflow"
+	SyntheticDatasetGenerationWorkflowName = "SyntheticDatasetGenerationWorkflow"
+	HostedRunEventSignal                  = "hosted_run_event"
 	WorkflowTaskQueue                 = RunWorkflowName
 )
 
@@ -32,4 +33,8 @@ type AgentHarnessExecutionWorkflowInput struct {
 
 type PlaygroundExperimentWorkflowInput struct {
 	ExperimentID uuid.UUID `json:"experiment_id"`
+}
+
+type SyntheticDatasetGenerationWorkflowInput struct {
+	JobID uuid.UUID `json:"job_id"`
 }

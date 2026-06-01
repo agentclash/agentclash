@@ -62,13 +62,16 @@ type DatasetService interface {
 	EvaluateDatasetGate(context.Context, Caller, EvaluateDatasetGateInput) (EvaluateDatasetGateResult, error)
 	GetDatasetRegressionSuiteLink(context.Context, Caller, GetDatasetInput) (repository.DatasetRegressionSuiteLink, error)
 	SyncDatasetRegressionSuite(context.Context, Caller, SyncDatasetRegressionSuiteInput) (repository.SyncDatasetRegressionSuiteResult, error)
+	StartDatasetGeneration(context.Context, Caller, StartDatasetGenerationInput) (repository.DatasetGenerationJob, error)
+	GetDatasetGenerationJob(context.Context, Caller, GetDatasetGenerationJobInput) (repository.DatasetGenerationJob, error)
 }
 
 type DatasetManager struct {
-	authorizer         WorkspaceAuthorizer
-	repo               DatasetRepository
-	runCreationService RunCreationService
-	traceArtifacts     *traceArtifactDeps
+	authorizer                WorkspaceAuthorizer
+	repo                      DatasetRepository
+	runCreationService        RunCreationService
+	traceArtifacts            *traceArtifactDeps
+	generationWorkflowStarter DatasetGenerationWorkflowStarter
 }
 
 func NewDatasetManager(authorizer WorkspaceAuthorizer, repo DatasetRepository) *DatasetManager {
@@ -1339,4 +1342,10 @@ func (noopDatasetService) GetDatasetRegressionSuiteLink(context.Context, Caller,
 }
 func (noopDatasetService) SyncDatasetRegressionSuite(context.Context, Caller, SyncDatasetRegressionSuiteInput) (repository.SyncDatasetRegressionSuiteResult, error) {
 	return repository.SyncDatasetRegressionSuiteResult{}, errors.New("dataset service is not configured")
+}
+func (noopDatasetService) StartDatasetGeneration(context.Context, Caller, StartDatasetGenerationInput) (repository.DatasetGenerationJob, error) {
+	return repository.DatasetGenerationJob{}, errors.New("dataset service is not configured")
+}
+func (noopDatasetService) GetDatasetGenerationJob(context.Context, Caller, GetDatasetGenerationJobInput) (repository.DatasetGenerationJob, error) {
+	return repository.DatasetGenerationJob{}, errors.New("dataset service is not configured")
 }
