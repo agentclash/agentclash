@@ -494,6 +494,8 @@ describe("agent skill docs", () => {
     expect(index).toContain(
       "https://example.test/blog/ai-agent-evaluation-regression-testing",
     );
+    expect(index).toContain("https://example.test/changelog");
+    expect(index).toContain("## Changelog");
     expect(index).toContain(
       "AI Agent Evaluation Needs Regression Testing, Not Just Benchmarks",
     );
@@ -519,6 +521,9 @@ describe("agent skill docs", () => {
       "/platform/agent-evaluation",
       "/platform/agent-regression-testing",
     ]);
+    const changelog = index.find((item) => item.href === "/changelog");
+    expect(changelog?.title).toBe("Product Changelog");
+    expect(changelog?.searchText).toContain("release notes");
     expect(evaluation?.title).toBe("AI Agent Evaluation Platform");
     expect(evaluation?.searchText).toContain("platform/agent-evaluation");
     expect(evaluation?.searchText).toContain("ai agent evaluation");
@@ -544,6 +549,8 @@ describe("agent skill docs", () => {
     expect(bundle).toContain(
       "Source: https://example.test/blog/ai-agent-evaluation-regression-testing",
     );
+    expect(bundle).toContain("# AgentClash Changelog");
+    expect(bundle).toContain("Source: https://example.test/changelog");
     expect(bundle).toContain(
       "[AI agent evaluation platform](https://example.test/platform/agent-evaluation)",
     );

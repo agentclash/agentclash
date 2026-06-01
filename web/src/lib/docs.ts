@@ -6,6 +6,7 @@ import {
   getPostBySlug,
   type BlogPostWithContent,
 } from "./blog";
+import { renderChangelogMarkdown } from "./changelog";
 
 const CONTENT_DIR = path.join(process.cwd(), "content", "docs");
 const AGENT_SKILLS_DIR = path.join(process.cwd(), "content", "agent-skills");
@@ -73,6 +74,14 @@ const PUBLIC_PRODUCT_PAGES: PublicProductPage[] = [
       "Compare AgentClash with Braintrust, LangSmith, Promptfoo, Langfuse, Arize Phoenix, and OpenAI Evals — agent evaluation versus prompt evaluation.",
     searchKeywords:
       "compare comparison alternative alternatives AgentClash vs Braintrust LangSmith Promptfoo Langfuse Arize Phoenix OpenAI Evals agent evaluation prompt evaluation best AI agent eval tools",
+  },
+  {
+    title: "Product Changelog",
+    href: "/changelog",
+    description:
+      "Public release notes for AgentClash — features, improvements, fixes, and security updates grouped every ten days since launch.",
+    searchKeywords:
+      "AgentClash changelog release notes product updates what's new shipped features AI agent evaluation platform updates",
   },
 ];
 
@@ -1655,6 +1664,10 @@ export function buildLlmsIndex(origin = DOCS_ORIGIN) {
       (page) => `- [${page.title}](${origin}${page.href}) - ${page.description}`,
     ),
     "",
+    "## Changelog",
+    "",
+    `- [Product Changelog](${origin}/changelog) - release notes grouped every ten days since April 15, 2026.`,
+    "",
     "## Blog posts",
     "",
     ...blogPosts.map(
@@ -1717,6 +1730,10 @@ export function buildLlmsFull(origin = DOCS_ORIGIN) {
     ...blogPosts.map(
       (post) => `- [${post.title}](${origin}/blog/${post.slug}) - ${post.description}`,
     ),
+    "",
+    "## Changelog bundle",
+    "",
+    renderChangelogMarkdown(origin),
   ];
 
   for (const post of blogPosts) {

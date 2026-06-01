@@ -35,6 +35,11 @@ describe("sitemap", () => {
       changeFrequency: "weekly",
       priority: 0.8,
     });
+    expect(byUrl.get("https://www.agentclash.dev/changelog")).toMatchObject({
+      changeFrequency: "weekly",
+      priority: 0.75,
+      lastModified: new Date("2026-06-01"),
+    });
     expect(byUrl.get("https://www.agentclash.dev/why")).toMatchObject({
       changeFrequency: "monthly",
       priority: 0.7,
