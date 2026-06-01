@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.24.0](https://github.com/agentclash/agentclash/compare/v0.23.0...v0.24.0) (2026-06-01)
+
+
+### Features
+
+* **datasets:** add baselines and CI gate verdict for eval runs ([282bc28](https://github.com/agentclash/agentclash/commit/282bc2882c471cad794d716a126fbd4a13ba97c0))
+* **datasets:** add production trace ingest and candidate promotion ([601234d](https://github.com/agentclash/agentclash/commit/601234d2df348cc78ac6008096b5bac053eeb4df))
+* **datasets:** baselines and CI gate verdict ([#891](https://github.com/agentclash/agentclash/issues/891)) ([94c637c](https://github.com/agentclash/agentclash/commit/94c637c3a3b9f7c82578c6e3687db9086515591b))
+* **datasets:** production trace ingest and candidate promotion ([#890](https://github.com/agentclash/agentclash/issues/890)) ([b82aff3](https://github.com/agentclash/agentclash/commit/b82aff38e85d7411e419330e15d9f27d63d59933))
+
+
+### Bug Fixes
+
+* **datasets:** address Codex review on gate input sets and CLI JSON output ([d0eb180](https://github.com/agentclash/agentclash/commit/d0eb1806eb67517e407c74c48bc9d1dd184bde17))
+* **datasets:** address Greptile gate review on empty and async eval paths ([52927f9](https://github.com/agentclash/agentclash/commit/52927f938f8ed8f3300b19618ad1215a2da00d3d))
+
 ## [0.23.0](https://github.com/agentclash/agentclash/compare/v0.22.0...v0.23.0) (2026-05-31)
 
 
