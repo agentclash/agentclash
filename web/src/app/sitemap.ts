@@ -1,6 +1,10 @@
 import type { MetadataRoute } from "next";
 import { getAllPosts } from "@/lib/blog";
-import { getChangelogLatestModified } from "@/lib/changelog";
+import {
+  getChangelogLatestModified,
+  getChangelogPeriodHref,
+  getChangelogPeriods,
+} from "@/lib/changelog";
 import { COMPETITORS } from "@/lib/comparison-data";
 import { DOCS_ORIGIN, getAllDocPaths } from "@/lib/docs";
 
@@ -50,6 +54,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: "weekly",
       priority: 0.75,
     },
+    ...getChangelogPeriods().map((period) => ({
+      url: `${DOCS_ORIGIN}${getChangelogPeriodHref(period.id)}`,
+      lastModified: new Date(period.endDate),
+      changeFrequency: "monthly" as const,
+      priority: 0.65,
+    })),
     {
       url: `${DOCS_ORIGIN}/why`,
       lastModified: new Date(),

@@ -288,9 +288,9 @@ export function changelogIndexSchema(
         position: index + 1,
         name: period.headline,
         description: `${period.label} — ${period.entryCount} updates`,
-        url: `${pageUrl}#${period.id}`,
+        url: `${pageUrl}/${period.id}`,
         item: {
-          "@id": `${pageUrl}#${period.id}`,
+          "@id": `${pageUrl}/${period.id}`,
         },
       })),
     },

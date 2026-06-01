@@ -66,7 +66,7 @@ describe("changelog index structured data", () => {
     ).toMatchObject({
       "@type": "ListItem",
       position: 1,
-      url: `${SITE_URL}/changelog#${latestPeriod?.id}`,
+      url: `${SITE_URL}/changelog/${latestPeriod?.id}`,
     });
     expect(jsonLd[3]).toMatchObject({
       "@type": "FAQPage",

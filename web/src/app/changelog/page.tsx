@@ -1,13 +1,19 @@
-import Link from "next/link";
-import { ChangelogTimeline } from "@/components/marketing/changelog-timeline";
+import { ChangelogIndexList } from "@/components/marketing/changelog/changelog-index-list";
+import { ChangelogShell } from "@/components/marketing/changelog/changelog-shell";
 import { JsonLd, changelogIndexSchema } from "@/components/marketing/json-ld";
-import { CHANGELOG_FAQ, getChangelogPeriods } from "@/lib/changelog";
+import { CHANGELOG_FAQ, getChangelogPeriodPullRequests, getChangelogPeriods } from "@/lib/changelog";
 import { changelogMetadata } from "./metadata";
 
 export const metadata = changelogMetadata;
 
 export default function ChangelogPage() {
   const periods = getChangelogPeriods();
+  const pullRequestCounts = Object.fromEntries(
+    periods.map((period) => [
+      period.id,
+      getChangelogPeriodPullRequests(period.id).length,
+    ]),
+  );
 
   return (
     <>
@@ -24,27 +30,23 @@ export default function ChangelogPage() {
           [...CHANGELOG_FAQ],
         )}
       />
-      <main className="min-h-screen flex flex-col items-center px-6 py-16">
-        <p className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-[0.18em] text-white/35">
-          Product updates
+      <ChangelogShell backHref="/" backLabel="Back to AgentClash">
+        <p className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-[0.14em] text-white/35">
+          Release notes
         </p>
-        <h1 className="mt-4 font-[family-name:var(--font-display)] text-3xl sm:text-4xl text-center tracking-[-0.02em] leading-[1.15]">
+        <h1 className="mt-3 text-2xl font-semibold tracking-tight text-white sm:text-3xl">
           Changelog
         </h1>
-        <p className="mt-3 max-w-xl text-center text-sm leading-relaxed text-white/35">
-          What we shipped in AgentClash, grouped every ten days from the first
-          commit on April 15, 2026 through today.
+        <p className="mt-3 max-w-xl text-sm leading-relaxed text-white/45">
+          Product updates grouped in ten-day windows. Select a release for the
+          full breakdown and merged pull requests.
         </p>
 
-        <ChangelogTimeline periods={periods} />
-
-        <Link
-          href="/"
-          className="mt-12 text-xs text-white/30 hover:text-white/50 transition-colors"
-        >
-          &larr; Back to AgentClash
-        </Link>
-      </main>
+        <ChangelogIndexList
+          periods={periods}
+          pullRequestCounts={pullRequestCounts}
+        />
+      </ChangelogShell>
     </>
   );
 }
