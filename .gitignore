@@ -24,3 +24,4 @@ testing/codex-issue-324-promote-failure-dialog.md
 testing/*
 !testing/feat-case-templating-840.md
 !testing/feat-dataset-evals-889.md
+!testing/feat-dataset-trace-ingest-890.md

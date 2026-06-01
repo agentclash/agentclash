@@ -213,6 +213,37 @@ type DatasetInputItemLink struct {
 	CreatedAt                pgtype.Timestamptz
 }
 
+type DatasetTraceCandidate struct {
+	ID                uuid.UUID
+	DatasetID         uuid.UUID
+	ImportID          uuid.UUID
+	SourcePlatform    string
+	SourceTraceID     *string
+	SourceRunID       *uuid.UUID
+	SourceRunAgentID  *uuid.UUID
+	ExternalID        *string
+	Input             []byte
+	Output            []byte
+	Expected          []byte
+	Metadata          []byte
+	Tags              []string
+	Status            string
+	PromotedExampleID *uuid.UUID
+	CreatedAt         pgtype.Timestamptz
+	UpdatedAt         pgtype.Timestamptz
+}
+
+type DatasetTraceImport struct {
+	ID             uuid.UUID
+	DatasetID      uuid.UUID
+	SourcePlatform string
+	ArtifactID     *uuid.UUID
+	CandidateCount int32
+	Status         string
+	CreatedBy      uuid.UUID
+	CreatedAt      pgtype.Timestamptz
+}
+
 type DatasetVersion struct {
 	ID               uuid.UUID
 	DatasetID        uuid.UUID

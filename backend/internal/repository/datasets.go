@@ -238,8 +238,17 @@ func (r *Repository) UpsertDatasetExample(ctx context.Context, params UpsertData
 		return DatasetExample{}, err
 	}
 	defer tx.Rollback(ctx)
-	q := r.queries.WithTx(tx)
+	row, err := upsertDatasetExampleWithQueries(ctx, r.queries.WithTx(tx), params)
+	if err != nil {
+		return DatasetExample{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return DatasetExample{}, err
+	}
+	return mapDatasetExample(row)
+}
 
+func upsertDatasetExampleWithQueries(ctx context.Context, q *repositorysqlc.Queries, params UpsertDatasetExampleParams) (repositorysqlc.DatasetExample, error) {
 	var before *repositorysqlc.DatasetExample
 	if params.ExternalID != nil && strings.TrimSpace(*params.ExternalID) != "" {
 		row, err := q.GetDatasetExampleByExternalID(ctx, repositorysqlc.GetDatasetExampleByExternalIDParams{
@@ -249,13 +258,14 @@ func (r *Repository) UpsertDatasetExample(ctx context.Context, params UpsertData
 		if err == nil {
 			before = &row
 		} else if !errors.Is(err, pgx.ErrNoRows) {
-			return DatasetExample{}, fmt.Errorf("get dataset example by external id: %w", err)
+			return repositorysqlc.DatasetExample{}, fmt.Errorf("get dataset example by external id: %w", err)
 		}
 	}
 
 	var row repositorysqlc.DatasetExample
 	operation := "insert"
 	var beforeJSON []byte
+	var err error
 	if before != nil {
 		operation = "update"
 		beforeJSON = datasetExampleRevisionJSON(*before)
@@ -273,19 +283,16 @@ func (r *Repository) UpsertDatasetExample(ctx context.Context, params UpsertData
 		})
 	}
 	if err != nil {
-		return DatasetExample{}, fmt.Errorf("upsert dataset example: %w", err)
+		return repositorysqlc.DatasetExample{}, fmt.Errorf("upsert dataset example: %w", err)
 	}
 	_, err = q.InsertDatasetExampleRevision(ctx, repositorysqlc.InsertDatasetExampleRevisionParams{
 		DatasetID: params.DatasetID, ExampleID: &row.ID, Operation: operation, Before: beforeJSON,
 		After: datasetExampleRevisionJSON(row), Actor: params.Actor,
 	})
 	if err != nil {
-		return DatasetExample{}, fmt.Errorf("insert dataset example revision: %w", err)
+		return repositorysqlc.DatasetExample{}, fmt.Errorf("insert dataset example revision: %w", err)
 	}
-	if err := tx.Commit(ctx); err != nil {
-		return DatasetExample{}, err
-	}
-	return mapDatasetExample(row)
+	return row, nil
 }
 
 func (r *Repository) GetDatasetExampleByID(ctx context.Context, id uuid.UUID) (DatasetExample, error) {
@@ -394,29 +401,38 @@ func (r *Repository) CreateDatasetVersion(ctx context.Context, params CreateData
 		return DatasetVersion{}, err
 	}
 	defer tx.Rollback(ctx)
-	q := r.queries.WithTx(tx)
+	versionRow, err := createDatasetVersionWithQueries(ctx, r.queries.WithTx(tx), params)
+	if err != nil {
+		return DatasetVersion{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return DatasetVersion{}, err
+	}
+	return mapDatasetVersion(versionRow)
+}
 
+func createDatasetVersionWithQueries(ctx context.Context, q *repositorysqlc.Queries, params CreateDatasetVersionParams) (repositorysqlc.DatasetVersion, error) {
 	if _, err := q.LockActiveDatasetForVersion(ctx, repositorysqlc.LockActiveDatasetForVersionParams{ID: params.DatasetID}); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return DatasetVersion{}, ErrDatasetNotFound
+			return repositorysqlc.DatasetVersion{}, ErrDatasetNotFound
 		}
-		return DatasetVersion{}, fmt.Errorf("lock active dataset for version: %w", err)
+		return repositorysqlc.DatasetVersion{}, fmt.Errorf("lock active dataset for version: %w", err)
 	}
 
 	revisions, err := q.ListLatestDatasetExampleRevisions(ctx, repositorysqlc.ListLatestDatasetExampleRevisionsParams{DatasetID: params.DatasetID})
 	if err != nil {
-		return DatasetVersion{}, fmt.Errorf("list latest dataset example revisions: %w", err)
+		return repositorysqlc.DatasetVersion{}, fmt.Errorf("list latest dataset example revisions: %w", err)
 	}
 	next, err := q.NextDatasetVersionNumber(ctx, repositorysqlc.NextDatasetVersionNumberParams{DatasetID: params.DatasetID})
 	if err != nil {
-		return DatasetVersion{}, fmt.Errorf("next dataset version number: %w", err)
+		return repositorysqlc.DatasetVersion{}, fmt.Errorf("next dataset version number: %w", err)
 	}
 	version, err := q.CreateDatasetVersion(ctx, repositorysqlc.CreateDatasetVersionParams{
 		DatasetID: params.DatasetID, VersionNumber: next, Label: params.Label, ExampleCount: int32(len(revisions)),
 		ManifestChecksum: datasetManifestChecksum(revisions), CreatedBy: params.Actor,
 	})
 	if err != nil {
-		return DatasetVersion{}, fmt.Errorf("create dataset version: %w", err)
+		return repositorysqlc.DatasetVersion{}, fmt.Errorf("create dataset version: %w", err)
 	}
 	for _, revision := range revisions {
 		if revision.ExampleID == nil {
@@ -425,13 +441,10 @@ func (r *Repository) CreateDatasetVersion(ctx context.Context, params CreateData
 		if err := q.InsertDatasetVersionExample(ctx, repositorysqlc.InsertDatasetVersionExampleParams{
 			VersionID: version.ID, ExampleID: *revision.ExampleID, RevisionID: revision.ID,
 		}); err != nil {
-			return DatasetVersion{}, fmt.Errorf("insert dataset version example: %w", err)
+			return repositorysqlc.DatasetVersion{}, fmt.Errorf("insert dataset version example: %w", err)
 		}
 	}
-	if err := tx.Commit(ctx); err != nil {
-		return DatasetVersion{}, err
-	}
-	return mapDatasetVersion(version)
+	return version, nil
 }
 
 func (r *Repository) ListDatasetVersionsByDatasetID(ctx context.Context, datasetID uuid.UUID) ([]DatasetVersion, error) {
