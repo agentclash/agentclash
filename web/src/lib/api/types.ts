@@ -324,7 +324,7 @@ export interface AgentHarness {
   slug: string;
   description: string;
   status: string;
-  harness_kind: "codex_e2b" | "claude_e2b";
+  harness_kind: "codex_e2b" | "claude_e2b" | "openclaw_e2b";
   task_prompt: string;
   codex_template: string;
   codex_model?: string;
@@ -347,7 +347,7 @@ export interface AgentHarness {
 export interface CreateAgentHarnessRequest {
   name: string;
   description?: string;
-  harness_kind?: "codex_e2b" | "claude_e2b";
+  harness_kind?: "codex_e2b" | "claude_e2b" | "openclaw_e2b";
   task_prompt: string;
   codex_template?: string;
   codex_model?: string;

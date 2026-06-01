@@ -332,6 +332,38 @@ describe("CreateAgentHarnessDialog", () => {
     rendered.cleanup();
   });
 
+  it("posts OpenClaw/E2B harness payload using the inferred OpenClaw secret", async () => {
+    mockSecrets.mockReturnValue([
+      {
+        key: "OPENAI_API_KEY",
+        created_at: "2026-05-01T00:00:00Z",
+        updated_at: "2026-05-01T00:00:00Z",
+      },
+    ]);
+    const post = vi.fn().mockResolvedValue({ id: "harness-1" });
+    mockCreateApiClient.mockReturnValue({ post });
+    const rendered = renderDialog();
+
+    clickButton("New Harness");
+    changeSelect(0, "openclaw_e2b");
+    clickButton("URL");
+    changeInput(0, "https://github.com/acme/agent-app");
+    changeTextarea(0, "Implement the requested feature and run tests.");
+    clickButton("Create Harness");
+    await flushPromises();
+
+    expect(post).toHaveBeenCalledWith(
+      "/v1/workspaces/ws-1/agent-harnesses",
+      expect.objectContaining({
+        name: "acme/agent-app OpenClaw",
+        harness_kind: "openclaw_e2b",
+        codex_template: "agentclash-openclaw-fullstack",
+        openai_api_key_secret_name: "OPENAI_API_KEY",
+      }),
+    );
+    rendered.cleanup();
+  });
+
   it("falls back to the task prompt for names when the repo URL has no owner and repo path", async () => {
     const post = vi.fn().mockResolvedValue({ id: "harness-1" });
     mockCreateApiClient.mockReturnValue({ post });

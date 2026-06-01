@@ -308,7 +308,9 @@ func (a *Activities) ExecuteAgentHarnessExecution(ctx context.Context, input Exe
 	if err != nil {
 		return err
 	}
-	runnerResult, err := a.execHarnessCommandWithOptions(ctx, execution.ID, session, runner.EventType, runner.Command, workdir, timeout, env, agentHarnessCommandRecordOptions{Hidden: replayRedaction, RedactOutput: replayRedaction})
+	runnerEnv := maputil.CloneStringMap(env)
+	applyOpenClawRunnerEnv(runnerEnv, harness, timeout)
+	runnerResult, err := a.execHarnessCommandWithOptions(ctx, execution.ID, session, runner.EventType, runner.Command, workdir, timeout, runnerEnv, agentHarnessCommandRecordOptions{Hidden: replayRedaction, RedactOutput: replayRedaction})
 	if err != nil {
 		return err
 	}
@@ -469,14 +471,32 @@ type agentHarnessRunner struct {
 }
 
 func agentHarnessRunnerFor(h agentHarnessSnapshot, workdir string) (agentHarnessRunner, error) {
-	switch normalizeAgentHarnessKind(h.HarnessKind) {
+	switch domain.NormalizeAgentHarnessKind(h.HarnessKind) {
 	case "codex_e2b":
 		return agentHarnessRunner{
 			DisplayName: "codex exec",
 			EventType:   "codex.exec",
 			Command:     []string{"codex", "exec", "--full-auto", "--skip-git-repo-check", "--json", "-C", workdir, h.TaskPrompt},
 		}, nil
-	case "claude_e2b":
+	case domain.AgentHarnessKindOpenClawE2B:
+		script := strings.Join([]string{
+			"set -euo pipefail",
+			`if [ -n "${OPENAI_API_KEY:-}" ]; then AUTH_CHOICE=openai-api-key`,
+			`elif [ -n "${ANTHROPIC_API_KEY:-}" ]; then AUTH_CHOICE=apiKey`,
+			`elif [ -n "${OPENROUTER_API_KEY:-}" ]; then AUTH_CHOICE=openrouter-api-key`,
+			`else echo "missing OpenClaw provider API key" >&2; exit 1; fi`,
+			`openclaw setup --workspace "$PWD" --mode local --non-interactive --accept-risk`,
+			`openclaw onboard --non-interactive --mode local --auth-choice "$AUTH_CHOICE" --secret-input-mode ref --accept-risk --skip-bootstrap --skip-health`,
+			`AGENT_ARGS=(--local --session-id agentclash-harness --json --timeout "${AGENTCLASH_HARNESS_TIMEOUT_SECONDS:-1800}" -m "$AGENTCLASH_HARNESS_TASK")`,
+			`if [ -n "${AGENTCLASH_HARNESS_MODEL:-}" ]; then AGENT_ARGS+=(--model "$AGENTCLASH_HARNESS_MODEL"); fi`,
+			`exec openclaw agent "${AGENT_ARGS[@]}"`,
+		}, "\n")
+		return agentHarnessRunner{
+			DisplayName: "openclaw exec",
+			EventType:   "openclaw.exec",
+			Command:     []string{"bash", "-lc", script},
+		}, nil
+	case domain.AgentHarnessKindClaudeE2B:
 		command := []string{"claude", "-p", "--output-format", "stream-json", "--verbose", "--permission-mode", "bypassPermissions"}
 		if h.CodexModel != nil && strings.TrimSpace(*h.CodexModel) != "" {
 			command = append(command, "--model", strings.TrimSpace(*h.CodexModel))
@@ -492,18 +512,12 @@ func agentHarnessRunnerFor(h agentHarnessSnapshot, workdir string) (agentHarness
 	}
 }
 
-func normalizeAgentHarnessKind(kind string) string {
-	trimmed := strings.TrimSpace(kind)
-	if trimmed == "" {
-		return "codex_e2b"
-	}
-	return trimmed
-}
-
 func agentHarnessToolName(h agentHarnessSnapshot) string {
-	switch normalizeAgentHarnessKind(h.HarnessKind) {
-	case "claude_e2b":
+	switch domain.NormalizeAgentHarnessKind(h.HarnessKind) {
+	case domain.AgentHarnessKindClaudeE2B:
 		return "claude"
+	case domain.AgentHarnessKindOpenClawE2B:
+		return "openclaw"
 	default:
 		return "codex"
 	}
@@ -1195,9 +1209,11 @@ func agentHarnessEvaluationSpec(executionID uuid.UUID, config agentHarnessEvalua
 
 func agentHarnessJudgeDeploymentContext(harness agentHarnessSnapshot) repository.AgentDeploymentExecutionContext {
 	providerKey := ""
-	switch normalizeAgentHarnessKind(harness.HarnessKind) {
-	case "claude_e2b":
+	switch domain.NormalizeAgentHarnessKind(harness.HarnessKind) {
+	case domain.AgentHarnessKindClaudeE2B:
 		providerKey = "anthropic"
+	case domain.AgentHarnessKindOpenClawE2B:
+		providerKey = openClawProviderKey(derefString(harness.OpenAIAPIKeySecretName))
 	default:
 		providerKey = "openai"
 	}
@@ -1255,7 +1271,7 @@ func agentHarnessJudgeTranscript(runEvents []repository.RunEvent) string {
 			eventType = string(event.EventType)
 		}
 		switch {
-		case eventType == "codex.exec.output" || eventType == "claude.exec.output":
+		case eventType == "codex.exec.output" || eventType == "claude.exec.output" || eventType == "openclaw.exec.output":
 			if preview := summaryPreview(payload, "message_summary"); preview != "" {
 				lines = append(lines, fmt.Sprintf("- %s: %s", eventType, preview))
 			}
@@ -1406,6 +1422,8 @@ func agentHarnessOutputStream(eventType string) (string, string, bool) {
 	switch eventType {
 	case "codex.exec":
 		return "codex.exec.output", "codex", true
+	case "openclaw.exec":
+		return "openclaw.exec.output", "openclaw", true
 	case "claude.exec":
 		return "claude.exec.output", "claude", true
 	default:
@@ -1622,7 +1640,7 @@ func agentHarnessRunEventType(eventType string) runevents.Type {
 		return runevents.EventTypeSandboxCommandStarted
 	case strings.HasSuffix(eventType, ".failed"):
 		return runevents.EventTypeSandboxCommandFailed
-	case eventType == "codex.exec.output" || eventType == "claude.exec.output":
+	case eventType == "codex.exec.output" || eventType == "claude.exec.output" || eventType == "openclaw.exec.output":
 		return runevents.EventTypeModelOutputDelta
 	case strings.HasPrefix(eventType, "artifact."):
 		return runevents.EventTypeSandboxFileWritten
@@ -1643,11 +1661,13 @@ func agentHarnessEnv(h agentHarnessSnapshot, secrets map[string]string) (map[str
 		if openAIKey == "" {
 			return nil, fmt.Errorf("%w: %s", ErrAgentHarnessSecretMissing, openAISecretName)
 		}
-		switch normalizeAgentHarnessKind(h.HarnessKind) {
+		switch domain.NormalizeAgentHarnessKind(h.HarnessKind) {
 		case "codex_e2b":
 			env["OPENAI_API_KEY"] = openAIKey
 			env["CODEX_API_KEY"] = openAIKey
-		case "claude_e2b":
+		case domain.AgentHarnessKindOpenClawE2B:
+			applyOpenClawSecretEnv(env, openAISecretName, openAIKey)
+		case domain.AgentHarnessKindClaudeE2B:
 			env["ANTHROPIC_API_KEY"] = openAIKey
 		default:
 			return nil, fmt.Errorf("unsupported agent harness kind %q", h.HarnessKind)
@@ -1656,6 +1676,45 @@ func agentHarnessEnv(h agentHarnessSnapshot, secrets map[string]string) (map[str
 		return nil, fmt.Errorf("unsupported agent harness auth mode %q", h.AuthMode)
 	}
 	return env, nil
+}
+
+func applyOpenClawSecretEnv(env map[string]string, secretName string, secretValue string) {
+	upperName := strings.ToUpper(secretName)
+	switch {
+	case strings.Contains(upperName, "ANTHROPIC"):
+		env["ANTHROPIC_API_KEY"] = secretValue
+	case strings.Contains(upperName, "OPENROUTER"):
+		env["OPENROUTER_API_KEY"] = secretValue
+	default:
+		env["OPENAI_API_KEY"] = secretValue
+	}
+}
+
+func openClawProviderKey(secretName string) string {
+	upperName := strings.ToUpper(strings.TrimSpace(secretName))
+	switch {
+	case strings.Contains(upperName, "ANTHROPIC"):
+		return "anthropic"
+	case strings.Contains(upperName, "OPENROUTER"):
+		return "openrouter"
+	default:
+		return "openai"
+	}
+}
+
+func applyOpenClawRunnerEnv(env map[string]string, harness agentHarnessSnapshot, timeout time.Duration) {
+	if domain.NormalizeAgentHarnessKind(harness.HarnessKind) != domain.AgentHarnessKindOpenClawE2B {
+		return
+	}
+	env["AGENTCLASH_HARNESS_TASK"] = harness.TaskPrompt
+	timeoutSeconds := int(timeout / time.Second)
+	if timeoutSeconds <= 0 {
+		timeoutSeconds = defaultAgentHarnessTimeoutSeconds
+	}
+	env["AGENTCLASH_HARNESS_TIMEOUT_SECONDS"] = fmt.Sprintf("%d", timeoutSeconds)
+	if harness.CodexModel != nil && strings.TrimSpace(*harness.CodexModel) != "" {
+		env["AGENTCLASH_HARNESS_MODEL"] = strings.TrimSpace(*harness.CodexModel)
+	}
 }
 
 func agentHarnessTimeout(raw json.RawMessage) time.Duration {

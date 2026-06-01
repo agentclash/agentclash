@@ -29,7 +29,7 @@ import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { GitBranch, Github, Loader2, Plus } from "lucide-react";
 
-type HarnessKind = "codex_e2b" | "claude_e2b";
+type HarnessKind = "codex_e2b" | "claude_e2b" | "openclaw_e2b";
 
 const harnessOptions: Record<
   HarnessKind,
@@ -48,6 +48,11 @@ const harnessOptions: Record<
     label: "Claude",
     template: "agentclash-claude-fullstack",
     secretCandidates: ["ANTHROPIC_API_KEY"],
+  },
+  openclaw_e2b: {
+    label: "OpenClaw",
+    template: "agentclash-openclaw-fullstack",
+    secretCandidates: ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "OPENROUTER_API_KEY"],
   },
 };
 
@@ -120,7 +125,9 @@ export function CreateAgentHarnessDialog({
     if (sourceMode === "url" && !repositoryURL.trim()) return;
     if (!taskPrompt.trim()) return;
     if (!apiKeySecret) {
-      toast.error(`Add ${runner.secretCandidates[0]} under workspace Secrets first`);
+      toast.error(
+        `Add ${runner.secretCandidates.join(" / ")} under workspace Secrets first`,
+      );
       return;
     }
 
@@ -350,11 +357,14 @@ export function CreateAgentHarnessDialog({
 
           {!secretsLoading && !apiKeySecret ? (
             <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-200">
-              Add an{" "}
-              <code className="font-[family-name:var(--font-mono)]">
-                {runner.secretCandidates[0]}
-              </code>{" "}
-              workspace secret before creating a {runner.label} harness.{" "}
+              Add a workspace secret named{" "}
+              {runner.secretCandidates.map((candidate, index) => (
+                <span key={candidate}>
+                  {index > 0 ? (index === runner.secretCandidates.length - 1 ? ", or " : ", ") : ""}
+                  <code className="font-[family-name:var(--font-mono)]">{candidate}</code>
+                </span>
+              ))}{" "}
+              before creating a {runner.label} harness.{" "}
               <Link
                 href={`/workspaces/${workspaceId}/secrets`}
                 className="font-medium underline underline-offset-4"
@@ -388,13 +398,8 @@ function inferRunnerSecret(
     const exact = secrets.find((secret) => secret.key === candidate);
     if (exact) return exact.key;
   }
-  return secrets.find((secret) => {
-    const key = secret.key.toUpperCase();
-    return candidates.some((candidate) => {
-      const provider = candidate.split("_")[0];
-      return key.includes(provider) && key.includes("KEY");
-    });
-  })?.key;
+  const canonical = new Set(candidates.map((candidate) => candidate.toUpperCase()));
+  return secrets.find((secret) => canonical.has(secret.key.toUpperCase()))?.key;
 }
 
 function buildHarnessName(

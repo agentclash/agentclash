@@ -19,15 +19,15 @@ export const template = Template()
       '&& rm -rf /var/lib/apt/lists/*',
   )
 
-  // Node.js 20 LTS via NodeSource
+  // Node.js 24 via NodeSource. OpenClaw requires Node 22.14+.
   .runCmd(
-    'curl -fsSL https://deb.nodesource.com/setup_20.x | bash - ' +
+    'curl -fsSL https://deb.nodesource.com/setup_24.x | bash - ' +
       '&& apt-get install -y nodejs ' +
       '&& rm -rf /var/lib/apt/lists/*',
   )
 
   // Coding-agent CLIs for Agent Harness tasks
-  .runCmd('npm install -g @openai/codex @anthropic-ai/claude-code')
+  .runCmd('npm install -g @openai/codex @anthropic-ai/claude-code openclaw@latest')
   // Claude Code refuses bypass-permissions mode as root. Keep the sandbox root
   // user for git/auth setup, but make the claude entrypoint drop to E2B's
   // unprivileged user and make the cloned repo writable before Claude edits it.
