@@ -1,6 +1,7 @@
 ---
 title: Sandbox & E2B
 description: Pack sandbox fields, worker sandbox provider selection, and how native execution reaches E2B today.
+dateModified: 2026-06-01
 ---
 
 Native runs execute agent tool calls inside an isolated **sandbox provider** implementing `sandbox.Provider` (`backend/internal/sandbox/sandbox.go`). Production commonly uses **E2B** (`backend/internal/sandbox/e2b/provider.go`); local development may run **unconfigured** no-op providers so queues drain without real VMs.
