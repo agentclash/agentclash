@@ -499,19 +499,22 @@ body {
 .prose-agentclash-docs h2 {
   margin-top: 2.75rem;
   margin-bottom: 0.85rem;
-  font-family: var(--font-display), serif;
-  font-size: 1.65rem;
-  font-weight: 400;
+  font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+  font-size: 1.25rem;
+  font-weight: 600;
   letter-spacing: -0.02em;
   color: rgba(255, 255, 255, 0.92);
+  scroll-margin-top: 7rem;
 }
 
 .prose-agentclash-docs h3 {
   margin-top: 2rem;
   margin-bottom: 0.65rem;
+  font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
   font-size: 1.05rem;
   font-weight: 600;
   color: rgba(255, 255, 255, 0.84);
+  scroll-margin-top: 7rem;
 }
 
 .prose-agentclash-docs p,
@@ -618,6 +621,22 @@ body {
 
 .prose-agentclash-docs tr:last-child td {
   border-bottom: none;
+}
+
+.prose-agentclash-docs .contains-task-list {
+  list-style: none;
+  padding-left: 0;
+}
+
+.prose-agentclash-docs .task-list-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+}
+
+.prose-agentclash-docs .task-list-item input[type="checkbox"] {
+  margin-top: 0.35rem;
+  accent-color: rgba(255, 255, 255, 0.72);
 }
 
 @theme inline {
