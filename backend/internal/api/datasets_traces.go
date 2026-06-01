@@ -1,3 +1,9 @@
+// HTTP handlers and manager orchestration for dataset trace ingest.
+//
+// Handlers stay thin; DatasetManager owns auth, platform normalization, redaction,
+// optional artifact storage, and schema checks before repository writes.
+//
+// Full design doc: docs/datasets/trace-ingest.md
 package api
 
 import (
@@ -116,6 +122,9 @@ func (m *DatasetManager) ImportDatasetTraces(ctx context.Context, caller Caller,
 		runAgent, getErr := traceRepo.GetRunAgentByID(ctx, *runAgentID)
 		if getErr != nil {
 			return repository.ImportDatasetTracesResult{}, getErr
+		}
+		if runAgent.WorkspaceID != input.WorkspaceID {
+			return repository.ImportDatasetTracesResult{}, fmt.Errorf("%w: run agent does not belong to workspace", ErrForbidden)
 		}
 		if input.RunID != nil && runAgent.RunID != *input.RunID {
 			return repository.ImportDatasetTracesResult{}, ErrForbidden

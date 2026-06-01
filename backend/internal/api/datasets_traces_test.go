@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
@@ -30,6 +31,25 @@ func TestImportDatasetTracesOTLP(t *testing.T) {
 	}
 	if result.Candidates[0].SourceTraceID == nil || *result.Candidates[0].SourceTraceID != "trace-1" {
 		t.Fatalf("source_trace_id = %v", result.Candidates[0].SourceTraceID)
+	}
+}
+
+func TestImportDatasetTracesAgentClashRejectsForeignWorkspaceRunAgent(t *testing.T) {
+	workspaceID := uuid.New()
+	otherWorkspaceID := uuid.New()
+	datasetID := uuid.New()
+	runAgentID := uuid.New()
+	repo := newDatasetTraceFakeRepo(workspaceID, datasetID)
+	repo.runAgents = map[uuid.UUID]domain.RunAgent{
+		runAgentID: {ID: runAgentID, WorkspaceID: otherWorkspaceID, RunID: uuid.New()},
+	}
+	manager := NewDatasetManager(allowWorkspaceAuthorizer{}, repo)
+
+	_, err := manager.ImportDatasetTraces(context.Background(), datasetImportCaller(workspaceID), ImportDatasetTracesInput{
+		WorkspaceID: workspaceID, DatasetID: datasetID, SourcePlatform: "agentclash", RunAgentID: &runAgentID,
+	})
+	if !errors.Is(err, ErrForbidden) {
+		t.Fatalf("ImportDatasetTraces() error = %v, want ErrForbidden", err)
 	}
 }
 
@@ -72,6 +92,7 @@ type datasetTraceFakeRepo struct {
 	datasetImportFakeRepo
 	imports    []repository.DatasetTraceImport
 	candidates []repository.DatasetTraceCandidate
+	runAgents  map[uuid.UUID]domain.RunAgent
 }
 
 func newDatasetTraceFakeRepo(workspaceID, datasetID uuid.UUID) *datasetTraceFakeRepo {
@@ -190,8 +211,13 @@ func (r *datasetTraceFakeRepo) CreateArtifact(context.Context, repository.Create
 func (r *datasetTraceFakeRepo) GetOrganizationIDByWorkspaceID(context.Context, uuid.UUID) (uuid.UUID, error) {
 	return uuid.New(), nil
 }
-func (r *datasetTraceFakeRepo) GetRunAgentByID(context.Context, uuid.UUID) (domain.RunAgent, error) {
-	return domain.RunAgent{}, nil
+func (r *datasetTraceFakeRepo) GetRunAgentByID(_ context.Context, runAgentID uuid.UUID) (domain.RunAgent, error) {
+	if r.runAgents != nil {
+		if runAgent, ok := r.runAgents[runAgentID]; ok {
+			return runAgent, nil
+		}
+	}
+	return domain.RunAgent{}, repository.ErrRunAgentNotFound
 }
 
 func stringPtrNonEmpty(value string) *string {
