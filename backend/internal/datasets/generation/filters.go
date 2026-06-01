@@ -26,6 +26,15 @@ func ValidateCandidateInput(schema json.RawMessage, enforced bool, input json.Ra
 	return domain.ValidateDatasetInputAgainstSchema(schema, input)
 }
 
+func ContainsTag(tags []string, target string) bool {
+	for _, tag := range tags {
+		if tag == target {
+			return true
+		}
+	}
+	return false
+}
+
 func canonicalizeJSONValue(raw json.RawMessage) ([]byte, error) {
 	var value any
 	if err := json.Unmarshal(raw, &value); err != nil {

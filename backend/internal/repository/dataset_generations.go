@@ -103,6 +103,7 @@ type UpdateDatasetGenerationJobProgressParams struct {
 	TotalOutputTokens int64
 	TotalCostUSD      float64
 	Summary           json.RawMessage
+	VersionID         *uuid.UUID
 }
 
 type CreateDatasetGenerationRejectionParams struct {
@@ -199,6 +200,7 @@ func (r *Repository) UpdateDatasetGenerationJobProgress(ctx context.Context, par
 		TotalOutputTokens: params.TotalOutputTokens,
 		TotalCostUsd:      pgtypeNumericFromFloat(params.TotalCostUSD),
 		Summary:           nullableJSON(params.Summary),
+		VersionID:         params.VersionID,
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -265,10 +267,11 @@ func (r *Repository) GetDatasetGenerationExecutionContextByID(ctx context.Contex
 	existing := make(map[string]struct{})
 	for _, example := range examples {
 		hash, hashErr := datasetgeneration.CanonicalInputHash(example.Input)
-		if hashErr == nil {
-			existing[hash] = struct{}{}
+		if hashErr != nil {
+			return DatasetGenerationExecutionContext{}, fmt.Errorf("hash dataset example %s input: %w", example.ID, hashErr)
 		}
-		if cfg.SeedsTag != "" && !containsTag(example.Tags, cfg.SeedsTag) {
+		existing[hash] = struct{}{}
+		if cfg.SeedsTag != "" && !datasetgeneration.ContainsTag(example.Tags, cfg.SeedsTag) {
 			continue
 		}
 		seeds = append(seeds, datasetgeneration.SeedExample{Input: example.Input, Expected: example.Expected})
@@ -327,15 +330,6 @@ func mapDatasetGenerationRejection(row repositorysqlc.DatasetGenerationRejection
 		Metadata:          cloneDatasetGenerationJSON(row.Metadata),
 		CreatedAt:         row.CreatedAt.Time,
 	}, nil
-}
-
-func containsTag(tags []string, target string) bool {
-	for _, tag := range tags {
-		if tag == target {
-			return true
-		}
-	}
-	return false
 }
 
 func timePtrToPg(value *time.Time) pgtype.Timestamptz {

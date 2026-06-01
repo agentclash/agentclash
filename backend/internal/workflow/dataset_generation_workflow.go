@@ -40,6 +40,7 @@ func SyntheticDatasetGenerationWorkflow(ctx sdkworkflow.Context, input Synthetic
 
 	executeCtx := sdkworkflow.WithActivityOptions(ctx, sdkworkflow.ActivityOptions{
 		StartToCloseTimeout: syntheticDatasetGenerationTimeout,
+		RetryPolicy:         defaultActivityOptions.RetryPolicy,
 	})
 	if err := sdkworkflow.ExecuteActivity(executeCtx, executeSyntheticDatasetGenerationActivityName, ExecuteSyntheticDatasetGenerationInput{
 		JobID: input.JobID,

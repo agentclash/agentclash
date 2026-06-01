@@ -17,7 +17,6 @@ func init() {
 	datasetGenerateCmd.Flags().Bool("create-version", false, "Snapshot a dataset version when generation completes")
 	datasetGenerateCmd.Flags().String("version-label", "", "Optional label for the generated dataset version")
 	datasetGenerateCmd.Flags().Bool("follow", false, "Poll generation job status until it finishes")
-	datasetGenerateCmd.Flags().String("format", "text", "Output format: text or json")
 }
 
 var datasetGenerateCmd = &cobra.Command{
@@ -49,6 +48,7 @@ var datasetGenerateCmd = &cobra.Command{
 		seedsTag, _ := cmd.Flags().GetString("seeds-tag")
 		createVersion, _ := cmd.Flags().GetBool("create-version")
 		versionLabel, _ := cmd.Flags().GetString("version-label")
+		follow, _ := cmd.Flags().GetBool("follow")
 
 		body := map[string]any{
 			"strategy":            strategy,
@@ -75,15 +75,13 @@ var datasetGenerateCmd = &cobra.Command{
 		if err := resp.DecodeJSON(&job); err != nil {
 			return err
 		}
-		if rc.Output.IsStructured() {
-			return rc.Output.PrintRaw(job)
-		}
 
 		jobID, _ := job["id"].(string)
-		fmt.Fprintf(rc.Output.Writer(), "generation job %s queued\n", jobID)
-
-		follow, _ := cmd.Flags().GetBool("follow")
 		if !follow || jobID == "" {
+			if rc.Output.IsStructured() {
+				return rc.Output.PrintRaw(job)
+			}
+			fmt.Fprintf(rc.Output.Writer(), "generation job %s queued\n", jobID)
 			return nil
 		}
 
@@ -100,7 +98,9 @@ var datasetGenerateCmd = &cobra.Command{
 				return err
 			}
 			status, _ := current["status"].(string)
-			fmt.Fprintf(rc.Output.Writer(), "status: %s accepted=%v rejected=%v\n", status, current["accepted_count"], current["rejected_count"])
+			if !rc.Output.IsStructured() {
+				fmt.Fprintf(rc.Output.Writer(), "status: %s accepted=%v rejected=%v\n", status, current["accepted_count"], current["rejected_count"])
+			}
 			switch status {
 			case "completed", "failed":
 				if rc.Output.IsStructured() {

@@ -58,6 +58,7 @@ SET generated_count = @generated_count,
     total_output_tokens = @total_output_tokens,
     total_cost_usd = @total_cost_usd,
     summary = COALESCE(sqlc.narg('summary'), summary),
+    version_id = COALESCE(sqlc.narg('version_id'), version_id),
     updated_at = now()
 WHERE id = @id
 RETURNING *;

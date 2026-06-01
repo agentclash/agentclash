@@ -304,8 +304,9 @@ SET generated_count = $1,
     total_output_tokens = $5,
     total_cost_usd = $6,
     summary = COALESCE($7, summary),
+    version_id = COALESCE($8, version_id),
     updated_at = now()
-WHERE id = $8
+WHERE id = $9
 RETURNING id, dataset_id, workspace_id, strategy, status, config, summary, target_count, generated_count, accepted_count, rejected_count, total_input_tokens, total_output_tokens, total_cost_usd, version_id, temporal_workflow_id, temporal_run_id, error_message, created_by, queued_at, started_at, finished_at, failed_at, created_at, updated_at
 `
 
@@ -317,6 +318,7 @@ type UpdateDatasetGenerationJobProgressParams struct {
 	TotalOutputTokens int64
 	TotalCostUsd      pgtype.Numeric
 	Summary           []byte
+	VersionID         *uuid.UUID
 	ID                uuid.UUID
 }
 
@@ -329,6 +331,7 @@ func (q *Queries) UpdateDatasetGenerationJobProgress(ctx context.Context, arg Up
 		arg.TotalOutputTokens,
 		arg.TotalCostUsd,
 		arg.Summary,
+		arg.VersionID,
 		arg.ID,
 	)
 	var i DatasetGenerationJob

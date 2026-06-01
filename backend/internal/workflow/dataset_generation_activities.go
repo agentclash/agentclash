@@ -13,6 +13,7 @@ import (
 	"github.com/agentclash/agentclash/backend/internal/provider"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/google/uuid"
+	"go.temporal.io/sdk/activity"
 )
 
 const (
@@ -116,24 +117,29 @@ func (a *DatasetGenerationActivities) ExecuteSyntheticDatasetGeneration(ctx cont
 		ctx = provider.WithWorkspaceSecrets(ctx, secrets)
 	}
 
-	rng := rand.New(rand.NewSource(int64(executionContext.Job.ID[0])<<56 | int64(executionContext.Job.ID[15])))
+	rng := rand.New(rand.NewSource(datasetGenerationRNGSeed(executionContext.Job.ID)))
 	acceptedHashes := make(map[string]struct{}, len(executionContext.ExistingInputs)+int(executionContext.Job.TargetCount))
 	for hash := range executionContext.ExistingInputs {
 		acceptedHashes[hash] = struct{}{}
 	}
 
-	var generatedCount int32
-	var acceptedCount int32
-	var rejectedCount int32
-	var totalInputTokens int64
-	var totalOutputTokens int64
-	var totalCostUSD float64
+	var generatedCount = executionContext.Job.GeneratedCount
+	var acceptedCount = executionContext.Job.AcceptedCount
+	var rejectedCount = executionContext.Job.RejectedCount
+	var totalInputTokens = executionContext.Job.TotalInputTokens
+	var totalOutputTokens = executionContext.Job.TotalOutputTokens
+	var totalCostUSD = executionContext.Job.TotalCostUSD
 	maxAttempts := int(executionContext.Job.TargetCount) * 5
 	if maxAttempts < 10 {
 		maxAttempts = 10
 	}
 
 	for attempt := 0; attempt < maxAttempts && acceptedCount < executionContext.Job.TargetCount; attempt++ {
+		activity.RecordHeartbeat(ctx, map[string]any{
+			"attempt":  attempt + 1,
+			"accepted": acceptedCount,
+			"target":   executionContext.Job.TargetCount,
+		})
 		seedBatch := pickSeedBatch(executionContext.Seeds, rng, 3)
 		prompt := datasetgeneration.BuildSelfInstructPrompt(seedBatch, int(executionContext.Job.TargetCount))
 		response, invokeErr := a.client.InvokeModel(ctx, provider.Request{
@@ -196,7 +202,7 @@ func (a *DatasetGenerationActivities) ExecuteSyntheticDatasetGeneration(ctx cont
 			continue
 		}
 
-		externalID := fmt.Sprintf("gen:%s:%d", executionContext.Job.ID, acceptedCount+1)
+		externalID := fmt.Sprintf("gen:%s:%s", executionContext.Job.ID, hash)
 		metadata := mustMarshalJSON(map[string]any{
 			"generator":           executionContext.Job.Strategy,
 			"generation_job_id":     executionContext.Job.ID,
@@ -268,18 +274,8 @@ func (a *DatasetGenerationActivities) ExecuteSyntheticDatasetGeneration(ctx cont
 		TotalOutputTokens: totalOutputTokens,
 		TotalCostUSD:      totalCostUSD,
 		Summary:           mustMarshalJSON(summary),
+		VersionID:         versionID,
 	})
-	if err != nil {
-		return wrapActivityError(err)
-	}
-	if versionID != nil {
-		_, err = a.repo.UpdateDatasetGenerationJobStatus(ctx, repository.UpdateDatasetGenerationJobStatusParams{
-			ID:        input.JobID,
-			Status:    repository.DatasetGenerationStatusRunning,
-			VersionID: versionID,
-			Summary:   mustMarshalJSON(summary),
-		})
-	}
 	return wrapActivityError(err)
 }
 
@@ -304,4 +300,10 @@ func pickSeedBatch(seeds []datasetgeneration.SeedExample, rng *rand.Rand, size i
 		picked = append(picked, seeds[indices[i]])
 	}
 	return picked
+}
+
+func datasetGenerationRNGSeed(jobID uuid.UUID) int64 {
+	idBytes := jobID
+	return int64(idBytes[0])<<56 | int64(idBytes[1])<<48 | int64(idBytes[2])<<40 | int64(idBytes[3])<<32 |
+		int64(idBytes[4])<<24 | int64(idBytes[5])<<16 | int64(idBytes[6])<<8 | int64(idBytes[7])
 }

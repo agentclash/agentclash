@@ -112,7 +112,7 @@ func (m *DatasetManager) StartDatasetGeneration(ctx context.Context, caller Call
 	seedCount := 0
 	for _, example := range examples {
 		if input.SeedsTag != "" {
-			if !containsDatasetExampleTag(example.Tags, input.SeedsTag) {
+			if !datasetgeneration.ContainsTag(example.Tags, input.SeedsTag) {
 				continue
 			}
 		}
@@ -242,18 +242,15 @@ func handleDatasetGenerationError(w http.ResponseWriter, logger *slog.Logger, er
 		writeError(w, http.StatusBadRequest, "unsupported_generation_strategy", err.Error())
 	case errors.Is(err, repository.ErrDatasetGenerationJobNotFound):
 		writeError(w, http.StatusNotFound, "dataset_generation_job_not_found", "dataset generation job not found")
+	case errors.Is(err, repository.ErrProviderAccountNotFound):
+		writeError(w, http.StatusNotFound, "provider_account_not_found", "provider account not found")
+	case errors.Is(err, repository.ErrModelAliasNotFound):
+		writeError(w, http.StatusNotFound, "model_alias_not_found", "model alias not found")
 	case errors.Is(err, ErrForbidden):
 		writeError(w, http.StatusForbidden, "forbidden", "forbidden")
+	case err != nil && (err.Error() == "target_count must be between 1 and 100" || err.Error() == "dataset must have at least one active seed example"):
+		writeError(w, http.StatusBadRequest, "validation_error", err.Error())
 	default:
 		handleDatasetError(w, logger, err)
 	}
-}
-
-func containsDatasetExampleTag(tags []string, target string) bool {
-	for _, tag := range tags {
-		if tag == target {
-			return true
-		}
-	}
-	return false
 }
