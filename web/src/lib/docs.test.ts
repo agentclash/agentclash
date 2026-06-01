@@ -536,6 +536,17 @@ describe("agent skill docs", () => {
     expect(regression?.searchText).toContain("scorecards");
   });
 
+  it("resolves revamp doc pages from navigation", () => {
+    for (const href of [
+      "/docs/guides/datasets-overview",
+      "/docs/challenge-packs/multi-turn",
+      "/docs/guides/security-evaluation",
+    ]) {
+      const doc = getDocBySlug(href.replace("/docs/", "").split("/"));
+      expect(doc?.href).toBe(href);
+    }
+  });
+
   it("includes platform pages, blog posts, skill catalog, and skill bodies in llms-full.txt", () => {
     const bundle = buildLlmsFull("https://example.test");
 
@@ -559,6 +570,15 @@ describe("agent skill docs", () => {
     );
     expect(bundle).toContain(
       "[CI/CD agent gates](https://example.test/docs-md/guides/ci-cd-agent-gates)",
+    );
+    expect(bundle).toContain(
+      "https://example.test/docs-md/guides/datasets-overview",
+    );
+    expect(bundle).toContain(
+      "https://example.test/docs-md/challenge-packs/multi-turn",
+    );
+    expect(bundle).toContain(
+      "https://example.test/docs-md/guides/security-evaluation",
     );
     expect(bundle).toContain("# Agent Skills");
     expect(bundle).toContain("name: agentclash-skill-catalog");

@@ -53,15 +53,27 @@ function DocsHeading({
       id={id}
       {...props}
       className={cn(
-        "scroll-mt-28 font-sans font-semibold tracking-tight text-zinc-100 not-italic antialiased",
+        "scroll-mt-28 font-sans font-semibold tracking-tight text-white/92 not-italic antialiased",
         level === 2
-          ? "mt-14 border-b border-zinc-800 pb-3 text-xl"
-          : "mt-10 text-[1.0625rem] leading-snug",
+          ? "mt-14 border-b border-white/[0.08] pb-3 text-xl"
+          : "mt-10 text-[1.0625rem] leading-snug text-white/84",
         className,
       )}
     >
       {children}
     </Tag>
+  );
+}
+
+function DocsInlineCode({
+  className,
+  children,
+  ...props
+}: ComponentPropsWithoutRef<"code">) {
+  return (
+    <code className={cn(className)} {...props}>
+      {children}
+    </code>
   );
 }
 
@@ -82,6 +94,14 @@ export const docsMDXComponents = {
   ),
   h3: (props: ComponentPropsWithoutRef<"h3">) => (
     <DocsHeading level={3} {...props} />
+  ),
+  code: (props: ComponentPropsWithoutRef<"code">) => (
+    <DocsInlineCode {...props} />
+  ),
+  table: (props: ComponentPropsWithoutRef<"table">) => (
+    <div className="not-prose my-6 overflow-x-auto">
+      <table {...props} />
+    </div>
   ),
   pre: (props: ComponentPropsWithoutRef<"pre">) => (
     <CopyableCodeBlock>{props.children}</CopyableCodeBlock>

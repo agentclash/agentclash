@@ -1,9 +1,10 @@
 ---
 title: Dataset CI Gates
 description: Record dataset eval baselines, sync examples into regression suites, and fail CI when a candidate run regresses.
+dateModified: 2026-06-01
 ---
 
-Dataset CI gates close the loop between pinned dataset evals and release safety. After you run a dataset eval ([#886.3](/docs)), record a baseline from the green run, optionally sync the pinned version into a regression suite, and gate every subsequent change with `agentclash dataset test`.
+Dataset CI gates close the loop between pinned dataset evals and release safety. After you run a [dataset eval](/docs/guides/datasets-overview), record a baseline from the green run, optionally sync the pinned version into a regression suite, and gate every subsequent change with `agentclash dataset test`.
 
 ## Record a baseline
 
@@ -133,3 +134,8 @@ For full agent release gates (build spec, deployment, regression suites, and rel
 | `POST` | `/v1/workspaces/{workspaceID}/datasets/{datasetID}/regression-suite/sync` | Promote version examples into regression cases |
 
 See the [OpenAPI spec](/docs/reference/openapi) for request and response schemas.
+
+## See also
+
+- [Datasets overview](/docs/guides/datasets-overview)
+- [Security evaluation](/docs/guides/security-evaluation)

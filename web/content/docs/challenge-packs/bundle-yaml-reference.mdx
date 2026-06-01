@@ -1,6 +1,7 @@
 ---
 title: Bundle YAML reference
 description: Structured reference for challenge-pack bundles as parsed by backend/internal/challengepack.
+dateModified: 2026-06-01
 ---
 
 AgentClash challenge packs ship as **one YAML file** decoded into `challengepack.Bundle` (`backend/internal/challengepack/bundle.go`). Publication stores a JSON manifest combining the pack body with metadata for execution and scoring (`ManifestJSON` in the same file).
@@ -105,3 +106,5 @@ Run creation binds `challenge_pack_version_id` specifically—YAML filenames sto
 
 - [Evaluation spec reference](evaluation-spec-reference)
 - [Challenge packs and inputs — conceptual overview](../concepts/challenge-packs-and-inputs)
+- [Multi-turn packs](/docs/challenge-packs/multi-turn)
+- [Security evaluation](/docs/guides/security-evaluation)

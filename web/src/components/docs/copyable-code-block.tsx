@@ -1,7 +1,12 @@
 "use client";
 
-import { Children, isValidElement, useMemo, useState, type ReactNode } from "react";
-import { Check, Copy } from "lucide-react";
+import {
+  Children,
+  isValidElement,
+  useMemo,
+  type ReactNode,
+} from "react";
+import { CodeBlock } from "@/components/replay/agent-output-renderer";
 
 function textFromNode(node: ReactNode): string {
   return Children.toArray(node)
@@ -19,28 +24,37 @@ function textFromNode(node: ReactNode): string {
     .join("");
 }
 
-export function CopyableCodeBlock({ children }: { children: ReactNode }) {
-  const [copied, setCopied] = useState(false);
-  const text = useMemo(() => textFromNode(children).trimEnd(), [children]);
+function languageFromPreChildren(children: ReactNode): string | undefined {
+  for (const child of Children.toArray(children)) {
+    if (!isValidElement<{ className?: string }>(child)) continue;
+    const match = child.props.className?.match(/language-([\w-]+)/);
+    if (match?.[1]) return match[1];
+  }
+  return undefined;
+}
 
-  async function copyCode() {
-    await navigator.clipboard.writeText(text);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1600);
+export function CopyableCodeBlock({ children }: { children: ReactNode }) {
+  const text = useMemo(() => textFromNode(children).trimEnd(), [children]);
+  const language = useMemo(
+    () => languageFromPreChildren(children),
+    [children],
+  );
+
+  if (language) {
+    return (
+      <CodeBlock
+        code={text}
+        language={language}
+        showLineNumbers={text.split("\n").length > 1}
+      />
+    );
   }
 
   return (
-    <div className="group relative">
-      <button
-        type="button"
-        onClick={copyCode}
-        aria-label="Copy code"
-        className="absolute right-3 top-3 z-10 inline-flex items-center gap-1.5 rounded-md border border-zinc-700 bg-zinc-950/90 px-2.5 py-1 text-xs font-medium text-zinc-300 opacity-100 shadow-sm transition-colors hover:border-emerald-500/60 hover:text-white sm:opacity-0 sm:group-hover:opacity-100"
-      >
-        {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
-        {copied ? "Copied" : "Copy"}
-      </button>
-      <pre>{children}</pre>
+    <div className="not-prose my-6 overflow-x-auto rounded-2xl border border-white/[0.08] bg-white/[0.04] p-4">
+      <pre className="m-0 font-mono text-[13px] leading-6 text-white/78">
+        <code>{text}</code>
+      </pre>
     </div>
   );
 }

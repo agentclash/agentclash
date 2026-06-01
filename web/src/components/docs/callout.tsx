@@ -15,19 +15,19 @@ const styles: Record<
     icon: Info,
     label: "Info",
     className:
-      "border-lime-300/25 bg-lime-300/[0.08] text-lime-50/90 [&_strong]:text-lime-50",
+      "border-white/[0.12] bg-white/[0.04] text-white/72 [&_strong]:text-white/90",
   },
   warning: {
     icon: AlertTriangle,
     label: "Warning",
     className:
-      "border-amber-300/25 bg-amber-300/[0.08] text-amber-50/90 [&_strong]:text-amber-50",
+      "border-amber-300/20 bg-amber-300/[0.06] text-amber-50/85 [&_strong]:text-amber-50",
   },
   note: {
     icon: NotebookPen,
     label: "Note",
     className:
-      "border-sky-300/20 bg-sky-300/[0.07] text-sky-50/90 [&_strong]:text-sky-50",
+      "border-white/[0.1] bg-white/[0.03] text-white/65 [&_strong]:text-white/88",
   },
 };
 
@@ -43,12 +43,14 @@ export function Callout({
 
   return (
     <div
-      className={`my-6 rounded-2xl border px-4 py-4 sm:px-5 ${style.className}`}
+      className={`not-prose my-6 rounded-2xl border px-4 py-4 sm:px-5 ${style.className}`}
     >
       <div className="flex items-start gap-3">
-        <Icon className="mt-0.5 size-4 shrink-0" />
+        <Icon className="mt-0.5 size-4 shrink-0 opacity-70" />
         <div className="min-w-0 text-sm leading-7">
-          <p className="mb-1 font-medium tracking-[-0.01em]">{style.label}</p>
+          <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.14em] opacity-80">
+            {style.label}
+          </p>
           <div>{children}</div>
         </div>
       </div>

@@ -8,6 +8,7 @@ import {
   breadcrumbSchema,
 } from "@/components/marketing/json-ld";
 import { getAllSlugs, getPostBySlug } from "@/lib/blog";
+import { mdxRemoteOptions } from "@/lib/mdx-options";
 import { blogRssAlternate, ogImageUrl } from "@/lib/seo";
 
 type Props = {
@@ -104,7 +105,7 @@ export default async function BlogPostPage({ params }: Props) {
         </header>
 
         <div className="prose-agentclash">
-          <MDXRemote source={post.content} />
+          <MDXRemote source={post.content} options={mdxRemoteOptions} />
         </div>
       </article>
 
