@@ -11,6 +11,7 @@ import {
   getDocBySlug,
   getDocNeighbors,
 } from "@/lib/docs";
+import { mdxRemoteOptions } from "@/lib/mdx-options";
 import { ogImageUrl } from "@/lib/seo";
 import { docsSchemaId } from "../docs-schema-id";
 
@@ -121,7 +122,11 @@ export default async function DocsPage({ params }: Props) {
       />
 
       <div className="prose-agentclash-docs">
-        <MDXRemote source={doc.content} components={docsMDXComponents} />
+        <MDXRemote
+          source={doc.content}
+          components={docsMDXComponents}
+          options={mdxRemoteOptions}
+        />
       </div>
 
       {isHome && (
