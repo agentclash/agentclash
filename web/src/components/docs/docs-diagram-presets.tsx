@@ -10,7 +10,7 @@ function DiagramFrame({
   children: ReactNode;
 }) {
   return (
-    <figure className="not-prose my-10 overflow-x-auto rounded-2xl border border-zinc-800/95 bg-[radial-gradient(ellipse_at_top,_#1a2620_0%,_#09090b_58%)] p-6 shadow-[0_28px_64px_-32px_rgba(0,0,0,.85)]">
+    <figure className="not-prose my-10 overflow-x-auto rounded-2xl border border-white/[0.08] bg-black/20 p-6">
       <figcaption className="sr-only">{caption ?? "Diagram"}</figcaption>
       <div className="min-w-0">{children}</div>
     </figure>
@@ -27,8 +27,8 @@ function Pill({
   return (
     <span
       className={cn(
-        "inline-flex max-w-[18rem] items-center justify-center rounded-lg border px-3 py-1.5 text-center text-[13px] font-medium leading-snug text-zinc-100",
-        "border-emerald-500/25 bg-emerald-500/[0.07] shadow-sm shadow-black/30",
+        "inline-flex max-w-[18rem] items-center justify-center rounded-xl border px-3 py-1.5 text-center text-[13px] font-medium leading-snug text-white/88",
+        "border-white/[0.12] bg-white/[0.04]",
         className,
       )}
     >
@@ -39,13 +39,19 @@ function Pill({
 
 function ArrowR({ className }: { className?: string }) {
   return (
-    <ArrowRight className={cn("size-[18px] shrink-0 text-emerald-500/45", className)} aria-hidden />
+    <ArrowRight
+      className={cn("size-[18px] shrink-0 text-white/30", className)}
+      aria-hidden
+    />
   );
 }
 
 function ArrowD({ className }: { className?: string }) {
   return (
-    <ArrowDown className={cn("size-[18px] shrink-0 text-emerald-500/45", className)} aria-hidden />
+    <ArrowDown
+      className={cn("size-[18px] shrink-0 text-white/30", className)}
+      aria-hidden
+    />
   );
 }
 
@@ -67,8 +73,8 @@ export function DiagramOrchestrationRuntimeSplit() {
     <DiagramFrame caption="API request into Temporal workflows and worker responsibilities">
       <div className="flex flex-col gap-6">
         <RowArrowRow pills={["Browser or CLI", "API server", "Temporal", "Worker"]} />
-        <div className="flex flex-col gap-6 border-t border-zinc-800/80 pt-6">
-          <p className="text-center text-xs font-semibold uppercase tracking-wider text-zinc-500 md:text-left">
+        <div className="flex flex-col gap-6 border-t border-white/[0.08] pt-6">
+          <p className="text-center text-xs font-semibold uppercase tracking-wider text-white/35 md:text-left">
             Worker surfaces
           </p>
           <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-3 md:flex-nowrap md:justify-start">
@@ -130,7 +136,7 @@ export function DiagramWorkspaceDataModel() {
           <Pill>Challenge pack</Pill>
         </div>
         <ArrowD />
-        <Pill className="ring-[1px] ring-emerald-400/35">Run</Pill>
+        <Pill className="ring-[1px] ring-white/20">Run</Pill>
         <ArrowD />
         <div className="flex w-full max-w-xl flex-wrap justify-center gap-3 md:gap-6">
           <Pill>Replay events</Pill>
@@ -160,16 +166,16 @@ export function DiagramAgentsToRun() {
           </div>
         </div>
         <div className="flex flex-col items-center gap-2">
-          <div className="hidden h-[2rem] border-l border-dashed border-emerald-500/30 md:block" aria-hidden />
-          <p className="text-center text-[11px] uppercase tracking-[0.18em] text-zinc-500">
+          <div className="hidden h-[2rem] border-l border-dashed border-white/20 md:block" aria-hidden />
+          <p className="text-center text-[11px] uppercase tracking-[0.18em] text-white/35">
             feed deployment
           </p>
           <ArrowD />
-          <Pill className="ring-[1px] ring-emerald-400/35">Deployment</Pill>
+          <Pill className="ring-[1px] ring-white/20">Deployment</Pill>
           <ArrowD />
           <Pill>Run</Pill>
         </div>
-        <p className="text-center text-[12px] leading-relaxed text-zinc-500">
+        <p className="text-center text-[12px] leading-relaxed text-white/35">
           Ready build versions and runtime configuration rows converge on the same Deployment—the
           object runs once your challenge pack binds through run submission.
         </p>
@@ -215,9 +221,9 @@ export function DiagramReplayVsScorecards() {
           <ArrowD />
           <Pill>Run detail view</Pill>
         </div>
-        <div className="hidden w-px self-stretch bg-zinc-800 md:block md:mx-10" aria-hidden />
+        <div className="hidden w-px self-stretch bg-white/[0.08] md:block md:mx-10" aria-hidden />
         <div className="flex flex-1 flex-col items-center gap-3 md:items-start">
-          <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-emerald-500/70 md:-mt-[1rem] md:pb-10">
+          <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/45 md:-mt-[1rem] md:pb-10">
             also
           </span>
           <Pill className="-mt-[0.5rem] md:mt-0">Canonical events</Pill>
@@ -240,7 +246,7 @@ export function DiagramEvidenceClosingLoop() {
           <RowArrowRow pills={["Replay views"]} />
           <RowArrowRow pills={["Reviewer understanding"]} />
         </div>
-        <div className="hidden min-h-[300px] w-px shrink-0 self-stretch bg-zinc-800 md:block md:rounded-full" aria-hidden />
+        <div className="hidden min-h-[300px] w-px shrink-0 self-stretch bg-white/[0.08] md:block md:rounded-full" aria-hidden />
         <div className="flex flex-col gap-10">
           <div className="flex flex-wrap gap-x-3 gap-y-3">
             <Pill>Canonical events</Pill>
@@ -252,7 +258,7 @@ export function DiagramEvidenceClosingLoop() {
             <ArrowR />
             <Pill>Scorecards</Pill>
           </div>
-          <div className="rounded-2xl border border-dashed border-zinc-800/95 bg-black/35 p-6">
+          <div className="rounded-2xl border border-dashed border-white/[0.08] bg-black/35 p-6">
             <p className="mb-6 text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
               Convergent outcomes
             </p>
@@ -266,7 +272,7 @@ export function DiagramEvidenceClosingLoop() {
               <ArrowD />
               <RowArrowRow pills={["Future challenge-pack improvements"]} />
             </div>
-            <p className="mt-6 text-[12px] leading-relaxed text-zinc-500">
+            <p className="mt-6 text-[12px] leading-relaxed text-white/35">
               Review and comparison tighten the authored packs you ship next, turning observed drifts into explicit benchmark updates.
             </p>
           </div>
@@ -281,14 +287,14 @@ export function DiagramCodebaseTourShortcuts() {
     <DiagramFrame caption="Thin slice from web and CLI typed surfaces toward worker-hosted execution">
       <div className="flex flex-col gap-10 md:gap-12">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-6">
-          <Pill className="text-emerald-200/95">web/</Pill>
+          <Pill className="text-white/80">web/</Pill>
           <ArrowR />
           <Pill>backend/internal/api</Pill>
         </div>
 
         <div className="-mx-2 border-y border-white/14 py-6 md:border-0 md:py-0">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-6">
-            <Pill className="text-emerald-200/95">CLI</Pill>
+            <Pill className="text-white/80">CLI</Pill>
             <ArrowR />
             <Pill>backend/internal/api</Pill>
           </div>
@@ -297,8 +303,8 @@ export function DiagramCodebaseTourShortcuts() {
         <RowArrowRow pills={["backend/internal/api", "Temporal workflows"]} />
         <RowArrowRow pills={["Temporal workflows", "backend/internal/worker"]} />
 
-        <div className="flex flex-col gap-6 border-t border-zinc-800/80 pt-8">
-          <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
+        <div className="flex flex-col gap-6 border-t border-white/[0.08] pt-8">
+          <p className="text-xs font-semibold uppercase tracking-wider text-white/35">
             Worker tails
           </p>
           <div className="flex flex-wrap gap-x-3 gap-y-4">
@@ -324,7 +330,7 @@ export function DiagramChallengePackBundleShape() {
               </div>
               <ArrowR className="hidden shrink-0 self-center rotate-[-12deg] md:inline" />
               <div className="flex flex-col items-start gap-2">
-                <Pill className="ring-[1px] ring-emerald-400/35">Version</Pill>
+                <Pill className="ring-[1px] ring-white/20">Version</Pill>
                 <ArrowD />
                 <div className="mt-8 flex flex-col gap-3">
                   <Pill>Evaluation spec</Pill>
@@ -335,7 +341,7 @@ export function DiagramChallengePackBundleShape() {
               </div>
             </div>
           </div>
-          <div className="mx-auto hidden h-px min-h-[18rem] min-w-[2px] self-stretch bg-zinc-800 md:block md:rounded-full" aria-hidden />
+          <div className="mx-auto hidden h-px min-h-[18rem] min-w-[2px] self-stretch bg-white/[0.08] md:block md:rounded-full" aria-hidden />
           <div className="flex flex-col items-start gap-3">
             <Pill>Challenges</Pill>
             <ArrowD />
@@ -345,7 +351,7 @@ export function DiagramChallengePackBundleShape() {
           </div>
         </div>
 
-        <div className="flex flex-col items-center gap-6 border-t border-zinc-800/80 pt-12 md:flex-row md:flex-wrap md:justify-center md:gap-10">
+        <div className="flex flex-col items-center gap-6 border-t border-white/[0.08] pt-12 md:flex-row md:flex-wrap md:justify-center md:gap-10">
           <RowArrowRow pills={["Cases", "Run execution"]} />
           <span className="hidden text-[11px] uppercase tracking-[0.2em] text-zinc-600 md:inline">
             —
@@ -353,7 +359,7 @@ export function DiagramChallengePackBundleShape() {
           <div className="flex flex-col items-center gap-2">
             <Pill>Evaluation spec</Pill>
             <ArrowD />
-            <Pill className="ring-[1px] ring-emerald-400/30">Scorecards</Pill>
+            <Pill className="ring-[1px] ring-white/20">Scorecards</Pill>
           </div>
         </div>
       </div>
