@@ -233,6 +233,71 @@ export function blogIndexSchema(
   ];
 }
 
+type ChangelogIndexPeriod = {
+  id: string;
+  label: string;
+  headline: string;
+  endDate: string;
+  entryCount: number;
+};
+
+export function changelogIndexSchema(
+  periods: ChangelogIndexPeriod[],
+  faqItems: Array<{ question: string; answer: string }> = [],
+): Record<string, unknown>[] {
+  const pageUrl = `${SITE_URL}/changelog`;
+  const latestPeriod = periods[0];
+
+  return [
+    breadcrumbSchema([
+      { name: "Home", url: "/" },
+      { name: "Changelog", url: "/changelog" },
+    ]),
+    {
+      "@context": "https://schema.org",
+      "@type": "WebPage",
+      name: "AgentClash Changelog",
+      description:
+        "Everything shipped in AgentClash from day one — scoring, regression, security packs, datasets, and CLI updates, grouped every ten days.",
+      url: pageUrl,
+      ...(latestPeriod
+        ? {
+            dateModified: latestPeriod.endDate,
+          }
+        : {}),
+      isPartOf: {
+        "@type": "WebSite",
+        name: "AgentClash",
+        url: SITE_URL,
+      },
+      publisher: publisherSchema(),
+      mainEntity: {
+        "@type": "ItemList",
+        name: "AgentClash product updates",
+        numberOfItems: periods.length,
+      },
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "ItemList",
+      name: "AgentClash product updates",
+      url: pageUrl,
+      numberOfItems: periods.length,
+      itemListElement: periods.map((period, index) => ({
+        "@type": "ListItem",
+        position: index + 1,
+        name: period.headline,
+        description: `${period.label} — ${period.entryCount} updates`,
+        url: `${pageUrl}#${period.id}`,
+        item: {
+          "@id": `${pageUrl}#${period.id}`,
+        },
+      })),
+    },
+    ...(faqItems.length ? [faqSchema(faqItems)] : []),
+  ];
+}
+
 export function docsPageSchema({
   title,
   description,

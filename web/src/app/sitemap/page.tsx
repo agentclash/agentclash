@@ -68,6 +68,11 @@ const primaryPages = [
     description: "Engineering notes on AI agent evaluation and release gates.",
   },
   {
+    title: "Changelog",
+    href: "/changelog",
+    description: "Product updates shipped every ten days since launch.",
+  },
+  {
     title: "Why AgentClash",
     href: "/why",
     description: "Why real-task AI agent evaluation matters.",

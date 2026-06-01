@@ -1,0 +1,339 @@
+export type ChangelogCategory = "added" | "improved" | "fixed" | "security";
+
+export interface ChangelogEntry {
+  category: ChangelogCategory;
+  text: string;
+}
+
+export interface ChangelogPeriod {
+  id: string;
+  startDate: string;
+  endDate: string;
+  label: string;
+  headline: string;
+  entries: ChangelogEntry[];
+}
+
+export const CHANGELOG_CATEGORY_LABELS: Record<ChangelogCategory, string> = {
+  added: "Added",
+  improved: "Improved",
+  fixed: "Fixed",
+  security: "Security",
+};
+
+export const CHANGELOG_PERIODS: ChangelogPeriod[] = [
+  {
+    id: "2026-04-15",
+    startDate: "2026-04-15",
+    endDate: "2026-04-24",
+    label: "Apr 15 – Apr 24, 2026",
+    headline: "Scoring depth, failure review, and the first regression suite UI",
+    entries: [
+      {
+        category: "added",
+        text: "Sandbox code-execution validator and math-equivalence scoring for deterministic checks.",
+      },
+      {
+        category: "added",
+        text: "LLM judge dimensions with n-wise comparisons, persisted results, and scorecard rationale cards in the UI.",
+      },
+      {
+        category: "added",
+        text: "Behavioral spec scoring — signal extraction, scorecards, and dimension contribution metadata.",
+      },
+      {
+        category: "added",
+        text: "Text-generation metrics and token F1 validator with evidence linked back to run events.",
+      },
+      {
+        category: "added",
+        text: "Failure review API and workspace Failures page with filters, detail drawer, and run links.",
+      },
+      {
+        category: "added",
+        text: "Regression suite CRUD, failure promotion flow, and full regression UI (suites, cases, promotion dialog).",
+      },
+      {
+        category: "added",
+        text: "xAI provider adapter wired into the execution engine.",
+      },
+      {
+        category: "added",
+        text: "Run replay step detail now surfaces model output and tool results.",
+      },
+      {
+        category: "added",
+        text: "Workspace invite emails via Resend.",
+      },
+      {
+        category: "improved",
+        text: "Run-agent scorecard redesigned with an inspector-style layout.",
+      },
+      {
+        category: "improved",
+        text: "Cross-platform CLI install scripts hardened for macOS, Linux, and Windows.",
+      },
+      {
+        category: "improved",
+        text: "Authenticated users redirect from the landing page straight to the dashboard.",
+      },
+    ],
+  },
+  {
+    id: "2026-04-25",
+    startDate: "2026-04-25",
+    endDate: "2026-05-04",
+    label: "Apr 25 – May 04, 2026",
+    headline: "Race context, CLI distribution, and a redesigned public site",
+    entries: [
+      {
+        category: "added",
+        text: "Live race context — standings injection at step boundaries, newswire formatting, and token split between agents vs race context.",
+      },
+      {
+        category: "added",
+        text: "CLI `--race-context` flags and UI toggle for race standings during live runs.",
+      },
+      {
+        category: "added",
+        text: "Workflow-first eval commands in the CLI.",
+      },
+      {
+        category: "added",
+        text: "Dedicated /why manifesto page and pricing section with tier cards and trial CTA.",
+      },
+      {
+        category: "added",
+        text: "Released CLI binaries now default to https://api.agentclash.dev.",
+      },
+      {
+        category: "improved",
+        text: "AgentClash-branded auth with liquid-glass login, starfield hero, and 3D clash mark on landing.",
+      },
+      {
+        category: "improved",
+        text: "Workspace navigation made instant with client-side prefetching.",
+      },
+      {
+        category: "improved",
+        text: "Run detail and replay pages restyled with instrument-panel aesthetics.",
+      },
+      {
+        category: "improved",
+        text: "Playground comparison workspace refactored for clearer side-by-side evals.",
+      },
+    ],
+  },
+  {
+    id: "2026-05-05",
+    startDate: "2026-05-05",
+    endDate: "2026-05-14",
+    label: "May 05 – May 14, 2026",
+    headline: "CI intelligence, prompt eval, and GitHub-native workflows",
+    entries: [
+      {
+        category: "added",
+        text: "Failure cluster rollups, identity keys, taxonomy classification, and trend charts in the web UI.",
+      },
+      {
+        category: "added",
+        text: "Regression provenance, validation signals, proposed-case queue, and remediation hints.",
+      },
+      {
+        category: "added",
+        text: "CI setup generators with workspace page and one-click setup pull request creation.",
+      },
+      {
+        category: "added",
+        text: "Prompt eval CLI commands — config validation, remote preflight, compile, follow, and GitHub Action mode.",
+      },
+      {
+        category: "added",
+        text: "AgentClash PR comment bot with links back to failure review in the UI.",
+      },
+      {
+        category: "added",
+        text: "E2B harness runners for Claude Code and OpenClaw agent execution.",
+      },
+      {
+        category: "added",
+        text: "Production failure capture and explicit validation runs for proposed regression cases.",
+      },
+      {
+        category: "improved",
+        text: "CLI preserves CI curation metadata and surfaces failure taxonomy in workflow output.",
+      },
+      {
+        category: "improved",
+        text: "Evaluator validity signals exposed in scorecards for clearer trust boundaries.",
+      },
+      {
+        category: "fixed",
+        text: "Dozens of CI, regression, and failure-review edge cases hardened across API and web.",
+      },
+    ],
+  },
+  {
+    id: "2026-05-15",
+    startDate: "2026-05-15",
+    endDate: "2026-05-24",
+    label: "May 15 – May 24, 2026",
+    headline: "Security packs, multi-turn eval, and replay polish",
+    entries: [
+      {
+        category: "security",
+        text: "SecurityPolicy schema and SecurityScore dimension for security-family challenge packs.",
+      },
+      {
+        category: "security",
+        text: "Canonical secret-hygiene and prompt-injection challenge packs shipped.",
+      },
+      {
+        category: "security",
+        text: "CLI `stress-run` subcommand with Anthropic Messages provider and --no-system-guard leak surfacing.",
+      },
+      {
+        category: "security",
+        text: "agent-vault-stress harness with real Vault SDK, function calling, campaign mode, and bundled HTTP mock.",
+      },
+      {
+        category: "security",
+        text: "Infisical and HashiCorp Vault boundary packs for vault-framed canary leak testing.",
+      },
+      {
+        category: "added",
+        text: "Multi-turn evaluation — user simulators, hybrid executor, human takeover, calibration reviews, and post-run arena.",
+      },
+      {
+        category: "added",
+        text: "Case template renderer and bundle validation for code-execution challenge packs.",
+      },
+      {
+        category: "added",
+        text: "Multi-turn conversation events with transcript helpers in the event model.",
+      },
+      {
+        category: "improved",
+        text: "Replay trace output upgraded with IDE-level syntax highlighting and rich text rendering.",
+      },
+      {
+        category: "improved",
+        text: "Planted secrets from security packs wired into sandbox provisioning.",
+      },
+    ],
+  },
+  {
+    id: "2026-05-25",
+    startDate: "2026-05-25",
+    endDate: "2026-06-01",
+    label: "May 25 – Jun 01, 2026",
+    headline: "Datasets, /try demos, multi-turn transcripts, and Hermes harness",
+    entries: [
+      {
+        category: "added",
+        text: "Datasets foundation — interop import/export, version snapshots, eval runs, baselines, CI gate verdicts, and JUnit output.",
+      },
+      {
+        category: "added",
+        text: "Self-Instruct synthetic dataset generation with async jobs and CLI parity.",
+      },
+      {
+        category: "added",
+        text: "Production trace ingest, trace candidates, and promote-to-example workflow.",
+      },
+      {
+        category: "added",
+        text: "Full dataset management UI in the workspace — import mapping, eval wait, dataset test flow, and generation history.",
+      },
+      {
+        category: "added",
+        text: "/try interactive terminal demos with E2B sandbox, free-trial gateway, and Kimi/Qwen/OpenCode integrations.",
+      },
+      {
+        category: "added",
+        text: "OpenAI Responses API as a first-class execution mode.",
+      },
+      {
+        category: "added",
+        text: "Multi-turn conversation transcript API with replay rendering, scorecard view, and PDF export.",
+      },
+      {
+        category: "added",
+        text: "Vibe eval draft persistence for in-progress eval configuration.",
+      },
+      {
+        category: "added",
+        text: "Hermes agent harness support in E2B templates and harness execution workflow.",
+      },
+      {
+        category: "added",
+        text: "PostHog usage analytics across backend, CLI, and web.",
+      },
+      {
+        category: "improved",
+        text: "SEO and AEO discoverability expanded across public marketing and docs surfaces.",
+      },
+      {
+        category: "improved",
+        text: "Landing page bar promoting /try CLI demos.",
+      },
+      {
+        category: "fixed",
+        text: "Dataset generation provider validation returns clear 400 errors instead of opaque failures.",
+      },
+    ],
+  },
+];
+
+export function getChangelogPeriods(): ChangelogPeriod[] {
+  return [...CHANGELOG_PERIODS].sort(
+    (a, b) => b.startDate.localeCompare(a.startDate),
+  );
+}
+
+export function getChangelogLatestModified(): string {
+  const [latest] = getChangelogPeriods();
+  return latest?.endDate ?? CHANGELOG_PERIODS[0]?.startDate ?? "2026-04-15";
+}
+
+export const CHANGELOG_FAQ = [
+  {
+    question: "What is the AgentClash changelog?",
+    answer:
+      "The AgentClash changelog lists product updates shipped since launch — features, improvements, fixes, and security work — grouped into ten-day release periods with category badges.",
+  },
+  {
+    question: "How often is the AgentClash changelog updated?",
+    answer:
+      "AgentClash groups changelog entries into ten-day windows. Each period summarizes everything merged during that window, from scoring and regression tooling to datasets, security packs, and CLI releases.",
+  },
+  {
+    question: "Where can I find AgentClash release notes?",
+    answer:
+      "Visit https://www.agentclash.dev/changelog for the public release timeline. For engineering deep dives, see the AgentClash blog at https://www.agentclash.dev/blog.",
+  },
+] as const;
+
+export function renderChangelogMarkdown(origin = "https://www.agentclash.dev"): string {
+  const periods = getChangelogPeriods();
+  const lines = [
+    "# AgentClash Changelog",
+    "",
+    "Product updates shipped in ten-day periods since April 15, 2026.",
+    "",
+    `Source: ${origin}/changelog`,
+    "",
+  ];
+
+  for (const period of periods) {
+    lines.push(`## ${period.label}`, "", period.headline, "");
+    for (const entry of period.entries) {
+      lines.push(
+        `- **${CHANGELOG_CATEGORY_LABELS[entry.category]}**: ${entry.text}`,
+      );
+    }
+    lines.push("");
+  }
+
+  return lines.join("\n").trim();
+}

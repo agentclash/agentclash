@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { teamMetadata } from "./team/metadata";
 import { whyMetadata } from "./why/metadata";
+import { changelogMetadata } from "./changelog/metadata";
 
 describe("secondary public page social metadata", () => {
   it("adds explicit social metadata for the why page", () => {
@@ -95,5 +96,33 @@ describe("secondary public page social metadata", () => {
     };
     expect(openGraph.images?.[0]?.alt).toContain("AgentClash team");
     expect(twitter.images?.[0]?.alt).toBe(openGraph.images?.[0]?.alt);
+  });
+
+  it("adds explicit social metadata for the changelog page", () => {
+    expect(changelogMetadata).toMatchObject({
+      title: "Changelog - AgentClash",
+      description:
+        "Everything shipped in AgentClash from day one — scoring, regression, security packs, datasets, and CLI updates, grouped every ten days.",
+      alternates: {
+        canonical: "/changelog",
+      },
+      openGraph: {
+        title: "Changelog - AgentClash",
+        url: "/changelog",
+        type: "website",
+        locale: "en_US",
+        siteName: "AgentClash",
+      },
+      twitter: {
+        card: "summary_large_image",
+        title: "Changelog - AgentClash",
+      },
+    });
+
+    const openGraph = changelogMetadata.openGraph as {
+      images?: Array<{ url?: string; alt?: string }>;
+    };
+    expect(openGraph.images?.[0]?.url).toContain("/og?");
+    expect(openGraph.images?.[0]?.alt).toContain("changelog");
   });
 });

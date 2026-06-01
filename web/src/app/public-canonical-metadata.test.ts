@@ -9,6 +9,7 @@ import { metadata as agentRegressionTestingMetadata } from "./platform/agent-reg
 import { metadata as sitemapMetadata } from "./sitemap/page";
 import { teamMetadata } from "./team/metadata";
 import { whyMetadata } from "./why/metadata";
+import { changelogMetadata } from "./changelog/metadata";
 
 const getPostBySlugMock = vi.hoisted(() => vi.fn());
 const getDocBySlugMock = vi.hoisted(() => vi.fn());
@@ -53,6 +54,7 @@ describe("public canonical metadata", () => {
     );
     expectCanonical(whyMetadata, "/why");
     expectCanonical(teamMetadata, "/team");
+    expectCanonical(changelogMetadata, "/changelog");
     expectCanonical(sitemapMetadata, "/sitemap");
   });
 

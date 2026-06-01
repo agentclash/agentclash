@@ -26,3 +26,4 @@ testing/*
 !testing/feat-dataset-evals-889.md
 !testing/feat-dataset-trace-ingest-890.md
 !testing/feat-dataset-generation-892.md
+!testing/feat-changelog-page.md
