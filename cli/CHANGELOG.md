@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.25.0](https://github.com/agentclash/agentclash/compare/v0.24.0...v0.25.0) (2026-06-01)
+
+
+### Features
+
+* complete dataset CI follow-up with regression sync and JUnit output ([8e93c83](https://github.com/agentclash/agentclash/commit/8e93c839130a28655d317a59ff0f090a1fb3d1af))
+* dataset CI follow-up — regression sync, JUnit, web tab ([571900f](https://github.com/agentclash/agentclash/commit/571900f608df5246571b0aece8c71d1722c4cc0a))
+
+
+### Bug Fixes
+
+* address Codex review findings for dataset regression sync ([22c9a04](https://github.com/agentclash/agentclash/commit/22c9a04a31e9cd57158676205ed20d5e644cdabd))
+
 ## [0.24.0](https://github.com/agentclash/agentclash/compare/v0.23.0...v0.24.0) (2026-06-01)
 
 
