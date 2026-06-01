@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.26.0](https://github.com/agentclash/agentclash/compare/v0.25.0...v0.26.0) (2026-06-01)
+
+
+### Features
+
+* add Self-Instruct synthetic dataset generation ([#892](https://github.com/agentclash/agentclash/issues/892)) ([e095439](https://github.com/agentclash/agentclash/commit/e095439b0dec3c012b53020290a21369c5e145f5))
+* Self-Instruct synthetic dataset generation ([#892](https://github.com/agentclash/agentclash/issues/892)) ([daeb164](https://github.com/agentclash/agentclash/commit/daeb1640201f0c56638d05baa647f4f4e29b54da))
+
+
+### Bug Fixes
+
+* harden synthetic dataset generation for Temporal retries ([e054584](https://github.com/agentclash/agentclash/commit/e0545846296f03e6928835743b222b7d60dfe2b3))
+
 ## [0.25.0](https://github.com/agentclash/agentclash/compare/v0.24.0...v0.25.0) (2026-06-01)
 
 
