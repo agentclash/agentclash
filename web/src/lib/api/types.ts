@@ -2165,6 +2165,317 @@ export interface DatasetRegressionSuiteLink {
   updated_at: string;
 }
 
+export type DatasetInteropFormat =
+  | "openai"
+  | "braintrust"
+  | "langsmith"
+  | "phoenix"
+  | "jsonl"
+  | "csv";
+
+export type DatasetImportMode = "add" | "replace";
+
+export type DatasetGenerationJobStatus =
+  | "queued"
+  | "running"
+  | "completed"
+  | "failed";
+
+export type DatasetTraceCandidateStatus = "pending" | "promoted" | "rejected";
+
+export type DatasetTraceSourcePlatform =
+  | "otel"
+  | "braintrust"
+  | "langsmith"
+  | "phoenix"
+  | "agentclash";
+
+export interface CreateDatasetInput {
+  slug: string;
+  name: string;
+  description?: string;
+  input_schema?: Record<string, unknown>;
+  input_schema_enforced?: boolean;
+  default_challenge_pack_version_id?: string;
+}
+
+export interface PatchDatasetInput {
+  slug?: string;
+  name?: string;
+  description?: string;
+  input_schema?: Record<string, unknown>;
+  input_schema_enforced?: boolean;
+  default_challenge_pack_version_id?: string;
+}
+
+export interface UpsertDatasetExampleInput {
+  external_id?: string;
+  input: unknown;
+  expected?: unknown;
+  metadata?: Record<string, unknown>;
+  tags?: string[];
+  status?: DatasetExampleStatus;
+  source?: DatasetExampleSource;
+  source_run_id?: string;
+  source_trace_id?: string;
+  source_platform?: string;
+  artifact_id?: string;
+}
+
+export interface PatchDatasetExampleInput {
+  input?: unknown;
+  expected?: unknown;
+  metadata?: Record<string, unknown>;
+  tags?: string[];
+  status?: DatasetExampleStatus;
+  source?: DatasetExampleSource;
+  source_run_id?: string;
+  source_trace_id?: string;
+  source_platform?: string;
+  artifact_id?: string;
+}
+
+export interface CreateDatasetVersionInput {
+  label?: string;
+}
+
+export interface DatasetVersionDetail {
+  version: DatasetVersion;
+  examples: DatasetExample[];
+}
+
+export interface DatasetImportRowError {
+  row: number;
+  field?: string;
+  message: string;
+}
+
+export interface DatasetImportPreviewExample {
+  external_id?: string;
+  input: unknown;
+  expected?: unknown;
+  metadata: Record<string, unknown>;
+  tags?: string[];
+}
+
+export interface DatasetImportResponse {
+  format: DatasetInteropFormat;
+  dry_run: boolean;
+  mode: DatasetImportMode;
+  preview?: DatasetImportPreviewExample[];
+  errors?: DatasetImportRowError[];
+  imported_count: number;
+  version?: DatasetVersion;
+  examples?: DatasetExample[];
+}
+
+export interface StartDatasetEvalInput {
+  version_id: string;
+  challenge_pack_version_id: string;
+  challenge_id?: string;
+  challenge_key?: string;
+  mapping?: Record<string, unknown>;
+  agent_deployment_ids: string[];
+  name?: string;
+}
+
+export interface DatasetVersionInputSet {
+  id: string;
+  dataset_id: string;
+  dataset_version_id: string;
+  challenge_pack_version_id: string;
+  challenge_identity_id: string;
+  challenge_key: string;
+  challenge_input_set_id: string;
+  input_key: string;
+  input_checksum: string;
+  mapping: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StartDatasetEvalResponse {
+  run: CreateRunResponse;
+  dataset_version_input_set: DatasetVersionInputSet;
+}
+
+export interface DatasetEvalResult {
+  dataset_example_id: string;
+  dataset_version_id: string;
+  challenge_input_set_id: string;
+  run_id?: string;
+  run_agent_id?: string;
+  verdict?: string;
+  normalized_score?: number;
+  judged_at?: string;
+}
+
+export interface ListDatasetResultsResponse {
+  items: DatasetEvalResult[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface CreateDatasetBaselineInput {
+  run_id: string;
+  agent_deployment_id?: string;
+  label?: string;
+}
+
+export interface SyncDatasetRegressionSuiteInput {
+  version_id: string;
+  challenge_pack_version_id: string;
+  challenge_key: string;
+  regression_suite_id?: string;
+  suite_name?: string;
+}
+
+export interface SyncDatasetRegressionSuiteResult {
+  link: DatasetRegressionSuiteLink;
+  suite: RegressionSuite;
+  created_cases: number;
+  skipped_cases: number;
+  total_examples: number;
+}
+
+export interface StartDatasetGenerationInput {
+  strategy: "self_instruct" | "self-instruct";
+  target_count: number;
+  provider_account_id: string;
+  model_alias_id: string;
+  seeds_tag?: string;
+  create_version?: boolean;
+  version_label?: string;
+}
+
+export interface DatasetGenerationJob {
+  id: string;
+  dataset_id: string;
+  workspace_id: string;
+  strategy: string;
+  status: DatasetGenerationJobStatus;
+  config: Record<string, unknown>;
+  summary: Record<string, unknown>;
+  target_count: number;
+  generated_count: number;
+  accepted_count: number;
+  rejected_count: number;
+  total_input_tokens: number;
+  total_output_tokens: number;
+  total_cost_usd: number;
+  version_id?: string;
+  temporal_workflow_id?: string;
+  temporal_run_id?: string;
+  error_message?: string;
+  created_by: string;
+  queued_at: string;
+  started_at?: string;
+  finished_at?: string;
+  failed_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EvaluateDatasetGateInput {
+  baseline_id: string;
+  run_id: string;
+  agent_deployment_id?: string;
+  min_pass_rate?: number;
+  max_regressions?: number;
+}
+
+export interface DatasetGateRegression {
+  dataset_example_id: string;
+  reason: string;
+  baseline_verdict?: string;
+  candidate_verdict?: string;
+  baseline_score?: number;
+  candidate_score?: number;
+}
+
+export interface DatasetGateResult {
+  pass: boolean;
+  pass_rate: number;
+  baseline_pass_rate: number;
+  regression_count: number;
+  regressions: DatasetGateRegression[];
+  evaluated_examples: number;
+  failed_thresholds?: string[];
+}
+
+export interface EvaluateDatasetGateResponse {
+  baseline: DatasetBaseline;
+  candidate_run_id: string;
+  gate: DatasetGateResult;
+}
+
+export interface DatasetTraceImport {
+  id: string;
+  dataset_id: string;
+  source_platform: string;
+  artifact_id?: string;
+  candidate_count: number;
+  status: string;
+  created_by: string;
+  created_at: string;
+}
+
+export interface DatasetTraceCandidate {
+  id: string;
+  dataset_id: string;
+  import_id: string;
+  source_platform: string;
+  source_trace_id?: string;
+  source_run_id?: string;
+  source_run_agent_id?: string;
+  external_id?: string;
+  input: unknown;
+  output?: unknown;
+  expected?: unknown;
+  metadata: Record<string, unknown>;
+  tags: string[];
+  status: DatasetTraceCandidateStatus;
+  promoted_example_id?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ImportDatasetTracesInput {
+  source_platform: DatasetTraceSourcePlatform;
+  payload?: unknown;
+  run_id?: string;
+  run_agent_id?: string;
+  artifact_id?: string;
+  redaction?: {
+    drop_metadata_keys?: string[];
+    hash_metadata_keys?: string[];
+    drop_metadata_paths?: string[];
+  };
+}
+
+export interface ImportDatasetTracesResponse {
+  import: DatasetTraceImport;
+  candidates: DatasetTraceCandidate[];
+}
+
+export interface ListDatasetTraceCandidatesResponse {
+  candidates: DatasetTraceCandidate[];
+  total: number;
+}
+
+export interface PromoteDatasetTraceCandidateInput {
+  expected?: unknown;
+  tags?: string[];
+}
+
+export interface PromoteDatasetTraceCandidateResponse {
+  candidate: DatasetTraceCandidate;
+  example: DatasetExample;
+  version?: DatasetVersion;
+  created: boolean;
+}
+
 // --- Billing ---
 
 export type BillingPlanKey = "free" | "pro" | "team" | "enterprise";

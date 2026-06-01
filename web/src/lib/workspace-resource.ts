@@ -56,6 +56,20 @@ export const workspaceResourceKeys = {
     apiQueryKey(`/v1/workspaces/${workspaceId}/knowledge-sources`),
   artifacts: (workspaceId: string): ApiQueryKey =>
     apiQueryKey(`/v1/workspaces/${workspaceId}/artifacts`),
+  datasets: (workspaceId: string): ApiQueryKey =>
+    apiQueryKey(`/v1/workspaces/${workspaceId}/datasets`),
+  datasetExamples: (workspaceId: string, datasetId: string): ApiQueryKey =>
+    apiQueryKey(`/v1/workspaces/${workspaceId}/datasets/${datasetId}/examples`),
+  datasetVersions: (workspaceId: string, datasetId: string): ApiQueryKey =>
+    apiQueryKey(`/v1/workspaces/${workspaceId}/datasets/${datasetId}/versions`),
+  datasetBaselines: (workspaceId: string, datasetId: string): ApiQueryKey =>
+    apiQueryKey(`/v1/workspaces/${workspaceId}/datasets/${datasetId}/baselines`),
+  datasetTraceCandidates: (workspaceId: string, datasetId: string): ApiQueryKey =>
+    apiQueryKey(
+      `/v1/workspaces/${workspaceId}/datasets/${datasetId}/trace-candidates`,
+    ),
+  datasetResults: (workspaceId: string, datasetId: string): ApiQueryKey =>
+    apiQueryKey(`/v1/workspaces/${workspaceId}/datasets/${datasetId}/results`),
   secrets: (workspaceId: string): ApiQueryKey =>
     apiQueryKey(`/v1/workspaces/${workspaceId}/secrets`),
   workspaceMembers: (workspaceId: string, offset = 0): ApiQueryKey =>
@@ -85,6 +99,16 @@ export const workspaceMutationKeys = {
     return [
       workspaceResourceKeys.challengePacks(workspaceId),
       workspaceResourceKeys.deployments(workspaceId),
+    ];
+  },
+  datasetDetail(workspaceId: string, datasetId: string): ApiQueryKey[] {
+    return [
+      workspaceResourceKeys.datasets(workspaceId),
+      workspaceResourceKeys.datasetExamples(workspaceId, datasetId),
+      workspaceResourceKeys.datasetVersions(workspaceId, datasetId),
+      workspaceResourceKeys.datasetBaselines(workspaceId, datasetId),
+      workspaceResourceKeys.datasetTraceCandidates(workspaceId, datasetId),
+      workspaceResourceKeys.datasetResults(workspaceId, datasetId),
     ];
   },
 };

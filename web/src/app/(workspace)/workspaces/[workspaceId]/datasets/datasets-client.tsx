@@ -16,6 +16,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { CreateDatasetDialog } from "./create-dataset-dialog";
 
 export function DatasetsClient({ workspaceId }: { workspaceId: string }) {
   const { data, error, isLoading } = usePaginatedApiQuery<Dataset>(
@@ -31,6 +32,7 @@ export function DatasetsClient({ workspaceId }: { workspaceId: string }) {
     <div>
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-lg font-semibold tracking-tight">Datasets</h1>
+        <CreateDatasetDialog workspaceId={workspaceId} />
       </div>
 
       {error ? (
@@ -41,7 +43,7 @@ export function DatasetsClient({ workspaceId }: { workspaceId: string }) {
         <EmptyState
           icon={<Database className="size-10" />}
           title="No datasets"
-          description="Create datasets from the CLI or API to reuse examples across evals."
+          description="Create a dataset to reuse examples across evals, imports, and CI gates."
         />
       ) : (
         <div className="rounded-lg border border-border">
@@ -77,7 +79,11 @@ export function DatasetsClient({ workspaceId }: { workspaceId: string }) {
                     {dataset.version_count}
                   </TableCell>
                   <TableCell>
-                    <Badge variant={dataset.input_schema_enforced ? "default" : "secondary"}>
+                    <Badge
+                      variant={
+                        dataset.input_schema_enforced ? "default" : "secondary"
+                      }
+                    >
                       {dataset.input_schema_enforced ? "enforced" : "optional"}
                     </Badge>
                   </TableCell>
