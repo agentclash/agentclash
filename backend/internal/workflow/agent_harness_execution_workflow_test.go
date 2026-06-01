@@ -898,19 +898,28 @@ func TestExecuteAgentHarnessExecutionRunsOpenClawAndRecordsTrace(t *testing.T) {
 				t.Fatalf("openclaw command leaked secret name: %#v", request.Command)
 			}
 			script := request.Command[2]
-			if !strings.Contains(script, "openclaw setup --workspace \"$PWD\"") || !strings.Contains(script, "--non-interactive") {
-				t.Fatalf("openclaw script = %q, want non-interactive setup", script)
+			if !strings.Contains(script, "openclaw setup --workspace \"$PWD\"") || !strings.Contains(script, "--accept-risk") {
+				t.Fatalf("openclaw script = %q, want workspace setup with accept-risk", script)
 			}
-			if !strings.Contains(script, "--mode local") {
-				t.Fatalf("openclaw script = %q, want --mode local for non-interactive setup", script)
+			if !strings.Contains(script, "openclaw onboard --non-interactive") || !strings.Contains(script, "--secret-input-mode ref") {
+				t.Fatalf("openclaw script = %q, want non-interactive onboard with secret refs", script)
 			}
-			if !strings.Contains(script, "openclaw models set \"$AGENTCLASH_HARNESS_MODEL\"") {
-				t.Fatalf("openclaw script = %q, want model setup", script)
+			if !strings.Contains(script, "--skip-bootstrap") || !strings.Contains(script, "--skip-health") {
+				t.Fatalf("openclaw script = %q, want headless onboard flags", script)
+			}
+			if !strings.Contains(script, "AUTH_CHOICE=openai-api-key") {
+				t.Fatalf("openclaw script = %q, want OpenAI auth choice", script)
+			}
+			if !strings.Contains(script, "AGENT_ARGS+=(--model \"$AGENTCLASH_HARNESS_MODEL\")") {
+				t.Fatalf("openclaw script = %q, want model override on agent command", script)
+			}
+			if strings.Contains(script, "openclaw models set") {
+				t.Fatalf("openclaw script = %q, should not call models set separately", script)
 			}
 			if strings.Contains(script, ">/tmp/openclaw-setup.log") || strings.Contains(script, "|| true") {
 				t.Fatalf("openclaw script = %q, want visible fail-fast setup", script)
 			}
-			if !strings.Contains(script, "openclaw agent --local --session-id agentclash-harness --json") {
+			if !strings.Contains(script, "exec openclaw agent \"${AGENT_ARGS[@]}\"") {
 				t.Fatalf("openclaw script = %q, want local json agent run", script)
 			}
 			return sandbox.ExecResult{ExitCode: 0, Stdout: `{"type":"assistant","message":"done"}`}, nil

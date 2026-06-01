@@ -481,9 +481,15 @@ func agentHarnessRunnerFor(h agentHarnessSnapshot, workdir string) (agentHarness
 	case "openclaw_e2b":
 		script := strings.Join([]string{
 			"set -euo pipefail",
-			"openclaw setup --workspace \"$PWD\" --mode local --non-interactive",
-			"if [ -n \"${AGENTCLASH_HARNESS_MODEL:-}\" ]; then openclaw models set \"$AGENTCLASH_HARNESS_MODEL\"; fi",
-			"exec openclaw agent --local --session-id agentclash-harness --json --timeout \"${AGENTCLASH_HARNESS_TIMEOUT_SECONDS:-1800}\" -m \"$AGENTCLASH_HARNESS_TASK\"",
+			`if [ -n "${OPENAI_API_KEY:-}" ]; then AUTH_CHOICE=openai-api-key`,
+			`elif [ -n "${ANTHROPIC_API_KEY:-}" ]; then AUTH_CHOICE=apiKey`,
+			`elif [ -n "${OPENROUTER_API_KEY:-}" ]; then AUTH_CHOICE=openrouter-api-key`,
+			`else echo "missing OpenClaw provider API key" >&2; exit 1; fi`,
+			`openclaw setup --workspace "$PWD" --mode local --non-interactive --accept-risk`,
+			`openclaw onboard --non-interactive --mode local --auth-choice "$AUTH_CHOICE" --secret-input-mode ref --accept-risk --skip-bootstrap --skip-health`,
+			`AGENT_ARGS=(--local --session-id agentclash-harness --json --timeout "${AGENTCLASH_HARNESS_TIMEOUT_SECONDS:-1800}" -m "$AGENTCLASH_HARNESS_TASK")`,
+			`if [ -n "${AGENTCLASH_HARNESS_MODEL:-}" ]; then AGENT_ARGS+=(--model "$AGENTCLASH_HARNESS_MODEL"); fi`,
+			`exec openclaw agent "${AGENT_ARGS[@]}"`,
 		}, "\n")
 		return agentHarnessRunner{
 			DisplayName: "openclaw exec",
@@ -1214,6 +1220,8 @@ func agentHarnessJudgeDeploymentContext(harness agentHarnessSnapshot) repository
 	switch normalizeAgentHarnessKind(harness.HarnessKind) {
 	case "claude_e2b":
 		providerKey = "anthropic"
+	case "openclaw_e2b":
+		providerKey = openClawProviderKey(derefString(harness.OpenAIAPIKeySecretName))
 	default:
 		providerKey = "openai"
 	}
@@ -1687,6 +1695,18 @@ func applyOpenClawSecretEnv(env map[string]string, secretName string, secretValu
 		env["OPENROUTER_API_KEY"] = secretValue
 	default:
 		env["OPENAI_API_KEY"] = secretValue
+	}
+}
+
+func openClawProviderKey(secretName string) string {
+	upperName := strings.ToUpper(strings.TrimSpace(secretName))
+	switch {
+	case strings.Contains(upperName, "ANTHROPIC"):
+		return "anthropic"
+	case strings.Contains(upperName, "OPENROUTER"):
+		return "openrouter"
+	default:
+		return "openai"
 	}
 }
 
