@@ -310,6 +310,13 @@ export const DOCS_NAV: DocNavSection[] = [
         href: "/docs/challenge-packs/input-sets-and-cases",
       },
       {
+        title: "Multi-turn packs",
+        description:
+          "Scripted, LLM, and human user-simulator phases with operator APIs and calibration reviews.",
+        slug: ["challenge-packs", "multi-turn"],
+        href: "/docs/challenge-packs/multi-turn",
+      },
+      {
         title: "Eval workflows & gates",
         description:
           "CLI eval start baseline scorecard compare gates and regression scope flags grounded in Cobra.",
@@ -352,11 +359,25 @@ export const DOCS_NAV: DocNavSection[] = [
         href: "/docs/guides/ci-cd-agent-gates",
       },
       {
+        title: "Datasets overview",
+        description:
+          "Pinned dataset evals, baselines, regression suite sync, and the dataset command lifecycle.",
+        slug: ["guides", "datasets-overview"],
+        href: "/docs/guides/datasets-overview",
+      },
+      {
         title: "Dataset CI Gates",
         description:
           "Record dataset eval baselines, sync examples into regression suites, and gate CI with agentclash dataset test.",
         slug: ["guides", "dataset-ci-gates"],
         href: "/docs/guides/dataset-ci-gates",
+      },
+      {
+        title: "Security evaluation",
+        description:
+          "Stress-run security packs, score secret leaks and adversarial acceptance, and measure posture.",
+        slug: ["guides", "security-evaluation"],
+        href: "/docs/guides/security-evaluation",
       },
       {
         title: "CI/CD Workload Recipes",
