@@ -3714,6 +3714,115 @@ paths:
         "404":
           $ref: "#/components/responses/NotFoundError"
 
+  /v1/workspaces/{workspaceID}/datasets/{datasetID}/traces/import:
+    post:
+      operationId: importDatasetTraces
+      tags: [Datasets]
+      summary: Import production traces as reviewable dataset candidates
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/DatasetID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ImportDatasetTracesInput"
+      responses:
+        "201":
+          description: Trace import batch and staged candidates
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportDatasetTracesResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /v1/workspaces/{workspaceID}/datasets/{datasetID}/trace-candidates:
+    get:
+      operationId: listDatasetTraceCandidates
+      tags: [Datasets]
+      summary: List trace candidates awaiting promotion
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/DatasetID"
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, promoted, rejected]
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+            minimum: 1
+            maximum: 100
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+      responses:
+        "200":
+          description: Paginated trace candidates
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListDatasetTraceCandidatesResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /v1/workspaces/{workspaceID}/datasets/{datasetID}/trace-candidates/{candidateID}/promote:
+    post:
+      operationId: promoteDatasetTraceCandidate
+      tags: [Datasets]
+      summary: Promote a trace candidate into a dataset example
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/DatasetID"
+        - name: candidateID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PromoteDatasetTraceCandidateInput"
+      responses:
+        "200":
+          description: Existing promoted example returned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PromoteDatasetTraceCandidateResponse"
+        "201":
+          description: Candidate promoted to a new dataset example and version
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PromoteDatasetTraceCandidateResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          $ref: "#/components/responses/ValidationError"
+
   /v1/workspaces/{workspaceID}/datasets/{datasetID}/examples:
     get:
       operationId: listDatasetExamples
@@ -5705,6 +5814,115 @@ components:
         total: { type: integer, format: int64 }
         limit: { type: integer, format: int32 }
         offset: { type: integer, format: int32 }
+
+    DatasetTraceImport:
+      type: object
+      required: [id, dataset_id, source_platform, candidate_count, status, created_by, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        dataset_id: { type: string, format: uuid }
+        source_platform: { type: string }
+        artifact_id: { type: string, format: uuid }
+        candidate_count: { type: integer, format: int32 }
+        status: { type: string }
+        created_by: { type: string, format: uuid }
+        created_at: { type: string, format: date-time }
+
+    DatasetTraceCandidate:
+      type: object
+      required: [id, dataset_id, import_id, source_platform, input, metadata, tags, status, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        dataset_id: { type: string, format: uuid }
+        import_id: { type: string, format: uuid }
+        source_platform: { type: string }
+        source_trace_id: { type: string }
+        source_run_id: { type: string, format: uuid }
+        source_run_agent_id: { type: string, format: uuid }
+        external_id: { type: string }
+        input: {}
+        output: {}
+        expected: {}
+        metadata:
+          type: object
+          additionalProperties: true
+        tags:
+          type: array
+          items: { type: string }
+        status:
+          type: string
+          enum: [pending, promoted, rejected]
+        promoted_example_id: { type: string, format: uuid }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    DatasetTraceRedactionConfig:
+      type: object
+      properties:
+        drop_metadata_keys:
+          type: array
+          items: { type: string }
+        hash_metadata_keys:
+          type: array
+          items: { type: string }
+        drop_metadata_paths:
+          type: array
+          items: { type: string }
+
+    ImportDatasetTracesInput:
+      type: object
+      required: [source_platform]
+      properties:
+        source_platform:
+          type: string
+          enum: [otel, braintrust, langsmith, phoenix, agentclash]
+        payload: {}
+        run_id: { type: string, format: uuid }
+        run_agent_id: { type: string, format: uuid }
+        artifact_id: { type: string, format: uuid }
+        redaction:
+          $ref: "#/components/schemas/DatasetTraceRedactionConfig"
+
+    ImportDatasetTracesResponse:
+      type: object
+      required: [import, candidates]
+      properties:
+        import:
+          $ref: "#/components/schemas/DatasetTraceImport"
+        candidates:
+          type: array
+          items:
+            $ref: "#/components/schemas/DatasetTraceCandidate"
+
+    ListDatasetTraceCandidatesResponse:
+      type: object
+      required: [candidates, total]
+      properties:
+        candidates:
+          type: array
+          items:
+            $ref: "#/components/schemas/DatasetTraceCandidate"
+        total: { type: integer, format: int64 }
+
+    PromoteDatasetTraceCandidateInput:
+      type: object
+      properties:
+        expected: {}
+        tags:
+          type: array
+          items: { type: string }
+
+    PromoteDatasetTraceCandidateResponse:
+      type: object
+      required: [candidate, example, version, created]
+      properties:
+        candidate:
+          $ref: "#/components/schemas/DatasetTraceCandidate"
+        example:
+          $ref: "#/components/schemas/DatasetExample"
+        version:
+          $ref: "#/components/schemas/DatasetVersion"
+        created: { type: boolean }
 
     ListDatasetsResponse:
       type: object

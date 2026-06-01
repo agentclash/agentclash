@@ -54,12 +54,16 @@ type DatasetService interface {
 	ExportDataset(context.Context, Caller, DatasetExportInput) (DatasetExportResult, error)
 	StartDatasetEval(context.Context, Caller, StartDatasetEvalInput) (StartDatasetEvalResult, error)
 	ListDatasetResults(context.Context, Caller, ListDatasetResultsInput) (repository.ListDatasetEvalResultsResult, error)
+	ImportDatasetTraces(context.Context, Caller, ImportDatasetTracesInput) (repository.ImportDatasetTracesResult, error)
+	ListDatasetTraceCandidates(context.Context, Caller, ListDatasetTraceCandidatesInput) (repository.ListDatasetTraceCandidatesResult, error)
+	PromoteDatasetTraceCandidate(context.Context, Caller, PromoteDatasetTraceCandidateInput) (repository.PromoteDatasetTraceCandidateResult, error)
 }
 
 type DatasetManager struct {
 	authorizer         WorkspaceAuthorizer
 	repo               DatasetRepository
 	runCreationService RunCreationService
+	traceArtifacts     *traceArtifactDeps
 }
 
 func NewDatasetManager(authorizer WorkspaceAuthorizer, repo DatasetRepository) *DatasetManager {
@@ -1306,4 +1310,13 @@ func (noopDatasetService) StartDatasetEval(context.Context, Caller, StartDataset
 }
 func (noopDatasetService) ListDatasetResults(context.Context, Caller, ListDatasetResultsInput) (repository.ListDatasetEvalResultsResult, error) {
 	return repository.ListDatasetEvalResultsResult{}, errors.New("dataset service is not configured")
+}
+func (noopDatasetService) ImportDatasetTraces(context.Context, Caller, ImportDatasetTracesInput) (repository.ImportDatasetTracesResult, error) {
+	return repository.ImportDatasetTracesResult{}, errors.New("dataset service is not configured")
+}
+func (noopDatasetService) ListDatasetTraceCandidates(context.Context, Caller, ListDatasetTraceCandidatesInput) (repository.ListDatasetTraceCandidatesResult, error) {
+	return repository.ListDatasetTraceCandidatesResult{}, errors.New("dataset service is not configured")
+}
+func (noopDatasetService) PromoteDatasetTraceCandidate(context.Context, Caller, PromoteDatasetTraceCandidateInput) (repository.PromoteDatasetTraceCandidateResult, error) {
+	return repository.PromoteDatasetTraceCandidateResult{}, errors.New("dataset service is not configured")
 }
