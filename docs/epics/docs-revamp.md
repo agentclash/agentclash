@@ -22,24 +22,24 @@ Revamp all AgentClash documentation to match the changelog editorial system: san
 
 ### Phase 1 — Shell & navigation polish
 
-- [ ] Sidebar / TOC / search styling pass (changelog mono labels, white active states)
-- [ ] Mobile docs nav drawer
-- [ ] Docs home hero aligned with changelog index density
+- [x] Sidebar / TOC / search styling pass (changelog mono labels, white active states)
+- [x] Mobile docs nav drawer
+- [x] Docs home hero aligned with changelog index density
 
-### Phase 2 — Content migration (38 MDX files)
+### Phase 2 — Content migration (41 MDX files)
 
 Track per-section completion in `web/content/docs/`:
 
 | Section | Files | Status |
 | --- | --- | --- |
-| Getting started | 3 | Not started |
-| Concepts | 8 | Not started |
-| Challenge packs | 6 | Not started |
-| Guides | 5 | Not started |
-| Architecture | 6 | Not started |
-| Reference | 4 | Not started |
-| Contributing | 4 | Not started |
-| Index | 1 | Not started |
+| Getting started | 3 | Complete |
+| Concepts | 8 | Complete |
+| Challenge packs | 7 | Complete |
+| Guides | 8 | Complete |
+| Architecture | 6 | Complete |
+| Reference | 2 | Complete |
+| Contributing | 3 | Complete |
+| Index | 1 | Complete |
 
 Migration checklist per page:
 
@@ -51,14 +51,14 @@ Migration checklist per page:
 
 ### Phase 3 — New docs coverage
 
-- [ ] Datasets overview (generation, CI gates, regression suites)
-- [ ] Multi-turn challenge packs (human takeover, calibration)
-- [ ] Security evaluation harnesses
+- [x] Datasets overview (generation, CI gates, regression suites)
+- [x] Multi-turn challenge packs (human takeover, calibration)
+- [x] Security evaluation harnesses
 
 ### Phase 4 — Agent exports
 
-- [ ] Regenerate `llms-full.txt` after content migration
-- [ ] Per-page markdown export smoke test
+- [x] Regenerate `llms-full.txt` (generated at build via docs.ts) after content migration
+- [x] Per-page markdown export smoke test (covered in test contract)
 
 ## Reference
 
