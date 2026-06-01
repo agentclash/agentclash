@@ -164,6 +164,23 @@ type Dataset struct {
 	ArchivedAt                    pgtype.Timestamptz
 }
 
+type DatasetBaseline struct {
+	ID                       uuid.UUID
+	DatasetID                uuid.UUID
+	DatasetVersionID         uuid.UUID
+	DatasetVersionInputSetID *uuid.UUID
+	ChallengePackVersionID   uuid.UUID
+	ChallengeKey             string
+	AgentDeploymentID        *uuid.UUID
+	RunID                    uuid.UUID
+	PassRate                 pgtype.Numeric
+	Metrics                  []byte
+	ExampleOutcomes          []byte
+	Label                    *string
+	CreatedByUserID          uuid.UUID
+	CreatedAt                pgtype.Timestamptz
+}
+
 type DatasetEvalRun struct {
 	ID                       uuid.UUID
 	DatasetID                uuid.UUID

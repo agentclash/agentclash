@@ -3823,6 +3823,115 @@ paths:
         "409":
           $ref: "#/components/responses/ValidationError"
 
+  /v1/workspaces/{workspaceID}/datasets/{datasetID}/baselines:
+    get:
+      operationId: listDatasetBaselines
+      tags: [Datasets]
+      summary: List dataset eval baselines
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/DatasetID"
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+            minimum: 1
+            maximum: 100
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+      responses:
+        "200":
+          description: Paginated dataset baselines
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListDatasetBaselinesResponse"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+    post:
+      operationId: createDatasetBaseline
+      tags: [Datasets]
+      summary: Record a baseline from a completed dataset eval run
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/DatasetID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDatasetBaselineInput"
+      responses:
+        "201":
+          description: Baseline recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DatasetBaseline"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          description: Run is not completed or has no eval outcomes yet
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/workspaces/{workspaceID}/datasets/{datasetID}/gate:
+    post:
+      operationId: evaluateDatasetGate
+      tags: [Datasets]
+      summary: Compare a candidate dataset eval run against a baseline
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/DatasetID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EvaluateDatasetGateInput"
+      responses:
+        "200":
+          description: Gate passed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EvaluateDatasetGateResponse"
+        "422":
+          description: Gate failed (regressions or threshold violation)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EvaluateDatasetGateResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          description: Candidate run is not completed, has no eval outcomes, or uses a different dataset input set than the baseline
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /v1/workspaces/{workspaceID}/datasets/{datasetID}/examples:
     get:
       operationId: listDatasetExamples
@@ -5814,6 +5923,100 @@ components:
         total: { type: integer, format: int64 }
         limit: { type: integer, format: int32 }
         offset: { type: integer, format: int32 }
+
+    CreateDatasetBaselineInput:
+      type: object
+      required: [run_id]
+      properties:
+        run_id: { type: string, format: uuid }
+        agent_deployment_id: { type: string, format: uuid }
+        label: { type: string }
+
+    DatasetBaseline:
+      type: object
+      required:
+        [id, dataset_id, dataset_version_id, challenge_pack_version_id, challenge_key, run_id, metrics, example_outcomes, created_by, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        dataset_id: { type: string, format: uuid }
+        dataset_version_id: { type: string, format: uuid }
+        dataset_version_input_set_id: { type: string, format: uuid }
+        challenge_pack_version_id: { type: string, format: uuid }
+        challenge_key: { type: string }
+        agent_deployment_id: { type: string, format: uuid }
+        run_id: { type: string, format: uuid }
+        pass_rate: { type: number }
+        metrics:
+          type: object
+          additionalProperties: true
+        example_outcomes:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        label: { type: string }
+        created_by: { type: string, format: uuid }
+        created_at: { type: string, format: date-time }
+
+    ListDatasetBaselinesResponse:
+      type: object
+      required: [items, total, limit, offset]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/DatasetBaseline"
+        total: { type: integer, format: int64 }
+        limit: { type: integer, format: int32 }
+        offset: { type: integer, format: int32 }
+
+    EvaluateDatasetGateInput:
+      type: object
+      required: [baseline_id, run_id]
+      properties:
+        baseline_id: { type: string, format: uuid }
+        run_id: { type: string, format: uuid }
+        agent_deployment_id: { type: string, format: uuid }
+        min_pass_rate: { type: number, minimum: 0, maximum: 1 }
+        max_regressions: { type: integer, minimum: 0 }
+
+    DatasetGateRegression:
+      type: object
+      required: [dataset_example_id, reason]
+      properties:
+        dataset_example_id: { type: string, format: uuid }
+        reason: { type: string }
+        baseline_verdict: { type: string }
+        candidate_verdict: { type: string }
+        baseline_score: { type: number }
+        candidate_score: { type: number }
+
+    DatasetGateResult:
+      type: object
+      required: [pass, pass_rate, baseline_pass_rate, regression_count, regressions, evaluated_examples]
+      properties:
+        pass: { type: boolean }
+        pass_rate: { type: number }
+        baseline_pass_rate: { type: number }
+        regression_count: { type: integer }
+        regressions:
+          type: array
+          items:
+            $ref: "#/components/schemas/DatasetGateRegression"
+        evaluated_examples: { type: integer }
+        failed_thresholds:
+          type: array
+          items: { type: string }
+
+    EvaluateDatasetGateResponse:
+      type: object
+      required: [baseline, candidate_run_id, gate]
+      properties:
+        baseline:
+          $ref: "#/components/schemas/DatasetBaseline"
+        candidate_run_id: { type: string, format: uuid }
+        gate:
+          $ref: "#/components/schemas/DatasetGateResult"
 
     DatasetTraceImport:
       type: object

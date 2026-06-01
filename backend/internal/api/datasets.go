@@ -57,6 +57,9 @@ type DatasetService interface {
 	ImportDatasetTraces(context.Context, Caller, ImportDatasetTracesInput) (repository.ImportDatasetTracesResult, error)
 	ListDatasetTraceCandidates(context.Context, Caller, ListDatasetTraceCandidatesInput) (repository.ListDatasetTraceCandidatesResult, error)
 	PromoteDatasetTraceCandidate(context.Context, Caller, PromoteDatasetTraceCandidateInput) (repository.PromoteDatasetTraceCandidateResult, error)
+	CreateDatasetBaseline(context.Context, Caller, CreateDatasetBaselineInput) (repository.DatasetBaseline, error)
+	ListDatasetBaselines(context.Context, Caller, ListDatasetBaselinesInput) (repository.ListDatasetBaselinesResult, error)
+	EvaluateDatasetGate(context.Context, Caller, EvaluateDatasetGateInput) (EvaluateDatasetGateResult, error)
 }
 
 type DatasetManager struct {
@@ -1319,4 +1322,13 @@ func (noopDatasetService) ListDatasetTraceCandidates(context.Context, Caller, Li
 }
 func (noopDatasetService) PromoteDatasetTraceCandidate(context.Context, Caller, PromoteDatasetTraceCandidateInput) (repository.PromoteDatasetTraceCandidateResult, error) {
 	return repository.PromoteDatasetTraceCandidateResult{}, errors.New("dataset service is not configured")
+}
+func (noopDatasetService) CreateDatasetBaseline(context.Context, Caller, CreateDatasetBaselineInput) (repository.DatasetBaseline, error) {
+	return repository.DatasetBaseline{}, errors.New("dataset service is not configured")
+}
+func (noopDatasetService) ListDatasetBaselines(context.Context, Caller, ListDatasetBaselinesInput) (repository.ListDatasetBaselinesResult, error) {
+	return repository.ListDatasetBaselinesResult{}, errors.New("dataset service is not configured")
+}
+func (noopDatasetService) EvaluateDatasetGate(context.Context, Caller, EvaluateDatasetGateInput) (EvaluateDatasetGateResult, error) {
+	return EvaluateDatasetGateResult{}, errors.New("dataset service is not configured")
 }
