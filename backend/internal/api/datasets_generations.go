@@ -254,7 +254,7 @@ func handleDatasetGenerationError(w http.ResponseWriter, logger *slog.Logger, er
 		writeError(w, http.StatusNotFound, "model_alias_not_found", "model alias not found")
 	case errors.Is(err, ErrForbidden):
 		writeError(w, http.StatusForbidden, "forbidden", "forbidden")
-	case err != nil && (err.Error() == "target_count must be between 1 and 100" || err.Error() == "dataset must have at least one active seed example"):
+	case err != nil && (err.Error() == "target_count must be between 1 and 100" || err.Error() == "dataset must have at least one active seed example" || err.Error() == "provider_account provider does not match model alias provider" || err.Error() == "provider_account_id does not match model alias provider account"):
 		writeError(w, http.StatusBadRequest, "validation_error", err.Error())
 	default:
 		handleDatasetError(w, logger, err)
