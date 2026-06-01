@@ -96,14 +96,6 @@ func (r *Repository) SyncDatasetRegressionSuite(ctx context.Context, params Sync
 		return SyncDatasetRegressionSuiteResult{}, err
 	}
 
-	suite, err := r.resolveDatasetRegressionSuite(ctx, params, dataset, packVersion.ChallengePackID)
-	if err != nil {
-		return SyncDatasetRegressionSuiteResult{}, err
-	}
-	if suite.SourceChallengePackID != packVersion.ChallengePackID {
-		return SyncDatasetRegressionSuiteResult{}, ErrRegressionSuitePackMismatch
-	}
-
 	examples, err := r.ListDatasetVersionExamples(ctx, params.VersionID)
 	if err != nil {
 		return SyncDatasetRegressionSuiteResult{}, err
@@ -112,7 +104,23 @@ func (r *Repository) SyncDatasetRegressionSuite(ctx context.Context, params Sync
 	if err != nil {
 		return SyncDatasetRegressionSuiteResult{}, err
 	}
-	existingCases, err := r.ListRegressionCasesBySuiteID(ctx, suite.ID)
+
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return SyncDatasetRegressionSuiteResult{}, fmt.Errorf("begin dataset regression sync transaction: %w", err)
+	}
+	defer rollback(ctx, tx)
+
+	queries := r.queries.WithTx(tx)
+	suite, err := r.resolveDatasetRegressionSuiteWithQueries(ctx, queries, params, dataset, packVersion.ChallengePackID)
+	if err != nil {
+		return SyncDatasetRegressionSuiteResult{}, err
+	}
+	if suite.SourceChallengePackID != packVersion.ChallengePackID {
+		return SyncDatasetRegressionSuiteResult{}, ErrRegressionSuitePackMismatch
+	}
+
+	existingCases, err := r.listRegressionCasesBySuiteIDWithQueries(ctx, queries, suite.ID)
 	if err != nil {
 		return SyncDatasetRegressionSuiteResult{}, err
 	}
@@ -135,7 +143,7 @@ func (r *Repository) SyncDatasetRegressionSuite(ctx context.Context, params Sync
 		if err != nil {
 			return SyncDatasetRegressionSuiteResult{}, err
 		}
-		if _, err := r.CreateRegressionCase(ctx, CreateRegressionCaseParams{
+		if _, err := r.createRegressionCaseWithQueries(ctx, queries, CreateRegressionCaseParams{
 			SuiteID:                      suite.ID,
 			Title:                        title,
 			Description:                  fmt.Sprintf("Promoted from dataset version %s.", version.VersionNumberLabel()),
@@ -159,7 +167,7 @@ func (r *Repository) SyncDatasetRegressionSuite(ctx context.Context, params Sync
 		createdCases++
 	}
 
-	linkRow, err := r.queries.UpsertDatasetRegressionSuiteLink(ctx, repositorysqlc.UpsertDatasetRegressionSuiteLinkParams{
+	linkRow, err := queries.UpsertDatasetRegressionSuiteLink(ctx, repositorysqlc.UpsertDatasetRegressionSuiteLinkParams{
 		DatasetID:         params.DatasetID,
 		RegressionSuiteID: suite.ID,
 		SyncedVersionID:   &params.VersionID,
@@ -167,6 +175,11 @@ func (r *Repository) SyncDatasetRegressionSuite(ctx context.Context, params Sync
 	if err != nil {
 		return SyncDatasetRegressionSuiteResult{}, fmt.Errorf("upsert dataset regression suite link: %w", err)
 	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return SyncDatasetRegressionSuiteResult{}, fmt.Errorf("commit dataset regression sync transaction: %w", err)
+	}
+
 	suite.CaseCount, err = r.countRegressionCasesBySuiteID(ctx, suite.ID)
 	if err != nil {
 		return SyncDatasetRegressionSuiteResult{}, err
@@ -180,14 +193,15 @@ func (r *Repository) SyncDatasetRegressionSuite(ctx context.Context, params Sync
 	}, nil
 }
 
-func (r *Repository) resolveDatasetRegressionSuite(
+func (r *Repository) resolveDatasetRegressionSuiteWithQueries(
 	ctx context.Context,
+	queries *repositorysqlc.Queries,
 	params SyncDatasetRegressionSuiteParams,
 	dataset Dataset,
 	challengePackID uuid.UUID,
 ) (RegressionSuite, error) {
 	if params.RegressionSuiteID != nil {
-		suite, err := r.GetRegressionSuiteByID(ctx, *params.RegressionSuiteID)
+		suite, err := r.getRegressionSuiteByIDWithQueries(ctx, queries, *params.RegressionSuiteID)
 		if err != nil {
 			return RegressionSuite{}, err
 		}
@@ -196,19 +210,20 @@ func (r *Repository) resolveDatasetRegressionSuite(
 		}
 		return suite, nil
 	}
-	if link, err := r.GetDatasetRegressionSuiteLink(ctx, params.DatasetID); err == nil {
-		return r.GetRegressionSuiteByID(ctx, link.RegressionSuiteID)
-	} else if !errors.Is(err, ErrDatasetRegressionSuiteLinkNotFound) {
+	linkRow, err := queries.GetDatasetRegressionSuiteLinkByDatasetID(ctx, repositorysqlc.GetDatasetRegressionSuiteLinkByDatasetIDParams{
+		DatasetID: params.DatasetID,
+	})
+	switch {
+	case err == nil:
+		return r.getRegressionSuiteByIDWithQueries(ctx, queries, linkRow.RegressionSuiteID)
+	case errors.Is(err, pgx.ErrNoRows):
+		// continue to create or reuse suite by name
+	default:
 		return RegressionSuite{}, err
 	}
-	name := ""
-	if params.SuiteName != nil {
-		name = strings.TrimSpace(*params.SuiteName)
-	}
-	if name == "" {
-		name = strings.TrimSpace(dataset.Name + " regression")
-	}
-	return r.CreateRegressionSuite(ctx, CreateRegressionSuiteParams{
+
+	name := datasetRegressionSuiteName(params.SuiteName, dataset.Name)
+	suite, err := r.createRegressionSuiteWithQueries(ctx, queries, CreateRegressionSuiteParams{
 		WorkspaceID:           params.WorkspaceID,
 		SourceChallengePackID: challengePackID,
 		Name:                  name,
@@ -218,6 +233,48 @@ func (r *Repository) resolveDatasetRegressionSuite(
 		DefaultGateSeverity:   domain.RegressionSeverityWarning,
 		CreatedByUserID:       params.Actor,
 	})
+	if errors.Is(err, ErrRegressionSuiteNameConflict) {
+		return r.getRegressionSuiteByWorkspaceAndName(ctx, queries, params.WorkspaceID, name, challengePackID)
+	}
+	return suite, err
+}
+
+func datasetRegressionSuiteName(explicit *string, datasetName string) string {
+	if explicit != nil {
+		if name := strings.TrimSpace(*explicit); name != "" {
+			return name
+		}
+	}
+	return strings.TrimSpace(datasetName + " regression")
+}
+
+func (r *Repository) getRegressionSuiteByWorkspaceAndName(
+	ctx context.Context,
+	queries *repositorysqlc.Queries,
+	workspaceID uuid.UUID,
+	name string,
+	challengePackID uuid.UUID,
+) (RegressionSuite, error) {
+	rows, err := queries.ListRegressionSuitesByWorkspaceID(ctx, repositorysqlc.ListRegressionSuitesByWorkspaceIDParams{
+		WorkspaceID:  workspaceID,
+		ResultLimit:  1000,
+		ResultOffset: 0,
+	})
+	if err != nil {
+		return RegressionSuite{}, fmt.Errorf("list regression suites by workspace id: %w", err)
+	}
+	trimmed := strings.TrimSpace(name)
+	for _, row := range rows {
+		if strings.TrimSpace(row.Name) != trimmed || row.SourceChallengePackID != challengePackID {
+			continue
+		}
+		suite, mapErr := mapRegressionSuite(row)
+		if mapErr != nil {
+			return RegressionSuite{}, mapErr
+		}
+		return suite, nil
+	}
+	return RegressionSuite{}, ErrRegressionSuiteNotFound
 }
 
 func regressionCasesByDatasetExampleID(cases []RegressionCase) map[string]struct{} {
