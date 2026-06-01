@@ -1,0 +1,62 @@
+package gate
+
+import (
+	"testing"
+
+	"github.com/google/uuid"
+)
+
+func strPtr(value string) *string { return &value }
+func f64Ptr(value float64) *float64 { return &value }
+
+func TestEvaluatePassWhenCandidateMatchesBaseline(t *testing.T) {
+	exampleID := uuid.New()
+	pass := "pass"
+	baseline := []ExampleOutcome{{DatasetExampleID: exampleID, Verdict: &pass, NormalizedScore: f64Ptr(1)}}
+	candidate := []ExampleOutcome{{DatasetExampleID: exampleID, Verdict: &pass, NormalizedScore: f64Ptr(1)}}
+
+	result := Evaluate(baseline, candidate, Thresholds{})
+	if !result.Pass {
+		t.Fatalf("Pass = false, want true")
+	}
+	if result.RegressionCount != 0 {
+		t.Fatalf("RegressionCount = %d, want 0", result.RegressionCount)
+	}
+}
+
+func TestEvaluateFailsOnNewlyFailingExample(t *testing.T) {
+	exampleID := uuid.New()
+	pass := "pass"
+	fail := "fail"
+	baseline := []ExampleOutcome{{DatasetExampleID: exampleID, Verdict: &pass, NormalizedScore: f64Ptr(1)}}
+	candidate := []ExampleOutcome{{DatasetExampleID: exampleID, Verdict: &fail, NormalizedScore: f64Ptr(0)}}
+
+	result := Evaluate(baseline, candidate, Thresholds{MaxRegressions: intPtr(0)})
+	if result.Pass {
+		t.Fatal("Pass = true, want false")
+	}
+	if len(result.Regressions) != 1 || result.Regressions[0].Reason != "newly_failing" {
+		t.Fatalf("regressions = %#v", result.Regressions)
+	}
+}
+
+func TestEvaluateHonorsMinPassRate(t *testing.T) {
+	pass := "pass"
+	fail := "fail"
+	baseline := []ExampleOutcome{}
+	candidate := []ExampleOutcome{
+		{DatasetExampleID: uuid.New(), Verdict: &pass},
+		{DatasetExampleID: uuid.New(), Verdict: &fail},
+	}
+
+	minPassRate := 0.9
+	result := Evaluate(baseline, candidate, Thresholds{MinPassRate: &minPassRate})
+	if result.Pass {
+		t.Fatal("Pass = true, want false")
+	}
+	if result.PassRate != 0.5 {
+		t.Fatalf("PassRate = %v, want 0.5", result.PassRate)
+	}
+}
+
+func intPtr(value int) *int { return &value }
