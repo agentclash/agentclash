@@ -93,10 +93,44 @@ export function publisherSchema(): Record<string, unknown> {
   return {
     "@type": "Organization",
     name: "AgentClash",
+    alternateName: "Agent Clash",
+    url: SITE_URL,
+    description:
+      "Open-source AI agent evaluation platform for racing agents head-to-head on real tasks with sandboxed tools, replay, scorecards, and CI regression gates.",
     logo: {
       "@type": "ImageObject",
       url: `${SITE_URL}/icon.svg`,
     },
+    sameAs: [
+      "https://github.com/agentclash/agentclash",
+      "https://www.npmjs.com/package/agentclash",
+    ],
+  };
+}
+
+// Standalone Organization node (with @context) for top-level use on the
+// homepage. Nested usages (publisher/author) keep using publisherSchema().
+export function organizationSchema(): Record<string, unknown> {
+  return {
+    "@context": "https://schema.org",
+    ...publisherSchema(),
+  };
+}
+
+// WebSite entity establishes AgentClash as a named site/entity for search and
+// answer engines. No SearchAction: docs search is client-side with no
+// query-param results URL, and a non-functional sitelinks searchbox can be
+// flagged — entity establishment is the valuable part here.
+export function websiteSchema(): Record<string, unknown> {
+  return {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    name: "AgentClash",
+    alternateName: "Agent Clash",
+    url: SITE_URL,
+    description:
+      "Open-source AI agent evaluation platform. Race agents head-to-head on real tasks with sandboxed tools, replay, scorecards, and CI regression gates.",
+    publisher: publisherSchema(),
   };
 }
 
@@ -105,12 +139,14 @@ export function articleSchema({
   description,
   url,
   datePublished,
+  dateModified,
   authorName,
 }: {
   headline: string;
   description: string;
   url: string;
   datePublished: string;
+  dateModified?: string;
   authorName: string;
 }): Record<string, unknown> {
   const absoluteUrl = url.startsWith("http") ? url : `${SITE_URL}${url}`;
@@ -133,7 +169,7 @@ export function articleSchema({
       height: 630,
     },
     datePublished,
-    dateModified: datePublished,
+    dateModified: dateModified ?? datePublished,
     author: {
       "@type": "Person",
       name: authorName,
@@ -202,11 +238,15 @@ export function docsPageSchema({
   description,
   href,
   faqItems = [],
+  datePublished,
+  dateModified,
 }: {
   title: string;
   description: string;
   href: string;
   faqItems?: Array<{ question: string; answer: string }>;
+  datePublished?: string;
+  dateModified?: string;
 }): Record<string, unknown>[] {
   const absoluteUrl = href.startsWith("http") ? href : `${SITE_URL}${href}`;
   const pathname = href.replace(/^https?:\/\/[^/]+/, "").replace(/\/+$/, "");
@@ -240,6 +280,10 @@ export function docsPageSchema({
       headline: title,
       description,
       url: absoluteUrl,
+      ...(datePublished ? { datePublished } : {}),
+      ...(dateModified ?? datePublished
+        ? { dateModified: dateModified ?? datePublished }
+        : {}),
       mainEntityOfPage: {
         "@type": "WebPage",
         "@id": absoluteUrl,

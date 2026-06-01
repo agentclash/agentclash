@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import {
   Instrument_Serif,
   DM_Sans,
@@ -8,6 +8,7 @@ import {
   Fraunces,
 } from "next/font/google";
 import { Analytics } from "@vercel/analytics/react";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Toaster } from "@/components/ui/sonner";
 import { AppProviders } from "@/app/providers";
 import "./globals.css";
@@ -51,6 +52,15 @@ const geistMono = Geist_Mono({
 const siteUrl = "https://www.agentclash.dev";
 const siteDescription =
   "AgentClash is an open-source AI agent evaluation platform. Race coding, research, support, and ops agents head-to-head on real tasks with sandboxed tools, live replay, scorecards, and CI regression gates.";
+
+// Public webmaster-verification tokens (safe to expose — they live in the HTML
+// head). Set via env so tokens aren't hard-coded; omitted entirely when unset.
+const googleVerification = process.env.NEXT_PUBLIC_GSC_VERIFICATION;
+const bingVerification = process.env.NEXT_PUBLIC_BING_VERIFICATION;
+
+export const viewport: Viewport = {
+  themeColor: "#060606",
+};
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
@@ -100,6 +110,16 @@ export const metadata: Metadata = {
       follow: true,
     },
   },
+  ...(googleVerification || bingVerification
+    ? {
+        verification: {
+          ...(googleVerification ? { google: googleVerification } : {}),
+          ...(bingVerification
+            ? { other: { "msvalidate.01": bingVerification } }
+            : {}),
+        },
+      }
+    : {}),
   icons: {
     icon: [
       { url: "/favicon-16x16.png", sizes: "16x16", type: "image/png" },
@@ -125,6 +145,7 @@ export default function RootLayout({
         <AppProviders>{children}</AppProviders>
         <Toaster position="bottom-right" />
         <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   );

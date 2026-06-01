@@ -10,3 +10,21 @@ export const blogRssAlternate = {
     },
   ],
 } satisfies AlternateTypes;
+
+// Root-relative URL for the dynamic Open Graph image route (app/og/route.tsx).
+// metadataBase upgrades it to absolute in the rendered OG/Twitter tags, so each
+// page gets a tailored social card instead of one shared static image.
+export function ogImageUrl({
+  title,
+  subtitle,
+  kind,
+}: {
+  title: string;
+  subtitle?: string;
+  kind?: string;
+}): string {
+  const search = new URLSearchParams({ title });
+  if (subtitle) search.set("subtitle", subtitle);
+  if (kind) search.set("kind", kind);
+  return `/og?${search.toString()}`;
+}

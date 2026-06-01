@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { blogRssAlternate } from "@/lib/seo";
+import { blogRssAlternate, ogImageUrl } from "@/lib/seo";
 import { metadata as blogMetadata } from "./page";
 import { generateMetadata } from "./[slug]/page";
 
@@ -108,6 +108,12 @@ describe("blog post social metadata", () => {
       }),
     });
 
+    const expectedImage = ogImageUrl({
+      title: "Fixture Post",
+      subtitle: "Fixture description.",
+      kind: "Blog",
+    });
+
     expect(metadata).toMatchObject({
       title: "Fixture Post — AgentClash",
       description: "Fixture description.",
@@ -122,7 +128,7 @@ describe("blog post social metadata", () => {
         authors: ["AgentClash"],
         images: [
           {
-            url: "/og-image.png",
+            url: expectedImage,
             width: 1200,
             height: 630,
             alt: "Fixture Post — Fixture description.",
@@ -135,7 +141,7 @@ describe("blog post social metadata", () => {
         description: "Fixture description.",
         images: [
           {
-            url: "/twitter-image.png",
+            url: expectedImage,
             alt: "Fixture Post — Fixture description.",
           },
         ],

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { ogImageUrl } from "@/lib/seo";
 import { generateMetadata } from "./[[...slug]]/page";
 
 const getDocBySlugMock = vi.hoisted(() => vi.fn());
@@ -24,6 +25,12 @@ describe("docs metadata", () => {
       }),
     });
 
+    const expectedImage = ogImageUrl({
+      title: "Quickstart",
+      subtitle: "Run your first AgentClash eval.",
+      kind: "Docs",
+    });
+
     expect(metadata).toMatchObject({
       title: "Quickstart — AgentClash Docs",
       description: "Run your first AgentClash eval.",
@@ -39,7 +46,7 @@ describe("docs metadata", () => {
         siteName: "AgentClash",
         images: [
           {
-            url: "/og-image.png",
+            url: expectedImage,
             width: 1200,
             height: 630,
             alt: "Quickstart — Run your first AgentClash eval.",
@@ -52,7 +59,7 @@ describe("docs metadata", () => {
         description: "Run your first AgentClash eval.",
         images: [
           {
-            url: "/twitter-image.png",
+            url: expectedImage,
             alt: "Quickstart — Run your first AgentClash eval.",
           },
         ],

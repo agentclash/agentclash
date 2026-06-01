@@ -9,6 +9,7 @@ const COLUMNS: Array<{
     links: [
       { href: "/#features", label: "Features" },
       { href: "/platform/agent-evaluation", label: "Agent evaluation" },
+      { href: "/compare", label: "Compare tools" },
       { href: "/docs", label: "Docs" },
       { href: "/docs/getting-started/quickstart", label: "Quickstart" },
       { href: "/docs/getting-started/self-host", label: "Self-host" },

@@ -42,6 +42,11 @@ const faqItems = [
     answer:
       "Yes. AgentClash can compare a candidate run against a baseline and fail CI when the candidate regresses on the scorecard or release gate you define.",
   },
+  {
+    question: "How is AgentClash different from prompt-evaluation tools?",
+    answer:
+      "Prompt-evaluation tools score the text a model returns from a single call. AgentClash evaluates multi-turn agents that take actions in a sandbox and scores the whole trajectory. See agentclash.dev/compare for a side-by-side with Braintrust, LangSmith, Promptfoo, Langfuse, Arize Phoenix, and OpenAI Evals.",
+  },
 ];
 
 const workflow = [
