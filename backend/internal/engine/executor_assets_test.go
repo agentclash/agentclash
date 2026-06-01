@@ -62,7 +62,7 @@ func TestStageArtifactBackedAssetsUploadsManifestAndInputCaseAssets(t *testing.T
 	}
 
 	executor := NativeExecutor{}.WithAssetLoader(loader)
-	if err := executor.stageArtifactBackedAssets(ctx, session, executionContext); err != nil {
+	if err := stageArtifactBackedAssets(ctx, executor.assetLoader, session, executionContext); err != nil {
 		t.Fatalf("stageArtifactBackedAssets returned error: %v", err)
 	}
 
@@ -93,7 +93,7 @@ func TestStageArtifactBackedAssetsSkipsInlineAssetsWithoutLoader(t *testing.T) {
 	}
 
 	session := sandbox.NewFakeSession("inline-assets")
-	if err := (NativeExecutor{}).stageArtifactBackedAssets(context.Background(), session, executionContext); err != nil {
+	if err := stageArtifactBackedAssets(context.Background(), nil, session, executionContext); err != nil {
 		t.Fatalf("stageArtifactBackedAssets returned error: %v", err)
 	}
 	if files := session.Files(); len(files) != 0 {
@@ -116,7 +116,7 @@ func TestStageArtifactBackedAssetsFailsClosedWithoutLoader(t *testing.T) {
 	}
 
 	session := sandbox.NewFakeSession("missing-loader")
-	err := (NativeExecutor{}).stageArtifactBackedAssets(context.Background(), session, executionContext)
+	err := stageArtifactBackedAssets(context.Background(), nil, session, executionContext)
 	if err == nil {
 		t.Fatal("stageArtifactBackedAssets returned nil error")
 	}

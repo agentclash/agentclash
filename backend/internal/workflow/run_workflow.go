@@ -37,6 +37,9 @@ func RunWorkflow(ctx sdkworkflow.Context, input RunWorkflowInput) error {
 	if isWorkflowCanceled(err) {
 		return markRunCancelled(ctx, input.RunID, err)
 	}
+	if errors.Is(err, ErrRunMustBeQueued) {
+		return temporal.NewNonRetryableApplicationError(err.Error(), runMustBeQueuedErrorType, err)
+	}
 	if shouldSkipRunFailureTransition(err) {
 		return err
 	}
@@ -83,7 +86,7 @@ func runWorkflow(ctx sdkworkflow.Context, input RunWorkflowInput) error {
 	if err != nil {
 		return err
 	}
-	scoreSummary, err := scoreEvaluatingRunAgents(ctx, updatedRunAgents)
+	scoreSummary, err := scoreEvaluatingRunAgents(ctx, input.RunID, updatedRunAgents)
 	if err != nil {
 		return err
 	}
@@ -123,15 +126,28 @@ func executeRunAgents(ctx sdkworkflow.Context, runAgents []domain.RunAgent) erro
 	}
 
 	if len(childErrors) == len(runAgents) {
-		for _, err := range childErrors {
-			return err
-		}
+		return selectRunAgentChildError(childErrors)
 	}
 
 	return nil
 }
 
-func scoreEvaluatingRunAgents(ctx sdkworkflow.Context, runAgents []domain.RunAgent) (string, error) {
+func selectRunAgentChildError(childErrors map[uuid.UUID]error) error {
+	runAgentIDs := sortedUUIDKeys(childErrors)
+	var firstActionable error
+	for _, runAgentID := range runAgentIDs {
+		err := childErrors[runAgentID]
+		if isWorkflowCanceled(err) {
+			return err
+		}
+		if firstActionable == nil {
+			firstActionable = err
+		}
+	}
+	return firstActionable
+}
+
+func scoreEvaluatingRunAgents(ctx sdkworkflow.Context, runID uuid.UUID, runAgents []domain.RunAgent) (string, error) {
 	outcomes := make(map[uuid.UUID]string, len(runAgents))
 	completedRunAgents := make([]domain.RunAgent, 0, len(runAgents))
 	for _, runAgent := range runAgents {
@@ -196,6 +212,10 @@ func scoreEvaluatingRunAgents(ctx sdkworkflow.Context, runAgents []domain.RunAge
 		if err := buildRunScorecard(ctx, runAgents[0].RunID); err != nil {
 			return "", err
 		}
+	}
+
+	if err := sdkworkflow.ExecuteActivity(ctx, finalizeMultiTurnPostRunActivityName, RunWorkflowInput{RunID: runID}).Get(ctx, nil); err != nil {
+		sdkworkflow.GetLogger(ctx).Warn("multi_turn post-run finalization failed", "run_id", runID.String(), "error", err)
 	}
 
 	return summarizeScoreOutcomes(outcomes), nil
@@ -295,6 +315,16 @@ func markRunCancelled(ctx sdkworkflow.Context, runID uuid.UUID, workflowErr erro
 		Reason:   &reason,
 	}).Get(disconnectedCtx, &run)
 	if activityErr != nil {
+		if hasApplicationErrorType(activityErr, repositoryInvalidTransitionType) ||
+			hasApplicationErrorType(activityErr, repositoryTransitionConflictType) {
+			latest, loadErr := loadRun(disconnectedCtx, runID)
+			if loadErr == nil && !latest.Status.CanTransitionTo(domain.RunStatusCancelled) {
+				return workflowErr
+			}
+			if loadErr != nil {
+				return fmt.Errorf("run workflow cancelled: %v; additionally failed to mark run cancelled: %w; additionally failed to load latest run: %v", workflowErr, activityErr, loadErr)
+			}
+		}
 		return fmt.Errorf("run workflow cancelled: %v; additionally failed to mark run cancelled: %w", workflowErr, activityErr)
 	}
 

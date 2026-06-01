@@ -1,0 +1,26 @@
+name: "uv"
+slug: uv
+tagline: "Blazing-fast Python package manager"
+category: "Developer tools"
+template: agentclash-trycli
+docs: "https://docs.astral.sh/uv/"
+github: "https://github.com/astral-sh/uv"
+
+welcome: |
+  uv is ready! Blazing-fast Python package manager.
+  Try:
+    uv --version
+    uv init demo && cd demo
+    uv add requests
+
+commands:
+  - label: "Show version"
+    run: "uv --version"
+  - label: "Init a project"
+    run: "uv init demo && cd demo"
+  - label: "Create venv & run Python"
+    run: "uv venv && source .venv/bin/activate && python -c 'print(\"Hello from uv!\")'"
+  - label: "Add a package"
+    run: "uv init pkgdemo && cd pkgdemo && uv add rich && uv run python -c 'import rich; rich.print(\"[bold green]uv works![/]\")'"
+
+sessionMinutes: 10

@@ -21,7 +21,7 @@ func init() {
 	challengePackCmd.AddCommand(cpPublishCmd)
 	challengePackCmd.AddCommand(cpValidateCmd)
 
-	cpInitCmd.Flags().String("template", "prompt_eval", "Starter template: prompt_eval or native")
+	cpInitCmd.Flags().String("template", "prompt_eval", "Starter template: prompt_eval, responses, or native")
 	cpInitCmd.Flags().String("name", "", "Challenge pack display name (defaults from the file name)")
 	cpInitCmd.Flags().String("slug", "", "Challenge pack slug (defaults from the file name)")
 	cpInitCmd.Flags().Bool("force", false, "Overwrite an existing file")
@@ -59,7 +59,7 @@ var cpListCmd = &cobra.Command{
 			return rc.Output.PrintRaw(result)
 		}
 
-		cols := []output.Column{{Header: "ID"}, {Header: "Name"}, {Header: "Slug"}, {Header: "Status"}, {Header: "Versions"}}
+		cols := []output.Column{{Header: "ID"}, {Header: "Name"}, {Header: "Slug"}, {Header: "Status"}, {Header: "Modality"}, {Header: "Versions"}}
 		rows := make([][]string, len(result.Items))
 		for i, item := range result.Items {
 			versionCount := "0"
@@ -71,6 +71,7 @@ var cpListCmd = &cobra.Command{
 				str(item["name"]),
 				str(item["slug"]),
 				output.StatusColor(str(item["lifecycle_status"])),
+				challengePackMapModalitySummary(item),
 				versionCount,
 			}
 		}
@@ -99,9 +100,9 @@ var cpInitCmd = &cobra.Command{
 
 		templateMode = strings.TrimSpace(templateMode)
 		switch templateMode {
-		case "prompt_eval", "native":
+		case "prompt_eval", "responses", "native":
 		default:
-			return fmt.Errorf("invalid template %q (want prompt_eval or native)", templateMode)
+			return fmt.Errorf("invalid template %q (want prompt_eval, responses, or native)", templateMode)
 		}
 
 		defaultName := defaultChallengePackName(targetPath)
@@ -139,6 +140,12 @@ var cpInitCmd = &cobra.Command{
 		rc.Output.PrintDetail("Name", name)
 		rc.Output.PrintDetail("Slug", slug)
 		rc.Output.PrintDetail("Template", templateMode)
+		if templateMode == "prompt_eval" {
+			rc.Output.PrintWarning("challenge-pack prompt_eval scaffolds challenge packs; for prompt eval CI configs, use `agentclash prompt-eval init .agentclash/prompt-eval.yaml`.")
+		}
+		if templateMode == "responses" {
+			rc.Output.PrintWarning("responses packs use OpenAI /v1/responses (deep research). Pair with a runtime profile whose execution_target is responses and an OpenAI provider account.")
+		}
 		return nil
 	},
 }

@@ -4,16 +4,37 @@ import { notFound } from "next/navigation";
 import { MDXRemote } from "next-mdx-remote/rsc";
 import { DocsShell } from "@/components/docs/docs-shell";
 import { docsMDXComponents } from "@/components/docs/mdx-components";
+import { JsonLd, docsPageSchema } from "@/components/marketing/json-ld";
 import {
   DOCS_NAV,
   getAllDocSlugs,
   getDocBySlug,
   getDocNeighbors,
 } from "@/lib/docs";
+import { ogImageUrl } from "@/lib/seo";
+import { docsSchemaId } from "../docs-schema-id";
 
 type Props = {
   params: Promise<{ slug?: string[] }>;
 };
+
+const DOCS_HOME_FAQ = [
+  {
+    question: "Where should I start with AgentClash?",
+    answer:
+      "Start with the quickstart, then write a challenge pack for one real agent workload and run it locally or against a hosted workspace.",
+  },
+  {
+    question: "Can AgentClash docs help with CI agent gates?",
+    answer:
+      "Yes. The docs cover challenge packs, scorecards, baseline comparisons, and CI/CD gates for catching AI agent regressions before release.",
+  },
+  {
+    question: "Are the docs available for coding agents?",
+    answer:
+      "Yes. AgentClash publishes llms.txt, llms-full.txt, and per-page markdown exports so coding agents can read the docs directly.",
+  },
+];
 
 export function generateStaticParams() {
   return getAllDocSlugs().map((slug) => ({ slug }));
@@ -24,9 +45,49 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const doc = getDocBySlug(slug);
   if (!doc) return {};
 
+  const title = `${doc.title} — AgentClash Docs`;
+  const description =
+    typeof doc.description === "string" ? doc.description.trim() : "";
+  const imageAlt = description ? `${doc.title} — ${description}` : doc.title;
+  const ogImage = ogImageUrl({
+    title: doc.title,
+    subtitle: description || undefined,
+    kind: "Docs",
+  });
+
   return {
-    title: `${doc.title} — AgentClash Docs`,
+    title,
     description: doc.description,
+    alternates: {
+      canonical: doc.href,
+    },
+    openGraph: {
+      title,
+      description: doc.description,
+      url: doc.href,
+      type: "website",
+      locale: "en_US",
+      siteName: "AgentClash",
+      images: [
+        {
+          url: ogImage,
+          width: 1200,
+          height: 630,
+          alt: imageAlt,
+        },
+      ],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description: doc.description,
+      images: [
+        {
+          url: ogImage,
+          alt: imageAlt,
+        },
+      ],
+    },
   };
 }
 
@@ -47,6 +108,18 @@ export default async function DocsPage({ params }: Props) {
       sections={DOCS_NAV}
       headings={doc.headings}
     >
+      <JsonLd
+        id={docsSchemaId(doc.href)}
+        data={docsPageSchema({
+          title: doc.title,
+          description: doc.description,
+          href: doc.href,
+          faqItems: isHome ? DOCS_HOME_FAQ : undefined,
+          datePublished: doc.datePublished,
+          dateModified: doc.dateModified,
+        })}
+      />
+
       <div className="prose-agentclash-docs">
         <MDXRemote source={doc.content} components={docsMDXComponents} />
       </div>
@@ -81,6 +154,29 @@ export default async function DocsPage({ params }: Props) {
                     </Link>
                   ))}
                 </div>
+              </section>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {isHome && (
+        <div className="mt-12 border-t border-white/[0.08] pt-8">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
+            Docs FAQ
+          </p>
+          <div className="mt-5 grid gap-4 xl:grid-cols-3">
+            {DOCS_HOME_FAQ.map((item) => (
+              <section
+                key={item.question}
+                className="rounded-[24px] border border-white/[0.08] bg-black/20 p-5"
+              >
+                <h2 className="text-sm font-semibold text-white/90">
+                  {item.question}
+                </h2>
+                <p className="mt-3 text-sm leading-6 text-white/45">
+                  {item.answer}
+                </p>
               </section>
             ))}
           </div>

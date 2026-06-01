@@ -50,7 +50,7 @@ export function DocsShell({
               href="https://cal.com/agentclash/demo"
               target="_blank"
               rel="noopener noreferrer"
-              className="hidden rounded-full bg-emerald-600 px-4 py-1.5 text-sm font-medium text-white transition-colors hover:bg-emerald-700 sm:block"
+              className="hidden shrink-0 whitespace-nowrap rounded-full bg-emerald-600 px-4 py-1.5 text-sm font-medium text-white transition-colors hover:bg-emerald-700 sm:block"
             >
               Get Started &rarr;
             </a>

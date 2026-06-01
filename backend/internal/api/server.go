@@ -9,6 +9,7 @@ import (
 
 	"strings"
 
+	"github.com/agentclash/agentclash/backend/internal/posthog"
 	"github.com/agentclash/agentclash/backend/internal/pubsub"
 	"github.com/agentclash/agentclash/backend/internal/ratelimit"
 	"github.com/agentclash/agentclash/backend/internal/repository"
@@ -36,6 +37,7 @@ type routerOptions struct {
 	compareReadService         CompareReadService
 	releaseGateService         ReleaseGateService
 	regressionService          RegressionService
+	datasetService             DatasetService
 	hostedRunIngestionService  HostedRunIngestionService
 	agentDeploymentReadService AgentDeploymentReadService
 	agentHarnessService        AgentHarnessService
@@ -55,6 +57,9 @@ type routerOptions struct {
 	billingService             BillingService
 	eventSubscriber            pubsub.EventSubscriber
 	cliAuthServices            []CLIAuthService
+	multiTurnService           MultiTurnService
+	vibeEvalService            VibeEvalService
+	posthogClient              posthog.Client
 }
 
 func NewServer(
@@ -70,6 +75,7 @@ func NewServer(
 	compareReadService CompareReadService,
 	releaseGateService ReleaseGateService,
 	regressionService RegressionService,
+	datasetService DatasetService,
 	hostedRunIngestionService HostedRunIngestionService,
 	agentDeploymentReadService AgentDeploymentReadService,
 	agentHarnessService AgentHarnessService,
@@ -88,6 +94,9 @@ func NewServer(
 	publicShareService PublicShareService,
 	billingService BillingService,
 	eventSubscriber pubsub.EventSubscriber,
+	multiTurnService MultiTurnService,
+	vibeEvalService VibeEvalService,
+	posthogClient posthog.Client,
 	cliAuthServices ...CLIAuthService,
 ) *Server {
 	router := buildRouter(routerOptions{
@@ -105,6 +114,7 @@ func NewServer(
 		compareReadService:         compareReadService,
 		releaseGateService:         releaseGateService,
 		regressionService:          regressionService,
+		datasetService:             datasetService,
 		hostedRunIngestionService:  hostedRunIngestionService,
 		agentDeploymentReadService: agentDeploymentReadService,
 		agentHarnessService:        agentHarnessService,
@@ -123,6 +133,9 @@ func NewServer(
 		publicShareService:         publicShareService,
 		billingService:             billingService,
 		eventSubscriber:            eventSubscriber,
+		multiTurnService:           multiTurnService,
+		vibeEvalService:            vibeEvalService,
+		posthogClient:              posthogClient,
 		cliAuthServices:            cliAuthServices,
 	})
 
@@ -256,6 +269,7 @@ func buildRouter(opts routerOptions) http.Handler {
 	agentBuildService := opts.agentBuildService
 	releaseGateService := opts.releaseGateService
 	regressionService := opts.regressionService
+	datasetService := opts.datasetService
 	challengePackAuthoringService := opts.challengePackAuthoringSvc
 	userService := opts.userService
 	orgService := opts.orgService
@@ -267,6 +281,8 @@ func buildRouter(opts routerOptions) http.Handler {
 	workspaceSecretsService := opts.workspaceSecretsService
 	publicShareService := opts.publicShareService
 	billingService := opts.billingService
+	multiTurnService := opts.multiTurnService
+	vibeEvalService := opts.vibeEvalService
 	eventSubscriber := opts.eventSubscriber
 	var cliAuthService CLIAuthService
 	if len(opts.cliAuthServices) > 0 {
@@ -304,6 +320,9 @@ func buildRouter(opts routerOptions) http.Handler {
 	if regressionService == nil {
 		regressionService = noopRegressionService{}
 	}
+	if datasetService == nil {
+		datasetService = noopDatasetService{}
+	}
 	if workspaceSecretsService == nil {
 		workspaceSecretsService = noopWorkspaceSecretsService{}
 	}
@@ -313,8 +332,15 @@ func buildRouter(opts routerOptions) http.Handler {
 	if billingService == nil {
 		billingService = noopBillingService{}
 	}
+	if multiTurnService == nil {
+		multiTurnService = noopMultiTurnService{}
+	}
+	if vibeEvalService == nil {
+		vibeEvalService = noopVibeEvalService{}
+	}
 
 	router := chi.NewRouter()
+	router.Use(requestIDMiddleware())
 	router.Use(recoverer(logger))
 	router.Use(requestLogger(logger))
 	router.Use(newCORSMiddleware(authMode, corsAllowedOrigins))
@@ -363,8 +389,9 @@ func buildRouter(opts routerOptions) http.Handler {
 
 	router.Route("/v1", func(r chi.Router) {
 		r.Use(authenticateRequest(logger, authenticator))
+		r.Use(trackUsage(logger, opts.posthogClient))
 		r.Use(rateLimiter.Middleware("default", extractWorkspaceID))
-		registerProtectedRoutes(r, logger, authorizer, playgroundService, artifactService, artifactMaxUploadBytes, runCreationService, runReadService, replayReadService, compareReadService, releaseGateService, regressionService, agentDeploymentReadService, agentHarnessService, githubIntegrationService, challengePackReadService, challengePackAuthoringService, agentBuildService, userService, orgService, wsService, orgMembershipService, wsMembershipService, onboardingService, infraService, workspaceSecretsService, cliAuthService, publicShareService, billingService)
+		registerProtectedRoutes(r, logger, authorizer, playgroundService, artifactService, artifactMaxUploadBytes, runCreationService, runReadService, replayReadService, compareReadService, releaseGateService, regressionService, datasetService, agentDeploymentReadService, agentHarnessService, githubIntegrationService, challengePackReadService, challengePackAuthoringService, agentBuildService, userService, orgService, wsService, orgMembershipService, wsMembershipService, onboardingService, infraService, workspaceSecretsService, cliAuthService, publicShareService, billingService, multiTurnService, vibeEvalService)
 	})
 
 	return router
@@ -382,6 +409,30 @@ func (noopPublicShareService) RevokeShareLink(context.Context, Caller, uuid.UUID
 
 func (noopPublicShareService) GetPublicShare(context.Context, string) (PublicSharePayload, error) {
 	return PublicSharePayload{}, errors.New("public share service is not configured")
+}
+
+type noopVibeEvalService struct{}
+
+func (noopVibeEvalService) CreateConversation(context.Context, Caller, CreateVibeEvalConversationInput) (repository.VibeEvalConversation, error) {
+	return repository.VibeEvalConversation{}, errors.New("vibe eval service is not configured")
+}
+func (noopVibeEvalService) ListConversations(context.Context, Caller, uuid.UUID) ([]repository.VibeEvalConversation, error) {
+	return nil, errors.New("vibe eval service is not configured")
+}
+func (noopVibeEvalService) GetConversation(context.Context, Caller, GetVibeEvalConversationInput) (repository.VibeEvalConversation, error) {
+	return repository.VibeEvalConversation{}, errors.New("vibe eval service is not configured")
+}
+func (noopVibeEvalService) CreateDraft(context.Context, Caller, CreateVibeEvalDraftInput) (repository.VibeEvalDraft, error) {
+	return repository.VibeEvalDraft{}, errors.New("vibe eval service is not configured")
+}
+func (noopVibeEvalService) ListDrafts(context.Context, Caller, ListVibeEvalDraftsInput) ([]repository.VibeEvalDraft, error) {
+	return nil, errors.New("vibe eval service is not configured")
+}
+func (noopVibeEvalService) GetDraft(context.Context, Caller, GetVibeEvalDraftInput) (repository.VibeEvalDraft, error) {
+	return repository.VibeEvalDraft{}, errors.New("vibe eval service is not configured")
+}
+func (noopVibeEvalService) UpdateDraft(context.Context, Caller, UpdateVibeEvalDraftInput) (repository.VibeEvalDraft, error) {
+	return repository.VibeEvalDraft{}, errors.New("vibe eval service is not configured")
 }
 
 type noopCompareReadService struct{}

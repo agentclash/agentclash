@@ -37,7 +37,8 @@ func TestCatalogContainsPublicPlansAndLimits(t *testing.T) {
 }
 
 func TestDodoProductMappingAndSeatValidation(t *testing.T) {
-	mapping, err := MapDodoProduct("agentclash_pro_yearly")
+	plans := CatalogWithDodoProductIDs(testDodoProductIDs())
+	mapping, err := MapDodoProductFromCatalog("agentclash_pro_yearly", plans)
 	if err != nil {
 		t.Fatalf("MapDodoProduct returned error: %v", err)
 	}
@@ -45,20 +46,20 @@ func TestDodoProductMappingAndSeatValidation(t *testing.T) {
 		t.Fatalf("mapping = %+v, want pro yearly", mapping)
 	}
 
-	_, err = SubscriptionEntitlements(DodoSubscriptionInput{
+	_, err = SubscriptionEntitlementsFromCatalog(DodoSubscriptionInput{
 		ProductID: "agentclash_pro_monthly",
 		Status:    "active",
 		Quantity:  4,
-	})
+	}, plans)
 	if !errors.Is(err, ErrSeatQuantityBelowLimit) {
 		t.Fatalf("SubscriptionEntitlements error = %v, want ErrSeatQuantityBelowLimit", err)
 	}
 
-	entitlements, err := SubscriptionEntitlements(DodoSubscriptionInput{
+	entitlements, err := SubscriptionEntitlementsFromCatalog(DodoSubscriptionInput{
 		ProductID: "agentclash_team_monthly",
 		Status:    "trialing",
 		Quantity:  3,
-	})
+	}, plans)
 	if err != nil {
 		t.Fatalf("SubscriptionEntitlements returned error: %v", err)
 	}
@@ -72,13 +73,22 @@ func TestDodoProductMappingAndSeatValidation(t *testing.T) {
 }
 
 func TestInactiveDodoStatusDoesNotGrantPaidEntitlements(t *testing.T) {
-	_, err := SubscriptionEntitlements(DodoSubscriptionInput{
+	_, err := SubscriptionEntitlementsFromCatalog(DodoSubscriptionInput{
 		ProductID: "agentclash_pro_monthly",
 		Status:    "cancelled",
 		Quantity:  5,
-	})
+	}, CatalogWithDodoProductIDs(testDodoProductIDs()))
 	if !errors.Is(err, ErrInactiveDodoStatus) {
 		t.Fatalf("SubscriptionEntitlements error = %v, want ErrInactiveDodoStatus", err)
+	}
+}
+
+func testDodoProductIDs() DodoProductIDs {
+	return DodoProductIDs{
+		ProMonthly:  "agentclash_pro_monthly",
+		ProYearly:   "agentclash_pro_yearly",
+		TeamMonthly: "agentclash_team_monthly",
+		TeamYearly:  "agentclash_team_yearly",
 	}
 }
 

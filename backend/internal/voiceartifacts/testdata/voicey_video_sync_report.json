@@ -1,0 +1,122 @@
+{
+  "inputs": {
+    "source_audio": "samples/downloaded/datacatalyst-hinglish/tts_hinglish_005.wav",
+    "translated_audio": "outputs/tts_hinglish_005.en.wav"
+  },
+  "summary": {
+    "duration_fit_score": 0.579,
+    "extra_translation_segments": 0,
+    "fail_duration_ratio_range": [
+      0.4,
+      2.5
+    ],
+    "fail_threshold_ms": 2500,
+    "first_onset_lag_ms": 520,
+    "interpretation": "Interpreter-style lag. Usable for comprehension, visibly behind lips.",
+    "max_duration_ratio": 4.075,
+    "median_duration_ratio": 3.059,
+    "median_onset_lag_ms": 520,
+    "min_duration_ratio": 1.659,
+    "missing_translation_segments": 2,
+    "p90_onset_lag_ms": 660,
+    "paired_segments": 3,
+    "segment_coverage_ratio": 0.6,
+    "source_span_ms": 7280,
+    "span_duration_ratio": 1.044,
+    "status": "fail",
+    "status_basis_ms": 840,
+    "status_reasons": [
+      "missing_source_segments",
+      "duration_ratio_outside_fail_threshold"
+    ],
+    "tail_lag_ms": 840,
+    "translated_span_ms": 7600,
+    "warn_duration_ratio_range": [
+      0.6,
+      1.8
+    ],
+    "warn_threshold_ms": 1200
+  },
+  "source_segments": [
+    {
+      "end_ms": 1440,
+      "start_ms": 560
+    },
+    {
+      "end_ms": 2340,
+      "start_ms": 1860
+    },
+    {
+      "end_ms": 3440,
+      "start_ms": 2880
+    },
+    {
+      "end_ms": 5279,
+      "start_ms": 4960
+    },
+    {
+      "end_ms": 7840,
+      "start_ms": 7500
+    }
+  ],
+  "translated_segments": [
+    {
+      "end_ms": 2540,
+      "start_ms": 1080
+    },
+    {
+      "end_ms": 6920,
+      "start_ms": 5620
+    },
+    {
+      "end_ms": 8680,
+      "start_ms": 7640
+    }
+  ],
+  "pairs": [
+    {
+      "duration_ratio": 1.659,
+      "onset_lag_ms": 520,
+      "source_end_ms": 1440,
+      "source_index": 0,
+      "source_start_ms": 560,
+      "status": "paired",
+      "translated_end_ms": 2540,
+      "translated_index": 0,
+      "translated_start_ms": 1080
+    },
+    {
+      "source_index": 1,
+      "status": "missing_translation",
+      "translated_index": null
+    },
+    {
+      "source_index": 2,
+      "status": "missing_translation",
+      "translated_index": null
+    },
+    {
+      "duration_ratio": 4.075,
+      "onset_lag_ms": 660,
+      "source_end_ms": 5279,
+      "source_index": 3,
+      "source_start_ms": 4960,
+      "status": "paired",
+      "translated_end_ms": 6920,
+      "translated_index": 1,
+      "translated_start_ms": 5620
+    },
+    {
+      "duration_ratio": 3.059,
+      "onset_lag_ms": 140,
+      "source_end_ms": 7840,
+      "source_index": 4,
+      "source_start_ms": 7500,
+      "status": "paired",
+      "translated_end_ms": 8680,
+      "translated_index": 2,
+      "translated_start_ms": 7640
+    }
+  ],
+  "video_sync_note": "This measures translated-audio timing against source speech. True lip sync needs video mouth-motion or face-landmark scoring, then alignment against translated audio."
+}

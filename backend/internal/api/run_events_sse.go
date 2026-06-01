@@ -1,9 +1,11 @@
 package api
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -179,6 +181,67 @@ func streamRunEventsHandler(
 	}
 }
 
+func exportRunEventsJSONLHandler(logger *slog.Logger, runReadService RunReadService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		streamService, ok := runReadService.(RunEventStreamService)
+		if !ok {
+			logger.Error("run read service does not implement run event export")
+			writeError(w, http.StatusInternalServerError, "internal_error", "run event export is unavailable")
+			return
+		}
+
+		caller, err := CallerFromContext(r.Context())
+		if err != nil {
+			writeAuthzError(w, err)
+			return
+		}
+
+		runID, err := runIDFromURLParam("runID")(r)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_run_id", err.Error())
+			return
+		}
+
+		snapshot, err := streamService.ListRunEventStream(r.Context(), caller, runID)
+		if err != nil {
+			switch {
+			case errors.Is(err, repository.ErrRunNotFound):
+				writeError(w, http.StatusNotFound, "run_not_found", "run not found")
+			case errors.Is(err, ErrForbidden):
+				writeAuthzError(w, err)
+			default:
+				logger.Error("failed to export run events",
+					"run_id", runID,
+					"error", err,
+				)
+				writeError(w, http.StatusInternalServerError, "internal_error", "internal server error")
+			}
+			return
+		}
+
+		var body bytes.Buffer
+		if err := writeRunEventsJSONL(&body, snapshot.Events); err != nil {
+			logger.Error("failed to write run events export",
+				"run_id", runID,
+				"error", err,
+			)
+			writeError(w, http.StatusInternalServerError, "internal_error", "internal server error")
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/x-ndjson")
+		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="agentclash-run-%s-events.jsonl"`, runID.String()))
+		w.Header().Set("Content-Length", fmt.Sprintf("%d", body.Len()))
+		w.WriteHeader(http.StatusOK)
+		if _, err := w.Write(body.Bytes()); err != nil {
+			logger.Error("failed to send run events export",
+				"run_id", runID,
+				"error", err,
+			)
+		}
+	}
+}
+
 func emitPersistedRunEvents(
 	w http.ResponseWriter,
 	flusher http.Flusher,
@@ -195,6 +258,22 @@ func emitPersistedRunEvents(
 		}
 		delivered[streamEventID] = struct{}{}
 		writeSSEFrame(w, flusher, streamEventID, data)
+	}
+	return nil
+}
+
+func writeRunEventsJSONL(w io.Writer, events []repository.RunEvent) error {
+	for _, event := range events {
+		data, _, err := marshalPersistedRunEvent(event)
+		if err != nil {
+			return err
+		}
+		if _, err := w.Write(data); err != nil {
+			return err
+		}
+		if _, err := w.Write([]byte("\n")); err != nil {
+			return err
+		}
 	}
 	return nil
 }

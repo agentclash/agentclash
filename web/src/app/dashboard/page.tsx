@@ -1,14 +1,14 @@
 import { withAuth } from "@workos-inc/authkit-nextjs";
 import { redirect } from "next/navigation";
 import { createApiClient } from "@/lib/api/client";
-import type { SessionResponse } from "@/lib/api/types";
+import type { SessionResponse, UserMeResponse } from "@/lib/api/types";
 
 /**
  * Route guard: after login the callback sends users here.
  * We check their session and redirect:
  *   - No org memberships → /onboard (first-time user)
  *   - Has workspace memberships → /workspaces/{first workspace id}
- *   - Has org but no workspace → /onboard (shouldn't happen, but safe fallback)
+ *   - Has org but no workspace → /orgs/{first org slug}/workspaces
  */
 export default async function DashboardPage() {
   const { user, accessToken } = await withAuth();
@@ -40,7 +40,9 @@ export default async function DashboardPage() {
             </pre>
           )}
           <p className="text-xs text-muted-foreground mb-4">
-            token: {accessToken ? `yes (${accessToken.length} chars)` : "no"} | api: {process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || "unset"}
+            token: {accessToken ? `yes (${accessToken.length} chars)` : "no"}{" "}
+            | api:{" "}
+            {process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || "unset"}
           </p>
           <a
             href="/dashboard"
@@ -54,17 +56,28 @@ export default async function DashboardPage() {
   }
 
   // Redirects must be outside try/catch — Next.js redirect() throws internally.
-  const isOnboarded = session.organization_memberships.some(
-    (m) => m.role === "org_admin",
-  );
-
-  if (!isOnboarded) {
+  if (session.organization_memberships.length === 0) {
     redirect("/onboard");
   }
 
   const firstWorkspace = session.workspace_memberships[0];
   if (firstWorkspace) {
     redirect(`/workspaces/${firstWorkspace.workspace_id}`);
+  }
+
+  let orgRedirectTarget: string | null = null;
+  try {
+    const api = createApiClient(accessToken);
+    const userMe = await api.get<UserMeResponse>("/v1/users/me");
+    const firstOrg = userMe.organizations[0];
+    if (firstOrg) {
+      orgRedirectTarget = `/orgs/${firstOrg.slug}/workspaces`;
+    }
+  } catch {
+    // Fall through to onboarding if the richer profile cannot be loaded.
+  }
+  if (orgRedirectTarget) {
+    redirect(orgRedirectTarget);
   }
 
   redirect("/onboard");

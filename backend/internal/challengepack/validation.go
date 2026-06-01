@@ -18,11 +18,20 @@ var (
 )
 
 var supportedToolKinds = map[string]struct{}{
-	"browser": {},
-	"build":   {},
-	"data":    {},
-	"file":    {},
-	"network": {},
+	"browser":  {},
+	"build":    {},
+	"data":     {},
+	"file":     {},
+	"network":  {},
+	"terminal": {}, // AgentClash Try CLI — interactive disposable terminal demos (E2B PTY)
+}
+
+var supportedVoiceTransports = map[string]struct{}{
+	"text_sim":  {},
+	"webrtc":    {},
+	"sip":       {},
+	"pstn":      {},
+	"websocket": {},
 }
 
 type ValidationError struct {
@@ -59,25 +68,35 @@ func ValidateBundle(bundle Bundle) error {
 	if bundle.Version.Number <= 0 {
 		errs = append(errs, ValidationError{Field: "version.number", Message: "must be greater than 0"})
 	}
+	errs = append(errs, validateModalityConfig(bundle)...)
 	switch bundle.Version.ExecutionMode {
-	case "", ExecutionModeNative, ExecutionModePromptEval:
+	case "", ExecutionModeNative, ExecutionModePromptEval, ExecutionModeResponses, ExecutionModeMultiTurn:
 	default:
-		errs = append(errs, ValidationError{Field: "version.execution_mode", Message: fmt.Sprintf("must be one of %q, %q", ExecutionModeNative, ExecutionModePromptEval)})
+		errs = append(errs, ValidationError{Field: "version.execution_mode", Message: fmt.Sprintf("must be one of %q, %q, %q, %q", ExecutionModeNative, ExecutionModePromptEval, ExecutionModeResponses, ExecutionModeMultiTurn)})
 	}
 	if bundle.Version.ExecutionMode == ExecutionModePromptEval {
 		if len(bundle.Tools) > 0 {
-			errs = append(errs, ValidationError{Field: "tools", Message: "must be empty when version.execution_mode is prompt_eval"})
+			errs = append(errs, ValidationError{Field: "tools", Message: fmt.Sprintf("must be empty when version.execution_mode is %s", bundle.Version.ExecutionMode)})
 		}
 		if bundle.Version.Sandbox != nil {
-			errs = append(errs, ValidationError{Field: "version.sandbox", Message: "must be omitted when version.execution_mode is prompt_eval"})
+			errs = append(errs, ValidationError{Field: "version.sandbox", Message: fmt.Sprintf("must be omitted when version.execution_mode is %s", bundle.Version.ExecutionMode)})
 		}
 		if len(bundle.Version.ToolPolicy) > 0 {
-			errs = append(errs, ValidationError{Field: "version.tool_policy", Message: "must be empty when version.execution_mode is prompt_eval"})
+			errs = append(errs, ValidationError{Field: "version.tool_policy", Message: fmt.Sprintf("must be empty when version.execution_mode is %s", bundle.Version.ExecutionMode)})
+		}
+	}
+	if bundle.Version.ExecutionMode == ExecutionModeResponses {
+		if len(bundle.Tools) > 0 {
+			errs = append(errs, ValidationError{Field: "tools", Message: "must be empty when version.execution_mode is responses (use OpenAI Responses tools, not pack-defined tools)"})
 		}
 	}
 	if len(bundle.Challenges) == 0 {
 		errs = append(errs, ValidationError{Field: "challenges", Message: "must contain at least one challenge"})
 	}
+	if strings.EqualFold(bundle.Pack.Family, SecurityFamily) && bundle.Security == nil {
+		errs = append(errs, ValidationError{Field: "security", Message: "is required when pack.family == \"security\""})
+	}
+	errs = append(errs, validateSecurityPolicy(bundle.Security)...)
 
 	challengeKeys := map[string]struct{}{}
 	versionAssetKeys := map[string]struct{}{}
@@ -174,6 +193,7 @@ func ValidateBundle(bundle Bundle) error {
 	if bundle.Version.Sandbox != nil {
 		errs = append(errs, validateSandboxConfig("version.sandbox", bundle.Version.Sandbox)...)
 	}
+	errs = append(errs, validateDeploymentDefaults("version.deployment_defaults", bundle.Version.DeploymentDefaults)...)
 
 	if err := scoring.ValidateEvaluationSpec(bundle.Version.EvaluationSpec); err != nil {
 		if scoringErrs, ok := err.(scoring.ValidationErrors); ok {
@@ -184,12 +204,147 @@ func ValidateBundle(bundle Bundle) error {
 			errs = append(errs, ValidationError{Field: "version.evaluation_spec", Message: err.Error()})
 		}
 	}
+	errs = append(errs, validateBundleCaseTemplates(bundle)...)
+	errs = append(errs, validateBundleUserSimulators(bundle, versionAssetKeys)...)
 	errs = append(errs, validateAssets("version.assets", bundle.Version.Assets)...)
 
 	if len(errs) > 0 {
 		return errs
 	}
 	return nil
+}
+
+func validateModalityConfig(bundle Bundle) ValidationErrors {
+	var errs ValidationErrors
+	switch strings.TrimSpace(bundle.Modality) {
+	case "":
+		if bundle.InterfaceSpec != nil {
+			errs = append(errs, ValidationError{Field: "modality", Message: "is required when interface_spec is set"})
+		}
+		if bundle.Scenario != nil {
+			errs = append(errs, ValidationError{Field: "modality", Message: "is required when scenario is set"})
+		}
+		return errs
+	case ModalityVoice:
+		errs = append(errs, validateVoiceInterfaceSpec("interface_spec", bundle.InterfaceSpec)...)
+		errs = append(errs, validateVoiceScenarioSpec("scenario", bundle.Scenario)...)
+	default:
+		errs = append(errs, ValidationError{Field: "modality", Message: `must be "voice" when specified`})
+	}
+	return errs
+}
+
+func validateVoiceInterfaceSpec(path string, spec *InterfaceSpec) ValidationErrors {
+	if spec == nil {
+		return ValidationErrors{{Field: path, Message: "is required when modality is voice"}}
+	}
+
+	var errs ValidationErrors
+	if len(spec.Transports) == 0 {
+		errs = append(errs, ValidationError{Field: path + ".transports", Message: "must contain at least one transport"})
+	}
+	seen := map[string]struct{}{}
+	for i, transport := range spec.Transports {
+		field := fmt.Sprintf("%s.transports[%d]", path, i)
+		normalized := strings.TrimSpace(transport)
+		if normalized == "" {
+			errs = append(errs, ValidationError{Field: field, Message: "must be one of text_sim, webrtc, sip, pstn, websocket"})
+			continue
+		}
+		if _, exists := seen[normalized]; exists {
+			errs = append(errs, ValidationError{Field: field, Message: "must be unique"})
+			continue
+		}
+		seen[normalized] = struct{}{}
+		if _, ok := supportedVoiceTransports[normalized]; !ok {
+			errs = append(errs, ValidationError{Field: field, Message: "must be one of text_sim, webrtc, sip, pstn, websocket"})
+		}
+	}
+	if strings.TrimSpace(spec.ChannelProfile) == "" {
+		errs = append(errs, ValidationError{Field: path + ".channel_profile", Message: "is required when modality is voice"})
+	}
+	return errs
+}
+
+func validateVoiceScenarioSpec(path string, spec *ScenarioSpec) ValidationErrors {
+	if spec == nil {
+		return ValidationErrors{{Field: path, Message: "is required when modality is voice"}}
+	}
+
+	var errs ValidationErrors
+	if strings.TrimSpace(spec.Persona) == "" {
+		errs = append(errs, ValidationError{Field: path + ".persona", Message: "is required when modality is voice"})
+	}
+	if strings.TrimSpace(spec.Language) == "" {
+		errs = append(errs, ValidationError{Field: path + ".language", Message: "is required when modality is voice"})
+	}
+	if spec.MaxTurns <= 0 {
+		errs = append(errs, ValidationError{Field: path + ".max_turns", Message: "must be greater than 0 when modality is voice"})
+	}
+	if spec.MaxDurationMS <= 0 {
+		errs = append(errs, ValidationError{Field: path + ".max_duration_ms", Message: "must be greater than 0 when modality is voice"})
+	}
+	return errs
+}
+
+func validateDeploymentDefaults(path string, defaults *DeploymentDefaults) ValidationErrors {
+	if defaults == nil {
+		return nil
+	}
+
+	var errs ValidationErrors
+	seenAliasKeys := map[string]struct{}{}
+	for key, value := range defaults.Aliases {
+		field := fmt.Sprintf("%s.aliases[%q]", path, key)
+		if strings.TrimSpace(key) == "" {
+			errs = append(errs, ValidationError{Field: field, Message: "key is required"})
+			continue
+		}
+		normalizedKey := strings.TrimSpace(key)
+		if _, exists := seenAliasKeys[normalizedKey]; exists {
+			errs = append(errs, ValidationError{Field: field, Message: "key must be unique after trimming whitespace"})
+		}
+		seenAliasKeys[normalizedKey] = struct{}{}
+		if strings.TrimSpace(value) == "" {
+			errs = append(errs, ValidationError{Field: field, Message: "selector is required"})
+		}
+	}
+
+	if len(defaults.Lineups) == 0 {
+		errs = append(errs, ValidationError{Field: path + ".lineups", Message: "must include at least a default lineup"})
+		return errs
+	}
+	if _, ok := defaults.Lineups["default"]; !ok {
+		errs = append(errs, ValidationError{Field: path + ".lineups.default", Message: "is required"})
+	}
+
+	seenLineupKeys := map[string]struct{}{}
+	for key, values := range defaults.Lineups {
+		field := fmt.Sprintf("%s.lineups[%q]", path, key)
+		if strings.TrimSpace(key) == "" {
+			errs = append(errs, ValidationError{Field: field, Message: "key is required"})
+			continue
+		}
+		normalizedKey := strings.TrimSpace(key)
+		if _, exists := seenLineupKeys[normalizedKey]; exists {
+			errs = append(errs, ValidationError{Field: field, Message: "key must be unique after trimming whitespace"})
+		}
+		seenLineupKeys[normalizedKey] = struct{}{}
+		if len(values) == 0 {
+			errs = append(errs, ValidationError{Field: field, Message: "must include at least one deployment selector"})
+			continue
+		}
+		for i, value := range values {
+			if strings.TrimSpace(value) == "" {
+				errs = append(errs, ValidationError{
+					Field:   fmt.Sprintf("%s[%d]", field, i),
+					Message: "selector is required",
+				})
+			}
+		}
+	}
+
+	return errs
 }
 
 func validateToolPolicyConfig(path string, policy map[string]any) ValidationErrors {

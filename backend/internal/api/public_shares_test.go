@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -38,7 +39,7 @@ func TestPublicShareManager_CreateChallengePackShareAuthorizesWorkspace(t *testi
 	if result.Share.WorkspaceID != workspaceID || result.Share.OrganizationID != orgID {
 		t.Fatalf("share scope = org %s workspace %s, want org %s workspace %s", result.Share.OrganizationID, result.Share.WorkspaceID, orgID, workspaceID)
 	}
-	if result.Token == "" || result.URL == "" {
+	if !strings.Contains(result.URL, "/share/") || result.Token == "" {
 		t.Fatalf("token/url should be populated: token=%q url=%q", result.Token, result.URL)
 	}
 }
@@ -71,11 +72,51 @@ func TestPublicShareManager_CreateShareRejectsCrossWorkspaceCaller(t *testing.T)
 	}
 }
 
+func TestPublicShareManager_CreateRunShareAuthorizesWorkspace(t *testing.T) {
+	ctx := context.Background()
+	orgID := uuid.New()
+	workspaceID := uuid.New()
+	runID := uuid.New()
+	repo := newFakePublicShareRepository(orgID, workspaceID)
+	repo.run = domain.Run{
+		ID:             runID,
+		OrganizationID: orgID,
+		WorkspaceID:    workspaceID,
+		Name:           "shared run",
+		Status:         domain.RunStatusCompleted,
+		CreatedAt:      time.Now().UTC(),
+		UpdatedAt:      time.Now().UTC(),
+	}
+	repo.runScorecard = repository.RunScorecard{ID: uuid.New(), RunID: runID, Scorecard: json.RawMessage(`{"summary":"public"}`)}
+	manager := NewPublicShareManager(NewCallerWorkspaceAuthorizer(), repo, "https://agentclash.dev")
+
+	result, err := manager.CreateShareLink(ctx, callerWithWorkspace(workspaceID), CreateShareLinkInput{
+		ResourceType: repository.PublicShareResourceRunScorecard,
+		ResourceID:   runID,
+	})
+	if err != nil {
+		t.Fatalf("CreateShareLink returned error: %v", err)
+	}
+	if result.Share.ResourceType != repository.PublicShareResourceRunScorecard {
+		t.Fatalf("resource type = %q, want run_scorecard", result.Share.ResourceType)
+	}
+	if result.Share.WorkspaceID != workspaceID || result.Share.OrganizationID != orgID {
+		t.Fatalf("share scope = org %s workspace %s, want org %s workspace %s", result.Share.OrganizationID, result.Share.WorkspaceID, orgID, workspaceID)
+	}
+	if !strings.Contains(result.URL, "/share/") || result.Token == "" {
+		t.Fatalf("token/url should be populated: token=%q url=%q", result.Token, result.URL)
+	}
+}
+
 func TestPublicShareManager_GetPublicShareReturnsNarrowPayload(t *testing.T) {
 	ctx := context.Background()
 	orgID := uuid.New()
 	workspaceID := uuid.New()
 	runID := uuid.New()
+	createdByUserID := uuid.New()
+	evalSessionID := uuid.New()
+	agentDeploymentID := uuid.New()
+	agentDeploymentSnapshotID := uuid.New()
 	repo := newFakePublicShareRepository(orgID, workspaceID)
 	repo.share = repository.PublicShareLink{
 		ID:             uuid.New(),
@@ -89,13 +130,31 @@ func TestPublicShareManager_GetPublicShareReturnsNarrowPayload(t *testing.T) {
 		UpdatedAt:      time.Now().UTC(),
 	}
 	repo.run = domain.Run{
-		ID:             runID,
-		OrganizationID: orgID,
-		WorkspaceID:    workspaceID,
-		Name:           "blog run",
-		Status:         domain.RunStatusCompleted,
-		CreatedAt:      time.Now().UTC(),
-		UpdatedAt:      time.Now().UTC(),
+		ID:                 runID,
+		OrganizationID:     orgID,
+		WorkspaceID:        workspaceID,
+		Name:               "blog run",
+		Status:             domain.RunStatusCompleted,
+		EvalSessionID:      &evalSessionID,
+		CreatedByUserID:    &createdByUserID,
+		TemporalWorkflowID: ptrString("private-workflow"),
+		TemporalRunID:      ptrString("private-run"),
+		ExecutionPlan:      json.RawMessage(`{"credential_reference":"workspace-secret://OPENAI_API_KEY","api_key":"sk-live-private"}`),
+		CreatedAt:          time.Now().UTC(),
+		UpdatedAt:          time.Now().UTC(),
+	}
+	repo.runAgent = domain.RunAgent{
+		ID:                        uuid.New(),
+		OrganizationID:            orgID,
+		WorkspaceID:               workspaceID,
+		RunID:                     runID,
+		AgentDeploymentID:         agentDeploymentID,
+		AgentDeploymentSnapshotID: agentDeploymentSnapshotID,
+		LaneIndex:                 0,
+		Label:                     "candidate",
+		Status:                    domain.RunAgentStatusCompleted,
+		CreatedAt:                 time.Now().UTC(),
+		UpdatedAt:                 time.Now().UTC(),
 	}
 	repo.runScorecard = repository.RunScorecard{ID: uuid.New(), RunID: runID, Scorecard: json.RawMessage(`{"summary":"public"}`)}
 	manager := NewPublicShareManager(NewCallerWorkspaceAuthorizer(), repo, "https://agentclash.dev")
@@ -107,15 +166,51 @@ func TestPublicShareManager_GetPublicShareReturnsNarrowPayload(t *testing.T) {
 	if payload.Share.ResourceType != string(repository.PublicShareResourceRunScorecard) {
 		t.Fatalf("share resource type = %q", payload.Share.ResourceType)
 	}
-	encoded, err := json.Marshal(payload.Resource)
+	resourceEncoded, err := json.Marshal(payload.Resource)
 	if err != nil {
 		t.Fatalf("marshal payload resource: %v", err)
 	}
-	if string(encoded) == "" || !json.Valid(encoded) {
-		t.Fatalf("payload is not valid JSON: %s", encoded)
+	if string(resourceEncoded) == "" || !json.Valid(resourceEncoded) {
+		t.Fatalf("payload resource is not valid JSON: %s", resourceEncoded)
 	}
-	if contains := jsonContainsKey(encoded, "workspace_id"); contains {
-		t.Fatalf("public payload leaked workspace_id: %s", encoded)
+	responseEncoded, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("marshal payload response: %v", err)
+	}
+	if contains := jsonContainsKey(resourceEncoded, "workspace_id"); contains {
+		t.Fatalf("public payload leaked workspace_id: %s", resourceEncoded)
+	}
+	for _, key := range []string{
+		"organization_id",
+		"created_by_user_id",
+		"eval_session_id",
+		"temporal_workflow_id",
+		"temporal_run_id",
+		"execution_plan",
+		"agent_deployment_id",
+		"agent_deployment_snapshot_id",
+		"credential_reference",
+		"api_key",
+	} {
+		if jsonContainsKey(resourceEncoded, key) {
+			t.Fatalf("public payload leaked %s: %s", key, resourceEncoded)
+		}
+	}
+	for _, secret := range []string{
+		orgID.String(),
+		workspaceID.String(),
+		createdByUserID.String(),
+		evalSessionID.String(),
+		agentDeploymentID.String(),
+		agentDeploymentSnapshotID.String(),
+		"workspace-secret://OPENAI_API_KEY",
+		"sk-live-private",
+		"private-workflow",
+		"private-run",
+	} {
+		if strings.Contains(string(responseEncoded), secret) {
+			t.Fatalf("public response leaked private value %q: %s", secret, responseEncoded)
+		}
 	}
 }
 
@@ -193,6 +288,10 @@ func callerWithWorkspace(workspaceID uuid.UUID) Caller {
 		},
 		OrganizationMemberships: map[uuid.UUID]OrganizationMembership{},
 	}
+}
+
+func ptrString(value string) *string {
+	return &value
 }
 
 func jsonContainsKey(data []byte, key string) bool {

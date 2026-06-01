@@ -10,6 +10,7 @@ import (
 	"github.com/agentclash/agentclash/backend/internal/api"
 	"github.com/agentclash/agentclash/backend/internal/budget"
 	"github.com/agentclash/agentclash/backend/internal/email"
+	"github.com/agentclash/agentclash/backend/internal/posthog"
 	"github.com/agentclash/agentclash/backend/internal/provider"
 	"github.com/agentclash/agentclash/backend/internal/pubsub"
 	"github.com/agentclash/agentclash/backend/internal/ratelimit"
@@ -82,7 +83,7 @@ func main() {
 	runCreationManager := api.NewRunCreationManager(
 		authorizer,
 		repo,
-		api.NewTemporalRunWorkflowStarter(temporalClient),
+		api.NewTemporalRunWorkflowStarter(temporalClient, repo),
 		budgetChecker,
 	).WithEvalSessionWorkflowStarter(api.NewTemporalEvalSessionWorkflowStarter(temporalClient))
 	providerRouter := provider.NewDefaultRouter(nil, provider.EnvCredentialResolver{})
@@ -97,7 +98,9 @@ func main() {
 	runReadManager := api.NewRunReadManager(authorizer, repo).
 		WithInsightsClient(providerRouter).
 		WithBudgetChecker(budgetChecker).
-		WithInsightsRateLimiter(insightsLimiter)
+		WithInsightsRateLimiter(insightsLimiter).
+		WithRunWorkflowControl(api.NewTemporalRunWorkflowCanceller(temporalClient))
+	multiTurnManager := api.NewMultiTurnManager(authorizer, repo, repository.NewMultiTurnHumanTurnStore(db))
 	if !runReadManager.InsightsConfigured() {
 		logger.Error("run ranking insights client is not configured")
 		os.Exit(1)
@@ -106,6 +109,7 @@ func main() {
 	compareReadManager := api.NewCompareReadManager(authorizer, repo)
 	releaseGateManager := api.NewReleaseGateManager(authorizer, repo)
 	regressionManager := api.NewRegressionManager(authorizer, repo)
+	datasetManager := api.NewDatasetManager(authorizer, repo).WithRunCreationService(runCreationManager).WithTraceArtifactStore(artifactStore, artifactStore.Bucket())
 	hostedRunIngestionManager := api.NewHostedRunIngestionManager(
 		repo,
 		cfg.HostedRunCallbackSecret,
@@ -132,14 +136,13 @@ func main() {
 	billingManager := api.NewBillingManager(orgAuthz, authorizer, repo, api.BillingManagerConfig{
 		DodoAPIKey:      cfg.DodoPaymentsAPIKey,
 		DodoAPIBaseURL:  cfg.DodoAPIBaseURL,
+		DodoEnvironment: cfg.DodoEnvironment,
+		DodoProductIDs:  cfg.DodoProductIDs,
 		WebhookSecret:   cfg.DodoPaymentsWebhookKey,
-		CheckoutBaseURL: cfg.DodoCheckoutBaseURL,
-		PortalBaseURL:   cfg.DodoPortalBaseURL,
 	})
 	runCreationManager.WithEntitlementGateService(billingManager)
 	orgManager := api.NewOrganizationManager(orgAuthz, repo)
 	wsManager := api.NewWorkspaceManager(orgAuthz, repo, billingManager)
-	orgMembershipManager := api.NewOrgMembershipManager(orgAuthz, repo, billingManager)
 
 	var emailSender email.Sender
 	if cfg.ResendAPIKey != "" {
@@ -149,12 +152,34 @@ func main() {
 		emailSender = email.NoopSender{}
 		logger.Info("email sender: noop (RESEND_API_KEY not set)")
 	}
-	wsMembershipManager := api.NewWorkspaceMembershipManager(repo, emailSender, cfg.FrontendURL)
+	orgMembershipManager := api.NewOrgMembershipManager(orgAuthz, repo, emailSender, cfg.FrontendURL, billingManager)
+	wsMembershipManager := api.NewWorkspaceMembershipManager(repo, emailSender, cfg.FrontendURL, billingManager)
 	onboardingManager := api.NewOnboardingManager(repo)
-	infraManager := api.NewInfrastructureManager(repo)
+	infraManager := api.NewInfrastructureManager(repo).WithProviderClient(providerRouter)
 	workspaceSecretsManager := api.NewWorkspaceSecretsManager(repo)
+	vibeEvalManager := api.NewVibeEvalManager(authorizer, repo)
 	cliAuthManager := api.NewCLIAuthManager(repo, logger, cfg.FrontendURL)
 	cliTokenAuth := api.NewCLITokenAuthenticator(repo, logger)
+
+	// PostHog client (optional service). When POSTHOG_API_KEY is unset, returns
+	// a noop that satisfies the Client interface and does nothing on Capture.
+	var posthogClient posthog.Client = posthog.Noop{}
+	if posthogCfg, ok := posthog.LoadConfigFromEnv(); ok {
+		client, perr := posthog.NewClient(posthogCfg, logger)
+		if perr != nil {
+			logger.Error("failed to initialize posthog client", "error", perr)
+			os.Exit(1)
+		}
+		posthogClient = client
+		logger.Info("posthog analytics: enabled")
+		defer func() {
+			if err := posthogClient.Close(); err != nil {
+				logger.Warn("posthog close failed", "error", err)
+			}
+		}()
+	} else {
+		logger.Info("posthog analytics: disabled (POSTHOG_API_KEY not set)")
+	}
 
 	var authenticator api.Authenticator
 	switch cfg.AuthMode {
@@ -187,6 +212,7 @@ func main() {
 		compareReadManager,
 		releaseGateManager,
 		regressionManager,
+		datasetManager,
 		hostedRunIngestionManager,
 		agentDeploymentReadManager,
 		agentHarnessManager,
@@ -205,6 +231,9 @@ func main() {
 		publicShareManager,
 		billingManager,
 		eventSubscriber,
+		multiTurnManager,
+		vibeEvalManager,
+		posthogClient,
 		cliAuthManager,
 	)
 

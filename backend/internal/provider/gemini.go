@@ -154,6 +154,7 @@ func normalizeGeminiRequestMessage(providerKey string, msg Message) (geminiConte
 					return geminiContent{}, NewFailure(providerKey, FailureCodeInvalidRequest, fmt.Sprintf("tool call %q arguments must be valid JSON", tc.Name), false, nil)
 				}
 				parts = append(parts, geminiPart{
+					ThoughtSignature: tc.ThoughtSignature,
 					FunctionCall: &geminiFunctionCall{
 						Name: tc.Name,
 						Args: append(json.RawMessage(nil), args...),
@@ -309,9 +310,11 @@ type geminiContent struct {
 }
 
 type geminiPart struct {
-	Text             string                  `json:"text,omitempty"`
-	FunctionCall     *geminiFunctionCall     `json:"functionCall,omitempty"`
-	FunctionResponse *geminiFunctionResponse `json:"functionResponse,omitempty"`
+	Text                  string                  `json:"text,omitempty"`
+	ThoughtSignature      string                  `json:"thoughtSignature,omitempty"`
+	SnakeThoughtSignature string                  `json:"thought_signature,omitempty"`
+	FunctionCall          *geminiFunctionCall     `json:"functionCall,omitempty"`
+	FunctionResponse      *geminiFunctionResponse `json:"functionResponse,omitempty"`
 }
 
 type geminiFunctionCall struct {
@@ -320,7 +323,7 @@ type geminiFunctionCall struct {
 }
 
 type geminiFunctionResponse struct {
-	Name     string               `json:"name"`
+	Name     string                `json:"name"`
 	Response geminiResponsePayload `json:"response"`
 }
 
@@ -343,10 +346,7 @@ type geminiFunctionDeclaration struct {
 type geminiStreamChunk struct {
 	Candidates []struct {
 		Content struct {
-			Parts []struct {
-				Text         string              `json:"text,omitempty"`
-				FunctionCall *geminiFunctionCall `json:"functionCall,omitempty"`
-			} `json:"parts"`
+			Parts []geminiPart `json:"parts"`
 		} `json:"content"`
 		FinishReason string `json:"finishReason,omitempty"`
 	} `json:"candidates"`
@@ -462,6 +462,7 @@ func processGeminiStreamEvent(providerKey string, model string, raw []byte, accu
 						IDFragment:        fmt.Sprintf("gemini-call-%d", *toolCallIndex),
 						NameFragment:      part.FunctionCall.Name,
 						ArgumentsFragment: string(args),
+						ThoughtSignature:  part.geminiThoughtSignature(),
 					},
 				}); err != nil {
 					return err
@@ -508,6 +509,13 @@ func processGeminiStreamEvent(providerKey string, model string, raw []byte, accu
 	}
 
 	return nil
+}
+
+func (p geminiPart) geminiThoughtSignature() string {
+	if p.ThoughtSignature != "" {
+		return p.ThoughtSignature
+	}
+	return p.SnakeThoughtSignature
 }
 
 func emitGeminiDelta(accumulator *StreamAccumulator, onDelta func(StreamDelta) error, delta StreamDelta) error {

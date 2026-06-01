@@ -1,0 +1,26 @@
+name: "Biome"
+slug: biome
+tagline: "Fast formatter & linter for JS/TS"
+category: "Developer tools"
+template: agentclash-trycli
+docs: "https://biomejs.dev/"
+github: "https://github.com/biomejs/biome"
+
+welcome: |
+  Biome is ready! Fast formatter and linter for JS/TS.
+  Try:
+    biome --version
+    biome init
+    biome check .
+
+commands:
+  - label: "Show version"
+    run: "biome --version"
+  - label: "Init config"
+    run: "mkdir demo && cd demo && biome init"
+  - label: "Check a sample file"
+    run: "echo 'const  x=1+2;console.log(x)' > demo/app.js && biome check demo/app.js"
+  - label: "Format the file"
+    run: "biome format --write demo/app.js && cat demo/app.js"
+
+sessionMinutes: 10

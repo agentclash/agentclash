@@ -49,7 +49,14 @@ func resolveEvidenceValue(source string, evidence extractedEvidence) (*string, *
 	case strings.HasPrefix(source, "literal:"):
 		value := strings.TrimPrefix(source, "literal:")
 		return &value, nil, "", nil
+	case source == "transcript.full", source == "transcript.from_mismatch", source == "turn.expectations":
+		value, reason, err := resolveTranscriptEvidence(source, evidence.transcriptTurns)
+		return value, nil, reason, err
 	default:
+		if strings.HasPrefix(source, "transcript.last_n:") {
+			value, reason, err := resolveTranscriptEvidence(source, evidence.transcriptTurns)
+			return value, nil, reason, err
+		}
 		return nil, nil, "", fmt.Errorf("unsupported evidence source %q", source)
 	}
 }

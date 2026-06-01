@@ -4,6 +4,7 @@ import { Sidebar } from "@/components/app-shell/sidebar";
 import { TopBar } from "@/components/app-shell/top-bar";
 import { TrialUpgradePrompt } from "@/components/billing/trial-upgrade-prompt";
 import { WorkspaceBillingBanner } from "@/components/billing/workspace-billing-banner";
+import { PostHogIdentify } from "@/components/posthog-identify";
 
 export default async function WorkspaceLayout({
   children,
@@ -16,6 +17,7 @@ export default async function WorkspaceLayout({
   const initialAuth = await getRequiredInitialAuth();
   const {
     user,
+    session,
     userMe,
     hasMembership,
     hasOrgAccess,
@@ -46,6 +48,7 @@ export default async function WorkspaceLayout({
 
   return (
     <AuthenticatedAppProviders initialAuth={initialAuth}>
+      <PostHogIdentify session={session} />
       <div className="flex h-screen overflow-hidden">
         <Sidebar workspaceId={workspaceId} />
         <div className="flex flex-1 flex-col overflow-hidden">

@@ -7,44 +7,30 @@ const COLUMNS: Array<{
   {
     heading: "Product",
     links: [
-      { href: "/v2/platform/agent-evaluation", label: "Agent evaluation" },
-      { href: "/v2/platform/regression-testing", label: "Regression testing" },
-      { href: "/v2/platform/ci-cd-gating", label: "CI/CD gating" },
-      { href: "/v2/platform/multi-turn-evaluation", label: "Multi-turn evals" },
-      { href: "/v2/platform/rag-evaluation", label: "RAG evaluation" },
-      { href: "/v2/platform/self-hosted", label: "Self-hosted" },
+      { href: "/#features", label: "Features" },
+      { href: "/platform/agent-evaluation", label: "Agent evaluation" },
+      { href: "/compare", label: "Compare tools" },
+      { href: "/docs", label: "Docs" },
+      { href: "/docs/getting-started/quickstart", label: "Quickstart" },
+      { href: "/docs/getting-started/self-host", label: "Self-host" },
+      { href: "/docs/challenge-packs", label: "Challenge packs" },
+      { href: "/docs/guides/ci-cd-agent-gates", label: "CI/CD gates" },
     ],
   },
   {
-    heading: "Use cases",
+    heading: "Guides",
     links: [
-      { href: "/v2/use-cases/coding-agents", label: "Coding agents" },
-      { href: "/v2/use-cases/deep-research", label: "Deep research" },
-      { href: "/v2/use-cases/sql-data-agents", label: "SQL & data" },
-      { href: "/v2/use-cases/support-agents", label: "Support agents" },
-      { href: "/v2/use-cases/sre-agents", label: "SRE agents" },
-    ],
-  },
-  {
-    heading: "Compare",
-    links: [
-      { href: "/v2/vs/langsmith", label: "vs LangSmith" },
-      { href: "/v2/vs/braintrust", label: "vs Braintrust" },
-      { href: "/v2/vs/promptfoo", label: "vs Promptfoo" },
-      { href: "/v2/vs/langfuse", label: "vs Langfuse" },
-      { href: "/v2/vs/openai-evals", label: "vs OpenAI Evals" },
+      { href: "/docs/guides/write-a-challenge-pack", label: "Write a challenge pack" },
+      { href: "/docs/guides/configure-runtime-resources", label: "Configure resources" },
+      { href: "/docs/guides/interpret-results", label: "Interpret results" },
+      { href: "/docs/guides/ci-cd-workload-recipes", label: "CI/CD recipes" },
+      { href: "/docs/guides/use-with-ai-tools", label: "Use with AI tools" },
     ],
   },
   {
     heading: "Company",
     links: [
-      { href: "/v2/cloud", label: "Managed cloud" },
-      { href: "/v2/oss", label: "Open source" },
-      { href: "/v2/security", label: "Security" },
-      { href: "/v2/methodology", label: "Methodology" },
-      { href: "/v2/design-partners", label: "Design partners" },
       { href: "/blog", label: "Blog" },
-      { href: "/docs", label: "Docs" },
       { href: "/team", label: "Team" },
       { href: "https://github.com/agentclash/agentclash", label: "GitHub", external: true },
     ],
@@ -93,7 +79,7 @@ export function MarketingFooter() {
         <div className="mt-16 flex flex-wrap items-center justify-between gap-4 border-t border-white/[0.06] pt-8 text-[11px] font-[family-name:var(--font-mono)] text-white/35">
           <div className="flex items-center gap-6">
             <span className="font-medium text-white/55">AgentClash</span>
-            <span className="text-white/40">Beta · FSL-1.1-MIT</span>
+            <span className="text-white/40">Beta · MIT</span>
           </div>
           <div className="flex items-center gap-5">
             <Link href="/docs" className="hover:text-white/70 transition-colors">

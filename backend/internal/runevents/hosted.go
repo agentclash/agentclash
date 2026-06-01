@@ -34,6 +34,12 @@ type hostedTraceSummaryDocument struct {
 	ToolCategory    string `json:"tool_category,omitempty"`
 	SandboxAction   string `json:"sandbox_action,omitempty"`
 	MetricKey       string `json:"metric_key,omitempty"`
+	TurnIndex       *int   `json:"turn_index,omitempty"`
+	PhaseID         string `json:"phase_id,omitempty"`
+	Actor           string `json:"actor,omitempty"`
+	Mismatch        *bool  `json:"mismatch,omitempty"`
+	Speaker         string `json:"speaker,omitempty"`
+	Channel         string `json:"channel,omitempty"`
 	ExternalRunID   string `json:"external_run_id,omitempty"`
 	EvidenceLevel   string `json:"evidence_level,omitempty"`
 	IdempotencyKey  string `json:"idempotency_key,omitempty"`
@@ -239,6 +245,12 @@ func normalizeHostedTraceSummary(raw json.RawMessage, event hostedruns.Event) (S
 	summary.ToolCategory = decoded.ToolCategory
 	summary.SandboxAction = decoded.SandboxAction
 	summary.MetricKey = decoded.MetricKey
+	summary.TurnIndex = decoded.TurnIndex
+	summary.PhaseID = decoded.PhaseID
+	summary.Actor = decoded.Actor
+	summary.Mismatch = decoded.Mismatch
+	summary.Speaker = decoded.Speaker
+	summary.Channel = decoded.Channel
 	if decoded.ExternalRunID != "" {
 		summary.ExternalRunID = decoded.ExternalRunID
 	}

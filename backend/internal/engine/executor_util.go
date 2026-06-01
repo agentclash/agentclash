@@ -39,9 +39,10 @@ func cloneToolCalls(toolCalls []provider.ToolCall) []provider.ToolCall {
 	cloned := make([]provider.ToolCall, 0, len(toolCalls))
 	for _, toolCall := range toolCalls {
 		cloned = append(cloned, provider.ToolCall{
-			ID:        toolCall.ID,
-			Name:      toolCall.Name,
-			Arguments: cloneJSON(toolCall.Arguments),
+			ID:               toolCall.ID,
+			Name:             toolCall.Name,
+			Arguments:        cloneJSON(toolCall.Arguments),
+			ThoughtSignature: toolCall.ThoughtSignature,
 		})
 	}
 	return cloned
@@ -123,7 +124,8 @@ func cloneChallengeInputSet(inputSet *repository.ChallengeInputSetExecutionConte
 			ItemKey:             item.ItemKey,
 			Payload:             cloneJSON(item.Payload),
 			Inputs:              append([]challengepack.CaseInput(nil), item.Inputs...),
-			Expectations:        append([]challengepack.CaseExpectation(nil), item.Expectations...),
+			Expectations:        nil,
+			UserSimulator:       challengepack.CloneUserSimulatorSpec(item.UserSimulator),
 			Artifacts:           append([]challengepack.ArtifactRef(nil), item.Artifacts...),
 			Assets:              append([]challengepack.AssetReference(nil), item.Assets...),
 		})

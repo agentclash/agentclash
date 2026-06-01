@@ -1,0 +1,13 @@
+[
+  {
+    "turn_id": "turn-001",
+    "speaker": "user",
+    "text": "Please refund the duplicate charge on my card.",
+    "language": "en-US",
+    "audio_artifact_ref": "fixtures/support_billing/audio/caller-turn-001.wav",
+    "audio_format": "wav",
+    "audio_channel": "caller",
+    "duration_ms": 1800,
+    "occurred_at_offset_ms": 0
+  }
+]

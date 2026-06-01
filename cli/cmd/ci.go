@@ -297,6 +297,7 @@ type ciManifestCandidateDeployment struct {
 type ciManifestEvaluation struct {
 	ChallengePackVersionID string   `yaml:"challenge_pack_version_id" json:"challenge_pack_version_id"`
 	InputSetID             string   `yaml:"input_set_id,omitempty" json:"input_set_id,omitempty"`
+	Mode                   string   `yaml:"mode,omitempty" json:"mode,omitempty"`
 	RegressionSuites       []string `yaml:"regression_suites,omitempty" json:"regression_suites,omitempty"`
 	RegressionCases        []string `yaml:"regression_cases,omitempty" json:"regression_cases,omitempty"`
 }
@@ -421,6 +422,7 @@ candidate:
 evaluation:
   challenge_pack_version_id: 00000000-0000-0000-0000-000000000005
   input_set_id: 00000000-0000-0000-0000-000000000006
+  # For deterministic voice eval packs, set: mode: text-sim
   regression_suites:
     - 00000000-0000-0000-0000-000000000007
 baseline:
@@ -912,6 +914,9 @@ func validateCIManifest(manifest ciManifest) []string {
 	}
 	if strings.TrimSpace(manifest.Evaluation.ChallengePackVersionID) == "" {
 		errors = append(errors, "evaluation.challenge_pack_version_id is required")
+	}
+	if _, err := normalizeCIManifestEvaluationMode(manifest.Evaluation.Mode); err != nil {
+		errors = append(errors, err.Error())
 	}
 	if hasBlankString(manifest.Evaluation.RegressionSuites) {
 		errors = append(errors, "evaluation.regression_suites cannot include blank entries")

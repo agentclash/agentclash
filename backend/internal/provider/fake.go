@@ -19,6 +19,19 @@ func (f *FakeClient) InvokeModel(_ context.Context, request Request) (Response, 
 	return cloneResponse(f.Response), nil
 }
 
+type FakeResearchClient struct {
+	FakeClient
+	ResearchRequests []ResearchRequest
+}
+
+func (f *FakeResearchClient) InvokeResearch(_ context.Context, request ResearchRequest) (Response, error) {
+	f.ResearchRequests = append(f.ResearchRequests, request)
+	if f.Err != nil {
+		return Response{}, f.Err
+	}
+	return cloneResponse(f.Response), nil
+}
+
 func cloneRequest(request Request) Request {
 	cloned := request
 	cloned.Messages = make([]Message, 0, len(request.Messages))
@@ -42,9 +55,10 @@ func cloneResponse(response Response) Response {
 	cloned.ToolCalls = make([]ToolCall, 0, len(response.ToolCalls))
 	for _, toolCall := range response.ToolCalls {
 		cloned.ToolCalls = append(cloned.ToolCalls, ToolCall{
-			ID:        toolCall.ID,
-			Name:      toolCall.Name,
-			Arguments: cloneJSON(toolCall.Arguments),
+			ID:               toolCall.ID,
+			Name:             toolCall.Name,
+			Arguments:        cloneJSON(toolCall.Arguments),
+			ThoughtSignature: toolCall.ThoughtSignature,
 		})
 	}
 	cloned.RawResponse = cloneJSON(response.RawResponse)
@@ -86,9 +100,10 @@ func cloneMessage(message Message) Message {
 	cloned.ToolCalls = make([]ToolCall, 0, len(message.ToolCalls))
 	for _, toolCall := range message.ToolCalls {
 		cloned.ToolCalls = append(cloned.ToolCalls, ToolCall{
-			ID:        toolCall.ID,
-			Name:      toolCall.Name,
-			Arguments: cloneJSON(toolCall.Arguments),
+			ID:               toolCall.ID,
+			Name:             toolCall.Name,
+			Arguments:        cloneJSON(toolCall.Arguments),
+			ThoughtSignature: toolCall.ThoughtSignature,
 		})
 	}
 	return cloned

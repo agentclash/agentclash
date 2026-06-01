@@ -8,6 +8,7 @@ import type {
   ValidatorJSONSchemaEvidence,
   ValidatorRegexEvidence,
   ValidatorTextCompareEvidence,
+  ValidatorToolCallAssertionEvidence,
 } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 import {
@@ -29,6 +30,8 @@ export function ValidatorEvidenceView({
       return <JSONSchemaEvidence evidence={evidence} />;
     case "json_path_match":
       return <JSONPathEvidence evidence={evidence} />;
+    case "tool_call_assertion":
+      return <ToolCallAssertionEvidence evidence={evidence} />;
     case "custom":
       return <CustomEvidence evidence={evidence} />;
     default:
@@ -156,6 +159,63 @@ function CustomEvidence({ evidence }: { evidence: ValidatorCustomEvidence }) {
       <EvidenceBlock label="Payload">
         {prettyEvidenceValue(evidence.raw)}
       </EvidenceBlock>
+    </EvidenceSection>
+  );
+}
+
+function ToolCallAssertionEvidence({
+  evidence,
+}: {
+  evidence: ValidatorToolCallAssertionEvidence;
+}) {
+  return (
+    <EvidenceSection title="Tool Call Evidence" sourceField={evidence.source_field}>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {evidence.tool_name && (
+          <EvidenceMeta label="Tool" value={evidence.tool_name} mono />
+        )}
+        {evidence.matched != null && (
+          <EvidenceMeta label="Passed" value={evidence.matched ? "yes" : "no"} />
+        )}
+        {evidence.observed_count != null && (
+          <EvidenceMeta label="Observed" value={String(evidence.observed_count)} mono />
+        )}
+        {evidence.failed_count != null && evidence.failed_count > 0 && (
+          <EvidenceMeta label="Failed" value={String(evidence.failed_count)} mono />
+        )}
+        {evidence.matched_count != null && (
+          <EvidenceMeta label="Matches" value={String(evidence.matched_count)} mono />
+        )}
+        {evidence.expected_count != null && (
+          <EvidenceMeta label="Expected" value={String(evidence.expected_count)} mono />
+        )}
+        {evidence.expected_min_count != null && (
+          <EvidenceMeta label="Min" value={String(evidence.expected_min_count)} mono />
+        )}
+        {evidence.expected_max_count != null && (
+          <EvidenceMeta label="Max" value={String(evidence.expected_max_count)} mono />
+        )}
+        {evidence.expected_order_mode && (
+          <EvidenceMeta label="Order" value={evidence.expected_order_mode} mono />
+        )}
+        {evidence.arguments_contain_set != null && (
+          <EvidenceMeta
+            label="Args"
+            value={evidence.arguments_contain_set ? "fragment" : "not checked"}
+          />
+        )}
+      </div>
+      <EvidenceGrid
+        leftLabel="Observed Tools"
+        leftValue={prettyEvidenceValue(evidence.observed_tool_names)}
+        rightLabel="Expected Order"
+        rightValue={prettyEvidenceValue(evidence.expected_order)}
+      />
+      {evidence.matched_indices && evidence.matched_indices.length > 0 && (
+        <EvidenceBlock label="Matched Indices">
+          {prettyEvidenceValue(evidence.matched_indices)}
+        </EvidenceBlock>
+      )}
     </EvidenceSection>
   );
 }

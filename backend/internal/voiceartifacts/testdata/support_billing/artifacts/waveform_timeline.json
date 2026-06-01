@@ -1,0 +1,20 @@
+{
+  "channels": [
+    {
+      "channel": "caller",
+      "artifact_key": "caller_audio",
+      "duration_ms": 1800
+    },
+    {
+      "channel": "agent",
+      "artifact_key": "agent_audio",
+      "duration_ms": 2400
+    }
+  ],
+  "markers": [
+    {
+      "key": "end_of_speech_to_first_agent_text",
+      "offset_ms": 3200
+    }
+  ]
+}

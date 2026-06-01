@@ -1,22 +1,14 @@
 # AgentClash Architecture
 
-Status: canonical working architecture document
+Status: canonical architecture document
 
 Last updated: 2026-03-12
-
-Supporting research docs live in [`research-docs/`](./research-docs):
-
-- [`product-strategy.md`](./research-docs/product-strategy.md)
-- [`architecture-plan.md`](./research-docs/architecture-plan.md)
-- [`product-flows.md`](./research-docs/product-flows.md)
-- [`agent-evaluation-model.md`](./research-docs/agent-evaluation-model.md)
-- [`v1-specification.md`](./research-docs/v1-specification.md)
 
 ## 1. Purpose
 
 This document defines the actual system architecture AgentClash should be built around.
 
-It is the implementation-facing architecture for the product described in the research docs:
+It is the implementation-facing architecture for AgentClash:
 
 - AgentClash is a cloud-first B2B product with a public arena growth surface.
 - The primary product unit is the `Agent Build` or `Agent Deployment`, not just the raw model.
@@ -367,7 +359,6 @@ The engine should depend on a `sandbox abstraction`, not directly on E2B types.
 /db
   /migrations
   /queries
-/research-docs          # strategy and research docs
 /skills                 # repo-local skills
 ```
 

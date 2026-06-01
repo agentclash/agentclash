@@ -72,6 +72,7 @@ func TestRunCreateUsesRegressionSelectorsAndOfficialPackMode(t *testing.T) {
 		"--suite", "suite-1",
 		"--case", "case-1",
 		"--include-proposed-regressions",
+		"--max-iter", "7",
 	}, srv.URL)
 	if err != nil {
 		t.Fatalf("run create error: %v", err)
@@ -88,6 +89,96 @@ func TestRunCreateUsesRegressionSelectorsAndOfficialPackMode(t *testing.T) {
 	}
 	if gotBody["include_proposed_regressions"] != true {
 		t.Fatalf("include_proposed_regressions = %v, want true", gotBody["include_proposed_regressions"])
+	}
+	if gotBody["max_iterations"] != float64(7) {
+		t.Fatalf("max_iterations = %v, want 7", gotBody["max_iterations"])
+	}
+}
+
+func TestRunCreateTextSimModePostsMode(t *testing.T) {
+	var gotBody map[string]any
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"POST /v1/runs": func(w http.ResponseWriter, r *http.Request) {
+			if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+				t.Fatalf("decode request body: %v", err)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id":             "run-voice-1",
+				"status":         "queued",
+				"execution_mode": "single_agent",
+				"mode":           "text-sim",
+				"modality":       "voice",
+				"voice": map[string]any{
+					"mode":      "text-sim",
+					"modality":  "voice",
+					"transport": "text_sim",
+				},
+			})
+		},
+	})
+	defer srv.Close()
+
+	stdout := captureStdout(t)
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+	err := executeCommand(t, []string{
+		"run", "create",
+		"-w", "ws-1",
+		"--challenge-pack-version", "voice-ver-1",
+		"--deployments", "dep-1",
+		"--mode", "text-sim",
+		"--json",
+	}, srv.URL)
+	if err != nil {
+		t.Fatalf("run create error: %v", err)
+	}
+	if gotBody["mode"] != "text-sim" {
+		t.Fatalf("mode = %v, want text-sim", gotBody["mode"])
+	}
+
+	var response map[string]any
+	if err := json.Unmarshal([]byte(stdout.finish()), &response); err != nil {
+		t.Fatalf("decode stdout JSON: %v", err)
+	}
+	if response["mode"] != "text-sim" || response["modality"] != "voice" {
+		t.Fatalf("response mode/modality = %v/%v, want text-sim/voice", response["mode"], response["modality"])
+	}
+	voice, ok := response["voice"].(map[string]any)
+	if !ok {
+		t.Fatalf("response voice metadata = %#v, want object", response["voice"])
+	}
+	if voice["transport"] != "text_sim" {
+		t.Fatalf("voice.transport = %v, want text_sim", voice["transport"])
+	}
+}
+
+func TestRunCreateRejectsFutureVoiceModeLocally(t *testing.T) {
+	requests := 0
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"POST /v1/runs": func(w http.ResponseWriter, r *http.Request) {
+			requests++
+			w.WriteHeader(http.StatusCreated)
+		},
+	})
+	defer srv.Close()
+
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+	err := executeCommand(t, []string{
+		"run", "create",
+		"-w", "ws-1",
+		"--challenge-pack-version", "voice-ver-1",
+		"--deployments", "dep-1",
+		"--mode", "live-call",
+	}, srv.URL)
+	if err == nil {
+		t.Fatal("expected unsupported future mode error")
+	}
+	if !strings.Contains(err.Error(), `--mode "live-call"`) || !strings.Contains(err.Error(), "supported mode: text-sim") {
+		t.Fatalf("error = %q, want deterministic future-mode validation", err)
+	}
+	if requests != 0 {
+		t.Fatalf("POST /v1/runs called %d time(s), want local rejection before API", requests)
 	}
 }
 
@@ -221,14 +312,16 @@ func TestRunRankingHandlesPendingOrErroredStates(t *testing.T) {
 func TestRunScorecardHandlesCurrentAPIShape(t *testing.T) {
 	srv := fakeAPI(t, map[string]http.HandlerFunc{
 		"GET /v1/scorecards/agent-1": jsonHandler(200, map[string]any{
-			"state":             "ready",
-			"run_agent_status":  "completed",
-			"run_agent_id":      "agent-1",
-			"overall_score":     0.91,
-			"correctness_score": 0.95,
-			"reliability_score": 0.90,
-			"latency_score":     0.88,
-			"cost_score":        0.85,
+			"state":                "ready",
+			"run_agent_status":     "completed",
+			"run_agent_id":         "agent-1",
+			"overall_score":        0.91,
+			"correctness_score":    0.95,
+			"reliability_score":    0.90,
+			"latency_score":        0.88,
+			"cost_score":           0.85,
+			"total_cost_usd":       0.0123,
+			"cost_per_correct_usd": 0.0246,
 			"scorecard": map[string]any{
 				"passed":   true,
 				"strategy": "weighted",
@@ -253,6 +346,10 @@ func TestRunScorecardHandlesCurrentAPIShape(t *testing.T) {
 		"State:",
 		"ready",
 		"Run Agent Status:",
+		"Total Cost",
+		"$0.0123",
+		"Cost / Correct",
+		"$0.0246",
 		"Overall Score",
 		"0.91",
 		"Correctness",

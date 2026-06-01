@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
 import { createApiClient } from "@/lib/api/client";
 import { ApiError } from "@/lib/api/errors";
-import type { OrgRole } from "@/lib/api/types";
+import type { OrgMember, OrgRole } from "@/lib/api/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ToggleGroup } from "@/components/ui/toggle-group";
@@ -17,7 +17,7 @@ import {
   DialogFooter,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { UserPlus, Loader2 } from "lucide-react";
+import { Copy, UserPlus, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 interface InviteMemberDialogProps {
@@ -35,6 +35,8 @@ export function InviteMemberDialog({
   const [role, setRole] = useState<OrgRole>("org_member");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string>();
+  const [inviteLink, setInviteLink] = useState("");
+  const [invitedEmail, setInvitedEmail] = useState("");
 
   function handleOpenChange(next: boolean) {
     setOpen(next);
@@ -42,24 +44,34 @@ export function InviteMemberDialog({
       setEmail("");
       setRole("org_member");
       setError(undefined);
+      setInviteLink("");
+      setInvitedEmail("");
     }
   }
 
   async function handleInvite() {
-    if (!email.trim()) return;
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail) return;
     setError(undefined);
     setSending(true);
     try {
       const token = await getAccessToken();
       if (!token) return;
       const api = createApiClient(token);
-      await api.post(`/v1/organizations/${orgId}/memberships`, {
-        email: email.trim(),
-        role,
-      });
-      toast.success(`Invited ${email.trim()}`);
-      setOpen(false);
+      const invited = await api.post<OrgMember>(
+        `/v1/organizations/${orgId}/memberships`,
+        {
+          email: trimmedEmail,
+          role,
+        },
+      );
+      toast.success(`Invited ${trimmedEmail}`);
+      setInvitedEmail(trimmedEmail);
+      setInviteLink(invited.accept_url ?? "");
       onInvited();
+      if (!invited.accept_url) {
+        setOpen(false);
+      }
     } catch (err) {
       setError(
         err instanceof ApiError ? err.message : "Failed to send invite",
@@ -69,13 +81,33 @@ export function InviteMemberDialog({
     }
   }
 
+  async function handleCopyInviteLink() {
+    if (!inviteLink) return;
+    try {
+      await navigator.clipboard.writeText(inviteLink);
+      toast.success("Copied invite link");
+    } catch {
+      setError(
+        "Could not copy the invite link. Select the link and copy it manually.",
+      );
+    }
+  }
+
+  function handleInviteAnother() {
+    setEmail("");
+    setRole("org_member");
+    setInviteLink("");
+    setInvitedEmail("");
+    setError(undefined);
+  }
+
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger render={<Button size="sm" />}>
         <UserPlus className="size-4 mr-1.5" />
         Invite Member
       </DialogTrigger>
-      <DialogContent className="sm:max-w-sm">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Invite Member</DialogTitle>
           <DialogDescription>
@@ -85,34 +117,77 @@ export function InviteMemberDialog({
         </DialogHeader>
 
         <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium mb-1.5">Email</label>
-            <Input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              disabled={sending}
-              placeholder="colleague@company.com"
-            />
-          </div>
+          {inviteLink ? (
+            <div className="space-y-3">
+              <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm">
+                Invite sent to{" "}
+                <span className="font-medium text-foreground">
+                  {invitedEmail}
+                </span>
+                .
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1.5">
+                  Invite link
+                </label>
+                <div className="flex gap-2">
+                  <Input
+                    readOnly
+                    value={inviteLink}
+                    className="font-mono text-xs"
+                    onFocus={(event) => event.currentTarget.select()}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={handleCopyInviteLink}
+                    aria-label="Copy invite link"
+                  >
+                    <Copy className="size-4" />
+                  </Button>
+                </div>
+                <p className="mt-1.5 text-xs text-muted-foreground">
+                  Share this if the email does not arrive.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div>
+                <label className="block text-sm font-medium mb-1.5">
+                  Email
+                </label>
+                <Input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  disabled={sending}
+                  placeholder="colleague@company.com"
+                />
+              </div>
 
-          <div>
-            <label className="block text-sm font-medium mb-1.5">Role</label>
-            <ToggleGroup
-              options={[
-                { value: "org_member" as const, label: "Member" },
-                { value: "org_admin" as const, label: "Admin" },
-              ]}
-              value={role}
-              onChange={setRole}
-              disabled={sending}
-            />
-            <p className="mt-1 text-xs text-muted-foreground">
-              {role === "org_admin"
-                ? "Admins can manage members, workspaces, and settings."
-                : "Members can access assigned workspaces."}
-            </p>
-          </div>
+              <div>
+                <label className="block text-sm font-medium mb-1.5">
+                  Role
+                </label>
+                <ToggleGroup
+                  options={[
+                    { value: "org_member" as const, label: "Member" },
+                    { value: "org_admin" as const, label: "Admin" },
+                  ]}
+                  value={role}
+                  onChange={setRole}
+                  disabled={sending}
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {role === "org_admin"
+                    ? "Admins can manage members, workspaces, and settings."
+                    : "Members can access assigned workspaces."}
+                </p>
+              </div>
+            </>
+          )}
 
           {error && (
             <div className="rounded-md bg-destructive/10 border border-destructive/20 px-3 py-2 text-xs text-destructive">
@@ -122,15 +197,24 @@ export function InviteMemberDialog({
         </div>
 
         <DialogFooter>
-          <Button onClick={handleInvite} disabled={!email.trim() || sending}>
-            {sending && (
-              <Loader2
-                data-icon="inline-start"
-                className="size-4 animate-spin"
-              />
-            )}
-            {sending ? "Inviting..." : "Send Invite"}
-          </Button>
+          {inviteLink ? (
+            <>
+              <Button variant="outline" onClick={handleInviteAnother}>
+                Invite another
+              </Button>
+              <Button onClick={() => setOpen(false)}>Done</Button>
+            </>
+          ) : (
+            <Button onClick={handleInvite} disabled={!email.trim() || sending}>
+              {sending && (
+                <Loader2
+                  data-icon="inline-start"
+                  className="size-4 animate-spin"
+                />
+              )}
+              {sending ? "Inviting..." : "Send Invite"}
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

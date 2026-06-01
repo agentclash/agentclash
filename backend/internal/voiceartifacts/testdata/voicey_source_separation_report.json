@@ -1,0 +1,18 @@
+{
+  "schema_version": "2026-05-14",
+  "type": "voicey.source_separation_eval",
+  "status": "passed",
+  "passed": true,
+  "metrics": {
+    "dialogue_retention_ratio": 0.92,
+    "background_preservation_ratio": 0.91,
+    "speech_drop_risk": 0.08,
+    "background_leakage_in_dialogue_ratio": 0.04,
+    "dialogue_leakage_in_background_ratio": 0.03
+  },
+  "caveats": [],
+  "agentclash_notes": [
+    "Use background_preservation_ratio as the core Watch Mode music/SFX metric.",
+    "Use speech_drop_risk as a hard gate: preserving music is useless if dialogue is lost."
+  ]
+}

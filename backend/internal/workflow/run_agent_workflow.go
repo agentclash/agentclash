@@ -66,6 +66,14 @@ func runAgentWorkflow(ctx sdkworkflow.Context, input RunAgentWorkflowInput) erro
 		return runPromptEvalRunAgent(ctx, input, executionContext)
 	}
 
+	if executionModeFromManifest(executionContext.ChallengePackVersion.Manifest) == challengepack.ExecutionModeResponses {
+		return runResponsesRunAgent(ctx, input, executionContext)
+	}
+
+	if executionModeFromManifest(executionContext.ChallengePackVersion.Manifest) == challengepack.ExecutionModeMultiTurn {
+		return runMultiTurnRunAgent(ctx, input, executionContext)
+	}
+
 	if err := transitionRunAgentStatus(ctx, input.RunAgentID, domain.RunAgentStatusExecuting, stringPtr("native execution started"), nil); err != nil {
 		return err
 	}
@@ -93,10 +101,54 @@ func runPromptEvalRunAgent(ctx sdkworkflow.Context, input RunAgentWorkflowInput,
 	return nil
 }
 
+func runResponsesRunAgent(ctx sdkworkflow.Context, input RunAgentWorkflowInput, executionContext repository.RunAgentExecutionContext) error {
+	if err := transitionRunAgentStatus(ctx, input.RunAgentID, domain.RunAgentStatusExecuting, stringPtr("responses execution started"), nil); err != nil {
+		return err
+	}
+	if err := executeResponsesStep(ctx, input, executionContext).Get(ctx, nil); err != nil {
+		return err
+	}
+	if err := transitionRunAgentStatus(ctx, input.RunAgentID, domain.RunAgentStatusEvaluating, stringPtr("responses execution completed; parent scoring pending"), nil); err != nil {
+		return err
+	}
+	warnOnReplayBuildFailure(ctx, input.RunAgentID, "successful responses execution")
+	return nil
+}
+
+func runMultiTurnRunAgent(ctx sdkworkflow.Context, input RunAgentWorkflowInput, executionContext repository.RunAgentExecutionContext) error {
+	if err := transitionRunAgentStatus(ctx, input.RunAgentID, domain.RunAgentStatusExecuting, stringPtr("multi_turn execution started"), nil); err != nil {
+		return err
+	}
+	if err := executeMultiTurnStep(ctx, input, executionContext).Get(ctx, nil); err != nil {
+		return err
+	}
+	if err := transitionRunAgentStatus(ctx, input.RunAgentID, domain.RunAgentStatusEvaluating, stringPtr("multi_turn execution completed; parent scoring pending"), nil); err != nil {
+		return err
+	}
+	warnOnReplayBuildFailure(ctx, input.RunAgentID, "successful multi_turn execution")
+	return nil
+}
+
+func executeMultiTurnStep(ctx sdkworkflow.Context, input RunAgentWorkflowInput, executionContext repository.RunAgentExecutionContext) sdkworkflow.Future {
+	return sdkworkflow.ExecuteActivity(
+		sdkworkflow.WithActivityOptions(ctx, nativeModelActivityOptions(executionContext)),
+		executeMultiTurnStepActivityName,
+		input,
+	)
+}
+
 func executePromptEvalStep(ctx sdkworkflow.Context, input RunAgentWorkflowInput, executionContext repository.RunAgentExecutionContext) sdkworkflow.Future {
 	return sdkworkflow.ExecuteActivity(
 		sdkworkflow.WithActivityOptions(ctx, nativeModelActivityOptions(executionContext)),
 		executePromptEvalStepActivityName,
+		input,
+	)
+}
+
+func executeResponsesStep(ctx sdkworkflow.Context, input RunAgentWorkflowInput, executionContext repository.RunAgentExecutionContext) sdkworkflow.Future {
+	return sdkworkflow.ExecuteActivity(
+		sdkworkflow.WithActivityOptions(ctx, nativeModelActivityOptions(executionContext)),
+		executeResponsesStepActivityName,
 		input,
 	)
 }
@@ -145,6 +197,9 @@ func nativeModelActivityOptions(executionContext repository.RunAgentExecutionCon
 				engineFailureErrorTypePrefix + string(engine.StopReasonStepLimit),
 				engineFailureErrorTypePrefix + string(engine.StopReasonToolLimit),
 				engineFailureErrorTypePrefix + string(engine.StopReasonTimeout),
+				engineFailureErrorTypePrefix + string(engine.StopReasonMaxTurns),
+				engineFailureErrorTypePrefix + string(engine.StopReasonHumanTurnTimeout),
+				engineFailureErrorTypePrefix + string(engine.StopReasonSimulatorError),
 				engineFailureErrorTypePrefix + string(engine.StopReasonProviderError),
 				engineFailureErrorTypePrefix + string(engine.StopReasonObserverError),
 				providerFailureErrorTypePrefix + string(provider.FailureCodeAuth),

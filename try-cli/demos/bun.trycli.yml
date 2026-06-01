@@ -1,0 +1,26 @@
+name: "Bun"
+slug: bun
+tagline: "Ultra-fast JavaScript runtime & toolkit"
+category: "Developer tools"
+template: agentclash-trycli
+docs: "https://bun.sh/docs"
+github: "https://github.com/oven-sh/bun"
+
+welcome: |
+  Bun is ready! Ultra-fast JavaScript runtime & toolkit.
+  Try:
+    bun --version
+    bun init demo && cd demo
+    bun run index.ts
+
+commands:
+  - label: "Show version"
+    run: "bun --version"
+  - label: "Init a project"
+    run: "bun init demo && cd demo"
+  - label: "Run a quick script"
+    run: "echo 'console.log(\"Hello from Bun!\")' > hello.ts && bun hello.ts"
+  - label: "Install a package"
+    run: "bun add lodash && bun -e \"console.log(require('lodash').capitalize('bun'))\""
+
+sessionMinutes: 10

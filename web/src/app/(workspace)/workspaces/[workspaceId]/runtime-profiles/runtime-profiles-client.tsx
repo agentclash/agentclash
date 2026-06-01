@@ -39,6 +39,9 @@ export function RuntimeProfilesClient({ workspaceId }: { workspaceId: string }) 
               options: [
                 { value: "native", label: "Native" },
                 { value: "hosted_external", label: "Hosted External" },
+                { value: "prompt_eval", label: "Prompt Eval" },
+                { value: "responses", label: "OpenAI Responses" },
+                { value: "multi_turn", label: "Multi Turn" },
               ],
             },
             { key: "max_iterations", label: "Max Iterations", type: "number", placeholder: "1" },

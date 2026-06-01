@@ -202,6 +202,7 @@ type RunCIMetadata struct {
 	WorkflowRunAttempt string `json:"workflow_run_attempt,omitempty"`
 	WorkflowRunURL     string `json:"workflow_run_url,omitempty"`
 	EventName          string `json:"event_name,omitempty"`
+	DefaultBranch      string `json:"default_branch,omitempty"`
 }
 
 func (m RunCIMetadata) Empty() bool {
@@ -215,7 +216,8 @@ func (m RunCIMetadata) Empty() bool {
 		m.WorkflowRunID == "" &&
 		m.WorkflowRunAttempt == "" &&
 		m.WorkflowRunURL == "" &&
-		m.EventName == ""
+		m.EventName == "" &&
+		m.DefaultBranch == ""
 }
 
 type RunAgent struct {

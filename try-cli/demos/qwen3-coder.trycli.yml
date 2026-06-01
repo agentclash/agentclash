@@ -1,0 +1,29 @@
+name: "Qwen3 Coder"
+slug: qwen3-coder
+tagline: "Alibaba's coding-tuned agent"
+category: "AI coding agents"
+template: agentclash-trycli
+docs: "https://github.com/QwenLM/qwen-code"
+github: "https://github.com/QwenLM/qwen-code"
+
+auth:
+  provider: "OpenRouter / DashScope"
+  summary: "Free trial runs Qwen3 Coder via Qwen Code on AgentClash credentials — no key needed. To use your own, set OPENAI_BASE_URL/OPENAI_API_KEY or run qwen and sign in."
+  steps:
+    - "Free trial: just run `qwen` (preconfigured for Qwen3 Coder)"
+    - "Your own key: export OPENAI_API_KEY + OPENAI_BASE_URL, then run qwen"
+  signupUrl: "https://openrouter.ai/keys"
+
+welcome: |
+  Qwen3 Coder is ready via Qwen Code. On the free trial, just run:
+    qwen
+
+commands:
+  - label: "Start Qwen Code"
+    run: "qwen"
+  - label: "Version"
+    run: "qwen --version"
+  - label: "Make a file to work on"
+    run: "echo 'def add(a, b): return a + b' > math.py && cat math.py"
+
+sessionMinutes: 10

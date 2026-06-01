@@ -25,6 +25,8 @@ const (
 	runTestsToolName    = "run_tests"
 	buildToolName       = "build"
 	execToolName        = "exec"
+
+	maxExecutionPlanMaxIterations = 1000
 )
 
 func toolMessage(result provider.ToolResult) provider.Message {
@@ -126,7 +128,7 @@ func buildTaskPromptPayload(executionContext repository.RunAgentExecutionContext
 		RunID:                executionContext.Run.ID.String(),
 		RunAgentID:           executionContext.RunAgent.ID.String(),
 		RunName:              executionContext.Run.Name,
-		ChallengePackVersion: cloneJSON(executionContext.ChallengePackVersion.Manifest),
+		ChallengePackVersion: sanitizeManifestForAgent(executionContext.ChallengePackVersion.Manifest),
 		Challenges:           cloneChallengeDefinitions(executionContext.ChallengePackVersion.Challenges),
 		ChallengeInputSet:    cloneChallengeInputSet(executionContext.ChallengeInputSet),
 		AgentSpec:            cloneJSON(executionContext.Deployment.AgentBuildVersion.AgentSpec),
@@ -166,6 +168,35 @@ func runTimeout(executionContext repository.RunAgentExecutionContext) time.Durat
 	return time.Duration(executionContext.Deployment.RuntimeProfile.RunTimeoutSeconds) * time.Second
 }
 
+func maxIterationsLimit(executionContext repository.RunAgentExecutionContext) int {
+	if override := executionPlanMaxIterations(executionContext.Run.ExecutionPlan); override != nil {
+		return int(*override)
+	}
+	return int(executionContext.Deployment.RuntimeProfile.MaxIterations)
+}
+
+func executionPlanMaxIterations(executionPlan json.RawMessage) *int32 {
+	var document struct {
+		RuntimeLimits struct {
+			MaxIterations *int32 `json:"max_iterations"`
+		} `json:"runtime_limits"`
+	}
+	if len(executionPlan) == 0 {
+		return nil
+	}
+	if err := json.Unmarshal(executionPlan, &document); err != nil {
+		return nil
+	}
+	if document.RuntimeLimits.MaxIterations == nil {
+		return nil
+	}
+	value := *document.RuntimeLimits.MaxIterations
+	if value <= 0 || value > maxExecutionPlanMaxIterations {
+		return nil
+	}
+	return &value
+}
+
 func extractPolicyInstructions(policySpec json.RawMessage) string {
 	var decoded struct {
 		Instructions      string `json:"instructions"`
@@ -200,6 +231,7 @@ func (e NativeExecutor) executeToolCalls(
 	networkAllowlist []string,
 	toolCallsUsedSoFar int,
 	toolCalls []provider.ToolCall,
+	preserveSubmitToolMessage bool,
 ) ([]provider.Message, string, bool, int, error) {
 	toolMessages := make([]provider.Message, 0, len(toolCalls))
 	toolCallsUsed := 0
@@ -275,9 +307,34 @@ func (e NativeExecutor) executeToolCalls(
 			if executionResult.IsError {
 				return toolMessages, "", false, toolCallsUsed, nil
 			}
+			if preserveSubmitToolMessage {
+				return toolMessages, executionResult.FinalOutput, true, toolCallsUsed, nil
+			}
 			return toolMessages[:len(toolMessages)-1], executionResult.FinalOutput, true, toolCallsUsed, nil
 		}
 	}
 
 	return toolMessages, "", false, toolCallsUsed, nil
+}
+
+// sanitizeManifestForAgent strips evaluation_spec and input_sets from the
+// challenge pack manifest before it reaches the agent. These sections contain
+// ground truth (expected answers in expectations, test commands in validators)
+// that must never leak to the agent. Scoring reads from the database, not
+// from the agent-visible manifest.
+func sanitizeManifestForAgent(manifest json.RawMessage) json.RawMessage {
+	if len(manifest) == 0 {
+		return nil
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(manifest, &decoded); err != nil {
+		return manifest
+	}
+	delete(decoded, "evaluation_spec")
+	delete(decoded, "input_sets")
+	sanitized, err := json.Marshal(decoded)
+	if err != nil {
+		return manifest
+	}
+	return sanitized
 }

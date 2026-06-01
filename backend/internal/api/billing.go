@@ -20,6 +20,7 @@ import (
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 type BillingService interface {
@@ -29,6 +30,7 @@ type BillingService interface {
 	CreateCheckout(ctx context.Context, caller Caller, orgID uuid.UUID, input CreateBillingCheckoutInput) (CreateBillingCheckoutResult, error)
 	CreatePortal(ctx context.Context, caller Caller, orgID uuid.UUID) (CreateBillingPortalResult, error)
 	GetWorkspaceEntitlements(ctx context.Context, caller Caller, workspaceID uuid.UUID) (WorkspaceEntitlementsResult, error)
+	GetWorkspaceQuota(ctx context.Context, caller Caller, workspaceID uuid.UUID) (WorkspaceQuotaResult, error)
 	ProcessDodoWebhook(ctx context.Context, headers DodoWebhookHeaders, rawBody []byte) (ProcessDodoWebhookResult, error)
 }
 
@@ -49,23 +51,24 @@ type BillingRepository interface {
 	GetWorkspaceUsageSnapshot(ctx context.Context, workspaceID uuid.UUID, windowStart, windowEnd time.Time) (repository.WorkspaceUsageSnapshot, error)
 	CreateBillingCheckoutIntent(ctx context.Context, input repository.BillingCheckoutIntentInput) (repository.BillingCheckoutIntent, error)
 	UpsertBillingAccount(ctx context.Context, orgID uuid.UUID, dodoCustomerID string, billingEmail string, status string) error
+	GetBillingAccount(ctx context.Context, orgID uuid.UUID) (repository.BillingAccount, error)
 	UpsertBillingSubscription(ctx context.Context, input repository.BillingSubscriptionInput) (repository.BillingSubscription, error)
 	GetBillingOverview(ctx context.Context, orgID uuid.UUID) (repository.BillingOverview, error)
 	FindOrganizationByDodoSubscriptionOrCustomer(ctx context.Context, subscriptionID string, customerID string) (uuid.UUID, error)
 	ApplyBillingWebhookEvent(ctx context.Context, event repository.BillingWebhookEventInput, application repository.BillingWebhookApplication) (bool, error)
+	CreateBillingTrialGrant(ctx context.Context, input repository.BillingTrialGrantInput) (repository.BillingTrialGrant, error)
 }
 
 type BillingManager struct {
-	orgAuthz        OrganizationAuthorizer
-	authorizer      WorkspaceAuthorizer
-	repo            BillingRepository
-	dodoAPIKey      string
-	dodoAPIBaseURL  string
-	httpClient      *http.Client
-	webhookSecret   string
-	checkoutBaseURL string
-	portalBaseURL   string
-	now             func() time.Time
+	orgAuthz       OrganizationAuthorizer
+	authorizer     WorkspaceAuthorizer
+	repo           BillingRepository
+	dodoAPIKey     string
+	dodoAPIBaseURL string
+	httpClient     *http.Client
+	webhookSecret  string
+	plans          []billingpkg.Plan
+	now            func() time.Time
 }
 
 var errInvalidWebhookSignature = errors.New("invalid webhook signature")
@@ -75,24 +78,27 @@ const dodoWebhookTimestampTolerance = 5 * time.Minute
 type BillingManagerConfig struct {
 	DodoAPIKey      string
 	DodoAPIBaseURL  string
+	DodoEnvironment string
+	DodoProductIDs  billingpkg.DodoProductIDs
 	HTTPClient      *http.Client
 	WebhookSecret   string
-	CheckoutBaseURL string
-	PortalBaseURL   string
 }
 
 func NewBillingManager(orgAuthz OrganizationAuthorizer, authorizer WorkspaceAuthorizer, repo BillingRepository, cfg BillingManagerConfig) *BillingManager {
+	dodoAPIBaseURL := strings.TrimRight(strings.TrimSpace(cfg.DodoAPIBaseURL), "/")
+	if dodoAPIBaseURL == "" {
+		dodoAPIBaseURL = dodoAPIBaseURLForEnvironment(cfg.DodoEnvironment)
+	}
 	return &BillingManager{
-		orgAuthz:        orgAuthz,
-		authorizer:      authorizer,
-		repo:            repo,
-		dodoAPIKey:      strings.TrimSpace(cfg.DodoAPIKey),
-		dodoAPIBaseURL:  strings.TrimRight(defaultBillingString(cfg.DodoAPIBaseURL, "https://api.dodopayments.com"), "/"),
-		httpClient:      defaultHTTPClient(cfg.HTTPClient),
-		webhookSecret:   strings.TrimSpace(cfg.WebhookSecret),
-		checkoutBaseURL: strings.TrimRight(defaultBillingString(cfg.CheckoutBaseURL, "https://checkout.dodopayments.com/checkout"), "/"),
-		portalBaseURL:   strings.TrimRight(defaultBillingString(cfg.PortalBaseURL, "https://app.dodopayments.com/customer-portal"), "/"),
-		now:             time.Now,
+		orgAuthz:       orgAuthz,
+		authorizer:     authorizer,
+		repo:           repo,
+		dodoAPIKey:     strings.TrimSpace(cfg.DodoAPIKey),
+		dodoAPIBaseURL: dodoAPIBaseURL,
+		httpClient:     defaultHTTPClient(cfg.HTTPClient),
+		webhookSecret:  strings.TrimSpace(cfg.WebhookSecret),
+		plans:          billingpkg.CatalogWithDodoProductIDs(cfg.DodoProductIDs),
+		now:            time.Now,
 	}
 }
 
@@ -136,6 +142,26 @@ type WorkspaceGateSummary struct {
 	Run billingpkg.GateDecision `json:"run"`
 }
 
+type WorkspaceQuotaResult struct {
+	OrganizationID  uuid.UUID    `json:"organization_id"`
+	WorkspaceID     uuid.UUID    `json:"workspace_id"`
+	PlanKey         string       `json:"plan_key"`
+	BillingPeriod   string       `json:"billing_period"`
+	Status          string       `json:"status"`
+	MonthlyRaces    QuotaCounter `json:"monthly_races"`
+	ConcurrentRaces QuotaCounter `json:"concurrent_races"`
+	Seats           QuotaCounter `json:"seats"`
+	WindowStart     time.Time    `json:"window_start"`
+	WindowEnd       time.Time    `json:"window_end"`
+}
+
+type QuotaCounter struct {
+	Used      int        `json:"used"`
+	Limit     *int       `json:"limit,omitempty"`
+	Remaining *int       `json:"remaining,omitempty"`
+	ResetAt   *time.Time `json:"reset_at,omitempty"`
+}
+
 type DodoWebhookHeaders struct {
 	WebhookID        string
 	WebhookTimestamp string
@@ -148,7 +174,7 @@ type ProcessDodoWebhookResult struct {
 }
 
 func (m *BillingManager) ListPlans(_ context.Context, _ Caller) (ListBillingPlansResult, error) {
-	return ListBillingPlansResult{Items: billingpkg.Catalog()}, nil
+	return ListBillingPlansResult{Items: clonePlans(m.plans)}, nil
 }
 
 func (m *BillingManager) GetOrganizationBilling(ctx context.Context, caller Caller, orgID uuid.UUID) (repository.BillingOverview, error) {
@@ -173,7 +199,10 @@ func (m *BillingManager) StartTrial(ctx context.Context, caller Caller, orgID uu
 	if planKey != billingpkg.PlanPro && planKey != billingpkg.PlanTeam {
 		return repository.BillingOverview{}, validationError("invalid_plan_key", "plan_key must be pro or team")
 	}
-	plan, _ := billingpkg.PlanByKey(planKey)
+	plan, ok := m.planByKey(planKey)
+	if !ok {
+		return repository.BillingOverview{}, validationError("invalid_plan_key", "plan_key must be pro or team")
+	}
 	period := strings.TrimSpace(input.BillingPeriod)
 	if period == "" {
 		period = billingpkg.PeriodMonthly
@@ -188,6 +217,19 @@ func (m *BillingManager) StartTrial(ctx context.Context, caller Caller, orgID uu
 	expiresAt := m.now().UTC().Add(45 * 24 * time.Hour)
 	entitlements := billingpkg.MaterializeEntitlements(plan, period, seatQuantity, billingpkg.EntitlementStatusTrialing)
 	entitlements.ExpiresAt = &expiresAt
+	if _, err := m.repo.CreateBillingTrialGrant(ctx, repository.BillingTrialGrantInput{
+		OrganizationID:  orgID,
+		PlanKey:         plan.Key,
+		BillingPeriod:   period,
+		StartedByUserID: caller.UserID,
+		StartedAt:       m.now().UTC(),
+		ExpiresAt:       expiresAt,
+	}); err != nil {
+		if errors.Is(err, repository.ErrBillingTrialAlreadyUsed) {
+			return repository.BillingOverview{}, validationError("trial_not_available", "this organization has already used its self-serve trial")
+		}
+		return repository.BillingOverview{}, err
+	}
 	if err := m.repo.UpsertOrganizationEntitlements(ctx, orgID, entitlements, nil, &expiresAt); err != nil {
 		return repository.BillingOverview{}, err
 	}
@@ -198,9 +240,9 @@ func (m *BillingManager) CreateCheckout(ctx context.Context, caller Caller, orgI
 	if err := m.orgAuthz.AuthorizeOrganizationAdmin(ctx, caller, orgID); err != nil {
 		return CreateBillingCheckoutResult{}, err
 	}
-	plan, ok := billingpkg.PlanByKey(strings.TrimSpace(input.PlanKey))
-	if !ok || plan.Key == billingpkg.PlanFree {
-		return CreateBillingCheckoutResult{}, validationError("invalid_plan_key", "plan_key must be pro, team, or enterprise")
+	plan, ok := m.planByKey(strings.TrimSpace(input.PlanKey))
+	if !ok || (plan.Key != billingpkg.PlanPro && plan.Key != billingpkg.PlanTeam) {
+		return CreateBillingCheckoutResult{}, validationError("invalid_plan_key", "plan_key must be pro or team")
 	}
 	if err := billingpkg.ValidateBillingPeriod(plan, input.BillingPeriod); err != nil {
 		return CreateBillingCheckoutResult{}, validationError("invalid_billing_period", err.Error())
@@ -211,21 +253,31 @@ func (m *BillingManager) CreateCheckout(ctx context.Context, caller Caller, orgI
 	if _, err := url.ParseRequestURI(input.ReturnURL); err != nil {
 		return CreateBillingCheckoutResult{}, validationError("invalid_return_url", "return_url must be an absolute URL")
 	}
-	metadata, err := json.Marshal(map[string]any{
+	if m.dodoAPIKey == "" {
+		return CreateBillingCheckoutResult{}, validationError("billing_not_configured", "Dodo Payments checkout is not configured")
+	}
+	intentID := uuid.New()
+	returnURL, err := appendCheckoutReturnParams(input.ReturnURL, intentID)
+	if err != nil {
+		return CreateBillingCheckoutResult{}, validationError("invalid_return_url", "return_url must be an absolute URL")
+	}
+	metadata, err := json.Marshal(map[string]string{
 		"organization_id":    orgID.String(),
-		"requested_plan_key": plan.Key,
+		"checkout_intent_id": intentID.String(),
+		"plan_key":           plan.Key,
 		"billing_period":     input.BillingPeriod,
-		"seat_quantity":      input.SeatQuantity,
+		"seat_quantity":      strconv.Itoa(input.SeatQuantity),
 	})
 	if err != nil {
 		return CreateBillingCheckoutResult{}, err
 	}
-	intentID := uuid.New()
+	input.ReturnURL = returnURL
 	checkoutURL, dodoCheckoutID, err := m.createDodoCheckoutSession(ctx, caller, orgID, intentID, plan, input, metadata)
 	if err != nil {
 		return CreateBillingCheckoutResult{}, err
 	}
 	intent, err := m.repo.CreateBillingCheckoutIntent(ctx, repository.BillingCheckoutIntentInput{
+		ID:               intentID,
 		OrganizationID:   orgID,
 		CreatedByUserID:  caller.UserID,
 		RequestedPlanKey: plan.Key,
@@ -252,7 +304,23 @@ func (m *BillingManager) CreatePortal(ctx context.Context, caller Caller, orgID 
 	if err := m.orgAuthz.AuthorizeOrganizationAdmin(ctx, caller, orgID); err != nil {
 		return CreateBillingPortalResult{}, err
 	}
-	portalURL := fmt.Sprintf("%s?organization_id=%s", m.portalBaseURL, url.QueryEscape(orgID.String()))
+	if m.dodoAPIKey == "" {
+		return CreateBillingPortalResult{}, validationError("billing_not_configured", "Dodo Payments customer portal is not configured")
+	}
+	account, err := m.repo.GetBillingAccount(ctx, orgID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return CreateBillingPortalResult{}, validationError("billing_customer_not_found", "Dodo customer does not exist yet for this organization")
+		}
+		return CreateBillingPortalResult{}, err
+	}
+	if account.DodoCustomerID == nil || strings.TrimSpace(*account.DodoCustomerID) == "" {
+		return CreateBillingPortalResult{}, validationError("billing_customer_not_found", "Dodo customer does not exist yet for this organization")
+	}
+	portalURL, err := m.createDodoCustomerPortalSession(ctx, *account.DodoCustomerID)
+	if err != nil {
+		return CreateBillingPortalResult{}, err
+	}
 	return CreateBillingPortalResult{PortalURL: portalURL}, nil
 }
 
@@ -285,6 +353,37 @@ func (m *BillingManager) GetWorkspaceEntitlements(ctx context.Context, caller Ca
 		Gates: WorkspaceGateSummary{
 			Run: runDecision,
 		},
+	}, nil
+}
+
+func (m *BillingManager) GetWorkspaceQuota(ctx context.Context, caller Caller, workspaceID uuid.UUID) (WorkspaceQuotaResult, error) {
+	result, err := m.GetWorkspaceEntitlements(ctx, caller, workspaceID)
+	if err != nil {
+		return WorkspaceQuotaResult{}, err
+	}
+	activeSeats, err := m.repo.CountActiveOrgMembers(ctx, result.OrganizationID)
+	if err != nil {
+		return WorkspaceQuotaResult{}, err
+	}
+	return WorkspaceQuotaResult{
+		OrganizationID: result.OrganizationID,
+		WorkspaceID:    result.WorkspaceID,
+		PlanKey:        result.Entitlements.PlanKey,
+		BillingPeriod:  result.Entitlements.BillingPeriod,
+		Status:         result.Entitlements.Status,
+		MonthlyRaces: quotaCounter(
+			result.Usage.RaceCount,
+			result.Entitlements.RacesPerWorkspaceMonth,
+			&result.Usage.WindowEnd,
+		),
+		ConcurrentRaces: quotaCounter(
+			result.Usage.ActiveRuns,
+			result.Entitlements.ConcurrentRaces,
+			nil,
+		),
+		Seats:       quotaCounter(activeSeats, result.Entitlements.SeatsLimit, nil),
+		WindowStart: result.Usage.WindowStart,
+		WindowEnd:   result.Usage.WindowEnd,
 	}, nil
 }
 
@@ -380,7 +479,7 @@ func (m *BillingManager) ProcessDodoWebhook(ctx context.Context, headers DodoWeb
 	}
 
 	var duplicate bool
-	if strings.HasPrefix(envelope.Type, "subscription.") || envelope.Type == "payment.failed" || strings.HasPrefix(envelope.Type, "dunning.") {
+	if strings.HasPrefix(envelope.Type, "subscription.") || envelope.Type == "payment.succeeded" || envelope.Type == "payment.failed" || strings.HasPrefix(envelope.Type, "dunning.") {
 		duplicate, err = m.applySubscriptionWebhook(ctx, eventInput, envelope)
 	} else {
 		duplicate, err = m.repo.ApplyBillingWebhookEvent(ctx, eventInput, repository.BillingWebhookApplication{})
@@ -403,9 +502,6 @@ func (m *BillingManager) applySubscriptionWebhook(ctx context.Context, eventInpu
 	productID := envelope.DataString("product_id", "dodo_product_id")
 	status := billingpkg.DodoStatusFromEvent(envelope.Type, envelope.DataString("status", "subscription_status"))
 	seatQuantity := envelope.DataInt("quantity", "seat_quantity", "seats")
-	if seatQuantity == 0 {
-		seatQuantity = 1
-	}
 
 	orgID, err := envelope.OrganizationID()
 	if err != nil {
@@ -414,12 +510,26 @@ func (m *BillingManager) applySubscriptionWebhook(ctx context.Context, eventInpu
 	if err != nil {
 		return false, fmt.Errorf("resolve webhook organization: %w", err)
 	}
+	if productID == "" || seatQuantity == 0 {
+		overview, overviewErr := m.repo.GetBillingOverview(ctx, orgID)
+		if overviewErr == nil && overview.Subscription != nil && (subscriptionID == "" || overview.Subscription.DodoSubscriptionID == subscriptionID) {
+			if productID == "" {
+				productID = overview.Subscription.DodoProductID
+			}
+			if seatQuantity == 0 {
+				seatQuantity = overview.Subscription.SeatQuantity
+			}
+		}
+	}
+	if seatQuantity == 0 {
+		seatQuantity = 1
+	}
 
-	mapping, err := billingpkg.MapDodoProduct(productID)
+	mapping, err := billingpkg.MapDodoProductFromCatalog(productID, m.plans)
 	if err != nil {
 		return false, err
 	}
-	plan, ok := billingpkg.PlanByKey(mapping.PlanKey)
+	plan, ok := m.planByKey(mapping.PlanKey)
 	if !ok {
 		return false, fmt.Errorf("%w: %s", billingpkg.ErrUnknownPlan, mapping.PlanKey)
 	}
@@ -449,11 +559,19 @@ func (m *BillingManager) applySubscriptionWebhook(ctx context.Context, eventInpu
 	entitlements := billingpkg.DefaultEntitlements()
 	useSubscriptionAsSource := false
 	entitlementExpiresAt := (*time.Time)(nil)
-	if billingpkg.DodoStatusIsEntitled(status) {
+	if shouldRetainPaidPlanInactive(status) {
+		// Inactive entitlements do not grant access, so the seat-minimum check
+		// is not load-bearing here. Skipping it prevents on_hold/failed
+		// webhooks with malformed quantities from looping in Dodo retries.
+		entitlements = billingpkg.MaterializeEntitlements(plan, mapping.BillingPeriod, seatQuantity, billingpkg.EntitlementStatusInactive)
+		useSubscriptionAsSource = true
+		entitlementExpiresAt = subscriptionInput.ExpiresAt
+		entitlements.ExpiresAt = subscriptionInput.ExpiresAt
+	} else if billingpkg.DodoStatusIsEntitled(status) {
 		if err := billingpkg.ValidateSeatQuantity(plan, seatQuantity); err != nil {
 			return false, err
 		}
-		entitlements = billingpkg.MaterializeEntitlements(plan, mapping.BillingPeriod, seatQuantity, status)
+		entitlements = billingpkg.MaterializeEntitlements(plan, mapping.BillingPeriod, seatQuantity, entitlementStatusForDodoStatus(status))
 		useSubscriptionAsSource = true
 		if shouldExpireMaterializedEntitlement(status, subscriptionInput.CancelAtNextBillingDate, subscriptionInput.ExpiresAt) {
 			entitlementExpiresAt = subscriptionInput.ExpiresAt
@@ -462,13 +580,20 @@ func (m *BillingManager) applySubscriptionWebhook(ctx context.Context, eventInpu
 	}
 
 	application := repository.BillingWebhookApplication{
-		Subscription: &subscriptionInput,
 		Entitlements: &repository.BillingWebhookEntitlementsInput{
 			OrganizationID:          orgID,
 			Entitlements:            entitlements,
 			UseSubscriptionAsSource: useSubscriptionAsSource,
 			ExpiresAt:               entitlementExpiresAt,
 		},
+		CheckoutIntentID: envelope.CheckoutIntentID(),
+	}
+	// Skip the subscription upsert when there's no Dodo subscription ID
+	// (e.g. one-off payment.succeeded events): otherwise every such event
+	// collides on UNIQUE(dodo_subscription_id) into a single ghost row keyed
+	// by '' that can shadow the real subscription.
+	if subscriptionID != "" {
+		application.Subscription = &subscriptionInput
 	}
 	if customerID != "" {
 		application.Account = &repository.BillingAccountInput{
@@ -493,19 +618,37 @@ func shouldExpireMaterializedEntitlement(status string, cancelAtNextBillingDate 
 	}
 }
 
-func (m *BillingManager) createDodoCheckoutSession(ctx context.Context, caller Caller, _ uuid.UUID, intentID uuid.UUID, plan billingpkg.Plan, input CreateBillingCheckoutInput, metadata json.RawMessage) (string, string, error) {
-	if m.dodoAPIKey == "" {
-		return m.checkoutURL(intentID, plan.Key, input.BillingPeriod, input.SeatQuantity, input.ReturnURL), "", nil
+func shouldRetainPaidPlanInactive(status string) bool {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "on_hold", "failed", billingpkg.EntitlementStatusInactive:
+		return true
+	default:
+		return false
 	}
+}
+
+func entitlementStatusForDodoStatus(status string) string {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case billingpkg.EntitlementStatusTrialing:
+		return billingpkg.EntitlementStatusTrialing
+	default:
+		return billingpkg.EntitlementStatusActive
+	}
+}
+
+func (m *BillingManager) createDodoCheckoutSession(ctx context.Context, caller Caller, _ uuid.UUID, intentID uuid.UUID, plan billingpkg.Plan, input CreateBillingCheckoutInput, metadata json.RawMessage) (string, string, error) {
 	productID := plan.DodoProductIDs[input.BillingPeriod]
 	if productID == "" {
 		return "", "", validationError("invalid_billing_period", "selected plan does not have a Dodo product for this billing period")
 	}
+	// Dodo subscription line items must have quantity=1; per-seat billing is
+	// expressed via add-ons, not by multiplying the subscription quantity.
+	// See https://docs.dodopayments.com/developer-resources/seat-based-pricing.
 	requestPayload := map[string]any{
 		"product_cart": []map[string]any{
 			{
 				"product_id": productID,
-				"quantity":   input.SeatQuantity,
+				"quantity":   1,
 			},
 		},
 		"return_url": input.ReturnURL,
@@ -537,7 +680,7 @@ func (m *BillingManager) createDodoCheckoutSession(ctx context.Context, caller C
 		return "", "", fmt.Errorf("read dodo checkout response: %w", err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", "", fmt.Errorf("create dodo checkout session: dodo returned HTTP %d", resp.StatusCode)
+		return "", "", formatDodoHTTPError("create dodo checkout session", resp.StatusCode, responseBody)
 	}
 	var decoded struct {
 		SessionID   string `json:"session_id"`
@@ -549,17 +692,47 @@ func (m *BillingManager) createDodoCheckoutSession(ctx context.Context, caller C
 	if strings.TrimSpace(decoded.CheckoutURL) == "" {
 		return "", "", errors.New("dodo checkout response did not include checkout_url")
 	}
-	return decoded.CheckoutURL, decoded.SessionID, nil
+	parsed, err := url.Parse(decoded.CheckoutURL)
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" {
+		return "", "", errors.New("dodo checkout response url is not a valid https URL")
+	}
+	return parsed.String(), decoded.SessionID, nil
 }
 
-func (m *BillingManager) checkoutURL(intentID uuid.UUID, planKey string, period string, seats int, returnURL string) string {
-	values := url.Values{}
-	values.Set("client_reference_id", intentID.String())
-	values.Set("plan_key", planKey)
-	values.Set("billing_period", period)
-	values.Set("seat_quantity", strconv.Itoa(seats))
-	values.Set("return_url", returnURL)
-	return m.checkoutBaseURL + "?" + values.Encode()
+func (m *BillingManager) createDodoCustomerPortalSession(ctx context.Context, customerID string) (string, error) {
+	endpoint := fmt.Sprintf("%s/customers/%s/customer-portal/session?send_email=false", m.dodoAPIBaseURL, url.PathEscape(customerID))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(`{}`))
+	if err != nil {
+		return "", fmt.Errorf("build dodo customer portal request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+m.dodoAPIKey)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := m.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("create dodo customer portal session: %w", err)
+	}
+	defer resp.Body.Close()
+	responseBody, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return "", fmt.Errorf("read dodo customer portal response: %w", err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "", formatDodoHTTPError("create dodo customer portal session", resp.StatusCode, responseBody)
+	}
+	var decoded struct {
+		Link string `json:"link"`
+	}
+	if err := json.Unmarshal(responseBody, &decoded); err != nil {
+		return "", fmt.Errorf("decode dodo customer portal response: %w", err)
+	}
+	if strings.TrimSpace(decoded.Link) == "" {
+		return "", errors.New("dodo customer portal response did not include link")
+	}
+	parsed, err := url.Parse(decoded.Link)
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" {
+		return "", errors.New("dodo customer portal response url is not a valid https URL")
+	}
+	return parsed.String(), nil
 }
 
 func (m *BillingManager) verifyWebhook(headers DodoWebhookHeaders, rawBody []byte) error {
@@ -699,6 +872,23 @@ func (e dodoWebhookEnvelope) OrganizationID() (uuid.UUID, error) {
 	return uuid.Nil, errors.New("organization_id metadata is required")
 }
 
+func (e dodoWebhookEnvelope) CheckoutIntentID() *uuid.UUID {
+	for _, raw := range []string{
+		e.DataString("checkout_intent_id"),
+		stringFromMap(e.Metadata, "checkout_intent_id"),
+		stringFromMap(e.DataObject("metadata"), "checkout_intent_id"),
+	} {
+		if raw == "" {
+			continue
+		}
+		id, err := uuid.Parse(raw)
+		if err == nil {
+			return &id
+		}
+	}
+	return nil
+}
+
 func (e dodoWebhookEnvelope) DataString(keys ...string) string {
 	for _, key := range keys {
 		if value := stringFromMap(e.Data, key); value != "" {
@@ -815,12 +1005,68 @@ func usageWindow(now time.Time) (time.Time, time.Time) {
 	return start, start.AddDate(0, 1, 0)
 }
 
-func defaultBillingString(value string, fallback string) string {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return fallback
+func (m *BillingManager) planByKey(key string) (billingpkg.Plan, bool) {
+	key = strings.TrimSpace(key)
+	for _, plan := range m.plans {
+		if plan.Key == key {
+			return plan, true
+		}
 	}
-	return value
+	return billingpkg.Plan{}, false
+}
+
+func clonePlans(in []billingpkg.Plan) []billingpkg.Plan {
+	out := make([]billingpkg.Plan, len(in))
+	for i, plan := range in {
+		out[i] = plan
+		out[i].BillingPeriods = append([]string(nil), plan.BillingPeriods...)
+		out[i].DodoProductIDs = cloneStringMap(plan.DodoProductIDs)
+		out[i].FeatureFlags = cloneBoolMap(plan.FeatureFlags)
+	}
+	return out
+}
+
+func cloneStringMap(in map[string]string) map[string]string {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(in))
+	for key, value := range in {
+		out[key] = value
+	}
+	return out
+}
+
+func cloneBoolMap(in map[string]bool) map[string]bool {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]bool, len(in))
+	for key, value := range in {
+		out[key] = value
+	}
+	return out
+}
+
+func dodoAPIBaseURLForEnvironment(environment string) string {
+	switch strings.ToLower(strings.TrimSpace(environment)) {
+	case "live":
+		return "https://live.dodopayments.com"
+	default:
+		return "https://test.dodopayments.com"
+	}
+}
+
+func appendCheckoutReturnParams(rawReturnURL string, intentID uuid.UUID) (string, error) {
+	parsed, err := url.Parse(rawReturnURL)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return "", errors.New("return_url must be an absolute URL")
+	}
+	values := parsed.Query()
+	values.Set("checkout", "pending")
+	values.Set("checkout_intent_id", intentID.String())
+	parsed.RawQuery = values.Encode()
+	return parsed.String(), nil
 }
 
 func defaultHTTPClient(client *http.Client) *http.Client {
@@ -828,6 +1074,14 @@ func defaultHTTPClient(client *http.Client) *http.Client {
 		return client
 	}
 	return &http.Client{Timeout: 10 * time.Second}
+}
+
+func formatDodoHTTPError(operation string, statusCode int, responseBody []byte) error {
+	body := strings.TrimSpace(strings.ToValidUTF8(string(responseBody), "?"))
+	if body == "" {
+		return fmt.Errorf("%s: dodo returned HTTP %d", operation, statusCode)
+	}
+	return fmt.Errorf("%s: dodo returned HTTP %d: %s", operation, statusCode, body)
 }
 
 func optionalString(value string) *string {
@@ -886,6 +1140,7 @@ func registerBillingRoutes(router chi.Router, logger *slog.Logger, service Billi
 	router.Post("/organizations/{organizationID}/billing/checkout", createBillingCheckoutHandler(logger, service))
 	router.Post("/organizations/{organizationID}/billing/portal", createBillingPortalHandler(logger, service))
 	router.Get("/workspaces/{workspaceID}/entitlements", getWorkspaceEntitlementsHandler(logger, service))
+	router.Get("/workspaces/{workspaceID}/quota", getWorkspaceQuotaHandler(logger, service))
 }
 
 func listBillingPlansHandler(logger *slog.Logger, service BillingService) http.HandlerFunc {
@@ -1024,6 +1279,27 @@ func getWorkspaceEntitlementsHandler(logger *slog.Logger, service BillingService
 	}
 }
 
+func getWorkspaceQuotaHandler(logger *slog.Logger, service BillingService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		caller, err := CallerFromContext(r.Context())
+		if err != nil {
+			writeAuthzError(w, err)
+			return
+		}
+		workspaceID, err := uuid.Parse(chi.URLParam(r, "workspaceID"))
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_workspace_id", "workspace ID is malformed")
+			return
+		}
+		result, err := service.GetWorkspaceQuota(r.Context(), caller, workspaceID)
+		if err != nil {
+			writeBillingServiceError(w, logger, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, result)
+	}
+}
+
 func writeBillingServiceError(w http.ResponseWriter, logger *slog.Logger, err error) {
 	var validationErr validationErrorEnvelope
 	var gateErr billingpkg.GateError
@@ -1060,6 +1336,29 @@ func (noopBillingService) CreatePortal(context.Context, Caller, uuid.UUID) (Crea
 func (noopBillingService) GetWorkspaceEntitlements(context.Context, Caller, uuid.UUID) (WorkspaceEntitlementsResult, error) {
 	return WorkspaceEntitlementsResult{}, errors.New("billing service is not configured")
 }
+func (noopBillingService) GetWorkspaceQuota(context.Context, Caller, uuid.UUID) (WorkspaceQuotaResult, error) {
+	return WorkspaceQuotaResult{}, errors.New("billing service is not configured")
+}
 func (noopBillingService) ProcessDodoWebhook(context.Context, DodoWebhookHeaders, []byte) (ProcessDodoWebhookResult, error) {
 	return ProcessDodoWebhookResult{}, errors.New("billing service is not configured")
+}
+
+func quotaCounter(used int, limit *int, resetAt *time.Time) QuotaCounter {
+	counter := QuotaCounter{
+		Used: used,
+	}
+	if limit != nil {
+		copiedLimit := *limit
+		counter.Limit = &copiedLimit
+		remaining := *limit - used
+		if remaining < 0 {
+			remaining = 0
+		}
+		counter.Remaining = &remaining
+	}
+	if resetAt != nil {
+		reset := resetAt.UTC()
+		counter.ResetAt = &reset
+	}
+	return counter
 }

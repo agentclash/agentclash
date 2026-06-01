@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/domain"
+	"github.com/agentclash/agentclash/backend/internal/provider"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/backend/internal/sandbox"
 	"github.com/google/uuid"
@@ -18,8 +19,10 @@ func TestExecuteAgentHarnessExecutionRunsCodexAndRecordsTrace(t *testing.T) {
 	workspaceID := uuid.New()
 	harnessID := uuid.New()
 	executionID := uuid.New()
+	runID := uuid.New()
+	runAgentID := uuid.New()
 	openAISecret := "OPENAI_API_KEY"
-	repo := newFakeRunRepository(fixtureRun(uuid.New(), domain.RunStatusQueued))
+	repo := newFakeRunRepository(fixtureRun(runID, domain.RunStatusQueued), fixtureRunAgent(runID, runAgentID, 0))
 	repo.setAgentHarness(repository.AgentHarness{
 		ID:                     harnessID,
 		OrganizationID:         uuid.New(),
@@ -30,15 +33,17 @@ func TestExecuteAgentHarnessExecutionRunsCodexAndRecordsTrace(t *testing.T) {
 		OpenAIAPIKeySecretName: &openAISecret,
 		RepositoryURL:          stringPtr("https://github.com/acme/repo"),
 		BaseBranch:             stringPtr("main"),
-		ExecutionConfig:        json.RawMessage(`{"timeout_seconds":120}`),
-		EvaluationConfig:       json.RawMessage(`{"validators":[{"type":"command","command":"go test ./...","working_directory":"backend","timeout_seconds":60}]}`),
+		ExecutionConfig:        json.RawMessage(`{"timeout_seconds":120,"setup_commands":[{"name":"deps","command":"go mod download","working_directory":"backend","timeout_seconds":30}]}`),
+		EvaluationConfig:       json.RawMessage(`{"validators":[{"key":"tests","type":"command","command":"go test ./...","working_directory":"backend","timeout_seconds":60}],"llm_judges":[{"key":"autonomy","rubric":"Score whether the coding agent completed the requested task coherently."}]}`),
 	})
 	repo.setAgentHarnessExecution(repository.AgentHarnessExecution{
 		ID:                      executionID,
 		WorkspaceID:             workspaceID,
 		AgentHarnessID:          harnessID,
+		RunID:                   &runID,
+		RunAgentID:              &runAgentID,
 		Status:                  string(repository.AgentHarnessExecutionStatusRunning),
-		ExecutionConfigSnapshot: json.RawMessage(`{"timeout_seconds":120}`),
+		ExecutionConfigSnapshot: json.RawMessage(`{"timeout_seconds":120,"setup_commands":[{"name":"deps","command":"go mod download","working_directory":"backend","timeout_seconds":30}]}`),
 	})
 	repo.setWorkspaceSecrets(workspaceID, map[string]string{
 		openAISecret: "sk-test",
@@ -51,6 +56,13 @@ func TestExecuteAgentHarnessExecutionRunsCodexAndRecordsTrace(t *testing.T) {
 			return sandbox.ExecResult{ExitCode: 0, Stdout: "cloned"}, nil
 		case len(request.Command) >= 2 && request.Command[0] == "git" && request.Command[1] == "checkout":
 			return sandbox.ExecResult{ExitCode: 0, Stdout: "checked out"}, nil
+		case len(request.Command) >= 3 && request.Command[0] == "bash" && request.Command[1] == "-lc" && strings.Contains(request.Command[2], ".devcontainer/devcontainer.json"):
+			return sandbox.ExecResult{ExitCode: 0, Stdout: "go.mod\npackage.json\n"}, nil
+		case len(request.Command) >= 3 && request.Command[0] == "bash" && request.Command[1] == "-lc" && request.Command[2] == "go mod download":
+			if request.WorkingDirectory != agentHarnessWorkspaceDir+"/backend" {
+				t.Fatalf("setup workdir = %q, want backend under workspace", request.WorkingDirectory)
+			}
+			return sandbox.ExecResult{ExitCode: 0, Stdout: "downloaded"}, nil
 		case len(request.Command) >= 2 && request.Command[0] == "codex" && request.Command[1] == "exec":
 			if request.Environment["CODEX_API_KEY"] != "sk-test" || request.Environment["OPENAI_API_KEY"] != "sk-test" {
 				t.Fatalf("codex env = %#v, want OpenAI and Codex keys", request.Environment)
@@ -75,18 +87,21 @@ func TestExecuteAgentHarnessExecutionRunsCodexAndRecordsTrace(t *testing.T) {
 			return sandbox.ExecResult{}, nil
 		}
 	})
-	provider := &sandbox.FakeProvider{NextSession: session}
-	activities := NewActivities(repo, FakeWorkHooks{}).WithSandboxProvider(provider)
+	sandboxProvider := &sandbox.FakeProvider{NextSession: session}
+	judgeClient := &provider.FakeClient{
+		Response: provider.Response{OutputText: `{"score":5,"confidence":"high","reasoning":"complete"}`},
+	}
+	activities := NewActivities(repo, FakeWorkHooks{}, judgeClient).WithSandboxProvider(sandboxProvider)
 
 	err := activities.ExecuteAgentHarnessExecution(context.Background(), ExecuteAgentHarnessExecutionInput{ExecutionID: executionID})
 	if err != nil {
 		t.Fatalf("ExecuteAgentHarnessExecution error: %v", err)
 	}
 
-	if len(provider.CreateRequests) != 1 {
-		t.Fatalf("sandbox create calls = %d, want 1", len(provider.CreateRequests))
+	if len(sandboxProvider.CreateRequests) != 1 {
+		t.Fatalf("sandbox create calls = %d, want 1", len(sandboxProvider.CreateRequests))
 	}
-	createRequest := provider.CreateRequests[0]
+	createRequest := sandboxProvider.CreateRequests[0]
 	if createRequest.EnvVars["OPENAI_API_KEY"] != "sk-test" || createRequest.EnvVars["CODEX_API_KEY"] != "sk-test" {
 		t.Fatalf("env vars = %#v, want OpenAI and Codex keys", createRequest.EnvVars)
 	}
@@ -99,6 +114,8 @@ func TestExecuteAgentHarnessExecutionRunsCodexAndRecordsTrace(t *testing.T) {
 	calls := session.ExecCalls()
 	addIntentIndex := commandIndex(calls, "git", "add", "--intent-to-add")
 	diffIndex := commandIndex(calls, "git", "diff", "--binary")
+	setupIndex := commandIndex(calls, "bash", "-lc", "go mod download")
+	codexIndex := commandIndex(calls, "codex", "exec")
 	if addIntentIndex == -1 {
 		t.Fatal("expected git add --intent-to-add before diff capture")
 	}
@@ -108,12 +125,19 @@ func TestExecuteAgentHarnessExecutionRunsCodexAndRecordsTrace(t *testing.T) {
 	if addIntentIndex > diffIndex {
 		t.Fatalf("git add --intent-to-add call index = %d, diff index = %d; want add before diff", addIntentIndex, diffIndex)
 	}
+	if setupIndex == -1 || codexIndex == -1 || setupIndex > codexIndex {
+		t.Fatalf("setup command index = %d, codex index = %d; want setup before codex", setupIndex, codexIndex)
+	}
 	if got := len(repo.agentHarnessEvents[executionID]); got < 8 {
 		t.Fatalf("recorded events = %d, want at least 8", got)
 	}
 	var sawCodexOutput bool
 	var sawValidatorPassed bool
 	var sawScoringCompleted bool
+	var sawSetupCompleted bool
+	var sawHints bool
+	var sawScorecardPersisted bool
+	var sawLLMJudgesSkipped bool
 	for _, event := range repo.agentHarnessEvents[executionID] {
 		switch event.EventType {
 		case "codex.exec.output":
@@ -129,6 +153,34 @@ func TestExecuteAgentHarnessExecutionRunsCodexAndRecordsTrace(t *testing.T) {
 			sawValidatorPassed = true
 		case "scoring.completed":
 			sawScoringCompleted = true
+		case "setup.command.completed":
+			sawSetupCompleted = true
+		case "setup.hints.detected":
+			sawHints = true
+			var payload map[string]any
+			if err := json.Unmarshal(event.Payload, &payload); err != nil {
+				t.Fatalf("decode setup hints payload: %v", err)
+			}
+			hints, ok := payload["hints"].([]any)
+			if !ok || len(hints) != 2 {
+				t.Fatalf("setup hints = %#v, want two structured hints", payload["hints"])
+			}
+			first, ok := hints[0].(map[string]any)
+			if !ok || first["kind"] != "go" || first["path"] != "go.mod" {
+				t.Fatalf("first setup hint = %#v, want go.mod kind go", hints[0])
+			}
+		case "setup.runtime.detected":
+			var payload map[string]any
+			if err := json.Unmarshal(event.Payload, &payload); err != nil {
+				t.Fatalf("decode setup runtime payload: %v", err)
+			}
+			if payload["template"] != "codex" || payload["agent_tool"] != "codex" || payload["metadata_version"] != float64(1) {
+				t.Fatalf("runtime payload = %#v, want template/tool metadata", payload)
+			}
+		case "scorecard.persisted":
+			sawScorecardPersisted = true
+		case "llm_judges.skipped":
+			sawLLMJudgesSkipped = true
 		}
 	}
 	if !sawCodexOutput {
@@ -140,14 +192,196 @@ func TestExecuteAgentHarnessExecutionRunsCodexAndRecordsTrace(t *testing.T) {
 	if !sawScoringCompleted {
 		t.Fatal("expected scoring completed event")
 	}
+	if !sawSetupCompleted {
+		t.Fatal("expected setup command completed event")
+	}
+	if !sawHints {
+		t.Fatal("expected setup hints detected event")
+	}
+	if !sawScorecardPersisted {
+		t.Fatal("expected persisted scorecard event")
+	}
+	if sawLLMJudgesSkipped {
+		t.Fatal("did not expect llm_judges.skipped after judge wiring")
+	}
+	evaluation, ok := repo.evaluations[runAgentID]
+	if !ok {
+		t.Fatal("expected stored run-agent evaluation")
+	}
+	if len(evaluation.ValidatorResults) != 1 || evaluation.ValidatorResults[0].Key != "tests" || evaluation.ValidatorResults[0].Verdict != "pass" {
+		t.Fatalf("validator results = %#v, want passing tests validator", evaluation.ValidatorResults)
+	}
+	if len(evaluation.LLMJudgeResults) != 1 || evaluation.LLMJudgeResults[0].JudgeKey != "autonomy" {
+		t.Fatalf("llm judge results = %#v, want autonomy judge result", evaluation.LLMJudgeResults)
+	}
+	if evaluation.LLMJudgeResults[0].NormalizedScore == nil || *evaluation.LLMJudgeResults[0].NormalizedScore != 1 {
+		t.Fatalf("llm judge score = %#v, want normalized 1", evaluation.LLMJudgeResults[0].NormalizedScore)
+	}
+	if len(judgeClient.Requests) != 3 {
+		t.Fatalf("judge requests = %d, want default 3 samples", len(judgeClient.Requests))
+	}
+	if !strings.Contains(judgeClient.Requests[0].Messages[0].Content, "done") {
+		t.Fatalf("judge prompt = %q, want agent output evidence", judgeClient.Requests[0].Messages[0].Content)
+	}
+	if judgeClient.Requests[0].CredentialReference != "workspace-secret://OPENAI_API_KEY" {
+		t.Fatalf("judge credential reference = %q, want harness workspace secret", judgeClient.Requests[0].CredentialReference)
+	}
+	if evaluation.OverallScore == nil || *evaluation.OverallScore != 1 {
+		t.Fatalf("overall score = %#v, want 1 from command validator", evaluation.OverallScore)
+	}
+	if _, ok := evaluation.DimensionScores["latency"]; !ok {
+		t.Fatalf("dimension scores = %#v, want latency dimension exposed", evaluation.DimensionScores)
+	}
+	if _, ok := evaluation.DimensionScores["cost"]; !ok {
+		t.Fatalf("dimension scores = %#v, want cost dimension exposed", evaluation.DimensionScores)
+	}
+	if repo.callCountWithPrefix("CreateStandaloneEvaluationSpec:") != 1 {
+		t.Fatalf("CreateStandaloneEvaluationSpec call count = %d, want 1", repo.callCountWithPrefix("CreateStandaloneEvaluationSpec:"))
+	}
+	updatedExecution, ok := repo.agentHarnessExecutions[executionID]
+	if !ok || updatedExecution.EvaluationSpecID == nil || *updatedExecution.EvaluationSpecID != evaluation.EvaluationSpecID {
+		t.Fatalf("execution evaluation_spec_id = %#v, want %s", updatedExecution.EvaluationSpecID, evaluation.EvaluationSpecID)
+	}
+	runEvents := repo.runEvents[runAgentID]
+	if len(runEvents) == 0 {
+		t.Fatal("expected agent harness events mirrored to canonical run_events")
+	}
+	if runEvents[0].RunID != runID {
+		t.Fatalf("mirrored run_id = %s, want %s", runEvents[0].RunID, runID)
+	}
+	var mirroredPayload map[string]any
+	if err := json.Unmarshal(runEvents[0].Payload, &mirroredPayload); err != nil {
+		t.Fatalf("decode mirrored payload: %v", err)
+	}
+	if mirroredPayload["agent_harness_event_type"] == "" {
+		t.Fatalf("mirrored payload missing harness event type: %#v", mirroredPayload)
+	}
+	for _, event := range runEvents {
+		var payload map[string]any
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			t.Fatalf("decode mirrored run event payload: %v", err)
+		}
+		for _, rawKey := range []string{"stdout", "stderr", "diff", "raw"} {
+			if _, ok := payload[rawKey]; ok {
+				t.Fatalf("mirrored run event payload leaked raw %s: %#v", rawKey, payload)
+			}
+		}
+	}
+	if repo.callCountWithPrefix("BuildRunAgentReplay:"+runAgentID.String()) != 1 {
+		t.Fatalf("BuildRunAgentReplay call count = %d, want 1", repo.callCountWithPrefix("BuildRunAgentReplay:"+runAgentID.String()))
+	}
+}
+
+func TestExecuteAgentHarnessExecutionRedactsHiddenValidatorsAndRecordsPrivacyControls(t *testing.T) {
+	workspaceID := uuid.New()
+	harnessID := uuid.New()
+	executionID := uuid.New()
+	runID := uuid.New()
+	runAgentID := uuid.New()
+	openAISecret := "OPENAI_API_KEY"
+	repo := newFakeRunRepository(fixtureRun(runID, domain.RunStatusQueued), fixtureRunAgent(runID, runAgentID, 0))
+	repo.setAgentHarness(repository.AgentHarness{
+		ID:                     harnessID,
+		OrganizationID:         uuid.New(),
+		WorkspaceID:            workspaceID,
+		TaskPrompt:             "fix the private regression",
+		CodexTemplate:          "codex",
+		AuthMode:               "api_key_secret",
+		OpenAIAPIKeySecretName: &openAISecret,
+		RepositoryURL:          stringPtr("https://github.com/acme/private-repo"),
+		BaseBranch:             stringPtr("main"),
+		EvaluationConfig: json.RawMessage(`{
+			"result":{"kind":"private_task_bank","benchmark_source":"customer-incident-bank","collection_date":"2026-05-01","allowed_public_context":["README.md"],"contamination":"hidden","publicity":"private"},
+			"privacy":{"redact_replay":true,"redact_artifacts":true,"retention_days":14,"audit_log":true,"provider_data_use":"zero_retention","workspace_policy_key":"strict"},
+			"validators":[{"key":"secret-tests","type":"command","command":"go test ./private/... --golden SECRET_EXPECTED","hidden":true}]
+		}`),
+	})
+	repo.setAgentHarnessExecution(repository.AgentHarnessExecution{
+		ID:             executionID,
+		WorkspaceID:    workspaceID,
+		AgentHarnessID: harnessID,
+		RunID:          &runID,
+		RunAgentID:     &runAgentID,
+		Status:         string(repository.AgentHarnessExecutionStatusRunning),
+	})
+	repo.setWorkspaceSecrets(workspaceID, map[string]string{openAISecret: "sk-test"})
+
+	session := sandbox.NewFakeSession("sandbox-1")
+	session.SetExecFunc(func(request sandbox.ExecRequest, _ map[string][]byte) (sandbox.ExecResult, error) {
+		switch {
+		case len(request.Command) >= 2 && request.Command[0] == "git" && request.Command[1] == "clone":
+			return sandbox.ExecResult{ExitCode: 0, Stdout: "cloned"}, nil
+		case len(request.Command) >= 2 && request.Command[0] == "git" && request.Command[1] == "checkout":
+			return sandbox.ExecResult{ExitCode: 0, Stdout: "checked out"}, nil
+		case len(request.Command) >= 3 && request.Command[0] == "bash" && request.Command[1] == "-lc" && strings.Contains(request.Command[2], ".devcontainer/devcontainer.json"):
+			return sandbox.ExecResult{ExitCode: 0}, nil
+		case len(request.Command) >= 2 && request.Command[0] == "codex" && request.Command[1] == "exec":
+			return sandbox.ExecResult{ExitCode: 0, Stdout: `{"type":"final","message":"PRIVATE_AGENT_OUTPUT"}`}, nil
+		case len(request.Command) >= 3 && request.Command[0] == "git" && request.Command[1] == "add" && request.Command[2] == "--intent-to-add":
+			return sandbox.ExecResult{ExitCode: 0}, nil
+		case len(request.Command) >= 2 && request.Command[0] == "git" && request.Command[1] == "diff":
+			return sandbox.ExecResult{ExitCode: 0, Stdout: "diff --git a/private b/private\n+PRIVATE_DIFF"}, nil
+		case len(request.Command) >= 2 && request.Command[0] == "git" && request.Command[1] == "status":
+			return sandbox.ExecResult{ExitCode: 0, Stdout: " M private/file.go"}, nil
+		case len(request.Command) >= 3 && request.Command[0] == "bash" && request.Command[1] == "-lc" && strings.Contains(request.Command[2], "SECRET_EXPECTED"):
+			return sandbox.ExecResult{ExitCode: 0, Stdout: "SECRET_EXPECTED passed", Stderr: "secret stderr"}, nil
+		default:
+			t.Fatalf("unexpected command: %#v", request.Command)
+			return sandbox.ExecResult{}, nil
+		}
+	})
+	activities := NewActivities(repo, FakeWorkHooks{}).WithSandboxProvider(&sandbox.FakeProvider{NextSession: session})
+	if err := activities.ExecuteAgentHarnessExecution(context.Background(), ExecuteAgentHarnessExecutionInput{ExecutionID: executionID}); err != nil {
+		t.Fatalf("ExecuteAgentHarnessExecution error: %v", err)
+	}
+
+	for _, event := range repo.agentHarnessEvents[executionID] {
+		var payload map[string]any
+		if err := json.Unmarshal(event.Payload, &payload); err != nil {
+			t.Fatalf("decode event payload: %v", err)
+		}
+		encoded := string(event.Payload)
+		if containsAny(encoded, "SECRET_EXPECTED", "secret stderr", "PRIVATE_AGENT_OUTPUT", "PRIVATE_DIFF", "private/file.go") {
+			t.Fatalf("event %s leaked private data: %s", event.EventType, encoded)
+		}
+		if event.EventType == "validator.command.passed" {
+			if payload["command_hidden"] != true || payload["output_redacted"] != true || payload["visibility"] != "hidden" {
+				t.Fatalf("hidden validator payload = %#v, want hidden redaction markers", payload)
+			}
+		}
+	}
+	if !agentHarnessEventRecorded(repo.agentHarnessEvents[executionID], "privacy.policy.applied") {
+		t.Fatal("expected privacy policy event")
+	}
+	if !agentHarnessEventRecorded(repo.agentHarnessEvents[executionID], "privacy.audit.recorded") {
+		t.Fatal("expected privacy audit event")
+	}
+	if !agentHarnessEventRecorded(repo.agentHarnessEvents[executionID], "benchmark.metadata.recorded") {
+		t.Fatal("expected benchmark metadata event")
+	}
+	evaluation, ok := repo.evaluations[runAgentID]
+	if !ok || len(evaluation.ValidatorResults) != 1 || evaluation.ValidatorResults[0].Verdict != "pass" {
+		t.Fatalf("evaluation = %#v, want persisted passing hidden validator", evaluation)
+	}
+	if strings.Contains(string(evaluation.ValidatorResults[0].RawOutput), "SECRET_EXPECTED") {
+		t.Fatalf("validator raw output leaked hidden command: %s", evaluation.ValidatorResults[0].RawOutput)
+	}
+	for _, event := range repo.runEvents[runAgentID] {
+		encoded := string(event.Payload)
+		if containsAny(encoded, "SECRET_EXPECTED", "PRIVATE_AGENT_OUTPUT", "PRIVATE_DIFF", "private/file.go") {
+			t.Fatalf("canonical run event leaked private data: %s", event.Payload)
+		}
+	}
 }
 
 func TestExecuteAgentHarnessExecutionFailsRequiredValidator(t *testing.T) {
 	workspaceID := uuid.New()
 	harnessID := uuid.New()
 	executionID := uuid.New()
+	runID := uuid.New()
+	runAgentID := uuid.New()
 	openAISecret := "OPENAI_API_KEY"
-	repo := newFakeRunRepository(fixtureRun(uuid.New(), domain.RunStatusQueued))
+	repo := newFakeRunRepository(fixtureRun(runID, domain.RunStatusQueued), fixtureRunAgent(runID, runAgentID, 0))
 	repo.setAgentHarness(repository.AgentHarness{
 		ID:                     harnessID,
 		OrganizationID:         uuid.New(),
@@ -164,6 +398,8 @@ func TestExecuteAgentHarnessExecutionFailsRequiredValidator(t *testing.T) {
 		ID:                      executionID,
 		WorkspaceID:             workspaceID,
 		AgentHarnessID:          harnessID,
+		RunID:                   &runID,
+		RunAgentID:              &runAgentID,
 		Status:                  string(repository.AgentHarnessExecutionStatusRunning),
 		ExecutionConfigSnapshot: json.RawMessage(`{"timeout_seconds":120}`),
 	})
@@ -173,6 +409,8 @@ func TestExecuteAgentHarnessExecutionFailsRequiredValidator(t *testing.T) {
 	session.SetExecFunc(func(request sandbox.ExecRequest, _ map[string][]byte) (sandbox.ExecResult, error) {
 		switch {
 		case len(request.Command) >= 2 && request.Command[0] == "git" && request.Command[1] == "clone":
+			return sandbox.ExecResult{ExitCode: 0}, nil
+		case isSetupHintsCommand(request.Command):
 			return sandbox.ExecResult{ExitCode: 0}, nil
 		case len(request.Command) >= 2 && request.Command[0] == "codex" && request.Command[1] == "exec":
 			return sandbox.ExecResult{ExitCode: 0, Stdout: `{"type":"final","message":"done"}`}, nil
@@ -219,6 +457,262 @@ func TestExecuteAgentHarnessExecutionFailsRequiredValidator(t *testing.T) {
 	}
 	if !sawPartialScore {
 		t.Fatal("expected partial score event")
+	}
+	evaluation, ok := repo.evaluations[runAgentID]
+	if !ok {
+		t.Fatal("expected stored scorecard evaluation for failed required validator")
+	}
+	if len(evaluation.ValidatorResults) != 2 || evaluation.ValidatorResults[1].Verdict != "fail" {
+		t.Fatalf("validator results = %#v, want failed npm validator persisted", evaluation.ValidatorResults)
+	}
+	if evaluation.Passed == nil || *evaluation.Passed {
+		t.Fatalf("scorecard passed = %#v, want false", evaluation.Passed)
+	}
+	if repo.callCountWithPrefix("BuildRunAgentReplay:"+runAgentID.String()) != 1 {
+		t.Fatalf("BuildRunAgentReplay call count = %d, want 1", repo.callCountWithPrefix("BuildRunAgentReplay:"+runAgentID.String()))
+	}
+}
+
+func TestExecuteAgentHarnessExecutionFailsSetupBeforeAgent(t *testing.T) {
+	workspaceID := uuid.New()
+	harnessID := uuid.New()
+	executionID := uuid.New()
+	runID := uuid.New()
+	runAgentID := uuid.New()
+	openAISecret := "OPENAI_API_KEY"
+	repo := newFakeRunRepository(fixtureRun(runID, domain.RunStatusQueued), fixtureRunAgent(runID, runAgentID, 0))
+	repo.setAgentHarness(repository.AgentHarness{
+		ID:                     harnessID,
+		OrganizationID:         uuid.New(),
+		WorkspaceID:            workspaceID,
+		TaskPrompt:             "implement issue 462",
+		CodexTemplate:          "codex",
+		AuthMode:               "api_key_secret",
+		OpenAIAPIKeySecretName: &openAISecret,
+		RepositoryURL:          stringPtr("https://github.com/acme/repo"),
+		ExecutionConfig:        json.RawMessage(`{"timeout_seconds":120,"setup_commands":[{"name":"deps","command":"go mod download"}]}`),
+	})
+	repo.setAgentHarnessExecution(repository.AgentHarnessExecution{
+		ID:                      executionID,
+		WorkspaceID:             workspaceID,
+		AgentHarnessID:          harnessID,
+		RunID:                   &runID,
+		RunAgentID:              &runAgentID,
+		Status:                  string(repository.AgentHarnessExecutionStatusRunning),
+		ExecutionConfigSnapshot: json.RawMessage(`{"timeout_seconds":120,"setup_commands":[{"name":"deps","command":"go mod download"}]}`),
+	})
+	repo.setWorkspaceSecrets(workspaceID, map[string]string{openAISecret: "sk-test"})
+
+	session := sandbox.NewFakeSession("sandbox-1")
+	session.SetExecFunc(func(request sandbox.ExecRequest, _ map[string][]byte) (sandbox.ExecResult, error) {
+		switch {
+		case len(request.Command) >= 2 && request.Command[0] == "git" && request.Command[1] == "clone":
+			return sandbox.ExecResult{ExitCode: 0}, nil
+		case isSetupHintsCommand(request.Command):
+			return sandbox.ExecResult{ExitCode: 0, Stdout: "go.mod\n"}, nil
+		case len(request.Command) >= 3 && request.Command[0] == "bash" && request.Command[1] == "-lc" && request.Command[2] == "go mod download":
+			return sandbox.ExecResult{ExitCode: 1, Stderr: "module download failed"}, nil
+		case len(request.Command) >= 2 && request.Command[0] == "codex" && request.Command[1] == "exec":
+			t.Fatalf("codex should not run after setup failure")
+			return sandbox.ExecResult{}, nil
+		default:
+			t.Fatalf("unexpected command: %#v", request.Command)
+			return sandbox.ExecResult{}, nil
+		}
+	})
+	provider := &sandbox.FakeProvider{NextSession: session}
+	activities := NewActivities(repo, FakeWorkHooks{}).WithSandboxProvider(provider)
+
+	err := activities.ExecuteAgentHarnessExecution(context.Background(), ExecuteAgentHarnessExecutionInput{ExecutionID: executionID})
+	if err == nil || !strings.Contains(err.Error(), `setup command "deps" failed`) {
+		t.Fatalf("ExecuteAgentHarnessExecution error = %v, want setup command failure", err)
+	}
+	if !agentHarnessEventRecorded(repo.agentHarnessEvents[executionID], "setup.command.failed") {
+		t.Fatal("expected setup.command.failed event")
+	}
+	if agentHarnessEventRecorded(repo.agentHarnessEvents[executionID], "codex.exec.started") {
+		t.Fatal("did not expect codex.exec.started after setup failure")
+	}
+	if repo.callCountWithPrefix("BuildRunAgentReplay:"+runAgentID.String()) != 1 {
+		t.Fatalf("BuildRunAgentReplay call count = %d, want 1", repo.callCountWithPrefix("BuildRunAgentReplay:"+runAgentID.String()))
+	}
+}
+
+func TestExecuteAgentHarnessExecutionReportsAgentFailureSeparately(t *testing.T) {
+	workspaceID := uuid.New()
+	harnessID := uuid.New()
+	executionID := uuid.New()
+	runID := uuid.New()
+	runAgentID := uuid.New()
+	openAISecret := "OPENAI_API_KEY"
+	repo := newFakeRunRepository(fixtureRun(runID, domain.RunStatusQueued), fixtureRunAgent(runID, runAgentID, 0))
+	repo.setAgentHarness(repository.AgentHarness{
+		ID:                     harnessID,
+		OrganizationID:         uuid.New(),
+		WorkspaceID:            workspaceID,
+		TaskPrompt:             "implement issue 462",
+		CodexTemplate:          "codex",
+		AuthMode:               "api_key_secret",
+		OpenAIAPIKeySecretName: &openAISecret,
+		ExecutionConfig:        json.RawMessage(`{"timeout_seconds":120}`),
+	})
+	repo.setAgentHarnessExecution(repository.AgentHarnessExecution{
+		ID:                      executionID,
+		WorkspaceID:             workspaceID,
+		AgentHarnessID:          harnessID,
+		RunID:                   &runID,
+		RunAgentID:              &runAgentID,
+		Status:                  string(repository.AgentHarnessExecutionStatusRunning),
+		ExecutionConfigSnapshot: json.RawMessage(`{"timeout_seconds":120}`),
+	})
+	repo.setWorkspaceSecrets(workspaceID, map[string]string{openAISecret: "sk-test"})
+
+	session := sandbox.NewFakeSession("sandbox-1")
+	session.SetExecFunc(func(request sandbox.ExecRequest, _ map[string][]byte) (sandbox.ExecResult, error) {
+		switch {
+		case len(request.Command) >= 2 && request.Command[0] == "codex" && request.Command[1] == "exec":
+			return sandbox.ExecResult{ExitCode: 1, Stderr: "agent failed"}, nil
+		default:
+			t.Fatalf("unexpected command: %#v", request.Command)
+			return sandbox.ExecResult{}, nil
+		}
+	})
+	provider := &sandbox.FakeProvider{NextSession: session}
+	activities := NewActivities(repo, FakeWorkHooks{}).WithSandboxProvider(provider)
+
+	err := activities.ExecuteAgentHarnessExecution(context.Background(), ExecuteAgentHarnessExecutionInput{ExecutionID: executionID})
+	if err == nil || !strings.Contains(err.Error(), "codex exec failed with exit code 1") {
+		t.Fatalf("ExecuteAgentHarnessExecution error = %v, want agent command failure", err)
+	}
+	if !agentHarnessEventRecorded(repo.agentHarnessEvents[executionID], "setup.skipped") {
+		t.Fatal("expected setup.skipped event before agent failure")
+	}
+	if !agentHarnessEventRecorded(repo.agentHarnessEvents[executionID], "codex.exec.failed") {
+		t.Fatal("expected codex.exec.failed event")
+	}
+	if agentHarnessEventRecorded(repo.agentHarnessEvents[executionID], "validator.command.failed") {
+		t.Fatal("did not expect validator failure event for agent failure")
+	}
+	if repo.callCountWithPrefix("BuildRunAgentReplay:"+runAgentID.String()) != 1 {
+		t.Fatalf("BuildRunAgentReplay call count = %d, want 1", repo.callCountWithPrefix("BuildRunAgentReplay:"+runAgentID.String()))
+	}
+}
+
+func TestExecuteAgentHarnessExecutionContinuesWhenSetupHintDetectionFails(t *testing.T) {
+	workspaceID := uuid.New()
+	harnessID := uuid.New()
+	executionID := uuid.New()
+	runID := uuid.New()
+	runAgentID := uuid.New()
+	openAISecret := "OPENAI_API_KEY"
+	repo := newFakeRunRepository(fixtureRun(runID, domain.RunStatusQueued), fixtureRunAgent(runID, runAgentID, 0))
+	repo.setAgentHarness(repository.AgentHarness{
+		ID:                     harnessID,
+		OrganizationID:         uuid.New(),
+		WorkspaceID:            workspaceID,
+		TaskPrompt:             "implement issue 462",
+		CodexTemplate:          "codex",
+		AuthMode:               "api_key_secret",
+		OpenAIAPIKeySecretName: &openAISecret,
+		RepositoryURL:          stringPtr("https://github.com/acme/repo"),
+		ExecutionConfig:        json.RawMessage(`{"timeout_seconds":120}`),
+	})
+	repo.setAgentHarnessExecution(repository.AgentHarnessExecution{
+		ID:                      executionID,
+		WorkspaceID:             workspaceID,
+		AgentHarnessID:          harnessID,
+		RunID:                   &runID,
+		RunAgentID:              &runAgentID,
+		Status:                  string(repository.AgentHarnessExecutionStatusRunning),
+		ExecutionConfigSnapshot: json.RawMessage(`{"timeout_seconds":120}`),
+	})
+	repo.setWorkspaceSecrets(workspaceID, map[string]string{openAISecret: "sk-test"})
+
+	session := sandbox.NewFakeSession("sandbox-1")
+	session.SetExecFunc(func(request sandbox.ExecRequest, _ map[string][]byte) (sandbox.ExecResult, error) {
+		switch {
+		case len(request.Command) >= 2 && request.Command[0] == "git" && request.Command[1] == "clone":
+			return sandbox.ExecResult{ExitCode: 0}, nil
+		case isSetupHintsCommand(request.Command):
+			return sandbox.ExecResult{ExitCode: 127, Stderr: "bash unavailable"}, nil
+		case len(request.Command) >= 2 && request.Command[0] == "codex" && request.Command[1] == "exec":
+			return sandbox.ExecResult{ExitCode: 0, Stdout: `{"type":"final","message":"done"}`}, nil
+		case len(request.Command) >= 3 && request.Command[0] == "git" && request.Command[1] == "add" && request.Command[2] == "--intent-to-add":
+			return sandbox.ExecResult{ExitCode: 0}, nil
+		case len(request.Command) >= 2 && request.Command[0] == "git" && request.Command[1] == "diff":
+			return sandbox.ExecResult{ExitCode: 0}, nil
+		case len(request.Command) >= 2 && request.Command[0] == "git" && request.Command[1] == "status":
+			return sandbox.ExecResult{ExitCode: 0}, nil
+		default:
+			t.Fatalf("unexpected command: %#v", request.Command)
+			return sandbox.ExecResult{}, nil
+		}
+	})
+	provider := &sandbox.FakeProvider{NextSession: session}
+	activities := NewActivities(repo, FakeWorkHooks{}).WithSandboxProvider(provider)
+
+	err := activities.ExecuteAgentHarnessExecution(context.Background(), ExecuteAgentHarnessExecutionInput{ExecutionID: executionID})
+	if err != nil {
+		t.Fatalf("ExecuteAgentHarnessExecution error = %v, want setup hint failure to be non-fatal", err)
+	}
+	if !agentHarnessEventRecorded(repo.agentHarnessEvents[executionID], "setup.hints.detect.failed") {
+		t.Fatal("expected setup.hints.detect.failed event")
+	}
+	if !agentHarnessEventRecorded(repo.agentHarnessEvents[executionID], "codex.exec.started") {
+		t.Fatal("expected codex to run after setup hint failure")
+	}
+}
+
+func TestExecuteAgentHarnessExecutionTreatsReplayBuildFailureAsNonFatal(t *testing.T) {
+	workspaceID := uuid.New()
+	harnessID := uuid.New()
+	executionID := uuid.New()
+	runID := uuid.New()
+	runAgentID := uuid.New()
+	openAISecret := "OPENAI_API_KEY"
+	repo := newFakeRunRepository(fixtureRun(runID, domain.RunStatusQueued), fixtureRunAgent(runID, runAgentID, 0))
+	repo.buildReplayErr = errors.New("replay index unavailable")
+	repo.setAgentHarness(repository.AgentHarness{
+		ID:                     harnessID,
+		OrganizationID:         uuid.New(),
+		WorkspaceID:            workspaceID,
+		TaskPrompt:             "write a file without a repository",
+		CodexTemplate:          "codex",
+		AuthMode:               "api_key_secret",
+		OpenAIAPIKeySecretName: &openAISecret,
+		ExecutionConfig:        json.RawMessage(`{"timeout_seconds":120}`),
+	})
+	repo.setAgentHarnessExecution(repository.AgentHarnessExecution{
+		ID:                      executionID,
+		WorkspaceID:             workspaceID,
+		AgentHarnessID:          harnessID,
+		RunID:                   &runID,
+		RunAgentID:              &runAgentID,
+		Status:                  string(repository.AgentHarnessExecutionStatusRunning),
+		ExecutionConfigSnapshot: json.RawMessage(`{"timeout_seconds":120}`),
+	})
+	repo.setWorkspaceSecrets(workspaceID, map[string]string{openAISecret: "sk-test"})
+
+	session := sandbox.NewFakeSession("sandbox-1")
+	session.SetExecFunc(func(request sandbox.ExecRequest, _ map[string][]byte) (sandbox.ExecResult, error) {
+		if len(request.Command) >= 2 && request.Command[0] == "codex" && request.Command[1] == "exec" {
+			return sandbox.ExecResult{ExitCode: 0, Stdout: `{"type":"final","message":"done"}`}, nil
+		}
+		t.Fatalf("unexpected command: %#v", request.Command)
+		return sandbox.ExecResult{}, nil
+	})
+	provider := &sandbox.FakeProvider{NextSession: session}
+	activities := NewActivities(repo, FakeWorkHooks{}).WithSandboxProvider(provider)
+
+	err := activities.ExecuteAgentHarnessExecution(context.Background(), ExecuteAgentHarnessExecutionInput{ExecutionID: executionID})
+	if err != nil {
+		t.Fatalf("ExecuteAgentHarnessExecution error = %v, want replay build failure to be non-fatal", err)
+	}
+	if repo.callCountWithPrefix("BuildRunAgentReplay:"+runAgentID.String()) != 1 {
+		t.Fatalf("BuildRunAgentReplay call count = %d, want 1", repo.callCountWithPrefix("BuildRunAgentReplay:"+runAgentID.String()))
+	}
+	if !agentHarnessEventRecorded(repo.agentHarnessEvents[executionID], "replay.build.failed") {
+		t.Fatal("expected replay.build.failed harness event")
 	}
 }
 
@@ -272,6 +766,87 @@ func TestExecuteAgentHarnessExecutionWithoutRepositorySkipsGitArtifactCapture(t 
 		if len(call.Command) > 0 && call.Command[0] == "git" {
 			t.Fatalf("no-repo harness should not run git artifact commands, saw %#v", call.Command)
 		}
+	}
+}
+
+func TestExecuteAgentHarnessExecutionRunsClaudeAndRecordsTrace(t *testing.T) {
+	workspaceID := uuid.New()
+	harnessID := uuid.New()
+	executionID := uuid.New()
+	anthropicSecret := "ANTHROPIC_API_KEY"
+	model := "claude-sonnet-4-6"
+	repo := newFakeRunRepository(fixtureRun(uuid.New(), domain.RunStatusQueued))
+	repo.setAgentHarness(repository.AgentHarness{
+		ID:                     harnessID,
+		OrganizationID:         uuid.New(),
+		WorkspaceID:            workspaceID,
+		HarnessKind:            "claude_e2b",
+		TaskPrompt:             "implement issue 462",
+		CodexTemplate:          "agentclash-claude-fullstack",
+		CodexModel:             &model,
+		AuthMode:               "api_key_secret",
+		OpenAIAPIKeySecretName: &anthropicSecret,
+		ExecutionConfig:        json.RawMessage(`{"timeout_seconds":120}`),
+	})
+	repo.setAgentHarnessExecution(repository.AgentHarnessExecution{
+		ID:                      executionID,
+		WorkspaceID:             workspaceID,
+		AgentHarnessID:          harnessID,
+		Status:                  string(repository.AgentHarnessExecutionStatusRunning),
+		ExecutionConfigSnapshot: json.RawMessage(`{"timeout_seconds":120}`),
+	})
+	repo.setWorkspaceSecrets(workspaceID, map[string]string{anthropicSecret: "sk-ant-test"})
+
+	session := sandbox.NewFakeSession("sandbox-1")
+	session.SetExecFunc(func(request sandbox.ExecRequest, _ map[string][]byte) (sandbox.ExecResult, error) {
+		switch {
+		case len(request.Command) >= 2 && request.Command[0] == "claude" && request.Command[1] == "-p":
+			if request.Environment["ANTHROPIC_API_KEY"] != "sk-ant-test" {
+				t.Fatalf("claude env = %#v, want Anthropic key", request.Environment)
+			}
+			if containsString(request.Command, "OPENAI_API_KEY") {
+				t.Fatalf("claude command leaked secret name: %#v", request.Command)
+			}
+			if !containsString(request.Command, "--output-format") || !containsString(request.Command, "stream-json") {
+				t.Fatalf("claude command = %#v, want stream-json output", request.Command)
+			}
+			if !containsString(request.Command, "--verbose") {
+				t.Fatalf("claude command = %#v, want --verbose (required when stream-json is paired with -p)", request.Command)
+			}
+			if !containsString(request.Command, "--permission-mode") || !containsString(request.Command, "bypassPermissions") {
+				t.Fatalf("claude command = %#v, want bypass permission mode", request.Command)
+			}
+			if !containsString(request.Command, "--model") || !containsString(request.Command, model) {
+				t.Fatalf("claude command = %#v, want model override", request.Command)
+			}
+			return sandbox.ExecResult{ExitCode: 0, Stdout: `{"type":"assistant","message":"done"}`}, nil
+		default:
+			t.Fatalf("unexpected command: %#v", request.Command)
+			return sandbox.ExecResult{}, nil
+		}
+	})
+	provider := &sandbox.FakeProvider{NextSession: session}
+	activities := NewActivities(repo, FakeWorkHooks{}).WithSandboxProvider(provider)
+
+	err := activities.ExecuteAgentHarnessExecution(context.Background(), ExecuteAgentHarnessExecutionInput{ExecutionID: executionID})
+	if err != nil {
+		t.Fatalf("ExecuteAgentHarnessExecution error: %v", err)
+	}
+	if provider.CreateRequests[0].TemplateID != "agentclash-claude-fullstack" {
+		t.Fatalf("template id = %q, want Claude template", provider.CreateRequests[0].TemplateID)
+	}
+	if provider.CreateRequests[0].EnvVars["ANTHROPIC_API_KEY"] != "sk-ant-test" {
+		t.Fatalf("sandbox env vars = %#v, want Anthropic key", provider.CreateRequests[0].EnvVars)
+	}
+	var sawClaudeOutput bool
+	for _, event := range repo.agentHarnessEvents[executionID] {
+		if event.EventType == "claude.exec.output" && event.ActorType == "claude" {
+			sawClaudeOutput = true
+			break
+		}
+	}
+	if !sawClaudeOutput {
+		t.Fatal("expected live claude output event")
 	}
 }
 
@@ -479,6 +1054,8 @@ func TestExecuteAgentHarnessExecutionCreatesDraftPullRequestForGitHubHarness(t *
 			return sandbox.ExecResult{ExitCode: 0}, nil
 		case len(request.Command) >= 2 && request.Command[0] == "git" && request.Command[1] == "checkout" && request.Command[2] == "main":
 			return sandbox.ExecResult{ExitCode: 0}, nil
+		case isSetupHintsCommand(request.Command):
+			return sandbox.ExecResult{ExitCode: 0}, nil
 		case len(request.Command) >= 2 && request.Command[0] == "codex" && request.Command[1] == "exec":
 			if _, ok := request.Environment["GITHUB_TOKEN"]; ok {
 				t.Fatal("codex env must not include github token")
@@ -551,6 +1128,130 @@ func TestExecuteAgentHarnessExecutionCreatesDraftPullRequestForGitHubHarness(t *
 	}
 }
 
+func TestExecuteAgentHarnessExecutionCreatesPullRequestForAgentCommittedChanges(t *testing.T) {
+	workspaceID := uuid.New()
+	harnessID := uuid.New()
+	executionID := uuid.New()
+	openAISecret := "OPENAI_API_KEY"
+	repositoryID := int64(100)
+	installationID := int64(42)
+	provider := "github"
+	repo := newFakeRunRepository(fixtureRun(uuid.New(), domain.RunStatusQueued))
+	repo.githubRepo = repository.GitHubInstallationRepository{
+		GitHubInstallationID: installationID,
+		GitHubRepositoryID:   repositoryID,
+		FullName:             "acme/repo",
+		DefaultBranch:        "main",
+		Status:               "active",
+	}
+	repo.setAgentHarness(repository.AgentHarness{
+		ID:                     harnessID,
+		OrganizationID:         uuid.New(),
+		WorkspaceID:            workspaceID,
+		TaskPrompt:             "make and commit a sample change",
+		CodexTemplate:          "codex",
+		AuthMode:               "api_key_secret",
+		OpenAIAPIKeySecretName: &openAISecret,
+		RepositoryURL:          stringPtr("https://github.com/acme/repo"),
+		RepositoryProvider:     &provider,
+		GitHubRepositoryID:     &repositoryID,
+		GitHubInstallationID:   &installationID,
+		RepositoryFullName:     stringPtr("acme/repo"),
+		BaseBranch:             stringPtr("main"),
+	})
+	repo.setAgentHarnessExecution(repository.AgentHarnessExecution{
+		ID:                      executionID,
+		WorkspaceID:             workspaceID,
+		AgentHarnessID:          harnessID,
+		Status:                  string(repository.AgentHarnessExecutionStatusRunning),
+		ExecutionConfigSnapshot: json.RawMessage(`{"timeout_seconds":120}`),
+	})
+	repo.setWorkspaceSecrets(workspaceID, map[string]string{openAISecret: "sk-test"})
+
+	session := sandbox.NewFakeSession("sandbox-1")
+	session.SetExecFunc(func(request sandbox.ExecRequest, _ map[string][]byte) (sandbox.ExecResult, error) {
+		switch {
+		case len(request.Command) >= 2 && request.Command[0] == "chmod":
+			return sandbox.ExecResult{ExitCode: 0}, nil
+		case len(request.Command) >= 2 && request.Command[0] == "git" && request.Command[1] == "clone":
+			return sandbox.ExecResult{ExitCode: 0}, nil
+		case len(request.Command) >= 3 && request.Command[0] == "git" && request.Command[1] == "checkout" && request.Command[2] == "main":
+			return sandbox.ExecResult{ExitCode: 0}, nil
+		case isSetupHintsCommand(request.Command):
+			return sandbox.ExecResult{ExitCode: 0}, nil
+		case len(request.Command) >= 2 && request.Command[0] == "codex" && request.Command[1] == "exec":
+			return sandbox.ExecResult{ExitCode: 0, Stdout: `{"type":"final","message":"committed"}`}, nil
+		case len(request.Command) >= 3 && request.Command[0] == "git" && request.Command[1] == "add" && request.Command[2] == "--intent-to-add":
+			return sandbox.ExecResult{ExitCode: 0}, nil
+		case len(request.Command) >= 3 && request.Command[0] == "git" && request.Command[1] == "diff" && request.Command[2] == "--binary":
+			if !containsString(request.Command, "origin/main") {
+				t.Fatalf("binary diff command = %#v, want origin/main", request.Command)
+			}
+			return sandbox.ExecResult{ExitCode: 0, Stdout: "diff --git a/README.md b/README.md"}, nil
+		case len(request.Command) >= 3 && request.Command[0] == "git" && request.Command[1] == "diff" && request.Command[2] == "--name-status":
+			if !containsString(request.Command, "origin/main") {
+				t.Fatalf("name-status diff command = %#v, want origin/main", request.Command)
+			}
+			return sandbox.ExecResult{ExitCode: 0, Stdout: "M\tREADME.md\n"}, nil
+		case len(request.Command) >= 2 && request.Command[0] == "git" && request.Command[1] == "status":
+			return sandbox.ExecResult{ExitCode: 0}, nil
+		case len(request.Command) >= 2 && request.Command[0] == "git" && request.Command[1] == "config":
+			return sandbox.ExecResult{ExitCode: 0}, nil
+		case len(request.Command) >= 3 && request.Command[0] == "git" && request.Command[1] == "checkout" && request.Command[2] == "-B":
+			return sandbox.ExecResult{ExitCode: 0}, nil
+		case len(request.Command) >= 2 && request.Command[0] == "git" && request.Command[1] == "add":
+			t.Fatalf("unexpected git add for already-committed agent changes: %#v", request.Command)
+			return sandbox.ExecResult{}, nil
+		case isGitSubcommand(request.Command, "commit"):
+			t.Fatalf("unexpected git commit for already-committed agent changes: %#v", request.Command)
+			return sandbox.ExecResult{}, nil
+		case isGitSubcommand(request.Command, "push"):
+			if request.Environment["GITHUB_TOKEN"] != "ghs_test_token" {
+				t.Fatalf("push env missing github token")
+			}
+			return sandbox.ExecResult{ExitCode: 0}, nil
+		default:
+			t.Fatalf("unexpected command: %#v", request.Command)
+			return sandbox.ExecResult{}, nil
+		}
+	})
+	providerStub := &sandbox.FakeProvider{NextSession: session}
+	githubClient := &fakeGitHubPullRequestClient{token: "ghs_test_token"}
+	activities := NewActivities(repo, FakeWorkHooks{}).
+		WithSandboxProvider(providerStub).
+		WithGitHubPullRequestClient(githubClient)
+
+	err := activities.ExecuteAgentHarnessExecution(context.Background(), ExecuteAgentHarnessExecutionInput{ExecutionID: executionID})
+	if err != nil {
+		t.Fatalf("ExecuteAgentHarnessExecution error: %v", err)
+	}
+	if githubClient.pullRequestInput.Head != "acme:agentclash/harness/"+strings.ReplaceAll(executionID.String()[:8], "-", "") {
+		t.Fatalf("pull request head = %q", githubClient.pullRequestInput.Head)
+	}
+	var sawPREvent bool
+	var sawBaseChanges bool
+	for _, event := range repo.agentHarnessEvents[executionID] {
+		switch event.EventType {
+		case "github.pull_request.created":
+			sawPREvent = true
+		case "artifact.changed_files":
+			var payload map[string]any
+			if err := json.Unmarshal(event.Payload, &payload); err != nil {
+				t.Fatalf("decode changed files payload: %v", err)
+			}
+			if payload["changed_files"] == "M\tREADME.md" {
+				sawBaseChanges = true
+			}
+		}
+	}
+	if !sawPREvent {
+		t.Fatal("expected github.pull_request.created event")
+	}
+	if !sawBaseChanges {
+		t.Fatal("expected artifact.changed_files to include base diff files")
+	}
+}
+
 func TestExecuteAgentHarnessExecutionSkipsPullRequestWhenNoChanges(t *testing.T) {
 	workspaceID := uuid.New()
 	harnessID := uuid.New()
@@ -599,6 +1300,8 @@ func TestExecuteAgentHarnessExecutionSkipsPullRequestWhenNoChanges(t *testing.T)
 		case len(request.Command) >= 2 && request.Command[0] == "git" && request.Command[1] == "clone":
 			return sandbox.ExecResult{ExitCode: 0}, nil
 		case len(request.Command) >= 2 && request.Command[0] == "git" && request.Command[1] == "checkout" && request.Command[2] == "main":
+			return sandbox.ExecResult{ExitCode: 0}, nil
+		case isSetupHintsCommand(request.Command):
 			return sandbox.ExecResult{ExitCode: 0}, nil
 		case len(request.Command) >= 2 && request.Command[0] == "codex" && request.Command[1] == "exec":
 			return sandbox.ExecResult{ExitCode: 0, Stdout: `{"type":"final","message":"done"}`}, nil
@@ -714,6 +1417,24 @@ func containsString(values []string, target string) bool {
 	return false
 }
 
+func agentHarnessEventRecorded(events []repository.AgentHarnessExecutionEvent, eventType string) bool {
+	for _, event := range events {
+		if event.EventType == eventType {
+			return true
+		}
+	}
+	return false
+}
+
+func containsAny(haystack string, needles ...string) bool {
+	for _, needle := range needles {
+		if strings.Contains(haystack, needle) {
+			return true
+		}
+	}
+	return false
+}
+
 func isGitSubcommand(command []string, subcommand string) bool {
 	if len(command) == 0 || command[0] != "git" {
 		return false
@@ -724,6 +1445,14 @@ func isGitSubcommand(command []string, subcommand string) bool {
 		}
 	}
 	return false
+}
+
+func isSetupHintsCommand(command []string) bool {
+	return len(command) >= 3 &&
+		command[0] == "bash" &&
+		command[1] == "-lc" &&
+		strings.Contains(command[2], ".devcontainer/devcontainer.json") &&
+		strings.Contains(command[2], "Cargo.toml")
 }
 
 func commandIndex(calls []sandbox.ExecRequest, parts ...string) int {

@@ -1,0 +1,120 @@
+{
+  "trace_id": "trace-support-billing-seed-42",
+  "schema_version": "2026-05-13",
+  "run_id": "33333333-3333-3333-3333-333333333333",
+  "run_agent_id": "44444444-4444-4444-4444-444444444444",
+  "segments": [
+    {
+      "segment_id": "seg-001",
+      "sequence_number": 1,
+      "kind": "audio_input",
+      "actor": "user",
+      "occurred_at": "2026-05-13T10:00:00Z",
+      "audio": {
+        "artifact_ref": "fixtures/support_billing/audio/caller-turn-001.wav",
+        "format": "wav",
+        "channel": "caller",
+        "duration_ms": 1800
+      }
+    },
+    {
+      "segment_id": "seg-002",
+      "sequence_number": 2,
+      "kind": "transcript_final",
+      "actor": "system",
+      "occurred_at": "2026-05-13T10:00:02Z",
+      "transcript": {
+        "text": "Please refund the duplicate charge on my card.",
+        "language": "en-US",
+        "confidence": 1,
+        "source_segment_id": "seg-001"
+      }
+    },
+    {
+      "segment_id": "seg-003",
+      "sequence_number": 3,
+      "kind": "tool_call",
+      "actor": "agent",
+      "occurred_at": "2026-05-13T10:00:03Z",
+      "tool_call": {
+        "call_id": "call-refund-001",
+        "tool_name": "refund_api",
+        "arguments": {
+          "account_id": "acct_123",
+          "amount_cents": 4200,
+          "currency": "USD",
+          "idempotency_key": "voice-fixture-42-refund",
+          "reason": "duplicate_charge"
+        }
+      }
+    },
+    {
+      "segment_id": "seg-004",
+      "sequence_number": 4,
+      "kind": "tool_result",
+      "actor": "tool",
+      "occurred_at": "2026-05-13T10:00:04Z",
+      "tool_result": {
+        "call_id": "call-refund-001",
+        "tool_name": "refund_api",
+        "result": {
+          "amount_cents": 4200,
+          "currency": "USD",
+          "refund_id": "rf_123",
+          "status": "created"
+        }
+      }
+    },
+    {
+      "segment_id": "seg-005",
+      "sequence_number": 5,
+      "kind": "text_output",
+      "actor": "agent",
+      "occurred_at": "2026-05-13T10:00:05Z",
+      "text": {
+        "text": "I found the duplicate charge and created refund rf_123 for $42.00.",
+        "language": "en-US"
+      }
+    },
+    {
+      "segment_id": "seg-006",
+      "sequence_number": 6,
+      "kind": "audio_output",
+      "actor": "agent",
+      "occurred_at": "2026-05-13T10:00:06Z",
+      "audio": {
+        "artifact_ref": "fixtures/support_billing/audio/agent-turn-001.wav",
+        "format": "wav",
+        "channel": "agent",
+        "duration_ms": 2400
+      }
+    },
+    {
+      "segment_id": "seg-007",
+      "sequence_number": 7,
+      "kind": "structured_output",
+      "actor": "agent",
+      "occurred_at": "2026-05-13T10:00:07Z",
+      "structured_output": {
+        "schema_ref": "voice.support.resolution.v1",
+        "output": {
+          "final_message": "I found the duplicate charge and created refund rf_123 for $42.00.",
+          "refund_id": "rf_123",
+          "requires_human_transfer": false,
+          "resolution": "refund_created"
+        }
+      }
+    },
+    {
+      "segment_id": "seg-008",
+      "sequence_number": 8,
+      "kind": "timing_marker",
+      "actor": "evaluator",
+      "occurred_at": "2026-05-13T10:00:07Z",
+      "timing_marker": {
+        "key": "end_of_speech_to_first_agent_text",
+        "value_ms": 3200
+      }
+    }
+  ]
+}

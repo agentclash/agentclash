@@ -1,0 +1,12 @@
+# Railway service config — deploy as a separate service from repo root.
+# Set root directory to `services/try-cli` in the Railway dashboard.
+
+[build]
+builder = "NIXPACKS"
+buildCommand = "bun install"
+
+[deploy]
+startCommand = "bun run start"
+healthcheckPath = "/health"
+healthcheckTimeout = 30
+restartPolicyType = "ON_FAILURE"

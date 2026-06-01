@@ -878,17 +878,18 @@ func TestRunReadManagerGetRunRankingSurfacesStrategyPassedAndReason(t *testing.T
 		EvaluationSpecID: uuid.New(),
 		Agents: []runRankingAgentDocument{
 			{
-				RunAgentID:       runAgentID,
-				LaneIndex:        0,
-				Label:            "Solo",
-				Status:           domain.RunAgentStatusCompleted,
-				HasScorecard:     true,
-				EvaluationStatus: "complete",
-				Strategy:         "binary",
-				OverallScore:     float64PtrRunRankingTest(1.0),
-				Passed:           boolPtrRunRankingTest(true),
-				OverallReason:    "all validators passed",
-				CorrectnessScore: float64PtrRunRankingTest(0.9),
+				RunAgentID:        runAgentID,
+				LaneIndex:         0,
+				Label:             "Solo",
+				Status:            domain.RunAgentStatusCompleted,
+				HasScorecard:      true,
+				EvaluationStatus:  "complete",
+				Strategy:          "binary",
+				OverallScore:      float64PtrRunRankingTest(1.0),
+				Passed:            boolPtrRunRankingTest(true),
+				OverallReason:     "all validators passed",
+				CorrectnessScore:  float64PtrRunRankingTest(0.9),
+				CostPerCorrectUSD: float64PtrRunRankingTest(0.0246),
 				Dimensions: map[string]runRankingDimensionScorePayload{
 					"correctness": {State: "available", Score: float64PtrRunRankingTest(0.9)},
 				},
@@ -939,5 +940,8 @@ func TestRunReadManagerGetRunRankingSurfacesStrategyPassedAndReason(t *testing.T
 	}
 	if item.OverallScore == nil || math.Abs(*item.OverallScore-1.0) > 1e-9 {
 		t.Fatalf("overall_score = %v, want 1.0", item.OverallScore)
+	}
+	if item.CostPerCorrectUSD == nil || math.Abs(*item.CostPerCorrectUSD-0.0246) > 1e-9 {
+		t.Fatalf("cost_per_correct_usd = %v, want 0.0246", item.CostPerCorrectUSD)
 	}
 }

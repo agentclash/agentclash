@@ -1,0 +1,11 @@
+{
+  "name": "try-cli",
+  "private": true,
+  "workspaces": ["packages/*"],
+  "scripts": {
+    "cli": "bun run packages/cli/src/index.ts"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3"
+  }
+}

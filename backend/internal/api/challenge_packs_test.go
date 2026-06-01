@@ -19,9 +19,13 @@ import (
 )
 
 type fakeChallengePackReadRepository struct {
-	lastWorkspaceID uuid.UUID
-	runnableVersion repository.RunnableChallengePackVersion
-	inputSets       []repository.ChallengeInputSetSummary
+	lastWorkspaceID   uuid.UUID
+	runnableVersion   repository.RunnableChallengePackVersion
+	inputSets         []repository.ChallengeInputSetSummary
+	versionDefaults   json.RawMessage
+	versionModality   string
+	versionTransports []string
+	publicPacks       bool
 }
 
 func (f *fakeChallengePackReadRepository) ListVisibleChallengePacks(_ context.Context, workspaceID uuid.UUID) ([]repository.ChallengePackSummary, error) {
@@ -37,15 +41,23 @@ func (f *fakeChallengePackReadRepository) ListVisibleChallengePacks(_ context.Co
 	}, nil
 }
 
+func (f *fakeChallengePackReadRepository) WorkspacePublicPacksEnabled(_ context.Context, workspaceID uuid.UUID) (bool, error) {
+	f.lastWorkspaceID = workspaceID
+	return f.publicPacks, nil
+}
+
 func (f *fakeChallengePackReadRepository) ListRunnableChallengePVersionsByPackID(_ context.Context, challengePackID uuid.UUID) ([]repository.ChallengePackVersionSummary, error) {
 	return []repository.ChallengePackVersionSummary{
 		{
-			ID:              uuid.New(),
-			ChallengePackID: challengePackID,
-			VersionNumber:   1,
-			LifecycleStatus: "runnable",
-			CreatedAt:       time.Now().UTC(),
-			UpdatedAt:       time.Now().UTC(),
+			ID:                  uuid.New(),
+			ChallengePackID:     challengePackID,
+			VersionNumber:       1,
+			LifecycleStatus:     "runnable",
+			DeploymentDefaults:  f.versionDefaults,
+			Modality:            f.versionModality,
+			InterfaceTransports: append([]string(nil), f.versionTransports...),
+			CreatedAt:           time.Now().UTC(),
+			UpdatedAt:           time.Now().UTC(),
 		},
 	}, nil
 }
@@ -180,6 +192,79 @@ func TestListChallengePacksHandlerIncludesSlug(t *testing.T) {
 	}
 }
 
+func TestListChallengePacksHandlerIncludesDeploymentDefaults(t *testing.T) {
+	workspaceID := uuid.New()
+	manager := NewChallengePackReadManager(&fakeChallengePackReadRepository{
+		versionDefaults: json.RawMessage(`{"aliases":{"candidate":"Candidate Agent"},"lineups":{"default":["candidate"]}}`),
+	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	handler := listChallengePacksHandler(logger, manager)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/workspaces/"+workspaceID.String()+"/challenge-packs", nil)
+	req = req.WithContext(context.WithValue(req.Context(), workspaceIDContextKey{}, workspaceID))
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body = %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	var response listChallengePacksResponse
+	if err := json.NewDecoder(rec.Body).Decode(&response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(response.Items) != 1 || len(response.Items[0].Versions) != 1 {
+		t.Fatalf("versions = %+v, want one version", response.Items)
+	}
+	var defaults struct {
+		Aliases map[string]string   `json:"aliases"`
+		Lineups map[string][]string `json:"lineups"`
+	}
+	if err := json.Unmarshal(response.Items[0].Versions[0].DeploymentDefaults, &defaults); err != nil {
+		t.Fatalf("decode deployment defaults: %v", err)
+	}
+	if defaults.Aliases["candidate"] != "Candidate Agent" {
+		t.Fatalf("candidate alias = %q, want Candidate Agent", defaults.Aliases["candidate"])
+	}
+	if got := defaults.Lineups["default"]; len(got) != 1 || got[0] != "candidate" {
+		t.Fatalf("default lineup = %#v, want [candidate]", got)
+	}
+}
+
+func TestListChallengePacksHandlerIncludesVoiceVersionMetadata(t *testing.T) {
+	workspaceID := uuid.New()
+	manager := NewChallengePackReadManager(&fakeChallengePackReadRepository{
+		versionModality:   "voice",
+		versionTransports: []string{"text_sim", "sip"},
+	})
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	handler := listChallengePacksHandler(logger, manager)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/workspaces/"+workspaceID.String()+"/challenge-packs", nil)
+	req = req.WithContext(context.WithValue(req.Context(), workspaceIDContextKey{}, workspaceID))
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body = %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	var response listChallengePacksResponse
+	if err := json.NewDecoder(rec.Body).Decode(&response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(response.Items) != 1 || len(response.Items[0].Versions) != 1 {
+		t.Fatalf("versions = %+v, want one version", response.Items)
+	}
+	version := response.Items[0].Versions[0]
+	if version.Modality != "voice" {
+		t.Fatalf("modality = %q, want voice", version.Modality)
+	}
+	if len(version.InterfaceTransports) != 2 || version.InterfaceTransports[0] != "text_sim" || version.InterfaceTransports[1] != "sip" {
+		t.Fatalf("interface_transports = %#v, want [text_sim sip]", version.InterfaceTransports)
+	}
+}
+
 func TestChallengePackAuthoringManagerValidateBundleReturnsFieldErrors(t *testing.T) {
 	manager := NewChallengePackAuthoringManager(&fakeChallengePackAuthoringRepository{}, nil)
 
@@ -244,6 +329,55 @@ func TestChallengePackReadManagerHidesInputSetsForOtherWorkspace(t *testing.T) {
 	_, err := manager.ListChallengeInputSets(ctx, versionID)
 	if !errors.Is(err, repository.ErrChallengePackVersionNotFound) {
 		t.Fatalf("error = %v, want challenge pack version not found", err)
+	}
+}
+
+func TestChallengePackReadManagerHidesGlobalInputSetsWhenPublicPacksDisabled(t *testing.T) {
+	workspaceID := uuid.New()
+	versionID := uuid.New()
+	repo := &fakeChallengePackReadRepository{
+		runnableVersion: repository.RunnableChallengePackVersion{
+			ID:          versionID,
+			WorkspaceID: nil,
+		},
+		publicPacks: false,
+	}
+	manager := NewChallengePackReadManager(repo)
+
+	ctx := context.WithValue(context.Background(), workspaceIDContextKey{}, workspaceID)
+	_, err := manager.ListChallengeInputSets(ctx, versionID)
+	if !errors.Is(err, repository.ErrChallengePackVersionNotFound) {
+		t.Fatalf("error = %v, want challenge pack version not found", err)
+	}
+}
+
+func TestChallengePackReadManagerListsGlobalInputSetsWhenPublicPacksEnabled(t *testing.T) {
+	workspaceID := uuid.New()
+	versionID := uuid.New()
+	repo := &fakeChallengePackReadRepository{
+		runnableVersion: repository.RunnableChallengePackVersion{
+			ID:          versionID,
+			WorkspaceID: nil,
+		},
+		inputSets: []repository.ChallengeInputSetSummary{
+			{
+				ID:                     uuid.New(),
+				ChallengePackVersionID: versionID,
+				InputKey:               "public-default",
+				Name:                   "Public Default",
+			},
+		},
+		publicPacks: true,
+	}
+	manager := NewChallengePackReadManager(repo)
+
+	ctx := context.WithValue(context.Background(), workspaceIDContextKey{}, workspaceID)
+	result, err := manager.ListChallengeInputSets(ctx, versionID)
+	if err != nil {
+		t.Fatalf("ListChallengeInputSets returned error: %v", err)
+	}
+	if len(result.InputSets) != 1 || result.InputSets[0].InputKey != "public-default" {
+		t.Fatalf("input sets = %#v, want public-default", result.InputSets)
 	}
 }
 

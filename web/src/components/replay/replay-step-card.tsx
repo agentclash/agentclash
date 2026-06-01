@@ -17,6 +17,7 @@ import {
   ChevronDown,
 } from "lucide-react";
 import { DownloadArtifactButton } from "@/components/artifacts/download-artifact-button";
+import { AgentOutputRenderer } from "./agent-output-renderer";
 
 const stepIcon: Record<ReplayStepType, React.ComponentType<{ className?: string }>> = {
   model_call: BrainCircuit,
@@ -141,7 +142,7 @@ export function ReplayStepCard({
 
       {/* Expanded detail */}
       {expanded && (
-        <div className="ml-[4.5rem] mr-4 mb-4 space-y-3 rounded-md border border-white/10 bg-black/20 p-4 text-sm">
+        <div className="ml-[4.5rem] mr-4 mb-4 space-y-4 rounded-lg border border-white/[0.08] bg-white/[0.02] p-4 text-sm">
           {/* Metadata row */}
           <div className="flex flex-wrap gap-x-5 gap-y-2 text-[11px] uppercase tracking-[0.14em] text-white/40">
             {step.provider_key && (
@@ -201,33 +202,41 @@ export function ReplayStepCard({
           {/* Model output */}
           {step.model_output && (
             <div className="pt-2">
-              <div className="text-[10px] uppercase tracking-[0.16em] text-white/40 mb-1.5">
-                Model output
+              <div className="mb-2 flex items-center gap-2">
+                <div className="h-px flex-1 bg-white/[0.06]" />
+                <span className="text-[10px] uppercase tracking-[0.16em] text-white/40">
+                  Model output
+                </span>
+                <div className="h-px flex-1 bg-white/[0.06]" />
               </div>
-              <pre className="max-h-60 overflow-auto rounded-md bg-black/40 border border-white/10 p-3 text-xs font-[family-name:var(--font-mono)] text-white/70 whitespace-pre-wrap break-words">
-                {step.model_output}
-              </pre>
+              <div className="max-h-[500px] overflow-auto rounded-lg border border-white/[0.06] bg-[#0d0d12] p-4">
+                <AgentOutputRenderer text={step.model_output} />
+              </div>
             </div>
           )}
 
           {/* Tool result */}
           {step.tool_result && (
             <div className="pt-2">
-              <div className="text-[10px] uppercase tracking-[0.16em] text-white/40 mb-1.5">
-                Tool result
+              <div className="mb-2 flex items-center gap-2">
+                <div className="h-px flex-1 bg-white/[0.06]" />
+                <span className="text-[10px] uppercase tracking-[0.16em] text-white/40">
+                  Tool result
+                </span>
+                <div className="h-px flex-1 bg-white/[0.06]" />
               </div>
-              <pre className="max-h-60 overflow-auto rounded-md bg-black/40 border border-white/10 p-3 text-xs font-[family-name:var(--font-mono)] text-white/70 whitespace-pre-wrap break-words">
-                {step.tool_result}
-              </pre>
+              <div className="max-h-[500px] overflow-auto rounded-lg border border-white/[0.06] bg-[#0d0d12] p-4">
+                <AgentOutputRenderer text={step.tool_result} />
+              </div>
             </div>
           )}
 
           {/* Final output */}
           {step.final_output && (
             <div className="pt-2">
-              <pre className="max-h-60 overflow-auto rounded-md bg-black/40 border border-white/10 p-3 text-xs font-[family-name:var(--font-mono)] text-white/70 whitespace-pre-wrap break-words">
-                {step.final_output}
-              </pre>
+              <div className="max-h-[500px] overflow-auto rounded-lg border border-white/[0.06] bg-[#0d0d12] p-4">
+                <AgentOutputRenderer text={step.final_output} />
+              </div>
             </div>
           )}
 

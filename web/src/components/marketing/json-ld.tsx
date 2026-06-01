@@ -13,7 +13,7 @@ export function JsonLd({ id, data }: Props) {
   );
 }
 
-export const SITE_URL = "https://agentclash.dev";
+export const SITE_URL = "https://www.agentclash.dev";
 
 export function breadcrumbSchema(
   items: Array<{ name: string; url: string }>,
@@ -51,10 +51,16 @@ export function productSchema({
   name,
   description,
   url,
+  applicationSubCategory,
+  softwareVersion,
+  featureList,
 }: {
   name: string;
   description: string;
   url: string;
+  applicationSubCategory?: string;
+  softwareVersion?: string;
+  featureList?: string[];
 }): Record<string, unknown> {
   return {
     "@context": "https://schema.org",
@@ -62,9 +68,234 @@ export function productSchema({
     name,
     alternateName: "Agent Clash",
     applicationCategory: "DeveloperApplication",
+    ...(applicationSubCategory ? { applicationSubCategory } : {}),
     operatingSystem: "Web, macOS, Linux, Windows",
     description,
     url: url.startsWith("http") ? url : `${SITE_URL}${url}`,
-    offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+    ...(softwareVersion ? { softwareVersion } : {}),
+    ...(featureList?.length ? { featureList } : {}),
+    sameAs: [
+      "https://github.com/agentclash/agentclash",
+      "https://www.npmjs.com/package/agentclash",
+    ],
+    offers: {
+      "@type": "Offer",
+      name: "Open-source self-hosted edition",
+      price: "0",
+      priceCurrency: "USD",
+      availability: "https://schema.org/InStock",
+      category: "Open-source software",
+    },
   };
+}
+
+export function publisherSchema(): Record<string, unknown> {
+  return {
+    "@type": "Organization",
+    name: "AgentClash",
+    alternateName: "Agent Clash",
+    url: SITE_URL,
+    description:
+      "Open-source AI agent evaluation platform for racing agents head-to-head on real tasks with sandboxed tools, replay, scorecards, and CI regression gates.",
+    logo: {
+      "@type": "ImageObject",
+      url: `${SITE_URL}/icon.svg`,
+    },
+    sameAs: [
+      "https://github.com/agentclash/agentclash",
+      "https://www.npmjs.com/package/agentclash",
+    ],
+  };
+}
+
+// Standalone Organization node (with @context) for top-level use on the
+// homepage. Nested usages (publisher/author) keep using publisherSchema().
+export function organizationSchema(): Record<string, unknown> {
+  return {
+    "@context": "https://schema.org",
+    ...publisherSchema(),
+  };
+}
+
+// WebSite entity establishes AgentClash as a named site/entity for search and
+// answer engines. No SearchAction: docs search is client-side with no
+// query-param results URL, and a non-functional sitelinks searchbox can be
+// flagged — entity establishment is the valuable part here.
+export function websiteSchema(): Record<string, unknown> {
+  return {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    name: "AgentClash",
+    alternateName: "Agent Clash",
+    url: SITE_URL,
+    description:
+      "Open-source AI agent evaluation platform. Race agents head-to-head on real tasks with sandboxed tools, replay, scorecards, and CI regression gates.",
+    publisher: publisherSchema(),
+  };
+}
+
+export function articleSchema({
+  headline,
+  description,
+  url,
+  datePublished,
+  dateModified,
+  authorName,
+}: {
+  headline: string;
+  description: string;
+  url: string;
+  datePublished: string;
+  dateModified?: string;
+  authorName: string;
+}): Record<string, unknown> {
+  const absoluteUrl = url.startsWith("http") ? url : `${SITE_URL}${url}`;
+
+  return {
+    "@context": "https://schema.org",
+    "@type": "BlogPosting",
+    headline,
+    description,
+    url: absoluteUrl,
+    mainEntityOfPage: {
+      "@type": "WebPage",
+      "@id": absoluteUrl,
+      url: absoluteUrl,
+    },
+    image: {
+      "@type": "ImageObject",
+      url: `${SITE_URL}/og-image.png`,
+      width: 1200,
+      height: 630,
+    },
+    datePublished,
+    dateModified: dateModified ?? datePublished,
+    author: {
+      "@type": "Person",
+      name: authorName,
+    },
+    publisher: publisherSchema(),
+  };
+}
+
+type BlogIndexPost = {
+  slug: string;
+  title: string;
+  description: string;
+  date: string;
+  author: string;
+};
+
+export function blogIndexSchema(
+  posts: BlogIndexPost[],
+): Record<string, unknown>[] {
+  const blogPosts = posts.map((post) => {
+    const url = `${SITE_URL}/blog/${post.slug}`;
+
+    return {
+      atId: url,
+      title: post.title,
+      description: post.description,
+      url,
+    };
+  });
+
+  return [
+    {
+      "@context": "https://schema.org",
+      "@type": "Blog",
+      name: "AgentClash Blog",
+      description:
+        "Engineering notes on AI agent evaluation, replayable failures, scorecards, and CI regression gates.",
+      url: `${SITE_URL}/blog`,
+      publisher: publisherSchema(),
+      blogPost: blogPosts.map((post) => ({
+        "@id": post.atId,
+      })),
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "ItemList",
+      name: "AgentClash Blog Posts",
+      url: `${SITE_URL}/blog`,
+      numberOfItems: blogPosts.length,
+      itemListElement: blogPosts.map((post, index) => ({
+        "@type": "ListItem",
+        position: index + 1,
+        name: post.title,
+        description: post.description,
+        url: post.url,
+        item: {
+          "@id": post.atId,
+        },
+      })),
+    },
+  ];
+}
+
+export function docsPageSchema({
+  title,
+  description,
+  href,
+  faqItems = [],
+  datePublished,
+  dateModified,
+}: {
+  title: string;
+  description: string;
+  href: string;
+  faqItems?: Array<{ question: string; answer: string }>;
+  datePublished?: string;
+  dateModified?: string;
+}): Record<string, unknown>[] {
+  const absoluteUrl = href.startsWith("http") ? href : `${SITE_URL}${href}`;
+  const pathname = href.replace(/^https?:\/\/[^/]+/, "").replace(/\/+$/, "");
+  const isDocsHome = pathname === "/docs";
+  const breadcrumbs =
+    isDocsHome
+      ? [
+          { name: "Home", url: "/" },
+          { name: "Docs", url: "/docs" },
+        ]
+      : [
+          { name: "Home", url: "/" },
+          { name: "Docs", url: "/docs" },
+          { name: title, url: href },
+        ];
+
+  const schema = [
+    breadcrumbSchema(breadcrumbs),
+    ...(isDocsHome && faqItems.length ? [faqSchema(faqItems)] : []),
+  ];
+  if (!isDocsHome && faqItems.length) {
+    throw new Error("docsPageSchema faqItems are only supported for /docs");
+  }
+  if (isDocsHome) return schema;
+
+  return [
+    ...schema,
+    {
+      "@context": "https://schema.org",
+      "@type": "TechArticle",
+      headline: title,
+      description,
+      url: absoluteUrl,
+      ...(datePublished ? { datePublished } : {}),
+      ...(dateModified ?? datePublished
+        ? { dateModified: dateModified ?? datePublished }
+        : {}),
+      mainEntityOfPage: {
+        "@type": "WebPage",
+        "@id": absoluteUrl,
+        url: absoluteUrl,
+      },
+      author: publisherSchema(),
+      publisher: publisherSchema(),
+      isPartOf: {
+        "@type": "WebSite",
+        name: "AgentClash Docs",
+        url: `${SITE_URL}/docs`,
+      },
+    },
+  ];
 }

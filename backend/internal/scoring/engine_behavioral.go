@@ -14,6 +14,8 @@ type toolCallTraceEntry struct {
 	Failed        bool            `json:"failed"`
 	FailureOrigin string          `json:"failure_origin,omitempty"`
 	ErrorMessage  string          `json:"error_message,omitempty"`
+	Sequence      int64           `json:"sequence,omitempty"`
+	EventType     string          `json:"event_type,omitempty"`
 }
 
 func behavioralDimensionScore(spec EvaluationSpec, evidence extractedEvidence, validators []ValidatorResult) (*float64, string, OutputState) {
@@ -28,7 +30,7 @@ func behavioralDimensionScore(spec EvaluationSpec, evidence extractedEvidence, v
 	)
 
 	for _, signal := range spec.Behavioral.Signals {
-		score, reason, state := behavioralSignalScore(signal.Key, evidence.toolCallTrace, validators)
+		score, reason, state := behavioralSignalScore(signal.Key, evidence.toolCallTrace, evidence.transcriptTurns, validators)
 		if state != OutputStateAvailable || score == nil {
 			return nil, fmt.Sprintf("behavioral signal %q is unavailable: %s", signal.Key, firstNonEmpty(reason, "signal is unavailable")), OutputStateUnavailable
 		}
@@ -51,9 +53,12 @@ func behavioralDimensionScore(spec EvaluationSpec, evidence extractedEvidence, v
 	return &score, "", OutputStateAvailable
 }
 
-func behavioralSignalScore(key BehavioralSignalKey, trace []toolCallTraceEntry, validators []ValidatorResult) (*float64, string, OutputState) {
+func behavioralSignalScore(key BehavioralSignalKey, trace []toolCallTraceEntry, transcript []transcriptTurnEvidence, validators []ValidatorResult) (*float64, string, OutputState) {
 	switch key {
 	case BehavioralSignalRecoveryBehavior:
+		if len(transcript) > 0 {
+			return multiTurnRecoveryScore(transcript, validators)
+		}
 		return recoveryBehaviorScore(trace)
 	case BehavioralSignalExplorationEfficiency:
 		return explorationEfficiencyScore(trace)
@@ -230,7 +235,7 @@ func normalizeToolCallArguments(raw json.RawMessage) json.RawMessage {
 	return normalized
 }
 
-func buildToolCallTraceEntry(payload map[string]any, eventType string) (toolCallTraceEntry, bool) {
+func buildToolCallTraceEntry(event Event, payload map[string]any) (toolCallTraceEntry, bool) {
 	toolName, ok := stringValue(payload, "tool_name")
 	if !ok || strings.TrimSpace(toolName) == "" {
 		return toolCallTraceEntry{}, false
@@ -245,7 +250,9 @@ func buildToolCallTraceEntry(payload map[string]any, eventType string) (toolCall
 	entry := toolCallTraceEntry{
 		ToolName:  strings.TrimSpace(toolName),
 		Arguments: args,
-		Failed:    eventType == "tool.call.failed",
+		Failed:    event.Type == "tool.call.failed",
+		Sequence:  event.SequenceNumber,
+		EventType: event.Type,
 	}
 	if failureOrigin, ok := stringValue(payload, "failure_origin"); ok {
 		entry.FailureOrigin = strings.TrimSpace(failureOrigin)

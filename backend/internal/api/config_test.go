@@ -186,6 +186,7 @@ func TestLoadConfigFromEnvAcceptsWhsecDodoWebhookSecret(t *testing.T) {
 	setRequiredProductionConfig(t)
 	t.Setenv("DODO_PAYMENTS_API_KEY", "dodo_live_key")
 	t.Setenv("DODO_PAYMENTS_WEBHOOK_KEY", "whsec_"+base64.StdEncoding.EncodeToString([]byte("dodo-webhook-secret")))
+	setDodoProductEnv(t)
 
 	cfg, err := LoadConfigFromEnv()
 	if err != nil {
@@ -193,6 +194,26 @@ func TestLoadConfigFromEnvAcceptsWhsecDodoWebhookSecret(t *testing.T) {
 	}
 	if cfg.DodoPaymentsWebhookKey == "" {
 		t.Fatal("DodoPaymentsWebhookKey is empty")
+	}
+	if cfg.DodoEnvironment != "test" {
+		t.Fatalf("DodoEnvironment = %q, want test", cfg.DodoEnvironment)
+	}
+}
+
+func TestLoadConfigFromEnvRequiresDodoProductsWhenAPIKeyConfigured(t *testing.T) {
+	setRequiredProductionConfig(t)
+	t.Setenv("DODO_PAYMENTS_API_KEY", "dodo_live_key")
+	t.Setenv("DODO_PAYMENTS_WEBHOOK_KEY", "whsec_"+base64.StdEncoding.EncodeToString([]byte("dodo-webhook-secret")))
+
+	_, err := LoadConfigFromEnv()
+	if err == nil {
+		t.Fatal("expected Dodo product env error")
+	}
+	if !errors.Is(err, ErrInvalidConfig) {
+		t.Fatalf("error = %v, want ErrInvalidConfig", err)
+	}
+	if !strings.Contains(err.Error(), "DODO_PRODUCT") {
+		t.Fatalf("error = %v, want DODO_PRODUCT mention", err)
 	}
 }
 
@@ -213,4 +234,17 @@ func unsetDodoPaymentsEnv(t *testing.T) {
 	t.Helper()
 	unsetEnv(t, "DODO_PAYMENTS_API_KEY")
 	unsetEnv(t, "DODO_PAYMENTS_WEBHOOK_KEY")
+	unsetEnv(t, "DODO_ENVIRONMENT")
+	unsetEnv(t, "DODO_PRODUCT_PRO_MONTHLY")
+	unsetEnv(t, "DODO_PRODUCT_PRO_YEARLY")
+	unsetEnv(t, "DODO_PRODUCT_TEAM_MONTHLY")
+	unsetEnv(t, "DODO_PRODUCT_TEAM_YEARLY")
+}
+
+func setDodoProductEnv(t *testing.T) {
+	t.Helper()
+	t.Setenv("DODO_PRODUCT_PRO_MONTHLY", "prod_pro_monthly")
+	t.Setenv("DODO_PRODUCT_PRO_YEARLY", "prod_pro_yearly")
+	t.Setenv("DODO_PRODUCT_TEAM_MONTHLY", "prod_team_monthly")
+	t.Setenv("DODO_PRODUCT_TEAM_YEARLY", "prod_team_yearly")
 }

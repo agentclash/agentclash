@@ -21,8 +21,11 @@ const (
 	ActionMarkAgentBuildReady         Action = "mark_agent_build_ready"
 	ActionCreateAgentDeployment       Action = "create_agent_deployment"
 	ActionCreateRun                   Action = "create_run"
+	ActionCancelRun                   Action = "cancel_run"
 	ActionManagePlaygrounds           Action = "manage_playgrounds"
 	ActionManageRegressions           Action = "manage_regressions"
+	ActionManageDatasets              Action = "manage_datasets"
+	ActionManageVibeEvalDrafts        Action = "manage_vibe_eval_drafts"
 	ActionSelectIntegrationRepository Action = "select_integration_repository"
 	ActionPublishChallengePack        Action = "publish_challenge_pack"
 	ActionUploadArtifact              Action = "upload_artifact"
@@ -55,8 +58,11 @@ var permissionMatrix = map[string]map[Action]bool{
 		ActionMarkAgentBuildReady:         true,
 		ActionCreateAgentDeployment:       true,
 		ActionCreateRun:                   true,
+		ActionCancelRun:                   true,
 		ActionManagePlaygrounds:           true,
 		ActionManageRegressions:           true,
+		ActionManageDatasets:              true,
+		ActionManageVibeEvalDrafts:        true,
 		ActionSelectIntegrationRepository: true,
 		ActionPublishChallengePack:        true,
 		ActionUploadArtifact:              true,
@@ -72,8 +78,11 @@ var permissionMatrix = map[string]map[Action]bool{
 		ActionMarkAgentBuildReady:         true,
 		ActionCreateAgentDeployment:       true,
 		ActionCreateRun:                   true,
+		ActionCancelRun:                   true,
 		ActionManagePlaygrounds:           true,
 		ActionManageRegressions:           true,
+		ActionManageDatasets:              true,
+		ActionManageVibeEvalDrafts:        true,
 		ActionSelectIntegrationRepository: true,
 		ActionPublishChallengePack:        true,
 		ActionUploadArtifact:              true,

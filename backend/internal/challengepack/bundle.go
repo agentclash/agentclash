@@ -12,11 +12,33 @@ import (
 )
 
 type Bundle struct {
-	Pack       PackMetadata          `yaml:"pack" json:"pack"`
-	Version    VersionMetadata       `yaml:"version" json:"version"`
-	Tools      map[string]any        `yaml:"tools,omitempty" json:"tools,omitempty"`
-	Challenges []ChallengeDefinition `yaml:"challenges" json:"challenges"`
-	InputSets  []InputSetDefinition  `yaml:"input_sets" json:"input_sets"`
+	Modality      string                `yaml:"modality,omitempty" json:"modality,omitempty"`
+	InterfaceSpec *InterfaceSpec        `yaml:"interface_spec,omitempty" json:"interface_spec,omitempty"`
+	Scenario      *ScenarioSpec         `yaml:"scenario,omitempty" json:"scenario,omitempty"`
+	Pack          PackMetadata          `yaml:"pack" json:"pack"`
+	Version       VersionMetadata       `yaml:"version" json:"version"`
+	Tools         map[string]any        `yaml:"tools,omitempty" json:"tools,omitempty"`
+	Challenges    []ChallengeDefinition `yaml:"challenges" json:"challenges"`
+	InputSets     []InputSetDefinition  `yaml:"input_sets" json:"input_sets"`
+	// Security declares red-team / leak-detection extensions. Required
+	// for packs with family == "security"; optional otherwise. See
+	// security.go for the SecurityPolicy schema.
+	Security *SecurityPolicy `yaml:"security,omitempty" json:"security,omitempty"`
+}
+
+const ModalityVoice = "voice"
+
+type InterfaceSpec struct {
+	Transports      []string `yaml:"transports,omitempty" json:"transports,omitempty"`
+	ChannelProfile  string   `yaml:"channel_profile,omitempty" json:"channel_profile,omitempty"`
+	SupportsBargeIn bool     `yaml:"supports_barge_in,omitempty" json:"supports_barge_in,omitempty"`
+}
+
+type ScenarioSpec struct {
+	Persona       string `yaml:"persona,omitempty" json:"persona,omitempty"`
+	Language      string `yaml:"language,omitempty" json:"language,omitempty"`
+	MaxTurns      int32  `yaml:"max_turns,omitempty" json:"max_turns,omitempty"`
+	MaxDurationMS int64  `yaml:"max_duration_ms,omitempty" json:"max_duration_ms,omitempty"`
 }
 
 type PackMetadata struct {
@@ -27,18 +49,21 @@ type PackMetadata struct {
 }
 
 type VersionMetadata struct {
-	Number         int32                  `yaml:"number" json:"number"`
-	ExecutionMode  string                 `yaml:"execution_mode,omitempty" json:"execution_mode,omitempty"`
-	ToolPolicy     map[string]any         `yaml:"tool_policy,omitempty" json:"tool_policy,omitempty"`
-	Filesystem     map[string]any         `yaml:"filesystem,omitempty" json:"filesystem,omitempty"`
-	Sandbox        *SandboxConfig         `yaml:"sandbox,omitempty" json:"sandbox,omitempty"`
-	EvaluationSpec scoring.EvaluationSpec `yaml:"evaluation_spec" json:"evaluation_spec"`
-	Assets         []AssetReference       `yaml:"assets,omitempty" json:"assets,omitempty"`
+	Number             int32                  `yaml:"number" json:"number"`
+	ExecutionMode      string                 `yaml:"execution_mode,omitempty" json:"execution_mode,omitempty"`
+	ToolPolicy         map[string]any         `yaml:"tool_policy,omitempty" json:"tool_policy,omitempty"`
+	Filesystem         map[string]any         `yaml:"filesystem,omitempty" json:"filesystem,omitempty"`
+	Sandbox            *SandboxConfig         `yaml:"sandbox,omitempty" json:"sandbox,omitempty"`
+	DeploymentDefaults *DeploymentDefaults    `yaml:"deployment_defaults,omitempty" json:"deployment_defaults,omitempty"`
+	EvaluationSpec     scoring.EvaluationSpec `yaml:"evaluation_spec" json:"evaluation_spec"`
+	Assets             []AssetReference       `yaml:"assets,omitempty" json:"assets,omitempty"`
 }
 
 const (
 	ExecutionModeNative     = "native"
 	ExecutionModePromptEval = "prompt_eval"
+	ExecutionModeResponses  = "responses"
+	ExecutionModeMultiTurn  = "multi_turn"
 )
 
 type SandboxConfig struct {
@@ -47,6 +72,11 @@ type SandboxConfig struct {
 	EnvVars            map[string]string `yaml:"env_vars,omitempty" json:"env_vars,omitempty"`
 	AdditionalPackages []string          `yaml:"additional_packages,omitempty" json:"additional_packages,omitempty"`
 	SandboxTemplateID  string            `yaml:"sandbox_template_id,omitempty" json:"sandbox_template_id,omitempty"`
+}
+
+type DeploymentDefaults struct {
+	Aliases map[string]string   `yaml:"aliases,omitempty" json:"aliases,omitempty"`
+	Lineups map[string][]string `yaml:"lineups,omitempty" json:"lineups,omitempty"`
 }
 
 type ChallengeDefinition struct {
@@ -69,14 +99,15 @@ type InputSetDefinition struct {
 }
 
 type CaseDefinition struct {
-	ChallengeKey string            `yaml:"challenge_key" json:"challenge_key"`
-	CaseKey      string            `yaml:"case_key,omitempty" json:"case_key,omitempty"`
-	ItemKey      string            `yaml:"item_key,omitempty" json:"item_key,omitempty"`
-	Payload      map[string]any    `yaml:"payload,omitempty" json:"payload,omitempty"`
-	Inputs       []CaseInput       `yaml:"inputs,omitempty" json:"inputs,omitempty"`
-	Expectations []CaseExpectation `yaml:"expectations,omitempty" json:"expectations,omitempty"`
-	Artifacts    []ArtifactRef     `yaml:"artifacts,omitempty" json:"artifacts,omitempty"`
-	Assets       []AssetReference  `yaml:"assets,omitempty" json:"assets,omitempty"`
+	ChallengeKey  string             `yaml:"challenge_key" json:"challenge_key"`
+	CaseKey       string             `yaml:"case_key,omitempty" json:"case_key,omitempty"`
+	ItemKey       string             `yaml:"item_key,omitempty" json:"item_key,omitempty"`
+	Payload       map[string]any     `yaml:"payload,omitempty" json:"payload,omitempty"`
+	Inputs        []CaseInput        `yaml:"inputs,omitempty" json:"inputs,omitempty"`
+	Expectations  []CaseExpectation  `yaml:"expectations,omitempty" json:"expectations,omitempty"`
+	UserSimulator *UserSimulatorSpec `yaml:"user_simulator,omitempty" json:"user_simulator,omitempty"`
+	Artifacts     []ArtifactRef      `yaml:"artifacts,omitempty" json:"artifacts,omitempty"`
+	Assets        []AssetReference   `yaml:"assets,omitempty" json:"assets,omitempty"`
 }
 
 type AssetReference struct {
@@ -108,13 +139,14 @@ type CaseExpectation struct {
 }
 
 type StoredCaseDocument struct {
-	SchemaVersion int32             `json:"schema_version,omitempty"`
-	CaseKey       string            `json:"case_key,omitempty"`
-	Payload       map[string]any    `json:"payload,omitempty"`
-	Inputs        []CaseInput       `json:"inputs,omitempty"`
-	Expectations  []CaseExpectation `json:"expectations,omitempty"`
-	Artifacts     []ArtifactRef     `json:"artifacts,omitempty"`
-	Assets        []AssetReference  `json:"assets,omitempty"`
+	SchemaVersion int32              `json:"schema_version,omitempty"`
+	CaseKey       string             `json:"case_key,omitempty"`
+	Payload       map[string]any     `json:"payload,omitempty"`
+	Inputs        []CaseInput        `json:"inputs,omitempty"`
+	Expectations  []CaseExpectation  `json:"expectations,omitempty"`
+	UserSimulator *UserSimulatorSpec `json:"user_simulator,omitempty"`
+	Artifacts     []ArtifactRef      `json:"artifacts,omitempty"`
+	Assets        []AssetReference   `json:"assets,omitempty"`
 }
 
 type LegacyItemDefinition struct {
@@ -132,20 +164,25 @@ func ParseYAML(data []byte) (Bundle, error) {
 	}
 
 	type rawVersionMetadata struct {
-		Number         int32            `yaml:"number"`
-		ExecutionMode  string           `yaml:"execution_mode,omitempty"`
-		ToolPolicy     map[string]any   `yaml:"tool_policy,omitempty"`
-		Filesystem     map[string]any   `yaml:"filesystem,omitempty"`
-		Sandbox        *SandboxConfig   `yaml:"sandbox,omitempty"`
-		EvaluationSpec map[string]any   `yaml:"evaluation_spec"`
-		Assets         []AssetReference `yaml:"assets,omitempty"`
+		Number             int32               `yaml:"number"`
+		ExecutionMode      string              `yaml:"execution_mode,omitempty"`
+		ToolPolicy         map[string]any      `yaml:"tool_policy,omitempty"`
+		Filesystem         map[string]any      `yaml:"filesystem,omitempty"`
+		Sandbox            *SandboxConfig      `yaml:"sandbox,omitempty"`
+		DeploymentDefaults *DeploymentDefaults `yaml:"deployment_defaults,omitempty"`
+		EvaluationSpec     map[string]any      `yaml:"evaluation_spec"`
+		Assets             []AssetReference    `yaml:"assets,omitempty"`
 	}
 	type rawBundle struct {
-		Pack       PackMetadata          `yaml:"pack"`
-		Version    rawVersionMetadata    `yaml:"version"`
-		Tools      map[string]any        `yaml:"tools,omitempty"`
-		Challenges []ChallengeDefinition `yaml:"challenges"`
-		InputSets  []InputSetDefinition  `yaml:"input_sets"`
+		Modality      string                `yaml:"modality,omitempty"`
+		InterfaceSpec *InterfaceSpec        `yaml:"interface_spec,omitempty"`
+		Scenario      *ScenarioSpec         `yaml:"scenario,omitempty"`
+		Pack          PackMetadata          `yaml:"pack"`
+		Version       rawVersionMetadata    `yaml:"version"`
+		Tools         map[string]any        `yaml:"tools,omitempty"`
+		Challenges    []ChallengeDefinition `yaml:"challenges"`
+		InputSets     []InputSetDefinition  `yaml:"input_sets"`
+		Security      *SecurityPolicy       `yaml:"security,omitempty"`
 	}
 
 	var raw rawBundle
@@ -169,19 +206,24 @@ func ParseYAML(data []byte) (Bundle, error) {
 	}
 
 	bundle := Bundle{
-		Pack: raw.Pack,
+		Modality:      raw.Modality,
+		InterfaceSpec: raw.InterfaceSpec,
+		Scenario:      raw.Scenario,
+		Pack:          raw.Pack,
 		Version: VersionMetadata{
-			Number:         raw.Version.Number,
-			ExecutionMode:  raw.Version.ExecutionMode,
-			ToolPolicy:     raw.Version.ToolPolicy,
-			Filesystem:     raw.Version.Filesystem,
-			Sandbox:        raw.Version.Sandbox,
-			EvaluationSpec: evaluationSpec,
-			Assets:         raw.Version.Assets,
+			Number:             raw.Version.Number,
+			ExecutionMode:      raw.Version.ExecutionMode,
+			ToolPolicy:         raw.Version.ToolPolicy,
+			Filesystem:         raw.Version.Filesystem,
+			Sandbox:            raw.Version.Sandbox,
+			DeploymentDefaults: raw.Version.DeploymentDefaults,
+			EvaluationSpec:     evaluationSpec,
+			Assets:             raw.Version.Assets,
 		},
 		Tools:      raw.Tools,
 		Challenges: raw.Challenges,
 		InputSets:  raw.InputSets,
+		Security:   raw.Security,
 	}
 
 	normalizeBundle(&bundle)
@@ -206,6 +248,9 @@ func ManifestJSON(bundle Bundle) (json.RawMessage, error) {
 	if normalized.Version.Sandbox != nil {
 		versionMap["sandbox_template_id"] = normalized.Version.Sandbox.SandboxTemplateID
 	}
+	if normalized.Version.DeploymentDefaults != nil {
+		versionMap["deployment_defaults"] = normalized.Version.DeploymentDefaults
+	}
 
 	manifest := map[string]any{
 		"schema_version":  1,
@@ -217,11 +262,23 @@ func ManifestJSON(bundle Bundle) (json.RawMessage, error) {
 		"challenges":      normalized.Challenges,
 		"input_sets":      normalized.InputSets,
 	}
+	if normalized.Modality != "" {
+		manifest["modality"] = normalized.Modality
+	}
+	if normalized.InterfaceSpec != nil {
+		manifest["interface_spec"] = normalized.InterfaceSpec
+	}
+	if normalized.Scenario != nil {
+		manifest["scenario"] = normalized.Scenario
+	}
 	if normalized.Tools != nil {
 		manifest["tools"] = normalized.Tools
 	}
 	if normalized.Version.Sandbox != nil {
 		manifest["sandbox"] = normalized.Version.Sandbox
+	}
+	if normalized.Security != nil {
+		manifest["security"] = normalized.Security
 	}
 
 	encoded, err := json.Marshal(manifest)
@@ -233,10 +290,15 @@ func ManifestJSON(bundle Bundle) (json.RawMessage, error) {
 }
 
 func normalizeBundle(bundle *Bundle) {
+	bundle.Modality = strings.TrimSpace(bundle.Modality)
+	bundle.InterfaceSpec = normalizeInterfaceSpec(bundle.InterfaceSpec)
+	bundle.Scenario = normalizeScenarioSpec(bundle.Scenario)
 	bundle.Pack.Slug = strings.TrimSpace(bundle.Pack.Slug)
 	bundle.Pack.Name = strings.TrimSpace(bundle.Pack.Name)
-	bundle.Pack.Family = strings.TrimSpace(bundle.Pack.Family)
+	bundle.Pack.Family = strings.TrimSpace(strings.ToLower(bundle.Pack.Family))
+	bundle.Security = normalizeSecurityPolicy(bundle.Security)
 	bundle.Version.ExecutionMode = strings.TrimSpace(bundle.Version.ExecutionMode)
+	bundle.Version.DeploymentDefaults = normalizeDeploymentDefaults(bundle.Version.DeploymentDefaults)
 	bundle.Challenges = append([]ChallengeDefinition(nil), bundle.Challenges...)
 	bundle.InputSets = append([]InputSetDefinition(nil), bundle.InputSets...)
 	bundle.Version.Assets = append([]AssetReference(nil), bundle.Version.Assets...)
@@ -297,6 +359,62 @@ func normalizeBundle(bundle *Bundle) {
 	}
 
 	bundle.Version.Assets = normalizeAssets(bundle.Version.Assets)
+}
+
+func normalizeInterfaceSpec(spec *InterfaceSpec) *InterfaceSpec {
+	if spec == nil {
+		return nil
+	}
+	var transports []string
+	for _, transport := range spec.Transports {
+		transports = append(transports, strings.TrimSpace(transport))
+	}
+	normalized := &InterfaceSpec{
+		Transports:      transports,
+		ChannelProfile:  strings.TrimSpace(spec.ChannelProfile),
+		SupportsBargeIn: spec.SupportsBargeIn,
+	}
+	return normalized
+}
+
+func normalizeScenarioSpec(spec *ScenarioSpec) *ScenarioSpec {
+	if spec == nil {
+		return nil
+	}
+	return &ScenarioSpec{
+		Persona:       strings.TrimSpace(spec.Persona),
+		Language:      strings.TrimSpace(spec.Language),
+		MaxTurns:      spec.MaxTurns,
+		MaxDurationMS: spec.MaxDurationMS,
+	}
+}
+
+func normalizeDeploymentDefaults(defaults *DeploymentDefaults) *DeploymentDefaults {
+	if defaults == nil {
+		return nil
+	}
+
+	normalized := &DeploymentDefaults{}
+	if len(defaults.Aliases) > 0 {
+		normalized.Aliases = make(map[string]string, len(defaults.Aliases))
+		for key, value := range defaults.Aliases {
+			normalized.Aliases[strings.TrimSpace(key)] = strings.TrimSpace(value)
+		}
+	}
+	if len(defaults.Lineups) > 0 {
+		normalized.Lineups = make(map[string][]string, len(defaults.Lineups))
+		for key, values := range defaults.Lineups {
+			lineup := make([]string, 0, len(values))
+			for _, value := range values {
+				lineup = append(lineup, strings.TrimSpace(value))
+			}
+			normalized.Lineups[strings.TrimSpace(key)] = lineup
+		}
+	}
+	if len(normalized.Aliases) == 0 && len(normalized.Lineups) == 0 {
+		return nil
+	}
+	return normalized
 }
 
 func normalizeAssets(assets []AssetReference) []AssetReference {
@@ -381,7 +499,7 @@ func (c CaseDefinition) IsLegacyPayloadOnly() bool {
 	// Legacy packs only used raw payload blobs keyed by item_key. We keep that
 	// storage shape for backward compatibility when no generalized case fields
 	// are present.
-	return len(c.Inputs) == 0 && len(c.Expectations) == 0 && len(c.Artifacts) == 0 && len(c.Assets) == 0
+	return len(c.Inputs) == 0 && len(c.Expectations) == 0 && c.UserSimulator == nil && len(c.Artifacts) == 0 && len(c.Assets) == 0
 }
 
 func (c CaseDefinition) StoredPayload() (json.RawMessage, error) {
@@ -398,6 +516,7 @@ func (c CaseDefinition) StoredPayload() (json.RawMessage, error) {
 		Payload:       cloneObject(c.Payload),
 		Inputs:        append([]CaseInput(nil), c.Inputs...),
 		Expectations:  append([]CaseExpectation(nil), c.Expectations...),
+		UserSimulator: cloneUserSimulatorSpec(c.UserSimulator),
 		Artifacts:     append([]ArtifactRef(nil), c.Artifacts...),
 		Assets:        normalizeAssets(c.Assets),
 	})

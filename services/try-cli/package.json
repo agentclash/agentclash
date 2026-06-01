@@ -1,0 +1,14 @@
+{
+  "name": "@agentclash/try-cli-service",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun run server/index.ts",
+    "start": "NODE_ENV=production PORT=${PORT:-3001} bun run server/index.ts"
+  },
+  "dependencies": {
+    "@try-cli/core": "file:../../try-cli/packages/core",
+    "e2b": "^2.6.4"
+  }
+}

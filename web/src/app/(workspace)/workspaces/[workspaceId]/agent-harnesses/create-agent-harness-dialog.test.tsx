@@ -300,6 +300,38 @@ describe("CreateAgentHarnessDialog", () => {
     rendered.cleanup();
   });
 
+  it("posts Claude/E2B harness payload using the inferred Anthropic secret", async () => {
+    mockSecrets.mockReturnValue([
+      {
+        key: "ANTHROPIC_API_KEY",
+        created_at: "2026-05-01T00:00:00Z",
+        updated_at: "2026-05-01T00:00:00Z",
+      },
+    ]);
+    const post = vi.fn().mockResolvedValue({ id: "harness-1" });
+    mockCreateApiClient.mockReturnValue({ post });
+    const rendered = renderDialog();
+
+    clickButton("New Harness");
+    changeSelect(0, "claude_e2b");
+    clickButton("URL");
+    changeInput(0, "https://github.com/acme/agent-app");
+    changeTextarea(0, "Implement the requested feature and run tests.");
+    clickButton("Create Harness");
+    await flushPromises();
+
+    expect(post).toHaveBeenCalledWith(
+      "/v1/workspaces/ws-1/agent-harnesses",
+      expect.objectContaining({
+        name: "acme/agent-app Claude",
+        harness_kind: "claude_e2b",
+        codex_template: "agentclash-claude-fullstack",
+        openai_api_key_secret_name: "ANTHROPIC_API_KEY",
+      }),
+    );
+    rendered.cleanup();
+  });
+
   it("posts OpenClaw/E2B harness payload using the inferred OpenClaw secret", async () => {
     mockSecrets.mockReturnValue([
       {
