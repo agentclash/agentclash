@@ -85,6 +85,29 @@ func (q *Queries) GetDatasetEvalRunByRunID(ctx context.Context, arg GetDatasetEv
 	return i, err
 }
 
+const getDatasetRegressionSuiteLinkByDatasetID = `-- name: GetDatasetRegressionSuiteLinkByDatasetID :one
+SELECT dataset_id, regression_suite_id, synced_version_id, created_at, updated_at
+FROM dataset_regression_suite_links
+WHERE dataset_id = $1
+`
+
+type GetDatasetRegressionSuiteLinkByDatasetIDParams struct {
+	DatasetID uuid.UUID
+}
+
+func (q *Queries) GetDatasetRegressionSuiteLinkByDatasetID(ctx context.Context, arg GetDatasetRegressionSuiteLinkByDatasetIDParams) (DatasetRegressionSuiteLink, error) {
+	row := q.db.QueryRow(ctx, getDatasetRegressionSuiteLinkByDatasetID, arg.DatasetID)
+	var i DatasetRegressionSuiteLink
+	err := row.Scan(
+		&i.DatasetID,
+		&i.RegressionSuiteID,
+		&i.SyncedVersionID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getDatasetVersionInputSetByID = `-- name: GetDatasetVersionInputSetByID :one
 SELECT id, dataset_id, dataset_version_id, challenge_pack_version_id, challenge_identity_id, challenge_key, challenge_input_set_id, input_key, input_checksum, mapping, created_at, updated_at
 FROM dataset_version_input_sets
@@ -297,4 +320,40 @@ func (q *Queries) ListDatasetEvalResultsForRun(ctx context.Context, arg ListData
 		return nil, err
 	}
 	return items, nil
+}
+
+const upsertDatasetRegressionSuiteLink = `-- name: UpsertDatasetRegressionSuiteLink :one
+INSERT INTO dataset_regression_suite_links (
+    dataset_id,
+    regression_suite_id,
+    synced_version_id
+) VALUES (
+    $1,
+    $2,
+    $3
+)
+ON CONFLICT (dataset_id) DO UPDATE SET
+    regression_suite_id = EXCLUDED.regression_suite_id,
+    synced_version_id = EXCLUDED.synced_version_id,
+    updated_at = now()
+RETURNING dataset_id, regression_suite_id, synced_version_id, created_at, updated_at
+`
+
+type UpsertDatasetRegressionSuiteLinkParams struct {
+	DatasetID         uuid.UUID
+	RegressionSuiteID uuid.UUID
+	SyncedVersionID   *uuid.UUID
+}
+
+func (q *Queries) UpsertDatasetRegressionSuiteLink(ctx context.Context, arg UpsertDatasetRegressionSuiteLinkParams) (DatasetRegressionSuiteLink, error) {
+	row := q.db.QueryRow(ctx, upsertDatasetRegressionSuiteLink, arg.DatasetID, arg.RegressionSuiteID, arg.SyncedVersionID)
+	var i DatasetRegressionSuiteLink
+	err := row.Scan(
+		&i.DatasetID,
+		&i.RegressionSuiteID,
+		&i.SyncedVersionID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }

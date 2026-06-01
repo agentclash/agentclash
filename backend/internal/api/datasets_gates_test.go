@@ -132,12 +132,85 @@ func TestCreateDatasetBaselineRejectsForeignWorkspaceRun(t *testing.T) {
 	}
 }
 
+func TestGetDatasetRegressionSuiteLink(t *testing.T) {
+	workspaceID := uuid.New()
+	datasetID := uuid.New()
+	suiteID := uuid.New()
+	versionID := uuid.New()
+	repo := &datasetGateFakeRepo{
+		dataset: repository.Dataset{ID: datasetID, WorkspaceID: workspaceID},
+		regressionLink: repository.DatasetRegressionSuiteLink{
+			DatasetID:         datasetID,
+			RegressionSuiteID: suiteID,
+			SyncedVersionID:   &versionID,
+		},
+	}
+	manager := NewDatasetManager(allowWorkspaceAuthorizer{}, repo)
+
+	link, err := manager.GetDatasetRegressionSuiteLink(context.Background(), datasetEvalCaller(workspaceID), GetDatasetInput{
+		WorkspaceID: workspaceID,
+		DatasetID:   datasetID,
+	})
+	if err != nil {
+		t.Fatalf("GetDatasetRegressionSuiteLink() error = %v", err)
+	}
+	if link.RegressionSuiteID != suiteID {
+		t.Fatalf("RegressionSuiteID = %s, want %s", link.RegressionSuiteID, suiteID)
+	}
+}
+
+func TestGetDatasetRegressionSuiteLinkNotFound(t *testing.T) {
+	workspaceID := uuid.New()
+	datasetID := uuid.New()
+	repo := &datasetGateFakeRepo{
+		dataset:           repository.Dataset{ID: datasetID, WorkspaceID: workspaceID},
+		regressionLinkErr: repository.ErrDatasetRegressionSuiteLinkNotFound,
+	}
+	manager := NewDatasetManager(allowWorkspaceAuthorizer{}, repo)
+
+	_, err := manager.GetDatasetRegressionSuiteLink(context.Background(), datasetEvalCaller(workspaceID), GetDatasetInput{
+		WorkspaceID: workspaceID,
+		DatasetID:   datasetID,
+	})
+	if !errors.Is(err, repository.ErrDatasetRegressionSuiteLinkNotFound) {
+		t.Fatalf("GetDatasetRegressionSuiteLink() error = %v, want ErrDatasetRegressionSuiteLinkNotFound", err)
+	}
+}
+
+func TestSyncDatasetRegressionSuiteRequiresManageRegressions(t *testing.T) {
+	workspaceID := uuid.New()
+	datasetID := uuid.New()
+	repo := &datasetGateFakeRepo{
+		dataset: repository.Dataset{ID: datasetID, WorkspaceID: workspaceID},
+	}
+	manager := NewDatasetManager(allowWorkspaceAuthorizer{}, repo)
+	caller := Caller{
+		UserID: uuid.New(),
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: RoleWorkspaceViewer},
+		},
+	}
+
+	_, err := manager.SyncDatasetRegressionSuite(context.Background(), caller, SyncDatasetRegressionSuiteInput{
+		WorkspaceID:            workspaceID,
+		DatasetID:              datasetID,
+		VersionID:              uuid.New(),
+		ChallengePackVersionID: uuid.New(),
+		ChallengeKey:           "case-1",
+	})
+	if !errors.Is(err, ErrForbidden) {
+		t.Fatalf("SyncDatasetRegressionSuite() error = %v, want ErrForbidden", err)
+	}
+}
+
 type datasetGateFakeRepo struct {
 	dataset           repository.Dataset
 	baseline          repository.DatasetBaseline
 	candidateOutcomes []datasetgate.ExampleOutcome
 	run               domain.Run
 	evalRun           repository.DatasetEvalRun
+	regressionLink    repository.DatasetRegressionSuiteLink
+	regressionLinkErr error
 }
 
 func (r *datasetGateFakeRepo) CreateDataset(context.Context, repository.CreateDatasetParams) (repository.Dataset, error) {
@@ -208,6 +281,15 @@ func (r *datasetGateFakeRepo) GetRunByID(context.Context, uuid.UUID) (domain.Run
 }
 func (r *datasetGateFakeRepo) GetDatasetEvalRunByRunID(context.Context, uuid.UUID) (repository.DatasetEvalRun, error) {
 	return r.evalRun, nil
+}
+func (r *datasetGateFakeRepo) GetDatasetRegressionSuiteLink(context.Context, uuid.UUID) (repository.DatasetRegressionSuiteLink, error) {
+	if r.regressionLinkErr != nil {
+		return repository.DatasetRegressionSuiteLink{}, r.regressionLinkErr
+	}
+	return r.regressionLink, nil
+}
+func (r *datasetGateFakeRepo) SyncDatasetRegressionSuite(context.Context, repository.SyncDatasetRegressionSuiteParams) (repository.SyncDatasetRegressionSuiteResult, error) {
+	return repository.SyncDatasetRegressionSuiteResult{}, nil
 }
 
 func gateTestJSON(value any) json.RawMessage {

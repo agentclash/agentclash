@@ -213,6 +213,68 @@ func (r *Repository) CreateRegressionSuite(ctx context.Context, params CreateReg
 	return suite, nil
 }
 
+func (r *Repository) createRegressionSuiteWithQueries(ctx context.Context, queries *repositorysqlc.Queries, params CreateRegressionSuiteParams) (RegressionSuite, error) {
+	if !params.Status.Valid() {
+		return RegressionSuite{}, fmt.Errorf("%w: %q", domain.ErrInvalidRegressionSuiteStatus, params.Status)
+	}
+	if !params.DefaultGateSeverity.Valid() {
+		return RegressionSuite{}, fmt.Errorf("%w: %q", domain.ErrInvalidRegressionSeverity, params.DefaultGateSeverity)
+	}
+
+	row, err := queries.CreateRegressionSuite(ctx, repositorysqlc.CreateRegressionSuiteParams{
+		WorkspaceID:           params.WorkspaceID,
+		SourceChallengePackID: params.SourceChallengePackID,
+		Name:                  strings.TrimSpace(params.Name),
+		Description:           params.Description,
+		Status:                string(params.Status),
+		SourceMode:            params.SourceMode,
+		DefaultGateSeverity:   string(params.DefaultGateSeverity),
+		CreatedByUserID:       params.CreatedByUserID,
+	})
+	if err != nil {
+		if isRegressionSuiteNameConflict(err) {
+			return RegressionSuite{}, ErrRegressionSuiteNameConflict
+		}
+		return RegressionSuite{}, fmt.Errorf("create regression suite: %w", err)
+	}
+
+	suite, err := mapRegressionSuite(row)
+	if err != nil {
+		return RegressionSuite{}, fmt.Errorf("map regression suite: %w", err)
+	}
+	return suite, nil
+}
+
+func (r *Repository) getRegressionSuiteByIDWithQueries(ctx context.Context, queries *repositorysqlc.Queries, id uuid.UUID) (RegressionSuite, error) {
+	row, err := queries.GetRegressionSuiteByID(ctx, repositorysqlc.GetRegressionSuiteByIDParams{ID: id})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return RegressionSuite{}, ErrRegressionSuiteNotFound
+		}
+		return RegressionSuite{}, fmt.Errorf("get regression suite by id: %w", err)
+	}
+	return mapRegressionSuite(row)
+}
+
+func (r *Repository) listRegressionCasesBySuiteIDWithQueries(ctx context.Context, queries *repositorysqlc.Queries, suiteID uuid.UUID) ([]RegressionCase, error) {
+	rows, err := queries.ListRegressionCasesBySuiteID(ctx, repositorysqlc.ListRegressionCasesBySuiteIDParams{
+		SuiteID: suiteID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list regression cases by suite id: %w", err)
+	}
+
+	cases := make([]RegressionCase, 0, len(rows))
+	for _, row := range rows {
+		regressionCase, mapErr := mapRegressionCaseFromListRow(row)
+		if mapErr != nil {
+			return nil, fmt.Errorf("map regression case %s: %w", row.ID, mapErr)
+		}
+		cases = append(cases, regressionCase)
+	}
+	return cases, nil
+}
+
 func (r *Repository) GetRegressionSuiteByID(ctx context.Context, id uuid.UUID) (RegressionSuite, error) {
 	row, err := r.queries.GetRegressionSuiteByID(ctx, repositorysqlc.GetRegressionSuiteByIDParams{ID: id})
 	if err != nil {

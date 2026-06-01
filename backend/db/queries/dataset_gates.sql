@@ -76,3 +76,24 @@ WHERE der.run_id = @run_id
     OR ra.agent_deployment_id = sqlc.narg('agent_deployment_id')::uuid
   )
 ORDER BY dil.dataset_example_id, ra.lane_index ASC, jr.created_at DESC NULLS LAST;
+
+-- name: UpsertDatasetRegressionSuiteLink :one
+INSERT INTO dataset_regression_suite_links (
+    dataset_id,
+    regression_suite_id,
+    synced_version_id
+) VALUES (
+    @dataset_id,
+    @regression_suite_id,
+    @synced_version_id
+)
+ON CONFLICT (dataset_id) DO UPDATE SET
+    regression_suite_id = EXCLUDED.regression_suite_id,
+    synced_version_id = EXCLUDED.synced_version_id,
+    updated_at = now()
+RETURNING *;
+
+-- name: GetDatasetRegressionSuiteLinkByDatasetID :one
+SELECT *
+FROM dataset_regression_suite_links
+WHERE dataset_id = @dataset_id;

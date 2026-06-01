@@ -19,7 +19,7 @@ func init() {
 	datasetTestCmd.Flags().StringSlice("deployment", nil, "Agent deployment ID (repeatable)")
 	datasetTestCmd.Flags().Float64("min-pass-rate", 0, "Minimum pass rate required to pass the gate")
 	datasetTestCmd.Flags().Int("max-regressions", -1, "Maximum allowed regressions versus baseline")
-	datasetTestCmd.Flags().String("format", "text", "Output format: text or json")
+	datasetTestCmd.Flags().String("format", "text", "Output format: text, json, or junit")
 	datasetTestCmd.Flags().Duration("timeout", 30*time.Minute, "Maximum time to wait for an eval run started with --eval")
 	datasetTestCmd.Flags().Duration("poll-interval", 5*time.Second, "Polling interval while waiting for eval completion")
 }
@@ -107,6 +107,22 @@ var datasetTestCmd = &cobra.Command{
 			return err
 		}
 		format, _ := cmd.Flags().GetString("format")
+		if format == "junit" {
+			var result map[string]any
+			if err := resp.DecodeJSON(&result); err != nil {
+				return err
+			}
+			exitCode := 0
+			if resp.StatusCode == 422 {
+				exitCode = 1
+			} else if resp.StatusCode >= 400 {
+				if apiErr := resp.ParseError(); apiErr != nil {
+					return apiErr
+				}
+				return fmt.Errorf("dataset gate request failed with status %d", resp.StatusCode)
+			}
+			return printDatasetGateJUnit(result, exitCode)
+		}
 		if format == "json" {
 			var result map[string]any
 			if err := resp.DecodeJSON(&result); err != nil {

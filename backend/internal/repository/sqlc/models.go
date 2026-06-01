@@ -230,6 +230,14 @@ type DatasetInputItemLink struct {
 	CreatedAt                pgtype.Timestamptz
 }
 
+type DatasetRegressionSuiteLink struct {
+	DatasetID         uuid.UUID
+	RegressionSuiteID uuid.UUID
+	SyncedVersionID   *uuid.UUID
+	CreatedAt         pgtype.Timestamptz
+	UpdatedAt         pgtype.Timestamptz
+}
+
 type DatasetTraceCandidate struct {
 	ID                uuid.UUID
 	DatasetID         uuid.UUID

@@ -3890,6 +3890,68 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /v1/workspaces/{workspaceID}/datasets/{datasetID}/regression-suite:
+    get:
+      operationId: getDatasetRegressionSuiteLink
+      tags: [Datasets]
+      summary: Get the regression suite linked to a dataset
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/DatasetID"
+      responses:
+        "200":
+          description: Dataset regression suite link
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DatasetRegressionSuiteLink"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          description: Dataset or regression suite link not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/workspaces/{workspaceID}/datasets/{datasetID}/regression-suite/sync:
+    post:
+      operationId: syncDatasetRegressionSuite
+      tags: [Datasets]
+      summary: Promote dataset examples into a linked regression suite
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/DatasetID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SyncDatasetRegressionSuiteInput"
+      responses:
+        "200":
+          description: Regression suite synced
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SyncDatasetRegressionSuiteResult"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          description: Regression suite name conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /v1/workspaces/{workspaceID}/datasets/{datasetID}/gate:
     post:
       operationId: evaluateDatasetGate
@@ -5969,6 +6031,38 @@ components:
         total: { type: integer, format: int64 }
         limit: { type: integer, format: int32 }
         offset: { type: integer, format: int32 }
+
+    DatasetRegressionSuiteLink:
+      type: object
+      required: [dataset_id, regression_suite_id, created_at, updated_at]
+      properties:
+        dataset_id: { type: string, format: uuid }
+        regression_suite_id: { type: string, format: uuid }
+        synced_version_id: { type: string, format: uuid }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    SyncDatasetRegressionSuiteInput:
+      type: object
+      required: [version_id, challenge_pack_version_id, challenge_key]
+      properties:
+        version_id: { type: string, format: uuid }
+        challenge_pack_version_id: { type: string, format: uuid }
+        challenge_key: { type: string }
+        regression_suite_id: { type: string, format: uuid }
+        suite_name: { type: string }
+
+    SyncDatasetRegressionSuiteResult:
+      type: object
+      required: [link, suite, created_cases, skipped_cases, total_examples]
+      properties:
+        link:
+          $ref: "#/components/schemas/DatasetRegressionSuiteLink"
+        suite:
+          $ref: "#/components/schemas/RegressionSuite"
+        created_cases: { type: integer }
+        skipped_cases: { type: integer }
+        total_examples: { type: integer }
 
     EvaluateDatasetGateInput:
       type: object

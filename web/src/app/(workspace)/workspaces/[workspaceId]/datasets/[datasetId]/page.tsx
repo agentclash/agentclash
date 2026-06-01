@@ -3,7 +3,13 @@ import { notFound, redirect } from "next/navigation";
 
 import { createApiClient } from "@/lib/api/client";
 import { ApiError } from "@/lib/api/errors";
-import type { Dataset, DatasetExample, DatasetVersion } from "@/lib/api/types";
+import type {
+  Dataset,
+  DatasetBaseline,
+  DatasetExample,
+  DatasetRegressionSuiteLink,
+  DatasetVersion,
+} from "@/lib/api/types";
 
 import { DatasetDetailClient } from "./dataset-detail-client";
 
@@ -28,13 +34,24 @@ export default async function DatasetDetailPage({
     throw err;
   }
 
-  const [examples, versions] = await Promise.all([
+  const [examples, versions, baselinesResult, regressionLink] = await Promise.all([
     api.get<{ items: DatasetExample[] }>(
       `/v1/workspaces/${workspaceId}/datasets/${datasetId}/examples`,
     ),
     api.get<{ items: DatasetVersion[] }>(
       `/v1/workspaces/${workspaceId}/datasets/${datasetId}/versions`,
     ),
+    api.get<{ items: DatasetBaseline[] }>(
+      `/v1/workspaces/${workspaceId}/datasets/${datasetId}/baselines`,
+    ),
+    api
+      .get<DatasetRegressionSuiteLink>(
+        `/v1/workspaces/${workspaceId}/datasets/${datasetId}/regression-suite`,
+      )
+      .catch((err) => {
+        if (err instanceof ApiError && err.status === 404) return undefined;
+        throw err;
+      }),
   ]);
 
   return (
@@ -42,6 +59,9 @@ export default async function DatasetDetailPage({
       dataset={dataset}
       examples={examples.items}
       versions={versions.items}
+      baselines={baselinesResult.items}
+      regressionLink={regressionLink}
+      workspaceId={workspaceId}
     />
   );
 }

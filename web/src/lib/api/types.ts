@@ -2133,6 +2133,38 @@ export interface DatasetVersion {
   created_at: string;
 }
 
+export interface DatasetBaseline {
+  id: string;
+  dataset_id: string;
+  dataset_version_id: string;
+  dataset_version_input_set_id?: string;
+  challenge_pack_version_id: string;
+  challenge_key: string;
+  agent_deployment_id?: string;
+  run_id: string;
+  pass_rate?: number;
+  metrics: Record<string, unknown>;
+  example_outcomes: Record<string, unknown>[];
+  label?: string;
+  created_by: string;
+  created_at: string;
+}
+
+export interface ListDatasetBaselinesResponse {
+  items: DatasetBaseline[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface DatasetRegressionSuiteLink {
+  dataset_id: string;
+  regression_suite_id: string;
+  synced_version_id?: string;
+  created_at: string;
+  updated_at: string;
+}
+
 // --- Billing ---
 
 export type BillingPlanKey = "free" | "pro" | "team" | "enterprise";
