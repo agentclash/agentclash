@@ -8,10 +8,9 @@ import (
 )
 
 func init() {
-	integrationCmd.AddCommand(
-		newIntegrationAgentCmd("claude"),
-		newIntegrationAgentCmd("codex"),
-	)
+	for _, agent := range []string{"claude", "codex", "cursor", "openclaw", "hermes", "opencode"} {
+		integrationCmd.AddCommand(newIntegrationAgentCmd(agent))
+	}
 	rootCmd.AddCommand(integrationCmd)
 }
 
@@ -22,7 +21,11 @@ var integrationCmd = &cobra.Command{
 directory, and verify the integration.
 
   agentclash integration claude install   # -> ~/.claude/skills/<skill>/SKILL.md
-  agentclash integration codex  install   # -> ~/.agents/skills/<skill>/SKILL.md
+  agentclash integration codex install    # -> ~/.agents/skills/<skill>/SKILL.md
+  agentclash integration cursor install   # -> ~/.cursor/skills/<skill>/SKILL.md
+  agentclash integration openclaw install # -> ~/.openclaw/skills/<skill>/SKILL.md
+  agentclash integration hermes install   # -> ~/.hermes/skills/<skill>/SKILL.md
+  agentclash integration opencode install # -> ~/.config/opencode/skills/<skill>/SKILL.md
   agentclash integration claude doctor    # report installed / missing / drifted skills
 
 The skills teach an agent to drive the AgentClash CLI. install is idempotent and
@@ -36,6 +39,14 @@ func agentLabel(agent string) string {
 		return "Claude Code"
 	case "codex":
 		return "Codex"
+	case "cursor":
+		return "Cursor"
+	case "openclaw":
+		return "OpenClaw"
+	case "hermes":
+		return "Hermes"
+	case "opencode":
+		return "OpenCode"
 	default:
 		return agent
 	}
