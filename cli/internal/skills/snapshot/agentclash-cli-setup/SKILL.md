@@ -201,6 +201,7 @@ Notes: <config precedence, local override, or token caveat if relevant>
 ## Related Skills
 - `agentclash-hub` — load first for full workflow map and UI links
 - `agentclash-quickstart` — readiness checks after auth
+- `agentclash-workspace-admin` — org/workspace CRUD and team membership
 - `agentclash-eval-runner`
 
 ## Related Docs
