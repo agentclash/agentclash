@@ -272,6 +272,7 @@ Notes: <conflicts, entitlement/auth caveats, skipped publish reason>
 - `agentclash-challenge-pack-scoring-validators`
 - `agentclash-challenge-pack-llm-judges`
 - `agentclash-eval-runner`
+- `agentclash-security-evaluation` — when the pack includes a `security` policy block
 
 ## Related Docs
 - `/docs-md/agent-skills/challenge-pack-skills/agentclash-challenge-pack-yaml-author`

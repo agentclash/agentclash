@@ -1,5 +1,5 @@
 {
-  "snapshot_version": "0530fa3df936",
+  "snapshot_version": "3ecbabd2de7b",
   "skills": [
     {
       "name": "agentclash-agent-build-author",
@@ -59,7 +59,7 @@
       "name": "agentclash-challenge-pack-validation-publish",
       "role": "challenge-pack-publication",
       "requires_cli": true,
-      "sha256": "13d0aa363d33468913e3a06c11dc80d1c59940d776bc0f4940fc41caea33bd5d"
+      "sha256": "69e7f311566b535678635619a0d1e030f25a967eea64015adda931a40edf2be3"
     },
     {
       "name": "agentclash-challenge-pack-yaml-author",
@@ -71,13 +71,13 @@
       "name": "agentclash-ci-release-gate",
       "role": "ci",
       "requires_cli": true,
-      "sha256": "3ec8b36bdea2ccf626fe308b51693283c511e46aee2518847d955b6e101320bf"
+      "sha256": "eff5a5f5092f32cd8f11bfe494e746cd6ed2404505b1ec1c7972db50617a4712"
     },
     {
       "name": "agentclash-cli-setup",
       "role": "setup",
       "requires_cli": true,
-      "sha256": "dc9ba5a189abdbd386807e9e4bfbf4189539a7d5a60a022ce17abac0797711da"
+      "sha256": "ea15a439f33dece24e408c1b26cd0d66c0c0d53f3086c61dd9d958719e216fd1"
     },
     {
       "name": "agentclash-compare-and-triage",
@@ -101,7 +101,7 @@
       "name": "agentclash-hub",
       "role": "hub",
       "requires_cli": false,
-      "sha256": "f5c25234903db702436c679f7658b1d14538a3ed18c782ed824c022f2ece902f"
+      "sha256": "bcfbc5bdba208af404b8653567c8ae315ee6fa3972a895812cd5d671098f2888"
     },
     {
       "name": "agentclash-multi-turn-operator",
@@ -138,6 +138,18 @@
       "role": "reviewing",
       "requires_cli": true,
       "sha256": "24d6695d95ca6f604b787bef9859c4851e54896e6ff4dd4148f25073dfdcab1d"
+    },
+    {
+      "name": "agentclash-security-evaluation",
+      "role": "security",
+      "requires_cli": true,
+      "sha256": "f97be5393b3bb298f25de78303f8057db30c123f62652f407415da8cf62e7e06"
+    },
+    {
+      "name": "agentclash-workspace-admin",
+      "role": "admin",
+      "requires_cli": true,
+      "sha256": "e19ec3c0b6b1613ed21a79995d2b2822a246ac37ea7ab263e8431e2afbdd12cc"
     }
   ]
 }
