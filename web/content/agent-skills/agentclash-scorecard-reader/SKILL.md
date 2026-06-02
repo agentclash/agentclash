@@ -463,9 +463,10 @@ Next skill: <agentclash-regression-flywheel | challenge-pack skill | none>
 ```
 
 ## Related Skills
+- `agentclash-hub`
 - `agentclash-cli-setup`
 - `agentclash-eval-runner`
-- `agentclash-scorecard-reader`
+- `agentclash-compare-and-triage`
 - `agentclash-regression-flywheel`
 - `agentclash-ci-release-gate`
 
