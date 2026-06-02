@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.27.0](https://github.com/agentclash/agentclash/compare/v0.26.0...v0.27.0) (2026-06-02)
+
+
+### Features
+
+* **cli:** `agentclash integration <claude|codex> {install,doctor}` ([59fd230](https://github.com/agentclash/agentclash/commit/59fd230862c2e9aa715a3f9fb36eea2395aff0d5))
+* **cli:** add `agentclash integration <claude|codex> {install,doctor}` ([520c206](https://github.com/agentclash/agentclash/commit/520c20663b71a871ff9984a21753a38120f9a20b))
+* **cli:** add `agentclash schema` machine-readable command tree ([6a941b1](https://github.com/agentclash/agentclash/commit/6a941b15c6f342ed5232c513413a3dea71b7cf1e))
+* **cli:** add `agentclash schema` machine-readable command tree ([3d90218](https://github.com/agentclash/agentclash/commit/3d9021850ae0acf84bee4888a9997896c967c6fa))
+* **cli:** make `completion` validate its shell argument ([1ed52f8](https://github.com/agentclash/agentclash/commit/1ed52f87850fb7f549cdfdfa163ddf39ccf0e2fb))
+* **cli:** make `completion` validate its shell argument ([a3256d5](https://github.com/agentclash/agentclash/commit/a3256d590a18147f22f24baa0cbcfc1a1053f081))
+* **cli:** step 2 — embed agentclash-hub skill snapshot ([045d0eb](https://github.com/agentclash/agentclash/commit/045d0eb7e966e2589cccf1a5f8ca42a1471e95c4))
+* **cli:** step 3 — embed agentclash-quickstart skill snapshot ([9ec53ba](https://github.com/agentclash/agentclash/commit/9ec53baf99bf3cd1b186065093c5bafc6a57a5ae))
+* **cli:** step 4 — embed agentclash-compare-and-triage snapshot ([9c5e878](https://github.com/agentclash/agentclash/commit/9c5e87872a9288fe06ceb647377eb242ba98585c))
+* **cli:** step 5 — refresh eval-runner embedded snapshot ([8711b90](https://github.com/agentclash/agentclash/commit/8711b90effcd5ecceec38860950ced6548a141a6))
+* **cli:** step 6 — refresh cli-setup embedded snapshot ([55a0a49](https://github.com/agentclash/agentclash/commit/55a0a4912da11bfca7aea84a5237573e4ff91727))
+* **cli:** step 7 — refresh compare cross-link snapshots ([f12bac1](https://github.com/agentclash/agentclash/commit/f12bac1dff3e718a1101e3c464a1f74e5c51705e))
+* **cli:** step 8 — bump embedded skills manifest to 19 skills ([66ada67](https://github.com/agentclash/agentclash/commit/66ada674b6d5c27485e483f55aa7a0d03dd4c203))
+* **cli:** sync embedded skills snapshot for P0 skills ([fe6f8ef](https://github.com/agentclash/agentclash/commit/fe6f8ef1ac3baee9f7a21a1eba006f19b2b7fda6))
+
 ## [0.26.0](https://github.com/agentclash/agentclash/compare/v0.25.0...v0.26.0) (2026-06-01)
 
 
