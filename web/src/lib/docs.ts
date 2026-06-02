@@ -485,7 +485,7 @@ export const DOCS_NAV: DocNavSection[] = [
         href: "/docs/agent-skills/agentclash-agent-harness-setup",
       },
       {
-        title: "Multi-Turn Operator Skill",
+        title: "Multi Turn Operator Skill",
         description:
           "Submit human operator messages when multi_turn run agents await input.",
         slug: ["agent-skills", "agentclash-multi-turn-operator"],
