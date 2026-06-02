@@ -1,0 +1,101 @@
+{
+  "snapshot_version": "aa4457929e5f",
+  "skills": [
+    {
+      "name": "agentclash-agent-build-author",
+      "role": "agent-builds",
+      "requires_cli": true,
+      "sha256": "4e37b7d77c34f2cc64cfab80f8e8914d1bfc1743f2bfdf2863796efc8887146d"
+    },
+    {
+      "name": "agentclash-agent-deployment-setup",
+      "role": "agent-deployments",
+      "requires_cli": true,
+      "sha256": "4c14f26a7c53de60add3aecd46e5a0f65e1d9cb9e42b732ee83a5b281c1a83bc"
+    },
+    {
+      "name": "agentclash-challenge-pack-artifacts",
+      "role": "challenge-pack-artifacts",
+      "requires_cli": true,
+      "sha256": "fbc906407601ec7d19564f872fdbc74df4fea7a88354cf16376afece0e1be899"
+    },
+    {
+      "name": "agentclash-challenge-pack-input-sets",
+      "role": "challenge-pack-inputs",
+      "requires_cli": true,
+      "sha256": "4fd3a8b814ef324326cd559f030672f8af4a1de7976032e1821dbfc7d6ae7b01"
+    },
+    {
+      "name": "agentclash-challenge-pack-llm-judges",
+      "role": "challenge-pack-judging",
+      "requires_cli": true,
+      "sha256": "b9d45c8e083cec4f77e6d0b82f933880a3aa80c0e7186dc3896b375c8380c626"
+    },
+    {
+      "name": "agentclash-challenge-pack-planner",
+      "role": "challenge-pack-planning",
+      "requires_cli": false,
+      "sha256": "e5f148d10a1e1776897fa8a90328a42738aefd035aa751590c84ffd1e2048590"
+    },
+    {
+      "name": "agentclash-challenge-pack-scoring-validators",
+      "role": "challenge-pack-scoring",
+      "requires_cli": true,
+      "sha256": "78c30a03ac3957168410cb1e039f97712bfdf45bf58d14aa00e888919a9a0bb3"
+    },
+    {
+      "name": "agentclash-challenge-pack-tools-sandbox",
+      "role": "challenge-pack-tools",
+      "requires_cli": true,
+      "sha256": "447a88ffa68e9f3469ffdfa283f4a5390b8aea3608aef75879435bb3af7f199a"
+    },
+    {
+      "name": "agentclash-challenge-pack-validation-publish",
+      "role": "challenge-pack-publication",
+      "requires_cli": true,
+      "sha256": "13d0aa363d33468913e3a06c11dc80d1c59940d776bc0f4940fc41caea33bd5d"
+    },
+    {
+      "name": "agentclash-challenge-pack-yaml-author",
+      "role": "challenge-pack-authoring",
+      "requires_cli": true,
+      "sha256": "3b62cd8f9ec2a02ea49fbdbddb38c37d9fc331622dddcd6db3ef6cb444112d28"
+    },
+    {
+      "name": "agentclash-ci-release-gate",
+      "role": "ci",
+      "requires_cli": true,
+      "sha256": "c2983b9ba255e36e20c336a11cf73d984b780f43ac8005b97f0f0c22c2aade74"
+    },
+    {
+      "name": "agentclash-cli-setup",
+      "role": "setup",
+      "requires_cli": true,
+      "sha256": "9dd47c92d1186336d1b075fa14e60b0725b78d5a9086ac43c9c42d2240721ba1"
+    },
+    {
+      "name": "agentclash-eval-runner",
+      "role": "running",
+      "requires_cli": true,
+      "sha256": "b9669b1e2c9020346cd65aa20d87aa20f0ec99b4597d87e904babf56f65eee01"
+    },
+    {
+      "name": "agentclash-regression-flywheel",
+      "role": "regression",
+      "requires_cli": true,
+      "sha256": "0090966cb69773f5185d40826fc661b319719b186d345d1ef3a725d326c10b71"
+    },
+    {
+      "name": "agentclash-runtime-resources-setup",
+      "role": "runtime-resources",
+      "requires_cli": true,
+      "sha256": "256ec74d3cc8410fba33b3eb039afe651d4d390a9614a44a6824ab4b70384c62"
+    },
+    {
+      "name": "agentclash-scorecard-reader",
+      "role": "reviewing",
+      "requires_cli": true,
+      "sha256": "f6d1bc2216dad9a28f2f3c949fd3179f7b86ab33da4832f2a29629d7c31cce3e"
+    }
+  ]
+}
