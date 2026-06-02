@@ -31,3 +31,4 @@ testing/*
 !testing/feat-changelog-page.md
 !testing/feat-docs-revamp.md
 !testing/feat-skills-p0-workflow.md
+!testing/feat-sync-cli-skills-snapshot-p0.md
