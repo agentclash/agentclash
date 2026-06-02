@@ -505,6 +505,20 @@ export const DOCS_NAV: DocNavSection[] = [
         slug: ["agent-skills", "agentclash-prompt-eval-playground"],
         href: "/docs/agent-skills/agentclash-prompt-eval-playground",
       },
+      {
+        title: "Workspace Admin Skill",
+        description:
+          "Administer organizations, workspaces, and membership beyond basic CLI login.",
+        slug: ["agent-skills", "agentclash-workspace-admin"],
+        href: "/docs/agent-skills/agentclash-workspace-admin",
+      },
+      {
+        title: "Security Evaluation Skill",
+        description:
+          "Run client-side security stress harnesses against security challenge packs.",
+        slug: ["agent-skills", "agentclash-security-evaluation"],
+        href: "/docs/agent-skills/agentclash-security-evaluation",
+      },
     ],
   },
   {

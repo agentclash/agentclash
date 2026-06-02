@@ -25,6 +25,8 @@ const skillSlugs = [
   "agentclash-quickstart",
   "agentclash-regression-flywheel",
   "agentclash-scorecard-reader",
+  "agentclash-security-evaluation",
+  "agentclash-workspace-admin",
   "challenge-pack-skills/agentclash-challenge-pack-artifacts",
   "challenge-pack-skills/agentclash-challenge-pack-input-sets",
   "challenge-pack-skills/agentclash-challenge-pack-llm-judges",
@@ -121,6 +123,27 @@ describe("agent skill docs", () => {
     expect(doc?.content).toContain("agentclash prompt-eval validate");
     expect(doc?.content).toContain("agentclash prompt-eval run");
     expect(doc?.content).toContain("agentclash playground list");
+  });
+
+  it("generates the security evaluation skill", () => {
+    const doc = getDocBySlug(["agent-skills", "agentclash-security-evaluation"]);
+
+    expect(doc?.title).toBe("Security Evaluation Skill");
+    expect(doc?.content).toContain("agentclash security stress-run");
+    expect(doc?.content).toContain("agentclash security agent-vault-stress");
+    expect(doc?.content).toContain("agentclash security runtime-stress");
+    expect(doc?.content).toContain("agentclash security avmock-upstream");
+    expect(doc?.content).toContain("/docs-md/guides/security-evaluation");
+  });
+
+  it("generates the workspace admin skill", () => {
+    const doc = getDocBySlug(["agent-skills", "agentclash-workspace-admin"]);
+
+    expect(doc?.title).toBe("Workspace Admin Skill");
+    expect(doc?.content).toContain("agentclash org list");
+    expect(doc?.content).toContain("agentclash workspace create");
+    expect(doc?.content).toContain("agentclash workspace members invite");
+    expect(doc?.content).toContain("agentclash link");
   });
 
   it("generates the quickstart skill with readiness checks", () => {
