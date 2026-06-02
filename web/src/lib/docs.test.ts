@@ -13,11 +13,15 @@ const skillSlugs = [
   "agent-build-skills/agentclash-agent-build-author",
   "agent-build-skills/agentclash-agent-deployment-setup",
   "agent-build-skills/agentclash-runtime-resources-setup",
+  "agentclash-agent-harness-setup",
   "agentclash-ci-release-gate",
   "agentclash-cli-setup",
   "agentclash-compare-and-triage",
+  "agentclash-dataset-workflows",
   "agentclash-eval-runner",
   "agentclash-hub",
+  "agentclash-multi-turn-operator",
+  "agentclash-prompt-eval-playground",
   "agentclash-quickstart",
   "agentclash-regression-flywheel",
   "agentclash-scorecard-reader",
@@ -79,7 +83,44 @@ describe("agent skill docs", () => {
     expect(doc?.content).toContain("name: agentclash-hub");
     expect(doc?.content).toContain("agentclash-quickstart");
     expect(doc?.content).toContain("agentclash-compare-and-triage");
+    expect(doc?.content).toContain("agentclash-dataset-workflows");
     expect(doc?.content).toContain("https://agentclash.dev/docs/agent-skills");
+  });
+
+  it("generates the agent harness setup skill", () => {
+    const doc = getDocBySlug(["agent-skills", "agentclash-agent-harness-setup"]);
+
+    expect(doc?.title).toBe("Agent Harness Setup Skill");
+    expect(doc?.content).toContain("agentclash agent-harness create");
+    expect(doc?.content).toContain("agentclash agent-harness suite run");
+    expect(doc?.content).toContain("codex_e2b");
+  });
+
+  it("generates the multi-turn operator skill", () => {
+    const doc = getDocBySlug(["agent-skills", "agentclash-multi-turn-operator"]);
+
+    expect(doc?.title).toBe("Multi Turn Operator Skill");
+    expect(doc?.content).toContain("agentclash run turn status");
+    expect(doc?.content).toContain("agentclash run turn submit");
+    expect(doc?.content).toContain("awaiting_human");
+  });
+
+  it("generates the dataset workflows skill", () => {
+    const doc = getDocBySlug(["agent-skills", "agentclash-dataset-workflows"]);
+
+    expect(doc?.title).toBe("Dataset Workflows Skill");
+    expect(doc?.content).toContain("agentclash dataset test");
+    expect(doc?.content).toContain("agentclash dataset sync-regression-suite");
+    expect(doc?.content).toContain("agentclash dataset import-traces");
+  });
+
+  it("generates the prompt eval playground skill", () => {
+    const doc = getDocBySlug(["agent-skills", "agentclash-prompt-eval-playground"]);
+
+    expect(doc?.title).toBe("Prompt Eval Playground Skill");
+    expect(doc?.content).toContain("agentclash prompt-eval validate");
+    expect(doc?.content).toContain("agentclash prompt-eval run");
+    expect(doc?.content).toContain("agentclash playground list");
   });
 
   it("generates the quickstart skill with readiness checks", () => {
