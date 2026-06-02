@@ -198,6 +198,11 @@ Next command: <single recommended command>
 Notes: <config precedence, local override, or token caveat if relevant>
 ```
 
+## Related Skills
+- `agentclash-hub` — load first for full workflow map and UI links
+- `agentclash-quickstart` — readiness checks after auth
+- `agentclash-eval-runner`
+
 ## Related Docs
 - `/docs-md/getting-started/quickstart`
 - `/docs-md/guides/use-with-ai-tools`
