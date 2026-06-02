@@ -16,6 +16,7 @@ import "./globals.css";
 // landing-page expanded-cards section). Imported once, globally.
 import "@/framer/styles.css";
 import { cn } from "@/lib/utils";
+import { webmasterVerification } from "@/lib/seo";
 
 const geist = Geist({subsets:['latin'],variable:'--font-sans'});
 
@@ -53,10 +54,9 @@ const siteUrl = "https://www.agentclash.dev";
 const siteDescription =
   "AgentClash is an open-source AI agent evaluation platform. Race coding, research, support, and ops agents head-to-head on real tasks with sandboxed tools, live replay, scorecards, and CI regression gates.";
 
-// Public webmaster-verification tokens (safe to expose — they live in the HTML
-// head). Set via env so tokens aren't hard-coded; omitted entirely when unset.
-const googleVerification = process.env.NEXT_PUBLIC_GSC_VERIFICATION;
-const bingVerification = process.env.NEXT_PUBLIC_BING_VERIFICATION;
+// Webmaster-verification metadata (Google Search Console + Bing). See
+// lib/seo `webmasterVerification` and docs/frontend/seo-verification.md.
+const verification = webmasterVerification();
 
 export const viewport: Viewport = {
   themeColor: "#060606",
@@ -110,16 +110,7 @@ export const metadata: Metadata = {
       follow: true,
     },
   },
-  ...(googleVerification || bingVerification
-    ? {
-        verification: {
-          ...(googleVerification ? { google: googleVerification } : {}),
-          ...(bingVerification
-            ? { other: { "msvalidate.01": bingVerification } }
-            : {}),
-        },
-      }
-    : {}),
+  ...(verification ? { verification } : {}),
   icons: {
     icon: [
       { url: "/favicon-16x16.png", sizes: "16x16", type: "image/png" },
