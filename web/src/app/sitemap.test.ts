@@ -6,7 +6,9 @@ vi.mock("@/lib/blog", () => ({
   getAllPosts: vi.fn(() => [
     {
       slug: "ai-agent-evaluation-regression-testing",
+      title: "AI agent evaluation and regression testing",
       date: "2026-05-07",
+      description: "How AgentClash turns failed agent runs into regression tests.",
     },
   ]),
 }));
@@ -121,5 +123,82 @@ describe("sitemap", () => {
     expect(
       urls.has("https://www.agentclash.dev/compare/agentclash-vs-langsmith"),
     ).toBe(true);
+  });
+
+  it("attaches an absolute /og image to the compare hub entry", () => {
+    const entries = sitemap();
+    const byUrl = new Map(entries.map((entry) => [entry.url, entry]));
+
+    const compare = byUrl.get("https://www.agentclash.dev/compare");
+    expect(compare?.images).toHaveLength(1);
+    const image = compare?.images?.[0] ?? "";
+    // Must be ABSOLUTE (DOCS_ORIGIN prefix present) — metadataBase does not
+    // rewrite sitemap image strings, and Google rejects a relative <image:loc>.
+    expect(image.startsWith("https://www.agentclash.dev/og?")).toBe(true);
+    expect(image).toContain("kind=Compare");
+  });
+
+  it("keeps imageless entries valid and never emits an empty images array", () => {
+    const entries = sitemap();
+    const byUrl = new Map(entries.map((entry) => [entry.url, entry]));
+
+    // .txt endpoints are intentionally imageless (not HTML pages).
+    expect(
+      byUrl.get("https://www.agentclash.dev/llms.txt")?.images,
+    ).toBeUndefined();
+    expect(
+      byUrl.get("https://www.agentclash.dev/llms-full.txt")?.images,
+    ).toBeUndefined();
+
+    // Every entry is still a valid sitemap entry: a string url, and images —
+    // when present — is a non-empty array of absolute URLs (no `images: []`).
+    for (const entry of entries) {
+      expect(typeof entry.url).toBe("string");
+      if (entry.images !== undefined) {
+        expect(entry.images.length).toBeGreaterThan(0);
+        for (const img of entry.images) {
+          expect(img.startsWith("https://")).toBe(true);
+        }
+      }
+    }
+    expect(() => JSON.stringify(entries)).not.toThrow();
+  });
+
+  it("serializes to well-formed sitemap XML with escaped image URLs", () => {
+    const entries = sitemap();
+
+    // Mirror Next's sitemap serializer (resolve-route-data.js): it interpolates
+    // url + image URLs into <loc>/<image:loc> WITHOUT XML-escaping, so the
+    // strings we hand it must already be XML-safe. A raw `&` (from
+    // URLSearchParams) would make the document non-well-formed and break crawler
+    // parsing of the entire sitemap — this is invisible to assertions on the
+    // in-memory array, so validate the serialized artifact.
+    const body = entries
+      .map((e) => {
+        const imgs = (e.images ?? [])
+          .map(
+            (img) =>
+              `<image:image><image:loc>${img}</image:loc></image:image>`,
+          )
+          .join("");
+        return `<url><loc>${e.url}</loc>${imgs}</url>`;
+      })
+      .join("");
+    const xml =
+      `<?xml version="1.0" encoding="UTF-8"?>` +
+      `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" ` +
+      `xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">${body}</urlset>`;
+
+    const doc = new DOMParser().parseFromString(xml, "text/xml");
+    expect(doc.querySelector("parsererror")).toBeNull();
+
+    // Directly guard the regression: a multi-param image URL exists and its
+    // ampersands are entity-escaped (no bare `&`).
+    const multi = entries
+      .flatMap((e) => e.images ?? [])
+      .find((img) => img.includes("kind=") && img.includes("title="));
+    expect(multi).toBeDefined();
+    expect(multi).toContain("&amp;");
+    expect(/&(?!amp;|lt;|gt;|quot;|#39;)/.test(multi ?? "")).toBe(false);
   });
 });
