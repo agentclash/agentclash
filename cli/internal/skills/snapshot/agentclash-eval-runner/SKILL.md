@@ -356,6 +356,7 @@ Next action: <recommendation>
 - `agentclash-challenge-pack-validation-publish`
 - `agentclash-scorecard-reader`
 - `agentclash-compare-and-triage`
+- `agentclash-multi-turn-operator`
 - `agentclash-regression-flywheel`
 - `agentclash-ci-release-gate`
 
