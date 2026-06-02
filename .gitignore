@@ -33,5 +33,6 @@ testing/*
 !testing/feat-skills-p0-workflow.md
 !testing/feat-sync-cli-skills-snapshot-p0.md
 !testing/feat-skills-p1-workflow.md
+!testing/feat-skills-p3-workflow.md
 !testing/feat-sync-cli-skills-snapshot-p1.md
 !testing/feat-integration-all-hosts.md
