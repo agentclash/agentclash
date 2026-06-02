@@ -61,8 +61,16 @@ func agentSubdir(agent string) (string, error) {
 		return filepath.Join(".claude", "skills"), nil
 	case "codex":
 		return filepath.Join(".agents", "skills"), nil
+	case "cursor":
+		return filepath.Join(".cursor", "skills"), nil
+	case "openclaw":
+		return filepath.Join(".openclaw", "skills"), nil
+	case "hermes":
+		return filepath.Join(".hermes", "skills"), nil
+	case "opencode":
+		return filepath.Join(".config", "opencode", "skills"), nil
 	default:
-		return "", fmt.Errorf("unknown agent %q (want claude or codex)", agent)
+		return "", fmt.Errorf("unknown agent %q (want claude, codex, cursor, openclaw, hermes, or opencode)", agent)
 	}
 }
 

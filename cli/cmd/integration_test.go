@@ -21,14 +21,14 @@ func findSubcommand(parent *cobra.Command, name string) *cobra.Command {
 }
 
 // TestIntegrationCommandTree is the Cobra-grep contract test: it pins the
-// integration -> {claude,codex} -> {install,doctor} shape and the flags, so a
-// refactor that renames or drops a subcommand/flag fails loudly.
+// integration -> {claude,codex,cursor,openclaw,hermes,opencode} -> {install,doctor}
+// shape and the flags, so a refactor that renames or drops a subcommand/flag fails loudly.
 func TestIntegrationCommandTree(t *testing.T) {
 	integ := findSubcommand(rootCmd, "integration")
 	if integ == nil {
 		t.Fatal("missing `integration` command")
 	}
-	for _, agent := range []string{"claude", "codex"} {
+	for _, agent := range []string{"claude", "codex", "cursor", "openclaw", "hermes", "opencode"} {
 		a := findSubcommand(integ, agent)
 		if a == nil {
 			t.Fatalf("missing `integration %s`", agent)
@@ -45,6 +45,42 @@ func TestIntegrationCommandTree(t *testing.T) {
 				t.Errorf("`integration %s %s` missing --with-mcp", agent, sub)
 			}
 		}
+	}
+}
+
+func TestIntegrationCursorInstallThenDoctor(t *testing.T) {
+	home := t.TempDir()
+
+	if err := executeCommand(t, []string{"integration", "cursor", "install", "--dir", home}, "http://unused"); err != nil {
+		t.Fatalf("install: %v", err)
+	}
+	skillPath := filepath.Join(home, ".cursor", "skills", "agentclash-cli-setup", "SKILL.md")
+	if _, err := os.Stat(skillPath); err != nil {
+		t.Fatalf("expected installed skill at %s: %v", skillPath, err)
+	}
+	if err := executeCommand(t, []string{"integration", "cursor", "doctor", "--dir", home}, "http://unused"); err != nil {
+		t.Fatalf("doctor after install should pass, got: %v", err)
+	}
+	for _, forbidden := range []string{"CLAUDE.md", "AGENTS.md", ".mcp.json"} {
+		assertNoFileNamed(t, home, forbidden)
+	}
+}
+
+func TestIntegrationOpencodeInstallThenDoctor(t *testing.T) {
+	home := t.TempDir()
+
+	if err := executeCommand(t, []string{"integration", "opencode", "install", "--dir", home}, "http://unused"); err != nil {
+		t.Fatalf("install: %v", err)
+	}
+	skillPath := filepath.Join(home, ".config", "opencode", "skills", "agentclash-cli-setup", "SKILL.md")
+	if _, err := os.Stat(skillPath); err != nil {
+		t.Fatalf("expected installed skill at %s: %v", skillPath, err)
+	}
+	if err := executeCommand(t, []string{"integration", "opencode", "doctor", "--dir", home}, "http://unused"); err != nil {
+		t.Fatalf("doctor after install should pass, got: %v", err)
+	}
+	for _, forbidden := range []string{"CLAUDE.md", "AGENTS.md", ".mcp.json"} {
+		assertNoFileNamed(t, home, forbidden)
 	}
 }
 
