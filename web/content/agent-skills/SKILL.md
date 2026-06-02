@@ -143,22 +143,25 @@ go test -short -race -count=1 ./...
 Read related skills in this order so downstream workflows do not redefine upstream concepts:
 
 1. `agentclash-skill-catalog`
-2. `agentclash-cli-setup`
-3. `agentclash-runtime-resources-setup`
-4. `agentclash-agent-build-author`
-5. `agentclash-agent-deployment-setup`
-6. `agentclash-challenge-pack-planner`
-7. `agentclash-challenge-pack-yaml-author`
-8. `agentclash-challenge-pack-input-sets`
-9. `agentclash-challenge-pack-tools-sandbox`
-10. `agentclash-challenge-pack-artifacts`
-11. `agentclash-challenge-pack-scoring-validators`
-12. `agentclash-challenge-pack-llm-judges`
-13. `agentclash-challenge-pack-validation-publish`
-14. `agentclash-eval-runner`
-15. `agentclash-scorecard-reader`
-16. `agentclash-regression-flywheel`
-17. `agentclash-ci-release-gate`
+2. `agentclash-hub`
+3. `agentclash-cli-setup`
+4. `agentclash-quickstart`
+5. `agentclash-runtime-resources-setup`
+6. `agentclash-agent-build-author`
+7. `agentclash-agent-deployment-setup`
+8. `agentclash-challenge-pack-planner`
+9. `agentclash-challenge-pack-yaml-author`
+10. `agentclash-challenge-pack-input-sets`
+11. `agentclash-challenge-pack-tools-sandbox`
+12. `agentclash-challenge-pack-artifacts`
+13. `agentclash-challenge-pack-scoring-validators`
+14. `agentclash-challenge-pack-llm-judges`
+15. `agentclash-challenge-pack-validation-publish`
+16. `agentclash-eval-runner`
+17. `agentclash-scorecard-reader`
+18. `agentclash-compare-and-triage`
+19. `agentclash-regression-flywheel`
+20. `agentclash-ci-release-gate`
 
 ## Review Checklist
 - The folder path matches the taxonomy.
