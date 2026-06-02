@@ -64,6 +64,8 @@ Optional branches (load when the workflow applies):
 • agentclash-dataset-workflows       → dataset eval, gate, traces, regression sync
 • agentclash-prompt-eval-playground  → prompt-eval YAML + playground experiments
 • agentclash-agent-harness-setup     → E2B coding-agent harness tasks and suites
+• agentclash-workspace-admin         → org/workspace CRUD and membership (teams)
+• agentclash-security-evaluation     → client-side security stress harnesses
 ```
 
 Human-friendly shortcut after setup:
@@ -104,6 +106,8 @@ Read skills in this order when multiple apply:
 22. `agentclash-multi-turn-operator`
 23. `agentclash-dataset-workflows`
 24. `agentclash-prompt-eval-playground`
+25. `agentclash-workspace-admin`
+26. `agentclash-security-evaluation`
 
 Each skill folder name matches its `name` in frontmatter. When a skill lists **Related Skills**, load those before mutating remote state.
 
@@ -134,6 +138,8 @@ Each skill folder name matches its `name` in frontmatter. When a skill lists **R
 | `agentclash-multi-turn-operator` | Human takeover turns in multi_turn packs |
 | `agentclash-dataset-workflows` | Dataset eval, CI gate, traces, regression sync |
 | `agentclash-prompt-eval-playground` | Prompt eval YAML and playground experiments |
+| `agentclash-workspace-admin` | Org/workspace CRUD and membership administration |
+| `agentclash-security-evaluation` | Security pack stress-run and vault harnesses |
 
 Nested folders: `agent-build-skills/` and `challenge-pack-skills/` mirror the table rows above.
 
