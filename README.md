@@ -300,6 +300,32 @@ API URL resolution order:
 --api-url > AGENTCLASH_API_URL > saved user config > default
 ```
 
+## Agent Skills
+
+AgentClash ships [Agent Skills](https://agentskills.io) that teach coding agents
+(Claude Code, Codex, Cursor, Gemini CLI, Copilot) how to drive the CLI — set up
+auth, run evals, read scorecards, gate CI, and author challenge packs.
+
+Install them straight into your agent with the CLI (idempotent; writes only
+`SKILL.md` files, never your `CLAUDE.md`/`AGENTS.md`/`.mcp.json`):
+
+```bash
+agentclash integration claude install   # -> ~/.claude/skills/
+agentclash integration codex install    # -> ~/.agents/skills/
+agentclash integration claude doctor    # verify what's installed
+```
+
+Or, on [GitHub CLI](https://cli.github.com) 2.90+, install the published bundle
+into any supported host (Claude Code, Copilot, Cursor, Codex, Gemini CLI,
+Antigravity):
+
+```bash
+gh skill install agentclash/agentclash <skill>
+```
+
+See [Use with AI Tools](web/content/docs/guides/use-with-ai-tools.mdx) for usage
+and [Publishing Agent Skills](docs/agent-skills-publishing.md) for maintainers.
+
 ## Local CLI Development
 
 The CLI lives in `cli/` and can run against the hosted API:
