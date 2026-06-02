@@ -207,6 +207,52 @@ Exact repetition behavior:
 
 In human output, the CLI prints eval session ID, status, repetitions, and child run IDs. In structured output, it prints the raw response envelope.
 
+## Eval Session Commands
+When an eval session already exists (from `--repetitions >= 2` or API), inspect and follow aggregation with:
+
+```bash
+agentclash eval session list
+agentclash eval session list --limit 20 --offset 0
+agentclash eval session get <EVAL_SESSION_ID>
+agentclash eval session follow <EVAL_SESSION_ID>
+agentclash eval session follow <EVAL_SESSION_ID> --poll-interval 5s --timeout 30m
+```
+
+Behavior:
+
+- `eval session list` — paginated workspace eval sessions (`--limit` 1–100, `--offset` ≥ 0).
+- `eval session get` — session detail plus aggregate metrics when available.
+- `eval session follow` — polls until aggregation finishes; `--timeout 0` disables timeout.
+- Requires workspace context like other eval commands.
+
+Use `eval session follow` after creating a multi-repetition eval when you need aggregated results before reading scorecards or comparisons.
+
+## Run Series Commands
+`run series` crosses deployment lineups with seeds for race-style series evals:
+
+```bash
+agentclash run series create \
+  --challenge-pack-version <CHALLENGE_PACK_VERSION_ID> \
+  --deployment-lineups <LINEUP_ID> \
+  --seeds 3 \
+  --name "Series smoke"
+
+agentclash run series report <EVAL_SESSION_ID>
+```
+
+`run series create` flags:
+
+- `--challenge-pack-version` — required pack version ID.
+- `--input-set` — optional challenge input set ID.
+- `--deployment-lineups` — repeatable lineup IDs crossed with `--seeds`.
+- `--seeds` — integer 1–100 per lineup.
+- `--name` — optional series name.
+- `--max-iter` — optional per-child-run iteration override (1–1000).
+
+`run series create` posts to `/v1/eval-sessions` and returns an eval session plus child run IDs (same family as `eval start --repetitions`).
+
+`run series report <eval-session-id>` reads `/v1/eval-sessions/<id>` and prints aggregate score, correctness, and cost for the series.
+
 ## Follow and Events
 Use `--follow` for interactive runs when you want immediate event visibility.
 
@@ -263,7 +309,7 @@ Read command notes:
 - `invalid_challenge_input_set_id`: the input set must belong to the selected challenge pack version.
 - `invalid_race_context`: race context requires at least two agents.
 - `--race-context-cadence must be 0 (backend default) or between 1 and 10`: fix the cadence value.
-- `--follow is not supported with --repetitions >= 2`: create the eval session, then stream individual child runs with `run events`.
+- `--follow is not supported with --repetitions >= 2`: create the eval session, then use `eval session follow` or stream individual child runs with `run events`.
 - `--scope suite_only requires at least one --suite or --case`: add a suite or case selection.
 - Scorecard pending or errored: report the state, then collect `run events`, `run agents`, and `run failures`.
 
@@ -293,6 +339,8 @@ Ranking: <summary or unavailable>
 Failures: <count/filter summary or unavailable>
 Scorecard: <state/link/summary or unavailable>
 Evidence commands:
+- agentclash eval session get <EVAL_SESSION_ID> --json
+- agentclash run series report <EVAL_SESSION_ID>
 - agentclash run get <RUN_ID> --json
 - agentclash run agents <RUN_ID> --json
 - agentclash run ranking <RUN_ID> --json
@@ -301,10 +349,13 @@ Next action: <recommendation>
 ```
 
 ## Related Skills
+- `agentclash-hub`
 - `agentclash-cli-setup`
+- `agentclash-quickstart`
 - `agentclash-agent-deployment-setup`
 - `agentclash-challenge-pack-validation-publish`
 - `agentclash-scorecard-reader`
+- `agentclash-compare-and-triage`
 - `agentclash-regression-flywheel`
 - `agentclash-ci-release-gate`
 
