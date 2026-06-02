@@ -166,6 +166,8 @@ Read related skills in this order so downstream workflows do not redefine upstre
 22. `agentclash-multi-turn-operator`
 23. `agentclash-dataset-workflows`
 24. `agentclash-prompt-eval-playground`
+25. `agentclash-workspace-admin`
+26. `agentclash-security-evaluation`
 
 ## Review Checklist
 - The folder path matches the taxonomy.
