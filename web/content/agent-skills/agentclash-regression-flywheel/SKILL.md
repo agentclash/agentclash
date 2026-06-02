@@ -503,10 +503,11 @@ Next action: <ship/fix/rerun/needs-review>
 ```
 
 ## Related Skills
+- `agentclash-hub`
 - `agentclash-cli-setup`
 - `agentclash-eval-runner`
 - `agentclash-scorecard-reader`
-- `agentclash-regression-flywheel`
+- `agentclash-compare-and-triage`
 - `agentclash-ci-release-gate`
 
 ## Related Docs
