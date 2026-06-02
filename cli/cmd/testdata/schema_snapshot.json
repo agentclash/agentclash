@@ -2205,6 +2205,106 @@
       ]
     },
     {
+      "name": "integration",
+      "path": "agentclash integration",
+      "short": "Install and verify AgentClash Agent Skills for coding agents",
+      "runnable": false,
+      "subcommands": [
+        {
+          "name": "claude",
+          "path": "agentclash integration claude",
+          "short": "Manage the AgentClash skills integration for Claude Code",
+          "runnable": false,
+          "subcommands": [
+            {
+              "name": "doctor",
+              "path": "agentclash integration claude doctor",
+              "short": "Verify the AgentClash skills integration for Claude Code",
+              "runnable": true,
+              "flags": [
+                {
+                  "name": "dir",
+                  "usage": "Install root (defaults to your home directory)",
+                  "type": "string"
+                },
+                {
+                  "name": "with-mcp",
+                  "usage": "Reserved: also configure an MCP server (not available yet)",
+                  "type": "bool",
+                  "default": "false"
+                }
+              ]
+            },
+            {
+              "name": "install",
+              "path": "agentclash integration claude install",
+              "short": "Install AgentClash skills for Claude Code",
+              "runnable": true,
+              "flags": [
+                {
+                  "name": "dir",
+                  "usage": "Install root (defaults to your home directory)",
+                  "type": "string"
+                },
+                {
+                  "name": "with-mcp",
+                  "usage": "Reserved: also configure an MCP server (not available yet)",
+                  "type": "bool",
+                  "default": "false"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "codex",
+          "path": "agentclash integration codex",
+          "short": "Manage the AgentClash skills integration for Codex",
+          "runnable": false,
+          "subcommands": [
+            {
+              "name": "doctor",
+              "path": "agentclash integration codex doctor",
+              "short": "Verify the AgentClash skills integration for Codex",
+              "runnable": true,
+              "flags": [
+                {
+                  "name": "dir",
+                  "usage": "Install root (defaults to your home directory)",
+                  "type": "string"
+                },
+                {
+                  "name": "with-mcp",
+                  "usage": "Reserved: also configure an MCP server (not available yet)",
+                  "type": "bool",
+                  "default": "false"
+                }
+              ]
+            },
+            {
+              "name": "install",
+              "path": "agentclash integration codex install",
+              "short": "Install AgentClash skills for Codex",
+              "runnable": true,
+              "flags": [
+                {
+                  "name": "dir",
+                  "usage": "Install root (defaults to your home directory)",
+                  "type": "string"
+                },
+                {
+                  "name": "with-mcp",
+                  "usage": "Reserved: also configure an MCP server (not available yet)",
+                  "type": "bool",
+                  "default": "false"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "link",
       "path": "agentclash link",
       "short": "Choose and save your default workspace",
