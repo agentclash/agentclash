@@ -102,11 +102,37 @@ func TestCodexUsesAgentsDir(t *testing.T) {
 }
 
 func TestUnknownAgentErrors(t *testing.T) {
-	if _, err := Install("cursor", t.TempDir()); err == nil {
+	if _, err := Install("invalid", t.TempDir()); err == nil {
 		t.Fatal("Install should error for an unknown agent")
 	}
-	if _, err := Audit("cursor", t.TempDir()); err == nil {
+	if _, err := Audit("invalid", t.TempDir()); err == nil {
 		t.Fatal("Audit should error for an unknown agent")
+	}
+}
+
+func TestHostInstallPaths(t *testing.T) {
+	root := t.TempDir()
+	cases := []struct {
+		agent string
+		rel   string
+	}{
+		{"claude", filepath.Join(".claude", "skills", sampleSkill, "SKILL.md")},
+		{"codex", filepath.Join(".agents", "skills", sampleSkill, "SKILL.md")},
+		{"cursor", filepath.Join(".cursor", "skills", sampleSkill, "SKILL.md")},
+		{"openclaw", filepath.Join(".openclaw", "skills", sampleSkill, "SKILL.md")},
+		{"hermes", filepath.Join(".hermes", "skills", sampleSkill, "SKILL.md")},
+		{"opencode", filepath.Join(".config", "opencode", "skills", sampleSkill, "SKILL.md")},
+	}
+	for _, tc := range cases {
+		t.Run(tc.agent, func(t *testing.T) {
+			dir := filepath.Join(root, tc.agent)
+			if _, err := Install(tc.agent, dir); err != nil {
+				t.Fatalf("install: %v", err)
+			}
+			if _, err := os.Stat(filepath.Join(dir, tc.rel)); err != nil {
+				t.Fatalf("expected skill at %s: %v", tc.rel, err)
+			}
+		})
 	}
 }
 
