@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.29.0](https://github.com/agentclash/agentclash/compare/v0.28.0...v0.29.0) (2026-06-02)
+
+
+### Features
+
+* **cli:** add agentclash skills export command ([55e5919](https://github.com/agentclash/agentclash/commit/55e5919ac5cbb27eb5401a6bd1bdc125bfb677e3))
+* **cli:** add agentclash skills export for offline install ([#922](https://github.com/agentclash/agentclash/issues/922)) ([31b826e](https://github.com/agentclash/agentclash/commit/31b826e589e5466418460419f714002e43c3c3ca))
+* **cli:** add skills export library for dir and tar.gz output ([d286e3e](https://github.com/agentclash/agentclash/commit/d286e3e846b0a3f45979199fe7e489b646954d59))
+
+
+### Bug Fixes
+
+* **cli:** propagate tar.gz writer close errors on skills export ([8593d58](https://github.com/agentclash/agentclash/commit/8593d5812f5cf59ae56617d3cff23bf6484d22c3))
+
 ## [0.28.0](https://github.com/agentclash/agentclash/compare/v0.27.0...v0.28.0) (2026-06-02)
 
 
