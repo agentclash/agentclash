@@ -408,6 +408,20 @@ export const DOCS_NAV: DocNavSection[] = [
         href: "/docs/agent-skills",
       },
       {
+        title: "Hub Skill",
+        description:
+          "Start here for workflow map, dependency order, UI links, and pointers to every AgentClash skill.",
+        slug: ["agent-skills", "agentclash-hub"],
+        href: "/docs/agent-skills/agentclash-hub",
+      },
+      {
+        title: "Quickstart Skill",
+        description:
+          "Run readiness checks and get the suggested next CLI command before evals.",
+        slug: ["agent-skills", "agentclash-quickstart"],
+        href: "/docs/agent-skills/agentclash-quickstart",
+      },
+      {
         title: "Challenge Pack Skills",
         description:
           "Focused skills for planning, YAML authoring, input sets, scoring, judges, tools, artifacts, and publication.",
@@ -441,6 +455,13 @@ export const DOCS_NAV: DocNavSection[] = [
           "Turn rankings, scorecards, and replay evidence into engineering findings.",
         slug: ["agent-skills", "agentclash-scorecard-reader"],
         href: "/docs/agent-skills/agentclash-scorecard-reader",
+      },
+      {
+        title: "Compare And Triage Skill",
+        description:
+          "Manage baselines, compare runs, evaluate gates, and build replay triage envelopes.",
+        slug: ["agent-skills", "agentclash-compare-and-triage"],
+        href: "/docs/agent-skills/agentclash-compare-and-triage",
       },
       {
         title: "Regression Flywheel Skill",
