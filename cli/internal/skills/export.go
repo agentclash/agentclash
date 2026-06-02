@@ -127,7 +127,7 @@ func writeSkillToDir(root, name string) error {
 	return os.WriteFile(filepath.Join(dir, "SKILL.md"), body, 0o644)
 }
 
-func writeTarGz(archivePath, srcDir string) error {
+func writeTarGz(archivePath, srcDir string) (err error) {
 	if err := os.MkdirAll(filepath.Dir(archivePath), 0o755); err != nil && filepath.Dir(archivePath) != "." {
 		return err
 	}
@@ -135,14 +135,16 @@ func writeTarGz(archivePath, srcDir string) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() {
+		if closeErr := f.Close(); err == nil {
+			err = closeErr
+		}
+	}()
 
 	gw := gzip.NewWriter(f)
-	defer gw.Close()
 	tw := tar.NewWriter(gw)
-	defer tw.Close()
 
-	return filepath.WalkDir(srcDir, func(path string, d os.DirEntry, walkErr error) error {
+	if walkErr := filepath.WalkDir(srcDir, func(path string, d os.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
@@ -173,7 +175,16 @@ func writeTarGz(archivePath, srcDir string) error {
 		_, err = io.Copy(tw, file)
 		file.Close()
 		return err
-	})
+	}); walkErr != nil {
+		return walkErr
+	}
+	if err := tw.Close(); err != nil {
+		return err
+	}
+	if err := gw.Close(); err != nil {
+		return err
+	}
+	return nil
 }
 
 // ParseExportFormat validates a user-facing format flag.
