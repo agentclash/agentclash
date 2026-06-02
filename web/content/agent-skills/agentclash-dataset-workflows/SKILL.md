@@ -151,5 +151,5 @@ Next: agentclash run scorecard <run-id>
 
 ## Related Docs
 - `/docs-md/guides/datasets-overview`
-- `/docs-md/guides/ci-cd-workflow-recipes`
+- `/docs-md/guides/ci-cd-workload-recipes`
 - `/docs-md/reference/cli`

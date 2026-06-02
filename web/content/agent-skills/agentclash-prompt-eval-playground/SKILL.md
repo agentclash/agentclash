@@ -115,6 +115,6 @@ Next: agentclash eval-runner ... OR prompt-eval results <id>
 - `agentclash-regression-flywheel`
 
 ## Related Docs
-- `/docs-md/guides/datasets-overview`
+- `/docs-md/guides/use-with-ai-tools`
 - `/docs-md/reference/cli`
 - `/docs-md/getting-started/first-eval`

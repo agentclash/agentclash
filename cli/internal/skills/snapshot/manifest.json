@@ -1,5 +1,5 @@
 {
-  "snapshot_version": "11476048adb7",
+  "snapshot_version": "0530fa3df936",
   "skills": [
     {
       "name": "agentclash-agent-build-author",
@@ -89,7 +89,7 @@
       "name": "agentclash-dataset-workflows",
       "role": "dataset",
       "requires_cli": true,
-      "sha256": "cc95ed94b624bb88eab5f1852c5b3162fe9382a606d953a4bcfa0b0ecfdae495"
+      "sha256": "4947e24a77204157ac9233ee5dddd9ea3fa791abc463e5079ff21f43fe43b99b"
     },
     {
       "name": "agentclash-eval-runner",
@@ -113,7 +113,7 @@
       "name": "agentclash-prompt-eval-playground",
       "role": "prompt-eval",
       "requires_cli": true,
-      "sha256": "a1ee2266cc31184768c5d036601bfe61574c3371359a19b8d5dc72aca3a6a044"
+      "sha256": "8e56f23102f1bf343859abbdbae2de0a9153fd36c3204eb287b95eb474c6857f"
     },
     {
       "name": "agentclash-quickstart",
