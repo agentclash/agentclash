@@ -14,12 +14,29 @@ import { ogImageUrl } from "@/lib/seo";
 // metadata does NOT apply to sitemap entries — so prefix DOCS_ORIGIN here. Each
 // image points at the existing dynamic OG card route, reusing the same cached
 // card a page already renders for its social preview.
+//
+// Critical: Next's sitemap serializer interpolates the image URL into
+// `<image:loc>…</image:loc>` WITHOUT XML-escaping, and ogImageUrl() joins query
+// params with a raw `&` (URLSearchParams). A raw `&` is not well-formed XML and
+// would corrupt the entire sitemap.xml, so XML-escape the URL here. This matters
+// only for the sitemap; page metadata uses ogImageUrl() unescaped. (The `url`
+// field needs no escaping — route paths carry no query string / XML-special
+// chars.)
+function xmlEscape(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 function ogImage(args: {
   title: string;
   subtitle?: string;
   kind?: string;
 }): string {
-  return `${DOCS_ORIGIN}${ogImageUrl(args)}`;
+  return xmlEscape(`${DOCS_ORIGIN}${ogImageUrl(args)}`);
 }
 
 // Shared generic card for pages without a tailored OG image — one cached render.
