@@ -15,5 +15,11 @@
       "source": "/try-api/:path*",
       "destination": "https://try-api.agentclash.dev/:path*"
     }
+  ],
+  "crons": [
+    {
+      "path": "/api/indexnow",
+      "schedule": "0 6 * * *"
+    }
   ]
 }

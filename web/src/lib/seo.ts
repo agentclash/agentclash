@@ -28,3 +28,18 @@ export function ogImageUrl({
   if (kind) search.set("kind", kind);
   return `/og?${search.toString()}`;
 }
+
+// Webmaster-verification metadata (Google Search Console + Bing Webmaster).
+// Tokens are public (they live in the HTML <head>) and set via NEXT_PUBLIC_ env
+// so they're inlined at build time. Returns a Next `verification` object, or
+// undefined when neither token is set — so the <head> gets no meta tag and the
+// build never crashes. See docs/frontend/seo-verification.md to activate.
+export function webmasterVerification(): Metadata["verification"] | undefined {
+  const google = process.env.NEXT_PUBLIC_GSC_VERIFICATION;
+  const bing = process.env.NEXT_PUBLIC_BING_VERIFICATION;
+  if (!google && !bing) return undefined;
+  return {
+    ...(google ? { google } : {}),
+    ...(bing ? { other: { "msvalidate.01": bing } } : {}),
+  };
+}
