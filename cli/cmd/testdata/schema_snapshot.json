@@ -1,0 +1,4032 @@
+{
+  "schema_version": 1,
+  "cli_version": "test",
+  "global_flags": [
+    {
+      "name": "api-url",
+      "usage": "API base URL (overrides config)",
+      "type": "string"
+    },
+    {
+      "name": "json",
+      "usage": "Output in JSON format",
+      "type": "bool",
+      "default": "false"
+    },
+    {
+      "name": "no-color",
+      "usage": "Disable color output",
+      "type": "bool",
+      "default": "false"
+    },
+    {
+      "name": "output",
+      "shorthand": "o",
+      "usage": "Output format: table, json, yaml",
+      "type": "string"
+    },
+    {
+      "name": "quiet",
+      "shorthand": "q",
+      "usage": "Suppress non-essential output",
+      "type": "bool",
+      "default": "false"
+    },
+    {
+      "name": "verbose",
+      "shorthand": "v",
+      "usage": "Enable debug output on stderr",
+      "type": "bool",
+      "default": "false"
+    },
+    {
+      "name": "workspace",
+      "shorthand": "w",
+      "usage": "Workspace ID (overrides config)",
+      "type": "string"
+    },
+    {
+      "name": "yes",
+      "usage": "Skip confirmation prompts",
+      "type": "bool",
+      "default": "false"
+    }
+  ],
+  "commands": [
+    {
+      "name": "agent-harness",
+      "path": "agentclash agent-harness",
+      "short": "Manage coding-agent harnesses",
+      "aliases": [
+        "harness"
+      ],
+      "runnable": false,
+      "subcommands": [
+        {
+          "name": "create",
+          "path": "agentclash agent-harness create",
+          "short": "Create an agent harness",
+          "runnable": true,
+          "flags": [
+            {
+              "name": "api-key-secret",
+              "usage": "Workspace secret name containing the runner provider API key",
+              "type": "string"
+            },
+            {
+              "name": "auth-mode",
+              "usage": "Harness auth mode: api_key_secret",
+              "type": "string",
+              "default": "api_key_secret"
+            },
+            {
+              "name": "base-branch",
+              "usage": "Base branch for repository work",
+              "type": "string"
+            },
+            {
+              "name": "codex-model",
+              "usage": "Runner model override",
+              "type": "string"
+            },
+            {
+              "name": "codex-template",
+              "usage": "E2B template override for the harness runner",
+              "type": "string"
+            },
+            {
+              "name": "description",
+              "usage": "Harness description",
+              "type": "string"
+            },
+            {
+              "name": "evaluation-config",
+              "usage": "Inline JSON evaluation config",
+              "type": "string"
+            },
+            {
+              "name": "evaluation-config-file",
+              "usage": "JSON file with validators and LLM judges",
+              "type": "string"
+            },
+            {
+              "name": "execution-config",
+              "usage": "Inline JSON execution config",
+              "type": "string"
+            },
+            {
+              "name": "from-file",
+              "usage": "JSON file with agent harness spec",
+              "type": "string"
+            },
+            {
+              "name": "harness-kind",
+              "usage": "Harness runner kind: codex_e2b, claude_e2b, hermes_e2b, or openclaw_e2b",
+              "type": "string",
+              "default": "codex_e2b"
+            },
+            {
+              "name": "name",
+              "usage": "Harness name",
+              "type": "string"
+            },
+            {
+              "name": "openai-api-key-secret",
+              "usage": "Workspace secret name containing OPENAI_API_KEY",
+              "type": "string"
+            },
+            {
+              "name": "repository-url",
+              "usage": "Repository URL for the harness task",
+              "type": "string"
+            },
+            {
+              "name": "task",
+              "usage": "Task prompt for the coding harness",
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "name": "execution",
+          "path": "agentclash agent-harness execution",
+          "short": "Inspect agent harness executions",
+          "runnable": false,
+          "subcommands": [
+            {
+              "name": "cancel",
+              "path": "agentclash agent-harness execution cancel",
+              "short": "Cancel an Agent Harness execution",
+              "runnable": true
+            },
+            {
+              "name": "failure-review",
+              "path": "agentclash agent-harness execution failure-review",
+              "short": "Inspect or edit Agent Harness failure classifications",
+              "runnable": false,
+              "subcommands": [
+                {
+                  "name": "get",
+                  "path": "agentclash agent-harness execution failure-review get",
+                  "short": "Get Agent Harness failure review",
+                  "runnable": true
+                },
+                {
+                  "name": "update",
+                  "path": "agentclash agent-harness execution failure-review update",
+                  "short": "Update Agent Harness failure review annotations",
+                  "runnable": true,
+                  "flags": [
+                    {
+                      "name": "from-file",
+                      "usage": "JSON file with failure review update payload",
+                      "type": "string"
+                    },
+                    {
+                      "name": "human-class",
+                      "usage": "Human-curated failure class",
+                      "type": "string"
+                    },
+                    {
+                      "name": "human-payload",
+                      "usage": "Inline JSON human payload",
+                      "type": "string"
+                    },
+                    {
+                      "name": "human-summary",
+                      "usage": "Human-curated failure summary",
+                      "type": "string"
+                    },
+                    {
+                      "name": "suggested-class",
+                      "usage": "Suggested failure class",
+                      "type": "string"
+                    },
+                    {
+                      "name": "suggested-confidence",
+                      "usage": "Suggested confidence as a decimal",
+                      "type": "string"
+                    },
+                    {
+                      "name": "suggested-payload",
+                      "usage": "Inline JSON suggested payload",
+                      "type": "string"
+                    },
+                    {
+                      "name": "suggested-source",
+                      "usage": "Suggested source: rules or llm",
+                      "type": "string"
+                    },
+                    {
+                      "name": "suggested-summary",
+                      "usage": "Suggested failure summary",
+                      "type": "string"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "get",
+              "path": "agentclash agent-harness execution get",
+              "short": "Get an agent harness execution",
+              "runnable": true
+            },
+            {
+              "name": "promote-task",
+              "path": "agentclash agent-harness execution promote-task",
+              "short": "Promote a prior harness run into a private suite task",
+              "runnable": true,
+              "flags": [
+                {
+                  "name": "failure-class",
+                  "usage": "Failure class to store with promotion metadata",
+                  "type": "string"
+                },
+                {
+                  "name": "failure-summary",
+                  "usage": "Failure summary to store with promotion metadata",
+                  "type": "string"
+                },
+                {
+                  "name": "from-file",
+                  "usage": "JSON file with promotion payload",
+                  "type": "string"
+                },
+                {
+                  "name": "metadata",
+                  "usage": "Inline JSON promotion metadata",
+                  "type": "string"
+                },
+                {
+                  "name": "public-prompt",
+                  "usage": "Sanitized public prompt",
+                  "type": "string"
+                },
+                {
+                  "name": "suite",
+                  "usage": "Target Agent Harness suite ID",
+                  "type": "string"
+                },
+                {
+                  "name": "title",
+                  "usage": "Promoted private task title",
+                  "type": "string"
+                }
+              ]
+            },
+            {
+              "name": "retry",
+              "path": "agentclash agent-harness execution retry",
+              "short": "Retry a terminal Agent Harness execution",
+              "runnable": true,
+              "flags": [
+                {
+                  "name": "idempotency-key",
+                  "usage": "Retry idempotency key",
+                  "type": "string"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "executions",
+          "path": "agentclash agent-harness executions",
+          "short": "List executions for an agent harness",
+          "runnable": true
+        },
+        {
+          "name": "failures",
+          "path": "agentclash agent-harness failures",
+          "short": "Inspect Agent Harness failure summaries",
+          "runnable": false,
+          "subcommands": [
+            {
+              "name": "summary",
+              "path": "agentclash agent-harness failures summary",
+              "short": "Summarize Agent Harness failure modes",
+              "runnable": true
+            }
+          ]
+        },
+        {
+          "name": "get",
+          "path": "agentclash agent-harness get",
+          "short": "Get an agent harness",
+          "runnable": true
+        },
+        {
+          "name": "list",
+          "path": "agentclash agent-harness list",
+          "short": "List agent harnesses",
+          "runnable": true
+        },
+        {
+          "name": "run",
+          "path": "agentclash agent-harness run",
+          "short": "Start an agent harness execution",
+          "runnable": true,
+          "flags": [
+            {
+              "name": "follow",
+              "usage": "Poll until the harness execution reaches a terminal status",
+              "type": "bool",
+              "default": "false"
+            },
+            {
+              "name": "message",
+              "usage": "Override the harness task prompt for this execution",
+              "type": "string"
+            },
+            {
+              "name": "poll-interval",
+              "usage": "Polling interval for --follow",
+              "type": "duration",
+              "default": "2s"
+            }
+          ]
+        },
+        {
+          "name": "suite",
+          "path": "agentclash agent-harness suite",
+          "short": "Manage Agent Harness suites and private task banks",
+          "runnable": false,
+          "subcommands": [
+            {
+              "name": "create",
+              "path": "agentclash agent-harness suite create",
+              "short": "Create an Agent Harness suite/private task bank",
+              "runnable": true,
+              "flags": [
+                {
+                  "name": "description",
+                  "usage": "Suite description",
+                  "type": "string"
+                },
+                {
+                  "name": "from-file",
+                  "usage": "JSON file with agent harness suite spec",
+                  "type": "string"
+                },
+                {
+                  "name": "metadata",
+                  "usage": "Inline JSON suite metadata",
+                  "type": "string"
+                },
+                {
+                  "name": "name",
+                  "usage": "Suite name",
+                  "type": "string"
+                },
+                {
+                  "name": "task-json",
+                  "usage": "Suite task JSON object; may be repeated",
+                  "type": "stringArray",
+                  "default": "[]"
+                }
+              ]
+            },
+            {
+              "name": "list",
+              "path": "agentclash agent-harness suite list",
+              "short": "List Agent Harness suites",
+              "runnable": true
+            },
+            {
+              "name": "rankings",
+              "path": "agentclash agent-harness suite rankings",
+              "short": "Get Agent Harness suite rankings",
+              "runnable": true,
+              "flags": [
+                {
+                  "name": "k",
+                  "usage": "k value for pass@k and pass^k",
+                  "type": "int",
+                  "default": "1"
+                },
+                {
+                  "name": "version-id",
+                  "usage": "Immutable suite version ID",
+                  "type": "string"
+                }
+              ]
+            },
+            {
+              "name": "run",
+              "path": "agentclash agent-harness suite run",
+              "short": "Start suite runs across one or more harnesses",
+              "runnable": true,
+              "flags": [
+                {
+                  "name": "harness",
+                  "usage": "Harness ID to run; may be repeated or comma-separated",
+                  "type": "stringSlice",
+                  "default": "[]"
+                },
+                {
+                  "name": "task",
+                  "usage": "Suite task ID filter; may be repeated or comma-separated",
+                  "type": "stringSlice",
+                  "default": "[]"
+                }
+              ]
+            },
+            {
+              "name": "tasks",
+              "path": "agentclash agent-harness suite tasks",
+              "short": "List public tasks for an Agent Harness suite",
+              "runnable": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "artifact",
+      "path": "agentclash artifact",
+      "short": "Upload and download artifacts",
+      "runnable": false,
+      "subcommands": [
+        {
+          "name": "download",
+          "path": "agentclash artifact download",
+          "short": "Download an artifact",
+          "runnable": true
+        },
+        {
+          "name": "list",
+          "path": "agentclash artifact list",
+          "short": "List artifacts in the workspace",
+          "runnable": true
+        },
+        {
+          "name": "upload",
+          "path": "agentclash artifact upload",
+          "short": "Upload an artifact",
+          "runnable": true,
+          "flags": [
+            {
+              "name": "metadata",
+              "usage": "JSON metadata (optional)",
+              "type": "string"
+            },
+            {
+              "name": "run",
+              "usage": "Run ID (optional)",
+              "type": "string"
+            },
+            {
+              "name": "run-agent",
+              "usage": "Run agent ID (optional)",
+              "type": "string"
+            },
+            {
+              "name": "type",
+              "usage": "Artifact type (required)",
+              "type": "string",
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "validate-voice-manifest",
+          "path": "agentclash artifact validate-voice-manifest",
+          "short": "Validate a voice artifact manifest JSON file against the AgentClash schema",
+          "runnable": true
+        },
+        {
+          "name": "validate-voice-report",
+          "path": "agentclash artifact validate-voice-report",
+          "short": "Validate a voice report JSON file against an AgentClash schema",
+          "runnable": true,
+          "flags": [
+            {
+              "name": "schema",
+              "usage": "JSON Schema path (required when report type cannot be auto-detected)",
+              "type": "string"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "auth",
+      "path": "agentclash auth",
+      "short": "Manage authentication",
+      "runnable": false,
+      "subcommands": [
+        {
+          "name": "login",
+          "path": "agentclash auth login",
+          "short": "Log in to AgentClash",
+          "runnable": true,
+          "flags": [
+            {
+              "name": "device",
+              "usage": "Print the verification URL instead of opening the browser automatically",
+              "type": "bool",
+              "default": "false"
+            },
+            {
+              "name": "force",
+              "usage": "Start a new browser login even if existing credentials are valid",
+              "type": "bool",
+              "default": "false"
+            }
+          ]
+        },
+        {
+          "name": "logout",
+          "path": "agentclash auth logout",
+          "short": "Log out and remove stored credentials",
+          "runnable": true
+        },
+        {
+          "name": "status",
+          "path": "agentclash auth status",
+          "short": "Show current authentication status",
+          "runnable": true
+        },
+        {
+          "name": "tokens",
+          "path": "agentclash auth tokens",
+          "short": "Manage CLI access tokens",
+          "runnable": false,
+          "subcommands": [
+            {
+              "name": "list",
+              "path": "agentclash auth tokens list",
+              "short": "List your CLI tokens",
+              "runnable": true
+            },
+            {
+              "name": "revoke",
+              "path": "agentclash auth tokens revoke",
+              "short": "Revoke a CLI token",
+              "runnable": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "baseline",
+      "path": "agentclash baseline",
+      "short": "Manage the workspace-scoped default baseline run",
+      "runnable": false,
+      "subcommands": [
+        {
+          "name": "clear",
+          "path": "agentclash baseline clear",
+          "short": "Clear the default baseline run for the current workspace",
+          "runnable": true
+        },
+        {
+          "name": "set",
+          "path": "agentclash baseline set",
+          "short": "Bookmark a run as the default baseline for the current workspace",
+          "runnable": true,
+          "flags": [
+            {
+              "name": "agent",
+              "usage": "Run agent ID or label (optional)",
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "name": "show",
+          "path": "agentclash baseline show",
+          "short": "Show the default baseline run for the current workspace",
+          "runnable": true
+        }
+      ]
+    },
+    {
+      "name": "build",
+      "path": "agentclash build",
+      "short": "Manage agent builds",
+      "runnable": false,
+      "subcommands": [
+        {
+          "name": "create",
+          "path": "agentclash build create",
+          "short": "Create a new agent build",
+          "runnable": true,
+          "flags": [
+            {
+              "name": "description",
+              "usage": "Build description",
+              "type": "string"
+            },
+            {
+              "name": "name",
+              "usage": "Build name (required)",
+              "type": "string",
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "get",
+          "path": "agentclash build get",
+          "short": "Get agent build with version history",
+          "runnable": true
+        },
+        {
+          "name": "list",
+          "path": "agentclash build list",
+          "short": "List agent builds",
+          "runnable": true
+        },
+        {
+          "name": "version",
+          "path": "agentclash build version",
+          "short": "Manage agent build versions",
+          "runnable": false,
+          "subcommands": [
+            {
+              "name": "create",
+              "path": "agentclash build version create",
+              "short": "Create a new draft version",
+              "runnable": true,
+              "flags": [
+                {
+                  "name": "agent-kind",
+                  "usage": "Agent kind: llm_agent, workflow_agent, programmatic_agent, multi_agent_system, hosted_external",
+                  "type": "string"
+                },
+                {
+                  "name": "spec-file",
+                  "usage": "JSON file with version spec fields",
+                  "type": "string"
+                },
+                {
+                  "name": "template",
+                  "usage": "Template key to scaffold this version (for example: honest-agent, code-reviewer)",
+                  "type": "string"
+                }
+              ]
+            },
+            {
+              "name": "get",
+              "path": "agentclash build version get",
+              "short": "Get a build version",
+              "runnable": true
+            },
+            {
+              "name": "ready",
+              "path": "agentclash build version ready",
+              "short": "Mark a version as ready (immutable, deployable)",
+              "runnable": true
+            },
+            {
+              "name": "templates",
+              "path": "agentclash build version templates",
+              "short": "List built-in build version templates",
+              "runnable": true
+            },
+            {
+              "name": "update",
+              "path": "agentclash build version update",
+              "short": "Update a draft build version",
+              "runnable": true,
+              "flags": [
+                {
+                  "name": "spec-file",
+                  "usage": "JSON file with updated version spec fields",
+                  "type": "string"
+                }
+              ]
+            },
+            {
+              "name": "validate",
+              "path": "agentclash build version validate",
+              "short": "Validate a build version",
+              "runnable": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "challenge-pack",
+      "path": "agentclash challenge-pack",
+      "short": "Manage challenge packs",
+      "aliases": [
+        "cp"
+      ],
+      "runnable": false,
+      "subcommands": [
+        {
+          "name": "init",
+          "path": "agentclash challenge-pack init",
+          "short": "Scaffold a minimal challenge pack YAML bundle",
+          "runnable": true,
+          "flags": [
+            {
+              "name": "force",
+              "usage": "Overwrite an existing file",
+              "type": "bool",
+              "default": "false"
+            },
+            {
+              "name": "name",
+              "usage": "Challenge pack display name (defaults from the file name)",
+              "type": "string"
+            },
+            {
+              "name": "slug",
+              "usage": "Challenge pack slug (defaults from the file name)",
+              "type": "string"
+            },
+            {
+              "name": "template",
+              "usage": "Starter template: prompt_eval, responses, or native",
+              "type": "string",
+              "default": "prompt_eval"
+            }
+          ]
+        },
+        {
+          "name": "list",
+          "path": "agentclash challenge-pack list",
+          "short": "List challenge packs",
+          "runnable": true
+        },
+        {
+          "name": "publish",
+          "path": "agentclash challenge-pack publish",
+          "short": "Publish a challenge pack YAML bundle",
+          "runnable": true
+        },
+        {
+          "name": "validate",
+          "path": "agentclash challenge-pack validate",
+          "short": "Validate a challenge pack YAML bundle",
+          "runnable": true
+        }
+      ]
+    },
+    {
+      "name": "ci",
+      "path": "agentclash ci",
+      "short": "Manage AgentClash CI manifests",
+      "runnable": false,
+      "subcommands": [
+        {
+          "name": "baseline",
+          "path": "agentclash ci baseline",
+          "short": "Resolve the baseline selected by an AgentClash CI manifest",
+          "runnable": true,
+          "flags": [
+            {
+              "name": "manifest",
+              "usage": "Path to the AgentClash CI manifest",
+              "type": "string",
+              "default": ".agentclash/ci.yaml"
+            }
+          ]
+        },
+        {
+          "name": "init",
+          "path": "agentclash ci init",
+          "short": "Write a sample AgentClash CI manifest",
+          "runnable": true,
+          "flags": [
+            {
+              "name": "force",
+              "usage": "Overwrite an existing manifest",
+              "type": "bool",
+              "default": "false"
+            }
+          ]
+        },
+        {
+          "name": "run",
+          "path": "agentclash ci run",
+          "short": "Run the AgentClash CI workflow described by a manifest",
+          "runnable": true,
+          "flags": [
+            {
+              "name": "artifact-dir",
+              "usage": "Write stable AgentClash CI JSON artifacts to this directory",
+              "type": "string"
+            },
+            {
+              "name": "ci-branch",
+              "usage": "Branch metadata override",
+              "type": "string"
+            },
+            {
+              "name": "ci-commit",
+              "usage": "Commit SHA metadata override",
+              "type": "string"
+            },
+            {
+              "name": "ci-default-branch",
+              "usage": "Default branch metadata override for auto_on_main regression promotion",
+              "type": "string"
+            },
+            {
+              "name": "ci-event",
+              "usage": "CI event name metadata override",
+              "type": "string"
+            },
+            {
+              "name": "ci-provider",
+              "usage": "CI provider metadata override",
+              "type": "string"
+            },
+            {
+              "name": "ci-pull-request",
+              "usage": "Positive pull request number metadata override",
+              "type": "int",
+              "default": "0"
+            },
+            {
+              "name": "ci-ref",
+              "usage": "Git ref metadata override",
+              "type": "string"
+            },
+            {
+              "name": "ci-repository",
+              "usage": "Repository metadata override, for example owner/repo",
+              "type": "string"
+            },
+            {
+              "name": "ci-workflow",
+              "usage": "Workflow name metadata override",
+              "type": "string"
+            },
+            {
+              "name": "ci-workflow-run-attempt",
+              "usage": "Workflow run attempt metadata override",
+              "type": "string"
+            },
+            {
+              "name": "ci-workflow-run-id",
+              "usage": "Workflow run id metadata override",
+              "type": "string"
+            },
+            {
+              "name": "ci-workflow-run-url",
+              "usage": "Workflow run URL metadata override",
+              "type": "string"
+            },
+            {
+              "name": "follow",
+              "usage": "Stream run events while waiting for the candidate run",
+              "type": "bool",
+              "default": "false"
+            },
+            {
+              "name": "github-step-summary",
+              "usage": "Append a GitHub Actions step summary when GITHUB_STEP_SUMMARY is set",
+              "type": "bool",
+              "default": "true"
+            },
+            {
+              "name": "manifest",
+              "usage": "Path to the AgentClash CI manifest",
+              "type": "string",
+              "default": ".agentclash/ci.yaml"
+            },
+            {
+              "name": "poll-interval",
+              "usage": "Polling interval while waiting for run completion",
+              "type": "duration",
+              "default": "5s"
+            },
+            {
+              "name": "summary-file",
+              "usage": "Write a Markdown CI gate summary to this file",
+              "type": "string"
+            },
+            {
+              "name": "timeout",
+              "usage": "Maximum time to wait for the candidate run; 0 disables the timeout",
+              "type": "duration",
+              "default": "30m0s"
+            }
+          ]
+        },
+        {
+          "name": "should-run",
+          "path": "agentclash ci should-run",
+          "short": "Decide whether AgentClash CI should run",
+          "runnable": true,
+          "flags": [
+            {
+              "name": "base",
+              "usage": "Base git ref for deriving changed files",
+              "type": "string"
+            },
+            {
+              "name": "changed-file",
+              "usage": "Changed file path; may be repeated",
+              "type": "stringArray",
+              "default": "[]"
+            },
+            {
+              "name": "github-event",
+              "usage": "GitHub event JSON file for deriving pull request labels",
+              "type": "string"
+            },
+            {
+              "name": "head",
+              "usage": "Head git ref for deriving changed files",
+              "type": "string"
+            },
+            {
+              "name": "labels",
+              "usage": "Pull request labels; may be comma-separated or repeated",
+              "type": "stringSlice",
+              "default": "[]"
+            },
+            {
+              "name": "manifest",
+              "usage": "Path to the AgentClash CI manifest",
+              "type": "string",
+              "default": ".agentclash/ci.yaml"
+            },
+            {
+              "name": "repo",
+              "usage": "Git repository path for --base/--head diff",
+              "type": "string",
+              "default": "."
+            }
+          ]
+        },
+        {
+          "name": "validate",
+          "path": "agentclash ci validate",
+          "short": "Validate an AgentClash CI manifest",
+          "runnable": true,
+          "flags": [
+            {
+              "name": "remote",
+              "usage": "Validate manifest resource IDs against the selected workspace",
+              "type": "bool",
+              "default": "false"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "compare",
+      "path": "agentclash compare",
+      "short": "Compare runs and evaluate release gates",
+      "runnable": false,
+      "subcommands": [
+        {
+          "name": "gate",
+          "path": "agentclash compare gate",
+          "short": "Evaluate a release gate (nonzero exit = regression or missing evidence)",
+          "runnable": true,
+          "flags": [
+            {
+              "name": "baseline",
+              "usage": "Baseline run ID (required)",
+              "type": "string",
+              "required": true
+            },
+            {
+              "name": "baseline-agent",
+              "usage": "Baseline run agent ID (optional)",
+              "type": "string"
+            },
+            {
+              "name": "candidate",
+              "usage": "Candidate run ID (required)",
+              "type": "string",
+              "required": true
+            },
+            {
+              "name": "candidate-agent",
+              "usage": "Candidate run agent ID (optional)",
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "name": "latest",
+          "path": "agentclash compare latest",
+          "short": "Compare the saved baseline against the latest non-baseline run",
+          "runnable": true,
+          "flags": [
+            {
+              "name": "agent",
+              "usage": "Run agent ID or label to use for both runs when possible",
+              "type": "string"
+            },
+            {
+              "name": "baseline-agent",
+              "usage": "Baseline run agent ID or label (defaults to the saved baseline agent)",
+              "type": "string"
+            },
+            {
+              "name": "candidate-agent",
+              "usage": "Candidate run agent ID or label",
+              "type": "string"
+            },
+            {
+              "name": "gate",
+              "usage": "Also evaluate the release gate and return a nonzero exit code for non-pass verdicts",
+              "type": "bool",
+              "default": "false"
+            }
+          ]
+        },
+        {
+          "name": "runs",
+          "path": "agentclash compare runs",
+          "short": "Compare baseline vs candidate runs",
+          "runnable": true,
+          "flags": [
+            {
+              "name": "baseline",
+              "usage": "Baseline run ID (required)",
+              "type": "string",
+              "required": true
+            },
+            {
+              "name": "baseline-agent",
+              "usage": "Baseline run agent ID (optional)",
+              "type": "string"
+            },
+            {
+              "name": "candidate",
+              "usage": "Candidate run ID (required)",
+              "type": "string",
+              "required": true
+            },
+            {
+              "name": "candidate-agent",
+              "usage": "Candidate run agent ID (optional)",
+              "type": "string"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "config",
+      "path": "agentclash config",
+      "short": "Manage CLI configuration",
+      "runnable": false,
+      "subcommands": [
+        {
+          "name": "get",
+          "path": "agentclash config get",
+          "short": "Get a config value",
+          "runnable": true
+        },
+        {
+          "name": "list",
+          "path": "agentclash config list",
+          "short": "List all config values",
+          "runnable": true
+        },
+        {
+          "name": "set",
+          "path": "agentclash config set",
+          "short": "Set a config value",
+          "runnable": true
+        }
+      ]
+    },
+    {
+      "name": "dataset",
+      "path": "agentclash dataset",
+      "short": "Manage eval datasets",
+      "runnable": false,
+      "subcommands": [
+        {
+          "name": "create",
+          "path": "agentclash dataset create",
+          "short": "Create a dataset",
+          "runnable": true,
+          "flags": [
+            {
+              "name": "default-challenge-pack-version-id",
+              "usage": "Default challenge pack version ID",
+              "type": "string"
+            },
+            {
+              "name": "description",
+              "usage": "Dataset description",
+              "type": "string"
+            },
+            {
+              "name": "enforce-schema",
+              "usage": "Reject examples that do not match the input schema",
+              "type": "bool",
+              "default": "false"
+            },
+            {
+              "name": "from-file",
+              "usage": "JSON file with dataset create payload",
+              "type": "string"
+            },
+            {
+              "name": "input-schema",
+              "usage": "Input JSON Schema",
+              "type": "string"
+            },
+            {
+              "name": "name",
+              "usage": "Dataset name",
+              "type": "string"
+            },
+            {
+              "name": "slug",
+              "usage": "Dataset slug",
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "name": "delete",
+          "path": "agentclash dataset delete",
+          "short": "Archive a dataset",
+          "runnable": true
+        },
+        {
+          "name": "eval",
+          "path": "agentclash dataset eval",
+          "short": "Run an eval over a dataset version",
+          "runnable": true,
+          "flags": [
+            {
+              "name": "challenge",
+              "usage": "Challenge key to bind examples to",
+              "type": "string"
+            },
+            {
+              "name": "deployment",
+              "usage": "Agent deployment ID (repeatable)",
+              "type": "stringSlice",
+              "default": "[]"
+            },
+            {
+              "name": "follow",
+              "usage": "Follow run events after creation",
+              "type": "bool",
+              "default": "false"
+            },
+            {
+              "name": "mapping",
+              "usage": "Optional JSON mapping for dataset example fields",
+              "type": "string"
+            },
+            {
+              "name": "name",
+              "usage": "Optional run name",
+              "type": "string"
+            },
+            {
+              "name": "pack",
+              "usage": "Challenge pack version ID",
+              "type": "string"
+            },
+            {
+              "name": "version",
+              "usage": "Dataset version ID to run",
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "name": "example",
+          "path": "agentclash dataset example",
+          "short": "Manage dataset examples",
+          "runnable": false,
+          "subcommands": [
+            {
+              "name": "add",
+              "path": "agentclash dataset example add",
+              "short": "Add or upsert a dataset example",
+              "runnable": true,
+              "flags": [
+                {
+                  "name": "expected",
+                  "usage": "Expected output JSON",
+                  "type": "string"
+                },
+                {
+                  "name": "external-id",
+                  "usage": "Stable external ID for idempotent upsert",
+                  "type": "string"
+                },
+                {
+                  "name": "from-file",
+                  "usage": "JSON file with dataset example payload",
+                  "type": "string"
+                },
+                {
+                  "name": "input",
+                  "usage": "Example input JSON",
+                  "type": "string"
+                },
+                {
+                  "name": "metadata",
+                  "usage": "Metadata JSON",
+                  "type": "string"
+                },
+                {
+                  "name": "source",
+                  "usage": "Example source: manual, import, trace, synthetic, or promotion",
+                  "type": "string"
+                },
+                {
+                  "name": "tag",
+                  "usage": "Example tag (repeatable)",
+                  "type": "stringSlice",
+                  "default": "[]"
+                }
+              ]
+            },
+            {
+              "name": "edit",
+              "path": "agentclash dataset example edit",
+              "short": "Edit a dataset example",
+              "runnable": true,
+              "flags": [
+                {
+                  "name": "expected",
+                  "usage": "Expected output JSON",
+                  "type": "string"
+                },
+                {
+                  "name": "from-file",
+                  "usage": "JSON file with dataset example patch payload",
+                  "type": "string"
+                },
+                {
+                  "name": "input",
+                  "usage": "Example input JSON",
+                  "type": "string"
+                },
+                {
+                  "name": "metadata",
+                  "usage": "Metadata JSON",
+                  "type": "string"
+                },
+                {
+                  "name": "source",
+                  "usage": "Example source: manual, import, trace, synthetic, or promotion",
+                  "type": "string"
+                },
+                {
+                  "name": "status",
+                  "usage": "Example status: active, archived, or muted",
+                  "type": "string"
+                },
+                {
+                  "name": "tag",
+                  "usage": "Example tag (repeatable)",
+                  "type": "stringSlice",
+                  "default": "[]"
+                }
+              ]
+            },
+            {
+              "name": "list",
+              "path": "agentclash dataset example list",
+              "short": "List dataset examples",
+              "runnable": true
+            },
+            {
+              "name": "rm",
+              "path": "agentclash dataset example rm",
+              "short": "Archive a dataset example",
+              "runnable": true
+            }
+          ]
+        },
+        {
+          "name": "export",
+          "path": "agentclash dataset export",
+          "short": "Export dataset examples",
+          "runnable": true,
+          "flags": [
+            {
+              "name": "format",
+              "usage": "Export format: openai, braintrust, langsmith, phoenix, jsonl, or csv",
+              "type": "string",
+              "default": "jsonl"
+            },
+            {
+              "name": "version",
+              "usage": "Dataset version ID to export",
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "name": "generate",
+          "path": "agentclash dataset generate",
+          "short": "Start in-house synthetic dataset generation",
+          "runnable": true,
+          "flags": [
+            {
+              "name": "count",
+              "usage": "Target number of accepted synthetic examples",
+              "type": "int",
+              "default": "0"
+            },
+            {
+              "name": "create-version",
+              "usage": "Snapshot a dataset version when generation completes",
+              "type": "bool",
+              "default": "false"
+            },
+            {
+              "name": "follow",
+              "usage": "Poll generation job status until it finishes",
+              "type": "bool",
+              "default": "false"
+            },
+            {
+              "name": "model-alias",
+              "usage": "Model alias ID",
+              "type": "string"
+            },
+            {
+              "name": "provider-account",
+              "usage": "Provider account ID",
+              "type": "string"
+            },
+            {
+              "name": "seeds-tag",
+              "usage": "Only use seed examples with this tag",
+              "type": "string"
+            },
+            {
+              "name": "strategy",
+              "usage": "Generation strategy (v1: self-instruct)",
+              "type": "string",
+              "default": "self-instruct"
+            },
+            {
+              "name": "version-label",
+              "usage": "Optional label for the generated dataset version",
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "name": "import",
+          "path": "agentclash dataset import",
+          "short": "Import examples into a dataset",
+          "runnable": true,
+          "flags": [
+            {
+              "name": "dry-run",
+              "usage": "Preview normalized examples without mutating the dataset",
+              "type": "bool",
+              "default": "false"
+            },
+            {
+              "name": "format",
+              "usage": "Import format: openai, braintrust, langsmith, phoenix, jsonl, or csv",
+              "type": "string"
+            },
+            {
+              "name": "map",
+              "usage": "Mapping entry key=value (repeatable); values may be comma-separated for input_keys/output_keys/metadata_keys",
+              "type": "stringArray",
+              "default": "[]"
+            },
+            {
+              "name": "mapping",
+              "usage": "JSON mapping for generic JSONL/CSV imports",
+              "type": "string"
+            },
+            {
+              "name": "mode",
+              "usage": "Import mode: add or replace",
+              "type": "string",
+              "default": "add"
+            }
+          ]
+        },
+        {
+          "name": "import-traces",
+          "path": "agentclash dataset import-traces",
+          "short": "Import production traces as reviewable dataset candidates",
+          "runnable": true,
+          "flags": [
+            {
+              "name": "artifact",
+              "usage": "Existing artifact ID to reference instead of inline payload",
+              "type": "string"
+            },
+            {
+              "name": "from-file",
+              "usage": "JSON file with import-traces request body",
+              "type": "string"
+            },
+            {
+              "name": "redaction",
+              "usage": "JSON redaction config (drop/hash metadata keys)",
+              "type": "string"
+            },
+            {
+              "name": "run",
+              "usage": "Run ID for agentclash trace import",
+              "type": "string"
+            },
+            {
+              "name": "run-agent",
+              "usage": "Run agent ID for agentclash trace import",
+              "type": "string"
+            },
+            {
+              "name": "source",
+              "usage": "Trace source platform: otel, braintrust, langsmith, phoenix, or agentclash",
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "name": "list",
+          "path": "agentclash dataset list",
+          "short": "List datasets",
+          "runnable": true
+        },
+        {
+          "name": "promote",
+          "path": "agentclash dataset promote",
+          "short": "Promote a trace candidate into a dataset example",
+          "runnable": true,
+          "flags": [
+            {
+              "name": "expected",
+              "usage": "Edited expected output JSON",
+              "type": "string"
+            },
+            {
+              "name": "from-file",
+              "usage": "JSON file with promote request body",
+              "type": "string"
+            },
+            {
+              "name": "tag",
+              "usage": "Tags to apply on promotion",
+              "type": "stringSlice",
+              "default": "[]"
+            }
+          ]
+        },
+        {
+          "name": "sync-regression-suite",
+          "path": "agentclash dataset sync-regression-suite",
+          "short": "Promote dataset examples into a linked regression suite",
+          "runnable": true,
+          "flags": [
+            {
+              "name": "challenge",
+              "usage": "Challenge key",
+              "type": "string"
+            },
+            {
+              "name": "format",
+              "usage": "Output format: text or json",
+              "type": "string",
+              "default": "text"
+            },
+            {
+              "name": "pack",
+              "usage": "Challenge pack version ID",
+              "type": "string"
+            },
+            {
+              "name": "suite",
+              "usage": "Existing regression suite ID (optional)",
+              "type": "string"
+            },
+            {
+              "name": "suite-name",
+              "usage": "Name for a newly created regression suite",
+              "type": "string"
+            },
+            {
+              "name": "version",
+              "usage": "Dataset version ID to sync",
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "name": "test",
+          "path": "agentclash dataset test",
+          "short": "Run a dataset eval gate against a baseline",
+          "runnable": true,
+          "flags": [
+            {
+              "name": "baseline",
+              "usage": "Baseline ID to compare against",
+              "type": "string"
+            },
+            {
+              "name": "challenge",
+              "usage": "Challenge key for eval",
+              "type": "string"
+            },
+            {
+              "name": "deployment",
+              "usage": "Agent deployment ID (repeatable)",
+              "type": "stringSlice",
+              "default": "[]"
+            },
+            {
+              "name": "eval",
+              "usage": "Start a dataset eval before gating",
+              "type": "bool",
+              "default": "false"
+            },
+            {
+              "name": "format",
+              "usage": "Output format: text, json, or junit",
+              "type": "string",
+              "default": "text"
+            },
+            {
+              "name": "max-regressions",
+              "usage": "Maximum allowed regressions versus baseline",
+              "type": "int",
+              "default": "-1"
+            },
+            {
+              "name": "min-pass-rate",
+              "usage": "Minimum pass rate required to pass the gate",
+              "type": "float64",
+              "default": "0"
+            },
+            {
+              "name": "pack",
+              "usage": "Challenge pack version ID for eval",
+              "type": "string"
+            },
+            {
+              "name": "poll-interval",
+              "usage": "Polling interval while waiting for eval completion",
+              "type": "duration",
+              "default": "5s"
+            },
+            {
+              "name": "run",
+              "usage": "Candidate run ID (required unless --eval is set)",
+              "type": "string"
+            },
+            {
+              "name": "timeout",
+              "usage": "Maximum time to wait for an eval run started with --eval",
+              "type": "duration",
+              "default": "30m0s"
+            },
+            {
+              "name": "version",
+              "usage": "Dataset version ID for eval",
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "name": "trace-candidates",
+          "path": "agentclash dataset trace-candidates",
+          "short": "Review imported trace candidates",
+          "runnable": false,
+          "subcommands": [
+            {
+              "name": "list",
+              "path": "agentclash dataset trace-candidates list",
+              "short": "List trace candidates awaiting promotion",
+              "runnable": true,
+              "flags": [
+                {
+                  "name": "status",
+                  "usage": "Filter by candidate status (pending, promoted, rejected)",
+                  "type": "string"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "version",
+          "path": "agentclash dataset version",
+          "short": "Manage dataset versions",
+          "runnable": false,
+          "subcommands": [
+            {
+              "name": "create",
+              "path": "agentclash dataset version create",
+              "short": "Snapshot the current dataset examples",
+              "runnable": true,
+              "flags": [
+                {
+                  "name": "label",
+                  "usage": "Optional dataset version label",
+                  "type": "string"
+                }
+              ]
+            },
+            {
+              "name": "list",
+              "path": "agentclash dataset version list",
+              "short": "List dataset versions",
+              "runnable": true
+            }
+          ]
+        },
+        {
+          "name": "view",
+          "path": "agentclash dataset view",
+          "short": "View a dataset",
+          "runnable": true
+        }
+      ]
+    },
+    {
+      "name": "deployment",
+      "path": "agentclash deployment",
+      "short": "Manage agent deployments",
+      "aliases": [
+        "deploy"
+      ],
+      "runnable": false,
+      "subcommands": [
+        {
+          "name": "create",
+          "path": "agentclash deployment create",
+          "short": "Create an agent deployment",
+          "runnable": true,
+          "flags": [
+            {
+              "name": "agent-build-id",
+              "usage": "Agent build ID",
+              "type": "string"
+            },
+            {
+              "name": "build-version-id",
+              "usage": "Agent build version ID",
+              "type": "string"
+            },
+            {
+              "name": "from-file",
+              "usage": "JSON file with deployment spec",
+              "type": "string"
+            },
+            {
+              "name": "model-alias-id",
+              "usage": "Model alias ID",
+              "type": "string"
+            },
+            {
+              "name": "name",
+              "usage": "Deployment name",
+              "type": "string"
+            },
+            {
+              "name": "provider-account-id",
+              "usage": "Provider account ID",
+              "type": "string"
+            },
+            {
+              "name": "runtime-profile-id",
+              "usage": "Runtime profile ID",
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "name": "list",
+          "path": "agentclash deployment list",
+          "short": "List agent deployments",
+          "runnable": true
+        }
+      ]
+    },
+    {
+      "name": "doctor",
+      "path": "agentclash doctor",
+      "short": "Check auth, workspace, and eval readiness",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "pack",
+          "usage": "Challenge pack YAML file to check for run readiness",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "eval",
+      "path": "agentclash eval",
+      "short": "Workflow-first eval commands",
+      "runnable": false,
+      "subcommands": [
+        {
+          "name": "scorecard",
+          "path": "agentclash eval scorecard",
+          "short": "Show a run-first scorecard and compare against the bookmarked baseline",
+          "runnable": true,
+          "flags": [
+            {
+              "name": "agent",
+              "usage": "Run agent ID or label (optional)",
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "name": "session",
+          "path": "agentclash eval session",
+          "short": "Inspect repeated eval sessions",
+          "aliases": [
+            "sessions"
+          ],
+          "runnable": false,
+          "subcommands": [
+            {
+              "name": "follow",
+              "path": "agentclash eval session follow",
+              "short": "Poll a repeated eval session until aggregation finishes",
+              "runnable": true,
+              "flags": [
+                {
+                  "name": "poll-interval",
+                  "usage": "Polling interval while waiting for completion",
+                  "type": "duration",
+                  "default": "5s"
+                },
+                {
+                  "name": "timeout",
+                  "usage": "Maximum time to wait; 0 disables the timeout",
+                  "type": "duration",
+                  "default": "30m0s"
+                }
+              ]
+            },
+            {
+              "name": "get",
+              "path": "agentclash eval session get",
+              "short": "Show repeated eval session details and aggregate metrics",
+              "runnable": true
+            },
+            {
+              "name": "list",
+              "path": "agentclash eval session list",
+              "short": "List repeated eval sessions in the workspace",
+              "runnable": true,
+              "flags": [
+                {
+                  "name": "limit",
+                  "usage": "Maximum eval sessions to list (1-100)",
+                  "type": "int",
+                  "default": "20"
+                },
+                {
+                  "name": "offset",
+                  "usage": "Eval session list offset",
+                  "type": "int",
+                  "default": "0"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "start",
+          "path": "agentclash eval start",
+          "short": "Start an eval using names, defaults, and guided selection",
+          "runnable": true,
+          "flags": [
+            {
+              "name": "case",
+              "usage": "Regression case IDs (repeatable)",
+              "type": "stringSlice",
+              "default": "[]"
+            },
+            {
+              "name": "deployment",
+              "usage": "Deployment ID or exact name (repeatable)",
+              "type": "stringSlice",
+              "default": "[]"
+            },
+            {
+              "name": "follow",
+              "usage": "Follow run events after creation",
+              "type": "bool",
+              "default": "false"
+            },
+            {
+              "name": "input-set",
+              "usage": "Challenge input set ID, key, or exact name",
+              "type": "string"
+            },
+            {
+              "name": "name",
+              "usage": "Run name (optional)",
+              "type": "string"
+            },
+            {
+              "name": "pack",
+              "usage": "Challenge pack ID, slug, or exact name",
+              "type": "string"
+            },
+            {
+              "name": "pack-version",
+              "usage": "Challenge pack version ID or version number",
+              "type": "string"
+            },
+            {
+              "name": "race-context",
+              "usage": "Enable live peer-standings injection during the run (requires 2+ agents)",
+              "type": "bool",
+              "default": "false"
+            },
+            {
+              "name": "race-context-cadence",
+              "usage": "Override race-context cadence; minimum steps between standings injections, [1, 10]. 0 uses the backend default.",
+              "type": "int",
+              "default": "0"
+            },
+            {
+              "name": "repetitions",
+              "usage": "Repeat the eval N times in a multi-run eval session, [1, 100]. \u003e=2 routes through /v1/eval-sessions and unlocks pass@K + pass^K aggregation.",
+              "type": "int",
+              "default": "1"
+            },
+            {
+              "name": "scope",
+              "usage": "Run scope: full or suite_only",
+              "type": "string",
+              "default": "full"
+            },
+            {
+              "name": "suite",
+              "usage": "Regression suite ID or exact name (repeatable)",
+              "type": "stringSlice",
+              "default": "[]"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "infra",
+      "path": "agentclash infra",
+      "short": "Manage infrastructure resources",
+      "runnable": false,
+      "subcommands": [
+        {
+          "name": "knowledge-source",
+          "path": "agentclash infra knowledge-source",
+          "short": "Manage knowledge-sources",
+          "runnable": false,
+          "subcommands": [
+            {
+              "name": "create",
+              "path": "agentclash infra knowledge-source create",
+              "short": "Create a knowledge-source",
+              "runnable": true,
+              "flags": [
+                {
+                  "name": "from-file",
+                  "usage": "JSON file with resource spec",
+                  "type": "string"
+                }
+              ]
+            },
+            {
+              "name": "get",
+              "path": "agentclash infra knowledge-source get",
+              "short": "Get a knowledge-source",
+              "runnable": true
+            },
+            {
+              "name": "list",
+              "path": "agentclash infra knowledge-source list",
+              "short": "List knowledge-sources",
+              "runnable": true
+            }
+          ]
+        },
+        {
+          "name": "model-alias",
+          "path": "agentclash infra model-alias",
+          "short": "Manage model-aliases",
+          "runnable": false,
+          "subcommands": [
+            {
+              "name": "create",
+              "path": "agentclash infra model-alias create",
+              "short": "Create a model-alias",
+              "runnable": true,
+              "flags": [
+                {
+                  "name": "alias-key",
+                  "usage": "Alias key",
+                  "type": "string"
+                },
+                {
+                  "name": "display-name",
+                  "usage": "Display name",
+                  "type": "string"
+                },
+                {
+                  "name": "from-file",
+                  "usage": "JSON file with resource spec",
+                  "type": "string"
+                },
+                {
+                  "name": "model-catalog-entry-id",
+                  "usage": "Model catalog entry ID",
+                  "type": "string"
+                },
+                {
+                  "name": "provider-account-id",
+                  "usage": "Optional provider account ID",
+                  "type": "string"
+                }
+              ]
+            },
+            {
+              "name": "delete",
+              "path": "agentclash infra model-alias delete",
+              "short": "Delete a model-alias",
+              "runnable": true
+            },
+            {
+              "name": "get",
+              "path": "agentclash infra model-alias get",
+              "short": "Get a model-alias",
+              "runnable": true
+            },
+            {
+              "name": "list",
+              "path": "agentclash infra model-alias list",
+              "short": "List model-aliases",
+              "runnable": true
+            }
+          ]
+        },
+        {
+          "name": "model-catalog",
+          "path": "agentclash infra model-catalog",
+          "short": "Browse the global model catalog",
+          "aliases": [
+            "models"
+          ],
+          "runnable": false,
+          "subcommands": [
+            {
+              "name": "get",
+              "path": "agentclash infra model-catalog get",
+              "short": "Get a model catalog entry",
+              "runnable": true
+            },
+            {
+              "name": "list",
+              "path": "agentclash infra model-catalog list",
+              "short": "List available models",
+              "runnable": true
+            }
+          ]
+        },
+        {
+          "name": "provider-account",
+          "path": "agentclash infra provider-account",
+          "short": "Manage provider-accounts",
+          "runnable": false,
+          "subcommands": [
+            {
+              "name": "create",
+              "path": "agentclash infra provider-account create",
+              "short": "Create a provider-account",
+              "runnable": true,
+              "flags": [
+                {
+                  "name": "from-file",
+                  "usage": "JSON file with resource spec",
+                  "type": "string"
+                }
+              ]
+            },
+            {
+              "name": "delete",
+              "path": "agentclash infra provider-account delete",
+              "short": "Delete a provider-account",
+              "runnable": true
+            },
+            {
+              "name": "get",
+              "path": "agentclash infra provider-account get",
+              "short": "Get a provider-account",
+              "runnable": true
+            },
+            {
+              "name": "list",
+              "path": "agentclash infra provider-account list",
+              "short": "List provider-accounts",
+              "runnable": true
+            },
+            {
+              "name": "test",
+              "path": "agentclash infra provider-account test",
+              "short": "Smoke test provider account credentials",
+              "runnable": true,
+              "flags": [
+                {
+                  "name": "model",
+                  "usage": "Provider model ID to use for the smoke test",
+                  "type": "string"
+                },
+                {
+                  "name": "timeout-seconds",
+                  "usage": "Provider call timeout in seconds, capped by the API",
+                  "type": "int32",
+                  "default": "20"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "routing-policy",
+          "path": "agentclash infra routing-policy",
+          "short": "Manage routing-policies",
+          "runnable": false,
+          "subcommands": [
+            {
+              "name": "create",
+              "path": "agentclash infra routing-policy create",
+              "short": "Create a routing-policy",
+              "runnable": true,
+              "flags": [
+                {
+                  "name": "from-file",
+                  "usage": "JSON file with resource spec",
+                  "type": "string"
+                }
+              ]
+            },
+            {
+              "name": "list",
+              "path": "agentclash infra routing-policy list",
+              "short": "List routing-policies",
+              "runnable": true
+            }
+          ]
+        },
+        {
+          "name": "runtime-profile",
+          "path": "agentclash infra runtime-profile",
+          "short": "Manage runtime-profiles",
+          "runnable": false,
+          "subcommands": [
+            {
+              "name": "archive",
+              "path": "agentclash infra runtime-profile archive",
+              "short": "Archive a runtime-profile",
+              "runnable": true
+            },
+            {
+              "name": "create",
+              "path": "agentclash infra runtime-profile create",
+              "short": "Create a runtime-profile",
+              "runnable": true,
+              "flags": [
+                {
+                  "name": "from-file",
+                  "usage": "JSON file with resource spec",
+                  "type": "string"
+                }
+              ]
+            },
+            {
+              "name": "get",
+              "path": "agentclash infra runtime-profile get",
+              "short": "Get a runtime-profile",
+              "runnable": true
+            },
+            {
+              "name": "list",
+              "path": "agentclash infra runtime-profile list",
+              "short": "List runtime-profiles",
+              "runnable": true
+            }
+          ]
+        },
+        {
+          "name": "spend-policy",
+          "path": "agentclash infra spend-policy",
+          "short": "Manage spend-policies",
+          "runnable": false,
+          "subcommands": [
+            {
+              "name": "create",
+              "path": "agentclash infra spend-policy create",
+              "short": "Create a spend-policy",
+              "runnable": true,
+              "flags": [
+                {
+                  "name": "from-file",
+                  "usage": "JSON file with resource spec",
+                  "type": "string"
+                }
+              ]
+            },
+            {
+              "name": "list",
+              "path": "agentclash infra spend-policy list",
+              "short": "List spend-policies",
+              "runnable": true
+            }
+          ]
+        },
+        {
+          "name": "tool",
+          "path": "agentclash infra tool",
+          "short": "Manage tools",
+          "runnable": false,
+          "subcommands": [
+            {
+              "name": "create",
+              "path": "agentclash infra tool create",
+              "short": "Create a tool",
+              "runnable": true,
+              "flags": [
+                {
+                  "name": "from-file",
+                  "usage": "JSON file with resource spec",
+                  "type": "string"
+                }
+              ]
+            },
+            {
+              "name": "get",
+              "path": "agentclash infra tool get",
+              "short": "Get a tool",
+              "runnable": true
+            },
+            {
+              "name": "list",
+              "path": "agentclash infra tool list",
+              "short": "List tools",
+              "runnable": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "init",
+      "path": "agentclash init",
+      "short": "Initialize a project with .agentclash.yaml",
+      "runnable": true,
+      "flags": [
+        {
+          "name": "org-id",
+          "usage": "Organization ID to bind",
+          "type": "string"
+        },
+        {
+          "name": "workspace-id",
+          "usage": "Workspace ID to bind",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "integration",
+      "path": "agentclash integration",
+      "short": "Install and verify AgentClash Agent Skills for coding agents",
+      "runnable": false,
+      "subcommands": [
+        {
+          "name": "claude",
+          "path": "agentclash integration claude",
+          "short": "Manage the AgentClash skills integration for Claude Code",
+          "runnable": false,
+          "subcommands": [
+            {
+              "name": "doctor",
+              "path": "agentclash integration claude doctor",
+              "short": "Verify the AgentClash skills integration for Claude Code",
+              "runnable": true,
+              "flags": [
+                {
+                  "name": "dir",
+                  "usage": "Install root (defaults to your home directory)",
+                  "type": "string"
+                },
+                {
+                  "name": "with-mcp",
+                  "usage": "Reserved: also configure an MCP server (not available yet)",
+                  "type": "bool",
+                  "default": "false"
+                }
+              ]
+            },
+            {
+              "name": "install",
+              "path": "agentclash integration claude install",
+              "short": "Install AgentClash skills for Claude Code",
+              "runnable": true,
+              "flags": [
+                {
+                  "name": "dir",
+                  "usage": "Install root (defaults to your home directory)",
+                  "type": "string"
+                },
+                {
+                  "name": "with-mcp",
+                  "usage": "Reserved: also configure an MCP server (not available yet)",
+                  "type": "bool",
+                  "default": "false"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "codex",
+          "path": "agentclash integration codex",
+          "short": "Manage the AgentClash skills integration for Codex",
+          "runnable": false,
+          "subcommands": [
+            {
+              "name": "doctor",
+              "path": "agentclash integration codex doctor",
+              "short": "Verify the AgentClash skills integration for Codex",
+              "runnable": true,
+              "flags": [
+                {
+                  "name": "dir",
+                  "usage": "Install root (defaults to your home directory)",
+                  "type": "string"
+                },
+                {
+                  "name": "with-mcp",
+                  "usage": "Reserved: also configure an MCP server (not available yet)",
+                  "type": "bool",
+                  "default": "false"
+                }
+              ]
+            },
+            {
+              "name": "install",
+              "path": "agentclash integration codex install",
+              "short": "Install AgentClash skills for Codex",
+              "runnable": true,
+              "flags": [
+                {
+                  "name": "dir",
+                  "usage": "Install root (defaults to your home directory)",
+                  "type": "string"
+                },
+                {
+                  "name": "with-mcp",
+                  "usage": "Reserved: also configure an MCP server (not available yet)",
+                  "type": "bool",
+                  "default": "false"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "link",
+      "path": "agentclash link",
+      "short": "Choose and save your default workspace",
+      "runnable": true
+    },
+    {
+      "name": "org",
+      "path": "agentclash org",
+      "short": "Manage organizations",
+      "aliases": [
+        "organization"
+      ],
+      "runnable": false,
+      "subcommands": [
+        {
+          "name": "create",
+          "path": "agentclash org create",
+          "short": "Create a new organization",
+          "runnable": true,
+          "flags": [
+            {
+              "name": "name",
+              "usage": "Organization name (required)",
+              "type": "string",
+              "required": true
+            },
+            {
+              "name": "slug",
+              "usage": "Organization slug (optional, auto-generated)",
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "name": "get",
+          "path": "agentclash org get",
+          "short": "Get organization details",
+          "runnable": true
+        },
+        {
+          "name": "list",
+          "path": "agentclash org list",
+          "short": "List organizations you belong to",
+          "runnable": true
+        },
+        {
+          "name": "members",
+          "path": "agentclash org members",
+          "short": "Manage organization members",
+          "runnable": false,
+          "subcommands": [
+            {
+              "name": "invite",
+              "path": "agentclash org members invite",
+              "short": "Invite a member to the organization",
+              "runnable": true,
+              "flags": [
+                {
+                  "name": "email",
+                  "usage": "Email address to invite (required)",
+                  "type": "string",
+                  "required": true
+                },
+                {
+                  "name": "role",
+                  "usage": "Role: org_admin, org_member",
+                  "type": "string",
+                  "default": "org_member"
+                }
+              ]
+            },
+            {
+              "name": "list",
+              "path": "agentclash org members list",
+              "short": "List organization members",
+              "runnable": true
+            },
+            {
+              "name": "update",
+              "path": "agentclash org members update",
+              "short": "Update an organization membership",
+              "runnable": true,
+              "flags": [
+                {
+                  "name": "role",
+                  "usage": "New role: org_admin, org_member",
+                  "type": "string"
+                },
+                {
+                  "name": "status",
+                  "usage": "New status: active, suspended, archived",
+                  "type": "string"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "update",
+          "path": "agentclash org update",
+          "short": "Update an organization",
+          "runnable": true,
+          "flags": [
+            {
+              "name": "name",
+              "usage": "New organization name",
+              "type": "string"
+            },
+            {
+              "name": "status",
+              "usage": "New status (active, archived)",
+              "type": "string"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "playground",
+      "path": "agentclash playground",
+      "short": "Manage playgrounds, test cases, and experiments",
+      "aliases": [
+        "pg"
+      ],
+      "runnable": false,
+      "subcommands": [
+        {
+          "name": "create",
+          "path": "agentclash playground create",
+          "short": "Create a playground",
+          "runnable": true,
+          "flags": [
+            {
+              "name": "from-file",
+              "usage": "JSON file with playground spec",
+              "type": "string"
+            },
+            {
+              "name": "name",
+              "usage": "Playground name",
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "name": "delete",
+          "path": "agentclash playground delete",
+          "short": "Delete a playground",
+          "runnable": true
+        },
+        {
+          "name": "experiment",
+          "path": "agentclash playground experiment",
+          "short": "Manage playground experiments",
+          "aliases": [
+            "exp"
+          ],
+          "runnable": false,
+          "subcommands": [
+            {
+              "name": "batch",
+              "path": "agentclash playground experiment batch",
+              "short": "Create experiments in batch (one per model)",
+              "runnable": true,
+              "flags": [
+                {
+                  "name": "from-file",
+                  "usage": "JSON file with batch experiment spec",
+                  "type": "string"
+                }
+              ]
+            },
+            {
+              "name": "compare",
+              "path": "agentclash playground experiment compare",
+              "short": "Compare two experiments",
+              "runnable": true,
+              "flags": [
+                {
+                  "name": "baseline",
+                  "usage": "Baseline experiment ID (required)",
+                  "type": "string",
+                  "required": true
+                },
+                {
+                  "name": "candidate",
+                  "usage": "Candidate experiment ID (required)",
+                  "type": "string",
+                  "required": true
+                }
+              ]
+            },
+            {
+              "name": "create",
+              "path": "agentclash playground experiment create",
+              "short": "Create an experiment",
+              "runnable": true,
+              "flags": [
+                {
+                  "name": "from-file",
+                  "usage": "JSON file with experiment spec",
+                  "type": "string"
+                }
+              ]
+            },
+            {
+              "name": "get",
+              "path": "agentclash playground experiment get",
+              "short": "Get an experiment",
+              "runnable": true
+            },
+            {
+              "name": "list",
+              "path": "agentclash playground experiment list",
+              "short": "List experiments",
+              "runnable": true
+            },
+            {
+              "name": "results",
+              "path": "agentclash playground experiment results",
+              "short": "List results for an experiment",
+              "runnable": true
+            }
+          ]
+        },
+        {
+          "name": "get",
+          "path": "agentclash playground get",
+          "short": "Get a playground",
+          "runnable": true
+        },
+        {
+          "name": "list",
+          "path": "agentclash playground list",
+          "short": "List playgrounds",
+          "runnable": true
+        },
+        {
+          "name": "test-case",
+          "path": "agentclash playground test-case",
+          "short": "Manage playground test cases",
+          "aliases": [
+            "tc"
+          ],
+          "runnable": false,
+          "subcommands": [
+            {
+              "name": "create",
+              "path": "agentclash playground test-case create",
+              "short": "Create a test case",
+              "runnable": true,
+              "flags": [
+                {
+                  "name": "from-file",
+                  "usage": "JSON file with test case spec",
+                  "type": "string"
+                }
+              ]
+            },
+            {
+              "name": "delete",
+              "path": "agentclash playground test-case delete",
+              "short": "Delete a test case",
+              "runnable": true
+            },
+            {
+              "name": "list",
+              "path": "agentclash playground test-case list",
+              "short": "List test cases",
+              "runnable": true
+            },
+            {
+              "name": "update",
+              "path": "agentclash playground test-case update",
+              "short": "Update a test case",
+              "runnable": true,
+              "flags": [
+                {
+                  "name": "from-file",
+                  "usage": "JSON file with test case spec",
+                  "type": "string"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "update",
+          "path": "agentclash playground update",
+          "short": "Update a playground",
+          "runnable": true,
+          "flags": [
+            {
+              "name": "from-file",
+              "usage": "JSON file with playground spec",
+              "type": "string"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "prompt-eval",
+      "path": "agentclash prompt-eval",
+      "short": "Manage prompt eval configs",
+      "runnable": false,
+      "subcommands": [
+        {
+          "name": "import-promptfoo",
+          "path": "agentclash prompt-eval import-promptfoo",
+          "short": "Convert a safe Promptfoo subset into an AgentClash prompt eval config",
+          "runnable": true,
+          "flags": [
+            {
+              "name": "force",
+              "usage": "Overwrite --out when it already exists",
+              "type": "bool",
+              "default": "false"
+            },
+            {
+              "name": "lossy",
+              "usage": "Allow documented lossy conversions",
+              "type": "bool",
+              "default": "false"
+            },
+            {
+              "name": "name",
+              "usage": "Prompt eval name for the generated config",
+              "type": "string"
+            },
+            {
+              "name": "out",
+              "usage": "Write the converted prompt eval YAML to this path instead of stdout",
+              "type": "string"
+            },
+            {
+              "name": "provider-account",
+              "usage": "Provider account name or id to use for imported provider aliases",
+              "type": "string",
+              "default": "default"
+            }
+          ]
+        },
+        {
+          "name": "init",
+          "path": "agentclash prompt-eval init",
+          "short": "Scaffold a prompt eval YAML config",
+          "runnable": true,
+          "flags": [
+            {
+              "name": "force",
+              "usage": "Overwrite an existing file",
+              "type": "bool",
+              "default": "false"
+            },
+            {
+              "name": "name",
+              "usage": "Prompt eval name (defaults from the file name)",
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "name": "results",
+          "path": "agentclash prompt-eval results",
+          "short": "Fetch prompt eval experiment results",
+          "runnable": true,
+          "flags": [
+            {
+              "name": "threshold",
+              "usage": "Override the assertion pass-rate gate for fetched results",
+              "type": "float64",
+              "default": "-1"
+            }
+          ]
+        },
+        {
+          "name": "run",
+          "path": "agentclash prompt-eval run",
+          "short": "Compile a prompt eval config and launch playground experiments",
+          "runnable": true,
+          "flags": [
+            {
+              "name": "ci",
+              "usage": "Apply CI-safe validation rules",
+              "type": "bool",
+              "default": "false"
+            },
+            {
+              "name": "follow",
+              "usage": "Wait for launched experiments and print results",
+              "type": "bool",
+              "default": "false"
+            },
+            {
+              "name": "max-cases",
+              "usage": "Maximum model x test cases allowed before launch",
+              "type": "int",
+              "default": "100"
+            },
+            {
+              "name": "poll-interval",
+              "usage": "Polling interval while following experiments",
+              "type": "duration",
+              "default": "3s"
+            },
+            {
+              "name": "threshold",
+              "usage": "Override thresholds.assertion_pass_rate for this run",
+              "type": "float64",
+              "default": "-1"
+            },
+            {
+              "name": "timeout",
+              "usage": "Maximum time to wait while following experiments; 0 disables the timeout",
+              "type": "duration",
+              "default": "20m0s"
+            }
+          ]
+        },
+        {
+          "name": "validate",
+          "path": "agentclash prompt-eval validate",
+          "short": "Validate a prompt eval YAML config locally",
+          "runnable": true,
+          "flags": [
+            {
+              "name": "ci",
+              "usage": "Apply CI-safe validation rules",
+              "type": "bool",
+              "default": "false"
+            },
+            {
+              "name": "max-cases",
+              "usage": "Maximum model x test cases allowed before launch",
+              "type": "int",
+              "default": "100"
+            },
+            {
+              "name": "remote",
+              "usage": "Validate referenced AgentClash workspace resources without creating them",
+              "type": "bool",
+              "default": "false"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "quickstart",
+      "path": "agentclash quickstart",
+      "short": "Check eval readiness and show the next best command",
+      "runnable": true
+    },
+    {
+      "name": "quota",
+      "path": "agentclash quota",
+      "short": "Show workspace quota usage",
+      "runnable": true
+    },
+    {
+      "name": "regression-suite",
+      "path": "agentclash regression-suite",
+      "short": "Manage regression suites and cases",
+      "aliases": [
+        "regression-suites"
+      ],
+      "runnable": false,
+      "subcommands": [
+        {
+          "name": "case",
+          "path": "agentclash regression-suite case",
+          "short": "Manage individual regression cases",
+          "runnable": false,
+          "subcommands": [
+            {
+              "name": "capture-production",
+              "path": "agentclash regression-suite case capture-production",
+              "short": "Capture a production failure as a proposed regression case",
+              "runnable": true,
+              "flags": [
+                {
+                  "name": "evidence-tier",
+                  "usage": "Evidence tier",
+                  "type": "string"
+                },
+                {
+                  "name": "external-url",
+                  "usage": "Production incident URL",
+                  "type": "string"
+                },
+                {
+                  "name": "failure-class",
+                  "usage": "Failure class",
+                  "type": "string"
+                },
+                {
+                  "name": "failure-summary",
+                  "usage": "Failure summary",
+                  "type": "string"
+                },
+                {
+                  "name": "from-file",
+                  "usage": "JSON file with production failure capture payload",
+                  "type": "string"
+                },
+                {
+                  "name": "incident-id",
+                  "usage": "Production incident ID",
+                  "type": "string"
+                },
+                {
+                  "name": "observed-at",
+                  "usage": "Production observation timestamp (RFC3339)",
+                  "type": "string"
+                },
+                {
+                  "name": "promotion-mode",
+                  "usage": "Promotion mode: full_executable, output_only, or manual",
+                  "type": "string"
+                },
+                {
+                  "name": "severity",
+                  "usage": "Case severity: info, warning, or blocking",
+                  "type": "string"
+                },
+                {
+                  "name": "source",
+                  "usage": "Production source label",
+                  "type": "string"
+                },
+                {
+                  "name": "source-case-key",
+                  "usage": "Source production case or incident key",
+                  "type": "string"
+                },
+                {
+                  "name": "source-challenge-identity-id",
+                  "usage": "Source challenge identity ID",
+                  "type": "string"
+                },
+                {
+                  "name": "source-challenge-input-set-id",
+                  "usage": "Source challenge input set ID",
+                  "type": "string"
+                },
+                {
+                  "name": "source-challenge-pack-version-id",
+                  "usage": "Source challenge pack version ID",
+                  "type": "string"
+                },
+                {
+                  "name": "source-item-key",
+                  "usage": "Source item key",
+                  "type": "string"
+                },
+                {
+                  "name": "title",
+                  "usage": "Regression case title",
+                  "type": "string"
+                }
+              ]
+            },
+            {
+              "name": "update",
+              "path": "agentclash regression-suite case update",
+              "short": "Update a regression case",
+              "runnable": true,
+              "flags": [
+                {
+                  "name": "description",
+                  "usage": "Case description",
+                  "type": "string"
+                },
+                {
+                  "name": "from-file",
+                  "usage": "JSON file with regression case patch payload",
+                  "type": "string"
+                },
+                {
+                  "name": "severity",
+                  "usage": "Case severity: info, warning, or blocking",
+                  "type": "string"
+                },
+                {
+                  "name": "status",
+                  "usage": "Case status: proposed, active, muted, archived, or rejected",
+                  "type": "string"
+                },
+                {
+                  "name": "title",
+                  "usage": "Case title",
+                  "type": "string"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "cases",
+          "path": "agentclash regression-suite cases",
+          "short": "List regression cases in a suite",
+          "runnable": true
+        },
+        {
+          "name": "create",
+          "path": "agentclash regression-suite create",
+          "short": "Create a regression suite",
+          "runnable": true,
+          "flags": [
+            {
+              "name": "default-gate-severity",
+              "usage": "Default gate severity: info, warning, or blocking",
+              "type": "string"
+            },
+            {
+              "name": "description",
+              "usage": "Suite description",
+              "type": "string"
+            },
+            {
+              "name": "from-file",
+              "usage": "JSON file with regression suite create payload",
+              "type": "string"
+            },
+            {
+              "name": "name",
+              "usage": "Suite name",
+              "type": "string"
+            },
+            {
+              "name": "source-challenge-pack-id",
+              "usage": "Source challenge pack ID",
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "name": "get",
+          "path": "agentclash regression-suite get",
+          "short": "Get a regression suite",
+          "runnable": true
+        },
+        {
+          "name": "list",
+          "path": "agentclash regression-suite list",
+          "short": "List regression suites",
+          "runnable": true
+        },
+        {
+          "name": "update",
+          "path": "agentclash regression-suite update",
+          "short": "Update a regression suite",
+          "runnable": true,
+          "flags": [
+            {
+              "name": "default-gate-severity",
+              "usage": "Default gate severity: info, warning, or blocking",
+              "type": "string"
+            },
+            {
+              "name": "description",
+              "usage": "Suite description",
+              "type": "string"
+            },
+            {
+              "name": "from-file",
+              "usage": "JSON file with regression suite patch payload",
+              "type": "string"
+            },
+            {
+              "name": "name",
+              "usage": "Suite name",
+              "type": "string"
+            },
+            {
+              "name": "status",
+              "usage": "Suite status: active or archived",
+              "type": "string"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "release-gate",
+      "path": "agentclash release-gate",
+      "short": "Inspect evaluated release gates",
+      "aliases": [
+        "release-gates"
+      ],
+      "runnable": false,
+      "subcommands": [
+        {
+          "name": "list",
+          "path": "agentclash release-gate list",
+          "short": "List evaluated release gates",
+          "runnable": true,
+          "flags": [
+            {
+              "name": "baseline",
+              "usage": "Baseline run ID",
+              "type": "string"
+            },
+            {
+              "name": "candidate",
+              "usage": "Candidate run ID",
+              "type": "string"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "replay",
+      "path": "agentclash replay",
+      "short": "View execution replays",
+      "runnable": false,
+      "subcommands": [
+        {
+          "name": "get",
+          "path": "agentclash replay get",
+          "short": "Get execution replay steps",
+          "runnable": true,
+          "flags": [
+            {
+              "name": "cursor",
+              "usage": "Step offset to start from",
+              "type": "int",
+              "default": "0"
+            },
+            {
+              "name": "limit",
+              "usage": "Steps per page (1-200)",
+              "type": "int",
+              "default": "50"
+            }
+          ]
+        },
+        {
+          "name": "triage",
+          "path": "agentclash replay triage",
+          "short": "Summarize ranking, failures, scorecard, replay, and artifacts for debugging",
+          "runnable": true,
+          "flags": [
+            {
+              "name": "agent",
+              "usage": "Run agent ID or label to triage",
+              "type": "string"
+            },
+            {
+              "name": "cursor",
+              "usage": "Replay step offset to start from",
+              "type": "int",
+              "default": "0"
+            },
+            {
+              "name": "limit",
+              "usage": "Replay steps to include (1-50)",
+              "type": "int",
+              "default": "5"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "run",
+      "path": "agentclash run",
+      "short": "Manage evaluation runs",
+      "runnable": false,
+      "subcommands": [
+        {
+          "name": "agents",
+          "path": "agentclash run agents",
+          "short": "List agents in a run",
+          "runnable": true
+        },
+        {
+          "name": "cancel",
+          "path": "agentclash run cancel",
+          "short": "Cancel an active run",
+          "runnable": true
+        },
+        {
+          "name": "compare",
+          "path": "agentclash run compare",
+          "short": "Compare a baseline run against a candidate run",
+          "runnable": true,
+          "flags": [
+            {
+              "name": "baseline",
+              "usage": "Baseline run ID (required)",
+              "type": "string",
+              "required": true
+            },
+            {
+              "name": "baseline-agent",
+              "usage": "Baseline run agent ID (optional)",
+              "type": "string"
+            },
+            {
+              "name": "candidate",
+              "usage": "Candidate run ID (required)",
+              "type": "string",
+              "required": true
+            },
+            {
+              "name": "candidate-agent",
+              "usage": "Candidate run agent ID (optional)",
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "name": "create",
+          "path": "agentclash run create",
+          "short": "Create and submit an evaluation run",
+          "runnable": true,
+          "flags": [
+            {
+              "name": "case",
+              "usage": "Regression case IDs (repeatable)",
+              "type": "stringSlice",
+              "default": "[]"
+            },
+            {
+              "name": "challenge-pack-version",
+              "usage": "Challenge pack version ID (optional in a TTY; prompted when omitted)",
+              "type": "string"
+            },
+            {
+              "name": "deployment-lineup",
+              "usage": "Challenge pack deployment lineup to use when --deployments is omitted (default: default)",
+              "type": "string"
+            },
+            {
+              "name": "deployment-lineups",
+              "usage": "Challenge pack deployment lineups to cross with --seeds for a race series",
+              "type": "stringSlice",
+              "default": "[]"
+            },
+            {
+              "name": "deployments",
+              "usage": "Agent deployment IDs (optional in a TTY; prompted when omitted)",
+              "type": "stringSlice",
+              "default": "[]"
+            },
+            {
+              "name": "follow",
+              "usage": "Follow run events after creation",
+              "type": "bool",
+              "default": "false"
+            },
+            {
+              "name": "include-proposed-regressions",
+              "usage": "Include proposed regression cases for validation runs",
+              "type": "bool",
+              "default": "false"
+            },
+            {
+              "name": "input-set",
+              "usage": "Challenge input set ID (optional)",
+              "type": "string"
+            },
+            {
+              "name": "max-iter",
+              "usage": "Override max iterations for this run (1-1000). 0 uses the pack/runtime default.",
+              "type": "int",
+              "default": "0"
+            },
+            {
+              "name": "mode",
+              "usage": "Voice eval mode: text-sim (future: audio-sim, live-call, replay-import)",
+              "type": "string"
+            },
+            {
+              "name": "name",
+              "usage": "Run name (optional)",
+              "type": "string"
+            },
+            {
+              "name": "race-context",
+              "usage": "Enable live peer-standings injection during the run (requires 2+ agents)",
+              "type": "bool",
+              "default": "false"
+            },
+            {
+              "name": "race-context-cadence",
+              "usage": "Override race-context cadence; minimum steps between standings injections, [1, 10]. 0 uses the backend default.",
+              "type": "int",
+              "default": "0"
+            },
+            {
+              "name": "scope",
+              "usage": "Run scope: full or suite_only",
+              "type": "string",
+              "default": "full"
+            },
+            {
+              "name": "seeds",
+              "usage": "Create a seeded eval session with N child runs, one per seed (1-100). 0 creates a single run.",
+              "type": "int",
+              "default": "0"
+            },
+            {
+              "name": "suite",
+              "usage": "Regression suite IDs (repeatable; required with --scope suite_only unless --case is used)",
+              "type": "stringSlice",
+              "default": "[]"
+            }
+          ]
+        },
+        {
+          "name": "events",
+          "path": "agentclash run events",
+          "short": "Stream live run events via SSE",
+          "runnable": true,
+          "flags": [
+            {
+              "name": "filter",
+              "usage": "Filter streamed events by event type pattern (exact, comma-separated, or glob; '*' matches any non-slash chars, so 'model.*' matches 'model.call.started'; repeatable)",
+              "type": "stringSlice",
+              "default": "[]"
+            }
+          ],
+          "subcommands": [
+            {
+              "name": "export",
+              "path": "agentclash run events export",
+              "short": "Export persisted run events as JSONL",
+              "runnable": true
+            }
+          ]
+        },
+        {
+          "name": "failures",
+          "path": "agentclash run failures",
+          "short": "List failure review items for a run",
+          "runnable": true,
+          "flags": [
+            {
+              "name": "agent",
+              "usage": "Filter by run agent ID",
+              "type": "string"
+            },
+            {
+              "name": "class",
+              "usage": "Filter by failure class",
+              "type": "string"
+            },
+            {
+              "name": "cluster",
+              "usage": "Filter by failure cluster key",
+              "type": "string"
+            },
+            {
+              "name": "cursor",
+              "usage": "Pagination cursor",
+              "type": "string"
+            },
+            {
+              "name": "evidence-tier",
+              "usage": "Filter by evidence tier",
+              "type": "string"
+            },
+            {
+              "name": "limit",
+              "usage": "Maximum failures to return",
+              "type": "int",
+              "default": "0"
+            },
+            {
+              "name": "severity",
+              "usage": "Filter by severity: info, warning, or blocking",
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "name": "get",
+          "path": "agentclash run get",
+          "short": "Get run details",
+          "runnable": true
+        },
+        {
+          "name": "list",
+          "path": "agentclash run list",
+          "short": "List runs in the workspace",
+          "runnable": true
+        },
+        {
+          "name": "promote-failure",
+          "path": "agentclash run promote-failure",
+          "short": "Promote a run failure into a regression case",
+          "runnable": true,
+          "flags": [
+            {
+              "name": "failure-summary",
+              "usage": "Failure summary",
+              "type": "string"
+            },
+            {
+              "name": "from-file",
+              "usage": "JSON file with promotion payload",
+              "type": "string"
+            },
+            {
+              "name": "promotion-mode",
+              "usage": "Promotion mode: full_executable or output_only",
+              "type": "string"
+            },
+            {
+              "name": "run-agent",
+              "usage": "Run agent ID",
+              "type": "string"
+            },
+            {
+              "name": "severity",
+              "usage": "Case severity: info, warning, or blocking",
+              "type": "string"
+            },
+            {
+              "name": "suite",
+              "usage": "Regression suite ID",
+              "type": "string"
+            },
+            {
+              "name": "title",
+              "usage": "Regression case title",
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "name": "ranking",
+          "path": "agentclash run ranking",
+          "short": "Get run ranking and composite scores",
+          "runnable": true,
+          "flags": [
+            {
+              "name": "sort-by",
+              "usage": "Sort by: composite, correctness, reliability, latency, cost",
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "name": "replay",
+          "path": "agentclash run replay",
+          "short": "Inspect replay steps for a run agent",
+          "runnable": true,
+          "flags": [
+            {
+              "name": "cursor",
+              "usage": "Step offset to start from",
+              "type": "int",
+              "default": "0"
+            },
+            {
+              "name": "limit",
+              "usage": "Steps per page (1-200)",
+              "type": "int",
+              "default": "50"
+            }
+          ]
+        },
+        {
+          "name": "scorecard",
+          "path": "agentclash run scorecard",
+          "short": "Get agent scorecard",
+          "runnable": true
+        },
+        {
+          "name": "series",
+          "path": "agentclash run series",
+          "short": "Manage durable race series",
+          "runnable": false,
+          "subcommands": [
+            {
+              "name": "create",
+              "path": "agentclash run series create",
+              "short": "Create a race series from deployment lineups and seeds",
+              "runnable": true,
+              "flags": [
+                {
+                  "name": "challenge-pack-version",
+                  "usage": "Challenge pack version ID",
+                  "type": "string"
+                },
+                {
+                  "name": "deployment-lineups",
+                  "usage": "Challenge pack deployment lineups to cross with --seeds",
+                  "type": "stringSlice",
+                  "default": "[]"
+                },
+                {
+                  "name": "input-set",
+                  "usage": "Challenge input set ID (optional)",
+                  "type": "string"
+                },
+                {
+                  "name": "max-iter",
+                  "usage": "Override max iterations for each child run (1-1000). 0 uses the pack/runtime default.",
+                  "type": "int",
+                  "default": "0"
+                },
+                {
+                  "name": "name",
+                  "usage": "Series name (optional)",
+                  "type": "string"
+                },
+                {
+                  "name": "seeds",
+                  "usage": "Number of seeds to cross with each deployment lineup (1-100)",
+                  "type": "int",
+                  "default": "0"
+                }
+              ]
+            },
+            {
+              "name": "report",
+              "path": "agentclash run series report",
+              "short": "Show aggregate score, correctness, and cost for a race series",
+              "runnable": true
+            }
+          ]
+        },
+        {
+          "name": "transcript",
+          "path": "agentclash run transcript",
+          "short": "Export a Markdown run transcript",
+          "runnable": true
+        },
+        {
+          "name": "turn",
+          "path": "agentclash run turn",
+          "short": "Multi-turn human takeover helpers",
+          "runnable": false,
+          "subcommands": [
+            {
+              "name": "status",
+              "path": "agentclash run turn status",
+              "short": "Check whether a run agent is awaiting human input",
+              "runnable": true,
+              "flags": [
+                {
+                  "name": "run",
+                  "usage": "Run ID",
+                  "type": "string"
+                }
+              ]
+            },
+            {
+              "name": "submit",
+              "path": "agentclash run turn submit",
+              "short": "Submit a human user message for an awaiting multi_turn phase",
+              "runnable": true,
+              "flags": [
+                {
+                  "name": "message",
+                  "usage": "Human user message for the awaiting turn",
+                  "type": "string"
+                },
+                {
+                  "name": "run",
+                  "usage": "Run ID",
+                  "type": "string"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "schema",
+      "path": "agentclash schema",
+      "short": "Print the CLI command tree as machine-readable JSON",
+      "runnable": true
+    },
+    {
+      "name": "secret",
+      "path": "agentclash secret",
+      "short": "Manage workspace secrets",
+      "runnable": false,
+      "subcommands": [
+        {
+          "name": "delete",
+          "path": "agentclash secret delete",
+          "short": "Delete a secret",
+          "runnable": true
+        },
+        {
+          "name": "list",
+          "path": "agentclash secret list",
+          "short": "List workspace secret keys",
+          "runnable": true
+        },
+        {
+          "name": "set",
+          "path": "agentclash secret set",
+          "short": "Create or update a secret",
+          "runnable": true,
+          "flags": [
+            {
+              "name": "value",
+              "usage": "Secret value (reads from stdin if omitted)",
+              "type": "string"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "security",
+      "path": "agentclash security",
+      "short": "Security-evals tooling (stress runs, leak rate, policy preview)",
+      "runnable": false,
+      "subcommands": [
+        {
+          "name": "agent-vault-stress",
+          "path": "agentclash security agent-vault-stress",
+          "short": "Stress-test a model with REAL Infisical Agent Vault routing (function calling)",
+          "runnable": true,
+          "flags": [
+            {
+              "name": "allowed-upstream",
+              "usage": "Hostname the model is supposed to be brokering for, e.g. api.stripe.com. Any tool call to a different host is flagged as confused-deputy.",
+              "type": "string"
+            },
+            {
+              "name": "api-key-env",
+              "usage": "Env var holding the OpenAI API key",
+              "type": "string",
+              "default": "OPENAI_API_KEY"
+            },
+            {
+              "name": "canary-token",
+              "usage": "The broker token the harness watches for in model output (required). Usually the av_agt_/av_sess_ token embedded in --proxy-url.",
+              "type": "string"
+            },
+            {
+              "name": "canary-token-env",
+              "usage": "Env var to read --canary-token from if the flag is empty",
+              "type": "string",
+              "default": "AGENT_VAULT_TOKEN"
+            },
+            {
+              "name": "from-pack",
+              "usage": "Path to a security pack YAML. When set, runs every adversarial_prompts[] entry against the model and writes a per-attack report. Conflicts with --user-message.",
+              "type": "string"
+            },
+            {
+              "name": "iterations",
+              "usage": "Number of trials",
+              "type": "int",
+              "default": "10"
+            },
+            {
+              "name": "mgmt-url",
+              "usage": "Agent Vault management API URL, e.g. http://127.0.0.1:14321",
+              "type": "string"
+            },
+            {
+              "name": "mgmt-url-env",
+              "usage": "Env var to read --mgmt-url from if the flag is empty",
+              "type": "string",
+              "default": "AGENT_VAULT_ADDR"
+            },
+            {
+              "name": "model",
+              "usage": "OpenAI model id",
+              "type": "string",
+              "default": "gpt-4o-mini"
+            },
+            {
+              "name": "openai-endpoint",
+              "usage": "Chat Completions endpoint (override for compatible providers)",
+              "type": "string",
+              "default": "https://api.openai.com/v1/chat/completions"
+            },
+            {
+              "name": "out",
+              "usage": "Path to write per-iteration JSON report (single-prompt mode)",
+              "type": "string"
+            },
+            {
+              "name": "out-dir",
+              "usage": "Directory to write per-attack JSON reports when --from-pack is set (default: skip JSON, print table only)",
+              "type": "string"
+            },
+            {
+              "name": "proxy-url",
+              "usage": "Agent Vault MITM proxy URL, e.g. https://av_agt_xxx:eval@127.0.0.1:14322",
+              "type": "string"
+            },
+            {
+              "name": "proxy-url-env",
+              "usage": "Env var to read --proxy-url from if the flag is empty",
+              "type": "string",
+              "default": "AGENT_VAULT_PROXY_URL"
+            },
+            {
+              "name": "system-prompt",
+              "usage": "System prompt override (default: deploy assistant with Agent Vault boundary)",
+              "type": "string"
+            },
+            {
+              "name": "timeout",
+              "usage": "Per-LLM-call timeout",
+              "type": "duration",
+              "default": "1m0s"
+            },
+            {
+              "name": "user-message",
+              "usage": "Adversarial user message (required unless --from-pack is set)",
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "name": "avmock-upstream",
+          "path": "agentclash security avmock-upstream",
+          "short": "Stand up a deterministic HTTP mock upstream for the agent-vault-stress campaign",
+          "runnable": true,
+          "flags": [
+            {
+              "name": "addr",
+              "usage": "TCP address to listen on",
+              "type": "string",
+              "default": "127.0.0.1:8443"
+            },
+            {
+              "name": "detect-canary",
+              "usage": "Substring to scan inbound request URL, headers, and body for. Any match writes a vault-leak incident to stderr and returns 400 vault_leak_detected to the caller. Use to catch credentials that should never reach the upstream.",
+              "type": "string"
+            },
+            {
+              "name": "log-requests",
+              "usage": "Log every inbound request to stderr in one-line form",
+              "type": "bool",
+              "default": "true"
+            },
+            {
+              "name": "require-bearer",
+              "usage": "If set, requests must carry an Authorization header containing this substring; otherwise the mock returns 401. Use to assert the vault is injecting a credential.",
+              "type": "string"
+            },
+            {
+              "name": "service",
+              "usage": "Service shape: stripe | github | generic",
+              "type": "string",
+              "default": "stripe"
+            }
+          ]
+        },
+        {
+          "name": "runtime-stress",
+          "path": "agentclash security runtime-stress",
+          "short": "Stress-test a model with REAL Vault SDK tool access (function calling)",
+          "runnable": true,
+          "flags": [
+            {
+              "name": "api-key-env",
+              "usage": "Env var holding the OpenAI API key",
+              "type": "string",
+              "default": "OPENAI_API_KEY"
+            },
+            {
+              "name": "canary-path",
+              "usage": "Vault KV path the agent should fetch",
+              "type": "string",
+              "default": "stripe-key"
+            },
+            {
+              "name": "canary-value",
+              "usage": "The exact canary value to detect in leaks (required)",
+              "type": "string"
+            },
+            {
+              "name": "iterations",
+              "usage": "Number of trials",
+              "type": "int",
+              "default": "10"
+            },
+            {
+              "name": "model",
+              "usage": "OpenAI model id",
+              "type": "string",
+              "default": "gpt-4o-mini"
+            },
+            {
+              "name": "out",
+              "usage": "Path to write per-iteration JSON report",
+              "type": "string"
+            },
+            {
+              "name": "system-prompt",
+              "usage": "System prompt override (default: deploy assistant with strict boundary)",
+              "type": "string"
+            },
+            {
+              "name": "timeout",
+              "usage": "Per-LLM-call timeout",
+              "type": "duration",
+              "default": "1m0s"
+            },
+            {
+              "name": "user-message",
+              "usage": "Adversarial user message (required)",
+              "type": "string"
+            },
+            {
+              "name": "vault-addr",
+              "usage": "Vault server address",
+              "type": "string",
+              "default": "http://127.0.0.1:8200"
+            },
+            {
+              "name": "vault-token-env",
+              "usage": "Env var holding the Vault token",
+              "type": "string",
+              "default": "VAULT_TOKEN"
+            }
+          ]
+        },
+        {
+          "name": "stress-run",
+          "path": "agentclash security stress-run",
+          "short": "Run a security pack N times against an LLM provider and aggregate the leak rate",
+          "runnable": true,
+          "flags": [
+            {
+              "name": "api-key-env",
+              "usage": "Env var holding the provider API key",
+              "type": "string",
+              "default": "OPENAI_API_KEY"
+            },
+            {
+              "name": "concurrency",
+              "usage": "Max concurrent iterations per provider/model pair",
+              "type": "int",
+              "default": "3"
+            },
+            {
+              "name": "iterations",
+              "usage": "Number of stress iterations per provider",
+              "type": "int",
+              "default": "10"
+            },
+            {
+              "name": "model",
+              "usage": "Comma-separated model ids, paired with --provider",
+              "type": "stringSlice",
+              "default": "[gpt-4o-mini]"
+            },
+            {
+              "name": "no-system-guard",
+              "usage": "Drop the 'refuse leaks' sentence from the system prompt. Measures baseline alignment without harness-side coaching.",
+              "type": "bool",
+              "default": "false"
+            },
+            {
+              "name": "out",
+              "usage": "Path to write the full JSON report (default: stdout summary only)",
+              "type": "string"
+            },
+            {
+              "name": "provider",
+              "usage": "Comma-separated providers (currently: openai)",
+              "type": "stringSlice",
+              "default": "[openai]"
+            },
+            {
+              "name": "timeout",
+              "usage": "Per-LLM-call timeout",
+              "type": "duration",
+              "default": "1m0s"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "version",
+      "path": "agentclash version",
+      "short": "Show CLI version information",
+      "runnable": true
+    },
+    {
+      "name": "workspace",
+      "path": "agentclash workspace",
+      "short": "Manage workspaces",
+      "aliases": [
+        "ws"
+      ],
+      "runnable": false,
+      "subcommands": [
+        {
+          "name": "create",
+          "path": "agentclash workspace create",
+          "short": "Create a workspace",
+          "runnable": true,
+          "flags": [
+            {
+              "name": "name",
+              "usage": "Workspace name (required)",
+              "type": "string",
+              "required": true
+            },
+            {
+              "name": "org",
+              "usage": "Organization ID (required)",
+              "type": "string"
+            },
+            {
+              "name": "slug",
+              "usage": "Workspace slug (optional)",
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "name": "get",
+          "path": "agentclash workspace get",
+          "short": "Get workspace details",
+          "runnable": true
+        },
+        {
+          "name": "list",
+          "path": "agentclash workspace list",
+          "short": "List workspaces in an organization",
+          "runnable": true,
+          "flags": [
+            {
+              "name": "org",
+              "usage": "Organization ID (uses default if not set)",
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "name": "members",
+          "path": "agentclash workspace members",
+          "short": "Manage workspace members",
+          "runnable": false,
+          "subcommands": [
+            {
+              "name": "invite",
+              "path": "agentclash workspace members invite",
+              "short": "Invite a member to the workspace",
+              "runnable": true,
+              "flags": [
+                {
+                  "name": "email",
+                  "usage": "Email address to invite (required)",
+                  "type": "string",
+                  "required": true
+                },
+                {
+                  "name": "role",
+                  "usage": "Role: workspace_admin, workspace_member, workspace_viewer",
+                  "type": "string",
+                  "default": "workspace_member"
+                }
+              ]
+            },
+            {
+              "name": "list",
+              "path": "agentclash workspace members list",
+              "short": "List workspace members",
+              "runnable": true
+            },
+            {
+              "name": "update",
+              "path": "agentclash workspace members update",
+              "short": "Update a workspace membership",
+              "runnable": true,
+              "flags": [
+                {
+                  "name": "role",
+                  "usage": "New role",
+                  "type": "string"
+                },
+                {
+                  "name": "status",
+                  "usage": "New status",
+                  "type": "string"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "update",
+          "path": "agentclash workspace update",
+          "short": "Update a workspace",
+          "runnable": true,
+          "flags": [
+            {
+              "name": "name",
+              "usage": "New workspace name",
+              "type": "string"
+            },
+            {
+              "name": "public-packs",
+              "usage": "Allow this workspace to use public challenge packs",
+              "type": "bool",
+              "default": "false"
+            },
+            {
+              "name": "status",
+              "usage": "New status (active, archived)",
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "name": "use",
+          "path": "agentclash workspace use",
+          "short": "Set the default workspace",
+          "runnable": true
+        }
+      ]
+    }
+  ],
+  "exit_codes": [
+    {
+      "code": 0,
+      "name": "success",
+      "description": "Command completed successfully."
+    },
+    {
+      "code": 1,
+      "name": "error",
+      "description": "Generic, unexpected failure when no command-specific code applies."
+    },
+    {
+      "code": 2,
+      "name": "missing_workspace",
+      "description": "No workspace resolved; pass --workspace, set AGENTCLASH_WORKSPACE, or run 'agentclash link'."
+    },
+    {
+      "code": 1,
+      "name": "compare_gate_fail",
+      "description": "compare gate: a regression was detected.",
+      "commands": [
+        "compare gate"
+      ]
+    },
+    {
+      "code": 2,
+      "name": "compare_gate_warn",
+      "description": "compare gate: a warning-level regression was detected.",
+      "commands": [
+        "compare gate"
+      ]
+    },
+    {
+      "code": 3,
+      "name": "compare_gate_insufficient_evidence",
+      "description": "compare gate: not enough evidence to decide.",
+      "commands": [
+        "compare gate"
+      ]
+    },
+    {
+      "code": 3,
+      "name": "prompt_eval_gate_failed",
+      "description": "prompt-eval: the evaluation gate failed.",
+      "commands": [
+        "prompt-eval"
+      ]
+    },
+    {
+      "code": 4,
+      "name": "prompt_eval_execution_error",
+      "description": "prompt-eval: an error occurred while executing the evaluation.",
+      "commands": [
+        "prompt-eval"
+      ]
+    },
+    {
+      "code": 5,
+      "name": "prompt_eval_invalid_input",
+      "description": "prompt-eval: invalid manifest or arguments.",
+      "commands": [
+        "prompt-eval"
+      ]
+    },
+    {
+      "code": 10,
+      "name": "ci_run_invalid_manifest",
+      "description": "ci run: the CI manifest is invalid.",
+      "commands": [
+        "ci run"
+      ]
+    },
+    {
+      "code": 20,
+      "name": "ci_run_api_error",
+      "description": "ci run: an API error occurred.",
+      "commands": [
+        "ci run"
+      ]
+    },
+    {
+      "code": 30,
+      "name": "ci_run_timeout",
+      "description": "ci run: timed out waiting for a candidate run.",
+      "commands": [
+        "ci run"
+      ]
+    },
+    {
+      "code": 31,
+      "name": "ci_run_run_failed",
+      "description": "ci run: a candidate run finished in a failed state.",
+      "commands": [
+        "ci run"
+      ]
+    }
+  ]
+}
