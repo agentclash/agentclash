@@ -355,6 +355,7 @@ Next command: <exact agentclash command or GitHub Actions fix>
 - `agentclash-scorecard-reader`: inspect scorecard, comparison, replay, and failure evidence.
 - `agentclash-compare-and-triage`: baseline bookmarks, `compare latest --gate`, and replay triage.
 - `agentclash-regression-flywheel`: promote failures and manage regression suites/cases.
+- `agentclash-dataset-workflows`: dataset eval gates with `--format junit` for CI pipelines.
 
 ## Related Docs
 - `/docs-md/guides/ci-cd-agent-gates`

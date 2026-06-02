@@ -477,6 +477,34 @@ export const DOCS_NAV: DocNavSection[] = [
         slug: ["agent-skills", "agentclash-ci-release-gate"],
         href: "/docs/agent-skills/agentclash-ci-release-gate",
       },
+      {
+        title: "Agent Harness Setup Skill",
+        description:
+          "Create and run Agent Harness coding tasks, suites, executions, and failure review.",
+        slug: ["agent-skills", "agentclash-agent-harness-setup"],
+        href: "/docs/agent-skills/agentclash-agent-harness-setup",
+      },
+      {
+        title: "Multi Turn Operator Skill",
+        description:
+          "Submit human operator messages when multi_turn run agents await input.",
+        slug: ["agent-skills", "agentclash-multi-turn-operator"],
+        href: "/docs/agent-skills/agentclash-multi-turn-operator",
+      },
+      {
+        title: "Dataset Workflows Skill",
+        description:
+          "Manage datasets, eval gates, synthetic generation, traces, and regression sync.",
+        slug: ["agent-skills", "agentclash-dataset-workflows"],
+        href: "/docs/agent-skills/agentclash-dataset-workflows",
+      },
+      {
+        title: "Prompt Eval Playground Skill",
+        description:
+          "Scaffold, validate, and run prompt eval configs and playground experiments.",
+        slug: ["agent-skills", "agentclash-prompt-eval-playground"],
+        href: "/docs/agent-skills/agentclash-prompt-eval-playground",
+      },
     ],
   },
   {

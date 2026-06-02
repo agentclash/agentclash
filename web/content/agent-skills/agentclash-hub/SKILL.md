@@ -57,6 +57,15 @@ Portable bundle install (copy skills to agent host): https://github.com/agentcla
 11. agentclash-ci-release-gate       → CI manifest + gate (optional)
 ```
 
+Optional branches (load when the workflow applies):
+
+```text
+• agentclash-multi-turn-operator     → human takeover during multi_turn runs
+• agentclash-dataset-workflows       → dataset eval, gate, traces, regression sync
+• agentclash-prompt-eval-playground  → prompt-eval YAML + playground experiments
+• agentclash-agent-harness-setup     → E2B coding-agent harness tasks and suites
+```
+
 Human-friendly shortcut after setup:
 
 ```bash
@@ -91,6 +100,10 @@ Read skills in this order when multiple apply:
 18. `agentclash-compare-and-triage`
 19. `agentclash-regression-flywheel`
 20. `agentclash-ci-release-gate`
+21. `agentclash-agent-harness-setup`
+22. `agentclash-multi-turn-operator`
+23. `agentclash-dataset-workflows`
+24. `agentclash-prompt-eval-playground`
 
 Each skill folder name matches its `name` in frontmatter. When a skill lists **Related Skills**, load those before mutating remote state.
 
@@ -117,6 +130,10 @@ Each skill folder name matches its `name` in frontmatter. When a skill lists **R
 | `agentclash-compare-and-triage` | Baselines, compare, replay triage |
 | `agentclash-regression-flywheel` | Promote failures to regression suites |
 | `agentclash-ci-release-gate` | CI/CD gates |
+| `agentclash-agent-harness-setup` | E2B coding-agent harness tasks, suites, failure review |
+| `agentclash-multi-turn-operator` | Human takeover turns in multi_turn packs |
+| `agentclash-dataset-workflows` | Dataset eval, CI gate, traces, regression sync |
+| `agentclash-prompt-eval-playground` | Prompt eval YAML and playground experiments |
 
 Nested folders: `agent-build-skills/` and `challenge-pack-skills/` mirror the table rows above.
 

@@ -162,6 +162,10 @@ Read related skills in this order so downstream workflows do not redefine upstre
 18. `agentclash-compare-and-triage`
 19. `agentclash-regression-flywheel`
 20. `agentclash-ci-release-gate`
+21. `agentclash-agent-harness-setup`
+22. `agentclash-multi-turn-operator`
+23. `agentclash-dataset-workflows`
+24. `agentclash-prompt-eval-playground`
 
 ## Review Checklist
 - The folder path matches the taxonomy.
