@@ -88,6 +88,27 @@ npm install:
 npm uninstall -g agentclash
 ```
 
+## Shell Completion
+
+`agentclash completion <shell>` prints a completion script to stdout for
+`bash`, `zsh`, `fish`, or `powershell`. An unknown or missing shell exits
+non-zero. Homebrew and the install scripts do not place completions
+automatically — run the one-liner for your shell:
+
+```bash
+# Bash
+agentclash completion bash | sudo tee /etc/bash_completion.d/agentclash > /dev/null
+# Zsh (ensure `autoload -U compinit && compinit` is in ~/.zshrc)
+agentclash completion zsh > "${fpath[1]}/_agentclash"
+# fish
+agentclash completion fish > ~/.config/fish/completions/agentclash.fish
+# PowerShell (add to your $PROFILE to persist)
+agentclash completion powershell | Out-String | Invoke-Expression
+```
+
+Interactive tab-completion of commands and flags works automatically once the
+script is sourced.
+
 ## Release Flow
 
 Stable releases are not cut on every merge. Release Please watches releasable `fix:`, `feat:`, and `feat!:` commits that touch `cli/` and opens a version bump PR for that CLI stream. Installer-only, docs-only, and release-config-only changes do not open a stable CLI release by themselves. Merging that release PR creates the `v*` tag, and the tag-triggered GoReleaser workflow publishes archives, checksums, Homebrew metadata, and npm packages.
