@@ -1,5 +1,5 @@
 {
-  "snapshot_version": "aa4457929e5f",
+  "snapshot_version": "6a7773c59769",
   "skills": [
     {
       "name": "agentclash-agent-build-author",
@@ -65,25 +65,43 @@
       "name": "agentclash-ci-release-gate",
       "role": "ci",
       "requires_cli": true,
-      "sha256": "c2983b9ba255e36e20c336a11cf73d984b780f43ac8005b97f0f0c22c2aade74"
+      "sha256": "97a365fc9753329d8c7abfe2186285b0df61a117d44ef5c438226bcc3b7f3e74"
     },
     {
       "name": "agentclash-cli-setup",
       "role": "setup",
       "requires_cli": true,
-      "sha256": "9dd47c92d1186336d1b075fa14e60b0725b78d5a9086ac43c9c42d2240721ba1"
+      "sha256": "dc9ba5a189abdbd386807e9e4bfbf4189539a7d5a60a022ce17abac0797711da"
+    },
+    {
+      "name": "agentclash-compare-and-triage",
+      "role": "comparison",
+      "requires_cli": true,
+      "sha256": "7dc98137d33407605a877f145a5cd27d958b13930ba763d07c7818220a6fd48c"
     },
     {
       "name": "agentclash-eval-runner",
       "role": "running",
       "requires_cli": true,
-      "sha256": "b9669b1e2c9020346cd65aa20d87aa20f0ec99b4597d87e904babf56f65eee01"
+      "sha256": "b29326cdd88a2a71960bac4e18743cb837352b8325b8c5b345130fceb05b67c0"
+    },
+    {
+      "name": "agentclash-hub",
+      "role": "hub",
+      "requires_cli": false,
+      "sha256": "812286581c1a05468cb5bc6192a0c476efe07c9fb53a73004b0c0a4c3f54d0e9"
+    },
+    {
+      "name": "agentclash-quickstart",
+      "role": "onboarding",
+      "requires_cli": true,
+      "sha256": "45f0c3552b09611c42cd0ae73a63f93c873020a8e3f8560c3c124a498d3e0331"
     },
     {
       "name": "agentclash-regression-flywheel",
       "role": "regression",
       "requires_cli": true,
-      "sha256": "0090966cb69773f5185d40826fc661b319719b186d345d1ef3a725d326c10b71"
+      "sha256": "d9ba7b1db3e5a86ba787ae2d6b49695cf0457c4ac8a205ed3bd91bf7a46e5951"
     },
     {
       "name": "agentclash-runtime-resources-setup",
@@ -95,7 +113,7 @@
       "name": "agentclash-scorecard-reader",
       "role": "reviewing",
       "requires_cli": true,
-      "sha256": "f6d1bc2216dad9a28f2f3c949fd3179f7b86ab33da4832f2a29629d7c31cce3e"
+      "sha256": "24d6695d95ca6f604b787bef9859c4851e54896e6ff4dd4148f25073dfdcab1d"
     }
   ]
 }
