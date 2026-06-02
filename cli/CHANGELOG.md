@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.28.0](https://github.com/agentclash/agentclash/compare/v0.27.0...v0.28.0) (2026-06-02)
+
+
+### Features
+
+* **cli:** add cursor, openclaw, hermes, opencode integration paths ([4feefd6](https://github.com/agentclash/agentclash/commit/4feefd61cabcb14f65e0935b8715bbf3bfe94b99))
+* **cli:** integration install for all six agent hosts ([29e56db](https://github.com/agentclash/agentclash/commit/29e56db2b24f5ba6896d8110b0c24470e5388d13))
+* **cli:** register integration install/doctor for all six hosts ([930e159](https://github.com/agentclash/agentclash/commit/930e1598c6b2df2e8db429fadeac29583f212fb7))
+* **cli:** sync embedded skills snapshot to 23 P1 skills ([3c05ff1](https://github.com/agentclash/agentclash/commit/3c05ff183b2052920fae49c5b56403fb10b5d60b))
+* **cli:** sync embedded skills snapshot to 23 P1 skills ([00827a0](https://github.com/agentclash/agentclash/commit/00827a0efd7be5d0e6c08963bd9f50d1f96c1fd0))
+
+
+### Bug Fixes
+
+* **skills:** correct Related Docs links per Greptile review ([9f2d77e](https://github.com/agentclash/agentclash/commit/9f2d77ef6df734401365e2646c1a135c87d73efc))
+
 ## [0.27.0](https://github.com/agentclash/agentclash/compare/v0.26.0...v0.27.0) (2026-06-02)
 
 
