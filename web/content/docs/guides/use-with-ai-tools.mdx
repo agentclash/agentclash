@@ -97,10 +97,18 @@ Install them with the AgentClash CLI. It is idempotent and writes only
 `SKILL.md` files — never your `CLAUDE.md`, `AGENTS.md`, or `.mcp.json`:
 
 ```bash
-agentclash integration claude install   # -> ~/.claude/skills/
-agentclash integration codex install    # -> ~/.agents/skills/
+agentclash integration claude install    # -> ~/.claude/skills/
+agentclash integration codex install     # -> ~/.agents/skills/
+agentclash integration cursor install    # -> ~/.cursor/skills/
+agentclash integration openclaw install  # -> ~/.openclaw/skills/
+agentclash integration hermes install    # -> ~/.hermes/skills/
+agentclash integration opencode install  # -> ~/.config/opencode/skills/
 agentclash integration claude doctor     # verify installed / missing / drifted
 ```
+
+Project-local OpenCode installs use `.opencode/skills/` — use the
+[agent-skills bundle](https://github.com/agentclash/agent-skills) installer with
+`--project` until the CLI adds a project scope flag.
 
 Or install the published bundle with [GitHub CLI](https://cli.github.com) 2.90+,
 which drops skills into the correct directory for Claude Code, Copilot, Cursor,
