@@ -2301,6 +2301,190 @@
               ]
             }
           ]
+        },
+        {
+          "name": "cursor",
+          "path": "agentclash integration cursor",
+          "short": "Manage the AgentClash skills integration for Cursor",
+          "runnable": false,
+          "subcommands": [
+            {
+              "name": "doctor",
+              "path": "agentclash integration cursor doctor",
+              "short": "Verify the AgentClash skills integration for Cursor",
+              "runnable": true,
+              "flags": [
+                {
+                  "name": "dir",
+                  "usage": "Install root (defaults to your home directory)",
+                  "type": "string"
+                },
+                {
+                  "name": "with-mcp",
+                  "usage": "Reserved: also configure an MCP server (not available yet)",
+                  "type": "bool",
+                  "default": "false"
+                }
+              ]
+            },
+            {
+              "name": "install",
+              "path": "agentclash integration cursor install",
+              "short": "Install AgentClash skills for Cursor",
+              "runnable": true,
+              "flags": [
+                {
+                  "name": "dir",
+                  "usage": "Install root (defaults to your home directory)",
+                  "type": "string"
+                },
+                {
+                  "name": "with-mcp",
+                  "usage": "Reserved: also configure an MCP server (not available yet)",
+                  "type": "bool",
+                  "default": "false"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "hermes",
+          "path": "agentclash integration hermes",
+          "short": "Manage the AgentClash skills integration for Hermes",
+          "runnable": false,
+          "subcommands": [
+            {
+              "name": "doctor",
+              "path": "agentclash integration hermes doctor",
+              "short": "Verify the AgentClash skills integration for Hermes",
+              "runnable": true,
+              "flags": [
+                {
+                  "name": "dir",
+                  "usage": "Install root (defaults to your home directory)",
+                  "type": "string"
+                },
+                {
+                  "name": "with-mcp",
+                  "usage": "Reserved: also configure an MCP server (not available yet)",
+                  "type": "bool",
+                  "default": "false"
+                }
+              ]
+            },
+            {
+              "name": "install",
+              "path": "agentclash integration hermes install",
+              "short": "Install AgentClash skills for Hermes",
+              "runnable": true,
+              "flags": [
+                {
+                  "name": "dir",
+                  "usage": "Install root (defaults to your home directory)",
+                  "type": "string"
+                },
+                {
+                  "name": "with-mcp",
+                  "usage": "Reserved: also configure an MCP server (not available yet)",
+                  "type": "bool",
+                  "default": "false"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "openclaw",
+          "path": "agentclash integration openclaw",
+          "short": "Manage the AgentClash skills integration for OpenClaw",
+          "runnable": false,
+          "subcommands": [
+            {
+              "name": "doctor",
+              "path": "agentclash integration openclaw doctor",
+              "short": "Verify the AgentClash skills integration for OpenClaw",
+              "runnable": true,
+              "flags": [
+                {
+                  "name": "dir",
+                  "usage": "Install root (defaults to your home directory)",
+                  "type": "string"
+                },
+                {
+                  "name": "with-mcp",
+                  "usage": "Reserved: also configure an MCP server (not available yet)",
+                  "type": "bool",
+                  "default": "false"
+                }
+              ]
+            },
+            {
+              "name": "install",
+              "path": "agentclash integration openclaw install",
+              "short": "Install AgentClash skills for OpenClaw",
+              "runnable": true,
+              "flags": [
+                {
+                  "name": "dir",
+                  "usage": "Install root (defaults to your home directory)",
+                  "type": "string"
+                },
+                {
+                  "name": "with-mcp",
+                  "usage": "Reserved: also configure an MCP server (not available yet)",
+                  "type": "bool",
+                  "default": "false"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "opencode",
+          "path": "agentclash integration opencode",
+          "short": "Manage the AgentClash skills integration for OpenCode",
+          "runnable": false,
+          "subcommands": [
+            {
+              "name": "doctor",
+              "path": "agentclash integration opencode doctor",
+              "short": "Verify the AgentClash skills integration for OpenCode",
+              "runnable": true,
+              "flags": [
+                {
+                  "name": "dir",
+                  "usage": "Install root (defaults to your home directory)",
+                  "type": "string"
+                },
+                {
+                  "name": "with-mcp",
+                  "usage": "Reserved: also configure an MCP server (not available yet)",
+                  "type": "bool",
+                  "default": "false"
+                }
+              ]
+            },
+            {
+              "name": "install",
+              "path": "agentclash integration opencode install",
+              "short": "Install AgentClash skills for OpenCode",
+              "runnable": true,
+              "flags": [
+                {
+                  "name": "dir",
+                  "usage": "Install root (defaults to your home directory)",
+                  "type": "string"
+                },
+                {
+                  "name": "with-mcp",
+                  "usage": "Reserved: also configure an MCP server (not available yet)",
+                  "type": "bool",
+                  "default": "false"
+                }
+              ]
+            }
+          ]
         }
       ]
     },
