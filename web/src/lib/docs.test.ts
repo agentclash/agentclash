@@ -15,7 +15,10 @@ const skillSlugs = [
   "agent-build-skills/agentclash-runtime-resources-setup",
   "agentclash-ci-release-gate",
   "agentclash-cli-setup",
+  "agentclash-compare-and-triage",
   "agentclash-eval-runner",
+  "agentclash-hub",
+  "agentclash-quickstart",
   "agentclash-regression-flywheel",
   "agentclash-scorecard-reader",
   "challenge-pack-skills/agentclash-challenge-pack-artifacts",
@@ -35,6 +38,8 @@ describe("agent skill docs", () => {
     expect(doc?.title).toBe("Agent Skills");
     expect(doc?.content).toContain("web/content/agent-skills/.../SKILL.md");
     expect(doc?.content).toContain("agentclash-cli-setup");
+    expect(doc?.content).toContain("agentclash-hub");
+    expect(doc?.content).toContain("agentclash-quickstart");
     expect(doc?.content).toContain("Challenge Pack Skills");
     expect(doc?.content).toContain("name: agentclash-skill-catalog");
     expect(doc?.content).toContain("## Generated Docs Contract");
@@ -67,11 +72,42 @@ describe("agent skill docs", () => {
     expect(doc?.content).toContain("doctor --json");
   });
 
+  it("generates the hub skill with workflow map", () => {
+    const doc = getDocBySlug(["agent-skills", "agentclash-hub"]);
+
+    expect(doc?.title).toBe("Hub Skill");
+    expect(doc?.content).toContain("name: agentclash-hub");
+    expect(doc?.content).toContain("agentclash-quickstart");
+    expect(doc?.content).toContain("agentclash-compare-and-triage");
+    expect(doc?.content).toContain("https://agentclash.dev/docs/agent-skills");
+  });
+
+  it("generates the quickstart skill with readiness checks", () => {
+    const doc = getDocBySlug(["agent-skills", "agentclash-quickstart"]);
+
+    expect(doc?.title).toBe("Quickstart Skill");
+    expect(doc?.content).toContain("agentclash quickstart");
+    expect(doc?.content).toContain("next_command");
+    expect(doc?.content).toContain("challenge_packs");
+  });
+
+  it("generates the compare and triage skill with gate commands", () => {
+    const doc = getDocBySlug(["agent-skills", "agentclash-compare-and-triage"]);
+
+    expect(doc?.title).toBe("Compare And Triage Skill");
+    expect(doc?.content).toContain("agentclash compare latest");
+    expect(doc?.content).toContain("agentclash compare gate");
+    expect(doc?.content).toContain("agentclash replay triage");
+    expect(doc?.content).toContain("agentclash baseline set");
+  });
+
   it("generates the eval runner skill with source-backed details", () => {
     const doc = getDocBySlug(["agent-skills", "agentclash-eval-runner"]);
 
     expect(doc?.title).toBe("Eval Runner Skill");
     expect(doc?.content).toContain("agentclash eval start");
+    expect(doc?.content).toContain("agentclash eval session list");
+    expect(doc?.content).toContain("agentclash run series report");
     expect(doc?.content).toContain("--pack <PACK_ID_OR_SLUG_OR_EXACT_NAME>");
     expect(doc?.content).toContain("--deployment <DEPLOYMENT_ID_OR_EXACT_NAME>");
     expect(doc?.content).toContain("--deployments <AGENT_DEPLOYMENT_ID>");
@@ -502,6 +538,15 @@ describe("agent skill docs", () => {
     expect(index).toContain("https://example.test/docs-md/agent-skills");
     expect(index).toContain(
       "https://example.test/docs-md/agent-skills/agentclash-cli-setup",
+    );
+    expect(index).toContain(
+      "https://example.test/docs-md/agent-skills/agentclash-hub",
+    );
+    expect(index).toContain(
+      "https://example.test/docs-md/agent-skills/agentclash-quickstart",
+    );
+    expect(index).toContain(
+      "https://example.test/docs-md/agent-skills/agentclash-compare-and-triage",
     );
     expect(index).toContain(
       "https://example.test/docs-md/agent-skills/challenge-pack-skills/agentclash-challenge-pack-yaml-author",
