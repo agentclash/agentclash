@@ -336,6 +336,53 @@ export const CHANGELOG_PERIODS: ChangelogPeriod[] = [
       },
     ],
   },
+  {
+    id: "2026-06-02",
+    startDate: "2026-06-02",
+    endDate: "2026-06-11",
+    label: "Jun 02 – Jun 11, 2026",
+    headline: "Portable agent skills and one-command host install",
+    summary:
+      "Twenty-five portable Agent Skills shipped with docs, an embedded CLI snapshot, and a standalone agent-skills bundle repo. Install or doctor skills on Claude, Codex, Cursor, OpenClaw, Hermes, and OpenCode with one command, or export an offline bundle as a directory or tar.gz.",
+    themes: [
+      "Portable agent skills",
+      "CLI integration install",
+      "Skills distribution",
+      "CLI ergonomics",
+    ],
+    entries: [
+      {
+        category: "added",
+        text: "25 portable Agent Skills — hub, quickstart, compare-and-triage, eval runner, challenge-pack authoring, harness setup, multi-turn operator, dataset workflows, CI release gate, security evaluation, and workspace admin.",
+        href: "/docs/guides/use-with-ai-tools",
+      },
+      {
+        category: "added",
+        text: "`agentclash integration <host> install|doctor` for Claude, Codex, Cursor, OpenClaw, Hermes, and OpenCode — copies the embedded snapshot into each host's skills directory.",
+      },
+      {
+        category: "added",
+        text: "`agentclash skills export` — offline install bundles as a flat directory or tar.gz, with optional host-specific layout.",
+      },
+      {
+        category: "added",
+        text: "Standalone agent-skills distribution repo with manifest verification and sync from canonical docs source.",
+        href: "https://github.com/agentclash/agent-skills",
+      },
+      {
+        category: "added",
+        text: "`agentclash schema` — machine-readable CLI command tree for agents and tooling.",
+      },
+      {
+        category: "improved",
+        text: "Shell completion now validates its `--shell` argument instead of silently accepting invalid values.",
+      },
+      {
+        category: "improved",
+        text: "IndexNow pings and sitemap image entries for faster search-engine discovery.",
+      },
+    ],
+  },
 ];
 
 export function getChangelogPeriods(): ChangelogPeriod[] {
