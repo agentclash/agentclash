@@ -61,6 +61,27 @@ func TestIntegrationCursorInstallThenDoctor(t *testing.T) {
 	if err := executeCommand(t, []string{"integration", "cursor", "doctor", "--dir", home}, "http://unused"); err != nil {
 		t.Fatalf("doctor after install should pass, got: %v", err)
 	}
+	for _, forbidden := range []string{"CLAUDE.md", "AGENTS.md", ".mcp.json"} {
+		assertNoFileNamed(t, home, forbidden)
+	}
+}
+
+func TestIntegrationOpencodeInstallThenDoctor(t *testing.T) {
+	home := t.TempDir()
+
+	if err := executeCommand(t, []string{"integration", "opencode", "install", "--dir", home}, "http://unused"); err != nil {
+		t.Fatalf("install: %v", err)
+	}
+	skillPath := filepath.Join(home, ".config", "opencode", "skills", "agentclash-cli-setup", "SKILL.md")
+	if _, err := os.Stat(skillPath); err != nil {
+		t.Fatalf("expected installed skill at %s: %v", skillPath, err)
+	}
+	if err := executeCommand(t, []string{"integration", "opencode", "doctor", "--dir", home}, "http://unused"); err != nil {
+		t.Fatalf("doctor after install should pass, got: %v", err)
+	}
+	for _, forbidden := range []string{"CLAUDE.md", "AGENTS.md", ".mcp.json"} {
+		assertNoFileNamed(t, home, forbidden)
+	}
 }
 
 func TestIntegrationClaudeInstallThenDoctor(t *testing.T) {
