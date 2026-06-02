@@ -5,7 +5,8 @@ through two channels, both generated from that single canonical source:
 
 | Channel | For | How |
 | --- | --- | --- |
-| `agentclash integration <claude\|codex> install` | Users who already have the CLI | Embedded snapshot (`cli/internal/skills/snapshot`); see [CLI workflow handoff](cli-workflow-handoff.md). |
+| `agentclash integration <host> install` | Users who already have the CLI | Embedded snapshot (`cli/internal/skills/snapshot`); see [CLI workflow handoff](cli-workflow-handoff.md). |
+| `agentclash skills export` | Offline or air-gapped install | Directory or `.tar.gz` from the same embedded snapshot; see [Use with AI tools](guides/use-with-ai-tools.mdx) in the web docs tree. |
 | `gh skill install agentclash/agentclash <skill>` | Any [supported host](#supported-hosts) (incl. ones without the CLI) | Published GitHub release validated against the [agentskills.io](https://agentskills.io) spec. |
 
 `web/content/agent-skills` is the source of truth. Do **not** hand-edit either

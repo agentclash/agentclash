@@ -30,7 +30,11 @@ directory, and verify the integration.
 
 The skills teach an agent to drive the AgentClash CLI. install is idempotent and
 writes only SKILL.md files — it never modifies CLAUDE.md, AGENTS.md, .mcp.json,
-or any other project config.`,
+or any other project config.
+
+To export the same bundle for offline install, use:
+
+  agentclash skills export --dir ./bundle.tar.gz --host claude --format tar.gz`,
 }
 
 func agentLabel(agent string) string {

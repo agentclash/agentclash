@@ -110,6 +110,18 @@ Project-local OpenCode installs use `.opencode/skills/` — use the
 [agent-skills bundle](https://github.com/agentclash/agent-skills) installer with
 `--project` until the CLI adds a project scope flag.
 
+### Offline export
+
+For air-gapped machines, export the embedded snapshot to a directory or tarball,
+then copy or extract into the agent skills path:
+
+```bash
+agentclash skills export --dir ./agentclash-skills
+agentclash skills export --dir ./claude-skills.tar.gz --host claude --format tar.gz
+tar -xzf claude-skills.tar.gz -C ~
+agentclash integration claude doctor
+```
+
 Or install the published bundle with [GitHub CLI](https://cli.github.com) 2.90+,
 which drops skills into the correct directory for Claude Code, Copilot, Cursor,
 Codex, Gemini CLI, or Antigravity:

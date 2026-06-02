@@ -3974,6 +3974,38 @@
       ]
     },
     {
+      "name": "skills",
+      "path": "agentclash skills",
+      "short": "Export bundled AgentClash Agent Skills",
+      "runnable": false,
+      "subcommands": [
+        {
+          "name": "export",
+          "path": "agentclash skills export",
+          "short": "Export bundled skills to a directory or tarball",
+          "runnable": true,
+          "flags": [
+            {
+              "name": "dir",
+              "usage": "Output directory or .tar.gz archive path (required)",
+              "type": "string"
+            },
+            {
+              "name": "format",
+              "usage": "Output format: dir or tar.gz",
+              "type": "string",
+              "default": "dir"
+            },
+            {
+              "name": "host",
+              "usage": "Layout for a coding agent host (claude, codex, cursor, openclaw, hermes, opencode)",
+              "type": "string"
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "version",
       "path": "agentclash version",
       "short": "Show CLI version information",
