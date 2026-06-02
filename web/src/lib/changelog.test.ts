@@ -11,7 +11,7 @@ describe("getChangelogPeriods", () => {
     const periods = getChangelogPeriods();
 
     expect(periods.length).toBeGreaterThan(0);
-    expect(periods[0]?.id).toBe("2026-05-25");
+    expect(periods[0]?.id).toBe("2026-06-02");
     expect(periods.at(-1)?.id).toBe("2026-04-15");
     expect(
       periods.every(
@@ -25,7 +25,7 @@ describe("getChangelogPeriods", () => {
 
 describe("getChangelogLatestModified", () => {
   it("returns the newest period end date", () => {
-    expect(getChangelogLatestModified()).toBe("2026-06-01");
+    expect(getChangelogLatestModified()).toBe("2026-06-11");
   });
 });
 
@@ -35,7 +35,8 @@ describe("renderChangelogMarkdown", () => {
 
     expect(markdown).toContain("# AgentClash Changelog");
     expect(markdown).toContain("Source: https://example.test/changelog");
-    expect(markdown).toContain("## May 25 – Jun 01, 2026");
+    expect(markdown).toContain("## Jun 02 – Jun 11, 2026");
+    expect(markdown).toContain("**Added**: 25 portable Agent Skills");
     expect(markdown).toContain("**Added**: Datasets foundation");
     expect(markdown).toContain("**Security**: SecurityPolicy schema");
   });
