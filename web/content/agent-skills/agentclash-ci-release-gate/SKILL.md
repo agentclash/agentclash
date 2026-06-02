@@ -345,6 +345,7 @@ Next command: <exact agentclash command or GitHub Actions fix>
 ```
 
 ## Related Skills
+- `agentclash-hub`: workflow map and dependency order.
 - `agentclash-cli-setup`: authenticate, select workspace, and configure hosted API.
 - `agentclash-runtime-resources-setup`: create runtime profiles, provider accounts, model aliases, secrets, and tools.
 - `agentclash-agent-build-author`: create the candidate build spec and ready build version.
@@ -352,6 +353,7 @@ Next command: <exact agentclash command or GitHub Actions fix>
 - `agentclash-challenge-pack-validation-publish`: publish the challenge pack version and optional input sets.
 - `agentclash-eval-runner`: run ad hoc evals before formal CI gates.
 - `agentclash-scorecard-reader`: inspect scorecard, comparison, replay, and failure evidence.
+- `agentclash-compare-and-triage`: baseline bookmarks, `compare latest --gate`, and replay triage.
 - `agentclash-regression-flywheel`: promote failures and manage regression suites/cases.
 
 ## Related Docs
