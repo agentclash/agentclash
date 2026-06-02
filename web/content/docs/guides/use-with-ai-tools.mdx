@@ -1,7 +1,7 @@
 ---
 title: Use with AI Tools
-description: Feed AgentClash docs into ChatGPT, Codex, Claude Code, and similar tools using llms.txt and markdown exports.
-dateModified: 2026-06-01
+description: Feed AgentClash docs into ChatGPT, Codex, Claude Code, and similar tools using llms.txt and markdown exports, and install the AgentClash Agent Skills.
+dateModified: 2026-06-02
 ---
 
 Goal: give an assistant or coding agent enough AgentClash context to answer questions, draft workflows, or transform the docs into internal runbooks.
@@ -86,6 +86,32 @@ Use a narrower `/docs-md/...` page instead of the full bundle.
 ### The answer mixes product claims with guesses
 
 Tell the tool to answer only from the supplied docs export and cite the page title it used.
+
+## Install AgentClash Agent Skills
+
+Beyond feeding docs into a tool, AgentClash ships **Agent Skills** that teach a
+coding agent to operate the CLI directly — setup, eval runs, scorecard reading,
+CI gates, and challenge-pack authoring.
+
+Install them with the AgentClash CLI. It is idempotent and writes only
+`SKILL.md` files — never your `CLAUDE.md`, `AGENTS.md`, or `.mcp.json`:
+
+```bash
+agentclash integration claude install   # -> ~/.claude/skills/
+agentclash integration codex install    # -> ~/.agents/skills/
+agentclash integration claude doctor     # verify installed / missing / drifted
+```
+
+Or install the published bundle with [GitHub CLI](https://cli.github.com) 2.90+,
+which drops skills into the correct directory for Claude Code, Copilot, Cursor,
+Codex, Gemini CLI, or Antigravity:
+
+```bash
+gh skill install agentclash/agentclash <skill>
+```
+
+The skills assume the `agentclash` CLI is on your PATH (`requires_cli: true`).
+After installing, reload skills in your agent.
 
 ## See also
 
