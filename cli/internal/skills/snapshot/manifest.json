@@ -1,5 +1,5 @@
 {
-  "snapshot_version": "6a7773c59769",
+  "snapshot_version": "11476048adb7",
   "skills": [
     {
       "name": "agentclash-agent-build-author",
@@ -12,6 +12,12 @@
       "role": "agent-deployments",
       "requires_cli": true,
       "sha256": "4c14f26a7c53de60add3aecd46e5a0f65e1d9cb9e42b732ee83a5b281c1a83bc"
+    },
+    {
+      "name": "agentclash-agent-harness-setup",
+      "role": "harness",
+      "requires_cli": true,
+      "sha256": "f5524ad01df7397c0df95607733bb2d7935076ed198e6d157f513ec175f23816"
     },
     {
       "name": "agentclash-challenge-pack-artifacts",
@@ -65,7 +71,7 @@
       "name": "agentclash-ci-release-gate",
       "role": "ci",
       "requires_cli": true,
-      "sha256": "97a365fc9753329d8c7abfe2186285b0df61a117d44ef5c438226bcc3b7f3e74"
+      "sha256": "3ec8b36bdea2ccf626fe308b51693283c511e46aee2518847d955b6e101320bf"
     },
     {
       "name": "agentclash-cli-setup",
@@ -80,16 +86,34 @@
       "sha256": "7dc98137d33407605a877f145a5cd27d958b13930ba763d07c7818220a6fd48c"
     },
     {
+      "name": "agentclash-dataset-workflows",
+      "role": "dataset",
+      "requires_cli": true,
+      "sha256": "cc95ed94b624bb88eab5f1852c5b3162fe9382a606d953a4bcfa0b0ecfdae495"
+    },
+    {
       "name": "agentclash-eval-runner",
       "role": "running",
       "requires_cli": true,
-      "sha256": "b29326cdd88a2a71960bac4e18743cb837352b8325b8c5b345130fceb05b67c0"
+      "sha256": "77867733082836e249a3c45fa3648035eb59d1449a1f797b8ebf18d231be2acb"
     },
     {
       "name": "agentclash-hub",
       "role": "hub",
       "requires_cli": false,
-      "sha256": "812286581c1a05468cb5bc6192a0c476efe07c9fb53a73004b0c0a4c3f54d0e9"
+      "sha256": "f5c25234903db702436c679f7658b1d14538a3ed18c782ed824c022f2ece902f"
+    },
+    {
+      "name": "agentclash-multi-turn-operator",
+      "role": "multi-turn",
+      "requires_cli": true,
+      "sha256": "f693d8bc81940b23b0ed2a730fa6ef2d20675cf7150501260ffb602c117f7e5c"
+    },
+    {
+      "name": "agentclash-prompt-eval-playground",
+      "role": "prompt-eval",
+      "requires_cli": true,
+      "sha256": "a1ee2266cc31184768c5d036601bfe61574c3371359a19b8d5dc72aca3a6a044"
     },
     {
       "name": "agentclash-quickstart",
