@@ -1,0 +1,46 @@
+---
+title: "How AgentClash Scores Agent Trajectories"
+date: "2026-06-02"
+description: "Final-answer grading misses how an agent got there. Here is how AgentClash scores the whole trajectory with deterministic checks, numeric metrics, behavioral signals, and LLM judges — then aggregates them into one defensible verdict."
+author: "Atharva"
+---
+
+Most evaluation tools grade the last thing an agent says. AgentClash grades the whole path it took to get there.
+
+That difference matters because two agents can land on the same final answer while behaving completely differently. One picks the right tool, verifies its work, attaches the required artifact, and stays inside budget. The other hallucinates a file, skips the failing test, burns twice the tokens, and still produces similar-looking prose. If your eval only reads the final output, those two runs look the same. They are not.
+
+This post explains how AgentClash turns a run into a score without throwing away the reasoning behind it.
+
+## A run is a trajectory, not a string
+
+When an agent runs in AgentClash, it works inside a fresh sandbox with real tools for minutes at a time: it plans, calls a tool, observes the result, recovers from an error, calls another tool, and eventually stops. Every one of those steps is captured as a structured event.
+
+That ordered event history is the [replay](/docs/concepts/replay-and-scorecards) — the forensic record of what actually happened: what the agent did first, when it called each tool, when the sandbox or a tool failed, what artifacts it produced, and what terminal state it reached. The replay is the source of truth. The score is built *from* it, never instead of it.
+
+## Four vantages on the same trajectory
+
+A single grader has a single blind spot. So AgentClash scores each trajectory from four different vantages, defined per challenge pack in the [evaluation spec](/docs/challenge-packs/evaluation-spec-reference):
+
+**Deterministic checks.** When objective evidence can prove the behavior, prove it. Validators assert over exact text, JSON shape, file and directory contents, and code execution results. Did the agent write the file it was supposed to? Does the JSON match the contract? These are not opinions — they pass or fail, and the evidence is attached.
+
+**Numeric metrics.** The cheap, comparable signals: latency, token count, tool-call count, cost, and validator pass rate, plus any math assertions you define. This is where "it worked, but it cost 4x and took 3x longer" becomes visible instead of invisible.
+
+**Behavioral signals.** The trajectory itself: tool-choice efficiency, recovery after an error, and whether the agent stayed inside the scope of the task. This is the vantage final-answer grading can't see at all.
+
+**LLM judges.** Reserved for what genuinely needs subjective or rubric-based assessment — quality, helpfulness, adherence to a rubric. AgentClash leans on deterministic and numeric evidence first and reaches for [LLM judges](/docs/challenge-packs/llm-judges) only where they earn their keep, so the verdict doesn't rest on one model's taste.
+
+## From four vantages to one verdict
+
+Four independent readings are only useful if a reviewer can act on them. AgentClash folds the validator results into scorecard dimensions, and the dimensions into a composite verdict — with the weights under your control, because a latency regression and a correctness regression should not count the same for every team.
+
+The point of aggregating with consensus rather than trusting any single judge is robustness: a flaky LLM grade can't sink a run that passed every deterministic check, and a run that "sounds right" can't pass when the file it was supposed to write isn't there.
+
+The result is a [scorecard](/docs/guides/interpret-results) that makes a run legible in seconds — pass, fail, or degraded — with the evidence that justifies it one click away in the replay.
+
+## Why this is the whole point
+
+Scoring the trajectory instead of the string is what lets AgentClash do the things a final-answer benchmark can't: race models [head-to-head on the same task](/platform/agent-evaluation), explain *why* one won, and turn a specific failure into a permanent [regression test](/platform/agent-regression-testing) instead of a vibe.
+
+You don't just learn *which* agent was better. You learn how, on what evidence, and at what cost — and you keep that evidence for the next time the question comes up.
+
+Start from the [quickstart](/docs/getting-started/quickstart), or see [how AgentClash compares](/compare) to prompt-evaluation tools.

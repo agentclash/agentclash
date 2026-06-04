@@ -25,10 +25,25 @@ describe("comparison data", () => {
     }
   });
 
-  it("derives one competitor per non-AgentClash column", () => {
-    expect(COMPETITORS).toHaveLength(COMPARISON_COLUMNS.length - 1);
+  it("includes every matrix column plus the extended competitors", () => {
+    const names = COMPETITORS.map((competitor) => competitor.name);
+    // Every non-AgentClash matrix column has a competitor entry.
+    for (const column of COMPARISON_COLUMNS.filter((c) => !c.highlight)) {
+      expect(names).toContain(column.name);
+    }
+    // Plus the standalone competitors that are not matrix columns.
+    for (const extra of ["DeepEval", "Galileo", "Patronus AI", "Ragas"]) {
+      expect(names).toContain(extra);
+    }
+    expect(COMPETITORS.length).toBeGreaterThan(COMPARISON_COLUMNS.length - 1);
+  });
+
+  it("gives every competitor one verdict per row and an honest fit note", () => {
     for (const competitor of COMPETITORS) {
-      expect(COMPARISON_COLUMNS[competitor.columnIndex].highlight).toBeFalsy();
+      expect(competitor.verdicts).toHaveLength(COMPARISON_ROWS.length);
+      expect(
+        competitor.verdicts.every((v) => ["yes", "partial", "no"].includes(v)),
+      ).toBe(true);
       expect(competitor.whereItFits.length).toBeGreaterThan(0);
     }
   });

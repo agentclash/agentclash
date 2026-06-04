@@ -141,6 +141,19 @@ export default function sitemap(): MetadataRoute.Sitemap {
       images: [DEFAULT_OG],
     },
     {
+      url: `${DOCS_ORIGIN}/pricing`,
+      lastModified: new Date(),
+      changeFrequency: "monthly",
+      priority: 0.8,
+      images: [
+        ogImage({
+          title: "AgentClash Pricing",
+          subtitle: "Free and open-source, with hosted Pro, Team & Enterprise",
+          kind: "Pricing",
+        }),
+      ],
+    },
+    {
       url: `${DOCS_ORIGIN}/platform/agent-evaluation`,
       lastModified: new Date(),
       changeFrequency: "monthly",

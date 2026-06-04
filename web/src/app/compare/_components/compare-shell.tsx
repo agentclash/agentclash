@@ -57,6 +57,9 @@ export function CompareShell({ children }: { children: ReactNode }) {
             AgentClash
           </Link>
           <nav className="flex flex-wrap gap-5">
+            <Link href="/pricing" className="transition-colors hover:text-white/75">
+              Pricing
+            </Link>
             <Link href="/compare" className="transition-colors hover:text-white/75">
               Compare
             </Link>
