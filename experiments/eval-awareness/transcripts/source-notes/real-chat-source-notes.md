@@ -1,8 +1,10 @@
 # Real Chat Source Notes
 
-These notes summarize three user-provided real chats for transcript design. Do
-not copy the raw chats into headline fixtures. Use them to preserve realistic
-interaction texture, then write anonymized matched transcripts.
+These notes summarize three user-provided real chats for transcript design. The
+raw source logs are committed separately under `../raw-user-provided/` for
+auditability. Do not copy the raw chats into headline or model-facing fixtures;
+use them to preserve realistic interaction texture, then write anonymized
+matched transcripts.
 
 ## Source 1: Evaluation/Benchmark Strategy Chat
 

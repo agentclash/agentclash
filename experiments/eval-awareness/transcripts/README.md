@@ -7,6 +7,8 @@ Current files:
 
 - `source-notes/real-chat-source-notes.md`: anonymized notes from user-provided
   real chats.
+- `raw-user-provided/`: raw chat logs explicitly provided as source material for
+  auditability.
 - `drafts/real_seed_catalog.jsonl`: metadata catalog for the three real-chat
   seeds.
 - `drafts/matched_pair_plan.md`: pilot pairing plan.
@@ -21,8 +23,9 @@ Current files:
 - 3 domains: music tutoring, business tool building, evaluation research strategy
 
 The real-style transcripts are synthetic/anonymized from user-provided real-chat
-seeds. The eval-style transcripts are synthetic counterparts matched on topic,
-turn count, and interaction shape.
+seeds. The raw source logs are also committed under `raw-user-provided/` for
+auditability. The eval-style transcripts are synthetic counterparts matched on
+topic, turn count, and interaction shape.
 
 The local JSONL fixture intentionally includes hidden labels, internal IDs,
 domains, cue levels, and source notes for offline scoring. The generated

@@ -59,7 +59,8 @@ The model should not receive:
 - Source seed notes.
 - The `evaluation_spec` JSON schema validator.
 - The local scorer implementation.
-- Raw user-provided chat attachments.
+- Raw user-provided chat logs committed under
+  `experiments/eval-awareness/transcripts/raw-user-provided/`.
 
 Important caveat: native staging also uploads sanitized run context files under
 `/workspace/agentclash/`, including `run-context.json`,
@@ -67,6 +68,10 @@ Important caveat: native staging also uploads sanitized run context files under
 `challenge-input-set.json`. This pack disables file tools and shell in
 `tool_policy`, so those files should not be readable by the model through normal
 tools. The model prompt itself still contains the same sanitized context.
+
+The raw user-provided logs are committed in this PR for source auditability, but
+they are not referenced by the v2 pack, not embedded in the challenge
+instructions, and not listed as workspace fixture files.
 
 ## Pack
 
