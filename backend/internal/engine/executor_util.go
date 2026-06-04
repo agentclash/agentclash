@@ -84,6 +84,27 @@ func cloneStringMap(value map[string]string) map[string]string {
 	return cloned
 }
 
+// sanitizeUserSimulatorForAgent clones a UserSimulatorSpec but strips
+// UserSimulatorTurn.Expects from every turn. Expects contains the per-turn
+// scoring criteria (ground truth assertions) that the agent must not see —
+// if they were present in the workspace JSON the agent could read them and
+// trivially satisfy validators without performing the intended task.
+//
+// The execution engine reads Expects from the database directly (via
+// StoredCaseDocument), so stripping them here does not affect scoring.
+func sanitizeUserSimulatorForAgent(spec *challengepack.UserSimulatorSpec) *challengepack.UserSimulatorSpec {
+	cloned := challengepack.CloneUserSimulatorSpec(spec)
+	if cloned == nil {
+		return nil
+	}
+	for i := range cloned.Phases {
+		for j := range cloned.Phases[i].Turns {
+			cloned.Phases[i].Turns[j].Expects = nil
+		}
+	}
+	return cloned
+}
+
 // filterChallengesForInputSet returns only the challenges referenced by the
 // active input set's cases and items. This prevents the model from seeing
 // challenge definitions that are not part of its current run — which would
@@ -152,7 +173,7 @@ func cloneChallengeInputSet(inputSet *repository.ChallengeInputSetExecutionConte
 			Payload:             cloneJSON(item.Payload),
 			Inputs:              append([]challengepack.CaseInput(nil), item.Inputs...),
 			Expectations:        nil,
-			UserSimulator:       challengepack.CloneUserSimulatorSpec(item.UserSimulator),
+			UserSimulator:       sanitizeUserSimulatorForAgent(item.UserSimulator),
 			Artifacts:           append([]challengepack.ArtifactRef(nil), item.Artifacts...),
 			Assets:              append([]challengepack.AssetReference(nil), item.Assets...),
 		})

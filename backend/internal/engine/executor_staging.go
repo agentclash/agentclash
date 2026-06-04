@@ -35,7 +35,10 @@ func stageSandboxInputs(ctx context.Context, session sandbox.Session, executionC
 	if err := session.UploadFile(ctx, "/workspace/agentclash/challenge-pack-manifest.json", sanitizeManifestForAgent(executionContext.ChallengePackVersion.Manifest)); err != nil {
 		return NewFailure(StopReasonSandboxError, "upload challenge pack manifest", err)
 	}
-	challengesPayload, err := json.Marshal(executionContext.ChallengePackVersion.Challenges)
+	challengesPayload, err := json.Marshal(cloneChallengeDefinitions(filterChallengesForInputSet(
+		executionContext.ChallengePackVersion.Challenges,
+		executionContext.ChallengeInputSet,
+	)))
 	if err != nil {
 		return NewFailure(StopReasonSandboxError, "marshal challenge definitions", err)
 	}
