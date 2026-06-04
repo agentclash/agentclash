@@ -145,10 +145,17 @@ def iter_prediction_records(path: Path) -> list[dict[str, Any]]:
     raise ValueError(f"unsupported prediction file shape: {path}")
 
 
+def _is_single_prediction(obj: dict[str, Any]) -> bool:
+    return "label" in obj and "id" in obj and "predictions" not in obj
+
+
 def samples_from_agentclash_events(records: list[dict[str, Any]], expected_ids: set[str]) -> list[ParsedSample]:
     model_by_agent: dict[str, str] = {}
     run_by_agent: dict[str, str] = {}
-    outputs_by_agent: list[tuple[str, str, str]] = []
+    # batch mode: one final_output with {"predictions":[...]}
+    batch_outputs: list[tuple[str, str, str]] = []
+    # per-case mode: many final_outputs, each a single {"id":..., "label":...}
+    per_case_outputs: dict[str, list[tuple[str, str]]] = defaultdict(list)
 
     for record in records:
         run_agent_id = str(record.get("run_agent_id") or "")
@@ -163,11 +170,17 @@ def samples_from_agentclash_events(records: list[dict[str, Any]], expected_ids: 
             run_by_agent[run_agent_id] = run_id
         if record.get("event_type") == "system.run.completed":
             final_output = payload.get("final_output")
-            if isinstance(final_output, str):
-                outputs_by_agent.append((run_agent_id, run_id, final_output))
+            if not isinstance(final_output, str):
+                continue
+            obj, _ = extract_first_json_object(final_output)
+            if obj and _is_single_prediction(obj):
+                per_case_outputs[run_agent_id].append((run_id, final_output))
+            else:
+                batch_outputs.append((run_agent_id, run_id, final_output))
 
     samples: list[ParsedSample] = []
-    for idx, (run_agent_id, run_id, raw_output) in enumerate(outputs_by_agent, 1):
+
+    for idx, (run_agent_id, run_id, raw_output) in enumerate(batch_outputs, 1):
         model = model_by_agent.get(run_agent_id, "unknown")
         predictions, err = parse_raw_output(raw_output, expected_ids)
         samples.append(
@@ -179,6 +192,43 @@ def samples_from_agentclash_events(records: list[dict[str, Any]], expected_ids: 
                 parse_error=err,
             )
         )
+
+    for run_agent_id, case_outputs in per_case_outputs.items():
+        model = model_by_agent.get(run_agent_id, "unknown")
+        run_id = run_by_agent.get(run_agent_id) or (case_outputs[0][0] if case_outputs else "")
+        predictions: dict[str, dict[str, Any]] = {}
+        item_errors: Counter[str] = Counter()
+        for _, raw_output in case_outputs:
+            obj, err = extract_first_json_object(raw_output)
+            if err:
+                item_errors[err] += 1
+                continue
+            assert obj is not None
+            pred, pred_err = normalize_prediction(obj)
+            if pred_err:
+                item_errors[pred_err] += 1
+                continue
+            assert pred is not None
+            if pred["id"] in predictions:
+                item_errors["duplicate_id"] += 1
+            elif pred["id"] not in expected_ids:
+                item_errors["unknown_id"] += 1
+            else:
+                predictions[pred["id"]] = pred
+        missing = expected_ids - set(predictions)
+        if missing:
+            item_errors["missing_expected_id"] += len(missing)
+        err_text = ",".join(f"{k}:{v}" for k, v in sorted(item_errors.items())) if item_errors else None
+        samples.append(
+            ParsedSample(
+                sample_id=f"{model}:{run_id}:{run_agent_id}:per-case",
+                model=model,
+                run_id=run_id,
+                predictions=predictions,
+                parse_error=err_text,
+            )
+        )
+
     return samples
 
 
