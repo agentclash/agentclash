@@ -84,6 +84,33 @@ func cloneStringMap(value map[string]string) map[string]string {
 	return cloned
 }
 
+// filterChallengesForInputSet returns only the challenges referenced by the
+// active input set's cases and items. This prevents the model from seeing
+// challenge definitions that are not part of its current run — which would
+// leak the pack's full structure and allow cross-challenge inference.
+func filterChallengesForInputSet(
+	challenges []repository.ChallengeDefinitionExecutionContext,
+	inputSet *repository.ChallengeInputSetExecutionContext,
+) []repository.ChallengeDefinitionExecutionContext {
+	if inputSet == nil {
+		return challenges
+	}
+	active := make(map[string]struct{})
+	for _, c := range inputSet.Cases {
+		active[c.ChallengeKey] = struct{}{}
+	}
+	for _, item := range inputSet.Items {
+		active[item.ChallengeKey] = struct{}{}
+	}
+	filtered := make([]repository.ChallengeDefinitionExecutionContext, 0, len(active))
+	for _, ch := range challenges {
+		if _, ok := active[ch.ChallengeKey]; ok {
+			filtered = append(filtered, ch)
+		}
+	}
+	return filtered
+}
+
 func cloneChallengeDefinitions(challenges []repository.ChallengeDefinitionExecutionContext) []repository.ChallengeDefinitionExecutionContext {
 	cloned := make([]repository.ChallengeDefinitionExecutionContext, 0, len(challenges))
 	for _, challenge := range challenges {
