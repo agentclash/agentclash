@@ -129,7 +129,7 @@ func buildTaskPromptPayload(executionContext repository.RunAgentExecutionContext
 		RunAgentID:           executionContext.RunAgent.ID.String(),
 		RunName:              executionContext.Run.Name,
 		ChallengePackVersion: sanitizeManifestForAgent(executionContext.ChallengePackVersion.Manifest),
-		Challenges:           cloneChallengeDefinitions(executionContext.ChallengePackVersion.Challenges),
+		Challenges:           cloneChallengeDefinitions(filterChallengesForInputSet(executionContext.ChallengePackVersion.Challenges, executionContext.ChallengeInputSet)),
 		ChallengeInputSet:    cloneChallengeInputSet(executionContext.ChallengeInputSet),
 		AgentSpec:            cloneJSON(executionContext.Deployment.AgentBuildVersion.AgentSpec),
 		DeploymentConfig:     cloneJSON(executionContext.Deployment.SnapshotConfig),
