@@ -9,6 +9,7 @@ import {
   productSchema,
   websiteSchema,
 } from "@/components/marketing/json-ld";
+import { getChangelogLatestModified } from "@/lib/changelog";
 import { HOME_FAQ } from "@/lib/home-faq";
 import { AGENT_EVALUATION_FEATURES } from "@/lib/seo-features";
 import HomePage from "./landing";
@@ -19,15 +20,21 @@ export const metadata: Metadata = {
   },
 };
 
-const softwareApplicationSchema = productSchema({
-  name: "AgentClash",
-  description:
-    "Open-source AI agent evaluation platform for racing agents head-to-head on real tasks with sandboxed tools, replay, scorecards, and CI regression gates.",
-  url: SITE_URL,
-  applicationSubCategory: "AI agent evaluation platform",
-  softwareVersion: "beta",
-  featureList: AGENT_EVALUATION_FEATURES,
-});
+const softwareApplicationSchema = {
+  ...productSchema({
+    name: "AgentClash",
+    description:
+      "Open-source AI agent evaluation platform for racing agents head-to-head on real tasks with sandboxed tools, replay, scorecards, and CI regression gates.",
+    url: SITE_URL,
+    applicationSubCategory: "AI agent evaluation platform",
+    softwareVersion: "beta",
+    featureList: AGENT_EVALUATION_FEATURES,
+  }),
+  // Freshness signal for crawlers / AI answer-engines — derived from the most
+  // recent public content change (latest changelog period), so it stays honest
+  // and self-updating instead of a hardcoded date.
+  dateModified: new Date(getChangelogLatestModified()).toISOString(),
+};
 
 export default async function RootPage() {
   const { user } = await withAuth();

@@ -19,6 +19,7 @@ import { PricingBlock } from "@/components/marketing/pricing-block";
 import { ExpandedCardsBlock } from "@/components/marketing/expanded-cards-block";
 import { TrackBox } from "@/components/marketing/track-box";
 import { TryCliBanner } from "@/components/marketing/try-cli-banner";
+import { MatrixMark } from "@/components/marketing/matrix-mark";
 import { COMPARISON_COLUMNS, COMPARISON_ROWS } from "@/lib/comparison-data";
 import { HOME_FAQ } from "@/lib/home-faq";
 
@@ -1020,36 +1021,6 @@ function ParticleFlywheel() {
   );
 }
 
-function ComparisonMark({
-  kind,
-  highlight,
-}: {
-  kind: "yes" | "partial" | "no";
-  highlight?: boolean;
-}) {
-  if (kind === "yes") {
-    return (
-      <span
-        aria-label="supported"
-        className={`inline-block size-2 rounded-full ${
-          highlight ? "bg-white shadow-[0_0_12px_rgba(255,255,255,0.55)]" : "bg-white/70"
-        }`}
-      />
-    );
-  }
-  if (kind === "partial") {
-    return (
-      <span
-        aria-label="partial"
-        className="inline-block size-2 rounded-full border border-white/50"
-      />
-    );
-  }
-  return (
-    <span aria-label="not supported" className="block h-px w-3 bg-white/20" />
-  );
-}
-
 function TrackGlyph() {
   return (
     <svg
@@ -1972,6 +1943,15 @@ export default function HomePage() {
             </p>
           </div>
 
+          {/* Always-in-DOM list of the task families. The Framer accordion
+              conditionally unmounts the collapsed card titles, so surface the
+              five names as crawlable text for SEO / AI answer-engines. */}
+          <ul className="sr-only">
+            {LANDING_USE_CASES.map((useCase) => (
+              <li key={useCase.title}>{useCase.title}</li>
+            ))}
+          </ul>
+
           <div className="mt-14 sm:mt-16">
             <ExpandedCardsBlock cards={LANDING_USE_CASES} />
           </div>
@@ -2035,7 +2015,7 @@ export default function HomePage() {
                         </span>
                       </div>
                       <dd>
-                        <ComparisonMark
+                        <MatrixMark
                           kind={row.cells[j]}
                           highlight={col.highlight}
                         />
@@ -2101,7 +2081,7 @@ export default function HomePage() {
                         j === 0 ? "bg-white/[0.025]" : ""
                       }`}
                     >
-                      <ComparisonMark kind={mark} highlight={j === 0} />
+                      <MatrixMark kind={mark} highlight={j === 0} />
                     </div>
                   ))}
                 </div>
@@ -2146,6 +2126,11 @@ export default function HomePage() {
                 The race engine is the visible part. Under the hood sit eight
                 capabilities most teams quietly want from an eval platform
                 but rarely get in one place. Trust us — or better, scroll.
+              </p>
+              <p className="mt-4 max-w-[48ch] text-sm leading-[1.6] text-white/40">
+                Artifacts, RAG scoring, secret-vault key isolation, full
+                tool-call tracing, and CI regression gates — eight evaluation
+                capabilities in one open-source AI agent evaluation platform.
               </p>
             </div>
             <div>
@@ -2288,6 +2273,11 @@ export default function HomePage() {
               <br />
               <span className="text-white/40">Start racing.</span>
             </h2>
+            <p className="mt-6 max-w-[44ch] text-base leading-[1.6] text-white/50">
+              Run open-source, head-to-head AI agent evaluations on real tasks —
+              replay every tool call, score the trajectory, and gate every model
+              in CI.
+            </p>
             <div className="mt-10 flex flex-col sm:flex-row sm:flex-wrap gap-3">
               {user ? (
                 <Link

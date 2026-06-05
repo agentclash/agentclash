@@ -76,6 +76,14 @@ const PUBLIC_PRODUCT_PAGES: PublicProductPage[] = [
       "compare comparison alternative alternatives AgentClash vs Braintrust LangSmith Promptfoo Langfuse Arize Phoenix OpenAI Evals agent evaluation prompt evaluation best AI agent eval tools",
   },
   {
+    title: "AgentClash Pricing",
+    href: "/pricing",
+    description:
+      "AgentClash pricing — a free hosted tier and open-source self-hosting, paid Pro ($49/seat/mo) and Team ($100/seat/mo) tiers, and custom Enterprise. Bring your own LLM keys on every tier.",
+    searchKeywords:
+      "AgentClash pricing cost plans tiers free open source self-host Pro Team Enterprise per seat BYOK bring your own key managed hosted",
+  },
+  {
     title: "Product Changelog",
     href: "/changelog",
     description:
