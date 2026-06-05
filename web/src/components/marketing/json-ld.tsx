@@ -1,3 +1,5 @@
+import { PRICING_TIERS } from "@/lib/pricing-data";
+
 type Props = {
   id: string;
   data: Record<string, unknown> | Record<string, unknown>[];
@@ -86,6 +88,79 @@ export function productSchema({
       availability: "https://schema.org/InStock",
       category: "Open-source software",
     },
+  };
+}
+
+// Extracts the numeric amount from a display price like "$49" or "$0".
+// Returns null for non-numeric values such as "Custom" (Enterprise).
+function parsePriceAmount(value: string): string | null {
+  const match = value.replace(/[,$]/g, "").match(/\d+(?:\.\d+)?/);
+  return match ? match[0] : null;
+}
+
+// Machine-readable pricing for buyer/agent consumption: a SoftwareApplication
+// whose offers array is built from PRICING_TIERS (the same data the human
+// /pricing page renders), so the two can never drift. Priced tiers expose a
+// UnitPriceSpecification; the custom Enterprise tier is a contact offer with no
+// fixed price. "Opaque pricing is invisible pricing" to an evaluating agent.
+export function pricingSchema(): Record<string, unknown> {
+  const offers = PRICING_TIERS.map((tier) => {
+    const monthly = tier.prices.monthly;
+    const amount = parsePriceAmount(monthly.value);
+    const perSeat = monthly.suffix.includes("seat");
+
+    const base: Record<string, unknown> = {
+      "@type": "Offer",
+      name: `AgentClash ${tier.name}`,
+      description: tier.blurb,
+      category:
+        tier.name === "Free" ? "Free / open-source" : "Subscription",
+      url: `${SITE_URL}/pricing`,
+      availability: "https://schema.org/InStock",
+    };
+
+    if (amount === null) {
+      // Enterprise: custom pricing, evaluated via a sales conversation.
+      return {
+        ...base,
+        priceCurrency: "USD",
+        priceSpecification: {
+          "@type": "PriceSpecification",
+          priceCurrency: "USD",
+        },
+      };
+    }
+
+    return {
+      ...base,
+      price: amount,
+      priceCurrency: "USD",
+      priceSpecification: {
+        "@type": "UnitPriceSpecification",
+        price: amount,
+        priceCurrency: "USD",
+        unitText: perSeat ? "seat per month" : "month",
+        billingIncrement: 1,
+      },
+    };
+  });
+
+  return {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    name: "AgentClash",
+    alternateName: "Agent Clash",
+    applicationCategory: "DeveloperApplication",
+    applicationSubCategory: "AI agent evaluation platform",
+    operatingSystem: "Web, macOS, Linux, Windows",
+    description:
+      "AgentClash pricing: a free hosted tier and open-source self-hosting, paid Pro and Team tiers, and custom Enterprise. Bring your own LLM keys on every tier.",
+    url: `${SITE_URL}/pricing`,
+    sameAs: [
+      "https://github.com/agentclash/agentclash",
+      "https://www.npmjs.com/package/agentclash",
+    ],
+    offers,
   };
 }
 

@@ -1,0 +1,50 @@
+---
+title: "Why AgentClash Races Agents Head-to-Head"
+date: "2026-06-03"
+description: "Staggered, one-at-a-time evals compare runs that never faced the same conditions. AgentClash runs every model on the same task at the same time on the same budget — here is why concurrent racing produces a fairer verdict."
+author: "Atharva"
+---
+
+If you want to know which agent is better for your task, the worst way to find out is to test them one at a time, on different days, under conditions you didn't hold constant.
+
+That is how most model comparisons actually happen. You run model A this week, eyeball the result, run model B next week against a slightly different prompt, a warmer cache, a different sandbox image, maybe a different time-of-day for the provider's latency. Then you compare two numbers that were never produced under the same conditions and call it a decision.
+
+AgentClash is built around the opposite default: a **head-to-head race**. Every model runs the same task, at the same time, on the same budget, in the same kind of fresh environment.
+
+## What "staggered" quietly hides
+
+Running agents one at a time introduces differences that have nothing to do with model quality:
+
+- **Drift in the task.** A prompt tweak between runs, a fixture that changed, a tool that was updated. Now you're comparing two slightly different tasks.
+- **Warm caches and state.** The second run benefits from a primed cache, a populated index, or leftover files. That's an advantage you're accidentally attributing to the model.
+- **Provider weather.** Latency and even reliability shift with load and time. A model that looked slow at 9am might not be slow at all.
+- **Budget mismatch.** If one run got more wall-clock time, more tool calls, or a higher token ceiling, the comparison is rigged before it starts.
+
+None of these are model capability. All of them leak into a staggered comparison.
+
+## Same task, same time, same budget
+
+A race controls the variables that staggered evals leave floating. Every competitor in a race gets:
+
+- the **same task** — identical inputs, fixtures, and tool/network policy
+- the **same starting point** — a fresh sandbox per agent, so nobody inherits another run's warm state or side effects
+- the **same budget** — the same time, the same tool access, the same constraints
+- the **same clock** — they run concurrently, so provider conditions hit everyone equally
+
+Because each agent gets its own fresh, sandboxed microVM with real files, a real shell, and real network, the side effects of one agent never contaminate another. The only thing left varying is the thing you're actually trying to measure.
+
+## A fair race needs a fair judge
+
+Running concurrently is only half of it. The race produces trajectories, and those trajectories are scored the same way for everyone — deterministic checks, numeric metrics like cost and latency, behavioral signals like tool-choice efficiency, and LLM judges where needed — then aggregated into one verdict. (We go deep on that in [how AgentClash scores agent trajectories](/blog/how-agentclash-scores-agent-trajectories).)
+
+Identical conditions plus identical scoring is what makes the outcome defensible. When one model wins, you can point at *why* it won — and at the [replay](/docs/concepts/replay-and-scorecards) evidence behind every dimension of the score.
+
+## Why this beats a leaderboard
+
+Public leaderboards answer a different question: which model is generally popular or generally strong on a shared static benchmark that has probably leaked into training data. That's a fine first filter. It is not an answer to "which agent should *I* ship for *this* job."
+
+A head-to-head race on your own [challenge pack](/docs/guides/write-a-challenge-pack) answers the question you actually have, on the task you actually run, under conditions you actually control. And because the losing trajectories are real, captured runs, you can promote the interesting failures straight into a [regression gate](/platform/agent-regression-testing) so the next candidate has to prove it didn't get worse.
+
+Stop comparing runs that never met. Put your models on the same track and let them race.
+
+Start from the [quickstart](/docs/getting-started/quickstart), or see [how AgentClash compares](/compare) to prompt-evaluation tools.

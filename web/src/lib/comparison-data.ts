@@ -108,7 +108,11 @@ export type Competitor = {
   name: string;
   tag: string;
   slug: string;
-  columnIndex: number;
+  // Per-row verdict for this competitor's own column, aligned to the
+  // COMPARISON_ROWS order. Decoupled from COMPARISON_COLUMNS so a competitor can
+  // have a dedicated /compare page without being added as a column to the
+  // landing/hub capability matrix (which would make that table unreadably wide).
+  verdicts: MarkKind[];
   // Honest, category-level note on where the competitor is the stronger fit.
   // Complimentary by design — establishes credibility and avoids overclaiming.
   whereItFits: string;
@@ -129,7 +133,10 @@ const COMPETITOR_NOTES: Record<string, string> = {
     "OpenAI Evals is a solid open framework for building and running model and prompt evals, especially within the OpenAI ecosystem. It fits when you're scoring model outputs against datasets.",
 };
 
-export const COMPETITORS: Competitor[] = COMPARISON_COLUMNS.map(
+// Competitors that appear as columns in the landing/hub capability matrix.
+// Their per-row verdicts are read straight out of COMPARISON_ROWS so the matrix
+// and the per-competitor pages can never drift apart.
+const matrixCompetitors: Competitor[] = COMPARISON_COLUMNS.map(
   (column, columnIndex) => ({ column, columnIndex }),
 )
   .filter(({ column }) => !column.highlight)
@@ -137,9 +144,67 @@ export const COMPETITORS: Competitor[] = COMPARISON_COLUMNS.map(
     name: column.name,
     tag: column.tag,
     slug: competitorSlug(column.name),
-    columnIndex,
+    verdicts: COMPARISON_ROWS.map((row) => row.cells[columnIndex]),
     whereItFits: COMPETITOR_NOTES[column.name] ?? "",
   }));
+
+// Additional competitors with dedicated /compare pages but intentionally NOT
+// shown as columns in the landing/hub capability matrix (that table stays at the
+// six prompt-eval tools so it remains readable). Each verdict tuple is aligned to
+// COMPARISON_ROWS order and reflects the tool's real, current capabilities —
+// honest and complimentary, never overclaiming. Sandboxed tool execution and the
+// head-to-head concurrent race are AgentClash-specific, so they read "no" here.
+type ExtendedCompetitor = {
+  name: string;
+  tag: string;
+  whereItFits: string;
+  verdicts: Cells;
+};
+
+const EXTENDED_COMPETITORS: ExtendedCompetitor[] = [
+  {
+    name: "DeepEval",
+    tag: "LLM eval framework",
+    whereItFits:
+      "DeepEval is an excellent open-source, Pytest-style LLM evaluation framework — 50+ research-backed metrics including tool correctness, task completion, and multi-turn simulation, run locally or in CI. Reach for it when you want code-first, metric-on-trace evals inside your existing test suite.",
+    // multi-turn (sim, trace-based), no sandbox, no race, trajectory (tool
+    // correctness/trace), cross-provider judges, composite (50+ metrics), CI
+    // dataset regression.
+    verdicts: ["partial", "no", "no", "partial", "partial", "partial", "partial"],
+  },
+  {
+    name: "Galileo",
+    tag: "LLM observability",
+    whereItFits:
+      "Galileo is a strong LLM observability and evaluation platform with purpose-built agentic metrics like tool selection quality and session success, plus real-time guardrails. Choose it when production observability and guardrailing of live agents matter most.",
+    verdicts: ["partial", "no", "no", "partial", "partial", "partial", "no"],
+  },
+  {
+    name: "Patronus AI",
+    tag: "eval & guardrails",
+    whereItFits:
+      "Patronus AI is great for LLM evaluation, guardrails, and agent trace diagnosis — its Percival agent localizes reasoning, planning, and execution faults across long traces. Use it when you need to monitor and debug failing agents at scale.",
+    verdicts: ["partial", "no", "no", "partial", "partial", "partial", "no"],
+  },
+  {
+    name: "Ragas",
+    tag: "RAG & agent eval",
+    whereItFits:
+      "Ragas is an excellent open-source evaluation framework for RAG and agentic workflows, with metrics like agent goal accuracy and tool-call accuracy over complete traces. Pick it when retrieval quality and trace-based agent metrics are the focus.",
+    verdicts: ["partial", "no", "no", "partial", "partial", "no", "no"],
+  },
+];
+
+export const COMPETITORS: Competitor[] = [
+  ...matrixCompetitors,
+  ...EXTENDED_COMPETITORS.map((competitor) => ({
+    name: competitor.name,
+    tag: competitor.tag,
+    slug: competitorSlug(competitor.name),
+    verdicts: [...competitor.verdicts],
+    whereItFits: competitor.whereItFits,
+  })),
+];
 
 export function getCompetitorBySlug(slug: string): Competitor | undefined {
   return COMPETITORS.find((competitor) => competitor.slug === slug);
@@ -154,11 +219,11 @@ export type CompetitorRow = {
 
 // Per-row AgentClash-vs-competitor verdict pairs for a single competitor page.
 export function competitorRows(competitor: Competitor): CompetitorRow[] {
-  return COMPARISON_ROWS.map((row) => ({
+  return COMPARISON_ROWS.map((row, index) => ({
     label: row.label,
     sub: row.sub,
     agentclash: row.cells[AGENTCLASH_COLUMN_INDEX],
-    competitor: row.cells[competitor.columnIndex],
+    competitor: competitor.verdicts[index],
   }));
 }
 
