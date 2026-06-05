@@ -78,6 +78,26 @@ describe("sitemap", () => {
       changeFrequency: "monthly",
       priority: 0.82,
     });
+    expect(
+      byUrl.get("https://www.agentclash.dev/agent-evals"),
+    ).toMatchObject({
+      changeFrequency: "monthly",
+      priority: 0.84,
+    });
+    expect(
+      byUrl.get("https://www.agentclash.dev/features/agent-replay"),
+    ).toMatchObject({
+      changeFrequency: "monthly",
+      priority: 0.76,
+    });
+    expect(byUrl.get("https://www.agentclash.dev/use-cases")).toMatchObject({
+      changeFrequency: "monthly",
+      priority: 0.78,
+    });
+    expect(byUrl.get("https://www.agentclash.dev/features")).toMatchObject({
+      changeFrequency: "monthly",
+      priority: 0.78,
+    });
     expect(byUrl.get("https://www.agentclash.dev/llms.txt")).toMatchObject({
       changeFrequency: "weekly",
       priority: 0.6,

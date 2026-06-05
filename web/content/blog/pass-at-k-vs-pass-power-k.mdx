@@ -1,0 +1,71 @@
+---
+title: "pass@k vs pass^k: What Agent Reliability Metrics Actually Measure"
+date: "2026-06-06"
+description: "A practical guide to pass@k and pass^k for agent evaluation — when independent retries and strict success-over-trials measure different kinds of reliability."
+author: "Atharva"
+---
+
+Agent teams borrow reliability metrics from coding benchmarks without always agreeing on what they mean. Two common names sound almost identical but answer different questions:
+
+- **pass@k** — did the agent succeed at least once in *k* independent attempts?
+- **pass^k** — did the agent succeed on *all k* attempts?
+
+That one-character difference changes release decisions.
+
+## Why the distinction matters for agents
+
+Agents are stochastic systems running in messy environments. A single lucky retry can hide a brittle tool strategy. A single unlucky timeout can hide a mostly-good harness.
+
+If your product promise is "this agent usually finishes the job," pass@k may be the right lens. If your product promise is "this agent must not fail twice in a row in production," pass^k is closer to the operational question.
+
+Neither metric replaces trajectory review. Both need replay evidence, artifact checks, and scorecards that explain *why* a run passed or failed.
+
+## pass@k: at least one success in k tries
+
+pass@k is optimistic about reliability. It asks whether the agent can produce an acceptable outcome within a retry budget.
+
+Use pass@k when:
+
+- users can safely retry or escalate
+- the cost of a failed attempt is bounded
+- you are comparing exploration-heavy agents on hard tasks
+- you want to know whether a model *can* solve a workload at all
+
+Caveat: a high pass@k with a low pass^1 means the agent is flaky. Shipping it without a retry policy can still create support load.
+
+## pass^k: success on every one of k tries
+
+pass^k is strict. It asks whether the agent is consistently reliable, not occasionally lucky.
+
+Use pass^k when:
+
+- failures are expensive or customer-visible
+- retries are limited by latency, quota, or policy
+- you are gating releases for production agents
+- you need stability across prompt, tool, or model drift
+
+Caveat: pass^k can be too harsh early in development. Teams often start with pass@k while learning the workload, then tighten to pass^k once the trajectory is stable.
+
+## How AgentClash fits the workflow
+
+AgentClash is built for workloads where the path matters. Challenge packs encode the task, tool policy, validators, and artifacts once. Each run keeps replay evidence and a scorecard so reviewers can see whether a pass was cheap, expensive, lucky, or repeatable.
+
+That makes it easier to use pass@k and pass^k honestly:
+
+1. **Freeze the workload** in a challenge pack so every attempt runs under the same constraints.
+2. **Run k independent attempts** for the candidate and baseline you care about.
+3. **Inspect replay** when attempts disagree — did failures cluster on the same tool call or validator?
+4. **Promote the workload into CI** once you know which reliability metric matches your release bar.
+
+For product context, see [agent reliability benchmark](/agent-reliability-benchmark) and [AI agent regression testing](/platform/agent-regression-testing). For implementation, start with [CI/CD agent gates](/docs/guides/ci-cd-agent-gates).
+
+## A simple decision rule
+
+Ask one question before picking the metric:
+
+> If this agent fails once in production, is that acceptable as long as a retry usually works?
+
+- **Yes** → track pass@k, but still inspect failure clusters in replay.
+- **No** → track pass^k, and treat any regression in strict success rate as a release blocker.
+
+The best teams use both over time: pass@k while discovering the workload, pass^k while hardening the release gate.
