@@ -172,6 +172,20 @@ export default function sitemap(): MetadataRoute.Sitemap {
         ogImage({ title: "AI Agent Regression Testing", kind: "Platform" }),
       ],
     },
+    {
+      url: `${DOCS_ORIGIN}/use-cases`,
+      lastModified: new Date(),
+      changeFrequency: "monthly",
+      priority: 0.78,
+      images: [ogImage({ title: "Agent Evaluation Use Cases", kind: "SEO" })],
+    },
+    {
+      url: `${DOCS_ORIGIN}/features`,
+      lastModified: new Date(),
+      changeFrequency: "monthly",
+      priority: 0.78,
+      images: [ogImage({ title: "Agent Evaluation Features", kind: "SEO" })],
+    },
     ...SEO_PAGE_REGISTRY.map((page) => ({
       url: `${DOCS_ORIGIN}${page.path}`,
       lastModified: new Date(),

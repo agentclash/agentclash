@@ -572,7 +572,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     applicationSubCategory: "Coding agent evaluation software",
     breadcrumbs: [
       { name: "Home", url: "/" },
-      { name: "Use cases", url: "/use-cases/coding-agent-evaluation" },
+      { name: "Use cases", url: "/use-cases" },
       { name: "Coding agent evaluation", url: "/use-cases/coding-agent-evaluation" },
     ],
     schemaId: "agentclash-coding-agent-evaluation-schema",
@@ -623,7 +623,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     applicationSubCategory: "Research agent evaluation software",
     breadcrumbs: [
       { name: "Home", url: "/" },
-      { name: "Use cases", url: "/use-cases/research-agent-evaluation" },
+      { name: "Use cases", url: "/use-cases" },
       { name: "Research agent evaluation", url: "/use-cases/research-agent-evaluation" },
     ],
     schemaId: "agentclash-research-agent-evaluation-schema",
@@ -674,7 +674,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     applicationSubCategory: "Customer support agent evaluation software",
     breadcrumbs: [
       { name: "Home", url: "/" },
-      { name: "Use cases", url: "/use-cases/support-agent-evaluation" },
+      { name: "Use cases", url: "/use-cases" },
       { name: "Support agent evaluation", url: "/use-cases/support-agent-evaluation" },
     ],
     schemaId: "agentclash-support-agent-evaluation-schema",
@@ -725,7 +725,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     applicationSubCategory: "Agent scorecard software",
     breadcrumbs: [
       { name: "Home", url: "/" },
-      { name: "Features", url: "/features/agent-scorecards" },
+      { name: "Features", url: "/features" },
       { name: "Agent scorecards", url: "/features/agent-scorecards" },
     ],
     schemaId: "agentclash-agent-scorecards-schema",
@@ -784,7 +784,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     applicationSubCategory: "Agent replay software",
     breadcrumbs: [
       { name: "Home", url: "/" },
-      { name: "Features", url: "/features/agent-replay" },
+      { name: "Features", url: "/features" },
       { name: "Agent replay", url: "/features/agent-replay" },
     ],
     schemaId: "agentclash-agent-replay-schema",
@@ -843,7 +843,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     applicationSubCategory: "Challenge pack agent evaluation software",
     breadcrumbs: [
       { name: "Home", url: "/" },
-      { name: "Features", url: "/features/challenge-packs" },
+      { name: "Features", url: "/features" },
       { name: "Challenge packs", url: "/features/challenge-packs" },
     ],
     schemaId: "agentclash-challenge-packs-schema",

@@ -78,6 +78,8 @@ describe("HTML sitemap page", () => {
         "/platform/agent-evaluation",
         "/platform/agent-regression-testing",
         "/agent-evals",
+        "/use-cases",
+        "/features",
         "/features/challenge-packs",
         "/docs",
         "/blog",

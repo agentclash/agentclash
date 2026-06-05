@@ -195,7 +195,10 @@ export function SeoLandingPage({ config }: { config: SeoPageConfig }) {
             <div>
               <nav className="flex flex-wrap items-center gap-2 text-xs text-white/35">
                 {config.breadcrumbs.map((crumb, index) => (
-                  <span key={crumb.url} className="inline-flex items-center gap-2">
+                  <span
+                    key={`${crumb.url}-${index}`}
+                    className="inline-flex items-center gap-2"
+                  >
                     {index > 0 && <span>/</span>}
                     {index < config.breadcrumbs.length - 1 ? (
                       <Link

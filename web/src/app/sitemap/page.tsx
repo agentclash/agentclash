@@ -59,6 +59,16 @@ const primaryPages = [
     description: "Catch AI agent regressions with baseline comparisons and CI gates.",
   },
   {
+    title: "Use cases",
+    href: "/use-cases",
+    description: "Coding, research, and support agent evaluation use cases.",
+  },
+  {
+    title: "Features",
+    href: "/features",
+    description: "Scorecards, replay, and challenge packs for agent evaluation.",
+  },
+  {
     title: "Docs",
     href: "/docs",
     description: "Guides and references for running AgentClash.",

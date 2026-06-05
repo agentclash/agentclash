@@ -50,4 +50,28 @@ describe("SEO page registry", () => {
       expect(page.breadcrumbs.at(-1)?.url).toBe(page.path);
     }
   });
+
+  it("uses collection index URLs for nested page breadcrumbs", () => {
+    for (const page of getSeoPagesByPrefix("/use-cases")) {
+      expect(page.breadcrumbs).toEqual([
+        { name: "Home", url: "/" },
+        { name: "Use cases", url: "/use-cases" },
+        { name: expect.any(String), url: page.path },
+      ]);
+      expect(new Set(page.breadcrumbs.map((crumb) => crumb.url)).size).toBe(
+        page.breadcrumbs.length,
+      );
+    }
+
+    for (const page of getSeoPagesByPrefix("/features")) {
+      expect(page.breadcrumbs).toEqual([
+        { name: "Home", url: "/" },
+        { name: "Features", url: "/features" },
+        { name: expect.any(String), url: page.path },
+      ]);
+      expect(new Set(page.breadcrumbs.map((crumb) => crumb.url)).size).toBe(
+        page.breadcrumbs.length,
+      );
+    }
+  });
 });
