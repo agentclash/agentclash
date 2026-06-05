@@ -9,7 +9,7 @@ import {
   productSchema,
   websiteSchema,
 } from "@/components/marketing/json-ld";
-import { getChangelogLatestModified } from "@/lib/changelog";
+import { getChangelogPeriods } from "@/lib/changelog";
 import { HOME_FAQ } from "@/lib/home-faq";
 import { AGENT_EVALUATION_FEATURES } from "@/lib/seo-features";
 import HomePage from "./landing";
@@ -19,6 +19,18 @@ export const metadata: Metadata = {
     canonical: "/",
   },
 };
+
+// Freshness signal for crawlers / AI answer-engines: the start of the most
+// recent changelog window (a real, stable past date — when the current batch
+// of updates began), clamped to today so a still-open period's forward-looking
+// endDate can never emit a future dateModified, which schema.org treats as
+// invalid. Date-only (YYYY-MM-DD) is valid for dateModified and avoids churn.
+const todayIso = new Date().toISOString().slice(0, 10);
+const latestChangelogStart = getChangelogPeriods()[0]?.startDate;
+const homepageLastModified =
+  latestChangelogStart && latestChangelogStart < todayIso
+    ? latestChangelogStart
+    : todayIso;
 
 const softwareApplicationSchema = {
   ...productSchema({
@@ -30,10 +42,7 @@ const softwareApplicationSchema = {
     softwareVersion: "beta",
     featureList: AGENT_EVALUATION_FEATURES,
   }),
-  // Freshness signal for crawlers / AI answer-engines — derived from the most
-  // recent public content change (latest changelog period), so it stays honest
-  // and self-updating instead of a hardcoded date.
-  dateModified: new Date(getChangelogLatestModified()).toISOString(),
+  dateModified: homepageLastModified,
 };
 
 export default async function RootPage() {

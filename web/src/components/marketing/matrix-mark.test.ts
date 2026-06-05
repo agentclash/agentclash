@@ -29,7 +29,7 @@ describe("MatrixMark", () => {
     const html = renderToStaticMarkup(
       createElement(MatrixMark, { kind: "yes", highlight: true }),
     );
-    expect(html).toContain("aria-hidden");
+    expect(html).toContain('aria-hidden="true"');
     expect(html).not.toContain('aria-label="supported"');
   });
 });
