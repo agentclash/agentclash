@@ -52,7 +52,7 @@ const geistMono = Geist_Mono({
 
 const siteUrl = "https://www.agentclash.dev";
 const siteDescription =
-  "AgentClash is an open-source AI agent evaluation platform. Race coding, research, support, and ops agents head-to-head on real tasks with sandboxed tools, live replay, scorecards, and CI regression gates.";
+  "Open-source AI agent evaluation platform. Race coding, research, support & ops agents head-to-head on real tasks — replay, scorecards & CI regression gates.";
 
 // Webmaster-verification metadata (Google Search Console + Bing). See
 // lib/seo `webmasterVerification` and docs/frontend/seo-verification.md.
