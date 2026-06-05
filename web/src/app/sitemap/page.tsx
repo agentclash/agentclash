@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { DOCS_NAV } from "@/lib/docs";
 import { getAllPosts } from "@/lib/blog";
+import { SEO_PAGE_REGISTRY } from "@/lib/seo-pages";
 
 export const metadata: Metadata = {
   title: "Sitemap - AgentClash",
@@ -94,6 +95,12 @@ const primaryPages = [
   },
 ];
 
+const seoLandingPages = SEO_PAGE_REGISTRY.map((page) => ({
+  title: page.sitemapTitle,
+  href: page.path,
+  description: page.sitemapDescription,
+}));
+
 function LinkList({
   title,
   items,
@@ -151,6 +158,10 @@ export default function HtmlSitemapPage() {
 
         <div className="mt-12 grid gap-10 lg:grid-cols-2">
           <LinkList title="Core pages" items={primaryPages} />
+          <LinkList title="SEO landing pages" items={seoLandingPages} />
+        </div>
+
+        <div className="mt-12">
           <LinkList title="Blog posts" items={posts} />
         </div>
 

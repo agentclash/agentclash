@@ -7,6 +7,7 @@ import {
 } from "@/lib/changelog";
 import { COMPETITORS } from "@/lib/comparison-data";
 import { DOCS_ORIGIN, getAllDocPaths } from "@/lib/docs";
+import { SEO_PAGE_REGISTRY, seoPageSitemapPriority } from "@/lib/seo-pages";
 import { ogImageUrl } from "@/lib/seo";
 
 // `MetadataRoute.Sitemap` `images` entries must be ABSOLUTE URLs, and the
@@ -171,6 +172,13 @@ export default function sitemap(): MetadataRoute.Sitemap {
         ogImage({ title: "AI Agent Regression Testing", kind: "Platform" }),
       ],
     },
+    ...SEO_PAGE_REGISTRY.map((page) => ({
+      url: `${DOCS_ORIGIN}${page.path}`,
+      lastModified: new Date(),
+      changeFrequency: "monthly" as const,
+      priority: seoPageSitemapPriority(page.tier),
+      images: [ogImage({ title: page.sitemapTitle, kind: "SEO" })],
+    })),
     {
       url: `${DOCS_ORIGIN}/try`,
       lastModified: new Date(),

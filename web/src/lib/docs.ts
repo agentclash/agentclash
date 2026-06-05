@@ -7,6 +7,7 @@ import {
   type BlogPostWithContent,
 } from "./blog";
 import { renderChangelogMarkdown } from "./changelog";
+import { SEO_PAGE_REGISTRY } from "./seo-pages";
 
 const CONTENT_DIR = path.join(process.cwd(), "content", "docs");
 const AGENT_SKILLS_DIR = path.join(process.cwd(), "content", "agent-skills");
@@ -91,6 +92,12 @@ const PUBLIC_PRODUCT_PAGES: PublicProductPage[] = [
     searchKeywords:
       "AgentClash changelog release notes product updates what's new shipped features AI agent evaluation platform updates",
   },
+  ...SEO_PAGE_REGISTRY.map((page) => ({
+    title: page.sitemapTitle,
+    href: page.path,
+    description: page.sitemapDescription,
+    searchKeywords: page.searchKeywords,
+  })),
 ];
 
 export type DocNavItem = {
