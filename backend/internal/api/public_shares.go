@@ -32,6 +32,7 @@ type PublicShareRepository interface {
 	ListRunAgentsByRunID(ctx context.Context, runID uuid.UUID) ([]domain.RunAgent, error)
 	GetRunAgentScorecardByRunAgentID(ctx context.Context, runAgentID uuid.UUID) (repository.RunAgentScorecard, error)
 	GetRunAgentReplayByRunAgentID(ctx context.Context, runAgentID uuid.UUID) (repository.RunAgentReplay, error)
+	GetAgentTryoutByID(ctx context.Context, id uuid.UUID) (repository.AgentTryout, error)
 	GetPublicChallengePackVersionSnapshot(ctx context.Context, versionID uuid.UUID) (repository.PublicChallengePackVersionSnapshot, error)
 	GetPublicRunScorecardSnapshot(ctx context.Context, runID uuid.UUID) (repository.PublicRunScorecardSnapshot, error)
 	GetPublicRunAgentScorecardSnapshot(ctx context.Context, runAgentID uuid.UUID) (repository.PublicRunAgentScorecardSnapshot, error)
@@ -193,6 +194,18 @@ func (m *PublicShareManager) authorizedResourceScope(ctx context.Context, caller
 			return uuid.Nil, uuid.Nil, err
 		}
 		return runAgent.OrganizationID, runAgent.WorkspaceID, nil
+	case repository.PublicShareResourceAgentTryout:
+		tryout, err := m.repo.GetAgentTryoutByID(ctx, input.ResourceID)
+		if err != nil {
+			return uuid.Nil, uuid.Nil, err
+		}
+		if tryout.OrganizationID == nil || tryout.WorkspaceID == nil {
+			return uuid.Nil, uuid.Nil, repository.ErrAgentTryoutNotFound
+		}
+		if err := m.authorizer.AuthorizeWorkspace(ctx, caller, *tryout.WorkspaceID); err != nil {
+			return uuid.Nil, uuid.Nil, err
+		}
+		return *tryout.OrganizationID, *tryout.WorkspaceID, nil
 	default:
 		return uuid.Nil, uuid.Nil, errInvalidShareResourceType
 	}
@@ -224,6 +237,15 @@ func (m *PublicShareManager) publicResource(ctx context.Context, share repositor
 			return nil, err
 		}
 		return mapPublicRunAgentReplay(snapshot), nil
+	case repository.PublicShareResourceAgentTryout:
+		tryout, err := m.repo.GetAgentTryoutByID(ctx, share.ResourceID)
+		if err != nil {
+			return nil, err
+		}
+		if tryout.WorkspaceID == nil {
+			return nil, repository.ErrAgentTryoutNotFound
+		}
+		return mapPublicAgentTryoutResponse(tryout), nil
 	default:
 		return nil, repository.ErrPublicShareLinkNotFound
 	}
@@ -371,7 +393,8 @@ func validPublicShareResourceType(resourceType repository.PublicShareResourceTyp
 	case repository.PublicShareResourceChallengePackVersion,
 		repository.PublicShareResourceRunScorecard,
 		repository.PublicShareResourceRunAgentScorecard,
-		repository.PublicShareResourceRunAgentReplay:
+		repository.PublicShareResourceRunAgentReplay,
+		repository.PublicShareResourceAgentTryout:
 		return true
 	default:
 		return false

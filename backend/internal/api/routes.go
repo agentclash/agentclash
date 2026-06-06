@@ -38,6 +38,7 @@ func registerProtectedRoutes(
 	workspaceSecretsService WorkspaceSecretsService,
 	cliAuthService CLIAuthService,
 	publicShareService PublicShareService,
+	agentTryoutService AgentTryoutService,
 	billingService BillingService,
 	multiTurnService MultiTurnService,
 	vibeEvalService VibeEvalService,
@@ -103,6 +104,7 @@ func registerProtectedRoutes(
 		Post("/workspaces/{workspaceID}/arena/votes", submitArenaVoteHandler(logger, multiTurnService))
 	router.Get("/compare", getRunComparisonHandler(logger, compareReadService))
 	router.Get("/compare/viewer", getRunComparisonViewerHandler(logger))
+	registerProtectedAgentTryoutRoutes(router, logger, agentTryoutService)
 	router.Get("/release-gates", listReleaseGatesHandler(logger, releaseGateService))
 	router.Post("/release-gates/evaluate", evaluateReleaseGateHandler(logger, releaseGateService))
 	// Regression routes resolve workspace access in the manager because create

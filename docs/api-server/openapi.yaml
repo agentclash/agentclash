@@ -57,6 +57,8 @@ tags:
     description: External hosted agent event ingestion
   - name: Playgrounds
     description: Prompt playground experimentation and comparison
+  - name: AgentTryouts
+    description: Public and workspace agent tryout templates, sandbox runs, claiming, and sharing
   - name: VibeEvals
     description: Draft-only Vibe Eval conversation and artifact authoring
   - name: UserProfile
@@ -5116,6 +5118,200 @@ paths:
                 $ref: "#/components/schemas/VibeEvalDraftResponse"
         "400":
           $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /v1/agent-tryout-templates:
+    get:
+      operationId: listAgentTryoutTemplates
+      summary: List agent tryout templates
+      tags: [AgentTryouts]
+      security: []
+      responses:
+        "200":
+          description: Agent tryout templates available to the public tryout UI
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListAgentTryoutTemplatesResponse"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /v1/agent-tryouts:
+    post:
+      operationId: createAnonymousAgentTryout
+      summary: Create an anonymous agent tryout
+      tags: [AgentTryouts]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAgentTryoutRequest"
+      responses:
+        "201":
+          description: Anonymous tryout queued with template, tool, and evaluation snapshots
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentTryoutResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /v1/agent-tryouts/{id}:
+    get:
+      operationId: getPublicAgentTryout
+      summary: Get an anonymous agent tryout
+      tags: [AgentTryouts]
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/ResourceID"
+      responses:
+        "200":
+          description: Anonymous tryout detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentTryoutResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /v1/workspaces/{workspaceID}/agent-tryouts:
+    post:
+      operationId: createWorkspaceAgentTryout
+      summary: Create a workspace-owned agent tryout
+      tags: [AgentTryouts]
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAgentTryoutRequest"
+      responses:
+        "201":
+          description: Workspace tryout queued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentTryoutResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+    get:
+      operationId: listWorkspaceAgentTryouts
+      summary: List workspace agent tryouts
+      tags: [AgentTryouts]
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+      responses:
+        "200":
+          description: Workspace tryouts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListAgentTryoutsResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+
+  /v1/workspaces/{workspaceID}/agent-tryouts/{id}:
+    get:
+      operationId: getWorkspaceAgentTryout
+      summary: Get a workspace agent tryout
+      tags: [AgentTryouts]
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/ResourceID"
+      responses:
+        "200":
+          description: Workspace tryout detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentTryoutResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /v1/agent-tryouts/{id}/claim:
+    post:
+      operationId: claimAgentTryout
+      summary: Claim an anonymous tryout into a workspace
+      tags: [AgentTryouts]
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/ResourceID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClaimAgentTryoutRequest"
+      responses:
+        "200":
+          description: Claimed tryout
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentTryoutResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+
+  /v1/agent-tryouts/{id}/share:
+    post:
+      operationId: createAgentTryoutShare
+      summary: Create a noindex share link for a workspace tryout
+      tags: [AgentTryouts]
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/ResourceID"
+      responses:
+        "201":
+          description: Private share link created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentTryoutShareResponse"
         "401":
           $ref: "#/components/responses/UnauthorizedError"
         "403":
@@ -12417,6 +12613,190 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/VibeEvalDraftResponse"
+
+    # --- Agent Tryouts ---
+
+    AgentTryoutTemplate:
+      type: object
+      required: [slug, name, description, input_schema, tool_policy, evaluation_spec, default_model_policy, anonymous_enabled, max_input_bytes, max_duration_seconds, max_cost_usd]
+      properties:
+        slug:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        input_schema:
+          type: object
+          additionalProperties: true
+        tool_policy:
+          type: object
+          additionalProperties: true
+        evaluation_spec:
+          type: object
+          additionalProperties: true
+        default_model_policy:
+          type: object
+          additionalProperties: true
+        anonymous_enabled:
+          type: boolean
+        max_input_bytes:
+          type: integer
+          format: int64
+        max_duration_seconds:
+          type: integer
+          format: int32
+        max_cost_usd:
+          type: number
+          format: double
+
+    ListAgentTryoutTemplatesResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentTryoutTemplate"
+
+    CreateAgentTryoutRequest:
+      type: object
+      required: [template_slug, input]
+      properties:
+        template_slug:
+          type: string
+        input:
+          type: object
+          additionalProperties: true
+
+    ClaimAgentTryoutRequest:
+      type: object
+      required: [workspace_id]
+      properties:
+        workspace_id:
+          type: string
+          format: uuid
+
+    AgentTryoutResponse:
+      type: object
+      required: [id, template_slug, status, input_snapshot, template_snapshot, tool_policy_snapshot, evaluation_spec_snapshot, selected_model_policy, summary, redaction_status, cost_limit_usd, max_duration_seconds, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        organization_id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+          format: uuid
+        template_slug:
+          type: string
+        status:
+          type: string
+          enum: [queued, running, completed, failed, cancelled]
+        input_snapshot:
+          type: object
+          additionalProperties: true
+        template_snapshot:
+          type: object
+          additionalProperties: true
+        tool_policy_snapshot:
+          type: object
+          additionalProperties: true
+        evaluation_spec_snapshot:
+          type: object
+          additionalProperties: true
+        selected_model_policy:
+          type: object
+          additionalProperties: true
+        summary:
+          type: object
+          additionalProperties: true
+        redaction_status:
+          type: string
+          enum: [pending, passed, failed, not_required]
+        run_id:
+          type: string
+          format: uuid
+        cost_limit_usd:
+          type: number
+          format: double
+        actual_cost_usd:
+          type: number
+          format: double
+        latency_ms:
+          type: integer
+          format: int64
+        max_duration_seconds:
+          type: integer
+          format: int32
+        created_by_user_id:
+          type: string
+          format: uuid
+        claimed_by_user_id:
+          type: string
+          format: uuid
+        claimed_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ListAgentTryoutsResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentTryoutResponse"
+
+    AgentTryoutShareLink:
+      type: object
+      required: [id, resource_type, resource_id, search_indexing, view_count, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        resource_type:
+          type: string
+          enum: [agent_tryout]
+        resource_id:
+          type: string
+          format: uuid
+        search_indexing:
+          type: boolean
+        view_count:
+          type: integer
+          format: int64
+        expires_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        url:
+          type: string
+
+    AgentTryoutShareResponse:
+      type: object
+      required: [share, token]
+      properties:
+        share:
+          $ref: "#/components/schemas/AgentTryoutShareLink"
+        token:
+          type: string
 
     # --- Playgrounds ---
 
