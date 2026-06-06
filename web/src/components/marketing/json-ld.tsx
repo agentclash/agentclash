@@ -308,6 +308,117 @@ export function blogIndexSchema(
   ];
 }
 
+type BenchmarkReportSchemaInput = {
+  slug: string;
+  title: string;
+  description: string;
+  date: string;
+  author: string;
+  verdict: string;
+  results: Array<{ model: string; provider: string }>;
+};
+
+// A benchmark report carries both an editorial article and a structured
+// comparison. We emit a breadcrumb, a BlogPosting (via articleSchema), and a
+// Dataset node — the Dataset is what makes the head-to-head legible to search
+// and answer engines for "benchmark" intent.
+export function benchmarkReportSchema(
+  report: BenchmarkReportSchemaInput,
+): Record<string, unknown>[] {
+  const url = `${SITE_URL}/benchmarks/${report.slug}`;
+  return [
+    breadcrumbSchema([
+      { name: "Home", url: "/" },
+      { name: "Benchmarks", url: "/benchmarks" },
+      { name: report.title, url: `/benchmarks/${report.slug}` },
+    ]),
+    articleSchema({
+      headline: report.title,
+      description: report.description,
+      url: `/benchmarks/${report.slug}`,
+      datePublished: report.date,
+      authorName: report.author,
+    }),
+    {
+      "@context": "https://schema.org",
+      "@type": "Dataset",
+      name: report.title,
+      description: report.verdict || report.description,
+      url,
+      datePublished: report.date,
+      keywords: [
+        "AI agent benchmark",
+        "LLM agent evaluation",
+        "head-to-head model comparison",
+        ...report.results.map((result) => result.model),
+      ],
+      variableMeasured: [
+        "Composite score",
+        "Correctness",
+        "Reliability",
+        "Latency",
+        "Cost",
+        "Cost per correct answer",
+      ],
+      creator: publisherSchema(),
+      publisher: publisherSchema(),
+    },
+  ];
+}
+
+type BenchmarkIndexReport = {
+  slug: string;
+  title: string;
+  description: string;
+};
+
+export function benchmarkIndexSchema(
+  reports: BenchmarkIndexReport[],
+): Record<string, unknown>[] {
+  const pageUrl = `${SITE_URL}/benchmarks`;
+  const items = reports.map((report) => ({
+    url: `${SITE_URL}/benchmarks/${report.slug}`,
+    title: report.title,
+    description: report.description,
+  }));
+
+  return [
+    breadcrumbSchema([
+      { name: "Home", url: "/" },
+      { name: "Benchmarks", url: "/benchmarks" },
+    ]),
+    {
+      "@context": "https://schema.org",
+      "@type": "CollectionPage",
+      name: "AgentClash Model Benchmarks",
+      description:
+        "Head-to-head AI agent benchmarks — new models raced against the field on real agentic tasks with deterministic, behavioral, and cost scoring.",
+      url: pageUrl,
+      isPartOf: {
+        "@type": "WebSite",
+        name: "AgentClash",
+        url: SITE_URL,
+      },
+      publisher: publisherSchema(),
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "ItemList",
+      name: "AgentClash Model Benchmarks",
+      url: pageUrl,
+      numberOfItems: items.length,
+      itemListElement: items.map((item, index) => ({
+        "@type": "ListItem",
+        position: index + 1,
+        name: item.title,
+        description: item.description,
+        url: item.url,
+        item: { "@id": item.url },
+      })),
+    },
+  ];
+}
+
 type ChangelogIndexPeriod = {
   id: string;
   label: string;

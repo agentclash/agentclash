@@ -21,6 +21,17 @@ vi.mock("@/lib/docs", () => ({
   ]),
 }));
 
+vi.mock("@/lib/benchmarks", () => ({
+  getAllReports: vi.fn(() => [
+    {
+      slug: "claude-opus-4-8-vs-the-field",
+      title: "Claude Opus 4.8 vs the field",
+      date: "2026-06-06",
+      verdict: "Opus 4.8 took 4 of 5.",
+    },
+  ]),
+}));
+
 describe("sitemap", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -133,6 +144,29 @@ describe("sitemap", () => {
       changeFrequency: "monthly",
       priority: 0.7,
     });
+  });
+
+  it("includes the benchmarks index and per-report pages", () => {
+    const entries = sitemap();
+    const byUrl = new Map(entries.map((entry) => [entry.url, entry]));
+
+    expect(
+      byUrl.get("https://www.agentclash.dev/benchmarks"),
+    ).toMatchObject({
+      changeFrequency: "weekly",
+      priority: 0.8,
+    });
+    const report = byUrl.get(
+      "https://www.agentclash.dev/benchmarks/claude-opus-4-8-vs-the-field",
+    );
+    expect(report).toMatchObject({
+      lastModified: new Date("2026-06-06"),
+      changeFrequency: "monthly",
+      priority: 0.75,
+    });
+    const image = report?.images?.[0] ?? "";
+    expect(image.startsWith("https://www.agentclash.dev/og?")).toBe(true);
+    expect(image).toContain("kind=Benchmark");
   });
 
   it("includes the comparison hub and per-competitor pages", () => {

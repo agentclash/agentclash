@@ -30,6 +30,7 @@ const COLUMNS: Array<{
   {
     heading: "Company",
     links: [
+      { href: "/benchmarks", label: "Benchmarks" },
       { href: "/blog", label: "Blog" },
       { href: "/changelog", label: "Changelog" },
       { href: "/team", label: "Team" },
