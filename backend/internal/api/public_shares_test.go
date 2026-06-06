@@ -279,6 +279,77 @@ func TestPublicShareManager_GetPublicShareKeepsReplayAgentDistinct(t *testing.T)
 	}
 }
 
+func TestPublicShareManager_GetPublicShareAgentTryoutReturnsNarrowPayload(t *testing.T) {
+	ctx := context.Background()
+	orgID := uuid.New()
+	workspaceID := uuid.New()
+	tryoutID := uuid.New()
+	createdByUserID := uuid.New()
+	claimedByUserID := uuid.New()
+	repo := newFakePublicShareRepository(orgID, workspaceID)
+	repo.share = repository.PublicShareLink{
+		ID:             uuid.New(),
+		Key:            "tryout-share",
+		OrganizationID: orgID,
+		WorkspaceID:    workspaceID,
+		ResourceType:   repository.PublicShareResourceAgentTryout,
+		ResourceID:     tryoutID,
+		IsActive:       true,
+		CreatedAt:      time.Now().UTC(),
+		UpdatedAt:      time.Now().UTC(),
+	}
+	repo.agentTryout = repository.AgentTryout{
+		ID:                     tryoutID,
+		OrganizationID:         &orgID,
+		WorkspaceID:            &workspaceID,
+		TemplateSlug:           "meeting-minutes",
+		Status:                 repository.AgentTryoutStatusCompleted,
+		InputSnapshot:          json.RawMessage(`{"notes":"public notes"}`),
+		TemplateSnapshot:       json.RawMessage(`{"slug":"meeting-minutes"}`),
+		ToolPolicySnapshot:     json.RawMessage(`{"tools":["file_writer"]}`),
+		EvaluationSpecSnapshot: json.RawMessage(`{"validators":[]}`),
+		SelectedModelPolicy:    json.RawMessage(`{"mode":"hosted_default"}`),
+		Summary:                json.RawMessage(`{"ok":true}`),
+		RedactionStatus:        repository.AgentTryoutRedactionPassed,
+		CostLimitUSD:           0.25,
+		MaxDurationSeconds:     120,
+		CreatedByUserID:        &createdByUserID,
+		ClaimedByUserID:        &claimedByUserID,
+		CreatedAt:              time.Now().UTC(),
+		UpdatedAt:              time.Now().UTC(),
+	}
+	manager := NewPublicShareManager(NewCallerWorkspaceAuthorizer(), repo, "https://agentclash.dev")
+
+	payload, err := manager.GetPublicShare(ctx, "tryout-share")
+	if err != nil {
+		t.Fatalf("GetPublicShare returned error: %v", err)
+	}
+	resourceEncoded, err := json.Marshal(payload.Resource)
+	if err != nil {
+		t.Fatalf("marshal payload resource: %v", err)
+	}
+	for _, key := range []string{
+		"organization_id",
+		"workspace_id",
+		"created_by_user_id",
+		"claimed_by_user_id",
+		"claimed_at",
+	} {
+		if jsonContainsKey(resourceEncoded, key) {
+			t.Fatalf("public tryout payload leaked %s: %s", key, resourceEncoded)
+		}
+	}
+	responseEncoded, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("marshal payload response: %v", err)
+	}
+	for _, secret := range []string{orgID.String(), workspaceID.String(), createdByUserID.String(), claimedByUserID.String()} {
+		if strings.Contains(string(responseEncoded), secret) {
+			t.Fatalf("public tryout response leaked private value %q: %s", secret, responseEncoded)
+		}
+	}
+}
+
 func callerWithWorkspace(workspaceID uuid.UUID) Caller {
 	userID := uuid.New()
 	return Caller{
@@ -333,6 +404,7 @@ type fakePublicShareRepository struct {
 	runScorecard   repository.RunScorecard
 	agentScorecard repository.RunAgentScorecard
 	replay         repository.RunAgentReplay
+	agentTryout    repository.AgentTryout
 }
 
 func newFakePublicShareRepository(orgID, workspaceID uuid.UUID) *fakePublicShareRepository {
@@ -438,6 +510,13 @@ func (r *fakePublicShareRepository) GetRunAgentReplayByRunAgentID(_ context.Cont
 		return repository.RunAgentReplay{}, repository.ErrRunAgentReplayNotFound
 	}
 	return r.replay, nil
+}
+
+func (r *fakePublicShareRepository) GetAgentTryoutByID(_ context.Context, id uuid.UUID) (repository.AgentTryout, error) {
+	if r.agentTryout.ID != id {
+		return repository.AgentTryout{}, repository.ErrAgentTryoutNotFound
+	}
+	return r.agentTryout, nil
 }
 
 func (r *fakePublicShareRepository) GetPublicChallengePackVersionSnapshot(context.Context, uuid.UUID) (repository.PublicChallengePackVersionSnapshot, error) {

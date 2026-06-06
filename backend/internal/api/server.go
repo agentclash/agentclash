@@ -54,6 +54,7 @@ type routerOptions struct {
 	infraService               InfrastructureService
 	workspaceSecretsService    WorkspaceSecretsService
 	publicShareService         PublicShareService
+	agentTryoutService         AgentTryoutService
 	billingService             BillingService
 	eventSubscriber            pubsub.EventSubscriber
 	cliAuthServices            []CLIAuthService
@@ -92,6 +93,7 @@ func NewServer(
 	infraService InfrastructureService,
 	workspaceSecretsService WorkspaceSecretsService,
 	publicShareService PublicShareService,
+	agentTryoutService AgentTryoutService,
 	billingService BillingService,
 	eventSubscriber pubsub.EventSubscriber,
 	multiTurnService MultiTurnService,
@@ -131,6 +133,7 @@ func NewServer(
 		infraService:               infraService,
 		workspaceSecretsService:    workspaceSecretsService,
 		publicShareService:         publicShareService,
+		agentTryoutService:         agentTryoutService,
 		billingService:             billingService,
 		eventSubscriber:            eventSubscriber,
 		multiTurnService:           multiTurnService,
@@ -242,6 +245,7 @@ func newRouter(
 		infraService:               infraServiceArg,
 		workspaceSecretsService:    workspaceSecretsServiceArg,
 		publicShareService:         nil,
+		agentTryoutService:         nil,
 		billingService:             nil,
 		eventSubscriber:            eventSubscriber,
 		cliAuthServices:            cliAuthServices,
@@ -280,6 +284,7 @@ func buildRouter(opts routerOptions) http.Handler {
 	infraService := opts.infraService
 	workspaceSecretsService := opts.workspaceSecretsService
 	publicShareService := opts.publicShareService
+	agentTryoutService := opts.agentTryoutService
 	billingService := opts.billingService
 	multiTurnService := opts.multiTurnService
 	vibeEvalService := opts.vibeEvalService
@@ -328,6 +333,9 @@ func buildRouter(opts routerOptions) http.Handler {
 	}
 	if publicShareService == nil {
 		publicShareService = noopPublicShareService{}
+	}
+	if agentTryoutService == nil {
+		agentTryoutService = noopAgentTryoutService{}
 	}
 	if billingService == nil {
 		billingService = noopBillingService{}
@@ -388,10 +396,13 @@ func buildRouter(opts routerOptions) http.Handler {
 	}
 
 	router.Route("/v1", func(r chi.Router) {
-		r.Use(authenticateRequest(logger, authenticator))
-		r.Use(trackUsage(logger, opts.posthogClient))
 		r.Use(rateLimiter.Middleware("default", extractWorkspaceID))
-		registerProtectedRoutes(r, logger, authorizer, playgroundService, artifactService, artifactMaxUploadBytes, runCreationService, runReadService, replayReadService, compareReadService, releaseGateService, regressionService, datasetService, agentDeploymentReadService, agentHarnessService, githubIntegrationService, challengePackReadService, challengePackAuthoringService, agentBuildService, userService, orgService, wsService, orgMembershipService, wsMembershipService, onboardingService, infraService, workspaceSecretsService, cliAuthService, publicShareService, billingService, multiTurnService, vibeEvalService)
+		registerPublicAgentTryoutRoutes(r, logger, agentTryoutService)
+		r.Group(func(r chi.Router) {
+			r.Use(authenticateRequest(logger, authenticator))
+			r.Use(trackUsage(logger, opts.posthogClient))
+			registerProtectedRoutes(r, logger, authorizer, playgroundService, artifactService, artifactMaxUploadBytes, runCreationService, runReadService, replayReadService, compareReadService, releaseGateService, regressionService, datasetService, agentDeploymentReadService, agentHarnessService, githubIntegrationService, challengePackReadService, challengePackAuthoringService, agentBuildService, userService, orgService, wsService, orgMembershipService, wsMembershipService, onboardingService, infraService, workspaceSecretsService, cliAuthService, publicShareService, agentTryoutService, billingService, multiTurnService, vibeEvalService)
+		})
 	})
 
 	return router
@@ -409,6 +420,40 @@ func (noopPublicShareService) RevokeShareLink(context.Context, Caller, uuid.UUID
 
 func (noopPublicShareService) GetPublicShare(context.Context, string) (PublicSharePayload, error) {
 	return PublicSharePayload{}, errors.New("public share service is not configured")
+}
+
+type noopAgentTryoutService struct{}
+
+func (noopAgentTryoutService) ListTemplates(context.Context) ([]AgentTryoutTemplate, error) {
+	return nil, errors.New("agent tryout service is not configured")
+}
+
+func (noopAgentTryoutService) CreateAnonymousTryout(context.Context, CreateAnonymousAgentTryoutInput) (repository.AgentTryout, error) {
+	return repository.AgentTryout{}, errors.New("agent tryout service is not configured")
+}
+
+func (noopAgentTryoutService) CreateWorkspaceTryout(context.Context, Caller, CreateWorkspaceAgentTryoutInput) (repository.AgentTryout, error) {
+	return repository.AgentTryout{}, errors.New("agent tryout service is not configured")
+}
+
+func (noopAgentTryoutService) GetPublicTryout(context.Context, uuid.UUID) (repository.AgentTryout, error) {
+	return repository.AgentTryout{}, errors.New("agent tryout service is not configured")
+}
+
+func (noopAgentTryoutService) GetWorkspaceTryout(context.Context, Caller, uuid.UUID) (repository.AgentTryout, error) {
+	return repository.AgentTryout{}, errors.New("agent tryout service is not configured")
+}
+
+func (noopAgentTryoutService) ListWorkspaceTryouts(context.Context, Caller, uuid.UUID, int32, int32) ([]repository.AgentTryout, error) {
+	return nil, errors.New("agent tryout service is not configured")
+}
+
+func (noopAgentTryoutService) ClaimTryout(context.Context, Caller, ClaimAgentTryoutInput) (repository.AgentTryout, error) {
+	return repository.AgentTryout{}, errors.New("agent tryout service is not configured")
+}
+
+func (noopAgentTryoutService) CreatePrivateShare(context.Context, Caller, uuid.UUID) (CreateAgentTryoutShareResult, error) {
+	return CreateAgentTryoutShareResult{}, errors.New("agent tryout service is not configured")
 }
 
 type noopVibeEvalService struct{}

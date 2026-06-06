@@ -130,6 +130,7 @@ func main() {
 	challengePackReadManager := api.NewChallengePackReadManager(repo)
 	challengePackAuthoringManager := api.NewChallengePackAuthoringManager(repo, artifactStore)
 	publicShareManager := api.NewPublicShareManager(authorizer, repo, cfg.FrontendURL)
+	agentTryoutManager := api.NewAgentTryoutManager(authorizer, repo)
 	agentBuildManager := api.NewAgentBuildManager(repo)
 	userManager := api.NewUserManager(repo)
 	orgAuthz := api.NewCallerOrganizationAuthorizer()
@@ -229,6 +230,7 @@ func main() {
 		infraManager,
 		workspaceSecretsManager,
 		publicShareManager,
+		agentTryoutManager,
 		billingManager,
 		eventSubscriber,
 		multiTurnManager,
