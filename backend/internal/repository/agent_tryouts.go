@@ -141,6 +141,37 @@ func (r *Repository) CreateAgentTryout(ctx context.Context, params CreateAgentTr
 	return mapAgentTryout(row)
 }
 
+func (r *Repository) CountAnonymousAgentTryoutsByFingerprint(ctx context.Context, fingerprintHash string, since time.Time) (int64, error) {
+	var count int64
+	err := r.db.QueryRow(ctx, `
+SELECT COUNT(*)
+FROM agent_tryouts
+WHERE organization_id IS NULL
+  AND workspace_id IS NULL
+  AND anonymous_fingerprint_hash = $1
+  AND created_at >= $2`, fingerprintHash, since.UTC()).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("count anonymous agent tryouts by fingerprint: %w", err)
+	}
+	return count, nil
+}
+
+func (r *Repository) SumAnonymousAgentTryoutCostLimitUSD(ctx context.Context, windowStart, windowEnd time.Time) (float64, error) {
+	var total pgtype.Numeric
+	err := r.db.QueryRow(ctx, `
+SELECT COALESCE(SUM(cost_limit_usd), 0)
+FROM agent_tryouts
+WHERE organization_id IS NULL
+  AND workspace_id IS NULL
+  AND anonymous_fingerprint_hash IS NOT NULL
+  AND created_at >= $1
+  AND created_at < $2`, windowStart.UTC(), windowEnd.UTC()).Scan(&total)
+	if err != nil {
+		return 0, fmt.Errorf("sum anonymous agent tryout cost limits: %w", err)
+	}
+	return derefFloat64(numericPtr(total)), nil
+}
+
 func (r *Repository) GetAgentTryoutByID(ctx context.Context, id uuid.UUID) (AgentTryout, error) {
 	row, err := r.queries.GetAgentTryoutByID(ctx, repositorysqlc.GetAgentTryoutByIDParams{ID: id})
 	if err != nil {

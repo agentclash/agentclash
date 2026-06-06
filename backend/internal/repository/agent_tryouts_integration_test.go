@@ -3,12 +3,78 @@ package repository_test
 import (
 	"context"
 	"errors"
+	"math"
 	"testing"
 	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/google/uuid"
 )
+
+func TestRepositoryAgentTryoutAnonymousQuotaLedger(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	fingerprintHash := "anon-ledger-" + uuid.NewString()
+	expiresAt := time.Now().UTC().Add(24 * time.Hour)
+	for _, costLimit := range []float64{0.25, 0.30} {
+		_, err := repo.CreateAgentTryout(ctx, repository.CreateAgentTryoutParams{
+			TemplateSlug:             "meeting-minutes",
+			Status:                   repository.AgentTryoutStatusQueued,
+			InputSnapshot:            []byte(`{"notes":"anonymous"}`),
+			TemplateSnapshot:         []byte(`{"slug":"meeting-minutes"}`),
+			ToolPolicySnapshot:       []byte(`{"tools":[]}`),
+			EvaluationSpecSnapshot:   []byte(`{"validators":[]}`),
+			SelectedModelPolicy:      []byte(`{"mode":"hosted_default"}`),
+			Summary:                  []byte(`{}`),
+			RedactionStatus:          repository.AgentTryoutRedactionPending,
+			CostLimitUSD:             costLimit,
+			MaxDurationSeconds:       120,
+			AnonymousFingerprintHash: &fingerprintHash,
+			ExpiresAt:                &expiresAt,
+		})
+		if err != nil {
+			t.Fatalf("CreateAgentTryout anonymous returned error: %v", err)
+		}
+	}
+	_, err := repo.CreateAgentTryout(ctx, repository.CreateAgentTryoutParams{
+		OrganizationID:         &fixture.organizationID,
+		WorkspaceID:            &fixture.workspaceID,
+		TemplateSlug:           "meeting-minutes",
+		Status:                 repository.AgentTryoutStatusQueued,
+		InputSnapshot:          []byte(`{"notes":"workspace"}`),
+		TemplateSnapshot:       []byte(`{"slug":"meeting-minutes"}`),
+		ToolPolicySnapshot:     []byte(`{"tools":[]}`),
+		EvaluationSpecSnapshot: []byte(`{"validators":[]}`),
+		SelectedModelPolicy:    []byte(`{"mode":"hosted_default"}`),
+		Summary:                []byte(`{}`),
+		RedactionStatus:        repository.AgentTryoutRedactionPending,
+		CostLimitUSD:           10,
+		MaxDurationSeconds:     120,
+		CreatedByUserID:        &fixture.userID,
+	})
+	if err != nil {
+		t.Fatalf("CreateAgentTryout workspace returned error: %v", err)
+	}
+
+	count, err := repo.CountAnonymousAgentTryoutsByFingerprint(ctx, fingerprintHash, time.Now().UTC().Add(-time.Hour))
+	if err != nil {
+		t.Fatalf("CountAnonymousAgentTryoutsByFingerprint returned error: %v", err)
+	}
+	if count != 2 {
+		t.Fatalf("anonymous count = %d, want 2", count)
+	}
+	windowStart := time.Now().UTC().Truncate(24 * time.Hour)
+	total, err := repo.SumAnonymousAgentTryoutCostLimitUSD(ctx, windowStart, windowStart.Add(24*time.Hour))
+	if err != nil {
+		t.Fatalf("SumAnonymousAgentTryoutCostLimitUSD returned error: %v", err)
+	}
+	if math.Abs(total-0.55) > 0.000001 {
+		t.Fatalf("anonymous hosted spend = %v, want 0.55", total)
+	}
+}
 
 func TestRepositoryAgentTryoutLifecycle(t *testing.T) {
 	ctx := context.Background()

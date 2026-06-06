@@ -130,7 +130,12 @@ func main() {
 	challengePackReadManager := api.NewChallengePackReadManager(repo)
 	challengePackAuthoringManager := api.NewChallengePackAuthoringManager(repo, artifactStore)
 	publicShareManager := api.NewPublicShareManager(authorizer, repo, cfg.FrontendURL)
-	agentTryoutManager := api.NewAgentTryoutManager(authorizer, repo).WithExecution(
+	agentTryoutManager := api.NewAgentTryoutManager(authorizer, repo).WithQuota(api.AgentTryoutQuotaConfig{
+		AnonymousLimit:            cfg.AgentTryoutAnonymousLimit,
+		AnonymousWindow:           cfg.AgentTryoutAnonymousWindow,
+		HostedDailySpendCapUSD:    cfg.AgentTryoutHostedDailySpendCapUSD,
+		AnonymousPerRunCostCapUSD: cfg.AgentTryoutAnonymousPerRunCostCapUSD,
+	}).WithExecution(
 		api.NewTemporalAgentHarnessExecutionWorkflowStarter(temporalClient),
 		api.AgentTryoutExecutionConfig{
 			PublicWorkspaceID:      cfg.AgentTryoutPublicWorkspaceID,

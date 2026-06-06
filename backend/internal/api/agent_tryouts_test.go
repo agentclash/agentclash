@@ -179,6 +179,182 @@ func TestAgentTryoutManagerRejectsOversizedInput(t *testing.T) {
 	}
 }
 
+func TestAgentTryoutManagerAllowsAnonymousWithinQuotaAndSpendCaps(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeAgentTryoutRepository(uuid.New(), uuid.New())
+	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo).WithQuota(AgentTryoutQuotaConfig{
+		AnonymousLimit:            1,
+		AnonymousWindow:           24 * time.Hour,
+		HostedDailySpendCapUSD:    1,
+		AnonymousPerRunCostCapUSD: 1,
+	})
+
+	tryout, err := manager.CreateAnonymousTryout(ctx, CreateAnonymousAgentTryoutInput{
+		TemplateSlug:         "meeting-minutes",
+		Input:                json.RawMessage(`{"notes":"within cap"}`),
+		AnonymousFingerprint: "203.0.113.10",
+	})
+	if err != nil {
+		t.Fatalf("CreateAnonymousTryout returned error: %v", err)
+	}
+	if tryout.CostLimitUSD != 0.25 {
+		t.Fatalf("cost limit = %v, want template limit 0.25", tryout.CostLimitUSD)
+	}
+	if len(repo.tryouts) != 1 {
+		t.Fatalf("tryouts created = %d, want 1", len(repo.tryouts))
+	}
+}
+
+func TestAgentTryoutManagerRejectsAnonymousQuotaExhaustedBeforeCreate(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeAgentTryoutRepository(uuid.New(), uuid.New())
+	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo).WithQuota(AgentTryoutQuotaConfig{
+		AnonymousLimit:            1,
+		AnonymousWindow:           24 * time.Hour,
+		HostedDailySpendCapUSD:    1,
+		AnonymousPerRunCostCapUSD: 1,
+	})
+	input := CreateAnonymousAgentTryoutInput{
+		TemplateSlug:         "meeting-minutes",
+		Input:                json.RawMessage(`{"notes":"first"}`),
+		AnonymousFingerprint: "203.0.113.10",
+	}
+	if _, err := manager.CreateAnonymousTryout(ctx, input); err != nil {
+		t.Fatalf("first CreateAnonymousTryout returned error: %v", err)
+	}
+	input.Input = json.RawMessage(`{"notes":"second"}`)
+	_, err := manager.CreateAnonymousTryout(ctx, input)
+	if !errors.Is(err, ErrAgentTryoutAnonymousQuotaExhausted) {
+		t.Fatalf("second CreateAnonymousTryout error = %v, want ErrAgentTryoutAnonymousQuotaExhausted", err)
+	}
+	if len(repo.tryouts) != 1 {
+		t.Fatalf("tryouts created = %d, want still 1 after quota block", len(repo.tryouts))
+	}
+}
+
+func TestAgentTryoutManagerRejectsHostedSpendUnavailableBeforeCreate(t *testing.T) {
+	tests := []struct {
+		name  string
+		setup func(*fakeAgentTryoutRepository)
+	}{
+		{
+			name: "fingerprint count fails",
+			setup: func(repo *fakeAgentTryoutRepository) {
+				repo.countAnonymousErr = errors.New("count unavailable")
+			},
+		},
+		{
+			name: "hosted spend sum fails",
+			setup: func(repo *fakeAgentTryoutRepository) {
+				repo.sumAnonymousErr = errors.New("sum unavailable")
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			repo := newFakeAgentTryoutRepository(uuid.New(), uuid.New())
+			tt.setup(repo)
+			manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo).WithQuota(AgentTryoutQuotaConfig{
+				AnonymousLimit:            1,
+				AnonymousWindow:           24 * time.Hour,
+				HostedDailySpendCapUSD:    1,
+				AnonymousPerRunCostCapUSD: 1,
+			})
+
+			_, err := manager.CreateAnonymousTryout(ctx, CreateAnonymousAgentTryoutInput{
+				TemplateSlug:         "meeting-minutes",
+				Input:                json.RawMessage(`{"notes":"fail closed"}`),
+				AnonymousFingerprint: "203.0.113.10",
+			})
+			if !errors.Is(err, ErrAgentTryoutHostedSpendUnavailable) {
+				t.Fatalf("CreateAnonymousTryout error = %v, want ErrAgentTryoutHostedSpendUnavailable", err)
+			}
+			if len(repo.tryouts) != 0 {
+				t.Fatalf("tryouts created = %d, want 0 when spend accounting unavailable", len(repo.tryouts))
+			}
+		})
+	}
+}
+
+func TestAgentTryoutManagerRejectsHostedSpendCapExceededBeforeCreate(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeAgentTryoutRepository(uuid.New(), uuid.New())
+	repo.hostedSpendUSD = 0.90
+	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo).WithQuota(AgentTryoutQuotaConfig{
+		AnonymousLimit:            1,
+		AnonymousWindow:           24 * time.Hour,
+		HostedDailySpendCapUSD:    1,
+		AnonymousPerRunCostCapUSD: 1,
+	})
+
+	_, err := manager.CreateAnonymousTryout(ctx, CreateAnonymousAgentTryoutInput{
+		TemplateSlug:         "meeting-minutes",
+		Input:                json.RawMessage(`{"notes":"over daily cap"}`),
+		AnonymousFingerprint: "203.0.113.10",
+	})
+	if !errors.Is(err, ErrAgentTryoutHostedSpendExhausted) {
+		t.Fatalf("CreateAnonymousTryout error = %v, want ErrAgentTryoutHostedSpendExhausted", err)
+	}
+	if len(repo.tryouts) != 0 {
+		t.Fatalf("tryouts created = %d, want 0 when daily cap exhausted", len(repo.tryouts))
+	}
+}
+
+func TestAgentTryoutManagerRejectsPerRunCostCapExceededBeforeCreate(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeAgentTryoutRepository(uuid.New(), uuid.New())
+	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo).WithQuota(AgentTryoutQuotaConfig{
+		AnonymousLimit:            1,
+		AnonymousWindow:           24 * time.Hour,
+		HostedDailySpendCapUSD:    1,
+		AnonymousPerRunCostCapUSD: 0.10,
+	})
+
+	_, err := manager.CreateAnonymousTryout(ctx, CreateAnonymousAgentTryoutInput{
+		TemplateSlug:         "meeting-minutes",
+		Input:                json.RawMessage(`{"notes":"over per run cap"}`),
+		AnonymousFingerprint: "203.0.113.10",
+	})
+	if !errors.Is(err, ErrAgentTryoutCostCapExceeded) {
+		t.Fatalf("CreateAnonymousTryout error = %v, want ErrAgentTryoutCostCapExceeded", err)
+	}
+	if len(repo.tryouts) != 0 {
+		t.Fatalf("tryouts created = %d, want 0 when per-run cap exceeded", len(repo.tryouts))
+	}
+}
+
+func TestAgentTryoutManagerDoesNotApplyAnonymousQuotaToWorkspaceTryout(t *testing.T) {
+	ctx := context.Background()
+	orgID := uuid.New()
+	workspaceID := uuid.New()
+	userID := uuid.New()
+	repo := newFakeAgentTryoutRepository(orgID, workspaceID)
+	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo).WithQuota(AgentTryoutQuotaConfig{
+		AnonymousLimit:            0,
+		AnonymousWindow:           24 * time.Hour,
+		HostedDailySpendCapUSD:    0,
+		AnonymousPerRunCostCapUSD: 0,
+	})
+
+	tryout, err := manager.CreateWorkspaceTryout(ctx, Caller{
+		UserID: userID,
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: RoleWorkspaceMember},
+		},
+	}, CreateWorkspaceAgentTryoutInput{
+		WorkspaceID:  workspaceID,
+		TemplateSlug: "meeting-minutes",
+		Input:        json.RawMessage(`{"notes":"workspace tryout"}`),
+	})
+	if err != nil {
+		t.Fatalf("CreateWorkspaceTryout returned error: %v", err)
+	}
+	if tryout.WorkspaceID == nil || *tryout.WorkspaceID != workspaceID {
+		t.Fatalf("workspace id = %v, want %s", tryout.WorkspaceID, workspaceID)
+	}
+}
+
 func TestAgentTryoutManagerCreateWorkspaceClaimAndShare(t *testing.T) {
 	ctx := context.Background()
 	orgID := uuid.New()
@@ -570,6 +746,58 @@ func TestCreateAnonymousAgentTryoutHandlerMapsUnavailableTemplate(t *testing.T) 
 	}
 }
 
+func TestCreateAnonymousAgentTryoutHandlerMapsQuotaAndSpendErrors(t *testing.T) {
+	tests := []struct {
+		name       string
+		err        error
+		wantStatus int
+		wantCode   string
+	}{
+		{
+			name:       "anonymous quota exhausted",
+			err:        ErrAgentTryoutAnonymousQuotaExhausted,
+			wantStatus: http.StatusTooManyRequests,
+			wantCode:   "anonymous_quota_exhausted",
+		},
+		{
+			name:       "hosted spend unavailable",
+			err:        ErrAgentTryoutHostedSpendUnavailable,
+			wantStatus: http.StatusServiceUnavailable,
+			wantCode:   "hosted_spend_unavailable",
+		},
+		{
+			name:       "hosted spend exhausted",
+			err:        ErrAgentTryoutHostedSpendExhausted,
+			wantStatus: http.StatusTooManyRequests,
+			wantCode:   "hosted_spend_exhausted",
+		},
+		{
+			name:       "tryout cost cap exceeded",
+			err:        ErrAgentTryoutCostCapExceeded,
+			wantStatus: http.StatusBadRequest,
+			wantCode:   "tryout_cost_cap_exceeded",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			service := &fakeAgentTryoutService{createAnonymousErr: tt.err}
+			handler := createAnonymousAgentTryoutHandler(slog.Default(), service)
+			req := httptest.NewRequest(http.MethodPost, "/v1/agent-tryouts", strings.NewReader(`{"template_slug":"meeting-minutes","input":{"notes":"quota"}}`))
+			rr := httptest.NewRecorder()
+
+			handler.ServeHTTP(rr, req)
+
+			if rr.Code != tt.wantStatus {
+				t.Fatalf("status = %d, want %d; body=%s", rr.Code, tt.wantStatus, rr.Body.String())
+			}
+			if !strings.Contains(rr.Body.String(), tt.wantCode) {
+				t.Fatalf("body = %s, want code %q", rr.Body.String(), tt.wantCode)
+			}
+		})
+	}
+}
+
 func TestGetPublicAgentTryoutHandlerReturnsNarrowResponse(t *testing.T) {
 	expiresAt := time.Now().UTC().Add(defaultAgentTryoutTTL)
 	service := &fakeAgentTryoutService{
@@ -668,6 +896,9 @@ type fakeAgentTryoutRepository struct {
 	omitExecutionRunID bool
 	updateStatusCalls  int
 	share              repository.PublicShareLink
+	countAnonymousErr  error
+	sumAnonymousErr    error
+	hostedSpendUSD     float64
 }
 
 func newFakeAgentTryoutRepository(orgID, workspaceID uuid.UUID) *fakeAgentTryoutRepository {
@@ -715,6 +946,40 @@ func (r *fakeAgentTryoutRepository) CreateAgentTryout(_ context.Context, params 
 	}
 	r.tryouts[tryout.ID] = tryout
 	return tryout, nil
+}
+
+func (r *fakeAgentTryoutRepository) CountAnonymousAgentTryoutsByFingerprint(_ context.Context, fingerprintHash string, since time.Time) (int64, error) {
+	if r.countAnonymousErr != nil {
+		return 0, r.countAnonymousErr
+	}
+	var count int64
+	for _, tryout := range r.tryouts {
+		if tryout.WorkspaceID == nil &&
+			tryout.OrganizationID == nil &&
+			tryout.AnonymousFingerprintHash != nil &&
+			*tryout.AnonymousFingerprintHash == fingerprintHash &&
+			!tryout.CreatedAt.Before(since) {
+			count++
+		}
+	}
+	return count, nil
+}
+
+func (r *fakeAgentTryoutRepository) SumAnonymousAgentTryoutCostLimitUSD(_ context.Context, windowStart, windowEnd time.Time) (float64, error) {
+	if r.sumAnonymousErr != nil {
+		return 0, r.sumAnonymousErr
+	}
+	total := r.hostedSpendUSD
+	for _, tryout := range r.tryouts {
+		if tryout.WorkspaceID == nil &&
+			tryout.OrganizationID == nil &&
+			tryout.AnonymousFingerprintHash != nil &&
+			!tryout.CreatedAt.Before(windowStart) &&
+			tryout.CreatedAt.Before(windowEnd) {
+			total += tryout.CostLimitUSD
+		}
+	}
+	return total, nil
 }
 
 func (r *fakeAgentTryoutRepository) GetAgentHarnessByWorkspaceSlug(_ context.Context, workspaceID uuid.UUID, slug string) (repository.AgentHarness, error) {
