@@ -103,6 +103,24 @@ func TestRepositoryAgentTryoutLifecycle(t *testing.T) {
 	if withRun.RunID == nil || *withRun.RunID != runID {
 		t.Fatalf("run id = %v, want %s", withRun.RunID, runID)
 	}
+	linkedAgain, err := repo.LinkAgentTryoutRunIfUnset(ctx, repository.LinkAgentTryoutRunParams{
+		ID:      created.ID,
+		RunID:   runID,
+		Status:  repository.AgentTryoutStatusRunning,
+		Summary: []byte(`{"verdict":"should_not_overwrite"}`),
+	})
+	if err != nil {
+		t.Fatalf("LinkAgentTryoutRunIfUnset returned error: %v", err)
+	}
+	if linkedAgain.RunID == nil || *linkedAgain.RunID != runID {
+		t.Fatalf("idempotent link run id = %v, want %s", linkedAgain.RunID, runID)
+	}
+	if linkedAgain.Status != repository.AgentTryoutStatusCompleted {
+		t.Fatalf("idempotent link status = %q, want completed", linkedAgain.Status)
+	}
+	if string(linkedAgain.Summary) != `{"verdict": "ready_to_inspect"}` && string(linkedAgain.Summary) != `{"verdict":"ready_to_inspect"}` {
+		t.Fatalf("idempotent link summary = %s, want existing summary", linkedAgain.Summary)
+	}
 
 	listed, err := repo.ListAgentTryoutsByWorkspaceID(ctx, fixture.workspaceID, 20, 0)
 	if err != nil {

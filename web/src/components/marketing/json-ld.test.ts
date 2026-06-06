@@ -142,7 +142,7 @@ describe("changelogIndexSchema", () => {
         {
           "@type": "ListItem",
           position: 1,
-          url: `${SITE_URL}/changelog#2026-05-25`,
+          url: `${SITE_URL}/changelog/2026-05-25`,
         },
       ],
     });

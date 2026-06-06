@@ -126,6 +126,266 @@ func TestAgentTryoutManagerCreateWorkspaceClaimAndShare(t *testing.T) {
 	}
 }
 
+func TestAgentTryoutManagerDispatchesAnonymousTryout(t *testing.T) {
+	ctx := context.Background()
+	orgID := uuid.New()
+	workspaceID := uuid.New()
+	repo := newFakeAgentTryoutRepository(orgID, workspaceID)
+	starter := &fakeAgentHarnessWorkflowStarter{}
+	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo).WithExecution(starter, AgentTryoutExecutionConfig{
+		PublicWorkspaceID:      &workspaceID,
+		E2BTemplateID:          "agentclash-tryout-e2b",
+		OpenAIAPIKeySecretName: "TRYOUT_OPENAI_API_KEY",
+	})
+
+	tryout, err := manager.CreateAnonymousTryout(ctx, CreateAnonymousAgentTryoutInput{
+		TemplateSlug:         "meeting-minutes",
+		Input:                json.RawMessage(`{"notes":"ship the execution bridge"}`),
+		AnonymousFingerprint: "203.0.113.10",
+	})
+	if err != nil {
+		t.Fatalf("CreateAnonymousTryout returned error: %v", err)
+	}
+	if tryout.Status != repository.AgentTryoutStatusRunning {
+		t.Fatalf("status = %q, want running", tryout.Status)
+	}
+	if tryout.RunID == nil {
+		t.Fatal("run_id was not linked")
+	}
+	if len(repo.createdHarnesses) != 1 || len(repo.createdExecutions) != 1 {
+		t.Fatalf("created harnesses/executions = %d/%d, want 1/1", len(repo.createdHarnesses), len(repo.createdExecutions))
+	}
+	if starter.startedCount != 1 || starter.timeoutSeconds != 120 {
+		t.Fatalf("starter count/timeout = %d/%d, want 1/120", starter.startedCount, starter.timeoutSeconds)
+	}
+	var snapshot map[string]any
+	if err := json.Unmarshal(repo.createdExecutions[0].HarnessSnapshot, &snapshot); err != nil {
+		t.Fatalf("decode harness snapshot: %v", err)
+	}
+	if snapshot["codex_template"] != "agentclash-tryout-e2b" || snapshot["openai_api_key_secret_name"] != "TRYOUT_OPENAI_API_KEY" {
+		t.Fatalf("snapshot provider config = %#v", snapshot)
+	}
+	if !strings.Contains(snapshot["task_prompt"].(string), "ship the execution bridge") {
+		t.Fatalf("task prompt did not include input: %s", snapshot["task_prompt"])
+	}
+}
+
+func TestAgentTryoutManagerDispatchIsIdempotentWhenRunAlreadyLinked(t *testing.T) {
+	ctx := context.Background()
+	orgID := uuid.New()
+	workspaceID := uuid.New()
+	repo := newFakeAgentTryoutRepository(orgID, workspaceID)
+	starter := &fakeAgentHarnessWorkflowStarter{}
+	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo).WithExecution(starter, AgentTryoutExecutionConfig{PublicWorkspaceID: &workspaceID})
+
+	tryout, err := manager.CreateAnonymousTryout(ctx, CreateAnonymousAgentTryoutInput{
+		TemplateSlug:         "meeting-minutes",
+		Input:                json.RawMessage(`{"notes":"first run"}`),
+		AnonymousFingerprint: "203.0.113.10",
+	})
+	if err != nil {
+		t.Fatalf("CreateAnonymousTryout returned error: %v", err)
+	}
+	template, _ := manager.lookupTemplate("meeting-minutes")
+	again, err := manager.execution.dispatch(ctx, tryout, template)
+	if err != nil {
+		t.Fatalf("second dispatch returned error: %v", err)
+	}
+	if again.RunID == nil || *again.RunID != *tryout.RunID {
+		t.Fatalf("second dispatch run_id = %v, want %s", again.RunID, *tryout.RunID)
+	}
+	if len(repo.createdExecutions) != 1 || starter.startedCount != 1 {
+		t.Fatalf("created executions/start count = %d/%d, want 1/1", len(repo.createdExecutions), starter.startedCount)
+	}
+}
+
+func TestAgentTryoutManagerMarksFailedWhenDispatchStartFails(t *testing.T) {
+	ctx := context.Background()
+	orgID := uuid.New()
+	workspaceID := uuid.New()
+	repo := newFakeAgentTryoutRepository(orgID, workspaceID)
+	starterErr := errors.New("temporal unavailable")
+	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo).WithExecution(&fakeAgentHarnessWorkflowStarter{err: starterErr}, AgentTryoutExecutionConfig{PublicWorkspaceID: &workspaceID})
+
+	tryout, err := manager.CreateAnonymousTryout(ctx, CreateAnonymousAgentTryoutInput{
+		TemplateSlug:         "meeting-minutes",
+		Input:                json.RawMessage(`{"notes":"fail safely"}`),
+		AnonymousFingerprint: "203.0.113.10",
+	})
+	if err != nil {
+		t.Fatalf("CreateAnonymousTryout returned error: %v", err)
+	}
+	if tryout.Status != repository.AgentTryoutStatusFailed {
+		t.Fatalf("status = %q, want failed", tryout.Status)
+	}
+	if repo.transitionedStatus != repository.AgentHarnessExecutionStatusFailed {
+		t.Fatalf("harness status = %q, want failed", repo.transitionedStatus)
+	}
+	var summary map[string]any
+	if err := json.Unmarshal(tryout.Summary, &summary); err != nil {
+		t.Fatalf("decode summary: %v", err)
+	}
+	if summary["code"] != "execution_start_failed" || strings.Contains(string(tryout.Summary), starterErr.Error()) {
+		t.Fatalf("unsafe failure summary: %s", tryout.Summary)
+	}
+}
+
+func TestAgentTryoutManagerDoesNotRevertFailedTryoutWhenHarnessTransitionFails(t *testing.T) {
+	ctx := context.Background()
+	orgID := uuid.New()
+	workspaceID := uuid.New()
+	repo := newFakeAgentTryoutRepository(orgID, workspaceID)
+	repo.transitionErr = errors.New("transition failed")
+	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo).WithExecution(&fakeAgentHarnessWorkflowStarter{err: errors.New("temporal unavailable")}, AgentTryoutExecutionConfig{PublicWorkspaceID: &workspaceID})
+
+	tryout, err := manager.CreateAnonymousTryout(ctx, CreateAnonymousAgentTryoutInput{
+		TemplateSlug:         "meeting-minutes",
+		Input:                json.RawMessage(`{"notes":"fail and stay failed"}`),
+		AnonymousFingerprint: "203.0.113.10",
+	})
+	if err != nil {
+		t.Fatalf("CreateAnonymousTryout returned error: %v", err)
+	}
+	if tryout.Status != repository.AgentTryoutStatusFailed {
+		t.Fatalf("created status = %q, want failed", tryout.Status)
+	}
+	refreshed, err := manager.GetPublicTryout(ctx, tryout.ID)
+	if err != nil {
+		t.Fatalf("GetPublicTryout returned error: %v", err)
+	}
+	if refreshed.Status != repository.AgentTryoutStatusFailed {
+		t.Fatalf("refreshed status = %q, want failed", refreshed.Status)
+	}
+}
+
+func TestAgentTryoutManagerRejectsHarnessExecutionWithoutRunID(t *testing.T) {
+	ctx := context.Background()
+	orgID := uuid.New()
+	workspaceID := uuid.New()
+	repo := newFakeAgentTryoutRepository(orgID, workspaceID)
+	repo.omitExecutionRunID = true
+	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo).WithExecution(&fakeAgentHarnessWorkflowStarter{}, AgentTryoutExecutionConfig{PublicWorkspaceID: &workspaceID})
+
+	tryout, err := manager.CreateAnonymousTryout(ctx, CreateAnonymousAgentTryoutInput{
+		TemplateSlug:         "meeting-minutes",
+		Input:                json.RawMessage(`{"notes":"missing run id"}`),
+		AnonymousFingerprint: "203.0.113.10",
+	})
+	if err != nil {
+		t.Fatalf("CreateAnonymousTryout returned error: %v", err)
+	}
+	if tryout.Status != repository.AgentTryoutStatusFailed {
+		t.Fatalf("status = %q, want failed", tryout.Status)
+	}
+	if tryout.RunID != nil {
+		t.Fatalf("run_id = %v, want nil when execution run id is missing", tryout.RunID)
+	}
+	var summary map[string]any
+	if err := json.Unmarshal(tryout.Summary, &summary); err != nil {
+		t.Fatalf("decode summary: %v", err)
+	}
+	if summary["code"] != "execution_link_missing" {
+		t.Fatalf("summary code = %v, want execution_link_missing", summary["code"])
+	}
+}
+
+func TestAgentTryoutManagerMapsHarnessExecutionStatusOnRead(t *testing.T) {
+	ctx := context.Background()
+	orgID := uuid.New()
+	workspaceID := uuid.New()
+	repo := newFakeAgentTryoutRepository(orgID, workspaceID)
+	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo).WithExecution(&fakeAgentHarnessWorkflowStarter{}, AgentTryoutExecutionConfig{PublicWorkspaceID: &workspaceID})
+
+	tryout, err := manager.CreateAnonymousTryout(ctx, CreateAnonymousAgentTryoutInput{
+		TemplateSlug:         "meeting-minutes",
+		Input:                json.RawMessage(`{"notes":"complete it"}`),
+		AnonymousFingerprint: "203.0.113.10",
+	})
+	if err != nil {
+		t.Fatalf("CreateAnonymousTryout returned error: %v", err)
+	}
+	execution := repo.executionsByRunID[*tryout.RunID]
+	started := time.Now().UTC().Add(-2 * time.Second)
+	completed := time.Now().UTC()
+	execution.Status = string(repository.AgentHarnessExecutionStatusCompleted)
+	execution.StartedAt = &started
+	execution.CompletedAt = &completed
+	repo.executionsByRunID[*tryout.RunID] = execution
+
+	refreshed, err := manager.GetPublicTryout(ctx, tryout.ID)
+	if err != nil {
+		t.Fatalf("GetPublicTryout returned error: %v", err)
+	}
+	if refreshed.Status != repository.AgentTryoutStatusCompleted || refreshed.RedactionStatus != repository.AgentTryoutRedactionPassed {
+		t.Fatalf("refreshed tryout = %#v, want completed/passed", refreshed)
+	}
+	if refreshed.LatencyMS == nil || *refreshed.LatencyMS <= 0 {
+		t.Fatalf("latency_ms = %v, want positive", refreshed.LatencyMS)
+	}
+}
+
+func TestAgentTryoutManagerSkipsNoopRefreshWrite(t *testing.T) {
+	ctx := context.Background()
+	orgID := uuid.New()
+	workspaceID := uuid.New()
+	repo := newFakeAgentTryoutRepository(orgID, workspaceID)
+	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo).WithExecution(&fakeAgentHarnessWorkflowStarter{}, AgentTryoutExecutionConfig{PublicWorkspaceID: &workspaceID})
+
+	tryout, err := manager.CreateAnonymousTryout(ctx, CreateAnonymousAgentTryoutInput{
+		TemplateSlug:         "meeting-minutes",
+		Input:                json.RawMessage(`{"notes":"avoid writes"}`),
+		AnonymousFingerprint: "203.0.113.10",
+	})
+	if err != nil {
+		t.Fatalf("CreateAnonymousTryout returned error: %v", err)
+	}
+	_, err = manager.GetPublicTryout(ctx, tryout.ID)
+	if err != nil {
+		t.Fatalf("first GetPublicTryout returned error: %v", err)
+	}
+	updatesAfterFirstRefresh := repo.updateStatusCalls
+	_, err = manager.GetPublicTryout(ctx, tryout.ID)
+	if err != nil {
+		t.Fatalf("second GetPublicTryout returned error: %v", err)
+	}
+	if repo.updateStatusCalls != updatesAfterFirstRefresh {
+		t.Fatalf("update calls = %d, want unchanged %d after noop refresh", repo.updateStatusCalls, updatesAfterFirstRefresh)
+	}
+}
+
+func TestBuildAgentTryoutHarnessPayload(t *testing.T) {
+	template := builtinAgentTryoutTemplates()[0]
+	tryout := repository.AgentTryout{ID: uuid.New(), InputSnapshot: json.RawMessage(`{"notes":"turn this into actions"}`)}
+	repo := newFakeAgentTryoutRepository(uuid.New(), uuid.New())
+	dispatcher := agentTryoutExecutionDispatcher{repo: repo, starter: &fakeAgentHarnessWorkflowStarter{}, config: normalizeAgentTryoutExecutionConfig(AgentTryoutExecutionConfig{E2BTemplateID: "tryout-template"})}
+	harness := repository.AgentHarness{ID: uuid.New(), OrganizationID: repo.orgID, WorkspaceID: repo.workspaceID}
+	executionConfig := dispatcher.executionConfig(template)
+	evaluationConfig := agentTryoutEvaluationConfig(template, tryout)
+
+	snapshot, err := dispatcher.harnessSnapshot(harness, template, tryout, executionConfig, evaluationConfig)
+	if err != nil {
+		t.Fatalf("harnessSnapshot returned error: %v", err)
+	}
+	var decoded struct {
+		TaskPrompt       string          `json:"task_prompt"`
+		CodexTemplate    string          `json:"codex_template"`
+		ExecutionConfig  json.RawMessage `json:"execution_config"`
+		EvaluationConfig json.RawMessage `json:"evaluation_config"`
+	}
+	if err := json.Unmarshal(snapshot, &decoded); err != nil {
+		t.Fatalf("decode snapshot: %v", err)
+	}
+	if decoded.CodexTemplate != "tryout-template" || !strings.Contains(decoded.TaskPrompt, "turn this into actions") {
+		t.Fatalf("snapshot = %+v", decoded)
+	}
+	if !bytes.Contains(decoded.ExecutionConfig, []byte(`"timeout_seconds":120`)) {
+		t.Fatalf("execution config = %s, want timeout", decoded.ExecutionConfig)
+	}
+	if !bytes.Contains(decoded.EvaluationConfig, []byte(`"kind":"agent_tryout"`)) {
+		t.Fatalf("evaluation config = %s, want agent_tryout metadata", decoded.EvaluationConfig)
+	}
+}
+
 func TestCreateAnonymousAgentTryoutHandler(t *testing.T) {
 	service := &fakeAgentTryoutService{
 		tryout: repository.AgentTryout{
@@ -248,14 +508,29 @@ func TestGetWorkspaceAgentTryoutHandlerValidatesWorkspaceIDBeforeServiceCall(t *
 }
 
 type fakeAgentTryoutRepository struct {
-	orgID       uuid.UUID
-	workspaceID uuid.UUID
-	tryouts     map[uuid.UUID]repository.AgentTryout
-	share       repository.PublicShareLink
+	orgID              uuid.UUID
+	workspaceID        uuid.UUID
+	tryouts            map[uuid.UUID]repository.AgentTryout
+	harnessBySlug      map[string]repository.AgentHarness
+	executionsByRunID  map[uuid.UUID]repository.AgentHarnessExecution
+	createdHarnesses   []repository.CreateAgentHarnessParams
+	createdExecutions  []repository.CreateAgentHarnessExecutionParams
+	transitionedStatus repository.AgentHarnessExecutionStatus
+	transitionedReason *string
+	transitionErr      error
+	omitExecutionRunID bool
+	updateStatusCalls  int
+	share              repository.PublicShareLink
 }
 
 func newFakeAgentTryoutRepository(orgID, workspaceID uuid.UUID) *fakeAgentTryoutRepository {
-	return &fakeAgentTryoutRepository{orgID: orgID, workspaceID: workspaceID, tryouts: map[uuid.UUID]repository.AgentTryout{}}
+	return &fakeAgentTryoutRepository{
+		orgID:             orgID,
+		workspaceID:       workspaceID,
+		tryouts:           map[uuid.UUID]repository.AgentTryout{},
+		harnessBySlug:     map[string]repository.AgentHarness{},
+		executionsByRunID: map[uuid.UUID]repository.AgentHarnessExecution{},
+	}
 }
 
 func (r *fakeAgentTryoutRepository) GetOrganizationIDByWorkspaceID(_ context.Context, workspaceID uuid.UUID) (uuid.UUID, error) {
@@ -295,11 +570,155 @@ func (r *fakeAgentTryoutRepository) CreateAgentTryout(_ context.Context, params 
 	return tryout, nil
 }
 
+func (r *fakeAgentTryoutRepository) GetAgentHarnessByWorkspaceSlug(_ context.Context, workspaceID uuid.UUID, slug string) (repository.AgentHarness, error) {
+	harness, ok := r.harnessBySlug[workspaceID.String()+"/"+slug]
+	if !ok {
+		return repository.AgentHarness{}, repository.ErrAgentHarnessNotFound
+	}
+	return harness, nil
+}
+
+func (r *fakeAgentTryoutRepository) CreateAgentHarness(_ context.Context, params repository.CreateAgentHarnessParams) (repository.AgentHarness, error) {
+	r.createdHarnesses = append(r.createdHarnesses, params)
+	now := time.Now().UTC()
+	harness := repository.AgentHarness{
+		ID:                     uuid.New(),
+		OrganizationID:         params.OrganizationID,
+		WorkspaceID:            params.WorkspaceID,
+		CreatedByUserID:        params.CreatedByUserID,
+		Name:                   params.Name,
+		Slug:                   params.Slug,
+		Description:            params.Description,
+		Status:                 "draft",
+		HarnessKind:            params.HarnessKind,
+		TaskPrompt:             params.TaskPrompt,
+		CodexTemplate:          params.CodexTemplate,
+		AuthMode:               params.AuthMode,
+		OpenAIAPIKeySecretName: params.OpenAIAPIKeySecretName,
+		ExecutionConfig:        params.ExecutionConfig,
+		EvaluationConfig:       params.EvaluationConfig,
+		CreatedAt:              now,
+		UpdatedAt:              now,
+	}
+	r.harnessBySlug[params.WorkspaceID.String()+"/"+params.Slug] = harness
+	return harness, nil
+}
+
+func (r *fakeAgentTryoutRepository) CreateAgentHarnessExecution(_ context.Context, params repository.CreateAgentHarnessExecutionParams) (repository.AgentHarnessExecution, error) {
+	r.createdExecutions = append(r.createdExecutions, params)
+	now := time.Now().UTC()
+	runID := uuid.New()
+	runAgentID := uuid.New()
+	var runIDPtr *uuid.UUID
+	if !r.omitExecutionRunID {
+		runIDPtr = &runID
+	}
+	execution := repository.AgentHarnessExecution{
+		ID:                       uuid.New(),
+		OrganizationID:           params.OrganizationID,
+		WorkspaceID:              params.WorkspaceID,
+		AgentHarnessID:           params.AgentHarnessID,
+		CreatedByUserID:          params.CreatedByUserID,
+		RunID:                    runIDPtr,
+		RunAgentID:               &runAgentID,
+		Status:                   string(repository.AgentHarnessExecutionStatusQueued),
+		HarnessSnapshot:          params.HarnessSnapshot,
+		ExecutionConfigSnapshot:  params.ExecutionConfigSnapshot,
+		EvaluationConfigSnapshot: params.EvaluationConfigSnapshot,
+		CreatedAt:                now,
+		UpdatedAt:                now,
+	}
+	if execution.RunID != nil {
+		r.executionsByRunID[runID] = execution
+	}
+	return execution, nil
+}
+
+func (r *fakeAgentTryoutRepository) SetAgentHarnessExecutionTemporalIDs(_ context.Context, params repository.SetAgentHarnessExecutionTemporalIDsParams) (repository.AgentHarnessExecution, error) {
+	for runID, execution := range r.executionsByRunID {
+		if execution.ID == params.ExecutionID {
+			workflowID := params.TemporalWorkflowID
+			runIDValue := params.TemporalRunID
+			execution.TemporalWorkflowID = &workflowID
+			execution.TemporalRunID = &runIDValue
+			r.executionsByRunID[runID] = execution
+			return execution, nil
+		}
+	}
+	return repository.AgentHarnessExecution{}, repository.ErrAgentHarnessExecutionNotFound
+}
+
+func (r *fakeAgentTryoutRepository) TransitionAgentHarnessExecutionStatus(_ context.Context, params repository.TransitionAgentHarnessExecutionStatusParams) (repository.AgentHarnessExecution, error) {
+	r.transitionedStatus = params.ToStatus
+	r.transitionedReason = params.Reason
+	if r.transitionErr != nil {
+		return repository.AgentHarnessExecution{}, r.transitionErr
+	}
+	for runID, execution := range r.executionsByRunID {
+		if execution.ID == params.ExecutionID {
+			execution.Status = string(params.ToStatus)
+			execution.ErrorMessage = params.Reason
+			r.executionsByRunID[runID] = execution
+			return execution, nil
+		}
+	}
+	return repository.AgentHarnessExecution{}, repository.ErrAgentHarnessExecutionNotFound
+}
+
+func (r *fakeAgentTryoutRepository) GetAgentHarnessExecutionByRunID(_ context.Context, runID uuid.UUID) (repository.AgentHarnessExecution, error) {
+	execution, ok := r.executionsByRunID[runID]
+	if !ok {
+		return repository.AgentHarnessExecution{}, repository.ErrAgentHarnessExecutionNotFound
+	}
+	return execution, nil
+}
+
 func (r *fakeAgentTryoutRepository) GetAgentTryoutByID(_ context.Context, id uuid.UUID) (repository.AgentTryout, error) {
 	tryout, ok := r.tryouts[id]
 	if !ok {
 		return repository.AgentTryout{}, repository.ErrAgentTryoutNotFound
 	}
+	return tryout, nil
+}
+
+func (r *fakeAgentTryoutRepository) LinkAgentTryoutRunIfUnset(_ context.Context, params repository.LinkAgentTryoutRunParams) (repository.AgentTryout, error) {
+	tryout, ok := r.tryouts[params.ID]
+	if !ok {
+		return repository.AgentTryout{}, repository.ErrAgentTryoutNotFound
+	}
+	if tryout.RunID == nil {
+		tryout.RunID = &params.RunID
+		if tryout.Status == repository.AgentTryoutStatusQueued {
+			tryout.Status = params.Status
+		}
+		if len(params.Summary) > 0 {
+			tryout.Summary = params.Summary
+		}
+	}
+	r.tryouts[tryout.ID] = tryout
+	return tryout, nil
+}
+
+func (r *fakeAgentTryoutRepository) UpdateAgentTryoutStatus(_ context.Context, params repository.UpdateAgentTryoutStatusParams) (repository.AgentTryout, error) {
+	r.updateStatusCalls++
+	tryout, ok := r.tryouts[params.ID]
+	if !ok {
+		return repository.AgentTryout{}, repository.ErrAgentTryoutNotFound
+	}
+	tryout.Status = params.Status
+	if len(params.Summary) > 0 {
+		tryout.Summary = params.Summary
+	}
+	if params.ActualCostUSD != nil {
+		tryout.ActualCostUSD = params.ActualCostUSD
+	}
+	if params.LatencyMS != nil {
+		tryout.LatencyMS = params.LatencyMS
+	}
+	if params.RedactionStatus != nil {
+		tryout.RedactionStatus = *params.RedactionStatus
+	}
+	r.tryouts[tryout.ID] = tryout
 	return tryout, nil
 }
 
