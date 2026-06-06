@@ -1,6 +1,8 @@
 import { ApiError, NetworkError } from "./errors";
 import type { ApiErrorResponse } from "./types";
 
+const HOSTED_AGENTCLASH_API_URL = "https://api.agentclash.dev";
+
 /** Pagination envelope returned by all list endpoints. */
 export interface PaginatedResponse<T> {
   items: T[];
@@ -27,6 +29,36 @@ interface RequestOptions {
   allowedStatuses?: number[];
 }
 
+function isAgentClashHost(host: string | undefined): boolean {
+  if (!host) return false;
+  try {
+    const url = new URL(host.includes("://") ? host : `https://${host}`);
+    return (
+      url.hostname === "agentclash.dev" ||
+      url.hostname.endsWith(".agentclash.dev")
+    );
+  } catch {
+    return false;
+  }
+}
+
+function resolveHostedFallbackUrl(): string | undefined {
+  if (typeof window !== "undefined") {
+    return isAgentClashHost(window.location.hostname)
+      ? HOSTED_AGENTCLASH_API_URL
+      : undefined;
+  }
+
+  if (
+    isAgentClashHost(process.env.VERCEL_PROJECT_PRODUCTION_URL) ||
+    isAgentClashHost(process.env.VERCEL_URL)
+  ) {
+    return HOSTED_AGENTCLASH_API_URL;
+  }
+
+  return undefined;
+}
+
 function resolveBaseUrl(): string {
   // Server-side: prefer API_URL (not exposed to browser).
   // Client-side: fall back to NEXT_PUBLIC_API_URL.
@@ -35,12 +67,13 @@ function resolveBaseUrl(): string {
       ? process.env.API_URL ?? process.env.NEXT_PUBLIC_API_URL
       : process.env.NEXT_PUBLIC_API_URL;
 
-  if (!url) {
+  const resolvedUrl = url || resolveHostedFallbackUrl();
+  if (!resolvedUrl) {
     throw new Error(
       "Missing API_URL or NEXT_PUBLIC_API_URL environment variable",
     );
   }
-  return url.replace(/\/+$/, ""); // strip trailing slash
+  return resolvedUrl.replace(/\/+$/, ""); // strip trailing slash
 }
 
 function buildUrl(
