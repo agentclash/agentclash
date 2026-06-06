@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -387,7 +388,7 @@ func createAnonymousAgentTryoutHandler(logger *slog.Logger, service AgentTryoutS
 			writeAgentTryoutError(w, logger, err)
 			return
 		}
-		writeJSON(w, http.StatusCreated, mapAgentTryoutResponse(tryout))
+		writeJSON(w, http.StatusCreated, mapPublicAgentTryoutResponse(tryout))
 	}
 }
 
@@ -403,7 +404,7 @@ func getPublicAgentTryoutHandler(logger *slog.Logger, service AgentTryoutService
 			writeAgentTryoutError(w, logger, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, mapAgentTryoutResponse(tryout))
+		writeJSON(w, http.StatusOK, mapPublicAgentTryoutResponse(tryout))
 	}
 }
 
@@ -449,7 +450,8 @@ func listWorkspaceAgentTryoutsHandler(logger *slog.Logger, service AgentTryoutSe
 			writeError(w, http.StatusBadRequest, "invalid_workspace_id", "workspace_id must be a UUID")
 			return
 		}
-		items, err := service.ListWorkspaceTryouts(r.Context(), caller, workspaceID, 50, 0)
+		limit, offset := parseAgentTryoutPagination(r)
+		items, err := service.ListWorkspaceTryouts(r.Context(), caller, workspaceID, limit, offset)
 		if err != nil {
 			writeAgentTryoutError(w, logger, err)
 			return
@@ -469,6 +471,11 @@ func getWorkspaceAgentTryoutHandler(logger *slog.Logger, service AgentTryoutServ
 			writeAuthzError(w, err)
 			return
 		}
+		workspaceID, err := uuid.Parse(chi.URLParam(r, "workspaceID"))
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_workspace_id", "workspace_id must be a UUID")
+			return
+		}
 		id, err := uuid.Parse(chi.URLParam(r, "tryoutID"))
 		if err != nil {
 			writeError(w, http.StatusBadRequest, "invalid_tryout_id", "tryout_id must be a UUID")
@@ -479,17 +486,28 @@ func getWorkspaceAgentTryoutHandler(logger *slog.Logger, service AgentTryoutServ
 			writeAgentTryoutError(w, logger, err)
 			return
 		}
-		workspaceID, err := uuid.Parse(chi.URLParam(r, "workspaceID"))
-		if err != nil {
-			writeError(w, http.StatusBadRequest, "invalid_workspace_id", "workspace_id must be a UUID")
-			return
-		}
 		if tryout.WorkspaceID == nil || *tryout.WorkspaceID != workspaceID {
 			writeError(w, http.StatusNotFound, "agent_tryout_not_found", "agent tryout not found")
 			return
 		}
 		writeJSON(w, http.StatusOK, mapAgentTryoutResponse(tryout))
 	}
+}
+
+func parseAgentTryoutPagination(r *http.Request) (int32, int32) {
+	limit := int32(50)
+	offset := int32(0)
+	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
+		if value, err := strconv.ParseInt(raw, 10, 32); err == nil {
+			limit = int32(value)
+		}
+	}
+	if raw := strings.TrimSpace(r.URL.Query().Get("offset")); raw != "" {
+		if value, err := strconv.ParseInt(raw, 10, 32); err == nil {
+			offset = int32(value)
+		}
+	}
+	return limit, offset
 }
 
 func claimAgentTryoutHandler(logger *slog.Logger, service AgentTryoutService) http.HandlerFunc {

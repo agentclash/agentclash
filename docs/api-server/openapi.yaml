@@ -5161,7 +5161,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AgentTryoutResponse"
+                $ref: "#/components/schemas/PublicAgentTryoutResponse"
         "400":
           $ref: "#/components/responses/ValidationError"
         "404":
@@ -5181,7 +5181,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AgentTryoutResponse"
+                $ref: "#/components/schemas/PublicAgentTryoutResponse"
         "400":
           $ref: "#/components/responses/ValidationError"
         "404":
@@ -5225,6 +5225,21 @@ paths:
         - bearerJWT: []
       parameters:
         - $ref: "#/components/parameters/WorkspaceID"
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            format: int32
+            default: 50
+            minimum: 1
+            maximum: 100
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            format: int32
+            default: 0
+            minimum: 0
       responses:
         "200":
           description: Workspace tryouts
@@ -12743,6 +12758,61 @@ components:
         expires_at:
           type: string
           format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    PublicAgentTryoutResponse:
+      type: object
+      required: [id, template_slug, status, input_snapshot, template_snapshot, tool_policy_snapshot, evaluation_spec_snapshot, selected_model_policy, summary, redaction_status, cost_limit_usd, max_duration_seconds, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        template_slug:
+          type: string
+        status:
+          type: string
+          enum: [queued, running, completed, failed, cancelled]
+        input_snapshot:
+          type: object
+          additionalProperties: true
+        template_snapshot:
+          type: object
+          additionalProperties: true
+        tool_policy_snapshot:
+          type: object
+          additionalProperties: true
+        evaluation_spec_snapshot:
+          type: object
+          additionalProperties: true
+        selected_model_policy:
+          type: object
+          additionalProperties: true
+        summary:
+          type: object
+          additionalProperties: true
+        redaction_status:
+          type: string
+          enum: [pending, passed, failed, not_required]
+        run_id:
+          type: string
+          format: uuid
+        cost_limit_usd:
+          type: number
+          format: double
+        actual_cost_usd:
+          type: number
+          format: double
+        latency_ms:
+          type: integer
+          format: int64
+        max_duration_seconds:
+          type: integer
+          format: int32
         created_at:
           type: string
           format: date-time

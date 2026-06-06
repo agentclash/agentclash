@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/repository"
+	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
 
@@ -162,6 +163,90 @@ func TestCreateAnonymousAgentTryoutHandler(t *testing.T) {
 	}
 }
 
+func TestGetPublicAgentTryoutHandlerReturnsNarrowResponse(t *testing.T) {
+	expiresAt := time.Now().UTC().Add(defaultAgentTryoutTTL)
+	service := &fakeAgentTryoutService{
+		tryout: repository.AgentTryout{
+			ID:                     uuid.New(),
+			TemplateSlug:           "meeting-minutes",
+			Status:                 repository.AgentTryoutStatusQueued,
+			InputSnapshot:          json.RawMessage(`{"notes":"hello"}`),
+			TemplateSnapshot:       json.RawMessage(`{"slug":"meeting-minutes"}`),
+			ToolPolicySnapshot:     json.RawMessage(`{"tools":[]}`),
+			EvaluationSpecSnapshot: json.RawMessage(`{"validators":[]}`),
+			SelectedModelPolicy:    json.RawMessage(`{"mode":"hosted_default"}`),
+			Summary:                json.RawMessage(`{}`),
+			RedactionStatus:        repository.AgentTryoutRedactionPending,
+			CostLimitUSD:           0.25,
+			MaxDurationSeconds:     120,
+			ExpiresAt:              &expiresAt,
+			CreatedAt:              time.Now().UTC(),
+			UpdatedAt:              time.Now().UTC(),
+		},
+	}
+	router := chi.NewRouter()
+	router.Get("/v1/agent-tryouts/{tryoutID}", getPublicAgentTryoutHandler(slog.Default(), service))
+	req := httptest.NewRequest(http.MethodGet, "/v1/agent-tryouts/"+service.tryout.ID.String(), nil)
+	rr := httptest.NewRecorder()
+
+	router.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s, want 200", rr.Code, rr.Body.String())
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if _, ok := payload["expires_at"]; ok {
+		t.Fatalf("public tryout response leaked expires_at: %s", rr.Body.String())
+	}
+	if _, ok := payload["created_by_user_id"]; ok {
+		t.Fatalf("public tryout response leaked created_by_user_id: %s", rr.Body.String())
+	}
+}
+
+func TestListWorkspaceAgentTryoutsHandlerPassesPagination(t *testing.T) {
+	workspaceID := uuid.New()
+	service := &fakeAgentTryoutService{}
+	router := chi.NewRouter()
+	router.Get("/v1/workspaces/{workspaceID}/agent-tryouts", func(w http.ResponseWriter, r *http.Request) {
+		ctx := context.WithValue(r.Context(), callerContextKey{}, callerWithWorkspace(workspaceID))
+		listWorkspaceAgentTryoutsHandler(slog.Default(), service).ServeHTTP(w, r.WithContext(ctx))
+	})
+	req := httptest.NewRequest(http.MethodGet, "/v1/workspaces/"+workspaceID.String()+"/agent-tryouts?limit=17&offset=34", nil)
+	rr := httptest.NewRecorder()
+
+	router.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s, want 200", rr.Code, rr.Body.String())
+	}
+	if service.listLimit != 17 || service.listOffset != 34 {
+		t.Fatalf("pagination = limit %d offset %d, want 17/34", service.listLimit, service.listOffset)
+	}
+}
+
+func TestGetWorkspaceAgentTryoutHandlerValidatesWorkspaceIDBeforeServiceCall(t *testing.T) {
+	service := &fakeAgentTryoutService{}
+	router := chi.NewRouter()
+	router.Get("/v1/workspaces/{workspaceID}/agent-tryouts/{tryoutID}", func(w http.ResponseWriter, r *http.Request) {
+		ctx := context.WithValue(r.Context(), callerContextKey{}, callerWithWorkspace(uuid.New()))
+		getWorkspaceAgentTryoutHandler(slog.Default(), service).ServeHTTP(w, r.WithContext(ctx))
+	})
+	req := httptest.NewRequest(http.MethodGet, "/v1/workspaces/not-a-uuid/agent-tryouts/"+uuid.New().String(), nil)
+	rr := httptest.NewRecorder()
+
+	router.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d body=%s, want 400", rr.Code, rr.Body.String())
+	}
+	if service.getWorkspaceCalls != 0 {
+		t.Fatalf("GetWorkspaceTryout calls = %d, want 0 before malformed workspace id is rejected", service.getWorkspaceCalls)
+	}
+}
+
 type fakeAgentTryoutRepository struct {
 	orgID       uuid.UUID
 	workspaceID uuid.UUID
@@ -271,6 +356,9 @@ func (r *fakeAgentTryoutRepository) CreatePublicShareLink(_ context.Context, par
 type fakeAgentTryoutService struct {
 	tryout               repository.AgentTryout
 	createAnonymousInput CreateAnonymousAgentTryoutInput
+	listLimit            int32
+	listOffset           int32
+	getWorkspaceCalls    int
 }
 
 func (s *fakeAgentTryoutService) ListTemplates(context.Context) ([]AgentTryoutTemplate, error) {
@@ -287,14 +375,17 @@ func (s *fakeAgentTryoutService) CreateWorkspaceTryout(context.Context, Caller, 
 }
 
 func (s *fakeAgentTryoutService) GetPublicTryout(context.Context, uuid.UUID) (repository.AgentTryout, error) {
-	return repository.AgentTryout{}, nil
+	return s.tryout, nil
 }
 
 func (s *fakeAgentTryoutService) GetWorkspaceTryout(context.Context, Caller, uuid.UUID) (repository.AgentTryout, error) {
-	return repository.AgentTryout{}, nil
+	s.getWorkspaceCalls++
+	return s.tryout, nil
 }
 
-func (s *fakeAgentTryoutService) ListWorkspaceTryouts(context.Context, Caller, uuid.UUID, int32, int32) ([]repository.AgentTryout, error) {
+func (s *fakeAgentTryoutService) ListWorkspaceTryouts(_ context.Context, _ Caller, _ uuid.UUID, limit, offset int32) ([]repository.AgentTryout, error) {
+	s.listLimit = limit
+	s.listOffset = offset
 	return nil, nil
 }
 
