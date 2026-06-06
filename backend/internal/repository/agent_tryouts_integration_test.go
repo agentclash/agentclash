@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"math"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -73,6 +75,88 @@ func TestRepositoryAgentTryoutAnonymousQuotaLedger(t *testing.T) {
 	}
 	if math.Abs(total-0.55) > 0.000001 {
 		t.Fatalf("anonymous hosted spend = %v, want 0.55", total)
+	}
+}
+
+// TestRepositoryAgentTryoutQuotaLockSerializesCreation exercises
+// WithinAnonymousAgentTryoutQuotaLock under concurrent load to prove the
+// advisory lock closes the check-then-create TOCTOU window: many goroutines
+// share one fingerprint and gate on a per-fingerprint limit of 1, so exactly
+// one must win even though they all start before any commits.
+func TestRepositoryAgentTryoutQuotaLockSerializesCreation(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	repo := repository.New(db)
+
+	fingerprintHash := "anon-race-" + uuid.NewString()
+	expiresAt := time.Now().UTC().Add(24 * time.Hour)
+	const (
+		concurrency      = 16
+		perFingerprint   = 1
+		perRunCostUSD    = 0.10
+		dailySpendCapUSD = 100.0
+	)
+	window := time.Now().UTC().Add(-time.Hour)
+	dayStart := time.Now().UTC().Truncate(24 * time.Hour)
+	dayEnd := dayStart.Add(24 * time.Hour)
+
+	var wg sync.WaitGroup
+	var created int64
+	for i := 0; i < concurrency; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			err := repo.WithinAnonymousAgentTryoutQuotaLock(ctx, func(qtx repository.AnonymousAgentTryoutQuotaTx) error {
+				count, err := qtx.CountAnonymousAgentTryoutsByFingerprint(ctx, fingerprintHash, window)
+				if err != nil {
+					return err
+				}
+				if count >= perFingerprint {
+					return nil // quota reached — do not create
+				}
+				spend, err := qtx.SumAnonymousAgentTryoutCostLimitUSD(ctx, dayStart, dayEnd)
+				if err != nil {
+					return err
+				}
+				if spend+perRunCostUSD > dailySpendCapUSD {
+					return nil
+				}
+				if _, err := qtx.CreateAgentTryout(ctx, repository.CreateAgentTryoutParams{
+					TemplateSlug:             "meeting-minutes",
+					Status:                   repository.AgentTryoutStatusQueued,
+					InputSnapshot:            []byte(`{"notes":"race"}`),
+					TemplateSnapshot:         []byte(`{"slug":"meeting-minutes"}`),
+					ToolPolicySnapshot:       []byte(`{"tools":[]}`),
+					EvaluationSpecSnapshot:   []byte(`{"validators":[]}`),
+					SelectedModelPolicy:      []byte(`{"mode":"hosted_default"}`),
+					Summary:                  []byte(`{}`),
+					RedactionStatus:          repository.AgentTryoutRedactionPending,
+					CostLimitUSD:             perRunCostUSD,
+					MaxDurationSeconds:       120,
+					AnonymousFingerprintHash: &fingerprintHash,
+					ExpiresAt:                &expiresAt,
+				}); err != nil {
+					return err
+				}
+				atomic.AddInt64(&created, 1)
+				return nil
+			})
+			if err != nil {
+				t.Errorf("WithinAnonymousAgentTryoutQuotaLock returned error: %v", err)
+			}
+		}()
+	}
+	wg.Wait()
+
+	if got := atomic.LoadInt64(&created); got != perFingerprint {
+		t.Fatalf("created tryouts = %d, want %d (lock failed to serialize)", got, perFingerprint)
+	}
+	count, err := repo.CountAnonymousAgentTryoutsByFingerprint(ctx, fingerprintHash, window)
+	if err != nil {
+		t.Fatalf("CountAnonymousAgentTryoutsByFingerprint returned error: %v", err)
+	}
+	if count != perFingerprint {
+		t.Fatalf("persisted anonymous tryouts = %d, want %d", count, perFingerprint)
 	}
 }
 

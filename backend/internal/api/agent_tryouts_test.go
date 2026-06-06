@@ -232,22 +232,27 @@ func TestAgentTryoutManagerRejectsAnonymousQuotaExhaustedBeforeCreate(t *testing
 	}
 }
 
-func TestAgentTryoutManagerRejectsHostedSpendUnavailableBeforeCreate(t *testing.T) {
+func TestAgentTryoutManagerRejectsQuotaAccountingUnavailableBeforeCreate(t *testing.T) {
 	tests := []struct {
-		name  string
-		setup func(*fakeAgentTryoutRepository)
+		name    string
+		setup   func(*fakeAgentTryoutRepository)
+		wantErr error
 	}{
 		{
 			name: "fingerprint count fails",
 			setup: func(repo *fakeAgentTryoutRepository) {
 				repo.countAnonymousErr = errors.New("count unavailable")
 			},
+			// A quota-read failure must surface as a quota-specific error, not as
+			// the hosted-spend sentinel — the spend sum never ran.
+			wantErr: ErrAgentTryoutAnonymousQuotaUnavailable,
 		},
 		{
 			name: "hosted spend sum fails",
 			setup: func(repo *fakeAgentTryoutRepository) {
 				repo.sumAnonymousErr = errors.New("sum unavailable")
 			},
+			wantErr: ErrAgentTryoutHostedSpendUnavailable,
 		},
 	}
 	for _, tt := range tests {
@@ -267,11 +272,11 @@ func TestAgentTryoutManagerRejectsHostedSpendUnavailableBeforeCreate(t *testing.
 				Input:                json.RawMessage(`{"notes":"fail closed"}`),
 				AnonymousFingerprint: "203.0.113.10",
 			})
-			if !errors.Is(err, ErrAgentTryoutHostedSpendUnavailable) {
-				t.Fatalf("CreateAnonymousTryout error = %v, want ErrAgentTryoutHostedSpendUnavailable", err)
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("CreateAnonymousTryout error = %v, want %v", err, tt.wantErr)
 			}
 			if len(repo.tryouts) != 0 {
-				t.Fatalf("tryouts created = %d, want 0 when spend accounting unavailable", len(repo.tryouts))
+				t.Fatalf("tryouts created = %d, want 0 when quota accounting unavailable", len(repo.tryouts))
 			}
 		})
 	}
@@ -760,6 +765,12 @@ func TestCreateAnonymousAgentTryoutHandlerMapsQuotaAndSpendErrors(t *testing.T) 
 			wantCode:   "anonymous_quota_exhausted",
 		},
 		{
+			name:       "anonymous quota unavailable",
+			err:        ErrAgentTryoutAnonymousQuotaUnavailable,
+			wantStatus: http.StatusServiceUnavailable,
+			wantCode:   "anonymous_quota_unavailable",
+		},
+		{
 			name:       "hosted spend unavailable",
 			err:        ErrAgentTryoutHostedSpendUnavailable,
 			wantStatus: http.StatusServiceUnavailable,
@@ -980,6 +991,10 @@ func (r *fakeAgentTryoutRepository) SumAnonymousAgentTryoutCostLimitUSD(_ contex
 		}
 	}
 	return total, nil
+}
+
+func (r *fakeAgentTryoutRepository) WithinAnonymousAgentTryoutQuotaLock(_ context.Context, fn func(repository.AnonymousAgentTryoutQuotaTx) error) error {
+	return fn(r)
 }
 
 func (r *fakeAgentTryoutRepository) GetAgentHarnessByWorkspaceSlug(_ context.Context, workspaceID uuid.UUID, slug string) (repository.AgentHarness, error) {
