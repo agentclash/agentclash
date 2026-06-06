@@ -1047,7 +1047,8 @@ func validateAgentTryoutInputSchema(template AgentTryoutTemplate, object map[str
 		return fmt.Errorf("%w: template input schema must describe an object", ErrInvalidAgentTryoutInput)
 	}
 	for _, key := range schema.Required {
-		if _, ok := object[key]; !ok {
+		value, ok := object[key]
+		if !ok || value == nil {
 			return fmt.Errorf("%w: missing required field %q", ErrInvalidAgentTryoutInput, key)
 		}
 	}
@@ -1060,8 +1061,11 @@ func validateAgentTryoutInputSchema(template AgentTryoutTemplate, object map[str
 	}
 	for key, property := range schema.Properties {
 		value, ok := object[key]
-		if !ok || value == nil || strings.TrimSpace(property.Type) == "" {
+		if !ok || strings.TrimSpace(property.Type) == "" {
 			continue
+		}
+		if value == nil {
+			return fmt.Errorf("%w: field %q must be %s", ErrInvalidAgentTryoutInput, key, property.Type)
 		}
 		if !agentTryoutInputValueMatchesType(value, property.Type) {
 			return fmt.Errorf("%w: field %q must be %s", ErrInvalidAgentTryoutInput, key, property.Type)
@@ -1120,7 +1124,7 @@ func writeAgentTryoutError(w http.ResponseWriter, logger *slog.Logger, err error
 	case errors.Is(err, ErrAgentTryoutTemplateNotFound):
 		writeError(w, http.StatusNotFound, "template_not_found", "agent tryout template not found")
 	case errors.Is(err, ErrAgentTryoutTemplateUnavailable):
-		writeError(w, http.StatusConflict, "template_unavailable", err.Error())
+		writeError(w, http.StatusConflict, "template_unavailable", agentTryoutTemplateUnavailableMessage(err))
 	case errors.Is(err, repository.ErrAgentTryoutNotFound):
 		writeError(w, http.StatusNotFound, "agent_tryout_not_found", "agent tryout not found")
 	case errors.Is(err, repository.ErrAgentTryoutAlreadyClaimed):
@@ -1133,6 +1137,14 @@ func writeAgentTryoutError(w http.ResponseWriter, logger *slog.Logger, err error
 		logger.Error("agent tryout request failed", "error", err)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal server error")
 	}
+}
+
+func agentTryoutTemplateUnavailableMessage(err error) string {
+	message := strings.TrimPrefix(err.Error(), ErrAgentTryoutTemplateUnavailable.Error()+": ")
+	if strings.TrimSpace(message) == "" {
+		return "agent tryout template is unavailable"
+	}
+	return message
 }
 
 func mapAgentTryoutResponse(tryout repository.AgentTryout) agentTryoutResponse {

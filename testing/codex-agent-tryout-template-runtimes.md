@@ -13,8 +13,8 @@
 - `TestAgentTryoutTemplatesExposeRuntimeMetadata` - list templates includes availability, runtime/tool/sandbox/artifact/validation metadata, and `meeting-minutes` is executable.
 - `TestAgentTryoutManagerRejectsInvalidTemplateInputBeforeCreate` - malformed input for a template returns `ErrInvalidAgentTryoutInput` and does not create a tryout.
 - `TestAgentTryoutManagerRejectsUnavailableTemplateBeforeCreate` - unavailable templates return `ErrAgentTryoutTemplateUnavailable` and do not create/dispatch.
-- `TestAgentTryoutManagerIgnoresClientRuntimePolicyFields` - extra input fields attempting to set tools/network/commands/model/cost are rejected or ignored and cannot alter snapshots.
-- `TestBuildAgentTryoutHarnessPayloadIncludesRuntimePolicy` - harness snapshot and execution config include the resolved runtime policy, expected artifacts, validators, sandbox policy, and template slug.
+- `TestAgentTryoutManagerRejectsClientRuntimePolicyFields` - extra input fields attempting to set tools/network/commands/model/cost are rejected and cannot alter snapshots.
+- `TestBuildAgentTryoutHarnessPayload` - harness snapshot and execution config include the resolved runtime policy, expected artifacts, validators, sandbox policy, and template slug.
 
 ## Integration / Functional Tests
 - Existing agent tryout repository tests continue to round-trip template, tool, model, and evaluation snapshots.

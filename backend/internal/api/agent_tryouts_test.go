@@ -106,13 +106,24 @@ func TestAgentTryoutManagerRejectsInvalidTemplateInputBeforeCreate(t *testing.T)
 	repo := newFakeAgentTryoutRepository(uuid.New(), uuid.New())
 	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo)
 
-	_, err := manager.CreateAnonymousTryout(context.Background(), CreateAnonymousAgentTryoutInput{
-		TemplateSlug:         "meeting-minutes",
-		Input:                json.RawMessage(`{"audience":"execs"}`),
-		AnonymousFingerprint: "203.0.113.10",
-	})
-	if !errors.Is(err, ErrInvalidAgentTryoutInput) {
-		t.Fatalf("CreateAnonymousTryout error = %v, want ErrInvalidAgentTryoutInput", err)
+	for _, tc := range []struct {
+		name  string
+		input json.RawMessage
+	}{
+		{name: "missing required field", input: json.RawMessage(`{"audience":"execs"}`)},
+		{name: "required null field", input: json.RawMessage(`{"notes":null}`)},
+		{name: "optional null field", input: json.RawMessage(`{"notes":"hello","audience":null}`)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := manager.CreateAnonymousTryout(context.Background(), CreateAnonymousAgentTryoutInput{
+				TemplateSlug:         "meeting-minutes",
+				Input:                tc.input,
+				AnonymousFingerprint: "203.0.113.10",
+			})
+			if !errors.Is(err, ErrInvalidAgentTryoutInput) {
+				t.Fatalf("CreateAnonymousTryout error = %v, want ErrInvalidAgentTryoutInput", err)
+			}
+		})
 	}
 	if len(repo.tryouts) != 0 || len(repo.createdExecutions) != 0 {
 		t.Fatalf("invalid input should not create or dispatch tryouts: tryouts=%d executions=%d", len(repo.tryouts), len(repo.createdExecutions))
@@ -552,6 +563,10 @@ func TestCreateAnonymousAgentTryoutHandlerMapsUnavailableTemplate(t *testing.T) 
 	}
 	if !strings.Contains(rr.Body.String(), `"code":"template_unavailable"`) {
 		t.Fatalf("body = %s, want template_unavailable", rr.Body.String())
+	}
+	if strings.Contains(rr.Body.String(), ErrAgentTryoutTemplateUnavailable.Error()) ||
+		!strings.Contains(rr.Body.String(), `"message":"structured data validator runtime is not enabled yet"`) {
+		t.Fatalf("body = %s, want product-facing reason without sentinel prefix", rr.Body.String())
 	}
 }
 
