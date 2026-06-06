@@ -8,7 +8,8 @@
   },
   "env": {
     "NEXT_PUBLIC_TRY_CLI_API_URL": "/api/try",
-    "NEXT_PUBLIC_TRY_CLI_PUBLIC_URL": "https://www.agentclash.dev/try"
+    "NEXT_PUBLIC_TRY_CLI_PUBLIC_URL": "https://www.agentclash.dev/try",
+    "WORKOS_COOKIE_DOMAIN": ".agentclash.dev"
   },
   "rewrites": [
     {

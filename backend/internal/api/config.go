@@ -45,7 +45,7 @@ type Config struct {
 	AppEnvironment                    string
 	AuthMode                          string // "dev" or "workos"
 	WorkOSClientID                    string // required when AuthMode is "workos"
-	WorkOSIssuer                      string // optional; defaults to "https://api.workos.com/user_management/{ClientID}"
+	WorkOSIssuer                      string // optional; defaults to "https://api.workos.com"
 	BindAddress                       string
 	DatabaseURL                       string
 	TemporalAddress                   string
