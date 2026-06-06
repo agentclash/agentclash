@@ -65,7 +65,7 @@ type WorkOSAuthenticatorConfig struct {
 	// ClientID is the WorkOS client ID (e.g. "client_01...").
 	ClientID string
 	// Issuer is the expected JWT issuer.
-	// Defaults to "https://api.workos.com/user_management/{ClientID}".
+	// Defaults to "https://api.workos.com".
 	// Set to your custom auth domain if configured in WorkOS.
 	Issuer string
 }
@@ -75,7 +75,7 @@ func NewWorkOSAuthenticator(cfg WorkOSAuthenticatorConfig, repo UserRepository, 
 	jwksURL := "https://api.workos.com/sso/jwks/" + cfg.ClientID
 	issuer := cfg.Issuer
 	if issuer == "" {
-		issuer = defaultWorkOSIssuer + "/user_management/" + cfg.ClientID
+		issuer = defaultWorkOSIssuer
 	}
 	return newWorkOSAuthenticator(jwksURL, cfg.ClientID, issuer, repo, logger)
 }

@@ -33,10 +33,13 @@ login entry point inside the AgentClash app at `/auth/login`.
 
 ## Production Checklist
 
-- Configure WorkOS Redirect URI to the deployed callback, for example
-  `https://agentclash.dev/auth/callback`.
-- Configure the WorkOS sign-in endpoint to the deployed login page, for example
-  `https://agentclash.dev/auth/login`.
+- Configure WorkOS Redirect URI to the deployed callback:
+  `https://www.agentclash.dev/auth/callback`.
+- Configure the WorkOS sign-in endpoint to the deployed login page:
+  `https://www.agentclash.dev/auth/login`.
+- On Vercel, set `NEXT_PUBLIC_WORKOS_REDIRECT_URI` to the same www callback URL.
+- Optionally set `WORKOS_COOKIE_DOMAIN=.agentclash.dev` so PKCE cookies work when
+  users enter via the apex host (`agentclash.dev` redirects to www).
 - Configure the WorkOS sign-out redirect location to an AgentClash-owned route.
 - Use WorkOS dashboard branding to match AgentClash copy, assets, colors, and
   page layout while the app stays on the hosted AuthKit flow.

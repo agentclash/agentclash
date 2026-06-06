@@ -36,7 +36,7 @@ export function TryCliDemoClient({ slug, initialDemo = null }: Props) {
   const [trial, setTrial] = useState(false);
   const [trialUsed, setTrialUsed] = useState(false);
 
-  const loginHref = `/auth/login?returnPathname=/try/${slug}`;
+  const loginHref = `/auth/login?returnTo=${encodeURIComponent(`/try/${slug}`)}`;
   const SESSION_KEY = "trycli:session";
   const saveSession = (id: string, exp: number) => {
     try {
@@ -383,7 +383,7 @@ export function TryCliDemoClient({ slug, initialDemo = null }: Props) {
                 own account.
               </p>
               <a
-                href={`/auth/login?returnPathname=/try/${slug}`}
+                href={`/auth/login?returnTo=${encodeURIComponent(`/try/${slug}`)}`}
                 className="mt-3 inline-flex items-center gap-1.5 rounded-md bg-white px-3 py-1.5 text-xs font-medium text-[#060606] transition-colors hover:bg-white/90"
               >
                 Sign in to continue

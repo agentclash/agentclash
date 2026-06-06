@@ -2,13 +2,13 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createApiClient } from "../client";
 import { ApiError, NetworkError } from "../errors";
 
-// Mock environment variable
-vi.stubEnv("NEXT_PUBLIC_API_URL", "http://localhost:8080");
-
 const mockFetch = vi.fn();
-vi.stubGlobal("fetch", mockFetch);
 
 beforeEach(() => {
+  vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
+  vi.stubEnv("NEXT_PUBLIC_API_URL", "http://localhost:8080");
+  vi.stubGlobal("fetch", mockFetch);
   mockFetch.mockReset();
 });
 
@@ -27,6 +27,36 @@ function errorResponse(status: number, code: string, message: string) {
 }
 
 describe("createApiClient", () => {
+  it("falls back to the hosted API on AgentClash browser hosts", async () => {
+    vi.stubEnv("NEXT_PUBLIC_API_URL", "");
+    vi.stubGlobal("window", { location: { hostname: "www.agentclash.dev" } });
+    mockFetch.mockResolvedValueOnce(jsonResponse({ user_id: "123" }));
+
+    const api = createApiClient("token");
+    await api.get("/v1/auth/session");
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      "https://api.agentclash.dev/v1/auth/session",
+      expect.objectContaining({ method: "GET" }),
+    );
+  });
+
+  it("falls back to the hosted API on AgentClash Vercel production hosts", async () => {
+    vi.stubEnv("NEXT_PUBLIC_API_URL", "");
+    vi.stubEnv("API_URL", "");
+    vi.stubEnv("VERCEL_PROJECT_PRODUCTION_URL", "www.agentclash.dev");
+    vi.stubGlobal("window", undefined);
+    mockFetch.mockResolvedValueOnce(jsonResponse({ user_id: "123" }));
+
+    const api = createApiClient("token");
+    await api.get("/v1/auth/session");
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      "https://api.agentclash.dev/v1/auth/session",
+      expect.objectContaining({ method: "GET" }),
+    );
+  });
+
   it("attaches Bearer token to requests", async () => {
     mockFetch.mockResolvedValueOnce(jsonResponse({ user_id: "123" }));
 
