@@ -1,9 +1,9 @@
 import { withAuth } from "@workos-inc/authkit-nextjs";
 import { redirect, notFound } from "next/navigation";
-import Link from "next/link";
 import { createApiClient } from "@/lib/api/client";
 import { ApiError } from "@/lib/api/errors";
 import type { Run, RunAgent, ReplayResponse } from "@/lib/api/types";
+import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 import { ReplayViewerClient } from "./replay-viewer-client";
 
 export default async function ReplayPage({
@@ -42,24 +42,14 @@ export default async function ReplayPage({
 
   return (
     <div>
-      {/* Breadcrumb */}
-      <div className="flex items-center gap-3 mb-6 text-[11px] uppercase tracking-[0.14em] font-medium">
-        <Link
-          href={`/workspaces/${workspaceId}/runs`}
-          className="text-white/40 hover:text-white transition-colors"
-        >
-          Runs
-        </Link>
-        <span className="text-white/20">/</span>
-        <Link
-          href={`/workspaces/${workspaceId}/runs/${runId}`}
-          className="text-white/40 hover:text-white transition-colors"
-        >
-          {run.name}
-        </Link>
-        <span className="text-white/20">/</span>
-        <span className="text-white/80">{agent.label} — Replay</span>
-      </div>
+      <Breadcrumbs
+        className="mb-6"
+        entries={[
+          { label: "Runs", href: `/workspaces/${workspaceId}/runs` },
+          { label: run.name, href: `/workspaces/${workspaceId}/runs/${runId}` },
+          { label: `${agent.label} — Replay` },
+        ]}
+      />
 
       <ReplayViewerClient
         initialReplay={replay}

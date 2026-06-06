@@ -128,6 +128,7 @@ vi.mock("@/components/ui/dialog", async () => {
 });
 
 vi.mock("lucide-react", () => ({
+  ArrowUpRight: () => React.createElement("span", null, "arrow-up-right"),
   Headphones: () => React.createElement("span", null, "headphones"),
   Loader2: () => React.createElement("span", null, "loader"),
   Plus: () => React.createElement("span", null, "plus"),

@@ -1,9 +1,9 @@
 import { withAuth } from "@workos-inc/authkit-nextjs";
 import { redirect, notFound } from "next/navigation";
-import Link from "next/link";
 import { createApiClient } from "@/lib/api/client";
 import { ApiError } from "@/lib/api/errors";
 import type { Run, RunAgent, ScorecardResponse } from "@/lib/api/types";
+import { Breadcrumbs } from "@/components/ui/breadcrumbs";
 import { ScorecardClient } from "./scorecard-client";
 
 export default async function ScorecardPage({
@@ -41,24 +41,14 @@ export default async function ScorecardPage({
 
   return (
     <div>
-      {/* Breadcrumb */}
-      <div className="flex items-center gap-2 mb-4 text-sm">
-        <Link
-          href={`/workspaces/${workspaceId}/runs`}
-          className="text-muted-foreground hover:text-foreground transition-colors"
-        >
-          Runs
-        </Link>
-        <span className="text-muted-foreground/40">/</span>
-        <Link
-          href={`/workspaces/${workspaceId}/runs/${runId}`}
-          className="text-muted-foreground hover:text-foreground transition-colors"
-        >
-          {run.name}
-        </Link>
-        <span className="text-muted-foreground/40">/</span>
-        <span className="text-foreground">{agent.label} — Scorecard</span>
-      </div>
+      <Breadcrumbs
+        className="mb-4"
+        entries={[
+          { label: "Runs", href: `/workspaces/${workspaceId}/runs` },
+          { label: run.name, href: `/workspaces/${workspaceId}/runs/${runId}` },
+          { label: `${agent.label} — Scorecard` },
+        ]}
+      />
 
       <ScorecardClient
         initialScorecard={scorecard}
