@@ -1844,6 +1844,37 @@ func (r *Repository) ListRunEventsByRunAgentID(ctx context.Context, runAgentID u
 	return events, nil
 }
 
+// ListRunEventsByRunIDAfter returns the run's events with id strictly greater
+// than afterID, ordered by the global row id, capped at limit. The id is a
+// stable, monotonic cursor: pass 0 to start from the beginning and the id of
+// the last returned event to resume. limit is clamped to [1, 500].
+func (r *Repository) ListRunEventsByRunIDAfter(ctx context.Context, runID uuid.UUID, afterID int64, limit int32) ([]RunEvent, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	if limit > 500 {
+		limit = 500
+	}
+	rows, err := r.queries.ListRunEventsByRunIDAfter(ctx, repositorysqlc.ListRunEventsByRunIDAfterParams{
+		RunID:      runID,
+		AfterID:    afterID,
+		LimitCount: limit,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list run events by run id after cursor: %w", err)
+	}
+
+	events := make([]RunEvent, 0, len(rows))
+	for _, row := range rows {
+		event, mapErr := mapRunEvent(row)
+		if mapErr != nil {
+			return nil, fmt.Errorf("map run event: %w", mapErr)
+		}
+		events = append(events, event)
+	}
+	return events, nil
+}
+
 func (r *Repository) SetRunTemporalIDs(ctx context.Context, params SetRunTemporalIDsParams) (domain.Run, error) {
 	if params.TemporalWorkflowID == "" {
 		return domain.Run{}, ErrTemporalWorkflowID

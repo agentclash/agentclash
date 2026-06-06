@@ -29,3 +29,13 @@ SELECT id, run_id, run_agent_id, sequence_number, event_type, actor_type, occurr
 FROM run_events
 WHERE run_agent_id = @run_agent_id
 ORDER BY sequence_number ASC;
+
+-- name: ListRunEventsByRunIDAfter :many
+-- Cursor-paginated event feed for a run, ordered by the global row id so the
+-- cursor is stable and resumable across all of a run's agents.
+SELECT id, run_id, run_agent_id, sequence_number, event_type, actor_type, occurred_at, artifact_id, payload
+FROM run_events
+WHERE run_id = @run_id
+  AND id > @after_id
+ORDER BY id ASC
+LIMIT @limit_count;

@@ -51,6 +51,7 @@ type AgentTryoutRepository interface {
 	SumAnonymousAgentTryoutCostLimitUSD(ctx context.Context, windowStart, windowEnd time.Time) (float64, error)
 	WithinAnonymousAgentTryoutQuotaLock(ctx context.Context, fn func(repository.AnonymousAgentTryoutQuotaTx) error) error
 	GetAgentTryoutByID(ctx context.Context, id uuid.UUID) (repository.AgentTryout, error)
+	ListRunEventsByRunIDAfter(ctx context.Context, runID uuid.UUID, afterID int64, limit int32) ([]repository.RunEvent, error)
 	ListAgentTryoutsByWorkspaceID(ctx context.Context, workspaceID uuid.UUID, limit, offset int32) ([]repository.AgentTryout, error)
 	LinkAgentTryoutRunIfUnset(ctx context.Context, params repository.LinkAgentTryoutRunParams) (repository.AgentTryout, error)
 	UpdateAgentTryoutStatus(ctx context.Context, params repository.UpdateAgentTryoutStatusParams) (repository.AgentTryout, error)
@@ -64,6 +65,8 @@ type AgentTryoutService interface {
 	CreateWorkspaceTryout(ctx context.Context, caller Caller, input CreateWorkspaceAgentTryoutInput) (repository.AgentTryout, error)
 	GetPublicTryout(ctx context.Context, id uuid.UUID) (repository.AgentTryout, error)
 	GetWorkspaceTryout(ctx context.Context, caller Caller, id uuid.UUID) (repository.AgentTryout, error)
+	GetPublicTryoutEvents(ctx context.Context, id uuid.UUID, cursor TryoutEventsCursor) (AgentTryoutEventsResult, error)
+	GetWorkspaceTryoutEvents(ctx context.Context, caller Caller, id uuid.UUID, cursor TryoutEventsCursor) (AgentTryoutEventsResult, error)
 	ListWorkspaceTryouts(ctx context.Context, caller Caller, workspaceID uuid.UUID, limit, offset int32) ([]repository.AgentTryout, error)
 	ClaimTryout(ctx context.Context, caller Caller, input ClaimAgentTryoutInput) (repository.AgentTryout, error)
 	CreatePrivateShare(ctx context.Context, caller Caller, id uuid.UUID) (CreateAgentTryoutShareResult, error)
@@ -893,12 +896,14 @@ func registerPublicAgentTryoutRoutes(router chi.Router, logger *slog.Logger, ser
 	router.Get("/agent-tryout-templates", listAgentTryoutTemplatesHandler(logger, service))
 	router.Post("/agent-tryouts", createAnonymousAgentTryoutHandler(logger, service))
 	router.Get("/agent-tryouts/{tryoutID}", getPublicAgentTryoutHandler(logger, service))
+	router.Get("/agent-tryouts/{tryoutID}/events", getPublicAgentTryoutEventsHandler(logger, service))
 }
 
 func registerProtectedAgentTryoutRoutes(router chi.Router, logger *slog.Logger, service AgentTryoutService) {
 	router.Post("/workspaces/{workspaceID}/agent-tryouts", createWorkspaceAgentTryoutHandler(logger, service))
 	router.Get("/workspaces/{workspaceID}/agent-tryouts", listWorkspaceAgentTryoutsHandler(logger, service))
 	router.Get("/workspaces/{workspaceID}/agent-tryouts/{tryoutID}", getWorkspaceAgentTryoutHandler(logger, service))
+	router.Get("/workspaces/{workspaceID}/agent-tryouts/{tryoutID}/events", getWorkspaceAgentTryoutEventsHandler(logger, service))
 	router.Post("/agent-tryouts/{tryoutID}/claim", claimAgentTryoutHandler(logger, service))
 	router.Post("/agent-tryouts/{tryoutID}/share", createAgentTryoutShareHandler(logger, service))
 }
