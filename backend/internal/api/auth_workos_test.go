@@ -1116,3 +1116,48 @@ func TestWorkOSAuthenticator_CustomIssuer(t *testing.T) {
 		t.Fatal("expected error for token with default issuer when custom issuer is configured")
 	}
 }
+
+func TestWorkOSAuthenticator_DefaultIssuerFromConfig(t *testing.T) {
+	privKey, jwksServer := testJWKS(t)
+
+	repo := stubUserRepo{
+		user: repository.User{
+			ID:           uuid.New(),
+			WorkOSUserID: "user_01ABC",
+			Email:        "test@example.com",
+		},
+		memberships: []repository.WorkspaceMembershipRow{},
+	}
+
+	cfg := WorkOSAuthenticatorConfig{ClientID: "test-client"}
+	issuer := cfg.Issuer
+	if issuer == "" {
+		issuer = defaultWorkOSIssuer
+	}
+	if issuer != "https://api.workos.com" {
+		t.Fatalf("default issuer = %q, want %q", issuer, defaultWorkOSIssuer)
+	}
+
+	auth, err := newWorkOSAuthenticator(jwksServer.URL, cfg.ClientID, issuer, repo, authTestLogger)
+	if err != nil {
+		t.Fatalf("create authenticator: %v", err)
+	}
+
+	token := signTestJWT(t, privKey, map[string]interface{}{
+		"sub": "user_01ABC",
+		"iss": "https://api.workos.com",
+		"iat": time.Now().Unix(),
+		"exp": time.Now().Add(5 * time.Minute).Unix(),
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/auth/session", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	caller, err := auth.Authenticate(req)
+	if err != nil {
+		t.Fatalf("expected success for default WorkOS issuer, got: %v", err)
+	}
+	if caller.WorkOSUserID != "user_01ABC" {
+		t.Errorf("WorkOSUserID = %q, want %q", caller.WorkOSUserID, "user_01ABC")
+	}
+}
