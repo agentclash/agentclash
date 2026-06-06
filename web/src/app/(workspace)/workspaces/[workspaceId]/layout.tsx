@@ -4,6 +4,7 @@ import { Sidebar } from "@/components/app-shell/sidebar";
 import { TopBar } from "@/components/app-shell/top-bar";
 import { TrialUpgradePrompt } from "@/components/billing/trial-upgrade-prompt";
 import { WorkspaceBillingBanner } from "@/components/billing/workspace-billing-banner";
+import { ActivationBanner } from "@/components/onboarding/activation-banner";
 import { PostHogIdentify } from "@/components/posthog-identify";
 
 export default async function WorkspaceLayout({
@@ -67,6 +68,7 @@ export default async function WorkspaceLayout({
             isOrgAdmin={orgRole === "org_admin"}
           />
           <WorkspaceBillingBanner workspaceId={workspaceId} orgSlug={orgSlug} />
+          <ActivationBanner workspaceId={workspaceId} />
           <main className="flex-1 overflow-y-auto p-6">{children}</main>
         </div>
       </div>

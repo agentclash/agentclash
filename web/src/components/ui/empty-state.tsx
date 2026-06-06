@@ -1,14 +1,21 @@
 import type { ReactNode } from "react";
+import Link from "next/link";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 
 interface EmptyStateProps {
   icon?: ReactNode;
   title: string;
   description?: string;
+  /**
+   * Optional primary action. Provide `onClick` for in-page actions (e.g. open a
+   * dialog) or `href` to route the user to a prerequisite page so empty states
+   * never become dead-ends.
+   */
   action?: {
     label: string;
-    onClick: () => void;
+    onClick?: () => void;
+    href?: string;
   };
   className?: string;
 }
@@ -36,16 +43,24 @@ export function EmptyState({
           {description}
         </p>
       )}
-      {action && (
-        <Button
-          variant="outline"
-          size="sm"
-          className="mt-4"
-          onClick={action.onClick}
-        >
-          {action.label}
-        </Button>
-      )}
+      {action &&
+        (action.href ? (
+          <Link
+            href={action.href}
+            className={cn(buttonVariants({ variant: "outline", size: "sm" }), "mt-4")}
+          >
+            {action.label}
+          </Link>
+        ) : (
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-4"
+            onClick={action.onClick}
+          >
+            {action.label}
+          </Button>
+        ))}
     </div>
   );
 }

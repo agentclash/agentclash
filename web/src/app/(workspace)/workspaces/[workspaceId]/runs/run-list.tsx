@@ -9,6 +9,8 @@ import { workspacePageSizes } from "@/lib/workspace-resource";
 import { WorkspaceListLoading } from "@/components/app-shell/workspace-loading";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
+import { ActivationChecklist } from "@/components/onboarding/activation-checklist";
+import { useWorkspaceReadiness } from "@/lib/workspace-readiness";
 import {
   Table,
   TableBody,
@@ -33,12 +35,19 @@ const POLL_INTERVAL_MS = 5000;
 
 const PAGE_SIZE = workspacePageSizes.runs;
 
-export function RunList({ workspaceId }: { workspaceId: string }) {
+export function RunList({
+  workspaceId,
+  onCreateRun,
+}: {
+  workspaceId: string;
+  onCreateRun?: () => void;
+}) {
   const router = useRouter();
   const [offset, setOffset] = useState(0);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const readiness = useWorkspaceReadiness(workspaceId);
 
-  const { data, error, isLoading } = usePaginatedApiQuery<Run>(
+  const { data, error, isLoading, mutate } = usePaginatedApiQuery<Run>(
     `/v1/workspaces/${workspaceId}/runs`,
     { limit: PAGE_SIZE, offset },
     {
@@ -93,18 +102,34 @@ export function RunList({ workspaceId }: { workspaceId: string }) {
 
   if (error) {
     return (
-      <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-4 text-sm text-destructive">
-        Failed to load runs.
+      <div className="flex items-center justify-between gap-3 rounded-lg border border-destructive/20 bg-destructive/5 p-4 text-sm text-destructive">
+        <span>Failed to load runs.</span>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => mutate()}
+        >
+          Retry
+        </Button>
       </div>
     );
   }
 
   if (runs.length === 0 && offset === 0) {
+    // Not yet able to run — guide the user through setup instead of a dead-end.
+    if (!readiness.ready && !readiness.isLoading) {
+      return <ActivationChecklist workspaceId={workspaceId} readiness={readiness} />;
+    }
     return (
       <EmptyState
         icon={<Play className="size-10" />}
         title="No runs yet"
         description="Create a run to benchmark your agent deployments against challenge packs."
+        action={
+          onCreateRun
+            ? { label: "Create your first run", onClick: onCreateRun }
+            : undefined
+        }
       />
     );
   }

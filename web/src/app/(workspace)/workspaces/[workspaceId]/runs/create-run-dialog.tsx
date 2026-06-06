@@ -39,20 +39,58 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Loader2, Plus } from "lucide-react";
+import Link from "next/link";
+import { ArrowUpRight, Loader2, Plus } from "lucide-react";
 import { captureWebEvent } from "@/lib/analytics/posthog-client";
 import { WEB_EVENTS } from "@/lib/analytics/events";
 
-interface CreateRunDialogProps {
-  workspaceId: string;
+/** Inline link that turns an empty dependency state into a next step. */
+function InlineSetupLink({
+  href,
+  onNavigate,
+  children,
+}: {
+  href: string;
+  onNavigate: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <Link
+      href={href}
+      onClick={onNavigate}
+      className="inline-flex items-center gap-1 font-medium text-foreground underline underline-offset-4 hover:text-foreground/80"
+    >
+      {children}
+      <ArrowUpRight className="size-3.5" />
+    </Link>
+  );
 }
 
-export function CreateRunDialog({ workspaceId }: CreateRunDialogProps) {
+interface CreateRunDialogProps {
+  workspaceId: string;
+  /** Controlled open state. Falls back to internal state when omitted. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  /** Hide the built-in "New Run" trigger (e.g. when opened from elsewhere). */
+  showTrigger?: boolean;
+}
+
+export function CreateRunDialog({
+  workspaceId,
+  open: controlledOpen,
+  onOpenChange,
+  showTrigger = true,
+}: CreateRunDialogProps) {
   const router = useRouter();
   const { getAccessToken } = useAccessToken();
   const { mutate, mutateMany } = useApiMutator();
 
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = (next: boolean) => {
+    setInternalOpen(next);
+    onOpenChange?.(next);
+  };
   const [name, setName] = useState("");
   const [selectedPackId, setSelectedPackId] = useState("");
   const [selectedVersionId, setSelectedVersionId] = useState("");
@@ -86,7 +124,9 @@ export function CreateRunDialog({ workspaceId }: CreateRunDialogProps) {
   const [suiteCases, setSuiteCases] = useState<Record<string, RegressionCase[]>>(
     {},
   );
-  const [loading, setLoading] = useState(false);
+  // Start true so the dialog's first painted frame shows the loading affordance
+  // rather than flashing the empty-state setup CTAs before loadData() runs.
+  const [loading, setLoading] = useState(true);
   const [loadingInputSets, setLoadingInputSets] = useState(false);
   const [loadingRegression, setLoadingRegression] = useState(false);
   const [regressionLoadError, setRegressionLoadError] = useState<string | null>(
@@ -430,10 +470,12 @@ export function CreateRunDialog({ workspaceId }: CreateRunDialogProps) {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button size="sm" />}>
-        <Plus data-icon="inline-start" className="size-4" />
-        New Run
-      </DialogTrigger>
+      {showTrigger && (
+        <DialogTrigger render={<Button size="sm" />}>
+          <Plus data-icon="inline-start" className="size-4" />
+          New Run
+        </DialogTrigger>
+      )}
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>New Run</DialogTitle>
@@ -443,6 +485,13 @@ export function CreateRunDialog({ workspaceId }: CreateRunDialogProps) {
         </DialogHeader>
 
         <div className="space-y-4 py-2 max-h-[60vh] overflow-y-auto">
+          {loading && (
+            <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
+              <Loader2 className="size-3.5 animate-spin" />
+              Loading challenge packs and deployments…
+            </div>
+          )}
+
           {/* Name */}
           <div>
             <label className="mb-1.5 block text-sm font-medium">
@@ -482,6 +531,17 @@ export function CreateRunDialog({ workspaceId }: CreateRunDialogProps) {
                 </option>
               ))}
             </select>
+            {!loading && packs.length === 0 && (
+              <p className="mt-1.5 text-sm text-muted-foreground">
+                No challenge packs yet.{" "}
+                <InlineSetupLink
+                  href={`/workspaces/${workspaceId}/challenge-packs`}
+                  onNavigate={() => setOpen(false)}
+                >
+                  Add a challenge pack
+                </InlineSetupLink>
+              </p>
+            )}
           </div>
 
           {/* Pack Version */}
@@ -510,6 +570,17 @@ export function CreateRunDialog({ workspaceId }: CreateRunDialogProps) {
                 </option>
               ))}
             </select>
+            {selectedPackId && runnableVersions.length === 0 && (
+              <p className="mt-1.5 text-sm text-muted-foreground">
+                This pack has no runnable version yet.{" "}
+                <InlineSetupLink
+                  href={`/workspaces/${workspaceId}/challenge-packs/${selectedPackId}`}
+                  onNavigate={() => setOpen(false)}
+                >
+                  Publish a runnable version
+                </InlineSetupLink>
+              </p>
+            )}
           </div>
 
           {selectedVersionIsVoice && selectedVersion && (
@@ -746,7 +817,13 @@ export function CreateRunDialog({ workspaceId }: CreateRunDialogProps) {
               <p className="text-sm text-muted-foreground">Loading...</p>
             ) : deployments.length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                No active deployments — create one first.
+                No active deployments.{" "}
+                <InlineSetupLink
+                  href={`/workspaces/${workspaceId}/deployments`}
+                  onNavigate={() => setOpen(false)}
+                >
+                  Create a deployment
+                </InlineSetupLink>
               </p>
             ) : (
               <div className="space-y-1.5 rounded-lg border border-input p-2 max-h-40 overflow-y-auto">
