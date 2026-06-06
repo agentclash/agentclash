@@ -15,6 +15,7 @@ export function RunsPageClient({ workspaceId }: { workspaceId: string }) {
     <div>
       <PageHeader
         title="Runs"
+        description="Benchmark single runs and repeated eval sessions against challenge packs."
         actions={
           <>
             <CreateEvalSessionDialog workspaceId={workspaceId} />
@@ -26,9 +27,6 @@ export function RunsPageClient({ workspaceId }: { workspaceId: string }) {
           </>
         }
       />
-      <p className="-mt-4 mb-6 text-sm text-muted-foreground">
-        Benchmark single runs and repeated eval sessions against challenge packs.
-      </p>
 
       <Tabs defaultValue="runs" className="w-full">
         <TabsList variant="line">

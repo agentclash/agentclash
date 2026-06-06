@@ -6,6 +6,7 @@ export type { BreadcrumbEntry };
 
 interface PageHeaderProps {
   title: string;
+  description?: ReactNode;
   breadcrumbs?: BreadcrumbEntry[];
   actions?: ReactNode;
   className?: string;
@@ -13,6 +14,7 @@ interface PageHeaderProps {
 
 export function PageHeader({
   title,
+  description,
   breadcrumbs,
   actions,
   className,
@@ -26,6 +28,9 @@ export function PageHeader({
         <h1 className="text-lg font-semibold tracking-tight">{title}</h1>
         {actions && <div className="flex items-center gap-2">{actions}</div>}
       </div>
+      {description && (
+        <p className="text-sm text-muted-foreground">{description}</p>
+      )}
     </div>
   );
 }

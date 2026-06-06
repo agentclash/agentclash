@@ -1,6 +1,5 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
 import { useApiListQuery, usePaginatedApiQuery } from "@/lib/api/swr";
 import type {
   AgentDeployment,
@@ -45,16 +44,13 @@ export interface WorkspaceReadiness {
   nextStep: ReadinessStep | null;
   isLoading: boolean;
   error: boolean;
-  refresh: () => void;
 }
 
 function hasRunnableVersion(pack: ChallengePack): boolean {
   return (pack.versions ?? []).some((v) => v.lifecycle_status === "runnable");
 }
 
-export function useWorkspaceReadiness(
-  workspaceId: string,
-): WorkspaceReadiness {
+export function useWorkspaceReadiness(workspaceId: string): WorkspaceReadiness {
   const providers = useApiListQuery<ProviderAccount>(
     `/v1/workspaces/${workspaceId}/provider-accounts`,
   );
@@ -65,90 +61,70 @@ export function useWorkspaceReadiness(
     `/v1/workspaces/${workspaceId}/challenge-packs`,
   );
   // Only need to know whether *any* run exists.
-  const runs = usePaginatedApiQuery<Run>(
-    `/v1/workspaces/${workspaceId}/runs`,
-    { limit: 1, offset: 0 },
+  const runs = usePaginatedApiQuery<Run>(`/v1/workspaces/${workspaceId}/runs`, {
+    limit: 1,
+    offset: 0,
+  });
+
+  // No manual memoization: this project's React Compiler lint owns memoization,
+  // and the returned object is cheap to recompute (no consumer keys on its
+  // identity). SWR dedupes the underlying requests across every caller.
+  const hasProvider = (providers.data?.items.length ?? 0) > 0;
+  const hasDeployment = (deployments.data?.items ?? []).some(
+    (d) => d.status === "active",
+  );
+  const hasRunnablePack = (packs.data?.items ?? []).some(hasRunnableVersion);
+  const hasRun = (runs.data?.total ?? 0) > 0;
+
+  const steps: ReadinessStep[] = [
+    {
+      key: "provider",
+      label: "Connect a provider",
+      description:
+        "Add an LLM provider account so your agents can call models.",
+      href: `/workspaces/${workspaceId}/provider-accounts`,
+      cta: "Add provider",
+      done: hasProvider,
+    },
+    {
+      key: "deployment",
+      label: "Deploy an agent",
+      description: "Create an agent deployment to compete in your evals.",
+      href: `/workspaces/${workspaceId}/deployments`,
+      cta: "Create deployment",
+      done: hasDeployment,
+    },
+    {
+      key: "challenge_pack",
+      label: "Add a challenge pack",
+      description:
+        "Publish a challenge pack with a runnable version to benchmark against.",
+      href: `/workspaces/${workspaceId}/challenge-packs`,
+      cta: "Add challenge pack",
+      done: hasRunnablePack,
+    },
+    {
+      key: "first_run",
+      label: "Run your first eval",
+      description: "Race your deployments against a challenge pack.",
+      href: `/workspaces/${workspaceId}/runs`,
+      cta: "Create run",
+      done: hasRun,
+    },
+  ];
+
+  const ready = hasProvider && hasDeployment && hasRunnablePack;
+  const allComplete = ready && hasRun;
+  const nextStep = steps.find((s) => !s.done) ?? null;
+
+  const isLoading =
+    (providers.isLoading && !providers.data) ||
+    (deployments.isLoading && !deployments.data) ||
+    (packs.isLoading && !packs.data) ||
+    (runs.isLoading && !runs.data);
+  const error = Boolean(
+    providers.error || deployments.error || packs.error || runs.error,
   );
 
-  const refresh = useCallback(() => {
-    void providers.mutate();
-    void deployments.mutate();
-    void packs.mutate();
-    void runs.mutate();
-  }, [providers, deployments, packs, runs]);
-
-  return useMemo<WorkspaceReadiness>(() => {
-    const hasProvider = (providers.data?.items.length ?? 0) > 0;
-    const hasDeployment = (deployments.data?.items ?? []).some(
-      (d) => d.status === "active",
-    );
-    const hasRunnablePack = (packs.data?.items ?? []).some(hasRunnableVersion);
-    const hasRun = (runs.data?.total ?? 0) > 0;
-
-    const steps: ReadinessStep[] = [
-      {
-        key: "provider",
-        label: "Connect a provider",
-        description: "Add an LLM provider account so your agents can call models.",
-        href: `/workspaces/${workspaceId}/provider-accounts`,
-        cta: "Add provider",
-        done: hasProvider,
-      },
-      {
-        key: "deployment",
-        label: "Deploy an agent",
-        description: "Create an agent deployment to compete in your evals.",
-        href: `/workspaces/${workspaceId}/deployments`,
-        cta: "Create deployment",
-        done: hasDeployment,
-      },
-      {
-        key: "challenge_pack",
-        label: "Add a challenge pack",
-        description:
-          "Publish a challenge pack with a runnable version to benchmark against.",
-        href: `/workspaces/${workspaceId}/challenge-packs`,
-        cta: "Add challenge pack",
-        done: hasRunnablePack,
-      },
-      {
-        key: "first_run",
-        label: "Run your first eval",
-        description: "Race your deployments against a challenge pack.",
-        href: `/workspaces/${workspaceId}/runs`,
-        cta: "Create run",
-        done: hasRun,
-      },
-    ];
-
-    const ready = hasProvider && hasDeployment && hasRunnablePack;
-    const allComplete = ready && hasRun;
-    const nextStep = steps.find((s) => !s.done) ?? null;
-
-    const isLoading =
-      (providers.isLoading && !providers.data) ||
-      (deployments.isLoading && !deployments.data) ||
-      (packs.isLoading && !packs.data) ||
-      (runs.isLoading && !runs.data);
-    const error = Boolean(
-      providers.error || deployments.error || packs.error || runs.error,
-    );
-
-    return { steps, ready, allComplete, nextStep, isLoading, error, refresh };
-  }, [
-    workspaceId,
-    providers.data,
-    providers.isLoading,
-    providers.error,
-    deployments.data,
-    deployments.isLoading,
-    deployments.error,
-    packs.data,
-    packs.isLoading,
-    packs.error,
-    runs.data,
-    runs.isLoading,
-    runs.error,
-    refresh,
-  ]);
+  return { steps, ready, allComplete, nextStep, isLoading, error };
 }
