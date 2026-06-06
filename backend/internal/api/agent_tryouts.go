@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -342,7 +343,10 @@ func (d *agentTryoutExecutionDispatcher) dispatch(ctx context.Context, tryout re
 	if err != nil {
 		return repository.AgentTryout{}, err
 	}
-	runID := derefUUID(execution.RunID)
+	if execution.RunID == nil || *execution.RunID == uuid.Nil {
+		return d.failTryout(ctx, tryout, "execution_link_missing", "We could not link this tryout to an execution run. Please try again.")
+	}
+	runID := *execution.RunID
 	linked, err := d.repo.LinkAgentTryoutRunIfUnset(ctx, repository.LinkAgentTryoutRunParams{
 		ID:      tryout.ID,
 		RunID:   runID,
@@ -441,11 +445,19 @@ func (d *agentTryoutExecutionDispatcher) refresh(ctx context.Context, tryout rep
 		return repository.AgentTryout{}, err
 	}
 	status, redaction := agentTryoutStatusFromHarnessExecution(execution)
+	if agentTryoutTerminal(tryout.Status) && !agentTryoutTerminal(status) {
+		return tryout, nil
+	}
+	summary := agentTryoutExecutionSummary(execution)
+	latency := agentTryoutLatencyMS(execution)
+	if !agentTryoutRefreshChanged(tryout, status, summary, latency, redaction) {
+		return tryout, nil
+	}
 	return d.repo.UpdateAgentTryoutStatus(ctx, repository.UpdateAgentTryoutStatusParams{
 		ID:              tryout.ID,
 		Status:          status,
-		Summary:         agentTryoutExecutionSummary(execution),
-		LatencyMS:       agentTryoutLatencyMS(execution),
+		Summary:         summary,
+		LatencyMS:       latency,
 		RedactionStatus: redaction,
 	})
 }
@@ -579,11 +591,50 @@ func agentTryoutLatencyMS(execution repository.AgentHarnessExecution) *int64 {
 	return &value
 }
 
-func derefUUID(value *uuid.UUID) uuid.UUID {
-	if value == nil {
-		return uuid.Nil
+func agentTryoutTerminal(status repository.AgentTryoutStatus) bool {
+	switch status {
+	case repository.AgentTryoutStatusCompleted,
+		repository.AgentTryoutStatusFailed,
+		repository.AgentTryoutStatusCancelled:
+		return true
+	default:
+		return false
 	}
-	return *value
+}
+
+func agentTryoutRefreshChanged(tryout repository.AgentTryout, status repository.AgentTryoutStatus, summary json.RawMessage, latency *int64, redaction *repository.AgentTryoutRedactionStatus) bool {
+	if tryout.Status != status {
+		return true
+	}
+	if !agentTryoutJSONEqual(tryout.Summary, summary) {
+		return true
+	}
+	if !agentTryoutInt64PtrEqual(tryout.LatencyMS, latency) {
+		return true
+	}
+	return redaction != nil && tryout.RedactionStatus != *redaction
+}
+
+func agentTryoutJSONEqual(a json.RawMessage, b json.RawMessage) bool {
+	var left any
+	var right any
+	if len(a) == 0 || len(b) == 0 {
+		return string(a) == string(b)
+	}
+	if err := json.Unmarshal(a, &left); err != nil {
+		return string(a) == string(b)
+	}
+	if err := json.Unmarshal(b, &right); err != nil {
+		return string(a) == string(b)
+	}
+	return reflect.DeepEqual(left, right)
+}
+
+func agentTryoutInt64PtrEqual(a *int64, b *int64) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return *a == *b
 }
 
 func mustAgentTryoutJSON(value any) json.RawMessage {
