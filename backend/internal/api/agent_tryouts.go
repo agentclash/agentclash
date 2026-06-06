@@ -28,9 +28,14 @@ const (
 )
 
 var (
-	ErrAgentTryoutTemplateNotFound    = errors.New("agent tryout template not found")
-	ErrAgentTryoutTemplateUnavailable = errors.New("agent tryout template unavailable")
-	ErrInvalidAgentTryoutInput        = errors.New("invalid agent tryout input")
+	ErrAgentTryoutTemplateNotFound          = errors.New("agent tryout template not found")
+	ErrAgentTryoutTemplateUnavailable       = errors.New("agent tryout template unavailable")
+	ErrInvalidAgentTryoutInput              = errors.New("invalid agent tryout input")
+	ErrAgentTryoutAnonymousQuotaExhausted   = errors.New("agent tryout anonymous quota exhausted")
+	ErrAgentTryoutAnonymousQuotaUnavailable = errors.New("agent tryout anonymous quota unavailable")
+	ErrAgentTryoutHostedSpendUnavailable    = errors.New("agent tryout hosted spend unavailable")
+	ErrAgentTryoutHostedSpendExhausted      = errors.New("agent tryout hosted spend exhausted")
+	ErrAgentTryoutCostCapExceeded           = errors.New("agent tryout cost cap exceeded")
 )
 
 type AgentTryoutRepository interface {
@@ -42,6 +47,9 @@ type AgentTryoutRepository interface {
 	TransitionAgentHarnessExecutionStatus(ctx context.Context, p repository.TransitionAgentHarnessExecutionStatusParams) (repository.AgentHarnessExecution, error)
 	GetAgentHarnessExecutionByRunID(ctx context.Context, runID uuid.UUID) (repository.AgentHarnessExecution, error)
 	CreateAgentTryout(ctx context.Context, params repository.CreateAgentTryoutParams) (repository.AgentTryout, error)
+	CountAnonymousAgentTryoutsByFingerprint(ctx context.Context, fingerprintHash string, since time.Time) (int64, error)
+	SumAnonymousAgentTryoutCostLimitUSD(ctx context.Context, windowStart, windowEnd time.Time) (float64, error)
+	WithinAnonymousAgentTryoutQuotaLock(ctx context.Context, fn func(repository.AnonymousAgentTryoutQuotaTx) error) error
 	GetAgentTryoutByID(ctx context.Context, id uuid.UUID) (repository.AgentTryout, error)
 	ListAgentTryoutsByWorkspaceID(ctx context.Context, workspaceID uuid.UUID, limit, offset int32) ([]repository.AgentTryout, error)
 	LinkAgentTryoutRunIfUnset(ctx context.Context, params repository.LinkAgentTryoutRunParams) (repository.AgentTryout, error)
@@ -112,12 +120,20 @@ type AgentTryoutExecutionConfig struct {
 	ConcurrencyLimit       int
 }
 
+type AgentTryoutQuotaConfig struct {
+	AnonymousLimit            int
+	AnonymousWindow           time.Duration
+	HostedDailySpendCapUSD    float64
+	AnonymousPerRunCostCapUSD float64
+}
+
 type AgentTryoutManager struct {
 	authorizer WorkspaceAuthorizer
 	repo       AgentTryoutRepository
 	now        func() time.Time
 	templates  map[string]AgentTryoutTemplate
 	execution  *agentTryoutExecutionDispatcher
+	quota      *AgentTryoutQuotaConfig
 }
 
 func NewAgentTryoutManager(authorizer WorkspaceAuthorizer, repo AgentTryoutRepository) *AgentTryoutManager {
@@ -146,6 +162,12 @@ func (m *AgentTryoutManager) WithExecution(starter AgentHarnessExecutionWorkflow
 	return m
 }
 
+func (m *AgentTryoutManager) WithQuota(config AgentTryoutQuotaConfig) *AgentTryoutManager {
+	normalized := normalizeAgentTryoutQuotaConfig(config)
+	m.quota = &normalized
+	return m
+}
+
 func (m *AgentTryoutManager) ListTemplates(context.Context) ([]AgentTryoutTemplate, error) {
 	templates := builtinAgentTryoutTemplates()
 	return templates, nil
@@ -171,7 +193,7 @@ func (m *AgentTryoutManager) CreateAnonymousTryout(ctx context.Context, input Cr
 	}
 	expiresAt := now.UTC().Add(defaultAgentTryoutTTL)
 	fingerprintHash := hashAnonymousFingerprint(input.AnonymousFingerprint)
-	tryout, err := m.repo.CreateAgentTryout(ctx, repository.CreateAgentTryoutParams{
+	createParams := repository.CreateAgentTryoutParams{
 		TemplateSlug:             template.Slug,
 		Status:                   repository.AgentTryoutStatusQueued,
 		InputSnapshot:            input.Input,
@@ -185,6 +207,36 @@ func (m *AgentTryoutManager) CreateAnonymousTryout(ctx context.Context, input Cr
 		MaxDurationSeconds:       template.MaxDurationSeconds,
 		AnonymousFingerprintHash: &fingerprintHash,
 		ExpiresAt:                &expiresAt,
+	}
+
+	// When quotas are disabled there is nothing to serialize, so skip the lock.
+	if m.quota == nil {
+		tryout, err := m.repo.CreateAgentTryout(ctx, createParams)
+		if err != nil {
+			return repository.AgentTryout{}, err
+		}
+		return m.dispatchCreatedTryout(ctx, tryout, template)
+	}
+
+	// Fail fast on the static per-run cost cap before taking the global lock.
+	if err := m.enforceAnonymousPerRunCostCap(template); err != nil {
+		return repository.AgentTryout{}, err
+	}
+
+	// Enforce the per-fingerprint quota and hosted daily-spend cap, then create
+	// the tryout, all under a single advisory lock so concurrent requests cannot
+	// both pass the gate before either commits (TOCTOU-safe).
+	var tryout repository.AgentTryout
+	err = m.repo.WithinAnonymousAgentTryoutQuotaLock(ctx, func(qtx repository.AnonymousAgentTryoutQuotaTx) error {
+		if err := m.enforceAnonymousQuota(ctx, qtx, template, fingerprintHash, now); err != nil {
+			return err
+		}
+		created, err := qtx.CreateAgentTryout(ctx, createParams)
+		if err != nil {
+			return err
+		}
+		tryout = created
+		return nil
 	})
 	if err != nil {
 		return repository.AgentTryout{}, err
@@ -294,6 +346,61 @@ func (m *AgentTryoutManager) refreshTryoutFromExecution(ctx context.Context, try
 		return tryout
 	}
 	return refreshed
+}
+
+func normalizeAgentTryoutQuotaConfig(config AgentTryoutQuotaConfig) AgentTryoutQuotaConfig {
+	if config.AnonymousLimit < 0 {
+		config.AnonymousLimit = 0
+	}
+	if config.AnonymousWindow <= 0 {
+		config.AnonymousWindow = 24 * time.Hour
+	}
+	if config.HostedDailySpendCapUSD < 0 {
+		config.HostedDailySpendCapUSD = 0
+	}
+	if config.AnonymousPerRunCostCapUSD < 0 {
+		config.AnonymousPerRunCostCapUSD = 0
+	}
+	return config
+}
+
+// enforceAnonymousPerRunCostCap rejects templates whose per-run cost limit
+// exceeds the configured anonymous cap. It is pure (no DB access) so callers can
+// run it before acquiring the quota lock.
+func (m *AgentTryoutManager) enforceAnonymousPerRunCostCap(template AgentTryoutTemplate) error {
+	if template.MaxCostUSD > m.quota.AnonymousPerRunCostCapUSD {
+		return fmt.Errorf("%w: template cost limit %.4f exceeds anonymous per-run cap %.4f", ErrAgentTryoutCostCapExceeded, template.MaxCostUSD, m.quota.AnonymousPerRunCostCapUSD)
+	}
+	return nil
+}
+
+// enforceAnonymousQuota checks the per-fingerprint quota and hosted daily-spend
+// cap against qtx. Callers must invoke it inside WithinAnonymousAgentTryoutQuotaLock
+// (and create the tryout via the same qtx) so the reads and the insert are atomic.
+func (m *AgentTryoutManager) enforceAnonymousQuota(ctx context.Context, qtx repository.AnonymousAgentTryoutQuotaTx, template AgentTryoutTemplate, fingerprintHash string, now time.Time) error {
+	config := *m.quota
+	count, err := qtx.CountAnonymousAgentTryoutsByFingerprint(ctx, fingerprintHash, now.UTC().Add(-config.AnonymousWindow))
+	if err != nil {
+		return fmt.Errorf("%w: count anonymous tryouts: %v", ErrAgentTryoutAnonymousQuotaUnavailable, err)
+	}
+	if count >= int64(config.AnonymousLimit) {
+		return ErrAgentTryoutAnonymousQuotaExhausted
+	}
+	// The hosted spend cap is intentionally a fixed UTC calendar-day budget
+	// (HostedDailySpendCapUSD resets at UTC midnight), independent of the rolling
+	// per-fingerprint AnonymousWindow above. The two windows serve different
+	// purposes — abuse throttling per visitor vs. a global daily spend ceiling —
+	// so they are not derived from one another.
+	windowStart := time.Date(now.UTC().Year(), now.UTC().Month(), now.UTC().Day(), 0, 0, 0, 0, time.UTC)
+	windowEnd := windowStart.Add(24 * time.Hour)
+	spend, err := qtx.SumAnonymousAgentTryoutCostLimitUSD(ctx, windowStart, windowEnd)
+	if err != nil {
+		return fmt.Errorf("%w: sum hosted spend: %v", ErrAgentTryoutHostedSpendUnavailable, err)
+	}
+	if spend+template.MaxCostUSD > config.HostedDailySpendCapUSD {
+		return ErrAgentTryoutHostedSpendExhausted
+	}
+	return nil
 }
 
 type agentTryoutExecutionDispatcher struct {
@@ -1125,6 +1232,16 @@ func writeAgentTryoutError(w http.ResponseWriter, logger *slog.Logger, err error
 		writeError(w, http.StatusNotFound, "template_not_found", "agent tryout template not found")
 	case errors.Is(err, ErrAgentTryoutTemplateUnavailable):
 		writeError(w, http.StatusConflict, "template_unavailable", agentTryoutTemplateUnavailableMessage(err))
+	case errors.Is(err, ErrAgentTryoutAnonymousQuotaExhausted):
+		writeError(w, http.StatusTooManyRequests, "anonymous_quota_exhausted", "Free tryout limit reached. Sign in to save and rerun tryouts, or try again later.")
+	case errors.Is(err, ErrAgentTryoutAnonymousQuotaUnavailable):
+		writeError(w, http.StatusServiceUnavailable, "anonymous_quota_unavailable", "Free tryout quota accounting is unavailable. Please try again later.")
+	case errors.Is(err, ErrAgentTryoutHostedSpendUnavailable):
+		writeError(w, http.StatusServiceUnavailable, "hosted_spend_unavailable", "Hosted tryout spend accounting is unavailable. Please try again later.")
+	case errors.Is(err, ErrAgentTryoutHostedSpendExhausted):
+		writeError(w, http.StatusTooManyRequests, "hosted_spend_exhausted", "Hosted free tryouts are temporarily unavailable. Please try again later.")
+	case errors.Is(err, ErrAgentTryoutCostCapExceeded):
+		writeError(w, http.StatusBadRequest, "tryout_cost_cap_exceeded", "This template exceeds the hosted free tryout cost cap.")
 	case errors.Is(err, repository.ErrAgentTryoutNotFound):
 		writeError(w, http.StatusNotFound, "agent_tryout_not_found", "agent tryout not found")
 	case errors.Is(err, repository.ErrAgentTryoutAlreadyClaimed):

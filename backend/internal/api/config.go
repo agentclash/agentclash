@@ -18,74 +18,82 @@ import (
 )
 
 const (
-	defaultBindAddress               = ":8080"
-	defaultDatabaseURL               = "postgres://agentclash:agentclash@localhost:5432/agentclash?sslmode=disable"
-	defaultTemporalTarget            = "localhost:7233"
-	defaultNamespace                 = "default"
-	defaultAppEnvironment            = "development"
-	defaultAuthMode                  = "dev"
-	defaultShutdownTime              = 10 * time.Second
-	defaultHostedRunCallbackSecret   = "agentclash-dev-hosted-callback-secret"
-	minArtifactSigningSecretLength   = 32
-	defaultArtifactStorageBackend    = "filesystem"
-	defaultArtifactStorageBucket     = "agentclash-dev-artifacts"
-	defaultArtifactSignedURLTTL      = 5 * time.Minute
-	defaultArtifactMaxUploadBytes    = 100 << 20
-	defaultRateLimitRPS              = 10.0
-	defaultRateLimitBurst            = 20
-	defaultRateLimitRunCreationRPM   = 30.0
-	defaultRateLimitRunCreationBurst = 10
-	defaultDodoWebhookKey            = "whsec_YWdlbnRjbGFzaC1kZXYtZG9kby13ZWJob29rLXNlY3JldA=="
-	defaultDodoEnvironment           = "test"
+	defaultBindAddress                          = ":8080"
+	defaultDatabaseURL                          = "postgres://agentclash:agentclash@localhost:5432/agentclash?sslmode=disable"
+	defaultTemporalTarget                       = "localhost:7233"
+	defaultNamespace                            = "default"
+	defaultAppEnvironment                       = "development"
+	defaultAuthMode                             = "dev"
+	defaultShutdownTime                         = 10 * time.Second
+	defaultHostedRunCallbackSecret              = "agentclash-dev-hosted-callback-secret"
+	minArtifactSigningSecretLength              = 32
+	defaultArtifactStorageBackend               = "filesystem"
+	defaultArtifactStorageBucket                = "agentclash-dev-artifacts"
+	defaultArtifactSignedURLTTL                 = 5 * time.Minute
+	defaultArtifactMaxUploadBytes               = 100 << 20
+	defaultRateLimitRPS                         = 10.0
+	defaultRateLimitBurst                       = 20
+	defaultRateLimitRunCreationRPM              = 30.0
+	defaultRateLimitRunCreationBurst            = 10
+	defaultDodoWebhookKey                       = "whsec_YWdlbnRjbGFzaC1kZXYtZG9kby13ZWJob29rLXNlY3JldA=="
+	defaultDodoEnvironment                      = "test"
+	defaultAgentTryoutAnonymousLimit            = 1
+	defaultAgentTryoutAnonymousWindow           = 24 * time.Hour
+	defaultAgentTryoutHostedDailySpendCapUSD    = 25.0
+	defaultAgentTryoutAnonymousPerRunCostCapUSD = 1.0
 )
 
 var ErrInvalidConfig = errors.New("invalid api server config")
 
 type Config struct {
-	AppEnvironment                    string
-	AuthMode                          string // "dev" or "workos"
-	WorkOSClientID                    string // required when AuthMode is "workos"
-	WorkOSIssuer                      string // optional; defaults to "https://api.workos.com"
-	BindAddress                       string
-	DatabaseURL                       string
-	TemporalAddress                   string
-	TemporalNamespace                 string
-	HostedRunCallbackSecret           string
-	CORSAllowedOrigins                map[string]struct{} // parsed from CORS_ALLOWED_ORIGINS; empty means wildcard in dev, deny in prod
-	ShutdownTimeout                   time.Duration
-	ArtifactStorageBackend            string
-	ArtifactStorageBucket             string
-	ArtifactFilesystemRoot            string
-	ArtifactS3Region                  string
-	ArtifactS3Endpoint                string
-	ArtifactS3AccessKeyID             string
-	ArtifactS3SecretKey               string
-	ArtifactS3ForcePathStyle          bool
-	ArtifactSigningSecret             string
-	ArtifactSignedURLTTL              time.Duration
-	ArtifactMaxUploadBytes            int64
-	SecretsCipher                     *secrets.AESGCMCipher
-	RateLimitRPS                      float64
-	RateLimitBurst                    int
-	RateLimitRunCreationRPM           float64
-	RateLimitRunCreationBurst         int
-	ResendAPIKey                      string
-	ResendFromEmail                   string
-	FrontendURL                       string
-	GitHubAppSlug                     string
-	GitHubAppID                       int64
-	GitHubAppPrivateKey               string
-	GitHubAppStateSecret              string
-	GitHubWebhookSecret               string
-	DodoPaymentsAPIKey                string
-	DodoPaymentsWebhookKey            string
-	DodoEnvironment                   string
-	DodoProductIDs                    billingpkg.DodoProductIDs
-	DodoAPIBaseURL                    string
-	AgentTryoutPublicWorkspaceID      *uuid.UUID
-	AgentTryoutPublicCreatedByUserID  *uuid.UUID
-	AgentTryoutE2BTemplateID          string
-	AgentTryoutOpenAIAPIKeySecretName string
+	AppEnvironment                       string
+	AuthMode                             string // "dev" or "workos"
+	WorkOSClientID                       string // required when AuthMode is "workos"
+	WorkOSIssuer                         string // optional; defaults to "https://api.workos.com"
+	BindAddress                          string
+	DatabaseURL                          string
+	TemporalAddress                      string
+	TemporalNamespace                    string
+	HostedRunCallbackSecret              string
+	CORSAllowedOrigins                   map[string]struct{} // parsed from CORS_ALLOWED_ORIGINS; empty means wildcard in dev, deny in prod
+	ShutdownTimeout                      time.Duration
+	ArtifactStorageBackend               string
+	ArtifactStorageBucket                string
+	ArtifactFilesystemRoot               string
+	ArtifactS3Region                     string
+	ArtifactS3Endpoint                   string
+	ArtifactS3AccessKeyID                string
+	ArtifactS3SecretKey                  string
+	ArtifactS3ForcePathStyle             bool
+	ArtifactSigningSecret                string
+	ArtifactSignedURLTTL                 time.Duration
+	ArtifactMaxUploadBytes               int64
+	SecretsCipher                        *secrets.AESGCMCipher
+	RateLimitRPS                         float64
+	RateLimitBurst                       int
+	RateLimitRunCreationRPM              float64
+	RateLimitRunCreationBurst            int
+	ResendAPIKey                         string
+	ResendFromEmail                      string
+	FrontendURL                          string
+	GitHubAppSlug                        string
+	GitHubAppID                          int64
+	GitHubAppPrivateKey                  string
+	GitHubAppStateSecret                 string
+	GitHubWebhookSecret                  string
+	DodoPaymentsAPIKey                   string
+	DodoPaymentsWebhookKey               string
+	DodoEnvironment                      string
+	DodoProductIDs                       billingpkg.DodoProductIDs
+	DodoAPIBaseURL                       string
+	AgentTryoutPublicWorkspaceID         *uuid.UUID
+	AgentTryoutPublicCreatedByUserID     *uuid.UUID
+	AgentTryoutE2BTemplateID             string
+	AgentTryoutOpenAIAPIKeySecretName    string
+	AgentTryoutAnonymousLimit            int
+	AgentTryoutAnonymousWindow           time.Duration
+	AgentTryoutHostedDailySpendCapUSD    float64
+	AgentTryoutAnonymousPerRunCostCapUSD float64
 }
 
 func LoadConfigFromEnv() (Config, error) {
@@ -223,51 +231,71 @@ func LoadConfigFromEnv() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	agentTryoutAnonymousLimit, err := nonNegativeIntEnvOrDefault("AGENT_TRYOUT_ANONYMOUS_LIMIT", defaultAgentTryoutAnonymousLimit)
+	if err != nil {
+		return Config{}, err
+	}
+	agentTryoutAnonymousWindow, err := durationSecondsEnvOrDefault("AGENT_TRYOUT_ANONYMOUS_WINDOW_SECONDS", defaultAgentTryoutAnonymousWindow)
+	if err != nil {
+		return Config{}, err
+	}
+	agentTryoutHostedDailySpendCapUSD, err := nonNegativeFloatEnvOrDefault("AGENT_TRYOUT_HOSTED_DAILY_SPEND_CAP_USD", defaultAgentTryoutHostedDailySpendCapUSD)
+	if err != nil {
+		return Config{}, err
+	}
+	agentTryoutAnonymousPerRunCostCapUSD, err := nonNegativeFloatEnvOrDefault("AGENT_TRYOUT_ANONYMOUS_PER_RUN_COST_CAP_USD", defaultAgentTryoutAnonymousPerRunCostCapUSD)
+	if err != nil {
+		return Config{}, err
+	}
 
 	cfg := Config{
-		AppEnvironment:                    appEnvironment,
-		AuthMode:                          authMode,
-		WorkOSClientID:                    workosClientID,
-		WorkOSIssuer:                      workosIssuer,
-		BindAddress:                       bindAddress,
-		DatabaseURL:                       databaseURL,
-		TemporalAddress:                   temporalAddress,
-		TemporalNamespace:                 temporalNamespace,
-		HostedRunCallbackSecret:           hostedRunCallbackSecret,
-		CORSAllowedOrigins:                corsAllowedOrigins,
-		ShutdownTimeout:                   defaultShutdownTime,
-		ArtifactStorageBackend:            artifactStorageBackend,
-		ArtifactStorageBucket:             artifactStorageBucket,
-		ArtifactFilesystemRoot:            artifactFilesystemRoot,
-		ArtifactS3Region:                  artifactS3Region,
-		ArtifactS3Endpoint:                artifactS3Endpoint,
-		ArtifactS3AccessKeyID:             artifactS3AccessKeyID,
-		ArtifactS3SecretKey:               artifactS3SecretKey,
-		ArtifactS3ForcePathStyle:          artifactS3ForcePathStyle,
-		ArtifactSigningSecret:             artifactSigningSecret,
-		ArtifactSignedURLTTL:              artifactSignedURLTTL,
-		ArtifactMaxUploadBytes:            artifactMaxUploadBytes,
-		RateLimitRPS:                      defaultRateLimitRPS,
-		RateLimitBurst:                    defaultRateLimitBurst,
-		RateLimitRunCreationRPM:           defaultRateLimitRunCreationRPM,
-		RateLimitRunCreationBurst:         defaultRateLimitRunCreationBurst,
-		ResendAPIKey:                      resendAPIKey,
-		ResendFromEmail:                   resendFromEmail,
-		FrontendURL:                       frontendURL,
-		GitHubAppSlug:                     os.Getenv("GITHUB_APP_SLUG"),
-		GitHubAppID:                       githubAppID,
-		GitHubAppPrivateKey:               normalizePEMEnv(os.Getenv("GITHUB_APP_PRIVATE_KEY")),
-		GitHubAppStateSecret:              os.Getenv("GITHUB_APP_STATE_SECRET"),
-		GitHubWebhookSecret:               os.Getenv("GITHUB_WEBHOOK_SECRET"),
-		DodoPaymentsAPIKey:                dodoPaymentsAPIKey,
-		DodoPaymentsWebhookKey:            dodoPaymentsWebhookKey,
-		DodoEnvironment:                   dodoEnvironment,
-		DodoProductIDs:                    dodoProductIDs,
-		DodoAPIBaseURL:                    os.Getenv("DODO_API_BASE_URL"),
-		AgentTryoutPublicWorkspaceID:      agentTryoutPublicWorkspaceID,
-		AgentTryoutPublicCreatedByUserID:  agentTryoutPublicCreatedByUserID,
-		AgentTryoutE2BTemplateID:          os.Getenv("AGENT_TRYOUT_E2B_TEMPLATE_ID"),
-		AgentTryoutOpenAIAPIKeySecretName: os.Getenv("AGENT_TRYOUT_OPENAI_API_KEY_SECRET_NAME"),
+		AppEnvironment:                       appEnvironment,
+		AuthMode:                             authMode,
+		WorkOSClientID:                       workosClientID,
+		WorkOSIssuer:                         workosIssuer,
+		BindAddress:                          bindAddress,
+		DatabaseURL:                          databaseURL,
+		TemporalAddress:                      temporalAddress,
+		TemporalNamespace:                    temporalNamespace,
+		HostedRunCallbackSecret:              hostedRunCallbackSecret,
+		CORSAllowedOrigins:                   corsAllowedOrigins,
+		ShutdownTimeout:                      defaultShutdownTime,
+		ArtifactStorageBackend:               artifactStorageBackend,
+		ArtifactStorageBucket:                artifactStorageBucket,
+		ArtifactFilesystemRoot:               artifactFilesystemRoot,
+		ArtifactS3Region:                     artifactS3Region,
+		ArtifactS3Endpoint:                   artifactS3Endpoint,
+		ArtifactS3AccessKeyID:                artifactS3AccessKeyID,
+		ArtifactS3SecretKey:                  artifactS3SecretKey,
+		ArtifactS3ForcePathStyle:             artifactS3ForcePathStyle,
+		ArtifactSigningSecret:                artifactSigningSecret,
+		ArtifactSignedURLTTL:                 artifactSignedURLTTL,
+		ArtifactMaxUploadBytes:               artifactMaxUploadBytes,
+		RateLimitRPS:                         defaultRateLimitRPS,
+		RateLimitBurst:                       defaultRateLimitBurst,
+		RateLimitRunCreationRPM:              defaultRateLimitRunCreationRPM,
+		RateLimitRunCreationBurst:            defaultRateLimitRunCreationBurst,
+		ResendAPIKey:                         resendAPIKey,
+		ResendFromEmail:                      resendFromEmail,
+		FrontendURL:                          frontendURL,
+		GitHubAppSlug:                        os.Getenv("GITHUB_APP_SLUG"),
+		GitHubAppID:                          githubAppID,
+		GitHubAppPrivateKey:                  normalizePEMEnv(os.Getenv("GITHUB_APP_PRIVATE_KEY")),
+		GitHubAppStateSecret:                 os.Getenv("GITHUB_APP_STATE_SECRET"),
+		GitHubWebhookSecret:                  os.Getenv("GITHUB_WEBHOOK_SECRET"),
+		DodoPaymentsAPIKey:                   dodoPaymentsAPIKey,
+		DodoPaymentsWebhookKey:               dodoPaymentsWebhookKey,
+		DodoEnvironment:                      dodoEnvironment,
+		DodoProductIDs:                       dodoProductIDs,
+		DodoAPIBaseURL:                       os.Getenv("DODO_API_BASE_URL"),
+		AgentTryoutPublicWorkspaceID:         agentTryoutPublicWorkspaceID,
+		AgentTryoutPublicCreatedByUserID:     agentTryoutPublicCreatedByUserID,
+		AgentTryoutE2BTemplateID:             os.Getenv("AGENT_TRYOUT_E2B_TEMPLATE_ID"),
+		AgentTryoutOpenAIAPIKeySecretName:    os.Getenv("AGENT_TRYOUT_OPENAI_API_KEY_SECRET_NAME"),
+		AgentTryoutAnonymousLimit:            agentTryoutAnonymousLimit,
+		AgentTryoutAnonymousWindow:           agentTryoutAnonymousWindow,
+		AgentTryoutHostedDailySpendCapUSD:    agentTryoutHostedDailySpendCapUSD,
+		AgentTryoutAnonymousPerRunCostCapUSD: agentTryoutAnonymousPerRunCostCapUSD,
 	}
 
 	if err := validateArtifactConfig(cfg); err != nil {
@@ -360,6 +388,42 @@ func int64EnvOrDefault(key string, fallback int64) (int64, error) {
 		return 0, fmt.Errorf("%w: %s must be greater than zero", ErrInvalidConfig, key)
 	}
 
+	return parsed, nil
+}
+
+func nonNegativeIntEnvOrDefault(key string, fallback int) (int, error) {
+	value, ok := os.LookupEnv(key)
+	if !ok {
+		return fallback, nil
+	}
+	if value == "" {
+		return 0, fmt.Errorf("%w: %s cannot be empty", ErrInvalidConfig, key)
+	}
+	parsed, err := strconv.ParseInt(value, 10, 32)
+	if err != nil {
+		return 0, fmt.Errorf("%w: %s must be an integer", ErrInvalidConfig, key)
+	}
+	if parsed < 0 {
+		return 0, fmt.Errorf("%w: %s must be zero or greater", ErrInvalidConfig, key)
+	}
+	return int(parsed), nil
+}
+
+func nonNegativeFloatEnvOrDefault(key string, fallback float64) (float64, error) {
+	value, ok := os.LookupEnv(key)
+	if !ok {
+		return fallback, nil
+	}
+	if value == "" {
+		return 0, fmt.Errorf("%w: %s cannot be empty", ErrInvalidConfig, key)
+	}
+	parsed, err := strconv.ParseFloat(value, 64)
+	if err != nil {
+		return 0, fmt.Errorf("%w: %s must be a number", ErrInvalidConfig, key)
+	}
+	if parsed < 0 {
+		return 0, fmt.Errorf("%w: %s must be zero or greater", ErrInvalidConfig, key)
+	}
 	return parsed, nil
 }
 

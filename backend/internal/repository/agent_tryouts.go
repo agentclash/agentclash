@@ -105,7 +105,18 @@ type LinkAgentTryoutRunParams struct {
 	Summary json.RawMessage
 }
 
+// tryoutRowQuerier is satisfied by both *pgxpool.Pool and pgx.Tx, letting the
+// hand-written anonymous quota queries run either standalone or inside the
+// advisory-locked transaction used by WithinAnonymousAgentTryoutQuotaLock.
+type tryoutRowQuerier interface {
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}
+
 func (r *Repository) CreateAgentTryout(ctx context.Context, params CreateAgentTryoutParams) (AgentTryout, error) {
+	return createAgentTryout(ctx, r.queries, params)
+}
+
+func createAgentTryout(ctx context.Context, queries *repositorysqlc.Queries, params CreateAgentTryoutParams) (AgentTryout, error) {
 	costLimit, err := numericFromFloat(&params.CostLimitUSD)
 	if err != nil {
 		return AgentTryout{}, fmt.Errorf("encode agent tryout cost limit: %w", err)
@@ -114,7 +125,7 @@ func (r *Repository) CreateAgentTryout(ctx context.Context, params CreateAgentTr
 	if err != nil {
 		return AgentTryout{}, fmt.Errorf("encode agent tryout actual cost: %w", err)
 	}
-	row, err := r.queries.CreateAgentTryout(ctx, repositorysqlc.CreateAgentTryoutParams{
+	row, err := queries.CreateAgentTryout(ctx, repositorysqlc.CreateAgentTryoutParams{
 		OrganizationID:           cloneUUIDPtr(params.OrganizationID),
 		WorkspaceID:              cloneUUIDPtr(params.WorkspaceID),
 		TemplateSlug:             params.TemplateSlug,
@@ -139,6 +150,104 @@ func (r *Repository) CreateAgentTryout(ctx context.Context, params CreateAgentTr
 		return AgentTryout{}, fmt.Errorf("create agent tryout: %w", err)
 	}
 	return mapAgentTryout(row)
+}
+
+func (r *Repository) CountAnonymousAgentTryoutsByFingerprint(ctx context.Context, fingerprintHash string, since time.Time) (int64, error) {
+	return countAnonymousAgentTryoutsByFingerprint(ctx, r.db, fingerprintHash, since)
+}
+
+func countAnonymousAgentTryoutsByFingerprint(ctx context.Context, q tryoutRowQuerier, fingerprintHash string, since time.Time) (int64, error) {
+	var count int64
+	err := q.QueryRow(ctx, `
+SELECT COUNT(*)
+FROM agent_tryouts
+WHERE organization_id IS NULL
+  AND workspace_id IS NULL
+  AND anonymous_fingerprint_hash = $1
+  AND created_at >= $2`, fingerprintHash, since.UTC()).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("count anonymous agent tryouts by fingerprint: %w", err)
+	}
+	return count, nil
+}
+
+func (r *Repository) SumAnonymousAgentTryoutCostLimitUSD(ctx context.Context, windowStart, windowEnd time.Time) (float64, error) {
+	return sumAnonymousAgentTryoutCostLimitUSD(ctx, r.db, windowStart, windowEnd)
+}
+
+func sumAnonymousAgentTryoutCostLimitUSD(ctx context.Context, q tryoutRowQuerier, windowStart, windowEnd time.Time) (float64, error) {
+	var total pgtype.Numeric
+	err := q.QueryRow(ctx, `
+SELECT COALESCE(SUM(cost_limit_usd), 0)
+FROM agent_tryouts
+WHERE organization_id IS NULL
+  AND workspace_id IS NULL
+  AND anonymous_fingerprint_hash IS NOT NULL
+  AND created_at >= $1
+  AND created_at < $2`, windowStart.UTC(), windowEnd.UTC()).Scan(&total)
+	if err != nil {
+		return 0, fmt.Errorf("sum anonymous agent tryout cost limits: %w", err)
+	}
+	return derefFloat64(numericPtr(total)), nil
+}
+
+// AnonymousAgentTryoutQuotaTx exposes the anonymous-tryout reads and the create
+// write as a single transactional unit. Implementations run every call inside
+// one transaction that holds a global advisory lock, so the per-fingerprint
+// quota count, the hosted daily-spend sum, and the insert are atomic with
+// respect to other anonymous-tryout creations — closing the check-then-create
+// TOCTOU window.
+type AnonymousAgentTryoutQuotaTx interface {
+	CountAnonymousAgentTryoutsByFingerprint(ctx context.Context, fingerprintHash string, since time.Time) (int64, error)
+	SumAnonymousAgentTryoutCostLimitUSD(ctx context.Context, windowStart, windowEnd time.Time) (float64, error)
+	CreateAgentTryout(ctx context.Context, params CreateAgentTryoutParams) (AgentTryout, error)
+}
+
+type anonymousAgentTryoutQuotaTx struct {
+	repo *Repository
+	tx   pgx.Tx
+}
+
+func (q anonymousAgentTryoutQuotaTx) CountAnonymousAgentTryoutsByFingerprint(ctx context.Context, fingerprintHash string, since time.Time) (int64, error) {
+	return countAnonymousAgentTryoutsByFingerprint(ctx, q.tx, fingerprintHash, since)
+}
+
+func (q anonymousAgentTryoutQuotaTx) SumAnonymousAgentTryoutCostLimitUSD(ctx context.Context, windowStart, windowEnd time.Time) (float64, error) {
+	return sumAnonymousAgentTryoutCostLimitUSD(ctx, q.tx, windowStart, windowEnd)
+}
+
+func (q anonymousAgentTryoutQuotaTx) CreateAgentTryout(ctx context.Context, params CreateAgentTryoutParams) (AgentTryout, error) {
+	return createAgentTryout(ctx, q.repo.queries.WithTx(q.tx), params)
+}
+
+// WithinAnonymousAgentTryoutQuotaLock runs fn inside a transaction that first
+// takes a global advisory lock shared by all anonymous tryout creations. Both
+// the per-fingerprint quota and the global hosted daily-spend cap are protected:
+// concurrent anonymous creations serialize on the lock, so reads observe every
+// previously committed tryout before the next insert. If fn returns an error the
+// transaction rolls back and no tryout is created.
+func (r *Repository) WithinAnonymousAgentTryoutQuotaLock(ctx context.Context, fn func(AnonymousAgentTryoutQuotaTx) error) error {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin anonymous agent tryout quota transaction: %w", err)
+	}
+	defer rollback(ctx, tx)
+
+	// Global serialization point for anonymous tryout creation. Keyed on a fixed
+	// string (not the fingerprint) because the hosted daily-spend cap is a single
+	// global counter that every anonymous creation contends for.
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended('anonymous_agent_tryout_quota', 451))`); err != nil {
+		return fmt.Errorf("lock anonymous agent tryout quota: %w", err)
+	}
+
+	if err := fn(anonymousAgentTryoutQuotaTx{repo: r, tx: tx}); err != nil {
+		return err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit anonymous agent tryout quota transaction: %w", err)
+	}
+	return nil
 }
 
 func (r *Repository) GetAgentTryoutByID(ctx context.Context, id uuid.UUID) (AgentTryout, error) {
