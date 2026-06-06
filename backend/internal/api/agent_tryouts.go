@@ -28,8 +28,9 @@ const (
 )
 
 var (
-	ErrAgentTryoutTemplateNotFound = errors.New("agent tryout template not found")
-	ErrInvalidAgentTryoutInput     = errors.New("invalid agent tryout input")
+	ErrAgentTryoutTemplateNotFound    = errors.New("agent tryout template not found")
+	ErrAgentTryoutTemplateUnavailable = errors.New("agent tryout template unavailable")
+	ErrInvalidAgentTryoutInput        = errors.New("invalid agent tryout input")
 )
 
 type AgentTryoutRepository interface {
@@ -64,8 +65,11 @@ type AgentTryoutTemplate struct {
 	Slug               string          `json:"slug"`
 	Name               string          `json:"name"`
 	Description        string          `json:"description"`
+	Available          bool            `json:"available"`
+	UnavailableReason  string          `json:"unavailable_reason,omitempty"`
 	InputSchema        json.RawMessage `json:"input_schema"`
 	ToolPolicy         json.RawMessage `json:"tool_policy"`
+	Runtime            json.RawMessage `json:"runtime"`
 	EvaluationSpec     json.RawMessage `json:"evaluation_spec"`
 	DefaultModelPolicy json.RawMessage `json:"default_model_policy"`
 	AnonymousEnabled   bool            `json:"anonymous_enabled"`
@@ -152,6 +156,9 @@ func (m *AgentTryoutManager) CreateAnonymousTryout(ctx context.Context, input Cr
 	if err != nil {
 		return repository.AgentTryout{}, err
 	}
+	if err := ensureAgentTryoutTemplateAvailable(template); err != nil {
+		return repository.AgentTryout{}, err
+	}
 	if !template.AnonymousEnabled {
 		return repository.AgentTryout{}, fmt.Errorf("%w: template does not allow anonymous tryouts", ErrInvalidAgentTryoutInput)
 	}
@@ -191,6 +198,9 @@ func (m *AgentTryoutManager) CreateWorkspaceTryout(ctx context.Context, caller C
 	}
 	template, err := m.lookupTemplate(input.TemplateSlug)
 	if err != nil {
+		return repository.AgentTryout{}, err
+	}
+	if err := ensureAgentTryoutTemplateAvailable(template); err != nil {
 		return repository.AgentTryout{}, err
 	}
 	if err := validateAgentTryoutInput(template, input.Input); err != nil {
@@ -477,6 +487,8 @@ func (d *agentTryoutExecutionDispatcher) executionConfig(template AgentTryoutTem
 		"timeout_seconds": template.MaxDurationSeconds,
 		"agent_tryout": map[string]any{
 			"template_slug": template.Slug,
+			"runtime":       json.RawMessage(template.Runtime),
+			"tool_policy":   json.RawMessage(template.ToolPolicy),
 		},
 	})
 	return payload
@@ -492,6 +504,8 @@ func (d *agentTryoutExecutionDispatcher) harnessSnapshot(harness repository.Agen
 		"codex_template":             d.config.E2BTemplateID,
 		"auth_mode":                  AgentHarnessAuthModeAPIKeySecret,
 		"openai_api_key_secret_name": d.config.OpenAIAPIKeySecretName,
+		"template_runtime":           json.RawMessage(template.Runtime),
+		"tool_policy":                json.RawMessage(template.ToolPolicy),
 		"execution_config":           json.RawMessage(executionConfig),
 		"evaluation_config":          json.RawMessage(evaluationConfig),
 	}
@@ -518,6 +532,7 @@ func agentTryoutTaskPrompt(template AgentTryoutTemplate, input json.RawMessage) 
 func agentTryoutEvaluationConfig(template AgentTryoutTemplate, tryout repository.AgentTryout) json.RawMessage {
 	payload, _ := json.Marshal(map[string]any{
 		"template_evaluation_spec": json.RawMessage(template.EvaluationSpec),
+		"template_runtime":         json.RawMessage(template.Runtime),
 		"privacy": map[string]any{
 			"redact_replay":    true,
 			"redact_artifacts": true,
@@ -995,7 +1010,93 @@ func validateAgentTryoutInput(template AgentTryoutTemplate, raw json.RawMessage)
 	if object == nil {
 		return fmt.Errorf("%w: input must be a JSON object", ErrInvalidAgentTryoutInput)
 	}
+	if err := validateAgentTryoutInputSchema(template, object); err != nil {
+		return err
+	}
 	return nil
+}
+
+func ensureAgentTryoutTemplateAvailable(template AgentTryoutTemplate) error {
+	if template.Available {
+		return nil
+	}
+	reason := strings.TrimSpace(template.UnavailableReason)
+	if reason == "" {
+		reason = "template runtime is not available"
+	}
+	return fmt.Errorf("%w: %s", ErrAgentTryoutTemplateUnavailable, reason)
+}
+
+type agentTryoutInputSchema struct {
+	Type                 string                                    `json:"type"`
+	Required             []string                                  `json:"required"`
+	Properties           map[string]agentTryoutInputPropertySchema `json:"properties"`
+	AdditionalProperties *bool                                     `json:"additionalProperties"`
+}
+
+type agentTryoutInputPropertySchema struct {
+	Type string `json:"type"`
+}
+
+func validateAgentTryoutInputSchema(template AgentTryoutTemplate, object map[string]any) error {
+	var schema agentTryoutInputSchema
+	if err := json.Unmarshal(template.InputSchema, &schema); err != nil {
+		return fmt.Errorf("%w: template input schema is invalid", ErrInvalidAgentTryoutInput)
+	}
+	if schema.Type != "" && schema.Type != "object" {
+		return fmt.Errorf("%w: template input schema must describe an object", ErrInvalidAgentTryoutInput)
+	}
+	for _, key := range schema.Required {
+		value, ok := object[key]
+		if !ok || value == nil {
+			return fmt.Errorf("%w: missing required field %q", ErrInvalidAgentTryoutInput, key)
+		}
+	}
+	if schema.AdditionalProperties != nil && !*schema.AdditionalProperties {
+		for key := range object {
+			if _, ok := schema.Properties[key]; !ok {
+				return fmt.Errorf("%w: unsupported field %q", ErrInvalidAgentTryoutInput, key)
+			}
+		}
+	}
+	for key, property := range schema.Properties {
+		value, ok := object[key]
+		if !ok || strings.TrimSpace(property.Type) == "" {
+			continue
+		}
+		if value == nil {
+			return fmt.Errorf("%w: field %q must be %s", ErrInvalidAgentTryoutInput, key, property.Type)
+		}
+		if !agentTryoutInputValueMatchesType(value, property.Type) {
+			return fmt.Errorf("%w: field %q must be %s", ErrInvalidAgentTryoutInput, key, property.Type)
+		}
+	}
+	return nil
+}
+
+func agentTryoutInputValueMatchesType(value any, schemaType string) bool {
+	switch schemaType {
+	case "string":
+		_, ok := value.(string)
+		return ok
+	case "object":
+		_, ok := value.(map[string]any)
+		return ok
+	case "array":
+		_, ok := value.([]any)
+		return ok
+	case "boolean":
+		_, ok := value.(bool)
+		return ok
+	case "number":
+		_, ok := value.(float64)
+		return ok
+	case "integer":
+		number, ok := value.(float64)
+		return ok && number == float64(int64(number))
+	default:
+		return true
+	}
 }
 
 func decodeAgentTryoutJSON(r *http.Request, dest any) error {
@@ -1022,6 +1123,8 @@ func writeAgentTryoutError(w http.ResponseWriter, logger *slog.Logger, err error
 	switch {
 	case errors.Is(err, ErrAgentTryoutTemplateNotFound):
 		writeError(w, http.StatusNotFound, "template_not_found", "agent tryout template not found")
+	case errors.Is(err, ErrAgentTryoutTemplateUnavailable):
+		writeError(w, http.StatusConflict, "template_unavailable", agentTryoutTemplateUnavailableMessage(err))
 	case errors.Is(err, repository.ErrAgentTryoutNotFound):
 		writeError(w, http.StatusNotFound, "agent_tryout_not_found", "agent tryout not found")
 	case errors.Is(err, repository.ErrAgentTryoutAlreadyClaimed):
@@ -1034,6 +1137,14 @@ func writeAgentTryoutError(w http.ResponseWriter, logger *slog.Logger, err error
 		logger.Error("agent tryout request failed", "error", err)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal server error")
 	}
+}
+
+func agentTryoutTemplateUnavailableMessage(err error) string {
+	message := strings.TrimPrefix(err.Error(), ErrAgentTryoutTemplateUnavailable.Error()+": ")
+	if strings.TrimSpace(message) == "" {
+		return "agent tryout template is unavailable"
+	}
+	return message
 }
 
 func mapAgentTryoutResponse(tryout repository.AgentTryout) agentTryoutResponse {
@@ -1091,6 +1202,9 @@ func templateSnapshot(template AgentTryoutTemplate) json.RawMessage {
 		"slug":                 template.Slug,
 		"name":                 template.Name,
 		"description":          template.Description,
+		"available":            template.Available,
+		"unavailable_reason":   template.UnavailableReason,
+		"runtime":              json.RawMessage(template.Runtime),
 		"anonymous_enabled":    template.AnonymousEnabled,
 		"max_input_bytes":      template.MaxInputBytes,
 		"max_duration_seconds": template.MaxDurationSeconds,
@@ -1128,9 +1242,11 @@ func builtinAgentTryoutTemplates() []AgentTryoutTemplate {
 			Slug:               "meeting-minutes",
 			Name:               "Meeting Minutes to Action Plan",
 			Description:        "Turn notes or a transcript into minutes, decisions, risks, and action items.",
-			InputSchema:        json.RawMessage(`{"type":"object","required":["notes"],"properties":{"notes":{"type":"string"},"audience":{"type":"string"}}}`),
-			ToolPolicy:         json.RawMessage(`{"tools":["file_writer"],"network":"disabled","external_side_effects":false}`),
-			EvaluationSpec:     json.RawMessage(`{"validators":[{"key":"has_action_items","type":"jsonpath","path":"$.action_items"}],"scorecard":{"dimensions":["correctness","reliability","latency","cost"]}}`),
+			Available:          true,
+			InputSchema:        json.RawMessage(`{"type":"object","required":["notes"],"additionalProperties":false,"properties":{"notes":{"type":"string"},"audience":{"type":"string"}}}`),
+			ToolPolicy:         json.RawMessage(`{"tools":["file_writer"],"sandbox":{"filesystem":"workspace","shell":"disabled"},"network":{"mode":"disabled"},"external_side_effects":false}`),
+			Runtime:            json.RawMessage(`{"adapter":"meeting_minutes_v1","sandbox":{"filesystem":"workspace","shell":"disabled","network":"disabled"},"expected_artifacts":[{"key":"action_plan","type":"markdown","path":"action-plan.md"},{"key":"structured_minutes","type":"json","path":"minutes.json"}],"validation":{"validators":[{"key":"has_summary","type":"json_field","field":"summary"},{"key":"has_action_items","type":"json_field","field":"action_items"}],"score_dimensions":["correctness","reliability","latency","cost"]}}`),
+			EvaluationSpec:     json.RawMessage(`{"validators":[{"key":"has_summary","type":"json_field","field":"summary"},{"key":"has_action_items","type":"json_field","field":"action_items"}],"scorecard":{"dimensions":["correctness","reliability","latency","cost"]}}`),
 			DefaultModelPolicy: json.RawMessage(`{"mode":"hosted_default","max_models":1}`),
 			AnonymousEnabled:   true,
 			MaxInputBytes:      64 * 1024,
@@ -1141,8 +1257,11 @@ func builtinAgentTryoutTemplates() []AgentTryoutTemplate {
 			Slug:               "structured-data",
 			Name:               "Extract Structured Data",
 			Description:        "Extract rows from messy text into JSON or CSV and validate the shape.",
-			InputSchema:        json.RawMessage(`{"type":"object","required":["text"],"properties":{"text":{"type":"string"},"schema":{"type":"object"}}}`),
-			ToolPolicy:         json.RawMessage(`{"tools":["schema_validator","file_writer"],"network":"disabled","external_side_effects":false}`),
+			Available:          false,
+			UnavailableReason:  "structured data validator runtime is not enabled yet",
+			InputSchema:        json.RawMessage(`{"type":"object","required":["text"],"additionalProperties":false,"properties":{"text":{"type":"string"},"schema":{"type":"object"}}}`),
+			ToolPolicy:         json.RawMessage(`{"tools":["schema_validator","file_writer"],"sandbox":{"filesystem":"workspace","shell":"disabled"},"network":{"mode":"disabled"},"external_side_effects":false}`),
+			Runtime:            json.RawMessage(`{"adapter":"structured_data_v1","sandbox":{"filesystem":"workspace","shell":"disabled","network":"disabled"},"expected_artifacts":[{"key":"extracted_rows","type":"json","path":"extracted-rows.json"}],"validation":{"validators":[{"key":"valid_json","type":"json_schema"}],"score_dimensions":["correctness","reliability","latency","cost"]}}`),
 			EvaluationSpec:     json.RawMessage(`{"validators":[{"key":"valid_json","type":"json_schema"}],"scorecard":{"dimensions":["correctness","reliability","latency","cost"]}}`),
 			DefaultModelPolicy: json.RawMessage(`{"mode":"hosted_default","max_models":1}`),
 			AnonymousEnabled:   true,
@@ -1154,8 +1273,10 @@ func builtinAgentTryoutTemplates() []AgentTryoutTemplate {
 			Slug:               "tiny-bugfix",
 			Name:               "Fix a Tiny Bug",
 			Description:        "Run an agent against a small fixture, inspect the diff, and see whether tests pass.",
-			InputSchema:        json.RawMessage(`{"type":"object","required":["task"],"properties":{"task":{"type":"string"},"fixture":{"type":"string"}}}`),
-			ToolPolicy:         json.RawMessage(`{"tools":["sandbox_shell","file_editor"],"network":"disabled","external_side_effects":false}`),
+			Available:          true,
+			InputSchema:        json.RawMessage(`{"type":"object","required":["task"],"additionalProperties":false,"properties":{"task":{"type":"string"},"fixture":{"type":"string"}}}`),
+			ToolPolicy:         json.RawMessage(`{"tools":["sandbox_shell","file_editor"],"sandbox":{"filesystem":"workspace","shell":"allowed"},"network":{"mode":"disabled"},"external_side_effects":false}`),
+			Runtime:            json.RawMessage(`{"adapter":"tiny_bugfix_v1","sandbox":{"filesystem":"workspace","shell":"allowed","network":"disabled"},"expected_artifacts":[{"key":"diff","type":"patch","path":"changes.patch"},{"key":"test_result","type":"json","path":"test-result.json"}],"validation":{"validators":[{"key":"tests_pass","type":"command_exit_code"}],"score_dimensions":["correctness","reliability","latency","cost"]}}`),
 			EvaluationSpec:     json.RawMessage(`{"validators":[{"key":"tests_pass","type":"command_exit_code"}],"scorecard":{"dimensions":["correctness","reliability","latency","cost"]}}`),
 			DefaultModelPolicy: json.RawMessage(`{"mode":"hosted_default","max_models":1}`),
 			AnonymousEnabled:   false,

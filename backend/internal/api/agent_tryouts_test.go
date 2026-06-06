@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -47,6 +48,11 @@ func TestAgentTryoutManagerCreateAnonymousPersistsGuardrailSnapshots(t *testing.
 	if len(tryout.TemplateSnapshot) == 0 || len(tryout.ToolPolicySnapshot) == 0 || len(tryout.EvaluationSpecSnapshot) == 0 {
 		t.Fatalf("tryout should persist template/tool/evaluation snapshots: %+v", tryout)
 	}
+	if !bytes.Contains(tryout.TemplateSnapshot, []byte(`"available":true`)) ||
+		!bytes.Contains(tryout.TemplateSnapshot, []byte(`"expected_artifacts"`)) ||
+		!bytes.Contains(tryout.ToolPolicySnapshot, []byte(`"network":{"mode":"disabled"`)) {
+		t.Fatalf("tryout snapshots should include runtime policy: template=%s tool=%s", tryout.TemplateSnapshot, tryout.ToolPolicySnapshot)
+	}
 }
 
 func TestAgentTryoutManagerRejectsAnonymousWhenTemplateDisabled(t *testing.T) {
@@ -60,6 +66,101 @@ func TestAgentTryoutManagerRejectsAnonymousWhenTemplateDisabled(t *testing.T) {
 	})
 	if !errors.Is(err, ErrInvalidAgentTryoutInput) {
 		t.Fatalf("CreateAnonymousTryout error = %v, want ErrInvalidAgentTryoutInput", err)
+	}
+}
+
+func TestAgentTryoutTemplatesExposeRuntimeMetadata(t *testing.T) {
+	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), newFakeAgentTryoutRepository(uuid.New(), uuid.New()))
+	templates, err := manager.ListTemplates(context.Background())
+	if err != nil {
+		t.Fatalf("ListTemplates returned error: %v", err)
+	}
+	if len(templates) == 0 {
+		t.Fatal("ListTemplates returned no templates")
+	}
+	var meeting AgentTryoutTemplate
+	for _, template := range templates {
+		if template.Slug == "meeting-minutes" {
+			meeting = template
+			break
+		}
+	}
+	if meeting.Slug == "" {
+		t.Fatal("meeting-minutes template not found")
+	}
+	if !meeting.Available || meeting.UnavailableReason != "" {
+		t.Fatalf("meeting availability = %v reason=%q, want available", meeting.Available, meeting.UnavailableReason)
+	}
+	if !bytes.Contains(meeting.ToolPolicy, []byte(`"file_writer"`)) ||
+		!bytes.Contains(meeting.ToolPolicy, []byte(`"network":{"mode":"disabled"`)) {
+		t.Fatalf("meeting tool policy = %s, want file writer with disabled network", meeting.ToolPolicy)
+	}
+	if !bytes.Contains(meeting.Runtime, []byte(`"expected_artifacts"`)) ||
+		!bytes.Contains(meeting.Runtime, []byte(`"validation"`)) ||
+		!bytes.Contains(meeting.Runtime, []byte(`"sandbox"`)) {
+		t.Fatalf("meeting runtime = %s, want artifacts, validation, and sandbox policy", meeting.Runtime)
+	}
+}
+
+func TestAgentTryoutManagerRejectsInvalidTemplateInputBeforeCreate(t *testing.T) {
+	repo := newFakeAgentTryoutRepository(uuid.New(), uuid.New())
+	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo)
+
+	for _, tc := range []struct {
+		name  string
+		input json.RawMessage
+	}{
+		{name: "missing required field", input: json.RawMessage(`{"audience":"execs"}`)},
+		{name: "required null field", input: json.RawMessage(`{"notes":null}`)},
+		{name: "optional null field", input: json.RawMessage(`{"notes":"hello","audience":null}`)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := manager.CreateAnonymousTryout(context.Background(), CreateAnonymousAgentTryoutInput{
+				TemplateSlug:         "meeting-minutes",
+				Input:                tc.input,
+				AnonymousFingerprint: "203.0.113.10",
+			})
+			if !errors.Is(err, ErrInvalidAgentTryoutInput) {
+				t.Fatalf("CreateAnonymousTryout error = %v, want ErrInvalidAgentTryoutInput", err)
+			}
+		})
+	}
+	if len(repo.tryouts) != 0 || len(repo.createdExecutions) != 0 {
+		t.Fatalf("invalid input should not create or dispatch tryouts: tryouts=%d executions=%d", len(repo.tryouts), len(repo.createdExecutions))
+	}
+}
+
+func TestAgentTryoutManagerRejectsUnavailableTemplateBeforeCreate(t *testing.T) {
+	repo := newFakeAgentTryoutRepository(uuid.New(), uuid.New())
+	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo)
+
+	_, err := manager.CreateAnonymousTryout(context.Background(), CreateAnonymousAgentTryoutInput{
+		TemplateSlug:         "structured-data",
+		Input:                json.RawMessage(`{"text":"name: Ada"}`),
+		AnonymousFingerprint: "203.0.113.10",
+	})
+	if !errors.Is(err, ErrAgentTryoutTemplateUnavailable) {
+		t.Fatalf("CreateAnonymousTryout error = %v, want ErrAgentTryoutTemplateUnavailable", err)
+	}
+	if len(repo.tryouts) != 0 || len(repo.createdExecutions) != 0 {
+		t.Fatalf("unavailable template should not create or dispatch tryouts: tryouts=%d executions=%d", len(repo.tryouts), len(repo.createdExecutions))
+	}
+}
+
+func TestAgentTryoutManagerRejectsClientRuntimePolicyFields(t *testing.T) {
+	repo := newFakeAgentTryoutRepository(uuid.New(), uuid.New())
+	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo)
+
+	_, err := manager.CreateAnonymousTryout(context.Background(), CreateAnonymousAgentTryoutInput{
+		TemplateSlug:         "meeting-minutes",
+		Input:                json.RawMessage(`{"notes":"hello","tools":["sandbox_shell"],"network":"enabled","cost_limit_usd":99}`),
+		AnonymousFingerprint: "203.0.113.10",
+	})
+	if !errors.Is(err, ErrInvalidAgentTryoutInput) {
+		t.Fatalf("CreateAnonymousTryout error = %v, want ErrInvalidAgentTryoutInput", err)
+	}
+	if len(repo.tryouts) != 0 {
+		t.Fatalf("client runtime policy override should not create tryout, created %d", len(repo.tryouts))
 	}
 }
 
@@ -381,8 +482,16 @@ func TestBuildAgentTryoutHarnessPayload(t *testing.T) {
 	if !bytes.Contains(decoded.ExecutionConfig, []byte(`"timeout_seconds":120`)) {
 		t.Fatalf("execution config = %s, want timeout", decoded.ExecutionConfig)
 	}
+	if !bytes.Contains(decoded.ExecutionConfig, []byte(`"runtime"`)) ||
+		!bytes.Contains(decoded.ExecutionConfig, []byte(`"tool_policy"`)) ||
+		!bytes.Contains(decoded.ExecutionConfig, []byte(`"expected_artifacts"`)) {
+		t.Fatalf("execution config = %s, want runtime policy", decoded.ExecutionConfig)
+	}
 	if !bytes.Contains(decoded.EvaluationConfig, []byte(`"kind":"agent_tryout"`)) {
 		t.Fatalf("evaluation config = %s, want agent_tryout metadata", decoded.EvaluationConfig)
+	}
+	if !bytes.Contains(decoded.EvaluationConfig, []byte(`"validation"`)) {
+		t.Fatalf("evaluation config = %s, want template validation metadata", decoded.EvaluationConfig)
 	}
 }
 
@@ -420,6 +529,44 @@ func TestCreateAnonymousAgentTryoutHandler(t *testing.T) {
 	}
 	if service.createAnonymousInput.AnonymousFingerprint != "203.0.113.10" {
 		t.Fatalf("fingerprint = %q, want first forwarded IP", service.createAnonymousInput.AnonymousFingerprint)
+	}
+}
+
+func TestListAgentTryoutTemplatesHandlerReturnsRuntimeMetadata(t *testing.T) {
+	service := &fakeAgentTryoutService{templates: builtinAgentTryoutTemplates()}
+	handler := listAgentTryoutTemplatesHandler(slog.Default(), service)
+	req := httptest.NewRequest(http.MethodGet, "/v1/agent-tryout-templates", nil)
+	rr := httptest.NewRecorder()
+
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s, want 200", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), `"available":true`) ||
+		!strings.Contains(rr.Body.String(), `"runtime"`) ||
+		!strings.Contains(rr.Body.String(), `"expected_artifacts"`) {
+		t.Fatalf("template response missing runtime metadata: %s", rr.Body.String())
+	}
+}
+
+func TestCreateAnonymousAgentTryoutHandlerMapsUnavailableTemplate(t *testing.T) {
+	service := &fakeAgentTryoutService{createAnonymousErr: fmt.Errorf("%w: structured data validator runtime is not enabled yet", ErrAgentTryoutTemplateUnavailable)}
+	handler := createAnonymousAgentTryoutHandler(slog.Default(), service)
+	req := httptest.NewRequest(http.MethodPost, "/v1/agent-tryouts", bytes.NewBufferString(`{"template_slug":"structured-data","input":{"text":"name: Ada"}}`))
+	rr := httptest.NewRecorder()
+
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusConflict {
+		t.Fatalf("status = %d body=%s, want 409", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), `"code":"template_unavailable"`) {
+		t.Fatalf("body = %s, want template_unavailable", rr.Body.String())
+	}
+	if strings.Contains(rr.Body.String(), ErrAgentTryoutTemplateUnavailable.Error()) ||
+		!strings.Contains(rr.Body.String(), `"message":"structured data validator runtime is not enabled yet"`) {
+		t.Fatalf("body = %s, want product-facing reason without sentinel prefix", rr.Body.String())
 	}
 }
 
@@ -774,6 +921,8 @@ func (r *fakeAgentTryoutRepository) CreatePublicShareLink(_ context.Context, par
 
 type fakeAgentTryoutService struct {
 	tryout               repository.AgentTryout
+	templates            []AgentTryoutTemplate
+	createAnonymousErr   error
 	createAnonymousInput CreateAnonymousAgentTryoutInput
 	listLimit            int32
 	listOffset           int32
@@ -781,11 +930,14 @@ type fakeAgentTryoutService struct {
 }
 
 func (s *fakeAgentTryoutService) ListTemplates(context.Context) ([]AgentTryoutTemplate, error) {
-	return nil, nil
+	return s.templates, nil
 }
 
 func (s *fakeAgentTryoutService) CreateAnonymousTryout(_ context.Context, input CreateAnonymousAgentTryoutInput) (repository.AgentTryout, error) {
 	s.createAnonymousInput = input
+	if s.createAnonymousErr != nil {
+		return repository.AgentTryout{}, s.createAnonymousErr
+	}
 	return s.tryout, nil
 }
 

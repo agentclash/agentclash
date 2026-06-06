@@ -12633,7 +12633,7 @@ components:
 
     AgentTryoutTemplate:
       type: object
-      required: [slug, name, description, input_schema, tool_policy, evaluation_spec, default_model_policy, anonymous_enabled, max_input_bytes, max_duration_seconds, max_cost_usd]
+      required: [slug, name, description, available, input_schema, tool_policy, runtime, evaluation_spec, default_model_policy, anonymous_enabled, max_input_bytes, max_duration_seconds, max_cost_usd]
       properties:
         slug:
           type: string
@@ -12641,12 +12641,22 @@ components:
           type: string
         description:
           type: string
+        available:
+          type: boolean
+          description: Whether this template can currently be executed by the hosted tryout runtime.
+        unavailable_reason:
+          type: string
+          description: Product-facing reason shown when a template is not executable in the current environment.
         input_schema:
           type: object
           additionalProperties: true
         tool_policy:
           type: object
           additionalProperties: true
+        runtime:
+          type: object
+          additionalProperties: true
+          description: Server-owned runtime policy including adapter, sandbox policy, expected artifacts, and validation metadata.
         evaluation_spec:
           type: object
           additionalProperties: true
