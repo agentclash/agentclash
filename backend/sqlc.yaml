@@ -27,6 +27,7 @@ sql:
       - "db/queries/dataset_generations.sql"
       - "db/queries/billing.sql"
       - "db/queries/vibe_eval.sql"
+      - "db/queries/agent_tryouts.sql"
     gen:
       go:
         package: "sqlc"

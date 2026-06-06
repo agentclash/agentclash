@@ -19,6 +19,7 @@ const (
 	PublicShareResourceRunScorecard         PublicShareResourceType = "run_scorecard"
 	PublicShareResourceRunAgentScorecard    PublicShareResourceType = "run_agent_scorecard"
 	PublicShareResourceRunAgentReplay       PublicShareResourceType = "run_agent_replay"
+	PublicShareResourceAgentTryout          PublicShareResourceType = "agent_tryout"
 )
 
 type PublicShareLink struct {

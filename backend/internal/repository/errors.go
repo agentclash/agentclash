@@ -17,6 +17,8 @@ var (
 	ErrRunAgentScorecardNotFound             = errors.New("run agent scorecard not found")
 	ErrRunScorecardNotFound                  = errors.New("run scorecard not found")
 	ErrPublicShareLinkNotFound               = errors.New("public share link not found")
+	ErrAgentTryoutNotFound                   = errors.New("agent tryout not found")
+	ErrAgentTryoutAlreadyClaimed             = errors.New("agent tryout is already claimed")
 	ErrRunComparisonNotFound                 = errors.New("run comparison not found")
 	ErrInvalidRunComparisonParams            = errors.New("invalid run comparison params")
 	ErrAgentHarnessFailureAnnotationNotFound = errors.New("agent harness failure annotation not found")
@@ -60,7 +62,7 @@ var (
 	ErrWorkspaceCIProfileNameConflict        = errors.New("workspace ci profile name already exists")
 	ErrSecretsCipherUnset                    = errors.New("secrets cipher is not configured")
 	ErrInvalidSecretKey                      = errors.New("secret key must match [A-Za-z_][A-Za-z0-9_]* and be 1..128 characters")
-	ErrInvalidArenaVoteWinner              = errors.New("arena vote winner must be one of the task contestants")
+	ErrInvalidArenaVoteWinner                = errors.New("arena vote winner must be one of the task contestants")
 )
 
 type InvalidTransitionError struct {

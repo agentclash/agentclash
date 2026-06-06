@@ -69,6 +69,33 @@ type AgentDeployment struct {
 	ArchivedAt            pgtype.Timestamptz
 }
 
+type AgentTryout struct {
+	ID                       uuid.UUID
+	OrganizationID           *uuid.UUID
+	WorkspaceID              *uuid.UUID
+	TemplateSlug             string
+	Status                   string
+	InputSnapshot            []byte
+	TemplateSnapshot         []byte
+	ToolPolicySnapshot       []byte
+	EvaluationSpecSnapshot   []byte
+	SelectedModelPolicy      []byte
+	Summary                  []byte
+	RedactionStatus          string
+	RunID                    *uuid.UUID
+	CostLimitUsd             pgtype.Numeric
+	ActualCostUsd            pgtype.Numeric
+	LatencyMs                *int64
+	MaxDurationSeconds       int32
+	AnonymousFingerprintHash *string
+	CreatedByUserID          *uuid.UUID
+	ClaimedByUserID          *uuid.UUID
+	ClaimedAt                pgtype.Timestamptz
+	ExpiresAt                pgtype.Timestamptz
+	CreatedAt                pgtype.Timestamptz
+	UpdatedAt                pgtype.Timestamptz
+}
+
 type BillingAccount struct {
 	ID             uuid.UUID
 	OrganizationID uuid.UUID
