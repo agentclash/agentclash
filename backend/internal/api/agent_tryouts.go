@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/agentclash/agentclash/backend/internal/domain"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -32,9 +33,17 @@ var (
 
 type AgentTryoutRepository interface {
 	GetOrganizationIDByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) (uuid.UUID, error)
+	GetAgentHarnessByWorkspaceSlug(ctx context.Context, workspaceID uuid.UUID, slug string) (repository.AgentHarness, error)
+	CreateAgentHarness(ctx context.Context, p repository.CreateAgentHarnessParams) (repository.AgentHarness, error)
+	CreateAgentHarnessExecution(ctx context.Context, p repository.CreateAgentHarnessExecutionParams) (repository.AgentHarnessExecution, error)
+	SetAgentHarnessExecutionTemporalIDs(ctx context.Context, p repository.SetAgentHarnessExecutionTemporalIDsParams) (repository.AgentHarnessExecution, error)
+	TransitionAgentHarnessExecutionStatus(ctx context.Context, p repository.TransitionAgentHarnessExecutionStatusParams) (repository.AgentHarnessExecution, error)
+	GetAgentHarnessExecutionByRunID(ctx context.Context, runID uuid.UUID) (repository.AgentHarnessExecution, error)
 	CreateAgentTryout(ctx context.Context, params repository.CreateAgentTryoutParams) (repository.AgentTryout, error)
 	GetAgentTryoutByID(ctx context.Context, id uuid.UUID) (repository.AgentTryout, error)
 	ListAgentTryoutsByWorkspaceID(ctx context.Context, workspaceID uuid.UUID, limit, offset int32) ([]repository.AgentTryout, error)
+	LinkAgentTryoutRunIfUnset(ctx context.Context, params repository.LinkAgentTryoutRunParams) (repository.AgentTryout, error)
+	UpdateAgentTryoutStatus(ctx context.Context, params repository.UpdateAgentTryoutStatusParams) (repository.AgentTryout, error)
 	ClaimAgentTryout(ctx context.Context, params repository.ClaimAgentTryoutParams) (repository.AgentTryout, error)
 	CreatePublicShareLink(ctx context.Context, params repository.CreatePublicShareLinkParams) (repository.PublicShareLink, error)
 }
@@ -89,11 +98,21 @@ type CreateAgentTryoutShareResult struct {
 	Token string
 }
 
+type AgentTryoutExecutionConfig struct {
+	PublicWorkspaceID      *uuid.UUID
+	HarnessKind            string
+	E2BTemplateID          string
+	OpenAIAPIKeySecretName string
+	PublicCreatedByUserID  *uuid.UUID
+	ConcurrencyLimit       int
+}
+
 type AgentTryoutManager struct {
 	authorizer WorkspaceAuthorizer
 	repo       AgentTryoutRepository
 	now        func() time.Time
 	templates  map[string]AgentTryoutTemplate
+	execution  *agentTryoutExecutionDispatcher
 }
 
 func NewAgentTryoutManager(authorizer WorkspaceAuthorizer, repo AgentTryoutRepository) *AgentTryoutManager {
@@ -108,6 +127,18 @@ func NewAgentTryoutManager(authorizer WorkspaceAuthorizer, repo AgentTryoutRepos
 		now:        time.Now,
 		templates:  bySlug,
 	}
+}
+
+func (m *AgentTryoutManager) WithExecution(starter AgentHarnessExecutionWorkflowStarter, config AgentTryoutExecutionConfig) *AgentTryoutManager {
+	if starter == nil {
+		return m
+	}
+	m.execution = &agentTryoutExecutionDispatcher{
+		repo:    m.repo,
+		starter: starter,
+		config:  normalizeAgentTryoutExecutionConfig(config),
+	}
+	return m
 }
 
 func (m *AgentTryoutManager) ListTemplates(context.Context) ([]AgentTryoutTemplate, error) {
@@ -132,7 +163,7 @@ func (m *AgentTryoutManager) CreateAnonymousTryout(ctx context.Context, input Cr
 	}
 	expiresAt := now.UTC().Add(defaultAgentTryoutTTL)
 	fingerprintHash := hashAnonymousFingerprint(input.AnonymousFingerprint)
-	return m.repo.CreateAgentTryout(ctx, repository.CreateAgentTryoutParams{
+	tryout, err := m.repo.CreateAgentTryout(ctx, repository.CreateAgentTryoutParams{
 		TemplateSlug:             template.Slug,
 		Status:                   repository.AgentTryoutStatusQueued,
 		InputSnapshot:            input.Input,
@@ -147,6 +178,10 @@ func (m *AgentTryoutManager) CreateAnonymousTryout(ctx context.Context, input Cr
 		AnonymousFingerprintHash: &fingerprintHash,
 		ExpiresAt:                &expiresAt,
 	})
+	if err != nil {
+		return repository.AgentTryout{}, err
+	}
+	return m.dispatchCreatedTryout(ctx, tryout, template)
 }
 
 func (m *AgentTryoutManager) CreateWorkspaceTryout(ctx context.Context, caller Caller, input CreateWorkspaceAgentTryoutInput) (repository.AgentTryout, error) {
@@ -165,7 +200,7 @@ func (m *AgentTryoutManager) CreateWorkspaceTryout(ctx context.Context, caller C
 		return repository.AgentTryout{}, err
 	}
 	callerID := caller.UserID
-	return m.repo.CreateAgentTryout(ctx, repository.CreateAgentTryoutParams{
+	tryout, err := m.repo.CreateAgentTryout(ctx, repository.CreateAgentTryoutParams{
 		OrganizationID:         &orgID,
 		WorkspaceID:            &input.WorkspaceID,
 		TemplateSlug:           template.Slug,
@@ -181,6 +216,10 @@ func (m *AgentTryoutManager) CreateWorkspaceTryout(ctx context.Context, caller C
 		MaxDurationSeconds:     template.MaxDurationSeconds,
 		CreatedByUserID:        &callerID,
 	})
+	if err != nil {
+		return repository.AgentTryout{}, err
+	}
+	return m.dispatchCreatedTryout(ctx, tryout, template)
 }
 
 func (m *AgentTryoutManager) GetPublicTryout(ctx context.Context, id uuid.UUID) (repository.AgentTryout, error) {
@@ -191,7 +230,7 @@ func (m *AgentTryoutManager) GetPublicTryout(ctx context.Context, id uuid.UUID) 
 	if tryout.WorkspaceID != nil {
 		return repository.AgentTryout{}, repository.ErrAgentTryoutNotFound
 	}
-	return tryout, nil
+	return m.refreshTryoutFromExecution(ctx, tryout), nil
 }
 
 func (m *AgentTryoutManager) GetWorkspaceTryout(ctx context.Context, caller Caller, id uuid.UUID) (repository.AgentTryout, error) {
@@ -205,7 +244,7 @@ func (m *AgentTryoutManager) GetWorkspaceTryout(ctx context.Context, caller Call
 	if err := m.authorizer.AuthorizeWorkspace(ctx, caller, *tryout.WorkspaceID); err != nil {
 		return repository.AgentTryout{}, err
 	}
-	return tryout, nil
+	return m.refreshTryoutFromExecution(ctx, tryout), nil
 }
 
 func (m *AgentTryoutManager) ListWorkspaceTryouts(ctx context.Context, caller Caller, workspaceID uuid.UUID, limit, offset int32) ([]repository.AgentTryout, error) {
@@ -218,7 +257,338 @@ func (m *AgentTryoutManager) ListWorkspaceTryouts(ctx context.Context, caller Ca
 	if offset < 0 {
 		offset = 0
 	}
-	return m.repo.ListAgentTryoutsByWorkspaceID(ctx, workspaceID, limit, offset)
+	tryouts, err := m.repo.ListAgentTryoutsByWorkspaceID(ctx, workspaceID, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	for i := range tryouts {
+		tryouts[i] = m.refreshTryoutFromExecution(ctx, tryouts[i])
+	}
+	return tryouts, nil
+}
+
+func (m *AgentTryoutManager) dispatchCreatedTryout(ctx context.Context, tryout repository.AgentTryout, template AgentTryoutTemplate) (repository.AgentTryout, error) {
+	if m.execution == nil {
+		return tryout, nil
+	}
+	return m.execution.dispatch(ctx, tryout, template)
+}
+
+func (m *AgentTryoutManager) refreshTryoutFromExecution(ctx context.Context, tryout repository.AgentTryout) repository.AgentTryout {
+	if m.execution == nil || tryout.RunID == nil {
+		return tryout
+	}
+	refreshed, err := m.execution.refresh(ctx, tryout)
+	if err != nil {
+		return tryout
+	}
+	return refreshed
+}
+
+type agentTryoutExecutionDispatcher struct {
+	repo    AgentTryoutRepository
+	starter AgentHarnessExecutionWorkflowStarter
+	config  AgentTryoutExecutionConfig
+}
+
+func normalizeAgentTryoutExecutionConfig(config AgentTryoutExecutionConfig) AgentTryoutExecutionConfig {
+	if strings.TrimSpace(config.HarnessKind) == "" {
+		config.HarnessKind = domain.AgentHarnessKindCodexE2B
+	}
+	if strings.TrimSpace(config.E2BTemplateID) == "" {
+		config.E2BTemplateID = defaultCodexE2BTemplate
+	}
+	if strings.TrimSpace(config.OpenAIAPIKeySecretName) == "" {
+		config.OpenAIAPIKeySecretName = "OPENAI_API_KEY"
+	}
+	if config.ConcurrencyLimit <= 0 {
+		config.ConcurrencyLimit = 3
+	}
+	return config
+}
+
+func (d *agentTryoutExecutionDispatcher) dispatch(ctx context.Context, tryout repository.AgentTryout, template AgentTryoutTemplate) (repository.AgentTryout, error) {
+	if tryout.RunID != nil {
+		return d.refresh(ctx, tryout)
+	}
+	workspaceID, createdBy, ok := d.executionScope(tryout)
+	if !ok {
+		return d.failTryout(ctx, tryout, "execution_not_configured", "Agent tryouts are not configured for public execution yet.")
+	}
+	orgID, err := d.repo.GetOrganizationIDByWorkspaceID(ctx, workspaceID)
+	if err != nil {
+		return repository.AgentTryout{}, err
+	}
+	harness, err := d.getOrCreateTemplateHarness(ctx, orgID, workspaceID, createdBy, template)
+	if err != nil {
+		return repository.AgentTryout{}, err
+	}
+	executionConfig := d.executionConfig(template)
+	evaluationConfig := agentTryoutEvaluationConfig(template, tryout)
+	harnessSnapshot, err := d.harnessSnapshot(harness, template, tryout, executionConfig, evaluationConfig)
+	if err != nil {
+		return repository.AgentTryout{}, err
+	}
+	execution, err := d.repo.CreateAgentHarnessExecution(ctx, repository.CreateAgentHarnessExecutionParams{
+		OrganizationID:           orgID,
+		WorkspaceID:              workspaceID,
+		AgentHarnessID:           harness.ID,
+		CreatedByUserID:          createdBy,
+		HarnessSnapshot:          harnessSnapshot,
+		ExecutionConfigSnapshot:  executionConfig,
+		EvaluationConfigSnapshot: evaluationConfig,
+		ConcurrencyLimit:         d.config.ConcurrencyLimit,
+	})
+	if err != nil {
+		return repository.AgentTryout{}, err
+	}
+	runID := derefUUID(execution.RunID)
+	linked, err := d.repo.LinkAgentTryoutRunIfUnset(ctx, repository.LinkAgentTryoutRunParams{
+		ID:      tryout.ID,
+		RunID:   runID,
+		Status:  repository.AgentTryoutStatusRunning,
+		Summary: agentTryoutDispatchSummary(execution),
+	})
+	if err != nil {
+		return repository.AgentTryout{}, err
+	}
+	if linked.RunID == nil || *linked.RunID != runID {
+		return d.refresh(ctx, linked)
+	}
+	if err := d.startWorkflow(ctx, execution); err != nil {
+		reason := err.Error()
+		_, _ = d.repo.TransitionAgentHarnessExecutionStatus(ctx, repository.TransitionAgentHarnessExecutionStatusParams{
+			ExecutionID:     execution.ID,
+			ToStatus:        repository.AgentHarnessExecutionStatusFailed,
+			Reason:          &reason,
+			ChangedByUserID: createdBy,
+		})
+		return d.failTryout(ctx, linked, "execution_start_failed", "We could not start this tryout. Please try again.")
+	}
+	return d.refresh(ctx, linked)
+}
+
+func (d *agentTryoutExecutionDispatcher) executionScope(tryout repository.AgentTryout) (uuid.UUID, *uuid.UUID, bool) {
+	if tryout.WorkspaceID != nil {
+		return *tryout.WorkspaceID, tryout.CreatedByUserID, true
+	}
+	if d.config.PublicWorkspaceID == nil {
+		return uuid.Nil, nil, false
+	}
+	return *d.config.PublicWorkspaceID, d.config.PublicCreatedByUserID, true
+}
+
+func (d *agentTryoutExecutionDispatcher) getOrCreateTemplateHarness(ctx context.Context, orgID uuid.UUID, workspaceID uuid.UUID, createdBy *uuid.UUID, template AgentTryoutTemplate) (repository.AgentHarness, error) {
+	slug := agentTryoutHarnessSlug(template)
+	harness, err := d.repo.GetAgentHarnessByWorkspaceSlug(ctx, workspaceID, slug)
+	if err == nil {
+		return harness, nil
+	}
+	if !errors.Is(err, repository.ErrAgentHarnessNotFound) {
+		return repository.AgentHarness{}, err
+	}
+	harness, err = d.repo.CreateAgentHarness(ctx, repository.CreateAgentHarnessParams{
+		OrganizationID:         orgID,
+		WorkspaceID:            workspaceID,
+		CreatedByUserID:        createdBy,
+		Name:                   "Agent Tryout: " + template.Name,
+		Slug:                   slug,
+		Description:            "Internal harness used by AgentClash agent tryouts.",
+		HarnessKind:            d.config.HarnessKind,
+		TaskPrompt:             "AgentClash tryout template dispatcher.",
+		CodexTemplate:          d.config.E2BTemplateID,
+		AuthMode:               AgentHarnessAuthModeAPIKeySecret,
+		OpenAIAPIKeySecretName: optionalHarnessString(d.config.OpenAIAPIKeySecretName),
+		ExecutionConfig:        d.executionConfig(template),
+		EvaluationConfig:       agentTryoutEvaluationConfig(template, repository.AgentTryout{TemplateSlug: template.Slug}),
+	})
+	if errors.Is(err, repository.ErrAgentHarnessSlugConflict) {
+		return d.repo.GetAgentHarnessByWorkspaceSlug(ctx, workspaceID, slug)
+	}
+	return harness, err
+}
+
+func (d *agentTryoutExecutionDispatcher) startWorkflow(ctx context.Context, execution repository.AgentHarnessExecution) error {
+	ref, err := d.starter.StartAgentHarnessExecutionWorkflow(ctx, execution.ID, agentHarnessExecutionTimeoutSeconds(execution.ExecutionConfigSnapshot))
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(ref.WorkflowID) == "" {
+		ref.WorkflowID = defaultAgentHarnessExecutionWorkflowID(execution.ID)
+	}
+	_, err = d.repo.SetAgentHarnessExecutionTemporalIDs(ctx, repository.SetAgentHarnessExecutionTemporalIDsParams{
+		ExecutionID:        execution.ID,
+		TemporalWorkflowID: ref.WorkflowID,
+		TemporalRunID:      ref.RunID,
+	})
+	if err != nil {
+		if controller, ok := d.starter.(AgentHarnessExecutionWorkflowController); ok {
+			_ = controller.CancelAgentHarnessExecutionWorkflow(ctx, ref.WorkflowID, ref.RunID)
+		}
+	}
+	return err
+}
+
+func (d *agentTryoutExecutionDispatcher) refresh(ctx context.Context, tryout repository.AgentTryout) (repository.AgentTryout, error) {
+	if tryout.RunID == nil {
+		return tryout, nil
+	}
+	execution, err := d.repo.GetAgentHarnessExecutionByRunID(ctx, *tryout.RunID)
+	if err != nil {
+		if errors.Is(err, repository.ErrAgentHarnessExecutionNotFound) {
+			return tryout, nil
+		}
+		return repository.AgentTryout{}, err
+	}
+	status, redaction := agentTryoutStatusFromHarnessExecution(execution)
+	return d.repo.UpdateAgentTryoutStatus(ctx, repository.UpdateAgentTryoutStatusParams{
+		ID:              tryout.ID,
+		Status:          status,
+		Summary:         agentTryoutExecutionSummary(execution),
+		LatencyMS:       agentTryoutLatencyMS(execution),
+		RedactionStatus: redaction,
+	})
+}
+
+func (d *agentTryoutExecutionDispatcher) failTryout(ctx context.Context, tryout repository.AgentTryout, code string, message string) (repository.AgentTryout, error) {
+	redaction := repository.AgentTryoutRedactionNotRequired
+	return d.repo.UpdateAgentTryoutStatus(ctx, repository.UpdateAgentTryoutStatusParams{
+		ID:              tryout.ID,
+		Status:          repository.AgentTryoutStatusFailed,
+		Summary:         safeAgentTryoutFailureSummary(code, message),
+		RedactionStatus: &redaction,
+	})
+}
+
+func (d *agentTryoutExecutionDispatcher) executionConfig(template AgentTryoutTemplate) json.RawMessage {
+	payload, _ := json.Marshal(map[string]any{
+		"timeout_seconds": template.MaxDurationSeconds,
+		"agent_tryout": map[string]any{
+			"template_slug": template.Slug,
+		},
+	})
+	return payload
+}
+
+func (d *agentTryoutExecutionDispatcher) harnessSnapshot(harness repository.AgentHarness, template AgentTryoutTemplate, tryout repository.AgentTryout, executionConfig json.RawMessage, evaluationConfig json.RawMessage) (json.RawMessage, error) {
+	payload := map[string]any{
+		"id":                         harness.ID,
+		"workspace_id":               harness.WorkspaceID,
+		"organization_id":            harness.OrganizationID,
+		"harness_kind":               d.config.HarnessKind,
+		"task_prompt":                agentTryoutTaskPrompt(template, tryout.InputSnapshot),
+		"codex_template":             d.config.E2BTemplateID,
+		"auth_mode":                  AgentHarnessAuthModeAPIKeySecret,
+		"openai_api_key_secret_name": d.config.OpenAIAPIKeySecretName,
+		"execution_config":           json.RawMessage(executionConfig),
+		"evaluation_config":          json.RawMessage(evaluationConfig),
+	}
+	return json.Marshal(payload)
+}
+
+func agentTryoutHarnessSlug(template AgentTryoutTemplate) string {
+	return "agent-tryout-" + generateSlug(template.Slug)
+}
+
+func agentTryoutTaskPrompt(template AgentTryoutTemplate, input json.RawMessage) string {
+	return strings.Join([]string{
+		"You are running an AgentClash tryout template.",
+		"Template: " + template.Name + " (" + template.Slug + ")",
+		"Goal: " + template.Description,
+		"Use only the available sandbox tools and produce a concise, inspectable result for the user.",
+		"User input JSON:",
+		"```json",
+		string(input),
+		"```",
+	}, "\n")
+}
+
+func agentTryoutEvaluationConfig(template AgentTryoutTemplate, tryout repository.AgentTryout) json.RawMessage {
+	payload, _ := json.Marshal(map[string]any{
+		"template_evaluation_spec": json.RawMessage(template.EvaluationSpec),
+		"privacy": map[string]any{
+			"redact_replay":    true,
+			"redact_artifacts": true,
+			"retention_days":   1,
+		},
+		"result": map[string]any{
+			"kind":          "agent_tryout",
+			"template_slug": template.Slug,
+			"tryout_id":     tryout.ID,
+		},
+	})
+	return payload
+}
+
+func agentTryoutDispatchSummary(execution repository.AgentHarnessExecution) json.RawMessage {
+	return mustAgentTryoutJSON(map[string]any{
+		"code":          "execution_started",
+		"message":       "Tryout execution started.",
+		"execution_id":  execution.ID,
+		"run_id":        execution.RunID,
+		"run_agent_id":  execution.RunAgentID,
+		"status_source": "agent_harness_execution",
+	})
+}
+
+func agentTryoutExecutionSummary(execution repository.AgentHarnessExecution) json.RawMessage {
+	code := "execution_" + strings.TrimSpace(execution.Status)
+	message := "Tryout execution is " + strings.TrimSpace(execution.Status) + "."
+	if repository.AgentHarnessExecutionStatus(execution.Status) == repository.AgentHarnessExecutionStatusFailed {
+		code = "execution_failed"
+		message = "The tryout did not complete successfully. Inspect the run evidence for details."
+	}
+	return mustAgentTryoutJSON(map[string]any{
+		"code":          code,
+		"message":       message,
+		"execution_id":  execution.ID,
+		"run_id":        execution.RunID,
+		"run_agent_id":  execution.RunAgentID,
+		"status_source": "agent_harness_execution",
+	})
+}
+
+func safeAgentTryoutFailureSummary(code string, message string) json.RawMessage {
+	return mustAgentTryoutJSON(map[string]any{"code": code, "message": message})
+}
+
+func agentTryoutStatusFromHarnessExecution(execution repository.AgentHarnessExecution) (repository.AgentTryoutStatus, *repository.AgentTryoutRedactionStatus) {
+	switch repository.AgentHarnessExecutionStatus(execution.Status) {
+	case repository.AgentHarnessExecutionStatusCompleted:
+		redaction := repository.AgentTryoutRedactionPassed
+		return repository.AgentTryoutStatusCompleted, &redaction
+	case repository.AgentHarnessExecutionStatusFailed:
+		redaction := repository.AgentTryoutRedactionNotRequired
+		return repository.AgentTryoutStatusFailed, &redaction
+	case repository.AgentHarnessExecutionStatusCancelled:
+		redaction := repository.AgentTryoutRedactionNotRequired
+		return repository.AgentTryoutStatusCancelled, &redaction
+	default:
+		return repository.AgentTryoutStatusRunning, nil
+	}
+}
+
+func agentTryoutLatencyMS(execution repository.AgentHarnessExecution) *int64 {
+	if execution.StartedAt == nil || execution.CompletedAt == nil {
+		return nil
+	}
+	value := execution.CompletedAt.Sub(*execution.StartedAt).Milliseconds()
+	if value < 0 {
+		value = 0
+	}
+	return &value
+}
+
+func derefUUID(value *uuid.UUID) uuid.UUID {
+	if value == nil {
+		return uuid.Nil
+	}
+	return *value
+}
+
+func mustAgentTryoutJSON(value any) json.RawMessage {
+	payload, _ := json.Marshal(value)
+	return payload
 }
 
 func (m *AgentTryoutManager) ClaimTryout(ctx context.Context, caller Caller, input ClaimAgentTryoutInput) (repository.AgentTryout, error) {

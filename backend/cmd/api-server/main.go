@@ -130,7 +130,15 @@ func main() {
 	challengePackReadManager := api.NewChallengePackReadManager(repo)
 	challengePackAuthoringManager := api.NewChallengePackAuthoringManager(repo, artifactStore)
 	publicShareManager := api.NewPublicShareManager(authorizer, repo, cfg.FrontendURL)
-	agentTryoutManager := api.NewAgentTryoutManager(authorizer, repo)
+	agentTryoutManager := api.NewAgentTryoutManager(authorizer, repo).WithExecution(
+		api.NewTemporalAgentHarnessExecutionWorkflowStarter(temporalClient),
+		api.AgentTryoutExecutionConfig{
+			PublicWorkspaceID:      cfg.AgentTryoutPublicWorkspaceID,
+			PublicCreatedByUserID:  cfg.AgentTryoutPublicCreatedByUserID,
+			E2BTemplateID:          cfg.AgentTryoutE2BTemplateID,
+			OpenAIAPIKeySecretName: cfg.AgentTryoutOpenAIAPIKeySecretName,
+		},
+	)
 	agentBuildManager := api.NewAgentBuildManager(repo)
 	userManager := api.NewUserManager(repo)
 	orgAuthz := api.NewCallerOrganizationAuthorizer()

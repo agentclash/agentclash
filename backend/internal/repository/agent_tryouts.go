@@ -98,6 +98,13 @@ type UpdateAgentTryoutStatusParams struct {
 	RedactionStatus *AgentTryoutRedactionStatus
 }
 
+type LinkAgentTryoutRunParams struct {
+	ID      uuid.UUID
+	RunID   uuid.UUID
+	Status  AgentTryoutStatus
+	Summary json.RawMessage
+}
+
 func (r *Repository) CreateAgentTryout(ctx context.Context, params CreateAgentTryoutParams) (AgentTryout, error) {
 	costLimit, err := numericFromFloat(&params.CostLimitUSD)
 	if err != nil {
@@ -225,6 +232,92 @@ func (r *Repository) SetAgentTryoutRunID(ctx context.Context, id uuid.UUID, runI
 			return AgentTryout{}, ErrAgentTryoutNotFound
 		}
 		return AgentTryout{}, fmt.Errorf("set agent tryout run id: %w", err)
+	}
+	return mapAgentTryout(row)
+}
+
+func (r *Repository) LinkAgentTryoutRunIfUnset(ctx context.Context, params LinkAgentTryoutRunParams) (AgentTryout, error) {
+	status := params.Status
+	if status == "" {
+		status = AgentTryoutStatusRunning
+	}
+	row := r.db.QueryRow(ctx, `
+UPDATE agent_tryouts
+SET
+    run_id = COALESCE(run_id, $2),
+    status = CASE
+        WHEN run_id IS NULL AND status = 'queued' THEN $3
+        ELSE status
+    END,
+    summary = CASE
+        WHEN run_id IS NULL AND $4::jsonb IS NOT NULL THEN $4::jsonb
+        ELSE summary
+    END
+WHERE id = $1
+RETURNING id, organization_id, workspace_id, template_slug, status, input_snapshot,
+    template_snapshot, tool_policy_snapshot, evaluation_spec_snapshot, selected_model_policy,
+    summary, redaction_status, run_id, cost_limit_usd, actual_cost_usd, latency_ms,
+    max_duration_seconds, anonymous_fingerprint_hash, created_by_user_id,
+    claimed_by_user_id, claimed_at, expires_at, created_at, updated_at`,
+		params.ID, params.RunID, string(status), nullableJSON(params.Summary),
+	)
+	tryout, err := scanAgentTryoutRow(row)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return AgentTryout{}, ErrAgentTryoutNotFound
+		}
+		return AgentTryout{}, fmt.Errorf("link agent tryout run: %w", err)
+	}
+	return tryout, nil
+}
+
+func (r *Repository) GetAgentHarnessExecutionByRunID(ctx context.Context, runID uuid.UUID) (AgentHarnessExecution, error) {
+	row := r.db.QueryRow(ctx, `
+SELECT id, organization_id, workspace_id, agent_harness_id, created_by_user_id,
+    run_id, run_agent_id, evaluation_spec_id, temporal_workflow_id, temporal_run_id, retry_of_execution_id, retry_idempotency_key,
+    status, harness_snapshot, execution_config_snapshot, evaluation_config_snapshot,
+    error_message, started_at, completed_at, cancelled_at, created_at, updated_at
+FROM agent_harness_executions
+WHERE run_id = $1
+ORDER BY created_at ASC
+LIMIT 1`, runID)
+	return scanAgentHarnessExecution(row)
+}
+
+type agentTryoutScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanAgentTryoutRow(scanner agentTryoutScanner) (AgentTryout, error) {
+	var row repositorysqlc.AgentTryout
+	err := scanner.Scan(
+		&row.ID,
+		&row.OrganizationID,
+		&row.WorkspaceID,
+		&row.TemplateSlug,
+		&row.Status,
+		&row.InputSnapshot,
+		&row.TemplateSnapshot,
+		&row.ToolPolicySnapshot,
+		&row.EvaluationSpecSnapshot,
+		&row.SelectedModelPolicy,
+		&row.Summary,
+		&row.RedactionStatus,
+		&row.RunID,
+		&row.CostLimitUsd,
+		&row.ActualCostUsd,
+		&row.LatencyMs,
+		&row.MaxDurationSeconds,
+		&row.AnonymousFingerprintHash,
+		&row.CreatedByUserID,
+		&row.ClaimedByUserID,
+		&row.ClaimedAt,
+		&row.ExpiresAt,
+		&row.CreatedAt,
+		&row.UpdatedAt,
+	)
+	if err != nil {
+		return AgentTryout{}, err
 	}
 	return mapAgentTryout(row)
 }
