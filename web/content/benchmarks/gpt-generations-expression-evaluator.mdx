@@ -1,0 +1,116 @@
+---
+title: "We raced four GPT generations on a real coding task — GPT-5.4 won on efficiency"
+date: "2026-06-07"
+description: "A head-to-head AgentClash race of GPT-4.1, GPT-5, GPT-5.4, and GPT-5.5 on a real agentic coding task — building an integer expression evaluator with truncating division — scored on correctness, reliability, and token efficiency."
+author: "AgentClash"
+featuredModel: "GPT-5.4"
+verdict: "GPT-5.4 solved the task in 2 turns and ~8K tokens; GPT-5 and GPT-5.5 also passed, while GPT-4.1 thrashed for its full budget and failed to submit."
+challengePack: "Expression Evaluator Arena v1"
+sample: false
+tasks:
+  - id: expr-eval
+    name: "Build an integer expression evaluator"
+    summary: "Implement evaluate(expr) with operator precedence, parentheses, and unary minus — where division must truncate toward zero (not Python's floor //) and divide-by-zero must raise. Graded by a hidden three-tier test suite plus a strict output contract and LLM judges."
+results:
+  - model: "GPT-5.4"
+    provider: "OpenAI"
+    rank: 1
+    winner: true
+    composite: 1.0
+    correctness: 1.0
+    reliability: 1.0
+    cost: 1.0
+  - model: "GPT-5"
+    provider: "OpenAI"
+    rank: 2
+    composite: 1.0
+    correctness: 1.0
+    reliability: 1.0
+    cost: 0.55
+  - model: "GPT-5.5"
+    provider: "OpenAI"
+    rank: 3
+    composite: 0.88
+    correctness: 1.0
+    reliability: 1.0
+    cost: 0.46
+  - model: "GPT-4.1"
+    provider: "OpenAI"
+    rank: 4
+    reliability: 0.0
+    cost: 0.2
+---
+
+## How the race worked
+
+All four models got the **same task, the same sandbox, and the same tools** — a
+shell and a filesystem, a ten-iteration budget, no network. The task is a real
+slice of coding work with a verifiable outcome, not a trivia question: write a
+working program, and a hidden test suite decides whether it actually runs.
+
+AgentClash scored the whole trajectory across four vantages — deterministic
+checks (the hidden tests), the output contract, behavioral signals (did the run
+complete cleanly), and LLM judges on code quality and explanation — and folded
+them into one composite. (More on that in
+[how AgentClash scores agent trajectories](/blog/how-agentclash-scores-agent-trajectories).)
+
+## The task
+
+Implement `evaluate(expr: str) -> int` in Python: operator precedence,
+parentheses, and unary minus, where **division truncates toward zero** — so
+`-7/2 == -3`, not Python's floor-division `-4` — and divide-by-zero raises. The
+trap is deliberate: the lazy implementation reaches for Python's `//` or `eval`,
+which sails through the basic and unary tiers and then fails on negative
+division. Correctness is graded across three hidden test tiers (basic
+precedence, unary minus, truncating division), so a near-miss scores partial
+credit instead of a flat pass/fail.
+
+## What we saw
+
+**The trap didn't catch the frontier models.** GPT-5, GPT-5.4, and GPT-5.5 all
+landed full correctness — they handled truncating division correctly rather than
+defaulting to floor division. The separation showed up everywhere else: how
+*efficiently* they got there, and whether the oldest model could finish at all.
+
+**GPT-5.4 won on efficiency.** It submitted a correct, complete solution in
+**2 model calls and ~8K tokens** — a perfect score with the leanest trajectory
+in the field.
+
+**GPT-4.1 thrashed and failed.** It never converged: it burned all ten
+iterations in a debugging loop of repeated shell calls, spent **~41K tokens —
+five times the winner — and still never submitted a valid solution.** The harder
+task surfaced the gap in agentic coding that the saturated tasks hide.
+
+**GPT-5.5 was correct but sloppy on the contract.** It solved the problem but
+slipped on the strict final-output JSON shape, costing it the `output_contract`
+dimension and dropping its composite to 0.88.
+
+The measured trajectory cost (raw, no price assumptions):
+
+| Model    | Model calls | Total tokens | Outcome                          |
+| -------- | ----------- | ------------ | -------------------------------- |
+| GPT-5.4  | 2           | 8,134        | ✅ solved — leanest run          |
+| GPT-5    | 3           | 14,695       | ✅ solved                        |
+| GPT-5.5  | 4           | 17,693       | ✅ correct, slipped on contract  |
+| GPT-4.1  | 10 (cap)    | 40,932       | ❌ failed — never submitted      |
+
+The **Cost** column in the scoreboard is a token-efficiency score normalized to
+the leanest run (fewer tokens → higher); we don't assert dollar prices here.
+
+## Caveats
+
+This is a deliberately small first race: **one task, a single run per model**
+(n=1), and an OpenAI-only field. The LLM-judge dimensions carry per-run variance,
+and one task can't rank models in general. Read it as a worked example of the
+format and a real, reproducible result — not a verdict on the models. Wider
+fields (including cross-provider and cheaper open-weight models) follow as the
+backend grows to support them.
+
+## Takeaway
+
+A single benchmark number hides the trade-off that actually decides which model
+you ship. On this task every passing model was "correct" — but one solved it in
+two turns and another couldn't solve it at all. Race them on *your* tasks, with
+your tools, and read the whole scoreboard before you pick.
+
+[Run your own race →](/try)
