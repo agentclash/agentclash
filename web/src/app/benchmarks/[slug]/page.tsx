@@ -35,6 +35,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return {
     title,
     description: report.description,
+    // Sample reports use illustrative numbers — keep them reachable for humans
+    // but out of the search index so engines never treat them as real data.
+    robots: report.sample ? { index: false, follow: true } : undefined,
     alternates: {
       canonical: `/benchmarks/${report.slug}`,
       types: benchmarkRssAlternate,
@@ -66,10 +69,14 @@ export default async function BenchmarkReportPage({ params }: Props) {
 
   return (
     <MarketingShell>
-      <JsonLd
-        id={`agentclash-benchmark-${report.slug}-schema`}
-        data={benchmarkReportSchema(report)}
-      />
+      {/* Sample reports carry illustrative numbers — don't emit a Dataset/Article
+          that would present them to answer engines as real, measured data. */}
+      {!report.sample && (
+        <JsonLd
+          id={`agentclash-benchmark-${report.slug}-schema`}
+          data={benchmarkReportSchema(report)}
+        />
+      )}
       <article className="mx-auto w-full max-w-3xl px-6 py-16">
         <Link
           href="/benchmarks"

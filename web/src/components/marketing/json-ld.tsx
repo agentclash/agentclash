@@ -5,12 +5,26 @@ type Props = {
   data: Record<string, unknown> | Record<string, unknown>[];
 };
 
+// Escape characters that can break out of an inline <script>: a literal
+// `</script>` (or `<`) closes the element early, and U+2028/U+2029 terminate
+// an inline script. Replacing each with its \uXXXX escape keeps the
+// JSON-LD valid. Protects every JsonLd caller, not just benchmarks.
+export function serializeJsonLd(
+  data: Record<string, unknown> | Record<string, unknown>[],
+): string {
+  return JSON.stringify(data).replace(
+    /[<\u2028\u2029]/g,
+    (char) =>
+      "\\u" + char.charCodeAt(0).toString(16).padStart(4, "0"),
+  );
+}
+
 export function JsonLd({ id, data }: Props) {
   return (
     <script
       id={id}
       type="application/ld+json"
-      dangerouslySetInnerHTML={{ __html: JSON.stringify(data) }}
+      dangerouslySetInnerHTML={{ __html: serializeJsonLd(data) }}
     />
   );
 }

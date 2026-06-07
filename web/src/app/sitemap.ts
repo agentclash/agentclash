@@ -57,19 +57,28 @@ export default function sitemap(): MetadataRoute.Sitemap {
       ogImage({ title: post.title, subtitle: post.description, kind: "Blog" }),
     ],
   }));
-  const benchmarks = getAllReports().map((report) => ({
-    url: `${DOCS_ORIGIN}/benchmarks/${report.slug}`,
-    lastModified: new Date(report.date),
-    changeFrequency: "monthly" as const,
-    priority: 0.75,
-    images: [
-      ogImage({
-        title: report.title,
-        subtitle: report.verdict,
-        kind: "Benchmark",
-      }),
-    ],
-  }));
+  // Exclude `sample` reports (illustrative numbers) so search engines never
+  // index fabricated data. Guard the date: a report whose `date` does not parse
+  // would become an Invalid Date and make Next's serializer throw on
+  // .toISOString(), taking down the entire sitemap.xml.
+  const benchmarks = getAllReports()
+    .filter((report) => !report.sample)
+    .map((report) => {
+      const lastModified = new Date(report.date);
+      return {
+        url: `${DOCS_ORIGIN}/benchmarks/${report.slug}`,
+        ...(Number.isNaN(lastModified.getTime()) ? {} : { lastModified }),
+        changeFrequency: "monthly" as const,
+        priority: 0.75,
+        images: [
+          ogImage({
+            title: report.title,
+            subtitle: report.verdict,
+            kind: "Benchmark",
+          }),
+        ],
+      };
+    });
   const docs = getAllDocPaths().map((docPath) => ({
     url: `${DOCS_ORIGIN}${docPath}`,
     lastModified: new Date(),

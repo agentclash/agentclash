@@ -6,6 +6,7 @@ import {
   docsPageSchema,
   organizationSchema,
   productSchema,
+  serializeJsonLd,
   SITE_URL,
   websiteSchema,
 } from "./json-ld";
@@ -370,5 +371,34 @@ describe("docsPageSchema freshness dates", () => {
 
     expect(techArticle?.datePublished).toBeUndefined();
     expect(techArticle?.dateModified).toBeUndefined();
+  });
+});
+
+describe("serializeJsonLd", () => {
+  const LS = String.fromCharCode(0x2028);
+  const PS = String.fromCharCode(0x2029);
+
+  it("escapes </script> so author content cannot break out of the tag", () => {
+    const out = serializeJsonLd({
+      "@type": "Dataset",
+      description: "Opus beat </script><script>alert(1)</script> the field",
+    });
+    expect(out).not.toContain("</script>");
+    expect(out).toContain("\\u003c/script>");
+  });
+
+  it("escapes the U+2028 / U+2029 separators", () => {
+    const out = serializeJsonLd({ note: `a${LS}b${PS}c` });
+    expect(out).not.toContain(LS);
+    expect(out).not.toContain(PS);
+    expect(out).toContain("\\u2028");
+    expect(out).toContain("\\u2029");
+  });
+
+  it("leaves ordinary content (including spaces) intact and round-trips", () => {
+    const data = { "@type": "Dataset", name: "a b c </script>", n: 1 };
+    const out = serializeJsonLd(data);
+    expect(out).toContain("a b c"); // spaces must not be corrupted
+    expect(JSON.parse(out)).toEqual(data);
   });
 });

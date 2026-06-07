@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { BlogPost } from "./blog";
-import { buildBlogRssFeed, escapeXml, formatRssDate } from "./rss";
+import type { BenchmarkReport } from "./benchmarks";
+import {
+  buildBenchmarkRssFeed,
+  buildBlogRssFeed,
+  escapeXml,
+  formatRssDate,
+} from "./rss";
 
 const posts = [
   {
@@ -75,5 +81,38 @@ describe("rss feed", () => {
     expect(feed).toContain("<title>Older Post</title>");
     expect(feed).not.toContain("invalid-date");
     expect(feed).not.toContain("missing-title");
+  });
+});
+
+describe("benchmark rss feed", () => {
+  const base = {
+    date: "2026-06-06",
+    description: "Head-to-head race.",
+    author: "AgentClash",
+    featuredModel: "Claude Opus 4.8",
+    verdict: "Opus won.",
+    challengePack: "",
+    runShareUrl: "",
+    tasks: [],
+    results: [],
+  } satisfies Partial<BenchmarkReport>;
+
+  it("excludes sample reports so illustrative numbers are never syndicated", () => {
+    const feed = buildBenchmarkRssFeed("https://example.test", [
+      { ...base, slug: "real-report", title: "Real Report", sample: false },
+      {
+        ...base,
+        slug: "sample-report",
+        title: "Illustrative Sample",
+        sample: true,
+      },
+    ]);
+
+    expect(feed).toContain("<title>Real Report</title>");
+    expect(feed).toContain(
+      "<link>https://example.test/benchmarks/real-report</link>",
+    );
+    expect(feed).not.toContain("sample-report");
+    expect(feed).not.toContain("Illustrative Sample");
   });
 });

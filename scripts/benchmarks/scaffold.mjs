@@ -83,7 +83,7 @@ function round(value, places) {
 // Provider is not in the ranking document; infer a hint from the model label so
 // the editor only has to confirm rather than fill from scratch.
 function guessProvider(label) {
-  const lower = label.toLowerCase();
+  const lower = String(label).toLowerCase();
   if (lower.includes("claude") || lower.includes("opus") || lower.includes("sonnet") || lower.includes("haiku")) return "Anthropic";
   if (lower.includes("gpt") || lower.includes("o1") || lower.includes("o3") || lower.includes("openai")) return "OpenAI";
   if (lower.includes("gemini")) return "Google";

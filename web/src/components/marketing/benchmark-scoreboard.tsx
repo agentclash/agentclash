@@ -14,11 +14,23 @@ function formatScore(value: number | null): string {
 
 function formatCost(value: number | null): string {
   if (value === null) return "—";
+  // Cost-per-correct is an absolute dollar amount that can fall below a cent as
+  // models get cheaper; toFixed(2) alone would flatten e.g. 0.0042 to "$0.00".
+  if (value > 0 && value < 0.01) return `$${value.toPrecision(2)}`;
   return `$${value.toFixed(2)}`;
 }
 
+// Restrict columns to numeric (number | null) fields. This excludes string/
+// boolean keys like `model`/`provider`/`winner`, so adding a non-numeric column
+// is a compile error instead of a silent NaN at render time.
+type NumericResultKey = {
+  [K in keyof BenchmarkResult]: BenchmarkResult[K] extends number | null
+    ? K
+    : never;
+}[keyof BenchmarkResult];
+
 type Column = {
-  key: keyof BenchmarkResult;
+  key: NumericResultKey;
   label: string;
   format: (value: number | null) => string;
 };
@@ -98,7 +110,7 @@ export function BenchmarkScoreboard({ results, featuredModel }: Props) {
                     key={col.key}
                     className="px-4 py-3 text-right font-[family-name:var(--font-mono)] text-sm tabular-nums text-white/70"
                   >
-                    {col.format(result[col.key] as number | null)}
+                    {col.format(result[col.key])}
                   </td>
                 ))}
               </tr>

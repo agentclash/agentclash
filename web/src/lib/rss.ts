@@ -128,7 +128,9 @@ export function buildBenchmarkRssFeed(
   origin = SITE_URL,
   reports: BenchmarkReport[] = getAllReports(),
 ) {
+  // Exclude `sample` reports so illustrative numbers are never syndicated.
   const rssReports = reports
+    .filter((report) => !report.sample)
     .map(toRssBenchmark)
     .filter((report) => report !== null)
     .sort((a, b) => b.publishedAtMs - a.publishedAtMs);

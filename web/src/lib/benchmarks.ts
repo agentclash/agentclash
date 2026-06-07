@@ -80,76 +80,144 @@ function parseTasks(value: unknown): BenchmarkTask[] {
   return tasks;
 }
 
-function parseResults(value: unknown): BenchmarkResult[] {
+// Coerce + range-check a 0–1 score field. A value outside [0,1] is almost always
+// an authoring mistake (e.g. `91` meant `0.91`), so warn and treat it as missing
+// rather than let formatScore render an absurd "9100". Does NOT apply to
+// costPerCorrectUsd (an absolute dollar amount) or rank.
+function score01(
+  value: unknown,
+  field: string,
+  model: string,
+  slug: string,
+): number | null {
+  const parsed = scoreOrNull(value);
+  if (parsed === null) return null;
+  if (parsed < 0 || parsed > 1) {
+    console.warn(
+      `[benchmarks] ${slug}: ${model} ${field}=${parsed} is outside the 0–1 range; treating as missing.`,
+    );
+    return null;
+  }
+  return parsed;
+}
+
+function parseResults(value: unknown, slug: string): BenchmarkResult[] {
   if (!Array.isArray(value)) return [];
-  const results: BenchmarkResult[] = [];
+  const rows: Array<
+    BenchmarkResult & { explicitRank: number | null; order: number }
+  > = [];
   for (const [index, raw] of value.entries()) {
     if (typeof raw !== "object" || raw === null) continue;
     const entry = raw as Record<string, unknown>;
     const model = requiredText(entry.model);
     if (!model) continue;
-    const rankValue = scoreOrNull(entry.rank);
-    results.push({
+    const explicitRank = scoreOrNull(entry.rank);
+    rows.push({
       model,
       provider: optionalText(entry.provider),
-      rank: rankValue === null ? index + 1 : Math.round(rankValue),
+      rank: 0,
       winner: entry.winner === true,
-      composite: scoreOrNull(entry.composite),
-      correctness: scoreOrNull(entry.correctness),
-      reliability: scoreOrNull(entry.reliability),
-      latency: scoreOrNull(entry.latency),
-      cost: scoreOrNull(entry.cost),
+      composite: score01(entry.composite, "composite", model, slug),
+      correctness: score01(entry.correctness, "correctness", model, slug),
+      reliability: score01(entry.reliability, "reliability", model, slug),
+      latency: score01(entry.latency, "latency", model, slug),
+      cost: score01(entry.cost, "cost", model, slug),
       costPerCorrectUsd: scoreOrNull(entry.costPerCorrectUsd),
+      explicitRank: explicitRank === null ? null : Math.round(explicitRank),
+      order: index,
     });
   }
-  results.sort((a, b) => a.rank - b.rank);
-  return results;
+  // Order by explicit rank first (unranked rows last), then composite desc, then
+  // input order — then assign unique sequential 1..N display ranks. Deriving the
+  // "#" from final position (instead of the raw per-row rank) means partial or
+  // duplicate `rank:` values can never collide in the scoreboard.
+  rows.sort((a, b) => {
+    const ar = a.explicitRank ?? Number.POSITIVE_INFINITY;
+    const br = b.explicitRank ?? Number.POSITIVE_INFINITY;
+    if (ar !== br) return ar - br;
+    const ac = a.composite ?? Number.NEGATIVE_INFINITY;
+    const bc = b.composite ?? Number.NEGATIVE_INFINITY;
+    if (ac !== bc) return bc - ac;
+    return a.order - b.order;
+  });
+  return rows.map((row, index) => ({
+    model: row.model,
+    provider: row.provider,
+    rank: index + 1,
+    winner: row.winner,
+    composite: row.composite,
+    correctness: row.correctness,
+    reliability: row.reliability,
+    latency: row.latency,
+    cost: row.cost,
+    costPerCorrectUsd: row.costPerCorrectUsd,
+  }));
 }
 
 export function parseBenchmarkReport(
   slug: string,
   raw: string,
 ): BenchmarkReportWithContent | null {
+  let parsed: ReturnType<typeof matter>;
   try {
-    const { data, content } = matter(raw);
-    const title = requiredText(data.title);
-    const date = requiredText(data.date);
-    const description = requiredText(data.description);
-    const author = requiredText(data.author);
-    const featuredModel = requiredText(data.featuredModel);
-    const verdict = requiredText(data.verdict);
-    const results = parseResults(data.results);
-
-    if (
-      !title ||
-      !date ||
-      !description ||
-      !author ||
-      !featuredModel ||
-      !verdict ||
-      results.length === 0
-    ) {
-      return null;
-    }
-
-    return {
-      slug,
-      title,
-      date,
-      description,
-      author,
-      featuredModel,
-      verdict,
-      challengePack: optionalText(data.challengePack),
-      sample: data.sample === true,
-      runShareUrl: optionalText(data.runShareUrl),
-      tasks: parseTasks(data.tasks),
-      results,
-      content,
-    };
-  } catch {
+    parsed = matter(raw);
+  } catch (error) {
+    console.warn(
+      `[benchmarks] ${slug}.mdx: could not parse frontmatter — skipping.`,
+      error,
+    );
     return null;
   }
+
+  const { data, content } = parsed;
+  const title = requiredText(data.title);
+  const date = requiredText(data.date);
+  const description = requiredText(data.description);
+  const author = requiredText(data.author);
+  const featuredModel = requiredText(data.featuredModel);
+  const verdict = requiredText(data.verdict);
+  const results = parseResults(data.results, slug);
+
+  // Surface authoring mistakes loudly instead of silently dropping the report
+  // (a silent drop makes it vanish from the page, sitemap, RSS, and static
+  // params on a green build). A misspelled/omitted required field — or a date
+  // that does not parse (which would otherwise crash the sitemap) — leaves the
+  // report unpublished, so name exactly what is wrong.
+  const problems: string[] = [];
+  if (!title) problems.push("title");
+  if (!description) problems.push("description");
+  if (!author) problems.push("author");
+  if (!featuredModel) problems.push("featuredModel");
+  if (!verdict) problems.push("verdict");
+  if (results.length === 0) problems.push("results");
+  if (!date) {
+    problems.push("date");
+  } else if (Number.isNaN(new Date(date).getTime())) {
+    problems.push(`date (unparseable: "${date}")`);
+  }
+
+  if (problems.length > 0) {
+    console.warn(
+      `[benchmarks] ${slug}.mdx: skipped — missing or invalid field(s): ${problems.join(", ")}.`,
+    );
+    return null;
+  }
+
+  return {
+    slug,
+    title,
+    date,
+    description,
+    author,
+    featuredModel,
+    verdict,
+    challengePack: optionalText(data.challengePack),
+    sample: data.sample === true,
+    runShareUrl: optionalText(data.runShareUrl),
+    tasks: parseTasks(data.tasks),
+    results,
+    content,
+  };
 }
 
 function readReportBySlug(slug: string): BenchmarkReportWithContent | null {

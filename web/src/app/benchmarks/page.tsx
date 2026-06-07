@@ -45,7 +45,7 @@ export default function BenchmarksPage() {
     <MarketingShell>
       <JsonLd
         id="agentclash-benchmarks-index-schema"
-        data={benchmarkIndexSchema(reports)}
+        data={benchmarkIndexSchema(reports.filter((report) => !report.sample))}
       />
       <section className="mx-auto w-full max-w-3xl px-6 py-16">
         <p className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-[0.14em] text-white/35">
@@ -69,6 +69,11 @@ export default function BenchmarksPage() {
             >
               <span className="font-[family-name:var(--font-mono)] text-[11px] text-white/40">
                 {report.date} &middot; {report.featuredModel}
+                {report.sample && (
+                  <span className="ml-2 rounded-full border border-amber-400/25 bg-amber-400/[0.06] px-1.5 py-0.5 text-[9px] uppercase tracking-[0.12em] text-amber-200/80">
+                    Sample
+                  </span>
+                )}
               </span>
               <span className="text-base font-medium text-white group-hover:text-white/90">
                 {report.title}

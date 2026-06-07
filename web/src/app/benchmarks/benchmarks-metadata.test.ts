@@ -112,4 +112,44 @@ describe("benchmarks report social metadata", () => {
     });
     expect(metadata).toEqual({});
   });
+
+  it("noindexes a sample report so engines never index illustrative numbers", async () => {
+    getReportBySlugMock.mockReturnValue({
+      slug: "sample-report",
+      title: "Sample Report",
+      date: "2026-06-06",
+      description: "Illustrative.",
+      author: "AgentClash",
+      featuredModel: "Claude Opus 4.8",
+      verdict: "Representative only.",
+      sample: true,
+      content: "",
+    });
+
+    const metadata = await generateMetadata({
+      params: Promise.resolve({ slug: "sample-report" }),
+    });
+
+    expect(metadata.robots).toEqual({ index: false, follow: true });
+  });
+
+  it("leaves a real (non-sample) report indexable", async () => {
+    getReportBySlugMock.mockReturnValue({
+      slug: "real-report",
+      title: "Real Report",
+      date: "2026-06-06",
+      description: "Measured.",
+      author: "AgentClash",
+      featuredModel: "Claude Opus 4.8",
+      verdict: "Opus won.",
+      sample: false,
+      content: "",
+    });
+
+    const metadata = await generateMetadata({
+      params: Promise.resolve({ slug: "real-report" }),
+    });
+
+    expect(metadata.robots).toBeUndefined();
+  });
 });
