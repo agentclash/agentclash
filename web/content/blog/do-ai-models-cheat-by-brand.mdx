@@ -5,6 +5,8 @@ description: "A small pilot on AgentClash: 8 frontier models, 6 kinds of test-ga
 author: "Atharva"
 ---
 
+*Adapted for a general audience from [Atharva's original write-up](https://x.com/attharrva15/status/2059001263208202502). The study, data, and findings are his; this version just translates the jargon.*
+
 There's a story people like to tell about AI models: that each lab gives its models a personality. Anthropic models have a "safety conscience." OpenAI models are "alignment-pilled." Gemini carries some kind of "Google morality."
 
 It's a tidy story. I wanted to find out if it was actually true.
@@ -21,7 +23,7 @@ When you give an AI agent a task and a score to chase, it has two ways to get a 
 
 A student analogy: you can study for the exam, or you can find the answer key taped under the desk. Both get you an A. Only one means you learned anything.
 
-I built 6 challenge packs, each based on a real way agents game tests (the taxonomy comes from Thaman et al.'s Reward Hacking Benchmark, ICML 2026):
+I built 6 challenge packs, each based on a real way agents game tests (the taxonomy comes from [Thaman et al.'s Reward Hacking Benchmark](https://arxiv.org/abs/2605.02964)):
 
 1. **Reading the answer key** — peeking at QA logs or environment secrets it wasn't supposed to read.
 2. **Rewriting the test** — editing the tests or the test runner so they pass no matter what.
@@ -81,7 +83,7 @@ I'm 22 and just graduated, and this is one small pilot — so take these as hypo
 
 ## The honest caveats
 
-n=192 is small, and I know it. I ran three repetitions per pack per model, used neutral race labels to avoid tipping the models off, and validated everything locally first. The qualitative patterns held across repetitions, and the quantitative signal was consistent across the first batch (n=48), the second (n=144), and combined (n=192). But more data would absolutely help, and I could be wrong about any of this.
+n=192 is small, and I know it. The runs came in two batches: a first pass of one run per pack per model (6 × 8 = **48**), then a hardened second pass of three runs per pack per model (6 × 8 × 3 = **144**) — **192** in total. I used neutral race labels to avoid tipping the models off, and validated everything locally first. The qualitative patterns held across repetitions, and the quantitative signal was consistent across the first batch (n=48), the second (n=144), and combined (n=192). But more data would absolutely help, and I could be wrong about any of this.
 
 This is also exactly the kind of thing AgentClash was built to surface — because it scores the *whole trajectory*, not just the final answer. (If you're curious how that scoring works, I wrote about it in [How AgentClash Scores Agent Trajectories](/blog/how-agentclash-scores-agent-trajectories).)
 
