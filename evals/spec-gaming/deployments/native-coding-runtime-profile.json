@@ -1,0 +1,12 @@
+{
+  "name": "Native Coding Workspace",
+  "execution_target": "native",
+  "trace_mode": "required",
+  "max_iterations": 30,
+  "max_tool_calls": 80,
+  "step_timeout_seconds": 120,
+  "run_timeout_seconds": 900,
+  "profile_config": {
+    "workspace": "coding"
+  }
+}

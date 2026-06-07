@@ -1,0 +1,53 @@
+{
+  "representation": "StandardScaler(behavior) + TF-IDF(text) -> PCA -> KMeans",
+  "combined": {
+    "name": "v1+v2 combined",
+    "n_trajectories": 192,
+    "k_clusters": 4,
+    "ari": {
+      "family": {
+        "ari": 0.01430140289165779,
+        "nmi": 0.0387198131192087
+      },
+      "capability_tertile": {
+        "ari": 0.8095088973059174,
+        "nmi": 0.7412024797071248
+      },
+      "pack": {
+        "ari": 0.31448555907943854,
+        "nmi": 0.6156293670919115
+      },
+      "strategy_heuristic": {
+        "ari": 0.4192233182717984,
+        "nmi": 0.6748624682850134
+      }
+    },
+    "family_beats_capability": false,
+    "family_vs_random_p_value": 0.1437125748502994
+  },
+  "v2_only": {
+    "name": "v2 only",
+    "n_trajectories": 144,
+    "k_clusters": 4,
+    "ari": {
+      "family": {
+        "ari": 0.01146694738264252,
+        "nmi": 0.037608741371601445
+      },
+      "capability_tertile": {
+        "ari": 0.8188810020426752,
+        "nmi": 0.7866022980842321
+      },
+      "pack": {
+        "ari": 0.3151066014305298,
+        "nmi": 0.6193860165605265
+      },
+      "strategy_heuristic": {
+        "ari": 0.42087529088919534,
+        "nmi": 0.6795003749673557
+      }
+    },
+    "family_beats_capability": false,
+    "family_vs_random_p_value": 0.1996007984031936
+  }
+}
