@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowRight, LogIn, Star } from "lucide-react";
 import { withAuth } from "@workos-inc/authkit-nextjs";
+import { hasPublishedBenchmarks } from "@/lib/benchmarks";
 import { ClashMark } from "./clash-mark";
 
 type NavLink = { href: string; label: string; external?: boolean };
@@ -19,6 +20,11 @@ type Props = {
 
 export async function MarketingHeader({ nav = DEFAULT_NAV }: Props) {
   const { user } = await withAuth();
+  // Hide Benchmarks until a real report ships (coming-soon state) so we never
+  // funnel visitors to a placeholder; it reappears automatically once live.
+  const visibleNav = hasPublishedBenchmarks()
+    ? nav
+    : nav.filter((item) => item.href !== "/benchmarks");
 
   return (
     <header className="px-5 sm:px-12 py-5 sm:py-6 border-b border-white/[0.06]">
@@ -33,7 +39,7 @@ export async function MarketingHeader({ nav = DEFAULT_NAV }: Props) {
           </span>
         </Link>
         <nav className="flex items-center gap-0.5 sm:gap-2 text-xs">
-          {nav.map((item) =>
+          {visibleNav.map((item) =>
             item.external ? (
               <a
                 key={item.href}

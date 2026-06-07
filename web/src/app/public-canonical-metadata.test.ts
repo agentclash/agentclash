@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { metadata as homeMetadata } from "./page";
 import { metadata as blogMetadata } from "./blog/page";
 import { generateMetadata as generateBlogPostMetadata } from "./blog/[slug]/page";
-import { metadata as benchmarksMetadata } from "./benchmarks/page";
+import { generateMetadata as generateBenchmarksIndexMetadata } from "./benchmarks/page";
 import { generateMetadata as generateBenchmarkMetadata } from "./benchmarks/[slug]/page";
 import { generateMetadata as generateDocsMetadata } from "./docs/[[...slug]]/page";
 import { metadata as agentEvaluationMetadata } from "./platform/agent-evaluation/page";
@@ -40,6 +40,7 @@ vi.mock("@/lib/benchmarks", () => ({
   getAllReports: vi.fn(() => []),
   getAllSlugs: vi.fn(() => []),
   getReportBySlug: getReportBySlugMock,
+  hasPublishedBenchmarks: vi.fn(() => false),
 }));
 
 vi.mock("@/lib/docs", () => ({
@@ -57,7 +58,7 @@ describe("public canonical metadata", () => {
   it("locks static public page canonicals", () => {
     expectCanonical(homeMetadata, "/");
     expectCanonical(blogMetadata, "/blog");
-    expectCanonical(benchmarksMetadata, "/benchmarks");
+    expectCanonical(generateBenchmarksIndexMetadata(), "/benchmarks");
     expectCanonical(agentEvaluationMetadata, "/platform/agent-evaluation");
     expectCanonical(
       agentRegressionTestingMetadata,

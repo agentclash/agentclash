@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import { cache } from "react";
 import matter from "gray-matter";
 
 const CONTENT_DIR = path.join(process.cwd(), "content", "benchmarks");
@@ -238,7 +239,11 @@ function stripContent(report: BenchmarkReportWithContent): BenchmarkReport {
   return meta;
 }
 
-export function getAllReports(): BenchmarkReport[] {
+// `cache()` dedupes the filesystem scan within a single render/request: a
+// MarketingShell page reaches this through the header, the footer, and its own
+// metadata + body, so without it one request would scan content/benchmarks
+// several times over.
+export const getAllReports = cache((): BenchmarkReport[] => {
   if (!fs.existsSync(CONTENT_DIR)) return [];
   const files = fs.readdirSync(CONTENT_DIR).filter((f) => f.endsWith(".mdx"));
   const reports: BenchmarkReport[] = [];
@@ -250,7 +255,7 @@ export function getAllReports(): BenchmarkReport[] {
   }
 
   return reports.sort((a, b) => (a.date > b.date ? -1 : 1));
-}
+});
 
 export function getReportBySlug(slug: string): BenchmarkReportWithContent | null {
   return readReportBySlug(slug);
@@ -258,4 +263,13 @@ export function getReportBySlug(slug: string): BenchmarkReportWithContent | null
 
 export function getAllSlugs(): string[] {
   return getAllReports().map((report) => report.slug);
+}
+
+// True once at least one real (non-`sample`) report is published. Single source
+// of truth for whether the Benchmarks section is "live": it gates public listing
+// (page, sitemap, nav links) and indexability. While only illustrative `sample`
+// reports exist, the section stays in a noindexed "coming soon" state and flips
+// on automatically the moment a measured benchmark ships.
+export function hasPublishedBenchmarks(): boolean {
+  return getAllReports().some((report) => !report.sample);
 }
