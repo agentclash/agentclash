@@ -488,6 +488,41 @@ body {
   margin: 2rem 0;
 }
 
+.prose-agentclash table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.5rem 0;
+  font-size: 0.9em;
+}
+
+.prose-agentclash thead {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.prose-agentclash th {
+  text-align: left;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.45);
+  padding: 0.5rem 1rem;
+  white-space: nowrap;
+}
+
+.prose-agentclash td {
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.7);
+  vertical-align: top;
+}
+
+.prose-agentclash th:first-child,
+.prose-agentclash td:first-child {
+  padding-left: 0;
+}
+
+.prose-agentclash tbody tr:last-child td {
+  border-bottom: none;
+}
+
 /* Docs prose */
 .prose-agentclash-docs {
   max-width: 72ch;
