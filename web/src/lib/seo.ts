@@ -11,6 +11,15 @@ export const blogRssAlternate = {
   ],
 } satisfies AlternateTypes;
 
+export const benchmarkRssAlternate = {
+  "application/rss+xml": [
+    {
+      title: "AgentClash Model Benchmarks",
+      url: "/benchmarks/feed.xml",
+    },
+  ],
+} satisfies AlternateTypes;
+
 // Root-relative URL for the dynamic Open Graph image route (app/og/route.tsx).
 // metadataBase upgrades it to absolute in the rendered OG/Twitter tags, so each
 // page gets a tailored social card instead of one shared static image.

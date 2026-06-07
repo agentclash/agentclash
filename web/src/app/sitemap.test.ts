@@ -21,6 +21,32 @@ vi.mock("@/lib/docs", () => ({
   ]),
 }));
 
+vi.mock("@/lib/benchmarks", () => ({
+  getAllReports: vi.fn(() => [
+    {
+      slug: "claude-opus-4-8-vs-the-field",
+      title: "Claude Opus 4.8 vs the field",
+      date: "2026-06-06",
+      verdict: "Opus 4.8 took 4 of 5.",
+      sample: false,
+    },
+    {
+      slug: "sample-illustrative",
+      title: "Sample illustrative report",
+      date: "2026-06-06",
+      verdict: "Representative numbers only.",
+      sample: true,
+    },
+    {
+      slug: "bad-date-report",
+      title: "Report with an unparseable date",
+      date: "Q2 2026",
+      verdict: "Date will not parse.",
+      sample: false,
+    },
+  ]),
+}));
+
 describe("sitemap", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -135,6 +161,29 @@ describe("sitemap", () => {
     });
   });
 
+  it("includes the benchmarks index and per-report pages", () => {
+    const entries = sitemap();
+    const byUrl = new Map(entries.map((entry) => [entry.url, entry]));
+
+    expect(
+      byUrl.get("https://www.agentclash.dev/benchmarks"),
+    ).toMatchObject({
+      changeFrequency: "weekly",
+      priority: 0.8,
+    });
+    const report = byUrl.get(
+      "https://www.agentclash.dev/benchmarks/claude-opus-4-8-vs-the-field",
+    );
+    expect(report).toMatchObject({
+      lastModified: new Date("2026-06-06"),
+      changeFrequency: "monthly",
+      priority: 0.75,
+    });
+    const image = report?.images?.[0] ?? "";
+    expect(image.startsWith("https://www.agentclash.dev/og?")).toBe(true);
+    expect(image).toContain("kind=Benchmark");
+  });
+
   it("includes the comparison hub and per-competitor pages", () => {
     const entries = sitemap();
     const urls = new Set(entries.map((entry) => entry.url));
@@ -220,5 +269,24 @@ describe("sitemap", () => {
     expect(multi).toBeDefined();
     expect(multi).toContain("&amp;");
     expect(/&(?!amp;|lt;|gt;|quot;|#39;)/.test(multi ?? "")).toBe(false);
+  });
+
+  it("excludes sample reports so fabricated numbers are never indexed", () => {
+    const urls = new Set(sitemap().map((entry) => entry.url));
+    expect(
+      urls.has("https://www.agentclash.dev/benchmarks/sample-illustrative"),
+    ).toBe(false);
+  });
+
+  it("survives an unparseable report date without crashing the whole sitemap", () => {
+    const byUrl = new Map(sitemap().map((entry) => [entry.url, entry]));
+    const bad = byUrl.get(
+      "https://www.agentclash.dev/benchmarks/bad-date-report",
+    );
+    // Still listed, but with no Invalid Date lastModified that would make Next's
+    // serializer throw on .toISOString() and take down the entire sitemap.xml.
+    expect(bad).toBeDefined();
+    expect(bad?.lastModified).toBeUndefined();
+    expect(() => JSON.stringify(sitemap())).not.toThrow();
   });
 });

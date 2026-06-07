@@ -1,5 +1,6 @@
 import type { MetadataRoute } from "next";
 import { getAllPosts } from "@/lib/blog";
+import { getAllReports } from "@/lib/benchmarks";
 import {
   getChangelogLatestModified,
   getChangelogPeriodHref,
@@ -56,6 +57,28 @@ export default function sitemap(): MetadataRoute.Sitemap {
       ogImage({ title: post.title, subtitle: post.description, kind: "Blog" }),
     ],
   }));
+  // Exclude `sample` reports (illustrative numbers) so search engines never
+  // index fabricated data. Guard the date: a report whose `date` does not parse
+  // would become an Invalid Date and make Next's serializer throw on
+  // .toISOString(), taking down the entire sitemap.xml.
+  const benchmarks = getAllReports()
+    .filter((report) => !report.sample)
+    .map((report) => {
+      const lastModified = new Date(report.date);
+      return {
+        url: `${DOCS_ORIGIN}/benchmarks/${report.slug}`,
+        ...(Number.isNaN(lastModified.getTime()) ? {} : { lastModified }),
+        changeFrequency: "monthly" as const,
+        priority: 0.75,
+        images: [
+          ogImage({
+            title: report.title,
+            subtitle: report.verdict,
+            kind: "Benchmark",
+          }),
+        ],
+      };
+    });
   const docs = getAllDocPaths().map((docPath) => ({
     url: `${DOCS_ORIGIN}${docPath}`,
     lastModified: new Date(),
@@ -105,6 +128,19 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: "weekly",
       priority: 0.8,
       images: [DEFAULT_OG],
+    },
+    {
+      url: `${DOCS_ORIGIN}/benchmarks`,
+      lastModified: new Date(),
+      changeFrequency: "weekly",
+      priority: 0.8,
+      images: [
+        ogImage({
+          title: "AI Agent Benchmarks",
+          subtitle: "New models raced against the field on real agentic tasks",
+          kind: "Benchmark",
+        }),
+      ],
     },
     {
       url: `${DOCS_ORIGIN}/changelog`,
@@ -216,5 +252,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
     ...compare,
     ...docs,
     ...posts,
+    ...benchmarks,
   ];
 }

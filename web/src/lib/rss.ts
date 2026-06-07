@@ -1,4 +1,5 @@
 import { getAllPosts, type BlogPost } from "./blog";
+import { getAllReports, type BenchmarkReport } from "./benchmarks";
 
 const SITE_URL = "https://www.agentclash.dev";
 
@@ -93,6 +94,73 @@ export function buildBlogRssFeed(
     `    <link>${escapeXml(blogUrl)}</link>`,
     `    <atom:link href="${escapeXml(feedUrl)}" rel="self" type="application/rss+xml" />`,
     "    <description>Engineering notes on AI agent evaluation, replayable failures, scorecards, and CI regression gates.</description>",
+    "    <language>en</language>",
+    `    <lastBuildDate>${lastBuildDate}</lastBuildDate>`,
+    ...items,
+    "  </channel>",
+    "</rss>",
+  ].join("\n");
+}
+
+function toRssBenchmark(report: BenchmarkReport) {
+  const slug = requiredText(report.slug);
+  const title = requiredText(report.title);
+  const date = requiredText(report.date);
+  const description = requiredText(report.description);
+  const author = requiredText(report.author);
+  const rssDate = parseRssDate(date);
+
+  if (!slug || !title || !date || !description || !author || !rssDate) {
+    return null;
+  }
+
+  return {
+    slug,
+    title,
+    description,
+    author,
+    pubDate: rssDate.toUTCString(),
+    publishedAtMs: rssDate.getTime(),
+  };
+}
+
+export function buildBenchmarkRssFeed(
+  origin = SITE_URL,
+  reports: BenchmarkReport[] = getAllReports(),
+) {
+  // Exclude `sample` reports so illustrative numbers are never syndicated.
+  const rssReports = reports
+    .filter((report) => !report.sample)
+    .map(toRssBenchmark)
+    .filter((report) => report !== null)
+    .sort((a, b) => b.publishedAtMs - a.publishedAtMs);
+  const indexUrl = `${origin}/benchmarks`;
+  const feedUrl = `${origin}/benchmarks/feed.xml`;
+  const lastBuildDate = rssReports[0]?.pubDate ?? new Date().toUTCString();
+
+  const items = rssReports.map((report) => {
+    const url = `${origin}/benchmarks/${report.slug}`;
+
+    return [
+      "    <item>",
+      `      <title>${escapeXml(report.title)}</title>`,
+      `      <link>${escapeXml(url)}</link>`,
+      `      <guid isPermaLink="true">${escapeXml(url)}</guid>`,
+      `      <pubDate>${report.pubDate}</pubDate>`,
+      `      <dc:creator>${escapeXml(report.author)}</dc:creator>`,
+      `      <description>${escapeXml(report.description)}</description>`,
+      "    </item>",
+    ].join("\n");
+  });
+
+  return [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:dc="http://purl.org/dc/elements/1.1/">',
+    "  <channel>",
+    "    <title>AgentClash Model Benchmarks</title>",
+    `    <link>${escapeXml(indexUrl)}</link>`,
+    `    <atom:link href="${escapeXml(feedUrl)}" rel="self" type="application/rss+xml" />`,
+    "    <description>Head-to-head AI agent benchmarks — new models raced against the field on real agentic tasks.</description>",
     "    <language>en</language>",
     `    <lastBuildDate>${lastBuildDate}</lastBuildDate>`,
     ...items,

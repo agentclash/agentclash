@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from "vitest";
 import { metadata as homeMetadata } from "./page";
 import { metadata as blogMetadata } from "./blog/page";
 import { generateMetadata as generateBlogPostMetadata } from "./blog/[slug]/page";
+import { metadata as benchmarksMetadata } from "./benchmarks/page";
+import { generateMetadata as generateBenchmarkMetadata } from "./benchmarks/[slug]/page";
 import { generateMetadata as generateDocsMetadata } from "./docs/[[...slug]]/page";
 import { metadata as agentEvaluationMetadata } from "./platform/agent-evaluation/page";
 import { metadata as agentRegressionTestingMetadata } from "./platform/agent-regression-testing/page";
@@ -32,6 +34,14 @@ vi.mock("@/lib/blog", () => ({
   getPostBySlug: getPostBySlugMock,
 }));
 
+const getReportBySlugMock = vi.hoisted(() => vi.fn());
+
+vi.mock("@/lib/benchmarks", () => ({
+  getAllReports: vi.fn(() => []),
+  getAllSlugs: vi.fn(() => []),
+  getReportBySlug: getReportBySlugMock,
+}));
+
 vi.mock("@/lib/docs", () => ({
   DOCS_NAV: [],
   getAllDocSlugs: vi.fn(() => []),
@@ -47,6 +57,7 @@ describe("public canonical metadata", () => {
   it("locks static public page canonicals", () => {
     expectCanonical(homeMetadata, "/");
     expectCanonical(blogMetadata, "/blog");
+    expectCanonical(benchmarksMetadata, "/benchmarks");
     expectCanonical(agentEvaluationMetadata, "/platform/agent-evaluation");
     expectCanonical(
       agentRegressionTestingMetadata,
@@ -73,6 +84,25 @@ describe("public canonical metadata", () => {
     });
 
     expectCanonical(metadata, "/blog/fixture-post");
+  });
+
+  it("locks benchmark report canonical metadata", async () => {
+    getReportBySlugMock.mockReturnValue({
+      slug: "fixture-report",
+      title: "Fixture Report",
+      date: "2026-06-06",
+      description: "Fixture description.",
+      author: "AgentClash",
+      featuredModel: "Claude Opus 4.8",
+      verdict: "Opus won.",
+      content: "",
+    });
+
+    const metadata = await generateBenchmarkMetadata({
+      params: Promise.resolve({ slug: "fixture-report" }),
+    });
+
+    expectCanonical(metadata, "/benchmarks/fixture-report");
   });
 
   it("locks docs canonical metadata", async () => {
