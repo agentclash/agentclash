@@ -8,7 +8,8 @@
 # but fail the division tier on negative operands (e.g. -7/2 == -3, not -4).
 #
 # Correctness is graded across three code_execution tiers (basic, unary,
-# division) and is intentionally NOT a hard gate, so partial credit produces a
+# division) and gated leniently (gate: true, pass_threshold: 0.5), so a model
+# that handles the basics still passes the gate while partial credit produces a
 # real ranking spread instead of an all-pass tie. Companion to the
 # fibonacci-e2e-showcase pack, which is deliberately saturated.
 ###############################################################################
