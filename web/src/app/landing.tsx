@@ -1463,6 +1463,12 @@ export default function HomePage() {
               Docs
             </Link>
             <Link
+              href="/benchmarks"
+              className="hidden sm:inline-flex px-3 py-1.5 text-white/55 hover:text-white/85 transition-colors"
+            >
+              Benchmarks
+            </Link>
+            <Link
               href="/blog"
               className="hidden sm:inline-flex px-3 py-1.5 text-white/55 hover:text-white/85 transition-colors"
             >
