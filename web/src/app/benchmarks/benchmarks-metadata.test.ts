@@ -69,7 +69,7 @@ describe("benchmarks index social metadata", () => {
 
 describe("benchmarks index indexability (coming-soon gate)", () => {
   it("noindexes the index while no real benchmark is published", () => {
-    hasPublishedBenchmarksMock.mockReturnValue(false);
+    hasPublishedBenchmarksMock.mockReturnValueOnce(false);
     expect(benchmarksIndexMetadata().robots).toEqual({
       index: false,
       follow: true,
@@ -77,7 +77,7 @@ describe("benchmarks index indexability (coming-soon gate)", () => {
   });
 
   it("leaves the index indexable once a real benchmark ships", () => {
-    hasPublishedBenchmarksMock.mockReturnValue(true);
+    hasPublishedBenchmarksMock.mockReturnValueOnce(true);
     expect(benchmarksIndexMetadata().robots).toBeUndefined();
   });
 });
