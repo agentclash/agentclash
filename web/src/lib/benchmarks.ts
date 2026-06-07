@@ -259,3 +259,12 @@ export function getReportBySlug(slug: string): BenchmarkReportWithContent | null
 export function getAllSlugs(): string[] {
   return getAllReports().map((report) => report.slug);
 }
+
+// True once at least one real (non-`sample`) report is published. Single source
+// of truth for whether the Benchmarks section is "live": it gates public listing
+// (page, sitemap, nav links) and indexability. While only illustrative `sample`
+// reports exist, the section stays in a noindexed "coming soon" state and flips
+// on automatically the moment a measured benchmark ships.
+export function hasPublishedBenchmarks(): boolean {
+  return getAllReports().some((report) => !report.sample);
+}

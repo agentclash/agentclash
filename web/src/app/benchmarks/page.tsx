@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { MarketingShell } from "@/components/marketing/marketing-shell";
 import { JsonLd, benchmarkIndexSchema } from "@/components/marketing/json-ld";
-import { getAllReports } from "@/lib/benchmarks";
+import { getAllReports, hasPublishedBenchmarks } from "@/lib/benchmarks";
 import { benchmarkRssAlternate, ogImageUrl } from "@/lib/seo";
 
 const PAGE_TITLE = "AI Agent Benchmarks - Models Raced Head-to-Head | AgentClash";
@@ -14,38 +14,84 @@ const SOCIAL_IMAGE = ogImageUrl({
   kind: "Benchmark",
 });
 
-export const metadata: Metadata = {
-  title: PAGE_TITLE,
-  description: PAGE_DESCRIPTION,
-  alternates: {
-    canonical: "/benchmarks",
-    types: benchmarkRssAlternate,
-  },
-  openGraph: {
+export function generateMetadata(): Metadata {
+  const metadata: Metadata = {
     title: PAGE_TITLE,
     description: PAGE_DESCRIPTION,
-    url: "/benchmarks",
-    type: "website",
-    locale: "en_US",
-    siteName: "AgentClash",
-    images: [{ url: SOCIAL_IMAGE, width: 1200, height: 630, alt: PAGE_TITLE }],
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: PAGE_TITLE,
-    description: PAGE_DESCRIPTION,
-    images: [{ url: SOCIAL_IMAGE, alt: PAGE_TITLE }],
-  },
-};
+    alternates: {
+      canonical: "/benchmarks",
+      types: benchmarkRssAlternate,
+    },
+    openGraph: {
+      title: PAGE_TITLE,
+      description: PAGE_DESCRIPTION,
+      url: "/benchmarks",
+      type: "website",
+      locale: "en_US",
+      siteName: "AgentClash",
+      images: [{ url: SOCIAL_IMAGE, width: 1200, height: 630, alt: PAGE_TITLE }],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: PAGE_TITLE,
+      description: PAGE_DESCRIPTION,
+      images: [{ url: SOCIAL_IMAGE, alt: PAGE_TITLE }],
+    },
+  };
+
+  // Until a real race ships, the page shows a "coming soon" state — keep it
+  // crawlable (so engines actually read the noindex) but out of the index, the
+  // same way individual `sample` reports are handled. Indexability returns
+  // automatically when the first measured benchmark is published.
+  if (!hasPublishedBenchmarks()) {
+    metadata.robots = { index: false, follow: true };
+  }
+
+  return metadata;
+}
 
 export default function BenchmarksPage() {
   const reports = getAllReports();
+  // `sample` reports are illustrative only — never list them publicly. With no
+  // real report yet, the section shows a "coming soon" state instead.
+  const published = reports.filter((report) => !report.sample);
+
+  if (published.length === 0) {
+    return (
+      <MarketingShell>
+        <section className="mx-auto w-full max-w-3xl px-6 py-16">
+          <p className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-[0.14em] text-white/35">
+            Benchmarks
+          </p>
+          <h1 className="mt-3 font-[family-name:var(--font-display)] text-3xl tracking-[-0.02em] leading-[1.15] sm:text-4xl">
+            Models, raced head-to-head
+          </h1>
+          <p className="mt-3 max-w-xl text-sm leading-relaxed text-white/45">
+            When a new model ships, we race it against the field on real agentic
+            tasks — same challenge, same tools — and score the whole trajectory
+            on correctness, reliability, latency, and cost.
+          </p>
+
+          <div className="mt-10 rounded-lg border border-white/[0.08] bg-white/[0.03] px-6 py-8">
+            <p className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-[0.14em] text-white/40">
+              Coming soon
+            </p>
+            <p className="mt-3 max-w-xl text-sm leading-relaxed text-white/55">
+              We&apos;re lining up the first head-to-head. The opening race drops
+              soon — real models on real agentic tasks, with the full scorecard
+              and replay. Check back shortly.
+            </p>
+          </div>
+        </section>
+      </MarketingShell>
+    );
+  }
 
   return (
     <MarketingShell>
       <JsonLd
         id="agentclash-benchmarks-index-schema"
-        data={benchmarkIndexSchema(reports.filter((report) => !report.sample))}
+        data={benchmarkIndexSchema(published)}
       />
       <section className="mx-auto w-full max-w-3xl px-6 py-16">
         <p className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-[0.14em] text-white/35">
@@ -84,10 +130,6 @@ export default function BenchmarksPage() {
             </Link>
           ))}
         </div>
-
-        {reports.length === 0 && (
-          <p className="mt-10 text-xs text-white/20">No benchmarks yet.</p>
-        )}
       </section>
     </MarketingShell>
   );

@@ -1,6 +1,6 @@
 import type { MetadataRoute } from "next";
 import { getAllPosts } from "@/lib/blog";
-import { getAllReports } from "@/lib/benchmarks";
+import { getAllReports, hasPublishedBenchmarks } from "@/lib/benchmarks";
 import {
   getChangelogLatestModified,
   getChangelogPeriodHref,
@@ -79,6 +79,27 @@ export default function sitemap(): MetadataRoute.Sitemap {
         ],
       };
     });
+  // Only list the /benchmarks index while a real report is published. With just
+  // illustrative `sample` reports, the page is a noindexed "coming soon" state,
+  // and a sitemap must never advertise a noindexed URL (Search Console flags it).
+  const benchmarkIndex = hasPublishedBenchmarks()
+    ? [
+        {
+          url: `${DOCS_ORIGIN}/benchmarks`,
+          lastModified: new Date(),
+          changeFrequency: "weekly" as const,
+          priority: 0.8,
+          images: [
+            ogImage({
+              title: "AI Agent Benchmarks",
+              subtitle:
+                "New models raced against the field on real agentic tasks",
+              kind: "Benchmark",
+            }),
+          ],
+        },
+      ]
+    : [];
   const docs = getAllDocPaths().map((docPath) => ({
     url: `${DOCS_ORIGIN}${docPath}`,
     lastModified: new Date(),
@@ -128,19 +149,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: "weekly",
       priority: 0.8,
       images: [DEFAULT_OG],
-    },
-    {
-      url: `${DOCS_ORIGIN}/benchmarks`,
-      lastModified: new Date(),
-      changeFrequency: "weekly",
-      priority: 0.8,
-      images: [
-        ogImage({
-          title: "AI Agent Benchmarks",
-          subtitle: "New models raced against the field on real agentic tasks",
-          kind: "Benchmark",
-        }),
-      ],
     },
     {
       url: `${DOCS_ORIGIN}/changelog`,
@@ -252,6 +260,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     ...compare,
     ...docs,
     ...posts,
+    ...benchmarkIndex,
     ...benchmarks,
   ];
 }

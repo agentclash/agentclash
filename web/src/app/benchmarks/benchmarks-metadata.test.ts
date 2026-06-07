@@ -1,9 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { benchmarkRssAlternate, ogImageUrl } from "@/lib/seo";
-import { metadata as benchmarksMetadata } from "./page";
+import { generateMetadata as benchmarksIndexMetadata } from "./page";
 import { generateMetadata } from "./[slug]/page";
 
 const getReportBySlugMock = vi.hoisted(() => vi.fn());
+const hasPublishedBenchmarksMock = vi.hoisted(() => vi.fn(() => false));
 
 vi.mock("@workos-inc/authkit-nextjs", () => ({
   withAuth: vi.fn(),
@@ -17,11 +18,12 @@ vi.mock("@/lib/benchmarks", () => ({
   getAllReports: vi.fn(() => []),
   getAllSlugs: vi.fn(() => []),
   getReportBySlug: getReportBySlugMock,
+  hasPublishedBenchmarks: hasPublishedBenchmarksMock,
 }));
 
 describe("benchmarks RSS autodiscovery metadata", () => {
   it("links the benchmarks RSS feed from the index metadata", () => {
-    expect(benchmarksMetadata.alternates).toMatchObject({
+    expect(benchmarksIndexMetadata().alternates).toMatchObject({
       canonical: "/benchmarks",
       types: benchmarkRssAlternate,
     });
@@ -52,7 +54,7 @@ describe("benchmarks RSS autodiscovery metadata", () => {
 
 describe("benchmarks index social metadata", () => {
   it("adds Open Graph and Twitter card metadata", () => {
-    expect(benchmarksMetadata).toMatchObject({
+    expect(benchmarksIndexMetadata()).toMatchObject({
       openGraph: {
         url: "/benchmarks",
         type: "website",
@@ -62,6 +64,21 @@ describe("benchmarks index social metadata", () => {
         card: "summary_large_image",
       },
     });
+  });
+});
+
+describe("benchmarks index indexability (coming-soon gate)", () => {
+  it("noindexes the index while no real benchmark is published", () => {
+    hasPublishedBenchmarksMock.mockReturnValue(false);
+    expect(benchmarksIndexMetadata().robots).toEqual({
+      index: false,
+      follow: true,
+    });
+  });
+
+  it("leaves the index indexable once a real benchmark ships", () => {
+    hasPublishedBenchmarksMock.mockReturnValue(true);
+    expect(benchmarksIndexMetadata().robots).toBeUndefined();
   });
 });
 
