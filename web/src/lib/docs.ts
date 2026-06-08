@@ -1052,10 +1052,10 @@ function getFileDocBySlug(slug: string[]) {
         ? data.datePublished
         : undefined;
   const dateModified =
-    typeof data.updated === "string"
-      ? data.updated
-      : typeof data.dateModified === "string"
-        ? data.dateModified
+    typeof data.dateModified === "string"
+      ? data.dateModified
+      : typeof data.updated === "string"
+        ? data.updated
         : datePublished;
 
   return createDocPage(
