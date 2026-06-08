@@ -1,19 +1,26 @@
 "use client";
 
 import { ArrowRight } from "lucide-react";
-import { signInAction } from "./actions";
+import { signInAction, signUpAction } from "./actions";
 
 interface SignInButtonProps {
+  mode?: "signin" | "signup";
   label?: string;
   returnTo?: string;
 }
 
 export function SignInButton({
+  mode = "signin",
   label = "Continue with AgentClash",
   returnTo = "/dashboard",
 }: SignInButtonProps) {
+  // `mode` only selects the WorkOS handoff (sign-in vs create-account). The
+  // default copy is constant so it never echoes the card heading; callers like
+  // the CLI device flow override `label`.
+  const action = mode === "signup" ? signUpAction : signInAction;
+
   return (
-    <form action={signInAction}>
+    <form action={action}>
       <input type="hidden" name="returnTo" value={returnTo} />
       <button
         type="submit"

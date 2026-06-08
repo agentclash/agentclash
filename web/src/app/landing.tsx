@@ -5,7 +5,7 @@ import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { getCalApi } from "@calcom/embed-react";
 import { useAuth } from "@workos-inc/authkit-nextjs/components";
-import { ArrowRight, Calendar, ExternalLink, LogIn, Star } from "lucide-react";
+import { ArrowRight, Calendar, ExternalLink, Star } from "lucide-react";
 import {
   Anthropic,
   Gemini,
@@ -14,6 +14,7 @@ import {
   OpenRouter,
   XAI,
 } from "@lobehub/icons";
+import { AuthCtaLink, authCta } from "@/components/marketing/auth-cta-link";
 import { LuminousGrid } from "@/components/marketing/luminous-grid";
 import { PricingBlock } from "@/components/marketing/pricing-block";
 import { ExpandedCardsBlock } from "@/components/marketing/expanded-cards-block";
@@ -1407,12 +1408,19 @@ const LANDING_FEATURES: Array<{
 
 export default function HomePage({
   showBenchmarks = false,
+  returning = false,
 }: {
   // Gated by the server page off `hasPublishedBenchmarks()`: hide the Benchmarks
   // nav link while the section is in its coming-soon state.
   showBenchmarks?: boolean;
-} = {}) {
+  returning?: boolean;
+}) {
   const { user, loading: authLoading } = useAuth();
+
+  // Logged-out CTA adapts to whether this browser has signed in before
+  // (server-provided returning-visitor hint cookie). The nav link uses the
+  // shared <AuthCtaLink>; the hero/closing CTAs reuse just its href.
+  const authHref = authCta(returning).href;
 
   useEffect(() => {
     (async () => {
@@ -1504,14 +1512,7 @@ export default function HomePage({
                 <ArrowRight className="size-3" />
               </Link>
             ) : (
-              <Link
-                href="/auth/login"
-                aria-label="Sign in"
-                className="inline-flex items-center gap-1.5 rounded-md border border-white/15 bg-white/[0.04] px-2 sm:px-3 py-1.5 text-white/75 hover:text-white hover:border-white/25 transition-colors"
-              >
-                <LogIn className="size-3.5" />
-                <span className="hidden sm:inline">Sign in</span>
-              </Link>
+              <AuthCtaLink returning={returning} />
             )}
           </nav>
         </div>
@@ -1568,7 +1569,7 @@ export default function HomePage({
               ) : (
                 <>
                   <Link
-                    href="/auth/login"
+                    href={authHref}
                     className="inline-flex items-center justify-center gap-2 rounded-md bg-white px-6 py-3 text-sm font-medium text-[#060606] hover:bg-white/90 transition-colors"
                   >
                     Start first race
@@ -2304,7 +2305,7 @@ export default function HomePage({
               ) : (
                 <>
                   <Link
-                    href="/auth/login"
+                    href={authHref}
                     className="inline-flex items-center justify-center gap-2 rounded-md bg-white px-7 py-3 text-sm font-medium text-[#060606] hover:bg-white/90 transition-colors"
                   >
                     Start your first race

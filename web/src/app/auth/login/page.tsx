@@ -1,6 +1,8 @@
 import { withAuth } from "@workos-inc/authkit-nextjs";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { sanitizeReturnTo } from "@/lib/auth/return-to";
+import { isReturningVisitor } from "@/lib/auth/returning";
 import { ClashMark } from "@/components/marketing/clash-mark";
 import { LightSpeed } from "./lightspeed";
 import { SignInButton } from "./sign-in-button";
@@ -9,12 +11,33 @@ import { TiltCard } from "./tilt-card";
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ returnTo?: string }>;
+  searchParams: Promise<{ returnTo?: string; mode?: string; error?: string }>;
 }) {
-  const { returnTo: rawReturnTo } = await searchParams;
+  const { returnTo: rawReturnTo, mode: rawMode, error } = await searchParams;
   const returnTo = sanitizeReturnTo(rawReturnTo);
   const { user } = await withAuth();
   if (user) redirect(returnTo);
+
+  // Choose sign-in vs sign-up: an explicit ?mode= wins, then the returning-visitor
+  // hint cookie, then default to sign-up for a brand-new visitor.
+  const returning = await isReturningVisitor();
+  const mode: "signin" | "signup" =
+    rawMode === "signin" || rawMode === "signup"
+      ? rawMode
+      : returning
+        ? "signin"
+        : "signup";
+
+  const heading = mode === "signup" ? "Create your account" : "Welcome back";
+  const subcopy =
+    mode === "signup"
+      ? "Run your first head-to-head agent race in minutes."
+      : "Continue to your AgentClash dashboard.";
+
+  const otherMode = mode === "signup" ? "signin" : "signup";
+  const toggleParams = new URLSearchParams({ mode: otherMode });
+  if (returnTo !== "/dashboard") toggleParams.set("returnTo", returnTo);
+  const toggleHref = `/auth/login?${toggleParams.toString()}`;
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#060606] text-white">
@@ -50,16 +73,30 @@ export default async function LoginPage({
 
             <TiltCard>
               <div className="glass-card glass-shine rounded-2xl p-6 sm:p-8 lg:p-9">
-                <h2 className="text-2xl font-semibold text-white">
-                  Welcome back
-                </h2>
-                <p className="mt-2 text-sm leading-6 text-white/60">
-                  Continue to your AgentClash dashboard.
-                </p>
+                <h2 className="text-2xl font-semibold text-white">{heading}</h2>
+                <p className="mt-2 text-sm leading-6 text-white/60">{subcopy}</p>
+
+                {error === "callback_failed" && (
+                  <p className="mt-4 rounded-md border border-red-400/25 bg-red-400/10 px-3 py-2 text-sm text-red-200/90">
+                    Something went wrong signing you in. Please try again.
+                  </p>
+                )}
 
                 <div className="mt-6">
-                  <SignInButton returnTo={returnTo} />
+                  <SignInButton mode={mode} returnTo={returnTo} />
                 </div>
+
+                <p className="mt-5 text-center text-sm text-white/55">
+                  {mode === "signup"
+                    ? "Already have an account? "
+                    : "New to AgentClash? "}
+                  <Link
+                    href={toggleHref}
+                    className="font-medium text-white/85 underline-offset-4 hover:text-white hover:underline"
+                  >
+                    {mode === "signup" ? "Sign in" : "Create an account"}
+                  </Link>
+                </p>
               </div>
             </TiltCard>
 

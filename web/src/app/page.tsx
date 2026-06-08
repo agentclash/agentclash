@@ -13,6 +13,7 @@ import { hasPublishedBenchmarks } from "@/lib/benchmarks";
 import { getChangelogPeriods } from "@/lib/changelog";
 import { HOME_FAQ } from "@/lib/home-faq";
 import { AGENT_EVALUATION_FEATURES } from "@/lib/seo-features";
+import { isReturningVisitor } from "@/lib/auth/returning";
 import HomePage from "./landing";
 
 export const metadata: Metadata = {
@@ -49,6 +50,7 @@ const softwareApplicationSchema = {
 export default async function RootPage() {
   const { user } = await withAuth();
   if (user) redirect("/dashboard");
+  const returning = await isReturningVisitor();
   return (
     <>
       <JsonLd
@@ -60,7 +62,7 @@ export default async function RootPage() {
           faqSchema(HOME_FAQ),
         ]}
       />
-      <HomePage showBenchmarks={hasPublishedBenchmarks()} />
+      <HomePage showBenchmarks={hasPublishedBenchmarks()} returning={returning} />
     </>
   );
 }
