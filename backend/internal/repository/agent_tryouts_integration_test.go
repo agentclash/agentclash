@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/repository"
+	"github.com/agentclash/agentclash/backend/internal/runevents"
 	"github.com/google/uuid"
 )
 
@@ -294,5 +295,89 @@ func TestRepositoryAgentTryoutLifecycle(t *testing.T) {
 	}
 	if share.ResourceType != repository.PublicShareResourceAgentTryout || share.SearchIndexing {
 		t.Fatalf("share = %#v, want agent_tryout noindex", share)
+	}
+}
+
+// TestRepositoryListRunEventsByRunIDAfter verifies the cursor-paginated event
+// feed backing the tryout timeline endpoints: events come back in stable global
+// id order and the id cursor is resumable across pages. This is the real-DB
+// path a live execution's emitted events flow through to the tryout endpoint.
+func TestRepositoryListRunEventsByRunIDAfter(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	emitted := []struct {
+		eventID   string
+		eventType runevents.Type
+		payload   string
+	}{
+		{"evt-run-started", runevents.EventTypeSystemRunStarted, `{}`},
+		{"evt-tool-started", runevents.EventTypeToolCallStarted, `{"tool_name":"writer"}`},
+		{"evt-tool-completed", runevents.EventTypeToolCallCompleted, `{"tool_name":"writer","exit_code":0}`},
+		{"evt-run-completed", runevents.EventTypeSystemRunCompleted, `{"final_output":"done"}`},
+	}
+	for _, e := range emitted {
+		if _, err := repo.RecordRunEvent(ctx, repository.RecordRunEventParams{
+			Event: runevents.Envelope{
+				EventID:       e.eventID,
+				SchemaVersion: runevents.SchemaVersionV1,
+				RunID:         fixture.runID,
+				RunAgentID:    fixture.primaryRunAgentID,
+				EventType:     e.eventType,
+				Source:        runevents.SourceAgentHarnessWorker,
+				OccurredAt:    time.Now().UTC(),
+				Payload:       []byte(e.payload),
+			},
+		}); err != nil {
+			t.Fatalf("RecordRunEvent(%s) returned error: %v", e.eventID, err)
+		}
+	}
+
+	// First page (limit 2): ascending id order.
+	page1, err := repo.ListRunEventsByRunIDAfter(ctx, fixture.runID, 0, 2)
+	if err != nil {
+		t.Fatalf("ListRunEventsByRunIDAfter page1 returned error: %v", err)
+	}
+	if len(page1) != 2 {
+		t.Fatalf("page1 len = %d, want 2", len(page1))
+	}
+	if page1[0].ID >= page1[1].ID {
+		t.Fatalf("page1 not ascending by id: %d, %d", page1[0].ID, page1[1].ID)
+	}
+	if page1[0].EventType != runevents.EventTypeSystemRunStarted {
+		t.Fatalf("page1[0] type = %q, want system.run.started", page1[0].EventType)
+	}
+
+	// Second page resumes from the last id of the first page.
+	page2, err := repo.ListRunEventsByRunIDAfter(ctx, fixture.runID, page1[1].ID, 2)
+	if err != nil {
+		t.Fatalf("ListRunEventsByRunIDAfter page2 returned error: %v", err)
+	}
+	if len(page2) != 2 {
+		t.Fatalf("page2 len = %d, want 2", len(page2))
+	}
+	if page2[0].ID <= page1[1].ID {
+		t.Fatalf("page2 did not advance past cursor %d: got %d", page1[1].ID, page2[0].ID)
+	}
+	if page2[1].EventType != runevents.EventTypeSystemRunCompleted {
+		t.Fatalf("page2[1] type = %q, want system.run.completed", page2[1].EventType)
+	}
+
+	// Exhausted: nothing after the final id.
+	page3, err := repo.ListRunEventsByRunIDAfter(ctx, fixture.runID, page2[1].ID, 2)
+	if err != nil {
+		t.Fatalf("ListRunEventsByRunIDAfter page3 returned error: %v", err)
+	}
+	if len(page3) != 0 {
+		t.Fatalf("page3 len = %d, want 0", len(page3))
+	}
+
+	// A different run sees none of these events.
+	if other, err := repo.ListRunEventsByRunIDAfter(ctx, uuid.New(), 0, 10); err != nil {
+		t.Fatalf("ListRunEventsByRunIDAfter(other run) returned error: %v", err)
+	} else if len(other) != 0 {
+		t.Fatalf("other run events = %d, want 0", len(other))
 	}
 }

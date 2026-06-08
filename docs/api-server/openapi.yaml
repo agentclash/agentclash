@@ -5187,6 +5187,34 @@ paths:
         "404":
           $ref: "#/components/responses/NotFoundError"
 
+  /v1/agent-tryouts/{id}/events:
+    get:
+      operationId: getPublicAgentTryoutEvents
+      summary: Get the live evidence timeline for an anonymous agent tryout
+      description: >-
+        Returns a cursor-paginated timeline of product-level events for an
+        anonymous (unclaimed) tryout. Event payloads are redacted to a
+        non-sensitive allow-list because this endpoint is unauthenticated. Poll
+        with the returned `next_cursor` as `after` to resume; `has_more`
+        indicates whether further events are immediately available.
+      tags: [AgentTryouts]
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/ResourceID"
+        - $ref: "#/components/parameters/TryoutEventsAfter"
+        - $ref: "#/components/parameters/TryoutEventsLimit"
+      responses:
+        "200":
+          description: Redacted tryout event timeline page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentTryoutEventsResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
   /v1/workspaces/{workspaceID}/agent-tryouts:
     post:
       operationId: createWorkspaceAgentTryout
@@ -5269,6 +5297,39 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AgentTryoutResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /v1/workspaces/{workspaceID}/agent-tryouts/{id}/events:
+    get:
+      operationId: getWorkspaceAgentTryoutEvents
+      summary: Get the live evidence timeline for a workspace agent tryout
+      description: >-
+        Returns a cursor-paginated timeline of product-level events for a
+        workspace-owned tryout. Workspace members receive the full (unredacted)
+        event payloads. Poll with the returned `next_cursor` as `after` to
+        resume.
+      tags: [AgentTryouts]
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/ResourceID"
+        - $ref: "#/components/parameters/TryoutEventsAfter"
+        - $ref: "#/components/parameters/TryoutEventsLimit"
+      responses:
+        "200":
+          description: Workspace tryout event timeline page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentTryoutEventsResponse"
         "400":
           $ref: "#/components/responses/ValidationError"
         "401":
@@ -5790,6 +5851,25 @@ components:
       schema:
         type: string
         format: uuid
+    TryoutEventsAfter:
+      name: after
+      in: query
+      description: Return only events whose cursor is strictly greater than this value. Use the previous response's `next_cursor` to resume. Defaults to 0 (from the beginning).
+      schema:
+        type: integer
+        format: int64
+        default: 0
+        minimum: 0
+    TryoutEventsLimit:
+      name: limit
+      in: query
+      description: Maximum number of events to scan for this page.
+      schema:
+        type: integer
+        format: int32
+        default: 100
+        minimum: 1
+        maximum: 200
     RegressionSuiteID:
       name: suiteID
       in: path
@@ -12838,6 +12918,79 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AgentTryoutResponse"
+
+    TryoutTimelineEvent:
+      type: object
+      required: [cursor, sequence, type, summary, occurred_at]
+      properties:
+        cursor:
+          type: integer
+          format: int64
+          description: Stable, monotonic resume cursor for this event. Pass the page's `next_cursor` as the `after` query param to continue.
+        sequence:
+          type: integer
+          format: int64
+          description: Per-agent sequence number of the underlying run event.
+        type:
+          type: string
+          description: Stable product-level timeline category for frontend rendering.
+          enum: [started, planning, tool_call, sandbox_command, file_written, file_activity, validation, scoring, finished, activity]
+        summary:
+          type: string
+          description: Short, human-readable, secret-free description of the event.
+        occurred_at:
+          type: string
+          format: date-time
+        payload:
+          type: object
+          additionalProperties: true
+          description: >-
+            Optional expandable structured detail. Redacted to a non-sensitive
+            allow-list on the public/anonymous endpoint; the full run-event
+            payload on the workspace endpoint. Omitted when no detail is
+            available.
+
+    AgentTryoutEventsResponse:
+      type: object
+      required: [tryout_id, status, cost_limit_usd, events, next_cursor, has_more]
+      properties:
+        tryout_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [queued, running, completed, failed, cancelled]
+        run_id:
+          type: string
+          format: uuid
+        cost_limit_usd:
+          type: number
+          format: double
+        actual_cost_usd:
+          type: number
+          format: double
+        latency_ms:
+          type: integer
+          format: int64
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/TryoutTimelineEvent"
+        next_cursor:
+          type: integer
+          format: int64
+          description: Cursor to pass as `after` on the next poll to resume from where this page ended.
+        has_more:
+          type: boolean
+          description: >-
+            True when more rows were available beyond this page at query time.
+            This reflects raw run-event rows scanned, not displayable events
+            produced: a page can return an empty `events` array while `has_more`
+            is `true` (e.g. when every scanned row is an internal/streaming type
+            that the timeline filters out). Always advance using `next_cursor`
+            rather than treating `has_more` as "more displayable events exist",
+            and rate-limit polling independently — combine with `status` to
+            decide when the tryout is finished and polling can stop.
 
     AgentTryoutShareLink:
       type: object

@@ -910,6 +910,8 @@ type fakeAgentTryoutRepository struct {
 	countAnonymousErr  error
 	sumAnonymousErr    error
 	hostedSpendUSD     float64
+	runEvents          []repository.RunEvent
+	runEventsErr       error
 }
 
 func newFakeAgentTryoutRepository(orgID, workspaceID uuid.UUID) *fakeAgentTryoutRepository {
@@ -927,6 +929,23 @@ func (r *fakeAgentTryoutRepository) GetOrganizationIDByWorkspaceID(_ context.Con
 		return uuid.Nil, repository.ErrWorkspaceSecretNotFound
 	}
 	return r.orgID, nil
+}
+
+func (r *fakeAgentTryoutRepository) ListRunEventsByRunIDAfter(_ context.Context, runID uuid.UUID, afterID int64, limit int32) ([]repository.RunEvent, error) {
+	if r.runEventsErr != nil {
+		return nil, r.runEventsErr
+	}
+	out := make([]repository.RunEvent, 0, len(r.runEvents))
+	for _, event := range r.runEvents {
+		if event.RunID != runID || event.ID <= afterID {
+			continue
+		}
+		out = append(out, event)
+		if int32(len(out)) == limit {
+			break
+		}
+	}
+	return out, nil
 }
 
 func (r *fakeAgentTryoutRepository) CreateAgentTryout(_ context.Context, params repository.CreateAgentTryoutParams) (repository.AgentTryout, error) {
@@ -1207,6 +1226,9 @@ type fakeAgentTryoutService struct {
 	listLimit            int32
 	listOffset           int32
 	getWorkspaceCalls    int
+	eventsResult         AgentTryoutEventsResult
+	eventsErr            error
+	eventsCursor         TryoutEventsCursor
 }
 
 func (s *fakeAgentTryoutService) ListTemplates(context.Context) ([]AgentTryoutTemplate, error) {
@@ -1232,6 +1254,22 @@ func (s *fakeAgentTryoutService) GetPublicTryout(context.Context, uuid.UUID) (re
 func (s *fakeAgentTryoutService) GetWorkspaceTryout(context.Context, Caller, uuid.UUID) (repository.AgentTryout, error) {
 	s.getWorkspaceCalls++
 	return s.tryout, nil
+}
+
+func (s *fakeAgentTryoutService) GetPublicTryoutEvents(_ context.Context, _ uuid.UUID, cursor TryoutEventsCursor) (AgentTryoutEventsResult, error) {
+	s.eventsCursor = cursor
+	if s.eventsErr != nil {
+		return AgentTryoutEventsResult{}, s.eventsErr
+	}
+	return s.eventsResult, nil
+}
+
+func (s *fakeAgentTryoutService) GetWorkspaceTryoutEvents(_ context.Context, _ Caller, _ uuid.UUID, cursor TryoutEventsCursor) (AgentTryoutEventsResult, error) {
+	s.eventsCursor = cursor
+	if s.eventsErr != nil {
+		return AgentTryoutEventsResult{}, s.eventsErr
+	}
+	return s.eventsResult, nil
 }
 
 func (s *fakeAgentTryoutService) ListWorkspaceTryouts(_ context.Context, _ Caller, _ uuid.UUID, limit, offset int32) ([]repository.AgentTryout, error) {

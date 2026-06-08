@@ -444,6 +444,14 @@ func (noopAgentTryoutService) GetWorkspaceTryout(context.Context, Caller, uuid.U
 	return repository.AgentTryout{}, errors.New("agent tryout service is not configured")
 }
 
+func (noopAgentTryoutService) GetPublicTryoutEvents(context.Context, uuid.UUID, TryoutEventsCursor) (AgentTryoutEventsResult, error) {
+	return AgentTryoutEventsResult{}, errors.New("agent tryout service is not configured")
+}
+
+func (noopAgentTryoutService) GetWorkspaceTryoutEvents(context.Context, Caller, uuid.UUID, TryoutEventsCursor) (AgentTryoutEventsResult, error) {
+	return AgentTryoutEventsResult{}, errors.New("agent tryout service is not configured")
+}
+
 func (noopAgentTryoutService) ListWorkspaceTryouts(context.Context, Caller, uuid.UUID, int32, int32) ([]repository.AgentTryout, error) {
 	return nil, errors.New("agent tryout service is not configured")
 }
