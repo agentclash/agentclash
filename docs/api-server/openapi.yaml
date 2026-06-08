@@ -12982,7 +12982,15 @@ components:
           description: Cursor to pass as `after` on the next poll to resume from where this page ended.
         has_more:
           type: boolean
-          description: True when more events were available beyond this page at query time.
+          description: >-
+            True when more rows were available beyond this page at query time.
+            This reflects raw run-event rows scanned, not displayable events
+            produced: a page can return an empty `events` array while `has_more`
+            is `true` (e.g. when every scanned row is an internal/streaming type
+            that the timeline filters out). Always advance using `next_cursor`
+            rather than treating `has_more` as "more displayable events exist",
+            and rate-limit polling independently — combine with `status` to
+            decide when the tryout is finished and polling can stop.
 
     AgentTryoutShareLink:
       type: object

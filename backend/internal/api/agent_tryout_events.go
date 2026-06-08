@@ -362,6 +362,11 @@ func (m *AgentTryoutManager) buildTryoutEvents(ctx context.Context, tryout repos
 	if err != nil {
 		return AgentTryoutEventsResult{}, err
 	}
+	// HasMore reflects raw run-event rows scanned, not displayable events
+	// produced. If every row in this batch is a filtered type, Events ends up
+	// empty while HasMore stays true — clients must advance via NextCursor and
+	// rate-limit their polling rather than treat HasMore as "more events to
+	// show". See the AgentTryoutEventsResponse.has_more docs in the OpenAPI spec.
 	if int32(len(rows)) > limit {
 		result.HasMore = true
 		rows = rows[:limit]
