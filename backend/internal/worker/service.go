@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/provider"
@@ -49,10 +50,13 @@ func NewTemporalWorker(
 }
 
 func Run(ctx context.Context, cfg Config, temporalWorker TemporalWorker, logger *slog.Logger) error {
-	return RunWithReaper(ctx, cfg, temporalWorker, nil, logger)
+	return RunWithReaper(ctx, cfg, temporalWorker, logger)
 }
 
-func RunWithReaper(ctx context.Context, cfg Config, temporalWorker TemporalWorker, reaper OrphanRunReaper, logger *slog.Logger) error {
+// RunWithReaper starts the temporal worker plus any number of background
+// reapers (orphan-run cleanup, anonymous tryout retention, ...), each on its
+// own goroutine, and blocks until ctx is cancelled. nil reapers are ignored.
+func RunWithReaper(ctx context.Context, cfg Config, temporalWorker TemporalWorker, logger *slog.Logger, reapers ...OrphanRunReaper) error {
 	logger.Info("starting worker",
 		"task_queue", cfg.TaskQueue,
 		"identity", cfg.Identity,
@@ -65,10 +69,24 @@ func RunWithReaper(ctx context.Context, cfg Config, temporalWorker TemporalWorke
 	}
 
 	reaperDoneCh := make(chan struct{})
-	if reaper != nil {
+	active := make([]OrphanRunReaper, 0, len(reapers))
+	for _, reaper := range reapers {
+		if reaper != nil {
+			active = append(active, reaper)
+		}
+	}
+	if len(active) > 0 {
+		var wg sync.WaitGroup
+		wg.Add(len(active))
+		for _, reaper := range active {
+			go func(reaper OrphanRunReaper) {
+				defer wg.Done()
+				reaper.Start(ctx)
+			}(reaper)
+		}
 		go func() {
-			defer close(reaperDoneCh)
-			reaper.Start(ctx)
+			wg.Wait()
+			close(reaperDoneCh)
 		}()
 	} else {
 		close(reaperDoneCh)

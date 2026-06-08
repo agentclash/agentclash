@@ -63,7 +63,7 @@ func TestRunWithReaperStartsAndStopsReaper(t *testing.T) {
 			Identity:        "worker-test",
 			TemporalAddress: "localhost:7233",
 			ShutdownTimeout: time.Second,
-		}, fakeWorker, reaper, logger)
+		}, fakeWorker, logger, reaper)
 	}()
 
 	waitForCondition(t, time.Second, func() bool {
@@ -158,7 +158,7 @@ func TestRunWithReaperReturnsShutdownTimeoutWhenReaperBlocks(t *testing.T) {
 			Identity:        "worker-test",
 			TemporalAddress: "localhost:7233",
 			ShutdownTimeout: 10 * time.Millisecond,
-		}, fakeWorker, reaper, logger)
+		}, fakeWorker, logger, reaper)
 	}()
 
 	waitForCondition(t, time.Second, func() bool {

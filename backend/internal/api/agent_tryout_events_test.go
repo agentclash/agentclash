@@ -162,6 +162,71 @@ func TestGetPublicTryoutEventsRejectsWorkspaceTryout(t *testing.T) {
 	}
 }
 
+func TestGetSharedTryoutEventsRedactsAndGatesOnRedaction(t *testing.T) {
+	ctx := context.Background()
+	workspaceID := uuid.New()
+	repo := newFakeAgentTryoutRepository(uuid.New(), workspaceID)
+	runID := uuid.New()
+	tryoutID := uuid.New()
+	repo.tryouts[tryoutID] = repository.AgentTryout{
+		ID:              tryoutID,
+		WorkspaceID:     &workspaceID,
+		Status:          repository.AgentTryoutStatusCompleted,
+		RedactionStatus: repository.AgentTryoutRedactionPassed,
+		RunID:           &runID,
+	}
+	repo.share = repository.PublicShareLink{
+		Key:          "tryout-token",
+		ResourceType: repository.PublicShareResourceAgentTryout,
+		ResourceID:   tryoutID,
+		IsActive:     true,
+	}
+	repo.runEvents = []repository.RunEvent{
+		tryoutRunEvent(1, runID, 1, runevents.EventTypeToolCallCompleted, `{"tool_name":"writer","stdout":"secret"}`),
+	}
+	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo)
+
+	result, err := manager.GetSharedTryoutEvents(ctx, "tryout-token", TryoutEventsCursor{})
+	if err != nil {
+		t.Fatalf("GetSharedTryoutEvents returned error: %v", err)
+	}
+	if len(result.Events) != 1 {
+		t.Fatalf("events = %d, want 1", len(result.Events))
+	}
+	if strings.Contains(string(result.Events[0].Payload), "secret") {
+		t.Fatalf("shared timeline leaked secret: %s", result.Events[0].Payload)
+	}
+
+	// Unknown token → reported as missing share.
+	if _, err := manager.GetSharedTryoutEvents(ctx, "nope", TryoutEventsCursor{}); !errors.Is(err, repository.ErrPublicShareLinkNotFound) {
+		t.Fatalf("unknown token error = %v, want ErrPublicShareLinkNotFound", err)
+	}
+
+	// Redaction regressed → fail closed as missing share rather than leaking.
+	pending := repo.tryouts[tryoutID]
+	pending.RedactionStatus = repository.AgentTryoutRedactionPending
+	repo.tryouts[tryoutID] = pending
+	if _, err := manager.GetSharedTryoutEvents(ctx, "tryout-token", TryoutEventsCursor{}); !errors.Is(err, repository.ErrPublicShareLinkNotFound) {
+		t.Fatalf("pending-redaction error = %v, want ErrPublicShareLinkNotFound", err)
+	}
+}
+
+func TestGetSharedTryoutEventsRejectsNonTryoutShare(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeAgentTryoutRepository(uuid.New(), uuid.New())
+	repo.share = repository.PublicShareLink{
+		Key:          "scorecard-token",
+		ResourceType: repository.PublicShareResourceRunScorecard,
+		ResourceID:   uuid.New(),
+		IsActive:     true,
+	}
+	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo)
+
+	if _, err := manager.GetSharedTryoutEvents(ctx, "scorecard-token", TryoutEventsCursor{}); !errors.Is(err, repository.ErrPublicShareLinkNotFound) {
+		t.Fatalf("non-tryout share error = %v, want ErrPublicShareLinkNotFound", err)
+	}
+}
+
 func TestGetWorkspaceTryoutEventsAuthorization(t *testing.T) {
 	ctx := context.Background()
 	orgID := uuid.New()

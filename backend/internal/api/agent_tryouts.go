@@ -36,6 +36,7 @@ var (
 	ErrAgentTryoutHostedSpendUnavailable    = errors.New("agent tryout hosted spend unavailable")
 	ErrAgentTryoutHostedSpendExhausted      = errors.New("agent tryout hosted spend exhausted")
 	ErrAgentTryoutCostCapExceeded           = errors.New("agent tryout cost cap exceeded")
+	ErrAgentTryoutRedactionNotReady         = errors.New("agent tryout redaction not ready")
 )
 
 type AgentTryoutRepository interface {
@@ -57,6 +58,7 @@ type AgentTryoutRepository interface {
 	UpdateAgentTryoutStatus(ctx context.Context, params repository.UpdateAgentTryoutStatusParams) (repository.AgentTryout, error)
 	ClaimAgentTryout(ctx context.Context, params repository.ClaimAgentTryoutParams) (repository.AgentTryout, error)
 	CreatePublicShareLink(ctx context.Context, params repository.CreatePublicShareLinkParams) (repository.PublicShareLink, error)
+	GetActivePublicShareLinkByKey(ctx context.Context, key string) (repository.PublicShareLink, error)
 }
 
 type AgentTryoutService interface {
@@ -66,6 +68,7 @@ type AgentTryoutService interface {
 	GetPublicTryout(ctx context.Context, id uuid.UUID) (repository.AgentTryout, error)
 	GetWorkspaceTryout(ctx context.Context, caller Caller, id uuid.UUID) (repository.AgentTryout, error)
 	GetPublicTryoutEvents(ctx context.Context, id uuid.UUID, cursor TryoutEventsCursor) (AgentTryoutEventsResult, error)
+	GetSharedTryoutEvents(ctx context.Context, token string, cursor TryoutEventsCursor) (AgentTryoutEventsResult, error)
 	GetWorkspaceTryoutEvents(ctx context.Context, caller Caller, id uuid.UUID, cursor TryoutEventsCursor) (AgentTryoutEventsResult, error)
 	ListWorkspaceTryouts(ctx context.Context, caller Caller, workspaceID uuid.UUID, limit, offset int32) ([]repository.AgentTryout, error)
 	ClaimTryout(ctx context.Context, caller Caller, input ClaimAgentTryoutInput) (repository.AgentTryout, error)
@@ -796,6 +799,9 @@ func (m *AgentTryoutManager) CreatePrivateShare(ctx context.Context, caller Call
 	if tryout.OrganizationID == nil || tryout.WorkspaceID == nil {
 		return CreateAgentTryoutShareResult{}, repository.ErrAgentTryoutNotFound
 	}
+	if !tryout.RedactionStatus.ShareReady() {
+		return CreateAgentTryoutShareResult{}, ErrAgentTryoutRedactionNotReady
+	}
 	key, err := newShareKey()
 	if err != nil {
 		return CreateAgentTryoutShareResult{}, err
@@ -897,6 +903,7 @@ func registerPublicAgentTryoutRoutes(router chi.Router, logger *slog.Logger, ser
 	router.Post("/agent-tryouts", createAnonymousAgentTryoutHandler(logger, service))
 	router.Get("/agent-tryouts/{tryoutID}", getPublicAgentTryoutHandler(logger, service))
 	router.Get("/agent-tryouts/{tryoutID}/events", getPublicAgentTryoutEventsHandler(logger, service))
+	router.Get("/agent-tryouts/shared/{token}/events", getSharedAgentTryoutEventsHandler(logger, service))
 }
 
 func registerProtectedAgentTryoutRoutes(router chi.Router, logger *slog.Logger, service AgentTryoutService) {
@@ -1251,6 +1258,8 @@ func writeAgentTryoutError(w http.ResponseWriter, logger *slog.Logger, err error
 		writeError(w, http.StatusNotFound, "agent_tryout_not_found", "agent tryout not found")
 	case errors.Is(err, repository.ErrAgentTryoutAlreadyClaimed):
 		writeError(w, http.StatusConflict, "agent_tryout_already_claimed", "agent tryout is already claimed")
+	case errors.Is(err, ErrAgentTryoutRedactionNotReady):
+		writeError(w, http.StatusConflict, "agent_tryout_redaction_not_ready", "This tryout's evidence is still being redacted for safe sharing. Try again once it has finished.")
 	case errors.Is(err, ErrInvalidAgentTryoutInput):
 		writeError(w, http.StatusBadRequest, "invalid_agent_tryout_input", err.Error())
 	case errors.Is(err, ErrForbidden):

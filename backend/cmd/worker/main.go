@@ -172,11 +172,12 @@ func main() {
 		MultiTurnInvoker:   multiTurnInvoker,
 	})
 	orphanRunReaper := workerapp.NewRepositoryOrphanRunReaper(repo, cfg.OrphanRunReaperInterval, cfg.OrphanRunReaperThreshold, logger)
+	agentTryoutRetentionReaper := workerapp.NewRepositoryAgentTryoutRetentionReaper(repo, cfg.AgentTryoutRetentionReaperInterval, logger)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	if err := workerapp.RunWithReaper(ctx, cfg, temporalWorker, orphanRunReaper, logger); err != nil {
+	if err := workerapp.RunWithReaper(ctx, cfg, temporalWorker, logger, orphanRunReaper, agentTryoutRetentionReaper); err != nil {
 		logger.Error("worker stopped with error", "error", err)
 		os.Exit(1)
 	}

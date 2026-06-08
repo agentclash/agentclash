@@ -418,7 +418,7 @@ func (noopPublicShareService) RevokeShareLink(context.Context, Caller, uuid.UUID
 	return errors.New("public share service is not configured")
 }
 
-func (noopPublicShareService) GetPublicShare(context.Context, string) (PublicSharePayload, error) {
+func (noopPublicShareService) GetPublicShare(context.Context, string, string) (PublicSharePayload, error) {
 	return PublicSharePayload{}, errors.New("public share service is not configured")
 }
 
@@ -445,6 +445,10 @@ func (noopAgentTryoutService) GetWorkspaceTryout(context.Context, Caller, uuid.U
 }
 
 func (noopAgentTryoutService) GetPublicTryoutEvents(context.Context, uuid.UUID, TryoutEventsCursor) (AgentTryoutEventsResult, error) {
+	return AgentTryoutEventsResult{}, errors.New("agent tryout service is not configured")
+}
+
+func (noopAgentTryoutService) GetSharedTryoutEvents(context.Context, string, TryoutEventsCursor) (AgentTryoutEventsResult, error) {
 	return AgentTryoutEventsResult{}, errors.New("agent tryout service is not configured")
 }
 

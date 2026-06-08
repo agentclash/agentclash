@@ -430,6 +430,22 @@ func buildSignedArtifactURL(baseURL string, artifactID uuid.UUID, expiresAt time
 	return parsed.String(), nil
 }
 
+// SignedArtifactContentURL produces a signed, time-limited public content URL
+// for an artifact so it can be embedded in shared (unauthenticated) tryout
+// payloads. It performs NO authorization — the caller must have already
+// established that the artifact is safe to expose (e.g. it is template-
+// allowlisted on a redaction-passed share). The HMAC signature scopes the URL
+// to exactly this artifact for the returned expiry.
+func (m *ArtifactManager) SignedArtifactContentURL(artifactID uuid.UUID, baseURL string, now time.Time) (string, time.Time, error) {
+	expiresAt := now.Add(m.signedURLTTL).UTC()
+	signature := m.signArtifactToken(artifactID, expiresAt)
+	signedURL, err := buildSignedArtifactURL(baseURL, artifactID, expiresAt, signature)
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	return signedURL, expiresAt, nil
+}
+
 func (m *ArtifactManager) signArtifactToken(artifactID uuid.UUID, expiresAt time.Time) string {
 	mac := hmac.New(sha256.New, m.signingSecret)
 	_, _ = mac.Write([]byte(artifactID.String()))

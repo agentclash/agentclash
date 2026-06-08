@@ -28,6 +28,9 @@ const (
 	defaultArtifactMaxAssetBytes    = 100 << 20
 	defaultOrphanRunReaperInterval  = 5 * time.Minute
 	defaultOrphanRunReaperThreshold = 15 * time.Minute
+	// Anonymous agent tryouts carry an expires_at (default 24h, cleared on
+	// claim). The retention reaper sweeps expired, unclaimed tryouts hourly.
+	defaultAgentTryoutRetentionReaperInterval = time.Hour
 )
 
 var ErrInvalidConfig = errors.New("invalid worker config")
@@ -46,6 +49,8 @@ type Config struct {
 	ShutdownTimeout          time.Duration
 	OrphanRunReaperInterval  time.Duration
 	OrphanRunReaperThreshold time.Duration
+
+	AgentTryoutRetentionReaperInterval time.Duration
 	ArtifactStorage          ArtifactStorageConfig
 	Sandbox                  SandboxConfig
 	SecretsCipher            *secrets.AESGCMCipher
@@ -120,6 +125,10 @@ func LoadConfigFromEnv() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	agentTryoutRetentionReaperInterval, err := durationEnvOrDefaultAllowZero("WORKER_AGENT_TRYOUT_RETENTION_REAPER_INTERVAL", defaultAgentTryoutRetentionReaperInterval)
+	if err != nil {
+		return Config{}, err
+	}
 	sandboxProvider, err := envOrDefault("SANDBOX_PROVIDER", "unconfigured")
 	if err != nil {
 		return Config{}, err
@@ -188,6 +197,8 @@ func LoadConfigFromEnv() (Config, error) {
 		ShutdownTimeout:          shutdownTimeout,
 		OrphanRunReaperInterval:  orphanRunReaperInterval,
 		OrphanRunReaperThreshold: orphanRunReaperThreshold,
+
+		AgentTryoutRetentionReaperInterval: agentTryoutRetentionReaperInterval,
 		ArtifactStorage: ArtifactStorageConfig{
 			Backend:          artifactStorageBackend,
 			Bucket:           artifactStorageBucket,

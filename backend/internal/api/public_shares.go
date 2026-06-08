@@ -33,6 +33,7 @@ type PublicShareRepository interface {
 	GetRunAgentScorecardByRunAgentID(ctx context.Context, runAgentID uuid.UUID) (repository.RunAgentScorecard, error)
 	GetRunAgentReplayByRunAgentID(ctx context.Context, runAgentID uuid.UUID) (repository.RunAgentReplay, error)
 	GetAgentTryoutByID(ctx context.Context, id uuid.UUID) (repository.AgentTryout, error)
+	ListArtifactsByRunID(ctx context.Context, runID uuid.UUID) ([]repository.Artifact, error)
 	GetPublicChallengePackVersionSnapshot(ctx context.Context, versionID uuid.UUID) (repository.PublicChallengePackVersionSnapshot, error)
 	GetPublicRunScorecardSnapshot(ctx context.Context, runID uuid.UUID) (repository.PublicRunScorecardSnapshot, error)
 	GetPublicRunAgentScorecardSnapshot(ctx context.Context, runAgentID uuid.UUID) (repository.PublicRunAgentScorecardSnapshot, error)
@@ -42,7 +43,7 @@ type PublicShareRepository interface {
 type PublicShareService interface {
 	CreateShareLink(ctx context.Context, caller Caller, input CreateShareLinkInput) (CreateShareLinkResult, error)
 	RevokeShareLink(ctx context.Context, caller Caller, shareID uuid.UUID) error
-	GetPublicShare(ctx context.Context, token string) (PublicSharePayload, error)
+	GetPublicShare(ctx context.Context, token string, baseURL string) (PublicSharePayload, error)
 }
 
 type CreateShareLinkInput struct {
@@ -64,9 +65,11 @@ type PublicSharePayload struct {
 }
 
 type PublicShareManager struct {
-	authorizer  WorkspaceAuthorizer
-	repo        PublicShareRepository
-	frontendURL string
+	authorizer     WorkspaceAuthorizer
+	repo           PublicShareRepository
+	frontendURL    string
+	artifactSigner ArtifactContentSigner
+	now            func() time.Time
 }
 
 func NewPublicShareManager(authorizer WorkspaceAuthorizer, repo PublicShareRepository, frontendURL string) *PublicShareManager {
@@ -74,7 +77,16 @@ func NewPublicShareManager(authorizer WorkspaceAuthorizer, repo PublicShareRepos
 		authorizer:  authorizer,
 		repo:        repo,
 		frontendURL: strings.TrimRight(frontendURL, "/"),
+		now:         time.Now,
 	}
+}
+
+// WithArtifactSigner enables signed download URLs for template-allowlisted
+// artifacts on shared tryout pages. When no signer is configured, shared
+// payloads still list approved artifact descriptors but omit download URLs.
+func (m *PublicShareManager) WithArtifactSigner(signer ArtifactContentSigner) *PublicShareManager {
+	m.artifactSigner = signer
+	return m
 }
 
 func (m *PublicShareManager) CreateShareLink(ctx context.Context, caller Caller, input CreateShareLinkInput) (CreateShareLinkResult, error) {
@@ -120,7 +132,7 @@ func (m *PublicShareManager) RevokeShareLink(ctx context.Context, caller Caller,
 	return m.repo.RevokePublicShareLink(ctx, shareID)
 }
 
-func (m *PublicShareManager) GetPublicShare(ctx context.Context, token string) (PublicSharePayload, error) {
+func (m *PublicShareManager) GetPublicShare(ctx context.Context, token string, baseURL string) (PublicSharePayload, error) {
 	key := strings.TrimSpace(token)
 	if key == "" {
 		return PublicSharePayload{}, repository.ErrPublicShareLinkNotFound
@@ -130,7 +142,7 @@ func (m *PublicShareManager) GetPublicShare(ctx context.Context, token string) (
 		return PublicSharePayload{}, err
 	}
 
-	resource, err := m.publicResource(ctx, share)
+	resource, err := m.publicResource(ctx, share, baseURL)
 	if err != nil {
 		return PublicSharePayload{}, err
 	}
@@ -205,13 +217,16 @@ func (m *PublicShareManager) authorizedResourceScope(ctx context.Context, caller
 		if err := m.authorizer.AuthorizeWorkspace(ctx, caller, *tryout.WorkspaceID); err != nil {
 			return uuid.Nil, uuid.Nil, err
 		}
+		if !tryout.RedactionStatus.ShareReady() {
+			return uuid.Nil, uuid.Nil, ErrAgentTryoutRedactionNotReady
+		}
 		return *tryout.OrganizationID, *tryout.WorkspaceID, nil
 	default:
 		return uuid.Nil, uuid.Nil, errInvalidShareResourceType
 	}
 }
 
-func (m *PublicShareManager) publicResource(ctx context.Context, share repository.PublicShareLink) (any, error) {
+func (m *PublicShareManager) publicResource(ctx context.Context, share repository.PublicShareLink, baseURL string) (any, error) {
 	switch share.ResourceType {
 	case repository.PublicShareResourceChallengePackVersion:
 		snapshot, err := m.repo.GetPublicChallengePackVersionSnapshot(ctx, share.ResourceID)
@@ -245,10 +260,44 @@ func (m *PublicShareManager) publicResource(ctx context.Context, share repositor
 		if tryout.WorkspaceID == nil {
 			return nil, repository.ErrAgentTryoutNotFound
 		}
-		return mapPublicAgentTryoutResponse(tryout), nil
+		// Fail closed: a share whose redaction has regressed (or never passed)
+		// must not render unredacted content, even though creation already
+		// gated on this. Treat it as an unavailable share rather than leaking.
+		if !tryout.RedactionStatus.ShareReady() {
+			return nil, repository.ErrPublicShareLinkNotFound
+		}
+		return m.publicAgentTryout(ctx, tryout, baseURL)
 	default:
 		return nil, repository.ErrPublicShareLinkNotFound
 	}
+}
+
+// publicAgentTryout builds the redaction-safe, shareable view of a tryout:
+// the public payload (no org/workspace/user identifiers) with a defensively
+// re-redacted summary, plus the template-allowlisted, redacted artifact
+// descriptors (with signed download URLs when a signer is configured).
+func (m *PublicShareManager) publicAgentTryout(ctx context.Context, tryout repository.AgentTryout, baseURL string) (sharedAgentTryoutResponse, error) {
+	payload := mapPublicAgentTryoutResponse(tryout)
+	payload.Summary = redactTryoutSummaryForPublic(payload.Summary)
+	resp := sharedAgentTryoutResponse{publicAgentTryoutResponse: payload}
+
+	allow := parseTemplateArtifactAllowlist(tryout.TemplateSnapshot)
+	if tryout.RunID == nil || len(allow) == 0 {
+		return resp, nil
+	}
+	artifacts, err := m.repo.ListArtifactsByRunID(ctx, *tryout.RunID)
+	if err != nil {
+		return sharedAgentTryoutResponse{}, err
+	}
+	resp.Artifacts = buildSharedTryoutArtifacts(artifacts, allow, m.artifactSigner, baseURL, m.clock())
+	return resp, nil
+}
+
+func (m *PublicShareManager) clock() time.Time {
+	if m.now != nil {
+		return m.now()
+	}
+	return time.Now()
 }
 
 func (m *PublicShareManager) shareURL(token string) string {
@@ -349,7 +398,7 @@ func revokeShareLinkHandler(logger *slog.Logger, service PublicShareService) htt
 func getPublicShareHandler(logger *slog.Logger, service PublicShareService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		token := chi.URLParam(r, "token")
-		result, err := service.GetPublicShare(r.Context(), token)
+		result, err := service.GetPublicShare(r.Context(), token, requestBaseURL(r))
 		if err != nil {
 			writeShareError(w, logger, r, err)
 			return
@@ -372,6 +421,10 @@ func writeShareError(w http.ResponseWriter, logger *slog.Logger, r *http.Request
 		writeError(w, http.StatusNotFound, "not_found", "shared resource not found")
 	case errors.Is(err, errInvalidShareResourceType):
 		writeError(w, http.StatusBadRequest, "invalid_share_request", "unsupported resource_type")
+	case errors.Is(err, repository.ErrAgentTryoutNotFound):
+		writeError(w, http.StatusNotFound, "not_found", "shared resource not found")
+	case errors.Is(err, ErrAgentTryoutRedactionNotReady):
+		writeError(w, http.StatusConflict, "agent_tryout_redaction_not_ready", "This tryout's evidence is still being redacted for safe sharing. Try again once it has finished.")
 	default:
 		logger.Error("public share request failed", "method", r.Method, "path", r.URL.Path, "error", err)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal server error")
