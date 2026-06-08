@@ -4,7 +4,7 @@ description: Deep, consumer-facing YAML and runtime reference keyed to the parse
 dateModified: 2026-06-01
 ---
 
-These pages complement the short concept guide [Challenge packs and inputs](../concepts/challenge-packs-and-inputs). They spell out everything a benchmark author needs to publish a pack that survives server-side parsing, validation, and execution.
+A **challenge pack** is the versioned YAML bundle that defines a benchmark task: its prompts, tools, sandbox, evaluation spec, and input cases. These pages complement the short concept guide [Challenge packs and inputs](../concepts/challenge-packs-and-inputs). They spell out everything a benchmark author needs to publish a pack that survives server-side parsing, validation, and execution.
 
 Everything here is keyed to shipped code paths—not roadmap language. When behavior changes upstream, validate again with:
 
@@ -16,7 +16,7 @@ agentclash challenge-pack validate your-pack.yaml
 
 | Topic | Use when you… | Anchor in repo |
 | --- | --- | --- |
-| [Bundle YAML reference](bundle-yaml-reference) | Need the authoritative field list and `prompt_eval` vs `native` rules | `backend/internal/challengepack/bundle.go`, `validation.go` |
+| [Bundle YAML reference](bundle-yaml-reference) | Need the authoritative field list and `execution_mode` rules (`native`, `prompt_eval`, `responses`, `multi_turn`) | `backend/internal/challengepack/bundle.go`, `validation.go` |
 | [Evaluation spec reference](evaluation-spec-reference) | Choose validator types, wire `target`/`expected_from`, add metrics | `backend/internal/scoring/spec.go`, `validation.go`, `engine_*.go` |
 | [LLM judges](llm-judges) | Add rubrics, assertions, pairwise comparison, budgets | `backend/internal/scoring/spec.go`, `validation_judges.go` |
 | [Tools, primitives & policy](tools-primitives-and-policy) | Decide `allowed_tool_kinds`, map composed tools → primitives | `backend/internal/engine/primitive_tools.go`, `tool_registry.go`, `sandbox/sandbox.go` |

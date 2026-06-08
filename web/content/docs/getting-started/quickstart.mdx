@@ -37,8 +37,10 @@ agentclash link
 The CLI resolves the API base URL in this order:
 
 ```text
---api-url > AGENTCLASH_API_URL > saved user config > http://localhost:8080
+--api-url > AGENTCLASH_API_URL > saved user config > built-in default
 ```
+
+The built-in default depends on how the CLI was built: released binaries (what `npm i -g agentclash` installs) default to `https://api.agentclash.dev`, while source builds (`go run .` / `make build`) default to `http://localhost:8080`. Because this quickstart uses the released npm binary, you only need the `AGENTCLASH_API_URL` export above if you want to override that default.
 
 `agentclash link` saves the selected workspace in user config so later commands do not need raw IDs by default.
 

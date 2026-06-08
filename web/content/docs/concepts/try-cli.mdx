@@ -15,13 +15,13 @@ dateModified: 2026-06-01
 | Demo hub | [agentclash.dev/try](https://www.agentclash.dev/try) |
 | Per-tool demo | `https://www.agentclash.dev/try/{slug}` (e.g. `/try/bun`) |
 | README badge | `https://www.agentclash.dev/api/try/badge/{slug}.svg` |
-| WebSocket API | Railway service (`NEXT_PUBLIC_TRY_CLI_WS_URL`) |
+| WebSocket API | Long-lived Bun service (`NEXT_PUBLIC_TRY_CLI_WS_URL`) |
 
-The browser UI ships on **Vercel** with the AgentClash web app. PTY sessions run on a **long-lived Bun service** (Railway) backed by **E2B** sandboxes (WebSockets cannot run on Vercel serverless).
+The browser UI ships on **Vercel** with the AgentClash web app. PTY sessions run on a **long-lived Bun service** backed by **E2B** sandboxes (WebSockets cannot run on Vercel serverless). The service ships deploy configs for both Railway (`railway.toml`) and Fly.io (`fly.toml`).
 
 ## Demos
 
-**AI coding agents** — Claude Code, Codex CLI, OpenCode, Grok CLI.
+**AI coding agents** — Claude Code, Codex CLI, OpenCode, Grok CLI, Kimi K2, Qwen3 Coder.
 **Developer tools** — bun, uv, ruff, biome, ripgrep.
 
 Every tool is pre-installed in a shared E2B template (`agentclash-trycli`), so sandboxes boot ready in ~1–2s instead of installing on each visit. Rebuild the template after changing tools:
@@ -35,7 +35,7 @@ The build runs in E2B's cloud (Build System 2.0 — no local Docker). The demo's
 
 ## Auth: free trial, then bring-your-own
 
-**Anonymous free trial.** Visitors can try the AI agents for a few minutes with **no login and no key**. The CLI is wired to a metered server-side gateway that holds AgentClash's provider keys, mints a short-lived spend-capped token per session, and never lets the real key into the sandbox. A durable Redis-backed daily ceiling is the hard backstop.
+**Anonymous free trial.** For agents that can run on AgentClash credentials, visitors can try them for a few minutes with **no login and no key**. The CLI is wired to a metered server-side gateway that holds AgentClash's provider keys, mints a short-lived spend-capped token per session, and never lets the real key into the sandbox. A durable Redis-backed daily ceiling is the hard backstop. **Grok CLI is the exception — it is key-only**, so you bring your own xAI API key from the first session.
 
 **Then sign in.** When the trial ends, signing in with AgentClash gives a longer session where you authenticate the CLI with your **own** account/key (running on your quota, not ours). We **never inject our keys** into the sandbox — that would violate provider terms and expose the key to anyone in the shell. Each demo's `auth:` block shows how to sign in with your own credentials:
 
@@ -75,15 +75,15 @@ npx @agentclash/try-cli publish
 
 ## Challenge packs & `terminal` tool kind
 
-Challenge pack `tool_policy.allowed_tool_kinds` now accepts **`terminal`**. This marks packs that expect interactive terminal / Try CLI surfaces alongside standard sandbox primitives (`file`, `exec`, etc.).
+A challenge pack's `tool_policy.allowed_tool_kinds` is a list of **tool kinds** — the valid values are `browser`, `build`, `data`, `file`, `network`, and `terminal`. The `terminal` kind marks packs that expect interactive terminal / Try CLI surfaces. Shell execution is a separate **primitive**, not a tool kind: it is gated by the `tool_policy.allow_shell` flag, so putting `exec` in `allowed_tool_kinds` fails validation.
 
-Use **`exec`** inside the sandbox to validate CLI behavior in eval runs; use **Try CLI** for human-facing README demos.
+Use shell (`allow_shell: true`) inside the sandbox to validate CLI behavior in eval runs; use **Try CLI** for human-facing README demos.
 
 ## Architecture
 
 ```
 web (Next.js / Vercel)        →  /try, /api/try/* proxy
-services/try-cli (Bun/Railway)→  E2B PTY ↔ WebSocket
+services/try-cli (Bun service)→  E2B PTY ↔ WebSocket
 services/try-cli/scripts      →  build-template.ts (E2B template build)
 try-cli/packages/core         →  .trycli.yml schema + badges
 try-cli/demos                 →  Curated demos (AI agents + dev tools)

@@ -12,11 +12,13 @@ Prerequisites:
 - You understand the basic difference between a run and an eval.
 - You know which challenge pack or workload the result came from.
 
+Throughout this guide, "workload" means the challenge pack plus the specific input set or case the run was judged against, and "scenario" means a single case within that workload.
+
 ## Start with the top-line state
 
 Before you read the full timeline, answer three simple questions:
 
-1. Did the run complete, fail, or time out?
+1. Did the run finish in a `completed`, `failed`, or `cancelled` state? (There is no separate "timed out" state — a timeout surfaces as `failed`.)
 2. Which deployment produced the result?
 3. Which challenge pack or input set was this run judged against?
 

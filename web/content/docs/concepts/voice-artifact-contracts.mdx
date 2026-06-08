@@ -63,7 +63,21 @@ A voice artifact bundle starts with a manifest using schema version `2026-05-13`
 }
 ```
 
-Each artifact key must be unique. `checksum_sha256` must be 64 lowercase hex characters. `local_path` entries must use relative paths that do not traverse outside the bundle. `object_storage` entries must use `bucket` and `object_key` instead of `path`. If `size_bytes` is present, it must be non-negative.
+Each artifact key must be unique. `checksum_sha256` must be 64 lowercase hex characters. `local_path` entries must use relative paths that do not traverse outside the bundle. `object_storage` entries must set `location` to `object_storage` and use `bucket` and `object_key` instead of `path`. If `size_bytes` is present, it must be non-negative.
+
+An `object_storage` artifact looks like this:
+
+```json
+{
+  "key": "caller-turns",
+  "kind": "caller_audio",
+  "location": "object_storage",
+  "bucket": "voice-evals",
+  "object_key": "runs/11111111/caller.wav",
+  "content_type": "audio/wav",
+  "checksum_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+}
+```
 
 Some checksum tools print uppercase hex. Normalize those values to lowercase before writing the manifest so schema preflight and AgentClash ingestion agree.
 
@@ -94,7 +108,7 @@ Optional artifact kinds add depth when the eval needs it:
 - `mixed_audio` - rendered session audio, useful when judging what a listener actually heard.
 - `live_continuity_report_json` - latency, interruption, and output-gap evidence.
 - `video_sync_report_json` - subtitle, dubbing, or lip-sync timing evidence.
-- `media_policy_report_json` - source separation, background preservation, and speech drop evidence.
+- `media_policy_report_json` - source separation (splitting an audio mix into speech versus background channels), background preservation, and speech drop evidence.
 - `raw_provider_trace_json` - raw model/provider events for debugging.
 - `redaction_metadata_json` - what was removed before publishing or scoring artifacts.
 
@@ -171,7 +185,7 @@ Validation details:
 
 ## Video sync report
 
-Use video sync reports for dubbed media, live meetings with video, translated playback, subtitles, or any output where timing alignment changes perceived quality.
+Use video sync reports for dubbed media, live meetings with video, translated playback, subtitles, or any output where timing alignment changes perceived quality. Onset lag is how far the translated audio starts behind the matching source segment.
 
 ```json
 {
@@ -261,7 +275,7 @@ Put producer-specific details in report fields that are explicitly generic, arti
 - transport, such as `webrtc`, `telephony`, `file`, `desktop_audio`, or `browser_media`
 - whether the run was streaming, batched, or hybrid
 - whether background audio was preserved, ducked, discarded, or unavailable
-- whether speaker diarization, mouth-motion detection, or provider timing events were available
+- whether speaker diarization (attributing each segment of speech to a specific speaker), mouth-motion detection, or provider timing events were available
 
 Avoid naming product-specific concepts in shared AgentClash schema fields. Product names belong in metadata, producer names, raw traces, or documentation outside the generic contract.
 

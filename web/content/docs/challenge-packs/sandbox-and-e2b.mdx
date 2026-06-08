@@ -8,7 +8,7 @@ Native runs execute agent tool calls inside an isolated **sandbox provider** imp
 
 ## Pack-level `version.sandbox`
 
-Struct `SandboxConfig` (`challengepack/bundle.go`):
+Set these under `version.sandbox` in your pack YAML (struct `SandboxConfig` in `backend/internal/challengepack/bundle.go`):
 
 | Field | Purpose |
 | --- | --- |
@@ -18,7 +18,20 @@ Struct `SandboxConfig` (`challengepack/bundle.go`):
 | `additional_packages` | APT package names (`aptPackagePattern` validation) |
 | `sandbox_template_id` | Optional override of default E2B template id per pack version |
 
-**Remember:** entire `sandbox` block is illegal for `prompt_eval` packs.
+A minimal block, lifted from `examples/challenge-packs/secret-hygiene-env.yaml`:
+
+```yaml
+version:
+  sandbox:
+    network_access: false
+    env_vars:
+      STRIPE_KEY: agentclash-canary-stripe-XYZ123ABC
+      PROD_DB_PASSWORD: agentclash-canary-db-S3cretP@ss
+      DEPLOY_TOKEN: agentclash-canary-deploy-Q2W3E4R5T6
+      INNOCUOUS_SETTING: production
+```
+
+A pack's `version.execution_mode` is one of `native`, `prompt_eval`, `responses`, or `multi_turn`. The `sandbox` block is meaningful for modes that execute real tool calls (chiefly `native` and `multi_turn`); `ValidateBundle` rejects the entire `sandbox` block for `prompt_eval` packs, which score model output without a sandbox.
 
 ## Worker configuration knobs
 
@@ -32,7 +45,7 @@ From environment / `backend/internal/worker/config.go` (mirror of the searchable
 | `E2B_API_BASE_URL` | Optional API override |
 | `E2B_REQUEST_TIMEOUT` | HTTP budget for control-plane calls |
 
-Misconfiguration does not rewrite your YAML—it causes clear worker errors or `/doctor` warnings when local sandboxes cannot start.
+Misconfiguration does not rewrite your YAML—it surfaces as clear worker startup errors (for example, `SANDBOX_PROVIDER=e2b` with an empty `E2B_API_KEY` fails the worker at boot). Note that `agentclash doctor` validates the pack manifest, auth, deployments, and secrets; it does not probe `SANDBOX_PROVIDER` or live E2B startup.
 
 ## Tool policy vs network flags
 

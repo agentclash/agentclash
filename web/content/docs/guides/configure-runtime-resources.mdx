@@ -14,7 +14,7 @@ Prerequisites:
 
 ## 1. Store provider credentials as workspace secrets
 
-If you already want explicit secret management, set the secret first:
+To manage the secret explicitly, set it first:
 
 ```bash
 printf '%s' "$OPENAI_API_KEY" | agentclash secret set OPENAI_API_KEY
@@ -36,7 +36,7 @@ This gives you the model entry ID you will use when creating the alias.
 
 ## 3. Create a provider account
 
-You have two current patterns.
+There are two ways to do this.
 
 ### Pattern A: reference an existing workspace secret
 
@@ -151,6 +151,8 @@ agentclash deployment create \
 ```
 
 JSON-file path if you want the full request shape:
+
+`deployment.json`:
 
 ```json
 {

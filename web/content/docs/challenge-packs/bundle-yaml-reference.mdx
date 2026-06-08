@@ -26,8 +26,8 @@ The executable spine of the bundle:
 | Field | Notes |
 | --- | --- |
 | `number` | Required positive integer (`int32`). Bumps when you materially change validators, tooling, sandbox, scores, etc. |
-| `execution_mode` | `native` **or** `prompt_eval`. Empty accepts as legacy but you should always set explicitly. See execution rules below. |
-| `tool_policy` | Arbitrary-shaped map mirrored into manifest `tool_policy`. **Must be omitted** when `execution_mode` is `prompt_eval` (validated in `ValidateBundle`). |
+| `execution_mode` | One of `native`, `prompt_eval`, `responses`, or `multi_turn`. An empty value is accepted as legacy, but always set it explicitly. See [execution mode compatibility](#execution-mode-compatibility) below. |
+| `tool_policy` | Arbitrary-shaped map mirrored into manifest `tool_policy`. **Must be empty** when `execution_mode` is `prompt_eval` (enforced when the bundle is validated). |
 | `filesystem` | Optional filesystem constraints blob (same manifest path as today). |
 | `sandbox` | Optional `SandboxConfig`. **Forbidden** when `execution_mode` is `prompt_eval`. |
 | `evaluation_spec` | Required scoring contract unmarshalled through scoring package strict decode (`scoring.StrictDecodeEvaluationSpec`). Typos surface at parse time rather than silently defaulting. |
@@ -45,7 +45,7 @@ Manifest JSON merges `sandbox_template_id` from `version.sandbox` into the seria
 
 ### `tools` (optional)
 
-Optional map keyed by integration style; authoring today uses **`tools.custom`** as an array of composed tools (`validation.go`). **Must be empty** when mode is `prompt_eval`.
+Optional map keyed by integration style; authoring today uses **`tools.custom`** as an array of composed tools. **Must be empty** when `execution_mode` is `prompt_eval` or `responses`.
 
 See [Tools, primitives & policy](tools-primitives-and-policy).
 
@@ -58,7 +58,7 @@ Each challenge includes:
 | `key` | yes | Stable id referenced by cases |
 | `title` | yes | Display |
 | `category` | yes | Stored metadata |
-| `difficulty` | yes | Stored metadata (`easy`/`medium`/… as free text unless your org standardizes it) |
+| `difficulty` | yes | Must be one of `easy`, `medium`, `hard`, or `expert` (any other value fails publish with "must be one of easy, medium, hard, expert") |
 | `instructions` | often | Prompt body; mirrored into `definition.instructions` if missing there |
 | `definition` | optional | Extra JSON-compatible bag for product-specific authoring |
 | `assets` | optional | Challenge-scoped files |
@@ -78,17 +78,14 @@ Deep dive: [Input sets & cases](input-sets-and-cases).
 
 ## Execution mode compatibility
 
-Validated in `ValidateBundle`:
+`execution_mode` accepts four values; each constrains which other blocks may appear (enforced when the bundle is validated):
 
-When `execution_mode` is **`prompt_eval`**:
+- **`native`** — the full runtime. You may populate `version.sandbox`, allowed tool kinds, and composed tools; the worker hydrates the richer runtime path. Choose this when you rely on sandbox files, primitives, or validators that read captured files (`file:` evidence).
+- **`prompt_eval`** — pure model-output workloads. The `tools` block must **not** be present, `version.sandbox` must **not** be present, and `version.tool_policy` must be **empty**.
+- **`responses`** — OpenAI Responses-API workloads. The `tools` block must be **empty** (use OpenAI Responses tools, not pack-defined tools).
+- **`multi_turn`** — scripted or simulated multi-turn conversations. See [Multi-turn packs](/docs/challenge-packs/multi-turn) for the per-case `user_simulator` manifest.
 
-- `tools` block must **not** be present
-- `version.sandbox` must **not** be present  
-- `version.tool_policy` must be **empty**
-
-When **`native`** you may populate sandbox, allowed tool kinds, and composed tools—the worker will hydrate the richer runtime path (`native_executor` flow).
-
-Choose `prompt_eval` for pure model-output workloads; promote to `native` when you rely on sandbox files, primitives, validators that read captured files (`file:` evidence), etc.
+Choose `prompt_eval` for pure model-output workloads; promote to `native` when you need sandbox files, primitives, or file-based evidence.
 
 ## After publish — IDs returned
 

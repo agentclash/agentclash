@@ -33,7 +33,7 @@ If the change affects human-facing CLI output, also add assertions for:
 
 - `agentclash --help` and command-level `--help`
 - table output for the happy path
-- JSON envelopes for workflow commands such as `eval scorecard --json`
+- JSON output for commands that emit a machine-readable result envelope (the structured `{ candidate, baseline, scorecard, ... }` object printed under `--json`), such as `eval scorecard --json`
 - config persistence when the command writes local state
 
 ## Use review checkpoints for implementation work
@@ -42,7 +42,7 @@ When the change is more than a one-line fix, lock the contract before you start 
 
 The checkpoint workflow is simple:
 
-1. write the scope, functional expectations, tests, manual verification, and non-goals in the issue, PR description, or a local scratchpad outside the repo
+1. write the scope, functional expectations, tests, manual verification, and non-goals in the issue, PR description, or a local scratchpad outside the repo (for example a `/tmp/reviewcheckpoint.json` file)
 2. treat that contract as fixed until requirements explicitly change
 3. after each implementation step, update any local checkpoint notes you are using
 4. run the scoped verification listed in the contract before you declare the work ready

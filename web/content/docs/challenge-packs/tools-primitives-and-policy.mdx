@@ -7,37 +7,37 @@ dateModified: 2026-06-01
 AgentClash stacks **three** tool notions (also summarized in [Tools, network, and secrets](../concepts/tools-network-and-secrets)):
 
 1. **Workspace tool resources** — org-level infrastructure objects (not covered by pack YAML)
-2. **Pack composed tools** — `tools.custom[]` entries expanding to JSON Schema + implementation
-3. **Engine primitives** — concrete executors registered in `nativePrimitiveTools` (`backend/internal/engine/primitive_tools.go`)
+2. **Pack composed tools** — `tools.custom[]` entries that expand to a JSON Schema plus an implementation
+3. **Engine primitives** — the concrete executors the worker runs (registered in `nativePrimitiveTools`, `backend/internal/engine/primitive_tools.go`)
 
-Only (2)+(3) are pack-controlled.
+Only (2) and (3) are pack-controlled.
 
 ## Tool policy shape
 
-`version.tool_policy` JSON eventually hydrates `sandbox.ToolPolicy` (`backend/internal/sandbox/sandbox.go`):
+Set `version.tool_policy` in your pack YAML. Two keys drive it (the JSON hydrates `sandbox.ToolPolicy`, `backend/internal/sandbox/sandbox.go`):
 
-- **`allowed_tool_kinds`** — list controlling capability groups
-- **`allow_shell`** — separate bool gating the `exec` primitive
+- **`allowed_tool_kinds`** — the list of capability groups (kinds) the model may use
+- **`allow_shell`** — a separate boolean that gates the `exec` primitive
 
 ### Recognized kind strings
 
-Validated set (`supportedToolKinds` in `challengepack/validation.go`):
+`allowed_tool_kinds` accepts exactly these six values; anything else fails validation (the set is `supportedToolKinds` in `backend/internal/challengepack/validation.go`):
 
 `browser`, `build`, `data`, `file`, `network`, `terminal`
 
-**Shell is not a kind**—enable it with `allow_shell: true`.
+**Shell is not a kind**—enable it with `allow_shell: true` instead.
 
 ### Empty allowlist semantics
 
-`allowsToolKind` treats an **empty** `allowed_tool_kinds` as “allow everything” (per `primitive_helpers.go`). In practice, prefer explicit lists so validation errors catch typos early.
+An **empty** `allowed_tool_kinds` means **allow every kind** (handled by `allowsToolKind` in `primitive_helpers.go`). In practice, prefer explicit lists so validation errors catch typos early.
 
 ### Mode guardrails
 
-`prompt_eval` packs **must omit** `tool_policy` entirely—see [Bundle YAML reference](bundle-yaml-reference).
+A pack's `version.execution_mode` is one of `native`, `prompt_eval`, `responses`, or `multi_turn`. Of these, **`prompt_eval` packs must omit `tool_policy` entirely** (prompt-eval runs never call tools)—see [Bundle YAML reference](bundle-yaml-reference).
 
 ## Built-in primitive names
 
-Declared in `executor_builders.go`, registered in `nativePrimitiveTools`:
+These are the primitives the worker can run, and the policy that unlocks each (declared in `executor_builders.go`, registered in `nativePrimitiveTools`):
 
 | Primitive | Gated by |
 | --- | --- |
@@ -76,12 +76,12 @@ tools:
             Authorization: Bearer ${secrets.SUPPORT_TOKEN}
 ```
 
-Validation highlights (`validateComposedToolConfig`):
+Validation rules each composed tool must satisfy (enforced by `validateComposedToolConfig`):
 
-- Non-mock tools require **`implementation.primitive`** not equal to the composed name (prevents self-delegation footgun)
-- **`implementation.args`** object required; templates validated for placeholder safety
-- Parameters must be JSON Schema passing `templateutil.ValidateToolParameterSchema`
-- Custom graph cannot contain **cycles** or depth > 8 delegation jumps
+- A non-mock tool's **`implementation.primitive`** must name a different tool than itself (prevents the self-delegation footgun)
+- **`implementation.args`** must be an object; its templates are validated for placeholder safety
+- **`parameters`** must be a JSON Schema that passes `templateutil.ValidateToolParameterSchema`
+- The delegation graph cannot contain **cycles**, and delegation depth cannot exceed **8** jumps
 
 ### Mock implementations
 
@@ -93,11 +93,11 @@ Pack tools are **not** the same records as API `tools` resources—they are bund
 
 ## Secret placeholders
 
-Composed `args` may reference `${secrets.NAME}` which resolve through workspace secret stores—**never** place secret material inline. Sandbox `env_vars` explicitly reject secret placeholders (see native executor sandbox guard) because environment leaks are too easy; prefer header injection on `http_request`.
+Composed `args` may reference `${secrets.NAME}`, which resolve through workspace secret stores—**never** place secret material inline. Sandbox `env_vars` must be literal strings: any value containing a `${...}` placeholder is rejected at validation, and `${secrets.*}` in particular errors out (enforced by `validateEnvVarLiterals` in `backend/internal/engine/executor_sandbox.go`). Environment leaks are too easy, so inject credentials through `http_request` headers instead.
 
 ## Provider visibility
 
-`buildToolRegistry` lifts final OpenAI/Anthropic/etc. tool definitions from the registry’s **visible** map—only tools allowed by policy + manifest appear to the model.
+The model only ever sees tools that pass both the tool policy and the pack manifest—the provider-specific tool definitions (OpenAI, Anthropic, etc.) are built from the registry's **visible** map (`buildToolRegistry`).
 
 ## See also
 

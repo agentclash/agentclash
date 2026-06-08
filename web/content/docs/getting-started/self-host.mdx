@@ -41,6 +41,13 @@ pnpm dev
 
 The web app runs at `http://localhost:3000`.
 
+<Callout type="warning">
+  `web/` ships **both** lockfiles (`pnpm-lock.yaml` and `package-lock.json`).
+  Local dev uses `pnpm`, but CI installs with `npm ci` against
+  `package-lock.json`. If you change a frontend dependency, update
+  `package-lock.json` too or the frontend CI job will fail.
+</Callout>
+
 ## 3. Seed a runnable fixture
 
 Back in the repo root:
@@ -49,6 +56,13 @@ Back in the repo root:
 ./scripts/dev/seed-local-run-fixture.sh
 ./scripts/dev/curl-create-run.sh
 ```
+
+<Callout type="warning">
+  `seed-local-run-fixture.sh` is **destructive to your local dev database**. It
+  `TRUNCATE`s the fixture tables (challenge packs, organizations, users, model
+  catalog entries) before inserting deterministic IDs. Only run it against a
+  throwaway local Postgres, never a database with data you care about.
+</Callout>
 
 Without a real sandbox provider such as E2B, native runs can still be created, but the model-backed execution path will not complete successfully.
 

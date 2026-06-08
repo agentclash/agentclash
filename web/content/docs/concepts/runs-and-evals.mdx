@@ -26,7 +26,7 @@ The word **eval** is broader. People use it to mean “the experiment I am tryin
 - **Run** = the concrete resource you create and query.
 - **Eval** = the broader exercise or outcome you are trying to measure.
 
-There are also places in the codebase that refer to eval sessions, but the main shipped workflow today still revolves around runs and ranked run results. If you keep that in your head, the CLI and API are much easier to follow.
+You will also see **eval sessions** in the CLI and API: an eval session groups several repeated runs of the same configuration and aggregates their scores together (created by `agentclash eval start --repetitions`, backed by the `/v1/eval-sessions` endpoint). It is still built on runs underneath. The main shipped workflow today revolves around runs and ranked run results, so if you keep that in your head, the CLI and API are much easier to follow.
 
 ## Practical rule of thumb
 

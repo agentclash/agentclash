@@ -94,16 +94,25 @@ coding agent to operate the CLI directly — setup, eval runs, scorecard reading
 CI gates, and challenge-pack authoring.
 
 Install them with the AgentClash CLI. It is idempotent and writes only
-`SKILL.md` files — never your `CLAUDE.md`, `AGENTS.md`, or `.mcp.json`:
+`SKILL.md` files — never your `CLAUDE.md`, `AGENTS.md`, or `.mcp.json`.
+
+Pick the line for the coding agent you use — each command installs the same
+skills into that agent's skills directory. The trailing comment is where the
+files land:
 
 ```bash
-agentclash integration claude install    # -> ~/.claude/skills/
-agentclash integration codex install     # -> ~/.agents/skills/
-agentclash integration cursor install    # -> ~/.cursor/skills/
-agentclash integration openclaw install  # -> ~/.openclaw/skills/
-agentclash integration hermes install    # -> ~/.hermes/skills/
-agentclash integration opencode install  # -> ~/.config/opencode/skills/
-agentclash integration claude doctor     # verify installed / missing / drifted
+agentclash integration claude install    # Claude Code -> ~/.claude/skills/
+agentclash integration codex install     # Codex       -> ~/.agents/skills/
+agentclash integration cursor install    # Cursor      -> ~/.cursor/skills/
+agentclash integration openclaw install  # OpenClaw    -> ~/.openclaw/skills/
+agentclash integration hermes install    # Hermes      -> ~/.hermes/skills/
+agentclash integration opencode install  # OpenCode    -> ~/.config/opencode/skills/
+```
+
+After installing, verify the integration (swap `claude` for your agent):
+
+```bash
+agentclash integration claude doctor      # report installed / missing / drifted skills
 ```
 
 Project-local OpenCode installs use `.opencode/skills/` — use the

@@ -15,11 +15,13 @@ AgentClash leans on a canonical event model so the same execution can feed multi
 - a live or replayable timeline
 - artifacts and logs for detailed inspection
 - scorecards for compact judgments
-- future workload design when a failure is worth preserving
+- future workload design — turning a failure worth preserving into a new challenge pack (an eval task) for the next run
 
 <DiagramEvidenceClosingLoop />
 
 ## The canonical event envelope is the hinge
+
+The event envelope is the normalized, schema-versioned wrapper every run event is written in — it records what happened, when, which run and agent it belongs to, which source emitted it, and whether the evidence is rich telemetry or a degraded black-box observation.
 
 The replay docs in the repo make this explicit: if different subsystems emit ad-hoc logs, you cannot build a trustworthy replay or comparison layer on top. The canonical event envelope is the normalization step that keeps evidence portable.
 
