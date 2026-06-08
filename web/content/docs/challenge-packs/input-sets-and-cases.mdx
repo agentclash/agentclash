@@ -4,7 +4,7 @@ description: How cases bind challenges, structured inputs, expectations, assets,
 dateModified: 2026-06-01
 ---
 
-Input sets are the unit AgentClash schedules per deployment/candidate. Each `input_sets[]` entry contains **`cases[]`** (`CaseDefinition` in `backend/internal/challengepack/bundle.go`).
+Input sets are the unit AgentClash schedules per deployment/candidate. Each `input_sets[]` entry contains a list of **`cases[]`** — the individual tasks an agent runs (defined by `CaseDefinition` in `backend/internal/challengepack/bundle.go`).
 
 ## Case identity
 
@@ -13,7 +13,7 @@ Input sets are the unit AgentClash schedules per deployment/candidate. Each `inp
 
 All cases in one `input_sets[]` entry must reference the same `challenge_key`; split mixed-challenge suites into separate input sets.
 
-`EffectiveKey()` chooses `case_key` when present for stored rows.
+When both keys are present, `case_key` is the one stored and used to identify the row (`item_key` is the fallback). Internally this is `EffectiveKey()`.
 
 ## Three authoring styles (coexist)
 
@@ -21,11 +21,11 @@ All cases in one `input_sets[]` entry must reference the same `challenge_key`; s
 2. **Structured eval** — `inputs[]` + `expectations[]` with explicit `kind` fields  
 3. **Artifact heavy** — `assets[]` + `artifacts[]` referencing declared version/challenge assets
 
-`IsLegacyPayloadOnly` detects style (1) for storage compatibility.
+A case counts as style (1) when it has no `inputs`, `expectations`, `artifacts`, `assets`, or `user_simulator` — just a raw `payload`. Such cases are stored as the bare payload blob for backward compatibility (`IsLegacyPayloadOnly`).
 
 ### Stored document shape
 
-When modern fields exist, `StoredPayload()` marshals `StoredCaseDocument` JSON with `schema_version: 1`, preserving:
+When any modern field is present, the case is stored as a `StoredCaseDocument` JSON object tagged `schema_version: 1` (`StoredPayload()`), preserving:
 
 - `payload`
 - `inputs`
@@ -35,9 +35,34 @@ When modern fields exist, `StoredPayload()` marshals `StoredCaseDocument` JSON w
 
 This is what scoring + replay pull back—not the raw YAML fragment.
 
+### Example input set
+
+A single input set with one case that combines a `payload` blob with `expectations` (lifted from `examples/challenge-packs/incident-response-llm-judge.yaml`):
+
+```yaml
+input_sets:
+  - key: default
+    name: Default Input Set
+    cases:
+      - challenge_key: payments-api-outage
+        case_key: ambiguous-sev1
+        payload:
+          incident_summary: |
+            The payments API is returning elevated 5xx errors in one region.
+          signals:
+            - "5xx error rate increased from 0.4% to 18% in us-east-1"
+            - "database p95 latency increased from 40ms to 480ms"
+        expectations:
+          - key: escalation_policy
+            kind: text
+            value: |
+              Escalate immediately for potentially high-severity, multi-signal
+              incidents with uncertain root cause.
+```
+
 ## Case inputs (`inputs[]`)
 
-`CaseInput` fields:
+Each entry in `inputs[]` carries these fields (`CaseInput`):
 
 | Field | Role |
 | --- | --- |
@@ -51,7 +76,7 @@ Validators can address values through `case.inputs.<key>` evidence paths.
 
 ## Expectations (`expectations[]`)
 
-`CaseExpectation` parallels inputs:
+Each `expectations[]` entry mirrors an input (`CaseExpectation`):
 
 - `key`, `kind`, `value`, `artifact_key`, plus **`source`** telling graders where dynamic gold values originate (`input:prompt` pattern seen in CLI template packs)
 
@@ -71,7 +96,7 @@ Optional `description` on an input set is preserved for UI/discovery; there is n
 
 ## Choosing input set at run time
 
-CLI `eval start` accepts `--input-set` when multiple sets exist; otherwise TTY flows prompt. API consumers pass the chosen `input_set_id` when creating runs (see OpenAPI `CreateRun` family).
+CLI `eval start` accepts `--input-set` when multiple sets exist; otherwise TTY flows prompt. API consumers pass the chosen `challenge_input_set_id` when creating runs (see OpenAPI `CreateRun` family). If omitted and the pack has exactly one input set, it is auto-selected; if the pack has multiple, the request is rejected.
 
 ## See also
 

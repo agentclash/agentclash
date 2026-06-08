@@ -32,7 +32,7 @@ It also supports these optional fields:
 - `model_alias_id`
 - `deployment_config`
 
-The OpenAPI description also says only ready build versions can be deployed.
+The OpenAPI description also says only ready build versions can be deployed. A build version is "ready" once its status has moved from `draft` to `ready` (the other terminal status is `archived`); a draft or archived version cannot be attached to a deployment.
 
 <DiagramAgentsToRun />
 
@@ -112,13 +112,14 @@ That separation is deliberate. A run is an execution event. A deployment is reus
 
 ## What is stable versus still moving
 
-The stable part is the dependency chain and the API surface. The still-moving part is how richly each resource is edited in the UI and how much automation exists around them.
+The dependency chain and the API surface are stable: the fields documented above are the contract you build against today.
 
-So the right docs posture is:
+What is still moving is the editing experience and automation around these resources:
 
-- document the current fields and flows precisely
-- avoid pretending the deployment UX is fully polished
-- treat the resource model itself as real and important
+- how richly each resource can be edited in the UI
+- how much automation exists for creating and wiring them together
+
+Treat the resource model itself as real and rely on it, but expect the UX around editing deployments to keep improving.
 
 ## See also
 

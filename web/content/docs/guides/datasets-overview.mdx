@@ -27,9 +27,21 @@ agentclash dataset eval <datasetId> \
   --deployment <deployment-id>
 ```
 
+## Record a baseline
+
+A baseline snapshots the per-example outcomes of one completed, green eval run so later candidates can be compared against it. Recording a baseline is an API call (no CLI subcommand yet): `POST /v1/workspaces/{workspaceID}/datasets/{datasetID}/baselines` with the eval `run_id` and an optional `label`. The response returns a baseline `id` — pass that to `agentclash dataset test --baseline <id>` to gate candidates against it.
+
+```bash
+curl -sS -X POST \
+  "$AGENTCLASH_API_URL/v1/workspaces/$AGENTCLASH_WORKSPACE/datasets/<datasetId>/baselines" \
+  -H "Authorization: Bearer $AGENTCLASH_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"run_id": "<eval-run-id>", "label": "support v1 baseline"}'
+```
+
 ## Baselines and regression suites
 
-Baselines snapshot per-example outcomes from a completed eval. Syncing a pinned version into a regression suite copies provenance (`dataset_example_id`, trace metadata) into `workspace_regression_cases` so manifest-based release gates can reference the same examples.
+Syncing a pinned dataset version into a regression suite copies each example's provenance — its dataset-example ID and trace metadata — into the workspace regression suite, so manifest-based release gates can reference the same curated examples. (Under the hood these land in the `workspace_regression_cases` table keyed by `dataset_example_id`.)
 
 ```bash
 agentclash dataset sync-regression-suite <datasetId> \
@@ -39,7 +51,7 @@ agentclash dataset sync-regression-suite <datasetId> \
   --suite-name "Support dataset regression"
 ```
 
-Re-running sync is idempotent: existing cases keyed by `dataset_example_id` are skipped.
+Re-running sync is idempotent: cases that already exist for an example are skipped, so you can safely re-sync after adding new examples.
 
 ## CI gate output formats
 

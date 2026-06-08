@@ -37,7 +37,7 @@ Start in `backend/internal/api` and trace the handler path from request shape to
 
 ### I need to change execution behavior
 
-Start in `backend/internal/worker` and the orchestration docs so you understand what the workflow owns versus what the activity owns.
+Workflow and activity definitions (the durable orchestration logic) live in `backend/internal/workflow` (`run_workflow.go`, `run_agent_workflow.go`, `activities.go`). The worker process that registers and runs them, plus the model invokers and event observers, lives in `backend/internal/worker`. Read the orchestration docs alongside both so you understand what the workflow owns versus what the activity owns.
 
 ### I need to change local or hosted CLI behavior
 

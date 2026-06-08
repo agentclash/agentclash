@@ -43,6 +43,7 @@ candidate:
 evaluation:
   challenge_pack_version_id: 00000000-0000-0000-0000-000000000005
   input_set_id: 00000000-0000-0000-0000-000000000006
+  # For deterministic voice eval packs, set: mode: text-sim
   regression_suites:
     - 00000000-0000-0000-0000-000000000007
 baseline:
@@ -64,7 +65,7 @@ Local validation is always offline. Add `--remote` when you want the CLI to call
 - `trigger` says which repository paths and optional labels should cause the workflow to run.
 - `candidate.build` names the existing AgentClash build and the source-backed build-version spec to test.
 - `candidate.deployment` names the runtime resources used for the candidate deployment.
-- `evaluation` names the workload: challenge pack version, optional input set, and optional regression suites or cases.
+- `evaluation` names the workload: challenge pack version, optional input set, and optional regression suites or cases. For voice packs, set the optional `evaluation.mode: text-sim` to request a deterministic text-simulated voice eval (`text-sim` is the only mode supported today; `audio-sim`, `live-call`, and `replay-import` are reserved for future use).
 - `baseline` names the locked reference run or deployment, plus explicit refresh and staleness rules.
 - `gate` names the release-gate failure threshold.
 - `regressions` controls whether failed cases should only be reported, proposed for promotion, or eventually auto-promoted on main.

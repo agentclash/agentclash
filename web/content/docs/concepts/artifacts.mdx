@@ -6,35 +6,33 @@ dateModified: 2026-06-01
 
 An artifact is a stored file object that AgentClash can keep at workspace scope, attach to runs, reference from challenge packs, and expose through signed downloads.
 
-## What an artifact is in the current product
+## What an artifact is
 
-The current artifact response shape already tells you the core model:
+The artifact response shape spells out the core model:
 
-- `workspace_id`
-- optional `run_id`
-- optional `run_agent_id`
-- `artifact_type`
-- optional `content_type`
-- optional `size_bytes`
-- optional `checksum_sha256`
-- `visibility`
-- `metadata`
-- `created_at`
+- `workspace_id` — the workspace that owns the artifact
+- `run_id` (optional) — the run it was produced in, if any
+- `run_agent_id` (optional) — the specific agent within that run, if any
+- `artifact_type` — a caller-defined type label (lowercase slug)
+- `content_type` (optional) — MIME type of the stored bytes
+- `size_bytes` (optional) — file size
+- `checksum_sha256` (optional) — content hash for integrity
+- `visibility` — who can access it
+- `metadata` — arbitrary JSON (for example a readable filename)
+- `created_at` — upload timestamp
 
-That means artifacts are not only run outputs. They can exist before a run and be used as reusable workspace context.
+Because `run_id` and `run_agent_id` are optional, artifacts are not only run outputs. They can exist before a run and be used as reusable workspace context.
 
 ## There are two important artifact roles
 
 ### 1. Workspace-managed files
 
-The workspace UI and API let you upload arbitrary files to the workspace artifact store.
-
-The current artifacts page describes them as files you can:
+The workspace UI and API let you upload arbitrary files to the workspace artifact store. These are files you can:
 
 - use as context in challenge packs
 - attach to runs
 
-That is the right mental model. Upload once, then reuse where it makes sense.
+Upload once, then reuse where it makes sense.
 
 ### 2. Run evidence files
 
@@ -74,11 +72,11 @@ Validation already checks that those references are real. If the key or artifact
 
 When you publish a challenge pack, the response may include `bundle_artifact_id`.
 
-That is an important detail because it means the authored pack bundle is treated as a stored object of record. The product does not only store parsed rows; it can also retain the published source bundle as an artifact.
+This means the authored pack bundle is treated as a stored object of record. The product does not only store parsed rows; it also retains the published source bundle as an artifact.
 
 ## Upload and download flow
 
-The current API surface is:
+The API surface is:
 
 - `GET /v1/workspaces/{workspaceID}/artifacts`
 - `POST /v1/workspaces/{workspaceID}/artifacts`
@@ -99,9 +97,9 @@ The download flow is intentionally indirect. The API returns a signed URL and ex
 
 Artifacts also carry `visibility` and arbitrary JSON `metadata`.
 
-The current UI uses metadata to recover nicer names like `original_filename`. If no filename metadata exists, it falls back to showing the artifact ID prefix.
+The UI uses metadata to recover nicer names like `original_filename`. If no filename metadata exists, it falls back to showing the artifact ID prefix.
 
-That sounds minor, but it is a sign that metadata is a first-class part of the artifact model, not just a debug dump.
+Metadata is a first-class part of the artifact model, not just a debug dump.
 
 ## When to use artifacts versus inline YAML data
 

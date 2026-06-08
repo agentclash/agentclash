@@ -32,7 +32,7 @@ The parser in `backend/internal/challengepack/bundle.go` expects a YAML bundle w
 A pack becomes runnable through its `version` block. That block currently carries the load-bearing execution data:
 
 - `number`: the pack version number
-- `execution_mode`: `native` or `prompt_eval`
+- `execution_mode`: one of `native`, `prompt_eval`, `responses`, or `multi_turn`
 - `tool_policy`: allowed tool kinds and runtime toggles
 - `filesystem`: optional filesystem constraints
 - `sandbox`: network, env, package, and template configuration
@@ -75,12 +75,14 @@ This matters because AgentClash needs scorecards to remain auditable. When a run
 
 ## Execution mode matters
 
-Two execution modes are visible in the current code and examples:
+The `execution_mode` field on the version block accepts four values:
 
-- `prompt_eval`: lighter-weight packs that focus on prompt-style evaluation
-- `native`: packs that can carry sandbox, tool, and execution policy for richer runs
+- `prompt_eval`: lighter-weight packs that focus on prompt-style evaluation. Tools and a sandbox are not allowed in this mode.
+- `native`: packs that can carry sandbox, tool, and execution policy for richer runs. This is what most example packs use.
+- `responses`: packs that run against the OpenAI Responses API. Pack-defined tools are not allowed in this mode; the run uses the provider's built-in Responses tools instead.
+- `multi_turn`: packs that run a scripted, LLM-driven, or human user simulator across multiple turns. See [Multi-turn packs](/docs/challenge-packs/multi-turn).
 
-You should choose the simpler mode unless the workload really needs a sandbox, files, or tool execution.
+Choose the simplest mode that fits the workload. Reach for `native` only when the run really needs a sandbox, files, or tool execution, and `multi_turn` only when the case is a multi-turn conversation.
 
 ## Sandbox, tool policy, and internet access belong to the pack version
 

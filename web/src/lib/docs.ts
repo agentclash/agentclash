@@ -1045,9 +1045,18 @@ function getFileDocBySlug(slug: string[]) {
   const { data, content } = matter(raw);
   const href = slugToHref(slug);
 
-  const datePublished = typeof data.date === "string" ? data.date : undefined;
+  const datePublished =
+    typeof data.date === "string"
+      ? data.date
+      : typeof data.datePublished === "string"
+        ? data.datePublished
+        : undefined;
   const dateModified =
-    typeof data.updated === "string" ? data.updated : datePublished;
+    typeof data.dateModified === "string"
+      ? data.dateModified
+      : typeof data.updated === "string"
+        ? data.updated
+        : datePublished;
 
   return createDocPage(
     slug,

@@ -19,7 +19,7 @@ That is why the architecture keeps a boundary between orchestration and executio
 
 ## Why E2B is the current fit
 
-The current local-development and worker docs show E2B as the concrete provider in use today. That gives AgentClash a managed isolation layer without having to invent a bespoke container orchestration story inside the app itself.
+E2B is a managed service that runs each agent in its own cloud sandbox (an isolated microVM). It is the concrete sandbox provider in use today. That gives AgentClash a managed isolation layer without having to invent a bespoke container orchestration story inside the app itself.
 
 The main benefits are straightforward:
 
@@ -42,13 +42,16 @@ When a run fails, you want to know whether the issue belongs to:
 
 A clean sandbox boundary makes that diagnosis easier because provider setup and execution failures do not get mixed into the same code path as API concerns.
 
-## What to read in the code
+## How the provider is selected
 
-Start with these files and directories:
+The worker picks a sandbox provider from the `SANDBOX_PROVIDER` environment variable:
 
-- `backend/internal/worker/config.go` for sandbox-related environment surface
-- `backend/internal/worker` for worker-side execution behavior
-- `docs/worker/local-development.md` for how the local stack expects the provider to be configured
+- `unconfigured` (the default) — a noop provider. Runs queue but never execute. This is what the local stack uses until you supply E2B credentials.
+- `e2b` — runs each agent in an E2B sandbox. Requires `E2B_API_KEY` and `E2B_TEMPLATE_ID`; the worker fails to start if either is empty. Optional tuning: `E2B_API_BASE_URL` and `E2B_REQUEST_TIMEOUT` (default `30s`).
+
+Any other value is rejected at worker startup.
+
+For contributors who want the wiring: `backend/internal/worker/config.go` reads the environment surface above, `backend/internal/sandbox/sandbox.go` defines the provider interface, and `docs/worker/local-development.md` covers how the local stack expects the provider to be configured.
 
 ## Why not bake execution directly into the web or API app
 

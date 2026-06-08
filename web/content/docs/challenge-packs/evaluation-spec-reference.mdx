@@ -4,7 +4,9 @@ description: Validators, metrics, behavioral signals, runtime limits, and scorec
 dateModified: 2026-06-01
 ---
 
-Pack-local `evaluation_spec` is unmarshalled into `scoring.EvaluationSpec` (`backend/internal/scoring/spec.go`) via strict decoding. This page maps fields to enums and collectors actually implemented—not aspirational placeholders.
+The `evaluation_spec` block in a challenge pack declares how a run is scored: which validators check the output, which metrics get collected, and how those roll up into a scorecard. It is decoded strictly—unknown keys fail validation rather than being ignored—so every field documented here must match exactly. This page lists only the enums and collectors that are actually implemented, not aspirational placeholders.
+
+(Contributor pointer: the block unmarshals into `scoring.EvaluationSpec` in `backend/internal/scoring/spec.go`.)
 
 For LLM graders see the dedicated guide: [LLM judges](llm-judges).
 
@@ -59,7 +61,12 @@ Collectors wired today (verbatim keys):
 
 `run_total_latency_ms`, `run_ttft_ms`, `run_input_tokens`, `run_output_tokens`, `run_total_tokens`, `run_agent_tokens`, `run_race_context_tokens`, `run_model_cost_usd`, `run_completed_successfully`, `run_failure_count`, `run_tool_call_count`, behavioral scores (`behavioral_recovery_score`, … ), `validator_pass_rate`
 
-Declaring a collector that does not exist will fail silently only if evidence missing—prefer copying keys from tests in `backend/internal/scoring/engine_metrics.go`.
+Two distinct outcomes, not one:
+
+- **Unknown collector** (a `collector` key not in the list above) is rejected outright: the metric resolves to an error state with `collector "…" is not supported`. It is never silent.
+- **Known collector, missing evidence** (e.g. a latency metric when no latency was recorded) resolves to an *unavailable* state with a reason, which is the only "quiet" path.
+
+Copy collector keys verbatim from the implemented switch (contributor pointer: the `switch` in `backend/internal/scoring/engine_metrics.go`) to avoid the first case.
 
 ## Behavioral panel (`behavioral`)
 
@@ -95,12 +102,12 @@ Defaults: ~1 MiB per file, aggregate caps enforced per run (`DefaultMaxFileSiz
 Each dimension may be a plain string shorthand (historical compatibility) **or** an expanded object specifying:
 
 - **`key`** — dimension name (`correctness`, `latency`, `cost`, `behavioral`, custom)
-- **`source`** — dispatcher: `validators`, `metric`, `reliability`, `latency`, `cost`, `behavioral`, `llm_judge`
+- **`source`** — dispatcher: `validators`, `metric`, `reliability`, `latency`, `cost`, `behavioral`, `llm_judge`, `human_preference`
 - **`validators[]`**, **`metric`**, **`judge_key`** — depending on `source`
 - **`weight`**, **`normalization`** — linear normalize against target/max envelopes
 - **`gate`**, **`pass_threshold`** — hard fail semantics (see Strategies)
 
-Built-in shortcut keys normalize during `normalizeEvaluationSpec` (`validation.go`): correctness/ reliability/ latency / cost / behavioral auto-fill sensible sources.
+If you use one of the built-in dimension keys—`correctness`, `reliability`, `latency`, `cost`, or `behavioral`—as a plain string, its `source` is auto-filled for you; you don't have to spell it out (contributor pointer: `normalizeEvaluationSpec` in `validation.go`).
 
 ### Strategy (`strategy`)
 

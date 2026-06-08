@@ -53,7 +53,7 @@ explicitly (CI scripts, automation).
 
 ## 4. Inspect the result
 
-Once you have a run ID, inspect its status and ranking:
+Each create command from step 3 prints the run ID: the CLI (`eval start` / `run create`) writes a `Run ID:` line, and the curl script prints the raw `POST /v1/runs` JSON response, whose `id` field is the run ID. Use that value in place of `<RUN_ID>` to inspect status and ranking:
 
 ```bash
 agentclash run get <RUN_ID>

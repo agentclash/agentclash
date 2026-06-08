@@ -8,8 +8,6 @@ Challenge packs are useless until a **run** binds a `challenge_pack_version_id` 
 
 ## Happy path commands
 
-From `cli/cmd/eval.go`, `baseline.go`, `compare.go`, `release_gate.go`:
-
 ```bash
 agentclash eval start --follow
 agentclash baseline set [run_id] [--agent <label>]
@@ -19,9 +17,19 @@ agentclash compare gate --baseline <run> --candidate <run>
 agentclash release-gate list [--baseline ... --candidate ...]
 ```
 
+### Typical flow
+
+1. **Start a run.** `eval start --follow` creates the run and streams events to your terminal until it finishes. It prints the run ID you'll reuse below.
+2. **Bookmark a baseline.** `baseline set <run_id>` saves a workspace-scoped pointer to a known-good run. Do this once; it precedes step 4.
+3. **Run your candidate.** `eval start --follow` again, against the new deployment or pack version.
+4. **Read the scorecard.** `eval scorecard <candidate_run_id>` prints the candidate scorecard and—because a baseline is bookmarked—enriches it with the baseline, a comparison, and a release-gate verdict in one payload.
+5. **Gate in CI.** `compare gate --baseline <run> --candidate <run>` exits nonzero on a regression, so a CI step can block a promotion.
+
+> Source pointers for contributors: these commands live in `cli/cmd/eval.go`, `baseline.go`, `compare.go`, and `release_gate.go`.
+
 ### `eval start`
 
-Key flags (see `eval.go` / `eval_resolve.go`):
+Key flags (defined in `cli/cmd/eval.go`; resolution logic in `eval_resolve.go`):
 
 | Flag | Purpose |
 | --- | --- |
@@ -38,9 +46,21 @@ Non-interactive environments must supply enough disambiguators—resolver errors
 
 ### `eval scorecard`
 
-Prints the latest candidate scorecard and, when configured, enriches with **baseline + comparison + release gate** envelopes in one JSON payload for CI (`eval_test.go` asserts those keys).
+Prints the candidate scorecard. When a baseline is bookmarked for the workspace, it also runs the comparison and release-gate evaluation and returns everything in one JSON payload for CI. With `--json` the payload has these top-level keys:
 
-Omitting `run_id` uses deterministic “latest relevant run” semantics documented in tests—do not assume hidden state in automation; pass explicit ids in CI.
+| Key | Contents |
+| --- | --- |
+| `candidate` | The run/agent being scored (`run_id`, `run_status`, `run_agent_id`, …) |
+| `scorecard` | The candidate's per-dimension scorecard |
+| `baseline` | The bookmarked baseline pointer, or `null` if none is set |
+| `comparison` | Baseline-vs-candidate deltas, or `null` if no baseline |
+| `release_gate` | The gate verdict, or `null` if no baseline |
+
+If the scorecard is still computing (HTTP 202) or errored (HTTP 409), the `baseline`, `comparison`, and `release_gate` keys stay `null` and a 409 exits 1.
+
+Omitting `run_id` selects the **most recent run in the workspace by `created_at`** (newest first). This is purely "latest run"—it does not skip the baseline run—so in automation pass an explicit run id rather than relying on ordering.
+
+(Envelope assembly lives in `buildEvalScorecardEnvelope` in `cli/cmd/eval.go`; the latest-run rule is in `resolveRunSummary` in `eval_resolve.go`.)
 
 ### Baseline bookmarks
 
@@ -50,11 +70,20 @@ Omitting `run_id` uses deterministic “latest relevant run” semantics documen
 
 ## Compare & release gates
 
-- `compare runs` hits comparison APIs with explicit baseline/candidate pair (optional agent ids).  
-- `compare gate` posts to `/v1/release-gates/evaluate` with those ids—response includes `policy_snapshot`, `evaluation_details`, timestamps (see `compare.go` long help).
+- `compare runs` calls `GET /v1/compare` with an explicit baseline/candidate pair (optional agent ids) and prints per-dimension deltas.
+- `compare gate` posts to `POST /v1/release-gates/evaluate` with those ids. With `--json` it prints the full server response (verdict plus fields like `policy_snapshot` and `evaluation_details`); for the exact response shape see the OpenAPI spec.
 - `release-gate list` surfaces historical evaluations with optional filters.
 
-Gate outcomes use structured status codes (documented in `compare.go` help text) for scripting.
+`compare gate` sets the **process exit code** so a CI step can branch on the outcome:
+
+| Exit code | Verdict | Meaning |
+| --- | --- | --- |
+| `0` | `pass` | Gate passed; safe to promote. |
+| `1` | `fail` | Regressions detected. |
+| `2` | `warn` | Soft warning; review before promoting. |
+| `3` | `insufficient_evidence` | Policy could not be evaluated; fix the spec or rerun. |
+
+(These exit codes are also printed in `agentclash compare gate --help`.)
 
 ## Relationship to `run create`
 
