@@ -1,7 +1,9 @@
 import Link from "next/link";
-import { ArrowRight, LogIn, Star } from "lucide-react";
+import { ArrowRight, Star } from "lucide-react";
 import { withAuth } from "@workos-inc/authkit-nextjs";
+import { isReturningVisitor } from "@/lib/auth/returning";
 import { hasPublishedBenchmarks } from "@/lib/benchmarks";
+import { AuthCtaLink } from "./auth-cta-link";
 import { ClashMark } from "./clash-mark";
 
 type NavLink = { href: string; label: string; external?: boolean };
@@ -20,6 +22,7 @@ type Props = {
 
 export async function MarketingHeader({ nav = DEFAULT_NAV }: Props) {
   const { user } = await withAuth();
+  const returning = await isReturningVisitor();
   // Hide Benchmarks until a real report ships (coming-soon state) so we never
   // funnel visitors to a placeholder; it reappears automatically once live.
   const visibleNav = hasPublishedBenchmarks()
@@ -80,14 +83,7 @@ export async function MarketingHeader({ nav = DEFAULT_NAV }: Props) {
               <ArrowRight className="size-3" />
             </Link>
           ) : (
-            <Link
-              href="/auth/login"
-              aria-label="Sign in"
-              className="inline-flex items-center gap-1.5 rounded-md border border-white/15 bg-white/[0.04] px-2 sm:px-3 py-1.5 text-white/75 hover:text-white hover:border-white/25 transition-colors"
-            >
-              <LogIn className="size-3.5" />
-              <span className="hidden sm:inline">Sign in</span>
-            </Link>
+            <AuthCtaLink returning={returning} />
           )}
         </nav>
       </div>

@@ -5,6 +5,7 @@ import { SignInButton } from "./sign-in-button";
 
 vi.mock("./actions", () => ({
   signInAction: vi.fn(),
+  signUpAction: vi.fn(),
 }));
 
 let root: Root | null = null;
@@ -43,5 +44,16 @@ describe("SignInButton", () => {
       'input[name="returnTo"]',
     );
     expect(input?.value).toBe("/auth/device?user_code=ABCD-1234");
+  });
+
+  it("renders sign-up mode with the shared AgentClash handoff branding", () => {
+    render(<SignInButton mode="signup" returnTo="/dashboard" />);
+
+    expect(container?.querySelector("form")).not.toBeNull();
+    expect(container?.textContent).toContain("Continue with AgentClash");
+    const input = container?.querySelector<HTMLInputElement>(
+      'input[name="returnTo"]',
+    );
+    expect(input?.value).toBe("/dashboard");
   });
 });

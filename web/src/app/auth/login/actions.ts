@@ -1,16 +1,20 @@
 "use server";
 
-import { getSignInUrl } from "@workos-inc/authkit-nextjs";
+import { getSignInUrl, getSignUpUrl } from "@workos-inc/authkit-nextjs";
 import { redirect } from "next/navigation";
 import { sanitizeReturnTo } from "@/lib/auth/return-to";
 
-export async function signInAction(formData: FormData) {
-  const rawReturnTo = formData.get("returnTo");
-  const returnTo =
-    typeof rawReturnTo === "string"
-      ? sanitizeReturnTo(rawReturnTo)
-      : "/dashboard";
+function resolveReturnTo(formData: FormData): string {
+  const raw = formData.get("returnTo");
+  return typeof raw === "string" ? sanitizeReturnTo(raw) : "/dashboard";
+}
 
-  const url = await getSignInUrl({ returnTo });
+export async function signInAction(formData: FormData) {
+  const url = await getSignInUrl({ returnTo: resolveReturnTo(formData) });
+  redirect(url);
+}
+
+export async function signUpAction(formData: FormData) {
+  const url = await getSignUpUrl({ returnTo: resolveReturnTo(formData) });
   redirect(url);
 }
