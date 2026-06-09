@@ -186,20 +186,27 @@ type AgentTryoutCompareResult struct {
 // never mutated. Any id outside the workspace (or missing) fails closed as
 // not-found so existence isn't leaked across workspaces.
 func (m *AgentTryoutManager) CompareWorkspaceTryouts(ctx context.Context, caller Caller, input CompareAgentTryoutsInput) (AgentTryoutCompareResult, error) {
-	if len(input.TryoutIDs) < 2 || len(input.TryoutIDs) > 4 {
+	// Deduplicate before the cardinality check so the 2-4 bound is enforced on
+	// distinct tryouts — otherwise ["id-A","id-A"] would slip past len()>=2 and
+	// return a single participant, violating the contract.
+	seen := make(map[uuid.UUID]bool, len(input.TryoutIDs))
+	distinctIDs := make([]uuid.UUID, 0, len(input.TryoutIDs))
+	for _, id := range input.TryoutIDs {
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		distinctIDs = append(distinctIDs, id)
+	}
+	if len(distinctIDs) < 2 || len(distinctIDs) > 4 {
 		return AgentTryoutCompareResult{}, ErrAgentTryoutCompareCardinality
 	}
 	if err := AuthorizeWorkspaceAction(ctx, m.authorizer, caller, input.WorkspaceID, ActionReadWorkspace); err != nil {
 		return AgentTryoutCompareResult{}, err
 	}
 
-	seen := make(map[uuid.UUID]bool, len(input.TryoutIDs))
-	participants := make([]AgentTryoutCompareParticipant, 0, len(input.TryoutIDs))
-	for _, id := range input.TryoutIDs {
-		if seen[id] {
-			continue
-		}
-		seen[id] = true
+	participants := make([]AgentTryoutCompareParticipant, 0, len(distinctIDs))
+	for _, id := range distinctIDs {
 		tryout, err := m.repo.GetAgentTryoutByID(ctx, id)
 		if err != nil {
 			return AgentTryoutCompareResult{}, err
@@ -266,6 +273,17 @@ func (m *AgentTryoutManager) PromoteTryoutToEval(ctx context.Context, caller Cal
 	if err := m.authorizer.AuthorizeWorkspace(ctx, caller, *source.WorkspaceID); err != nil {
 		return AgentTryoutPromotionResult{}, err
 	}
+	// Only completed tryouts carry the execution evidence worth promoting; a
+	// queued/running/failed tryout would seed a draft backed by partial or no
+	// results.
+	if source.Status != repository.AgentTryoutStatusCompleted {
+		return AgentTryoutPromotionResult{}, fmt.Errorf("%w: status %q", ErrAgentTryoutNotPromotable, source.Status)
+	}
+
+	content, err := promotionDraftContent(source)
+	if err != nil {
+		return AgentTryoutPromotionResult{}, err
+	}
 
 	title := strings.TrimSpace(input.Title)
 	if title == "" {
@@ -283,7 +301,6 @@ func (m *AgentTryoutManager) PromoteTryoutToEval(ctx context.Context, caller Cal
 		return AgentTryoutPromotionResult{}, err
 	}
 
-	content := promotionDraftContent(source)
 	draft, err := m.repo.CreateVibeEvalDraft(ctx, repository.CreateVibeEvalDraftParams{
 		OrganizationID:   *source.OrganizationID,
 		WorkspaceID:      *source.WorkspaceID,
@@ -305,7 +322,7 @@ func (m *AgentTryoutManager) PromoteTryoutToEval(ctx context.Context, caller Cal
 // draft body. It includes only the durable, workspace-owned definition (no run
 // ids, costs, or identifiers) so the draft is a clean starting point for a
 // repeatable eval.
-func promotionDraftContent(source repository.AgentTryout) json.RawMessage {
+func promotionDraftContent(source repository.AgentTryout) (json.RawMessage, error) {
 	body := map[string]any{
 		"kind":                     "agent_tryout_promotion",
 		"source_tryout_id":         source.ID.String(),
@@ -317,9 +334,10 @@ func promotionDraftContent(source repository.AgentTryout) json.RawMessage {
 	}
 	encoded, err := json.Marshal(body)
 	if err != nil {
-		return json.RawMessage(`{}`)
+		// Surface the failure instead of persisting an empty draft + false 201.
+		return nil, fmt.Errorf("marshal promotion draft content: %w", err)
 	}
-	return encoded
+	return encoded, nil
 }
 
 // templateExpectedArtifacts extracts runtime.expected_artifacts from a stored

@@ -46,6 +46,7 @@ var (
 	ErrAgentTryoutRerunInsufficientCredits    = errors.New("agent tryout rerun insufficient credits")
 	ErrAgentTryoutCompareCardinality          = errors.New("agent tryout compare requires 2-4 tryouts")
 	ErrAgentTryoutPromotionTargetUnsupported  = errors.New("agent tryout promotion target unsupported")
+	ErrAgentTryoutNotPromotable               = errors.New("agent tryout is not completed")
 )
 
 type AgentTryoutRepository interface {
@@ -1292,6 +1293,8 @@ func writeAgentTryoutError(w http.ResponseWriter, logger *slog.Logger, err error
 		writeError(w, http.StatusBadRequest, "compare_cardinality", "Compare requires between 2 and 4 tryouts.")
 	case errors.Is(err, ErrAgentTryoutPromotionTargetUnsupported):
 		writeError(w, http.StatusBadRequest, "promotion_target_unsupported", err.Error())
+	case errors.Is(err, ErrAgentTryoutNotPromotable):
+		writeError(w, http.StatusConflict, "agent_tryout_not_promotable", "Only completed tryouts can be promoted to an eval.")
 	case errors.Is(err, ErrInvalidAgentTryoutInput):
 		writeError(w, http.StatusBadRequest, "invalid_agent_tryout_input", err.Error())
 	case errors.Is(err, ErrForbidden):

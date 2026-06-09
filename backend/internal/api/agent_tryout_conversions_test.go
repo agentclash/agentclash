@@ -219,6 +219,27 @@ func TestAgentTryoutCompareRejectsCardinality(t *testing.T) {
 	if _, err := manager.CompareWorkspaceTryouts(ctx, callerWithWorkspace(workspaceID), CompareAgentTryoutsInput{WorkspaceID: workspaceID, TryoutIDs: five}); !errors.Is(err, ErrAgentTryoutCompareCardinality) {
 		t.Fatalf("five-id error = %v, want ErrAgentTryoutCompareCardinality", err)
 	}
+	// Duplicate ids must not slip past the bound by collapsing to one distinct id.
+	dup := []uuid.UUID{source.ID, source.ID}
+	if _, err := manager.CompareWorkspaceTryouts(ctx, callerWithWorkspace(workspaceID), CompareAgentTryoutsInput{WorkspaceID: workspaceID, TryoutIDs: dup}); !errors.Is(err, ErrAgentTryoutCompareCardinality) {
+		t.Fatalf("duplicate-id error = %v, want ErrAgentTryoutCompareCardinality", err)
+	}
+}
+
+func TestAgentTryoutPromoteRejectsNonCompleted(t *testing.T) {
+	ctx := context.Background()
+	orgID, workspaceID := uuid.New(), uuid.New()
+	repo := newFakeAgentTryoutRepository(orgID, workspaceID)
+	source := seedWorkspaceTryout(repo, orgID, workspaceID, "tiny-bugfix")
+	// Force a still-running source.
+	running := repo.tryouts[source.ID]
+	running.Status = repository.AgentTryoutStatusRunning
+	repo.tryouts[source.ID] = running
+	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo)
+
+	if _, err := manager.PromoteTryoutToEval(ctx, callerWithWorkspace(workspaceID), PromoteAgentTryoutInput{SourceTryoutID: source.ID, Target: "vibe_eval"}); !errors.Is(err, ErrAgentTryoutNotPromotable) {
+		t.Fatalf("error = %v, want ErrAgentTryoutNotPromotable", err)
+	}
 }
 
 func TestAgentTryoutCompareRejectsCrossWorkspace(t *testing.T) {
