@@ -170,33 +170,46 @@ type TurnResult struct {
     AssistantText      string
     ToolInvocations    []ToolInvocationRecord
     PendingConfirmation *PendingConfirmation // non-nil => loop paused awaiting approval
-    StopReason         string                // completed | awaiting_confirmation | limit | error
+    StopReason         string                // completed | awaiting_confirmation | launched_run | limit | error
     Usage              provider.Usage
 }
 
-func (l *AgentLoop) RunTurn(ctx context.Context, caller Caller, conv Conversation, userMessage string) (TurnResult, error)
+// RunTurn takes vibeeval.Actor (audit identity) + the injected WorkspaceAuthorizer — NOT
+// api.Caller (§11.1; internal/vibeeval must not import api). The api adapter builds the
+// per-turn authorizer by closing over the authenticated api.Caller.
+func (l *AgentLoop) RunTurn(ctx context.Context, actor Actor, authorizer WorkspaceAuthorizer, conv Conversation, userMessage string) (TurnResult, error)
 ```
 
 Loop sketch (bounded; deterministic control flow in Go, not model-driven):
 
-1. Load conversation history from `MessageStore`; append the user message.
+1. **Consume one guide-turn allowance at accept-time, before the loop** — for each accepted
+   user / continue / confirmation-resume turn (NOT SSE reconnects/replays); §11.3. A turn
+   that later errors still counts. Then load conversation history from `MessageStore` and
+   append the user message.
 2. Build `provider.Request`: system prompt (phase-aware), history, and the
    `ToolDefinition`s for tools loaded for the conversation's current phase (section 4.3).
-3. Charge the model call against the **guide-agent allowance** (separate from eval credit;
-   section 8). Enforce per-turn step/tool/wall-clock limits.
+3. Enforce per-turn step / tool-call / wall-clock / model-call limits. (The allowance is a
+   per-*turn* counter consumed in step 1 — **not** charged per model call; provider token
+   usage is recorded **observationally** per §11.3, not gated here.)
 4. `router.InvokeModel`. Persist the assistant message.
 5. For each tool call the model emits:
    a. Resolve the tool in the registry; reject unknown/not-loaded tools.
    b. Validate arguments against the tool's JSON schema.
-   c. `policy.Authorize(caller, tool, args)` — re-authorize in Go (section 5).
-   d. If the tool's risk tier requires confirmation: compute the payload hash, persist a
-      `PendingConfirmation`, emit a confirmation card, and **stop the turn**
+   c. `authorizer.Authorize(actor, workspaceID, tool.RequiredAction())` — re-authorize in Go
+      (section 5).
+   d. If the tool's risk tier requires confirmation: compute the canonical payload hash,
+      persist a `PendingConfirmation`, emit a confirmation card, and **stop the turn**
       (`awaiting_confirmation`). The turn resumes via the confirmations endpoint.
    e. If cost-incurring: reserve credit (section 8) before execution.
    f. Execute the tool (calls an existing manager/service). Wrap the output as evidence
       (section 7). Write an audit record (section 6).
    g. Append the tool result to history.
-6. Repeat from step 2 until the model returns no tool calls, or a limit is hit.
+   h. **If `risk_tier=cost_incurring`** (e.g. `create_run`, `create_eval_session`):
+      emit/persist the created run or eval-session reference, set `StopReason=launched_run`,
+      and **end the turn** — the agent does NOT keep reasoning after launching a durable run
+      (§11.2). The browser follows progress via the existing run/eval SSE streams.
+6. Repeat from step 2 until the model returns no tool calls, a `cost_incurring` tool ended
+   the turn (5h), or a limit is hit.
 7. Return `TurnResult`; persist final state.
 
 ### 4.3 Typed tool registry and phase-based loading
@@ -320,22 +333,29 @@ decide confirmation/credit behavior generically.
 Generalize the Phase 2 `VibeEvalConfirmationRequiredError` + `vibeEvalPayloadHash` into a
 reusable two-phase protocol:
 
+Boundary-safe types (this engine lives in `internal/vibeeval`, so **no `api` types** —
+§11.1; action is a string, identity is `Actor`):
+
 ```go
 type PendingConfirmation struct {
-    ID            uuid.UUID
+    ID             uuid.UUID
     ConversationID uuid.UUID
-    ToolName      string
-    Action        api.Action
-    RiskTier      RiskTier
-    PayloadHash   string          // sha256 of canonical-JSON(tool, normalized args)
-    Summary       string          // human-readable card body (what will happen)
-    Estimate      *CostEstimate   // for cost_incurring
-    ExpiresAt     time.Time
+    ToolName       string
+    Action         string          // action NAME (api validates against api.Action in the adapter)
+    RiskTier       RiskTier
+    PayloadHash    string          // sha256 of canonical-JSON(tool, normalized args)
+    Summary        string          // human-readable card body (what will happen)
+    Estimate       *CostEstimate   // for cost_incurring
+    Status         string          // pending | approved | denied | expired
+    ResolvedAt     *time.Time
+    ExpiresAt      time.Time
 }
 
 type ConfirmationEngine interface {
-    Require(ctx, conv Conversation, tool Tool, args json.RawMessage, est *CostEstimate) (PendingConfirmation, error)
-    Resolve(ctx, caller Caller, confirmationID uuid.UUID, approve bool, presentedHash string) error
+    Require(ctx context.Context, conv Conversation, tool Tool, args json.RawMessage, est *CostEstimate) (PendingConfirmation, error)
+    // actor is audit identity only (vibeeval.Actor) — never api.Caller; the api adapter
+    // performs the workspace/action authorization before calling Resolve.
+    Resolve(ctx context.Context, actor Actor, confirmationID uuid.UUID, approve bool, presentedHash string) (ResolveResult, error)
 }
 ```
 
@@ -348,12 +368,27 @@ Rules:
 - `admin_sensitive` / `destructive_external` use high-friction confirmation (e.g. typed
   resource name), not a single click.
 
+**Concurrency (no double-approve / double-publish).** Two simultaneous
+`POST /confirmations/{id}` must not both observe `pending` and execute. `Resolve` performs
+an **atomic conditional transition** (mirrors the wallet/quota row-locking, §8.1):
+
+```sql
+UPDATE vibe_eval_pending_confirmations
+   SET status='approved', resolved_at=now()
+ WHERE id=$1 AND status='pending' AND payload_hash=$2
+RETURNING *;          -- 0 rows ⇒ already resolved / expired / hash mismatch ⇒ reject
+```
+Only the request that wins this UPDATE proceeds to execute the bound action.
+
 ### 5.4 Idempotency
 
 Mutating and cost-incurring tools take an idempotency key scoped per the tier table.
 Reuse existing idempotency where the underlying manager already has it (e.g. run
-creation). For new writes, the key is `(conversation_id, tool, payload_hash)` so a
-resumed/retried turn cannot double-publish or double-charge.
+creation). For new writes, the key is `(conversation_id, tool_name, payload_hash)` with a
+**unique constraint**, so a resumed/retried turn cannot double-publish or double-charge —
+a retry returns the existing result/reference. Additionally, `publish` checks the draft is
+**not already published** before creating a new challenge-pack version, in the same
+transaction/manager path (defense-in-depth beyond the confirmation transition above).
 
 ## 6. Audit schema
 
@@ -401,7 +436,7 @@ type EvidenceRedactor interface {
 Rules:
 - Output is wrapped in explicit BEGIN/END EVIDENCE delimiters with a notice that content
   inside is data, not instructions (mirrors the anti-injection envelope the judge prompts
-  already use in `workflow/judges.go`).
+  already use in `backend/internal/workflow/judges.go`).
 - Known secret shapes (provider keys, workspace secret values, signed URLs) are redacted
   before wrapping; secret *metadata* (names, providers) may pass.
 - Replay text, artifact previews, and run outputs are truncated and summarized; large
@@ -510,7 +545,7 @@ fails if an org exists without a wallet row (unless flagged).
   callsites** (verified), so it is not wired into the worker. This step must therefore:
   1. add run-cost computation (provider `Usage` → cost via model pricing) to a **worker
      scoring/finalization activity** (the worker already does DB writes there, e.g.
-     `StoreRunAgentEvaluationResults`, `RecordRunEvent` — `workflow/scoring.go`), and
+     `StoreRunAgentEvaluationResults`, `RecordRunEvent` — `backend/internal/workflow/scoring.go`), and
   2. have that activity call a **shared `repository` method** (`SettleEvalCredit`) — the
      wallet tables live in the **same Postgres**, and the repository is constructed
      identically by both planes (`repository.New(db)` in `cmd/api-server/main.go:46` **and**
@@ -537,6 +572,13 @@ fails if an org exists without a wallet row (unless flagged).
 ## 10. Implementation sequencing
 
 Each is a reviewable PR; later PRs depend on earlier interfaces.
+
+> **Migration slots.** Several new tables are proposed (`vibe_eval_messages`,
+> `vibe_eval_tool_invocations` + confirmations, the wallet tables) plus an `ALTER` on
+> `workspace_usage_windows`. "≥ `00056`" is the next free slot *today*, but do **not** reuse
+> `00056` across PRs — each PR allocates the next contiguous free slot **at implementation
+> time** (re-check `backend/db/migrations/` head, currently `00055`) to avoid two branches
+> colliding on the same number.
 
 1. **This design doc** (#875) — interfaces + schema agreed. (no runtime code)
 2. **Tool registry + agent loop skeleton + messages table + read-only tools**
