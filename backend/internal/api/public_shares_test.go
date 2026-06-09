@@ -159,7 +159,7 @@ func TestPublicShareManager_GetPublicShareReturnsNarrowPayload(t *testing.T) {
 	repo.runScorecard = repository.RunScorecard{ID: uuid.New(), RunID: runID, Scorecard: json.RawMessage(`{"summary":"public"}`)}
 	manager := NewPublicShareManager(NewCallerWorkspaceAuthorizer(), repo, "https://agentclash.dev")
 
-	payload, err := manager.GetPublicShare(ctx, "share-key")
+	payload, err := manager.GetPublicShare(ctx, "share-key", "https://api.test")
 	if err != nil {
 		t.Fatalf("GetPublicShare returned error: %v", err)
 	}
@@ -262,7 +262,7 @@ func TestPublicShareManager_GetPublicShareKeepsReplayAgentDistinct(t *testing.T)
 	}
 	manager := NewPublicShareManager(NewCallerWorkspaceAuthorizer(), repo, "https://agentclash.dev")
 
-	payload, err := manager.GetPublicShare(ctx, "second-agent-replay")
+	payload, err := manager.GetPublicShare(ctx, "second-agent-replay", "https://api.test")
 	if err != nil {
 		t.Fatalf("GetPublicShare returned error: %v", err)
 	}
@@ -320,7 +320,7 @@ func TestPublicShareManager_GetPublicShareAgentTryoutReturnsNarrowPayload(t *tes
 	}
 	manager := NewPublicShareManager(NewCallerWorkspaceAuthorizer(), repo, "https://agentclash.dev")
 
-	payload, err := manager.GetPublicShare(ctx, "tryout-share")
+	payload, err := manager.GetPublicShare(ctx, "tryout-share", "https://api.test")
 	if err != nil {
 		t.Fatalf("GetPublicShare returned error: %v", err)
 	}
@@ -405,6 +405,11 @@ type fakePublicShareRepository struct {
 	agentScorecard repository.RunAgentScorecard
 	replay         repository.RunAgentReplay
 	agentTryout    repository.AgentTryout
+	runArtifacts   []repository.Artifact
+}
+
+func (r *fakePublicShareRepository) ListArtifactsByRunID(_ context.Context, _ uuid.UUID) ([]repository.Artifact, error) {
+	return r.runArtifacts, nil
 }
 
 func newFakePublicShareRepository(orgID, workspaceID uuid.UUID) *fakePublicShareRepository {

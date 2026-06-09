@@ -79,6 +79,80 @@ func TestRepositoryAgentTryoutAnonymousQuotaLedger(t *testing.T) {
 	}
 }
 
+func TestRepositoryExpireAnonymousAgentTryouts(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	newAnon := func(expiresAt time.Time) repository.AgentTryout {
+		fingerprint := "retention-" + uuid.NewString()
+		tryout, err := repo.CreateAgentTryout(ctx, repository.CreateAgentTryoutParams{
+			TemplateSlug:             "meeting-minutes",
+			Status:                   repository.AgentTryoutStatusCompleted,
+			InputSnapshot:            []byte(`{"notes":"anon"}`),
+			TemplateSnapshot:         []byte(`{"slug":"meeting-minutes"}`),
+			ToolPolicySnapshot:       []byte(`{"tools":[]}`),
+			EvaluationSpecSnapshot:   []byte(`{"validators":[]}`),
+			SelectedModelPolicy:      []byte(`{"mode":"hosted_default"}`),
+			Summary:                  []byte(`{}`),
+			RedactionStatus:          repository.AgentTryoutRedactionPassed,
+			CostLimitUSD:             0.25,
+			MaxDurationSeconds:       120,
+			AnonymousFingerprintHash: &fingerprint,
+			ExpiresAt:                &expiresAt,
+		})
+		if err != nil {
+			t.Fatalf("CreateAgentTryout anonymous returned error: %v", err)
+		}
+		return tryout
+	}
+
+	expired := newAnon(time.Now().UTC().Add(-time.Hour))
+	future := newAnon(time.Now().UTC().Add(24 * time.Hour))
+
+	workspaceTryout, err := repo.CreateAgentTryout(ctx, repository.CreateAgentTryoutParams{
+		OrganizationID:         &fixture.organizationID,
+		WorkspaceID:            &fixture.workspaceID,
+		TemplateSlug:           "meeting-minutes",
+		Status:                 repository.AgentTryoutStatusCompleted,
+		InputSnapshot:          []byte(`{"notes":"workspace"}`),
+		TemplateSnapshot:       []byte(`{"slug":"meeting-minutes"}`),
+		ToolPolicySnapshot:     []byte(`{"tools":[]}`),
+		EvaluationSpecSnapshot: []byte(`{"validators":[]}`),
+		SelectedModelPolicy:    []byte(`{"mode":"hosted_default"}`),
+		Summary:                []byte(`{}`),
+		RedactionStatus:        repository.AgentTryoutRedactionPassed,
+		CostLimitUSD:           10,
+		MaxDurationSeconds:     120,
+		CreatedByUserID:        &fixture.userID,
+	})
+	if err != nil {
+		t.Fatalf("CreateAgentTryout workspace returned error: %v", err)
+	}
+
+	deleted, err := repo.ExpireAnonymousAgentTryouts(ctx, repository.ExpireAnonymousAgentTryoutsParams{
+		Now:   time.Now().UTC(),
+		Limit: 100,
+	})
+	if err != nil {
+		t.Fatalf("ExpireAnonymousAgentTryouts returned error: %v", err)
+	}
+	if deleted != 1 {
+		t.Fatalf("deleted = %d, want 1 (only the expired unclaimed anonymous tryout)", deleted)
+	}
+
+	if _, err := repo.GetAgentTryoutByID(ctx, expired.ID); !errors.Is(err, repository.ErrAgentTryoutNotFound) {
+		t.Fatalf("expired tryout lookup error = %v, want ErrAgentTryoutNotFound", err)
+	}
+	if _, err := repo.GetAgentTryoutByID(ctx, future.ID); err != nil {
+		t.Fatalf("future anonymous tryout should be retained, got %v", err)
+	}
+	if _, err := repo.GetAgentTryoutByID(ctx, workspaceTryout.ID); err != nil {
+		t.Fatalf("workspace tryout should be retained, got %v", err)
+	}
+}
+
 // TestRepositoryAgentTryoutQuotaLockSerializesCreation exercises
 // WithinAnonymousAgentTryoutQuotaLock under concurrent load to prove the
 // advisory lock closes the check-then-create TOCTOU window: many goroutines

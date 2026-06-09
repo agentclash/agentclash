@@ -32,6 +32,15 @@ const (
 	AgentTryoutRedactionNotRequired AgentTryoutRedactionStatus = "not_required"
 )
 
+// ShareReady reports whether a tryout's redaction status permits public
+// exposure (share creation and public/share-token rendering). Only tryouts
+// whose payloads have cleared redaction — or that never required it — may be
+// shared; pending/failed tryouts must fail closed so unredacted content is
+// never published.
+func (s AgentTryoutRedactionStatus) ShareReady() bool {
+	return s == AgentTryoutRedactionPassed || s == AgentTryoutRedactionNotRequired
+}
+
 type AgentTryout struct {
 	ID                       uuid.UUID
 	OrganizationID           *uuid.UUID
@@ -248,6 +257,109 @@ func (r *Repository) WithinAnonymousAgentTryoutQuotaLock(ctx context.Context, fn
 		return fmt.Errorf("commit anonymous agent tryout quota transaction: %w", err)
 	}
 	return nil
+}
+
+// ExpireAnonymousAgentTryoutsParams configures one retention sweep batch.
+type ExpireAnonymousAgentTryoutsParams struct {
+	// Now is the comparison instant; tryouts with expires_at <= Now are eligible.
+	Now time.Time
+	// Limit bounds the rows processed per call so the sweep stays incremental.
+	Limit int32
+}
+
+// ExpireAnonymousAgentTryouts deletes one batch of expired, unclaimed anonymous
+// tryouts and schedules their run artifacts for deletion, returning the number
+// of tryouts removed. Claimed tryouts have expires_at cleared (see
+// ClaimAgentTryout) and are never matched, so claimed/workspace tryouts are
+// retained. Artifacts are soft-expired (retention_status -> scheduled_for_deletion)
+// rather than hard-deleted so downstream storage cleanup can reclaim objects.
+// Rows are locked FOR UPDATE SKIP LOCKED so concurrent sweeps don't contend.
+func (r *Repository) ExpireAnonymousAgentTryouts(ctx context.Context, params ExpireAnonymousAgentTryoutsParams) (int64, error) {
+	limit := params.Limit
+	if limit <= 0 {
+		limit = 500
+	}
+
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("begin agent tryout retention transaction: %w", err)
+	}
+	defer rollback(ctx, tx)
+
+	// Collect the eligible rows in a scoped closure that defers rows.Close():
+	// the cursor MUST be fully closed before the UPDATE/DELETE below, because a
+	// single transaction can only have one query in flight at a time. Scoping
+	// the deferred close here guarantees that ordering by construction.
+	tryoutIDs, runIDs, err := func() ([]uuid.UUID, []uuid.UUID, error) {
+		rows, err := tx.Query(ctx, `
+			SELECT id, run_id
+			FROM agent_tryouts
+			WHERE expires_at IS NOT NULL
+			  AND expires_at <= $1
+			  AND claimed_by_user_id IS NULL
+			  AND workspace_id IS NULL
+			ORDER BY expires_at ASC, id ASC
+			LIMIT $2
+			FOR UPDATE SKIP LOCKED
+		`, params.Now.UTC(), limit)
+		if err != nil {
+			return nil, nil, fmt.Errorf("select expired anonymous agent tryouts: %w", err)
+		}
+		defer rows.Close()
+
+		var (
+			tryoutIDs []uuid.UUID
+			runIDs    []uuid.UUID
+		)
+		for rows.Next() {
+			var (
+				id    uuid.UUID
+				runID *uuid.UUID
+			)
+			if err := rows.Scan(&id, &runID); err != nil {
+				return nil, nil, fmt.Errorf("scan expired anonymous agent tryout: %w", err)
+			}
+			tryoutIDs = append(tryoutIDs, id)
+			if runID != nil {
+				runIDs = append(runIDs, *runID)
+			}
+		}
+		if err := rows.Err(); err != nil {
+			return nil, nil, fmt.Errorf("iterate expired anonymous agent tryouts: %w", err)
+		}
+		return tryoutIDs, runIDs, nil
+	}()
+	if err != nil {
+		return 0, err
+	}
+
+	if len(tryoutIDs) == 0 {
+		if err := tx.Commit(ctx); err != nil {
+			return 0, fmt.Errorf("commit agent tryout retention transaction: %w", err)
+		}
+		return 0, nil
+	}
+
+	if len(runIDs) > 0 {
+		if _, err := tx.Exec(ctx, `
+			UPDATE artifacts
+			SET retention_status = 'scheduled_for_deletion', updated_at = now()
+			WHERE run_id = ANY($1::uuid[])
+			  AND retention_status = 'active'
+		`, runIDs); err != nil {
+			return 0, fmt.Errorf("schedule expired anonymous artifacts for deletion: %w", err)
+		}
+	}
+
+	tag, err := tx.Exec(ctx, `DELETE FROM agent_tryouts WHERE id = ANY($1::uuid[])`, tryoutIDs)
+	if err != nil {
+		return 0, fmt.Errorf("delete expired anonymous agent tryouts: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return 0, fmt.Errorf("commit agent tryout retention transaction: %w", err)
+	}
+	return tag.RowsAffected(), nil
 }
 
 func (r *Repository) GetAgentTryoutByID(ctx context.Context, id uuid.UUID) (AgentTryout, error) {

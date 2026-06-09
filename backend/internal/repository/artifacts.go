@@ -147,6 +147,52 @@ func (r *Repository) ListArtifactsByWorkspaceID(ctx context.Context, workspaceID
 	return artifacts, nil
 }
 
+// ListArtifactsByRunID returns the active (non-expired) artifacts produced by a
+// run, ordered oldest-first for stable rendering. Used to surface a tryout's
+// downloadable artifacts (a tryout links to a single run).
+func (r *Repository) ListArtifactsByRunID(ctx context.Context, runID uuid.UUID) ([]Artifact, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT
+			id,
+			organization_id,
+			workspace_id,
+			run_id,
+			run_agent_id,
+			artifact_type,
+			storage_bucket,
+			storage_key,
+			content_type,
+			size_bytes,
+			checksum_sha256,
+			visibility,
+			retention_status,
+			metadata,
+			created_at,
+			updated_at
+		FROM artifacts
+		WHERE run_id = $1
+		  AND retention_status = 'active'
+		ORDER BY created_at ASC, id ASC
+	`, runID)
+	if err != nil {
+		return nil, fmt.Errorf("list artifacts by run: %w", err)
+	}
+	defer rows.Close()
+
+	var artifacts []Artifact
+	for rows.Next() {
+		artifact, err := scanArtifact(rows)
+		if err != nil {
+			return nil, fmt.Errorf("list artifacts by run: scan: %w", err)
+		}
+		artifacts = append(artifacts, artifact)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list artifacts by run: rows: %w", err)
+	}
+	return artifacts, nil
+}
+
 func (r *Repository) GetArtifactByID(ctx context.Context, artifactID uuid.UUID) (Artifact, error) {
 	row := r.db.QueryRow(ctx, `
 		SELECT

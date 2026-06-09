@@ -5215,6 +5215,40 @@ paths:
         "404":
           $ref: "#/components/responses/NotFoundError"
 
+  /v1/agent-tryouts/shared/{token}/events:
+    get:
+      operationId: getSharedAgentTryoutEvents
+      summary: Get the redacted evidence timeline for a shared agent tryout
+      description: >-
+        Returns a cursor-paginated, redacted timeline for a tryout exposed
+        behind a public share token. The token is resolved to an active share
+        link that must reference an agent tryout whose redaction has cleared.
+        Event payloads are always redacted to a non-sensitive allow-list because
+        this endpoint is unauthenticated. A token that is missing, revoked,
+        expired, points at a non-tryout resource, or references a tryout whose
+        redaction has not passed returns 404 so callers cannot probe redaction
+        state. Poll with the returned `next_cursor` as `after` to resume.
+      tags: [AgentTryouts]
+      security: []
+      parameters:
+        - name: token
+          in: path
+          required: true
+          description: The opaque public share token for the tryout.
+          schema:
+            type: string
+        - $ref: "#/components/parameters/TryoutEventsAfter"
+        - $ref: "#/components/parameters/TryoutEventsLimit"
+      responses:
+        "200":
+          description: Redacted tryout event timeline page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentTryoutEventsResponse"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
   /v1/workspaces/{workspaceID}/agent-tryouts:
     post:
       operationId: createWorkspaceAgentTryout
@@ -5376,6 +5410,11 @@ paths:
     post:
       operationId: createAgentTryoutShare
       summary: Create a noindex share link for a workspace tryout
+      description: >-
+        Creates a private (noindex) share link for a completed workspace tryout.
+        Share creation is gated on redaction: a tryout whose `redaction_status`
+        is `pending` or `failed` returns 409 so unredacted evidence is never
+        published. Only `passed`/`not_required` tryouts can be shared.
       tags: [AgentTryouts]
       security:
         - bearerJWT: []
@@ -5394,6 +5433,8 @@ paths:
           $ref: "#/components/responses/ForbiddenError"
         "404":
           $ref: "#/components/responses/NotFoundError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
 
   /v1/workspaces/{workspaceID}/playgrounds:
     post:

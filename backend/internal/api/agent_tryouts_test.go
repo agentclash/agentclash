@@ -396,6 +396,17 @@ func TestAgentTryoutManagerCreateWorkspaceClaimAndShare(t *testing.T) {
 		t.Fatalf("claimed_by_user_id = %v, want %s", claimed.ClaimedByUserID, caller.UserID)
 	}
 
+	// A freshly created tryout is redaction_status=pending and must not be
+	// shareable until its evidence has cleared redaction.
+	if _, err := manager.CreatePrivateShare(ctx, caller, tryout.ID); !errors.Is(err, ErrAgentTryoutRedactionNotReady) {
+		t.Fatalf("CreatePrivateShare while pending error = %v, want ErrAgentTryoutRedactionNotReady", err)
+	}
+
+	// Once redaction passes the share can be created.
+	shareable := repo.tryouts[tryout.ID]
+	shareable.RedactionStatus = repository.AgentTryoutRedactionPassed
+	repo.tryouts[tryout.ID] = shareable
+
 	result, err := manager.CreatePrivateShare(ctx, caller, tryout.ID)
 	if err != nil {
 		t.Fatalf("CreatePrivateShare returned error: %v", err)
@@ -1218,6 +1229,13 @@ func (r *fakeAgentTryoutRepository) CreatePublicShareLink(_ context.Context, par
 	return r.share, nil
 }
 
+func (r *fakeAgentTryoutRepository) GetActivePublicShareLinkByKey(_ context.Context, key string) (repository.PublicShareLink, error) {
+	if r.share.Key == key && r.share.IsActive {
+		return r.share, nil
+	}
+	return repository.PublicShareLink{}, repository.ErrPublicShareLinkNotFound
+}
+
 type fakeAgentTryoutService struct {
 	tryout               repository.AgentTryout
 	templates            []AgentTryoutTemplate
@@ -1257,6 +1275,14 @@ func (s *fakeAgentTryoutService) GetWorkspaceTryout(context.Context, Caller, uui
 }
 
 func (s *fakeAgentTryoutService) GetPublicTryoutEvents(_ context.Context, _ uuid.UUID, cursor TryoutEventsCursor) (AgentTryoutEventsResult, error) {
+	s.eventsCursor = cursor
+	if s.eventsErr != nil {
+		return AgentTryoutEventsResult{}, s.eventsErr
+	}
+	return s.eventsResult, nil
+}
+
+func (s *fakeAgentTryoutService) GetSharedTryoutEvents(_ context.Context, _ string, cursor TryoutEventsCursor) (AgentTryoutEventsResult, error) {
 	s.eventsCursor = cursor
 	if s.eventsErr != nil {
 		return AgentTryoutEventsResult{}, s.eventsErr

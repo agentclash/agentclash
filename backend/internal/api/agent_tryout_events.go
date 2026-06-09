@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -327,6 +328,39 @@ func (m *AgentTryoutManager) GetPublicTryoutEvents(ctx context.Context, id uuid.
 	return m.buildTryoutEvents(ctx, tryout, cursor, true)
 }
 
+// GetSharedTryoutEvents returns the redacted timeline for a tryout exposed
+// behind a public share token. The token is resolved to an active share link,
+// which must reference an agent tryout whose redaction has cleared
+// (ShareReady); payloads are always redacted because the endpoint is
+// unauthenticated. A token that is missing, revoked, expired, points at a
+// non-tryout resource, or references a not-yet-redacted tryout is reported as a
+// missing share so callers cannot probe redaction state.
+func (m *AgentTryoutManager) GetSharedTryoutEvents(ctx context.Context, token string, cursor TryoutEventsCursor) (AgentTryoutEventsResult, error) {
+	key := strings.TrimSpace(token)
+	if key == "" {
+		return AgentTryoutEventsResult{}, repository.ErrPublicShareLinkNotFound
+	}
+	share, err := m.repo.GetActivePublicShareLinkByKey(ctx, key)
+	if err != nil {
+		return AgentTryoutEventsResult{}, err
+	}
+	if share.ResourceType != repository.PublicShareResourceAgentTryout {
+		return AgentTryoutEventsResult{}, repository.ErrPublicShareLinkNotFound
+	}
+	tryout, err := m.repo.GetAgentTryoutByID(ctx, share.ResourceID)
+	if err != nil {
+		if errors.Is(err, repository.ErrAgentTryoutNotFound) {
+			return AgentTryoutEventsResult{}, repository.ErrPublicShareLinkNotFound
+		}
+		return AgentTryoutEventsResult{}, err
+	}
+	if !tryout.RedactionStatus.ShareReady() {
+		return AgentTryoutEventsResult{}, repository.ErrPublicShareLinkNotFound
+	}
+	tryout = m.refreshTryoutFromExecution(ctx, tryout)
+	return m.buildTryoutEvents(ctx, tryout, cursor, true)
+}
+
 // GetWorkspaceTryoutEvents returns the timeline for a workspace-owned tryout
 // after authorizing the caller. Workspace members receive full event payloads.
 func (m *AgentTryoutManager) GetWorkspaceTryoutEvents(ctx context.Context, caller Caller, id uuid.UUID, cursor TryoutEventsCursor) (AgentTryoutEventsResult, error) {
@@ -448,6 +482,26 @@ func getPublicAgentTryoutEventsHandler(logger *slog.Logger, service AgentTryoutS
 		}
 		result, err := service.GetPublicTryoutEvents(r.Context(), id, parseTryoutEventsCursor(r))
 		if err != nil {
+			writeAgentTryoutError(w, logger, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, mapAgentTryoutEventsResponse(result))
+	}
+}
+
+func getSharedAgentTryoutEventsHandler(logger *slog.Logger, service AgentTryoutService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		token := strings.TrimSpace(chi.URLParam(r, "token"))
+		if token == "" {
+			writeError(w, http.StatusNotFound, "not_found", "shared resource not found")
+			return
+		}
+		result, err := service.GetSharedTryoutEvents(r.Context(), token, parseTryoutEventsCursor(r))
+		if err != nil {
+			if errors.Is(err, repository.ErrPublicShareLinkNotFound) {
+				writeError(w, http.StatusNotFound, "not_found", "shared resource not found")
+				return
+			}
 			writeAgentTryoutError(w, logger, err)
 			return
 		}
