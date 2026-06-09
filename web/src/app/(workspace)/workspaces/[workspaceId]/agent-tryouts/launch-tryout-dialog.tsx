@@ -98,6 +98,14 @@ export function LaunchTryoutDialog({ workspaceId }: { workspaceId: string }) {
           toast.error(`${fieldLabel(field)} must be a number`);
           return;
         }
+        if (spec.minimum !== undefined && value < spec.minimum) {
+          toast.error(`${fieldLabel(field)} must be at least ${spec.minimum}`);
+          return;
+        }
+        if (spec.maximum !== undefined && value > spec.maximum) {
+          toast.error(`${fieldLabel(field)} must be at most ${spec.maximum}`);
+          return;
+        }
         input[field] = spec.type === "integer" ? Math.trunc(value) : value;
       } else {
         input[field] = raw;

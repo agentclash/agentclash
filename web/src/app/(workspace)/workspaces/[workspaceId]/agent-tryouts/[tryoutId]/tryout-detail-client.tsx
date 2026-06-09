@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import {
   Activity,
@@ -50,12 +51,31 @@ export function TryoutDetailClient({
       current && tryoutIsActive(current.status) ? 2000 : 0,
   });
 
-  const { data: eventsData } = useApiQuery<AgentTryoutEventsResponse>(
+  // The events endpoint is cursor-paged. Accumulate pages locally and advance
+  // `after` whenever the server reports more rows, so long timelines are not
+  // truncated at one page; polling on the latest cursor picks up live events.
+  const [events, setEvents] = useState<TryoutTimelineEvent[]>([]);
+  const [after, setAfter] = useState(0);
+  useApiQuery<AgentTryoutEventsResponse>(
     `${tryoutPath}/events`,
-    { limit: 200 },
+    { after, limit: 200 },
     {
       refreshInterval: (current) =>
         current && tryoutIsActive(current.status) ? 2000 : 0,
+      onSuccess: (page) => {
+        if (page.events.length > 0) {
+          setEvents((current) => {
+            const seen = new Set(current.map((event) => event.cursor));
+            const fresh = page.events.filter(
+              (event) => !seen.has(event.cursor),
+            );
+            return fresh.length > 0 ? [...current, ...fresh] : current;
+          });
+        }
+        if (page.has_more && page.next_cursor > after) {
+          setAfter(page.next_cursor);
+        }
+      },
     },
   );
 
@@ -71,7 +91,6 @@ export function TryoutDetailClient({
     );
   }
 
-  const events = eventsData?.events ?? [];
   const summaryMessage =
     typeof tryout.summary?.message === "string" ? tryout.summary.message : "";
 

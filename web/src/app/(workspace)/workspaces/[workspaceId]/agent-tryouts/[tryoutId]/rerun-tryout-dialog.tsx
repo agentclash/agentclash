@@ -12,6 +12,7 @@ import { ApiError } from "@/lib/api/errors";
 import type { AgentTryout, AgentTryoutModelPolicy } from "@/lib/api/types";
 import { useApiMutator } from "@/lib/api/swr";
 import { workspaceResourceKeys } from "@/lib/workspace-resource";
+import { tryoutIsActive } from "../status";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -89,7 +90,17 @@ export function RerunTryoutDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button size="sm" variant="outline" />}>
+      {/* Rerunning a tryout that is still queued/running just races it —
+          wait for a terminal status, matching the Promote gating style. */}
+      <DialogTrigger
+        render={
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={tryoutIsActive(tryout.status)}
+          />
+        }
+      >
         <RotateCcw data-icon="inline-start" className="size-4" />
         Rerun
       </DialogTrigger>
