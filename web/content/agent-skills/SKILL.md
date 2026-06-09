@@ -142,32 +142,31 @@ go test -short -race -count=1 ./...
 ## Dependency Order
 Read related skills in this order so downstream workflows do not redefine upstream concepts:
 
-1. `agentclash-skill-catalog`
-2. `agentclash-hub`
-3. `agentclash-cli-setup`
-4. `agentclash-quickstart`
-5. `agentclash-runtime-resources-setup`
-6. `agentclash-agent-build-author`
-7. `agentclash-agent-deployment-setup`
-8. `agentclash-challenge-pack-planner`
-9. `agentclash-challenge-pack-yaml-author`
-10. `agentclash-challenge-pack-input-sets`
-11. `agentclash-challenge-pack-tools-sandbox`
-12. `agentclash-challenge-pack-artifacts`
-13. `agentclash-challenge-pack-scoring-validators`
-14. `agentclash-challenge-pack-llm-judges`
-15. `agentclash-challenge-pack-validation-publish`
-16. `agentclash-eval-runner`
-17. `agentclash-scorecard-reader`
-18. `agentclash-compare-and-triage`
-19. `agentclash-regression-flywheel`
-20. `agentclash-ci-release-gate`
-21. `agentclash-agent-harness-setup`
-22. `agentclash-multi-turn-operator`
-23. `agentclash-dataset-workflows`
-24. `agentclash-prompt-eval-playground`
-25. `agentclash-workspace-admin`
-26. `agentclash-security-evaluation`
+1. `agentclash-hub`
+2. `agentclash-cli-setup`
+3. `agentclash-quickstart`
+4. `agentclash-runtime-resources-setup`
+5. `agentclash-agent-build-author`
+6. `agentclash-agent-deployment-setup`
+7. `agentclash-challenge-pack-planner`
+8. `agentclash-challenge-pack-yaml-author`
+9. `agentclash-challenge-pack-input-sets`
+10. `agentclash-challenge-pack-tools-sandbox`
+11. `agentclash-challenge-pack-artifacts`
+12. `agentclash-challenge-pack-scoring-validators`
+13. `agentclash-challenge-pack-llm-judges`
+14. `agentclash-challenge-pack-validation-publish`
+15. `agentclash-eval-runner`
+16. `agentclash-scorecard-reader`
+17. `agentclash-compare-and-triage`
+18. `agentclash-regression-flywheel`
+19. `agentclash-ci-release-gate`
+20. `agentclash-agent-harness-setup`
+21. `agentclash-multi-turn-operator`
+22. `agentclash-dataset-workflows`
+23. `agentclash-prompt-eval-playground`
+24. `agentclash-workspace-admin`
+25. `agentclash-security-evaluation`
 
 ## Review Checklist
 - The folder path matches the taxonomy.

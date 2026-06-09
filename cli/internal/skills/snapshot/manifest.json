@@ -1,5 +1,5 @@
 {
-  "snapshot_version": "3ecbabd2de7b",
+  "snapshot_version": "83229acecb3d",
   "skills": [
     {
       "name": "agentclash-agent-build-author",
@@ -77,7 +77,7 @@
       "name": "agentclash-cli-setup",
       "role": "setup",
       "requires_cli": true,
-      "sha256": "ea15a439f33dece24e408c1b26cd0d66c0c0d53f3086c61dd9d958719e216fd1"
+      "sha256": "09eab5585229d8bd69abee68a86d521598a287572e1c826f87059b43f6cea2db"
     },
     {
       "name": "agentclash-compare-and-triage",
@@ -101,7 +101,7 @@
       "name": "agentclash-hub",
       "role": "hub",
       "requires_cli": false,
-      "sha256": "bcfbc5bdba208af404b8653567c8ae315ee6fa3972a895812cd5d671098f2888"
+      "sha256": "b721744119811406a1fe5b4792faff4e33a9c4d2d4b50c32b0b528f19696abb3"
     },
     {
       "name": "agentclash-multi-turn-operator",

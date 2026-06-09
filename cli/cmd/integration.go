@@ -68,9 +68,14 @@ func newIntegrationAgentCmd(agent string) *cobra.Command {
 func addIntegrationFlags(c *cobra.Command) {
 	c.Flags().String("dir", "", "Install root (defaults to your home directory)")
 	// Reserved per the thin-wrapper MCP verdict: defining the flag now keeps the
-	// command contract stable if `agentclash mcp serve` ever ships. It does NOT
-	// write any MCP/.mcp.json config today (that would violate the anti-feature
-	// rule); install reports it's unavailable and doctor adds an info check.
+	// command contract stable if `agentclash mcp serve` ever ships. MCP stays
+	// deferred because CLI+Skills is the correct runtime for shell-having coding
+	// agents; a thin server is justified only on a specific trigger (chat-only
+	// clients -> remote HTTP, MCP-registry discoverability, or multi-tenant
+	// OAuth) — see docs/cli-workflow-handoff.md. It does NOT write any
+	// MCP/.mcp.json config today (that would violate the anti-feature rule and is
+	// an active security posture); install reports it's unavailable and doctor
+	// adds an info check.
 	c.Flags().Bool("with-mcp", false, "Reserved: also configure an MCP server (not available yet)")
 }
 

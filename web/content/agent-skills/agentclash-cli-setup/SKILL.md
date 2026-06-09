@@ -162,6 +162,13 @@ One-off backend override without changing saved config:
 agentclash --api-url http://localhost:8080 doctor
 ```
 
+Introspect the full command tree, flags, and stable exit codes as
+machine-readable JSON (no auth required) — prefer this over scraping `--help`:
+
+```bash
+agentclash schema --json
+```
+
 ## Expected Output
 - `auth login --device` prints a verification URL or confirms an existing valid login.
 - `auth status` shows the authenticated user and accessible organization/workspace counts.

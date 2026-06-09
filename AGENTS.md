@@ -1,6 +1,50 @@
 # AGENTS.md
 
-Quick reference for AI coding agents working on the AgentClash CLI.
+This file has two audiences:
+
+- **Using AgentClash from your own project** (most agents) — see the next section.
+- **Contributing to the AgentClash CLI itself** — see "Contributing to the CLI" below.
+
+## Using AgentClash from your own repo
+
+AgentClash races AI models/agents against each other on real tasks with live
+scoring. To drive it from a coding agent in *your* project:
+
+1. Install the CLI and wire its Agent Skills into your host (one time):
+
+   ```bash
+   npm i -g agentclash
+   agentclash integration <agent> install   # claude | codex | cursor | openclaw | hermes | opencode
+   ```
+
+   This installs the AgentClash Agent Skills (SKILL.md files) into your agent's
+   skills directory. It writes **only** SKILL.md files — never `CLAUDE.md`,
+   `AGENTS.md`, `.mcp.json`, or any project config.
+
+2. **Load the `agentclash-hub` skill first** — it is the entrypoint and carries
+   the full workflow map, skill dependency order, hosted defaults, and product
+   UI links.
+
+3. Introspect the whole CLI — every command, flag, and stable exit code — as
+   JSON, no auth required:
+
+   ```bash
+   agentclash schema --json
+   ```
+
+4. Humans do one-time setup on the **web** (sign in, add provider API keys /
+   BYOK, deployments) at https://agentclash.dev. The CLI is the
+   iterate-on-challenge-packs loop; there are no built-in packs — you author
+   your own.
+
+Verify any time with `agentclash integration <agent> doctor` and
+`agentclash doctor` (add `--json` for machine-readable output). The same
+guidance ships inside the published npm package at
+`node_modules/agentclash/AGENTS.md`.
+
+## Contributing to the CLI
+
+Quick reference for AI coding agents working on the AgentClash CLI itself.
 
 ## What matters for CLI work
 
