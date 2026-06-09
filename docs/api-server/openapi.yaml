@@ -5373,6 +5373,36 @@ paths:
         "404":
           $ref: "#/components/responses/NotFoundError"
 
+  /v1/workspaces/{workspaceID}/agent-tryouts/{id}/artifacts:
+    get:
+      operationId: listWorkspaceAgentTryoutArtifacts
+      summary: List the captured output artifacts of a workspace agent tryout
+      description: >-
+        Returns the durable output files the agent produced during a tryout
+        (e.g. a slide deck or spreadsheet), each with a signed, time-limited
+        download URL. Workspace members see every captured artifact (no public
+        template allowlist redaction). Empty when the tryout has no linked run
+        or produced no files.
+      tags: [AgentTryouts]
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/ResourceID"
+      responses:
+        "200":
+          description: Captured tryout artifacts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListAgentTryoutArtifactsResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
   /v1/agent-tryouts/{id}/claim:
     post:
       operationId: claimAgentTryout
@@ -13298,6 +13328,45 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AgentTryoutCompareParticipant"
+
+    AgentTryoutArtifact:
+      type: object
+      required: [id, artifact_type, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        key:
+          type: string
+          description: Template-defined logical name of the output (e.g. "deck_outline").
+        path:
+          type: string
+          description: Sandbox-relative path the file was produced at (e.g. "deck.md").
+        artifact_type:
+          type: string
+        content_type:
+          type: string
+        size_bytes:
+          type: integer
+          format: int64
+        download_url:
+          type: string
+          description: Signed, time-limited URL to fetch the artifact content. Absent if no signer is configured.
+        download_expires_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+
+    ListAgentTryoutArtifactsResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentTryoutArtifact"
 
     # --- Playgrounds ---
 

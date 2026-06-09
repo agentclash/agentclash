@@ -140,6 +140,7 @@ export {
   getWorkspaceAgentTryoutEvents,
   listAgentTryoutTemplates,
   listWorkspaceAgentTryouts,
+  listWorkspaceAgentTryoutArtifacts,
   promoteAgentTryoutToEval,
   rerunAgentTryout,
   workspaceAgentTryoutsPath,

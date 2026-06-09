@@ -170,7 +170,7 @@ func main() {
 		PromptEvalInvoker:  promptEvalInvoker,
 		ResponsesInvoker:   responsesInvoker,
 		MultiTurnInvoker:   multiTurnInvoker,
-	})
+	}, artifactStore)
 	orphanRunReaper := workerapp.NewRepositoryOrphanRunReaper(repo, cfg.OrphanRunReaperInterval, cfg.OrphanRunReaperThreshold, logger)
 	agentTryoutRetentionReaper := workerapp.NewRepositoryAgentTryoutRetentionReaper(repo, cfg.AgentTryoutRetentionReaperInterval, logger)
 

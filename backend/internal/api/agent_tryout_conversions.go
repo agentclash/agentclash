@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/go-chi/chi/v5"
@@ -465,6 +466,91 @@ func promoteAgentTryoutHandler(logger *slog.Logger, service AgentTryoutService) 
 			return
 		}
 		writeJSON(w, http.StatusCreated, result)
+	}
+}
+
+// AgentTryoutArtifact is one captured output file of a tryout, with a signed,
+// time-limited download URL when a signer is configured.
+type AgentTryoutArtifact struct {
+	ID                uuid.UUID  `json:"id"`
+	Key               string     `json:"key,omitempty"`
+	Path              string     `json:"path,omitempty"`
+	ArtifactType      string     `json:"artifact_type"`
+	ContentType       *string    `json:"content_type,omitempty"`
+	SizeBytes         *int64     `json:"size_bytes,omitempty"`
+	DownloadURL       string     `json:"download_url,omitempty"`
+	DownloadExpiresAt *time.Time `json:"download_expires_at,omitempty"`
+	CreatedAt         time.Time  `json:"created_at"`
+}
+
+// ListWorkspaceTryoutArtifacts returns the captured output files for a workspace
+// tryout (e.g. the slide deck the agent produced), each with a signed download
+// URL. Unlike the public share view, the workspace owner sees every captured
+// artifact — there is no template allowlist redaction here.
+func (m *AgentTryoutManager) ListWorkspaceTryoutArtifacts(ctx context.Context, caller Caller, tryoutID uuid.UUID, baseURL string) ([]AgentTryoutArtifact, error) {
+	tryout, err := m.repo.GetAgentTryoutByID(ctx, tryoutID)
+	if err != nil {
+		return nil, err
+	}
+	if tryout.WorkspaceID == nil {
+		return nil, ErrAgentTryoutSignInRequired
+	}
+	if err := m.authorizer.AuthorizeWorkspace(ctx, caller, *tryout.WorkspaceID); err != nil {
+		return nil, err
+	}
+	if tryout.RunID == nil {
+		return []AgentTryoutArtifact{}, nil
+	}
+	artifacts, err := m.repo.ListArtifactsByRunID(ctx, *tryout.RunID)
+	if err != nil {
+		return nil, err
+	}
+	now := m.now()
+	out := make([]AgentTryoutArtifact, 0, len(artifacts))
+	for _, artifact := range artifacts {
+		key, path := artifactClaimedIdentity(artifact.Metadata)
+		item := AgentTryoutArtifact{
+			ID:           artifact.ID,
+			Key:          key,
+			Path:         path,
+			ArtifactType: artifact.ArtifactType,
+			ContentType:  artifact.ContentType,
+			SizeBytes:    artifact.SizeBytes,
+			CreatedAt:    artifact.CreatedAt,
+		}
+		if m.artifactSigner != nil {
+			if url, expiresAt, signErr := m.artifactSigner.SignedArtifactContentURL(artifact.ID, baseURL, now); signErr == nil {
+				item.DownloadURL = url
+				item.DownloadExpiresAt = &expiresAt
+			}
+		}
+		out = append(out, item)
+	}
+	return out, nil
+}
+
+type listAgentTryoutArtifactsResponse struct {
+	Items []AgentTryoutArtifact `json:"items"`
+}
+
+func listAgentTryoutArtifactsHandler(logger *slog.Logger, service AgentTryoutService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		caller, err := CallerFromContext(r.Context())
+		if err != nil {
+			writeAuthzError(w, err)
+			return
+		}
+		id, err := uuid.Parse(chi.URLParam(r, "tryoutID"))
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_tryout_id", "tryout_id must be a UUID")
+			return
+		}
+		artifacts, err := service.ListWorkspaceTryoutArtifacts(r.Context(), caller, id, requestBaseURL(r))
+		if err != nil {
+			writeAgentTryoutError(w, logger, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, listAgentTryoutArtifactsResponse{Items: artifacts})
 	}
 }
 

@@ -1,10 +1,15 @@
 package workflow
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"mime"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
@@ -15,9 +20,15 @@ import (
 	"github.com/agentclash/agentclash/backend/internal/runevents"
 	"github.com/agentclash/agentclash/backend/internal/sandbox"
 	"github.com/agentclash/agentclash/backend/internal/scoring"
+	"github.com/agentclash/agentclash/backend/internal/storage"
 	"github.com/google/uuid"
 	sdkworkflow "go.temporal.io/sdk/workflow"
 )
+
+// maxCapturedArtifactBytes bounds a single captured output file. Office tryout
+// outputs are small documents; this guards against a runaway file filling
+// storage while staying well above any real deck/spreadsheet/report.
+const maxCapturedArtifactBytes = 10 * 1024 * 1024
 
 const (
 	agentHarnessWorkspaceDir          = "/workspace"
@@ -363,6 +374,11 @@ func (a *Activities) ExecuteAgentHarnessExecution(ctx context.Context, input Exe
 		}
 	}
 
+	// Capture the agent's produced output files (e.g. an agent tryout's slide
+	// deck) as durable, downloadable artifacts before the sandbox is torn down.
+	// Best-effort: a capture failure is recorded but never fails the run.
+	a.captureAgentHarnessArtifacts(ctx, execution, session, workdir)
+
 	if _, err := a.TransitionAgentHarnessExecutionStatus(ctx, TransitionAgentHarnessExecutionStatusInput{
 		ExecutionID: execution.ID,
 		ToStatus:    repository.AgentHarnessExecutionStatusScoring,
@@ -374,6 +390,172 @@ func (a *Activities) ExecuteAgentHarnessExecution(ctx context.Context, input Exe
 	}
 
 	return nil
+}
+
+// capturedArtifactSpec is one expected output file declared by a template's
+// runtime.expected_artifacts.
+type capturedArtifactSpec struct {
+	Key  string `json:"key"`
+	Type string `json:"type"`
+	Path string `json:"path"`
+}
+
+// expectedArtifactsFromExecutionConfig parses the agent-tryout output manifest
+// (agent_tryout.runtime.expected_artifacts) from the execution config snapshot.
+// Returns nil for non-tryout runs, which have no agent_tryout block — so capture
+// is a no-op for ordinary harness executions.
+func expectedArtifactsFromExecutionConfig(raw json.RawMessage) []capturedArtifactSpec {
+	if len(raw) == 0 {
+		return nil
+	}
+	var config struct {
+		AgentTryout struct {
+			Runtime struct {
+				ExpectedArtifacts []capturedArtifactSpec `json:"expected_artifacts"`
+			} `json:"runtime"`
+		} `json:"agent_tryout"`
+	}
+	if err := json.Unmarshal(raw, &config); err != nil {
+		return nil
+	}
+	return config.AgentTryout.Runtime.ExpectedArtifacts
+}
+
+// captureAgentHarnessArtifacts reads each template-declared output file out of
+// the sandbox and persists it as a durable, downloadable artifact linked to the
+// run, before the sandbox is destroyed. It is best-effort: missing files and
+// upload errors are recorded as events but never fail the execution. It is a
+// no-op when no object store / artifact writer is configured or the template
+// declares no expected artifacts (i.e. all non-tryout runs).
+func (a *Activities) captureAgentHarnessArtifacts(ctx context.Context, execution repository.AgentHarnessExecution, session sandbox.Session, workdir string) {
+	if a.artifactStore == nil || a.artifactWriter == nil || execution.RunID == nil {
+		return
+	}
+	specs := expectedArtifactsFromExecutionConfig(execution.ExecutionConfigSnapshot)
+	if len(specs) == 0 {
+		return
+	}
+	for _, spec := range specs {
+		rel := strings.TrimSpace(spec.Path)
+		if rel == "" {
+			continue
+		}
+		absPath := rel
+		if !path.IsAbs(rel) {
+			absPath = path.Join(workdir, rel)
+		}
+		data, err := session.DownloadFile(ctx, absPath)
+		if err != nil {
+			_ = a.recordAgentHarnessEvent(ctx, execution.ID, "artifact.capture.skipped", "worker", map[string]any{
+				"artifact_key":  spec.Key,
+				"relative_path": rel,
+				"reason":        "not_produced",
+			})
+			continue
+		}
+		if len(data) == 0 {
+			continue
+		}
+		if len(data) > maxCapturedArtifactBytes {
+			_ = a.recordAgentHarnessEvent(ctx, execution.ID, "artifact.capture.skipped", "worker", map[string]any{
+				"artifact_key":  spec.Key,
+				"relative_path": rel,
+				"reason":        "too_large",
+				"size_bytes":    len(data),
+			})
+			continue
+		}
+		if err := a.persistCapturedArtifact(ctx, execution, spec, rel, data); err != nil {
+			_ = a.recordAgentHarnessEvent(ctx, execution.ID, "artifact.capture.failed", "worker", map[string]any{
+				"artifact_key":  spec.Key,
+				"relative_path": rel,
+				"error":         err.Error(),
+			})
+		}
+	}
+}
+
+func (a *Activities) persistCapturedArtifact(ctx context.Context, execution repository.AgentHarnessExecution, spec capturedArtifactSpec, rel string, data []byte) error {
+	sum := sha256.Sum256(data)
+	checksum := hex.EncodeToString(sum[:])
+	contentType := capturedArtifactContentType(rel)
+	storageKey := fmt.Sprintf("agent-tryouts/%s/%s", execution.RunID.String(), checksum)
+
+	objectMeta, err := a.artifactStore.PutObject(ctx, storage.PutObjectInput{
+		Key:         storageKey,
+		Body:        bytes.NewReader(data),
+		SizeBytes:   int64(len(data)),
+		ContentType: contentType,
+	})
+	if err != nil {
+		return fmt.Errorf("store captured artifact object: %w", err)
+	}
+
+	size := int64(len(data))
+	metadata, _ := json.Marshal(map[string]any{
+		"source":        "agent_tryout",
+		"artifact_key":  spec.Key,
+		"relative_path": rel,
+	})
+	artifact, err := a.artifactWriter.CreateArtifact(ctx, repository.CreateArtifactParams{
+		OrganizationID:  execution.OrganizationID,
+		WorkspaceID:     execution.WorkspaceID,
+		RunID:           execution.RunID,
+		RunAgentID:      execution.RunAgentID,
+		ArtifactType:    capturedArtifactType(spec.Type),
+		StorageBucket:   objectMeta.Bucket,
+		StorageKey:      objectMeta.Key,
+		ContentType:     &contentType,
+		SizeBytes:       &size,
+		ChecksumSHA256:  &checksum,
+		Visibility:      "private",
+		RetentionStatus: "active",
+		Metadata:        metadata,
+	})
+	if err != nil {
+		if cleanupErr := a.artifactStore.DeleteObject(ctx, objectMeta.Key); cleanupErr != nil && !errors.Is(cleanupErr, storage.ErrObjectNotFound) {
+			return fmt.Errorf("create captured artifact metadata: %w (cleanup failed: %v)", err, cleanupErr)
+		}
+		return fmt.Errorf("create captured artifact metadata: %w", err)
+	}
+	return a.recordAgentHarnessEvent(ctx, execution.ID, "artifact.captured", "worker", map[string]any{
+		"artifact_id":   artifact.ID.String(),
+		"artifact_key":  spec.Key,
+		"relative_path": rel,
+		"size_bytes":    size,
+		"content_type":  contentType,
+	})
+}
+
+// capturedArtifactType maps a template artifact type to a storable artifact_type
+// string (lowercase, matches the artifacts table convention). Falls back to a
+// generic value when the template type is missing or non-conforming.
+func capturedArtifactType(templateType string) string {
+	t := strings.ToLower(strings.TrimSpace(templateType))
+	switch t {
+	case "markdown", "json", "csv", "patch", "text":
+		return "agent_tryout_" + t
+	default:
+		return "agent_tryout_output"
+	}
+}
+
+func capturedArtifactContentType(rel string) string {
+	if ct := mime.TypeByExtension(strings.ToLower(filepath.Ext(rel))); ct != "" {
+		return ct
+	}
+	switch strings.ToLower(filepath.Ext(rel)) {
+	case ".md":
+		return "text/markdown; charset=utf-8"
+	case ".json":
+		return "application/json"
+	case ".csv":
+		return "text/csv; charset=utf-8"
+	case ".patch", ".diff":
+		return "text/x-patch"
+	default:
+		return "application/octet-stream"
+	}
 }
 
 func (a *Activities) buildAgentHarnessReplayBestEffort(ctx context.Context, execution repository.AgentHarnessExecution) {

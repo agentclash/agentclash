@@ -13,6 +13,7 @@ import (
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/backend/internal/sandbox"
 	"github.com/agentclash/agentclash/backend/internal/scoring"
+	"github.com/agentclash/agentclash/backend/internal/storage"
 	"github.com/google/uuid"
 	"go.temporal.io/sdk/temporal"
 )
@@ -96,6 +97,8 @@ type Activities struct {
 	judgeClient      provider.Client
 	sandboxProvider  sandbox.Provider
 	githubClient     GitHubPullRequestClient
+	artifactStore    storage.Store
+	artifactWriter   ArtifactWriter
 }
 
 type LoadEvalSessionInput struct {
@@ -190,14 +193,27 @@ func NewActivities(repo RunRepository, hooks FakeWorkHooks, judgeClients ...prov
 	if candidate, ok := repo.(AgentHarnessExecutionRepository); ok {
 		agentHarnessRepo = candidate
 	}
+	var artifactWriter ArtifactWriter
+	if candidate, ok := repo.(ArtifactWriter); ok {
+		artifactWriter = candidate
+	}
 	return &Activities{
 		repo:             repo,
 		evalSessionRepo:  evalSessionRepo,
 		agentHarnessRepo: agentHarnessRepo,
+		artifactWriter:   artifactWriter,
 		hooks:            hooks,
 		judgeClient:      judgeClient,
 		sandboxProvider:  sandbox.UnconfiguredProvider{},
 	}
+}
+
+// WithArtifactStore wires the object store the harness uploads captured output
+// files to. Without it (or without an ArtifactWriter repo), artifact capture is
+// skipped silently and execution is otherwise unaffected.
+func (a *Activities) WithArtifactStore(store storage.Store) *Activities {
+	a.artifactStore = store
+	return a
 }
 
 func (a *Activities) WithSandboxProvider(provider sandbox.Provider) *Activities {

@@ -1592,3 +1592,38 @@ func (f *fakeGitHubPullRequestClient) CreatePullRequest(_ context.Context, input
 	f.pullRequestInput = input
 	return GitHubPullRequest{Number: 12, HTMLURL: "https://github.com/acme/repo/pull/12", State: "open", Draft: true}, nil
 }
+
+func TestExpectedArtifactsFromExecutionConfig(t *testing.T) {
+	config := []byte(`{"timeout_seconds":180,"agent_tryout":{"template_slug":"slide-deck","runtime":{"expected_artifacts":[{"key":"deck_outline","type":"markdown","path":"deck.md"},{"key":"structured_deck","type":"json","path":"deck.json"}]}}}`)
+	specs := expectedArtifactsFromExecutionConfig(config)
+	if len(specs) != 2 {
+		t.Fatalf("specs = %d, want 2", len(specs))
+	}
+	if specs[0].Key != "deck_outline" || specs[0].Path != "deck.md" || specs[0].Type != "markdown" {
+		t.Fatalf("first spec = %+v, want deck_outline/deck.md/markdown", specs[0])
+	}
+
+	// Non-tryout runs (no agent_tryout block) yield no capture work.
+	if got := expectedArtifactsFromExecutionConfig([]byte(`{"timeout_seconds":120}`)); got != nil {
+		t.Fatalf("non-tryout config should yield nil specs, got %+v", got)
+	}
+	if got := expectedArtifactsFromExecutionConfig(nil); got != nil {
+		t.Fatalf("empty config should yield nil specs, got %+v", got)
+	}
+}
+
+func TestCapturedArtifactContentType(t *testing.T) {
+	cases := map[string]string{
+		"deck.md":      "text/markdown",
+		"deck.json":    "application/json",
+		"data.csv":     "text/csv",
+		"changes.diff": "text/x-patch",
+		"mystery.xyz":  "application/octet-stream",
+	}
+	for path, wantPrefix := range cases {
+		got := capturedArtifactContentType(path)
+		if !strings.HasPrefix(got, wantPrefix) {
+			t.Fatalf("content type for %q = %q, want prefix %q", path, got, wantPrefix)
+		}
+	}
+}

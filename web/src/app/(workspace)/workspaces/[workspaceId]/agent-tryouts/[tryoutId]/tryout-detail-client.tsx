@@ -30,6 +30,7 @@ import {
   tryoutModelLabel,
   tryoutStatusVariant,
 } from "../status";
+import { ArtifactsSection } from "./artifacts-section";
 import { PromoteTryoutDialog } from "./promote-tryout-dialog";
 import { RerunTryoutDialog } from "./rerun-tryout-dialog";
 
@@ -145,6 +146,8 @@ export function TryoutDetailClient({
           value={new Date(tryout.created_at).toLocaleString()}
         />
       </dl>
+
+      <ArtifactsSection workspaceId={workspaceId} tryout={tryout} />
 
       <section>
         <h2 className="mb-3 text-sm font-semibold tracking-tight">Timeline</h2>

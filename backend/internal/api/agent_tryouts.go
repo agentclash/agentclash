@@ -39,14 +39,14 @@ var (
 	ErrAgentTryoutRedactionNotReady         = errors.New("agent tryout redaction not ready")
 
 	// Conversion-flow errors (#947: rerun / compare / promote-to-eval).
-	ErrAgentTryoutSignInRequired              = errors.New("agent tryout sign-in required")
-	ErrAgentTryoutModelPolicyInvalid          = errors.New("agent tryout model policy invalid")
-	ErrAgentTryoutModelUnavailable            = errors.New("agent tryout model unavailable")
-	ErrAgentTryoutRerunProviderKeyRequired    = errors.New("agent tryout rerun provider key required")
-	ErrAgentTryoutRerunInsufficientCredits    = errors.New("agent tryout rerun insufficient credits")
-	ErrAgentTryoutCompareCardinality          = errors.New("agent tryout compare requires 2-4 tryouts")
-	ErrAgentTryoutPromotionTargetUnsupported  = errors.New("agent tryout promotion target unsupported")
-	ErrAgentTryoutNotPromotable               = errors.New("agent tryout is not completed")
+	ErrAgentTryoutSignInRequired             = errors.New("agent tryout sign-in required")
+	ErrAgentTryoutModelPolicyInvalid         = errors.New("agent tryout model policy invalid")
+	ErrAgentTryoutModelUnavailable           = errors.New("agent tryout model unavailable")
+	ErrAgentTryoutRerunProviderKeyRequired   = errors.New("agent tryout rerun provider key required")
+	ErrAgentTryoutRerunInsufficientCredits   = errors.New("agent tryout rerun insufficient credits")
+	ErrAgentTryoutCompareCardinality         = errors.New("agent tryout compare requires 2-4 tryouts")
+	ErrAgentTryoutPromotionTargetUnsupported = errors.New("agent tryout promotion target unsupported")
+	ErrAgentTryoutNotPromotable              = errors.New("agent tryout is not completed")
 )
 
 type AgentTryoutRepository interface {
@@ -63,6 +63,7 @@ type AgentTryoutRepository interface {
 	WithinAnonymousAgentTryoutQuotaLock(ctx context.Context, fn func(repository.AnonymousAgentTryoutQuotaTx) error) error
 	GetAgentTryoutByID(ctx context.Context, id uuid.UUID) (repository.AgentTryout, error)
 	ListRunEventsByRunIDAfter(ctx context.Context, runID uuid.UUID, afterID int64, limit int32) ([]repository.RunEvent, error)
+	ListArtifactsByRunID(ctx context.Context, runID uuid.UUID) ([]repository.Artifact, error)
 	ListAgentTryoutsByWorkspaceID(ctx context.Context, workspaceID uuid.UUID, limit, offset int32) ([]repository.AgentTryout, error)
 	LinkAgentTryoutRunIfUnset(ctx context.Context, params repository.LinkAgentTryoutRunParams) (repository.AgentTryout, error)
 	UpdateAgentTryoutStatus(ctx context.Context, params repository.UpdateAgentTryoutStatusParams) (repository.AgentTryout, error)
@@ -88,6 +89,7 @@ type AgentTryoutService interface {
 	RerunWorkspaceTryout(ctx context.Context, caller Caller, input RerunAgentTryoutInput) (repository.AgentTryout, error)
 	CompareWorkspaceTryouts(ctx context.Context, caller Caller, input CompareAgentTryoutsInput) (AgentTryoutCompareResult, error)
 	PromoteTryoutToEval(ctx context.Context, caller Caller, input PromoteAgentTryoutInput) (AgentTryoutPromotionResult, error)
+	ListWorkspaceTryoutArtifacts(ctx context.Context, caller Caller, tryoutID uuid.UUID, baseURL string) ([]AgentTryoutArtifact, error)
 }
 
 type AgentTryoutTemplate struct {
@@ -149,13 +151,21 @@ type AgentTryoutQuotaConfig struct {
 }
 
 type AgentTryoutManager struct {
-	authorizer WorkspaceAuthorizer
-	repo       AgentTryoutRepository
-	now        func() time.Time
-	templates  map[string]AgentTryoutTemplate
-	execution  *agentTryoutExecutionDispatcher
-	quota      *AgentTryoutQuotaConfig
-	rerunGate  AgentTryoutRerunGate
+	authorizer     WorkspaceAuthorizer
+	repo           AgentTryoutRepository
+	now            func() time.Time
+	templates      map[string]AgentTryoutTemplate
+	execution      *agentTryoutExecutionDispatcher
+	quota          *AgentTryoutQuotaConfig
+	rerunGate      AgentTryoutRerunGate
+	artifactSigner ArtifactContentSigner
+}
+
+// WithArtifactSigner enables signed download URLs on a tryout's captured output
+// artifacts. Without it, artifact listing still works but omits download links.
+func (m *AgentTryoutManager) WithArtifactSigner(signer ArtifactContentSigner) *AgentTryoutManager {
+	m.artifactSigner = signer
+	return m
 }
 
 func NewAgentTryoutManager(authorizer WorkspaceAuthorizer, repo AgentTryoutRepository) *AgentTryoutManager {
@@ -928,6 +938,7 @@ func registerProtectedAgentTryoutRoutes(router chi.Router, logger *slog.Logger, 
 	router.Get("/workspaces/{workspaceID}/agent-tryouts", listWorkspaceAgentTryoutsHandler(logger, service))
 	router.Get("/workspaces/{workspaceID}/agent-tryouts/{tryoutID}", getWorkspaceAgentTryoutHandler(logger, service))
 	router.Get("/workspaces/{workspaceID}/agent-tryouts/{tryoutID}/events", getWorkspaceAgentTryoutEventsHandler(logger, service))
+	router.Get("/workspaces/{workspaceID}/agent-tryouts/{tryoutID}/artifacts", listAgentTryoutArtifactsHandler(logger, service))
 	router.Post("/agent-tryouts/{tryoutID}/claim", claimAgentTryoutHandler(logger, service))
 	router.Post("/agent-tryouts/{tryoutID}/share", createAgentTryoutShareHandler(logger, service))
 	router.Post("/agent-tryouts/{tryoutID}/rerun", rerunAgentTryoutHandler(logger, service))

@@ -65,6 +65,13 @@ type AgentHarnessExecutionRepository interface {
 	RecordAgentHarnessExecutionEvent(ctx context.Context, params repository.RecordAgentHarnessExecutionEventParams) (repository.AgentHarnessExecutionEvent, error)
 }
 
+// ArtifactWriter persists produced files as durable, downloadable artifact rows.
+// It is the subset of the repository the harness needs to capture agent output
+// (e.g. an agent tryout's slide deck) before the sandbox is torn down.
+type ArtifactWriter interface {
+	CreateArtifact(ctx context.Context, params repository.CreateArtifactParams) (repository.Artifact, error)
+}
+
 type HostedRunStarter interface {
 	Start(ctx context.Context, input HostedRunStartInput) (hostedruns.StartResponse, error)
 }
