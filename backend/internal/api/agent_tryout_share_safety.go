@@ -45,9 +45,13 @@ type sharedAgentTryoutArtifact struct {
 // sensitiveSummaryKeySubstrings lists object-key substrings whose values must
 // never appear in a public tryout summary. Matching is by key name (not value)
 // so it stays resilient to the execution-defined, evolving summary schema.
+// Entries are targeted (e.g. "access_token", "session_id") rather than bare
+// "token"/"session" so legitimate public metrics like "total_tokens",
+// "output_tokens", or "session_count" survive redaction.
 var sensitiveSummaryKeySubstrings = []string{
-	"secret", "token", "credential", "password", "api_key", "apikey",
-	"authorization", "bearer", "private_key", "access_key", "session",
+	"secret", "credential", "password", "api_key", "apikey",
+	"access_token", "auth_token", "session_token", "id_token", "refresh_token",
+	"authorization", "bearer", "private_key", "access_key", "session_id",
 	"cookie", "organization_id", "org_id", "workspace_id", "user_id",
 	"created_by", "claimed_by", "fingerprint",
 }

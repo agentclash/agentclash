@@ -35,6 +35,29 @@ func TestRedactTryoutSummaryForPublicStripsSensitiveKeys(t *testing.T) {
 	}
 }
 
+func TestRedactTryoutSummaryForPublicKeepsTokenUsageMetrics(t *testing.T) {
+	// Token-usage metrics are legitimate public data and must survive the
+	// key-name redactor — only credential-shaped *_token / *_id keys are dropped.
+	raw := json.RawMessage(`{
+		"total_tokens": 1234,
+		"input_tokens": 1000,
+		"output_tokens": 234,
+		"token_count": 1234,
+		"session_count": 2,
+		"access_token": "should-drop"
+	}`)
+	got := string(redactTryoutSummaryForPublic(raw))
+
+	for _, kept := range []string{"total_tokens", "input_tokens", "output_tokens", "token_count", "session_count"} {
+		if !strings.Contains(got, kept) {
+			t.Fatalf("redaction dropped legitimate metric %q: %s", kept, got)
+		}
+	}
+	if strings.Contains(got, "access_token") || strings.Contains(got, "should-drop") {
+		t.Fatalf("redaction kept a credential-shaped key: %s", got)
+	}
+}
+
 func TestRedactTryoutSummaryForPublicDropsInvalidJSON(t *testing.T) {
 	if out := redactTryoutSummaryForPublic(json.RawMessage(`{not json`)); out != nil {
 		t.Fatalf("invalid summary JSON should be dropped, got %s", out)

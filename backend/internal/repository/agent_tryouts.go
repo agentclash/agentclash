@@ -286,43 +286,53 @@ func (r *Repository) ExpireAnonymousAgentTryouts(ctx context.Context, params Exp
 	}
 	defer rollback(ctx, tx)
 
-	rows, err := tx.Query(ctx, `
-		SELECT id, run_id
-		FROM agent_tryouts
-		WHERE expires_at IS NOT NULL
-		  AND expires_at <= $1
-		  AND claimed_by_user_id IS NULL
-		  AND workspace_id IS NULL
-		ORDER BY expires_at ASC, id ASC
-		LIMIT $2
-		FOR UPDATE SKIP LOCKED
-	`, params.Now.UTC(), limit)
+	// Collect the eligible rows in a scoped closure that defers rows.Close():
+	// the cursor MUST be fully closed before the UPDATE/DELETE below, because a
+	// single transaction can only have one query in flight at a time. Scoping
+	// the deferred close here guarantees that ordering by construction.
+	tryoutIDs, runIDs, err := func() ([]uuid.UUID, []uuid.UUID, error) {
+		rows, err := tx.Query(ctx, `
+			SELECT id, run_id
+			FROM agent_tryouts
+			WHERE expires_at IS NOT NULL
+			  AND expires_at <= $1
+			  AND claimed_by_user_id IS NULL
+			  AND workspace_id IS NULL
+			ORDER BY expires_at ASC, id ASC
+			LIMIT $2
+			FOR UPDATE SKIP LOCKED
+		`, params.Now.UTC(), limit)
+		if err != nil {
+			return nil, nil, fmt.Errorf("select expired anonymous agent tryouts: %w", err)
+		}
+		defer rows.Close()
+
+		var (
+			tryoutIDs []uuid.UUID
+			runIDs    []uuid.UUID
+		)
+		for rows.Next() {
+			var (
+				id    uuid.UUID
+				runID *uuid.UUID
+			)
+			if err := rows.Scan(&id, &runID); err != nil {
+				return nil, nil, fmt.Errorf("scan expired anonymous agent tryout: %w", err)
+			}
+			tryoutIDs = append(tryoutIDs, id)
+			if runID != nil {
+				runIDs = append(runIDs, *runID)
+			}
+		}
+		if err := rows.Err(); err != nil {
+			return nil, nil, fmt.Errorf("iterate expired anonymous agent tryouts: %w", err)
+		}
+		return tryoutIDs, runIDs, nil
+	}()
 	if err != nil {
-		return 0, fmt.Errorf("select expired anonymous agent tryouts: %w", err)
+		return 0, err
 	}
 
-	var (
-		tryoutIDs []uuid.UUID
-		runIDs    []uuid.UUID
-	)
-	for rows.Next() {
-		var (
-			id    uuid.UUID
-			runID *uuid.UUID
-		)
-		if err := rows.Scan(&id, &runID); err != nil {
-			rows.Close()
-			return 0, fmt.Errorf("scan expired anonymous agent tryout: %w", err)
-		}
-		tryoutIDs = append(tryoutIDs, id)
-		if runID != nil {
-			runIDs = append(runIDs, *runID)
-		}
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return 0, fmt.Errorf("iterate expired anonymous agent tryouts: %w", err)
-	}
 	if len(tryoutIDs) == 0 {
 		if err := tx.Commit(ctx); err != nil {
 			return 0, fmt.Errorf("commit agent tryout retention transaction: %w", err)
