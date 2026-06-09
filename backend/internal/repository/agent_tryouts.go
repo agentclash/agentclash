@@ -61,6 +61,7 @@ type AgentTryout struct {
 	MaxDurationSeconds       int32
 	AnonymousFingerprintHash *string
 	CreatedByUserID          *uuid.UUID
+	ParentTryoutID           *uuid.UUID
 	ClaimedByUserID          *uuid.UUID
 	ClaimedAt                *time.Time
 	ExpiresAt                *time.Time
@@ -87,6 +88,7 @@ type CreateAgentTryoutParams struct {
 	MaxDurationSeconds       int32
 	AnonymousFingerprintHash *string
 	CreatedByUserID          *uuid.UUID
+	ParentTryoutID           *uuid.UUID
 	ExpiresAt                *time.Time
 }
 
@@ -153,6 +155,7 @@ func createAgentTryout(ctx context.Context, queries *repositorysqlc.Queries, par
 		MaxDurationSeconds:       params.MaxDurationSeconds,
 		AnonymousFingerprintHash: cloneStringPtr(params.AnonymousFingerprintHash),
 		CreatedByUserID:          cloneUUIDPtr(params.CreatedByUserID),
+		ParentTryoutID:           cloneUUIDPtr(params.ParentTryoutID),
 		ExpiresAt:                toPGTimestamp(params.ExpiresAt),
 	})
 	if err != nil {
@@ -572,6 +575,7 @@ func mapAgentTryout(row repositorysqlc.AgentTryout) (AgentTryout, error) {
 		MaxDurationSeconds:       row.MaxDurationSeconds,
 		AnonymousFingerprintHash: cloneStringPtr(row.AnonymousFingerprintHash),
 		CreatedByUserID:          cloneUUIDPtr(row.CreatedByUserID),
+		ParentTryoutID:           cloneUUIDPtr(row.ParentTryoutID),
 		ClaimedByUserID:          cloneUUIDPtr(row.ClaimedByUserID),
 		ClaimedAt:                optionalTime(row.ClaimedAt),
 		ExpiresAt:                optionalTime(row.ExpiresAt),

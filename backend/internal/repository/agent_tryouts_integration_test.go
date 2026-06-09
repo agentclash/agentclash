@@ -79,6 +79,59 @@ func TestRepositoryAgentTryoutAnonymousQuotaLedger(t *testing.T) {
 	}
 }
 
+func TestRepositoryCreateAgentTryoutWithParent(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	base := func() repository.CreateAgentTryoutParams {
+		return repository.CreateAgentTryoutParams{
+			OrganizationID:         &fixture.organizationID,
+			WorkspaceID:            &fixture.workspaceID,
+			TemplateSlug:           "meeting-minutes",
+			Status:                 repository.AgentTryoutStatusCompleted,
+			InputSnapshot:          []byte(`{"notes":"original"}`),
+			TemplateSnapshot:       []byte(`{"slug":"meeting-minutes"}`),
+			ToolPolicySnapshot:     []byte(`{"tools":[]}`),
+			EvaluationSpecSnapshot: []byte(`{"validators":[]}`),
+			SelectedModelPolicy:    []byte(`{"mode":"hosted_default"}`),
+			Summary:                []byte(`{}`),
+			RedactionStatus:        repository.AgentTryoutRedactionPassed,
+			CostLimitUSD:           0.25,
+			MaxDurationSeconds:     120,
+			CreatedByUserID:        &fixture.userID,
+		}
+	}
+
+	parent, err := repo.CreateAgentTryout(ctx, base())
+	if err != nil {
+		t.Fatalf("create parent tryout: %v", err)
+	}
+	if parent.ParentTryoutID != nil {
+		t.Fatalf("original tryout should have nil parent, got %v", parent.ParentTryoutID)
+	}
+
+	childParams := base()
+	childParams.SelectedModelPolicy = []byte(`{"mode":"hosted_default","models":[{"provider":"anthropic","model":"claude-opus-4-8"}]}`)
+	childParams.ParentTryoutID = &parent.ID
+	child, err := repo.CreateAgentTryout(ctx, childParams)
+	if err != nil {
+		t.Fatalf("create child (rerun) tryout: %v", err)
+	}
+	if child.ParentTryoutID == nil || *child.ParentTryoutID != parent.ID {
+		t.Fatalf("child parent_tryout_id = %v, want %s", child.ParentTryoutID, parent.ID)
+	}
+
+	reloaded, err := repo.GetAgentTryoutByID(ctx, child.ID)
+	if err != nil {
+		t.Fatalf("reload child: %v", err)
+	}
+	if reloaded.ParentTryoutID == nil || *reloaded.ParentTryoutID != parent.ID {
+		t.Fatalf("reloaded parent_tryout_id = %v, want %s", reloaded.ParentTryoutID, parent.ID)
+	}
+}
+
 func TestRepositoryExpireAnonymousAgentTryouts(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)
