@@ -6,10 +6,76 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/google/uuid"
 )
+
+type stubArtifactSigner struct{}
+
+func (stubArtifactSigner) SignedArtifactContentURL(artifactID uuid.UUID, baseURL string, now time.Time) (string, time.Time, error) {
+	return baseURL + "/v1/artifacts/" + artifactID.String() + "/content?sig=test", now.Add(time.Hour), nil
+}
+
+func ptrUUID(id uuid.UUID) *uuid.UUID { return &id }
+
+func TestAgentTryoutListArtifactsReturnsCapturedOutputs(t *testing.T) {
+	ctx := context.Background()
+	orgID, workspaceID := uuid.New(), uuid.New()
+	repo := newFakeAgentTryoutRepository(orgID, workspaceID)
+	source := seedWorkspaceTryout(repo, orgID, workspaceID, "slide-deck")
+	runID := uuid.New()
+	source.RunID = &runID
+	repo.tryouts[source.ID] = source
+
+	contentType := "text/markdown; charset=utf-8"
+	size := int64(42)
+	repo.artifacts = []repository.Artifact{{
+		ID:           uuid.New(),
+		RunID:        &runID,
+		ArtifactType: "agent_tryout_markdown",
+		ContentType:  &contentType,
+		SizeBytes:    &size,
+		Metadata:     json.RawMessage(`{"source":"agent_tryout","artifact_key":"deck_outline","relative_path":"deck.md"}`),
+	}, {
+		ID:           uuid.New(),
+		RunID:        ptrUUID(uuid.New()), // different run; must be excluded
+		ArtifactType: "agent_tryout_json",
+	}}
+
+	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo).WithArtifactSigner(stubArtifactSigner{})
+	artifacts, err := manager.ListWorkspaceTryoutArtifacts(ctx, callerWithWorkspace(workspaceID), source.ID, "https://api.example.com")
+	if err != nil {
+		t.Fatalf("ListWorkspaceTryoutArtifacts returned error: %v", err)
+	}
+	if len(artifacts) != 1 {
+		t.Fatalf("artifacts = %d, want 1 (only the run's artifact)", len(artifacts))
+	}
+	got := artifacts[0]
+	if got.Key != "deck_outline" || got.Path != "deck.md" {
+		t.Fatalf("artifact identity = %q/%q, want deck_outline/deck.md", got.Key, got.Path)
+	}
+	if got.DownloadURL == "" || got.DownloadExpiresAt == nil {
+		t.Fatalf("expected a signed download URL, got %q (expires=%v)", got.DownloadURL, got.DownloadExpiresAt)
+	}
+}
+
+func TestAgentTryoutListArtifactsEmptyWhenNoRun(t *testing.T) {
+	ctx := context.Background()
+	orgID, workspaceID := uuid.New(), uuid.New()
+	repo := newFakeAgentTryoutRepository(orgID, workspaceID)
+	source := seedWorkspaceTryout(repo, orgID, workspaceID, "slide-deck") // no run_id
+
+	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo).WithArtifactSigner(stubArtifactSigner{})
+	artifacts, err := manager.ListWorkspaceTryoutArtifacts(ctx, callerWithWorkspace(workspaceID), source.ID, "https://api.example.com")
+	if err != nil {
+		t.Fatalf("ListWorkspaceTryoutArtifacts returned error: %v", err)
+	}
+	if len(artifacts) != 0 {
+		t.Fatalf("artifacts = %d, want 0 for a tryout with no run", len(artifacts))
+	}
+}
 
 func seedWorkspaceTryout(repo *fakeAgentTryoutRepository, orgID, workspaceID uuid.UUID, slug string) repository.AgentTryout {
 	id := uuid.New()

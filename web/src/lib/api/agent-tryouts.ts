@@ -6,6 +6,7 @@ import type {
   AgentTryoutPromotionResult,
   AgentTryoutTemplate,
   CreateAgentTryoutInput,
+  ListAgentTryoutArtifactsResponse,
   PromoteAgentTryoutInput,
   RerunAgentTryoutInput,
 } from "./types";
@@ -57,6 +58,16 @@ export function getWorkspaceAgentTryoutEvents(
   return api.get<AgentTryoutEventsResponse>(
     `${workspaceAgentTryoutsPath(workspaceId)}/${tryoutId}/events`,
     { params: { after: opts?.after, limit: opts?.limit } },
+  );
+}
+
+export function listWorkspaceAgentTryoutArtifacts(
+  api: ApiClient,
+  workspaceId: string,
+  tryoutId: string,
+): Promise<ListAgentTryoutArtifactsResponse> {
+  return api.get<ListAgentTryoutArtifactsResponse>(
+    `${workspaceAgentTryoutsPath(workspaceId)}/${tryoutId}/artifacts`,
   );
 }
 

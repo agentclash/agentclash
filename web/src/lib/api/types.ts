@@ -2793,6 +2793,22 @@ export interface AgentTryoutCompareResult {
   participants: AgentTryoutCompareParticipant[];
 }
 
+export interface AgentTryoutArtifact {
+  id: string;
+  key?: string;
+  path?: string;
+  artifact_type: string;
+  content_type?: string;
+  size_bytes?: number;
+  download_url?: string;
+  download_expires_at?: string;
+  created_at: string;
+}
+
+export interface ListAgentTryoutArtifactsResponse {
+  items: AgentTryoutArtifact[];
+}
+
 // --- Errors ---
 
 /** Standard error envelope returned by all backend error responses. */

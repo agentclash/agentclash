@@ -979,6 +979,8 @@ type fakeAgentTryoutRepository struct {
 	hostedSpendUSD     float64
 	runEvents           []repository.RunEvent
 	runEventsErr        error
+	artifacts           []repository.Artifact
+	artifactsErr        error
 	createdConversation repository.CreateVibeEvalConversationParams
 	createdDraft        repository.CreateVibeEvalDraftParams
 }
@@ -1012,6 +1014,19 @@ func (r *fakeAgentTryoutRepository) ListRunEventsByRunIDAfter(_ context.Context,
 		out = append(out, event)
 		if int32(len(out)) == limit {
 			break
+		}
+	}
+	return out, nil
+}
+
+func (r *fakeAgentTryoutRepository) ListArtifactsByRunID(_ context.Context, runID uuid.UUID) ([]repository.Artifact, error) {
+	if r.artifactsErr != nil {
+		return nil, r.artifactsErr
+	}
+	out := make([]repository.Artifact, 0, len(r.artifacts))
+	for _, artifact := range r.artifacts {
+		if artifact.RunID != nil && *artifact.RunID == runID {
+			out = append(out, artifact)
 		}
 	}
 	return out, nil
@@ -1393,6 +1408,10 @@ func (s *fakeAgentTryoutService) ClaimTryout(context.Context, Caller, ClaimAgent
 
 func (s *fakeAgentTryoutService) CreatePrivateShare(context.Context, Caller, uuid.UUID) (CreateAgentTryoutShareResult, error) {
 	return CreateAgentTryoutShareResult{}, nil
+}
+
+func (s *fakeAgentTryoutService) ListWorkspaceTryoutArtifacts(context.Context, Caller, uuid.UUID, string) ([]AgentTryoutArtifact, error) {
+	return nil, nil
 }
 
 func (s *fakeAgentTryoutService) RerunWorkspaceTryout(context.Context, Caller, RerunAgentTryoutInput) (repository.AgentTryout, error) {

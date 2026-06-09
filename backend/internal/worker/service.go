@@ -10,6 +10,7 @@ import (
 	"github.com/agentclash/agentclash/backend/internal/provider"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/backend/internal/sandbox"
+	"github.com/agentclash/agentclash/backend/internal/storage"
 	workflowpkg "github.com/agentclash/agentclash/backend/internal/workflow"
 	temporalsdk "go.temporal.io/sdk/client"
 	sdkworker "go.temporal.io/sdk/worker"
@@ -34,6 +35,7 @@ func NewTemporalWorker(
 	sandboxProvider sandbox.Provider,
 	githubClient workflowpkg.GitHubPullRequestClient,
 	executionHooks workflowpkg.FakeWorkHooks,
+	artifactStore storage.Store,
 ) sdkworker.Worker {
 	temporalWorker := sdkworker.New(client, cfg.TaskQueue, sdkworker.Options{
 		Identity: cfg.Identity,
@@ -41,7 +43,8 @@ func NewTemporalWorker(
 
 	activities := workflowpkg.NewActivities(repo, executionHooks, playgroundClient).
 		WithSandboxProvider(sandboxProvider).
-		WithGitHubPullRequestClient(githubClient)
+		WithGitHubPullRequestClient(githubClient).
+		WithArtifactStore(artifactStore)
 	workflowpkg.Register(temporalWorker, activities)
 	workflowpkg.RegisterPlayground(temporalWorker, workflowpkg.NewPlaygroundActivities(repo, playgroundClient, repo))
 	workflowpkg.RegisterDatasetGeneration(temporalWorker, workflowpkg.NewDatasetGenerationActivities(repo, playgroundClient, repo))

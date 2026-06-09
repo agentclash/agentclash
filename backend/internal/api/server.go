@@ -464,6 +464,10 @@ func (noopAgentTryoutService) PromoteTryoutToEval(context.Context, Caller, Promo
 	return AgentTryoutPromotionResult{}, errors.New("agent tryout service is not configured")
 }
 
+func (noopAgentTryoutService) ListWorkspaceTryoutArtifacts(context.Context, Caller, uuid.UUID, string) ([]AgentTryoutArtifact, error) {
+	return nil, errors.New("agent tryout service is not configured")
+}
+
 func (noopAgentTryoutService) GetWorkspaceTryoutEvents(context.Context, Caller, uuid.UUID, TryoutEventsCursor) (AgentTryoutEventsResult, error) {
 	return AgentTryoutEventsResult{}, errors.New("agent tryout service is not configured")
 }
