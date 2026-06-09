@@ -12987,6 +12987,10 @@ components:
         run_id:
           type: string
           format: uuid
+        parent_tryout_id:
+          type: string
+          format: uuid
+          description: Source tryout this one was rerun from, when applicable.
         cost_limit_usd:
           type: number
           format: double

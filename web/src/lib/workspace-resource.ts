@@ -58,6 +58,8 @@ export const workspaceResourceKeys = {
     apiQueryKey(`/v1/workspaces/${workspaceId}/artifacts`),
   datasets: (workspaceId: string): ApiQueryKey =>
     apiQueryKey(`/v1/workspaces/${workspaceId}/datasets`),
+  agentTryouts: (workspaceId: string): ApiQueryKey =>
+    apiQueryKey(`/v1/workspaces/${workspaceId}/agent-tryouts`),
   datasetExamples: (workspaceId: string, datasetId: string): ApiQueryKey =>
     apiQueryKey(`/v1/workspaces/${workspaceId}/datasets/${datasetId}/examples`),
   datasetVersions: (workspaceId: string, datasetId: string): ApiQueryKey =>
