@@ -214,11 +214,16 @@ type Tool interface {
     Name() string
     Phases() []string          // plan|author|validate|publish|run|analyze|regress|admin
     RiskTier() RiskTier
-    RequiredAction() api.Action // re-authorized in Go before execution
+    // RequiredAction returns the action NAME as a plain string (not api.Action) so
+    // internal/vibeeval never imports api (§11.1). The api layer validates each tool's
+    // string against the api.Action matrix at registry construction (fail-fast).
+    RequiredAction() string
     Definition() provider.ToolDefinition // name + description + JSON-schema params
     // Execute runs the semantic action against an existing manager/service.
     // args are already schema-validated and policy-authorized by the loop.
-    Execute(ctx context.Context, caller Caller, conv Conversation, args json.RawMessage) (ToolOutput, error)
+    // actor is audit/authorship identity only (vibeeval.Actor{UserID}) — never api.Caller;
+    // authorization runs in the loop via the injected WorkspaceAuthorizer before Execute.
+    Execute(ctx context.Context, actor Actor, conv Conversation, args json.RawMessage) (ToolOutput, error)
 }
 
 type ToolOutput struct {
@@ -254,12 +259,18 @@ vibe_eval_messages (
   id, organization_id, workspace_id, conversation_id,
   seq               bigint,        -- monotonic per conversation
   role              text,          -- user | assistant | tool
-  content           text,          -- assistant/user text; tool result content (redacted)
+  content           text,          -- user/assistant: verbatim minus narrow secret-scrub;
+                                    -- tool: redacted only (§11.6, single redaction boundary)
+  redaction_state   text NOT NULL DEFAULT 'none'
+                                    -- none | applied | not_applicable  (§11.6; CHECK enforced)
+                                    -- 'applied' = a known-secret shape was scrubbed
   tool_call_id      text,          -- for role=tool
   tool_name         text,
   tool_args         jsonb,         -- for assistant tool calls (validated, redacted)
-  usage             jsonb,         -- token usage for assistant turns
+  usage             jsonb,         -- token usage for assistant turns (observational, §11.3)
   created_at        timestamptz
+  -- FK conversation_id + (workspace_id, organization_id) ON DELETE CASCADE (mirror 00049);
+  -- no single content/redacted dual columns (§11.6); no TTL in v1.
 )
 ```
 
@@ -270,10 +281,13 @@ artifacts; messages are the transcript.
 
 ### 5.1 Authorization — reuse, do not reinvent
 
-Every tool declares a required `api.Action`. Execution calls the existing
-`AuthorizeWorkspaceAction(ctx, authorizer, caller, workspaceID, action)`
-(`backend/internal/api/permissions.go`), which already encodes the role matrix and the
-org_admin override. The model's request never bypasses this.
+Every tool declares a required action **as a plain string** (§11.1; `vibeeval` does not
+import `api`). At registry construction the `api` layer validates each string against the
+`api.Action` matrix (fail-fast), then the loop authorizes via the injected
+`WorkspaceAuthorizer`, which bridges to the existing
+`AuthorizeWorkspaceAction(ctx, authorizer, caller, workspaceID, api.Action(action))`
+(`backend/internal/api/permissions.go`) — already encoding the role matrix + org_admin
+override. The model's request never bypasses this.
 
 Tool → action mapping comes from the Phase 0 matrix. Reuse existing actions wherever
 possible. Two new actions are required (and only these two are new):
@@ -412,9 +426,19 @@ org_eval_credit_wallets (
   granted_micros    bigint,          -- total granted (e.g. $3 = 3_000_000 micros)
   reserved_micros   bigint,          -- currently held by open reservations
   settled_micros    bigint,          -- consumed by settled runs
-  updated_at        timestamptz
+  updated_at        timestamptz,
+  CHECK (granted_micros - reserved_micros - settled_micros >= 0)  -- Invariant 1 at DB level
 )
--- available = granted - reserved - settled  (must always be >= 0)
+-- available = granted - reserved - settled  (CHECK above makes a negative balance a hard
+-- DB error, not silent corruption).
+--
+-- Concurrency (enforces Invariant 1 under parallel Reserve): Reserve is an atomic
+-- conditional UPDATE — `UPDATE org_eval_credit_wallets SET reserved_micros =
+-- reserved_micros + $amt WHERE organization_id = $org AND granted_micros - reserved_micros
+-- - settled_micros >= $amt` — and treats 0 rows updated as "insufficient credit". (Or a
+-- `SELECT ... FOR UPDATE` on the wallet row, matching how `workspace_usage_windows` quota
+-- consumption locks the row before incrementing — repository.go:533-581.) The ledger insert
+-- happens in the same transaction.
 
 org_eval_credit_ledger (              -- immutable, append-only
   id, organization_id,
@@ -448,7 +472,10 @@ type CreditWallet interface {
 
 ### 8.3 Invariants (must be encoded as tests — #875 acceptance)
 
-1. `available = granted - reserved - settled` is **never negative**.
+1. `available = granted - reserved - settled` is **never negative** — enforced by a DB
+   `CHECK` (§8.1) **and** by `Reserve`'s atomic conditional UPDATE / `FOR UPDATE` row lock,
+   so concurrent reserves cannot both pass a stale read and overdraw. Test with parallel
+   reserves racing for the last micros.
 2. `Reserve` is **idempotent** on `reservationKey`: a retry returns the same reservation,
    never double-holds.
 3. `Settle` releases unused reserve: after settle, `reserved` drops by the full
@@ -478,8 +505,19 @@ fails if an org exists without a wallet row (unless flagged).
   `CostEstimate`, shown in the confirmation card.
 - On approval: `Reserve` against the org wallet (or skip for BYOK) using the run/session
   id as `reservationKey`, then create the run via the existing manager.
-- After the run completes, the existing post-run cost path (which already computes actual
-  cost via `budget.RecordRunCost` and model pricing) calls `Settle` with actual spend.
+- **Settlement (cross-plane — must be built, not assumed).** Correction: there is **no
+  existing post-run cost path** today — `budget.RecordRunCost` is defined but has **zero
+  callsites** (verified), so it is not wired into the worker. This step must therefore:
+  1. add run-cost computation (provider `Usage` → cost via model pricing) to a **worker
+     scoring/finalization activity** (the worker already does DB writes there, e.g.
+     `StoreRunAgentEvaluationResults`, `RecordRunEvent` — `workflow/scoring.go`), and
+  2. have that activity call a **shared `repository` method** (`SettleEvalCredit`) — the
+     wallet tables live in the **same Postgres**, and the repository is constructed
+     identically by both planes (`repository.New(db)` in `cmd/api-server/main.go:46` **and**
+     `cmd/worker/main.go:46`). So settlement is a direct same-DB repo write inside a Temporal
+     activity — **no API callback or Temporal signal needed** (consistent with "all DB
+     mutations happen in activities"). On run failure/cancel before spend, the activity calls
+     `Release` instead.
 - The guide-agent's own model calls are charged against a **separate internal
   allowance**, not the eval credit wallet (Phase 0: "guide-agent usage has a separate
   internal allowance"). Keep these two budgets distinct in code and audit.
@@ -517,9 +555,9 @@ The workbench UI (#874) consumes steps 2+ incrementally.
 
 ## 11. Resolved decisions
 
-All six open decisions were resolved via a code-grounded Claude↔Codex review
-(full record + citations in `discussion/agreed-direction-2026-06-09.md` and the per-question
-`discussion/qN-*.md` threads).
+All six open decisions were resolved via a code-grounded Claude↔Codex review. **This
+section is the authoritative record** (the review transcript was kept as local working
+notes and is intentionally not committed). Each decision below is self-contained.
 
 1. **Package placement — DECIDED.** Core in **`backend/internal/vibeeval`** (loop, registry,
    reader/redactor/audit/message-store interfaces; **must not import `api`**). HTTP handler +
@@ -565,6 +603,6 @@ All six open decisions were resolved via a code-grounded Claude↔Codex review
 - [x] Typed tool registry interfaces and phase-based loading are defined (section 4).
 - [x] Reuse vs. new boundaries (provider router reuse; new loop) are stated (section 4.1).
 - [x] Implementation sequencing is defined (section 10).
-- [x] Open decisions resolved (section 11) via code-grounded Claude↔Codex review —
-      record in `discussion/agreed-direction-2026-06-09.md`.
+- [x] Open decisions resolved (section 11 is the authoritative record) via code-grounded
+      Claude↔Codex review.
 - [ ] Final review/approval by Atharva.
