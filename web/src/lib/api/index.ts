@@ -134,6 +134,17 @@ export {
   type ImportDatasetParams,
 } from "./datasets";
 export {
+  compareAgentTryouts,
+  createWorkspaceAgentTryout,
+  getWorkspaceAgentTryout,
+  getWorkspaceAgentTryoutEvents,
+  listAgentTryoutTemplates,
+  listWorkspaceAgentTryouts,
+  promoteAgentTryoutToEval,
+  rerunAgentTryout,
+  workspaceAgentTryoutsPath,
+} from "./agent-tryouts";
+export {
   EMPTY_REGRESSION_GATE_RULES_DRAFT,
   REGRESSION_BLOCKING_RULES,
   evaluateReleaseGate,

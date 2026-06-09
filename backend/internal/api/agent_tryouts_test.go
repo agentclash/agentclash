@@ -102,6 +102,62 @@ func TestAgentTryoutTemplatesExposeRuntimeMetadata(t *testing.T) {
 	}
 }
 
+func TestAgentTryoutOfficeTemplatesAreAvailableAndExecutable(t *testing.T) {
+	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), newFakeAgentTryoutRepository(uuid.New(), uuid.New()))
+	templates, err := manager.ListTemplates(context.Background())
+	if err != nil {
+		t.Fatalf("ListTemplates returned error: %v", err)
+	}
+	bySlug := make(map[string]AgentTryoutTemplate, len(templates))
+	for _, template := range templates {
+		bySlug[template.Slug] = template
+	}
+	for _, slug := range []string{"slide-deck", "spreadsheet-builder", "status-report", "inbox-triage"} {
+		template, ok := bySlug[slug]
+		if !ok {
+			t.Fatalf("office template %q not found", slug)
+		}
+		if !template.Available || template.UnavailableReason != "" {
+			t.Fatalf("%s availability = %v reason=%q, want available", slug, template.Available, template.UnavailableReason)
+		}
+		// Office templates draft documents only: no shell, no network, no side effects.
+		if !bytes.Contains(template.ToolPolicy, []byte(`"file_writer"`)) ||
+			!bytes.Contains(template.ToolPolicy, []byte(`"shell":"disabled"`)) ||
+			!bytes.Contains(template.ToolPolicy, []byte(`"network":{"mode":"disabled"`)) {
+			t.Fatalf("%s tool policy = %s, want file writer with disabled shell and network", slug, template.ToolPolicy)
+		}
+		if !bytes.Contains(template.Runtime, []byte(`"expected_artifacts"`)) ||
+			!bytes.Contains(template.Runtime, []byte(`"validation"`)) {
+			t.Fatalf("%s runtime = %s, want expected artifacts and validation", slug, template.Runtime)
+		}
+		// json_field is the only validator type these templates may use: it is the
+		// one the harness evaluation path supports without a dedicated runtime.
+		var runtime struct {
+			Validation struct {
+				Validators []struct {
+					Type string `json:"type"`
+				} `json:"validators"`
+			} `json:"validation"`
+		}
+		if err := json.Unmarshal(template.Runtime, &runtime); err != nil {
+			t.Fatalf("%s runtime is not valid JSON: %v", slug, err)
+		}
+		if len(runtime.Validation.Validators) == 0 {
+			t.Fatalf("%s runtime declares no validators", slug)
+		}
+		for _, validator := range runtime.Validation.Validators {
+			if validator.Type != "json_field" {
+				t.Fatalf("%s validator type = %q, want json_field", slug, validator.Type)
+			}
+		}
+		for _, raw := range []json.RawMessage{template.InputSchema, template.EvaluationSpec, template.DefaultModelPolicy} {
+			if !json.Valid(raw) {
+				t.Fatalf("%s template carries invalid JSON: %s", slug, raw)
+			}
+		}
+	}
+}
+
 func TestAgentTryoutManagerRejectsInvalidTemplateInputBeforeCreate(t *testing.T) {
 	repo := newFakeAgentTryoutRepository(uuid.New(), uuid.New())
 	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo)

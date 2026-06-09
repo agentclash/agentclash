@@ -1,6 +1,7 @@
 import {
   Bot,
   Rocket,
+  Sparkles,
   PackageCheck,
   PackageOpen,
   Play,
@@ -35,6 +36,11 @@ export const navSections: NavSection[] = [
   {
     title: "Agents",
     items: [
+      {
+        label: "Agent Tryouts",
+        href: (id) => `/workspaces/${id}/agent-tryouts`,
+        icon: Sparkles,
+      },
       {
         label: "Builds",
         href: (id) => `/workspaces/${id}/builds`,

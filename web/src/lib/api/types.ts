@@ -2638,6 +2638,161 @@ export interface WorkspaceEntitlementsResponse {
   };
 }
 
+// --- Agent Tryouts ---
+
+export type AgentTryoutStatus =
+  | "queued"
+  | "running"
+  | "completed"
+  | "failed"
+  | "cancelled";
+
+export type AgentTryoutRedactionStatus =
+  | "pending"
+  | "passed"
+  | "failed"
+  | "not_required";
+
+export interface AgentTryoutTemplate {
+  slug: string;
+  name: string;
+  description: string;
+  available: boolean;
+  unavailable_reason?: string;
+  input_schema: AgentTryoutInputSchema;
+  tool_policy: Record<string, unknown>;
+  runtime: Record<string, unknown>;
+  evaluation_spec: Record<string, unknown>;
+  default_model_policy: Record<string, unknown>;
+  anonymous_enabled: boolean;
+  max_input_bytes: number;
+  max_duration_seconds: number;
+  max_cost_usd: number;
+}
+
+export interface AgentTryoutInputSchema {
+  type: "object";
+  required?: string[];
+  properties?: Record<string, { type: string; minimum?: number; maximum?: number }>;
+}
+
+export interface AgentTryout {
+  id: string;
+  organization_id?: string;
+  workspace_id?: string;
+  template_slug: string;
+  status: AgentTryoutStatus;
+  input_snapshot: Record<string, unknown>;
+  template_snapshot: Record<string, unknown>;
+  tool_policy_snapshot: Record<string, unknown>;
+  evaluation_spec_snapshot: Record<string, unknown>;
+  selected_model_policy: Record<string, unknown>;
+  summary: AgentTryoutSummary;
+  redaction_status: AgentTryoutRedactionStatus;
+  run_id?: string;
+  parent_tryout_id?: string;
+  cost_limit_usd: number;
+  actual_cost_usd?: number;
+  latency_ms?: number;
+  max_duration_seconds: number;
+  created_by_user_id?: string;
+  claimed_by_user_id?: string;
+  claimed_at?: string;
+  expires_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AgentTryoutSummary {
+  code?: string;
+  message?: string;
+  [key: string]: unknown;
+}
+
+export type TryoutTimelineEventType =
+  | "started"
+  | "planning"
+  | "tool_call"
+  | "sandbox_command"
+  | "file_written"
+  | "file_activity"
+  | "validation"
+  | "scoring"
+  | "finished"
+  | "activity";
+
+export interface TryoutTimelineEvent {
+  cursor: number;
+  sequence: number;
+  type: TryoutTimelineEventType;
+  summary: string;
+  occurred_at: string;
+  payload?: Record<string, unknown>;
+}
+
+export interface AgentTryoutEventsResponse {
+  tryout_id: string;
+  status: AgentTryoutStatus;
+  run_id?: string;
+  cost_limit_usd: number;
+  actual_cost_usd?: number;
+  latency_ms?: number;
+  events: TryoutTimelineEvent[];
+  next_cursor: number;
+  has_more: boolean;
+}
+
+export interface AgentTryoutModelPolicyModel {
+  provider: string;
+  model: string;
+}
+
+export interface AgentTryoutModelPolicy {
+  mode?: string;
+  max_models?: number;
+  models?: AgentTryoutModelPolicyModel[];
+}
+
+export interface CreateAgentTryoutInput {
+  template_slug: string;
+  input: Record<string, unknown>;
+}
+
+export interface RerunAgentTryoutInput {
+  selected_model_policy: AgentTryoutModelPolicy;
+}
+
+export interface PromoteAgentTryoutInput {
+  target?: string;
+  title?: string;
+}
+
+export interface AgentTryoutPromotionResult {
+  target: string;
+  conversation_id: string;
+  draft_id: string;
+}
+
+export interface AgentTryoutCompareParticipant {
+  id: string;
+  template_slug: string;
+  status: AgentTryoutStatus;
+  redaction_status: AgentTryoutRedactionStatus;
+  selected_model_policy: AgentTryoutModelPolicy;
+  run_id?: string;
+  parent_tryout_id?: string;
+  cost_limit_usd: number;
+  actual_cost_usd?: number;
+  latency_ms?: number;
+  summary: AgentTryoutSummary;
+  events_url: string;
+}
+
+export interface AgentTryoutCompareResult {
+  workspace_id: string;
+  participants: AgentTryoutCompareParticipant[];
+}
+
 // --- Errors ---
 
 /** Standard error envelope returned by all backend error responses. */
