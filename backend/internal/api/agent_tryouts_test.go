@@ -921,8 +921,10 @@ type fakeAgentTryoutRepository struct {
 	countAnonymousErr  error
 	sumAnonymousErr    error
 	hostedSpendUSD     float64
-	runEvents          []repository.RunEvent
-	runEventsErr       error
+	runEvents           []repository.RunEvent
+	runEventsErr        error
+	createdConversation repository.CreateVibeEvalConversationParams
+	createdDraft        repository.CreateVibeEvalDraftParams
 }
 
 func newFakeAgentTryoutRepository(orgID, workspaceID uuid.UUID) *fakeAgentTryoutRepository {
@@ -981,6 +983,7 @@ func (r *fakeAgentTryoutRepository) CreateAgentTryout(_ context.Context, params 
 		MaxDurationSeconds:       params.MaxDurationSeconds,
 		AnonymousFingerprintHash: params.AnonymousFingerprintHash,
 		CreatedByUserID:          params.CreatedByUserID,
+		ParentTryoutID:           params.ParentTryoutID,
 		ExpiresAt:                params.ExpiresAt,
 		CreatedAt:                now,
 		UpdatedAt:                now,
@@ -1236,6 +1239,30 @@ func (r *fakeAgentTryoutRepository) GetActivePublicShareLinkByKey(_ context.Cont
 	return repository.PublicShareLink{}, repository.ErrPublicShareLinkNotFound
 }
 
+func (r *fakeAgentTryoutRepository) CreateVibeEvalConversation(_ context.Context, params repository.CreateVibeEvalConversationParams) (repository.VibeEvalConversation, error) {
+	r.createdConversation = params
+	return repository.VibeEvalConversation{
+		ID:             uuid.New(),
+		OrganizationID: params.OrganizationID,
+		WorkspaceID:    params.WorkspaceID,
+		Title:          params.Title,
+		Phase:          params.Phase,
+		Status:         params.Status,
+	}, nil
+}
+
+func (r *fakeAgentTryoutRepository) CreateVibeEvalDraft(_ context.Context, params repository.CreateVibeEvalDraftParams) (repository.VibeEvalDraft, error) {
+	r.createdDraft = params
+	return repository.VibeEvalDraft{
+		ID:             uuid.New(),
+		OrganizationID: params.OrganizationID,
+		WorkspaceID:    params.WorkspaceID,
+		ConversationID: params.ConversationID,
+		DraftKind:      params.DraftKind,
+		Content:        params.Content,
+	}, nil
+}
+
 type fakeAgentTryoutService struct {
 	tryout               repository.AgentTryout
 	templates            []AgentTryoutTemplate
@@ -1310,4 +1337,16 @@ func (s *fakeAgentTryoutService) ClaimTryout(context.Context, Caller, ClaimAgent
 
 func (s *fakeAgentTryoutService) CreatePrivateShare(context.Context, Caller, uuid.UUID) (CreateAgentTryoutShareResult, error) {
 	return CreateAgentTryoutShareResult{}, nil
+}
+
+func (s *fakeAgentTryoutService) RerunWorkspaceTryout(context.Context, Caller, RerunAgentTryoutInput) (repository.AgentTryout, error) {
+	return repository.AgentTryout{}, nil
+}
+
+func (s *fakeAgentTryoutService) CompareWorkspaceTryouts(context.Context, Caller, CompareAgentTryoutsInput) (AgentTryoutCompareResult, error) {
+	return AgentTryoutCompareResult{}, nil
+}
+
+func (s *fakeAgentTryoutService) PromoteTryoutToEval(context.Context, Caller, PromoteAgentTryoutInput) (AgentTryoutPromotionResult, error) {
+	return AgentTryoutPromotionResult{}, nil
 }

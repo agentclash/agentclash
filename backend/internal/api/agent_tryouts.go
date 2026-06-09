@@ -37,6 +37,16 @@ var (
 	ErrAgentTryoutHostedSpendExhausted      = errors.New("agent tryout hosted spend exhausted")
 	ErrAgentTryoutCostCapExceeded           = errors.New("agent tryout cost cap exceeded")
 	ErrAgentTryoutRedactionNotReady         = errors.New("agent tryout redaction not ready")
+
+	// Conversion-flow errors (#947: rerun / compare / promote-to-eval).
+	ErrAgentTryoutSignInRequired              = errors.New("agent tryout sign-in required")
+	ErrAgentTryoutModelPolicyInvalid          = errors.New("agent tryout model policy invalid")
+	ErrAgentTryoutModelUnavailable            = errors.New("agent tryout model unavailable")
+	ErrAgentTryoutRerunProviderKeyRequired    = errors.New("agent tryout rerun provider key required")
+	ErrAgentTryoutRerunInsufficientCredits    = errors.New("agent tryout rerun insufficient credits")
+	ErrAgentTryoutCompareCardinality          = errors.New("agent tryout compare requires 2-4 tryouts")
+	ErrAgentTryoutPromotionTargetUnsupported  = errors.New("agent tryout promotion target unsupported")
+	ErrAgentTryoutNotPromotable               = errors.New("agent tryout is not completed")
 )
 
 type AgentTryoutRepository interface {
@@ -59,6 +69,8 @@ type AgentTryoutRepository interface {
 	ClaimAgentTryout(ctx context.Context, params repository.ClaimAgentTryoutParams) (repository.AgentTryout, error)
 	CreatePublicShareLink(ctx context.Context, params repository.CreatePublicShareLinkParams) (repository.PublicShareLink, error)
 	GetActivePublicShareLinkByKey(ctx context.Context, key string) (repository.PublicShareLink, error)
+	CreateVibeEvalConversation(ctx context.Context, params repository.CreateVibeEvalConversationParams) (repository.VibeEvalConversation, error)
+	CreateVibeEvalDraft(ctx context.Context, params repository.CreateVibeEvalDraftParams) (repository.VibeEvalDraft, error)
 }
 
 type AgentTryoutService interface {
@@ -73,6 +85,9 @@ type AgentTryoutService interface {
 	ListWorkspaceTryouts(ctx context.Context, caller Caller, workspaceID uuid.UUID, limit, offset int32) ([]repository.AgentTryout, error)
 	ClaimTryout(ctx context.Context, caller Caller, input ClaimAgentTryoutInput) (repository.AgentTryout, error)
 	CreatePrivateShare(ctx context.Context, caller Caller, id uuid.UUID) (CreateAgentTryoutShareResult, error)
+	RerunWorkspaceTryout(ctx context.Context, caller Caller, input RerunAgentTryoutInput) (repository.AgentTryout, error)
+	CompareWorkspaceTryouts(ctx context.Context, caller Caller, input CompareAgentTryoutsInput) (AgentTryoutCompareResult, error)
+	PromoteTryoutToEval(ctx context.Context, caller Caller, input PromoteAgentTryoutInput) (AgentTryoutPromotionResult, error)
 }
 
 type AgentTryoutTemplate struct {
@@ -140,6 +155,7 @@ type AgentTryoutManager struct {
 	templates  map[string]AgentTryoutTemplate
 	execution  *agentTryoutExecutionDispatcher
 	quota      *AgentTryoutQuotaConfig
+	rerunGate  AgentTryoutRerunGate
 }
 
 func NewAgentTryoutManager(authorizer WorkspaceAuthorizer, repo AgentTryoutRepository) *AgentTryoutManager {
@@ -913,6 +929,9 @@ func registerProtectedAgentTryoutRoutes(router chi.Router, logger *slog.Logger, 
 	router.Get("/workspaces/{workspaceID}/agent-tryouts/{tryoutID}/events", getWorkspaceAgentTryoutEventsHandler(logger, service))
 	router.Post("/agent-tryouts/{tryoutID}/claim", claimAgentTryoutHandler(logger, service))
 	router.Post("/agent-tryouts/{tryoutID}/share", createAgentTryoutShareHandler(logger, service))
+	router.Post("/agent-tryouts/{tryoutID}/rerun", rerunAgentTryoutHandler(logger, service))
+	router.Post("/agent-tryouts/{tryoutID}/promote-to-eval", promoteAgentTryoutHandler(logger, service))
+	router.Post("/workspaces/{workspaceID}/agent-tryouts/compare", compareAgentTryoutsHandler(logger, service))
 }
 
 func listAgentTryoutTemplatesHandler(logger *slog.Logger, service AgentTryoutService) http.HandlerFunc {
@@ -1260,6 +1279,22 @@ func writeAgentTryoutError(w http.ResponseWriter, logger *slog.Logger, err error
 		writeError(w, http.StatusConflict, "agent_tryout_already_claimed", "agent tryout is already claimed")
 	case errors.Is(err, ErrAgentTryoutRedactionNotReady):
 		writeError(w, http.StatusConflict, "agent_tryout_redaction_not_ready", "This tryout's evidence is still being redacted for safe sharing. Try again once it has finished.")
+	case errors.Is(err, ErrAgentTryoutSignInRequired):
+		writeError(w, http.StatusUnauthorized, "sign_in_required", "Sign in to rerun, compare, or promote tryouts.")
+	case errors.Is(err, ErrAgentTryoutModelPolicyInvalid):
+		writeError(w, http.StatusBadRequest, "invalid_model_policy", err.Error())
+	case errors.Is(err, ErrAgentTryoutModelUnavailable):
+		writeError(w, http.StatusUnprocessableEntity, "model_unavailable", err.Error())
+	case errors.Is(err, ErrAgentTryoutRerunProviderKeyRequired):
+		writeError(w, http.StatusPaymentRequired, "provider_key_required", "Connect a provider key for this model to rerun.")
+	case errors.Is(err, ErrAgentTryoutRerunInsufficientCredits):
+		writeError(w, http.StatusPaymentRequired, "insufficient_credits", "Not enough hosted credits to rerun. Add credits or connect a provider key.")
+	case errors.Is(err, ErrAgentTryoutCompareCardinality):
+		writeError(w, http.StatusBadRequest, "compare_cardinality", "Compare requires between 2 and 4 tryouts.")
+	case errors.Is(err, ErrAgentTryoutPromotionTargetUnsupported):
+		writeError(w, http.StatusBadRequest, "promotion_target_unsupported", err.Error())
+	case errors.Is(err, ErrAgentTryoutNotPromotable):
+		writeError(w, http.StatusConflict, "agent_tryout_not_promotable", "Only completed tryouts can be promoted to an eval.")
 	case errors.Is(err, ErrInvalidAgentTryoutInput):
 		writeError(w, http.StatusBadRequest, "invalid_agent_tryout_input", err.Error())
 	case errors.Is(err, ErrForbidden):

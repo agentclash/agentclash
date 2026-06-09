@@ -94,6 +94,7 @@ type AgentTryout struct {
 	ExpiresAt                pgtype.Timestamptz
 	CreatedAt                pgtype.Timestamptz
 	UpdatedAt                pgtype.Timestamptz
+	ParentTryoutID           *uuid.UUID
 }
 
 type BillingAccount struct {

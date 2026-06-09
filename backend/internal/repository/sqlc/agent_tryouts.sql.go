@@ -25,7 +25,7 @@ WHERE id = $5
   AND organization_id IS NULL
   AND workspace_id IS NULL
   AND claimed_by_user_id IS NULL
-RETURNING id, organization_id, workspace_id, template_slug, status, input_snapshot, template_snapshot, tool_policy_snapshot, evaluation_spec_snapshot, selected_model_policy, summary, redaction_status, run_id, cost_limit_usd, actual_cost_usd, latency_ms, max_duration_seconds, anonymous_fingerprint_hash, created_by_user_id, claimed_by_user_id, claimed_at, expires_at, created_at, updated_at
+RETURNING id, organization_id, workspace_id, template_slug, status, input_snapshot, template_snapshot, tool_policy_snapshot, evaluation_spec_snapshot, selected_model_policy, summary, redaction_status, run_id, cost_limit_usd, actual_cost_usd, latency_ms, max_duration_seconds, anonymous_fingerprint_hash, created_by_user_id, claimed_by_user_id, claimed_at, expires_at, created_at, updated_at, parent_tryout_id
 `
 
 type ClaimAgentTryoutParams struct {
@@ -70,6 +70,7 @@ func (q *Queries) ClaimAgentTryout(ctx context.Context, arg ClaimAgentTryoutPara
 		&i.ExpiresAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ParentTryoutID,
 	)
 	return i, err
 }
@@ -94,6 +95,7 @@ INSERT INTO agent_tryouts (
     max_duration_seconds,
     anonymous_fingerprint_hash,
     created_by_user_id,
+    parent_tryout_id,
     expires_at
 )
 VALUES (
@@ -115,9 +117,10 @@ VALUES (
     $16,
     $17,
     $18,
-    $19
+    $19,
+    $20
 )
-RETURNING id, organization_id, workspace_id, template_slug, status, input_snapshot, template_snapshot, tool_policy_snapshot, evaluation_spec_snapshot, selected_model_policy, summary, redaction_status, run_id, cost_limit_usd, actual_cost_usd, latency_ms, max_duration_seconds, anonymous_fingerprint_hash, created_by_user_id, claimed_by_user_id, claimed_at, expires_at, created_at, updated_at
+RETURNING id, organization_id, workspace_id, template_slug, status, input_snapshot, template_snapshot, tool_policy_snapshot, evaluation_spec_snapshot, selected_model_policy, summary, redaction_status, run_id, cost_limit_usd, actual_cost_usd, latency_ms, max_duration_seconds, anonymous_fingerprint_hash, created_by_user_id, claimed_by_user_id, claimed_at, expires_at, created_at, updated_at, parent_tryout_id
 `
 
 type CreateAgentTryoutParams struct {
@@ -139,6 +142,7 @@ type CreateAgentTryoutParams struct {
 	MaxDurationSeconds       int32
 	AnonymousFingerprintHash *string
 	CreatedByUserID          *uuid.UUID
+	ParentTryoutID           *uuid.UUID
 	ExpiresAt                pgtype.Timestamptz
 }
 
@@ -162,6 +166,7 @@ func (q *Queries) CreateAgentTryout(ctx context.Context, arg CreateAgentTryoutPa
 		arg.MaxDurationSeconds,
 		arg.AnonymousFingerprintHash,
 		arg.CreatedByUserID,
+		arg.ParentTryoutID,
 		arg.ExpiresAt,
 	)
 	var i AgentTryout
@@ -190,12 +195,13 @@ func (q *Queries) CreateAgentTryout(ctx context.Context, arg CreateAgentTryoutPa
 		&i.ExpiresAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ParentTryoutID,
 	)
 	return i, err
 }
 
 const getAgentTryoutByID = `-- name: GetAgentTryoutByID :one
-SELECT id, organization_id, workspace_id, template_slug, status, input_snapshot, template_snapshot, tool_policy_snapshot, evaluation_spec_snapshot, selected_model_policy, summary, redaction_status, run_id, cost_limit_usd, actual_cost_usd, latency_ms, max_duration_seconds, anonymous_fingerprint_hash, created_by_user_id, claimed_by_user_id, claimed_at, expires_at, created_at, updated_at
+SELECT id, organization_id, workspace_id, template_slug, status, input_snapshot, template_snapshot, tool_policy_snapshot, evaluation_spec_snapshot, selected_model_policy, summary, redaction_status, run_id, cost_limit_usd, actual_cost_usd, latency_ms, max_duration_seconds, anonymous_fingerprint_hash, created_by_user_id, claimed_by_user_id, claimed_at, expires_at, created_at, updated_at, parent_tryout_id
 FROM agent_tryouts
 WHERE id = $1
 LIMIT 1
@@ -233,12 +239,13 @@ func (q *Queries) GetAgentTryoutByID(ctx context.Context, arg GetAgentTryoutByID
 		&i.ExpiresAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ParentTryoutID,
 	)
 	return i, err
 }
 
 const listAgentTryoutsByWorkspaceID = `-- name: ListAgentTryoutsByWorkspaceID :many
-SELECT id, organization_id, workspace_id, template_slug, status, input_snapshot, template_snapshot, tool_policy_snapshot, evaluation_spec_snapshot, selected_model_policy, summary, redaction_status, run_id, cost_limit_usd, actual_cost_usd, latency_ms, max_duration_seconds, anonymous_fingerprint_hash, created_by_user_id, claimed_by_user_id, claimed_at, expires_at, created_at, updated_at
+SELECT id, organization_id, workspace_id, template_slug, status, input_snapshot, template_snapshot, tool_policy_snapshot, evaluation_spec_snapshot, selected_model_policy, summary, redaction_status, run_id, cost_limit_usd, actual_cost_usd, latency_ms, max_duration_seconds, anonymous_fingerprint_hash, created_by_user_id, claimed_by_user_id, claimed_at, expires_at, created_at, updated_at, parent_tryout_id
 FROM agent_tryouts
 WHERE workspace_id = $1
 ORDER BY created_at DESC
@@ -285,6 +292,7 @@ func (q *Queries) ListAgentTryoutsByWorkspaceID(ctx context.Context, arg ListAge
 			&i.ExpiresAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.ParentTryoutID,
 		); err != nil {
 			return nil, err
 		}
@@ -300,7 +308,7 @@ const setAgentTryoutRunID = `-- name: SetAgentTryoutRunID :one
 UPDATE agent_tryouts
 SET run_id = $1
 WHERE id = $2
-RETURNING id, organization_id, workspace_id, template_slug, status, input_snapshot, template_snapshot, tool_policy_snapshot, evaluation_spec_snapshot, selected_model_policy, summary, redaction_status, run_id, cost_limit_usd, actual_cost_usd, latency_ms, max_duration_seconds, anonymous_fingerprint_hash, created_by_user_id, claimed_by_user_id, claimed_at, expires_at, created_at, updated_at
+RETURNING id, organization_id, workspace_id, template_slug, status, input_snapshot, template_snapshot, tool_policy_snapshot, evaluation_spec_snapshot, selected_model_policy, summary, redaction_status, run_id, cost_limit_usd, actual_cost_usd, latency_ms, max_duration_seconds, anonymous_fingerprint_hash, created_by_user_id, claimed_by_user_id, claimed_at, expires_at, created_at, updated_at, parent_tryout_id
 `
 
 type SetAgentTryoutRunIDParams struct {
@@ -336,6 +344,7 @@ func (q *Queries) SetAgentTryoutRunID(ctx context.Context, arg SetAgentTryoutRun
 		&i.ExpiresAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ParentTryoutID,
 	)
 	return i, err
 }
@@ -349,7 +358,7 @@ SET
     latency_ms = COALESCE($4, latency_ms),
     redaction_status = COALESCE($5, redaction_status)
 WHERE id = $6
-RETURNING id, organization_id, workspace_id, template_slug, status, input_snapshot, template_snapshot, tool_policy_snapshot, evaluation_spec_snapshot, selected_model_policy, summary, redaction_status, run_id, cost_limit_usd, actual_cost_usd, latency_ms, max_duration_seconds, anonymous_fingerprint_hash, created_by_user_id, claimed_by_user_id, claimed_at, expires_at, created_at, updated_at
+RETURNING id, organization_id, workspace_id, template_slug, status, input_snapshot, template_snapshot, tool_policy_snapshot, evaluation_spec_snapshot, selected_model_policy, summary, redaction_status, run_id, cost_limit_usd, actual_cost_usd, latency_ms, max_duration_seconds, anonymous_fingerprint_hash, created_by_user_id, claimed_by_user_id, claimed_at, expires_at, created_at, updated_at, parent_tryout_id
 `
 
 type UpdateAgentTryoutStatusParams struct {
@@ -396,6 +405,7 @@ func (q *Queries) UpdateAgentTryoutStatus(ctx context.Context, arg UpdateAgentTr
 		&i.ExpiresAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ParentTryoutID,
 	)
 	return i, err
 }

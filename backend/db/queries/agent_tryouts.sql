@@ -18,6 +18,7 @@ INSERT INTO agent_tryouts (
     max_duration_seconds,
     anonymous_fingerprint_hash,
     created_by_user_id,
+    parent_tryout_id,
     expires_at
 )
 VALUES (
@@ -39,6 +40,7 @@ VALUES (
     @max_duration_seconds,
     sqlc.narg('anonymous_fingerprint_hash'),
     sqlc.narg('created_by_user_id'),
+    sqlc.narg('parent_tryout_id'),
     sqlc.narg('expires_at')
 )
 RETURNING *;

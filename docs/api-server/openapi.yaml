@@ -5436,6 +5436,128 @@ paths:
         "409":
           $ref: "#/components/responses/ConflictError"
 
+  /v1/agent-tryouts/{id}/rerun:
+    post:
+      operationId: rerunAgentTryout
+      summary: Rerun a workspace tryout with a different model policy
+      description: >-
+        Creates a new tryout that reuses the source tryout's template and input
+        but runs under a different model policy, linked to the source via
+        `parent_tryout_id`. The source is never mutated. Anonymous/unclaimed
+        source tryouts return a sign-in-required error; an invalid model policy
+        or an unavailable provider/model returns a product error.
+      tags: [AgentTryouts]
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/ResourceID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RerunAgentTryoutRequest"
+      responses:
+        "201":
+          description: Rerun tryout queued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentTryoutResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "402":
+          description: Provider key required or insufficient credits to rerun.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "422":
+          description: The requested model/provider is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/agent-tryouts/{id}/promote-to-eval:
+    post:
+      operationId: promoteAgentTryoutToEval
+      summary: Promote a workspace tryout into a repeatable eval draft
+      description: >-
+        Converts a completed workspace tryout into a durable Vibe Eval draft,
+        preserving its template, input, tool policy, evaluation spec, and the
+        template's expected artifacts so the eval can be run again later. v1
+        supports only the `vibe_eval` target; any other target returns 400. The
+        request body is optional (an empty POST uses the default target).
+      tags: [AgentTryouts]
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/ResourceID"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PromoteAgentTryoutRequest"
+      responses:
+        "201":
+          description: Promotion draft created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentTryoutPromotionResult"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /v1/workspaces/{workspaceID}/agent-tryouts/compare:
+    post:
+      operationId: compareAgentTryouts
+      summary: Compare 2-4 workspace tryouts side by side
+      description: >-
+        Returns a read-only side-by-side comparison of 2–4 tryouts that all
+        belong to the workspace: per-tryout model policy, status, cost, latency,
+        summary, and a link to the full event evidence. Any id outside the
+        workspace fails closed as not-found.
+      tags: [AgentTryouts]
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CompareAgentTryoutsRequest"
+      responses:
+        "200":
+          description: Side-by-side comparison
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentTryoutCompareResult"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
   /v1/workspaces/{workspaceID}/playgrounds:
     post:
       operationId: createPlayground
@@ -13071,6 +13193,107 @@ components:
           $ref: "#/components/schemas/AgentTryoutShareLink"
         token:
           type: string
+
+    RerunAgentTryoutRequest:
+      type: object
+      required: [selected_model_policy]
+      properties:
+        selected_model_policy:
+          type: object
+          additionalProperties: true
+          description: >-
+            The model policy to rerun under. Must set a `mode` or at least one
+            explicit `models[]` entry; explicit models must name a known
+            provider.
+
+    PromoteAgentTryoutRequest:
+      type: object
+      properties:
+        target:
+          type: string
+          enum: [vibe_eval]
+          default: vibe_eval
+          description: Promotion target. Only `vibe_eval` is supported in v1.
+        title:
+          type: string
+          description: Optional title for the created draft conversation.
+
+    AgentTryoutPromotionResult:
+      type: object
+      required: [target, conversation_id, draft_id]
+      properties:
+        target:
+          type: string
+        conversation_id:
+          type: string
+          format: uuid
+        draft_id:
+          type: string
+          format: uuid
+
+    CompareAgentTryoutsRequest:
+      type: object
+      required: [tryout_ids]
+      properties:
+        tryout_ids:
+          type: array
+          minItems: 2
+          maxItems: 4
+          items:
+            type: string
+            format: uuid
+
+    AgentTryoutCompareParticipant:
+      type: object
+      required: [id, template_slug, status, redaction_status, selected_model_policy, cost_limit_usd, summary, events_url]
+      properties:
+        id:
+          type: string
+          format: uuid
+        template_slug:
+          type: string
+        status:
+          type: string
+          enum: [queued, running, completed, failed, cancelled]
+        redaction_status:
+          type: string
+          enum: [pending, passed, failed, not_required]
+        selected_model_policy:
+          type: object
+          additionalProperties: true
+        run_id:
+          type: string
+          format: uuid
+        parent_tryout_id:
+          type: string
+          format: uuid
+        cost_limit_usd:
+          type: number
+          format: double
+        actual_cost_usd:
+          type: number
+          format: double
+        latency_ms:
+          type: integer
+          format: int64
+        summary:
+          type: object
+          additionalProperties: true
+        events_url:
+          type: string
+          description: Link to the workspace events timeline for full evidence.
+
+    AgentTryoutCompareResult:
+      type: object
+      required: [workspace_id, participants]
+      properties:
+        workspace_id:
+          type: string
+          format: uuid
+        participants:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentTryoutCompareParticipant"
 
     # --- Playgrounds ---
 
