@@ -7,6 +7,7 @@ import {
   faqSchema,
   organizationSchema,
   productSchema,
+  softwareSourceCodeSchema,
   websiteSchema,
 } from "@/components/marketing/json-ld";
 import { hasPublishedBenchmarks } from "@/lib/benchmarks";
@@ -57,6 +58,7 @@ export default async function RootPage() {
         id="agentclash-homepage-schema"
         data={[
           softwareApplicationSchema,
+          softwareSourceCodeSchema(),
           organizationSchema(),
           websiteSchema(),
           faqSchema(HOME_FAQ),

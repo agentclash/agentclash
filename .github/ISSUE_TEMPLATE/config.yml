@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://www.agentclash.dev/docs
+    about: Quickstart, guides, CLI reference, and challenge-pack authoring.
+  - name: Security vulnerability
+    url: https://github.com/agentclash/agentclash/security/advisories/new
+    about: Report a vulnerability privately — please do not open a public issue.
