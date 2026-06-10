@@ -41,6 +41,7 @@
   ],
   "files": [
     "bin/agentclash.js",
+    "AGENTS.md",
     "README.md",
     "LICENSE"
   ],

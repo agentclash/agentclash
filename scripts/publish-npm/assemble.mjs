@@ -178,6 +178,7 @@ function main() {
     join(repoRoot, "npm", "cli", "bin", "agentclash.js"),
     join(cliOutDir, "bin", "agentclash.js"),
   );
+  copyFileSync(join(repoRoot, "npm", "cli", "AGENTS.md"), join(cliOutDir, "AGENTS.md"));
   copyFileSync(join(repoRoot, "npm", "cli", "README.md"), join(cliOutDir, "README.md"));
   copyFileSync(rootLicense, join(cliOutDir, "LICENSE"));
 

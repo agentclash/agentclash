@@ -115,9 +115,17 @@ After installing, verify the integration (swap `claude` for your agent):
 agentclash integration claude doctor      # report installed / missing / drifted skills
 ```
 
-Project-local OpenCode installs use `.opencode/skills/` — use the
-[agent-skills bundle](https://github.com/agentclash/agent-skills) installer with
-`--project` until the CLI adds a project scope flag.
+Project-local OpenCode installs use `.opencode/skills/`. There is no `--project`
+flag; export straight into that directory instead:
+
+```bash
+agentclash skills export --dir ./.opencode/skills
+```
+
+Do not add `--host opencode` here: `--host` nests skills under the host's
+home-relative path (for OpenCode, `.config/opencode/skills/`), which is right for
+a home-directory install but would double-nest inside a project-local directory.
+`--dir` alone writes the flat `<skill>/SKILL.md` layout.
 
 ### Offline export
 
