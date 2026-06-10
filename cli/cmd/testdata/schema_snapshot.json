@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "cli_version": "test",
   "global_flags": [
     {
@@ -23,7 +23,12 @@
       "name": "output",
       "shorthand": "o",
       "usage": "Output format: table, json, yaml",
-      "type": "string"
+      "type": "string",
+      "allowed_values": [
+        "table",
+        "json",
+        "yaml"
+      ]
     },
     {
       "name": "quiet",
@@ -151,7 +156,13 @@
               "name": "cancel",
               "path": "agentclash agent-harness execution cancel",
               "short": "Cancel an Agent Harness execution",
-              "runnable": true
+              "runnable": true,
+              "args": [
+                {
+                  "name": "execution-id",
+                  "required": true
+                }
+              ]
             },
             {
               "name": "failure-review",
@@ -163,13 +174,25 @@
                   "name": "get",
                   "path": "agentclash agent-harness execution failure-review get",
                   "short": "Get Agent Harness failure review",
-                  "runnable": true
+                  "runnable": true,
+                  "args": [
+                    {
+                      "name": "execution-id",
+                      "required": true
+                    }
+                  ]
                 },
                 {
                   "name": "update",
                   "path": "agentclash agent-harness execution failure-review update",
                   "short": "Update Agent Harness failure review annotations",
                   "runnable": true,
+                  "args": [
+                    {
+                      "name": "execution-id",
+                      "required": true
+                    }
+                  ],
                   "flags": [
                     {
                       "name": "from-file",
@@ -224,13 +247,25 @@
               "name": "get",
               "path": "agentclash agent-harness execution get",
               "short": "Get an agent harness execution",
-              "runnable": true
+              "runnable": true,
+              "args": [
+                {
+                  "name": "execution-id",
+                  "required": true
+                }
+              ]
             },
             {
               "name": "promote-task",
               "path": "agentclash agent-harness execution promote-task",
               "short": "Promote a prior harness run into a private suite task",
               "runnable": true,
+              "args": [
+                {
+                  "name": "execution-id",
+                  "required": true
+                }
+              ],
               "flags": [
                 {
                   "name": "failure-class",
@@ -274,6 +309,12 @@
               "path": "agentclash agent-harness execution retry",
               "short": "Retry a terminal Agent Harness execution",
               "runnable": true,
+              "args": [
+                {
+                  "name": "execution-id",
+                  "required": true
+                }
+              ],
               "flags": [
                 {
                   "name": "idempotency-key",
@@ -288,7 +329,13 @@
           "name": "executions",
           "path": "agentclash agent-harness executions",
           "short": "List executions for an agent harness",
-          "runnable": true
+          "runnable": true,
+          "args": [
+            {
+              "name": "harness-id",
+              "required": true
+            }
+          ]
         },
         {
           "name": "failures",
@@ -308,7 +355,13 @@
           "name": "get",
           "path": "agentclash agent-harness get",
           "short": "Get an agent harness",
-          "runnable": true
+          "runnable": true,
+          "args": [
+            {
+              "name": "id",
+              "required": true
+            }
+          ]
         },
         {
           "name": "list",
@@ -321,6 +374,12 @@
           "path": "agentclash agent-harness run",
           "short": "Start an agent harness execution",
           "runnable": true,
+          "args": [
+            {
+              "name": "harness-id",
+              "required": true
+            }
+          ],
           "flags": [
             {
               "name": "follow",
@@ -392,6 +451,12 @@
               "path": "agentclash agent-harness suite rankings",
               "short": "Get Agent Harness suite rankings",
               "runnable": true,
+              "args": [
+                {
+                  "name": "suite-id",
+                  "required": true
+                }
+              ],
               "flags": [
                 {
                   "name": "k",
@@ -411,6 +476,12 @@
               "path": "agentclash agent-harness suite run",
               "short": "Start suite runs across one or more harnesses",
               "runnable": true,
+              "args": [
+                {
+                  "name": "suite-id",
+                  "required": true
+                }
+              ],
               "flags": [
                 {
                   "name": "harness",
@@ -430,7 +501,13 @@
               "name": "tasks",
               "path": "agentclash agent-harness suite tasks",
               "short": "List public tasks for an Agent Harness suite",
-              "runnable": true
+              "runnable": true,
+              "args": [
+                {
+                  "name": "suite-id",
+                  "required": true
+                }
+              ]
             }
           ]
         }
@@ -446,7 +523,13 @@
           "name": "download",
           "path": "agentclash artifact download",
           "short": "Download an artifact",
-          "runnable": true
+          "runnable": true,
+          "args": [
+            {
+              "name": "artifactId",
+              "required": true
+            }
+          ]
         },
         {
           "name": "list",
@@ -459,6 +542,12 @@
           "path": "agentclash artifact upload",
           "short": "Upload an artifact",
           "runnable": true,
+          "args": [
+            {
+              "name": "file",
+              "required": true
+            }
+          ],
           "flags": [
             {
               "name": "metadata",
@@ -487,13 +576,25 @@
           "name": "validate-voice-manifest",
           "path": "agentclash artifact validate-voice-manifest",
           "short": "Validate a voice artifact manifest JSON file against the AgentClash schema",
-          "runnable": true
+          "runnable": true,
+          "args": [
+            {
+              "name": "file",
+              "required": true
+            }
+          ]
         },
         {
           "name": "validate-voice-report",
           "path": "agentclash artifact validate-voice-report",
           "short": "Validate a voice report JSON file against an AgentClash schema",
           "runnable": true,
+          "args": [
+            {
+              "name": "file",
+              "required": true
+            }
+          ],
           "flags": [
             {
               "name": "schema",
@@ -558,7 +659,13 @@
               "name": "revoke",
               "path": "agentclash auth tokens revoke",
               "short": "Revoke a CLI token",
-              "runnable": true
+              "runnable": true,
+              "args": [
+                {
+                  "name": "token-id",
+                  "required": true
+                }
+              ]
             }
           ]
         }
@@ -581,6 +688,12 @@
           "path": "agentclash baseline set",
           "short": "Bookmark a run as the default baseline for the current workspace",
           "runnable": true,
+          "args": [
+            {
+              "name": "run",
+              "required": false
+            }
+          ],
           "flags": [
             {
               "name": "agent",
@@ -626,7 +739,13 @@
           "name": "get",
           "path": "agentclash build get",
           "short": "Get agent build with version history",
-          "runnable": true
+          "runnable": true,
+          "args": [
+            {
+              "name": "id",
+              "required": true
+            }
+          ]
         },
         {
           "name": "list",
@@ -645,6 +764,12 @@
               "path": "agentclash build version create",
               "short": "Create a new draft version",
               "runnable": true,
+              "args": [
+                {
+                  "name": "buildId",
+                  "required": true
+                }
+              ],
               "flags": [
                 {
                   "name": "agent-kind",
@@ -667,13 +792,25 @@
               "name": "get",
               "path": "agentclash build version get",
               "short": "Get a build version",
-              "runnable": true
+              "runnable": true,
+              "args": [
+                {
+                  "name": "versionId",
+                  "required": true
+                }
+              ]
             },
             {
               "name": "ready",
               "path": "agentclash build version ready",
               "short": "Mark a version as ready (immutable, deployable)",
-              "runnable": true
+              "runnable": true,
+              "args": [
+                {
+                  "name": "versionId",
+                  "required": true
+                }
+              ]
             },
             {
               "name": "templates",
@@ -686,6 +823,12 @@
               "path": "agentclash build version update",
               "short": "Update a draft build version",
               "runnable": true,
+              "args": [
+                {
+                  "name": "versionId",
+                  "required": true
+                }
+              ],
               "flags": [
                 {
                   "name": "spec-file",
@@ -698,7 +841,13 @@
               "name": "validate",
               "path": "agentclash build version validate",
               "short": "Validate a build version",
-              "runnable": true
+              "runnable": true,
+              "args": [
+                {
+                  "name": "versionId",
+                  "required": true
+                }
+              ]
             }
           ]
         }
@@ -718,6 +867,12 @@
           "path": "agentclash challenge-pack init",
           "short": "Scaffold a minimal challenge pack YAML bundle",
           "runnable": true,
+          "args": [
+            {
+              "name": "file",
+              "required": true
+            }
+          ],
           "flags": [
             {
               "name": "force",
@@ -753,13 +908,25 @@
           "name": "publish",
           "path": "agentclash challenge-pack publish",
           "short": "Publish a challenge pack YAML bundle",
-          "runnable": true
+          "runnable": true,
+          "args": [
+            {
+              "name": "file",
+              "required": true
+            }
+          ]
         },
         {
           "name": "validate",
           "path": "agentclash challenge-pack validate",
           "short": "Validate a challenge pack YAML bundle",
-          "runnable": true
+          "runnable": true,
+          "args": [
+            {
+              "name": "file",
+              "required": true
+            }
+          ]
         }
       ]
     },
@@ -788,6 +955,12 @@
           "path": "agentclash ci init",
           "short": "Write a sample AgentClash CI manifest",
           "runnable": true,
+          "args": [
+            {
+              "name": "file",
+              "required": true
+            }
+          ],
           "flags": [
             {
               "name": "force",
@@ -958,6 +1131,12 @@
           "path": "agentclash ci validate",
           "short": "Validate an AgentClash CI manifest",
           "runnable": true,
+          "args": [
+            {
+              "name": "file",
+              "required": true
+            }
+          ],
           "flags": [
             {
               "name": "remote",
@@ -1076,7 +1255,13 @@
           "name": "get",
           "path": "agentclash config get",
           "short": "Get a config value",
-          "runnable": true
+          "runnable": true,
+          "args": [
+            {
+              "name": "key",
+              "required": true
+            }
+          ]
         },
         {
           "name": "list",
@@ -1088,7 +1273,17 @@
           "name": "set",
           "path": "agentclash config set",
           "short": "Set a config value",
-          "runnable": true
+          "runnable": true,
+          "args": [
+            {
+              "name": "key",
+              "required": true
+            },
+            {
+              "name": "value",
+              "required": true
+            }
+          ]
         }
       ]
     },
@@ -1146,13 +1341,25 @@
           "name": "delete",
           "path": "agentclash dataset delete",
           "short": "Archive a dataset",
-          "runnable": true
+          "runnable": true,
+          "args": [
+            {
+              "name": "datasetId",
+              "required": true
+            }
+          ]
         },
         {
           "name": "eval",
           "path": "agentclash dataset eval",
           "short": "Run an eval over a dataset version",
           "runnable": true,
+          "args": [
+            {
+              "name": "datasetId",
+              "required": true
+            }
+          ],
           "flags": [
             {
               "name": "challenge",
@@ -1204,6 +1411,12 @@
               "path": "agentclash dataset example add",
               "short": "Add or upsert a dataset example",
               "runnable": true,
+              "args": [
+                {
+                  "name": "datasetId",
+                  "required": true
+                }
+              ],
               "flags": [
                 {
                   "name": "expected",
@@ -1248,6 +1461,16 @@
               "path": "agentclash dataset example edit",
               "short": "Edit a dataset example",
               "runnable": true,
+              "args": [
+                {
+                  "name": "datasetId",
+                  "required": true
+                },
+                {
+                  "name": "exampleId",
+                  "required": true
+                }
+              ],
               "flags": [
                 {
                   "name": "expected",
@@ -1291,13 +1514,29 @@
               "name": "list",
               "path": "agentclash dataset example list",
               "short": "List dataset examples",
-              "runnable": true
+              "runnable": true,
+              "args": [
+                {
+                  "name": "datasetId",
+                  "required": true
+                }
+              ]
             },
             {
               "name": "rm",
               "path": "agentclash dataset example rm",
               "short": "Archive a dataset example",
-              "runnable": true
+              "runnable": true,
+              "args": [
+                {
+                  "name": "datasetId",
+                  "required": true
+                },
+                {
+                  "name": "exampleId",
+                  "required": true
+                }
+              ]
             }
           ]
         },
@@ -1306,6 +1545,12 @@
           "path": "agentclash dataset export",
           "short": "Export dataset examples",
           "runnable": true,
+          "args": [
+            {
+              "name": "datasetId",
+              "required": true
+            }
+          ],
           "flags": [
             {
               "name": "format",
@@ -1325,6 +1570,12 @@
           "path": "agentclash dataset generate",
           "short": "Start in-house synthetic dataset generation",
           "runnable": true,
+          "args": [
+            {
+              "name": "datasetId",
+              "required": true
+            }
+          ],
           "flags": [
             {
               "name": "count",
@@ -1389,6 +1640,16 @@
           "path": "agentclash dataset import",
           "short": "Import examples into a dataset",
           "runnable": true,
+          "args": [
+            {
+              "name": "datasetId",
+              "required": true
+            },
+            {
+              "name": "file",
+              "required": true
+            }
+          ],
           "flags": [
             {
               "name": "dry-run",
@@ -1425,6 +1686,16 @@
           "path": "agentclash dataset import-traces",
           "short": "Import production traces as reviewable dataset candidates",
           "runnable": true,
+          "args": [
+            {
+              "name": "datasetId",
+              "required": true
+            },
+            {
+              "name": "file",
+              "required": false
+            }
+          ],
           "flags": [
             {
               "name": "artifact",
@@ -1469,6 +1740,16 @@
           "path": "agentclash dataset promote",
           "short": "Promote a trace candidate into a dataset example",
           "runnable": true,
+          "args": [
+            {
+              "name": "datasetId",
+              "required": true
+            },
+            {
+              "name": "candidateId",
+              "required": true
+            }
+          ],
           "flags": [
             {
               "name": "expected",
@@ -1493,6 +1774,12 @@
           "path": "agentclash dataset sync-regression-suite",
           "short": "Promote dataset examples into a linked regression suite",
           "runnable": true,
+          "args": [
+            {
+              "name": "datasetId",
+              "required": true
+            }
+          ],
           "flags": [
             {
               "name": "challenge",
@@ -1532,6 +1819,12 @@
           "path": "agentclash dataset test",
           "short": "Run a dataset eval gate against a baseline",
           "runnable": true,
+          "args": [
+            {
+              "name": "datasetId",
+              "required": true
+            }
+          ],
           "flags": [
             {
               "name": "baseline",
@@ -1613,6 +1906,12 @@
               "path": "agentclash dataset trace-candidates list",
               "short": "List trace candidates awaiting promotion",
               "runnable": true,
+              "args": [
+                {
+                  "name": "datasetId",
+                  "required": true
+                }
+              ],
               "flags": [
                 {
                   "name": "status",
@@ -1634,6 +1933,12 @@
               "path": "agentclash dataset version create",
               "short": "Snapshot the current dataset examples",
               "runnable": true,
+              "args": [
+                {
+                  "name": "datasetId",
+                  "required": true
+                }
+              ],
               "flags": [
                 {
                   "name": "label",
@@ -1646,7 +1951,13 @@
               "name": "list",
               "path": "agentclash dataset version list",
               "short": "List dataset versions",
-              "runnable": true
+              "runnable": true,
+              "args": [
+                {
+                  "name": "datasetId",
+                  "required": true
+                }
+              ]
             }
           ]
         },
@@ -1654,7 +1965,13 @@
           "name": "view",
           "path": "agentclash dataset view",
           "short": "View a dataset",
-          "runnable": true
+          "runnable": true,
+          "args": [
+            {
+              "name": "datasetId",
+              "required": true
+            }
+          ]
         }
       ]
     },
@@ -1742,6 +2059,12 @@
           "path": "agentclash eval scorecard",
           "short": "Show a run-first scorecard and compare against the bookmarked baseline",
           "runnable": true,
+          "args": [
+            {
+              "name": "run",
+              "required": false
+            }
+          ],
           "flags": [
             {
               "name": "agent",
@@ -1764,6 +2087,12 @@
               "path": "agentclash eval session follow",
               "short": "Poll a repeated eval session until aggregation finishes",
               "runnable": true,
+              "args": [
+                {
+                  "name": "evalSessionId",
+                  "required": true
+                }
+              ],
               "flags": [
                 {
                   "name": "poll-interval",
@@ -1783,7 +2112,13 @@
               "name": "get",
               "path": "agentclash eval session get",
               "short": "Show repeated eval session details and aggregate metrics",
-              "runnable": true
+              "runnable": true,
+              "args": [
+                {
+                  "name": "evalSessionId",
+                  "required": true
+                }
+              ]
             },
             {
               "name": "list",
@@ -1914,7 +2249,13 @@
               "name": "get",
               "path": "agentclash infra knowledge-source get",
               "short": "Get a knowledge-source",
-              "runnable": true
+              "runnable": true,
+              "args": [
+                {
+                  "name": "id",
+                  "required": true
+                }
+              ]
             },
             {
               "name": "list",
@@ -1967,13 +2308,25 @@
               "name": "delete",
               "path": "agentclash infra model-alias delete",
               "short": "Delete a model-alias",
-              "runnable": true
+              "runnable": true,
+              "args": [
+                {
+                  "name": "id",
+                  "required": true
+                }
+              ]
             },
             {
               "name": "get",
               "path": "agentclash infra model-alias get",
               "short": "Get a model-alias",
-              "runnable": true
+              "runnable": true,
+              "args": [
+                {
+                  "name": "id",
+                  "required": true
+                }
+              ]
             },
             {
               "name": "list",
@@ -1996,7 +2349,13 @@
               "name": "get",
               "path": "agentclash infra model-catalog get",
               "short": "Get a model catalog entry",
-              "runnable": true
+              "runnable": true,
+              "args": [
+                {
+                  "name": "id",
+                  "required": true
+                }
+              ]
             },
             {
               "name": "list",
@@ -2029,13 +2388,25 @@
               "name": "delete",
               "path": "agentclash infra provider-account delete",
               "short": "Delete a provider-account",
-              "runnable": true
+              "runnable": true,
+              "args": [
+                {
+                  "name": "id",
+                  "required": true
+                }
+              ]
             },
             {
               "name": "get",
               "path": "agentclash infra provider-account get",
               "short": "Get a provider-account",
-              "runnable": true
+              "runnable": true,
+              "args": [
+                {
+                  "name": "id",
+                  "required": true
+                }
+              ]
             },
             {
               "name": "list",
@@ -2048,6 +2419,12 @@
               "path": "agentclash infra provider-account test",
               "short": "Smoke test provider account credentials",
               "runnable": true,
+              "args": [
+                {
+                  "name": "id",
+                  "required": true
+                }
+              ],
               "flags": [
                 {
                   "name": "model",
@@ -2101,7 +2478,13 @@
               "name": "archive",
               "path": "agentclash infra runtime-profile archive",
               "short": "Archive a runtime-profile",
-              "runnable": true
+              "runnable": true,
+              "args": [
+                {
+                  "name": "id",
+                  "required": true
+                }
+              ]
             },
             {
               "name": "create",
@@ -2120,7 +2503,13 @@
               "name": "get",
               "path": "agentclash infra runtime-profile get",
               "short": "Get a runtime-profile",
-              "runnable": true
+              "runnable": true,
+              "args": [
+                {
+                  "name": "id",
+                  "required": true
+                }
+              ]
             },
             {
               "name": "list",
@@ -2180,7 +2569,13 @@
               "name": "get",
               "path": "agentclash infra tool get",
               "short": "Get a tool",
-              "runnable": true
+              "runnable": true,
+              "args": [
+                {
+                  "name": "id",
+                  "required": true
+                }
+              ]
             },
             {
               "name": "list",
@@ -2498,7 +2893,13 @@
       "name": "link",
       "path": "agentclash link",
       "short": "Choose and save your default workspace",
-      "runnable": true
+      "runnable": true,
+      "args": [
+        {
+          "name": "workspace",
+          "required": false
+        }
+      ]
     },
     {
       "name": "org",
@@ -2532,7 +2933,13 @@
           "name": "get",
           "path": "agentclash org get",
           "short": "Get organization details",
-          "runnable": true
+          "runnable": true,
+          "args": [
+            {
+              "name": "id",
+              "required": true
+            }
+          ]
         },
         {
           "name": "list",
@@ -2551,6 +2958,12 @@
               "path": "agentclash org members invite",
               "short": "Invite a member to the organization",
               "runnable": true,
+              "args": [
+                {
+                  "name": "orgId",
+                  "required": true
+                }
+              ],
               "flags": [
                 {
                   "name": "email",
@@ -2570,13 +2983,25 @@
               "name": "list",
               "path": "agentclash org members list",
               "short": "List organization members",
-              "runnable": true
+              "runnable": true,
+              "args": [
+                {
+                  "name": "orgId",
+                  "required": true
+                }
+              ]
             },
             {
               "name": "update",
               "path": "agentclash org members update",
               "short": "Update an organization membership",
               "runnable": true,
+              "args": [
+                {
+                  "name": "membershipId",
+                  "required": true
+                }
+              ],
               "flags": [
                 {
                   "name": "role",
@@ -2597,6 +3022,12 @@
           "path": "agentclash org update",
           "short": "Update an organization",
           "runnable": true,
+          "args": [
+            {
+              "name": "id",
+              "required": true
+            }
+          ],
           "flags": [
             {
               "name": "name",
@@ -2643,7 +3074,13 @@
           "name": "delete",
           "path": "agentclash playground delete",
           "short": "Delete a playground",
-          "runnable": true
+          "runnable": true,
+          "args": [
+            {
+              "name": "id",
+              "required": true
+            }
+          ]
         },
         {
           "name": "experiment",
@@ -2659,6 +3096,12 @@
               "path": "agentclash playground experiment batch",
               "short": "Create experiments in batch (one per model)",
               "runnable": true,
+              "args": [
+                {
+                  "name": "playgroundId",
+                  "required": true
+                }
+              ],
               "flags": [
                 {
                   "name": "from-file",
@@ -2692,6 +3135,12 @@
               "path": "agentclash playground experiment create",
               "short": "Create an experiment",
               "runnable": true,
+              "args": [
+                {
+                  "name": "playgroundId",
+                  "required": true
+                }
+              ],
               "flags": [
                 {
                   "name": "from-file",
@@ -2704,19 +3153,37 @@
               "name": "get",
               "path": "agentclash playground experiment get",
               "short": "Get an experiment",
-              "runnable": true
+              "runnable": true,
+              "args": [
+                {
+                  "name": "experimentId",
+                  "required": true
+                }
+              ]
             },
             {
               "name": "list",
               "path": "agentclash playground experiment list",
               "short": "List experiments",
-              "runnable": true
+              "runnable": true,
+              "args": [
+                {
+                  "name": "playgroundId",
+                  "required": true
+                }
+              ]
             },
             {
               "name": "results",
               "path": "agentclash playground experiment results",
               "short": "List results for an experiment",
-              "runnable": true
+              "runnable": true,
+              "args": [
+                {
+                  "name": "experimentId",
+                  "required": true
+                }
+              ]
             }
           ]
         },
@@ -2724,7 +3191,13 @@
           "name": "get",
           "path": "agentclash playground get",
           "short": "Get a playground",
-          "runnable": true
+          "runnable": true,
+          "args": [
+            {
+              "name": "id",
+              "required": true
+            }
+          ]
         },
         {
           "name": "list",
@@ -2746,6 +3219,12 @@
               "path": "agentclash playground test-case create",
               "short": "Create a test case",
               "runnable": true,
+              "args": [
+                {
+                  "name": "playgroundId",
+                  "required": true
+                }
+              ],
               "flags": [
                 {
                   "name": "from-file",
@@ -2758,19 +3237,37 @@
               "name": "delete",
               "path": "agentclash playground test-case delete",
               "short": "Delete a test case",
-              "runnable": true
+              "runnable": true,
+              "args": [
+                {
+                  "name": "testCaseId",
+                  "required": true
+                }
+              ]
             },
             {
               "name": "list",
               "path": "agentclash playground test-case list",
               "short": "List test cases",
-              "runnable": true
+              "runnable": true,
+              "args": [
+                {
+                  "name": "playgroundId",
+                  "required": true
+                }
+              ]
             },
             {
               "name": "update",
               "path": "agentclash playground test-case update",
               "short": "Update a test case",
               "runnable": true,
+              "args": [
+                {
+                  "name": "testCaseId",
+                  "required": true
+                }
+              ],
               "flags": [
                 {
                   "name": "from-file",
@@ -2786,6 +3283,12 @@
           "path": "agentclash playground update",
           "short": "Update a playground",
           "runnable": true,
+          "args": [
+            {
+              "name": "id",
+              "required": true
+            }
+          ],
           "flags": [
             {
               "name": "from-file",
@@ -2807,6 +3310,12 @@
           "path": "agentclash prompt-eval import-promptfoo",
           "short": "Convert a safe Promptfoo subset into an AgentClash prompt eval config",
           "runnable": true,
+          "args": [
+            {
+              "name": "file",
+              "required": true
+            }
+          ],
           "flags": [
             {
               "name": "force",
@@ -2843,6 +3352,12 @@
           "path": "agentclash prompt-eval init",
           "short": "Scaffold a prompt eval YAML config",
           "runnable": true,
+          "args": [
+            {
+              "name": "file",
+              "required": false
+            }
+          ],
           "flags": [
             {
               "name": "force",
@@ -2862,6 +3377,12 @@
           "path": "agentclash prompt-eval results",
           "short": "Fetch prompt eval experiment results",
           "runnable": true,
+          "args": [
+            {
+              "name": "experiment-id",
+              "required": true
+            }
+          ],
           "flags": [
             {
               "name": "threshold",
@@ -2876,6 +3397,12 @@
           "path": "agentclash prompt-eval run",
           "short": "Compile a prompt eval config and launch playground experiments",
           "runnable": true,
+          "args": [
+            {
+              "name": "file",
+              "required": false
+            }
+          ],
           "flags": [
             {
               "name": "ci",
@@ -2920,6 +3447,12 @@
           "path": "agentclash prompt-eval validate",
           "short": "Validate a prompt eval YAML config locally",
           "runnable": true,
+          "args": [
+            {
+              "name": "file",
+              "required": false
+            }
+          ],
           "flags": [
             {
               "name": "ci",
@@ -2975,6 +3508,12 @@
               "path": "agentclash regression-suite case capture-production",
               "short": "Capture a production failure as a proposed regression case",
               "runnable": true,
+              "args": [
+                {
+                  "name": "suiteId",
+                  "required": true
+                }
+              ],
               "flags": [
                 {
                   "name": "evidence-tier",
@@ -3063,6 +3602,12 @@
               "path": "agentclash regression-suite case update",
               "short": "Update a regression case",
               "runnable": true,
+              "args": [
+                {
+                  "name": "caseId",
+                  "required": true
+                }
+              ],
               "flags": [
                 {
                   "name": "description",
@@ -3097,7 +3642,13 @@
           "name": "cases",
           "path": "agentclash regression-suite cases",
           "short": "List regression cases in a suite",
-          "runnable": true
+          "runnable": true,
+          "args": [
+            {
+              "name": "suiteId",
+              "required": true
+            }
+          ]
         },
         {
           "name": "create",
@@ -3136,7 +3687,13 @@
           "name": "get",
           "path": "agentclash regression-suite get",
           "short": "Get a regression suite",
-          "runnable": true
+          "runnable": true,
+          "args": [
+            {
+              "name": "suiteId",
+              "required": true
+            }
+          ]
         },
         {
           "name": "list",
@@ -3149,6 +3706,12 @@
           "path": "agentclash regression-suite update",
           "short": "Update a regression suite",
           "runnable": true,
+          "args": [
+            {
+              "name": "suiteId",
+              "required": true
+            }
+          ],
           "flags": [
             {
               "name": "default-gate-severity",
@@ -3219,6 +3782,12 @@
           "path": "agentclash replay get",
           "short": "Get execution replay steps",
           "runnable": true,
+          "args": [
+            {
+              "name": "runAgentId",
+              "required": true
+            }
+          ],
           "flags": [
             {
               "name": "cursor",
@@ -3239,6 +3808,12 @@
           "path": "agentclash replay triage",
           "short": "Summarize ranking, failures, scorecard, replay, and artifacts for debugging",
           "runnable": true,
+          "args": [
+            {
+              "name": "run",
+              "required": false
+            }
+          ],
           "flags": [
             {
               "name": "agent",
@@ -3271,13 +3846,25 @@
           "name": "agents",
           "path": "agentclash run agents",
           "short": "List agents in a run",
-          "runnable": true
+          "runnable": true,
+          "args": [
+            {
+              "name": "runId",
+              "required": true
+            }
+          ]
         },
         {
           "name": "cancel",
           "path": "agentclash run cancel",
           "short": "Cancel an active run",
-          "runnable": true
+          "runnable": true,
+          "args": [
+            {
+              "name": "id",
+              "required": true
+            }
+          ]
         },
         {
           "name": "compare",
@@ -3392,7 +3979,11 @@
               "name": "scope",
               "usage": "Run scope: full or suite_only",
               "type": "string",
-              "default": "full"
+              "default": "full",
+              "allowed_values": [
+                "full",
+                "suite_only"
+              ]
             },
             {
               "name": "seeds",
@@ -3413,6 +4004,12 @@
           "path": "agentclash run events",
           "short": "Stream live run events via SSE",
           "runnable": true,
+          "args": [
+            {
+              "name": "runId",
+              "required": true
+            }
+          ],
           "flags": [
             {
               "name": "filter",
@@ -3431,7 +4028,13 @@
               "name": "export",
               "path": "agentclash run events export",
               "short": "Export persisted run events as JSONL",
-              "runnable": true
+              "runnable": true,
+              "args": [
+                {
+                  "name": "runId",
+                  "required": true
+                }
+              ]
             }
           ]
         },
@@ -3440,6 +4043,12 @@
           "path": "agentclash run failures",
           "short": "List failure review items for a run",
           "runnable": true,
+          "args": [
+            {
+              "name": "runId",
+              "required": true
+            }
+          ],
           "flags": [
             {
               "name": "agent",
@@ -3483,7 +4092,13 @@
           "name": "get",
           "path": "agentclash run get",
           "short": "Get run details",
-          "runnable": true
+          "runnable": true,
+          "args": [
+            {
+              "name": "id",
+              "required": true
+            }
+          ]
         },
         {
           "name": "list",
@@ -3496,6 +4111,16 @@
           "path": "agentclash run promote-failure",
           "short": "Promote a run failure into a regression case",
           "runnable": true,
+          "args": [
+            {
+              "name": "runId",
+              "required": true
+            },
+            {
+              "name": "challengeIdentityId",
+              "required": true
+            }
+          ],
           "flags": [
             {
               "name": "failure-summary",
@@ -3539,6 +4164,12 @@
           "path": "agentclash run ranking",
           "short": "Get run ranking and composite scores",
           "runnable": true,
+          "args": [
+            {
+              "name": "runId",
+              "required": true
+            }
+          ],
           "flags": [
             {
               "name": "sort-by",
@@ -3552,6 +4183,12 @@
           "path": "agentclash run replay",
           "short": "Inspect replay steps for a run agent",
           "runnable": true,
+          "args": [
+            {
+              "name": "run-agent-id",
+              "required": true
+            }
+          ],
           "flags": [
             {
               "name": "cursor",
@@ -3571,7 +4208,13 @@
           "name": "scorecard",
           "path": "agentclash run scorecard",
           "short": "Get agent scorecard",
-          "runnable": true
+          "runnable": true,
+          "args": [
+            {
+              "name": "runAgentId",
+              "required": true
+            }
+          ]
         },
         {
           "name": "series",
@@ -3624,7 +4267,13 @@
               "name": "report",
               "path": "agentclash run series report",
               "short": "Show aggregate score, correctness, and cost for a race series",
-              "runnable": true
+              "runnable": true,
+              "args": [
+                {
+                  "name": "eval-session-id",
+                  "required": true
+                }
+              ]
             }
           ]
         },
@@ -3632,7 +4281,13 @@
           "name": "transcript",
           "path": "agentclash run transcript",
           "short": "Export a Markdown run transcript",
-          "runnable": true
+          "runnable": true,
+          "args": [
+            {
+              "name": "runId",
+              "required": true
+            }
+          ]
         },
         {
           "name": "turn",
@@ -3645,6 +4300,12 @@
               "path": "agentclash run turn status",
               "short": "Check whether a run agent is awaiting human input",
               "runnable": true,
+              "args": [
+                {
+                  "name": "runAgentId",
+                  "required": true
+                }
+              ],
               "flags": [
                 {
                   "name": "run",
@@ -3658,6 +4319,12 @@
               "path": "agentclash run turn submit",
               "short": "Submit a human user message for an awaiting multi_turn phase",
               "runnable": true,
+              "args": [
+                {
+                  "name": "runAgentId",
+                  "required": true
+                }
+              ],
               "flags": [
                 {
                   "name": "message",
@@ -3679,7 +4346,14 @@
       "name": "schema",
       "path": "agentclash schema",
       "short": "Print the CLI command tree as machine-readable JSON",
-      "runnable": true
+      "runnable": true,
+      "args": [
+        {
+          "name": "command",
+          "required": false,
+          "variadic": true
+        }
+      ]
     },
     {
       "name": "secret",
@@ -3691,7 +4365,13 @@
           "name": "delete",
           "path": "agentclash secret delete",
           "short": "Delete a secret",
-          "runnable": true
+          "runnable": true,
+          "args": [
+            {
+              "name": "key",
+              "required": true
+            }
+          ]
         },
         {
           "name": "list",
@@ -3704,6 +4384,12 @@
           "path": "agentclash secret set",
           "short": "Create or update a secret",
           "runnable": true,
+          "args": [
+            {
+              "name": "key",
+              "required": true
+            }
+          ],
           "flags": [
             {
               "name": "value",
@@ -3932,6 +4618,12 @@
           "path": "agentclash security stress-run",
           "short": "Run a security pack N times against an LLM provider and aggregate the leak rate",
           "runnable": true,
+          "args": [
+            {
+              "name": "pack-yaml",
+              "required": true
+            }
+          ],
           "flags": [
             {
               "name": "api-key-env",
@@ -4059,7 +4751,13 @@
           "name": "get",
           "path": "agentclash workspace get",
           "short": "Get workspace details",
-          "runnable": true
+          "runnable": true,
+          "args": [
+            {
+              "name": "id",
+              "required": true
+            }
+          ]
         },
         {
           "name": "list",
@@ -4111,6 +4809,12 @@
               "path": "agentclash workspace members update",
               "short": "Update a workspace membership",
               "runnable": true,
+              "args": [
+                {
+                  "name": "membershipId",
+                  "required": true
+                }
+              ],
               "flags": [
                 {
                   "name": "role",
@@ -4131,6 +4835,12 @@
           "path": "agentclash workspace update",
           "short": "Update a workspace",
           "runnable": true,
+          "args": [
+            {
+              "name": "id",
+              "required": true
+            }
+          ],
           "flags": [
             {
               "name": "name",
@@ -4154,7 +4864,13 @@
           "name": "use",
           "path": "agentclash workspace use",
           "short": "Set the default workspace",
-          "runnable": true
+          "runnable": true,
+          "args": [
+            {
+              "name": "id",
+              "required": true
+            }
+          ]
         }
       ]
     }
@@ -4273,6 +4989,68 @@
       "description": "ci run: a candidate run finished in a failed state.",
       "commands": [
         "ci run"
+      ]
+    }
+  ],
+  "error_codes": [
+    {
+      "code": "invalid_argument",
+      "description": "Invalid flags, arguments, or input; also the default classification for unrecognized local errors."
+    },
+    {
+      "code": "invalid_config",
+      "description": "The CLI configuration file failed to load or parse."
+    },
+    {
+      "code": "file_not_found",
+      "description": "A referenced local file does not exist."
+    },
+    {
+      "code": "permission_denied",
+      "description": "A local file or directory was not accessible."
+    },
+    {
+      "code": "request_failed",
+      "description": "The HTTP request could not complete (network/transport failure).",
+      "retryable": true
+    },
+    {
+      "code": "api_error",
+      "description": "The server returned an error envelope without a code."
+    },
+    {
+      "code": "command_failed",
+      "description": "A command finished with a command-specific non-zero exit (see exit_codes)."
+    },
+    {
+      "code": "missing_workspace",
+      "description": "No workspace resolved; pass --workspace, set AGENTCLASH_WORKSPACE, or run 'agentclash link'."
+    },
+    {
+      "code": "follow_timeout",
+      "description": "A --follow loop gave up after --timeout; the underlying job keeps running server-side.",
+      "retryable": true
+    },
+    {
+      "code": "stream_reconnect_exhausted",
+      "description": "The SSE event stream dropped repeatedly without delivering events; resume with `run events --since \u003cid\u003e`.",
+      "retryable": true
+    }
+  ],
+  "status_enums": [
+    {
+      "resource": "run",
+      "values": [
+        "pending",
+        "running",
+        "completed",
+        "failed",
+        "cancelled"
+      ],
+      "terminal": [
+        "completed",
+        "failed",
+        "cancelled"
       ]
     }
   ]
