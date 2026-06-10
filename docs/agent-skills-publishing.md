@@ -53,6 +53,26 @@ gh skill publish dist/skills-bundle --dry-run     # add --fix to auto-normalize
 gh skill publish dist/skills-bundle --tag v0.<minor>.0
 ```
 
+## Automated publishing (CI)
+
+`.github/workflows/publish-skills.yml` wires this up:
+
+- **On pull requests** that touch `web/content/agent-skills/**` or the bundle
+  script, it builds the bundle (`node scripts/build-skills-bundle.mjs`), which
+  self-validates the `gh skill` spec — a token-free regression check.
+- **Manually** (`workflow_dispatch`), it can publish. `dry_run` defaults to
+  **true**, so a plain "Run workflow" only runs `gh skill publish --dry-run`
+  and cuts nothing. Set `dry_run=false` for a real publish.
+
+This is intentionally a **separate, manual** workflow — not folded into
+`release-cli.yml` — because `gh skill publish` cuts its own GitHub release and
+adds the `agent-skills` topic, which would conflict with the GoReleaser release
+that the `v*` tag already produces, and needs repo-admin rights.
+
+A real publish requires a repo-admin **`GH_SKILL_TOKEN`** secret (a PAT with
+admin on `agentclash/agentclash`); the default `GITHUB_TOKEN` cannot add the
+topic or cut the release. The dry-run falls back to `GITHUB_TOKEN`.
+
 ## Supported hosts
 
 `gh skill install` writes to the correct directory for **Claude Code, GitHub
