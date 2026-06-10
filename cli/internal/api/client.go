@@ -305,8 +305,16 @@ func (r *Response) ParseError() *APIError {
 	return apiErr
 }
 
+// maxRetryAfterDelay caps the parsed Retry-After at 24h: it keeps an
+// implausibly large delta-seconds from overflowing time.Duration (int64
+// nanoseconds wrap at ~292 years, flipping the value negative and bypassing
+// the auto-wait bound), and keeps far-future HTTP-dates from publishing an
+// absurd retry_after_seconds in the error envelope.
+const maxRetryAfterDelay = 24 * time.Hour
+
 // parseRetryAfter reads a Retry-After header in either RFC 9110 form —
-// delta-seconds or an HTTP-date — and returns it as a non-negative duration.
+// delta-seconds or an HTTP-date — and returns it as a non-negative duration,
+// capped at maxRetryAfterDelay.
 func parseRetryAfter(h http.Header) (time.Duration, bool) {
 	value := strings.TrimSpace(h.Get("Retry-After"))
 	if value == "" {
@@ -316,12 +324,18 @@ func parseRetryAfter(h http.Header) (time.Duration, bool) {
 		if seconds < 0 {
 			return 0, false
 		}
+		if seconds > int(maxRetryAfterDelay/time.Second) {
+			return maxRetryAfterDelay, true
+		}
 		return time.Duration(seconds) * time.Second, true
 	}
 	if at, err := http.ParseTime(value); err == nil {
 		delay := time.Until(at)
 		if delay < 0 {
 			delay = 0
+		}
+		if delay > maxRetryAfterDelay {
+			delay = maxRetryAfterDelay
 		}
 		return delay, true
 	}

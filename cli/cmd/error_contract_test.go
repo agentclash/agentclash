@@ -132,6 +132,10 @@ func TestExitCodeErrorPrecedenceOverBand(t *testing.T) {
 
 // WI-2: a 429 envelope carries retryable:true plus the parsed Retry-After.
 func TestRenderError429CarriesRetryAfterDetails(t *testing.T) {
+	// flagJSON is package-global; cmdMu is the suite's serialization
+	// mechanism for global flag state (same contract as executeCommand).
+	cmdMu.Lock()
+	defer cmdMu.Unlock()
 	flagJSON = true
 	defer func() { flagJSON = false }()
 
@@ -162,6 +166,8 @@ func TestRenderError429CarriesRetryAfterDetails(t *testing.T) {
 // The `retryable` key must always be present in the envelope — agents branch
 // on its value without an existence check.
 func TestRenderErrorAlwaysEmitsRetryableKey(t *testing.T) {
+	cmdMu.Lock()
+	defer cmdMu.Unlock()
 	flagJSON = true
 	defer func() { flagJSON = false }()
 
