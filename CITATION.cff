@@ -1,0 +1,19 @@
+cff-version: 1.2.0
+message: "If you use AgentClash in your research, please cite it as below."
+title: AgentClash
+abstract: >-
+  Open-source race engine that pits AI models and agents against each other on
+  real tasks with live scoring: sandboxed tools, replay, scorecards, and CI
+  regression gates.
+type: software
+url: "https://www.agentclash.dev"
+repository-code: "https://github.com/agentclash/agentclash"
+license: MIT
+keywords:
+  - ai-agent-evaluation
+  - llm-evaluation
+  - agent-benchmark
+  - regression-testing
+  - eval
+authors:
+  - name: "The AgentClash Authors"

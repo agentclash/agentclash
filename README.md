@@ -6,6 +6,11 @@ Open-source AI agent evaluation for real tasks. AgentClash lets you race agents 
 
 [Website](https://www.agentclash.dev) · [Docs](https://www.agentclash.dev/docs) · [Changelog](https://www.agentclash.dev/changelog) · [CLI Distribution](docs/cli-distribution.md) · [Challenge Packs](docs/evaluation/challenge-pack-v0.md) · [CI Gates](web/content/docs/guides/ci-cd-agent-gates.mdx)
 
+[![npm version](https://img.shields.io/npm/v/agentclash?logo=npm&color=cb3837)](https://www.npmjs.com/package/agentclash)
+[![npm downloads](https://img.shields.io/npm/dm/agentclash?logo=npm&color=cb3837)](https://www.npmjs.com/package/agentclash)
+[![License: MIT](https://img.shields.io/github/license/agentclash/agentclash?color=blue)](LICENSE)
+[![GitHub stars](https://img.shields.io/github/stars/agentclash/agentclash?style=flat&logo=github)](https://github.com/agentclash/agentclash)
+
 ## What AgentClash Does
 
 AgentClash is built for teams shipping agents, not leaderboard demos. It evaluates the whole run: the final answer, the tool choices, the artifacts, the latency, the cost, and the evidence trail that explains why one agent passed while another failed.
@@ -226,8 +231,6 @@ Typical workflow:
 2. Inspect scorecards, replays, and failure details.
 3. Promote important failures into a regression suite.
 4. Re-run the suite whenever prompts, models, tools, or agent code changes.
-
-> Screenshot placeholder: add a failure review or regression suite screenshot here.
 
 ## Gate Agent Changes In CI
 

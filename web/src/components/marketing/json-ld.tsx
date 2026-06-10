@@ -223,6 +223,26 @@ export function websiteSchema(): Record<string, unknown> {
   };
 }
 
+// SoftwareSourceCode is the schema.org type purpose-built for an open-source
+// repository — it links the named entity to its code, languages, and license,
+// which the SoftwareApplication node does not express. Emitted on the homepage.
+export function softwareSourceCodeSchema(): Record<string, unknown> {
+  return {
+    "@context": "https://schema.org",
+    "@type": "SoftwareSourceCode",
+    name: "AgentClash",
+    alternateName: "Agent Clash",
+    description:
+      "Open-source race engine that pits AI models and agents against each other on real tasks with sandboxed tools, replay, scorecards, and CI regression gates.",
+    url: SITE_URL,
+    codeRepository: "https://github.com/agentclash/agentclash",
+    programmingLanguage: ["Go", "TypeScript"],
+    runtimePlatform: ["Go", "Node.js", "Next.js"],
+    license: "https://opensource.org/licenses/MIT",
+    author: publisherSchema(),
+  };
+}
+
 export function articleSchema({
   headline,
   description,
