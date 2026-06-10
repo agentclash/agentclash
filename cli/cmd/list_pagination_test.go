@@ -65,9 +65,11 @@ func TestOtherListCommandsPassPagination(t *testing.T) {
 	t.Setenv("AGENTCLASH_WORKSPACE", "ws-1")
 
 	srv := fakeAPI(t, map[string]http.HandlerFunc{
-		"GET /v1/organizations/org-1/workspaces": paginatedItemsHandler(t, "5", "10", 11),
-		"GET /v1/organizations":                  paginatedItemsHandler(t, "5", "10", 11),
-		"GET /v1/workspaces/ws-1/datasets":       paginatedItemsHandler(t, "5", "10", 11),
+		"GET /v1/organizations/org-1/workspaces":    paginatedItemsHandler(t, "5", "10", 11),
+		"GET /v1/organizations":                     paginatedItemsHandler(t, "5", "10", 11),
+		"GET /v1/workspaces/ws-1/datasets":          paginatedItemsHandler(t, "5", "10", 11),
+		"GET /v1/workspaces/ws-1/agent-deployments": paginatedItemsHandler(t, "5", "10", 11),
+		"GET /v1/workspaces/ws-1/artifacts":         paginatedItemsHandler(t, "5", "10", 11),
 	})
 	defer srv.Close()
 
@@ -75,6 +77,8 @@ func TestOtherListCommandsPassPagination(t *testing.T) {
 		{"workspace", "list", "--org", "org-1", "--json", "--limit", "5", "--offset", "10"},
 		{"org", "list", "--json", "--limit", "5", "--offset", "10"},
 		{"dataset", "list", "--json", "--limit", "5", "--offset", "10"},
+		{"deployment", "list", "--json", "--limit", "5", "--offset", "10"},
+		{"artifact", "list", "--json", "--limit", "5", "--offset", "10"},
 	} {
 		cap := captureStdout(t)
 		err := executeCommand(t, args, srv.URL)

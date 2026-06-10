@@ -11,15 +11,19 @@ import (
 )
 
 type AgentDeploymentReadRepository interface {
-	ListActiveAgentDeploymentsByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) ([]repository.AgentDeploymentSummary, error)
+	ListActiveAgentDeploymentsByWorkspaceID(ctx context.Context, workspaceID uuid.UUID, limit, offset int32) ([]repository.AgentDeploymentSummary, error)
+	CountActiveAgentDeploymentsByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) (int64, error)
 }
 
 type AgentDeploymentReadService interface {
-	ListAgentDeployments(ctx context.Context, workspaceID uuid.UUID) (ListAgentDeploymentsResult, error)
+	ListAgentDeployments(ctx context.Context, workspaceID uuid.UUID, limit, offset int32) (ListAgentDeploymentsResult, error)
 }
 
 type ListAgentDeploymentsResult struct {
 	Deployments []repository.AgentDeploymentSummary
+	Total       int64
+	Limit       int32
+	Offset      int32
 }
 
 type AgentDeploymentReadManager struct {
@@ -32,14 +36,21 @@ func NewAgentDeploymentReadManager(repo AgentDeploymentReadRepository) *AgentDep
 	}
 }
 
-func (m *AgentDeploymentReadManager) ListAgentDeployments(ctx context.Context, workspaceID uuid.UUID) (ListAgentDeploymentsResult, error) {
-	deployments, err := m.repo.ListActiveAgentDeploymentsByWorkspaceID(ctx, workspaceID)
+func (m *AgentDeploymentReadManager) ListAgentDeployments(ctx context.Context, workspaceID uuid.UUID, limit, offset int32) (ListAgentDeploymentsResult, error) {
+	deployments, err := m.repo.ListActiveAgentDeploymentsByWorkspaceID(ctx, workspaceID, limit, offset)
+	if err != nil {
+		return ListAgentDeploymentsResult{}, err
+	}
+	total, err := m.repo.CountActiveAgentDeploymentsByWorkspaceID(ctx, workspaceID)
 	if err != nil {
 		return ListAgentDeploymentsResult{}, err
 	}
 
 	return ListAgentDeploymentsResult{
 		Deployments: deployments,
+		Total:       total,
+		Limit:       limit,
+		Offset:      offset,
 	}, nil
 }
 
@@ -56,7 +67,10 @@ type agentDeploymentResponse struct {
 }
 
 type listAgentDeploymentsResponse struct {
-	Items []agentDeploymentResponse `json:"items"`
+	Items  []agentDeploymentResponse `json:"items"`
+	Total  int64                     `json:"total"`
+	Limit  int32                     `json:"limit"`
+	Offset int32                     `json:"offset"`
 }
 
 func listAgentDeploymentsHandler(logger *slog.Logger, service AgentDeploymentReadService) http.HandlerFunc {
@@ -67,7 +81,8 @@ func listAgentDeploymentsHandler(logger *slog.Logger, service AgentDeploymentRea
 			return
 		}
 
-		result, err := service.ListAgentDeployments(r.Context(), workspaceID)
+		limit, offset := parseListLimitOffset(r)
+		result, err := service.ListAgentDeployments(r.Context(), workspaceID, limit, offset)
 		if err != nil {
 			logger.Error("list agent deployments request failed",
 				"method", r.Method,
@@ -94,6 +109,11 @@ func listAgentDeploymentsHandler(logger *slog.Logger, service AgentDeploymentRea
 			})
 		}
 
-		writeJSON(w, http.StatusOK, listAgentDeploymentsResponse{Items: responseItems})
+		writeJSON(w, http.StatusOK, listAgentDeploymentsResponse{
+			Items:  responseItems,
+			Total:  result.Total,
+			Limit:  result.Limit,
+			Offset: result.Offset,
+		})
 	}
 }

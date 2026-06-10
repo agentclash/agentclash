@@ -452,7 +452,21 @@
           "name": "list",
           "path": "agentclash artifact list",
           "short": "List artifacts in the workspace",
-          "runnable": true
+          "runnable": true,
+          "flags": [
+            {
+              "name": "limit",
+              "usage": "Maximum items to return (1-100; 0 = server default of 20)",
+              "type": "int",
+              "default": "0"
+            },
+            {
+              "name": "offset",
+              "usage": "Number of items to skip before the first result",
+              "type": "int",
+              "default": "0"
+            }
+          ]
         },
         {
           "name": "upload",
@@ -1716,7 +1730,21 @@
           "name": "list",
           "path": "agentclash deployment list",
           "short": "List agent deployments",
-          "runnable": true
+          "runnable": true,
+          "flags": [
+            {
+              "name": "limit",
+              "usage": "Maximum items to return (1-100; 0 = server default of 20)",
+              "type": "int",
+              "default": "0"
+            },
+            {
+              "name": "offset",
+              "usage": "Number of items to skip before the first result",
+              "type": "int",
+              "default": "0"
+            }
+          ]
         }
       ]
     },

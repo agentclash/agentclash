@@ -2348,12 +2348,29 @@ paths:
       tags: [Artifacts]
       summary: List workspace artifacts
       description: >
-        Returns all active artifacts belonging to the workspace, ordered by
-        creation date descending.
+        Returns one page of the workspace's active artifacts, ordered by
+        creation date descending, with the total count for pagination.
       security:
         - bearerJWT: []
       parameters:
         - $ref: "#/components/parameters/WorkspaceID"
+        - name: limit
+          in: query
+          description: Page size (server default 20, capped at 100).
+          schema:
+            type: integer
+            format: int32
+            default: 20
+            minimum: 1
+            maximum: 100
+        - name: offset
+          in: query
+          description: Number of items to skip before the first result.
+          schema:
+            type: integer
+            format: int32
+            default: 0
+            minimum: 0
       responses:
         "200":
           description: List of artifacts
@@ -4900,6 +4917,23 @@ paths:
         - bearerJWT: []
       parameters:
         - $ref: "#/components/parameters/WorkspaceID"
+        - name: limit
+          in: query
+          description: Page size (server default 20, capped at 100).
+          schema:
+            type: integer
+            format: int32
+            default: 20
+            minimum: 1
+            maximum: 100
+        - name: offset
+          in: query
+          description: Number of items to skip before the first result.
+          schema:
+            type: integer
+            format: int32
+            default: 0
+            minimum: 0
       responses:
         "200":
           description: List of agent deployments
@@ -12215,12 +12249,21 @@ components:
 
     ListArtifactsResponse:
       type: object
-      required: [items]
+      required: [items, total, limit, offset]
       properties:
         items:
           type: array
           items:
             $ref: "#/components/schemas/ArtifactUploadResponse"
+        total:
+          type: integer
+          format: int64
+        limit:
+          type: integer
+          format: int32
+        offset:
+          type: integer
+          format: int32
 
     ArtifactUploadResponse:
       type: object
@@ -12654,12 +12697,21 @@ components:
 
     ListAgentDeploymentsResponse:
       type: object
-      required: [items]
+      required: [items, total, limit, offset]
       properties:
         items:
           type: array
           items:
             $ref: "#/components/schemas/AgentDeployment"
+        total:
+          type: integer
+          format: int64
+        limit:
+          type: integer
+          format: int32
+        offset:
+          type: integer
+          format: int32
 
     CreateAgentDeploymentRequest:
       type: object
