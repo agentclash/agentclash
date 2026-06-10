@@ -809,14 +809,27 @@ func streamRunEvents(cmd *cobra.Command, rc *RunContext, runID string, patterns 
 		if probeErr != nil || terminal {
 			break
 		}
+		// Tell the operator why the CLI is pausing BEFORE any backoff sleep —
+		// silence followed by a reconnect line reads like a hang.
+		if !rc.Output.IsStructured() {
+			resumeFrom := lastEventID
+			if resumeFrom == "" {
+				resumeFrom = "the live tail"
+			}
+			fmt.Fprintf(os.Stderr, "%s Stream dropped; reconnecting from %s\n", output.Faint("▸"), resumeFrom)
+		}
 		if received {
 			eventlessReconnects = 0
 		} else {
 			eventlessReconnects++
 			if eventlessReconnects >= maxEventlessReconnects {
+				retryHint := fmt.Sprintf("retry with `agentclash run events %s`", runID)
+				if lastEventID != "" {
+					retryHint = fmt.Sprintf("retry with `agentclash run events %s --since %s`", runID, lastEventID)
+				}
 				return &cliError{
 					Code:    "stream_reconnect_exhausted",
-					Message: fmt.Sprintf("event stream for run %s dropped %d times in a row without delivering an event; retry with `agentclash run events %s --since %s`", runID, eventlessReconnects, runID, lastEventID),
+					Message: fmt.Sprintf("event stream for run %s dropped %d times in a row without delivering an event; %s", runID, eventlessReconnects, retryHint),
 				}
 			}
 			// Context-aware backoff: 1s, 2s, 4s, 8s between eventless re-dials.
@@ -828,13 +841,6 @@ func streamRunEvents(cmd *cobra.Command, rc *RunContext, runID string, patterns 
 				return nil
 			case <-timer.C:
 			}
-		}
-		if !rc.Output.IsStructured() {
-			resumeFrom := lastEventID
-			if resumeFrom == "" {
-				resumeFrom = "the live tail"
-			}
-			fmt.Fprintf(os.Stderr, "%s Stream dropped; reconnecting from %s\n", output.Faint("▸"), resumeFrom)
 		}
 	}
 
