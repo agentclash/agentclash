@@ -16,6 +16,10 @@ var documentedStatusEnums = []StatusEnum{
 	{
 		// Runs, run-agent executions, agent-harness executions, eval
 		// sessions, and dataset generation jobs all share this lifecycle.
+		// The registry lists CANONICAL values only: the single-l "canceled"
+		// is accepted defensively by isTerminalRunStatus but is not part of
+		// the published contract — teaching agents a non-canonical spelling
+		// would be worse than tolerating one.
 		Resource: "run",
 		Values:   []string{runStatusPending, runStatusRunning, runStatusCompleted, runStatusFailed, runStatusCancelled},
 		Terminal: []string{runStatusCompleted, runStatusFailed, runStatusCancelled},
