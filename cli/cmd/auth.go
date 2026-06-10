@@ -72,6 +72,18 @@ For CI/CD, set the AGENTCLASH_TOKEN environment variable instead.`,
 			rc.Output.PrintWarning("Stored credentials are invalid; starting a new browser login.")
 		}
 
+		// The browser device flow needs a human; never enter its multi-minute
+		// poll loop in a non-interactive/headless context. Fail fast and name the
+		// headless path instead.
+		if nonInteractiveMode() && os.Getenv("AGENTCLASH_TOKEN") == "" {
+			return &cliError{
+				Code:     "interactive_input_required",
+				Message:  "browser login needs an interactive terminal; set AGENTCLASH_TOKEN for headless or CI use",
+				Details:  map[string]any{"env": "AGENTCLASH_TOKEN"},
+				NextStep: "Set AGENTCLASH_TOKEN to a CLI token (create one in the AgentClash web app), or run `agentclash auth login` in an interactive terminal.",
+			}
+		}
+
 		autoOpen := !flagDevice && auth.CanOpenBrowser()
 		result, token, err := auth.VerificationLogin(cmd.Context(), rc.Client, autoOpen)
 		if err != nil {
@@ -146,8 +158,15 @@ var authStatusCmd = &cobra.Command{
 			return fmt.Errorf("checking auth: %w", err)
 		}
 		if apiErr := resp.ParseError(); apiErr != nil {
+			// In structured mode, return the API error directly so the JSON
+			// envelope carries the real auth code (e.g. 401/unauthorized) and a
+			// next_step — never a stray prose line on stderr alongside the JSON.
+			if rc.Output.IsStructured() {
+				return apiErr
+			}
 			rc.Output.PrintError("Not logged in. Run 'agentclash auth login' to authenticate.")
-			return fmt.Errorf("not authenticated")
+			// Silent: the human-readable message is already printed above.
+			return &ExitCodeError{Code: 1}
 		}
 
 		var session map[string]any

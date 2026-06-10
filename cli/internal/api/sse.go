@@ -19,6 +19,9 @@ type SSEEvent struct {
 // StreamSSE opens an SSE connection and sends events to a channel.
 // The channel is closed when the connection ends or the context is cancelled.
 func (c *Client) StreamSSE(ctx context.Context, path string, query url.Values) (<-chan SSEEvent, error) {
+	if err := c.ensureAuth(path); err != nil {
+		return nil, err
+	}
 	fullURL := c.baseURL + path
 	if len(query) > 0 {
 		fullURL += "?" + query.Encode()
