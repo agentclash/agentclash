@@ -93,3 +93,19 @@ func TestConfigGetHumanModeUnchanged(t *testing.T) {
 		t.Fatal("human mode: unset key should still error (unchanged contract)")
 	}
 }
+
+// --output yaml follows the same structured contract: an unset key is
+// `value: null`, exit 0.
+func TestConfigGetYAMLUnsetKeyIsNull(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	cap := captureStdout(t)
+	err := executeCommand(t, []string{"config", "get", "default_workspace", "--output", "yaml"}, "http://unused.invalid")
+	out := cap.finish()
+	if err != nil {
+		t.Fatalf("unset key must not error in --output yaml mode; got %v", err)
+	}
+	if !strings.Contains(out, "key: default_workspace") || !strings.Contains(out, "value: null") {
+		t.Fatalf("yaml output = %q, want key + value: null", out)
+	}
+}

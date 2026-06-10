@@ -27,11 +27,10 @@ var configGetCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		rc := GetRunContext(cmd)
-		cfg, err := config.Load()
-		if err != nil {
-			return err
-		}
 		key := args[0]
+		// Validate the key before touching the config file: an unknown key
+		// must yield the key error, not whatever disk/parse problem the
+		// config happens to have.
 		if !isValidConfigKey(key) {
 			// A typo'd key must not read as "valid but unset" — fail the same
 			// way `config set` does, naming the valid keys.
@@ -39,6 +38,10 @@ var configGetCmd = &cobra.Command{
 				Code:    "invalid_argument",
 				Message: fmt.Sprintf("unknown config key %q. Valid keys: %s", key, strings.Join(config.Keys(), ", ")),
 			}
+		}
+		cfg, err := config.Load()
+		if err != nil {
+			return err
 		}
 		val := cfg.Get(key)
 
