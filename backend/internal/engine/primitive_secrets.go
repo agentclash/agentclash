@@ -1,8 +1,9 @@
 package engine
 
 import (
-	"regexp"
 	"strings"
+
+	"github.com/agentclash/agentclash/backend/internal/redaction"
 )
 
 // secretSafePrimitives enumerates every primitive that is hardened to
@@ -130,28 +131,28 @@ var sensitiveResponseHeaders = map[string]struct{}{
 	"cookie":     {},
 	"set-cookie": {},
 	// Common vendor / custom auth headers.
-	"x-api-key":            {},
-	"x-apikey":             {},
-	"api-key":              {},
-	"apikey":               {},
-	"x-auth-token":         {},
-	"x-access-token":       {},
-	"x-access-key":         {},
-	"x-secret-key":         {},
-	"x-session-token":      {},
-	"x-session-id":         {},
-	"x-csrf-token":         {},
-	"x-xsrf-token":         {},
+	"x-api-key":       {},
+	"x-apikey":        {},
+	"api-key":         {},
+	"apikey":          {},
+	"x-auth-token":    {},
+	"x-access-token":  {},
+	"x-access-key":    {},
+	"x-secret-key":    {},
+	"x-session-token": {},
+	"x-session-id":    {},
+	"x-csrf-token":    {},
+	"x-xsrf-token":    {},
 	// AWS SigV4 / STS.
 	"x-amz-security-token": {},
 	// Google Cloud user credential headers.
-	"x-goog-api-key":         {},
+	"x-goog-api-key":                 {},
 	"x-goog-iam-authorization-token": {},
 	// Bare token-style names some APIs use.
 	"token": {},
 }
 
-const redactedHeaderMarker = "[redacted]"
+const redactedHeaderMarker = redaction.Marker
 
 // scrubSensitiveResponseHeaders walks a decoded http_request response
 // payload and replaces any sensitive header value with a redacted
@@ -173,43 +174,14 @@ func scrubSensitiveResponseHeaders(payload any) {
 	}
 }
 
-// stderrSecretPatterns is the set of regex patterns scrubbed from
-// primitive stderr before it flows back to the LLM as a tool error
-// message. This is defense-in-depth for two scenarios:
+// scrubStderrSecrets replaces any fragment of stderr that matches a well-known auth
+// pattern with a fixed marker. Called on the stderr returned from primitive executions
+// before it becomes a tool error message, so a raw python traceback (or any future
+// primitive that misbehaves) cannot dump a resolved secret back to the LLM.
 //
-//  1. An older E2B template version is pinned to a pack that still
-//     ships http_request.py WITHOUT the try/except wrapper #186 step 5
-//     added. In that case Python would print a raw traceback (which
-//     may contain request headers in the exception repr) directly to
-//     stderr, and without Go-side scrubbing the raw trace would flow
-//     back to the LLM.
-//  2. A future refactor introduces another primitive whose error
-//     path goes through executeInternalCommand's stderr return but
-//     gets missed in a security review.
-//
-// The patterns deliberately over-match (greedy until end-of-line).
-// Legitimate error messages with these tokens are rare, and a
-// false-positive scrub loses a bit of debuggability but never leaks.
-var stderrSecretPatterns = []*regexp.Regexp{
-	regexp.MustCompile(`(?i)authorization\s*:\s*[^\r\n]*`),
-	regexp.MustCompile(`(?i)proxy-authorization\s*:\s*[^\r\n]*`),
-	regexp.MustCompile(`(?i)cookie\s*:\s*[^\r\n]*`),
-	regexp.MustCompile(`(?i)set-cookie\s*:\s*[^\r\n]*`),
-	regexp.MustCompile(`(?i)x-(?:api|auth|access|secret|session|csrf|xsrf)[-_](?:key|token|id)\s*:\s*[^\r\n]*`),
-	regexp.MustCompile(`(?i)api[-_]?key\s*:\s*[^\r\n]*`),
-	regexp.MustCompile(`(?i)bearer\s+[^\s\r\n]+`),
-	regexp.MustCompile(`(?i)basic\s+[A-Za-z0-9+/=]{8,}`),
-}
-
-// scrubStderrSecrets replaces any fragment of stderr that matches a
-// well-known auth pattern with a fixed marker. Called on the stderr
-// returned from primitive executions before it becomes a tool error
-// message, so a raw python traceback (or any future primitive that
-// misbehaves) cannot dump a resolved secret back to the LLM.
+// The patterns now live in the shared backend/internal/redaction package (extracted from
+// #186) so engine, datasets, and the Vibe Eval guide agent share one scrubber. Behavior is
+// unchanged — see redaction.ScrubHeaderSecrets / redaction.HeaderSecretPatterns.
 func scrubStderrSecrets(stderr string) string {
-	scrubbed := stderr
-	for _, pattern := range stderrSecretPatterns {
-		scrubbed = pattern.ReplaceAllString(scrubbed, redactedHeaderMarker)
-	}
-	return scrubbed
+	return redaction.ScrubHeaderSecrets(stderr)
 }

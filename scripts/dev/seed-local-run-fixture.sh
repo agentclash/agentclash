@@ -7,8 +7,12 @@ set -euo pipefail
 # This is intentionally destructive to the local dev database. It resets the
 # benchmark/org/user fixture tables the same way repository integration tests do.
 #
-# Optional:
-#   OPENAI_MODEL   defaults to gpt-4.1-mini
+# Optional env:
+#   PROVIDER       openai (default) | anthropic
+#   MODEL_ID       provider model id (default: gpt-4.1-mini for openai, claude-sonnet-4-6 for anthropic)
+#   OPENAI_MODEL   legacy default model for the openai provider (default gpt-4.1-mini)
+#   MAX_ITERATIONS runtime-profile step budget (default 30; the DB default is 1, which makes
+#                  any multi-step native run fail with engine.step_limit after one step)
 #   DATABASE_URL   loaded from backend/.env or backend/.env.example if present
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -28,6 +32,28 @@ fi
 
 export DATABASE_URL="${DATABASE_URL:-postgres://agentclash:agentclash@localhost:5432/agentclash?sslmode=disable}"
 export OPENAI_MODEL="${OPENAI_MODEL:-gpt-4.1-mini}"
+
+# Provider toggle: PROVIDER=openai (default) | anthropic. The deployment's runtime profile
+# is execution_target=native, so any multi-step native task needs MAX_ITERATIONS > 1
+# (the DB default is 1 — only enough for a trivial submit-only task; a real coding task
+# tripped engine.step_limit after 1 step before this fix).
+export PROVIDER="${PROVIDER:-openai}"
+export MAX_ITERATIONS="${MAX_ITERATIONS:-30}"
+if [ "$PROVIDER" = "anthropic" ]; then
+  PROVIDER_KEY="anthropic"
+  PROVIDER_NAME="Local Anthropic Account"
+  CREDENTIAL_REFERENCE="secret://anthropic"   # resolves ANTHROPIC_API_KEY (env_resolver.go)
+  MODEL_ID="${MODEL_ID:-claude-sonnet-4-6}"
+elif [ "$PROVIDER" = "openai" ]; then
+  PROVIDER_KEY="openai"
+  PROVIDER_NAME="Local OpenAI Account"
+  CREDENTIAL_REFERENCE="secret://openai"       # resolves OPENAI_API_KEY
+  MODEL_ID="${MODEL_ID:-$OPENAI_MODEL}"
+else
+  echo "error: PROVIDER must be 'openai' or 'anthropic' (got '${PROVIDER}')" >&2
+  exit 1
+fi
+export PROVIDER_KEY PROVIDER_NAME CREDENTIAL_REFERENCE MODEL_ID
 
 ORG_ID="11111111-1111-1111-1111-111111111111"
 WORKSPACE_ID="22222222-2222-2222-2222-222222222222"
@@ -156,6 +182,12 @@ VALUES (
             "provider_model_id":"gpt-4.1-mini",
             "input_cost_per_million_tokens":0.4,
             "output_cost_per_million_tokens":1.6
+          },
+          {
+            "provider_key":"anthropic",
+            "provider_model_id":"claude-sonnet-4-6",
+            "input_cost_per_million_tokens":3.0,
+            "output_cost_per_million_tokens":15.0
           }
         ]
       },
@@ -250,7 +282,10 @@ INSERT INTO runtime_profiles (
   workspace_id,
   name,
   slug,
-  execution_target
+  execution_target,
+  max_iterations,
+  run_timeout_seconds,
+  step_timeout_seconds
 )
 VALUES (
   '${RUNTIME_PROFILE_ID}',
@@ -258,7 +293,10 @@ VALUES (
   '${WORKSPACE_ID}',
   'Local Native Runtime',
   'local-native-runtime',
-  'native'
+  'native',
+  ${MAX_ITERATIONS},
+  900,
+  60
 );
 
 INSERT INTO provider_accounts (
@@ -274,9 +312,9 @@ VALUES (
   '${PROVIDER_ACCOUNT_ID}',
   '${ORG_ID}',
   '${WORKSPACE_ID}',
-  'openai',
-  'Local OpenAI Account',
-  'secret://openai',
+  '${PROVIDER_KEY}',
+  '${PROVIDER_NAME}',
+  '${CREDENTIAL_REFERENCE}',
   '{"rpm":60}'::jsonb
 );
 
@@ -290,10 +328,10 @@ INSERT INTO model_catalog_entries (
 )
 VALUES (
   '${MODEL_CATALOG_ENTRY_ID}',
-  'openai',
-  '${OPENAI_MODEL}',
-  '${OPENAI_MODEL}',
-  '${OPENAI_MODEL}',
+  '${PROVIDER_KEY}',
+  '${MODEL_ID}',
+  '${MODEL_ID}',
+  '${MODEL_ID}',
   '{"tier":"smoke"}'::jsonb
 );
 
