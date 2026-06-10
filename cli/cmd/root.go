@@ -219,8 +219,14 @@ func init() {
 	// --jq is the de-facto name agents know from gh; normalize it onto --query
 	// so both spellings parse while the schema documents a single flag. The
 	// GLOBAL normalization func is required — a flag-set-local one would not
-	// propagate to subcommand parsing.
+	// propagate to subcommand parsing — and any prior func is chained so a
+	// second SetGlobalNormalizationFunc caller cannot silently drop this
+	// mapping (or vice versa).
+	prior := rootCmd.GlobalNormalizationFunc()
 	rootCmd.SetGlobalNormalizationFunc(func(fs *pflag.FlagSet, name string) pflag.NormalizedName {
+		if prior != nil {
+			name = string(prior(fs, name))
+		}
 		if name == "jq" {
 			name = "query"
 		}
