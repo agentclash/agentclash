@@ -1,6 +1,7 @@
 package api
 
 import (
+	"math"
 	"net/http"
 	"strconv"
 )
@@ -12,8 +13,10 @@ import (
 // broken by garbage input.
 func parseListLimitOffset(r *http.Request) (limit, offset int32) {
 	limit = 20
+	// Bound before the int32 cast: 2^31 would wrap negative, bypass the cap,
+	// and hand PostgreSQL a negative LIMIT (a 500).
 	if raw := r.URL.Query().Get("limit"); raw != "" {
-		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 {
+		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 && parsed <= math.MaxInt32 {
 			limit = int32(parsed)
 		}
 	}
@@ -23,7 +26,7 @@ func parseListLimitOffset(r *http.Request) (limit, offset int32) {
 
 	offset = 0
 	if raw := r.URL.Query().Get("offset"); raw != "" {
-		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 {
+		if parsed, err := strconv.Atoi(raw); err == nil && parsed >= 0 && parsed <= math.MaxInt32 {
 			offset = int32(parsed)
 		}
 	}
