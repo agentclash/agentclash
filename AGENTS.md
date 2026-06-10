@@ -46,13 +46,13 @@ guidance ships inside the published npm package at
 
 Quick reference for AI coding agents working on the AgentClash CLI itself.
 
-## What matters for CLI work
+### What matters for CLI work
 
 - The CLI lives in `cli/` and is a separate Go module.
 - It can run against local backend services or a hosted API.
 - The published npm package is `agentclash`; platform binaries live in `@agentclash/cli-<os>-<arch>`.
 
-## Run the CLI locally against a hosted backend
+### Run the CLI locally against a hosted backend
 
 Use production unless you intentionally need a local or self-hosted backend:
 
@@ -87,7 +87,7 @@ export AGENTCLASH_TOKEN="..."
 export AGENTCLASH_WORKSPACE="workspace-id"
 ```
 
-## CLI test commands
+### CLI test commands
 
 Run these from `cli/`:
 
@@ -119,7 +119,7 @@ npm i /tmp/agentclash-cli-<triple>-*.tgz /tmp/agentclash-*.tgz
 ./node_modules/.bin/agentclash version
 ```
 
-## Routine npm release flow
+### Routine npm release flow
 
 Do not manually publish for normal releases.
 

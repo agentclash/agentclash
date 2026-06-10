@@ -122,6 +122,11 @@ flag; export straight into that directory instead:
 agentclash skills export --dir ./.opencode/skills
 ```
 
+Do not add `--host opencode` here: `--host` nests skills under the host's
+home-relative path (for OpenCode, `.config/opencode/skills/`), which is right for
+a home-directory install but would double-nest inside a project-local directory.
+`--dir` alone writes the flat `<skill>/SKILL.md` layout.
+
 ### Offline export
 
 For air-gapped machines, export the embedded snapshot to a directory or tarball,
