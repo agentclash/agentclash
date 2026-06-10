@@ -72,15 +72,20 @@ For CI/CD, set the AGENTCLASH_TOKEN environment variable instead.`,
 			rc.Output.PrintWarning("Stored credentials are invalid; starting a new browser login.")
 		}
 
-		// The browser device flow needs a human; never enter its multi-minute
-		// poll loop in a non-interactive/headless context. Fail fast and name the
-		// headless path instead.
-		if nonInteractiveMode() && os.Getenv("AGENTCLASH_TOKEN") == "" {
+		// Everything past this point is the browser device flow, which a
+		// non-interactive/headless context can never complete — fail fast no
+		// matter how we got here (no credential, invalid stored credential, or
+		// --force explicitly requesting a fresh browser login).
+		if nonInteractiveMode() {
+			nextStep := "Set AGENTCLASH_TOKEN to a CLI token (create one in the AgentClash web app), or run `agentclash auth login` in an interactive terminal."
+			if flagForceLogin && rc.Client.Token() != "" {
+				nextStep = "Drop --force to reuse the existing credential, or run `agentclash auth login --force` in an interactive terminal."
+			}
 			return &cliError{
 				Code:     "interactive_input_required",
 				Message:  "browser login needs an interactive terminal; set AGENTCLASH_TOKEN for headless or CI use",
 				Details:  map[string]any{"env": "AGENTCLASH_TOKEN"},
-				NextStep: "Set AGENTCLASH_TOKEN to a CLI token (create one in the AgentClash web app), or run `agentclash auth login` in an interactive terminal.",
+				NextStep: nextStep,
 			}
 		}
 

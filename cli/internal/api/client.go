@@ -454,10 +454,11 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 }
 
 // publicAPIPath reports whether path is reachable without credentials. Only the
-// RFC 8628 device-authorization endpoints qualify — they MINT a CLI token, so
-// requiring a token to reach them would be circular.
+// two RFC 8628 device-authorization endpoints qualify — they MINT a CLI token,
+// so requiring a token to reach them would be circular. Exact matches only: a
+// prefix match would silently exempt any future /v1/cli-auth/device* route.
 func publicAPIPath(path string) bool {
-	return strings.HasPrefix(path, "/v1/cli-auth/device")
+	return path == "/v1/cli-auth/device" || path == "/v1/cli-auth/device/token"
 }
 
 // ensureAuth fails fast with a synthesized 401 when the client has no way to

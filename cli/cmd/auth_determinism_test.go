@@ -47,6 +47,45 @@ func TestAuthLoginFailsFastWhenNonInteractiveWithoutToken(t *testing.T) {
 // Covered by TestAuthLoginInvalidStoredTokenStartsDeviceFlow et al. (they call
 // forceInteractiveTTY); this case asserts the fail-fast does not regress them.
 
+// WI-1 regression (Greptile P1 on #974): --force skips the already-authenticated
+// early return, so even with AGENTCLASH_TOKEN set the command would fall through
+// into the browser device flow. Non-interactive mode must fail fast there too —
+// a headless context can never complete a browser login, token or not.
+func TestAuthLoginForceFailsFastNonInteractiveEvenWithToken(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("AGENTCLASH_TOKEN", "valid-env-token")
+	t.Setenv("AGENTCLASH_NONINTERACTIVE", "1")
+
+	deviceCalled := false
+	srv := fakeAPI(t, map[string]http.HandlerFunc{
+		"POST /v1/cli-auth/device": func(w http.ResponseWriter, r *http.Request) {
+			deviceCalled = true
+			jsonHandler(201, map[string]any{
+				"device_code":      "dc",
+				"user_code":        "ABCD-EFGH",
+				"verification_uri": "https://agentclash.dev/device",
+				"expires_in":       60,
+			})(w, r)
+		},
+	})
+	defer srv.Close()
+
+	err := executeCommand(t, []string{"auth", "login", "--force", "--json"}, srv.URL)
+	if err == nil {
+		t.Fatal("expected an error, got nil")
+	}
+	var ce *cliError
+	if !errors.As(err, &ce) || ce.Code != "interactive_input_required" {
+		t.Fatalf("error = %v, want cliError code interactive_input_required", err)
+	}
+	if !strings.Contains(ce.NextStep, "--force") {
+		t.Fatalf("next_step should explain the --force interaction; got %q", ce.NextStep)
+	}
+	if deviceCalled {
+		t.Fatal("device-code endpoint must not be hit in non-interactive mode, even with --force")
+	}
+}
+
 // WI-9: an auth-requiring command with no credentials returns a deterministic
 // `unauthenticated` error before any network call.
 func TestUnauthenticatedCommandShortCircuitsWithoutNetwork(t *testing.T) {

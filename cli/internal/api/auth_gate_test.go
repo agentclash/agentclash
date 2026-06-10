@@ -31,6 +31,28 @@ func TestEnsureAuthShortCircuitsUnauthenticatedRequests(t *testing.T) {
 	}
 }
 
+// Greptile P2 on #974: the credential-free exemption must match the two RFC 8628
+// endpoints exactly — a prefix match would silently exempt any future
+// /v1/cli-auth/device* route from authentication.
+func TestPublicAPIPathExactMatchOnly(t *testing.T) {
+	cases := []struct {
+		path string
+		want bool
+	}{
+		{"/v1/cli-auth/device", true},
+		{"/v1/cli-auth/device/token", true},
+		{"/v1/cli-auth/device-management", false},
+		{"/v1/cli-auth/device-keys", false},
+		{"/v1/cli-auth/device/token/refresh", false},
+		{"/v1/cli-auth/devices", false},
+	}
+	for _, tc := range cases {
+		if got := publicAPIPath(tc.path); got != tc.want {
+			t.Errorf("publicAPIPath(%q) = %v, want %v", tc.path, got, tc.want)
+		}
+	}
+}
+
 // Happy paths: public device endpoint (no token), an authenticated token, and
 // dev mode all reach the server.
 func TestEnsureAuthAllowsPublicTokenAndDevRequests(t *testing.T) {
