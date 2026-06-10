@@ -21,7 +21,6 @@ var (
 	flagNoColor   bool
 	flagWorkspace string
 	flagAPIURL    string
-	flagYes       bool
 )
 
 // RunContext is passed to all commands via cobra context.
@@ -144,7 +143,6 @@ func init() {
 	rootCmd.PersistentFlags().BoolVar(&flagNoColor, "no-color", false, "Disable color output")
 	rootCmd.PersistentFlags().StringVarP(&flagWorkspace, "workspace", "w", "", "Workspace ID (overrides config)")
 	rootCmd.PersistentFlags().StringVar(&flagAPIURL, "api-url", "", "API base URL (overrides config)")
-	rootCmd.PersistentFlags().BoolVar(&flagYes, "yes", false, "Skip confirmation prompts")
 }
 
 // Execute runs the root command.

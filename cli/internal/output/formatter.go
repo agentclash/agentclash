@@ -67,6 +67,13 @@ func (f *Formatter) Writer() io.Writer {
 	return f.writer
 }
 
+// ErrWriter returns the secondary (stderr) writer. Commands route human
+// progress/diagnostics here when structured output (--json/--output) is active
+// so stdout stays a clean machine-readable stream.
+func (f *Formatter) ErrWriter() io.Writer {
+	return f.errw
+}
+
 // SetWriters overrides output streams. It is primarily useful for focused
 // command rendering tests that should not mutate process-wide stdout/stderr.
 func (f *Formatter) SetWriters(writer, errw io.Writer) {
