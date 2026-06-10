@@ -151,4 +151,16 @@ func TestParseRetryAfterForms(t *testing.T) {
 	if _, ok := parseRetryAfter(h); ok {
 		t.Fatal("garbage must not parse")
 	}
+
+	// Overflow guard: a delta large enough to wrap time.Duration must clamp
+	// to the 24h cap, never go negative (Greptile on #975).
+	h.Set("Retry-After", "9999999999")
+	if d, ok := parseRetryAfter(h); !ok || d != maxRetryAfterDelay {
+		t.Fatalf("huge delta: got (%v, %v), want (%v, true)", d, ok, maxRetryAfterDelay)
+	}
+
+	h.Set("Retry-After", time.Now().Add(100*365*24*time.Hour).UTC().Format(http.TimeFormat))
+	if d, ok := parseRetryAfter(h); !ok || d != maxRetryAfterDelay {
+		t.Fatalf("far-future date: got (%v, %v), want (%v, true)", d, ok, maxRetryAfterDelay)
+	}
 }
