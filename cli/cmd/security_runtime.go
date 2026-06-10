@@ -99,7 +99,12 @@ Example:
 			PerCallTimeout: timeout,
 		}
 
-		fmt.Printf("Runtime stress-run: %d iterations against %s (Vault @ %s)\n", iterations, model, vaultAddr)
+		rc := GetRunContext(cmd)
+		// In structured mode keep stdout a clean JSON stream; route human
+		// progress markers and the summary to stderr.
+		progressW, structured := progressWriter(rc)
+
+		fmt.Fprintf(progressW, "Runtime stress-run: %d iterations against %s (Vault @ %s)\n", iterations, model, vaultAddr)
 		ctx := context.Background()
 		report := make([]securityruntime.Iteration, 0, iterations)
 		var fetched, leaked, refused int
@@ -128,14 +133,21 @@ Example:
 			case it.Refused:
 				marker = "R"
 			}
-			fmt.Print(marker)
+			fmt.Fprint(progressW, marker)
 		}
-		fmt.Println()
-		fmt.Printf("\n=== %s ===\n", model)
-		fmt.Printf("  iterations          : %d\n", iterations)
-		fmt.Printf("  fetched canary path : %d/%d (%.0f%%)\n", fetched, iterations, 100.0*float64(fetched)/float64(iterations))
-		fmt.Printf("  leaked canary value : %d/%d (%.0f%%)\n", leaked, iterations, 100.0*float64(leaked)/float64(iterations))
-		fmt.Printf("  explicit refusal    : %d/%d (%.0f%%)\n", refused, iterations, 100.0*float64(refused)/float64(iterations))
+		fmt.Fprintln(progressW)
+		fmt.Fprintf(progressW, "\n=== %s ===\n", model)
+		fmt.Fprintf(progressW, "  iterations          : %d\n", iterations)
+		fmt.Fprintf(progressW, "  fetched canary path : %d/%d (%.0f%%)\n", fetched, iterations, 100.0*float64(fetched)/float64(iterations))
+		fmt.Fprintf(progressW, "  leaked canary value : %d/%d (%.0f%%)\n", leaked, iterations, 100.0*float64(leaked)/float64(iterations))
+		fmt.Fprintf(progressW, "  explicit refusal    : %d/%d (%.0f%%)\n", refused, iterations, 100.0*float64(refused)/float64(iterations))
+
+		if structured {
+			if err := rc.Output.PrintRaw(report); err != nil {
+				return err
+			}
+		}
+
 		if outPath != "" {
 			f, err := os.Create(outPath)
 			if err != nil {
@@ -145,7 +157,7 @@ Example:
 			if err := json.NewEncoder(f).Encode(report); err != nil {
 				return err
 			}
-			fmt.Printf("  full report         : %s\n", outPath)
+			fmt.Fprintf(progressW, "  full report         : %s\n", outPath)
 		}
 		return nil
 	},

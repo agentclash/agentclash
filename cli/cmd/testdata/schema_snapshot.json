@@ -44,12 +44,6 @@
       "shorthand": "w",
       "usage": "Workspace ID (overrides config)",
       "type": "string"
-    },
-    {
-      "name": "yes",
-      "usage": "Skip confirmation prompts",
-      "type": "bool",
-      "default": "false"
     }
   ],
   "commands": [

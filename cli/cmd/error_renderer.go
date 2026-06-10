@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/url"
 	"strings"
+	"time"
 
 	cliapi "github.com/agentclash/agentclash/cli/internal/api"
 )
@@ -39,10 +40,11 @@ type structuredErrorEnvelope struct {
 }
 
 type structuredError struct {
-	Code    string         `json:"code"`
-	Message string         `json:"message"`
-	Status  int            `json:"status,omitempty"`
-	Details map[string]any `json:"details"`
+	Code     string         `json:"code"`
+	Message  string         `json:"message"`
+	Status   int            `json:"status,omitempty"`
+	Details  map[string]any `json:"details"`
+	NextStep string         `json:"next_step,omitempty"`
 }
 
 // RenderError writes a machine-readable error envelope when JSON output was
@@ -94,7 +96,36 @@ func classifyStructuredError(err error) structuredError {
 		if message == "" {
 			message = apiErr.Error()
 		}
-		return structuredError{Code: code, Message: message, Status: apiErr.StatusCode, Details: details}
+		// Carry the machine-readable quota/plan fields the API returned so an
+		// agent can branch on them instead of re-parsing the prose message.
+		if apiErr.PlanKey != "" {
+			details["plan_key"] = apiErr.PlanKey
+		}
+		if apiErr.UpgradeTarget != "" {
+			details["upgrade_target"] = apiErr.UpgradeTarget
+		}
+		if apiErr.Limit != nil {
+			details["limit"] = *apiErr.Limit
+		}
+		if apiErr.Used != nil {
+			details["used"] = *apiErr.Used
+		}
+		if apiErr.Remaining != nil {
+			details["remaining"] = *apiErr.Remaining
+		}
+		if apiErr.ResetAt != nil {
+			details["reset_at"] = apiErr.ResetAt.UTC().Format(time.RFC3339)
+		}
+		if apiErr.ExpiresAt != nil {
+			details["expires_at"] = apiErr.ExpiresAt.UTC().Format(time.RFC3339)
+		}
+		return structuredError{
+			Code:     code,
+			Message:  message,
+			Status:   apiErr.StatusCode,
+			Details:  details,
+			NextStep: apiErrorNextStep(apiErr),
+		}
 	}
 
 	var localErr *cliError
@@ -132,6 +163,31 @@ func classifyStructuredError(err error) structuredError {
 	}
 
 	return structuredError{Code: "invalid_argument", Message: message, Details: details}
+}
+
+// apiErrorNextStep returns a short, actionable hint for common API failures,
+// mirroring the doctor `next_step` convention. Empty when no specific hint
+// applies, so the envelope's next_step stays omitted.
+func apiErrorNextStep(e *cliapi.APIError) string {
+	switch {
+	case e.IsBillingGate():
+		switch {
+		case e.UpgradeTarget != "":
+			return "Open the organization billing page in the AgentClash web app to upgrade, or wait for the quota to reset."
+		case e.ResetAt != nil:
+			return "Usage limit reached with no upgrade path configured — wait for the quota to reset (see details.reset_at), or open the organization billing page to change plans."
+		default:
+			return "Open the organization billing page in the AgentClash web app to update billing."
+		}
+	case e.StatusCode == 401:
+		return "Run `agentclash auth login` (or set AGENTCLASH_TOKEN) and retry."
+	case e.StatusCode == 403:
+		return "Check workspace access with `agentclash workspace list`; you may lack permission for this resource."
+	case e.StatusCode == 404:
+		return "Verify the resource ID; list available resources with the matching `... list` command."
+	default:
+		return ""
+	}
 }
 
 func nonEmpty(value, fallback string) string {

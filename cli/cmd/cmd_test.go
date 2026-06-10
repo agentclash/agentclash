@@ -40,7 +40,6 @@ func executeCommandWithQuiet(t *testing.T, args []string, apiURL string, quiet b
 	flagNoColor = true
 	flagWorkspace = ""
 	flagAPIURL = apiURL
-	flagYes = false
 	flagDevice = false
 	flagForceLogin = false
 	runtimeOutputJSON = false

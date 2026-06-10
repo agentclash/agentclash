@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"sort"
 	"time"
@@ -81,10 +82,15 @@ Example:
 			return fmt.Errorf("--provider and --model must be the same length (got %d providers, %d models)", len(providers), len(models))
 		}
 
+		rc := GetRunContext(cmd)
+		// In structured mode keep stdout a clean JSON stream; route human
+		// progress and per-run summaries to stderr.
+		progressW, structured := progressWriter(rc)
+
 		ctx := context.Background()
 		all := make([]*securitystress.Result, 0, len(providers))
 		for i, p := range providers {
-			fmt.Printf("Stress-running pack=%s provider=%s model=%s iterations=%d concurrency=%d...\n",
+			fmt.Fprintf(progressW, "Stress-running pack=%s provider=%s model=%s iterations=%d concurrency=%d...\n",
 				pack.Pack.Slug, p, models[i], iterations, concurrency)
 			cfg := securitystress.Config{
 				Provider:       p,
@@ -100,7 +106,13 @@ Example:
 				return fmt.Errorf("run %s/%s: %w", p, models[i], err)
 			}
 			all = append(all, res)
-			renderSummary(res)
+			renderSummary(progressW, res)
+		}
+
+		if structured {
+			if err := rc.Output.PrintRaw(all); err != nil {
+				return err
+			}
 		}
 
 		if outPath != "" {
@@ -112,30 +124,30 @@ Example:
 			if err := json.NewEncoder(f).Encode(all); err != nil {
 				return err
 			}
-			fmt.Printf("Wrote full report to %s\n", outPath)
+			fmt.Fprintf(progressW, "Wrote full report to %s\n", outPath)
 		}
 		return nil
 	},
 }
 
-func renderSummary(r *securitystress.Result) {
-	fmt.Printf("\n=== %s / %s ===\n", r.Provider, r.Model)
-	fmt.Printf("  iterations         : %d\n", r.Iterations)
-	fmt.Printf("  leak-rate (gate)   : %d/%d = %.0f%%\n", r.LeakedIters, r.Iterations, 100*(1-r.Posture))
-	fmt.Printf("  posture            : %.2f\n", r.Posture)
-	fmt.Printf("  total incidents    : %d\n", r.TotalIncidents)
-	fmt.Printf("  severity breakdown : ")
+func renderSummary(w io.Writer, r *securitystress.Result) {
+	fmt.Fprintf(w, "\n=== %s / %s ===\n", r.Provider, r.Model)
+	fmt.Fprintf(w, "  iterations         : %d\n", r.Iterations)
+	fmt.Fprintf(w, "  leak-rate (gate)   : %d/%d = %.0f%%\n", r.LeakedIters, r.Iterations, 100*(1-r.Posture))
+	fmt.Fprintf(w, "  posture            : %.2f\n", r.Posture)
+	fmt.Fprintf(w, "  total incidents    : %d\n", r.TotalIncidents)
+	fmt.Fprintf(w, "  severity breakdown : ")
 	keys := make([]string, 0, len(r.BySeverity))
 	for k := range r.BySeverity {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
 	for _, k := range keys {
-		fmt.Printf("%s=%d ", k, r.BySeverity[k])
+		fmt.Fprintf(w, "%s=%d ", k, r.BySeverity[k])
 	}
-	fmt.Println()
+	fmt.Fprintln(w)
 	if len(r.ByStrategy) > 0 {
-		fmt.Println("  refusal by strategy:")
+		fmt.Fprintln(w, "  refusal by strategy:")
 		stratKeys := make([]string, 0, len(r.ByStrategy))
 		for k := range r.ByStrategy {
 			stratKeys = append(stratKeys, k)
@@ -148,16 +160,16 @@ func renderSummary(r *securitystress.Result) {
 			if total > 0 {
 				rate = float64(so.Refused) / float64(total) * 100
 			}
-			fmt.Printf("    %-30s refused %d/%d (%.0f%%)\n", k, so.Refused, total, rate)
+			fmt.Fprintf(w, "    %-30s refused %d/%d (%.0f%%)\n", k, so.Refused, total, rate)
 		}
 	}
 	if len(r.Errors) > 0 {
-		fmt.Printf("  errors             : %d (showing first 3)\n", len(r.Errors))
+		fmt.Fprintf(w, "  errors             : %d (showing first 3)\n", len(r.Errors))
 		for i, e := range r.Errors {
 			if i >= 3 {
 				break
 			}
-			fmt.Printf("    - %s\n", e)
+			fmt.Fprintf(w, "    - %s\n", e)
 		}
 	}
 }
