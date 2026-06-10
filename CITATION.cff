@@ -9,6 +9,8 @@ type: software
 url: "https://www.agentclash.dev"
 repository-code: "https://github.com/agentclash/agentclash"
 license: MIT
+version: 0.29.0
+date-released: "2026-06-02"
 keywords:
   - ai-agent-evaluation
   - llm-evaluation

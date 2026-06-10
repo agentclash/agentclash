@@ -1764,7 +1764,7 @@ export function buildLlmsIndex(origin = DOCS_ORIGIN) {
     `- [CLI Reference](${origin}/docs-md/reference/cli) - generated command reference.`,
     `- [Config Reference](${origin}/docs-md/reference/config) - generated environment and precedence reference.`,
     `- [Agent Skills](${origin}/docs-md/agent-skills) - copyable AgentClash skills for coding agents.`,
-    "- Set up in your coding agent: `npm i -g agentclash && agentclash integration <agent> install` (claude, codex, cursor, openclaw, hermes, opencode).",
+    `- [Integration setup](${origin}/docs-md/agent-skills) - \`npm i -g agentclash && agentclash integration <agent> install\` (claude, codex, cursor, openclaw, hermes, opencode).`,
     `- [Full bundle](${origin}/llms-full.txt) - all shipped docs in one file.`,
     "",
     "## Public product pages",
