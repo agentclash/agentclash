@@ -171,10 +171,14 @@ func classifyStructuredError(err error) structuredError {
 func apiErrorNextStep(e *cliapi.APIError) string {
 	switch {
 	case e.IsBillingGate():
-		if e.UpgradeTarget != "" {
+		switch {
+		case e.UpgradeTarget != "":
 			return "Open the organization billing page in the AgentClash web app to upgrade, or wait for the quota to reset."
+		case e.ResetAt != nil:
+			return "Usage limit reached with no upgrade path configured — wait for the quota to reset (see details.reset_at), or open the organization billing page to change plans."
+		default:
+			return "Open the organization billing page in the AgentClash web app to update billing."
 		}
-		return "Open the organization billing page in the AgentClash web app to update billing."
 	case e.StatusCode == 401:
 		return "Run `agentclash auth login` (or set AGENTCLASH_TOKEN) and retry."
 	case e.StatusCode == 403:
