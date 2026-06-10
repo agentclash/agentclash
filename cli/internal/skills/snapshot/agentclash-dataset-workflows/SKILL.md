@@ -54,7 +54,7 @@ agentclash dataset version list <dataset-id>
 agentclash dataset version create <dataset-id> --label "v2-seeds"
 agentclash dataset import <dataset-id> examples.jsonl
 agentclash dataset export <dataset-id> --version <version-id> > out.jsonl
-agentclash dataset example list <dataset-id> --version <version-id>
+agentclash dataset example list <dataset-id>
 agentclash dataset example add <dataset-id> --input '{"messages":[...]}' --expected '{"score":1}'
 agentclash dataset example edit <dataset-id> <example-id> --expected '{"score":1}'
 agentclash dataset example rm <dataset-id> <example-id>

@@ -1,5 +1,5 @@
 {
-  "snapshot_version": "ffb3bfecd515",
+  "snapshot_version": "c08a76ce9fd6",
   "skills": [
     {
       "name": "agentclash-agent-build-author",
@@ -89,7 +89,7 @@
       "name": "agentclash-dataset-workflows",
       "role": "dataset",
       "requires_cli": true,
-      "sha256": "7eff177c475f47c6e224ea9dfe7854418d2d99d11ac941f10e601ac1964820a6"
+      "sha256": "084f68ccaaa17bcb463300adc8dcc2f0b9e29afb0eec5bf14250046dec12a31c"
     },
     {
       "name": "agentclash-eval-runner",
