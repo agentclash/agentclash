@@ -331,12 +331,19 @@ func runFromPack(ctx context.Context, packPath, outDir string, iterations int, b
 				// hours of model spend.
 				fmt.Fprintf(w, "  warning: could not write report %s: %v\n", outPath, err)
 			} else {
-				if encErr := json.NewEncoder(f).Encode(stats.Report); encErr != nil {
+				encErr := json.NewEncoder(f).Encode(stats.Report)
+				closeErr := f.Close()
+				switch {
+				case encErr != nil:
 					fmt.Fprintf(w, "  warning: could not encode report %s: %v\n", outPath, encErr)
-				} else {
+				case closeErr != nil:
+					// Encode can land in the kernel buffer and the flush still
+					// fail on Close (full disk, NFS drop) — a report_path must
+					// only be claimed for a fully written file.
+					fmt.Fprintf(w, "  warning: could not write report %s: %v\n", outPath, closeErr)
+				default:
 					entry.ReportPath = outPath
 				}
-				_ = f.Close()
 			}
 		}
 		result.Entries = append(result.Entries, entry)
