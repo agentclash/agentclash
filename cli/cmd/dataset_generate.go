@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -17,6 +19,8 @@ func init() {
 	datasetGenerateCmd.Flags().Bool("create-version", false, "Snapshot a dataset version when generation completes")
 	datasetGenerateCmd.Flags().String("version-label", "", "Optional label for the generated dataset version")
 	datasetGenerateCmd.Flags().Bool("follow", false, "Poll generation job status until it finishes")
+	datasetGenerateCmd.Flags().Duration("poll-interval", 2*time.Second, "Polling interval for --follow")
+	datasetGenerateCmd.Flags().Duration("timeout", 0, "Give up on --follow after this duration (0 = wait indefinitely)")
 }
 
 var datasetGenerateCmd = &cobra.Command{
@@ -85,9 +89,30 @@ var datasetGenerateCmd = &cobra.Command{
 			return nil
 		}
 
+		pollInterval, _ := cmd.Flags().GetDuration("poll-interval")
+		if pollInterval <= 0 {
+			pollInterval = 2 * time.Second
+		}
+		timeout, _ := cmd.Flags().GetDuration("timeout")
+		ctx := cmd.Context()
+		if timeout > 0 {
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithTimeout(ctx, timeout)
+			defer cancel()
+		}
+		followTimeoutErr := func() error {
+			return &cliError{
+				Code:    "follow_timeout",
+				Message: fmt.Sprintf("generation job %s did not reach a terminal status within %s; it keeps running server-side", jobID, timeout),
+			}
+		}
+
 		for {
-			statusResp, pollErr := rc.Client.Get(cmd.Context(), "/v1/workspaces/"+wsID+"/datasets/"+datasetID+"/generations/"+jobID, nil)
+			statusResp, pollErr := rc.Client.Get(ctx, "/v1/workspaces/"+wsID+"/datasets/"+datasetID+"/generations/"+jobID, nil)
 			if pollErr != nil {
+				if timeout > 0 && errors.Is(ctx.Err(), context.DeadlineExceeded) {
+					return followTimeoutErr()
+				}
 				return pollErr
 			}
 			if apiErr := statusResp.ParseError(); apiErr != nil {
@@ -101,14 +126,25 @@ var datasetGenerateCmd = &cobra.Command{
 			if !rc.Output.IsStructured() {
 				fmt.Fprintf(rc.Output.Writer(), "status: %s accepted=%v rejected=%v\n", status, current["accepted_count"], current["rejected_count"])
 			}
-			switch status {
-			case "completed", "failed":
+			// Shared terminal set — the old hand-rolled switch was missing
+			// "cancelled" and looped forever on a cancelled job.
+			if isTerminalRunStatus(status) {
 				if rc.Output.IsStructured() {
 					return rc.Output.PrintRaw(current)
 				}
 				return nil
 			}
-			time.Sleep(2 * time.Second)
+
+			timer := time.NewTimer(pollInterval)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				if timeout > 0 && errors.Is(ctx.Err(), context.DeadlineExceeded) {
+					return followTimeoutErr()
+				}
+				return ctx.Err()
+			case <-timer.C:
+			}
 		}
 	},
 }

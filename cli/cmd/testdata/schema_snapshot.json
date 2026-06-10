@@ -1350,6 +1350,12 @@
               "type": "string"
             },
             {
+              "name": "poll-interval",
+              "usage": "Polling interval for --follow",
+              "type": "duration",
+              "default": "2s"
+            },
+            {
               "name": "provider-account",
               "usage": "Provider account ID",
               "type": "string"
@@ -1364,6 +1370,12 @@
               "usage": "Generation strategy (v1: self-instruct)",
               "type": "string",
               "default": "self-instruct"
+            },
+            {
+              "name": "timeout",
+              "usage": "Give up on --follow after this duration (0 = wait indefinitely)",
+              "type": "duration",
+              "default": "0s"
             },
             {
               "name": "version-label",
@@ -3407,6 +3419,11 @@
               "usage": "Filter streamed events by event type pattern (exact, comma-separated, or glob; '*' matches any non-slash chars, so 'model.*' matches 'model.call.started'; repeatable)",
               "type": "stringSlice",
               "default": "[]"
+            },
+            {
+              "name": "since",
+              "usage": "Resume the stream after this event ID (sent as Last-Event-ID; the server replays everything recorded after it)",
+              "type": "string"
             }
           ],
           "subcommands": [
