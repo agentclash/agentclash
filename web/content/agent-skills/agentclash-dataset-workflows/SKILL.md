@@ -34,11 +34,11 @@ End-to-end dataset operations in a workspace: versioned example banks, eval runs
 export AGENTCLASH_API_URL="https://api.agentclash.dev"
 agentclash workspace use <WORKSPACE_ID>
 agentclash dataset list
-agentclash dataset get <DATASET_ID> --json
+agentclash dataset view <DATASET_ID> --json
 ```
 
 ## Procedure
-1. Inspect dataset and versions (`list`, `get`, `versions list`).
+1. Inspect dataset and versions (`list`, `view`, `version list`).
 2. Import or export examples; optionally create a version snapshot.
 3. Run a dataset eval or attach an existing run.
 4. Gate with `dataset test` against a baseline (CI-friendly `--format junit`).
@@ -49,15 +49,15 @@ agentclash dataset get <DATASET_ID> --json
 ### Inspect and mutate examples
 ```bash
 agentclash dataset list
-agentclash dataset get <dataset-id>
-agentclash dataset versions list <dataset-id>
-agentclash dataset versions create <dataset-id> --label "v2-seeds"
+agentclash dataset view <dataset-id>
+agentclash dataset version list <dataset-id>
+agentclash dataset version create <dataset-id> --label "v2-seeds"
 agentclash dataset import <dataset-id> examples.jsonl
-agentclash dataset export <dataset-id> --version <version-id> -o out.jsonl
-agentclash dataset examples list <dataset-id> --version <version-id>
-agentclash dataset examples add <dataset-id> --input '{"messages":[...]}' --expected '{"score":1}'
-agentclash dataset examples update <dataset-id> <example-id> --expected-file expected.json
-agentclash dataset examples delete <dataset-id> <example-id>
+agentclash dataset export <dataset-id> --version <version-id> > out.jsonl
+agentclash dataset example list <dataset-id> --version <version-id>
+agentclash dataset example add <dataset-id> --input '{"messages":[...]}' --expected '{"score":1}'
+agentclash dataset example edit <dataset-id> <example-id> --expected '{"score":1}'
+agentclash dataset example rm <dataset-id> <example-id>
 ```
 
 ### Eval and CI gate
@@ -102,7 +102,7 @@ agentclash dataset generate <dataset-id> \
 agentclash dataset import-traces <dataset-id> traces.json --source otel
 agentclash dataset import-traces <dataset-id> --source agentclash --run <run-id> --run-agent <run-agent-id>
 agentclash dataset trace-candidates list <dataset-id> --status pending
-agentclash dataset promote <dataset-id> <candidate-id> --tag production --expected-file edited.json
+agentclash dataset promote <dataset-id> <candidate-id> --tag production --expected '{"score":1}'
 ```
 
 ### Regression suite sync

@@ -41,6 +41,22 @@ Portable bundle install (copy skills to another agent host without the integrati
 3. Follow dependency order for setup → pack → run → review → regression → CI.
 4. Send the user to the matching UI page when they need a visual surface.
 
+## Drive The CLI Like An Agent
+When you (a coding agent) drive AgentClash non-interactively, lean on the machine contract:
+
+- **Ask for machine output.** Pass `--json` (or `-o json`) on every command. Data goes to
+  **stdout**; human progress and diagnostics go to **stderr** — parse stdout only.
+- **Discover the surface first.** `agentclash schema --json` returns the full command tree, flags,
+  and documented exit codes. Prefer it over scraping `--help` prose.
+- **Branch on structured errors, never on prose.** On failure the CLI prints a JSON envelope:
+  `error.code` is a stable machine key — branch on it; `error.next_step` is the remediation to act
+  on; `error.details` carries specifics (quota `limit`/`used`/`remaining`, `reset_at`, `plan_key`).
+- **Gate readiness on `agentclash doctor`.** It exits non-zero when the environment isn't ready.
+  `agentclash quickstart --json` is informational and exits 0 even when `ready:false` — use `doctor`
+  as the hard gate in CI/agent flows.
+- **Stay headless.** Set `AGENTCLASH_TOKEN`, `AGENTCLASH_WORKSPACE`, and `AGENTCLASH_API_URL` in the
+  environment so no command needs an interactive prompt.
+
 ## End-To-End Eval Workflow (CLI)
 
 ```text
