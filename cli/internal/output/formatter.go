@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 
+	"github.com/itchyny/gojq"
 	"gopkg.in/yaml.v3"
 )
 
@@ -22,6 +23,53 @@ type Formatter struct {
 	quiet  bool
 	writer io.Writer
 	errw   io.Writer
+	query  *gojq.Code
+}
+
+// SetQuery installs a compiled jq expression that every structured success
+// document is filtered through (gh --jq semantics). Error envelopes are
+// rendered outside the Formatter and stay unfiltered by design — agents need
+// a stable error shape regardless of the projection they asked for.
+func (f *Formatter) SetQuery(code *gojq.Code) {
+	f.query = code
+}
+
+// printQueried runs the compiled jq expression over data and emits results
+// jq-style: strings print raw (no quotes), everything else as one compact
+// JSON document per line. data is round-tripped through encoding/json first
+// because gojq operates on plain JSON values, not Go structs.
+func (f *Formatter) printQueried(data any) error {
+	raw, err := json.Marshal(data)
+	if err != nil {
+		return err
+	}
+	var plain any
+	if err := json.Unmarshal(raw, &plain); err != nil {
+		return err
+	}
+	iter := f.query.Run(plain)
+	for {
+		v, ok := iter.Next()
+		if !ok {
+			return nil
+		}
+		if iterErr, isErr := v.(error); isErr {
+			return fmt.Errorf("--query: %w", iterErr)
+		}
+		if s, isString := v.(string); isString {
+			if _, err := fmt.Fprintln(f.writer, s); err != nil {
+				return err
+			}
+			continue
+		}
+		line, err := json.Marshal(v)
+		if err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintln(f.writer, string(line)); err != nil {
+			return err
+		}
+	}
 }
 
 // NewFormatter creates a formatter with the given settings.
@@ -94,15 +142,24 @@ func (f *Formatter) PrintTable(columns []Column, rows [][]string) {
 	RenderTable(f.writer, columns, rows)
 }
 
-// PrintJSON renders data as indented JSON to stdout.
+// PrintJSON renders data as indented JSON to stdout, or jq-filtered output
+// when a --query expression is installed.
 func (f *Formatter) PrintJSON(data any) error {
+	if f.query != nil {
+		return f.printQueried(data)
+	}
 	enc := json.NewEncoder(f.writer)
 	enc.SetIndent("", "  ")
 	return enc.Encode(data)
 }
 
-// PrintYAML renders data as YAML to stdout.
+// PrintYAML renders data as YAML to stdout. A --query expression takes
+// precedence and emits jq-style output (raw strings / compact JSON lines) —
+// the projection defines the shape, not the container format.
 func (f *Formatter) PrintYAML(data any) error {
+	if f.query != nil {
+		return f.printQueried(data)
+	}
 	enc := yaml.NewEncoder(f.writer)
 	enc.SetIndent(2)
 	defer enc.Close()
