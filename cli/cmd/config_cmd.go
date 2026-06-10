@@ -26,17 +26,46 @@ var configGetCmd = &cobra.Command{
 	Short: "Get a config value",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		rc := GetRunContext(cmd)
 		cfg, err := config.Load()
 		if err != nil {
 			return err
 		}
-		val := cfg.Get(args[0])
+		key := args[0]
+		if !isValidConfigKey(key) {
+			// A typo'd key must not read as "valid but unset" — fail the same
+			// way `config set` does, naming the valid keys.
+			return &cliError{
+				Code:    "invalid_argument",
+				Message: fmt.Sprintf("unknown config key %q. Valid keys: %s", key, strings.Join(config.Keys(), ", ")),
+			}
+		}
+		val := cfg.Get(key)
+
+		if rc != nil && rc.Output.IsStructured() {
+			// An unset key is data, not an error: {"key","value":null}, exit 0.
+			payload := map[string]any{"key": key, "value": nil}
+			if val != "" {
+				payload["value"] = val
+			}
+			return rc.Output.PrintRaw(payload)
+		}
+
 		if val == "" {
-			return fmt.Errorf("key %q is not set", args[0])
+			return fmt.Errorf("key %q is not set", key)
 		}
 		fmt.Println(val)
 		return nil
 	},
+}
+
+func isValidConfigKey(key string) bool {
+	for _, k := range config.Keys() {
+		if k == key {
+			return true
+		}
+	}
+	return false
 }
 
 var configSetCmd = &cobra.Command{
