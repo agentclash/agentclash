@@ -149,7 +149,7 @@ func TestRunListHumanPagingHint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(out, "--offset 11") {
-		t.Fatalf("expected a next-page hint mentioning --offset 11; got:\n%s", out)
+	if !strings.Contains(out, "--limit 5 --offset 11") {
+		t.Fatalf("expected a next-page hint carrying the page size (--limit 5 --offset 11); got:\n%s", out)
 	}
 }

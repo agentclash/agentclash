@@ -22,7 +22,7 @@ func listPaginationQuery(cmd *cobra.Command) (url.Values, error) {
 	limit, _ := cmd.Flags().GetInt("limit")
 	offset, _ := cmd.Flags().GetInt("offset")
 	if limit < 0 || limit > 100 {
-		return nil, &cliError{Code: "invalid_argument", Message: "--limit must be between 1 and 100"}
+		return nil, &cliError{Code: "invalid_argument", Message: "--limit must be 0 (server default) or between 1 and 100"}
 	}
 	if offset < 0 {
 		return nil, &cliError{Code: "invalid_argument", Message: "--offset must be greater than or equal to 0"}
@@ -49,6 +49,10 @@ type paginatedList struct {
 }
 
 func newPaginatedList(items []map[string]any, total int64, limit, offset int) paginatedList {
+	if items == nil {
+		// An empty page must serialize as items: [], not items: null.
+		items = []map[string]any{}
+	}
 	return paginatedList{
 		Items:   items,
 		Total:   total,
@@ -64,6 +68,8 @@ func printListPagingHint(rc *RunContext, list paginatedList) {
 	if !list.HasMore || len(list.Items) == 0 {
 		return
 	}
-	rc.Output.PrintDetail("More", fmt.Sprintf("showing %d-%d of %d; next page: --offset %d",
-		list.Offset+1, list.Offset+len(list.Items), list.Total, list.Offset+len(list.Items)))
+	// Repeat --limit in the hint: the server echoes the effective page size,
+	// and omitting it would silently change page sizes between iterations.
+	rc.Output.PrintDetail("More", fmt.Sprintf("showing %d-%d of %d; next page: --limit %d --offset %d",
+		list.Offset+1, list.Offset+len(list.Items), list.Total, list.Limit, list.Offset+len(list.Items)))
 }
