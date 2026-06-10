@@ -1450,7 +1450,21 @@
           "name": "list",
           "path": "agentclash dataset list",
           "short": "List datasets",
-          "runnable": true
+          "runnable": true,
+          "flags": [
+            {
+              "name": "limit",
+              "usage": "Maximum items to return (1-100; 0 = server default of 20)",
+              "type": "int",
+              "default": "0"
+            },
+            {
+              "name": "offset",
+              "usage": "Number of items to skip before the first result",
+              "type": "int",
+              "default": "0"
+            }
+          ]
         },
         {
           "name": "promote",
@@ -2526,7 +2540,21 @@
           "name": "list",
           "path": "agentclash org list",
           "short": "List organizations you belong to",
-          "runnable": true
+          "runnable": true,
+          "flags": [
+            {
+              "name": "limit",
+              "usage": "Maximum items to return (1-100; 0 = server default of 20)",
+              "type": "int",
+              "default": "0"
+            },
+            {
+              "name": "offset",
+              "usage": "Number of items to skip before the first result",
+              "type": "int",
+              "default": "0"
+            }
+          ]
         },
         {
           "name": "members",
@@ -3472,7 +3500,21 @@
           "name": "list",
           "path": "agentclash run list",
           "short": "List runs in the workspace",
-          "runnable": true
+          "runnable": true,
+          "flags": [
+            {
+              "name": "limit",
+              "usage": "Maximum items to return (1-100; 0 = server default of 20)",
+              "type": "int",
+              "default": "0"
+            },
+            {
+              "name": "offset",
+              "usage": "Number of items to skip before the first result",
+              "type": "int",
+              "default": "0"
+            }
+          ]
         },
         {
           "name": "promote-failure",
@@ -4050,6 +4092,18 @@
           "short": "List workspaces in an organization",
           "runnable": true,
           "flags": [
+            {
+              "name": "limit",
+              "usage": "Maximum items to return (1-100; 0 = server default of 20)",
+              "type": "int",
+              "default": "0"
+            },
+            {
+              "name": "offset",
+              "usage": "Number of items to skip before the first result",
+              "type": "int",
+              "default": "0"
+            },
             {
               "name": "org",
               "usage": "Organization ID (uses default if not set)",

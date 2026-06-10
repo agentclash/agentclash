@@ -10,6 +10,7 @@ import (
 func init() {
 	rootCmd.AddCommand(orgCmd)
 	orgCmd.AddCommand(orgListCmd)
+	registerListPaginationFlags(orgListCmd)
 	orgCmd.AddCommand(orgGetCmd)
 	orgCmd.AddCommand(orgCreateCmd)
 	orgCmd.AddCommand(orgUpdateCmd)
@@ -44,7 +45,11 @@ var orgListCmd = &cobra.Command{
 	Short: "List organizations you belong to",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		rc := GetRunContext(cmd)
-		resp, err := rc.Client.Get(cmd.Context(), "/v1/organizations", nil)
+		q, err := listPaginationQuery(cmd)
+		if err != nil {
+			return err
+		}
+		resp, err := rc.Client.Get(cmd.Context(), "/v1/organizations", q)
 		if err != nil {
 			return err
 		}
@@ -53,14 +58,18 @@ var orgListCmd = &cobra.Command{
 		}
 
 		var result struct {
-			Items []map[string]any `json:"items"`
+			Items  []map[string]any `json:"items"`
+			Total  int64            `json:"total"`
+			Limit  int              `json:"limit"`
+			Offset int              `json:"offset"`
 		}
 		if err := resp.DecodeJSON(&result); err != nil {
 			return err
 		}
+		list := newPaginatedList(result.Items, result.Total, result.Limit, result.Offset)
 
 		if rc.Output.IsStructured() {
-			return rc.Output.PrintRaw(result)
+			return rc.Output.PrintRaw(list)
 		}
 
 		cols := []output.Column{{Header: "ID"}, {Header: "Name"}, {Header: "Slug"}, {Header: "Status"}}
@@ -74,6 +83,7 @@ var orgListCmd = &cobra.Command{
 			}
 		}
 		rc.Output.PrintTable(cols, rows)
+		printListPagingHint(rc, list)
 		return nil
 	},
 }
