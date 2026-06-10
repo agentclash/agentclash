@@ -1,0 +1,105 @@
+name: Publish Agent Skills
+
+# Publishes the AgentClash Agent Skills to `gh skill` from the canonical
+# web/content/agent-skills source.
+#
+# Why this is a SEPARATE, manual workflow (not folded into release-cli.yml):
+# `gh skill publish` is a public-preview command that cuts its OWN GitHub
+# release and adds the `agent-skills` repo topic, so (a) it needs repo-admin
+# rights the default GITHUB_TOKEN does not have, and (b) running it on the same
+# `v*` tag the GoReleaser release job already cut would conflict. Real
+# publishing is therefore manual and opt-in (workflow_dispatch with dry_run
+# defaulting to true). PRs that touch skills get a safe, token-free
+# bundle-build validation so spec regressions are caught before merge.
+#
+# One-time maintainer setup is documented in docs/agent-skills-publishing.md
+# (gh >= 2.90.0, the GH_SKILL_TOKEN repo-admin PAT, and the preview caveats).
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Validate only — do not cut a release / publish"
+        type: boolean
+        default: true
+      ref:
+        description: "Git ref to publish from (default: this workflow's ref)"
+        type: string
+        default: ""
+  pull_request:
+    paths:
+      - "web/content/agent-skills/**"
+      - "scripts/build-skills-bundle.mjs"
+      - ".github/workflows/publish-skills.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate-bundle:
+    name: Build & validate skills bundle
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      # build-skills-bundle.mjs self-validates every skill against the rules
+      # `gh skill publish` enforces (kebab-case name <= 64, description present
+      # <= 1024, folder name == frontmatter name, no duplicates). A non-zero
+      # exit means the bundle is not publish-ready. No token required.
+      - name: Build bundle (self-validates the gh skill spec)
+        run: node scripts/build-skills-bundle.mjs
+      - name: Upload bundle artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: skills-bundle
+          path: dist/skills-bundle
+          if-no-files-found: error
+
+  publish:
+    name: Publish to gh skill
+    needs: validate-bundle
+    # Manual only. With dry_run=true (the default) this still runs a
+    # `gh skill publish --dry-run` validation but cuts nothing.
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Build bundle
+        run: node scripts/build-skills-bundle.mjs
+      - name: Ensure gh >= 2.90 with the skill command
+        run: |
+          set -euo pipefail
+          ver="$(gh --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
+          req="2.90.0"
+          if [ "$(printf '%s\n%s\n' "$req" "$ver" | sort -V | head -1)" != "$req" ]; then
+            echo "::error::gh $ver < $req — 'gh skill' requires gh >= 2.90.0. Upgrade gh on the runner."
+            exit 1
+          fi
+          gh skill --help >/dev/null 2>&1 || { echo "::error::'gh skill' command unavailable in gh $ver"; exit 1; }
+      - name: Validate with gh skill (dry-run, cuts nothing)
+        env:
+          GH_TOKEN: ${{ secrets.GH_SKILL_TOKEN || secrets.GITHUB_TOKEN }}
+        run: gh skill publish dist/skills-bundle --dry-run
+      - name: Publish (cuts a release + adds the agent-skills topic)
+        if: ${{ inputs.dry_run == false }}
+        env:
+          # A PAT with repo-admin on agentclash/agentclash: gh skill publish adds
+          # the `agent-skills` topic and cuts a GitHub release, neither of which
+          # the default GITHUB_TOKEN can do.
+          GH_TOKEN: ${{ secrets.GH_SKILL_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "::error::GH_SKILL_TOKEN secret is required for a real publish (repo-admin PAT). See docs/agent-skills-publishing.md."
+            exit 1
+          fi
+          gh skill publish dist/skills-bundle
