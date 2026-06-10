@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"time"
@@ -101,17 +100,9 @@ Example:
 		}
 
 		rc := GetRunContext(cmd)
-		structured := rc != nil && rc.Output.IsStructured()
 		// In structured mode keep stdout a clean JSON stream; route human
 		// progress markers and the summary to stderr.
-		var progressW io.Writer = os.Stdout
-		if rc != nil {
-			if structured {
-				progressW = rc.Output.ErrWriter()
-			} else {
-				progressW = rc.Output.Writer()
-			}
-		}
+		progressW, structured := progressWriter(rc)
 
 		fmt.Fprintf(progressW, "Runtime stress-run: %d iterations against %s (Vault @ %s)\n", iterations, model, vaultAddr)
 		ctx := context.Background()

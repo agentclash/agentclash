@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/agentclash/agentclash/cli/internal/api"
@@ -39,6 +40,20 @@ func GetRunContext(cmd *cobra.Command) *RunContext {
 		return v.(*RunContext)
 	}
 	return nil
+}
+
+// progressWriter returns the writer for human progress/diagnostics and whether
+// structured output is active. In structured (--json/--output) mode, progress
+// goes to stderr so stdout stays a clean machine-readable stream; otherwise it
+// goes to stdout. Safe when rc is nil (early-init paths): defaults to stdout.
+func progressWriter(rc *RunContext) (io.Writer, bool) {
+	if rc == nil {
+		return os.Stdout, false
+	}
+	if rc.Output.IsStructured() {
+		return rc.Output.ErrWriter(), true
+	}
+	return rc.Output.Writer(), false
 }
 
 // RequireWorkspace returns the workspace ID or exits with an error.

@@ -83,17 +83,9 @@ Example:
 		}
 
 		rc := GetRunContext(cmd)
-		structured := rc != nil && rc.Output.IsStructured()
 		// In structured mode keep stdout a clean JSON stream; route human
 		// progress and per-run summaries to stderr.
-		var progressW io.Writer = os.Stdout
-		if rc != nil {
-			if structured {
-				progressW = rc.Output.ErrWriter()
-			} else {
-				progressW = rc.Output.Writer()
-			}
-		}
+		progressW, structured := progressWriter(rc)
 
 		ctx := context.Background()
 		all := make([]*securitystress.Result, 0, len(providers))
