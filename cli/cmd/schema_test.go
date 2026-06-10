@@ -110,6 +110,10 @@ func TestSchemaExitCodesMatchConsts(t *testing.T) {
 		"ci_run_api_error":                   ciRunExitAPI,
 		"ci_run_timeout":                     ciRunExitTimeout,
 		"ci_run_run_failed":                  ciRunExitRunFailed,
+		"validation_error":                   exitValidationError,
+		"not_found":                          exitNotFound,
+		"retryable_failure":                  exitRetryableFailure,
+		"auth_denied":                        exitAuthDenied,
 	}
 
 	got := make(map[string]int, len(documentedExitCodes))
