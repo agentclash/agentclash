@@ -14,7 +14,7 @@ type Props = {
 export function ResourceLeadForm({
   source,
   resource,
-  ctaLabel = "Get the resource pack",
+  ctaLabel = "Download the PDFs",
   className = "",
 }: Props) {
   const router = useRouter();
@@ -62,15 +62,15 @@ export function ResourceLeadForm({
   return (
     <form
       onSubmit={submit}
-      className={`rounded-lg border border-white/[0.1] bg-white/[0.035] p-4 sm:p-5 ${className}`}
+      className={`rounded-lg border border-white/[0.1] bg-white/[0.03] p-4 sm:p-5 ${className}`}
     >
       <label
         htmlFor={`resource-email-${source}`}
-        className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-[0.14em] text-white/45"
+        className="sr-only"
       >
-        Work email
+        Email address
       </label>
-      <div className="mt-3 flex flex-col gap-3 sm:flex-row">
+      <div className="flex flex-col gap-3 sm:flex-row">
         <input
           id={`resource-email-${source}`}
           type="email"
@@ -78,7 +78,7 @@ export function ResourceLeadForm({
           autoComplete="email"
           value={email}
           onChange={(event) => setEmail(event.target.value)}
-          placeholder="you@company.com"
+          placeholder="Work email"
           className="min-h-12 flex-1 rounded-lg border border-white/[0.12] bg-black/30 px-4 text-sm text-white outline-none transition-colors placeholder:text-white/25 focus:border-white/35"
         />
         <button
@@ -93,8 +93,8 @@ export function ResourceLeadForm({
         <p className="mt-3 text-sm leading-6 text-red-300">{error}</p>
       ) : (
         <p className="mt-3 text-xs leading-5 text-white/40">
-          Instant access. We also use this to send product evaluation updates,
-          not spam.
+          Immediate access to the checklist, worksheet, scorecard, procurement
+          guide, and rollout plan.
         </p>
       )}
     </form>
