@@ -199,6 +199,19 @@ export default function sitemap(): MetadataRoute.Sitemap {
       ],
     },
     {
+      url: `${DOCS_ORIGIN}/enterprise`,
+      lastModified: new Date(),
+      changeFrequency: "monthly",
+      priority: 0.82,
+      images: [
+        ogImage({
+          title: "Enterprise Agent Evaluation",
+          subtitle: "Governed release gates for platform teams",
+          kind: "Enterprise",
+        }),
+      ],
+    },
+    {
       url: `${DOCS_ORIGIN}/platform/agent-evaluation`,
       lastModified: new Date(),
       changeFrequency: "monthly",

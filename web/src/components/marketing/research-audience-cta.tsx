@@ -3,8 +3,8 @@
 import { CalEmbedInit } from "./cal-embed-init";
 import { CTAStrip } from "./cta-strip";
 
-const DEFAULT_SECONDARY_HREF = "/platform/agent-evaluation";
-const DEFAULT_SECONDARY_LABEL = "Enterprise evaluation";
+const DEFAULT_SECONDARY_HREF = "/enterprise";
+const DEFAULT_SECONDARY_LABEL = "Enterprise";
 const DEFAULT_DEMO_LABEL = "Book eval workshop";
 
 type Props = {

@@ -10,6 +10,7 @@ type NavLink = { href: string; label: string; external?: boolean };
 
 const DEFAULT_NAV: NavLink[] = [
   { href: "/#features", label: "Features" },
+  { href: "/enterprise", label: "Enterprise" },
   { href: "/docs", label: "Docs" },
   { href: "/benchmarks", label: "Benchmarks" },
   { href: "/blog", label: "Blog" },
