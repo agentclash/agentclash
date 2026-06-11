@@ -139,6 +139,16 @@ const crossLinks = [
     label: "Eval services",
     description: "Fixed-scope pack build, benchmark setup, and managed eval retainers.",
   },
+  {
+    href: "/industries",
+    label: "Industry playbooks",
+    description: "Banking, insurance, and government evaluation starting points.",
+  },
+  {
+    href: "/glossary",
+    label: "Glossary",
+    description: "Agent evaluation, challenge packs, and release gate definitions.",
+  },
 ];
 
 export const metadata: Metadata = {
