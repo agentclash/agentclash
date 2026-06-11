@@ -3,6 +3,7 @@ package workflow
 import (
 	"encoding/json"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/agentclash/agentclash/backend/internal/domain"
@@ -47,6 +48,40 @@ func TestPublicTryoutScorecardEvaluatesJSONFieldValidators(t *testing.T) {
 	}
 	if card["latency_ms"].(int64) != 1234 {
 		t.Fatalf("latency = %v, want 1234", card["latency_ms"])
+	}
+}
+
+func TestPublicTurnCommandResumesSessionAfterFirstTurn(t *testing.T) {
+	join := func(parts []string) string { return strings.Join(parts, " ") }
+
+	// Codex: opening turn vs resume.
+	first, _ := publicTurnCommand(domain.AgentHarnessKindCodexE2B, "/workspace", "hi", true)
+	resume, _ := publicTurnCommand(domain.AgentHarnessKindCodexE2B, "/workspace", "next", false)
+	if strings.Contains(join(first), "resume") {
+		t.Fatalf("codex opening turn should not resume: %v", first)
+	}
+	if !strings.Contains(join(resume), "exec resume --last") {
+		t.Fatalf("codex follow-up must resume --last: %v", resume)
+	}
+
+	// Claude: --continue only on follow-ups.
+	cFirst, _ := publicTurnCommand(domain.AgentHarnessKindClaudeE2B, "/workspace", "hi", true)
+	cResume, _ := publicTurnCommand(domain.AgentHarnessKindClaudeE2B, "/workspace", "next", false)
+	if strings.Contains(join(cFirst), "--continue") {
+		t.Fatalf("claude opening turn should not continue: %v", cFirst)
+	}
+	if !strings.Contains(join(cResume), "--continue") {
+		t.Fatalf("claude follow-up must --continue: %v", cResume)
+	}
+
+	// OpenClaw: same session id across turns.
+	oFirst, _ := publicTurnCommand(domain.AgentHarnessKindOpenClawE2B, "/workspace", "hi", true)
+	oResume, _ := publicTurnCommand(domain.AgentHarnessKindOpenClawE2B, "/workspace", "next", false)
+	if !strings.Contains(join(oFirst), "session-id agentclash-tryout") || !strings.Contains(join(oResume), "session-id agentclash-tryout") {
+		t.Fatalf("openclaw turns must reuse session id: %v / %v", oFirst, oResume)
+	}
+	if !strings.Contains(join(oFirst), "onboard") || strings.Contains(join(oResume), "onboard") {
+		t.Fatalf("openclaw onboard should run only on opening turn: %v / %v", oFirst, oResume)
 	}
 }
 

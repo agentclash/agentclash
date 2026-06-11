@@ -101,6 +101,22 @@ func (a *Activities) ExecutePublicAgentTryout(ctx context.Context, input Execute
 	return nil
 }
 
+// Interactive session tuning. The sandbox is kept alive while the user chats;
+// the loop ends on an explicit end turn, on idle, or at the hard session cap.
+const (
+	publicTryoutTurnPollInterval = 2 * time.Second
+	publicTryoutIdleTimeout      = 4 * time.Minute
+	publicTryoutPerTurnTimeout   = 5 * time.Minute
+	// publicTryoutSessionCap bounds the whole interactive chat. It must stay
+	// below the activity StartToCloseTimeout (defaultAgentHarnessTimeoutSeconds).
+	publicTryoutSessionCap = 15 * time.Minute
+)
+
+// executePublicTryoutSandbox runs an interactive, multi-turn agent session: it
+// keeps one sandbox alive, runs the opening turn, then drains user turns from
+// agent_tryout_turns (resuming the same agent session each time) until the user
+// ends the chat, it goes idle, or the hard cap is hit. The latest output
+// artifacts are returned for the scorecard + summary.
 func (a *Activities) executePublicTryoutSandbox(ctx context.Context, tryout repository.AgentTryout) ([]map[string]any, error) {
 	config := NormalizePublicAgentTryoutConfig(a.publicTryoutConfig)
 	harnessKind := publicTryoutHarnessKind(config, tryout.SelectedHarnessKind)
@@ -112,16 +128,14 @@ func (a *Activities) executePublicTryoutSandbox(ctx context.Context, tryout repo
 
 	harness := publicTryoutHarnessSnapshot(config, tryout, harnessKind, credentialRef)
 	env := publicTryoutRunnerEnv(harnessKind, harness, credential)
-	timeout := time.Duration(tryout.MaxDurationSeconds) * time.Second
-	if timeout <= 0 {
-		timeout = defaultAgentHarnessTimeoutSeconds * time.Second
-	}
+
+	sessionCap := publicTryoutSessionCap
 
 	runAgentID := uuid.New()
 	session, err := a.sandboxProvider.Create(ctx, sandbox.CreateRequest{
 		RunID:      tryout.ID,
 		RunAgentID: runAgentID,
-		Timeout:    timeout,
+		Timeout:    sessionCap,
 		ToolPolicy: sandbox.ToolPolicy{
 			AllowShell:   true,
 			AllowNetwork: true,
@@ -144,52 +158,219 @@ func (a *Activities) executePublicTryoutSandbox(ctx context.Context, tryout repo
 	}
 	defer func() { _ = session.Destroy(context.Background()) }()
 
-	runner, err := agentHarnessRunnerFor(harness, agentHarnessWorkspaceDir)
-	if err != nil {
+	deadline := time.Now().Add(sessionCap)
+	var outputs []map[string]any
+
+	// Opening turn: the task prompt assembled from the template + user input.
+	if err := a.runPublicTryoutTurn(ctx, tryout, session, harnessKind, env, harness.TaskPrompt, true); err != nil {
 		return nil, err
 	}
-	started := time.Now()
-	if err := a.recordPublicTryoutEvent(ctx, tryout.ID, runevents.EventTypeSandboxCommandStarted, map[string]any{
-		"provider_key":   config.Provider,
-		"harness_kind":   harnessKind,
-		"sandbox_action": runner.DisplayName,
-	}); err != nil {
-		return nil, err
+	outputs = a.publicTryoutOutputPreviews(ctx, tryout.ID, session, harness.ExecutionConfig)
+
+	// Conversational turns: drain user messages until end / idle / cap.
+	lastActivity := time.Now()
+	for time.Now().Before(deadline) {
+		turn, ok, claimErr := a.publicTryoutRepo.ClaimNextPendingAgentTryoutTurn(ctx, tryout.ID)
+		if claimErr != nil {
+			return nil, claimErr
+		}
+		if !ok {
+			if time.Since(lastActivity) > publicTryoutIdleTimeout {
+				break
+			}
+			if !sleepWithContext(ctx, publicTryoutTurnPollInterval) {
+				break
+			}
+			continue
+		}
+		if strings.TrimSpace(turn.Role) == "system_end" {
+			_ = a.publicTryoutRepo.MarkAgentTryoutTurnProcessed(ctx, turn.ID)
+			break
+		}
+
+		turnEnv := maputilClone(env)
+		turnEnv["AGENTCLASH_TURN_MESSAGE"] = turn.Message
+		if err := a.runPublicTryoutTurn(ctx, tryout, session, harnessKind, turnEnv, turn.Message, false); err != nil {
+			_ = a.publicTryoutRepo.MarkAgentTryoutTurnProcessed(ctx, turn.ID)
+			return nil, err
+		}
+		_ = a.publicTryoutRepo.MarkAgentTryoutTurnProcessed(ctx, turn.ID)
+		outputs = a.publicTryoutOutputPreviews(ctx, tryout.ID, session, harness.ExecutionConfig)
+		lastActivity = time.Now()
 	}
-	result, err := session.Exec(ctx, sandbox.ExecRequest{
-		Command:          runner.Command,
-		WorkingDirectory: agentHarnessWorkspaceDir,
-		Timeout:          timeout,
-		Environment:      env,
-	})
-	durationMS := time.Since(started).Milliseconds()
-	eventType := runevents.EventTypeSandboxCommandCompleted
-	if err != nil || result.ExitCode != 0 {
-		eventType = runevents.EventTypeSandboxCommandFailed
-	}
-	if recordErr := a.recordPublicTryoutEvent(ctx, tryout.ID, eventType, map[string]any{
-		"provider_key":   config.Provider,
-		"harness_kind":   harnessKind,
-		"sandbox_action": runner.DisplayName,
-		"exit_code":      result.ExitCode,
-		"duration_ms":    durationMS,
-	}); recordErr != nil {
-		return nil, recordErr
-	}
-	if err != nil {
-		return nil, err
-	}
-	if result.ExitCode != 0 {
-		return nil, fmt.Errorf("public tryout runner exited with code %d", result.ExitCode)
-	}
-	outputs := a.publicTryoutOutputPreviews(ctx, tryout.ID, session, harness.ExecutionConfig)
+
 	if err := a.recordPublicTryoutEvent(ctx, tryout.ID, runevents.EventTypeSystemOutputFinalized, map[string]any{
-		"status":      "finalized",
-		"duration_ms": durationMS,
+		"status": "finalized",
 	}); err != nil {
 		return nil, err
 	}
 	return outputs, nil
+}
+
+// runPublicTryoutTurn executes one agent turn in the live sandbox, streaming the
+// agent's reasoning + tool calls into the tryout event log as it runs.
+func (a *Activities) runPublicTryoutTurn(ctx context.Context, tryout repository.AgentTryout, session sandbox.Session, harnessKind string, env map[string]string, message string, firstTurn bool) error {
+	command, err := publicTurnCommand(harnessKind, agentHarnessWorkspaceDir, message, firstTurn)
+	if err != nil {
+		return err
+	}
+	started := time.Now()
+	_ = a.recordPublicTryoutEvent(ctx, tryout.ID, runevents.EventTypeSandboxCommandStarted, map[string]any{
+		"harness_kind": harnessKind,
+		"turn":         turnLabel(firstTurn),
+	})
+
+	remainder := ""
+	lineCount := 0
+	const maxStreamEvents = 200
+	onStdout := func(chunk []byte) error {
+		remainder += string(chunk)
+		lines := strings.Split(remainder, "\n")
+		remainder = lines[len(lines)-1]
+		for _, line := range lines[:len(lines)-1] {
+			if lineCount >= maxStreamEvents {
+				return nil
+			}
+			if a.recordPublicAgentStreamLine(ctx, tryout.ID, harnessKind, line) {
+				lineCount++
+			}
+		}
+		return nil
+	}
+
+	result, execErr := session.Exec(ctx, sandbox.ExecRequest{
+		Command:          command,
+		WorkingDirectory: agentHarnessWorkspaceDir,
+		Timeout:          publicTryoutPerTurnTimeout,
+		Environment:      env,
+		OnStdout:         onStdout,
+	})
+	if remainder != "" && lineCount < maxStreamEvents {
+		a.recordPublicAgentStreamLine(ctx, tryout.ID, harnessKind, remainder)
+	}
+
+	durationMS := time.Since(started).Milliseconds()
+	eventType := runevents.EventTypeSandboxCommandCompleted
+	if execErr != nil || result.ExitCode != 0 {
+		eventType = runevents.EventTypeSandboxCommandFailed
+	}
+	_ = a.recordPublicTryoutEvent(ctx, tryout.ID, eventType, map[string]any{
+		"harness_kind": harnessKind,
+		"exit_code":    result.ExitCode,
+		"duration_ms":  durationMS,
+	})
+	if execErr != nil {
+		return execErr
+	}
+	if result.ExitCode != 0 {
+		return fmt.Errorf("public tryout agent turn exited with code %d", result.ExitCode)
+	}
+	return nil
+}
+
+func turnLabel(firstTurn bool) string {
+	if firstTurn {
+		return "opening"
+	}
+	return "followup"
+}
+
+// publicTurnCommand returns the per-CLI command for a turn. The first turn opens
+// the session; later turns resume it so conversation state carries across turns
+// (verified live: codex `exec resume --last`, claude `--continue`, openclaw
+// reuses --session-id).
+func publicTurnCommand(harnessKind, workdir, message string, firstTurn bool) ([]string, error) {
+	switch domain.NormalizeAgentHarnessKind(harnessKind) {
+	case domain.AgentHarnessKindClaudeE2B:
+		cmd := []string{"claude", "-p", "--output-format", "stream-json", "--verbose", "--permission-mode", "bypassPermissions"}
+		if !firstTurn {
+			cmd = append(cmd, "--continue")
+		}
+		return append(cmd, message), nil
+	case domain.AgentHarnessKindOpenClawE2B:
+		if firstTurn {
+			script := strings.Join([]string{
+				"set -euo pipefail",
+				`if [ -n "${OPENAI_API_KEY:-}" ]; then AUTH_CHOICE=openai-api-key`,
+				`elif [ -n "${ANTHROPIC_API_KEY:-}" ]; then AUTH_CHOICE=apiKey`,
+				`elif [ -n "${OPENROUTER_API_KEY:-}" ]; then AUTH_CHOICE=openrouter-api-key`,
+				`else echo "missing OpenClaw provider API key" >&2; exit 1; fi`,
+				`openclaw setup --workspace "$PWD" --mode local --non-interactive --accept-risk`,
+				`openclaw onboard --non-interactive --mode local --auth-choice "$AUTH_CHOICE" --secret-input-mode ref --accept-risk --skip-bootstrap --skip-health`,
+				`exec openclaw agent --local --session-id agentclash-tryout --json --timeout "${AGENTCLASH_HARNESS_TIMEOUT_SECONDS:-1800}" -m "$AGENTCLASH_HARNESS_TASK"`,
+			}, "\n")
+			return []string{"bash", "-lc", script}, nil
+		}
+		script := `set -euo pipefail
+exec openclaw agent --local --session-id agentclash-tryout --json --timeout "${AGENTCLASH_HARNESS_TIMEOUT_SECONDS:-1800}" -m "$AGENTCLASH_TURN_MESSAGE"`
+		return []string{"bash", "-lc", script}, nil
+	default: // codex_e2b
+		cmd := []string{"codex", "exec"}
+		if !firstTurn {
+			cmd = append(cmd, "resume", "--last")
+		}
+		cmd = append(cmd, "--full-auto", "--skip-git-repo-check", "--json", "-C", workdir, message)
+		return cmd, nil
+	}
+}
+
+// recordPublicAgentStreamLine condenses one line of the agent's JSON stream into
+// a timeline event so the user sees the agent "thinking" live. Returns true when
+// an event was recorded. Public payloads are redacted downstream on read.
+func (a *Activities) recordPublicAgentStreamLine(ctx context.Context, tryoutID uuid.UUID, harnessKind, line string) bool {
+	line = strings.TrimSpace(line)
+	if line == "" {
+		return false
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal([]byte(line), &decoded); err != nil {
+		// Plain (non-JSON) chatter is noisy; skip it.
+		return false
+	}
+	kind, _ := decoded["type"].(string)
+	eventType := runevents.EventTypeModelCallStarted
+	if strings.Contains(strings.ToLower(kind), "tool") {
+		eventType = runevents.EventTypeToolCallStarted
+	}
+	_ = a.recordPublicTryoutEvent(ctx, tryoutID, eventType, map[string]any{
+		"harness_kind": harnessKind,
+		"stream_type":  kind,
+		"summary":      streamLineSummary(decoded),
+	})
+	return true
+}
+
+func streamLineSummary(decoded map[string]any) string {
+	for _, key := range []string{"text", "message", "content", "summary", "name", "tool", "type"} {
+		if value, ok := decoded[key].(string); ok && strings.TrimSpace(value) != "" {
+			if len(value) > 240 {
+				value = value[:240]
+			}
+			return value
+		}
+	}
+	return "agent step"
+}
+
+// sleepWithContext sleeps for d unless ctx is cancelled first; returns false if
+// the context was cancelled.
+func sleepWithContext(ctx context.Context, d time.Duration) bool {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
+	}
+}
+
+func maputilClone(in map[string]string) map[string]string {
+	out := make(map[string]string, len(in)+1)
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
 }
 
 func (a *Activities) publicTryoutOutputPreviews(ctx context.Context, tryoutID uuid.UUID, session sandbox.Session, executionConfig json.RawMessage) []map[string]any {
