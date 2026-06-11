@@ -1,6 +1,7 @@
 package output
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -43,8 +44,14 @@ func (f *Formatter) printQueried(data any) error {
 	if err != nil {
 		return err
 	}
+	// Decode with UseNumber so integers larger than 2^53 survive: the default
+	// any-decode turns every JSON number into a float64, silently corrupting
+	// big int64 fields (e.g. event sequence numbers). gojq accepts json.Number
+	// as a first-class input value, so the projection is exact end-to-end.
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
 	var plain any
-	if err := json.Unmarshal(raw, &plain); err != nil {
+	if err := dec.Decode(&plain); err != nil {
 		return err
 	}
 	iter := f.query.Run(plain)

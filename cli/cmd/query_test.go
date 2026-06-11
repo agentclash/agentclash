@@ -163,3 +163,4 @@ func TestQueryDoesNotFilterErrorEnvelope(t *testing.T) {
 		t.Fatalf("error = %v, want the forbidden API error", err)
 	}
 }
+
